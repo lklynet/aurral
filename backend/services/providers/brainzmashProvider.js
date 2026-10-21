@@ -50,9 +50,8 @@ const METADATA_STORE_CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
 const MIN_ALBUM_SEARCH_WINDOW = 25;
 const METADATA_REQUEST_MIN_INTERVAL_MS = 100;
 const METADATA_REQUEST_TIMEOUT_MS = 8000;
-const METADATA_MAX_QUEUED_REQUESTS = Math.floor(
-  METADATA_REQUEST_TIMEOUT_MS / METADATA_REQUEST_MIN_INTERVAL_MS,
-) - 1;
+const METADATA_MAX_QUEUED_REQUESTS =
+  Math.floor(METADATA_REQUEST_TIMEOUT_MS / METADATA_REQUEST_MIN_INTERVAL_MS) - 1;
 const metadataHotCache = createCache(
   METADATA_HOT_CACHE_TTL_SECONDS,
   METADATA_HOT_CACHE_MAX_ENTRIES,
@@ -176,11 +175,7 @@ function getMetadataCircuitError(baseUrl) {
   const now = Date.now();
   const budget = getMetadataProviderBudget(baseUrl);
   if (budget.forbidden_until > now) {
-    return createMetadataCircuitError(
-      "ERR_METADATA_FORBIDDEN",
-      403,
-      budget.forbidden_until - now,
-    );
+    return createMetadataCircuitError("ERR_METADATA_FORBIDDEN", 403, budget.forbidden_until - now);
   }
   if (budget.rate_limited_until > now) {
     return createMetadataCircuitError(
@@ -193,8 +188,7 @@ function getMetadataCircuitError(baseUrl) {
 }
 
 function openMetadataCircuit(baseUrl, status, error) {
-  const cooldownMs =
-    status === 403 ? METADATA_FORBIDDEN_COOLDOWN_MS : getRetryAfterMs(error);
+  const cooldownMs = status === 403 ? METADATA_FORBIDDEN_COOLDOWN_MS : getRetryAfterMs(error);
   setMetadataProviderCooldown(baseUrl, status, Date.now() + cooldownMs);
 }
 
@@ -261,86 +255,97 @@ function refreshMetadata(cacheKey, path, params, { signal } = {}) {
   healthState.activeBaseUrl = baseUrl;
   healthState.lastCheckedAt = nowIso();
 
-  return runSharedInflight(providerInflightRequests, cacheKey, async (sharedSignal) => {
-    for (let attempt = 0; attempt <= METADATA_MAX_RETRIES; attempt += 1) {
-      if (sharedSignal.aborted) throw sharedSignal.reason || new Error("The operation was aborted");
-      try {
-        const response = await providerRequestLimiter.schedule(
-          async (remainingMs) => {
-            const activeCircuitError = getMetadataCircuitError(baseUrl);
-            if (activeCircuitError) throw activeCircuitError;
-            const admissionStarted = Date.now();
-            let waitMs;
-            while ((waitMs = reserveMetadataProviderRequest(baseUrl, METADATA_REQUEST_MIN_INTERVAL_MS)) > 0) {
-              if (waitMs >= remainingMs - (Date.now() - admissionStarted)) {
+  return runSharedInflight(
+    providerInflightRequests,
+    cacheKey,
+    async (sharedSignal) => {
+      for (let attempt = 0; attempt <= METADATA_MAX_RETRIES; attempt += 1) {
+        if (sharedSignal.aborted)
+          throw sharedSignal.reason || new Error("The operation was aborted");
+        try {
+          const response = await providerRequestLimiter.schedule(
+            async (remainingMs) => {
+              const activeCircuitError = getMetadataCircuitError(baseUrl);
+              if (activeCircuitError) throw activeCircuitError;
+              const admissionStarted = Date.now();
+              let waitMs;
+              while (
+                (waitMs = reserveMetadataProviderRequest(
+                  baseUrl,
+                  METADATA_REQUEST_MIN_INTERVAL_MS,
+                )) > 0
+              ) {
+                if (waitMs >= remainingMs - (Date.now() - admissionStarted)) {
+                  const error = new Error("Metadata provider request deadline exceeded");
+                  error.code = "ETIMEDOUT";
+                  throw error;
+                }
+                await delay(waitMs, undefined, { signal: sharedSignal });
+                const waitingCircuit = getMetadataCircuitError(baseUrl);
+                if (waitingCircuit) throw waitingCircuit;
+              }
+              const circuitAfterWait = getMetadataCircuitError(baseUrl);
+              if (circuitAfterWait) throw circuitAfterWait;
+              const requestTimeoutMs = remainingMs - (Date.now() - admissionStarted);
+              if (requestTimeoutMs <= 0) {
                 const error = new Error("Metadata provider request deadline exceeded");
                 error.code = "ETIMEDOUT";
                 throw error;
               }
-              await delay(waitMs, undefined, { signal: sharedSignal });
-              const waitingCircuit = getMetadataCircuitError(baseUrl);
-              if (waitingCircuit) throw waitingCircuit;
+              return axios.get(`${baseUrl}${path}`, {
+                params,
+                timeout: Number.isFinite(requestTimeoutMs)
+                  ? Math.max(1, Math.floor(requestTimeoutMs))
+                  : METADATA_REQUEST_TIMEOUT_MS,
+                headers: {
+                  "User-Agent": getUserAgent(),
+                },
+                signal: sharedSignal,
+              });
+            },
+            { signal: sharedSignal, timeoutMs: METADATA_REQUEST_TIMEOUT_MS },
+          );
+          storeMetadata(cacheKey, response.data, cachePolicy);
+          metadataNotFoundCache.delete(cacheKey);
+          healthState.lastSuccessAt = healthState.lastCheckedAt;
+          healthState.lastFailureReason = "";
+          return response.data;
+        } catch (error) {
+          if (sharedSignal.aborted) throw sharedSignal.reason || error;
+          healthState.lastFailureAt = healthState.lastCheckedAt;
+          healthState.lastFailureReason =
+            error?.response?.status != null
+              ? `HTTP ${error.response.status}`
+              : error?.code || error?.message || "Unknown error";
+          if ([403, 429].includes(error?.response?.status)) {
+            if (!isMetadataCircuitError(error)) {
+              openMetadataCircuit(baseUrl, error.response.status, error);
             }
-            const circuitAfterWait = getMetadataCircuitError(baseUrl);
-            if (circuitAfterWait) throw circuitAfterWait;
-            const requestTimeoutMs = remainingMs - (Date.now() - admissionStarted);
-            if (requestTimeoutMs <= 0) {
-              const error = new Error("Metadata provider request deadline exceeded");
-              error.code = "ETIMEDOUT";
-              throw error;
-            }
-            return axios.get(`${baseUrl}${path}`, {
-              params,
-              timeout: Number.isFinite(requestTimeoutMs)
-                ? Math.max(1, Math.floor(requestTimeoutMs))
-                : METADATA_REQUEST_TIMEOUT_MS,
-              headers: {
-                "User-Agent": getUserAgent(),
-              },
-              signal: sharedSignal,
-            });
-          },
-          { signal: sharedSignal, timeoutMs: METADATA_REQUEST_TIMEOUT_MS },
-        );
-        storeMetadata(cacheKey, response.data, cachePolicy);
-        metadataNotFoundCache.delete(cacheKey);
-        healthState.lastSuccessAt = healthState.lastCheckedAt;
-        healthState.lastFailureReason = "";
-        return response.data;
-      } catch (error) {
-        if (sharedSignal.aborted) throw sharedSignal.reason || error;
-        healthState.lastFailureAt = healthState.lastCheckedAt;
-        healthState.lastFailureReason =
-          error?.response?.status != null
-            ? `HTTP ${error.response.status}`
-            : error?.code || error?.message || "Unknown error";
-        if ([403, 429].includes(error?.response?.status)) {
-          if (!isMetadataCircuitError(error)) {
-            openMetadataCircuit(baseUrl, error.response.status, error);
+            throw error;
           }
-          throw error;
+          if (error?.response?.status === 404 && isEntityMetadataPath(path)) {
+            forgetMetadata(cacheKey);
+            metadataNotFoundCache.set(cacheKey, true);
+          }
+          if (attempt === METADATA_MAX_RETRIES || !isRetryable(error)) throw error;
+          await new Promise((resolve, reject) => {
+            const onAbort = () => {
+              clearTimeout(timer);
+              reject(sharedSignal.reason || new Error("The operation was aborted"));
+            };
+            const timer = setTimeout(() => {
+              sharedSignal.removeEventListener("abort", onAbort);
+              resolve();
+            }, 250);
+            if (sharedSignal.aborted) onAbort();
+            else sharedSignal.addEventListener("abort", onAbort, { once: true });
+          });
         }
-        if (error?.response?.status === 404 && isEntityMetadataPath(path)) {
-          forgetMetadata(cacheKey);
-          metadataNotFoundCache.set(cacheKey, true);
-        }
-        if (attempt === METADATA_MAX_RETRIES || !isRetryable(error)) throw error;
-        await new Promise((resolve, reject) => {
-          const onAbort = () => {
-            clearTimeout(timer);
-            reject(sharedSignal.reason || new Error("The operation was aborted"));
-          };
-          const timer = setTimeout(() => {
-            sharedSignal.removeEventListener("abort", onAbort);
-            resolve();
-          }, 250);
-          if (sharedSignal.aborted) onAbort();
-          else sharedSignal.addEventListener("abort", onAbort, { once: true });
-        });
       }
-    }
-    throw new Error("Metadata provider request failed");
-  }, { signal });
+      throw new Error("Metadata provider request failed");
+    },
+    { signal },
+  );
 }
 
 async function request(path, params = {}, { signal, forceRefresh = false } = {}) {
@@ -391,27 +396,38 @@ function tally(releases, key) {
 // out box sets.
 export function selectAlbumRelease(album, { edition = "standard" } = {}) {
   const releases = Array.isArray(album?.releases) ? album.releases : [];
-  const withTracks = releases.filter((release) => Array.isArray(release?.tracks) && release.tracks.length > 0);
-  const official = withTracks.filter((release) => String(release?.status || "").toLowerCase() === "official");
+  const withTracks = releases.filter(
+    (release) => Array.isArray(release?.tracks) && release.tracks.length > 0,
+  );
+  const official = withTracks.filter(
+    (release) => String(release?.status || "").toLowerCase() === "official",
+  );
   const pool = official.length > 0 ? official : withTracks;
   if (pool.length === 0) return releases[0] || null;
-  const [trackCount] = [...tally(pool, (release) => release.tracks.length)]
-    .sort(([leftCount, left], [rightCount, right]) => right - left || rightCount - leftCount)[0];
+  const [trackCount] = [...tally(pool, (release) => release.tracks.length)].sort(
+    ([leftCount, left], [rightCount, right]) => right - left || rightCount - leftCount,
+  )[0];
   const standard = chooseTracklist(pool, trackCount);
   if (edition !== "expanded") return standard;
   const keepsStandardTracks = (release) => {
     const unmatched = [...release.tracks];
     return standard.tracks.every((track) => {
-      const index = unmatched.findIndex((candidate) => (track.recordingId && candidate.recordingId
-        ? candidate.recordingId === track.recordingId
-        : getNormalizedText(candidate.title) === getNormalizedText(track.title)));
+      const index = unmatched.findIndex((candidate) =>
+        track.recordingId && candidate.recordingId
+          ? candidate.recordingId === track.recordingId
+          : getNormalizedText(candidate.title) === getNormalizedText(track.title),
+      );
       if (index === -1) return false;
       unmatched.splice(index, 1);
       return true;
     });
   };
-  const longer = pool.filter((release) => release.tracks.length > trackCount &&
-    release.tracks.length <= trackCount * 2 && keepsStandardTracks(release));
+  const longer = pool.filter(
+    (release) =>
+      release.tracks.length > trackCount &&
+      release.tracks.length <= trackCount * 2 &&
+      keepsStandardTracks(release),
+  );
   if (longer.length === 0) return standard;
   return chooseTracklist(longer, Math.max(...longer.map((release) => release.tracks.length)));
 }
@@ -430,10 +446,8 @@ function chooseTracklist(pool, trackCount) {
 
 function storeAlbumReleaseMappings(album) {
   for (const release of album?.releases || []) {
-    releaseCache.set(
-      release.id,
-      structuredClone({ albumId: album.id, release }),
-    );  }
+    releaseCache.set(release.id, structuredClone({ albumId: album.id, release }));
+  }
 }
 
 export async function getArtistByMbid(mbid, { signal } = {}) {
@@ -448,7 +462,10 @@ export async function getAlbumByMbid(albumMbid, { signal, forceRefresh = false }
   return normalized;
 }
 
-export async function getAlbumTracksByAlbumMbid(albumMbid, { chooseRelease = selectAlbumRelease } = {}) {
+export async function getAlbumTracksByAlbumMbid(
+  albumMbid,
+  { chooseRelease = selectAlbumRelease } = {},
+) {
   const album = await getAlbumByMbid(albumMbid);
   const release = chooseRelease(album);
   return Array.isArray(release?.tracks)
@@ -459,10 +476,14 @@ export async function getAlbumTracksByAlbumMbid(albumMbid, { chooseRelease = sel
 export async function searchArtists(query, { limit = 24, offset = 0, signal } = {}) {
   let items = [];
   try {
-    const data = await request("/search/artist", {
-      query,
-      limit,
-    }, { signal });
+    const data = await request(
+      "/search/artist",
+      {
+        query,
+        limit,
+      },
+      { signal },
+    );
     const source = Array.isArray(data) ? data : [];
     items = source.map((entry) => ({
       ...toNormalizedArtist(entry),
@@ -498,15 +519,20 @@ export async function searchAlbums(
   let failure = null;
 
   try {
-    const data = await request("/search/album", {
-      query,
-      limit: requestedLimit,
-      ...(artistName ? { artist: artistName } : {}),
-    }, { signal });
+    const data = await request(
+      "/search/album",
+      {
+        query,
+        limit: requestedLimit,
+        ...(artistName ? { artist: artistName } : {}),
+      },
+      { signal },
+    );
     const source = Array.isArray(data) ? data : [];
     items = source.map((entry, index) => {
       const artists = Array.isArray(entry?.artists) ? entry.artists : [];
-      const credited = artists.find((artist) => artist?.id && artist.id === entry?.artistid) || artists[0];
+      const credited =
+        artists.find((artist) => artist?.id && artist.id === entry?.artistid) || artists[0];
       const primaryArtist = credited ? toNormalizedArtist(credited) : null;
       const coverImage = selectBestAlbumImage(entry?.images);
       return {
@@ -608,23 +634,25 @@ export async function searchAlbums(
 }
 
 function artistNameForms(name) {
-  const value = String(name || "").trim().replace(/&/g, " and ");
+  const value = String(name || "")
+    .trim()
+    .replace(/&/g, " and ");
   const parts = value.split(",").map((part) => part.trim());
-  const variants = parts.length === 2 && parts.every(Boolean)
-    ? [value, `${parts[1]} ${parts[0]}`]
-    : [value];
-  return variants
-    .map((variant) => getNormalizedText(variant).replace(/^the /, ""))
-    .filter(Boolean);
+  const variants =
+    parts.length === 2 && parts.every(Boolean) ? [value, `${parts[1]} ${parts[0]}`] : [value];
+  return variants.map((variant) => getNormalizedText(variant).replace(/^the /, "")).filter(Boolean);
 }
 
 const leadArtistName = (credit) =>
-  String(credit || "").replace(/\s+(?:feat\.?|ft\.?|featuring)\s+.+$/iu, "").trim();
+  String(credit || "")
+    .replace(/\s+(?:feat\.?|ft\.?|featuring)\s+.+$/iu, "")
+    .trim();
 
 const hasArtistName = (name, artist) => {
   const forms = new Set(artistNameForms(name));
-  return [artist?.name, ...(artist?.aliases || [])]
-    .some((candidate) => artistNameForms(candidate).some((form) => forms.has(form)));
+  return [artist?.name, ...(artist?.aliases || [])].some((candidate) =>
+    artistNameForms(candidate).some((form) => forms.has(form)),
+  );
 };
 
 // An artist is the one a credit names when the credit, or its lead artist as
@@ -652,11 +680,12 @@ export async function resolveLibraryArtistByName(name) {
   const matches = new Set(
     (Array.isArray(data) ? data : [])
       .map(toNormalizedArtist)
-      .filter((artist) =>
-        artist.id &&
-        [artist.name, ...artist.aliases].some((candidate) =>
-          artistNameForms(candidate).some((form) => forms.has(form)),
-        ),
+      .filter(
+        (artist) =>
+          artist.id &&
+          [artist.name, ...artist.aliases].some((candidate) =>
+            artistNameForms(candidate).some((form) => forms.has(form)),
+          ),
       )
       .map((artist) => artist.id),
   );
@@ -676,12 +705,15 @@ export async function resolveAlbumByArtistAndTitle({
   releaseYear = null,
   holds = null,
 }) {
-  const albumOrNone = (mbid) => getAlbumByMbid(mbid).catch((error) => {
-    if (isMetadataNotFoundError(error)) return null;
-    throw error;
-  });
-  const byArtist = (album) => [{ id: album?.artistId }, ...(album?.artists || [])].some((artist) =>
-    (artistMbid && artist.id === artistMbid) || isCreditedArtist(artistName, artist));
+  const albumOrNone = (mbid) =>
+    getAlbumByMbid(mbid).catch((error) => {
+      if (isMetadataNotFoundError(error)) return null;
+      throw error;
+    });
+  const byArtist = (album) =>
+    [{ id: album?.artistId }, ...(album?.artists || [])].some(
+      (artist) => (artistMbid && artist.id === artistMbid) || isCreditedArtist(artistName, artist),
+    );
   const tried = new Set();
   for (const searchArtist of new Set([artistName, ""])) {
     const result = await searchAlbums(albumTitle, {
@@ -696,7 +728,7 @@ export async function resolveAlbumByArtistAndTitle({
       if (scoreTextMatch(candidate.title, albumTitle) < 85) continue;
       tried.add(candidate.id);
       if ((artistName || artistMbid) && !byArtist(await albumOrNone(candidate.id))) continue;
-      if (!holds || await holds(candidate.id)) return candidate.id;
+      if (!holds || (await holds(candidate.id))) return candidate.id;
     }
   }
   return null;

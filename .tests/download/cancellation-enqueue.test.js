@@ -48,15 +48,21 @@ registerFlows({
     flowHandlers.set(path, handlers.at(-1));
     flowUpdateHandlers.set(path, handlers.at(-1));
   },
-  delete(path, ...handlers) { flowHandlers.set(path, handlers.at(-1)); },
+  delete(path, ...handlers) {
+    flowHandlers.set(path, handlers.at(-1));
+  },
 });
 
 const staticPlaylistHandlers = new Map();
 registerStaticPlaylists({
   get() {},
   post() {},
-  put(path, ...handlers) { staticPlaylistHandlers.set(path, handlers.at(-1)); },
-  delete(path, ...handlers) { staticPlaylistHandlers.set(path, handlers.at(-1)); },
+  put(path, ...handlers) {
+    staticPlaylistHandlers.set(path, handlers.at(-1));
+  },
+  delete(path, ...handlers) {
+    staticPlaylistHandlers.set(path, handlers.at(-1));
+  },
 });
 
 const createResponse = () => ({
@@ -84,7 +90,12 @@ const createFlow = ({ enabled = false, name } = {}) => {
 
 beforeEach(() => {
   resetDatabase(db);
-  dbOps.updateSettings({ integrations: {}, onboardingComplete: true, flows: [], sharedPlaylists: [] });
+  dbOps.updateSettings({
+    integrations: {},
+    onboardingComplete: true,
+    flows: [],
+    sharedPlaylists: [],
+  });
   downloadTracker.clearAll();
 });
 
@@ -110,7 +121,10 @@ test("a failed flow-delete enqueue restores active download work", async () => {
   assert.equal(response.statusCode, 500);
   assert.ok(flowPlaylistConfig.getFlow(flow.id));
   assert.equal(isDownloadJobCancelled(jobId), false);
-  assert.equal(isPipelinePayloadActive({ jobId, playlistId: flow.id, playlistGeneration: generation }), true);
+  assert.equal(
+    isPipelinePayloadActive({ jobId, playlistId: flow.id, playlistGeneration: generation }),
+    true,
+  );
   assert.equal(dbOps.getJSONSetting(tokenKey), "previous-delete-token");
 });
 
@@ -122,22 +136,30 @@ test("a failed flow-disable enqueue restores enabled state and active downloads"
   dbOps.setJSONSetting(tokenKey, "previous-disable-token");
   const generation = activatePlaylistDownloadGeneration(flow.id);
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Song" }, flow.id);
-  const playlistSync = vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
+  const playlistSync = vi
+    .spyOn(playlistManager, "requestPlaylistSync")
+    .mockImplementation(() => null);
   vi.spyOn(playlistOperationQueue, "enqueuePayload").mockImplementation(async () => {
     throw new Error("queue unavailable");
   });
   const response = createResponse();
 
-  await flowHandlers.get("/flows/:flowId/enabled")({
-    params: { flowId: flow.id },
-    body: { enabled: false },
-    user,
-  }, response);
+  await flowHandlers.get("/flows/:flowId/enabled")(
+    {
+      params: { flowId: flow.id },
+      body: { enabled: false },
+      user,
+    },
+    response,
+  );
 
   assert.equal(response.statusCode, 500);
   assert.equal(flowPlaylistConfig.getFlow(flow.id).enabled, true);
   assert.equal(isDownloadJobCancelled(jobId), false);
-  assert.equal(isPipelinePayloadActive({ jobId, playlistId: flow.id, playlistGeneration: generation }), true);
+  assert.equal(
+    isPipelinePayloadActive({ jobId, playlistId: flow.id, playlistGeneration: generation }),
+    true,
+  );
   assert.equal(dbOps.getJSONSetting(tokenKey), "previous-disable-token");
   assert.equal(playlistSync.mock.calls.length, 0);
 });
@@ -149,8 +171,12 @@ test("a failed flow disable does not undo a later disable", async () => {
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Song" }, flow.id);
   let signalFirstEnqueue;
   let failFirstEnqueue;
-  const firstEnqueueStarted = new Promise((resolve) => { signalFirstEnqueue = resolve; });
-  const firstEnqueue = new Promise((resolve, reject) => { failFirstEnqueue = reject; });
+  const firstEnqueueStarted = new Promise((resolve) => {
+    signalFirstEnqueue = resolve;
+  });
+  const firstEnqueue = new Promise((resolve, reject) => {
+    failFirstEnqueue = reject;
+  });
   let enqueueCalls = 0;
   vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
   vi.spyOn(playlistOperationQueue, "enqueuePayload").mockImplementation(async () => {
@@ -161,11 +187,15 @@ test("a failed flow disable does not undo a later disable", async () => {
     }
     return { operationId: "later-disable-operation" };
   });
-  const disable = (response) => flowHandlers.get("/flows/:flowId/enabled")({
-    params: { flowId: flow.id },
-    body: { enabled: false },
-    user,
-  }, response);
+  const disable = (response) =>
+    flowHandlers.get("/flows/:flowId/enabled")(
+      {
+        params: { flowId: flow.id },
+        body: { enabled: false },
+        user,
+      },
+      response,
+    );
   const firstResponse = createResponse();
   const secondResponse = createResponse();
 
@@ -179,7 +209,10 @@ test("a failed flow disable does not undo a later disable", async () => {
   assert.equal(secondResponse.statusCode, 200);
   assert.equal(flowPlaylistConfig.getFlow(flow.id).enabled, false);
   assert.equal(isDownloadJobCancelled(jobId), true);
-  assert.equal(isPipelinePayloadActive({ jobId, playlistId: flow.id, playlistGeneration: generation }), false);
+  assert.equal(
+    isPipelinePayloadActive({ jobId, playlistId: flow.id, playlistGeneration: generation }),
+    false,
+  );
 });
 
 test("a successful flow disable reports the accepted cleanup operation", async () => {
@@ -195,11 +228,14 @@ test("a successful flow disable reports the accepted cleanup operation", async (
   });
   const response = createResponse();
 
-  await flowHandlers.get("/flows/:flowId/enabled")({
-    params: { flowId: flow.id },
-    body: { enabled: false },
-    user,
-  }, response);
+  await flowHandlers.get("/flows/:flowId/enabled")(
+    {
+      params: { flowId: flow.id },
+      body: { enabled: false },
+      user,
+    },
+    response,
+  );
 
   assert.equal(response.statusCode, 200);
   assert.equal(response.body.queued, true);
@@ -207,7 +243,10 @@ test("a successful flow disable reports the accepted cleanup operation", async (
   assert.equal(queuedPayload.kind, "disable-flow-cleanup");
   assert.equal(flowPlaylistConfig.getFlow(flow.id).enabled, false);
   assert.equal(isDownloadJobCancelled(jobId), true);
-  assert.equal(isPipelinePayloadActive({ jobId, playlistId: flow.id, playlistGeneration: generation }), false);
+  assert.equal(
+    isPipelinePayloadActive({ jobId, playlistId: flow.id, playlistGeneration: generation }),
+    false,
+  );
 });
 
 test("flow settings updates wait for in-progress playlist mutations", async () => {
@@ -220,23 +259,34 @@ test("flow settings updates wait for in-progress playlist mutations", async () =
   flowPlaylistConfig.updateFlow(flow.id, { scheduleDays: [1] });
   let signalMutationEntered;
   let releaseMutation;
-  const mutationEntered = new Promise((resolve) => { signalMutationEntered = resolve; });
-  const mutationGate = new Promise((resolve) => { releaseMutation = resolve; });
-  const mutation = mutationGuards.withPlaylistMutation(flow.id, async () => {
-    signalMutationEntered();
-    await mutationGate;
-  }, { clearPending: false });
+  const mutationEntered = new Promise((resolve) => {
+    signalMutationEntered = resolve;
+  });
+  const mutationGate = new Promise((resolve) => {
+    releaseMutation = resolve;
+  });
+  const mutation = mutationGuards.withPlaylistMutation(
+    flow.id,
+    async () => {
+      signalMutationEntered();
+      await mutationGate;
+    },
+    { clearPending: false },
+  );
   let update;
   const response = createResponse();
 
   try {
     await mutationEntered;
     vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
-    update = flowUpdateHandlers.get("/flows/:flowId")({
-      params: { flowId: flow.id },
-      body: { name: "Updated while serialized" },
-      user,
-    }, response);
+    update = flowUpdateHandlers.get("/flows/:flowId")(
+      {
+        params: { flowId: flow.id },
+        body: { name: "Updated while serialized" },
+        user,
+      },
+      response,
+    );
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(response.body, null);
   } finally {
@@ -262,15 +312,21 @@ test("a failed shared-track delete enqueue clears only its new job-cancellation 
   });
   const response = createResponse();
 
-  await staticPlaylistHandlers.get("/shared-playlists/:playlistId/tracks/:jobId")({
-    params: { playlistId: playlist.id, jobId },
-    user,
-  }, response);
+  await staticPlaylistHandlers.get("/shared-playlists/:playlistId/tracks/:jobId")(
+    {
+      params: { playlistId: playlist.id, jobId },
+      user,
+    },
+    response,
+  );
 
   assert.equal(response.statusCode, 500);
   assert.ok(downloadTracker.getJob(jobId));
   assert.equal(isDownloadJobCancelled(jobId), false);
-  assert.equal(isPipelinePayloadActive({ jobId, playlistId: playlist.id, playlistGeneration: generation }), true);
+  assert.equal(
+    isPipelinePayloadActive({ jobId, playlistId: playlist.id, playlistGeneration: generation }),
+    true,
+  );
 });
 
 test("a failed static playlist delete does not reactivate previously cancelled work", async () => {
@@ -287,15 +343,21 @@ test("a failed static playlist delete does not reactivate previously cancelled w
   });
   const response = createResponse();
 
-  await staticPlaylistHandlers.get("/shared-playlists/:playlistId")({
-    params: { playlistId: playlist.id },
-    user,
-  }, response);
+  await staticPlaylistHandlers.get("/shared-playlists/:playlistId")(
+    {
+      params: { playlistId: playlist.id },
+      user,
+    },
+    response,
+  );
 
   assert.equal(response.statusCode, 500);
   assert.ok(flowPlaylistConfig.getStaticPlaylist(playlist.id));
   assert.equal(isDownloadJobCancelled(jobId), false);
-  assert.equal(isPipelinePayloadActive({ jobId, playlistId: playlist.id, playlistGeneration: 0 }), false);
+  assert.equal(
+    isPipelinePayloadActive({ jobId, playlistId: playlist.id, playlistGeneration: 0 }),
+    false,
+  );
 });
 
 test("a failed track-delete enqueue preserves an existing job-cancellation marker", async () => {
@@ -312,10 +374,13 @@ test("a failed track-delete enqueue preserves an existing job-cancellation marke
   });
   const response = createResponse();
 
-  await staticPlaylistHandlers.get("/shared-playlists/:playlistId/tracks/:jobId")({
-    params: { playlistId: playlist.id, jobId },
-    user,
-  }, response);
+  await staticPlaylistHandlers.get("/shared-playlists/:playlistId/tracks/:jobId")(
+    {
+      params: { playlistId: playlist.id, jobId },
+      user,
+    },
+    response,
+  );
 
   assert.equal(response.statusCode, 500);
   assert.equal(isDownloadJobCancelled(jobId), true);

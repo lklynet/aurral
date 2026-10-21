@@ -39,7 +39,13 @@ function AlbumCover({ src, alt }) {
   }
 
   return (
-    <ArtworkImage src={src} alt={alt} loading="lazy" decoding="async" onError={() => setFailed(true)} />
+    <ArtworkImage
+      src={src}
+      alt={alt}
+      loading="lazy"
+      decoding="async"
+      onError={() => setFailed(true)}
+    />
   );
 }
 
@@ -52,7 +58,7 @@ function AlbumAction({ album, isPending, canAddAlbum, onAlbumAction, libraryDest
   if (isComplete) {
     return (
       <Tooltip content="In library">
-        <span className="artist-release-card__status" >
+        <span className="artist-release-card__status">
           <SearchLibraryCheck size="overlay" />
           <span className="sr-only">In library</span>
         </span>
@@ -111,10 +117,7 @@ function SearchAlbumResults({
 
     if (viewMode === "list") {
       return (
-        <article
-          key={album.id}
-          className="artist-release-list-item search-album-results__item"
-        >
+        <article key={album.id} className="artist-release-list-item search-album-results__item">
           <OptionalLink
             link={openAlbum}
             className="search-album-results__cover-link"
@@ -160,10 +163,7 @@ function SearchAlbumResults({
     }
 
     return (
-      <article
-        key={album.id}
-        className="artist-release-card search-album-results__item"
-      >
+      <article key={album.id} className="artist-release-card search-album-results__item">
         <div className="search-album-results__cover-wrap">
           <OptionalLink
             link={openAlbum}
@@ -189,7 +189,7 @@ function SearchAlbumResults({
           </div>
         </div>
         <Tooltip content={album.title}>
-          <h2 className="artist-release-card__title artist-truncate" >
+          <h2 className="artist-release-card__title artist-truncate">
             <OptionalLink link={openAlbum} className="search-album-results__title-link">
               {album.title}
             </OptionalLink>

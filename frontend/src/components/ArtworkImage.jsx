@@ -4,9 +4,12 @@ function ThumbnailImage({ src, sizes, loading, onError, ...props }) {
   const [previewFailed, setPreviewFailed] = useState(false);
   const preview = src.replace(/\/fanart\//i, "/preview/");
   const bigPreview = src.replace(/\/fanart\//i, "/bigpreview/");
-  const originalCandidate = /^https?:\/\/assets\.fanart\.tv\/fanart\/music\/[^/?#]+\/(?:albumcover|artistthumb)\//i.test(src)
-    ? `, ${src} 1000w`
-    : "";
+  const originalCandidate =
+    /^https?:\/\/assets\.fanart\.tv\/fanart\/music\/[^/?#]+\/(?:albumcover|artistthumb)\//i.test(
+      src,
+    )
+      ? `, ${src} 1000w`
+      : "";
 
   return (
     <img

@@ -15,8 +15,7 @@ export const getDiscovery = (options = false) => {
   return getData("/discover", { params, signal });
 };
 
-export const getDiscoveryStatus = ({ signal } = {}) =>
-  getData("/discover/status", { signal });
+export const getDiscoveryStatus = ({ signal } = {}) => getData("/discover/status", { signal });
 
 export const refreshDiscovery = () => postData("/discover/refresh");
 
@@ -28,10 +27,17 @@ export const getEditorialPlaylist = (playlistId, options = {}) =>
 export const addEditorialPlaylistToLibrary = (playlistId) =>
   postData(`/discover/editorial/${encodeURIComponent(playlistId)}/library`);
 
-export const resolveEditorialTrackLinks = ({ artistName, albumName, deezerAlbumId }, options = {}) =>
+export const resolveEditorialTrackLinks = (
+  { artistName, albumName, deezerAlbumId },
+  options = {},
+) =>
   getData("/discover/editorial/links", {
     ...options,
-    params: { artist: artistName, album: albumName || undefined, albumId: deezerAlbumId || undefined },
+    params: {
+      artist: artistName,
+      album: albumName || undefined,
+      albumId: deezerAlbumId || undefined,
+    },
   });
 
 export const getNearbyShows = ({ zip, country, signal } = {}) =>
@@ -45,8 +51,7 @@ export const getNearbyShows = ({ zip, country, signal } = {}) =>
 
 export const getDiscoveryFeedback = () => getData("/discover/feedback");
 
-export const addDiscoveryFeedback = (payload) =>
-  postData("/discover/feedback", payload);
+export const addDiscoveryFeedback = (payload) => postData("/discover/feedback", payload);
 
 export const removeDiscoveryFeedback = (id) =>
   deleteData(`/discover/feedback/${encodeURIComponent(id)}`);

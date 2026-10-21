@@ -5,7 +5,8 @@ test("clearing library pages preserves the mounted view during favorite updates"
   vi.resetModules();
 
   const { queryClient, queryKeys } = await import("../../frontend/src/queryClient.js");
-  const { clearLibraryPageCache } = await import("../../frontend/src/utils/api/endpoints/library.js");
+  const { clearLibraryPageCache } =
+    await import("../../frontend/src/utils/api/endpoints/library.js");
   const viewKey = queryKeys.libraryView({ albumId: "7" });
   const pageKey = queryKeys.libraryPage({ kind: "tracks", albumId: "7" });
   const view = {

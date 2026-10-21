@@ -53,8 +53,7 @@ function Onboarding() {
 
   const currentStep = STEPS[step];
   const passwordTooShort = authPassword.length > 0 && authPassword.length < 8;
-  const passwordMismatch =
-    authPasswordConfirm.length > 0 && authPassword !== authPasswordConfirm;
+  const passwordMismatch = authPasswordConfirm.length > 0 && authPassword !== authPasswordConfirm;
   const adminComplete =
     authUser.trim() && authPassword && !passwordTooShort && authPassword === authPasswordConfirm;
 
@@ -343,7 +342,8 @@ function Onboarding() {
                       />
                     </div>
                     <OnboardingHint>
-                      Stores downloaded music. Change the folder or connect Lidarr later in Settings.
+                      Stores downloaded music. Change the folder or connect Lidarr later in
+                      Settings.
                     </OnboardingHint>
                     <button
                       type="button"
@@ -358,9 +358,7 @@ function Onboarding() {
 
               {currentStep === "lidarr" && !skipLidarr && (
                 <OnboardingStep>
-                  <OnboardingStepHeader
-                    title="Connect Lidarr"
-                  />
+                  <OnboardingStepHeader title="Connect Lidarr" />
                   <div className="onboarding-fields">
                     <div className="onboarding-field">
                       <label htmlFor="onboarding-lidarr-url">Lidarr URL</label>
@@ -400,9 +398,7 @@ function Onboarding() {
                         }}
                       />
                     </div>
-                    <OnboardingHint>
-                      In Lidarr: Settings → General → Security.
-                    </OnboardingHint>
+                    <OnboardingHint>In Lidarr: Settings → General → Security.</OnboardingHint>
                     {lidarrTestSuccess ? (
                       <p className="onboarding-status onboarding-status--success" role="status">
                         Connected to Lidarr.

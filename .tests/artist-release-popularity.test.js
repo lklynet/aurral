@@ -9,7 +9,12 @@ const plaid = (n) => {
   const id = (release) => `${release}${n}0000000-0000-4000-8000-000000000000`.slice(0, 36);
   const releases = {
     doubleFigure: { id: id(1), title: "Double Figure", type: "Album", date: "2001-05-28" },
-    factMix: { id: id(2), title: "FACT Mix 287: Plaid", type: "Album", secondaryTypes: ["Compilation", "DJ-mix"] },
+    factMix: {
+      id: id(2),
+      title: "FACT Mix 287: Plaid",
+      type: "Album",
+      secondaryTypes: ["Compilation", "DJ-mix"],
+    },
     notForThrees: { id: id(3), title: "Not for Threes", type: "Album" },
     polymer: { id: id(4), title: "Polymer", type: "Album" },
     doubleFigureSingle: { id: id(5), title: "Double Figure", type: "Single" },
@@ -94,7 +99,8 @@ const stubPlaid = (t, artist, listenBrainz, metadata = () => json({}, 404)) =>
   stubFetch(t, (url, init) => {
     if (url.pathname === `/artist/${artist.mbid}`) return json(artist.provider(artist.mbid));
     if (isListenBrainzPopularity(url)) return listenBrainz(JSON.parse(init.body));
-    if (isListenBrainzMetadata(url)) return metadata(url.searchParams.get("release_group_mbids").split(","));
+    if (isListenBrainzMetadata(url))
+      return metadata(url.searchParams.get("release_group_mbids").split(","));
     return json({}, 404);
   });
 
@@ -141,11 +147,21 @@ test("the artist details fallback gives releases the same ListenBrainz listeners
   assert.deepEqual(summarize(details["release-groups"]), scoredPlaid);
 });
 
-const unscoredPlaid = scoredPlaid.map((release) => ({ ...release, listenerCount: null, listenCount: null }));
+const unscoredPlaid = scoredPlaid.map((release) => ({
+  ...release,
+  listenerCount: null,
+  listenCount: null,
+}));
 
 const listenBrainzFailures = [
-  ["refuses the request", () => json({ code: 401, error: "You need to provide an Auth token for this endpoint." }, 401)],
-  ["answers with an error body", () => json({ code: 401, error: "You need to provide an Auth token for this endpoint." })],
+  [
+    "refuses the request",
+    () => json({ code: 401, error: "You need to provide an Auth token for this endpoint." }, 401),
+  ],
+  [
+    "answers with an error body",
+    () => json({ code: 401, error: "You need to provide an Auth token for this endpoint." }),
+  ],
 ];
 
 listenBrainzFailures.forEach(([failure, respond], index) => {
@@ -173,7 +189,10 @@ listenBrainzFailures.forEach(([failure, respond], index) => {
       assert.deepEqual(await discographyOf(stream), unscoredPlaid);
       await stream.waitFor(({ event }) => event === "complete");
     }
-    assert.deepEqual({ popularityRequests, metadataRequests }, { popularityRequests: 1, metadataRequests: 1 });
+    assert.deepEqual(
+      { popularityRequests, metadataRequests },
+      { popularityRequests: 1, metadataRequests: 1 },
+    );
   });
 });
 
@@ -187,17 +206,22 @@ test("the artist stream fills missing release dates from ListenBrainz and keeps 
     [releases.polymer.id]: "2019-06",
   };
   const asked = [];
-  stubPlaid(t, artist, () => json([]), (mbids) => {
-    asked.push(mbids);
-    return json(
-      Object.fromEntries(
-        mbids.map((mbid) => [
-          mbid,
-          { release_group: { name: "", type: "Album", date: listenBrainzDates[mbid] ?? null } },
-        ]),
-      ),
-    );
-  });
+  stubPlaid(
+    t,
+    artist,
+    () => json([]),
+    (mbids) => {
+      asked.push(mbids);
+      return json(
+        Object.fromEntries(
+          mbids.map((mbid) => [
+            mbid,
+            { release_group: { name: "", type: "Album", date: listenBrainzDates[mbid] ?? null } },
+          ]),
+        ),
+      );
+    },
+  );
 
   const stream = openArtistStream(artist.mbid);
   t.onTestFinished(() => stream.close());
@@ -206,7 +230,10 @@ test("the artist stream fills missing release dates from ListenBrainz and keeps 
   );
 
   assert.deepEqual(
-    data["release-groups"].map((releaseGroup) => [releaseGroup.title, releaseGroup["first-release-date"]]),
+    data["release-groups"].map((releaseGroup) => [
+      releaseGroup.title,
+      releaseGroup["first-release-date"],
+    ]),
     [
       ["Double Figure", "2001-05-28"],
       ["FACT Mix 287: Plaid", "2011-09-30"],
@@ -216,7 +243,12 @@ test("the artist stream fills missing release dates from ListenBrainz and keeps 
     ],
   );
   assert.deepEqual(asked, [
-    [releases.factMix.id, releases.notForThrees.id, releases.polymer.id, releases.doubleFigureSingle.id],
+    [
+      releases.factMix.id,
+      releases.notForThrees.id,
+      releases.polymer.id,
+      releases.doubleFigureSingle.id,
+    ],
   ]);
 });
 
@@ -246,9 +278,21 @@ test("a discography of more than a thousand releases is scored in batches Listen
     const { release_group_mbids: mbids } = JSON.parse(init.body);
     batchSizes.push(mbids.length);
     if (mbids.length > 1000) {
-      return json({ code: 400, error: "Maximum number of release_group_mbids that can be fetched at once is 1000" }, 400);
+      return json(
+        {
+          code: 400,
+          error: "Maximum number of release_group_mbids that can be fetched at once is 1000",
+        },
+        400,
+      );
     }
-    return json(mbids.map((mbid) => ({ release_group_mbid: mbid, total_listen_count: 20, total_user_count: 2 })));
+    return json(
+      mbids.map((mbid) => ({
+        release_group_mbid: mbid,
+        total_listen_count: 20,
+        total_user_count: 2,
+      })),
+    );
   });
 
   const listens = await listenbrainzGetReleaseGroupListens(releaseGroupMbids);

@@ -82,7 +82,10 @@ export const countReleaseTracks = (libraryInfo, releaseTrackCount) => {
 
 export const describeAlbumRequestResult = (result, title) => {
   if (result?.status === "blocked" || result?.albumStatus?.status === "blocked") {
-    return { kind: "info", message: `${title} is in your library, but nothing is downloading. Open the album to see why.` };
+    return {
+      kind: "info",
+      message: `${title} is in your library, but nothing is downloading. Open the album to see why.`,
+    };
   }
   if (result?.queued || result?.status === "queued") {
     return { kind: "success", message: `Downloading ${title}` };

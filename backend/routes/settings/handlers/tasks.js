@@ -3,9 +3,7 @@ import { noCache } from "../../../middleware/cache.js";
 export function registerTasks(router) {
   router.get("/tasks", noCache, async (_req, res) => {
     try {
-      const { getHonkerTaskStatus } = await import(
-        "../../../services/honkerTaskStatus.js"
-      );
+      const { getHonkerTaskStatus } = await import("../../../services/honkerTaskStatus.js");
       res.json(await getHonkerTaskStatus());
     } catch (error) {
       res.status(500).json({
@@ -17,9 +15,8 @@ export function registerTasks(router) {
 
   router.post("/tasks/clear-stale", noCache, async (_req, res) => {
     try {
-      const { clearStaleHonkerJobs, getHonkerTaskStatus } = await import(
-        "../../../services/honkerTaskStatus.js"
-      );
+      const { clearStaleHonkerJobs, getHonkerTaskStatus } =
+        await import("../../../services/honkerTaskStatus.js");
       const result = await clearStaleHonkerJobs();
       res.json({
         ...result,

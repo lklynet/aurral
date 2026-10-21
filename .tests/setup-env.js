@@ -20,7 +20,9 @@ net.Socket.prototype.connect = function offlineConnect(...args) {
   if (host === null || LOOPBACK_HOSTS.has(host) || host.endsWith(".invalid")) {
     return realConnect.apply(this, args);
   }
-  const error = new Error(`Unit tests cannot reach external hosts. Stub the client that requested ${host}.`);
+  const error = new Error(
+    `Unit tests cannot reach external hosts. Stub the client that requested ${host}.`,
+  );
   process.nextTick(() => this.destroy(error));
   return this;
 };

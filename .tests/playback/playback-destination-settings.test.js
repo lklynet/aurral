@@ -13,7 +13,10 @@ test("playback adapters expose declarative connection settings without credentia
       if (field.type === "password") assert.equal(field.secret, true, `${key}.${field.key}`);
     }
     for (const required of definition.validation?.required || []) {
-      assert.ok(definition.fields.some((field) => field.key === required), `${key}.${required}`);
+      assert.ok(
+        definition.fields.some((field) => field.key === required),
+        `${key}.${required}`,
+      );
     }
   }
 });

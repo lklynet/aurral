@@ -47,13 +47,17 @@ export default function createHonkerWorker({
     const message = error?.message || String(error);
     const logFailure = (action) => {
       if (!shouldLogFailure(job)) return;
-      logger[action === "fail" ? "error" : "warn"]("jobs", `Job ${action === "fail" ? "failed" : "attempt failed; retrying"}`, {
-        queue: name,
-        jobId: job.id,
-        kind: typeof job.payload?.kind === "string" ? job.payload.kind : null,
-        attempt: job.attempts,
-        reason: message,
-      });
+      logger[action === "fail" ? "error" : "warn"](
+        "jobs",
+        `Job ${action === "fail" ? "failed" : "attempt failed; retrying"}`,
+        {
+          queue: name,
+          jobId: job.id,
+          kind: typeof job.payload?.kind === "string" ? job.payload.kind : null,
+          attempt: job.attempts,
+          reason: message,
+        },
+      );
     };
     let attemptLimit = Number(queue.maxAttempts) || 3;
     try {
@@ -114,7 +118,8 @@ export default function createHonkerWorker({
       })) {
         idleController.disarm();
         if (!running || stopRequested) {
-          const canInterrupt = typeof interruptible === "function" ? interruptible(job.payload) : interruptible;
+          const canInterrupt =
+            typeof interruptible === "function" ? interruptible(job.payload) : interruptible;
           if (canInterrupt) requeueInterruptedHonkerJob(job, queue);
           break;
         }
@@ -125,8 +130,10 @@ export default function createHonkerWorker({
           ]);
           dbOps.invalidateSettingsCache();
           invalidateFlowPlaylistConfigCache();
-          if (process.env.AURRAL_BACKGROUND_WORKER_GROUP.startsWith("discovery-") ||
-              process.env.AURRAL_BACKGROUND_WORKER_GROUP === "inbox") {
+          if (
+            process.env.AURRAL_BACKGROUND_WORKER_GROUP.startsWith("discovery-") ||
+            process.env.AURRAL_BACKGROUND_WORKER_GROUP === "inbox"
+          ) {
             const { reloadDiscoveryPersistedCache } = await import("./discovery/persistence.js");
             reloadDiscoveryPersistedCache();
           }
@@ -140,26 +147,36 @@ export default function createHonkerWorker({
           onJobDequeue(job.payload, job);
         }
         jobController = new AbortController();
-        activeInterruptible = typeof interruptible === "function" ? interruptible(job.payload) : interruptible;
+        activeInterruptible =
+          typeof interruptible === "function" ? interruptible(job.payload) : interruptible;
         let waitingAttempt = false;
-        if (stopRequested && activeInterruptible) jobController.abort(honkerJobInterruption("Background worker shutting down"));
+        if (stopRequested && activeInterruptible)
+          jobController.abort(honkerJobInterruption("Background worker shutting down"));
         let prepared;
         let announced = false;
         try {
           await withJobHeartbeat(job, queue, async () => {
             if (activeInterruptible && typeof prepareJob === "function") {
-              if (!adjustHonkerClaimAttempts(job, queue, -1)) throw honkerJobInterruption("Background job claim lost");
+              if (!adjustHonkerClaimAttempts(job, queue, -1))
+                throw honkerJobInterruption("Background job claim lost");
               waitingAttempt = true;
             }
-            prepared = typeof prepareJob === "function"
-              ? await prepareJob(job.payload, job, { signal: jobController.signal })
-              : null;
+            prepared =
+              typeof prepareJob === "function"
+                ? await prepareJob(job.payload, job, { signal: jobController.signal })
+                : null;
             if (waitingAttempt) {
-              if (!adjustHonkerClaimAttempts(job, queue, 1)) throw honkerJobInterruption("Background job claim lost");
+              if (!adjustHonkerClaimAttempts(job, queue, 1))
+                throw honkerJobInterruption("Background job claim lost");
               waitingAttempt = false;
             }
             if (process.env.AURRAL_BACKGROUND_WORKER_GROUP && process.connected && process.send) {
-              process.send({ type: "job-started", queue: name, jobId: job.id, payload: payloadSummary(job.payload) });
+              process.send({
+                type: "job-started",
+                queue: name,
+                jobId: job.id,
+                payload: payloadSummary(job.payload),
+              });
               announced = true;
             }
             return processJob(job.payload, job, { signal: jobController.signal, ...prepared });
@@ -219,7 +236,8 @@ export default function createHonkerWorker({
   function stop() {
     stopRequested = true;
     idleController?.abort();
-    if (activeInterruptible) jobController?.abort(honkerJobInterruption("Background worker shutting down"));
+    if (activeInterruptible)
+      jobController?.abort(honkerJobInterruption("Background worker shutting down"));
     return loopPromise || Promise.resolve();
   }
 

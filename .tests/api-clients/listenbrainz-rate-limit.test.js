@@ -22,7 +22,10 @@ test("a ListenBrainz rate limit holds every request until the window resets, the
       rateLimitedAt = Date.now();
       return json({ code: 429, error: "Too many requests" }, 429, { "x-ratelimit-reset-in": "1" });
     }
-    return json({ payload: { artists: [{ artist_name: `count ${url.searchParams.get("count")}` }] } }, 200);
+    return json(
+      { payload: { artists: [{ artist_name: `count ${url.searchParams.get("count")}` }] } },
+      200,
+    );
   };
 
   const [first, second] = await Promise.all([
@@ -32,6 +35,9 @@ test("a ListenBrainz rate limit holds every request until the window resets, the
 
   assert.equal(first.payload.artists[0].artist_name, "count 1");
   assert.equal(second.payload.artists[0].artist_name, "count 2");
-  assert.deepEqual(calls.map((call) => call.count), ["1", "2", "1"]);
+  assert.deepEqual(
+    calls.map((call) => call.count),
+    ["1", "2", "1"],
+  );
   assert.ok(calls.slice(1).every((call) => call.at - rateLimitedAt >= 1000));
 });

@@ -7,14 +7,10 @@ import {
   isRetiredFlow,
 } from "../../../services/playlists/flowPlaylistConfig.js";
 import { playlistOperationQueue } from "../../../services/playlists/playlistOperationQueue.js";
-import {
-  remapLegacyPath,
-} from "../../../services/downloadPaths.js";
+import { remapLegacyPath } from "../../../services/downloadPaths.js";
 import { downloadWorker } from "../../../services/downloadJobs/downloadWorker.js";
 import { schedulePlaylistMbidEnrichment } from "../../../services/playlistMbidEnrichmentService.js";
-import {
-  buildLidarrImportListItems,
-} from "../../../services/lidarrImportListFeed.js";
+import { buildLidarrImportListItems } from "../../../services/lidarrImportListFeed.js";
 import { withPlaylistMutationLock } from "../../../services/downloadJobs/mutationGuards.js";
 import {
   DEFAULT_LIMIT,
@@ -30,10 +26,7 @@ import {
   markPlaylistDownloadWorkCancelled,
   restoreMarkedPlaylistDownloadWork,
 } from "../../../services/downloadJobs/downloadCancellationService.js";
-import {
-  buildFlowFromTemplate,
-  listFlowTemplates,
-} from "../../../services/flows/flowTemplates.js";
+import { buildFlowFromTemplate, listFlowTemplates } from "../../../services/flows/flowTemplates.js";
 
 const RETIRED_FLOW_MESSAGE = "This flow's source was retired, so it no longer updates";
 
@@ -104,7 +97,9 @@ export function registerFlows(router) {
           payload = await buildFlowFromTemplate(req.user, body.templateId);
         } catch (error) {
           if (!error?.statusCode) throw error;
-          return res.status(error.statusCode).json({ error: error.message, message: error.message });
+          return res
+            .status(error.statusCode)
+            .json({ error: error.message, message: error.message });
         }
         if (String(body.name || "").trim()) payload.name = String(body.name).trim();
       }
@@ -280,7 +275,9 @@ export function registerFlows(router) {
 
       if (enabled) {
         if (isRetiredFlow(flow)) {
-          return res.status(409).json({ error: RETIRED_FLOW_MESSAGE, message: RETIRED_FLOW_MESSAGE });
+          return res
+            .status(409)
+            .json({ error: RETIRED_FLOW_MESSAGE, message: RETIRED_FLOW_MESSAGE });
         }
         flowPlaylistConfig.setEnabled(flowId, true);
         flowPlaylistConfig.scheduleNextRun(flowId);
@@ -391,10 +388,7 @@ export function registerFlows(router) {
       });
 
       for (const job of uniqueCompletedJobs) {
-        const safeSourcePath = remapLegacyPath(
-          job.finalPath,
-          downloadWorker.downloadRoot,
-        );
+        const safeSourcePath = remapLegacyPath(job.finalPath, downloadWorker.downloadRoot);
         const stat = await fsp.stat(safeSourcePath);
         if (!stat.isFile()) {
           throw new Error(`Track file is missing: ${job.finalPath}`);

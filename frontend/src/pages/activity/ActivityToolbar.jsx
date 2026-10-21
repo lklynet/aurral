@@ -33,11 +33,7 @@ export default function ActivityToolbar({
             label={refreshing ? "Refreshing" : "Refresh"}
             aria-label="Refresh activity"
           >
-            {refreshing ? (
-              <DotLoader size="sm" label={null} />
-            ) : (
-              <RefreshCw aria-hidden="true" />
-            )}
+            {refreshing ? <DotLoader size="sm" label={null} /> : <RefreshCw aria-hidden="true" />}
           </TooltipButton>
         </div>
       ) : null}
@@ -54,7 +50,11 @@ export default function ActivityToolbar({
               autoFocus
             />
             {filterValue ? (
-              <TooltipButton label="Clear filter" onClick={() => onFilterChange("")} className="btn">
+              <TooltipButton
+                label="Clear filter"
+                onClick={() => onFilterChange("")}
+                className="btn"
+              >
                 <X aria-hidden="true" />
               </TooltipButton>
             ) : null}

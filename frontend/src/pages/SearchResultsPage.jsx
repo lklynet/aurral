@@ -7,10 +7,7 @@ import {
   requestAlbumFromSearch,
   settleLibraryOwnerConflict,
 } from "../utils/api/endpoints/library.js";
-import {
-  addStaticPlaylistTracks,
-  createStaticPlaylist,
-} from "../utils/api/endpoints/playlists.js";
+import { addStaticPlaylistTracks, createStaticPlaylist } from "../utils/api/endpoints/playlists.js";
 import { getDiscovery } from "../utils/api/endpoints/discovery.js";
 import { DotLoader } from "../components/DotLoader";
 import { SkeletonSearchResults, SkeletonStatus } from "../components/Skeletons";
@@ -36,10 +33,13 @@ import { useArtistTasteFeedback } from "../hooks/useArtistTasteFeedback";
 import { queryKeys } from "../queryClient.js";
 import { useStaticPlaylists } from "../hooks/useStaticPlaylists";
 import { getArtistRecordId } from "../utils/artistTaste";
-import { describeAlbumRequestResult, getAlbumAddAction, isAlbumCompleteInLibrary, shouldTriggerAlbumSearch } from "../utils/albumAddAction";
 import {
-  buildAlbumRequestPayload,
-} from "../utils/libraryDestination";
+  describeAlbumRequestResult,
+  getAlbumAddAction,
+  isAlbumCompleteInLibrary,
+  shouldTriggerAlbumSearch,
+} from "../utils/albumAddAction";
+import { buildAlbumRequestPayload } from "../utils/libraryDestination";
 import { useLibraryDestination } from "../hooks/useLibraryDestination";
 import { useActiveDownloads } from "../hooks/useActiveDownloads";
 import {
@@ -124,10 +124,7 @@ function SearchResultsPage() {
   const query = searchParams.get("q") || "";
   const type = searchParams.get("type");
   const rawFilter = searchParams.get("filter") || "all";
-  const activeFilter =
-    rawFilter === "library" || rawFilter === "tracks"
-      ? "all"
-      : rawFilter;
+  const activeFilter = rawFilter === "library" || rawFilter === "tracks" ? "all" : rawFilter;
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [artistImages, setArtistImages] = useState({});
   const [albumCovers, setAlbumCovers] = useState({});
@@ -314,10 +311,7 @@ function SearchResultsPage() {
         const total = Number(lastPage?.recommendationCount || 0);
         return loaded < total ? loaded : undefined;
       }
-      const loaded = pages.reduce(
-        (count, page) => count + (page?.items?.length || 0),
-        0,
-      );
+      const loaded = pages.reduce((count, page) => count + (page?.items?.length || 0), 0);
       if (!lastPage?.items?.length) return undefined;
       if (!lastPage?.hasMore && !(Number(lastPage?.count) > loaded)) return undefined;
       return loaded;
@@ -397,8 +391,7 @@ function SearchResultsPage() {
   const librarySearchQuery = useQuery({
     queryKey: queryKeys.searchLibrary(trimmedQuery, LIBRARY_RESULT_LIMIT),
     enabled: isUnifiedSearch,
-    queryFn: ({ signal }) =>
-      searchLibrary(trimmedQuery, { limit: LIBRARY_RESULT_LIMIT, signal }),
+    queryFn: ({ signal }) => searchLibrary(trimmedQuery, { limit: LIBRARY_RESULT_LIMIT, signal }),
     staleTime: 30_000,
   });
   const libraryResults = isUnifiedSearch ? librarySearchQuery.data || null : null;
@@ -417,9 +410,7 @@ function SearchResultsPage() {
   const loading = searchQuery.isLoading;
   const loadingMore = searchQuery.isFetchingNextPage;
   const { fetchNextPage } = searchQuery;
-  const error = searchQuery.error?.response?.data?.message ||
-    searchQuery.error?.message ||
-    null;
+  const error = searchQuery.error?.response?.data?.message || searchQuery.error?.message || null;
   const searchTotalCount = isUnifiedSearch
     ? (unifiedResults?.catalog?.artists?.length || 0) +
       (unifiedResults?.catalog?.albums?.length || 0) +
@@ -442,7 +433,9 @@ function SearchResultsPage() {
     if (!["recommended", "trending", "tag"].includes(normalizedType)) return [];
     const normalizedSearch = recommendedSearchTerm.trim().toLowerCase();
     const filtered = normalizedSearch
-      ? results.filter((artist) => getRecommendedArtistName(artist).toLowerCase().includes(normalizedSearch))
+      ? results.filter((artist) =>
+          getRecommendedArtistName(artist).toLowerCase().includes(normalizedSearch),
+        )
       : results;
     if (isTagSearch) return filtered;
     return sortRecommendedArtists(filtered, recommendedSortKey, recommendedSortDirection);
@@ -462,7 +455,15 @@ function SearchResultsPage() {
         : isAlbumSearch
           ? albumResultsForTab
           : results,
-    [albumResultsForTab, discoveryArtists, fullList, isAlbumSearch, normalizedType, results, visibleCount],
+    [
+      albumResultsForTab,
+      discoveryArtists,
+      fullList,
+      isAlbumSearch,
+      normalizedType,
+      results,
+      visibleCount,
+    ],
   );
 
   useEffect(() => {
@@ -559,7 +560,14 @@ function SearchResultsPage() {
     return () => {
       cancelled = true;
     };
-  }, [artistImages, displayedResults, isAlbumSearch, isUnifiedSearch, libraryResults, unifiedResults]);
+  }, [
+    artistImages,
+    displayedResults,
+    isAlbumSearch,
+    isUnifiedSearch,
+    libraryResults,
+    unifiedResults,
+  ]);
 
   useEffect(() => {
     if (!isUnifiedSearch || !unifiedResults?.catalog?.albums?.length) {
@@ -859,13 +867,7 @@ function SearchResultsPage() {
     } catch (err) {
       console.warn("Failed to load more search results:", err);
     }
-  }, [
-    fullList,
-    hasMore,
-    loading,
-    loadingMore,
-    fetchNextPage,
-  ]);
+  }, [fullList, hasMore, loading, loadingMore, fetchNextPage]);
 
   const onSentinel = useCallback(
     (entries) => {
@@ -886,14 +888,16 @@ function SearchResultsPage() {
       });
       setPendingAlbumIds((prev) => ({ ...prev, [album.id]: true }));
       try {
-        const result = await requestAlbumFromSearch(buildAlbumRequestPayload({
-          albumMbid: album.id,
-          albumName: album.title,
-          artistMbid: album.artistMbid,
-          artistName: album.artistName,
-          managedBy,
-          triggerSearch: shouldTriggerSearch,
-        }));
+        const result = await requestAlbumFromSearch(
+          buildAlbumRequestPayload({
+            albumMbid: album.id,
+            albumName: album.title,
+            artistMbid: album.artistMbid,
+            artistName: album.artistName,
+            managedBy,
+            triggerSearch: shouldTriggerSearch,
+          }),
+        );
         const nextAlbum = {
           inLibrary: true,
           managedBy: result?.album?.managedBy || result?.managedBy || managedBy,
@@ -917,9 +921,11 @@ function SearchResultsPage() {
           showInfo(`${album.title}: ${conflict.message}`);
           return;
         }
-        showError(`Could not download the album: ${
-          err.response?.data?.message || err.response?.data?.error || err.message
-        }`);
+        showError(
+          `Could not download the album: ${
+            err.response?.data?.message || err.response?.data?.error || err.message
+          }`,
+        );
       } finally {
         setPendingAlbumIds(({ [album.id]: _, ...prev }) => prev);
       }
@@ -984,7 +990,14 @@ function SearchResultsPage() {
         setPlaylistMenuSavingKey("");
       }
     },
-    [loadStaticPlaylists, setPlaylistModalError, setStaticPlaylists, staticPlaylists, showError, showSuccess],
+    [
+      loadStaticPlaylists,
+      setPlaylistModalError,
+      setStaticPlaylists,
+      staticPlaylists,
+      showError,
+      showSuccess,
+    ],
   );
 
   const handleArtistFeedback = useCallback(
@@ -1125,9 +1138,7 @@ function SearchResultsPage() {
     const visibleAlbumsWithId = showAlbums
       ? albumsWithId.filter((album) => !isAlbumSingleOrEp(album))
       : [];
-    const visibleSinglesWithId = showSingles
-      ? albumsWithId.filter(isAlbumSingleOrEp)
-      : [];
+    const visibleSinglesWithId = showSingles ? albumsWithId.filter(isAlbumSingleOrEp) : [];
 
     const topResult =
       activeFilter === "all" ? resolveSearchTopResult(unifiedResults, searchLibraryFlags) : null;
@@ -1210,18 +1221,17 @@ function SearchResultsPage() {
 
   const localSearchConfigured = unifiedResults?.localSearchConfigured !== false;
 
-  const emptyMessage =
-    ["recommended", "trending", "tag"].includes(normalizedType)
-        ? "Nothing to show here yet."
-        : isUnifiedSearch && !localSearchConfigured
-          ? "Set up the metadata server in Settings → Metadata to search music."
-          : isUnifiedSearch
-            ? `No results for "${trimmedQuery}".`
-            : isAlbumSearch
-              ? `No albums for "${trimmedQuery}".`
-              : isTagSearch
-                ? `No results for #${trimmedQuery.replace(/^#/, "")}.`
-                : `No results for "${trimmedQuery}".`;
+  const emptyMessage = ["recommended", "trending", "tag"].includes(normalizedType)
+    ? "Nothing to show here yet."
+    : isUnifiedSearch && !localSearchConfigured
+      ? "Set up the metadata server in Settings → Metadata to search music."
+      : isUnifiedSearch
+        ? `No results for "${trimmedQuery}".`
+        : isAlbumSearch
+          ? `No albums for "${trimmedQuery}".`
+          : isTagSearch
+            ? `No results for #${trimmedQuery.replace(/^#/, "")}.`
+            : `No results for "${trimmedQuery}".`;
 
   const emptyTitle = "No results found";
 
@@ -1283,7 +1293,9 @@ function SearchResultsPage() {
                       aria-controls="recommended-sort-menu"
                       aria-label="Sort results"
                     >
-                      <span className="library-page__sort-label">{selectedRecommendedSort.label}</span>
+                      <span className="library-page__sort-label">
+                        {selectedRecommendedSort.label}
+                      </span>
                       <RecommendedSortDirectionIcon className="artist-icon-xs library-page__sort-direction" />
                       <ChevronDown
                         className={`artist-icon-sm${recommendedSortMenuOpen ? " artist-chevron--open" : ""}`}
@@ -1310,7 +1322,9 @@ function SearchResultsPage() {
                             >
                               <span>{option.label}</span>
                               <span>
-                                {active && <RecommendedSortDirectionIcon className="artist-icon-xs" />}
+                                {active && (
+                                  <RecommendedSortDirectionIcon className="artist-icon-xs" />
+                                )}
                               </span>
                             </button>
                           );

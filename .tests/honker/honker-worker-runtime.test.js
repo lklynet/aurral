@@ -7,21 +7,15 @@ import {
   importFromRepo,
 } from "../helpers/backendTestHarness.js";
 
-const [
-  isolatedState,
-  _dbSqlite,
-  honkerDb,
-  runtime,
-  taskStatus,
-  operationQueueModule,
-] = await setupIsolatedBackend(
-  "honker-worker-runtime",
-  "backend/config/db-sqlite.js",
-  "backend/services/honkerDb.js",
-  "backend/services/honkerWorkerRuntime.js",
-  "backend/services/honkerTaskStatus.js",
-  "backend/services/playlists/playlistOperationQueue.js",
-);
+const [isolatedState, _dbSqlite, honkerDb, runtime, taskStatus, operationQueueModule] =
+  await setupIsolatedBackend(
+    "honker-worker-runtime",
+    "backend/config/db-sqlite.js",
+    "backend/services/honkerDb.js",
+    "backend/services/honkerWorkerRuntime.js",
+    "backend/services/honkerTaskStatus.js",
+    "backend/services/playlists/playlistOperationQueue.js",
+  );
 
 const STALE_RUNNING_MS = 60 * 60 * 1000;
 
@@ -70,9 +64,14 @@ test("withJobHeartbeat extends job claim while work runs", async () => {
     heartbeatCalls += 1;
     return heartbeat(seconds);
   };
-  await runtime.withJobHeartbeat(job, queue, async () => {
-    await new Promise((resolve) => setTimeout(resolve, 1200));
-  }, 1);
+  await runtime.withJobHeartbeat(
+    job,
+    queue,
+    async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+    },
+    1,
+  );
   assert.ok(heartbeatCalls >= 1);
   job.ack();
 });
@@ -88,10 +87,7 @@ test("withJobHeartbeat records completed task runs", async () => {
 
   const status = await taskStatus.getHonkerTaskStatus();
   const recorded = status.queue.find(
-    (entry) =>
-      entry.source === "run" &&
-      entry.jobId === jobId &&
-      entry.queue === "library-scan",
+    (entry) => entry.source === "run" && entry.jobId === jobId && entry.queue === "library-scan",
   );
   assert.equal(recorded?.status, "completed");
   assert.match(recorded?.name || "", /Library scan/);
@@ -116,10 +112,7 @@ test("task status exposes startedAt and runningForMs for live processing jobs", 
 
   const status = await taskStatus.getHonkerTaskStatus();
   const live = status.queue.find(
-    (entry) =>
-      entry.source === "live" &&
-      entry.jobId === jobId &&
-      entry.status === "running",
+    (entry) => entry.source === "live" && entry.jobId === jobId && entry.status === "running",
   );
   assert.ok(live?.startedAt);
   assert.ok(Number(live?.runningForMs) >= 0);
@@ -169,10 +162,7 @@ test("task status marks long-running jobs as stale", async () => {
 
   const status = await taskStatus.getHonkerTaskStatus();
   const live = status.queue.find(
-    (entry) =>
-      entry.source === "live" &&
-      entry.jobId === jobId &&
-      entry.status === "running",
+    (entry) => entry.source === "live" && entry.jobId === jobId && entry.status === "running",
   );
   assert.equal(live?.isStale, true);
   assert.ok(Number(live?.runningForMs) >= STALE_RUNNING_MS);
@@ -223,10 +213,7 @@ test("clearStaleHonkerJobs removes long-running processing jobs", async () => {
   const before = await taskStatus.getHonkerTaskStatus();
   assert.ok(
     before.queue.some(
-      (entry) =>
-        entry.jobId === jobId &&
-        entry.status === "running" &&
-        entry.isStale === true,
+      (entry) => entry.jobId === jobId && entry.status === "running" && entry.isStale === true,
     ),
   );
 
@@ -235,9 +222,7 @@ test("clearStaleHonkerJobs removes long-running processing jobs", async () => {
 
   const after = await taskStatus.getHonkerTaskStatus();
   assert.equal(
-    after.queue.some(
-      (entry) => entry.jobId === jobId && entry.status === "running",
-    ),
+    after.queue.some((entry) => entry.jobId === jobId && entry.status === "running"),
     false,
   );
   assert.equal(after.summary.staleCount, 0);
@@ -246,10 +231,7 @@ test("clearStaleHonkerJobs removes long-running processing jobs", async () => {
 test("task status groups scheduled discovery jobs without cancelling them", async () => {
   const queue = honkerDb.getDiscoveryRefreshQueue();
   const runAt = Math.floor(Date.now() / 1000) + 86400;
-  queue.enqueue(
-    { reason: "scheduled", requestedAt: Date.now(), scheduleOnly: true },
-    { runAt },
-  );
+  queue.enqueue({ reason: "scheduled", requestedAt: Date.now(), scheduleOnly: true }, { runAt });
   queue.enqueue(
     {
       reason: "scheduled",
@@ -261,16 +243,12 @@ test("task status groups scheduled discovery jobs without cancelling them", asyn
 
   const status = await taskStatus.getHonkerTaskStatus();
   const grouped = status.queue.filter(
-    (entry) =>
-      entry.queue === "discovery-refresh" &&
-      entry.name === "Discovery auto refresh",
+    (entry) => entry.queue === "discovery-refresh" && entry.name === "Discovery auto refresh",
   );
 
   assert.equal(grouped.length, 1);
   assert.equal(grouped[0].duplicateCount, 2);
-  const worker = status.workers.find(
-    (entry) => entry.queue === "discovery-refresh",
-  );
+  const worker = status.workers.find((entry) => entry.queue === "discovery-refresh");
   assert.equal(worker?.scheduled, 1);
   assert.equal(honkerDb.listHonkerJobs("discovery-refresh").length, 2);
   await taskStatus.startHonkerTaskCleanup();
@@ -291,9 +269,7 @@ test("task status groups duplicate completed system task runs", async () => {
 
   const status = await taskStatus.getHonkerTaskStatus();
   const grouped = status.queue.filter(
-    (entry) =>
-      entry.queue === "system-task" &&
-      entry.name === "Discovery startup check",
+    (entry) => entry.queue === "system-task" && entry.name === "Discovery startup check",
   );
 
   assert.equal(grouped.length, 1);
@@ -336,14 +312,17 @@ test("periodic cleanup prunes expired dead jobs while status only filters them",
     false,
   );
   const remaining = db
-    .prepare(
-      "SELECT COUNT(*) AS count FROM _honker_dead WHERE last_error = 'stale failure'",
-    )
+    .prepare("SELECT COUNT(*) AS count FROM _honker_dead WHERE last_error = 'stale failure'")
     .get();
   assert.equal(Number(remaining?.count || 0), 1);
   await taskStatus.startHonkerTaskCleanup();
   await taskStatus.stopHonkerTaskCleanup();
-  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM _honker_dead WHERE last_error = 'stale failure'").get().count, 0);
+  assert.equal(
+    db
+      .prepare("SELECT COUNT(*) AS count FROM _honker_dead WHERE last_error = 'stale failure'")
+      .get().count,
+    0,
+  );
 });
 
 test("periodic cleanup prunes expired runs while status only filters them", async () => {
@@ -389,18 +368,29 @@ test("periodic cleanup prunes expired runs while status only filters them", asyn
     false,
   );
   const remaining = db
-    .prepare(
-      "SELECT COUNT(*) AS count FROM honker_task_runs WHERE name = 'Stale Task'",
-    )
+    .prepare("SELECT COUNT(*) AS count FROM honker_task_runs WHERE name = 'Stale Task'")
     .get();
   assert.equal(Number(remaining?.count || 0), 1);
-  db.prepare("INSERT INTO honker_task_runs(job_id, queue, status, started_at) VALUES(424243, 'system-task', 'running', ?)").run(twoHoursAgo);
+  db.prepare(
+    "INSERT INTO honker_task_runs(job_id, queue, status, started_at) VALUES(424243, 'system-task', 'running', ?)",
+  ).run(twoHoursAgo);
   taskStatus.recordHonkerTaskRunFinished(99999999, "completed");
-  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM honker_task_runs WHERE name = 'Stale Task'").get().count, 1);
+  assert.equal(
+    db.prepare("SELECT COUNT(*) AS count FROM honker_task_runs WHERE name = 'Stale Task'").get()
+      .count,
+    1,
+  );
   await taskStatus.startHonkerTaskCleanup();
   await taskStatus.stopHonkerTaskCleanup();
-  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM honker_task_runs WHERE name = 'Stale Task'").get().count, 0);
-  assert.ok(db.prepare("SELECT COUNT(*) AS count FROM honker_task_runs WHERE status = 'running'").get().count > 0);
+  assert.equal(
+    db.prepare("SELECT COUNT(*) AS count FROM honker_task_runs WHERE name = 'Stale Task'").get()
+      .count,
+    0,
+  );
+  assert.ok(
+    db.prepare("SELECT COUNT(*) AS count FROM honker_task_runs WHERE status = 'running'").get()
+      .count > 0,
+  );
 });
 
 test("playlist operation queue status reflects worker state and depth", () => {
@@ -427,14 +417,17 @@ test("an idle shutdown lets the process exit without waiting out its timeout", (
   ].join("\n");
   const startedAt = Date.now();
   const result = spawnSync(process.execPath, ["--input-type=module", "-e", probe], {
-    env: { ...process.env, AURRAL_DATA_DIR: isolatedState.dataDir, AURRAL_DB_PATH: isolatedState.dbPath },
+    env: {
+      ...process.env,
+      AURRAL_DATA_DIR: isolatedState.dataDir,
+      AURRAL_DB_PATH: isolatedState.dbPath,
+    },
     encoding: "utf8",
     timeout: 20000,
   });
   assert.equal(result.status, 0, result.stderr);
   assert.ok(Date.now() - startedAt < 10000);
 });
-
 
 test("periodic cleanup retries failed passes and stops on shutdown", async (t) => {
   const { db } = await importFromRepo("backend/config/db-sqlite.js");
@@ -445,34 +438,47 @@ test("periodic cleanup retries failed passes and stops on shutdown", async (t) =
     vi.useRealTimers();
   });
   const old = Math.floor(Date.now() / 1000) - 7200;
-  db.prepare("INSERT INTO honker_task_runs(job_id, queue, status, started_at, ended_at) VALUES(?, ?, 'completed', ?, ?)").run(777777, "system-task", old, old);
-  db.exec("CREATE TRIGGER block_task_cleanup BEFORE DELETE ON honker_task_runs BEGIN SELECT RAISE(FAIL, 'disposable cleanup failure'); END");
+  db.prepare(
+    "INSERT INTO honker_task_runs(job_id, queue, status, started_at, ended_at) VALUES(?, ?, 'completed', ?, ?)",
+  ).run(777777, "system-task", old, old);
+  db.exec(
+    "CREATE TRIGGER block_task_cleanup BEFORE DELETE ON honker_task_runs BEGIN SELECT RAISE(FAIL, 'disposable cleanup failure'); END",
+  );
   await taskStatus.startHonkerTaskCleanup();
   assert.ok(db.prepare("SELECT id FROM honker_task_runs WHERE job_id = 777777").get());
   db.exec("DROP TRIGGER block_task_cleanup");
   vi.advanceTimersByTime(60000);
   await taskStatus.startHonkerTaskCleanup();
-  assert.equal(db.prepare("SELECT id FROM honker_task_runs WHERE job_id = 777777").get(), undefined);
+  assert.equal(
+    db.prepare("SELECT id FROM honker_task_runs WHERE job_id = 777777").get(),
+    undefined,
+  );
   await taskStatus.stopHonkerTaskCleanup();
-  db.prepare("INSERT INTO honker_task_runs(job_id, queue, status, started_at, ended_at) VALUES(?, ?, 'completed', ?, ?)").run(777778, "system-task", old, old);
+  db.prepare(
+    "INSERT INTO honker_task_runs(job_id, queue, status, started_at, ended_at) VALUES(?, ?, 'completed', ?, ?)",
+  ).run(777778, "system-task", old, old);
   vi.advanceTimersByTime(60000);
   await Promise.resolve();
   assert.ok(db.prepare("SELECT id FROM honker_task_runs WHERE job_id = 777778").get());
 });
 
-test("a notification outbox worker stops on its own once no delivery is in flight", { timeout: 5000 }, async (t) => {
-  const outboxWorker = await importFromRepo("backend/services/notificationOutboxWorker.js");
-  const outbox = honkerDb.getNotificationOutbox();
-  outbox.enqueue({ message: "disposable in-flight delivery" });
-  const delivery = outbox.queue.claimOne("disposable-delivery-owner");
-  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], now: 0 });
-  t.onTestFinished(() => outboxWorker.stopNotificationOutboxWorker());
-  const loop = outboxWorker.startNotificationOutboxWorker();
-  vi.advanceTimersByTime(60000);
-  await new Promise(setImmediate);
-  assert.equal(outboxWorker.isNotificationOutboxWorkerRunning(), true);
-  assert.equal(delivery.ack(), true);
-  vi.advanceTimersByTime(60000);
-  await loop;
-  assert.equal(outboxWorker.isNotificationOutboxWorkerRunning(), false);
-});
+test(
+  "a notification outbox worker stops on its own once no delivery is in flight",
+  { timeout: 5000 },
+  async (t) => {
+    const outboxWorker = await importFromRepo("backend/services/notificationOutboxWorker.js");
+    const outbox = honkerDb.getNotificationOutbox();
+    outbox.enqueue({ message: "disposable in-flight delivery" });
+    const delivery = outbox.queue.claimOne("disposable-delivery-owner");
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], now: 0 });
+    t.onTestFinished(() => outboxWorker.stopNotificationOutboxWorker());
+    const loop = outboxWorker.startNotificationOutboxWorker();
+    vi.advanceTimersByTime(60000);
+    await new Promise(setImmediate);
+    assert.equal(outboxWorker.isNotificationOutboxWorkerRunning(), true);
+    assert.equal(delivery.ack(), true);
+    vi.advanceTimersByTime(60000);
+    await loop;
+    assert.equal(outboxWorker.isNotificationOutboxWorkerRunning(), false);
+  },
+);

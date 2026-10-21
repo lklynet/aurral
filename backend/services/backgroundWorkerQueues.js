@@ -10,16 +10,17 @@ export const ISOLATED_QUEUE_GROUPS = Object.freeze({
   "_outbox:notifications": "notifications",
   "_outbox:play-events": "play-events",
   "system-task": "downloads",
-  "playback": "downloads",
+  playback: "downloads",
   "weekly-flow-operation": "downloads",
   "slskd-pipeline": "downloads",
   "playlist-mbid-enrichment": "downloads",
   "library-files": "downloads",
 });
 
-export const ISOLATED_WORKER_GROUPS = Object.freeze(
-  [...new Set(Object.values(ISOLATED_QUEUE_GROUPS)), "scheduler"],
-);
+export const ISOLATED_WORKER_GROUPS = Object.freeze([
+  ...new Set(Object.values(ISOLATED_QUEUE_GROUPS)),
+  "scheduler",
+]);
 
 const WORKER_QUEUE_ALIASES = Object.freeze({
   "notification-outbox": "_outbox:notifications",
@@ -37,7 +38,5 @@ export function shouldStartQueueHere(queueName) {
 
 export function isQueueOwnedByGroup(queueName, group = null) {
   const queue = WORKER_QUEUE_ALIASES[queueName] || queueName;
-  return group
-    ? ISOLATED_QUEUE_GROUPS[queue] === group
-    : !ISOLATED_QUEUE_GROUPS[queue];
+  return group ? ISOLATED_QUEUE_GROUPS[queue] === group : !ISOLATED_QUEUE_GROUPS[queue];
 }

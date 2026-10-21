@@ -10,9 +10,13 @@ const albumPage = (page, title) => ({
   total: 150,
 });
 
-test("library paging keeps the current page visible until the next one arrives", async ({ page }) => {
+test("library paging keeps the current page visible until the next one arrives", async ({
+  page,
+}) => {
   let releaseSecondPage;
-  const secondPageHeld = new Promise((resolve) => { releaseSecondPage = resolve; });
+  const secondPageHeld = new Promise((resolve) => {
+    releaseSecondPage = resolve;
+  });
   await page.routeWebSocket("**/ws**", (socket) => socket.close());
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());

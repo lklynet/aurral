@@ -53,9 +53,7 @@ export function AddArtistCustomizeModal({
             Customize Lidarr add{artistName ? `: ${artistName}` : ""}
           </h3>
         </div>
-        <p className="artist-modal__subcopy">
-          Applies to this add only.
-        </p>
+        <p className="artist-modal__subcopy">Applies to this add only.</p>
 
         {loading ? (
           <div className="artist-loading">
@@ -64,7 +62,9 @@ export function AddArtistCustomizeModal({
         ) : (
           <div className="artist-modal__fields">
             <div>
-              <label className="artist-field-label" htmlFor={`${titleId}-monitor`}>Monitoring</label>
+              <label className="artist-field-label" htmlFor={`${titleId}-monitor`}>
+                Monitoring
+              </label>
               <div className="artist-modal-field aurral-radius-round">
                 <select
                   id={`${titleId}-monitor`}
@@ -149,12 +149,17 @@ export function AddArtistCustomizeModal({
             </div>
 
             <p className="artist-subtext">
-              Automatic uses your Library defaults, then Lidarr defaults. Tags use the global Lidarr setting.
+              Automatic uses your Library defaults, then Lidarr defaults. Tags use the global Lidarr
+              setting.
             </p>
           </div>
         )}
 
-        {error ? <p className="artist-subtext" role="alert">{error}</p> : null}
+        {error ? (
+          <p className="artist-subtext" role="alert">
+            {error}
+          </p>
+        ) : null}
         <div className="artist-modal__actions">
           <button
             type="button"

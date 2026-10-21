@@ -31,7 +31,13 @@ function silentWav(seconds, sampleRate = 8000) {
 const wav = silentWav(TRACK_SECONDS);
 const gaplessWav = silentWav(GAPLESS_TRACK_SECONDS);
 
-function routeEditorialPlaylist(target, id, name, seconds, { prefix = "", artworkUrl = null } = {}) {
+function routeEditorialPlaylist(
+  target,
+  id,
+  name,
+  seconds,
+  { prefix = "", artworkUrl = null } = {},
+) {
   return target.route(`**/api/discover/editorial/${id}`, (route) =>
     route.fulfill({
       json: {
@@ -55,9 +61,15 @@ function routeEditorialPlaylist(target, id, name, seconds, { prefix = "", artwor
 
 test.beforeEach(async ({ page, context }) => {
   await routeEditorialPlaylist(context, PLAYLIST_ID, PLAYLIST_NAME, TRACK_SECONDS);
-  await routeEditorialPlaylist(context, GAPLESS_PLAYLIST_ID, GAPLESS_PLAYLIST_NAME, GAPLESS_TRACK_SECONDS, {
-    prefix: "gapless-",
-  });
+  await routeEditorialPlaylist(
+    context,
+    GAPLESS_PLAYLIST_ID,
+    GAPLESS_PLAYLIST_NAME,
+    GAPLESS_TRACK_SECONDS,
+    {
+      prefix: "gapless-",
+    },
+  );
   await context.route("**/e2e-audio/*.wav", async (route) => {
     const gapless = route.request().url().includes("/gapless-");
     if (gapless) await new Promise((resolve) => setTimeout(resolve, AUDIO_LATENCY_MS));
@@ -95,7 +107,9 @@ async function waitUntilPlaying(player) {
   await expect(player.seek).toBeEnabled();
 }
 
-test("shuffle plays the chosen track first, plays every other track once, and keeps the queue at the end", async ({ page }) => {
+test("shuffle plays the chosen track first, plays every other track once, and keeps the queue at the end", async ({
+  page,
+}) => {
   const player = playerControls(page);
   await page.getByRole("button", { name: `Shuffle ${PLAYLIST_NAME} previews` }).click();
   await expect(player.title).toHaveText(new RegExp(`^(${TRACK_NAMES.join("|")})$`));
@@ -124,7 +138,9 @@ test("shuffle plays the chosen track first, plays every other track once, and ke
   await expect(player.title).toHaveText(chosen);
 });
 
-test("shuffle stays on after the player closes and shuffles the next queue after its first track", async ({ page }) => {
+test("shuffle stays on after the player closes and shuffles the next queue after its first track", async ({
+  page,
+}) => {
   await page.addInitScript(() => {
     Math.random = () => 0;
   });
@@ -171,7 +187,9 @@ test("the seek slider moves by useful steps from the keyboard", async ({ page })
   await expect(player.seek).toHaveAttribute("aria-valuetext", "0:05 of 1:00");
 });
 
-test("dragging the seek slider holds the dragged time and seeks once on release", async ({ page }) => {
+test("dragging the seek slider holds the dragged time and seeks once on release", async ({
+  page,
+}) => {
   const player = playerControls(page);
   await page.getByRole("button", { name: `Play ${PLAYLIST_NAME} previews` }).click();
   await waitUntilPlaying(player);
@@ -195,7 +213,9 @@ test("dragging the seek slider holds the dragged time and seeks once on release"
   expect(await elapsedSeconds()).toBeLessThanOrEqual(draggedSeconds + 2);
 });
 
-test("releasing a drag after the track changes leaves the new track where it is", async ({ page }) => {
+test("releasing a drag after the track changes leaves the new track where it is", async ({
+  page,
+}) => {
   await page.addInitScript(() => {
     window.__mediaHandlers = {};
     const session = navigator.mediaSession;
@@ -216,7 +236,9 @@ test("releasing a drag after the track changes leaves the new track where it is"
   await page.mouse.move(box.x + box.width * 0.25, y);
   await page.mouse.down();
   await page.mouse.move(box.x + box.width * 0.75, y, { steps: 5 });
-  expect(Number(/^0:(\d\d)/.exec(await player.seek.getAttribute("aria-valuetext"))[1])).toBeGreaterThan(35);
+  expect(
+    Number(/^0:(\d\d)/.exec(await player.seek.getAttribute("aria-valuetext"))[1]),
+  ).toBeGreaterThan(35);
 
   await page.evaluate(() => window.__mediaHandlers.nexttrack?.({ action: "nexttrack" }));
   await expect(player.title).not.toHaveText(firstTitle);
@@ -234,8 +256,10 @@ test("hovering the seek bar previews the time and clicking there seeks to it", a
   const wrap = page.locator(".global-player__progress-wrap");
   const preview = wrap.locator(".global-player__progress-preview");
   const thumbOpacity = () =>
-    page.evaluate(() =>
-      getComputedStyle(document.querySelector(".global-player__progress-thumb"), "::after").opacity,
+    page.evaluate(
+      () =>
+        getComputedStyle(document.querySelector(".global-player__progress-thumb"), "::after")
+          .opacity,
     );
   await expect.poll(thumbOpacity).toBe("0");
 
@@ -251,12 +275,17 @@ test("hovering the seek bar previews the time and clicking there seeks to it", a
   await page.mouse.move(box.x + box.width * 0.5, box.y - 80);
   await expect(preview).toHaveCount(0);
 
-  const width = (selector) => wrap.locator(selector).evaluate((node) => node.getBoundingClientRect().width);
-  await expect.poll(() => width(".global-player__progress-buffered")).toBeGreaterThan(box.width * 0.9);
+  const width = (selector) =>
+    wrap.locator(selector).evaluate((node) => node.getBoundingClientRect().width);
+  await expect
+    .poll(() => width(".global-player__progress-buffered"))
+    .toBeGreaterThan(box.width * 0.9);
   expect(await width(".global-player__progress-fill")).toBeLessThan(box.width * 0.5);
 });
 
-test("previous restarts a track after three seconds and goes back from its start", async ({ page }) => {
+test("previous restarts a track after three seconds and goes back from its start", async ({
+  page,
+}) => {
   const player = playerControls(page);
   await page.getByRole("button", { name: `Play ${PLAYLIST_NAME} previews` }).click();
   await waitUntilPlaying(player);
@@ -274,7 +303,9 @@ test("previous restarts a track after three seconds and goes back from its start
   await expect(player.title).toHaveText("Alpha");
 });
 
-test("the next track starts without waiting for the network when the current one ends", async ({ page }) => {
+test("the next track starts without waiting for the network when the current one ends", async ({
+  page,
+}) => {
   await page.addInitScript(() => {
     window.__mediaEvents = [];
     const observed = new WeakSet();
@@ -300,8 +331,12 @@ test("the next track starts without waiting for the network when the current one
   const gap = () =>
     page.evaluate(() => {
       const events = window.__mediaEvents;
-      const ended = events.find((event) => event.type === "ended" && event.src.includes("gapless-Alpha"));
-      const started = events.find((event) => event.type === "playing" && event.src.includes("gapless-Bravo"));
+      const ended = events.find(
+        (event) => event.type === "ended" && event.src.includes("gapless-Alpha"),
+      );
+      const started = events.find(
+        (event) => event.type === "playing" && event.src.includes("gapless-Bravo"),
+      );
       return ended && started ? Math.round(started.at - ended.at) : null;
     });
   await expect.poll(gap, { timeout: AUDIO_LATENCY_MS * 3 }).not.toBeNull();
@@ -311,7 +346,9 @@ test("the next track starts without waiting for the network when the current one
   expect(measured).toBeLessThan(150);
 });
 
-test("keyboard shortcuts control playback without taking keys from fields and buttons", async ({ page }) => {
+test("keyboard shortcuts control playback without taking keys from fields and buttons", async ({
+  page,
+}) => {
   const player = playerControls(page);
   await page.getByRole("button", { name: `Play ${PLAYLIST_NAME} previews` }).click();
   await waitUntilPlaying(player);
@@ -373,7 +410,9 @@ test("unmuting after a reload restores the volume from before mute", async ({ pa
   await expect(volume).toHaveValue("40");
 });
 
-test("lock-screen controls seek, follow play and pause, and clear with the queue", async ({ page }) => {
+test("lock-screen controls seek, follow play and pause, and clear with the queue", async ({
+  page,
+}) => {
   await page.addInitScript(() => {
     window.__mediaSession = { handlers: {}, positions: [] };
     const session = navigator.mediaSession;
@@ -393,7 +432,10 @@ test("lock-screen controls seek, follow play and pause, and clear with the queue
 
   const lastPosition = () => page.evaluate(() => window.__mediaSession.positions.at(-1));
   const runAction = (action, details = {}) =>
-    page.evaluate(([name, value]) => window.__mediaSession.handlers[name]?.({ action: name, ...value }), [action, details]);
+    page.evaluate(
+      ([name, value]) => window.__mediaSession.handlers[name]?.({ action: name, ...value }),
+      [action, details],
+    );
   await expect.poll(lastPosition).toMatchObject({ duration: 60, playbackRate: 1 });
   expect(await page.evaluate(() => navigator.mediaSession.playbackState)).toBe("paused");
 
@@ -408,7 +450,9 @@ test("lock-screen controls seek, follow play and pause, and clear with the queue
 
   await runAction("play");
   await waitUntilPlaying(player);
-  await expect.poll(() => page.evaluate(() => navigator.mediaSession.playbackState)).toBe("playing");
+  await expect
+    .poll(() => page.evaluate(() => navigator.mediaSession.playbackState))
+    .toBe("playing");
   expect(await page.evaluate(() => navigator.mediaSession.metadata?.title)).toBe("Alpha");
 
   await page.getByRole("button", { name: "Close player" }).click();
@@ -420,7 +464,9 @@ async function upNextTitles(region) {
   return region.locator(".player-queue__list .player-queue__name").allTextContents();
 }
 
-test("the queue panel lists up next and track menus queue, reorder, remove, and clear tracks", async ({ page }) => {
+test("the queue panel lists up next and track menus queue, reorder, remove, and clear tracks", async ({
+  page,
+}) => {
   const player = playerControls(page);
   await page.getByRole("button", { name: `Play ${PLAYLIST_NAME} previews` }).click();
   await waitUntilPlaying(player);
@@ -439,26 +485,36 @@ test("the queue panel lists up next and track menus queue, reorder, remove, and 
   await page.getByRole("button", { name: "Bravo options" }).click();
   await page.getByRole("menuitem", { name: "Add to queue" }).click();
   await expect(page.getByText("Added to queue")).toBeVisible();
-  await expect.poll(() => upNextTitles(panel)).toEqual(["Delta", "Bravo", "Charlie", "Delta", "Echo", "Bravo"]);
+  await expect
+    .poll(() => upNextTitles(panel))
+    .toEqual(["Delta", "Bravo", "Charlie", "Delta", "Echo", "Bravo"]);
 
   const handleEcho = panel.getByRole("button", { name: "Reorder Echo" });
   await handleEcho.focus();
   await page.keyboard.press("Space");
   await expect(handleEcho).toHaveAttribute("aria-pressed", "true");
   await page.keyboard.press("ArrowUp");
-  await expect(page.getByRole("status").filter({ hasText: "Echo moved to position 4 of 6" })).toBeAttached();
+  await expect(
+    page.getByRole("status").filter({ hasText: "Echo moved to position 4 of 6" }),
+  ).toBeAttached();
   await page.keyboard.press("Space");
-  await expect.poll(() => upNextTitles(panel)).toEqual(["Delta", "Bravo", "Charlie", "Echo", "Delta", "Bravo"]);
+  await expect
+    .poll(() => upNextTitles(panel))
+    .toEqual(["Delta", "Bravo", "Charlie", "Echo", "Delta", "Bravo"]);
 
   await panel.getByRole("button", { name: "Remove Charlie from queue" }).click();
-  await expect.poll(() => upNextTitles(panel)).toEqual(["Delta", "Bravo", "Echo", "Delta", "Bravo"]);
+  await expect
+    .poll(() => upNextTitles(panel))
+    .toEqual(["Delta", "Bravo", "Echo", "Delta", "Bravo"]);
   await expect(player.title).toHaveText("Alpha");
   await waitUntilPlaying(player);
 
   await panel.getByRole("button", { name: "Clear" }).click();
   await expect(panel.getByText(/Nothing is up next/)).toBeVisible();
   await page.getByRole("button", { name: "Undo" }).click();
-  await expect.poll(() => upNextTitles(panel)).toEqual(["Delta", "Bravo", "Echo", "Delta", "Bravo"]);
+  await expect
+    .poll(() => upNextTitles(panel))
+    .toEqual(["Delta", "Bravo", "Echo", "Delta", "Bravo"]);
 
   await player.next.click();
   await expect(player.title).toHaveText("Delta");
@@ -469,7 +525,9 @@ test("the queue panel lists up next and track menus queue, reorder, remove, and 
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
 });
 
-test("with the queue open, player tooltips leave the volume controls uncovered", async ({ page }) => {
+test("with the queue open, player tooltips leave the volume controls uncovered", async ({
+  page,
+}) => {
   const player = playerControls(page);
   await page.getByRole("button", { name: `Play ${PLAYLIST_NAME} previews` }).click();
   await waitUntilPlaying(player);
@@ -499,7 +557,9 @@ test("adding to the queue when nothing plays starts the track", async ({ page })
   await waitUntilPlaying(player);
 });
 
-test("a reload brings the queue back paused where it was, and closing the player forgets it", async ({ page }) => {
+test("a reload brings the queue back paused where it was, and closing the player forgets it", async ({
+  page,
+}) => {
   const player = playerControls(page);
   await page.getByRole("button", { name: `Play ${PLAYLIST_NAME} previews` }).click();
   await waitUntilPlaying(player);
@@ -549,7 +609,9 @@ test("a restored track whose file is gone says it is unavailable", async ({ page
   await expect(player.title).toHaveText("Alpha");
 });
 
-test("logging out stops playback and signing back in brings the queue back paused", async ({ page }) => {
+test("logging out stops playback and signing back in brings the queue back paused", async ({
+  page,
+}) => {
   const username = String(process.env.AURRAL_TEST_USERNAME || "").trim();
   const password = String(process.env.AURRAL_TEST_PASSWORD || "");
   test.skip(!username || !password, "Needs AURRAL_TEST_USERNAME and AURRAL_TEST_PASSWORD");
@@ -570,7 +632,10 @@ test("logging out stops playback and signing back in brings the queue back pause
   await expect(player.playPause).toHaveAccessibleName("Play");
 });
 
-test("playing in a second tab pauses the first and the queue follows the tab that played last", async ({ page, context }) => {
+test("playing in a second tab pauses the first and the queue follows the tab that played last", async ({
+  page,
+  context,
+}) => {
   const player = playerControls(page);
   await page.getByRole("button", { name: `Play ${PLAYLIST_NAME} previews` }).click();
   await waitUntilPlaying(player);
@@ -596,7 +661,9 @@ test("playing in a second tab pauses the first and the queue follows the tab tha
   await second.close();
 });
 
-test("the tab title shows the playing track and goes back to the page title on pause", async ({ page }) => {
+test("the tab title shows the playing track and goes back to the page title on pause", async ({
+  page,
+}) => {
   const player = playerControls(page);
   await page.getByRole("button", { name: `Play ${PLAYLIST_NAME} previews` }).click();
   await waitUntilPlaying(player);
@@ -622,7 +689,9 @@ test("the tab title shows the playing track and goes back to the page title on p
   await expect(page).toHaveTitle("Bravo · E2E Artist");
 });
 
-test("the playing row shows moving bars, still bars when paused, and can be paused while it loads", async ({ page }) => {
+test("the playing row shows moving bars, still bars when paused, and can be paused while it loads", async ({
+  page,
+}) => {
   let releaseBravo;
   const bravoHeld = new Promise((resolve) => {
     releaseBravo = resolve;
@@ -635,9 +704,13 @@ test("the playing row shows moving bars, still bars when paused, and can be paus
   const tracks = page.getByRole("list", { name: /tracks/i }).first();
   const current = tracks.locator('[role="listitem"][aria-current="true"]');
   const barsMoving = () =>
-    current.first().evaluate((row) =>
-      row.querySelector(".native-library-track__number").getAnimations({ subtree: true }).length > 0,
-    );
+    current
+      .first()
+      .evaluate(
+        (row) =>
+          row.querySelector(".native-library-track__number").getAnimations({ subtree: true })
+            .length > 0,
+      );
 
   await page.getByRole("button", { name: "Play Bravo", exact: true }).click();
   await expect(current).toHaveCount(1);
@@ -671,7 +744,8 @@ test("the playing row shows moving bars, still bars when paused, and can be paus
   await expect.poll(barsMoving).toBe(false);
 });
 
-const RED_COVER = '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="#c82828"/></svg>';
+const RED_COVER =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="#c82828"/></svg>';
 
 async function playCoveredPlaylist(page, artworkUrl) {
   await page.route("**/e2e-art/**", (route) =>
@@ -688,26 +762,35 @@ async function playCoveredPlaylist(page, artworkUrl) {
 }
 
 function firstColor(page, selector, property, pseudo = null) {
-  return page.evaluate(([target, name, element]) => {
-    const value = getComputedStyle(document.querySelector(target), element)[name];
-    const color = /(?:rgba?|color)\([^)]*\)/.exec(value)?.[0] ?? "transparent";
-    const context = Object.assign(document.createElement("canvas"), { width: 1, height: 1 }).getContext("2d");
-    context.fillStyle = color;
-    context.fillRect(0, 0, 1, 1);
-    return [...context.getImageData(0, 0, 1, 1).data];
-  }, [selector, property, pseudo]);
+  return page.evaluate(
+    ([target, name, element]) => {
+      const value = getComputedStyle(document.querySelector(target), element)[name];
+      const color = /(?:rgba?|color)\([^)]*\)/.exec(value)?.[0] ?? "transparent";
+      const context = Object.assign(document.createElement("canvas"), {
+        width: 1,
+        height: 1,
+      }).getContext("2d");
+      context.fillStyle = color;
+      context.fillRect(0, 0, 1, 1);
+      return [...context.getImageData(0, 0, 1, 1).data];
+    },
+    [selector, property, pseudo],
+  );
 }
 
-test("the player bar takes a wash from the cover and stays plain when the cover cannot be read", async ({ page }) => {
-  const wash = () =>
-firstColor(page, ".global-player", "backgroundColor", "::before");
+test("the player bar takes a wash from the cover and stays plain when the cover cannot be read", async ({
+  page,
+}) => {
+  const wash = () => firstColor(page, ".global-player", "backgroundColor", "::before");
 
   await playCoveredPlaylist(page, "/e2e-art/red.svg");
   await waitUntilPlaying(playerControls(page));
-  await expect.poll(async () => {
-    const [red, green, blue, alpha] = await wash();
-    return red > green + 50 && red > blue + 50 && alpha > 0;
-  }).toBe(true);
+  await expect
+    .poll(async () => {
+      const [red, green, blue, alpha] = await wash();
+      return red > green + 50 && red > blue + 50 && alpha > 0;
+    })
+    .toBe(true);
 
   await playCoveredPlaylist(page, "/e2e-art/missing.svg");
   await expect.poll(async () => (await wash())[3]).toBe(0);
@@ -716,7 +799,9 @@ firstColor(page, ".global-player", "backgroundColor", "::before");
 test.describe("on a phone", () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
-  test("the now playing sheet stays light in the light theme when the cover cannot be read", async ({ page }) => {
+  test("the now playing sheet stays light in the light theme when the cover cannot be read", async ({
+    page,
+  }) => {
     await page.emulateMedia({ colorScheme: "light" });
     await playCoveredPlaylist(page, "/e2e-art/missing.svg");
     await page.getByRole("button", { name: /^Open now playing/ }).click();
@@ -738,7 +823,9 @@ test.describe("on a phone", () => {
     await page.keyboard.press("Space");
     await expect(handleDelta).toHaveAttribute("aria-pressed", "true");
     await page.keyboard.press("ArrowUp");
-    await expect(page.getByRole("status").filter({ hasText: "Delta moved to position 1 of 3" })).toBeAttached();
+    await expect(
+      page.getByRole("status").filter({ hasText: "Delta moved to position 1 of 3" }),
+    ).toBeAttached();
     await page.keyboard.press("Space");
     await expect.poll(() => upNextTitles(sheet)).toEqual(["Delta", "Charlie", "Echo"]);
   });

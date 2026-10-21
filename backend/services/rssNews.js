@@ -8,27 +8,38 @@ const MAX_ITEMS_PER_FEED = 100;
 const MAX_CATEGORIES = 20;
 const MAX_DESCRIPTION_LENGTH = 500;
 
-const htmlToText = (value) => String(value || "")
-  .replace(/<[^>]+>/g, " ")
-  .replace(/\s+/g, " ")
-  .trim();
+const htmlToText = (value) =>
+  String(value || "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 
 const isUsableImageUrl = (value) => {
-  const url = String(value || "").trim().toLowerCase();
-  return /^https?:\/\//.test(url) && !/(tracking|pixel|badge|listen-on|favicon|\.ico(?:$|\?))/.test(url);
+  const url = String(value || "")
+    .trim()
+    .toLowerCase();
+  return (
+    /^https?:\/\//.test(url) && !/(tracking|pixel|badge|listen-on|favicon|\.ico(?:$|\?))/.test(url)
+  );
 };
 
 const getHtmlImage = (html) => {
   const candidates = [
-    ...String(html || "").matchAll(/<meta\b[^>]*(?:property|name)=["'](?:og:image|twitter:image)["'][^>]*content=["']([^"']+)/gi),
-    ...String(html || "").matchAll(/<meta\b[^>]*content=["']([^"']+)["'][^>]*(?:property|name)=["'](?:og:image|twitter:image)["']/gi),
+    ...String(html || "").matchAll(
+      /<meta\b[^>]*(?:property|name)=["'](?:og:image|twitter:image)["'][^>]*content=["']([^"']+)/gi,
+    ),
+    ...String(html || "").matchAll(
+      /<meta\b[^>]*content=["']([^"']+)["'][^>]*(?:property|name)=["'](?:og:image|twitter:image)["']/gi,
+    ),
     ...String(html || "").matchAll(/<img\b[^>]*\bsrc=["']([^"']+)/gi),
   ].map((match) => match[1]);
   return candidates.find(isUsableImageUrl) || null;
 };
 
 const isImageMedia = (media) =>
-  media.type === "image" || media.mimeType?.startsWith("image/") || (!media.type && !media.mimeType);
+  media.type === "image" ||
+  media.mimeType?.startsWith("image/") ||
+  (!media.type && !media.mimeType);
 
 const getItemImage = (item) =>
   [...item.media.filter(isImageMedia).map((media) => media.url), item.image?.url]
@@ -45,9 +56,10 @@ const resolveUrl = (value, base) => {
   }
 };
 
-const getItemCategories = (item) => [
-  ...new Set(item.categories.map((category) => htmlToText(category.label || category.term))),
-].filter(Boolean).slice(0, MAX_CATEGORIES);
+const getItemCategories = (item) =>
+  [...new Set(item.categories.map((category) => htmlToText(category.label || category.term)))]
+    .filter(Boolean)
+    .slice(0, MAX_CATEGORIES);
 
 const normalizeRssArticle = (article, feed) => ({
   id: createHash("sha1").update(`${feed.url}\n${article.url}`).digest("hex"),

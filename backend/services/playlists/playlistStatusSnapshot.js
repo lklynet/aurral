@@ -1,16 +1,25 @@
 import { createHash } from "node:crypto";
 import { downloadTracker } from "../downloadJobs/downloadTracker.js";
 import { downloadWorker } from "../downloadJobs/downloadWorker.js";
-import { getDownloadOwnerStatus, isDownloadOwnerProcess } from "../downloadJobs/downloadOwnerClient.js";
+import {
+  getDownloadOwnerStatus,
+  isDownloadOwnerProcess,
+} from "../downloadJobs/downloadOwnerClient.js";
 import { slskdClient } from "../slskdClient.js";
-import { buildPlaylistTrackIdentity, flowPlaylistConfig, invalidateFlowPlaylistConfigCache } from "./flowPlaylistConfig.js";
+import {
+  buildPlaylistTrackIdentity,
+  flowPlaylistConfig,
+  invalidateFlowPlaylistConfigCache,
+} from "./flowPlaylistConfig.js";
 import { playlistOperationQueue } from "./playlistOperationQueue.js";
 import { getPlaylistOperationWorkerStatus } from "./playlistOperationWorker.js";
 import { getDownloadClient } from "../download/downloadClientSettings.js";
 import { dbOps, userOps } from "../../db/helpers/index.js";
 import { db, getDatabaseRevision } from "../../config/db-sqlite.js";
 
-const playlistSettingsStmt = db.prepare("SELECT key, value FROM settings WHERE key IN ('flows', 'sharedPlaylists') ORDER BY key");
+const playlistSettingsStmt = db.prepare(
+  "SELECT key, value FROM settings WHERE key IN ('flows', 'sharedPlaylists') ORDER BY key",
+);
 const membershipCache = new Map();
 const MEMBERSHIP_CACHE_LIMIT = 128;
 let cachedSettings = null;
@@ -105,7 +114,8 @@ export function getPlaylistStatusVersion() {
     isDownloadOwnerProcess() ? downloadWorker.getStatus() : getDownloadOwnerStatus(),
     getPlaylistOperationWorkerStatus(),
     slskdClient.getStatus(),
-    flowPlaylistConfig.getFlows()
+    flowPlaylistConfig
+      .getFlows()
       .filter((flow) => flow?.enabled === true)
       .map((flow) => getCountdown(flow.nextRunAt)),
   ]);
@@ -132,7 +142,6 @@ function aggregateStats(statsByType, ids) {
   base.total = base.pending + base.downloading + base.blocked + base.done + base.failed;
   return base;
 }
-
 
 function collectPlaylistTrackIdentities(playlist, jobs) {
   const playlistId = String(playlist?.id || "");
@@ -194,9 +203,7 @@ function buildOwnerMap(flows, staticPlaylists) {
   return ownerMap;
 }
 
-export function getPlaylistStatusSnapshot({
-  user = null,
-} = {}) {
+export function getPlaylistStatusSnapshot({ user = null } = {}) {
   refreshMembershipCache();
   clearTimeout(cacheCleanupTimer);
   cacheCleanupTimer = setTimeout(clearPlaylistStatusCache, 60000);
@@ -256,7 +263,8 @@ export function getPlaylistStatusSnapshot({
   }));
   const stats = aggregateStats(scopedStats, flowIds);
   const sharedStats = aggregateStats(scopedStats, staticPlaylistIds);
-  const reviewCount = stats.blocked + sharedStats.blocked + Number(scopedStats.library?.blocked || 0);
+  const reviewCount =
+    stats.blocked + sharedStats.blocked + Number(scopedStats.library?.blocked || 0);
   const nextRunMessage = formatNextRunMessage(flowsWithOwners);
   const operationQueue = playlistOperationQueue.getStatus();
   const operationWorker = workerStatus?.operationWorker || getPlaylistOperationWorkerStatus();

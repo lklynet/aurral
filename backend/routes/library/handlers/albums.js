@@ -3,15 +3,10 @@ import { playlistManager } from "../../../services/playlists/playlistManager.js"
 import { dbOps } from "../../../db/helpers/index.js";
 import { hasPermission } from "../../../middleware/auth.js";
 import { cacheMiddleware, noCache } from "../../../middleware/cache.js";
-import {
-  requireAuth,
-  requirePermission,
-} from "../../../middleware/requirePermission.js";
+import { requireAuth, requirePermission } from "../../../middleware/requirePermission.js";
 import { logger } from "../../../services/logger.js";
 import { invalidateAllDownloadStatusesCache } from "./downloads.js";
-import {
-  getLibraryReadModelForArtistReferences,
-} from "../../../services/libraryReadModel.js";
+import { getLibraryReadModelForArtistReferences } from "../../../services/libraryReadModel.js";
 
 export function registerAlbums(router) {
   router.get("/albums", cacheMiddleware(5), async (req, res) => {
@@ -34,7 +29,10 @@ export function registerAlbums(router) {
       if (managedBy !== null && managedBy !== "aurral" && managedBy !== "lidarr") {
         return res.status(400).json({ error: "managedBy must be 'aurral' or 'lidarr'" });
       }
-      const albums = await libraryManager.getAlbums(artistId, null, { managedBy, includeAurral: true });
+      const albums = await libraryManager.getAlbums(artistId, null, {
+        managedBy,
+        includeAurral: true,
+      });
       const formatted = albums.map((album) => ({
         ...album,
         foreignAlbumId: album.foreignAlbumId || album.mbid,
@@ -54,192 +52,162 @@ export function registerAlbums(router) {
     }
   });
 
-  router.post(
-    "/albums",
-    requireAuth,
-    requirePermission("addAlbum"),
-    async (req, res) => {
-      try {
-        const {
-          artistId,
-          releaseGroupMbid,
-          albumName,
-          managedBy: requestedManagedBy,
-        } = req.body;
+  router.post("/albums", requireAuth, requirePermission("addAlbum"), async (req, res) => {
+    try {
+      const { artistId, releaseGroupMbid, albumName, managedBy: requestedManagedBy } = req.body;
 
-        if (!artistId || !releaseGroupMbid || !albumName) {
-          return res.status(400).json({
-            error: "artistId, releaseGroupMbid, and albumName are required",
-          });
-        }
-
-        let managedBy;
-        try {
-          managedBy = await libraryManager.resolveManagedBy(requestedManagedBy);
-        } catch (error) {
-          return res.status(error.statusCode || 400).json({
-            error: error.message,
-            code: error.code || null,
-          });
-        }
-
-        let mbid = releaseGroupMbid;
-        if (String(releaseGroupMbid).startsWith("dz-")) {
-          const { resolveDeezerAlbumToMbid } = await import(
-            "../../../services/apiClients/index.js"
-          );
-          const artist = await libraryManager.getArtistById(artistId, { managedBy });
-          const artistName = artist?.artistName || "";
-          mbid =
-            (await resolveDeezerAlbumToMbid(
-              artistName,
-              albumName,
-              releaseGroupMbid
-            )) || null;
-          if (!mbid) {
-            return res.status(400).json({
-              error:
-                "Could not resolve metadata for this album. Try adding the artist to Lidarr first or use a different album.",
-            });
-          }
-        }
-
-        const settings = dbOps.getSettings();
-        const searchOnAdd = managedBy === "lidarr" &&
-          (settings.integrations?.lidarr?.searchOnAdd ?? false);
-
-        const album = await libraryManager.addAlbum(artistId, mbid, albumName, {
-          triggerSearch: searchOnAdd,
-          managedBy,
-          user: req.user,
-        });
-        if (album?.error) {
-          logger.error("library", `Failed to add album ${albumName}:`, {
-            message: album.error,
-          });
-          const statusCode =
-            Number.isInteger(album.statusCode) && album.statusCode >= 400
-              ? album.statusCode
-              : 503;
-          return res.status(statusCode).json({
-            error: "Failed to add album",
-            message: album.error,
-            code: album.code || null,
-            managedBy: album.managedBy || null,
-            sources: album.sources || [],
-            canonicalId: album.canonicalId || null,
-            providerId: album.providerId || null,
-            availability: album.availability || null,
-            conflict: album.conflict || null,
-          });
-        }
-        if (album.artistName && album.albumName) {
-          playlistManager
-            .removeDiscoverSymlinksForAlbum(album.artistName, album.albumName)
-            .catch(() => {});
-        }
-        const { recordAlbumRequested } = await import(
-          "../../../services/aurralHistoryService.js"
-        );
-        recordAlbumRequested({
-          albumId: album.id,
-          requestGroupId: album.requestGroupId,
-          albumName: album.albumName || albumName,
-          artistName: album.artistName,
-          artistMbid: album.mbid || album.foreignAlbumId,
-          managedBy,
-          searching: managedBy === "lidarr" && searchOnAdd,
-          user: req.user,
-        });
-        return res.status(201).json({ ...album, queued: false });
-      } catch (error) {
-        res.status(500).json({
-          error: "Failed to add album",
-          message: error.message,
+      if (!artistId || !releaseGroupMbid || !albumName) {
+        return res.status(400).json({
+          error: "artistId, releaseGroupMbid, and albumName are required",
         });
       }
-    }
-  );
 
-  router.post(
-    "/albums/request",
-    requireAuth,
-    requirePermission("addAlbum"),
-    async (req, res) => {
+      let managedBy;
       try {
-        const {
-          albumMbid,
-          albumName,
-          artistMbid,
-          artistName,
-          triggerSearch = false,
-          managedBy: requestedManagedBy,
-        } = req.body || {};
+        managedBy = await libraryManager.resolveManagedBy(requestedManagedBy);
+      } catch (error) {
+        return res.status(error.statusCode || 400).json({
+          error: error.message,
+          code: error.code || null,
+        });
+      }
 
-        if (!albumMbid || !albumName || !artistMbid || !artistName) {
+      let mbid = releaseGroupMbid;
+      if (String(releaseGroupMbid).startsWith("dz-")) {
+        const { resolveDeezerAlbumToMbid } = await import("../../../services/apiClients/index.js");
+        const artist = await libraryManager.getArtistById(artistId, { managedBy });
+        const artistName = artist?.artistName || "";
+        mbid = (await resolveDeezerAlbumToMbid(artistName, albumName, releaseGroupMbid)) || null;
+        if (!mbid) {
           return res.status(400).json({
-            error: "albumMbid, albumName, artistMbid, and artistName are required",
+            error:
+              "Could not resolve metadata for this album. Try adding the artist to Lidarr first or use a different album.",
           });
         }
+      }
 
-        const result = await libraryManager.requestAlbumFromSearch({
-          albumMbid,
-          albumName,
-          artistName,
-          artistMbid,
-          triggerSearch,
-          managedBy: requestedManagedBy,
-          user: req.user,
+      const settings = dbOps.getSettings();
+      const searchOnAdd =
+        managedBy === "lidarr" && (settings.integrations?.lidarr?.searchOnAdd ?? false);
+
+      const album = await libraryManager.addAlbum(artistId, mbid, albumName, {
+        triggerSearch: searchOnAdd,
+        managedBy,
+        user: req.user,
+      });
+      if (album?.error) {
+        logger.error("library", `Failed to add album ${albumName}:`, {
+          message: album.error,
         });
-        const settings = dbOps.getSettings();
-        const searchOnAdd = settings.integrations?.lidarr?.searchOnAdd ?? false;
-        const searching = result?.managedBy === "aurral"
+        const statusCode =
+          Number.isInteger(album.statusCode) && album.statusCode >= 400 ? album.statusCode : 503;
+        return res.status(statusCode).json({
+          error: "Failed to add album",
+          message: album.error,
+          code: album.code || null,
+          managedBy: album.managedBy || null,
+          sources: album.sources || [],
+          canonicalId: album.canonicalId || null,
+          providerId: album.providerId || null,
+          availability: album.availability || null,
+          conflict: album.conflict || null,
+        });
+      }
+      if (album.artistName && album.albumName) {
+        playlistManager
+          .removeDiscoverSymlinksForAlbum(album.artistName, album.albumName)
+          .catch(() => {});
+      }
+      const { recordAlbumRequested } = await import("../../../services/aurralHistoryService.js");
+      recordAlbumRequested({
+        albumId: album.id,
+        requestGroupId: album.requestGroupId,
+        albumName: album.albumName || albumName,
+        artistName: album.artistName,
+        artistMbid: album.mbid || album.foreignAlbumId,
+        managedBy,
+        searching: managedBy === "lidarr" && searchOnAdd,
+        user: req.user,
+      });
+      return res.status(201).json({ ...album, queued: false });
+    } catch (error) {
+      res.status(500).json({
+        error: "Failed to add album",
+        message: error.message,
+      });
+    }
+  });
+
+  router.post("/albums/request", requireAuth, requirePermission("addAlbum"), async (req, res) => {
+    try {
+      const {
+        albumMbid,
+        albumName,
+        artistMbid,
+        artistName,
+        triggerSearch = false,
+        managedBy: requestedManagedBy,
+      } = req.body || {};
+
+      if (!albumMbid || !albumName || !artistMbid || !artistName) {
+        return res.status(400).json({
+          error: "albumMbid, albumName, artistMbid, and artistName are required",
+        });
+      }
+
+      const result = await libraryManager.requestAlbumFromSearch({
+        albumMbid,
+        albumName,
+        artistName,
+        artistMbid,
+        triggerSearch,
+        managedBy: requestedManagedBy,
+        user: req.user,
+      });
+      const settings = dbOps.getSettings();
+      const searchOnAdd = settings.integrations?.lidarr?.searchOnAdd ?? false;
+      const searching =
+        result?.managedBy === "aurral"
           ? result?.status === "queued"
           : triggerSearch === true || searchOnAdd || result?.status === "searching";
-        const { recordAlbumRequested, recordAlbumSearchCompleted } = await import(
-          "../../../services/aurralHistoryService.js"
-        );
-        const historyAlbum = {
-          albumId: result?.album?.id || result?.id,
-          albumName: result?.album?.albumName || result?.albumName || albumName,
-          artistName: result?.artist?.artistName || result?.artistName || artistName,
-          artistMbid: result?.artist?.mbid || result?.mbid || artistMbid,
-          managedBy: result?.managedBy || null,
-          user: req.user,
-        };
-        recordAlbumRequested({
-          ...historyAlbum,
-          requestGroupId: result?.requestGroupId || result?.album?.requestGroupId,
-          searching: result?.status === "available" ? false : searching,
-        });
-        if (result?.status === "available") {
-          recordAlbumSearchCompleted(historyAlbum);
-        }
-        invalidateAllDownloadStatusesCache();
-        return res.status(201).json({
-          ...result,
-          queued: result?.managedBy === "aurral"
-            ? (result?.jobIds?.length || 0) > 0
-            : false,
-        });
-      } catch (error) {
-        const statusCode =
-          Number.isInteger(error?.statusCode) && error.statusCode >= 400
-            ? error.statusCode
-            : 500;
-        res.status(statusCode).json({
-          error: error.message || "Failed to request album",
-          code: error.code || null,
-          managedBy: error.managedBy || null,
-          sources: error.sources || [],
-          canonicalId: error.canonicalId || null,
-          providerId: error.providerId || null,
-          availability: error.availability || null,
-          conflict: error.conflict || null,
-        });
+      const { recordAlbumRequested, recordAlbumSearchCompleted } =
+        await import("../../../services/aurralHistoryService.js");
+      const historyAlbum = {
+        albumId: result?.album?.id || result?.id,
+        albumName: result?.album?.albumName || result?.albumName || albumName,
+        artistName: result?.artist?.artistName || result?.artistName || artistName,
+        artistMbid: result?.artist?.mbid || result?.mbid || artistMbid,
+        managedBy: result?.managedBy || null,
+        user: req.user,
+      };
+      recordAlbumRequested({
+        ...historyAlbum,
+        requestGroupId: result?.requestGroupId || result?.album?.requestGroupId,
+        searching: result?.status === "available" ? false : searching,
+      });
+      if (result?.status === "available") {
+        recordAlbumSearchCompleted(historyAlbum);
       }
-    },
-  );
+      invalidateAllDownloadStatusesCache();
+      return res.status(201).json({
+        ...result,
+        queued: result?.managedBy === "aurral" ? (result?.jobIds?.length || 0) > 0 : false,
+      });
+    } catch (error) {
+      const statusCode =
+        Number.isInteger(error?.statusCode) && error.statusCode >= 400 ? error.statusCode : 500;
+      res.status(statusCode).json({
+        error: error.message || "Failed to request album",
+        code: error.code || null,
+        managedBy: error.managedBy || null,
+        sources: error.sources || [],
+        canonicalId: error.canonicalId || null,
+        providerId: error.providerId || null,
+        availability: error.availability || null,
+        conflict: error.conflict || null,
+      });
+    }
+  });
 
   router.get("/albums/aurral/:canonicalId/status", noCache, (req, res) => {
     try {
@@ -263,10 +231,9 @@ export function registerAlbums(router) {
     requirePermission("changeMonitoring"),
     async (req, res) => {
       try {
-        const result = await libraryManager.setAurralAlbumMonitoring(
-          req.params.canonicalId,
-          { monitored: req.body?.monitored },
-        );
+        const result = await libraryManager.setAurralAlbumMonitoring(req.params.canonicalId, {
+          monitored: req.body?.monitored,
+        });
         if (result?.error) {
           const { error, statusCode, ...details } = result;
           return res.status(statusCode || 500).json({ ...details, error });
@@ -346,10 +313,7 @@ export function registerAlbums(router) {
     "/albums/:id",
     requireAuth,
     (req, res, next) => {
-      if (
-        hasPermission(req.user, "changeMonitoring") ||
-        hasPermission(req.user, "addAlbum")
-      ) {
+      if (hasPermission(req.user, "changeMonitoring") || hasPermission(req.user, "addAlbum")) {
         return next();
       }
       return res.status(403).json({
@@ -385,7 +349,9 @@ export function registerAlbums(router) {
           req.query?.deleteFiles === "true",
         );
         if (!result?.success) {
-          return res.status(result?.statusCode || 503).json({ error: result?.error || "Failed to delete album" });
+          return res
+            .status(result?.statusCode || 503)
+            .json({ error: result?.error || "Failed to delete album" });
         }
         res.json({ success: true, message: "Album deleted successfully" });
       } catch (error) {
@@ -394,30 +360,20 @@ export function registerAlbums(router) {
     },
   );
 
-  router.delete(
-    "/albums/:id",
-    requireAuth,
-    requirePermission("deleteAlbum"),
-    async (req, res) => {
-      try {
-        const { id } = req.params;
-        const { deleteFiles = false } = req.query;
-        const result = await libraryManager.deleteAlbum(
-          id,
-          deleteFiles === "true"
-        );
-        if (!result?.success) {
-          return res
-            .status(503)
-            .json({ error: result?.error || "Failed to delete album" });
-        }
-        res.json({ success: true, message: "Album deleted successfully" });
-      } catch (error) {
-        res.status(500).json({
-          error: "Failed to delete album",
-          message: error.message,
-        });
+  router.delete("/albums/:id", requireAuth, requirePermission("deleteAlbum"), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { deleteFiles = false } = req.query;
+      const result = await libraryManager.deleteAlbum(id, deleteFiles === "true");
+      if (!result?.success) {
+        return res.status(503).json({ error: result?.error || "Failed to delete album" });
       }
+      res.json({ success: true, message: "Album deleted successfully" });
+    } catch (error) {
+      res.status(500).json({
+        error: "Failed to delete album",
+        message: error.message,
+      });
     }
-  );
+  });
 }

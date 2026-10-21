@@ -54,7 +54,9 @@ const [
 );
 
 function takePlaylistSyncs() {
-  const jobs = listHonkerJobs("playback").filter((job) => job.payload.kind === "playback-playlist-sync");
+  const jobs = listHonkerJobs("playback").filter(
+    (job) => job.payload.kind === "playback-playlist-sync",
+  );
   for (const job of jobs) getPlaybackTaskQueue().cancel(job.id);
   return jobs.map((job) => job.payload);
 }
@@ -165,10 +167,18 @@ test("playlist jobs annotate tracks that are already in the library", async () =
   const root = path.join(isolatedState.baseDir, "featured-library");
   await fs.mkdir(root, { recursive: true });
   await fs.writeFile(path.join(root, "01.flac"), "featured audio");
-  await scanMusicRoot({ rootPath: root, source: "lidarr", metadataReader: async () => ({ common: {
-    albumartist: "Owned Artist", artist: "Owned Artist feat. Guest",
-    album: "Featured Album", title: "Featured Track",
-  } }) });
+  await scanMusicRoot({
+    rootPath: root,
+    source: "lidarr",
+    metadataReader: async () => ({
+      common: {
+        albumartist: "Owned Artist",
+        artist: "Owned Artist feat. Guest",
+        album: "Featured Album",
+        title: "Featured Track",
+      },
+    }),
+  });
   downloadTracker.addJobs(
     [
       { artistName: "Owned Artist", trackName: "Owned Track", trackMbid: "owned-mbid" },
@@ -213,7 +223,10 @@ test("playlist job file paths are only returned to admins", async (t) => {
   for (const job of [listed[0], allListed]) {
     assert.equal(job.id, jobId);
     assert.equal(job.streamFormat, "flac");
-    assert.deepEqual(Object.keys(job).filter((key) => /path$/i.test(key)), []);
+    assert.deepEqual(
+      Object.keys(job).filter((key) => /path$/i.test(key)),
+      [],
+    );
   }
 
   const adminResponse = await fetch(`${baseUrl}/jobs/${jobId}/files`);
@@ -253,12 +266,7 @@ test("approving a reviewed download commits it inside the managed playlist libra
 
   const response = await fetch(`${baseUrl}/jobs/${jobId}/approve`, { method: "POST" });
   const payload = await response.json();
-  const expectedPath = path.join(
-    process.env.DOWNLOAD_FOLDER,
-    "Artist",
-    "Album",
-    "Track.flac",
-  );
+  const expectedPath = path.join(process.env.DOWNLOAD_FOLDER, "Artist", "Album", "Track.flac");
 
   assert.equal(response.status, 200, JSON.stringify(payload));
   assert.equal(payload.path, expectedPath);
@@ -284,7 +292,9 @@ test("approving a reviewed download queues its playlist sync instead of waiting 
     playlistId,
   );
   downloadTracker.setBlocked(jobId, "blocked-duration-mismatch", sourcePath);
-  const serverCalls = vi.spyOn(playlistManager.navidromeDestination.client, "getPlaylists").mockImplementation(() => new Promise(() => {}));
+  const serverCalls = vi
+    .spyOn(playlistManager.navidromeDestination.client, "getPlaylists")
+    .mockImplementation(() => new Promise(() => {}));
 
   const response = await fetch(`${baseUrl}/jobs/${jobId}/approve`, { method: "POST" });
   assert.equal(response.status, 200);
@@ -298,7 +308,9 @@ test("approving a reviewed download queues its playlist sync instead of waiting 
   assert.equal(changed, true);
   assert.equal(downloadTracker.getJob(jobId)?.status, "done");
   assert.equal(serverCalls.mock.calls.length, 0);
-  assert.deepEqual(takePlaylistSyncs(), [{ kind: "playback-playlist-sync", entityIds: [playlistId], attempt: 0 }]);
+  assert.deepEqual(takePlaylistSyncs(), [
+    { kind: "playback-playlist-sync", entityIds: [playlistId], attempt: 0 },
+  ]);
 });
 
 test("approving a library track does not wait for another library track's download step", async () => {
@@ -316,18 +328,21 @@ test("approving a library track does not wait for another library track's downlo
   downloadTracker.setBlocked(reviewedJobId, "blocked-duration-mismatch", sourcePath);
   const stepStarted = Promise.withResolvers();
   const releaseStep = Promise.withResolvers();
-  const step = processPipelineJob({
-    jobId: searchingJobId,
-    playlistId: "library",
-    playlistGeneration: downloadTracker.getJob(searchingJobId).playlistGeneration,
-  }, {
-    async processPipelinePayload() {
-      stepStarted.resolve();
-      await releaseStep.promise;
-      return null;
+  const step = processPipelineJob(
+    {
+      jobId: searchingJobId,
+      playlistId: "library",
+      playlistGeneration: downloadTracker.getJob(searchingJobId).playlistGeneration,
     },
-    async continuePipeline() {},
-  });
+    {
+      async processPipelinePayload() {
+        stepStarted.resolve();
+        await releaseStep.promise;
+        return null;
+      },
+      async continuePipeline() {},
+    },
+  );
 
   try {
     await stepStarted.promise;
@@ -337,7 +352,10 @@ test("approving a library track does not wait for another library track's downlo
     ]);
     assert.equal(response?.status, 200);
     assert.equal(downloadTracker.getJob(reviewedJobId)?.status, "done");
-    assert.equal(await fs.readFile(downloadTracker.getJob(reviewedJobId).finalPath, "utf8"), "reviewed audio");
+    assert.equal(
+      await fs.readFile(downloadTracker.getJob(reviewedJobId).finalPath, "utf8"),
+      "reviewed audio",
+    );
   } finally {
     releaseStep.resolve();
     await step;
@@ -377,10 +395,13 @@ test("a track committed after an approved review joins the same pending playlist
 
   takePlaylistSyncs();
   const published = [];
-  vi.spyOn(playlistManager.navidromeDestination, "publishPlaylist").mockImplementation(async (snapshot) => {
-    if (snapshot.entityId === playlistId) published.push(snapshot.tracks.map((track) => track.path));
-    return { ok: true };
-  });
+  vi.spyOn(playlistManager.navidromeDestination, "publishPlaylist").mockImplementation(
+    async (snapshot) => {
+      if (snapshot.entityId === playlistId)
+        published.push(snapshot.tracks.map((track) => track.path));
+      return { ok: true };
+    },
+  );
 
   const response = await fetch(`${baseUrl}/jobs/${reviewedJobId}/approve`, { method: "POST" });
   assert.equal(response.status, 200, JSON.stringify(await response.json()));
@@ -389,12 +410,17 @@ test("a track committed after an approved review joins the same pending playlist
   downloadTracker.setDone(pipelineJobId, pipelinePath, "Album");
   playlistManager.requestPlaylistSync([playlistId]);
   const syncs = takePlaylistSyncs();
-  assert.deepEqual(syncs, [{ kind: "playback-playlist-sync", entityIds: [playlistId], attempt: 0 }]);
+  assert.deepEqual(syncs, [
+    { kind: "playback-playlist-sync", entityIds: [playlistId], attempt: 0 },
+  ]);
   await processSystemTask(syncs[0]);
 
   assert.equal(published.length, 1);
   assert.ok(published[0].includes(pipelinePath), JSON.stringify(published));
-  assert.ok(published[0].includes(downloadTracker.getJob(reviewedJobId).finalPath), JSON.stringify(published));
+  assert.ok(
+    published[0].includes(downloadTracker.getJob(reviewedJobId).finalPath),
+    JSON.stringify(published),
+  );
 });
 
 test("approval cannot commit an orphaned job into a recreated playlist", async () => {
@@ -417,10 +443,7 @@ test("approval cannot commit an orphaned job into a recreated playlist", async (
   );
   downloadTracker.setBlocked(jobId, "blocked-duration-mismatch", sourcePath);
 
-  assert.equal(
-    activatePlaylistDownloadGeneration(playlistId),
-    cancelledGeneration + 1,
-  );
+  assert.equal(activatePlaylistDownloadGeneration(playlistId), cancelledGeneration + 1);
 
   const response = await fetch(`${baseUrl}/jobs/${jobId}/approve`, { method: "POST" });
   const payload = await response.json();
@@ -464,10 +487,7 @@ test("clearing all jobs waits for an in-flight playlist import to finish", async
   const commitPromise = withPipelineCommitLock(payload, async () => {
     enterCommit();
     await commitGate;
-    const committedPath = await downloadUtils.commitDownloadedFile(
-      sourcePath,
-      finalPath,
-    );
+    const committedPath = await downloadUtils.commitDownloadedFile(sourcePath, finalPath);
     assert.equal(downloadTracker.setDone(jobId, committedPath, "Album"), true);
     return committedPath;
   });
@@ -546,10 +566,7 @@ test("failed clear-all leaves jobs stopped and visible so provider cleanup can b
     assert.match(failedPayload.error, /stopped in Aurral and marked failed/i);
     assert.equal(stoppedJob.status, "failed");
     assert.match(stoppedJob.error, /provider cancellation pending/i);
-    assert.equal(
-      isPipelinePayloadActive({ jobId, playlistId, playlistGeneration: 0 }),
-      false,
-    );
+    assert.equal(isPipelinePayloadActive({ jobId, playlistId, playlistGeneration: 0 }), false);
     assert.equal(listDownloadProviderWork({ jobIds: [jobId] }).length, 1);
 
     providerStatus = 204;
@@ -700,9 +717,7 @@ test("records queued upgrade history if the pipeline removes the live job immedi
   try {
     assert.equal(await queueQualityUpgrade(downloadTracker.getJob(jobId)), "queued");
     assert.equal(
-      dbOps.getAurralHistory().some(
-        (entry) => entry.metadata?.trackName === "Fast failure track",
-      ),
+      dbOps.getAurralHistory().some((entry) => entry.metadata?.trackName === "Fast failure track"),
       true,
     );
   } finally {
@@ -793,9 +808,9 @@ test("search all stays within the requesting user's playlist access", async () =
     assert.equal(upgradeResponse.status, 200, JSON.stringify(upgradePayload));
     assert.equal(upgradePayload.queued, 1);
     assert.equal(upgradePayload.playlistCount, 1);
-    const queuedUpgrade = downloadTracker.getAll().find(
-      (job) => job.upgradeForJobId === ownedUpgradeId,
-    );
+    const queuedUpgrade = downloadTracker
+      .getAll()
+      .find((job) => job.upgradeForJobId === ownedUpgradeId);
     assert.equal(["pending", "downloading"].includes(queuedUpgrade?.status), true);
     assert.equal(
       downloadTracker.getAll().some((job) => job.upgradeForJobId === otherUpgradeId),
@@ -871,10 +886,9 @@ test("wanted covers every library job regardless of playlist access", async () =
     assert.equal(research.success, true);
     assert.equal(downloadTracker.getJob(missingJobId)?.status, "pending");
 
-    const upgradeResponse = await fetch(
-      `${baseUrl}/quality-upgrades/library/${lowQualityJobId}`,
-      { method: "POST" },
-    );
+    const upgradeResponse = await fetch(`${baseUrl}/quality-upgrades/library/${lowQualityJobId}`, {
+      method: "POST",
+    });
     const upgradePayload = await upgradeResponse.json();
     assert.equal(upgradeResponse.status, 200, JSON.stringify(upgradePayload));
     assert.equal(upgradePayload.queued, 1);

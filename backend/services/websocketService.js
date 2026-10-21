@@ -1,4 +1,4 @@
-import { WebSocketServer } from 'ws';
+import { WebSocketServer } from "ws";
 import { EventEmitter } from "node:events";
 import { dbOps, userOps } from "../db/helpers/index.js";
 import { logger } from "./logger.js";
@@ -30,12 +30,12 @@ class WebSocketService extends EventEmitter {
 
   initialize(server) {
     this.startTime = Date.now();
-    this.wss = new WebSocketServer({ 
+    this.wss = new WebSocketServer({
       server,
-      path: '/ws',
+      path: "/ws",
     });
 
-    this.wss.on('connection', (ws, req) => {
+    this.wss.on("connection", (ws, req) => {
       this.handleConnection(ws, req);
     });
 
@@ -74,31 +74,31 @@ class WebSocketService extends EventEmitter {
     }
 
     const clientId = this.generateClientId();
-    
+
     const client = {
       id: clientId,
       ws,
       user: sessionUser,
       authSource,
-      subscriptions: new Set(['status']),
+      subscriptions: new Set(["status"]),
       connectedAt: Date.now(),
     };
 
     this.clients.add(client);
     logger.info("system", "Client connected", { clientId, totalClients: this.clients.size });
 
-    ws.on('message', (message) => {
+    ws.on("message", (message) => {
       this.handleMessage(client, message);
     });
 
-    ws.on('close', () => {
+    ws.on("close", () => {
       this.clients.delete(client);
       delete client._lastPlaylistStatusHashByChannel;
       this.emit("subscriptions-changed");
       logger.info("system", "Client disconnected", { clientId, totalClients: this.clients.size });
     });
 
-    ws.on('error', (error) => {
+    ws.on("error", (error) => {
       logger.error("system", "Client error", { clientId, error: error.message });
       this.clients.delete(client);
       delete client._lastPlaylistStatusHashByChannel;
@@ -106,7 +106,7 @@ class WebSocketService extends EventEmitter {
     });
 
     this.send(client, {
-      type: 'connected',
+      type: "connected",
       clientId,
       subscriptions: Array.from(client.subscriptions),
     });
@@ -117,14 +117,14 @@ class WebSocketService extends EventEmitter {
       const message = JSON.parse(rawMessage.toString());
 
       switch (message.type) {
-        case 'subscribe':
+        case "subscribe":
           this.handleSubscribe(client, message.channels || []);
           break;
-        case 'unsubscribe':
+        case "unsubscribe":
           this.handleUnsubscribe(client, message.channels || []);
           break;
-        case 'ping':
-          this.send(client, { type: 'pong', timestamp: Date.now() });
+        case "ping":
+          this.send(client, { type: "pong", timestamp: Date.now() });
           break;
         default:
           logger.warn("system", "Unknown WebSocket message type", { messageType: message.type });
@@ -139,9 +139,9 @@ class WebSocketService extends EventEmitter {
       client.subscriptions.add(channel);
       if (channel === "weekly-flow") noteDeprecatedUsage("weekly-flow-channel");
     }
-    
+
     this.send(client, {
-      type: 'subscribed',
+      type: "subscribed",
       channels,
       subscriptions: Array.from(client.subscriptions),
     });
@@ -154,9 +154,9 @@ class WebSocketService extends EventEmitter {
       client._lastPlaylistStatusHashByChannel?.delete(channel);
       if (channel === "*") delete client._lastPlaylistStatusHashByChannel;
     }
-    
+
     this.send(client, {
-      type: 'unsubscribed',
+      type: "unsubscribed",
       channels,
       subscriptions: Array.from(client.subscriptions),
     });
@@ -171,7 +171,7 @@ class WebSocketService extends EventEmitter {
 
   broadcast(channel, data, { userId = null } = {}) {
     if (process.env.AURRAL_BACKGROUND_WORKER_GROUP && process.connected && process.send) {
-      process.send({ type: 'websocket-broadcast', channel, data, userId });
+      process.send({ type: "websocket-broadcast", channel, data, userId });
       return 0;
     }
     const targetUserId = userId == null ? null : Number(userId);
@@ -184,7 +184,7 @@ class WebSocketService extends EventEmitter {
     let sent = 0;
     for (const client of this.clients) {
       if (targetUserId != null && Number(client.user?.id) !== targetUserId) continue;
-      if (client.subscriptions.has(channel) || client.subscriptions.has('*')) {
+      if (client.subscriptions.has(channel) || client.subscriptions.has("*")) {
         if (client.ws.readyState === 1) {
           client.ws.send(message);
           sent++;
@@ -198,7 +198,7 @@ class WebSocketService extends EventEmitter {
   broadcastPerClient(channel, buildData) {
     let sent = 0;
     for (const client of this.clients) {
-      if (!(client.subscriptions.has(channel) || client.subscriptions.has('*'))) {
+      if (!(client.subscriptions.has(channel) || client.subscriptions.has("*"))) {
         continue;
       }
       if (client.ws.readyState !== 1) {
@@ -254,10 +254,14 @@ class WebSocketService extends EventEmitter {
   }
 
   emitDiscoveryUpdate(data, { userId = null } = {}) {
-    this.broadcast('discovery', {
-      type: 'discovery_update',
-      ...data,
-    }, { userId });
+    this.broadcast(
+      "discovery",
+      {
+        type: "discovery_update",
+        ...data,
+      },
+      { userId },
+    );
   }
 
   getStats() {

@@ -1,13 +1,6 @@
 import fs from "fs/promises";
-import {
-  buildTrackFileIndex,
-  enrichLidarrTrackWithFiles,
-} from "./libraryManager.js";
-import {
-  getPathMappings,
-  looksLikeExternalOnlyPath,
-  resolveLocalPath,
-} from "./pathMappings.js";
+import { buildTrackFileIndex, enrichLidarrTrackWithFiles } from "./libraryManager.js";
+import { getPathMappings, looksLikeExternalOnlyPath, resolveLocalPath } from "./pathMappings.js";
 function step(id, status, label, extra = {}) {
   return { id, status, label, ...extra };
 }

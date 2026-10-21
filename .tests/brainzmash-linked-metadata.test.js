@@ -108,7 +108,11 @@ const externalResponse = (url, options) => {
     };
   }
   if (url.startsWith("https://api.deezer.com/search")) {
-    return { data: [{ id: 999, name: "Queen Tribute Band", picture_big: "https://cdn.deezer.test/wrong.jpg" }] };
+    return {
+      data: [
+        { id: 999, name: "Queen Tribute Band", picture_big: "https://cdn.deezer.test/wrong.jpg" },
+      ],
+    };
   }
   if (options?.params?.method === "artist.getTopTags") {
     return {
@@ -144,7 +148,10 @@ test("artist identity comes from BrainzMash names, aliases, and linked provider 
     aliases: ["クイーン"],
     providerIds: ["412@deezer", "81013@discogs"],
   });
-  assert.equal(await musicbrainzGetArtistIdentityByMbid("56565656-5656-4565-8565-565656565656"), null);
+  assert.equal(
+    await musicbrainzGetArtistIdentityByMbid("56565656-5656-4565-8565-565656565656"),
+    null,
+  );
   assert.deepEqual(requests, []);
 });
 

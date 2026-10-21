@@ -49,11 +49,9 @@ function normalizeRootFolderPath(value) {
 }
 
 function normalizeRootFolderPaths(values) {
-  return [...new Set(
-    (Array.isArray(values) ? values : [])
-      .map(normalizeRootFolderPath)
-      .filter(Boolean),
-  )];
+  return [
+    ...new Set((Array.isArray(values) ? values : []).map(normalizeRootFolderPath).filter(Boolean)),
+  ];
 }
 
 function normalizeProfileId(value) {
@@ -74,11 +72,7 @@ function normalizeLidarrArtistId(value) {
 
 function normalizeLidarrArtistIds(values) {
   return [
-    ...new Set(
-      (Array.isArray(values) ? values : [])
-        .map(normalizeLidarrArtistId)
-        .filter(Boolean),
-    ),
+    ...new Set((Array.isArray(values) ? values : []).map(normalizeLidarrArtistId).filter(Boolean)),
   ];
 }
 
@@ -386,7 +380,8 @@ export class LidarrClient {
       previousConfig.url !== newConfig.url ||
       previousConfig.apiKey !== newConfig.apiKey ||
       previousConfig.rootFolderPath !== newConfig.rootFolderPath ||
-      JSON.stringify(previousConfig.rootFolderPaths) !== JSON.stringify(newConfig.rootFolderPaths) ||
+      JSON.stringify(previousConfig.rootFolderPaths) !==
+        JSON.stringify(newConfig.rootFolderPaths) ||
       previousConfig.insecure !== newConfig.insecure ||
       previousConfig.timeoutMs !== newConfig.timeoutMs ||
       previousConfig.circuitDisabled !== newConfig.circuitDisabled ||
@@ -635,9 +630,7 @@ export class LidarrClient {
           const responseData = error.response.data;
 
           const isMissingResource =
-            status === 404 &&
-            method === "GET" &&
-            /^\/(?:artist|album)\/\d+$/.test(endpoint);
+            status === 404 && method === "GET" && /^\/(?:artist|album)\/\d+$/.test(endpoint);
           if (!isMissingResource) {
             console.error(`Lidarr API error (${status}):`, {
               url: `${this.config.url}${this.apiPath}${endpoint}`,
@@ -792,13 +785,9 @@ export class LidarrClient {
       this._rootFoldersCache = { data: folders, at: Date.now() };
       return folders;
     }
-    const folders = mapRootFolders(await this.request(
-      "/rootFolder",
-      "GET",
-      null,
-      false,
-      { forceRefresh },
-    ));
+    const folders = mapRootFolders(
+      await this.request("/rootFolder", "GET", null, false, { forceRefresh }),
+    );
     this._rootFoldersCache = { data: folders, at: Date.now() };
     const paths = folders.map((folder) => folder.path);
     this.config.rootFolderPaths = this._persistRootFolderPaths
@@ -1046,7 +1035,11 @@ export class LidarrClient {
         .toLowerCase();
       const acceptedArtistNames = new Set(
         [canonicalName, ...(Array.isArray(identity?.aliases) ? identity.aliases : [])]
-          .map((name) => String(name || "").trim().toLowerCase())
+          .map((name) =>
+            String(name || "")
+              .trim()
+              .toLowerCase(),
+          )
           .filter(Boolean),
       );
       if (!canonicalName || !acceptedArtistNames.has(normalizedArtistName)) {
@@ -1057,12 +1050,12 @@ export class LidarrClient {
         throw error;
       }
 
-      const lookup = await this.request(
-        `/artist/lookup?term=${encodeURIComponent(canonicalName)}`,
-      );
+      const lookup = await this.request(`/artist/lookup?term=${encodeURIComponent(canonicalName)}`);
       const canonicalProviderIds = new Set(
         (Array.isArray(identity?.providerIds) ? identity.providerIds : []).map((providerId) =>
-          String(providerId || "").trim().toLowerCase(),
+          String(providerId || "")
+            .trim()
+            .toLowerCase(),
         ),
       );
       const lookupProviderIds = [];
@@ -1072,7 +1065,9 @@ export class LidarrClient {
         const providerId = String(candidate?.foreignArtistId || "").trim();
         if (
           providerId &&
-          String(candidate?.artistName || "").trim().toLowerCase() === canonicalName.toLowerCase()
+          String(candidate?.artistName || "")
+            .trim()
+            .toLowerCase() === canonicalName.toLowerCase()
         ) {
           hasCanonicalLookupMatch = true;
           const normalizedProviderId = providerId.toLowerCase();
@@ -1089,7 +1084,9 @@ export class LidarrClient {
       if (!hasCanonicalLookupMatch) return [];
       return (Array.isArray(identity?.providerIds) ? identity.providerIds : []).filter(
         (providerId) => {
-          const normalizedProviderId = String(providerId || "").trim().toLowerCase();
+          const normalizedProviderId = String(providerId || "")
+            .trim()
+            .toLowerCase();
           const providerSuffix = normalizedProviderId.split("@").pop();
           return (
             normalizedProviderId &&
@@ -1220,9 +1217,7 @@ export class LidarrClient {
       }
 
       if (this._artistListCache && Date.now() - this._artistListCache.at < LIDARR_LIST_CACHE_MS) {
-        const artists = Array.isArray(this._artistListCache.data)
-          ? this._artistListCache.data
-          : [];
+        const artists = Array.isArray(this._artistListCache.data) ? this._artistListCache.data : [];
         this._populateArtistIndexes(artists);
         const artist = artists.find(matchesArtistId) || null;
         this._setArtistByMbidCacheEntry(normalizedMbid, artist);
@@ -1459,29 +1454,23 @@ export class LidarrClient {
         index < normalizedTrackFileIds.length;
         index += LIDARR_TRACK_FILE_ID_BATCH_SIZE
       ) {
-        batches.push(
-          normalizedTrackFileIds.slice(index, index + LIDARR_TRACK_FILE_ID_BATCH_SIZE),
-        );
+        batches.push(normalizedTrackFileIds.slice(index, index + LIDARR_TRACK_FILE_ID_BATCH_SIZE));
       }
-      const results = await mapWithConcurrency(
-        batches,
-        LIDARR_MAX_CONCURRENT,
-        async (batch) => {
-          const query = batch
-            .map((trackFileId) => `trackFileIds=${encodeURIComponent(trackFileId)}`)
-            .join("&");
-          const result = await this.request(
-            `/trackfile?${query}`,
-            "GET",
-            null,
-            false,
-            requestOptions,
-          );
-          if (Array.isArray(result)) return result;
-          if (result?.records && Array.isArray(result.records)) return result.records;
-          return [];
-        },
-      );
+      const results = await mapWithConcurrency(batches, LIDARR_MAX_CONCURRENT, async (batch) => {
+        const query = batch
+          .map((trackFileId) => `trackFileIds=${encodeURIComponent(trackFileId)}`)
+          .join("&");
+        const result = await this.request(
+          `/trackfile?${query}`,
+          "GET",
+          null,
+          false,
+          requestOptions,
+        );
+        if (Array.isArray(result)) return result;
+        if (result?.records && Array.isArray(result.records)) return result.records;
+        return [];
+      });
       return results.flat();
     } catch (error) {
       if (throwOnError) throw error;
@@ -1552,7 +1541,9 @@ export class LidarrClient {
           : [];
     return candidates.find(
       (album) =>
-        String(album?.foreignAlbumId ?? "").trim().toLowerCase() === normalizedMbidKey,
+        String(album?.foreignAlbumId ?? "")
+          .trim()
+          .toLowerCase() === normalizedMbidKey,
     );
   }
 

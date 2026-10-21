@@ -22,7 +22,6 @@ const NAVIDROME_RETRYABLE_READ_ENDPOINTS = new Set([
   "getPlaylist",
 ]);
 
-
 function normalizeLibraryPath(value) {
   return String(value || "")
     .trim()
@@ -36,7 +35,9 @@ function isLegacyPlaylistLibraryPath(value) {
 }
 
 function normalizeMatchText(value) {
-  return String(value || "").trim().toLowerCase();
+  return String(value || "")
+    .trim()
+    .toLowerCase();
 }
 
 function songFilePath(song) {
@@ -95,9 +96,10 @@ export class NavidromeClient {
         }
         try {
           const endpointUrl = `${this.url}/rest/${endpoint}`;
-          const response = endpoint === "updatePlaylist"
-            ? await axios.post(endpointUrl, query, { preserveMethodOnRedirect: true })
-            : await axios.get(`${endpointUrl}?${query}`, { timeout });
+          const response =
+            endpoint === "updatePlaylist"
+              ? await axios.post(endpointUrl, query, { preserveMethodOnRedirect: true })
+              : await axios.get(`${endpointUrl}?${query}`, { timeout });
 
           if (response.data["subsonic-response"]?.status === "failed") {
             const responseError = response.data["subsonic-response"].error || {};
@@ -110,7 +112,10 @@ export class NavidromeClient {
         } catch (error) {
           const isNetworkFailure = error instanceof TypeError && !error?.response;
           if (isNetworkFailure) {
-            if (!NAVIDROME_RETRYABLE_READ_ENDPOINTS.has(endpoint) || attempt >= NAVIDROME_NETWORK_RETRIES) {
+            if (
+              !NAVIDROME_RETRYABLE_READ_ENDPOINTS.has(endpoint) ||
+              attempt >= NAVIDROME_NETWORK_RETRIES
+            ) {
               throw error;
             }
             await wait(NAVIDROME_RATE_LIMIT_DELAY_MS);
@@ -120,9 +125,10 @@ export class NavidromeClient {
           if (error.response.status !== 429 || attempt >= NAVIDROME_RATE_LIMIT_RETRIES) throw error;
           const retryAfterHeader = error.response.headers?.["retry-after"]?.trim();
           const retryAfter = Number(retryAfterHeader);
-          const delay = retryAfterHeader && Number.isFinite(retryAfter) && retryAfter >= 0
-            ? Math.min(retryAfter * 1000, NAVIDROME_RATE_LIMIT_MAX_DELAY_MS)
-            : NAVIDROME_RATE_LIMIT_DELAY_MS;
+          const delay =
+            retryAfterHeader && Number.isFinite(retryAfter) && retryAfter >= 0
+              ? Math.min(retryAfter * 1000, NAVIDROME_RATE_LIMIT_MAX_DELAY_MS)
+              : NAVIDROME_RATE_LIMIT_DELAY_MS;
           await wait(Math.max(0, delay));
         }
       }
@@ -161,17 +167,23 @@ export class NavidromeClient {
     const isTrackFile = (song) => songFilePath(song) === matchPath;
     const mbid = normalizeMatchText(track.mbid);
     const mbidMatches = mbid
-      ? (await this._searchSongs({ mbz_recording_id: mbid })).songs
-        .filter((song) => normalizeMatchText(song.mbzRecordingID) === mbid)
+      ? (await this._searchSongs({ mbz_recording_id: mbid })).songs.filter(
+          (song) => normalizeMatchText(song.mbzRecordingID) === mbid,
+        )
       : [];
     const mbidFileMatch = mbidMatches.find(isTrackFile);
     if (mbidFileMatch) return mbidFileMatch;
 
-    const libraryPaths = this._libraryPaths.map(normalizeLibraryPath).filter((libraryPath) =>
-      libraryPath && matchPath.startsWith(`${libraryPath.toLowerCase()}/`));
-    if (libraryPaths.length && await this._canFilterSongsByPath()) {
+    const libraryPaths = this._libraryPaths
+      .map(normalizeLibraryPath)
+      .filter(
+        (libraryPath) => libraryPath && matchPath.startsWith(`${libraryPath.toLowerCase()}/`),
+      );
+    if (libraryPaths.length && (await this._canFilterSongsByPath())) {
       for (const libraryPath of libraryPaths) {
-        const { songs } = await this._searchSongs({ path: trackPath.slice(libraryPath.length + 1) });
+        const { songs } = await this._searchSongs({
+          path: trackPath.slice(libraryPath.length + 1),
+        });
         const pathMatch = songs.find(isTrackFile);
         if (pathMatch) return pathMatch;
       }
@@ -192,8 +204,8 @@ export class NavidromeClient {
     if (!complete) return null;
     const candidateMatches = songs.filter(
       (song) =>
-        normalizeMatchText(song.title) === cleanTitle
-        && normalizeMatchText(song.artist) === cleanArtist,
+        normalizeMatchText(song.title) === cleanTitle &&
+        normalizeMatchText(song.artist) === cleanArtist,
     );
     if (candidateMatches.length === 1) return candidateMatches[0];
     const cleanAlbum = normalizeMatchText(track.album || track.albumName);
@@ -268,7 +280,9 @@ export class NavidromeClient {
   async getPlaylistTrackPaths(excludedIds = new Set()) {
     const account = await this.request("getUser", { username: this.user }, { timeout: 30_000 });
     if (account?.user?.adminRole !== true) {
-      throw new Error("Navidrome playlist protection requires an admin account to see private playlists");
+      throw new Error(
+        "Navidrome playlist protection requires an admin account to see private playlists",
+      );
     }
     const data = await this.request("getPlaylists", {}, { timeout: 30_000 });
     if (!data?.playlists || typeof data.playlists !== "object" || Array.isArray(data.playlists)) {
@@ -281,11 +295,15 @@ export class NavidromeClient {
     for (const playlist of playlists) {
       if (!playlist?.id) throw new Error("Navidrome playlist is missing its ID");
       if (excludedIds.has(String(playlist.id))) continue;
-      const detail = (await this.request("getPlaylist", { id: playlist.id }, { timeout: 30_000 }))?.playlist;
+      const detail = (await this.request("getPlaylist", { id: playlist.id }, { timeout: 30_000 }))
+        ?.playlist;
       const rawEntries = detail?.entry ?? [];
       const entries = Array.isArray(rawEntries) ? rawEntries : [rawEntries];
-      if (!detail || !Number.isSafeInteger(detail.songCount)
-        || entries.length !== detail.songCount) {
+      if (
+        !detail ||
+        !Number.isSafeInteger(detail.songCount) ||
+        entries.length !== detail.songCount
+      ) {
         throw new Error("Incomplete Navidrome playlist contents");
       }
       for (const entry of entries) {
@@ -323,7 +341,11 @@ export class NavidromeClient {
       playlistId: playlist.id,
       public: true,
     });
-    for (let index = PLAYLIST_SONG_BATCH_SIZE; index < ids.length; index += PLAYLIST_SONG_BATCH_SIZE) {
+    for (
+      let index = PLAYLIST_SONG_BATCH_SIZE;
+      index < ids.length;
+      index += PLAYLIST_SONG_BATCH_SIZE
+    ) {
       await this.request("updatePlaylist", {
         playlistId: playlist.id,
         songIdToAdd: ids.slice(index, index + PLAYLIST_SONG_BATCH_SIZE),
@@ -335,7 +357,9 @@ export class NavidromeClient {
   async updatePlaylist(playlistId, { name, songIds = [] } = {}) {
     const playlist = await this.getPlaylist(playlistId);
     const entries = playlist?.entry
-      ? Array.isArray(playlist.entry) ? playlist.entry : [playlist.entry]
+      ? Array.isArray(playlist.entry)
+        ? playlist.entry
+        : [playlist.entry]
       : [];
     const ids = Array.isArray(songIds) ? songIds : [];
     await this.request("updatePlaylist", {
@@ -344,7 +368,11 @@ export class NavidromeClient {
       songIndexToRemove: entries.map((_, index) => index),
       songIdToAdd: ids.slice(0, PLAYLIST_SONG_BATCH_SIZE),
     });
-    for (let index = PLAYLIST_SONG_BATCH_SIZE; index < ids.length; index += PLAYLIST_SONG_BATCH_SIZE) {
+    for (
+      let index = PLAYLIST_SONG_BATCH_SIZE;
+      index < ids.length;
+      index += PLAYLIST_SONG_BATCH_SIZE
+    ) {
       await this.request("updatePlaylist", {
         playlistId,
         songIdToAdd: ids.slice(index, index + PLAYLIST_SONG_BATCH_SIZE),
@@ -399,18 +427,21 @@ export class NavidromeClient {
   async _nativeLogin({ timeout = 0 } = {}) {
     if (!this.isConfigured()) throw new Error("Navidrome not configured");
     if (!this._nativeTokenPromise) {
-      this._nativeTokenPromise = axios.post(
-        `${this.url}/auth/login`,
-        { username: this.user, password: this.password },
-        { headers: { "Content-Type": "application/json" }, timeout },
-      ).then(({ data }) => {
-        const token = data.token || data.Token;
-        if (!token) throw new Error("No token in login response");
-        return token;
-      }).catch((error) => {
-        this._nativeTokenPromise = null;
-        throw error;
-      });
+      this._nativeTokenPromise = axios
+        .post(
+          `${this.url}/auth/login`,
+          { username: this.user, password: this.password },
+          { headers: { "Content-Type": "application/json" }, timeout },
+        )
+        .then(({ data }) => {
+          const token = data.token || data.Token;
+          if (!token) throw new Error("No token in login response");
+          return token;
+        })
+        .catch((error) => {
+          this._nativeTokenPromise = null;
+          throw error;
+        });
     }
     return this._nativeTokenPromise;
   }
@@ -455,9 +486,10 @@ export class NavidromeClient {
         if (status === 429 && rateLimitRetries < NAVIDROME_RATE_LIMIT_RETRIES) {
           const retryAfterHeader = error.response.headers?.["retry-after"]?.trim();
           const retryAfter = Number(retryAfterHeader);
-          const delay = retryAfterHeader && Number.isFinite(retryAfter) && retryAfter >= 0
-            ? Math.min(retryAfter * 1000, NAVIDROME_RATE_LIMIT_MAX_DELAY_MS)
-            : NAVIDROME_RATE_LIMIT_DELAY_MS;
+          const delay =
+            retryAfterHeader && Number.isFinite(retryAfter) && retryAfter >= 0
+              ? Math.min(retryAfter * 1000, NAVIDROME_RATE_LIMIT_MAX_DELAY_MS)
+              : NAVIDROME_RATE_LIMIT_DELAY_MS;
           rateLimitRetries += 1;
           await wait(Math.max(0, delay));
           continue;
@@ -498,14 +530,13 @@ export class NavidromeClient {
     }
   }
 
-  async uploadPlaylistArtwork(playlistId, data, filename = "cover.webp", contentType = "image/webp") {
-    return this._requestPlaylistArtwork(
-      "POST",
-      playlistId,
-      data,
-      filename,
-      contentType,
-    );
+  async uploadPlaylistArtwork(
+    playlistId,
+    data,
+    filename = "cover.webp",
+    contentType = "image/webp",
+  ) {
+    return this._requestPlaylistArtwork("POST", playlistId, data, filename, contentType);
   }
 
   async deletePlaylistArtwork(playlistId) {
@@ -542,21 +573,21 @@ export class NavidromeClient {
       const verifyLibrary = async (libraryId) => {
         const refreshed = await this.getLibraries();
         const list = Array.isArray(refreshed) ? refreshed : [];
-        const byId = libraryId == null
-          ? null
-          : list.find((library) => String(library?.id || "") === String(libraryId));
-        const verified = byId || list.find(
-          (library) => normalizeLibraryPath(library?.path) === normalizedPath,
-        );
+        const byId =
+          libraryId == null
+            ? null
+            : list.find((library) => String(library?.id || "") === String(libraryId));
+        const verified =
+          byId || list.find((library) => normalizeLibraryPath(library?.path) === normalizedPath);
         if (!verified || normalizeLibraryPath(verified.path) !== normalizedPath) {
-          throw new Error(
-            `Navidrome library path verification failed: expected ${normalizedPath}`,
-          );
+          throw new Error(`Navidrome library path verification failed: expected ${normalizedPath}`);
         }
-        this._libraryPaths = [...new Set([
-          normalizedPath,
-          ...list.map((library) => normalizeLibraryPath(library.path)).filter(Boolean),
-        ])];
+        this._libraryPaths = [
+          ...new Set([
+            normalizedPath,
+            ...list.map((library) => normalizeLibraryPath(library.path)).filter(Boolean),
+          ]),
+        ];
         return verified;
       };
       const updateAndVerify = async (library) => {
@@ -565,10 +596,12 @@ export class NavidromeClient {
       };
       const libs = await this.getLibraries();
       const list = Array.isArray(libs) ? libs : [];
-      this._libraryPaths = [...new Set([
-        normalizedPath,
-        ...list.map((lib) => normalizeLibraryPath(lib.path)).filter(Boolean),
-      ])];
+      this._libraryPaths = [
+        ...new Set([
+          normalizedPath,
+          ...list.map((lib) => normalizeLibraryPath(lib.path)).filter(Boolean),
+        ]),
+      ];
       const byPath = list.find((lib) => normalizeLibraryPath(lib.path) === normalizedPath);
       if (byPath) {
         if (byPath.name !== name) {

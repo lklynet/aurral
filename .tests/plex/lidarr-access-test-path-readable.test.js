@@ -34,9 +34,7 @@ test("pathIsReadable falls back to a mapped path when the reported path isn't di
   await fs.mkdir(path.dirname(localPath), { recursive: true });
   await fs.writeFile(localPath, "x");
   const reportedPath = "/media/Music/Artist/Track.flac";
-  const mappings = [
-    { source: "plex", remote: "/media/Music", local: path.join(tempDir, "Music") },
-  ];
+  const mappings = [{ source: "plex", remote: "/media/Music", local: path.join(tempDir, "Music") }];
   const result = await pathIsReadable(reportedPath, mappings);
   assert.equal(result, localPath);
 });

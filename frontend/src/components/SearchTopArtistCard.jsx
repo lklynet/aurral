@@ -115,7 +115,8 @@ function SearchTopArtistCard({
   const { matchArtwork: immersiveMode } = useThemeDocument();
   const result = item || legacyArtist;
   const label = getPrimaryLabel(result);
-  const backdropSrc = immersiveMode && result ? getBackdropSrc(result, artistImages, albumCovers) : "";
+  const backdropSrc =
+    immersiveMode && result ? getBackdropSrc(result, artistImages, albumCovers) : "";
   if (!result || !label) return null;
   const isArtist = result.type === "artist";
   const artistId = isArtist ? getArtistRecordId(result) : null;
@@ -165,7 +166,12 @@ function SearchTopArtistCard({
               isArtist ? "" : " search-top-artist__image-wrap--square"
             }`}
           >
-            <TopResultArtwork item={result} artistImages={artistImages} albumCovers={albumCovers} isInLibrary={isInLibrary} />
+            <TopResultArtwork
+              item={result}
+              artistImages={artistImages}
+              albumCovers={albumCovers}
+              isInLibrary={isInLibrary}
+            />
           </span>
 
           {link ? (

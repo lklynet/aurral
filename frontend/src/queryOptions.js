@@ -48,7 +48,8 @@ const normalizePlaylistJobs = (jobs) =>
 export const playlistJobsQueryOptions = (playlistId) =>
   queryOptions({
     queryKey: queryKeys.playlistJobs(playlistId),
-    queryFn: ({ signal }) => getPlaylistJobs(playlistId, null, { signal }).then(normalizePlaylistJobs),
+    queryFn: ({ signal }) =>
+      getPlaylistJobs(playlistId, null, { signal }).then(normalizePlaylistJobs),
     enabled: Boolean(playlistId),
     staleTime: 15_000,
   });

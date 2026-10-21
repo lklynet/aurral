@@ -80,7 +80,12 @@ function SearchArtistResults({
         const area = normalizeArea(artist);
         const country = artist?.country ? String(artist.country).trim() : null;
         const disambiguation = artist?.disambiguation ? String(artist.disambiguation).trim() : null;
-        const disambiguationLine = [displayArtistTypeLabel, area || country, lifeSpan, disambiguation]
+        const disambiguationLine = [
+          displayArtistTypeLabel,
+          area || country,
+          lifeSpan,
+          disambiguation,
+        ]
           .filter(Boolean)
           .join(" • ");
         const artistMetaText = [
@@ -90,7 +95,10 @@ function SearchArtistResults({
           .join(" • ");
 
         const cover = (
-          <div className={`artist-discover-card__cover${isList ? " artist-list-cover" : ""}`} data-artwork>
+          <div
+            className={`artist-discover-card__cover${isList ? " artist-list-cover" : ""}`}
+            data-artwork
+          >
             <ArtistImage
               src={artistImages[artistId] || artist.image || artist.imageUrl}
               mbid={artistId}
@@ -138,9 +146,7 @@ function SearchArtistResults({
                 aria-label={`Open ${artist.name}`}
               >
                 <Tooltip content={artist.name}>
-                  <h2 className="artist-release-card__title artist-truncate" >
-                    {artist.name}
-                  </h2>
+                  <h2 className="artist-release-card__title artist-truncate">{artist.name}</h2>
                 </Tooltip>
                 <RecommendationMeta
                   artist={artist}
@@ -149,7 +155,7 @@ function SearchArtistResults({
                 />
                 {disambiguationLine ? (
                   <Tooltip content={disambiguationLine}>
-                    <p className="artist-release-card__meta artist-truncate" >
+                    <p className="artist-release-card__meta artist-truncate">
                       {disambiguationLine}
                     </p>
                   </Tooltip>
@@ -178,11 +184,7 @@ function SearchArtistResults({
               >
                 <div className="artist-card-title-row--discover">
                   <Tooltip content={artist.name}>
-                    <h3
-                      className="artist-card-title--discover"
-                    >
-                      {artist.name}
-                    </h3>
+                    <h3 className="artist-card-title--discover">{artist.name}</h3>
                   </Tooltip>
                   {libraryLookup[artistId] && <SearchLibraryCheck />}
                 </div>
@@ -193,9 +195,7 @@ function SearchArtistResults({
                 />
                 {variant !== "round" && disambiguationLine ? (
                   <Tooltip content={disambiguationLine}>
-                    <p className="artist-card-meta--discover" >
-                      {disambiguationLine}
-                    </p>
+                    <p className="artist-card-meta--discover">{disambiguationLine}</p>
                   </Tooltip>
                 ) : null}
               </RouteLink>

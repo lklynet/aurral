@@ -62,9 +62,13 @@ test("substring search uses the trigram index with stable pagination", () => {
     albumLimit: 20,
     songLimit: 20,
   });
-  assert.deepEqual(result.tracks.tracks.map((entry) => entry.title), ["Needle Song"]);
-  const searchSql = prepared.find((sql) =>
-    sql.includes("FROM library_tracks AS track") && sql.includes("library_search_fts"));
+  assert.deepEqual(
+    result.tracks.tracks.map((entry) => entry.title),
+    ["Needle Song"],
+  );
+  const searchSql = prepared.find(
+    (sql) => sql.includes("FROM library_tracks AS track") && sql.includes("library_search_fts"),
+  );
   assert.ok(searchSql);
   assert.match(searchSql, /MATCH \?/);
   assert.match(searchSql, /ORDER BY track\.id/);
@@ -122,7 +126,10 @@ test("search keeps category matches and literal wildcards distinct after interle
     const songs = queryService.getLibrarySearchPage({ query: "literal %_ song" });
     assert.deepEqual(songs.artists, []);
     assert.deepEqual(songs.albums.albums, []);
-    assert.deepEqual(songs.tracks.tracks.map((entry) => entry.id), [first.id]);
+    assert.deepEqual(
+      songs.tracks.tracks.map((entry) => entry.id),
+      [first.id],
+    );
     const albums = queryService.getLibrarySearchPage({
       query: "literal %_ album",
       artistLimit: 0,
@@ -131,22 +138,31 @@ test("search keeps category matches and literal wildcards distinct after interle
       songLimit: 0,
     });
     assert.deepEqual(albums.artists, []);
-    assert.deepEqual(albums.albums.albums.map((entry) => entry.id), [searchAlbum.id]);
+    assert.deepEqual(
+      albums.albums.albums.map((entry) => entry.id),
+      [searchAlbum.id],
+    );
     assert.deepEqual(albums.tracks.tracks, []);
   } finally {
-    db.prepare("DELETE FROM library_album_tracks WHERE album_id IN (?, ?)")
-      .run(searchAlbum.id, laterAlbum.id);
-    db.prepare("DELETE FROM library_albums WHERE id IN (?, ?)")
-      .run(searchAlbum.id, laterAlbum.id);
-    db.prepare("DELETE FROM library_artists WHERE id IN (?, ?)")
-      .run(searchArtist.id, laterArtist.id);
+    db.prepare("DELETE FROM library_album_tracks WHERE album_id IN (?, ?)").run(
+      searchAlbum.id,
+      laterAlbum.id,
+    );
+    db.prepare("DELETE FROM library_albums WHERE id IN (?, ?)").run(searchAlbum.id, laterAlbum.id);
+    db.prepare("DELETE FROM library_artists WHERE id IN (?, ?)").run(
+      searchArtist.id,
+      laterArtist.id,
+    );
     db.prepare("DELETE FROM library_tracks WHERE id IN (?, ?)").run(first.id, plain.id);
-    db.prepare("DELETE FROM library_search_documents WHERE entity_kind = 'artist' AND entity_id IN (?, ?)")
-      .run(searchArtist.id, laterArtist.id);
-    db.prepare("DELETE FROM library_search_documents WHERE entity_kind = 'album' AND entity_id IN (?, ?)")
-      .run(searchAlbum.id, laterAlbum.id);
-    db.prepare("DELETE FROM library_search_documents WHERE entity_kind = 'track' AND entity_id IN (?, ?)")
-      .run(first.id, plain.id);
+    db.prepare(
+      "DELETE FROM library_search_documents WHERE entity_kind = 'artist' AND entity_id IN (?, ?)",
+    ).run(searchArtist.id, laterArtist.id);
+    db.prepare(
+      "DELETE FROM library_search_documents WHERE entity_kind = 'album' AND entity_id IN (?, ?)",
+    ).run(searchAlbum.id, laterAlbum.id);
+    db.prepare(
+      "DELETE FROM library_search_documents WHERE entity_kind = 'track' AND entity_id IN (?, ?)",
+    ).run(first.id, plain.id);
   }
 });
 
@@ -188,9 +204,9 @@ test("unchanged library upserts do not rewrite search documents", () => {
 test("library page search uses FTS and genre reads use the stored scan snapshot", () => {
   queryService.rebuildLibraryGenreStats();
   queryService.invalidateLibraryQueryCache({ persistedGenres: false });
-  const storedBefore = db.prepare(
-    "SELECT key, value FROM settings WHERE key LIKE 'libraryGenreStats:%' ORDER BY key",
-  ).all();
+  const storedBefore = db
+    .prepare("SELECT key, value FROM settings WHERE key LIKE 'libraryGenreStats:%' ORDER BY key")
+    .all();
   const prepared = [];
   const prepare = db.prepare.bind(db);
   vi.spyOn(db, "prepare").mockImplementation((sql) => {
@@ -205,9 +221,13 @@ test("library page search uses FTS and genre reads use the stored scan snapshot"
     source: "lidarr",
     query: "Needle",
   });
-  assert.deepEqual(page.tracks.map((entry) => entry.title), ["Needle Song"]);
-  const pageSearchSql = prepared.find((sql) =>
-    sql.includes("COUNT(DISTINCT track.id)") && sql.includes("library_search_fts MATCH ?"));
+  assert.deepEqual(
+    page.tracks.map((entry) => entry.title),
+    ["Needle Song"],
+  );
+  const pageSearchSql = prepared.find(
+    (sql) => sql.includes("COUNT(DISTINCT track.id)") && sql.includes("library_search_fts MATCH ?"),
+  );
   assert.ok(pageSearchSql);
   const plan = prepare(`EXPLAIN QUERY PLAN ${pageSearchSql}`).all(
     '"nee" AND "eed" AND "edl" AND "dle"',
@@ -217,10 +237,13 @@ test("library page search uses FTS and genre reads use the stored scan snapshot"
     "%needle%",
   );
   assert.ok(plan.some((row) => row.detail.includes("SCAN search_fts VIRTUAL TABLE")));
-  assert.ok(plan.some((row) =>
-    row.detail.includes("idx_library_media_files_track_album_source_available")));
+  assert.ok(
+    plan.some((row) => row.detail.includes("idx_library_media_files_track_album_source_available")),
+  );
   assert.deepEqual(
-    prepare("SELECT key, value FROM settings WHERE key LIKE 'libraryGenreStats:%' ORDER BY key").all(),
+    prepare(
+      "SELECT key, value FROM settings WHERE key LIKE 'libraryGenreStats:%' ORDER BY key",
+    ).all(),
     storedBefore,
   );
 });
@@ -232,7 +255,8 @@ test("search documents update transactionally and random reads use rowid samplin
     artistName: artist.name,
   });
   assert.equal(
-    queryService.getLibrarySearchPage({ query: "Renamed Needle", songLimit: 20 }).tracks.tracks[0].title,
+    queryService.getLibrarySearchPage({ query: "Renamed Needle", songLimit: 20 }).tracks.tracks[0]
+      .title,
     "Renamed Needle Song",
   );
 
@@ -250,13 +274,18 @@ test("search documents update transactionally and random reads use rowid samplin
     limit: 1,
   });
   assert.equal(result.tracks.length, 1);
-  const randomSql = prepared.find((sql) => sql.includes("FROM library_tracks AS track") && sql.includes("track.id >= ?"));
+  const randomSql = prepared.find(
+    (sql) => sql.includes("FROM library_tracks AS track") && sql.includes("track.id >= ?"),
+  );
   assert.ok(randomSql);
   assert.match(randomSql, /ORDER BY track\.id/);
   assert.doesNotMatch(randomSql, /random\(\)/i);
   const plan = prepare(`EXPLAIN QUERY PLAN ${randomSql}`).all(2, 1);
   assert.ok(plan.some((row) => row.detail.includes("SEARCH track USING INTEGER PRIMARY KEY")));
-  assert.equal(plan.some((row) => row.detail.includes("USE TEMP B-TREE")), false);
+  assert.equal(
+    plan.some((row) => row.detail.includes("USE TEMP B-TREE")),
+    false,
+  );
 });
 
 test("artist pages project a large discography without library row hydration", () => {
@@ -303,15 +332,17 @@ test("artist pages project a large discography without library row hydration", (
     assert.equal(page.items[0].albumCount, albumCount);
     assert.deepEqual(page.items[0].albumIds, []);
     assert.equal(
-      prepared.filter((sql) =>
-        sql.includes("track.id AS track_id") && sql.includes("media.id AS media_id"),
+      prepared.filter(
+        (sql) => sql.includes("track.id AS track_id") && sql.includes("media.id AS media_id"),
       ).length,
       0,
     );
   } finally {
     spy.mockRestore();
     db.prepare("DELETE FROM library_media_files WHERE path LIKE ?").run(`/tmp/${key}/%`);
-    db.prepare("DELETE FROM library_album_tracks WHERE album_id IN (SELECT id FROM library_albums WHERE identity_key LIKE ?)").run(`${key}:album:%`);
+    db.prepare(
+      "DELETE FROM library_album_tracks WHERE album_id IN (SELECT id FROM library_albums WHERE identity_key LIKE ?)",
+    ).run(`${key}:album:%`);
     db.prepare("DELETE FROM library_tracks WHERE identity_key LIKE ?").run(`${key}:track:%`);
     db.prepare("DELETE FROM library_albums WHERE identity_key LIKE ?").run(`${key}:album:%`);
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
@@ -370,8 +401,8 @@ test("album track pages count and hydrate only the requested track slice", () =>
       sort: "name",
       direction: "desc",
     });
-    const hydration = prepared.filter((sql) =>
-      sql.includes("track.id AS track_id") && sql.includes("media.id AS media_id"),
+    const hydration = prepared.filter(
+      (sql) => sql.includes("track.id AS track_id") && sql.includes("media.id AS media_id"),
     );
     assert.equal(hydration.length, 1);
     assert.match(hydration[0], /track\.id IN \(\?,\?,\?\)/);
@@ -383,8 +414,9 @@ test("album track pages count and hydrate only the requested track slice", () =>
     assert.equal(page.albums[0].identityKey, `${key}:album`);
     assert.equal(page.artists[0].identityKey, `${key}:artist`);
     assert.ok(page.items.some((track) => track.files.length === 0));
-    assert.ok(page.items.every((track) =>
-      track.albums.every((relation) => relation.albumId === album.id)));
+    assert.ok(
+      page.items.every((track) => track.albums.every((relation) => relation.albumId === album.id)),
+    );
   } finally {
     spy.mockRestore();
     db.prepare("DELETE FROM library_media_files WHERE path LIKE ?").run(`/tmp/${key}/%`);

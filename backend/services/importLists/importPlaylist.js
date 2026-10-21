@@ -31,10 +31,9 @@ export async function fetchImportedPlaylistTracks({
     return lastfmStationClient.getStationTracks(userId, externalId, externalUsername);
   }
   if (provider === "youtube-music-playlist") {
-    const { tracks, stats, excluded } = await youtubeMusicPlaylistClient.getPlaylist(
-      externalId,
-      { forceRefresh },
-    );
+    const { tracks, stats, excluded } = await youtubeMusicPlaylistClient.getPlaylist(externalId, {
+      forceRefresh,
+    });
     return { tracks, stats, excluded };
   }
   if (provider === "deezer-playlist") {

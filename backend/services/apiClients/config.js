@@ -1,7 +1,10 @@
 import { createHash } from "node:crypto";
 import { isPublicUrl } from "../../../lib/publicUrl.js";
 import { dbOps } from "../../db/helpers/index.js";
-import { getMetadataBaseUrl, getMetadataProviderHealthSnapshot as getBrainzmashHealthSnapshot } from "../providers/brainzmashProvider.js";
+import {
+  getMetadataBaseUrl,
+  getMetadataProviderHealthSnapshot as getBrainzmashHealthSnapshot,
+} from "../providers/brainzmashProvider.js";
 
 export const getLastfmApiKey = () => {
   const settings = dbOps.getSettings();
@@ -41,40 +44,125 @@ export const DEFAULT_NEWS_FEEDS = [
   { name: "Consequence", url: "https://consequence.net/feed/", group: "major", builtIn: true },
   { name: "NME", url: "https://www.nme.com/feed", group: "major", builtIn: true },
   { name: "NPR Music", url: "https://feeds.npr.org/1039/rss.xml", group: "major", builtIn: true },
-  { name: "Pitchfork", url: "https://pitchfork.com/feed/feed-news/rss", group: "major", builtIn: true },
-  { name: "Rolling Stone Music", url: "https://www.rollingstone.com/music/music-news/feed/", group: "major", builtIn: true },
-  { name: "The Guardian Music", url: "https://www.theguardian.com/music/rss", group: "major", builtIn: true },
-  { name: "uDiscover Music", url: "https://www.udiscovermusic.com/feed/", group: "major", builtIn: true },
+  {
+    name: "Pitchfork",
+    url: "https://pitchfork.com/feed/feed-news/rss",
+    group: "major",
+    builtIn: true,
+  },
+  {
+    name: "Rolling Stone Music",
+    url: "https://www.rollingstone.com/music/music-news/feed/",
+    group: "major",
+    builtIn: true,
+  },
+  {
+    name: "The Guardian Music",
+    url: "https://www.theguardian.com/music/rss",
+    group: "major",
+    builtIn: true,
+  },
+  {
+    name: "uDiscover Music",
+    url: "https://www.udiscovermusic.com/feed/",
+    group: "major",
+    builtIn: true,
+  },
   { name: "Stereogum", url: "https://www.stereogum.com/feed/", group: "indie", builtIn: true },
-  { name: "Alternative Press", url: "https://www.altpress.com/feed/", group: "indie", builtIn: true },
-  { name: "BrooklynVegan", url: "https://www.brooklynvegan.com/feed/", group: "indie", builtIn: true },
-  { name: "Gorilla vs. Bear", url: "https://www.gorillavsbear.net/feed/", group: "indie", builtIn: true },
-  { name: "Atwood Magazine", url: "https://atwoodmagazine.com/feed/", group: "indie", builtIn: true },
+  {
+    name: "Alternative Press",
+    url: "https://www.altpress.com/feed/",
+    group: "indie",
+    builtIn: true,
+  },
+  {
+    name: "BrooklynVegan",
+    url: "https://www.brooklynvegan.com/feed/",
+    group: "indie",
+    builtIn: true,
+  },
+  {
+    name: "Gorilla vs. Bear",
+    url: "https://www.gorillavsbear.net/feed/",
+    group: "indie",
+    builtIn: true,
+  },
+  {
+    name: "Atwood Magazine",
+    url: "https://atwoodmagazine.com/feed/",
+    group: "indie",
+    builtIn: true,
+  },
   { name: "Stereofox", url: "https://www.stereofox.com/feed/", group: "discovery", builtIn: true },
-  { name: "New Music Buff", url: "https://newmusicbuff.com/feed/", group: "discovery", builtIn: true },
+  {
+    name: "New Music Buff",
+    url: "https://newmusicbuff.com/feed/",
+    group: "discovery",
+    builtIn: true,
+  },
   { name: "HighClouds", url: "https://highclouds.org/feed/", group: "discovery", builtIn: true },
   { name: "Fluxblog", url: "https://fluxblog.org/feed/", group: "discovery", builtIn: true },
-  { name: "Indie Music Filter", url: "https://indiemusicfilter.com/feed/", group: "discovery", builtIn: true },
+  {
+    name: "Indie Music Filter",
+    url: "https://indiemusicfilter.com/feed/",
+    group: "discovery",
+    builtIn: true,
+  },
   { name: "Hip-Hop Wired", url: "https://hiphopwired.com/feed/", group: "hiphop", builtIn: true },
   { name: "Rap Radar", url: "https://rapradar.com/feed/", group: "hiphop", builtIn: true },
   { name: "This Is RnB", url: "https://thisisrnb.com/feed/", group: "hiphop", builtIn: true },
   { name: "Popjustice", url: "https://popjustice.com/feed/", group: "pop", builtIn: true },
   { name: "EQ Music", url: "https://eqmusicblog.com/feed/", group: "pop", builtIn: true },
-  { name: "This Must Be Pop", url: "https://www.thismustbepop.com/feed/", group: "pop", builtIn: true },
-  { name: "Dancing Astronaut", url: "https://dancingastronaut.com/feed/", group: "electronic", builtIn: true },
+  {
+    name: "This Must Be Pop",
+    url: "https://www.thismustbepop.com/feed/",
+    group: "pop",
+    builtIn: true,
+  },
+  {
+    name: "Dancing Astronaut",
+    url: "https://dancingastronaut.com/feed/",
+    group: "electronic",
+    builtIn: true,
+  },
   { name: "EDM Sauce", url: "https://www.edmsauce.com/feed/", group: "electronic", builtIn: true },
-  { name: "Metal Injection", url: "https://metalinjection.net/feed", group: "metal", builtIn: true },
+  {
+    name: "Metal Injection",
+    url: "https://metalinjection.net/feed",
+    group: "metal",
+    builtIn: true,
+  },
   { name: "MetalSucks", url: "https://www.metalsucks.net/feed/", group: "metal", builtIn: true },
-  { name: "Saving Country Music", url: "https://www.savingcountrymusic.com/feed/", group: "country", builtIn: true },
+  {
+    name: "Saving Country Music",
+    url: "https://www.savingcountrymusic.com/feed/",
+    group: "country",
+    builtIn: true,
+  },
   { name: "The Boot", url: "https://theboot.com/feed/", group: "country", builtIn: true },
   { name: "No Depression", url: "https://nodepression.com/feed/", group: "country", builtIn: true },
   { name: "Jazz Journal", url: "https://jazzjournal.co.uk/feed/", group: "jazz", builtIn: true },
   { name: "Nextbop", url: "https://nextbop.com/feed/", group: "jazz", builtIn: true },
   { name: "All About Jazz", url: "https://www.allaboutjazz.com/rss", group: "jazz", builtIn: true },
   { name: "Slipped Disc", url: "https://slippedisc.com/feed/", group: "classical", builtIn: true },
-  { name: "I Care if You Listen", url: "https://icareifyoulisten.com/feed/", group: "classical", builtIn: true },
-  { name: "The AU Review", url: "https://www.theaureview.com/feed/", group: "regional", builtIn: true },
-  { name: "Grimy Goods", url: "https://www.grimygoods.com/feed/", group: "regional", builtIn: true },
+  {
+    name: "I Care if You Listen",
+    url: "https://icareifyoulisten.com/feed/",
+    group: "classical",
+    builtIn: true,
+  },
+  {
+    name: "The AU Review",
+    url: "https://www.theaureview.com/feed/",
+    group: "regional",
+    builtIn: true,
+  },
+  {
+    name: "Grimy Goods",
+    url: "https://www.grimygoods.com/feed/",
+    group: "regional",
+    builtIn: true,
+  },
   { name: "Jambase", url: "https://www.jambase.com/feed", group: "concerts", builtIn: true },
 ].map((feed) => ({
   ...feed,
@@ -92,8 +180,9 @@ const RETIRED_NEWS_FEED_URLS = new Set([
 
 export const normalizeNewsFeeds = (storedFeeds) => {
   const builtInsByUrl = new Map(DEFAULT_NEWS_FEEDS.map((feed) => [feed.url, feed]));
-  const feeds = (Array.isArray(storedFeeds) ? storedFeeds : [])
-    .filter((feed) => !RETIRED_NEWS_FEED_URLS.has(String(feed?.url || "").trim()));
+  const feeds = (Array.isArray(storedFeeds) ? storedFeeds : []).filter(
+    (feed) => !RETIRED_NEWS_FEED_URLS.has(String(feed?.url || "").trim()),
+  );
   const storedByUrl = new Map(feeds.map((feed) => [String(feed?.url || "").trim(), feed]));
   const source = [
     ...DEFAULT_NEWS_FEEDS.map((feed) => {
@@ -115,10 +204,17 @@ export const normalizeNewsFeeds = (storedFeeds) => {
         return null;
       }
       return {
-        id: String(feed?.id || builtIn?.id || createHash("sha1").update(url).digest("hex").slice(0, 12)),
-        name: String(feed?.name || builtIn?.name || hostname).trim().slice(0, 100),
+        id: String(
+          feed?.id || builtIn?.id || createHash("sha1").update(url).digest("hex").slice(0, 12),
+        ),
+        name: String(feed?.name || builtIn?.name || hostname)
+          .trim()
+          .slice(0, 100),
         url,
-        group: String(feed?.group || builtIn?.group || "custom").trim().toLowerCase() || "custom",
+        group:
+          String(feed?.group || builtIn?.group || "custom")
+            .trim()
+            .toLowerCase() || "custom",
         enabled: feed?.enabled !== false,
         builtIn: Boolean(builtIn),
       };
@@ -151,9 +247,7 @@ export const getNewsSettings = () => {
 export const getMusicBrainzContact = () => {
   const settings = dbOps.getSettings();
   return (
-    settings.integrations?.musicbrainz?.email ||
-    process.env.CONTACT_EMAIL ||
-    "user@example.com"
+    settings.integrations?.musicbrainz?.email || process.env.CONTACT_EMAIL || "user@example.com"
   );
 };
 

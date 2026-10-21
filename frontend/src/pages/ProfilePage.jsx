@@ -45,7 +45,11 @@ function ProfilePage() {
           aria-busy={account.saving}
           aria-hidden={!account.saving}
         >
-          {account.saving ? <><DotLoader size="sm" label={null} /> Saving…</> : null}
+          {account.saving ? (
+            <>
+              <DotLoader size="sm" label={null} /> Saving…
+            </>
+          ) : null}
         </span>
       </div>
 

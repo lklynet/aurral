@@ -149,7 +149,10 @@ export function SettingsConnectTab({
       setTestStatus({ tone: "success", message: "Test notification sent." });
       showSuccess("Test notification sent.");
     } catch (err) {
-      setTestStatus({ tone: "error", message: "Test failed. Check the URL and token, then retry." });
+      setTestStatus({
+        tone: "error",
+        message: "Test failed. Check the URL and token, then retry.",
+      });
       const msg = err.response?.data?.message || err.response?.data?.error || err.message;
       showError(`Gotify test failed: ${msg}`);
     } finally {
@@ -201,8 +204,7 @@ export function SettingsConnectTab({
       showSuccess("Test webhook sent.");
     } catch (err) {
       if (webhookRevisionRef.current !== testRevision) return;
-      const message =
-        err.response?.data?.message || err.response?.data?.error || err.message;
+      const message = err.response?.data?.message || err.response?.data?.error || err.message;
       setWebhookTestStatus({
         index,
         tone: "error",
@@ -309,11 +311,7 @@ export function SettingsConnectTab({
             </button>
           }
         >
-          {!webhooks.length ? (
-            <p className="arr-form-help">
-              No webhooks configured.
-            </p>
-          ) : null}
+          {!webhooks.length ? <p className="arr-form-help">No webhooks configured.</p> : null}
 
           {webhooks.map((wh, index) => (
             <div
@@ -394,11 +392,7 @@ export function SettingsConnectTab({
               <SettingsArrFormGroup
                 label="Body"
                 size="large"
-                help={
-                  wh.body === null
-                    ? "JSON or text sent with each notification."
-                    : undefined
-                }
+                help={wh.body === null ? "JSON or text sent with each notification." : undefined}
               >
                 {wh.body === null ? (
                   <button
@@ -539,49 +533,52 @@ export function SettingsConnectTab({
               onChange={(e) => updateInbox({ enabled: e.target.checked })}
             />
           </SettingsArrFormGroup>
-          <div className={`settings-inbox-preferences${inbox.enabled === false ? " is-disabled" : ""}`} aria-disabled={inbox.enabled === false}>
-          <SettingsArrFormGroup label="Upcoming releases" labelFor="inbox-releases">
-            <PillToggle
-              id="inbox-releases"
-              disabled={inbox.enabled === false}
-              checked={inbox.releases !== false}
-              aria-label="Show upcoming releases in inbox"
-              onChange={(e) => updateInbox({ releases: e.target.checked })}
-            />
-          </SettingsArrFormGroup>
-          <SettingsArrFormGroup label="Upcoming shows" labelFor="inbox-shows">
-            <PillToggle
-              id="inbox-shows"
-              checked={inbox.shows !== false}
-              aria-label="Show upcoming shows in inbox"
-              onChange={(e) => updateInbox({ shows: e.target.checked })}
-            />
-          </SettingsArrFormGroup>
-          <SettingsArrFormGroup label="Library artist news" labelFor="inbox-news">
-            <PillToggle
-              id="inbox-news"
-              checked={inbox.news !== false}
-              aria-label="Show library artist news in inbox"
-              onChange={(e) => updateInbox({ news: e.target.checked })}
-            />
-          </SettingsArrFormGroup>
-          <SettingsArrFormGroup label="Recommended artist news" labelFor="inbox-recommended-news">
-            <PillToggle
-              id="inbox-recommended-news"
-              checked={inbox.recommendedNews === true}
-              aria-label="Show recommended artist news in inbox"
-              onChange={(e) => updateInbox({ recommendedNews: e.target.checked })}
-            />
-          </SettingsArrFormGroup>
-          <SettingsArrFormGroup label="Discoveries" labelFor="inbox-discoveries">
-            <PillToggle
-              id="inbox-discoveries"
-              disabled={inbox.enabled === false}
-              checked={inbox.discoveries !== false}
-              aria-label="Show discoveries in inbox"
-              onChange={(e) => updateInbox({ discoveries: e.target.checked })}
-            />
-          </SettingsArrFormGroup>
+          <div
+            className={`settings-inbox-preferences${inbox.enabled === false ? " is-disabled" : ""}`}
+            aria-disabled={inbox.enabled === false}
+          >
+            <SettingsArrFormGroup label="Upcoming releases" labelFor="inbox-releases">
+              <PillToggle
+                id="inbox-releases"
+                disabled={inbox.enabled === false}
+                checked={inbox.releases !== false}
+                aria-label="Show upcoming releases in inbox"
+                onChange={(e) => updateInbox({ releases: e.target.checked })}
+              />
+            </SettingsArrFormGroup>
+            <SettingsArrFormGroup label="Upcoming shows" labelFor="inbox-shows">
+              <PillToggle
+                id="inbox-shows"
+                checked={inbox.shows !== false}
+                aria-label="Show upcoming shows in inbox"
+                onChange={(e) => updateInbox({ shows: e.target.checked })}
+              />
+            </SettingsArrFormGroup>
+            <SettingsArrFormGroup label="Library artist news" labelFor="inbox-news">
+              <PillToggle
+                id="inbox-news"
+                checked={inbox.news !== false}
+                aria-label="Show library artist news in inbox"
+                onChange={(e) => updateInbox({ news: e.target.checked })}
+              />
+            </SettingsArrFormGroup>
+            <SettingsArrFormGroup label="Recommended artist news" labelFor="inbox-recommended-news">
+              <PillToggle
+                id="inbox-recommended-news"
+                checked={inbox.recommendedNews === true}
+                aria-label="Show recommended artist news in inbox"
+                onChange={(e) => updateInbox({ recommendedNews: e.target.checked })}
+              />
+            </SettingsArrFormGroup>
+            <SettingsArrFormGroup label="Discoveries" labelFor="inbox-discoveries">
+              <PillToggle
+                id="inbox-discoveries"
+                disabled={inbox.enabled === false}
+                checked={inbox.discoveries !== false}
+                aria-label="Show discoveries in inbox"
+                onChange={(e) => updateInbox({ discoveries: e.target.checked })}
+              />
+            </SettingsArrFormGroup>
           </div>
         </SettingsArrFieldSet>
       </form>
@@ -653,7 +650,8 @@ export function SettingsConnectTab({
       {activeModal === "lastfm" && (
         <SettingsIntegrationModal title="Last.fm" onClose={() => setActiveModal(null)}>
           <SettingsModalIntro>
-            Uses ListenBrainz until you add a Last.fm API key. Last.fm gives closer matches. Scrobbling also needs the API secret.
+            Uses ListenBrainz until you add a Last.fm API key. Last.fm gives closer matches.
+            Scrobbling also needs the API secret.
           </SettingsModalIntro>
           <SettingsModalSection title="API">
             <SettingsModalField label="API key">
@@ -745,7 +743,8 @@ export function SettingsConnectTab({
       {activeModal === "google" && (
         <SettingsIntegrationModal title="Google" onClose={() => setActiveModal(null)}>
           <SettingsModalIntro>
-            Users can sign in after linking Google in Profile. Google cannot create accounts or change roles.
+            Users can sign in after linking Google in Profile. Google cannot create accounts or
+            change roles.
           </SettingsModalIntro>
           <SettingsModalCallout>
             Create an OAuth client at{" "}
@@ -798,7 +797,6 @@ export function SettingsConnectTab({
           </SettingsModalSection>
         </SettingsIntegrationModal>
       )}
-
     </div>
   );
 }

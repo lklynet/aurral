@@ -4,11 +4,7 @@ import fs from "fs/promises";
 import path from "path";
 import { parseFile } from "music-metadata";
 import { dbOps, userOps } from "../db/helpers/index.js";
-import {
-  AUDIO_EXTENSIONS,
-  buildMetadataRecord,
-  scanMusicRoot,
-} from "./libraryFileScanner.js";
+import { AUDIO_EXTENSIONS, buildMetadataRecord, scanMusicRoot } from "./libraryFileScanner.js";
 import { getLibraryMediaFile } from "./libraryMediaStore.js";
 import { downloadTracker } from "./downloadJobs/downloadTracker.js";
 import { flowPlaylistConfig } from "./playlists/flowPlaylistConfig.js";
@@ -26,13 +22,7 @@ export const AURRAL_DOWNLOAD_FOLDER_MIGRATION_SETTING = "aurralDownloadFolderMig
 
 const LEGACY_PLAYLIST_ROOTS = [PLAYLIST_FILES_DIR, "aurral-playlists"];
 const PLAYBACK_RETENTION_REASON = "retained for playback playlist protection";
-const PARTIAL_EXTENSIONS = new Set([
-  ".crdownload",
-  ".download",
-  ".part",
-  ".partial",
-  ".tmp",
-]);
+const PARTIAL_EXTENSIONS = new Set([".crdownload", ".download", ".part", ".partial", ".tmp"]);
 const UNKNOWN_IDENTITY_VALUES = new Set([
   "unknown",
   "unknown artist",
@@ -105,7 +95,9 @@ function configuredLidarrRoots(options) {
 
 function isPartialFile(filePath, stat) {
   const extension = path.extname(filePath).toLowerCase();
-  return stat.size <= 0 || PARTIAL_EXTENSIONS.has(extension) || path.basename(filePath).startsWith(".");
+  return (
+    stat.size <= 0 || PARTIAL_EXTENSIONS.has(extension) || path.basename(filePath).startsWith(".")
+  );
 }
 
 function isCandidateFile(filePath) {
@@ -154,7 +146,10 @@ function pathIdentity(sourcePath, rootPath, playlistId, isLegacyRoot) {
   const parts = relative.slice(start);
   if (parts.length !== 3) return null;
   const fileName = parts.at(-1);
-  const title = path.basename(fileName, path.extname(fileName)).replace(/^\d+(?:[. _-]+|$)/, "").trim();
+  const title = path
+    .basename(fileName, path.extname(fileName))
+    .replace(/^\d+(?:[. _-]+|$)/, "")
+    .trim();
   return {
     playlistId,
     artistName: parts.at(-3) || null,
@@ -298,9 +293,9 @@ function updateJobPaths(jobs, destination) {
     }
     const updated = downloadTracker.getJob(job.id);
     if (
-      !updated
-      || updated.status !== "done"
-      || path.resolve(String(updated.finalPath || "")) !== path.resolve(destination)
+      !updated ||
+      updated.status !== "done" ||
+      path.resolve(String(updated.finalPath || "")) !== path.resolve(destination)
     ) {
       throw new Error(`Tracker path was not persisted for job ${job.id}`);
     }
@@ -347,8 +342,9 @@ async function resolveIdentity(sourcePath, rootPath, playlistId, jobs, metadataR
     [candidate.artistName, candidate.albumName, candidate.trackName].every((value) => text(value)),
   );
   const jobIdentities = new Set(
-    completeJobs
-      .map((candidate) => [candidate.artistName, candidate.albumName, candidate.trackName].map(text).join("\u0000")),
+    completeJobs.map((candidate) =>
+      [candidate.artistName, candidate.albumName, candidate.trackName].map(text).join("\u0000"),
+    ),
   );
   if (jobIdentities.size > 1) return null;
   const job = completeJobs[0] || jobs[0] || null;
@@ -460,9 +456,7 @@ async function commitIndexedMigrationItem({
 
 function resolveOwnership(sourcePath, rootPath, jobs, knownIds) {
   const pathPlaylistId = legacyPlaylistId(sourcePath, rootPath, knownIds);
-  const candidates = jobs
-    .map((job) => jobPlaylistId(job))
-    .filter(Boolean);
+  const candidates = jobs.map((job) => jobPlaylistId(job)).filter(Boolean);
   const playlistIds = [...new Set([...candidates, pathPlaylistId].filter(Boolean))];
   const sharedId = playlistIds.find((id) => flowPlaylistConfig.getStaticPlaylist(id)) || null;
   const flowId = playlistIds.find((id) => flowPlaylistConfig.getFlow(id)) || null;
@@ -481,7 +475,15 @@ export async function migrateAurralDownloadFolder(options = {}) {
   if (lidarrRoots.some((candidate) => pathsOverlap(rootPath, candidate))) {
     const reason = "Aurral DL_FOLDER overlaps a configured Lidarr root";
     log(logger, "error", `[AurralMigration] ${reason}`);
-    return { status: "blocked", rootPath, reason, scanned: 0, migrated: 0, removed: 0, retained: 0 };
+    return {
+      status: "blocked",
+      rootPath,
+      reason,
+      scanned: 0,
+      migrated: 0,
+      removed: 0,
+      retained: 0,
+    };
   }
 
   const state = loadMigrationState(rootPath);
@@ -535,13 +537,18 @@ export async function migrateAurralDownloadFolder(options = {}) {
     failures: [],
   };
 
-  const { isPlaybackRetainedFile, createPlaybackDeletionGuard } = await import("./playback/playbackFileRetention.js");
+  const { isPlaybackRetainedFile, createPlaybackDeletionGuard } =
+    await import("./playback/playbackFileRetention.js");
   const deletionGuards = new Map();
   const getDeletionGuard = (playlistId) => {
     if (!deletionGuards.has(playlistId)) {
-      deletionGuards.set(playlistId, createPlaybackDeletionGuard({
-        excludeEntityIds: [playlistId], playlistRoot: rootPath,
-      }));
+      deletionGuards.set(
+        playlistId,
+        createPlaybackDeletionGuard({
+          excludeEntityIds: [playlistId],
+          playlistRoot: rootPath,
+        }),
+      );
     }
     return deletionGuards.get(playlistId);
   };
@@ -583,11 +590,20 @@ export async function migrateAurralDownloadFolder(options = {}) {
           continue;
         }
         await removeSource(sourcePath, rootPath);
-        state.items[sourcePath] = { status: "removed", reason: "unkept flow media", updatedAt: Date.now() };
+        state.items[sourcePath] = {
+          status: "removed",
+          reason: "unkept flow media",
+          updatedAt: Date.now(),
+        };
         saveMigrationState(state);
         result.removed += 1;
       } catch (error) {
-        retainItem(state, sourcePath, `could not remove unkept flow media: ${error.message}`, logger);
+        retainItem(
+          state,
+          sourcePath,
+          `could not remove unkept flow media: ${error.message}`,
+          logger,
+        );
         result.failed += 1;
         result.failures.push({ sourcePath, reason: error.message });
       }
@@ -596,7 +612,13 @@ export async function migrateAurralDownloadFolder(options = {}) {
 
     let identity;
     try {
-      identity = await resolveIdentity(sourcePath, rootPath, playlistId, jobsForSource, metadataReader);
+      identity = await resolveIdentity(
+        sourcePath,
+        rootPath,
+        playlistId,
+        jobsForSource,
+        metadataReader,
+      );
     } catch (error) {
       retainItem(state, sourcePath, `could not resolve media identity: ${error.message}`, logger);
       result.retained += 1;
@@ -617,11 +639,16 @@ export async function migrateAurralDownloadFolder(options = {}) {
       result.retained += 1;
       continue;
     }
-    const destination = previous.destination || path.resolve(
-      rootPath,
-      buildAurralTrackDestination(playlistId, artistDir, albumDir, { ephemeral: Boolean(flow), root: rootPath }),
-      `${trackName}${path.extname(sourcePath).toLowerCase() || ".mp3"}`,
-    );
+    const destination =
+      previous.destination ||
+      path.resolve(
+        rootPath,
+        buildAurralTrackDestination(playlistId, artistDir, albumDir, {
+          ephemeral: Boolean(flow),
+          root: rootPath,
+        }),
+        `${trackName}${path.extname(sourcePath).toLowerCase() || ".mp3"}`,
+      );
     if (!isPathInsideRoot(destination, rootPath)) {
       retainItem(state, sourcePath, "destination escaped Aurral root", logger);
       result.retained += 1;
@@ -640,7 +667,9 @@ export async function migrateAurralDownloadFolder(options = {}) {
       }
       if (
         !destinationMatches ||
-        (previous.status !== "copied" && previous.status !== "indexed" && previous.status !== "referenced")
+        (previous.status !== "copied" &&
+          previous.status !== "indexed" &&
+          previous.status !== "referenced")
       ) {
         committedPath = await copyWithoutRemovingSource(sourcePath, destination);
         state.items[sourcePath] = {
@@ -730,7 +759,12 @@ export async function migrateAurralDownloadFolder(options = {}) {
         if (completed) result.migrated += 1;
         else result.retained += 1;
       } catch (error) {
-        retainItem(state, entry.sourcePath, `migration verification failed: ${error.message}`, logger);
+        retainItem(
+          state,
+          entry.sourcePath,
+          `migration verification failed: ${error.message}`,
+          logger,
+        );
         result.failed += 1;
         result.failures.push({ sourcePath: entry.sourcePath, reason: error.message });
       }
@@ -739,8 +773,8 @@ export async function migrateAurralDownloadFolder(options = {}) {
 
   for (const [sourcePath, item] of Object.entries(state.items)) {
     if (fileSet.has(sourcePath)) continue;
-    const retainedIndexedSource = item?.status === "retained"
-      && item.reason === PLAYBACK_RETENTION_REASON && item.destination;
+    const retainedIndexedSource =
+      item?.status === "retained" && item.reason === PLAYBACK_RETENTION_REASON && item.destination;
     if (item?.status === "retained" && !retainedIndexedSource) {
       state.items[sourcePath] = {
         ...item,
@@ -755,8 +789,11 @@ export async function migrateAurralDownloadFolder(options = {}) {
     // Only finish that migration if its destination is still available.
     if (retainedIndexedSource) {
       const destination = path.resolve(item.destination);
-      if (!isPathInsideRoot(destination, rootPath)
-        || !(await fs.stat(destination).catch(() => null))?.isFile()) continue;
+      if (
+        !isPathInsideRoot(destination, rootPath) ||
+        !(await fs.stat(destination).catch(() => null))?.isFile()
+      )
+        continue;
     }
     state.items[sourcePath] = { ...item, status: "complete", updatedAt: Date.now() };
   }

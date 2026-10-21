@@ -60,7 +60,10 @@ test("parseSpotifyPlaylistItems accepts current item and legacy track wrappers",
       },
     },
   ]);
-  assert.deepEqual(tracks.map((track) => track.trackName), ["Current Wrapper", "Legacy Wrapper"]);
+  assert.deepEqual(
+    tracks.map((track) => track.trackName),
+    ["Current Wrapper", "Legacy Wrapper"],
+  );
 });
 
 test("parseSpotifyPlaylistItems reports skipped spotify entries", () => {
@@ -86,10 +89,13 @@ test("parseSpotifyPlaylistItems reports skipped spotify entries", () => {
   assert.equal(stats.unavailable, 1);
   assert.equal(stats.podcast, 1);
   assert.equal(stats.sourceItems, 3);
-  assert.deepEqual(excluded.map(({ position, reason }) => ({ position, reason })), [
-    { position: 1, reason: "unavailable" },
-    { position: 2, reason: "podcast" },
-  ]);
+  assert.deepEqual(
+    excluded.map(({ position, reason }) => ({ position, reason })),
+    [
+      { position: 1, reason: "unavailable" },
+      { position: 2, reason: "podcast" },
+    ],
+  );
 });
 
 test("parseSpotifyPlaylistItems identifies duplicate source positions", () => {
@@ -99,10 +105,12 @@ test("parseSpotifyPlaylistItems identifies duplicate source positions", () => {
   ]);
   assert.equal(tracks.length, 1);
   assert.equal(stats.duplicate, 1);
-  assert.deepEqual(excluded, [{
-    position: 2,
-    reason: "duplicate",
-    artistName: "Artist",
-    trackName: "Same Song",
-  }]);
+  assert.deepEqual(excluded, [
+    {
+      position: 2,
+      reason: "duplicate",
+      artistName: "Artist",
+      trackName: "Same Song",
+    },
+  ]);
 });

@@ -3,11 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { db } from "../config/db-sqlite.js";
 import { resolveAurralDataDir } from "../config/data-dir.js";
-import {
-  inspectImageBuffer,
-  optimizeImageBuffer,
-  warmImageProxy,
-} from "./imageProxyService.js";
+import { inspectImageBuffer, optimizeImageBuffer, warmImageProxy } from "./imageProxyService.js";
 
 const ARTWORK_DIR = path.join(resolveAurralDataDir(), "custom-artwork");
 const ENTITY_KINDS = new Set(["album", "track", "playlist-track"]);
@@ -27,9 +23,7 @@ const saveArtworkStmt = db.prepare(`
 const deleteArtworkStmt = db.prepare(
   "DELETE FROM custom_artwork WHERE entity_kind = ? AND entity_id = ?",
 );
-const getArtworkRevisionStmt = db.prepare(
-  "SELECT value FROM settings WHERE key = ?",
-);
+const getArtworkRevisionStmt = db.prepare("SELECT value FROM settings WHERE key = ?");
 const saveArtworkRevisionStmt = db.prepare(`
   INSERT INTO settings (key, value) VALUES (?, ?)
   ON CONFLICT(key) DO UPDATE SET value = excluded.value
@@ -46,7 +40,9 @@ function advanceArtworkRevision(kind, candidate = Date.now()) {
 }
 
 function normalizeTarget(kind, id) {
-  const entityKind = String(kind || "").trim().toLowerCase();
+  const entityKind = String(kind || "")
+    .trim()
+    .toLowerCase();
   const entityId = String(id || "").trim();
   if (!ENTITY_KINDS.has(entityKind) || !entityId) {
     throw new Error("Invalid artwork target");
@@ -86,17 +82,10 @@ async function writeArtwork(target, buffer, contentType, sourceUrl = null) {
   } finally {
     await fs.promises.unlink(temporary).catch(() => {});
   }
-  const previousUpdatedAt = Number(
-    getArtworkStmt.get(target.entityKind, target.entityId)?.updated_at,
-  ) || 0;
+  const previousUpdatedAt =
+    Number(getArtworkStmt.get(target.entityKind, target.entityId)?.updated_at) || 0;
   const updatedAt = Math.max(Date.now(), previousUpdatedAt + 1);
-  saveArtworkStmt.run(
-    target.entityKind,
-    target.entityId,
-    contentType,
-    sourceUrl,
-    updatedAt,
-  );
+  saveArtworkStmt.run(target.entityKind, target.entityId, contentType, sourceUrl, updatedAt);
   advanceArtworkRevision(target.entityKind, updatedAt);
   return getCustomArtwork(target.entityKind, target.entityId);
 }
@@ -144,9 +133,11 @@ export function getCustomArtworkMap(kind, ids) {
   const entityIds = [...new Set((ids || []).map((id) => String(id || "").trim()).filter(Boolean))];
   if (!entityIds.length) return new Map();
   const placeholders = entityIds.map(() => "?").join(", ");
-  const rows = db.prepare(
-    `SELECT entity_id, updated_at FROM custom_artwork WHERE entity_kind = ? AND entity_id IN (${placeholders})`,
-  ).all(entityKind, ...entityIds);
+  const rows = db
+    .prepare(
+      `SELECT entity_id, updated_at FROM custom_artwork WHERE entity_kind = ? AND entity_id IN (${placeholders})`,
+    )
+    .all(entityKind, ...entityIds);
   return new Map(rows.map((row) => [String(row.entity_id), Number(row.updated_at)]));
 }
 
@@ -167,11 +158,14 @@ export async function removeCustomArtwork(kind, id) {
 
 export function buildCustomArtworkUrl(kind, id, updatedAt, query = {}) {
   const target = normalizeTarget(kind, id);
-  const route = target.entityKind === "playlist-track"
-    ? `/api/playlists/track-artwork/${encodeURIComponent(target.entityId)}`
-    : `/api/library/artwork/${encodeURIComponent(target.entityKind)}/${encodeURIComponent(target.entityId)}`;
+  const route =
+    target.entityKind === "playlist-track"
+      ? `/api/playlists/track-artwork/${encodeURIComponent(target.entityId)}`
+      : `/api/library/artwork/${encodeURIComponent(target.entityKind)}/${encodeURIComponent(target.entityId)}`;
   const params = new URLSearchParams({
-    ...Object.fromEntries(Object.entries(query).filter(([, value]) => value != null && value !== "")),
+    ...Object.fromEntries(
+      Object.entries(query).filter(([, value]) => value != null && value !== ""),
+    ),
     v: String(updatedAt || "current"),
   });
   return `${route}?${params}`;

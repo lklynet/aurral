@@ -3,7 +3,11 @@ import { parseFile } from "music-metadata";
 import { db } from "../../config/db-sqlite.js";
 import { resolveDownloadRoot } from "../downloadPaths.js";
 import { downloadTracker } from "../downloadJobs/downloadTracker.js";
-import { applyMetadataEnrichment, buildMetadataRecord, scanMusicRoot } from "../libraryFileScanner.js";
+import {
+  applyMetadataEnrichment,
+  buildMetadataRecord,
+  scanMusicRoot,
+} from "../libraryFileScanner.js";
 import { activeLidarrRoots, createLibraryScanExclusion } from "../libraryFolders.js";
 import {
   findLibraryAlbumByArtistTitle,
@@ -16,19 +20,25 @@ import {
 } from "../libraryMediaStore.js";
 
 function jobMetadata(filePath) {
-  const job = downloadTracker.getAll().find((entry) =>
-    entry.status === "done" && entry.finalPath && path.resolve(entry.finalPath) === filePath);
-  return job ? {
-    artistName: job.artistName,
-    albumName: job.albumName,
-    trackName: job.trackName,
-    artistMbid: job.artistMbid,
-    albumMbid: job.albumMbid,
-    trackMbid: job.trackMbid,
-    releaseYear: job.releaseYear,
-    trackNumber: job.trackNumber,
-    discNumber: job.discNumber,
-  } : null;
+  const job = downloadTracker
+    .getAll()
+    .find(
+      (entry) =>
+        entry.status === "done" && entry.finalPath && path.resolve(entry.finalPath) === filePath,
+    );
+  return job
+    ? {
+        artistName: job.artistName,
+        albumName: job.albumName,
+        trackName: job.trackName,
+        artistMbid: job.artistMbid,
+        albumMbid: job.albumMbid,
+        trackMbid: job.trackMbid,
+        releaseYear: job.releaseYear,
+        trackNumber: job.trackNumber,
+        discNumber: job.discNumber,
+      }
+    : null;
 }
 
 // An upgraded file with new identity tags keeps the Library's track and
@@ -43,12 +53,19 @@ export async function adoptLibraryFileIdentity(filePath, { previousPath = filePa
   const enrichment = jobMetadata(current);
   if (media) {
     const metadata = await parseFile(current, { skipCovers: true });
-    const record = buildMetadataRecord(applyMetadataEnrichment(metadata, enrichment), current, root);
+    const record = buildMetadataRecord(
+      applyMetadataEnrichment(metadata, enrichment),
+      current,
+      root,
+    );
     const releaseAlbum = findLibraryAlbumByReleaseMbid(record.releaseGroupMbid);
-    const artistId = db.prepare("SELECT artist_id FROM library_albums WHERE id = ?").get(media.album_id)?.artist_id;
-    const namedAlbum = !record.releaseGroupMbid && !record.albumMbid && artistId
-      ? findLibraryAlbumByArtistTitle(artistId, record.albumName)
-      : null;
+    const artistId = db
+      .prepare("SELECT artist_id FROM library_albums WHERE id = ?")
+      .get(media.album_id)?.artist_id;
+    const namedAlbum =
+      !record.releaseGroupMbid && !record.albumMbid && artistId
+        ? findLibraryAlbumByArtistTitle(artistId, record.albumName)
+        : null;
     const albumKey = (releaseAlbum || namedAlbum)?.identity_key || record.albumKey;
     if (media.album_id) rekeyLibraryAlbum(media.album_id, albumKey);
     rekeyLibraryTrack(media.track_id, record.trackKey);
@@ -60,7 +77,10 @@ export async function adoptLibraryFileIdentity(filePath, { previousPath = filePa
     filePaths: [current],
     force: true,
     metadataEnricher: () => enrichment,
-    isExcluded: createLibraryScanExclusion("aurral", { downloadRoot: root, lidarrRoots: activeLidarrRoots(null) }),
+    isExcluded: createLibraryScanExclusion("aurral", {
+      downloadRoot: root,
+      lidarrRoots: activeLidarrRoots(null),
+    }),
   });
   const after = getLibraryMediaFile({ source: "aurral", path: current });
   if (before?.album_id && after?.album_id && before.album_id !== after.album_id) {

@@ -20,8 +20,12 @@ export function createFlowPlanRunner({ forkProcess = fork, timeoutMs = PLAN_TIME
             AURRAL_FLOW_PLANNER: "1",
           },
           stdio: ["inherit", "inherit", "inherit", "ipc"],
-          execArgv: process.execArgv.filter((arg) =>
-            !/^--(?:watch|watch-path|inspect|inspect-brk|test(?:-.*)?|experimental-test-.*)(?:=|$)/.test(arg)),
+          execArgv: process.execArgv.filter(
+            (arg) =>
+              !/^--(?:watch|watch-path|inspect|inspect-brk|test(?:-.*)?|experimental-test-.*)(?:=|$)/.test(
+                arg,
+              ),
+          ),
         });
       } catch (error) {
         reject(error);
@@ -37,7 +41,9 @@ export function createFlowPlanRunner({ forkProcess = fork, timeoutMs = PLAN_TIME
         child.removeListener("exit", onExit);
         if (acknowledge && child.exitCode === null && child.signalCode === null) {
           const exitTimer = setTimeout(() => {
-            try { child.kill(); } catch {}
+            try {
+              child.kill();
+            } catch {}
           }, 5000);
           exitTimer.unref?.();
           child.once("exit", () => {
@@ -48,11 +54,15 @@ export function createFlowPlanRunner({ forkProcess = fork, timeoutMs = PLAN_TIME
             child.send({ type: "flow-plan-ack" }, (sendError) => {
               if (!sendError) return;
               clearTimeout(exitTimer);
-              try { child.kill(); } catch {}
+              try {
+                child.kill();
+              } catch {}
             });
           } catch {
             clearTimeout(exitTimer);
-            try { child.kill(); } catch {}
+            try {
+              child.kill();
+            } catch {}
           }
         } else {
           child.removeListener("error", onError);
@@ -60,7 +70,9 @@ export function createFlowPlanRunner({ forkProcess = fork, timeoutMs = PLAN_TIME
         if (error) reject(error);
         else resolve(plan);
         if (!acknowledge && child.exitCode === null && child.signalCode === null) {
-          try { child.kill(); } catch {}
+          try {
+            child.kill();
+          } catch {}
         }
       };
       const onMessage = (message) => {

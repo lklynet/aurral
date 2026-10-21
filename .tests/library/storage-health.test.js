@@ -157,7 +157,10 @@ test("runStorageHealthCheck does not warn about preferred shared-root convention
 
   assert.equal(volume?.status, "pass");
   assert.equal(downloads?.status, "pass");
-  assert.equal(downloads?.steps.some((step) => step.id === "shared-root"), false);
+  assert.equal(
+    downloads?.steps.some((step) => step.id === "shared-root"),
+    false,
+  );
 });
 
 test("storage health warns when any Lidarr root overlaps the Aurral root", async () => {
@@ -184,12 +187,15 @@ test("storage health warns when any Lidarr root overlaps the Aurral root", async
 
 test("passing checks never include remediation text", async () => {
   const result = await runStorageHealthCheck({ force: true });
-  const passingSteps = result.sections.flatMap((section) => section.steps || []).filter(
-    (step) => step.status === "pass",
-  );
+  const passingSteps = result.sections
+    .flatMap((section) => section.steps || [])
+    .filter((step) => step.status === "pass");
 
   assert.ok(passingSteps.length > 0);
-  assert.equal(passingSteps.some((step) => Boolean(step.fix)), false);
+  assert.equal(
+    passingSteps.some((step) => Boolean(step.fix)),
+    false,
+  );
 });
 
 test("NZBGet health verifies the real Aurral transfer instead of filesystem identity", async (t) => {
@@ -227,8 +233,14 @@ test("NZBGet health verifies the real Aurral transfer instead of filesystem iden
   assert.equal(nzbget?.status, "pass");
   assert.equal(transfer?.status, "pass");
   assert.match(transfer?.detail || "", /verified (atomic move|copy and delete)/i);
-  assert.equal(nzbget?.steps.some((step) => step.id === "same-filesystem"), false);
-  assert.equal(nzbget?.steps.some((step) => step.id === "sample-file"), false);
+  assert.equal(
+    nzbget?.steps.some((step) => step.id === "same-filesystem"),
+    false,
+  );
+  assert.equal(
+    nzbget?.steps.some((step) => step.id === "sample-file"),
+    false,
+  );
   assert.deepEqual(await fs.readdir(completedPath), []);
 });
 
@@ -323,7 +335,11 @@ test("unrelated Navidrome libraries do not fail local storage health", async (t)
       },
     },
     pathMappings: [
-      { source: "lidarr", remote: playlistLibrary, local: path.join(isolatedState.baseDir, "missing-library") },
+      {
+        source: "lidarr",
+        remote: playlistLibrary,
+        local: path.join(isolatedState.baseDir, "missing-library"),
+      },
       { source: "navidrome", remote: playlistLibrary, local: resolveDownloadRoot() },
     ],
   });
@@ -356,10 +372,12 @@ test("Navidrome health does not compare reused Lidarr and Navidrome paths", asyn
       return;
     }
     if (request.url === "/api/library") {
-      response.end(JSON.stringify([
-        { id: "1", name: "Aurral", path: playlistLibrary },
-        { id: "2", name: "Music", path: "/navidrome/music" },
-      ]));
+      response.end(
+        JSON.stringify([
+          { id: "1", name: "Aurral", path: playlistLibrary },
+          { id: "2", name: "Music", path: "/navidrome/music" },
+        ]),
+      );
       return;
     }
     if (request.url?.endsWith("/rootFolder")) {
@@ -385,7 +403,8 @@ test("Navidrome health does not compare reused Lidarr and Navidrome paths", asyn
   assert.notEqual(navidrome?.status, "fail");
   assert.equal(
     navidrome?.steps.some((step) =>
-      ["lidarr-library", "lidarr-sample", "playlist-tracks"].includes(step.id)),
+      ["lidarr-library", "lidarr-sample", "playlist-tracks"].includes(step.id),
+    ),
     false,
   );
 });

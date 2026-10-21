@@ -22,18 +22,14 @@ function parseConnectionAddress(value, fallbackPort) {
     }
     if (!suffix.startsWith(":")) return { host: "", port: "" };
     const port = normalizePort(suffix.slice(1));
-    return port
-      ? { host: address.slice(1, closingBracket), port }
-      : { host: "", port: "" };
+    return port ? { host: address.slice(1, closingBracket), port } : { host: "", port: "" };
   }
 
   const colonCount = (address.match(/:/g) || []).length;
   if (colonCount === 1) {
     const separator = address.lastIndexOf(":");
     const port = normalizePort(address.slice(separator + 1));
-    return port
-      ? { host: address.slice(0, separator), port }
-      : { host: "", port: "" };
+    return port ? { host: address.slice(0, separator), port } : { host: "", port: "" };
   }
 
   return { host: address, port: fallbackPort };
@@ -45,10 +41,7 @@ function isLocalConnection(connection) {
 
 export function resolvePlexConnectionUrl(connection) {
   const uri = String(connection?.uri || "").trim();
-  const address = parseConnectionAddress(
-    connection?.address,
-    normalizePort(connection?.port),
-  );
+  const address = parseConnectionAddress(connection?.address, normalizePort(connection?.port));
   const host = normalizeHost(address.host);
   const port = address.port;
 
@@ -62,7 +55,9 @@ export function resolvePlexConnectionUrl(connection) {
 export function pickBestPlexConnection(server) {
   const connections = Array.isArray(server?.connections) ? server.connections : [];
   return (
-    connections.find((connection) => isLocalConnection(connection) && resolvePlexConnectionUrl(connection)) ||
+    connections.find(
+      (connection) => isLocalConnection(connection) && resolvePlexConnectionUrl(connection),
+    ) ||
     connections.find((connection) => resolvePlexConnectionUrl(connection)) ||
     null
   );

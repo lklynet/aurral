@@ -41,11 +41,9 @@ function clearLibraryArtists() {
 let heldGlobalRefreshLock = null;
 
 function holdGlobalRefreshLock() {
-  heldGlobalRefreshLock = honkerDbModule.getHonkerDb().tryLock(
-    "discovery-global-refresh",
-    "discovery-refresh-scheduler-test",
-    3600,
-  );
+  heldGlobalRefreshLock = honkerDbModule
+    .getHonkerDb()
+    .tryLock("discovery-global-refresh", "discovery-refresh-scheduler-test", 3600);
   assert.ok(heldGlobalRefreshLock);
 }
 
@@ -60,12 +58,8 @@ function releaseHeldGlobalRefreshLock() {
 function clearDiscoveryRefreshJobs() {
   const tx = honkerDbModule.getHonkerDb().transaction();
   try {
-    tx.execute("DELETE FROM _honker_live WHERE queue = ?", [
-      "discovery-refresh",
-    ]);
-    tx.execute("DELETE FROM _honker_dead WHERE queue = ?", [
-      "discovery-refresh",
-    ]);
+    tx.execute("DELETE FROM _honker_live WHERE queue = ?", ["discovery-refresh"]);
+    tx.execute("DELETE FROM _honker_dead WHERE queue = ?", ["discovery-refresh"]);
     tx.commit();
   } catch (error) {
     try {
@@ -77,19 +71,17 @@ function clearDiscoveryRefreshJobs() {
 
 function countDiscoveryRefreshJobs() {
   return Number(
-    honkerDbModule.getHonkerDb().query(
-      "SELECT COUNT(*) AS count FROM _honker_live WHERE queue = ?",
-      ["discovery-refresh"],
-    )[0]?.count || 0,
+    honkerDbModule
+      .getHonkerDb()
+      .query("SELECT COUNT(*) AS count FROM _honker_live WHERE queue = ?", ["discovery-refresh"])[0]
+      ?.count || 0,
   );
 }
 
 function discoveryRefreshPayloads() {
   return honkerDbModule
     .getHonkerDb()
-    .query("SELECT payload FROM _honker_live WHERE queue = ? ORDER BY id", [
-      "discovery-refresh",
-    ])
+    .query("SELECT payload FROM _honker_live WHERE queue = ? ORDER BY id", ["discovery-refresh"])
     .map((row) => JSON.parse(row.payload));
 }
 
@@ -288,11 +280,7 @@ test("enqueueDiscoveryRefresh treats force as success when already updating", ()
 test("recoverDeadDiscoveryRefresh clears jobs and locks owned by dead local workers", () => {
   clearDiscoveryRefreshJobs();
   const workerId = "aurral-99999999";
-  const lock = honkerDbModule.getHonkerDb().tryLock(
-    "discovery-global-refresh",
-    workerId,
-    3600,
-  );
+  const lock = honkerDbModule.getHonkerDb().tryLock("discovery-global-refresh", workerId, 3600);
   assert.ok(lock);
   const jobId = honkerDbModule.getDiscoveryRefreshQueue().enqueue({ reason: "manual" });
   const claimed = honkerDbModule.getDiscoveryRefreshQueue().claimOne(workerId);
@@ -304,10 +292,9 @@ test("recoverDeadDiscoveryRefresh clears jobs and locks owned by dead local work
   assert.equal(getDiscoveryStatus(null).isUpdating, false);
   assert.ok(getDiscoveryStatus(null).error);
   assert.equal(
-    honkerDbModule.getHonkerDb().query(
-      "SELECT COUNT(*) AS count FROM _honker_live WHERE id = ?",
-      [jobId],
-    )[0]?.count,
+    honkerDbModule
+      .getHonkerDb()
+      .query("SELECT COUNT(*) AS count FROM _honker_live WHERE id = ?", [jobId])[0]?.count,
     0,
   );
   assert.equal(honkerDbModule.isHonkerLockHeld("discovery-global-refresh"), false);

@@ -14,9 +14,7 @@ import {
   sanitizePathPart,
   stringifyStringListJson,
 } from "../downloadUtils.js";
-import {
-  buildAurralTrackDestination,
-} from "../downloadPaths.js";
+import { buildAurralTrackDestination } from "../downloadPaths.js";
 import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.js";
 import { isPlaylistOwnerActive } from "./playlistOwnerStatus.js";
 import { logger } from "../logger.js";
@@ -33,7 +31,8 @@ import {
   isPipelinePayloadActive,
 } from "./downloadCancellation.js";
 
-export const NO_RELEASE_REASON = "The requested release could not be resolved; searching for the track";
+export const NO_RELEASE_REASON =
+  "The requested release could not be resolved; searching for the track";
 export const OFF_RELEASE_REASON = "Track is not on the requested release; searching for the track";
 
 const parseDeniedSources = (raw) => {
@@ -259,9 +258,7 @@ const updateQuickSearchedSourcesStmt = db.prepare(
 const updateHeldForReviewStmt = db.prepare(
   `UPDATE ${JOBS_TABLE} SET held_for_review = ? WHERE id = ?`,
 );
-const updateRequestKindStmt = db.prepare(
-  `UPDATE ${JOBS_TABLE} SET request_kind = ? WHERE id = ?`,
-);
+const updateRequestKindStmt = db.prepare(`UPDATE ${JOBS_TABLE} SET request_kind = ? WHERE id = ?`);
 const updateAlbumGrabFailuresStmt = db.prepare(
   `UPDATE ${JOBS_TABLE} SET album_grab_failures = ? WHERE id = ?`,
 );
@@ -387,9 +384,7 @@ function buildPipelinePayload(job) {
     upgradeForJobId: job.upgradeForJobId || null,
     manualReplacementSearch: job.manualReplacementSearch === true,
     allowedSources:
-      job.upgradeForJobId && !job.manualReplacementSearch
-        ? ["slskd", "usenet", "deemix"]
-        : null,
+      job.upgradeForJobId && !job.manualReplacementSearch ? ["slskd", "usenet", "deemix"] : null,
     triedSources: [...job.quickSearchedSources],
     heldForReview: job.heldForReview,
   };
@@ -398,9 +393,11 @@ function buildPipelinePayload(job) {
 // The files these jobs hold for review: a blocked job's file, unless only
 // the file a job keeps while it searches on is wanted.
 function discardReviewFiles(jobs, { heldOnly = false } = {}) {
-  const reviewed = heldOnly ? [] : jobs.filter((job) => job?.status === "blocked" && job.stagingPath)
-    .map((job) => ({ ...job }));
-  const held = jobs.filter((job) => job?.heldForReview && job.heldForReview.sourcePath !== job.stagingPath)
+  const reviewed = heldOnly
+    ? []
+    : jobs.filter((job) => job?.status === "blocked" && job.stagingPath).map((job) => ({ ...job }));
+  const held = jobs
+    .filter((job) => job?.heldForReview && job.heldForReview.sourcePath !== job.stagingPath)
     .map((job) => [job.id, job.heldForReview]);
   if (reviewed.length === 0 && held.length === 0) return;
   import("./reviewFiles.js")
@@ -456,9 +453,7 @@ export class DownloadTracker {
       nextJobs.set(fresh.id, previous || fresh);
     }
     this.jobs = nextJobs;
-    this.slskdDispatched = new Set(
-      [...this.slskdDispatched].filter((id) => nextJobs.has(id)),
-    );
+    this.slskdDispatched = new Set([...this.slskdDispatched].filter((id) => nextJobs.has(id)));
     for (const { fromJobId, toJobId, dispatched } of redirects) {
       this.slskdDispatched.delete(fromJobId);
       if (dispatched && nextJobs.has(toJobId)) this.slskdDispatched.add(toJobId);
@@ -567,10 +562,9 @@ export class DownloadTracker {
   updateDownloadMetadata(id, metadata = {}) {
     const job = this.jobs.get(id);
     if (!job || !metadata || typeof metadata !== "object") return false;
-    const values = Object.fromEntries(DOWNLOAD_METADATA_KEYS.map((key) => [
-      key,
-      String(metadata[key] ?? "").trim() || null,
-    ]));
+    const values = Object.fromEntries(
+      DOWNLOAD_METADATA_KEYS.map((key) => [key, String(metadata[key] ?? "").trim() || null]),
+    );
     const movedSource = values.downloadSource && values.downloadSource !== job.downloadSource;
     for (const key of DOWNLOAD_METADATA_KEYS) {
       if (movedSource || values[key]) job[key] = values[key];
@@ -586,9 +580,14 @@ export class DownloadTracker {
   _activeAlbumGrab(jobId) {
     const attemptId = getActiveDownloadAttemptId(jobId);
     if (!attemptId) return null;
-    return listHonkerJobs("slskd-pipeline").find((entry) => entry.payload?.albumGrab === true
-      && entry.payload.downloadAttemptId === attemptId
-      && entry.payload.albumGroupJobIds?.includes(jobId)) || null;
+    return (
+      listHonkerJobs("slskd-pipeline").find(
+        (entry) =>
+          entry.payload?.albumGrab === true &&
+          entry.payload.downloadAttemptId === attemptId &&
+          entry.payload.albumGroupJobIds?.includes(jobId),
+      ) || null
+    );
   }
 
   releaseFromAlbumGrab(id, reason = null, options = {}) {
@@ -641,21 +640,27 @@ export class DownloadTracker {
   // neither leads nor joins one, since its attempt would wait for the owner.
   // No other attempt holds an upgrade or a track still due its quick search.
   _releaseMembers(job, release) {
-    const listed = (pin) => !release.groupReleaseMbids || release.groupReleaseMbids.includes(String(pin).toLowerCase());
-    const pinnedElsewhere = (entry) => entry.releaseMbid && entry.releaseMbid !== release.releaseMbid
-      && listed(entry.releaseMbid);
+    const listed = (pin) =>
+      !release.groupReleaseMbids || release.groupReleaseMbids.includes(String(pin).toLowerCase());
+    const pinnedElsewhere = (entry) =>
+      entry.releaseMbid && entry.releaseMbid !== release.releaseMbid && listed(entry.releaseMbid);
     const ownerActive = (entry) => isPlaylistOwnerActive(entry.playlistId || entry.playlistType);
-    const fits = (entry) => entry.albumMbid === job.albumMbid && searchesByRelease(entry) && !pinnedElsewhere(entry);
-    const joins = (entry) => entry.status === "pending" && fits(entry)
-      && (job.upgradeForJobId
+    const fits = (entry) =>
+      entry.albumMbid === job.albumMbid && searchesByRelease(entry) && !pinnedElsewhere(entry);
+    const joins = (entry) =>
+      entry.status === "pending" &&
+      fits(entry) &&
+      (job.upgradeForJobId
         ? Boolean(entry.upgradeForJobId) && ownerActive(entry)
-        : (entry.requestGroupId || null) === (job.requestGroupId || null)
-          && !entry.upgradeForJobId && !this.startsWithQuickSearch(entry));
+        : (entry.requestGroupId || null) === (job.requestGroupId || null) &&
+          !entry.upgradeForJobId &&
+          !this.startsWithQuickSearch(entry));
     if (!release || !fits(job) || !isAlbumGrabSourceConfigured()) return [];
     if (job.upgradeForJobId && !ownerActive(job)) return [];
-    const candidates = job.requestGroupId || job.upgradeForJobId
-      ? this.getAll().filter((entry) => entry.id === job.id || joins(entry))
-      : [job];
+    const candidates =
+      job.requestGroupId || job.upgradeForJobId
+        ? this.getAll().filter((entry) => entry.id === job.id || joins(entry))
+        : [job];
     const ids = [...mapRequest(release, candidates).wanted.values()];
     if (!ids.includes(job.id)) return [];
     return [job.id, ...ids.filter((id) => id !== job.id)].map((id) => this.jobs.get(id));
@@ -669,7 +674,10 @@ export class DownloadTracker {
     if (job.error === reason) return;
     job.error = reason;
     this._update(job);
-    logger.info("downloads", "Searching for the track without its release", { jobId: job.id, reason });
+    logger.info("downloads", "Searching for the track without its release", {
+      jobId: job.id,
+      reason,
+    });
   }
 
   // `release` is the manifest the job just resolved to, or null when it
@@ -682,9 +690,15 @@ export class DownloadTracker {
     const activeGrab = job.albumGrabAttempted ? this._activeAlbumGrab(jobId) : null;
     if (activeGrab && ["pending", "downloading"].includes(job.status)) {
       const { albumGroupJobIds, downloadAttemptId } = activeGrab.payload;
-      recordAlbumGrabQueued(activeGrab.payload, albumGroupJobIds.map((id) => this.jobs.get(id)).filter(Boolean));
+      recordAlbumGrabQueued(
+        activeGrab.payload,
+        albumGroupJobIds.map((id) => this.jobs.get(id)).filter(Boolean),
+      );
       for (const memberId of albumGroupJobIds) {
-        if (this.jobs.get(memberId)?.status === "pending" && getActiveDownloadAttemptId(memberId) === downloadAttemptId) {
+        if (
+          this.jobs.get(memberId)?.status === "pending" &&
+          getActiveDownloadAttemptId(memberId) === downloadAttemptId
+        ) {
           this.setDownloading(memberId);
         }
       }
@@ -694,7 +708,9 @@ export class DownloadTracker {
     if (job.status !== "pending" || this.isSlskdDispatched(jobId)) return false;
     const quick = this.startsWithQuickSearch(job);
     if (release === undefined && !quick && this.canSearchByRelease(job)) {
-      throw new Error("A track that can search by release is queued only with the release it resolved to");
+      throw new Error(
+        "A track that can search by release is queued only with the release it resolved to",
+      );
     }
     const payload = buildPipelinePayload(job);
     if (!isPipelinePayloadActive(payload)) return false;
@@ -746,9 +762,13 @@ export class DownloadTracker {
     const order = upgradeAttemptOrder.get(payload.downloadAttemptId);
     const albumMbid = this.jobs.get(payload.jobId)?.albumMbid;
     if (order === undefined || !albumMbid) return false;
-    return this.getAll().some((job) => job.upgradeForJobId && job.albumMbid === albumMbid
-      && ["pending", "downloading"].includes(job.status)
-      && (upgradeAttemptOrder.get(getActiveDownloadAttemptId(job.id)) ?? Infinity) < order);
+    return this.getAll().some(
+      (job) =>
+        job.upgradeForJobId &&
+        job.albumMbid === albumMbid &&
+        ["pending", "downloading"].includes(job.status) &&
+        (upgradeAttemptOrder.get(getActiveDownloadAttemptId(job.id)) ?? Infinity) < order,
+    );
   }
 
   // An upgrade attempt that searches for its track no longer downloads its
@@ -806,10 +826,7 @@ export class DownloadTracker {
     }
   }
 
-  enqueueManualReplacementSelection(
-    jobId,
-    { source, candidate, downloadClient = null } = {},
-  ) {
+  enqueueManualReplacementSelection(jobId, { source, candidate, downloadClient = null } = {}) {
     const sourceJob = this.jobs.get(jobId);
     const normalizedSource = String(source || "").trim();
     if (!sourceJob || sourceJob.status !== "done" || !sourceJob.finalPath) return false;
@@ -926,10 +943,12 @@ export class DownloadTracker {
     const rows = selectAllStmt.all();
     for (const row of rows) {
       const job = rowToJob(row);
-      if ((job.status === "downloading" || job.status === "cancel_requested") && (
-        process.env.AURRAL_BACKGROUND_WORKER_GROUP === "downloads" ||
-        process.env.NODE_ENV === "test" || process.env.AURRAL_TEST_SERVER === "1"
-      )) {
+      if (
+        (job.status === "downloading" || job.status === "cancel_requested") &&
+        (process.env.AURRAL_BACKGROUND_WORKER_GROUP === "downloads" ||
+          process.env.NODE_ENV === "test" ||
+          process.env.AURRAL_TEST_SERVER === "1")
+      ) {
         if (this._isInterruptedCancellation(job)) {
           job.status = "cancelled";
           job.completedAt = Date.now();
@@ -975,8 +994,11 @@ export class DownloadTracker {
       this.jobs.set(job.id, job);
       if (ENDED_STATUSES.has(job.status)) this._dropHeldForReview(job);
     }
-    if (process.env.AURRAL_BACKGROUND_WORKER_GROUP === "downloads" ||
-        process.env.NODE_ENV === "test" || process.env.AURRAL_TEST_SERVER === "1") {
+    if (
+      process.env.AURRAL_BACKGROUND_WORKER_GROUP === "downloads" ||
+      process.env.NODE_ENV === "test" ||
+      process.env.AURRAL_TEST_SERVER === "1"
+    ) {
       for (const job of this.jobs.values()) {
         if (job.status === "pending" && job.upgradeForJobId && !job.manualReplacementSearch) {
           this.removeJob(job.id);
@@ -1107,9 +1129,7 @@ export class DownloadTracker {
         : getPlaylistDownloadGeneration(playlistId),
       playlistType,
       managedBy: track?.managedBy === "lidarr" ? "lidarr" : "aurral",
-      requestGroupId: track?.requestGroupId
-        ? String(track.requestGroupId).trim() || null
-        : null,
+      requestGroupId: track?.requestGroupId ? String(track.requestGroupId).trim() || null : null,
       requestKind: options?.requestKind === "album" ? "album" : "track",
       quickSearchedSources: [],
       status: "pending",
@@ -1167,15 +1187,14 @@ export class DownloadTracker {
 
   findActiveUpgradeJob(sourceJob) {
     if (!sourceJob?.finalPath) return null;
-    return [...this.jobs.values()].find((job) => {
-      if (
-        !job.upgradeForJobId ||
-        !["pending", "downloading", "blocked"].includes(job.status)
-      ) {
-        return false;
-      }
-      return this.jobs.get(job.upgradeForJobId)?.finalPath === sourceJob.finalPath;
-    }) || null;
+    return (
+      [...this.jobs.values()].find((job) => {
+        if (!job.upgradeForJobId || !["pending", "downloading", "blocked"].includes(job.status)) {
+          return false;
+        }
+        return this.jobs.get(job.upgradeForJobId)?.finalPath === sourceJob.finalPath;
+      }) || null
+    );
   }
 
   addUpgradeJob(sourceJob) {
@@ -1694,7 +1713,10 @@ export class DownloadTracker {
   resetDownloadingToPending() {
     let count = 0;
     for (const job of this.jobs.values()) {
-      if (job.status === "cancel_requested" || (job.status === "downloading" && this._isCancelledAlbumJob(job))) {
+      if (
+        job.status === "cancel_requested" ||
+        (job.status === "downloading" && this._isCancelledAlbumJob(job))
+      ) {
         this.setCancelled(job.id);
         continue;
       }
@@ -1722,12 +1744,19 @@ export class DownloadTracker {
   }
 
   getActiveByPlaylistType(playlistType) {
-    return sortByCreatedAt([...this.jobs.values()].filter((job) =>
-      job.playlistType === playlistType && (job.status === "pending" || job.status === "downloading")));
+    return sortByCreatedAt(
+      [...this.jobs.values()].filter(
+        (job) =>
+          job.playlistType === playlistType &&
+          (job.status === "pending" || job.status === "downloading"),
+      ),
+    );
   }
 
   getByAlbumMbid(matches) {
-    return sortByCreatedAt([...this.jobs.values()].filter((job) => job.albumMbid && matches(job.albumMbid)));
+    return sortByCreatedAt(
+      [...this.jobs.values()].filter((job) => job.albumMbid && matches(job.albumMbid)),
+    );
   }
 
   hasActiveJobsForPlaylist(playlistType) {
@@ -1897,7 +1926,12 @@ export class DownloadTracker {
 
 const liveJobs = (rows) => rows.map(rowToJob);
 const emptyLiveStats = () => ({
-  total: 0, pending: 0, downloading: 0, blocked: 0, done: 0, failed: 0,
+  total: 0,
+  pending: 0,
+  downloading: 0,
+  blocked: 0,
+  done: 0,
+  failed: 0,
 });
 
 function readTrackerFromDatabase(name, args) {
@@ -1909,9 +1943,10 @@ function readTrackerFromDatabase(name, args) {
   if (name === "getAll") return liveJobs(selectAllStmt.all());
   if (name === "getByPlaylistType") {
     const limit = Number(second);
-    const rows = Number.isFinite(limit) && limit > 0
-      ? livePlaylistJobsLimitedStmt.all(first ?? null, Math.floor(limit))
-      : livePlaylistJobsStmt.all(first ?? null);
+    const rows =
+      Number.isFinite(limit) && limit > 0
+        ? livePlaylistJobsLimitedStmt.all(first ?? null, Math.floor(limit))
+        : livePlaylistJobsStmt.all(first ?? null);
     return liveJobs(rows);
   }
   if (name === "getByPlaylistId") {
@@ -1919,7 +1954,8 @@ function readTrackerFromDatabase(name, args) {
   }
   if (name === "getByStatus") return liveJobs(liveStatusJobsStmt.all(first ?? null));
   if (name === "getDoneWithFinalPath") {
-    const limit = Number.isFinite(Number(first)) && Number(first) > 0 ? Math.floor(Number(first)) : 500;
+    const limit =
+      Number.isFinite(Number(first)) && Number(first) > 0 ? Math.floor(Number(first)) : 500;
     return liveJobs(liveDoneWithPathStmt.all(limit));
   }
   if (name === "getNextPending") {
@@ -1927,13 +1963,15 @@ function readTrackerFromDatabase(name, args) {
     return row ? rowToJob(row) : null;
   }
   if (name === "peekPending") {
-    const limit = Number.isFinite(Number(first)) && Number(first) > 0 ? Math.floor(Number(first)) : 10;
+    const limit =
+      Number.isFinite(Number(first)) && Number(first) > 0 ? Math.floor(Number(first)) : 10;
     return liveJobs(livePendingStmt.all(limit));
   }
   if (name === "hasActiveJobsForPlaylist") {
     return !!liveActivePlaylistStmt.get(first ?? null);
   }
-  if (name === "getActiveByPlaylistType") return liveJobs(liveActivePlaylistJobsStmt.all(first ?? null));
+  if (name === "getActiveByPlaylistType")
+    return liveJobs(liveActivePlaylistJobsStmt.all(first ?? null));
   if (name === "getByAlbumMbid") {
     const jobs = [];
     for (const row of liveAlbumJobsStmt.iterate()) {
@@ -1964,9 +2002,21 @@ function readTrackerFromDatabase(name, args) {
 }
 
 const LIVE_READ_METHODS = new Set([
-  "getJob", "getAll", "getByPlaylistType", "getByPlaylistId", "getByStatus", "getDoneWithFinalPath",
-  "getNextPending", "peekPending", "hasActiveJobsForPlaylist", "getActiveByPlaylistType", "getByAlbumMbid",
-  "getRevision", "getStats", "getStatsByPlaylistType", "getPlaylistTypeStats",
+  "getJob",
+  "getAll",
+  "getByPlaylistType",
+  "getByPlaylistId",
+  "getByStatus",
+  "getDoneWithFinalPath",
+  "getNextPending",
+  "peekPending",
+  "hasActiveJobsForPlaylist",
+  "getActiveByPlaylistType",
+  "getByAlbumMbid",
+  "getRevision",
+  "getStats",
+  "getStatsByPlaylistType",
+  "getPlaylistTypeStats",
 ]);
 
 for (const name of Object.getOwnPropertyNames(DownloadTracker.prototype)) {
@@ -1974,8 +2024,12 @@ for (const name of Object.getOwnPropertyNames(DownloadTracker.prototype)) {
   const original = DownloadTracker.prototype[name];
   if (typeof original !== "function") continue;
   DownloadTracker.prototype[name] = function (...args) {
-    if (process.env.NODE_ENV !== "test" && process.env.AURRAL_TEST_SERVER !== "1" &&
-        process.env.AURRAL_BACKGROUND_WORKER_GROUP !== "downloads" && LIVE_READ_METHODS.has(name)) {
+    if (
+      process.env.NODE_ENV !== "test" &&
+      process.env.AURRAL_TEST_SERVER !== "1" &&
+      process.env.AURRAL_BACKGROUND_WORKER_GROUP !== "downloads" &&
+      LIVE_READ_METHODS.has(name)
+    ) {
       return readTrackerFromDatabase(name, args);
     }
     this._refreshExternalChanges();

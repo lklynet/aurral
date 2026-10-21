@@ -2,7 +2,10 @@ import { useState } from "react";
 import { Eye, EyeOff, Lock, LockOpen } from "lucide-react";
 
 import { useToast } from "../contexts/ToastContext";
-import { setAurralTrackKeepFile, setAurralTrackMonitoring } from "../utils/api/endpoints/library.js";
+import {
+  setAurralTrackKeepFile,
+  setAurralTrackMonitoring,
+} from "../utils/api/endpoints/library.js";
 import {
   describeKeepFileResult,
   describeTrackMonitoringResult,
@@ -11,10 +14,7 @@ import {
 import { ConfirmModal } from "./ConfirmModal.jsx";
 
 const errorMessage = (error) =>
-  error?.response?.data?.message ||
-  error?.response?.data?.error ||
-  error?.message ||
-  "Try again.";
+  error?.response?.data?.message || error?.response?.data?.error || error?.message || "Try again.";
 
 const trackTitle = (track) => track?.title || track?.trackName || "this track";
 
@@ -25,7 +25,9 @@ export function useAurralTrackMonitoring({ canChange, onChanged, onKeepFileChang
   const [confirming, setConfirming] = useState(null);
 
   const isKept = (track) =>
-    keepPending && String(keepPending.id) === String(track?.id) ? keepPending.keepFile : track?.keepFile === true;
+    keepPending && String(keepPending.id) === String(track?.id)
+      ? keepPending.keepFile
+      : track?.keepFile === true;
 
   const setKeepFile = async (track, keepFile) => {
     if (keepPending) return;
@@ -45,7 +47,9 @@ export function useAurralTrackMonitoring({ canChange, onChanged, onKeepFileChang
   };
 
   const isMonitored = (track) =>
-    pending && String(pending.id) === String(track?.id) ? pending.monitored : track?.monitored !== false;
+    pending && String(pending.id) === String(track?.id)
+      ? pending.monitored
+      : track?.monitored !== false;
 
   const apply = async (track, nextMonitored) => {
     if (pending) return;
@@ -65,7 +69,10 @@ export function useAurralTrackMonitoring({ canChange, onChanged, onKeepFileChang
     }
   };
 
-  const getMenuItem = (track, { aurral = false, hasFile = false, downloadPending = false } = {}) => {
+  const getMenuItem = (
+    track,
+    { aurral = false, hasFile = false, downloadPending = false } = {},
+  ) => {
     if (!aurral || !canChange || !Number.isInteger(Number(track?.id))) return null;
     const monitored = isMonitored(track);
     if (!getMonitoringMenuAction({ monitored, hasMissing: !hasFile })) return null;

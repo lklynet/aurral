@@ -71,8 +71,17 @@ test("unknown or Lidarr statuses produce no Aurral state", () => {
 });
 
 test("polling continues only while work is queued or downloading", () => {
-  const polling = ["queued", "downloading", "partial", "complete", "failed", "blocked", "cancelled", "missing", undefined]
-    .filter(shouldPollAlbumStatus);
+  const polling = [
+    "queued",
+    "downloading",
+    "partial",
+    "complete",
+    "failed",
+    "blocked",
+    "cancelled",
+    "missing",
+    undefined,
+  ].filter(shouldPollAlbumStatus);
   assert.deepEqual(polling, ["queued", "downloading"]);
 });
 
@@ -80,11 +89,17 @@ test("library lists poll only while an album in the batch is active", () => {
   assert.equal(shouldPollAlbumStatuses({}), false);
   assert.equal(shouldPollAlbumStatuses(undefined), false);
   assert.equal(
-    shouldPollAlbumStatuses({ "aurral:1": { status: "complete" }, "aurral:2": { status: "failed" } }),
+    shouldPollAlbumStatuses({
+      "aurral:1": { status: "complete" },
+      "aurral:2": { status: "failed" },
+    }),
     false,
   );
   assert.equal(
-    shouldPollAlbumStatuses({ "aurral:1": { status: "complete" }, "aurral:2": { status: "queued" } }),
+    shouldPollAlbumStatuses({
+      "aurral:1": { status: "complete" },
+      "aurral:2": { status: "queued" },
+    }),
     true,
   );
 });
@@ -104,7 +119,8 @@ test("retry re-requests the album through Aurral", () => {
     },
   );
   assert.equal(
-    buildAurralAlbumRetryPayload({ album: { releaseGroupMbid: "rg-mbid", title: "A" }, artist: {} }).albumMbid,
+    buildAurralAlbumRetryPayload({ album: { releaseGroupMbid: "rg-mbid", title: "A" }, artist: {} })
+      .albumMbid,
     "rg-mbid",
   );
 });

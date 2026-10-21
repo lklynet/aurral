@@ -1,6 +1,9 @@
 const EMPTY_ACTIVE_DOWNLOADS = { albums: [], artists: [], tracks: [] };
 
-const normalizeName = (value) => String(value || "").trim().toLocaleLowerCase();
+const normalizeName = (value) =>
+  String(value || "")
+    .trim()
+    .toLocaleLowerCase();
 const trackNameKey = (artistName, trackName) => {
   const artist = normalizeName(artistName);
   const track = normalizeName(trackName);

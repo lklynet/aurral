@@ -72,7 +72,13 @@ function stubBrainzMash(t, { catalogues = {}, albumDates = {}, onArtist } = {}) 
       albumRequests.push(mbid);
       if (mbid in albumDates) {
         return {
-          data: { id: mbid, title: "Album", type: "Album", releasedate: albumDates[mbid], releases: [] },
+          data: {
+            id: mbid,
+            title: "Album",
+            type: "Album",
+            releasedate: albumDates[mbid],
+            releases: [],
+          },
         };
       }
     }
@@ -82,8 +88,9 @@ function stubBrainzMash(t, { catalogues = {}, albumDates = {}, onArtist } = {}) 
 }
 
 function removeCalendarArtist(artistId) {
-  db.prepare("DELETE FROM library_search_documents WHERE entity_kind = 'artist' AND entity_id = ?")
-    .run(artistId);
+  db.prepare(
+    "DELETE FROM library_search_documents WHERE entity_kind = 'artist' AND entity_id = ?",
+  ).run(artistId);
   db.prepare("DELETE FROM library_artists WHERE id = ?").run(artistId);
 }
 
@@ -140,7 +147,10 @@ test("recent missing releases can be scoped to library artists", async () => {
       now: "2026-06-15T12:00:00Z",
     });
 
-    assert.deepEqual(releases.map((album) => album.albumName), ["Included Release"]);
+    assert.deepEqual(
+      releases.map((album) => album.albumName),
+      ["Included Release"],
+    );
     assert.equal(releases[0].artistMbid, includedArtist.mbid);
   } finally {
     removeCalendarArtist(includedArtist.id);
@@ -174,10 +184,13 @@ test("BrainzMash refresh dates releases from album lookups and only rechecks dat
     albumRequests.length = 0;
     return refreshReleaseMetadata({ artists: [artist], now });
   };
-  const visible = async (now) => Object.fromEntries(
-    (await getRecentMissingReleases(100, { artists: [artist], now }))
-      .map((album) => [album.title, album.releaseDate]),
-  );
+  const visible = async (now) =>
+    Object.fromEntries(
+      (await getRecentMissingReleases(100, { artists: [artist], now })).map((album) => [
+        album.title,
+        album.releaseDate,
+      ]),
+    );
 
   try {
     await refresh("2026-09-27T12:00:00Z");
@@ -201,8 +214,9 @@ test("BrainzMash refresh dates releases from album lookups and only rechecks dat
       "Recent Release": "2026-09-10",
     });
 
-    catalogues[artist.mbid] = catalogues[artist.mbid]
-      .filter((release) => release.Id !== recentMbid);
+    catalogues[artist.mbid] = catalogues[artist.mbid].filter(
+      (release) => release.Id !== recentMbid,
+    );
     const result = await refresh("2026-09-30T12:00:00Z");
     assert.equal(result.releasesStale, 1);
     assert.equal((await visible("2026-09-30T12:00:00Z"))["Recent Release"], undefined);
@@ -216,7 +230,10 @@ test("repeat refreshes skip artists refreshed in the last day and only queue for
   const artist = createCalendarArtist("Recently Refreshed Artist");
   const releaseMbid = randomUUID();
   const catalogues = { [artist.mbid]: [catalogueRelease(releaseMbid, "Calendar Release")] };
-  const { requestCount } = stubBrainzMash(t, { catalogues, albumDates: { [releaseMbid]: "2026-09-20" } });
+  const { requestCount } = stubBrainzMash(t, {
+    catalogues,
+    albumDates: { [releaseMbid]: "2026-09-20" },
+  });
   const hour = 60 * 60 * 1000;
   const now = Date.now();
   let newArtist = null;
@@ -254,7 +271,10 @@ test("an artist whose catalogue failed is retried after an hour, not on every re
   const now = Date.parse("2026-09-27T12:00:00Z");
 
   try {
-    await assert.rejects(refreshReleaseMetadata({ artists: [artist], now }), /failed for every library artist/);
+    await assert.rejects(
+      refreshReleaseMetadata({ artists: [artist], now }),
+      /failed for every library artist/,
+    );
     const requestsAfterFailure = requestCount();
     assert.ok(requestsAfterFailure > 0);
 
@@ -287,9 +307,9 @@ test("a malformed BrainzMash catalogue does not remove the last good calendar", 
       /failed for every library artist/,
     );
 
-    const stored = db.prepare(
-      "SELECT present FROM library_release_calendar WHERE release_group_mbid = ?",
-    ).get(releaseMbid);
+    const stored = db
+      .prepare("SELECT present FROM library_release_calendar WHERE release_group_mbid = ?")
+      .get(releaseMbid);
     assert.deepEqual(stored, { present: 1 });
   } finally {
     removeCalendarArtist(artist.id);
@@ -312,9 +332,11 @@ test("a failed album lookup keeps the last known release date", async (t) => {
 
     assert.equal(result.releasesFailed, 1);
     assert.equal(result.releasesStale, 0);
-    const stored = db.prepare(
-      "SELECT release_date, present FROM library_release_calendar WHERE release_group_mbid = ? AND artist_id = ?",
-    ).get(releaseMbid, artist.id);
+    const stored = db
+      .prepare(
+        "SELECT release_date, present FROM library_release_calendar WHERE release_group_mbid = ? AND artist_id = ?",
+      )
+      .get(releaseMbid, artist.id);
     assert.deepEqual(stored, { release_date: "2026-09-20", present: 1 });
   } finally {
     removeCalendarArtist(artist.id);
@@ -338,18 +360,22 @@ test("collaboration releases retain an independent calendar row for each artist"
       });
     }
 
-    const rows = db.prepare(
-      "SELECT artist_id, present FROM library_release_calendar WHERE release_group_mbid = ? ORDER BY artist_id",
-    ).all(releaseGroupMbid);
+    const rows = db
+      .prepare(
+        "SELECT artist_id, present FROM library_release_calendar WHERE release_group_mbid = ? ORDER BY artist_id",
+      )
+      .all(releaseGroupMbid);
     assert.deepEqual(rows, [
       { artist_id: firstArtist.id, present: 1 },
       { artist_id: secondArtist.id, present: 1 },
     ]);
 
     markUnseenReleaseCalendarEntries(firstArtist.id, new Set());
-    const afterStale = db.prepare(
-      "SELECT artist_id, present FROM library_release_calendar WHERE release_group_mbid = ? ORDER BY artist_id",
-    ).all(releaseGroupMbid);
+    const afterStale = db
+      .prepare(
+        "SELECT artist_id, present FROM library_release_calendar WHERE release_group_mbid = ? ORDER BY artist_id",
+      )
+      .all(releaseGroupMbid);
     assert.deepEqual(afterStale, [
       { artist_id: firstArtist.id, present: 0 },
       { artist_id: secondArtist.id, present: 1 },
@@ -420,9 +446,9 @@ test("BrainzMash refresh skips owned albums and leaves their library metadata al
       artists: [{ id: libraryArtist.id, mbid: artistMbid, name: "Owned Metadata Artist" }],
       now: "2026-09-27T12:00:00Z",
     });
-    const stored = db.prepare(
-      "SELECT release_date, metadata_json FROM library_albums WHERE id = ?",
-    ).get(libraryAlbum.id);
+    const stored = db
+      .prepare("SELECT release_date, metadata_json FROM library_albums WHERE id = ?")
+      .get(libraryAlbum.id);
     assert.deepEqual(albumRequests, []);
     assert.equal(stored.release_date, null);
     assert.deepEqual(JSON.parse(stored.metadata_json), ownedMetadata);
@@ -430,10 +456,12 @@ test("BrainzMash refresh skips owned albums and leaves their library metadata al
     assert.ok(!visible.some((album) => album.mbid === releaseMbid));
   } finally {
     db.prepare("DELETE FROM library_media_files WHERE path = ?").run(mediaPath);
-    db.prepare("DELETE FROM library_search_documents WHERE entity_kind = 'album' AND entity_id = ?")
-      .run(libraryAlbum.id);
-    db.prepare("DELETE FROM library_search_documents WHERE entity_kind = 'artist' AND entity_id = ?")
-      .run(libraryArtist.id);
+    db.prepare(
+      "DELETE FROM library_search_documents WHERE entity_kind = 'album' AND entity_id = ?",
+    ).run(libraryAlbum.id);
+    db.prepare(
+      "DELETE FROM library_search_documents WHERE entity_kind = 'artist' AND entity_id = ?",
+    ).run(libraryArtist.id);
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(libraryArtist.id);
     db.prepare("DELETE FROM library_tracks WHERE id = ?").run(libraryTrack.id);
   }
@@ -531,17 +559,26 @@ test("lease loss during a catalogue request leaves the last good calendar untouc
   stubBrainzMash(t, {
     catalogues: { [artist.mbid]: [] },
     onArtist: () => {
-      db.prepare("UPDATE _honker_locks SET owner = ? WHERE name = ?")
-        .run("replacement-owner", "release-metadata-refresh");
+      db.prepare("UPDATE _honker_locks SET owner = ? WHERE name = ?").run(
+        "replacement-owner",
+        "release-metadata-refresh",
+      );
     },
   });
   try {
-    await assert.rejects(refreshReleaseMetadata({
-      artists: [artist],
-      now: "2026-09-27T12:00:00Z",
-    }), { code: "HONKER_JOB_INTERRUPTED" });
-    assert.equal(db.prepare("SELECT present FROM library_release_calendar WHERE release_group_mbid = ?")
-      .get(releaseMbid).present, 1);
+    await assert.rejects(
+      refreshReleaseMetadata({
+        artists: [artist],
+        now: "2026-09-27T12:00:00Z",
+      }),
+      { code: "HONKER_JOB_INTERRUPTED" },
+    );
+    assert.equal(
+      db
+        .prepare("SELECT present FROM library_release_calendar WHERE release_group_mbid = ?")
+        .get(releaseMbid).present,
+      1,
+    );
   } finally {
     db.prepare("DELETE FROM _honker_locks WHERE name = ?").run("release-metadata-refresh");
     removeCalendarArtist(artist.id);
@@ -554,10 +591,13 @@ test("an aborted metadata refresh never calls the provider or changes the calend
   const artist = createCalendarArtist("Aborted Refresh Artist");
   const { requestCount } = stubBrainzMash(t, { catalogues: { [artist.mbid]: [] } });
   try {
-    await assert.rejects(refreshReleaseMetadata({
-      artists: [artist],
-      signal: controller.signal,
-    }), { code: "HONKER_JOB_INTERRUPTED" });
+    await assert.rejects(
+      refreshReleaseMetadata({
+        artists: [artist],
+        signal: controller.signal,
+      }),
+      { code: "HONKER_JOB_INTERRUPTED" },
+    );
     assert.equal(requestCount(), 0);
   } finally {
     removeCalendarArtist(artist.id);

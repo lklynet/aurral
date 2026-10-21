@@ -122,12 +122,12 @@ export function SettingsDiscoverTab({
             Use{" "}
             <Link to="/settings/connect" className="arr-link">
               Connect
-            </Link>
-            {" "}for API keys and{" "}
+            </Link>{" "}
+            for API keys and{" "}
             <Link to="/profile" className="arr-link">
               Profile
-            </Link>
-            {" "}for personal accounts.
+            </Link>{" "}
+            for personal accounts.
           </div>
 
           <SettingsArrFormGroup label="Auto-refresh frequency" labelFor="discover-refresh">
@@ -152,9 +152,7 @@ export function SettingsDiscoverTab({
             label="Discovery mode"
             labelFor="discover-mode"
             help={
-              <>
-                Safer favors familiar artists. Balanced adds variety. Deeper explores further.
-              </>
+              <>Safer favors familiar artists. Balanced adds variety. Deeper explores further.</>
             }
           >
             <SettingsSelect

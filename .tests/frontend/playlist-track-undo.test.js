@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { test, vi } from "vite-plus/test";
 
-const json = (value, status = 200) => new Response(JSON.stringify(value), {
-  status,
-  headers: { "content-type": "application/json" },
-});
+const json = (value, status = 200) =>
+  new Response(JSON.stringify(value), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
 
 const until = async (condition) => {
   for (let attempt = 0; attempt < 1000 && !condition(); attempt += 1) {
@@ -37,13 +38,15 @@ const createToasts = () => {
       toasts.find((entry) => entry.id === id).action.onClick();
       close(id);
     },
-    open: () => toasts.filter((toast) => toast.open).map(({ type, message }) => ({ type, message })),
+    open: () =>
+      toasts.filter((toast) => toast.open).map(({ type, message }) => ({ type, message })),
   };
 };
 
 const openHarness = async (t, suffix, { failRemoval = false } = {}) => {
   vi.resetModules();
-  const { createPlaylistTrackChanges } = await import("../../frontend/src/pages/playlists/playlistTrackChanges.js");
+  const { createPlaylistTrackChanges } =
+    await import("../../frontend/src/pages/playlists/playlistTrackChanges.js");
   const { queryClient } = await import("../../frontend/src/queryClient.js");
   const originalFetch = globalThis.fetch;
   const removals = [];
@@ -53,11 +56,19 @@ const openHarness = async (t, suffix, { failRemoval = false } = {}) => {
       const body = JSON.parse(init.body);
       removals.push({ ...body, keepalive: init.keepalive === true });
       if (failRemoval) return json({ error: "Playlist is locked" }, 500);
-      return json({ queued: true, operationId: `op-${removals.length}`, acceptedJobIds: body.jobIds, rejected: [] });
+      return json({
+        queued: true,
+        operationId: `op-${removals.length}`,
+        acceptedJobIds: body.jobIds,
+        rejected: [],
+      });
     }
     if (path.includes("/operations/")) {
       const body = removals[Number(path.split("op-")[1]) - 1];
-      return json({ state: "completed", outcomes: body.jobIds.map((jobId) => ({ jobId, status: "removed" })) });
+      return json({
+        state: "completed",
+        outcomes: body.jobIds.map((jobId) => ({ jobId, status: "removed" })),
+      });
     }
     return json([]);
   };
@@ -67,7 +78,8 @@ const openHarness = async (t, suffix, { failRemoval = false } = {}) => {
   });
   const toast = createToasts();
   const changes = createPlaylistTrackChanges(toast);
-  const hidden = (playlistId = "road-trip") => [...(changes.getHidden().get(playlistId) || [])].sort();
+  const hidden = (playlistId = "road-trip") =>
+    [...(changes.getHidden().get(playlistId) || [])].sort();
   return { changes, toast, removals, hidden };
 };
 
@@ -100,11 +112,17 @@ test("undoing the second of two removals restores only that track and never dele
 
   toast.undo(second.id);
   assert.deepEqual(hidden(), ["a"]);
-  assert.deepEqual(toast.open().at(-1), { type: "success", message: "Restored Song B to Road trip" });
+  assert.deepEqual(toast.open().at(-1), {
+    type: "success",
+    message: "Restored Song B to Road trip",
+  });
 
   toast.close(first.id);
   await until(() => hidden().length === 0);
-  assert.deepEqual(removals.map((removal) => removal.jobIds), [["a"]]);
+  assert.deepEqual(
+    removals.map((removal) => removal.jobIds),
+    [["a"]],
+  );
 });
 
 test("leaving the page sends pending removals and closes their Undo toasts", async (t) => {
@@ -115,7 +133,10 @@ test("leaving the page sends pending removals and closes their Undo toasts", asy
 
   assert.equal(toast.toasts[0].open, false);
   await until(() => hidden().length === 0);
-  assert.deepEqual(removals.map((removal) => removal.jobIds), [["b"]]);
+  assert.deepEqual(
+    removals.map((removal) => removal.jobIds),
+    [["b"]],
+  );
 });
 
 test("a rejected removal brings the tracks back and says nothing changed", async (t) => {
@@ -125,8 +146,10 @@ test("a rejected removal brings the tracks back and says nothing changed", async
   toast.close(toast.toasts[0].id);
   await until(() => hidden().length === 0);
 
-  assert.deepEqual(toast.open(), [{
-    type: "error",
-    message: "Could not remove 2 tracks from Road trip. Nothing changed. Playlist is locked.",
-  }]);
+  assert.deepEqual(toast.open(), [
+    {
+      type: "error",
+      message: "Could not remove 2 tracks from Road trip. Nothing changed. Playlist is locked.",
+    },
+  ]);
 });

@@ -10,8 +10,7 @@ const albumLookupsByClient = new WeakMap();
 
 const normalizeItems = (value) => (Array.isArray(value) ? value : value?.records || []);
 
-export const albumHasTrackFiles = (album) =>
-  Number(album?.statistics?.trackFileCount || 0) > 0;
+export const albumHasTrackFiles = (album) => Number(album?.statistics?.trackFileCount || 0) > 0;
 
 export const getLidarrAlbumsById = async (lidarrClient, albumIds) => {
   const lookups = albumLookupsByClient.get(lidarrClient) || new Map();
@@ -25,7 +24,8 @@ export const getLidarrAlbumsById = async (lidarrClient, albumIds) => {
   // A failed lookup is undefined, so callers can tell it from a deleted
   // album, which Lidarr answers with 404 and getAlbum resolves to null.
   const fetched = mapWithConcurrency(missing, ALBUM_LOOKUP_CONCURRENCY, (albumId) =>
-    lidarrClient.getAlbum(albumId).catch(() => undefined));
+    lidarrClient.getAlbum(albumId).catch(() => undefined),
+  );
   missing.forEach((albumId, index) => {
     lookups.set(albumId, { at: now, album: fetched.then((albums) => albums[index]) });
   });
@@ -51,7 +51,9 @@ const FAILED_QUEUE_STATES = new Set([
 // Lidarr history event types. Rename, retag, and delete events describe
 // files already in the library, so they say nothing about a download.
 export function classifyLidarrDownloadEvent(eventType) {
-  const type = String(eventType || "").trim().toLowerCase();
+  const type = String(eventType || "")
+    .trim()
+    .toLowerCase();
   if (type === "grabbed") return "grabbed";
   if (IMPORTED_EVENTS.has(type)) return "imported";
   if (FAILED_EVENTS.has(type)) return "failed";
@@ -59,12 +61,19 @@ export function classifyLidarrDownloadEvent(eventType) {
 }
 
 export function readLidarrQueueItemStatus(item) {
-  const state = String(item?.trackedDownloadState || "").trim().toLowerCase();
-  const health = String(item?.trackedDownloadStatus || "").trim().toLowerCase();
-  const failed = FAILED_QUEUE_STATES.has(state)
-    || String(item?.status || "").trim().toLowerCase() === "failed"
-    || health === "error"
-    || (health === "warning" && state !== "downloading");
+  const state = String(item?.trackedDownloadState || "")
+    .trim()
+    .toLowerCase();
+  const health = String(item?.trackedDownloadStatus || "")
+    .trim()
+    .toLowerCase();
+  const failed =
+    FAILED_QUEUE_STATES.has(state) ||
+    String(item?.status || "")
+      .trim()
+      .toLowerCase() === "failed" ||
+    health === "error" ||
+    (health === "warning" && state !== "downloading");
   if (failed) return { status: "failed" };
   const size = Number(item?.size || 0);
   const sizeLeft = Number(item?.sizeleft || 0);

@@ -34,10 +34,9 @@ export function recoverDeadDiscoveryRefresh() {
       WHERE queue = 'discovery-refresh'
         AND state = 'processing'
     `);
-    lockRows = honker.query(
-      "SELECT owner FROM _honker_locks WHERE name = ?",
-      [DISCOVERY_GLOBAL_REFRESH_LOCK],
-    );
+    lockRows = honker.query("SELECT owner FROM _honker_locks WHERE name = ?", [
+      DISCOVERY_GLOBAL_REFRESH_LOCK,
+    ]);
   } catch {
     return false;
   }
@@ -60,13 +59,12 @@ export function recoverDeadDiscoveryRefresh() {
   for (const row of deadLocks) {
     const tx = honker.transaction();
     try {
-      tx.query(
-        "SELECT honker_lock_release(?, ?)",
-        [DISCOVERY_GLOBAL_REFRESH_LOCK, row.owner],
-      );
+      tx.query("SELECT honker_lock_release(?, ?)", [DISCOVERY_GLOBAL_REFRESH_LOCK, row.owner]);
       tx.commit();
     } catch {
-      try { tx.rollback(); } catch {}
+      try {
+        tx.rollback();
+      } catch {}
     }
   }
   return true;

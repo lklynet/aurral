@@ -108,18 +108,28 @@ test("malformed artist metadata does not break startup or indexed reference look
     assert.deepEqual(evidence.foreignArtistNames, ["Valid Artist"]);
     const indexes = new Map(evidence.indexes.map(({ name, sql }) => [name, sql]));
     assert.match(indexes.get("idx_library_artists_provider_id"), /json_valid\(metadata_json\)/);
-    assert.match(indexes.get("idx_library_artists_provider_id"), /json_extract\(metadata_json, '\$\.id'\)/);
-    assert.match(indexes.get("idx_library_artists_foreign_artist_id"), /json_valid\(metadata_json\)/);
+    assert.match(
+      indexes.get("idx_library_artists_provider_id"),
+      /json_extract\(metadata_json, '\$\.id'\)/,
+    );
+    assert.match(
+      indexes.get("idx_library_artists_foreign_artist_id"),
+      /json_valid\(metadata_json\)/,
+    );
     assert.match(
       indexes.get("idx_library_artists_foreign_artist_id"),
       /json_extract\(metadata_json, '\$\.foreignArtistId'\)/,
     );
     assert.equal(
-      evidence.providerPlan.some(({ detail }) => detail.includes("idx_library_artists_provider_id")),
+      evidence.providerPlan.some(({ detail }) =>
+        detail.includes("idx_library_artists_provider_id"),
+      ),
       true,
     );
     assert.equal(
-      evidence.foreignPlan.some(({ detail }) => detail.includes("idx_library_artists_foreign_artist_id")),
+      evidence.foreignPlan.some(({ detail }) =>
+        detail.includes("idx_library_artists_foreign_artist_id"),
+      ),
       true,
     );
   } finally {

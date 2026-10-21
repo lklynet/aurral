@@ -4,10 +4,23 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.js";
 
-const [state, { db }, { dbOps }, { downloadTracker }, { finalizeRetainedPlaylistRelocations }, { flowPlaylistConfig }, removal, { downloadWorker }] = await setupIsolatedBackend(
-  "media-relocation", "backend/config/db-sqlite.js", "backend/db/helpers/index.js",
-  "backend/services/downloadJobs/downloadTracker.js", "backend/services/playlists/mediaRelocation.js",
-  "backend/services/playlists/flowPlaylistConfig.js", "backend/services/playlists/trackRemoval.js",
+const [
+  state,
+  { db },
+  { dbOps },
+  { downloadTracker },
+  { finalizeRetainedPlaylistRelocations },
+  { flowPlaylistConfig },
+  removal,
+  { downloadWorker },
+] = await setupIsolatedBackend(
+  "media-relocation",
+  "backend/config/db-sqlite.js",
+  "backend/db/helpers/index.js",
+  "backend/services/downloadJobs/downloadTracker.js",
+  "backend/services/playlists/mediaRelocation.js",
+  "backend/services/playlists/flowPlaylistConfig.js",
+  "backend/services/playlists/trackRemoval.js",
   "backend/services/downloadJobs/downloadWorker.js",
 );
 afterAll(() => cleanupIsolatedState(state));
@@ -16,19 +29,42 @@ test("relocation retries a copied file after path persistence fails and preserve
   dbOps.updateSettings({ integrations: {}, flows: [], sharedPlaylists: [] });
   const root = path.join(state.baseDir, "media");
   downloadWorker.downloadRoot = root;
-  const source = flowPlaylistConfig.createStaticPlaylist({ id: "source", name: "Source", tracks: [{ artistName: "Artist", trackName: "Track", albumName: "Album" }] });
+  const source = flowPlaylistConfig.createStaticPlaylist({
+    id: "source",
+    name: "Source",
+    tracks: [{ artistName: "Artist", trackName: "Track", albumName: "Album" }],
+  });
   const oldPath = path.join(root, "aurral-weekly-flow", "source", "Artist", "Album", "Track.flac");
   await fs.mkdir(path.dirname(oldPath), { recursive: true });
   await fs.writeFile(oldPath, "disposable audio");
-  const first = downloadTracker.addJob({ artistName: "Artist", trackName: "Track", albumName: "Album" }, "source");
-  const second = downloadTracker.addJob({ artistName: "Artist", trackName: "Track", albumName: "Album" }, "other");
+  const first = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Track", albumName: "Album" },
+    "source",
+  );
+  const second = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Track", albumName: "Album" },
+    "other",
+  );
   downloadTracker.setDone(first, oldPath);
   downloadTracker.setDone(second, oldPath);
-  flowPlaylistConfig.createStaticPlaylist({ id: "target", name: "Target", tracks: [{ artistName: "Artist", trackName: "Track", albumName: "Album", canonicalJobId: first }] });
+  flowPlaylistConfig.createStaticPlaylist({
+    id: "target",
+    name: "Target",
+    tracks: [
+      { artistName: "Artist", trackName: "Track", albumName: "Album", canonicalJobId: first },
+    ],
+  });
   const selection = removal.captureStaticPlaylistSelection(source, first);
-  const remove = () => removal.withStaticPlaylistRemovalMutation({ playlistId: source.id, jobIds: [first] }, () =>
-    removal.removeStaticPlaylistSelectionsLocked({ playlistId: source.id, selections: [selection] }));
-  db.exec("CREATE TRIGGER reject_relocation BEFORE UPDATE OF final_path ON playlist_download_jobs BEGIN SELECT RAISE(ABORT, 'fixture path failure'); END");
+  const remove = () =>
+    removal.withStaticPlaylistRemovalMutation({ playlistId: source.id, jobIds: [first] }, () =>
+      removal.removeStaticPlaylistSelectionsLocked({
+        playlistId: source.id,
+        selections: [selection],
+      }),
+    );
+  db.exec(
+    "CREATE TRIGGER reject_relocation BEFORE UPDATE OF final_path ON playlist_download_jobs BEGIN SELECT RAISE(ABORT, 'fixture path failure'); END",
+  );
   try {
     await assert.rejects(remove(), /fixture path failure/);
     assert.equal(await fs.readFile(oldPath, "utf8"), "disposable audio");

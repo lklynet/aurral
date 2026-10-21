@@ -58,7 +58,9 @@ afterAll(async () => {
 
 const ownerOf = (table, kind) => {
   const row = db.prepare(`SELECT id FROM ${table}`).get();
-  return row ? managementStore.getLibraryManagementEntry(kind, row.id)?.managedBy ?? null : undefined;
+  return row
+    ? (managementStore.getLibraryManagementEntry(kind, row.id)?.managedBy ?? null)
+    : undefined;
 };
 
 test("a Lidarr artist add records Lidarr as the owner before any scan runs", async () => {
@@ -68,7 +70,9 @@ test("a Lidarr artist add records Lidarr as the owner before any scan runs", asy
 });
 
 test("a Lidarr album add records Lidarr as the owner of the artist and the album", async () => {
-  const added = await libraryManager.addAlbum("41", albumMbid, "Owned Album", { managedBy: "lidarr" });
+  const added = await libraryManager.addAlbum("41", albumMbid, "Owned Album", {
+    managedBy: "lidarr",
+  });
   assert.equal(added.error, undefined);
   assert.equal(ownerOf("library_artists", "artist"), "lidarr");
   assert.equal(ownerOf("library_albums", "album"), "lidarr");
@@ -96,7 +100,9 @@ test("an Aurral album add does not take over an album Lidarr just added", async 
   await libraryManager.addAlbum("41", albumMbid, "Owned Album", { managedBy: "lidarr" });
   const artist = db.prepare("SELECT id FROM library_artists").get();
 
-  const result = await libraryManager.addAlbum(artist.id, albumMbid, "Owned Album", { managedBy: "aurral" });
+  const result = await libraryManager.addAlbum(artist.id, albumMbid, "Owned Album", {
+    managedBy: "aurral",
+  });
   assert.equal(result.statusCode, 409);
   assert.equal(ownerOf("library_albums", "album"), "lidarr");
 });

@@ -286,7 +286,10 @@ export const selectDiscoverySeeds = ({
   const likedCount = Math.min(liked.length, Math.max(1, Math.round(limit * LIKED_SEED_SHARE)));
   const remaining = Math.max(0, limit - likedCount);
   const historyTarget = library.length > 0 ? Math.ceil(remaining * HISTORY_SEED_SHARE) : remaining;
-  const libraryCount = Math.min(library.length, remaining - Math.min(history.length, historyTarget));
+  const libraryCount = Math.min(
+    library.length,
+    remaining - Math.min(history.length, historyTarget),
+  );
   const historyCount = Math.min(history.length, remaining - libraryCount);
 
   return buildDiscoverySeedList({
@@ -688,7 +691,9 @@ export const rerankRecommendations = (recommendations = [], limit = 100, options
         Number(entry.scoreAgingPenalty || 0),
       tags: [...new Set(normalizeTagList(entry.matchedTags))],
       seeds: [
-        ...new Set(entry.supportingSeeds.map((seed) => normalizeText(seed?.artistName)).filter(Boolean)),
+        ...new Set(
+          entry.supportingSeeds.map((seed) => normalizeText(seed?.artistName)).filter(Boolean),
+        ),
       ],
     });
   }
@@ -724,7 +729,8 @@ export const rerankRecommendations = (recommendations = [], limit = 100, options
 
     const [best] = pool.splice(bestIndex, 1);
     for (const tag of best.tags) selectedTagCounts.set(tag, (selectedTagCounts.get(tag) || 0) + 1);
-    for (const seed of best.seeds) selectedSeedCounts.set(seed, (selectedSeedCounts.get(seed) || 0) + 1);
+    for (const seed of best.seeds)
+      selectedSeedCounts.set(seed, (selectedSeedCounts.get(seed) || 0) + 1);
     selected.push({
       ...best.entry,
       scoreDiversityPenalty: Math.round(bestPenalty),
@@ -753,7 +759,10 @@ const matchPercentForRank = (index, count) =>
         TOP_MATCH_PERCENT - ((TOP_MATCH_PERCENT - LOWEST_MATCH_PERCENT) * index) / (count - 1),
       );
 
-export const serveRecommendations = (recommendations = [], { feedback = [], discoveryMode } = {}) => {
+export const serveRecommendations = (
+  recommendations = [],
+  { feedback = [], discoveryMode } = {},
+) => {
   const ranked = rerankRecommendations(recommendations, recommendations.length, {
     feedback,
     discoveryMode,
@@ -892,10 +901,9 @@ export const mergeResolvedRecommendations = (
     const recommendationMbid =
       normalizeMbid(recommendation?.id) || normalizeMbid(recommendation?.navigateTo);
 
-    const identityKeys = [
-      recommendationMbid,
-      `name:${normalizeText(recommendation?.name)}`,
-    ].filter(Boolean);
+    const identityKeys = [recommendationMbid, `name:${normalizeText(recommendation?.name)}`].filter(
+      Boolean,
+    );
     if (identityKeys.length === 0) continue;
     const existingIdentity = identityKeys.find((key) => aliases.has(key));
     const identity = existingIdentity || identityKeys[0];

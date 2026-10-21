@@ -35,16 +35,26 @@ async function fixture(page, { holdPlaylist } = {}) {
         ],
       });
     }
-    if (path === "/discover/editorial/links") return json({ artistMbid: artist.id, albumMbid: null });
+    if (path === "/discover/editorial/links")
+      return json({ artistMbid: artist.id, albumMbid: null });
     if (path === `/artists/${artist.id}/stream`) {
-      const events = { artist: { ...artist, "release-groups": [] }, cover: { images: [] }, library: { exists: false }, complete: {} };
+      const events = {
+        artist: { ...artist, "release-groups": [] },
+        cover: { images: [] },
+        library: { exists: false },
+        complete: {},
+      };
       return route.fulfill({
         contentType: "text/event-stream",
-        body: Object.entries(events).map(([event, data]) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`).join(""),
+        body: Object.entries(events)
+          .map(([event, data]) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+          .join(""),
       });
     }
     if (path === "/library/lookup/batch") {
-      return json(Object.fromEntries((request.postDataJSON()?.mbids || []).map((id) => [id, false])));
+      return json(
+        Object.fromEntries((request.postDataJSON()?.mbids || []).map((id) => [id, false])),
+      );
     }
     if (path.endsWith("/cover")) return json({ images: [] });
     if (path === "/artists/release-groups/covers") return json({});
@@ -68,17 +78,20 @@ test("Discover cards are real links with separate controls", async ({ page }) =>
   await expect(artistLink).toHaveAttribute("href", `/artist/${artist.id}`);
 
   const nested = await main
-    .locator(
-      ":is(a, button, [role=button]) :is(a, button, [role=button], input, select, textarea)",
-    )
+    .locator(":is(a, button, [role=button]) :is(a, button, [role=button], input, select, textarea)")
     .count();
   expect(nested).toBe(0);
 });
 
-test("modifier-clicking a card opens a new tab and leaves the page in place", async ({ page, context }) => {
+test("modifier-clicking a card opens a new tab and leaves the page in place", async ({
+  page,
+  context,
+}) => {
   await fixture(page);
   await page.goto("/");
-  const playlistLink = page.locator("main").getByRole("link", { name: `Open ${playlist.name}`, exact: true });
+  const playlistLink = page
+    .locator("main")
+    .getByRole("link", { name: `Open ${playlist.name}`, exact: true });
   await expect(playlistLink).toBeVisible();
 
   const [opened] = await Promise.all([
@@ -94,7 +107,10 @@ test("modifier-clicking a card opens a new tab and leaves the page in place", as
 test("a plain click on a card opens the playlist in place", async ({ page }) => {
   await fixture(page);
   await page.goto("/");
-  await page.locator("main").getByRole("link", { name: `Open ${playlist.name}`, exact: true }).click();
+  await page
+    .locator("main")
+    .getByRole("link", { name: `Open ${playlist.name}`, exact: true })
+    .click();
   await expect(page).toHaveURL(new RegExp(`${playlistPath}$`));
   await expect(page.getByRole("heading", { name: playlist.name })).toBeVisible();
   await page.goBack();
@@ -104,9 +120,12 @@ test("a plain click on a card opens the playlist in place", async ({ page }) => 
 test("hovering a card prefetches its page and the click reuses it", async ({ page }) => {
   const requests = await fixture(page);
   await page.goto("/");
-  const playlistLink = page.locator("main").getByRole("link", { name: `Open ${playlist.name}`, exact: true });
+  const playlistLink = page
+    .locator("main")
+    .getByRole("link", { name: `Open ${playlist.name}`, exact: true });
   await expect(playlistLink).toBeVisible();
-  const detailRequests = () => requests.filter((path) => path === `/discover/editorial/${playlist.id}`).length;
+  const detailRequests = () =>
+    requests.filter((path) => path === `/discover/editorial/${playlist.id}`).length;
 
   await playlistLink.hover();
   await expect.poll(detailRequests).toBe(1);
@@ -115,11 +134,20 @@ test("hovering a card prefetches its page and the click reuses it", async ({ pag
   expect(detailRequests()).toBe(1);
 });
 
-test("a playlist opened from its card shows its header before the tracks load", async ({ page }) => {
+test("a playlist opened from its card shows its header before the tracks load", async ({
+  page,
+}) => {
   let release;
-  await fixture(page, { holdPlaylist: new Promise((resolve) => { release = resolve; }) });
+  await fixture(page, {
+    holdPlaylist: new Promise((resolve) => {
+      release = resolve;
+    }),
+  });
   await page.goto("/");
-  await page.locator("main").getByRole("link", { name: `Open ${playlist.name}`, exact: true }).click();
+  await page
+    .locator("main")
+    .getByRole("link", { name: `Open ${playlist.name}`, exact: true })
+    .click();
 
   await expect(page.getByRole("heading", { name: playlist.name, level: 1 })).toBeVisible();
   await expect(page.getByText(`${playlist.trackCount} tracks`, { exact: true })).toBeVisible();
@@ -140,7 +168,9 @@ test("a playlist opened directly still loads without card data", async ({ page }
 });
 
 async function openPlaylistAgain(page) {
-  const link = page.locator("main").getByRole("link", { name: `Open ${playlist.name}`, exact: true });
+  const link = page
+    .locator("main")
+    .getByRole("link", { name: `Open ${playlist.name}`, exact: true });
   await link.click();
   await expect(page.getByRole("heading", { name: playlist.name, level: 1 })).toBeVisible();
   await page.goBack();
@@ -171,7 +201,9 @@ test("route transitions are skipped when reduced motion is requested", async ({ 
   expect(await page.evaluate(() => window.__routeTransitions)).toEqual([]);
 });
 
-test("track artist names are links that resolve in place without a history entry", async ({ page }) => {
+test("track artist names are links that resolve in place without a history entry", async ({
+  page,
+}) => {
   await fixture(page);
   await page.goto(playlistPath);
   const main = page.locator("main");
@@ -192,13 +224,18 @@ test("track artist names are links that resolve in place without a history entry
 
 const settleScroll = async (page, locator) => {
   await locator.scrollIntoViewIfNeeded();
-  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await page.evaluate(
+    () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+  );
 };
 
 test("right-clicking a Discover artist card opens its menu in place", async ({ page }) => {
   await fixture(page);
   await page.goto("/");
-  const artistLink = page.locator("main").getByRole("link", { name: `Open ${artist.name}`, exact: true }).first();
+  const artistLink = page
+    .locator("main")
+    .getByRole("link", { name: `Open ${artist.name}`, exact: true })
+    .first();
   await settleScroll(page, artistLink);
   await artistLink.click({ button: "right" });
   const menu = page.getByRole("menu", { name: `Artist options for ${artist.name}` });
@@ -223,13 +260,18 @@ test.describe("on a touch screen", () => {
   }
 
   async function artistCardCenter(page) {
-    const artistLink = page.locator("main").getByRole("link", { name: `Open ${artist.name}`, exact: true }).first();
+    const artistLink = page
+      .locator("main")
+      .getByRole("link", { name: `Open ${artist.name}`, exact: true })
+      .first();
     await settleScroll(page, artistLink);
     const box = await artistLink.boundingBox();
     return { x: Math.round(box.x + box.width / 2), y: Math.round(box.y + box.height / 2) };
   }
 
-  test("a long press on a Discover artist card opens its menu without following the link", async ({ page }) => {
+  test("a long press on a Discover artist card opens its menu without following the link", async ({
+    page,
+  }) => {
     await fixture(page);
     await page.goto("/");
     const point = await artistCardCenter(page);
@@ -246,6 +288,8 @@ test.describe("on a touch screen", () => {
     await page.goto("/");
     const point = await artistCardCenter(page);
     await touchPath(page, [point, { x: point.x, y: point.y + 40 }], 800);
-    await expect(page.getByRole("menu", { name: `Artist options for ${artist.name}` })).toHaveCount(0);
+    await expect(page.getByRole("menu", { name: `Artist options for ${artist.name}` })).toHaveCount(
+      0,
+    );
   });
 });

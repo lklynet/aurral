@@ -12,9 +12,7 @@ export default function RecommendationMeta({ artist, text, className }) {
   if (!visibleText) return null;
   return (
     <Tooltip content={[matchLabel, text].filter(Boolean).join(" • ")}>
-      <p className={matchLabel ? `${className} artist-match-percent` : className}>
-        {visibleText}
-      </p>
+      <p className={matchLabel ? `${className} artist-match-percent` : className}>{visibleText}</p>
     </Tooltip>
   );
 }

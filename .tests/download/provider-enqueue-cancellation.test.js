@@ -41,8 +41,12 @@ afterAll(async () => cleanupIsolatedState(isolatedState));
 function createGate() {
   let signalStarted;
   let release;
-  const started = new Promise((resolve) => { signalStarted = resolve; });
-  const blocked = new Promise((resolve) => { release = resolve; });
+  const started = new Promise((resolve) => {
+    signalStarted = resolve;
+  });
+  const blocked = new Promise((resolve) => {
+    release = resolve;
+  });
   return {
     started,
     release,
@@ -82,8 +86,12 @@ async function assertCancellationWaitsForAdmission({
   try {
     await gate.started;
     cancellation = cancelWork().then(
-      (value) => { outcome = { status: "fulfilled", value }; },
-      (error) => { outcome = { status: "rejected", error }; },
+      (value) => {
+        outcome = { status: "fulfilled", value };
+      },
+      (error) => {
+        outcome = { status: "rejected", error };
+      },
     );
     await new Promise((resolve) => setImmediate(resolve));
     const waitedForAdmission = outcome === null;
@@ -112,7 +120,9 @@ test("SABnzbd cancellation waits for an in-flight append and can retry cleanup",
     integrations: { sabnzbd: { enabled: true, url: "http://sabnzbd.test", apiKey: "test" } },
   });
   vi.spyOn(sabnzbdClient, "isConfigured").mockImplementation(() => true);
-  vi.spyOn(prowlarrClient, "downloadNzb").mockImplementation(async () => Buffer.from("<nzb></nzb>"));
+  vi.spyOn(prowlarrClient, "downloadNzb").mockImplementation(async () =>
+    Buffer.from("<nzb></nzb>"),
+  );
   vi.spyOn(sabnzbdClient, "appendNzb").mockImplementation(async () => {
     await gate.wait();
     return { nzbId: "sabnzbd-race-item" };
@@ -128,13 +138,19 @@ test("SABnzbd cancellation waits for an in-flight append and can retry cleanup",
     ...payload,
     phase: "download",
     source: "usenet",
-    candidates: [{ raw: { release: {
-      downloadUrl: "https://release.test/song.nzb",
-      title: "Race Artist - SABnzbd Song",
-      guid: "sabnzbd-race-guid",
-      indexerId: 1,
-      indexer: "Test Indexer",
-    } } }],
+    candidates: [
+      {
+        raw: {
+          release: {
+            downloadUrl: "https://release.test/song.nzb",
+            title: "Race Artist - SABnzbd Song",
+            guid: "sabnzbd-race-guid",
+            indexerId: 1,
+            indexer: "Test Indexer",
+          },
+        },
+      },
+    ],
   };
 
   try {
@@ -143,13 +159,12 @@ test("SABnzbd cancellation waits for an in-flight append and can retry cleanup",
       job,
       payload: pipelinePayload,
       runPipeline: () => processUsenetPipelinePayload(pipelinePayload),
-      cancelWork: () => cancellationService.cancelPlaylistDownloadWork(
-        playlistId,
-        [downloadTracker.getJob(job.id)],
-      ),
-      retryCancellation: () => cancellationService.cancelDownloadWorkForJobs([
-        downloadTracker.getJob(job.id),
-      ]),
+      cancelWork: () =>
+        cancellationService.cancelPlaylistDownloadWork(playlistId, [
+          downloadTracker.getJob(job.id),
+        ]),
+      retryCancellation: () =>
+        cancellationService.cancelDownloadWorkForJobs([downloadTracker.getJob(job.id)]),
     });
   } finally {
     dbOps.updateSettings(originalSettings);
@@ -181,13 +196,17 @@ test("deemix cancellation waits for an in-flight enqueue and can retry cleanup",
     ...payload,
     phase: "download",
     source: "deemix",
-    candidates: [{ raw: {
-      id: "deemix-race-track",
-      url: "https://deemix.test/track/race",
-      title: "Deemix Song",
-      artist: "Race Artist",
-      file: "Race Artist - Deemix Song",
-    } }],
+    candidates: [
+      {
+        raw: {
+          id: "deemix-race-track",
+          url: "https://deemix.test/track/race",
+          title: "Deemix Song",
+          artist: "Race Artist",
+          file: "Race Artist - Deemix Song",
+        },
+      },
+    ],
   };
 
   try {
@@ -196,9 +215,8 @@ test("deemix cancellation waits for an in-flight enqueue and can retry cleanup",
       job,
       payload: pipelinePayload,
       runPipeline: () => processDeemixPipelinePayload(pipelinePayload),
-      retryCancellation: () => cancellationService.cancelDownloadWorkForJobs([
-        downloadTracker.getJob(job.id),
-      ]),
+      retryCancellation: () =>
+        cancellationService.cancelDownloadWorkForJobs([downloadTracker.getJob(job.id)]),
     });
   } finally {
     dbOps.updateSettings(originalSettings);
@@ -235,11 +253,15 @@ test("slskd cancellation waits for an in-flight enqueue and can retry cleanup", 
     phase: "download",
     source: "slskd",
     eventOffset: 0,
-    candidates: [{ raw: {
-      user: "race-peer",
-      file: "Race Artist - slskd Song.flac",
-      size: 1024,
-    } }],
+    candidates: [
+      {
+        raw: {
+          user: "race-peer",
+          file: "Race Artist - slskd Song.flac",
+          size: 1024,
+        },
+      },
+    ],
   };
 
   try {
@@ -248,9 +270,8 @@ test("slskd cancellation waits for an in-flight enqueue and can retry cleanup", 
       job,
       payload: pipelinePayload,
       runPipeline: () => processPipelinePayload(pipelinePayload),
-      retryCancellation: () => cancellationService.cancelDownloadWorkForJobs([
-        downloadTracker.getJob(job.id),
-      ]),
+      retryCancellation: () =>
+        cancellationService.cancelDownloadWorkForJobs([downloadTracker.getJob(job.id)]),
     });
   } finally {
     dbOps.updateSettings(originalSettings);

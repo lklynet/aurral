@@ -1,10 +1,7 @@
 import { getDownloadClient } from "../download/downloadClientSettings.js";
 import { deemixQueueIds } from "../deemixClient.js";
 import { mapWithConcurrency } from "../discovery/helpers.js";
-import {
-  getHonkerQueueByName,
-  listHonkerJobs,
-} from "../honkerDb.js";
+import { getHonkerQueueByName, listHonkerJobs } from "../honkerDb.js";
 import { logger } from "../logger.js";
 import { downloadTracker } from "./downloadTracker.js";
 import { dbOps } from "../../db/helpers/index.js";
@@ -26,8 +23,13 @@ const PIPELINE_QUEUE = "slskd-pipeline";
 
 function captureCancellationWork(key, jobs, payloads) {
   const previous = dbOps.getJSONSetting(key) || { jobs: [], payloads: [] };
-  const unique = (values) => [...new Map(values.map((value) => [JSON.stringify(value), value])).values()];
-  dbOps.setJSONSetting(key, { jobs: unique([...previous.jobs, ...jobs]), payloads: unique([...previous.payloads, ...payloads]) });
+  const unique = (values) => [
+    ...new Map(values.map((value) => [JSON.stringify(value), value])).values(),
+  ];
+  dbOps.setJSONSetting(key, {
+    jobs: unique([...previous.jobs, ...jobs]),
+    payloads: unique([...previous.payloads, ...payloads]),
+  });
 }
 
 function readCancellationWork(jobs, playlistId = null) {
@@ -48,10 +50,7 @@ function normalizeId(value) {
 
 function payloadBelongsToPlaylist(payload, playlistId, jobIds) {
   const safeJobId = normalizeId(payload?.jobId);
-  return (
-    normalizeId(payload?.playlistId) === playlistId ||
-    (safeJobId && jobIds.has(safeJobId))
-  );
+  return normalizeId(payload?.playlistId) === playlistId || (safeJobId && jobIds.has(safeJobId));
 }
 
 function readTransferEntries(payload) {
@@ -65,9 +64,7 @@ function readTransferEntries(payload) {
 }
 
 function readTransferId(transfer) {
-  return normalizeId(
-    transfer?.id || transfer?.Id || transfer?.transferId || transfer?.TransferId,
-  );
+  return normalizeId(transfer?.id || transfer?.Id || transfer?.transferId || transfer?.TransferId);
 }
 
 function readTransferUsername(transfer, payload, job) {
@@ -242,21 +239,23 @@ async function cancelUsenetWork(clientKey, label, payloads, jobs) {
   }
   for (const id of ids) {
     for (const [message, cleanup, lookup] of [
-      ["Could not cancel a removed playlist queue item", () => client.deleteQueueItem(id), () => client.getQueueItem(id)],
-      ["Could not remove a deleted playlist history item", () => client.deleteHistoryItem(id), () => client.getHistoryItem(id)],
+      [
+        "Could not cancel a removed playlist queue item",
+        () => client.deleteQueueItem(id),
+        () => client.getQueueItem(id),
+      ],
+      [
+        "Could not remove a deleted playlist history item",
+        () => client.deleteHistoryItem(id),
+        () => client.getHistoryItem(id),
+      ],
     ]) {
-      await attemptProviderCleanup(
-        failures,
-        clientKey,
-        message,
-        { id },
-        async () => {
-          const removed = await cleanup();
-          if (!removed && await lookup()) {
-            throw new Error(`${label} did not confirm item removal`);
-          }
-        },
-      );
+      await attemptProviderCleanup(failures, clientKey, message, { id }, async () => {
+        const removed = await cleanup();
+        if (!removed && (await lookup())) {
+          throw new Error(`${label} did not confirm item removal`);
+        }
+      });
     }
   }
   throwProviderCleanupFailures(clientKey, failures);
@@ -375,7 +374,11 @@ export function markDownloadWorkCancelledForJobs(jobs = []) {
   const rows = listHonkerJobs(PIPELINE_QUEUE);
   db.transaction(() => {
     for (const job of normalizedJobs) {
-      captureCancellationWork(`downloadCancellationWork:${job.id}`, [job], rows.filter((row) => row.payload?.jobId === job.id).map((row) => row.payload));
+      captureCancellationWork(
+        `downloadCancellationWork:${job.id}`,
+        [job],
+        rows.filter((row) => row.payload?.jobId === job.id).map((row) => row.payload),
+      );
     }
     cancelDownloadJobs(normalizedJobs.map((job) => job.id));
   })();
@@ -388,8 +391,19 @@ export function markPlaylistDownloadWorkCancelled(playlistId, jobs = []) {
     return { generation: 0, jobs: [], wasActive: false, jobsToRestore: [] };
   }
   const normalizedJobs = Array.isArray(jobs) ? jobs.filter((job) => job?.id) : [];
-  captureCancellationWork(`playlistCancellationWork:${safePlaylistId}`, normalizedJobs,
-    listHonkerJobs(PIPELINE_QUEUE).filter((row) => payloadBelongsToPlaylist(row.payload, safePlaylistId, new Set(normalizedJobs.map((job) => job.id)))).map((row) => row.payload));
+  captureCancellationWork(
+    `playlistCancellationWork:${safePlaylistId}`,
+    normalizedJobs,
+    listHonkerJobs(PIPELINE_QUEUE)
+      .filter((row) =>
+        payloadBelongsToPlaylist(
+          row.payload,
+          safePlaylistId,
+          new Set(normalizedJobs.map((job) => job.id)),
+        ),
+      )
+      .map((row) => row.payload),
+  );
   const generationBeforeCancellation = getPlaylistDownloadGeneration(safePlaylistId);
   const wasActive = isPipelinePayloadActive({
     playlistId: safePlaylistId,
@@ -426,8 +440,11 @@ export async function cancelDownloadWorkForJobs(jobs = [], { lock = true } = {})
       jobIds: currentJobs.map((job) => job.id),
       provider: "slskd-search",
     });
-    return cancelProviderWork([...pipeline.payloads, ...captured.flatMap((work) => work.payloads)],
-      [...currentJobs, ...captured.flatMap((work) => work.jobs)], providerWork);
+    return cancelProviderWork(
+      [...pipeline.payloads, ...captured.flatMap((work) => work.payloads)],
+      [...currentJobs, ...captured.flatMap((work) => work.jobs)],
+      providerWork,
+    );
   };
   // An album attempt led by a cancelled track still holds the tracks that
   // were not cancelled, and they start again untried.
@@ -437,9 +454,7 @@ export async function cancelDownloadWorkForJobs(jobs = [], { lock = true } = {})
   };
   let providers;
   try {
-    providers = lock
-      ? await withPlaylistCancellationLocks(playlistIds, cancel)
-      : await cancel();
+    providers = lock ? await withPlaylistCancellationLocks(playlistIds, cancel) : await cancel();
   } finally {
     await settle();
   }
@@ -489,8 +504,11 @@ export async function cancelPlaylistDownloadWork(playlistId, jobs = [], { lock =
       playlistId: safePlaylistId,
       provider: "slskd-search",
     });
-    return cancelProviderWork([...activePipeline.payloads, ...captured.flatMap((work) => work.payloads)],
-      [...currentJobs, ...captured.flatMap((work) => work.jobs)], providerWork);
+    return cancelProviderWork(
+      [...activePipeline.payloads, ...captured.flatMap((work) => work.payloads)],
+      [...currentJobs, ...captured.flatMap((work) => work.jobs)],
+      providerWork,
+    );
   };
   const providers = lock
     ? await withPlaylistCancellationLocks([safePlaylistId], cancel)

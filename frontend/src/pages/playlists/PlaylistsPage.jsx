@@ -93,11 +93,18 @@ export default function PlaylistsPage() {
 
   const describePlaylist = (playlist) => {
     const hiddenCount = hiddenTracks.get(playlist.id)?.size || 0;
-    const parts = [formatTrackTotal(Math.max(
-      0,
-      getStaticPlaylistTrackCount(playlist, getPlaylistStats(playlist.id)) - hiddenCount,
-    ))];
-    if (playlist.ownerUsername && (user?.role === "admin" || playlist.ownerUsername !== user?.username)) {
+    const parts = [
+      formatTrackTotal(
+        Math.max(
+          0,
+          getStaticPlaylistTrackCount(playlist, getPlaylistStats(playlist.id)) - hiddenCount,
+        ),
+      ),
+    ];
+    if (
+      playlist.ownerUsername &&
+      (user?.role === "admin" || playlist.ownerUsername !== user?.username)
+    ) {
       parts.unshift(playlist.ownerUsername);
     }
     return parts.join(" · ");
@@ -146,7 +153,12 @@ export default function PlaylistsPage() {
     return (
       <div className="native-library-grid" role="list" aria-label="Playlists">
         {staticPlaylists.map((playlist) => (
-          <article className="native-library-card" role="listitem" data-artwork-scope key={playlist.id}>
+          <article
+            className="native-library-card"
+            role="listitem"
+            data-artwork-scope
+            key={playlist.id}
+          >
             <div className="native-library-card__cover-wrap">
               <RouteLink
                 to={playlistPath(playlist.id)}
@@ -154,12 +166,18 @@ export default function PlaylistsPage() {
                 data-artwork
                 aria-label={`Open ${playlist.name}`}
               >
-                <PlaylistArtworkThumb artworkUrl={artworkUrlFor(playlist.id)} name={playlist.name} />
+                <PlaylistArtworkThumb
+                  artworkUrl={artworkUrlFor(playlist.id)}
+                  name={playlist.name}
+                />
               </RouteLink>
               <SyncedBadge importSource={playlist.importSource} />
             </div>
             <div className="native-library-card__body">
-              <RouteLink to={playlistPath(playlist.id)} className="native-library-card__title playlists-page__title">
+              <RouteLink
+                to={playlistPath(playlist.id)}
+                className="native-library-card__title playlists-page__title"
+              >
                 {playlist.name}
               </RouteLink>
               <span className="native-library-card__meta">{describePlaylist(playlist)}</span>
@@ -206,7 +224,9 @@ export default function PlaylistsPage() {
       <CreatePlaylistModal
         open={createOpen}
         defaultName={reserveUniqueName(
-          new Set(staticPlaylists.map((playlist) => normalizeNameKey(playlist?.name)).filter(Boolean)),
+          new Set(
+            staticPlaylists.map((playlist) => normalizeNameKey(playlist?.name)).filter(Boolean),
+          ),
           "Playlist",
         )}
         saving={creating}

@@ -3,72 +3,89 @@ import { test, afterAll } from "vite-plus/test";
 import { createBackgroundProcessSupervisor } from "../../backend/services/backgroundProcessSupervisor.js";
 import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.js";
 
-const [state, honker, { getDatabaseRevision }] = await setupIsolatedBackend("on-demand-workers", "backend/services/honkerDb.js", "backend/config/db-sqlite.js");
+const [state, honker, { getDatabaseRevision }] = await setupIsolatedBackend(
+  "on-demand-workers",
+  "backend/services/honkerDb.js",
+  "backend/config/db-sqlite.js",
+);
 afterAll(() => cleanupIsolatedState(state));
 
-test("a due schedule runs in background processes that exit once idle", { timeout: 30000 }, async (t) => {
-  const scheduler = honker.getHonkerDb().scheduler();
-  const previousIdleStop = process.env.AURRAL_WORKER_IDLE_STOP_MS;
-  scheduler.add({
-    name: "disposable-on-demand",
-    queue: "system-task-maintenance",
-    schedule: "@every 1h",
-    payload: { kind: "session-cleanup" },
-  });
-  const tx = honker.getHonkerDb().transaction();
-  tx.execute("UPDATE _honker_scheduler_tasks SET next_fire_at = ? WHERE name = ?",
-    [Math.floor(Date.now() / 1000) - 1, "disposable-on-demand"]);
-  tx.commit();
+test(
+  "a due schedule runs in background processes that exit once idle",
+  { timeout: 30000 },
+  async (t) => {
+    const scheduler = honker.getHonkerDb().scheduler();
+    const previousIdleStop = process.env.AURRAL_WORKER_IDLE_STOP_MS;
+    scheduler.add({
+      name: "disposable-on-demand",
+      queue: "system-task-maintenance",
+      schedule: "@every 1h",
+      payload: { kind: "session-cleanup" },
+    });
+    const tx = honker.getHonkerDb().transaction();
+    tx.execute("UPDATE _honker_scheduler_tasks SET next_fire_at = ? WHERE name = ?", [
+      Math.floor(Date.now() / 1000) - 1,
+      "disposable-on-demand",
+    ]);
+    tx.commit();
 
-  const started = Promise.withResolvers();
-  const finished = Promise.withResolvers();
-  const heartbeat = Promise.withResolvers();
-  const exited = Promise.withResolvers();
-  const exits = [];
-  process.env.NODE_ENV = "production";
-  process.env.AURRAL_WORKER_IDLE_STOP_MS = "5000";
-  const supervisor = createBackgroundProcessSupervisor({
-    groups: ["scheduler", "maintenance"],
-    findGroupsWithWork: honker.listBackgroundGroupsWithWork,
-    getWorkRevision: getDatabaseRevision,
-    getNextWorkAt: honker.getNextBackgroundWorkAt,
-    onMessage(message, group) {
-      if (message.type === "job-started") started.resolve(message);
-      if (message.type === "job-finished") finished.resolve(message);
-      if (message.type === "heartbeat" && group === "maintenance") heartbeat.resolve(message);
-    },
-    onExit(group, code, _signal, _pid, _reason, retired) {
-      exits.push({ group, code, retired });
-      if (exits.length === 2) exited.resolve();
-    },
-  });
-  t.onTestFinished(async () => {
-    await supervisor.stop();
-    scheduler.remove("disposable-on-demand");
-    process.env.NODE_ENV = "test";
-    if (previousIdleStop === undefined) delete process.env.AURRAL_WORKER_IDLE_STOP_MS;
-    else process.env.AURRAL_WORKER_IDLE_STOP_MS = previousIdleStop;
-  });
+    const started = Promise.withResolvers();
+    const finished = Promise.withResolvers();
+    const heartbeat = Promise.withResolvers();
+    const exited = Promise.withResolvers();
+    const exits = [];
+    process.env.NODE_ENV = "production";
+    process.env.AURRAL_WORKER_IDLE_STOP_MS = "5000";
+    const supervisor = createBackgroundProcessSupervisor({
+      groups: ["scheduler", "maintenance"],
+      findGroupsWithWork: honker.listBackgroundGroupsWithWork,
+      getWorkRevision: getDatabaseRevision,
+      getNextWorkAt: honker.getNextBackgroundWorkAt,
+      onMessage(message, group) {
+        if (message.type === "job-started") started.resolve(message);
+        if (message.type === "job-finished") finished.resolve(message);
+        if (message.type === "heartbeat" && group === "maintenance") heartbeat.resolve(message);
+      },
+      onExit(group, code, _signal, _pid, _reason, retired) {
+        exits.push({ group, code, retired });
+        if (exits.length === 2) exited.resolve();
+      },
+    });
+    t.onTestFinished(async () => {
+      await supervisor.stop();
+      scheduler.remove("disposable-on-demand");
+      process.env.NODE_ENV = "test";
+      if (previousIdleStop === undefined) delete process.env.AURRAL_WORKER_IDLE_STOP_MS;
+      else process.env.AURRAL_WORKER_IDLE_STOP_MS = previousIdleStop;
+    });
 
-  supervisor.start();
-  assert.deepEqual(supervisor.getGroups(), ["scheduler"]);
-  assert.match((await started.promise).payload, /"kind":"session-cleanup"/);
-  assert.equal((await finished.promise).queue, "system-task-maintenance");
-  const { memory } = await heartbeat.promise;
-  assert.ok(memory.rss > 0 && memory.heapUsed > 0);
-  await exited.promise;
-  assert.deepEqual(exits.sort((a, b) => a.group.localeCompare(b.group)), [
-    { group: "maintenance", code: 0, retired: true },
-    { group: "scheduler", code: 0, retired: true },
-  ]);
-  assert.deepEqual(supervisor.getGroups(), []);
-  assert.deepEqual(honker.listHonkerJobs("system-task-maintenance"), []);
-  assert.deepEqual(honker.listBackgroundGroupsWithWork(), []);
-});
+    supervisor.start();
+    assert.deepEqual(supervisor.getGroups(), ["scheduler"]);
+    assert.match((await started.promise).payload, /"kind":"session-cleanup"/);
+    assert.equal((await finished.promise).queue, "system-task-maintenance");
+    const { memory } = await heartbeat.promise;
+    assert.ok(memory.rss > 0 && memory.heapUsed > 0);
+    await exited.promise;
+    assert.deepEqual(
+      exits.sort((a, b) => a.group.localeCompare(b.group)),
+      [
+        { group: "maintenance", code: 0, retired: true },
+        { group: "scheduler", code: 0, retired: true },
+      ],
+    );
+    assert.deepEqual(supervisor.getGroups(), []);
+    assert.deepEqual(honker.listHonkerJobs("system-task-maintenance"), []);
+    assert.deepEqual(honker.listBackgroundGroupsWithWork(), []);
+  },
+);
 
 test("the download owner cancels one persisted job over IPC", { timeout: 30000 }, async (t) => {
-  const { downloadTracker } = await import("../../backend/services/downloadJobs/downloadTracker.js");
-  const jobId = downloadTracker.addJob({ artistName: "Disposable IPC Artist", trackName: "Waiting song" }, "library");
+  const { downloadTracker } =
+    await import("../../backend/services/downloadJobs/downloadTracker.js");
+  const jobId = downloadTracker.addJob(
+    { artistName: "Disposable IPC Artist", trackName: "Waiting song" },
+    "library",
+  );
   downloadTracker.setPending(jobId, "Waiting for retry", { asRetryCycle: true });
   const supervisor = createBackgroundProcessSupervisor({ groups: ["downloads"] });
   process.env.NODE_ENV = "production";

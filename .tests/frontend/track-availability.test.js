@@ -19,9 +19,10 @@ test("availability counts playable completed tracks, including tracks reused fro
   ];
   assert.equal(countAvailableTracks(tracks), 2);
   assert.equal(countAvailableTracks([]), 0);
-  assert.deepEqual(tracks.map((track) => getTrackAvailability(track).label), [
-    "Available", "Available", "Missing", "Downloading", "Queued", "Missing", "Needs review",
-  ]);
+  assert.deepEqual(
+    tracks.map((track) => getTrackAvailability(track).label),
+    ["Available", "Available", "Missing", "Downloading", "Queued", "Missing", "Needs review"],
+  );
   tracks[3] = { status: "done", streamUrl: "/stream/3" };
   assert.equal(countAvailableTracks(tracks), 3);
 });
@@ -41,14 +42,29 @@ test("availability search actions exclude available, queued, downloading and rev
   for (const status of ["pending", "downloading", "blocked"]) {
     assert.equal(getTrackSearchAction({ status }, true), null);
   }
-  assert.equal(getTrackSearchAction({ status: "done", streamUrl: "/stream/1", qualityOwned: true, qualityState: "upgrade" }, true), null);
+  assert.equal(
+    getTrackSearchAction(
+      { status: "done", streamUrl: "/stream/1", qualityOwned: true, qualityState: "upgrade" },
+      true,
+    ),
+    null,
+  );
 });
 
 test("existing flow searches retain their upgrade eligibility rules", () => {
   assert.equal(getTrackSearchAction({ status: "failed" }), "research");
-  assert.equal(getTrackSearchAction({ status: "done", qualityOwned: true, qualityState: "upgrade" }), "upgrade");
-  assert.equal(getTrackSearchAction({ status: "done", qualityOwned: true, qualityState: "preferred" }), null);
-  assert.equal(getTrackSearchAction({ status: "done", qualityOwned: false, qualityState: "upgrade" }), null);
+  assert.equal(
+    getTrackSearchAction({ status: "done", qualityOwned: true, qualityState: "upgrade" }),
+    "upgrade",
+  );
+  assert.equal(
+    getTrackSearchAction({ status: "done", qualityOwned: true, qualityState: "preferred" }),
+    null,
+  );
+  assert.equal(
+    getTrackSearchAction({ status: "done", qualityOwned: false, qualityState: "upgrade" }),
+    null,
+  );
 });
 
 test("library-owned tracks do not offer the add-to-library action", () => {

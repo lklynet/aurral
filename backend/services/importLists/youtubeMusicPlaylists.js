@@ -22,15 +22,17 @@ const providerError = (message, { code, statusCode }) => {
   return error;
 };
 
-const invalidReference = () => providerError(
-  "Enter a valid public YouTube or YouTube Music playlist URL",
-  { code: "YOUTUBE_PLAYLIST_INVALID", statusCode: 400 },
-);
+const invalidReference = () =>
+  providerError("Enter a valid public YouTube or YouTube Music playlist URL", {
+    code: "YOUTUBE_PLAYLIST_INVALID",
+    statusCode: 400,
+  });
 
-const rateLimited = () => providerError(
-  "YouTube Music is rate limiting playlist requests; try again later",
-  { code: "YOUTUBE_PLAYLIST_RATE_LIMITED", statusCode: 429 },
-);
+const rateLimited = () =>
+  providerError("YouTube Music is rate limiting playlist requests; try again later", {
+    code: "YOUTUBE_PLAYLIST_RATE_LIMITED",
+    statusCode: 429,
+  });
 
 const getRateLimitDelayMs = (value, now = Date.now()) => {
   const retryAfter = String(value || "").trim();
@@ -75,11 +77,7 @@ const getText = (value) => {
 const getNamedValue = (value) => getText(value?.name ?? value?.title ?? value);
 
 const getPlaylistName = (playlist) => {
-  const candidates = [
-    playlist?.header?.title,
-    playlist?.metadata?.title,
-    playlist?.title,
-  ];
+  const candidates = [playlist?.header?.title, playlist?.metadata?.title, playlist?.title];
   for (const candidate of candidates) {
     const name = getText(candidate);
     if (name) return name;
@@ -92,10 +90,11 @@ const isContinuation = (entry) =>
 
 const getContinuationKey = (entry) => {
   const payload = entry?.endpoint?.payload;
-  const key = payload?.continuation
-    ?? payload?.continuationCommand?.token
-    ?? entry?.continuation
-    ?? entry?.token;
+  const key =
+    payload?.continuation ??
+    payload?.continuationCommand?.token ??
+    entry?.continuation ??
+    entry?.token;
   if (typeof key === "string" && key) return key;
   if (!payload || typeof payload !== "object") return "";
   try {
@@ -229,11 +228,12 @@ export class YoutubeMusicPlaylistClient {
 
   async getSession() {
     if (!this.sessionPromise) {
-      const sessionPromise = this.createInnertube({ fetch: this.fetch.bind(this) })
-        .catch((error) => {
+      const sessionPromise = this.createInnertube({ fetch: this.fetch.bind(this) }).catch(
+        (error) => {
           if (this.sessionPromise === sessionPromise) this.sessionPromise = null;
           throw error;
-        });
+        },
+      );
       this.sessionPromise = sessionPromise;
     }
     const signal = this.operationContext.getStore()?.signal;
@@ -255,8 +255,9 @@ export class YoutubeMusicPlaylistClient {
 
   trimPlaylistCache(maxSize) {
     while (this.playlistCache.size > maxSize) {
-      const evictable = [...this.playlistCache]
-        .find(([, entry]) => entry.expiresAt !== Number.POSITIVE_INFINITY);
+      const evictable = [...this.playlistCache].find(
+        ([, entry]) => entry.expiresAt !== Number.POSITIVE_INFINITY,
+      );
       if (!evictable) break;
       this.playlistCache.delete(evictable[0]);
     }
@@ -293,9 +294,8 @@ export class YoutubeMusicPlaylistClient {
     const timeout = setTimeout(() => operationController.abort(), this.operationTimeoutMs);
     timeout.unref?.();
     try {
-      return await this.operationContext.run(
-        { signal: operationController.signal },
-        async () => this.getCompletePlaylist(id),
+      return await this.operationContext.run({ signal: operationController.signal }, async () =>
+        this.getCompletePlaylist(id),
       );
     } catch (error) {
       if (operationController.signal.aborted || error?.name === "TimeoutError") {
@@ -318,10 +318,7 @@ export class YoutubeMusicPlaylistClient {
     const session = await this.getSession();
     const signal = this.operationContext.getStore()?.signal;
     let page = await this.playlistRequestLimiter.schedule(
-      () => this.operationContext.run(
-        { signal },
-        () => session.music.getPlaylist(id),
-      ),
+      () => this.operationContext.run({ signal }, () => session.music.getPlaylist(id)),
       { signal },
     );
     const name = getPlaylistName(page);
@@ -367,10 +364,7 @@ export class YoutubeMusicPlaylistClient {
       }
       continuations.add(key);
       page = await this.playlistRequestLimiter.schedule(
-        () => this.operationContext.run(
-          { signal },
-          () => page.getContinuation(),
-        ),
+        () => this.operationContext.run({ signal }, () => page.getContinuation()),
         { signal },
       );
     }

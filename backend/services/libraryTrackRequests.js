@@ -11,17 +11,22 @@ const sameText = (left, right) =>
   String(left || "").toLocaleLowerCase() === String(right || "").toLocaleLowerCase();
 
 export function findQueuedLibraryTrackJob({ artistName, trackName, trackMbid = null }) {
-  return downloadTracker.getAll().find((job) => {
-    if (job.playlistType !== "library" || ["failed", "done"].includes(job.status)) return false;
-    if (trackMbid) return job.trackMbid === trackMbid;
-    return sameText(job.artistName, artistName) && sameText(job.trackName, trackName);
-  }) || null;
+  return (
+    downloadTracker.getAll().find((job) => {
+      if (job.playlistType !== "library" || ["failed", "done"].includes(job.status)) return false;
+      if (trackMbid) return job.trackMbid === trackMbid;
+      return sameText(job.artistName, artistName) && sameText(job.trackName, trackName);
+    }) || null
+  );
 }
 
 // Asking for a track is the user's way to want it again, so it also clears an
 // exclusion left by deleting it. An automatic request from artist monitoring
 // leaves exclusions and tracks the Library already lists alone.
-export async function requestLibraryTrack(track, { canonicalTrackId = null, user = null, automatic = false } = {}) {
+export async function requestLibraryTrack(
+  track,
+  { canonicalTrackId = null, user = null, automatic = false } = {},
+) {
   if (!automatic) {
     clearTrackMonitoringExclusion({
       mbid: track.trackMbid,
@@ -40,8 +45,15 @@ export async function requestLibraryTrack(track, { canonicalTrackId = null, user
   if (automatic && track.trackMbid && libraryTrackStmt.get(track.trackMbid)) {
     return { queued: false, skipped: true };
   }
-  const monitoredTrack = automatic ? null : await (await import("./libraryManager.js"))
-    .libraryManager.monitorAurralTrack({ canonicalTrackId, trackMbid: track.trackMbid, albumMbid: track.albumMbid });
+  const monitoredTrack = automatic
+    ? null
+    : await (
+        await import("./libraryManager.js")
+      ).libraryManager.monitorAurralTrack({
+        canonicalTrackId,
+        trackMbid: track.trackMbid,
+        albumMbid: track.albumMbid,
+      });
   if (monitoredTrack) {
     for (const jobId of monitoredTrack.queuedJobIds) {
       recordTrackJobQueued(downloadTracker.getJob(jobId), user);
@@ -64,9 +76,12 @@ export async function requestLibraryTrack(track, { canonicalTrackId = null, user
 
   const { downloadWorker } = await import("./downloadJobs/downloadWorker.js");
   try {
-    const { normalizeExistingFileMode, reuseTrackForPlaylist } = await import("./downloadJobs/fileReuse.js");
+    const { normalizeExistingFileMode, reuseTrackForPlaylist } =
+      await import("./downloadJobs/fileReuse.js");
     const reuse = await reuseTrackForPlaylist(track, "library", {
-      existingFileMode: normalizeExistingFileMode(downloadWorker.getWorkerSettings().existingFileMode),
+      existingFileMode: normalizeExistingFileMode(
+        downloadWorker.getWorkerSettings().existingFileMode,
+      ),
       downloadRoot: downloadWorker.downloadRoot,
       existingJobId: jobId,
       targetPlaylistType: "library",

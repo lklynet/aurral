@@ -145,9 +145,7 @@ function SettingsPage() {
           </div>
         );
       case "library-files":
-        return (
-          <SettingsLibraryFilesTab showError={showError} />
-        );
+        return <SettingsLibraryFilesTab showError={showError} />;
       case "monitoring":
         return (
           <SettingsMonitoringTab
@@ -332,7 +330,11 @@ function SettingsPage() {
                   aria-busy={data.saving}
                   aria-hidden={!data.saving}
                 >
-                  {data.saving ? <><DotLoader size="sm" label={null} /> Saving…</> : null}
+                  {data.saving ? (
+                    <>
+                      <DotLoader size="sm" label={null} /> Saving…
+                    </>
+                  ) : null}
                 </div>
               ) : null}
             </header>

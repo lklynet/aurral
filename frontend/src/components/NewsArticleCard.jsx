@@ -39,7 +39,9 @@ export function NewsArticleCard({ article, compact = false, onDisableFeed }) {
 
   return (
     <article className="discover-news-card-shell">
-      <div className={`discover-news-card${compact ? " discover-news-card--compact" : ""}${artistNames ? " discover-news-card--highlighted" : ""}`}>
+      <div
+        className={`discover-news-card${compact ? " discover-news-card--compact" : ""}${artistNames ? " discover-news-card--highlighted" : ""}`}
+      >
         <a
           className="discover-news-card__link"
           href={article.url}

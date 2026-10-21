@@ -38,7 +38,11 @@ const lookup = await createMockHttpServer((request, response) => {
     body += chunk;
   });
   request.on("end", () => {
-    const entry = { method: request.method, url: request.url, body: body ? JSON.parse(body) : null };
+    const entry = {
+      method: request.method,
+      url: request.url,
+      body: body ? JSON.parse(body) : null,
+    };
     lookupRequests.push(entry);
     for (const waiter of lookupWaiters) waiter(entry);
     response.statusCode = lookupStatus;
@@ -62,7 +66,11 @@ function nextLookup(predicate) {
 
 async function launches() {
   const text = await readFile(launchLog, "utf8").catch(() => "");
-  return text.trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
+  return text
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
 }
 
 const isRunning = (pid) => {
@@ -170,7 +178,10 @@ await seedAlbum({
   tracks: [{ title: "Unrelated", number: 1, file: "01 Unrelated.flac" }],
 });
 
-const localArtist = media.upsertLibraryArtist({ identityKey: "name:home recorder", name: "Home Recorder" });
+const localArtist = media.upsertLibraryArtist({
+  identityKey: "name:home recorder",
+  name: "Home Recorder",
+});
 await seedAlbum({
   artist: localArtist,
   mbid: "76666666-6666-4666-8666-666666666666",
@@ -277,16 +288,21 @@ test("an album link plays only that album's Library files, in disc and track ord
   assert.equal(share.allowDownload, false);
 
   const opening = firstAlbum.tracks.find((track) => track.title === "Opening Song");
-  const ranged = await fetch(await shareUrl(link, `/tracks/${opening.albumId}/${opening.trackId}/stream`), {
-    headers: { Range: "bytes=100-199" },
-  });
+  const ranged = await fetch(
+    await shareUrl(link, `/tracks/${opening.albumId}/${opening.trackId}/stream`),
+    {
+      headers: { Range: "bytes=100-199" },
+    },
+  );
   assert.equal(ranged.status, 206);
   assert.deepEqual(Buffer.from(await ranged.arrayBuffer()), opening.bytes.subarray(100, 200));
 
   const flow = firstAlbum.tracks.find((track) => track.title === "Flow Song");
   const later = secondAlbum.tracks[0];
   for (const track of [flow, later]) {
-    const response = await fetch(await shareUrl(link, `/tracks/${track.albumId}/${track.trackId}/stream`));
+    const response = await fetch(
+      await shareUrl(link, `/tracks/${track.albumId}/${track.trackId}/stream`),
+    );
     assert.equal(response.status, 404, `${track.title} is outside the link`);
   }
 });
@@ -300,16 +316,27 @@ test("downloads stay closed unless the link allows them", async () => {
 });
 
 test("a download gives the original file", async () => {
-  const link = await createLink({ kind: "album", albumMbid: FIRST_ALBUM_MBID }, { allowDownload: true });
+  const link = await createLink(
+    { kind: "album", albumMbid: FIRST_ALBUM_MBID },
+    { allowDownload: true },
+  );
   const opening = firstAlbum.tracks.find((track) => track.title === "Opening Song");
-  const response = await fetch(await shareUrl(link, `/tracks/${opening.albumId}/${opening.trackId}/download`));
+  const response = await fetch(
+    await shareUrl(link, `/tracks/${opening.albumId}/${opening.trackId}/download`),
+  );
   assert.equal(response.status, 200);
-  assert.match(response.headers.get("content-disposition"), /attachment; filename="01 Opening Song.flac"/);
+  assert.match(
+    response.headers.get("content-disposition"),
+    /attachment; filename="01 Opening Song.flac"/,
+  );
   assert.deepEqual(Buffer.from(await response.arrayBuffer()), opening.bytes);
 });
 
 test("Download all for an artist zips every album's original files", async () => {
-  const link = await createLink({ kind: "artist", artistMbid: ARTIST_MBID }, { allowDownload: true });
+  const link = await createLink(
+    { kind: "artist", artistMbid: ARTIST_MBID },
+    { allowDownload: true },
+  );
   const response = await fetch(await shareUrl(link, "/download"));
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-disposition"), /filename="Share Artist.zip"/);
@@ -317,12 +344,15 @@ test("Download all for an artist zips every album's original files", async () =>
   assert.equal(Number(response.headers.get("content-length")), body.length);
 
   const entries = readZip(body);
-  assert.deepEqual(entries.map((entry) => entry.name), [
-    "Share Artist/First Album/01 Opening Song.flac",
-    "Share Artist/First Album/02 Second Song.flac",
-    "Share Artist/First Album/2-01 Disc Two Song.mp3",
-    "Share Artist/Second Album/01 Later Song.flac",
-  ]);
+  assert.deepEqual(
+    entries.map((entry) => entry.name),
+    [
+      "Share Artist/First Album/01 Opening Song.flac",
+      "Share Artist/First Album/02 Second Song.flac",
+      "Share Artist/First Album/2-01 Disc Two Song.mp3",
+      "Share Artist/Second Album/01 Later Song.flac",
+    ],
+  );
   const expected = [...firstAlbum.tracks, ...secondAlbum.tracks];
   for (const entry of entries) {
     const source = expected.find((track) => entry.name.endsWith(track.file));
@@ -344,7 +374,10 @@ test("expired, stopped, and disabled-owner links stop serving", async () => {
   assert.equal((await fetch(await shareUrl(stopped))).status, 404);
 
   const listed = await callApi("GET", "");
-  assert.deepEqual(listed.body.links.map((link) => link.id), [kept.id]);
+  assert.deepEqual(
+    listed.body.links.map((link) => link.id),
+    [kept.id],
+  );
   assert.deepEqual((await callApi("GET", "", { user: stranger })).body.links, []);
 
   userOps.updateUser(owner.id, { status: "disabled" });
@@ -373,10 +406,18 @@ test("the tunnel runs while links are live and only reaches share links", async 
   assert.equal(registered.url, `/api/instances/${instanceId}`);
   assert.equal(registered.body.url, "https://fake-tunnel-1.trycloudflare.com");
   assert.ok(registered.body.secret.length >= 32);
-  assert.deepEqual(await (await fetch(`${target}/share/.well-known/aurral`)).json(), { instanceId });
+  assert.deepEqual(await (await fetch(`${target}/share/.well-known/aurral`)).json(), {
+    instanceId,
+  });
   assert.equal((await callApi("GET", "")).body.tunnel, "online");
 
-  for (const pathname of ["/api/health/live", "/api/settings", "/api/share-links", "/rest/ping", "/"]) {
+  for (const pathname of [
+    "/api/health/live",
+    "/api/settings",
+    "/api/share-links",
+    "/rest/ping",
+    "/",
+  ]) {
     assert.equal((await fetch(`${target}${pathname}`)).status, 404, pathname);
   }
   assert.equal((await fetch(await shareUrl(first), { method: "POST" })).status, 405);
@@ -398,7 +439,8 @@ test("a crashed tunnel restarts and registers its new address", { timeout: 20000
   process.kill(crashed.pid, "SIGKILL");
 
   const reregistered = await nextLookup(
-    (entry) => entry.method === "PUT" && entry.body.url === "https://fake-tunnel-2.trycloudflare.com",
+    (entry) =>
+      entry.method === "PUT" && entry.body.url === "https://fake-tunnel-2.trycloudflare.com",
   );
   assert.ok(reregistered);
   assert.equal((await launches()).length, 2);
@@ -423,14 +465,20 @@ test("an artist without a MusicBrainz ID shares from its Library ID", async () =
   assert.equal(link.title, "Home Recorder");
   const response = await fetch(await shareUrl(link));
   assert.equal(response.status, 200);
-  assert.deepEqual((await response.json()).tracks.map((track) => track.title), ["Basement Take"]);
+  assert.deepEqual(
+    (await response.json()).tracks.map((track) => track.title),
+    ["Basement Take"],
+  );
 });
 
 test("only Library items can be shared to listen", async () => {
-  assert.deepEqual((await callApi("GET", `/availability?kind=artist&artistMbid=${ARTIST_MBID}`)).body, {
-    trackCount: 4,
-    tunnelAvailable: true,
-  });
+  assert.deepEqual(
+    (await callApi("GET", `/availability?kind=artist&artistMbid=${ARTIST_MBID}`)).body,
+    {
+      trackCount: 4,
+      tunnelAvailable: true,
+    },
+  );
   const missingMbid = "79999999-9999-4999-8999-999999999999";
   assert.equal(
     (await callApi("GET", `/availability?kind=album&albumMbid=${missingMbid}`)).body.trackCount,

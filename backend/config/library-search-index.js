@@ -65,8 +65,9 @@ export function computeLibraryGenreStats(db, { sourceFilter = null, availableOnl
         ON genres.entity_kind = '${kind}' AND genres.entity_id = ${id}
       WHERE ${media.sql}`;
   });
-  return db.prepare(
-    `WITH genre_entities AS (
+  return db
+    .prepare(
+      `WITH genre_entities AS (
        SELECT DISTINCT entity_kind, entity_id, name
        FROM (${rows.join(" UNION ALL ")})
      )
@@ -77,20 +78,24 @@ export function computeLibraryGenreStats(db, { sourceFilter = null, availableOnl
      FROM genre_entities
      GROUP BY name
      ORDER BY name COLLATE NOCASE`,
-  ).all(...parameters).map((row) => ({
-    name: row.name,
-    artists: Number(row.artists || 0),
-    albums: Number(row.albums || 0),
-    tracks: Number(row.tracks || 0),
-  }));
+    )
+    .all(...parameters)
+    .map((row) => ({
+      name: row.name,
+      artists: Number(row.artists || 0),
+      albums: Number(row.albums || 0),
+      tracks: Number(row.tracks || 0),
+    }));
 }
 
 export function rebuildStoredLibraryGenreStats(db) {
   for (const availableOnly of [false, true]) {
     const cacheKey = `all:${availableOnly ? "available" : "all"}`;
     const stats = computeLibraryGenreStats(db, { availableOnly });
-    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)")
-      .run(`${GENRE_STATS_SETTING_PREFIX}${cacheKey}`, JSON.stringify(stats));
+    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(
+      `${GENRE_STATS_SETTING_PREFIX}${cacheKey}`,
+      JSON.stringify(stats),
+    );
   }
 }
 
@@ -181,45 +186,56 @@ export const populateLibrarySearchDocuments = (db) => {
 };
 
 export function initializeLibrarySearchIndex(db) {
-  const fts5Enabled = db.prepare("SELECT sqlite_compileoption_used(?) AS enabled")
+  const fts5Enabled = db
+    .prepare("SELECT sqlite_compileoption_used(?) AS enabled")
     .get("ENABLE_FTS5")?.enabled;
   const hasCurrentSearchIndex = () => {
     const hasIndex = Boolean(
-      db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?")
+      db
+        .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?")
         .get("library_search_fts"),
     );
-    const hasTriggers = db.prepare(`
+    const hasTriggers =
+      db
+        .prepare(`
       SELECT COUNT(*) AS count FROM sqlite_master
       WHERE type = 'trigger' AND name IN (
         'library_search_documents_ai',
         'library_search_documents_au',
         'library_search_documents_ad'
       )
-    `).get().count === 3;
-    const version = db.prepare("SELECT value FROM settings WHERE key = ?")
+    `)
+        .get().count === 3;
+    const version = db
+      .prepare("SELECT value FROM settings WHERE key = ?")
       .get("librarySearchIndexVersion")?.value;
     return { hasIndex, hasTriggers, version };
   };
   if (!fts5Enabled) return false;
   const current = hasCurrentSearchIndex();
-  if (current.hasIndex && current.hasTriggers && current.version === SEARCH_INDEX_VERSION) return true;
+  if (current.hasIndex && current.hasTriggers && current.version === SEARCH_INDEX_VERSION)
+    return true;
 
-  return db.transaction(() => {
-    const { hasIndex, hasTriggers, version } = hasCurrentSearchIndex();
-    if (hasIndex && hasTriggers && version === SEARCH_INDEX_VERSION) return true;
-    db.exec(`
+  return db
+    .transaction(() => {
+      const { hasIndex, hasTriggers, version } = hasCurrentSearchIndex();
+      if (hasIndex && hasTriggers && version === SEARCH_INDEX_VERSION) return true;
+      db.exec(`
       DROP TRIGGER IF EXISTS library_search_documents_ai;
       DROP TRIGGER IF EXISTS library_search_documents_au;
       DROP TRIGGER IF EXISTS library_search_documents_ad;
       DROP TABLE IF EXISTS library_search_fts;
       DROP TABLE IF EXISTS library_search_documents;
     `);
-    if (!createSearchSchema(db)) return false;
-    populateLibrarySearchDocuments(db);
-    db.prepare("INSERT INTO library_search_fts(library_search_fts) VALUES ('rebuild')").run();
-    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)")
-      .run("librarySearchIndexVersion", SEARCH_INDEX_VERSION);
-    rebuildStoredLibraryGenreStats(db);
-    return true;
-  }).immediate();
+      if (!createSearchSchema(db)) return false;
+      populateLibrarySearchDocuments(db);
+      db.prepare("INSERT INTO library_search_fts(library_search_fts) VALUES ('rebuild')").run();
+      db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(
+        "librarySearchIndexVersion",
+        SEARCH_INDEX_VERSION,
+      );
+      rebuildStoredLibraryGenreStats(db);
+      return true;
+    })
+    .immediate();
 }

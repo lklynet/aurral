@@ -15,7 +15,10 @@ test("a connected, reachable Lidarr shows no reconnect state", () => {
     null,
   );
   assert.equal(
-    describeLidarrConnectionState({ lidarr: { ...connectedLidarr, enabled: undefined }, health: reachableHealth }),
+    describeLidarrConnectionState({
+      lidarr: { ...connectedLidarr, enabled: undefined },
+      health: reachableHealth,
+    }),
     null,
   );
 });

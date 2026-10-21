@@ -14,13 +14,25 @@ import { THEME_PRESETS } from "./themePresets.js";
 export const THEME_STORAGE_KEY = "aurralTheme:v2";
 export const THEME_PAINT_STORAGE_KEY = "aurralThemePaint:v1";
 export const THEME_OWNER_STORAGE_KEY = "aurralThemeOwner:v1";
-export const LEGACY_THEME_STORAGE_KEYS = ["aurralTheme", "aurralThemeAppearance:v1", "aurralThemes:v1"];
+export const LEGACY_THEME_STORAGE_KEYS = [
+  "aurralTheme",
+  "aurralThemeAppearance:v1",
+  "aurralThemes:v1",
+];
 export const THEME_DOCUMENT_VERSION = 2;
 export const DEFAULT_THEME_ID = "aurral";
 export const THEME_APPEARANCES = ["system", "light", "dark"];
 export const THEME_MODES = ["light", "dark"];
 export const MAX_CUSTOM_THEMES = 50;
-export const THEME_SEED_ROLES = ["background", "text", "accent", "danger", "warning", "success", "info"];
+export const THEME_SEED_ROLES = [
+  "background",
+  "text",
+  "accent",
+  "danger",
+  "warning",
+  "success",
+  "info",
+];
 
 export const THEME_COLOR_ROLES = [
   "chrome",
@@ -46,7 +58,8 @@ export const THEME_COLOR_ROLES = [
   "scrim",
 ];
 
-const cssVariable = (role) => `--aurral-${role.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`;
+const cssVariable = (role) =>
+  `--aurral-${role.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`;
 
 const STATUS_DEFAULTS = {
   light: { danger: "#dc2626", warning: "#b45309", success: "#15803d", info: "#2563eb" },
@@ -67,8 +80,14 @@ const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 const otherMode = (mode) => (mode === "dark" ? "light" : "dark");
 
 function readableOn(background, candidates) {
-  return [...candidates, "#ffffff", "#000000"].find((color) => contrastRatio(color, background) >= 4.5)
-    || (contrastRatio("#ffffff", background) >= contrastRatio("#000000", background) ? "#ffffff" : "#000000");
+  return (
+    [...candidates, "#ffffff", "#000000"].find(
+      (color) => contrastRatio(color, background) >= 4.5,
+    ) ||
+    (contrastRatio("#ffffff", background) >= contrastRatio("#000000", background)
+      ? "#ffffff"
+      : "#000000")
+  );
 }
 
 export function createThemePalette(seed) {
@@ -82,7 +101,8 @@ export function createThemePalette(seed) {
   const surfaceHover = shade(toward * (dark ? 0.17 : 0.13));
   const chrome = shade(dark ? -0.06 : -0.07);
 
-  const textSeed = seed.text || oklchToHex({ l: dark ? 0.96 : 0.2, c: Math.min(base.c, 0.02), h: base.h });
+  const textSeed =
+    seed.text || oklchToHex({ l: dark ? 0.96 : 0.2, c: Math.min(base.c, 0.02), h: base.h });
   const text = adjustLightnessForContrast(textSeed, surfacePopover, 7);
   const textColor = hexToOklch(text);
   const textContrast = contrastRatio(text, surfacePopover);
@@ -126,9 +146,11 @@ function mirrorSeed(seed, mode) {
   const dark = mode === "dark";
   const background = hexToOklch(seed.background);
   const mirrored = {
-    background: oklchToHex(dark
-      ? { l: 0.2, c: Math.min(background.c, 0.03), h: background.h }
-      : { l: 0.98, c: Math.min(background.c * 0.5, 0.012), h: background.h }),
+    background: oklchToHex(
+      dark
+        ? { l: 0.2, c: Math.min(background.c, 0.03), h: background.h }
+        : { l: 0.98, c: Math.min(background.c * 0.5, 0.012), h: background.h },
+    ),
     accent: seed.accent,
   };
   if (seed.text) {
@@ -183,7 +205,8 @@ function normalizeSeed(value, mode, themeName) {
     if (!color) throw new Error(`${themeName} has an invalid ${mode} ${role} color.`);
     seed[role] = color;
   }
-  if (!seed.background || !seed.accent) throw new Error(`${themeName} needs a ${mode} background and accent color.`);
+  if (!seed.background || !seed.accent)
+    throw new Error(`${themeName} needs a ${mode} background and accent color.`);
   if (isDarkColor(seed.background) !== (mode === "dark")) {
     throw new Error(`${themeName} needs a ${mode} background for its ${mode} colors.`);
   }
@@ -202,23 +225,26 @@ export function isThemeId(value) {
 }
 
 export function normalizeTheme(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("This theme is unreadable.");
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new Error("This theme is unreadable.");
   const name = normalizeThemeName(value.name);
   if (!isThemeId(value.id)) throw new Error(`${name} has an invalid id.`);
   const theme = { id: value.id, name };
   for (const mode of THEME_MODES) {
-    if (value[mode] !== undefined && value[mode] !== null) theme[mode] = normalizeSeed(value[mode], mode, name);
+    if (value[mode] !== undefined && value[mode] !== null)
+      theme[mode] = normalizeSeed(value[mode], mode, name);
   }
   if (!theme.light && !theme.dark) throw new Error(`${name} needs light or dark colors.`);
   return theme;
 }
 
 export function createThemeId(name, takenIds = []) {
-  const slug = String(name || "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 48) || "theme";
+  const slug =
+    String(name || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 48) || "theme";
   const taken = new Set([...BUILT_IN_THEME_IDS, ...takenIds]);
   let id = `custom-${slug}`;
   for (let suffix = 2; taken.has(id); suffix += 1) id = `custom-${slug}-${suffix}`;
@@ -237,7 +263,8 @@ export function createDefaultThemeDocument() {
 
 export function normalizeThemeDocument(value) {
   const document = createDefaultThemeDocument();
-  if (!value || typeof value !== "object" || value.version !== THEME_DOCUMENT_VERSION) return document;
+  if (!value || typeof value !== "object" || value.version !== THEME_DOCUMENT_VERSION)
+    return document;
   if (THEME_APPEARANCES.includes(value.appearance)) document.appearance = value.appearance;
   document.matchArtwork = value.matchArtwork === true;
   const seen = new Set(BUILT_IN_THEME_IDS);
@@ -261,7 +288,8 @@ export function isDefaultThemeDocument(document) {
 }
 
 export function convertLegacyTheme(value) {
-  if (!value || typeof value !== "object" || !value.colors) throw new Error("This theme file is unreadable.");
+  if (!value || typeof value !== "object" || !value.colors)
+    throw new Error("This theme file is unreadable.");
   const palettes = [value.colors, ...Object.values(value.variants || {})];
   const theme = { id: value.id, name: value.name ?? value.label };
   for (const colors of palettes) {
@@ -317,9 +345,10 @@ function migrateLegacyDocument() {
     try {
       const legacy = convertLegacyTheme(item);
       const taken = themes.map((theme) => theme.id);
-      const id = isThemeId(legacy.id) && !BUILT_IN_THEME_IDS.has(legacy.id) && !taken.includes(legacy.id)
-        ? legacy.id
-        : createThemeId(legacy.name, taken);
+      const id =
+        isThemeId(legacy.id) && !BUILT_IN_THEME_IDS.has(legacy.id) && !taken.includes(legacy.id)
+          ? legacy.id
+          : createThemeId(legacy.name, taken);
       themes.push(normalizeTheme({ ...legacy, id }));
       if (legacy.id === selection) themeId = id;
     } catch {
@@ -385,7 +414,8 @@ function commit(document, { fromAccount = false } = {}) {
   return storedLocally || Boolean(saveToAccount);
 }
 
-const NOT_SAVED_MESSAGE = "This browser couldn't save your themes. They'll reset when the page reloads.";
+const NOT_SAVED_MESSAGE =
+  "This browser couldn't save your themes. They'll reset when the page reloads.";
 
 function update(changes) {
   commit(normalizeThemeDocument({ ...getThemeDocument(), ...changes }));
@@ -406,7 +436,12 @@ export function setImmersiveMode(enabled) {
 export function saveCustomTheme(value, { select = true } = {}) {
   const document = getThemeDocument();
   const exists = document.themes.some((theme) => theme.id === value.id);
-  const id = exists ? value.id : createThemeId(value.name, document.themes.map((theme) => theme.id));
+  const id = exists
+    ? value.id
+    : createThemeId(
+        value.name,
+        document.themes.map((theme) => theme.id),
+      );
   const theme = normalizeTheme({ ...value, id });
   if (!exists && document.themes.length >= MAX_CUSTOM_THEMES) {
     throw new Error(`You can keep up to ${MAX_CUSTOM_THEMES} themes. Remove one to add another.`);
@@ -414,7 +449,8 @@ export function saveCustomTheme(value, { select = true } = {}) {
   const themes = exists
     ? document.themes.map((item) => (item.id === id ? theme : item))
     : [...document.themes, theme];
-  if (!commit({ ...document, themes, themeId: select ? id : document.themeId })) throw new Error(NOT_SAVED_MESSAGE);
+  if (!commit({ ...document, themes, themeId: select ? id : document.themeId }))
+    throw new Error(NOT_SAVED_MESSAGE);
   return theme;
 }
 
@@ -422,7 +458,11 @@ export function removeCustomTheme(themeId) {
   const document = getThemeDocument();
   const index = document.themes.findIndex((theme) => theme.id === themeId);
   if (index < 0) return null;
-  const removed = { theme: document.themes[index], index, wasSelected: document.themeId === themeId };
+  const removed = {
+    theme: document.themes[index],
+    index,
+    wasSelected: document.themeId === themeId,
+  };
   commit({
     ...document,
     themes: document.themes.filter((theme) => theme.id !== themeId),
@@ -435,7 +475,9 @@ export function restoreCustomTheme({ theme, index, wasSelected }) {
   const document = getThemeDocument();
   if (document.themes.some((item) => item.id === theme.id)) return;
   if (document.themes.length >= MAX_CUSTOM_THEMES) {
-    throw new Error(`You can keep up to ${MAX_CUSTOM_THEMES} themes. Remove one to restore ${theme.name}.`);
+    throw new Error(
+      `You can keep up to ${MAX_CUSTOM_THEMES} themes. Remove one to restore ${theme.name}.`,
+    );
   }
   const themes = [...document.themes];
   themes.splice(index, 0, theme);
@@ -447,7 +489,8 @@ function syncThemeWithAccount(userId, accountDocument) {
   writeStorage(THEME_OWNER_STORAGE_KEY, String(userId));
   if (accountDocument) {
     const next = normalizeThemeDocument(accountDocument);
-    if (JSON.stringify(next) !== JSON.stringify(getThemeDocument())) commit(next, { fromAccount: true });
+    if (JSON.stringify(next) !== JSON.stringify(getThemeDocument()))
+      commit(next, { fromAccount: true });
     return null;
   }
   if (owner !== null && owner !== userId) {
@@ -529,10 +572,12 @@ function setVariables(root, palette) {
 
 function updateMetaThemeColor(palette) {
   const document = globalThis.document;
-  const color = palette?.chrome
-    || (document.body && globalThis.getComputedStyle?.(document.body).backgroundColor);
+  const color =
+    palette?.chrome ||
+    (document.body && globalThis.getComputedStyle?.(document.body).backgroundColor);
   if (!color) return;
-  for (const meta of document.querySelectorAll?.('meta[name="theme-color"]') || []) meta.setAttribute("content", color);
+  for (const meta of document.querySelectorAll?.('meta[name="theme-color"]') || [])
+    meta.setAttribute("content", color);
 }
 
 function paint(root, palette, { animate, fallback }) {
@@ -544,7 +589,14 @@ function paint(root, palette, { animate, fallback }) {
   appliedPalette = palette;
   const reduceMotion = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
   const to = palette || fallback;
-  if (!animate || reduceMotion || !globalThis.requestAnimationFrame || !from || !to || from === to) {
+  if (
+    !animate ||
+    reduceMotion ||
+    !globalThis.requestAnimationFrame ||
+    !from ||
+    !to ||
+    from === to
+  ) {
     setVariables(root, palette);
     updateMetaThemeColor(palette);
     return;
@@ -554,9 +606,12 @@ function paint(root, palette, { animate, fallback }) {
     const progress = Math.min(1, (now - started) / 280);
     const eased = 1 - (1 - progress) ** 3;
     if (progress < 1) {
-      setVariables(root, Object.fromEntries(
-        THEME_COLOR_ROLES.map((role) => [role, mixPaletteColor(from[role], to[role], eased)]),
-      ));
+      setVariables(
+        root,
+        Object.fromEntries(
+          THEME_COLOR_ROLES.map((role) => [role, mixPaletteColor(from[role], to[role], eased)]),
+        ),
+      );
       tweenFrame = globalThis.requestAnimationFrame(step);
       return;
     }

@@ -4,10 +4,7 @@ import path from "node:path";
 import { dbOps } from "../db/helpers/index.js";
 import { buildPlaylistArtworkWebpBuffer } from "./playlistArtwork.js";
 import getSharp from "./sharpConfig.js";
-import {
-  fetchImageBuffer,
-  renderStylizedPhotoArtwork,
-} from "./discovery/stylizedArtwork.js";
+import { fetchImageBuffer, renderStylizedPhotoArtwork } from "./discovery/stylizedArtwork.js";
 export const PLAYLIST_ARTWORK_STYLES = ["aurral", "photo"];
 
 export function getPlaylistArtworkStyle() {

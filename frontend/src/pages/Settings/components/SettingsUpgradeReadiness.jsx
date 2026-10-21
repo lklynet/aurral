@@ -109,7 +109,8 @@ export function SettingsUpgradeReadiness({ showSuccess, showError }) {
           Aurral 3.0
         </h2>
         <p className="settings-system__section-description">
-          Update to Aurral 3.0 only after this check passes. Older data and settings are unsupported.
+          Update to Aurral 3.0 only after this check passes. Older data and settings are
+          unsupported.
         </p>
       </div>
       <div className="settings-system__rows">
@@ -122,7 +123,9 @@ export function SettingsUpgradeReadiness({ showSuccess, showError }) {
         {blockers.map((blocker) => (
           <div className="settings-system__row" key={blocker.kind}>
             <div className="settings-system__copy">
-              <div className="settings-system__label">{BLOCKER_TITLES[blocker.kind] || blocker.kind}</div>
+              <div className="settings-system__label">
+                {BLOCKER_TITLES[blocker.kind] || blocker.kind}
+              </div>
               <p className="settings-system__description">{blocker.message}</p>
               {blocker.kind === "download-folder-review" ? <ReviewItems blocker={blocker} /> : null}
             </div>

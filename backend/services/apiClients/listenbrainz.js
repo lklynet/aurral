@@ -29,7 +29,10 @@ const getRateLimitWaitMs = (error) => {
 };
 
 const normalizeListenbrainzBaseUrl = (baseUrl) => {
-  const candidate = String(baseUrl || "").trim().replace(/\/+$/, "") || LISTENBRAINZ_API;
+  const candidate =
+    String(baseUrl || "")
+      .trim()
+      .replace(/\/+$/, "") || LISTENBRAINZ_API;
   try {
     const parsed = new URL(candidate);
     return ["http:", "https:"].includes(parsed.protocol) && parsed.host
@@ -77,21 +80,23 @@ export const listenbrainzSubmit = async ({ token, baseUrl = LISTENBRAINZ_API, ev
   }
   const payload = {
     listen_type: "single",
-    payload: [{
-      listened_at: listenedAt,
-      track_metadata: {
-        artist_name: event.artist,
-        track_name: event.title,
-        ...(event.album ? { release_name: event.album } : {}),
-        additional_info: {
-          submission_client: "Aurral",
-          duration_ms: event.durationMs || undefined,
-          recording_mbid: event.trackMbid || undefined,
-          release_group_mbid: event.albumMbid || undefined,
-          artist_mbids: event.artistMbid ? [event.artistMbid] : undefined,
+    payload: [
+      {
+        listened_at: listenedAt,
+        track_metadata: {
+          artist_name: event.artist,
+          track_name: event.title,
+          ...(event.album ? { release_name: event.album } : {}),
+          additional_info: {
+            submission_client: "Aurral",
+            duration_ms: event.durationMs || undefined,
+            recording_mbid: event.trackMbid || undefined,
+            release_group_mbid: event.albumMbid || undefined,
+            artist_mbids: event.artistMbid ? [event.artistMbid] : undefined,
+          },
         },
       },
-    }],
+    ],
   };
   return listenbrainzWrite(`${root}/1`, "/submit-listens", {
     token,
@@ -141,11 +146,7 @@ export async function listenbrainzRequest(
     };
 
     let lastError = null;
-    for (
-      let retryCount = 0;
-      retryCount <= LISTENBRAINZ_MAX_RETRIES;
-      retryCount++
-    ) {
+    for (let retryCount = 0; retryCount <= LISTENBRAINZ_MAX_RETRIES; retryCount++) {
       try {
         const response = await listenbrainzLimiter.schedule(() => {
           const config = {
@@ -155,8 +156,7 @@ export async function listenbrainzRequest(
               ...(isAuthenticated ? { Authorization: `Token ${String(token).trim()}` } : {}),
             },
             timeout: timeoutMs,
-            validateStatus: (status) =>
-              (status >= 200 && status < 300) || status === 204,
+            validateStatus: (status) => (status >= 200 && status < 300) || status === 204,
           };
           return data
             ? axios.post(`${root}${path}`, data, config)
@@ -184,10 +184,7 @@ export async function listenbrainzRequest(
       status: lastError?.response?.status || null,
       code: lastError?.code || null,
       message: lastError?.message || "Unknown ListenBrainz error",
-      error:
-        lastError?.response?.data?.error ||
-        lastError?.response?.data?.message ||
-        null,
+      error: lastError?.response?.data?.error || lastError?.response?.data?.message || null,
     };
     logError("ListenBrainz API error:", details);
     throw lastError;
@@ -226,7 +223,11 @@ export const listenbrainzGetReleaseGroupListens = (releaseGroupMbids) =>
   cachedListenbrainzLookup(`listens:${releaseGroupMbids.join(",")}`, async () => {
     const batches = await Promise.all(
       toBatches(releaseGroupMbids, LISTENBRAINZ_POPULARITY_BATCH_SIZE).map((mbids) =>
-        listenbrainzRequest("/1/popularity/release-group", {}, { data: { release_group_mbids: mbids } }),
+        listenbrainzRequest(
+          "/1/popularity/release-group",
+          {},
+          { data: { release_group_mbids: mbids } },
+        ),
       ),
     );
     if (!batches.every(Array.isArray)) throw new TypeError("ListenBrainz popularity is not a list");

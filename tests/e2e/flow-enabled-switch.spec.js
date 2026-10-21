@@ -12,10 +12,14 @@ test("turning off a flow warns that its songs are removed", async ({ page }, tes
     if (!pathname.startsWith("/api/")) return route.continue();
     const path = pathname.replace(/^\/api/, "");
     const json = (body) => route.fulfill({ json: body });
-    if (path === "/health/bootstrap") return json({ authRequired: false, onboardingRequired: false });
+    if (path === "/health/bootstrap")
+      return json({ authRequired: false, onboardingRequired: false });
     if (path === "/auth/me") return json({ user: { id: 1, username: "test", role: "admin" } });
     if (path === "/health") return json({ setupComplete: true, lidarrConfigured: false });
-    if (path === "/playlists/status") return json({ flows: [{ id: "fixture-flow", name: "Nightly mix", enabled: true, size: 20 }] });
+    if (path === "/playlists/status")
+      return json({
+        flows: [{ id: "fixture-flow", name: "Nightly mix", enabled: true, size: 20 }],
+      });
     if (request.method() !== "GET") writes.push({ path, method: request.method() });
     return json({});
   });
@@ -25,7 +29,9 @@ test("turning off a flow warns that its songs are removed", async ({ page }, tes
   const dialog = page.getByRole("alertdialog", { name: "Turn off Nightly mix?" });
   await expect(dialog).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("flow-disable-confirmation.png") });
-  await expect(dialog).toContainText("Removes its current songs and stops updates. Turning it on generates a new set.");
+  await expect(dialog).toContainText(
+    "Removes its current songs and stops updates. Turning it on generates a new set.",
+  );
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
   await expect(toggle).toBeFocused();

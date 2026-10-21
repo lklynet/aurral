@@ -2,9 +2,12 @@ import assert from "node:assert/strict";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import { cleanupIsolatedState, setupIsolatedBackend } from "./helpers/backendTestHarness.js";
 
-const [state, { registerVideo }, { ytdlpClient }, { clearApiCaches }] =
-  await setupIsolatedBackend("artist-videos", "backend/routes/artists/handlers/video.js",
-    "backend/services/ytdlpClient.js", "backend/services/apiClients/clearCache.js");
+const [state, { registerVideo }, { ytdlpClient }, { clearApiCaches }] = await setupIsolatedBackend(
+  "artist-videos",
+  "backend/routes/artists/handlers/video.js",
+  "backend/services/ytdlpClient.js",
+  "backend/services/apiClients/clearCache.js",
+);
 const mbid = "58e235fc-f6ea-4614-9ed4-9855a5665ae1";
 const routes = new Map();
 registerVideo({ get: (path, ...handlers) => routes.set(path, handlers.at(-1)) });
@@ -12,22 +15,38 @@ registerVideo({ get: (path, ...handlers) => routes.set(path, handlers.at(-1)) })
 async function findVideo(trackTitle = "I Wanna Get Better", artistName = "Bleachers") {
   let body;
   let status = 200;
-  await routes.get("/:mbid/video")({ params: { mbid }, query: { artistName, trackTitle } }, {
-    status(value) { status = value; return this; },
-    json(value) { body = value; return this; },
-  });
+  await routes.get("/:mbid/video")(
+    { params: { mbid }, query: { artistName, trackTitle } },
+    {
+      status(value) {
+        status = value;
+        return this;
+      },
+      json(value) {
+        body = value;
+        return this;
+      },
+    },
+  );
   return { status, ...body };
 }
 
-const video = (id, title, channel = "bleachers", extra = {}) =>
-  ({ id, title, channel, durationSec: 293, ...extra });
+const video = (id, title, channel = "bleachers", extra = {}) => ({
+  id,
+  title,
+  channel,
+  durationSec: 293,
+  ...extra,
+});
 
 beforeEach(() => clearApiCaches());
 afterAll(() => cleanupIsolatedState(state));
 
 test("artist videos prefer the matching official music video over release audio and allow its longer cut", async () => {
   const search = vi.spyOn(ytdlpClient, "search").mockImplementation(async () => [
-    video("audio000001", "Bleachers - I Wanna Get Better (Official Audio)", "bleachers", { durationSec: 207 }),
+    video("audio000001", "Bleachers - I Wanna Get Better (Official Audio)", "bleachers", {
+      durationSec: 207,
+    }),
     video("wrong000001", "Bleachers - Don't Take the Money (Official Video)"),
     video("video000001", "Bleachers - I Wanna Get Better (Official Video)"),
   ]);
@@ -42,10 +61,17 @@ for (const [name, title, channel, extra] of [
   ["a live version", "Bleachers - I Wanna Get Better (Live at Red Rocks)", "bleachers", {}],
   ["a remix", "Bleachers - I Wanna Get Better (Remix)", "bleachers", {}],
   ["karaoke", "Bleachers - I Wanna Get Better (Karaoke Version)", "Karaoke", {}],
-  ["an upcoming stream", "Bleachers - I Wanna Get Better", "bleachers", { liveStatus: "is_upcoming" }],
+  [
+    "an upcoming stream",
+    "Bleachers - I Wanna Get Better",
+    "bleachers",
+    { liveStatus: "is_upcoming" },
+  ],
 ]) {
   test(`artist videos skip ${name}`, async () => {
-    vi.spyOn(ytdlpClient, "search").mockImplementation(async () => [video("wrong000001", title, channel, extra)]);
+    vi.spyOn(ytdlpClient, "search").mockImplementation(async () => [
+      video("wrong000001", title, channel, extra),
+    ]);
     assert.equal((await findVideo()).video, null);
   });
 }
@@ -60,9 +86,11 @@ test("artist videos fall back to a matching lyric upload and understand title-fi
 });
 
 test("artist video matches are reused for later requests", async () => {
-  const search = vi.spyOn(ytdlpClient, "search").mockImplementation(async () => [
-    video("video000001", "Bleachers - I Wanna Get Better (Official Video)"),
-  ]);
+  const search = vi
+    .spyOn(ytdlpClient, "search")
+    .mockImplementation(async () => [
+      video("video000001", "Bleachers - I Wanna Get Better (Official Video)"),
+    ]);
   const first = await findVideo();
   assert.deepEqual(await findVideo(), first);
   assert.equal(search.mock.calls.length, 1);
@@ -70,7 +98,9 @@ test("artist video matches are reused for later requests", async () => {
 
 test("simultaneous artist video requests share the same search", async () => {
   let release;
-  const pending = new Promise(resolve => { release = resolve; });
+  const pending = new Promise((resolve) => {
+    release = resolve;
+  });
   const search = vi.spyOn(ytdlpClient, "search").mockImplementation(async () => {
     await pending;
     return [video("video000001", "Bleachers - I Wanna Get Better (Official Video)")];

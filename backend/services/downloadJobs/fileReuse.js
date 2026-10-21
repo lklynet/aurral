@@ -2,10 +2,7 @@ import fs from "fs/promises";
 import path from "path";
 import { db } from "../../config/db-sqlite.js";
 import { downloadTracker } from "./downloadTracker.js";
-import {
-  flowPlaylistConfig,
-  tracksShareMembership,
-} from "../playlists/flowPlaylistConfig.js";
+import { flowPlaylistConfig, tracksShareMembership } from "../playlists/flowPlaylistConfig.js";
 import {
   buildLibraryReadModel,
   findLibraryArtist,
@@ -33,13 +30,17 @@ import {
   forgetPlaybackRetainedFile,
   isPlaybackRetainedFile,
 } from "../playback/playbackFileRetention.js";
-export {
-  EXISTING_FILE_MODES,
-  normalizeExistingFileMode,
-} from "./fileReuseMode.js";
+export { EXISTING_FILE_MODES, normalizeExistingFileMode } from "./fileReuseMode.js";
 
 const VALID_AUDIO_EXTENSIONS = new Set([
-  ".mp3", ".flac", ".m4a", ".ogg", ".opus", ".wav", ".aac", ".ape",
+  ".mp3",
+  ".flac",
+  ".m4a",
+  ".ogg",
+  ".opus",
+  ".wav",
+  ".aac",
+  ".ape",
 ]);
 
 export function sortJobsForTrackReuse(jobs) {
@@ -162,10 +163,14 @@ function sanitizeSafeSegment(value, fallback = "Unknown") {
 // known position must match too.
 function isTrackFileBaseName(baseName, title, trackNumber, discNumber) {
   if (baseName === title) return true;
-  const position = baseName.endsWith(` - ${title}`)
-    && /^(?:(\d+)-)?(\d{2,3}) - $/.exec(baseName.slice(0, -title.length));
-  return Boolean(position) && (!trackNumber || Number(position[2]) === trackNumber)
-    && Number(position[1] || 1) === (discNumber || 1);
+  const position =
+    baseName.endsWith(` - ${title}`) &&
+    /^(?:(\d+)-)?(\d{2,3}) - $/.exec(baseName.slice(0, -title.length));
+  return (
+    Boolean(position) &&
+    (!trackNumber || Number(position[2]) === trackNumber) &&
+    Number(position[1] || 1) === (discNumber || 1)
+  );
 }
 
 /**
@@ -219,7 +224,10 @@ async function findLocalExistingSource(track, options = {}) {
       for (const file of files) {
         const ext = path.extname(file).toLowerCase();
         const baseName = path.basename(file, ext);
-        if (isTrackFileBaseName(baseName, expectedBaseName, trackNumber, discNumber) && VALID_AUDIO_EXTENSIONS.has(ext)) {
+        if (
+          isTrackFileBaseName(baseName, expectedBaseName, trackNumber, discNumber) &&
+          VALID_AUDIO_EXTENSIONS.has(ext)
+        ) {
           const filePath = path.join(destinationDir, file);
           const resolvedFilePath = path.resolve(filePath);
           if (!isPathInsideRoot(resolvedFilePath, root)) continue;
@@ -275,9 +283,10 @@ async function findAurralSource(track, options = {}) {
     if (options.allowLidarr === false && job.managedBy === "lidarr") continue;
     if (excludeJobIds.has(String(job.id || ""))) continue;
     if (!job.finalPath || typeof job.finalPath !== "string") continue;
-    const matches = targetPlaylistType === "library"
-      ? tracksShareLibraryMembership(track, job)
-      : tracksShareMembership(track, job);
+    const matches =
+      targetPlaylistType === "library"
+        ? tracksShareLibraryMembership(track, job)
+        : tracksShareMembership(track, job);
     if (!matches) continue;
     if (targetPlaylistType && String(job.playlistType || "") === targetPlaylistType) {
       continue;
@@ -299,20 +308,26 @@ async function findAurralSource(track, options = {}) {
 }
 
 export function jobDownloadedItsFile(job) {
-  return job?.status === "done" &&
+  return (
+    job?.status === "done" &&
     Boolean(job.finalPath) &&
     job.managedBy === "aurral" &&
     !job.externalPath &&
-    !job.reusedLibraryFile;
+    !job.reusedLibraryFile
+  );
 }
 
 function noPlaylistDownloadedFile(filePath, jobId, downloadRoot) {
   const resolved = path.resolve(filePath);
-  return !downloadTracker.getAll().some((job) =>
-    job?.id !== jobId &&
-    job.playlistType !== "library" &&
-    jobDownloadedItsFile(job) &&
-    path.resolve(remapLegacyPath(job.finalPath, downloadRoot)) === resolved);
+  return !downloadTracker
+    .getAll()
+    .some(
+      (job) =>
+        job?.id !== jobId &&
+        job.playlistType !== "library" &&
+        jobDownloadedItsFile(job) &&
+        path.resolve(remapLegacyPath(job.finalPath, downloadRoot)) === resolved,
+    );
 }
 
 function retargetJobsToPath(oldPath, newPath, downloadRoot, albumName = null) {
@@ -332,12 +347,18 @@ function retargetJobsToPath(oldPath, newPath, downloadRoot, albumName = null) {
   }
 }
 
-export async function adoptFileIntoPlaylist(sourcePath, targetPlaylistType, downloadRoot, options = {}) {
+export async function adoptFileIntoPlaylist(
+  sourcePath,
+  targetPlaylistType,
+  downloadRoot,
+  options = {},
+) {
   const safeTarget = String(targetPlaylistType || "").trim();
   const root = path.resolve(downloadRoot || resolveDownloadRoot());
   const resolvedSource = path.resolve(remapLegacyPath(sourcePath, root));
   if (!safeTarget || !(await fileExists(resolvedSource))) return null;
-  if (options.protectPlayback !== false && isPlaybackRetainedFile(resolvedSource)) return resolvedSource;
+  if (options.protectPlayback !== false && isPlaybackRetainedFile(resolvedSource))
+    return resolvedSource;
 
   const knownFlow = isFlowPlaylistType(safeTarget);
   const knownPlaylist = usesLibraryFolders(safeTarget);
@@ -374,7 +395,10 @@ export async function adoptFileIntoPlaylist(sourcePath, targetPlaylistType, down
       ? path.relative(sourceRoot, resolvedSource)
       : path.basename(resolvedSource);
   const segments = relative.split(path.sep).filter(Boolean);
-  const artistDir = sanitizePathPart(options.track?.artistName || segments.at(-3), "Unknown Artist");
+  const artistDir = sanitizePathPart(
+    options.track?.artistName || segments.at(-3),
+    "Unknown Artist",
+  );
   const albumDir = sanitizePathPart(options.track?.albumName || segments.at(-2), "Unknown Album");
   const fileName = path.basename(resolvedSource);
   const destPath = currentLayout
@@ -407,18 +431,19 @@ export async function relocateSharedFilesBeforePlaylistRemoval(playlistType, opt
   }
 
   let relocated = 0;
-  const deletionGuard = options.deletionGuard || createPlaybackDeletionGuard({
-    excludeEntityIds: [safePlaylistType], playlistRoot: downloadRoot,
-  });
+  const deletionGuard =
+    options.deletionGuard ||
+    createPlaybackDeletionGuard({
+      excludeEntityIds: [safePlaylistType],
+      playlistRoot: downloadRoot,
+    });
   for (const [oldPath, jobs] of byPath) {
     if (!(await deletionGuard.canDelete(oldPath))) continue;
     const survivor = sortReusableJobs(jobs)[0];
-    const nextPath = await adoptFileIntoPlaylist(
-      oldPath,
-      survivor.playlistType,
-      downloadRoot,
-      { track: survivor, protectPlayback: options.protectPlayback },
-    );
+    const nextPath = await adoptFileIntoPlaylist(oldPath, survivor.playlistType, downloadRoot, {
+      track: survivor,
+      protectPlayback: options.protectPlayback,
+    });
     if (nextPath) relocated += 1;
   }
   return { relocated };
@@ -434,10 +459,7 @@ export async function removePlaylistFileIfUnshared(finalPath, playlistId, option
     : flowPlaylistConfig.getStaticPlaylist(safePlaylistId)
       ? [path.resolve(downloadRoot)]
       : [path.resolve(downloadRoot, PLAYLIST_FILES_DIR, safePlaylistId)];
-  if (
-    flowPlaylistConfig.getStaticPlaylist(safePlaylistId) &&
-    options.deleteIfUnshared !== true
-  ) {
+  if (flowPlaylistConfig.getStaticPlaylist(safePlaylistId) && options.deleteIfUnshared !== true) {
     return { action: "skipped" };
   }
   const resolved = path.resolve(remapLegacyPath(finalPath, downloadRoot));
@@ -465,18 +487,20 @@ export async function removePlaylistFileIfUnshared(finalPath, playlistId, option
     return { action: "skipped" };
   }
   const others = matchingJobs.filter((job) => !excludeJobIds.has(String(job.id || "")));
-  const deletionGuard = options.deletionGuard || (options.protectPlayback === false
-    ? { canDelete: async () => true }
-    : createPlaybackDeletionGuard({ excludeEntityIds: [safePlaylistId], playlistRoot: downloadRoot }));
+  const deletionGuard =
+    options.deletionGuard ||
+    (options.protectPlayback === false
+      ? { canDelete: async () => true }
+      : createPlaybackDeletionGuard({
+          excludeEntityIds: [safePlaylistId],
+          playlistRoot: downloadRoot,
+        }));
   if (!(await deletionGuard.canDelete(resolved))) return { action: "retained" };
   if (others.length > 0) {
     const survivor = sortReusableJobs(others)[0];
-    const nextPath = await adoptFileIntoPlaylist(
-      resolved,
-      survivor.playlistType,
-      downloadRoot,
-      { protectPlayback: options.protectPlayback },
-    );
+    const nextPath = await adoptFileIntoPlaylist(resolved, survivor.playlistType, downloadRoot, {
+      protectPlayback: options.protectPlayback,
+    });
     return { action: nextPath ? "relocated" : "skipped" };
   }
   await fs.rm(resolved, { force: true });
@@ -553,8 +577,8 @@ async function findLidarrSource(track, options = {}) {
       references: [track?.artistMbid, track?.artistName],
     }),
   );
-  const artist = findLibraryArtist(artists, track?.artistMbid) ||
-    findMatchingArtist(artists, track);
+  const artist =
+    findLibraryArtist(artists, track?.artistMbid) || findMatchingArtist(artists, track);
   if (!artist) {
     console.log(
       `[FileReuse] Lidarr: no artist match for "${track?.artistName}" (mbid ${track?.artistMbid || "none"}, ${artists.length} Lidarr artists checked)`,
@@ -589,11 +613,7 @@ async function findLidarrSource(track, options = {}) {
     : rankedAlbums;
   for (const album of albumsToCheck) {
     const albumTracks = findLibraryTracksForAlbum(tracks, album.id);
-    const matchedTrack = findMatchingTrack(
-      albumTracks,
-      track,
-      strictAlbum,
-    );
+    const matchedTrack = findMatchingTrack(albumTracks, track, strictAlbum);
     if (!matchedTrack) continue;
     foundTitleOnAnyAlbum = true;
     if (matchedTrack.hasFile !== true || !matchedTrack.path) {
@@ -751,15 +771,22 @@ export async function restoreCompletedTrack(job, options = {}) {
 
 // A download that reused a Lidarr file needs Aurral's own copy once Lidarr
 // is turned off.
-export function requeueJobsUsingLidarrFiles({ downloadRoot = resolveDownloadRoot(), lidarrRoots = [] } = {}) {
+export function requeueJobsUsingLidarrFiles({
+  downloadRoot = resolveDownloadRoot(),
+  lidarrRoots = [],
+} = {}) {
   const root = path.resolve(downloadRoot);
   let requeued = 0;
   for (const job of downloadTracker.getAll()) {
-    if (job?.status !== "done" || typeof job.finalPath !== "string" || job.managedBy === "lidarr") continue;
+    if (job?.status !== "done" || typeof job.finalPath !== "string" || job.managedBy === "lidarr")
+      continue;
     const finalPath = path.resolve(remapLegacyPath(job.finalPath, root));
     if (isPathInsideRoot(finalPath, root)) continue;
-    const inLidarrRoot = lidarrRoots.some((lidarrRoot) =>
-      finalPath === path.resolve(lidarrRoot) || isPathInsideRoot(finalPath, path.resolve(lidarrRoot)));
+    const inLidarrRoot = lidarrRoots.some(
+      (lidarrRoot) =>
+        finalPath === path.resolve(lidarrRoot) ||
+        isPathInsideRoot(finalPath, path.resolve(lidarrRoot)),
+    );
     if (!job.externalPath && !inLidarrRoot) continue;
     if (downloadTracker.setPending(job.id, "Lidarr was turned off")) requeued += 1;
   }
@@ -963,7 +990,8 @@ export async function repairReusableTrackLinks(options = {}) {
   };
 }
 
-const handedOverAurralPathsStmt = db.prepare(`
+const handedOverAurralPathsStmt = db
+  .prepare(`
   SELECT media.path
   FROM library_media_files AS media
   JOIN library_albums AS album ON album.id = media.album_id
@@ -974,12 +1002,16 @@ const handedOverAurralPathsStmt = db.prepare(`
     AND management.managed_by = 'lidarr'
     AND json_valid(album.metadata_json)
     AND json_extract(album.metadata_json, '$.aurralHandoverAt') IS NOT NULL
-`).pluck();
+`)
+  .pluck();
 
 export async function moveHandedOverTracksToLidarr(options = {}) {
-  if (normalizeExistingFileMode(options.existingFileMode) === "download") return { moved: 0, deleted: 0 };
+  if (normalizeExistingFileMode(options.existingFileMode) === "download")
+    return { moved: 0, deleted: 0 };
   const downloadRoot = path.resolve(options.downloadRoot || resolveDownloadRoot());
-  const handedOver = new Set(handedOverAurralPathsStmt.all().map((filePath) => path.resolve(filePath)));
+  const handedOver = new Set(
+    handedOverAurralPathsStmt.all().map((filePath) => path.resolve(filePath)),
+  );
   if (handedOver.size === 0) return { moved: 0, deleted: 0 };
 
   const jobsByPath = new Map();
@@ -1011,7 +1043,8 @@ export async function moveHandedOverTracksToLidarr(options = {}) {
 
   const { playlistManager } = await import("../playlists/playlistManager.js");
   playlistManager.requestPlaylistSync([...changedPlaylistTypes]);
-  const deletionGuard = options.deletionGuard || createPlaybackDeletionGuard({ playlistRoot: downloadRoot });
+  const deletionGuard =
+    options.deletionGuard || createPlaybackDeletionGuard({ playlistRoot: downloadRoot });
   let deleted = 0;
   for (const oldPath of movedPaths) {
     if (!(await deletionGuard.canDelete(oldPath).catch(() => false))) continue;
@@ -1020,7 +1053,9 @@ export async function moveHandedOverTracksToLidarr(options = {}) {
     deleted += 1;
   }
   scheduleLibraryScanJob({ includeLidarr: false, changedPaths: movedPaths });
-  console.log(`[FileReuse] Moved ${moved} tracks onto Lidarr files and removed ${deleted} Aurral copies`);
+  console.log(
+    `[FileReuse] Moved ${moved} tracks onto Lidarr files and removed ${deleted} Aurral copies`,
+  );
   return { moved, deleted };
 }
 
@@ -1052,14 +1087,16 @@ export async function reuseTrackForPlaylist(track, playlistType, options = {}) {
         .map((id) => String(id || "").trim())
         .filter(Boolean),
     );
-    const activeSource = downloadTracker.getAll().find(
-      (job) =>
-        job &&
-        (job.status === "pending" || job.status === "downloading") &&
-        !excluded.has(String(job.id || "")) &&
-        job.playlistType !== "library" &&
-        tracksShareLibraryMembership(track, job),
-    );
+    const activeSource = downloadTracker
+      .getAll()
+      .find(
+        (job) =>
+          job &&
+          (job.status === "pending" || job.status === "downloading") &&
+          !excluded.has(String(job.id || "")) &&
+          job.playlistType !== "library" &&
+          tracksShareLibraryMembership(track, job),
+      );
     if (activeSource) {
       return {
         reused: false,
@@ -1113,8 +1150,7 @@ export async function reuseTrackForPlaylist(track, playlistType, options = {}) {
   refreshPlaylistAfterReuse(
     playlistType,
     targetPlaylistType === "library",
-    options.libraryScanChangedPaths ||
-      (options.allowLidarr === false ? [finalPath] : null),
+    options.libraryScanChangedPaths || (options.allowLidarr === false ? [finalPath] : null),
   ).catch((error) => {
     console.warn(
       `[FileReuse] Failed to refresh playlist ${playlistType}: ${error?.message || error}`,

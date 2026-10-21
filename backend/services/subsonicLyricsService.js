@@ -4,7 +4,9 @@ import { parseFile } from "music-metadata";
 import { getSong, resolveStreamPath } from "./subsonicLibraryService.js";
 
 function textLyrics(text) {
-  const lines = String(text || "").replace(/^\uFEFF/, "").split(/\r?\n/);
+  const lines = String(text || "")
+    .replace(/^\uFEFF/, "")
+    .split(/\r?\n/);
   const timed = [];
   let offset = 0;
   for (const line of lines) {
@@ -14,8 +16,9 @@ function textLyrics(text) {
     const value = line.replace(/\[(\d+):([0-5]\d)(?:\.(\d{1,3}))?\]/g, "").trim();
     for (const match of timestamps) {
       timed.push({
-        start: (Number(match[1]) * 60 + Number(match[2])) * 1000
-          + Number((match[3] || "").padEnd(3, "0")),
+        start:
+          (Number(match[1]) * 60 + Number(match[2])) * 1000 +
+          Number((match[3] || "").padEnd(3, "0")),
         value,
       });
     }
@@ -23,7 +26,8 @@ function textLyrics(text) {
   if (timed.length) {
     return { synced: true, offset, line: timed.sort((a, b) => a.start - b.start) };
   }
-  const line = lines.filter((value) => !/^\s*\[[a-z]+:.*\]\s*$/i.test(value))
+  const line = lines
+    .filter((value) => !/^\s*\[[a-z]+:.*\]\s*$/i.test(value))
     .map((value) => ({ value: value.trim() }));
   while (line.length && !line[0].value) line.shift();
   while (line.length && !line.at(-1).value) line.pop();
@@ -33,8 +37,9 @@ function textLyrics(text) {
 function embeddedLyrics(tag) {
   const synchronized = Array.isArray(tag.syncText) ? tag.syncText : [];
   if (synchronized.length) {
-    const synced = tag.timeStampFormat === 2
-      && synchronized.every((entry) => Number.isFinite(entry.timestamp) && entry.timestamp >= 0);
+    const synced =
+      tag.timeStampFormat === 2 &&
+      synchronized.every((entry) => Number.isFinite(entry.timestamp) && entry.timestamp >= 0);
     const line = synchronized.map((entry) => ({
       ...(synced ? { start: entry.timestamp } : {}),
       value: entry.text,

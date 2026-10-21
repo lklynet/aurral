@@ -4,14 +4,12 @@ import { db } from "../../config/db-sqlite.js";
 const getImageStmt = db.prepare("SELECT * FROM images_cache WHERE mbid = ?");
 const getImageJsonStmt = db.prepare("SELECT images_json FROM images_cache WHERE mbid = ?");
 const upsertImageStmt = db.prepare(
-  "INSERT OR REPLACE INTO images_cache (mbid, image_url, images_json, cache_age, created_at) VALUES (?, ?, ?, ?, ?)"
+  "INSERT OR REPLACE INTO images_cache (mbid, image_url, images_json, cache_age, created_at) VALUES (?, ?, ?, ?, ?)",
 );
 const countImagesStmt = db.prepare("SELECT COUNT(*) as count FROM images_cache");
 const deleteImageStmt = db.prepare("DELETE FROM images_cache WHERE mbid = ?");
 const clearImagesStmt = db.prepare("DELETE FROM images_cache");
-const cleanOldImagesStmt = db.prepare(
-  "DELETE FROM images_cache WHERE cache_age < ?"
-);
+const cleanOldImagesStmt = db.prepare("DELETE FROM images_cache WHERE cache_age < ?");
 
 const NOT_FOUND_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const getImagesStmtsByCount = new Map();
@@ -28,49 +26,44 @@ const parseImages = (value) => {
 
 const serializeImages = (images) => (Array.isArray(images) ? JSON.stringify(images) : null);
 
-const getDeezerMbidCacheStmt = db.prepare(
-  "SELECT mbid FROM deezer_mbid_cache WHERE cache_key = ?"
-);
+const getDeezerMbidCacheStmt = db.prepare("SELECT mbid FROM deezer_mbid_cache WHERE cache_key = ?");
 const setDeezerMbidCacheStmt = db.prepare(
-  "INSERT OR REPLACE INTO deezer_mbid_cache (cache_key, mbid) VALUES (?, ?)"
+  "INSERT OR REPLACE INTO deezer_mbid_cache (cache_key, mbid) VALUES (?, ?)",
 );
 const getMusicbrainzArtistMbidCacheStmt = db.prepare(
-  "SELECT mbid, updated_at FROM musicbrainz_artist_mbid_cache WHERE artist_name_key = ?"
+  "SELECT mbid, updated_at FROM musicbrainz_artist_mbid_cache WHERE artist_name_key = ?",
 );
 const setMusicbrainzArtistMbidCacheStmt = db.prepare(
-  "INSERT OR REPLACE INTO musicbrainz_artist_mbid_cache (artist_name_key, mbid, updated_at) VALUES (?, ?, ?)"
+  "INSERT OR REPLACE INTO musicbrainz_artist_mbid_cache (artist_name_key, mbid, updated_at) VALUES (?, ?, ?)",
 );
 const cleanOldMusicbrainzArtistMbidCacheStmt = db.prepare(
-  "DELETE FROM musicbrainz_artist_mbid_cache WHERE updated_at < ?"
+  "DELETE FROM musicbrainz_artist_mbid_cache WHERE updated_at < ?",
 );
 
 const getMetadataResponseStmt = db.prepare(
-  "SELECT response, fresh_until, stale_until FROM metadata_response_cache WHERE cache_key = ?"
+  "SELECT response, fresh_until, stale_until FROM metadata_response_cache WHERE cache_key = ?",
 );
 const setMetadataResponseStmt = db.prepare(
-  "INSERT OR REPLACE INTO metadata_response_cache (cache_key, response, fresh_until, stale_until) VALUES (?, ?, ?, ?)"
+  "INSERT OR REPLACE INTO metadata_response_cache (cache_key, response, fresh_until, stale_until) VALUES (?, ?, ?, ?)",
 );
 const deleteMetadataResponseStmt = db.prepare(
-  "DELETE FROM metadata_response_cache WHERE cache_key = ?"
+  "DELETE FROM metadata_response_cache WHERE cache_key = ?",
 );
 const clearMetadataResponsesStmt = db.prepare("DELETE FROM metadata_response_cache");
 const cleanExpiredMetadataResponsesStmt = db.prepare(
-  "DELETE FROM metadata_response_cache WHERE stale_until < ?"
+  "DELETE FROM metadata_response_cache WHERE stale_until < ?",
 );
 const trimMetadataResponsesStmt = db.prepare(
   `DELETE FROM metadata_response_cache WHERE cache_key IN (
     SELECT cache_key FROM metadata_response_cache ORDER BY stale_until DESC LIMIT -1 OFFSET ?
-  )`
+  )`,
 );
 
 export default function register(dbOps) {
   dbOps.getImage = function (mbid) {
     const row = getImageStmt.get(mbid);
     if (!row) return null;
-    if (
-      row.image_url === "NOT_FOUND" &&
-      Date.now() - row.cache_age > NOT_FOUND_TTL_MS
-    ) {
+    if (row.image_url === "NOT_FOUND" && Date.now() - row.cache_age > NOT_FOUND_TTL_MS) {
       deleteImageStmt.run(mbid);
       return null;
     }
@@ -88,7 +81,7 @@ export default function register(dbOps) {
     if (!stmt) {
       const placeholders = mbids.map(() => "?").join(",");
       stmt = db.prepare(
-        `SELECT mbid, image_url, images_json, cache_age FROM images_cache WHERE mbid IN (${placeholders})`
+        `SELECT mbid, image_url, images_json, cache_age FROM images_cache WHERE mbid IN (${placeholders})`,
       );
       getImagesStmtsByCount.set(mbids.length, stmt);
     }
@@ -96,10 +89,7 @@ export default function register(dbOps) {
     const now = Date.now();
     const result = {};
     for (const row of rows) {
-      if (
-        row.image_url === "NOT_FOUND" &&
-        now - row.cache_age > NOT_FOUND_TTL_MS
-      ) {
+      if (row.image_url === "NOT_FOUND" && now - row.cache_age > NOT_FOUND_TTL_MS) {
         deleteImageStmt.run(row.mbid);
         continue;
       }
@@ -195,12 +185,7 @@ export default function register(dbOps) {
   };
 
   dbOps.setMetadataResponse = function (cacheKey, { value, freshUntil, staleUntil }) {
-    setMetadataResponseStmt.run(
-      cacheKey,
-      gzipSync(JSON.stringify(value)),
-      freshUntil,
-      staleUntil,
-    );
+    setMetadataResponseStmt.run(cacheKey, gzipSync(JSON.stringify(value)), freshUntil, staleUntil);
   };
 
   dbOps.deleteMetadataResponse = function (cacheKey) {

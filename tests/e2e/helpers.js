@@ -9,7 +9,9 @@ export const credentials = {
 export function requireCredentials() {
   test.beforeAll(() => {
     if (!credentials.username || !credentials.password) {
-      throw new Error("AURRAL_TEST_USERNAME and AURRAL_TEST_PASSWORD are required for the full browser suite");
+      throw new Error(
+        "AURRAL_TEST_USERNAME and AURRAL_TEST_PASSWORD are required for the full browser suite",
+      );
     }
   });
 }
@@ -32,24 +34,27 @@ export async function openApp(page, navigation = "Primary navigation") {
 }
 
 export function apiRequest(page, path, { method = "GET", body } = {}) {
-  return page.evaluate(async ({ requestPath, requestMethod, requestBody }) => {
-    const token = localStorage.getItem("auth_token");
-    const response = await fetch(requestPath, {
-      method: requestMethod,
-      headers: {
-        ...(requestBody === undefined ? {} : { "content-type": "application/json" }),
-        ...(token ? { authorization: `Bearer ${token}` } : {}),
-      },
-      body: requestBody === undefined ? undefined : JSON.stringify(requestBody),
-      credentials: "include",
-      cache: "no-store",
-    });
-    return {
-      ok: response.ok,
-      status: response.status,
-      body: await response.json().catch(() => null),
-    };
-  }, { requestPath: path, requestMethod: method, requestBody: body });
+  return page.evaluate(
+    async ({ requestPath, requestMethod, requestBody }) => {
+      const token = localStorage.getItem("auth_token");
+      const response = await fetch(requestPath, {
+        method: requestMethod,
+        headers: {
+          ...(requestBody === undefined ? {} : { "content-type": "application/json" }),
+          ...(token ? { authorization: `Bearer ${token}` } : {}),
+        },
+        body: requestBody === undefined ? undefined : JSON.stringify(requestBody),
+        credentials: "include",
+        cache: "no-store",
+      });
+      return {
+        ok: response.ok,
+        status: response.status,
+        body: await response.json().catch(() => null),
+      };
+    },
+    { requestPath: path, requestMethod: method, requestBody: body },
+  );
 }
 
 export async function useAurralWithoutLidarr(page) {

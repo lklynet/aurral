@@ -3,7 +3,12 @@ import { getDownloadClient } from "./download/downloadClientSettings.js";
 import { logger } from "./logger.js";
 import { enqueuePipelineJob, listHonkerJobs } from "./honkerDb.js";
 import { downloadTracker } from "./downloadJobs/downloadTracker.js";
-import { discardSlskdSearch, discardSlskdWork, processSlskdPipelinePayload, SLSKD_NOT_CONFIGURED_MESSAGE } from "./slskdOrchestrator.js";
+import {
+  discardSlskdSearch,
+  discardSlskdWork,
+  processSlskdPipelinePayload,
+  SLSKD_NOT_CONFIGURED_MESSAGE,
+} from "./slskdOrchestrator.js";
 import { discardUsenetWork, processUsenetPipelinePayload } from "./usenetOrchestrator.js";
 import { processYtdlpPipelinePayload } from "./ytdlpOrchestrator.js";
 import { discardDeemixWork, processDeemixPipelinePayload } from "./deemixOrchestrator.js";
@@ -107,8 +112,10 @@ async function parkHeldForReview(payload, job) {
   return parked;
 }
 
-const keepHeldForReview = (payload) => payload?.heldForReview && isPipelinePayloadActive(payload)
-  && downloadTracker.keepHeldForReview(payload.jobId, payload.heldForReview);
+const keepHeldForReview = (payload) =>
+  payload?.heldForReview &&
+  isPipelinePayloadActive(payload) &&
+  downloadTracker.keepHeldForReview(payload.jobId, payload.heldForReview);
 
 // A step that ends leaves a file the job still keeps, as when the job went
 // back to wait for its next attempt.
@@ -116,7 +123,8 @@ async function discardHeldForReview(payload) {
   const held = payload?.heldForReview;
   if (!held?.sourcePath) return;
   const job = downloadTracker.getJob(payload.jobId);
-  if (job?.stagingPath === held.sourcePath || job?.heldForReview?.sourcePath === held.sourcePath) return;
+  if (job?.stagingPath === held.sourcePath || job?.heldForReview?.sourcePath === held.sourcePath)
+    return;
   await discardHeldFile(payload.jobId, held);
 }
 
@@ -130,8 +138,9 @@ export function buildNextSourcePayload(payload, failedSource = null, reason = nu
     ? new Set(payload.allowedSources)
     : null;
   const sources = getEnabledDownloadSources().filter(
-    (source) => (!allowedSources || allowedSources.has(source.id))
-      && (payload?.albumGrab !== true || ALBUM_GRAB_SOURCE_IDS.includes(source.id)),
+    (source) =>
+      (!allowedSources || allowedSources.has(source.id)) &&
+      (payload?.albumGrab !== true || ALBUM_GRAB_SOURCE_IDS.includes(source.id)),
   );
   if (sources.length === 0) return null;
   const tried = new Set(Array.isArray(payload?.triedSources) ? payload.triedSources : []);
@@ -145,7 +154,9 @@ export function buildNextSourcePayload(payload, failedSource = null, reason = nu
       });
     }
   }
-  const exhausted = new Set(Array.isArray(payload?.exhaustedSources) ? payload.exhaustedSources : []);
+  const exhausted = new Set(
+    Array.isArray(payload?.exhaustedSources) ? payload.exhaustedSources : [],
+  );
   const untried = sources.filter((source) => !tried.has(source.id));
   const next = untried.find((source) => !exhausted.has(source.id)) || untried[0];
   if (!next) return null;
@@ -189,17 +200,33 @@ async function searchByReleaseAfterQuickSearch(payload, job, message) {
     ...sourceSearchReset(),
     source: null,
     triedSources: [...new Set([...(payload.triedSources || []), failed].filter(Boolean))],
-    sourceErrors: [...(payload.sourceErrors || []),
-      ...(failed && message ? [{ source: failed, message: String(message).trim() }] : [])],
+    sourceErrors: [
+      ...(payload.sourceErrors || []),
+      ...(failed && message ? [{ source: failed, message: String(message).trim() }] : []),
+    ],
   };
   const { manifest, unreachable } = await readReleaseManifest(job.albumMbid, job.releaseMbid);
   if (!isPipelinePayloadActive(payload)) return null;
   const waits = Number(payload.releaseWaits) || 0;
   if (unreachable && waits < MAX_RELEASE_WAITS) {
-    if (waits === 0) logger.warn("downloads", "Waiting for the release of a track after its quick search", { jobId: job.id });
-    return { ...searched, phase: "release", releaseWaits: waits + 1, delaySeconds: RELEASE_WAIT_SECONDS };
+    if (waits === 0)
+      logger.warn("downloads", "Waiting for the release of a track after its quick search", {
+        jobId: job.id,
+      });
+    return {
+      ...searched,
+      phase: "release",
+      releaseWaits: waits + 1,
+      delaySeconds: RELEASE_WAIT_SECONDS,
+    };
   }
-  const next = { ...searched, quickSearch: false, allowedSources: null, releaseWaits: null, delaySeconds: 0 };
+  const next = {
+    ...searched,
+    quickSearch: false,
+    allowedSources: null,
+    releaseWaits: null,
+    delaySeconds: 0,
+  };
   return downloadTracker.searchByReleaseAfterQuickSearch(next, manifest) || next;
 }
 
@@ -221,7 +248,8 @@ function summarizeSourceErrors(payload, message) {
 }
 
 async function failOrTryNextSource(payload, job, message, logDetails = {}) {
-  if (payload?.quickSearch === true && payload.source) downloadTracker.recordQuickSearched(job.id, payload.source);
+  if (payload?.quickSearch === true && payload.source)
+    downloadTracker.recordQuickSearched(job.id, payload.source);
   const nextPayload = buildNextSourcePayload(payload, payload?.source || "slskd", message);
   if (nextPayload) {
     logger.info("downloads", "Trying next download source", {
@@ -251,18 +279,25 @@ async function failOrTryNextSource(payload, job, message, logDetails = {}) {
 async function moveOnFromFailedAlbumStep(failed, message) {
   const payload = {
     ...failed,
-    exhaustedSources: [...new Set([...(failed.exhaustedSources || []), failed.source].filter(Boolean))],
+    exhaustedSources: [
+      ...new Set([...(failed.exhaustedSources || []), failed.source].filter(Boolean)),
+    ],
   };
   await DISCARD_SOURCE_WORK[payload.source]?.(payload);
   if (payload.phase === "finalize") blockAlbumGrabSource(payload, albumGrabJobs(payload));
   const next = await nextAlbumSource(payload, message);
   if (next) return next;
   const held = heldAlbumGrabJobs(payload);
-  const failures = Math.max(0, ...held.map((job) => downloadTracker.recordAlbumGrabFailure(job.id)));
+  const failures = Math.max(
+    0,
+    ...held.map((job) => downloadTracker.recordAlbumGrabFailure(job.id)),
+  );
   if (failures >= MAX_FAILED_ALBUM_ATTEMPTS) {
     return fallbackAlbumGrabToTracks(payload, summarizeSourceErrors(payload, message));
   }
-  returnUntriedAlbumGrabJobs(payload, held, `${ALBUM_GRAB_FAILED_REASON}: ${message}`, { retry: true });
+  returnUntriedAlbumGrabJobs(payload, held, `${ALBUM_GRAB_FAILED_REASON}: ${message}`, {
+    retry: true,
+  });
   return null;
 }
 
@@ -277,10 +312,15 @@ export async function failPipelineJob(failed, message) {
 
 async function failPipelineStep(failed, message) {
   const jobId = failed.jobId;
-  const payload = failed.source ? failed : { ...failed, source: buildNextSourcePayload(failed)?.source ?? null };
+  const payload = failed.source
+    ? failed
+    : { ...failed, source: buildNextSourcePayload(failed)?.source ?? null };
   if (payload.albumGrab === true) {
-    const next = isPipelinePayloadActive(payload) ? await moveOnFromFailedAlbumStep(payload, message) : null;
-    if (!next) await settleDroppedAlbumGrab(payload, null, `${ALBUM_GRAB_FAILED_REASON}: ${message}`);
+    const next = isPipelinePayloadActive(payload)
+      ? await moveOnFromFailedAlbumStep(payload, message)
+      : null;
+    if (!next)
+      await settleDroppedAlbumGrab(payload, null, `${ALBUM_GRAB_FAILED_REASON}: ${message}`);
     if (next?.jobId !== payload.jobId) await discardHeldForReview(payload);
     return next;
   }
@@ -327,27 +367,41 @@ async function repinAlbumAttempt(payload) {
 // the same way. After the last wait it finishes without a release.
 async function awaitAttemptRelease(payload) {
   const waits = Number(payload.releaseWaits) || 0;
-  if (waits >= MAX_RELEASE_WAITS) return { ...payload, releaseMbid: null, releaseWaits: null, delaySeconds: 0 };
+  if (waits >= MAX_RELEASE_WAITS)
+    return { ...payload, releaseMbid: null, releaseWaits: null, delaySeconds: 0 };
   const repinned = await repinAlbumAttempt(payload);
   if (!repinned) return null;
   if (repinned.releaseMbid) return { ...repinned, releaseWaits: null, delaySeconds: 0 };
   if (waits === 0) {
     logger.warn("downloads", "Waiting for the release of an album download", {
-      jobId: payload.jobId, releaseMbid: payload.releaseMbid ?? null,
+      jobId: payload.jobId,
+      releaseMbid: payload.releaseMbid ?? null,
     });
   }
   return { ...payload, releaseWaits: waits + 1, delaySeconds: RELEASE_WAIT_SECONDS };
 }
 
-const DISCARD_SOURCE_WORK = { slskd: discardSlskdWork, usenet: discardUsenetWork, deemix: discardDeemixWork };
+const DISCARD_SOURCE_WORK = {
+  slskd: discardSlskdWork,
+  usenet: discardUsenetWork,
+  deemix: discardDeemixWork,
+};
 
 // An attempt that ends while it still holds tracks was dropped before its
 // source judged the release: its leading track stopped or was cancelled, the
 // release could not be read when it searched, or its step kept failing. The
 // tracks start again untried, and the source removes the work it started
 // unless a cancellation already did.
-export async function settleDroppedAlbumGrab(payload, nextPayload = null, reason = ALBUM_GRAB_ENDED_REASON) {
-  if (payload?.albumGrab !== true || (nextPayload?.albumGrab === true && isPipelinePayloadActive(nextPayload))) return;
+export async function settleDroppedAlbumGrab(
+  payload,
+  nextPayload = null,
+  reason = ALBUM_GRAB_ENDED_REASON,
+) {
+  if (
+    payload?.albumGrab !== true ||
+    (nextPayload?.albumGrab === true && isPipelinePayloadActive(nextPayload))
+  )
+    return;
   const held = heldAlbumGrabJobs(payload).filter((job) => job.id !== nextPayload?.jobId);
   if (held.length === 0) return;
   if (isPipelinePayloadActive(payload)) await DISCARD_SOURCE_WORK[payload.source]?.(payload);
@@ -384,10 +438,19 @@ async function processSourcePayload(payload) {
   if (payload.albumGrab === true && payload.releaseMbid === undefined) {
     return payload.phase === "search" ? null : awaitAttemptRelease(payload);
   }
-  if (payload.albumGrab === true && payload.upgrade === true && ["search", "waiting"].includes(payload.phase)) {
+  if (
+    payload.albumGrab === true &&
+    payload.upgrade === true &&
+    ["search", "waiting"].includes(payload.phase)
+  ) {
     const waits = Number(payload.upgradeWaits) || 0;
     if (waits < MAX_RELEASE_WAITS && downloadTracker.upgradeAttemptAhead(payload)) {
-      return { ...payload, phase: "waiting", upgradeWaits: waits + 1, delaySeconds: UPGRADE_WAIT_SECONDS };
+      return {
+        ...payload,
+        phase: "waiting",
+        upgradeWaits: waits + 1,
+        delaySeconds: UPGRADE_WAIT_SECONDS,
+      };
     }
     if (payload.phase === "waiting") payload = { ...payload, phase: "search", delaySeconds: 0 };
   }
@@ -419,7 +482,11 @@ async function processSourcePayload(payload) {
   if (payload.albumGrab === true && !ALBUM_GRAB_SOURCE_IDS.includes(payload.source)) {
     const job = downloadTracker.getJob(payload.jobId);
     return job
-      ? failOrTryNextSource(payload, job, `${getSourceLabel(payload.source)} cannot download a release`)
+      ? failOrTryNextSource(
+          payload,
+          job,
+          `${getSourceLabel(payload.source)} cannot download a release`,
+        )
       : null;
   }
   if (payload.source === "usenet") {

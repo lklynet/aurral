@@ -48,12 +48,37 @@ beforeAll(async () => {
   dbOps.updateSettings({ integrations: {}, onboardingComplete: true });
   userOps.createUser("alice", hashPassword("password123"), "user");
   userOps.createUser("bob", hashPassword("bob-password"), "user");
-  for (const name of ["The Cure", "Los Lobos", "2Pac", "Cure Tribute", "Alpha", "Theater", "!Bang", "El Bicho", "éclair"]) {
+  for (const name of [
+    "The Cure",
+    "Los Lobos",
+    "2Pac",
+    "Cure Tribute",
+    "Alpha",
+    "Theater",
+    "!Bang",
+    "El Bicho",
+    "éclair",
+  ]) {
     const artist = libraryStore.upsertLibraryArtist({ identityKey: `index-artist:${name}`, name });
-    const album = libraryStore.upsertLibraryAlbum({ identityKey: `index-album:${name}`, artistId: artist.id, title: name, albumArtist: name });
-    const track = libraryStore.upsertLibraryTrack({ identityKey: `index-track:${name}`, title: name, artistName: name });
+    const album = libraryStore.upsertLibraryAlbum({
+      identityKey: `index-album:${name}`,
+      artistId: artist.id,
+      title: name,
+      albumArtist: name,
+    });
+    const track = libraryStore.upsertLibraryTrack({
+      identityKey: `index-track:${name}`,
+      title: name,
+      artistName: name,
+    });
     libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
-    libraryStore.upsertLibraryMediaFile({ trackId: track.id, source: "lidarr", path: `/test/${name}.flac`, format: "flac", available: true });
+    libraryStore.upsertLibraryMediaFile({
+      trackId: track.id,
+      source: "lidarr",
+      path: `/test/${name}.flac`,
+      format: "flac",
+      available: true,
+    });
   }
   aurral = await startServerProcess({ extraEnv: { CORS_ORIGIN: "" } });
 });
@@ -104,8 +129,7 @@ test("supports token auth for every local user and syncs password changes", asyn
   assert.equal(storedSecret.subsonic_password.includes("bob-password"), false);
 
   const salt = "bob-salt";
-  const token = (password) =>
-    crypto.createHash("md5").update(`${password}${salt}`).digest("hex");
+  const token = (password) => crypto.createHash("md5").update(`${password}${salt}`).digest("hex");
   const initialToken = await request("ping", {
     u: "bob",
     p: "",
@@ -169,15 +193,20 @@ test("allows browser Subsonic clients without CORS configuration", async () => {
 });
 
 test("allows browser clients to read redirected artwork without CORS configuration", async () => {
-  const response = await fetch(`http://127.0.0.1:${aurral.port}/api/image-proxy/missing-cache-key.webp`, {
-    headers: { Origin: "http://feishin.example" },
-  });
+  const response = await fetch(
+    `http://127.0.0.1:${aurral.port}/api/image-proxy/missing-cache-key.webp`,
+    {
+      headers: { Origin: "http://feishin.example" },
+    },
+  );
   assert.equal(response.headers.get("access-control-allow-origin"), "*");
   assert.equal(response.headers.get("cross-origin-resource-policy"), "cross-origin");
 });
 
 test("exposes getOpenSubsonicExtensions without authentication", async () => {
-  const anonymous = await fetch(`http://127.0.0.1:${aurral.port}/rest/getOpenSubsonicExtensions.view?f=json`);
+  const anonymous = await fetch(
+    `http://127.0.0.1:${aurral.port}/rest/getOpenSubsonicExtensions.view?f=json`,
+  );
   const body = JSON.parse(await anonymous.text())["subsonic-response"];
   assert.equal(body.status, "ok");
   assert.equal(body.openSubsonic, true);
@@ -188,8 +217,13 @@ test("exposes getOpenSubsonicExtensions without authentication", async () => {
     { name: "transcodeOffset", versions: [1] },
   ]);
 
-  const anonymousXml = await fetch(`http://127.0.0.1:${aurral.port}/rest/getOpenSubsonicExtensions`);
-  assert.match(await anonymousXml.text(), /<openSubsonicExtensions name="formPost"><versions>1<\/versions><\/openSubsonicExtensions>/);
+  const anonymousXml = await fetch(
+    `http://127.0.0.1:${aurral.port}/rest/getOpenSubsonicExtensions`,
+  );
+  assert.match(
+    await anonymousXml.text(),
+    /<openSubsonicExtensions name="formPost"><versions>1<\/versions><\/openSubsonicExtensions>/,
+  );
 
   const authenticated = await request("getOpenSubsonicExtensions", { f: "json" });
   assert.equal(authenticated.json.openSubsonicExtensions.length, 4);
@@ -199,7 +233,13 @@ test("accepts form-encoded POST requests", async () => {
   const response = await fetch(`http://127.0.0.1:${aurral.port}/rest/getUser.view`, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ u: "alice", p: "password123", v: "1.16.1", c: "form-test", f: "json" }),
+    body: new URLSearchParams({
+      u: "alice",
+      p: "password123",
+      v: "1.16.1",
+      c: "form-test",
+      f: "json",
+    }),
   });
   const body = JSON.parse(await response.text())["subsonic-response"];
   assert.equal(body.status, "ok");
@@ -249,12 +289,27 @@ test("keeps the Subsonic contract after a process restart", async () => {
 });
 
 test("sorts both artist indexes using their advertised ignored articles", async () => {
-  for (const [method, payload] of [["getArtists", "artists"], ["getIndexes", "indexes"]]) {
+  for (const [method, payload] of [
+    ["getArtists", "artists"],
+    ["getIndexes", "indexes"],
+  ]) {
     const result = await request(method, { f: "json" });
     const sections = result.json[payload].index;
-    assert.deepEqual(sections.map((section) => section.name), ["A", "B", "C", "L", "T", "É", "#"]);
-    assert.deepEqual(sections.find((section) => section.name === "C").artist.map((artist) => artist.name), ["The Cure", "Cure Tribute"]);
-    assert.deepEqual(sections.find((section) => section.name === "L").artist.map((artist) => artist.name), ["Los Lobos"]);
-    assert.deepEqual(sections.at(-1).artist.map((artist) => artist.name), ["!Bang", "2Pac"]);
+    assert.deepEqual(
+      sections.map((section) => section.name),
+      ["A", "B", "C", "L", "T", "É", "#"],
+    );
+    assert.deepEqual(
+      sections.find((section) => section.name === "C").artist.map((artist) => artist.name),
+      ["The Cure", "Cure Tribute"],
+    );
+    assert.deepEqual(
+      sections.find((section) => section.name === "L").artist.map((artist) => artist.name),
+      ["Los Lobos"],
+    );
+    assert.deepEqual(
+      sections.at(-1).artist.map((artist) => artist.name),
+      ["!Bang", "2Pac"],
+    );
   }
 });

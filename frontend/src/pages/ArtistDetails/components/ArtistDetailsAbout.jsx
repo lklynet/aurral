@@ -238,7 +238,12 @@ export function ArtistDetailsAbout({
                     className="artist-external-link"
                   >
                     {link.logo ? (
-                      <img className="artist-external-link__logo" src={link.logo} alt="" aria-hidden="true" />
+                      <img
+                        className="artist-external-link__logo"
+                        src={link.logo}
+                        alt=""
+                        aria-hidden="true"
+                      />
                     ) : (
                       <ExternalLink className="artist-icon-sm" />
                     )}

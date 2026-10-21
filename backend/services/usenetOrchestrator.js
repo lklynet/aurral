@@ -11,13 +11,8 @@ import {
   rankUsenetReleases,
   selectRankedUsenetCandidates,
 } from "./downloadJobs/usenetReleaseSearch.js";
-import {
-  cacheSearchResults,
-  getCachedSearchResults,
-} from "./downloadJobs/searchResultCache.js";
-import {
-  selectVerifiedDownloadedFile,
-} from "./trackMatching/index.js";
+import { cacheSearchResults, getCachedSearchResults } from "./downloadJobs/searchResultCache.js";
+import { selectVerifiedDownloadedFile } from "./trackMatching/index.js";
 import { resolveDownloadRoot } from "./downloadPaths.js";
 import { getPathMappings, resolveLocalPath } from "./pathMappings.js";
 import {
@@ -88,11 +83,18 @@ function retireNzb(key) {
 function otherJobsOnNzb(clientKey, nzbId, jobId) {
   const id = String(nzbId ?? "").trim();
   if (!id) return [];
-  return downloadTracker.getAll().filter((entry) => entry.id !== jobId
-    && isAutomaticUpgrade(entry) && entry.status === "downloading"
-    && entry.downloadSource === "usenet" && entry.downloadClient === clientKey
-    && String(entry.downloadClientId ?? "").trim() === id
-    && !releasedNzbs.has(`${entry.id}\0${nzbKey(clientKey, id)}`));
+  return downloadTracker
+    .getAll()
+    .filter(
+      (entry) =>
+        entry.id !== jobId &&
+        isAutomaticUpgrade(entry) &&
+        entry.status === "downloading" &&
+        entry.downloadSource === "usenet" &&
+        entry.downloadClient === clientKey &&
+        String(entry.downloadClientId ?? "").trim() === id &&
+        !releasedNzbs.has(`${entry.id}\0${nzbKey(clientKey, id)}`),
+    );
 }
 
 // Upgrades for several tracks of one album usually rank the same release
@@ -103,8 +105,14 @@ function otherJobsOnNzb(clientKey, nzbId, jobId) {
 // the download, so upgrades of one release share one attempt instead.
 const pendingUpgradeSubmissions = new Map();
 
-const trackKey = (job) => [job.artistName, job.albumName, job.trackName]
-  .map((value) => String(value || "").trim().toLowerCase()).join("\0");
+const trackKey = (job) =>
+  [job.artistName, job.albumName, job.trackName]
+    .map((value) =>
+      String(value || "")
+        .trim()
+        .toLowerCase(),
+    )
+    .join("\0");
 
 function isSameTrack(left, right) {
   return left.trackMbid && right.trackMbid
@@ -115,14 +123,23 @@ function isSameTrack(left, right) {
 function sharedUpgradeNzb(clientKey, release, job) {
   const guid = String(release?.guid || "").trim();
   if (!guid) return null;
-  const users = downloadTracker.getAll().filter((entry) => entry.id !== job.id
-    && isAutomaticUpgrade(entry) && entry.status === "downloading"
-    && entry.downloadSource === "usenet" && entry.downloadClient === clientKey
-    && entry.releaseGuid === guid && entry.downloadClientId != null
-    && !retiredNzbs.has(nzbKey(clientKey, entry.downloadClientId))
-    && !releasedNzbs.has(`${entry.id}\0${nzbKey(clientKey, entry.downloadClientId)}`));
+  const users = downloadTracker
+    .getAll()
+    .filter(
+      (entry) =>
+        entry.id !== job.id &&
+        isAutomaticUpgrade(entry) &&
+        entry.status === "downloading" &&
+        entry.downloadSource === "usenet" &&
+        entry.downloadClient === clientKey &&
+        entry.releaseGuid === guid &&
+        entry.downloadClientId != null &&
+        !retiredNzbs.has(nzbKey(clientKey, entry.downloadClientId)) &&
+        !releasedNzbs.has(`${entry.id}\0${nzbKey(clientKey, entry.downloadClientId)}`),
+    );
   const pending = pendingUpgradeSubmissions.get(`${clientKey}\0${guid}`);
-  if ([...users, pending?.job].some((entry) => entry && isSameTrack(entry, job))) return { separate: true };
+  if ([...users, pending?.job].some((entry) => entry && isSameTrack(entry, job)))
+    return { separate: true };
   return { nzbId: users[0]?.downloadClientId ?? pending?.nzbId ?? null };
 }
 
@@ -162,10 +179,16 @@ export async function removeReviewedUsenetDownload(job) {
   );
 }
 
-const RELEASE_RESET = Object.freeze({ nzbId: null, history: null, missingPolls: 0, unreadPolls: 0 });
+const RELEASE_RESET = Object.freeze({
+  nzbId: null,
+  history: null,
+  missingPolls: 0,
+  unreadPolls: 0,
+});
 
-const hasNextRelease = (payload) => hasNextCandidate(payload)
-  && (payload.albumGrab === true || Number(payload.nzbGrabs || 0) < MAX_TRACK_NZB_GRABS);
+const hasNextRelease = (payload) =>
+  hasNextCandidate(payload) &&
+  (payload.albumGrab === true || Number(payload.nzbGrabs || 0) < MAX_TRACK_NZB_GRABS);
 const withNzbGrab = (payload) => ({ ...payload, nzbGrabs: Number(payload.nzbGrabs || 0) + 1 });
 
 // A release that failed or held no matching file is blocked for every track
@@ -181,16 +204,22 @@ function hasEnoughCandidates(aggregated, resolvedTrack, qualityOptions, albumGra
   const ranked = rankUsenetReleases(aggregated, resolvedTrack).filter(
     (entry) => entry.releaseAdmissible && (!albumGrab || entry.resolvedAlbumName),
   );
-  return orderAdvertisedQualityCandidates(ranked, {
-    ...qualityOptions,
-    readName: (entry) => entry?.raw?.release?.title,
-  }).length >= MIN_USENET_CANDIDATES;
+  return (
+    orderAdvertisedQualityCandidates(ranked, {
+      ...qualityOptions,
+      readName: (entry) => entry?.raw?.release?.title,
+    }).length >= MIN_USENET_CANDIDATES
+  );
 }
 
 function classifyHistoryStatus(item) {
   const status = String(item?.Status || item?.status || "").toUpperCase();
   if (!status) return "pending";
-  if (status.startsWith("SUCCESS") || status.startsWith("WARNING") || status.startsWith("COMPLETED")) {
+  if (
+    status.startsWith("SUCCESS") ||
+    status.startsWith("WARNING") ||
+    status.startsWith("COMPLETED")
+  ) {
     return "success";
   }
   if (status.startsWith("FAILED") || status.startsWith("FAILURE") || status.startsWith("DELETED")) {
@@ -241,14 +270,17 @@ function uniqueResolvedPaths(values, source) {
 
 export async function collectDownloadedAudioFiles(historyItem, preferredClient = null) {
   const clientKey = getUsenetClientKey(preferredClient);
-  const roots = uniqueResolvedPaths([
-    historyItem?.FinalDir,
-    historyItem?.DestDir,
-    historyItem?.storage,
-    historyItem?.path,
-    historyItem?.folder,
-    historyItem?.dir,
-  ], clientKey);
+  const roots = uniqueResolvedPaths(
+    [
+      historyItem?.FinalDir,
+      historyItem?.DestDir,
+      historyItem?.storage,
+      historyItem?.path,
+      historyItem?.folder,
+      historyItem?.dir,
+    ],
+    clientKey,
+  );
   const files = [];
   for (const root of roots) {
     const stat = await fs.stat(root).catch(() => null);
@@ -273,9 +305,14 @@ async function validateDownloadedRelease(audioFilePaths, candidate, resolvedTrac
   });
 }
 
-const releaseKey = (release) => [release.guid, release.downloadUrl, release.indexerId, release.title]
-  .map((entry) => String(entry || "").trim().toLowerCase())
-  .join("\0");
+const releaseKey = (release) =>
+  [release.guid, release.downloadUrl, release.indexerId, release.title]
+    .map((entry) =>
+      String(entry || "")
+        .trim()
+        .toLowerCase(),
+    )
+    .join("\0");
 
 // One Prowlarr query per pipeline step, so a slow indexer never holds the
 // pipeline for the whole search plan.
@@ -332,7 +369,9 @@ async function handleUsenetSearch(payload, helpers) {
     });
     import("./aurralHistoryService.js")
       .then(({ recordTrackJobSearching }) => recordTrackJobSearching(job))
-      .catch((err) => { console.warn(err); });
+      .catch((err) => {
+        console.warn(err);
+      });
   }
 
   const release = await attemptRelease(payload, job);
@@ -357,16 +396,23 @@ async function handleUsenetSearch(payload, helpers) {
     compilation,
     releaseTracks: albumGrab ? release?.tracks : undefined,
   };
-  const queries = payload.searchQueries || buildUsenetSearchQueries(
-    searchContext,
-    { musicSearch: musicIndexers.length > 0, albumGrab },
-  );
-  const runQuery = (query) => (isProwlarrMusicQuery(query)
-    ? prowlarrClient.search(query, { type: "music", indexers: musicIndexers })
-    : prowlarrClient.search(query));
+  const queries =
+    payload.searchQueries ||
+    buildUsenetSearchQueries(searchContext, { musicSearch: musicIndexers.length > 0, albumGrab });
+  const runQuery = (query) =>
+    isProwlarrMusicQuery(query)
+      ? prowlarrClient.search(query, { type: "music", indexers: musicIndexers })
+      : prowlarrClient.search(query);
   const deniedSourceGuidSet = deniedAlbumSources([job, ...albumJobs], "usenet");
-  const allowed = (releases) => releases.filter((release) =>
-    !deniedSourceGuidSet.has(String(release.guid || "").trim().toLowerCase()));
+  const allowed = (releases) =>
+    releases.filter(
+      (release) =>
+        !deniedSourceGuidSet.has(
+          String(release.guid || "")
+            .trim()
+            .toLowerCase(),
+        ),
+    );
   const step = await advanceUsenetSearch(
     { ...payload, searchQueries: queries },
     queries,
@@ -379,27 +425,38 @@ async function handleUsenetSearch(payload, helpers) {
   const lastError = step.searchError;
   const queryCount = step.queryCount;
   const ranked = rankUsenetReleases(aggregated, searchContext);
-  const filteredRanked = deniedSourceGuidSet.size > 0
-    ? ranked.filter((entry) => !deniedSourceGuidSet.has(String(entry?.raw?.guid || "").trim().toLowerCase()))
-    : ranked;
+  const filteredRanked =
+    deniedSourceGuidSet.size > 0
+      ? ranked.filter(
+          (entry) =>
+            !deniedSourceGuidSet.has(
+              String(entry?.raw?.guid || "")
+                .trim()
+                .toLowerCase(),
+            ),
+        )
+      : ranked;
   const qualityRanked = orderAdvertisedQualityCandidates(
-    filteredRanked.filter((entry) => entry.releaseAdmissible
-      && (payload.albumGrab !== true || entry.resolvedAlbumName)),
+    filteredRanked.filter(
+      (entry) => entry.releaseAdmissible && (payload.albumGrab !== true || entry.resolvedAlbumName),
+    ),
     {
-    ...qualityOptions,
-    readName: (entry) => entry?.raw?.release?.title,
+      ...qualityOptions,
+      readName: (entry) => entry?.raw?.release?.title,
     },
   );
-  const candidates = selectRankedUsenetCandidates(qualityRanked, MAX_DOWNLOAD_CANDIDATES).map((entry) => ({
-    raw: entry.raw,
-    score: entry.score,
-    scores: entry.scores,
-    resolvedAlbumName: entry.resolvedAlbumName,
-    releaseAdmissible: entry.releaseAdmissible === true,
-    // A release title cannot show the tracklist, so the download is judged
-    // against the release before anything is imported.
-    ...(albumGrab ? { releaseVerified: false } : {}),
-  }));
+  const candidates = selectRankedUsenetCandidates(qualityRanked, MAX_DOWNLOAD_CANDIDATES).map(
+    (entry) => ({
+      raw: entry.raw,
+      score: entry.score,
+      scores: entry.scores,
+      resolvedAlbumName: entry.resolvedAlbumName,
+      releaseAdmissible: entry.releaseAdmissible === true,
+      // A release title cannot show the tracklist, so the download is judged
+      // against the release before anything is imported.
+      ...(albumGrab ? { releaseVerified: false } : {}),
+    }),
+  );
   if (candidates.length === 0) {
     const message =
       lastError && aggregated.length === 0
@@ -438,7 +495,9 @@ async function handleUsenetDownload(payload, helpers) {
   }
   import("./aurralHistoryService.js")
     .then(({ recordTrackJobDownloading }) => recordTrackJobDownloading(job))
-    .catch((err) => { console.warn(err); });
+    .catch((err) => {
+      console.warn(err);
+    });
 
   const client = getUsenetClient(payload.manualDownloadClient);
   const clientKey = getUsenetClientKey(payload.manualDownloadClient);
@@ -464,7 +523,10 @@ async function handleUsenetDownload(payload, helpers) {
     missingPolls: 0,
     unreadPolls: 0,
   });
-  const upgrade = isAutomaticUpgrade(job) && payload.albumGrab !== true && Boolean(String(release.guid || "").trim());
+  const upgrade =
+    isAutomaticUpgrade(job) &&
+    payload.albumGrab !== true &&
+    Boolean(String(release.guid || "").trim());
   const submissionKey = `${clientKey}\0${String(release.guid || "").trim()}`;
   let claimed = null;
   let sharedNzbId = null;
@@ -475,7 +537,9 @@ async function handleUsenetDownload(payload, helpers) {
     if (shared?.separate) break;
     if (shared?.nzbId == null) {
       let settle;
-      const nzbId = new Promise((resolve) => { settle = resolve; });
+      const nzbId = new Promise((resolve) => {
+        settle = resolve;
+      });
       claimed = { nzbId, settle, job };
       pendingUpgradeSubmissions.set(submissionKey, claimed);
     } else {
@@ -484,7 +548,10 @@ async function handleUsenetDownload(payload, helpers) {
   }
   if (sharedNzbId != null) {
     if (!isPipelinePayloadActive(payload)) return null;
-    downloadTracker.updateDownloadMetadata(job.id, { ...releaseMetadata, downloadClientId: sharedNzbId });
+    downloadTracker.updateDownloadMetadata(job.id, {
+      ...releaseMetadata,
+      downloadClientId: sharedNzbId,
+    });
     return pollPayload(sharedNzbId);
   }
   let submission;
@@ -499,7 +566,10 @@ async function handleUsenetDownload(payload, helpers) {
         dupeKey: `aurral-${job.id}`,
         dupeScore: Number(candidate.score || 0),
       });
-      downloadTracker.updateDownloadMetadata(job.id, { ...releaseMetadata, downloadClientId: appended.nzbId });
+      downloadTracker.updateDownloadMetadata(job.id, {
+        ...releaseMetadata,
+        downloadClientId: appended.nzbId,
+      });
       return appended;
     });
   } catch (error) {
@@ -515,12 +585,14 @@ async function handleUsenetDownload(payload, helpers) {
     return helpers.failOrTryNextSource(payload, job, message);
   } finally {
     if (claimed) {
-      if (pendingUpgradeSubmissions.get(submissionKey) === claimed) pendingUpgradeSubmissions.delete(submissionKey);
+      if (pendingUpgradeSubmissions.get(submissionKey) === claimed)
+        pendingUpgradeSubmissions.delete(submissionKey);
       claimed.settle(submission?.result?.nzbId ?? null);
     }
   }
   if (submission.cancelled || !isPipelinePayloadActive(payload)) return null;
-  if (isAutomaticUpgrade(job) && payload.albumGrab === true) retireNzb(nzbKey(clientKey, submission.result.nzbId));
+  if (isAutomaticUpgrade(job) && payload.albumGrab === true)
+    retireNzb(nzbKey(clientKey, submission.result.nzbId));
   return pollPayload(submission.result.nzbId);
 }
 
@@ -541,13 +613,25 @@ async function handleUsenetPoll(payload, helpers) {
     const unreadPolls = Number(payload.unreadPolls || 0) + 1;
     if (unreadPolls > MAX_UNREAD_POLLS) throw error;
     logger.warn("usenet", "Could not read the Usenet download; waiting", {
-      jobId: job.id, nzbId: payload.nzbId, error: error?.message || String(error),
+      jobId: job.id,
+      nzbId: payload.nzbId,
+      error: error?.message || String(error),
     });
-    return { ...payload, phase: "poll", delaySeconds: UNREAD_POLL_DELAY_SECONDS, pollAttempts, unreadPolls };
+    return {
+      ...payload,
+      phase: "poll",
+      delaySeconds: UNREAD_POLL_DELAY_SECONDS,
+      pollAttempts,
+      unreadPolls,
+    };
   }
   if (historyItem) {
     const state = classifyHistoryStatus(historyItem);
-    logger.debug("slskd", "usenet poll history status", { state, raw: historyItem?.Status || historyItem?.status, nzbId: payload.nzbId });
+    logger.debug("slskd", "usenet poll history status", {
+      state,
+      raw: historyItem?.Status || historyItem?.status,
+      nzbId: payload.nzbId,
+    });
     if (state === "success") {
       return {
         ...payload,
@@ -574,7 +658,11 @@ async function handleUsenetPoll(payload, helpers) {
   const missingPolls = present ? 0 : Number(payload.missingPolls || 0) + 1;
   if (missingPolls > MAX_MISSING_POLLS) {
     if (hasNextRelease(payload)) return buildNextCandidatePayload(payload, RELEASE_RESET);
-    return helpers.failOrTryNextSource(payload, job, "The Usenet download left the download client");
+    return helpers.failOrTryNextSource(
+      payload,
+      job,
+      "The Usenet download left the download client",
+    );
   }
   return {
     ...payload,
@@ -595,10 +683,13 @@ async function handleUsenetFinalize(payload, helpers) {
   const historyItem = payload.history || (await client.getHistoryItem(payload.nzbId));
   if (payload.albumGrab === true) {
     const filePaths = await collectDownloadedAudioFiles(
-      historyItem, payload.downloadClient || payload.manualDownloadClient,
+      historyItem,
+      payload.downloadClient || payload.manualDownloadClient,
     );
     const next = await finishAlbumGrab(payload, {
-      filePaths, source: "usenet", album: candidate?.resolvedAlbumName,
+      filePaths,
+      source: "usenet",
+      album: candidate?.resolvedAlbumName,
       resetFields: RELEASE_RESET,
     });
     await removeUsenetItem(payload, job.id, { deleteFiles: true, historyItem });
@@ -613,12 +704,10 @@ async function handleUsenetFinalize(payload, helpers) {
     historyItem,
     payload.downloadClient || payload.manualDownloadClient,
   );
-  const found = await validateDownloadedRelease(
-    audioFiles,
-    candidate,
-    resolvedTrack,
-    { manualSelection: payload.manualSelection === true, release },
-  );
+  const found = await validateDownloadedRelease(audioFiles, candidate, resolvedTrack, {
+    manualSelection: payload.manualSelection === true,
+    release,
+  });
   if (!isPipelinePayloadActive(payload)) {
     await removeUsenetItem(payload, job.id, { deleteFiles: true, historyItem });
     return null;
@@ -640,8 +729,8 @@ async function handleUsenetFinalize(payload, helpers) {
       : helpers.failOrTryNextSource(heldPayload, job, heldPayload.heldForReview.reason);
   }
   if (!found.filePath || found.validation?.blocked) {
-    const reason = found.validation?.reason
-      || "Usenet download completed, but no matching audio file was found";
+    const reason =
+      found.validation?.reason || "Usenet download completed, but no matching audio file was found";
     await removeUsenetItem(payload, job.id, { deleteFiles: true, historyItem });
     if (audioFiles.length > 0) blockRelease(payload, job);
     if (hasNextRelease(payload)) return buildNextCandidatePayload(payload, RELEASE_RESET);
@@ -659,11 +748,10 @@ async function handleUsenetFinalize(payload, helpers) {
   const committed = await withPipelineCommitLock(payload, async () => {
     import("./aurralHistoryService.js")
       .then(({ recordTrackJobMoving }) => recordTrackJobMoving(job))
-      .catch((err) => { console.warn(err); });
-    const committedFinalPath = await commitDownloadedFile(
-      found.filePath,
-      finalPath,
-    );
+      .catch((err) => {
+        console.warn(err);
+      });
+    const committedFinalPath = await commitDownloadedFile(found.filePath, finalPath);
     await writeImportedFileMetadata(committedFinalPath, resolvedTrack, {
       source: "usenet",
       jobId: job.id,
@@ -684,7 +772,11 @@ async function handleUsenetFinalize(payload, helpers) {
 }
 
 export async function processUsenetPipelinePayload(payload, helpers = {}) {
-  logger.debug("slskd", "usenet pipeline phase", { phase: payload.phase, jobId: payload.jobId, source: payload.source });
+  logger.debug("slskd", "usenet pipeline phase", {
+    phase: payload.phase,
+    jobId: payload.jobId,
+    source: payload.source,
+  });
   if (!isPipelinePayloadActive(payload)) return null;
   switch (payload.phase) {
     case "search":

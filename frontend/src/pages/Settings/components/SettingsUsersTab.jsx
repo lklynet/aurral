@@ -24,16 +24,14 @@ function getLocalBypassStatus(status) {
   if (status.active) {
     return {
       title: "Active for this device",
-      detail:
-        "This device signs in automatically as the only admin on the trusted local network.",
+      detail: "This device signs in automatically as the only admin on the trusted local network.",
       canToggle: true,
     };
   }
   if (status.enabled) {
     return {
       title: "Enabled",
-      detail:
-        "The only admin signs in automatically on the trusted local network.",
+      detail: "The only admin signs in automatically on the trusted local network.",
       canToggle: true,
     };
   }
@@ -54,15 +52,13 @@ function getLocalBypassStatus(status) {
     case "sole_user_not_admin":
       return {
         title: "Unavailable: sole user is not admin",
-        detail:
-          "The only user must be an admin.",
+        detail: "The only user must be an admin.",
         canToggle: false,
       };
     case "not_trusted_network":
       return {
         title: "Unavailable: local subnet could not be determined",
-        detail:
-          "Cannot determine a trusted IPv4 local network. Auto-login stays off.",
+        detail: "Cannot determine a trusted IPv4 local network. Auto-login stays off.",
         canToggle: false,
       };
     case "not_onboarded":
@@ -248,7 +244,9 @@ export function SettingsUsersTab({
                     );
                   }
                 } else if (!isReauthRequiredError(err)) {
-                  showError(err.response?.data?.error || err.message || "Failed to change password");
+                  showError(
+                    err.response?.data?.error || err.message || "Failed to change password",
+                  );
                 }
               } finally {
                 setChangingPassword(false);
@@ -423,7 +421,9 @@ export function SettingsUsersTab({
                                     : "No linked SSO identity. If this is an existing SSO account, approve claiming in Manage."
                                 }
                               >
-                                {user.allowIdentityAdoption ? "awaiting SSO claim" : "no SSO identity"}
+                                {user.allowIdentityAdoption
+                                  ? "awaiting SSO claim"
+                                  : "no SSO identity"}
                               </span>
                             ) : null}
                           </span>
@@ -496,10 +496,7 @@ export function SettingsUsersTab({
           {deleteUserTarget
             ? createPortal(
                 <div className="arr-portal">
-                  <div
-                    className="arr-modal-backdrop"
-                    onClick={deleteDialog.handleBackdropClick}
-                  >
+                  <div className="arr-modal-backdrop" onClick={deleteDialog.handleBackdropClick}>
                     <div
                       ref={deleteDialog.dialogRef}
                       className="arr-modal"
@@ -746,7 +743,9 @@ export function SettingsUsersTab({
                               ...(editPassword ? { password: editPassword } : {}),
                               permissions: editPermissions,
                               status: editStatus,
-                              ...(ssoEnabled && editUser.needsIdentityMigration && !editUser.isProtected
+                              ...(ssoEnabled &&
+                              editUser.needsIdentityMigration &&
+                              !editUser.isProtected
                                 ? { allowIdentityAdoption: editAllowAdoption }
                                 : {}),
                             });
@@ -801,7 +800,10 @@ export function SettingsUsersTab({
                                   onChange={(event) => setEditPassword(event.target.value)}
                                 />
                               </SettingsArrFormGroup>
-                              <PlexSelfLinkSection showSuccess={showSuccess} showError={showError} />
+                              <PlexSelfLinkSection
+                                showSuccess={showSuccess}
+                                showError={showError}
+                              />
                             </>
                           ) : (
                             <>
@@ -860,7 +862,9 @@ export function SettingsUsersTab({
                                   <option value="disabled">Disabled</option>
                                 </SettingsSelect>
                               </SettingsArrFormGroup>
-                              {ssoEnabled && editUser.needsIdentityMigration && !editUser.isProtected ? (
+                              {ssoEnabled &&
+                              editUser.needsIdentityMigration &&
+                              !editUser.isProtected ? (
                                 <SettingsArrFormGroup
                                   label="Claim by SSO sign-in"
                                   help="The next matching SSO sign-in takes over this account and keeps its flows, history, and settings. Leave off to create a separate account. Enable only if you know who owns it."

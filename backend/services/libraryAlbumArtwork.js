@@ -20,7 +20,8 @@ const missingArtwork = createCache(24 * 60 * 60, 10_000);
 const lookups = new Map();
 
 const latestScanCompletion = () =>
-  db.prepare("SELECT MAX(completed_at) AS completedAt FROM library_scan_runs").get()?.completedAt ?? 0;
+  db.prepare("SELECT MAX(completed_at) AS completedAt FROM library_scan_runs").get()?.completedAt ??
+  0;
 
 async function renderCover(buffer, contentType) {
   if (!buffer?.length || buffer.length > MAX_SOURCE_IMAGE_BYTES) return null;
@@ -71,7 +72,9 @@ async function readEmbeddedCover(filePath) {
   try {
     const metadata = await parseFile(filePath, { duration: false });
     const picture = selectCover(metadata.common.picture);
-    const contentType = String(picture?.format || "").toLowerCase().replace(/^image\/jpg$/, "image/jpeg");
+    const contentType = String(picture?.format || "")
+      .toLowerCase()
+      .replace(/^image\/jpg$/, "image/jpeg");
     return await renderCover(picture?.data, contentType);
   } catch {
     return null;
@@ -81,8 +84,10 @@ async function readEmbeddedCover(filePath) {
 async function findAlbumArtwork(albumId) {
   const scannedAt = latestScanCompletion();
   if (missingArtwork.get(albumId) === scannedAt) return null;
-  const files = db.prepare(`SELECT path FROM library_media_files
-    WHERE album_id = ? AND available = 1 ORDER BY path COLLATE NOCASE LIMIT 100`).all(Number(albumId));
+  const files = db
+    .prepare(`SELECT path FROM library_media_files
+    WHERE album_id = ? AND available = 1 ORDER BY path COLLATE NOCASE LIMIT 100`)
+    .all(Number(albumId));
   const checkedFolders = new Set();
   for (const file of files) {
     const embedded = await readEmbeddedCover(file.path);
@@ -101,7 +106,10 @@ export function getLibraryAlbumArtwork(albumId) {
   const key = String(albumId);
   if (!/^[1-9]\d*$/.test(key)) return Promise.resolve(null);
   if (!lookups.has(key)) {
-    lookups.set(key, findAlbumArtwork(key).finally(() => lookups.delete(key)));
+    lookups.set(
+      key,
+      findAlbumArtwork(key).finally(() => lookups.delete(key)),
+    );
   }
   return lookups.get(key);
 }

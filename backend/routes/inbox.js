@@ -42,11 +42,10 @@ async function addInboxItem(item, user) {
       throw error;
     }
     const options = await libraryManager.resolveArtistAddOptions({ user });
-    return libraryManager.addArtistWithResolvedOptions(
-      metadata.artistMbid,
-      metadata.artistName,
-      { ...options, user },
-    );
+    return libraryManager.addArtistWithResolvedOptions(metadata.artistMbid, metadata.artistName, {
+      ...options,
+      user,
+    });
   }
   const error = new Error("This inbox item cannot be added");
   error.statusCode = 400;
@@ -117,7 +116,9 @@ router.patch("/:id", requireAuth, async (req, res) => {
   const item = dbOps.getInboxItem(userId, req.params.id);
   if (!item) return res.status(404).json({ error: "Inbox item not found" });
 
-  const action = String(req.body?.action || "").trim().toLowerCase();
+  const action = String(req.body?.action || "")
+    .trim()
+    .toLowerCase();
   try {
     if (action === "add") {
       if (item.isAdded) return res.json({ item });
@@ -147,8 +148,7 @@ router.patch("/:id", requireAuth, async (req, res) => {
         item: updateInboxItem(userId, item.id, {
           isDismissed: true,
           isRead: true,
-          dismissedUntil:
-            item.kind === "discovery" ? Date.now() + DISCOVERY_DISMISSAL_MS : null,
+          dismissedUntil: item.kind === "discovery" ? Date.now() + DISCOVERY_DISMISSAL_MS : null,
         }),
       });
     }

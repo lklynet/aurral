@@ -3,21 +3,34 @@ import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { createMockHttpServer, setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.js";
+import {
+  createMockHttpServer,
+  setupIsolatedBackend,
+  cleanupIsolatedState,
+} from "../helpers/backendTestHarness.js";
 import { joinUnderRoot } from "../../backend/services/downloadUtils.js";
 
-const [isolatedState, { db }, { dbOps }, { libraryManager }, libraryStore, managementStore, trackerModule, workerModule, { scanMusicRoot }] =
-  await setupIsolatedBackend(
-    "aurral-owned-writes",
-    "backend/config/db-sqlite.js",
-    "backend/db/helpers/index.js",
-    "backend/services/libraryManager.js",
-    "backend/services/libraryMediaStore.js",
-    "backend/services/libraryManagementStore.js",
-    "backend/services/downloadJobs/downloadTracker.js",
-    "backend/services/downloadJobs/downloadWorker.js",
-    "backend/services/libraryFileScanner.js",
-  );
+const [
+  isolatedState,
+  { db },
+  { dbOps },
+  { libraryManager },
+  libraryStore,
+  managementStore,
+  trackerModule,
+  workerModule,
+  { scanMusicRoot },
+] = await setupIsolatedBackend(
+  "aurral-owned-writes",
+  "backend/config/db-sqlite.js",
+  "backend/db/helpers/index.js",
+  "backend/services/libraryManager.js",
+  "backend/services/libraryMediaStore.js",
+  "backend/services/libraryManagementStore.js",
+  "backend/services/downloadJobs/downloadTracker.js",
+  "backend/services/downloadJobs/downloadWorker.js",
+  "backend/services/libraryFileScanner.js",
+);
 
 const { downloadTracker } = trackerModule;
 const { downloadWorker } = workerModule;
@@ -25,10 +38,7 @@ const { downloadWorker } = workerModule;
 const artistMbid = "11111111-1111-4111-8111-111111111111";
 const albumMbid = "22222222-2222-4222-8222-222222222222";
 const ambiguousAlbumMbid = "88888888-8888-4888-8888-888888888888";
-const trackMbids = [
-  "33333333-3333-4333-8333-333333333331",
-  "33333333-3333-4333-8333-333333333332",
-];
+const trackMbids = ["33333333-3333-4333-8333-333333333331", "33333333-3333-4333-8333-333333333332"];
 
 function metadataAlbum(mbid, tracks, title = "Aurral Album") {
   return {
@@ -37,18 +47,20 @@ function metadataAlbum(mbid, tracks, title = "Aurral Album") {
     artistid: artistMbid,
     artists: [{ id: artistMbid, artistname: "Aurral Artist" }],
     releasedate: "2026-01-02",
-    releases: [{
-      id: `${mbid}-release`,
-      status: "Official",
-      tracks: tracks.map((id, index) => ({
-        id: `${id}-recording`,
-        recordingid: id,
-        trackname: `Track ${index + 1}`,
-        trackposition: index + 1,
-        mediumnumber: 1,
-        durationms: 180000,
-      })),
-    }],
+    releases: [
+      {
+        id: `${mbid}-release`,
+        status: "Official",
+        tracks: tracks.map((id, index) => ({
+          id: `${id}-recording`,
+          recordingid: id,
+          trackname: `Track ${index + 1}`,
+          trackposition: index + 1,
+          mediumnumber: 1,
+          durationms: 180000,
+        })),
+      },
+    ],
   };
 }
 
@@ -66,7 +78,9 @@ test("Aurral writes library album state, queues missing tracks, and reports conf
     const pathname = new URL(request.url || "/", "http://127.0.0.1").pathname;
     response.setHeader("content-type", "application/json");
     if (pathname === `/artist/${artistMbid}`) {
-      response.end(JSON.stringify({ id: artistMbid, artistname: "Aurral Artist", sortname: "Aurral Artist" }));
+      response.end(
+        JSON.stringify({ id: artistMbid, artistname: "Aurral Artist", sortname: "Aurral Artist" }),
+      );
       return;
     }
     if (pathname === `/album/${albumMbid}`) {
@@ -81,7 +95,8 @@ test("Aurral writes library album state, queues missing tracks, and reports conf
     response.end(JSON.stringify({ error: "not found" }));
   });
   const originalSettings = dbOps.getSettings();
-  const originalIsConfigured = (await import("../../backend/services/lidarrClient.js")).lidarrClient.isConfigured;
+  const originalIsConfigured = (await import("../../backend/services/lidarrClient.js")).lidarrClient
+    .isConfigured;
   const originalWorkerStart = downloadWorker.start;
   dbOps.updateSettings({
     ...originalSettings,
@@ -95,7 +110,8 @@ test("Aurral writes library album state, queues missing tracks, and reports conf
       },
     },
   });
-  const { clearMetadataProviderCaches } = await import("../../backend/services/providers/brainzmashProvider.js");
+  const { clearMetadataProviderCaches } =
+    await import("../../backend/services/providers/brainzmashProvider.js");
   clearMetadataProviderCaches();
   const lidarrClient = (await import("../../backend/services/lidarrClient.js")).lidarrClient;
   lidarrClient.isConfigured = () => false;
@@ -117,10 +133,19 @@ test("Aurral writes library album state, queues missing tracks, and reports conf
     assert.equal(request.status, "queued");
     assert.equal(request.albumStatus.status, "queued");
     assert.equal(request.albumStatus.counts.pending, 2);
-    assert.equal(request.albumStatus.requestGroupId, downloadTracker.getJob(request.jobIds[0]).requestGroupId);
+    assert.equal(
+      request.albumStatus.requestGroupId,
+      downloadTracker.getJob(request.jobIds[0]).requestGroupId,
+    );
     assert.equal(request.jobIds.length, 2);
-    assert.equal(new Set(request.jobIds.map((id) => downloadTracker.getJob(id).requestGroupId)).size, 1);
-    assert.equal(downloadTracker.getAll().every((job) => job.managedBy === "aurral"), true);
+    assert.equal(
+      new Set(request.jobIds.map((id) => downloadTracker.getJob(id).requestGroupId)).size,
+      1,
+    );
+    assert.equal(
+      downloadTracker.getAll().every((job) => job.managedBy === "aurral"),
+      true,
+    );
 
     const duplicate = await libraryManager.requestAlbumFromSearch({
       albumMbid,
@@ -160,16 +185,10 @@ test("Aurral writes library album state, queues missing tracks, and reports conf
       syncSearch: false,
     });
     assert.equal(scan.filesIndexed, 1);
-    assert.throws(
-      () => joinUnderRoot(aurralRoot, "../outside"),
-      /inside the configured root/,
-    );
-    const scannedAlbum = await libraryManager.addAlbum(
-      artist.id,
-      albumMbid,
-      "Aurral Album",
-      { managedBy: "aurral" },
-    );
+    assert.throws(() => joinUnderRoot(aurralRoot, "../outside"), /inside the configured root/);
+    const scannedAlbum = await libraryManager.addAlbum(artist.id, albumMbid, "Aurral Album", {
+      managedBy: "aurral",
+    });
     assert.deepEqual(scannedAlbum.sources, ["aurral"]);
     assert.equal(scannedAlbum.statistics.trackFileCount, 1);
     assert.equal(path.relative(aurralRoot, mediaPath).startsWith(".."), false);
@@ -222,15 +241,18 @@ test("Aurral writes library album state, queues missing tracks, and reports conf
       source: "aurral",
       path: path.join(isolatedState.dataDir, "Aurral Artist/Partial Album/02 Partial Track 2.flac"),
     });
-    const staleJobId = downloadTracker.addJob({
-      artistName: artist.artistName,
-      trackName: "Partial Track 3",
-      albumName: "Partial Album",
-      artistMbid,
-      albumMbid: partialMbid,
-      trackMbid: partialTracks[2],
-      managedBy: "aurral",
-    }, "library");
+    const staleJobId = downloadTracker.addJob(
+      {
+        artistName: artist.artistName,
+        trackName: "Partial Track 3",
+        albumName: "Partial Album",
+        artistMbid,
+        albumMbid: partialMbid,
+        trackMbid: partialTracks[2],
+        managedBy: "aurral",
+      },
+      "library",
+    );
     downloadTracker.setDone(
       staleJobId,
       path.join(aurralRoot, "Aurral Artist/Partial Album/03 missing.flac"),
@@ -242,12 +264,9 @@ test("Aurral writes library album state, queues missing tracks, and reports conf
       managedBy: "aurral",
     });
 
-    const partial = await libraryManager.addAlbum(
-      artist.id,
-      partialMbid,
-      "Partial Album",
-      { managedBy: "aurral" },
-    );
+    const partial = await libraryManager.addAlbum(artist.id, partialMbid, "Partial Album", {
+      managedBy: "aurral",
+    });
     assert.deepEqual(partial.sources, ["aurral", "lidarr"]);
     assert.equal(partial.statistics.trackFileCount, 2);
     assert.equal(partial.jobIds.length, 1);
@@ -259,12 +278,9 @@ test("Aurral writes library album state, queues missing tracks, and reports conf
     assert.equal(restartedTracker.getJob(staleJobId).managedBy, "aurral");
 
     downloadTracker.setFailed(staleJobId, "Aurral write failed");
-    const retried = await libraryManager.addAlbum(
-      artist.id,
-      partialMbid,
-      "Partial Album",
-      { managedBy: "aurral" },
-    );
+    const retried = await libraryManager.addAlbum(artist.id, partialMbid, "Partial Album", {
+      managedBy: "aurral",
+    });
     assert.deepEqual(retried.jobIds, [staleJobId]);
     assert.equal(downloadTracker.getJob(staleJobId).status, "pending");
 
@@ -314,12 +330,9 @@ test("Aurral writes library album state, queues missing tracks, and reports conf
       managedBy: "lidarr",
     });
 
-    const conflict = await libraryManager.addAlbum(
-      artist.id,
-      conflictMbid,
-      "Lidarr Album",
-      { managedBy: "aurral" },
-    );
+    const conflict = await libraryManager.addAlbum(artist.id, conflictMbid, "Lidarr Album", {
+      managedBy: "aurral",
+    });
     assert.equal(conflict.statusCode, 409);
     assert.equal(conflict.code, "album_owner_conflict");
     assert.equal(conflict.managedBy, "lidarr");

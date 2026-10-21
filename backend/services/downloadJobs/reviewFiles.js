@@ -7,8 +7,9 @@ import { logger, safeLogDiagnostic } from "../logger.js";
 
 function isInLibraryFolder(filePath) {
   const lidarrRoots = lidarrClient.isEnabled()
-    ? lidarrClient.getConfiguredRootFolderPaths()
-      .map((root) => resolveLocalPath(root, getPathMappings("lidarr")))
+    ? lidarrClient
+        .getConfiguredRootFolderPaths()
+        .map((root) => resolveLocalPath(root, getPathMappings("lidarr")))
     : [];
   return [resolveDownloadRoot(), ...lidarrRoots]
     .filter(Boolean)

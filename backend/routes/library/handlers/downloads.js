@@ -43,10 +43,7 @@ const invalidateActivityRequestsCache = () =>
     .then(({ invalidateRequestsCache }) => invalidateRequestsCache())
     .catch(() => {});
 
-export const getDownloadStatusesForAlbumIds = async (
-  albumIdArrayInput,
-  snapshot = null,
-) => {
+export const getDownloadStatusesForAlbumIds = async (albumIdArrayInput, snapshot = null) => {
   const albumIdArray = Array.isArray(albumIdArrayInput) ? albumIdArrayInput : [];
   const statuses = {};
   const { lidarrClient } = await import("../../../services/lidarrClient.js");
@@ -108,13 +105,17 @@ export const getDownloadStatusesForAlbumIds = async (
 
         const historyEntry = latestHistoryByAlbumId.get(lidarrAlbumId);
         if (historyEntry) {
-          const staleGrab = historyEntry.event === "grabbed"
-            && Date.now() - historyEntry.historyTime > STALE_GRABBED_MS;
+          const staleGrab =
+            historyEntry.event === "grabbed" &&
+            Date.now() - historyEntry.historyTime > STALE_GRABBED_MS;
           if (historyEntry.event === "imported") {
             statuses[albumId] = { status: "added", updatedAt };
           } else if (historyEntry.event === "failed" || staleGrab) {
             const album = (await getVerifiedAlbums()).get(String(lidarrAlbumId));
-            statuses[albumId] = { status: albumHasTrackFiles(album) ? "added" : "failed", updatedAt };
+            statuses[albumId] = {
+              status: albumHasTrackFiles(album) ? "added" : "failed",
+              updatedAt,
+            };
           } else {
             statuses[albumId] = { status: "processing", updatedAt };
           }
@@ -241,10 +242,12 @@ export const getLidarrStatusSnapshot = async ({ refresh = false } = {}) => {
     .catch((error) => {
       allDownloadStatusesCache.failures += 1;
       allDownloadStatusesCache.checkedAt = Date.now();
-      const retryAt = allDownloadStatusesCache.checkedAt + Math.min(
-        MAX_STATUS_RETRY_MS,
-        ACTIVE_STATUS_CACHE_MS * 2 ** (allDownloadStatusesCache.failures - 1),
-      );
+      const retryAt =
+        allDownloadStatusesCache.checkedAt +
+        Math.min(
+          MAX_STATUS_RETRY_MS,
+          ACTIVE_STATUS_CACHE_MS * 2 ** (allDownloadStatusesCache.failures - 1),
+        );
       allDownloadStatusesCache.nextRefreshAt =
         refreshRevision === allDownloadStatusesCache.revision ? retryAt : 0;
       logger.warn("downloads", "Failed to refresh Lidarr status:", { message: error.message });
@@ -259,8 +262,7 @@ export const getLidarrStatusSnapshot = async ({ refresh = false } = {}) => {
   return allDownloadStatusesCache.pending;
 };
 
-export const getAllDownloadStatuses = async () =>
-  (await getLidarrStatusSnapshot()).statuses;
+export const getAllDownloadStatuses = async () => (await getLidarrStatusSnapshot()).statuses;
 
 const ACTIVE_LIDARR_ALBUM_STATUSES = new Set([
   "adding",

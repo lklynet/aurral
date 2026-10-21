@@ -2,8 +2,16 @@ import { lazy, Suspense, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { Check, ClipboardCopy, Download, FilePlus2, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { DotLoader } from "../../components/DotLoader";
-import { SkeletonCollectionHeader, SkeletonCollectionTracks, SkeletonStatus } from "../../components/Skeletons";
-import { CollectionHeader, CollectionPage, CollectionPlayButtons } from "../../components/CollectionHeader";
+import {
+  SkeletonCollectionHeader,
+  SkeletonCollectionTracks,
+  SkeletonStatus,
+} from "../../components/Skeletons";
+import {
+  CollectionHeader,
+  CollectionPage,
+  CollectionPlayButtons,
+} from "../../components/CollectionHeader";
 import { LibraryItemMenu } from "../../components/LibraryItemMenu";
 import TooltipButton from "../../components/TooltipButton";
 import { useAuth } from "../../contexts/AuthContext";
@@ -119,7 +127,8 @@ function FlowDetail({ flow }) {
   const location = useLocation();
   const { user } = useAuth();
   const { showSuccess, showError } = useToast();
-  const { status, fetchStatus, getPlaylistStats, countdownNow, staticPlaylists } = usePlaylistStatus();
+  const { status, fetchStatus, getPlaylistStats, countdownNow, staticPlaylists } =
+    usePlaylistStatus();
   const { artworkUrlFor } = usePlaylistArtwork();
   const { tracks, loading, error, refresh } = usePlaylistTracks(flow.id);
   const [tab, setTab] = useState(location.state?.tab === "recipe" ? "recipe" : "tracks");
@@ -330,7 +339,8 @@ function FlowDetail({ flow }) {
             </p>
           ) : retired ? (
             <p className="native-library-detail__meta">
-              Editorial playlists moved to Deezer. This flow no longer updates. Existing tracks stay. <Link to="/discover/playlists">Browse playlists</Link>
+              Editorial playlists moved to Deezer. This flow no longer updates. Existing tracks
+              stay. <Link to="/discover/playlists">Browse playlists</Link>
             </p>
           ) : null
         }
@@ -382,7 +392,9 @@ function FlowDetail({ flow }) {
                   onSelect: () =>
                     updateSetting(
                       { recordHistory: flow.recordHistory === false },
-                      flow.recordHistory === false ? "Scrobbling turned on" : "Scrobbling turned off",
+                      flow.recordHistory === false
+                        ? "Scrobbling turned on"
+                        : "Scrobbling turned off",
                     ),
                 }),
                 optionMenuItem({
@@ -396,13 +408,15 @@ function FlowDetail({ flow }) {
                     ),
                 }),
                 ...(lidarrConnected
-                  ? [{
-                      id: "lidarr-url",
-                      label: "Copy Lidarr import URL",
-                      icon: ClipboardCopy,
-                      separatorBefore: true,
-                      onSelect: handleCopyLidarrUrl,
-                    }]
+                  ? [
+                      {
+                        id: "lidarr-url",
+                        label: "Copy Lidarr import URL",
+                        icon: ClipboardCopy,
+                        separatorBefore: true,
+                        onSelect: handleCopyLidarrUrl,
+                      },
+                    ]
                   : []),
                 {
                   id: "delete",
@@ -460,11 +474,7 @@ function FlowDetail({ flow }) {
               staticPlaylists={staticPlaylists}
               fetchStatus={fetchStatus}
               activityHint={activity}
-              emptyMessage={
-                enabled
-                  ? "No tracks yet."
-                  : "Turn this flow on to generate tracks."
-              }
+              emptyMessage={enabled ? "No tracks yet." : "Turn this flow on to generate tracks."}
               recordHistory={flow.recordHistory !== false}
             />
           ) : null}
@@ -474,10 +484,7 @@ function FlowDetail({ flow }) {
                 {isReleaseRadarFlow(flow) ? (
                   <ReleaseRadarRecipeFields {...recipeFieldProps} />
                 ) : (
-                  <FlowFormFields
-                    {...recipeFieldProps}
-                    normalizeMixPercent={normalizeMixPercent}
-                  />
+                  <FlowFormFields {...recipeFieldProps} normalizeMixPercent={normalizeMixPercent} />
                 )}
               </Suspense>
               <div className="flow-page__recipe-actions">

@@ -1,10 +1,7 @@
 import crypto from "crypto";
 import { db, dbHelpers } from "../../config/db-sqlite.js";
 import { decryptIntegrations, encryptIntegrations } from "../../config/encryption.js";
-import {
-  normalizePathMappings,
-  syncPathMappings,
-} from "../../services/pathMappings.js";
+import { normalizePathMappings, syncPathMappings } from "../../services/pathMappings.js";
 import {
   syncDownloadFolderPath,
   validateDownloadFolderPath,
@@ -17,9 +14,7 @@ import {
 } from "../../services/qualityProfileModel.js";
 
 const getSettingStmt = db.prepare("SELECT value FROM settings WHERE key = ?");
-const upsertSettingStmt = db.prepare(
-  "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)"
-);
+const upsertSettingStmt = db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)");
 const deleteSettingStmt = db.prepare("DELETE FROM settings WHERE key = ?");
 
 const PLAYLIST_WORKER_RETRY_CYCLE_MINUTES = 360;
@@ -36,7 +31,9 @@ function readStoredSettingJson(primaryKey, legacyKeys = []) {
 
 function normalizePlaylistArtworkSettings(raw) {
   const artwork = raw && typeof raw === "object" ? raw : {};
-  const style = String(artwork.style || "photo").trim().toLowerCase();
+  const style = String(artwork.style || "photo")
+    .trim()
+    .toLowerCase();
   return {
     style: style === "aurral" ? "aurral" : "photo",
   };
@@ -69,9 +66,7 @@ function normalizePlaylistWorkerSettings(raw) {
   const retryPausedPlaylistIds = Array.isArray(worker.retryPausedPlaylistIds)
     ? [
         ...new Set(
-          worker.retryPausedPlaylistIds
-            .map((entry) => String(entry || "").trim())
-            .filter(Boolean),
+          worker.retryPausedPlaylistIds.map((entry) => String(entry || "").trim()).filter(Boolean),
         ),
       ]
     : [];
@@ -97,11 +92,11 @@ let settingsCache = null;
 let settingsCacheTime = 0;
 const SETTINGS_CACHE_TTL = 60000;
 
-const normalizeLidarrRootFolderPaths = (paths) => [...new Set(
-  (Array.isArray(paths) ? paths : [])
-    .map((value) => String(value || "").trim())
-    .filter(Boolean),
-)];
+const normalizeLidarrRootFolderPaths = (paths) => [
+  ...new Set(
+    (Array.isArray(paths) ? paths : []).map((value) => String(value || "").trim()).filter(Boolean),
+  ),
+];
 
 export const dbOps = {
   invalidateSettingsCache() {
@@ -122,10 +117,7 @@ export const dbOps = {
   },
 
   setUserDiscoverLayout(userId, layout) {
-    dbOps.setJSONSetting(
-      `user:${parseInt(userId, 10)}:discoverLayout`,
-      layout,
-    );
+    dbOps.setJSONSetting(`user:${parseInt(userId, 10)}:discoverLayout`, layout);
   },
 
   getUserTheme(userId) {
@@ -167,33 +159,22 @@ export const dbOps = {
       return settingsCache;
     }
 
-    const integrations = dbHelpers.parseJSON(
-      getSettingStmt.get("integrations")?.value
-    );
+    const integrations = dbHelpers.parseJSON(getSettingStmt.get("integrations")?.value);
     const encKey = getOrCreateEncryptionKey();
     const quality = getSettingStmt.get("quality")?.value;
     const dateTimeFormat = getSettingStmt.get("dateTimeFormat")?.value;
-    const queueCleaner = dbHelpers.parseJSON(
-      getSettingStmt.get("queueCleaner")?.value
-    );
-    const security = dbHelpers.parseJSON(
-      getSettingStmt.get("security")?.value
-    );
+    const queueCleaner = dbHelpers.parseJSON(getSettingStmt.get("queueCleaner")?.value);
+    const security = dbHelpers.parseJSON(getSettingStmt.get("security")?.value);
     const rootFolderPath = getSettingStmt.get("rootFolderPath")?.value;
-    const downloadFolderPath =
-      getSettingStmt.get("downloadFolderPath")?.value || null;
+    const downloadFolderPath = getSettingStmt.get("downloadFolderPath")?.value || null;
     syncDownloadFolderPath(downloadFolderPath);
     const pathMappings = normalizePathMappings(
       dbHelpers.parseJSON(getSettingStmt.get("pathMappings")?.value) || [],
     );
     syncPathMappings(pathMappings);
-    const releaseTypes = dbHelpers.parseJSON(
-      getSettingStmt.get("releaseTypes")?.value
-    );
+    const releaseTypes = dbHelpers.parseJSON(getSettingStmt.get("releaseTypes")?.value);
     const flows = readStoredSettingJson("flows", ["weeklyFlows"]);
-    const staticPlaylists = readStoredSettingJson("sharedPlaylists", [
-      "sharedFlowPlaylists",
-    ]);
+    const staticPlaylists = readStoredSettingJson("sharedPlaylists", ["sharedFlowPlaylists"]);
     const subsonic = readStoredSettingJson("subsonic") || {};
     const playlistWorker = normalizePlaylistWorkerSettings(
       readStoredSettingJson("playlistWorker", ["weeklyFlowWorker"]),
@@ -208,25 +189,17 @@ export const dbOps = {
       getSettingStmt.get("reviewTimeoutHours")?.value,
     );
     const inbox = dbHelpers.parseJSON(getSettingStmt.get("inbox")?.value) || {};
-    const blocklist = dbHelpers.parseJSON(
-      getSettingStmt.get("blocklist")?.value
-    );
-    const onboardingComplete =
-      getSettingStmt.get("onboardingComplete")?.value === "true";
+    const blocklist = dbHelpers.parseJSON(getSettingStmt.get("blocklist")?.value);
+    const onboardingComplete = getSettingStmt.get("onboardingComplete")?.value === "true";
 
     const decryptedIntegrations = decryptIntegrations(integrations, encKey) || {};
-    const storedQualityProfile = dbHelpers.parseJSON(
-      getSettingStmt.get("qualityProfile")?.value,
-    );
+    const storedQualityProfile = dbHelpers.parseJSON(getSettingStmt.get("qualityProfile")?.value);
     const qualityProfile = normalizeQualityProfile(
       storedQualityProfile,
       decryptedIntegrations.slskd,
     );
     if (storedQualityProfile == null) {
-      upsertSettingStmt.run(
-        "qualityProfile",
-        dbHelpers.stringifyJSON(qualityProfile),
-      );
+      upsertSettingStmt.run("qualityProfile", dbHelpers.stringifyJSON(qualityProfile));
     }
     const result = {
       integrations: decryptedIntegrations,
@@ -259,10 +232,7 @@ export const dbOps = {
         recommendedNews: inbox.recommendedNews === true,
         discoveries: inbox.discoveries !== false,
       },
-      blocklist:
-        blocklist && typeof blocklist === "object"
-          ? blocklist
-          : { artists: [], tags: [] },
+      blocklist: blocklist && typeof blocklist === "object" ? blocklist : { artists: [], tags: [] },
       onboardingComplete: !!onboardingComplete,
     };
     if (result.integrations?.navidrome) {
@@ -285,10 +255,7 @@ export const dbOps = {
             encKey,
           ) || {};
         const nextIntegrations = { ...settings.integrations };
-        if (
-          existingIntegrations.soulseek &&
-          nextIntegrations.soulseek === undefined
-        ) {
+        if (existingIntegrations.soulseek && nextIntegrations.soulseek === undefined) {
           nextIntegrations.soulseek = existingIntegrations.soulseek;
         }
         if (nextIntegrations.navidrome) {
@@ -300,42 +267,28 @@ export const dbOps = {
         }
         upsertSettingStmt.run(
           "integrations",
-          dbHelpers.stringifyJSON(
-            encryptIntegrations(nextIntegrations, encKey)
-          )
+          dbHelpers.stringifyJSON(encryptIntegrations(nextIntegrations, encKey)),
         );
       }
       if (settings.quality) {
         upsertSettingStmt.run("quality", settings.quality);
       }
       if (settings.dateTimeFormat !== undefined) {
-        upsertSettingStmt.run(
-          "dateTimeFormat",
-          normalizeDateTimeFormat(settings.dateTimeFormat),
-        );
+        upsertSettingStmt.run("dateTimeFormat", normalizeDateTimeFormat(settings.dateTimeFormat));
       }
       if (settings.qualityProfile !== undefined) {
         upsertSettingStmt.run(
           "qualityProfile",
           dbHelpers.stringifyJSON(
-            normalizeQualityProfile(
-              settings.qualityProfile,
-              settings.integrations?.slskd,
-            ),
+            normalizeQualityProfile(settings.qualityProfile, settings.integrations?.slskd),
           ),
         );
       }
       if (settings.queueCleaner) {
-        upsertSettingStmt.run(
-          "queueCleaner",
-          dbHelpers.stringifyJSON(settings.queueCleaner)
-        );
+        upsertSettingStmt.run("queueCleaner", dbHelpers.stringifyJSON(settings.queueCleaner));
       }
       if (settings.security !== undefined) {
-        upsertSettingStmt.run(
-          "security",
-          dbHelpers.stringifyJSON(settings.security)
-        );
+        upsertSettingStmt.run("security", dbHelpers.stringifyJSON(settings.security));
       }
       if (settings.inbox !== undefined) {
         upsertSettingStmt.run(
@@ -350,10 +303,7 @@ export const dbOps = {
           }),
         );
       }
-      if (
-        settings.rootFolderPath !== undefined &&
-        settings.rootFolderPath !== null
-      ) {
+      if (settings.rootFolderPath !== undefined && settings.rootFolderPath !== null) {
         upsertSettingStmt.run("rootFolderPath", settings.rootFolderPath);
       }
       if (settings.downloadFolderPath !== undefined) {
@@ -374,26 +324,17 @@ export const dbOps = {
       }
       if (settings.pathMappings !== undefined) {
         const normalizedMappings = normalizePathMappings(settings.pathMappings);
-        upsertSettingStmt.run(
-          "pathMappings",
-          dbHelpers.stringifyJSON(normalizedMappings),
-        );
+        upsertSettingStmt.run("pathMappings", dbHelpers.stringifyJSON(normalizedMappings));
         syncPathMappings(normalizedMappings);
       }
       if (settings.releaseTypes) {
-        upsertSettingStmt.run(
-          "releaseTypes",
-          dbHelpers.stringifyJSON(settings.releaseTypes)
-        );
+        upsertSettingStmt.run("releaseTypes", dbHelpers.stringifyJSON(settings.releaseTypes));
       }
       if (settings.flows !== undefined) {
         upsertSettingStmt.run("flows", dbHelpers.stringifyJSON(settings.flows));
       }
       if (settings.sharedPlaylists !== undefined) {
-        upsertSettingStmt.run(
-          "sharedPlaylists",
-          dbHelpers.stringifyJSON(settings.sharedPlaylists),
-        );
+        upsertSettingStmt.run("sharedPlaylists", dbHelpers.stringifyJSON(settings.sharedPlaylists));
       }
       if (settings.subsonic !== undefined) {
         upsertSettingStmt.run(
@@ -406,25 +347,19 @@ export const dbOps = {
       if (settings.playlistWorker !== undefined) {
         upsertSettingStmt.run(
           "playlistWorker",
-          dbHelpers.stringifyJSON(
-            normalizePlaylistWorkerSettings(settings.playlistWorker),
-          ),
+          dbHelpers.stringifyJSON(normalizePlaylistWorkerSettings(settings.playlistWorker)),
         );
       }
       if (settings.playlistArtwork !== undefined) {
         upsertSettingStmt.run(
           "playlistArtwork",
-          dbHelpers.stringifyJSON(
-            normalizePlaylistArtworkSettings(settings.playlistArtwork),
-          ),
+          dbHelpers.stringifyJSON(normalizePlaylistArtworkSettings(settings.playlistArtwork)),
         );
       }
       if (settings.missingTrackSearch !== undefined) {
         upsertSettingStmt.run(
           "missingTrackSearch",
-          dbHelpers.stringifyJSON(
-            normalizeMissingTrackSearchSettings(settings.missingTrackSearch),
-          ),
+          dbHelpers.stringifyJSON(normalizeMissingTrackSearchSettings(settings.missingTrackSearch)),
         );
       }
       if (settings.reviewTimeoutHours !== undefined) {
@@ -434,16 +369,10 @@ export const dbOps = {
         );
       }
       if (settings.blocklist !== undefined) {
-        upsertSettingStmt.run(
-          "blocklist",
-          dbHelpers.stringifyJSON(settings.blocklist)
-        );
+        upsertSettingStmt.run("blocklist", dbHelpers.stringifyJSON(settings.blocklist));
       }
       if (settings.onboardingComplete !== undefined) {
-        upsertSettingStmt.run(
-          "onboardingComplete",
-          settings.onboardingComplete ? "true" : "false"
-        );
+        upsertSettingStmt.run("onboardingComplete", settings.onboardingComplete ? "true" : "false");
       }
     });
     updateFn();

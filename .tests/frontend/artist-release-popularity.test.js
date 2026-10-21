@@ -118,7 +118,11 @@ test("the Aurral pick is the most listened studio album the user has not got or 
 test("the Aurral pick prefers a studio album over a more listened single, mix, or live release", () => {
   const releaseGroups = [
     release("Hit Single", "Single", { listenerCount: 9000, listenCount: 40000 }),
-    release("Club Mix", "Album", { "secondary-types": ["DJ-mix"], listenerCount: 8000, listenCount: 30000 }),
+    release("Club Mix", "Album", {
+      "secondary-types": ["DJ-mix"],
+      listenerCount: 8000,
+      listenCount: 30000,
+    }),
     release("Quiet Album", "Album", { listenerCount: 12, listenCount: 50 }),
   ];
 

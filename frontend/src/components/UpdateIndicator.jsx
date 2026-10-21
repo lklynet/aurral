@@ -84,7 +84,11 @@ const UpdateIndicator = ({ currentVersion, visible = true }) => {
       );
       if (comparison?.status !== "ahead") return null;
       const notes = (Array.isArray(comparison?.commits) ? comparison.commits : [])
-        .map((commit) => String(commit?.commit?.message || "").split(/\r?\n/, 1)[0].trim())
+        .map((commit) =>
+          String(commit?.commit?.message || "")
+            .split(/\r?\n/, 1)[0]
+            .trim(),
+        )
         .filter(Boolean)
         .slice(-MAX_NIGHTLY_NOTES);
 
@@ -157,7 +161,16 @@ const UpdateIndicator = ({ currentVersion, visible = true }) => {
       active = false;
       clearInterval(intervalId);
     };
-  }, [cacheKey, checkIntervalMs, checkMetaKey, isNightly, releaseChannel, repo, resolvedVersion, visible]);
+  }, [
+    cacheKey,
+    checkIntervalMs,
+    checkMetaKey,
+    isNightly,
+    releaseChannel,
+    repo,
+    resolvedVersion,
+    visible,
+  ]);
 
   useEffect(() => {
     if (!menuOpen) return undefined;
@@ -216,9 +229,7 @@ const UpdateIndicator = ({ currentVersion, visible = true }) => {
                 ))}
               </ul>
             ) : (
-              <p className="app-update-indicator__empty">
-                Release notes are available on GitHub.
-              </p>
+              <p className="app-update-indicator__empty">Release notes are available on GitHub.</p>
             )}
           </div>
 

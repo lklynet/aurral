@@ -13,19 +13,24 @@ import {
 import { ConfirmModal } from "./ConfirmModal.jsx";
 
 const errorMessage = (error) =>
-  error?.response?.data?.message ||
-  error?.response?.data?.error ||
-  error?.message ||
-  "Try again.";
+  error?.response?.data?.message || error?.response?.data?.error || error?.message || "Try again.";
 
-export function useAurralAlbumMonitoring({ album, enabled, canChange, hasMissingTracks, onChanged }) {
+export function useAurralAlbumMonitoring({
+  album,
+  enabled,
+  canChange,
+  hasMissingTracks,
+  onChanged,
+}) {
   const { showSuccess, showError } = useToast();
   const [pending, setPending] = useState(false);
   const [confirmingId, setConfirmingId] = useState(null);
   const [override, setOverride] = useState(null);
   const savedMonitored = enabled ? getAlbumMonitoredState(album) : null;
   const monitored =
-    savedMonitored !== null && override?.albumId === album?.id ? override.monitored : savedMonitored;
+    savedMonitored !== null && override?.albumId === album?.id
+      ? override.monitored
+      : savedMonitored;
 
   if (monitored === null) return { monitored: null, menuItem: null, dialog: null };
   if (!canChange) return { monitored, menuItem: null, dialog: null };

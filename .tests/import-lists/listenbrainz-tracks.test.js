@@ -15,7 +15,8 @@ test("parseListenBrainzPlaylist maps JSPF tracks, keeps the listed release, and 
           extension: {
             "https://musicbrainz.org/doc/jspf#track": {
               artist_identifiers: ["https://musicbrainz.org/artist/artist-mbid"],
-              release_identifier: "https://musicbrainz.org/release/5c1f1a40-29a4-4b3d-9c3e-0e1f2a3b4c5d",
+              release_identifier:
+                "https://musicbrainz.org/release/5c1f1a40-29a4-4b3d-9c3e-0e1f2a3b4c5d",
             },
           },
         },
@@ -28,7 +29,8 @@ test("parseListenBrainzPlaylist maps JSPF tracks, keeps the listed release, and 
           extension: {
             "https://musicbrainz.org/doc/jspf#track": {
               artist_identifiers: ["https://musicbrainz.org/artist/artist-mbid"],
-              release_identifier: "https://musicbrainz.org/release/5c1f1a40-29a4-4b3d-9c3e-0e1f2a3b4c5d",
+              release_identifier:
+                "https://musicbrainz.org/release/5c1f1a40-29a4-4b3d-9c3e-0e1f2a3b4c5d",
             },
           },
         },
@@ -58,18 +60,20 @@ test("parseListenBrainzPlaylist maps JSPF tracks, keeps the listed release, and 
 test("parseListenBrainzPlaylist uses the primary artist name for a multi-artist credit", () => {
   const { tracks } = parseListenBrainzPlaylist({
     playlist: {
-      track: [{
-        creator: "Marshmello;Lil Peep",
-        title: "Spotlight",
-        album: "Spotlight",
-        identifier: ["https://musicbrainz.org/recording/track-mbid"],
-        extension: {
-          "https://musicbrainz.org/doc/jspf#track": {
-            artist_identifiers: ["https://musicbrainz.org/artist/marshmello-mbid"],
-            release_identifier: "https://musicbrainz.org/release/album-mbid",
+      track: [
+        {
+          creator: "Marshmello;Lil Peep",
+          title: "Spotlight",
+          album: "Spotlight",
+          identifier: ["https://musicbrainz.org/recording/track-mbid"],
+          extension: {
+            "https://musicbrainz.org/doc/jspf#track": {
+              artist_identifiers: ["https://musicbrainz.org/artist/marshmello-mbid"],
+              release_identifier: "https://musicbrainz.org/release/album-mbid",
+            },
           },
         },
-      }],
+      ],
     },
   });
 

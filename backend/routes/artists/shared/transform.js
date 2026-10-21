@@ -3,10 +3,7 @@ import {
   listenbrainzGetReleaseGroupDates,
   listenbrainzGetReleaseGroupListens,
 } from "../../../services/apiClients/listenbrainz.js";
-import {
-  getArtistTagLists,
-  getSimilarArtists,
-} from "../../../services/musicDataSource/index.js";
+import { getArtistTagLists, getSimilarArtists } from "../../../services/musicDataSource/index.js";
 import { isKnownGenre } from "../../../services/musicGenres.js";
 
 export function toLegacyRelations(metadataArtist) {

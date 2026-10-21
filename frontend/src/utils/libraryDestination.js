@@ -4,7 +4,9 @@ const MANAGER_NAMES = {
 };
 
 export const normalizeLibraryManager = (value) => {
-  const normalized = String(value || "").trim().toLowerCase();
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
   return Object.hasOwn(MANAGER_NAMES, normalized) ? normalized : null;
 };
 
@@ -15,13 +17,18 @@ export const resolveAlbumManager = (album) =>
 export const canRemoveLibraryAlbum = (album, { lidarrConnected = false } = {}) => {
   const manager = resolveAlbumManager(album);
   if (manager === "aurral") return true;
-  return manager === "lidarr" && lidarrConnected &&
-    Boolean(album.releaseGroupMbid || album.mbid || album.providerId);
+  return (
+    manager === "lidarr" &&
+    lidarrConnected &&
+    Boolean(album.releaseGroupMbid || album.mbid || album.providerId)
+  );
 };
 
 export const canRemoveLibraryArtist = (artist) =>
   Boolean(artist?.mbid) ||
-  (artist?.managedBy !== "lidarr" && Array.isArray(artist?.sources) && artist.sources.includes("aurral"));
+  (artist?.managedBy !== "lidarr" &&
+    Array.isArray(artist?.sources) &&
+    artist.sources.includes("aurral"));
 
 export const canSearchLibraryAlbum = (album, { lidarrConnected = false } = {}) => {
   const manager = resolveAlbumManager(album);

@@ -12,7 +12,8 @@ const waitForRequestSignal = async (getSignal) => {
 test("library cache invalidation does not abort an active request", async () => {
   vi.resetModules();
 
-  const { clearLibraryPageCache } = await import("../../frontend/src/utils/api/endpoints/library.js");
+  const { clearLibraryPageCache } =
+    await import("../../frontend/src/utils/api/endpoints/library.js");
   const { queryClient, queryKeys } = await import("../../frontend/src/queryClient.js");
   const options = { kind: "artists", page: 1, pageSize: 100 };
   const queryKey = queryKeys.libraryPage(options);
@@ -21,13 +22,18 @@ test("library cache invalidation does not abort an active request", async () => 
   const request = queryClient.fetchQuery({
     queryKey,
     staleTime: 0,
-    queryFn: ({ signal }) => new Promise((resolve, reject) => {
-      resolveRequest = resolve;
-      signal.addEventListener("abort", () => {
-        aborted = true;
-        reject(new Error("aborted"));
-      }, { once: true });
-    }),
+    queryFn: ({ signal }) =>
+      new Promise((resolve, reject) => {
+        resolveRequest = resolve;
+        signal.addEventListener(
+          "abort",
+          () => {
+            aborted = true;
+            reject(new Error("aborted"));
+          },
+          { once: true },
+        );
+      }),
   });
 
   while (!resolveRequest) await new Promise((resolve) => setImmediate(resolve));
@@ -43,17 +49,19 @@ test("library cache invalidation does not abort an active request", async () => 
 test("library requests forward caller cancellation", async () => {
   vi.resetModules();
 
-  const { getLibraryPage, getLibraryFavorites } = await import("../../frontend/src/utils/api/endpoints/library.js");
+  const { getLibraryPage, getLibraryFavorites } =
+    await import("../../frontend/src/utils/api/endpoints/library.js");
   const { queryClient, queryKeys } = await import("../../frontend/src/queryClient.js");
 
   const assertForwardedCancellation = async (load) => {
     const originalFetch = globalThis.fetch;
     let requestSignal;
     const controller = new AbortController();
-    globalThis.fetch = (_url, init) => new Promise((_resolve, reject) => {
-      requestSignal = init.signal;
-      init.signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
-    });
+    globalThis.fetch = (_url, init) =>
+      new Promise((_resolve, reject) => {
+        requestSignal = init.signal;
+        init.signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+      });
     try {
       const request = load(controller.signal);
       await waitForRequestSignal(() => requestSignal);
@@ -73,10 +81,11 @@ test("library requests forward caller cancellation", async () => {
   const assertQueryCancellation = async (load, queryKey) => {
     const originalFetch = globalThis.fetch;
     let requestSignal;
-    globalThis.fetch = (_url, init) => new Promise((_resolve, reject) => {
-      requestSignal = init.signal;
-      init.signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
-    });
+    globalThis.fetch = (_url, init) =>
+      new Promise((_resolve, reject) => {
+        requestSignal = init.signal;
+        init.signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+      });
     try {
       const request = load();
       await waitForRequestSignal(() => requestSignal);
@@ -104,7 +113,8 @@ test("library requests forward caller cancellation", async () => {
 test("artist batch lookup stays within the API batch limit", async () => {
   vi.resetModules();
 
-  const { lookupArtistsInLibraryBatch } = await import("../../frontend/src/utils/api/endpoints/library.js");
+  const { lookupArtistsInLibraryBatch } =
+    await import("../../frontend/src/utils/api/endpoints/library.js");
   const { queryClient } = await import("../../frontend/src/queryClient.js");
   const originalFetch = globalThis.fetch;
   const requestSizes = [];
@@ -134,13 +144,17 @@ test("artist adds publish an immediate shared library lookup", async () => {
   const { addArtistToLibrary } = await import("../../frontend/src/utils/api/endpoints/library.js");
   const { queryClient, queryKeys } = await import("../../frontend/src/queryClient.js");
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => new Response(JSON.stringify({
-    foreignArtistId: "artist-1",
-    artist: { mbid: "artist-1", artistName: "Artist" },
-  }), {
-    status: 201,
-    headers: { "content-type": "application/json" },
-  });
+  globalThis.fetch = async () =>
+    new Response(
+      JSON.stringify({
+        foreignArtistId: "artist-1",
+        artist: { mbid: "artist-1", artistName: "Artist" },
+      }),
+      {
+        status: 201,
+        headers: { "content-type": "application/json" },
+      },
+    );
 
   try {
     await addArtistToLibrary({ foreignArtistId: "artist-1", artistName: "Artist" });
@@ -154,7 +168,8 @@ test("artist adds publish an immediate shared library lookup", async () => {
 test("library refresh starts a new lookup after cancelling an active request", async () => {
   vi.resetModules();
 
-  const { lookupArtistInLibrary } = await import("../../frontend/src/utils/api/endpoints/library.js");
+  const { lookupArtistInLibrary } =
+    await import("../../frontend/src/utils/api/endpoints/library.js");
   const { queryClient, queryKeys } = await import("../../frontend/src/queryClient.js");
   const originalFetch = globalThis.fetch;
   let requestCount = 0;
@@ -169,10 +184,12 @@ test("library refresh starts a new lookup after cancelling an active request", a
         });
       });
     }
-    return Promise.resolve(new Response(JSON.stringify({ exists: true }), {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    }));
+    return Promise.resolve(
+      new Response(JSON.stringify({ exists: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
   };
 
   try {

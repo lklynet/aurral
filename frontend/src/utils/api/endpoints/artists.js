@@ -52,11 +52,15 @@ export const getArtistAppearsOnPage = (
   mbid,
   { offset = 0, limit = 24, excludeIds = [], signal } = {},
 ) =>
-  postData(`/artists/${mbid}/appears-on`, {
-    offset,
-    limit,
-    excludeIds: Array.isArray(excludeIds) ? excludeIds : [],
-  }, { signal });
+  postData(
+    `/artists/${mbid}/appears-on`,
+    {
+      offset,
+      limit,
+      excludeIds: Array.isArray(excludeIds) ? excludeIds : [],
+    },
+    { signal },
+  );
 
 export const getReleaseGroupRatingsBatch = (ids = []) => {
   const normalizedIds = [...new Set((Array.isArray(ids) ? ids : []).filter(Boolean))];
@@ -70,7 +74,10 @@ export const getReleaseGroupRatingsBatch = (ids = []) => {
 
 const RELEASE_GROUP_COVER_BATCH_SIZE = 24;
 
-const normalizeCoverPart = (value) => String(value || "").trim().toLowerCase();
+const normalizeCoverPart = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase();
 
 const releaseGroupCoverCacheKey = (mbid, artistName = "", albumTitle = "") =>
   `release-group:${mbid}:${normalizeCoverPart(artistName)}:${normalizeCoverPart(albumTitle)}`;
@@ -113,10 +120,8 @@ export const getReleaseGroupCoversBatch = async (items = []) => {
   const normalizedItems = (Array.isArray(items) ? items : [])
     .map((item) => ({
       mbid: String(item?.mbid || item?.id || "").trim(),
-      artistName:
-        typeof item?.artistName === "string" ? item.artistName.trim() : "",
-      albumTitle:
-        typeof item?.albumTitle === "string" ? item.albumTitle.trim() : "",
+      artistName: typeof item?.artistName === "string" ? item.artistName.trim() : "",
+      albumTitle: typeof item?.albumTitle === "string" ? item.albumTitle.trim() : "",
     }))
     .filter((item) => item.mbid);
   if (!normalizedItems.length) {
@@ -133,10 +138,7 @@ export const getReleaseGroupCoversBatch = async (items = []) => {
   });
   if (!uncachedItems.length) return covers;
   const batchKey = normalizedItems
-    .map(
-      (item) =>
-        `${item.mbid}:${item.artistName.toLowerCase()}:${item.albumTitle.toLowerCase()}`,
-    )
+    .map((item) => `${item.mbid}:${item.artistName.toLowerCase()}:${item.albumTitle.toLowerCase()}`)
     .sort()
     .join("\0");
   if (coverInflightRequests.has(batchKey)) {
@@ -161,10 +163,9 @@ export const getReleaseGroupCoversBatch = async (items = []) => {
       });
     }
     return covers;
-  })()
-    .finally(() => {
-      coverInflightRequests.delete(batchKey);
-    });
+  })().finally(() => {
+    coverInflightRequests.delete(batchKey);
+  });
   coverInflightRequests.set(batchKey, request);
   return request;
 };
@@ -215,11 +216,7 @@ export const getReleaseGroupCover = async (
   return request;
 };
 
-const fetchSimilarArtistsForArtist = (
-  mbid,
-  artistName = "",
-  limit = 20,
-) =>
+const fetchSimilarArtistsForArtist = (mbid, artistName = "", limit = 20) =>
   getData(`/artists/${mbid}/similar`, {
     params: {
       limit,
@@ -242,12 +239,7 @@ export const getArtistPreview = (mbid, artistName, options = {}) =>
     signal: options.signal,
   });
 
-const getArtistTopSongVideo = (
-  mbid,
-  artistName,
-  trackTitle,
-  options = {},
-) =>
+const getArtistTopSongVideo = (mbid, artistName, trackTitle, options = {}) =>
   getData(`/artists/${mbid}/video`, {
     params: { artistName, trackTitle },
     signal: options.signal,
@@ -262,16 +254,18 @@ export async function getArtistVideos(mbid, artistName, tracks, { signal } = {})
     signal?.throwIfAborted();
     const batch = popularTracks.slice(index, index + 3 - videos.length);
     index += batch.length;
-    const results = await Promise.all(batch.map(async track => {
-      try {
-        const data = await getArtistTopSongVideo(mbid, artistName, track.title, { signal });
-        return data?.video ? { ...data.video, trackTitle: track.title } : null;
-      } catch {
-        signal?.throwIfAborted();
-        failed = true;
-        return null;
-      }
-    }));
+    const results = await Promise.all(
+      batch.map(async (track) => {
+        try {
+          const data = await getArtistTopSongVideo(mbid, artistName, track.title, { signal });
+          return data?.video ? { ...data.video, trackTitle: track.title } : null;
+        } catch {
+          signal?.throwIfAborted();
+          failed = true;
+          return null;
+        }
+      }),
+    );
     signal?.throwIfAborted();
     for (const video of results) {
       if (!video?.videoId || seen.has(video.videoId)) continue;

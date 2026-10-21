@@ -66,9 +66,7 @@ export function SettingsSystemTab({ health, settings, updateSettings, showSucces
               <label className="settings-system__label" htmlFor="date-time-format">
                 Date and time format
               </label>
-              <p className="settings-system__description">
-                Applies to all users.
-              </p>
+              <p className="settings-system__description">Applies to all users.</p>
             </div>
             <SettingsSelect
               id="date-time-format"
@@ -147,9 +145,7 @@ export function SettingsSystemTab({ health, settings, updateSettings, showSucces
               </div>
               <div className="settings-system__api-value">
                 <Tooltip content="API key">
-                  <code className="settings-system__api-key" >
-                    {apiKey}
-                  </code>
+                  <code className="settings-system__api-key">{apiKey}</code>
                 </Tooltip>
                 <Tooltip content={copied ? "Copied" : "Copy to clipboard"}>
                   <button

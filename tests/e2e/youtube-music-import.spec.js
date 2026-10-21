@@ -8,7 +8,7 @@ async function signIn(page) {
   const signInHeading = page.getByRole("heading", { name: "Sign in" });
   const playlistsHeading = page.getByRole("heading", { level: 1, name: /^Playlists\b/ });
   await expect(signInHeading.or(playlistsHeading)).toBeVisible();
-  if (!await signInHeading.isVisible()) return;
+  if (!(await signInHeading.isVisible())) return;
   assertSafeCredentialTransport(page.url());
   await page.getByLabel("Username").fill(credentials.username);
   await page.getByLabel("Password").fill(credentials.password);
@@ -29,24 +29,32 @@ for (const viewport of [
   { name: "desktop", width: 1280, height: 800 },
   { name: "mobile", width: 390, height: 844 },
 ]) {
-  test(`YouTube Music import handles preview, recovery, reset, and import on ${viewport.name}`, async ({ page }) => {
+  test(`YouTube Music import handles preview, recovery, reset, and import on ${viewport.name}`, async ({
+    page,
+  }) => {
     await page.setViewportSize(viewport);
     let previewMode = "error";
     let releasePreview;
     let importPayload;
 
     await page.route("**/api/playlists/import/spotify/status", (route) =>
-      route.fulfill({ json: { connected: false, displayName: null } }));
+      route.fulfill({ json: { connected: false, displayName: null } }),
+    );
     await page.route("**/api/playlists/import/youtube-music/preview", async (route) => {
       if (previewMode === "error") {
         await route.fulfill({
           status: 502,
-          json: { error: "Failed to preview YouTube Music playlist", message: "Playlist unavailable" },
+          json: {
+            error: "Failed to preview YouTube Music playlist",
+            message: "Playlist unavailable",
+          },
         });
         return;
       }
       if (previewMode === "loading") {
-        await new Promise((resolve) => { releasePreview = resolve; });
+        await new Promise((resolve) => {
+          releasePreview = resolve;
+        });
       }
       const zero = previewMode === "zero";
       await route.fulfill({
@@ -54,10 +62,12 @@ for (const viewport of [
           playlist: { id: "PLabcdefghij_123", name: "Public test playlist" },
           trackCount: zero ? 0 : 4,
           skipped: zero ? 2 : 1,
-          previewTracks: zero ? [] : [
-            { artistName: "Artist A", trackName: "Track A", albumName: "Album A" },
-            { artistName: "Artist B", trackName: "Track B", albumName: null },
-          ],
+          previewTracks: zero
+            ? []
+            : [
+                { artistName: "Artist A", trackName: "Track A", albumName: "Album A" },
+                { artistName: "Artist B", trackName: "Track B", albumName: null },
+              ],
         },
       });
     });
@@ -108,16 +118,20 @@ for (const viewport of [
     await page.getByLabel("Sync").selectOption("12");
     await page.getByLabel("Keep removed tracks in library").uncheck();
     await page.getByRole("button", { name: "Import playlist", exact: true }).click();
-    await expect.poll(() => importPayload).toEqual({
-      playlistId: "PLabcdefghij_123",
-      name: "Imported YouTube mix",
-      syncEnabled: true,
-      syncIntervalHours: 12,
-      keepRemovedTracks: false,
-    });
+    await expect
+      .poll(() => importPayload)
+      .toEqual({
+        playlistId: "PLabcdefghij_123",
+        name: "Imported YouTube mix",
+        syncEnabled: true,
+        syncIntervalHours: 12,
+        keepRemovedTracks: false,
+      });
 
     await openImport(page, { selectYoutube: false });
-    await expect(page.getByRole("button", { name: "Spotify", exact: true })).toHaveClass(/is-active/);
+    await expect(page.getByRole("button", { name: "Spotify", exact: true })).toHaveClass(
+      /is-active/,
+    );
     await page.getByRole("button", { name: "YouTube Music", exact: true }).click();
     await expect(page.getByLabel("Playlist URL")).toHaveValue("");
     await page.getByLabel("Playlist URL").focus();

@@ -55,7 +55,10 @@ import {
 const LIBRARY_IMAGE_PROFILE = "library";
 
 const parseId = (value) => {
-  const match = /^(artist|album|song|flow|flow-song|shared|shared-song|art-album|art-track|art-playlist-track):(.+)$/.exec(String(value || ""));
+  const match =
+    /^(artist|album|song|flow|flow-song|shared|shared-song|art-album|art-track|art-playlist-track):(.+)$/.exec(
+      String(value || ""),
+    );
   if (!match) return null;
   try {
     return { kind: match[1], key: decodeURIComponent(match[2]) };
@@ -109,12 +112,7 @@ const genreNames = (value) =>
 
 const entityGenres = (entity) => {
   const metadata = entity?.metadata || {};
-  return [
-    metadata.genres,
-    metadata.common?.genre,
-    metadata.genre,
-    metadata.tags?.genre,
-  ]
+  return [metadata.genres, metadata.common?.genre, metadata.genre, metadata.tags?.genre]
     .flatMap(genreNames)
     .filter((genre, index, values) => values.indexOf(genre) === index);
 };
@@ -127,8 +125,7 @@ const findAlbumForTrack = (library, track) => {
   return library.albumsById.get(relation?.albumId) || null;
 };
 
-const findArtistForAlbum = (library, album) =>
-  library.artistsById.get(album?.artistId) || null;
+const findArtistForAlbum = (library, album) => library.artistsById.get(album?.artistId) || null;
 
 const protocolArtist = (artist, fallback = "Unknown Artist") => ({
   id: idFor("artist", artist?.identityKey || `name:artist:${fallback.toLocaleLowerCase()}`),
@@ -137,19 +134,16 @@ const protocolArtist = (artist, fallback = "Unknown Artist") => ({
 });
 
 const albumTracks = (library, album) =>
-  (album?.trackIds || [])
-    .map((trackId) => library.tracksById.get(trackId))
-    .filter(Boolean);
+  (album?.trackIds || []).map((trackId) => library.tracksById.get(trackId)).filter(Boolean);
 
 const artistAlbums = (library, artist) =>
-  (artist?.albumIds || [])
-    .map((albumId) => library.albumsById.get(albumId))
-    .filter(Boolean);
+  (artist?.albumIds || []).map((albumId) => library.albumsById.get(albumId)).filter(Boolean);
 
-const customArtworkId = (kind, id, updatedAt, context = {}) => idFor(
-  `art-${kind}`,
-  JSON.stringify({ id: String(id), updatedAt: Number(updatedAt), ...context }),
-);
+const customArtworkId = (kind, id, updatedAt, context = {}) =>
+  idFor(
+    `art-${kind}`,
+    JSON.stringify({ id: String(id), updatedAt: Number(updatedAt), ...context }),
+  );
 
 const coverArtForAlbum = (library, album) => {
   const updatedAt = library.customAlbumArtwork?.get(String(album.id));
@@ -162,17 +156,17 @@ const coverArtForTrack = (library, track, album) => {
   const updatedAt = library.customTrackArtwork?.get(String(track.id));
   return updatedAt
     ? customArtworkId("track", track.id, updatedAt)
-    : album ? coverArtForAlbum(library, album) : undefined;
+    : album
+      ? coverArtForAlbum(library, album)
+      : undefined;
 };
 
 const toSong = (library, track, album = findAlbumForTrack(library, track)) => {
   const artist = findArtistForAlbum(library, album);
   const file = firstFile(track, album?.id, album?.managedBy);
-  const genres = [...new Set([
-    ...entityGenres(artist),
-    ...entityGenres(album),
-    ...entityGenres(track),
-  ])];
+  const genres = [
+    ...new Set([...entityGenres(artist), ...entityGenres(album), ...entityGenres(track)]),
+  ];
   const relation = track.albums?.find((entry) => entry.albumId === album?.id);
   const artistValue = protocolArtist(artist, track.artistName || "Unknown Artist");
   const format = String(file?.format || "mp3").toLowerCase();
@@ -296,17 +290,21 @@ const toArtistSummary = (artist, library = {}) => {
     starred: library.starredAt?.get(`artist:${artist.identityKey}`),
     musicBrainzId: artist.mbid || "",
     mediaType: "artist",
-    ...(genres.length
-      ? { genre: genres[0], genres: genres.map((name) => ({ name })) }
-      : {}),
+    ...(genres.length ? { genre: genres[0], genres: genres.map((name) => ({ name })) } : {}),
   };
 };
 
 const indexFocusedLibrary = (library, starredAt = library.starredAt) => ({
   ...library,
   starredAt,
-  customAlbumArtwork: getCustomArtworkMap("album", library.albums.map((album) => album.id)),
-  customTrackArtwork: getCustomArtworkMap("track", library.tracks.map((track) => track.id)),
+  customAlbumArtwork: getCustomArtworkMap(
+    "album",
+    library.albums.map((album) => album.id),
+  ),
+  customTrackArtwork: getCustomArtworkMap(
+    "track",
+    library.tracks.map((track) => track.id),
+  ),
   artistsById: new Map(library.artists.map((artist) => [artist.id, artist])),
   albumsById: new Map(library.albums.map((album) => [album.id, album])),
   tracksById: new Map(library.tracks.map((track) => [track.id, track])),
@@ -358,7 +356,11 @@ function toPlaylistSong(
     };
   }
   const artist = protocolArtist(null, job.artistName || "Unknown Artist");
-  const format = String(job.finalPath || "").split(".").pop()?.toLowerCase() || "mp3";
+  const format =
+    String(job.finalPath || "")
+      .split(".")
+      .pop()
+      ?.toLowerCase() || "mp3";
   const songKind = kind === "flow" ? "flow-song" : "shared-song";
   const id = idFor(songKind, `${playlist.id}:${job.id}`);
   const albumMbid = String(job.releaseGroupMbid || job.albumMbid || "").trim();
@@ -373,7 +375,8 @@ function toPlaylistSong(
     artistId: artist.id,
     albumArtists: [artist],
     artists: [artist],
-    coverArt: customCoverArt || (albumMbid ? idFor("album", `release-group:${albumMbid}`) : undefined),
+    coverArt:
+      customCoverArt || (albumMbid ? idFor("album", `release-group:${albumMbid}`) : undefined),
     contentType: audioContentType(format),
     created: isoDate(job.createdAt),
     // Stars on unmatched playlist songs stay keyed by the playlist song, not a library track.
@@ -459,19 +462,22 @@ export function getLibraryLastModified(user) {
 
 export function listArtists(user) {
   const library = { starredAt: starredAtFor(user) };
-  return getLibraryArtistPage({ source: "all", availableOnly: true }).artists.map(
-    (artist) => toArtistSummary(artist, library),
+  return getLibraryArtistPage({ source: "all", availableOnly: true }).artists.map((artist) =>
+    toArtistSummary(artist, library),
   );
 }
 
 export function getArtist(value, user) {
   const parsed = parseId(value);
   if (parsed?.kind !== "artist") return null;
-  const library = indexFocusedLibrary(getLibraryForArtistReferences({
-    source: "all",
-    availableOnly: true,
-    references: [parsed.key],
-  }), starredAtFor(user));
+  const library = indexFocusedLibrary(
+    getLibraryForArtistReferences({
+      source: "all",
+      availableOnly: true,
+      references: [parsed.key],
+    }),
+    starredAtFor(user),
+  );
   const artist = findLibraryEntry(library, parsed);
   return artist?.identityKey ? toArtist(library, artist) : null;
 }
@@ -479,11 +485,14 @@ export function getArtist(value, user) {
 export function getAlbum(value, user) {
   const parsed = parseId(value);
   if (parsed?.kind !== "album") return null;
-  const library = indexFocusedLibrary(getLibraryForAlbumReferences({
-    source: "all",
-    availableOnly: true,
-    references: [parsed.key],
-  }), starredAtFor(user));
+  const library = indexFocusedLibrary(
+    getLibraryForAlbumReferences({
+      source: "all",
+      availableOnly: true,
+      references: [parsed.key],
+    }),
+    starredAtFor(user),
+  );
   const album = findLibraryEntry(library, parsed);
   return album?.identityKey ? toAlbum(library, album) : null;
 }
@@ -504,26 +513,35 @@ export function getSong(value, user) {
 
   const parsed = parseId(value);
   if (parsed?.kind !== "song") return null;
-  const library = indexFocusedLibrary(getLibraryTrack({
-    trackId: parsed.key,
-    source: "all",
-    availableOnly: true,
-  }), starredAtFor(user));
+  const library = indexFocusedLibrary(
+    getLibraryTrack({
+      trackId: parsed.key,
+      source: "all",
+      availableOnly: true,
+    }),
+    starredAtFor(user),
+  );
   const track = findLibraryEntry(library, parsed);
   return track?.identityKey ? toSong(library, track) : null;
 }
 
 export function findUniqueLibrarySong(artist, title, user) {
   if (!String(artist).trim() || !String(title).trim()) return null;
-  const library = indexFocusedLibrary(getLibraryForTrackMatches({
-    source: "all",
-    availableOnly: true,
-    titles: [String(title).trim()],
-  }), starredAtFor(user));
-  const songs = library.tracks.map((track) => toSong(library, track)).filter((song) =>
-    song.artist.toLocaleLowerCase() === String(artist).trim().toLocaleLowerCase()
-      && song.title.toLocaleLowerCase() === String(title).trim().toLocaleLowerCase(),
+  const library = indexFocusedLibrary(
+    getLibraryForTrackMatches({
+      source: "all",
+      availableOnly: true,
+      titles: [String(title).trim()],
+    }),
+    starredAtFor(user),
   );
+  const songs = library.tracks
+    .map((track) => toSong(library, track))
+    .filter(
+      (song) =>
+        song.artist.toLocaleLowerCase() === String(artist).trim().toLocaleLowerCase() &&
+        song.title.toLocaleLowerCase() === String(title).trim().toLocaleLowerCase(),
+    );
   return songs.length === 1 ? songs[0] : null;
 }
 
@@ -556,7 +574,9 @@ export function getMusicDirectory(value, user) {
 
 export function searchLibrary(query, options = {}, user = null) {
   if (!includesAurralMusicFolder(options)) return { artist: [], album: [], song: [] };
-  const needle = String(query || "").trim().toLocaleLowerCase();
+  const needle = String(query || "")
+    .trim()
+    .toLocaleLowerCase();
   const result = getLibrarySearchPage({
     source: "all",
     availableOnly: true,
@@ -569,7 +589,10 @@ export function searchLibrary(query, options = {}, user = null) {
     songOffset: normalizeOffset(options.songOffset),
   });
   const starredAt = starredAtFor(user);
-  const artistLibrary = indexFocusedLibrary({ artists: result.artists, albums: [], tracks: [] }, starredAt);
+  const artistLibrary = indexFocusedLibrary(
+    { artists: result.artists, albums: [], tracks: [] },
+    starredAt,
+  );
   const albumLibrary = indexFocusedLibrary(result.albums, starredAt);
   const trackLibrary = indexFocusedLibrary(result.tracks, starredAt);
   return {
@@ -581,15 +604,18 @@ export function searchLibrary(query, options = {}, user = null) {
 
 export function getRandomSongs(options = {}, user = null) {
   if (!includesAurralMusicFolder(options)) return [];
-  const library = indexFocusedLibrary(getLibraryTrackPage({
-    source: "all",
-    availableOnly: true,
-    genre: options.genre,
-    fromYear: options.fromYear,
-    toYear: options.toYear,
-    limit: normalizeLimit(options.size, 10),
-    random: true,
-  }), starredAtFor(user));
+  const library = indexFocusedLibrary(
+    getLibraryTrackPage({
+      source: "all",
+      availableOnly: true,
+      genre: options.genre,
+      fromYear: options.fromYear,
+      toYear: options.toYear,
+      limit: normalizeLimit(options.size, 10),
+      random: true,
+    }),
+    starredAtFor(user),
+  );
   return library.tracks.map((track) => toSong(library, track));
 }
 
@@ -601,34 +627,43 @@ export function getAlbumList(options = {}, user = null) {
   if (type === "starred") {
     return getStarred(user).album.slice(offset, offset + limit);
   }
-  if (type === "frequent" || type === "recent") return getPlayedAlbums(type, user, { offset, limit });
+  if (type === "frequent" || type === "recent")
+    return getPlayedAlbums(type, user, { offset, limit });
   // Aurral does not currently store per-user ratings. Returning no albums is
   // accurate; falling through would falsely label an alphabetical list as rated.
   if (type === "highest") return [];
-  const library = indexFocusedLibrary(getLibraryAlbumPage({
-    source: "all",
-    availableOnly: true,
-    type,
-    genre: options.genre,
-    fromYear: options.fromYear,
-    toYear: options.toYear,
-    offset,
-    limit,
-  }), starredAtFor(user));
+  const library = indexFocusedLibrary(
+    getLibraryAlbumPage({
+      source: "all",
+      availableOnly: true,
+      type,
+      genre: options.genre,
+      fromYear: options.fromYear,
+      toYear: options.toYear,
+      offset,
+      limit,
+    }),
+    starredAtFor(user),
+  );
   return library.albums.map((album) => toAlbumSummary(library, album));
 }
 
 export function getSongsByGenre(genre, options = {}, user = null) {
   if (!includesAurralMusicFolder(options)) return [];
-  const target = String(genre || "").trim().toLocaleLowerCase();
+  const target = String(genre || "")
+    .trim()
+    .toLocaleLowerCase();
   if (!target) return [];
-  const library = indexFocusedLibrary(getLibraryTrackPage({
-    source: "all",
-    availableOnly: true,
-    genre: target,
-    offset: normalizeOffset(options.offset),
-    limit: normalizeLimit(options.count),
-  }), starredAtFor(user));
+  const library = indexFocusedLibrary(
+    getLibraryTrackPage({
+      source: "all",
+      availableOnly: true,
+      genre: target,
+      offset: normalizeOffset(options.offset),
+      limit: normalizeLimit(options.count),
+    }),
+    starredAtFor(user),
+  );
   return library.tracks.map((track) => toSong(library, track));
 }
 
@@ -639,7 +674,8 @@ export function getGenres() {
 const getStarsStmt = db.prepare(
   "SELECT entity_kind, entity_key, created_at FROM subsonic_stars WHERE user_id = ? ORDER BY created_at, entity_kind, entity_key",
 );
-const preparePlayedAlbumsStmt = (orderBy) => db.prepare(`
+const preparePlayedAlbumsStmt = (orderBy) =>
+  db.prepare(`
   SELECT album.identity_key
   FROM play_album_stats AS played
   JOIN library_albums AS album
@@ -684,10 +720,13 @@ function getPlayedAlbums(type, user, { offset, limit }) {
     .all(user.id, limit, offset)
     .map((row) => row.identity_key);
   if (!albumKeys.length) return [];
-  const library = indexFocusedLibrary(getLibrary({
-    availableOnly: true,
-    favoriteKeys: albumKeys.map((key) => ({ kind: "album", key })),
-  }), starredAtFor(user));
+  const library = indexFocusedLibrary(
+    getLibrary({
+      availableOnly: true,
+      favoriteKeys: albumKeys.map((key) => ({ kind: "album", key })),
+    }),
+    starredAtFor(user),
+  );
   return albumKeys
     .map((key) => library.albumsByIdentity.get(key))
     .filter(Boolean)
@@ -704,20 +743,21 @@ const touchStars = (userId) => {
 
 const isSameTrack = (left, right) => tracksShareMembership(left, right);
 
-const trackFromJob = (job) => normalizePlaylistTrack({
-  artistName: job?.artistName,
-  trackName: job?.trackName,
-  albumName: job?.albumName,
-  artistMbid: job?.artistMbid,
-  albumMbid: job?.albumMbid,
-  trackMbid: job?.trackMbid,
-  releaseYear: job?.releaseYear,
-  durationMs: job?.durationMs,
-  trackNumber: job?.trackNumber,
-  albumTrackCount: job?.albumTrackCount,
-  albumTrackTitles: job?.albumTrackTitles,
-  artistAliases: job?.artistAliases,
-});
+const trackFromJob = (job) =>
+  normalizePlaylistTrack({
+    artistName: job?.artistName,
+    trackName: job?.trackName,
+    albumName: job?.albumName,
+    artistMbid: job?.artistMbid,
+    albumMbid: job?.albumMbid,
+    trackMbid: job?.trackMbid,
+    releaseYear: job?.releaseYear,
+    durationMs: job?.durationMs,
+    trackNumber: job?.trackNumber,
+    albumTrackCount: job?.albumTrackCount,
+    albumTrackTitles: job?.albumTrackTitles,
+    artistAliases: job?.artistAliases,
+  });
 
 const trackFromLibrary = (library, track) => {
   const album = findAlbumForTrack(library, track);
@@ -739,8 +779,11 @@ const trackFromLibrary = (library, track) => {
 const matchesLibraryTrack = (track, library, entry) => {
   const libraryTrack = trackFromLibrary(library, entry);
   if (!libraryTrack) return false;
-  return isSameTrack(track, libraryTrack)
-    || Boolean(entry.artistName) && isSameTrack(track, { ...libraryTrack, artistName: entry.artistName });
+  return (
+    isSameTrack(track, libraryTrack) ||
+    (Boolean(entry.artistName) &&
+      isSameTrack(track, { ...libraryTrack, artistName: entry.artistName }))
+  );
 };
 
 const resolvePlaylistSong = (user, value) => {
@@ -762,11 +805,13 @@ const resolveSubsonicTrack = (user, value) => {
   if (playlistSong) return playlistSong;
   const parsed = parseId(value);
   if (parsed?.kind !== "song") return null;
-  const library = indexFocusedLibrary(getLibraryTrack({
-    trackId: parsed.key,
-    source: "all",
-    availableOnly: false,
-  }));
+  const library = indexFocusedLibrary(
+    getLibraryTrack({
+      trackId: parsed.key,
+      source: "all",
+      availableOnly: false,
+    }),
+  );
   const track = findLibraryEntry(library, parsed);
   const normalized = trackFromLibrary(library, track);
   return normalized ? { kind: "song", track: normalized, libraryTrack: track } : null;
@@ -787,32 +832,40 @@ const findLibraryJob = (track) => {
 };
 
 const findReusableLibrarySource = (track) =>
-  downloadTracker.getAll().find(
-    (job) =>
-      job?.playlistType !== "library" &&
-      job?.status === "done" &&
-      typeof job.finalPath === "string" &&
-      existsSync(job.finalPath) &&
-      isSameTrack(job, track),
-  );
+  downloadTracker
+    .getAll()
+    .find(
+      (job) =>
+        job?.playlistType !== "library" &&
+        job?.status === "done" &&
+        typeof job.finalPath === "string" &&
+        existsSync(job.finalPath) &&
+        isSameTrack(job, track),
+    );
 
 // Resolve playlist track descriptors to available library tracks. All descriptors of a batch are
 // looked up in one library query (by recording MBID and by title), then matched in memory with
 // the same rule the playlist code uses, so a 1000-entry playlist costs a couple of statements.
 export function resolveLibraryTracks(descriptors) {
-  const items = (Array.isArray(descriptors) ? descriptors : []).map((entry) => normalizePlaylistTrack(entry));
+  const items = (Array.isArray(descriptors) ? descriptors : []).map((entry) =>
+    normalizePlaylistTrack(entry),
+  );
   const present = items.filter(Boolean);
   if (!present.length) return items.map(() => null);
-  const library = indexFocusedLibrary(getLibraryForTrackMatches({
-    source: "all",
-    availableOnly: true,
-    mbids: present.map((track) => track.trackMbid),
-    titles: present.map((track) => track.trackName),
-  }));
+  const library = indexFocusedLibrary(
+    getLibraryForTrackMatches({
+      source: "all",
+      availableOnly: true,
+      mbids: present.map((track) => track.trackMbid),
+      titles: present.map((track) => track.trackName),
+    }),
+  );
   const byTitle = new Map();
   const byMbid = new Map();
   for (const track of library.tracks) {
-    const title = String(track.title || "").trim().toLowerCase();
+    const title = String(track.title || "")
+      .trim()
+      .toLowerCase();
     if (!byTitle.has(title)) byTitle.set(title, []);
     byTitle.get(title).push(track);
     if (track.mbid && !byMbid.has(track.mbid)) byMbid.set(track.mbid, track);
@@ -830,11 +883,10 @@ export function resolveLibraryTracks(descriptors) {
     // A shared recording MBID identifies the track even when the titles differ (remaster, typo).
     const byId = track.trackMbid ? byMbid.get(track.trackMbid) : null;
     const candidates = byTitle.get(track.trackName.toLowerCase()) || [];
-    const match = byId && playable(byId)
-      ? byId
-      : candidates.find(
-        (entry) => playable(entry) && matchesLibraryTrack(track, library, entry),
-      );
+    const match =
+      byId && playable(byId)
+        ? byId
+        : candidates.find((entry) => playable(entry) && matchesLibraryTrack(track, library, entry));
     if (!match) return null;
     const { album, file } = resolveFile(match);
     return { file, library, track: match, albumName: album?.title };
@@ -853,7 +905,9 @@ const libraryStarRows = (user, rows) => {
   const resolved = resolveLibraryTracks(playlistSongs.map((song) => song?.track || null));
   return rows.map((row, index) => {
     const libraryTrack = resolved[index]?.track;
-    return libraryTrack ? { ...row, entity_kind: "song", entity_key: libraryTrack.identityKey } : row;
+    return libraryTrack
+      ? { ...row, entity_kind: "song", entity_key: libraryTrack.identityKey }
+      : row;
   });
 };
 
@@ -930,16 +984,23 @@ const linkPlaylistTracksToLibrary = (tracks, createdJobIds = null) => {
     const existingJob = candidate.canonicalJobId
       ? downloadTracker.getJob(candidate.canonicalJobId)
       : null;
-    const jobId = existingJob && isSameTrack(existingJob, candidate)
-      ? existingJob.id
-      : ensureLibraryJob(candidate, createdJobIds);
+    const jobId =
+      existingJob && isSameTrack(existingJob, candidate)
+        ? existingJob.id
+        : ensureLibraryJob(candidate, createdJobIds);
     if (!jobId) return null;
     normalized.push(toLibraryPlaylistTrack(candidate, jobId));
   }
   return normalized;
 };
 
-const replaceSubsonicPlaylistTracks = async (user, playlist, tracks, updates = {}, removedJobIds = new Set()) => {
+const replaceSubsonicPlaylistTracks = async (
+  user,
+  playlist,
+  tracks,
+  updates = {},
+  removedJobIds = new Set(),
+) => {
   if (!playlist || !flowPlaylistConfig.canUserAccessStaticPlaylist(user, playlist)) return null;
   const createdJobIds = [];
   const libraryTracks = linkPlaylistTracksToLibrary(tracks, createdJobIds);
@@ -950,7 +1011,9 @@ const replaceSubsonicPlaylistTracks = async (user, playlist, tracks, updates = {
   const retainedJobIds = new Set(
     libraryTracks.map((track) => String(track.canonicalJobId || "").trim()).filter(Boolean),
   );
-  const releasedJobs = downloadTracker.getByPlaylistId(playlist.id).filter((job) => !retainedJobIds.has(job.id));
+  const releasedJobs = downloadTracker
+    .getByPlaylistId(playlist.id)
+    .filter((job) => !retainedJobIds.has(job.id));
   const isRemovedSongFile = (job) =>
     removedJobIds.has(job.id) && job.playlistType === playlist.id && isPlayableJob(job);
   const jobsToLibrary = releasedJobs.filter(isRemovedSongFile);
@@ -1062,24 +1125,39 @@ export async function updateSubsonicPlaylist(
     if (!playlist || !hasPermission(user, "accessFlow")) return null;
     const entries = playlistJobEntries(playlist);
     const visibleEntries = entries.filter(({ job }) => isPlayableJob(job));
-    const removedEntries = songIds !== undefined ? visibleEntries : [...new Set(songIndexesToRemove)].map((index) => {
-      const entry = Number.isInteger(index) ? visibleEntries[index] : null;
-      if (!entry) {
-        throw playlistEditError("SUBSONIC_PLAYLIST_ENTRY_NOT_FOUND", `Playlist has no song at index ${index}`);
-      }
-      return entry;
-    });
+    const removedEntries =
+      songIds !== undefined
+        ? visibleEntries
+        : [...new Set(songIndexesToRemove)].map((index) => {
+            const entry = Number.isInteger(index) ? visibleEntries[index] : null;
+            if (!entry) {
+              throw playlistEditError(
+                "SUBSONIC_PLAYLIST_ENTRY_NOT_FOUND",
+                `Playlist has no song at index ${index}`,
+              );
+            }
+            return entry;
+          });
     const resolvedAdds = (songIds ?? songIdsToAdd).map((id) => resolveSubsonicTrack(user, id));
     if (resolvedAdds.some((entry) => !entry)) return null;
     const removedJobIds = new Set(removedEntries.map(({ job }) => job.id));
     const pairedJobs = new Map(
-      entries.filter(({ trackIndex }) => trackIndex >= 0).map(({ job, trackIndex }) => [trackIndex, job]),
+      entries
+        .filter(({ trackIndex }) => trackIndex >= 0)
+        .map(({ job, trackIndex }) => [trackIndex, job]),
     );
-    const keptTracks = songIds !== undefined ? [] : playlist.tracks.flatMap((track, index) => {
-      const job = pairedJobs.get(index);
-      if (removedJobIds.has(job?.id ?? track.canonicalJobId)) return [];
-      return [removedJobIds.has(track.canonicalJobId) ? { ...track, canonicalJobId: job.id } : track];
-    });
+    const keptTracks =
+      songIds !== undefined
+        ? []
+        : playlist.tracks.flatMap((track, index) => {
+            const job = pairedJobs.get(index);
+            if (removedJobIds.has(job?.id ?? track.canonicalJobId)) return [];
+            return [
+              removedJobIds.has(track.canonicalJobId)
+                ? { ...track, canonicalJobId: job.id }
+                : track,
+            ];
+          });
     const keptUnpairedTracks = visibleEntries
       .filter(({ job, trackIndex }) => trackIndex < 0 && !removedJobIds.has(job.id))
       .map(({ job }) => ({ ...trackFromJob(job), canonicalJobId: job.id }));
@@ -1087,7 +1165,8 @@ export async function updateSubsonicPlaylist(
       ...keptTracks,
       ...keptUnpairedTracks,
       ...resolvedAdds.map(({ job, track }) =>
-        job?.playlistType === playlist.id ? { ...track, canonicalJobId: job.id } : track),
+        job?.playlistType === playlist.id ? { ...track, canonicalJobId: job.id } : track,
+      ),
     ];
     const updates = {};
     if (name !== undefined) updates.name = String(name || "").trim();
@@ -1136,11 +1215,12 @@ export function starMany(user, values, { skipLibraryValidation = false } = {}) {
   if (libraryTargetKeys && libraryTargets.some((target) => !libraryTargetKeys.has(target))) {
     return false;
   }
-  if (parsed.some((target, index) =>
-    ["flow-song", "shared-song"].includes(target.kind)
-      ? !playlistSongs[index]
-      : false,
-  )) return false;
+  if (
+    parsed.some((target, index) =>
+      ["flow-song", "shared-song"].includes(target.kind) ? !playlistSongs[index] : false,
+    )
+  )
+    return false;
   if (favoriteAutoKeepEnabled()) {
     const createdJobIds = [];
     for (const entry of playlistSongs.filter(Boolean)) {
@@ -1153,7 +1233,8 @@ export function starMany(user, values, { skipLibraryValidation = false } = {}) {
   const addStars = db.transaction(() => {
     let changed = false;
     for (const target of parsed) {
-      changed = addStarStmt.run(user.id, target.kind, target.key, Date.now()).changes > 0 || changed;
+      changed =
+        addStarStmt.run(user.id, target.kind, target.key, Date.now()).changes > 0 || changed;
     }
     if (changed) touchStars(user.id);
   });
@@ -1170,7 +1251,9 @@ export function unstarMany(user, values) {
   if (!parsed.length || parsed.some((target) => !target) || !user?.id) return false;
   const targetRows = parsed.map((target) => ({ entity_kind: target.kind, entity_key: target.key }));
   const targetKeys = new Set(
-    [...targetRows, ...libraryStarRows(user, targetRows)].map((entry) => `${entry.entity_kind}:${entry.entity_key}`),
+    [...targetRows, ...libraryStarRows(user, targetRows)].map(
+      (entry) => `${entry.entity_kind}:${entry.entity_key}`,
+    ),
   );
   const rows = starredRows(user);
   const libraryRows = libraryStarRows(user, rows);
@@ -1183,7 +1266,10 @@ export function unstarMany(user, values) {
           targetKeys.has(`${libraryRow.entity_kind}:${libraryRow.entity_key}`)) &&
         removeStarStmt.run(user.id, row.entity_kind, row.entity_key).changes > 0
       ) {
-        removed.push({ id: idFor(row.entity_kind, row.entity_key), starredAt: Number(row.created_at) || Date.now() });
+        removed.push({
+          id: idFor(row.entity_kind, row.entity_key),
+          starredAt: Number(row.created_at) || Date.now(),
+        });
       }
     });
     if (removed.length) touchStars(user.id);
@@ -1200,7 +1286,9 @@ export function restoreStars(user, entries) {
   if (
     !parsed.length ||
     !user?.id ||
-    parsed.some(({ target, starredAt }) => !target || !Number.isSafeInteger(starredAt) || starredAt <= 0)
+    parsed.some(
+      ({ target, starredAt }) => !target || !Number.isSafeInteger(starredAt) || starredAt <= 0,
+    )
   ) {
     return false;
   }
@@ -1244,21 +1332,15 @@ const buildStarred = (library, rows, user) => {
     if (["flow-song", "shared-song"].includes(parsed.kind)) {
       const separator = parsed.key.indexOf(":");
       const kind = parsed.kind === "flow-song" ? "flow" : "shared";
-      const playlist = separator > 0
-        ? playlistFromId(user, idFor(kind, parsed.key.slice(0, separator)))
-        : null;
+      const playlist =
+        separator > 0 ? playlistFromId(user, idFor(kind, parsed.key.slice(0, separator))) : null;
       const job = separator > 0 ? downloadTracker.getJob(parsed.key.slice(separator + 1)) : null;
       if (playlist && playlistOwnsJob(playlist, job)) {
         // Rows still flagged as playlist songs did not resolve to a library track above.
         const updatedAt = getCustomArtworkMap("playlist-track", [job.id]).get(String(job.id));
-        starred.song.push(toPlaylistSong(
-          playlist,
-          kind,
-          job,
-          library.starredAt,
-          null,
-          updatedAt || null,
-        ));
+        starred.song.push(
+          toPlaylistSong(playlist, kind, job, library.starredAt, null, updatedAt || null),
+        );
       }
       continue;
     }
@@ -1283,7 +1365,10 @@ export function getStarredWithLibrary(user, { availableOnly = false } = {}) {
     availableOnly,
     favoriteKeys: libraryRows.map((row) => ({ kind: row.entity_kind, key: row.entity_key })),
   });
-  return { starred: buildStarred(indexFocusedLibrary(library, starredAtFromRows(rows)), rows, user), library };
+  return {
+    starred: buildStarred(indexFocusedLibrary(library, starredAtFromRows(rows)), rows, user),
+    library,
+  };
 }
 
 export function getStarred(user) {
@@ -1297,12 +1382,15 @@ export function getArtistInfo(value) {
 export function getTopSongs(artist, options = {}, user = null) {
   const target = String(artist || "").trim();
   if (!target) return [];
-  const library = indexFocusedLibrary(getLibraryTopTracks({
-    source: "all",
-    availableOnly: true,
-    artist: target,
-    limit: normalizeLimit(options.count),
-  }), starredAtFor(user));
+  const library = indexFocusedLibrary(
+    getLibraryTopTracks({
+      source: "all",
+      availableOnly: true,
+      artist: target,
+      limit: normalizeLimit(options.count),
+    }),
+    starredAtFor(user),
+  );
   return library.tracks.map((track) => toSong(library, track));
 }
 
@@ -1311,7 +1399,10 @@ export function getSubsonicPlaylists(user) {
   const flows = visibleFlows(user).map((flow) => {
     const jobs = visiblePlaylistJobs(flow);
     const artworkChangedAt = latestArtworkChange(
-      getCustomArtworkMap("playlist-track", jobs.map((job) => job.id)),
+      getCustomArtworkMap(
+        "playlist-track",
+        jobs.map((job) => job.id),
+      ),
     );
     const playlist = {
       id: idFor("flow", flow.id),
@@ -1322,11 +1413,9 @@ export function getSubsonicPlaylists(user) {
       duration: jobs.reduce((total, job) => total + seconds(job.durationMs), 0),
       public: false,
       created: new Date(flow.createdAt || Date.now()).toISOString(),
-      changed: new Date(Math.max(
-        epochMs(flow.lastRunAt || flow.createdAt),
-        artworkChangedAt,
-        artworkRevision,
-      )).toISOString(),
+      changed: new Date(
+        Math.max(epochMs(flow.lastRunAt || flow.createdAt), artworkChangedAt, artworkRevision),
+      ).toISOString(),
     };
     if (flow.description) playlist.comment = flow.description;
     return playlist;
@@ -1334,7 +1423,10 @@ export function getSubsonicPlaylists(user) {
   const staticPlaylists = flowPlaylistConfig.getStaticPlaylistsForUser(user).map((playlist) => {
     const jobs = visiblePlaylistJobs(playlist, { includePending: true });
     const artworkChangedAt = latestArtworkChange(
-      getCustomArtworkMap("playlist-track", jobs.map((job) => job.id)),
+      getCustomArtworkMap(
+        "playlist-track",
+        jobs.map((job) => job.id),
+      ),
     );
     const value = {
       id: idFor("shared", playlist.id),
@@ -1345,11 +1437,13 @@ export function getSubsonicPlaylists(user) {
       duration: jobs.reduce((total, job) => total + seconds(job.durationMs), 0),
       public: false,
       created: new Date(playlist.createdAt || Date.now()).toISOString(),
-      changed: new Date(Math.max(
-        epochMs(playlist.importedAt || playlist.createdAt),
-        artworkChangedAt,
-        artworkRevision,
-      )).toISOString(),
+      changed: new Date(
+        Math.max(
+          epochMs(playlist.importedAt || playlist.createdAt),
+          artworkChangedAt,
+          artworkRevision,
+        ),
+      ).toISOString(),
     };
     if (playlist.description) value.comment = playlist.description;
     return value;
@@ -1365,7 +1459,10 @@ export function getSubsonicPlaylist(value, user) {
   const jobs = visiblePlaylistJobs(playlist);
   const starredAt = starredAtFor(user);
   const owned = resolveLibraryTracks(jobs.map((job) => trackFromJob(job)));
-  const customArtwork = getCustomArtworkMap("playlist-track", jobs.map((job) => job.id));
+  const customArtwork = getCustomArtworkMap(
+    "playlist-track",
+    jobs.map((job) => job.id),
+  );
   const artworkChangedAt = latestArtworkChange(customArtwork);
   return {
     id: idFor(kind, playlist.id),
@@ -1377,19 +1474,23 @@ export function getSubsonicPlaylist(value, user) {
     duration: jobs.reduce((total, job) => total + seconds(job.durationMs), 0),
     public: false,
     created: new Date(playlist.createdAt || Date.now()).toISOString(),
-    changed: new Date(Math.max(
-      epochMs((kind === "flow" ? playlist.lastRunAt : playlist.importedAt) || playlist.createdAt),
-      artworkChangedAt,
-      getCustomArtworkRevision("playlist-track"),
-    )).toISOString(),
-    entry: jobs.map((job, index) => toPlaylistSong(
-      playlist,
-      kind,
-      job,
-      starredAt,
-      owned[index],
-      customArtwork.get(String(job.id)) || null,
-    )),
+    changed: new Date(
+      Math.max(
+        epochMs((kind === "flow" ? playlist.lastRunAt : playlist.importedAt) || playlist.createdAt),
+        artworkChangedAt,
+        getCustomArtworkRevision("playlist-track"),
+      ),
+    ).toISOString(),
+    entry: jobs.map((job, index) =>
+      toPlaylistSong(
+        playlist,
+        kind,
+        job,
+        starredAt,
+        owned[index],
+        customArtwork.get(String(job.id)) || null,
+      ),
+    ),
   };
 }
 
@@ -1403,11 +1504,13 @@ export function resolveStreamPath(value, user) {
 
   const parsed = parseId(value);
   if (parsed?.kind !== "song") return null;
-  const library = indexFocusedLibrary(getLibraryTrack({
-    trackId: parsed.key,
-    source: "all",
-    availableOnly: true,
-  }));
+  const library = indexFocusedLibrary(
+    getLibraryTrack({
+      trackId: parsed.key,
+      source: "all",
+      availableOnly: true,
+    }),
+  );
   const track = findLibraryEntry(library, parsed);
   const album = findAlbumForTrack(library, track);
   const file = firstFile(track, album?.id, album?.managedBy);
@@ -1477,23 +1580,25 @@ export async function resolveArtworkUrl(value) {
     return artwork;
   }
 
-  const library = indexFocusedLibrary(parsed.kind === "artist"
-    ? getLibraryForArtistReferences({
-        source: "all",
-        availableOnly: false,
-        references: [parsed.key],
-      })
-    : parsed.kind === "album"
-      ? getLibraryForAlbumReferences({
+  const library = indexFocusedLibrary(
+    parsed.kind === "artist"
+      ? getLibraryForArtistReferences({
           source: "all",
           availableOnly: false,
           references: [parsed.key],
         })
-      : getLibraryTrack({
-          trackId: parsed.key,
-          source: "all",
-          availableOnly: false,
-        }));
+      : parsed.kind === "album"
+        ? getLibraryForAlbumReferences({
+            source: "all",
+            availableOnly: false,
+            references: [parsed.key],
+          })
+        : getLibraryTrack({
+            trackId: parsed.key,
+            source: "all",
+            availableOnly: false,
+          }),
+  );
   const entity = findLibraryEntry(library, parsed);
   if (!entity) return null;
 

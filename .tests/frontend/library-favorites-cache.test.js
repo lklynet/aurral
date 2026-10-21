@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { test, vi } from "vite-plus/test";
 
-const jsonResponse = (value) => new Response(JSON.stringify(value), {
-  status: 200,
-  headers: { "content-type": "application/json" },
-});
+const jsonResponse = (value) =>
+  new Response(JSON.stringify(value), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
 
 const openFavoritesHarness = async (t) => {
   vi.resetModules();
@@ -17,9 +18,10 @@ const openFavoritesHarness = async (t) => {
     globalThis.fetch = originalFetch;
     queryClient.clear();
   });
-  globalThis.fetch = async (_url, init = {}) => new Promise((resolve) => {
-    requests.push({ method: init.method || "GET", resolve });
-  });
+  globalThis.fetch = async (_url, init = {}) =>
+    new Promise((resolve) => {
+      requests.push({ method: init.method || "GET", resolve });
+    });
   const waitForRequests = async (count) => {
     while (requests.length < count) await new Promise((resolve) => setImmediate(resolve));
   };
@@ -38,7 +40,12 @@ test("an older favorites read cannot overwrite a newer mutation cache", async (t
     song: [{ id: "song:1" }],
     changedIds: ["song:1"],
   };
-  const freshFavorites = { artist: [], album: [], song: ["song:1"], library: { tracks: ["fresh"] } };
+  const freshFavorites = {
+    artist: [],
+    album: [],
+    song: ["song:1"],
+    library: { tracks: ["fresh"] },
+  };
   const read = getLibraryFavorites();
   await waitForRequests(1);
   const mutation = updateLibraryFavorites(["song:1"], true);
@@ -121,10 +128,12 @@ test("a failed favorite refresh does not block the next queued mutation", async 
   await waitForRequests(2);
 
   const secondMutation = updateLibraryFavorites(["song:2"], true);
-  requests[1].resolve(new Response(JSON.stringify({ error: "refresh failed" }), {
-    status: 500,
-    headers: { "content-type": "application/json" },
-  }));
+  requests[1].resolve(
+    new Response(JSON.stringify({ error: "refresh failed" }), {
+      status: 500,
+      headers: { "content-type": "application/json" },
+    }),
+  );
   await firstMutation;
   await waitForRequests(3);
   requests[2].resolve(jsonResponse({ changedIds: ["song:2"] }));

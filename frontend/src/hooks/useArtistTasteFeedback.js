@@ -69,7 +69,8 @@ export function useArtistTasteFeedback() {
       await queryClient.cancelQueries({ queryKey });
       const snapshot = queryClient.getQueryData(queryKey);
       queryClient.setQueryData(queryKey, (current) =>
-        previewArtistDiscoveryFeedback(current, variables));
+        previewArtistDiscoveryFeedback(current, variables),
+      );
       return { snapshot };
     },
     onError: (_error, _variables, context) => {

@@ -76,19 +76,21 @@ function ActivityPage() {
   const isListLikeView = isQueueView;
   const shouldRedirectView = viewParam && normalizeActivityView(viewParam) !== viewParam;
   const activeViewLabel = isMissingView
-    ? isCutoffView ? "Cutoff unmet" : "Missing"
+    ? isCutoffView
+      ? "Cutoff unmet"
+      : "Missing"
     : ACTIVITY_VIEWS.find((entry) => entry.id === activeView)?.label || "Activity";
   useDocumentTitle(
-    isQueueView ? "Queued - Activity"
-    : isHistoryView ? "History - Activity"
-    : isMissingView ? `${isCutoffView ? "Cutoff unmet" : "Missing"} - Wanted`
-    : "Activity",
+    isQueueView
+      ? "Queued - Activity"
+      : isHistoryView
+        ? "History - Activity"
+        : isMissingView
+          ? `${isCutoffView ? "Cutoff unmet" : "Missing"} - Wanted`
+          : "Activity",
   );
 
-  const activityQueryKey = useMemo(
-    () => queryKeys.activityRequests(user?.id),
-    [user?.id],
-  );
+  const activityQueryKey = useMemo(() => queryKeys.activityRequests(user?.id), [user?.id]);
   const refreshFromStatusEvent = useCallback(() => {
     if (document.hidden) return;
     queryClient.refetchQueries({
@@ -96,12 +98,9 @@ function ActivityPage() {
       type: "active",
     });
   }, [activityQueryKey, isMissingView]);
-  const { isConnected: downloadsWsConnected } = useWebSocketChannel(
-    "downloads",
-    (message) => {
-      if (message?.type === "download_statuses") refreshFromStatusEvent();
-    },
-  );
+  const { isConnected: downloadsWsConnected } = useWebSocketChannel("downloads", (message) => {
+    if (message?.type === "download_statuses") refreshFromStatusEvent();
+  });
   const { isConnected: playlistsWsConnected } = useWebSocketChannel(
     "playlists",
     (message) => {
@@ -128,18 +127,16 @@ function ActivityPage() {
     [activityQuery.data],
   );
   const loading = activityQuery.isPending;
-  const error = localError || activityQuery.error?.response?.data?.message || activityQuery.error?.message;
+  const error =
+    localError || activityQuery.error?.response?.data?.message || activityQuery.error?.message;
 
-  const filteredRequests = useMemo(
-    () => {
-      const query = filterValue.trim().toLocaleLowerCase();
-      return requests.filter((request) => {
-        if (!matchesActivityView(request, activeView)) return false;
-        return matchesActivitySearch(request, query);
-      });
-    },
-    [activeView, filterValue, requests],
-  );
+  const filteredRequests = useMemo(() => {
+    const query = filterValue.trim().toLocaleLowerCase();
+    return requests.filter((request) => {
+      if (!matchesActivityView(request, activeView)) return false;
+      return matchesActivitySearch(request, query);
+    });
+  }, [activeView, filterValue, requests]);
 
   const sortedRequests = useMemo(
     () => [...filteredRequests].sort(compareActivityRequests),
@@ -169,22 +166,25 @@ function ActivityPage() {
     setVisibleCount(ACTIVITY_PAGE_SIZE);
   }, [activeView]);
 
-  const fetchRequests = useCallback(async ({ silent = false, refresh = false } = {}) => {
-    try {
-      const result = await queryClient.fetchQuery({
-        queryKey: activityQueryKey,
-        queryFn: ({ signal }) => getRequests({ refresh: refresh || isListLikeView, signal }),
-        staleTime: refresh ? 0 : isListLikeView ? 0 : 30_000,
-      });
-      setLocalError(null);
-      return result;
-    } catch (requestError) {
-      if (!silent) {
-        setLocalError(requestError?.response?.data?.message || "Failed to load activity.");
+  const fetchRequests = useCallback(
+    async ({ silent = false, refresh = false } = {}) => {
+      try {
+        const result = await queryClient.fetchQuery({
+          queryKey: activityQueryKey,
+          queryFn: ({ signal }) => getRequests({ refresh: refresh || isListLikeView, signal }),
+          staleTime: refresh ? 0 : isListLikeView ? 0 : 30_000,
+        });
+        setLocalError(null);
+        return result;
+      } catch (requestError) {
+        if (!silent) {
+          setLocalError(requestError?.response?.data?.message || "Failed to load activity.");
+        }
+        return null;
       }
-      return null;
-    }
-  }, [activityQueryKey, isListLikeView]);
+    },
+    [activityQueryKey, isListLikeView],
+  );
 
   const handleManualRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -217,28 +217,34 @@ function ActivityPage() {
     };
   }, [activityQueryKey, isMissingView]);
 
-  const updateRequests = useCallback((updater) => {
-    queryClient.setQueryData(activityQueryKey, (current) => {
-      const next = Array.isArray(current) ? current : [];
-      return updater(next);
-    });
-  }, [activityQueryKey]);
-  const settleReviewedJob = useCallback(async (jobId, changes) => {
-    await queryClient.cancelQueries({ queryKey: activityQueryKey });
-    updateRequests((prev) =>
-      prev.map((r) =>
-        r.jobId === jobId
-          ? {
-              ...r,
-              ...changes,
-              inQueue: false,
-              title: `${changes.statusLabel} ${r.title?.replace(/^Review needed for /, "") || "track"}`,
-            }
-          : r,
-      ),
-    );
-    void queryClient.invalidateQueries({ queryKey: activityQueryKey });
-  }, [activityQueryKey, updateRequests]);
+  const updateRequests = useCallback(
+    (updater) => {
+      queryClient.setQueryData(activityQueryKey, (current) => {
+        const next = Array.isArray(current) ? current : [];
+        return updater(next);
+      });
+    },
+    [activityQueryKey],
+  );
+  const settleReviewedJob = useCallback(
+    async (jobId, changes) => {
+      await queryClient.cancelQueries({ queryKey: activityQueryKey });
+      updateRequests((prev) =>
+        prev.map((r) =>
+          r.jobId === jobId
+            ? {
+                ...r,
+                ...changes,
+                inQueue: false,
+                title: `${changes.statusLabel} ${r.title?.replace(/^Review needed for /, "") || "track"}`,
+              }
+            : r,
+        ),
+      );
+      void queryClient.invalidateQueries({ queryKey: activityQueryKey });
+    },
+    [activityQueryKey, updateRequests],
+  );
   const reSearchMutation = useMutation({
     mutationFn: ({ albumId }) => triggerAlbumSearch(albumId),
   });
@@ -304,30 +310,36 @@ function ActivityPage() {
     if (!jobId || controllingJobs[jobId]) return;
     setControllingJobs((prev) => ({ ...prev, [jobId]: action }));
     try {
-      const result = action === "cancel"
-        ? await cancelDownloadJob(jobId)
-        : await retryDownloadJob(jobId);
+      const result =
+        action === "cancel" ? await cancelDownloadJob(jobId) : await retryDownloadJob(jobId);
       const cancelling = action === "cancel" && result?.status === "cancel_requested";
-      updateRequests((prev) => prev.map((item) => item.jobId === jobId
-        ? {
-            ...item,
-            status: action === "retry" || cancelling ? "processing" : "cancelled",
-            statusLabel: action === "retry" ? "Searching" : cancelling ? "Cancelling" : "Cancelled",
-            title: action === "retry"
-              ? `Searching for ${item.trackName || "track"}`
-              : cancelling
-                ? `Cancelling ${item.trackName || "track"}`
-                : `Cancelled ${item.trackName || "track"}`,
-            inQueue: action === "retry" || cancelling,
-            requestedAt: action === "retry" ? new Date().toISOString() : item.requestedAt,
-          }
-        : item));
+      updateRequests((prev) =>
+        prev.map((item) =>
+          item.jobId === jobId
+            ? {
+                ...item,
+                status: action === "retry" || cancelling ? "processing" : "cancelled",
+                statusLabel:
+                  action === "retry" ? "Searching" : cancelling ? "Cancelling" : "Cancelled",
+                title:
+                  action === "retry"
+                    ? `Searching for ${item.trackName || "track"}`
+                    : cancelling
+                      ? `Cancelling ${item.trackName || "track"}`
+                      : `Cancelled ${item.trackName || "track"}`,
+                inQueue: action === "retry" || cancelling,
+                requestedAt: action === "retry" ? new Date().toISOString() : item.requestedAt,
+              }
+            : item,
+        ),
+      );
       setJobErrors(({ [jobId]: _, ...rest }) => rest);
       void queryClient.invalidateQueries({ queryKey: activityQueryKey });
     } catch (jobError) {
       setJobErrors((prev) => ({
         ...prev,
-        [jobId]: jobError?.response?.data?.message ||
+        [jobId]:
+          jobError?.response?.data?.message ||
           jobError?.response?.data?.error ||
           (action === "cancel" ? "Failed to cancel" : "Failed to retry"),
       }));
@@ -354,7 +366,6 @@ function ActivityPage() {
     },
     [currentTrack?.id, playTrack, togglePlayPause],
   );
-
 
   const emptyState = isQueueView ? QUEUE_EMPTY_STATE : HISTORY_EMPTY_STATE;
 
@@ -425,7 +436,9 @@ function ActivityPage() {
         <div className="artist-error-panel activity-page__error" role="alert">
           <AlertCircle className="artist-error-icon" aria-hidden="true" />
           <h2 className="artist-error-title">Could not load activity.</h2>
-          {error !== "Failed to load activity." ? <p className="artist-error-copy">{error}</p> : null}
+          {error !== "Failed to load activity." ? (
+            <p className="artist-error-copy">{error}</p>
+          ) : null}
           <button
             type="button"
             onClick={() => fetchRequests()}
@@ -466,7 +479,8 @@ function ActivityPage() {
                   </div>
                 );
               }
-              const RowComponent = entry.request.kind === "album_download" ? ActivityAlbumRow : ActivityRequestRow;
+              const RowComponent =
+                entry.request.kind === "album_download" ? ActivityAlbumRow : ActivityRequestRow;
               const row = (
                 <RowComponent
                   key={entry.key}

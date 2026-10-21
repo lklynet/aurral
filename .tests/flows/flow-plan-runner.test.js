@@ -18,7 +18,9 @@ function fakePlanner() {
       child.request = message;
     }
   };
-  child.kill = () => { child.killed = true; };
+  child.kill = () => {
+    child.killed = true;
+  };
   return child;
 }
 

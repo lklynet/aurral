@@ -59,9 +59,12 @@ export function remapLegacyPath(finalPath, playlistRoot = resolveDownloadRoot())
   return resolved;
 }
 
-const folderKey = (name) => name.normalize("NFKC").toLowerCase()
-  .replace(/[\u2018\u2019\u02bc`]/g, "'")
-  .replace(/[\u2010-\u2015]/g, "-");
+const folderKey = (name) =>
+  name
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[\u2018\u2019\u02bc`]/g, "'")
+    .replace(/[\u2010-\u2015]/g, "-");
 
 function existingEntryName(directory, name, isKind) {
   let entries;
@@ -72,10 +75,12 @@ function existingEntryName(directory, name, isKind) {
   }
   if (entries.some((entry) => entry.name === name && isKind(entry))) return name;
   const key = folderKey(name);
-  return entries
-    .filter((entry) => isKind(entry) && folderKey(entry.name) === key)
-    .map((entry) => entry.name)
-    .sort()[0] || null;
+  return (
+    entries
+      .filter((entry) => isKind(entry) && folderKey(entry.name) === key)
+      .map((entry) => entry.name)
+      .sort()[0] || null
+  );
 }
 
 // Names that differ only in case or quote and dash style are one folder, so a
@@ -85,7 +90,11 @@ const existingFolderName = (directory, name) =>
 
 // The file already at this name, however its case or quotes are written.
 export function findLibraryFileVariant(filePath) {
-  const name = existingEntryName(path.dirname(filePath), path.basename(filePath), (entry) => !entry.isDirectory());
+  const name = existingEntryName(
+    path.dirname(filePath),
+    path.basename(filePath),
+    (entry) => !entry.isDirectory(),
+  );
   return name ? path.join(path.dirname(filePath), name) : null;
 }
 

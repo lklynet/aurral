@@ -15,9 +15,8 @@ const FAILURE_COOLDOWN_MS = 30_000;
 
 const libraryView = async (view, search) => {
   if (search.get("preview") === "1") return [];
-  const { libraryListParams, libraryViewQueryOptions, resolveLibrarySection } = await import(
-    "../pages/libraryViewQuery.js"
-  );
+  const { libraryListParams, libraryViewQueryOptions, resolveLibrarySection } =
+    await import("../pages/libraryViewQuery.js");
   if (view.albumId || view.artistId) return [libraryViewQueryOptions(view)];
   const section = resolveLibrarySection(view.section);
   const { sort, direction, pageIndex } = libraryListParams(section, search);
@@ -49,7 +48,10 @@ const ROUTES = [
   {
     path: "/library/playlists/:playlistId",
     module: routeModules.playlist,
-    queries: ({ playlistId }) => [playlistStatusQueryOptions(), playlistJobsQueryOptions(playlistId)],
+    queries: ({ playlistId }) => [
+      playlistStatusQueryOptions(),
+      playlistJobsQueryOptions(playlistId),
+    ],
   },
   {
     path: "/library/playlists",

@@ -56,20 +56,26 @@ async function* walkAudioFiles(directory) {
   try {
     entries = await fs.readdir(directory, { withFileTypes: true });
   } catch {
-    throw new IngestSourceError(`Aurral cannot read ${directory}. Give Aurral access to it, or move it out of the folder.`);
+    throw new IngestSourceError(
+      `Aurral cannot read ${directory}. Give Aurral access to it, or move it out of the folder.`,
+    );
   }
   entries.sort((left, right) => left.name.localeCompare(right.name));
   for (const entry of entries) {
     if (entry.name.startsWith(".") || entry.isSymbolicLink()) continue;
     const entryPath = path.join(directory, entry.name);
     if (entry.isDirectory()) yield* walkAudioFiles(entryPath);
-    else if (entry.isFile() && AUDIO_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) yield entryPath;
+    else if (entry.isFile() && AUDIO_EXTENSIONS.has(path.extname(entry.name).toLowerCase()))
+      yield entryPath;
   }
 }
 
 const overlaps = (left, right) => isPathWithin(left, right) || isPathWithin(right, left);
 
-export async function resolveIngestSource(sourcePath, { downloadRoot = resolveDownloadRoot() } = {}) {
+export async function resolveIngestSource(
+  sourcePath,
+  { downloadRoot = resolveDownloadRoot() } = {},
+) {
   const requested = String(sourcePath || "").trim();
   if (!requested || !path.isAbsolute(requested)) {
     throw new IngestSourceError("Enter the full path of the folder to ingest.");
@@ -80,10 +86,14 @@ export async function resolveIngestSource(sourcePath, { downloadRoot = resolveDo
   const source = await fs.realpath(requested);
   const root = await fs.realpath(downloadRoot).catch(() => path.resolve(downloadRoot));
   if (isPathWithin(root, source)) {
-    throw new IngestSourceError("This folder is already in the Downloads Folder. Use Clean up Library to rename files there.");
+    throw new IngestSourceError(
+      "This folder is already in the Downloads Folder. Use Clean up Library to rename files there.",
+    );
   }
   if (isPathWithin(source, root)) {
-    throw new IngestSourceError("The Downloads Folder is inside this folder. Choose a folder outside it.");
+    throw new IngestSourceError(
+      "The Downloads Folder is inside this folder. Choose a folder outside it.",
+    );
   }
   return source;
 }
@@ -97,7 +107,8 @@ export async function checkIngestSource({ sourcePath, lidarrClient = null } = {}
     firstFile ||= filePath;
     audioFiles += 1;
   }
-  const lidarrRoot = configuredLidarrFolders(lidarrClient).find((root) => overlaps(root, source)) || null;
+  const lidarrRoot =
+    configuredLidarrFolders(lidarrClient).find((root) => overlaps(root, source)) || null;
   return {
     sourcePath: source,
     downloadRoot: path.resolve(downloadRoot),
@@ -113,7 +124,8 @@ const MONITOR_CHOICES = new Set(["none", "tracks", "albums"]);
 
 export function validateIngestOptions({ mode, monitor } = {}) {
   if (!TRANSFER_MODES.has(mode)) throw new IngestSourceError("Choose Move, Copy, or Hardlink.");
-  if (!MONITOR_CHOICES.has(monitor)) throw new IngestSourceError("Choose None, Tracks, or Albums to monitor.");
+  if (!MONITOR_CHOICES.has(monitor))
+    throw new IngestSourceError("Choose None, Tracks, or Albums to monitor.");
 }
 
 async function listSourceFiles(operation) {
@@ -133,22 +145,25 @@ const unknownIdentity = (record) =>
 
 async function planFill(item, record, match, metadata, albums) {
   const durationS = Number(metadata.format?.duration);
-  return planTagFill({
-    filePath: item.sourcePath,
-    album: {
-      releaseGroupMbid: record.releaseGroupMbid || match.album?.release_group_mbid || null,
-      releaseMbid: record.albumMbid || match.album?.mbid || null,
-      title: match.albumName,
-      year: metadata.common?.year || match.album?.release_date || null,
+  return planTagFill(
+    {
+      filePath: item.sourcePath,
+      album: {
+        releaseGroupMbid: record.releaseGroupMbid || match.album?.release_group_mbid || null,
+        releaseMbid: record.albumMbid || match.album?.mbid || null,
+        title: match.albumName,
+        year: metadata.common?.year || match.album?.release_date || null,
+      },
+      artist: { name: match.artistName, mbid: match.artistMbid },
+      file: {
+        title: record.title,
+        trackNumber: record.trackNumber || null,
+        discNumber: record.discNumber || null,
+        durationMs: Number.isFinite(durationS) ? Math.round(durationS * 1000) : null,
+      },
     },
-    artist: { name: match.artistName, mbid: match.artistMbid },
-    file: {
-      title: record.title,
-      trackNumber: record.trackNumber || null,
-      discNumber: record.discNumber || null,
-      durationMs: Number.isFinite(durationS) ? Math.round(durationS * 1000) : null,
-    },
-  }, albums);
+    albums,
+  );
 }
 
 const TAKEN_NAME_REASON =
@@ -157,10 +172,15 @@ const TAKEN_NAME_REASON =
 // Matching tags are not proof: a mistagged demo can claim to be an album
 // track. The Library has the same recording only when the lengths agree.
 async function compareWithLibrary(source, candidates, title) {
-  const copies = await Promise.all(candidates.map(async (targetPath) => ({ targetPath, ...(await readRecording(targetPath)) })));
-  const measured = source.durationMs == null
-    ? []
-    : copies.filter((copy) => copy.durationMs != null).map((copy) => ({ ...copy, gap: source.durationMs - copy.durationMs }));
+  const copies = await Promise.all(
+    candidates.map(async (targetPath) => ({ targetPath, ...(await readRecording(targetPath)) })),
+  );
+  const measured =
+    source.durationMs == null
+      ? []
+      : copies
+          .filter((copy) => copy.durationMs != null)
+          .map((copy) => ({ ...copy, gap: source.durationMs - copy.durationMs }));
   if (!measured.length) {
     return {
       targetPath: candidates[0],
@@ -169,7 +189,9 @@ async function compareWithLibrary(source, candidates, title) {
   }
   const same = measured.filter((copy) => Math.abs(copy.gap) <= SAME_LENGTH_MS);
   if (!same.length) {
-    const nearest = measured.reduce((best, copy) => (Math.abs(copy.gap) < Math.abs(best.gap) ? copy : best));
+    const nearest = measured.reduce((best, copy) =>
+      Math.abs(copy.gap) < Math.abs(best.gap) ? copy : best,
+    );
     return {
       targetPath: nearest.targetPath,
       reason: `Matches ${title}, but differs by ${formatGap(nearest.gap)}. Check its tags.`,
@@ -181,7 +203,9 @@ async function compareWithLibrary(source, candidates, title) {
       reason: `A lossless copy of ${title} is available. To replace the Library's lossy copy, remove it and import again.`,
     };
   }
-  return { targetPath: (same.find((copy) => copy.lossless === source.lossless) || same[0]).targetPath };
+  return {
+    targetPath: (same.find((copy) => copy.lossless === source.lossless) || same[0]).targetPath,
+  };
 }
 
 const plannedIdentity = (record, tags = {}) => {
@@ -191,7 +215,9 @@ const plannedIdentity = (record, tags = {}) => {
     releaseGroupMbid: record.releaseGroupMbid || tags.releaseGroupMbid || null,
     albumMbid: record.albumMbid || tags.releaseMbid || null,
   };
-  const changed = ["trackMbid", "releaseGroupMbid", "albumMbid"].some((field) => planned[field] !== record[field]);
+  const changed = ["trackMbid", "releaseGroupMbid", "albumMbid"].some(
+    (field) => planned[field] !== record[field],
+  );
   return changed ? planned : null;
 };
 
@@ -202,7 +228,8 @@ const plannedIdentity = (record, tags = {}) => {
 async function placeRecord(item, record, metadata, albums, recording) {
   const sameTrack = async (found) => {
     const files = [];
-    for (const file of found.files) if (!differentTracks(recording, await readRecording(file))) files.push(file);
+    for (const file of found.files)
+      if (!differentTracks(recording, await readRecording(file))) files.push(file);
     return { ...found, files };
   };
   const match = await sameTrack(matchLibraryRecord(record));
@@ -247,12 +274,14 @@ async function planItem(operation, item, plannedTargets, albums) {
     }
     return null;
   };
-  const identicalCopy = (targetPath) => mode === "move"
-    ? { status: "pending", targetPath, details: { ...details, action: "remove-duplicate" } }
-    : { status: "duplicate", targetPath, reason: "The Library already has this file.", details };
+  const identicalCopy = (targetPath) =>
+    mode === "move"
+      ? { status: "pending", targetPath, details: { ...details, action: "remove-duplicate" } }
+      : { status: "duplicate", targetPath, reason: "The Library already has this file.", details };
   const sameRecording = async (candidates, title) => {
     const verdict = await compareWithLibrary(recording, candidates, title);
-    if (verdict.reason) return { status: "skipped", targetPath: verdict.targetPath, reason: verdict.reason, details };
+    if (verdict.reason)
+      return { status: "skipped", targetPath: verdict.targetPath, reason: verdict.reason, details };
     return {
       status: "duplicate",
       targetPath: verdict.targetPath,
@@ -266,21 +295,38 @@ async function planItem(operation, item, plannedTargets, albums) {
   }
   const target = buildLibraryTrackPath(
     root,
-    { artistName: match.artistName, albumName: match.albumName, trackName: record.title, trackNumber: record.trackNumber, discNumber: record.discNumber },
+    {
+      artistName: match.artistName,
+      albumName: match.albumName,
+      trackName: record.title,
+      trackNumber: record.trackNumber,
+      discNumber: record.discNumber,
+    },
     path.extname(item.sourcePath),
   );
   if (!isPathInsideRoot(target, root)) {
-    return { status: "skipped", reason: "The file's name does not fit inside the Downloads Folder.", details };
+    return {
+      status: "skipped",
+      reason: "The file's name does not fit inside the Downloads Folder.",
+      details,
+    };
   }
   const taken = findLibraryFileVariant(target);
   if (taken) {
     if (await libraryCopy([taken])) return identicalCopy(taken);
-    const occupant = findLibraryTrackAtPath(taken, { ...record, artistName: match.artistName, albumName: match.albumName });
+    const occupant = findLibraryTrackAtPath(taken, {
+      ...record,
+      artistName: match.artistName,
+      albumName: match.albumName,
+    });
     if (occupant) return sameRecording([taken], occupant.title);
     return { status: "skipped", targetPath: taken, reason: TAKEN_NAME_REASON, details };
   }
   if (plannedTargets.has(libraryPathKey(target))) {
-    const claim = [record.discNumber > 1 && `disc ${record.discNumber}`, record.trackNumber && `track ${record.trackNumber}`]
+    const claim = [
+      record.discNumber > 1 && `disc ${record.discNumber}`,
+      record.trackNumber && `track ${record.trackNumber}`,
+    ]
       .filter(Boolean)
       .join(", ");
     return {
@@ -302,7 +348,12 @@ async function planItem(operation, item, plannedTargets, albums) {
       ...details,
       action: "file",
       ...(fill.tags
-        ? { actions: ["file", "tags"], tags: fill.tags, tagFields: fill.fields, albumId: match.album?.id || null }
+        ? {
+            actions: ["file", "tags"],
+            tags: fill.tags,
+            tagFields: fill.fields,
+            albumId: match.album?.id || null,
+          }
         : {}),
     },
   };
@@ -313,16 +364,26 @@ export async function planIngest(operation, deadline) {
     await listSourceFiles(operation);
     updateLibraryFileOperation(operation.id, { summary: { listed: true } });
   }
-  const plannedTargets = new Set(db.prepare(
-    `SELECT target_path FROM library_file_operation_items
+  const plannedTargets = new Set(
+    db
+      .prepare(
+        `SELECT target_path FROM library_file_operation_items
      WHERE operation_id = ? AND status = 'pending' AND target_path IS NOT NULL`,
-  ).pluck().all(operation.id).map(libraryPathKey));
+      )
+      .pluck()
+      .all(operation.id)
+      .map(libraryPathKey),
+  );
   const albums = new Map();
   while (Date.now() < deadline) {
     const batch = listLibraryFileOperationItems(operation.id, { statuses: ["new"], limit: CHUNK });
     if (!batch.length) return true;
     for (const item of batch) {
-      updateLibraryFileOperationItem(operation.id, item.position, await planItem(operation, item, plannedTargets, albums));
+      updateLibraryFileOperationItem(
+        operation.id,
+        item.position,
+        await planItem(operation, item, plannedTargets, albums),
+      );
       if (Date.now() >= deadline) return false;
     }
   }
@@ -339,7 +400,10 @@ async function removeDuplicateSource(item) {
   }
   await transferSidecars(item.sourcePath, item.targetPath, "move").catch(() => {});
   await fs.unlink(item.sourcePath);
-  return { status: "duplicate", reason: "The Library already had this file, so the source copy was removed." };
+  return {
+    status: "duplicate",
+    reason: "The Library already had this file, so the source copy was removed.",
+  };
 }
 
 // Removing a source the user asked to remove checks it against the Library's
@@ -347,12 +411,24 @@ async function removeDuplicateSource(item) {
 async function removeKeptSource(item) {
   const details = { ...item.details, removable: false };
   if (!(await fs.lstat(item.sourcePath).catch(() => null))) {
-    return { status: "duplicate", reason: "The Library already has this track, and the source file is gone.", details: { ...details, sourceRemoved: true } };
+    return {
+      status: "duplicate",
+      reason: "The Library already has this track, and the source file is gone.",
+      details: { ...details, sourceRemoved: true },
+    };
   }
   if (!(await fs.stat(item.targetPath).catch(() => null))) {
-    return { status: "skipped", reason: "Kept this file because the Library copy is missing. Import again to file it.", details };
+    return {
+      status: "skipped",
+      reason: "Kept this file because the Library copy is missing. Import again to file it.",
+      details,
+    };
   }
-  const verdict = await compareWithLibrary(await readRecording(item.sourcePath), [item.targetPath], item.details.title);
+  const verdict = await compareWithLibrary(
+    await readRecording(item.sourcePath),
+    [item.targetPath],
+    item.details.title,
+  );
   if (verdict.reason) return { status: "skipped", reason: verdict.reason, details };
   await transferSidecars(item.sourcePath, item.targetPath, "move").catch(() => {});
   await fs.unlink(item.sourcePath);
@@ -388,7 +464,10 @@ async function fileItem(operation, item) {
       await placeFile(source, target, mode);
     } catch (error) {
       if (error?.code === "EEXIST") return fileItem(operation, item);
-      return { status: "failed", reason: `Aurral could not ${mode} this file: ${error?.code || error?.message}` };
+      return {
+        status: "failed",
+        reason: `Aurral could not ${mode} this file: ${error?.code || error?.message}`,
+      };
     }
   }
   const sidecars = await transferSidecars(source, target, mode).catch(() => []);
@@ -396,7 +475,10 @@ async function fileItem(operation, item) {
 }
 
 const resolvesToSameFile = async (left, right) => {
-  const [a, b] = await Promise.all([fs.realpath(left).catch(() => null), fs.realpath(right).catch(() => null)]);
+  const [a, b] = await Promise.all([
+    fs.realpath(left).catch(() => null),
+    fs.realpath(right).catch(() => null),
+  ]);
   return Boolean(a) && a === b;
 };
 
@@ -404,8 +486,11 @@ const resolvesToSameFile = async (left, right) => {
 // the untagged album it joined.
 function keepAlbumTogether(albumId, tags) {
   if (!albumId || !tags.releaseGroupMbid) return;
-  const album = db.prepare("SELECT release_group_mbid FROM library_albums WHERE id = ?").get(albumId);
-  if (album && !album.release_group_mbid) rekeyLibraryAlbum(albumId, `release-group:${tags.releaseGroupMbid}`);
+  const album = db
+    .prepare("SELECT release_group_mbid FROM library_albums WHERE id = ?")
+    .get(albumId);
+  if (album && !album.release_group_mbid)
+    rekeyLibraryAlbum(albumId, `release-group:${tags.releaseGroupMbid}`);
 }
 
 // Tags are filled in on the Library's copy once it is in place, so the
@@ -414,7 +499,10 @@ async function fillTags(item) {
   try {
     await writeAudioTags(item.targetPath, item.details.tags, { fillOnly: true });
   } catch (error) {
-    return { status: "done", reason: `Filed, but Aurral could not write the tags: ${error?.message || error}` };
+    return {
+      status: "done",
+      reason: `Filed, but Aurral could not write the tags: ${error?.message || error}`,
+    };
   }
   keepAlbumTogether(item.details.albumId, item.details.tags);
   return { status: "done" };
@@ -424,8 +512,15 @@ async function fillTags(item) {
 // copy. That copy is the source with the planned tags filled in, so the resume
 // finishes it instead of calling it a conflict.
 async function isFilledCopy({ sourcePath, targetPath, details }) {
-  if (!(await fs.stat(sourcePath).catch(() => null)) || !(await fs.stat(targetPath).catch(() => null))) return false;
-  const scratch = path.join(path.dirname(targetPath), `.${randomUUID()}.filled${path.extname(targetPath)}`);
+  if (
+    !(await fs.stat(sourcePath).catch(() => null)) ||
+    !(await fs.stat(targetPath).catch(() => null))
+  )
+    return false;
+  const scratch = path.join(
+    path.dirname(targetPath),
+    `.${randomUUID()}.filled${path.extname(targetPath)}`,
+  );
   try {
     await fs.copyFile(sourcePath, scratch, fs.constants.COPYFILE_FICLONE);
     if (!(await writeAudioTags(scratch, details.tags, { fillOnly: true })).length) return false;
@@ -446,18 +541,27 @@ export async function applyIngestItem(operation, item) {
     return { status: "skipped", reason: LINKED_FOLDER_REASON };
   }
   if (await resolvesToSameFile(item.sourcePath, item.targetPath)) {
-    return { status: "failed", reason: "Skipped: a link in the Downloads Folder already points to this file." };
+    return {
+      status: "failed",
+      reason: "Skipped: a link in the Downloads Folder already points to this file.",
+    };
   }
   if (item.details.action === "remove-duplicate") return removeDuplicateSource(item);
   if (item.details.action === "remove-source") return removeKeptSource(item);
   const tagging = item.details.actions?.includes("tags");
-  if (tagging && await isFilledCopy(item)) {
+  if (tagging && (await isFilledCopy(item))) {
     if (operation.options.mode === "move") await fs.rm(item.sourcePath, { force: true });
-    const sidecars = await transferSidecars(item.sourcePath, item.targetPath, operation.options.mode).catch(() => []);
+    const sidecars = await transferSidecars(
+      item.sourcePath,
+      item.targetPath,
+      operation.options.mode,
+    ).catch(() => []);
     return { ...(await fillTags(item)), details: { ...item.details, sidecars } };
   }
   const result = await fileItem(operation, item);
-  return result.status === "done" && tagging ? { ...(await fillTags(item)), details: result.details } : result;
+  return result.status === "done" && tagging
+    ? { ...(await fillTags(item)), details: result.details }
+    : result;
 }
 
 export function ingestScanRequest(operation, items) {
@@ -476,14 +580,19 @@ export async function finishIngest(operation) {
   restoreUnremovedDuplicates(operation.id);
   const folders = new Map();
   const unfiled = new Set();
-  const items = db.prepare(
-    "SELECT position, source_path, target_path, status, details_json FROM library_file_operation_items WHERE operation_id = ?",
-  ).all(operation.id);
+  const items = db
+    .prepare(
+      "SELECT position, source_path, target_path, status, details_json FROM library_file_operation_items WHERE operation_id = ?",
+    )
+    .all(operation.id);
   const filedFrom = new Map();
   for (const item of items) {
     const folder = path.dirname(item.source_path);
     if (item.status === "done") filedFrom.set(folder, [...(filedFrom.get(folder) || []), item]);
-    const kept = mode === "move" && item.status === "duplicate" && JSON.parse(item.details_json || "{}").removable === true;
+    const kept =
+      mode === "move" &&
+      item.status === "duplicate" &&
+      JSON.parse(item.details_json || "{}").removable === true;
     if (!["done", "duplicate"].includes(item.status) || !item.target_path || kept) {
       unfiled.add(folder);
       continue;
@@ -498,18 +607,28 @@ export async function finishIngest(operation) {
     const entries = await fs.readdir(folder, { withFileTypes: true }).catch(() => []);
     const art = [];
     for (const entry of entries) {
-      if (!entry.isFile() || !ALBUM_IMAGE_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) continue;
+      if (!entry.isFile() || !ALBUM_IMAGE_EXTENSIONS.has(path.extname(entry.name).toLowerCase()))
+        continue;
       const from = path.join(folder, entry.name);
       const to = path.join(target, entry.name);
-      await placeFile(from, to, mode).then(() => art.push(entry.name), async (error) => {
-        if (mode === "move" && error?.code === "EEXIST" && await filesIdentical(from, to).catch(() => false)) {
-          await fs.rm(from, { force: true });
-        }
-      });
+      await placeFile(from, to, mode).then(
+        () => art.push(entry.name),
+        async (error) => {
+          if (
+            mode === "move" &&
+            error?.code === "EEXIST" &&
+            (await filesIdentical(from, to).catch(() => false))
+          ) {
+            await fs.rm(from, { force: true });
+          }
+        },
+      );
     }
     if (!art.length) continue;
     for (const item of filedFrom.get(folder) || []) {
-      updateLibraryFileOperationItem(operation.id, item.position, { details: { ...JSON.parse(item.details_json || "{}"), art } });
+      updateLibraryFileOperationItem(operation.id, item.position, {
+        details: { ...JSON.parse(item.details_json || "{}"), art },
+      });
     }
   }
   if (mode === "move") {
@@ -517,7 +636,11 @@ export async function finishIngest(operation) {
     for (const folder of deepestFirst) await removeEmptyDirectories(folder, sourceRoot);
   }
   const filed = items.some((item) => item.status === "done");
-  const monitor = filed && !operation.summary.monitor && operation.options.monitor && operation.options.monitor !== "none";
+  const monitor =
+    filed &&
+    !operation.summary.monitor &&
+    operation.options.monitor &&
+    operation.options.monitor !== "none";
   const doubles = filed && !operation.summary.doubles;
   if (monitor || doubles || operation.summary.removingSources) {
     updateLibraryFileOperation(operation.id, {
@@ -528,14 +651,21 @@ export async function finishIngest(operation) {
       },
     });
   }
-  return ingestScanRequest(operation, items.map((item) => ({
-    status: item.status,
-    sourcePath: item.source_path,
-    targetPath: item.target_path,
-  })));
+  return ingestScanRequest(
+    operation,
+    items.map((item) => ({
+      status: item.status,
+      sourcePath: item.source_path,
+      targetPath: item.target_path,
+    })),
+  );
 }
 
-const fileExists = (filePath) => fs.lstat(filePath).then(() => true, () => false);
+const fileExists = (filePath) =>
+  fs.lstat(filePath).then(
+    () => true,
+    () => false,
+  );
 
 async function rescan(changedPaths, { includeLidarr }) {
   if (!changedPaths.length) return;
@@ -549,12 +679,18 @@ async function rescan(changedPaths, { includeLidarr }) {
 async function takeBackAlbumArt(folder, art, mode) {
   const entries = await fs.readdir(folder, { withFileTypes: true }).catch(() => null);
   if (!entries) return;
-  if (entries.some((entry) => !entry.isFile() || !ALBUM_IMAGE_EXTENSIONS.has(path.extname(entry.name).toLowerCase()))) {
+  if (
+    entries.some(
+      (entry) =>
+        !entry.isFile() || !ALBUM_IMAGE_EXTENSIONS.has(path.extname(entry.name).toLowerCase()),
+    )
+  ) {
     return;
   }
   for (const [name, sourceFolder] of art) {
     const from = path.join(folder, name);
-    if (mode === "move") await placeFile(from, path.join(sourceFolder, name), "move").catch(() => {});
+    if (mode === "move")
+      await placeFile(from, path.join(sourceFolder, name), "move").catch(() => {});
     else await fs.rm(from, { force: true }).catch(() => {});
   }
   await removeEmptyDirectories(folder, resolveDownloadRoot());
@@ -565,19 +701,26 @@ async function takeBackAlbumArt(folder, art, mode) {
 // Hardlink remove it, since the source still has it, and Move returns it to
 // the source folder to be offered for removal like any source the Library has.
 async function takeBackDouble(operation, item, media, removed) {
-  const others = db.prepare(
-    `SELECT path FROM library_media_files
+  const others = db
+    .prepare(
+      `SELECT path FROM library_media_files
      WHERE track_id = ? AND album_id IS ? AND source = 'aurral' AND available = 1 AND path != ?
      ORDER BY id`,
-  ).pluck().all(media.track_id, media.album_id, item.target_path).filter((other) => !removed.has(other));
+    )
+    .pluck()
+    .all(media.track_id, media.album_id, item.target_path)
+    .filter((other) => !removed.has(other));
   const filed = await readRecording(item.target_path);
   const kept = [];
   for (const other of others) {
-    if (await fileExists(other) && !differentTracks(filed, await readRecording(other))) kept.push(other);
+    if ((await fileExists(other)) && !differentTracks(filed, await readRecording(other)))
+      kept.push(other);
   }
   if (!kept.length) return null;
   const details = JSON.parse(item.details_json || "{}");
-  const title = db.prepare("SELECT title FROM library_tracks WHERE id = ?").pluck().get(media.track_id) || details.title;
+  const title =
+    db.prepare("SELECT title FROM library_tracks WHERE id = ?").pluck().get(media.track_id) ||
+    details.title;
   const verdict = await compareWithLibrary(filed, kept, title);
   if (verdict.reason) return null;
   const sidecars = (details.sidecars || []).map((extension) => [
@@ -600,11 +743,14 @@ async function takeBackDouble(operation, item, media, removed) {
     updateLibraryFileOperationItem(operation.id, item.position, {
       status: "duplicate",
       targetPath: verdict.targetPath,
-      reason: "The Library already had this track in a different file, so Aurral removed the copy it filed.",
+      reason:
+        "The Library already had this track in a different file, so Aurral removed the copy it filed.",
     });
   }
   removed.add(item.target_path);
-  return operation.options.mode === "move" ? [item.target_path, item.source_path] : [item.target_path];
+  return operation.options.mode === "move"
+    ? [item.target_path, item.source_path]
+    : [item.target_path];
 }
 
 async function monitorTracks(operation, placed) {
@@ -620,17 +766,22 @@ async function monitorTracks(operation, placed) {
     for (const albumId of albumIds) {
       const result = await libraryManager.setAurralAlbumMonitoring(albumId, { monitored: true });
       if (result?.error) {
-        logger.warn("library-files", "Ingest could not monitor an album", { albumId, reason: result.error });
+        logger.warn("library-files", "Ingest could not monitor an album", {
+          albumId,
+          reason: result.error,
+        });
       }
     }
   }
 }
 
 async function settleIngest(operation) {
-  const items = db.prepare(
-    `SELECT position, source_path, target_path, details_json FROM library_file_operation_items
+  const items = db
+    .prepare(
+      `SELECT position, source_path, target_path, details_json FROM library_file_operation_items
      WHERE operation_id = ? AND status = 'done' ORDER BY position`,
-  ).all(operation.id);
+    )
+    .all(operation.id);
   let placed = [];
   for (const item of items) {
     const media = getLibraryMediaFile({ source: "aurral", path: item.target_path });
@@ -660,7 +811,8 @@ async function settleIngest(operation) {
         });
       }
     }
-    for (const [folder, images] of art) await takeBackAlbumArt(folder, images, operation.options.mode);
+    for (const [folder, images] of art)
+      await takeBackAlbumArt(folder, images, operation.options.mode);
     placed = placed.filter(({ item }) => !removed.has(item.target_path));
     updateLibraryFileOperation(operation.id, { summary: { doubles: "checked" } });
     await rescan(changed, { includeLidarr: operation.options.mode === "move" });
@@ -675,13 +827,16 @@ async function settleIngest(operation) {
 // tracks it already had and the ingest's Monitor choice wait until the scan
 // has indexed every file the ingest placed.
 export async function settleIngestedMusic() {
-  const pending = db.prepare(
-    `SELECT id FROM library_file_operations
+  const pending = db
+    .prepare(
+      `SELECT id FROM library_file_operations
      WHERE kind = 'ingest' AND status IN ('complete', 'cancelled') AND (
        json_extract(summary_json, '$.monitor') = 'pending'
        OR json_extract(summary_json, '$.doubles') = 'pending')
      ORDER BY id`,
-  ).pluck().all();
+    )
+    .pluck()
+    .all();
   for (const id of pending) {
     try {
       await settleIngest(getLibraryFileOperation(id));

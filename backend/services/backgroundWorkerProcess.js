@@ -11,30 +11,46 @@ const { startWorkerSupervisor, wakeQueuedBackgroundWork, hasQueuedBackgroundWork
 const { getHonkerWorkerStatuses, getWorkerIdleStopMs, shutdownHonkerInfrastructure } =
   await import("./honkerWorkerRuntime.js");
 const { isHonkerScheduleDue } = await import("./honkerDb.js");
-const downloadWorker = group === "downloads"
-  ? (await import("./downloadJobs/downloadWorker.js")).downloadWorker
-  : null;
-const playlistOperationStatus = group === "downloads"
-  ? (await import("./playlists/playlistOperationWorker.js")).getPlaylistOperationWorkerStatus
-  : null;
-const hasApprovalFollowUps = group === "downloads"
-  ? (await import("./downloadJobs/blockedJobReview.js")).hasApprovalFollowUps
-  : () => false;
+const downloadWorker =
+  group === "downloads" ? (await import("./downloadJobs/downloadWorker.js")).downloadWorker : null;
+const playlistOperationStatus =
+  group === "downloads"
+    ? (await import("./playlists/playlistOperationWorker.js")).getPlaylistOperationWorkerStatus
+    : null;
+const hasApprovalFollowUps =
+  group === "downloads"
+    ? (await import("./downloadJobs/blockedJobReview.js")).hasApprovalFollowUps
+    : () => false;
 
 let stopping = false;
 let ownerCommandsInFlight = 0;
 let lastOwnerCommandAt = 0;
 const DOWNLOAD_OWNER_COMMANDS = new Set([
-  "start", "stop", "stopAndDrain", "wake", "researchMissingTracks",
-  "setRetryCyclePaused", "updateWorkerSettings",
-  "checkPlaylistComplete", "blockPlaylist", "unblockPlaylist",
-  "waitForPlaylistIdle", "waitForIdle",
-  "pruneOrphanedJobState", "scheduleReuseLinkRepair",
-  "runQualityUpgradeChecks", "queueQualityUpgradeForJob", "clearPendingByPlaylist",
-  "wakeOrStart", "syncStaticPlaylistImport",
-  "enqueueManualMissingSelection", "enqueueManualReplacementSelection",
-  "approveBlockedJob", "denyBlockedJob",
-  "cancelTrackDownload", "retryTrackDownload",
+  "start",
+  "stop",
+  "stopAndDrain",
+  "wake",
+  "researchMissingTracks",
+  "setRetryCyclePaused",
+  "updateWorkerSettings",
+  "checkPlaylistComplete",
+  "blockPlaylist",
+  "unblockPlaylist",
+  "waitForPlaylistIdle",
+  "waitForIdle",
+  "pruneOrphanedJobState",
+  "scheduleReuseLinkRepair",
+  "runQualityUpgradeChecks",
+  "queueQualityUpgradeForJob",
+  "clearPendingByPlaylist",
+  "wakeOrStart",
+  "syncStaticPlaylistImport",
+  "enqueueManualMissingSelection",
+  "enqueueManualReplacementSelection",
+  "approveBlockedJob",
+  "denyBlockedJob",
+  "cancelTrackDownload",
+  "retryTrackDownload",
 ]);
 
 async function handleDownloadOwnerCommand(message) {
@@ -108,7 +124,11 @@ async function handleDownloadOwnerCommand(message) {
       reason: error?.message || String(error),
     });
     if (process.connected) {
-      process.send({ type: "download-owner-response", requestId, error: error?.message || String(error) });
+      process.send({
+        type: "download-owner-response",
+        requestId,
+        error: error?.message || String(error),
+      });
     }
   }
 }
@@ -148,9 +168,15 @@ process.on("message", (message) => {
     else if (process.connected) process.send({ type: "busy" });
   }
 });
-process.once("SIGTERM", () => { void stop(); });
-process.once("SIGINT", () => { void stop(); });
-process.once("disconnect", () => { void stop(); });
+process.once("SIGTERM", () => {
+  void stop();
+});
+process.once("SIGINT", () => {
+  void stop();
+});
+process.once("disconnect", () => {
+  void stop();
+});
 
 if (group === "scheduler") {
   const { startHonkerScheduler } = await import("./honkerDb.js");
@@ -172,7 +198,8 @@ const heartbeat = setInterval(() => {
       group,
       memory: { rss, heapUsed },
       workers: getHonkerWorkerStatuses().filter((worker) =>
-        isQueueOwnedByGroup(worker.name, group)),
+        isQueueOwnedByGroup(worker.name, group),
+      ),
       ...(downloadOwnerStatus ? { downloadOwnerStatus } : {}),
     });
     if (isIdle()) process.send({ type: "idle" });

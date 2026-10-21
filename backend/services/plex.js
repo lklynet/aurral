@@ -14,7 +14,11 @@ const MUSIC_SCANNER = "Plex Music";
 const TRACK_TYPE = 10; // Plex metadata type for audio tracks
 const READ_TIMEOUT_MS = 30_000;
 
-const xmlParser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "", htmlEntities: true });
+const xmlParser = new XMLParser({
+  ignoreAttributes: false,
+  attributeNamePrefix: "",
+  htmlEntities: true,
+});
 
 function findPlexXmlElements(xml, name) {
   const found = [];
@@ -254,10 +258,7 @@ export class PlexClient {
     if (!this.isConfigured()) return null;
     const name = "Aurral";
     const flowRoot = libraryPath.replace(/\/+$/, "");
-    const locations = [
-      libraryPath,
-      `${flowRoot}/${AURRAL_FLOWS_DIR}`,
-    ];
+    const locations = [libraryPath, `${flowRoot}/${AURRAL_FLOWS_DIR}`];
     // Also match the legacy "Aurral Flow" name so existing libraries are reused
     // and renamed rather than duplicated.
     const findExisting = (libs) =>
@@ -307,11 +308,14 @@ export class PlexClient {
     } catch (err) {
       const detail = err?.response?.data || err.message;
       const status = err?.response?.status;
-      throw Object.assign(new Error(
-        `Plex rejected library creation (${status || "no status"}) for path "${libraryPath}": ${
-          typeof detail === "string" ? detail : JSON.stringify(detail)
-        }`,
-      ), { response: err?.response });
+      throw Object.assign(
+        new Error(
+          `Plex rejected library creation (${status || "no status"}) for path "${libraryPath}": ${
+            typeof detail === "string" ? detail : JSON.stringify(detail)
+          }`,
+        ),
+        { response: err?.response },
+      );
     }
 
     const created = findExisting(await this.getLibraries());
@@ -325,7 +329,10 @@ export class PlexClient {
 
   async scanLibrary(sectionId, folder = null) {
     if (!this.isConfigured() || sectionId == null) return null;
-    return this.request(`/library/sections/${sectionId}/refresh`, folder ? { params: { path: folder } } : {});
+    return this.request(
+      `/library/sections/${sectionId}/refresh`,
+      folder ? { params: { path: folder } } : {},
+    );
   }
 
   /**
@@ -402,16 +409,22 @@ export class PlexClient {
   }
 
   async getPlaylistTrackPaths(excludedIds = new Set()) {
-    const read = (endpoint, params = {}) => readPlaylistPages(async (start) => {
-      const data = await this.request(endpoint, { timeout: 30_000, params: {
-        ...params, "X-Plex-Container-Start": start, "X-Plex-Container-Size": 200,
-      } });
-      const container = data?.MediaContainer;
-      return {
-        items: container?.Metadata ?? (container?.size === 0 ? [] : undefined),
-        total: container?.totalSize,
-      };
-    });
+    const read = (endpoint, params = {}) =>
+      readPlaylistPages(async (start) => {
+        const data = await this.request(endpoint, {
+          timeout: 30_000,
+          params: {
+            ...params,
+            "X-Plex-Container-Start": start,
+            "X-Plex-Container-Size": 200,
+          },
+        });
+        const container = data?.MediaContainer;
+        return {
+          items: container?.Metadata ?? (container?.size === 0 ? [] : undefined),
+          total: container?.totalSize,
+        };
+      });
     const playlists = await read("/playlists", { playlistType: "audio", type: 15 });
     const paths = new Set();
     for (const playlist of playlists) {

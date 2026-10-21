@@ -19,7 +19,9 @@ export function registerUpgradeReadiness(router) {
     try {
       res.status(202).json({ queued: queueUpgradeReadinessRecheck() });
     } catch (error) {
-      logger.error("settings", "Could not queue the Aurral 3.0 readiness check", { reason: error.message });
+      logger.error("settings", "Could not queue the Aurral 3.0 readiness check", {
+        reason: error.message,
+      });
       res.status(500).json({ error: "Failed to queue the Aurral 3.0 readiness check" });
     }
   });

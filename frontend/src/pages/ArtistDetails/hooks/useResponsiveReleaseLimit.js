@@ -6,10 +6,7 @@ const RELEASE_GRID_GAP = 12;
 export const getResponsiveReleaseLimit = (width, cardMinWidth = RELEASE_CARD_MIN_WIDTH) =>
   Math.max(
     1,
-    Math.floor(
-      (Math.max(0, Number(width)) + RELEASE_GRID_GAP) /
-        (cardMinWidth + RELEASE_GRID_GAP),
-    ),
+    Math.floor((Math.max(0, Number(width)) + RELEASE_GRID_GAP) / (cardMinWidth + RELEASE_GRID_GAP)),
   );
 
 export function useResponsiveReleaseLimit({ cardMinWidth = RELEASE_CARD_MIN_WIDTH } = {}) {

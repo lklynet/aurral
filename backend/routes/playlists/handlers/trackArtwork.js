@@ -12,14 +12,15 @@ import { canAccessJobThroughPlaylist } from "./jobs.js";
 
 const artworkUploadParser = express.raw({
   limit: "8mb",
-  type: (req) => String(req.headers["content-type"] || "").toLowerCase().startsWith("image/"),
+  type: (req) =>
+    String(req.headers["content-type"] || "")
+      .toLowerCase()
+      .startsWith("image/"),
 });
 
 function getAccessibleJob(req) {
   const job = downloadTracker.getJob(req.params.jobId);
-  return job && canAccessJobThroughPlaylist(req.user, job, req.query?.playlistId)
-    ? job
-    : null;
+  return job && canAccessJobThroughPlaylist(req.user, job, req.query?.playlistId) ? job : null;
 }
 
 function canEditArtwork(req, res, next) {
@@ -106,13 +107,8 @@ export function registerTrackArtworkManagement(router) {
     },
   );
 
-  router.delete(
-    "/track-artwork/:jobId",
-    canEditArtwork,
-    requireAccessibleJob,
-    async (req, res) => {
-      await removeCustomArtwork("playlist-track", req.params.jobId);
-      return res.json({ ok: true });
-    },
-  );
+  router.delete("/track-artwork/:jobId", canEditArtwork, requireAccessibleJob, async (req, res) => {
+    await removeCustomArtwork("playlist-track", req.params.jobId);
+    return res.json({ ok: true });
+  });
 }

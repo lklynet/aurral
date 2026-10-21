@@ -27,10 +27,17 @@ test("health, login, and authenticated navigation work", async ({ page }) => {
 
 test("sign-in explains a rate limit instead of reporting bad credentials", async ({ page }) => {
   await page.route("**/api/auth/login", (route) =>
-    route.fulfill({ status: 429, contentType: "text/plain", body: "Too many requests, please try again later." }));
+    route.fulfill({
+      status: 429,
+      contentType: "text/plain",
+      body: "Too many requests, please try again later.",
+    }),
+  );
   await page.goto("/");
   await page.getByLabel("Username").fill("rate-limited-user");
   await page.getByLabel("Password").fill("not-checked");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(page.getByRole("alert")).toHaveText("Too many sign-in attempts. Wait a few minutes, then try again.");
+  await expect(page.getByRole("alert")).toHaveText(
+    "Too many sign-in attempts. Wait a few minutes, then try again.",
+  );
 });

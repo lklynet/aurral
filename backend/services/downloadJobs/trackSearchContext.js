@@ -1,7 +1,4 @@
-import {
-  lastfmRequest,
-  musicbrainzResolveArtistMbidByName,
-} from "../apiClients/index.js";
+import { lastfmRequest, musicbrainzResolveArtistMbidByName } from "../apiClients/index.js";
 import {
   getArtistByMbid,
   getAlbumByMbid,
@@ -32,8 +29,7 @@ function rankCandidates(candidates, expectedTitle, expectedYear = null) {
   const targetYear = getYear(expectedYear);
   return [...list]
     .map((candidate) => {
-      const title =
-        candidate?.title || candidate?.["release-group"]?.title || "";
+      const title = candidate?.title || candidate?.["release-group"]?.title || "";
       const year =
         candidate?.["first-release-date"] ||
         candidate?.date ||
@@ -91,12 +87,9 @@ async function holdsTrack(albumMbid, track) {
   if (!context.identityTracks?.length) {
     return scoreTextMatchBase(context.albumName, track.trackName, MATCHER_OPTIONS) >= 85;
   }
-  return Boolean(matchTrackByTitle(
-    context.identityTracks,
-    track.trackName,
-    track.trackNumber,
-    track.discNumber,
-  ));
+  return Boolean(
+    matchTrackByTitle(context.identityTracks, track.trackName, track.trackNumber, track.discNumber),
+  );
 }
 
 const UNREACHABLE = Object.freeze({ unreachable: true });
@@ -199,8 +192,8 @@ export function matchTrackByTitle(tracks, trackName, trackNumber = null, discNum
   const expectedTrackNumber = Number(trackNumber);
   const expectedDiscNumber = Number(discNumber) > 0 ? Number(discNumber) : 1;
   const positionMatch = (track) =>
-    (Number(track.trackNumber) === expectedTrackNumber ? 2 : 0)
-    + (Number(track.discNumber || 1) === expectedDiscNumber ? 1 : 0);
+    (Number(track.trackNumber) === expectedTrackNumber ? 2 : 0) +
+    (Number(track.discNumber || 1) === expectedDiscNumber ? 1 : 0);
   const best =
     [...(Array.isArray(tracks) ? tracks : [])]
       .filter((track) => sameVersion(track?.title, safeTrackName))
@@ -219,26 +212,40 @@ export function matchTrackByTitle(tracks, trackName, trackNumber = null, discNum
 }
 
 function applyReleaseContext(base, releaseContext) {
-  const existingArtistMbid = String(base.artistMbid || "").trim().toLowerCase();
-  const creditedArtist = releaseContext?.artists?.find((artist) =>
-    artist?.id && String(artist.id).trim().toLowerCase() === existingArtistMbid)
-    || releaseContext?.artists?.find((artist) =>
-      artist?.id && isCreditedArtist(base.artistName, artist));
+  const existingArtistMbid = String(base.artistMbid || "")
+    .trim()
+    .toLowerCase();
+  const creditedArtist =
+    releaseContext?.artists?.find(
+      (artist) => artist?.id && String(artist.id).trim().toLowerCase() === existingArtistMbid,
+    ) ||
+    releaseContext?.artists?.find(
+      (artist) => artist?.id && isCreditedArtist(base.artistName, artist),
+    );
   if (creditedArtist) {
     base.artistMbid = creditedArtist.id;
   }
   if (releaseContext?.releaseYear && !base.releaseYear) {
     base.releaseYear = releaseContext.releaseYear;
   }
-  const titleMatchedTrack = [releaseContext?.tracks, releaseContext?.identityTracks]
-    .reduce((found, tracks) => found || matchTrackByTitle(tracks, base.trackName, base.trackNumber, base.discNumber), null);
-  const existingTrackMbid = String(base.trackMbid || "").trim().toLowerCase();
+  const titleMatchedTrack = [releaseContext?.tracks, releaseContext?.identityTracks].reduce(
+    (found, tracks) =>
+      found || matchTrackByTitle(tracks, base.trackName, base.trackNumber, base.discNumber),
+    null,
+  );
+  const existingTrackMbid = String(base.trackMbid || "")
+    .trim()
+    .toLowerCase();
   let identityMatchedTrack = null;
   if (existingTrackMbid) {
     identityMatchedTrack = matchTrackByTitle(
-      releaseContext?.identityTracks?.filter(
-        (track) => [track?.recordingId, ...(track?.recordingAliases || [])]
-          .some((id) => String(id || "").trim().toLowerCase() === existingTrackMbid),
+      releaseContext?.identityTracks?.filter((track) =>
+        [track?.recordingId, ...(track?.recordingAliases || [])].some(
+          (id) =>
+            String(id || "")
+              .trim()
+              .toLowerCase() === existingTrackMbid,
+        ),
       ),
       base.trackName,
       base.trackNumber,
@@ -247,7 +254,10 @@ function applyReleaseContext(base, releaseContext) {
     if (!identityMatchedTrack) {
       identityMatchedTrack = matchTrackByTitle(
         releaseContext?.identityTracks?.filter(
-          (track) => String(track?.id || "").trim().toLowerCase() === existingTrackMbid,
+          (track) =>
+            String(track?.id || "")
+              .trim()
+              .toLowerCase() === existingTrackMbid,
         ),
         base.trackName,
         base.trackNumber,
@@ -286,13 +296,29 @@ function applyReleaseContext(base, releaseContext) {
 // Files tagged before MusicBrainz merged a recording carry the old ID, on
 // whichever release of the group listed it.
 function mergedRecordingIds(releaseContext, recordingMbid) {
-  const current = String(recordingMbid || "").trim().toLowerCase();
+  const current = String(recordingMbid || "")
+    .trim()
+    .toLowerCase();
   if (!current) return [];
   const merged = (releaseContext?.identityTracks || [])
-    .filter((track) => String(track?.recordingId || "").trim().toLowerCase() === current)
+    .filter(
+      (track) =>
+        String(track?.recordingId || "")
+          .trim()
+          .toLowerCase() === current,
+    )
     .flatMap((track) => track.recordingAliases || []);
-  return [...new Set(merged.map((entry) => String(entry || "").trim().toLowerCase())
-    .filter((entry) => entry && entry !== current))];
+  return [
+    ...new Set(
+      merged
+        .map((entry) =>
+          String(entry || "")
+            .trim()
+            .toLowerCase(),
+        )
+        .filter((entry) => entry && entry !== current),
+    ),
+  ];
 }
 
 function mapReleaseContextTracks(release) {
@@ -321,8 +347,9 @@ async function fetchReleaseContext(albumMbid) {
   const promise = (async () => {
     try {
       const album = await getAlbumByMbid(key);
-      const artists = (Array.isArray(album?.artists) ? album.artists : [])
-        .toSorted((left, right) => (right.id === album.artistId) - (left.id === album.artistId));
+      const artists = (Array.isArray(album?.artists) ? album.artists : []).toSorted(
+        (left, right) => (right.id === album.artistId) - (left.id === album.artistId),
+      );
       const pickedRelease = selectAlbumRelease(album);
       if (!pickedRelease) {
         return {
@@ -336,8 +363,9 @@ async function fetchReleaseContext(albumMbid) {
         };
       }
       const tracks = mapReleaseContextTracks(pickedRelease);
-      const identityTracks = (Array.isArray(album?.releases) ? album.releases : [])
-        .flatMap(mapReleaseContextTracks);
+      const identityTracks = (Array.isArray(album?.releases) ? album.releases : []).flatMap(
+        mapReleaseContextTracks,
+      );
       return {
         albumName: String(album?.title || "").trim() || null,
         artists,
@@ -374,7 +402,6 @@ async function fetchLastfmTrackInfo(track) {
   }
 }
 
-
 // The edition the job asks for decides its place, length, and the album's
 // whole tracklist, so they all describe one release.
 async function applyReleaseManifest(base, { guessedRecording = false } = {}) {
@@ -398,11 +425,13 @@ async function applyReleaseManifest(base, { guessedRecording = false } = {}) {
 // recording ID is still checked against the cached BrainzMash tracklist so
 // jobs created before that rule can be repaired safely.
 function hasReleaseIdentity(track) {
-  return Boolean(track.trackMbid && track.albumMbid)
-    && track.durationMs > 0
-    && Number(track.trackNumber) > 0
-    && Array.isArray(track.albumTrackTitles)
-    && track.albumTrackTitles.length > 0;
+  return (
+    Boolean(track.trackMbid && track.albumMbid) &&
+    track.durationMs > 0 &&
+    Number(track.trackNumber) > 0 &&
+    Array.isArray(track.albumTrackTitles) &&
+    track.albumTrackTitles.length > 0
+  );
 }
 
 // `metadataUnreachable` says the album named by the track could not be read
@@ -437,13 +466,21 @@ export async function resolveTrackSearchContext(track) {
   if (base.albumMbid) {
     releaseContext = await fetchReleaseContext(base.albumMbid);
     unreachable = !releaseContext;
-    const otherAlbum = releaseContext?.albumName
-      && base.albumName
-      && !matchesAlbumTitle(releaseContext.albumName, base.albumName);
-    const credited = releaseContext?.artists?.some((artist) =>
-      (base.artistMbid && String(artist?.id || "").toLowerCase() === base.artistMbid.toLowerCase())
-      || isCreditedArtist(base.artistName, artist));
-    if (releaseContext?.unknown || otherAlbum || (releaseContext && (!credited || !(await holdsTrack(base.albumMbid, base))))) {
+    const otherAlbum =
+      releaseContext?.albumName &&
+      base.albumName &&
+      !matchesAlbumTitle(releaseContext.albumName, base.albumName);
+    const credited = releaseContext?.artists?.some(
+      (artist) =>
+        (base.artistMbid &&
+          String(artist?.id || "").toLowerCase() === base.artistMbid.toLowerCase()) ||
+        isCreditedArtist(base.artistName, artist),
+    );
+    if (
+      releaseContext?.unknown ||
+      otherAlbum ||
+      (releaseContext && (!credited || !(await holdsTrack(base.albumMbid, base))))
+    ) {
       base.albumMbid = null;
       base.releaseMbid = null;
       base.trackMbid = null;
@@ -520,8 +557,11 @@ export async function resolveTrackSearchContext(track) {
     const matchedTrack = applyReleaseContext(base, releaseContext);
     const releaseTrack = await applyReleaseManifest(base, { guessedRecording });
     const pin = String(base.releaseMbid || "").toLowerCase();
-    if (!releaseTrack && releaseContext?.releaseIds
-      && !releaseContext.releaseIds.some((id) => String(id).toLowerCase() === pin)) {
+    if (
+      !releaseTrack &&
+      releaseContext?.releaseIds &&
+      !releaseContext.releaseIds.some((id) => String(id).toLowerCase() === pin)
+    ) {
       base.releaseMbid = null;
     }
     matchedTrackDurationMs = releaseTrack?.durationMs || matchedTrack?.durationMs || null;

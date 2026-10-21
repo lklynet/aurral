@@ -18,7 +18,9 @@ export const showFavoriteRemoved = (toast, { name, removed, restore, revert, onR
             onRestored?.();
           } catch {
             revert();
-            toast.showError(`Could not add ${label} back to favorites. It is still removed. Try again from its menu.`);
+            toast.showError(
+              `Could not add ${label} back to favorites. It is still removed. Try again from its menu.`,
+            );
           }
         },
       },

@@ -27,7 +27,11 @@ export const collectSeedTags = async (seeds, sourceHealth) => {
   seeds.forEach((seed, index) => {
     const tags = tagLists[index];
     const tagMapKey = getSeedTagMapKey(seed);
-    if (tagMapKey) tagMap.set(tagMapKey, tags.map((tag) => tag.name));
+    if (tagMapKey)
+      tagMap.set(
+        tagMapKey,
+        tags.map((tag) => tag.name),
+      );
     for (const tag of tags) {
       tagWeights.set(
         tag.name,
@@ -42,7 +46,9 @@ export const collectSeedTags = async (seeds, sourceHealth) => {
 export const buildTagProfile = (tagWeights = new Map()) => {
   const profileTagWeights = new Map();
   for (const [tag, weight] of tagWeights.entries()) {
-    const normalized = String(tag || "").trim().toLowerCase();
+    const normalized = String(tag || "")
+      .trim()
+      .toLowerCase();
     if (!normalized) continue;
     profileTagWeights.set(normalized, Number(weight || 0));
   }
@@ -66,10 +72,15 @@ export const hydrateRecommendationCandidateTags = async ({
 
   for (let index = 0; index < hydrationLimit; index += 1) {
     if (canInheritTagsFromSeeds(items[index])) {
-      items[index] = applyHydratedCandidateTags(items[index], items[index].tags, profileTagWeights, {
-        ...options,
-        source: "inherited",
-      });
+      items[index] = applyHydratedCandidateTags(
+        items[index],
+        items[index].tags,
+        profileTagWeights,
+        {
+          ...options,
+          source: "inherited",
+        },
+      );
     } else {
       fetchIndexes.push(index);
     }

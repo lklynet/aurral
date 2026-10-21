@@ -6,7 +6,10 @@ const SEARCH_RESULT_TTL_SECONDS = 15 * 60;
 const results = createCache(SEARCH_RESULT_TTL_SECONDS, 200);
 
 function cacheKey(source, query) {
-  return `${source}\0${String(query || "").trim().toLowerCase().replace(/\s+/g, " ")}`;
+  return `${source}\0${String(query || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")}`;
 }
 
 export function getCachedSearchResults(source, query) {

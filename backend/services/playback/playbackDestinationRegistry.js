@@ -36,11 +36,13 @@ export class PlaybackDestinationRegistry {
 
   async runOn(keys, operation, ...args) {
     return Promise.all(
-      this.destinations.filter(
-        (destination) => (!keys || keys.includes(destination.key))
-          && (DELETE_OPERATIONS.has(operation) || destination.isConfigured()),
-      ).map(
-        async (destination) => {
+      this.destinations
+        .filter(
+          (destination) =>
+            (!keys || keys.includes(destination.key)) &&
+            (DELETE_OPERATIONS.has(operation) || destination.isConfigured()),
+        )
+        .map(async (destination) => {
           let result;
           try {
             result = await destination[operation](...args);
@@ -58,8 +60,7 @@ export class PlaybackDestinationRegistry {
             );
           }
           return { destination: destination.name, key: destination.key, operation, ...result };
-        },
-      ),
+        }),
     );
   }
 }

@@ -135,21 +135,16 @@ export function useArtistDetailsLibrary({
   );
   const downloadStatusesQuery = useQuery({
     queryKey: queryKeys.downloadStatus(downloadStatusIds),
-    queryFn: ({ signal }) =>
-      getDownloadStatus(downloadStatusIds, { signal, bypassCache: true }),
+    queryFn: ({ signal }) => getDownloadStatus(downloadStatusIds, { signal, bypassCache: true }),
     enabled: Boolean(libraryArtist && downloadStatusIds.length),
     staleTime: 4_000,
     refetchInterval: (currentQuery) => {
-      if (
-        downloadStatusWsConnected ||
-        (typeof document !== "undefined" && document.hidden)
-      ) {
+      if (downloadStatusWsConnected || (typeof document !== "undefined" && document.hidden)) {
         return false;
       }
       const statuses = currentQuery.state.data || {};
-      const hasActiveDownloads = Object.values(statuses).some((status) =>
-        status &&
-        ["downloading", "processing", "adding"].includes(status.status),
+      const hasActiveDownloads = Object.values(statuses).some(
+        (status) => status && ["downloading", "processing", "adding"].includes(status.status),
       );
       return hasActiveDownloads ? 15_000 : false;
     },
@@ -180,9 +175,7 @@ export function useArtistDetailsLibrary({
       if (typeof document !== "undefined" && document.hidden) return false;
       const statuses = downloadStatusesQuery.data || {};
       const hasActiveDownloads = Object.values(statuses).some(
-        (status) =>
-          status &&
-          ["downloading", "processing", "adding"].includes(status.status),
+        (status) => status && ["downloading", "processing", "adding"].includes(status.status),
       );
       return hasActiveDownloads ? 30_000 : false;
     },
@@ -198,8 +191,13 @@ export function useArtistDetailsLibrary({
       const previous = queryClient.getQueryData(queryKey);
       const optimistic = queryClient.setQueryData(queryKey, (current) =>
         current
-          ? { ...current, added: true, monitorOption: payload.monitorOption || current.monitorOption || "none" }
-          : current);
+          ? {
+              ...current,
+              added: true,
+              monitorOption: payload.monitorOption || current.monitorOption || "none",
+            }
+          : current,
+      );
       return { queryKey, previous, optimistic };
     },
     onError: (_error, _payload, context) => {
@@ -209,7 +207,9 @@ export function useArtistDetailsLibrary({
     },
     onSuccess: () => invalidateLibraryQueries(),
     onSettled: (_data, _error, payload) =>
-      queryClient.invalidateQueries({ queryKey: queryKeys.artistMonitoring(payload.foreignArtistId) }),
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.artistMonitoring(payload.foreignArtistId),
+      }),
   });
   const requestAlbumMutation = useMutation({
     mutationFn: requestAlbumFromSearch,
@@ -237,11 +237,7 @@ export function useArtistDetailsLibrary({
     return Object.fromEntries(
       Object.entries(statuses).map(([albumId, status]) => {
         const overrideAt = reSearchOverrides[albumId];
-        if (
-          overrideAt != null &&
-          status?.status === "failed" &&
-          now - overrideAt < 5 * 60 * 1000
-        ) {
+        if (overrideAt != null && status?.status === "failed" && now - overrideAt < 5 * 60 * 1000) {
           return [albumId, { ...status, status: "searching" }];
         }
         return [albumId, status];
@@ -365,7 +361,6 @@ export function useArtistDetailsLibrary({
     });
   };
 
-
   const applyCustomizeDefaults = (preferences) => {
     const nextRootFolderPath =
       preferences?.savedDefaults?.rootFolderPath || preferences?.fallbacks?.rootFolderPath || "";
@@ -418,14 +413,16 @@ export function useArtistDetailsLibrary({
     if (addArtistMutation.isPending) return false;
     setCustomizeAddError(null);
     try {
-      const result = await addArtistMutation.mutateAsync(buildArtistAddPayload({
-        artistMbid: artist.id,
-        artistName: artist.name,
-        quality: appSettings?.quality || "standard",
-        managedBy,
-        lidarrOptions,
-        ...(monitorOption ? { monitorOption } : {}),
-      }));
+      const result = await addArtistMutation.mutateAsync(
+        buildArtistAddPayload({
+          artistMbid: artist.id,
+          artistName: artist.name,
+          quality: appSettings?.quality || "standard",
+          managedBy,
+          lidarrOptions,
+          ...(monitorOption ? { monitorOption } : {}),
+        }),
+      );
       let fullArtist = await resolveArtistFromAddResponse(result, {
         refresh: true,
         hydrateAlbums: true,
@@ -439,7 +436,14 @@ export function useArtistDetailsLibrary({
       if (!fullArtist) {
         throw new Error("Artist is taking longer than expected to add");
       }
-      showSuccess(describeArtistAdd({ name: artist.name, manager: managedBy, monitorOption, response: result }));
+      showSuccess(
+        describeArtistAdd({
+          name: artist.name,
+          manager: managedBy,
+          monitorOption,
+          response: result,
+        }),
+      );
       return true;
     } catch (err) {
       const conflict = settleLibraryOwnerConflict(err);
@@ -455,8 +459,8 @@ export function useArtistDetailsLibrary({
         return false;
       }
       const message = `Could not add ${artist.name}. Nothing was added. ${
-          err.response?.data?.message || err.response?.data?.error || err.message || "Try again."
-        }`;
+        err.response?.data?.message || err.response?.data?.error || err.message || "Try again."
+      }`;
       if (showAddCustomizeModal) setCustomizeAddError(message);
       else showError(message);
       return false;
@@ -464,11 +468,15 @@ export function useArtistDetailsLibrary({
   };
 
   const handleCustomizeAddToLibrary = async () => {
-    const success = await addArtistWithOptions("lidarr", {
-      rootFolderPath: customizeRootFolderPath || null,
-      qualityProfileId: customizeQualityProfileId ? Number(customizeQualityProfileId) : null,
-      tagId: customizeTagId ? Number(customizeTagId) : null,
-    }, customizeMonitorOption || null);
+    const success = await addArtistWithOptions(
+      "lidarr",
+      {
+        rootFolderPath: customizeRootFolderPath || null,
+        qualityProfileId: customizeQualityProfileId ? Number(customizeQualityProfileId) : null,
+        tagId: customizeTagId ? Number(customizeTagId) : null,
+      },
+      customizeMonitorOption || null,
+    );
     if (success) {
       setShowAddCustomizeModal(false);
       await queryClient.invalidateQueries({ queryKey: queryKeys.artistMonitoring(artist?.id) });
@@ -484,14 +492,16 @@ export function useArtistDetailsLibrary({
         throw new Error("Artist information not available");
       }
 
-      const result = await requestAlbumMutation.mutateAsync(buildAlbumRequestPayload({
-        albumMbid: albumId,
-        albumName: title,
-        artistMbid: artist.id,
-        artistName: artist.name,
-        managedBy,
-        triggerSearch: true,
-      }));
+      const result = await requestAlbumMutation.mutateAsync(
+        buildAlbumRequestPayload({
+          albumMbid: albumId,
+          albumName: title,
+          artistMbid: artist.id,
+          artistName: artist.name,
+          managedBy,
+          triggerSearch: true,
+        }),
+      );
       const addedArtist = result?.artist;
       const addedAlbum = result?.album;
       if (!addedArtist?.id || !addedAlbum?.id) {
@@ -525,15 +535,12 @@ export function useArtistDetailsLibrary({
       const nextDownloadStatusIds = [
         ...new Set([...downloadStatusIds, String(addedAlbum.id)].filter(Boolean)),
       ];
-      queryClient.setQueryData(
-        queryKeys.downloadStatus(nextDownloadStatusIds),
-        (previous = {}) => {
-          const next = { ...previous };
-          delete next[`pending-${albumId}`];
-          next[addedAlbum.id] = { status: result.status || "searching" };
-          return next;
-        },
-      );
+      queryClient.setQueryData(queryKeys.downloadStatus(nextDownloadStatusIds), (previous = {}) => {
+        const next = { ...previous };
+        delete next[`pending-${albumId}`];
+        next[addedAlbum.id] = { status: result.status || "searching" };
+        return next;
+      });
       const outcome = describeAlbumRequestResult(result, title, managedBy);
       (outcome.kind === "info" ? showInfo : showSuccess)(outcome.message);
     } catch (err) {
@@ -558,13 +565,15 @@ export function useArtistDetailsLibrary({
   const searchLibraryAlbum = async (album) => {
     if (resolveAlbumManager(album) === "aurral") {
       if (!album.monitored) return setAurralAlbumMonitoring(album.id, true);
-      return requestAlbumFromSearch(buildAurralAlbumRetryPayload({
-        album,
-        artist: {
-          mbid: album.artistMbid || libraryArtist?.foreignArtistId || libraryArtist?.mbid,
-          name: album.artistName || libraryArtist?.artistName,
-        },
-      }));
+      return requestAlbumFromSearch(
+        buildAurralAlbumRetryPayload({
+          album,
+          artist: {
+            mbid: album.artistMbid || libraryArtist?.foreignArtistId || libraryArtist?.mbid,
+            name: album.artistName || libraryArtist?.artistName,
+          },
+        }),
+      );
     }
     if (!album.monitored) {
       await updateAlbumMutation.mutateAsync({ id: album.id, data: { ...album, monitored: true } });
@@ -597,13 +606,10 @@ export function useArtistDetailsLibrary({
       setReSearchOverrides(overrideNext);
       const album = libraryAlbums.find((a) => a.id === libraryAlbumId);
       if (!album) throw new Error("Album not found in library");
-      queryClient.setQueryData(
-        queryKeys.downloadStatus(downloadStatusIds),
-        (previous = {}) => ({
-          ...previous,
-          [overrideKey]: { status: "searching" },
-        }),
-      );
+      queryClient.setQueryData(queryKeys.downloadStatus(downloadStatusIds), (previous = {}) => ({
+        ...previous,
+        [overrideKey]: { status: "searching" },
+      }));
       const result = await searchLibraryAlbum(album);
       setLibraryAlbums((prev) =>
         prev.map((a) => (a.id === libraryAlbumId ? { ...a, monitored: true } : a)),
@@ -662,7 +668,9 @@ export function useArtistDetailsLibrary({
       queryClient.setQueryData(queryKeys.downloadStatus(downloadStatusIds), nextStatuses);
 
       const results = await Promise.all(eligibleAlbums.map(searchLibraryAlbum));
-      const blockedAlbums = eligibleAlbums.filter((_album, index) => isBlockedSearch(results[index]));
+      const blockedAlbums = eligibleAlbums.filter((_album, index) =>
+        isBlockedSearch(results[index]),
+      );
 
       setLibraryAlbums((prev) =>
         prev.map((album) =>
@@ -678,9 +686,7 @@ export function useArtistDetailsLibrary({
         showInfo("Nothing is downloading. Open an album to see why.");
         return;
       }
-      showSuccess(
-        `Triggered search for ${searched} missing download${searched === 1 ? "" : "s"}`,
-      );
+      showSuccess(`Triggered search for ${searched} missing download${searched === 1 ? "" : "s"}`);
     } catch (err) {
       showError(
         `Failed to re-search missing downloads: ${err.response?.data?.message || err.message}`,
@@ -714,15 +720,19 @@ export function useArtistDetailsLibrary({
         });
         deletedAlbumAtRef.current[libraryAlbum.id] = Date.now();
         setLibraryAlbums((prev) => prev.filter((a) => a.id !== libraryAlbum.id));
-        showSuccess(`Removed ${title} from library${deleteAlbumFiles ? " and deleted its files" : ""}`);
+        showSuccess(
+          `Removed ${title} from library${deleteAlbumFiles ? " and deleted its files" : ""}`,
+        );
       } else if (deleteAlbumFiles) {
         await deleteAlbumMutation.mutateAsync({ id: libraryAlbum.id, deleteFiles: true });
         deletedAlbumAtRef.current[libraryAlbum.id] = Date.now();
         setLibraryAlbums((prev) => prev.filter((a) => a.id !== libraryAlbum.id));
         showSuccess(`Deleted ${title} and files.`);
       } else {
-        const setMonitored = (monitored) => setLibraryAlbums((prev) =>
-          prev.map((a) => (a.id === libraryAlbum.id ? { ...a, monitored } : a)));
+        const setMonitored = (monitored) =>
+          setLibraryAlbums((prev) =>
+            prev.map((a) => (a.id === libraryAlbum.id ? { ...a, monitored } : a)),
+          );
         unmonitoredAtRef.current[libraryAlbum.id] = Date.now();
         setMonitored(false);
         setShowDeleteAlbumModal(null);
@@ -740,11 +750,12 @@ export function useArtistDetailsLibrary({
       }
       setShowDeleteAlbumModal(null);
     } catch (err) {
-      const action = showDeleteAlbumModal.managedBy === "aurral"
-        ? "remove"
-        : deleteAlbumFiles
-          ? "delete"
-          : "unmonitor";
+      const action =
+        showDeleteAlbumModal.managedBy === "aurral"
+          ? "remove"
+          : deleteAlbumFiles
+            ? "delete"
+            : "unmonitor";
       showError(
         `Could not ${action} ${title}. ${action === "unmonitor" ? "Nothing changed." : "Review the album before trying again."} ${
           err.response?.data?.message || err.response?.data?.error || err.message || ""
@@ -860,19 +871,19 @@ export function useArtistDetailsLibrary({
 
     const hasNewlyAdded = Object.keys(statuses).some(
       (albumId) =>
-        statuses[albumId]?.status === "added" &&
-        previousStatuses[albumId]?.status !== "added",
+        statuses[albumId]?.status === "added" && previousStatuses[albumId]?.status !== "added",
     );
     const hasActiveDownloads = Object.values(statuses).some(
-      (status) =>
-        status &&
-        ["downloading", "processing", "adding"].includes(status.status),
+      (status) => status && ["downloading", "processing", "adding"].includes(status.status),
     );
     if (!hasNewlyAdded && !hasActiveDownloads) return undefined;
 
-    const timeoutId = setTimeout(() => {
-      void refetchLibraryAlbums().catch(() => {});
-    }, hasNewlyAdded ? 2000 : 5000);
+    const timeoutId = setTimeout(
+      () => {
+        void refetchLibraryAlbums().catch(() => {});
+      },
+      hasNewlyAdded ? 2000 : 5000,
+    );
     return () => clearTimeout(timeoutId);
   }, [downloadStatusSnapshot, libraryArtist?.id, refetchLibraryAlbums]);
 

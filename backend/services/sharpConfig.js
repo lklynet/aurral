@@ -6,9 +6,9 @@ const SHARP_CONCURRENCY = Math.max(
 let sharpReady;
 
 export default function getSharp() {
-  return sharpReady ||= import("sharp").then(({ default: sharp }) => {
+  return (sharpReady ||= import("sharp").then(({ default: sharp }) => {
     sharp.concurrency(SHARP_CONCURRENCY);
     sharp.cache(false);
     return sharp;
-  });
+  }));
 }

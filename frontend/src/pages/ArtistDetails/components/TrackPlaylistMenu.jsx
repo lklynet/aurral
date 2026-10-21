@@ -135,7 +135,10 @@ export function TrackPlaylistPickerContent({
           {availablePlaylists.map((playlist) => {
             const alreadyAdded = playlistContainsTrack(playlist, track);
             return (
-              <Tooltip key={playlist.id} content={alreadyAdded ? `Already in ${playlist.name}` : undefined}>
+              <Tooltip
+                key={playlist.id}
+                content={alreadyAdded ? `Already in ${playlist.name}` : undefined}
+              >
                 <button
                   type="button"
                   className="artist-menu-item"
@@ -469,65 +472,83 @@ export const TrackPlaylistMenu = forwardRef(function TrackPlaylistMenu(
         )
       ) : null}
 
-      {open ? createPortal(
-        <div
-          ref={panelRef}
-          className={menuClassName}
-          style={{
-            top: menuPosition.top,
-            left: menuPosition.left,
-          }}
-          onClick={(event) => event.stopPropagation()}
-        >
-          {isKebab ? (
-            <>
-              {queueItems.map((item) => {
-                const ItemIcon = item.icon;
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    className="artist-menu-item"
-                    disabled={item.disabled}
-                    onClick={() => {
-                      item.onSelect();
-                      closeMenu();
-                    }}
-                  >
-                    <span className="artist-menu-item__main">
-                      <ItemIcon className="artist-icon-sm" />
-                      {item.label}
-                    </span>
-                  </button>
-                );
-              })}
-              {queueItems.length && (onAddToLibrary || onSelect) ? (
-                <div className="native-library-item-menu__separator" />
-              ) : null}
-              {onAddToLibrary ? (
-                <button
-                  type="button"
-                  className="artist-menu-item"
-                  onClick={async () => {
-                    await onAddToLibrary?.(track);
-                    closeMenu();
-                  }}
-                  disabled={saving || librarySaving || downloading || disabled}
-                >
-                  <span className="artist-menu-item__main">
-                    {downloading ? (
-                      <DotLoader size="xs" label={null} />
-                    ) : (
-                      <Plus className="artist-icon-sm" />
-                    )}
-                    {downloading ? "Downloading…" : "Add to library"}
-                  </span>
-                </button>
-              ) : null}
-              {onSelect ? (
-                <TrackPlaylistSubmenu
-                  label="Add to playlist"
-                  icon={Plus}
+      {open
+        ? createPortal(
+            <div
+              ref={panelRef}
+              className={menuClassName}
+              style={{
+                top: menuPosition.top,
+                left: menuPosition.left,
+              }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              {isKebab ? (
+                <>
+                  {queueItems.map((item) => {
+                    const ItemIcon = item.icon;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className="artist-menu-item"
+                        disabled={item.disabled}
+                        onClick={() => {
+                          item.onSelect();
+                          closeMenu();
+                        }}
+                      >
+                        <span className="artist-menu-item__main">
+                          <ItemIcon className="artist-icon-sm" />
+                          {item.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                  {queueItems.length && (onAddToLibrary || onSelect) ? (
+                    <div className="native-library-item-menu__separator" />
+                  ) : null}
+                  {onAddToLibrary ? (
+                    <button
+                      type="button"
+                      className="artist-menu-item"
+                      onClick={async () => {
+                        await onAddToLibrary?.(track);
+                        closeMenu();
+                      }}
+                      disabled={saving || librarySaving || downloading || disabled}
+                    >
+                      <span className="artist-menu-item__main">
+                        {downloading ? (
+                          <DotLoader size="xs" label={null} />
+                        ) : (
+                          <Plus className="artist-icon-sm" />
+                        )}
+                        {downloading ? "Downloading…" : "Add to library"}
+                      </span>
+                    </button>
+                  ) : null}
+                  {onSelect ? (
+                    <TrackPlaylistSubmenu
+                      label="Add to playlist"
+                      icon={Plus}
+                      track={track}
+                      playlists={playlists}
+                      loading={loading}
+                      saving={saving}
+                      error={error}
+                      defaultNewPlaylistName={defaultNewPlaylistName}
+                      excludedPlaylistIds={excludedPlaylistIds}
+                      onSelect={onSelect}
+                      onClose={closeMenu}
+                      toggleOnClick
+                      isOpen={openSubmenu}
+                      onToggle={() => setOpenSubmenu((current) => !current)}
+                    />
+                  ) : null}
+                </>
+              ) : (
+                <TrackPlaylistPickerContent
                   track={track}
                   playlists={playlists}
                   loading={loading}
@@ -535,29 +556,13 @@ export const TrackPlaylistMenu = forwardRef(function TrackPlaylistMenu(
                   error={error}
                   defaultNewPlaylistName={defaultNewPlaylistName}
                   excludedPlaylistIds={excludedPlaylistIds}
-                  onSelect={onSelect}
-                  onClose={closeMenu}
-                  toggleOnClick
-                  isOpen={openSubmenu}
-                  onToggle={() => setOpenSubmenu((current) => !current)}
+                  onSelect={handleSelect}
                 />
-              ) : null}
-            </>
-          ) : (
-            <TrackPlaylistPickerContent
-              track={track}
-              playlists={playlists}
-              loading={loading}
-              saving={saving}
-              error={error}
-              defaultNewPlaylistName={defaultNewPlaylistName}
-              excludedPlaylistIds={excludedPlaylistIds}
-              onSelect={handleSelect}
-            />
-          )}
-        </div>,
-        document.body,
-      ) : null}
+              )}
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 });

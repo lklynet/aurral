@@ -7,7 +7,12 @@ import ReleaseStatusCheck from "./ReleaseStatusCheck";
 import AddActionButton from "../../../components/AddActionButton";
 import { useActiveDownloads } from "../../../hooks/useActiveDownloads";
 import { getReleaseGroupLink } from "../../../utils/searchNavigation";
-import { getPopularReleaseGroups, getReleaseGroupCoverUrl, getReleaseMetric, getReleaseYear } from "../utils";
+import {
+  getPopularReleaseGroups,
+  getReleaseGroupCoverUrl,
+  getReleaseMetric,
+  getReleaseYear,
+} from "../utils";
 import { getAlbumAddAction } from "../../../utils/albumAddAction";
 import { useResponsiveReleaseLimit } from "../hooks/useResponsiveReleaseLimit";
 import Tooltip from "../../../components/Tooltip";
@@ -154,10 +159,15 @@ export function ArtistDetailsReleaseGroups({
                         )}
                         ownerConflict={status?.ownerConflict}
                         onAdd={(managedBy) =>
-                          handleRequestAlbum(releaseGroup.id, releaseGroup.title, managedBy)}
-                        isLoading={requestingAlbum === releaseGroup.id || isAlbumDownloading(releaseGroup.id)}
+                          handleRequestAlbum(releaseGroup.id, releaseGroup.title, managedBy)
+                        }
+                        isLoading={
+                          requestingAlbum === releaseGroup.id || isAlbumDownloading(releaseGroup.id)
+                        }
                         loadingLabel="Downloading"
-                        disabled={requestingAlbum === releaseGroup.id || isAlbumDownloading(releaseGroup.id)}
+                        disabled={
+                          requestingAlbum === releaseGroup.id || isAlbumDownloading(releaseGroup.id)
+                        }
                       />
                     </div>
                   ) : null}

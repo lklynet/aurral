@@ -12,7 +12,10 @@ import {
 
 const artworkUploadParser = express.raw({
   limit: "8mb",
-  type: (req) => String(req.headers["content-type"] || "").toLowerCase().startsWith("image/"),
+  type: (req) =>
+    String(req.headers["content-type"] || "")
+      .toLowerCase()
+      .startsWith("image/"),
 });
 
 function canEditArtwork(req, res, next) {
@@ -52,7 +55,10 @@ export function registerArtwork(router) {
     if (!verifyTokenAuth(req)) {
       return res.status(401).json({ error: "Unauthorized" });
     }
-    if (!["album", "track"].includes(req.params.kind) || !entityExists(req.params.kind, req.params.id)) {
+    if (
+      !["album", "track"].includes(req.params.kind) ||
+      !entityExists(req.params.kind, req.params.id)
+    ) {
       return res.status(404).json({ error: "Artwork not found" });
     }
     const artwork = getCustomArtwork(req.params.kind, req.params.id);
@@ -99,11 +105,7 @@ export function registerArtwork(router) {
     validateTarget,
     async (req, res) => {
       try {
-        const artwork = await saveCustomArtworkUrl(
-          req.params.kind,
-          req.params.id,
-          req.body?.url,
-        );
+        const artwork = await saveCustomArtworkUrl(req.params.kind, req.params.id, req.body?.url);
         return res.json({ ok: true, updatedAt: artwork.updatedAt });
       } catch (error) {
         return res.status(400).json({

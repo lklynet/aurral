@@ -2,9 +2,7 @@ import { db, dbHelpers } from "../../config/db-sqlite.js";
 
 const SETTINGS_KEY = "jellyfinPlaylistPointers";
 const getSettingStmt = db.prepare("SELECT value FROM settings WHERE key = ?");
-const upsertSettingStmt = db.prepare(
-  "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
-);
+const upsertSettingStmt = db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)");
 
 const readStore = () => {
   const parsed = dbHelpers.parseJSON(getSettingStmt.get(SETTINGS_KEY)?.value);
@@ -22,10 +20,11 @@ const writeStore = (store) => {
  * @param {unknown} ids - Stored ownership history to validate.
  * @returns {string[]} A fresh copy of valid IDs, or an empty array if any value is invalid.
  */
-const normalizeManagedIds = (ids) => Array.isArray(ids)
-  && ids.every((id) => typeof id === "string" && id.length > 0 && id === id.trim())
-  ? [...ids]
-  : [];
+const normalizeManagedIds = (ids) =>
+  Array.isArray(ids) &&
+  ids.every((id) => typeof id === "string" && id.length > 0 && id === id.trim())
+    ? [...ids]
+    : [];
 
 const normalizePointer = (raw) => {
   if (!raw || typeof raw !== "object") return null;
@@ -35,8 +34,7 @@ const normalizePointer = (raw) => {
     playlistId,
     title: String(raw.title || ""),
     serverUrl: String(raw.serverUrl || ""),
-    jellyfinUserId:
-      raw.jellyfinUserId != null ? String(raw.jellyfinUserId) : null,
+    jellyfinUserId: raw.jellyfinUserId != null ? String(raw.jellyfinUserId) : null,
     managedItemIds: normalizeManagedIds(raw.managedItemIds),
     updatedAt: Number(raw.updatedAt) || Date.now(),
   };
@@ -48,19 +46,23 @@ export const jellyfinPlaylistPointerStore = {
   },
 
   getPointersForEntity(entityId) {
-    return Object.entries(readStore()[entityId] || {}).map(([targetKey, raw]) => {
-      const pointer = normalizePointer(raw);
-      return pointer ? { targetKey, ...pointer } : null;
-    }).filter(Boolean);
+    return Object.entries(readStore()[entityId] || {})
+      .map(([targetKey, raw]) => {
+        const pointer = normalizePointer(raw);
+        return pointer ? { targetKey, ...pointer } : null;
+      })
+      .filter(Boolean);
   },
 
   getPointer(entityId, targetKey) {
     return normalizePointer(readStore()[entityId]?.[targetKey] || null);
   },
 
-  setPointer(entityId, targetKey, {
-    playlistId, title, serverUrl, jellyfinUserId = null, managedItemIds = [],
-  }) {
+  setPointer(
+    entityId,
+    targetKey,
+    { playlistId, title, serverUrl, jellyfinUserId = null, managedItemIds = [] },
+  ) {
     const store = readStore();
     if (!store[entityId]) store[entityId] = {};
     store[entityId][targetKey] = {
@@ -68,8 +70,7 @@ export const jellyfinPlaylistPointerStore = {
       title: String(title || ""),
       serverUrl: String(serverUrl || ""),
       updatedAt: Date.now(),
-      jellyfinUserId:
-        jellyfinUserId != null ? String(jellyfinUserId) : null,
+      jellyfinUserId: jellyfinUserId != null ? String(jellyfinUserId) : null,
       managedItemIds: normalizeManagedIds(managedItemIds),
     };
     writeStore(store);

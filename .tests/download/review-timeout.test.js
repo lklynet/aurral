@@ -2,12 +2,23 @@ import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { setupIsolatedBackend, cleanupIsolatedState, resetDatabase } from "../helpers/backendTestHarness.js";
+import {
+  setupIsolatedBackend,
+  cleanupIsolatedState,
+  resetDatabase,
+} from "../helpers/backendTestHarness.js";
 
-const [state, { db }, { dbOps }, { downloadTracker }, { denyExpiredReviews },
-  { withDownloadImportLock }] = await setupIsolatedBackend(
+const [
+  state,
+  { db },
+  { dbOps },
+  { downloadTracker },
+  { denyExpiredReviews },
+  { withDownloadImportLock },
+] = await setupIsolatedBackend(
   "review-timeout",
-  "backend/config/db-sqlite.js", "backend/db/helpers/index.js",
+  "backend/config/db-sqlite.js",
+  "backend/db/helpers/index.js",
   "backend/services/downloadJobs/downloadTracker.js",
   "backend/services/downloadJobs/blockedJobReview.js",
   "backend/services/downloadJobs/mutationGuards.js",
@@ -59,7 +70,14 @@ test("a maximum wait of zero keeps held songs indefinitely", async () => {
 });
 
 test("the stored maximum wait is limited to whole hours up to 30 days", () => {
-  for (const [stored, expected] of [[48, 48], [0, 0], [721, 0], [-1, 0], [1.5, 0], ["x", 0]]) {
+  for (const [stored, expected] of [
+    [48, 48],
+    [0, 0],
+    [721, 0],
+    [-1, 0],
+    [1.5, 0],
+    ["x", 0],
+  ]) {
     dbOps.updateSettings({ ...dbOps.getSettings(), reviewTimeoutHours: stored });
     assert.equal(dbOps.getSettings().reviewTimeoutHours, expected, String(stored));
   }
@@ -70,11 +88,15 @@ test("a timeout waits for an approval in progress and leaves the approved song a
   const held = await holdForReview("Approving");
   let finishApproval;
   let lockHeld;
-  const approvalStarted = new Promise((resolve) => { lockHeld = resolve; });
+  const approvalStarted = new Promise((resolve) => {
+    lockHeld = resolve;
+  });
   // The approval imports while it holds the lock.
   const approval = withDownloadImportLock("library", async () => {
     lockHeld();
-    await new Promise((resolve) => { finishApproval = resolve; });
+    await new Promise((resolve) => {
+      finishApproval = resolve;
+    });
     downloadTracker.setDone(held.jobId, held.stagingPath);
   });
   await approvalStarted;

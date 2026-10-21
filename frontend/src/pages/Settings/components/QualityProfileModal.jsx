@@ -40,8 +40,15 @@ export const QUALITY_TIER_LABELS = {
 };
 
 function SortableQuality({ id, enabled, cutoff, aboveCutoff, onToggle, onCutoff }) {
-  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } =
-    useSortable({ id });
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
 
   return (
     <div
@@ -148,7 +155,11 @@ export function QualityProfileModal({ profile, onChange, onClose }) {
           checked={profile.automaticUpgrades === true}
           onChange={(event) => onChange({ automaticUpgrades: event.target.checked })}
         />
-        <SettingsModalField label="Upgrade interval" htmlFor="quality-upgrade-interval" hint="Days between checks for each track.">
+        <SettingsModalField
+          label="Upgrade interval"
+          htmlFor="quality-upgrade-interval"
+          hint="Days between checks for each track."
+        >
           <SettingsInput
             id="quality-upgrade-interval"
             type="number"
@@ -156,7 +167,9 @@ export function QualityProfileModal({ profile, onChange, onClose }) {
             max="365"
             value={profile.intervalDays ?? 2}
             disabled={profile.automaticUpgrades !== true}
-            onChange={(event) => onChange({ intervalDays: Number.parseInt(event.target.value, 10) || 2 })}
+            onChange={(event) =>
+              onChange({ intervalDays: Number.parseInt(event.target.value, 10) || 2 })
+            }
           />
         </SettingsModalField>
       </SettingsModalSection>

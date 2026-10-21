@@ -4,9 +4,7 @@ import { getSettingsEncryptionKey } from "../../db/helpers/settings.js";
 
 const SETTINGS_KEY = "spotifyConnections";
 const getSettingStmt = db.prepare("SELECT value FROM settings WHERE key = ?");
-const upsertSettingStmt = db.prepare(
-  "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
-);
+const upsertSettingStmt = db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)");
 
 const readStore = () => {
   const parsed = dbHelpers.parseJSON(getSettingStmt.get(SETTINGS_KEY)?.value);

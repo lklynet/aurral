@@ -3,15 +3,10 @@ import assert from "node:assert/strict";
 import { importFromRepo } from "../helpers/backendTestHarness.js";
 
 test("tag inheritance requires three seed tags and skips directly hydrated candidates", async () => {
-  const { canInheritTagsFromSeeds } = await importFromRepo(
-    "backend/services/discovery/index.js",
-  );
+  const { canInheritTagsFromSeeds } = await importFromRepo("backend/services/discovery/index.js");
 
   assert.equal(canInheritTagsFromSeeds({ tags: ["shoegaze", "indie"] }), false);
-  assert.equal(
-    canInheritTagsFromSeeds({ tags: ["shoegaze", "dream-pop", "indie"] }),
-    true,
-  );
+  assert.equal(canInheritTagsFromSeeds({ tags: ["shoegaze", "dream-pop", "indie"] }), true);
   assert.equal(
     canInheritTagsFromSeeds({
       tags: ["shoegaze", "dream-pop", "indie"],
@@ -50,30 +45,24 @@ test("tag inheritance: inherited tags produce tagSource: inherited and keep exis
     supportingSeeds: [{ artistName: "Seed", weight: 1 }],
   };
 
-  const inherited = applyHydratedCandidateTags(
-    candidate,
-    candidate.tags,
-    profileTagWeights,
-    { source: "inherited" },
-  );
+  const inherited = applyHydratedCandidateTags(candidate, candidate.tags, profileTagWeights, {
+    source: "inherited",
+  });
 
   assert.equal(inherited.tagSource, "inherited");
   assert.equal(inherited.candidateTagsHydrated, true);
   assert.ok(inherited.scoreTagAffinity >= 30);
   assert.ok(inherited.matchedTags.includes("shoegaze"));
 
-  const direct = applyHydratedCandidateTags(
-    candidate,
-    candidate.tags,
-    profileTagWeights,
-  );
+  const direct = applyHydratedCandidateTags(candidate, candidate.tags, profileTagWeights);
 
   assert.equal(direct.tagSource, "lastfm_artist");
 });
 
 test("tag inheritance: multi-seed candidate merges tags from all contributing seeds", async () => {
-  const { addRecommendationCandidate, finalizeRecommendationAccumulator } =
-    await importFromRepo("backend/services/discovery/recommendationPipeline.js");
+  const { addRecommendationCandidate, finalizeRecommendationAccumulator } = await importFromRepo(
+    "backend/services/discovery/recommendationPipeline.js",
+  );
 
   const accumulator = new Map();
   const profileTagWeights = new Map([
@@ -166,17 +155,10 @@ test("tag inheritance: ranking scores are equivalent between inherited and direc
     name: "Rank B",
   };
 
-  const inherited = applyHydratedCandidateTags(
-    candidateA,
-    tags,
-    profileTagWeights,
-    { source: "inherited" },
-  );
-  const direct = applyHydratedCandidateTags(
-    candidateB,
-    tags,
-    profileTagWeights,
-  );
+  const inherited = applyHydratedCandidateTags(candidateA, tags, profileTagWeights, {
+    source: "inherited",
+  });
+  const direct = applyHydratedCandidateTags(candidateB, tags, profileTagWeights);
 
   assert.equal(inherited.scoreTagAffinity, direct.scoreTagAffinity);
   assert.equal(inherited.scoreTotal, direct.scoreTotal);

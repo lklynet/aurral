@@ -46,8 +46,7 @@ export function registerDetails(router) {
   router.get("/", async (req, res) => {
     res.status(404).json({
       error: "Not found",
-      message:
-        "Use /api/artists/:mbid to get artist details, or /api/search/artists to search",
+      message: "Use /api/artists/:mbid to get artist details, or /api/search/artists to search",
     });
   });
 
@@ -77,13 +76,9 @@ export function registerDetails(router) {
     }
 
     const rawMusicbrainzId =
-      req.body?.musicbrainzId != null
-        ? String(req.body.musicbrainzId).trim()
-        : "";
+      req.body?.musicbrainzId != null ? String(req.body.musicbrainzId).trim() : "";
     const rawDeezerArtistId =
-      req.body?.deezerArtistId != null
-        ? String(req.body.deezerArtistId).trim()
-        : "";
+      req.body?.deezerArtistId != null ? String(req.body.deezerArtistId).trim() : "";
 
     const musicbrainzId = rawMusicbrainzId || null;
     const deezerArtistId = rawDeezerArtistId || null;
@@ -128,9 +123,7 @@ export function registerDetails(router) {
           ? req.query.mode.trim().toLowerCase()
           : "full";
       const coreOnly = responseMode === "core";
-      const selectedReleaseTypes = parseSelectedReleaseTypes(
-        req.query.releaseTypes,
-      );
+      const selectedReleaseTypes = parseSelectedReleaseTypes(req.query.releaseTypes);
       const appearsOnLimit = parseAppearsOnLimit(req.query.appearsOnLimit);
       const requestKey = buildArtistRequestKey({
         mbid,
@@ -177,11 +170,9 @@ export function registerDetails(router) {
           ? null
           : await getArtistByMbid(artistMbid).catch(() => null);
         const [releaseGroups, appearsOnReleaseGroups] = await Promise.all([
-          musicbrainzGetArtistReleaseGroups(
-            artistMbid,
-            selectedReleaseTypes,
-            { includeTrackCounts: !appearsOnLimit },
-          ).then(withListenBrainzStats),
+          musicbrainzGetArtistReleaseGroups(artistMbid, selectedReleaseTypes, {
+            includeTrackCounts: !appearsOnLimit,
+          }).then(withListenBrainzStats),
           coreOnly
             ? []
             : musicbrainzGetArtistAppearsOnReleaseGroups(artistMbid, {
@@ -196,7 +187,11 @@ export function registerDetails(router) {
               metadataArtist,
             );
         const payload = {
-          ...buildArtistBase(metadataArtist?.name || lidarrArtist.artistName, artistMbid, metadataArtist),
+          ...buildArtistBase(
+            metadataArtist?.name || lidarrArtist.artistName,
+            artistMbid,
+            metadataArtist,
+          ),
           tags: tagPayload.tags,
           genres: tagPayload.genres,
           "release-groups": releaseGroups,
@@ -228,11 +223,9 @@ export function registerDetails(router) {
           ? { tags: [], genres: [] }
           : await getArtistTagPayload(resolvedMbid, name, metadataArtist);
         const [releaseGroups, appearsOnReleaseGroups] = await Promise.all([
-          musicbrainzGetArtistReleaseGroups(
-            resolvedMbid,
-            selectedReleaseTypes,
-            { includeTrackCounts: !appearsOnLimit },
-          ).then(withListenBrainzStats),
+          musicbrainzGetArtistReleaseGroups(resolvedMbid, selectedReleaseTypes, {
+            includeTrackCounts: !appearsOnLimit,
+          }).then(withListenBrainzStats),
           coreOnly
             ? []
             : musicbrainzGetArtistAppearsOnReleaseGroups(resolvedMbid, {

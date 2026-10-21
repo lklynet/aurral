@@ -1,9 +1,7 @@
 import { dbOps } from "../../../db/helpers/index.js";
 import { clearImageProxyCache } from "../../../services/imageProxyService.js";
 import { clearApiCaches } from "../../../services/apiClients/index.js";
-import {
-  getDiscoveryCache,
-} from "../../../services/discovery/index.js";
+import { getDiscoveryCache } from "../../../services/discovery/index.js";
 import { enqueueDiscoveryRefresh } from "../../../services/discovery/refreshScheduler.js";
 
 export function registerAdmin(router) {

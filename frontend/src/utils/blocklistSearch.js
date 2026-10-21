@@ -18,7 +18,9 @@ export function buildBlocklistArtistSuggestions(response, limit = 6) {
 
   for (const candidate of candidates) {
     const artist = normalizeArtist(candidate);
-    const idKey = String(artist.id || "").trim().toLowerCase();
+    const idKey = String(artist.id || "")
+      .trim()
+      .toLowerCase();
     const nameKey = artist.name.toLowerCase();
     if (!nameKey || (idKey && seenIds.has(idKey)) || seenNames.has(nameKey)) continue;
 

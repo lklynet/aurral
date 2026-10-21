@@ -35,9 +35,11 @@ export async function acquireReleaseMetadataLease({ signal } = {}) {
   heartbeat.unref();
   const write = db.transaction((fn) => {
     controller.signal.throwIfAborted();
-    const held = db.prepare(
-      "SELECT 1 FROM _honker_locks WHERE name = ? AND owner = ? AND expires_at > unixepoch()",
-    ).get(LOCK_NAME, owner);
+    const held = db
+      .prepare(
+        "SELECT 1 FROM _honker_locks WHERE name = ? AND owner = ? AND expires_at > unixepoch()",
+      )
+      .get(LOCK_NAME, owner);
     if (!held) {
       interrupt();
       throw controller.signal.reason;
@@ -46,11 +48,15 @@ export async function acquireReleaseMetadataLease({ signal } = {}) {
   });
   return {
     signal: controller.signal,
-    write(fn) { return write.immediate(fn); },
+    write(fn) {
+      return write.immediate(fn);
+    },
     release() {
       clearInterval(heartbeat);
       signal?.removeEventListener("abort", interrupt);
-      try { lock.release(); } catch {}
+      try {
+        lock.release();
+      } catch {}
     },
   };
 }

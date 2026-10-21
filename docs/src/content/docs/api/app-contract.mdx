@@ -11,7 +11,15 @@ description: Version and response guarantees for the JSON API used by Aurral app
 {
   "api": {
     "version": 1,
-    "features": ["discover", "flows", "activity", "review", "trackDownloads", "linkSearch", "downloadCancel"]
+    "features": [
+      "discover",
+      "flows",
+      "activity",
+      "review",
+      "trackDownloads",
+      "linkSearch",
+      "downloadCancel"
+    ]
   }
 }
 ```
@@ -28,14 +36,14 @@ Feature names describe implemented server capabilities. They do not grant a
 permission or guarantee that an optional service is configured or available.
 The feature list is the same before and after sign-in.
 
-| Feature | Capability |
-| --- | --- |
-| `discover` | Discover recommendations and trending artists |
-| `flows` | Flow creation and playlist status |
-| `activity` | Activity through `/api/requests` |
-| `review` | Blocked download jobs and approval or denial |
-| `trackDownloads` | Single-track requests through `/api/library/downloads/track` |
-| `linkSearch` | Streaming-service links resolved through `/api/search/link` |
+| Feature          | Capability                                                                                                                                                                   |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `discover`       | Discover recommendations and trending artists                                                                                                                                |
+| `flows`          | Flow creation and playlist status                                                                                                                                            |
+| `activity`       | Activity through `/api/requests`                                                                                                                                             |
+| `review`         | Blocked download jobs and approval or denial                                                                                                                                 |
+| `trackDownloads` | Single-track requests through `/api/library/downloads/track`                                                                                                                 |
+| `linkSearch`     | Streaming-service links resolved through `/api/search/link`                                                                                                                  |
 | `downloadCancel` | Cancelling one pending or downloading song through `POST /api/playlists/jobs/:jobId/cancel`, and searching again for cancelled songs that did not come from an album request |
 
 Clients check for a feature before using its routes. An absent name means the
@@ -65,28 +73,28 @@ The routes and fields below form version 1 of the app contract. Responses may
 contain additional fields. Arrays can be empty. Fields marked nullable can be
 `null`.
 
-| Route | Request | Success response |
-| --- | --- | --- |
-| `POST /api/auth/login` | `username`, `password` | String `token`, numeric `expiresAt`, and `user` |
-| `GET /api/auth/me` | Authenticated session | `user` and nullable numeric `expiresAt` |
-| `GET /api/health/bootstrap` | Public; optional credential | String `status` and `appVersion`, boolean `authRequired` and `onboardingRequired`, and `api` |
-| `GET /api/discover` | Optional `limit` from 1 to 200 and `offset` | Arrays `recommendations`, `globalTop`, `basedOn`, `topTags`, and `topGenres`; numeric `recommendationCount`; nullable string `lastUpdated`; boolean `configured`; string `provider` |
-| `GET /api/search` | Required `q`; `scope=artist` or `scope=album`; optional `limit`, `offset` | Strings `scope` and `query`, numeric `count` and `offset`, and array `items` |
-| `GET /api/search/link` | Required `url` | String `kind` and `source`; object `artist`; nullable objects `album` and `track` |
-| `GET /api/artists/:mbid` | Artist MusicBrainz ID; optional `mode=core` | Strings `id` and `name`, arrays `tags`, `genres`, `release-groups`, and `appears-on-release-groups` |
-| `GET /api/artists/release-group/:mbid` | Release-group MusicBrainz ID | Strings `id`, `title`, and `primary-type`; arrays `secondary-types`, `artist-credit`, `releases`, and `genres`; nullable strings `first-release-date` and `coverUrl`; string `overview` |
-| `GET /api/library/canonical` | Required `kind=artists`, `albums`, `tracks`, or `genres`, and `pageSize` from 1 to 100; optional `page`, `source`, `availableOnly`, and filters | String `kind`; numeric `page`, `pageSize`, and `total`; boolean `hasMore`; arrays `items`, `artists`, `albums`, `tracks`, and `genres` |
-| `GET /api/library/lookup/:mbid` | Artist MusicBrainz ID | Boolean `exists` and `canonical`, nullable object `artist`, array `albums`, and nullable string `libraryArtistId` |
-| `POST /api/library/lookup/batch` | Array `mbids` | Object keyed by requested IDs, with boolean values |
-| `POST /api/library/albums/lookup/batch` | Array `mbids` | Object keyed by found album IDs, with album lookup objects |
-| `POST /api/library/albums/request` | `albumMbid`, `albumName`, `artistMbid`, `artistName`; optional `triggerSearch` and `managedBy` | HTTP `201` with boolean `success`, `createdArtist`, `createdAlbum`, and `queued`; objects `artist` and `album`; strings `status` and `managedBy` |
-| `POST /api/library/downloads/track` | `artistName`, `trackName`; optional track and album identifiers | Boolean `success` and `queued`. An owned track returns HTTP `200` with `alreadyOwned=true`. An existing queued request returns HTTP `202` with string `jobId` and `alreadyQueued=true`. Other accepted requests return HTTP `202`; `jobId` can be nullable for an already monitored track. |
-| `POST /api/playlists/flows` | `name`, `size`, `mix`, `scheduleDays`, and `scheduleTime`, or a supported `templateId` | Boolean `success` and object `flow` |
-| `GET /api/playlists/status` | Requires `accessFlow` | Arrays `flows` and `sharedPlaylists`; objects `stats`, `flowStats`, `worker`, and `hint` |
-| `GET /api/playlists/jobs` | Requires `accessFlow`; optional `status=blocked` for review | Array of download job objects |
-| `GET /api/requests` | Optional `refresh=1` | Array of activity objects |
-| `POST /api/playlists/jobs/:jobId/approve` | Requires `accessFlow`; blocked job ID | Boolean `success` and string `path` for the imported file |
-| `POST /api/playlists/jobs/:jobId/deny` | Requires `accessFlow`; blocked job ID | Boolean `success` |
+| Route                                     | Request                                                                                                                                         | Success response                                                                                                                                                                                                                                                                           |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `POST /api/auth/login`                    | `username`, `password`                                                                                                                          | String `token`, numeric `expiresAt`, and `user`                                                                                                                                                                                                                                            |
+| `GET /api/auth/me`                        | Authenticated session                                                                                                                           | `user` and nullable numeric `expiresAt`                                                                                                                                                                                                                                                    |
+| `GET /api/health/bootstrap`               | Public; optional credential                                                                                                                     | String `status` and `appVersion`, boolean `authRequired` and `onboardingRequired`, and `api`                                                                                                                                                                                               |
+| `GET /api/discover`                       | Optional `limit` from 1 to 200 and `offset`                                                                                                     | Arrays `recommendations`, `globalTop`, `basedOn`, `topTags`, and `topGenres`; numeric `recommendationCount`; nullable string `lastUpdated`; boolean `configured`; string `provider`                                                                                                        |
+| `GET /api/search`                         | Required `q`; `scope=artist` or `scope=album`; optional `limit`, `offset`                                                                       | Strings `scope` and `query`, numeric `count` and `offset`, and array `items`                                                                                                                                                                                                               |
+| `GET /api/search/link`                    | Required `url`                                                                                                                                  | String `kind` and `source`; object `artist`; nullable objects `album` and `track`                                                                                                                                                                                                          |
+| `GET /api/artists/:mbid`                  | Artist MusicBrainz ID; optional `mode=core`                                                                                                     | Strings `id` and `name`, arrays `tags`, `genres`, `release-groups`, and `appears-on-release-groups`                                                                                                                                                                                        |
+| `GET /api/artists/release-group/:mbid`    | Release-group MusicBrainz ID                                                                                                                    | Strings `id`, `title`, and `primary-type`; arrays `secondary-types`, `artist-credit`, `releases`, and `genres`; nullable strings `first-release-date` and `coverUrl`; string `overview`                                                                                                    |
+| `GET /api/library/canonical`              | Required `kind=artists`, `albums`, `tracks`, or `genres`, and `pageSize` from 1 to 100; optional `page`, `source`, `availableOnly`, and filters | String `kind`; numeric `page`, `pageSize`, and `total`; boolean `hasMore`; arrays `items`, `artists`, `albums`, `tracks`, and `genres`                                                                                                                                                     |
+| `GET /api/library/lookup/:mbid`           | Artist MusicBrainz ID                                                                                                                           | Boolean `exists` and `canonical`, nullable object `artist`, array `albums`, and nullable string `libraryArtistId`                                                                                                                                                                          |
+| `POST /api/library/lookup/batch`          | Array `mbids`                                                                                                                                   | Object keyed by requested IDs, with boolean values                                                                                                                                                                                                                                         |
+| `POST /api/library/albums/lookup/batch`   | Array `mbids`                                                                                                                                   | Object keyed by found album IDs, with album lookup objects                                                                                                                                                                                                                                 |
+| `POST /api/library/albums/request`        | `albumMbid`, `albumName`, `artistMbid`, `artistName`; optional `triggerSearch` and `managedBy`                                                  | HTTP `201` with boolean `success`, `createdArtist`, `createdAlbum`, and `queued`; objects `artist` and `album`; strings `status` and `managedBy`                                                                                                                                           |
+| `POST /api/library/downloads/track`       | `artistName`, `trackName`; optional track and album identifiers                                                                                 | Boolean `success` and `queued`. An owned track returns HTTP `200` with `alreadyOwned=true`. An existing queued request returns HTTP `202` with string `jobId` and `alreadyQueued=true`. Other accepted requests return HTTP `202`; `jobId` can be nullable for an already monitored track. |
+| `POST /api/playlists/flows`               | `name`, `size`, `mix`, `scheduleDays`, and `scheduleTime`, or a supported `templateId`                                                          | Boolean `success` and object `flow`                                                                                                                                                                                                                                                        |
+| `GET /api/playlists/status`               | Requires `accessFlow`                                                                                                                           | Arrays `flows` and `sharedPlaylists`; objects `stats`, `flowStats`, `worker`, and `hint`                                                                                                                                                                                                   |
+| `GET /api/playlists/jobs`                 | Requires `accessFlow`; optional `status=blocked` for review                                                                                     | Array of download job objects                                                                                                                                                                                                                                                              |
+| `GET /api/requests`                       | Optional `refresh=1`                                                                                                                            | Array of activity objects                                                                                                                                                                                                                                                                  |
+| `POST /api/playlists/jobs/:jobId/approve` | Requires `accessFlow`; blocked job ID                                                                                                           | Boolean `success` and string `path` for the imported file                                                                                                                                                                                                                                  |
+| `POST /api/playlists/jobs/:jobId/deny`    | Requires `accessFlow`; blocked job ID                                                                                                           | Boolean `success`                                                                                                                                                                                                                                                                          |
 
 `user` contains numeric `id`, strings `username` and `role`, and object
 `permissions`. An authenticated bootstrap also includes `user`.

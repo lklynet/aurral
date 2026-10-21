@@ -46,9 +46,7 @@ export async function removeNzbgetDownloadFolder(historyItem, directories, categ
     ? roots.map((root) => path.join(root, ...categoryParts))
     : [];
   const parents = await Promise.all(
-    [...roots, ...categoryDirs, toLocal(directories.interDir)]
-      .filter(Boolean)
-      .map(realpathOr),
+    [...roots, ...categoryDirs, toLocal(directories.interDir)].filter(Boolean).map(realpathOr),
   );
   const realTarget = path.join(await fs.realpath(path.dirname(target)), path.basename(target));
   if (!parents.includes(path.dirname(realTarget)) || parents.includes(realTarget)) {
@@ -58,13 +56,19 @@ export async function removeNzbgetDownloadFolder(historyItem, directories, categ
   const libraries = [
     resolveDownloadRoot(),
     ...(lidarrClient.isEnabled()
-      ? lidarrClient.getConfiguredRootFolderPaths()
-        .map((root) => resolveLocalPath(root, getPathMappings("lidarr")))
+      ? lidarrClient
+          .getConfiguredRootFolderPaths()
+          .map((root) => resolveLocalPath(root, getPathMappings("lidarr")))
       : []),
   ].filter(Boolean);
-  for (const library of await Promise.all(libraries.map((root) => realpathOr(path.resolve(root))))) {
-    if (library === realTarget || isPathInsideRoot(library, realTarget)
-      || isPathInsideRoot(realTarget, library)) {
+  for (const library of await Promise.all(
+    libraries.map((root) => realpathOr(path.resolve(root))),
+  )) {
+    if (
+      library === realTarget ||
+      isPathInsideRoot(library, realTarget) ||
+      isPathInsideRoot(realTarget, library)
+    ) {
       throw new Error("NZBGet download folder overlaps a music library");
     }
   }

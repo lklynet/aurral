@@ -1,7 +1,15 @@
 import { listArtistAlbums } from "./providers/brainzmashProvider.js";
 
 export const RELEASE_TYPES = ["album", "ep", "single"];
-export const EXTRA_RELEASE_TYPES = ["live", "compilation", "soundtrack", "remix", "demo", "dj-mix", "mixtape/street"];
+export const EXTRA_RELEASE_TYPES = [
+  "live",
+  "compilation",
+  "soundtrack",
+  "remix",
+  "demo",
+  "dj-mix",
+  "mixtape/street",
+];
 const CATALOG_SCOPES = new Set(["none", "all", "since", "latest"]);
 const EDITIONS = new Set(["standard", "expanded"]);
 export const MAX_LATEST_RELEASES = 10;
@@ -32,9 +40,16 @@ export const MONITORED_AURRAL_ALBUM_CONDITION = `
 
 export const monitoredTrackCondition = (trackAlias) => `${trackAlias}.monitored = 1`;
 
-const invalidRules = (message) => ({ error: message, statusCode: 400, code: "invalid_monitor_rules" });
+const invalidRules = (message) => ({
+  error: message,
+  statusCode: 400,
+  code: "invalid_monitor_rules",
+});
 
-const lower = (value) => String(value ?? "").trim().toLowerCase();
+const lower = (value) =>
+  String(value ?? "")
+    .trim()
+    .toLowerCase();
 
 const isWholeNumber = (value, min, max) => Number.isInteger(value) && value >= min && value <= max;
 
@@ -48,7 +63,8 @@ export function normalizeMonitorRules(value) {
     return invalidRules("Monitoring rules must be an object");
   }
   const input = { ...FACTORY_MONITOR_RULES, ...value };
-  if (!CATALOG_SCOPES.has(input.catalog)) return invalidRules("Choose None, Everything, Since a year, or Latest for the back catalogue");
+  if (!CATALOG_SCOPES.has(input.catalog))
+    return invalidRules("Choose None, Everything, Since a year, or Latest for the back catalogue");
   const lastYear = new Date().getUTCFullYear() + 1;
   const sinceYear = input.catalog === "since" ? Number(input.sinceYear) : null;
   if (input.catalog === "since" && !isWholeNumber(sinceYear, 1900, lastYear)) {
@@ -63,7 +79,8 @@ export function normalizeMonitorRules(value) {
   if (!types?.length) return invalidRules("Choose at least one of Album, EP, or Single");
   const extraTypes = pickTypes(input.extraTypes, EXTRA_RELEASE_TYPES);
   if (!extraTypes) return invalidRules("Unknown release type");
-  if (!EDITIONS.has(input.edition)) return invalidRules("Choose Standard or Expanded for the edition");
+  if (!EDITIONS.has(input.edition))
+    return invalidRules("Choose Standard or Expanded for the edition");
   const topTracks = Number(input.topTracks);
   if (!isWholeNumber(topTracks, 0, MAX_TOP_TRACKS)) {
     return invalidRules(`Top tracks must be between 0 and ${MAX_TOP_TRACKS}`);
@@ -85,7 +102,8 @@ export function normalizeMonitorRules(value) {
   };
 }
 
-export const storedRules = (value) => normalizeMonitorRules(value).rules || { ...FACTORY_MONITOR_RULES };
+export const storedRules = (value) =>
+  normalizeMonitorRules(value).rules || { ...FACTORY_MONITOR_RULES };
 
 export const sameRules = (left, right) => JSON.stringify(left) === JSON.stringify(right);
 
@@ -116,16 +134,19 @@ export function selectMonitoredReleases(releases, rules, { catalogAt, newSince }
   const released = dated.filter((release) => releaseDate(release) <= catalogDay);
   const catalog = {
     all: () => [...released, ...matching.filter((release) => !releaseDate(release))],
-    since: () => released.filter((release) => Number(releaseDate(release).slice(0, 4)) >= rules.sinceYear),
+    since: () =>
+      released.filter((release) => Number(releaseDate(release).slice(0, 4)) >= rules.sinceYear),
     latest: () => released.slice(-rules.latestCount),
     none: () => [],
   }[rules.catalog]();
   const newDay = isoDay(newSince);
   const fresh = rules.newReleases ? dated.filter((release) => releaseDate(release) > newDay) : [];
   const selected = new Map([...catalog, ...fresh].map((release) => [release.id, release]));
-  return [...selected.values()].sort((left, right) =>
-    Number(isStudioAlbum(right)) - Number(isStudioAlbum(left)) ||
-    (releaseDate(left) || "9999").localeCompare(releaseDate(right) || "9999"));
+  return [...selected.values()].sort(
+    (left, right) =>
+      Number(isStudioAlbum(right)) - Number(isStudioAlbum(left)) ||
+      (releaseDate(left) || "9999").localeCompare(releaseDate(right) || "9999"),
+  );
 }
 
 export const DEFAULT_MONITORING = Object.freeze({
@@ -170,7 +191,8 @@ export function nextMonitoringDefaults(previous, rules, now = Date.now()) {
   return {
     rules,
     updatedAt: now,
-    newReleasesSince: previous.rules.newReleases && rules.newReleases ? previous.newReleasesSince : now,
+    newReleasesSince:
+      previous.rules.newReleases && rules.newReleases ? previous.newReleasesSince : now,
   };
 }
 
@@ -185,13 +207,20 @@ export function legacyMonitorMode(effective) {
 // "first" never followed new releases, so its album stays and the artist
 // stops being monitored.
 export function monitoringFromLegacyMode(mode) {
-  switch (String(mode || "none").trim().toLowerCase()) {
+  switch (
+    String(mode || "none")
+      .trim()
+      .toLowerCase()
+  ) {
     case "all":
       return { useDefault: true, rules: null };
     case "future":
       return { useDefault: false, rules: { ...FACTORY_MONITOR_RULES, catalog: "none" } };
     case "latest":
-      return { useDefault: false, rules: { ...FACTORY_MONITOR_RULES, catalog: "latest", latestCount: 1 } };
+      return {
+        useDefault: false,
+        rules: { ...FACTORY_MONITOR_RULES, catalog: "latest", latestCount: 1 },
+      };
     case "none":
       return null;
     default:

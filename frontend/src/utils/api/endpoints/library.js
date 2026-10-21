@@ -6,11 +6,7 @@ import {
   buildAuthenticatedApiUrl,
   resolveAuthenticatedApiAssetUrl,
 } from "../core.js";
-import {
-  bumpLibraryPageGeneration,
-  queryClient,
-  queryKeys,
-} from "../../../queryClient.js";
+import { bumpLibraryPageGeneration, queryClient, queryKeys } from "../../../queryClient.js";
 import { getLibraryOwnerConflict } from "../../libraryDestination.js";
 import { addActiveDownload, normalizeActiveDownloads } from "../../activeDownloads.js";
 
@@ -22,46 +18,48 @@ const mergeSignals = (callerSignal, querySignal) => {
   return callerSignal || querySignal;
 };
 
-export const getLibraryArtists = (options = {}) =>
-  getData("/library/artists", options);
+export const getLibraryArtists = (options = {}) => getData("/library/artists", options);
 
-const libraryPageParams = (options = {}) => Object.fromEntries(
-  Object.entries({
-    kind: options.kind,
-    page: options.page,
-    pageSize: options.pageSize,
-    query: options.query,
-    genre: options.genre,
-    sort: options.sort,
-    direction: options.direction,
-    artistId: options.artistId,
-    albumId: options.albumId,
-    source: options.source || "all",
-    // Tri-state: an explicit boolean forces the filter, while `undefined` omits
-    // the param so the backend shows what can be played and what Aurral is fetching.
-    availableOnly: options.availableOnly === undefined || options.availableOnly === null
-      ? undefined
-      : options.availableOnly === true ? "true" : "false",
-  }).filter(([, value]) => value !== undefined && value !== null && value !== ""),
-);
+const libraryPageParams = (options = {}) =>
+  Object.fromEntries(
+    Object.entries({
+      kind: options.kind,
+      page: options.page,
+      pageSize: options.pageSize,
+      query: options.query,
+      genre: options.genre,
+      sort: options.sort,
+      direction: options.direction,
+      artistId: options.artistId,
+      albumId: options.albumId,
+      source: options.source || "all",
+      // Tri-state: an explicit boolean forces the filter, while `undefined` omits
+      // the param so the backend shows what can be played and what Aurral is fetching.
+      availableOnly:
+        options.availableOnly === undefined || options.availableOnly === null
+          ? undefined
+          : options.availableOnly === true
+            ? "true"
+            : "false",
+    }).filter(([, value]) => value !== undefined && value !== null && value !== ""),
+  );
 
-const withAuthenticatedArtwork = (entity) => entity && typeof entity === "object"
-  ? {
-      ...entity,
-      ...(entity.coverUrl
-        ? { coverUrl: resolveAuthenticatedApiAssetUrl(entity.coverUrl) }
-        : {}),
-      ...(entity.defaultCoverUrl
-        ? { defaultCoverUrl: resolveAuthenticatedApiAssetUrl(entity.defaultCoverUrl) }
-        : {}),
-      ...(entity.artworkUrl
-        ? { artworkUrl: resolveAuthenticatedApiAssetUrl(entity.artworkUrl) }
-        : {}),
-      ...(entity.customArtworkUrl
-        ? { customArtworkUrl: resolveAuthenticatedApiAssetUrl(entity.customArtworkUrl) }
-        : {}),
-    }
-  : entity;
+const withAuthenticatedArtwork = (entity) =>
+  entity && typeof entity === "object"
+    ? {
+        ...entity,
+        ...(entity.coverUrl ? { coverUrl: resolveAuthenticatedApiAssetUrl(entity.coverUrl) } : {}),
+        ...(entity.defaultCoverUrl
+          ? { defaultCoverUrl: resolveAuthenticatedApiAssetUrl(entity.defaultCoverUrl) }
+          : {}),
+        ...(entity.artworkUrl
+          ? { artworkUrl: resolveAuthenticatedApiAssetUrl(entity.artworkUrl) }
+          : {}),
+        ...(entity.customArtworkUrl
+          ? { customArtworkUrl: resolveAuthenticatedApiAssetUrl(entity.customArtworkUrl) }
+          : {}),
+      }
+    : entity;
 
 const withAuthenticatedLibraryArtwork = (library) => {
   if (!library || typeof library !== "object") return library;
@@ -73,24 +71,21 @@ const withAuthenticatedLibraryArtwork = (library) => {
     ...(Array.isArray(library.tracks)
       ? { tracks: library.tracks.map(withAuthenticatedArtwork) }
       : {}),
-    ...(Array.isArray(library.items)
-      ? { items: library.items.map(withAuthenticatedArtwork) }
-      : {}),
+    ...(Array.isArray(library.items) ? { items: library.items.map(withAuthenticatedArtwork) } : {}),
   };
 };
 
 export const fetchLibraryPage = (options = {}, { signal } = {}) =>
-  getData("/library/canonical", { params: libraryPageParams(options), signal })
-    .then(withAuthenticatedLibraryArtwork);
+  getData("/library/canonical", { params: libraryPageParams(options), signal }).then(
+    withAuthenticatedLibraryArtwork,
+  );
 
 export const getLibraryPage = (options = {}, { signal } = {}) => {
   const params = libraryPageParams(options);
   return queryClient.fetchQuery({
     queryKey: queryKeys.libraryPage(params),
-    queryFn: ({ signal: querySignal }) => fetchLibraryPage(
-      options,
-      { signal: mergeSignals(signal, querySignal) },
-    ),
+    queryFn: ({ signal: querySignal }) =>
+      fetchLibraryPage(options, { signal: mergeSignals(signal, querySignal) }),
     staleTime: 15_000,
   });
 };
@@ -111,14 +106,12 @@ export const settleLibraryOwnerConflict = (error) => {
   return conflict;
 };
 
-export const requestLibraryRefresh = (mode = "quick") =>
-  postData("/library/refresh", { mode });
+export const requestLibraryRefresh = (mode = "quick") => postData("/library/refresh", { mode });
 
 export const updateLibraryArtistMbid = async (artistId, mbid) => {
-  const result = await putData(
-    `/library/canonical/artists/${encodeURIComponent(artistId)}/mbid`,
-    { mbid },
-  );
+  const result = await putData(`/library/canonical/artists/${encodeURIComponent(artistId)}/mbid`, {
+    mbid,
+  });
   clearLibraryPageCache();
   void queryClient.invalidateQueries({ queryKey: queryKeys.libraryPrefix });
   return result;
@@ -158,17 +151,12 @@ export const getLibraryCustomArtworkUrl = (kind, id, version = "current") =>
   );
 
 export const uploadLibraryCustomArtwork = (kind, id, file) =>
-  putData(
-    `/library/artwork/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`,
-    file,
-    { headers: { "Content-Type": file.type || "application/octet-stream" } },
-  );
+  putData(`/library/artwork/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`, file, {
+    headers: { "Content-Type": file.type || "application/octet-stream" },
+  });
 
 export const setLibraryCustomArtworkUrl = (kind, id, url) =>
-  putData(
-    `/library/artwork/${encodeURIComponent(kind)}/${encodeURIComponent(id)}/url`,
-    { url },
-  );
+  putData(`/library/artwork/${encodeURIComponent(kind)}/${encodeURIComponent(id)}/url`, { url });
 
 export const deleteLibraryCustomArtwork = (kind, id) =>
   deleteData(`/library/artwork/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`);
@@ -183,8 +171,7 @@ let latestLibraryFavorites = null;
 let libraryFavoritesRefresh = null;
 let libraryFavoritesWrite = Promise.resolve();
 
-export const fetchLibraryFavorites = ({ signal } = {}) =>
-  getData("/library/favorites", { signal });
+export const fetchLibraryFavorites = ({ signal } = {}) => getData("/library/favorites", { signal });
 
 const waitForLibraryFavoritesRefresh = async () => {
   let waited = false;
@@ -200,12 +187,14 @@ export const getLibraryFavorites = async ({ signal } = {}) => {
   const generation = libraryFavoritesGeneration;
   const data = await queryClient.fetchQuery({
     queryKey: queryKeys.libraryFavorites,
-    queryFn: ({ signal: querySignal }) => fetchLibraryFavorites({ signal: mergeSignals(signal, querySignal) }),
+    queryFn: ({ signal: querySignal }) =>
+      fetchLibraryFavorites({ signal: mergeSignals(signal, querySignal) }),
     staleTime: 30_000,
   });
   const waitedForRefresh = await waitForLibraryFavoritesRefresh();
   if (generation === libraryFavoritesGeneration && !waitedForRefresh) return data;
-  const repaired = latestLibraryFavorites || queryClient.getQueryData(queryKeys.libraryFavorites) || data;
+  const repaired =
+    latestLibraryFavorites || queryClient.getQueryData(queryKeys.libraryFavorites) || data;
   queryClient.setQueryData(queryKeys.libraryFavorites, repaired);
   return repaired;
 };
@@ -253,9 +242,7 @@ export const restoreLibraryFavorites = (favorites) =>
   writeLibraryFavorites(() => postData("/library/favorites/restore", { favorites }));
 
 const normalizeLibraryArtist = (artist) =>
-  artist && !artist.foreignArtistId
-    ? { ...artist, foreignArtistId: artist.mbid }
-    : artist;
+  artist && !artist.foreignArtistId ? { ...artist, foreignArtistId: artist.mbid } : artist;
 
 const fetchLibraryArtist = async (mbid, { signal } = {}) =>
   normalizeLibraryArtist(await getData(`/library/artists/${mbid}`, { signal }));
@@ -350,7 +337,8 @@ export const refreshActiveDownloads = () =>
 
 const markDownloadStarted = (started) => {
   queryClient.setQueryData(queryKeys.activeDownloads, (current) =>
-    addActiveDownload(current, started));
+    addActiveDownload(current, started),
+  );
   void refreshActiveDownloads();
 };
 
@@ -392,13 +380,16 @@ export const getMonitoringDefaults = ({ signal } = {}) =>
   getData("/library/monitoring/defaults", { signal });
 
 export const previewMonitoringDefaults = (rules, { signal } = {}) =>
-  postData("/library/monitoring/defaults/preview", { rules }, {
-    signal,
-    timeout: SLOW_LIBRARY_REQUEST_TIMEOUT_MS,
-  });
+  postData(
+    "/library/monitoring/defaults/preview",
+    { rules },
+    {
+      signal,
+      timeout: SLOW_LIBRARY_REQUEST_TIMEOUT_MS,
+    },
+  );
 
-export const saveMonitoringDefaults = (rules) =>
-  putData("/library/monitoring/defaults", { rules });
+export const saveMonitoringDefaults = (rules) => putData("/library/monitoring/defaults", { rules });
 
 export const getMonitoringExclusions = ({ artistMbid = null, signal } = {}) =>
   getData("/library/monitoring/exclusions", {
@@ -438,33 +429,38 @@ const fetchLibraryAlbums = async (artistId, { signal, managedBy = null } = {}) =
   }));
 };
 
-export const getLibraryAlbums = (artistId, { signal, bypassCache = false, managedBy = null } = {}) => {
+export const getLibraryAlbums = (
+  artistId,
+  { signal, bypassCache = false, managedBy = null } = {},
+) => {
   if (signal && !bypassCache) return fetchLibraryAlbums(artistId, { signal, managedBy });
   return queryClient.fetchQuery({
     queryKey: [...queryKeys.libraryAlbums(artistId), managedBy],
-    queryFn: ({ signal: querySignal }) => fetchLibraryAlbums(artistId, { signal: querySignal, managedBy }),
+    queryFn: ({ signal: querySignal }) =>
+      fetchLibraryAlbums(artistId, { signal: querySignal, managedBy }),
     staleTime: bypassCache ? 0 : 15_000,
   });
 };
 
-export const addLibraryAlbum = async (
-  artistId,
-  releaseGroupMbid,
-  albumName,
-) =>
-  postData("/library/albums", {
-    artistId,
-    releaseGroupMbid,
-    albumName,
-  }, {
-    timeout: SLOW_LIBRARY_REQUEST_TIMEOUT_MS,
-  });
+export const addLibraryAlbum = async (artistId, releaseGroupMbid, albumName) =>
+  postData(
+    "/library/albums",
+    {
+      artistId,
+      releaseGroupMbid,
+      albumName,
+    },
+    {
+      timeout: SLOW_LIBRARY_REQUEST_TIMEOUT_MS,
+    },
+  );
 
 export const requestAlbumFromSearch = async (payload) => {
   const started = { albumMbid: payload?.albumMbid, artistMbid: payload?.artistMbid };
   const previous = queryClient.getQueryData(queryKeys.activeDownloads);
   const optimistic = queryClient.setQueryData(queryKeys.activeDownloads, (current) =>
-    addActiveDownload(current, started));
+    addActiveDownload(current, started),
+  );
   let result;
   try {
     result = await postData("/library/albums/request", payload, {
@@ -472,7 +468,10 @@ export const requestAlbumFromSearch = async (payload) => {
     });
   } catch (error) {
     if (queryClient.getQueryData(queryKeys.activeDownloads) === optimistic) {
-      queryClient.setQueryData(queryKeys.activeDownloads, previous ?? normalizeActiveDownloads(previous));
+      queryClient.setQueryData(
+        queryKeys.activeDownloads,
+        previous ?? normalizeActiveDownloads(previous),
+      );
     }
     void refreshActiveDownloads();
     throw error;
@@ -485,11 +484,7 @@ export const requestAlbumFromSearch = async (payload) => {
   return result;
 };
 
-export const getLibraryTracks = async (
-  albumId,
-  releaseGroupMbid = null,
-  context = {},
-) => {
+export const getLibraryTracks = async (albumId, releaseGroupMbid = null, context = {}) => {
   const params = { albumId };
   if (releaseGroupMbid) {
     params.releaseGroupMbid = releaseGroupMbid;
@@ -515,19 +510,20 @@ export const getLibraryTracks = async (
   );
 };
 
-export const updateLibraryAlbum = (id, data) =>
-  putData(`/library/albums/${id}`, data);
+export const updateLibraryAlbum = (id, data) => putData(`/library/albums/${id}`, data);
 
 export const updateLibraryArtist = (mbid, data) =>
   refreshActiveDownloadsAfter(putData(`/library/artists/${mbid}`, data));
 
 export const downloadAlbum = (artistId, albumId, options = {}) =>
-  refreshActiveDownloadsAfter(postData("/library/downloads/album", {
-    artistId,
-    albumId,
-    artistMbid: options.artistMbid,
-    artistName: options.artistName,
-  }));
+  refreshActiveDownloadsAfter(
+    postData("/library/downloads/album", {
+      artistId,
+      albumId,
+      artistMbid: options.artistMbid,
+      artistName: options.artistName,
+    }),
+  );
 
 export const downloadTrackToLibrary = async (track) => {
   const result = await postData("/library/downloads/track", track);
@@ -546,17 +542,23 @@ export const downloadTrackToLibrary = async (track) => {
 };
 
 export const reSearchLibraryTrack = (trackId, { albumId } = {}) =>
-  refreshActiveDownloadsAfter(postData(`/library/downloads/tracks/${encodeURIComponent(trackId)}/research`, {
-    albumId,
-  }));
+  refreshActiveDownloadsAfter(
+    postData(`/library/downloads/tracks/${encodeURIComponent(trackId)}/research`, {
+      albumId,
+    }),
+  );
 
 export const triggerAlbumSearch = (albumId) =>
-  refreshActiveDownloadsAfter(postData("/library/downloads/album/search", {
-    albumId,
-  }));
+  refreshActiveDownloadsAfter(
+    postData("/library/downloads/album/search", {
+      albumId,
+    }),
+  );
 
 export const getDownloadStatus = async (albumIds, { signal, bypassCache = false } = {}) => {
-  const ids = [...new Set((Array.isArray(albumIds) ? albumIds : [albumIds]).filter(Boolean))].sort();
+  const ids = [
+    ...new Set((Array.isArray(albumIds) ? albumIds : [albumIds]).filter(Boolean)),
+  ].sort();
   if (!ids.length) return {};
   if (bypassCache) {
     return getData(`/library/downloads/status?albumIds=${ids.join(",")}`, { signal });
@@ -575,23 +577,31 @@ export const getAurralAlbumStatus = (canonicalId, { signal } = {}) =>
   getData(`/library/albums/aurral/${encodeURIComponent(canonicalId)}/status`, { signal });
 
 export const cancelAurralAlbum = (canonicalId) =>
-  refreshActiveDownloadsAfter(postData(`/library/albums/aurral/${encodeURIComponent(canonicalId)}/cancel`));
+  refreshActiveDownloadsAfter(
+    postData(`/library/albums/aurral/${encodeURIComponent(canonicalId)}/cancel`),
+  );
 
 export const setAurralAlbumMonitoring = (canonicalId, monitored) =>
-  refreshActiveDownloadsAfter(putData(`/library/albums/aurral/${encodeURIComponent(canonicalId)}`, { monitored }));
+  refreshActiveDownloadsAfter(
+    putData(`/library/albums/aurral/${encodeURIComponent(canonicalId)}`, { monitored }),
+  );
 
 export const setAurralTrackMonitoring = (canonicalId, monitored) =>
-  refreshActiveDownloadsAfter(putData(`/library/tracks/aurral/${encodeURIComponent(canonicalId)}`, { monitored }));
+  refreshActiveDownloadsAfter(
+    putData(`/library/tracks/aurral/${encodeURIComponent(canonicalId)}`, { monitored }),
+  );
 
 export const setAurralTrackKeepFile = (canonicalId, keepFile) =>
-  refreshActiveDownloadsAfter(putData(`/library/tracks/aurral/${encodeURIComponent(canonicalId)}`, { keepFile }));
+  refreshActiveDownloadsAfter(
+    putData(`/library/tracks/aurral/${encodeURIComponent(canonicalId)}`, { keepFile }),
+  );
 
-export const refreshLibraryArtist = (mbid) =>
-  postData(`/library/artists/${mbid}/refresh`);
+export const refreshLibraryArtist = (mbid) => postData(`/library/artists/${mbid}/refresh`);
 
 export const getRequests = ({ refresh = false, signal } = {}) =>
   getData("/requests", { params: refresh ? { refresh: 1 } : {}, signal });
 
 export const getRecentlyAdded = ({ signal } = {}) => getData("/library/recent", { signal });
 
-export const getRecentReleases = ({ signal } = {}) => getData("/library/recent-releases", { signal });
+export const getRecentReleases = ({ signal } = {}) =>
+  getData("/library/recent-releases", { signal });

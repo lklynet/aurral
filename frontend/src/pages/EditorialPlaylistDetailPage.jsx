@@ -2,21 +2,30 @@ import { useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Check, ListMusic, Plus } from "lucide-react";
-import {
-  addEditorialPlaylistToLibrary,
-} from "../utils/api/endpoints/discovery.js";
+import { addEditorialPlaylistToLibrary } from "../utils/api/endpoints/discovery.js";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { queryClient } from "../queryClient.js";
 import { editorialPlaylistQueryOptions } from "../queryOptions.js";
-import { CollectionHeader, CollectionPage, CollectionPlayButtons } from "../components/CollectionHeader";
+import {
+  CollectionHeader,
+  CollectionPage,
+  CollectionPlayButtons,
+} from "../components/CollectionHeader";
 import TooltipButton from "../components/TooltipButton";
 import Tooltip from "../components/Tooltip";
 import RouteLink from "../components/RouteLink";
-import { SkeletonCollectionHeader, SkeletonCollectionTracks, SkeletonStatus } from "../components/Skeletons";
+import {
+  SkeletonCollectionHeader,
+  SkeletonCollectionTracks,
+  SkeletonStatus,
+} from "../components/Skeletons";
 import { DotLoader } from "../components/DotLoader";
-import { PlaylistTracksPanel, usePlaylistTrackPlayback } from "./playlists/components/playlistTrackComponents.jsx";
+import {
+  PlaylistTracksPanel,
+  usePlaylistTrackPlayback,
+} from "./playlists/components/playlistTrackComponents.jsx";
 import { formatTrackTotal } from "./playlists/playlistPageUtils";
 import { getApiErrorMessage } from "./onboardingUtils";
 import { playlistPath } from "../navigation/playlistPaths";
@@ -99,7 +108,9 @@ export default function EditorialPlaylistDetailPage() {
           : `Added ${result.name} to your playlists. It syncs with Deezer daily.`,
       );
     } catch (err) {
-      showError(getApiErrorMessage(err, "Couldn't add this playlist. Nothing was added. Try again."));
+      showError(
+        getApiErrorMessage(err, "Couldn't add this playlist. Nothing was added. Try again."),
+      );
     } finally {
       setAdding(false);
     }

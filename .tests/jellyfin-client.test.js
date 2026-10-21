@@ -32,10 +32,7 @@ test("creates private playlists and deletes them with API-key authentication", a
     assert.equal(created.Id, "created");
     assert.deepEqual(
       requests.map(({ method, url }) => `${method} ${url.pathname}`),
-      [
-        "POST /Playlists",
-        "DELETE /Items/created",
-      ],
+      ["POST /Playlists", "DELETE /Items/created"],
     );
     assert.equal(requests[0].body.UserId, "user-id");
     assert.equal(requests[0].body.IsPublic, false);
@@ -49,23 +46,19 @@ test("creates private playlists and deletes them with API-key authentication", a
 test("finds Jellyfin users by exact case-insensitive username", async () => {
   const server = await createMockHttpServer(async (_req, res) => {
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify([
-      { Id: "jellyfin-ambi", Name: "ambi" },
-      { Id: "jellyfin-hopolis", Name: "Hopolis" },
-    ]));
+    res.end(
+      JSON.stringify([
+        { Id: "jellyfin-ambi", Name: "ambi" },
+        { Id: "jellyfin-hopolis", Name: "Hopolis" },
+      ]),
+    );
   });
 
   try {
     const client = new JellyfinClient(server.url, "api-key", "admin-user");
 
-    assert.equal(
-      (await client.findUserByUsername(" AMBI "))?.Id,
-      "jellyfin-ambi",
-    );
-    assert.equal(
-      (await client.findUserByUsername("hopolis"))?.Id,
-      "jellyfin-hopolis",
-    );
+    assert.equal((await client.findUserByUsername(" AMBI "))?.Id, "jellyfin-ambi");
+    assert.equal((await client.findUserByUsername("hopolis"))?.Id, "jellyfin-hopolis");
     assert.equal(await client.findUserByUsername("hop"), null);
   } finally {
     await server.close();
@@ -102,7 +95,9 @@ function mockPlaylistClient(initialIds, { beforeRequest } = {}) {
     if (endpoint === "/Playlists/playlist-1/Items") {
       if (method === "GET") {
         return {
-          Items: structuredClone(state.entries.slice(params.startIndex, params.startIndex + params.limit)),
+          Items: structuredClone(
+            state.entries.slice(params.startIndex, params.startIndex + params.limit),
+          ),
           TotalRecordCount: state.entries.length,
         };
       }
@@ -144,14 +139,19 @@ test("updates playlists through API-key-compatible endpoints with pagination and
   assert.equal(result.Id, "playlist-1");
   assert.deepEqual([...result.managedItemIds].sort(), [...itemIds].sort());
   assert.deepEqual(state.metadata, { ...originalMetadata, Name: "Renamed" });
-  assert.deepEqual(state.entries.map((entry) => entry.Id), itemIds);
   assert.deepEqual(
-    state.requests.filter((request) => request.method === "DELETE")
+    state.entries.map((entry) => entry.Id),
+    itemIds,
+  );
+  assert.deepEqual(
+    state.requests
+      .filter((request) => request.method === "DELETE")
       .map((request) => request.params.entryIds.split(",").length),
     [50, 50, 50, 50, 5],
   );
   assert.deepEqual(
-    state.requests.filter((request) => request.method === "POST" && request.params?.ids)
+    state.requests
+      .filter((request) => request.method === "POST" && request.params?.ids)
       .map((request) => request.params.ids.split(",").length),
     [50, 50, 21],
   );
@@ -173,7 +173,10 @@ test("splits repeated IDs into ordered, duplicate-free add batches", async () =>
   assert.deepEqual(batches, [firstBatch, ["track-49"], ["track-49", "track-1"], ["track-49"]]);
   assert.deepEqual(batches.flat(), itemIds);
   assert.ok(batches.every((batch) => new Set(batch).size === batch.length));
-  assert.deepEqual(state.entries.map((entry) => entry.Id), itemIds);
+  assert.deepEqual(
+    state.entries.map((entry) => entry.Id),
+    itemIds,
+  );
 
   state.requests.length = 0;
   await client.addPlaylistItems("playlist-1", [], "matched-owner");
@@ -183,17 +186,26 @@ test("splits repeated IDs into ordered, duplicate-free add batches", async () =>
 test("sync preserves Jellyfin-only tracks and removes only previously managed tracks", async () => {
   const { client, state } = mockPlaylistClient(["custom", "keep", "remove", "custom"]);
   const managedItemIds = await client.syncPlaylistItems("playlist-1", ["keep", "new"], {
-    userId: "matched-owner", managedItemIds: ["keep", "remove"],
+    userId: "matched-owner",
+    managedItemIds: ["keep", "remove"],
   });
-  assert.deepEqual(state.entries.map((entry) => entry.Id), ["custom", "keep", "custom", "new"]);
+  assert.deepEqual(
+    state.entries.map((entry) => entry.Id),
+    ["custom", "keep", "custom", "new"],
+  );
   assert.deepEqual(managedItemIds, ["keep", "new"]);
   assert.deepEqual(
-    state.requests.filter((request) => request.method === "DELETE").map((request) => request.params.entryIds),
+    state.requests
+      .filter((request) => request.method === "DELETE")
+      .map((request) => request.params.entryIds),
     ["entry-remove"],
   );
 
   await client.syncPlaylistItems("playlist-1", [], { userId: "matched-owner", managedItemIds });
-  assert.deepEqual(state.entries.map((entry) => entry.Id), ["custom", "custom"]);
+  assert.deepEqual(
+    state.entries.map((entry) => entry.Id),
+    ["custom", "custom"],
+  );
 });
 
 test("first sync preserves all existing entries, including overlapping Aurral tracks", async () => {
@@ -201,25 +213,39 @@ test("first sync preserves all existing entries, including overlapping Aurral tr
   const managedItemIds = await client.syncPlaylistItems("playlist-1", ["overlap", "new"], {
     userId: "matched-owner",
   });
-  assert.deepEqual(state.entries.map((entry) => entry.Id), ["legacy", "overlap", "custom", "new"]);
+  assert.deepEqual(
+    state.entries.map((entry) => entry.Id),
+    ["legacy", "overlap", "custom", "new"],
+  );
   assert.deepEqual(managedItemIds, ["new"]);
   assert.ok(state.requests.every((request) => request.method !== "DELETE"));
   await client.syncPlaylistItems("playlist-1", [], { userId: "matched-owner", managedItemIds });
-  assert.deepEqual(state.entries.map((entry) => entry.Id), ["legacy", "overlap", "custom"]);
+  assert.deepEqual(
+    state.entries.map((entry) => entry.Id),
+    ["legacy", "overlap", "custom"],
+  );
 });
 
 test("sync ignores ordering changes and can restore a missing Aurral track", async () => {
   const { client, state } = mockPlaylistClient(["second", "custom", "first"]);
   let managedItemIds = await client.syncPlaylistItems("playlist-1", ["first", "second"], {
-    userId: "matched-owner", managedItemIds: ["first", "second"],
+    userId: "matched-owner",
+    managedItemIds: ["first", "second"],
   });
   assert.ok(state.requests.every((request) => request.method === "GET"));
-  assert.deepEqual(state.entries.map((entry) => entry.Id), ["second", "custom", "first"]);
+  assert.deepEqual(
+    state.entries.map((entry) => entry.Id),
+    ["second", "custom", "first"],
+  );
   state.entries = state.entries.filter((entry) => entry.Id !== "first");
   managedItemIds = await client.syncPlaylistItems("playlist-1", ["first", "second"], {
-    userId: "matched-owner", managedItemIds,
+    userId: "matched-owner",
+    managedItemIds,
   });
-  assert.deepEqual(state.entries.map((entry) => entry.Id), ["second", "custom", "first"]);
+  assert.deepEqual(
+    state.entries.map((entry) => entry.Id),
+    ["second", "custom", "first"],
+  );
   assert.deepEqual([...managedItemIds].sort(), ["first", "second"]);
 });
 
@@ -232,9 +258,13 @@ test("sync retains additions made in Jellyfin while an add request is in flight"
     },
   });
   await client.syncPlaylistItems("playlist-1", ["new"], {
-    userId: "matched-owner", managedItemIds: ["owned"],
+    userId: "matched-owner",
+    managedItemIds: ["owned"],
   });
-  assert.deepEqual(state.entries.map((entry) => entry.Id), ["concurrent-custom", "new"]);
+  assert.deepEqual(
+    state.entries.map((entry) => entry.Id),
+    ["concurrent-custom", "new"],
+  );
 });
 
 test("sync checkpoints successful batches and retries a partial add without duplication or clearing", async () => {
@@ -242,20 +272,33 @@ test("sync checkpoints successful batches and retries a partial add without dupl
   let saved = ["old"];
   const { client, state } = mockPlaylistClient(["custom", "old"], {
     beforeRequest: ({ method, params }) => {
-      if (method === "POST" && params?.ids && ++attempts === 2) throw new Error("second batch failed");
+      if (method === "POST" && params?.ids && ++attempts === 2)
+        throw new Error("second batch failed");
     },
   });
   const desired = Array.from({ length: 60 }, (_, index) => `new-${index}`);
   const options = () => ({
-    userId: "matched-owner", managedItemIds: saved,
-    onManagedItemsChange: (ids) => { saved = structuredClone(ids); },
+    userId: "matched-owner",
+    managedItemIds: saved,
+    onManagedItemsChange: (ids) => {
+      saved = structuredClone(ids);
+    },
   });
-  await assert.rejects(client.syncPlaylistItems("playlist-1", desired, options()), /second batch failed/);
-  assert.deepEqual(state.entries.map((entry) => entry.Id), ["custom", "old", ...desired.slice(0, 50)]);
+  await assert.rejects(
+    client.syncPlaylistItems("playlist-1", desired, options()),
+    /second batch failed/,
+  );
+  assert.deepEqual(
+    state.entries.map((entry) => entry.Id),
+    ["custom", "old", ...desired.slice(0, 50)],
+  );
   assert.deepEqual(saved, ["old", ...desired.slice(0, 50)]);
   assert.ok(state.requests.every((request) => request.method !== "DELETE"));
   await client.syncPlaylistItems("playlist-1", desired, options());
-  assert.deepEqual(state.entries.map((entry) => entry.Id), ["custom", ...desired]);
+  assert.deepEqual(
+    state.entries.map((entry) => entry.Id),
+    ["custom", ...desired],
+  );
   assert.deepEqual(saved, desired);
 });
 
@@ -272,21 +315,31 @@ test("a lost add response leaves an uncertain entry protected and retry does not
     },
   });
   const options = () => ({
-    userId: "matched-owner", managedItemIds: saved,
-    onManagedItemsChange: (ids) => { saved = structuredClone(ids); },
+    userId: "matched-owner",
+    managedItemIds: saved,
+    onManagedItemsChange: (ids) => {
+      saved = structuredClone(ids);
+    },
   });
   await assert.rejects(client.syncPlaylistItems("playlist-1", ["new"], options()), /response lost/);
   await client.syncPlaylistItems("playlist-1", ["new"], options());
-  assert.deepEqual(state.entries.map((entry) => entry.Id), ["custom", "new"]);
+  assert.deepEqual(
+    state.entries.map((entry) => entry.Id),
+    ["custom", "new"],
+  );
   assert.deepEqual(saved, []);
 });
 
 test("sync preserves ambiguous repeated copies instead of removing a Jellyfin user's copy", async () => {
   const { client, state } = mockPlaylistClient(["same", "same", "custom"]);
   const managedItemIds = await client.syncPlaylistItems("playlist-1", [], {
-    userId: "matched-owner", managedItemIds: ["same"],
+    userId: "matched-owner",
+    managedItemIds: ["same"],
   });
-  assert.deepEqual(state.entries.map((entry) => entry.Id), ["same", "same", "custom"]);
+  assert.deepEqual(
+    state.entries.map((entry) => entry.Id),
+    ["same", "same", "custom"],
+  );
   assert.deepEqual(managedItemIds, []);
   assert.ok(state.requests.every((request) => request.method === "GET"));
 });
@@ -294,7 +347,8 @@ test("sync preserves ambiguous repeated copies instead of removing a Jellyfin us
 test("sync never deletes a shared entry group to reduce its repetition count", async () => {
   const { client, state } = mockPlaylistClient(["same", "same"]);
   const managedItemIds = await client.syncPlaylistItems("playlist-1", ["same"], {
-    userId: "matched-owner", managedItemIds: ["same", "same"],
+    userId: "matched-owner",
+    managedItemIds: ["same", "same"],
   });
   assert.deepEqual(managedItemIds, ["same"]);
   assert.equal(state.entries.length, 2);
@@ -304,10 +358,14 @@ test("sync never deletes a shared entry group to reduce its repetition count", a
 test("sync can remove owned repeated tracks when the whole group is no longer wanted", async () => {
   const { client, state } = mockPlaylistClient(["same", "same", "custom"]);
   const managedItemIds = await client.syncPlaylistItems("playlist-1", [], {
-    userId: "matched-owner", managedItemIds: ["same", "same"],
+    userId: "matched-owner",
+    managedItemIds: ["same", "same"],
   });
   assert.deepEqual(managedItemIds, []);
-  assert.deepEqual(state.entries.map((entry) => entry.Id), ["custom"]);
+  assert.deepEqual(
+    state.entries.map((entry) => entry.Id),
+    ["custom"],
+  );
 });
 
 test("sync fails safely on incomplete reads and invalid IDs", async () => {
@@ -321,7 +379,10 @@ test("sync fails safely on incomplete reads and invalid IDs", async () => {
   };
   await assert.rejects(client.syncPlaylistItems("playlist-1", ["new"]), /incomplete playlist/);
   await assert.rejects(client.syncPlaylistItems("playlist-1", [null]), /non-empty strings/);
-  await assert.rejects(client.syncPlaylistItems("playlist-1", [], { managedItemIds: [""] }), /non-empty strings/);
+  await assert.rejects(
+    client.syncPlaylistItems("playlist-1", [], { managedItemIds: [""] }),
+    /non-empty strings/,
+  );
 });
 
 test("sync verifies deletions and retries without deleting unrelated entries", async () => {
@@ -336,27 +397,45 @@ test("sync verifies deletions and retries without deleting unrelated entries", a
     },
   });
   const options = () => ({
-    userId: "matched-owner", managedItemIds: saved,
-    onManagedItemsChange: (ids) => { saved = structuredClone(ids); },
+    userId: "matched-owner",
+    managedItemIds: saved,
+    onManagedItemsChange: (ids) => {
+      saved = structuredClone(ids);
+    },
   });
   await assert.rejects(client.syncPlaylistItems("playlist-1", [], options()), /delete unavailable/);
   assert.deepEqual(saved, ["owned"]);
-  assert.deepEqual(state.entries.map((entry) => entry.Id), ["owned", "custom"]);
+  assert.deepEqual(
+    state.entries.map((entry) => entry.Id),
+    ["owned", "custom"],
+  );
   await client.syncPlaylistItems("playlist-1", [], options());
   assert.deepEqual(saved, []);
-  assert.deepEqual(state.entries.map((entry) => entry.Id), ["custom"]);
+  assert.deepEqual(
+    state.entries.map((entry) => entry.Id),
+    ["custom"],
+  );
 });
 
 test("sync detects a server that acknowledges a deletion without applying it", async () => {
   const { client, state } = mockPlaylistClient(["owned", "custom"]);
   client.removePlaylistItems = async () => {};
   let saved = ["owned"];
-  await assert.rejects(client.syncPlaylistItems("playlist-1", [], {
-    userId: "matched-owner", managedItemIds: saved,
-    onManagedItemsChange: (ids) => { saved = structuredClone(ids); },
-  }), /removal verification failed/);
+  await assert.rejects(
+    client.syncPlaylistItems("playlist-1", [], {
+      userId: "matched-owner",
+      managedItemIds: saved,
+      onManagedItemsChange: (ids) => {
+        saved = structuredClone(ids);
+      },
+    }),
+    /removal verification failed/,
+  );
   assert.deepEqual(saved, ["owned"]);
-  assert.deepEqual(state.entries.map((entry) => entry.Id), ["owned", "custom"]);
+  assert.deepEqual(
+    state.entries.map((entry) => entry.Id),
+    ["owned", "custom"],
+  );
 });
 
 test("sync handles partial deletion batches on retry without clearing the playlist", async () => {
@@ -369,24 +448,42 @@ test("sync handles partial deletion batches on retry without clearing the playli
   });
   let saved = owned;
   const options = () => ({
-    userId: "matched-owner", managedItemIds: saved,
-    onManagedItemsChange: (ids) => { saved = structuredClone(ids); },
+    userId: "matched-owner",
+    managedItemIds: saved,
+    onManagedItemsChange: (ids) => {
+      saved = structuredClone(ids);
+    },
   });
-  await assert.rejects(client.syncPlaylistItems("playlist-1", [], options()), /second delete failed/);
-  assert.deepEqual(state.entries.map((entry) => entry.Id), [...owned.slice(50), "custom"]);
+  await assert.rejects(
+    client.syncPlaylistItems("playlist-1", [], options()),
+    /second delete failed/,
+  );
+  assert.deepEqual(
+    state.entries.map((entry) => entry.Id),
+    [...owned.slice(50), "custom"],
+  );
   await client.syncPlaylistItems("playlist-1", [], options());
-  assert.deepEqual(state.entries.map((entry) => entry.Id), ["custom"]);
+  assert.deepEqual(
+    state.entries.map((entry) => entry.Id),
+    ["custom"],
+  );
   assert.deepEqual(saved, []);
 });
 
 test("sync preserves a retained track if another track unexpectedly shares its entry ID", async () => {
   const { client, state } = mockPlaylistClient(["owned", "custom"]);
-  state.entries.forEach((entry) => { entry.PlaylistItemId = "shared"; });
+  state.entries.forEach((entry) => {
+    entry.PlaylistItemId = "shared";
+  });
   const managedItemIds = await client.syncPlaylistItems("playlist-1", [], {
-    userId: "matched-owner", managedItemIds: ["owned"],
+    userId: "matched-owner",
+    managedItemIds: ["owned"],
   });
   assert.deepEqual(managedItemIds, []);
-  assert.deepEqual(state.entries.map((entry) => entry.Id), ["owned", "custom"]);
+  assert.deepEqual(
+    state.entries.map((entry) => entry.Id),
+    ["owned", "custom"],
+  );
   assert.ok(state.requests.every((request) => request.method === "GET"));
 });
 
@@ -426,15 +523,23 @@ test("falls back to legacy metadata reads on 405, including rename verification"
       await client.updatePlaylist(playlistId, { name: "Renamed", itemIds: [], userId }),
       { Id: playlistId, managedItemIds: [] },
     );
-    assert.deepEqual(metadata, { Id: playlistId, Type: "Playlist", Name: "Renamed", Overview: "Keep me" });
-    assert.deepEqual(requests.map(({ method, url }) => `${method} ${url.pathname}`), [
-      `GET ${modernPath}`,
-      `GET ${legacyPath}`,
-      `POST ${modernPath}`,
-      `GET ${modernPath}`,
-      `GET ${legacyPath}`,
-      "GET /Playlists/playlist%2Fid/Items",
-    ]);
+    assert.deepEqual(metadata, {
+      Id: playlistId,
+      Type: "Playlist",
+      Name: "Renamed",
+      Overview: "Keep me",
+    });
+    assert.deepEqual(
+      requests.map(({ method, url }) => `${method} ${url.pathname}`),
+      [
+        `GET ${modernPath}`,
+        `GET ${legacyPath}`,
+        `POST ${modernPath}`,
+        `GET ${modernPath}`,
+        `GET ${legacyPath}`,
+        "GET /Playlists/playlist%2Fid/Items",
+      ],
+    );
     for (const request of requests) {
       assert.match(request.headers.authorization, /Token="api-key"/);
       if (request.method === "GET" && request.url.pathname !== legacyPath) {
@@ -447,10 +552,11 @@ test("falls back to legacy metadata reads on 405, including rename verification"
 });
 
 test.each(
-  [401, 403, 404, 500, undefined].map((status) => ({ status, label: String(status ?? "network failure") })),
-)(
-  "does not fall back or mutate playlists on metadata error $label",
-  async ({ status }) => {
+  [401, 403, 404, 500, undefined].map((status) => ({
+    status,
+    label: String(status ?? "network failure"),
+  })),
+)("does not fall back or mutate playlists on metadata error $label", async ({ status }) => {
   const client = new JellyfinClient("http://jellyfin.test", "api-key", "configured-user");
   const failure = new Error("Metadata read failed");
   if (status !== undefined) failure.response = { status };
@@ -464,5 +570,4 @@ test.each(
     (error) => error === failure,
   );
   assert.deepEqual(requests, [{ method: "GET", endpoint: "/Items/playlist-1" }]);
-  },
-);
+});

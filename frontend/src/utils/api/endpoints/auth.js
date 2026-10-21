@@ -19,8 +19,7 @@ export const invalidateBootstrapCache = () => {
 export const getBootstrapStatus = () =>
   queryClient.fetchQuery({
     queryKey: queryKeys.authBootstrap,
-    queryFn: ({ signal: querySignal }) =>
-      getData("/health/bootstrap", { signal: querySignal }),
+    queryFn: ({ signal: querySignal }) => getData("/health/bootstrap", { signal: querySignal }),
     staleTime: 25_000,
   });
 
@@ -108,12 +107,9 @@ export const recordPlayEvent = (payload) => postData("/play-events", payload);
 
 export const getScrobbleStatus = ({ signal } = {}) => getData("/scrobbling/status", { signal });
 export const getLastfmScrobbleLink = () => getData("/scrobbling/lastfm/link");
-export const linkListenBrainz = (token) =>
-  putData("/scrobbling/listenbrainz/link", { token });
-export const unlinkScrobbleProvider = (provider) =>
-  deleteData(`/scrobbling/${provider}/link`);
-export const linkKoito = (token, url) =>
-  putData("/scrobbling/koito/link", { token, url });
+export const linkListenBrainz = (token) => putData("/scrobbling/listenbrainz/link", { token });
+export const unlinkScrobbleProvider = (provider) => deleteData(`/scrobbling/${provider}/link`);
+export const linkKoito = (token, url) => putData("/scrobbling/koito/link", { token, url });
 
 export const getMyLidarrPreferences = ({ signal } = {}) =>
   getData("/users/me/lidarr-preferences", { signal });
@@ -124,8 +120,7 @@ export const getMyTheme = () => getData("/users/me/theme");
 
 export const saveMyTheme = (theme) => putData("/users/me/theme", { theme });
 
-export const updateMyListeningHistory = (userId, payload) =>
-  patchData(`/users/${userId}`, payload);
+export const updateMyListeningHistory = (userId, payload) => patchData(`/users/${userId}`, payload);
 
 export const updateMyLidarrPreferences = (payload) =>
   patchData("/users/me/lidarr-preferences", payload);

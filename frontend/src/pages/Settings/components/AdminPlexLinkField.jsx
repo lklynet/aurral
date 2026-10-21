@@ -23,7 +23,9 @@ export function AdminPlexLinkField({ user, onChanged, showSuccess, showError }) 
       } catch (err) {
         if (!signal.aborted) {
           showError?.(
-            err.response?.data?.message || err.response?.data?.error || "Failed to load Plex Home users",
+            err.response?.data?.message ||
+              err.response?.data?.error ||
+              "Failed to load Plex Home users",
           );
         }
         throw err;
@@ -34,7 +36,7 @@ export function AdminPlexLinkField({ user, onChanged, showSuccess, showError }) 
   });
   const loadingHomeUsers = showHomeUsers && homeUsersQuery.isFetching;
   const homeUsers =
-    showHomeUsers && !homeUsersQuery.isFetching ? homeUsersQuery.data ?? [] : null;
+    showHomeUsers && !homeUsersQuery.isFetching ? (homeUsersQuery.data ?? []) : null;
   const [selectedPlexUserId, setSelectedPlexUserId] = useState("");
   const [linking, setLinking] = useState(false);
   const [unlinking, setUnlinking] = useState(false);
@@ -157,7 +159,9 @@ export function AdminPlexLinkField({ user, onChanged, showSuccess, showError }) 
           <>
             <DotLoader size="sm" label={null} /> Loading Plex Home users…
           </>
-        ) : "Link managed Plex user"}
+        ) : (
+          "Link managed Plex user"
+        )}
       </button>
     );
   }

@@ -7,18 +7,12 @@ import {
   resetDatabase,
 } from "../helpers/backendTestHarness.js";
 
-const [
-  isolatedState,
-  {
-    buildSlskdRankingHistoryOptions,
-    recordSlskdTransferOutcome,
-  },
-  { db },
-] = await setupIsolatedBackend(
-  "slskd-transfer-history",
-  "backend/services/slskdTransferHistory.js",
-  "backend/config/db-sqlite.js",
-);
+const [isolatedState, { buildSlskdRankingHistoryOptions, recordSlskdTransferOutcome }, { db }] =
+  await setupIsolatedBackend(
+    "slskd-transfer-history",
+    "backend/services/slskdTransferHistory.js",
+    "backend/config/db-sqlite.js",
+  );
 
 beforeEach(() => {
   resetDatabase(db);
@@ -74,7 +68,11 @@ test("a peer that banned Aurral is skipped until it uploads again", () => {
   vi.useFakeTimers({ toFake: ["Date"], now: Date.now() });
   recordOutcome("strictPeer", "success");
   vi.advanceTimersByTime(1000);
-  recordOutcome("strictPeer", "transfer_failed", "slskd transfer failed: Transfer rejected: Banned");
+  recordOutcome(
+    "strictPeer",
+    "transfer_failed",
+    "slskd transfer failed: Transfer rejected: Banned",
+  );
   assert.equal(buildSlskdRankingHistoryOptions().isUserBlacklisted("strictPeer"), true);
 
   vi.advanceTimersByTime(1000);

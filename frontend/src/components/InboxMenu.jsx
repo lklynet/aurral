@@ -10,11 +10,7 @@ import {
   Sparkles,
   Check,
 } from "lucide-react";
-import {
-  getInbox,
-  markAllInboxItemsRead,
-  updateInboxItem,
-} from "../utils/api/endpoints/inbox.js";
+import { getInbox, markAllInboxItemsRead, updateInboxItem } from "../utils/api/endpoints/inbox.js";
 import { readStoredNearbyLocation } from "../pages/discoverUtils.js";
 import { useAuth } from "../contexts/AuthContext.jsx";
 import { useToast } from "../contexts/ToastContext";
@@ -39,10 +35,13 @@ const getInboxSubtitle = (item) => {
   if (item.kind === "release") {
     return ["New release", metadata.artistName].filter(Boolean).join(" · ");
   }
-  if (item.kind === "discovery") return ["New artist discovery", item.subtitle].filter(Boolean).join(" · ");
+  if (item.kind === "discovery")
+    return ["New artist discovery", item.subtitle].filter(Boolean).join(" · ");
   if (item.kind === "show") return ["Upcoming show", item.subtitle].filter(Boolean).join(" · ");
-  if (item.kind === "news") return ["Library artist news", item.subtitle].filter(Boolean).join(" · ");
-  if (item.kind === "recommendedNews") return ["Recommended artist news", item.subtitle].filter(Boolean).join(" · ");
+  if (item.kind === "news")
+    return ["Library artist news", item.subtitle].filter(Boolean).join(" · ");
+  if (item.kind === "recommendedNews")
+    return ["Recommended artist news", item.subtitle].filter(Boolean).join(" · ");
   return item.subtitle;
 };
 
@@ -152,7 +151,8 @@ function InboxMenu() {
 
   useEffect(() => {
     const handleSettingsUpdated = (event) => {
-      if (typeof event.detail?.inboxEnabled === "boolean") setInboxEnabled(event.detail.inboxEnabled);
+      if (typeof event.detail?.inboxEnabled === "boolean")
+        setInboxEnabled(event.detail.inboxEnabled);
     };
     window.addEventListener("aurral:settings-updated", handleSettingsUpdated);
     return () => window.removeEventListener("aurral:settings-updated", handleSettingsUpdated);
@@ -279,7 +279,8 @@ function InboxMenu() {
   };
 
   const visibleItems = filter === "all" ? items : items.filter((item) => item.kind === filter);
-  const selectedFilter = FILTER_OPTIONS.find((option) => option.value === filter) || FILTER_OPTIONS[0];
+  const selectedFilter =
+    FILTER_OPTIONS.find((option) => option.value === filter) || FILTER_OPTIONS[0];
 
   if (!inboxEnabled || !Number.isInteger(Number(user?.id)) || Number(user.id) <= 0) return null;
 
@@ -326,7 +327,11 @@ function InboxMenu() {
               ) : null}
             </span>
             {filterOpen ? (
-              <div className="app-inbox-menu__filter-popover" role="menu" aria-label="Filter inbox notifications">
+              <div
+                className="app-inbox-menu__filter-popover"
+                role="menu"
+                aria-label="Filter inbox notifications"
+              >
                 {FILTER_OPTIONS.map((option) => (
                   <button
                     key={option.value}
@@ -345,7 +350,7 @@ function InboxMenu() {
               </div>
             ) : null}
           </div>
-          {(inboxQuery.isPending || (serverRefreshing && items.length === 0)) ? (
+          {inboxQuery.isPending || (serverRefreshing && items.length === 0) ? (
             <div className="app-inbox-menu__empty">
               <DotLoader size="sm" label={null} /> Loading…
             </div>

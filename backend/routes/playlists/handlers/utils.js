@@ -47,11 +47,7 @@ const getFlowEntryName = (value) => {
 
 export const normalizeFlowStringArray = (value) => {
   if (Array.isArray(value)) {
-    return [
-      ...new Set(
-        value.map((entry) => getFlowEntryName(entry)).filter(Boolean),
-      ),
-    ];
+    return [...new Set(value.map((entry) => getFlowEntryName(entry)).filter(Boolean))];
   }
   if (value && typeof value === "object") {
     return [
@@ -144,10 +140,7 @@ export const pauseStaticPlaylistRetryCycle = async (playlistId) => {
   await downloadWorker.setRetryCyclePaused(playlistId, true);
   let cancelledJobs = 0;
   await withPlaylistMutation(playlistId, async () => {
-    cancelledJobs = downloadTracker.failActiveJobsForPlaylist(
-      playlistId,
-      "Retry cycle paused",
-    );
+    cancelledJobs = downloadTracker.failActiveJobsForPlaylist(playlistId, "Retry cycle paused");
   });
   if (downloadWorker.running) {
     downloadWorker.wake();
@@ -157,8 +150,7 @@ export const pauseStaticPlaylistRetryCycle = async (playlistId) => {
   return cancelledJobs;
 };
 
-export const getAccessibleFlow = (user, flowId) =>
-  flowPlaylistConfig.getFlowForUser(user, flowId);
+export const getAccessibleFlow = (user, flowId) => flowPlaylistConfig.getFlowForUser(user, flowId);
 
 export const getAccessibleStaticPlaylist = (user, playlistId) =>
   flowPlaylistConfig.getStaticPlaylistForUser(user, playlistId);
@@ -223,7 +215,9 @@ export const enqueueResearchTrack = async (req, res, playlistId, jobId, labelPre
     return res.status(409).json({ error: "Track cancellation is still in progress" });
   }
   if (job.requestGroupId && isDownloadJobCancelled(job.id)) {
-    return res.status(409).json({ error: "Cancelled album tracks cannot be searched again. Request the album again." });
+    return res
+      .status(409)
+      .json({ error: "Cancelled album tracks cannot be searched again. Request the album again." });
   }
   if (downloadTracker.findActiveUpgradeJob(job)) {
     return res.status(409).json({

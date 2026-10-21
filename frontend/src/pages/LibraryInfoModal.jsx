@@ -39,9 +39,7 @@ const durationMs = (track, file) => {
 
 const formatDuration = (duration) => {
   const seconds = Math.floor(Number(duration || 0) / 1000);
-  return seconds
-    ? Math.floor(seconds / 60) + ":" + String(seconds % 60).padStart(2, "0")
-    : "";
+  return seconds ? Math.floor(seconds / 60) + ":" + String(seconds % 60).padStart(2, "0") : "";
 };
 
 const formatQuality = (quality) => {
@@ -59,9 +57,7 @@ const getRows = ({ kind, source, entity, artist, album, trackNumber }) => {
   const file = kind === "track" ? firstFile(entity) : null;
   const title =
     entity?.title || entity?.trackName || entity?.albumName || entity?.name || entity?.artistName;
-  const rows = [
-    [kind === "artist" ? "Name" : kind === "album" ? "Album" : "Track", title],
-  ];
+  const rows = [[kind === "artist" ? "Name" : kind === "album" ? "Album" : "Track", title]];
 
   if (kind === "artist") {
     rows.push(
@@ -85,7 +81,11 @@ const getRows = ({ kind, source, entity, artist, album, trackNumber }) => {
       ["Track number", trackNumber],
       ["Duration", formatDuration(durationMs(entity, file))],
       ["Format", file?.format || entity.streamFormat],
-      ["Quality", formatQuality(file?.quality || entity.quality) || (entity.qualityTier && entity.qualityLabel)],
+      [
+        "Quality",
+        formatQuality(file?.quality || entity.quality) ||
+          (entity.qualityTier && entity.qualityLabel),
+      ],
       [
         "Available",
         (isPlaylistTrack ? entity.status === "done" : (entity.available ?? file?.available))
@@ -131,8 +131,9 @@ export default function LibraryInfoModal({ item, onClose }) {
   if (!item) return null;
 
   const title =
-    text(item.entity?.title || item.entity?.trackName || item.entity?.albumName || item.entity?.name) ||
-    "Library information";
+    text(
+      item.entity?.title || item.entity?.trackName || item.entity?.albumName || item.entity?.name,
+    ) || "Library information";
   const rows = getRows(item);
   if (showPaths) {
     const paths = pathsLabel(pathsQuery);
@@ -152,9 +153,12 @@ export default function LibraryInfoModal({ item, onClose }) {
         <div className="artist-modal__header">
           <div>
             <p className="activity-info-modal__eyebrow">
-              {item.kind === "artist" ? "Artist" : item.kind === "album" ? "Album" : "Track"} information
+              {item.kind === "artist" ? "Artist" : item.kind === "album" ? "Album" : "Track"}{" "}
+              information
             </p>
-            <h2 id={titleId} className="artist-modal__title">{title}</h2>
+            <h2 id={titleId} className="artist-modal__title">
+              {title}
+            </h2>
           </div>
           <TooltipButton
             className="btn btn-ghost btn-icon-square"

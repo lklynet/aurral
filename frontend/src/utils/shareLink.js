@@ -18,7 +18,9 @@ const mbidBytes = (value) => {
   const text = String(value || "").trim();
   if (!MBID_PATTERN.test(text)) return null;
   const hex = text.replace(/-/g, "");
-  return Uint8Array.from({ length: 16 }, (_, index) => parseInt(hex.slice(index * 2, index * 2 + 2), 16));
+  return Uint8Array.from({ length: 16 }, (_, index) =>
+    parseInt(hex.slice(index * 2, index * 2 + 2), 16),
+  );
 };
 
 const nameBytes = (value) => {

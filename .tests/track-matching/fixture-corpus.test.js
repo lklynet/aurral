@@ -10,7 +10,11 @@ test("development and acceptance fixtures keep recording and release identities 
 
   const developmentIds = new Set(development.flatMap((item) => item.identities));
   for (const item of acceptance) {
-    assert.equal(item.identities.some((id) => developmentIds.has(id)), false, item.id);
+    assert.equal(
+      item.identities.some((id) => developmentIds.has(id)),
+      false,
+      item.id,
+    );
   }
   for (const item of [...development, ...acceptance]) {
     assert.ok(item.provenance?.source);
@@ -31,11 +35,21 @@ test("fixture report separates correct, wrong, contradiction, abstention, and yi
     return "bad";
   });
   assert.deepEqual(report.album, {
-    total: 2, actionable: 2, correct: 1, wrong: 1,
-    contradictionAcceptances: 1, abstentions: 0, yield: 0.5,
+    total: 2,
+    actionable: 2,
+    correct: 1,
+    wrong: 1,
+    contradictionAcceptances: 1,
+    abstentions: 0,
+    yield: 0.5,
   });
   assert.deepEqual(report["track-only"], {
-    total: 1, actionable: 0, correct: 0, wrong: 1,
-    contradictionAcceptances: 0, abstentions: 0, yield: null,
+    total: 1,
+    actionable: 0,
+    correct: 0,
+    wrong: 1,
+    contradictionAcceptances: 0,
+    abstentions: 0,
+    yield: null,
   });
 });

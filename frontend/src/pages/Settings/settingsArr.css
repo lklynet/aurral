@@ -1533,7 +1533,6 @@
 }
 
 @media (max-width: 48rem) {
-
   .settings-arr__content {
     padding: 0.625rem;
   }
@@ -1864,7 +1863,10 @@
   border-radius: 0.5rem;
   font-size: 0.8125rem;
   font-weight: 550;
-  transition: background-color var(--aurral-duration-fast) var(--aurral-ease-standard), border-color var(--aurral-duration-fast) var(--aurral-ease-standard), color var(--aurral-duration-fast) var(--aurral-ease-standard);
+  transition:
+    background-color var(--aurral-duration-fast) var(--aurral-ease-standard),
+    border-color var(--aurral-duration-fast) var(--aurral-ease-standard),
+    color var(--aurral-duration-fast) var(--aurral-ease-standard);
 }
 
 .settings-arr .arr-btn,
@@ -2719,7 +2721,7 @@
     background: color-mix(in srgb, var(--aurral-danger) 18%, var(--aurral-surface));
     color: var(--aurral-danger);
   }
-  
+
   .settings-arr .arr-btn--primary:hover:not(:disabled),
   .settings-arr .btn-primary:hover:not(:disabled),
   .arr-portal .arr-btn--primary:hover:not(:disabled) {

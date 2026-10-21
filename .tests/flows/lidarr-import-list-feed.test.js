@@ -1,16 +1,16 @@
 import { test, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
-import {
-  setupIsolatedBackend,
-  cleanupIsolatedState,
-} from "../helpers/backendTestHarness.js";
+import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, { buildLidarrImportListItems, verifyFlowLidarrFeedToken }, { flowPlaylistConfig }] =
-  await setupIsolatedBackend(
-    "lidarr-import-list-feed",
-    "backend/services/lidarrImportListFeed.js",
-    "backend/services/playlists/flowPlaylistConfig.js",
-  );
+const [
+  isolatedState,
+  { buildLidarrImportListItems, verifyFlowLidarrFeedToken },
+  { flowPlaylistConfig },
+] = await setupIsolatedBackend(
+  "lidarr-import-list-feed",
+  "backend/services/lidarrImportListFeed.js",
+  "backend/services/playlists/flowPlaylistConfig.js",
+);
 
 afterAll(() => cleanupIsolatedState(isolatedState));
 

@@ -25,9 +25,7 @@ export const formatDate = (date, options) => {
   const year = utc ? date.getUTCFullYear() : date.getFullYear();
   const month = pad((utc ? date.getUTCMonth() : date.getMonth()) + 1);
   const day = pad(utc ? date.getUTCDate() : date.getDate());
-  return currentFormat === "day-first"
-    ? `${day}/${month}/${year}`
-    : `${year}/${month}/${day}`;
+  return currentFormat === "day-first" ? `${day}/${month}/${year}` : `${year}/${month}/${day}`;
 };
 
 export const formatTime = (date, options) => {
@@ -46,9 +44,7 @@ export const formatDateTime = (date, options) => {
   }
   const datePart = formatDate(date, options);
   const timePart = formatTime(date, options);
-  return currentFormat === "day-first"
-    ? `${timePart} ${datePart}`
-    : `${datePart} ${timePart}`;
+  return currentFormat === "day-first" ? `${timePart} ${datePart}` : `${datePart} ${timePart}`;
 };
 
 const MINUTE = 60_000;

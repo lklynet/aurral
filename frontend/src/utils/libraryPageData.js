@@ -14,36 +14,39 @@ export const favoriteId = (kind, entity) => {
 };
 
 export const firstAvailableFile = (track, albumId = null) =>
-  (track?.files || []).find((file) => file.available && file.albumId === albumId)
-  || (track?.files || []).find((file) => file.available && file.albumId == null)
-  || (albumId == null ? (track?.files || []).find((file) => file.available) : null)
-  || null;
+  (track?.files || []).find((file) => file.available && file.albumId === albumId) ||
+  (track?.files || []).find((file) => file.available && file.albumId == null) ||
+  (albumId == null ? (track?.files || []).find((file) => file.available) : null) ||
+  null;
 
 export const EMPTY_LIBRARY = { artists: [], albums: [], tracks: [], genres: [] };
 
-export const normalizeLibraryPages = (pages) => pages.reduce(
-  (result, page) => {
-    ["artists", "albums", "tracks"].forEach((kind) => {
-      (Array.isArray(page?.[kind]) ? page[kind] : []).forEach((entity) => {
-        if (!result[kind].some((candidate) => String(candidate.id) === String(entity.id))) {
-          result[kind].push(entity);
-        }
+export const normalizeLibraryPages = (pages) =>
+  pages.reduce(
+    (result, page) => {
+      ["artists", "albums", "tracks"].forEach((kind) => {
+        (Array.isArray(page?.[kind]) ? page[kind] : []).forEach((entity) => {
+          if (!result[kind].some((candidate) => String(candidate.id) === String(entity.id))) {
+            result[kind].push(entity);
+          }
+        });
       });
-    });
-    if (Array.isArray(page?.genres) && page.genres.length > result.genres.length) {
-      result.genres = page.genres;
-    }
-    return result;
-  },
-  { artists: [], albums: [], tracks: [], genres: [] },
-);
+      if (Array.isArray(page?.genres) && page.genres.length > result.genres.length) {
+        result.genres = page.genres;
+      }
+      return result;
+    },
+    { artists: [], albums: [], tracks: [], genres: [] },
+  );
 
 export const favoriteLibraryFromResponse = (favorites) => {
   const library = normalizeLibraryPages([favorites?.library || EMPTY_LIBRARY]);
   const playlistTracks = (Array.isArray(favorites?.song) ? favorites.song : [])
     .filter((track) => /^(flow|shared)-song:/.test(text(track?.id)))
     .map((track) => {
-      const jobId = decodeURIComponent(track.id.slice(track.id.indexOf(":") + 1)).split(":").at(-1);
+      const jobId = decodeURIComponent(track.id.slice(track.id.indexOf(":") + 1))
+        .split(":")
+        .at(-1);
       const durationMs = Number(track.duration) > 0 ? Number(track.duration) * 1000 : null;
       return {
         id: track.id,
@@ -53,12 +56,14 @@ export const favoriteLibraryFromResponse = (favorites) => {
         albumName: track.album,
         durationMs,
         albums: [],
-        files: [{
-          available: true,
-          previewUrl: getPlaylistTrackStreamUrl(jobId),
-          format: track.suffix || null,
-          durationMs,
-        }],
+        files: [
+          {
+            available: true,
+            previewUrl: getPlaylistTrackStreamUrl(jobId),
+            format: track.suffix || null,
+            durationMs,
+          },
+        ],
       };
     });
   return playlistTracks.length
@@ -69,11 +74,9 @@ export const favoriteLibraryFromResponse = (favorites) => {
 export const mergeAlbumTrackPageIntoLibrary = (current, page, albumId, tracks) => {
   const merge = (kind) => {
     const existing = current[kind] || [];
-    const merged = [
-      ...existing,
-      ...(Array.isArray(page?.[kind]) ? page[kind] : []),
-    ].filter((entity, index, values) =>
-      values.findIndex((candidate) => String(candidate.id) === String(entity.id)) === index,
+    const merged = [...existing, ...(Array.isArray(page?.[kind]) ? page[kind] : [])].filter(
+      (entity, index, values) =>
+        values.findIndex((candidate) => String(candidate.id) === String(entity.id)) === index,
     );
     return merged.length === existing.length &&
       merged.every((entity, index) => entity === existing[index])
@@ -86,10 +89,7 @@ export const mergeAlbumTrackPageIntoLibrary = (current, page, albumId, tracks) =
   let albumsChanged = mergedAlbums !== current.albums;
   const albums = mergedAlbums.map((entity) => {
     if (String(entity.id) !== String(albumId)) return entity;
-    if (
-      entity.trackCount === tracks.length &&
-      entity.availableTrackCount === availableTrackCount
-    ) {
+    if (entity.trackCount === tracks.length && entity.availableTrackCount === availableTrackCount) {
       return entity;
     }
     albumsChanged = true;
@@ -126,7 +126,13 @@ const RELEASE_TYPES = { single: "Single", ep: "EP", broadcast: "Broadcast" };
 export const releaseTypeOf = (album) => {
   const metadata = album?.metadata || {};
   const type = metadata.albumType || metadata.releaseType || [metadata.tags?.releasetype].flat()[0];
-  return RELEASE_TYPES[String(type || "").trim().toLowerCase()] || null;
+  return (
+    RELEASE_TYPES[
+      String(type || "")
+        .trim()
+        .toLowerCase()
+    ] || null
+  );
 };
 
 export const albumCardMeta = (album, { available, total }) => {

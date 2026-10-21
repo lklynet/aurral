@@ -6,10 +6,10 @@ const getDiscoveryFeedbackKey = (userId = "global") =>
   `discoveryFeedback:${String(userId || "global").trim()}`;
 
 const normalizeFeedbackAction = (value) => {
-  const action = String(value || "").trim().toLowerCase();
-  return ["more_like_this", "less_like_this", "block_artist"].includes(action)
-    ? action
-    : null;
+  const action = String(value || "")
+    .trim()
+    .toLowerCase();
+  return ["more_like_this", "less_like_this", "block_artist"].includes(action) ? action : null;
 };
 
 const normalizeFeedbackList = (value) =>
@@ -46,7 +46,11 @@ export const getBlockedArtistKeys = (userId = "global", feedback = getDiscoveryF
 export const isArtistBlockedForUser = (userId = "global", artist = {}) =>
   matchesArtistKeys(artist, getBlockedArtistKeys(userId));
 
-export const filterBlockedArtistsForUser = (userId = "global", artists = [], blockedKeys = getBlockedArtistKeys(userId)) => {
+export const filterBlockedArtistsForUser = (
+  userId = "global",
+  artists = [],
+  blockedKeys = getBlockedArtistKeys(userId),
+) => {
   const list = Array.isArray(artists) ? artists : [];
   if (blockedKeys.size === 0) return list;
   return list.filter((artist) => !matchesArtistKeys(artist, blockedKeys));
@@ -64,9 +68,7 @@ export const addDiscoveryFeedback = (userId = "global", entry = {}) => {
   const existing = getDiscoveryFeedback(userId);
   const now = new Date();
   const normalizedEntry = {
-    id:
-      String(entry.id || "").trim() ||
-      `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+    id: String(entry.id || "").trim() || `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
     artistId,
     artistName,
     action,
@@ -79,9 +81,7 @@ export const addDiscoveryFeedback = (userId = "global", entry = {}) => {
   const deduped = existing.filter((item) => {
     const sameArtist =
       (artistId && item.artistId && artistId === item.artistId) ||
-      (artistName &&
-        item.artistName &&
-        artistName.toLowerCase() === item.artistName.toLowerCase());
+      (artistName && item.artistName && artistName.toLowerCase() === item.artistName.toLowerCase());
     return !(sameArtist && item.action === action);
   });
   deduped.unshift(normalizedEntry);
@@ -91,9 +91,7 @@ export const addDiscoveryFeedback = (userId = "global", entry = {}) => {
 
 export const removeDiscoveryFeedback = (userId = "global", feedbackId) => {
   const target = String(feedbackId || "").trim();
-  const next = getDiscoveryFeedback(userId).filter(
-    (entry) => entry.id !== target,
-  );
+  const next = getDiscoveryFeedback(userId).filter((entry) => entry.id !== target);
   dbOps.setJSONSetting(getDiscoveryFeedbackKey(userId), next);
   return next;
 };
@@ -103,13 +101,19 @@ const feedbackTime = (entry) => {
   return Number.isFinite(time) ? time : 0;
 };
 
-export const restoreDiscoveryFeedback = (userId = "global", { removeIds = [], entries = [] } = {}) => {
+export const restoreDiscoveryFeedback = (
+  userId = "global",
+  { removeIds = [], entries = [] } = {},
+) => {
   const removing = new Set(
-    (Array.isArray(removeIds) ? removeIds : []).map((id) => String(id || "").trim()).filter(Boolean),
+    (Array.isArray(removeIds) ? removeIds : [])
+      .map((id) => String(id || "").trim())
+      .filter(Boolean),
   );
   const next = getDiscoveryFeedback(userId).filter((entry) => !removing.has(entry.id));
   for (const entry of normalizeFeedbackList(entries)) {
-    if (!entry.id || !entry.createdAt || next.some((existing) => existing.id === entry.id)) continue;
+    if (!entry.id || !entry.createdAt || next.some((existing) => existing.id === entry.id))
+      continue;
     const index = next.findIndex((existing) => feedbackTime(existing) <= feedbackTime(entry));
     next.splice(index < 0 ? next.length : index, 0, entry);
   }

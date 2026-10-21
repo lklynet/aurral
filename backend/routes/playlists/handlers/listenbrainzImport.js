@@ -66,8 +66,7 @@ export function registerListenBrainzImport(router) {
       const externalName = String(req.body?.externalName || "").trim();
       const syncIntervalHours = Number(req.body?.syncIntervalHours ?? 24);
       const keepRemovedTracks = req.body?.keepRemovedTracks !== false;
-      const syncEnabled =
-        req.body?.syncEnabled === false ? false : syncIntervalHours > 0;
+      const syncEnabled = req.body?.syncEnabled === false ? false : syncIntervalHours > 0;
       if (!playlistImport.externalId) {
         return res.status(400).json({ error: "playlistId is required" });
       }
@@ -107,11 +106,15 @@ export function registerListenBrainzImport(router) {
         });
       }
       const status = getErrorStatus(error);
-      logger[status >= 500 ? "error" : "warn"]("playlist-import", "ListenBrainz playlist import request failed", {
-        playlistName: String(req.body?.name || "").trim() || null,
-        stage,
-        reason: safeLogDiagnostic(error),
-      });
+      logger[status >= 500 ? "error" : "warn"](
+        "playlist-import",
+        "ListenBrainz playlist import request failed",
+        {
+          playlistName: String(req.body?.name || "").trim() || null,
+          stage,
+          reason: safeLogDiagnostic(error),
+        },
+      );
       res.status(status).json({
         error: "Failed to import ListenBrainz playlist",
         message: error?.message || "Unknown error",

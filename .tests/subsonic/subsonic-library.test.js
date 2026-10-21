@@ -13,14 +13,13 @@ import {
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, { db }, subsonic, libraryStore, artworkService] =
-  await setupIsolatedBackend(
-    "subsonic-library",
-    "backend/config/db-sqlite.js",
-    "backend/services/subsonicLibraryService.js",
-    "backend/services/libraryMediaStore.js",
-    "backend/services/customArtworkService.js",
-  );
+const [isolatedState, { db }, subsonic, libraryStore, artworkService] = await setupIsolatedBackend(
+  "subsonic-library",
+  "backend/config/db-sqlite.js",
+  "backend/services/subsonicLibraryService.js",
+  "backend/services/libraryMediaStore.js",
+  "backend/services/customArtworkService.js",
+);
 
 const {
   getSong,
@@ -37,14 +36,13 @@ const {
   starMany,
 } = subsonic;
 
-const {
-  removeCustomArtwork,
-  saveCustomArtworkUpload,
-} = artworkService;
+const { removeCustomArtwork, saveCustomArtworkUpload } = artworkService;
 
 const customArtworkImage = await sharp({
   create: { width: 32, height: 32, channels: 3, background: { r: 20, g: 180, b: 100 } },
-}).png().toBuffer();
+})
+  .png()
+  .toBuffer();
 
 const {
   linkLibraryAlbumTrack,
@@ -93,19 +91,33 @@ test("keeps Subsonic IDs readable while safely encoding key content", () => {
 });
 
 test("reports and resolves versioned custom album and track artwork", async () => {
-  const album = db.prepare("SELECT id, identity_key FROM library_albums WHERE title = ?").get("Old Album");
-  const track = db.prepare("SELECT id, identity_key FROM library_tracks WHERE title = ?").get("Old Song");
+  const album = db
+    .prepare("SELECT id, identity_key FROM library_albums WHERE title = ?")
+    .get("Old Album");
+  const track = db
+    .prepare("SELECT id, identity_key FROM library_tracks WHERE title = ?")
+    .get("Old Song");
   const before = subsonic.getLibraryLastModified();
   let changedAfterSave = before;
 
   try {
-    const savedAlbum = await saveCustomArtworkUpload("album", album.id, customArtworkImage, "image/png");
+    const savedAlbum = await saveCustomArtworkUpload(
+      "album",
+      album.id,
+      customArtworkImage,
+      "image/png",
+    );
     const albumValue = getAlbum(idFor("album", album.identity_key));
     assert.match(albumValue.coverArt, /^art-album:/);
     assert.equal(albumValue.song[0].coverArt, albumValue.coverArt);
     assert.equal(resolveCustomArtwork(albumValue.coverArt)?.filePath, savedAlbum.filePath);
 
-    const savedTrack = await saveCustomArtworkUpload("track", track.id, customArtworkImage, "image/png");
+    const savedTrack = await saveCustomArtworkUpload(
+      "track",
+      track.id,
+      customArtworkImage,
+      "image/png",
+    );
     const song = getSong(idFor("song", track.identity_key));
     assert.match(song.coverArt, /^art-track:/);
     assert.notEqual(song.coverArt, albumValue.coverArt);
@@ -117,14 +129,19 @@ test("reports and resolves versioned custom album and track artwork", async () =
     await removeCustomArtwork("album", album.id);
   }
 
-  assert.equal(getAlbum(idFor("album", album.identity_key)).coverArt, idFor("album", album.identity_key));
+  assert.equal(
+    getAlbum(idFor("album", album.identity_key)).coverArt,
+    idFor("album", album.identity_key),
+  );
   assert.ok(subsonic.getLibraryLastModified() > changedAfterSave);
 });
 
 test("starMany validates duplicate and equivalent encoded library targets", () => {
-  const user = db.prepare(
-    "INSERT INTO users (username, password_hash, role, permissions) VALUES (?, '', 'user', '{}') RETURNING id",
-  ).get("subsonic-star-many");
+  const user = db
+    .prepare(
+      "INSERT INTO users (username, password_hash, role, permissions) VALUES (?, '', 'user', '{}') RETURNING id",
+    )
+    .get("subsonic-star-many");
   const key = "test-track:Old Song";
   const encoded = `song:${encodeURIComponent(key)}`;
   const alternate = encoded.replaceAll("%3A", "%3a");
@@ -191,9 +208,11 @@ test("orders newest albums by media arrival before applying pagination", () => {
 });
 
 test("implements starred and frequent album lists without inventing ratings", () => {
-  const user = db.prepare(
-    "INSERT INTO users (username, password_hash, role, permissions) VALUES (?, '', 'user', '{}') RETURNING id",
-  ).get("subsonic-album-lists");
+  const user = db
+    .prepare(
+      "INSERT INTO users (username, password_hash, role, permissions) VALUES (?, '', 'user', '{}') RETURNING id",
+    )
+    .get("subsonic-album-lists");
   const insertPlay = db.prepare(`
     INSERT INTO play_events
       (user_id, track_id, title, artist, album, album_key, played_at, source, created_at)
@@ -242,8 +261,7 @@ test("implements starred and frequent album lists without inventing ratings", ()
       ["Old Album", "New Album"],
     );
     assert.deepEqual(
-      getAlbumList({ type: "frequent", size: 1, offset: 1 }, user)
-        .map((album) => album.title),
+      getAlbumList({ type: "frequent", size: 1, offset: 1 }, user).map((album) => album.title),
       ["New Album"],
     );
     assert.deepEqual(getAlbumList({ type: "highest" }, user), []);
@@ -265,16 +283,17 @@ test("recent albums follow each user's latest plays of available albums", () => 
       (user_id, track_id, title, artist, album, album_key, played_at, source, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, 'subsonic', ?)
   `);
-  const play = (user, trackTitle, albumTitle, playedAt) => insertPlay.run(
-    user.id,
-    idFor("song", `test-track:${trackTitle}`),
-    trackTitle,
-    "Artist A",
-    albumTitle,
-    `test-album:${albumTitle}`,
-    playedAt,
-    playedAt,
-  );
+  const play = (user, trackTitle, albumTitle, playedAt) =>
+    insertPlay.run(
+      user.id,
+      idFor("song", `test-track:${trackTitle}`),
+      trackTitle,
+      "Artist A",
+      albumTitle,
+      `test-album:${albumTitle}`,
+      playedAt,
+      playedAt,
+    );
   const recentTitles = (user, options = {}) =>
     getAlbumList({ type: "recent", ...options }, user).map((album) => album.title);
   const setAvailable = db.prepare(
@@ -301,15 +320,24 @@ test("recent albums follow each user's latest plays of available albums", () => 
     assert.deepEqual(recentTitles(quietListener), []);
   } finally {
     setAvailable.run(1);
-    db.prepare("DELETE FROM users WHERE id IN (?, ?, ?)")
-      .run(listener.id, otherListener.id, quietListener.id);
+    db.prepare("DELETE FROM users WHERE id IN (?, ?, ?)").run(
+      listener.id,
+      otherListener.id,
+      quietListener.id,
+    );
   }
 });
 
 test("returns top songs only for the requested artist", () => {
   const songs = getTopSongs("Artist A", { count: 10 });
-  assert.deepEqual(songs.map((song) => song.title), ["New Song", "Old Song"]);
-  assert.equal(songs.every((song) => song.artist === "Artist A"), true);
+  assert.deepEqual(
+    songs.map((song) => song.title),
+    ["New Song", "Old Song"],
+  );
+  assert.equal(
+    songs.every((song) => song.artist === "Artist A"),
+    true,
+  );
   assert.deepEqual(
     getTopSongs("  test-artist:artist-a  ", { count: 10 }).map((song) => song.title),
     ["New Song", "Old Song"],
@@ -321,11 +349,17 @@ test("marks album entries as directories in artist music directories", () => {
 
   assert.ok(directory);
   assert.equal(directory.child.length, 2);
-  assert.equal(directory.child.every((album) => album.isDir === true), true);
+  assert.equal(
+    directory.child.every((album) => album.isDir === true),
+    true,
+  );
 });
 
 test("resolves playlist descriptors to library tracks in bulk", () => {
-  const artistB = upsertLibraryArtist({ identityKey: "test-artist:artist-b-mbid", name: "Artist B" });
+  const artistB = upsertLibraryArtist({
+    identityKey: "test-artist:artist-b-mbid",
+    name: "Artist B",
+  });
   const album = upsertLibraryAlbum({
     identityKey: "test-album:Mbid Album",
     artistId: artistB.id,
@@ -349,11 +383,22 @@ test("resolves playlist descriptors to library tracks in bulk", () => {
 
   const descriptors = [
     { artistName: "Artist A", trackName: "Old Song" },
-    { artistName: "Artist B", trackName: "Mbid Song", trackMbid: "44444444-4444-4444-8444-444444444444" },
+    {
+      artistName: "Artist B",
+      trackName: "Mbid Song",
+      trackMbid: "44444444-4444-4444-8444-444444444444",
+    },
     { artistName: "Artist B", trackName: "Old Song" },
     null,
-    { artistName: "Artist B", trackName: "Mbid Song (Remaster)", trackMbid: "44444444-4444-4444-8444-444444444444" },
-    ...Array.from({ length: 1000 }, (_, index) => ({ artistName: "Artist A", trackName: `Missing ${index}` })),
+    {
+      artistName: "Artist B",
+      trackName: "Mbid Song (Remaster)",
+      trackMbid: "44444444-4444-4444-8444-444444444444",
+    },
+    ...Array.from({ length: 1000 }, (_, index) => ({
+      artistName: "Artist A",
+      trackName: `Missing ${index}`,
+    })),
   ];
   const prepare = db.prepare;
   let statements = 0;
@@ -375,35 +420,57 @@ test("resolves playlist descriptors to library tracks in bulk", () => {
   assert.equal(resolved[3], null);
   // Same recording MBID, different title: the canonical track (and its playlist id) still wins.
   assert.equal(resolved[4].track.identityKey, "test-track:Mbid Song");
-  assert.equal(resolved.slice(5).every((entry) => entry === null), true);
+  assert.equal(
+    resolved.slice(5).every((entry) => entry === null),
+    true,
+  );
   assert.ok(statements <= 4, `expected a handful of statements, ran ${statements}`);
 });
 
 test("playlist entries resolve a featured library track by its performer or album owner", async (t) => {
   const { scanMusicRoot } = await import("../../backend/services/libraryFileScanner.js");
   const { getLibrary } = await import("../../backend/services/libraryQueryService.js");
-  const { downloadTracker } = await import("../../backend/services/downloadJobs/downloadTracker.js");
-  const { flowPlaylistConfig } = await import("../../backend/services/playlists/flowPlaylistConfig.js");
+  const { downloadTracker } =
+    await import("../../backend/services/downloadJobs/downloadTracker.js");
+  const { flowPlaylistConfig } =
+    await import("../../backend/services/playlists/flowPlaylistConfig.js");
   const root = await mkdtemp(path.join(tmpdir(), "aurral-subsonic-featured-"));
   t.onTestFinished(() => rm(root, { recursive: true, force: true }));
   const file = path.join(root, "01.flac");
   await promisify(execFile)("ffmpeg", [
-    "-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i", "sine=frequency=440:duration=0.1",
-    "-metadata", "album_artist=Featured Owner", "-metadata", "artist=Featured Owner feat. Guest",
-    "-metadata", "album=Featured Album", "-metadata", "title=Featured Song", file,
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-nostdin",
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=frequency=440:duration=0.1",
+    "-metadata",
+    "album_artist=Featured Owner",
+    "-metadata",
+    "artist=Featured Owner feat. Guest",
+    "-metadata",
+    "album=Featured Album",
+    "-metadata",
+    "title=Featured Song",
+    file,
   ]);
   await scanMusicRoot({ rootPath: root, source: "aurral" });
-  const libraryTrack = getLibrary({ availableOnly: true }).tracks
-    .find((entry) => entry.files.some((media) => media.path === file));
+  const libraryTrack = getLibrary({ availableOnly: true }).tracks.find((entry) =>
+    entry.files.some((media) => media.path === file),
+  );
   assert.equal(libraryTrack.artistName, "Featured Owner feat. Guest");
 
   const user = { id: 75, role: "admin" };
   const playlistId = "subsonic-featured-resolution";
-  const jobIds = ["Featured Owner", "Featured Owner feat. Guest", "Another Artist"].map((artistName) => {
-    const jobId = downloadTracker.addJob({ artistName, trackName: "Featured Song" }, playlistId);
-    downloadTracker.setDone(jobId, path.join(root, `${artistName}.flac`), "Featured Album");
-    return jobId;
-  });
+  const jobIds = ["Featured Owner", "Featured Owner feat. Guest", "Another Artist"].map(
+    (artistName) => {
+      const jobId = downloadTracker.addJob({ artistName, trackName: "Featured Song" }, playlistId);
+      downloadTracker.setDone(jobId, path.join(root, `${artistName}.flac`), "Featured Album");
+      return jobId;
+    },
+  );
   flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,
     name: "Featured Resolution",
@@ -423,7 +490,8 @@ test("playlist entries resolve a featured library track by its performer or albu
 test("a Subsonic playlist reuses the album owner's Library job for a featured song", async (t) => {
   const { scanMusicRoot } = await import("../../backend/services/libraryFileScanner.js");
   const { getLibrary } = await import("../../backend/services/libraryQueryService.js");
-  const { downloadTracker } = await import("../../backend/services/downloadJobs/downloadTracker.js");
+  const { downloadTracker } =
+    await import("../../backend/services/downloadJobs/downloadTracker.js");
   const { playlistManager } = await import("../../backend/services/playlists/playlistManager.js");
   for (const name of ["updateConfig", "requestPlaylistSync", "scheduleScanLibrary"]) {
     vi.spyOn(playlistManager, name).mockImplementation(async () => {});
@@ -432,33 +500,58 @@ test("a Subsonic playlist reuses the album owner's Library job for a featured so
   t.onTestFinished(() => rm(root, { recursive: true, force: true }));
   const file = path.join(root, "01.flac");
   await promisify(execFile)("ffmpeg", [
-    "-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i", "sine=frequency=440:duration=0.1",
-    "-metadata", "album_artist=Job Owner", "-metadata", "artist=Job Owner feat. Guest",
-    "-metadata", "album=Job Album", "-metadata", "title=Job Song", file,
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-nostdin",
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=frequency=440:duration=0.1",
+    "-metadata",
+    "album_artist=Job Owner",
+    "-metadata",
+    "artist=Job Owner feat. Guest",
+    "-metadata",
+    "album=Job Album",
+    "-metadata",
+    "title=Job Song",
+    file,
   ]);
   await scanMusicRoot({ rootPath: root, source: "aurral" });
-  const libraryTrack = getLibrary({ availableOnly: true }).tracks
-    .find((entry) => entry.files.some((media) => media.path === file));
+  const libraryTrack = getLibrary({ availableOnly: true }).tracks.find((entry) =>
+    entry.files.some((media) => media.path === file),
+  );
   const libraryJobId = downloadTracker.addJob(
     { artistName: "Job Owner", trackName: "Job Song", albumName: "Job Album" },
     "library",
   );
   downloadTracker.setDone(libraryJobId, file, "Job Album");
-  const libraryJobs = () => downloadTracker.getAll()
-    .filter((job) => job.playlistType === "library" && job.trackName === "Job Song");
+  const libraryJobs = () =>
+    downloadTracker
+      .getAll()
+      .filter((job) => job.playlistType === "library" && job.trackName === "Job Song");
 
   const playlist = await subsonic.createSubsonicPlaylist(
     { id: 76, role: "admin" },
     { name: "Featured Job", songIds: [idFor("song", libraryTrack.identityKey)] },
   );
 
-  assert.deepEqual(libraryJobs().map((job) => [job.id, job.artistName]), [[libraryJobId, "Job Owner"]]);
-  assert.deepEqual(playlist.tracks.map((track) => [track.artistName, track.canonicalJobId]), [["Job Owner", libraryJobId]]);
+  assert.deepEqual(
+    libraryJobs().map((job) => [job.id, job.artistName]),
+    [[libraryJobId, "Job Owner"]],
+  );
+  assert.deepEqual(
+    playlist.tracks.map((track) => [track.artistName, track.canonicalJobId]),
+    [["Job Owner", libraryJobId]],
+  );
 });
 
 test("favorite reads preserve shared relationships, media filters, and user isolation", async () => {
   const { getLibrary } = await import("../../backend/services/libraryQueryService.js");
-  const existing = db.prepare("SELECT id, identity_key FROM library_tracks WHERE title = 'Old Song'").get();
+  const existing = db
+    .prepare("SELECT id, identity_key FROM library_tracks WHERE title = 'Old Song'")
+    .get();
   const guest = upsertLibraryArtist({ identityKey: "favorite:guest", name: "Guest Artist" });
   const guestAlbum = upsertLibraryAlbum({
     identityKey: "favorite:guest-album",
@@ -466,7 +559,10 @@ test("favorite reads preserve shared relationships, media filters, and user isol
     title: "Guest Album",
   });
   linkLibraryAlbumTrack({ albumId: guestAlbum.id, trackId: existing.id });
-  const missing = upsertLibraryTrack({ identityKey: "favorite:no-media", title: "Unfinished Song" });
+  const missing = upsertLibraryTrack({
+    identityKey: "favorite:no-media",
+    title: "Unfinished Song",
+  });
   linkLibraryAlbumTrack({ albumId: guestAlbum.id, trackId: missing.id });
   const scoped = upsertLibraryMediaFile({
     albumId: guestAlbum.id,
@@ -486,13 +582,21 @@ test("favorite reads preserve shared relationships, media filters, and user isol
   star.run(first.id, "song", existing.identity_key, 1000);
   star.run(first.id, "album", "favorite:guest-album", 2000);
   star.run(second.id, "song", "favorite:no-media", 3000);
-  const starsBefore = db.prepare("SELECT * FROM subsonic_stars ORDER BY user_id, entity_kind, entity_key").all();
+  const starsBefore = db
+    .prepare("SELECT * FROM subsonic_stars ORDER BY user_id, entity_kind, entity_key")
+    .all();
   const jobsBefore = db.prepare("SELECT COUNT(*) AS count FROM playlist_download_jobs").get();
 
   try {
     const result = subsonic.getStarredWithLibrary(first, { availableOnly: true });
-    assert.deepEqual(result.starred.song.map((song) => song.id), [idFor("song", existing.identity_key)]);
-    assert.deepEqual(result.starred.album.map((album) => album.id), [idFor("album", "favorite:guest-album")]);
+    assert.deepEqual(
+      result.starred.song.map((song) => song.id),
+      [idFor("song", existing.identity_key)],
+    );
+    assert.deepEqual(
+      result.starred.album.map((album) => album.id),
+      [idFor("album", "favorite:guest-album")],
+    );
     assert.equal(result.starred.song[0].starred, new Date(1000).toISOString());
     assert.equal(result.library.tracks.length, 1);
     assert.equal(result.library.tracks[0].albums.length, 2);
@@ -511,15 +615,35 @@ test("favorite reads preserve shared relationships, media filters, and user isol
       { kind: "song", key: "removed-target" },
     ];
     const filtered = getLibrary({ source: "aurral", favoriteKeys });
-    assert.deepEqual(filtered.albums.map((album) => album.title), ["Guest Album"]);
-    assert.deepEqual(filtered.tracks.map((track) => track.id), [existing.id]);
-    assert.deepEqual(filtered.tracks[0].files.map((file) => file.path), ["/test/favorite/guest.flac"]);
-    assert.deepEqual(getLibrary({
-      source: "aurral", availableOnly: true, favoriteKeys,
-    }), { artists: [], albums: [], tracks: [] });
+    assert.deepEqual(
+      filtered.albums.map((album) => album.title),
+      ["Guest Album"],
+    );
+    assert.deepEqual(
+      filtered.tracks.map((track) => track.id),
+      [existing.id],
+    );
+    assert.deepEqual(
+      filtered.tracks[0].files.map((file) => file.path),
+      ["/test/favorite/guest.flac"],
+    );
+    assert.deepEqual(
+      getLibrary({
+        source: "aurral",
+        availableOnly: true,
+        favoriteKeys,
+      }),
+      { artists: [], albums: [], tracks: [] },
+    );
     assert.deepEqual(getLibrary({ favoriteKeys: [] }), { artists: [], albums: [], tracks: [] });
-    assert.deepEqual(db.prepare("SELECT * FROM subsonic_stars ORDER BY user_id, entity_kind, entity_key").all(), starsBefore);
-    assert.deepEqual(db.prepare("SELECT COUNT(*) AS count FROM playlist_download_jobs").get(), jobsBefore);
+    assert.deepEqual(
+      db.prepare("SELECT * FROM subsonic_stars ORDER BY user_id, entity_kind, entity_key").all(),
+      starsBefore,
+    );
+    assert.deepEqual(
+      db.prepare("SELECT COUNT(*) AS count FROM playlist_download_jobs").get(),
+      jobsBefore,
+    );
   } finally {
     db.prepare("DELETE FROM users WHERE id IN (?, ?)").run(first.id, second.id);
     db.prepare("DELETE FROM library_media_files WHERE id = ?").run(scoped.id);
@@ -531,7 +655,8 @@ test("favorite reads preserve shared relationships, media filters, and user isol
 });
 
 test("frequent albums keep same-titled releases separated by library identity", () => {
-  const artist = db.prepare("SELECT id, name FROM library_artists WHERE identity_key = ?")
+  const artist = db
+    .prepare("SELECT id, name FROM library_artists WHERE identity_key = ?")
     .get("test-artist:artist-a");
   const duplicate = upsertLibraryAlbum({
     identityKey: "test-album:Old Album alternate release",
@@ -552,9 +677,11 @@ test("frequent albums keep same-titled releases separated by library identity", 
     path: "/test/Old Album Alternate/Old Song Alternate.flac",
     available: true,
   });
-  const user = db.prepare(
-    "INSERT INTO users (username, password_hash, role, permissions) VALUES (?, '', 'user', '{}') RETURNING id",
-  ).get("subsonic-same-title-albums");
+  const user = db
+    .prepare(
+      "INSERT INTO users (username, password_hash, role, permissions) VALUES (?, '', 'user', '{}') RETURNING id",
+    )
+    .get("subsonic-same-title-albums");
 
   try {
     db.prepare(`
@@ -629,41 +756,103 @@ test("streams the available release when a recording belongs to multiple albums"
 
 test("reports registered audio types for library song formats", () => {
   const artist = upsertLibraryArtist({ identityKey: "mime:artist", name: "MIME Artist" });
-  const album = upsertLibraryAlbum({ identityKey: "mime:album", artistId: artist.id, title: "MIME Album", albumArtist: artist.name });
-  for (const [format, expected] of [["flac", "audio/flac"], ["m4a", "audio/mp4"], ["opus", "audio/ogg"], ["ogg", "audio/ogg"], ["oga", "audio/ogg"], ["aiff", "audio/x-aiff"], ["mp3", "audio/mpeg"]]) {
-    const track = upsertLibraryTrack({ identityKey: `mime:${format}`, title: `MIME ${format}`, artistName: "MIME Artist" });
+  const album = upsertLibraryAlbum({
+    identityKey: "mime:album",
+    artistId: artist.id,
+    title: "MIME Album",
+    albumArtist: artist.name,
+  });
+  for (const [format, expected] of [
+    ["flac", "audio/flac"],
+    ["m4a", "audio/mp4"],
+    ["opus", "audio/ogg"],
+    ["ogg", "audio/ogg"],
+    ["oga", "audio/ogg"],
+    ["aiff", "audio/x-aiff"],
+    ["mp3", "audio/mpeg"],
+  ]) {
+    const track = upsertLibraryTrack({
+      identityKey: `mime:${format}`,
+      title: `MIME ${format}`,
+      artistName: "MIME Artist",
+    });
     linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
-    upsertLibraryMediaFile({ trackId: track.id, source: "lidarr", path: `/test/mime.${format}`, format, available: true });
+    upsertLibraryMediaFile({
+      trackId: track.id,
+      source: "lidarr",
+      path: `/test/mime.${format}`,
+      format,
+      available: true,
+    });
     assert.equal(getSong(idFor("song", `mime:${format}`)).contentType, expected);
   }
 });
 
 test("reports known file bitrates in kbps and omits unknown ones", () => {
   const artist = upsertLibraryArtist({ identityKey: "bitrate:artist", name: "Bitrate Artist" });
-  const album = upsertLibraryAlbum({ identityKey: "bitrate:album", artistId: artist.id, title: "Bitrate Album", albumArtist: artist.name });
+  const album = upsertLibraryAlbum({
+    identityKey: "bitrate:album",
+    artistId: artist.id,
+    title: "Bitrate Album",
+    albumArtist: artist.name,
+  });
   const files = [
-    { title: "Lidarr FLAC", source: "lidarr", format: "flac", quality: { audioFormat: "FLAC", audioBitRate: "1012 kbps" } },
-    { title: "Scanned MP3", source: "aurral", format: "mp3", quality: { format: "MPEG 1 Layer 3", bitrate: 128000 } },
-    { title: "Lidarr Unknown", source: "lidarr", format: "mp3", quality: { audioFormat: "MP3", audioBitRate: "0 kbps" } },
+    {
+      title: "Lidarr FLAC",
+      source: "lidarr",
+      format: "flac",
+      quality: { audioFormat: "FLAC", audioBitRate: "1012 kbps" },
+    },
+    {
+      title: "Scanned MP3",
+      source: "aurral",
+      format: "mp3",
+      quality: { format: "MPEG 1 Layer 3", bitrate: 128000 },
+    },
+    {
+      title: "Lidarr Unknown",
+      source: "lidarr",
+      format: "mp3",
+      quality: { audioFormat: "MP3", audioBitRate: "0 kbps" },
+    },
     { title: "No Quality", source: "aurral", format: "ogg", quality: null },
   ];
   files.forEach((file, index) => {
-    const track = upsertLibraryTrack({ identityKey: `bitrate:${file.title}`, title: file.title, artistName: artist.name });
+    const track = upsertLibraryTrack({
+      identityKey: `bitrate:${file.title}`,
+      title: file.title,
+      artistName: artist.name,
+    });
     linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: index + 1 });
-    upsertLibraryMediaFile({ trackId: track.id, source: file.source, path: `/test/bitrate/${file.title}.${file.format}`, format: file.format, quality: file.quality, available: true });
+    upsertLibraryMediaFile({
+      trackId: track.id,
+      source: file.source,
+      path: `/test/bitrate/${file.title}.${file.format}`,
+      format: file.format,
+      quality: file.quality,
+      available: true,
+    });
   });
 
   const songs = getAlbum(idFor("album", "bitrate:album")).song;
   assert.deepEqual(
     songs.map((song) => [song.title, song.bitRate]),
-    [["Lidarr FLAC", 1012], ["Scanned MP3", 128], ["Lidarr Unknown", undefined], ["No Quality", undefined]],
+    [
+      ["Lidarr FLAC", 1012],
+      ["Scanned MP3", 128],
+      ["Lidarr Unknown", undefined],
+      ["No Quality", undefined],
+    ],
   );
   assert.equal(Object.hasOwn(songs[2], "bitRate"), false);
   assert.equal(Object.hasOwn(songs[3], "bitRate"), false);
 });
 
 test("splits semicolon genre tags into separate Subsonic genres", () => {
-  const artist = upsertLibraryArtist({ identityKey: "split-genre:artist", name: "Split Genre Artist" });
+  const artist = upsertLibraryArtist({
+    identityKey: "split-genre:artist",
+    name: "Split Genre Artist",
+  });
   const album = upsertLibraryAlbum({
     identityKey: "split-genre:album",
     artistId: artist.id,
@@ -678,17 +867,36 @@ test("splits semicolon genre tags into separate Subsonic genres", () => {
     metadata: { genres: ["Alt/Indie", "Folk, World, & Country"] },
   });
   linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
-  upsertLibraryMediaFile({ trackId: track.id, source: "lidarr", path: "/test/split-genre.flac", format: "flac", available: true });
+  upsertLibraryMediaFile({
+    trackId: track.id,
+    source: "lidarr",
+    path: "/test/split-genre.flac",
+    format: "flac",
+    available: true,
+  });
 
   const result = getAlbum(idFor("album", "split-genre:album"));
-  const expected = ["Metalcore", "Melodic Metalcore", "Rock", "Alt/Indie", "Folk, World, & Country"];
+  const expected = [
+    "Metalcore",
+    "Melodic Metalcore",
+    "Rock",
+    "Alt/Indie",
+    "Folk, World, & Country",
+  ];
   assert.equal(result.genre, "Metalcore");
-  assert.deepEqual(result.genres, expected.map((name) => ({ name })));
+  assert.deepEqual(
+    result.genres,
+    expected.map((name) => ({ name })),
+  );
   assert.equal(result.song[0].genre, "Metalcore");
-  assert.deepEqual(result.song[0].genres, expected.map((name) => ({ name })));
+  assert.deepEqual(
+    result.song[0].genres,
+    expected.map((name) => ({ name })),
+  );
   assert.deepEqual(
     getGenres().filter((genre) => expected.includes(genre.value) || genre.value.includes(";")),
-    [...expected].sort((left, right) => left.localeCompare(right))
+    [...expected]
+      .sort((left, right) => left.localeCompare(right))
       .map((value) => ({ value, albumCount: 1, songCount: 1 })),
   );
 });

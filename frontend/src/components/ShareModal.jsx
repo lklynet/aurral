@@ -25,7 +25,15 @@ const errorMessage = (error, fallback) =>
 
 function libraryRefs(item) {
   return Object.fromEntries(
-    ["kind", "trackMbid", "albumMbid", "artistMbid", "libraryTrackId", "libraryAlbumId", "libraryArtistId"]
+    [
+      "kind",
+      "trackMbid",
+      "albumMbid",
+      "artistMbid",
+      "libraryTrackId",
+      "libraryAlbumId",
+      "libraryArtistId",
+    ]
       .map((field) => [field, item?.[field] == null ? "" : String(item[field]).trim()])
       .filter(([, value]) => value),
   );
@@ -51,9 +59,7 @@ function ListenHint({ kind, availability, onRetry }) {
   const count = availability.data?.trackCount || 0;
   if (count && availability.data?.tunnelAvailable === false) {
     return (
-      <p className="settings-page__hint">
-        Install cloudflared on your server to share playback.
-      </p>
+      <p className="settings-page__hint">Install cloudflared on your server to share playback.</p>
     );
   }
   if (!count) {
@@ -65,7 +71,8 @@ function ListenHint({ kind, availability, onRetry }) {
   }
   return (
     <p className="settings-page__hint">
-      Anyone with the link can play {trackCountLabel(kind, count)}. Your server address stays hidden.
+      Anyone with the link can play {trackCountLabel(kind, count)}. Your server address stays
+      hidden.
     </p>
   );
 }
@@ -84,7 +91,6 @@ export function ShareModal({ request, onClose }) {
   const [created, setCreated] = useState(null);
   const ids = { listen: useId(), download: useId(), expires: useId() };
   const refs = libraryRefs(item);
-
 
   const availability = useQuery({
     queryKey: ["share-links", "availability", refs],
@@ -222,7 +228,11 @@ export function ShareModal({ request, onClose }) {
               onChange={(event) => setListen(event.target.checked)}
               aria-label="Play from my Aurral"
             />
-            <ListenHint kind={kind} availability={availability} onRetry={() => availability.refetch()} />
+            <ListenHint
+              kind={kind}
+              availability={availability}
+              onRetry={() => availability.refetch()}
+            />
           </div>
           {listen && canListen ? (
             <>

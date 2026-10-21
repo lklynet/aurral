@@ -66,10 +66,16 @@ export class JellyfinClient {
     const paths = new Set();
     for (const user of users) {
       const playlists = await readPlaylistPages(async (startIndex) => {
-        const page = await this.request("GET", "/Items", { params: {
-          userId: user.Id, recursive: true, includeItemTypes: "Playlist",
-          startIndex, limit: 200, enableTotalRecordCount: true,
-        } });
+        const page = await this.request("GET", "/Items", {
+          params: {
+            userId: user.Id,
+            recursive: true,
+            includeItemTypes: "Playlist",
+            startIndex,
+            limit: 200,
+            enableTotalRecordCount: true,
+          },
+        });
         return { items: page?.Items, total: page?.TotalRecordCount };
       });
       for (const playlist of playlists) {
@@ -78,7 +84,13 @@ export class JellyfinClient {
         if (excludedIds.has(id)) continue;
         const entries = await readPlaylistPages(async (startIndex) => {
           const page = await this.request("GET", `/Playlists/${encodeURIComponent(id)}/Items`, {
-            params: { userId: user.Id, startIndex, limit: 200, fields: "Path", enableImages: false },
+            params: {
+              userId: user.Id,
+              startIndex,
+              limit: 200,
+              fields: "Path",
+              enableImages: false,
+            },
           });
           return { items: page?.Items, total: page?.TotalRecordCount };
         });
@@ -92,14 +104,18 @@ export class JellyfinClient {
   }
 
   async findUserByUsername(username) {
-    const wanted = String(username || "").trim().toLowerCase();
+    const wanted = String(username || "")
+      .trim()
+      .toLowerCase();
     if (!wanted) return null;
 
     const users = await this.getUsers();
     return (
       users.find(
         (user) =>
-          String(user?.Name || "").trim().toLowerCase() === wanted,
+          String(user?.Name || "")
+            .trim()
+            .toLowerCase() === wanted,
       ) || null
     );
   }
@@ -153,11 +169,9 @@ export class JellyfinClient {
     const limit = 200;
 
     while (true) {
-      const page = await this.request(
-        "GET",
-        `/Playlists/${encodeURIComponent(playlistId)}/Items`,
-        { params: { userId, startIndex: items.length, limit, enableImages: false } },
-      );
+      const page = await this.request("GET", `/Playlists/${encodeURIComponent(playlistId)}/Items`, {
+        params: { userId, startIndex: items.length, limit, enableImages: false },
+      });
       if (!Array.isArray(page?.Items)) {
         throw new Error("Jellyfin returned an invalid playlist response");
       }
@@ -186,11 +200,9 @@ export class JellyfinClient {
         batch.push(id);
         seen.add(id);
       }
-      await this.request(
-        "POST",
-        `/Playlists/${encodeURIComponent(playlistId)}/Items`,
-        { params: { userId, ids: batch.join(",") } },
-      );
+      await this.request("POST", `/Playlists/${encodeURIComponent(playlistId)}/Items`, {
+        params: { userId, ids: batch.join(",") },
+      });
       await onBatchAdded(batch);
     }
   }
@@ -198,11 +210,9 @@ export class JellyfinClient {
   async removePlaylistItems(playlistId, entryIds) {
     const batchSize = 50;
     for (let start = 0; start < entryIds.length; start += batchSize) {
-      await this.request(
-        "DELETE",
-        `/Playlists/${encodeURIComponent(playlistId)}/Items`,
-        { params: { entryIds: entryIds.slice(start, start + batchSize).join(",") } },
-      );
+      await this.request("DELETE", `/Playlists/${encodeURIComponent(playlistId)}/Items`, {
+        params: { entryIds: entryIds.slice(start, start + batchSize).join(",") },
+      });
     }
   }
 
@@ -241,13 +251,14 @@ export class JellyfinClient {
    * @throws {Error} If IDs are invalid, a request or checkpoint fails, or verification fails.
    *   Completed incremental changes are not rolled back.
    */
-  async syncPlaylistItems(playlistId, itemIds, {
-    userId = this.userId,
-    managedItemIds = [],
-    onManagedItemsChange = () => {},
-  } = {}) {
-    const validIds = (ids) => Array.isArray(ids)
-      && ids.every((id) => typeof id === "string" && id.length > 0 && id === id.trim());
+  async syncPlaylistItems(
+    playlistId,
+    itemIds,
+    { userId = this.userId, managedItemIds = [], onManagedItemsChange = () => {} } = {},
+  ) {
+    const validIds = (ids) =>
+      Array.isArray(ids) &&
+      ids.every((id) => typeof id === "string" && id.length > 0 && id === id.trim());
     if (!validIds(itemIds) || !validIds(managedItemIds)) {
       throw new Error("Jellyfin playlist item IDs must be non-empty strings");
     }
@@ -268,7 +279,10 @@ export class JellyfinClient {
     let lastCheckpoint = managedItemIds;
     const checkpoint = async () => {
       const ids = [...managed].flatMap(([id, count]) => Array(count).fill(id));
-      if (ids.length !== lastCheckpoint.length || ids.some((id, index) => id !== lastCheckpoint[index])) {
+      if (
+        ids.length !== lastCheckpoint.length ||
+        ids.some((id, index) => id !== lastCheckpoint[index])
+      ) {
         await onManagedItemsChange(ids);
         lastCheckpoint = ids;
       }
@@ -312,8 +326,12 @@ export class JellyfinClient {
     const removableGroups = new Map();
     for (const [entryId, ids] of groups) {
       const id = ids[0];
-      if (typeof entryId !== "string" || !entryId.trim()
-        || ids.some((candidate) => candidate !== id)) continue;
+      if (
+        typeof entryId !== "string" ||
+        !entryId.trim() ||
+        ids.some((candidate) => candidate !== id)
+      )
+        continue;
       const candidates = removableGroups.get(id) || [];
       candidates.push({ entryId, id, count: ids.length });
       removableGroups.set(id, candidates);
@@ -338,7 +356,10 @@ export class JellyfinClient {
     }
     await checkpoint();
     if (removals.length) {
-      await this.removePlaylistItems(playlistId, removals.map(({ entryId }) => entryId));
+      await this.removePlaylistItems(
+        playlistId,
+        removals.map(({ entryId }) => entryId),
+      );
       // Verify before recording a deletion as complete. A failed/partial
       // deletion retains its ownership for the next attempt.
       const remaining = await read();
@@ -354,9 +375,10 @@ export class JellyfinClient {
     return checkpoint();
   }
 
-  async updatePlaylist(playlistId, {
-    name, itemIds, userId = this.userId, managedItemIds = [], onManagedItemsChange,
-  }) {
+  async updatePlaylist(
+    playlistId,
+    { name, itemIds, userId = this.userId, managedItemIds = [], onManagedItemsChange },
+  ) {
     // The playlist metadata endpoint expects a logged-in user, not an API key.
     const endpoint = `/Items/${encodeURIComponent(playlistId)}`;
     const playlist = await this.getPlaylistMetadata(playlistId, userId);
@@ -371,7 +393,9 @@ export class JellyfinClient {
       }
     }
     const managed = await this.syncPlaylistItems(playlistId, itemIds, {
-      userId, managedItemIds, onManagedItemsChange,
+      userId,
+      managedItemIds,
+      onManagedItemsChange,
     });
 
     return { Id: String(playlistId), managedItemIds: managed };
@@ -387,7 +411,10 @@ export class JellyfinClient {
     const folders = await this.request("GET", "/Library/VirtualFolders");
     if (!Array.isArray(folders)) throw new Error("Jellyfin did not return its libraries");
     return folders
-      .filter((folder) => !NON_MUSIC_COLLECTION_TYPES.has(String(folder?.CollectionType || "").toLowerCase()))
+      .filter(
+        (folder) =>
+          !NON_MUSIC_COLLECTION_TYPES.has(String(folder?.CollectionType || "").toLowerCase()),
+      )
       .flatMap((folder) => folder?.Locations || []);
   }
 

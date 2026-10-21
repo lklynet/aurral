@@ -4,17 +4,22 @@ import { evaluateTrackCandidates } from "../../backend/services/trackMatching/de
 import { buildTrackRequest } from "../../backend/services/trackMatching/trackIdentity.js";
 
 const request = {
-  artistName: "Daft Punk", trackName: "Get Lucky",
-  albumName: "Random Access Memories", durationMs: 248000,
+  artistName: "Daft Punk",
+  trackName: "Get Lucky",
+  albumName: "Random Access Memories",
+  durationMs: 248000,
 };
 
 test("structured results select the recording and reject wrong variants and artists", async () => {
-  const evaluation = await evaluateTrackCandidates({ source: "deemix", context: request,
+  const evaluation = await evaluateTrackCandidates({
+    source: "deemix",
+    context: request,
     candidates: [
       { id: "exact", title: "Get Lucky", artist: "Daft Punk", durationSec: 248 },
       { id: "karaoke", title: "Get Lucky (Karaoke)", artist: "Daft Punk", durationSec: 248 },
       { id: "other", title: "Get Lucky", artist: "Lounge Covers Inc", durationSec: 248 },
-    ] });
+    ],
+  });
   const byId = new Map(evaluation.evaluations.map((entry) => [entry.candidate.provider.id, entry]));
   assert.equal(byId.get("exact").decision, "accept");
   assert.equal(byId.get("karaoke").decision, "reject");
@@ -22,10 +27,19 @@ test("structured results select the recording and reject wrong variants and arti
 });
 
 test("source candidates with a visible wrong recording ID never become usable", async () => {
-  const evaluation = await evaluateTrackCandidates({ source: "deemix",
+  const evaluation = await evaluateTrackCandidates({
+    source: "deemix",
     context: { ...request, recordingMbid: "aa8bf4d6-ee95-4407-8f7b-2efb65240a23" },
-    candidates: [{ id: "wrong", title: "Get Lucky", artist: "Daft Punk",
-      durationSec: 248, recordingMbid: "d0941e68-da8f-4815-8ff8-6a61fc59f7c5" }] });
+    candidates: [
+      {
+        id: "wrong",
+        title: "Get Lucky",
+        artist: "Daft Punk",
+        durationSec: 248,
+        recordingMbid: "d0941e68-da8f-4815-8ff8-6a61fc59f7c5",
+      },
+    ],
+  });
   assert.equal(evaluation.evaluations[0].decision, "reject");
   assert.ok(evaluation.evaluations[0].contradictions.includes("recording-mbid"));
 });

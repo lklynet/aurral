@@ -53,12 +53,13 @@ const getUnreadCountStmt = db.prepare(`
     AND (expires_at IS NULL OR expires_at > ?)
 `);
 
-const getItemStmt = db.prepare(
-  "SELECT * FROM inbox_items WHERE user_id = ? AND id = ?",
-);
+const getItemStmt = db.prepare("SELECT * FROM inbox_items WHERE user_id = ? AND id = ?");
 
-const normalizeKinds = (kinds) =>
-  [...new Set((Array.isArray(kinds) ? kinds : []).map((kind) => String(kind || "").trim()).filter(Boolean))];
+const normalizeKinds = (kinds) => [
+  ...new Set(
+    (Array.isArray(kinds) ? kinds : []).map((kind) => String(kind || "").trim()).filter(Boolean),
+  ),
+];
 
 const kindClause = (kinds) =>
   kinds.length ? ` AND kind IN (${kinds.map(() => "?").join(",")})` : "";
@@ -124,9 +125,7 @@ export default function register(dbOps) {
         .map(mapInboxRow);
     }
     const statement = unreadOnly ? getUnreadInboxItemsStmt : getInboxItemsStmt;
-    return statement
-      .all(Number(userId), Date.now(), safeLimit)
-      .map(mapInboxRow);
+    return statement.all(Number(userId), Date.now(), safeLimit).map(mapInboxRow);
   };
 
   dbOps.getInboxUnreadCount = function (userId, kinds = []) {
@@ -206,11 +205,13 @@ export default function register(dbOps) {
   };
 
   dbOps.markAllInboxItemsRead = function (userId) {
-    return db.prepare(`
+    return db
+      .prepare(`
       UPDATE inbox_items
       SET is_read = 1, updated_at = ?
       WHERE user_id = ? AND is_dismissed = 0 AND is_read = 0
-    `).run(Date.now(), Number(userId));
+    `)
+      .run(Date.now(), Number(userId));
   };
 }
 

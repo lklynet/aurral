@@ -45,26 +45,31 @@ async function writeLibrary(files) {
     tagsByPath.set(filePath, tags);
   }
   const reads = [];
-  const scan = ({ unreadable = [], ...options } = {}) => scanMusicRoot({
-    rootPath: root,
-    metadataReader: async (filePath) => {
-      reads.push(filePath);
-      if (unreadable.includes(filePath)) throw new Error("unreadable");
-      return { common: tagsByPath.get(filePath), format: {} };
-    },
-    ...options,
-  });
+  const scan = ({ unreadable = [], ...options } = {}) =>
+    scanMusicRoot({
+      rootPath: root,
+      metadataReader: async (filePath) => {
+        reads.push(filePath);
+        if (unreadable.includes(filePath)) throw new Error("unreadable");
+        return { common: tagsByPath.get(filePath), format: {} };
+      },
+      ...options,
+    });
   return { scan, reads, paths: [...tagsByPath.keys()] };
 }
 
-const indexedFiles = () => db.prepare(
-  `SELECT artist.name AS artist, album.title AS album, track.title AS track
+const indexedFiles = () =>
+  db
+    .prepare(
+      `SELECT artist.name AS artist, album.title AS album, track.title AS track
    FROM library_media_files AS media
    JOIN library_tracks AS track ON track.id = media.track_id
    JOIN library_albums AS album ON album.id = media.album_id
    JOIN library_artists AS artist ON artist.id = album.artist_id
    ORDER BY media.path`,
-).all().map((row) => ({ ...row }));
+    )
+    .all()
+    .map((row) => ({ ...row }));
 
 const rowCounts = () => ({
   artists: db.prepare("SELECT COUNT(*) FROM library_artists").pluck().get(),
@@ -189,7 +194,12 @@ async function seedMergedLibrary(paths, artistKey = "name:artist", artistMbid = 
     artistName: "椎名林檎",
     syncSearch: false,
   });
-  store.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1, syncSearch: false });
+  store.linkLibraryAlbumTrack({
+    albumId: album.id,
+    trackId: track.id,
+    trackNumber: 1,
+    syncSearch: false,
+  });
   setLibraryManagement({ entityKind: "album", entityId: album.id, managedBy: "aurral" });
   const scanId = store.beginLibraryScan({ source: "aurral", rootPath: root });
   for (const filePath of paths) {
@@ -207,28 +217,46 @@ async function seedMergedLibrary(paths, artistKey = "name:artist", artistMbid = 
   }
   store.finishLibraryScan(scanId);
 
-  const user = db.prepare(
-    "INSERT INTO users (username, password_hash) VALUES ('listener', 'hash') RETURNING id",
-  ).get();
-  assert.equal(subsonic.starMany(user, [
-    subsonic.idFor("artist", artist.identity_key),
-    subsonic.idFor("album", album.identity_key),
-    subsonic.idFor("song", track.identity_key),
-  ]), true);
+  const user = db
+    .prepare("INSERT INTO users (username, password_hash) VALUES ('listener', 'hash') RETURNING id")
+    .get();
+  assert.equal(
+    subsonic.starMany(user, [
+      subsonic.idFor("artist", artist.identity_key),
+      subsonic.idFor("album", album.identity_key),
+      subsonic.idFor("song", track.identity_key),
+    ]),
+    true,
+  );
   const addPlay = db.prepare(
     `INSERT INTO play_events (user_id, track_id, title, artist, album, album_key, played_at, source, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, 'subsonic', ?)`,
   );
   addPlay.run(user.id, "1", "初恋", "宇多田ヒカル", "初恋", album.identity_key, 1000, 1000);
   addPlay.run(user.id, "1", "初恋", "宇多田ヒカル", "初恋", album.identity_key, 2000, 2000);
-  addPlay.run(user.id, "1", "正しい街", "椎名林檎", "無罪モラトリアム", album.identity_key, 3000, 3000);
+  addPlay.run(
+    user.id,
+    "1",
+    "正しい街",
+    "椎名林檎",
+    "無罪モラトリアム",
+    album.identity_key,
+    3000,
+    3000,
+  );
   return { user, artist };
 }
 
-const playCounts = () => Object.fromEntries(db.prepare(
-  `SELECT album.title, stats.play_count FROM play_album_stats AS stats
+const playCounts = () =>
+  Object.fromEntries(
+    db
+      .prepare(
+        `SELECT album.title, stats.play_count FROM play_album_stats AS stats
    JOIN library_albums AS album ON album.identity_key = stats.album_key`,
-).all().map((row) => [row.title, row.play_count]));
+      )
+      .all()
+      .map((row) => [row.title, row.play_count]),
+  );
 
 test("a rescan splits an artist that earlier scans merged, with favorites, plays, and monitoring", async () => {
   const { scan, reads, paths } = await writeLibrary(MERGED_FILES);
@@ -248,8 +276,13 @@ test("a rescan splits an artist that earlier scans merged, with favorites, plays
   assert.equal(db.prepare("SELECT COUNT(*) FROM subsonic_stars").pluck().get(), 6);
   assert.deepEqual(playCounts(), { 初恋: 2, 無罪モラトリアム: 1 });
   assert.deepEqual(
-    getLibrary().albums.map((album) => [album.title, album.monitored]).sort(),
-    [["初恋", true], ["無罪モラトリアム", true]],
+    getLibrary()
+      .albums.map((album) => [album.title, album.monitored])
+      .sort(),
+    [
+      ["初恋", true],
+      ["無罪モラトリアム", true],
+    ],
   );
 
   reads.length = 0;
@@ -262,7 +295,11 @@ test("a rescan leaves no merged album behind when a track there has a recording 
   const files = structuredClone(MERGED_FILES);
   files["椎名林檎/無罪モラトリアム/01 正しい街.flac"].musicbrainz_recordingid = recording;
   const { scan, paths } = await writeLibrary(files);
-  const artist = store.upsertLibraryArtist({ identityKey: "name:artist", name: "椎名林檎", syncSearch: false });
+  const artist = store.upsertLibraryArtist({
+    identityKey: "name:artist",
+    name: "椎名林檎",
+    syncSearch: false,
+  });
   const album = store.upsertLibraryAlbum({
     identityKey: "name:album:name artist",
     artistId: artist.id,
@@ -276,7 +313,12 @@ test("a rescan leaves no merged album behind when a track there has a recording 
     [paths[1], `recording:${recording}`, "正しい街"],
   ]) {
     const track = store.upsertLibraryTrack({ identityKey, title, syncSearch: false });
-    store.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1, syncSearch: false });
+    store.linkLibraryAlbumTrack({
+      albumId: album.id,
+      trackId: track.id,
+      trackNumber: 1,
+      syncSearch: false,
+    });
     const file = await stat(filePath);
     store.upsertLibraryMediaFile({
       trackId: track.id,
@@ -316,7 +358,10 @@ test("a rescan keeps a merged artist that MusicBrainz matched for its own albums
     { id: artist.id, mbid },
   );
   assert.equal(
-    db.prepare("SELECT COUNT(*) FROM library_albums WHERE identity_key = 'name:album:name artist'").pluck().get(),
+    db
+      .prepare("SELECT COUNT(*) FROM library_albums WHERE identity_key = 'name:album:name artist'")
+      .pluck()
+      .get(),
     0,
   );
 
@@ -330,7 +375,10 @@ const libraryState = (user) => {
   return {
     starredArtists: starred.artist.map((entry) => entry.name).sort(),
     starredAlbums: starred.album.map((entry) => entry.name).sort(),
-    monitoredAlbums: getLibrary().albums.filter((album) => album.monitored).map((album) => album.title).sort(),
+    monitoredAlbums: getLibrary()
+      .albums.filter((album) => album.monitored)
+      .map((album) => album.title)
+      .sort(),
   };
 };
 

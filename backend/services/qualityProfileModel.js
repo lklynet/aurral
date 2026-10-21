@@ -16,24 +16,18 @@ export const QUALITY_TIERS = [
 const TIER_BY_ID = new Map(QUALITY_TIERS.map((tier) => [tier.id, tier]));
 
 export function createDefaultQualityProfile(slskd = {}) {
-  const preferred = String(slskd?.preferredFormat || "flac").toLowerCase() === "mp3"
-    ? "mp3"
-    : "flac";
+  const preferred =
+    String(slskd?.preferredFormat || "flac").toLowerCase() === "mp3" ? "mp3" : "flac";
   const strict = slskd?.preferredFormatStrict === true;
   const preferredIds = QUALITY_TIERS.filter((tier) => tier.family === preferred).map(
     (tier) => tier.id,
   );
-  const otherIds = QUALITY_TIERS.filter((tier) => tier.family !== preferred).map(
-    (tier) => tier.id,
-  );
-  const order = preferred === "flac"
-    ? QUALITY_TIERS.map((tier) => tier.id)
-    : [...preferredIds, ...otherIds];
+  const otherIds = QUALITY_TIERS.filter((tier) => tier.family !== preferred).map((tier) => tier.id);
+  const order =
+    preferred === "flac" ? QUALITY_TIERS.map((tier) => tier.id) : [...preferredIds, ...otherIds];
   return {
     order,
-    enabled: strict
-      ? preferredIds
-      : QUALITY_TIERS.map((tier) => tier.id),
+    enabled: strict ? preferredIds : QUALITY_TIERS.map((tier) => tier.id),
     cutoff: preferred === "mp3" ? "mp3-320" : "flac-standard",
     automaticUpgrades: false,
     intervalDays: 2,
@@ -84,7 +78,11 @@ function readAudioFamily(parsed, filePath) {
     return lossless === false ? null : "flac";
   }
   if (lossless) return null;
-  if (ext === ".mp3" || container.includes("mpeg") && !container.includes("4") || codec.includes("mp3")) {
+  if (
+    ext === ".mp3" ||
+    (container.includes("mpeg") && !container.includes("4")) ||
+    codec.includes("mp3")
+  ) {
     return "mp3";
   }
   if (
@@ -112,9 +110,7 @@ export function classifyAudioQuality(parsed, filePath) {
   const sampleRate = Number(parsed?.format?.sampleRate);
   const bitDepth = Number(parsed?.format?.bitsPerSample);
   const bitrate = Number(parsed?.format?.bitrate);
-  const bitrateKbps = Number.isFinite(bitrate) && bitrate > 0
-    ? Math.round(bitrate / 1000)
-    : null;
+  const bitrateKbps = Number.isFinite(bitrate) && bitrate > 0 ? Math.round(bitrate / 1000) : null;
   let tier = null;
   if (family === "flac" && Number.isFinite(sampleRate) && Number.isFinite(bitDepth)) {
     tier = bitDepth > 16 || sampleRate > 48000 ? "flac-hires" : "flac-standard";
@@ -176,7 +172,8 @@ export function classifyAdvertisedQuality(fileName, bitrate = null) {
   return null;
 }
 
-const NEVER_TIERED_ADVERTISED_EXTENSION = /\.(?:opus|ogg|oga|wma|wav|aiff?|ape|mpc|ac3|dts|mka)\s*$/i;
+const NEVER_TIERED_ADVERTISED_EXTENSION =
+  /\.(?:opus|ogg|oga|wma|wav|aiff?|ape|mpc|ac3|dts|mka)\s*$/i;
 
 export function isAdvertisedQualityEligible(
   fileName,

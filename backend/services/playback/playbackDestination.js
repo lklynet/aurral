@@ -84,11 +84,14 @@ function requireAbsolutePaths(values, label) {
   if (!Array.isArray(values)) {
     throw new TypeError(`${label} must be an array`);
   }
-  return Object.freeze(values.map((value, index) => {
-    const text = requireText(value, `${label}[${index}]`);
-    if (!path.isAbsolute(text)) throw new TypeError(`${label}[${index}] must be an absolute path`);
-    return path.resolve(text);
-  }));
+  return Object.freeze(
+    values.map((value, index) => {
+      const text = requireText(value, `${label}[${index}]`);
+      if (!path.isAbsolute(text))
+        throw new TypeError(`${label}[${index}] must be an absolute path`);
+      return path.resolve(text);
+    }),
+  );
 }
 
 export function createPlaybackScanRequest({ folders, roots } = {}) {
@@ -103,8 +106,10 @@ export function playbackOperationSuccess({ pending = false } = {}) {
 }
 
 export function isRetryablePlaybackError(error) {
-  return !REJECTED_HTTP_STATUSES.has(Number(error?.response?.status))
-    && !REJECTED_SUBSONIC_CODES.has(Number(error?.code));
+  return (
+    !REJECTED_HTTP_STATUSES.has(Number(error?.response?.status)) &&
+    !REJECTED_SUBSONIC_CODES.has(Number(error?.code))
+  );
 }
 
 export function playbackScanDeferred() {

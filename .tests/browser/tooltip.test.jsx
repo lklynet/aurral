@@ -20,7 +20,8 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
-const tooltip = (text) => page.getByRole("tooltip", { includeHidden: true }).filter({ hasText: text });
+const tooltip = (text) =>
+  page.getByRole("tooltip", { includeHidden: true }).filter({ hasText: text });
 
 test("keyboard focus shows the tooltip and moving focus away hides it", async () => {
   render(
@@ -89,7 +90,9 @@ test("a labelled control gets the tooltip as its description while it is visible
   const button = page.getByRole("button", { name: "Clear queue" });
 
   await userEvent.hover(button);
-  await expect.element(button).toHaveAccessibleDescription("Removes every track you have not played yet");
+  await expect
+    .element(button)
+    .toHaveAccessibleDescription("Removes every track you have not played yet");
 });
 
 test("the tooltip stays inside the viewport next to a control at the right edge", async () => {

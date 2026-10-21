@@ -12,5 +12,8 @@ const { start, stop, isRunning } = createHonkerWorker({
   retryDelayS: 120,
 });
 
-export { start as startReleaseMetadataWorker, stop as stopReleaseMetadataWorker,
-  isRunning as isReleaseMetadataWorkerRunning };
+export {
+  start as startReleaseMetadataWorker,
+  stop as stopReleaseMetadataWorker,
+  isRunning as isReleaseMetadataWorkerRunning,
+};

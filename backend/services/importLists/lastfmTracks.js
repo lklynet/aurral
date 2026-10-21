@@ -1,7 +1,13 @@
 import { dedupePlaylistTracks } from "../playlists/flowPlaylistConfig.js";
 
 const getArtistName = (track) =>
-  String(track?.artists?.[0]?.name || track?.artists?.[0]?._name || track?.artist?.name || track?.artist?._name || "").trim();
+  String(
+    track?.artists?.[0]?.name ||
+      track?.artists?.[0]?._name ||
+      track?.artist?.name ||
+      track?.artist?._name ||
+      "",
+  ).trim();
 
 const getAlbumName = (track) => {
   const album = track?.primary_album ?? track?.album;

@@ -61,7 +61,10 @@ async function request(config) {
   const timeoutMs = Number(config.timeout ?? 30000);
   const timer = timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : null;
   const isBinaryData = config.data instanceof Blob || config.data instanceof FormData;
-  const headers = { ...(isBinaryData ? {} : { "Content-Type": "application/json" }), ...config.headers };
+  const headers = {
+    ...(isBinaryData ? {} : { "Content-Type": "application/json" }),
+    ...config.headers,
+  };
   const token = getRequestToken();
   if (token) headers.Authorization = `Bearer ${token}`;
   const urlPath = String(config.url || "");
@@ -174,7 +177,8 @@ const EMPTY_COVER_CACHE_TTL_MS = 60 * 1000;
 export const setCoverCacheEntry = (key, value) => {
   if (!key) return;
   const images = Array.isArray(value?.images) ? value.images : [];
-  const hasArtwork = images.length > 0 || Boolean(value?.image || value?.imageUrl || value?.coverUrl);
+  const hasArtwork =
+    images.length > 0 || Boolean(value?.image || value?.imageUrl || value?.coverUrl);
   const ttlMs = hasArtwork ? COVER_CACHE_TTL_MS : EMPTY_COVER_CACHE_TTL_MS;
   if (coverResponseCache.has(key)) coverResponseCache.delete(key);
   coverResponseCache.set(key, { value, expiresAt: Date.now() + ttlMs });
@@ -235,7 +239,8 @@ export const lidarrCredentialParams = (url, apiKey, { trimUrl = false } = {}) =>
 
 const getApiBaseUrl = () => import.meta.env.VITE_API_URL || getDefaultApiBaseUrl();
 
-export const resolveApiPath = (path) => joinUrl(getApiBaseUrl(), String(path || "").replace(/^\/api(?=\/)/, ""));
+export const resolveApiPath = (path) =>
+  joinUrl(getApiBaseUrl(), String(path || "").replace(/^\/api(?=\/)/, ""));
 
 export const buildAuthenticatedApiUrl = (path, params = {}) => {
   const normalizedPath = String(path || "").startsWith("/")
@@ -255,9 +260,7 @@ export const buildAuthenticatedApiUrl = (path, params = {}) => {
 
 export const resolveAuthenticatedApiAssetUrl = (value) => {
   const url = String(value || "");
-  return url.startsWith("/api/")
-    ? buildAuthenticatedApiUrl(url.replace(/^\/api/, ""))
-    : url;
+  return url.startsWith("/api/") ? buildAuthenticatedApiUrl(url.replace(/^\/api/, "")) : url;
 };
 
 export default api;

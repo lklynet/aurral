@@ -22,7 +22,8 @@ const errorReason = (error) => {
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const describeTracks = (tracks, jobIds) => {
-  const named = jobIds.length === 1 ? tracks.find((track) => track?.id === jobIds[0])?.trackName : "";
+  const named =
+    jobIds.length === 1 ? tracks.find((track) => track?.id === jobIds[0])?.trackName : "";
   return named || trackCountLabel(jobIds.length);
 };
 
@@ -54,8 +55,9 @@ export function createPlaylistTrackChanges(toast) {
 
   const settle = async (change, { error = null, success = null } = {}) => {
     await Promise.all(
-      [change.sourceId, change.targetId].filter(Boolean).map((id) =>
-        queryClient.invalidateQueries({ queryKey: queryKeys.playlistJobs(id) })),
+      [change.sourceId, change.targetId]
+        .filter(Boolean)
+        .map((id) => queryClient.invalidateQueries({ queryKey: queryKeys.playlistJobs(id) })),
     ).catch(() => {});
     await queryClient.invalidateQueries({ queryKey: queryKeys.playlistStatus }).catch(() => {});
     release(change.key);
@@ -69,7 +71,9 @@ export function createPlaylistTrackChanges(toast) {
     const moved = outcomes.filter((outcome) => outcome.status === "moved").length;
     const targetName = change.targetName || playlistName(result?.targetPlaylistId);
     const phrase = (what) =>
-      change.action === "move" ? `move ${what} to ${targetName}` : `remove ${what} from ${change.sourceName}`;
+      change.action === "move"
+        ? `move ${what} to ${targetName}`
+        : `remove ${what} from ${change.sourceName}`;
     let error = null;
     if (result?.state === "failed") {
       error = `Could not ${phrase(change.label)}. ${result.message || "Review the playlist before retrying."}`;
@@ -77,10 +81,14 @@ export function createPlaylistTrackChanges(toast) {
       const reason = failed[0].message ? `: ${failed[0].message.replace(/\.$/, "")}` : "";
       error = `Could not ${phrase(trackCountLabel(failed.length))}${reason}. ${stayLabel(failed.length)} in ${change.sourceName}.`;
     }
-    const success = change.action === "move" && moved
-      ? `Moved ${moved === change.jobIds.length ? change.label : trackCountLabel(moved)} to ${targetName}`
-      : null;
-    return settle({ ...change, targetId: change.targetId || result?.targetPlaylistId }, { error, success });
+    const success =
+      change.action === "move" && moved
+        ? `Moved ${moved === change.jobIds.length ? change.label : trackCountLabel(moved)} to ${targetName}`
+        : null;
+    return settle(
+      { ...change, targetId: change.targetId || result?.targetPlaylistId },
+      { error, success },
+    );
   };
 
   const follow = async (change, operationId) => {
@@ -89,7 +97,9 @@ export function createPlaylistTrackChanges(toast) {
       if (attempt > 0) await wait(Math.min(1000 * 2 ** (attempt - 1), MAX_POLL_DELAY_MS));
       let result;
       try {
-        result = await getStaticPlaylistOperation(change.sourceId, operationId, { bypassCache: true });
+        result = await getStaticPlaylistOperation(change.sourceId, operationId, {
+          bypassCache: true,
+        });
         errors = 0;
       } catch (error) {
         if (error?.response?.status === 404 || ++errors >= MAX_POLL_ERRORS) {
@@ -109,7 +119,8 @@ export function createPlaylistTrackChanges(toast) {
       response = await request();
     } catch (error) {
       const action = change.action === "move" ? "move" : "remove";
-      const where = change.action === "move" ? `to ${change.targetName}` : `from ${change.sourceName}`;
+      const where =
+        change.action === "move" ? `to ${change.targetName}` : `from ${change.sourceName}`;
       return settle(change, {
         error: error?.response
           ? `Could not ${action} ${change.label} ${where}. Nothing changed. ${errorReason(error) || "Try again."}`
@@ -131,7 +142,8 @@ export function createPlaylistTrackChanges(toast) {
     if (!change || change.phase !== "undo") return;
     update(key, { phase: "saving" });
     void submit(change, () =>
-      removeStaticPlaylistTracks(change.sourceId, change.jobIds, { keepalive: true }));
+      removeStaticPlaylistTracks(change.sourceId, change.jobIds, { keepalive: true }),
+    );
   };
 
   const undo = (key) => {
@@ -143,7 +155,9 @@ export function createPlaylistTrackChanges(toast) {
 
   const pendingIds = (source, tracks) => {
     const taken = hidden.get(source?.id) || EMPTY_IDS;
-    return [...new Set(tracks.map((track) => track?.id).filter(Boolean))].filter((id) => !taken.has(id));
+    return [...new Set(tracks.map((track) => track?.id).filter(Boolean))].filter(
+      (id) => !taken.has(id),
+    );
   };
 
   return {
@@ -201,7 +215,8 @@ export function createPlaylistTrackChanges(toast) {
           source.id,
           jobIds,
           creating ? { name: targetName } : { playlistId: target.playlistId },
-        ));
+        ),
+      );
     },
     flush() {
       for (const change of changes.filter((entry) => entry.phase === "undo")) {

@@ -91,13 +91,7 @@ export function ArtistDetailsDownloadTargets({
       releaseDate: releaseGroup?.["first-release-date"] || "",
       deezerAlbumId: releaseGroup?._deezerAlbumId || "",
     }),
-    [
-      artist?.id,
-      artist?.name,
-      missingReleasePick?.title,
-      missingReleasePick?.type,
-      releaseGroup,
-    ],
+    [artist?.id, artist?.name, missingReleasePick?.title, missingReleasePick?.type, releaseGroup],
   );
   const tracksQuery = useQuery({
     queryKey: queryKeys.releaseGroupTracks(missingReleasePick?.releaseGroupId, trackContext),
@@ -144,7 +138,14 @@ export function ArtistDetailsDownloadTargets({
           albumMbid: missingReleasePick?.releaseGroupId || "",
         },
       ),
-    [artist?.id, artist?.name, artistName, missingReleasePick?.releaseGroupId, missingReleasePick?.title, pickCover],
+    [
+      artist?.id,
+      artist?.name,
+      artistName,
+      missingReleasePick?.releaseGroupId,
+      missingReleasePick?.title,
+      pickCover,
+    ],
   );
 
   const { currentTrack, isPlaying, isLoading, playTrack, togglePlayPause, source } =
@@ -221,10 +222,7 @@ export function ArtistDetailsDownloadTargets({
 
   return (
     <section className="artist-section">
-      <div
-        className="artist-pick-panel"
-        style={tint ? { "--collection-tint": tint } : undefined}
-      >
+      <div className="artist-pick-panel" style={tint ? { "--collection-tint": tint } : undefined}>
         <div className="artist-pick-panel__grid">
           <CollectionHeader
             embedded

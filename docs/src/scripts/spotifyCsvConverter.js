@@ -86,6 +86,10 @@ export function convertSpotifyCsv(csv, filename = "playlist.csv") {
 
   if (!tracks.length) throw new Error("No complete artist and track rows were found.");
 
-  const name = filename.replace(/\.csv$/i, "").replace(/[_-]+/g, " ").trim() || "My Playlist";
+  const name =
+    filename
+      .replace(/\.csv$/i, "")
+      .replace(/[_-]+/g, " ")
+      .trim() || "My Playlist";
   return { name, tracks };
 }

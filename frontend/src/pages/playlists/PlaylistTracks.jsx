@@ -34,11 +34,7 @@ import ArtworkEditorModal from "../../components/ArtworkEditorModal.jsx";
 import { useAuth } from "../../contexts/AuthContext.jsx";
 import { useAudioQueue } from "../../contexts/audioQueueContext.js";
 import { getTrackSearchAction } from "./trackAvailability.js";
-import {
-  normalizeNameKey,
-  normalizePlaylistTrackEntry,
-  reserveUniqueName,
-} from "./flowPageUtils";
+import { normalizeNameKey, normalizePlaylistTrackEntry, reserveUniqueName } from "./flowPageUtils";
 
 const errorMessage = (err, fallback) =>
   err?.response?.data?.message || err?.response?.data?.error || err?.message || fallback;
@@ -145,9 +141,7 @@ export function PlaylistTracks({
         "",
       hasCustomArtwork: Boolean(track.customArtworkUrl),
       fallbackArtwork:
-        track.coverUrl ||
-        trackArtworkByAlbumMbid[String(track.albumMbid || "")] ||
-        "",
+        track.coverUrl || trackArtworkByAlbumMbid[String(track.albumMbid || "")] || "",
     });
   };
 
@@ -174,9 +168,11 @@ export function PlaylistTracks({
     if (playlistMenuSavingKey) return;
     setPlaylistMenuError("");
     setPlaylistMenuSavingKey(String(track?.id ?? ""));
-    const targetName = target?.mode === "new"
-      ? String(target?.name || "").trim() || getNextPlaylistName(`${payload.artistName} Picks`)
-      : staticPlaylists.find((playlist) => playlist.id === target?.playlistId)?.name || "the playlist";
+    const targetName =
+      target?.mode === "new"
+        ? String(target?.name || "").trim() || getNextPlaylistName(`${payload.artistName} Picks`)
+        : staticPlaylists.find((playlist) => playlist.id === target?.playlistId)?.name ||
+          "the playlist";
     try {
       if (target?.mode === "new") {
         await createStaticPlaylist({ name: targetName, tracks: [payload] });
@@ -202,9 +198,11 @@ export function PlaylistTracks({
     }
     if (bulkActionLoading) return;
     setBulkActionLoading(true);
-    const targetName = target?.mode === "new"
-      ? String(target?.name || "").trim() || getNextPlaylistName("Playlist")
-      : staticPlaylists.find((playlist) => playlist.id === target?.playlistId)?.name || "the playlist";
+    const targetName =
+      target?.mode === "new"
+        ? String(target?.name || "").trim() || getNextPlaylistName("Playlist")
+        : staticPlaylists.find((playlist) => playlist.id === target?.playlistId)?.name ||
+          "the playlist";
     try {
       if (target?.mode === "new") {
         await createStaticPlaylist({ name: targetName, tracks: payloads });
@@ -222,10 +220,14 @@ export function PlaylistTracks({
     }
   };
 
-  const moveTracks = (selected, target) => bulkActions.moveTracks(entry, selected,
-    target?.mode === "new"
-      ? { ...target, name: String(target.name || "").trim() || getNextPlaylistName("Playlist") }
-      : target);
+  const moveTracks = (selected, target) =>
+    bulkActions.moveTracks(
+      entry,
+      selected,
+      target?.mode === "new"
+        ? { ...target, name: String(target.name || "").trim() || getNextPlaylistName("Playlist") }
+        : target,
+    );
 
   const handleDeleteTrack = (track) => bulkActions.removeTracks(entry, [track]);
 
@@ -356,11 +358,12 @@ export function PlaylistTracks({
     const favoriteQueryKey = queryKeys.libraryFavorites;
     setFavoriteTrackSavingKey(id);
     const name = track.trackName || "track";
-    const setStarred = (starred) => queryClient.setQueryData(favoriteQueryKey, (current = {}) => {
-      const songs = Array.isArray(current.song) ? current.song : [];
-      const withoutTrack = songs.filter((song) => String(song?.id || "") !== id);
-      return { ...current, song: starred ? [...withoutTrack, { id }] : withoutTrack };
-    });
+    const setStarred = (starred) =>
+      queryClient.setQueryData(favoriteQueryKey, (current = {}) => {
+        const songs = Array.isArray(current.song) ? current.song : [];
+        const withoutTrack = songs.filter((song) => String(song?.id || "") !== id);
+        return { ...current, song: starred ? [...withoutTrack, { id }] : withoutTrack };
+      });
     let previous;
     let optimistic;
     try {

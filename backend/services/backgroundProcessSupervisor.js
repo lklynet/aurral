@@ -27,14 +27,21 @@ const MB = 1024 * 1024;
 const DEFAULT_HEAP_LIMIT_MB = 2048;
 
 function workerExecArgv() {
-  const execArgv = process.execArgv.filter((arg) =>
-    !/^--(?:watch|watch-path|inspect|inspect-brk|test(?:-.*)?|experimental-test-.*)(?:=|$)/.test(arg));
+  const execArgv = process.execArgv.filter(
+    (arg) =>
+      !/^--(?:watch|watch-path|inspect|inspect-brk|test(?:-.*)?|experimental-test-.*)(?:=|$)/.test(
+        arg,
+      ),
+  );
   const configuredMb = Number(process.env.AURRAL_WORKER_MAX_HEAP_MB);
   if (Number.isInteger(configuredMb) && configuredMb > 0) {
     return [...execArgv, `--max-old-space-size=${configuredMb}`];
   }
-  const userLimit = /--max[-_]old[-_]space[-_]size/.test(`${process.env.NODE_OPTIONS || ""} ${execArgv.join(" ")}`);
-  if (userLimit || DEFAULT_HEAP_LIMIT_MB * MB >= v8.getHeapStatistics().heap_size_limit) return execArgv;
+  const userLimit = /--max[-_]old[-_]space[-_]size/.test(
+    `${process.env.NODE_OPTIONS || ""} ${execArgv.join(" ")}`,
+  );
+  if (userLimit || DEFAULT_HEAP_LIMIT_MB * MB >= v8.getHeapStatistics().heap_size_limit)
+    return execArgv;
   return [...execArgv, `--max-old-space-size=${DEFAULT_HEAP_LIMIT_MB}`];
 }
 
@@ -78,8 +85,12 @@ export function createBackgroundProcessSupervisor({
 
   function canSend(group) {
     const child = children.get(group);
-    return Boolean(child) && readyGroups.has(group) && !retiringGroups.has(group) &&
-      child.connected !== false;
+    return (
+      Boolean(child) &&
+      readyGroups.has(group) &&
+      !retiringGroups.has(group) &&
+      child.connected !== false
+    );
   }
 
   function hasRequests(group) {
@@ -107,12 +118,15 @@ export function createBackgroundProcessSupervisor({
   }
 
   function describeRun(group) {
-    const jobs = [...(activeJobs.get(group)?.values() || [])]
-      .map(({ queue, jobId, payload }) => `${queue} job ${jobId}${payload ? ` ${payload}` : ""}`);
+    const jobs = [...(activeJobs.get(group)?.values() || [])].map(
+      ({ queue, jobId, payload }) => `${queue} job ${jobId}${payload ? ` ${payload}` : ""}`,
+    );
     const memory = workerMemory.get(group);
-    return `${jobs.length ? `; running ${jobs.join(", ")}` : ""}${memory
-      ? `; last memory ${Math.round(memory.rss / MB)} MB RSS, ${Math.round(memory.heapUsed / MB)} MB heap`
-      : ""}`;
+    return `${jobs.length ? `; running ${jobs.join(", ")}` : ""}${
+      memory
+        ? `; last memory ${Math.round(memory.rss / MB)} MB RSS, ${Math.round(memory.heapUsed / MB)} MB heap`
+        : ""
+    }`;
   }
 
   function retire(group, child) {
@@ -162,7 +176,8 @@ export function createBackgroundProcessSupervisor({
       if (message?.type === "heartbeat" && Array.isArray(message.workers)) {
         workerStatuses.set(group, message.workers);
         if (message.memory) workerMemory.set(group, message.memory);
-        if (message.downloadOwnerStatus) downloadOwnerStatuses.set(group, message.downloadOwnerStatus);
+        if (message.downloadOwnerStatus)
+          downloadOwnerStatuses.set(group, message.downloadOwnerStatus);
       }
       if (message?.type === "download-owner-response") {
         const pending = pendingRequests.get(message.requestId);
@@ -177,7 +192,9 @@ export function createBackgroundProcessSupervisor({
       if (message?.type === "job-started" && Number.isInteger(message.jobId)) {
         if (!activeJobs.has(group)) activeJobs.set(group, new Map());
         activeJobs.get(group).set(`${message.queue}:${message.jobId}`, {
-          queue: message.queue, jobId: message.jobId, startedAt: Date.now(),
+          queue: message.queue,
+          jobId: message.jobId,
+          startedAt: Date.now(),
           payload: typeof message.payload === "string" ? message.payload : null,
         });
       } else if (message?.type === "job-finished") {
@@ -225,7 +242,8 @@ export function createBackgroundProcessSupervisor({
         logger.warn?.(`[BackgroundWorkers] ${group} exited (${signal || code})${run}; restarting`);
       }
       recoveringGroups.add(group);
-      Promise.resolve().then(() => onExit(group, code, signal, child.pid, exitReason, retired))
+      Promise.resolve()
+        .then(() => onExit(group, code, signal, child.pid, exitReason, retired))
         .catch((error) => {
           logger.error?.(`[BackgroundWorkers] Could not handle ${group} exit:`, error);
         })
@@ -244,7 +262,7 @@ export function createBackgroundProcessSupervisor({
     if (stopping || restartTimers.has(group)) return;
     const count = attempts.get(group) || 0;
     attempts.set(group, count + 1);
-    const delay = Math.min(RESTART_MAX_MS, RESTART_BASE_MS * (2 ** Math.min(count, 5)));
+    const delay = Math.min(RESTART_MAX_MS, RESTART_BASE_MS * 2 ** Math.min(count, 5));
     const timer = setTimeout(() => {
       restartTimers.delete(group);
       launch(group);
@@ -270,13 +288,19 @@ export function createBackgroundProcessSupervisor({
       clearTimeout(demandTimer);
       demandTimer = null;
       if (nextWorkAt > 0) {
-        demandTimer = setTimeout(launchGroupsWithWork, Math.max(1, Math.min(nextWorkAt - Date.now(), 2147483647)));
+        demandTimer = setTimeout(
+          launchGroupsWithWork,
+          Math.max(1, Math.min(nextWorkAt - Date.now(), 2147483647)),
+        );
         demandTimer.unref?.();
       }
       lastWorkRevision = revision;
     } catch (error) {
       lastWorkRevision = null;
-      logger.warn?.("[BackgroundWorkers] Could not check for queued work:", error?.message || error);
+      logger.warn?.(
+        "[BackgroundWorkers] Could not check for queued work:",
+        error?.message || error,
+      );
     }
   }
 
@@ -284,7 +308,10 @@ export function createBackgroundProcessSupervisor({
     try {
       if (!getWorkRevision || getWorkRevision() !== lastWorkRevision) launchGroupsWithWork();
     } catch (error) {
-      logger.warn?.("[BackgroundWorkers] Could not check database changes:", error?.message || error);
+      logger.warn?.(
+        "[BackgroundWorkers] Could not check database changes:",
+        error?.message || error,
+      );
       launchGroupsWithWork();
     }
   }
@@ -307,7 +334,9 @@ export function createBackgroundProcessSupervisor({
         logger.error?.(`[BackgroundWorkers] ${reason}${describeRun(group)}; restarting its worker`);
         lastSeen.set(group, Date.now());
         activeJobs.delete(group);
-        try { child.kill("SIGKILL"); } catch (error) {
+        try {
+          child.kill("SIGKILL");
+        } catch (error) {
           logger.error?.(`[BackgroundWorkers] Could not stop ${group}:`, error);
         }
       }
@@ -334,33 +363,38 @@ export function createBackgroundProcessSupervisor({
     watchdogInterval = null;
     for (const timer of restartTimers.values()) clearTimeout(timer);
     restartTimers.clear();
-    const pending = [...children.values()].map((child) => new Promise((resolve) => {
-      if (child.exitCode !== null || child.signalCode !== null) {
-        resolve();
-        return;
-      }
-      let timer = null;
-      let exited = false;
-      const done = () => {
-        if (exited) return;
-        exited = true;
-        if (timer) clearTimeout(timer);
-        resolve();
-      };
-      child.once("exit", done);
-      child.once("close", done);
-      try {
-        child.send({ type: "shutdown" });
-      } catch {
-        child.kill();
-      }
-      if (!exited) {
-        timer = setTimeout(() => {
-          try { child.kill("SIGKILL"); } catch {}
-          resolve();
-        }, timeoutMs);
-      }
-    }));
+    const pending = [...children.values()].map(
+      (child) =>
+        new Promise((resolve) => {
+          if (child.exitCode !== null || child.signalCode !== null) {
+            resolve();
+            return;
+          }
+          let timer = null;
+          let exited = false;
+          const done = () => {
+            if (exited) return;
+            exited = true;
+            if (timer) clearTimeout(timer);
+            resolve();
+          };
+          child.once("exit", done);
+          child.once("close", done);
+          try {
+            child.send({ type: "shutdown" });
+          } catch {
+            child.kill();
+          }
+          if (!exited) {
+            timer = setTimeout(() => {
+              try {
+                child.kill("SIGKILL");
+              } catch {}
+              resolve();
+            }, timeoutMs);
+          }
+        }),
+    );
     await Promise.all(pending);
     children.clear();
     readyGroups.clear();
@@ -389,7 +423,11 @@ export function createBackgroundProcessSupervisor({
         reject(new Error(`${group} worker request timed out: ${method}`));
       }, timeoutMs);
       pendingRequests.set(requestId, {
-        group, resolve, reject, timer, sent: false,
+        group,
+        resolve,
+        reject,
+        timer,
+        sent: false,
         message: { type: "download-owner-command", requestId, method, args },
       });
       if (!sendRequest(requestId)) ensure(group);

@@ -144,10 +144,14 @@ test("library references prefer the library ID over a provider ID collision", ()
     title: "Target Track",
   });
   const targetPath = `/tmp/${key}.flac`;
-  db.prepare("UPDATE library_albums SET metadata_json = ? WHERE id = ?")
-    .run(JSON.stringify({ id: targetAlbum.id }), providerAlbum.id);
-  db.prepare("UPDATE library_tracks SET metadata_json = ? WHERE id = ?")
-    .run(JSON.stringify({ id: targetTrack.id }), providerTrack.id);
+  db.prepare("UPDATE library_albums SET metadata_json = ? WHERE id = ?").run(
+    JSON.stringify({ id: targetAlbum.id }),
+    providerAlbum.id,
+  );
+  db.prepare("UPDATE library_tracks SET metadata_json = ? WHERE id = ?").run(
+    JSON.stringify({ id: targetTrack.id }),
+    providerTrack.id,
+  );
   linkLibraryAlbumTrack({ albumId: targetAlbum.id, trackId: targetTrack.id });
   upsertLibraryMediaFile({
     trackId: targetTrack.id,
@@ -164,14 +168,17 @@ test("library references prefer the library ID over a provider ID collision", ()
       [targetTrack.id],
     );
     assert.deepEqual(
-      getLibraryForAlbumReferences({ references: [targetAlbum.id] }).albums
-        .map((album) => album.id),
+      getLibraryForAlbumReferences({ references: [targetAlbum.id] }).albums.map(
+        (album) => album.id,
+      ),
       [targetAlbum.id],
     );
   } finally {
     db.prepare("DELETE FROM library_media_files WHERE path = ?").run(targetPath);
-    db.prepare("DELETE FROM library_album_tracks WHERE album_id = ? OR track_id = ?")
-      .run(targetAlbum.id, targetTrack.id);
+    db.prepare("DELETE FROM library_album_tracks WHERE album_id = ? OR track_id = ?").run(
+      targetAlbum.id,
+      targetTrack.id,
+    );
     db.prepare("DELETE FROM library_tracks WHERE id IN (?, ?)").run(
       providerTrack.id,
       targetTrack.id,
@@ -234,30 +241,36 @@ test("focused track, ownership, count, and sample queries stay bounded", () => {
       availableOnly: true,
       albumId: album.id,
     });
-    assert.deepEqual(focused.tracks.map((track) => track.id), [ownedTrack.id]);
-    assert.deepEqual(focused.albums.map((entry) => entry.id), [album.id]);
-    assert.deepEqual(focused.tracks[0].files.map((file) => file.path), [ownedPath]);
+    assert.deepEqual(
+      focused.tracks.map((track) => track.id),
+      [ownedTrack.id],
+    );
+    assert.deepEqual(
+      focused.albums.map((entry) => entry.id),
+      [album.id],
+    );
+    assert.deepEqual(
+      focused.tracks[0].files.map((file) => file.path),
+      [ownedPath],
+    );
 
     const stale = getLibraryTrack({
       trackId: unavailableTrack.id,
       source: "aurral",
       availableOnly: false,
     });
-    assert.deepEqual(stale.tracks.map((track) => track.id), [unavailableTrack.id]);
+    assert.deepEqual(
+      stale.tracks.map((track) => track.id),
+      [unavailableTrack.id],
+    );
     assert.equal(stale.tracks[0].files[0].available, false);
 
-    assert.equal(
-      getLibraryTrackOwnership({ trackMbid: ownedTrack.mbid }),
-      true,
-    );
+    assert.equal(getLibraryTrackOwnership({ trackMbid: ownedTrack.mbid }), true);
     assert.equal(
       getLibraryTrackOwnership({ artistName: artist.name, trackName: ownedTrack.title }),
       true,
     );
-    assert.equal(
-      getLibraryTrackOwnership({ trackMbid: unavailableTrack.mbid }),
-      false,
-    );
+    assert.equal(getLibraryTrackOwnership({ trackMbid: unavailableTrack.mbid }), false);
 
     const countBefore = getLibraryTrackCount({ source: "aurral" });
     const availableCountBefore = getLibraryTrackCount({ source: "aurral", availableOnly: true });
@@ -266,9 +279,15 @@ test("focused track, ownership, count, and sample queries stay bounded", () => {
     const sample = getLibraryTrackSample({ source: "aurral", availableOnly: true, limit: 1 });
     assert.ok(sample.tracks.length <= 1);
   } finally {
-    db.prepare("DELETE FROM library_media_files WHERE path IN (?, ?)").run(ownedPath, unavailablePath);
+    db.prepare("DELETE FROM library_media_files WHERE path IN (?, ?)").run(
+      ownedPath,
+      unavailablePath,
+    );
     db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(album.id);
-    db.prepare("DELETE FROM library_tracks WHERE id IN (?, ?)").run(ownedTrack.id, unavailableTrack.id);
+    db.prepare("DELETE FROM library_tracks WHERE id IN (?, ?)").run(
+      ownedTrack.id,
+      unavailableTrack.id,
+    );
     db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
     invalidateLibraryQueryCache();
@@ -280,7 +299,10 @@ test("getLibrary merges sources and preserves normalized hierarchy", async () =>
   const source = `query-aurral-${process.pid}`;
   let filePath;
   try {
-    filePath = await createAudioFile(root, "Query Fixture/Canonical Reads/01 One Source, Two Files.flac");
+    filePath = await createAudioFile(
+      root,
+      "Query Fixture/Canonical Reads/01 One Source, Two Files.flac",
+    );
     await scanMusicRoot({ rootPath: root, source, metadataReader: async () => metadata });
 
     await scanMusicRoot({ rootPath: root, source: "lidarr", metadataReader: async () => metadata });
@@ -337,7 +359,9 @@ test("getLibrary deduplicates a file shared by multiple album relationships", as
     linkLibraryAlbumTrack({ albumId: duplicateAlbum.id, trackId: track.id, trackNumber: 1 });
 
     const result = getLibrary({ source: "aurral" });
-    const resultTrack = result.tracks.find((entry) => entry.files.some((file) => file.path === filePath));
+    const resultTrack = result.tracks.find((entry) =>
+      entry.files.some((file) => file.path === filePath),
+    );
     assert.equal(resultTrack.files.length, 1);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -345,7 +369,10 @@ test("getLibrary deduplicates a file shared by multiple album relationships", as
       db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(duplicateAlbumId);
       db.prepare("DELETE FROM library_albums WHERE id = ?").run(duplicateAlbumId);
     }
-    db.prepare("DELETE FROM library_media_files WHERE source = ? AND path = ?").run("aurral", filePath);
+    db.prepare("DELETE FROM library_media_files WHERE source = ? AND path = ?").run(
+      "aurral",
+      filePath,
+    );
   }
 });
 
@@ -426,21 +453,33 @@ test("scoped library reads keep ownership lookups off unrelated library records"
       availableOnly: false,
       mbids: [artist.mbid],
     });
-    assert.deepEqual(artistLibrary.artists.map((entry) => entry.mbid), [artist.mbid]);
-    assert.deepEqual(artistLibrary.albums.map((entry) => entry.mbid), [album.mbid]);
+    assert.deepEqual(
+      artistLibrary.artists.map((entry) => entry.mbid),
+      [artist.mbid],
+    );
+    assert.deepEqual(
+      artistLibrary.albums.map((entry) => entry.mbid),
+      [album.mbid],
+    );
 
     const albumLibrary = getLibraryForAlbumReferences({
       source: "all",
       availableOnly: false,
       references: [releaseGroupMbid],
     });
-    assert.deepEqual(albumLibrary.albums.map((entry) => entry.mbid), [album.mbid]);
+    assert.deepEqual(
+      albumLibrary.albums.map((entry) => entry.mbid),
+      [album.mbid],
+    );
     assert.deepEqual(
       albumLibrary.tracks.map((entry) => entry.mbid),
       [ownedTrack.mbid, missingTrack.mbid],
     );
   } finally {
-    db.prepare("DELETE FROM library_media_files WHERE path IN (?, ?)").run(ownedPath, unrelatedPath);
+    db.prepare("DELETE FROM library_media_files WHERE path IN (?, ?)").run(
+      ownedPath,
+      unrelatedPath,
+    );
     db.prepare("DELETE FROM library_album_tracks WHERE album_id IN (?, ?)").run(
       album.id,
       unrelatedAlbum.id,
@@ -451,10 +490,7 @@ test("scoped library reads keep ownership lookups off unrelated library records"
       unrelatedTrack.id,
     );
     db.prepare("DELETE FROM library_albums WHERE id IN (?, ?)").run(album.id, unrelatedAlbum.id);
-    db.prepare("DELETE FROM library_artists WHERE id IN (?, ?)").run(
-      artist.id,
-      unrelatedArtist.id,
-    );
+    db.prepare("DELETE FROM library_artists WHERE id IN (?, ?)").run(artist.id, unrelatedArtist.id);
     invalidateLibraryQueryCache();
   }
 });
@@ -505,7 +541,9 @@ test("artist and album reference reads resolve through indexed entity lookups", 
       [artist.id],
     );
     assert.deepEqual(
-      getLibraryForAlbumReferences({ references: [album.release_group_mbid] }).albums.map(({ id }) => id),
+      getLibraryForAlbumReferences({ references: [album.release_group_mbid] }).albums.map(
+        ({ id }) => id,
+      ),
       [album.id],
     );
     spy.mockRestore();
@@ -516,23 +554,35 @@ test("artist and album reference reads resolve through indexed entity lookups", 
     assert.equal(lookups.length, 2);
     for (const sql of lookups) {
       const parameterCount = (sql.match(/\?/g) || []).length;
-      const plan = db.prepare(`EXPLAIN QUERY PLAN ${sql}`).all(
-        ...Array.from({ length: parameterCount }, () => `${key}:missing`),
+      const plan = db
+        .prepare(`EXPLAIN QUERY PLAN ${sql}`)
+        .all(...Array.from({ length: parameterCount }, () => `${key}:missing`));
+      assert.equal(
+        plan.some(({ detail }) => /SCAN library_(artists|albums)/.test(detail)),
+        false,
       );
-      assert.equal(plan.some(({ detail }) => /SCAN library_(artists|albums)/.test(detail)), false);
-      assert.equal(plan.some(({ detail }) => /INDEX/.test(detail)), true);
+      assert.equal(
+        plan.some(({ detail }) => /INDEX/.test(detail)),
+        true,
+      );
     }
-    const hydration = prepared.filter((sql) =>
-      sql.includes("track.id AS track_id") && sql.includes("FROM library_tracks AS track"),
+    const hydration = prepared.filter(
+      (sql) => sql.includes("track.id AS track_id") && sql.includes("FROM library_tracks AS track"),
     );
     assert.ok(hydration.length > 0);
-    assert.equal(hydration.every((sql) => /WHERE (artist|album)\.id IN/.test(sql)), true);
+    assert.equal(
+      hydration.every((sql) => /WHERE (artist|album)\.id IN/.test(sql)),
+      true,
+    );
     for (const sql of hydration) {
       const parameterCount = (sql.match(/\?/g) || []).length;
-      const plan = db.prepare(`EXPLAIN QUERY PLAN ${sql}`).all(
-        ...Array.from({ length: parameterCount }, () => artist.id),
+      const plan = db
+        .prepare(`EXPLAIN QUERY PLAN ${sql}`)
+        .all(...Array.from({ length: parameterCount }, () => artist.id));
+      assert.equal(
+        plan.some(({ detail }) => /SCAN (album|album_track)/.test(detail)),
+        false,
       );
-      assert.equal(plan.some(({ detail }) => /SCAN (album|album_track)/.test(detail)), false);
     }
   } finally {
     spy.mockRestore();
@@ -626,14 +676,8 @@ test("album-reference reads preserve identity keys and album-specific ownership"
       ownedAlbum.id,
       missingAlbum.id,
     );
-    db.prepare("DELETE FROM library_tracks WHERE id IN (?, ?)").run(
-      track.id,
-      missingAlbumTrack.id,
-    );
-    db.prepare("DELETE FROM library_albums WHERE id IN (?, ?)").run(
-      ownedAlbum.id,
-      missingAlbum.id,
-    );
+    db.prepare("DELETE FROM library_tracks WHERE id IN (?, ?)").run(track.id, missingAlbumTrack.id);
+    db.prepare("DELETE FROM library_albums WHERE id IN (?, ?)").run(ownedAlbum.id, missingAlbum.id);
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
     invalidateLibraryQueryCache();
   }
@@ -643,16 +687,18 @@ test("album reads prefer an album-specific file over an earlier unscoped file", 
   const readModel = buildLibraryReadModel({
     artists: [{ id: 1, name: "Artist", albumIds: [2], sources: ["aurral"] }],
     albums: [{ id: 2, artistId: 1, title: "Album", trackIds: [3], sources: ["aurral"] }],
-    tracks: [{
-      id: 3,
-      title: "Track",
-      albums: [{ albumId: 2, trackNumber: 1 }],
-      files: [
-        { albumId: null, path: "/music/00-unscoped.flac", available: true },
-        { albumId: 2, path: "/music/01-album.flac", available: true },
-      ],
-      sources: ["aurral"],
-    }],
+    tracks: [
+      {
+        id: 3,
+        title: "Track",
+        albums: [{ albumId: 2, trackNumber: 1 }],
+        files: [
+          { albumId: null, path: "/music/00-unscoped.flac", available: true },
+          { albumId: 2, path: "/music/01-album.flac", available: true },
+        ],
+        sources: ["aurral"],
+      },
+    ],
   });
 
   assert.equal(readModel.tracks[0].path, "/music/01-album.flac");
@@ -667,7 +713,10 @@ test("library newest ordering follows library arrival time", () => {
     title: "Old Album",
     releaseDate: "2020-01-01",
   });
-  const newArtist = upsertLibraryArtist({ identityKey: `${key}:new-artist`, name: "Zed Newest Fixture" });
+  const newArtist = upsertLibraryArtist({
+    identityKey: `${key}:new-artist`,
+    name: "Zed Newest Fixture",
+  });
   const newAlbum = upsertLibraryAlbum({
     identityKey: `${key}:new-album`,
     artistId: newArtist.id,
@@ -716,9 +765,21 @@ test("library newest ordering follows library arrival time", () => {
       pageSize: 2,
       sort: "newest",
     });
-    assert.deepEqual(page.items.map((item) => item.title), ["Recently Added", "Old Album"]);
-    const artists = getLibraryPage({ source: "aurral", kind: "artists", page: 1, pageSize: 2, sort: "newest" });
-    assert.deepEqual(artists.items.map((item) => item.name), ["Zed Newest Fixture", "Newest Fixture"]);
+    assert.deepEqual(
+      page.items.map((item) => item.title),
+      ["Recently Added", "Old Album"],
+    );
+    const artists = getLibraryPage({
+      source: "aurral",
+      kind: "artists",
+      page: 1,
+      pageSize: 2,
+      sort: "newest",
+    });
+    assert.deepEqual(
+      artists.items.map((item) => item.name),
+      ["Zed Newest Fixture", "Newest Fixture"],
+    );
   } finally {
     db.prepare("DELETE FROM library_media_files WHERE path LIKE ?").run(`/tmp/${key}/%`);
     db.prepare("DELETE FROM library_album_tracks WHERE album_id IN (?, ?)").run(
@@ -768,8 +829,14 @@ test("library album track pages keep the selected album relationship", () => {
       page: 1,
       pageSize: 10,
     });
-    assert.deepEqual(page.items[0].albums.map((entry) => entry.albumId), [selectedAlbum.id]);
-    assert.deepEqual(page.albums.map((album) => album.title), ["Inside Out"]);
+    assert.deepEqual(
+      page.items[0].albums.map((entry) => entry.albumId),
+      [selectedAlbum.id],
+    );
+    assert.deepEqual(
+      page.albums.map((album) => album.title),
+      ["Inside Out"],
+    );
   } finally {
     db.prepare("DELETE FROM library_media_files WHERE path = ?").run(`/tmp/${key}/track.flac`);
     db.prepare("DELETE FROM library_album_tracks WHERE album_id IN (?, ?)").run(
@@ -824,7 +891,10 @@ test("library album track pages include indexed tracks without media", () => {
       page: 1,
       pageSize: 10,
     });
-    assert.deepEqual(page.items.map((track) => track.title), ["Owned Track", "Missing Track"]);
+    assert.deepEqual(
+      page.items.map((track) => track.title),
+      ["Owned Track", "Missing Track"],
+    );
     assert.equal(page.items[0].files.length, 1);
     assert.deepEqual(page.items[1].files, []);
     assert.equal(page.albums[0].trackCount, 2);
@@ -840,7 +910,10 @@ test("library album track pages include indexed tracks without media", () => {
       sort: "name",
       direction: "desc",
     });
-    assert.deepEqual(filtered.items.map((track) => track.title), ["Missing Track"]);
+    assert.deepEqual(
+      filtered.items.map((track) => track.title),
+      ["Missing Track"],
+    );
 
     const artistScoped = getLibraryPage({
       kind: "tracks",
@@ -851,7 +924,10 @@ test("library album track pages include indexed tracks without media", () => {
       sort: "name",
       direction: "desc",
     });
-    assert.deepEqual(artistScoped.items.map((track) => track.title), ["Owned Track", "Missing Track"]);
+    assert.deepEqual(
+      artistScoped.items.map((track) => track.title),
+      ["Owned Track", "Missing Track"],
+    );
   } finally {
     db.prepare("DELETE FROM library_media_files WHERE path = ?").run(ownedPath);
     db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(album.id);
@@ -865,11 +941,13 @@ test("library responses do not expose filesystem paths", () => {
   const response = toPublicLibrary({
     artists: [{ metadata: { path: "/music/private", tags: { genre: "rock" } } }],
     albums: [{ metadata: { rootFolderPath: "/music/private" } }],
-    tracks: [{
-      id: 1,
-      metadata: { nested: { filePath: "/music/private.flac" } },
-      files: [{ id: 2, path: "/music/private.flac", source: "aurral" }],
-    }],
+    tracks: [
+      {
+        id: 1,
+        metadata: { nested: { filePath: "/music/private.flac" } },
+        files: [{ id: 2, path: "/music/private.flac", source: "aurral" }],
+      },
+    ],
   });
 
   assert.deepEqual(response.artists[0].metadata, { tags: { genre: "rock" } });
@@ -882,15 +960,14 @@ test("library album responses return public metadata artwork links", () => {
   const remoteUrl = "https://cdn.example.test/cover.jpg?size=500";
   const response = toPublicLibrary({
     artists: [],
-    albums: [{
-      id: 1,
-      metadata: {
-        images: [
-          { url: "/MediaCover/Albums/1/cover.jpg" },
-          { remoteUrl },
-        ],
+    albums: [
+      {
+        id: 1,
+        metadata: {
+          images: [{ url: "/MediaCover/Albums/1/cover.jpg" }, { remoteUrl }],
+        },
       },
-    }],
+    ],
     tracks: [],
   });
 

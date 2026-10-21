@@ -26,7 +26,9 @@ async function callLookup(method, body) {
   });
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
-    const error = new Error(`aurral.org answered ${response.status}${detail ? `: ${detail.slice(0, 200)}` : ""}`);
+    const error = new Error(
+      `aurral.org answered ${response.status}${detail ? `: ${detail.slice(0, 200)}` : ""}`,
+    );
     error.status = response.status;
     throw error;
   }

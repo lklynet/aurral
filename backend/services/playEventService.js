@@ -26,7 +26,10 @@ const getArtistsStmt = db.prepare(`
   LIMIT ?
 `);
 
-const text = (value, max = 500) => String(value || "").trim().slice(0, max);
+const text = (value, max = 500) =>
+  String(value || "")
+    .trim()
+    .slice(0, max);
 const positiveInt = (value, fallback = null) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : fallback;
@@ -54,21 +57,22 @@ const resolveAlbumKey = (input) => {
   return null;
 };
 
-const toPublicEvent = (row) => row && ({
-  id: row.id,
-  userId: row.user_id,
-  trackId: row.track_id,
-  title: row.title,
-  artist: row.artist,
-  album: row.album,
-  albumKey: row.album_key,
-  artistMbid: row.artist_mbid,
-  albumMbid: row.album_mbid,
-  trackMbid: row.track_mbid,
-  durationMs: row.duration_ms,
-  playedAt: row.played_at,
-  source: row.source,
-});
+const toPublicEvent = (row) =>
+  row && {
+    id: row.id,
+    userId: row.user_id,
+    trackId: row.track_id,
+    title: row.title,
+    artist: row.artist,
+    album: row.album,
+    albumKey: row.album_key,
+    artistMbid: row.artist_mbid,
+    albumMbid: row.album_mbid,
+    trackMbid: row.track_mbid,
+    durationMs: row.duration_ms,
+    playedAt: row.played_at,
+    source: row.source,
+  };
 
 export const getPlayHistory = (userId, { limit = 50, offset = 0 } = {}) => {
   const safeLimit = Math.min(100, Math.max(1, positiveInt(limit, 50)));
@@ -93,7 +97,9 @@ export const recordPlayEvent = (userId, input = {}) => {
   if (!trackId || !title || !artist) throw new Error("trackId, title, and artist are required");
   const playedAtValue = Number(input.playedAt);
   const playedAt = Number.isFinite(playedAtValue)
-    ? (playedAtValue < 10_000_000_000 ? Math.trunc(playedAtValue * 1000) : Math.trunc(playedAtValue))
+    ? playedAtValue < 10_000_000_000
+      ? Math.trunc(playedAtValue * 1000)
+      : Math.trunc(playedAtValue)
     : Date.now();
   const albumKey = resolveAlbumKey(input);
   const connections = scrobbleConnectionStore.getConnections(userId);
@@ -101,27 +107,30 @@ export const recordPlayEvent = (userId, input = {}) => {
   const tx = honker.transaction();
   let eventId;
   try {
-    const rows = tx.query(`
+    const rows = tx.query(
+      `
       INSERT INTO play_events
         (user_id, track_id, title, artist, album, album_key, artist_mbid, album_mbid,
          track_mbid, duration_ms, played_at, source, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       RETURNING id
-    `, [
-      userId,
-      trackId,
-      title,
-      artist,
-      text(input.album, 500) || null,
-      albumKey,
-      text(input.artistMbid, 100) || null,
-      text(input.albumMbid, 100) || null,
-      text(input.trackMbid, 100) || null,
-      positiveInt(input.durationMs),
-      playedAt,
-      text(input.source, 50) || "unknown",
-      Date.now(),
-    ]);
+    `,
+      [
+        userId,
+        trackId,
+        title,
+        artist,
+        text(input.album, 500) || null,
+        albumKey,
+        text(input.artistMbid, 100) || null,
+        text(input.albumMbid, 100) || null,
+        text(input.trackMbid, 100) || null,
+        positiveInt(input.durationMs),
+        playedAt,
+        text(input.source, 50) || "unknown",
+        Date.now(),
+      ],
+    );
     eventId = rows[0]?.id;
     for (const [provider, connection] of Object.entries(connections)) {
       getPlayEventOutbox().enqueueTx(tx, {
@@ -133,7 +142,9 @@ export const recordPlayEvent = (userId, input = {}) => {
     }
     tx.commit();
   } catch (error) {
-    try { tx.rollback(); } catch {}
+    try {
+      tx.rollback();
+    } catch {}
     throw error;
   }
   const event = toPublicEvent(getEventStmt.get(eventId));
@@ -143,7 +154,13 @@ export const recordPlayEvent = (userId, input = {}) => {
 export const deliverPlayEvent = async ({ eventId, userId, provider, connectionRevision }) => {
   const event = toPublicEvent(getEventStmt.get(eventId));
   const connection = scrobbleConnectionStore.getConnection(userId, provider);
-  if (!event || !connection || !connectionRevision || connection.connectionRevision !== connectionRevision) return;
+  if (
+    !event ||
+    !connection ||
+    !connectionRevision ||
+    connection.connectionRevision !== connectionRevision
+  )
+    return;
   if (provider === "lastfm") {
     const { lastfmScrobble } = await import("./apiClients/lastfm.js");
     await lastfmScrobble(event, connection.token);

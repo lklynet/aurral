@@ -186,8 +186,8 @@ export function PlexSelfLinkSection({ showSuccess, showError, className = "" }) 
               status.globalAccount?.configured ? (
                 status.globalAccount.plexUsername ? (
                   <>
-                    Your flows and playlists sync through Aurral&apos;s global Plex
-                    connection: <strong>{status.globalAccount.plexUsername}</strong>.
+                    Your flows and playlists sync through Aurral&apos;s global Plex connection:{" "}
+                    <strong>{status.globalAccount.plexUsername}</strong>.
                   </>
                 ) : (
                   "Your flows and playlists sync through Aurral’s global Plex connection."

@@ -1,6 +1,13 @@
 import "./PillToggle.css";
 
-function PillToggle({ checked = false, onChange, disabled = false, id, className, ...buttonProps }) {
+function PillToggle({
+  checked = false,
+  onChange,
+  disabled = false,
+  id,
+  className,
+  ...buttonProps
+}) {
   const handleClick = () => onChange?.({ target: { checked: !checked } });
 
   return (

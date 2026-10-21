@@ -7,19 +7,14 @@ import {
   resetDatabase,
 } from "../helpers/backendTestHarness.js";
 
-const [
-  isolatedState,
-  { db },
-  { dbOps, userOps },
-  { flowPlaylistConfig },
-  { PlaylistManager },
-] = await setupIsolatedBackend(
-  "navidrome-owner-name-prefix",
-  "backend/config/db-sqlite.js",
-  "backend/db/helpers/index.js",
-  "backend/services/playlists/flowPlaylistConfig.js",
-  "backend/services/playlists/playlistManager.js",
-);
+const [isolatedState, { db }, { dbOps, userOps }, { flowPlaylistConfig }, { PlaylistManager }] =
+  await setupIsolatedBackend(
+    "navidrome-owner-name-prefix",
+    "backend/config/db-sqlite.js",
+    "backend/db/helpers/index.js",
+    "backend/services/playlists/flowPlaylistConfig.js",
+    "backend/services/playlists/playlistManager.js",
+  );
 
 beforeEach(() => {
   resetDatabase(db);
@@ -80,11 +75,7 @@ test("the Navidrome adapter prefixes an owned flow name when enabled", () => {
     displayName: "Weekend Vibes",
   });
   assert.equal(names.current, "jody - Weekend Vibes");
-  assert.deepEqual(names.legacy, [
-    "Weekend Vibes",
-    "[A] Weekend Vibes",
-    "Aurral Weekend Vibes",
-  ]);
+  assert.deepEqual(names.legacy, ["Weekend Vibes", "[A] Weekend Vibes", "Aurral Weekend Vibes"]);
 });
 
 test("the Navidrome adapter prefixes an owned static playlist name when enabled", () => {
@@ -97,11 +88,7 @@ test("the Navidrome adapter prefixes an owned static playlist name when enabled"
     displayName: "80s Anthems",
   });
   assert.equal(names.current, "jody - 80s Anthems");
-  assert.deepEqual(names.legacy, [
-    "80s Anthems",
-    "[AS] 80s Anthems",
-    "Aurral Shared 80s Anthems",
-  ]);
+  assert.deepEqual(names.legacy, ["80s Anthems", "[AS] 80s Anthems", "Aurral Shared 80s Anthems"]);
   flowPlaylistConfig.deleteStaticPlaylist(playlist.id);
 });
 

@@ -1,6 +1,12 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { getUsers, createUser, updateUser, deleteUser, changeMyPassword } from "../../../utils/api/endpoints/auth.js";
+import {
+  getUsers,
+  createUser,
+  updateUser,
+  deleteUser,
+  changeMyPassword,
+} from "../../../utils/api/endpoints/auth.js";
 import { GRANULAR_PERMISSIONS } from "../constants";
 import { queryClient, queryKeys } from "../../../queryClient.js";
 
@@ -26,7 +32,8 @@ export function useSettingsUsers(authUser, showSuccess, showError, activeTab) {
     onSuccess: invalidateUsers,
   });
   const changePasswordMutation = useMutation({
-    mutationFn: ({ currentPassword, newPassword }) => changeMyPassword(currentPassword, newPassword),
+    mutationFn: ({ currentPassword, newPassword }) =>
+      changeMyPassword(currentPassword, newPassword),
   });
   const [newUserUsername, setNewUserUsername] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");

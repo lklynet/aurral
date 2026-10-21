@@ -4,7 +4,9 @@ import { fileURLToPath } from "node:url";
 import { request } from "@playwright/test";
 import { assertSafeCredentialTransport } from "./helpers.js";
 
-export const AUTH_STATE_PATH = fileURLToPath(new URL("../../playwright/.auth/user.json", import.meta.url));
+export const AUTH_STATE_PATH = fileURLToPath(
+  new URL("../../playwright/.auth/user.json", import.meta.url),
+);
 
 export default async function globalSetup(config) {
   const baseURL = config.projects[0].use.baseURL;
@@ -17,7 +19,8 @@ export default async function globalSetup(config) {
     const api = await request.newContext({ baseURL });
     try {
       const response = await api.post("/api/auth/login", { data: { username, password } });
-      if (!response.ok()) throw new Error(`Signing in for the browser suite failed with HTTP ${response.status()}`);
+      if (!response.ok())
+        throw new Error(`Signing in for the browser suite failed with HTTP ${response.status()}`);
       const { token } = await response.json();
       origins = [{ origin: url.origin, localStorage: [{ name: "auth_token", value: token }] }];
     } finally {

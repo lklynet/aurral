@@ -1,8 +1,22 @@
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
-import { setupIsolatedBackend, cleanupIsolatedState, resetDatabase } from "../helpers/backendTestHarness.js";
+import {
+  setupIsolatedBackend,
+  cleanupIsolatedState,
+  resetDatabase,
+} from "../helpers/backendTestHarness.js";
 
-const [state, { db }, { dbOps }, { flowPlaylistConfig }, { registerStaticPlaylists }, { getPlaylistStatusSnapshot }, { playlistOperationQueue }, { downloadTracker }, cancellationModule] = await setupIsolatedBackend(
+const [
+  state,
+  { db },
+  { dbOps },
+  { flowPlaylistConfig },
+  { registerStaticPlaylists },
+  { getPlaylistStatusSnapshot },
+  { playlistOperationQueue },
+  { downloadTracker },
+  cancellationModule,
+] = await setupIsolatedBackend(
   "track-availability",
   "backend/config/db-sqlite.js",
   "backend/db/helpers/index.js",
@@ -13,32 +27,64 @@ const [state, { db }, { dbOps }, { flowPlaylistConfig }, { registerStaticPlaylis
   "backend/services/downloadJobs/downloadTracker.js",
   "backend/services/downloadJobs/downloadCancellation.js",
 );
-const { activatePlaylistDownloadGeneration, isDownloadJobCancelled, isPipelinePayloadActive } = cancellationModule;
+const { activatePlaylistDownloadGeneration, isDownloadJobCancelled, isPipelinePayloadActive } =
+  cancellationModule;
 
 const handlers = new Map();
 registerStaticPlaylists({
-  get() {}, post() {},
-  delete(path, handler) { handlers.set(path, handler); },
-  put(path, handler) { handlers.set(path, handler); },
+  get() {},
+  post() {},
+  delete(path, handler) {
+    handlers.set(path, handler);
+  },
+  put(path, handler) {
+    handlers.set(path, handler);
+  },
 });
 const updateAvailability = (id, enabled, user = { id: 1, role: "user" }) => {
-  const response = { statusCode: 200, body: null,
-    status(code) { this.statusCode = code; return this; },
-    json(body) { this.body = body; return this; },
+  const response = {
+    statusCode: 200,
+    body: null,
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+    json(body) {
+      this.body = body;
+      return this;
+    },
   };
-  handlers.get("/shared-playlists/:playlistId/track-availability")({
-    params: { playlistId: id }, body: { enabled }, user,
-  }, response);
+  handlers.get("/shared-playlists/:playlistId/track-availability")(
+    {
+      params: { playlistId: id },
+      body: { enabled },
+      user,
+    },
+    response,
+  );
   return response;
 };
 const updateRecordHistory = (id, enabled, user = { id: 1, role: "user" }) => {
-  const response = { statusCode: 200, body: null,
-    status(code) { this.statusCode = code; return this; },
-    json(body) { this.body = body; return this; },
+  const response = {
+    statusCode: 200,
+    body: null,
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+    json(body) {
+      this.body = body;
+      return this;
+    },
   };
-  handlers.get("/shared-playlists/:playlistId/record-history")({
-    params: { playlistId: id }, body: { enabled }, user,
-  }, response);
+  handlers.get("/shared-playlists/:playlistId/record-history")(
+    {
+      params: { playlistId: id },
+      body: { enabled },
+      user,
+    },
+    response,
+  );
   return response;
 };
 
@@ -48,7 +94,12 @@ beforeEach(() => {
   }
   resetDatabase(db);
   downloadTracker.clearAll();
-  dbOps.updateSettings({ integrations: {}, onboardingComplete: true, flows: [], sharedPlaylists: [] });
+  dbOps.updateSettings({
+    integrations: {},
+    onboardingComplete: true,
+    flows: [],
+    sharedPlaylists: [],
+  });
 });
 afterAll(async () => {
   db.close();
@@ -56,8 +107,14 @@ afterAll(async () => {
 });
 
 test("availability is opt-in, persists per playlist, and does not queue playback changes", async () => {
-  vi.spyOn(playlistOperationQueue, "enqueuePayload").mockImplementation(() => { throw new Error("Display settings must not queue playback changes"); });
-  const first = flowPlaylistConfig.createStaticPlaylist({ name: "First", ownerUserId: 1, tracks: [{ artistName: "Artist", trackName: "Song" }] });
+  vi.spyOn(playlistOperationQueue, "enqueuePayload").mockImplementation(() => {
+    throw new Error("Display settings must not queue playback changes");
+  });
+  const first = flowPlaylistConfig.createStaticPlaylist({
+    name: "First",
+    ownerUserId: 1,
+    tracks: [{ artistName: "Artist", trackName: "Song" }],
+  });
   const second = flowPlaylistConfig.createStaticPlaylist({ name: "Second", ownerUserId: 1 });
   assert.equal(first.showTrackAvailability, false);
   assert.equal(second.showTrackAvailability, false);
@@ -65,15 +122,22 @@ test("availability is opt-in, persists per playlist, and does not queue playback
   assert.equal(flowPlaylistConfig.getStaticPlaylist(first.id).showTrackAvailability, true);
   assert.equal(flowPlaylistConfig.getStaticPlaylist(second.id).showTrackAvailability, false);
   assert.deepEqual(flowPlaylistConfig.getStaticPlaylist(first.id).tracks, first.tracks);
-  assert.equal(dbOps.getSettings().sharedPlaylists.find((p) => p.id === first.id).showTrackAvailability, true);
-  const { flowPlaylistConfig: reloaded } = await import("../../backend/services/playlists/flowPlaylistConfig.js?availability-saved");
+  assert.equal(
+    dbOps.getSettings().sharedPlaylists.find((p) => p.id === first.id).showTrackAvailability,
+    true,
+  );
+  const { flowPlaylistConfig: reloaded } =
+    await import("../../backend/services/playlists/flowPlaylistConfig.js?availability-saved");
   assert.equal(reloaded.getStaticPlaylist(first.id).showTrackAvailability, true);
   assert.equal(reloaded.getStaticPlaylist(second.id).showTrackAvailability, false);
   flowPlaylistConfig.updateStaticPlaylist(first.id, { name: "Renamed" });
   assert.equal(flowPlaylistConfig.getStaticPlaylist(first.id).showTrackAvailability, true);
   const snapshot = getPlaylistStatusSnapshot({ user: { id: 1, role: "user" } });
   assert.equal(snapshot.sharedPlaylists.find((p) => p.id === first.id).showTrackAvailability, true);
-  assert.equal(snapshot.sharedPlaylists.find((p) => p.id === second.id).showTrackAvailability, false);
+  assert.equal(
+    snapshot.sharedPlaylists.find((p) => p.id === second.id).showTrackAvailability,
+    false,
+  );
   assert.equal(updateAvailability(first.id, false).body.showTrackAvailability, false);
 });
 
@@ -89,18 +153,28 @@ test("availability validates input and respects playlist ownership", () => {
 });
 
 test("history is enabled by default, persists per playlist, and does not queue playback changes", async () => {
-  vi.spyOn(playlistOperationQueue, "enqueuePayload").mockImplementation(() => { throw new Error("History preferences must not queue downloads"); });
+  vi.spyOn(playlistOperationQueue, "enqueuePayload").mockImplementation(() => {
+    throw new Error("History preferences must not queue downloads");
+  });
   const first = flowPlaylistConfig.createStaticPlaylist({ name: "History On", ownerUserId: 1 });
-  const second = flowPlaylistConfig.createStaticPlaylist({ name: "History Off", ownerUserId: 1, recordHistory: false });
+  const second = flowPlaylistConfig.createStaticPlaylist({
+    name: "History Off",
+    ownerUserId: 1,
+    recordHistory: false,
+  });
 
   assert.equal(first.recordHistory, true);
   assert.equal(second.recordHistory, false);
   assert.equal(updateRecordHistory(first.id, false).body.recordHistory, false);
   assert.equal(flowPlaylistConfig.getStaticPlaylist(first.id).recordHistory, false);
   assert.equal(flowPlaylistConfig.getStaticPlaylist(second.id).recordHistory, false);
-  assert.equal(dbOps.getSettings().sharedPlaylists.find((p) => p.id === first.id).recordHistory, false);
+  assert.equal(
+    dbOps.getSettings().sharedPlaylists.find((p) => p.id === first.id).recordHistory,
+    false,
+  );
 
-  const { flowPlaylistConfig: reloaded } = await import("../../backend/services/playlists/flowPlaylistConfig.js?record-history-saved");
+  const { flowPlaylistConfig: reloaded } =
+    await import("../../backend/services/playlists/flowPlaylistConfig.js?record-history-saved");
   assert.equal(reloaded.getStaticPlaylist(first.id).recordHistory, false);
   assert.equal(reloaded.getStaticPlaylist(second.id).recordHistory, false);
   const snapshot = getPlaylistStatusSnapshot({ user: { id: 1, role: "user" } });
@@ -110,7 +184,10 @@ test("history is enabled by default, persists per playlist, and does not queue p
 });
 
 test("history preference validates input and respects playlist ownership", () => {
-  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Private History", ownerUserId: 1 });
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
+    name: "Private History",
+    ownerUserId: 1,
+  });
   for (const value of ["true", 1, null, undefined]) {
     assert.equal(updateRecordHistory(playlist.id, value).statusCode, 400);
   }
@@ -135,28 +212,46 @@ test("a failed playlist-delete enqueue restores the active download generation",
   const response = {
     statusCode: 200,
     body: null,
-    status(code) { this.statusCode = code; return this; },
-    json(body) { this.body = body; return this; },
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+    json(body) {
+      this.body = body;
+      return this;
+    },
   };
 
-  await handlers.get("/shared-playlists/:playlistId")({
-    params: { playlistId: playlist.id },
-    user,
-  }, response);
+  await handlers.get("/shared-playlists/:playlistId")(
+    {
+      params: { playlistId: playlist.id },
+      user,
+    },
+    response,
+  );
 
   assert.equal(response.statusCode, 500);
   assert.equal(isDownloadJobCancelled(jobId), false);
-  assert.equal(isPipelinePayloadActive({ jobId, playlistId: playlist.id, playlistGeneration: generation }), true);
+  assert.equal(
+    isPipelinePayloadActive({ jobId, playlistId: playlist.id, playlistGeneration: generation }),
+    true,
+  );
 });
 
 test("existing playlists without the preference start disabled after loading", async () => {
-  dbOps.updateSettings({ sharedPlaylists: [{ id: "legacy", name: "Existing", ownerUserId: 1, tracks: [] }] });
-  const { flowPlaylistConfig: reloaded } = await import("../../backend/services/playlists/flowPlaylistConfig.js?availability-reload");
+  dbOps.updateSettings({
+    sharedPlaylists: [{ id: "legacy", name: "Existing", ownerUserId: 1, tracks: [] }],
+  });
+  const { flowPlaylistConfig: reloaded } =
+    await import("../../backend/services/playlists/flowPlaylistConfig.js?availability-reload");
   assert.equal(reloaded.getStaticPlaylist("legacy").showTrackAvailability, false);
 });
 
 test("existing playlists without history preference start enabled after loading", async () => {
-  dbOps.updateSettings({ sharedPlaylists: [{ id: "legacy-history", name: "Existing", ownerUserId: 1, tracks: [] }] });
-  const { flowPlaylistConfig: reloaded } = await import("../../backend/services/playlists/flowPlaylistConfig.js?history-reload");
+  dbOps.updateSettings({
+    sharedPlaylists: [{ id: "legacy-history", name: "Existing", ownerUserId: 1, tracks: [] }],
+  });
+  const { flowPlaylistConfig: reloaded } =
+    await import("../../backend/services/playlists/flowPlaylistConfig.js?history-reload");
   assert.equal(reloaded.getStaticPlaylist("legacy-history").recordHistory, true);
 });

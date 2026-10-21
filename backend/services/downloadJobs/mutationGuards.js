@@ -151,7 +151,8 @@ export async function withDownloadPayloadMutation(payload, operation) {
     const owners = payloadOwners(resolveTransferredDownloadPayload(payload));
     const result = await withDownloadStepLock(owners, async () => {
       const current = resolveTransferredDownloadPayload(payload);
-      if (!payloadOwners(current).every((owner) => owners.includes(owner))) return { retryLocks: true };
+      if (!payloadOwners(current).every((owner) => owners.includes(owner)))
+        return { retryLocks: true };
       return { value: await operation(current) };
     });
     if (!result.retryLocks) return result.value;

@@ -88,17 +88,24 @@ test("artist lookup follows fresh Lidarr artist and album membership while the l
       ? null
       : { id: 41, foreignArtistId: mbid, artistName: "Stale Artist", monitored: true };
   });
-  vi.spyOn(lidarrClient, "request").mockImplementation(async (path, method, data, skip, options) => {
-    assert.equal(path, "/album?artistId=41");
-    assert.deepEqual([method, data, skip, options], ["GET", null, false, { forceRefresh: true }]);
-    return [];
-  });
+  vi.spyOn(lidarrClient, "request").mockImplementation(
+    async (path, method, data, skip, options) => {
+      assert.equal(path, "/album?artistId=41");
+      assert.deepEqual([method, data, skip, options], ["GET", null, false, { forceRefresh: true }]);
+      return [];
+    },
+  );
   let body;
 
   try {
     await routes.get("/lookup/:mbid")(
       { params: { mbid } },
-      { json(value) { body = value; return this; } },
+      {
+        json(value) {
+          body = value;
+          return this;
+        },
+      },
     );
     assert.equal(body?.exists, true);
     assert.deepEqual(body?.albums, []);
@@ -106,7 +113,12 @@ test("artist lookup follows fresh Lidarr artist and album membership while the l
     artistRemoved = true;
     await routes.get("/lookup/:mbid")(
       { params: { mbid } },
-      { json(value) { body = value; return this; } },
+      {
+        json(value) {
+          body = value;
+          return this;
+        },
+      },
     );
     assert.equal(body?.exists, false);
 
@@ -130,9 +142,15 @@ test("artist lookup follows fresh Lidarr artist and album membership while the l
       },
       {
         setHeader() {},
-        status() { return this; },
-        json() { return this; },
-        write(value) { writes.push(value); },
+        status() {
+          return this;
+        },
+        json() {
+          return this;
+        },
+        write(value) {
+          writes.push(value);
+        },
         flush() {},
         end() {},
       },
@@ -287,7 +305,12 @@ test("artist lookup sees a fresh Lidarr add before the library index catches up"
 
   await routes.get("/lookup/:mbid")(
     { params: { mbid } },
-    { json(value) { body = value; return this; } },
+    {
+      json(value) {
+        body = value;
+        return this;
+      },
+    },
   );
   assert.equal(body?.exists, true);
   assert.equal(body?.artist?.foreignArtistId, mbid);
@@ -392,35 +415,81 @@ test("album batch lookup bypasses stale cache and unrelated broken albums", asyn
 
 test("library album lookup counts the tracks of the release a scanned album lists", async () => {
   const key = `album-lookup-listed-${process.pid}-${Date.now()}`;
-  const artist = upsertLibraryArtist({ identityKey: `${key}:artist`, name: "Listed Lookup Artist" });
+  const artist = upsertLibraryArtist({
+    identityKey: `${key}:artist`,
+    name: "Listed Lookup Artist",
+  });
   const album = upsertLibraryAlbum({
     identityKey: `${key}:album`,
     mbid: "55555555-5555-4555-8555-555555555555",
     artistId: artist.id,
     title: "Listed Lookup Album",
   });
-  const recordings = ["66666666-6666-4666-8666-666666666661", "66666666-6666-4666-8666-666666666662"];
-  const owned = upsertLibraryTrack({ identityKey: `recording:${recordings[0]}`, mbid: recordings[0], title: "Owned" });
+  const recordings = [
+    "66666666-6666-4666-8666-666666666661",
+    "66666666-6666-4666-8666-666666666662",
+  ];
+  const owned = upsertLibraryTrack({
+    identityKey: `recording:${recordings[0]}`,
+    mbid: recordings[0],
+    title: "Owned",
+  });
   linkLibraryAlbumTrack({ albumId: album.id, trackId: owned.id, trackNumber: 1 });
   setLibraryManagement({ entityKind: "album", entityId: album.id, managedBy: "aurral" });
-  upsertLibraryMediaFile({ trackId: owned.id, albumId: album.id, source: "aurral", path: `/tmp/${key}/owned.flac` });
+  upsertLibraryMediaFile({
+    trackId: owned.id,
+    albumId: album.id,
+    source: "aurral",
+    path: `/tmp/${key}/owned.flac`,
+  });
   storeLibraryAlbumTrackList(album.id, {
-    release: { id: album.mbid, tracks: recordings.map((recordingId, index) => ({ recordingId, title: ["Owned", "Missing"][index], trackPosition: index + 1 })) },
+    release: {
+      id: album.mbid,
+      tracks: recordings.map((recordingId, index) => ({
+        recordingId,
+        title: ["Owned", "Missing"][index],
+        trackPosition: index + 1,
+      })),
+    },
   });
   invalidateLibraryQueryCache();
   const routes = new Map();
-  registerMisc({ get() {}, post(path, handler) { routes.set(path, handler); } });
+  registerMisc({
+    get() {},
+    post(path, handler) {
+      routes.set(path, handler);
+    },
+  });
   let body;
   try {
     await routes.get("/albums/lookup/batch")(
       { body: { mbids: [album.mbid] } },
-      { status() { return this; }, json(value) { body = value; return this; } },
+      {
+        status() {
+          return this;
+        },
+        json(value) {
+          body = value;
+          return this;
+        },
+      },
     );
-    const { status, trackListComplete, trackCount, trackFileCount, percentOfTracks } = body[album.mbid];
-    assert.deepEqual({ status, trackListComplete, trackCount, trackFileCount, percentOfTracks },
-      { status: "partial", trackListComplete: true, trackCount: 2, trackFileCount: 1, percentOfTracks: 50 });
+    const { status, trackListComplete, trackCount, trackFileCount, percentOfTracks } =
+      body[album.mbid];
+    assert.deepEqual(
+      { status, trackListComplete, trackCount, trackFileCount, percentOfTracks },
+      {
+        status: "partial",
+        trackListComplete: true,
+        trackCount: 2,
+        trackFileCount: 1,
+        percentOfTracks: 50,
+      },
+    );
   } finally {
-    db.prepare("DELETE FROM library_management WHERE entity_kind = 'album' AND entity_id = ?").run(album.id);
+    db.prepare("DELETE FROM library_management WHERE entity_kind = 'album' AND entity_id = ?").run(
+      album.id,
+    );
     db.prepare("DELETE FROM library_media_files WHERE album_id = ?").run(album.id);
     db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(album.id);
     db.prepare(`DELETE FROM library_tracks WHERE mbid IN (?, ?)`).run(...recordings);
@@ -485,21 +554,21 @@ test("library album lookup reports partial ownership, its manager, and the compl
   };
 
   try {
-    await routes.get("/albums/lookup/batch")(
-      { body: { mbids: [album.mbid] } },
-      response,
-    );
+    await routes.get("/albums/lookup/batch")({ body: { mbids: [album.mbid] } }, response);
     assert.equal(body?.[album.mbid]?.status, "partial");
     assert.equal(body?.[album.mbid]?.trackListComplete, false);
     assert.equal("percentOfTracks" in body[album.mbid], false);
     assert.equal(body[album.mbid].trackCount, 1);
     linkLibraryAlbumTrack({ albumId: album.id, trackId: missingTrack.id, trackNumber: 2 });
-    upsertLibraryAlbum({ identityKey: `${key}:album`, mbid: album.mbid, artistId: artist.id, title: "Partial Lookup Album", metadata: { trackListComplete: true } });
+    upsertLibraryAlbum({
+      identityKey: `${key}:album`,
+      mbid: album.mbid,
+      artistId: artist.id,
+      title: "Partial Lookup Album",
+      metadata: { trackListComplete: true },
+    });
     invalidateLibraryQueryCache();
-    await routes.get("/albums/lookup/batch")(
-      { body: { mbids: [album.mbid] } },
-      response,
-    );
+    await routes.get("/albums/lookup/batch")({ body: { mbids: [album.mbid] } }, response);
     const result = body?.[album.mbid];
     assert.equal(statusCode, 200);
     assert.equal(result?.status, "partial");
@@ -509,14 +578,21 @@ test("library album lookup reports partial ownership, its manager, and the compl
     assert.deepEqual(result?.ownedTrackMbids, [ownedTrack.mbid]);
     assert.equal(result?.managedBy, "aurral");
     assert.equal(result?.trackListComplete, true);
-    upsertLibraryMediaFile({ trackId: missingTrack.id, albumId: album.id, source: "aurral", path: `/tmp/${key}/missing.flac` });
+    upsertLibraryMediaFile({
+      trackId: missingTrack.id,
+      albumId: album.id,
+      source: "aurral",
+      path: `/tmp/${key}/missing.flac`,
+    });
     invalidateLibraryQueryCache();
     await routes.get("/albums/lookup/batch")({ body: { mbids: [album.mbid] } }, response);
     assert.equal(body[album.mbid].status, "available");
     assert.equal(body[album.mbid].percentOfTracks, 100);
     assert.equal(body[album.mbid].trackListComplete, true);
   } finally {
-    db.prepare("DELETE FROM library_management WHERE entity_kind = 'album' AND entity_id = ?").run(album.id);
+    db.prepare("DELETE FROM library_management WHERE entity_kind = 'album' AND entity_id = ?").run(
+      album.id,
+    );
     db.prepare("DELETE FROM library_media_files WHERE album_id = ?").run(album.id);
     db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(album.id);
     db.prepare("DELETE FROM library_tracks WHERE id IN (?, ?)").run(ownedTrack.id, missingTrack.id);
@@ -563,7 +639,12 @@ test("album lookup follows fresh Lidarr removal but keeps Aurral's albums", asyn
   try {
     await routes.get("/albums/lookup/batch")(
       { body: { mbids: [album.mbid] } },
-      { json(value) { body = value; return this; } },
+      {
+        json(value) {
+          body = value;
+          return this;
+        },
+      },
     );
     assert.deepEqual(body, {});
 
@@ -571,7 +652,12 @@ test("album lookup follows fresh Lidarr removal but keeps Aurral's albums", asyn
     invalidateLibraryQueryCache();
     await routes.get("/albums/lookup/batch")(
       { body: { mbids: [album.mbid] } },
-      { json(value) { body = value; return this; } },
+      {
+        json(value) {
+          body = value;
+          return this;
+        },
+      },
     );
     assert.equal(body[album.mbid]?.managedBy, "aurral");
   } finally {
@@ -642,10 +728,7 @@ test("library album lookup includes owned tracks after the first track page", as
   };
 
   try {
-    await routes.get("/albums/lookup/batch")(
-      { body: { mbids: [album.mbid] } },
-      response,
-    );
+    await routes.get("/albums/lookup/batch")({ body: { mbids: [album.mbid] } }, response);
     const result = body?.[album.mbid];
     assert.equal(result?.trackCount, 101);
     assert.equal(result?.trackFileCount, 1);
@@ -653,7 +736,9 @@ test("library album lookup includes owned tracks after the first track page", as
   } finally {
     db.prepare("DELETE FROM library_media_files WHERE path = ?").run(ownedPath);
     db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(album.id);
-    db.prepare(`DELETE FROM library_tracks WHERE id IN (${trackIds.map(() => "?").join(",")})`).run(...trackIds);
+    db.prepare(`DELETE FROM library_tracks WHERE id IN (${trackIds.map(() => "?").join(",")})`).run(
+      ...trackIds,
+    );
     db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
     invalidateLibraryQueryCache();

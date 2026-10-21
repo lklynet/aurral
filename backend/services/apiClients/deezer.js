@@ -32,54 +32,55 @@ export async function getDeezerArtist(artistName, { throwOnError = false } = {})
   const normalizedName = artistName.toLowerCase().trim();
 
   try {
-    return await cachedOrInflight(deezerArtistCache, normalizedName, deezerInflightRequests, async () => {
-      const searchRes = await axios.get("https://api.deezer.com/search/artist", {
-        params: { q: artistName, limit: 5 },
-        timeout: 3000,
-      });
-      if (searchRes.data?.error) throw new Error("Deezer artist search unavailable");
-      const artists = searchRes.data?.data;
-      if (!artists?.length) {
-        deezerArtistCache.set(normalizedName, null);
-        return null;
-      }
-
-      const searchLower = normalizedName.replace(/^the\s+/i, "");
-      let bestMatch = null;
-
-      for (const a of artists) {
-        if (!a?.id) continue;
-        const aNameLower = (a.name || "").toLowerCase().replace(/^the\s+/i, "");
-        if (aNameLower === searchLower || aNameLower === normalizedName) {
-          bestMatch = a;
-          break;
+    return await cachedOrInflight(
+      deezerArtistCache,
+      normalizedName,
+      deezerInflightRequests,
+      async () => {
+        const searchRes = await axios.get("https://api.deezer.com/search/artist", {
+          params: { q: artistName, limit: 5 },
+          timeout: 3000,
+        });
+        if (searchRes.data?.error) throw new Error("Deezer artist search unavailable");
+        const artists = searchRes.data?.data;
+        if (!artists?.length) {
+          deezerArtistCache.set(normalizedName, null);
+          return null;
         }
-        if (!bestMatch && aNameLower.includes(searchLower)) {
-          bestMatch = a;
+
+        const searchLower = normalizedName.replace(/^the\s+/i, "");
+        let bestMatch = null;
+
+        for (const a of artists) {
+          if (!a?.id) continue;
+          const aNameLower = (a.name || "").toLowerCase().replace(/^the\s+/i, "");
+          if (aNameLower === searchLower || aNameLower === normalizedName) {
+            bestMatch = a;
+            break;
+          }
+          if (!bestMatch && aNameLower.includes(searchLower)) {
+            bestMatch = a;
+          }
         }
-      }
 
-      if (!bestMatch) {
-        bestMatch = artists[0];
-      }
+        if (!bestMatch) {
+          bestMatch = artists[0];
+        }
 
-      if (!bestMatch?.id) {
-        deezerArtistCache.set(normalizedName, null);
-        return null;
-      }
+        if (!bestMatch?.id) {
+          deezerArtistCache.set(normalizedName, null);
+          return null;
+        }
 
-      const result = {
-        id: bestMatch.id,
-        name: bestMatch.name,
-        imageUrl:
-          bestMatch.picture_big ||
-          bestMatch.picture_medium ||
-          bestMatch.picture ||
-          null,
-      };
-      deezerArtistCache.set(normalizedName, result);
-      return result;
-    });
+        const result = {
+          id: bestMatch.id,
+          name: bestMatch.name,
+          imageUrl: bestMatch.picture_big || bestMatch.picture_medium || bestMatch.picture || null,
+        };
+        deezerArtistCache.set(normalizedName, result);
+        return result;
+      },
+    );
   } catch (error) {
     if (throwOnError) throw error;
     return null;
@@ -93,12 +94,9 @@ export async function getDeezerArtistById(artistId, { throwOnError = false } = {
 
   try {
     return await cachedOrInflight(deezerArtistCache, cacheKey, deezerInflightRequests, async () => {
-      const res = await axios.get(
-        `https://api.deezer.com/artist/${normalizedId}`,
-        {
-          timeout: 3000,
-        },
-      );
+      const res = await axios.get(`https://api.deezer.com/artist/${normalizedId}`, {
+        timeout: 3000,
+      });
       if (isDeezerOutage(res.data)) throw new Error("Deezer artist unavailable");
       const data = res.data;
       if (!data?.id) {
@@ -124,31 +122,26 @@ async function getDeezerArtistTopTracksById(artistId) {
   if (!normalizedId) return [];
   const cacheKey = `dz-top:${normalizedId}`;
 
-  return cachedOrInflight(
-    deezerTopTrackCache,
-    cacheKey,
-    deezerInflightRequests,
-    async () => {
-      const topRes = await axios.get(
-        `https://api.deezer.com/artist/${normalizedId}/top`,
-        { params: { limit: 6 }, timeout: 3000 },
-      );
-      if (topRes.data?.error) throw new Error("Deezer popular tracks unavailable");
-      const tracks = (topRes.data?.data || [])
-        .filter((track) => track.preview)
-        .slice(0, 6)
-        .map((track) => ({
-          id: String(track.id),
-          title: track.title,
-          album: track.album?.title ?? null,
-          artworkUrl: track.album?.cover_medium ?? null,
-          preview_url: track.preview,
-          duration_ms: (track.duration || 0) * 1000,
-        }));
-      deezerTopTrackCache.set(cacheKey, tracks);
-      return tracks;
-    },
-  );
+  return cachedOrInflight(deezerTopTrackCache, cacheKey, deezerInflightRequests, async () => {
+    const topRes = await axios.get(`https://api.deezer.com/artist/${normalizedId}/top`, {
+      params: { limit: 6 },
+      timeout: 3000,
+    });
+    if (topRes.data?.error) throw new Error("Deezer popular tracks unavailable");
+    const tracks = (topRes.data?.data || [])
+      .filter((track) => track.preview)
+      .slice(0, 6)
+      .map((track) => ({
+        id: String(track.id),
+        title: track.title,
+        album: track.album?.title ?? null,
+        artworkUrl: track.album?.cover_medium ?? null,
+        preview_url: track.preview,
+        duration_ms: (track.duration || 0) * 1000,
+      }));
+    deezerTopTrackCache.set(cacheKey, tracks);
+    return tracks;
+  });
 }
 
 const artistNameKey = (value) =>
@@ -163,21 +156,26 @@ const artistNameKey = (value) =>
 async function findDeezerArtistIdByExactName(artistName) {
   const wanted = artistNameKey(artistName);
   if (!wanted) return null;
-  return cachedOrInflight(deezerArtistCache, `exact:${wanted}`, deezerInflightRequests, async () => {
-    const response = await deezerTrackListLimiter.schedule(() =>
-      axios.get("https://api.deezer.com/search/artist", {
-        params: { q: artistName, limit: 10 },
-        timeout: 5000,
-      }),
-    );
-    if (isDeezerOutage(response.data)) throw new Error("Deezer artist search unavailable");
-    const match = (response.data?.data || []).find(
-      (artist) => artist?.id && artistNameKey(artist.name) === wanted,
-    );
-    const id = match ? String(match.id) : null;
-    deezerArtistCache.set(`exact:${wanted}`, id);
-    return id;
-  });
+  return cachedOrInflight(
+    deezerArtistCache,
+    `exact:${wanted}`,
+    deezerInflightRequests,
+    async () => {
+      const response = await deezerTrackListLimiter.schedule(() =>
+        axios.get("https://api.deezer.com/search/artist", {
+          params: { q: artistName, limit: 10 },
+          timeout: 5000,
+        }),
+      );
+      if (isDeezerOutage(response.data)) throw new Error("Deezer artist search unavailable");
+      const match = (response.data?.data || []).find(
+        (artist) => artist?.id && artistNameKey(artist.name) === wanted,
+      );
+      const id = match ? String(match.id) : null;
+      deezerArtistCache.set(`exact:${wanted}`, id);
+      return id;
+    },
+  );
 }
 
 export async function deezerGetArtistTopTrackList(artistName, { limit = 25 } = {}) {
@@ -234,18 +232,20 @@ export function selectDeezerTrackPreview(candidates, { artistName, trackName }) 
   const targetTrack = normalizeTitle(trackName);
   if (!targetArtist || !targetTrack) return null;
 
-  return (Array.isArray(candidates) ? candidates : []).find((candidate) => {
-    const candidateArtist = normalizeTitle(candidate?.artist?.name);
-    const candidateTrack = normalizeTitle(candidate?.title_short || candidate?.title);
-    return (
-      candidate?.preview &&
-      candidateTrack &&
-      candidateArtist === targetArtist &&
-      (candidateTrack === targetTrack ||
-        candidateTrack.includes(targetTrack) ||
-        targetTrack.includes(candidateTrack))
-    );
-  }) || null;
+  return (
+    (Array.isArray(candidates) ? candidates : []).find((candidate) => {
+      const candidateArtist = normalizeTitle(candidate?.artist?.name);
+      const candidateTrack = normalizeTitle(candidate?.title_short || candidate?.title);
+      return (
+        candidate?.preview &&
+        candidateTrack &&
+        candidateArtist === targetArtist &&
+        (candidateTrack === targetTrack ||
+          candidateTrack.includes(targetTrack) ||
+          targetTrack.includes(candidateTrack))
+      );
+    }) || null
+  );
 }
 
 export async function deezerGetTrackPreview({ artistName, trackName }) {
@@ -319,22 +319,14 @@ function getTrackPosition(track) {
 
 function getTrackMedium(track) {
   const numeric = Number.parseInt(
-    track?.mediumNumber ??
-      track?.mediumnumber ??
-      track?.disk_number ??
-      track?.diskNumber,
+    track?.mediumNumber ?? track?.mediumnumber ?? track?.disk_number ?? track?.diskNumber,
     10,
   );
   return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
 }
 
 function getTrackDurationMs(track) {
-  const raw =
-    track?.durationMs ??
-    track?.duration_ms ??
-    track?.durationms ??
-    track?.length ??
-    null;
+  const raw = track?.durationMs ?? track?.duration_ms ?? track?.durationms ?? track?.length ?? null;
   const numeric = Number(raw);
   return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
 }
@@ -347,17 +339,15 @@ export async function getDeezerAlbumsForArtist(artist) {
   if (!artist?.id) return [];
   const cacheKey = `dz-albums:${artist.id}`;
   return cachedOrInflight(deezerAlbumCache, cacheKey, deezerInflightRequests, async () => {
-    const res = await axios.get(
-      `https://api.deezer.com/artist/${artist.id}/albums`,
-      { params: { limit: 100 }, timeout: 3000 },
-    );
+    const res = await axios.get(`https://api.deezer.com/artist/${artist.id}/albums`, {
+      params: { limit: 100 },
+      timeout: 3000,
+    });
     if (res.data?.error) throw new Error("Deezer artist catalog unavailable");
     const raw = res.data?.data || [];
     const allowed = ["album", "ep", "single"];
     const albums = raw
-      .filter((a) =>
-        allowed.includes((a.record_type || a.type || "").toLowerCase()),
-      )
+      .filter((a) => allowed.includes((a.record_type || a.type || "").toLowerCase()))
       .map((a) => {
         const primaryType = normalizeDeezerPrimaryType(a.record_type || a.type);
         const title = a.title || "";
@@ -384,11 +374,7 @@ export function selectBestDeezerAlbumMatch(
   deezerAlbums,
   { albumTitle = "", releaseType = "", releaseDate = "" } = {},
 ) {
-  if (
-    !Array.isArray(deezerAlbums) ||
-    deezerAlbums.length === 0 ||
-    !albumTitle
-  ) {
+  if (!Array.isArray(deezerAlbums) || deezerAlbums.length === 0 || !albumTitle) {
     return null;
   }
   const targetTitle = normalizeTitle(albumTitle);
@@ -401,10 +387,7 @@ export function selectBestDeezerAlbumMatch(
       let score = 0;
       if (albumTitle === targetTitle) {
         score += 100;
-      } else if (
-        albumTitle.includes(targetTitle) ||
-        targetTitle.includes(albumTitle)
-      ) {
+      } else if (albumTitle.includes(targetTitle) || targetTitle.includes(albumTitle)) {
         score += 45;
       }
 
@@ -412,9 +395,7 @@ export function selectBestDeezerAlbumMatch(
         score += 20;
       }
 
-      const albumYear = getReleaseYear(
-        album._releaseDate || album["first-release-date"],
-      );
+      const albumYear = getReleaseYear(album._releaseDate || album["first-release-date"]);
       if (targetYear && albumYear) {
         const distance = Math.abs(targetYear - albumYear);
         if (distance === 0) score += 20;
@@ -465,10 +446,7 @@ export function scoreDeezerTrackMatch(track, deezerTrack) {
   if (targetTitle && candidateTitle) {
     if (targetTitle === candidateTitle) {
       score += 70;
-    } else if (
-      targetTitle.includes(candidateTitle) ||
-      candidateTitle.includes(targetTitle)
-    ) {
+    } else if (targetTitle.includes(candidateTitle) || candidateTitle.includes(targetTitle)) {
       score += 35;
     }
   }

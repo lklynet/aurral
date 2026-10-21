@@ -19,7 +19,9 @@ function fakeChild() {
   child.exitCode = null;
   child.signalCode = null;
   child.signals = [];
-  child.kill = (signal) => { child.signals.push(signal); };
+  child.kill = (signal) => {
+    child.signals.push(signal);
+  };
   child.unref = () => {};
   child.channel = { unref() {} };
   return child;
@@ -44,7 +46,9 @@ test("a slow watcher setup is kept until it becomes ready", (t) => {
   const child = fakeChild();
   const changes = [];
   const readyRoots = [];
-  const watcher = createIsolatedLibraryWatcher("/slow", {}, (...args) => changes.push(args), { forkImpl: () => child });
+  const watcher = createIsolatedLibraryWatcher("/slow", {}, (...args) => changes.push(args), {
+    forkImpl: () => child,
+  });
   t.onTestFinished(() => watcher.close());
   watcher.on("ready", (root) => readyRoots.push(root));
   watcher.on("error", (error) => assert.fail(error.message));
@@ -59,9 +63,16 @@ test("a slow watcher setup is kept until it becomes ready", (t) => {
 
 test("closing during startup stops the child without reporting a failure", () => {
   const child = fakeChild();
-  const watcher = createIsolatedLibraryWatcher("/closing", {}, () => assert.fail("closed watcher changed"), { forkImpl: () => child });
+  const watcher = createIsolatedLibraryWatcher(
+    "/closing",
+    {},
+    () => assert.fail("closed watcher changed"),
+    { forkImpl: () => child },
+  );
   let closed = 0;
-  watcher.on("close", () => { closed++; });
+  watcher.on("close", () => {
+    closed++;
+  });
   watcher.on("error", (error) => assert.fail(error.message));
   watcher.close();
   child.emit("message", { type: "ready" });
@@ -79,12 +90,18 @@ test("watcher failures are surfaced without affecting another root", () => {
     const errors = [];
     const changes = [];
     const watcher = createIsolatedLibraryWatcher("/bad", {}, () => {}, { forkImpl: () => child });
-    const other = createIsolatedLibraryWatcher("/good", {}, (...args) => changes.push(args), { forkImpl: () => healthy });
+    const other = createIsolatedLibraryWatcher("/good", {}, (...args) => changes.push(args), {
+      forkImpl: () => healthy,
+    });
     watcher.on("error", (error) => errors.push(error));
     other.on("error", (error) => assert.fail(error.message));
     if (failure === "spawn") child.emit("error", new Error("spawn failed"));
-    if (failure === "watch") child.emit("message", { type: "error", message: "watch unsupported", code: "ENOSYS" });
-    if (failure === "exit") { child.exitCode = 1; child.emit("exit", 1); }
+    if (failure === "watch")
+      child.emit("message", { type: "error", message: "watch unsupported", code: "ENOSYS" });
+    if (failure === "exit") {
+      child.exitCode = 1;
+      child.emit("exit", 1);
+    }
     assert.equal(errors.length, 1);
     healthy.emit("message", { type: "change", eventType: "change", filename: "track.flac" });
     assert.equal(changes.length, 1);
@@ -94,60 +111,87 @@ test("watcher failures are surfaced without affecting another root", () => {
 });
 
 for (const mapped of [false, true]) {
-test(`real recursive watcher reports nested changes and exits on close (mapped: ${mapped})`, { timeout: 10_000 }, async (t) => {
-  const root = await mkdtemp(path.join(tmpdir(), "aurral-watch-"));
-  const album = path.join(root, "Artist", "Album");
-  await mkdir(album, { recursive: true });
-  let child;
-  let watcher;
-  t.onTestFinished(async () => {
-    if (child && child.exitCode == null && child.signalCode == null) {
-      child.ref();
-      const exited = once(child, "exit");
-      watcher.close();
-      await exited;
-    }
-    await rm(root, { recursive: true, force: true });
-  });
-  const changes = new EventEmitter();
-  const requestedRoot = mapped ? path.join(root, "remote-library") : root;
-  watcher = createIsolatedLibraryWatcher(requestedRoot, { pathMappings: [{ remote: requestedRoot, local: root }] }, (_type, filename, watchedRoot) => changes.emit("change", filename, watchedRoot), {
-    forkImpl: (...args) => { child = fork(...args); return child; },
-  });
-  const [readyRoot] = await once(watcher, "ready");
-  assert.equal(readyRoot, root);
-  const changed = once(changes, "change");
-  await writeFile(path.join(album, "track.flac"), "test");
-  const [filename, watchedRoot] = await changed;
-  assert.equal(path.normalize(filename), path.join("Artist", "Album", "track.flac"));
-  assert.equal(watchedRoot, root);
-});
+  test(
+    `real recursive watcher reports nested changes and exits on close (mapped: ${mapped})`,
+    { timeout: 10_000 },
+    async (t) => {
+      const root = await mkdtemp(path.join(tmpdir(), "aurral-watch-"));
+      const album = path.join(root, "Artist", "Album");
+      await mkdir(album, { recursive: true });
+      let child;
+      let watcher;
+      t.onTestFinished(async () => {
+        if (child && child.exitCode == null && child.signalCode == null) {
+          child.ref();
+          const exited = once(child, "exit");
+          watcher.close();
+          await exited;
+        }
+        await rm(root, { recursive: true, force: true });
+      });
+      const changes = new EventEmitter();
+      const requestedRoot = mapped ? path.join(root, "remote-library") : root;
+      watcher = createIsolatedLibraryWatcher(
+        requestedRoot,
+        { pathMappings: [{ remote: requestedRoot, local: root }] },
+        (_type, filename, watchedRoot) => changes.emit("change", filename, watchedRoot),
+        {
+          forkImpl: (...args) => {
+            child = fork(...args);
+            return child;
+          },
+        },
+      );
+      const [readyRoot] = await once(watcher, "ready");
+      assert.equal(readyRoot, root);
+      const changed = once(changes, "change");
+      await writeFile(path.join(album, "track.flac"), "test");
+      const [filename, watchedRoot] = await changed;
+      assert.equal(path.normalize(filename), path.join("Artist", "Album", "track.flac"));
+      assert.equal(watchedRoot, root);
+    },
+  );
 }
 
 for (const operation of ["watch", "existsSync"]) {
-test(`HTTP remains responsive while child ${operation} blocks synchronously`, { timeout: 10_000 }, async (t) => {
-  const server = http.createServer((_req, res) => res.end("ok"));
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  t.onTestFinished(() => new Promise((resolve) => server.close(resolve)));
-  let child;
-  const watcher = createIsolatedLibraryWatcher(operation === "watch" ? "/slow-root" : "/slow-path-mapping", {}, () => {}, {
-    forkImpl: (_module, args, options) => {
-      child = fork(new URL("../fixtures/blocking-library-watch-child.js", import.meta.url), args, options);
-      return child;
+  test(
+    `HTTP remains responsive while child ${operation} blocks synchronously`,
+    { timeout: 10_000 },
+    async (t) => {
+      const server = http.createServer((_req, res) => res.end("ok"));
+      await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+      t.onTestFinished(() => new Promise((resolve) => server.close(resolve)));
+      let child;
+      const watcher = createIsolatedLibraryWatcher(
+        operation === "watch" ? "/slow-root" : "/slow-path-mapping",
+        {},
+        () => {},
+        {
+          forkImpl: (_module, args, options) => {
+            child = fork(
+              new URL("../fixtures/blocking-library-watch-child.js", import.meta.url),
+              args,
+              options,
+            );
+            return child;
+          },
+        },
+      );
+      t.onTestFinished(() => watcher.close());
+      watcher.on("error", (error) => assert.fail(error.message));
+      const exited = once(child, "exit");
+      const [message] = await once(child, "message");
+      assert.equal(message.operation, operation);
+      const result = await fetch(`http://127.0.0.1:${server.address().port}/api/health/live`, {
+        signal: AbortSignal.timeout(1000),
+      });
+      assert.equal(await result.text(), "ok");
+      assert.equal(child.exitCode, null);
+      watcher.close();
+      const [, signal] = await exited;
+      assert.equal(signal, "SIGKILL");
     },
-  });
-  t.onTestFinished(() => watcher.close());
-  watcher.on("error", (error) => assert.fail(error.message));
-  const exited = once(child, "exit");
-  const [message] = await once(child, "message");
-  assert.equal(message.operation, operation);
-  const result = await fetch(`http://127.0.0.1:${server.address().port}/api/health/live`, { signal: AbortSignal.timeout(1000) });
-  assert.equal(await result.text(), "ok");
-  assert.equal(child.exitCode, null);
-  watcher.close();
-  const [, signal] = await exited;
-  assert.equal(signal, "SIGKILL");
-});
+  );
 }
 
 test("a missing root reports ENOENT instead of becoming ready", { timeout: 5_000 }, async (t) => {
@@ -156,6 +200,14 @@ test("a missing root reports ENOENT instead of becoming ready", { timeout: 5_000
   const watcher = createIsolatedLibraryWatcher(path.join(root, "absent"), {}, () => {});
   t.onTestFinished(() => watcher.close());
   const outcome = await waitForWatcherStartup(watcher);
-  assert.equal(outcome.type, "error", `Missing library root unexpectedly became ready: ${outcome.root}`);
-  assert.equal(outcome.error.code, "ENOENT", `Missing library root reported ${outcome.error.code}: ${outcome.error.message}`);
+  assert.equal(
+    outcome.type,
+    "error",
+    `Missing library root unexpectedly became ready: ${outcome.root}`,
+  );
+  assert.equal(
+    outcome.error.code,
+    "ENOENT",
+    `Missing library root reported ${outcome.error.code}: ${outcome.error.message}`,
+  );
 });

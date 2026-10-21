@@ -153,7 +153,7 @@ test("a grayscale cover washes neutral", async (t) => {
   const colors = await loadImageColors(t, {
     cacheImage: noCopy,
     paint: (x, y) => {
-      const value = 20 + ((x + y) * 3) % 220;
+      const value = 20 + (((x + y) * 3) % 220);
       return [value, value, value, 255];
     },
   });

@@ -61,7 +61,14 @@ const lastfmResponse = (url) => {
   const params = new URL(url).searchParams;
   const seed = params.get("mbid") || params.get("artist");
   if (params.get("method") === "artist.getTopTags") {
-    return { toptags: { tag: ["female vocalists", "shoegaze", "seen live", "dream-pop", "indie"].map((name) => ({ name, count: 100 })) } };
+    return {
+      toptags: {
+        tag: ["female vocalists", "shoegaze", "seen live", "dream-pop", "indie"].map((name) => ({
+          name,
+          count: 100,
+        })),
+      },
+    };
   }
   if (params.get("method") === "tag.getTopArtists") {
     return {
@@ -110,7 +117,10 @@ beforeAll(() => {
     artistName: LIKED.name,
     action: "more_like_this",
   });
-  discovery.addDiscoveryFeedback(alice.id, { artistName: "Disliked Artist", action: "less_like_this" });
+  discovery.addDiscoveryFeedback(alice.id, {
+    artistName: "Disliked Artist",
+    action: "less_like_this",
+  });
   discovery.addDiscoveryFeedback(alice.id, {
     artistId: BLOCKED.mbid,
     artistName: BLOCKED.name,
@@ -167,7 +177,9 @@ test("new feedback softens and hides served picks before the next refresh", asyn
     artistName: FROM_LIBRARY.name,
     action: "block_artist",
   });
-  const blocked = (await getUserDiscovery(alice.id, 0)).body.recommendations.map((artist) => artist.name);
+  const blocked = (await getUserDiscovery(alice.id, 0)).body.recommendations.map(
+    (artist) => artist.name,
+  );
   assert.equal(blocked.includes(FROM_LIBRARY.name), false);
   discovery.removeDiscoveryFeedback(alice.id, lessLike.id);
 });
@@ -212,7 +224,11 @@ test("tag search and flow plans read the user's own pool", async () => {
     basedOn = options.basedOn;
     return [];
   };
-  await source.buildFlowRunPlan({ ownerUserId: alice.id, discoverPresetId: "release-radar", size: 2 });
+  await source.buildFlowRunPlan({
+    ownerUserId: alice.id,
+    discoverPresetId: "release-radar",
+    size: 2,
+  });
   assert.ok(basedOn.some((artist) => artist.name === LIKED.name));
 });
 
@@ -252,7 +268,9 @@ test("tag search lists the tag's artists in Last.fm order without the user's rec
 });
 
 test("discover API shows a match percent that follows the user's ranking, not on trending", async () => {
-  discovery.getDiscoveryCache().globalTop = [{ id: mbid(90), navigateTo: mbid(90), name: "Trending Artist" }];
+  discovery.getDiscoveryCache().globalTop = [
+    { id: mbid(90), navigateTo: mbid(90), name: "Trending Artist" },
+  ];
   try {
     const { status, body } = await requestDiscoveryApi(alice.id, "");
     assert.equal(status, 200);
@@ -260,7 +278,10 @@ test("discover API shows a match percent that follows the user's ranking, not on
     assert.ok(percents.length >= 2);
     assert.equal(percents[0], 99);
     assert.equal(percents.at(-1), 55);
-    assert.deepEqual([...percents].sort((left, right) => right - left), percents);
+    assert.deepEqual(
+      [...percents].sort((left, right) => right - left),
+      percents,
+    );
     assert.equal(body.globalTop[0].name, "Trending Artist");
     assert.equal(body.globalTop[0].matchPercent, null);
   } finally {
@@ -275,29 +296,39 @@ test("feedback through the API waits for the next scheduled rebuild", async () =
   });
   assert.equal(response.status, 200);
 
-  const queuedForAlice = db.prepare(
-    "SELECT payload FROM _honker_live WHERE queue = 'discovery-user-refresh'",
-  ).all().filter((row) => JSON.parse(row.payload).userId === alice.id);
+  const queuedForAlice = db
+    .prepare("SELECT payload FROM _honker_live WHERE queue = 'discovery-user-refresh'")
+    .all()
+    .filter((row) => JSON.parse(row.payload).userId === alice.id);
   assert.equal(queuedForAlice.length, 0);
   assert.ok(
-    discovery.getDiscoveryFeedback(alice.id).some((entry) => entry.artistName === "Another Favorite"),
+    discovery
+      .getDiscoveryFeedback(alice.id)
+      .some((entry) => entry.artistName === "Another Favorite"),
   );
 });
 
 test("each user gets their own pool and a missing pool queues one refresh", async () => {
   const { body } = await getUserDiscovery(bob.id, 0);
-  assert.equal(body.recommendations.some((artist) => artist.name === FROM_LIKED.name), false);
+  assert.equal(
+    body.recommendations.some((artist) => artist.name === FROM_LIKED.name),
+    false,
+  );
   assert.equal(getDiscoveryStatus(bob.id).isUpdating, true);
   assert.equal(getDiscoveryStatus(bob.id).updatePhase, "queued");
 
+  assert.deepEqual(discovery.requestUserDiscoveryRefresh(bob.id), {
+    enqueued: false,
+    reason: "queued",
+  });
+  const queued = db
+    .prepare("SELECT payload FROM _honker_live WHERE queue = 'discovery-user-refresh'")
+    .all()
+    .map((row) => JSON.parse(row.payload));
   assert.deepEqual(
-    discovery.requestUserDiscoveryRefresh(bob.id),
-    { enqueued: false, reason: "queued" },
+    queued.map((payload) => payload.userId),
+    [bob.id],
   );
-  const queued = db.prepare(
-    "SELECT payload FROM _honker_live WHERE queue = 'discovery-user-refresh'",
-  ).all().map((row) => JSON.parse(row.payload));
-  assert.deepEqual(queued.map((payload) => payload.userId), [bob.id]);
 });
 
 test("a global refresh keeps each user updating until their own recommendations are rebuilt", async () => {
@@ -338,16 +369,22 @@ test("library seeds sample recent additions and the whole library, not the alpha
   insert.run("sample-newest", "Zed Newest", "Zed Newest", 1000, 1000);
 
   const alphabeticalHead = new Set(
-    db.prepare("SELECT name FROM library_artists ORDER BY sort_name COLLATE NOCASE LIMIT 40").all()
+    db
+      .prepare("SELECT name FROM library_artists ORDER BY sort_name COLLATE NOCASE LIMIT 40")
+      .all()
       .map((row) => row.name),
   );
   const samples = Array.from({ length: 5 }, () =>
-    sampleLibraryArtistsForDiscovery({ recentLimit: 5, randomLimit: 20 }));
+    sampleLibraryArtistsForDiscovery({ recentLimit: 5, randomLimit: 20 }),
+  );
 
   for (const { recent, random } of samples) {
     assert.equal(recent[0].artistName, "Zed Newest");
     const recentNames = new Set(recent.map((artist) => artist.artistName));
-    assert.equal(random.some((artist) => recentNames.has(artist.artistName)), false);
+    assert.equal(
+      random.some((artist) => recentNames.has(artist.artistName)),
+      false,
+    );
   }
   assert.ok(
     samples.some(({ random }) => random.some((artist) => !alphabeticalHead.has(artist.artistName))),

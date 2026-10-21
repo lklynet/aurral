@@ -1,10 +1,7 @@
 import { test, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
-import {
-  setupIsolatedBackend,
-  cleanupIsolatedState,
-} from "../helpers/backendTestHarness.js";
+import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.js";
 
 const [isolatedState, honkerDb] = await setupIsolatedBackend(
   "slskd-pipeline-priority",
@@ -26,7 +23,11 @@ test("slskd pipeline claims active transfer phases before searches and upgrades 
   enqueuePipelineJob({ phase: "finalize", jobId: "finalize" });
 
   const claimed = [];
-  for (let job = queue.claimOne("priority-test-worker"); job; job = queue.claimOne("priority-test-worker")) {
+  for (
+    let job = queue.claimOne("priority-test-worker");
+    job;
+    job = queue.claimOne("priority-test-worker")
+  ) {
     claimed.push(job.payload.jobId);
     job.ack();
   }

@@ -65,7 +65,9 @@ function storeCurrentIntegrations() {
   if (navidrome && ("m3uPathMode" in navidrome || "pathMappings" in navidrome)) {
     changed = true;
   }
-  const baseUrl = String(integrations.metadata?.baseUrl || "").trim().replace(/\/+$/, "");
+  const baseUrl = String(integrations.metadata?.baseUrl || "")
+    .trim()
+    .replace(/\/+$/, "");
   if (baseUrl === RETIRED_METADATA_BASE_URL) {
     integrations.metadata = { ...integrations.metadata, baseUrl: DEFAULT_METADATA_BASE_URL };
     changed = true;

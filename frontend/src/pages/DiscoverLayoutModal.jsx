@@ -79,7 +79,6 @@ function SortableSectionRow({ item, onToggle, showUnavailable }) {
   );
 }
 
-
 export function DiscoverLayoutModal({
   open,
   sections,
@@ -120,11 +119,7 @@ export function DiscoverLayoutModal({
   if (!open) return null;
 
   return createPortal(
-    <div
-      className="artist-modal-backdrop"
-      onClick={handleBackdropClick}
-      role="presentation"
-    >
+    <div className="artist-modal-backdrop" onClick={handleBackdropClick} role="presentation">
       <div
         ref={dialogRef}
         className="artist-customize-modal"
@@ -138,9 +133,7 @@ export function DiscoverLayoutModal({
             <h3 id="discover-layout-modal-title" className="artist-customize-modal__title">
               Customize Discover
             </h3>
-            <p className="artist-customize-modal__subtitle">
-              Drag to reorder.
-            </p>
+            <p className="artist-customize-modal__subtitle">Drag to reorder.</p>
           </div>
           <TooltipButton
             type="button"

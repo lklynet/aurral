@@ -150,12 +150,15 @@ test("a proxy 401 with a nested error body reauthenticates through the proxy", a
     },
   };
   globalThis.fetch = async () =>
-    new Response(JSON.stringify({
-      error: { status: 401, message: "Missing/invalid/expired access token" },
-    }), {
-      status: 401,
-      headers: { "content-type": "application/json" },
-    });
+    new Response(
+      JSON.stringify({
+        error: { status: 401, message: "Missing/invalid/expired access token" },
+      }),
+      {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      },
+    );
 
   const { default: api } = await import("../../frontend/src/utils/api/core.js");
 
@@ -182,14 +185,17 @@ test("a Spotify provider 401 does not drop the Aurral session", async (t) => {
     },
   };
   globalThis.fetch = async () =>
-    new Response(JSON.stringify({
-      error: "Spotify authentication required",
-      code: "SPOTIFY_AUTH_REQUIRED",
-      message: "Your Spotify connection expired. Connect Spotify again.",
-    }), {
-      status: 401,
-      headers: { "content-type": "application/json" },
-    });
+    new Response(
+      JSON.stringify({
+        error: "Spotify authentication required",
+        code: "SPOTIFY_AUTH_REQUIRED",
+        message: "Your Spotify connection expired. Connect Spotify again.",
+      }),
+      {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      },
+    );
 
   const { default: api } = await import("../../frontend/src/utils/api/core.js");
 

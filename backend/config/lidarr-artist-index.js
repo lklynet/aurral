@@ -1,5 +1,7 @@
 function hasUniqueLidarrArtistIdIndex(db) {
-  return db.prepare("PRAGMA index_list(lidarr_artist_id_map)").all()
+  return db
+    .prepare("PRAGMA index_list(lidarr_artist_id_map)")
+    .all()
     .some(({ name, unique }) => name === "idx_lidarr_artist_id_map_foreign_id" && unique);
 }
 

@@ -38,7 +38,10 @@ test("artist blocks are per-user and match ids, names, and track aliases", () =>
     { artistName: "Alias", artistAliases: ["Blocked Artist"] },
   ]);
 
-  assert.deepEqual(allowed.map((artist) => artist.name || artist.artistName), ["Allowed Artist"]);
+  assert.deepEqual(
+    allowed.map((artist) => artist.name || artist.artistName),
+    ["Allowed Artist"],
+  );
   assert.equal(discovery.filterBlockedArtistsForUser("8", [{ name: "Blocked Artist" }]).length, 1);
 });
 
@@ -54,7 +57,10 @@ test("resetting discovery tastes preserves artist blocks", () => {
 
   const remaining = discovery.resetDiscoveryFeedback("7");
 
-  assert.deepEqual(remaining.map((entry) => entry.action), ["block_artist"]);
+  assert.deepEqual(
+    remaining.map((entry) => entry.action),
+    ["block_artist"],
+  );
 });
 
 test("flows exclude only hard-blocked artists", async () => {
@@ -88,12 +94,18 @@ test("flows exclude only hard-blocked artists", async () => {
     size: 2,
   });
 
-  assert.deepEqual(plan.primaryTracks.map((track) => track.artistName), ["Soft Dislike"]);
+  assert.deepEqual(
+    plan.primaryTracks.map((track) => track.artistName),
+    ["Soft Dislike"],
+  );
 });
 
 const feedbackRoutes = () => {
   const routes = new Map();
-  const register = (method) => (path, ...handlers) => routes.set(`${method} ${path}`, handlers.at(-1));
+  const register =
+    (method) =>
+    (path, ...handlers) =>
+      routes.set(`${method} ${path}`, handlers.at(-1));
   registerFeedback({ get: register("GET"), post: register("POST"), delete: register("DELETE") });
   return (key, req) => {
     const res = {
@@ -128,9 +140,14 @@ test("undoing less like this restores the taste it replaced exactly", () => {
 
   const rejected = call("POST /feedback/restore", { body: { removeIds: "all" } });
   assert.equal(rejected.statusCode, 400);
-  assert.deepEqual(call("GET /feedback").body.feedback.map((entry) => entry.id), [less.id, before[1].id]);
+  assert.deepEqual(
+    call("GET /feedback").body.feedback.map((entry) => entry.id),
+    [less.id, before[1].id],
+  );
 
-  const restored = call("POST /feedback/restore", { body: { removeIds: [less.id], entries: [more] } });
+  const restored = call("POST /feedback/restore", {
+    body: { removeIds: [less.id], entries: [more] },
+  });
   assert.equal(restored.statusCode, 200);
   assert.deepEqual(restored.body.feedbackList, before);
   assert.deepEqual(call("GET /feedback").body.feedback, before);

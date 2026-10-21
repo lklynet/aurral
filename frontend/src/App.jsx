@@ -196,9 +196,7 @@ function AppContent() {
     };
   }, [appSocketConnected, isAuthenticated, refreshAuth]);
 
-  return (
-    <Outlet context={{ appVersion, healthIssue, isHealthy, rootFolderConfigured }} />
-  );
+  return <Outlet context={{ appVersion, healthIssue, isHealthy, rootFolderConfigured }} />;
 }
 
 function ProtectedLayout() {
@@ -232,7 +230,9 @@ function ProtectedLayout() {
                 <AlertTriangle className="app-status-banner__icon app-status-banner__icon--warning" />
                 <p className="app-status-banner__text app-status-banner__text--warning">
                   Aurral is responding slowly.{" "}
-                  {bootstrap?.lidarrConfigured ? "Lidarr may be busy. Try again in a minute." : "Try again in a minute."}
+                  {bootstrap?.lidarrConfigured
+                    ? "Lidarr may be busy. Try again in a minute."
+                    : "Try again in a minute."}
                 </p>
               </div>
             )}
@@ -280,7 +280,10 @@ const appRoutes = createRoutesFromElements(
       <Route path="/shows/:filter" element={<ShowsPage />} />
       <Route path="/search" element={<SearchResultsPage />} />
       <Route path="/discover" element={<Navigate to="/" replace />} />
-      <Route path="/discover/playlists/deezer/:playlistId" element={<EditorialPlaylistDetailPage />} />
+      <Route
+        path="/discover/playlists/deezer/:playlistId"
+        element={<EditorialPlaylistDetailPage />}
+      />
       <Route path="/discover/playlists" element={<DiscoverPlaylistsPage />} />
       <Route path="/discover/news" element={<NewsPage />} />
       <Route
@@ -334,15 +337,9 @@ const appRoutes = createRoutesFromElements(
       <Route path="/activity" element={<ActivityRootRedirect />} />
       <Route path="/activity/:view" element={<ActivityPage />} />
       <Route path="/activity/:view/:source" element={<ActivitySourceRedirect />} />
-      <Route
-        path="/artist/:mbid/albums"
-        element={<ArtistReleaseListPage mode="releases" />}
-      />
+      <Route path="/artist/:mbid/albums" element={<ArtistReleaseListPage mode="releases" />} />
       <Route path="/artist/:mbid/release/:releaseMbid" element={<ReleasePage />} />
-      <Route
-        path="/artist/:mbid/appears-on"
-        element={<ArtistReleaseListPage mode="appearsOn" />}
-      />
+      <Route path="/artist/:mbid/appears-on" element={<ArtistReleaseListPage mode="appearsOn" />} />
       <Route path="/artist/:mbid" element={<ArtistDetailsPage />} />
       <Route
         path="/settings/:tab?"

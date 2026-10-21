@@ -7,14 +7,15 @@ import { enqueueImportedPlaylist } from "../../../services/importLists/importPla
 import { logger, safeLogDiagnostic } from "../../../services/logger.js";
 
 const getSkippedCount = (stats = {}) =>
-  ["unavailable", "podcast", "incomplete", "duplicate"]
-    .reduce((sum, key) => sum + Number(stats[key] || 0), 0);
+  ["unavailable", "podcast", "incomplete", "duplicate"].reduce(
+    (sum, key) => sum + Number(stats[key] || 0),
+    0,
+  );
 
 const sendProviderError = (res, error, fallback) => {
   const statusCode = Number(error?.statusCode);
-  const status = Number.isInteger(statusCode) && statusCode >= 400 && statusCode <= 599
-    ? statusCode
-    : 500;
+  const status =
+    Number.isInteger(statusCode) && statusCode >= 400 && statusCode <= 599 ? statusCode : 500;
   return res.status(status).json({
     error: fallback,
     message: error?.message || "Unknown error",

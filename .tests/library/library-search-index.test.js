@@ -25,10 +25,17 @@ test("startup restores a missing search index trigger and rebuilds documents", a
   ).run();
 
   assert.equal(initializeLibrarySearchIndex(db), true);
-  assert.ok(db.prepare(
-    "SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name = 'library_search_documents_ai'",
-  ).get());
-  assert.equal(db.prepare("SELECT 1 FROM library_search_documents WHERE entity_id = 998").get(), undefined);
+  assert.ok(
+    db
+      .prepare(
+        "SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name = 'library_search_documents_ai'",
+      )
+      .get(),
+  );
+  assert.equal(
+    db.prepare("SELECT 1 FROM library_search_documents WHERE entity_id = 998").get(),
+    undefined,
+  );
 });
 
 test("startup rebuilds search documents when their version is outdated", async () => {
@@ -41,7 +48,10 @@ test("startup rebuilds search documents when their version is outdated", async (
   db.prepare("UPDATE settings SET value = '1' WHERE key = 'librarySearchIndexVersion'").run();
 
   assert.equal(initializeLibrarySearchIndex(db), true);
-  assert.equal(db.prepare("SELECT 1 FROM library_search_documents WHERE entity_id = 999").get(), undefined);
+  assert.equal(
+    db.prepare("SELECT 1 FROM library_search_documents WHERE entity_id = 999").get(),
+    undefined,
+  );
 
   db.prepare(
     "INSERT INTO library_search_documents (entity_kind, entity_id, title) VALUES ('artist', 1000, 'Current Artist')",

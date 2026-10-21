@@ -23,7 +23,9 @@ test("CSP permits direct HTTPS artwork and preview audio", async () => {
   const response = await fetch(`http://127.0.0.1:${server.port}/api/health/live`);
   const policy = response.headers.get("content-security-policy") || "";
   const sources = (name) =>
-    (policy.split(";").find((directive) => directive.trim().startsWith(`${name} `)) || "").trim().split(/\s+/);
+    (policy.split(";").find((directive) => directive.trim().startsWith(`${name} `)) || "")
+      .trim()
+      .split(/\s+/);
 
   assert.ok(sources("img-src").includes("https:"));
   assert.ok(sources("media-src").includes("https:"));

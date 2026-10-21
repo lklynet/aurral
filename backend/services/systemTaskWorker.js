@@ -63,9 +63,8 @@ export async function processSystemTask(payload = {}, job = null, context = {}) 
       return;
     }
     case "quality-profile-refresh": {
-      const { reclassifyQualityJobs, getQualityProfile } = await import(
-        "./qualityProfileService.js"
-      );
+      const { reclassifyQualityJobs, getQualityProfile } =
+        await import("./qualityProfileService.js");
       await reclassifyQualityJobs({ enqueue: getQualityProfile().automaticUpgrades });
       return;
     }
@@ -93,7 +92,9 @@ export async function processSystemTask(payload = {}, job = null, context = {}) 
       );
       const failures = (results || []).filter((result) => !result.ok);
       if (failures.length) {
-        throw new Error(failures.map((result) => `${result.destination}: ${result.error.message}`).join("; "));
+        throw new Error(
+          failures.map((result) => `${result.destination}: ${result.error.message}`).join("; "),
+        );
       }
       return;
     }
@@ -116,9 +117,8 @@ export async function processSystemTask(payload = {}, job = null, context = {}) 
       return result;
     }
     case "library-index-bootstrap": {
-      const { hasCompletedLibraryScan, scheduleLibraryScan } = await import(
-        "./libraryScanWorker.js"
-      );
+      const { hasCompletedLibraryScan, scheduleLibraryScan } =
+        await import("./libraryScanWorker.js");
       const { lidarrClient } = await import("./lidarrClient.js");
       const { hasLidarrLibraryData } = await import("./libraryMediaStore.js");
       if (!hasCompletedLibraryScan() || (!lidarrClient.isConfigured() && hasLidarrLibraryData())) {
@@ -129,7 +129,8 @@ export async function processSystemTask(payload = {}, job = null, context = {}) 
     case "weekly-flow-startup-check": {
       const { startWorkerIfPending } = await import("./downloadJobs/downloadWorker.js");
       await startWorkerIfPending();
-      const { stopOrphanedSlskdSearches } = await import("./downloadJobs/downloadCancellationService.js");
+      const { stopOrphanedSlskdSearches } =
+        await import("./downloadJobs/downloadCancellationService.js");
       await stopOrphanedSlskdSearches();
       return;
     }
@@ -144,10 +145,8 @@ export async function processSystemTask(payload = {}, job = null, context = {}) 
       return;
     }
     case "inbox-refresh": {
-      const {
-        enqueueInboxRefreshForAllUsers,
-        refreshInboxForUser,
-      } = await import("./inboxService.js");
+      const { enqueueInboxRefreshForAllUsers, refreshInboxForUser } =
+        await import("./inboxService.js");
       const userId = Number(payload.userId);
       if (Number.isInteger(userId) && userId > 0) {
         await refreshInboxForUser(userId, {
@@ -214,13 +213,9 @@ export async function processSystemTask(payload = {}, job = null, context = {}) 
       if (result.status === "blocked" || result.failed > 0) {
         throw new Error("Playlist filesystem migration requires review before playlist rebuild");
       }
-      const metadataRepair = await repairYtdlpMetadata(
-        trackerModule.downloadTracker.getAll(),
-      );
+      const metadataRepair = await repairYtdlpMetadata(trackerModule.downloadTracker.getAll());
       if (metadataRepair.repaired > 0) {
-        console.log(
-          `[Playlists] Added metadata to ${metadataRepair.repaired} yt-dlp track(s)`,
-        );
+        console.log(`[Playlists] Added metadata to ${metadataRepair.repaired} yt-dlp track(s)`);
       }
       if (metadataRepair.failed > 0) {
         console.warn(
@@ -299,11 +294,7 @@ const {
   retryDelayS: 120,
 });
 
-export {
-  startSystemTaskWorker,
-  stopSystemTaskWorker,
-  isSystemTaskWorkerRunning,
-};
+export { startSystemTaskWorker, stopSystemTaskWorker, isSystemTaskWorkerRunning };
 
 const { start: startMaintenanceTaskWorker } = createHonkerWorker({
   name: "system-task-maintenance",

@@ -1,9 +1,13 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
-  clearAuthStorage,
-  getStoredAuth,
-  setStoredAuth,
-} from "../utils/api/core.js";
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { clearAuthStorage, getStoredAuth, setStoredAuth } from "../utils/api/core.js";
 import {
   getBootstrapStatus,
   getMe,
@@ -153,29 +157,47 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
   }, [bootstrap]);
 
-  const hasPermission = useCallback((perm) => {
-    if (!user) return false;
-    if (user.role === "admin") return true;
-    return !!user.permissions?.[perm];
-  }, [user]);
+  const hasPermission = useCallback(
+    (perm) => {
+      if (!user) return false;
+      if (user.role === "admin") return true;
+      return !!user.permissions?.[perm];
+    },
+    [user],
+  );
 
   const canLogOut = !bootstrap?.proxyAuthEnabled || !!bootstrap?.proxyLogoutUrl;
 
   return (
     <AuthContext.Provider
-      value={useMemo(() => ({
-        isAuthenticated,
-        isLoading,
-        user,
-        bootstrap,
-        login,
-        logout,
-        canLogOut,
-        authRequired,
-        onboardingRequired,
-        refreshAuth: checkAuthStatus,
-        hasPermission,
-      }), [isAuthenticated, isLoading, user, bootstrap, login, logout, canLogOut, authRequired, onboardingRequired, checkAuthStatus, hasPermission])}
+      value={useMemo(
+        () => ({
+          isAuthenticated,
+          isLoading,
+          user,
+          bootstrap,
+          login,
+          logout,
+          canLogOut,
+          authRequired,
+          onboardingRequired,
+          refreshAuth: checkAuthStatus,
+          hasPermission,
+        }),
+        [
+          isAuthenticated,
+          isLoading,
+          user,
+          bootstrap,
+          login,
+          logout,
+          canLogOut,
+          authRequired,
+          onboardingRequired,
+          checkAuthStatus,
+          hasPermission,
+        ],
+      )}
     >
       {children}
     </AuthContext.Provider>

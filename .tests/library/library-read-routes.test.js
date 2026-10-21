@@ -187,7 +187,10 @@ test("library track reads remove nested filesystem paths", async () => {
         },
       },
     );
-    assert.deepEqual(body.map((track) => track.title), ["Route Track"]);
+    assert.deepEqual(
+      body.map((track) => track.title),
+      ["Route Track"],
+    );
 
     registerAlbums({
       get(routePath, ...handlers) {
@@ -197,9 +200,9 @@ test("library track reads remove nested filesystem paths", async () => {
       delete() {},
       put() {},
     });
-    const artist = db.prepare(
-      "SELECT id, identity_key AS identityKey, mbid FROM library_artists WHERE mbid = ?",
-    ).get("71111111-1111-4111-8111-111111111111");
+    const artist = db
+      .prepare("SELECT id, identity_key AS identityKey, mbid FROM library_artists WHERE mbid = ?")
+      .get("71111111-1111-4111-8111-111111111111");
     for (const artistId of [artist.id, artist.identityKey, artist.mbid]) {
       await routes.get("/albums")(
         { query: { readPath: "canonical", artistId } },
@@ -213,23 +216,28 @@ test("library track reads remove nested filesystem paths", async () => {
           },
         },
       );
-      assert.deepEqual(body.map((album) => album.title), ["Route Album"]);
+      assert.deepEqual(
+        body.map((album) => album.title),
+        ["Route Album"],
+      );
     }
   } finally {
-    const track = db.prepare(
-      "SELECT track_id AS trackId FROM library_media_files WHERE source = ? AND path = ?",
-    ).get("lidarr", filePath);
+    const track = db
+      .prepare("SELECT track_id AS trackId FROM library_media_files WHERE source = ? AND path = ?")
+      .get("lidarr", filePath);
     db.prepare("DELETE FROM library_media_files WHERE source = ? AND path = ?").run(
       "lidarr",
       filePath,
     );
     if (track) {
-      const link = db.prepare(
-        `SELECT album_track.album_id AS albumId, album.artist_id AS artistId
+      const link = db
+        .prepare(
+          `SELECT album_track.album_id AS albumId, album.artist_id AS artistId
          FROM library_album_tracks AS album_track
          JOIN library_albums AS album ON album.id = album_track.album_id
          WHERE album_track.track_id = ?`,
-      ).get(track.trackId);
+        )
+        .get(track.trackId);
       db.prepare("DELETE FROM library_album_tracks WHERE track_id = ?").run(track.trackId);
       db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.trackId);
       if (link) {

@@ -5,7 +5,8 @@ const LIDARR_OPTIONS = ["none", "existing", "all", "future", "missing", "latest"
 export const getArtistOptionLabel = (option) =>
   option === "none" ? "Not monitored" : getMonitorOptionLabel(option);
 
-export const getArtistMonitorOption = (state) => (state?.added === false ? "none" : state?.monitorOption ?? null);
+export const getArtistMonitorOption = (state) =>
+  state?.added === false ? "none" : (state?.monitorOption ?? null);
 
 export const isArtistMonitored = (state) => {
   if (state?.manager === "aurral") return state.added !== false && state.monitored === true;
@@ -31,13 +32,15 @@ export const buildArtistMonitoringItems = ({ manager, state, onSelect, onEditRul
         onSelect: () => onSelect({ monitoring: { monitored: false } }),
       },
       ...(onEditRules
-        ? [{
-            id: "monitor:rules",
-            label: "Monitoring rules…",
-            separatorBefore: true,
-            closeBeforeSelect: true,
-            onSelect: onEditRules,
-          }]
+        ? [
+            {
+              id: "monitor:rules",
+              label: "Monitoring rules…",
+              separatorBefore: true,
+              closeBeforeSelect: true,
+              onSelect: onEditRules,
+            },
+          ]
         : []),
     ];
   }
@@ -63,9 +66,10 @@ export const describeArtistMonitoring = (state) => {
 export const describeArtistMonitoringChange = ({ name, request, response }) => {
   if (request?.monitoring) {
     if (!request.monitoring.monitored) return `Stopped monitoring ${name}`;
-    const change = response?.useDefault === false
-      ? `Monitoring ${name} with custom rules`
-      : `Monitoring ${name}`;
+    const change =
+      response?.useDefault === false
+        ? `Monitoring ${name} with custom rules`
+        : `Monitoring ${name}`;
     return response?.monitoring
       ? `${change}. ${summarizeAurralMonitoring(response.monitoring, response).message}`
       : change;

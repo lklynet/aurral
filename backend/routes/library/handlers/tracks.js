@@ -2,7 +2,11 @@ import { libraryManager } from "../../../services/libraryManager.js";
 import { cacheMiddleware } from "../../../middleware/cache.js";
 import { noCache } from "../../../middleware/cache.js";
 import { hasPermission, verifyTokenAuth } from "../../../middleware/auth.js";
-import { requireAdmin, requireAuth, requirePermission } from "../../../middleware/requirePermission.js";
+import {
+  requireAdmin,
+  requireAuth,
+  requirePermission,
+} from "../../../middleware/requirePermission.js";
 import { getAlbumTracksByAlbumMbid } from "../../../services/providers/brainzmashProvider.js";
 import { chooseLibraryRelease } from "../../../services/releaseResolver.js";
 import { enrichTracksWithDeezerPreviews } from "../../../services/apiClients/index.js";
@@ -39,42 +43,40 @@ const requireTrackDeletion = (req, res, next) => {
 };
 
 export function registerTracks(router) {
-  router.delete(
-    "/tracks/:id",
-    requireAuth,
-    requireTrackDeletion,
-    async (req, res) => {
-      try {
-        const result = await libraryManager.deleteTrack(req.params.id);
-        if (!result?.success) {
-          if (result?.code === "not_found") {
-            return res.status(404).json({
-              error: "Track not found",
-              message: "The track or its file no longer exists.",
-            });
-          }
-          if (result?.code === "lidarr_unavailable") {
-            return res.status(503).json({
-              error: "Lidarr unavailable",
-              message: "Lidarr is not available. Try again later.",
-            });
-          }
-          logger.error("library", `Track deletion failed: ${String(result?.error || "Unknown error")}`);
-          return res.status(500).json({
-            error: "Failed to delete track",
-            message: "Failed to delete track",
+  router.delete("/tracks/:id", requireAuth, requireTrackDeletion, async (req, res) => {
+    try {
+      const result = await libraryManager.deleteTrack(req.params.id);
+      if (!result?.success) {
+        if (result?.code === "not_found") {
+          return res.status(404).json({
+            error: "Track not found",
+            message: "The track or its file no longer exists.",
           });
         }
-        return res.json({ success: true, message: "Track deleted successfully" });
-      } catch (error) {
-        logger.error("library", `Track deletion threw: ${error.message}`);
+        if (result?.code === "lidarr_unavailable") {
+          return res.status(503).json({
+            error: "Lidarr unavailable",
+            message: "Lidarr is not available. Try again later.",
+          });
+        }
+        logger.error(
+          "library",
+          `Track deletion failed: ${String(result?.error || "Unknown error")}`,
+        );
         return res.status(500).json({
           error: "Failed to delete track",
           message: "Failed to delete track",
         });
       }
-    },
-  );
+      return res.json({ success: true, message: "Track deleted successfully" });
+    } catch (error) {
+      logger.error("library", `Track deletion threw: ${error.message}`);
+      return res.status(500).json({
+        error: "Failed to delete track",
+        message: "Failed to delete track",
+      });
+    }
+  });
 
   router.put(
     "/tracks/aurral/:canonicalId",
@@ -82,12 +84,14 @@ export function registerTracks(router) {
     requirePermission("changeMonitoring"),
     async (req, res) => {
       try {
-        const result = req.body?.keepFile !== undefined
-          ? await libraryManager.setTrackKeepFile(req.params.canonicalId, { keepFile: req.body.keepFile })
-          : await libraryManager.setAurralTrackMonitoring(
-            req.params.canonicalId,
-            { monitored: req.body?.monitored },
-          );
+        const result =
+          req.body?.keepFile !== undefined
+            ? await libraryManager.setTrackKeepFile(req.params.canonicalId, {
+                keepFile: req.body.keepFile,
+              })
+            : await libraryManager.setAurralTrackMonitoring(req.params.canonicalId, {
+                monitored: req.body?.monitored,
+              });
         if (result?.error) {
           const { error, statusCode, ...details } = result;
           return res.status(statusCode || 500).json({ ...details, error });
@@ -176,9 +180,8 @@ export function registerTracks(router) {
 
       if (tracks.length === 0 && releaseGroupMbid) {
         if (String(releaseGroupMbid).startsWith("dz-")) {
-          const { deezerGetAlbumTracks } = await import(
-            "../../../services/apiClients/index.js"
-          );          const dzTracks = await deezerGetAlbumTracks(releaseGroupMbid);
+          const { deezerGetAlbumTracks } = await import("../../../services/apiClients/index.js");
+          const dzTracks = await deezerGetAlbumTracks(releaseGroupMbid);
           tracks = dzTracks.map((t) => ({
             ...t,
             path: null,
@@ -189,7 +192,9 @@ export function registerTracks(router) {
           }));
         } else {
           try {
-            const metadataTracks = await getAlbumTracksByAlbumMbid(releaseGroupMbid, { chooseRelease: chooseLibraryRelease });
+            const metadataTracks = await getAlbumTracksByAlbumMbid(releaseGroupMbid, {
+              chooseRelease: chooseLibraryRelease,
+            });
             if (metadataTracks.length > 0) {
               tracks = metadataTracks.map((track) => ({
                 id: track.recordingId || track.id,
@@ -207,7 +212,11 @@ export function registerTracks(router) {
               }));
             }
           } catch (mbError) {
-            logger.warn("library", `Failed to fetch tracks from metadata provider: ${mbError.message}`);          }
+            logger.warn(
+              "library",
+              `Failed to fetch tracks from metadata provider: ${mbError.message}`,
+            );
+          }
         }
       }
 

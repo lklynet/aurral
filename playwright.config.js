@@ -24,10 +24,14 @@ export default defineConfig({
         open: "never",
       },
     ],
-    ["json", { outputFile: process.env.PLAYWRIGHT_JSON_OUTPUT_FILE || `${outputDir}/results.json` }],
+    [
+      "json",
+      { outputFile: process.env.PLAYWRIGHT_JSON_OUTPUT_FILE || `${outputDir}/results.json` },
+    ],
   ],
   use: {
-    baseURL: process.env.AURRAL_BASE_URL || `http://127.0.0.1:${process.env.AURRAL_DEV_WEB_PORT || 3017}`,
+    baseURL:
+      process.env.AURRAL_BASE_URL || `http://127.0.0.1:${process.env.AURRAL_DEV_WEB_PORT || 3017}`,
     storageState: AUTH_STATE_PATH,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",

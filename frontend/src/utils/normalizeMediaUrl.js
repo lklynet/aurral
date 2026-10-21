@@ -1,5 +1,4 @@
-const IMAGE_PROXY_LOCAL_PATTERN =
-  /^\/api\/image-proxy\/([a-f0-9]{64})(?:\.[a-z0-9]+)?$/i;
+const IMAGE_PROXY_LOCAL_PATTERN = /^\/api\/image-proxy\/([a-f0-9]{64})(?:\.[a-z0-9]+)?$/i;
 const IMAGE_PROXY_BARE_PATTERN = /^([a-f0-9]{64})\.[a-z0-9]+$/i;
 
 export function normalizeMediaUrl(value) {

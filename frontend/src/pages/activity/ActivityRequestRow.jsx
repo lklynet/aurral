@@ -133,9 +133,7 @@ export default function ActivityRequestRow({
     !isBlockedTrack;
   const isThisPlaying = currentTrack?.id === String(request.jobId) && isPlaying;
   const jobError = jobErrors[request.jobId];
-  const reviewReasonSummary = isBlockedTrack
-    ? formatReviewReasonSummary(request.subtitle)
-    : null;
+  const reviewReasonSummary = isBlockedTrack ? formatReviewReasonSummary(request.subtitle) : null;
   const rowLabel = `${displayTitle}${displayMeta ? `, ${displayMeta}` : ""}`;
 
   return (
@@ -182,9 +180,7 @@ export default function ActivityRequestRow({
           )}
         </h2>
         <Tooltip content={displayMeta}>
-          <p className="activity-row__meta" >
-            {displayMeta}
-          </p>
+          <p className="activity-row__meta">{displayMeta}</p>
         </Tooltip>
         {request.progressLabel ? (
           <p className="activity-row__hint">
@@ -197,19 +193,19 @@ export default function ActivityRequestRow({
         ) : null}
         {reviewReasonSummary ? (
           <Tooltip content={request.subtitle || reviewReasonSummary}>
-            <p className="activity-row__hint" >
-              {reviewReasonSummary}
-            </p>
+            <p className="activity-row__hint">{reviewReasonSummary}</p>
           </Tooltip>
         ) : null}
         {request.sourceFilename ? (
           <Tooltip content={request.sourceFilename}>
-            <p className="activity-row__hint" >
-              {request.sourceFilename}
-            </p>
+            <p className="activity-row__hint">{request.sourceFilename}</p>
           </Tooltip>
         ) : null}
-        {jobError ? <span className="activity-row__error" role="alert">{jobError}</span> : null}
+        {jobError ? (
+          <span className="activity-row__error" role="alert">
+            {jobError}
+          </span>
+        ) : null}
       </div>
       <span className={`activity-row__status-label activity-row__status-label--${status.tone}`}>
         {status.label}
@@ -234,7 +230,11 @@ export default function ActivityRequestRow({
               aria-busy={isApproving}
               label="Approve track"
             >
-              {isApproving ? <DotLoader size="sm" label={null} /> : <CheckCircle2 aria-hidden="true" />}
+              {isApproving ? (
+                <DotLoader size="sm" label={null} />
+              ) : (
+                <CheckCircle2 aria-hidden="true" />
+              )}
             </TooltipButton>
             <TooltipButton
               className="native-library-icon-button activity-row__action--deny"
@@ -269,9 +269,11 @@ export default function ActivityRequestRow({
             aria-busy={activeControl === "cancel"}
             label={activeControl === "cancel" ? "Cancelling download" : "Cancel download"}
           >
-            {activeControl === "cancel"
-              ? <DotLoader size="sm" label={null} />
-              : <Square aria-hidden="true" />}
+            {activeControl === "cancel" ? (
+              <DotLoader size="sm" label={null} />
+            ) : (
+              <Square aria-hidden="true" />
+            )}
           </TooltipButton>
         ) : null}
         {canRetry ? (
@@ -280,13 +282,19 @@ export default function ActivityRequestRow({
             onClick={() => onRetry(request.jobId)}
             disabled={Boolean(activeControl)}
             aria-busy={activeControl === "retry"}
-            label={activeControl === "retry"
-              ? "Restarting download"
-              : canCancel ? "Restart download" : "Retry download"}
+            label={
+              activeControl === "retry"
+                ? "Restarting download"
+                : canCancel
+                  ? "Restart download"
+                  : "Retry download"
+            }
           >
-            {activeControl === "retry"
-              ? <DotLoader size="sm" label={null} />
-              : <RotateCcw aria-hidden="true" />}
+            {activeControl === "retry" ? (
+              <DotLoader size="sm" label={null} />
+            ) : (
+              <RotateCcw aria-hidden="true" />
+            )}
           </TooltipButton>
         ) : null}
         <TooltipButton

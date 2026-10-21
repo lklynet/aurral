@@ -18,7 +18,8 @@ const isolatedElementState = new WeakMap();
 function getFocusableElements(container) {
   if (!container) return [];
   return Array.from(container.querySelectorAll(FOCUSABLE_SELECTOR)).filter(
-    (element) => element.getClientRects().length > 0 && element.getAttribute("aria-hidden") !== "true",
+    (element) =>
+      element.getClientRects().length > 0 && element.getAttribute("aria-hidden") !== "true",
   );
 }
 

@@ -453,8 +453,7 @@ export function buildUnifiedSuggestionSections(data) {
     const identity = getResultIdentity(data.top);
     const nameKey = data.top.type === "artist" ? normalizeSearchText(data.top.name) : null;
     const alreadyListed =
-      (identity && seen.has(identity)) ||
-      (nameKey && seenArtistNames.has(nameKey));
+      (identity && seen.has(identity)) || (nameKey && seenArtistNames.has(nameKey));
 
     if (identity) seen.add(identity);
     if (nameKey) seenArtistNames.add(nameKey);

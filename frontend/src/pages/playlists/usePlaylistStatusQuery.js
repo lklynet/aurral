@@ -12,11 +12,9 @@ export function usePlaylistStatusQuery({ enabled = true } = {}) {
     if (message?.type !== "playlist_status" || !message.status) return;
     queryClient.setQueryData(queryKeys.playlistStatus, message.status);
   }, []);
-  const { isConnected: socketConnected } = useWebSocketChannel(
-    "playlists",
-    applyStatusMessage,
-    { enabled },
-  );
+  const { isConnected: socketConnected } = useWebSocketChannel("playlists", applyStatusMessage, {
+    enabled,
+  });
   useEffect(() => {
     if (enabled && socketConnected) {
       queryClient.invalidateQueries({ queryKey: queryKeys.playlistStatus });
@@ -29,7 +27,8 @@ export function usePlaylistStatusQuery({ enabled = true } = {}) {
       if (!enabled || socketConnected) return false;
       if (typeof document !== "undefined" && document.hidden) return false;
       const status = currentQuery.state.data;
-      const active = status?.worker?.running === true ||
+      const active =
+        status?.worker?.running === true ||
         status?.hint?.phase === "preparing" ||
         status?.hint?.phase === "downloading";
       return active ? ACTIVE_POLL_INTERVAL_MS : IDLE_POLL_INTERVAL_MS;

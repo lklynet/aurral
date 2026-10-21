@@ -35,11 +35,14 @@ const SHARED_PICK = { name: "Shared Pick", mbid: mbid(12) };
 const VARIOUS_ARTISTS_MBID = "89ad4ac3-39f7-470e-963a-56509c546377";
 
 const similarBySeed = new Map([
-  [LIKED.mbid, [
-    { ...CLOSE_PICK, score: 900 },
-    { ...SHARED_PICK, score: 450 },
-    { ...LIBRARY, score: 300 },
-  ]],
+  [
+    LIKED.mbid,
+    [
+      { ...CLOSE_PICK, score: 900 },
+      { ...SHARED_PICK, score: 450 },
+      { ...LIBRARY, score: 300 },
+    ],
+  ],
   [LIBRARY.mbid, [{ ...SHARED_PICK, score: 800 }]],
 ]);
 
@@ -54,26 +57,34 @@ const json = (body, status = 200) =>
 const respond = (url) => {
   if (url.hostname === "labs.api.listenbrainz.org" && url.pathname === "/similar-artists/json") {
     const seed = url.searchParams.get("artist_mbids");
-    return json((similarBySeed.get(seed) || []).map((artist) => ({
-      artist_mbid: artist.mbid,
-      name: artist.name,
-      score: artist.score,
-      reference_mbid: seed,
-    })));
+    return json(
+      (similarBySeed.get(seed) || []).map((artist) => ({
+        artist_mbid: artist.mbid,
+        name: artist.name,
+        score: artist.score,
+        reference_mbid: seed,
+      })),
+    );
   }
   if (url.hostname === "api.listenbrainz.org" && url.pathname === "/1/metadata/artist/") {
-    return json(url.searchParams.get("artist_mbids").split(",").map((artistMbid) => ({
-      artist_mbid: artistMbid,
-      tag: {
-        artist: artistMbid === LIKED.mbid
-          ? [{ tag: "seen live", count: 9 }]
-          : [
-              { tag: "seen live", count: 9 },
-              { tag: "shoegaze", count: 4 },
-              { tag: "dream pop", count: 2 },
-            ],
-      },
-    })));
+    return json(
+      url.searchParams
+        .get("artist_mbids")
+        .split(",")
+        .map((artistMbid) => ({
+          artist_mbid: artistMbid,
+          tag: {
+            artist:
+              artistMbid === LIKED.mbid
+                ? [{ tag: "seen live", count: 9 }]
+                : [
+                    { tag: "seen live", count: 9 },
+                    { tag: "shoegaze", count: 4 },
+                    { tag: "dream pop", count: 2 },
+                  ],
+          },
+        })),
+    );
   }
   if (url.hostname === "api.listenbrainz.org" && url.pathname === "/1/stats/sitewide/recordings") {
     return json({
@@ -98,10 +109,17 @@ const respond = (url) => {
     });
   }
   if (url.hostname === "api.deezer.com" && url.pathname === "/search/artist") {
-    return json({ data: [{ id: 8, name: "Library Onesie" }, { id: 7, name: "Library One" }] });
+    return json({
+      data: [
+        { id: 8, name: "Library Onesie" },
+        { id: 7, name: "Library One" },
+      ],
+    });
   }
   if (url.hostname === "api.deezer.com" && url.pathname === "/artist/7/top") {
-    return json({ data: [{ title: "Hit Song", album: { title: "First Album" }, duration: 200, rank: 5000 }] });
+    return json({
+      data: [{ title: "Hit Song", album: { title: "First Album" }, duration: 200, rank: 5000 }],
+    });
   }
   return json({ error: "unexpected" }, 404);
 };
@@ -142,12 +160,24 @@ test("without a Last.fm key each user gets personal recommendations from ListenB
 
   const { body } = await getUserDiscovery(alice.id, 0);
   assert.equal(body.provider, "listenbrainz");
-  assert.deepEqual(body.basedOn.map((artist) => artist.name).sort(), [LIBRARY.name, LIKED.name].sort());
-  assert.deepEqual(body.recommendations.map((artist) => artist.name), [SHARED_PICK.name, CLOSE_PICK.name]);
+  assert.deepEqual(
+    body.basedOn.map((artist) => artist.name).sort(),
+    [LIBRARY.name, LIKED.name].sort(),
+  );
+  assert.deepEqual(
+    body.recommendations.map((artist) => artist.name),
+    [SHARED_PICK.name, CLOSE_PICK.name],
+  );
   assert.equal(body.recommendations[0].seedCount, 2);
   assert.deepEqual([...body.topGenres].sort(), ["dream pop", "shoegaze"]);
-  assert.equal(body.recommendations.some((artist) => artist.tags.includes("seen live")), false);
-  assert.equal(requests.some((url) => url.hostname === "ws.audioscrobbler.com"), false);
+  assert.equal(
+    body.recommendations.some((artist) => artist.tags.includes("seen live")),
+    false,
+  );
+  assert.equal(
+    requests.some((url) => url.hostname === "ws.audioscrobbler.com"),
+    false,
+  );
   const likedTagLookups = requests.filter(
     (url) =>
       url.pathname === "/1/metadata/artist/" &&
@@ -167,7 +197,9 @@ const requestApi = async (mountPath, router, path) => {
     const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
   });
   try {
-    const response = await originalFetch(`http://127.0.0.1:${server.address().port}${mountPath}${path}`);
+    const response = await originalFetch(
+      `http://127.0.0.1:${server.address().port}${mountPath}${path}`,
+    );
     return { status: response.status, body: await response.json() };
   } finally {
     await new Promise((resolve) => server.close(resolve));
@@ -175,10 +207,17 @@ const requestApi = async (mountPath, router, path) => {
 };
 
 test("without a Last.fm key tag search lists MusicBrainz's artists for the tag", async () => {
-  const { status, body } = await requestApi("/api/search", searchRouter, "?scope=tag&q=%23shoegaze");
+  const { status, body } = await requestApi(
+    "/api/search",
+    searchRouter,
+    "?scope=tag&q=%23shoegaze",
+  );
 
   assert.equal(status, 200);
-  assert.deepEqual(body.items.map((artist) => artist.name), ["Shoegaze Leader", "Shoegaze Second"]);
+  assert.deepEqual(
+    body.items.map((artist) => artist.name),
+    ["Shoegaze Leader", "Shoegaze Second"],
+  );
   assert.equal(body.hasMore, false);
   const search = requests.find((url) => url.hostname === "musicbrainz.org");
   assert.equal(search.searchParams.get("query"), 'tag:"shoegaze"');
@@ -195,7 +234,11 @@ test("without a Last.fm key artist pages list ListenBrainz similar artists", asy
 
   assert.deepEqual(
     body.artists.map((artist) => [artist.name, artist.match]),
-    [[CLOSE_PICK.name, 100], [SHARED_PICK.name, 50], [LIBRARY.name, 33]],
+    [
+      [CLOSE_PICK.name, 100],
+      [SHARED_PICK.name, 50],
+      [LIBRARY.name, 33],
+    ],
   );
 });
 
@@ -206,10 +249,18 @@ test("without a Last.fm key a Mix flow picks the library artist's own Deezer top
   });
 
   assert.deepEqual(
-    plan.primaryTracks.map((track) => [track.source, track.artistName, track.trackName, track.albumName]),
+    plan.primaryTracks.map((track) => [
+      track.source,
+      track.artistName,
+      track.trackName,
+      track.albumName,
+    ]),
     [["mix", LIBRARY.name, "Hit Song", "First Album"]],
   );
-  assert.equal(requests.some((url) => url.pathname === "/artist/8/top"), false);
+  assert.equal(
+    requests.some((url) => url.pathname === "/artist/8/top"),
+    false,
+  );
 });
 
 test("without a Last.fm key flows of any size share one ListenBrainz trending request", async () => {
@@ -225,7 +276,9 @@ test("without a Last.fm key flows of any size share one ListenBrainz trending re
 test("switching sources never keeps the other source's trending artists when ListenBrainz fails", async () => {
   Object.assign(discovery.getDiscoveryCache(), {
     provider: "lastfm",
-    globalTop: [{ id: mbid(90), name: "Last.fm Chart Artist", popularityLabel: "1M listeners on Last.fm" }],
+    globalTop: [
+      { id: mbid(90), name: "Last.fm Chart Artist", popularityLabel: "1M listeners on Last.fm" },
+    ],
   });
 
   await discovery.updateDiscoveryCache();

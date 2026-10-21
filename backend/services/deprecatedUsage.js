@@ -24,8 +24,10 @@ const notedThisProcess = new Set();
 
 function listConfigDeprecations() {
   const kinds = [];
-  if (process.env.WEEKLY_FLOW_FOLDER || process.env.PLAYLIST_FOLDER) kinds.push("download-folder-env");
-  if (path.resolve(resolveAurralDataDir()) === LEGACY_CONTAINER_DATA_DIR) kinds.push("legacy-data-dir");
+  if (process.env.WEEKLY_FLOW_FOLDER || process.env.PLAYLIST_FOLDER)
+    kinds.push("download-folder-env");
+  if (path.resolve(resolveAurralDataDir()) === LEGACY_CONTAINER_DATA_DIR)
+    kinds.push("legacy-data-dir");
   if (process.env.AUTH_PASSWORD) kinds.push("auth-password-env");
   return kinds;
 }
@@ -42,7 +44,10 @@ export function noteDeprecatedUsage(kind) {
   logger.warn("system", DEPRECATIONS[kind]);
   try {
     const recorded = dbOps.getJSONSetting(DEPRECATED_USAGE_SETTING) || {};
-    dbOps.setJSONSetting(DEPRECATED_USAGE_SETTING, { ...recorded, [kind]: { lastSeenAt: Date.now() } });
+    dbOps.setJSONSetting(DEPRECATED_USAGE_SETTING, {
+      ...recorded,
+      [kind]: { lastSeenAt: Date.now() },
+    });
   } catch (error) {
     logger.warn("system", "Could not record deprecated usage", { kind, reason: error.message });
   }
@@ -51,7 +56,11 @@ export function noteDeprecatedUsage(kind) {
 export function getDeprecatedUsage() {
   const recorded = dbOps.getJSONSetting(DEPRECATED_USAGE_SETTING) || {};
   return [
-    ...listConfigDeprecations().map((kind) => ({ kind, message: DEPRECATIONS[kind], lastSeenAt: null })),
+    ...listConfigDeprecations().map((kind) => ({
+      kind,
+      message: DEPRECATIONS[kind],
+      lastSeenAt: null,
+    })),
     ...Object.entries(recorded)
       .filter(([kind]) => DEPRECATIONS[kind])
       .map(([kind, entry]) => ({

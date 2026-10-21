@@ -34,9 +34,7 @@ export const resolveLibraryArtistPath = ({ mbid, name }) =>
   text(mbid) || text(name) ? buildPath("library-artist", { mbid, name }) : null;
 
 export const resolveLibraryAlbumPath = ({ mbid, name, artistName }) =>
-  text(mbid) || text(name)
-    ? buildPath("library-album", { mbid, name, artist: artistName })
-    : null;
+  text(mbid) || text(name) ? buildPath("library-album", { mbid, name, artist: artistName }) : null;
 
 const releaseTarget = (artistMbid, albumMbid, artistName, albumName) => ({
   to: `/artist/${artistMbid}/release/${albumMbid}`,

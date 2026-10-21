@@ -73,7 +73,9 @@ const Login = () => {
       } catch (err) {
         if (popup && !popup.closed) popup.close();
         setError(
-          err.response?.data?.message || err.response?.data?.error || "Failed to start Plex sign-in",
+          err.response?.data?.message ||
+            err.response?.data?.error ||
+            "Failed to start Plex sign-in",
         );
         return;
       }
@@ -91,9 +93,7 @@ const Login = () => {
           if (err.response?.data?.retryable) continue;
           if (popup && !popup.closed) popup.close();
           setError(
-            err.response?.data?.message ||
-              err.response?.data?.error ||
-              "Plex sign-in failed",
+            err.response?.data?.message || err.response?.data?.error || "Plex sign-in failed",
           );
           return;
         }

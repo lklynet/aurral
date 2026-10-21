@@ -21,10 +21,7 @@ export {
   stripPromoDescriptors,
 } from "./semanticPolicy.js";
 export { MATCH_POLICY, getMatcherStatus } from "./nativeMatcher.js";
-export {
-  evaluateTrackCandidates,
-  prefilterCandidates,
-} from "./decisionEngine.js";
+export { evaluateTrackCandidates, prefilterCandidates } from "./decisionEngine.js";
 export {
   validateDownloadedTrackFile,
   selectVerifiedDownloadedFile,

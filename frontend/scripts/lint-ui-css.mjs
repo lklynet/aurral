@@ -53,10 +53,14 @@ const colorKeywords = new Set(
    whitesmoke yellow yellowgreen`.split(/\s+/),
 );
 
-const colorFunctionPattern = /\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|light-dark|device-cmyk)\s*\(/i;
+const colorFunctionPattern =
+  /\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|light-dark|device-cmyk)\s*\(/i;
 const hexColorPattern = /#[\da-f]{3,8}\b/i;
 const propertySuggestions = [
-  [/^(?:color|text-decoration-color|fill|stroke|caret-color|flood-color|lighting-color|stop-color)$/, "--aurral-text"],
+  [
+    /^(?:color|text-decoration-color|fill|stroke|caret-color|flood-color|lighting-color|stop-color)$/,
+    "--aurral-text",
+  ],
   [/^(?:background|background-color|background-image)$/, "--aurral-surface"],
   [/^border(?:-.+)?$/, "--aurral-border"],
   [/^outline(?:-.+)?$/, "--aurral-ring"],
@@ -84,14 +88,19 @@ export function hasStaticColor(value) {
     .replace(/url\([^)]*\)/gi, "")
     .replace(/\/\*[\s\S]*?\*\//g, "");
 
-  if (hexColorPattern.test(withoutUrlsAndComments) || colorFunctionPattern.test(withoutUrlsAndComments)) {
+  if (
+    hexColorPattern.test(withoutUrlsAndComments) ||
+    colorFunctionPattern.test(withoutUrlsAndComments)
+  ) {
     return true;
   }
 
-  return withoutUrlsAndComments
-    .toLowerCase()
-    .match(/(?<![\w-])[a-z]+(?![\w-])/g)
-    ?.some((word) => colorKeywords.has(word)) ?? false;
+  return (
+    withoutUrlsAndComments
+      .toLowerCase()
+      .match(/(?<![\w-])[a-z]+(?![\w-])/g)
+      ?.some((word) => colorKeywords.has(word)) ?? false
+  );
 }
 
 export function isColorBearingProperty(property) {
@@ -141,8 +150,10 @@ export function getClosestToken(name, tokenNames) {
   return closest && closestDistance <= 2 ? closest : null;
 }
 
-const motionProperties = /^(?:transition|transition-duration|transition-timing-function|transition-delay|animation|animation-duration|animation-timing-function)$/;
-const rawEasingPattern = /(?<![\w-])(?:ease|ease-in|ease-out|ease-in-out|linear|step-start|step-end)(?![\w-])|\b(?:cubic-bezier|steps|linear)\s*\(/i;
+const motionProperties =
+  /^(?:transition|transition-duration|transition-timing-function|transition-delay|animation|animation-duration|animation-timing-function)$/;
+const rawEasingPattern =
+  /(?<![\w-])(?:ease|ease-in|ease-out|ease-in-out|linear|step-start|step-end)(?![\w-])|\b(?:cubic-bezier|steps|linear)\s*\(/i;
 const rawDurationPattern = /(?<![\w.#-])-?\d*\.?\d+m?s(?![\w-])/gi;
 const allowedDurations = new Set(["0s", "0ms", "0.01ms"]);
 
@@ -153,7 +164,9 @@ export function findRawMotion(property, value) {
   const looping = property.startsWith("animation") && /\binfinite\b/i.test(value);
   if (looping) return null;
   const durations = withoutVariables.match(rawDurationPattern) ?? [];
-  return durations.some((duration) => !allowedDurations.has(duration.toLowerCase())) ? "duration" : null;
+  return durations.some((duration) => !allowedDurations.has(duration.toLowerCase()))
+    ? "duration"
+    : null;
 }
 
 const zIndexKeywords = new Set(["auto", "inherit", "initial", "unset", "revert", "revert-layer"]);
@@ -169,7 +182,11 @@ export function hasStaticViewportHeight(value) {
 
 function isInsideHoverMedia(node) {
   for (let parent = node.parent; parent; parent = parent.parent) {
-    if (parent.type === "atrule" && parent.name === "media" && /\(\s*hover\s*:\s*hover\s*\)/.test(parent.params)) {
+    if (
+      parent.type === "atrule" &&
+      parent.name === "media" &&
+      /\(\s*hover\s*:\s*hover\s*\)/.test(parent.params)
+    ) {
       return true;
     }
   }
@@ -283,7 +300,7 @@ export function lintCss(css, { filePath = "<input>", tokenNames = new Set() } = 
     if (!hasStaticColor(declaration.value)) return;
 
     const suggestion = isCustomProperty
-      ? localPropertySuggestions.get(property) ?? null
+      ? (localPropertySuggestions.get(property) ?? null)
       : getSuggestedToken(property, tokenNames);
     const correction = suggestion
       ? `use var(${suggestion}) when this is Aurral theme styling.`

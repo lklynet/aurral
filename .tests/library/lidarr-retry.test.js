@@ -1,10 +1,7 @@
 import assert from "node:assert/strict";
 import { test, afterAll, vi } from "vite-plus/test";
 
-import {
-  cleanupIsolatedState,
-  setupIsolatedBackend,
-} from "../helpers/backendTestHarness.js";
+import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTestHarness.js";
 
 const [isolatedState, { db }, honkerDb, libraryManagerModule, systemTaskWorker] =
   await setupIsolatedBackend(
@@ -69,10 +66,7 @@ test("unavailable Lidarr keeps one retry job and continues its retry chain", asy
   const claimedRetry = queue.claimOne(honkerDb.getWorkerId());
   assert.equal(claimedRetry?.id, firstRetryJob.id);
 
-  await systemTaskWorker.processSystemTask(
-    { kind: "lidarr-retry" },
-    claimedRetry,
-  );
+  await systemTaskWorker.processSystemTask({ kind: "lidarr-retry" }, claimedRetry);
   await settleRetryEnqueues();
 
   const successorJobs = getPendingRetryJobs();

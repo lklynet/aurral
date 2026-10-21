@@ -139,9 +139,7 @@ function collectStaticStrings(expression, scope, seen = new Set()) {
   }
 
   if (expression.type === "CallExpression" || expression.type === "NewExpression") {
-    return expression.arguments.flatMap((argument) =>
-      collectStaticStrings(argument, scope, seen),
-    );
+    return expression.arguments.flatMap((argument) => collectStaticStrings(argument, scope, seen));
   }
 
   if (expression.type === "ArrayExpression") {
@@ -159,9 +157,12 @@ function includesArtworkColorReference(expression) {
   if (!expression) return false;
   if (expression.type === "Identifier") return artworkColorNames.has(expression.name);
   if (expression.type === "MemberExpression") {
-    return artworkColorNames.has(expression.computed ? expression.property.value : expression.property.name);
+    return artworkColorNames.has(
+      expression.computed ? expression.property.value : expression.property.name,
+    );
   }
-  if (expression.type === "ChainExpression") return includesArtworkColorReference(expression.expression);
+  if (expression.type === "ChainExpression")
+    return includesArtworkColorReference(expression.expression);
   if (expression.type === "LogicalExpression") {
     return (
       includesArtworkColorReference(expression.left) ||
@@ -172,10 +173,7 @@ function includesArtworkColorReference(expression) {
 }
 
 function collectArtworkFallbackNodes(property, expression, scope, seen = new Set()) {
-  if (
-    !expression ||
-    (!property.startsWith("--") && !isColorBearingProperty(property))
-  ) {
+  if (!expression || (!property.startsWith("--") && !isColorBearingProperty(property))) {
     return new Set();
   }
 
@@ -218,9 +216,9 @@ function collectArtworkFallbackNodes(property, expression, scope, seen = new Set
 
   if (expression.type === "CallExpression" || expression.type === "NewExpression") {
     return new Set(
-      expression.arguments.flatMap((argument) =>
-        [...collectArtworkFallbackNodes(property, argument, scope, seen)],
-      ),
+      expression.arguments.flatMap((argument) => [
+        ...collectArtworkFallbackNodes(property, argument, scope, seen),
+      ]),
     );
   }
 
@@ -317,7 +315,7 @@ export const noHardCodedStyleColor = createStyleRule({
     const isColorProperty = cssProperty.startsWith("--") || isColorBearingProperty(cssProperty);
     if (!isColorProperty) return;
 
-            const suggestion =
+    const suggestion =
       getSuggestedToken(cssProperty, tokenNames) ||
       (tokenNames.has("--aurral-text") ? "--aurral-text" : null);
     const staticStrings = collectStaticStrings(property.value, scope);

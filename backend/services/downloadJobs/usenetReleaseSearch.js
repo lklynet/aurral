@@ -13,7 +13,11 @@ import {
   normalizeTitle,
   getYear,
 } from "../providers/brainzmashRanking.js";
-import { coreAlbumTitle, isVariousArtistsCredit, otherProductMarker } from "../trackMatching/titleText.js";
+import {
+  coreAlbumTitle,
+  isVariousArtistsCredit,
+  otherProductMarker,
+} from "../trackMatching/titleText.js";
 import {
   checkVariantCompatibility,
   labelContradictions,
@@ -137,12 +141,15 @@ function containsPhrase(words, phrase) {
 // the artist once and is a different album. "Queen II" still names both.
 function containsAlbumApartFromArtist(words, album, artists) {
   const artistSpans = artists.flatMap((name) => phraseSpans(words, name));
-  const apart = ([start, end], [artistStart, artistEnd]) => artistEnd <= start || end <= artistStart;
+  const apart = ([start, end], [artistStart, artistEnd]) =>
+    artistEnd <= start || end <= artistStart;
   const inside = ([start, end], [artistStart, artistEnd]) =>
     start <= artistStart && artistEnd <= end && artistEnd - artistStart < end - start;
-  return phraseSpans(words, album).some((span) =>
-    artistSpans.some((artistSpan) => apart(span, artistSpan))
-    || artistSpans.every((artistSpan) => apart(span, artistSpan) || inside(span, artistSpan)));
+  return phraseSpans(words, album).some(
+    (span) =>
+      artistSpans.some((artistSpan) => apart(span, artistSpan)) ||
+      artistSpans.every((artistSpan) => apart(span, artistSpan) || inside(span, artistSpan)),
+  );
 }
 
 function withoutCredits(title) {
@@ -154,7 +161,11 @@ function withoutCredits(title) {
 
 function readReleaseRequest(context) {
   const compilation = context?.compilation === true || isVariousArtistsCredit(context?.artistName);
-  const artists = (compilation ? creditedArtists(context) : [context?.artistName, ...(context?.artistAliases || [])])
+  const artists = (
+    compilation
+      ? creditedArtists(context)
+      : [context?.artistName, ...(context?.artistAliases || [])]
+  )
     .map((name) => String(name || "").trim())
     .filter(Boolean)
     .flatMap((name) => [name, name.replace(/^the\s+/iu, "")]);
@@ -173,10 +184,18 @@ function readReleaseRequest(context) {
 
 export function rankUsenetReleases(releases, context, options = {}) {
   const request = readReleaseRequest(context);
-  const albumVersions = prepareVariantRequest({ albumName: request.albumName, artists: request.artists,
-    secondaryTypes: request.secondaryTypes, releaseTracks: context?.releaseTracks });
-  const trackVersions = prepareVariantRequest({ albumName: request.albumName, artists: request.artists,
-    secondaryTypes: request.secondaryTypes, trackName: request.trackName });
+  const albumVersions = prepareVariantRequest({
+    albumName: request.albumName,
+    artists: request.artists,
+    secondaryTypes: request.secondaryTypes,
+    releaseTracks: context?.releaseTracks,
+  });
+  const trackVersions = prepareVariantRequest({
+    albumName: request.albumName,
+    artists: request.artists,
+    secondaryTypes: request.secondaryTypes,
+    trackName: request.trackName,
+  });
   const expectedYear = getYear(context?.releaseYear);
   const seen = new Set();
   const ranked = [];
@@ -187,35 +206,58 @@ export function rankUsenetReleases(releases, context, options = {}) {
     if (seen.has(key)) continue;
     seen.add(key);
     const title = release.title;
-    const raw = { release, file: title, size: Number(release.size || 0), downloadUrl: release.downloadUrl,
-      indexerId: release.indexerId, indexer: release.indexer, guid: release.guid };
+    const raw = {
+      release,
+      file: title,
+      size: Number(release.size || 0),
+      downloadUrl: release.downloadUrl,
+      indexerId: release.indexerId,
+      indexer: release.indexer,
+      guid: release.guid,
+    };
     const words = titleWords(title);
 
     // Identity gate: the artist (any artist for a compilation) and the album
     // or track title appear in the release title.
-    const hasAlbum = request.albums.some((album) => containsAlbumApartFromArtist(words, album,
-      request.compilation ? [] : request.artists));
-    const hasArtist = (request.compilation && hasAlbum)
-      || request.artists.some((name) => containsPhrase(words, name));
+    const hasAlbum = request.albums.some((album) =>
+      containsAlbumApartFromArtist(words, album, request.compilation ? [] : request.artists),
+    );
+    const hasArtist =
+      (request.compilation && hasAlbum) ||
+      request.artists.some((name) => containsPhrase(words, name));
     const hasTrack = request.tracks.some((track) => containsPhrase(words, track));
     // A release must be the requested version: a remix or radio edit of the
     // track is not downloaded for the original, nor an acoustic album for the
     // album. Every version word in the title counts, however it is noted,
     // unless the request names it; an album is not asked for its tracks'.
-    const otherVersion = labelContradictions(title, hasAlbum ? albumVersions : trackVersions).length > 0
-      || (hasTrack && !checkVariantCompatibility(null, { title }, trackVersions).compatible);
-    const otherProduct = otherProductMarker(title,
-      [request.albumName, request.trackName, ...request.artists], { album: hasAlbum });
-    const admissible = hasAudioCategory(release) && hasArtist && (hasAlbum || hasTrack)
-      && !otherVersion && !otherProduct;
+    const otherVersion =
+      labelContradictions(title, hasAlbum ? albumVersions : trackVersions).length > 0 ||
+      (hasTrack && !checkVariantCompatibility(null, { title }, trackVersions).compatible);
+    const otherProduct = otherProductMarker(
+      title,
+      [request.albumName, request.trackName, ...request.artists],
+      { album: hasAlbum },
+    );
+    const admissible =
+      hasAudioCategory(release) &&
+      hasArtist &&
+      (hasAlbum || hasTrack) &&
+      !otherVersion &&
+      !otherProduct;
     if (!admissible) {
       ranked.push({
         raw,
         score: 0,
         resolvedAlbumName: null,
         releaseAdmissible: false,
-        scores: { artist: hasArtist ? 100 : 0, track: hasTrack ? 100 : 0, album: hasAlbum ? 100 : 0,
-          year: 0, format: 0, size: 0 },
+        scores: {
+          artist: hasArtist ? 100 : 0,
+          track: hasTrack ? 100 : 0,
+          album: hasAlbum ? 100 : 0,
+          year: 0,
+          format: 0,
+          size: 0,
+        },
       });
       continue;
     }
@@ -233,8 +275,14 @@ export function rankUsenetReleases(releases, context, options = {}) {
       score: tieScore,
       resolvedAlbumName: hasAlbum ? request.albumName : null,
       releaseAdmissible: true,
-      scores: { artist: 100, track: hasTrack ? 100 : 0, album: hasAlbum ? 100 : 0,
-        year: yearScore, format: formatScore, size: sizeScore },
+      scores: {
+        artist: 100,
+        track: hasTrack ? 100 : 0,
+        album: hasAlbum ? 100 : 0,
+        year: yearScore,
+        format: formatScore,
+        size: sizeScore,
+      },
     });
   }
   return ranked.sort((left, right) => {
@@ -308,7 +356,8 @@ export function buildUsenetSearchQueries(context, { musicSearch = false, albumGr
   const trackArtist = compilation ? newznabQueryText(creditedArtists(context)[0]) : artist;
   const album = context?.albumName ? newznabQueryText(coreAlbumTitle(context.albumName)) : "";
   const track = albumGrab ? "" : newznabQueryText(context?.trackName);
-  const year = album && artist.toLowerCase() === album.toLowerCase() ? getYear(context?.releaseYear) : null;
+  const year =
+    album && artist.toLowerCase() === album.toLowerCase() ? getYear(context?.releaseYear) : null;
   const join = (...parts) => parts.filter(Boolean).join(" ");
   const queries = [];
   if (musicSearch && !compilation && artist && album) {
@@ -327,7 +376,15 @@ export function isProwlarrMusicQuery(query) {
 export function isAudioFile(filePath) {
   const ext = path.extname(String(filePath || "")).toLowerCase();
   return [
-    ".flac", ".mp3", ".m4a", ".ogg", ".wav",
-    ".aac", ".opus", ".alac", ".ape", ".wma",
+    ".flac",
+    ".mp3",
+    ".m4a",
+    ".ogg",
+    ".wav",
+    ".aac",
+    ".opus",
+    ".alac",
+    ".ape",
+    ".wma",
   ].includes(ext);
 }

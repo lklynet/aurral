@@ -30,7 +30,11 @@ const pickAvailableName = (userId, name) => {
     [
       ...flowPlaylistConfig.getStaticPlaylistsOwnedByUser(userId),
       ...flowPlaylistConfig.getFlowsOwnedByUser(userId),
-    ].map((entry) => String(entry?.name || "").trim().toLowerCase()),
+    ].map((entry) =>
+      String(entry?.name || "")
+        .trim()
+        .toLowerCase(),
+    ),
   );
   for (let attempt = 1; ; attempt += 1) {
     const candidate =
@@ -60,7 +64,9 @@ async function getForYouPlaylists(userId) {
   const playlists = [];
   for (const result of results) {
     if (result.status !== "fulfilled") continue;
-    for (const playlist of result.value.filter((entry) => !seen.has(entry.id)).slice(0, FOR_YOU_PER_TERM)) {
+    for (const playlist of result.value
+      .filter((entry) => !seen.has(entry.id))
+      .slice(0, FOR_YOU_PER_TERM)) {
       seen.add(playlist.id);
       playlists.push(playlist);
     }

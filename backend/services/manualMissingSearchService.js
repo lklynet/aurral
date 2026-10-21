@@ -1,4 +1,7 @@
-import { registerDownloadProviderWork, clearDownloadProviderWork } from "./downloadJobs/downloadCancellation.js";
+import {
+  registerDownloadProviderWork,
+  clearDownloadProviderWork,
+} from "./downloadJobs/downloadCancellation.js";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { getDownloadClient } from "./download/downloadClientSettings.js";
@@ -11,7 +14,17 @@ const MAX_SESSIONS = 250;
 const sessions = new Map();
 const YTDLP_LIVE_STATUSES = new Set(["is_live", "was_live", "post_live", "is_upcoming"]);
 const AUDIO_EXTENSIONS = new Set([
-  ".aac", ".aiff", ".alac", ".ape", ".flac", ".m4a", ".mp3", ".ogg", ".opus", ".wav", ".wma",
+  ".aac",
+  ".aiff",
+  ".alac",
+  ".ape",
+  ".flac",
+  ".m4a",
+  ".mp3",
+  ".ogg",
+  ".opus",
+  ".wav",
+  ".wma",
 ]);
 
 function text(value) {
@@ -65,8 +78,14 @@ function resultView(source, raw) {
     return {
       title: path.basename(normalizedFile) || "Untitled file",
       subtitle: [text(raw.user), parent].filter(Boolean).join(" · "),
-      details: [fileFormat(raw.file), raw.bitrate ? `${raw.bitrate} kbps` : "", formatDuration(raw.length), formatBytes(raw.size), Number(raw.slots) > 0 ? "Free slot" : "Queued", Number(raw.speed) > 0 ? `${formatBytes(raw.speed)}/s` : ""]
-        .filter(Boolean),
+      details: [
+        fileFormat(raw.file),
+        raw.bitrate ? `${raw.bitrate} kbps` : "",
+        formatDuration(raw.length),
+        formatBytes(raw.size),
+        Number(raw.slots) > 0 ? "Free slot" : "Queued",
+        Number(raw.speed) > 0 ? `${formatBytes(raw.speed)}/s` : "",
+      ].filter(Boolean),
     };
   }
   if (source === "deemix") {
@@ -86,8 +105,12 @@ function resultView(source, raw) {
   return {
     title: text(raw.title) || "Untitled release",
     subtitle: text(raw.indexer),
-    details: [formatBytes(raw.size), raw.files ? `${raw.files} files` : "", raw.grabs ? `${raw.grabs} grabs` : "", raw.publishDate ? new Date(raw.publishDate).toLocaleDateString("en-GB") : ""]
-      .filter(Boolean),
+    details: [
+      formatBytes(raw.size),
+      raw.files ? `${raw.files} files` : "",
+      raw.grabs ? `${raw.grabs} grabs` : "",
+      raw.publishDate ? new Date(raw.publishDate).toLocaleDateString("en-GB") : "",
+    ].filter(Boolean),
   };
 }
 
@@ -106,7 +129,8 @@ async function searchSlskd(query, workContext) {
     emptyTimeoutMs: 120000,
     gracePeriodMs: 0,
     cleanupTimeoutMs: 20000,
-    onSearchCreated: (id) => registerDownloadProviderWork({ ...workContext, provider: "slskd-search", workId: id }),
+    onSearchCreated: (id) =>
+      registerDownloadProviderWork({ ...workContext, provider: "slskd-search", workId: id }),
     onSearchSettled: (id) => clearDownloadProviderWork({ provider: "slskd-search", workId: id }),
   });
   return results.filter((entry) => {
@@ -118,12 +142,14 @@ async function searchSlskd(query, workContext) {
 async function searchSource(source, query, workContext) {
   if (source === "slskd") return searchSlskd(query, workContext);
   if (source === "deemix") {
-    return (await getDownloadClient("deemix").search(query, { limit: 50 }))
-      .filter((entry) => entry?.readable !== false);
+    return (await getDownloadClient("deemix").search(query, { limit: 50 })).filter(
+      (entry) => entry?.readable !== false,
+    );
   }
   if (source === "ytdlp") {
-    return (await getDownloadClient("ytdlp").search(query, { limit: 10 }))
-      .filter((entry) => !isYtdlpLiveResult(entry));
+    return (await getDownloadClient("ytdlp").search(query, { limit: 10 })).filter(
+      (entry) => !isYtdlpLiveResult(entry),
+    );
   }
   if (source === "usenet") return prowlarrClient.search(query, { limit: MAX_RESULTS });
   throw new Error("Unknown manual search source");
@@ -136,10 +162,20 @@ export function getManualDownloadSources() {
   if (status.deemix.configured) sources.push({ id: "deemix", label: "deemix", source: "deemix" });
   if (status.ytdlp.configured) sources.push({ id: "ytdlp", label: "yt-dlp", source: "ytdlp" });
   if (status.usenet.prowlarrConfigured && status.usenet.sabnzbdConfigured) {
-    sources.push({ id: "usenet:sabnzbd", label: "Usenet · SABnzbd", source: "usenet", downloadClient: "sabnzbd" });
+    sources.push({
+      id: "usenet:sabnzbd",
+      label: "Usenet · SABnzbd",
+      source: "usenet",
+      downloadClient: "sabnzbd",
+    });
   }
   if (status.usenet.prowlarrConfigured && status.usenet.nzbgetConfigured) {
-    sources.push({ id: "usenet:nzbget", label: "Usenet · NZBGet", source: "usenet", downloadClient: "nzbget" });
+    sources.push({
+      id: "usenet:nzbget",
+      label: "Usenet · NZBGet",
+      source: "usenet",
+      downloadClient: "nzbget",
+    });
   }
   return sources;
 }
@@ -156,7 +192,9 @@ export async function createManualMissingSearch({
   if (!sourceOption) throw new Error("That download client is not currently available");
   const query = buildQuery(job);
   if (!query) throw new Error("This track has no searchable artist or title");
-  const rawResults = (await searchSource(sourceOption.source, query, { jobId: job.id, playlistId })).slice(0, MAX_RESULTS);
+  const rawResults = (
+    await searchSource(sourceOption.source, query, { jobId: job.id, playlistId })
+  ).slice(0, MAX_RESULTS);
   return storeManualMissingSearch({
     jobId: job.id,
     actorId,

@@ -22,7 +22,13 @@ const artist = {
   genres: [],
   "release-groups": [
     release,
-    { ...release, id: "00000000-0000-4000-8000-000000001183", title: "Other provider", coverUrl: OTHER_COVER, listenerCount: 10 },
+    {
+      ...release,
+      id: "00000000-0000-4000-8000-000000001183",
+      title: "Other provider",
+      coverUrl: OTHER_COVER,
+      listenerCount: 10,
+    },
   ],
 };
 
@@ -34,20 +40,25 @@ async function fixture(page, { missingPreviews = false, missingOriginal = false 
     const url = new URL(route.request().url());
     imageRequests.push(url);
     const original = url.pathname.startsWith("/fanart/");
-    const missing = (missingPreviews && !original && url.pathname.endsWith("/cover.jpg")) ||
+    const missing =
+      (missingPreviews && !original && url.pathname.endsWith("/cover.jpg")) ||
       (missingOriginal && original);
     const size = original ? 1000 : url.pathname.startsWith("/bigpreview/") ? 400 : 200;
     return route.fulfill({
       status: missing ? 404 : 200,
       contentType: "image/svg+xml",
       headers: { "access-control-allow-origin": "*" },
-      body: missing ? "" : `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}"><rect width="${size}" height="${size}" fill="#b23c3c"/></svg>`,
+      body: missing
+        ? ""
+        : `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}"><rect width="${size}" height="${size}" fill="#b23c3c"/></svg>`,
     });
   });
-  await page.route(OTHER_COVER, (route) => route.fulfill({
-    contentType: "image/svg+xml",
-    body: '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"/>',
-  }));
+  await page.route(OTHER_COVER, (route) =>
+    route.fulfill({
+      contentType: "image/svg+xml",
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"/>',
+    }),
+  );
   await page.route("**/api/**", (route) => {
     const pathname = new URL(route.request().url()).pathname;
     if (!pathname.startsWith("/api/")) return route.continue();
@@ -56,15 +67,24 @@ async function fixture(page, { missingPreviews = false, missingOriginal = false 
       return json({ authRequired: false, onboardingRequired: false, lidarrConfigured: true });
     }
     if (pathname === "/api/health") return json({ lidarrConfigured: true });
-    if (pathname === "/api/discover") return json({ recommendations: [{ ...artist, image: COVER }], configured: true });
+    if (pathname === "/api/discover")
+      return json({ recommendations: [{ ...artist, image: COVER }], configured: true });
     if (pathname === "/api/discover/editorial") return json({ forYou: [], genres: [] });
     if (pathname === "/api/users/me/discover-layout") return json({ layout: [] });
     if (pathname === "/api/discover/feedback") return json({ feedback: [] });
     if (pathname === `/api/artists/${ARTIST_ID}/stream`) {
-      const events = { artist, cover: { images: [] }, library: { exists: false }, similar: [], complete: {} };
+      const events = {
+        artist,
+        cover: { images: [] },
+        library: { exists: false },
+        similar: [],
+        complete: {},
+      };
       return route.fulfill({
         contentType: "text/event-stream",
-        body: Object.entries(events).map(([event, data]) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`).join(""),
+        body: Object.entries(events)
+          .map(([event, data]) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+          .join(""),
       });
     }
     if (pathname === `/api/artists/release-group/${RELEASE_ID}`) return json(release);
@@ -83,8 +103,18 @@ async function fixture(page, { missingPreviews = false, missingOriginal = false 
         id: PLAYLIST_ID,
         name: "Artwork mix",
         tracks: [
-          { trackName: "First artwork", artistName: artist.name, artworkUrl: COVER, preview_url: "/artwork-preview.wav" },
-          { trackName: "Next artwork", artistName: artist.name, artworkUrl: NEXT_COVER, preview_url: "/artwork-preview.wav" },
+          {
+            trackName: "First artwork",
+            artistName: artist.name,
+            artworkUrl: COVER,
+            preview_url: "/artwork-preview.wav",
+          },
+          {
+            trackName: "Next artwork",
+            artistName: artist.name,
+            artworkUrl: NEXT_COVER,
+            preview_url: "/artwork-preview.wav",
+          },
           { trackName: "Local artwork", artistName: artist.name, artworkUrl: "/arralogo.svg" },
         ],
       });
@@ -95,26 +125,39 @@ async function fixture(page, { missingPreviews = false, missingOriginal = false 
   return { imageRequests, coverRequests };
 }
 
-const loadedSource = (image) => image.evaluate((element) =>
-  element.complete && element.naturalWidth > 0 ? element.currentSrc : null,
-);
-const albumImage = (page) => page.locator(".artist-release-card").filter({ hasText: release.title }).locator("img");
+const loadedSource = (image) =>
+  image.evaluate((element) =>
+    element.complete && element.naturalWidth > 0 ? element.currentSrc : null,
+  );
+const albumImage = (page) =>
+  page.locator(".artist-release-card").filter({ hasText: release.title }).locator("img");
 
 for (const density of [1, 2, 3]) {
   test.describe(`at ${density}x display density`, () => {
     test.use({ viewport: { width: 1024, height: 900 }, deviceScaleFactor: density });
 
-    test("album cards request a matching preview and navigation keeps the original", async ({ page }, testInfo) => {
+    test("album cards request a matching preview and navigation keeps the original", async ({
+      page,
+    }, testInfo) => {
       const { imageRequests: requests } = await fixture(page);
       await page.goto(`/artist/${ARTIST_ID}`);
       const image = albumImage(page);
       await image.scrollIntoViewIfNeeded();
-      const preview = density === 3 ? COVER : COVER.replace("/fanart/", density === 1 ? "/preview/" : "/bigpreview/");
+      const preview =
+        density === 3
+          ? COVER
+          : COVER.replace("/fanart/", density === 1 ? "/preview/" : "/bigpreview/");
       await expect.poll(() => loadedSource(image)).toBe(preview);
       expect(requests.filter((url) => url.href === COVER)).toHaveLength(density === 3 ? 1 : 0);
-      const other = page.locator(".artist-release-card").filter({ hasText: "Other provider" }).locator("img");
+      const other = page
+        .locator(".artist-release-card")
+        .filter({ hasText: "Other provider" })
+        .locator("img");
       await expect.poll(() => loadedSource(other)).toBe(OTHER_COVER);
-      await testInfo.attach("album-thumbnails", { body: await page.screenshot(), contentType: "image/png" });
+      await testInfo.attach("album-thumbnails", {
+        body: await page.screenshot(),
+        contentType: "image/png",
+      });
 
       await page.getByRole("link", { name: release.title, exact: true }).click();
       const detail = page.locator(".native-library-detail__cover img");
@@ -134,21 +177,34 @@ test("missing previews retry the original before giving up", async ({ page }) =>
 });
 
 test("a failed preview and original retain the track's existing placeholder", async ({ page }) => {
-  const { imageRequests: requests } = await fixture(page, { missingPreviews: true, missingOriginal: true });
+  const { imageRequests: requests } = await fixture(page, {
+    missingPreviews: true,
+    missingOriginal: true,
+  });
   await page.goto(PLAYLIST_PATH);
   const row = page.locator(".native-library-track").filter({ hasText: "First artwork" });
   await expect(row).toBeVisible();
   await expect(row.locator(".native-library-cover-fallback")).toBeVisible();
-  const local = page.locator(".native-library-track").filter({ hasText: "Local artwork" }).locator("img");
+  const local = page
+    .locator(".native-library-track")
+    .filter({ hasText: "Local artwork" })
+    .locator("img");
   await expect.poll(() => loadedSource(local)).toContain("/arralogo.svg");
   expect(requests.some((url) => /\/(?:big)?preview\//.test(url.pathname))).toBe(true);
   expect(requests.filter((url) => url.href === COVER)).toHaveLength(1);
 });
 
 test.describe("the mobile player", () => {
-  test.use({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+  test.use({
+    viewport: { width: 390, height: 844 },
+    deviceScaleFactor: 2,
+    isMobile: true,
+    hasTouch: true,
+  });
 
-  test("uses small artwork in the bar, resets fallback for the next track, and expands the original", async ({ page }, testInfo) => {
+  test("uses small artwork in the bar, resets fallback for the next track, and expands the original", async ({
+    page,
+  }, testInfo) => {
     const { imageRequests: requests } = await fixture(page, { missingPreviews: true });
     await page.goto(PLAYLIST_PATH);
     await page.getByRole("button", { name: `First artwork ${artist.name}`, exact: true }).click();
@@ -160,7 +216,10 @@ test.describe("the mobile player", () => {
     await page.getByRole("button", { name: "Open now playing: Next artwork" }).click();
     const dialog = page.getByRole("dialog", { name: "Now playing" });
     await expect.poll(() => loadedSource(dialog.locator(".now-playing__art img"))).toBe(NEXT_COVER);
-    await testInfo.attach("expanded-original-artwork", { body: await page.screenshot(), contentType: "image/png" });
+    await testInfo.attach("expanded-original-artwork", {
+      body: await page.screenshot(),
+      contentType: "image/png",
+    });
     await dialog.getByRole("button", { name: "Close now playing" }).click();
     await expect(dialog).toHaveCount(0);
   });

@@ -14,27 +14,22 @@ export default function NewsPage() {
   const newsConfigured = bootstrap?.newsConfigured === true;
   const [highlightedOnly, setHighlightedOnly] = useState(false);
   const loadMoreRef = useRef(null);
-  const {
-    articles,
-    refresh,
-    loading,
-    loadingMore,
-    hasMore,
-    loadMore,
-    error,
-    disableFeed,
-  } = useLibraryNews({
-    enabled: newsConfigured,
-    limit: 24,
-    mode: highlightedOnly ? "matched" : "top",
-  });
+  const { articles, refresh, loading, loadingMore, hasMore, loadMore, error, disableFeed } =
+    useLibraryNews({
+      enabled: newsConfigured,
+      limit: 24,
+      mode: highlightedOnly ? "matched" : "top",
+    });
   const refreshWarning = error || refresh?.warning || "";
 
   useEffect(() => {
     if (!hasMore || !loadMoreRef.current) return undefined;
-    const observer = new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting) void loadMore();
-    }, { rootMargin: "600px" });
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) void loadMore();
+      },
+      { rootMargin: "600px" },
+    );
     observer.observe(loadMoreRef.current);
     return () => observer.disconnect();
   }, [hasMore, loadMore]);
@@ -107,9 +102,10 @@ export default function NewsPage() {
           <Newspaper aria-hidden="true" />
           <h2>{highlightedOnly ? "No highlighted stories" : "No recent stories"}</h2>
           <p>
-            {refreshWarning || (highlightedOnly
-              ? "No recent news for your Library or recommended artists."
-              : "No recent stories.")}
+            {refreshWarning ||
+              (highlightedOnly
+                ? "No recent news for your Library or recommended artists."
+                : "No recent stories.")}
           </p>
         </section>
       )}

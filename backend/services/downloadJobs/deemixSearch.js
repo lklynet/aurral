@@ -10,7 +10,9 @@ import { stripReleaseTypeSuffix } from "./trackSearchQueries.js";
 import { coreAlbumTitle } from "../trackMatching/titleText.js";
 
 function quote(value) {
-  return String(value || "").replace(/"/g, " ").trim();
+  return String(value || "")
+    .replace(/"/g, " ")
+    .trim();
 }
 
 function uniqueQueries(queries) {
@@ -33,9 +35,11 @@ export function buildDeemixAlbumSearchQueries(context) {
   const coreAlbum = coreAlbumTitle(albumName);
   const artistName = context?.compilation ? "" : String(context?.artistName || "").trim();
   if (!albumName) return [];
-  return uniqueQueries(artistName
-    ? [`artist:"${quote(artistName)}" album:"${quote(albumName)}"`, `${artistName} ${albumName}`]
-    : [`album:"${quote(coreAlbum)}"`, coreAlbum]);
+  return uniqueQueries(
+    artistName
+      ? [`artist:"${quote(artistName)}" album:"${quote(albumName)}"`, `${artistName} ${albumName}`]
+      : [`album:"${quote(coreAlbum)}"`, coreAlbum],
+  );
 }
 
 export function buildDeemixSearchQueries(context) {

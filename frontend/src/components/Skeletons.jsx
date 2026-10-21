@@ -4,13 +4,20 @@ import { CollectionHeader } from "./CollectionHeader";
 const range = (count) => Array.from({ length: count }, (_, index) => index);
 
 const TEXT_WIDTHS = ["72%", "58%", "84%", "64%"];
-const COVER_CLASS = { artist: " native-library-card__cover--round", playlist: " playlists-page__cover" };
+const COVER_CLASS = {
+  artist: " native-library-card__cover--round",
+  playlist: " playlists-page__cover",
+};
 const isTallCard = (index) => index % 3 === 1;
 const textWidth = (index, offset = 0) => TEXT_WIDTHS[(index + offset) % TEXT_WIDTHS.length];
 
 export function SkeletonStatus({ label, as: Tag = "div", className = "", children }) {
   return (
-    <Tag className={`skeleton-status${className ? ` ${className}` : ""}`} role="status" aria-busy="true">
+    <Tag
+      className={`skeleton-status${className ? ` ${className}` : ""}`}
+      role="status"
+      aria-busy="true"
+    >
       <span className="sr-only">{label}</span>
       <div className="skeleton-status__body" aria-hidden="true">
         {children}
@@ -126,7 +133,10 @@ export function SkeletonNewsCard({ compact = false }) {
 export function SkeletonReleaseCard({ index = 0, search = false }) {
   const cover = search ? (
     <div className="search-album-results__cover-wrap">
-      <SkeletonShape as="div" className="artist-release-card__cover search-album-results__cover-link" />
+      <SkeletonShape
+        as="div"
+        className="artist-release-card__cover search-album-results__cover-link"
+      />
     </div>
   ) : (
     <SkeletonShape as="div" className="artist-release-card__cover" />
@@ -187,7 +197,11 @@ export function SkeletonSearchResults({ mode = "all", count = 12, gridColumns })
     return (
       <div
         className={`artist-release-grid${mode === "round-artists" ? " search-artist-grid--round" : ""}`}
-        style={gridColumns ? { gridTemplateColumns: `repeat(${gridColumns}, minmax(0, 1fr))` } : undefined}
+        style={
+          gridColumns
+            ? { gridTemplateColumns: `repeat(${gridColumns}, minmax(0, 1fr))` }
+            : undefined
+        }
       >
         {range(count).map((index) => (
           <SkeletonDiscoverCard key={index} index={index} />
@@ -290,9 +304,7 @@ export function SkeletonLibraryCard({ kind = "album", index = 0 }) {
   return (
     <article className="native-library-card">
       <div className="native-library-card__cover-wrap">
-        <SkeletonShape
-          className={`native-library-card__cover${COVER_CLASS[kind] || ""}`}
-        />
+        <SkeletonShape className={`native-library-card__cover${COVER_CLASS[kind] || ""}`} />
       </div>
       <div className="native-library-card__body">
         {kind === "playlist" ? (
@@ -320,7 +332,12 @@ export function SkeletonLibraryCard({ kind = "album", index = 0 }) {
   );
 }
 
-export function SkeletonLibraryGrid({ ref, count = 14, kind = "album", className = "native-library-grid" }) {
+export function SkeletonLibraryGrid({
+  ref,
+  count = 14,
+  kind = "album",
+  className = "native-library-grid",
+}) {
   return (
     <div ref={ref} className={className}>
       {range(count).map((index) => (
@@ -413,7 +430,12 @@ export function SkeletonPlayButtons({ icons = 2 }) {
   );
 }
 
-export function SkeletonCollectionHeader({ kicker = true, subtitle = false, description = false, icons = 2 }) {
+export function SkeletonCollectionHeader({
+  kicker = true,
+  subtitle = false,
+  description = false,
+  icons = 2,
+}) {
   return (
     <CollectionHeader
       cover={<SkeletonShape className="skeleton-fill" />}
@@ -533,4 +555,3 @@ export function SkeletonActivityList({ count = 8, dateGroup = false, hint = fals
     </div>
   );
 }
-

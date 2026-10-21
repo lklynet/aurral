@@ -35,7 +35,10 @@ test("the player finds a missing cover and the album-art theme follows it", asyn
 
   try {
     await page.goto("/library/tracks");
-    const play = page.getByRole("main").getByRole("button", { name: /^Play (?!Tracks$)/ }).first();
+    const play = page
+      .getByRole("main")
+      .getByRole("button", { name: /^Play (?!Tracks$)/ })
+      .first();
     await expect(play).toBeVisible();
     const accent = () =>
       page.evaluate(() => document.documentElement.style.getPropertyValue("--aurral-accent"));
@@ -52,6 +55,7 @@ test("the player finds a missing cover and the album-art theme follows it", asyn
   } finally {
     await page.goto("/profile");
     const toggle = page.getByRole("switch", { name: "Immersive mode" });
-    if (((await toggle.getAttribute("aria-checked")) === "true") !== wasMatching) await toggle.click();
+    if (((await toggle.getAttribute("aria-checked")) === "true") !== wasMatching)
+      await toggle.click();
   }
 });

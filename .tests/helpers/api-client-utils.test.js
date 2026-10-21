@@ -122,7 +122,13 @@ test("TTL cache removes values after the stale window", () => {
 });
 
 test("idle TTL caches release expired payloads while keeping stale and live values", () => {
-  const result = spawnSync(process.execPath, ["--expose-gc", "--input-type=module", "-e", `
+  const result = spawnSync(
+    process.execPath,
+    [
+      "--expose-gc",
+      "--input-type=module",
+      "-e",
+      `
     import assert from "node:assert/strict";
     import { mock } from "node:test";
     import createCache from "./backend/services/apiClients/simpleCache.js";
@@ -144,7 +150,10 @@ test("idle TTL caches release expired payloads while keeping stale and live valu
     assert.equal(cache.get("live"), "live");
     assert.deepEqual(cache.getWithStale("stale"), { value: "offline fallback", stale: true });
     mock.timers.reset();
-  `], { encoding: "utf8" });
+  `,
+    ],
+    { encoding: "utf8" },
+  );
   assert.equal(result.status, 0, result.stderr || result.stdout);
 });
 
@@ -199,8 +208,15 @@ test("uses environment proxy settings when NODE_USE_ENV_PROXY is enabled", async
   ]);
 
   const saved = Object.fromEntries(
-    ["NODE_USE_ENV_PROXY", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy"]
-      .map((name) => [name, process.env[name]]),
+    [
+      "NODE_USE_ENV_PROXY",
+      "HTTP_PROXY",
+      "HTTPS_PROXY",
+      "NO_PROXY",
+      "http_proxy",
+      "https_proxy",
+      "no_proxy",
+    ].map((name) => [name, process.env[name]]),
   );
   const restoreEnvironment = () => {
     for (const [name, value] of Object.entries(saved)) {
@@ -249,7 +265,12 @@ test("uses environment proxy settings when NODE_USE_ENV_PROXY is enabled", async
 
 test("public-only transport rejects socket failures without an uncaught exception", () => {
   const moduleUrl = new URL("../../lib/axiosFetch.js", import.meta.url).href;
-  const result = spawnSync(process.execPath, ["--input-type=module", "--eval", `
+  const result = spawnSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "--eval",
+      `
     import dns from "node:dns/promises";
     import net from "node:net";
 
@@ -278,7 +299,10 @@ test("public-only transport rejects socket failures without an uncaught exceptio
         request: error.request,
       }));
     }
-  `], { encoding: "utf8" });
+  `,
+    ],
+    { encoding: "utf8" },
+  );
 
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(JSON.parse(result.stdout), {

@@ -7,13 +7,12 @@ import {
   resetDatabase,
 } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, { db }, { userOps }, sessionHelpers] =
-  await setupIsolatedBackend(
-    "sessions",
-    "backend/config/db-sqlite.js",
-    "backend/db/helpers/index.js",
-    "backend/config/session-helpers.js",
-  );
+const [isolatedState, { db }, { userOps }, sessionHelpers] = await setupIsolatedBackend(
+  "sessions",
+  "backend/config/db-sqlite.js",
+  "backend/db/helpers/index.js",
+  "backend/config/session-helpers.js",
+);
 
 const bcryptModule = await import("bcrypt");
 
@@ -59,7 +58,11 @@ test("deletes expired sessions when looked up or cleaned", () => {
   const expire = db.prepare("UPDATE sessions SET expires_at = ? WHERE token = ?");
   expire.run(Date.now() - 1000, lookedUp.token);
   expire.run(Date.now() - 1000, cleaned.token);
-  const stored = () => db.prepare("SELECT token FROM sessions ORDER BY token").all().map((row) => row.token);
+  const stored = () =>
+    db
+      .prepare("SELECT token FROM sessions ORDER BY token")
+      .all()
+      .map((row) => row.token);
 
   assert.equal(getSessionByToken(lookedUp.token), null);
   assert.deepEqual(stored(), [cleaned.token, live.token].sort());

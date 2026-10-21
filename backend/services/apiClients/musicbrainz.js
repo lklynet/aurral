@@ -2,11 +2,7 @@ import axios from "../../../lib/axiosFetch.js";
 import createRateLimiter from "./rateLimiter.js";
 import createCache from "./simpleCache.js";
 import { dbOps } from "../../db/helpers/index.js";
-import {
-  MUSICBRAINZ_API,
-  APP_NAME,
-  APP_VERSION,
-} from "../../config/constants.js";
+import { MUSICBRAINZ_API, APP_NAME, APP_VERSION } from "../../config/constants.js";
 import {
   getArtistByMbid as getMetadataArtistByMbid,
   getArtistNameByMbid as getMetadataArtistNameByMbid,
@@ -71,9 +67,7 @@ export async function musicbrainzGetArtistReleaseGroups(
       title: item.title || "",
       "first-release-date": item.firstReleaseDate || null,
       "primary-type": item.type || "Album",
-      "secondary-types": Array.isArray(item.secondaryTypes)
-        ? item.secondaryTypes
-        : [],
+      "secondary-types": Array.isArray(item.secondaryTypes) ? item.secondaryTypes : [],
       rating: item.rating || null,
       "artist-credit": item.artistName
         ? [
@@ -107,8 +101,7 @@ const artistCreditIncludesMbid = (artistCredit, mbid) => {
 };
 
 const getMusicbrainzUserAgent = () => {
-  const contact =
-    (getMusicBrainzContact() || "").trim() || "https://github.com/aurral";
+  const contact = (getMusicBrainzContact() || "").trim() || "https://github.com/aurral";
   return `${APP_NAME}/${APP_VERSION} ( ${contact} )`;
 };
 
@@ -136,7 +129,9 @@ const isSpecialPurposeArtist = (artist) =>
   artist.id === VARIOUS_ARTISTS_MBID || /^\[.*\]$/.test(artist.name);
 
 export async function musicbrainzSearchArtistsByTag(tag, { limit = 25, offset = 0 } = {}) {
-  const normalizedTag = String(tag || "").trim().toLowerCase();
+  const normalizedTag = String(tag || "")
+    .trim()
+    .toLowerCase();
   if (!normalizedTag) return { total: 0, nextOffset: 0, artists: [] };
   const safeLimit = Math.min(100, Math.max(1, Number.parseInt(limit, 10) || 25));
   const safeOffset = Math.max(0, Number.parseInt(offset, 10) || 0);
@@ -231,10 +226,7 @@ export async function musicbrainzGetArtistAppearsOnReleaseGroups(
   { limit = 24, offset = 0, signal, scanPageBudget = 1 } = {},
 ) {
   if (!mbid) return [];
-  const safeLimit = Math.min(
-    250,
-    Math.max(1, Number.parseInt(limit, 10) || 24),
-  );
+  const safeLimit = Math.min(250, Math.max(1, Number.parseInt(limit, 10) || 24));
   const safeOffset = Math.min(250, Math.max(0, Number.parseInt(offset, 10) || 0));
   const targetCount = Math.min(250, safeOffset + safeLimit);
   const parsedScanPageBudget = Number.parseInt(scanPageBudget, 10);
@@ -342,7 +334,12 @@ export function musicbrainzGetCachedArtistMbidByName(artistName) {
   return cached.mbid || null;
 }
 
-async function resolveCachedArtistMbid(cacheKey, artistName, resolve, { throwOnError = false } = {}) {
+async function resolveCachedArtistMbid(
+  cacheKey,
+  artistName,
+  resolve,
+  { throwOnError = false } = {},
+) {
   const cached = dbOps.getMusicbrainzArtistMbidCache(cacheKey);
   const now = Date.now();
   const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;

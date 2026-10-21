@@ -1,10 +1,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { queryClient, queryKeys } from "../queryClient.js";
-import {
-  clearLibraryPageCache,
-  getActiveDownloads,
-} from "../utils/api/endpoints/library.js";
+import { clearLibraryPageCache, getActiveDownloads } from "../utils/api/endpoints/library.js";
 import {
   finishedActiveDownloads,
   hasActiveDownloads,

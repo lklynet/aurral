@@ -1,7 +1,4 @@
-import {
-  SPOTIFY_API_BASE,
-  SPOTIFY_RENEW_URI,
-} from "./spotifyConfig.js";
+import { SPOTIFY_API_BASE, SPOTIFY_RENEW_URI } from "./spotifyConfig.js";
 import { spotifyConnectionStore } from "./spotifyConnectionStore.js";
 import createCache from "../apiClients/simpleCache.js";
 import { runSharedInflight } from "../sharedInflight.js";
@@ -14,8 +11,7 @@ const playlistTrackInflight = new Map();
 const playlistTrackGeneration = new Map();
 const tokenRefreshInflight = new Map();
 
-const getPlaylistTrackGeneration = (userId) =>
-  playlistTrackGeneration.get(String(userId)) || 0;
+const getPlaylistTrackGeneration = (userId) => playlistTrackGeneration.get(String(userId)) || 0;
 
 const bumpPlaylistTrackGeneration = (userId) => {
   const key = String(userId);
@@ -35,9 +31,10 @@ const createAuthRequiredError = (message) => {
 };
 
 const createIncompletePlaylistError = (playlistId, reportedTotal, fetchedCount) => {
-  const message = reportedTotal == null
-    ? "Spotify did not report a playlist item total"
-    : `Spotify returned ${fetchedCount} of ${reportedTotal} playlist items`;
+  const message =
+    reportedTotal == null
+      ? "Spotify did not report a playlist item total"
+      : `Spotify returned ${fetchedCount} of ${reportedTotal} playlist items`;
   const error = new Error(message);
   error.code = "SPOTIFY_INCOMPLETE_PLAYLIST";
   error.statusCode = 502;
@@ -81,26 +78,22 @@ async function renewAccessToken(refreshToken, signal) {
 }
 
 const refreshConnection = (userId, refreshToken, { force = false } = {}) =>
-  runSharedInflight(
-    tokenRefreshInflight,
-    String(userId),
-    async (signal) => {
-      const latest = spotifyConnectionStore.getConnection(userId);
-      if (!force && latest?.expiresAt - TOKEN_REFRESH_BUFFER_MS > Date.now()) {
-        return latest;
-      }
-      const renewed = await renewAccessToken(latest?.refreshToken || refreshToken, signal);
-      const current = spotifyConnectionStore.getConnection(userId);
-      if (!current) throw createAuthRequiredError("Spotify is not connected");
-      if (
-        current.accessToken !== latest?.accessToken ||
-        current.refreshToken !== latest?.refreshToken
-      ) {
-        return current;
-      }
-      return spotifyConnectionStore.updateTokens(userId, renewed);
-    },
-  );
+  runSharedInflight(tokenRefreshInflight, String(userId), async (signal) => {
+    const latest = spotifyConnectionStore.getConnection(userId);
+    if (!force && latest?.expiresAt - TOKEN_REFRESH_BUFFER_MS > Date.now()) {
+      return latest;
+    }
+    const renewed = await renewAccessToken(latest?.refreshToken || refreshToken, signal);
+    const current = spotifyConnectionStore.getConnection(userId);
+    if (!current) throw createAuthRequiredError("Spotify is not connected");
+    if (
+      current.accessToken !== latest?.accessToken ||
+      current.refreshToken !== latest?.refreshToken
+    ) {
+      return current;
+    }
+    return spotifyConnectionStore.updateTokens(userId, renewed);
+  });
 
 async function getValidConnection(userId) {
   let connection = spotifyConnectionStore.getConnection(userId);
@@ -172,10 +165,14 @@ async function fetchAllPages(userId, path, { searchParams, itemsKey = "items", o
       : await spotifyRequest(userId, path, { searchParams });
     const pageItems = Array.isArray(payload?.[itemsKey]) ? payload[itemsKey] : [];
     onPage?.({
-      offset: payload?.offset != null && Number.isFinite(Number(payload.offset))
-        ? Number(payload.offset) : null,
-      total: payload?.total != null && Number.isFinite(Number(payload.total))
-        ? Number(payload.total) : null,
+      offset:
+        payload?.offset != null && Number.isFinite(Number(payload.offset))
+          ? Number(payload.offset)
+          : null,
+      total:
+        payload?.total != null && Number.isFinite(Number(payload.total))
+          ? Number(payload.total)
+          : null,
       itemCount: pageItems.length,
     });
     items.push(...pageItems);
@@ -220,19 +217,14 @@ export const spotifyClient = {
     }
 
     const pages = [];
-    const request = fetchAllPages(
-      userId,
-      `/playlists/${encodeURIComponent(playlistId)}/items`,
-      {
-        searchParams: {
-          limit: 50,
-          additional_types: "episode",
-          fields:
-            "items(item(type,name,artists(name),album(name))),next,total,offset",
-        },
-        onPage: (page) => pages.push(page),
+    const request = fetchAllPages(userId, `/playlists/${encodeURIComponent(playlistId)}/items`, {
+      searchParams: {
+        limit: 50,
+        additional_types: "episode",
+        fields: "items(item(type,name,artists(name),album(name))),next,total,offset",
       },
-    ).then((items) => {
+      onPage: (page) => pages.push(page),
+    }).then((items) => {
       if (getPlaylistTrackGeneration(userId) !== generation) {
         throw createAuthRequiredError("Spotify connection expired");
       }

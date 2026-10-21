@@ -103,7 +103,23 @@ export function soulseekQueryText(value) {
 }
 
 const VOLUME_PATTERN = /\b(vol(?:ume)?\.?)\s*(\d{1,2}|[ivx]{1,4})\b/iu;
-const ROMAN_NUMERALS = ["i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x", "xi", "xii", "xiii", "xiv", "xv"];
+const ROMAN_NUMERALS = [
+  "i",
+  "ii",
+  "iii",
+  "iv",
+  "v",
+  "vi",
+  "vii",
+  "viii",
+  "ix",
+  "x",
+  "xi",
+  "xii",
+  "xiii",
+  "xiv",
+  "xv",
+];
 
 // "Vol. 2" is also written "Volume II"; folders use either.
 function volumeVariant(value) {
@@ -145,7 +161,9 @@ function readTrackSearchContext(context) {
     releaseYear: getYear(context?.releaseYear),
     selfTitled: sameWords(artistName, albumName),
     shortAlbum: albumName.length > 0 && albumName.length < 4,
-    trackVariants: uniqueQueries(buildTrackQueryVariants(context?.trackName).map(soulseekQueryText)),
+    trackVariants: uniqueQueries(
+      buildTrackQueryVariants(context?.trackName).map(soulseekQueryText),
+    ),
   };
 }
 
@@ -163,7 +181,11 @@ function joinSearchParts(...parts) {
 function artistAlbumQuery(ctx, artistName = ctx.artistName, { year = true } = {}) {
   if (!artistName || !ctx.albumName) return "";
   if (ctx.selfTitled) return year ? joinSearchParts(artistName, ctx.releaseYear) : "";
-  return joinSearchParts(artistName, ctx.albumName, year && ctx.shortAlbum ? ctx.releaseYear : null);
+  return joinSearchParts(
+    artistName,
+    ctx.albumName,
+    year && ctx.shortAlbum ? ctx.releaseYear : null,
+  );
 }
 
 function albumAloneQueries(ctx) {
@@ -193,15 +215,31 @@ function releaseFallbackTiers(ctx) {
   const wildcardArtist = bypassBannedArtistTerm(ctx.artistName);
   const wildcard = wildcardArtist !== ctx.artistName;
   return [
-    { name: "album_without_year", queries: [artistAlbumQuery(ctx, ctx.artistName, { year: false })] },
-    { name: "core_album", queries: [ctx.artistName && ctx.coreAlbumName
-      ? joinSearchParts(ctx.artistName, ctx.coreAlbumName) : ctx.coreAlbumName] },
-    { name: "volume_variant", queries: [ctx.albumVariant
-      ? joinSearchParts(ctx.artistName, ctx.albumVariant) : ""] },
-    { name: "wildcard_album", queries: wildcard ? [
-      artistAlbumQuery(ctx, wildcardArtist),
-      artistAlbumQuery(ctx, wildcardArtist, { year: false }),
-    ] : [] },
+    {
+      name: "album_without_year",
+      queries: [artistAlbumQuery(ctx, ctx.artistName, { year: false })],
+    },
+    {
+      name: "core_album",
+      queries: [
+        ctx.artistName && ctx.coreAlbumName
+          ? joinSearchParts(ctx.artistName, ctx.coreAlbumName)
+          : ctx.coreAlbumName,
+      ],
+    },
+    {
+      name: "volume_variant",
+      queries: [ctx.albumVariant ? joinSearchParts(ctx.artistName, ctx.albumVariant) : ""],
+    },
+    {
+      name: "wildcard_album",
+      queries: wildcard
+        ? [
+            artistAlbumQuery(ctx, wildcardArtist),
+            artistAlbumQuery(ctx, wildcardArtist, { year: false }),
+          ]
+        : [],
+    },
     { name: "alias_album", queries: [artistAlbumQuery(ctx, ctx.alias)] },
   ];
 }
@@ -230,16 +268,31 @@ export function buildTrackSearchTiers(context) {
   const wildcardArtist = bypassBannedArtistTerm(ctx.trackArtist);
   return orderTiers([
     { name: "base_album", queries: [artistAlbumQuery(ctx)] },
-    { name: "primary_track", queries: ctx.trackArtist && track ? [
-      joinSearchParts(ctx.trackArtist, track),
-      joinSearchParts(ctx.trackArtist, strippedTrack),
-      ...trackVariants.slice(0, 1).map((variant) => joinSearchParts(ctx.trackArtist, variant)),
-    ] : [] },
+    {
+      name: "primary_track",
+      queries:
+        ctx.trackArtist && track
+          ? [
+              joinSearchParts(ctx.trackArtist, track),
+              joinSearchParts(ctx.trackArtist, strippedTrack),
+              ...trackVariants
+                .slice(0, 1)
+                .map((variant) => joinSearchParts(ctx.trackArtist, variant)),
+            ]
+          : [],
+    },
     ...releaseFallbackTiers(ctx),
-    { name: "wildcard_track", queries: [wildcardArtist !== ctx.trackArtist && track
-      ? joinSearchParts(wildcardArtist, track) : ""] },
+    {
+      name: "wildcard_track",
+      queries: [
+        wildcardArtist !== ctx.trackArtist && track ? joinSearchParts(wildcardArtist, track) : "",
+      ],
+    },
     { name: "alias_track", queries: [ctx.alias && track ? joinSearchParts(ctx.alias, track) : ""] },
-    { name: "album_track", queries: [ctx.albumName && track ? joinSearchParts(ctx.albumName, track) : ""] },
+    {
+      name: "album_track",
+      queries: [ctx.albumName && track ? joinSearchParts(ctx.albumName, track) : ""],
+    },
     { name: "album_only", queries: albumAloneQueries(ctx) },
   ]);
 }

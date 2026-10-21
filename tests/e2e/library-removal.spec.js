@@ -21,16 +21,22 @@ async function ensureAurralArtist(page) {
   expect(added.ok).toBe(true);
   let record = null;
   await expect
-    .poll(async () => {
-      record = (await apiRequest(page, `/api/library/artists/${artist.mbid}`)).body;
-      return record?.managedBy;
-    }, { timeout: 30_000 })
+    .poll(
+      async () => {
+        record = (await apiRequest(page, `/api/library/artists/${artist.mbid}`)).body;
+        return record?.managedBy;
+      },
+      { timeout: 30_000 },
+    )
     .toBe("aurral");
   return record;
 }
 
 async function openRemovalDialog(page, itemName, actionName) {
-  await page.getByRole("button", { name: `${itemName} options` }).first().click();
+  await page
+    .getByRole("button", { name: `${itemName} options` })
+    .first()
+    .click();
   await page.getByRole("menuitem", { name: actionName, exact: true }).click();
   const dialogName = actionName;
   const dialog = page.getByRole("alertdialog", { name: dialogName });
@@ -55,7 +61,10 @@ test("without Lidarr, an album and artist are deleted with their files", async (
     const releaseGroup = (details.body?.["release-groups"] || []).find(
       (entry) => entry["primary-type"] === "Album" && !(entry["secondary-types"] || []).length,
     );
-    expect(releaseGroup, `${artist.name} has no studio album in the metadata provider`).toBeTruthy();
+    expect(
+      releaseGroup,
+      `${artist.name} has no studio album in the metadata provider`,
+    ).toBeTruthy();
     await expect(async () => {
       const addedAlbum = await apiRequest(page, "/api/library/albums/request", {
         method: "POST",
@@ -72,11 +81,15 @@ test("without Lidarr, an album and artist are deleted with their files", async (
 
     let libraryAlbum = null;
     await expect
-      .poll(async () => {
-        const albums = await apiRequest(page, `/api/library/albums?artistId=${artist.mbid}`);
-        libraryAlbum = (albums.body || []).find((album) => album.mbid === releaseGroup.id) || null;
-        return libraryAlbum?.managedBy;
-      }, { timeout: 30_000 })
+      .poll(
+        async () => {
+          const albums = await apiRequest(page, `/api/library/albums?artistId=${artist.mbid}`);
+          libraryAlbum =
+            (albums.body || []).find((album) => album.mbid === releaseGroup.id) || null;
+          return libraryAlbum?.managedBy;
+        },
+        { timeout: 30_000 },
+      )
       .toBe("aurral");
 
     await page.goto(`/library/album/${libraryAlbum.id}`);
@@ -99,7 +112,9 @@ test("without Lidarr, an album and artist are deleted with their files", async (
   } finally {
     const leftover = await apiRequest(page, `/api/library/artists/${artist.mbid}`);
     if (leftover.status !== 404 && leftover.body?.managedBy === "aurral") {
-      await apiRequest(page, `/api/library/artists/${artist.mbid}?deleteFiles=true`, { method: "DELETE" });
+      await apiRequest(page, `/api/library/artists/${artist.mbid}?deleteFiles=true`, {
+        method: "DELETE",
+      });
     }
     await restoreLidarr();
   }

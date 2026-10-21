@@ -19,10 +19,7 @@ test("bypassBannedArtistTerm replaces the first character of each artist word", 
 });
 
 test("stripReleaseTypeSuffix removes terminal release metadata only", () => {
-  assert.equal(
-    stripReleaseTypeSuffix("Object Permanence - Single"),
-    "Object Permanence",
-  );
+  assert.equal(stripReleaseTypeSuffix("Object Permanence - Single"), "Object Permanence");
   assert.equal(stripReleaseTypeSuffix("Some Release (EP)"), "Some Release");
   assert.equal(stripReleaseTypeSuffix("Single"), "Single");
   assert.equal(stripReleaseTypeSuffix("Single Mothers"), "Single Mothers");
@@ -85,11 +82,13 @@ test("buildTrackSearchTiers adds album-only search without an artist and skips b
     releaseYear: "2007",
   });
 
-  assert.deepEqual(
-    withoutArtist.find((tier) => tier.name === "album_only")?.queries,
-    ["Good Girl Gone Bad"],
+  assert.deepEqual(withoutArtist.find((tier) => tier.name === "album_only")?.queries, [
+    "Good Girl Gone Bad",
+  ]);
+  assert.equal(
+    withoutAlbum.some((tier) => tier.name === "album_only"),
+    false,
   );
-  assert.equal(withoutAlbum.some((tier) => tier.name === "album_only"), false);
 });
 
 test("buildTrackSearchTiers tries the artist and title right after the artist and album", () => {
@@ -190,50 +189,62 @@ test("an album grab searches for the album and never for a track title", () => {
 const allQueries = (tiers) => tiers.flatMap((tier) => tier.queries);
 
 test("Soulseek queries split words at punctuation and leave out Various Artists", () => {
-  const soundtrack = allQueries(buildAlbumSearchTiers({
-    artistName: "Various Artists",
-    albumName: "Guardians of the Galaxy: Awesome Mix, Vol. 1: Original Motion Picture Soundtrack",
-    releaseYear: "2014",
-  }));
+  const soundtrack = allQueries(
+    buildAlbumSearchTiers({
+      artistName: "Various Artists",
+      albumName: "Guardians of the Galaxy: Awesome Mix, Vol. 1: Original Motion Picture Soundtrack",
+      releaseYear: "2014",
+    }),
+  );
   assert.ok(soundtrack.includes("Guardians of the Galaxy Awesome Mix Vol 1"));
   assert.ok(soundtrack.every((query) => !/[:.,]/.test(query) && !/various/i.test(query)));
 
-  const pepper = allQueries(buildAlbumSearchTiers({
-    artistName: "The Beatles",
-    albumName: "Sgt. Pepper's Lonely Hearts Club Band",
-  }));
+  const pepper = allQueries(
+    buildAlbumSearchTiers({
+      artistName: "The Beatles",
+      albumName: "Sgt. Pepper's Lonely Hearts Club Band",
+    }),
+  );
   assert.equal(pepper[0], "The Beatles Sgt Pepper s Lonely Hearts Club Band");
 });
 
 test("Soulseek album queries try the year first for self-titled and short titles", () => {
-  const weezer = allQueries(buildAlbumSearchTiers({ artistName: "Weezer", albumName: "Weezer", releaseYear: "1994" }));
+  const weezer = allQueries(
+    buildAlbumSearchTiers({ artistName: "Weezer", albumName: "Weezer", releaseYear: "1994" }),
+  );
   assert.equal(weezer[0], "Weezer 1994");
   assert.equal(weezer.at(-1), "Weezer");
   assert.ok(weezer.every((query) => !/weezer weezer/i.test(query)));
 
-  const adele = allQueries(buildAlbumSearchTiers({ artistName: "Adele", albumName: "21", releaseYear: "2011" }));
+  const adele = allQueries(
+    buildAlbumSearchTiers({ artistName: "Adele", albumName: "21", releaseYear: "2011" }),
+  );
   assert.deepEqual(adele.slice(0, 2), ["Adele 21 2011", "Adele 21"]);
   assert.ok(adele.includes("*dele 21"));
   assert.ok(!adele.includes("21"));
 });
 
 test("Soulseek album queries fall back to the artist alias and the other volume spelling", () => {
-  const queries = allQueries(buildAlbumSearchTiers({
-    artistName: "Daft Punk",
-    albumName: "Homework Vol. 2",
-    artistAliases: ["Thomas & Guy-Man"],
-  }));
+  const queries = allQueries(
+    buildAlbumSearchTiers({
+      artistName: "Daft Punk",
+      albumName: "Homework Vol. 2",
+      artistAliases: ["Thomas & Guy-Man"],
+    }),
+  );
   assert.ok(queries.includes("Daft Punk Homework Volume II"));
   assert.ok(queries.includes("Thomas Guy Man Homework Vol 2"));
 });
 
 test("a compilation track searches with its own artist, never Various Artists", () => {
-  const queries = allQueries(buildTrackSearchTiers({
-    artistName: "Various Artists",
-    artistAliases: ["Blue Swede"],
-    albumName: "Guardians of the Galaxy: Awesome Mix, Vol. 1",
-    trackName: "Hooked on a Feeling",
-  }));
+  const queries = allQueries(
+    buildTrackSearchTiers({
+      artistName: "Various Artists",
+      artistAliases: ["Blue Swede"],
+      albumName: "Guardians of the Galaxy: Awesome Mix, Vol. 1",
+      trackName: "Hooked on a Feeling",
+    }),
+  );
   assert.equal(queries[0], "Blue Swede Hooked on a Feeling");
   assert.ok(queries.every((query) => !/various/i.test(query)));
 });

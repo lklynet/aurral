@@ -11,13 +11,28 @@ test("Jellyfin checks private playlists for every user and paginates their track
   client.request = async (_method, endpoint, { params } = {}) => {
     reads.push([endpoint, params]);
     if (endpoint === "/Users") return [{ Id: "admin" }, { Id: "listener" }];
-    if (endpoint === "/Items") return { Items: params.userId === "admin"
-      ? [{ Id: "flow" }] : [{ Id: "saved" }], TotalRecordCount: 1 };
+    if (endpoint === "/Items")
+      return {
+        Items: params.userId === "admin" ? [{ Id: "flow" }] : [{ Id: "saved" }],
+        TotalRecordCount: 1,
+      };
     assert.equal(params.userId, "listener");
     assert.equal(params.fields, "Path");
-    return { Items: [{ Id: `track-${params.startIndex}`, Type: "Audio", Path: `/music/${params.startIndex}.flac` }], TotalRecordCount: 2 };
+    return {
+      Items: [
+        {
+          Id: `track-${params.startIndex}`,
+          Type: "Audio",
+          Path: `/music/${params.startIndex}.flac`,
+        },
+      ],
+      TotalRecordCount: 2,
+    };
   };
-  assert.deepEqual(await client.getPlaylistTrackPaths(new Set(["flow"])), ["/music/0.flac", "/music/1.flac"]);
+  assert.deepEqual(await client.getPlaylistTrackPaths(new Set(["flow"])), [
+    "/music/0.flac",
+    "/music/1.flac",
+  ]);
   assert.equal(reads.filter(([endpoint]) => endpoint === "/Items").length, 2);
   assert.ok(reads.every(([endpoint]) => !endpoint.includes("/flow/")));
 });
@@ -31,7 +46,10 @@ test("Jellyfin reads static playlists for each user because library visibility c
     contents += 1;
     return { Items: [{ Path: `/music/saved-${contents}.flac` }], TotalRecordCount: 1 };
   };
-  assert.deepEqual(await client.getPlaylistTrackPaths(), ["/music/saved-1.flac", "/music/saved-2.flac"]);
+  assert.deepEqual(await client.getPlaylistTrackPaths(), [
+    "/music/saved-1.flac",
+    "/music/saved-2.flac",
+  ]);
   assert.equal(contents, 2);
 });
 
@@ -40,9 +58,10 @@ test("Jellyfin refuses incomplete listings and tracks without paths", async () =
   client.getUsers = async () => [{ Id: "admin" }];
   client.request = async () => ({ Items: [], TotalRecordCount: 1 });
   await assert.rejects(client.getPlaylistTrackPaths(), /Incomplete/);
-  client.request = async (_method, endpoint) => endpoint === "/Items"
-    ? { Items: [{ Id: "saved" }], TotalRecordCount: 1 }
-    : { Items: [{ Id: "no-path" }], TotalRecordCount: 1 };
+  client.request = async (_method, endpoint) =>
+    endpoint === "/Items"
+      ? { Items: [{ Id: "saved" }], TotalRecordCount: 1 }
+      : { Items: [{ Id: "no-path" }], TotalRecordCount: 1 };
   await assert.rejects(client.getPlaylistTrackPaths(), /no file path/);
 });
 
@@ -50,15 +69,21 @@ test("Navidrome protects relative playlist paths across library roots", async ()
   const client = new NavidromeClient("http://navidrome.local", "admin", "password");
   client.request = async (endpoint, params) => {
     if (endpoint === "getUser") return { user: { adminRole: true } };
-    if (endpoint === "getPlaylists") return { playlists: { playlist: [{ id: "flow" }, { id: "saved" }] } };
+    if (endpoint === "getPlaylists")
+      return { playlists: { playlist: [{ id: "flow" }, { id: "saved" }] } };
     assert.equal(params.id, "saved");
-    return { playlist: { songCount: 2, entry: [
-      { path: "Artist/Track.flac" }, { path: "/other/Track.mp3" },
-    ] } };
+    return {
+      playlist: {
+        songCount: 2,
+        entry: [{ path: "Artist/Track.flac" }, { path: "/other/Track.mp3" }],
+      },
+    };
   };
   client.getLibraries = async () => [{ path: "/music" }, { path: "/archive" }];
   assert.deepEqual(await client.getPlaylistTrackPaths(new Set(["flow"])), [
-    "/music/Artist/Track.flac", "/archive/Artist/Track.flac", "/other/Track.mp3",
+    "/music/Artist/Track.flac",
+    "/archive/Artist/Track.flac",
+    "/other/Track.mp3",
   ]);
 });
 
@@ -71,9 +96,12 @@ for (const singletonPlaylist of [false, true]) {
       let detailReads = 0;
       client.request = async (endpoint, params) => {
         if (endpoint === "getUser") return { user: { adminRole: true } };
-        if (endpoint === "getPlaylists") return { playlists: {
-          playlist: singletonPlaylist ? playlist : [playlist],
-        } };
+        if (endpoint === "getPlaylists")
+          return {
+            playlists: {
+              playlist: singletonPlaylist ? playlist : [playlist],
+            },
+          };
         assert.equal(endpoint, "getPlaylist");
         assert.equal(params.id, "saved");
         detailReads += 1;
@@ -131,16 +159,33 @@ test("Plex paginates playlists and includes all file parts in smart playlists", 
   client.request = async (endpoint, { params }) => {
     reads.push(endpoint);
     const offset = params["X-Plex-Container-Start"];
-    if (endpoint === "/playlists") return { MediaContainer: { totalSize: 2, Metadata: [
-      offset === 0 ? { ratingKey: "flow" } : { ratingKey: "saved", smart: true },
-    ] } };
+    if (endpoint === "/playlists")
+      return {
+        MediaContainer: {
+          totalSize: 2,
+          Metadata: [offset === 0 ? { ratingKey: "flow" } : { ratingKey: "saved", smart: true }],
+        },
+      };
     assert.equal(endpoint, "/playlists/saved/items");
-    return { MediaContainer: { totalSize: 2, Metadata: [{ ratingKey: `track-${offset}`, Media: [
-      { Part: [{ file: `/music/${offset}.flac` }, { file: `/mirror/${offset}.flac` }] },
-    ] }] } };
+    return {
+      MediaContainer: {
+        totalSize: 2,
+        Metadata: [
+          {
+            ratingKey: `track-${offset}`,
+            Media: [
+              { Part: [{ file: `/music/${offset}.flac` }, { file: `/mirror/${offset}.flac` }] },
+            ],
+          },
+        ],
+      },
+    };
   };
   assert.deepEqual(await client.getPlaylistTrackPaths(new Set(["flow"])), [
-    "/music/0.flac", "/mirror/0.flac", "/music/1.flac", "/mirror/1.flac",
+    "/music/0.flac",
+    "/mirror/0.flac",
+    "/music/1.flac",
+    "/mirror/1.flac",
   ]);
   assert.equal(reads.length, 4);
 });
@@ -149,33 +194,56 @@ test("Plex refuses missing media metadata and incomplete pages", async () => {
   const client = new PlexClient("http://plex.local", "token", "client");
   client.request = async () => ({ MediaContainer: { size: 0, totalSize: 1 } });
   await assert.rejects(client.getPlaylistTrackPaths(), /Incomplete/);
-  client.request = async (endpoint) => ({ MediaContainer: { totalSize: 1, Metadata: [
-    endpoint === "/playlists" ? { ratingKey: "saved" } : { ratingKey: "track" },
-  ] } });
+  client.request = async (endpoint) => ({
+    MediaContainer: {
+      totalSize: 1,
+      Metadata: [endpoint === "/playlists" ? { ratingKey: "saved" } : { ratingKey: "track" }],
+    },
+  });
   await assert.rejects(client.getPlaylistTrackPaths(), /no media path/);
 });
 
 for (const Client of [JellyfinClient, NavidromeClient, PlexClient]) {
   test(`${Client.name} propagates service outages rather than reporting no references`, async () => {
     const client = new Client("http://service.local", "user", "secret");
-    client.request = async () => { throw new Error("offline"); };
+    client.request = async () => {
+      throw new Error("offline");
+    };
     await assert.rejects(client.getPlaylistTrackPaths(), /offline/);
   });
 }
 
 test("usage pagination rejects repeated pages and malformed totals", async () => {
-  await assert.rejects(readPlaylistPages(async () => ({ items: [{ id: "track" }] })), /did not advance/);
-  await assert.rejects(readPlaylistPages(async () => ({ items: [], total: "3" })), /Invalid/);
+  await assert.rejects(
+    readPlaylistPages(async () => ({ items: [{ id: "track" }] })),
+    /did not advance/,
+  );
+  await assert.rejects(
+    readPlaylistPages(async () => ({ items: [], total: "3" })),
+    /Invalid/,
+  );
 });
 
 test("usage pagination rejects a page that exceeds its declared total", async () => {
-  await assert.rejects(readPlaylistPages(async () => ({
-    items: [{ id: "a" }], total: 0,
-  })), /exceeds its declared total/);
-  await assert.rejects(readPlaylistPages(async (start) => ({
-    items: start === 0 ? [{ id: "a" }] : [{ id: "b" }, { id: "c" }], total: 2,
-  })), /exceeds its declared total/);
-  assert.deepEqual(await readPlaylistPages(async () => ({
-    items: [{ id: "a" }], total: 1,
-  })), [{ id: "a" }]);
+  await assert.rejects(
+    readPlaylistPages(async () => ({
+      items: [{ id: "a" }],
+      total: 0,
+    })),
+    /exceeds its declared total/,
+  );
+  await assert.rejects(
+    readPlaylistPages(async (start) => ({
+      items: start === 0 ? [{ id: "a" }] : [{ id: "b" }, { id: "c" }],
+      total: 2,
+    })),
+    /exceeds its declared total/,
+  );
+  assert.deepEqual(
+    await readPlaylistPages(async () => ({
+      items: [{ id: "a" }],
+      total: 1,
+    })),
+    [{ id: "a" }],
+  );
 });

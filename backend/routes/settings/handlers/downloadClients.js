@@ -8,9 +8,7 @@ import {
 function validateDownloadClientTestConfig(key, config) {
   const definition = getDownloadClientSettings()[key];
   const nextConfig =
-    config && typeof config === "object" && !Array.isArray(config)
-      ? { ...config }
-      : {};
+    config && typeof config === "object" && !Array.isArray(config) ? { ...config } : {};
 
   for (const field of definition?.fields || []) {
     if (field.type !== "url") continue;
@@ -75,13 +73,9 @@ export function registerDownloadClients(router) {
     }
   });
 
-  registerClientTest(
-    router,
-    "/slskd/test",
-    async () => getDownloadClient("slskd"),
-    "slskd",
-    { warning: true },
-  );
+  registerClientTest(router, "/slskd/test", async () => getDownloadClient("slskd"), "slskd", {
+    warning: true,
+  });
 
   registerClientTest(
     router,
@@ -103,31 +97,15 @@ export function registerDownloadClients(router) {
     }
   });
 
-  registerClientTest(
-    router,
-    "/nzbget/test",
-    async () => getDownloadClient("nzbget"),
-    "NZBGet",
-  );
+  registerClientTest(router, "/nzbget/test", async () => getDownloadClient("nzbget"), "NZBGet");
 
-  registerClientTest(
-    router,
-    "/sabnzbd/test",
-    async () => getDownloadClient("sabnzbd"),
-    "SABnzbd",
-  );
+  registerClientTest(router, "/sabnzbd/test", async () => getDownloadClient("sabnzbd"), "SABnzbd");
 
-  registerClientTest(
-    router,
-    "/ytdlp/test",
-    async () => getDownloadClient("ytdlp"),
-    "yt-dlp",
-  );
+  registerClientTest(router, "/ytdlp/test", async () => getDownloadClient("ytdlp"), "yt-dlp");
 
   router.post("/gotify/test", async (req, res) => {
     try {
-      const { sendGotifyTest } =
-        await import("../../../services/notificationService.js");
+      const { sendGotifyTest } = await import("../../../services/notificationService.js");
       const url = req.body?.url?.trim();
       const token = req.body?.token?.trim();
       if (!url || !token) {
@@ -150,10 +128,7 @@ export function registerDownloadClients(router) {
         });
       }
       const status = error.response?.status;
-      const msg =
-        error.response?.data?.description ||
-        error.response?.data?.error ||
-        error.message;
+      const msg = error.response?.data?.description || error.response?.data?.error || error.message;
       res
         .status(status && status >= 400 ? status : 500)
         .json({ error: "Gotify test failed", message: msg });
@@ -162,25 +137,19 @@ export function registerDownloadClients(router) {
 
   router.post("/webhook/test", async (req, res) => {
     const webhook =
-      req.body && typeof req.body === "object" && !Array.isArray(req.body)
-        ? { ...req.body }
-        : {};
+      req.body && typeof req.body === "object" && !Array.isArray(req.body) ? { ...req.body } : {};
     const urlValidation = validateExternalUrl(webhook.url);
     if (!urlValidation.valid) {
       return res.status(400).json({ error: urlValidation.error });
     }
 
     try {
-      const { sendWebhookTest } =
-        await import("../../../services/notificationService.js");
+      const { sendWebhookTest } = await import("../../../services/notificationService.js");
       await sendWebhookTest({ ...webhook, url: urlValidation.url });
       return res.json({ success: true, message: "Test webhook sent" });
     } catch (error) {
       const status = error.response?.status;
-      const msg =
-        error.response?.data?.description ||
-        error.response?.data?.error ||
-        error.message;
+      const msg = error.response?.data?.description || error.response?.data?.error || error.message;
       return res
         .status(status && status >= 400 ? status : 500)
         .json({ error: "Webhook test failed", message: msg });

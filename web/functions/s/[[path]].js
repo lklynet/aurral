@@ -1,4 +1,9 @@
-import { getInstance, INSTANCE_ID_PATTERN, SHARE_TOKEN_PATTERN, TUNNEL_URL_PATTERN } from "../_shareInstances.js";
+import {
+  getInstance,
+  INSTANCE_ID_PATTERN,
+  SHARE_TOKEN_PATTERN,
+  TUNNEL_URL_PATTERN,
+} from "../_shareInstances.js";
 
 const PAYLOAD_VERSION = 1;
 const MAX_NAME_BYTES = 160;
@@ -21,7 +26,8 @@ const TRACK_PATH_PATTERN = /^tracks\/\d+\/\d+$/;
 const LISTEN_HEADINGS = { track: "Listen to the full track", album: "Listen to the full album" };
 
 function fromBase64Url(segment) {
-  if (!segment || segment.length > MAX_PAYLOAD_LENGTH || !/^[A-Za-z0-9_-]+$/.test(segment)) return null;
+  if (!segment || segment.length > MAX_PAYLOAD_LENGTH || !/^[A-Za-z0-9_-]+$/.test(segment))
+    return null;
   try {
     const binary = atob(segment.replace(/-/g, "+").replace(/_/g, "/"));
     return Uint8Array.from(binary, (char) => char.charCodeAt(0));
@@ -54,7 +60,9 @@ function decodeSharePayload(segment) {
   if (bytes.length <= namesStart) return null;
   let names;
   try {
-    names = new TextDecoder("utf-8", { fatal: true }).decode(bytes.subarray(namesStart)).split("\0");
+    names = new TextDecoder("utf-8", { fatal: true })
+      .decode(bytes.subarray(namesStart))
+      .split("\0");
   } catch {
     return null;
   }
@@ -95,7 +103,11 @@ const DEEZER_SEARCHES = {
     path: "artist",
     query: (item) => item.artistName,
     score: (item, result) => (matchScore(item.artistName, result?.name) === 2 ? 2 : 0),
-    pick: (result) => ({ link: result.link, art: result.picture_xl || result.picture_big, artMatches: true }),
+    pick: (result) => ({
+      link: result.link,
+      art: result.picture_xl || result.picture_big,
+      artMatches: true,
+    }),
   },
   album: {
     path: "album",
@@ -168,7 +180,11 @@ async function findOnDeezer(item) {
 
 function parseListen(segment) {
   const [instanceId, token, extra] = String(segment || "").split(".");
-  if (extra !== undefined || !INSTANCE_ID_PATTERN.test(instanceId || "") || !SHARE_TOKEN_PATTERN.test(token || "")) {
+  if (
+    extra !== undefined ||
+    !INSTANCE_ID_PATTERN.test(instanceId || "") ||
+    !SHARE_TOKEN_PATTERN.test(token || "")
+  ) {
     return null;
   }
   return { instanceId, token };
@@ -618,11 +634,11 @@ function sharePage(item, deezer, url, nonce, listen) {
   const preview = listen
     ? listenSection(listen)
     : deezer.preview
-    ? `<div>
+      ? `<div>
         <p class="preview-label" id="preview-label">30-second preview</p>
         <audio controls preload="none" src="${escapeHtml(deezer.preview)}" aria-labelledby="preview-label"></audio>
       </div>`
-    : "";
+      : "";
   const links = listenLinks(item, deezer.link)
     .map(
       ([name, href]) =>
@@ -684,7 +700,9 @@ export async function onRequest({ request, params, env }) {
   }
   const [deezer, listen] = await Promise.all([
     findOnDeezer(item),
-    listenRequest === undefined ? undefined : listenRequest && loadListen(env?.SHARE_DB, listenRequest),
+    listenRequest === undefined
+      ? undefined
+      : listenRequest && loadListen(env?.SHARE_DB, listenRequest),
   ]);
   return new Response(sharePage(item, deezer, request.url, nonce, listen), {
     headers: {

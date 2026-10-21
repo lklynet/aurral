@@ -1,6 +1,9 @@
 import { useCallback, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { getSettingsTasks, clearSettingsStaleTasks } from "../../../utils/api/endpoints/settings.js";
+import {
+  getSettingsTasks,
+  clearSettingsStaleTasks,
+} from "../../../utils/api/endpoints/settings.js";
 import { queryClient, queryKeys } from "../../../queryClient.js";
 import { SettingsArrFieldSet } from "./arr/SettingsArrLayout";
 
@@ -112,9 +115,7 @@ function StatusBadge({ status }) {
   const Icon = meta.icon || AlertCircle;
   return (
     <Tooltip content={meta.title || undefined}>
-      <span
-        className={`arr-task-status arr-task-status--${meta.tone}`}
-      >
+      <span className={`arr-task-status arr-task-status--${meta.tone}`}>
         {meta.spinning ? (
           <DotLoader size="sm" label={null} className="arr-task-status__icon" />
         ) : (
@@ -341,9 +342,7 @@ function QueueTable({ queue = [], loading = false }) {
               {queue.some((task) => task.status === "running") ? "Running for" : "Duration"}
             </th>
             <Tooltip content="Retry count for jobs that can fail and re-run">
-              <th scope="col" >
-                Attempt
-                </th>
+              <th scope="col">Attempt</th>
             </Tooltip>
           </tr>
         </thead>
@@ -386,7 +385,7 @@ function QueueTable({ queue = [], loading = false }) {
                 <td>
                   {isFutureRunAt(task) ? (
                     <Tooltip content="Runs at">
-                      <span >
+                      <span>
                         <span className="arr-table__subtle">Runs at </span>
                         {formatRelative(task.runAt, "—")}
                       </span>

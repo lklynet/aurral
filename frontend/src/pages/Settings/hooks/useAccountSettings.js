@@ -169,13 +169,16 @@ export function useAccountSettings(authUser, showError) {
         const [, lidarrData] = await Promise.all([
           saveHistory({
             listenHistoryProvider: saveDraft.provider,
-            listenHistoryUsername:
-              ["koito", "local"].includes(saveDraft.provider) ? null : saveDraft.username || null,
+            listenHistoryUsername: ["koito", "local"].includes(saveDraft.provider)
+              ? null
+              : saveDraft.username || null,
             listenHistoryUrl: saveDraft.provider === "koito" ? saveDraft.url || null : null,
           }),
           saveLidarr({
             rootFolderPath: saveDraft.rootFolderPath || null,
-            qualityProfileId: saveDraft.qualityProfileId ? Number(saveDraft.qualityProfileId) : null,
+            qualityProfileId: saveDraft.qualityProfileId
+              ? Number(saveDraft.qualityProfileId)
+              : null,
           }),
         ]);
         if (!isCurrentAccount(activeAccountIdRef.current, saveAccountId)) return false;

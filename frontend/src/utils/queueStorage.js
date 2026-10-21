@@ -50,7 +50,10 @@ function restoredTrack(track, token) {
 
 export function serializeQueue(state, { owner, position = 0 }) {
   if (owner == null || state.currentIndex < 0 || state.queue.length === 0) return null;
-  const start = Math.max(0, Math.min(state.currentIndex - HISTORY_KEPT, state.playbackOrder.length - MAX_STORED_TRACKS));
+  const start = Math.max(
+    0,
+    Math.min(state.currentIndex - HISTORY_KEPT, state.playbackOrder.length - MAX_STORED_TRACKS),
+  );
   const window = state.playbackOrder.slice(start, start + MAX_STORED_TRACKS);
   const kept = new Set(window);
   const keptQueueIndices = state.queue.map((_, index) => index).filter((index) => kept.has(index));
@@ -71,7 +74,10 @@ export function serializeQueue(state, { owner, position = 0 }) {
 function isPermutation(order, length) {
   if (!Array.isArray(order) || order.length !== length) return false;
   const seen = new Set(order);
-  return seen.size === length && order.every((value) => Number.isInteger(value) && value >= 0 && value < length);
+  return (
+    seen.size === length &&
+    order.every((value) => Number.isInteger(value) && value >= 0 && value < length)
+  );
 }
 
 export function parseStoredQueue(raw, { owner, token }) {
@@ -85,11 +91,16 @@ export function parseStoredQueue(raw, { owner, token }) {
   if (stored?.version !== VERSION || stored.owner !== String(owner)) return null;
   const { tracks, playbackOrder, currentIndex } = stored;
   if (!Array.isArray(tracks) || tracks.length === 0) return null;
-  if (!tracks.every((track) => track && typeof track === "object" && typeof track.src === "string" && track.src)) {
+  if (
+    !tracks.every(
+      (track) => track && typeof track === "object" && typeof track.src === "string" && track.src,
+    )
+  ) {
     return null;
   }
   if (!isPermutation(playbackOrder, tracks.length)) return null;
-  if (!Number.isInteger(currentIndex) || currentIndex < 0 || currentIndex >= tracks.length) return null;
+  if (!Number.isInteger(currentIndex) || currentIndex < 0 || currentIndex >= tracks.length)
+    return null;
   return {
     queue: tracks.map((track) => restoredTrack(track, token)),
     playbackOrder,

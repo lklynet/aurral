@@ -3,10 +3,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { useStaticPlaylists } from "../hooks/useStaticPlaylists";
 import { downloadTrackToLibrary } from "../utils/api/endpoints/library.js";
-import {
-  addStaticPlaylistTracks,
-  createStaticPlaylist,
-} from "../utils/api/endpoints/playlists.js";
+import { addStaticPlaylistTracks, createStaticPlaylist } from "../utils/api/endpoints/playlists.js";
 import { reserveUniquePlaylistName } from "./ArtistDetails/utils";
 import { normalizePlaylistTrackEntry } from "./playlists/flowPageUtils";
 import { getApiErrorMessage } from "./onboardingUtils";
@@ -48,7 +45,8 @@ export function useTrackSaveActions() {
           name = response?.playlist?.name || requested;
         } else {
           await addStaticPlaylistTracks(target.playlistId, { tracks: payloads });
-          name = staticPlaylists.find((entry) => entry.id === target.playlistId)?.name || "playlist";
+          name =
+            staticPlaylists.find((entry) => entry.id === target.playlistId)?.name || "playlist";
         }
         showSuccess(
           payloads.length === 1
@@ -58,7 +56,10 @@ export function useTrackSaveActions() {
         const nextPlaylists = await loadStaticPlaylists();
         if (nextPlaylists) setStaticPlaylists(nextPlaylists);
       } catch (error) {
-        const message = getApiErrorMessage(error, "Couldn't add to the playlist. Nothing was added.");
+        const message = getApiErrorMessage(
+          error,
+          "Couldn't add to the playlist. Nothing was added.",
+        );
         setPlaylistsError(message);
         showError(message);
       }
@@ -142,7 +143,8 @@ export function useTrackSaveActions() {
       }
       setBulkActionLoading(false);
       const parts = [];
-      if (queued) parts.push(`Queued ${queued} ${queued === 1 ? "track" : "tracks"} for your library`);
+      if (queued)
+        parts.push(`Queued ${queued} ${queued === 1 ? "track" : "tracks"} for your library`);
       if (owned) parts.push(`${owned} already in your library`);
       if (failed) {
         showError(

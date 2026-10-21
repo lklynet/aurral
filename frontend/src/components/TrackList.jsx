@@ -45,7 +45,14 @@ function TrackCover({ cover, indicator = null }) {
   const label = cover?.label || "";
   const content =
     cover?.src && !failed ? (
-      <ArtworkImage src={cover.src} sizes="2.5rem" alt="" loading="lazy" decoding="async" onError={() => setFailed(true)} />
+      <ArtworkImage
+        src={cover.src}
+        sizes="2.5rem"
+        alt=""
+        loading="lazy"
+        decoding="async"
+        onError={() => setFailed(true)}
+      />
     ) : (
       <span className="native-library-cover-fallback is-compact" aria-hidden="true">
         {label.trim().charAt(0).toUpperCase() || "—"}
@@ -105,7 +112,11 @@ function TrackLink({ link, className }) {
     return <span className={`native-library-track__link ${className}`}>{link.label}</span>;
   }
   return (
-    <button type="button" className={`native-library-track__link ${className}`} onClick={link.onOpen}>
+    <button
+      type="button"
+      className={`native-library-track__link ${className}`}
+      onClick={link.onOpen}
+    >
       {link.label}
     </button>
   );
@@ -117,8 +128,15 @@ function HeadingCell({ id, label, sort, className = "" }) {
   const active = sort.key === sortKey;
   const Icon = sort.direction === "asc" ? ArrowUp : ArrowDown;
   return (
-    <span className={className} aria-sort={active ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}>
-      <button type="button" className="native-library-track__sort" onClick={() => sort.onSort(sortKey)}>
+    <span
+      className={className}
+      aria-sort={active ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}
+    >
+      <button
+        type="button"
+        className="native-library-track__sort"
+        onClick={() => sort.onSort(sortKey)}
+      >
         {label}
         {active ? <Icon aria-hidden="true" /> : null}
       </button>
@@ -230,7 +248,11 @@ export function TrackList({
               ) : null}
               <Tooltip content={row.title}>
                 {row.onPlay && !row.playDisabled && !selection ? (
-                  <button type="button" className="native-library-track__title" onClick={row.onPlay}>
+                  <button
+                    type="button"
+                    className="native-library-track__title"
+                    onClick={row.onPlay}
+                  >
                     <span>
                       {row.badge}
                       {row.title}
@@ -247,9 +269,15 @@ export function TrackList({
                   </span>
                 )}
               </Tooltip>
-              {isCollection ? <TrackLink link={row.artist} className="native-library-track__artist" /> : null}
-              {isCollection ? <TrackLink link={row.album} className="native-library-track__album" /> : null}
-              <span className={"native-library-track__time" + (row.timeMissing ? " is-missing" : "")}>
+              {isCollection ? (
+                <TrackLink link={row.artist} className="native-library-track__artist" />
+              ) : null}
+              {isCollection ? (
+                <TrackLink link={row.album} className="native-library-track__album" />
+              ) : null}
+              <span
+                className={"native-library-track__time" + (row.timeMissing ? " is-missing" : "")}
+              >
                 {row.time}
               </span>
               {row.trailing || <span />}

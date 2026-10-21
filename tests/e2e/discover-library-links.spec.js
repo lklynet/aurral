@@ -9,7 +9,10 @@ async function findUntaggedArtist(page) {
   const response = await apiRequest(page, "/api/library/canonical?kind=artists&pageSize=100");
   expect(response.ok).toBe(true);
   const artist = (response.body?.items || []).find((item) => !item.mbid && item.providerId == null);
-  expect(artist, "The candidate library needs an untagged Aurral artist such as the playback fixture").toBeTruthy();
+  expect(
+    artist,
+    "The candidate library needs an untagged Aurral artist such as the playback fixture",
+  ).toBeTruthy();
   return artist;
 }
 
@@ -53,7 +56,9 @@ test("library and Discover artist pages link to each other", async ({ page }) =>
         method: "PUT",
         body: { mbid: null },
       });
-      expect(restored.ok, `Restoring the untagged artist failed with ${restored.status}`).toBe(true);
+      expect(restored.ok, `Restoring the untagged artist failed with ${restored.status}`).toBe(
+        true,
+      );
     }
   }
 });

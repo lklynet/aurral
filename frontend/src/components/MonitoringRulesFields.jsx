@@ -37,7 +37,8 @@ function NumberField({ id, label, value, min, max, disabled, onChange }) {
       disabled={disabled}
       onChange={(event) => {
         setDraft(event.target.value);
-        if (event.target.value !== "" && event.target.validity.valid) onChange(Number(event.target.value));
+        if (event.target.value !== "" && event.target.validity.valid)
+          onChange(Number(event.target.value));
       }}
       onBlur={(event) => {
         const number = Math.round(Number(event.target.value));
@@ -89,7 +90,9 @@ export function MonitoringRulesFields({ rules, onChange, disabled = false }) {
   return (
     <div className="monitoring-rules">
       <div>
-        <label className="artist-field-label" htmlFor={`${id}-catalog`}>Back catalogue</label>
+        <label className="artist-field-label" htmlFor={`${id}-catalog`}>
+          Back catalogue
+        </label>
         <div className="monitoring-rules__row">
           <div className="artist-modal-field aurral-radius-round monitoring-rules__select">
             <select
@@ -100,11 +103,17 @@ export function MonitoringRulesFields({ rules, onChange, disabled = false }) {
               onChange={(event) =>
                 update({
                   catalog: event.target.value,
-                  sinceYear: event.target.value === "since" ? rules.sinceYear || currentYear - 5 : rules.sinceYear,
-                })}
+                  sinceYear:
+                    event.target.value === "since"
+                      ? rules.sinceYear || currentYear - 5
+                      : rules.sinceYear,
+                })
+              }
             >
               {CATALOG_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
               ))}
             </select>
           </div>
@@ -165,7 +174,9 @@ export function MonitoringRulesFields({ rules, onChange, disabled = false }) {
 
       <div className="monitoring-rules__pair">
         <div>
-          <label className="artist-field-label" htmlFor={`${id}-edition`}>Edition</label>
+          <label className="artist-field-label" htmlFor={`${id}-edition`}>
+            Edition
+          </label>
           <div className="artist-modal-field aurral-radius-round">
             <select
               id={`${id}-edition`}
@@ -175,14 +186,18 @@ export function MonitoringRulesFields({ rules, onChange, disabled = false }) {
               onChange={(event) => update({ edition: event.target.value })}
             >
               {EDITION_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
               ))}
             </select>
           </div>
           <p className="monitoring-rules__hint">{EDITION_HINTS[rules.edition]}</p>
         </div>
         <div>
-          <label className="artist-field-label" htmlFor={`${id}-top`}>Top tracks</label>
+          <label className="artist-field-label" htmlFor={`${id}-top`}>
+            Top tracks
+          </label>
           <NumberField
             id={`${id}-top`}
             label="Top tracks"

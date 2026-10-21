@@ -55,7 +55,10 @@ test("preserves static playlist track order", async () => {
   downloadTracker.setDone(firstJobId, firstPath, "Album");
 
   const entries = await collectPlaybackPlaylistTracks(playlist.id, { downloadRoot });
-  assert.deepEqual(entries.map((entry) => entry.path), [secondPath, firstPath]);
+  assert.deepEqual(
+    entries.map((entry) => entry.path),
+    [secondPath, firstPath],
+  );
 });
 
 test("keeps completed tracks after metadata correction", async () => {
@@ -74,7 +77,10 @@ test("keeps completed tracks after metadata correction", async () => {
   downloadTracker.setDone(jobId, trackPath, "Resolved album");
 
   const entries = await collectPlaybackPlaylistTracks(playlist.id, { downloadRoot });
-  assert.deepEqual(entries.map((entry) => entry.path), [trackPath]);
+  assert.deepEqual(
+    entries.map((entry) => entry.path),
+    [trackPath],
+  );
 });
 
 test("normalizes empty migrated names", async () => {

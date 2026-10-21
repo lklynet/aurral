@@ -28,11 +28,15 @@ const BATCH = 50;
 
 async function enqueue(operationId, { dedupe = true } = {}) {
   const { enqueueLibraryFileJob, findActiveHonkerJob } = await import("../honkerDb.js");
-  if (dedupe && findActiveHonkerJob(
-    "library-files",
-    (payload) => Number(payload?.operationId) === Number(operationId),
-    { recoverExpired: true },
-  )) return;
+  if (
+    dedupe &&
+    findActiveHonkerJob(
+      "library-files",
+      (payload) => Number(payload?.operationId) === Number(operationId),
+      { recoverExpired: true },
+    )
+  )
+    return;
   enqueueLibraryFileJob({ operationId });
 }
 
@@ -61,7 +65,8 @@ const UNFINISHED_REASONS = {
 // A Move ingest keeps sources the Library has in another file, and Clean up
 // keeps the extra copies of a track, until the user asks to remove them.
 const removesDuplicates = (operation) =>
-  operation?.kind === "cleanup" || (operation?.kind === "ingest" && operation.options.mode === "move");
+  operation?.kind === "cleanup" ||
+  (operation?.kind === "ingest" && operation.options.mode === "move");
 
 export async function removeDuplicateFiles(id) {
   const operation = getLibraryFileOperation(id);
@@ -109,7 +114,10 @@ async function applyBatch(operation, handler, deadline) {
   const processed = [];
   let cancelled = false;
   while (Date.now() < deadline && !cancelled) {
-    const batch = listLibraryFileOperationItems(operation.id, { statuses: ["pending"], limit: BATCH });
+    const batch = listLibraryFileOperationItems(operation.id, {
+      statuses: ["pending"],
+      limit: BATCH,
+    });
     if (!batch.length) break;
     for (const item of batch) {
       if (getLibraryFileOperation(operation.id)?.status !== "running") {
@@ -157,7 +165,8 @@ export async function runLibraryFileOperation(id, { budgetMs = BUDGET_MS } = {})
       await finish(operation, handler, "cancelled");
       return { done: true };
     }
-    if (listLibraryFileOperationItems(id, { statuses: ["pending"], limit: 1 }).length) return { done: false };
+    if (listLibraryFileOperationItems(id, { statuses: ["pending"], limit: 1 }).length)
+      return { done: false };
     await finish(operation, handler, "complete");
     return { done: true };
   } catch (error) {
@@ -195,15 +204,16 @@ export function describeLibraryFileOperation(operation) {
     options: operation.options,
     summary,
     counts,
-    progress: operation.status === "planning"
-      ? {
-          done: operation.kind === "cleanup" ? cursor?.next || 0 : total - (counts.new || 0),
-          total: operation.kind === "cleanup" ? cursor?.albumIds?.length || 0 : total,
-          unit: operation.kind === "cleanup" ? "albums" : "files",
-        }
-      : removing
-        ? { done: removing - (counts.pending || 0), total: removing, unit: "files" }
-        : { done: total - (counts.pending || 0), total, unit: "files" },
+    progress:
+      operation.status === "planning"
+        ? {
+            done: operation.kind === "cleanup" ? cursor?.next || 0 : total - (counts.new || 0),
+            total: operation.kind === "cleanup" ? cursor?.albumIds?.length || 0 : total,
+            unit: operation.kind === "cleanup" ? "albums" : "files",
+          }
+        : removing
+          ? { done: removing - (counts.pending || 0), total: removing, unit: "files" }
+          : { done: total - (counts.pending || 0), total, unit: "files" },
     sources: removesDuplicates(operation) ? countRemovableDuplicates(operation.id) : null,
     error: operation.error,
     createdAt: operation.createdAt,

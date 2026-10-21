@@ -1,10 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { dbOps } from "../db/helpers/index.js";
-import {
-  normalizeBaseUrl,
-  normalizeInteger,
-  sanitizeNzbName,
-} from "./usenetClientCommon.js";
+import { normalizeBaseUrl, normalizeInteger, sanitizeNzbName } from "./usenetClientCommon.js";
 import axios from "../../lib/axiosFetch.js";
 
 export const sabnzbdSettings = Object.freeze({
@@ -86,11 +82,16 @@ function buildUrl(url, apiKey) {
 
 function buildNzbUpload(fileName, content) {
   const boundary = `aurral-${randomUUID()}`;
-  const header = `--${boundary}\r\nContent-Disposition: form-data; name="name"; `
-    + `filename="${fileName.replace(/"/g, "")}"\r\nContent-Type: application/x-nzb\r\n\r\n`;
+  const header =
+    `--${boundary}\r\nContent-Disposition: form-data; name="name"; ` +
+    `filename="${fileName.replace(/"/g, "")}"\r\nContent-Type: application/x-nzb\r\n\r\n`;
   return {
     contentType: `multipart/form-data; boundary=${boundary}`,
-    body: Buffer.concat([Buffer.from(header), Buffer.from(content), Buffer.from(`\r\n--${boundary}--\r\n`)]),
+    body: Buffer.concat([
+      Buffer.from(header),
+      Buffer.from(content),
+      Buffer.from(`\r\n--${boundary}--\r\n`),
+    ]),
   };
 }
 
@@ -102,9 +103,7 @@ function mapPriority(addPaused) {
 function readConfigValue(entries, name) {
   const key = String(name || "").toLowerCase();
   if (Array.isArray(entries)) {
-    const entry = entries.find(
-      (item) => String(item?.name || "").toLowerCase() === key,
-    );
+    const entry = entries.find((item) => String(item?.name || "").toLowerCase() === key);
     return entry?.value ?? "";
   }
   if (entries && typeof entries === "object") {
@@ -138,9 +137,7 @@ export class SabnzbdClient {
   getStatus() {
     const settings = this._getSettings();
     const cached =
-      connectionCache.settingsKey === getSettingsKey(settings)
-        ? connectionCache.result
-        : null;
+      connectionCache.settingsKey === getSettingsKey(settings) ? connectionCache.result : null;
     return {
       enabled: settings.enabled,
       configured: this.isConfigured(),
@@ -158,9 +155,9 @@ export class SabnzbdClient {
       .join("&");
     const response = file
       ? await axios.post(`${base}&${query}`, file.body, {
-        timeout: 45000,
-        headers: { "Content-Type": file.contentType },
-      })
+          timeout: 45000,
+          headers: { "Content-Type": file.contentType },
+        })
       : await axios.get(`${base}&${query}`, { timeout: 45000 });
     if (response.status !== 200) {
       throw new Error(`SABnzbd ${mode} failed: HTTP ${response.status}`);
@@ -168,23 +165,21 @@ export class SabnzbdClient {
     return response.data;
   }
 
-  async appendNzb({
-    name,
-    content,
-    category,
-    priority,
-    addPaused,
-  }) {
+  async appendNzb({ name, content, category, priority, addPaused }) {
     const settings = this._getSettings();
     if (!content?.length) throw new Error("SABnzbd append requires an NZB file");
     const nzbName = `${sanitizeNzbName(name)}.nzb`;
     const pp = mapPriority(addPaused ?? settings.addPaused);
-    const result = await this.api("addfile", {
-      nzbname: nzbName,
-      cat: category ?? settings.category,
-      priority: normalizeInteger(priority, pp),
-      pp: 3,
-    }, { file: buildNzbUpload(nzbName, content) });
+    const result = await this.api(
+      "addfile",
+      {
+        nzbname: nzbName,
+        cat: category ?? settings.category,
+        priority: normalizeInteger(priority, pp),
+        pp: 3,
+      },
+      { file: buildNzbUpload(nzbName, content) },
+    );
     if (!result?.nzo_ids || result.nzo_ids.length === 0) {
       throw new Error("SABnzbd rejected the NZB");
     }

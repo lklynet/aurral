@@ -52,7 +52,13 @@ const duskDocument = {
   themeId: "custom-dusk",
   appearance: "dark",
   matchArtwork: true,
-  themes: [{ id: "custom-dusk", name: "  Dusk  ", dark: { background: "#1B1D2A", text: "#eee", accent: "#C3A6FF" } }],
+  themes: [
+    {
+      id: "custom-dusk",
+      name: "  Dusk  ",
+      dark: { background: "#1B1D2A", text: "#eee", accent: "#C3A6FF" },
+    },
+  ],
 };
 
 beforeAll(async () => {
@@ -86,7 +92,13 @@ test("a saved theme follows its own account and no other", async () => {
     themeId: "custom-dusk",
     appearance: "dark",
     matchArtwork: true,
-    themes: [{ id: "custom-dusk", name: "Dusk", dark: { background: "#1b1d2a", text: "#eeeeee", accent: "#c3a6ff" } }],
+    themes: [
+      {
+        id: "custom-dusk",
+        name: "Dusk",
+        dark: { background: "#1b1d2a", text: "#eeeeee", accent: "#c3a6ff" },
+      },
+    ],
   });
 
   const otherTheme = await apiFetch(other, "/api/users/me/theme");
@@ -101,7 +113,10 @@ test("an invalid theme is rejected and the saved theme is kept", async () => {
 
   for (const theme of [
     { ...duskDocument, version: 1 },
-    { ...duskDocument, themes: [{ id: "custom-x", name: "X", dark: { background: "red", accent: "#fff" } }] },
+    {
+      ...duskDocument,
+      themes: [{ id: "custom-x", name: "X", dark: { background: "red", accent: "#fff" } }],
+    },
     { ...duskDocument, themes: [{ id: "custom-x", name: "X" }] },
     { ...duskDocument, themes: [duskDocument.themes[0], duskDocument.themes[0]] },
   ]) {
@@ -119,7 +134,9 @@ test("deleting a user removes their saved theme", async () => {
   await putTheme(await login("theme-removed"), duskDocument);
   assert.ok(dbOps.getUserTheme(removed.id));
 
-  const { response } = await apiFetch(await login("theme-admin"), `/api/users/${removed.id}`, { method: "DELETE" });
+  const { response } = await apiFetch(await login("theme-admin"), `/api/users/${removed.id}`, {
+    method: "DELETE",
+  });
   assert.equal(response.status, 200);
   assert.equal(dbOps.getUserTheme(removed.id), null);
 });

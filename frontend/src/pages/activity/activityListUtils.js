@@ -7,8 +7,12 @@ export function groupAlbumGrabRequests(requests) {
   const groups = new Map();
   for (const request of requests) {
     const grab = request.albumGrab;
-    if (request.kind !== "track_download" || request.playlistId !== "library"
-      || !grab?.id || !grab.memberJobIds?.includes(request.jobId)) {
+    if (
+      request.kind !== "track_download" ||
+      request.playlistId !== "library" ||
+      !grab?.id ||
+      !grab.memberJobIds?.includes(request.jobId)
+    ) {
       rows.push(request);
       continue;
     }
@@ -16,14 +20,18 @@ export function groupAlbumGrabRequests(requests) {
     groups.get(grab.id).set(request.jobId, request);
   }
   for (const [id, members] of groups) {
-    const children = [...members.values()].sort((left, right) =>
-      Number(left.discNumber || 1) - Number(right.discNumber || 1)
-      || Number(left.trackNumber || 0) - Number(right.trackNumber || 0)
-      || String(left.jobId).localeCompare(String(right.jobId)));
+    const children = [...members.values()].sort(
+      (left, right) =>
+        Number(left.discNumber || 1) - Number(right.discNumber || 1) ||
+        Number(left.trackNumber || 0) - Number(right.trackNumber || 0) ||
+        String(left.jobId).localeCompare(String(right.jobId)),
+    );
     const first = children[0];
     const grab = first.albumGrab;
     const total = grab.memberJobIds.length;
-    const ready = children.filter((child) => child.status === "completed" || child.status === "available").length;
+    const ready = children.filter(
+      (child) => child.status === "completed" || child.status === "available",
+    ).length;
     const missing = Math.max(0, total - children.length);
     const blocked = children.some((child) => child.status === "blocked");
     const processing = children.some((child) => child.status === "processing");
@@ -33,28 +41,76 @@ export function groupAlbumGrabRequests(requests) {
     const trackFiles = children.some((child) => child.downloadMethod === "track");
     const fallback = grab.phase === "tracks" || Boolean(grab.fallbackReason) || trackFiles;
     const activeLabel = fallback
-      ? processing ? "Downloading tracks" : "Searching for tracks"
-      : { search: "Searching for album", download: "Downloading album", poll: "Downloading album", finalize: "Processing" }[grab.phase] || "Queued";
+      ? processing
+        ? "Downloading tracks"
+        : "Searching for tracks"
+      : {
+          search: "Searching for album",
+          download: "Downloading album",
+          poll: "Downloading album",
+          finalize: "Processing",
+        }[grab.phase] || "Queued";
     const allCancelled = children.every((child) => child.status === "cancelled");
-    const status = blocked ? "blocked" : active ? "processing" : ready === total ? "completed"
-      : allCancelled && !missing ? "cancelled" : "failed";
-    const statusLabel = blocked ? "Needs review" : active ? activeLabel
-      : ready === total ? "Completed" : ready > 0 || missing ? "Incomplete" : allCancelled ? "Cancelled" : "Failed";
-    const times = [grab.completedAt, ...children.map((child) => child.completedAt)].map(Date.parse).filter(Number.isFinite);
+    const status = blocked
+      ? "blocked"
+      : active
+        ? "processing"
+        : ready === total
+          ? "completed"
+          : allCancelled && !missing
+            ? "cancelled"
+            : "failed";
+    const statusLabel = blocked
+      ? "Needs review"
+      : active
+        ? activeLabel
+        : ready === total
+          ? "Completed"
+          : ready > 0 || missing
+            ? "Incomplete"
+            : allCancelled
+              ? "Cancelled"
+              : "Failed";
+    const times = [grab.completedAt, ...children.map((child) => child.completedAt)]
+      .map(Date.parse)
+      .filter(Number.isFinite);
     const completedAt = !active && times.length ? new Date(Math.max(...times)).toISOString() : null;
-    const sources = [...new Set(children.map((child) => child.actualDownloadSource).filter(Boolean))];
-    const sourceSummary = sources.length ? sources.map((source) => SOURCE_NAMES[source] || source).join(", ")
-      : active && grab.source ? SOURCE_NAMES[grab.source] || grab.source : "Unknown";
-    const progressLabel = `${ready} of ${total} tracks ready`
-      + (missing ? ` · ${missing} track detail${missing === 1 ? "" : "s"} unavailable` : "");
+    const sources = [
+      ...new Set(children.map((child) => child.actualDownloadSource).filter(Boolean)),
+    ];
+    const sourceSummary = sources.length
+      ? sources.map((source) => SOURCE_NAMES[source] || source).join(", ")
+      : active && grab.source
+        ? SOURCE_NAMES[grab.source] || grab.source
+        : "Unknown";
+    const progressLabel =
+      `${ready} of ${total} tracks ready` +
+      (missing ? ` · ${missing} track detail${missing === 1 ? "" : "s"} unavailable` : "");
     rows.push({
-      ...first, id, jobId: null, kind: "album_download", source: "aurral",
-      trackName: null, title: first.albumName || "Album download", children,
-      status, statusLabel, inQueue: active, canReSearch: false,
-      requestedAt: grab.requestedAt, completedAt, progressLabel, sourceSummary,
+      ...first,
+      id,
+      jobId: null,
+      kind: "album_download",
+      source: "aurral",
+      trackName: null,
+      title: first.albumName || "Album download",
+      children,
+      status,
+      statusLabel,
+      inQueue: active,
+      canReSearch: false,
+      requestedAt: grab.requestedAt,
+      completedAt,
+      progressLabel,
+      sourceSummary,
       activeStatusLabel: blocked && (processing || pending) ? activeLabel : null,
-      downloadMethodLabel: albumFiles ? fallback ? "Album download with track fallback" : "Album download"
-        : fallback ? "Album attempt with track fallback" : "Album attempt",
+      downloadMethodLabel: albumFiles
+        ? fallback
+          ? "Album download with track fallback"
+          : "Album download"
+        : fallback
+          ? "Album attempt with track fallback"
+          : "Album attempt",
       previousErrors: [...new Set(children.flatMap((child) => child.previousErrors || []))],
     });
   }
@@ -62,12 +118,26 @@ export function groupAlbumGrabRequests(requests) {
 }
 
 export function matchesActivitySearch(request, query) {
-  const value = String(query || "").trim().toLocaleLowerCase();
+  const value = String(query || "")
+    .trim()
+    .toLocaleLowerCase();
   if (!value) return true;
-  return [request.title, request.name, request.trackName, request.albumName,
-    request.artistName, request.subtitle, request.statusLabel]
-    .filter(Boolean).join(" ").toLocaleLowerCase().includes(value)
-    || (request.children || []).some((child) => matchesActivitySearch(child, value));
+  return (
+    [
+      request.title,
+      request.name,
+      request.trackName,
+      request.albumName,
+      request.artistName,
+      request.subtitle,
+      request.statusLabel,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLocaleLowerCase()
+      .includes(value) ||
+    (request.children || []).some((child) => matchesActivitySearch(child, value))
+  );
 }
 
 const getRequestIdentity = (request) =>

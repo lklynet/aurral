@@ -25,9 +25,16 @@ export function DeleteTrackModal({ show, title, hasFile = true, onCancel, onConf
           {hasFile ? "Delete track file" : "Remove track from library"}
         </h3>
         <p className="artist-modal__copy">
-          {hasFile
-            ? <>Permanently delete <strong>{title || "this track"}</strong> from disk?</>
-            : <>Remove <strong>{title || "this track"}</strong> from the Library and stop future downloads?</>}
+          {hasFile ? (
+            <>
+              Permanently delete <strong>{title || "this track"}</strong> from disk?
+            </>
+          ) : (
+            <>
+              Remove <strong>{title || "this track"}</strong> from the Library and stop future
+              downloads?
+            </>
+          )}
         </p>
         <div className="artist-modal__actions">
           <button onClick={onCancel} disabled={deleting} className="btn btn-secondary">
@@ -39,8 +46,10 @@ export function DeleteTrackModal({ show, title, hasFile = true, onCancel, onConf
                 <DotLoader size="sm" label={null} />
                 {hasFile ? "Deleting..." : "Removing..."}
               </>
+            ) : hasFile ? (
+              "Delete track"
             ) : (
-              hasFile ? "Delete track" : "Remove track"
+              "Remove track"
             )}
           </button>
         </div>

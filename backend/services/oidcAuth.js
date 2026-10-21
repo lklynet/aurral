@@ -95,7 +95,9 @@ function getScopes() {
 }
 
 function getUsernameClaim() {
-  return String(process.env.OIDC_USERNAME_CLAIM || "preferred_username").trim() || "preferred_username";
+  return (
+    String(process.env.OIDC_USERNAME_CLAIM || "preferred_username").trim() || "preferred_username"
+  );
 }
 
 function getGroupsClaim() {
@@ -125,7 +127,9 @@ function buildClientAuthentication(method, clientSecret) {
 }
 
 function generateUniqueUsername(base) {
-  const trimmed = String(base || "").trim().toLowerCase();
+  const trimmed = String(base || "")
+    .trim()
+    .toLowerCase();
   if (!trimmed) return trimmed;
   if (!userOps.getUserByUsername(trimmed)) return trimmed;
   for (let suffix = 2; suffix < 1000; suffix += 1) {
@@ -137,7 +141,13 @@ function generateUniqueUsername(base) {
 
 function normalizeGroups(value) {
   if (Array.isArray(value)) {
-    return value.map((item) => String(item || "").trim().toLowerCase()).filter(Boolean);
+    return value
+      .map((item) =>
+        String(item || "")
+          .trim()
+          .toLowerCase(),
+      )
+      .filter(Boolean);
   }
   if (value == null) return [];
   return String(value)
@@ -314,7 +324,11 @@ function buildCallbackUrl(req) {
   return url;
 }
 
-export async function startOidcLogin(req, res, { mode = "login", linkUserId = null, returnUrl = false } = {}) {
+export async function startOidcLogin(
+  req,
+  res,
+  { mode = "login", linkUserId = null, returnUrl = false } = {},
+) {
   if (!isOidcEnabled()) {
     res.status(404).json({ error: "OIDC is not enabled" });
     return;
@@ -365,13 +379,18 @@ function linkOidcIdentity(config, claims, linkUserId) {
   }
   const subject = String(claims.sub || "").trim();
   if (!subject) {
-    throw Object.assign(new Error("OIDC identity did not include a usable subject"), { status: 400 });
+    throw Object.assign(new Error("OIDC identity did not include a usable subject"), {
+      status: 400,
+    });
   }
   const existing = userIdentityOps.findByProvider("oidc", config.issuer, subject);
   if (existing && existing.userId !== linkUser.id) {
-    throw Object.assign(new Error("This single sign-on account is already linked to another user"), {
-      status: 409,
-    });
+    throw Object.assign(
+      new Error("This single sign-on account is already linked to another user"),
+      {
+        status: 409,
+      },
+    );
   }
   if (!existing) {
     db.transaction(() => {
@@ -381,7 +400,10 @@ function linkOidcIdentity(config, claims, linkUserId) {
         subject,
         displayName: toDisplayName(claims),
       });
-      userOps.updateUser(linkUser.id, { needsIdentityMigration: false, allowIdentityAdoption: false });
+      userOps.updateUser(linkUser.id, {
+        needsIdentityMigration: false,
+        allowIdentityAdoption: false,
+      });
     })();
   }
   return toResolvedUser(userOps.getUserById(linkUser.id));

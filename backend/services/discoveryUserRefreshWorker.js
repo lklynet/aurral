@@ -10,7 +10,8 @@ async function processDiscoveryUserRefresh(payload = {}) {
   return updateUserDiscoveryCache(userId, { requestedAt: Number(payload?.requestedAt) });
 }
 
-const {  start: startDiscoveryUserRefreshWorker,
+const {
+  start: startDiscoveryUserRefreshWorker,
   stop: stopDiscoveryUserRefreshWorker,
   isRunning: isDiscoveryUserRefreshWorkerRunning,
 } = createHonkerWorker({

@@ -5,9 +5,11 @@ let nextRequestId = 0;
 let listening = false;
 
 export function isDownloadOwnerProcess() {
-  return process.env.NODE_ENV === "test" ||
+  return (
+    process.env.NODE_ENV === "test" ||
     process.env.AURRAL_TEST_SERVER === "1" ||
-    process.env.AURRAL_BACKGROUND_WORKER_GROUP === "downloads";
+    process.env.AURRAL_BACKGROUND_WORKER_GROUP === "downloads"
+  );
 }
 
 export function configureDownloadOwnerClient({ request, getStatus }) {

@@ -2,44 +2,66 @@ import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { fork } from "node:child_process";
 import { once } from "node:events";
-import { setupIsolatedBackend, cleanupIsolatedState, createMockHttpServer, resetDatabase } from "../helpers/backendTestHarness.js";
+import {
+  setupIsolatedBackend,
+  cleanupIsolatedState,
+  createMockHttpServer,
+  resetDatabase,
+} from "../helpers/backendTestHarness.js";
 const [state, { SlskdClient }, { db }] = await setupIsolatedBackend(
-  "slskd-backoff", "backend/services/slskdClient.js", "backend/config/db-sqlite.js");
+  "slskd-backoff",
+  "backend/services/slskdClient.js",
+  "backend/config/db-sqlite.js",
+);
 afterAll(() => cleanupIsolatedState(state));
 beforeEach(() => resetDatabase(db));
 
-test("searches from different processes start at least five seconds apart", { timeout: 20000 }, async () => {
-  const started = [];
-  const server = await createMockHttpServer((req, res) => {
-    req.resume();
-    req.on("end", () => {
-      if (req.method === "POST" && req.url === "/api/v0/searches") started.push(Date.now());
-      res.writeHead(201, { "content-type": "application/json" });
-      res.end("{}");
+test(
+  "searches from different processes start at least five seconds apart",
+  { timeout: 20000 },
+  async () => {
+    const started = [];
+    const server = await createMockHttpServer((req, res) => {
+      req.resume();
+      req.on("end", () => {
+        if (req.method === "POST" && req.url === "/api/v0/searches") started.push(Date.now());
+        res.writeHead(201, { "content-type": "application/json" });
+        res.end("{}");
+      });
     });
-  });
-  const worker = fork(new URL("../helpers/slskdSearchStartWorker.js", import.meta.url), [], {
-    env: { ...process.env, SLSKD_TEST_URL: server.url }, stdio: ["ignore", "ignore", "pipe", "ipc"],
-  });
-  try {
-    const [message] = await once(worker, "message");
-    assert.deepEqual(message, { done: true });
-    await new SlskdClient({ enabled: true, url: server.url }).createSearch("Main search", { id: "main-search" });
-    assert.equal(started.length, 2);
-    assert.ok(started[1] - started[0] >= 4500, `searches started ${started[1] - started[0]}ms apart`);
-  } finally {
-    if (worker.exitCode == null) worker.kill();
-    await server.close();
-  }
-});
+    const worker = fork(new URL("../helpers/slskdSearchStartWorker.js", import.meta.url), [], {
+      env: { ...process.env, SLSKD_TEST_URL: server.url },
+      stdio: ["ignore", "ignore", "pipe", "ipc"],
+    });
+    try {
+      const [message] = await once(worker, "message");
+      assert.deepEqual(message, { done: true });
+      await new SlskdClient({ enabled: true, url: server.url }).createSearch("Main search", {
+        id: "main-search",
+      });
+      assert.equal(started.length, 2);
+      assert.ok(
+        started[1] - started[0] >= 4500,
+        `searches started ${started[1] - started[0]}ms apart`,
+      );
+    } finally {
+      if (worker.exitCode == null) worker.kill();
+      await server.close();
+    }
+  },
+);
 
 test("downloads enqueue during cross-process search backoff without bypassing search throttling", async () => {
   let notifyFirstSearch;
-  const firstSearch = new Promise((resolve) => { notifyFirstSearch = resolve; });
+  const firstSearch = new Promise((resolve) => {
+    notifyFirstSearch = resolve;
+  });
   const searches = [];
   const server = await createMockHttpServer((req, res) => {
     let body = "";
-    req.on("data", (chunk) => { body += chunk; });
+    req.on("data", (chunk) => {
+      body += chunk;
+    });
     req.on("end", () => {
       res.setHeader("Content-Type", "application/json");
       if (req.url === "/api/v0/searches") {
@@ -55,7 +77,8 @@ test("downloads enqueue during cross-process search backoff without bypassing se
     });
   });
   const worker = fork(new URL("../helpers/slskdSearchBackoffWorker.js", import.meta.url), [], {
-    env: { ...process.env, SLSKD_TEST_URL: server.url }, stdio: ["ignore", "ignore", "pipe", "ipc"],
+    env: { ...process.env, SLSKD_TEST_URL: server.url },
+    stdio: ["ignore", "ignore", "pipe", "ipc"],
   });
   const workerFinished = once(worker, "message");
   let enqueue;
@@ -65,18 +88,33 @@ test("downloads enqueue during cross-process search backoff without bypassing se
     await firstSearch;
     const client = new SlskdClient({ enabled: true, url: server.url });
     otherSearch = client.createSearch("Second", { id: "following-search" });
-    enqueue = client.enqueueBatch({ username: "peer", files: [{ filename: "First.flac", size: 1000 }] });
-    await Promise.race([enqueue, new Promise((_, reject) => {
-      timer = setTimeout(() => reject(new Error("Download enqueue was blocked by search backoff")), 2000);
-    })]);
+    enqueue = client.enqueueBatch({
+      username: "peer",
+      files: [{ filename: "First.flac", size: 1000 }],
+    });
+    await Promise.race([
+      enqueue,
+      new Promise((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error("Download enqueue was blocked by search backoff")),
+          2000,
+        );
+      }),
+    ]);
     clearTimeout(timer);
     assert.equal(searches.length, 1, "another search must not bypass the backoff");
     worker.send("advance");
     const [message] = await workerFinished;
     assert.deepEqual(message, { done: true });
     await otherSearch;
-    assert.deepEqual(searches.map((search) => search.id), ["backing-off-search", "backing-off-search", "following-search"]);
-    assert.ok(searches[1].searchTimeout < searches[0].searchTimeout, "retry must use the remaining deadline");
+    assert.deepEqual(
+      searches.map((search) => search.id),
+      ["backing-off-search", "backing-off-search", "following-search"],
+    );
+    assert.ok(
+      searches[1].searchTimeout < searches[0].searchTimeout,
+      "retry must use the remaining deadline",
+    );
   } finally {
     clearTimeout(timer);
     if (worker.connected) worker.send("advance");

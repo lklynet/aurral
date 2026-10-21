@@ -1,15 +1,15 @@
 import { UUID_REGEX } from "../../../../lib/uuid.js";
 import { libraryManager } from "../../../services/libraryManager.js";
 import { cacheMiddleware, noCache } from "../../../middleware/cache.js";
-import {
-  requireAuth,
-  requirePermission,
-} from "../../../middleware/requirePermission.js";
+import { requireAuth, requirePermission } from "../../../middleware/requirePermission.js";
 import { logger } from "../../../services/logger.js";
 import { getLibraryReadModelForArtistPage } from "../../../services/libraryReadModel.js";
 import { getLibraryArtistProjection } from "../../../services/libraryQueryService.js";
 import { setLibraryArtistMbid } from "../../../services/libraryMediaStore.js";
-import { getArtistByMbid, isMetadataNotFoundError } from "../../../services/providers/brainzmashProvider.js";
+import {
+  getArtistByMbid,
+  isMetadataNotFoundError,
+} from "../../../services/providers/brainzmashProvider.js";
 export function registerArtists(router) {
   router.get("/artists", cacheMiddleware(120), async (req, res) => {
     try {
@@ -21,10 +21,12 @@ export function registerArtists(router) {
           limit,
           offset,
         });
-        return res.json(artists.map((artist) => ({
-          ...artist,
-          added: artist.addedAt,
-        })));
+        return res.json(
+          artists.map((artist) => ({
+            ...artist,
+            added: artist.addedAt,
+          })),
+        );
       }
       const artists = getLibraryArtistProjection({ pageSize: limit, offset });
       const formatted = artists.map((artist) => ({
@@ -159,19 +161,16 @@ export function registerArtists(router) {
         });
       }
 
-      const artist = await libraryManager.addArtistWithResolvedOptions(
-        mbid,
-        artistName,
-        { ...preparedAddOptions, user: req.user },
-      );
+      const artist = await libraryManager.addArtistWithResolvedOptions(mbid, artistName, {
+        ...preparedAddOptions,
+        user: req.user,
+      });
       if (artist?.error) {
         logger.error("library", `Failed to add artist ${artistName}:`, {
           message: artist.error,
         });
         const statusCode =
-          Number.isInteger(artist.statusCode) && artist.statusCode >= 400
-            ? artist.statusCode
-            : 503;
+          Number.isInteger(artist.statusCode) && artist.statusCode >= 400 ? artist.statusCode : 503;
         return res.status(statusCode).json({
           error: "Failed to add artist",
           message: artist.error,
@@ -217,7 +216,9 @@ export function registerArtists(router) {
           if (isMetadataNotFoundError(error)) {
             return res.status(404).json({ error: "MusicBrainz has no artist with that ID" });
           }
-          return res.status(503).json({ error: "Could not reach the metadata provider. Try again." });
+          return res
+            .status(503)
+            .json({ error: "Could not reach the metadata provider. Try again." });
         }
       }
       const result = setLibraryArtistMbid(artistId, mbid);
@@ -225,7 +226,9 @@ export function registerArtists(router) {
         return res.status(404).json({ error: "Artist not found" });
       }
       if (result.error === "lidarr_managed") {
-        return res.status(409).json({ error: "Lidarr manages this artist. Change its MusicBrainz ID in Lidarr." });
+        return res
+          .status(409)
+          .json({ error: "Lidarr manages this artist. Change its MusicBrainz ID in Lidarr." });
       }
       res.json({
         id: result.artist.id,

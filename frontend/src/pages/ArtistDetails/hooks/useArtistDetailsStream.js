@@ -286,10 +286,9 @@ export function useArtistDetailsStream(
 
         const fullArtist = lookup.canonical
           ? lookup.artist
-          : await getLibraryArtist(
-              lookup.artist.mbid || lookup.artist.foreignArtistId,
-              { bypassCache },
-            ).catch((err) => {
+          : await getLibraryArtist(lookup.artist.mbid || lookup.artist.foreignArtistId, {
+              bypassCache,
+            }).catch((err) => {
               console.error("Failed to fetch full artist details:", err);
               return lookup.artist;
             });

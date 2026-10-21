@@ -32,13 +32,12 @@ export const runSharedInflight = (inflight, key, task, { signal } = {}) => {
     } catch (error) {
       taskResult = Promise.reject(error);
     }
-    entry.promise = Promise.resolve(taskResult)
-      .finally(() => {
-        entry.settled = true;
-        if (inflight.get(key) === entry) {
-          inflight.delete(key);
-        }
-      });
+    entry.promise = Promise.resolve(taskResult).finally(() => {
+      entry.settled = true;
+      if (inflight.get(key) === entry) {
+        inflight.delete(key);
+      }
+    });
     inflight.set(key, entry);
   }
 

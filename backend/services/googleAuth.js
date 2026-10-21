@@ -164,12 +164,16 @@ export async function handleGoogleCallback(req) {
   }
 
   const oidc = await getDiscoveryConfig(config);
-  const tokens = await client.authorizationCodeGrant(oidc, buildCallbackUrl(req, config.redirectUri), {
-    pkceCodeVerifier: pending.codeVerifier,
-    expectedState: state,
-    expectedNonce: pending.nonce,
-    idTokenExpected: true,
-  });
+  const tokens = await client.authorizationCodeGrant(
+    oidc,
+    buildCallbackUrl(req, config.redirectUri),
+    {
+      pkceCodeVerifier: pending.codeVerifier,
+      expectedState: state,
+      expectedNonce: pending.nonce,
+      idTokenExpected: true,
+    },
+  );
 
   const claims = tokens.claims() || {};
   const subject = String(claims.sub || "").trim();
@@ -210,7 +214,9 @@ export async function handleGoogleCallback(req) {
     const identity = userIdentityOps.findByProvider("google", "google", subject);
     if (!identity) {
       throw Object.assign(
-        new Error("This Google account isn't linked to an Aurral account yet. Sign in another way and link it in Settings."),
+        new Error(
+          "This Google account isn't linked to an Aurral account yet. Sign in another way and link it in Settings.",
+        ),
         { status: 403 },
       );
     }

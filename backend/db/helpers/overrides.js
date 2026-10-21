@@ -1,14 +1,10 @@
 import { db } from "../../config/db-sqlite.js";
 
-const getArtistOverrideStmt = db.prepare(
-  "SELECT * FROM artist_overrides WHERE mbid = ?"
-);
+const getArtistOverrideStmt = db.prepare("SELECT * FROM artist_overrides WHERE mbid = ?");
 const upsertArtistOverrideStmt = db.prepare(
-  "INSERT OR REPLACE INTO artist_overrides (mbid, musicbrainz_id, deezer_artist_id, updated_at) VALUES (?, ?, ?, ?)"
+  "INSERT OR REPLACE INTO artist_overrides (mbid, musicbrainz_id, deezer_artist_id, updated_at) VALUES (?, ?, ?, ?)",
 );
-const deleteArtistOverrideStmt = db.prepare(
-  "DELETE FROM artist_overrides WHERE mbid = ?"
-);
+const deleteArtistOverrideStmt = db.prepare("DELETE FROM artist_overrides WHERE mbid = ?");
 
 export default function register(dbOps) {
   dbOps.getArtistOverride = function (mbid) {
@@ -26,12 +22,7 @@ export default function register(dbOps) {
   dbOps.setArtistOverride = function (mbid, { musicbrainzId = null, deezerArtistId = null } = {}) {
     if (!mbid) return null;
     const now = Date.now();
-    upsertArtistOverrideStmt.run(
-      mbid,
-      musicbrainzId || null,
-      deezerArtistId || null,
-      now
-    );
+    upsertArtistOverrideStmt.run(mbid, musicbrainzId || null, deezerArtistId || null, now);
     return {
       mbid,
       musicbrainzId: musicbrainzId || null,

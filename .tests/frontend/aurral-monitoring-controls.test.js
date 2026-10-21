@@ -15,25 +15,39 @@ import {
 test("summary counts queued releases and top tracks", () => {
   const monitored = { monitored: true, rules: { newReleases: true } };
   assert.equal(
-    summarizeAurralMonitoring({ releaseGroupIds: ["rg1"], topTracks: [], skipped: [], queued: true }, monitored).headline,
+    summarizeAurralMonitoring(
+      { releaseGroupIds: ["rg1"], topTracks: [], skipped: [], queued: true },
+      monitored,
+    ).headline,
     "Queued 1 release for download",
   );
   assert.equal(
     summarizeAurralMonitoring(
-      { releaseGroupIds: ["rg1", "rg2"], topTracks: [{ title: "a" }, { title: "b" }], skipped: [], queued: true },
+      {
+        releaseGroupIds: ["rg1", "rg2"],
+        topTracks: [{ title: "a" }, { title: "b" }],
+        skipped: [],
+        queued: true,
+      },
       monitored,
     ).headline,
     "Queued 2 releases and 2 top tracks for download",
   );
   assert.equal(
-    summarizeAurralMonitoring({ releaseGroupIds: [], topTracks: [{ title: "a" }], skipped: [], queued: true }, monitored).headline,
+    summarizeAurralMonitoring(
+      { releaseGroupIds: [], topTracks: [{ title: "a" }], skipped: [], queued: true },
+      monitored,
+    ).headline,
     "Queued 1 top track for download",
   );
 });
 
 test("summary says what happens when nothing was queued", () => {
   const empty = { releaseGroupIds: [], topTracks: [], skipped: [], queued: false };
-  assert.equal(summarizeAurralMonitoring(empty, { monitored: false }).headline, "Monitoring turned off");
+  assert.equal(
+    summarizeAurralMonitoring(empty, { monitored: false }).headline,
+    "Monitoring turned off",
+  );
   assert.equal(
     summarizeAurralMonitoring(empty, { monitored: true, rules: { newReleases: true } }).headline,
     "Watching for new releases",
@@ -46,20 +60,23 @@ test("summary says what happens when nothing was queued", () => {
 });
 
 test("summary lists skipped releases by reason with counts and keeps unknown reasons", () => {
-  const summary = summarizeAurralMonitoring({
-    releaseGroupIds: ["rg1"],
-    skipped: [
-      { releaseGroupId: "rg2", reason: "complete" },
-      { releaseGroupId: "rg3", reason: "complete" },
-      { releaseGroupId: "rg4", reason: "covered" },
-      { releaseGroupId: "rg5", reason: "excluded" },
-      { releaseGroupId: "rg6", reason: "unmonitored" },
-      { releaseGroupId: "rg7", reason: "managed_by_lidarr" },
-      { releaseGroupId: "rg8", reason: "brand_new_reason" },
-    ],
-    topTracksError: "Top tracks are unavailable right now. Aurral tries again tomorrow.",
-    queued: true,
-  }, { monitored: true });
+  const summary = summarizeAurralMonitoring(
+    {
+      releaseGroupIds: ["rg1"],
+      skipped: [
+        { releaseGroupId: "rg2", reason: "complete" },
+        { releaseGroupId: "rg3", reason: "complete" },
+        { releaseGroupId: "rg4", reason: "covered" },
+        { releaseGroupId: "rg5", reason: "excluded" },
+        { releaseGroupId: "rg6", reason: "unmonitored" },
+        { releaseGroupId: "rg7", reason: "managed_by_lidarr" },
+        { releaseGroupId: "rg8", reason: "brand_new_reason" },
+      ],
+      topTracksError: "Top tracks are unavailable right now. Aurral tries again tomorrow.",
+      queued: true,
+    },
+    { monitored: true },
+  );
   assert.deepEqual(summary.details, [
     "2 already in your library",
     "1 skipped because another release has its songs",
@@ -104,20 +121,40 @@ test("other monitoring errors keep the server message", () => {
 });
 
 test("album monitored state follows the server for Aurral albums", () => {
-  assert.equal(getAlbumMonitoredState({ managedBy: "aurral", monitored: true, monitorMode: "monitored" }), true);
-  assert.equal(getAlbumMonitoredState({ managedBy: "aurral", monitored: true, monitorMode: null }), true);
-  assert.equal(getAlbumMonitoredState({ managedBy: "aurral", monitored: false, monitorMode: "unmonitored" }), false);
-  assert.equal(getAlbumMonitoredState({ managedBy: "aurral", monitored: true, monitorMode: "unmonitored" }), false);
+  assert.equal(
+    getAlbumMonitoredState({ managedBy: "aurral", monitored: true, monitorMode: "monitored" }),
+    true,
+  );
+  assert.equal(
+    getAlbumMonitoredState({ managedBy: "aurral", monitored: true, monitorMode: null }),
+    true,
+  );
+  assert.equal(
+    getAlbumMonitoredState({ managedBy: "aurral", monitored: false, monitorMode: "unmonitored" }),
+    false,
+  );
+  assert.equal(
+    getAlbumMonitoredState({ managedBy: "aurral", monitored: true, monitorMode: "unmonitored" }),
+    false,
+  );
   assert.equal(getAlbumMonitoredState({ managedBy: "aurral" }), false);
 });
 
 test("album monitored state reads the library page shape", () => {
   assert.equal(
-    getAlbumMonitoredState({ managedBy: "aurral", monitorMode: null, metadata: { monitored: true } }),
+    getAlbumMonitoredState({
+      managedBy: "aurral",
+      monitorMode: null,
+      metadata: { monitored: true },
+    }),
     true,
   );
   assert.equal(
-    getAlbumMonitoredState({ managedBy: "aurral", monitorMode: null, metadata: { monitored: false } }),
+    getAlbumMonitoredState({
+      managedBy: "aurral",
+      monitorMode: null,
+      metadata: { monitored: false },
+    }),
     false,
   );
 });
@@ -157,12 +194,26 @@ test("anything with missing files is monitored by downloading it, so the menu on
 });
 
 test("the album download is offered for unmonitored Aurral albums with missing tracks", () => {
-  const album = { managedBy: "aurral", monitored: false, monitorMode: null, releaseGroupMbid: "rg" };
+  const album = {
+    managedBy: "aurral",
+    monitored: false,
+    monitorMode: null,
+    releaseGroupMbid: "rg",
+  };
   assert.equal(canDownloadAurralAlbum(album, { hasMissingTracks: true }), true);
   assert.equal(canDownloadAurralAlbum(album, { hasMissingTracks: false }), false);
-  assert.equal(canDownloadAurralAlbum({ ...album, monitored: true }, { hasMissingTracks: true }), false);
-  assert.equal(canDownloadAurralAlbum({ ...album, releaseGroupMbid: null }, { hasMissingTracks: true }), false);
-  assert.equal(canDownloadAurralAlbum({ ...album, managedBy: "lidarr" }, { hasMissingTracks: true }), false);
+  assert.equal(
+    canDownloadAurralAlbum({ ...album, monitored: true }, { hasMissingTracks: true }),
+    false,
+  );
+  assert.equal(
+    canDownloadAurralAlbum({ ...album, releaseGroupMbid: null }, { hasMissingTracks: true }),
+    false,
+  );
+  assert.equal(
+    canDownloadAurralAlbum({ ...album, managedBy: "lidarr" }, { hasMissingTracks: true }),
+    false,
+  );
 });
 
 test("unmonitoring asks first only while downloads are unfinished", () => {
@@ -180,11 +231,19 @@ test("unmonitoring asks first when the download status is unknown", () => {
 
 test("unmonitoring result reports cancelled downloads", () => {
   assert.deepEqual(
-    describeAlbumMonitoringResult({ monitored: false, cancelledJobIds: ["a", "b"], cleanupFailed: false }),
+    describeAlbumMonitoringResult({
+      monitored: false,
+      cancelledJobIds: ["a", "b"],
+      cleanupFailed: false,
+    }),
     { message: "Album unmonitored. Cancelled 2 downloads.", warning: false },
   );
   assert.deepEqual(
-    describeAlbumMonitoringResult({ monitored: false, cancelledJobIds: ["a"], cleanupFailed: false }),
+    describeAlbumMonitoringResult({
+      monitored: false,
+      cancelledJobIds: ["a"],
+      cleanupFailed: false,
+    }),
     { message: "Album unmonitored. Cancelled 1 download.", warning: false },
   );
 });
@@ -200,12 +259,19 @@ test("unmonitoring result warns when the download client cleanup failed", () => 
 });
 
 test("keeping a file warns when the upgrade in progress may still be running", () => {
-  const cancelled = describeKeepFileResult({ keepFile: true, cancelledJobIds: ["a"], cleanupFailed: false }, "Roygbiv");
+  const cancelled = describeKeepFileResult(
+    { keepFile: true, cancelledJobIds: ["a"], cleanupFailed: false },
+    "Roygbiv",
+  );
   assert.deepEqual(cancelled, {
-    message: "Keeping Roygbiv. Aurral won't replace it with an upgrade, and the upgrade in progress was cancelled.",
+    message:
+      "Keeping Roygbiv. Aurral won't replace it with an upgrade, and the upgrade in progress was cancelled.",
     warning: false,
   });
-  const stuck = describeKeepFileResult({ keepFile: true, cancelledJobIds: ["a"], cleanupFailed: true }, "Roygbiv");
+  const stuck = describeKeepFileResult(
+    { keepFile: true, cancelledJobIds: ["a"], cleanupFailed: true },
+    "Roygbiv",
+  );
   assert.equal(stuck.warning, true);
   assert.match(stuck.message, /download client/i);
   assert.doesNotMatch(stuck.message, /was cancelled/);
@@ -224,4 +290,3 @@ test("monitoring an album is reported as monitored", () => {
     warning: false,
   });
 });
-

@@ -1,10 +1,7 @@
 import { noCache } from "../../../middleware/cache.js";
 import { verifyTokenAuth } from "../../../middleware/auth.js";
 import { getLibraryAlbumArtwork } from "../../../services/libraryAlbumArtwork.js";
-import {
-  requireAuth,
-  requireUserAccount,
-} from "../../../middleware/requirePermission.js";
+import { requireAuth, requireUserAccount } from "../../../middleware/requirePermission.js";
 import { buildImageProxyUrl } from "../../../services/imageProxyService.js";
 import {
   buildCustomArtworkUrl,
@@ -60,9 +57,10 @@ function getAlbumCoverUrl(album) {
 export const publicLibraryJsonReplacer = (key, value) =>
   isFilesystemPathKey(key) ? undefined : value;
 
-const publicEntity = (kind, entity, favoriteKeys) => favoriteKeys
-  ? { ...entity, userFavorite: favoriteKeys.has(`${kind}:${entity.identityKey}`) }
-  : { ...entity };
+const publicEntity = (kind, entity, favoriteKeys) =>
+  favoriteKeys
+    ? { ...entity, userFavorite: favoriteKeys.has(`${kind}:${entity.identityKey}`) }
+    : { ...entity };
 
 const publicAlbum = (album, favoriteKeys, customArtwork) => {
   const defaultCoverUrl = album.coverUrl || getAlbumCoverUrl(album);
@@ -72,23 +70,27 @@ const publicAlbum = (album, favoriteKeys, customArtwork) => {
       ? buildCustomArtworkUrl("album", album.id, customArtwork)
       : defaultCoverUrl,
     ...(customArtwork && defaultCoverUrl ? { defaultCoverUrl } : {}),
-    ...(customArtwork ? { customArtworkUrl: buildCustomArtworkUrl("album", album.id, customArtwork) } : {}),
-    ...(favoriteKeys
-      ? { userFavorite: favoriteKeys.has(`album:${album.identityKey}`) }
+    ...(customArtwork
+      ? { customArtworkUrl: buildCustomArtworkUrl("album", album.id, customArtwork) }
       : {}),
+    ...(favoriteKeys ? { userFavorite: favoriteKeys.has(`album:${album.identityKey}`) } : {}),
   };
 };
 
 export function buildPublicLibrary(library, favoriteKeys = null) {
-  const albumArtwork = getCustomArtworkMap("album", library.albums.map((album) => album.id));
-  const trackArtwork = getCustomArtworkMap("track", library.tracks.map((track) => track.id));
+  const albumArtwork = getCustomArtworkMap(
+    "album",
+    library.albums.map((album) => album.id),
+  );
+  const trackArtwork = getCustomArtworkMap(
+    "track",
+    library.tracks.map((track) => track.id),
+  );
   return {
     artists: library.artists.map((artist) => publicEntity("artist", artist, favoriteKeys)),
-    albums: library.albums.map((album) => publicAlbum(
-      album,
-      favoriteKeys,
-      albumArtwork.get(String(album.id)),
-    )),
+    albums: library.albums.map((album) =>
+      publicAlbum(album, favoriteKeys, albumArtwork.get(String(album.id))),
+    ),
     tracks: library.tracks.map((track) => {
       const item = publicEntity("song", track, favoriteKeys);
       const customArtwork = trackArtwork.get(String(track.id));
@@ -109,13 +111,14 @@ function toPublicLibrary(library, favoriteKeys = null) {
 
 export function toPublicLibraryPage(page, favoriteKeys = null) {
   const collections = toPublicLibrary(page, favoriteKeys);
-  const items = page.kind === "artists"
-    ? collections.artists
-    : page.kind === "albums"
-      ? collections.albums
-      : page.kind === "tracks"
-        ? collections.tracks
-        : stripFilesystemPaths(page.items);
+  const items =
+    page.kind === "artists"
+      ? collections.artists
+      : page.kind === "albums"
+        ? collections.albums
+        : page.kind === "tracks"
+          ? collections.tracks
+          : stripFilesystemPaths(page.items);
   return {
     ...stripFilesystemPaths(page),
     ...collections,
@@ -173,9 +176,8 @@ export function registerLibraryIndex(router) {
     try {
       const favoriteKeys = req.user ? getStarredIdentityKeys(req.user) : null;
       const kind = typeof req.query.kind === "string" ? req.query.kind.trim() : "";
-      const requestedPageSize = typeof req.query.pageSize === "string"
-        ? Number(req.query.pageSize)
-        : NaN;
+      const requestedPageSize =
+        typeof req.query.pageSize === "string" ? Number(req.query.pageSize) : NaN;
       if (
         !kind ||
         !Number.isSafeInteger(requestedPageSize) ||
@@ -186,19 +188,24 @@ export function registerLibraryIndex(router) {
           error: "kind and pageSize (1-100) are required",
         });
       }
-      return res.json(toPublicLibraryPage(getLibraryPage({
-        source: req.query.source,
-        availableOnly: resolveAvailableOnly(req.query.availableOnly),
-        kind,
-        page: req.query.page,
-        pageSize: requestedPageSize,
-        query: req.query.query,
-        genre: req.query.genre,
-        sort: req.query.sort,
-        direction: req.query.direction,
-        artistId: req.query.artistId,
-        albumId: req.query.albumId,
-      }), favoriteKeys));
+      return res.json(
+        toPublicLibraryPage(
+          getLibraryPage({
+            source: req.query.source,
+            availableOnly: resolveAvailableOnly(req.query.availableOnly),
+            kind,
+            page: req.query.page,
+            pageSize: requestedPageSize,
+            query: req.query.query,
+            genre: req.query.genre,
+            sort: req.query.sort,
+            direction: req.query.direction,
+            artistId: req.query.artistId,
+            albumId: req.query.albumId,
+          }),
+          favoriteKeys,
+        ),
+      );
     } catch (error) {
       if (
         error.message.startsWith("Unsupported library source:") ||

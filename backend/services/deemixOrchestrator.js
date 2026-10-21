@@ -52,7 +52,11 @@ import {
 
 const SEARCH_LIMIT = 10;
 const MAX_ALBUM_CANDIDATES = 3;
-const ALBUM_QUEUE_RESET = Object.freeze({ queueUuid: null, queueUuids: null, downloadedPaths: null });
+const ALBUM_QUEUE_RESET = Object.freeze({
+  queueUuid: null,
+  queueUuids: null,
+  downloadedPaths: null,
+});
 const POLL_DELAY_SECONDS = 3;
 const MAX_POLL_ATTEMPTS = 200;
 
@@ -62,8 +66,10 @@ function getDeemixClient() {
 
 // A release candidate queues the whole album only when every track of the
 // release is wanted, and otherwise each wanted track by its own URL.
-const queuesAlbum = (payload, candidate) => payload.albumGrab === true && candidate?.kind !== "tracks";
-const queuesTracks = (payload, candidate) => payload.albumGrab === true && candidate?.kind === "tracks";
+const queuesAlbum = (payload, candidate) =>
+  payload.albumGrab === true && candidate?.kind !== "tracks";
+const queuesTracks = (payload, candidate) =>
+  payload.albumGrab === true && candidate?.kind === "tracks";
 
 // A later candidate of an attempt wants only the tracks no earlier one
 // imported, so it may no longer want every track of the release.
@@ -77,9 +83,11 @@ function stillWanted(payload, candidate) {
 }
 async function removeQueued(payload, message) {
   for (const uuid of deemixQueueIds(payload)) {
-    await getDeemixClient().removeFromQueue(uuid).catch((error) => {
-      logger.warn("deemix", message, { jobId: payload.jobId, reason: safeLogDiagnostic(error) });
-    });
+    await getDeemixClient()
+      .removeFromQueue(uuid)
+      .catch((error) => {
+        logger.warn("deemix", message, { jobId: payload.jobId, reason: safeLogDiagnostic(error) });
+      });
   }
 }
 
@@ -148,7 +156,8 @@ function deemixListing(album, tracks) {
 function wantedTracks(verdict, tracks, wanted) {
   const picked = [];
   for (const [trackIndex, jobId] of wanted) {
-    const track = verdict.copiesForTrack[trackIndex].map((index) => tracks[index])
+    const track = verdict.copiesForTrack[trackIndex]
+      .map((index) => tracks[index])
       .find((entry) => entry.readable !== false);
     if (!track) return null;
     picked.push({ ...track, jobId });
@@ -162,14 +171,17 @@ function wantedTracks(verdict, tracks, wanted) {
 async function searchDeemixAlbum(payload, helpers, job, client, manifest) {
   const jobs = albumGrabJobs(payload);
   const { wanted } = mapRequest(manifest, jobs);
-  if (wanted.size === 0) return helpers.failOrTryNextSource(payload, job, "No wanted track is on the requested release");
+  if (wanted.size === 0)
+    return helpers.failOrTryNextSource(payload, job, "No wanted track is on the requested release");
   const denied = deniedAlbumSources([job, ...jobs], "deemix");
   const checked = new Set();
   const ranked = [];
   let searchFailed = false;
   const albumName = manifest.title || job.albumName;
   const queries = buildDeemixAlbumSearchQueries({
-    ...buildResolvedJobTrack(job), albumName, compilation: manifest.compilation,
+    ...buildResolvedJobTrack(job),
+    albumName,
+    compilation: manifest.compilation,
   });
   for (const query of queries) {
     let albums = [];
@@ -177,11 +189,18 @@ async function searchDeemixAlbum(payload, helpers, job, client, manifest) {
       albums = await client.searchAlbums(query, { limit: SEARCH_LIMIT });
     } catch (error) {
       searchFailed = true;
-      logger.warn("deemix", "Album search failed", { jobId: job.id, reason: safeLogDiagnostic(error) });
+      logger.warn("deemix", "Album search failed", {
+        jobId: job.id,
+        reason: safeLogDiagnostic(error),
+      });
     }
     if (!isPipelinePayloadActive(payload)) return null;
-    const fresh = albums.filter((album) => !checked.has(album.id)
-      && !denied.has(`album:${album.id}`) && isSameCoreAlbum(album.title, albumName));
+    const fresh = albums.filter(
+      (album) =>
+        !checked.has(album.id) &&
+        !denied.has(`album:${album.id}`) &&
+        isSameCoreAlbum(album.title, albumName),
+    );
     for (const album of fresh.slice(0, MAX_ALBUM_CANDIDATES)) {
       checked.add(album.id);
       let tracks;
@@ -189,7 +208,10 @@ async function searchDeemixAlbum(payload, helpers, job, client, manifest) {
         tracks = await client.getAlbumTracks(album.id);
       } catch (error) {
         searchFailed = true;
-        logger.warn("deemix", "Album tracklist failed", { jobId: job.id, reason: safeLogDiagnostic(error) });
+        logger.warn("deemix", "Album tracklist failed", {
+          jobId: job.id,
+          reason: safeLogDiagnostic(error),
+        });
         continue;
       }
       if (!isPipelinePayloadActive(payload)) return null;
@@ -201,17 +223,32 @@ async function searchDeemixAlbum(payload, helpers, job, client, manifest) {
   }
   ranked.sort((left, right) => right.fit - left.fit);
   if (ranked.length === 0) {
-    return helpers.failOrTryNextSource(payload, job, searchFailed
-      ? "deemix album search failed or found no exact release"
-      : "No exact deemix album release");
+    return helpers.failOrTryNextSource(
+      payload,
+      job,
+      searchFailed
+        ? "deemix album search failed or found no exact release"
+        : "No exact deemix album release",
+    );
   }
-  const albumRaw = (album) => ({ albumId: album.id, albumUrl: album.url, album: album.title, artist: album.artist });
+  const albumRaw = (album) => ({
+    albumId: album.id,
+    albumUrl: album.url,
+    album: album.title,
+    artist: album.artist,
+  });
   const kind = wanted.size < manifest.tracks.length ? "tracks" : "album";
   return {
-    ...payload, source: "deemix", phase: "download", candidateIndex: 0,
+    ...payload,
+    source: "deemix",
+    phase: "download",
+    candidateIndex: 0,
     candidates: ranked.map(({ album, picked }) => ({
       kind,
-      raw: { ...albumRaw(album), tracks: picked.map((track) => ({ id: track.id, url: track.url, jobId: track.jobId })) },
+      raw: {
+        ...albumRaw(album),
+        tracks: picked.map((track) => ({ id: track.id, url: track.url, jobId: track.jobId })),
+      },
       resolvedAlbumName: album.title,
       releaseVerified: true,
     })),
@@ -263,8 +300,16 @@ async function handleDeemixSearch(payload, helpers) {
     if (hasEnoughCandidates(aggregated, resolvedTrack)) break;
     try {
       const results = await client.search(query, { limit: SEARCH_LIMIT });
-      mergeSearchResults(aggregated, seen, results.filter((entry) => !deniedIds.has(String(entry.id || "").trim())
-        && !deniedIds.has(`album:${entry.albumId}`)), (entry) => String(entry.id || "").trim());
+      mergeSearchResults(
+        aggregated,
+        seen,
+        results.filter(
+          (entry) =>
+            !deniedIds.has(String(entry.id || "").trim()) &&
+            !deniedIds.has(`album:${entry.albumId}`),
+        ),
+        (entry) => String(entry.id || "").trim(),
+      );
     } catch (error) {
       lastError = safeLogDiagnostic(error);
       logger.warn("deemix", "deemix search failed", {
@@ -314,7 +359,8 @@ async function queueReleaseTracks(payload, helpers, job, candidate) {
   let submission;
   try {
     submission = await withPipelineCommitLock(payload, async () => {
-      for (const track of tracks) queued.push(await getDeemixClient().addToQueue(track.url, track.id));
+      for (const track of tracks)
+        queued.push(await getDeemixClient().addToQueue(track.url, track.id));
       downloadTracker.updateDownloadMetadata(job.id, {
         downloadSource: "deemix",
         downloadClient: "deemix",
@@ -326,16 +372,35 @@ async function queueReleaseTracks(payload, helpers, job, candidate) {
       return queued;
     });
   } catch (error) {
-    await removeQueued({ jobId: payload.jobId, queueUuids: queued }, "Could not remove a queued release track");
-    logger.warn("deemix", "deemix queue submission failed", { jobId: job.id, error: safeLogDiagnostic(error) });
-    return continueAlbumGrab(payload, ALBUM_QUEUE_RESET) || helpers.failOrTryNextSource(payload, job,
-      safeLogDiagnostic(error));
+    await removeQueued(
+      { jobId: payload.jobId, queueUuids: queued },
+      "Could not remove a queued release track",
+    );
+    logger.warn("deemix", "deemix queue submission failed", {
+      jobId: job.id,
+      error: safeLogDiagnostic(error),
+    });
+    return (
+      continueAlbumGrab(payload, ALBUM_QUEUE_RESET) ||
+      helpers.failOrTryNextSource(payload, job, safeLogDiagnostic(error))
+    );
   }
   if (submission.cancelled || !isPipelinePayloadActive(payload)) {
-    await removeQueued({ jobId: payload.jobId, queueUuids: queued }, "Could not remove a queued release track");
+    await removeQueued(
+      { jobId: payload.jobId, queueUuids: queued },
+      "Could not remove a queued release track",
+    );
     return null;
   }
-  return { ...payload, phase: "poll", source: "deemix", candidate, queueUuid: null, queueUuids: queued, pollAttempts: 0 };
+  return {
+    ...payload,
+    phase: "poll",
+    source: "deemix",
+    candidate,
+    queueUuid: null,
+    queueUuids: queued,
+    pollAttempts: 0,
+  };
 }
 
 async function pollReleaseTracks(payload, helpers, job, pollAttempts) {
@@ -344,18 +409,30 @@ async function pollReleaseTracks(payload, helpers, job, pollAttempts) {
     try {
       items.push(await getDeemixClient().getQueueItem(uuid));
     } catch (error) {
-      logger.warn("deemix", "deemix queue poll failed", { jobId: job.id, uuid: safeLogDiagnostic(uuid),
-        error: safeLogDiagnostic(error) });
+      logger.warn("deemix", "deemix queue poll failed", {
+        jobId: job.id,
+        uuid: safeLogDiagnostic(uuid),
+        error: safeLogDiagnostic(error),
+      });
       return { ...payload, phase: "poll", delaySeconds: POLL_DELAY_SECONDS, pollAttempts };
     }
   }
-  const waiting = items.some((item) => !item || ["inQueue", "downloading"].includes(String(item.status || "")));
+  const waiting = items.some(
+    (item) => !item || ["inQueue", "downloading"].includes(String(item.status || "")),
+  );
   if (waiting) return { ...payload, phase: "poll", delaySeconds: POLL_DELAY_SECONDS, pollAttempts };
   const downloadedPaths = items.map(readQueuedRemotePath).filter(Boolean);
-  if (downloadedPaths.length > 0) return { ...payload, phase: "finalize", downloadedPaths, pollAttempts };
+  if (downloadedPaths.length > 0)
+    return { ...payload, phase: "finalize", downloadedPaths, pollAttempts };
   await removeQueued(payload, "Could not remove a failed release track");
-  return continueAlbumGrab(payload, ALBUM_QUEUE_RESET) || helpers.failOrTryNextSource(payload, job,
-    safeLogDiagnostic(items.map(readQueueError).find(Boolean) || "deemix release tracks failed"));
+  return (
+    continueAlbumGrab(payload, ALBUM_QUEUE_RESET) ||
+    helpers.failOrTryNextSource(
+      payload,
+      job,
+      safeLogDiagnostic(items.map(readQueueError).find(Boolean) || "deemix release tracks failed"),
+    )
+  );
 }
 
 async function handleDeemixDownload(payload, helpers) {
@@ -365,7 +442,10 @@ async function handleDeemixDownload(payload, helpers) {
   const candidates = Array.isArray(payload.candidates) ? payload.candidates : [];
   const index = Number(payload.candidateIndex || 0);
   const listed = candidates[index];
-  const candidate = payload.albumGrab === true && Array.isArray(listed?.raw?.tracks) ? stillWanted(payload, listed) : listed;
+  const candidate =
+    payload.albumGrab === true && Array.isArray(listed?.raw?.tracks)
+      ? stillWanted(payload, listed)
+      : listed;
   const albumQueue = queuesAlbum(payload, candidate);
   if (queuesTracks(payload, candidate)) return queueReleaseTracks(payload, helpers, job, candidate);
   const url = albumQueue ? candidate?.raw?.albumUrl : candidate?.raw?.url;
@@ -434,11 +514,15 @@ async function handleDeemixPoll(payload, helpers) {
   if (pollAttempts > MAX_POLL_ATTEMPTS) {
     await removeQueued(payload, "Could not remove timed-out queue item");
     if (hasNextCandidate(payload)) {
-      return buildNextCandidatePayload(payload, payload.albumGrab === true ? ALBUM_QUEUE_RESET : { queueUuid: null });
+      return buildNextCandidatePayload(
+        payload,
+        payload.albumGrab === true ? ALBUM_QUEUE_RESET : { queueUuid: null },
+      );
     }
     return helpers.failOrTryNextSource(payload, job, "deemix polling timed out");
   }
-  if (queuesTracks(payload, getPayloadCandidate(payload))) return pollReleaseTracks(payload, helpers, job, pollAttempts);
+  if (queuesTracks(payload, getPayloadCandidate(payload)))
+    return pollReleaseTracks(payload, helpers, job, pollAttempts);
 
   let queueItem;
   try {
@@ -459,12 +543,23 @@ async function handleDeemixPoll(payload, helpers) {
       return { ...payload, phase: "poll", delaySeconds: POLL_DELAY_SECONDS, pollAttempts };
     }
     if (albumQueue.filePaths.length > 0) {
-      return { ...payload, phase: "finalize", downloadedPaths: albumQueue.filePaths,
-        albumFailedCount: albumQueue.failedCount, pollAttempts };
+      return {
+        ...payload,
+        phase: "finalize",
+        downloadedPaths: albumQueue.filePaths,
+        albumFailedCount: albumQueue.failedCount,
+        pollAttempts,
+      };
     }
     await client.removeFromQueue(payload.queueUuid).catch(() => {});
-    return continueAlbumGrab(payload, ALBUM_QUEUE_RESET) || helpers.failOrTryNextSource(payload, job,
-      safeLogDiagnostic(readQueueError(queueItem) || `deemix album ${status || "failed"}`));
+    return (
+      continueAlbumGrab(payload, ALBUM_QUEUE_RESET) ||
+      helpers.failOrTryNextSource(
+        payload,
+        job,
+        safeLogDiagnostic(readQueueError(queueItem) || `deemix album ${status || "failed"}`),
+      )
+    );
   }
   if (!queueItem || status === "inQueue" || status === "downloading") {
     return { ...payload, phase: "poll", delaySeconds: POLL_DELAY_SECONDS, pollAttempts };
@@ -477,7 +572,9 @@ async function handleDeemixPoll(payload, helpers) {
         reason: safeLogDiagnostic(error),
       });
     });
-    const reason = safeLogDiagnostic(readQueueError(queueItem) || `deemix download ${status || "failed"}`);
+    const reason = safeLogDiagnostic(
+      readQueueError(queueItem) || `deemix download ${status || "failed"}`,
+    );
     if (hasNextCandidate(payload)) {
       return buildNextCandidatePayload(payload, { queueUuid: null });
     }
@@ -489,10 +586,13 @@ async function handleDeemixPoll(payload, helpers) {
 async function handleDeemixFinalize(payload, helpers) {
   if (payload.albumGrab === true) {
     const filePaths = (payload.downloadedPaths || []).map((remote) =>
-      resolveLocalPath(remote, getPathMappings("deemix")));
+      resolveLocalPath(remote, getPathMappings("deemix")),
+    );
     try {
       return await finishAlbumGrab(payload, {
-        filePaths, source: "deemix", resetFields: ALBUM_QUEUE_RESET,
+        filePaths,
+        source: "deemix",
+        resetFields: ALBUM_QUEUE_RESET,
       });
     } finally {
       await removeQueued(payload, "Could not remove completed album queue item");
@@ -554,7 +654,9 @@ async function handleDeemixFinalize(payload, helpers) {
       return null;
     }
     downloadTracker.recordDeniedSource(job.id, "deemix", candidate?.raw?.id);
-    const reason = safeLogDiagnostic(validation.reason || "deemix download failed track validation");
+    const reason = safeLogDiagnostic(
+      validation.reason || "deemix download failed track validation",
+    );
     if (hasNextCandidate(payload)) {
       return buildNextCandidatePayload(payload, { queueUuid: null, downloadedPath: null });
     }

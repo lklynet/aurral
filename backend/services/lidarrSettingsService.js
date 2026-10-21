@@ -1,7 +1,4 @@
-import {
-  validateLidarrTestCredentials,
-  withTemporaryLidarrClient,
-} from "./lidarrTestSession.js";
+import { validateLidarrTestCredentials, withTemporaryLidarrClient } from "./lidarrTestSession.js";
 import { runLidarrLibraryAccessTest } from "./lidarrLibraryAccessTest.js";
 import { applyLidarrCommunityGuide } from "./lidarrCommunityGuide.js";
 import { logger } from "./logger.js";
@@ -16,30 +13,22 @@ function resolve({ url, apiKey }) {
 
 export async function fetchQualityProfiles(credentials) {
   const { url, apiKey } = resolve(credentials);
-  return withTemporaryLidarrClient(url, apiKey, (client) =>
-    client.getQualityProfiles(true),
-  );
+  return withTemporaryLidarrClient(url, apiKey, (client) => client.getQualityProfiles(true));
 }
 
 export async function fetchMetadataProfiles(credentials) {
   const { url, apiKey } = resolve(credentials);
-  return withTemporaryLidarrClient(url, apiKey, (client) =>
-    client.getMetadataProfiles(true),
-  );
+  return withTemporaryLidarrClient(url, apiKey, (client) => client.getMetadataProfiles(true));
 }
 
 export async function fetchRootFolders(credentials) {
   const { url, apiKey } = resolve(credentials);
-  return withTemporaryLidarrClient(url, apiKey, (client) =>
-    client.getRootFolders(),
-  );
+  return withTemporaryLidarrClient(url, apiKey, (client) => client.getRootFolders());
 }
 
 export async function fetchTags(credentials) {
   const { url, apiKey } = resolve(credentials);
-  return withTemporaryLidarrClient(url, apiKey, (client) =>
-    client.getTags(true),
-  );
+  return withTemporaryLidarrClient(url, apiKey, (client) => client.getTags(true));
 }
 
 export async function testLidarrConnection(credentials) {
@@ -53,14 +42,10 @@ export async function testLidarrConnection(credentials) {
 
 export async function testLidarrLibraryAccess(credentials) {
   const { url, apiKey } = resolve(credentials);
-  return withTemporaryLidarrClient(url, apiKey, (client) =>
-    runLidarrLibraryAccessTest(client),
-  );
+  return withTemporaryLidarrClient(url, apiKey, (client) => runLidarrLibraryAccessTest(client));
 }
 
 export async function applyCommunityGuide(credentials) {
   const { url, apiKey } = resolve(credentials);
-  return withTemporaryLidarrClient(url, apiKey, (client) =>
-    applyLidarrCommunityGuide(client),
-  );
+  return withTemporaryLidarrClient(url, apiKey, (client) => applyLidarrCommunityGuide(client));
 }

@@ -1,6 +1,10 @@
 import { db } from "../config/db-sqlite.js";
 import createCache from "./apiClients/simpleCache.js";
-import { getAlbumByMbid, isMetadataNotFoundError, selectAlbumRelease } from "./providers/brainzmashProvider.js";
+import {
+  getAlbumByMbid,
+  isMetadataNotFoundError,
+  selectAlbumRelease,
+} from "./providers/brainzmashProvider.js";
 import { invalidateLibraryQueryCache } from "./libraryQueryService.js";
 import { manifestIndexFor, releasesHolding, toReleaseManifest } from "./releaseManifest.js";
 
@@ -31,7 +35,10 @@ const replaceRequestedReleaseStmt = db.prepare(
      AND json_valid(metadata_json) AND lower(json_extract(metadata_json, '$.requestedRelease')) = ?`,
 );
 
-const id = (value) => String(value || "").trim().toLowerCase();
+const id = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase();
 
 export function clearReleaseManifests() {
   manifests.flushAll();
@@ -70,7 +77,12 @@ function remember(manifest) {
 // lists.
 function manifestOf(group, release) {
   const manifest = toReleaseManifest(group, release);
-  return manifest && { ...manifest, groupReleaseMbids: group.releases.map((entry) => id(entry?.id)).filter(Boolean) };
+  return (
+    manifest && {
+      ...manifest,
+      groupReleaseMbids: group.releases.map((entry) => id(entry?.id)).filter(Boolean),
+    }
+  );
 }
 
 // The manifest of a release already chosen, or none, and whether that is
@@ -84,8 +96,11 @@ export async function readReleaseManifest(albumMbid, releaseMbid) {
   const key = id(releaseMbid) || `group:${groupMbid}`;
   let loading = manifests.get(key);
   if (loading === undefined) {
-    loading = readGroup(groupMbid).then((group) => (group === UNREACHABLE ? UNREACHABLE
-      : (group && manifestOf(group, releaseById(group, key))) || null));
+    loading = readGroup(groupMbid).then((group) =>
+      group === UNREACHABLE
+        ? UNREACHABLE
+        : (group && manifestOf(group, releaseById(group, key))) || null,
+    );
     manifests.set(key, loading);
     const loaded = await loading;
     if (loaded === UNREACHABLE) manifests.delete(key);
@@ -94,7 +109,10 @@ export async function readReleaseManifest(albumMbid, releaseMbid) {
   }
   const loaded = await loading;
   if (loaded === UNREACHABLE) return { manifest: null, unreachable: true };
-  return { manifest: id(loaded?.releaseGroupMbid) === groupMbid ? loaded : null, unreachable: false };
+  return {
+    manifest: id(loaded?.releaseGroupMbid) === groupMbid ? loaded : null,
+    unreachable: false,
+  };
 }
 
 export async function loadReleaseManifest(albumMbid, releaseMbid) {
@@ -104,7 +122,10 @@ export async function loadReleaseManifest(albumMbid, releaseMbid) {
 // The release an attempt searches for: an album attempt keeps the one it
 // was started with, and a track search uses its job's.
 export function attemptRelease(payload, job) {
-  return loadReleaseManifest(job?.albumMbid, payload?.albumGrab === true ? payload.releaseMbid : job?.releaseMbid);
+  return loadReleaseManifest(
+    job?.albumMbid,
+    payload?.albumGrab === true ? payload.releaseMbid : job?.releaseMbid,
+  );
 }
 
 function libraryAlbum(groupMbid) {
@@ -122,11 +143,16 @@ const isLibraryJob = (job) => (job?.playlistId || job?.playlistType) === "librar
 // The edition a Library album asks for: the one it was added with, else the
 // release its files list unless it wants the expanded edition, else the
 // commonest edition of its kind.
-export function chooseRequestedRelease(group, { requestedRelease = null, listedRelease = null, edition = "standard" } = {}) {
+export function chooseRequestedRelease(
+  group,
+  { requestedRelease = null, listedRelease = null, edition = "standard" } = {},
+) {
   const usable = (release) => (release?.tracks?.length ? release : null);
-  return usable(releaseById(group, requestedRelease))
-    || (edition !== "expanded" && usable(releaseById(group, listedRelease)))
-    || selectAlbumRelease(group, { edition });
+  return (
+    usable(releaseById(group, requestedRelease)) ||
+    (edition !== "expanded" && usable(releaseById(group, listedRelease))) ||
+    selectAlbumRelease(group, { edition })
+  );
 }
 
 // The release a Library request for this album downloads unless a track
@@ -138,8 +164,11 @@ export function chooseLibraryRelease(group) {
 }
 
 function albumEdition(group, album) {
-  return chooseRequestedRelease(group, { requestedRelease: album.requestedRelease,
-    listedRelease: album.trackList?.release, edition: album.edition === "expanded" ? "expanded" : "standard" });
+  return chooseRequestedRelease(group, {
+    requestedRelease: album.requestedRelease,
+    listedRelease: album.trackList?.release,
+    edition: album.edition === "expanded" ? "expanded" : "standard",
+  });
 }
 
 // The chosen release as the group lists it: the provider's choice carries
@@ -170,8 +199,18 @@ export async function resolveReleaseManifest(job) {
   const pinned = releaseById(group, job.releaseMbid);
   if (pinned) return holding(group, pinned, job);
   const manifest = chooseRelease(group, groupMbid, job);
-  if (manifest && job.releaseMbid && isLibraryJob(job)
-    && replaceRequestedReleaseStmt.run(manifest.releaseMbid, Date.now(), groupMbid, groupMbid, id(job.releaseMbid)).changes > 0) {
+  if (
+    manifest &&
+    job.releaseMbid &&
+    isLibraryJob(job) &&
+    replaceRequestedReleaseStmt.run(
+      manifest.releaseMbid,
+      Date.now(),
+      groupMbid,
+      groupMbid,
+      id(job.releaseMbid),
+    ).changes > 0
+  ) {
     invalidateLibraryQueryCache({ persistedGenres: false });
   }
   return manifest;

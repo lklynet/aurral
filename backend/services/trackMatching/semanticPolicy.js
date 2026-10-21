@@ -14,14 +14,20 @@ import { coreAlbumTitle, discFolderNumber, isReleaseNoiseWord } from "./titleTex
 const MIX_VARIANT_PATTERNS = [
   { value: "radio_edit", pattern: /\bradio\s+edit\b/ },
   { value: "single_edit", pattern: /\bsingle\s+edit\b/ },
-  { value: "extended", pattern: /\b(?:extended(?:\s+mix)?|full\s+length|long(?:\s+version)?|extended\s+version)\b/ },
+  {
+    value: "extended",
+    pattern: /\b(?:extended(?:\s+mix)?|full\s+length|long(?:\s+version)?|extended\s+version)\b/,
+  },
   { value: "club_mix", pattern: /\b(?:club\s+mix|club\s+edit)\b/ },
   {
     value: "remix",
     pattern:
       /\b(?:remix|rework(?:ed)?|bootleg|vip\s?(?:mix|edit)|mash\s?-?\s?up|workout\s+mix|mix\s?(?:2024|20\d\d))\b/,
   },
-  { value: "alternate_mix", pattern: /\b(?:alternat(?:e|ive)\s+(?:mix(?:es)?|versions?|takes?)|stereo\s+mix(?:es)?)\b/ },
+  {
+    value: "alternate_mix",
+    pattern: /\b(?:alternat(?:e|ive)\s+(?:mix(?:es)?|versions?|takes?)|stereo\s+mix(?:es)?)\b/,
+  },
 ];
 
 const VARIANT_PATTERNS = [
@@ -35,7 +41,10 @@ const VARIANT_PATTERNS = [
   { value: "instrumental", pattern: /\binstrumental\b/i },
   { value: "karaoke", pattern: /\bkaraoke(?:\s+version)?\b/i },
   { value: "demo", pattern: /\bdemo(?:\s+version|s)?\b|\bouttake/i },
-  { value: "cover", pattern: /\b(?:cover|covered\s+by|tribute(?:\s+(?:band|album))?|rerecorded|re-recorded)\b/i },
+  {
+    value: "cover",
+    pattern: /\b(?:cover|covered\s+by|tribute(?:\s+(?:band|album))?|rerecorded|re-recorded)\b/i,
+  },
   { value: "sped_up", pattern: /\bsped\s*up\b/i },
   { value: "slowed", pattern: /\bslowed(?:\s*(?:\+|and|&|n)\s*reverb)?\b|\breverb\s*slowed\b/i },
   { value: "nightcore", pattern: /\bnightcore\b/i },
@@ -85,13 +94,10 @@ export function extractVariants(value) {
   // "(Original Mix) [2013]" is not a "Mix 2013".
   const groups = rawText.split(/[()[\]{}]/u).map(normalizeVariantText);
   const mixVariant =
-    MIX_VARIANT_PATTERNS.find((entry) => groups.some((group) => entry.pattern.test(group)))?.value || null;
+    MIX_VARIANT_PATTERNS.find((entry) => groups.some((group) => entry.pattern.test(group)))
+      ?.value || null;
   if (mixVariant === "remix") variants.remix = true;
-  const monoStereo = /\bmono\b/.test(text)
-    ? "mono"
-    : /\bstereo\b/.test(text)
-      ? "stereo"
-      : null;
+  const monoStereo = /\bmono\b/.test(text) ? "mono" : /\bstereo\b/.test(text) ? "stereo" : null;
   const contentRating = /\b(?:clean|edited|censored)\b/.test(text)
     ? "clean"
     : /\bexplicit\b/.test(text)
@@ -108,9 +114,7 @@ export function extractVariants(value) {
 export function detectNoise(value) {
   const text = normalizeVariantText(value);
   if (!text) return [];
-  return NOISE_PATTERNS.filter((entry) => entry.pattern.test(text)).map(
-    (entry) => entry.value,
-  );
+  return NOISE_PATTERNS.filter((entry) => entry.pattern.test(text)).map((entry) => entry.value);
 }
 
 // Variants where ANY difference between the requested and offered version is
@@ -253,18 +257,30 @@ const LABEL_VERSIONS = [
   ["instrumental", / instrumentals? /u],
   ["karaoke", / karaoke /u],
   ["demo", / (?:demos?|outtakes?) /u],
-  ["cover", / (?:tribute|covers? (?:versions?|albums?(?! (?:art|artwork|scans?|covers?) ))|covered by|re ?recorded) /u],
+  [
+    "cover",
+    / (?:tribute|covers? (?:versions?|albums?(?! (?:art|artwork|scans?|covers?) ))|covered by|re ?recorded) /u,
+  ],
   ["sped_up", / sped ?up /u],
   ["slowed", / slowed /u],
   ["nightcore", / nightcore /u],
   ["eight_d", / 8d ?audio /u],
-  ["remix", / (?:remix(?:es|ed)?|rework(?:ed)?|bootleg|mash ?ups?|vip (?:mix|edit)|workout mix(?:es)?|mix 20\d\d) /u],
+  [
+    "remix",
+    / (?:remix(?:es|ed)?|rework(?:ed)?|bootleg|mash ?ups?|vip (?:mix|edit)|workout mix(?:es)?|mix 20\d\d) /u,
+  ],
 ];
 
-const ANY_LABEL_VERSION = new RegExp(LABEL_VERSIONS.map(([, pattern]) => pattern.source).join("|"), "u");
+const ANY_LABEL_VERSION = new RegExp(
+  LABEL_VERSIONS.map(([, pattern]) => pattern.source).join("|"),
+  "u",
+);
 
 function spacedWords(folded) {
-  const words = folded.replace(/&/gu, " and ").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  const words = folded
+    .replace(/&/gu, " and ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
   return words ? ` ${words} ` : " ";
 }
 
@@ -281,7 +297,9 @@ function labelWords(value) {
 function readLabel(label) {
   const folded = foldDiacritics(String(label || "")).toLowerCase();
   if (!ANY_LABEL_VERSION.test(spacedWords(folded))) return null;
-  return folded.replace(/_/gu, " ").split(/[\\/()[\]{}]|\s[-–—]+\s/u)
+  return folded
+    .replace(/_/gu, " ")
+    .split(/[\\/()[\]{}]|\s[-–—]+\s/u)
     .map((group) => group.split(/[-–—]/u).map(spacedWords));
 }
 
@@ -298,24 +316,37 @@ function labelVersions(labelGroups, names) {
     const pieces = groups.find((entry) => entry.includes(name.text));
     pieces?.splice(pieces.indexOf(name.text), 1);
   }
-  let rest = ` ${groups.map((pieces) => pieces.join(" ")).join("|").replace(/ +/gu, " ").trim()} `;
-  for (const name of names.filter((entry) => !entry.oneWord)) rest = rest.replace(name.pattern, " ");
+  let rest = ` ${groups
+    .map((pieces) => pieces.join(" "))
+    .join("|")
+    .replace(/ +/gu, " ")
+    .trim()} `;
+  for (const name of names.filter((entry) => !entry.oneWord))
+    rest = rest.replace(name.pattern, " ");
   return LABEL_VERSIONS.filter(([, pattern]) => pattern.test(rest)).map(([variant]) => variant);
 }
 
 function labelNames(prepared) {
-  prepared.labelNames ??= [...new Set(prepared.requested.names.map(labelWords).filter((name) => name.trim()))]
+  prepared.labelNames ??= [
+    ...new Set(prepared.requested.names.map(labelWords).filter((name) => name.trim())),
+  ]
     .sort((left, right) => right.length - left.length)
     .map((text) => {
       const words = text.trim().split(" ");
-      return { text, oneWord: words.length === 1, pattern: new RegExp(` ${words.map(escapeRegExp).join(" (?:\\| )*")} `, "u") };
+      return {
+        text,
+        oneWord: words.length === 1,
+        pattern: new RegExp(` ${words.map(escapeRegExp).join(" (?:\\| )*")} `, "u"),
+      };
     });
   return prepared.labelNames;
 }
 
 function groupsContradictions(labelGroups, prepared) {
   if (!labelGroups) return [];
-  return labelVersions(labelGroups, labelNames(prepared)).filter((variant) => !prepared.labelAllowed.has(variant));
+  return labelVersions(labelGroups, labelNames(prepared)).filter(
+    (variant) => !prepared.labelAllowed.has(variant),
+  );
 }
 
 // The versions a release, folder, or credit name claims that the request
@@ -328,21 +359,33 @@ export function labelContradictions(label, prepared) {
 // "Live in Paris" name a version, while the band Live and the album "Live
 // Through This" do not.
 const CONTEXT_VARIANT_PATTERNS = [
-  { value: "live", pattern: /[-–—([]\s*live\s+(?:in|on)\b|\blive\s*@|\blive\s+(?:album|ep|set|bootleg)s?\b/iu },
+  {
+    value: "live",
+    pattern: /[-–—([]\s*live\s+(?:in|on)\b|\blive\s*@|\blive\s+(?:album|ep|set|bootleg)s?\b/iu,
+  },
   { value: "instrumental", pattern: /\binstrumentals\b/iu },
-  { value: "cover", pattern: /\b(?:tribute|covers?\s+(?:album|version)s?|covered\s+by|re-?recorded)\b/iu },
+  {
+    value: "cover",
+    pattern: /\b(?:tribute|covers?\s+(?:album|version)s?|covered\s+by|re-?recorded)\b/iu,
+  },
   { value: "remix", pattern: /\bremix(?:es|ed)?\b/iu },
 ];
 
 // MusicBrainz release-group types that make every track that version.
-const SECONDARY_TYPE_VARIANTS = new Map([["live", "live"], ["remix", "remix"], ["demo", "demo"]]);
+const SECONDARY_TYPE_VARIANTS = new Map([
+  ["live", "live"],
+  ["remix", "remix"],
+  ["demo", "demo"],
+]);
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function asList(value) {
-  return (Array.isArray(value) ? value : [value]).map((entry) => String(entry || "").trim()).filter(Boolean);
+  return (Array.isArray(value) ? value : [value])
+    .map((entry) => String(entry || "").trim())
+    .filter(Boolean);
 }
 
 const namePatterns = new Map();
@@ -351,10 +394,18 @@ function namePattern(name) {
   if (!namePatterns.has(name)) {
     const words = normalizeVariantText(name).split(" ").filter(Boolean);
     if (namePatterns.size >= 4096) namePatterns.clear();
-    namePatterns.set(name, words.length ? {
-      first: words[0],
-      pattern: new RegExp(`(?<![\\p{L}\\p{N}])${words.map(escapeRegExp).join("[^\\p{L}\\p{N}]+")}(?![\\p{L}\\p{N}])`, "iu"),
-    } : null);
+    namePatterns.set(
+      name,
+      words.length
+        ? {
+            first: words[0],
+            pattern: new RegExp(
+              `(?<![\\p{L}\\p{N}])${words.map(escapeRegExp).join("[^\\p{L}\\p{N}]+")}(?![\\p{L}\\p{N}])`,
+              "iu",
+            ),
+          }
+        : null,
+    );
   }
   return namePatterns.get(name);
 }
@@ -385,14 +436,18 @@ function profileNames(profile) {
 }
 
 function isBareLive(text) {
-  const words = normalizeVariantText(text).split(" ").filter((word) => word && !isReleaseNoiseWord(word));
+  const words = normalizeVariantText(text)
+    .split(" ")
+    .filter((word) => word && !isReleaseNoiseWord(word));
   return words.length === 1 && words[0] === "live";
 }
 
 function startsWithLiveVenue(text) {
   const words = normalizeVariantText(text).split(" ").filter(Boolean);
   const start = words.findIndex((word) => !isReleaseNoiseWord(word));
-  return start >= 0 && words[start] === "live" && ["in", "at", "from", "on"].includes(words[start + 1]);
+  return (
+    start >= 0 && words[start] === "live" && ["in", "at", "from", "on"].includes(words[start + 1])
+  );
 }
 
 // Versions a requested artist, album, or track name asks for. `release` marks
@@ -417,10 +472,13 @@ function requestedNames(request) {
   ];
   // A single named after its track, such as "Song (Live)", names nothing but
   // the track, so it must not take the track's own version out of its title.
-  const trackTitles = new Set(asList(trackName).map((name) => normalizeVariantText(getCoreTitle(name))));
+  const trackTitles = new Set(
+    asList(trackName).map((name) => normalizeVariantText(getCoreTitle(name))),
+  );
   const names = [
-    ...[...asList(albumName), ...asList(albumName).map(coreAlbumTitle)]
-      .filter((name) => !trackTitles.has(normalizeVariantText(getCoreTitle(name)))),
+    ...[...asList(albumName), ...asList(albumName).map(coreAlbumTitle)].filter(
+      (name) => !trackTitles.has(normalizeVariantText(getCoreTitle(name))),
+    ),
     ...asList(trackName).map(getCoreTitle),
     ...artists,
   ];
@@ -440,7 +498,8 @@ function requestedNames(request) {
 function allowedVariants(expected, requested) {
   const allowed = new Set(profileNames(expected));
   for (const name of requested.trackName) {
-    for (const variant of contextVariants(withoutNames(name, requested.names))) allowed.add(variant);
+    for (const variant of contextVariants(withoutNames(name, requested.names)))
+      allowed.add(variant);
   }
   for (const name of requested.albumName) {
     for (const variant of contextVariants(name, { release: true })) allowed.add(variant);
@@ -468,9 +527,14 @@ function allowedVariants(expected, requested) {
 // track's title still may not name another track's version.
 function labelAllowedVariants(allowed, requested) {
   const labelAllowed = new Set(allowed);
-  for (const disc of Map.groupBy(requested.releaseTracks, (track) => track.discNumber ?? 1).values()) {
+  for (const disc of Map.groupBy(
+    requested.releaseTracks,
+    (track) => track.discNumber ?? 1,
+  ).values()) {
     if (disc.length * 4 < requested.releaseTracks.length) continue;
-    const versions = disc.map((track) => contextVariants(withoutNames(track.title, requested.names)));
+    const versions = disc.map((track) =>
+      contextVariants(withoutNames(track.title, requested.names)),
+    );
     if (versions.filter((found) => found.size > 0).length * 2 < disc.length) continue;
     for (const found of versions) for (const variant of found) labelAllowed.add(variant);
   }
@@ -497,7 +561,8 @@ function contextContradictions(candidate, prepared, labels) {
   const check = (field, text, neverOriginalOnly = false) => {
     if (!labels.has(text)) labels.set(text, readLabel(text));
     for (const variant of groupsContradictions(labels.get(text), prepared)) {
-      if (!neverOriginalOnly || NEVER_ORIGINAL_VARIANTS.has(variant)) found.push({ field, variant });
+      if (!neverOriginalOnly || NEVER_ORIGINAL_VARIANTS.has(variant))
+        found.push({ field, variant });
     }
   };
   for (const artist of asList(candidate?.artists ?? candidate?.artist)) check("artist", artist);
@@ -518,22 +583,35 @@ export function prepareVariantRequest(request) {
     trackName: requested.trackName.map((name) => withoutNames(name, requested.names)).join(" "),
   });
   const allowed = allowedVariants(expected, requested);
-  return { requested, expected, allowed, labelAllowed: labelAllowedVariants(allowed, requested), labelNames: null };
+  return {
+    requested,
+    expected,
+    allowed,
+    labelAllowed: labelAllowedVariants(allowed, requested),
+    labelNames: null,
+  };
 }
 
-export function checkVariantCompatibility(request, candidate, prepared = prepareVariantRequest(request), labels = new Map()) {
+export function checkVariantCompatibility(
+  request,
+  candidate,
+  prepared = prepareVariantRequest(request),
+  labels = new Map(),
+) {
   const { requested, expected, allowed } = prepared;
-  const candidateText = [candidate?.title, candidate?.filename].filter(Boolean)
-    .map((text) => withoutNames(text, requested.names)).join(" ");
+  const candidateText = [candidate?.title, candidate?.filename]
+    .filter(Boolean)
+    .map((text) => withoutNames(text, requested.names))
+    .join(" ");
   const actual = mergeVariantProfiles(
     extractVariants(candidateText),
-    candidate?.variants && typeof candidate.variants === "object"
-      ? candidate.variants
-      : null,
+    candidate?.variants && typeof candidate.variants === "object" ? candidate.variants : null,
   );
   const compared = compareVariantProfiles(expected, actual, allowed);
   const context = contextContradictions(candidate, prepared, labels);
-  const contradictions = [...new Set([...compared.contradictions, ...context.map((entry) => entry.variant)])];
+  const contradictions = [
+    ...new Set([...compared.contradictions, ...context.map((entry) => entry.variant)]),
+  ];
   return {
     compatible: contradictions.length === 0,
     contradictions,
@@ -635,9 +713,8 @@ export function getCoreTitle(value) {
   );
   // Trailing dash-separated descriptors: "Song - Live at Wembley",
   // "Song - Radio Edit", "Song - 2011 Remaster".
-  text = text.replace(
-    /\s+(?:-|–|—)\s+[^-–—]*$/,
-    (suffix) => (isDescriptorGroup(suffix.replace(/\s+(?:-|–|—)\s+/, "")) ? " " : suffix),
+  text = text.replace(/\s+(?:-|–|—)\s+[^-–—]*$/, (suffix) =>
+    isDescriptorGroup(suffix.replace(/\s+(?:-|–|—)\s+/, "")) ? " " : suffix,
   );
   return text.replace(/\s+/g, " ").trim() || String(value || "").trim();
 }

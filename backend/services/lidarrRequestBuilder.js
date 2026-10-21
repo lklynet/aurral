@@ -131,11 +131,8 @@ export const buildLidarrRequests = async (lidarrClient, snapshot = null) => {
       sourceTitle.includes("import fail") ||
       dataString.includes("import fail");
     const isSuccessfulImport =
-      eventType.includes("import") &&
-      !isFailedImport &&
-      eventType !== "albumimportincomplete";
-    const isStaleGrabbed =
-      isGrabbed && !hasQueue && Date.now() - recordTime > STALE_GRABBED_MS;
+      eventType.includes("import") && !isFailedImport && eventType !== "albumimportincomplete";
+    const isStaleGrabbed = isGrabbed && !hasQueue && Date.now() - recordTime > STALE_GRABBED_MS;
     const isActive = hasQueue || (isGrabbed && !isStaleGrabbed);
 
     if (isActive || isSuccessfulImport) continue;

@@ -42,7 +42,11 @@ export function getAurralArtistMonitoring(artistId, defaults = getMonitoringDefa
   return resolveArtistMonitoring(getStoredArtistMonitoring(artistId), defaults);
 }
 
-export function setAurralArtistMonitoringState(artistId, stored, defaults = getMonitoringDefaults()) {
+export function setAurralArtistMonitoringState(
+  artistId,
+  stored,
+  defaults = getMonitoringDefaults(),
+) {
   return setLibraryManagement({
     entityKind: "artist",
     entityId: artistId,
@@ -94,11 +98,18 @@ const deleteTrackExclusionStmt = db.prepare(`
 const normalizedTitle = (title) => getNormalizedText(title);
 const trimmed = (value) => String(value || "").trim() || null;
 
-export function addMonitoringExclusion({ kind, mbid = null, artistMbid = null, artistName = null, title }) {
+export function addMonitoringExclusion({
+  kind,
+  mbid = null,
+  artistMbid = null,
+  artistName = null,
+  title,
+}) {
   const name = trimmed(title);
   const id = trimmed(mbid);
   if (!["album", "track"].includes(kind) || !name || (kind === "album" && !id)) return false;
-  const key = id || `${trimmed(artistMbid) || getNormalizedText(artistName)}:${normalizedTitle(name)}`;
+  const key =
+    id || `${trimmed(artistMbid) || getNormalizedText(artistName)}:${normalizedTitle(name)}`;
   insertExclusionStmt.run(
     kind,
     key,
@@ -126,20 +137,29 @@ export const isAlbumMonitoringExcluded = (albumMbid) =>
 export const clearAlbumMonitoringExclusion = (albumMbid) =>
   albumMbid ? deleteAlbumExclusionStmt.run(albumMbid).changes > 0 : false;
 
-export function clearTrackMonitoringExclusion({ mbid = null, artistMbid = null, artistName = null, title }) {
+export function clearTrackMonitoringExclusion({
+  mbid = null,
+  artistMbid = null,
+  artistName = null,
+  title,
+}) {
   const id = trimmed(mbid);
-  return deleteTrackExclusionStmt.run(
-    id,
-    id,
-    normalizedTitle(title),
-    trimmed(artistMbid),
-    trimmed(artistName),
-  ).changes > 0;
+  return (
+    deleteTrackExclusionStmt.run(
+      id,
+      id,
+      normalizedTitle(title),
+      trimmed(artistMbid),
+      trimmed(artistName),
+    ).changes > 0
+  );
 }
 
 export function indexArtistExclusions(artistMbid) {
   const exclusions = listMonitoringExclusions({ artistMbid });
-  const albums = new Set(exclusions.filter((entry) => entry.kind === "album").map((entry) => entry.mbid));
+  const albums = new Set(
+    exclusions.filter((entry) => entry.kind === "album").map((entry) => entry.mbid),
+  );
   const tracks = exclusions.filter((entry) => entry.kind === "track");
   const trackMbids = new Set(tracks.map((entry) => entry.mbid).filter(Boolean));
   const trackTitles = new Set(tracks.map((entry) => entry.normalizedTitle));

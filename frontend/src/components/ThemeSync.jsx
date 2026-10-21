@@ -12,7 +12,10 @@ export default function ThemeSync() {
   const { currentTrack } = useAudioQueue();
   const { showError } = useToast();
   const { matchArtwork } = useThemeDocument();
-  const userId = isAuthenticated && Number.isSafeInteger(Number(user?.id)) && Number(user.id) > 0 ? Number(user.id) : null;
+  const userId =
+    isAuthenticated && Number.isSafeInteger(Number(user?.id)) && Number(user.id) > 0
+      ? Number(user.id)
+      : null;
   const artwork = matchArtwork ? currentTrack?.artwork || null : null;
 
   useEffect(() => {
@@ -21,7 +24,8 @@ export default function ThemeSync() {
       userId,
       loadAccountTheme: getMyTheme,
       saveAccountTheme: saveMyTheme,
-      onSaveError: () => showError("Theme applies on this device but could not sync to your account."),
+      onSaveError: () =>
+        showError("Theme applies on this device but could not sync to your account."),
     });
     const refreshWhenVisible = () => {
       if (document.visibilityState === "visible") void sync.refresh();

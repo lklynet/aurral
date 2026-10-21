@@ -28,8 +28,7 @@ export function registerStorageHealth(router) {
 
   router.post("/storage-health/check", noCache, async (_req, res) => {
     try {
-      const { runStorageHealthCheck } =
-        await import("../../../services/storageHealthService.js");
+      const { runStorageHealthCheck } = await import("../../../services/storageHealthService.js");
       const result = await runStorageHealthCheck({ force: true });
       res.json({
         success: result.ok,

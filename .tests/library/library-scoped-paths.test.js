@@ -1,12 +1,10 @@
 import assert from "node:assert/strict";
 import { test, afterAll } from "vite-plus/test";
-import {
-  cleanupIsolatedState,
-  setupIsolatedBackend,
-} from "../helpers/backendTestHarness.js";
+import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTestHarness.js";
 
 const [state, store] = await setupIsolatedBackend(
-  "library-scoped-paths", "backend/services/libraryMediaStore.js",
+  "library-scoped-paths",
+  "backend/services/libraryMediaStore.js",
 );
 afterAll(() => cleanupIsolatedState(state));
 
@@ -24,12 +22,14 @@ test("scoped media paths preserve exact files, descendants, and source boundarie
   }
   const read = (scopes) => [...store.getAvailableLibraryMediaPaths("aurral", scopes)].sort();
   assert.deepEqual(read(["/library/Album"]), [
-    "/library/Album/nested/two.flac", "/library/Album/one.flac",
+    "/library/Album/nested/two.flac",
+    "/library/Album/one.flac",
   ]);
   assert.deepEqual(read(["/library/Album/one.flac"]), ["/library/Album/one.flac"]);
   assert.deepEqual(read(["/library/four%.flac"]), ["/library/four%.flac"]);
   assert.deepEqual(read(["/library/Album", "/library/Album/nested", "/library/Album/"]), [
-    "/library/Album/nested/two.flac", "/library/Album/one.flac",
+    "/library/Album/nested/two.flac",
+    "/library/Album/one.flac",
   ]);
   assert.deepEqual(read([]), []);
 });

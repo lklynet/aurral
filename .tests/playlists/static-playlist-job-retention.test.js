@@ -4,15 +4,37 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { setupIsolatedBackend, cleanupIsolatedState, resetDatabase } from "../helpers/backendTestHarness.js";
+import {
+  setupIsolatedBackend,
+  cleanupIsolatedState,
+  resetDatabase,
+} from "../helpers/backendTestHarness.js";
 
-const [state, { db }, { dbOps }, config, { downloadTracker }, { playlistManager }, operations, honker,
-  { downloadWorker }, { scanMusicRoot }, { getLibrary }, { repairReusableTrackLinks }] = await setupIsolatedBackend(
-  "shared-job-retention", "backend/config/db-sqlite.js", "backend/db/helpers/index.js",
-  "backend/services/playlists/flowPlaylistConfig.js", "backend/services/downloadJobs/downloadTracker.js",
-  "backend/services/playlists/playlistManager.js", "backend/services/playlists/playlistOperations.js",
-  "backend/services/honkerDb.js", "backend/services/downloadJobs/downloadWorker.js",
-  "backend/services/libraryFileScanner.js", "backend/services/libraryQueryService.js",
+const [
+  state,
+  { db },
+  { dbOps },
+  config,
+  { downloadTracker },
+  { playlistManager },
+  operations,
+  honker,
+  { downloadWorker },
+  { scanMusicRoot },
+  { getLibrary },
+  { repairReusableTrackLinks },
+] = await setupIsolatedBackend(
+  "shared-job-retention",
+  "backend/config/db-sqlite.js",
+  "backend/db/helpers/index.js",
+  "backend/services/playlists/flowPlaylistConfig.js",
+  "backend/services/downloadJobs/downloadTracker.js",
+  "backend/services/playlists/playlistManager.js",
+  "backend/services/playlists/playlistOperations.js",
+  "backend/services/honkerDb.js",
+  "backend/services/downloadJobs/downloadWorker.js",
+  "backend/services/libraryFileScanner.js",
+  "backend/services/libraryQueryService.js",
   "backend/services/downloadJobs/fileReuse.js",
 );
 beforeEach(() => {
@@ -29,20 +51,44 @@ function fixture() {
   vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
   vi.spyOn(playlistManager, "scheduleScanLibrary").mockImplementation(async () => {});
   const track = { artistName: "Artist", trackName: "Track", albumName: "Album" };
-  const source = config.flowPlaylistConfig.createStaticPlaylist({ name: "Source", tracks: [track] });
+  const source = config.flowPlaylistConfig.createStaticPlaylist({
+    name: "Source",
+    tracks: [track],
+  });
   const jobId = downloadTracker.addJob(track, source.id);
-  const survivor = config.flowPlaylistConfig.createStaticPlaylist({ name: "Survivor", tracks: [{ ...track, canonicalJobId: jobId }] });
+  const survivor = config.flowPlaylistConfig.createStaticPlaylist({
+    name: "Survivor",
+    tracks: [{ ...track, canonicalJobId: jobId }],
+  });
   return { source, survivor, jobId };
 }
 
 test("single-track removal retains the job and provider work needed by another library membership", async () => {
   const { source, survivor, jobId } = fixture();
-  const queuedId = honker.getPipelineQueue().enqueue({ jobId, playlistId: source.id, playlistGeneration: 0, phase: "poll", source: "deemix", queueUuid: "needed-provider-work" });
-  await operations.processPlaylistOperation({ kind: "shared-playlist-delete-track", playlistId: source.id, jobId });
+  const queuedId = honker.getPipelineQueue().enqueue({
+    jobId,
+    playlistId: source.id,
+    playlistGeneration: 0,
+    phase: "poll",
+    source: "deemix",
+    queueUuid: "needed-provider-work",
+  });
+  await operations.processPlaylistOperation({
+    kind: "shared-playlist-delete-track",
+    playlistId: source.id,
+    jobId,
+  });
   assert.equal(downloadTracker.getJob(jobId)?.playlistType, survivor.id);
   assert.equal(config.flowPlaylistConfig.getStaticPlaylist(source.id).tracks.length, 0);
-  assert.equal(config.flowPlaylistConfig.getStaticPlaylist(survivor.id).tracks[0].canonicalJobId, jobId);
-  assert.equal(JSON.parse(db.prepare("SELECT payload FROM _honker_live WHERE id = ?").get(queuedId).payload).playlistId, survivor.id);
+  assert.equal(
+    config.flowPlaylistConfig.getStaticPlaylist(survivor.id).tracks[0].canonicalJobId,
+    jobId,
+  );
+  assert.equal(
+    JSON.parse(db.prepare("SELECT payload FROM _honker_live WHERE id = ?").get(queuedId).payload)
+      .playlistId,
+    survivor.id,
+  );
 });
 
 test("deleting the original playlist preserves a survivor's completed media", async () => {
@@ -53,8 +99,13 @@ test("deleting the original playlist preserves a survivor's completed media", as
   await fs.writeFile(file, "disposable audio");
   downloadTracker.setDone(jobId, file);
   const synced = [];
-  vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation((ids) => { synced.push(...ids); });
-  await operations.processPlaylistOperation({ kind: "shared-playlist-delete", playlistId: source.id });
+  vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation((ids) => {
+    synced.push(...ids);
+  });
+  await operations.processPlaylistOperation({
+    kind: "shared-playlist-delete",
+    playlistId: source.id,
+  });
   assert.equal(config.flowPlaylistConfig.getStaticPlaylist(source.id), null);
   const retained = downloadTracker.getJob(jobId);
   assert.equal(retained?.playlistType, survivor.id);
@@ -65,8 +116,14 @@ test("deleting the original playlist preserves a survivor's completed media", as
 test("replacing imported tracks preserves a removed job referenced by another playlist and syncs both", async () => {
   const { source, survivor, jobId } = fixture();
   const synced = [];
-  vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation((ids) => { synced.push(...ids); });
-  await operations.updateStaticPlaylist({ playlistId: source.id, tracks: [], hasTracksUpdate: true });
+  vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation((ids) => {
+    synced.push(...ids);
+  });
+  await operations.updateStaticPlaylist({
+    playlistId: source.id,
+    tracks: [],
+    hasTracksUpdate: true,
+  });
   assert.equal(downloadTracker.getJob(jobId)?.playlistType, survivor.id);
   assert.equal(config.flowPlaylistConfig.getStaticPlaylist(source.id).tracks.length, 0);
   assert.deepEqual([...new Set(synced)].sort(), [source.id, survivor.id].sort());
@@ -75,13 +132,28 @@ test("replacing imported tracks preserves a removed job referenced by another pl
 test("an import persistence failure preserves an unshared completed job and its file", async (t) => {
   const { source, survivor, jobId } = fixture();
   config.flowPlaylistConfig.deleteStaticPlaylist(survivor.id);
-  const file = path.join(process.env.WEEKLY_FLOW_FOLDER, "aurral-playlists", source.id, "Track.flac");
+  const file = path.join(
+    process.env.WEEKLY_FLOW_FOLDER,
+    "aurral-playlists",
+    source.id,
+    "Track.flac",
+  );
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, "original audio");
   downloadTracker.setDone(jobId, file);
-  db.exec("CREATE TRIGGER reject_import BEFORE INSERT ON settings WHEN NEW.key = 'sharedPlaylists' BEGIN SELECT RAISE(ABORT, 'import save rejected'); END");
+  db.exec(
+    "CREATE TRIGGER reject_import BEFORE INSERT ON settings WHEN NEW.key = 'sharedPlaylists' BEGIN SELECT RAISE(ABORT, 'import save rejected'); END",
+  );
   t.onTestFinished(() => db.exec("DROP TRIGGER IF EXISTS reject_import"));
-  await assert.rejects(operations.updateStaticPlaylist({ playlistId: source.id, tracks: [], hasTracksUpdate: true, deleteUnsharedFiles: true }), /import save rejected/);
+  await assert.rejects(
+    operations.updateStaticPlaylist({
+      playlistId: source.id,
+      tracks: [],
+      hasTracksUpdate: true,
+      deleteUnsharedFiles: true,
+    }),
+    /import save rejected/,
+  );
   assert.equal(config.flowPlaylistConfig.getStaticPlaylist(source.id).tracks.length, 1);
   assert.equal(downloadTracker.getJob(jobId)?.finalPath, file);
   assert.equal(await fs.readFile(file, "utf8"), "original audio");
@@ -112,24 +184,43 @@ test("removal locks include reused files and quality-upgrade album peers", async
   const peerOwner = config.flowPlaylistConfig.createStaticPlaylist({ name: "Upgrade peer owner" });
   const file = path.join(process.env.WEEKLY_FLOW_FOLDER, "shared.flac");
   downloadTracker.setDone(jobId, file);
-  const sharedJobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Shared" }, fileOwner.id);
+  const sharedJobId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Shared" },
+    fileOwner.id,
+  );
   downloadTracker.setDone(sharedJobId, file);
   const upgradeId = downloadTracker.addReplacementSearchJob(downloadTracker.getJob(jobId));
   const peerId = downloadTracker.addJob({ artistName: "Artist", trackName: "Peer" }, peerOwner.id);
-  honker.getPipelineQueue().enqueue({ jobId: upgradeId, playlistId: source.id, albumGrab: true, albumGroupJobIds: [upgradeId, peerId] });
-  const { getPlaylistRemovalLockIds } = await import("../../backend/services/playlists/trackRemoval.js");
+  honker.getPipelineQueue().enqueue({
+    jobId: upgradeId,
+    playlistId: source.id,
+    albumGrab: true,
+    albumGroupJobIds: [upgradeId, peerId],
+  });
+  const { getPlaylistRemovalLockIds } =
+    await import("../../backend/services/playlists/trackRemoval.js");
   const ids = getPlaylistRemovalLockIds(source.id, [downloadTracker.getJob(jobId)]);
   assert.ok(ids.includes(fileOwner.id), "the other file owner must be locked before paths change");
-  assert.ok(ids.includes(peerOwner.id), "the upgrade peer must be locked before provider work changes");
+  assert.ok(
+    ids.includes(peerOwner.id),
+    "the upgrade peer must be locked before provider work changes",
+  );
 });
 
 test("a failed membership commit keeps both media copies and retries retained ownership", async () => {
   const { source, survivor, jobId } = fixture();
-  const file = path.join(process.env.WEEKLY_FLOW_FOLDER, "aurral-playlists", source.id, "Retained.flac");
+  const file = path.join(
+    process.env.WEEKLY_FLOW_FOLDER,
+    "aurral-playlists",
+    source.id,
+    "Retained.flac",
+  );
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, "retained audio");
   downloadTracker.setDone(jobId, file);
-  db.exec("CREATE TRIGGER reject_retained_membership BEFORE INSERT ON settings WHEN NEW.key = 'sharedPlaylists' BEGIN SELECT RAISE(ABORT, 'retained save rejected'); END");
+  db.exec(
+    "CREATE TRIGGER reject_retained_membership BEFORE INSERT ON settings WHEN NEW.key = 'sharedPlaylists' BEGIN SELECT RAISE(ABORT, 'retained save rejected'); END",
+  );
   const operation = { kind: "shared-playlist-delete-track", playlistId: source.id, jobId };
   try {
     await assert.rejects(operations.processPlaylistOperation(operation), /retained save rejected/);
@@ -137,23 +228,38 @@ test("a failed membership commit keeps both media copies and retries retained ow
     assert.equal(downloadTracker.getJob(jobId).playlistType, source.id);
     assert.equal(downloadTracker.getJob(jobId).finalPath, file);
     assert.equal(await fs.readFile(file, "utf8"), "retained audio");
-    const intent = JSON.parse(db.prepare("SELECT value FROM settings WHERE key = ?").get(`playlistMediaRelocation:${jobId}`).value);
+    const intent = JSON.parse(
+      db.prepare("SELECT value FROM settings WHERE key = ?").get(`playlistMediaRelocation:${jobId}`)
+        .value,
+    );
     assert.equal(await fs.readFile(intent.to, "utf8"), "retained audio");
-  } finally { db.exec("DROP TRIGGER reject_retained_membership"); }
+  } finally {
+    db.exec("DROP TRIGGER reject_retained_membership");
+  }
   await operations.processPlaylistOperation(operation);
   assert.equal(downloadTracker.getJob(jobId).playlistType, survivor.id);
-  assert.equal(await fs.readFile(downloadTracker.getJob(jobId).finalPath, "utf8"), "retained audio");
+  assert.equal(
+    await fs.readFile(downloadTracker.getJob(jobId).finalPath, "utf8"),
+    "retained audio",
+  );
   await assert.rejects(fs.access(file), { code: "ENOENT" });
 });
 
 test("whole-playlist deletion resumes external cleanup after membership commits", async () => {
   const { source, survivor, jobId } = fixture();
-  const file = path.join(process.env.WEEKLY_FLOW_FOLDER, "aurral-playlists", source.id, "Completed.flac");
+  const file = path.join(
+    process.env.WEEKLY_FLOW_FOLDER,
+    "aurral-playlists",
+    source.id,
+    "Completed.flac",
+  );
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, "completed retained audio");
   downloadTracker.setDone(jobId, file);
   const synced = [];
-  vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation((ids) => { synced.push(...ids); });
+  vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation((ids) => {
+    synced.push(...ids);
+  });
   const weeklyReset = playlistManager.weeklyReset.bind(playlistManager);
   let fail = true;
   vi.spyOn(playlistManager, "weeklyReset").mockImplementation(async (...args) => {
@@ -164,22 +270,48 @@ test("whole-playlist deletion resumes external cleanup after membership commits"
   await assert.rejects(operations.processPlaylistOperation(operation), /cleanup unavailable/);
   assert.equal(downloadTracker.getJob(jobId).playlistType, survivor.id);
   assert.ok(config.flowPlaylistConfig.getStaticPlaylist(source.id));
-  assert.ok(synced.includes(survivor.id), "the survivor is synced even though the delete must be retried");
+  assert.ok(
+    synced.includes(survivor.id),
+    "the survivor is synced even though the delete must be retried",
+  );
   fail = false;
   synced.length = 0;
   await operations.processPlaylistOperation(operation);
   assert.equal(config.flowPlaylistConfig.getStaticPlaylist(source.id), null);
   assert.equal(downloadTracker.getJob(jobId).playlistType, survivor.id);
-  assert.ok(synced.includes(source.id), "the deleted playlist is removed from servers by the sync job");
+  assert.ok(
+    synced.includes(source.id),
+    "the deleted playlist is removed from servers by the sync job",
+  );
 });
 
 async function addLibraryFile({ artistName, albumName, trackName }) {
-  const file = path.join(process.env.WEEKLY_FLOW_FOLDER, artistName, albumName, `${trackName}.flac`);
+  const file = path.join(
+    process.env.WEEKLY_FLOW_FOLDER,
+    artistName,
+    albumName,
+    `${trackName}.flac`,
+  );
   await fs.mkdir(path.dirname(file), { recursive: true });
   await promisify(execFile)("ffmpeg", [
-    "-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=0.1",
-    "-metadata", `album_artist=${artistName}`, "-metadata", `artist=${artistName}`,
-    "-metadata", `album=${albumName}`, "-metadata", `title=${trackName}`, file,
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-nostdin",
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=frequency=440:duration=0.1",
+    "-metadata",
+    `album_artist=${artistName}`,
+    "-metadata",
+    `artist=${artistName}`,
+    "-metadata",
+    `album=${albumName}`,
+    "-metadata",
+    `title=${trackName}`,
+    file,
   ]);
   await scanMusicRoot({ rootPath: process.env.WEEKLY_FLOW_FOLDER, source: "aurral" });
   return file;
@@ -188,8 +320,12 @@ async function addLibraryFile({ artistName, albumName, trackName }) {
 async function assertStillInLibrary(file) {
   await fs.access(file);
   await scanMusicRoot({ rootPath: process.env.WEEKLY_FLOW_FOLDER, source: "aurral" });
-  assert.ok(getLibrary({ availableOnly: true }).tracks.some((track) => track.files.some((media) => media.path === file)),
-    "the Library must still have the reused file");
+  assert.ok(
+    getLibrary({ availableOnly: true }).tracks.some((track) =>
+      track.files.some((media) => media.path === file),
+    ),
+    "the Library must still have the reused file",
+  );
 }
 
 function mockPlaylistServices() {
@@ -199,13 +335,24 @@ function mockPlaylistServices() {
 }
 
 async function createPlaylist(tracks, extra = {}) {
-  const { playlist } = await operations.processPlaylistOperation({ kind: "shared-playlist-create", name: "From the Library", tracks, ...extra });
-  const jobFor = (track) => downloadTracker.getByPlaylistType(playlist.id).find((job) => job.trackName === track.trackName);
+  const { playlist } = await operations.processPlaylistOperation({
+    kind: "shared-playlist-create",
+    name: "From the Library",
+    tracks,
+    ...extra,
+  });
+  const jobFor = (track) =>
+    downloadTracker.getByPlaylistType(playlist.id).find((job) => job.trackName === track.trackName);
   return { playlist, jobFor };
 }
 
 async function finishDownload(job) {
-  const file = path.join(process.env.WEEKLY_FLOW_FOLDER, job.artistName, job.albumName, `${job.trackName}.flac`);
+  const file = path.join(
+    process.env.WEEKLY_FLOW_FOLDER,
+    job.artistName,
+    job.albumName,
+    `${job.trackName}.flac`,
+  );
   downloadTracker.setDownloading(job.id);
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, "downloaded for the playlist");
@@ -223,7 +370,10 @@ test("deleting a playlist keeps the Library files it reused and deletes the file
   assert.equal(jobFor(reused).finalPath, libraryFile);
   const downloadedFile = await finishDownload(jobFor(downloaded));
 
-  await operations.processPlaylistOperation({ kind: "shared-playlist-delete", playlistId: playlist.id });
+  await operations.processPlaylistOperation({
+    kind: "shared-playlist-delete",
+    playlistId: playlist.id,
+  });
 
   assert.equal(config.flowPlaylistConfig.getStaticPlaylist(playlist.id), null);
   await assert.rejects(fs.access(downloadedFile), { code: "ENOENT" });
@@ -237,7 +387,11 @@ test("removing a reused track from a playlist keeps its Library file", async () 
   const { playlist, jobFor } = await createPlaylist([reused]);
   const jobId = jobFor(reused).id;
 
-  await operations.processPlaylistOperation({ kind: "shared-playlist-delete-track", playlistId: playlist.id, jobId });
+  await operations.processPlaylistOperation({
+    kind: "shared-playlist-delete-track",
+    playlistId: playlist.id,
+    jobId,
+  });
 
   assert.equal(downloadTracker.getJob(jobId), null);
   assert.equal(config.flowPlaylistConfig.getStaticPlaylist(playlist.id).tracks.length, 0);
@@ -245,17 +399,32 @@ test("removing a reused track from a playlist keeps its Library file", async () 
 });
 
 test("a synced playlist that drops a reused track keeps its Library file when removed tracks are not kept", async () => {
-  const reused = { artistName: "Reuse Band", albumName: "Synced Record", trackName: "Dropped Upstream" };
+  const reused = {
+    artistName: "Reuse Band",
+    albumName: "Synced Record",
+    trackName: "Dropped Upstream",
+  };
   const libraryFile = await addLibraryFile(reused);
   mockPlaylistServices();
   const { playlist, jobFor } = await createPlaylist([reused], {
-    importSource: { provider: "spotify-playlist", externalId: "synced", syncEnabled: true, syncIntervalHours: 24, keepRemovedTracks: false },
+    importSource: {
+      provider: "spotify-playlist",
+      externalId: "synced",
+      syncEnabled: true,
+      syncIntervalHours: 24,
+      keepRemovedTracks: false,
+    },
   });
   const jobId = jobFor(reused).id;
 
   await operations.processPlaylistOperation({
-    kind: "shared-playlist-update", playlistId: playlist.id, tracks: [], hasTracksUpdate: true,
-    hasImportSourceUpdate: true, importSource: { lastSyncAt: Date.now() }, mergeImportSource: true,
+    kind: "shared-playlist-update",
+    playlistId: playlist.id,
+    tracks: [],
+    hasTracksUpdate: true,
+    hasImportSourceUpdate: true,
+    importSource: { lastSyncAt: Date.now() },
+    mergeImportSource: true,
   });
 
   assert.equal(downloadTracker.getJob(jobId), null);
@@ -263,32 +432,54 @@ test("a synced playlist that drops a reused track keeps its Library file when re
 });
 
 test("a playlist track repaired onto a Library file keeps that file when the playlist is deleted", async () => {
-  const track = { artistName: "Repair Band", albumName: "Repair Record", trackName: "Lost Download" };
+  const track = {
+    artistName: "Repair Band",
+    albumName: "Repair Record",
+    trackName: "Lost Download",
+  };
   mockPlaylistServices();
   const { playlist, jobFor } = await createPlaylist([track]);
-  const lostFile = path.join(process.env.WEEKLY_FLOW_FOLDER, "aurral-playlists", playlist.id, "Lost Download.flac");
+  const lostFile = path.join(
+    process.env.WEEKLY_FLOW_FOLDER,
+    "aurral-playlists",
+    playlist.id,
+    "Lost Download.flac",
+  );
   downloadTracker.setDownloading(jobFor(track).id);
   downloadTracker.setDone(jobFor(track).id, lostFile, track.albumName);
   const libraryFile = await addLibraryFile(track);
 
   await repairReusableTrackLinks({ downloadRoot: process.env.WEEKLY_FLOW_FOLDER });
   assert.equal(jobFor(track).finalPath, libraryFile);
-  await operations.processPlaylistOperation({ kind: "shared-playlist-delete", playlistId: playlist.id });
+  await operations.processPlaylistOperation({
+    kind: "shared-playlist-delete",
+    playlistId: playlist.id,
+  });
 
   await assertStillInLibrary(libraryFile);
 });
 
 test("a file one playlist downloaded and another reused is deleted once neither playlist uses it", async () => {
-  const track = { artistName: "Shared Band", albumName: "Shared Record", trackName: "Passed Along" };
+  const track = {
+    artistName: "Shared Band",
+    albumName: "Shared Record",
+    trackName: "Passed Along",
+  };
   mockPlaylistServices();
   const first = await createPlaylist([track], { name: "Downloaded it" });
   const file = await finishDownload(first.jobFor(track));
   const second = await createPlaylist([track], { name: "Reused it" });
   assert.equal(second.jobFor(track).finalPath, file);
 
-  await operations.processPlaylistOperation({ kind: "shared-playlist-delete", playlistId: first.playlist.id });
+  await operations.processPlaylistOperation({
+    kind: "shared-playlist-delete",
+    playlistId: first.playlist.id,
+  });
   await fs.access(file);
-  await operations.processPlaylistOperation({ kind: "shared-playlist-delete", playlistId: second.playlist.id });
+  await operations.processPlaylistOperation({
+    kind: "shared-playlist-delete",
+    playlistId: second.playlist.id,
+  });
 
   await assert.rejects(fs.access(file), { code: "ENOENT" });
 });
@@ -301,8 +492,14 @@ test("a Library file two playlists reused stays after both playlists are deleted
   const second = await createPlaylist([track], { name: "Reused second" });
   assert.equal(second.jobFor(track).finalPath, libraryFile);
 
-  await operations.processPlaylistOperation({ kind: "shared-playlist-delete", playlistId: first.playlist.id });
-  await operations.processPlaylistOperation({ kind: "shared-playlist-delete", playlistId: second.playlist.id });
+  await operations.processPlaylistOperation({
+    kind: "shared-playlist-delete",
+    playlistId: first.playlist.id,
+  });
+  await operations.processPlaylistOperation({
+    kind: "shared-playlist-delete",
+    playlistId: second.playlist.id,
+  });
 
   await assertStillInLibrary(libraryFile);
 });

@@ -87,7 +87,8 @@ const imageProxyDispatcher = new Agent({
   maxResponseSize: MAX_SOURCE_IMAGE_BYTES,
   connect: { lookup: safeLookup },
 });
-const usesNativeFetch = () => Function.prototype.toString.call(globalThis.fetch).includes("internal/deps/undici");
+const usesNativeFetch = () =>
+  Function.prototype.toString.call(globalThis.fetch).includes("internal/deps/undici");
 
 const ensureCacheDir = () => fs.promises.mkdir(IMAGE_PROXY_DIR, { recursive: true });
 
@@ -184,15 +185,10 @@ const pruneImageProxyCacheToLimit = async () => {
   let total = evictableEntries.reduce((sum, entry) => sum + entry.bytes, 0);
   if (total <= IMAGE_PROXY_MAX_BYTES) return;
 
-  evictableEntries.sort(
-    (a, b) => a.mtimeMs - b.mtimeMs || a.cacheKey.localeCompare(b.cacheKey),
-  );
+  evictableEntries.sort((a, b) => a.mtimeMs - b.mtimeMs || a.cacheKey.localeCompare(b.cacheKey));
   for (const entry of evictableEntries) {
     if (total <= IMAGE_PROXY_MAX_BYTES) break;
-    await removeCacheEntryFromDisk(
-      entry.cacheKey,
-      entry.extension,
-    );
+    await removeCacheEntryFromDisk(entry.cacheKey, entry.extension);
     total -= entry.bytes;
   }
 };
@@ -302,8 +298,7 @@ const readCacheEntryFromDisk = (cacheKey) => {
     imagePath,
     localUrl: buildLocalImageUrl(cacheKey, meta.extension),
     isFresh:
-      Number(meta.fetchedAt || 0) > 0 &&
-      Date.now() - Number(meta.fetchedAt || 0) < CACHE_TTL_MS,
+      Number(meta.fetchedAt || 0) > 0 && Date.now() - Number(meta.fetchedAt || 0) < CACHE_TTL_MS,
   };
   cacheEntriesByKey.set(cacheKey, entry);
   return entry;
@@ -317,8 +312,7 @@ const getCacheKeyFromLocalUrl = (value) => {
   return bareMatch?.[1]?.toLowerCase() || null;
 };
 
-export const isImageProxyLocalUrl = (value) =>
-  getCacheKeyFromLocalUrl(value) != null;
+export const isImageProxyLocalUrl = (value) => getCacheKeyFromLocalUrl(value) != null;
 
 export const resolveImageProxyLocalUrl = (value) => {
   const cacheKey = getCacheKeyFromLocalUrl(value);
@@ -464,11 +458,7 @@ const normalizeCachedEntry = async (entry) => {
     return entry;
   }
 
-  const optimized = await optimizeImageBuffer(
-    buffer,
-    entry.meta.contentType,
-    entry.meta.profile,
-  );
+  const optimized = await optimizeImageBuffer(buffer, entry.meta.contentType, entry.meta.profile);
   if (
     optimized.contentType === entry.meta.contentType &&
     optimized.buffer.length === buffer.length
@@ -570,9 +560,8 @@ const fetchRemoteImage = async (sourceUrl) => {
 };
 
 const fetchAndCacheImage = (sourceUrl, imageProfile = "library") =>
-  runImageWork(
-    `fetch:${buildImageCacheKey(normalizeKnownImageUrl(sourceUrl), imageProfile)}`,
-    () => fetchAndWriteImage(sourceUrl, imageProfile),
+  runImageWork(`fetch:${buildImageCacheKey(normalizeKnownImageUrl(sourceUrl), imageProfile)}`, () =>
+    fetchAndWriteImage(sourceUrl, imageProfile),
   );
 
 const fetchAndWriteImage = async (sourceUrl, imageProfile = "library") => {
@@ -611,9 +600,7 @@ export const warmImageProxy = async (sourceUrl, imageProfile = "library") => {
       }
       return cachedLocal;
     }
-    const meta = _readCacheMetadata(
-      path.join(IMAGE_PROXY_DIR, `${cacheKeyFromLocalUrl}.json`),
-    );
+    const meta = _readCacheMetadata(path.join(IMAGE_PROXY_DIR, `${cacheKeyFromLocalUrl}.json`));
     const sourceFromMeta = normalizeKnownImageUrl(meta?.sourceUrl) || meta?.sourceUrl || null;
     if (sourceFromMeta) {
       return fetchAndCacheImage(sourceFromMeta, profile);
@@ -647,7 +634,12 @@ export const warmPublicImageUrl = async (sourceUrl, imageProfile = "library") =>
   }
   const srcMatch = normalized.match(/\/api\/image-proxy\?src=([^&]+)/i);
   const remote = srcMatch ? decodeURIComponent(srcMatch[1]) : normalized;
-  if (!remote || remote.startsWith("/") || remote.startsWith("data:") || remote.startsWith("blob:")) {
+  if (
+    !remote ||
+    remote.startsWith("/") ||
+    remote.startsWith("data:") ||
+    remote.startsWith("blob:")
+  ) {
     return remote || null;
   }
   try {
@@ -682,11 +674,7 @@ export const buildStableImageProxyUrl = (sourceUrl) => {
       return normalized;
     }
   }
-  if (
-    remote.startsWith("/") ||
-    remote.startsWith("data:") ||
-    remote.startsWith("blob:")
-  ) {
+  if (remote.startsWith("/") || remote.startsWith("data:") || remote.startsWith("blob:")) {
     return normalized;
   }
 

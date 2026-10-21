@@ -7,12 +7,15 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 async function renderOperation(t, operation) {
   vi.resetModules();
-  const { default: LibraryFileOperation } = await import("../../frontend/src/components/LibraryFileOperation.jsx");
-  return renderToStaticMarkup(createElement(
-    QueryClientProvider,
-    { client: new QueryClient() },
-    createElement(LibraryFileOperation, { operation }),
-  ));
+  const { default: LibraryFileOperation } =
+    await import("../../frontend/src/components/LibraryFileOperation.jsx");
+  return renderToStaticMarkup(
+    createElement(
+      QueryClientProvider,
+      { client: new QueryClient() },
+      createElement(LibraryFileOperation, { operation }),
+    ),
+  );
 }
 
 const finishedIngest = (overrides) => ({
@@ -26,26 +29,38 @@ const finishedIngest = (overrides) => ({
 });
 
 test("an ingest stored before Needs review was removed lists its held files as skipped", async (t) => {
-  const markup = await renderOperation(t, finishedIngest({
-    counts: { done: 2, duplicate: 1, conflict: 3 },
-    sources: { removable: 0, removed: 0 },
-  }));
+  const markup = await renderOperation(
+    t,
+    finishedIngest({
+      counts: { done: 2, duplicate: 1, conflict: 3 },
+      sources: { removable: 0, removed: 0 },
+    }),
+  );
 
   assert.doesNotMatch(markup, /review/i);
-  assert.match(markup, /Finished\. Filed 2 files · Skipped 1 file already in the Library and 3 others\./);
+  assert.match(
+    markup,
+    /Finished\. Filed 2 files · Skipped 1 file already in the Library and 3 others\./,
+  );
   assert.match(markup, /aria-pressed="true"[^>]*>Skipped <span class="library-file-op__count">3</);
 });
 
 test("a finished Move ingest offers to remove only the source files it kept, and Copy offers nothing", async (t) => {
-  const move = await renderOperation(t, finishedIngest({
-    counts: { duplicate: 4 },
-    sources: { removable: 3, removed: 0 },
-  }));
-  const copy = await renderOperation(t, finishedIngest({
-    options: { mode: "copy" },
-    counts: { duplicate: 4 },
-    sources: null,
-  }));
+  const move = await renderOperation(
+    t,
+    finishedIngest({
+      counts: { duplicate: 4 },
+      sources: { removable: 3, removed: 0 },
+    }),
+  );
+  const copy = await renderOperation(
+    t,
+    finishedIngest({
+      options: { mode: "copy" },
+      counts: { duplicate: 4 },
+      sources: null,
+    }),
+  );
 
   assert.match(move, /Remove 3 source files already in the Library\?/);
   assert.match(move, />Remove source files</);
@@ -53,15 +68,21 @@ test("a finished Move ingest offers to remove only the source files it kept, and
 });
 
 test("a finished clean up offers to remove the duplicate copies it found and lists them as duplicates", async (t) => {
-  const markup = await renderOperation(t, finishedIngest({
-    kind: "cleanup",
-    options: {},
-    counts: { done: 1, duplicate: 2 },
-    sources: { removable: 2, removed: 0 },
-  }));
+  const markup = await renderOperation(
+    t,
+    finishedIngest({
+      kind: "cleanup",
+      options: {},
+      counts: { done: 1, duplicate: 2 },
+      sources: { removable: 2, removed: 0 },
+    }),
+  );
 
   assert.match(markup, /Remove 2 duplicate copies\?/);
   assert.match(markup, />Remove duplicates</);
-  assert.match(markup, /aria-pressed="true"[^>]*>Duplicates <span class="library-file-op__count">2</);
+  assert.match(
+    markup,
+    /aria-pressed="true"[^>]*>Duplicates <span class="library-file-op__count">2</,
+  );
   assert.doesNotMatch(markup, /source file/);
 });

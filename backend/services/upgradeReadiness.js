@@ -26,9 +26,12 @@ const BLOCKER_MESSAGES = {
   schema: "The database has not finished its 2.x upgrade. Restart Aurral to finish it.",
   "stored-data": "Aurral has not finished storing older settings in their current form.",
   "identity-markers": "Aurral has not finished moving track identity markers to their own tag.",
-  "download-folder": "Aurral has not finished moving older files in the Downloads Folder into the current layout. Check the logs for errors, then check again.",
-  "download-folder-review": "Some older files in the Downloads Folder need your review. Move or delete each file, then check again.",
-  "single-password": "Sign-in still uses the old single password. Sign in once to create the admin account.",
+  "download-folder":
+    "Aurral has not finished moving older files in the Downloads Folder into the current layout. Check the logs for errors, then check again.",
+  "download-folder-review":
+    "Some older files in the Downloads Folder need your review. Move or delete each file, then check again.",
+  "single-password":
+    "Sign-in still uses the old single password. Sign in once to create the admin account.",
 };
 
 const isCurrent = (setting, version) => dbOps.getJSONSetting(setting)?.version === version;
@@ -38,23 +41,27 @@ function downloadFolderBlockers() {
   const sameRoot = (value) => path.resolve(String(value || "")) === root;
   const startup = dbOps.getJSONSetting(PLAYLIST_STARTUP_MIGRATION_SETTING);
   const folder = dbOps.getJSONSetting(AURRAL_DOWNLOAD_FOLDER_MIGRATION_SETTING);
-  const review = folder && sameRoot(folder.rootPath)
-    ? Object.entries(folder.items || {}).filter(([, item]) => item?.status === "retained")
-    : [];
+  const review =
+    folder && sameRoot(folder.rootPath)
+      ? Object.entries(folder.items || {}).filter(([, item]) => item?.status === "retained")
+      : [];
   if (review.length > 0) {
-    return [{
-      kind: "download-folder-review",
-      totalItems: review.length,
-      items: review.slice(0, REVIEW_ITEM_LIMIT).map(([sourcePath, item]) => ({
-        path: isPathInsideRoot(sourcePath, root) ? path.relative(root, sourcePath) : sourcePath,
-        reason: item.reason || null,
-      })),
-    }];
+    return [
+      {
+        kind: "download-folder-review",
+        totalItems: review.length,
+        items: review.slice(0, REVIEW_ITEM_LIMIT).map(([sourcePath, item]) => ({
+          path: isPathInsideRoot(sourcePath, root) ? path.relative(root, sourcePath) : sourcePath,
+          reason: item.reason || null,
+        })),
+      },
+    ];
   }
-  const finished = startup?.version === PLAYLIST_STARTUP_MIGRATION_VERSION
-    && sameRoot(startup.rootPath)
-    && folder?.status === "complete"
-    && sameRoot(folder.rootPath);
+  const finished =
+    startup?.version === PLAYLIST_STARTUP_MIGRATION_VERSION &&
+    sameRoot(startup.rootPath) &&
+    folder?.status === "complete" &&
+    sameRoot(folder.rootPath);
   return finished ? [] : [{ kind: "download-folder" }];
 }
 
@@ -96,7 +103,9 @@ const TASKS_FOR_BLOCKERS = {
 
 export function queueUpgradeReadinessRecheck() {
   const kinds = new Set(
-    listBlockers().map((blocker) => TASKS_FOR_BLOCKERS[blocker.kind]).filter(Boolean),
+    listBlockers()
+      .map((blocker) => TASKS_FOR_BLOCKERS[blocker.kind])
+      .filter(Boolean),
   );
   kinds.add("upgrade-readiness-check");
   for (const kind of kinds) {

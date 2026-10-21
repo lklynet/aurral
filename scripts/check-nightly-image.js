@@ -10,9 +10,11 @@ if (!/^[0-9a-f]{7,40}$/.test(sha || "")) {
 const published = await getPublishedNightlyImage(repository);
 let publish = true;
 if (published) {
-  const status = execFileSync("gh", [
-    "api", `repos/${repository}/compare/${published.sha}...${sha}`, "--jq", ".status",
-  ], { encoding: "utf8" }).trim();
+  const status = execFileSync(
+    "gh",
+    ["api", `repos/${repository}/compare/${published.sha}...${sha}`, "--jq", ".status"],
+    { encoding: "utf8" },
+  ).trim();
   if (!["ahead", "identical", "behind", "diverged"].includes(status)) {
     throw new Error("Could not establish nightly commit ancestry");
   }

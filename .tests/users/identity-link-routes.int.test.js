@@ -17,14 +17,13 @@ const [
   { userOps, userIdentityOps, dbOps },
   { createSession },
   { plexConnectionStore },
-] =
-  await setupIsolatedBackend(
-    "identity-link-routes",
-    "backend/config/db-sqlite.js",
-    "backend/db/helpers/index.js",
-    "backend/config/session-helpers.js",
-    "backend/services/plex/plexConnectionStore.js",
-  );
+] = await setupIsolatedBackend(
+  "identity-link-routes",
+  "backend/config/db-sqlite.js",
+  "backend/db/helpers/index.js",
+  "backend/config/session-helpers.js",
+  "backend/services/plex/plexConnectionStore.js",
+);
 
 let server = null;
 
@@ -113,7 +112,10 @@ test("only administrators can read or rotate the instance API key", async () => 
 
   const { payload: before } = await apiFetch(adminToken, "/api/auth/api-key");
   assert.equal((await apiFetch(userToken, "/api/auth/api-key")).response.status, 403);
-  assert.equal((await apiFetch(userToken, "/api/auth/api-key/rotate", { method: "POST" })).response.status, 403);
+  assert.equal(
+    (await apiFetch(userToken, "/api/auth/api-key/rotate", { method: "POST" })).response.status,
+    403,
+  );
   assert.deepEqual((await apiFetch(adminToken, "/api/auth/api-key")).payload, before);
 });
 
@@ -136,11 +138,7 @@ test("reauth accepts the correct password and rejects an incorrect one", async (
 });
 
 test("unlinking an identity requires a recent reauth and succeeds after confirming it", async () => {
-  const user = userOps.createUser(
-    "stale-session-user",
-    bcrypt.hashSync("password123", 4),
-    "user",
-  );
+  const user = userOps.createUser("stale-session-user", bcrypt.hashSync("password123", 4), "user");
   const identity = userIdentityOps.link(user.id, {
     providerType: "oidc",
     providerKey: "https://issuer.example/",
@@ -208,11 +206,7 @@ test("a successful local login records that the account has a usable local passw
 });
 
 test("changing a password requires a recent auth, so a stale session cannot take the account over", async () => {
-  userOps.createUser(
-    "stale-password-user",
-    bcrypt.hashSync("password123", 4),
-    "user",
-  );
+  userOps.createUser("stale-password-user", bcrypt.hashSync("password123", 4), "user");
   const token = await login("stale-password-user", "password123");
 
   ageSessionByToken(token, 20 * 60 * 1000);
@@ -298,9 +292,7 @@ test("replacing a provider identity removes the former Plex subject", () => {
 });
 
 test("a conflicting Plex identity rolls back the connection and identity replacement", async () => {
-  const { persistSelfPlexLink } = await importFromRepo(
-    "backend/routes/users/plexLinkHandlers.js",
-  );
+  const { persistSelfPlexLink } = await importFromRepo("backend/routes/users/plexLinkHandlers.js");
   const owner = userOps.createUser("plex-conflict-owner", "unused", "user");
   const contender = userOps.createUser("plex-conflict-contender", "unused", "user");
   userIdentityOps.link(owner.id, {
@@ -344,8 +336,5 @@ test("a conflicting Plex identity rolls back the connection and identity replace
   assert.equal(connection.clientId, "original-client");
   assert.equal(connection.plexAccountId, "original-subject");
   assert.equal(userIdentityOps.getById(originalIdentity.id)?.subject, "original-subject");
-  assert.equal(
-    userIdentityOps.findByProvider("plex", "plex", "claimed-subject")?.userId,
-    owner.id,
-  );
+  assert.equal(userIdentityOps.findByProvider("plex", "plex", "claimed-subject")?.userId, owner.id);
 });

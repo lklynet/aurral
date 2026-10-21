@@ -1,9 +1,6 @@
 import { useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
-import {
-  getStorageHealth,
-  runStorageHealthCheck,
-} from "../utils/api/endpoints/settings.js";
+import { getStorageHealth, runStorageHealthCheck } from "../utils/api/endpoints/settings.js";
 import { queryClient, queryKeys } from "../queryClient.js";
 
 const toSnapshot = (result, dataUpdatedAt = 0) => ({
@@ -25,7 +22,8 @@ export function subscribeStorageHealth(listener) {
       !queryKey ||
       queryKey.length !== queryKeys.storageHealth.length ||
       queryKey.some((value, index) => value !== queryKeys.storageHealth[index])
-    ) return;
+    )
+      return;
     listener(getStorageHealthCache());
   });
 }

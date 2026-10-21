@@ -1,14 +1,16 @@
 import { requireAuth } from "../../../middleware/requirePermission.js";
 import { dbOps } from "../../../db/helpers/index.js";
-import { getDiscoveryMode, getLocalDiscoveryPreferences } from "../../../services/discovery/index.js";
+import {
+  getDiscoveryMode,
+  getLocalDiscoveryPreferences,
+} from "../../../services/discovery/index.js";
 
 export function registerPreferences(router) {
   router.get("/preferences", requireAuth, (req, res) => {
     const localDiscoveryPreferences = getLocalDiscoveryPreferences();
     res.json({
       discoveryMode: getDiscoveryMode(),
-      localDiscoveryIncludeRecommendations:
-        localDiscoveryPreferences.includeRecommendations,
+      localDiscoveryIncludeRecommendations: localDiscoveryPreferences.includeRecommendations,
       localDiscoveryIncludeTrending: localDiscoveryPreferences.includeTrending,
     });
   });
@@ -24,8 +26,7 @@ export function registerPreferences(router) {
           lastfm: {
             ...(currentSettings.integrations?.lastfm || {}),
             discoveryMode:
-              updates.discoveryMode === "safer" ||
-              updates.discoveryMode === "deeper"
+              updates.discoveryMode === "safer" || updates.discoveryMode === "deeper"
                 ? updates.discoveryMode
                 : "balanced",
           },
@@ -33,8 +34,7 @@ export function registerPreferences(router) {
             ...(currentSettings.integrations?.ticketmaster || {}),
             localDiscoveryIncludeRecommendations:
               updates.localDiscoveryIncludeRecommendations !== false,
-            localDiscoveryIncludeTrending:
-              updates.localDiscoveryIncludeTrending !== false,
+            localDiscoveryIncludeTrending: updates.localDiscoveryIncludeTrending !== false,
           },
         },
       };
@@ -43,14 +43,11 @@ export function registerPreferences(router) {
       res.json({
         success: true,
         preferences: {
-          discoveryMode:
-            nextSettings.integrations?.lastfm?.discoveryMode || "balanced",
+          discoveryMode: nextSettings.integrations?.lastfm?.discoveryMode || "balanced",
           localDiscoveryIncludeRecommendations:
-            nextSettings.integrations?.ticketmaster
-              ?.localDiscoveryIncludeRecommendations !== false,
+            nextSettings.integrations?.ticketmaster?.localDiscoveryIncludeRecommendations !== false,
           localDiscoveryIncludeTrending:
-            nextSettings.integrations?.ticketmaster
-              ?.localDiscoveryIncludeTrending !== false,
+            nextSettings.integrations?.ticketmaster?.localDiscoveryIncludeTrending !== false,
         },
       });
     } catch (error) {

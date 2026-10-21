@@ -30,7 +30,11 @@ for (const triggerSearch of [false, true]) {
         if (endpoint === "/artist" && method === "POST") {
           postedArtist = structuredClone(payload);
           // Lidarr's AddArtistService disables the artist for monitor=none.
-          artist = { ...payload, id: 7, monitored: payload.addOptions.monitor !== "none" && payload.monitored };
+          artist = {
+            ...payload,
+            id: 7,
+            monitored: payload.addOptions.monitor !== "none" && payload.monitored,
+          };
           refreshSnapshot = structuredClone(artist);
           return structuredClone(artist);
         }
@@ -58,7 +62,10 @@ for (const triggerSearch of [false, true]) {
         album.monitored = artist.addOptions.albumsToMonitor.includes(album.foreignAlbumId);
       }
       const wanted = albums.filter((album) => artist.monitored && album.monitored);
-      assert.deepEqual(wanted.map((album) => album.foreignAlbumId), ["requested-album"]);
+      assert.deepEqual(
+        wanted.map((album) => album.foreignAlbumId),
+        ["requested-album"],
+      );
       assert.equal(albums[1].monitored, false);
       assert.equal(artist.monitorNewItems, "none");
       assert.equal(postedArtist.monitor, "missing");

@@ -46,9 +46,9 @@ async function apiFetch(path, options = {}) {
 async function waitForLibraryRequest(startIndex) {
   const deadline = Date.now() + 5000;
   while (Date.now() < deadline) {
-    const request = navidromeRequests.slice(startIndex).find(
-      ({ method, url }) => method === "POST" && url.pathname === "/api/library",
-    );
+    const request = navidromeRequests
+      .slice(startIndex)
+      .find(({ method, url }) => method === "POST" && url.pathname === "/api/library");
     if (request) return request;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
@@ -58,9 +58,9 @@ async function waitForLibraryRequest(startIndex) {
 async function waitForLibraryVerification(startIndex) {
   const deadline = Date.now() + 5000;
   while (Date.now() < deadline) {
-    const request = navidromeRequests.slice(startIndex).find(
-      ({ method, url }) => method === "GET" && url.pathname === "/api/library",
-    );
+    const request = navidromeRequests
+      .slice(startIndex)
+      .find(({ method, url }) => method === "GET" && url.pathname === "/api/library");
     if (request) return request;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
@@ -155,10 +155,14 @@ test("admin can update and test Navidrome after onboarding", async () => {
   assert.equal(saved.payload.integrations.navidrome.username, "local-user");
   assert.equal(Object.hasOwn(saved.payload.integrations.navidrome, "m3uPathMode"), false);
   assert.equal(Object.hasOwn(saved.payload.integrations.navidrome, "pathMappings"), false);
-  assert.ok(saved.payload.pathMappings.some((mapping) =>
-    mapping.source === libraryMapping.source
-    && mapping.remote === libraryMapping.remote
-    && mapping.local === libraryMapping.local));
+  assert.ok(
+    saved.payload.pathMappings.some(
+      (mapping) =>
+        mapping.source === libraryMapping.source &&
+        mapping.remote === libraryMapping.remote &&
+        mapping.local === libraryMapping.local,
+    ),
+  );
   const libraryRequest = await waitForLibraryRequest(requestStartIndex);
   await waitForLibraryVerification(requestStartIndex);
   assert.deepEqual(libraryRequest?.body, {

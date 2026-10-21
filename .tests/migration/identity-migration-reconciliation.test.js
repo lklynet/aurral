@@ -40,20 +40,26 @@ test("identity upgrade protects the historical recovery admin, expires ambiguous
     );
   `);
   legacyDb.prepare("INSERT INTO settings (key, value) VALUES ('integrations', ?)").run(
-    JSON.stringify({ general: { authUser: "recovery-admin", authPassword: "encrypted-or-plain" } }),
+    JSON.stringify({
+      general: { authUser: "recovery-admin", authPassword: "encrypted-or-plain" },
+    }),
   );
-  const userId = legacyDb.prepare(
-    "INSERT INTO users (username, password_hash, role) VALUES ('recovery-admin', 'legacy-hash', 'admin')",
-  ).run().lastInsertRowid;
-  legacyDb.prepare(
-    "INSERT INTO sessions (user_id, token, created_at, expires_at) VALUES (?, 'legacy-session', ?, ?)",
-  ).run(userId, Date.now(), Date.now() + 60_000);
+  const userId = legacyDb
+    .prepare(
+      "INSERT INTO users (username, password_hash, role) VALUES ('recovery-admin', 'legacy-hash', 'admin')",
+    )
+    .run().lastInsertRowid;
+  legacyDb
+    .prepare(
+      "INSERT INTO sessions (user_id, token, created_at, expires_at) VALUES (?, 'legacy-session', ?, ?)",
+    )
+    .run(userId, Date.now(), Date.now() + 60_000);
   legacyDb.close();
 
   const { db } = await bootDb();
-  const migrated = db.prepare(
-    "SELECT is_protected, has_local_password FROM users WHERE id = ?",
-  ).get(userId);
+  const migrated = db
+    .prepare("SELECT is_protected, has_local_password FROM users WHERE id = ?")
+    .get(userId);
   assert.equal(migrated.is_protected, 1);
   assert.equal(migrated.has_local_password, 0);
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM sessions").get().count, 0);
@@ -79,20 +85,22 @@ test("reboot clears needs_identity_migration for a user whose identity was alrea
   const result = insertUser.run("gordon.may", "system-provisioned", "admin");
   const userId = result.lastInsertRowid;
 
-  firstBootDb.prepare(
-    "INSERT INTO user_identities (user_id, provider_type, provider_key, subject, linked_at) VALUES (?, 'oidc', 'https://idp.example/', 'subject-1', ?)",
-  ).run(userId, Date.now());
+  firstBootDb
+    .prepare(
+      "INSERT INTO user_identities (user_id, provider_type, provider_key, subject, linked_at) VALUES (?, 'oidc', 'https://idp.example/', 'subject-1', ?)",
+    )
+    .run(userId, Date.now());
 
-  firstBootDb.prepare(
-    "UPDATE users SET needs_identity_migration = 1, allow_identity_adoption = 1 WHERE id = ?",
-  ).run(userId);
+  firstBootDb
+    .prepare(
+      "UPDATE users SET needs_identity_migration = 1, allow_identity_adoption = 1 WHERE id = ?",
+    )
+    .run(userId);
   firstBootDb.close();
 
   const { db: secondBootDb } = await bootDb();
   const row = secondBootDb
-    .prepare(
-      "SELECT needs_identity_migration, allow_identity_adoption FROM users WHERE id = ?",
-    )
+    .prepare("SELECT needs_identity_migration, allow_identity_adoption FROM users WHERE id = ?")
     .get(userId);
 
   assert.equal(
@@ -121,9 +129,7 @@ test("reboot leaves needs_identity_migration set for a legacy account with no li
   const result = insertUser.run("jody.may", "some-hash", "user");
   const userId = result.lastInsertRowid;
 
-  firstBootDb.prepare(
-    "UPDATE users SET needs_identity_migration = 1 WHERE id = ?",
-  ).run(userId);
+  firstBootDb.prepare("UPDATE users SET needs_identity_migration = 1 WHERE id = ?").run(userId);
   firstBootDb.close();
 
   const { db: secondBootDb } = await bootDb();

@@ -3,7 +3,8 @@ import { LISTENBRAINZ_API } from "../../config/constants.js";
 import { scrobbleConnectionStore } from "../scrobbleConnectionStore.js";
 import { parseListenBrainzPlaylist } from "./listenbrainzTracks.js";
 
-const PLAYLIST_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const PLAYLIST_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PLAYLIST_EXTENSION = "https://musicbrainz.org/doc/jspf#playlist";
 const GENERATED_PLAYLIST_TYPES = ["weekly-jams", "weekly-exploration"];
 const GENERATED_PLAYLIST_NAMES = {
@@ -32,13 +33,14 @@ const getGeneratedPlaylistType = (playlist) => {
   const sourcePatch = String(
     playlist?.extension?.[PLAYLIST_EXTENSION]?.additional_metadata?.algorithm_metadata
       ?.source_patch || "",
-  ).trim().toLowerCase();
+  )
+    .trim()
+    .toLowerCase();
   return GENERATED_PLAYLIST_TYPES.includes(sourcePatch) ? sourcePatch : null;
 };
 
 const getPlaylistTimestamp = (playlist) => {
-  const value =
-    playlist?.date || playlist?.extension?.[PLAYLIST_EXTENSION]?.last_modified_at || "";
+  const value = playlist?.date || playlist?.extension?.[PLAYLIST_EXTENSION]?.last_modified_at || "";
   const timestamp = Date.parse(value);
   return Number.isFinite(timestamp) ? timestamp : 0;
 };
@@ -96,9 +98,7 @@ const getLatestGeneratedPlaylists = (entries) => {
       name: GENERATED_PLAYLIST_NAMES[sourceType],
       sourceType,
       trackCount:
-        Array.isArray(playlist?.track) && playlist.track.length > 0
-          ? playlist.track.length
-          : null,
+        Array.isArray(playlist?.track) && playlist.track.length > 0 ? playlist.track.length : null,
       timestamp: getPlaylistTimestamp(playlist),
     };
     const previous = latest.get(sourceType);
@@ -106,14 +106,15 @@ const getLatestGeneratedPlaylists = (entries) => {
       latest.set(sourceType, candidate);
     }
   }
-  return GENERATED_PLAYLIST_TYPES
-    .map((sourceType) => latest.get(sourceType))
+  return GENERATED_PLAYLIST_TYPES.map((sourceType) => latest.get(sourceType))
     .filter(Boolean)
     .map(({ timestamp: _timestamp, ...playlist }) => playlist);
 };
 
 const getGeneratedPlaylistTypeOrThrow = (value) => {
-  const sourceType = String(value || "").trim().toLowerCase();
+  const sourceType = String(value || "")
+    .trim()
+    .toLowerCase();
   if (GENERATED_PLAYLIST_TYPES.includes(sourceType)) return sourceType;
   const error = new Error("A valid ListenBrainz generated playlist type is required");
   error.statusCode = 400;

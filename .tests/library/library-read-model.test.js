@@ -63,9 +63,10 @@ test("library read model maps the existing root to Library-shaped records", () =
 
   assert.equal(findLibraryArtist(result.artists, "artist-1")?.artistName, "Root Artist");
   assert.equal(result.albums[0].artistMbid, "artist-1");
-  assert.deepEqual(findLibraryTracksForAlbum(result.tracks, 2).map((track) => track.trackName), [
-    "Root Track",
-  ]);
+  assert.deepEqual(
+    findLibraryTracksForAlbum(result.tracks, 2).map((track) => track.trackName),
+    ["Root Track"],
+  );
   assert.equal(result.albums[0].mbid, "release-1");
   assert.equal(result.albums[0].releaseGroupMbid, "album-1");
   assert.equal(result.artists[0].foreignArtistId, "artist-1");
@@ -78,12 +79,14 @@ test("library album statistics exclude unavailable file sizes", () => {
   const result = buildLibraryReadModel({
     artists: [{ id: 11, name: "Unavailable Artist", albumIds: [12] }],
     albums: [{ id: 12, artistId: 11, title: "Unavailable Album", trackIds: [13] }],
-    tracks: [{
-      id: 13,
-      title: "Unavailable Track",
-      albums: [{ albumId: 12 }],
-      files: [{ path: "/music/unavailable.flac", size: 456, available: false }],
-    }],
+    tracks: [
+      {
+        id: 13,
+        title: "Unavailable Track",
+        albums: [{ albumId: 12 }],
+        files: [{ path: "/music/unavailable.flac", size: 456, available: false }],
+      },
+    ],
   });
 
   assert.equal(result.albums[0].statistics.trackFileCount, 0);
@@ -129,10 +132,14 @@ test("library read model keeps flow-like records out when the index excludes the
 });
 
 test("library file reads prefer the album manager before Lidarr", () => {
-  const file = selectCanonicalFile([
-    { albumId: 2, source: "lidarr", path: "/music/lidarr.flac", available: true },
-    { albumId: 2, source: "aurral", path: "/music/aurral.flac", available: true },
-  ], 2, "aurral");
+  const file = selectCanonicalFile(
+    [
+      { albumId: 2, source: "lidarr", path: "/music/lidarr.flac", available: true },
+      { albumId: 2, source: "aurral", path: "/music/aurral.flac", available: true },
+    ],
+    2,
+    "aurral",
+  );
 
   assert.equal(file.path, "/music/aurral.flac");
 });

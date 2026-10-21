@@ -73,7 +73,9 @@ const album = {
   releases: [
     edition(release, ["Song One", "Song Two"], { lengths: { "Song Two": 600000 } }),
     edition(reissue, ["Song One", "Song Two"], { lengths: { "Song Two": 600000 } }),
-    edition(deluxe, ["Bonus Intro", "Song One", "Song Two"], { artists: { "Bonus Intro": guestMbid } }),
+    edition(deluxe, ["Bonus Intro", "Song One", "Song Two"], {
+      artists: { "Bonus Intro": guestMbid },
+    }),
     edition(radioEdit, ["Song One", "Song Two"]),
   ],
 };
@@ -84,19 +86,23 @@ const laterAlbum = {
   id: laterReleaseGroup,
   releasedate: "2020-01-10",
   genres: ["slowcore"],
-  releases: [{
-    id: "4f4f4f4f-0000-4000-8000-0000000000e4",
-    status: "Official",
-    tracks: [{
-      id: "later-track-1",
-      recordingid: recording(7),
-      trackname: "Song Three",
-      artistid: artistMbid,
-      durationms: 200,
-      trackposition: 1,
-      mediumnumber: 1,
-    }],
-  }],
+  releases: [
+    {
+      id: "4f4f4f4f-0000-4000-8000-0000000000e4",
+      status: "Official",
+      tracks: [
+        {
+          id: "later-track-1",
+          recordingid: recording(7),
+          trackname: "Song Three",
+          artistid: artistMbid,
+          durationms: 200,
+          trackposition: 1,
+          mediumnumber: 1,
+        },
+      ],
+    },
+  ],
 };
 
 const twoDiscGroup = "4f4f4f4f-0000-4000-8000-000000000005";
@@ -108,19 +114,23 @@ const twoDiscAlbum = {
   artists: [{ id: artistMbid, artistname: "Fill Artist" }],
   releasedate: "1992-08-04",
   genres: [],
-  releases: [{
-    id: "4f4f4f4f-0000-4000-8000-0000000000e6",
-    status: "Official",
-    tracks: [{
-      id: "two-disc-track",
-      recordingid: twoDiscRecording,
-      trackname: "Hey Jealousy",
-      artistid: artistMbid,
-      durationms: 200,
-      trackposition: 1,
-      mediumnumber: 2,
-    }],
-  }],
+  releases: [
+    {
+      id: "4f4f4f4f-0000-4000-8000-0000000000e6",
+      status: "Official",
+      tracks: [
+        {
+          id: "two-disc-track",
+          recordingid: twoDiscRecording,
+          trackname: "Hey Jealousy",
+          artistid: artistMbid,
+          durationms: 200,
+          trackposition: 1,
+          mediumnumber: 2,
+        },
+      ],
+    },
+  ],
 };
 const outageReleaseGroup = "4f4f4f4f-0000-4000-8000-000000000003";
 const missingReleaseGroup = "4f4f4f4f-0000-4000-8000-000000000004";
@@ -130,25 +140,35 @@ const metadataServer = await createMockHttpServer((request, response) => {
   const url = new URL(request.url || "/", "http://127.0.0.1");
   const { pathname } = url;
   response.setHeader("content-type", "application/json");
-  if (providerDown && (pathname === `/album/${outageReleaseGroup}` || url.searchParams.get("query")?.includes("Outage"))) {
+  if (
+    providerDown &&
+    (pathname === `/album/${outageReleaseGroup}` ||
+      url.searchParams.get("query")?.includes("Outage"))
+  ) {
     response.writeHead(503);
     return response.end(JSON.stringify({ error: "unavailable" }));
   }
   if (pathname === `/album/${outageReleaseGroup}`) {
-    return response.end(JSON.stringify({ ...album, id: outageReleaseGroup, title: "Outage Album" }));
+    return response.end(
+      JSON.stringify({ ...album, id: outageReleaseGroup, title: "Outage Album" }),
+    );
   }
   if (pathname === `/album/${releaseGroup}`) return response.end(JSON.stringify(album));
   if (pathname === `/album/${laterReleaseGroup}`) return response.end(JSON.stringify(laterAlbum));
   if (pathname === `/album/${twoDiscGroup}`) return response.end(JSON.stringify(twoDiscAlbum));
   if (pathname === "/search/album") {
-    return response.end(JSON.stringify([album, laterAlbum].map((entry) => ({
-      id: entry.id,
-      title: entry.title,
-      artistid: artistMbid,
-      artists: entry.artists,
-      releasedate: entry.releasedate,
-      type: "Album",
-    }))));
+    return response.end(
+      JSON.stringify(
+        [album, laterAlbum].map((entry) => ({
+          id: entry.id,
+          title: entry.title,
+          artistid: artistMbid,
+          artists: entry.artists,
+          releasedate: entry.releasedate,
+          type: "Album",
+        })),
+      ),
+    );
   }
   response.writeHead(404);
   response.end(JSON.stringify({ error: "not found" }));
@@ -156,8 +176,17 @@ const metadataServer = await createMockHttpServer((request, response) => {
 
 async function makeTrack(filePath, tags = {}) {
   await mkdir(path.dirname(filePath), { recursive: true });
-  const args = ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-f", "lavfi",
-    "-i", `sine=frequency=${tone += 13}:duration=0.2`];
+  const args = [
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-nostdin",
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    `sine=frequency=${(tone += 13)}:duration=0.2`,
+  ];
   for (const [key, value] of Object.entries(tags)) args.push("-metadata", `${key}=${value}`);
   await execFileAsync("ffmpeg", [...args, filePath]);
   return filePath;
@@ -199,7 +228,11 @@ beforeEach(async () => {
     ...originalSettings,
     integrations: {
       ...originalSettings.integrations,
-      metadata: { ...originalSettings.integrations?.metadata, baseUrl: metadataServer.url, enableNarrowFallbacks: false },
+      metadata: {
+        ...originalSettings.integrations?.metadata,
+        baseUrl: metadataServer.url,
+        enableNarrowFallbacks: false,
+      },
     },
   });
 });
@@ -212,16 +245,27 @@ afterAll(async () => {
 
 test("ingest fills in only the tags a file is missing and keeps it with the album the Library has", async () => {
   await makeTrack(path.join(root, "Fill Artist", "Fill Album", "01 - Song One.flac"), {
-    artist: "Fill Artist", album: "Fill Album", title: "Song One", track: "1",
+    artist: "Fill Artist",
+    album: "Fill Album",
+    title: "Song One",
+    track: "1",
   });
   await scanMusicRoot({ rootPath: root, source: "aurral" });
-  const source = path.join(isolatedState.baseDir, `source-${sources += 1}`);
+  const source = path.join(isolatedState.baseDir, `source-${(sources += 1)}`);
   const sourceFile = await makeTrack(path.join(source, "old rip", "two.flac"), {
-    artist: "Fill Artist", album: "Fill Album", title: "Song Two", track: "2", genre: "My Genre",
+    artist: "Fill Artist",
+    album: "Fill Album",
+    title: "Song Two",
+    track: "2",
+    genre: "My Genre",
   });
   const sourceBytes = await readFile(sourceFile);
 
-  const operation = await operations.startIngest({ sourcePath: source, mode: "copy", fillTags: true });
+  const operation = await operations.startIngest({
+    sourcePath: source,
+    mode: "copy",
+    fillTags: true,
+  });
   const { preview, items } = await checkAndRun(operation);
 
   assert.deepEqual(preview[0].actions, ["file", "tags"]);
@@ -240,44 +284,79 @@ test("ingest fills in only the tags a file is missing and keeps it with the albu
   const albums = db.prepare("SELECT * FROM library_albums WHERE title = 'Fill Album'").all();
   assert.equal(albums.length, 1);
   assert.equal(albums[0].identity_key, `release-group:${releaseGroup}`);
-  assert.equal(db.prepare("SELECT COUNT(*) FROM library_album_tracks WHERE album_id = ?").pluck().get(albums[0].id), 2);
+  assert.equal(
+    db
+      .prepare("SELECT COUNT(*) FROM library_album_tracks WHERE album_id = ?")
+      .pluck()
+      .get(albums[0].id),
+    2,
+  );
 });
 
 test("ingest tells apart albums that share a title by their year", async () => {
-  const source = path.join(isolatedState.baseDir, `source-${sources += 1}`);
+  const source = path.join(isolatedState.baseDir, `source-${(sources += 1)}`);
   await makeTrack(path.join(source, "2011", "two.flac"), {
-    artist: "Fill Artist", album: "Fill Album", title: "Song Two", track: "2", date: "2011",
+    artist: "Fill Artist",
+    album: "Fill Album",
+    title: "Song Two",
+    track: "2",
+    date: "2011",
   });
   await makeTrack(path.join(source, "2020", "three.flac"), {
-    artist: "Fill Artist", album: "Fill Album", title: "Song Three", track: "1", date: "2020",
+    artist: "Fill Artist",
+    album: "Fill Album",
+    title: "Song Three",
+    track: "1",
+    date: "2020",
   });
 
-  const operation = await operations.startIngest({ sourcePath: source, mode: "copy", fillTags: true });
+  const operation = await operations.startIngest({
+    sourcePath: source,
+    mode: "copy",
+    fillTags: true,
+  });
   const { items } = await checkAndRun(operation);
 
-  assert.deepEqual(items.map((item) => item.status), ["done", "done"]);
-  const tagsOf = async (name) => (await parseFile(path.join(root, "Fill Artist", "Fill Album", name))).common;
+  assert.deepEqual(
+    items.map((item) => item.status),
+    ["done", "done"],
+  );
+  const tagsOf = async (name) =>
+    (await parseFile(path.join(root, "Fill Artist", "Fill Album", name))).common;
   assert.equal((await tagsOf("02 - Song Two.flac")).musicbrainz_releasegroupid, releaseGroup);
-  assert.equal((await tagsOf("01 - Song Three.flac")).musicbrainz_releasegroupid, laterReleaseGroup);
+  assert.equal(
+    (await tagsOf("01 - Song Three.flac")).musicbrainz_releasegroupid,
+    laterReleaseGroup,
+  );
 });
 
 test("a source whose disc number differs from the Library's is matched by the MusicBrainz IDs it would get, with or without filling them in", async () => {
-  const kept = await makeTrack(path.join(root, "Fill Artist", "Two Disc Album", "01 - Hey Jealousy.flac"), {
-    artist: "Fill Artist",
-    album: "Two Disc Album",
-    title: "Hey Jealousy",
-    track: "1",
-    disc: "1",
-    MUSICBRAINZ_RELEASEGROUPID: twoDiscGroup,
-    MUSICBRAINZ_TRACKID: twoDiscRecording,
-  });
+  const kept = await makeTrack(
+    path.join(root, "Fill Artist", "Two Disc Album", "01 - Hey Jealousy.flac"),
+    {
+      artist: "Fill Artist",
+      album: "Two Disc Album",
+      title: "Hey Jealousy",
+      track: "1",
+      disc: "1",
+      MUSICBRAINZ_RELEASEGROUPID: twoDiscGroup,
+      MUSICBRAINZ_TRACKID: twoDiscRecording,
+    },
+  );
   await scanMusicRoot({ rootPath: root, source: "aurral" });
 
   for (const fillTags of [true, false]) {
-    const source = path.join(isolatedState.baseDir, `source-${sources += 1}`);
-    const sourceFile = await makeTrack(path.join(source, "Fill Artist_Two Disc Album_02-01_Hey Jealousy.flac"), {
-      artist: "Fill Artist", album: "Two Disc Album", title: "Hey Jealousy", track: "1", disc: "2",
-    });
+    const source = path.join(isolatedState.baseDir, `source-${(sources += 1)}`);
+    const sourceFile = await makeTrack(
+      path.join(source, "Fill Artist_Two Disc Album_02-01_Hey Jealousy.flac"),
+      {
+        artist: "Fill Artist",
+        album: "Two Disc Album",
+        title: "Hey Jealousy",
+        track: "1",
+        disc: "2",
+      },
+    );
 
     const operation = await operations.startIngest({ sourcePath: source, mode: "copy", fillTags });
     const { items } = await checkAndRun(operation);
@@ -285,20 +364,35 @@ test("a source whose disc number differs from the Library's is matched by the Mu
     assert.deepEqual([items[0].status, items[0].target], ["duplicate", path.relative(root, kept)]);
     assert.equal(await stat(sourceFile).then(() => true), true);
   }
-  assert.equal(await stat(path.join(root, "Fill Artist", "Two Disc Album", "2-01 - Hey Jealousy.flac")).catch(() => null), null);
+  assert.equal(
+    await stat(path.join(root, "Fill Artist", "Two Disc Album", "2-01 - Hey Jealousy.flac")).catch(
+      () => null,
+    ),
+    null,
+  );
 });
 
 test("an ingest a restart stopped after filling in tags finishes on resume", async () => {
   await makeTrack(path.join(root, "Fill Artist", "Fill Album", "01 - Song One.flac"), {
-    artist: "Fill Artist", album: "Fill Album", title: "Song One", track: "1",
+    artist: "Fill Artist",
+    album: "Fill Album",
+    title: "Song One",
+    track: "1",
   });
   await scanMusicRoot({ rootPath: root, source: "aurral" });
-  const source = path.join(isolatedState.baseDir, `source-${sources += 1}`);
+  const source = path.join(isolatedState.baseDir, `source-${(sources += 1)}`);
   const sourceFile = await makeTrack(path.join(source, "two.flac"), {
-    artist: "Fill Artist", album: "Fill Album", title: "Song Two", track: "2",
+    artist: "Fill Artist",
+    album: "Fill Album",
+    title: "Song Two",
+    track: "2",
   });
   const sourceBytes = await readFile(sourceFile);
-  const operation = await operations.startIngest({ sourcePath: source, mode: "copy", fillTags: true });
+  const operation = await operations.startIngest({
+    sourcePath: source,
+    mode: "copy",
+    fillTags: true,
+  });
   await runUntilChecked(operation.id);
   const [planned] = listLibraryFileOperationItems(operation.id, { statuses: ["pending"] });
   await mkdir(path.dirname(planned.targetPath), { recursive: true });
@@ -315,19 +409,29 @@ test("an ingest a restart stopped after filling in tags finishes on resume", asy
 
 test("clean up fills in missing tags, keeps favorites, and leaves unmatched files and other links alone", async () => {
   const seed = await makeTrack(path.join(outside, "seed.flac"), {
-    artist: "Fill Artist", album: "Fill Album", title: "Song One", track: "1",
+    artist: "Fill Artist",
+    album: "Fill Album",
+    title: "Song One",
+    track: "1",
   });
   const matched = path.join(root, "Fill Artist", "Fill Album", "01 - Song One.flac");
   await mkdir(path.dirname(matched), { recursive: true });
   await link(seed, matched);
-  const unmatched = await makeTrack(path.join(root, "Fill Artist", "Fill Album", "09 - Mystery.flac"), {
-    artist: "Fill Artist", album: "Fill Album", title: "Mystery", track: "9",
-  });
+  const unmatched = await makeTrack(
+    path.join(root, "Fill Artist", "Fill Album", "09 - Mystery.flac"),
+    {
+      artist: "Fill Artist",
+      album: "Fill Album",
+      title: "Mystery",
+      track: "9",
+    },
+  );
   await scanMusicRoot({ rootPath: root, source: "aurral" });
   const track = db.prepare("SELECT * FROM library_tracks WHERE title = 'Song One'").get();
   db.prepare("INSERT INTO users (id, username, password_hash) VALUES (9, 'fan', 'x')").run();
-  db.prepare("INSERT INTO subsonic_stars (user_id, entity_kind, entity_key, created_at) VALUES (9, 'song', ?, 1)")
-    .run(track.identity_key);
+  db.prepare(
+    "INSERT INTO subsonic_stars (user_id, entity_kind, entity_key, created_at) VALUES (9, 'song', ?, 1)",
+  ).run(track.identity_key);
   const seedBytes = await readFile(seed);
   const unmatchedBytes = await readFile(unmatched);
 
@@ -343,35 +447,56 @@ test("clean up fills in missing tags, keeps favorites, and leaves unmatched file
   assert.deepEqual(await readFile(seed), seedBytes);
   assert.notEqual((await stat(seed)).ino, (await stat(matched)).ino);
   assert.deepEqual(await readFile(unmatched), unmatchedBytes);
-  const starred = db.prepare("SELECT entity_key FROM subsonic_stars WHERE user_id = 9").pluck().get();
+  const starred = db
+    .prepare("SELECT entity_key FROM subsonic_stars WHERE user_id = 9")
+    .pluck()
+    .get();
   assert.equal(starred, `recording:${recording(1)}`);
 });
 
 test("clean up fills in a file's tags and gives it Aurral's name in one pass, and the Library follows", async () => {
   const loose = await makeTrack(path.join(root, "loose", "track.flac"), {
-    artist: "Fill Artist", album: "Fill Album", title: "Song One", track: "1",
+    artist: "Fill Artist",
+    album: "Fill Album",
+    title: "Song One",
+    track: "1",
   });
   await scanMusicRoot({ rootPath: root, source: "aurral" });
 
   const { preview, items } = await checkAndRun(await operations.startCleanup());
 
   const named = path.join(root, "Fill Artist", "Fill Album", "01 - Song One.flac");
-  assert.deepEqual(preview.map((item) => [item.actions, item.target]), [[["tags", "rename"], path.relative(root, named)]]);
+  assert.deepEqual(
+    preview.map((item) => [item.actions, item.target]),
+    [[["tags", "rename"], path.relative(root, named)]],
+  );
   assert.equal(items[0].status, "done");
-  assert.equal(await stat(loose).then(() => true, () => false), false);
+  assert.equal(
+    await stat(loose).then(
+      () => true,
+      () => false,
+    ),
+    false,
+  );
   assert.equal((await parseFile(named)).common.musicbrainz_recordingid, recording(1));
   assert.deepEqual(
-    db.prepare(
-      `SELECT media.path, track.mbid FROM library_media_files AS media
+    db
+      .prepare(
+        `SELECT media.path, track.mbid FROM library_media_files AS media
        JOIN library_tracks AS track ON track.id = media.track_id WHERE media.available = 1`,
-    ).all().map((row) => [row.path, row.mbid]),
+      )
+      .all()
+      .map((row) => [row.path, row.mbid]),
     [[named, recording(1)]],
   );
 });
 
 test("clean up fills in tags for a file whose Aurral name already links to it", async () => {
   const loose = await makeTrack(path.join(root, "loose", "track.flac"), {
-    artist: "Fill Artist", album: "Fill Album", title: "Song One", track: "1",
+    artist: "Fill Artist",
+    album: "Fill Album",
+    title: "Song One",
+    track: "1",
   });
   await scanMusicRoot({ rootPath: root, source: "aurral" });
   const named = path.join(root, "Fill Artist", "Fill Album", "01 - Song One.flac");
@@ -381,7 +506,13 @@ test("clean up fills in tags for a file whose Aurral name already links to it", 
   const { items } = await checkAndRun(await operations.startCleanup());
 
   assert.equal(items[0].status, "done");
-  assert.equal(await stat(loose).then(() => true, () => false), false);
+  assert.equal(
+    await stat(loose).then(
+      () => true,
+      () => false,
+    ),
+    false,
+  );
   assert.equal((await parseFile(named)).common.musicbrainz_recordingid, recording(1));
   assert.deepEqual(
     db.prepare("SELECT path FROM library_media_files WHERE available = 1").pluck().all(),
@@ -391,7 +522,10 @@ test("clean up fills in tags for a file whose Aurral name already links to it", 
 
 test("a file tagged with one edition gets that edition's track number", async () => {
   const filePath = await makeTrack(path.join(root, "Fill Artist", "Fill Album", "Song Two.flac"), {
-    artist: "Fill Artist", album: "Fill Album", title: "Song Two", MUSICBRAINZ_ALBUMID: deluxe,
+    artist: "Fill Artist",
+    album: "Fill Album",
+    title: "Song Two",
+    MUSICBRAINZ_ALBUMID: deluxe,
   });
   await scanMusicRoot({ rootPath: root, source: "aurral" });
 
@@ -406,15 +540,34 @@ test("a file tagged with one edition gets that edition's track number", async ()
 });
 
 test("a file's track number picks the edition that fills its tags, and a position no edition has gets none", async () => {
-  const deluxeTrack = await makeTrack(path.join(root, "Fill Artist", "Fill Album", "03 - Song Two.flac"), {
-    artist: "Fill Artist", album: "Fill Album", title: "Song Two", track: "3",
-  });
-  const misplaced = await makeTrack(path.join(root, "Fill Artist", "Fill Album", "05 - Song One.flac"), {
-    artist: "Fill Artist", album: "Fill Album", title: "Song One", track: "5",
-  });
-  const otherEdition = await makeTrack(path.join(root, "Fill Artist", "Fill Album (Standard)", "03 - Song Two.flac"), {
-    artist: "Fill Artist", album: "Fill Album (Standard)", title: "Song Two", track: "3", MUSICBRAINZ_ALBUMID: release,
-  });
+  const deluxeTrack = await makeTrack(
+    path.join(root, "Fill Artist", "Fill Album", "03 - Song Two.flac"),
+    {
+      artist: "Fill Artist",
+      album: "Fill Album",
+      title: "Song Two",
+      track: "3",
+    },
+  );
+  const misplaced = await makeTrack(
+    path.join(root, "Fill Artist", "Fill Album", "05 - Song One.flac"),
+    {
+      artist: "Fill Artist",
+      album: "Fill Album",
+      title: "Song One",
+      track: "5",
+    },
+  );
+  const otherEdition = await makeTrack(
+    path.join(root, "Fill Artist", "Fill Album (Standard)", "03 - Song Two.flac"),
+    {
+      artist: "Fill Artist",
+      album: "Fill Album (Standard)",
+      title: "Song Two",
+      track: "3",
+      MUSICBRAINZ_ALBUMID: release,
+    },
+  );
   await scanMusicRoot({ rootPath: root, source: "aurral" });
   const misplacedBytes = await readFile(misplaced);
   const otherEditionBytes = await readFile(otherEdition);
@@ -422,7 +575,8 @@ test("a file's track number picks the edition that fills its tags, and a positio
   const operation = await operations.startCleanup();
   const { items } = await checkAndRun(operation);
 
-  const statusOf = (filePath) => items.find((item) => path.resolve(root, item.source) === filePath).status;
+  const statusOf = (filePath) =>
+    items.find((item) => path.resolve(root, item.source) === filePath).status;
   assert.equal(statusOf(deluxeTrack), "done");
   const { common } = await parseFile(deluxeTrack);
   assert.equal(common.musicbrainz_albumid, deluxe);
@@ -434,18 +588,34 @@ test("a file's track number picks the edition that fills its tags, and a positio
 });
 
 test("a track that fits another edition's length takes that edition, and a guest keeps an unfilled artist name", async () => {
-  const radioTrack = await makeTrack(path.join(root, "Fill Artist", "Fill Album", "02 - Song Two.flac"), {
-    artist: "Fill Artist", album: "Fill Album", title: "Song Two", track: "2",
-  });
-  const guestTrack = await makeTrack(path.join(root, "Fill Artist", "Fill Album (Deluxe)", "01 - Bonus Intro.flac"), {
-    album_artist: "Fill Artist", album: "Fill Album (Deluxe)", title: "Bonus Intro", track: "1", MUSICBRAINZ_ALBUMID: deluxe,
-  });
+  const radioTrack = await makeTrack(
+    path.join(root, "Fill Artist", "Fill Album", "02 - Song Two.flac"),
+    {
+      artist: "Fill Artist",
+      album: "Fill Album",
+      title: "Song Two",
+      track: "2",
+    },
+  );
+  const guestTrack = await makeTrack(
+    path.join(root, "Fill Artist", "Fill Album (Deluxe)", "01 - Bonus Intro.flac"),
+    {
+      album_artist: "Fill Artist",
+      album: "Fill Album (Deluxe)",
+      title: "Bonus Intro",
+      track: "1",
+      MUSICBRAINZ_ALBUMID: deluxe,
+    },
+  );
   await scanMusicRoot({ rootPath: root, source: "aurral" });
 
   const operation = await operations.startCleanup();
   const { items } = await checkAndRun(operation);
 
-  assert.deepEqual(items.map((item) => item.status), ["done", "done"]);
+  assert.deepEqual(
+    items.map((item) => item.status),
+    ["done", "done"],
+  );
   assert.equal((await parseFile(radioTrack)).common.musicbrainz_albumid, radioEdit);
   const guest = (await parseFile(guestTrack)).common;
   assert.equal(guest.musicbrainz_artistid?.[0], guestMbid);
@@ -455,13 +625,27 @@ test("a track that fits another edition's length takes that edition, and a guest
 test("clean up says the metadata provider was unreachable instead of calling an album unmatched, and fills the tags once it is back", async () => {
   const albumDir = path.join(root, "Fill Artist", "Outage Album");
   const tagged = await makeTrack(path.join(albumDir, "01 - Song One.flac"), {
-    artist: "Fill Artist", album: "Outage Album", title: "Song One", track: "1", MUSICBRAINZ_RELEASEGROUPID: outageReleaseGroup,
+    artist: "Fill Artist",
+    album: "Outage Album",
+    title: "Song One",
+    track: "1",
+    MUSICBRAINZ_RELEASEGROUPID: outageReleaseGroup,
   });
-  const untagged = await makeTrack(path.join(root, "Fill Artist", "Outage Live", "01 - Song One.flac"), {
-    artist: "Fill Artist", album: "Outage Live", title: "Song One", track: "1",
-  });
+  const untagged = await makeTrack(
+    path.join(root, "Fill Artist", "Outage Live", "01 - Song One.flac"),
+    {
+      artist: "Fill Artist",
+      album: "Outage Live",
+      title: "Song One",
+      track: "1",
+    },
+  );
   const missing = await makeTrack(path.join(root, "Fill Artist", "Nowhere", "01 - Song One.flac"), {
-    artist: "Fill Artist", album: "Nowhere", title: "Song One", track: "1", MUSICBRAINZ_RELEASEGROUPID: missingReleaseGroup,
+    artist: "Fill Artist",
+    album: "Nowhere",
+    title: "Song One",
+    track: "1",
+    MUSICBRAINZ_RELEASEGROUPID: missingReleaseGroup,
   });
   await scanMusicRoot({ rootPath: root, source: "aurral" });
   const taggedBytes = await readFile(tagged);
@@ -480,6 +664,9 @@ test("clean up says the metadata provider was unreachable instead of calling an 
   providerDown = false;
   const retried = await checkAndRun(await operations.startCleanup());
 
-  assert.equal(retried.items.find((item) => path.resolve(root, item.source) === tagged).status, "done");
+  assert.equal(
+    retried.items.find((item) => path.resolve(root, item.source) === tagged).status,
+    "done",
+  );
   assert.equal((await parseFile(tagged)).common.musicbrainz_releasegroupid, outageReleaseGroup);
 });

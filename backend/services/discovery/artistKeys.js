@@ -3,7 +3,10 @@ import {
   getLibraryArtistsSignature,
 } from "../libraryQueryService.js";
 
-const normalizeArtistKey = (value) => String(value || "").trim().toLowerCase();
+const normalizeArtistKey = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase();
 
 export const getArtistMatchKeys = (artist) =>
   [

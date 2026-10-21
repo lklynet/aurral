@@ -5,8 +5,7 @@ export const RELEASE_RADAR_PRESET_ID = "release-radar";
 export const isReleaseRadarFlow = (flow) =>
   String(flow?.discoverPresetId || "").trim() === RELEASE_RADAR_PRESET_ID;
 
-export const isEditorialFlow = (flow) =>
-  String(flow?.type || "").trim() === "editorial";
+export const isEditorialFlow = (flow) => String(flow?.type || "").trim() === "editorial";
 
 const statCount = (value) => Number(value || 0);
 
@@ -39,7 +38,11 @@ export const getPlaylistDownloadProgressPct = (stats, trackCount = 0) => {
   const done = statCount(stats?.done);
   const total = Math.max(
     statCount(trackCount),
-    statCount(stats?.pending) + statCount(stats?.downloading) + statCount(stats?.blocked) + done + statCount(stats?.failed),
+    statCount(stats?.pending) +
+      statCount(stats?.downloading) +
+      statCount(stats?.blocked) +
+      done +
+      statCount(stats?.failed),
   );
   if (total <= 0) return null;
   return Math.min(100, Math.round((done / total) * 100));

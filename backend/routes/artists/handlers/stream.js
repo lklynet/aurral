@@ -10,9 +10,7 @@ import { verifyTokenAuth } from "../../../middleware/auth.js";
 import { sendSSE } from "../utils.js";
 import { logger } from "../../../services/logger.js";
 import { getArtistImage } from "../../../services/imageService.js";
-import {
-  attachCachedCoverUrls,
-} from "../../../services/releaseGroupCoverService.js";
+import { attachCachedCoverUrls } from "../../../services/releaseGroupCoverService.js";
 import { getArtistLibraryLookup } from "../../library/handlers/misc.js";
 import { getArtistByMbid } from "../../../services/providers/brainzmashProvider.js";
 import {
@@ -162,7 +160,6 @@ export function registerStream(router) {
               });
             });
           tasks.push(appearsOnTask);
-
         }
         const coverTask = (async () => {
           if (!isClientConnected()) return;

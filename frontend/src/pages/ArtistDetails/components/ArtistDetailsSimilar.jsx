@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { lookupArtistsInLibraryBatch, readLibraryLookupCache } from "../../../utils/api/endpoints/library.js";
+import {
+  lookupArtistsInLibraryBatch,
+  readLibraryLookupCache,
+} from "../../../utils/api/endpoints/library.js";
 import { getArtistFeedbackFlags } from "../../../utils/discoveryFeedback";
 import { getArtistRecordId } from "../../../utils/artistTaste";
 

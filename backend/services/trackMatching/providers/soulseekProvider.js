@@ -6,11 +6,7 @@
 // context. Identity decisions are made by the shared trackMatching engine;
 // this module only produces evidence and candidates.
 
-import {
-  normalizeCandidate,
-  getFileBaseName,
-  getFileExtension,
-} from "../candidateNormalizer.js";
+import { normalizeCandidate, getFileBaseName, getFileExtension } from "../candidateNormalizer.js";
 import { getNormalizedText } from "../../providers/brainzmashRanking.js";
 import { groupSoulseekSearchResults } from "../../downloadJobs/trackSearchQueries.js";
 
@@ -53,9 +49,7 @@ function isAmbiguousTitleAlbumContext(request) {
 }
 
 function extractYears(value) {
-  return [...String(value || "").matchAll(/\b(19\d{2}|20\d{2})\b/g)].map(
-    (match) => match[1],
-  );
+  return [...String(value || "").matchAll(/\b(19\d{2}|20\d{2})\b/g)].map((match) => match[1]);
 }
 
 function artistNames(request) {
@@ -144,7 +138,12 @@ export function isReleaseFolderPlausible(group, request, folder) {
     if (diff > 5) return false;
     if (diff > 3 && folder.albumScore < 35 && folder.tracklistScore < 14) return false;
   }
-  if (expectedTitles >= 4 && folder.tracklistScore < 4 && folder.albumScore < 35 && folder.trackCountScore < 18) {
+  if (
+    expectedTitles >= 4 &&
+    folder.tracklistScore < 4 &&
+    folder.albumScore < 35 &&
+    folder.trackCountScore < 18
+  ) {
     return false;
   }
   if (folder.artistScore < 35 && folder.albumScore < 50 && folder.tracklistScore < 14) {
@@ -284,13 +283,8 @@ export function buildSoulseekCandidates(results, request, options = {}) {
       // artist is a contradiction.
       const folderVouchesForArtist = folder.artistScore >= 92;
       const artistContradicted =
-        Boolean(parsed?.artist) &&
-        !parsed.matched &&
-        !folderVouchesForArtist;
-      const artistMissing =
-        !parsed?.artist &&
-        !candidate.artists.length &&
-        folder.artistScore < 45;
+        Boolean(parsed?.artist) && !parsed.matched && !folderVouchesForArtist;
+      const artistMissing = !parsed?.artist && !candidate.artists.length && folder.artistScore < 45;
       const ambiguousTitleAlbumArtist =
         !artistContradicted &&
         !parsed?.matched &&

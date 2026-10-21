@@ -1,8 +1,5 @@
 import { dbOps } from "../db/helpers/index.js";
-import {
-  buildStableImageProxyUrl,
-  warmPublicImageUrl,
-} from "./imageProxyService.js";
+import { buildStableImageProxyUrl, warmPublicImageUrl } from "./imageProxyService.js";
 import {
   getDeezerArtist,
   getDeezerArtistById,
@@ -11,8 +8,7 @@ import {
 import { getAlbumByMbid, resolveAlbumByArtistAndTitle } from "./providers/brainzmashProvider.js";
 import { getLinkedDeezerArtistId } from "./providers/brainzmashMappers.js";
 
-export const LEGACY_COVER_HOST_PATTERN =
-  /https?:\/\/(?:archive\.org|[\w-]+\.ca\.archive\.org)\//i;
+export const LEGACY_COVER_HOST_PATTERN = /https?:\/\/(?:archive\.org|[\w-]+\.ca\.archive\.org)\//i;
 
 const RG_CACHE_PREFIX = "rg:";
 const releaseGroupRefreshRequests = new Map();
@@ -176,11 +172,15 @@ const fetchReleaseGroupCoverUncached = async (
       sawTransientError = true;
     }
   }
-  const deezerCover = await fetchDeezerAlbumCover(cacheKey, {
-    artistName: normalizedArtistName,
-    deezerArtistId,
-    albumTitle: normalizedAlbumTitle,
-  }, { persist: false });
+  const deezerCover = await fetchDeezerAlbumCover(
+    cacheKey,
+    {
+      artistName: normalizedArtistName,
+      deezerArtistId,
+      albumTitle: normalizedAlbumTitle,
+    },
+    { persist: false },
+  );
   if (deezerCover?.imageUrl) return deezerCover;
   if (sawTransientError) {
     return { imageUrl: null, types: [], notFound: false, transientError: true };

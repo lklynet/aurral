@@ -69,10 +69,7 @@ test("records destination failures without blocking other destinations", async (
   const ready = destination("Ready", true);
 
   assert.deepEqual(
-    await new PlaybackDestinationRegistry([rejected, failed, ready]).run(
-      "publishPlaylist",
-      {},
-    ),
+    await new PlaybackDestinationRegistry([rejected, failed, ready]).run("publishPlaylist", {}),
     [
       {
         destination: "Rejected",

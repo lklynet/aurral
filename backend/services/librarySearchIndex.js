@@ -2,11 +2,15 @@ import { db } from "../config/db-sqlite.js";
 import { populateLibrarySearchDocuments } from "../config/library-search-index.js";
 
 const indexAvailable = Boolean(
-  db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
+  db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
     .get("library_search_fts"),
 );
 
-const normalize = (value) => String(value || "").trim().toLocaleLowerCase();
+const normalize = (value) =>
+  String(value || "")
+    .trim()
+    .toLocaleLowerCase();
 
 export function getLibrarySearchMatch(value) {
   const query = normalize(value);
@@ -40,19 +44,19 @@ function upsertSearchDocument(...values) {
 
 export function syncLibrarySearchArtist(artistId) {
   if (!indexAvailable) return false;
-  const artist = db.prepare(
-    "SELECT id, name FROM library_artists WHERE id = ?",
-  ).get(Number(artistId));
+  const artist = db
+    .prepare("SELECT id, name FROM library_artists WHERE id = ?")
+    .get(Number(artistId));
   if (!artist) return false;
   const changed = upsertSearchDocument("artist", artist.id, artist.name, "", "");
   if (!changed) return false;
-  for (const album of db.prepare(
-    "SELECT id FROM library_albums WHERE artist_id = ?",
-  ).all(artist.id)) {
+  for (const album of db
+    .prepare("SELECT id FROM library_albums WHERE artist_id = ?")
+    .all(artist.id)) {
     syncLibrarySearchAlbum(album.id);
-    for (const track of db.prepare(
-      "SELECT track_id FROM library_album_tracks WHERE album_id = ?",
-    ).all(album.id)) {
+    for (const track of db
+      .prepare("SELECT track_id FROM library_album_tracks WHERE album_id = ?")
+      .all(album.id)) {
       syncLibrarySearchTrack(track.track_id);
     }
   }
@@ -61,12 +65,14 @@ export function syncLibrarySearchArtist(artistId) {
 
 export function syncLibrarySearchAlbum(albumId) {
   if (!indexAvailable) return false;
-  const album = db.prepare(
-    `SELECT album.id, album.title, album.album_artist, artist.name AS artist_name
+  const album = db
+    .prepare(
+      `SELECT album.id, album.title, album.album_artist, artist.name AS artist_name
      FROM library_albums AS album
      JOIN library_artists AS artist ON artist.id = album.artist_id
      WHERE album.id = ?`,
-  ).get(Number(albumId));
+    )
+    .get(Number(albumId));
   if (!album) return false;
   return upsertSearchDocument(
     "album",
@@ -79,8 +85,9 @@ export function syncLibrarySearchAlbum(albumId) {
 
 export function syncLibrarySearchTrack(trackId) {
   if (!indexAvailable) return false;
-  const track = db.prepare(
-    `SELECT
+  const track = db
+    .prepare(
+      `SELECT
        track.id,
        track.title,
        trim(coalesce(track.artist_name, '') || ' ' || coalesce(group_concat(DISTINCT artist.name), '')) AS artist_name,
@@ -91,7 +98,8 @@ export function syncLibrarySearchTrack(trackId) {
      LEFT JOIN library_artists AS artist ON artist.id = album.artist_id
      WHERE track.id = ?
      GROUP BY track.id`,
-  ).get(Number(trackId));
+    )
+    .get(Number(trackId));
   if (!track) return false;
   return upsertSearchDocument(
     "track",
@@ -104,9 +112,11 @@ export function syncLibrarySearchTrack(trackId) {
 
 export function removeLibrarySearchDocument(entityKind, entityId) {
   if (!indexAvailable) return false;
-  return db.prepare(
-    "DELETE FROM library_search_documents WHERE entity_kind = ? AND entity_id = ?",
-  ).run(String(entityKind || ""), Number(entityId)).changes > 0;
+  return (
+    db
+      .prepare("DELETE FROM library_search_documents WHERE entity_kind = ? AND entity_id = ?")
+      .run(String(entityKind || ""), Number(entityId)).changes > 0
+  );
 }
 
 export function rebuildLibrarySearchIndex() {

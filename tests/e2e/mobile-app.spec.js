@@ -29,19 +29,32 @@ function pageMetrics(page) {
 test("the shell stays fixed, avoids input zoom, and reaches every section", async ({ page }) => {
   await openApp(page, "Mobile navigation");
 
-  for (const path of ["/", "/library", "/activity/queue", `/artist/${release.artistMbid}`, "/settings"]) {
+  for (const path of [
+    "/",
+    "/library",
+    "/activity/queue",
+    `/artist/${release.artistMbid}`,
+    "/settings",
+  ]) {
     await page.goto(path);
     await expect(page.getByRole("navigation", { name: "Mobile navigation" })).toBeVisible();
     const metrics = await pageMetrics(page);
-    expect(metrics.documentWidth, `${path} scrolls sideways`).toBeLessThanOrEqual(metrics.viewportWidth);
-    expect(metrics.documentHeight, `${path} scrolls the page body`).toBeLessThanOrEqual(metrics.viewportHeight);
+    expect(metrics.documentWidth, `${path} scrolls sideways`).toBeLessThanOrEqual(
+      metrics.viewportWidth,
+    );
+    expect(metrics.documentHeight, `${path} scrolls the page body`).toBeLessThanOrEqual(
+      metrics.viewportHeight,
+    );
     expect(metrics.smallTextFields, `${path} has fields that zoom on focus`).toEqual([]);
   }
 
   const tabs = page.getByRole("navigation", { name: "Mobile navigation" });
   await tabs.getByRole("link", { name: "Library" }).tap();
   await expect(page).toHaveURL(/\/library$/);
-  await page.getByRole("navigation", { name: "Library views" }).getByRole("link", { name: "Tracks" }).tap();
+  await page
+    .getByRole("navigation", { name: "Library views" })
+    .getByRole("link", { name: "Tracks" })
+    .tap();
   await expect(page).toHaveURL(/\/library\/tracks$/);
   await expect(
     page.getByRole("navigation", { name: "Library views" }).getByRole("link", { name: "Tracks" }),
@@ -53,10 +66,14 @@ test("the shell stays fixed, avoids input zoom, and reaches every section", asyn
   await more.getByRole("link", { name: "Settings" }).tap();
   await expect(page).toHaveURL(/\/settings/);
   await expect(more).toHaveCount(0);
-  await expect(tabs.getByRole("button", { name: "More navigation options" })).toHaveClass(/is-active/);
+  await expect(tabs.getByRole("button", { name: "More navigation options" })).toHaveClass(
+    /is-active/,
+  );
 });
 
-test("a playlist's tracks scroll inside their list instead of widening the page", async ({ page }) => {
+test("a playlist's tracks scroll inside their list instead of widening the page", async ({
+  page,
+}) => {
   const tracks = [1, 2, 3].map((id) => ({
     id: `mobile-width-${id}`,
     artistName: "Disposable artist with a long enough name to fill the row",
@@ -65,15 +82,32 @@ test("a playlist's tracks scroll inside their list instead of widening the page"
     status: "pending",
     playlistType: "mobile-width",
   }));
-  const playlist = { id: "mobile-width", name: "Disposable wide playlist", tracks, trackCount: tracks.length };
+  const playlist = {
+    id: "mobile-width",
+    name: "Disposable wide playlist",
+    tracks,
+    trackCount: tracks.length,
+  };
   await page.route("**/api/playlists/status", (route) =>
-    route.fulfill({ json: { flows: [], sharedPlaylists: [playlist], worker: {}, capabilities: { unavailableSources: {} } } }));
-  await page.route(`**/api/playlists/jobs/${playlist.id}`, (route) => route.fulfill({ json: tracks }));
+    route.fulfill({
+      json: {
+        flows: [],
+        sharedPlaylists: [playlist],
+        worker: {},
+        capabilities: { unavailableSources: {} },
+      },
+    }),
+  );
+  await page.route(`**/api/playlists/jobs/${playlist.id}`, (route) =>
+    route.fulfill({ json: tracks }),
+  );
   await openApp(page, "Mobile navigation");
   await page.goto(`/library/playlists/${playlist.id}`);
   await expect(page.getByText(tracks[0].trackName).first()).toBeVisible();
 
-  const main = await page.getByRole("main").evaluate((node) => [node.scrollWidth, node.clientWidth]);
+  const main = await page
+    .getByRole("main")
+    .evaluate((node) => [node.scrollWidth, node.clientWidth]);
   expect(main[0], "the playlist page is wider than the screen").toBeLessThanOrEqual(main[1]);
 });
 
@@ -99,11 +133,14 @@ test("a release opened from a direct link names its artist", async ({ page }) =>
   test.setTimeout(90_000);
   await openApp(page, "Mobile navigation");
   await page.goto(`/artist/${release.artistMbid}/release/${release.mbid}`);
-  await expect(page.getByRole("main").getByRole("link", { name: release.artistName, exact: true }))
-    .toBeVisible({ timeout: 30_000 });
+  await expect(
+    page.getByRole("main").getByRole("link", { name: release.artistName, exact: true }),
+  ).toBeVisible({ timeout: 30_000 });
 });
 
-test("library playback moves between the mini player and the now playing sheet", async ({ page }) => {
+test("library playback moves between the mini player and the now playing sheet", async ({
+  page,
+}) => {
   test.setTimeout(90_000);
   await openApp(page, "Mobile navigation");
   await page.goto("/library/tracks");
@@ -116,7 +153,10 @@ test("library playback moves between the mini player and the now playing sheet",
   await titles.first().tap();
   const openNowPlaying = page.getByRole("button", { name: /^Open now playing: / });
   await expect(openNowPlaying).toBeVisible();
-  const firstTitle = (await openNowPlaying.getAttribute("aria-label")).replace("Open now playing: ", "");
+  const firstTitle = (await openNowPlaying.getAttribute("aria-label")).replace(
+    "Open now playing: ",
+    "",
+  );
 
   await openNowPlaying.tap();
   const nowPlaying = page.getByRole("dialog", { name: "Now playing" });
@@ -129,7 +169,10 @@ test("library playback moves between the mini player and the now playing sheet",
   await expect(openNowPlaying).toBeVisible();
 
   await openNowPlaying.tap();
-  await page.getByRole("dialog", { name: "Now playing" }).getByRole("button", { name: "Stop and clear queue" }).tap();
+  await page
+    .getByRole("dialog", { name: "Now playing" })
+    .getByRole("button", { name: "Stop and clear queue" })
+    .tap();
   await expect(openNowPlaying).toHaveCount(0);
 });
 

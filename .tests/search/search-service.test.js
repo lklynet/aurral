@@ -72,14 +72,36 @@ test("searchArtists normalizes BrainzMash artists", async () => {
 test("searchAlbums names the album's credited artist, not the first one listed", async () => {
   const server = await createMockHttpServer((request, response) => {
     response.setHeader("content-type", "application/json");
-    response.end(JSON.stringify(request.url?.startsWith("/search/album") ? [{
-      id: "agaetis", title: "Ágætis byrjun", artistid: "sigur-ros",
-      artists: [{ id: "amiina", artistname: "amiina" }, { id: "sigur-ros", artistname: "Sigur Rós" }],
-    }] : []));
+    response.end(
+      JSON.stringify(
+        request.url?.startsWith("/search/album")
+          ? [
+              {
+                id: "agaetis",
+                title: "Ágætis byrjun",
+                artistid: "sigur-ros",
+                artists: [
+                  { id: "amiina", artistname: "amiina" },
+                  { id: "sigur-ros", artistname: "Sigur Rós" },
+                ],
+              },
+            ]
+          : [],
+      ),
+    );
   });
   const originalSettings = dbOps.getSettings();
-  dbOps.updateSettings({ ...originalSettings, integrations: { ...originalSettings.integrations,
-    metadata: { ...originalSettings.integrations.metadata, baseUrl: server.url, enableNarrowFallbacks: false } } });
+  dbOps.updateSettings({
+    ...originalSettings,
+    integrations: {
+      ...originalSettings.integrations,
+      metadata: {
+        ...originalSettings.integrations.metadata,
+        baseUrl: server.url,
+        enableNarrowFallbacks: false,
+      },
+    },
+  });
   clearMetadataProviderCaches();
   try {
     const [album] = (await searchAlbums("Agaetis byrjun", 5, 0)).items;
@@ -92,22 +114,44 @@ test("searchAlbums names the album's credited artist, not the first one listed",
 });
 
 test("searchAlbums puts the album an artist and title search names first", async () => {
-  const album = (id, artistname, title, secondarytypes = []) => ({ id, title, secondarytypes,
-    artistid: artistname, artists: [{ id: artistname, artistname }] });
+  const album = (id, artistname, title, secondarytypes = []) => ({
+    id,
+    title,
+    secondarytypes,
+    artistid: artistname,
+    artists: [{ id: artistname, artistname }],
+  });
   const server = await createMockHttpServer((request, response) => {
     const url = new URL(request.url, "http://127.0.0.1");
     response.setHeader("content-type", "application/json");
-    response.end(JSON.stringify(url.pathname !== "/search/album" ? [] : [
-      album("tribute", "Royal Philharmonic Orchestra", "Plays Fleetwood Mac's Rumours", ["Compilation"]),
-      album("bundle", "Fleetwood Mac", "Fleetwood Mac / Rumours", ["Compilation"]),
-      album("self-titled", "Fleetwood Mac", "Fleetwood Mac"),
-      album("cello", "Trevor Exter", "Fleetwood Mac Rumours: Solo Cello"),
-      album("rumours", "Fleetwood Mac", "Rumours"),
-    ].slice(0, Number(url.searchParams.get("limit")) || undefined)));
+    response.end(
+      JSON.stringify(
+        url.pathname !== "/search/album"
+          ? []
+          : [
+              album("tribute", "Royal Philharmonic Orchestra", "Plays Fleetwood Mac's Rumours", [
+                "Compilation",
+              ]),
+              album("bundle", "Fleetwood Mac", "Fleetwood Mac / Rumours", ["Compilation"]),
+              album("self-titled", "Fleetwood Mac", "Fleetwood Mac"),
+              album("cello", "Trevor Exter", "Fleetwood Mac Rumours: Solo Cello"),
+              album("rumours", "Fleetwood Mac", "Rumours"),
+            ].slice(0, Number(url.searchParams.get("limit")) || undefined),
+      ),
+    );
   });
   const originalSettings = dbOps.getSettings();
-  dbOps.updateSettings({ ...originalSettings, integrations: { ...originalSettings.integrations,
-    metadata: { ...originalSettings.integrations.metadata, baseUrl: server.url, enableNarrowFallbacks: false } } });
+  dbOps.updateSettings({
+    ...originalSettings,
+    integrations: {
+      ...originalSettings.integrations,
+      metadata: {
+        ...originalSettings.integrations.metadata,
+        baseUrl: server.url,
+        enableNarrowFallbacks: false,
+      },
+    },
+  });
   clearMetadataProviderCaches();
   try {
     const [first] = (await searchAlbums("Fleetwood Mac Rumours", 2, 0)).items;
@@ -123,14 +167,31 @@ test("searchAlbums reports a further page while more results exist", async () =>
   const server = await createMockHttpServer((request, response) => {
     const url = new URL(request.url, "http://127.0.0.1");
     response.setHeader("content-type", "application/json");
-    response.end(JSON.stringify(url.pathname !== "/search/album" ? [] : Array.from({ length: 45 }, (_, index) => ({
-      id: `album-${index}`, title: `Paged Album ${index}`, artistid: "paged",
-      artists: [{ id: "paged", artistname: "Paged Artist" }],
-    })).slice(0, Number(url.searchParams.get("limit")) || undefined)));
+    response.end(
+      JSON.stringify(
+        url.pathname !== "/search/album"
+          ? []
+          : Array.from({ length: 45 }, (_, index) => ({
+              id: `album-${index}`,
+              title: `Paged Album ${index}`,
+              artistid: "paged",
+              artists: [{ id: "paged", artistname: "Paged Artist" }],
+            })).slice(0, Number(url.searchParams.get("limit")) || undefined),
+      ),
+    );
   });
   const originalSettings = dbOps.getSettings();
-  dbOps.updateSettings({ ...originalSettings, integrations: { ...originalSettings.integrations,
-    metadata: { ...originalSettings.integrations.metadata, baseUrl: server.url, enableNarrowFallbacks: false } } });
+  dbOps.updateSettings({
+    ...originalSettings,
+    integrations: {
+      ...originalSettings.integrations,
+      metadata: {
+        ...originalSettings.integrations.metadata,
+        baseUrl: server.url,
+        enableNarrowFallbacks: false,
+      },
+    },
+  });
   clearMetadataProviderCaches();
   try {
     assert.equal((await searchAlbums("Paged Album", 20, 20)).hasMore, true);
@@ -142,10 +203,7 @@ test("searchAlbums reports a further page while more results exist", async () =>
 });
 
 test("normalizeAlbumReleaseTypesFilter removes invalid and duplicate release types", () => {
-  assert.deepEqual(
-    normalizeAlbumReleaseTypesFilter("Album,Live,Album,Invalid"),
-    ["Album", "Live"],
-  );
+  assert.deepEqual(normalizeAlbumReleaseTypesFilter("Album,Live,Album,Invalid"), ["Album", "Live"]);
 });
 
 test("requestAlbumFromSearch resolves artist add settings and triggers search", async () => {
@@ -153,10 +211,8 @@ test("requestAlbumFromSearch resolves artist add settings and triggers search", 
   const originalGetAlbumByMbid = lidarrClient.getAlbumByMbid;
   const originalGetArtist = libraryManager.getArtist;
   const originalResolveArtistAddOptions = libraryManager.resolveArtistAddOptions;
-  const originalAddArtistWithResolvedOptions =
-    libraryManager.addArtistWithResolvedOptions;
-  const originalWaitForAlbumByMbidForArtist =
-    libraryManager.waitForAlbumByMbidForArtist;
+  const originalAddArtistWithResolvedOptions = libraryManager.addArtistWithResolvedOptions;
+  const originalWaitForAlbumByMbidForArtist = libraryManager.waitForAlbumByMbidForArtist;
   const originalAddAlbum = libraryManager.addAlbum;
 
   lidarrClient.isConfigured = () => true;
@@ -168,11 +224,7 @@ test("requestAlbumFromSearch resolves artist add settings and triggers search", 
     rootFolderPath: "/music/main",
     qualityProfileId: 7,
   });
-  libraryManager.addArtistWithResolvedOptions = async (
-    _mbid,
-    _name,
-    options = {},
-  ) => ({
+  libraryManager.addArtistWithResolvedOptions = async (_mbid, _name, options = {}) => ({
     id: "7",
     mbid: "artist-mbid",
     foreignArtistId: "artist-mbid",
@@ -219,10 +271,8 @@ test("requestAlbumFromSearch resolves artist add settings and triggers search", 
     lidarrClient.getAlbumByMbid = originalGetAlbumByMbid;
     libraryManager.getArtist = originalGetArtist;
     libraryManager.resolveArtistAddOptions = originalResolveArtistAddOptions;
-    libraryManager.addArtistWithResolvedOptions =
-      originalAddArtistWithResolvedOptions;
-    libraryManager.waitForAlbumByMbidForArtist =
-      originalWaitForAlbumByMbidForArtist;
+    libraryManager.addArtistWithResolvedOptions = originalAddArtistWithResolvedOptions;
+    libraryManager.waitForAlbumByMbidForArtist = originalWaitForAlbumByMbidForArtist;
     libraryManager.addAlbum = originalAddAlbum;
   }
 });
@@ -232,10 +282,8 @@ test("requestAlbumFromSearch queues a new artist album search with the artist ad
   const originalGetAlbumByMbid = lidarrClient.getAlbumByMbid;
   const originalGetArtist = libraryManager.getArtist;
   const originalResolveArtistAddOptions = libraryManager.resolveArtistAddOptions;
-  const originalAddArtistWithResolvedOptions =
-    libraryManager.addArtistWithResolvedOptions;
-  const originalWaitForAlbumByMbidForArtist =
-    libraryManager.waitForAlbumByMbidForArtist;
+  const originalAddArtistWithResolvedOptions = libraryManager.addArtistWithResolvedOptions;
+  const originalWaitForAlbumByMbidForArtist = libraryManager.waitForAlbumByMbidForArtist;
   const originalAddAlbum = libraryManager.addAlbum;
 
   let waitCalls = 0;
@@ -308,10 +356,8 @@ test("requestAlbumFromSearch queues a new artist album search with the artist ad
     lidarrClient.getAlbumByMbid = originalGetAlbumByMbid;
     libraryManager.getArtist = originalGetArtist;
     libraryManager.resolveArtistAddOptions = originalResolveArtistAddOptions;
-    libraryManager.addArtistWithResolvedOptions =
-      originalAddArtistWithResolvedOptions;
-    libraryManager.waitForAlbumByMbidForArtist =
-      originalWaitForAlbumByMbidForArtist;
+    libraryManager.addArtistWithResolvedOptions = originalAddArtistWithResolvedOptions;
+    libraryManager.waitForAlbumByMbidForArtist = originalWaitForAlbumByMbidForArtist;
     libraryManager.addAlbum = originalAddAlbum;
   }
 });
@@ -457,8 +503,7 @@ test("addAlbum force-refreshes and searches an existing album", async () => {
   const originalGetAlbum = lidarrClient.getAlbum;
   const originalAddAlbum = lidarrClient.addAlbum;
   const originalTriggerAlbumSearch = lidarrClient.triggerAlbumSearch;
-  const originalEnsureRequestedAlbumMonitoring =
-    libraryManager.ensureRequestedAlbumMonitoring;
+  const originalEnsureRequestedAlbumMonitoring = libraryManager.ensureRequestedAlbumMonitoring;
   const originalScheduleRequestedAlbumMonitoringRepair =
     libraryManager.scheduleRequestedAlbumMonitoringRepair;
 
@@ -517,8 +562,7 @@ test("addAlbum force-refreshes and searches an existing album", async () => {
     lidarrClient.getAlbum = originalGetAlbum;
     lidarrClient.addAlbum = originalAddAlbum;
     lidarrClient.triggerAlbumSearch = originalTriggerAlbumSearch;
-    libraryManager.ensureRequestedAlbumMonitoring =
-      originalEnsureRequestedAlbumMonitoring;
+    libraryManager.ensureRequestedAlbumMonitoring = originalEnsureRequestedAlbumMonitoring;
     libraryManager.scheduleRequestedAlbumMonitoringRepair =
       originalScheduleRequestedAlbumMonitoringRepair;
   }
@@ -562,16 +606,8 @@ test("addAlbum coalesces concurrent requests for the same album", async () => {
   };
 
   try {
-    const firstRequest = libraryManager.addAlbum(
-      7,
-      "concurrent-album-mbid",
-      "Geogaddi",
-    );
-    const secondRequest = libraryManager.addAlbum(
-      7,
-      "concurrent-album-mbid",
-      "Geogaddi",
-    );
+    const firstRequest = libraryManager.addAlbum(7, "concurrent-album-mbid", "Geogaddi");
+    const secondRequest = libraryManager.addAlbum(7, "concurrent-album-mbid", "Geogaddi");
     releaseAdd();
 
     const [first, second] = await Promise.all([firstRequest, secondRequest]);
@@ -614,11 +650,7 @@ test("addAlbum reports when Lidarr already owns an album under another artist", 
   };
 
   try {
-    const result = await libraryManager.addAlbum(
-      7,
-      "owned-by-another-artist",
-      "Geogaddi",
-    );
+    const result = await libraryManager.addAlbum(7, "owned-by-another-artist", "Geogaddi");
 
     assert.equal(result.statusCode, 409);
     assert.equal(result.error, "Album already exists in Lidarr under a different artist");
@@ -640,8 +672,7 @@ test("addAlbum monitors and searches the requested album after Lidarr conflict l
   const originalMonitorAlbum = lidarrClient.monitorAlbum;
   const originalTriggerAlbumSearch = lidarrClient.triggerAlbumSearch;
   const originalUpdateArtistMonitoring = lidarrClient.updateArtistMonitoring;
-  const originalWaitForAlbumByMbidForArtist =
-    libraryManager.waitForAlbumByMbidForArtist;
+  const originalWaitForAlbumByMbidForArtist = libraryManager.waitForAlbumByMbidForArtist;
 
   let monitorCalls = 0;
   let searchCalls = 0;
@@ -721,7 +752,6 @@ test("addAlbum monitors and searches the requested album after Lidarr conflict l
     lidarrClient.monitorAlbum = originalMonitorAlbum;
     lidarrClient.triggerAlbumSearch = originalTriggerAlbumSearch;
     lidarrClient.updateArtistMonitoring = originalUpdateArtistMonitoring;
-    libraryManager.waitForAlbumByMbidForArtist =
-      originalWaitForAlbumByMbidForArtist;
+    libraryManager.waitForAlbumByMbidForArtist = originalWaitForAlbumByMbidForArtist;
   }
 });

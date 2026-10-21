@@ -15,11 +15,19 @@ function hexToRgb(hex) {
 }
 
 function rgbToHex(rgb) {
-  return `#${rgb.map((channel) => Math.round(clamp(channel) * 255).toString(16).padStart(2, "0")).join("")}`;
+  return `#${rgb
+    .map((channel) =>
+      Math.round(clamp(channel) * 255)
+        .toString(16)
+        .padStart(2, "0"),
+    )
+    .join("")}`;
 }
 
-const toLinear = (channel) => (channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4);
-const fromLinear = (channel) => (channel <= 0.0031308 ? channel * 12.92 : 1.055 * channel ** (1 / 2.4) - 0.055);
+const toLinear = (channel) =>
+  channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+const fromLinear = (channel) =>
+  channel <= 0.0031308 ? channel * 12.92 : 1.055 * channel ** (1 / 2.4) - 0.055;
 
 function linearToOklab([r, g, b]) {
   const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
@@ -60,7 +68,11 @@ export function pickVividColor(pixels) {
   for (let index = 0; index < pixels.length; index += 4) {
     if (pixels[index + 3] < 128) continue;
     count += 1;
-    const color = rgbToOklch([pixels[index] / 255, pixels[index + 1] / 255, pixels[index + 2] / 255]);
+    const color = rgbToOklch([
+      pixels[index] / 255,
+      pixels[index + 1] / 255,
+      pixels[index + 2] / 255,
+    ]);
     if (color.c < 0.04 || color.l < 0.2 || color.l > 0.95) continue;
     const weight = color.c * (1 - Math.abs(color.l - 0.65));
     const bin = bins[Math.floor(color.h / 15) % 24];
@@ -73,12 +85,14 @@ export function pickVividColor(pixels) {
   }
   const total = bins.reduce((sum, bin) => sum + bin.weight, 0);
   if (!count || total / count < 0.004) return null;
-  const score = (index) => bins[index].weight + 0.5 * (bins[(index + 23) % 24].weight + bins[(index + 1) % 24].weight);
-  const best = bins[bins.reduce((top, _bin, index) => (score(index) > score(top) ? index : top), 0)];
+  const score = (index) =>
+    bins[index].weight + 0.5 * (bins[(index + 23) % 24].weight + bins[(index + 1) % 24].weight);
+  const best =
+    bins[bins.reduce((top, _bin, index) => (score(index) > score(top) ? index : top), 0)];
   return oklchToHex({
     l: best.l / best.weight,
     c: best.c / best.weight,
-    h: (((Math.atan2(best.y, best.x) * 180) / Math.PI) + 360) % 360,
+    h: ((Math.atan2(best.y, best.x) * 180) / Math.PI + 360) % 360,
   });
 }
 
@@ -128,7 +142,9 @@ export function mixColors(first, second, amount) {
 }
 
 export function withAlpha(hex, alpha) {
-  return `${hex}${Math.round(clamp(alpha) * 255).toString(16).padStart(2, "0")}`;
+  return `${hex}${Math.round(clamp(alpha) * 255)
+    .toString(16)
+    .padStart(2, "0")}`;
 }
 
 function contrastAtLightness(color, lightness, background) {
@@ -140,7 +156,8 @@ export function adjustLightnessForContrast(hex, background, target) {
   const color = hexToOklch(hex);
   const towardLight = contrastRatio("#ffffff", background) >= contrastRatio("#000000", background);
   const limit = towardLight ? 1 : 0;
-  if (contrastAtLightness(color, limit, background) < target) return oklchToHex({ ...color, l: limit });
+  if (contrastAtLightness(color, limit, background) < target)
+    return oklchToHex({ ...color, l: limit });
   let near = color.l;
   let far = limit;
   for (let step = 0; step < 24; step += 1) {
@@ -155,7 +172,8 @@ export function colorAtContrast(hue, chroma, background, target, towardLight) {
   const color = { c: chroma, h: hue };
   let near = hexToOklch(background).l;
   let far = towardLight ? 1 : 0;
-  if (contrastAtLightness(color, far, background) <= target) return oklchToHex({ ...color, l: far });
+  if (contrastAtLightness(color, far, background) <= target)
+    return oklchToHex({ ...color, l: far });
   for (let step = 0; step < 24; step += 1) {
     const mid = (near + far) / 2;
     if (contrastAtLightness(color, mid, background) >= target) far = mid;

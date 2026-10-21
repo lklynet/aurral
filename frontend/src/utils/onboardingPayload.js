@@ -14,7 +14,9 @@ export function buildOnboardingPayload({
   };
   if (lidarr) {
     payload.lidarr = {
-      url: String(lidarr.url || "").trim().replace(/\/+$/, ""),
+      url: String(lidarr.url || "")
+        .trim()
+        .replace(/\/+$/, ""),
       apiKey: String(lidarr.apiKey || "").trim(),
       qualityProfileId: lidarr.qualityProfileId ?? null,
       metadataProfileId: lidarr.metadataProfileId ?? null,

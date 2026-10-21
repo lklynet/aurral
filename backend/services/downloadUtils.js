@@ -73,8 +73,8 @@ export function parseAurralIdentityComment(value) {
   return null;
 }
 
-const nativeTags = (metadata) => Object.values(metadata?.native || {})
-  .flatMap((tags) => (Array.isArray(tags) ? tags : []));
+const nativeTags = (metadata) =>
+  Object.values(metadata?.native || {}).flatMap((tags) => (Array.isArray(tags) ? tags : []));
 
 // Older versions kept the marker in the comment, then the grouping tag.
 export function readLegacyAurralIdentity(metadata) {
@@ -113,7 +113,8 @@ export function buildResolvedJobTrack(job, payloadTrack = {}) {
     releaseMbid: job.releaseMbid || track.releaseMbid || null,
     trackMbid: job.trackMbid || track.trackMbid,
     recordingMbidAliases: normalizeStringList(
-      (job.recordingMbidAliases?.length ? job.recordingMbidAliases : null) || track.recordingMbidAliases,
+      (job.recordingMbidAliases?.length ? job.recordingMbidAliases : null) ||
+        track.recordingMbidAliases,
     ),
     releaseYear: job.releaseYear || track.releaseYear,
     durationMs: job.durationMs ?? track.durationMs ?? null,
@@ -183,11 +184,7 @@ async function resolveAvailableTargetPath(targetPath) {
   return path.join(dir, `${base} (${Date.now()})${ext}`);
 }
 
-export async function commitDownloadedFile(
-  sourcePath,
-  targetPath,
-  { reuseExisting = false } = {},
-) {
+export async function commitDownloadedFile(sourcePath, targetPath, { reuseExisting = false } = {}) {
   await fs.mkdir(path.dirname(targetPath), { recursive: true });
   if (path.resolve(sourcePath) === path.resolve(targetPath)) {
     return targetPath;
@@ -225,7 +222,11 @@ export async function commitDownloadedFile(
 // than in the download client's folder, which may be a slow network mount. By
 // then the download is in place and its source is gone, so a failure is logged
 // instead of failing the job, which could not be retried anyway.
-export async function writeImportedFileMetadata(filePath, metadata = {}, { source = "download", jobId = null } = {}) {
+export async function writeImportedFileMetadata(
+  filePath,
+  metadata = {},
+  { source = "download", jobId = null } = {},
+) {
   try {
     await writeAudioMetadata(filePath, metadata);
   } catch (error) {
@@ -243,19 +244,23 @@ export async function writeAudioMetadata(filePath, metadata = {}) {
   const performer = isVariousArtistsCredit(metadata.artistName, metadata.artistMbid)
     ? metadata.artistAliases?.[0]
     : null;
-  return writeAudioTags(filePath, {
-    title: metadata.trackName,
-    artist: performer || metadata.artistName,
-    albumArtist: metadata.artistName,
-    album: metadata.albumName,
-    artistMbid: performer ? undefined : metadata.artistMbid,
-    albumArtistMbid: metadata.artistMbid,
-    releaseGroupMbid: metadata.albumMbid,
-    recordingMbid: metadata.trackMbid,
-    year: metadata.releaseYear,
-    trackNumber: metadata.trackNumber,
-    discNumber: metadata.discNumber,
-  }, { identity: buildAurralIdentity(metadata) });
+  return writeAudioTags(
+    filePath,
+    {
+      title: metadata.trackName,
+      artist: performer || metadata.artistName,
+      albumArtist: metadata.artistName,
+      album: metadata.albumName,
+      artistMbid: performer ? undefined : metadata.artistMbid,
+      albumArtistMbid: metadata.artistMbid,
+      releaseGroupMbid: metadata.albumMbid,
+      recordingMbid: metadata.trackMbid,
+      year: metadata.releaseYear,
+      trackNumber: metadata.trackNumber,
+      discNumber: metadata.discNumber,
+    },
+    { identity: buildAurralIdentity(metadata) },
+  );
 }
 
 export async function moveIdentityMarkerToOwnTag(filePath, identity) {
@@ -308,9 +313,7 @@ export async function repairYtdlpMetadata(jobs = []) {
         ],
       ].filter(([, value]) => String(value || "").trim());
       if (
-        expected.every(
-          ([actual, value]) => String(actual || "").trim() === String(value).trim(),
-        ) &&
+        expected.every(([actual, value]) => String(actual || "").trim() === String(value).trim()) &&
         expectedIdentity.every(
           ([actual, value]) => String(actual || "").trim() === String(value).trim(),
         )

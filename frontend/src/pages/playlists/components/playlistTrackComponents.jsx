@@ -16,11 +16,17 @@ import { DotLoader, DownloadingIcon } from "../../../components/DotLoader";
 import { SkeletonStatus, SkeletonTrackList } from "../../../components/Skeletons";
 import { useActiveDownloads } from "../../../hooks/useActiveDownloads";
 import TooltipButton from "../../../components/TooltipButton";
-import { getPlaylistTrackDisplayNumber, sortPlaylistTracks } from "../../../utils/playlistTrackSort";
+import {
+  getPlaylistTrackDisplayNumber,
+  sortPlaylistTracks,
+} from "../../../utils/playlistTrackSort";
 import { Link } from "react-router";
 import { useAudioQueue } from "../../../contexts/audioQueueContext";
 import { normalizePlaylistQueueTrack } from "../../../utils/audioQueue";
-import { TrackPlaylistMenu, TrackPlaylistSubmenu } from "../../ArtistDetails/components/TrackPlaylistMenu";
+import {
+  TrackPlaylistMenu,
+  TrackPlaylistSubmenu,
+} from "../../ArtistDetails/components/TrackPlaylistMenu";
 import { LibraryItemMenu } from "../../../components/LibraryItemMenu";
 import { TrackList } from "../../../components/TrackList";
 import { useAlbumTrackListToolbar } from "../../../hooks/useAlbumTrackListToolbar";
@@ -92,15 +98,15 @@ function BulkPlaylistAction({
         <TrackPlaylistMenu
           ref={menuRef}
           track={track}
-        playlists={playlists}
-        loading={loading}
-        saving={saving}
-        error={error}
-        defaultNewPlaylistName={defaultNewPlaylistName}
-        excludedPlaylistIds={excludedPlaylistIds}
-        triggerVariant="hidden"
-        onSelect={onSelect}
-      />
+          playlists={playlists}
+          loading={loading}
+          saving={saving}
+          error={error}
+          defaultNewPlaylistName={defaultNewPlaylistName}
+          excludedPlaylistIds={excludedPlaylistIds}
+          triggerVariant="hidden"
+          onSelect={onSelect}
+        />
       </span>
     </>
   );
@@ -248,9 +254,7 @@ function PlaylistTrackKebabMenu({
                 onClose={closeMenu}
                 toggleOnClick
                 isOpen={openSubmenu === "add"}
-                onToggle={() =>
-                  setOpenSubmenu((current) => (current === "add" ? null : "add"))
-                }
+                onToggle={() => setOpenSubmenu((current) => (current === "add" ? null : "add"))}
               />
             </>
           ) : null}
@@ -269,9 +273,7 @@ function PlaylistTrackKebabMenu({
               onClose={closeMenu}
               toggleOnClick
               isOpen={openSubmenu === "move"}
-              onToggle={() =>
-                setOpenSubmenu((current) => (current === "move" ? null : "move"))
-              }
+              onToggle={() => setOpenSubmenu((current) => (current === "move" ? null : "move"))}
             />
           ) : null}
         </>
@@ -279,7 +281,6 @@ function PlaylistTrackKebabMenu({
     />
   );
 }
-
 
 function TrackStatusDot({ status }) {
   const meta = getTrackStatusMeta(status);
@@ -306,10 +307,6 @@ function TrackStatusDot({ status }) {
     </Tooltip>
   );
 }
-
-
-
-
 
 export function usePlaylistTrackPlayback({ tracks, playbackSource }) {
   const recordHistory = playbackSource?.recordHistory !== false;
@@ -382,8 +379,15 @@ export function PlaylistTracksPanel({
     setSelectedIds(new Set());
   }, [trackOrderKey]);
 
-  const { playTrack, togglePlayPause, matchesSource, isPlaying, isLoading, isStarting, currentTrack } =
-    useAudioQueue();
+  const {
+    playTrack,
+    togglePlayPause,
+    matchesSource,
+    isPlaying,
+    isLoading,
+    isStarting,
+    currentTrack,
+  } = useAudioQueue();
   const isRunning = isPlaying || isStarting;
   const getQueueItems = useQueueTrackActions();
 
@@ -461,7 +465,8 @@ export function PlaylistTracksPanel({
   const rows = sortedTracks.map((track, index) => {
     const canPlay = showPlaybackControls && track.status === "done" && Boolean(track.streamUrl);
     const searchAction = getTrackSearchAction(track, showTrackAvailability);
-    const canReSearch = typeof onReSearchTrack === "function" && Boolean(track.id) && searchAction !== null;
+    const canReSearch =
+      typeof onReSearchTrack === "function" && Boolean(track.id) && searchAction !== null;
     const canManualReSearch =
       typeof onReSearchTrack === "function" &&
       track.status === "done" &&
@@ -488,8 +493,12 @@ export function PlaylistTracksPanel({
           defaultNewPlaylistName: getDefaultPlaylistName?.(track) || "Playlist",
           excludedPlaylistIds,
           onLoadPlaylists,
-          onAddTrackToPlaylist: onAddTrackToPlaylist ? (target) => onAddTrackToPlaylist(track, target) : null,
-          onMoveTrackToPlaylist: onMoveTrackToPlaylist ? (target) => onMoveTrackToPlaylist(track, target) : null,
+          onAddTrackToPlaylist: onAddTrackToPlaylist
+            ? (target) => onAddTrackToPlaylist(track, target)
+            : null,
+          onMoveTrackToPlaylist: onMoveTrackToPlaylist
+            ? (target) => onMoveTrackToPlaylist(track, target)
+            : null,
         }
       : null;
     return {
@@ -527,7 +536,10 @@ export function PlaylistTracksPanel({
       onPlay: showPlaybackControls ? () => handlePlayTrack(track) : null,
       playDisabled: !canPlay,
       badge: availability ? (
-        <TooltipButton className="flow-page__track-availability-indicator" label={availability.label}>
+        <TooltipButton
+          className="flow-page__track-availability-indicator"
+          label={availability.label}
+        >
           <span
             className={`flow-page__track-status-dot flow-page__track-status-dot--${availability.status}`}
             aria-hidden="true"

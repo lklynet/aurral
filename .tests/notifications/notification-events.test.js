@@ -55,9 +55,7 @@ async function withCaptureServer(handler) {
         const started = Date.now();
         while (requests.length < count) {
           if (Date.now() - started > timeoutMs) {
-            throw new Error(
-              `Timed out waiting for ${count} requests; got ${requests.length}`,
-            );
+            throw new Error(`Timed out waiting for ${count} requests; got ${requests.length}`);
           }
           await new Promise((resolve) => setTimeout(resolve, 25));
         }
@@ -201,10 +199,7 @@ test("notifyRequestMade queues Gotify with actor and webhook payload", async () 
     const webhook = requests.find((entry) => entry.url === "/hook");
     assert.ok(gotify);
     assert.equal(gotify.body.title, "Aurral – Request");
-    assert.equal(
-      gotify.body.message,
-      "Album requested: Blue Train by John Coltrane (alice)",
-    );
+    assert.equal(gotify.body.message, "Album requested: Blue Train by John Coltrane (alice)");
     assert.deepEqual(webhook.body, {
       album: "Blue Train",
       user: "alice",
@@ -318,9 +313,7 @@ test("failed notification delivery is logged without an unhandled rejection", as
 
     await notifyRequestMade({ albumName: "Blue Train", artistName: "John Coltrane" });
     const failedLog = await waitFor(() =>
-      errors.find((args) =>
-        args.map(String).join(" ").includes("Notification delivery failed"),
-      ),
+      errors.find((args) => args.map(String).join(" ").includes("Notification delivery failed")),
     );
     assert.deepEqual(failedLog[failedLog.length - 1], {
       kind: "webhooks",
@@ -381,13 +374,8 @@ test("notifyFlowDone uses display name and track library path placeholders", asy
     });
 
     const playlistId = "c0c01bc3-72ca-4110-8ab6-681f132a6e63";
-  const flowPath = `/data/downloads/aurral/_flows/${playlistId}`;
-    await notifyFlowDone(
-      playlistId,
-      { completed: 3, failed: 1 },
-      flowPath,
-      "Late Night",
-    );
+    const flowPath = `/data/downloads/aurral/_flows/${playlistId}`;
+    await notifyFlowDone(playlistId, { completed: 3, failed: 1 }, flowPath, "Late Night");
 
     const requests = await waitFor(2);
     const gotify = requests.find((entry) => entry.url.startsWith("/message"));

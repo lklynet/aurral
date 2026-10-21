@@ -7,7 +7,10 @@ import { updateStaticPlaylist } from "../playlists/playlistOperations.js";
 import { buildPlaylistTrackIdentity } from "../playlists/flowPlaylistConfig.js";
 import { logger, safeLogDiagnostic } from "../logger.js";
 import { dbOps } from "../../db/helpers/index.js";
-import { isDownloadOwnerProcess, requestDownloadOwner } from "../downloadJobs/downloadOwnerClient.js";
+import {
+  isDownloadOwnerProcess,
+  requestDownloadOwner,
+} from "../downloadJobs/downloadOwnerClient.js";
 import { spotifyConnectionStore } from "../spotify/spotifyConnectionStore.js";
 import { scrobbleConnectionStore } from "../scrobbleConnectionStore.js";
 
@@ -38,11 +41,17 @@ export async function syncStaticPlaylistImport(options = {}) {
   if (isDownloadOwnerProcess()) return syncStaticPlaylistImportHere(options);
   const { playlistId, user, force = false } = options;
   try {
-    const response = await requestDownloadOwner("syncStaticPlaylistImport", [{
-      playlistId,
-      user: { id: user?.id, role: user?.role },
-      force,
-    }], { timeoutMs: 5 * 60 * 1000 });
+    const response = await requestDownloadOwner(
+      "syncStaticPlaylistImport",
+      [
+        {
+          playlistId,
+          user: { id: user?.id, role: user?.role },
+          force,
+        },
+      ],
+      { timeoutMs: 5 * 60 * 1000 },
+    );
     if (response?.ok === false) {
       const error = new Error(response.error?.message || "Playlist sync failed");
       if (response.error?.code) error.code = response.error.code;
@@ -57,11 +66,7 @@ export async function syncStaticPlaylistImport(options = {}) {
   }
 }
 
-async function syncStaticPlaylistImportHere({
-  playlistId,
-  user,
-  force = false,
-} = {}) {
+async function syncStaticPlaylistImportHere({ playlistId, user, force = false } = {}) {
   const playlist = flowPlaylistConfig.getStaticPlaylist(playlistId);
   if (!playlist?.importSource) {
     return { skipped: true, reason: "no-import-source" };
@@ -77,14 +82,17 @@ async function syncStaticPlaylistImportHere({
   const ownerUserId = playlist.ownerUserId ?? user?.id;
   try {
     const externalPlaylistId = String(playlist.importSource?.externalId || "").trim();
-    const { tracks, stats = {}, excluded = [] } =
-      await fetchImportedPlaylistTracks({
-        provider: playlist.importSource.provider,
-        userId: ownerUserId,
-        externalId: externalPlaylistId,
-        externalUsername: playlist.importSource?.externalUsername,
-        forceRefresh: true,
-      });
+    const {
+      tracks,
+      stats = {},
+      excluded = [],
+    } = await fetchImportedPlaylistTracks({
+      provider: playlist.importSource.provider,
+      userId: ownerUserId,
+      externalId: externalPlaylistId,
+      externalUsername: playlist.importSource?.externalUsername,
+      forceRefresh: true,
+    });
     const syncImportSource = {
       lastSyncAt: Date.now(),
       lastSyncError: null,
@@ -98,9 +106,7 @@ async function syncStaticPlaylistImportHere({
       importSource: syncImportSource,
       mergeImportSource: true,
     });
-    const previousIdentities = new Set(
-      (playlist.tracks || []).map(buildPlaylistTrackIdentity),
-    );
+    const previousIdentities = new Set((playlist.tracks || []).map(buildPlaylistTrackIdentity));
     const currentIdentities = new Set(
       (result?.playlist?.tracks || []).map(buildPlaylistTrackIdentity),
     );
@@ -217,7 +223,11 @@ export async function runDueImportSourceSyncs() {
     }
   }
   for (const details of disconnected.values()) {
-    logger.warn("playlist-import", "Synced playlists paused until the provider reconnects", details);
+    logger.warn(
+      "playlist-import",
+      "Synced playlists paused until the provider reconnects",
+      details,
+    );
   }
   return results;
 }

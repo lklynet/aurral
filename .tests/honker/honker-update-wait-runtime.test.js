@@ -32,9 +32,6 @@ test(
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
 
-    assert.ok(
-      final - baseline <= 5,
-      `native task count grew from ${baseline} to ${final}`,
-    );
+    assert.ok(final - baseline <= 5, `native task count grew from ${baseline} to ${final}`);
   },
 );

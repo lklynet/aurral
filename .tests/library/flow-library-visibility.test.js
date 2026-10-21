@@ -93,7 +93,8 @@ function createFlow(name, showInLibrary) {
   return flowPlaylistConfig.updateFlow(flow.id, { showInLibrary });
 }
 
-const scan = (changedPaths = null) => scanConfiguredLibrary({ musicRoot: root, includeLidarr: false, changedPaths });
+const scan = (changedPaths = null) =>
+  scanConfiguredLibrary({ musicRoot: root, includeLidarr: false, changedPaths });
 
 const libraryTrackTitles = () =>
   getLibrary({ availableOnly: true })
@@ -174,10 +175,7 @@ test("a flow track already in the music library appears once", async () => {
 
   await scan();
   assert.deepEqual(libraryTrackTitles(), ["Twice"]);
-  assert.deepEqual(
-    getLibrary({ availableOnly: true }).tracks[0].sources,
-    ["aurral", "flow"],
-  );
+  assert.deepEqual(getLibrary({ availableOnly: true }).tracks[0].sources, ["aurral", "flow"]);
 });
 
 test("a missing flow file leaves the library once its flow stops including it", async () => {

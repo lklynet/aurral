@@ -6,10 +6,7 @@ function ReleaseStatusCheck({ partial = false }) {
   return (
     <Tooltip content={label}>
       <span className="artist-release-card__status">
-        <SearchLibraryCheck
-          size="overlay"
-          className={partial ? "library-check--partial" : ""}
-        />
+        <SearchLibraryCheck size="overlay" className={partial ? "library-check--partial" : ""} />
         <span className="sr-only">{label}</span>
       </span>
     </Tooltip>

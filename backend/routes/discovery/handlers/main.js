@@ -1,8 +1,5 @@
 import { requireAuth } from "../../../middleware/requirePermission.js";
-import {
-  getDiscoveryStatus,
-  getUserDiscovery,
-} from "../../../services/discovery/userDiscovery.js";
+import { getDiscoveryStatus, getUserDiscovery } from "../../../services/discovery/userDiscovery.js";
 
 const toDiscoveryArtist = (artist) => ({
   id: artist.id ?? null,
@@ -37,9 +34,7 @@ export function registerMain(router) {
     const limit = hasExplicitLimit
       ? Math.max(1, Math.min(200, parseInt(req.query.limit, 10) || 0))
       : 0;
-    const offset = hasExplicitLimit
-      ? Math.max(0, parseInt(req.query.offset, 10) || 0)
-      : 0;
+    const offset = hasExplicitLimit ? Math.max(0, parseInt(req.query.offset, 10) || 0) : 0;
     const { body } = await getUserDiscovery(req.user.id, limit, offset);
 
     res.set("Cache-Control", "private, no-cache");

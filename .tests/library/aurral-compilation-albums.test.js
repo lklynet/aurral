@@ -41,10 +41,17 @@ const [
 );
 
 const routes = new Map();
-const route = (method) => (routePath, ...handlers) => {
-  routes.set(`${method} ${routePath}`, handlers.at(-1));
-};
-registerAlbums({ get: route("GET"), post: route("POST"), put: route("PUT"), delete: route("DELETE") });
+const route =
+  (method) =>
+  (routePath, ...handlers) => {
+    routes.set(`${method} ${routePath}`, handlers.at(-1));
+  };
+registerAlbums({
+  get: route("GET"),
+  post: route("POST"),
+  put: route("PUT"),
+  delete: route("DELETE"),
+});
 
 async function callRoute(key, body = {}) {
   const response = { statusCode: 200, body: null };
@@ -79,29 +86,36 @@ const metadataServer = await createMockHttpServer((request, response) => {
     response.end(JSON.stringify({ error: "not found" }));
     return;
   }
-  response.end(JSON.stringify({
-    id: albumMbid,
-    title: "Guardians of the Galaxy: Awesome Mix, Vol. 1",
-    artistid: variousArtists,
-    artists: [
-      { id: variousArtists, artistname: "Various Artists" },
-      ...tracks.map(([artistId, artistName]) => ({ id: artistId, artistname: artistName,
-        artistaliases: artistName === "Blue Swede" ? ["Björn Skifs & Blåblus"] : [] })),
-    ],
-    releases: [{
-      id: `${albumMbid}-release`,
-      status: "Official",
-      tracks: tracks.map(([artistId, , title, durationMs], index) => ({
-        id: `track-${index}`,
-        recordingid: `aaaaaaaa-0000-4000-8000-00000000000${index}`,
-        trackname: title,
-        artistid: artistId,
-        durationms: durationMs,
-        trackposition: index + 1,
-        mediumnumber: 1,
-      })),
-    }],
-  }));
+  response.end(
+    JSON.stringify({
+      id: albumMbid,
+      title: "Guardians of the Galaxy: Awesome Mix, Vol. 1",
+      artistid: variousArtists,
+      artists: [
+        { id: variousArtists, artistname: "Various Artists" },
+        ...tracks.map(([artistId, artistName]) => ({
+          id: artistId,
+          artistname: artistName,
+          artistaliases: artistName === "Blue Swede" ? ["Björn Skifs & Blåblus"] : [],
+        })),
+      ],
+      releases: [
+        {
+          id: `${albumMbid}-release`,
+          status: "Official",
+          tracks: tracks.map(([artistId, , title, durationMs], index) => ({
+            id: `track-${index}`,
+            recordingid: `aaaaaaaa-0000-4000-8000-00000000000${index}`,
+            trackname: title,
+            artistid: artistId,
+            durationms: durationMs,
+            trackposition: index + 1,
+            mediumnumber: 1,
+          })),
+        },
+      ],
+    }),
+  );
 });
 
 const originalSettings = dbOps.getSettings();
@@ -114,7 +128,11 @@ beforeAll(() => {
     integrations: {
       ...originalSettings.integrations,
       slskd: { enabled: true, url: "http://127.0.0.1:9", apiKey: "test-key" },
-      metadata: { ...originalSettings.integrations?.metadata, baseUrl: metadataServer.url, enableNarrowFallbacks: false },
+      metadata: {
+        ...originalSettings.integrations?.metadata,
+        baseUrl: metadataServer.url,
+        enableNarrowFallbacks: false,
+      },
     },
   });
   clearMetadataProviderCaches();
@@ -140,9 +158,14 @@ test("a compilation keeps Various Artists on the album and matches each track by
   });
   assert.equal(requested.statusCode, 201, JSON.stringify(requested.body));
 
-  const albumId = db.prepare("SELECT id FROM library_albums WHERE release_group_mbid = ?").get(albumMbid).id;
+  const albumId = db
+    .prepare("SELECT id FROM library_albums WHERE release_group_mbid = ?")
+    .get(albumMbid).id;
   const library = getLibraryForAlbumIds({ ids: [albumId] });
-  assert.deepEqual(library.tracks.map((track) => track.artistName).sort(), ["Blue Swede", "Raspberries"]);
+  assert.deepEqual(library.tracks.map((track) => track.artistName).sort(), [
+    "Blue Swede",
+    "Raspberries",
+  ]);
 
   const jobs = downloadTracker.getAll().filter((job) => job.albumMbid === albumMbid);
   assert.equal(jobs.length, 2);
@@ -150,33 +173,67 @@ test("a compilation keeps Various Artists on the album and matches each track by
   const hooked = jobs.find((job) => job.trackName === "Hooked on a Feeling");
   assert.deepEqual(hooked.artistAliases, ["Blue Swede", "Björn Skifs & Blåblus"]);
 
-  const validate = (artist) => validateDownloadedTrackFile({
-    request: buildResolvedJobTrack(hooked),
-    filePath: "/staging/Hooked on a Feeling.flac",
-    source: "soulseek",
-    options: { parseFile: async () => ({
-      common: { title: "Hooked on a Feeling", artist, album: "Guardians of the Galaxy: Awesome Mix, Vol. 1", track: { no: 1 } },
-      format: { duration: 173, lossless: true, sampleRate: 44100, bitsPerSample: 16, container: "FLAC" },
-    }) },
-  });
+  const validate = (artist) =>
+    validateDownloadedTrackFile({
+      request: buildResolvedJobTrack(hooked),
+      filePath: "/staging/Hooked on a Feeling.flac",
+      source: "soulseek",
+      options: {
+        parseFile: async () => ({
+          common: {
+            title: "Hooked on a Feeling",
+            artist,
+            album: "Guardians of the Galaxy: Awesome Mix, Vol. 1",
+            track: { no: 1 },
+          },
+          format: {
+            duration: 173,
+            lossless: true,
+            sampleRate: 44100,
+            bitsPerSample: 16,
+            container: "FLAC",
+          },
+        }),
+      },
+    });
   assert.equal((await validate("Blue Swede")).decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
-  assert.equal((await validate("Björn Skifs & Blåblus")).decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
+  assert.equal(
+    (await validate("Björn Skifs & Blåblus")).decision,
+    POST_DOWNLOAD_DECISIONS.VERIFIED,
+  );
   assert.equal((await validate("Raspberries")).decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
 
   const root = join(isolatedState.baseDir, "music");
   const filePath = join(root, "Various Artists", "Awesome Mix", "01 - Hooked on a Feeling.flac");
   await mkdir(join(root, "Various Artists", "Awesome Mix"), { recursive: true });
-  await promisify(execFile)("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi",
-    "-i", "anullsrc=r=44100:cl=stereo", "-t", "1", "-c:a", "flac", filePath]);
+  await promisify(execFile)("ffmpeg", [
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    "anullsrc=r=44100:cl=stereo",
+    "-t",
+    "1",
+    "-c:a",
+    "flac",
+    filePath,
+  ]);
   await writeAudioMetadata(filePath, buildResolvedJobTrack(hooked));
   const { common } = await parseFile(filePath);
   assert.deepEqual([common.artist, common.albumartist], ["Blue Swede", "Various Artists"]);
-  const hookedArtist = () => getLibraryForAlbumIds({ ids: [albumId] }).tracks
-    .find((track) => track.title === "Hooked on a Feeling").artistName;
+  const hookedArtist = () =>
+    getLibraryForAlbumIds({ ids: [albumId] }).tracks.find(
+      (track) => track.title === "Hooked on a Feeling",
+    ).artistName;
   await scanMusicRoot({ rootPath: root, source: "aurral" });
   assert.equal(hookedArtist(), "Blue Swede");
 
-  await writeAudioMetadata(filePath, { ...buildResolvedJobTrack(hooked), artistName: "Verschiedene Interpreten" });
+  await writeAudioMetadata(filePath, {
+    ...buildResolvedJobTrack(hooked),
+    artistName: "Verschiedene Interpreten",
+  });
   assert.equal((await parseFile(filePath)).common.artist, "Blue Swede");
   await scanMusicRoot({ rootPath: root, source: "aurral" });
   assert.equal(hookedArtist(), "Blue Swede");

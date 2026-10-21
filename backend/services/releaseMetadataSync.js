@@ -50,9 +50,10 @@ function listArtistsDue(artists, nowMs) {
   return artists.filter((artist) => {
     if (!UUID_REGEX.test(text(artist?.mbid))) return false;
     const refresh = refreshes.get(String(artist.id));
-    return !refresh || (
-      nowMs - refresh.refreshedAt >= ARTIST_REFRESH_INTERVAL_MS &&
-      nowMs - refresh.failedAt >= ARTIST_FAILURE_RETRY_MS
+    return (
+      !refresh ||
+      (nowMs - refresh.refreshedAt >= ARTIST_REFRESH_INTERVAL_MS &&
+        nowMs - refresh.failedAt >= ARTIST_FAILURE_RETRY_MS)
     );
   });
 }
@@ -73,30 +74,30 @@ export function scheduleReleaseMetadataRefresh({ delaySeconds = 0 } = {}) {
   const normalizedDelay = Math.max(0, Number(delaySeconds) || 0);
   const requestedRunAt = Math.floor(Date.now() / 1000) + normalizedDelay;
   const queueName = getSystemTaskQueueName(TASK_KIND);
-  const active = [queueName, "system-task"].flatMap((name) => {
-    findActiveHonkerJob(name, (payload) => payload?.kind === TASK_KIND,
-      { recoverExpired: true, payloadKind: TASK_KIND });
-    return listHonkerJobs(name).map((job) => ({ ...job, queue: name }));
-  }).filter((job) => job.payload?.kind === TASK_KIND &&
-    (job.state === "pending" || job.state === "processing"));
+  const active = [queueName, "system-task"]
+    .flatMap((name) => {
+      findActiveHonkerJob(name, (payload) => payload?.kind === TASK_KIND, {
+        recoverExpired: true,
+        payloadKind: TASK_KIND,
+      });
+      return listHonkerJobs(name).map((job) => ({ ...job, queue: name }));
+    })
+    .filter(
+      (job) =>
+        job.payload?.kind === TASK_KIND && (job.state === "pending" || job.state === "processing"),
+    );
   const [pending, ...duplicates] = active
     .filter((job) => job.state === "pending")
     .sort((a, b) => Number(a.run_at || 0) - Number(b.run_at || 0));
   for (const job of duplicates) getHonkerQueueByName(job.queue).cancel(job.id);
   if (pending?.id) {
     const existingRunAt = Number(pending.run_at || 0);
-    if (
-      existingRunAt === 0 ||
-      existingRunAt <= requestedRunAt
-    ) {
+    if (existingRunAt === 0 || existingRunAt <= requestedRunAt) {
       return pending.id;
     }
     if (!getHonkerQueueByName(pending.queue).cancel(pending.id)) return pending.id;
   }
-  return enqueueSystemTaskJob(
-    { kind: TASK_KIND },
-    { delaySeconds: normalizedDelay, priority: -5 },
-  );
+  return enqueueSystemTaskJob({ kind: TASK_KIND }, { delaySeconds: normalizedDelay, priority: -5 });
 }
 
 export async function refreshReleaseMetadata({
@@ -197,11 +198,7 @@ export async function refreshReleaseMetadata({
 
     lease.write(() => {
       for (const entry of entries) upsertReleaseCalendarEntry(entry);
-      releasesStale += markUnseenReleaseCalendarEntries(
-        artist.id,
-        seenReleaseGroupMbids,
-        nowMs,
-      );
+      releasesStale += markUnseenReleaseCalendarEntries(artist.id, seenReleaseGroupMbids, nowMs);
       markReleaseCalendarArtistRefreshed(artist.id, nowMs);
     });
     artistsRefreshed += 1;

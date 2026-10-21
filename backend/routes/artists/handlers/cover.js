@@ -21,12 +21,7 @@ export function registerCover(router) {
       }
 
       const cachedImage = dbOps.getImage(mbid);
-      if (
-        !refresh &&
-        cachedImage &&
-        cachedImage.imageUrl &&
-        cachedImage.imageUrl !== "NOT_FOUND"
-      ) {
+      if (!refresh && cachedImage && cachedImage.imageUrl && cachedImage.imageUrl !== "NOT_FOUND") {
         logger.info("api", "Cover cache hit", { mbid });
         const cachedResult = await getArtistImage(mbid, {
           artistName: artistNameFromQuery,
@@ -49,8 +44,7 @@ export function registerCover(router) {
 
       logger.info("api", "Fetching cover", { mbid });
 
-      const shouldForceRefresh =
-        !!refresh || cachedImage?.imageUrl === "NOT_FOUND";
+      const shouldForceRefresh = !!refresh || cachedImage?.imageUrl === "NOT_FOUND";
 
       const result = await getArtistImage(mbid, {
         forceRefresh: shouldForceRefresh,

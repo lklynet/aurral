@@ -398,7 +398,8 @@ export const buildReleaseRadarFlowFromForm = (flow, draft) =>
     sizeError: "Max tracks must be a positive number",
   });
 
-const positiveInteger = (value) => (Number.isInteger(Number(value)) && Number(value) > 0 ? Number(value) : null);
+const positiveInteger = (value) =>
+  Number.isInteger(Number(value)) && Number(value) > 0 ? Number(value) : null;
 
 const albumPlacement = (track) => ({
   releaseMbid: String(track?.releaseMbid || "").trim() || null,

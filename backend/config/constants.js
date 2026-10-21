@@ -4,7 +4,9 @@ const TRUE_ENV_VALUES = new Set(["1", "true", "yes", "on", "verbose", "debug"]);
 
 export const isVerboseConsoleEnabled = (env = process.env) =>
   TRUE_ENV_VALUES.has(
-    String(env.AURRAL_VERBOSE_LOGS || "").trim().toLowerCase(),
+    String(env.AURRAL_VERBOSE_LOGS || "")
+      .trim()
+      .toLowerCase(),
   );
 
 export const MUSICBRAINZ_API = "https://musicbrainz.org/ws/2";

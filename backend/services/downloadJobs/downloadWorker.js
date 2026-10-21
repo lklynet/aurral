@@ -6,7 +6,11 @@ import { flowTrackSource } from "../flows/flowTrackSource.js";
 import { buildFlowRunPlanIsolated } from "../flows/flowPlanRunner.js";
 import { dbOps, userOps } from "../../db/helpers/index.js";
 import { resolveTrackSearchContext } from "./trackSearchContext.js";
-import { MAX_RELEASE_WAITS, readReleaseManifest, RELEASE_WAIT_SECONDS } from "../releaseResolver.js";
+import {
+  MAX_RELEASE_WAITS,
+  readReleaseManifest,
+  RELEASE_WAIT_SECONDS,
+} from "../releaseResolver.js";
 import { getListenHistoryProfile } from "../listeningHistory.js";
 import { indexUnmonitoredJobs } from "../aurralUnmonitoredJobs.js";
 import { safeLogDiagnostic } from "../logger.js";
@@ -18,10 +22,7 @@ import {
   requeueJobsUsingLidarrFiles,
   reuseTrackForPlaylist,
 } from "./fileReuse.js";
-import {
-  AURRAL_FLOWS_DIR,
-  resolveDownloadRoot,
-} from "../downloadPaths.js";
+import { AURRAL_FLOWS_DIR, resolveDownloadRoot } from "../downloadPaths.js";
 import { startDownloadPipelineWorker } from "../downloadPipelineWorker.js";
 import { configuredLidarrFolders, isLidarrLibraryActive } from "../libraryFolders.js";
 import { listHonkerJobs, withHonkerLock } from "../honkerDb.js";
@@ -35,9 +36,7 @@ import {
   getDownloadSourceNotConfiguredMessage,
   isAnyDownloadSourceConfigured,
 } from "../downloadSourceService.js";
-import {
-  isPipelinePayloadActive,
-} from "./downloadCancellation.js";
+import { isPipelinePayloadActive } from "./downloadCancellation.js";
 
 const DEFAULT_CONCURRENCY = 3;
 const SEARCH_SLOT_RECHECK_MS = 2000;
@@ -52,7 +51,8 @@ const RELEASE_WAIT_REASON = "Waiting for metadata to read the album release";
 // concurrency are searching, so a large playlist does not start every
 // provider search at once.
 function countSearchingPipelineJobs() {
-  return listHonkerJobs("slskd-pipeline").filter((entry) => entry.payload?.phase === "search").length;
+  return listHonkerJobs("slskd-pipeline").filter((entry) => entry.payload?.phase === "search")
+    .length;
 }
 
 export class DownloadWorker {
@@ -266,7 +266,8 @@ export class DownloadWorker {
   _endReleaseWaits(job) {
     for (const jobId of this.releaseWaits.keys()) {
       const waiting = downloadTracker.getJob(jobId);
-      if (waiting && jobId !== job.id && (!job.albumMbid || waiting.albumMbid !== job.albumMbid)) continue;
+      if (waiting && jobId !== job.id && (!job.albumMbid || waiting.albumMbid !== job.albumMbid))
+        continue;
       this.releaseWaits.delete(jobId);
       if (waiting?.status === "pending" && waiting.error === RELEASE_WAIT_REASON) {
         downloadTracker.deferPendingToBack(jobId, null, { keepRetryTier: true });
@@ -350,12 +351,9 @@ export class DownloadWorker {
       Number.isFinite(Number(options?.size)) && Number(options.size) > 0
         ? Math.round(Number(options.size))
         : null;
-    return buildFlowRunPlanIsolated(
-      sizeOverride ? { ...flow, size: sizeOverride } : flow,
-      {
-        listenHistoryProfile: this._getFlowListenHistoryProfile(flow),
-      },
-    );
+    return buildFlowRunPlanIsolated(sizeOverride ? { ...flow, size: sizeOverride } : flow, {
+      listenHistoryProfile: this._getFlowListenHistoryProfile(flow),
+    });
   }
 
   async seedFlowRun(playlistType, flow, options = {}) {
@@ -363,7 +361,7 @@ export class DownloadWorker {
     if (!key || !flow) {
       return { tracksQueued: 0, jobIds: [], reserveTracks: 0 };
     }
-    const plan = options?.plan || await this.prepareFlowRunPlan(flow, options);
+    const plan = options?.plan || (await this.prepareFlowRunPlan(flow, options));
     const primaryTracks = Array.isArray(plan?.primaryTracks) ? plan.primaryTracks : [];
     flowPlaylistConfig.markLastRunAt(key);
     const jobIds = downloadTracker.addJobs(primaryTracks, key);
@@ -376,10 +374,12 @@ export class DownloadWorker {
   }
 
   hasWork() {
-    return this.activeJobs.size > 0 ||
+    return (
+      this.activeJobs.size > 0 ||
       this.blockedPlaylistTypes.size > 0 ||
       Boolean(this.reuseRepairInFlight) ||
-      (this.running && Boolean(downloadTracker.getNextPending()));
+      (this.running && Boolean(downloadTracker.getNextPending()))
+    );
   }
 
   _maybeStopWhenIdle() {
@@ -535,8 +535,10 @@ export class DownloadWorker {
             import("../aurralHistoryService.js")
               .then(({ recordTrackJobFailed }) => recordTrackJobFailed(job, error.message))
               .catch((historyError) => {
-                console.warn(`[DownloadWorker] Could not record failed job ${job.id} in history:`,
-                  safeLogDiagnostic(historyError));
+                console.warn(
+                  `[DownloadWorker] Could not record failed job ${job.id} in history:`,
+                  safeLogDiagnostic(historyError),
+                );
               });
             await this.checkPlaylistComplete(job.playlistType);
           })
@@ -624,8 +626,13 @@ export class DownloadWorker {
       this._assertJobCanContinue(job, runGeneration);
       // A quick search needs no release, so a track that starts with one
       // never waits for metadata.
-      if (metadataUnreachable && downloadTracker.canAwaitRelease(job)
-        && !downloadTracker.startsWithQuickSearch(job) && this._waitForRelease(job)) return;
+      if (
+        metadataUnreachable &&
+        downloadTracker.canAwaitRelease(job) &&
+        !downloadTracker.startsWithQuickSearch(job) &&
+        this._waitForRelease(job)
+      )
+        return;
       downloadTracker.updateMetadata(job.id, resolvedTrack);
       Object.assign(job, resolvedTrack);
       const { existingFileMode } = this.getWorkerSettings();
@@ -682,8 +689,13 @@ export class DownloadWorker {
         ? {}
         : await readReleaseManifest(job.albumMbid, job.releaseMbid);
       this._assertJobCanContinue(job, runGeneration);
-      if (unreachable && !metadataUnreachable && downloadTracker.canSearchByRelease(job)
-        && this._waitForRelease(job)) return;
+      if (
+        unreachable &&
+        !metadataUnreachable &&
+        downloadTracker.canSearchByRelease(job) &&
+        this._waitForRelease(job)
+      )
+        return;
       if (!unreachable && !metadataUnreachable) this._endReleaseWaits(job);
       if (!downloadTracker.enqueueDownloadPipeline(job.id, { release })) {
         throw new Error("Failed to enqueue the download pipeline");
@@ -714,7 +726,11 @@ export class DownloadWorker {
     const { manifest: release } = await readReleaseManifest(job.albumMbid, job.releaseMbid);
     this._assertJobCanContinue(job, runGeneration);
     if (downloadTracker.enqueueDownloadPipeline(job.id, { release })) return;
-    if (downloadTracker.getJob(job.id)?.status !== "pending" || downloadTracker.isSlskdDispatched(job.id)) return;
+    if (
+      downloadTracker.getJob(job.id)?.status !== "pending" ||
+      downloadTracker.isSlskdDispatched(job.id)
+    )
+      return;
     throw new Error("The upgrade could not be queued");
   }
 
@@ -738,9 +754,12 @@ export class DownloadWorker {
               `[DownloadWorker] All jobs complete for ${playlistType}, queueing media server playlist sync`,
             );
             try {
-              const { removeUnusedPlaybackFiles, createPlaybackDeletionGuard } = await import("../playback/playbackFileRetention.js");
-              await removeUnusedPlaybackFiles(path.join(this.downloadRoot, "_fallback"),
-                createPlaybackDeletionGuard({ playlistRoot: this.downloadRoot }));
+              const { removeUnusedPlaybackFiles, createPlaybackDeletionGuard } =
+                await import("../playback/playbackFileRetention.js");
+              await removeUnusedPlaybackFiles(
+                path.join(this.downloadRoot, "_fallback"),
+                createPlaybackDeletionGuard({ playlistRoot: this.downloadRoot }),
+              );
             } catch {}
             try {
               playlistManager.requestPlaylistSync([playlistType]);
@@ -755,18 +774,12 @@ export class DownloadWorker {
             }
 
             const completed = done;
-            const flowName =
-              playlistManager.getPlaylistName(playlistType) || playlistType;
+            const flowName = playlistManager.getPlaylistName(playlistType) || playlistType;
             const flowPath = flowPlaylistConfig.getFlow(playlistType)
               ? path.join(playlistManager.downloadRoot, AURRAL_FLOWS_DIR, playlistType)
               : playlistManager.downloadRoot;
             const { notifyFlowDone } = await import("../notificationService.js");
-            notifyFlowDone(
-              playlistType,
-              { completed, failed },
-              flowPath,
-              flowName,
-            ).catch((err) =>
+            notifyFlowDone(playlistType, { completed, failed }, flowPath, flowName).catch((err) =>
               console.warn("[DownloadWorker] Gotify notification failed:", err.message),
             );
             import("../download/downloadClientSettings.js")
@@ -845,21 +858,28 @@ function createRemoteDownloadWorker() {
     requestDownloadOwner(method, args, { timeoutMs });
   const notify = (method, args = []) => {
     void call(method, args).catch((error) => {
-      console.warn(`[DownloadWorker] ${method} could not reach the download worker process:`, error.message);
+      console.warn(
+        `[DownloadWorker] ${method} could not reach the download worker process:`,
+        error.message,
+      );
     });
   };
   return {
     downloadRoot: reader.downloadRoot,
-    get running() { return getDownloadOwnerStatus()?.running === true; },
+    get running() {
+      return getDownloadOwnerStatus()?.running === true;
+    },
     getStatus() {
-      return getDownloadOwnerStatus() || {
-        running: false,
-        processing: false,
-        activeCount: 0,
-        currentJob: null,
-        stats: downloadTracker.getStats(),
-        settings: reader.getWorkerSettings(),
-      };
+      return (
+        getDownloadOwnerStatus() || {
+          running: false,
+          processing: false,
+          activeCount: 0,
+          currentJob: null,
+          stats: downloadTracker.getStats(),
+          settings: reader.getWorkerSettings(),
+        }
+      );
     },
     getWorkerSettings: (...args) => reader.getWorkerSettings(...args),
     getRetryCyclePausedMap: (...args) => reader.getRetryCyclePausedMap(...args),

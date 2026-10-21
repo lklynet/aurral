@@ -95,10 +95,7 @@ export function PathMappingModal({ title, initialValue, onClose, onSave }) {
                 ))}
               </SettingsSelect>
             </SettingsArrFormGroup>
-            <SettingsArrFormGroup
-              label="Remote path"
-              help="Path reported by the other app."
-            >
+            <SettingsArrFormGroup label="Remote path" help="Path reported by the other app.">
               <SettingsInput
                 value={draft.remote}
                 placeholder="/data/media/music"
@@ -110,10 +107,7 @@ export function PathMappingModal({ title, initialValue, onClose, onSave }) {
                 }
               />
             </SettingsArrFormGroup>
-            <SettingsArrFormGroup
-              label="Local path"
-              help="The same location as Aurral sees it."
-            >
+            <SettingsArrFormGroup label="Local path" help="The same location as Aurral sees it.">
               <div className="arr-path-input">
                 <SettingsInput
                   className="arr-path-input__field"

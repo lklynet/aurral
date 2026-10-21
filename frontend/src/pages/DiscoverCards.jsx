@@ -82,13 +82,7 @@ function CardText({ link, label, children }) {
 }
 
 export const ArtistCard = memo(
-  ({
-    artist,
-    isInLibrary,
-    getLibraryLink,
-    onFeedback,
-    feedbackUsed = {},
-  }) => {
+  ({ artist, isInLibrary, getLibraryLink, onFeedback, feedbackUsed = {} }) => {
     const navigateTo = artist.navigateTo || artist.id;
     const hasValidMbid = navigateTo && navigateTo !== "null" && navigateTo !== "undefined";
     const artistMetaText = getRecommendationReason(artist);
@@ -128,9 +122,7 @@ export const ArtistCard = memo(
           <CardText link={link} label={`Open ${artist.name}`}>
             <div className="artist-card-title-row--discover">
               <Tooltip content={artist.name}>
-                <span
-                  className={`artist-card-title--discover${canOpen ? "" : " is-disabled"}`}
-                >
+                <span className={`artist-card-title--discover${canOpen ? "" : " is-disabled"}`}>
                   {artist.name}
                 </span>
               </Tooltip>
@@ -143,9 +135,7 @@ export const ArtistCard = memo(
             />
             {artist.subtitle && (
               <Tooltip content={artist.subtitleDetail || artist.subtitle}>
-                <p className="artist-card-meta--discover" >
-                  {artist.subtitle}
-                </p>
+                <p className="artist-card-meta--discover">{artist.subtitle}</p>
               </Tooltip>
             )}
           </CardText>
@@ -188,13 +178,7 @@ export const ArtistCard = memo(
 
 ArtistCard.displayName = "ArtistCard";
 export const AlbumCard = memo(
-  ({
-    album,
-    canAddAlbum = false,
-    isPending = false,
-    onAlbumAction,
-    libraryDestination,
-  }) => {
+  ({ album, canAddAlbum = false, isPending = false, onAlbumAction, libraryDestination }) => {
     const releaseGroupMbid = album.mbid || album.foreignAlbumId;
     const artistMbid = album.artistMbid || album.foreignArtistId;
     const { isAlbumDownloading } = useActiveDownloads();
@@ -214,7 +198,10 @@ export const AlbumCard = memo(
             });
             if (data?.images?.length > 0) {
               const front = data.images.find((img) => img.front) || data.images[0];
-              if (front?.image) { setFetchedCover(front.image); return; }
+              if (front?.image) {
+                setFetchedCover(front.image);
+                return;
+              }
             }
           } catch {}
         }
@@ -230,7 +217,14 @@ export const AlbumCard = memo(
       };
 
       fetchCover();
-    }, [releaseGroupMbid, artistMbid, album.coverUrl, album.artistName, album.albumName, fetchedCover]);
+    }, [
+      releaseGroupMbid,
+      artistMbid,
+      album.coverUrl,
+      album.artistName,
+      album.albumName,
+      fetchedCover,
+    ]);
     const albumArtistText = album.artistName || "Unknown Artist";
     const albumRelease = formatReleaseStatus(album.releaseDate);
     const albumReleaseText = albumRelease?.text;
@@ -253,7 +247,10 @@ export const AlbumCard = memo(
         data-artwork-scope
       >
         <div className="artist-discover-card__cover-wrap">
-          <div className={`artist-discover-card__cover${canOpen ? "" : " is-disabled"}`} data-artwork>
+          <div
+            className={`artist-discover-card__cover${canOpen ? "" : " is-disabled"}`}
+            data-artwork
+          >
             {coverUrl ? (
               <ArtworkImage
                 src={coverUrl}
@@ -271,7 +268,7 @@ export const AlbumCard = memo(
           {isComplete ? (
             <div className="artist-discover-card__action">
               <Tooltip content="In library">
-                <span className="artist-release-card__status" >
+                <span className="artist-release-card__status">
                   <SearchLibraryCheck size="overlay" />
                   <span className="sr-only">In library</span>
                 </span>
@@ -294,23 +291,17 @@ export const AlbumCard = memo(
           <CardText link={link} label={`Open ${album.albumName}`}>
             <div className="artist-card-title-row--discover">
               <Tooltip content={album.albumName}>
-                <span
-                  className={`artist-card-title--discover${canOpen ? "" : " is-disabled"}`}
-                >
+                <span className={`artist-card-title--discover${canOpen ? "" : " is-disabled"}`}>
                   {album.albumName}
                 </span>
               </Tooltip>
             </div>
             <Tooltip content={albumArtistText}>
-              <p className="artist-card-meta--discover" >
-                {albumArtistText}
-              </p>
+              <p className="artist-card-meta--discover">{albumArtistText}</p>
             </Tooltip>
             {albumReleaseText && (
               <Tooltip content={albumRelease.detail}>
-                <p className="artist-card-meta--discover" >
-                  {albumReleaseText}
-                </p>
+                <p className="artist-card-meta--discover">{albumReleaseText}</p>
               </Tooltip>
             )}
           </CardText>

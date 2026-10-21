@@ -1,11 +1,28 @@
 import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
-import { setupIsolatedBackend, cleanupIsolatedState, resetDatabase } from "../helpers/backendTestHarness.js";
+import {
+  setupIsolatedBackend,
+  cleanupIsolatedState,
+  resetDatabase,
+} from "../helpers/backendTestHarness.js";
 
-const [state, { db }, { dbOps }, { flowPlaylistConfig }, { downloadTracker }, honker, ownership, cancellation] = await setupIsolatedBackend(
-  "download-ownership", "backend/config/db-sqlite.js", "backend/db/helpers/index.js",
-  "backend/services/playlists/flowPlaylistConfig.js", "backend/services/downloadJobs/downloadTracker.js",
-  "backend/services/honkerDb.js", "backend/services/downloadJobs/downloadOwnership.js",
+const [
+  state,
+  { db },
+  { dbOps },
+  { flowPlaylistConfig },
+  { downloadTracker },
+  honker,
+  ownership,
+  cancellation,
+] = await setupIsolatedBackend(
+  "download-ownership",
+  "backend/config/db-sqlite.js",
+  "backend/db/helpers/index.js",
+  "backend/services/playlists/flowPlaylistConfig.js",
+  "backend/services/downloadJobs/downloadTracker.js",
+  "backend/services/honkerDb.js",
+  "backend/services/downloadJobs/downloadOwnership.js",
   "backend/services/downloadJobs/downloadCancellation.js",
 );
 beforeEach(() => {
@@ -23,8 +40,15 @@ test("ownership transfer preserves a provider attempt and rejects it after expli
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Track" }, source.id);
   const job = downloadTracker.getJob(jobId);
   const attempt = cancellation.beginDownloadAttempt(jobId);
-  const payload = { jobId, playlistId: source.id, playlistGeneration: 0, downloadAttemptId: attempt,
-    phase: "poll", queueUuid: "existing-provider-work", albumGroupJobIds: [jobId] };
+  const payload = {
+    jobId,
+    playlistId: source.id,
+    playlistGeneration: 0,
+    downloadAttemptId: attempt,
+    phase: "poll",
+    queueUuid: "existing-provider-work",
+    albumGroupJobIds: [jobId],
+  };
   const queueId = honker.getPipelineQueue().enqueue(payload);
   db.transaction(() => ownership.transferDownloadOwnershipInTransaction(jobId, target.id))();
   assert.equal(job.playlistType, source.id);
@@ -36,9 +60,16 @@ test("ownership transfer preserves a provider attempt and rejects it after expli
   assert.equal(resolved.queueUuid, "existing-provider-work");
   assert.deepEqual(resolved.albumGroupJobIds, [jobId]);
   assert.equal(cancellation.isPipelinePayloadActive(resolved), true);
-  assert.equal(JSON.parse(db.prepare("SELECT payload FROM _honker_live WHERE id = ?").get(queueId).payload).playlistId, target.id);
+  assert.equal(
+    JSON.parse(db.prepare("SELECT payload FROM _honker_live WHERE id = ?").get(queueId).payload)
+      .playlistId,
+    target.id,
+  );
   cancellation.beginDownloadAttempt(jobId);
-  assert.equal(cancellation.isPipelinePayloadActive(ownership.resolveTransferredDownloadPayload(payload)), false);
+  assert.equal(
+    cancellation.isPipelinePayloadActive(ownership.resolveTransferredDownloadPayload(payload)),
+    false,
+  );
 });
 
 test("rolled-back transfer leaves the continuing process and queued payload unchanged", () => {
@@ -47,28 +78,58 @@ test("rolled-back transfer leaves the continuing process and queued payload unch
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Track" }, source.id);
   const payload = { jobId, playlistId: source.id, playlistGeneration: 0, phase: "poll" };
   const queueId = honker.getPipelineQueue().enqueue(payload);
-  assert.throws(() => db.transaction(() => {
-    ownership.transferDownloadOwnershipInTransaction(jobId, target.id);
-    throw new Error("fixture rollback");
-  })(), /fixture rollback/);
+  assert.throws(
+    () =>
+      db.transaction(() => {
+        ownership.transferDownloadOwnershipInTransaction(jobId, target.id);
+        throw new Error("fixture rollback");
+      })(),
+    /fixture rollback/,
+  );
   downloadTracker.reconcileCommittedJobs();
   assert.equal(downloadTracker.getJob(jobId).playlistType, source.id);
   assert.deepEqual(ownership.resolveTransferredDownloadPayload(payload), payload);
-  assert.deepEqual(JSON.parse(db.prepare("SELECT payload FROM _honker_live WHERE id = ?").get(queueId).payload), payload);
+  assert.deepEqual(
+    JSON.parse(db.prepare("SELECT payload FROM _honker_live WHERE id = ?").get(queueId).payload),
+    payload,
+  );
 });
 
 test("album leadership moves to a held peer without cancelling shared provider work", () => {
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Album" });
-  const leader = downloadTracker.addJob({ artistName: "Artist", trackName: "First", albumMbid: "album" }, playlist.id);
-  const peer = downloadTracker.addJob({ artistName: "Artist", trackName: "Second", albumMbid: "album" }, playlist.id);
-  db.prepare("UPDATE playlist_download_jobs SET request_group_id = ? WHERE id IN (?, ?)").run("album-request", leader, peer);
+  const leader = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "First", albumMbid: "album" },
+    playlist.id,
+  );
+  const peer = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Second", albumMbid: "album" },
+    playlist.id,
+  );
+  db.prepare("UPDATE playlist_download_jobs SET request_group_id = ? WHERE id IN (?, ?)").run(
+    "album-request",
+    leader,
+    peer,
+  );
   downloadTracker.reconcileCommittedJobs();
   downloadTracker.setDownloading(peer);
   downloadTracker.markSlskdDispatched(leader);
-  downloadTracker.updateDownloadMetadata(leader, { downloadSource: "deemix", downloadClientId: "existing-queue" });
-  const payload = { jobId: leader, playlistId: playlist.id, playlistGeneration: 0, phase: "poll", albumGrab: true, albumGroupJobIds: [leader, peer], queueUuid: "existing-queue" };
+  downloadTracker.updateDownloadMetadata(leader, {
+    downloadSource: "deemix",
+    downloadClientId: "existing-queue",
+  });
+  const payload = {
+    jobId: leader,
+    playlistId: playlist.id,
+    playlistGeneration: 0,
+    phase: "poll",
+    albumGrab: true,
+    albumGroupJobIds: [leader, peer],
+    queueUuid: "existing-queue",
+  };
   honker.getPipelineQueue().enqueue(payload);
-  const redirect = db.transaction(() => ownership.replaceAlbumDownloadLeaderInTransaction(leader, peer))();
+  const redirect = db.transaction(() =>
+    ownership.replaceAlbumDownloadLeaderInTransaction(leader, peer),
+  )();
   downloadTracker.reconcileCommittedJobs([redirect]);
   assert.equal(downloadTracker.getJob(leader), null);
   assert.equal(downloadTracker.getJob(peer).downloadClientId, "existing-queue");
@@ -88,18 +149,34 @@ test("tokenless manual commits reject ownership captured before a transfer", asy
   db.transaction(() => ownership.transferDownloadOwnershipInTransaction(jobId, target.id))();
   downloadTracker.reconcileCommittedJobs();
   let committed = false;
-  const result = await cancellation.withPipelineCommitLock(payload, () => { committed = true; });
+  const result = await cancellation.withPipelineCommitLock(payload, () => {
+    committed = true;
+  });
   assert.equal(result.cancelled, true);
   assert.equal(committed, false);
 });
 
 test("completed and removed jobs release their active attempt records", () => {
-  const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Finished" }, "attempt-owner");
+  const jobId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Finished" },
+    "attempt-owner",
+  );
   const attempt = cancellation.beginDownloadAttempt(jobId);
   downloadTracker.setDone(jobId, "/disposable/finished.flac");
   assert.equal(cancellation.getActiveDownloadAttemptId(jobId), null);
-  assert.equal(cancellation.isPipelinePayloadActive({ jobId, playlistId: "attempt-owner", playlistGeneration: 0, downloadAttemptId: attempt }), false);
-  const pendingId = downloadTracker.addJob({ artistName: "Artist", trackName: "Removed" }, "attempt-owner");
+  assert.equal(
+    cancellation.isPipelinePayloadActive({
+      jobId,
+      playlistId: "attempt-owner",
+      playlistGeneration: 0,
+      downloadAttemptId: attempt,
+    }),
+    false,
+  );
+  const pendingId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Removed" },
+    "attempt-owner",
+  );
   cancellation.beginDownloadAttempt(pendingId);
   downloadTracker.removeJob(pendingId);
   assert.equal(cancellation.getActiveDownloadAttemptId(pendingId), null);
@@ -109,7 +186,13 @@ test("recording a transfer prunes transfer history for settled downloads only", 
   const source = flowPlaylistConfig.createStaticPlaylist({ name: "History source" });
   const target = flowPlaylistConfig.createStaticPlaylist({ name: "History target" });
   const add = (trackName) => downloadTracker.addJob({ artistName: "Artist", trackName }, source.id);
-  const [doneId, failedId, removedId, activeId, nextId] = ["Done", "Failed", "Removed", "Active", "Next"].map(add);
+  const [doneId, failedId, removedId, activeId, nextId] = [
+    "Done",
+    "Failed",
+    "Removed",
+    "Active",
+    "Next",
+  ].map(add);
   const move = (jobId) => {
     db.transaction(() => ownership.transferDownloadOwnershipInTransaction(jobId, target.id))();
     downloadTracker.reconcileCommittedJobs();
@@ -119,7 +202,9 @@ test("recording a transfer prunes transfer history for settled downloads only", 
   db.prepare("UPDATE playlist_download_jobs SET status = 'failed' WHERE id = ?").run(failedId);
   db.prepare("DELETE FROM playlist_download_jobs WHERE id = ?").run(removedId);
   move(nextId);
-  const history = db.prepare("SELECT key FROM settings WHERE key LIKE 'downloadJobTransfers:%' ORDER BY key").all()
+  const history = db
+    .prepare("SELECT key FROM settings WHERE key LIKE 'downloadJobTransfers:%' ORDER BY key")
+    .all()
     .map((row) => row.key.slice("downloadJobTransfers:".length));
   assert.deepEqual(history, [activeId, nextId].sort());
 });

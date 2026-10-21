@@ -165,9 +165,7 @@ export function SettingsAccountTab({
             </div>
             {listenHistoryProvider === "local" ? (
               <div className="profile-settings__field">
-                <p className="settings-page__hint">
-                  Uses Aurral play events only.
-                </p>
+                <p className="settings-page__hint">Uses Aurral play events only.</p>
               </div>
             ) : listenHistoryProvider === "koito" ? (
               <div className="profile-settings__field">
@@ -284,8 +282,10 @@ export function SettingsAccountTab({
           <div className="settings-page__section-intro">
             <h3 className="settings-page__section-title">Discovery tastes</h3>
             <p className="settings-page__section-note">
-              Resets More like this and Less like this. Blocked artists stay.
-              {" "}<Link to="/blocklist" className="settings-page__link">Blocked artists</Link>
+              Resets More like this and Less like this. Blocked artists stay.{" "}
+              <Link to="/blocklist" className="settings-page__link">
+                Blocked artists
+              </Link>
             </p>
           </div>
           <div className="profile-settings__action">

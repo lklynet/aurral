@@ -1,8 +1,5 @@
 import express from "express";
-import {
-  requireAuth,
-  requireUserAccount,
-} from "../middleware/requirePermission.js";
+import { requireAuth, requireUserAccount } from "../middleware/requirePermission.js";
 import { getPlayHistory, recordPlayEvent } from "../services/playEventService.js";
 
 const router = express.Router();

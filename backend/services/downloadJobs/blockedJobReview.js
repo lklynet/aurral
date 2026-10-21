@@ -3,10 +3,7 @@ import fs from "fs/promises";
 import { downloadTracker } from "./downloadTracker.js";
 import { startWorkerIfPending } from "./downloadWorker.js";
 import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.js";
-import {
-  getActiveDownloadAttemptId,
-  withPipelineCommitLock,
-} from "./downloadCancellation.js";
+import { getActiveDownloadAttemptId, withPipelineCommitLock } from "./downloadCancellation.js";
 import { buildAurralTrackDestination, resolveDownloadRoot } from "../downloadPaths.js";
 import {
   commitDownloadedFile,
@@ -14,10 +11,7 @@ import {
   buildTrackFileName,
   sanitizePathPart,
 } from "../downloadUtils.js";
-import {
-  recordPipelineJobSuccess,
-  refreshCompletedPipelinePlaylist,
-} from "../pipelineHelpers.js";
+import { recordPipelineJobSuccess, refreshCompletedPipelinePlaylist } from "../pipelineHelpers.js";
 import { classifyQualityJob } from "../qualityProfileService.js";
 import { withDownloadStepLock } from "./mutationGuards.js";
 import { discardReviewFile } from "./reviewFiles.js";
@@ -83,10 +77,7 @@ export async function approveBlockedJob(jobId) {
     },
     async () => {
       if (!getBlockedJob(job.id)) return null;
-      const committedPath = await commitDownloadedFile(
-        sourcePath,
-        path.join(finalDir, finalName),
-      );
+      const committedPath = await commitDownloadedFile(sourcePath, path.join(finalDir, finalName));
       const recorded = await recordPipelineJobSuccess({
         downloadTracker,
         job,
@@ -136,9 +127,7 @@ export async function denyBlockedJob(jobId, { reason = "Denied by user" } = {}) 
   if (committed.cancelled) return { status: 409, error: "Download job was removed" };
   if (!committed.result) return { status: 404, error: "Blocked job not found" };
   import("../aurralHistoryService.js")
-    .then(({ recordTrackJobFailed }) =>
-      recordTrackJobFailed(job, `${reason} — will retry`),
-    )
+    .then(({ recordTrackJobFailed }) => recordTrackJobFailed(job, `${reason} — will retry`))
     .catch(() => {});
   await startWorkerIfPending();
   return { status: 200 };

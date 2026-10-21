@@ -1,4 +1,12 @@
-import { cloneElement, isValidElement, useCallback, useEffect, useId, useRef, useState } from "react";
+import {
+  cloneElement,
+  isValidElement,
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import { getTooltipDescribedBy, hasAccessibleTextContent } from "./tooltip-accessibility.js";
 import { createTooltipInteractionState } from "./tooltip-interaction.js";
@@ -76,12 +84,15 @@ export default function Tooltip({ content, placement = "side", children }) {
     setTooltipPosition({ left: `${left}px`, top: `${top}px` });
   }, [placement]);
 
-  const showTooltip = useCallback((event, source) => {
-    triggerRef.current = event.currentTarget;
-    interactionRef.current.enter(source);
-    updateTooltipPosition();
-    setIsTooltipVisible(interactionRef.current.isVisible());
-  }, [updateTooltipPosition]);
+  const showTooltip = useCallback(
+    (event, source) => {
+      triggerRef.current = event.currentTarget;
+      interactionRef.current.enter(source);
+      updateTooltipPosition();
+      setIsTooltipVisible(interactionRef.current.isVisible());
+    },
+    [updateTooltipPosition],
+  );
 
   const hideTooltip = useCallback((source) => {
     interactionRef.current.leave(source);
@@ -113,8 +124,7 @@ export default function Tooltip({ content, placement = "side", children }) {
   if (!isValidElement(children) || content == null || content === "") return children;
 
   const needsLabel = needsTooltipLabel(children);
-  const tooltipProvidesLabel =
-    needsLabel || children.props["aria-label"] === String(content);
+  const tooltipProvidesLabel = needsLabel || children.props["aria-label"] === String(content);
   const triggerProps = {
     "aria-describedby": getTooltipDescribedBy({
       existingDescribedBy: children.props["aria-describedby"],
@@ -126,7 +136,9 @@ export default function Tooltip({ content, placement = "side", children }) {
     onFocus: chainHandlers(children.props.onFocus, (event) => {
       if (event.target.matches(":focus-visible")) showTooltip(event, "focus");
     }),
-    onPointerEnter: chainHandlers(children.props.onPointerEnter, (event) => showTooltip(event, "pointer")),
+    onPointerEnter: chainHandlers(children.props.onPointerEnter, (event) =>
+      showTooltip(event, "pointer"),
+    ),
     onPointerLeave: chainHandlers(children.props.onPointerLeave, () => hideTooltip("pointer")),
   };
 

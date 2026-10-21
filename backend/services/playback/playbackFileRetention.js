@@ -32,13 +32,19 @@ export function forgetPlaybackRetainedFile(file) {
 // One fresh playlist snapshot per cleanup batch, never a cached "unused"
 // decision carried from an earlier reset. Failures retain files in place.
 export function createPlaybackDeletionGuard({
-  excludeEntityIds = [], registry = null, playlistRoot = resolveDownloadRoot(),
+  excludeEntityIds = [],
+  registry = null,
+  playlistRoot = resolveDownloadRoot(),
 } = {}) {
   const retentionRoot = path.resolve(playlistRoot);
   let snapshot;
   const configKey = () => {
     const settings = dbOps.getSettings();
-    return JSON.stringify([settings.integrations, settings.pathMappings, dbOps.getJSONSetting("plexConnections")]);
+    return JSON.stringify([
+      settings.integrations,
+      settings.pathMappings,
+      dbOps.getJSONSetting("plexConnections"),
+    ]);
   };
   let checkedConfig;
   const load = async () => {
@@ -61,13 +67,19 @@ export function createPlaybackDeletionGuard({
   };
   return {
     async canDelete(file, { retain = true } = {}) {
-      snapshot ??= load().then((paths) => ({ paths })).catch((error) => {
-        console.warn("[PlaybackFileRetention] Deferring file cleanup:", error.message);
-        return { error };
-      });
+      snapshot ??= load()
+        .then((paths) => ({ paths }))
+        .catch((error) => {
+          console.warn("[PlaybackFileRetention] Deferring file cleanup:", error.message);
+          return { error };
+        });
       const result = await snapshot;
-      const reason = result.error || checkedConfig !== configKey() ? "usage-unknown"
-        : result.paths.has(localFileKey(file)) ? "playlist-reference" : null;
+      const reason =
+        result.error || checkedConfig !== configKey()
+          ? "usage-unknown"
+          : result.paths.has(localFileKey(file))
+            ? "playlist-reference"
+            : null;
       if (reason && retain) recordRetention(file, reason, excludeEntityIds, retentionRoot);
       return reason == null;
     },
@@ -79,16 +91,26 @@ export async function retryPlaybackRetainedFiles() {
   const removed = [];
   if (!files.length) return removed;
   const { downloadTracker } = await import("../downloadJobs/downloadTracker.js");
-  const stillOwned = (file) => downloadTracker.getAll().some((job) =>
-    job.finalPath && localFileKey(job.finalPath) === file);
+  const stillOwned = (file) =>
+    downloadTracker.getAll().some((job) => job.finalPath && localFileKey(job.finalPath) === file);
   const guards = new Map();
   for (const [file, metadata] of files) {
     // Older records have no root; only retry those within the current root.
     const playlistRoot = metadata?.playlistRoot ?? resolveDownloadRoot();
-    if (typeof playlistRoot !== "string" || !path.isAbsolute(playlistRoot)
-      || !isPathInsideRoot(file, playlistRoot) || stillOwned(file)) continue;
-    const excludeEntityIds = [...new Set((Array.isArray(metadata?.excludeEntityIds)
-      ? metadata.excludeEntityIds : []).filter((id) => typeof id === "string" && id.trim()))].sort();
+    if (
+      typeof playlistRoot !== "string" ||
+      !path.isAbsolute(playlistRoot) ||
+      !isPathInsideRoot(file, playlistRoot) ||
+      stillOwned(file)
+    )
+      continue;
+    const excludeEntityIds = [
+      ...new Set(
+        (Array.isArray(metadata?.excludeEntityIds) ? metadata.excludeEntityIds : []).filter(
+          (id) => typeof id === "string" && id.trim(),
+        ),
+      ),
+    ].sort();
     const guardKey = JSON.stringify([localFileKey(playlistRoot), excludeEntityIds]);
     if (!guards.has(guardKey)) {
       guards.set(guardKey, createPlaybackDeletionGuard({ excludeEntityIds, playlistRoot }));
@@ -99,13 +121,22 @@ export async function retryPlaybackRetainedFiles() {
       if (!original.isFile() || !(await guard.canDelete(file)) || stillOwned(file)) continue;
       if (!isPathInsideRoot(await fs.realpath(file), await fs.realpath(playlistRoot))) continue;
       const current = await fs.lstat(file);
-      if (current.ino !== original.ino || current.size !== original.size || current.mtimeMs !== original.mtimeMs) continue;
+      if (
+        current.ino !== original.ino ||
+        current.size !== original.size ||
+        current.mtimeMs !== original.mtimeMs
+      )
+        continue;
       await fs.rm(file, { force: true });
       forgetPlaybackRetainedFile(file);
       removed.push(file);
     } catch (error) {
       if (error.code === "ENOENT") forgetPlaybackRetainedFile(file);
-      else console.warn("[PlaybackFileRetention] Could not retry retained file cleanup:", error.message);
+      else
+        console.warn(
+          "[PlaybackFileRetention] Could not retry retained file cleanup:",
+          error.message,
+        );
     }
   }
   return removed;
@@ -114,7 +145,9 @@ export async function retryPlaybackRetainedFiles() {
 // Never recursively remove a directory containing a protected track. Keep its
 // original path so a server's track ID and external playlist entries survive.
 export async function removeUnusedPlaybackFiles(
-  directory, guard = createPlaybackDeletionGuard(), { protectPlayback = true } = {},
+  directory,
+  guard = createPlaybackDeletionGuard(),
+  { protectPlayback = true } = {},
 ) {
   let stat;
   try {

@@ -126,7 +126,11 @@ export const lastfmSource = {
         const key = normalizeMbid(entry?.mbid) || name.toLowerCase();
         if (!name || seen.has(key)) continue;
         seen.add(key);
-        artists.push({ mbid: normalizeMbid(entry?.mbid), name, image: pickLastfmImage(entry?.image) });
+        artists.push({
+          mbid: normalizeMbid(entry?.mbid),
+          name,
+          image: pickLastfmImage(entry?.image),
+        });
       }
       const total = Number.parseInt(data?.topartists?.["@attr"]?.total, 10);
       exhausted = entries.length < pageSize || (Number.isFinite(total) && page * pageSize >= total);
@@ -140,7 +144,9 @@ export const lastfmSource = {
 
   async getTagTracks(tag, { limit = 50 } = {}) {
     const data = await callLastfm("tag.getTopTracks", { tag, limit });
-    return asArray(data?.tracks?.track).map(toTrack).filter((track) => track.artistName && track.name);
+    return asArray(data?.tracks?.track)
+      .map(toTrack)
+      .filter((track) => track.artistName && track.name);
   },
 
   async getTrendingArtists({ limit = 100 } = {}) {
@@ -166,11 +172,15 @@ export const lastfmSource = {
 
   async getTrendingTracks({ limit = 50 } = {}) {
     const data = await callLastfm("chart.getTopTracks", { limit });
-    return asArray(data?.tracks?.track).map(toTrack).filter((track) => track.artistName && track.name);
+    return asArray(data?.tracks?.track)
+      .map(toTrack)
+      .filter((track) => track.artistName && track.name);
   },
 
   async getPopularTags() {
     const data = await callLastfm("chart.getTopTags", { limit: 100 });
-    return asArray(data?.tags?.tag).map((tag) => text(tag?.name)).filter(Boolean);
+    return asArray(data?.tags?.tag)
+      .map((tag) => text(tag?.name))
+      .filter(Boolean);
   },
 };

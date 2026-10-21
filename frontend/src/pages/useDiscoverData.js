@@ -7,9 +7,7 @@ import {
   requestAlbumFromSearch,
   settleLibraryOwnerConflict,
 } from "../utils/api/endpoints/library.js";
-import {
-  buildAlbumRequestPayload,
-} from "../utils/libraryDestination";
+import { buildAlbumRequestPayload } from "../utils/libraryDestination";
 import { useLibraryDestination } from "../hooks/useLibraryDestination";
 import { getDiscovery } from "../utils/api/endpoints/discovery.js";
 import { useArtistTasteFeedback } from "../hooks/useArtistTasteFeedback";
@@ -50,10 +48,7 @@ export function useDiscoverData() {
     setAppliedZip: setAppliedNearbyZip,
   } = useNearbyShows({ enabled: ticketmasterConfigured });
 
-  const discoveryQueryKey = useMemo(
-    () => queryKeys.discovery(authUser?.id),
-    [authUser?.id],
-  );
+  const discoveryQueryKey = useMemo(() => queryKeys.discovery(authUser?.id), [authUser?.id]);
   const discoveryInitial = useMemo(
     () => readStoredDiscoveryData(authUser?.id) || undefined,
     [authUser?.id],
@@ -66,9 +61,12 @@ export function useDiscoverData() {
     staleTime: 30_000,
   });
   const data = discoveryQuery.data || null;
-  const setData = useCallback((updater) => {
-    queryClient.setQueryData(discoveryQueryKey, updater);
-  }, [discoveryQueryKey]);
+  const setData = useCallback(
+    (updater) => {
+      queryClient.setQueryData(discoveryQueryKey, updater);
+    },
+    [discoveryQueryKey],
+  );
   const recentlyAddedInitial = useMemo(
     () => readStoredRecentlyAdded(authUser?.id) || undefined,
     [authUser?.id],
@@ -81,9 +79,7 @@ export function useDiscoverData() {
     queryKey: queryKeys.recentlyAdded(authUser?.id),
     queryFn: ({ signal }) => getRecentlyAdded({ signal }),
     initialData: recentlyAddedInitial,
-    initialDataUpdatedAt: recentlyAddedInitial
-      ? getStoredRecentlyAddedAt(authUser?.id)
-      : undefined,
+    initialDataUpdatedAt: recentlyAddedInitial ? getStoredRecentlyAddedAt(authUser?.id) : undefined,
     staleTime: 5 * 60 * 1000,
   });
   const recentReleasesQuery = useQuery({
@@ -99,8 +95,7 @@ export function useDiscoverData() {
   const recentReleases = recentReleasesQuery.data || [];
   const [pendingRecentReleaseIds, setPendingRecentReleaseIds] = useState({});
   const [libraryLookup, setLibraryLookup] = useState({});
-  const { lookup: artistFeedbackLookup, submitFeedback } =
-    useArtistTasteFeedback();
+  const { lookup: artistFeedbackLookup, submitFeedback } = useArtistTasteFeedback();
   const { status: discoveryStatus } = useDiscoveryStatus();
   const previousDiscoveryStatusRef = useRef(null);
   const canAddAlbum = hasPermission("addAlbum");
@@ -144,11 +139,13 @@ export function useDiscoverData() {
   }, [discoveryQueryKey, discoveryStatus]);
 
   useEffect(() => {
-    if (recentlyAddedQuery.error) showError(recentlyAddedQuery.error?.message || "Failed to load recently added");
+    if (recentlyAddedQuery.error)
+      showError(recentlyAddedQuery.error?.message || "Failed to load recently added");
   }, [recentlyAddedQuery.error, showError]);
 
   useEffect(() => {
-    if (recentReleasesQuery.error) showError(recentReleasesQuery.error?.message || "Failed to load recent releases");
+    if (recentReleasesQuery.error)
+      showError(recentReleasesQuery.error?.message || "Failed to load recent releases");
   }, [recentReleasesQuery.error, showError]);
 
   useEffect(() => {
@@ -170,18 +167,24 @@ export function useDiscoverData() {
       if (!albumMbid || !artistMbid || !albumKey) return;
       setPendingRecentReleaseIds((prev) => ({ ...prev, [albumKey]: true }));
       try {
-        const result = await requestAlbumFromSearch(buildAlbumRequestPayload({
-          albumMbid,
-          albumName: album.albumName || album.title,
-          artistMbid,
-          artistName: album.artistName,
-          managedBy,
-          triggerSearch: true,
-        }));
+        const result = await requestAlbumFromSearch(
+          buildAlbumRequestPayload({
+            albumMbid,
+            albumName: album.albumName || album.title,
+            artistMbid,
+            artistName: album.artistName,
+            managedBy,
+            triggerSearch: true,
+          }),
+        );
         queryClient.invalidateQueries({
           queryKey: queryKeys.recentReleases(authUser?.id),
         });
-        const outcome = describeAlbumRequestResult(result, album.albumName || album.title || "album", managedBy);
+        const outcome = describeAlbumRequestResult(
+          result,
+          album.albumName || album.title || "album",
+          managedBy,
+        );
         (outcome.kind === "info" ? showInfo : showSuccess)(outcome.message);
       } catch (err) {
         const conflict = settleLibraryOwnerConflict(err);
@@ -189,9 +192,11 @@ export function useDiscoverData() {
           showInfo(`${album.albumName || "Album"}: ${conflict.message}`);
           return;
         }
-        showError(`Could not download the album: ${
-          err.response?.data?.message || err.response?.data?.error || err.message
-        }`);
+        showError(
+          `Could not download the album: ${
+            err.response?.data?.message || err.response?.data?.error || err.message
+          }`,
+        );
       } finally {
         setPendingRecentReleaseIds(({ [albumKey]: _, ...prev }) => prev);
       }
@@ -217,20 +222,21 @@ export function useDiscoverData() {
         }
         return next;
       });
-      const restoreCards = () => setData((current) => {
-        if (!current) return current;
-        const next = { ...current };
-        for (const [key, entries] of Object.entries(hidden)) {
-          const list = [...(current[key] || [])];
-          for (const { candidate, index } of entries) {
-            if (!list.some((existing) => artistsShareDiscoveryIdentity(existing, candidate))) {
-              list.splice(Math.min(index, list.length), 0, candidate);
+      const restoreCards = () =>
+        setData((current) => {
+          if (!current) return current;
+          const next = { ...current };
+          for (const [key, entries] of Object.entries(hidden)) {
+            const list = [...(current[key] || [])];
+            for (const { candidate, index } of entries) {
+              if (!list.some((existing) => artistsShareDiscoveryIdentity(existing, candidate))) {
+                list.splice(Math.min(index, list.length), 0, candidate);
+              }
             }
+            next[key] = list;
           }
-          next[key] = list;
-        }
-        return next;
-      });
+          return next;
+        });
       return submitFeedback(artist, action, { ...options, onRevert: restoreCards });
     },
     [setData, submitFeedback],

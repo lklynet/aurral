@@ -19,11 +19,7 @@ import { refetchDiscoveryStatus } from "../../../hooks/useDiscoveryStatus";
 import { refreshDiscovery } from "../../../utils/api/endpoints/discovery.js";
 import { DISCOVERY_MANUAL_REFRESH_KEY } from "../../../utils/discoverRecentNavigation.js";
 import { allReleaseTypes } from "../constants";
-import {
-  DEFAULT_METADATA_BASE_URL,
-  checkForChanges,
-  normalizeSettings,
-} from "../utils";
+import { DEFAULT_METADATA_BASE_URL, checkForChanges, normalizeSettings } from "../utils";
 import { queryClient, queryKeys } from "../../../queryClient.js";
 
 const defaultSettings = {
@@ -37,12 +33,28 @@ const defaultSettings = {
   quality: "standard",
   qualityProfile: {
     order: [
-      "flac-hires", "flac-standard", "mp3-320", "m4a-320", "mp3-256",
-      "m4a-256", "mp3-192", "m4a-192", "mp3-128", "m4a-128",
+      "flac-hires",
+      "flac-standard",
+      "mp3-320",
+      "m4a-320",
+      "mp3-256",
+      "m4a-256",
+      "mp3-192",
+      "m4a-192",
+      "mp3-128",
+      "m4a-128",
     ],
     enabled: [
-      "flac-hires", "flac-standard", "mp3-320", "m4a-320", "mp3-256",
-      "m4a-256", "mp3-192", "m4a-192", "mp3-128", "m4a-128",
+      "flac-hires",
+      "flac-standard",
+      "mp3-320",
+      "m4a-320",
+      "mp3-256",
+      "m4a-256",
+      "mp3-192",
+      "m4a-192",
+      "mp3-128",
+      "m4a-128",
     ],
     cutoff: "flac-standard",
     automaticUpgrades: false,
@@ -259,9 +271,7 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
   const settingsActivationTimerRef = useRef(null);
   const mountedRef = useRef(true);
   const lidarrResourceConfigRef = useRef({ url: "", apiKey: "", credentialsRevision: 0 });
-  const [lidarrResourceConfig, setLidarrResourceConfig] = useState(
-    lidarrResourceConfigRef.current,
-  );
+  const [lidarrResourceConfig, setLidarrResourceConfig] = useState(lidarrResourceConfigRef.current);
 
   const updateLidarrResourceConfig = useCallback((config) => {
     const previous = lidarrResourceConfigRef.current;
@@ -322,8 +332,12 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
       activeTab === "lidarr" && settings.integrations?.lidarr?.enabled !== false,
     ),
   });
-  const [lidarrRootFoldersQuery, lidarrProfilesQuery, lidarrMetadataProfilesQuery, lidarrTagsQuery] =
-    lidarrQueries;
+  const [
+    lidarrRootFoldersQuery,
+    lidarrProfilesQuery,
+    lidarrMetadataProfilesQuery,
+    lidarrTagsQuery,
+  ] = lidarrQueries;
   const lidarrRootFolders = Array.isArray(lidarrRootFoldersQuery.data)
     ? lidarrRootFoldersQuery.data
     : [];
@@ -393,17 +407,20 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
     updateLidarrResourceConfig,
   ]);
 
-  const refreshLidarrResources = useCallback(async (config = null) => {
-    const nextConfig = updateLidarrResourceConfig(
-      config || getLidarrResourceConfig(settingsRef.current),
-    );
-    if (!nextConfig.url || !nextConfig.apiKey) return [];
-    return Promise.all(
-      buildLidarrQueries(nextConfig).map(({ queryKey, queryFn }) =>
-        queryClient.fetchQuery({ queryKey, queryFn, staleTime: 0 }),
-      ),
-    );
-  }, [updateLidarrResourceConfig]);
+  const refreshLidarrResources = useCallback(
+    async (config = null) => {
+      const nextConfig = updateLidarrResourceConfig(
+        config || getLidarrResourceConfig(settingsRef.current),
+      );
+      if (!nextConfig.url || !nextConfig.apiKey) return [];
+      return Promise.all(
+        buildLidarrQueries(nextConfig).map(({ queryKey, queryFn }) =>
+          queryClient.fetchQuery({ queryKey, queryFn, staleTime: 0 }),
+        ),
+      );
+    },
+    [updateLidarrResourceConfig],
+  );
 
   useEffect(() => {
     fetchSettings();
@@ -460,9 +477,11 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
           }
         }
         if (typeof window !== "undefined") {
-          window.dispatchEvent(new CustomEvent("aurral:settings-updated", {
-            detail: { inboxEnabled: normalizedSettings.inbox?.enabled !== false },
-          }));
+          window.dispatchEvent(
+            new CustomEvent("aurral:settings-updated", {
+              detail: { inboxEnabled: normalizedSettings.inbox?.enabled !== false },
+            }),
+          );
         }
         return true;
       } catch (err) {
@@ -553,11 +572,7 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
   const { mutate: clearCache } = clearCacheMutation;
 
   const handleClearCache = useCallback(() => {
-    if (
-      !window.confirm(
-        "Clear cached artwork? It will reload as needed. Recommendations stay.",
-      )
-    )
+    if (!window.confirm("Clear cached artwork? It will reload as needed. Recommendations stay."))
       return;
     clearCache();
   }, [clearCache]);
@@ -620,7 +635,14 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
         showError(`Failed to apply community guide: ${errorMsg}`);
       }
     }
-  }, [applyCommunityGuide, refreshLidarrResources, updateSettings, showSuccess, showError, showInfo]);
+  }, [
+    applyCommunityGuide,
+    refreshLidarrResources,
+    updateSettings,
+    showSuccess,
+    showError,
+    showInfo,
+  ]);
 
   return {
     health,

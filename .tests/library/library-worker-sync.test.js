@@ -15,15 +15,22 @@ test("completed child scans invalidate the API's library cache", async () => {
   const key = `worker-cache-${process.pid}-${Date.now()}`;
   const artist = upsertLibraryArtist({ identityKey: `${key}:artist`, name: "Before Scan" });
   const album = upsertLibraryAlbum({
-    identityKey: `${key}:album`, artistId: artist.id, title: "Album",
+    identityKey: `${key}:album`,
+    artistId: artist.id,
+    title: "Album",
   });
   const track = upsertLibraryTrack({
-    identityKey: `${key}:track`, title: "Track", artistName: "Before Scan",
+    identityKey: `${key}:track`,
+    title: "Track",
+    artistName: "Before Scan",
   });
   linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
   upsertLibraryMediaFile({
-    trackId: track.id, albumId: album.id, source: "aurral",
-    path: `/${key}.flac`, available: true,
+    trackId: track.id,
+    albumId: album.id,
+    source: "aurral",
+    path: `/${key}.flac`,
+    available: true,
   });
   const artistName = () => getLibrary().artists.find((item) => item.id === artist.id)?.name;
   assert.equal(artistName(), "Before Scan");

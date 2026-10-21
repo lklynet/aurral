@@ -40,7 +40,11 @@ export function registerFeedback(router) {
 
   router.post("/feedback/restore", requireAuth, (req, res) => {
     const { removeIds = [], entries = [] } = req.body || {};
-    if (!Array.isArray(removeIds) || !Array.isArray(entries) || removeIds.length + entries.length === 0) {
+    if (
+      !Array.isArray(removeIds) ||
+      !Array.isArray(entries) ||
+      removeIds.length + entries.length === 0
+    ) {
       return res.status(400).json({
         error: "Failed to restore discovery feedback",
         message: "removeIds or entries is required",

@@ -1,10 +1,7 @@
 import assert from "node:assert/strict";
 import { test, afterAll, vi } from "vite-plus/test";
 
-import {
-  cleanupIsolatedState,
-  setupIsolatedBackend,
-} from "../helpers/backendTestHarness.js";
+import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTestHarness.js";
 
 const [
   isolatedState,
@@ -32,36 +29,33 @@ test("schedule bootstrap skips stale runs without postponing recently due work",
   const now = Math.floor(Date.now() / 1000);
 
   const tx = honkerDb.getHonkerDb().transaction();
-  tx.execute(
-    "UPDATE _honker_scheduler_tasks SET next_fire_at = ?, priority = ? WHERE name = ?",
-    [now - 3 * 60 * 60, 99, "weekly-flow-refresh"],
-  );
+  tx.execute("UPDATE _honker_scheduler_tasks SET next_fire_at = ?, priority = ? WHERE name = ?", [
+    now - 3 * 60 * 60,
+    99,
+    "weekly-flow-refresh",
+  ]);
   tx.commit();
 
   honkerDb.bootstrapHonkerSchedules();
 
   const rows = scheduler.list();
   const flowRefresh = rows.find((row) => row.name === "weekly-flow-refresh");
-  const enrichment = rows.find(
-    (row) => row.name === "playlist-mbid-enrichment-sweep",
-  );
+  const enrichment = rows.find((row) => row.name === "playlist-mbid-enrichment-sweep");
 
   assert.ok(flowRefresh?.next_fire_at > now);
   assert.equal(flowRefresh?.priority, 0);
 
   const recentlyDue = now - 60;
   const recentTx = honkerDb.getHonkerDb().transaction();
-  recentTx.execute(
-    "UPDATE _honker_scheduler_tasks SET next_fire_at = ? WHERE name = ?",
-    [recentlyDue, "weekly-flow-refresh"],
-  );
+  recentTx.execute("UPDATE _honker_scheduler_tasks SET next_fire_at = ? WHERE name = ?", [
+    recentlyDue,
+    "weekly-flow-refresh",
+  ]);
   recentTx.commit();
 
   honkerDb.bootstrapHonkerSchedules();
 
-  const preserved = scheduler
-    .list()
-    .find((row) => row.name === "weekly-flow-refresh");
+  const preserved = scheduler.list().find((row) => row.name === "weekly-flow-refresh");
   assert.equal(preserved?.next_fire_at, recentlyDue);
   assert.equal(enrichment?.max_attempts, 4);
   assert.equal(rows.length, honkerDb.SCHEDULED_SYSTEM_TASKS.length);
@@ -171,15 +165,19 @@ test("playlists publish from the startup task, not when a process loads the play
     calls.push("ensure library");
     return { ok: true };
   });
-  vi.spyOn(NavidromePlaybackDestination.prototype, "publishPlaylist").mockImplementation(async (snapshot) => {
-    calls.push(snapshot.entityId);
-    return { ok: true };
-  });
+  vi.spyOn(NavidromePlaybackDestination.prototype, "publishPlaylist").mockImplementation(
+    async (snapshot) => {
+      calls.push(snapshot.entityId);
+      return { ok: true };
+    },
+  );
 
   const nodeEnv = process.env.NODE_ENV;
   delete process.env.NODE_ENV;
   try {
-    await import(/* @vite-ignore */ `../../backend/services/playlists/playlistManager.js?process=${Date.now()}`);
+    await import(
+      /* @vite-ignore */ `../../backend/services/playlists/playlistManager.js?process=${Date.now()}`
+    );
   } finally {
     process.env.NODE_ENV = nodeEnv;
   }
@@ -187,7 +185,8 @@ test("playlists publish from the startup task, not when a process loads the play
 
   await processSystemTask({ kind: "playlist-startup-publish" });
   assert.deepEqual(calls, []);
-  const [sync] = honkerDb.listHonkerJobs("playback")
+  const [sync] = honkerDb
+    .listHonkerJobs("playback")
     .filter((job) => job.payload.kind === "playback-playlist-sync");
   assert.deepEqual(sync.payload, { kind: "playback-playlist-sync", entityIds: null, attempt: 0 });
   honkerDb.getPlaybackTaskQueue().cancel(sync.id);

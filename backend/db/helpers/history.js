@@ -17,15 +17,11 @@ const getAurralHistoryByIdStmt = db.prepare(`
   FROM aurral_history
   WHERE id = ?
 `);
-const deleteAurralHistoryByIdStmt = db.prepare(
-  "DELETE FROM aurral_history WHERE id = ?",
-);
+const deleteAurralHistoryByIdStmt = db.prepare("DELETE FROM aurral_history WHERE id = ?");
 const deleteAurralHistoryOlderThanStmt = db.prepare(
   "DELETE FROM aurral_history WHERE created_at < ?",
 );
-const countAurralHistoryStmt = db.prepare(
-  "SELECT COUNT(*) as count FROM aurral_history",
-);
+const countAurralHistoryStmt = db.prepare("SELECT COUNT(*) as count FROM aurral_history");
 const deleteOldestAurralHistoryStmt = db.prepare(`
   DELETE FROM aurral_history
   WHERE id IN (
@@ -90,7 +86,10 @@ export default function register(dbOps) {
     }));
   };
 
-  dbOps.pruneAurralHistory = function ({ maxAgeMs = 30 * 24 * 60 * 60 * 1000, maxEntries = 1000 } = {}) {
+  dbOps.pruneAurralHistory = function ({
+    maxAgeMs = 30 * 24 * 60 * 60 * 1000,
+    maxEntries = 1000,
+  } = {}) {
     const cutoff = Date.now() - Math.max(0, Number(maxAgeMs) || 0);
     deleteAurralHistoryOlderThanStmt.run(cutoff);
     const count = Number(countAurralHistoryStmt.get()?.count || 0);

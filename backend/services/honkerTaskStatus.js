@@ -35,7 +35,8 @@ export const QUEUE_DEFINITIONS = [
     queue: "playback",
     label: "Media server updates",
     workerLabel: "Media server worker",
-    description: "Scans connected media servers and publishes playlists to them, one job at a time.",
+    description:
+      "Scans connected media servers and publishes playlists to them, one job at a time.",
     worker: "playback",
   },
   {
@@ -111,7 +112,8 @@ export const SYSTEM_TASK_LABELS = {
   },
   "playback-playlist-sync": {
     label: "Media server playlist sync",
-    description: "Publishes changed flows and playlists to connected media servers, then retries tracks a server has not indexed yet.",
+    description:
+      "Publishes changed flows and playlists to connected media servers, then retries tracks a server has not indexed yet.",
   },
   "weekly-flow-refresh": {
     label: "Playlist schedule check",
@@ -196,27 +198,21 @@ const queueDefinitionByName = new Map(
 
 const PAYLOAD_LABEL_KEY = {
   "slskd-pipeline": "phase",
-  "weekly-flow-operation": (p) =>
-    formatPayloadLabel(p?.label || p?.kind) || null,
+  "weekly-flow-operation": (p) => formatPayloadLabel(p?.label || p?.kind) || null,
   "playlist-mbid-enrichment": "playlistId",
   "library-scan": (p) => (p?.force ? "Manual" : null),
-  "discovery-user-refresh": (p) =>
-    p?.listenHistoryProfile?.listenHistoryUsername || null,
+  "discovery-user-refresh": (p) => p?.listenHistoryProfile?.listenHistoryUsername || null,
 };
 
 const PAYLOAD_DETAIL_KEY = {
   "slskd-pipeline": (p, desc) =>
-    p?.phase
-      ? `${desc} Current phase: ${formatPayloadLabel(p.phase)}.`
-      : desc,
+    p?.phase ? `${desc} Current phase: ${formatPayloadLabel(p.phase)}.` : desc,
   "playlist-mbid-enrichment": (p, _desc) =>
     p?.playlistId
       ? `Finds missing MusicBrainz IDs for ${formatPayloadLabel(p.playlistId)}.`
       : "Scans playlists for tracks missing MusicBrainz IDs and queues enrichment jobs.",
   "library-scan": (p, desc) =>
-    p?.force
-      ? "Refreshes Aurral's library view after a requested refresh."
-      : desc,
+    p?.force ? "Refreshes Aurral's library view after a requested refresh." : desc,
   "discovery-user-refresh": (p, desc) =>
     p?.listenHistoryProfile?.listenHistoryUsername
       ? `Refreshes listening history for ${p.listenHistoryProfile.listenHistoryUsername}.`
@@ -299,9 +295,8 @@ async function pruneExpiredRuns() {
   const cutoff = getRunLedgerCutoffUnix();
   pruneRunsStatement.run(cutoff);
   pruneDeadJobsStatement.run(cutoff);
-  const { pruneDuplicateScheduledDiscoveryRefreshes } = await import(
-    "./discovery/refreshScheduler.js"
-  );
+  const { pruneDuplicateScheduledDiscoveryRefreshes } =
+    await import("./discovery/refreshScheduler.js");
   pruneDuplicateScheduledDiscoveryRefreshes();
 }
 
@@ -311,7 +306,9 @@ function runTaskCleanup() {
       .catch((error) => {
         console.warn("[TaskCleanup] Housekeeping failed:", error?.message || error);
       })
-      .finally(() => { cleanupPromise = null; });
+      .finally(() => {
+        cleanupPromise = null;
+      });
   }
   return cleanupPromise;
 }
@@ -482,7 +479,8 @@ export function describeHonkerTask(queue, payloadValue) {
     suffix = payload?.[extractor] ? formatPayloadLabel(payload[extractor]) : null;
   }
 
-  return suffix ? `${def.label}: ${suffix}` : def.label;}
+  return suffix ? `${def.label}: ${suffix}` : def.label;
+}
 
 function describeHonkerTaskDetail(queue, payloadValue) {
   const payload = parsePayload(payloadValue) || {};

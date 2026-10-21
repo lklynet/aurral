@@ -4,8 +4,7 @@ function isNativeElementName(name) {
 
 function hasAttribute(element, attributeName) {
   return element.openingElement.attributes.some(
-    (attribute) =>
-      attribute.type === "JSXAttribute" && attribute.name.name === attributeName,
+    (attribute) => attribute.type === "JSXAttribute" && attribute.name.name === attributeName,
   );
 }
 

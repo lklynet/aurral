@@ -20,9 +20,7 @@ function ReloadPrompt() {
   return (
     <div className="reload-prompt">
       <div className="reload-prompt__content">
-        <p className="reload-prompt__text">
-          Update available.
-        </p>
+        <p className="reload-prompt__text">Update available.</p>
         <div className="reload-prompt__actions">
           <button
             type="button"

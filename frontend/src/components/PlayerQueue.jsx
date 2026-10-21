@@ -27,8 +27,17 @@ function QueueArt({ src }) {
   return (
     <span className="player-queue__art" aria-hidden="true">
       {src && src !== failedSrc ? (
-        <ArtworkImage src={src} sizes="3rem" alt="" loading="lazy" decoding="async" onError={() => setFailedSrc(src)} />
-      ) : <Music />}
+        <ArtworkImage
+          src={src}
+          sizes="3rem"
+          alt=""
+          loading="lazy"
+          decoding="async"
+          onError={() => setFailedSrc(src)}
+        />
+      ) : (
+        <Music />
+      )}
     </span>
   );
 }
@@ -90,7 +99,8 @@ export function UpNextQueue({ className = "" }) {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
   const entryIds = upcoming.map(({ track }) => track.entryId);
-  const titleOf = (id) => upcoming.find(({ track }) => track.entryId === id)?.track.title || "Track";
+  const titleOf = (id) =>
+    upcoming.find(({ track }) => track.entryId === id)?.track.title || "Track";
   const positionOf = (id) => `position ${entryIds.indexOf(id) + 1} of ${entryIds.length}`;
   const announcements = {
     onDragStart: ({ active }) => `Picked up ${titleOf(active.id)} at ${positionOf(active.id)}.`,
@@ -122,17 +132,21 @@ export function UpNextQueue({ className = "" }) {
   return (
     <section className={`player-queue__section ${className}`} aria-labelledby={headingId}>
       <div className="player-queue__section-header">
-        <h3 id={headingId} className="player-queue__heading">Up next</h3>
+        <h3 id={headingId} className="player-queue__heading">
+          Up next
+        </h3>
         {upcoming.length > 0 ? (
-          <button type="button" className="btn btn-ghost btn-xs player-queue__clear" onClick={handleClear}>
+          <button
+            type="button"
+            className="btn btn-ghost btn-xs player-queue__clear"
+            onClick={handleClear}
+          >
             Clear
           </button>
         ) : null}
       </div>
       {upcoming.length === 0 ? (
-        <p className="player-queue__empty">
-          Use Play next or Add to queue in a track menu.
-        </p>
+        <p className="player-queue__empty">Use Play next or Add to queue in a track menu.</p>
       ) : (
         <DndContext
           sensors={sensors}
@@ -182,7 +196,9 @@ export function PlayerQueuePanel({ id, onClose, closeRef }) {
       style={height ? { "--player-queue-height": `${height}px` } : undefined}
     >
       <div className="player-queue__header">
-        <h2 id={titleId} className="player-queue__title">Queue</h2>
+        <h2 id={titleId} className="player-queue__title">
+          Queue
+        </h2>
         <TooltipButton
           ref={closeRef}
           title="Close queue"

@@ -22,23 +22,33 @@ export function ArtistContextMenu({
   const labelName = artistName || artist?.name || artist?.artistName || "artist";
   const libraryLink = isInLibrary ? getLibraryLink?.(artist) || null : null;
   const hasLibraryItem = Boolean(libraryLink);
-  const feedbackItems = onFeedback ? [
-    { id: "more_like_this", icon: ThumbsUp },
-    { id: "less_like_this", icon: ThumbsDown },
-    { id: "block_artist", icon: Ban, danger: true },
-  ].map((item) => ({
-    ...item,
-    label: item.id === "block_artist" && feedbackUsed.block_artist
-      ? "Unblock artist" : getDiscoveryFeedbackLabel(item.id),
-    selected: !!feedbackUsed[item.id],
-    onSelect: () => onFeedback(artist, item.id, { isSelected: !!feedbackUsed[item.id] }),
-  })) : [];
+  const feedbackItems = onFeedback
+    ? [
+        { id: "more_like_this", icon: ThumbsUp },
+        { id: "less_like_this", icon: ThumbsDown },
+        { id: "block_artist", icon: Ban, danger: true },
+      ].map((item) => ({
+        ...item,
+        label:
+          item.id === "block_artist" && feedbackUsed.block_artist
+            ? "Unblock artist"
+            : getDiscoveryFeedbackLabel(item.id),
+        selected: !!feedbackUsed[item.id],
+        onSelect: () => onFeedback(artist, item.id, { isSelected: !!feedbackUsed[item.id] }),
+      }))
+    : [];
 
-  const libraryItems = hasLibraryItem ? [{
-    id: "open-library", label: "Open in library", icon: Library,
-    to: libraryLink.to,
-    state: libraryLink.state,
-  }] : [];
+  const libraryItems = hasLibraryItem
+    ? [
+        {
+          id: "open-library",
+          label: "Open in library",
+          icon: Library,
+          to: libraryLink.to,
+          state: libraryLink.state,
+        },
+      ]
+    : [];
 
   if (!hasLibraryItem && !onFeedback) return null;
 
@@ -53,7 +63,10 @@ export function ArtistContextMenu({
       }
     };
     return (
-      <div className={`${className} artist-context-menu--inline`} onClick={(event) => event.stopPropagation()}>
+      <div
+        className={`${className} artist-context-menu--inline`}
+        onClick={(event) => event.stopPropagation()}
+      >
         {hasLibraryItem ? (
           <Tooltip content="Open in library">
             <RouteLink
@@ -77,7 +90,11 @@ export function ArtistContextMenu({
               aria-pressed={item.selected}
               className={`btn btn-icon-square artist-context-menu__inline-action${item.danger ? " artist-context-menu__inline-action--danger" : ""}${item.selected ? " is-selected" : ""}`}
             >
-              {pendingAction === item.id ? <DotLoader size="sm" label={null} /> : <Icon className="artist-icon-sm" />}
+              {pendingAction === item.id ? (
+                <DotLoader size="sm" label={null} />
+              ) : (
+                <Icon className="artist-icon-sm" />
+              )}
             </TooltipButton>
           );
         })}

@@ -116,11 +116,7 @@ export function CreatePlaylistModal({
             className="btn btn-primary btn-sm"
             disabled={saving}
           >
-            {saving ? (
-              <DotLoader size="sm" label={null} />
-            ) : (
-              <Plus className="artist-icon-sm" />
-            )}
+            {saving ? <DotLoader size="sm" label={null} /> : <Plus className="artist-icon-sm" />}
             Create playlist
           </button>
         </>
@@ -287,8 +283,7 @@ export function RenamePlaylistModal({
     }
   })();
   const coverSrc =
-    encodedPreviewUrl ||
-    (!imageFailed && isSafeImageUrl(artworkUrl) ? artworkUrl : null);
+    encodedPreviewUrl || (!imageFailed && isSafeImageUrl(artworkUrl) ? artworkUrl : null);
   const fallbackLabel =
     String(displayName || name || "?")
       .trim()
@@ -438,11 +433,7 @@ export function RenamePlaylistModal({
               className="btn btn-primary btn-sm"
               disabled={busy}
             >
-              {saving ? (
-                <DotLoader size="sm" label={null} />
-              ) : (
-                <Check className="artist-icon-sm" />
-              )}
+              {saving ? <DotLoader size="sm" label={null} /> : <Check className="artist-icon-sm" />}
               Save
             </button>
           </div>

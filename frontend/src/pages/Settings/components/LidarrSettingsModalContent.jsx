@@ -1,7 +1,5 @@
 import { useState } from "react";
-import {
-  testLidarrConnection,
-} from "../../../utils/api/endpoints/settings.js";
+import { testLidarrConnection } from "../../../utils/api/endpoints/settings.js";
 
 import { Link } from "react-router";
 import { RefreshCw } from "lucide-react";
@@ -75,7 +73,9 @@ export function LidarrSettingsSection({
       setLidarrTestLatencyMs(Math.round(performance.now() - startTime));
       if (result.success) {
         setLidarrTestStatus({ tone: "success", message: "Connected." });
-        showSuccess(`Connected to Lidarr${result.instanceName && result.instanceName !== "Lidarr" ? ` (${result.instanceName})` : ""}.`);
+        showSuccess(
+          `Connected to Lidarr${result.instanceName && result.instanceName !== "Lidarr" ? ` (${result.instanceName})` : ""}.`,
+        );
         try {
           const [rootFolders, profiles, metadataProfiles, tags] = await refreshLidarrResources({
             url,
@@ -106,14 +106,20 @@ export function LidarrSettingsSection({
           showError(`Connected, but failed to load Lidarr resources: ${errorMsg}`);
         }
       } else {
-        setLidarrTestStatus({ tone: "error", message: "Connection failed. Check the URL and API key, then retry." });
+        setLidarrTestStatus({
+          tone: "error",
+          message: "Connection failed. Check the URL and API key, then retry.",
+        });
         showError(
           `Connection failed: ${result.message || result.error}${result.details ? `\n${result.details}` : ""}`,
         );
       }
     } catch (err) {
       setLidarrTestLatencyMs(Math.round(performance.now() - startTime));
-      setLidarrTestStatus({ tone: "error", message: "Connection failed. Check the URL and API key, then retry." });
+      setLidarrTestStatus({
+        tone: "error",
+        message: "Connection failed. Check the URL and API key, then retry.",
+      });
       const errorMsg = err.response?.data?.message || err.response?.data?.error || err.message;
       showError(`Connection failed: ${errorMsg}`);
     } finally {
@@ -122,7 +128,10 @@ export function LidarrSettingsSection({
   };
 
   const refreshingProfilesTags =
-    loadingLidarrRootFolders || loadingLidarrProfiles || loadingLidarrMetadataProfiles || loadingLidarrTags;
+    loadingLidarrRootFolders ||
+    loadingLidarrProfiles ||
+    loadingLidarrMetadataProfiles ||
+    loadingLidarrTags;
 
   const handleRefreshProfilesAndTags = async () => {
     const url = settings.integrations?.lidarr?.url;
@@ -140,7 +149,12 @@ export function LidarrSettingsSection({
       const nextProfiles = Array.isArray(profiles) ? profiles : [];
       const nextMetadataProfiles = Array.isArray(metadataProfiles) ? metadataProfiles : [];
       const nextTags = Array.isArray(tags) ? tags : [];
-      if (nextRootFolders.length === 0 && nextProfiles.length === 0 && nextMetadataProfiles.length === 0 && nextTags.length === 0) {
+      if (
+        nextRootFolders.length === 0 &&
+        nextProfiles.length === 0 &&
+        nextMetadataProfiles.length === 0 &&
+        nextTags.length === 0
+      ) {
         showInfo("No root folders, profiles, or tags found in Lidarr");
       } else {
         const parts = [];
@@ -307,17 +321,13 @@ export function LidarrSettingsSection({
       </SettingsArrFieldSet>
 
       <SettingsArrFieldSet legend="Defaults">
-        <p className="arr-form-help">
-          Override the root folder and quality profile in Profile.
-        </p>
+        <p className="arr-form-help">Override the root folder and quality profile in Profile.</p>
         <RootOverlapWarning rootWarnings={settings.rootWarnings} />
         <SettingsArrFormGroup label="Default root folder" labelFor="lidarr-root-folder">
           <SettingsSelect
             id="lidarr-root-folder"
             value={settings.integrations?.lidarr?.rootFolderPath || ""}
-            onChange={(e) =>
-              updateLidarr({ rootFolderPath: e.target.value || null })
-            }
+            onChange={(e) => updateLidarr({ rootFolderPath: e.target.value || null })}
             disabled={loadingLidarrRootFolders}
           >
             <option value="">

@@ -7,11 +7,13 @@ test("Last.fm callback uses the request host and preserves signed state", () => 
   const request = {
     protocol: "http",
     get(name) {
-      return {
-        host: "192.168.4.115:3009",
-        "x-forwarded-host": "attacker.example",
-        "x-forwarded-proto": "https",
-      }[String(name).toLowerCase()] || undefined;
+      return (
+        {
+          host: "192.168.4.115:3009",
+          "x-forwarded-host": "attacker.example",
+          "x-forwarded-proto": "https",
+        }[String(name).toLowerCase()] || undefined
+      );
     },
   };
 
@@ -25,7 +27,9 @@ test("Last.fm callback uses the configured public origin when available", () => 
   const previous = process.env.AURRAL_PUBLIC_URL;
   process.env.AURRAL_PUBLIC_URL = "https://aurral.example.com";
   try {
-    const callback = new URL(callbackUrl({ protocol: "http", get: () => "attacker.example" }, "state"));
+    const callback = new URL(
+      callbackUrl({ protocol: "http", get: () => "attacker.example" }, "state"),
+    );
     assert.equal(callback.origin, "https://aurral.example.com");
   } finally {
     if (previous === undefined) delete process.env.AURRAL_PUBLIC_URL;

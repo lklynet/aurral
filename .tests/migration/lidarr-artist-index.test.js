@@ -13,16 +13,24 @@ const indexName = "idx_lidarr_artist_id_map_foreign_id";
 
 function boot(dbPath, dataDir) {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, ["--input-type=module", "-e",
-      'const { db } = await import("./backend/config/db-sqlite.js"); db.close();',
-    ], {
-      cwd: repoRoot,
-      env: { ...process.env, AURRAL_DB_PATH: dbPath, AURRAL_DATA_DIR: dataDir },
-      stdio: ["ignore", "ignore", "pipe"],
-    });
+    const child = spawn(
+      process.execPath,
+      [
+        "--input-type=module",
+        "-e",
+        'const { db } = await import("./backend/config/db-sqlite.js"); db.close();',
+      ],
+      {
+        cwd: repoRoot,
+        env: { ...process.env, AURRAL_DB_PATH: dbPath, AURRAL_DATA_DIR: dataDir },
+        stdio: ["ignore", "ignore", "pipe"],
+      },
+    );
     let stderr = "";
     child.stderr.setEncoding("utf8");
-    child.stderr.on("data", (chunk) => { stderr += chunk; });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
     child.once("error", reject);
     child.once("close", (code) => {
       if (code === 0) resolve();
@@ -40,7 +48,9 @@ function withDatabase(name, run) {
 }
 
 function indexState(db) {
-  return db.prepare("PRAGMA index_list(lidarr_artist_id_map)").all()
+  return db
+    .prepare("PRAGMA index_list(lidarr_artist_id_map)")
+    .all()
     .find((index) => index.name === indexName);
 }
 
@@ -74,13 +84,18 @@ test("concurrent startup upgrades a nonunique index and preserves the winning ma
     const db = new Database(dbPath);
     try {
       assert.equal(indexState(db)?.unique, 1);
-      assert.deepEqual(db.prepare(
-        "SELECT musicbrainz_id, lidarr_foreign_artist_id FROM lidarr_artist_id_map ORDER BY lidarr_foreign_artist_id",
-      ).all(), [
-        { musicbrainz_id: "newer", lidarr_foreign_artist_id: "provider-a" },
-        { musicbrainz_id: "tie-a", lidarr_foreign_artist_id: "provider-b" },
-        { musicbrainz_id: "unrelated", lidarr_foreign_artist_id: "provider-c" },
-      ]);
+      assert.deepEqual(
+        db
+          .prepare(
+            "SELECT musicbrainz_id, lidarr_foreign_artist_id FROM lidarr_artist_id_map ORDER BY lidarr_foreign_artist_id",
+          )
+          .all(),
+        [
+          { musicbrainz_id: "newer", lidarr_foreign_artist_id: "provider-a" },
+          { musicbrainz_id: "tie-a", lidarr_foreign_artist_id: "provider-b" },
+          { musicbrainz_id: "unrelated", lidarr_foreign_artist_id: "provider-c" },
+        ],
+      );
     } finally {
       db.close();
     }
@@ -146,9 +161,13 @@ test("failed unique index creation restores the legacy index and mappings", () =
     try {
       assert.equal(indexState(db)?.unique, 0);
       assert.equal(db.pragma("schema_version", { simple: true }), schemaVersion);
-      assert.deepEqual(db.prepare(
-        "SELECT musicbrainz_id FROM lidarr_artist_id_map ORDER BY musicbrainz_id",
-      ).all().map(({ musicbrainz_id }) => musicbrainz_id), ["first", "second"]);
+      assert.deepEqual(
+        db
+          .prepare("SELECT musicbrainz_id FROM lidarr_artist_id_map ORDER BY musicbrainz_id")
+          .all()
+          .map(({ musicbrainz_id }) => musicbrainz_id),
+        ["first", "second"],
+      );
     } finally {
       db.close();
     }

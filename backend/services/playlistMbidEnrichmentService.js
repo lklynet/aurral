@@ -75,7 +75,8 @@ function mergeMissingMetadata(target, source, { includeJobFields = false } = {})
       patch[key] = Math.max(1, Math.round(Number(source[key])));
     }
   }
-  const samePosition = Number(patch.trackNumber ?? target?.trackNumber) === Number(source?.trackNumber);
+  const samePosition =
+    Number(patch.trackNumber ?? target?.trackNumber) === Number(source?.trackNumber);
   if (target?.discNumber == null && samePosition && Number(source?.discNumber) > 0) {
     patch.discNumber = Math.round(Number(source.discNumber));
   }
@@ -220,20 +221,14 @@ export function schedulePlaylistMbidEnrichmentForMissingPlaylists({
     if (jobId != null) jobIds.push(jobId);
   }
   if (shouldReconcileArtistMbids) {
-    dbOps.setJSONSetting(
-      ARTIST_MBID_RECONCILIATION_KEY,
-      ARTIST_MBID_RECONCILIATION_VERSION,
-    );
+    dbOps.setJSONSetting(ARTIST_MBID_RECONCILIATION_KEY, ARTIST_MBID_RECONCILIATION_VERSION);
   }
   return jobIds;
 }
 
 export async function enrichStaticPlaylistMbids(
   playlistId,
-  {
-    resolveTrackContext = resolveTrackSearchContext,
-    reconcileArtistMbids = false,
-  } = {},
+  { resolveTrackContext = resolveTrackSearchContext, reconcileArtistMbids = false } = {},
 ) {
   const safePlaylistId = String(playlistId || "").trim();
   if (!safePlaylistId) return { missing: true, changed: false };
@@ -247,9 +242,7 @@ export async function enrichStaticPlaylistMbids(
   let tracksResolved = 0;
 
   const resolver =
-    typeof resolveTrackContext === "function"
-      ? resolveTrackContext
-      : resolveTrackSearchContext;
+    typeof resolveTrackContext === "function" ? resolveTrackContext : resolveTrackSearchContext;
   const rawResolutions = await mapWithConcurrency(snapshotTracks, 4, (track) =>
     buildResolution(track, snapshotJobs, resolver, reconcileArtistMbids === true),
   );
@@ -272,71 +265,70 @@ export async function enrichStaticPlaylistMbids(
     };
   }
 
-  return withPlaylistMutationLock(
-    safePlaylistId,
-    async () => {
-      const currentPlaylist = flowPlaylistConfig.getStaticPlaylist(safePlaylistId);
-      if (!currentPlaylist) return { missing: true, changed: false };
+  return withPlaylistMutationLock(safePlaylistId, async () => {
+    const currentPlaylist = flowPlaylistConfig.getStaticPlaylist(safePlaylistId);
+    if (!currentPlaylist) return { missing: true, changed: false };
 
-      const currentTracks = Array.isArray(currentPlaylist.tracks) ? currentPlaylist.tracks : [];
-      const usedResolutionIndexes = new Set();
-      let playlistTracksUpdated = 0;
-      const nextTracks = currentTracks.map((track) => {
-        const resolution = findResolutionForTrack(track, resolutions, usedResolutionIndexes);
-        if (!resolution) return track;
-        const nextTrack = applyPlaylistTrackPatch(track, resolution.resolvedTrack);
-        if (nextTrack !== track) playlistTracksUpdated += 1;
-        return nextTrack;
+    const currentTracks = Array.isArray(currentPlaylist.tracks) ? currentPlaylist.tracks : [];
+    const usedResolutionIndexes = new Set();
+    let playlistTracksUpdated = 0;
+    const nextTracks = currentTracks.map((track) => {
+      const resolution = findResolutionForTrack(track, resolutions, usedResolutionIndexes);
+      if (!resolution) return track;
+      const nextTrack = applyPlaylistTrackPatch(track, resolution.resolvedTrack);
+      if (nextTrack !== track) playlistTracksUpdated += 1;
+      return nextTrack;
+    });
+
+    let updatedPlaylist = currentPlaylist;
+    if (playlistTracksUpdated > 0) {
+      updatedPlaylist = flowPlaylistConfig.updateStaticPlaylist(safePlaylistId, {
+        tracks: nextTracks,
       });
+    }
 
-      let updatedPlaylist = currentPlaylist;
-      if (playlistTracksUpdated > 0) {
-        updatedPlaylist = flowPlaylistConfig.updateStaticPlaylist(safePlaylistId, {
-          tracks: nextTracks,
+    // updateStaticPlaylist already busts cache, but bust again for the full enrichment context
+    import("./unifiedSearchService.js")
+      .then(({ clearSearchContextCache }) => clearSearchContextCache())
+      .catch(() => {});
+
+    const jobs = downloadTracker.getByPlaylistType(safePlaylistId);
+    let jobsUpdated = 0;
+    const updatedJobIds = new Set();
+    for (const track of nextTracks) {
+      const resolution = resolutions.find(
+        (entry) =>
+          tracksShareMembership(track, entry.originalTrack) ||
+          tracksShareMembership(track, entry.resolvedTrack),
+      );
+      const source = resolution?.jobMetadata || resolution?.resolvedTrack || track;
+      for (const job of matchingJobsForTrack(track, jobs)) {
+        if (updatedJobIds.has(job.id)) continue;
+        const patch = mergeMissingMetadata(job, source, {
+          includeJobFields: true,
         });
-      }
-
-      // updateStaticPlaylist already busts cache, but bust again for the full enrichment context
-      import("./unifiedSearchService.js").then(({ clearSearchContextCache }) => clearSearchContextCache()).catch(() => {});
-
-      const jobs = downloadTracker.getByPlaylistType(safePlaylistId);
-      let jobsUpdated = 0;
-      const updatedJobIds = new Set();
-      for (const track of nextTracks) {
-        const resolution = resolutions.find(
-          (entry) =>
-            tracksShareMembership(track, entry.originalTrack) ||
-            tracksShareMembership(track, entry.resolvedTrack),
-        );
-        const source = resolution?.jobMetadata || resolution?.resolvedTrack || track;
-        for (const job of matchingJobsForTrack(track, jobs)) {
-          if (updatedJobIds.has(job.id)) continue;
-          const patch = mergeMissingMetadata(job, source, {
-            includeJobFields: true,
-          });
-          if (!hasPatch(patch)) continue;
-          if (downloadTracker.updateMetadata(job.id, patch)) {
-            jobsUpdated += 1;
-            updatedJobIds.add(job.id);
-          }
+        if (!hasPatch(patch)) continue;
+        if (downloadTracker.updateMetadata(job.id, patch)) {
+          jobsUpdated += 1;
+          updatedJobIds.add(job.id);
         }
       }
+    }
 
-      if (playlistTracksUpdated > 0 || jobsUpdated > 0) {
-        playlistManager.updateConfig();
-        playlistManager.scheduleScanLibrary();
-      }
+    if (playlistTracksUpdated > 0 || jobsUpdated > 0) {
+      playlistManager.updateConfig();
+      playlistManager.scheduleScanLibrary();
+    }
 
-      return {
-        missing: false,
-        changed: playlistTracksUpdated > 0 || jobsUpdated > 0,
-        playlistId: safePlaylistId,
-        playlist: updatedPlaylist,
-        tracksExamined,
-        tracksResolved,
-        playlistTracksUpdated,
-        jobsUpdated,
-      };
-    },
-  );
+    return {
+      missing: false,
+      changed: playlistTracksUpdated > 0 || jobsUpdated > 0,
+      playlistId: safePlaylistId,
+      playlist: updatedPlaylist,
+      tracksExamined,
+      tracksResolved,
+      playlistTracksUpdated,
+      jobsUpdated,
+    };
+  });
 }

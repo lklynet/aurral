@@ -6,9 +6,7 @@ import { canAccessPlaylistType } from "./utils.js";
 export function registerArtworkServe(router) {
   router.get("/artwork/:playlistId", async (req, res) => {
     if (!verifyTokenAuth(req)) {
-      return res
-        .status(401)
-        .json({ error: "Unauthorized", message: "Authentication required" });
+      return res.status(401).json({ error: "Unauthorized", message: "Authentication required" });
     }
     if (req.user && !hasPermission(req.user, "accessFlow")) {
       return res

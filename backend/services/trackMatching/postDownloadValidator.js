@@ -110,11 +110,13 @@ export function downloadedFileEvidence(filePath, parsed, { album = null } = {}) 
 // evidence that gets validated — never the values Aurral is about to write.
 export function buildActualFileCandidate(parsed, filePath, source, preDownloadCandidate = null) {
   const common = parsed?.common || {};
-  const artists = [...new Set(
-    [common.artist, ...(Array.isArray(common.artists) ? common.artists : []), common.albumartist]
-      .map((entry) => readTagText(entry))
-      .filter(Boolean),
-  )];
+  const artists = [
+    ...new Set(
+      [common.artist, ...(Array.isArray(common.artists) ? common.artists : []), common.albumartist]
+        .map((entry) => readTagText(entry))
+        .filter(Boolean),
+    ),
+  ];
   const fileName = getFileName(filePath);
   const baseName = getFileBaseName(fileName);
   const trackNumber =
@@ -151,16 +153,25 @@ export function buildActualFileCandidate(parsed, filePath, source, preDownloadCa
     path: filePath,
     quality: {
       format:
-        readTagText(common.format) ||
-        String(parsed?.format?.container || "").toLowerCase() ||
-        null,
-      bitrate: Number(parsed?.format?.bitrate) > 0 ? Math.round(Number(parsed.format.bitrate)) : null,
-      bitDepth: Number(parsed?.format?.bitsPerSample) > 0 ? Math.round(Number(parsed.format.bitsPerSample)) : null,
-      sampleRate: Number(parsed?.format?.sampleRate) > 0 ? Math.round(Number(parsed.format.sampleRate)) : null,
+        readTagText(common.format) || String(parsed?.format?.container || "").toLowerCase() || null,
+      bitrate:
+        Number(parsed?.format?.bitrate) > 0 ? Math.round(Number(parsed.format.bitrate)) : null,
+      bitDepth:
+        Number(parsed?.format?.bitsPerSample) > 0
+          ? Math.round(Number(parsed.format.bitsPerSample))
+          : null,
+      sampleRate:
+        Number(parsed?.format?.sampleRate) > 0
+          ? Math.round(Number(parsed.format.sampleRate))
+          : null,
     },
     provider: {
       id: preDownloadCandidate?.provider?.id || null,
-      uploader: preDownloadCandidate?.provider?.uploader || preDownloadCandidate?.raw?.channel || preDownloadCandidate?.raw?.uploader || null,
+      uploader:
+        preDownloadCandidate?.provider?.uploader ||
+        preDownloadCandidate?.raw?.channel ||
+        preDownloadCandidate?.raw?.uploader ||
+        null,
     },
     raw: preDownloadCandidate?.raw || {},
   };
@@ -172,22 +183,33 @@ function joinPhrases(phrases) {
     : phrases[0];
 }
 
-function describeReviewReason({ verification, titleAgrees, artists, actualDurationMs, requestedDurationMs, maxDurationGapMs }) {
+function describeReviewReason({
+  verification,
+  titleAgrees,
+  artists,
+  actualDurationMs,
+  requestedDurationMs,
+  maxDurationGapMs,
+}) {
   const issues = [];
   const gap = verification.durationGapMs;
   if (gap == null) {
     issues.push("has no comparable length");
   } else if (gap > maxDurationGapMs) {
     const seconds = (Math.ceil(gap / 100) / 10).toFixed(1);
-    issues.push(`is ${seconds}s ${actualDurationMs > requestedDurationMs ? "longer" : "shorter"} than the requested track`);
+    issues.push(
+      `is ${seconds}s ${actualDurationMs > requestedDurationMs ? "longer" : "shorter"} than the requested track`,
+    );
   }
   if (!verification.evidence.includes("title") || !titleAgrees) {
     issues.push("has a title that only partly matches the requested track");
   }
   if (!verification.evidence.includes("artist")) {
-    issues.push(artists.length
-      ? "has an artist tag that only partly matches the requested artist"
-      : "has no artist tag");
+    issues.push(
+      artists.length
+        ? "has an artist tag that only partly matches the requested artist"
+        : "has no artist tag",
+    );
   }
   return `downloaded file ${joinPhrases(issues)}`;
 }
@@ -283,111 +305,165 @@ export async function validateDownloadedTrackFile({
   const listedTitle = parseListingTitle(actual.filename).title;
   // "Artist [Album] 08 - Title" names more than the artist before the title,
   // so the last part counts when it is closer to the requested title.
-  const filenameTitle = parseFilenameArtistTitle(listedTitle,
-    [trackRequest.artistName, ...(trackRequest.artistAliases || [])].filter(Boolean)).title
-    || [listedTitle, claimedTitle(listedTitle)].filter(Boolean).reduce((kept, option) =>
-      titleSimilarity(trackRequest.trackName, option) > titleSimilarity(trackRequest.trackName, kept) ? option : kept);
-  const hasYtdlpIdFilename = source === "ytdlp"
-    && getFileBaseName(actual.filename) === readTagText(actual.provider.id);
-  const requestedArtists = [trackRequest.artistName, ...(trackRequest.artistAliases || [])].filter(Boolean);
+  const filenameTitle =
+    parseFilenameArtistTitle(
+      listedTitle,
+      [trackRequest.artistName, ...(trackRequest.artistAliases || [])].filter(Boolean),
+    ).title ||
+    [listedTitle, claimedTitle(listedTitle)]
+      .filter(Boolean)
+      .reduce((kept, option) =>
+        titleSimilarity(trackRequest.trackName, option) >
+        titleSimilarity(trackRequest.trackName, kept)
+          ? option
+          : kept,
+      );
+  const hasYtdlpIdFilename =
+    source === "ytdlp" && getFileBaseName(actual.filename) === readTagText(actual.provider.id);
+  const requestedArtists = [trackRequest.artistName, ...(trackRequest.artistAliases || [])].filter(
+    Boolean,
+  );
   // A YouTube Music song is tagged with its own track, artists, and album, so
   // its tags are read as any other file's.
-  const youtube = source === "ytdlp" && actual.raw?.song !== true
-    ? readYoutubeFile({
-      tagTitle: actual.title,
-      tagArtists: actual.artists,
-      videoTitle: actual.raw?.title,
-      channel: actual.provider.uploader,
-    }, requestedArtists, trackRequest.trackName)
-    : null;
+  const youtube =
+    source === "ytdlp" && actual.raw?.song !== true
+      ? readYoutubeFile(
+          {
+            tagTitle: actual.title,
+            tagArtists: actual.artists,
+            videoTitle: actual.raw?.title,
+            channel: actual.provider.uploader,
+          },
+          requestedArtists,
+          trackRequest.trackName,
+        )
+      : null;
   const importedRelease = options.albumImport === true ? options.release : null;
-  const verification = verifyDownloadedRecording(recordingRequest(trackRequest, importedRelease), {
-    title: youtube ? youtube.title : actual.title,
-    versionTitle: youtube?.versionTitle,
-    fileNameTitle: !hasYtdlpIdFilename && (
-      /\s[-–—]\s|\b(?:live|remix|karaoke|instrumental|acoustic|demo|edit|cover|nightcore)\b/iu.test(actual.filename)
-      || /(?!\p{Script=Latin})\p{L}/u.test(`${trackRequest.trackName} ${filenameTitle}`))
-      ? filenameTitle : null,
-    artists: youtube ? youtube.artists : actual.artists,
-    durationMs: actualDurationMs,
-    recordingMbid: actual.recordingMbid,
-    album: actual.album,
-    path: actual.path,
-    filename: hasYtdlpIdFilename ? null : actual.filename,
-    trackNumber: actual.trackNumber,
-    discNumber: actual.discNumber,
-  }, options.release ? { ...MATCH_POLICY, maxDurationGapMs: MATCH_POLICY.selectedDurationGapMs } : MATCH_POLICY);
-  const hasOriginalIdentityTags = Boolean(readTagText(parsed?.common?.title)
-    || readTagText(parsed?.common?.artist));
+  const verification = verifyDownloadedRecording(
+    recordingRequest(trackRequest, importedRelease),
+    {
+      title: youtube ? youtube.title : actual.title,
+      versionTitle: youtube?.versionTitle,
+      fileNameTitle:
+        !hasYtdlpIdFilename &&
+        (/\s[-–—]\s|\b(?:live|remix|karaoke|instrumental|acoustic|demo|edit|cover|nightcore)\b/iu.test(
+          actual.filename,
+        ) ||
+          /(?!\p{Script=Latin})\p{L}/u.test(`${trackRequest.trackName} ${filenameTitle}`))
+          ? filenameTitle
+          : null,
+      artists: youtube ? youtube.artists : actual.artists,
+      durationMs: actualDurationMs,
+      recordingMbid: actual.recordingMbid,
+      album: actual.album,
+      path: actual.path,
+      filename: hasYtdlpIdFilename ? null : actual.filename,
+      trackNumber: actual.trackNumber,
+      discNumber: actual.discNumber,
+    },
+    options.release
+      ? { ...MATCH_POLICY, maxDurationGapMs: MATCH_POLICY.selectedDurationGapMs }
+      : MATCH_POLICY,
+  );
+  const hasOriginalIdentityTags = Boolean(
+    readTagText(parsed?.common?.title) || readTagText(parsed?.common?.artist),
+  );
   const contradictions = verification.contradictions.map((entry) => {
     if (entry === "recording-mbid") return "recording-mbid-conflict";
     if (entry === "variant" || entry === "filename-variant") {
-      const namedVariant = ["karaoke", "live", "remix", "acoustic", "instrumental", "demo", "edit", "cover", "nightcore"]
-        .find((name) => new RegExp(`\\b${name}\\b`, "iu").test(`${actual.title} ${actual.filename}`));
+      const namedVariant = [
+        "karaoke",
+        "live",
+        "remix",
+        "acoustic",
+        "instrumental",
+        "demo",
+        "edit",
+        "cover",
+        "nightcore",
+      ].find((name) =>
+        new RegExp(`\\b${name}\\b`, "iu").test(`${actual.title} ${actual.filename}`),
+      );
       return namedVariant || entry;
     }
     return entry;
   });
-  const durationOnlyConflict = hasOriginalIdentityTags
-    && verification.contradictions.length === 1
-    && verification.contradictions[0] === "duration"
-    && verification.durationGapMs <= REVIEW_MAX_DURATION_GAP_MS
-    && verification.evidence.includes("title")
-    && verification.evidence.includes("artist");
-  const tagsConfirmIdentity = Boolean(readTagText(parsed?.common?.title))
-    && verification.evidence.includes("title")
-    && verification.evidence.includes("artist");
+  const durationOnlyConflict =
+    hasOriginalIdentityTags &&
+    verification.contradictions.length === 1 &&
+    verification.contradictions[0] === "duration" &&
+    verification.durationGapMs <= REVIEW_MAX_DURATION_GAP_MS &&
+    verification.evidence.includes("title") &&
+    verification.evidence.includes("artist");
+  const tagsConfirmIdentity =
+    Boolean(readTagText(parsed?.common?.title)) &&
+    verification.evidence.includes("title") &&
+    verification.evidence.includes("artist");
   // Editions of one recording differ by a few seconds of mastering, fade, or
   // silence, so an exact title and artist allow the matcher's full duration
   // window, as Lidarr does. A YouTube upload needs to be the artist's own
   // audio upload too: re-uploads are often re-timed. A YouTube Music song on
   // another album may be another mix or a live take of the same title.
-  const releaseAudio = youtube ? youtube.officialAudio
-    : source !== "ytdlp" || isRequestedYoutubeAlbum(trackRequest, actual.album || actual.raw?.album);
+  const releaseAudio = youtube
+    ? youtube.officialAudio
+    : source !== "ytdlp" ||
+      isRequestedYoutubeAlbum(trackRequest, actual.album || actual.raw?.album);
   const exactIdentity = tagsConfirmIdentity && verification.titleSimilarity === 1 && releaseAudio;
   const maxDurationGapMs = options.release
     ? MATCH_POLICY.selectedDurationGapMs
     : exactIdentity
-    ? MATCH_POLICY.maxDurationGapMs
-    : strict && !tagsConfirmIdentity
-      ? STRICT_DURATION_GAP_MS
-      : MATCH_POLICY.selectedDurationGapMs;
-  const durationUncertain = verification.durationGapMs != null
-    && verification.durationGapMs > maxDurationGapMs && !verification.evidence.includes("recording-mbid");
+      ? MATCH_POLICY.maxDurationGapMs
+      : strict && !tagsConfirmIdentity
+        ? STRICT_DURATION_GAP_MS
+        : MATCH_POLICY.selectedDurationGapMs;
+  const durationUncertain =
+    verification.durationGapMs != null &&
+    verification.durationGapMs > maxDurationGapMs &&
+    !verification.evidence.includes("recording-mbid");
   // Uploaders add words such as "Concept" or "Reworked" that no version rule
   // knows, so a YouTube title must match exactly.
   const titleAgrees = source !== "ytdlp" || verification.titleSimilarity === 1;
-  const matched = titleAgrees && (verification.decision === "matched"
-    || (exactIdentity && verification.contradictions.length === 0 && verification.durationGapMs != null));
-  const reviewable = durationOnlyConflict
-    || (verification.decision !== "no_match" && hasOriginalIdentityTags);
+  const matched =
+    titleAgrees &&
+    (verification.decision === "matched" ||
+      (exactIdentity &&
+        verification.contradictions.length === 0 &&
+        verification.durationGapMs != null));
+  const reviewable =
+    durationOnlyConflict || (verification.decision !== "no_match" && hasOriginalIdentityTags);
   // The Library already has a copy, so an automatic upgrade that is not
   // verified is dropped instead of asking anyone to review it.
-  const automaticUpgrade = Boolean(trackRequest.upgradeForJobId) && !trackRequest.manualReplacementSearch;
-  const decision = matched && !durationUncertain
-    ? POST_DOWNLOAD_DECISIONS.VERIFIED
-    : reviewable && !automaticUpgrade
-      ? POST_DOWNLOAD_DECISIONS.AMBIGUOUS
-      : POST_DOWNLOAD_DECISIONS.CONFLICTED;
-  const reviewReason = decision !== POST_DOWNLOAD_DECISIONS.VERIFIED && reviewable
-    ? describeReviewReason({
-      verification,
-      titleAgrees,
-      artists: youtube ? youtube.artists : actual.artists,
-      actualDurationMs,
-      requestedDurationMs: trackRequest.durationMs,
-      maxDurationGapMs,
-    })
-    : null;
-  const reason = decision === POST_DOWNLOAD_DECISIONS.VERIFIED
-    ? null
-    : reviewReason
-      ? reviewReason
-      : contradictions.length
-        ? `downloaded file contradicts the requested recording: ${contradictions.join(", ")}`
-        : "downloaded file has no original identity tags";
+  const automaticUpgrade =
+    Boolean(trackRequest.upgradeForJobId) && !trackRequest.manualReplacementSearch;
+  const decision =
+    matched && !durationUncertain
+      ? POST_DOWNLOAD_DECISIONS.VERIFIED
+      : reviewable && !automaticUpgrade
+        ? POST_DOWNLOAD_DECISIONS.AMBIGUOUS
+        : POST_DOWNLOAD_DECISIONS.CONFLICTED;
+  const reviewReason =
+    decision !== POST_DOWNLOAD_DECISIONS.VERIFIED && reviewable
+      ? describeReviewReason({
+          verification,
+          titleAgrees,
+          artists: youtube ? youtube.artists : actual.artists,
+          actualDurationMs,
+          requestedDurationMs: trackRequest.durationMs,
+          maxDurationGapMs,
+        })
+      : null;
+  const reason =
+    decision === POST_DOWNLOAD_DECISIONS.VERIFIED
+      ? null
+      : reviewReason
+        ? reviewReason
+        : contradictions.length
+          ? `downloaded file contradicts the requested recording: ${contradictions.join(", ")}`
+          : "downloaded file has no original identity tags";
   logger.debug("matcher", "post-download validation", {
-    source, stage: "post-download", decision,
+    source,
+    stage: "post-download",
+    decision,
     durationDiffMs: verification.durationGapMs,
     policyVersion: verification.policyVersion,
   });
@@ -443,18 +519,22 @@ export async function selectVerifiedDownloadedFile({
   }
 
   const { release, ...fileOptions } = options;
-  const releaseIndex = release && options.manualSelection !== true ? manifestIndexFor(release, trackRequest) : null;
+  const releaseIndex =
+    release && options.manualSelection !== true ? manifestIndexFor(release, trackRequest) : null;
   let pool = parsedFiles;
   let poolOptions = fileOptions;
   if (releaseIndex != null && parsedFiles.length > 0) {
     const verdict = judgeRelease(release, {
-      files: parsedFiles.map(({ filePath, parsed }) => downloadedFileEvidence(filePath, parsed, { album: release.title })),
+      files: parsedFiles.map(({ filePath, parsed }) =>
+        downloadedFileEvidence(filePath, parsed, { album: release.title }),
+      ),
     });
     const copies = verdict.copiesForTrack[releaseIndex];
     const placed = new Set(verdict.assignment.pairs.map((pair) => pair.fileIndex));
-    pool = copies.length > 0
-      ? copies.map((index) => parsedFiles[index])
-      : parsedFiles.filter((_, index) => !placed.has(index));
+    pool =
+      copies.length > 0
+        ? copies.map((index) => parsedFiles[index])
+        : parsedFiles.filter((_, index) => !placed.has(index));
     poolOptions = options;
   }
 
@@ -473,10 +553,12 @@ export async function selectVerifiedDownloadedFile({
           expectedTrackNumber > 0 && actualTrackNumber === expectedTrackNumber;
         return { entry, index, titleScore, trackNumberMatches };
       })
-      .sort((left, right) =>
-        right.titleScore - left.titleScore ||
-        Number(right.trackNumberMatches) - Number(left.trackNumberMatches) ||
-        left.index - right.index)[0];
+      .sort(
+        (left, right) =>
+          right.titleScore - left.titleScore ||
+          Number(right.trackNumberMatches) - Number(left.trackNumberMatches) ||
+          left.index - right.index,
+      )[0];
     if (selected?.entry && selected.titleScore >= MANUAL_RELEASE_FILE_TITLE_THRESHOLD) {
       const validation = await validateDownloadedTrackFile({
         request: trackRequest,
@@ -527,7 +609,8 @@ export async function selectVerifiedDownloadedFile({
     const better =
       !best ||
       rank < best.rank ||
-      (rank === best.rank && (validation.distance ?? Infinity) < (best.validation.distance ?? Infinity));
+      (rank === best.rank &&
+        (validation.distance ?? Infinity) < (best.validation.distance ?? Infinity));
     if (better) best = { filePath, validation, rank };
   }
   if (!best) return { filePath: null, validation: strongestRejected };

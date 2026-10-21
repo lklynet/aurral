@@ -25,7 +25,11 @@ const releaseKind = (release) =>
   [...(release.secondaryTypes || []), release.type].filter(Boolean).join(" ") || "Release";
 
 const releaseMeta = (release) =>
-  [releaseKind(release), String(release.releaseDate || "").slice(0, 4), release.existing ? "Missing tracks" : null]
+  [
+    releaseKind(release),
+    String(release.releaseDate || "").slice(0, 4),
+    release.existing ? "Missing tracks" : null,
+  ]
     .filter(Boolean)
     .join(" · ");
 
@@ -43,7 +47,8 @@ function MonitoringPreview({ mbid, artistName, request }) {
   const pending = debounced !== request;
   const preview = useQuery({
     queryKey: [...queryKeys.artistMonitoring(mbid), "preview", debounced],
-    queryFn: ({ signal }) => previewArtistMonitoring(mbid, { monitoring: debounced, artistName }, { signal }),
+    queryFn: ({ signal }) =>
+      previewArtistMonitoring(mbid, { monitoring: debounced, artistName }, { signal }),
     placeholderData: keepPreviousData,
     retry: false,
     staleTime: 30_000,
@@ -53,18 +58,31 @@ function MonitoringPreview({ mbid, artistName, request }) {
   const releases = plan?.releases || [];
   const topTracks = plan?.topTracks || [];
   const skipped = [
-    ...(plan?.skipped || []).map((entry) => ({ title: entry.title, reason: RELEASE_SKIP_REASONS[entry.reason] })),
-    ...(plan?.skippedTracks || []).map((entry) => ({ title: entry.title, reason: TRACK_SKIP_REASONS[entry.reason] })),
+    ...(plan?.skipped || []).map((entry) => ({
+      title: entry.title,
+      reason: RELEASE_SKIP_REASONS[entry.reason],
+    })),
+    ...(plan?.skippedTracks || []).map((entry) => ({
+      title: entry.title,
+      reason: TRACK_SKIP_REASONS[entry.reason],
+    })),
   ];
   const downloads = describeDownloadCount({ releases: releases.length, tracks: topTracks.length });
   const later = rules?.newReleases ? " New releases download when they come out." : "";
 
   return (
-    <section className="monitoring-preview" aria-live="polite" aria-busy={pending || preview.isFetching}>
+    <section
+      className="monitoring-preview"
+      aria-live="polite"
+      aria-busy={pending || preview.isFetching}
+    >
       <h4 className="monitoring-preview__title">What Aurral downloads</h4>
       {preview.isError && !pending ? (
         <p className="monitoring-preview__status monitoring-preview__status--error" role="alert">
-          {describeAurralMonitoringError(preview.error, "Could not check this artist's releases. Try again.")}
+          {describeAurralMonitoringError(
+            preview.error,
+            "Could not check this artist's releases. Try again.",
+          )}
         </p>
       ) : !plan ? (
         <p className="monitoring-preview__status">
@@ -77,7 +95,9 @@ function MonitoringPreview({ mbid, artistName, request }) {
             {downloads ? `Downloads ${downloads}.${later}` : `Nothing to download now.${later}`}
             {pending || preview.isFetching ? " Updating…" : ""}
           </p>
-          {plan.topTracksError ? <p className="monitoring-preview__summary">{plan.topTracksError}</p> : null}
+          {plan.topTracksError ? (
+            <p className="monitoring-preview__summary">{plan.topTracksError}</p>
+          ) : null}
           {releases.length ? (
             <ul className="monitoring-preview__list">
               {releases.map((release) => (
@@ -95,7 +115,9 @@ function MonitoringPreview({ mbid, artistName, request }) {
                 {topTracks.map((track) => (
                   <li key={track.title} className="monitoring-preview__item">
                     <span className="monitoring-preview__item-title">{track.title}</span>
-                    {track.albumName ? <span className="monitoring-preview__item-meta">{track.albumName}</span> : null}
+                    {track.albumName ? (
+                      <span className="monitoring-preview__item-meta">{track.albumName}</span>
+                    ) : null}
                   </li>
                 ))}
               </ul>
@@ -108,7 +130,9 @@ function MonitoringPreview({ mbid, artistName, request }) {
                 {skipped.map((entry, index) => (
                   <li key={`${entry.title}:${index}`} className="monitoring-preview__item">
                     <span className="monitoring-preview__item-title">{entry.title}</span>
-                    <span className="monitoring-preview__item-meta">{entry.reason || "Skipped"}</span>
+                    <span className="monitoring-preview__item-meta">
+                      {entry.reason || "Skipped"}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -130,10 +154,14 @@ function MonitoringExclusions({ mbid, onError }) {
     onSuccess: () =>
       Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.monitoringExclusionsPrefix }),
-        queryClient.invalidateQueries({ queryKey: [...queryKeys.artistMonitoring(mbid), "preview"] }),
+        queryClient.invalidateQueries({
+          queryKey: [...queryKeys.artistMonitoring(mbid), "preview"],
+        }),
       ]),
     onError: (error, exclusion) =>
-      onError(`Could not allow ${exclusion.title} again. Nothing changed. ${describeAurralMonitoringError(error, "Try again.")}`),
+      onError(
+        `Could not allow ${exclusion.title} again. Nothing changed. ${describeAurralMonitoringError(error, "Try again.")}`,
+      ),
   });
   const exclusions = Array.isArray(exclusionsQuery.data) ? exclusionsQuery.data : [];
   if (exclusionsQuery.isError) {
@@ -166,7 +194,10 @@ function MonitoringExclusions({ mbid, onError }) {
           <li key={exclusion.id} className="monitoring-preview__item monitoring-exclusions__item">
             <span className="monitoring-preview__item-title">
               {exclusion.title}
-              <span className="monitoring-preview__item-meta"> · {exclusion.kind === "album" ? "Release" : "Track"}</span>
+              <span className="monitoring-preview__item-meta">
+                {" "}
+                · {exclusion.kind === "album" ? "Release" : "Track"}
+              </span>
             </span>
             <button
               type="button"
@@ -174,7 +205,9 @@ function MonitoringExclusions({ mbid, onError }) {
               disabled={allow.isPending}
               onClick={() => allow.mutate(exclusion)}
             >
-              {allow.isPending && allow.variables?.id === exclusion.id ? <DotLoader size="sm" label={null} /> : null}
+              {allow.isPending && allow.variables?.id === exclusion.id ? (
+                <DotLoader size="sm" label={null} />
+              ) : null}
               Allow again
             </button>
           </li>
@@ -186,16 +219,21 @@ function MonitoringExclusions({ mbid, onError }) {
 
 function RulesDialog({ mbid, artistName, state, saving, onClose, onSave, onError }) {
   const titleId = useId();
-  const { dialogRef, handleBackdropClick } = useModalDialog({ open: true, onClose, closeDisabled: saving });
+  const { dialogRef, handleBackdropClick } = useModalDialog({
+    open: true,
+    onClose,
+    closeDisabled: saving,
+  });
   const monitored = state?.monitored === true;
   const [useDefault, setUseDefault] = useState(!monitored || state?.useDefault !== false);
   const [customRules, setCustomRules] = useState(
     () => (monitored && state?.useDefault === false && state.rules) || state?.defaultRules,
   );
   const request = useMemo(
-    () => (useDefault
-      ? { monitored: true, useDefault: true }
-      : { monitored: true, useDefault: false, rules: customRules }),
+    () =>
+      useDefault
+        ? { monitored: true, useDefault: true }
+        : { monitored: true, useDefault: false, rules: customRules },
     [customRules, useDefault],
   );
   const shownRules = useDefault ? state?.defaultRules : customRules;
@@ -212,7 +250,9 @@ function RulesDialog({ mbid, artistName, state, saving, onClose, onSave, onError
       >
         <div className="artist-modal__header">
           <div>
-            <h3 id={titleId} className="artist-modal__title">Monitoring rules</h3>
+            <h3 id={titleId} className="artist-modal__title">
+              Monitoring rules
+            </h3>
             <p className="artist-modal__subcopy">{artistName}</p>
           </div>
         </div>
@@ -232,7 +272,11 @@ function RulesDialog({ mbid, artistName, state, saving, onClose, onSave, onError
             />
           </div>
           {shownRules ? (
-            <MonitoringRulesFields rules={shownRules} onChange={setCustomRules} disabled={useDefault || saving} />
+            <MonitoringRulesFields
+              rules={shownRules}
+              onChange={setCustomRules}
+              disabled={useDefault || saving}
+            />
           ) : null}
           <MonitoringPreview mbid={mbid} artistName={artistName} request={request} />
           <MonitoringExclusions mbid={mbid} onError={onError} />
@@ -241,7 +285,12 @@ function RulesDialog({ mbid, artistName, state, saving, onClose, onSave, onError
           <button type="button" className="btn btn-secondary" onClick={onClose} disabled={saving}>
             Cancel
           </button>
-          <button type="button" className="btn btn-primary" onClick={() => onSave(request)} disabled={saving}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => onSave(request)}
+            disabled={saving}
+          >
             {saving ? <DotLoader size="sm" label={null} /> : null}
             {monitored ? "Save rules" : "Monitor artist"}
           </button>

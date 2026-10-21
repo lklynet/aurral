@@ -5,8 +5,9 @@ import { matchesActivitySearch } from "./activityListUtils";
 export default function ActivityAlbumRow({ request, filterValue, ...actions }) {
   const [expanded, setExpanded] = useState(false);
   const tracksId = useId();
-  const hasTrackMatch = Boolean(filterValue.trim())
-    && request.children.some((child) => matchesActivitySearch(child, filterValue));
+  const hasTrackMatch =
+    Boolean(filterValue.trim()) &&
+    request.children.some((child) => matchesActivitySearch(child, filterValue));
 
   useEffect(() => {
     if (hasTrackMatch) setExpanded(true);
@@ -22,7 +23,12 @@ export default function ActivityAlbumRow({ request, filterValue, ...actions }) {
         tracksId={tracksId}
       />
       {expanded ? (
-        <div id={tracksId} className="activity-album__tracks" role="group" aria-label="Album tracks">
+        <div
+          id={tracksId}
+          className="activity-album__tracks"
+          role="group"
+          aria-label="Album tracks"
+        >
           {request.albumGrab.fallbackReason ? (
             <p className="activity-album__notice">{request.albumGrab.fallbackReason}</p>
           ) : null}

@@ -8,8 +8,7 @@ const getTypeName = (item) => {
   if (typeof item === "string") return item;
   if (typeof item.name === "string") return item.name;
   if (typeof item.value === "string") return item.value;
-  if (typeof item.albumType?.name === "string")
-    return item.albumType.name;
+  if (typeof item.albumType?.name === "string") return item.albumType.name;
   return "";
 };
 
@@ -58,161 +57,153 @@ export async function applyLidarrCommunityGuide(lidarrClient) {
   }
 
   const customFormats = [
-      {
-        name: "Preferred Groups",
-        includeCustomFormatWhenRenaming: false,
-        specifications: [
-          {
-            name: "DeVOiD",
-            implementation: "ReleaseGroupSpecification",
-            negate: false,
-            required: false,
-            fields: [{ name: "value", value: "\\bDeVOiD\\b" }],
-          },
-          {
-            name: "PERFECT",
-            implementation: "ReleaseGroupSpecification",
-            negate: false,
-            required: false,
-            fields: [{ name: "value", value: "\\bPERFECT\\b" }],
-          },
-          {
-            name: "ENRiCH",
-            implementation: "ReleaseGroupSpecification",
-            negate: false,
-            required: false,
-            fields: [{ name: "value", value: "\\bENRiCH\\b" }],
-          },
-        ],
-      },
-      {
-        name: "CD",
-        includeCustomFormatWhenRenaming: false,
-        specifications: [
-          {
-            name: "CD",
-            implementation: "ReleaseTitleSpecification",
-            negate: false,
-            required: false,
-            fields: [{ name: "value", value: "\\bCD\\b" }],
-          },
-        ],
-      },
-      {
-        name: "WEB",
-        includeCustomFormatWhenRenaming: false,
-        specifications: [
-          {
-            name: "WEB",
-            implementation: "ReleaseTitleSpecification",
-            negate: false,
-            required: false,
-            fields: [{ name: "value", value: "\\bWEB\\b" }],
-          },
-        ],
-      },
-      {
-        name: "Lossless",
-        includeCustomFormatWhenRenaming: false,
-        specifications: [
-          {
-            name: "Flac",
-            implementation: "ReleaseTitleSpecification",
-            negate: false,
-            required: false,
-            fields: [{ name: "value", value: "\\blossless\\b" }],
-          },
-        ],
-      },
-      {
-        name: "Vinyl",
-        includeCustomFormatWhenRenaming: false,
-        specifications: [
-          {
-            name: "Vinyl",
-            implementation: "ReleaseTitleSpecification",
-            negate: false,
-            required: false,
-            fields: [{ name: "value", value: "\\bVinyl\\b" }],
-          },
-        ],
-      },
-    ];
-
-    const existingFormats = await lidarrClient.getCustomFormats();
-    for (const format of customFormats) {
-      const existing = existingFormats.find((f) => f.name === format.name);
-      if (!existing) {
-        try {
-          const created = await lidarrClient.createCustomFormat(format);
-          results.customFormats.push(created);
-        } catch (err) {
-          results.errors.push(
-            `Failed to create custom format "${format.name}": ${err.message}`,
-          );
-        }
-      } else {
-        results.customFormats.push(existing);
-      }
-    }
-
-    if (results.errors.length > 0) {
-      throw new Error(`Failed to apply custom formats: ${results.errors.join(" ")}`);
-    }
-
-    const releaseProfilePayload = {
-      name: "Aurral - Single Track Rip Filter",
-      enabled: true,
-      required: [],
-      ignored: ["CUE", "FLAC/CUE"],
-      preferred: [],
-      tags: [],
-    };
-
-    const existingReleaseProfiles = await lidarrClient.getReleaseProfiles();
-    const normalizeReleaseName = (value) =>
-      String(value || "")
-        .trim()
-        .toLowerCase();
-    const hasIgnoredMatch = (profile, value) =>
-      Array.isArray(profile?.ignored) &&
-      profile.ignored
-        .map((item) => String(item || "").toLowerCase())
-        .includes(String(value || "").toLowerCase());
-    const existingReleaseProfile = existingReleaseProfiles.find((profile) => {
-      if (!profile) return false;
-      if (
-        normalizeReleaseName(profile.name) ===
-        normalizeReleaseName(releaseProfilePayload.name)
-      ) {
-        return true;
-      }
-      return (
-        hasIgnoredMatch(profile, "CUE") &&
-        hasIgnoredMatch(profile, "FLAC/CUE")
-      );
-    });
-
-    if (existingReleaseProfile) {
-      const updatedReleaseProfile = await lidarrClient.updateReleaseProfile(
-        existingReleaseProfile.id,
+    {
+      name: "Preferred Groups",
+      includeCustomFormatWhenRenaming: false,
+      specifications: [
         {
-          ...releaseProfilePayload,
-          id: existingReleaseProfile.id,
+          name: "DeVOiD",
+          implementation: "ReleaseGroupSpecification",
+          negate: false,
+          required: false,
+          fields: [{ name: "value", value: "\\bDeVOiD\\b" }],
         },
-      );
-      results.releaseProfile = {
-        id: updatedReleaseProfile.id,
-        name: updatedReleaseProfile.name,
-        updated: true,
-      };
+        {
+          name: "PERFECT",
+          implementation: "ReleaseGroupSpecification",
+          negate: false,
+          required: false,
+          fields: [{ name: "value", value: "\\bPERFECT\\b" }],
+        },
+        {
+          name: "ENRiCH",
+          implementation: "ReleaseGroupSpecification",
+          negate: false,
+          required: false,
+          fields: [{ name: "value", value: "\\bENRiCH\\b" }],
+        },
+      ],
+    },
+    {
+      name: "CD",
+      includeCustomFormatWhenRenaming: false,
+      specifications: [
+        {
+          name: "CD",
+          implementation: "ReleaseTitleSpecification",
+          negate: false,
+          required: false,
+          fields: [{ name: "value", value: "\\bCD\\b" }],
+        },
+      ],
+    },
+    {
+      name: "WEB",
+      includeCustomFormatWhenRenaming: false,
+      specifications: [
+        {
+          name: "WEB",
+          implementation: "ReleaseTitleSpecification",
+          negate: false,
+          required: false,
+          fields: [{ name: "value", value: "\\bWEB\\b" }],
+        },
+      ],
+    },
+    {
+      name: "Lossless",
+      includeCustomFormatWhenRenaming: false,
+      specifications: [
+        {
+          name: "Flac",
+          implementation: "ReleaseTitleSpecification",
+          negate: false,
+          required: false,
+          fields: [{ name: "value", value: "\\blossless\\b" }],
+        },
+      ],
+    },
+    {
+      name: "Vinyl",
+      includeCustomFormatWhenRenaming: false,
+      specifications: [
+        {
+          name: "Vinyl",
+          implementation: "ReleaseTitleSpecification",
+          negate: false,
+          required: false,
+          fields: [{ name: "value", value: "\\bVinyl\\b" }],
+        },
+      ],
+    },
+  ];
+
+  const existingFormats = await lidarrClient.getCustomFormats();
+  for (const format of customFormats) {
+    const existing = existingFormats.find((f) => f.name === format.name);
+    if (!existing) {
+      try {
+        const created = await lidarrClient.createCustomFormat(format);
+        results.customFormats.push(created);
+      } catch (err) {
+        results.errors.push(`Failed to create custom format "${format.name}": ${err.message}`);
+      }
     } else {
-      const createdReleaseProfile = await lidarrClient.createReleaseProfile(releaseProfilePayload);
-      results.releaseProfile = {
-        id: createdReleaseProfile.id,
-        name: createdReleaseProfile.name,
-      };
+      results.customFormats.push(existing);
     }
+  }
+
+  if (results.errors.length > 0) {
+    throw new Error(`Failed to apply custom formats: ${results.errors.join(" ")}`);
+  }
+
+  const releaseProfilePayload = {
+    name: "Aurral - Single Track Rip Filter",
+    enabled: true,
+    required: [],
+    ignored: ["CUE", "FLAC/CUE"],
+    preferred: [],
+    tags: [],
+  };
+
+  const existingReleaseProfiles = await lidarrClient.getReleaseProfiles();
+  const normalizeReleaseName = (value) =>
+    String(value || "")
+      .trim()
+      .toLowerCase();
+  const hasIgnoredMatch = (profile, value) =>
+    Array.isArray(profile?.ignored) &&
+    profile.ignored
+      .map((item) => String(item || "").toLowerCase())
+      .includes(String(value || "").toLowerCase());
+  const existingReleaseProfile = existingReleaseProfiles.find((profile) => {
+    if (!profile) return false;
+    if (normalizeReleaseName(profile.name) === normalizeReleaseName(releaseProfilePayload.name)) {
+      return true;
+    }
+    return hasIgnoredMatch(profile, "CUE") && hasIgnoredMatch(profile, "FLAC/CUE");
+  });
+
+  if (existingReleaseProfile) {
+    const updatedReleaseProfile = await lidarrClient.updateReleaseProfile(
+      existingReleaseProfile.id,
+      {
+        ...releaseProfilePayload,
+        id: existingReleaseProfile.id,
+      },
+    );
+    results.releaseProfile = {
+      id: updatedReleaseProfile.id,
+      name: updatedReleaseProfile.name,
+      updated: true,
+    };
+  } else {
+    const createdReleaseProfile = await lidarrClient.createReleaseProfile(releaseProfilePayload);
+    results.releaseProfile = {
+      id: createdReleaseProfile.id,
+      name: createdReleaseProfile.name,
+    };
+  }
 
   const metadataProfiles = await lidarrClient.getMetadataProfiles();
   const aurralMetadataProfile = metadataProfiles.find(

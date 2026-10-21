@@ -1,13 +1,13 @@
 import { db, dbHelpers } from "../../config/db-sqlite.js";
 
 const getDiscoveryCacheStmt = db.prepare(
-  "SELECT value, last_updated FROM discovery_cache WHERE key = ?"
+  "SELECT value, last_updated FROM discovery_cache WHERE key = ?",
 );
 const upsertDiscoveryCacheStmt = db.prepare(
-  "INSERT OR REPLACE INTO discovery_cache (key, value, last_updated) VALUES (?, ?, ?)"
+  "INSERT OR REPLACE INTO discovery_cache (key, value, last_updated) VALUES (?, ?, ?)",
 );
 const getDiscoveryCacheUpdatedAtStmt = db.prepare(
-  "SELECT last_updated FROM discovery_cache WHERE key = ?"
+  "SELECT last_updated FROM discovery_cache WHERE key = ?",
 );
 const DISCOVERY_METADATA_FIELDS = [
   "recommendationQuality",
@@ -68,17 +68,10 @@ export default function register(dbOps) {
     const recommendations = dbHelpers.parseJSON(recommendationsRow?.value);
     const globalTopRow = getDiscoveryCacheStmt.get(`${prefix}globalTop`);
     const globalTop = dbHelpers.parseJSON(globalTopRow?.value);
-    const basedOn = dbHelpers.parseJSON(
-      getDiscoveryCacheStmt.get(`${prefix}basedOn`)?.value
-    );
-    const topTags = dbHelpers.parseJSON(
-      getDiscoveryCacheStmt.get(`${prefix}topTags`)?.value
-    );
-    const topGenres = dbHelpers.parseJSON(
-      getDiscoveryCacheStmt.get(`${prefix}topGenres`)?.value
-    );
-    const provider =
-      getDiscoveryCacheStmt.get(`${prefix}provider`)?.value || null;
+    const basedOn = dbHelpers.parseJSON(getDiscoveryCacheStmt.get(`${prefix}basedOn`)?.value);
+    const topTags = dbHelpers.parseJSON(getDiscoveryCacheStmt.get(`${prefix}topTags`)?.value);
+    const topGenres = dbHelpers.parseJSON(getDiscoveryCacheStmt.get(`${prefix}topGenres`)?.value);
+    const provider = getDiscoveryCacheStmt.get(`${prefix}provider`)?.value || null;
     const lastUpdated = readLastUpdated(cacheNamespace, prefix);
 
     const result = {
@@ -114,35 +107,35 @@ export default function register(dbOps) {
         upsertDiscoveryCacheStmt.run(
           `${prefix}recommendations`,
           dbHelpers.stringifyJSON(discovery.recommendations),
-          now
+          now,
         );
       }
       if (discovery.globalTop) {
         upsertDiscoveryCacheStmt.run(
           `${prefix}globalTop`,
           dbHelpers.stringifyJSON(discovery.globalTop),
-          now
+          now,
         );
       }
       if (discovery.basedOn) {
         upsertDiscoveryCacheStmt.run(
           `${prefix}basedOn`,
           dbHelpers.stringifyJSON(discovery.basedOn),
-          now
+          now,
         );
       }
       if (discovery.topTags) {
         upsertDiscoveryCacheStmt.run(
           `${prefix}topTags`,
           dbHelpers.stringifyJSON(discovery.topTags),
-          now
+          now,
         );
       }
       if (discovery.topGenres) {
         upsertDiscoveryCacheStmt.run(
           `${prefix}topGenres`,
           dbHelpers.stringifyJSON(discovery.topGenres),
-          now
+          now,
         );
       }
       if (discovery.provider) {
@@ -155,9 +148,7 @@ export default function register(dbOps) {
         );
       if (hasMetadataUpdate) {
         const existingMetadata =
-          dbHelpers.parseJSON(
-            getDiscoveryCacheStmt.get(`${prefix}metadata`)?.value,
-          ) || {};
+          dbHelpers.parseJSON(getDiscoveryCacheStmt.get(`${prefix}metadata`)?.value) || {};
         const nextMetadata = {
           ...existingMetadata,
           ...(discovery.metadata && typeof discovery.metadata === "object"
@@ -190,8 +181,6 @@ export default function register(dbOps) {
     for (const namespace of discoveryUserCache.keys()) {
       if (`${namespace}:`.startsWith(prefix)) discoveryUserCache.delete(namespace);
     }
-    return db.prepare("DELETE FROM discovery_cache WHERE key LIKE ?").run(
-      `${prefix}%`
-    );
+    return db.prepare("DELETE FROM discovery_cache WHERE key LIKE ?").run(`${prefix}%`);
   };
 }

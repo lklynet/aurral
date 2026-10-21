@@ -1,9 +1,5 @@
 import { dbOps } from "../db/helpers/index.js";
-import {
-  normalizeBaseUrl,
-  normalizeInteger,
-  sanitizeNzbName,
-} from "./usenetClientCommon.js";
+import { normalizeBaseUrl, normalizeInteger, sanitizeNzbName } from "./usenetClientCommon.js";
 import axios from "../../lib/axiosFetch.js";
 import { removeNzbgetDownloadFolder } from "./nzbgetCleanup.js";
 
@@ -158,9 +154,7 @@ export class NzbgetClient {
   getStatus() {
     const settings = this._getSettings();
     const cached =
-      connectionCache.settingsKey === getSettingsKey(settings)
-        ? connectionCache.result
-        : null;
+      connectionCache.settingsKey === getSettingsKey(settings) ? connectionCache.result : null;
     return {
       enabled: settings.enabled,
       configured: this.isConfigured(),
@@ -288,11 +282,16 @@ export class NzbgetClient {
   // each leave it to the other.
   async deleteHistoryItem(nzbId, { deleteFiles = false, historyItem = null } = {}) {
     const settings = this._getSettings();
-    if (!deleteFiles || !settings.deleteLeftovers) return this.editItem("HistoryFinalDelete", nzbId);
+    if (!deleteFiles || !settings.deleteLeftovers)
+      return this.editItem("HistoryFinalDelete", nzbId);
     const cleanup = folderCleanup.then(async () => {
       const item = historyItem || (await this.getHistoryItem(nzbId));
       if (item && !(await this.sharesDownloadFolder(item))) {
-        await removeNzbgetDownloadFolder(item, await this.getDownloadDirectories(), settings.category);
+        await removeNzbgetDownloadFolder(
+          item,
+          await this.getDownloadDirectories(),
+          settings.category,
+        );
       }
       return this.editItem("HistoryFinalDelete", nzbId);
     });
@@ -306,8 +305,10 @@ export class NzbgetClient {
     const id = normalizeInteger(item.NZBID ?? item.ID, null);
     const isOther = (entry) => normalizeInteger(entry?.NZBID ?? entry?.ID, null) !== id;
     const [queue, history] = await Promise.all([this.listGroups(), this.history(false)]);
-    return queue.some((entry) => isOther(entry) && entry.NZBName === item.NZBName)
-      || history.some((entry) => isOther(entry) && entry.DestDir === item.DestDir);
+    return (
+      queue.some((entry) => isOther(entry) && entry.NZBName === item.NZBName) ||
+      history.some((entry) => isOther(entry) && entry.DestDir === item.DestDir)
+    );
   }
 
   async editItem(command, nzbId) {
@@ -319,9 +320,11 @@ export class NzbgetClient {
   async getDownloadDirectories() {
     const settings = this._getSettings();
     const config = await this.config().catch(() => []);
-    const categoryEntry = config.find((entry) =>
-      /^Category\d+\.Name$/i.test(entry.Name || "")
-      && String(entry.Value || "").toLowerCase() === settings.category.toLowerCase());
+    const categoryEntry = config.find(
+      (entry) =>
+        /^Category\d+\.Name$/i.test(entry.Name || "") &&
+        String(entry.Value || "").toLowerCase() === settings.category.toLowerCase(),
+    );
     return {
       completedPath: settings.completedPath || "",
       categoryDestDir: categoryEntry

@@ -62,9 +62,19 @@ export function synchronizeDiscoveryCacheFromWorker(update = {}) {
     reloadDiscoveryPersistedCache();
   }
   for (const key of [
-    "recommendations", "globalTop", "basedOn", "topTags", "topGenres", "provider",
-    "lastUpdated", "recommendationQuality", "isEnriching", "discoveryRunId",
-    "enrichmentStartedAt", "enrichmentCompletedAt", "enrichmentProgressMessage",
+    "recommendations",
+    "globalTop",
+    "basedOn",
+    "topTags",
+    "topGenres",
+    "provider",
+    "lastUpdated",
+    "recommendationQuality",
+    "isEnriching",
+    "discoveryRunId",
+    "enrichmentStartedAt",
+    "enrichmentCompletedAt",
+    "enrichmentProgressMessage",
   ]) {
     if (Object.hasOwn(update, key)) discoveryCache[key] = update[key];
   }
@@ -81,7 +91,8 @@ export const getDiscoveryRefreshState = (metadata = {}, now = Date.now()) => {
     running,
     pending: requestedAt > startedAt && now - requestedAt < REFRESH_TRACKING_WINDOW_MS,
     phase: running ? metadata.refreshPhase || null : null,
-    progress: running && typeof metadata.refreshProgress === "number" ? metadata.refreshProgress : null,
+    progress:
+      running && typeof metadata.refreshProgress === "number" ? metadata.refreshProgress : null,
     message: running ? metadata.refreshMessage || null : null,
     finishedAt,
     error: metadata?.refreshError || null,
@@ -129,12 +140,7 @@ export const saveDiscoveryRefreshProgress = (namespace, phase, message, progress
   return normalizedProgress;
 };
 
-export const recordDiscoveryUpdateProgress = (
-  phase,
-  progressMessage,
-  progress,
-  extra = {},
-) => {
+export const recordDiscoveryUpdateProgress = (phase, progressMessage, progress, extra = {}) => {
   websocketService.emitDiscoveryUpdate({
     phase: phase || null,
     progress: saveDiscoveryRefreshProgress(null, phase, progressMessage, progress),

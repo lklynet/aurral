@@ -615,7 +615,10 @@ db.exec(`
 tryAddColumn("ALTER TABLE play_events ADD COLUMN album_key TEXT");
 
 db.transaction(() => {
-  const columns = db.prepare("PRAGMA table_info(play_album_stats)").all().map((column) => column.name);
+  const columns = db
+    .prepare("PRAGMA table_info(play_album_stats)")
+    .all()
+    .map((column) => column.name);
   if (!columns.includes("album_key")) {
     db.exec("DROP TRIGGER IF EXISTS play_events_album_stats_insert; DROP TABLE play_album_stats;");
   }
@@ -646,7 +649,8 @@ db.transaction(() => {
 
 const playAlbumStatsMigrationKey = "migration:play-album-stats-v2";
 db.transaction(() => {
-  const claimed = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
+  const claimed = db
+    .prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
     .run(playAlbumStatsMigrationKey, "1");
   if (claimed.changes === 0) return;
   db.exec(`
@@ -688,7 +692,8 @@ db.transaction(() => {
 
 const retiredDiscoverPlaylistsMigrationKey = "migration:retire-discover-playlists-v1";
 db.transaction(() => {
-  const claimed = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
+  const claimed = db
+    .prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
     .run(retiredDiscoverPlaylistsMigrationKey, "1");
   if (claimed.changes === 0) return;
   db.prepare("DELETE FROM discovery_cache WHERE key LIKE '%discoverPlaylists'").run();
@@ -703,7 +708,8 @@ db.transaction(() => {
 
 const perUserDiscoveryMigrationKey = "migration:per-user-discovery-v1";
 db.transaction(() => {
-  const claimed = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
+  const claimed = db
+    .prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
     .run(perUserDiscoveryMigrationKey, "1");
   if (claimed.changes === 0) return;
   db.prepare(
@@ -719,7 +725,8 @@ db.transaction(() => {
 
 const unifiedDiscoverySourceMigrationKey = "migration:unified-discovery-source-v1";
 db.transaction(() => {
-  const claimed = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
+  const claimed = db
+    .prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
     .run(unifiedDiscoverySourceMigrationKey, "1");
   if (claimed.changes === 0) return;
   db.prepare(
@@ -733,11 +740,16 @@ db.transaction(() => {
 
 const nameGuessesMigrationKey = "migration:name-guesses-v1";
 db.transaction(() => {
-  const claimed = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
+  const claimed = db
+    .prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
     .run(nameGuessesMigrationKey, "1");
   if (claimed.changes === 0) return;
-  db.prepare("DELETE FROM musicbrainz_artist_mbid_cache WHERE artist_name_key NOT LIKE 'library:%'").run();
-  db.prepare("DELETE FROM deezer_mbid_cache WHERE cache_key LIKE 'dz:%' OR cache_key LIKE 'aa:%'").run();
+  db.prepare(
+    "DELETE FROM musicbrainz_artist_mbid_cache WHERE artist_name_key NOT LIKE 'library:%'",
+  ).run();
+  db.prepare(
+    "DELETE FROM deezer_mbid_cache WHERE cache_key LIKE 'dz:%' OR cache_key LIKE 'aa:%'",
+  ).run();
 }).immediate();
 
 const releaseCalendarPrimaryKey = db
@@ -747,7 +759,9 @@ const releaseCalendarPrimaryKey = db
   .sort((left, right) => Number(left.pk) - Number(right.pk))
   .map((column) => column.name);
 
-if (JSON.stringify(releaseCalendarPrimaryKey) !== JSON.stringify(["release_group_mbid", "artist_id"])) {
+if (
+  JSON.stringify(releaseCalendarPrimaryKey) !== JSON.stringify(["release_group_mbid", "artist_id"])
+) {
   db.transaction(() => {
     db.exec(`
       CREATE TABLE library_release_calendar_v2 (
@@ -798,15 +812,18 @@ tryAddColumn("ALTER TABLE library_media_files ADD COLUMN album_id INTEGER");
 tryAddColumn("ALTER TABLE images_cache ADD COLUMN images_json TEXT");
 
 function hasUniqueIndex(columns) {
-  return db.prepare("PRAGMA index_list(library_media_files)").all().some((index) => {
-    if (!index.unique) return false;
-    const indexName = String(index.name).replaceAll('"', '""');
-    const indexColumns = db
-      .prepare(`PRAGMA index_info("${indexName}")`)
-      .all()
-      .map((column) => column.name);
-    return JSON.stringify(indexColumns) === JSON.stringify(columns);
-  });
+  return db
+    .prepare("PRAGMA index_list(library_media_files)")
+    .all()
+    .some((index) => {
+      if (!index.unique) return false;
+      const indexName = String(index.name).replaceAll('"', '""');
+      const indexColumns = db
+        .prepare(`PRAGMA index_info("${indexName}")`)
+        .all()
+        .map((column) => column.name);
+      return JSON.stringify(indexColumns) === JSON.stringify(columns);
+    });
 }
 
 if (hasUniqueIndex(["path"])) {
@@ -933,7 +950,9 @@ for (const [name, type] of [
 }
 if (!tableColumns.includes("reused_library_file")) {
   db.transaction(() => {
-    tryAddColumn("ALTER TABLE playlist_download_jobs ADD COLUMN reused_library_file INTEGER NOT NULL DEFAULT 0");
+    tryAddColumn(
+      "ALTER TABLE playlist_download_jobs ADD COLUMN reused_library_file INTEGER NOT NULL DEFAULT 0",
+    );
     db.exec(`
       UPDATE playlist_download_jobs SET reused_library_file = 1
       WHERE status = 'done' AND final_path IS NOT NULL AND (
@@ -987,7 +1006,9 @@ if (!userColumns.includes("status")) {
 if (!userColumns.includes("is_protected")) {
   db.transaction(() => {
     tryAddColumn("ALTER TABLE users ADD COLUMN is_protected INTEGER NOT NULL DEFAULT 0");
-    const integrationsRow = db.prepare("SELECT value FROM settings WHERE key = 'integrations'").get();
+    const integrationsRow = db
+      .prepare("SELECT value FROM settings WHERE key = 'integrations'")
+      .get();
     let integrations = null;
     try {
       integrations = JSON.parse(integrationsRow?.value || "null");
@@ -1080,7 +1101,8 @@ tryAddColumn("ALTER TABLE library_tracks ADD COLUMN monitored INTEGER NOT NULL D
 
 const aurralAlbumMonitoredMigrationKey = "migration:aurral-album-monitored-v1";
 db.transaction(() => {
-  const claimed = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
+  const claimed = db
+    .prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
     .run(aurralAlbumMonitoredMigrationKey, "1");
   if (claimed.changes === 0) return;
   db.exec(`
@@ -1105,7 +1127,8 @@ db.transaction(() => {
 
 const aurralTrackMonitoringMigrationKey = "migration:aurral-track-monitoring-v1";
 db.transaction(() => {
-  const claimed = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
+  const claimed = db
+    .prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
     .run(aurralTrackMonitoringMigrationKey, "1");
   if (claimed.changes === 0) return;
   const monitoredAlbumIds = `
@@ -1169,7 +1192,8 @@ db.transaction(() => {
 
 const aurralMissingMonitorModeMigrationKey = "migration:aurral-missing-monitor-mode-v1";
 db.transaction(() => {
-  const claimed = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
+  const claimed = db
+    .prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
     .run(aurralMissingMonitorModeMigrationKey, "1");
   if (claimed.changes === 0) return;
   const missingArtistIds = `
@@ -1211,10 +1235,12 @@ db.exec(`
 // its album stays monitored and the artist stops being monitored.
 const aurralMonitoringRulesMigrationKey = "migration:aurral-monitoring-rules-v1";
 db.transaction(() => {
-  const claimed = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
+  const claimed = db
+    .prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
     .run(aurralMonitoringRulesMigrationKey, "1");
   if (claimed.changes === 0) return;
-  const artists = db.prepare(`
+  const artists = db
+    .prepare(`
     SELECT management.entity_id AS id, management.monitor_mode AS mode, management.updated_at AS updatedAt,
       CASE WHEN json_valid(artist.metadata_json)
         THEN json_extract(artist.metadata_json, '$.monitorStartedAt') END AS startedAt
@@ -1224,7 +1250,8 @@ db.transaction(() => {
       AND management.managed_by = 'aurral'
       AND management.monitor_rules IS NULL
       AND COALESCE(management.monitor_mode, 'none') != 'none'
-  `).all();
+  `)
+    .all();
   const rulesFor = (catalog) => ({
     catalog,
     sinceYear: null,
@@ -1258,13 +1285,16 @@ db.transaction(() => {
     }
     // Latest took whichever release was newest at each scan, so its cutoffs
     // start now rather than when the mode was chosen.
-    const since = {
-      future: Number(artist.startedAt) || Number(artist.updatedAt) || migratedAt,
-      latest: migratedAt,
-    }[mode] ?? (Number(artist.updatedAt) || migratedAt);
-    const stored = mode === "future" || mode === "latest"
-      ? { default: false, rules: rulesFor(mode === "future" ? "none" : "latest") }
-      : { default: true };
+    const since =
+      {
+        future: Number(artist.startedAt) || Number(artist.updatedAt) || migratedAt,
+        latest: migratedAt,
+      }[mode] ??
+      (Number(artist.updatedAt) || migratedAt);
+    const stored =
+      mode === "future" || mode === "latest"
+        ? { default: false, rules: rulesFor(mode === "future" ? "none" : "latest") }
+        : { default: true };
     setRules.run(JSON.stringify({ ...stored, catalogAt: since, newSince: since }), artist.id);
   }
 }).immediate();
@@ -1311,7 +1341,9 @@ const existingDownloadFolder = db
   .get("downloadFolderPath");
 syncDownloadFolderPath(existingDownloadFolder?.value || null);
 
-const databaseRevisionStmt = db.prepare("SELECT data_version, total_changes() AS changes FROM pragma_data_version");
+const databaseRevisionStmt = db.prepare(
+  "SELECT data_version, total_changes() AS changes FROM pragma_data_version",
+);
 
 export function getDatabaseRevision() {
   const { data_version, changes } = databaseRevisionStmt.get();

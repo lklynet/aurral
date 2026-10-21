@@ -1,7 +1,11 @@
 import { createHash } from "node:crypto";
 import { websocketService } from "../websocketService.js";
 import { logger } from "../logger.js";
-import { clearPlaylistStatusCache, getPlaylistStatusSnapshot, getPlaylistStatusVersion } from "./playlistStatusSnapshot.js";
+import {
+  clearPlaylistStatusCache,
+  getPlaylistStatusSnapshot,
+  getPlaylistStatusVersion,
+} from "./playlistStatusSnapshot.js";
 
 export function startPlaylistStatusBroadcasts({ websocket = websocketService, log = logger } = {}) {
   let interval = null;
@@ -24,9 +28,12 @@ export function startPlaylistStatusBroadcasts({ websocket = websocketService, lo
       if (!force && version === lastVersion) return;
       const payloadByAudience = new Map();
       const buildPayload = (channel) => (client) => {
-        const cacheKey = client?.user?.role === "admin"
-          ? "admin"
-          : client?.user?.id != null ? `user:${client.user.id}` : `anon:${client?.id || "unknown"}`;
+        const cacheKey =
+          client?.user?.role === "admin"
+            ? "admin"
+            : client?.user?.id != null
+              ? `user:${client.user.id}`
+              : `anon:${client?.id || "unknown"}`;
         let cached = payloadByAudience.get(cacheKey);
         if (!cached) {
           const status = getPlaylistStatusSnapshot({ user: client?.user || null });

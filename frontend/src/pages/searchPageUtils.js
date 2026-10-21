@@ -22,8 +22,7 @@ export const UNIFIED_FILTER_OPTIONS = [
 
 export function isAlbumCompilation(album) {
   return (
-    album?.primaryType === "Compilation" ||
-    (album?.secondaryTypes || []).includes("Compilation")
+    album?.primaryType === "Compilation" || (album?.secondaryTypes || []).includes("Compilation")
   );
 }
 

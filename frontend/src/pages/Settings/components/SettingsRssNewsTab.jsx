@@ -27,16 +27,19 @@ export function SettingsRssNewsTab({ settings, updateSettings, handleSaveSetting
   const news = settings.integrations?.news || { enabled: true, feeds: [], groups: {} };
   const feeds = Array.isArray(news.feeds) ? news.feeds : [];
 
-  const updateNews = (patch) => updateSettings({
-    ...settings,
-    integrations: { ...settings.integrations, news: { ...news, ...patch } },
-  });
+  const updateNews = (patch) =>
+    updateSettings({
+      ...settings,
+      integrations: { ...settings.integrations, news: { ...news, ...patch } },
+    });
 
-  const updateFeed = (index, patch) => updateNews({
-    feeds: feeds.map((feed, feedIndex) => feedIndex === index ? { ...feed, ...patch } : feed),
-  });
+  const updateFeed = (index, patch) =>
+    updateNews({
+      feeds: feeds.map((feed, feedIndex) => (feedIndex === index ? { ...feed, ...patch } : feed)),
+    });
 
-  const removeFeed = (index) => updateNews({ feeds: feeds.filter((_, feedIndex) => feedIndex !== index) });
+  const removeFeed = (index) =>
+    updateNews({ feeds: feeds.filter((_, feedIndex) => feedIndex !== index) });
 
   const saveFeed = () => {
     const name = String(feedEditor?.draft?.name || "").trim();
@@ -50,9 +53,10 @@ export function SettingsRssNewsTab({ settings, updateSettings, handleSaveSetting
     }
     const nextFeed = { ...feedEditor.draft, name, url };
     updateNews({
-      feeds: feedEditor.index === null
-        ? [...feeds, nextFeed]
-        : feeds.map((feed, index) => index === feedEditor.index ? nextFeed : feed),
+      feeds:
+        feedEditor.index === null
+          ? [...feeds, nextFeed]
+          : feeds.map((feed, index) => (index === feedEditor.index ? nextFeed : feed)),
     });
     setFeedEditor(null);
     setFeedError("");
@@ -60,14 +64,17 @@ export function SettingsRssNewsTab({ settings, updateSettings, handleSaveSetting
 
   const addFeed = () => {
     setFeedError("");
-    setFeedEditor({ index: null, draft: {
-      id: `custom-${Date.now()}`,
-      name: "",
-      url: "",
-      group: "custom",
-      enabled: false,
-      builtIn: false,
-    } });
+    setFeedEditor({
+      index: null,
+      draft: {
+        id: `custom-${Date.now()}`,
+        name: "",
+        url: "",
+        group: "custom",
+        enabled: false,
+        builtIn: false,
+      },
+    });
   };
 
   const editFeed = (index) => {
@@ -89,16 +96,30 @@ export function SettingsRssNewsTab({ settings, updateSettings, handleSaveSetting
         </div>
       )}
       <div className="settings-news-feed__actions">
-        <PillToggle checked={feed.enabled !== false} onChange={(event) => updateFeed(index, { enabled: event.target.checked })} aria-label={`Enable ${feed.name || "RSS feed"}`} />
+        <PillToggle
+          checked={feed.enabled !== false}
+          onChange={(event) => updateFeed(index, { enabled: event.target.checked })}
+          aria-label={`Enable ${feed.name || "RSS feed"}`}
+        />
         {!feed.builtIn ? (
           <>
             <Tooltip content={`Edit ${feed.name}`}>
-              <button type="button" className="arr-btn arr-btn--ghost arr-btn--icon" onClick={() => editFeed(index)} aria-label={`Edit ${feed.name}`} >
+              <button
+                type="button"
+                className="arr-btn arr-btn--ghost arr-btn--icon"
+                onClick={() => editFeed(index)}
+                aria-label={`Edit ${feed.name}`}
+              >
                 <Pencil className="artist-icon-xs" aria-hidden />
               </button>
             </Tooltip>
             <Tooltip content={`Delete ${feed.name}`}>
-              <button type="button" className="arr-btn arr-btn--danger arr-btn--icon" onClick={() => removeFeed(index)} aria-label={`Delete ${feed.name}`} >
+              <button
+                type="button"
+                className="arr-btn arr-btn--danger arr-btn--icon"
+                onClick={() => removeFeed(index)}
+                aria-label={`Delete ${feed.name}`}
+              >
                 <Trash2 className="artist-icon-xs" aria-hidden />
               </button>
             </Tooltip>
@@ -113,7 +134,11 @@ export function SettingsRssNewsTab({ settings, updateSettings, handleSaveSetting
       <form onSubmit={handleSaveSettings} className="arr-form" autoComplete="off">
         <SettingsArrFieldSet legend="RSS news">
           <SettingsArrFormGroup label="Enable RSS news" labelFor="enable-rss-news">
-            <PillToggle id="enable-rss-news" checked={news.enabled !== false} onChange={(event) => updateNews({ enabled: event.target.checked })} />
+            <PillToggle
+              id="enable-rss-news"
+              checked={news.enabled !== false}
+              onChange={(event) => updateNews({ enabled: event.target.checked })}
+            />
           </SettingsArrFormGroup>
         </SettingsArrFieldSet>
 
@@ -127,7 +152,7 @@ export function SettingsRssNewsTab({ settings, updateSettings, handleSaveSetting
         >
           <div className="settings-news-feeds settings-news-feeds--page">
             {feeds.some((feed) => feed.group === "custom") ? (
-              feeds.map((feed, index) => feed.group === "custom" ? renderFeed(feed, index) : null)
+              feeds.map((feed, index) => (feed.group === "custom" ? renderFeed(feed, index) : null))
             ) : (
               <p className="arr-form-help">No custom feeds yet.</p>
             )}
@@ -135,41 +160,92 @@ export function SettingsRssNewsTab({ settings, updateSettings, handleSaveSetting
         </SettingsArrFieldSet>
 
         <div className="settings-news-categories">
-            {GROUPS.map(([id, label]) => {
-              const categoryEnabled = news.groups?.[id] !== false;
-              const categoryFeeds = feeds
-                .map((feed, index) => ({ feed, index }))
-                .filter(({ feed }) => feed.group === id);
-              return (
-                <section className={`settings-news-category${categoryEnabled ? "" : " is-disabled"}`} key={id}>
-                  <div className="settings-news-category__header">
-                    <div>
-                      <h3>{label}</h3>
-                    </div>
-                    <PillToggle checked={categoryEnabled} onChange={(event) => updateNews({ groups: { ...news.groups, [id]: event.target.checked } })} aria-label={`Enable ${label}`} />
+          {GROUPS.map(([id, label]) => {
+            const categoryEnabled = news.groups?.[id] !== false;
+            const categoryFeeds = feeds
+              .map((feed, index) => ({ feed, index }))
+              .filter(({ feed }) => feed.group === id);
+            return (
+              <section
+                className={`settings-news-category${categoryEnabled ? "" : " is-disabled"}`}
+                key={id}
+              >
+                <div className="settings-news-category__header">
+                  <div>
+                    <h3>{label}</h3>
                   </div>
-                  <fieldset className="settings-news-category__feeds" disabled={!categoryEnabled}>
-                    <div className="settings-news-feeds settings-news-feeds--page">
-                      {categoryFeeds.map(({ feed, index }) => renderFeed(feed, index))}
-                    </div>
-                  </fieldset>
-                </section>
-              );
-            })}
-          </div>
+                  <PillToggle
+                    checked={categoryEnabled}
+                    onChange={(event) =>
+                      updateNews({ groups: { ...news.groups, [id]: event.target.checked } })
+                    }
+                    aria-label={`Enable ${label}`}
+                  />
+                </div>
+                <fieldset className="settings-news-category__feeds" disabled={!categoryEnabled}>
+                  <div className="settings-news-feeds settings-news-feeds--page">
+                    {categoryFeeds.map(({ feed, index }) => renderFeed(feed, index))}
+                  </div>
+                </fieldset>
+              </section>
+            );
+          })}
+        </div>
       </form>
       {feedEditor ? (
         <SettingsIntegrationModal
           title={feedEditor.index === null ? "Add RSS feed" : "Edit RSS feed"}
           onClose={() => setFeedEditor(null)}
-          footerActions={<Tooltip content="Save feed"><button type="button" className="arr-btn arr-btn--primary arr-btn--icon" onClick={saveFeed} aria-label="Save feed" ><Save className="artist-icon-sm" aria-hidden /></button></Tooltip>}
+          footerActions={
+            <Tooltip content="Save feed">
+              <button
+                type="button"
+                className="arr-btn arr-btn--primary arr-btn--icon"
+                onClick={saveFeed}
+                aria-label="Save feed"
+              >
+                <Save className="artist-icon-sm" aria-hidden />
+              </button>
+            </Tooltip>
+          }
         >
           <div className="settings-modal__section-body">
-            <label className="settings-modal__label" htmlFor="rss-feed-editor-name">Feed name</label>
-            <SettingsInput id="rss-feed-editor-name" name="rss-feed-editor-name" value={feedEditor.draft.name} placeholder="Feed name" onChange={(event) => setFeedEditor({ ...feedEditor, draft: { ...feedEditor.draft, name: event.target.value } })} />
-            <label className="settings-modal__label" htmlFor="rss-feed-editor-url">Feed URL</label>
-            <SettingsInput id="rss-feed-editor-url" name="rss-feed-editor-url" type="url" value={feedEditor.draft.url} placeholder="https://example.com/feed.xml" onChange={(event) => setFeedEditor({ ...feedEditor, draft: { ...feedEditor.draft, url: event.target.value } })} />
-            {feedError ? <p className="settings-modal__hint" role="alert">{feedError}</p> : null}
+            <label className="settings-modal__label" htmlFor="rss-feed-editor-name">
+              Feed name
+            </label>
+            <SettingsInput
+              id="rss-feed-editor-name"
+              name="rss-feed-editor-name"
+              value={feedEditor.draft.name}
+              placeholder="Feed name"
+              onChange={(event) =>
+                setFeedEditor({
+                  ...feedEditor,
+                  draft: { ...feedEditor.draft, name: event.target.value },
+                })
+              }
+            />
+            <label className="settings-modal__label" htmlFor="rss-feed-editor-url">
+              Feed URL
+            </label>
+            <SettingsInput
+              id="rss-feed-editor-url"
+              name="rss-feed-editor-url"
+              type="url"
+              value={feedEditor.draft.url}
+              placeholder="https://example.com/feed.xml"
+              onChange={(event) =>
+                setFeedEditor({
+                  ...feedEditor,
+                  draft: { ...feedEditor.draft, url: event.target.value },
+                })
+              }
+            />
+            {feedError ? (
+              <p className="settings-modal__hint" role="alert">
+                {feedError}
+              </p>
+            ) : null}
           </div>
         </SettingsIntegrationModal>
       ) : null}

@@ -37,8 +37,7 @@ export function registerPreview(router) {
     if (!artistName) {
       return res.json({ tracks: [] });
     }
-    const normalized =
-      artistName.replace(/\s*\([^)]*\)\s*$/, "").trim() || artistName;
+    const normalized = artistName.replace(/\s*\([^)]*\)\s*$/, "").trim() || artistName;
     const tracks = await deezerGetArtistTopTracks(normalized);
     res.json({ tracks });
   });

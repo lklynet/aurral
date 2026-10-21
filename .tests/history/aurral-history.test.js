@@ -23,14 +23,18 @@ const {
 const { downloadTracker } = await importFromRepo(
   "backend/services/downloadJobs/downloadTracker.js",
 );
-const { upsertLibraryArtist, upsertLibraryAlbum, upsertLibraryTrack, linkLibraryAlbumTrack } = await importFromRepo("backend/services/libraryMediaStore.js");
+const { upsertLibraryArtist, upsertLibraryAlbum, upsertLibraryTrack, linkLibraryAlbumTrack } =
+  await importFromRepo("backend/services/libraryMediaStore.js");
 const { getHonkerDb } = await importFromRepo("backend/services/honkerDb.js");
 const { lidarrClient } = await importFromRepo("backend/services/lidarrClient.js");
 
 beforeEach(() => {
   resetDatabase(db);
   const transaction = getHonkerDb().transaction();
-  transaction.execute("DELETE FROM _honker_live WHERE queue IN (?, ?)", ["weekly-flow-operation", "slskd-pipeline"]);
+  transaction.execute("DELETE FROM _honker_live WHERE queue IN (?, ?)", [
+    "weekly-flow-operation",
+    "slskd-pipeline",
+  ]);
   transaction.commit();
   downloadTracker.clearAll();
 });
@@ -244,7 +248,11 @@ test("queued library track jobs appear in activity immediately", async () => {
 
 test("queued album track jobs open their album, and other library jobs open the library playlist", async () => {
   const albumMbid = "b2222222-2222-4222-8222-222222222201";
-  const artist = upsertLibraryArtist({ identityKey: "mbid:b1111111-1111-4111-8111-111111111111", mbid: "b1111111-1111-4111-8111-111111111111", name: "Artist" });
+  const artist = upsertLibraryArtist({
+    identityKey: "mbid:b1111111-1111-4111-8111-111111111111",
+    mbid: "b1111111-1111-4111-8111-111111111111",
+    name: "Artist",
+  });
   const album = upsertLibraryAlbum({
     identityKey: `release-group:${albumMbid}`,
     mbid: albumMbid,
@@ -252,20 +260,44 @@ test("queued album track jobs open their album, and other library jobs open the 
     artistId: artist.id,
     title: "Album",
   });
-  const track = upsertLibraryTrack({ identityKey: "recording:b3333333-3333-4333-8333-333333333301", mbid: "b3333333-3333-4333-8333-333333333301", title: "One", artistName: "Artist" });
+  const track = upsertLibraryTrack({
+    identityKey: "recording:b3333333-3333-4333-8333-333333333301",
+    mbid: "b3333333-3333-4333-8333-333333333301",
+    title: "One",
+    artistName: "Artist",
+  });
   linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
-  const withAlbum = downloadTracker.addJob({ artistName: "Artist", trackName: "One", albumName: "Album", albumMbid, trackMbid: "t1" }, "library");
-  const withoutAlbum = downloadTracker.addJob({ artistName: "Artist", trackName: "Two", albumName: "Loose", trackMbid: "t2" }, "library");
+  const withAlbum = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "One", albumName: "Album", albumMbid, trackMbid: "t1" },
+    "library",
+  );
+  const withoutAlbum = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Two", albumName: "Loose", trackMbid: "t2" },
+    "library",
+  );
   recordTrackJobQueued(downloadTracker.getJob(withAlbum));
   recordTrackJobQueued(downloadTracker.getJob(withoutAlbum));
 
   const entries = await getAurralHistoryRequests();
-  assert.equal(entries.find((item) => item.jobId === withAlbum)?.href, `/library/album/${album.id}`);
-  assert.equal(entries.find((item) => item.jobId === withoutAlbum)?.href, "/playlists?selected=library");
+  assert.equal(
+    entries.find((item) => item.jobId === withAlbum)?.href,
+    `/library/album/${album.id}`,
+  );
+  assert.equal(
+    entries.find((item) => item.jobId === withoutAlbum)?.href,
+    "/playlists?selected=library",
+  );
 
-  const { finalizeQualityUpgradeFailure } = await importFromRepo("backend/services/qualityProfileService.js");
-  await finalizeQualityUpgradeFailure({ id: "upgrade-of-one", upgradeForJobId: withAlbum }, "No better file");
-  const upgrade = (await getAurralHistoryRequests()).find((item) => item.jobId === "upgrade-of-one");
+  const { finalizeQualityUpgradeFailure } = await importFromRepo(
+    "backend/services/qualityProfileService.js",
+  );
+  await finalizeQualityUpgradeFailure(
+    { id: "upgrade-of-one", upgradeForJobId: withAlbum },
+    "No better file",
+  );
+  const upgrade = (await getAurralHistoryRequests()).find(
+    (item) => item.jobId === "upgrade-of-one",
+  );
   assert.equal(upgrade?.href, `/library/album/${album.id}`);
 });
 
@@ -286,14 +318,16 @@ test("pending tracker jobs without history appear in activity immediately", asyn
 });
 
 test("pending playlist imports appear in activity before the worker starts", async () => {
-  const operationId = getHonkerDb().queue("weekly-flow-operation").enqueue({
-    kind: "shared-playlist-create",
-    playlistId: "pending-playlist",
-    name: "Pending Playlist",
-    sourceName: "ListenBrainz",
-    ownerUserId: 42,
-    tracks: [{ artistName: "Artist", trackName: "Song" }],
-  });
+  const operationId = getHonkerDb()
+    .queue("weekly-flow-operation")
+    .enqueue({
+      kind: "shared-playlist-create",
+      playlistId: "pending-playlist",
+      name: "Pending Playlist",
+      sourceName: "ListenBrainz",
+      ownerUserId: 42,
+      tracks: [{ artistName: "Artist", trackName: "Song" }],
+    });
 
   const entry = (await getAurralHistoryRequests()).find(
     (item) => item.id === `aurral-playlist_import-${operationId}`,
@@ -315,7 +349,13 @@ test("getAurralHistoryRequests fails stale active download history, but not a tr
       subtitle: "Artist · Playlist",
       status: "processing",
       statusLabel: "Searching",
-      metadata: { jobId, trackName, artistName: "Artist", playlistId: "playlist-1", downloadSource: "slskd" },
+      metadata: {
+        jobId,
+        trackName,
+        artistName: "Artist",
+        playlistId: "playlist-1",
+        downloadSource: "slskd",
+      },
       createdAt: Date.now() - 20 * 60 * 1000,
     });
     downloadTracker.setDownloading(jobId);
@@ -326,11 +366,13 @@ test("getAurralHistoryRequests fails stale active download history, but not a tr
   };
   const jobId = staleDownload("Stale Song");
   const waitingId = staleDownload("Waiting Song");
-  getHonkerDb().queue("slskd-pipeline").enqueue({
-    jobId: "lead-job",
-    albumGrab: true,
-    albumGroupJobIds: ["lead-job", waitingId],
-  });
+  getHonkerDb()
+    .queue("slskd-pipeline")
+    .enqueue({
+      jobId: "lead-job",
+      albumGrab: true,
+      albumGroupJobIds: ["lead-job", waitingId],
+    });
 
   const entries = await getAurralHistoryRequests();
   const entry = entries.find((item) => item.jobId === jobId);
@@ -398,7 +440,11 @@ test("blocked track download history falls back to staging basename", async () =
     },
     "playlist-1",
   );
-  downloadTracker.setBlocked(jobId, "blocked-duration-mismatch", "/tmp/staging/downloaded-track.mp3");
+  downloadTracker.setBlocked(
+    jobId,
+    "blocked-duration-mismatch",
+    "/tmp/staging/downloaded-track.mp3",
+  );
   upsertAurralHistory({
     referenceId: jobId,
     kind: "track_download",
@@ -526,7 +572,10 @@ test("a request for an album since deleted from Lidarr leaves the activity feed"
   // lidarrClient.getAlbum resolves null when Lidarr answers 404.
   const entries = await getAurralHistoryRequests(lidarrWithAlbum(async () => null));
 
-  assert.equal(entries.find((item) => item.albumName === "Deleted Album"), undefined);
+  assert.equal(
+    entries.find((item) => item.albumName === "Deleted Album"),
+    undefined,
+  );
 });
 
 test("a request survives Lidarr being unreachable", async (t) => {
@@ -538,11 +587,16 @@ test("a request survives Lidarr being unreachable", async (t) => {
     searching: true,
   });
 
-  const entries = await getAurralHistoryRequests(lidarrWithAlbum(async () => {
-    throw new Error("connect ECONNREFUSED");
-  }));
+  const entries = await getAurralHistoryRequests(
+    lidarrWithAlbum(async () => {
+      throw new Error("connect ECONNREFUSED");
+    }),
+  );
 
-  assert.notEqual(entries.find((item) => item.albumName === "Kept Album"), undefined);
+  assert.notEqual(
+    entries.find((item) => item.albumName === "Kept Album"),
+    undefined,
+  );
 });
 
 test("Aurral album requests are not checked against Lidarr by library album ID", async () => {

@@ -46,13 +46,8 @@ const RESET_TABLES = [
   "settings",
 ];
 
-export async function createIsolatedStateDir(
-  name = "test",
-  { dataDirRelativePath = "data" } = {},
-) {
-  const baseDir = await mkdtemp(
-    join(tmpdir(), `aurral-${String(name || "test")}-`),
-  );
+export async function createIsolatedStateDir(name = "test", { dataDirRelativePath = "data" } = {}) {
+  const baseDir = await mkdtemp(join(tmpdir(), `aurral-${String(name || "test")}-`));
   const dataDir = join(baseDir, dataDirRelativePath);
   const dbPath = join(dataDir, "aurral.test.db");
   await mkdir(dataDir, { recursive: true });
@@ -75,9 +70,7 @@ export function applyIsolatedBackendEnv(paths) {
 export async function cleanupIsolatedState(paths) {
   if (!paths?.baseDir) return;
   try {
-    const honkerRuntime = await importFromRepo(
-      "backend/services/honkerWorkerRuntime.js",
-    );
+    const honkerRuntime = await importFromRepo("backend/services/honkerWorkerRuntime.js");
     await honkerRuntime.shutdownHonkerInfrastructure({ timeoutMs: 5000 });
   } catch {}
   try {
@@ -149,9 +142,7 @@ async function waitForServer(port, child) {
   let lastError = "";
   while (Date.now() < deadline) {
     if (child.exitCode != null) {
-      throw new Error(
-        `Server exited before ready${lastError ? `: ${lastError}` : ""}`,
-      );
+      throw new Error(`Server exited before ready${lastError ? `: ${lastError}` : ""}`);
     }
     try {
       if (await probeServerHealth(port)) {
@@ -166,15 +157,10 @@ async function waitForServer(port, child) {
   throw new Error(`Timed out waiting for server on port ${port}: ${lastError}`);
 }
 
-export async function startServerProcess({
-  port,
-  extraEnv = {},
-} = {}) {
+export async function startServerProcess({ port, extraEnv = {} } = {}) {
   // Keep automatic ports above Fetch's highest blocked port (10080).
   const chosenPort =
-    Number.isInteger(port) && port > 0
-      ? port
-      : 11000 + Math.floor(Math.random() * 1000);
+    Number.isInteger(port) && port > 0 ? port : 11000 + Math.floor(Math.random() * 1000);
   const child = spawn("node", ["backend/server.js"], {
     cwd: repoRoot,
     env: {

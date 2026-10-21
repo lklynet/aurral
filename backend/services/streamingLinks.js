@@ -59,7 +59,9 @@ const parsers = {
     return match && { kind: KINDS[match[1].toLowerCase()], id: match[2] };
   },
   appleMusic(url) {
-    const match = url.pathname.match(/^\/(?:([a-z]{2})\/)?(album|song|artist)\/(?:[^/]+\/)?(\d+)\/?$/i);
+    const match = url.pathname.match(
+      /^\/(?:([a-z]{2})\/)?(album|song|artist)\/(?:[^/]+\/)?(\d+)\/?$/i,
+    );
     if (!match) return null;
     const country = (match[1] || "us").toLowerCase();
     const trackId = url.searchParams.get("i");
@@ -86,7 +88,9 @@ const parsers = {
     return match && { kind: KINDS[match[1].toLowerCase()], id: match[2] };
   },
   deezer(url) {
-    const match = url.pathname.match(/^\/(?:[a-z]{2}(?:-[a-z]{2})?\/)?(album|track|artist)\/(\d+)\/?$/i);
+    const match = url.pathname.match(
+      /^\/(?:[a-z]{2}(?:-[a-z]{2})?\/)?(album|track|artist)\/(\d+)\/?$/i,
+    );
     return match && { kind: KINDS[match[1].toLowerCase()], id: match[2] };
   },
   songlink(url) {
@@ -116,7 +120,11 @@ function parseStreamingLink(value) {
   }
   const parsed = parsers[source](url);
   if (!parsed) throw unsupportedLink();
-  return { source, ...parsed, cacheKey: [source, parsed.kind || "page", parsed.id, parsed.country].filter(Boolean).join(":") };
+  return {
+    source,
+    ...parsed,
+    cacheKey: [source, parsed.kind || "page", parsed.id, parsed.country].filter(Boolean).join(":"),
+  };
 }
 
 async function fetchUpstream(source, url, { accept = "application/json", headers = {} } = {}) {
@@ -166,7 +174,10 @@ function readMetaTags(html) {
   const tags = {};
   for (const [tag] of html.matchAll(/<meta\b[^>]*>/gi)) {
     const attributes = Object.fromEntries(
-      [...tag.matchAll(/([\w:-]+)\s*=\s*"([^"]*)"/g)].map(([, name, value]) => [name.toLowerCase(), value]),
+      [...tag.matchAll(/([\w:-]+)\s*=\s*"([^"]*)"/g)].map(([, name, value]) => [
+        name.toLowerCase(),
+        value,
+      ]),
     );
     const key = attributes.property || attributes.name;
     if (key && attributes.content != null && !(key in tags)) tags[key] = clean(attributes.content);
@@ -203,13 +214,22 @@ async function lookupDeezer({ kind, id }) {
   if (body?.error) {
     if (body.error.code === DEEZER_NO_DATA_CODE) throw notFound("deezer");
     if (body.error.code === DEEZER_QUOTA_CODE) {
-      throw linkError("Deezer is rate limiting requests; try again later", 429, "LINK_SERVICE_RATE_LIMITED");
+      throw linkError(
+        "Deezer is rate limiting requests; try again later",
+        429,
+        "LINK_SERVICE_RATE_LIMITED",
+      );
     }
     throw unavailable("deezer", "returned an error");
   }
   if (kind === "artist") return { kind, artistName: clean(body?.name) };
   if (kind === "album") {
-    return { kind, artistName: clean(body?.artist?.name), albumTitle: clean(body?.title), deezerAlbumId: body?.id };
+    return {
+      kind,
+      artistName: clean(body?.artist?.name),
+      albumTitle: clean(body?.title),
+      deezerAlbumId: body?.id,
+    };
   }
   return {
     kind,
@@ -227,13 +247,19 @@ async function lookupAppleMusic({ kind, id, country }) {
   url.searchParams.set("id", id);
   url.searchParams.set("country", country);
   const body = await fetchJson("appleMusic", url);
-  const item = (Array.isArray(body?.results) ? body.results : [])
-    .find((entry) => entry?.wrapperType === APPLE_WRAPPERS[kind]);
+  const item = (Array.isArray(body?.results) ? body.results : []).find(
+    (entry) => entry?.wrapperType === APPLE_WRAPPERS[kind],
+  );
   if (!item) throw notFound("appleMusic");
   const albumTitle = clean(String(item.collectionName || "").replace(/ - (?:Single|EP)$/, ""));
   if (kind === "artist") return { kind, artistName: clean(item.artistName) };
   if (kind === "album") return { kind, artistName: clean(item.artistName), albumTitle };
-  return { kind, artistName: clean(item.artistName), trackTitle: clean(item.trackName), albumTitle };
+  return {
+    kind,
+    artistName: clean(item.artistName),
+    trackTitle: clean(item.trackName),
+    albumTitle,
+  };
 }
 
 async function lookupSonglinkPage(source, pageUrl) {
@@ -248,7 +274,9 @@ async function lookupSonglinkPage(source, pageUrl) {
   const result = {
     kind,
     artistName: clean(entity.artistName),
-    ...(kind === "album" ? { albumTitle: clean(entity.title) } : { trackTitle: clean(entity.title) }),
+    ...(kind === "album"
+      ? { albumTitle: clean(entity.title) }
+      : { trackTitle: clean(entity.title) }),
   };
   const deezerUrl = (Array.isArray(pageData.sections) ? pageData.sections : [])
     .flatMap((section) => (Array.isArray(section?.links) ? section.links : []))
@@ -269,7 +297,10 @@ async function lookupSonglinkPage(source, pageUrl) {
 
 async function lookupSpotify({ kind, id }) {
   if (kind !== "artist") {
-    return lookupSonglinkPage("spotify", `https://${kind === "album" ? "album" : "song"}.link/s/${id}`);
+    return lookupSonglinkPage(
+      "spotify",
+      `https://${kind === "album" ? "album" : "song"}.link/s/${id}`,
+    );
   }
   const url = new URL("https://open.spotify.com/oembed");
   url.searchParams.set("url", `https://open.spotify.com/artist/${id}`);
@@ -279,7 +310,9 @@ async function lookupSpotify({ kind, id }) {
 
 async function lookupTidal({ kind, id }) {
   const pageUrl = `https://tidal.com/${kind}/${id}`;
-  const item = readJsonLd(await fetchHtml("tidal", pageUrl)).find((entry) => entry?.["@id"] === pageUrl);
+  const item = readJsonLd(await fetchHtml("tidal", pageUrl)).find(
+    (entry) => entry?.["@id"] === pageUrl,
+  );
   if (!item) throw notFound("tidal");
   const artistName = kind === "artist" ? clean(item.name) : clean(item.byArtist?.[0]?.name);
   if (kind === "artist") return { kind, artistName };
@@ -293,7 +326,8 @@ async function lookupYoutubeMusic({ kind, path }) {
   if (!title) throw notFound("youtubeMusic");
   const description = tags["og:description"] || "";
   if (kind === "artist") return { kind, artistName: title };
-  if (kind === "album") return { kind, artistName: clean(description.split(" • ")[1]), albumTitle: title };
+  if (kind === "album")
+    return { kind, artistName: clean(description.split(" • ")[1]), albumTitle: title };
   return { kind, artistName: clean(description), trackTitle: title };
 }
 
@@ -339,9 +373,10 @@ export async function resolveStreamingLink(value) {
     kind,
     artist: { name: artistName, mbid: artistMbid },
     album: kind !== "artist" && albumTitle ? { title: albumTitle, mbid: albumMbid } : null,
-    track: kind === "track"
-      ? { title: trackTitle, mbid: await matchTrackMbid(albumMbid, trackTitle) }
-      : null,
+    track:
+      kind === "track"
+        ? { title: trackTitle, mbid: await matchTrackMbid(albumMbid, trackTitle) }
+        : null,
     source: link.source,
   };
 }

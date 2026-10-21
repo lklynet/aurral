@@ -30,7 +30,12 @@ const {
 const completeOnboarding = () => dbOps.updateSettings({ onboardingComplete: true });
 
 const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
-const googleKey = { ...publicKey.export({ format: "jwk" }), kid: "google-test-key", use: "sig", alg: "RS256" };
+const googleKey = {
+  ...publicKey.export({ format: "jwk" }),
+  kid: "google-test-key",
+  use: "sig",
+  alg: "RS256",
+};
 
 const createIdToken = (issuer, nonce, claimOverrides = {}) => {
   const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -242,7 +247,11 @@ test("linking a Google identity already claimed by another user is rejected with
   }
 
   const identity = userIdentityOps.findByProvider("google", "google", "google-subject");
-  assert.equal(identity.userId, userA.id, "the conflicting link attempt must not steal the identity");
+  assert.equal(
+    identity.userId,
+    userA.id,
+    "the conflicting link attempt must not steal the identity",
+  );
 });
 
 test("a suspended user cannot log in via a linked Google identity", async () => {

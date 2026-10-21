@@ -2,9 +2,7 @@ import { db, dbHelpers } from "../../config/db-sqlite.js";
 
 const SETTINGS_KEY = "navidromePlaylistPointers";
 const getSettingStmt = db.prepare("SELECT value FROM settings WHERE key = ?");
-const upsertSettingStmt = db.prepare(
-  "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
-);
+const upsertSettingStmt = db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)");
 
 const readStore = () => {
   const parsed = dbHelpers.parseJSON(getSettingStmt.get(SETTINGS_KEY)?.value);
@@ -33,10 +31,12 @@ export const navidromePlaylistPointerStore = {
   },
 
   getPointersForEntity(entityId) {
-    return Object.entries(readStore()[entityId] || {}).map(([targetKey, raw]) => {
-      const pointer = normalizePointer(raw);
-      return pointer ? { targetKey, ...pointer } : null;
-    }).filter(Boolean);
+    return Object.entries(readStore()[entityId] || {})
+      .map(([targetKey, raw]) => {
+        const pointer = normalizePointer(raw);
+        return pointer ? { targetKey, ...pointer } : null;
+      })
+      .filter(Boolean);
   },
 
   getPointer(entityId, targetKey) {

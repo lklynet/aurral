@@ -80,7 +80,9 @@ test("bootstrap reports the same API contract before and after sign-in", async (
   assert.ok(Number.isSafeInteger(signedOut.api?.version));
   assert.ok(signedOut.api.version > 0);
   assert.ok(Array.isArray(signedOut.api.features));
-  assert.ok(signedOut.api.features.every((feature) => typeof feature === "string" && feature.length > 0));
+  assert.ok(
+    signedOut.api.features.every((feature) => typeof feature === "string" && feature.length > 0),
+  );
   assert.equal(new Set(signedOut.api.features).size, signedOut.api.features.length);
   assert.equal(signedOut.user, undefined);
   const signedIn = await bootstrapAsUser();

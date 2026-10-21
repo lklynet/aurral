@@ -19,7 +19,13 @@ const sameSections = (current, next) =>
       section.description === next[index].description,
   );
 
-export default function SectionRail({ containerRef, sectionSelector, titleSelector, descriptionSelector, label }) {
+export default function SectionRail({
+  containerRef,
+  sectionSelector,
+  titleSelector,
+  descriptionSelector,
+  label,
+}) {
   const [sections, setSections] = useState([]);
   const [activeIndex, setActiveIndex] = useState(0);
   const [hoveredIndex, setHoveredIndex] = useState(null);
@@ -31,7 +37,8 @@ export default function SectionRail({ containerRef, sectionSelector, titleSelect
     if (!container) return undefined;
     const scrollParent = findScrollParent(container);
     const measure = () => {
-      const gutter = container.getBoundingClientRect().left - scrollParent.getBoundingClientRect().left;
+      const gutter =
+        container.getBoundingClientRect().left - scrollParent.getBoundingClientRect().left;
       setHasRoom(gutter >= RAIL_ROOM_PX);
     };
     measure();
@@ -49,7 +56,9 @@ export default function SectionRail({ containerRef, sectionSelector, titleSelect
         .map((element) => ({
           element,
           title: element.querySelector(titleSelector)?.textContent.trim() || "",
-          description: descriptionSelector ? element.querySelector(descriptionSelector)?.textContent.trim() || "" : "",
+          description: descriptionSelector
+            ? element.querySelector(descriptionSelector)?.textContent.trim() || ""
+            : "",
         }))
         .filter((section) => section.title);
       setSections((current) => (sameSections(current, found) ? current : found));
@@ -68,7 +77,9 @@ export default function SectionRail({ containerRef, sectionSelector, titleSelect
     const update = () => {
       frame = null;
       if (pinnedElementRef.current) {
-        const pinnedIndex = sections.findIndex((section) => section.element === pinnedElementRef.current);
+        const pinnedIndex = sections.findIndex(
+          (section) => section.element === pinnedElementRef.current,
+        );
         if (pinnedIndex >= 0) {
           setActiveIndex(pinnedIndex);
           return;
@@ -76,7 +87,8 @@ export default function SectionRail({ containerRef, sectionSelector, titleSelect
         pinnedElementRef.current = null;
       }
       const bounds = scrollParent.getBoundingClientRect();
-      const atBottom = scrollParent.scrollTop + scrollParent.clientHeight >= scrollParent.scrollHeight - 2;
+      const atBottom =
+        scrollParent.scrollTop + scrollParent.clientHeight >= scrollParent.scrollHeight - 2;
       if (atBottom) {
         setActiveIndex(sections.length - 1);
         return;
@@ -97,10 +109,12 @@ export default function SectionRail({ containerRef, sectionSelector, titleSelect
     const userScrollEvents = ["wheel", "touchstart", "keydown", "pointerdown"];
     update();
     scrollTarget.addEventListener("scroll", schedule, { passive: true });
-    for (const type of userScrollEvents) window.addEventListener(type, release, { passive: true, capture: true });
+    for (const type of userScrollEvents)
+      window.addEventListener(type, release, { passive: true, capture: true });
     return () => {
       scrollTarget.removeEventListener("scroll", schedule);
-      for (const type of userScrollEvents) window.removeEventListener(type, release, { capture: true });
+      for (const type of userScrollEvents)
+        window.removeEventListener(type, release, { capture: true });
       if (frame !== null) cancelAnimationFrame(frame);
     };
   }, [sections]);
@@ -111,7 +125,10 @@ export default function SectionRail({ containerRef, sectionSelector, titleSelect
     pinnedElementRef.current = sections[index].element;
     setActiveIndex(index);
     const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    sections[index].element.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+    sections[index].element.scrollIntoView({
+      behavior: reduceMotion ? "auto" : "smooth",
+      block: "start",
+    });
   };
 
   const hovered = hoveredIndex === null ? null : sections[hoveredIndex];
@@ -125,7 +142,8 @@ export default function SectionRail({ containerRef, sectionSelector, titleSelect
       >
         <ol className="section-rail__list">
           {sections.map((section, index) => {
-            const distance = hoveredIndex === null ? null : Math.min(Math.abs(index - hoveredIndex), 3);
+            const distance =
+              hoveredIndex === null ? null : Math.min(Math.abs(index - hoveredIndex), 3);
             return (
               <li key={`${index}-${section.title}`}>
                 <button
@@ -148,7 +166,9 @@ export default function SectionRail({ containerRef, sectionSelector, titleSelect
         {hovered ? (
           <div className="section-rail__card" aria-hidden="true">
             <span className="section-rail__card-title">{hovered.title}</span>
-            {hovered.description ? <span className="section-rail__card-description">{hovered.description}</span> : null}
+            {hovered.description ? (
+              <span className="section-rail__card-description">{hovered.description}</span>
+            ) : null}
           </div>
         ) : null}
       </div>

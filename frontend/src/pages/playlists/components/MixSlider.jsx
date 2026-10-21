@@ -44,9 +44,7 @@ export const SCHEDULE_HOUR_OPTIONS = Array.from({ length: 24 }, (_, hour) => {
 });
 
 const getEnabledSourceKeys = (mix) =>
-  SOURCE_MIX_OPTIONS.map((option) => option.key).filter(
-    (key) => Number(mix?.[key] || 0) > 0
-  );
+  SOURCE_MIX_OPTIONS.map((option) => option.key).filter((key) => Number(mix?.[key] || 0) > 0);
 
 const distributeEvenly = (keys, total = 100) => {
   if (!Array.isArray(keys) || keys.length === 0) return {};
@@ -69,10 +67,7 @@ const toggleSourceInMix = (mix, key, normalizeMixPercent) => {
     }
     const next = { ...normalized, [key]: 0 };
     const remainingKeys = activeKeys.filter((entry) => entry !== key);
-    const remainingTotal = remainingKeys.reduce(
-      (sum, entry) => sum + Number(next[entry] || 0),
-      0
-    );
+    const remainingTotal = remainingKeys.reduce((sum, entry) => sum + Number(next[entry] || 0), 0);
     if (remainingTotal <= 0) {
       return normalizeMixPercent(distributeEvenly(remainingKeys));
     }
@@ -91,7 +86,6 @@ const toggleSourceInMix = (mix, key, normalizeMixPercent) => {
   }
   return normalizeMixPercent(next);
 };
-
 
 export function MixSlider({
   mix,
@@ -114,8 +108,7 @@ export function MixSlider({
       const prefixStart = activeKeys
         .slice(0, handleIndex)
         .reduce((sum, key) => sum + Number(normalized[key] || 0), 0);
-      const pairTotal =
-        Number(normalized[leftKey] || 0) + Number(normalized[rightKey] || 0);
+      const pairTotal = Number(normalized[leftKey] || 0) + Number(normalized[rightKey] || 0);
       const minimumShare = Math.min(1, pairTotal / 2);
       const nextLeft = Math.min(
         Math.max(percent - prefixStart, minimumShare),
@@ -131,7 +124,7 @@ export function MixSlider({
       next[rightKey] = Math.max(0, pairTotal - nextLeft);
       onChange(normalizeMixPercent(next));
     },
-    [activeKeys, normalized, onChange, normalizeMixPercent]
+    [activeKeys, normalized, onChange, normalizeMixPercent],
   );
 
   const updateFromClientX = useCallback(
@@ -163,10 +156,7 @@ export function MixSlider({
   useEffect(() => {
     const handleMove = (event) => {
       if (!dragRef.current || dragRef.current.pointerId !== event.pointerId) return;
-      updateFromClientX(
-        event.clientX - dragRef.current.grabOffset,
-        dragRef.current.handle,
-      );
+      updateFromClientX(event.clientX - dragRef.current.grabOffset, dragRef.current.handle);
     };
     const handleUp = (event) => {
       if (!dragRef.current || dragRef.current.pointerId !== event.pointerId) return;
@@ -205,29 +195,29 @@ export function MixSlider({
     runningPosition += Number(normalized[key] || 0);
     cumulativePositions.push(runningPosition);
   }
-  const handles = cumulativePositions
-    .slice(0, -1)
-    .map((position, index) => {
-      const leftKey = activeKeys[index];
-      const rightKey = activeKeys[index + 1];
-      const leftLabel = SOURCE_MIX_OPTIONS.find((option) => option.key === leftKey)?.label || "source";
-      const rightLabel = SOURCE_MIX_OPTIONS.find((option) => option.key === rightKey)?.label || "source";
-      const prefixStart = activeKeys
-        .slice(0, index)
-        .reduce((sum, key) => sum + Number(normalized[key] || 0), 0);
-      const pairTotal = Number(normalized[leftKey] || 0) + Number(normalized[rightKey] || 0);
-      const minimumShare = Math.min(1, pairTotal / 2);
-      return {
-        key: `boundary-${index}`,
-        position,
-        visualPosition: Math.min(Math.max(position, 1.5), 98.5),
-        minimum: prefixStart + minimumShare,
-        maximum: prefixStart + pairTotal - minimumShare,
-        handleIndex: index,
-        ariaLabel: `Adjust ${leftLabel} and ${rightLabel} mix`,
-        ariaValueText: `${leftLabel} ${Math.round(Number(normalized[leftKey] || 0))}%, ${rightLabel} ${Math.round(Number(normalized[rightKey] || 0))}%`,
-      };
-    });
+  const handles = cumulativePositions.slice(0, -1).map((position, index) => {
+    const leftKey = activeKeys[index];
+    const rightKey = activeKeys[index + 1];
+    const leftLabel =
+      SOURCE_MIX_OPTIONS.find((option) => option.key === leftKey)?.label || "source";
+    const rightLabel =
+      SOURCE_MIX_OPTIONS.find((option) => option.key === rightKey)?.label || "source";
+    const prefixStart = activeKeys
+      .slice(0, index)
+      .reduce((sum, key) => sum + Number(normalized[key] || 0), 0);
+    const pairTotal = Number(normalized[leftKey] || 0) + Number(normalized[rightKey] || 0);
+    const minimumShare = Math.min(1, pairTotal / 2);
+    return {
+      key: `boundary-${index}`,
+      position,
+      visualPosition: Math.min(Math.max(position, 1.5), 98.5),
+      minimum: prefixStart + minimumShare,
+      maximum: prefixStart + pairTotal - minimumShare,
+      handleIndex: index,
+      ariaLabel: `Adjust ${leftLabel} and ${rightLabel} mix`,
+      ariaValueText: `${leftLabel} ${Math.round(Number(normalized[leftKey] || 0))}%, ${rightLabel} ${Math.round(Number(normalized[rightKey] || 0))}%`,
+    };
+  });
 
   return (
     <div className="flow-page__mix">
@@ -253,9 +243,7 @@ export function MixSlider({
             );
           })}
         </div>
-        {trailingControl ? (
-          <div className="flow-page__mix-trailing">{trailingControl}</div>
-        ) : null}
+        {trailingControl ? <div className="flow-page__mix-trailing">{trailingControl}</div> : null}
       </div>
       <div
         ref={barRef}
@@ -266,9 +254,10 @@ export function MixSlider({
           {activeKeys.map((key) => {
             const percent = Number(normalized[key] || 0);
             if (percent <= 0) return null;
-            const option =
-              SOURCE_MIX_OPTIONS.find((entry) => entry.key === key) ||
-              { key, label: key };
+            const option = SOURCE_MIX_OPTIONS.find((entry) => entry.key === key) || {
+              key,
+              label: key,
+            };
             const showLabel = percent >= labelMinPercent;
             return (
               <div
@@ -279,9 +268,7 @@ export function MixSlider({
                   "--flow-mix-color": SOURCE_MIX_COLORS[key],
                 }}
               >
-                {showLabel
-                  ? `${option.label} (${trackCounts[key] ?? 0})`
-                  : ""}
+                {showLabel ? `${option.label} (${trackCounts[key] ?? 0})` : ""}
               </div>
             );
           })}
@@ -368,7 +355,11 @@ function normalizeFocusSuggestion(entry, fallbackMeta = "") {
 function dedupeFocusSuggestions(entries, existingEntries = []) {
   const seen = new Set(
     (Array.isArray(existingEntries) ? existingEntries : [])
-      .map((entry) => String(entry || "").trim().toLowerCase())
+      .map((entry) =>
+        String(entry || "")
+          .trim()
+          .toLowerCase(),
+      )
       .filter(Boolean),
   );
   const out = [];
@@ -512,7 +503,15 @@ export function CommaTokenInput({
     }, FLOW_FOCUS_SUGGESTION_DEBOUNCE_MS);
 
     return cancelSuggest;
-  }, [closeSuggestions, committed, fetchSuggestions, isFocused, pending, scheduleSuggest, cancelSuggest]);
+  }, [
+    closeSuggestions,
+    committed,
+    fetchSuggestions,
+    isFocused,
+    pending,
+    scheduleSuggest,
+    cancelSuggest,
+  ]);
 
   return (
     <div
@@ -534,16 +533,12 @@ export function CommaTokenInput({
           onKeyDown={(event) => {
             if (event.key === "ArrowDown" && suggestions.length > 0) {
               event.preventDefault();
-              setHighlightedIndex((index) =>
-                index < suggestions.length - 1 ? index + 1 : 0,
-              );
+              setHighlightedIndex((index) => (index < suggestions.length - 1 ? index + 1 : 0));
               return;
             }
             if (event.key === "ArrowUp" && suggestions.length > 0) {
               event.preventDefault();
-              setHighlightedIndex((index) =>
-                index > 0 ? index - 1 : suggestions.length - 1,
-              );
+              setHighlightedIndex((index) => (index > 0 ? index - 1 : suggestions.length - 1));
               return;
             }
             if (event.key === "Escape") {
@@ -581,17 +576,11 @@ export function CommaTokenInput({
           {committed.length === 0 ? (
             <span className="flow-page__token-placeholder">{placeholder}</span>
           ) : null}
-          {pending ? (
-            <span className="flow-page__token-pending">{pending}</span>
-          ) : null}
+          {pending ? <span className="flow-page__token-pending">{pending}</span> : null}
         </div>
       )}
       {isFocused && (loadingSuggestions || suggestions.length > 0) ? (
-        <div
-          className="flow-page__token-suggestions"
-          role="listbox"
-          aria-label={suggestionLabel}
-        >
+        <div className="flow-page__token-suggestions" role="listbox" aria-label={suggestionLabel}>
           {loadingSuggestions && suggestions.length === 0 ? (
             <div className="flow-page__token-suggestion flow-page__token-suggestion--loading">
               <DotLoader size="sm" label={null} />
@@ -613,14 +602,10 @@ export function CommaTokenInput({
             >
               <span className="flow-page__token-suggestion-main">
                 <Search className="artist-icon-sm" />
-                <span className="flow-page__token-suggestion-label">
-                  {suggestion.label}
-                </span>
+                <span className="flow-page__token-suggestion-label">{suggestion.label}</span>
               </span>
               {suggestion.meta ? (
-                <span className="flow-page__token-suggestion-meta">
-                  {suggestion.meta}
-                </span>
+                <span className="flow-page__token-suggestion-meta">{suggestion.meta}</span>
               ) : null}
             </button>
           ))}

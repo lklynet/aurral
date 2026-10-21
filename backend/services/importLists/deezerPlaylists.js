@@ -58,7 +58,11 @@ async function deezerRequest(path, params = {}) {
     throw providerError("Deezer could not be reached", 502, "DEEZER_UNAVAILABLE");
   }
   if (response.status === 429) {
-    throw providerError("Deezer is rate limiting requests; try again later", 429, "DEEZER_RATE_LIMITED");
+    throw providerError(
+      "Deezer is rate limiting requests; try again later",
+      429,
+      "DEEZER_RATE_LIMITED",
+    );
   }
   if (!response.ok) {
     throw providerError(`Deezer request failed (${response.status})`, 502, "DEEZER_UNAVAILABLE");
@@ -72,7 +76,11 @@ async function deezerRequest(path, params = {}) {
       throw providerError("The Deezer playlist is unavailable", 404, "DEEZER_PLAYLIST_NOT_FOUND");
     }
     if (body.error.code === DEEZER_QUOTA_CODE) {
-      throw providerError("Deezer is rate limiting requests; try again later", 429, "DEEZER_RATE_LIMITED");
+      throw providerError(
+        "Deezer is rate limiting requests; try again later",
+        429,
+        "DEEZER_RATE_LIMITED",
+      );
     }
     throw providerError("Deezer returned an error", 502, "DEEZER_UNAVAILABLE");
   }
@@ -94,7 +102,13 @@ const normalizePlaylistSummary = (playlist) => {
 };
 
 const normalizeTracks = (rows) => {
-  const stats = { sourceItems: rows.length, unavailable: 0, podcast: 0, incomplete: 0, duplicate: 0 };
+  const stats = {
+    sourceItems: rows.length,
+    unavailable: 0,
+    podcast: 0,
+    incomplete: 0,
+    duplicate: 0,
+  };
   const excluded = [];
   const raw = [];
   const positions = [];
@@ -214,7 +228,9 @@ const isEditorPlaylist = (playlist) =>
   /deezer/i.test(String(playlist?.user?.name || playlist?.creator?.name || ""));
 
 export async function searchEditorialPlaylists(tag) {
-  const key = String(tag || "").trim().toLowerCase();
+  const key = String(tag || "")
+    .trim()
+    .toLowerCase();
   if (!key) return [];
   const cached = tagSearchCache.get(key);
   if (cached && cached.expiresAt > Date.now()) return cached.playlists;

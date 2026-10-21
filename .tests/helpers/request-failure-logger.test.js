@@ -28,19 +28,26 @@ test("failed API responses log method, endpoint, status and response reason with
     status: 500,
     body: { error: "Import failed", message: "Spotify request timed out" },
   });
-  assert.deepEqual(events, [["http", "Request failed", {
-    method: "POST",
-    endpoint: "/api/playlists/sync",
-    status: 500,
-    reason: "Spotify request timed out",
-  }]]);
+  assert.deepEqual(events, [
+    [
+      "http",
+      "Request failed",
+      {
+        method: "POST",
+        endpoint: "/api/playlists/sync",
+        status: 500,
+        reason: "Spotify request timed out",
+      },
+    ],
+  ]);
 });
 
 test("failed API response reasons redact credentials and file paths before logging", () => {
   const events = sendRequest({
     status: 502,
     body: {
-      message: "Provider failed at https://user:pass@example.test/api?token=url-secret " +
+      message:
+        "Provider failed at https://user:pass@example.test/api?token=url-secret " +
         "Authorization: Bearer bearer-secret clientSecret=client-secret " +
         "while reading /config/private/provider.json",
     },
@@ -54,5 +61,8 @@ test("failed API response reasons redact credentials and file paths before loggi
 
 test("routine client errors and errors already logged by Express are not duplicated", () => {
   assert.deepEqual(sendRequest({ status: 404, body: { error: "Not found" } }), []);
-  assert.deepEqual(sendRequest({ status: 500, body: { error: "Failure" }, alreadyLogged: true }), []);
+  assert.deepEqual(
+    sendRequest({ status: 500, body: { error: "Failure" }, alreadyLogged: true }),
+    [],
+  );
 });

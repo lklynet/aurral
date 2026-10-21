@@ -41,11 +41,7 @@ const { playlistOperationQueue } = operationQueueModule;
 const { downloadWorker } = workerModule;
 const { downloadTracker } = trackerModule;
 const { syncStaticPlaylistImport } = importSyncModule;
-const {
-  addEditorialPlaylistToLibrary,
-  getEditorialPlaylist,
-  getEditorialShelf,
-} = editorialModule;
+const { addEditorialPlaylistToLibrary, getEditorialPlaylist, getEditorialShelf } = editorialModule;
 
 const { synchronizeDiscoveryCacheFromWorker } = persistenceModule;
 const { buildFlowFromTemplate, listFlowTemplates } = flowTemplatesModule;
@@ -107,7 +103,12 @@ const captureEnqueues = () => {
 
 beforeEach(() => {
   resetDatabase(db);
-  dbOps.updateSettings({ integrations: {}, onboardingComplete: true, flows: [], sharedPlaylists: [] });
+  dbOps.updateSettings({
+    integrations: {},
+    onboardingComplete: true,
+    flows: [],
+    sharedPlaylists: [],
+  });
   invalidateFlowPlaylistConfigCache();
 });
 
@@ -121,12 +122,15 @@ afterAll(async () => {
 
 test("adding a Deezer playlist creates one synced library playlist with its tracks", async (t) => {
   vi.spyOn(downloadWorker, "start").mockImplementation(async () => false);
-  stubDeezer(t, rockEssentials([
-    deezerTrack("Back In Black", "AC/DC"),
-    deezerTrack("Back In Black", "AC/DC"),
-    deezerTrack("Paranoid", "Black Sabbath"),
-    { title: "", artist: { name: "Nobody" } },
-  ]));
+  stubDeezer(
+    t,
+    rockEssentials([
+      deezerTrack("Back In Black", "AC/DC"),
+      deezerTrack("Back In Black", "AC/DC"),
+      deezerTrack("Paranoid", "Black Sabbath"),
+      { title: "", artist: { name: "Nobody" } },
+    ]),
+  );
   const payloads = captureEnqueues();
 
   const added = await addEditorialPlaylistToLibrary(OWNER, "1306931615");
@@ -150,7 +154,10 @@ test("adding a Deezer playlist creates one synced library playlist with its trac
   assert.equal(again.alreadyAdded, true);
   assert.equal(again.playlistId, added.playlistId);
   assert.equal(payloads.length, 1);
-  assert.equal((await getEditorialPlaylist(OWNER, "1306931615")).libraryPlaylistId, added.playlistId);
+  assert.equal(
+    (await getEditorialPlaylist(OWNER, "1306931615")).libraryPlaylistId,
+    added.playlistId,
+  );
   assert.equal((await getEditorialPlaylist({ id: 8 }, "1306931615")).libraryPlaylistId, null);
 });
 
@@ -168,8 +175,16 @@ test("adding the same Deezer playlist twice at once queues it only once", async 
 });
 
 test("duplicate Deezer tracks keep the preview and artwork of the first entry", async (t) => {
-  const first = { ...deezerTrack("Paranoid", "Black Sabbath"), preview: "https://p/first.mp3", album: { id: 1, title: "Paranoid", cover_medium: "https://c/first.jpg" } };
-  const later = { ...deezerTrack("Paranoid", "Black Sabbath"), preview: "https://p/later.mp3", album: { id: 2, title: "Paranoid", cover_medium: "https://c/later.jpg" } };
+  const first = {
+    ...deezerTrack("Paranoid", "Black Sabbath"),
+    preview: "https://p/first.mp3",
+    album: { id: 1, title: "Paranoid", cover_medium: "https://c/first.jpg" },
+  };
+  const later = {
+    ...deezerTrack("Paranoid", "Black Sabbath"),
+    preview: "https://p/later.mp3",
+    album: { id: 2, title: "Paranoid", cover_medium: "https://c/later.jpg" },
+  };
   stubDeezer(t, rockEssentials([first, later]));
 
   const { tracks } = await getEditorialPlaylist(OWNER, "1306931615");
@@ -189,7 +204,10 @@ test("a Deezer playlist whose name is taken gets a distinct library name", async
   const added = await addEditorialPlaylistToLibrary(OWNER, "1306931615");
   await processPlaylistOperation(payloads[0]);
 
-  assert.equal(flowPlaylistConfig.getStaticPlaylist(added.playlistId)?.name, "Rock Essentials (Deezer)");
+  assert.equal(
+    flowPlaylistConfig.getStaticPlaylist(added.playlistId)?.name,
+    "Rock Essentials (Deezer)",
+  );
 });
 
 test("adding fails without creating anything when Deezer is unavailable", async (t) => {
@@ -218,7 +236,11 @@ test("syncing a Deezer library playlist follows the editor's changes", async (t)
     },
   });
 
-  const result = await syncStaticPlaylistImport({ playlistId: playlist.id, user: OWNER, force: true });
+  const result = await syncStaticPlaylistImport({
+    playlistId: playlist.id,
+    user: OWNER,
+    force: true,
+  });
 
   assert.equal(result.trackCount, 1);
   assert.deepEqual(
@@ -230,7 +252,9 @@ test("syncing a Deezer library playlist follows the editor's changes", async (t)
 test("the shelf keeps genres that loaded and lists each playlist once", async (t) => {
   stubDeezer(t, {
     "/chart/0/playlists": { body: { data: [summary(1, "80s Hits"), summary(2, "Today's Hits")] } },
-    "/chart/152/playlists": { body: { data: [summary(1, "80s Hits"), summary(3, "Rock Essentials")] } },
+    "/chart/152/playlists": {
+      body: { data: [summary(1, "80s Hits"), summary(3, "Rock Essentials")] },
+    },
     "/chart/132/playlists": { status: 500, body: {} },
   });
 
@@ -247,7 +271,10 @@ test("the shelf keeps genres that loaded and lists each playlist once", async (t
 });
 
 test("For you matches Deezer editor playlists to the user's top genres and tags", async (t) => {
-  synchronizeDiscoveryCacheFromWorker({ topGenres: ["Shoegaze"], topTags: ["shoegaze", "Post-Punk"] });
+  synchronizeDiscoveryCacheFromWorker({
+    topGenres: ["Shoegaze"],
+    topTags: ["shoegaze", "Post-Punk"],
+  });
   t.onTestFinished(() => synchronizeDiscoveryCacheFromWorker({ topGenres: [], topTags: [] }));
   const searches = [];
   stubDeezer(t, {
@@ -271,7 +298,10 @@ test("For you matches Deezer editor playlists to the user's top genres and tags"
   const { forYou, genres } = await getEditorialShelf(OWNER);
 
   assert.deepEqual(searches.sort(), ["post-punk", "shoegaze"]);
-  assert.deepEqual(forYou.map((playlist) => playlist.name), ["Shoegaze Essentials", "Dream Pop & Shoegaze"]);
+  assert.deepEqual(
+    forYou.map((playlist) => playlist.name),
+    ["Shoegaze Essentials", "Dream Pop & Shoegaze"],
+  );
   assert.ok(genres.length > 0);
 });
 
@@ -282,7 +312,9 @@ test("flow templates keep their recipe and need history for Listening History", 
   );
   assert.equal(available["release-radar"], true);
   assert.equal(available["focus-listening-history"], false);
-  await assert.rejects(buildFlowFromTemplate(OWNER, "focus-listening-history"), { statusCode: 400 });
+  await assert.rejects(buildFlowFromTemplate(OWNER, "focus-listening-history"), {
+    statusCode: 400,
+  });
   await assert.rejects(buildFlowFromTemplate(OWNER, "nope"), { statusCode: 400 });
 
   const radar = await buildFlowFromTemplate(OWNER, "release-radar");
@@ -328,7 +360,10 @@ test("retired Last.fm editorial flows keep their tracks and never run again", as
   invalidateFlowPlaylistConfigCache();
   downloadTracker.addJobs([{ artistName: "Old Artist", trackName: "Old Song" }], "metal-mayhem");
 
-  assert.deepEqual(flowPlaylistConfig.getDueForRefresh().map((flow) => flow.id), ["discover-weekly"]);
+  assert.deepEqual(
+    flowPlaylistConfig.getDueForRefresh().map((flow) => flow.id),
+    ["discover-weekly"],
+  );
 
   for (const kind of ["manual-start-flow", "enable-flow-refresh", "scheduled-flow-refresh"]) {
     await processPlaylistOperation({ kind, flowId: "metal-mayhem" });

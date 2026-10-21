@@ -90,7 +90,8 @@ function memoryStats() {
 
 function summarizeSamples(samples) {
   const values = samples.map((sample) => sample.elapsedMs).sort((a, b) => a - b);
-  const percentile = (fraction) => values[Math.min(values.length - 1, Math.ceil(values.length * fraction) - 1)];
+  const percentile = (fraction) =>
+    values[Math.min(values.length - 1, Math.ceil(values.length * fraction) - 1)];
   return {
     samples,
     minMs: values[0],
@@ -140,15 +141,22 @@ async function writeScanFixture(filePath, title) {
     return buffer;
   };
   const tags = [
-    "ARTIST=Targeted Fixture Artist", "ALBUM=Targeted Fixture Album", `TITLE=${title}`, "GENRE=Rock",
+    "ARTIST=Targeted Fixture Artist",
+    "ALBUM=Targeted Fixture Album",
+    `TITLE=${title}`,
+    "GENRE=Rock",
     "MUSICBRAINZ_ALBUMARTISTID=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
     "MUSICBRAINZ_ALBUMID=bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
     "MUSICBRAINZ_TRACKID=cccccccc-cccc-4ccc-8ccc-cccccccccccc",
   ];
-  const comments = Buffer.concat([word(0), word(tags.length), ...tags.flatMap((tag) => {
-    const buffer = Buffer.from(tag);
-    return [word(buffer.length), buffer];
-  })]);
+  const comments = Buffer.concat([
+    word(0),
+    word(tags.length),
+    ...tags.flatMap((tag) => {
+      const buffer = Buffer.from(tag);
+      return [word(buffer.length), buffer];
+    }),
+  ]);
   const streamInfo = Buffer.alloc(34);
   streamInfo.writeUInt16BE(4096, 0);
   streamInfo.writeUInt16BE(4096, 2);
@@ -157,13 +165,20 @@ async function writeScanFixture(filePath, title) {
   header[0] = 0x84;
   header.writeUIntBE(comments.length, 1, 3);
   await mkdir(path.dirname(filePath), { recursive: true });
-  await writeFile(filePath, Buffer.concat([Buffer.from("fLaC"), Buffer.from([0, 0, 0, 34]), streamInfo, header, comments]));
+  await writeFile(
+    filePath,
+    Buffer.concat([Buffer.from("fLaC"), Buffer.from([0, 0, 0, 34]), streamInfo, header, comments]),
+  );
 }
 
 function seedDatabase(database, { tracks, tracksPerAlbum, musicRoot }) {
   const albumCount = Math.ceil(tracks / tracksPerAlbum);
   const artistCount = Math.ceil(albumCount / 10);
-  const metadata = JSON.stringify({ genres: ["Rock"], tags: ["benchmark"], trackListComplete: true });
+  const metadata = JSON.stringify({
+    genres: ["Rock"],
+    tags: ["benchmark"],
+    trackListComplete: true,
+  });
   const now = Date.now();
   const insertArtist = database.prepare(
     `INSERT INTO library_artists
@@ -249,9 +264,7 @@ function seedDatabase(database, { tracks, tracksPerAlbum, musicRoot }) {
       insertFile.run(
         trackId,
         albumId,
-        `${musicRoot}/Benchmark Artist ${String(artistIndex).padStart(5, "0")}/${
-          `Benchmark Album ${String(albumIndex).padStart(6, "0")}`
-        }/${String((trackIndex % tracksPerAlbum) + 1).padStart(2, "0")}.flac`,
+        `${musicRoot}/Benchmark Artist ${String(artistIndex).padStart(5, "0")}/${`Benchmark Album ${String(albumIndex).padStart(6, "0")}`}/${String((trackIndex % tracksPerAlbum) + 1).padStart(2, "0")}.flac`,
         now,
         JSON.stringify({ format: "FLAC", bitrate: 1000 }),
         now,
@@ -274,14 +287,20 @@ function seedDatabase(database, { tracks, tracksPerAlbum, musicRoot }) {
 
 function seedSubsonicFavorite(database) {
   const now = Date.now();
-  const userId = Number(database.prepare(
-    `INSERT INTO users (username, password_hash, role, permissions)
+  const userId = Number(
+    database
+      .prepare(
+        `INSERT INTO users (username, password_hash, role, permissions)
      VALUES ('benchmark', 'benchmark', 'user', '{"accessFlow":true}')`,
-  ).run().lastInsertRowid);
-  database.prepare(
-    `INSERT INTO subsonic_stars (user_id, entity_kind, entity_key, created_at)
+      )
+      .run().lastInsertRowid,
+  );
+  database
+    .prepare(
+      `INSERT INTO subsonic_stars (user_id, entity_kind, entity_key, created_at)
      VALUES (?, 'song', 'benchmark:track:0', ?)`,
-  ).run(userId, now);
+    )
+    .run(userId, now);
   return { id: userId, username: "benchmark", permissions: { accessFlow: true } };
 }
 
@@ -459,29 +478,36 @@ console.log(JSON.stringify({
 
 function summarizeReadSamples(samples) {
   const completed = samples.filter((sample) => sample.status === "completed");
-  const statisticsComplete = samples.length > 0
-    && completed.length === samples.length
-    && completed.every((sample) => [
-      sample.elapsedMs,
-      sample.jsonBytes,
-      sample.rssDeltaBytes,
-      sample.heapDeltaBytes,
-    ].every(Number.isFinite));
+  const statisticsComplete =
+    samples.length > 0 &&
+    completed.length === samples.length &&
+    completed.every((sample) =>
+      [sample.elapsedMs, sample.jsonBytes, sample.rssDeltaBytes, sample.heapDeltaBytes].every(
+        Number.isFinite,
+      ),
+    );
   const values = statisticsComplete
     ? completed.map((sample) => sample.elapsedMs).sort((a, b) => a - b)
     : [];
-  const percentile = (fraction) => values[Math.min(values.length - 1, Math.ceil(values.length * fraction) - 1)];
-  const itemTotal = (sample) => Object.values(sample.counts || {})
-    .reduce((total, count) => total + (Number.isFinite(Number(count)) ? Number(count) : 0), 0);
+  const percentile = (fraction) =>
+    values[Math.min(values.length - 1, Math.ceil(values.length * fraction) - 1)];
+  const itemTotal = (sample) =>
+    Object.values(sample.counts || {}).reduce(
+      (total, count) => total + (Number.isFinite(Number(count)) ? Number(count) : 0),
+      0,
+    );
   return {
     samples,
     sampleCount: samples.length,
     completedCount: completed.length,
     statisticsComplete,
-    nonVacuous: samples.length > 0
-      && completed.length === samples.length
-      && completed.every((sample) => itemTotal(sample) > 0),
-    responseBytes: statisticsComplete ? [...new Set(completed.map((sample) => sample.jsonBytes))] : [],
+    nonVacuous:
+      samples.length > 0 &&
+      completed.length === samples.length &&
+      completed.every((sample) => itemTotal(sample) > 0),
+    responseBytes: statisticsComplete
+      ? [...new Set(completed.map((sample) => sample.jsonBytes))]
+      : [],
     medianMs: statisticsComplete ? percentile(0.5) : null,
     p95Ms: statisticsComplete ? percentile(0.95) : null,
     maxRssDeltaBytes: statisticsComplete
@@ -512,9 +538,8 @@ async function main() {
     database = imported.db;
     const queryService = await import("../backend/services/libraryQueryService.js");
     const { rebuildLibrarySearchIndex } = await import("../backend/services/librarySearchIndex.js");
-    const { flowPlaylistConfig } = await import(
-      "../backend/services/playlists/flowPlaylistConfig.js"
-    );
+    const { flowPlaylistConfig } =
+      await import("../backend/services/playlists/flowPlaylistConfig.js");
     const seedStarted = performance.now();
     const musicRoot = path.join(dataDir, "music");
     const seed = seedDatabase(database, { ...options, musicRoot });
@@ -531,17 +556,41 @@ async function main() {
       ["artists", { kind: "artists", page: 1, pageSize: 100 }],
       ["albums", { kind: "albums", page: 1, pageSize: 100, sort: "newest" }],
       ["tracks", { kind: "tracks", page: 1, pageSize: 100 }],
-      ["tracks-search", { kind: "tracks", page: 1, pageSize: 100, query: String(options.tracks - 1) }],
+      [
+        "tracks-search",
+        { kind: "tracks", page: 1, pageSize: 100, query: String(options.tracks - 1) },
+      ],
       ["genres", { kind: "genres", page: 1, pageSize: 100 }],
       ["tracks-playable", { kind: "tracks", page: 1, pageSize: 100, availableOnly: true }],
-      ["tracks-newest", { kind: "tracks", page: 1, pageSize: 100, availableOnly: true, sort: "newest" }],
-      ["tracks-by-artist", { kind: "tracks", page: 1, pageSize: 100, availableOnly: true, sort: "artist" }],
-      ["tracks-genre", { kind: "tracks", page: 1, pageSize: 100, availableOnly: true, genre: "Rock" }],
-      ["tracks-broad-search", { kind: "tracks", page: 1, pageSize: 100, availableOnly: true, query: "Benchmark" }],
-      ["tracks-short-search", { kind: "tracks", page: 1, pageSize: 100, availableOnly: true, query: "Be" }],
-      ["tracks-last-page", {
-        kind: "tracks", page: Math.ceil(options.tracks / 100), pageSize: 100, availableOnly: true,
-      }],
+      [
+        "tracks-newest",
+        { kind: "tracks", page: 1, pageSize: 100, availableOnly: true, sort: "newest" },
+      ],
+      [
+        "tracks-by-artist",
+        { kind: "tracks", page: 1, pageSize: 100, availableOnly: true, sort: "artist" },
+      ],
+      [
+        "tracks-genre",
+        { kind: "tracks", page: 1, pageSize: 100, availableOnly: true, genre: "Rock" },
+      ],
+      [
+        "tracks-broad-search",
+        { kind: "tracks", page: 1, pageSize: 100, availableOnly: true, query: "Benchmark" },
+      ],
+      [
+        "tracks-short-search",
+        { kind: "tracks", page: 1, pageSize: 100, availableOnly: true, query: "Be" },
+      ],
+      [
+        "tracks-last-page",
+        {
+          kind: "tracks",
+          page: Math.ceil(options.tracks / 100),
+          pageSize: 100,
+          availableOnly: true,
+        },
+      ],
     ];
     const pages = {};
     for (const [name, pageOptions] of pageCases) {
@@ -551,8 +600,8 @@ async function main() {
         options.repeats,
       );
     }
-    const artistProjectionCold = measure(
-      () => queryService.getLibraryArtistProjection({ page: 1, pageSize: 100 }),
+    const artistProjectionCold = measure(() =>
+      queryService.getLibraryArtistProjection({ page: 1, pageSize: 100 }),
     );
     const artistProjectionSamples = [];
     for (let index = 0; index < options.repeats; index += 1) {
@@ -571,9 +620,15 @@ async function main() {
       pageSize: 100,
     });
     const artistProjectionPlanDetails = artistProjectionPlan.map((row) => String(row.detail || ""));
-    const { getAvailableLibraryMediaPaths } = await import("../backend/services/libraryMediaStore.js");
+    const { getAvailableLibraryMediaPaths } =
+      await import("../backend/services/libraryMediaStore.js");
     const { scanConfiguredLibrary } = await import("../backend/services/libraryIndexService.js");
-    const target = path.join(musicRoot, "Targeted Fixture Artist", "Targeted Fixture Album", "track.flac");
+    const target = path.join(
+      musicRoot,
+      "Targeted Fixture Artist",
+      "Targeted Fixture Album",
+      "track.flac",
+    );
     const scanOptions = {
       musicRoot: path.join(dataDir, "downloads"),
       lidarrRoots: [musicRoot],
@@ -585,12 +640,17 @@ async function main() {
     globalThis.fetch = async () => new Response("{}", { status: 404 });
     await writeScanFixture(target, previousTitle);
     await scanConfiguredLibrary(scanOptions);
-    const fixtureAlbumId = database.prepare(
-      "SELECT album_id FROM library_media_files WHERE source = 'lidarr' AND path = ?",
-    ).get(target).album_id;
-    const searchFixture = (query) => queryService.getLibraryPage({
-      kind: "tracks", query, albumId: fixtureAlbumId, source: "lidarr", availableOnly: true,
-    }).total;
+    const fixtureAlbumId = database
+      .prepare("SELECT album_id FROM library_media_files WHERE source = 'lidarr' AND path = ?")
+      .get(target).album_id;
+    const searchFixture = (query) =>
+      queryService.getLibraryPage({
+        kind: "tracks",
+        query,
+        albumId: fixtureAlbumId,
+        source: "lidarr",
+        availableOnly: true,
+      }).total;
     const scopedPathSamples = [];
     const targetedScanSamples = [];
     for (let index = 0; index < options.repeats; index += 1) {
@@ -602,10 +662,13 @@ async function main() {
       const result = await scanConfiguredLibrary(scanOptions);
       const elapsedMs = performance.now() - scanStarted;
       targetedScanSamples.push({
-        elapsedMs, changed: result.lidarr.changed,
-        filesSeen: result.lidarr.filesSeen, filesIndexed: result.lidarr.filesIndexed,
+        elapsedMs,
+        changed: result.lidarr.changed,
+        filesSeen: result.lidarr.filesSeen,
+        filesIndexed: result.lidarr.filesIndexed,
         filesFailed: result.lidarr.filesFailed,
-        searchMatches: searchFixture(title), previousSearchMatches: searchFixture(previousTitle),
+        searchMatches: searchFixture(title),
+        previousSearchMatches: searchFixture(previousTitle),
       });
       previousTitle = title;
     }
@@ -628,17 +691,19 @@ async function main() {
     ]) {
       const samples = [];
       for (let index = 0; index < options.repeats; index += 1) {
-        samples.push(await runChild({
-          dataDir,
-          dbPath,
-          timeoutMs: options.childProbeTimeoutMs,
-          heapMb: options.childHeapMb,
-          code: boundedReadCode,
-          env: {
-            AURRAL_BENCHMARK_OPERATION: operation,
-            AURRAL_BENCHMARK_USER_ID: String(benchmarkUser.id),
-          },
-        }));
+        samples.push(
+          await runChild({
+            dataDir,
+            dbPath,
+            timeoutMs: options.childProbeTimeoutMs,
+            heapMb: options.childHeapMb,
+            code: boundedReadCode,
+            env: {
+              AURRAL_BENCHMARK_OPERATION: operation,
+              AURRAL_BENCHMARK_USER_ID: String(benchmarkUser.id),
+            },
+          }),
+        );
       }
       subsonicReads[operation] = summarizeReadSamples(samples);
     }
@@ -647,36 +712,44 @@ async function main() {
     const measuredQueryChecks = {
       nonVacuousCompletedSamples: measuredReads.every((read) => read.nonVacuous),
       coldP95Under750ms: measuredReads.every((read) => isFiniteBelow(read.p95Ms, 750)),
-      responseUnder2MiB: measuredReads.every((read) =>
-        read.responseBytes.length > 0
-        && read.responseBytes.every((bytes) => isFiniteBelow(bytes, 2 * 1024 * 1024))),
+      responseUnder2MiB: measuredReads.every(
+        (read) =>
+          read.responseBytes.length > 0 &&
+          read.responseBytes.every((bytes) => isFiniteBelow(bytes, 2 * 1024 * 1024)),
+      ),
       maxRssDeltaUnder64MiB: measuredReads.every((read) =>
-        isFiniteBelow(read.maxRssDeltaBytes, 64 * 1024 * 1024)),
+        isFiniteBelow(read.maxRssDeltaBytes, 64 * 1024 * 1024),
+      ),
     };
     const pageBudgetChecks = {
-      warmP95Under250ms: Object.values(pages).every((page) =>
-        isFiniteBelow(page.warm.p95Ms, 250)),
-      coldP95Under750ms: Object.values(pages).every((page) =>
-        isFiniteBelow(page.cold.p95Ms, 750)),
+      warmP95Under250ms: Object.values(pages).every((page) => isFiniteBelow(page.warm.p95Ms, 250)),
+      coldP95Under750ms: Object.values(pages).every((page) => isFiniteBelow(page.cold.p95Ms, 750)),
       responseUnder2MiB: Object.values(pages).every((page) =>
-        [...page.cold.samples, ...page.warm.samples]
-          .every((sample) => isFiniteBelow(sample.jsonBytes, 2 * 1024 * 1024))),
+        [...page.cold.samples, ...page.warm.samples].every((sample) =>
+          isFiniteBelow(sample.jsonBytes, 2 * 1024 * 1024),
+        ),
+      ),
       maxRssDeltaUnder64MiB: Object.values(pages).every((page) =>
-        [...page.cold.samples, ...page.warm.samples]
-          .every((sample) => isFiniteBelow(sample.rssDeltaBytes, 64 * 1024 * 1024))),
+        [...page.cold.samples, ...page.warm.samples].every((sample) =>
+          isFiniteBelow(sample.rssDeltaBytes, 64 * 1024 * 1024),
+        ),
+      ),
     };
     const compatibilityReadChecks = {
-      responseUnder2MiB: Object.values(subsonicReads).every((read) =>
-        read.responseBytes.length > 0
-        && read.responseBytes.every((bytes) => isFiniteBelow(bytes, 2 * 1024 * 1024))),
+      responseUnder2MiB: Object.values(subsonicReads).every(
+        (read) =>
+          read.responseBytes.length > 0 &&
+          read.responseBytes.every((bytes) => isFiniteBelow(bytes, 2 * 1024 * 1024)),
+      ),
       maxRssDeltaUnder64MiB: Object.values(subsonicReads).every((read) =>
-        isFiniteBelow(read.maxRssDeltaBytes, 64 * 1024 * 1024)),
+        isFiniteBelow(read.maxRssDeltaBytes, 64 * 1024 * 1024),
+      ),
     };
-    const boundedReadCompleted = Object.values(subsonicReads).every((read) =>
-      read.nonVacuous);
+    const boundedReadCompleted = Object.values(subsonicReads).every((read) => read.nonVacuous);
     const targetedReadChecks = {
-      nonVacuousCompletedSamples: ["search3", "starred", "genres"].every((name) =>
-        subsonicReads[name].nonVacuous && subsonicReads[name].statisticsComplete),
+      nonVacuousCompletedSamples: ["search3", "starred", "genres"].every(
+        (name) => subsonicReads[name].nonVacuous && subsonicReads[name].statisticsComplete,
+      ),
       searchMedianUnder300ms: isFiniteBelow(subsonicReads.search3.medianMs, 300),
       starredMedianUnder75ms: isFiniteBelow(subsonicReads.starred.medianMs, 75),
       genresMedianUnder75ms: isFiniteBelow(subsonicReads.genres.medianMs, 75),
@@ -688,18 +761,25 @@ async function main() {
       pageBudgets: Object.values(pageBudgetChecks).every(Boolean),
       compatibilityReadBudgets: Object.values(compatibilityReadChecks).every(Boolean),
       artistProjectionPageBounded:
-        artistProjectionPlanDetails.some((detail) => detail.includes("MATERIALIZE artist_page"))
-        && artistProjectionPlanDetails.some((detail) =>
+        artistProjectionPlanDetails.some((detail) => detail.includes("MATERIALIZE artist_page")) &&
+        artistProjectionPlanDetails.some((detail) =>
           /SEARCH album USING (?:COVERING )?INDEX .*artist_id/.test(detail),
-        )
-        && !artistProjectionPlanDetails.some((detail) => detail === "SCAN album"),
-      scopedPathsBounded: scopedPathSamples.every((sample) => sample.value === 1)
-        && isFiniteBelow(scopedPaths.p95Ms, 20),
-      targetedScanUnder750ms: targetedScanSamples.every((sample) => sample.changed)
-        && isFiniteBelow(targetedScans.p95Ms, 750),
-      targetedScanIndexesChangedFile: targetedScanSamples.every((sample) =>
-        sample.filesSeen === 1 && sample.filesIndexed === 1 && sample.filesFailed === 0
-        && sample.searchMatches === 1 && sample.previousSearchMatches === 0),
+        ) &&
+        !artistProjectionPlanDetails.some((detail) => detail === "SCAN album"),
+      scopedPathsBounded:
+        scopedPathSamples.every((sample) => sample.value === 1) &&
+        isFiniteBelow(scopedPaths.p95Ms, 20),
+      targetedScanUnder750ms:
+        targetedScanSamples.every((sample) => sample.changed) &&
+        isFiniteBelow(targetedScans.p95Ms, 750),
+      targetedScanIndexesChangedFile: targetedScanSamples.every(
+        (sample) =>
+          sample.filesSeen === 1 &&
+          sample.filesIndexed === 1 &&
+          sample.filesFailed === 0 &&
+          sample.searchMatches === 1 &&
+          sample.previousSearchMatches === 0,
+      ),
     };
     output = {
       benchmark: "aurral-library",
@@ -746,7 +826,13 @@ async function main() {
   }
   await mkdir(path.dirname(options.output), { recursive: true });
   await writeFile(options.output, `${JSON.stringify(output, null, 2)}\n`);
-  console.log(JSON.stringify({ output: options.output, verdict: output.verdict, checks: output.checks }, null, 2));
+  console.log(
+    JSON.stringify(
+      { output: options.output, verdict: output.verdict, checks: output.checks },
+      null,
+      2,
+    ),
+  );
   if (options.check && output.verdict !== "pass") process.exitCode = 1;
 }
 

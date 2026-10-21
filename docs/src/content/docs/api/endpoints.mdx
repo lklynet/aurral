@@ -17,28 +17,28 @@ can change Aurral, Lidarr, files, users, or external services.
 
 ## Health and authentication
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/health/live` | Minimal liveness response |
-| `GET` | `/api/health/bootstrap` | Startup and authentication state |
-| `GET` | `/api/health` | Detailed application health |
-| `GET` | `/api/health/ws` | WebSocket connection statistics |
-| `POST` | `/api/health/stream-token` | Issue a short-lived token for media streams |
-| `POST` | `/api/auth/login` | Create a password-login session |
-| `POST` | `/api/auth/logout` | End a login session |
-| `GET` | `/api/auth/me` | Current authenticated identity |
-| `GET` | `/api/auth/api-key` | Read or create the instance API key. Administrators only |
-| `POST` | `/api/auth/api-key/rotate` | Replace the instance API key. Administrators only |
-| `POST` | `/api/auth/reauth` | Confirm the current password with `{ "currentPassword": "…" }` before a sensitive account change |
-| `GET` | `/api/auth/oidc/login` | Start an OpenID Connect login |
-| `POST` | `/api/auth/oidc/exchange` | Exchange an OpenID Connect code for a session |
-| `POST` | `/api/auth/oidc/link/start` | Start linking single sign-on to the current user and return the authorization URL |
-| `GET` | `/api/auth/google/login` | Start a Google sign-in |
-| `POST` | `/api/auth/google/exchange` | Exchange a Google sign-in code for a session |
-| `GET` | `/api/auth/google/link` | Start linking a Google account to the current user |
-| `POST` | `/api/auth/google/link/start` | Start linking a Google account and return the authorization URL |
-| `POST` | `/api/auth/plex/login/pin` | Start a Plex sign-in |
-| `POST` | `/api/auth/plex/login/complete` | Complete a Plex sign-in |
+| Method | Path                            | Purpose                                                                                          |
+| ------ | ------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `GET`  | `/api/health/live`              | Minimal liveness response                                                                        |
+| `GET`  | `/api/health/bootstrap`         | Startup and authentication state                                                                 |
+| `GET`  | `/api/health`                   | Detailed application health                                                                      |
+| `GET`  | `/api/health/ws`                | WebSocket connection statistics                                                                  |
+| `POST` | `/api/health/stream-token`      | Issue a short-lived token for media streams                                                      |
+| `POST` | `/api/auth/login`               | Create a password-login session                                                                  |
+| `POST` | `/api/auth/logout`              | End a login session                                                                              |
+| `GET`  | `/api/auth/me`                  | Current authenticated identity                                                                   |
+| `GET`  | `/api/auth/api-key`             | Read or create the instance API key. Administrators only                                         |
+| `POST` | `/api/auth/api-key/rotate`      | Replace the instance API key. Administrators only                                                |
+| `POST` | `/api/auth/reauth`              | Confirm the current password with `{ "currentPassword": "…" }` before a sensitive account change |
+| `GET`  | `/api/auth/oidc/login`          | Start an OpenID Connect login                                                                    |
+| `POST` | `/api/auth/oidc/exchange`       | Exchange an OpenID Connect code for a session                                                    |
+| `POST` | `/api/auth/oidc/link/start`     | Start linking single sign-on to the current user and return the authorization URL                |
+| `GET`  | `/api/auth/google/login`        | Start a Google sign-in                                                                           |
+| `POST` | `/api/auth/google/exchange`     | Exchange a Google sign-in code for a session                                                     |
+| `GET`  | `/api/auth/google/link`         | Start linking a Google account to the current user                                               |
+| `POST` | `/api/auth/google/link/start`   | Start linking a Google account and return the authorization URL                                  |
+| `POST` | `/api/auth/plex/login/pin`      | Start a Plex sign-in                                                                             |
+| `POST` | `/api/auth/plex/login/complete` | Complete a Plex sign-in                                                                          |
 
 The Google and Plex sign-in routes return `404` when that sign-in method is off. They sign in only users who already linked the account. The Google link routes, the password change, and the identity and Plex link changes require a sign-in in the last 15 minutes. Otherwise, call `/api/auth/reauth` first. Google returns to `/sso/google/callback`, and OIDC returns to `/sso/callback`.
 
@@ -53,8 +53,8 @@ credential.
 
 ## Realtime updates
 
-| Protocol | Path | Purpose |
-| --- | --- | --- |
+| Protocol  | Path  | Purpose                                                 |
+| --------- | ----- | ------------------------------------------------------- |
 | WebSocket | `/ws` | Status, download, discovery, flow, and playlist updates |
 
 The WebSocket accepts `subscribe`, `unsubscribe`, and `ping` JSON messages.
@@ -70,72 +70,72 @@ WebSocket connections.
 
 ## Incoming webhooks
 
-| Method | Path | Purpose |
-| --- | --- | --- |
+| Method | Path                   | Purpose                                           |
+| ------ | ---------------------- | ------------------------------------------------- |
 | `POST` | `/api/webhooks/lidarr` | Receive Lidarr import events for requested albums |
 
 ## Library
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/library/artists` | List library artists |
-| `GET` | `/api/library/artists/:mbid` | Get a library artist |
-| `POST` | `/api/library/artists` | Add an artist |
-| `GET` | `/api/library/artists/:mbid/monitoring` | Get the active manager's monitoring for an artist |
-| `PUT` | `/api/library/artists/:mbid` | Update artist monitoring |
-| `POST` | `/api/library/artists/:mbid/monitoring/preview` | Plan an Aurral artist's monitoring with `{ "monitoring": … }` without saving it |
-| `GET` | `/api/library/monitoring/defaults` | Read the default monitoring rules and how many artists use them |
-| `POST` | `/api/library/monitoring/defaults/preview` | Count what new default rules would download with `{ "rules": … }`. Admin only |
-| `PUT` | `/api/library/monitoring/defaults` | Save the default monitoring rules with `{ "rules": … }`. Admin only |
-| `GET` | `/api/library/monitoring/exclusions?artistMbid=` | List the albums and tracks deleted from monitoring, for one artist or all |
-| `DELETE` | `/api/library/monitoring/exclusions/:id` | Let monitoring download an excluded album or track again |
-| `DELETE` | `/api/library/artists/:mbid?manager=aurral\|lidarr` | Delete an artist from Lidarr and Aurral, or from one manager with `manager`. An artist without a MusicBrainz ID takes its Library `id` instead and is deleted from Aurral. Returns `503` and deletes nothing when Lidarr cannot be reached |
-| `POST` | `/api/library/artists/:mbid/refresh` | Refresh an artist in Lidarr |
-| `PUT` | `/api/library/canonical/artists/:id/mbid` | Set a library artist's MusicBrainz ID with `{ "mbid": "…" }`, or clear it with `{ "mbid": null }` |
-| `GET` | `/api/library/albums?artistId=:id&managedBy=aurral\|lidarr` | List an artist's albums. Send the artist's `managedBy` so a Lidarr ID is never read as an Aurral ID |
-| `GET` | `/api/library/albums/:id` | Get an album |
-| `POST` | `/api/library/albums` | Add an album |
-| `POST` | `/api/library/albums/request` | Request an album from search data |
-| `PUT` | `/api/library/albums/:id` | Update an album |
-| `DELETE` | `/api/library/albums/:id` | Delete an album |
-| `PUT` | `/api/library/albums/aurral/:canonicalId` | Monitor or stop monitoring an Aurral-managed album and all of its tracks with `{ "monitored": true \| false }` |
-| `GET` | `/api/library/albums/aurral/:canonicalId/status` | Get the download status of an Aurral-managed album |
-| `POST` | `/api/library/albums/aurral/:canonicalId/cancel` | Cancel queued and active downloads for an Aurral-managed album |
-| `DELETE` | `/api/library/albums/aurral/:canonicalId?deleteFiles=true\|false` | Remove an Aurral-managed album |
-| `GET` | `/api/library/tracks` | List album tracks |
-| `DELETE` | `/api/library/tracks/:id` | Delete a library track file and prune Library records when no media remains |
-| `PUT` | `/api/library/tracks/aurral/:canonicalId` | Monitor or stop monitoring a track with `{ "monitored": true \| false }`. In a Lidarr album, this controls only Aurral's own download and upgrades of the track. `{ "keepFile": true \| false }` instead stops or allows upgrades of the track's file, and keeping it cancels an upgrade in progress |
-| `POST` | `/api/library/refresh` | Queue a library scan. `mode` is `quick`, the default, or `full` to read every file again |
-| `GET` | `/api/library/refresh` | Read the ID and status of the scheduled library scan |
-| `GET` | `/api/library/refresh/:jobId` | Read the status of a library scan |
-| `GET` | `/api/library/files` | Read the latest ingest or clean up operation. Admin only |
-| `POST` | `/api/library/files/ingest/check` | Check an ingest folder with `{ "sourcePath": "…" }`: music file count, whether Hardlink works, and any Lidarr root folder it is in |
-| `POST` | `/api/library/files/ingest` | Start an ingest with `{ "sourcePath": "…", "mode": "move" \| "copy" \| "hardlink", "monitor": "none" \| "tracks" \| "albums", "fillTags": true }`. `monitor` defaults to `none`, and `fillTags` to `false`. Returns `409` while another operation runs |
-| `POST` | `/api/library/files/cleanup` | Start renaming Library files in the Downloads Folder to Aurral's names and filling in their missing tags. Returns `409` while another operation runs |
-| `GET` | `/api/library/files/operations/:id` | Read an operation's status, progress, and counts |
-| `GET` | `/api/library/files/operations/:id/items` | Read an operation's files. Optional `status`, `offset`, and `limit` up to 200 |
-| `POST` | `/api/library/files/operations/:id/cancel` | Stop an ingest or clean up after the current file. Files already done stay done |
-| `POST` | `/api/library/files/operations/:id/remove-sources` | Remove the files a Move ingest kept because the Library has their track, or the duplicate copies a clean up found. Each is checked again first. Returns `400` for a Copy or Hardlink ingest and `409` while another operation runs |
-| `GET` | `/api/library/canonical` | Read one page of Library items. Requires a supported `kind`, and `pageSize` from 1 to 100 |
-| `GET` | `/api/library/favorites` | Read the current user's library favorites |
-| `POST` | `/api/library/favorites` | Add or remove a library favorite. Requires a user session |
-| `GET` | `/api/library/playback-queue` | Build one page of a playback queue. Optional `page`, and `pageSize` from 1 to 100 |
-| `GET` | `/api/library/stream/:songId` | Stream a library song |
-| `GET` | `/api/library/canonical-stream/:albumId/:trackId` | Stream a Library track |
-| `GET` | `/api/library/file-stream/:albumId/:trackId` | Stream an album track file |
-| `GET` | `/api/library/rootfolder` | List Lidarr root-folder paths |
-| `GET` | `/api/library/lookup/:mbid` | Check whether an artist is in the library |
-| `POST` | `/api/library/lookup/batch` | Check multiple artists |
-| `POST` | `/api/library/albums/lookup/batch` | Check multiple albums |
-| `GET` | `/api/library/recent` | List the 20 artists with the newest library files |
-| `GET` | `/api/library/recent-releases` | List recent missing releases |
-| `GET` | `/api/library/downloads` | List download jobs |
-| `GET` | `/api/library/downloads/status` | Get the statuses for the required `albumIds` query. Use `aurral:<canonicalId>` for Aurral albums |
-| `GET` | `/api/library/downloads/status/all` | Get all download statuses |
-| `POST` | `/api/library/downloads/track` | Download or request a track |
-| `POST` | `/api/library/downloads/album` | Monitor an album and optionally run the configured search |
-| `POST` | `/api/library/downloads/album/search` | Trigger a Lidarr album search |
-| `POST` | `/api/library/downloads/tracks/:trackId/research` | Search for a replacement of an Aurral library track. Send the `albumId`. Returns `409` when a search for the track is already running |
+| Method   | Path                                                              | Purpose                                                                                                                                                                                                                                                                                              |
+| -------- | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`    | `/api/library/artists`                                            | List library artists                                                                                                                                                                                                                                                                                 |
+| `GET`    | `/api/library/artists/:mbid`                                      | Get a library artist                                                                                                                                                                                                                                                                                 |
+| `POST`   | `/api/library/artists`                                            | Add an artist                                                                                                                                                                                                                                                                                        |
+| `GET`    | `/api/library/artists/:mbid/monitoring`                           | Get the active manager's monitoring for an artist                                                                                                                                                                                                                                                    |
+| `PUT`    | `/api/library/artists/:mbid`                                      | Update artist monitoring                                                                                                                                                                                                                                                                             |
+| `POST`   | `/api/library/artists/:mbid/monitoring/preview`                   | Plan an Aurral artist's monitoring with `{ "monitoring": … }` without saving it                                                                                                                                                                                                                      |
+| `GET`    | `/api/library/monitoring/defaults`                                | Read the default monitoring rules and how many artists use them                                                                                                                                                                                                                                      |
+| `POST`   | `/api/library/monitoring/defaults/preview`                        | Count what new default rules would download with `{ "rules": … }`. Admin only                                                                                                                                                                                                                        |
+| `PUT`    | `/api/library/monitoring/defaults`                                | Save the default monitoring rules with `{ "rules": … }`. Admin only                                                                                                                                                                                                                                  |
+| `GET`    | `/api/library/monitoring/exclusions?artistMbid=`                  | List the albums and tracks deleted from monitoring, for one artist or all                                                                                                                                                                                                                            |
+| `DELETE` | `/api/library/monitoring/exclusions/:id`                          | Let monitoring download an excluded album or track again                                                                                                                                                                                                                                             |
+| `DELETE` | `/api/library/artists/:mbid?manager=aurral\|lidarr`               | Delete an artist from Lidarr and Aurral, or from one manager with `manager`. An artist without a MusicBrainz ID takes its Library `id` instead and is deleted from Aurral. Returns `503` and deletes nothing when Lidarr cannot be reached                                                           |
+| `POST`   | `/api/library/artists/:mbid/refresh`                              | Refresh an artist in Lidarr                                                                                                                                                                                                                                                                          |
+| `PUT`    | `/api/library/canonical/artists/:id/mbid`                         | Set a library artist's MusicBrainz ID with `{ "mbid": "…" }`, or clear it with `{ "mbid": null }`                                                                                                                                                                                                    |
+| `GET`    | `/api/library/albums?artistId=:id&managedBy=aurral\|lidarr`       | List an artist's albums. Send the artist's `managedBy` so a Lidarr ID is never read as an Aurral ID                                                                                                                                                                                                  |
+| `GET`    | `/api/library/albums/:id`                                         | Get an album                                                                                                                                                                                                                                                                                         |
+| `POST`   | `/api/library/albums`                                             | Add an album                                                                                                                                                                                                                                                                                         |
+| `POST`   | `/api/library/albums/request`                                     | Request an album from search data                                                                                                                                                                                                                                                                    |
+| `PUT`    | `/api/library/albums/:id`                                         | Update an album                                                                                                                                                                                                                                                                                      |
+| `DELETE` | `/api/library/albums/:id`                                         | Delete an album                                                                                                                                                                                                                                                                                      |
+| `PUT`    | `/api/library/albums/aurral/:canonicalId`                         | Monitor or stop monitoring an Aurral-managed album and all of its tracks with `{ "monitored": true \| false }`                                                                                                                                                                                       |
+| `GET`    | `/api/library/albums/aurral/:canonicalId/status`                  | Get the download status of an Aurral-managed album                                                                                                                                                                                                                                                   |
+| `POST`   | `/api/library/albums/aurral/:canonicalId/cancel`                  | Cancel queued and active downloads for an Aurral-managed album                                                                                                                                                                                                                                       |
+| `DELETE` | `/api/library/albums/aurral/:canonicalId?deleteFiles=true\|false` | Remove an Aurral-managed album                                                                                                                                                                                                                                                                       |
+| `GET`    | `/api/library/tracks`                                             | List album tracks                                                                                                                                                                                                                                                                                    |
+| `DELETE` | `/api/library/tracks/:id`                                         | Delete a library track file and prune Library records when no media remains                                                                                                                                                                                                                          |
+| `PUT`    | `/api/library/tracks/aurral/:canonicalId`                         | Monitor or stop monitoring a track with `{ "monitored": true \| false }`. In a Lidarr album, this controls only Aurral's own download and upgrades of the track. `{ "keepFile": true \| false }` instead stops or allows upgrades of the track's file, and keeping it cancels an upgrade in progress |
+| `POST`   | `/api/library/refresh`                                            | Queue a library scan. `mode` is `quick`, the default, or `full` to read every file again                                                                                                                                                                                                             |
+| `GET`    | `/api/library/refresh`                                            | Read the ID and status of the scheduled library scan                                                                                                                                                                                                                                                 |
+| `GET`    | `/api/library/refresh/:jobId`                                     | Read the status of a library scan                                                                                                                                                                                                                                                                    |
+| `GET`    | `/api/library/files`                                              | Read the latest ingest or clean up operation. Admin only                                                                                                                                                                                                                                             |
+| `POST`   | `/api/library/files/ingest/check`                                 | Check an ingest folder with `{ "sourcePath": "…" }`: music file count, whether Hardlink works, and any Lidarr root folder it is in                                                                                                                                                                   |
+| `POST`   | `/api/library/files/ingest`                                       | Start an ingest with `{ "sourcePath": "…", "mode": "move" \| "copy" \| "hardlink", "monitor": "none" \| "tracks" \| "albums", "fillTags": true }`. `monitor` defaults to `none`, and `fillTags` to `false`. Returns `409` while another operation runs                                               |
+| `POST`   | `/api/library/files/cleanup`                                      | Start renaming Library files in the Downloads Folder to Aurral's names and filling in their missing tags. Returns `409` while another operation runs                                                                                                                                                 |
+| `GET`    | `/api/library/files/operations/:id`                               | Read an operation's status, progress, and counts                                                                                                                                                                                                                                                     |
+| `GET`    | `/api/library/files/operations/:id/items`                         | Read an operation's files. Optional `status`, `offset`, and `limit` up to 200                                                                                                                                                                                                                        |
+| `POST`   | `/api/library/files/operations/:id/cancel`                        | Stop an ingest or clean up after the current file. Files already done stay done                                                                                                                                                                                                                      |
+| `POST`   | `/api/library/files/operations/:id/remove-sources`                | Remove the files a Move ingest kept because the Library has their track, or the duplicate copies a clean up found. Each is checked again first. Returns `400` for a Copy or Hardlink ingest and `409` while another operation runs                                                                   |
+| `GET`    | `/api/library/canonical`                                          | Read one page of Library items. Requires a supported `kind`, and `pageSize` from 1 to 100                                                                                                                                                                                                            |
+| `GET`    | `/api/library/favorites`                                          | Read the current user's library favorites                                                                                                                                                                                                                                                            |
+| `POST`   | `/api/library/favorites`                                          | Add or remove a library favorite. Requires a user session                                                                                                                                                                                                                                            |
+| `GET`    | `/api/library/playback-queue`                                     | Build one page of a playback queue. Optional `page`, and `pageSize` from 1 to 100                                                                                                                                                                                                                    |
+| `GET`    | `/api/library/stream/:songId`                                     | Stream a library song                                                                                                                                                                                                                                                                                |
+| `GET`    | `/api/library/canonical-stream/:albumId/:trackId`                 | Stream a Library track                                                                                                                                                                                                                                                                               |
+| `GET`    | `/api/library/file-stream/:albumId/:trackId`                      | Stream an album track file                                                                                                                                                                                                                                                                           |
+| `GET`    | `/api/library/rootfolder`                                         | List Lidarr root-folder paths                                                                                                                                                                                                                                                                        |
+| `GET`    | `/api/library/lookup/:mbid`                                       | Check whether an artist is in the library                                                                                                                                                                                                                                                            |
+| `POST`   | `/api/library/lookup/batch`                                       | Check multiple artists                                                                                                                                                                                                                                                                               |
+| `POST`   | `/api/library/albums/lookup/batch`                                | Check multiple albums                                                                                                                                                                                                                                                                                |
+| `GET`    | `/api/library/recent`                                             | List the 20 artists with the newest library files                                                                                                                                                                                                                                                    |
+| `GET`    | `/api/library/recent-releases`                                    | List recent missing releases                                                                                                                                                                                                                                                                         |
+| `GET`    | `/api/library/downloads`                                          | List download jobs                                                                                                                                                                                                                                                                                   |
+| `GET`    | `/api/library/downloads/status`                                   | Get the statuses for the required `albumIds` query. Use `aurral:<canonicalId>` for Aurral albums                                                                                                                                                                                                     |
+| `GET`    | `/api/library/downloads/status/all`                               | Get all download statuses                                                                                                                                                                                                                                                                            |
+| `POST`   | `/api/library/downloads/track`                                    | Download or request a track                                                                                                                                                                                                                                                                          |
+| `POST`   | `/api/library/downloads/album`                                    | Monitor an album and optionally run the configured search                                                                                                                                                                                                                                            |
+| `POST`   | `/api/library/downloads/album/search`                             | Trigger a Lidarr album search                                                                                                                                                                                                                                                                        |
+| `POST`   | `/api/library/downloads/tracks/:trackId/research`                 | Search for a replacement of an Aurral library track. Send the `albumId`. Returns `409` when a search for the track is already running                                                                                                                                                                |
 
 New artists and albums go to Lidarr when it is connected, and to Aurral
 otherwise. Artists and albums that Aurral already has stay Aurral's. The artist
@@ -168,16 +168,16 @@ For Aurral, send `{ "monitoring": { "monitored": true, "useDefault": true } }`,
 `{ "monitoring": { "monitored": false } }`. Rules have these fields, and a
 missing field takes the factory default:
 
-| Field | Values | Default |
-| --- | --- | --- |
-| `catalog` | `none`, `all`, `since`, or `latest` | `all` |
-| `sinceYear` | The first year for `since` | `null` |
-| `latestCount` | 1 to 10 releases for `latest` | `1` |
-| `newReleases` | `true` or `false` | `true` |
-| `types` | One or more of `album`, `ep`, and `single` | `["album", "ep"]` |
-| `extraTypes` | `live`, `compilation`, `soundtrack`, `remix`, `demo`, `dj-mix`, and `mixtape/street` | `[]` |
-| `edition` | `standard` or `expanded` | `standard` |
-| `topTracks` | 0 to 50 | `0` |
+| Field         | Values                                                                               | Default           |
+| ------------- | ------------------------------------------------------------------------------------ | ----------------- |
+| `catalog`     | `none`, `all`, `since`, or `latest`                                                  | `all`             |
+| `sinceYear`   | The first year for `since`                                                           | `null`            |
+| `latestCount` | 1 to 10 releases for `latest`                                                        | `1`               |
+| `newReleases` | `true` or `false`                                                                    | `true`            |
+| `types`       | One or more of `album`, `ep`, and `single`                                           | `["album", "ep"]` |
+| `extraTypes`  | `live`, `compilation`, `soundtrack`, `remix`, `demo`, `dj-mix`, and `mixtape/street` | `[]`              |
+| `edition`     | `standard` or `expanded`                                                             | `standard`        |
+| `topTracks`   | 0 to 50                                                                              | `0`               |
 
 Rules that take nothing, with `catalog` `none`, `newReleases` off, and no top
 tracks, return `400` with `invalid_monitor_rules`. Older clients can send
@@ -222,36 +222,36 @@ album, and responds with `monitored: true`.
 
 ## Artist metadata
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/artists/:mbid` | Artist details and releases |
-| `GET` | `/api/artists/:mbid/overrides` | Get metadata-provider overrides |
-| `PUT` | `/api/artists/:mbid/overrides` | Set metadata-provider overrides |
-| `GET` | `/api/artists/:mbid/similar` | Similar artists |
-| `GET` | `/api/artists/:mbid/video` | Find a video for a named artist and track |
-| `GET` | `/api/artists/:mbid/cover` | Artist image metadata; `refresh=true` retries a stale link |
-| `GET` | `/api/artists/:mbid/preview` | Deezer top tracks and preview URLs |
-| `GET` | `/api/artists/:mbid/stream` | Stream progressive artist metadata with SSE |
-| `POST` | `/api/artists/:mbid/appears-on` | Find releases that include an artist |
-| `POST` | `/api/artists/release-groups/ratings` | Batch release ratings |
-| `POST` | `/api/artists/release-groups/covers` | Batch release covers |
-| `GET` | `/api/artists/release-group/:mbid` | Release-group details |
-| `GET` | `/api/artists/release-group/:mbid/cover` | Release-group cover metadata; `refresh=true` retries a stale link |
-| `GET` | `/api/artists/release-group/:mbid/tracks` | Release-group tracks |
+| Method | Path                                      | Purpose                                                           |
+| ------ | ----------------------------------------- | ----------------------------------------------------------------- |
+| `GET`  | `/api/artists/:mbid`                      | Artist details and releases                                       |
+| `GET`  | `/api/artists/:mbid/overrides`            | Get metadata-provider overrides                                   |
+| `PUT`  | `/api/artists/:mbid/overrides`            | Set metadata-provider overrides                                   |
+| `GET`  | `/api/artists/:mbid/similar`              | Similar artists                                                   |
+| `GET`  | `/api/artists/:mbid/video`                | Find a video for a named artist and track                         |
+| `GET`  | `/api/artists/:mbid/cover`                | Artist image metadata; `refresh=true` retries a stale link        |
+| `GET`  | `/api/artists/:mbid/preview`              | Deezer top tracks and preview URLs                                |
+| `GET`  | `/api/artists/:mbid/stream`               | Stream progressive artist metadata with SSE                       |
+| `POST` | `/api/artists/:mbid/appears-on`           | Find releases that include an artist                              |
+| `POST` | `/api/artists/release-groups/ratings`     | Batch release ratings                                             |
+| `POST` | `/api/artists/release-groups/covers`      | Batch release covers                                              |
+| `GET`  | `/api/artists/release-group/:mbid`        | Release-group details                                             |
+| `GET`  | `/api/artists/release-group/:mbid/cover`  | Release-group cover metadata; `refresh=true` retries a stale link |
+| `GET`  | `/api/artists/release-group/:mbid/tracks` | Release-group tracks                                              |
 
 `GET /api/artists` returns `404`. Use `/api/search` or an artist
 detail route instead.
 
 ## Search and requests
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/search` | Search artists, albums, or tags |
-| `GET` | `/api/search/unified` | Unified search suggestions or results |
-| `GET` | `/api/search/link` | Find the MusicBrainz artist, album, and track for a streaming-service link |
-| `GET` | `/api/requests` | List current artist and album requests |
-| `DELETE` | `/api/requests/:mbid` | Remove an artist request |
-| `DELETE` | `/api/requests/album/:albumId` | Remove an album request |
+| Method   | Path                           | Purpose                                                                    |
+| -------- | ------------------------------ | -------------------------------------------------------------------------- |
+| `GET`    | `/api/search`                  | Search artists, albums, or tags                                            |
+| `GET`    | `/api/search/unified`          | Unified search suggestions or results                                      |
+| `GET`    | `/api/search/link`             | Find the MusicBrainz artist, album, and track for a streaming-service link |
+| `GET`    | `/api/requests`                | List current artist and album requests                                     |
+| `DELETE` | `/api/requests/:mbid`          | Remove an artist request                                                   |
+| `DELETE` | `/api/requests/album/:albumId` | Remove an album request                                                    |
 
 `GET /api/search` requires `q`. Its optional `scope` is `artist` (default),
 `album`, or `tag`. The route also accepts `limit` and `offset`. Album searches
@@ -285,34 +285,34 @@ include `albumGrab.canonicalAlbumId`.
 
 ## Discovery
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/discover` | Discovery sections, with the current user's recommendations |
-| `GET` | `/api/discover/status` | Whether the current user's discovery is refreshing, the current step, the last update time, and the last failure |
-| `GET` | `/api/discover/tags` | Discovery tags |
-| `GET` | `/api/discover/by-tag` | Recommendations for a tag |
-| `GET` | `/api/discover/nearby-shows` | Nearby events |
-| `GET` | `/api/discover/editorial` | Deezer editorial playlists: matches for the user's top genres and tags, and playlists grouped by genre |
-| `GET` | `/api/discover/editorial/:playlistId` | A Deezer editorial playlist with track previews |
-| `GET` | `/api/discover/editorial/links` | Find the MusicBrainz artist and album for a Deezer track |
-| `POST` | `/api/discover/editorial/:playlistId/library` | Add a Deezer editorial playlist to your library as a synced playlist |
-| `GET` | `/api/discover/feedback` | Discovery feedback |
-| `POST` | `/api/discover/feedback` | Record discovery feedback |
-| `DELETE` | `/api/discover/feedback/:id` | Delete discovery feedback |
-| `POST` | `/api/discover/feedback/reset` | Reset discovery feedback |
-| `GET` | `/api/discover/preferences` | Discovery preferences |
-| `POST` | `/api/discover/preferences` | Update discovery preferences |
-| `POST` | `/api/discover/preferences/reset` | Reset discovery preferences |
-| `POST` | `/api/discover/refresh` | Refresh discovery data |
-| `POST` | `/api/discover/clear` | Clear artwork links, native-library image files, and metadata-provider caches |
-| `POST` | `/api/discover/clear-discovery` | Clear the discovery cache |
+| Method   | Path                                          | Purpose                                                                                                          |
+| -------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `GET`    | `/api/discover`                               | Discovery sections, with the current user's recommendations                                                      |
+| `GET`    | `/api/discover/status`                        | Whether the current user's discovery is refreshing, the current step, the last update time, and the last failure |
+| `GET`    | `/api/discover/tags`                          | Discovery tags                                                                                                   |
+| `GET`    | `/api/discover/by-tag`                        | Recommendations for a tag                                                                                        |
+| `GET`    | `/api/discover/nearby-shows`                  | Nearby events                                                                                                    |
+| `GET`    | `/api/discover/editorial`                     | Deezer editorial playlists: matches for the user's top genres and tags, and playlists grouped by genre           |
+| `GET`    | `/api/discover/editorial/:playlistId`         | A Deezer editorial playlist with track previews                                                                  |
+| `GET`    | `/api/discover/editorial/links`               | Find the MusicBrainz artist and album for a Deezer track                                                         |
+| `POST`   | `/api/discover/editorial/:playlistId/library` | Add a Deezer editorial playlist to your library as a synced playlist                                             |
+| `GET`    | `/api/discover/feedback`                      | Discovery feedback                                                                                               |
+| `POST`   | `/api/discover/feedback`                      | Record discovery feedback                                                                                        |
+| `DELETE` | `/api/discover/feedback/:id`                  | Delete discovery feedback                                                                                        |
+| `POST`   | `/api/discover/feedback/reset`                | Reset discovery feedback                                                                                         |
+| `GET`    | `/api/discover/preferences`                   | Discovery preferences                                                                                            |
+| `POST`   | `/api/discover/preferences`                   | Update discovery preferences                                                                                     |
+| `POST`   | `/api/discover/preferences/reset`             | Reset discovery preferences                                                                                      |
+| `POST`   | `/api/discover/refresh`                       | Refresh discovery data                                                                                           |
+| `POST`   | `/api/discover/clear`                         | Clear artwork links, native-library image files, and metadata-provider caches                                    |
+| `POST`   | `/api/discover/clear-discovery`               | Clear the discovery cache                                                                                        |
 
 ## News
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/news` | Read recent news for the current user's library |
-| `POST` | `/api/news/feeds/disable` | Disable a news feed for everyone (admin only) |
+| Method | Path                      | Purpose                                         |
+| ------ | ------------------------- | ----------------------------------------------- |
+| `GET`  | `/api/news`               | Read recent news for the current user's library |
+| `POST` | `/api/news/feeds/disable` | Disable a news feed for everyone (admin only)   |
 
 `/api/news` accepts optional `mode`, `limit`, and `offset` query parameters.
 `mode=matched` (the default) returns only stories that mention a library or
@@ -322,21 +322,21 @@ no feed could be refreshed.
 
 ## Inbox
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/inbox` | Read the current user's Inbox items and unread count |
-| `POST` | `/api/inbox/refresh` | Manually refresh the current user's Inbox |
-| `POST` | `/api/inbox/read-all` | Mark the current user's Inbox items as read |
-| `PATCH` | `/api/inbox/:id` | Read, save, unsave, dismiss, or add an Inbox item |
+| Method  | Path                  | Purpose                                              |
+| ------- | --------------------- | ---------------------------------------------------- |
+| `GET`   | `/api/inbox`          | Read the current user's Inbox items and unread count |
+| `POST`  | `/api/inbox/refresh`  | Manually refresh the current user's Inbox            |
+| `POST`  | `/api/inbox/read-all` | Mark the current user's Inbox items as read          |
+| `PATCH` | `/api/inbox/:id`      | Read, save, unsave, dismiss, or add an Inbox item    |
 
 ## Shared links
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/share-links` | List the current user's live listen links |
-| `GET` | `/api/share-links/availability` | Count the Library tracks a track, album, or artist would share |
-| `POST` | `/api/share-links` | Create a listen link with an expiry and an optional download permission |
-| `DELETE` | `/api/share-links/:id` | Stop sharing a link |
+| Method   | Path                            | Purpose                                                                 |
+| -------- | ------------------------------- | ----------------------------------------------------------------------- |
+| `GET`    | `/api/share-links`              | List the current user's live listen links                               |
+| `GET`    | `/api/share-links/availability` | Count the Library tracks a track, album, or artist would share          |
+| `POST`   | `/api/share-links`              | Create a listen link with an expiry and an optional download permission |
+| `DELETE` | `/api/share-links/:id`          | Stop sharing a link                                                     |
 
 ## Playlists and flows
 
@@ -345,54 +345,54 @@ redirects to it with status `308`.
 
 The routes call a static playlist a shared playlist.
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/playlists/status` | Download worker, flow, and static playlist status |
-| `GET` | `/api/playlists/jobs` | List Library and accessible flow and playlist jobs |
-| `GET` | `/api/playlists/jobs/:playlistId` | List jobs for a flow or static playlist |
-| `POST` | `/api/playlists/jobs/:jobId/cancel` | Cancel a pending or downloading song without changing its monitoring |
-| `POST` | `/api/playlists/research-missing` | Re-search every missing track in Wanted |
-| `GET` | `/api/playlists/jobs/:jobId/manual-search/sources` | List the download clients available for a manual search |
-| `POST` | `/api/playlists/jobs/:jobId/manual-search` | Search one download client for a track. Send `sourceId`, and `mode` set to `missing` or `replacement` |
-| `POST` | `/api/playlists/jobs/:jobId/manual-search/select` | Queue one result from a manual search |
-| `POST` | `/api/playlists/start/:flowId` | Run a flow |
-| `GET` | `/api/playlists/flow-templates` | List flow templates |
-| `POST` | `/api/playlists/flows` | Create a flow, optionally from a template with `templateId` |
-| `PUT` | `/api/playlists/flows/:flowId` | Update a flow |
-| `DELETE` | `/api/playlists/flows/:flowId` | Delete a flow |
-| `PUT` | `/api/playlists/flows/:flowId/enabled` | Enable or disable a flow |
-| `POST` | `/api/playlists/flows/:flowId/static-playlist` | Save completed flow tracks as a static playlist |
-| `POST` | `/api/playlists/flows/:flowId/tracks/:jobId/research` | Research a flow track again |
-| `GET` | `/api/playlists/flows/:flowId/lidarr-import-list` | Create or read the Lidarr feed token and item count |
-| `GET` | `/api/playlists/artwork/:playlistId` | Get playlist artwork |
-| `PUT` | `/api/playlists/artwork/:playlistId` | Upload playlist artwork |
-| `DELETE` | `/api/playlists/artwork/:playlistId` | Delete playlist artwork |
-| `POST` | `/api/playlists/artwork/:playlistId/generate` | Generate playlist artwork |
-| `GET` | `/api/playlists/stream/:jobId` | Stream a playlist track |
-| `GET` | `/api/playlists/staging-stream/:jobId` | Stream a staged track |
-| `POST` | `/api/playlists/shared-playlists` | Create a static playlist |
-| `POST` | `/api/playlists/shared-playlists/import` | Import a static playlist |
-| `PUT` | `/api/playlists/shared-playlists/:playlistId` | Update a static playlist |
-| `PUT` | `/api/playlists/shared-playlists/:playlistId/record-history` | Enable or disable listening history for a static playlist |
-| `PUT` | `/api/playlists/shared-playlists/:playlistId/track-availability` | Show or hide track availability for a static playlist, with `{ "enabled": true \| false }` |
-| `DELETE` | `/api/playlists/shared-playlists/:playlistId` | Delete a static playlist |
-| `POST` | `/api/playlists/shared-playlists/:playlistId/tracks` | Add a static playlist track |
-| `DELETE` | `/api/playlists/shared-playlists/:playlistId/tracks/:jobId` | Delete a static playlist track |
-| `POST` | `/api/playlists/shared-playlists/:playlistId/tracks/:jobId/research` | Research a static playlist track |
-| `POST` | `/api/playlists/quality-upgrades/:playlistId/:jobId` | Search for a track upgrade |
-| `POST` | `/api/playlists/quality-upgrades` | Search for upgrades for every cutoff-unmet track in Wanted |
-| `POST` | `/api/playlists/shared-playlists/:playlistId/sync` | Sync a static playlist |
-| `PUT` | `/api/playlists/playlists/:playlistId/retry-cycle` | Pause or resume retries for a static playlist |
-| `POST` | `/api/playlists/jobs/:jobId/approve` | Approve a download held for review |
-| `POST` | `/api/playlists/jobs/:jobId/deny` | Deny a download held for review |
-| `DELETE` | `/api/playlists/jobs/completed` | Delete completed jobs |
-| `DELETE` | `/api/playlists/jobs/all` | Delete all jobs |
-| `GET` | `/api/playlists/worker/settings` | Get worker settings |
-| `PUT` | `/api/playlists/worker/settings` | Update worker settings |
-| `POST` | `/api/playlists/worker/start` | Start the worker |
-| `POST` | `/api/playlists/worker/stop` | Stop the worker |
-| `POST` | `/api/playlists/reset` | Reset selected flow playlists |
-| `POST` | `/api/playlists/playlist/:playlistType/create` | Queue a sync of every flow and static playlist to connected media servers |
+| Method   | Path                                                                 | Purpose                                                                                               |
+| -------- | -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `GET`    | `/api/playlists/status`                                              | Download worker, flow, and static playlist status                                                     |
+| `GET`    | `/api/playlists/jobs`                                                | List Library and accessible flow and playlist jobs                                                    |
+| `GET`    | `/api/playlists/jobs/:playlistId`                                    | List jobs for a flow or static playlist                                                               |
+| `POST`   | `/api/playlists/jobs/:jobId/cancel`                                  | Cancel a pending or downloading song without changing its monitoring                                  |
+| `POST`   | `/api/playlists/research-missing`                                    | Re-search every missing track in Wanted                                                               |
+| `GET`    | `/api/playlists/jobs/:jobId/manual-search/sources`                   | List the download clients available for a manual search                                               |
+| `POST`   | `/api/playlists/jobs/:jobId/manual-search`                           | Search one download client for a track. Send `sourceId`, and `mode` set to `missing` or `replacement` |
+| `POST`   | `/api/playlists/jobs/:jobId/manual-search/select`                    | Queue one result from a manual search                                                                 |
+| `POST`   | `/api/playlists/start/:flowId`                                       | Run a flow                                                                                            |
+| `GET`    | `/api/playlists/flow-templates`                                      | List flow templates                                                                                   |
+| `POST`   | `/api/playlists/flows`                                               | Create a flow, optionally from a template with `templateId`                                           |
+| `PUT`    | `/api/playlists/flows/:flowId`                                       | Update a flow                                                                                         |
+| `DELETE` | `/api/playlists/flows/:flowId`                                       | Delete a flow                                                                                         |
+| `PUT`    | `/api/playlists/flows/:flowId/enabled`                               | Enable or disable a flow                                                                              |
+| `POST`   | `/api/playlists/flows/:flowId/static-playlist`                       | Save completed flow tracks as a static playlist                                                       |
+| `POST`   | `/api/playlists/flows/:flowId/tracks/:jobId/research`                | Research a flow track again                                                                           |
+| `GET`    | `/api/playlists/flows/:flowId/lidarr-import-list`                    | Create or read the Lidarr feed token and item count                                                   |
+| `GET`    | `/api/playlists/artwork/:playlistId`                                 | Get playlist artwork                                                                                  |
+| `PUT`    | `/api/playlists/artwork/:playlistId`                                 | Upload playlist artwork                                                                               |
+| `DELETE` | `/api/playlists/artwork/:playlistId`                                 | Delete playlist artwork                                                                               |
+| `POST`   | `/api/playlists/artwork/:playlistId/generate`                        | Generate playlist artwork                                                                             |
+| `GET`    | `/api/playlists/stream/:jobId`                                       | Stream a playlist track                                                                               |
+| `GET`    | `/api/playlists/staging-stream/:jobId`                               | Stream a staged track                                                                                 |
+| `POST`   | `/api/playlists/shared-playlists`                                    | Create a static playlist                                                                              |
+| `POST`   | `/api/playlists/shared-playlists/import`                             | Import a static playlist                                                                              |
+| `PUT`    | `/api/playlists/shared-playlists/:playlistId`                        | Update a static playlist                                                                              |
+| `PUT`    | `/api/playlists/shared-playlists/:playlistId/record-history`         | Enable or disable listening history for a static playlist                                             |
+| `PUT`    | `/api/playlists/shared-playlists/:playlistId/track-availability`     | Show or hide track availability for a static playlist, with `{ "enabled": true \| false }`            |
+| `DELETE` | `/api/playlists/shared-playlists/:playlistId`                        | Delete a static playlist                                                                              |
+| `POST`   | `/api/playlists/shared-playlists/:playlistId/tracks`                 | Add a static playlist track                                                                           |
+| `DELETE` | `/api/playlists/shared-playlists/:playlistId/tracks/:jobId`          | Delete a static playlist track                                                                        |
+| `POST`   | `/api/playlists/shared-playlists/:playlistId/tracks/:jobId/research` | Research a static playlist track                                                                      |
+| `POST`   | `/api/playlists/quality-upgrades/:playlistId/:jobId`                 | Search for a track upgrade                                                                            |
+| `POST`   | `/api/playlists/quality-upgrades`                                    | Search for upgrades for every cutoff-unmet track in Wanted                                            |
+| `POST`   | `/api/playlists/shared-playlists/:playlistId/sync`                   | Sync a static playlist                                                                                |
+| `PUT`    | `/api/playlists/playlists/:playlistId/retry-cycle`                   | Pause or resume retries for a static playlist                                                         |
+| `POST`   | `/api/playlists/jobs/:jobId/approve`                                 | Approve a download held for review                                                                    |
+| `POST`   | `/api/playlists/jobs/:jobId/deny`                                    | Deny a download held for review                                                                       |
+| `DELETE` | `/api/playlists/jobs/completed`                                      | Delete completed jobs                                                                                 |
+| `DELETE` | `/api/playlists/jobs/all`                                            | Delete all jobs                                                                                       |
+| `GET`    | `/api/playlists/worker/settings`                                     | Get worker settings                                                                                   |
+| `PUT`    | `/api/playlists/worker/settings`                                     | Update worker settings                                                                                |
+| `POST`   | `/api/playlists/worker/start`                                        | Start the worker                                                                                      |
+| `POST`   | `/api/playlists/worker/stop`                                         | Stop the worker                                                                                       |
+| `POST`   | `/api/playlists/reset`                                               | Reset selected flow playlists                                                                         |
+| `POST`   | `/api/playlists/playlist/:playlistType/create`                       | Queue a sync of every flow and static playlist to connected media servers                             |
 
 The repeated `playlists` segment in
 `/api/playlists/playlists/:playlistId/retry-cycle` is the current route.
@@ -409,72 +409,72 @@ album again to retry it. Other cancelled songs can be searched again.
 
 ### Spotify import
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/playlists/import/spotify/status` | Spotify connection status |
-| `POST` | `/api/playlists/import/spotify/oauth/start` | Start Spotify OAuth |
-| `POST` | `/api/playlists/import/spotify/oauth/complete` | Complete Spotify OAuth |
-| `DELETE` | `/api/playlists/import/spotify` | Disconnect Spotify |
-| `GET` | `/api/playlists/import/spotify/playlists` | List Spotify playlists |
-| `POST` | `/api/playlists/import/spotify/preview` | Preview a Spotify import |
-| `POST` | `/api/playlists/import/spotify` | Import Spotify playlists |
+| Method   | Path                                           | Purpose                   |
+| -------- | ---------------------------------------------- | ------------------------- |
+| `GET`    | `/api/playlists/import/spotify/status`         | Spotify connection status |
+| `POST`   | `/api/playlists/import/spotify/oauth/start`    | Start Spotify OAuth       |
+| `POST`   | `/api/playlists/import/spotify/oauth/complete` | Complete Spotify OAuth    |
+| `DELETE` | `/api/playlists/import/spotify`                | Disconnect Spotify        |
+| `GET`    | `/api/playlists/import/spotify/playlists`      | List Spotify playlists    |
+| `POST`   | `/api/playlists/import/spotify/preview`        | Preview a Spotify import  |
+| `POST`   | `/api/playlists/import/spotify`                | Import Spotify playlists  |
 
 ### ListenBrainz import
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/playlists/import/listenbrainz/playlists` | List playlists for the linked ListenBrainz account |
-| `POST` | `/api/playlists/import/listenbrainz/preview` | Preview a ListenBrainz import |
-| `POST` | `/api/playlists/import/listenbrainz` | Import a ListenBrainz playlist |
+| Method | Path                                           | Purpose                                            |
+| ------ | ---------------------------------------------- | -------------------------------------------------- |
+| `GET`  | `/api/playlists/import/listenbrainz/playlists` | List playlists for the linked ListenBrainz account |
+| `POST` | `/api/playlists/import/listenbrainz/preview`   | Preview a ListenBrainz import                      |
+| `POST` | `/api/playlists/import/listenbrainz`           | Import a ListenBrainz playlist                     |
 
 ### YouTube Music import
 
 These routes retrieve public playlists anonymously. Preview accepts a supported playlist URL. Import accepts the validated playlist ID returned by preview, fetches the source again, and stores the source title returned by YouTube Music.
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `POST` | `/api/playlists/import/youtube-music/preview` | Preview a public YouTube or YouTube Music playlist |
-| `POST` | `/api/playlists/import/youtube-music` | Import and optionally schedule synchronization for the playlist |
+| Method | Path                                          | Purpose                                                         |
+| ------ | --------------------------------------------- | --------------------------------------------------------------- |
+| `POST` | `/api/playlists/import/youtube-music/preview` | Preview a public YouTube or YouTube Music playlist              |
+| `POST` | `/api/playlists/import/youtube-music`         | Import and optionally schedule synchronization for the playlist |
 
 ### Last.fm import
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/playlists/import/lastfm/playlists` | List Last.fm Library, Mix, and Recommended stations |
-| `POST` | `/api/playlists/import/lastfm/preview` | Preview a Last.fm station import |
-| `POST` | `/api/playlists/import/lastfm` | Import a Last.fm station |
+| Method | Path                                     | Purpose                                             |
+| ------ | ---------------------------------------- | --------------------------------------------------- |
+| `GET`  | `/api/playlists/import/lastfm/playlists` | List Last.fm Library, Mix, and Recommended stations |
+| `POST` | `/api/playlists/import/lastfm/preview`   | Preview a Last.fm station import                    |
+| `POST` | `/api/playlists/import/lastfm`           | Import a Last.fm station                            |
 
 ## Lidarr feed
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/feeds/lidarr/flows/:flowId.json` | Token-authenticated Lidarr-compatible flow feed |
+| Method | Path                                   | Purpose                                         |
+| ------ | -------------------------------------- | ----------------------------------------------- |
+| `GET`  | `/api/feeds/lidarr/flows/:flowId.json` | Token-authenticated Lidarr-compatible flow feed |
 
 ## Users
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/users` | List users |
-| `POST` | `/api/users` | Create a user |
-| `PATCH` | `/api/users/:id` | Update a user |
-| `DELETE` | `/api/users/:id` | Delete a user |
-| `GET` | `/api/users/me/listening-history` | Get listening-history settings for the current user |
-| `GET` | `/api/users/me/identities` | List the sign-in identities linked to the current user |
-| `DELETE` | `/api/users/me/identities/:id` | Remove a linked identity. Returns `400` with `last_auth_method` when it is the last way to sign in |
-| `GET` | `/api/users/me/lidarr-preferences` | Current user's Lidarr preferences |
-| `PATCH` | `/api/users/me/lidarr-preferences` | Update current user's Lidarr preferences |
-| `GET` | `/api/users/me/discover-layout` | Current user's discovery layout |
-| `PATCH` | `/api/users/me/discover-layout` | Update current user's discovery layout |
-| `GET` | `/api/users/me/theme` | Current user's theme settings and saved themes, or `null` |
-| `PUT` | `/api/users/me/theme` | Replace the current user's theme settings. Returns `400` when the theme is invalid |
-| `POST` | `/api/users/me/password` | Change current user's password |
-| `GET` | `/api/users/me/plex-link/status` | Read the current user's Plex link |
-| `POST` | `/api/users/me/plex-link/oauth/pin` | Start Plex linking for the current user |
-| `POST` | `/api/users/me/plex-link/oauth/complete` | Complete Plex linking for the current user |
-| `DELETE` | `/api/users/me/plex-link` | Remove the current user's Plex link |
-| `GET` | `/api/users/plex-link/home-users` | List Plex home users |
-| `POST` | `/api/users/:id/plex-link/managed` | Link a managed Plex user |
-| `DELETE` | `/api/users/:id/plex-link` | Remove a managed Plex link |
+| Method   | Path                                     | Purpose                                                                                            |
+| -------- | ---------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `GET`    | `/api/users`                             | List users                                                                                         |
+| `POST`   | `/api/users`                             | Create a user                                                                                      |
+| `PATCH`  | `/api/users/:id`                         | Update a user                                                                                      |
+| `DELETE` | `/api/users/:id`                         | Delete a user                                                                                      |
+| `GET`    | `/api/users/me/listening-history`        | Get listening-history settings for the current user                                                |
+| `GET`    | `/api/users/me/identities`               | List the sign-in identities linked to the current user                                             |
+| `DELETE` | `/api/users/me/identities/:id`           | Remove a linked identity. Returns `400` with `last_auth_method` when it is the last way to sign in |
+| `GET`    | `/api/users/me/lidarr-preferences`       | Current user's Lidarr preferences                                                                  |
+| `PATCH`  | `/api/users/me/lidarr-preferences`       | Update current user's Lidarr preferences                                                           |
+| `GET`    | `/api/users/me/discover-layout`          | Current user's discovery layout                                                                    |
+| `PATCH`  | `/api/users/me/discover-layout`          | Update current user's discovery layout                                                             |
+| `GET`    | `/api/users/me/theme`                    | Current user's theme settings and saved themes, or `null`                                          |
+| `PUT`    | `/api/users/me/theme`                    | Replace the current user's theme settings. Returns `400` when the theme is invalid                 |
+| `POST`   | `/api/users/me/password`                 | Change current user's password                                                                     |
+| `GET`    | `/api/users/me/plex-link/status`         | Read the current user's Plex link                                                                  |
+| `POST`   | `/api/users/me/plex-link/oauth/pin`      | Start Plex linking for the current user                                                            |
+| `POST`   | `/api/users/me/plex-link/oauth/complete` | Complete Plex linking for the current user                                                         |
+| `DELETE` | `/api/users/me/plex-link`                | Remove the current user's Plex link                                                                |
+| `GET`    | `/api/users/plex-link/home-users`        | List Plex home users                                                                               |
+| `POST`   | `/api/users/:id/plex-link/managed`       | Link a managed Plex user                                                                           |
+| `DELETE` | `/api/users/:id/plex-link`               | Remove a managed Plex link                                                                         |
 
 The current-user Plex-link routes require authentication. The Plex home-user
 and managed-link routes require administrator access.
@@ -483,82 +483,82 @@ and managed-link routes require administrator access.
 
 Every route in this section requires an administrator.
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/settings` | Read settings |
-| `POST` | `/api/settings` | Update settings |
-| `GET` | `/api/settings/storage-health` | Return the result of the last storage health check. It does not run the checks |
-| `POST` | `/api/settings/storage-health/check` | Run the storage health check again |
-| `GET` | `/api/settings/tasks` | List scheduled maintenance tasks |
-| `POST` | `/api/settings/tasks/clear-stale` | Clear stale task runs |
-| `GET` | `/api/settings/lidarr/profiles` | List Lidarr quality profiles |
-| `GET` | `/api/settings/lidarr/metadata-profiles` | List Lidarr metadata profiles |
-| `GET` | `/api/settings/lidarr/root-folders` | List Lidarr root folders |
-| `GET` | `/api/settings/lidarr/tags` | List Lidarr tags |
-| `GET` | `/api/settings/lidarr/test-library-access` | Test Lidarr library access |
-| `GET` | `/api/settings/lidarr/test` | Test Lidarr configuration |
-| `POST` | `/api/settings/lidarr/apply-community-guide` | Apply recommended Lidarr settings |
-| `POST` | `/api/settings/slskd/test` | Test slskd |
-| `POST` | `/api/settings/prowlarr/test` | Test Prowlarr |
-| `GET` | `/api/settings/prowlarr/indexers` | List Prowlarr Usenet indexers |
-| `POST` | `/api/settings/nzbget/test` | Test NZBGet |
-| `POST` | `/api/settings/sabnzbd/test` | Test SABnzbd |
-| `POST` | `/api/settings/ytdlp/test` | Test yt-dlp |
-| `GET` | `/api/settings/download-clients` | Read download client settings metadata |
-| `POST` | `/api/settings/download-clients/:key/test` | Test a download client |
-| `POST` | `/api/settings/gotify/test` | Test Gotify |
-| `POST` | `/api/settings/webhook/test` | Test one webhook configuration |
-| `POST` | `/api/settings/plex/auth/pin` | Start Plex authentication |
-| `POST` | `/api/settings/plex/auth/check` | Check Plex authentication |
-| `POST` | `/api/settings/plex/resources` | List Plex resources |
-| `POST` | `/api/settings/plex/test` | Test Plex |
-| `GET` | `/api/settings/plex/libraries` | List Plex libraries |
-| `GET` | `/api/settings/plex/libraries/:sectionId/access-check` | Check access to a Plex library |
-| `POST` | `/api/settings/plex/sync` | Synchronize Plex |
-| `POST` | `/api/settings/navidrome/test` | Test Navidrome credentials |
-| `GET` | `/api/settings/playback` | Read playback settings |
-| `POST` | `/api/settings/playback/:key/test` | Test a playback integration |
+| Method | Path                                                   | Purpose                                                                        |
+| ------ | ------------------------------------------------------ | ------------------------------------------------------------------------------ |
+| `GET`  | `/api/settings`                                        | Read settings                                                                  |
+| `POST` | `/api/settings`                                        | Update settings                                                                |
+| `GET`  | `/api/settings/storage-health`                         | Return the result of the last storage health check. It does not run the checks |
+| `POST` | `/api/settings/storage-health/check`                   | Run the storage health check again                                             |
+| `GET`  | `/api/settings/tasks`                                  | List scheduled maintenance tasks                                               |
+| `POST` | `/api/settings/tasks/clear-stale`                      | Clear stale task runs                                                          |
+| `GET`  | `/api/settings/lidarr/profiles`                        | List Lidarr quality profiles                                                   |
+| `GET`  | `/api/settings/lidarr/metadata-profiles`               | List Lidarr metadata profiles                                                  |
+| `GET`  | `/api/settings/lidarr/root-folders`                    | List Lidarr root folders                                                       |
+| `GET`  | `/api/settings/lidarr/tags`                            | List Lidarr tags                                                               |
+| `GET`  | `/api/settings/lidarr/test-library-access`             | Test Lidarr library access                                                     |
+| `GET`  | `/api/settings/lidarr/test`                            | Test Lidarr configuration                                                      |
+| `POST` | `/api/settings/lidarr/apply-community-guide`           | Apply recommended Lidarr settings                                              |
+| `POST` | `/api/settings/slskd/test`                             | Test slskd                                                                     |
+| `POST` | `/api/settings/prowlarr/test`                          | Test Prowlarr                                                                  |
+| `GET`  | `/api/settings/prowlarr/indexers`                      | List Prowlarr Usenet indexers                                                  |
+| `POST` | `/api/settings/nzbget/test`                            | Test NZBGet                                                                    |
+| `POST` | `/api/settings/sabnzbd/test`                           | Test SABnzbd                                                                   |
+| `POST` | `/api/settings/ytdlp/test`                             | Test yt-dlp                                                                    |
+| `GET`  | `/api/settings/download-clients`                       | Read download client settings metadata                                         |
+| `POST` | `/api/settings/download-clients/:key/test`             | Test a download client                                                         |
+| `POST` | `/api/settings/gotify/test`                            | Test Gotify                                                                    |
+| `POST` | `/api/settings/webhook/test`                           | Test one webhook configuration                                                 |
+| `POST` | `/api/settings/plex/auth/pin`                          | Start Plex authentication                                                      |
+| `POST` | `/api/settings/plex/auth/check`                        | Check Plex authentication                                                      |
+| `POST` | `/api/settings/plex/resources`                         | List Plex resources                                                            |
+| `POST` | `/api/settings/plex/test`                              | Test Plex                                                                      |
+| `GET`  | `/api/settings/plex/libraries`                         | List Plex libraries                                                            |
+| `GET`  | `/api/settings/plex/libraries/:sectionId/access-check` | Check access to a Plex library                                                 |
+| `POST` | `/api/settings/plex/sync`                              | Synchronize Plex                                                               |
+| `POST` | `/api/settings/navidrome/test`                         | Test Navidrome credentials                                                     |
+| `GET`  | `/api/settings/playback`                               | Read playback settings                                                         |
+| `POST` | `/api/settings/playback/:key/test`                     | Test a playback integration                                                    |
 
 ## Scrobbling and play events
 
 The instance API key has no user identity. Account linking and local play-event
 recording require a user's login session.
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/scrobbling/status` | Read scrobbling provider status |
-| `GET` | `/api/scrobbling/lastfm/link` | Start or read Last.fm linking. Requires a user session |
-| `GET` | `/api/scrobbling/lastfm/link/callback` | Complete Last.fm linking |
-| `DELETE` | `/api/scrobbling/lastfm/link` | Unlink Last.fm |
-| `GET` | `/api/scrobbling/listenbrainz/link` | Read ListenBrainz linking |
-| `PUT` | `/api/scrobbling/listenbrainz/link` | Link ListenBrainz. Requires a user session |
-| `DELETE` | `/api/scrobbling/listenbrainz/link` | Unlink ListenBrainz |
-| `PUT` | `/api/scrobbling/koito/link` | Configure Koito. Requires a user session |
-| `DELETE` | `/api/scrobbling/koito/link` | Unlink Koito |
-| `GET` | `/api/play-events` | Read local play history |
-| `POST` | `/api/play-events` | Record a local play event. Requires a user session |
+| Method   | Path                                   | Purpose                                                |
+| -------- | -------------------------------------- | ------------------------------------------------------ |
+| `GET`    | `/api/scrobbling/status`               | Read scrobbling provider status                        |
+| `GET`    | `/api/scrobbling/lastfm/link`          | Start or read Last.fm linking. Requires a user session |
+| `GET`    | `/api/scrobbling/lastfm/link/callback` | Complete Last.fm linking                               |
+| `DELETE` | `/api/scrobbling/lastfm/link`          | Unlink Last.fm                                         |
+| `GET`    | `/api/scrobbling/listenbrainz/link`    | Read ListenBrainz linking                              |
+| `PUT`    | `/api/scrobbling/listenbrainz/link`    | Link ListenBrainz. Requires a user session             |
+| `DELETE` | `/api/scrobbling/listenbrainz/link`    | Unlink ListenBrainz                                    |
+| `PUT`    | `/api/scrobbling/koito/link`           | Configure Koito. Requires a user session               |
+| `DELETE` | `/api/scrobbling/koito/link`           | Unlink Koito                                           |
+| `GET`    | `/api/play-events`                     | Read local play history                                |
+| `POST`   | `/api/play-events`                     | Record a local play event. Requires a user session     |
 
 ## Onboarding
 
 These routes accept requests only until onboarding is complete. During initial
 setup, Aurral does not require a credential for these routes.
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `POST` | `/api/onboarding/lidarr/profiles` | List Lidarr quality profiles |
+| Method | Path                                       | Purpose                       |
+| ------ | ------------------------------------------ | ----------------------------- |
+| `POST` | `/api/onboarding/lidarr/profiles`          | List Lidarr quality profiles  |
 | `POST` | `/api/onboarding/lidarr/metadata-profiles` | List Lidarr metadata profiles |
-| `POST` | `/api/onboarding/lidarr/test` | Test Lidarr credentials |
-| `POST` | `/api/onboarding/navidrome/test` | Test Navidrome credentials |
-| `POST` | `/api/onboarding/complete` | Complete onboarding |
+| `POST` | `/api/onboarding/lidarr/test`              | Test Lidarr credentials       |
+| `POST` | `/api/onboarding/navidrome/test`           | Test Navidrome credentials    |
+| `POST` | `/api/onboarding/complete`                 | Complete onboarding           |
 
 ## Files and images
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/filesystem/browse` | Browse server directories |
-| `POST` | `/api/filesystem/ensure` | Create or validate a server directory |
-| `POST` | `/api/image-proxy` | Cache a remote image and return its same-origin `/api/image-proxy/:cacheKey` URL |
-| `GET` | `/api/image-proxy/:cacheKey` | Fetch a cached native-library image |
+| Method | Path                         | Purpose                                                                          |
+| ------ | ---------------------------- | -------------------------------------------------------------------------------- |
+| `GET`  | `/api/filesystem/browse`     | Browse server directories                                                        |
+| `POST` | `/api/filesystem/ensure`     | Create or validate a server directory                                            |
+| `POST` | `/api/image-proxy`           | Cache a remote image and return its same-origin `/api/image-proxy/:cacheKey` URL |
+| `GET`  | `/api/image-proxy/:cacheKey` | Fetch a cached native-library image                                              |
 
 Fetching a cached image is public. Caching a new image requires a signed-in
 user. Before onboarding, filesystem routes do not
@@ -569,8 +569,8 @@ not require an API key.
 
 ## Subsonic
 
-| Method | Path | Purpose |
-| --- | --- | --- |
+| Method          | Path                 | Purpose                               |
+| --------------- | -------------------- | ------------------------------------- |
 | `GET` or `POST` | `/rest/:method.view` | Subsonic and OpenSubsonic API methods |
 
 The Subsonic API supports XML and JSON responses. Use the account's Subsonic

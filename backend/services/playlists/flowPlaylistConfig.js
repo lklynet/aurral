@@ -248,14 +248,9 @@ const normalizeFlow = (flow) => {
   const normalizedRelatedArray = normalizeStringArray(flow?.relatedArtists);
   const legacyTags = normalizeWeightMap(flow?.tags);
   const legacyRelatedArtists = normalizeWeightMap(flow?.relatedArtists);
-  const tags =
-    normalizedTagsArray.length > 0
-      ? normalizedTagsArray
-      : Object.keys(legacyTags);
+  const tags = normalizedTagsArray.length > 0 ? normalizedTagsArray : Object.keys(legacyTags);
   const relatedArtists =
-    normalizedRelatedArray.length > 0
-      ? normalizedRelatedArray
-      : Object.keys(legacyRelatedArtists);
+    normalizedRelatedArray.length > 0 ? normalizedRelatedArray : Object.keys(legacyRelatedArtists);
   const { yearFrom, yearTo } = normalizeYearRange(flow?.yearFrom, flow?.yearTo);
   return {
     id: flow?.id || randomUUID(),
@@ -294,7 +289,8 @@ const normalizeFlow = (flow) => {
   };
 };
 
-const positiveInteger = (value) => (Number.isInteger(Number(value)) && Number(value) > 0 ? Number(value) : null);
+const positiveInteger = (value) =>
+  Number.isInteger(Number(value)) && Number(value) > 0 ? Number(value) : null;
 
 export const normalizePlaylistTrack = (track) => {
   if (!track || typeof track !== "object" || Array.isArray(track)) return null;
@@ -346,9 +342,15 @@ export const normalizePlaylistTrack = (track) => {
 
 export const buildPlaylistTrackIdentity = (track) =>
   [
-    String(track?.artistName || "").trim().toLowerCase(),
-    String(track?.trackName || "").trim().toLowerCase(),
-    String(track?.albumName || "").trim().toLowerCase(),
+    String(track?.artistName || "")
+      .trim()
+      .toLowerCase(),
+    String(track?.trackName || "")
+      .trim()
+      .toLowerCase(),
+    String(track?.albumName || "")
+      .trim()
+      .toLowerCase(),
     String(track?.artistMbid || "").trim(),
     String(track?.albumMbid || "").trim(),
     String(track?.trackMbid || "").trim(),
@@ -357,12 +359,20 @@ export const buildPlaylistTrackIdentity = (track) =>
 
 export const buildImportTrackIdentity = (track) =>
   [track?.artistName, track?.trackName, track?.albumName]
-    .map((value) => String(value || "").trim().toLowerCase())
+    .map((value) =>
+      String(value || "")
+        .trim()
+        .toLowerCase(),
+    )
     .join("\u0001");
 
 export const buildCoreTrackIdentity = (track) => {
-  const artistName = String(track?.artistName || "").trim().toLowerCase();
-  const trackName = String(track?.trackName || "").trim().toLowerCase();
+  const artistName = String(track?.artistName || "")
+    .trim()
+    .toLowerCase();
+  const trackName = String(track?.trackName || "")
+    .trim()
+    .toLowerCase();
   if (!artistName || !trackName) return "";
   return `${artistName}\u0001${trackName}`;
 };
@@ -482,9 +492,7 @@ export function normalizeImportSource(value) {
   const syncIntervalHours = Number(value.syncIntervalHours);
   const lastSyncAt = Number(value.lastSyncAt);
   const hasSync =
-    value.syncEnabled !== false &&
-    Number.isFinite(syncIntervalHours) &&
-    syncIntervalHours > 0;
+    value.syncEnabled !== false && Number.isFinite(syncIntervalHours) && syncIntervalHours > 0;
   return {
     provider,
     externalId: String(value.externalId || "").trim() || null,
@@ -493,9 +501,7 @@ export function normalizeImportSource(value) {
       : {}),
     externalName: String(value.externalName || "").trim() || null,
     syncEnabled: hasSync,
-    syncIntervalHours: hasSync
-      ? Math.min(Math.max(Math.round(syncIntervalHours), 1), 168)
-      : 0,
+    syncIntervalHours: hasSync ? Math.min(Math.max(Math.round(syncIntervalHours), 1), 168) : 0,
     keepRemovedTracks: value.keepRemovedTracks !== false,
     lastSyncAt: Number.isFinite(lastSyncAt) && lastSyncAt > 0 ? lastSyncAt : null,
     lastSyncError: String(value.lastSyncError || "").trim() || null,
@@ -510,7 +516,10 @@ const normalizeStaticPlaylist = (playlist) => {
   const name = String(playlist?.name || "").trim();
   const membershipIds = new Set();
   const tracks = dedupePlaylistTracks(playlist?.tracks).map((track) => {
-    const membershipId = track.membershipId && !membershipIds.has(track.membershipId) ? track.membershipId : randomUUID();
+    const membershipId =
+      track.membershipId && !membershipIds.has(track.membershipId)
+        ? track.membershipId
+        : randomUUID();
     membershipIds.add(membershipId);
     return { ...track, membershipId };
   });
@@ -684,7 +693,12 @@ const assertUniqueFlowName = (flows, sameOwnerPlaylists, nextName, exceptFlowId 
   }
 };
 
-const assertUniqueStaticPlaylistName = (playlists, sameOwnerFlows, nextName, exceptPlaylistId = null) => {
+const assertUniqueStaticPlaylistName = (
+  playlists,
+  sameOwnerFlows,
+  nextName,
+  exceptPlaylistId = null,
+) => {
   const key = normalizeNameKey(nextName);
   if (!key) return;
   const playlistConflict = playlists.some((playlist) => {
@@ -834,13 +848,9 @@ export const flowPlaylistConfig = {
       scheduleTime: updates?.scheduleTime ?? current.scheduleTime,
       deepDive: typeof updates?.deepDive === "boolean" ? updates.deepDive : current.deepDive,
       recordHistory:
-        typeof updates?.recordHistory === "boolean"
-          ? updates.recordHistory
-          : current.recordHistory,
+        typeof updates?.recordHistory === "boolean" ? updates.recordHistory : current.recordHistory,
       showInLibrary:
-        typeof updates?.showInLibrary === "boolean"
-          ? updates.showInLibrary
-          : current.showInLibrary,
+        typeof updates?.showInLibrary === "boolean" ? updates.showInLibrary : current.showInLibrary,
       yearFrom,
       yearTo,
       enabled: current.enabled,
@@ -996,7 +1006,10 @@ export const flowPlaylistConfig = {
     const index = playlists.findIndex((playlist) => playlist.id === playlistId);
     if (index === -1) return null;
     const current = playlists[index];
-    const appendedTracks = filterMissingPlaylistTracks(current.tracks, tracks).map((track) => ({ ...track, membershipId: randomUUID() }));
+    const appendedTracks = filterMissingPlaylistTracks(current.tracks, tracks).map((track) => ({
+      ...track,
+      membershipId: randomUUID(),
+    }));
     const next = normalizeStaticPlaylist({
       ...current,
       tracks: [...current.tracks, ...appendedTracks],
@@ -1026,9 +1039,7 @@ export const flowPlaylistConfig = {
       sourceName: updates?.sourceName ?? current.sourceName,
       description: updates?.description !== undefined ? updates.description : current.description,
       recordHistory:
-        typeof updates?.recordHistory === "boolean"
-          ? updates.recordHistory
-          : current.recordHistory,
+        typeof updates?.recordHistory === "boolean" ? updates.recordHistory : current.recordHistory,
       showTrackAvailability: updates?.showTrackAvailability ?? current.showTrackAvailability,
       sourceFlowId: updates?.sourceFlowId ?? current.sourceFlowId,
       discoverPresetId: updates?.discoverPresetId ?? current.discoverPresetId,
@@ -1036,16 +1047,24 @@ export const flowPlaylistConfig = {
         updates?.importSource !== undefined
           ? normalizeImportSource(updates.importSource)
           : current.importSource,
-      tracks: Array.isArray(updates?.tracks) ? dedupePlaylistTracks(updates.tracks).map((track) => {
-        const previous = current.tracks.find((entry) => entry.canonicalJobId === track.canonicalJobId && tracksShareMembership(entry, track));
-        return { ...track, membershipId: previous?.membershipId || randomUUID() };
-      }) : current.tracks,
+      tracks: Array.isArray(updates?.tracks)
+        ? dedupePlaylistTracks(updates.tracks).map((track) => {
+            const previous = current.tracks.find(
+              (entry) =>
+                entry.canonicalJobId === track.canonicalJobId &&
+                tracksShareMembership(entry, track),
+            );
+            return { ...track, membershipId: previous?.membershipId || randomUUID() };
+          })
+        : current.tracks,
       importedAt: current.importedAt,
       createdAt: current.createdAt,
     });
     playlists[index] = next;
     setStaticPlaylists(playlists);
-    import("../unifiedSearchService.js").then(({ clearSearchContextCache }) => clearSearchContextCache()).catch(() => {});
+    import("../unifiedSearchService.js")
+      .then(({ clearSearchContextCache }) => clearSearchContextCache())
+      .catch(() => {});
     return next;
   },
 

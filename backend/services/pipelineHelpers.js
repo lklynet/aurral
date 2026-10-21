@@ -10,9 +10,7 @@ export function getPayloadCandidate(payload) {
   const candidateIndex = Number(payload?.candidateIndex || 0);
   return (
     payload?.candidate ||
-    (Array.isArray(payload?.candidates)
-      ? payload.candidates[candidateIndex]
-      : null)
+    (Array.isArray(payload?.candidates) ? payload.candidates[candidateIndex] : null)
   );
 }
 
@@ -67,12 +65,7 @@ export function holdForReview(job, { source, sourcePath, reason, ...details }) {
   };
 }
 
-export function blockPipelineJobForReview({
-  downloadTracker,
-  job,
-  validation,
-  sourcePath,
-}) {
+export function blockPipelineJobForReview({ downloadTracker, job, validation, sourcePath }) {
   const stagingPath = String(sourcePath || "").trim();
   if (!validation?.blocked || !stagingPath) return false;
   const reason = validation.reason || "Blocked for review";
@@ -109,7 +102,8 @@ export async function recordPipelineJobSuccess({
     await finalizeQualityUpgradeSuccess(job, committedFinalPath, quality);
     return false;
   }
-  if (downloadTracker.setDone(job.id, committedFinalPath, job.albumName || album) === false) return false;
+  if (downloadTracker.setDone(job.id, committedFinalPath, job.albumName || album) === false)
+    return false;
   if (quality) downloadTracker.updateQuality(job.id, quality);
 
   if (job.managedBy !== "lidarr" && committedFinalPath) {

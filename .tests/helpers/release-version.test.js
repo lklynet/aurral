@@ -111,9 +111,6 @@ test("resolveNextRelease rejects a version that is not newer than the latest sta
 
 test("resolveNextRelease rejects malformed and prerelease targets", () => {
   for (const targetVersion of ["", "next", "2.0", "2.0.0-rc.1"]) {
-    assert.throws(
-      () => resolveNextRelease({ targetVersion }),
-      /must be a stable semantic version/,
-    );
+    assert.throws(() => resolveNextRelease({ targetVersion }), /must be a stable semantic version/);
   }
 });

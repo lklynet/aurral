@@ -25,7 +25,10 @@ test("every album action is a Download album button for the active manager", () 
   const action = getAlbumAddAction({ status: "monitored", managedBy: "aurral" }, lidarr);
   assert.equal(action.label, "Download album");
   assert.equal(action.destination, lidarr);
-  assert.equal(getAlbumAddAction({ inLibrary: true, monitored: false }, { primary: "aurral" }).label, "Download album");
+  assert.equal(
+    getAlbumAddAction({ inLibrary: true, monitored: false }, { primary: "aurral" }).label,
+    "Download album",
+  );
 });
 
 test("isAlbumCompleteInLibrary only treats on-disk albums as complete", () => {
@@ -40,9 +43,16 @@ test("album request results describe what happens without naming a manager", () 
   const blocked = describeAlbumRequestResult({ status: "blocked" }, "Dummy");
   assert.equal(blocked.kind, "info");
   assert.match(blocked.message, /nothing is downloading/);
-  assert.equal(describeAlbumRequestResult({ albumStatus: { status: "blocked" } }, "Dummy").kind, "info");
-  assert.equal(describeAlbumRequestResult({ triggeredSearch: true }, "Dummy").message, "Searching for Dummy");
-  for (const message of [queued.message, blocked.message]) assert.doesNotMatch(message, /Aurral|Lidarr/);
+  assert.equal(
+    describeAlbumRequestResult({ albumStatus: { status: "blocked" } }, "Dummy").kind,
+    "info",
+  );
+  assert.equal(
+    describeAlbumRequestResult({ triggeredSearch: true }, "Dummy").message,
+    "Searching for Dummy",
+  );
+  for (const message of [queued.message, blocked.message])
+    assert.doesNotMatch(message, /Aurral|Lidarr/);
 });
 
 test("an unmonitored Aurral album counts the release's tracks, so a downloaded single isn't complete", () => {
@@ -67,14 +77,24 @@ test("an unmonitored Aurral album counts the release's tracks, so a downloaded s
 });
 
 test("release display keeps albums with an incomplete track list incomplete", () => {
-  const lookup = { inLibrary: true, managedBy: "aurral", monitored: true,
-    trackListComplete: false, trackCount: 1, trackFileCount: 1 };
+  const lookup = {
+    inLibrary: true,
+    managedBy: "aurral",
+    monitored: true,
+    trackListComplete: false,
+    trackCount: 1,
+    trackFileCount: 1,
+  };
   const display = resolveReleaseLibraryDisplay(countReleaseTracks(lookup, 12));
   assert.equal(display.isComplete, false);
   assert.equal(display.kind, "incomplete");
   assert.equal(display.label, "Incomplete");
   assert.equal(resolveReleaseLibraryDisplay(lookup, { status: "partial" }).kind, "incomplete");
-  const complete = resolveReleaseLibraryDisplay({ ...lookup, trackListComplete: true, percentOfTracks: 100 });
+  const complete = resolveReleaseLibraryDisplay({
+    ...lookup,
+    trackListComplete: true,
+    percentOfTracks: 100,
+  });
   assert.equal(complete.isComplete, true);
   assert.equal(complete.label, "In library");
 });

@@ -61,10 +61,12 @@ import {
 } from "../../../services/customArtworkService.js";
 
 const getAccessiblePlaylistIds = (user) => [
-  ...new Set([
-    ...flowPlaylistConfig.getFlowsForUser(user),
-    ...flowPlaylistConfig.getStaticPlaylistsForUser(user),
-  ].map((playlist) => playlist.id)),
+  ...new Set(
+    [
+      ...flowPlaylistConfig.getFlowsForUser(user),
+      ...flowPlaylistConfig.getStaticPlaylistsForUser(user),
+    ].map((playlist) => playlist.id),
+  ),
 ];
 
 const BLOCKED_JOB_REVIEW_TIMEOUT_MS = 16 * 60 * 1000;
@@ -82,9 +84,11 @@ export function canAccessJobThroughPlaylist(user, job, playlistId) {
   if (!canAccessJobType(user, safePlaylistId)) return false;
   if (job.playlistType === safePlaylistId || job.playlistId === safePlaylistId) return true;
   const staticPlaylist = flowPlaylistConfig.getStaticPlaylist(safePlaylistId);
-  return staticPlaylist?.tracks?.some(
-    (track) => String(track?.canonicalJobId || "") === String(job.id || ""),
-  ) === true;
+  return (
+    staticPlaylist?.tracks?.some(
+      (track) => String(track?.canonicalJobId || "") === String(job.id || ""),
+    ) === true
+  );
 }
 
 function getAccessibleManualSearchJob(user, jobId, { mode = "missing", playlistId = null } = {}) {
@@ -106,8 +110,13 @@ function getAccessibleManualSearchJob(user, jobId, { mode = "missing", playlistI
   return job;
 }
 
-function toPublicJob({ stagingPath: _stagingPath, heldForReview: _heldForReview, finalPath, externalPath: _externalPath,
-  ...job }) {
+function toPublicJob({
+  stagingPath: _stagingPath,
+  heldForReview: _heldForReview,
+  finalPath,
+  externalPath: _externalPath,
+  ...job
+}) {
   const streamFormat = finalPath ? path.extname(finalPath).slice(1).toLowerCase() : "";
   return { ...job, streamFormat: streamFormat || null };
 }
@@ -122,13 +131,10 @@ export function registerJobs(router) {
     if (!canAccessPlaylistType(req.user, playlistId)) {
       return res.status(404).json({ error: "Playlist not found" });
     }
-    const rawLimit =
-      req.query.limit == null ? "" : String(req.query.limit).trim();
+    const rawLimit = req.query.limit == null ? "" : String(req.query.limit).trim();
     const parsedLimit = Number(rawLimit);
     const limit =
-      rawLimit && Number.isFinite(parsedLimit) && parsedLimit > 0
-        ? Math.floor(parsedLimit)
-        : null;
+      rawLimit && Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.floor(parsedLimit) : null;
     const staticPlaylist = flowPlaylistConfig.getStaticPlaylist(playlistId);
     const staticPlaylistTracks = staticPlaylist?.tracks;
     let jobs = downloadTracker.getByPlaylistType(
@@ -158,7 +164,10 @@ export function registerJobs(router) {
       decorateJobQuality(job, profile),
     );
     const libraryOwnership = getLibraryTrackOwnershipBatch(accessibleJobs);
-    const customArtwork = getCustomArtworkMap("playlist-track", accessibleJobs.map((job) => job.id));
+    const customArtwork = getCustomArtworkMap(
+      "playlist-track",
+      accessibleJobs.map((job) => job.id),
+    );
     res.json(
       accessibleJobs.map((job, index) => ({
         ...toPublicJob(job),
@@ -191,27 +200,32 @@ export function registerJobs(router) {
     );
     const profile = getQualityProfile();
     const isUnmonitored = indexUnmonitoredJobs();
-    const customArtwork = getCustomArtworkMap("playlist-track", jobs.map((job) => job.id));
-    res.json(jobs.map((job) => ({
-      ...toPublicJob(decorateJobQuality(job, profile)),
-      monitored: !isUnmonitored(job),
-      ...(customArtwork.has(String(job.id))
-        ? {
-            artworkUrl: buildCustomArtworkUrl(
-              "playlist-track",
-              job.id,
-              customArtwork.get(String(job.id)),
-              { playlistId: job.playlistType || job.playlistId },
-            ),
-            customArtworkUrl: buildCustomArtworkUrl(
-              "playlist-track",
-              job.id,
-              customArtwork.get(String(job.id)),
-              { playlistId: job.playlistType || job.playlistId },
-            ),
-          }
-        : {}),
-    })));
+    const customArtwork = getCustomArtworkMap(
+      "playlist-track",
+      jobs.map((job) => job.id),
+    );
+    res.json(
+      jobs.map((job) => ({
+        ...toPublicJob(decorateJobQuality(job, profile)),
+        monitored: !isUnmonitored(job),
+        ...(customArtwork.has(String(job.id))
+          ? {
+              artworkUrl: buildCustomArtworkUrl(
+                "playlist-track",
+                job.id,
+                customArtwork.get(String(job.id)),
+                { playlistId: job.playlistType || job.playlistId },
+              ),
+              customArtworkUrl: buildCustomArtworkUrl(
+                "playlist-track",
+                job.id,
+                customArtwork.get(String(job.id)),
+                { playlistId: job.playlistType || job.playlistId },
+              ),
+            }
+          : {}),
+      })),
+    );
   });
 
   router.get("/jobs/:jobId/files", requireAdmin, noCache, (req, res) => {
@@ -276,11 +290,12 @@ export function registerJobs(router) {
           ? downloadTracker.enqueueManualReplacementSelection(job.id, selection)
           : downloadTracker.enqueueManualSelection(job.id, selection)
         : await requestDownloadOwner(
-          replacement ? "enqueueManualReplacementSelection" : "enqueueManualMissingSelection",
-          [job.id, selection], {
-            timeoutMs: 30_000,
-          },
-        );
+            replacement ? "enqueueManualReplacementSelection" : "enqueueManualMissingSelection",
+            [job.id, selection],
+            {
+              timeoutMs: 30_000,
+            },
+          );
       if (!queued) {
         return res.status(409).json({
           error: "Track is no longer available for manual search",
@@ -318,8 +333,8 @@ export function registerJobs(router) {
     const queued = isDownloadOwnerProcess()
       ? await runQualityUpgradeCheck({ force: true, playlistIds: checkedIds, limit: 500 })
       : await requestDownloadOwner("runQualityUpgradeChecks", [checkedIds, 500], {
-        timeoutMs: 30 * 60 * 1000,
-      });
+          timeoutMs: 30 * 60 * 1000,
+        });
     if (queued > 0) invalidateRequestsCache();
     return res.json({
       success: true,
@@ -340,13 +355,15 @@ export function registerJobs(router) {
     const result = isDownloadOwnerProcess()
       ? await queueQualityUpgrade(job)
       : await requestDownloadOwner("queueQualityUpgradeForJob", [job.id], {
-        timeoutMs: 10 * 60 * 1000,
-      });
+          timeoutMs: 10 * 60 * 1000,
+        });
     if (result === "already-queued") {
       return res.json({ success: true, queued: 0, alreadyQueued: true, jobId });
     }
     if (result === "kept") {
-      return res.status(409).json({ error: "This file is kept. Allow upgrades for it first.", code: "kept_file" });
+      return res
+        .status(409)
+        .json({ error: "This file is kept. Allow upgrades for it first.", code: "kept_file" });
     }
     if (result !== "queued") {
       return res.status(409).json({ error: "Track is not eligible for an upgrade" });
@@ -404,7 +421,9 @@ export function registerJobs(router) {
       }
     }
     if (existingFileMode !== undefined) {
-      const normalized = String(existingFileMode || "").trim().toLowerCase();
+      const normalized = String(existingFileMode || "")
+        .trim()
+        .toLowerCase();
       if (!EXISTING_FILE_MODE_OPTIONS.includes(normalized)) {
         return res.status(400).json({
           error: "existingFileMode must be one of: download, reuse",
@@ -453,8 +472,8 @@ export function registerJobs(router) {
       const outcome = isDownloadOwnerProcess()
         ? await reviewBlockedJobLocally[method](req.params.jobId)
         : await requestDownloadOwner(method, [req.params.jobId], {
-          timeoutMs: BLOCKED_JOB_REVIEW_TIMEOUT_MS,
-        });
+            timeoutMs: BLOCKED_JOB_REVIEW_TIMEOUT_MS,
+          });
       if (outcome.status !== 200) {
         return res.status(outcome.status).json({ error: outcome.error });
       }
@@ -469,10 +488,10 @@ export function registerJobs(router) {
   };
 
   router.post("/jobs/:jobId/approve", (req, res) =>
-    reviewBlockedJob("approveBlockedJob", req, res));
+    reviewBlockedJob("approveBlockedJob", req, res),
+  );
 
-  router.post("/jobs/:jobId/deny", (req, res) =>
-    reviewBlockedJob("denyBlockedJob", req, res));
+  router.post("/jobs/:jobId/deny", (req, res) => reviewBlockedJob("denyBlockedJob", req, res));
 
   router.delete("/jobs/all", requireAdmin, async (req, res) => {
     try {
@@ -483,7 +502,8 @@ export function registerJobs(router) {
         reason: error?.message || String(error),
       });
       return res.status(500).json({
-        error: "Some provider work could not be cancelled. Affected jobs were stopped in Aurral and marked failed. Retry clearing jobs after fixing the provider connection.",
+        error:
+          "Some provider work could not be cancelled. Affected jobs were stopped in Aurral and marked failed. Retry clearing jobs after fixing the provider connection.",
       });
     }
   });
@@ -491,8 +511,7 @@ export function registerJobs(router) {
   router.post("/reset", requireAdmin, async (req, res) => {
     try {
       const { flowIds } = req.body;
-      const types =
-        flowIds || flowPlaylistConfig.getFlows().map((flow) => flow.id);
+      const types = flowIds || flowPlaylistConfig.getFlows().map((flow) => flow.id);
 
       await playlistOperationQueue.enqueuePayload({
         kind: "reset-playlists",
@@ -542,7 +561,9 @@ export function registerJobCancellation(router) {
         return null;
       }
     } else {
-      const ownsLibraryJob = job.playlistType === LIBRARY_JOB_TYPE && req.user?.id != null &&
+      const ownsLibraryJob =
+        job.playlistType === LIBRARY_JOB_TYPE &&
+        req.user?.id != null &&
         String(getTrackJobRequesterId(job.id)) === String(req.user.id);
       if (!ownsLibraryJob) {
         res.status(403).json({ error: "Forbidden" });
@@ -556,7 +577,9 @@ export function registerJobCancellation(router) {
     const job = getControllableJob(req, res);
     if (!job) return;
     if (!ACTIVE_JOB_STATUSES.has(job.status)) {
-      return res.status(409).json({ error: "Track download is already finished", status: job.status });
+      return res
+        .status(409)
+        .json({ error: "Track download is already finished", status: job.status });
     }
     try {
       const result = isDownloadOwnerProcess()
@@ -569,7 +592,9 @@ export function registerJobCancellation(router) {
       invalidateRequestsCache();
       return res.json(result);
     } catch (error) {
-      return res.status(500).json({ error: "Failed to cancel track download", message: error.message });
+      return res
+        .status(500)
+        .json({ error: "Failed to cancel track download", message: error.message });
     }
   });
 
@@ -577,7 +602,9 @@ export function registerJobCancellation(router) {
     const job = getControllableJob(req, res);
     if (!job) return;
     if (!RETRYABLE_JOB_STATUSES.has(job.status)) {
-      return res.status(409).json({ error: "Track download cannot be retried", status: job.status });
+      return res
+        .status(409)
+        .json({ error: "Track download cannot be retried", status: job.status });
     }
     try {
       const result = isDownloadOwnerProcess()
@@ -590,7 +617,9 @@ export function registerJobCancellation(router) {
       invalidateRequestsCache();
       return res.json(result);
     } catch (error) {
-      return res.status(500).json({ error: "Failed to retry track download", message: error.message });
+      return res
+        .status(500)
+        .json({ error: "Failed to retry track download", message: error.message });
     }
   });
 }

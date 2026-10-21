@@ -133,7 +133,9 @@ export function setLibraryManagement({
 } = {}) {
   const kind = String(entityKind || "").trim();
   const id = Number(entityId);
-  const owner = String(managedBy || "").trim().toLowerCase();
+  const owner = String(managedBy || "")
+    .trim()
+    .toLowerCase();
   if (!ENTITY_KINDS.has(kind)) {
     throw new Error(`Invalid library management entity kind: ${entityKind}`);
   }
@@ -143,9 +145,7 @@ export function setLibraryManagement({
   if (!LIBRARY_OWNERS.has(owner)) {
     throw new Error(`Invalid library manager: ${managedBy}`);
   }
-  const normalizedMonitorMode = monitorMode == null
-    ? null
-    : String(monitorMode).trim() || null;
+  const normalizedMonitorMode = monitorMode == null ? null : String(monitorMode).trim() || null;
   const rulesGiven = monitorRules !== undefined;
   upsertStmt.run({
     kind,

@@ -12,13 +12,10 @@ import {
 import { commitDownloadedFile } from "../../backend/services/downloadUtils.js";
 
 test("parseSlskdRemoteFile reads parent folder and basename from remote paths", () => {
-  assert.deepEqual(
-    parseSlskdRemoteFile("Eir Aoi\\Best - A -\\03. Eir Aoi - IGNITE.flac"),
-    {
-      fileName: "03. Eir Aoi - IGNITE.flac",
-      parentDir: "Best - A -",
-    },
-  );
+  assert.deepEqual(parseSlskdRemoteFile("Eir Aoi\\Best - A -\\03. Eir Aoi - IGNITE.flac"), {
+    fileName: "03. Eir Aoi - IGNITE.flac",
+    parentDir: "Best - A -",
+  });
   assert.deepEqual(parseSlskdRemoteFile("Single.flac"), {
     fileName: "Single.flac",
     parentDir: "",
@@ -27,13 +24,10 @@ test("parseSlskdRemoteFile reads parent folder and basename from remote paths", 
 
 test("predictSlskdLocalPathCandidates mirrors slskd parent-folder placement", () => {
   const remote = "Artist\\Album Name\\01 - Track.flac";
-  assert.deepEqual(
-    predictSlskdLocalPathCandidates("/downloads", remote),
-    [
-      path.join("/downloads", "Album Name", "01 - Track.flac"),
-      path.join("/downloads", "01 - Track.flac"),
-    ],
-  );
+  assert.deepEqual(predictSlskdLocalPathCandidates("/downloads", remote), [
+    path.join("/downloads", "Album Name", "01 - Track.flac"),
+    path.join("/downloads", "01 - Track.flac"),
+  ]);
 });
 
 test("locateCompletedDownload finds predicted slskd paths before recursive fallback", async () => {
@@ -97,11 +91,7 @@ test("locateCompletedDownload skips a missing slskd root and checks the playlist
   await fs.mkdir(path.dirname(expectedPath), { recursive: true });
   await fs.writeFile(expectedPath, "audio", "utf8");
 
-  const resolved = await locateCompletedDownload(
-    missingSlskdRoot,
-    playlistRoot,
-    remote,
-  );
+  const resolved = await locateCompletedDownload(missingSlskdRoot, playlistRoot, remote);
 
   assert.equal(resolved, expectedPath);
   assert.equal(Array.isArray(resolved), false);

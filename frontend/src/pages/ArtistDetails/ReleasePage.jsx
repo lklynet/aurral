@@ -11,10 +11,7 @@ import {
   requestAlbumFromSearch,
   settleLibraryOwnerConflict,
 } from "../../utils/api/endpoints/library.js";
-import {
-  getReleaseGroupCover,
-  getReleaseGroupTracks,
-} from "../../utils/api/endpoints/artists.js";
+import { getReleaseGroupCover, getReleaseGroupTracks } from "../../utils/api/endpoints/artists.js";
 import { useStaticPlaylists } from "../../hooks/useStaticPlaylists";
 import { useWebSocketChannel } from "../../hooks/useWebSocket";
 
@@ -36,7 +33,11 @@ import {
   ArtistDetailsReleaseTrackList,
   useReleasePreviewQueue,
 } from "./components/ArtistDetailsReleaseTrackList";
-import { CollectionHeader, CollectionPage, CollectionPlayButtons } from "../../components/CollectionHeader";
+import {
+  CollectionHeader,
+  CollectionPage,
+  CollectionPlayButtons,
+} from "../../components/CollectionHeader";
 import { withImageCacheBust } from "../../utils/normalizeMediaUrl.js";
 import { queryClient, queryKeys } from "../../queryClient.js";
 import { releaseGroupDetailsQueryOptions } from "../../queryOptions.js";
@@ -168,10 +169,10 @@ function ReleasePage() {
       if (msg?.type !== "download_statuses" || !libraryAlbumId) return;
       const next = msg.statuses?.[libraryAlbumId];
       if (!next) return;
-      queryClient.setQueryData(
-        queryKeys.downloadStatus([libraryAlbumId]),
-        (current) => ({ ...(current || {}), [libraryAlbumId]: next }),
-      );
+      queryClient.setQueryData(queryKeys.downloadStatus([libraryAlbumId]), (current) => ({
+        ...(current || {}),
+        [libraryAlbumId]: next,
+      }));
       if (next.status === "added") {
         queryClient.invalidateQueries({
           queryKey: queryKeys.libraryAlbumLookup([releaseMbid]),
@@ -182,12 +183,15 @@ function ReleasePage() {
   );
   const downloadStatusQuery = useQuery({
     queryKey: queryKeys.downloadStatus(libraryAlbumId ? [libraryAlbumId] : []),
-    queryFn: ({ signal }) =>
-      getDownloadStatus([libraryAlbumId], { signal, bypassCache: true }),
+    queryFn: ({ signal }) => getDownloadStatus([libraryAlbumId], { signal, bypassCache: true }),
     enabled: Boolean(libraryAlbumId),
     staleTime: 4_000,
     refetchInterval: (currentQuery) => {
-      if (!libraryAlbumId || downloadStatusWsConnected || (typeof document !== "undefined" && document.hidden)) {
+      if (
+        !libraryAlbumId ||
+        downloadStatusWsConnected ||
+        (typeof document !== "undefined" && document.hidden)
+      ) {
         return false;
       }
       const status = currentQuery.state.data?.[libraryAlbumId]?.status;
@@ -220,10 +224,7 @@ function ReleasePage() {
   );
   const trackCount = tracks.length;
   const libraryDisplay = useMemo(
-    () => resolveReleaseLibraryDisplay(
-      countReleaseTracks(libraryInfo, trackCount),
-      downloadStatus,
-    ),
+    () => resolveReleaseLibraryDisplay(countReleaseTracks(libraryInfo, trackCount), downloadStatus),
     [downloadStatus, libraryInfo, trackCount],
   );
   const isComplete = libraryDisplay.isComplete;
@@ -231,7 +232,8 @@ function ReleasePage() {
   const albumAddAction = buildAlbumAddAction(triggerSearch, libraryDestination);
   const albumDownloading =
     !isComplete &&
-    (isAlbumDownloading(releaseMbid) || ACTIVE_DOWNLOAD_STATUSES.has(String(downloadStatus?.status)));
+    (isAlbumDownloading(releaseMbid) ||
+      ACTIVE_DOWNLOAD_STATUSES.has(String(downloadStatus?.status)));
 
   const libraryPath = libraryInfo?.canonicalAlbumId
     ? `/library/album/${encodeURIComponent(libraryInfo.canonicalAlbumId)}`
@@ -378,7 +380,14 @@ function ReleasePage() {
         setPlaylistMenuSavingKey("");
       }
     },
-    [loadStaticPlaylists, setPlaylistModalError, setStaticPlaylists, staticPlaylists, showError, showSuccess],
+    [
+      loadStaticPlaylists,
+      setPlaylistModalError,
+      setStaticPlaylists,
+      staticPlaylists,
+      showError,
+      showSuccess,
+    ],
   );
 
   const handleReleaseTrackAdd = useCallback(
@@ -418,91 +427,94 @@ function ReleasePage() {
     [buildReleaseTrackPayload, downloadTrack, showError, showSuccess],
   );
 
-  const handleAlbumAction = useCallback(async (managedBy) => {
-    if (!releaseMbid || requestingAlbum) return;
-    setRequestingAlbum(true);
-    try {
-      const result = await requestAlbum(buildAlbumRequestPayload({
-        albumMbid: releaseMbid,
-        albumName: release.title,
-        artistMbid,
-        artistName,
-        managedBy,
-        triggerSearch,
-      }));
-      const addedAlbum = result?.album;
-      let entry = null;
-      if (addedAlbum?.id != null) {
-        const statistics = addedAlbum.statistics || {};
-        const sizeOnDisk = Number(statistics.sizeOnDisk || 0);
-        const trackFileCount = Number(statistics.trackFileCount || 0);
-        entry = {
-          inLibrary: true,
-          managedBy: addedAlbum.managedBy || result?.managedBy || managedBy,
-          libraryAlbumId: String(addedAlbum.id),
-          libraryArtistId:
-            addedAlbum.artistId != null ? String(addedAlbum.artistId) : null,
-          status:
-            sizeOnDisk > 0 || trackFileCount > 0
-              ? "available"
-              : addedAlbum.monitored
-                ? "monitored"
-                : "unmonitored",
-          monitored: Boolean(addedAlbum.monitored),
-          percentOfTracks: Number(statistics.percentOfTracks || 0),
-          sizeOnDisk,
-          trackCount: Number(statistics.trackCount || 0),
-          trackFileCount,
-          albumName: addedAlbum.albumName || release.title || "",
-          releaseDate: addedAlbum.releaseDate || "",
-        };
-      } else {
-        const lookup = await lookupAlbumsInLibraryBatch([releaseMbid], { bypassCache: true });
-        entry = lookup?.[releaseMbid] || null;
-      }
-      if (entry?.inLibrary) {
-        queryClient.setQueryData(
-          queryKeys.libraryAlbumLookup([releaseMbid]),
-          (current) => ({ ...(current || {}), [releaseMbid]: entry }),
+  const handleAlbumAction = useCallback(
+    async (managedBy) => {
+      if (!releaseMbid || requestingAlbum) return;
+      setRequestingAlbum(true);
+      try {
+        const result = await requestAlbum(
+          buildAlbumRequestPayload({
+            albumMbid: releaseMbid,
+            albumName: release.title,
+            artistMbid,
+            artistName,
+            managedBy,
+            triggerSearch,
+          }),
         );
-        if (entry.libraryAlbumId) {
-          const id = String(entry.libraryAlbumId);
-          queryClient.setQueryData(
-            queryKeys.downloadStatus([id]),
-            (current) => ({
+        const addedAlbum = result?.album;
+        let entry = null;
+        if (addedAlbum?.id != null) {
+          const statistics = addedAlbum.statistics || {};
+          const sizeOnDisk = Number(statistics.sizeOnDisk || 0);
+          const trackFileCount = Number(statistics.trackFileCount || 0);
+          entry = {
+            inLibrary: true,
+            managedBy: addedAlbum.managedBy || result?.managedBy || managedBy,
+            libraryAlbumId: String(addedAlbum.id),
+            libraryArtistId: addedAlbum.artistId != null ? String(addedAlbum.artistId) : null,
+            status:
+              sizeOnDisk > 0 || trackFileCount > 0
+                ? "available"
+                : addedAlbum.monitored
+                  ? "monitored"
+                  : "unmonitored",
+            monitored: Boolean(addedAlbum.monitored),
+            percentOfTracks: Number(statistics.percentOfTracks || 0),
+            sizeOnDisk,
+            trackCount: Number(statistics.trackCount || 0),
+            trackFileCount,
+            albumName: addedAlbum.albumName || release.title || "",
+            releaseDate: addedAlbum.releaseDate || "",
+          };
+        } else {
+          const lookup = await lookupAlbumsInLibraryBatch([releaseMbid], { bypassCache: true });
+          entry = lookup?.[releaseMbid] || null;
+        }
+        if (entry?.inLibrary) {
+          queryClient.setQueryData(queryKeys.libraryAlbumLookup([releaseMbid]), (current) => ({
+            ...(current || {}),
+            [releaseMbid]: entry,
+          }));
+          if (entry.libraryAlbumId) {
+            const id = String(entry.libraryAlbumId);
+            queryClient.setQueryData(queryKeys.downloadStatus([id]), (current) => ({
               ...(current || {}),
               [id]: { ...(current?.[id] || {}), status: result?.status || "searching" },
-            }),
-          );
+            }));
+          }
         }
+        const outcome = describeAlbumRequestResult(result, release.title || "album", managedBy);
+        (outcome.kind === "info" ? showInfo : showSuccess)(outcome.message);
+      } catch (err) {
+        const conflict = settleLibraryOwnerConflict(err);
+        if (conflict) {
+          setOwnerConflictState({ releaseMbid, conflict });
+          showInfo(`${release.title || "Album"}: ${conflict.message}`);
+          return;
+        }
+        showError(
+          `Could not download the album: ${
+            err.response?.data?.message || err.response?.data?.error || err.message
+          }`,
+        );
+      } finally {
+        setRequestingAlbum(false);
       }
-      const outcome = describeAlbumRequestResult(result, release.title || "album", managedBy);
-      (outcome.kind === "info" ? showInfo : showSuccess)(outcome.message);
-    } catch (err) {
-      const conflict = settleLibraryOwnerConflict(err);
-      if (conflict) {
-        setOwnerConflictState({ releaseMbid, conflict });
-        showInfo(`${release.title || "Album"}: ${conflict.message}`);
-        return;
-      }
-      showError(`Could not download the album: ${
-        err.response?.data?.message || err.response?.data?.error || err.message
-      }`);
-    } finally {
-      setRequestingAlbum(false);
-    }
-  }, [
-    artistMbid,
-    artistName,
-    triggerSearch,
-    release.title,
-    releaseMbid,
-    requestingAlbum,
-    requestAlbum,
-    showError,
-    showInfo,
-    showSuccess,
-  ]);
+    },
+    [
+      artistMbid,
+      artistName,
+      triggerSearch,
+      release.title,
+      releaseMbid,
+      requestingAlbum,
+      requestAlbum,
+      showError,
+      showInfo,
+      showSuccess,
+    ],
+  );
 
   const artistLinkState = {
     artistName,
@@ -532,7 +544,11 @@ function ReleasePage() {
         title={releaseTitle}
         subtitle={
           artistMbid ? (
-            <Link to={`/artist/${artistMbid}`} state={artistLinkState} className="native-library-detail__artist">
+            <Link
+              to={`/artist/${artistMbid}`}
+              state={artistLinkState}
+              className="native-library-detail__artist"
+            >
               {artistName || "Artist"}
             </Link>
           ) : null

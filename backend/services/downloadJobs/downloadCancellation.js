@@ -157,7 +157,9 @@ export function restorePlaylistDownloadWork(playlistId, jobIds = []) {
 }
 
 export function restoreDownloadJobCancellations(jobIds = []) {
-  const safeJobIds = [...new Set((Array.isArray(jobIds) ? jobIds : []).map(normalizeId).filter(Boolean))];
+  const safeJobIds = [
+    ...new Set((Array.isArray(jobIds) ? jobIds : []).map(normalizeId).filter(Boolean)),
+  ];
   if (safeJobIds.length === 0) return 0;
   const restore = db.transaction(() => {
     let restored = 0;
@@ -191,14 +193,10 @@ export function registerDownloadProviderWork({
   return true;
 }
 
-export function listDownloadProviderWork({
-  jobIds = [],
-  playlistId = null,
-  provider = null,
-} = {}) {
-  const safeJobIds = [...new Set(
-    (Array.isArray(jobIds) ? jobIds : []).map(normalizeId).filter(Boolean),
-  )];
+export function listDownloadProviderWork({ jobIds = [], playlistId = null, provider = null } = {}) {
+  const safeJobIds = [
+    ...new Set((Array.isArray(jobIds) ? jobIds : []).map(normalizeId).filter(Boolean)),
+  ];
   const safePlaylistId = normalizeId(playlistId);
   const safeProvider = normalizeId(provider);
   const clauses = [];
@@ -218,12 +216,14 @@ export function listDownloadProviderWork({
   }
   if (scope.length === 0) return [];
   clauses.push(`(${scope.join(" OR ")})`);
-  return db.prepare(
-    `SELECT job_id, playlist_id, provider, work_id, username, created_at
+  return db
+    .prepare(
+      `SELECT job_id, playlist_id, provider, work_id, username, created_at
      FROM weekly_flow_download_provider_work
      WHERE ${clauses.join(" AND ")}
      ORDER BY created_at, work_id`,
-  ).all(...params);
+    )
+    .all(...params);
 }
 
 const orphanedProviderWorkStmt = db.prepare(
@@ -252,11 +252,24 @@ export function isDownloadJobCancelled(jobId) {
 export function isPipelinePayloadActive(payload = {}) {
   const jobId = normalizeId(payload.jobId);
   if (jobId && isDownloadJobCancelled(jobId)) return false;
-  if (payload.downloadAttemptId !== undefined && getActiveDownloadAttemptId(jobId) !== (payload.downloadAttemptId || null)) return false;
+  if (
+    payload.downloadAttemptId !== undefined &&
+    getActiveDownloadAttemptId(jobId) !== (payload.downloadAttemptId || null)
+  )
+    return false;
   if (jobId) {
-    const owner = db.prepare("SELECT playlist_id, playlist_type, playlist_generation FROM playlist_download_jobs WHERE id = ?").get(jobId);
-    if (owner && payload.playlistId && ((owner.playlist_id || owner.playlist_type) !== payload.playlistId ||
-        Number(owner.playlist_generation || 0) !== Number(payload.playlistGeneration || 0))) return false;
+    const owner = db
+      .prepare(
+        "SELECT playlist_id, playlist_type, playlist_generation FROM playlist_download_jobs WHERE id = ?",
+      )
+      .get(jobId);
+    if (
+      owner &&
+      payload.playlistId &&
+      ((owner.playlist_id || owner.playlist_type) !== payload.playlistId ||
+        Number(owner.playlist_generation || 0) !== Number(payload.playlistGeneration || 0))
+    )
+      return false;
   }
 
   const playlistId = normalizeId(payload.playlistId);
@@ -276,13 +289,10 @@ export async function withPipelineCommitLock(payload, operation) {
     return { cancelled: false, result: await operation() };
   }
   const { withDownloadImportLock } = await import("./mutationGuards.js");
-  return withDownloadImportLock(
-    playlistId,
-    async () => {
-      if (!isPipelinePayloadActive(payload)) {
-        return { cancelled: true, result: null };
-      }
-      return { cancelled: false, result: await operation() };
-    },
-  );
+  return withDownloadImportLock(playlistId, async () => {
+    if (!isPipelinePayloadActive(payload)) {
+      return { cancelled: true, result: null };
+    }
+    return { cancelled: false, result: await operation() };
+  });
 }

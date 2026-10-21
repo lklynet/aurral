@@ -52,9 +52,7 @@ export function registerLidarr(router) {
       const { resolveLidarrTestCredentials } =
         await import("../../../services/lidarrTestSession.js");
       const { url, apiKey } = resolveLidarrTestCredentials(req.query, lidarrClient);
-      const { fetchRootFolders } = await import(
-        "../../../services/lidarrSettingsService.js"
-      );
+      const { fetchRootFolders } = await import("../../../services/lidarrSettingsService.js");
       const rootFolders = await fetchRootFolders({ url, apiKey });
       res.json(rootFolders);
     } catch (error) {

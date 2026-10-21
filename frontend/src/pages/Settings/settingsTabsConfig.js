@@ -100,7 +100,8 @@ const SETTINGS_SEARCH_METADATA = {
       Tag: "lidarr tag",
       "Default monitoring option": "albums existing future missing latest first",
       "Search on add": "missing albums artists",
-      "Show available music only": "available downloaded files discography hide unmonitored library owned",
+      "Show available music only":
+        "available downloaded files discography hide unmonitored library owned",
       "Community guide": "Davo recommended settings custom formats naming scheme",
     },
   },
@@ -123,7 +124,16 @@ const SETTINGS_SEARCH_METADATA = {
     },
   },
   "download-clients": {
-    sections: ["Quality profile", "Downloads folder", "Review queue", "Remote path mappings", "Connection", "Behavior", "Downloads", "Advanced"],
+    sections: [
+      "Quality profile",
+      "Downloads folder",
+      "Review queue",
+      "Remote path mappings",
+      "Connection",
+      "Behavior",
+      "Downloads",
+      "Advanced",
+    ],
     services: {
       slskd: "Soulseek download client",
       "yt-dlp": "YouTube web download client",
@@ -163,7 +173,8 @@ const SETTINGS_SEARCH_METADATA = {
   "library-files": {
     sections: ["Import a folder", "Clean up Library"],
     services: {
-      "Import folder": "ingest existing music library folder move copy hardlink Lidarr root monitor",
+      "Import folder":
+        "ingest existing music library folder move copy hardlink Lidarr root monitor",
       "Clean up Library": "rename organize tags files naming folders media management",
     },
     fields: {
@@ -179,14 +190,27 @@ const SETTINGS_SEARCH_METADATA = {
       "Artist monitoring": "monitor artists automatically download releases",
     },
     fields: {
-      "Default rules": "monitor artists back catalogue discography new releases latest since year albums EPs singles live compilations soundtracks remixes demos DJ mixes mixtapes edition deluxe expanded top tracks popular",
-      "Search again for missing tracks": "retry failed missing album tracks automatic schedule on off",
+      "Default rules":
+        "monitor artists back catalogue discography new releases latest since year albums EPs singles live compilations soundtracks remixes demos DJ mixes mixtapes edition deluxe expanded top tracks popular",
+      "Search again for missing tracks":
+        "retry failed missing album tracks automatic schedule on off",
       "Search interval": "days between missing track searches",
       "Removed from monitoring": "excluded deleted albums tracks allow again exclusions",
     },
   },
   playback: {
-    sections: ["Playback servers", "Scrobbling", "Navidrome playlist paths", "Cover art", "Connection", "Account", "Login", "Aurral library path", "Main library (optional)", "Sync"],
+    sections: [
+      "Playback servers",
+      "Scrobbling",
+      "Navidrome playlist paths",
+      "Cover art",
+      "Connection",
+      "Account",
+      "Login",
+      "Aurral library path",
+      "Main library (optional)",
+      "Sync",
+    ],
     services: {
       Navidrome: "Subsonic music server",
       Plex: "Plexamp music server",
@@ -262,7 +286,8 @@ const SETTINGS_SEARCH_METADATA = {
       "Add RSS feed": "custom source",
       "Feed name": "custom RSS source",
       "Feed URL": "custom RSS address",
-      "Feed groups": "major publications magazines indie alternative discovery hip hop rap pop mainstream electronic dance metal hard rock country americana jazz classical regional concerts festivals live music",
+      "Feed groups":
+        "major publications magazines indie alternative discovery hip hop rap pop mainstream electronic dance metal hard rock country americana jazz classical regional concerts festivals live music",
     },
   },
   discover: {
@@ -276,7 +301,8 @@ const SETTINGS_SEARCH_METADATA = {
       "Auto-refresh frequency": "daily weekly monthly recommendations",
       "Discovery mode": "safer balanced deeper recommendations",
       "Recommended artists": "number per refresh",
-      "Recommended playlists": "Discover Weekly Trending Mix Library Blend Listening History Release Radar",
+      "Recommended playlists":
+        "Discover Weekly Trending Mix Library Blend Listening History Release Radar",
       "Refresh discovery": "update recommendations now",
       "Clear artwork cache": "stored artwork links native library image files reset",
       Provider: "Last.fm ListenBrainz",

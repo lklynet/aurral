@@ -22,10 +22,7 @@ test("album track hydration does not rewrite unchanged library state", () => {
   assert.notStrictEqual(hydrated, current);
   assert.equal(hydrated.albums[0].trackCount, 1);
   assert.equal(hydrated.albums[0].availableTrackCount, 1);
-  assert.strictEqual(
-    mergeAlbumTrackPageIntoLibrary(hydrated, page, album.id, [track]),
-    hydrated,
-  );
+  assert.strictEqual(mergeAlbumTrackPageIntoLibrary(hydrated, page, album.id, [track]), hydrated);
 });
 
 test("invalidated album track caches fall back to the current library tracks", (t) => {
@@ -66,16 +63,13 @@ test("library favorites include playlist-backed Subsonic songs", () => {
       albums: [],
       tracks: [{ id: 1, identityKey: "canonical-song", title: "Canonical Favorite" }],
     },
-    song: [
-      { id: "song:canonical-song", title: "Canonical Favorite" },
-      playlistSong,
-    ],
+    song: [{ id: "song:canonical-song", title: "Canonical Favorite" }, playlistSong],
   });
 
-  assert.deepEqual(library.tracks.map((track) => track.title), [
-    "Canonical Favorite",
-    "Playlist Favorite",
-  ]);
+  assert.deepEqual(
+    library.tracks.map((track) => track.title),
+    ["Canonical Favorite", "Playlist Favorite"],
+  );
   assert.equal(favoriteId("song", library.tracks[1]), playlistSong.id);
   assert.match(library.tracks[1].files[0].previewUrl, /\/playlists\/stream\/job-id/);
 });
@@ -93,9 +87,17 @@ test("favorite ids match the ids the favorites endpoint returns", () => {
 });
 
 test("album cards tell an artist's same-titled releases apart", () => {
-  const blue = { title: "Weezer", releaseDate: "1994-05-10", metadata: { tags: { releasetype: ["album"] } } };
+  const blue = {
+    title: "Weezer",
+    releaseDate: "1994-05-10",
+    metadata: { tags: { releasetype: ["album"] } },
+  };
   const green = { title: "Weezer", releaseDate: "2001-05-15", metadata: { albumType: "Album" } };
-  const single = { title: "Island in the Sun", releaseDate: "2001", metadata: { tags: { releasetype: ["single"] } } };
+  const single = {
+    title: "Island in the Sun",
+    releaseDate: "2001",
+    metadata: { tags: { releasetype: ["single"] } },
+  };
   const ep = { title: "Weezer", metadata: { albumType: "EP" } };
 
   assert.deepEqual(albumCardMeta(blue, { available: 10, total: 10 }), {

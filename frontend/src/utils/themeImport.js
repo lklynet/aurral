@@ -1,5 +1,10 @@
 import { isDarkColor, normalizeHexColor } from "./themeColor.js";
-import { convertLegacyTheme, normalizeTheme, THEME_DOCUMENT_VERSION, THEME_MODES } from "./theme.js";
+import {
+  convertLegacyTheme,
+  normalizeTheme,
+  THEME_DOCUMENT_VERSION,
+  THEME_MODES,
+} from "./theme.js";
 
 export const THEME_GALLERY_URL = "https://tinted-theming.github.io/tinted-gallery/";
 export const MAX_THEME_FILE_BYTES = 64 * 1024;
@@ -16,7 +21,10 @@ function parseBase16Scheme(text) {
     const match = line.match(/^\s*([A-Za-z0-9_-]+)\s*:\s*(.*?)\s*$/);
     if (match) values[match[1]] = readYamlScalar(match[2]);
   }
-  const color = (key) => normalizeHexColor(values[key] || values[key.replace(/[A-F]$/, (letter) => letter.toLowerCase())]);
+  const color = (key) =>
+    normalizeHexColor(
+      values[key] || values[key.replace(/[A-F]$/, (letter) => letter.toLowerCase())],
+    );
   const background = color("base00");
   const text0 = color("base05");
   const accent = color("base0D");
@@ -25,7 +33,12 @@ function parseBase16Scheme(text) {
   }
   const mode = isDarkColor(background) ? "dark" : "light";
   const seed = { background, text: text0, accent };
-  for (const [role, key] of [["danger", "base08"], ["warning", "base0A"], ["success", "base0B"], ["info", "base0C"]]) {
+  for (const [role, key] of [
+    ["danger", "base08"],
+    ["warning", "base0A"],
+    ["success", "base0B"],
+    ["info", "base0C"],
+  ]) {
     const value = color(key);
     if (value) seed[role] = value;
   }
@@ -65,10 +78,14 @@ export function parseThemeText(text) {
 }
 
 export function serializeThemeFile(theme) {
-  return `${JSON.stringify({
-    version: THEME_DOCUMENT_VERSION,
-    name: theme.name,
-    ...(theme.light ? { light: theme.light } : {}),
-    ...(theme.dark ? { dark: theme.dark } : {}),
-  }, null, 2)}\n`;
+  return `${JSON.stringify(
+    {
+      version: THEME_DOCUMENT_VERSION,
+      name: theme.name,
+      ...(theme.light ? { light: theme.light } : {}),
+      ...(theme.dark ? { dark: theme.dark } : {}),
+    },
+    null,
+    2,
+  )}\n`;
 }

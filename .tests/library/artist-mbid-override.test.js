@@ -52,9 +52,10 @@ beforeAll(async () => {
     let body = null;
     if (url.pathname.startsWith("/artist/")) body = artists[url.pathname.split("/")[2]] || null;
     if (url.pathname === "/search/artist") {
-      body = url.searchParams.get("query") === "Wrongly Matched"
-        ? [{ id: MATCHED_BY_NAME_MBID, artistname: "Wrongly Matched" }]
-        : [];
+      body =
+        url.searchParams.get("query") === "Wrongly Matched"
+          ? [{ id: MATCHED_BY_NAME_MBID, artistname: "Wrongly Matched" }]
+          : [];
     }
     if (!body) {
       response.writeHead(404);
@@ -69,7 +70,11 @@ beforeAll(async () => {
     ...settings,
     integrations: {
       ...settings.integrations,
-      metadata: { ...settings.integrations.metadata, baseUrl: server.url, enableNarrowFallbacks: false },
+      metadata: {
+        ...settings.integrations.metadata,
+        baseUrl: server.url,
+        enableNarrowFallbacks: false,
+      },
     },
   });
   musicRoot = await mkdtemp(path.join(tmpdir(), "aurral-mbid-override-"));
@@ -140,7 +145,9 @@ function updateMbid(artistId, mbid) {
       return this;
     },
   };
-  return handler({ params: { id: String(artistId) }, body: { mbid } }, response).then(() => response);
+  return handler({ params: { id: String(artistId) }, body: { mbid } }, response).then(
+    () => response,
+  );
 }
 
 const artistRow = (id) => db.prepare("SELECT * FROM library_artists WHERE id = ?").get(id);
@@ -171,11 +178,15 @@ test("linking to an MBID already in the library merges the albums into that arti
   assert.equal(response.body.merged, true);
   assert.equal(artistRow(duplicate.artist.id), undefined);
   assert.equal(
-    db.prepare("SELECT artist_id FROM library_albums WHERE id = ?").get(duplicate.album.id).artist_id,
+    db.prepare("SELECT artist_id FROM library_albums WHERE id = ?").get(duplicate.album.id)
+      .artist_id,
     existing.artist.id,
   );
   assert.equal(
-    db.prepare("SELECT artist_id FROM library_release_calendar WHERE release_group_mbid = 'calendar-release'")
+    db
+      .prepare(
+        "SELECT artist_id FROM library_release_calendar WHERE release_group_mbid = 'calendar-release'",
+      )
       .get()?.artist_id,
     existing.artist.id,
   );
@@ -199,11 +210,19 @@ test("removing an MBID never merges two artists that share a name", async () => 
 
 test("clearing a wrong automatic match keeps the artist unmatched on later scans", async () => {
   const { artist } = createArtist("Wrongly Matched");
-  await indexService.scanConfiguredLibrary({ musicRoot, includeLidarr: false, lidarrClient: lidarrConnected });
+  await indexService.scanConfiguredLibrary({
+    musicRoot,
+    includeLidarr: false,
+    lidarrClient: lidarrConnected,
+  });
   assert.equal(artistRow(artist.id).mbid, MATCHED_BY_NAME_MBID);
 
   const response = await updateMbid(artist.id, null);
-  await indexService.scanConfiguredLibrary({ musicRoot, includeLidarr: false, lidarrClient: lidarrConnected });
+  await indexService.scanConfiguredLibrary({
+    musicRoot,
+    includeLidarr: false,
+    lidarrClient: lidarrConnected,
+  });
 
   assert.equal(response.statusCode, 200);
   assert.equal(artistRow(artist.id).mbid, null);
@@ -230,11 +249,19 @@ test("MBID edits are rejected without changing the artist when they cannot be ve
 
 test("the Discover lookup points to the library artist whether or not Lidarr manages it", async () => {
   const indexed = createArtist("Indexed Only Artist", { mbid: LINKED_MBID });
-  const managed = createArtist("Lidarr Managed Artist", { mbid: LIDARR_MBID, metadata: { id: 4242 } });
-  const lidarrArtist = { id: 4242, foreignArtistId: LIDARR_MBID, artistName: "Lidarr Managed Artist" };
+  const managed = createArtist("Lidarr Managed Artist", {
+    mbid: LIDARR_MBID,
+    metadata: { id: 4242 },
+  });
+  const lidarrArtist = {
+    id: 4242,
+    foreignArtistId: LIDARR_MBID,
+    artistName: "Lidarr Managed Artist",
+  };
   vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
   vi.spyOn(lidarrClient, "getArtistByMbid").mockImplementation(async (mbid) =>
-    mbid === LIDARR_MBID ? lidarrArtist : null);
+    mbid === LIDARR_MBID ? lidarrArtist : null,
+  );
   vi.spyOn(lidarrClient, "request").mockImplementation(async () => []);
 
   const indexedLookup = await getArtistLibraryLookup(LINKED_MBID);

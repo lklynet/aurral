@@ -127,10 +127,15 @@ export const buildRecommendationsFromSeeds = async ({
 
   const bridgeSeeds = directList
     .filter((candidate) => candidate?.name)
-    .filter((candidate) =>
-      (Array.isArray(candidate.matchedTags) ? candidate.matchedTags : candidate.tags || []).length > 0)
-    .filter((candidate) =>
-      !normalizeArtistIdentityKeys(candidate).some((key) => bridgeExclusionKeys.has(key)))
+    .filter(
+      (candidate) =>
+        (Array.isArray(candidate.matchedTags) ? candidate.matchedTags : candidate.tags || [])
+          .length > 0,
+    )
+    .filter(
+      (candidate) =>
+        !normalizeArtistIdentityKeys(candidate).some((key) => bridgeExclusionKeys.has(key)),
+    )
     .map(toBridgeSeed)
     .filter((bridge) => bridge.bridgeTags.length > 0)
     .slice(0, secondHopSampling.seedLimit);

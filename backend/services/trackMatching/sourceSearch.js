@@ -47,8 +47,9 @@ export async function buildSourceCandidates({
 export function hasUsableSearchCandidates({ source, results = [], request, context } = {}) {
   const trackRequest = request || buildTrackRequest(context);
   if (!trackRequest.trackName) return false;
-  return prefilterCandidates({ request: trackRequest, source, candidates: results })
-    .some((entry) => !entry.rejected);
+  return prefilterCandidates({ request: trackRequest, source, candidates: results }).some(
+    (entry) => !entry.rejected,
+  );
 }
 
 // Payload shape the download orchestrators carry between phases.

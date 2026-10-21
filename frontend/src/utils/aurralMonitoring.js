@@ -28,8 +28,7 @@ const SKIPPED_DETAILS = [
   },
   {
     reason: "unmonitored",
-    text: (count) =>
-      `${count} skipped because you unmonitored ${count === 1 ? "it" : "them"}`,
+    text: (count) => `${count} skipped because you unmonitored ${count === 1 ? "it" : "them"}`,
   },
   { reason: "managed_by_lidarr", text: (count) => `${count} managed by Lidarr` },
   { reason: "metadata_unavailable", text: (count) => `${count} could not be checked` },
@@ -95,8 +94,7 @@ export const canDownloadAurralAlbum = (album, { hasMissingTracks }) =>
   hasMissingTracks &&
   Boolean(album.releaseGroupMbid || album.mbid);
 
-export const shouldConfirmUnmonitor = (status) =>
-  status == null || shouldPollAlbumStatus(status);
+export const shouldConfirmUnmonitor = (status) => status == null || shouldPollAlbumStatus(status);
 
 const describeMonitoringResult = (result, subject) => {
   if (result?.monitored !== false) return { message: `${subject} monitored`, warning: false };
@@ -124,10 +122,15 @@ export const describeKeepFileResult = (result, title) => {
   if (!result?.keepFile) return { message: `Aurral can upgrade ${title} again.`, warning: false };
   const kept = `Keeping ${title}. Aurral won't replace it with an upgrade`;
   if (result.cleanupFailed) {
-    return { message: `${kept}, but the download client may still hold the upgrade in progress.`, warning: true };
+    return {
+      message: `${kept}, but the download client may still hold the upgrade in progress.`,
+      warning: true,
+    };
   }
   return {
-    message: result.cancelledJobIds?.length ? `${kept}, and the upgrade in progress was cancelled.` : `${kept}.`,
+    message: result.cancelledJobIds?.length
+      ? `${kept}, and the upgrade in progress was cancelled.`
+      : `${kept}.`,
     warning: false,
   };
 };

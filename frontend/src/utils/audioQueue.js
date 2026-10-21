@@ -99,22 +99,25 @@ export function normalizeQueueTrack(track, overrides = {}) {
 }
 
 export function normalizePlaylistQueueTrack(track, overrides = {}) {
-  return normalizeQueueTrack({
-    id: track.id,
-    title: track.trackName,
-    artist: track.artistName,
-    album: track.albumName,
-    artwork: track.artworkUrl || track.coverUrl || null,
-    artworkSource: track.customArtworkUrl ? "track" : "album",
-    src: track.streamUrl,
-    finalPath: track.finalPath,
-    streamFormat: track.streamFormat,
-    artistMbid: track.artistMbid,
-    albumMbid: track.albumMbid,
-    trackMbid: track.trackMbid || track.mbid,
-    durationMs: track.durationMs,
-    recordHistory: track?.recordHistory !== false,
-  }, overrides);
+  return normalizeQueueTrack(
+    {
+      id: track.id,
+      title: track.trackName,
+      artist: track.artistName,
+      album: track.albumName,
+      artwork: track.artworkUrl || track.coverUrl || null,
+      artworkSource: track.customArtworkUrl ? "track" : "album",
+      src: track.streamUrl,
+      finalPath: track.finalPath,
+      streamFormat: track.streamFormat,
+      artistMbid: track.artistMbid,
+      albumMbid: track.albumMbid,
+      trackMbid: track.trackMbid || track.mbid,
+      durationMs: track.durationMs,
+      recordHistory: track?.recordHistory !== false,
+    },
+    overrides,
+  );
 }
 
 export function normalizePreviewTrack(track, artistName, overrides = {}) {
@@ -230,7 +233,9 @@ export const initialQueueState = {
 };
 
 export function shouldRestartTrack(state, position) {
-  return position > RESTART_THRESHOLD_SECONDS || (state.currentIndex <= 0 && state.repeatMode !== "all");
+  return (
+    position > RESTART_THRESHOLD_SECONDS || (state.currentIndex <= 0 && state.repeatMode !== "all")
+  );
 }
 
 export function queueReducer(state, action) {
@@ -239,9 +244,10 @@ export function queueReducer(state, action) {
       const { tracks, startTrackId, source } = action;
       if (!Array.isArray(tracks) || tracks.length === 0) return state;
       const shuffle = action.shuffle === true || state.isShuffleEnabled;
-      const startQueueIndex = startTrackId == null
-        ? -1
-        : tracks.findIndex((track) => String(track.id) === String(startTrackId));
+      const startQueueIndex =
+        startTrackId == null
+          ? -1
+          : tracks.findIndex((track) => String(track.id) === String(startTrackId));
       const firstQueueIndex =
         startQueueIndex >= 0 ? startQueueIndex : action.shuffle === true ? null : 0;
       const playbackOrder = buildPlaybackOrder(tracks.length, shuffle, firstQueueIndex);
@@ -255,7 +261,7 @@ export function queueReducer(state, action) {
           source: source ?? null,
           isShuffleEnabled: shuffle,
         },
-        shuffle ? 0 : firstQueueIndex ?? 0,
+        shuffle ? 0 : (firstQueueIndex ?? 0),
         true,
       );
     }
@@ -370,7 +376,9 @@ export function queueReducer(state, action) {
     case "RESTORE_ORDER": {
       const current = currentEntryId(state);
       const { queue, playbackOrder, isShuffleEnabled } = action;
-      const currentIndex = playbackOrder.findIndex((queueIndex) => queue[queueIndex]?.entryId === current);
+      const currentIndex = playbackOrder.findIndex(
+        (queueIndex) => queue[queueIndex]?.entryId === current,
+      );
       if (current == null || currentIndex < 0) return state;
       return { ...state, queue, playbackOrder, isShuffleEnabled, currentIndex };
     }

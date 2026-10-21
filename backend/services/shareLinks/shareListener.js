@@ -29,7 +29,9 @@ function loadShare(req, res) {
 function findTrack(target, req) {
   const albumId = Number(req.params.albumId);
   const trackId = Number(req.params.trackId);
-  return target.tracks.find((track) => track.albumId === albumId && track.trackId === trackId) || null;
+  return (
+    target.tracks.find((track) => track.albumId === albumId && track.trackId === trackId) || null
+  );
 }
 
 const safeSegment = (value) =>
@@ -75,7 +77,10 @@ export function createShareApp() {
       "X-Content-Type-Options": "nosniff",
     });
     if (req.method === "OPTIONS") {
-      res.set({ "Access-Control-Allow-Methods": "GET, HEAD", "Access-Control-Allow-Headers": "Range" });
+      res.set({
+        "Access-Control-Allow-Methods": "GET, HEAD",
+        "Access-Control-Allow-Headers": "Range",
+      });
       return res.status(204).end();
     }
     if (req.method !== "GET" && req.method !== "HEAD") {

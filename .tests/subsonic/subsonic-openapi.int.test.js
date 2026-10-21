@@ -12,16 +12,23 @@ import {
   startServerProcess,
 } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, { db }, { dbOps, userOps }, { hashPassword }, { scanMusicRoot }, { flowPlaylistConfig }, { downloadTracker }] =
-  await setupIsolatedBackend(
-    "subsonic-openapi",
-    "backend/config/db-sqlite.js",
-    "backend/db/helpers/index.js",
-    "backend/middleware/passwordHash.js",
-    "backend/services/libraryFileScanner.js",
-    "backend/services/playlists/flowPlaylistConfig.js",
-    "backend/services/downloadJobs/downloadTracker.js",
-  );
+const [
+  isolatedState,
+  { db },
+  { dbOps, userOps },
+  { hashPassword },
+  { scanMusicRoot },
+  { flowPlaylistConfig },
+  { downloadTracker },
+] = await setupIsolatedBackend(
+  "subsonic-openapi",
+  "backend/config/db-sqlite.js",
+  "backend/db/helpers/index.js",
+  "backend/middleware/passwordHash.js",
+  "backend/services/libraryFileScanner.js",
+  "backend/services/playlists/flowPlaylistConfig.js",
+  "backend/services/downloadJobs/downloadTracker.js",
+);
 
 const spec = JSON.parse(
   await readFile(new URL("./openapi/opensubsonic-openapi.json", import.meta.url), "utf8"),
@@ -47,7 +54,13 @@ let aurral;
 let fixtureRoot;
 
 function subsonicUrl(method, params = {}) {
-  const query = new URLSearchParams({ u: "alice", p: "password123", v: "1.16.1", c: "openapi-test", f: "json" });
+  const query = new URLSearchParams({
+    u: "alice",
+    p: "password123",
+    v: "1.16.1",
+    c: "openapi-test",
+    f: "json",
+  });
   for (const [key, value] of Object.entries(params)) {
     for (const entry of Array.isArray(value) ? value : [value]) query.append(key, entry);
   }
@@ -80,7 +93,12 @@ beforeAll(async () => {
   const alice = userOps.createUser("alice", hashPassword("password123"), "admin");
 
   fixtureRoot = await mkdtemp(path.join(isolatedState.baseDir, "media-"));
-  const fixturePath = path.join(fixtureRoot, "Schema Artist", "Schema Album", "01 Schema Song.flac");
+  const fixturePath = path.join(
+    fixtureRoot,
+    "Schema Artist",
+    "Schema Album",
+    "01 Schema Song.flac",
+  );
   await mkdir(path.dirname(fixturePath), { recursive: true });
   await writeFile(fixturePath, "0123456789");
   await scanMusicRoot({
@@ -105,15 +123,25 @@ beforeAll(async () => {
   const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Schema Playlist",
     ownerUserId: alice.id,
-    tracks: [{ artistName: "Schema Artist", albumName: "Schema Album", trackName: "Schema Song", durationMs: 10_000 }],
+    tracks: [
+      {
+        artistName: "Schema Artist",
+        albumName: "Schema Album",
+        trackName: "Schema Song",
+        durationMs: 10_000,
+      },
+    ],
   });
-  const jobId = downloadTracker.addJob({
-    artistName: "Schema Artist",
-    albumName: "Schema Album",
-    trackName: "Schema Song",
-    trackMbid: "33333333-3333-4333-8333-333333333333",
-    durationMs: 10_000,
-  }, playlist.id);
+  const jobId = downloadTracker.addJob(
+    {
+      artistName: "Schema Artist",
+      albumName: "Schema Album",
+      trackName: "Schema Song",
+      trackMbid: "33333333-3333-4333-8333-333333333333",
+      durationMs: 10_000,
+    },
+    playlist.id,
+  );
   downloadTracker.setDone(jobId, fixturePath, "Schema Album");
 
   aurral = await startServerProcess({ extraEnv: { CORS_ORIGIN: "" } });
@@ -210,7 +238,9 @@ test("error responses match the OpenSubsonic schema", async () => {
   await assertValid("getArtist", { id: "artist:missing" });
   await assertValid("ping", { p: "wrong-password" });
   await assertValid("getTopSongs", { artist: "" });
-  const token = await fetch(`http://127.0.0.1:${aurral.port}/rest/ping.view?u=alice&t=deadbeef&s=salt&v=1.16.1&c=openapi-test&f=json`);
+  const token = await fetch(
+    `http://127.0.0.1:${aurral.port}/rest/ping.view?u=alice&t=deadbeef&s=salt&v=1.16.1&c=openapi-test&f=json`,
+  );
   const body = JSON.parse(await token.text());
   assert.ok(validatorFor("ping")(body), ajv.errorsText(validatorFor("ping").errors));
   assert.equal(body["subsonic-response"].error.code, 41);

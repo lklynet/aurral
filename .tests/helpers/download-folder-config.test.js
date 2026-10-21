@@ -8,9 +8,8 @@ test("resolveEnvDownloadFolder prefers DOWNLOAD_FOLDER", async () => {
   const previous = process.env.DOWNLOAD_FOLDER;
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "aurral-download-env-"));
   process.env.DOWNLOAD_FOLDER = tempDir;
-  const { resolveEnvDownloadFolder, syncDownloadFolderPath } = await import(
-    "../../backend/services/downloadFolderConfig.js"
-  );
+  const { resolveEnvDownloadFolder, syncDownloadFolderPath } =
+    await import("../../backend/services/downloadFolderConfig.js");
   syncDownloadFolderPath(null);
   assert.equal(resolveEnvDownloadFolder(), path.resolve(tempDir));
   if (previous === undefined) delete process.env.DOWNLOAD_FOLDER;
@@ -31,9 +30,8 @@ test("default download folder follows the available writable data root", async (
   delete process.env.WEEKLY_FLOW_FOLDER;
 
   try {
-    const { resolveDefaultDownloadRoot } = await import(
-      "../../backend/services/downloadFolderConfig.js"
-    );
+    const { resolveDefaultDownloadRoot } =
+      await import("../../backend/services/downloadFolderConfig.js");
     assert.equal(
       resolveDefaultDownloadRoot({ dataRoot: tempDir }),
       path.join(tempDir, "downloads", "aurral"),
@@ -62,9 +60,8 @@ test("yt-dlp staging defaults outside the download folder and honors an override
   process.env.AURRAL_DATA_DIR = dataDir;
 
   try {
-    const { resolveYtdlpStagingRoot } = await import(
-      "../../backend/services/downloadFolderConfig.js"
-    );
+    const { resolveYtdlpStagingRoot } =
+      await import("../../backend/services/downloadFolderConfig.js");
     assert.equal(resolveYtdlpStagingRoot(), path.join(dataDir, "_staging"));
     assert.equal(resolveYtdlpStagingRoot(override), override);
   } finally {
@@ -78,12 +75,8 @@ test("resolveDownloadRoot prefers stored download folder path", async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "aurral-download-db-"));
   const previous = process.env.DOWNLOAD_FOLDER;
   delete process.env.DOWNLOAD_FOLDER;
-  const { syncDownloadFolderPath } = await import(
-    "../../backend/services/downloadFolderConfig.js"
-  );
-  const { resolveDownloadRoot } = await import(
-    "../../backend/services/downloadPaths.js"
-  );
+  const { syncDownloadFolderPath } = await import("../../backend/services/downloadFolderConfig.js");
+  const { resolveDownloadRoot } = await import("../../backend/services/downloadPaths.js");
   syncDownloadFolderPath(tempDir);
   assert.equal(resolveDownloadRoot(), path.resolve(tempDir));
   syncDownloadFolderPath(null);
@@ -95,9 +88,8 @@ test("resolveExistingBrowsePath falls back to an existing ancestor", async () =>
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "aurral-browse-up-"));
   const previousRoots = process.env.FILE_BROWSE_ROOTS;
   process.env.FILE_BROWSE_ROOTS = tempDir;
-  const { resolveExistingBrowsePath } = await import(
-    "../../backend/services/downloadFolderConfig.js"
-  );
+  const { resolveExistingBrowsePath } =
+    await import("../../backend/services/downloadFolderConfig.js");
   const resolved = resolveExistingBrowsePath(path.join(tempDir, "downloads", "aurral"));
   assert.equal(resolved, fs.realpathSync(tempDir));
   if (previousRoots === undefined) delete process.env.FILE_BROWSE_ROOTS;
@@ -107,12 +99,8 @@ test("resolveExistingBrowsePath falls back to an existing ancestor", async () =>
 test("resolveSafeBrowsePath allows child directories under filesystem root", async () => {
   const previousRoots = process.env.FILE_BROWSE_ROOTS;
   process.env.FILE_BROWSE_ROOTS = "/";
-  const { resolveSafeBrowsePath } = await import(
-    "../../backend/services/downloadFolderConfig.js"
-  );
-  const childPath = ["/Users", "/tmp", "/home"].find((candidate) =>
-    fs.existsSync(candidate),
-  );
+  const { resolveSafeBrowsePath } = await import("../../backend/services/downloadFolderConfig.js");
+  const childPath = ["/Users", "/tmp", "/home"].find((candidate) => fs.existsSync(candidate));
   assert.ok(childPath, "expected a top-level child directory for this test");
   const resolvedPath = resolveSafeBrowsePath(childPath);
   assert.ok(resolvedPath);
@@ -126,9 +114,8 @@ test("ensureDownloadFolderPath creates missing directories under browse roots", 
   const previousRoots = process.env.FILE_BROWSE_ROOTS;
   process.env.FILE_BROWSE_ROOTS = tempDir;
   const target = path.join(tempDir, "downloads", "aurral");
-  const { ensureDownloadFolderPath } = await import(
-    "../../backend/services/downloadFolderConfig.js"
-  );
+  const { ensureDownloadFolderPath } =
+    await import("../../backend/services/downloadFolderConfig.js");
   const result = ensureDownloadFolderPath(target);
   assert.equal(result.valid, true);
   assert.equal(result.created, true);
@@ -143,9 +130,7 @@ test("listBrowseDirectory only exposes directories within browse roots", async (
   fs.mkdirSync(childDir);
   const previousRoots = process.env.FILE_BROWSE_ROOTS;
   process.env.FILE_BROWSE_ROOTS = tempDir;
-  const { listBrowseDirectory } = await import(
-    "../../backend/services/downloadFolderConfig.js"
-  );
+  const { listBrowseDirectory } = await import("../../backend/services/downloadFolderConfig.js");
   const listing = listBrowseDirectory(tempDir);
   assert.equal(listing.path, fs.realpathSync(tempDir));
   assert.equal(listing.entries.length, 1);
@@ -161,9 +146,8 @@ test("getFilesystemBrowseRoots returns dedicated roots before filesystem root", 
   delete process.env.FILE_BROWSE_ROOTS;
   process.env.DOWNLOAD_FOLDER = path.join(tempDir, "downloads", "tmp");
   fs.mkdirSync(process.env.DOWNLOAD_FOLDER, { recursive: true });
-  const { getFilesystemBrowseRoots } = await import(
-    "../../backend/services/downloadFolderConfig.js"
-  );
+  const { getFilesystemBrowseRoots } =
+    await import("../../backend/services/downloadFolderConfig.js");
   const roots = getFilesystemBrowseRoots();
   const downloadRoot = fs.realpathSync(process.env.DOWNLOAD_FOLDER);
   assert.ok(roots.includes(downloadRoot), `roots=${roots.join(", ")}`);

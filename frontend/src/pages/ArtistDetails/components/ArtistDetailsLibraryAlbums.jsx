@@ -356,9 +356,7 @@ export function ArtistDetailsLibraryAlbums({
                     </Tooltip>
                   ) : showIncompleteStatus ? (
                     <Tooltip content="Incomplete">
-                      <span
-                        className="artist-status-dot artist-status-dot--incomplete"
-                      />
+                      <span className="artist-status-dot artist-status-dot--incomplete" />
                     </Tooltip>
                   ) : null}
                 </div>
@@ -467,7 +465,9 @@ export function ArtistDetailsLibraryAlbums({
                               >
                                 <span className="artist-menu-item__main">
                                   <Trash2 className="artist-icon-sm" />
-                                  {libraryAlbum.managedBy === "aurral" ? "Remove album" : "Delete album"}
+                                  {libraryAlbum.managedBy === "aurral"
+                                    ? "Remove album"
+                                    : "Delete album"}
                                 </span>
                               </button>
                             </>

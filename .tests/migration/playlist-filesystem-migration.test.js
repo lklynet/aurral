@@ -3,16 +3,12 @@ import assert from "node:assert/strict";
 import fs from "fs/promises";
 import path from "path";
 
-import {
-  setupIsolatedBackend,
-  cleanupIsolatedState,
-} from "../helpers/backendTestHarness.js";
+import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, { ensurePlaylistFilesystemLayout }] =
-  await setupIsolatedBackend(
-    "playlist-filesystem-migration",
-    "backend/services/playlistFilesystemMigration.js",
-  );
+const [isolatedState, { ensurePlaylistFilesystemLayout }] = await setupIsolatedBackend(
+  "playlist-filesystem-migration",
+  "backend/services/playlistFilesystemMigration.js",
+);
 
 const root = process.env.WEEKLY_FLOW_FOLDER;
 
@@ -35,9 +31,7 @@ test("keeps aurral-weekly-flow in place", async () => {
   assert.equal(result.renamed, false);
   assert.equal(result.merged, 0);
   assert.equal(result.playlistRoot, playlistRoot);
-  await assert.doesNotReject(() =>
-    fs.access(trackPath),
-  );
+  await assert.doesNotReject(() => fs.access(trackPath));
 });
 
 test("does not merge or delete existing playlist directories", async () => {
@@ -53,12 +47,8 @@ test("does not merge or delete existing playlist directories", async () => {
   const result = ensurePlaylistFilesystemLayout({ root });
 
   assert.equal(result.merged, 0);
-  await assert.doesNotReject(() =>
-    fs.access(playlistTrack),
-  );
-  await assert.doesNotReject(() =>
-    fs.access(previousTrack),
-  );
+  await assert.doesNotReject(() => fs.access(playlistTrack));
+  await assert.doesNotReject(() => fs.access(previousTrack));
 });
 
 test("moves playlist sidecars into _playlists", async () => {

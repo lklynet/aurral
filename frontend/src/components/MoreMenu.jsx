@@ -37,7 +37,10 @@ export function MoreMenu({ children, activeButtonClass = "btn-primary" }) {
       <button
         ref={buttonRef}
         type="button"
-        onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen); }}
+        onClick={(e) => {
+          e.stopPropagation();
+          setIsOpen(!isOpen);
+        }}
         className={`btn btn-sm btn--toolbar ${isOpen ? activeButtonClass : "btn-secondary"}`}
         aria-label="More options"
         aria-expanded={isOpen}
@@ -53,10 +56,7 @@ export function MoreMenu({ children, activeButtonClass = "btn-primary" }) {
             onClick={close}
             aria-label="Close menu"
           />
-          <div
-            className="artist-dropdown artist-dropdown--right"
-            onClick={close}
-          >
+          <div className="artist-dropdown artist-dropdown--right" onClick={close}>
             {children}
           </div>
         </>

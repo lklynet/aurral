@@ -26,7 +26,9 @@ const {
 
 const sourceImage = await sharp({
   create: { width: 80, height: 60, channels: 3, background: { r: 80, g: 120, b: 200 } },
-}).png().toBuffer();
+})
+  .png()
+  .toBuffer();
 
 beforeEach(() => resetDatabase(db));
 afterAll(() => cleanupIsolatedState(state));

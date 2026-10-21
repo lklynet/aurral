@@ -1,12 +1,14 @@
 import { useCallback } from "react";
 import { useInfiniteQuery, useMutation } from "@tanstack/react-query";
-import {
-  disableNewsFeed,
-  getLibraryNews,
-} from "../utils/api/endpoints/news.js";
+import { disableNewsFeed, getLibraryNews } from "../utils/api/endpoints/news.js";
 import { queryClient, queryKeys } from "../queryClient.js";
 
-export function useLibraryNews({ enabled = false, limit = 60, mode = "matched", userId = null } = {}) {
+export function useLibraryNews({
+  enabled = false,
+  limit = 60,
+  mode = "matched",
+  userId = null,
+} = {}) {
   const queryKey = queryKeys.news(userId, mode, limit);
   const query = useInfiniteQuery({
     queryKey,
@@ -24,13 +26,10 @@ export function useLibraryNews({ enabled = false, limit = 60, mode = "matched", 
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["news"] }),
   });
   const pages = query.data?.pages || [];
-  const articles = pages.flatMap((page) => Array.isArray(page?.articles) ? page.articles : []);
+  const articles = pages.flatMap((page) => (Array.isArray(page?.articles) ? page.articles : []));
   const { fetchNextPage, hasNextPage, isFetchingNextPage } = query;
   const loadMore = useCallback(
-    () =>
-      hasNextPage && !isFetchingNextPage
-        ? fetchNextPage()
-        : Promise.resolve(null),
+    () => (hasNextPage && !isFetchingNextPage ? fetchNextPage() : Promise.resolve(null)),
     [fetchNextPage, hasNextPage, isFetchingNextPage],
   );
   return {

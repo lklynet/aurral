@@ -23,10 +23,25 @@ const job = {
 
 function makeAudio(name, codec) {
   const filePath = path.join(tempDir, name);
-  const result = spawnSync("ffmpeg", [
-    "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
-    "-f", "lavfi", "-i", "anullsrc", "-t", "0.2", ...codec, filePath,
-  ], { encoding: "utf8" });
+  const result = spawnSync(
+    "ffmpeg",
+    [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-nostdin",
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "anullsrc",
+      "-t",
+      "0.2",
+      ...codec,
+      filePath,
+    ],
+    { encoding: "utf8" },
+  );
   assert.equal(result.status, 0, result.stderr);
   return filePath;
 }
@@ -127,7 +142,12 @@ test("tagging a hardlinked download leaves the other link as it was", async () =
 });
 
 test("tagging a fragmented M4A leaves the file as it was instead of breaking its audio", async () => {
-  const filePath = makeAudio("fragmented.m4a", ["-c:a", "aac", "-movflags", "frag_keyframe+empty_moov"]);
+  const filePath = makeAudio("fragmented.m4a", [
+    "-c:a",
+    "aac",
+    "-movflags",
+    "frag_keyframe+empty_moov",
+  ]);
   const bytes = await readFile(filePath);
 
   await assert.rejects(writeAudioMetadata(filePath, job), { code: "TAGS_UNSUPPORTED" });

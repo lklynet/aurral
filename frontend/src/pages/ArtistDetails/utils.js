@@ -1,6 +1,4 @@
-import {
-  RELEASE_LIST_VIEW_MODE_KEY,
-} from "./constants.js";
+import { RELEASE_LIST_VIEW_MODE_KEY } from "./constants.js";
 import { TAG_COLORS } from "../discoverUtils.js";
 import { shouldTriggerAlbumSearch } from "../../utils/albumAddAction.js";
 import { formatDate } from "../../utils/dateTime.js";

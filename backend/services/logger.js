@@ -4,7 +4,8 @@ const verboseEnabled = isVerboseConsoleEnabled();
 
 const MAX_LOG_DIAGNOSTIC_LENGTH = 500;
 const MAX_HTML_TITLE_SCAN_LENGTH = 8192;
-const SENSITIVE_LOG_KEY = /^(?:arl|authorization|(?:set[_-]?)?cookie|password|(?:client[_-]?)?secret|session|(?:access[_-]?|refresh[_-]?|auth[_-]?)?token|(?:x[_-]?)?api[_-]?key)$/i;
+const SENSITIVE_LOG_KEY =
+  /^(?:arl|authorization|(?:set[_-]?)?cookie|password|(?:client[_-]?)?secret|session|(?:access[_-]?|refresh[_-]?|auth[_-]?)?token|(?:x[_-]?)?api[_-]?key)$/i;
 
 function htmlErrorTitle(raw) {
   const head = raw.slice(0, MAX_HTML_TITLE_SCAN_LENGTH);
@@ -32,9 +33,18 @@ export function safeLogDiagnostic(value) {
     .replace(/https?:\/\/[^\s"'<>]+/gi, "[redacted URL]")
     .replace(/\b(Bearer|Basic)\s+[^\s,;"'}]+/gi, "$1 [redacted]")
     .replace(/\b(cookie|set-cookie)\b["']?\s*[:=]\s*[^\r\n}]+/gi, "$1=[redacted]")
-    .replace(/["']?\b(arl|access[_-]?token|refresh[_-]?token|api[_-]?key|client[_-]?secret|token|session|password|secret|authorization)\b["']?\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;&}]+)/gi, "$1=[redacted]")
-    .replace(/(["'])(?:[a-z]:\\|\/(?!api(?:\/|$)|rest(?:\/|$)))[^"'\r\n]+\1/gi, "$1[redacted path]$1")
-    .replace(/(?:\b[a-z]:\\|(?<![\w/])\/(?!api(?:\/|$)|rest(?:\/|$)))[^\s"'<>]+/gi, "[redacted path]")
+    .replace(
+      /["']?\b(arl|access[_-]?token|refresh[_-]?token|api[_-]?key|client[_-]?secret|token|session|password|secret|authorization)\b["']?\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;&}]+)/gi,
+      "$1=[redacted]",
+    )
+    .replace(
+      /(["'])(?:[a-z]:\\|\/(?!api(?:\/|$)|rest(?:\/|$)))[^"'\r\n]+\1/gi,
+      "$1[redacted path]$1",
+    )
+    .replace(
+      /(?:\b[a-z]:\\|(?<![\w/])\/(?!api(?:\/|$)|rest(?:\/|$)))[^\s"'<>]+/gi,
+      "[redacted path]",
+    )
     .replace(/\b[a-f0-9]{64,}\b/gi, "[redacted]")
     .replace(/[\x00-\x1f\x7f]+/g, " ")
     .trim();
@@ -48,14 +58,26 @@ function safeLogData(value, depth = 0, seen = new WeakSet()) {
   if (value == null || typeof value !== "object") return value;
   if (depth >= 5 || seen.has(value)) return "[omitted]";
   seen.add(value);
-  if (Array.isArray(value)) return value.slice(0, 100).map((item) => safeLogData(item, depth + 1, seen));
-  return Object.fromEntries(Object.entries(value).map(([key, item]) => {
-    if (SENSITIVE_LOG_KEY.test(key)) return [key, "[redacted]"];
-    const safeEndpoint = key === "endpoint" && typeof item === "string" &&
-      /^\/[a-z0-9/_.:-]+$/i.test(item) &&
-      !item.split("/").some((part) => part === ".." || /(?:token|secret|password|api[_-]?key)/i.test(part));
-    return [key, safeEndpoint ? item.slice(0, MAX_LOG_DIAGNOSTIC_LENGTH) : safeLogData(item, depth + 1, seen)];
-  }));
+  if (Array.isArray(value))
+    return value.slice(0, 100).map((item) => safeLogData(item, depth + 1, seen));
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => {
+      if (SENSITIVE_LOG_KEY.test(key)) return [key, "[redacted]"];
+      const safeEndpoint =
+        key === "endpoint" &&
+        typeof item === "string" &&
+        /^\/[a-z0-9/_.:-]+$/i.test(item) &&
+        !item
+          .split("/")
+          .some((part) => part === ".." || /(?:token|secret|password|api[_-]?key)/i.test(part));
+      return [
+        key,
+        safeEndpoint
+          ? item.slice(0, MAX_LOG_DIAGNOSTIC_LENGTH)
+          : safeLogData(item, depth + 1, seen),
+      ];
+    }),
+  );
 }
 
 const DEFAULT_VISIBLE_MESSAGES = [
@@ -79,9 +101,7 @@ const messageText = (args) =>
 export const shouldEmitDefaultConsoleMessage = (method, args = []) => {
   if (method === "debug") return false;
   if (method === "warn" || method === "error") return true;
-  return DEFAULT_VISIBLE_MESSAGES.some((pattern) =>
-    pattern.test(messageText(args)),
-  );
+  return DEFAULT_VISIBLE_MESSAGES.some((pattern) => pattern.test(messageText(args)));
 };
 
 function patchDefaultConsole() {
@@ -105,7 +125,8 @@ function log(level, category, message, data = {}) {
     !verboseEnabled &&
     level === "info" &&
     !DEFAULT_VISIBLE_MESSAGES.some((pattern) => pattern.test(String(message)))
-  ) return;
+  )
+    return;
   const line = `[${level}] [${safeLogDiagnostic(category)}] ${safeLogDiagnostic(message)}`;
   const keys = Object.keys(data).length;
   const safeData = keys > 0 ? safeLogData(data) : data;

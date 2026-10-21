@@ -231,7 +231,9 @@ const fetchTrendingArtists = async (existingArtistKeys) => {
 const recordHistory = (method, ...args) =>
   import("../aurralHistoryService.js")
     .then((history) => history[method](...args))
-    .catch((err) => { logger.warn('discovery', err); });
+    .catch((err) => {
+      logger.warn("discovery", err);
+    });
 
 const publishGlobalDiscovery = (discoveryData) => {
   Object.assign(discoveryCache, discoveryData);
@@ -263,13 +265,13 @@ export const updateDiscoveryCache = async (options = {}) => {
     );
   }
   markDiscoveryRefreshStarted();
-  logger.info('discovery', "Starting background update of discovery data...");
+  logger.info("discovery", "Starting background update of discovery data...");
   recordDiscoveryUpdateProgress("starting", "Preparing discovery refresh", 5);
   void recordHistory("recordDiscoveryRefreshStarted");
 
   try {
     const provider = getMusicDataSourceName();
-    logger.info('discovery', `Fetching global trending artists from ${provider}...`);
+    logger.info("discovery", `Fetching global trending artists from ${provider}...`);
     recordDiscoveryUpdateProgress("fetching_trending", "Fetching global trending artists", 40, {
       provider,
     });
@@ -279,19 +281,19 @@ export const updateDiscoveryCache = async (options = {}) => {
       globalTop = await fetchTrendingArtists(
         buildExistingArtistKeySet(getLibraryArtistKeyProjection()),
       );
-      logger.info('discovery', `Found ${globalTop.length} trending artists.`);
+      logger.info("discovery", `Found ${globalTop.length} trending artists.`);
     } catch (error) {
-      logger.error('discovery', `Failed to fetch global trending artists: ${error.message}`);
+      logger.error("discovery", `Failed to fetch global trending artists: ${error.message}`);
     }
 
     try {
       const queuedUserRefreshes = enqueueAllUserDiscoveryRefreshes("global_refresh_completed");
       logger.info(
-        'discovery',
+        "discovery",
         `Queued ${queuedUserRefreshes} personal recommendation refresh${queuedUserRefreshes === 1 ? "" : "es"}.`,
       );
     } catch (error) {
-      logger.warn('discovery', "Failed to queue personal recommendation refreshes:", error.message);
+      logger.warn("discovery", "Failed to queue personal recommendation refreshes:", error.message);
     }
 
     publishGlobalDiscovery({
@@ -312,22 +314,22 @@ export const updateDiscoveryCache = async (options = {}) => {
 
     const { notifyDiscoveryUpdated } = await import("../notificationService.js");
     notifyDiscoveryUpdated().catch((err) =>
-      logger.warn('discovery', "[Discovery] Notification failed:", err.message),
+      logger.warn("discovery", "[Discovery] Notification failed:", err.message),
     );
     void recordHistory("recordDiscoveryUpdated", { recommendationCount: 0, genreCount: 0 });
 
     try {
       const cleaned = dbOps.cleanOldImageCache(30);
       if (cleaned?.changes > 0) {
-        logger.info('discovery', `[Discovery] Cleaned ${cleaned.changes} old image cache entries`);
+        logger.info("discovery", `[Discovery] Cleaned ${cleaned.changes} old image cache entries`);
       }
       dbOps.cleanOldMusicbrainzArtistMbidCache(90);
     } catch (e) {
-      logger.warn('discovery', "[Discovery] Failed to clean old image cache:", e.message);
+      logger.warn("discovery", "[Discovery] Failed to clean old image cache:", e.message);
     }
   } catch (error) {
-    logger.error('discovery', "Failed to update discovery cache:", error.message);
-    logger.error('discovery', "Stack trace:", error.stack);
+    logger.error("discovery", "Failed to update discovery cache:", error.message);
+    logger.error("discovery", "Stack trace:", error.stack);
     markDiscoveryRefreshFinished(null, { error: error.message });
     websocketService.emitDiscoveryUpdate({
       isUpdating: false,
@@ -350,12 +352,12 @@ const collectUserSeeds = async (user, feedback) => {
   let externalHistory = [];
   const profile = getListenHistoryProfile(user);
   try {
-    externalHistory = (
-      await fetchListenHistoryArtists(profile, getLastfmDiscoveryPeriod())
-    ).map((artist) => ({ ...artist, source: profile.listenHistoryProvider }));
+    externalHistory = (await fetchListenHistoryArtists(profile, getLastfmDiscoveryPeriod())).map(
+      (artist) => ({ ...artist, source: profile.listenHistoryProvider }),
+    );
   } catch (error) {
     logger.error(
-      'discovery',
+      "discovery",
       `[Discovery] Failed to fetch ${profile.listenHistoryProvider} artists for user ${user.id}: ${error.message}`,
     );
   }
@@ -475,7 +477,7 @@ export const updateUserDiscoveryCache = async (userId, options = {}) => {
 
   const startedAt = Date.now();
   markDiscoveryRefreshStarted(namespace, startedAt);
-  logger.info('discovery', `[Discovery] Building personal recommendations for user ${userId}...`);
+  logger.info("discovery", `[Discovery] Building personal recommendations for user ${userId}...`);
 
   try {
     const { recommendations, seeds, topGenres } = await buildUserRecommendations({
@@ -502,7 +504,7 @@ export const updateUserDiscoveryCache = async (userId, options = {}) => {
     );
     markDiscoveryRefreshFinished(namespace);
     logger.info(
-      'discovery',
+      "discovery",
       `[Discovery] User ${userId} refresh complete: ${recommendations.length} recommendations from ${seeds.length} seeds.`,
     );
     emitUserDiscoveryUpdate(userId, {
@@ -514,7 +516,7 @@ export const updateUserDiscoveryCache = async (userId, options = {}) => {
     return { refreshed: true, recommendationCount: recommendations.length };
   } catch (error) {
     logger.error(
-      'discovery',
+      "discovery",
       `[Discovery] Failed to build recommendations for user ${userId}: ${error.message}`,
     );
     markDiscoveryRefreshFinished(namespace, { error: error.message });

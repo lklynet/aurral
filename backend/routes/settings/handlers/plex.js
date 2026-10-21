@@ -207,9 +207,7 @@ export function registerPlex(router) {
           message: "Connect Plex and save settings before syncing",
         });
       }
-      const { playlistManager } = await import(
-        "../../../services/playlists/playlistManager.js"
-      );
+      const { playlistManager } = await import("../../../services/playlists/playlistManager.js");
       playlistManager.updateConfig();
       const result = await playlistManager.syncPlexNow();
       res.json({ success: true, ...result });

@@ -35,9 +35,7 @@ export function SettingsArrFormGroup({
           <p className={`arr-form-help${helpWarning ? " arr-form-help--warning" : ""}`}>{help}</p>
         ) : null}
       </div>
-      <div className="arr-form-control">
-        {children}
-      </div>
+      <div className="arr-form-control">{children}</div>
     </div>
   );
 }

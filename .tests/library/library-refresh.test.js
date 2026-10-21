@@ -6,9 +6,8 @@ import { EventEmitter } from "node:events";
 
 process.env.NODE_ENV = "test";
 
-const { registerLibraryIndex } = await import(
-  "../../backend/routes/library/handlers/libraryIndex.js"
-);
+const { registerLibraryIndex } =
+  await import("../../backend/routes/library/handlers/libraryIndex.js");
 const {
   claimScheduledLibraryScanJob,
   beginLibraryScanJob,
@@ -21,23 +20,24 @@ const {
 } = await import("../../backend/services/libraryScanWorker.js");
 const { dbOps } = await import("../../backend/db/helpers/index.js");
 const { db } = await import("../../backend/config/db-sqlite.js");
-const { beginLibraryScan, finishLibraryScan } = await import(
-  "../../backend/services/libraryMediaStore.js"
-);
+const { beginLibraryScan, finishLibraryScan } =
+  await import("../../backend/services/libraryMediaStore.js");
 const { processSystemTask } = await import("../../backend/services/systemTaskWorker.js");
-const {
-  getLibraryScanQueue,
-  bootstrapHonkerSchedules,
-  getHonkerDb,
-} = await import("../../backend/services/honkerDb.js");
-const { createLibraryFileWatcher, resolveLibraryWatchRoots } = await import(
-  "../../backend/services/libraryFileWatcher.js"
-);
+const { getLibraryScanQueue, bootstrapHonkerSchedules, getHonkerDb } =
+  await import("../../backend/services/honkerDb.js");
+const { createLibraryFileWatcher, resolveLibraryWatchRoots } =
+  await import("../../backend/services/libraryFileWatcher.js");
 const { lidarrClient } = await import("../../backend/services/lidarrClient.js");
 
 test("library scans are not scheduled as a recurring background task", () => {
   bootstrapHonkerSchedules();
-  assert.equal(getHonkerDb().scheduler().list().some((task) => task.queue === "library-scan"), false);
+  assert.equal(
+    getHonkerDb()
+      .scheduler()
+      .list()
+      .some((task) => task.queue === "library-scan"),
+    false,
+  );
 });
 
 test("library bootstrap runs until the first completed scan, and again while a turned-off Lidarr's music remains", async () => {
@@ -144,10 +144,7 @@ test("library refresh queues a quick or full scan and exposes its queue status",
     assert.equal(body.status.status, "queued");
 
     body = undefined;
-    await routes.get("GET /refresh/:jobId")(
-      { user: { id: 1 }, params: { jobId } },
-      response,
-    );
+    await routes.get("GET /refresh/:jobId")({ user: { id: 1 }, params: { jobId } }, response);
     assert.equal(body.status, "queued");
     body.jobId = jobId;
   } finally {
@@ -239,9 +236,12 @@ test("pending watcher scans merge changed paths into one job", () => {
       includeLidarr: false,
       changedPaths: ["/data/music/Artist/Album/01 Track.flac"],
     });
-    assert.equal(scheduleLibraryScan({
-      changedPaths: ["/data/music/Artist/Album/02 Track.flac"],
-    }), jobId);
+    assert.equal(
+      scheduleLibraryScan({
+        changedPaths: ["/data/music/Artist/Album/02 Track.flac"],
+      }),
+      jobId,
+    );
     assert.deepEqual(dbOps.getJSONSetting("pendingLibraryScanJob").changedPaths, [
       path.resolve("/data/music/Artist/Album/01 Track.flac"),
       path.resolve("/data/music/Artist/Album/02 Track.flac"),
@@ -258,10 +258,13 @@ test("watcher paths do not downgrade a queued full scan", () => {
   let jobId;
   try {
     jobId = scheduleLibraryScan({ includeLidarr: false });
-    assert.equal(scheduleLibraryScan({
-      includeLidarr: false,
-      changedPaths: ["/data/music/Artist/Album/01 Track.flac"],
-    }), jobId);
+    assert.equal(
+      scheduleLibraryScan({
+        includeLidarr: false,
+        changedPaths: ["/data/music/Artist/Album/01 Track.flac"],
+      }),
+      jobId,
+    );
     assert.equal("changedPaths" in dbOps.getJSONSetting("pendingLibraryScanJob"), false);
   } finally {
     if (jobId) queue.cancel(jobId);
@@ -369,7 +372,10 @@ test("an early replacement claim retains in-flight, pending, and new scan paths"
   let staleJobId;
   let replacementJobId;
   try {
-    staleJobId = scheduleLibraryScan({ includeLidarr: true, changedPaths: ["/data/music/old.flac"] });
+    staleJobId = scheduleLibraryScan({
+      includeLidarr: true,
+      changedPaths: ["/data/music/old.flac"],
+    });
     queue.cancel(staleJobId);
     dbOps.setJSONSetting("pendingLibraryScanJob", {
       jobId: staleJobId,
@@ -479,9 +485,7 @@ test("library file watcher debounces library changes and ignores generated folde
   await new Promise((resolve) => setTimeout(resolve, 15));
   assert.equal(scheduled, 1);
   assert.deepEqual(changedRoots, [process.cwd()]);
-  assert.deepEqual(changedPaths, [
-    path.join(process.cwd(), "Artist/Album/track.flac"),
-  ]);
+  assert.deepEqual(changedPaths, [path.join(process.cwd(), "Artist/Album/track.flac")]);
 
   onChange("change", "aurral-weekly-flow/flow/track.flac");
   onChange("change", "_staging/track.flac");
@@ -493,24 +497,34 @@ test("library file watcher debounces library changes and ignores generated folde
 
 test("library watcher reuses configured roots without querying Lidarr", () => {
   const rootPath = path.resolve("/data/music");
-  const pathProbe = vi.spyOn(fs, "existsSync").mockImplementation(() => { throw new Error("Main-thread path probe"); });
+  const pathProbe = vi.spyOn(fs, "existsSync").mockImplementation(() => {
+    throw new Error("Main-thread path probe");
+  });
   vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
   vi.spyOn(lidarrClient, "getConfiguredRootFolderPaths").mockImplementation(() => [rootPath]);
   const rootRequest = vi.spyOn(lidarrClient, "getRootFolders").mockImplementation(async () => {
     throw new Error("watcher should not discover roots");
   });
 
-  assert.equal(resolveLibraryWatchRoots().some((root) => root?.path === rootPath), true);
+  assert.equal(
+    resolveLibraryWatchRoots().some((root) => root?.path === rootPath),
+    true,
+  );
   assert.equal(rootRequest.mock.calls.length, 0);
   assert.equal(pathProbe.mock.calls.length, 0);
 });
 
 test("library watcher creates roots without probing the filesystem on the main thread", () => {
-  vi.spyOn(fs, "existsSync").mockImplementation(() => { throw new Error("Synchronous filesystem probe"); });
+  vi.spyOn(fs, "existsSync").mockImplementation(() => {
+    throw new Error("Synchronous filesystem probe");
+  });
   const roots = [];
   const watcher = createLibraryFileWatcher({
     roots: ["", null, "/slow-root", "/slow-root"],
-    watchImpl: (root) => { roots.push(root); return { close() {} }; },
+    watchImpl: (root) => {
+      roots.push(root);
+      return { close() {} };
+    },
   });
   watcher.close();
   assert.deepEqual(roots, ["/slow-root"]);
@@ -521,11 +535,16 @@ test("library watcher reports asynchronous errors and ignores callbacks after cl
   let changed;
   let closed = 0;
   const child = new EventEmitter();
-  child.close = () => { closed++; };
+  child.close = () => {
+    closed++;
+  };
   const watcher = createLibraryFileWatcher({
     roots: ["/library"],
     debounceMs: 1,
-    watchImpl: (_root, _options, callback) => { changed = callback; return child; },
+    watchImpl: (_root, _options, callback) => {
+      changed = callback;
+      return child;
+    },
     onError: (error, root) => errors.push({ message: error.message, root }),
     onChange: () => assert.fail("Closed watcher scheduled a scan"),
   });
@@ -546,17 +565,27 @@ test("library watcher scans the resolved local root received from its child", as
   const watched = [];
   const scanned = [];
   const watcher = createLibraryFileWatcher({
-    roots: [{ path: "/remote-library", pathMappings: [{ remote: "/remote-library", local: localRoot }] }],
+    roots: [
+      { path: "/remote-library", pathMappings: [{ remote: "/remote-library", local: localRoot }] },
+    ],
     debounceMs: 1,
-    watchImpl: (root, options, callback) => { watched.push({ root, options }); changed = callback; return { close() {} }; },
+    watchImpl: (root, options, callback) => {
+      watched.push({ root, options });
+      changed = callback;
+      return { close() {} };
+    },
     onChange: (roots, paths) => scanned.push({ roots, paths }),
   });
   changed("change", "Artist/track.flac", localRoot);
   await new Promise((resolve) => setTimeout(resolve, 15));
   watcher.close();
   assert.equal(watched[0].root, "/remote-library");
-  assert.deepEqual(watched[0].options.pathMappings, [{ remote: "/remote-library", local: localRoot }]);
-  assert.deepEqual(scanned, [{ roots: [localRoot], paths: [path.join(localRoot, "Artist/track.flac")] }]);
+  assert.deepEqual(watched[0].options.pathMappings, [
+    { remote: "/remote-library", local: localRoot },
+  ]);
+  assert.deepEqual(scanned, [
+    { roots: [localRoot], paths: [path.join(localRoot, "Artist/track.flac")] },
+  ]);
 });
 
 function createMappedWatcherTest(t) {
@@ -566,13 +595,17 @@ function createMappedWatcherTest(t) {
   const errors = [];
   const watcher = createLibraryFileWatcher({
     roots: ["/remote-one", "/remote-two", "/remote-three"].map((remote) => ({
-      path: remote, pathMappings: [{ remote, local: localRoot }],
+      path: remote,
+      pathMappings: [{ remote, local: localRoot }],
     })),
     debounceMs: 1,
     watchImpl: (_root, _options, callback) => {
       const child = new EventEmitter();
       child.closed = 0;
-      child.close = () => { child.closed++; child.emit("close"); };
+      child.close = () => {
+        child.closed++;
+        child.emit("close");
+      };
       child.change = (filename) => callback("change", filename, localRoot);
       children.push(child);
       return child;
@@ -604,7 +637,10 @@ for (const firstReady of [0, 1]) {
     assert.equal(errors.length, 0);
     watcher.close();
     watcher.close();
-    assert.deepEqual(children.map((child) => child.closed), [1, 1, 1]);
+    assert.deepEqual(
+      children.map((child) => child.closed),
+      [1, 1, 1],
+    );
     owner.emit("ready", localRoot);
     owner.change("after-close.flac");
     await new Promise((resolve) => setTimeout(resolve, 15));

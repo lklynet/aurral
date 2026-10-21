@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import { test } from "vite-plus/test";
-import { recoverExitedWorkerJobs, recoverJobsClaimedBeforeStart } from "../../backend/services/backgroundJobRecovery.js";
+import {
+  recoverExitedWorkerJobs,
+  recoverJobsClaimedBeforeStart,
+} from "../../backend/services/backgroundJobRecovery.js";
 import { getHonkerDb, getLibraryScanQueue } from "../../backend/services/honkerDb.js";
 import {
   beginLibraryScanJob,

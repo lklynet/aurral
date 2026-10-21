@@ -80,9 +80,7 @@ function cacheConnectionResult(settingsKey, result, config = null) {
 }
 
 function getSettings(config = null) {
-  const integrations = config
-    ? { slskd: config }
-    : dbOps.getSettings()?.integrations || {};
+  const integrations = config ? { slskd: config } : dbOps.getSettings()?.integrations || {};
   const slskd = integrations.slskd || {};
   const url = String(slskd.url || "")
     .trim()
@@ -253,7 +251,10 @@ export function isSoulseekLoggedOutError(error) {
 
 function isSoulseekLoggedIn(server) {
   if (typeof server?.isLoggedIn === "boolean") return server.isLoggedIn;
-  return String(server?.state || "").split(",").map((flag) => flag.trim()).includes("LoggedIn");
+  return String(server?.state || "")
+    .split(",")
+    .map((flag) => flag.trim())
+    .includes("LoggedIn");
 }
 
 function readId(value) {
@@ -265,20 +266,30 @@ function createSearchCancellation(shouldCancel, externalSignal) {
   const abort = () => controller.abort();
   if (externalSignal?.aborted || shouldCancel?.()) abort();
   externalSignal?.addEventListener("abort", abort, { once: true });
-  const timer = typeof shouldCancel === "function" ? setInterval(() => {
-    if (shouldCancel()) abort();
-  }, 100) : null;
+  const timer =
+    typeof shouldCancel === "function"
+      ? setInterval(() => {
+          if (shouldCancel()) abort();
+        }, 100)
+      : null;
   timer?.unref();
   return {
     signal: controller.signal,
-    dispose: () => { clearInterval(timer); externalSignal?.removeEventListener("abort", abort); },
+    dispose: () => {
+      clearInterval(timer);
+      externalSignal?.removeEventListener("abort", abort);
+    },
   };
 }
 
 function waitSearchDelay(ms, signal) {
   return new Promise((resolve) => {
     let timer;
-    const finish = () => { clearTimeout(timer); signal?.removeEventListener("abort", finish); resolve(); };
+    const finish = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", finish);
+      resolve();
+    };
     if (signal?.aborted) return resolve();
     timer = setTimeout(() => {
       signal?.removeEventListener("abort", finish);
@@ -290,9 +301,10 @@ function waitSearchDelay(ms, signal) {
 
 async function waitForSearchStartSlot(signal) {
   const lastStartedAt = Number(dbOps.getJSONSetting(SEARCH_STARTED_AT_SETTING));
-  const waitMs = lastStartedAt > 0
-    ? Math.min(SEARCH_START_GAP_MS, lastStartedAt + SEARCH_START_GAP_MS - Date.now())
-    : 0;
+  const waitMs =
+    lastStartedAt > 0
+      ? Math.min(SEARCH_START_GAP_MS, lastStartedAt + SEARCH_START_GAP_MS - Date.now())
+      : 0;
   if (waitMs > 0) await waitSearchDelay(waitMs, signal);
   if (signal.aborted) throw new Error("slskd search cancelled");
 }
@@ -304,11 +316,15 @@ async function withSearchLock(name, operation, { deadline, signal }) {
     const remaining = lockDeadline - Date.now();
     if (remaining <= 0) throw new Error("slskd search deadline expired");
     try {
-      return await withHonkerLock(name, () => {
-        if (signal.aborted) throw new Error("slskd search cancelled");
-        if (Date.now() >= lockDeadline) throw new Error("slskd search deadline expired");
-        return operation();
-      }, { waitTimeoutMs: Math.min(250, remaining) });
+      return await withHonkerLock(
+        name,
+        () => {
+          if (signal.aborted) throw new Error("slskd search cancelled");
+          if (Date.now() >= lockDeadline) throw new Error("slskd search deadline expired");
+          return operation();
+        },
+        { waitTimeoutMs: Math.min(250, remaining) },
+      );
     } catch (error) {
       if (error.message !== `Timed out waiting for Honker lock: ${name}`) throw error;
     }
@@ -324,9 +340,16 @@ class SearchMonitor {
     this.searchId = searchId;
     this.onSearchSettled = options.onSearchSettled;
     this.cleanupTimeoutMs = options.cleanupTimeoutMs;
-    this.emptyTimeoutMs = Math.max(0, Number(options.emptyTimeoutMs ?? DEFAULT_EMPTY_SEARCH_TIMEOUT_MS));
-    this.activeTimeoutMs = Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : DEFAULT_SEARCH_TIMEOUT_MS;
-    this.gracePeriodMs = Math.max(0, Number(options.gracePeriodMs ?? DEFAULT_SEARCH_GRACE_PERIOD_MS));
+    this.emptyTimeoutMs = Math.max(
+      0,
+      Number(options.emptyTimeoutMs ?? DEFAULT_EMPTY_SEARCH_TIMEOUT_MS),
+    );
+    this.activeTimeoutMs =
+      Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : DEFAULT_SEARCH_TIMEOUT_MS;
+    this.gracePeriodMs = Math.max(
+      0,
+      Number(options.gracePeriodMs ?? DEFAULT_SEARCH_GRACE_PERIOD_MS),
+    );
     this.hardDeadline = Number(options.deadline) || Infinity;
     this.startWindows(Number(options.startedAt) || Date.now());
     this.queued = options.queued !== false;
@@ -345,7 +368,9 @@ class SearchMonitor {
   }
 
   cutoff() {
-    return this.hasSeenFiles ? this.deadline : Math.min(this.deadline, this.startedAt + this.emptyTimeoutMs);
+    return this.hasSeenFiles
+      ? this.deadline
+      : Math.min(this.deadline, this.startedAt + this.emptyTimeoutMs);
   }
 
   async stop() {
@@ -356,7 +381,10 @@ class SearchMonitor {
       if (deleted) this.onSearchSettled?.(this.searchId);
       else logger.warn("slskd", "Could not stop owned search", { searchId: this.searchId });
     } catch (error) {
-      logger.warn("slskd", "Could not stop owned search", { searchId: this.searchId, reason: error?.message });
+      logger.warn("slskd", "Could not stop owned search", {
+        searchId: this.searchId,
+        reason: error?.message,
+      });
     }
   }
 
@@ -372,7 +400,10 @@ class SearchMonitor {
   async poll({ earlyExitWhen, shouldCancel, signal } = {}) {
     const cancelled = () => signal?.aborted || shouldCancel?.();
     try {
-      if (cancelled()) { await this.stop(); return { done: true, data: null }; }
+      if (cancelled()) {
+        await this.stop();
+        return { done: true, data: null };
+      }
       const cutoff = this.queued || !this.latest ? this.hardDeadline : this.cutoff();
       if (Date.now() >= cutoff) {
         if (this.queued) throw searchStillQueuedError();
@@ -385,21 +416,31 @@ class SearchMonitor {
           signal,
         });
       } catch (error) {
-        if (cancelled()) { await this.stop(); return { done: true, data: null }; }
+        if (cancelled()) {
+          await this.stop();
+          return { done: true, data: null };
+        }
         if (Date.now() >= cutoff) {
           if (this.queued) throw searchStillQueuedError();
           return this.finish(this.latest);
         }
         throw error;
       }
-      if (cancelled()) { await this.stop(); return { done: true, data: null }; }
+      if (cancelled()) {
+        await this.stop();
+        return { done: true, data: null };
+      }
       // slskd runs a few searches at once and queues the rest. A queued search
       // has not asked anyone yet, so its windows start once it runs.
       const wasQueued = this.queued;
       this.queued = isSearchQueued(data);
       if (this.queued) {
         if (Date.now() >= this.hardDeadline) throw searchStillQueuedError();
-        return { done: false, data, waitMs: Math.min(2000, Math.max(1, this.hardDeadline - Date.now())) };
+        return {
+          done: false,
+          data,
+          waitMs: Math.min(2000, Math.max(1, this.hardDeadline - Date.now())),
+        };
       }
       if (wasQueued) this.startWindows(Date.now());
       const files = this.client.flattenSearchResults(data);
@@ -407,7 +448,10 @@ class SearchMonitor {
       for (const file of files) {
         const key = `${file.user}\0${file.file}`;
         const previous = this.collected.get(key);
-        if (!previous || Object.keys(file).some((field) => !Object.is(file[field], previous[field]))) {
+        if (
+          !previous ||
+          Object.keys(file).some((field) => !Object.is(file[field], previous[field]))
+        ) {
           this.collected.set(key, file);
           eligibilityChanged = true;
         }
@@ -422,7 +466,9 @@ class SearchMonitor {
         data = { ...data, responses: [...responses.values()] };
       }
       data = { ...data };
-      Object.defineProperty(data, NORMALIZED_SEARCH_RESULTS, { value: [...this.collected.values()] });
+      Object.defineProperty(data, NORMALIZED_SEARCH_RESULTS, {
+        value: [...this.collected.values()],
+      });
       this.latest = data;
       const fileCount = Number(data?.fileCount || data?.FileCount || 0);
       this.totalFiles = Math.max(this.totalFiles, fileCount, files.length);
@@ -434,16 +480,23 @@ class SearchMonitor {
       if (this.lastEligibility || !isSearchInProgress(data)) {
         let hydrated = isSearchComplete(data)
           ? await this.client.hydrateCompletedSearch(this.searchId, data, {
-            deadline: this.deadline, shouldCancel, signal,
-          })
+              deadline: this.deadline,
+              shouldCancel,
+              signal,
+            })
           : data;
-        if (cancelled()) { await this.stop(); return { done: true, data: null }; }
+        if (cancelled()) {
+          await this.stop();
+          return { done: true, data: null };
+        }
         if (hydrated !== data) {
           for (const file of this.client.flattenSearchResults(hydrated)) {
             this.collected.set(`${file.user}\0${file.file}`, file);
           }
           hydrated = { ...hydrated };
-          Object.defineProperty(hydrated, NORMALIZED_SEARCH_RESULTS, { value: [...this.collected.values()] });
+          Object.defineProperty(hydrated, NORMALIZED_SEARCH_RESULTS, {
+            value: [...this.collected.values()],
+          });
         }
         return this.finish(hydrated);
       }
@@ -454,7 +507,10 @@ class SearchMonitor {
       return {
         done: false,
         data,
-        waitMs: Math.min((grace ? 1 : calculateQuadraticDelay(progress)) * 1000, nextCutoff - Date.now()),
+        waitMs: Math.min(
+          (grace ? 1 : calculateQuadraticDelay(progress)) * 1000,
+          nextCutoff - Date.now(),
+        ),
       };
     } catch (error) {
       await this.stop();
@@ -523,7 +579,9 @@ export class SlskdClient {
       const soulseekConnected = isSoulseekLoggedIn(server);
       const rawDownloadPath =
         optionsRes.data?.directories?.downloads || optionsRes.data?.directories?.download;
-      const downloadPath = Array.isArray(rawDownloadPath) ? String(rawDownloadPath[0] || "").trim() || null : String(rawDownloadPath || "").trim() || null;
+      const downloadPath = Array.isArray(rawDownloadPath)
+        ? String(rawDownloadPath[0] || "").trim() || null
+        : String(rawDownloadPath || "").trim() || null;
       const result = {
         ok: true,
         configured: true,
@@ -577,7 +635,10 @@ export class SlskdClient {
     const control = createSearchCancellation(options.shouldCancel, options.signal);
     const id = String(options.id || randomUUID());
     const client = buildClient(this._config);
-    const searchTimeoutMs = Math.max(5000, Math.floor(Number(options.searchTimeoutMs || DEFAULT_SEARCH_TIMEOUT_MS)));
+    const searchTimeoutMs = Math.max(
+      5000,
+      Math.floor(Number(options.searchTimeoutMs || DEFAULT_SEARCH_TIMEOUT_MS)),
+    );
     const body = {
       id,
       searchText: String(searchText || "").trim(),
@@ -591,51 +652,78 @@ export class SlskdClient {
     const lockOptions = { deadline: options.deadline, signal: control.signal };
     let creationUncertain = false;
     try {
-      return await withSearchLock("slskd-search-create", async () => {
-        for (let attempt = 0; attempt <= 3; attempt++) {
-          await waitForSearchStartSlot(control.signal);
-          const response = await withSearchLock("slskd-api", async () => {
-            const remaining = Number(options.deadline) ? options.deadline - Date.now() : Infinity;
-            if (remaining < 5000) throw new Error("slskd search deadline expired");
-            dbOps.setJSONSetting(SEARCH_STARTED_AT_SETTING, Date.now());
-            options.onSearchCreated?.(id);
-            creationUncertain = true;
-            let result;
-            try {
-              result = await client.post("/api/v0/searches", {
-                ...body, searchTimeout: Math.min(searchTimeoutMs, remaining),
-              }, { timeout: Math.min(60000, remaining), signal: control.signal });
-            } catch (error) {
-              options.onSearchCreated?.(id);
-              throw error;
+      return await withSearchLock(
+        "slskd-search-create",
+        async () => {
+          for (let attempt = 0; attempt <= 3; attempt++) {
+            await waitForSearchStartSlot(control.signal);
+            const response = await withSearchLock(
+              "slskd-api",
+              async () => {
+                const remaining = Number(options.deadline)
+                  ? options.deadline - Date.now()
+                  : Infinity;
+                if (remaining < 5000) throw new Error("slskd search deadline expired");
+                dbOps.setJSONSetting(SEARCH_STARTED_AT_SETTING, Date.now());
+                options.onSearchCreated?.(id);
+                creationUncertain = true;
+                let result;
+                try {
+                  result = await client.post(
+                    "/api/v0/searches",
+                    {
+                      ...body,
+                      searchTimeout: Math.min(searchTimeoutMs, remaining),
+                    },
+                    { timeout: Math.min(60000, remaining), signal: control.signal },
+                  );
+                } catch (error) {
+                  options.onSearchCreated?.(id);
+                  throw error;
+                }
+                if ([200, 201].includes(result.status)) options.onSearchCreated?.(id);
+                else if ([409, 429].includes(result.status)) {
+                  creationUncertain = false;
+                  options.onSearchSettled?.(id);
+                }
+                return result;
+              },
+              lockOptions,
+            );
+            if ([200, 201].includes(response.status)) return { id, searchText: body.searchText };
+            if (response.status === 429 && attempt < 3) {
+              const remaining = Number(options.deadline) ? options.deadline - Date.now() : Infinity;
+              await waitSearchDelay(Math.min(30000 * 2 ** attempt, remaining), control.signal);
+              continue;
             }
-            if ([200, 201].includes(result.status)) options.onSearchCreated?.(id);
-            else if ([409, 429].includes(result.status)) {
-              creationUncertain = false;
-              options.onSearchSettled?.(id);
-            }
-            return result;
-          }, lockOptions);
-          if ([200, 201].includes(response.status)) return { id, searchText: body.searchText };
-          if (response.status === 429 && attempt < 3) {
-            const remaining = Number(options.deadline) ? options.deadline - Date.now() : Infinity;
-            await waitSearchDelay(Math.min(30000 * 2 ** attempt, remaining), control.signal);
-            continue;
+            if (response.status === 409)
+              throw soulseekLoggedOutError(
+                `search refused (409) ${String(response.data || "")}`.trim(),
+              );
+            throw new Error(
+              `slskd search failed: HTTP ${response.status} ${String(response.data || "")}`,
+            );
           }
-          if (response.status === 409) throw soulseekLoggedOutError(`search refused (409) ${String(response.data || "")}`.trim());
-          throw new Error(`slskd search failed: HTTP ${response.status} ${String(response.data || "")}`);
-        }
-        throw new Error("slskd search busy after retries");
-      }, lockOptions);
+          throw new Error("slskd search busy after retries");
+        },
+        lockOptions,
+      );
     } catch (error) {
       if (creationUncertain) {
         options.onSearchCreated?.(id);
         try {
-          if (await this.deleteSearch(id, { timeout: Math.max(1, Number(options.cleanupTimeoutMs) || 20000) })) {
+          if (
+            await this.deleteSearch(id, {
+              timeout: Math.max(1, Number(options.cleanupTimeoutMs) || 20000),
+            })
+          ) {
             options.onSearchSettled?.(id);
           }
         } catch (cleanupError) {
-          logger.warn("slskd", "Could not stop owned search after creation failed", { searchId: id, reason: cleanupError?.message });
+          logger.warn("slskd", "Could not stop owned search after creation failed", {
+            searchId: id,
+            reason: cleanupError?.message,
+          });
         }
       }
       throw error;
@@ -663,13 +751,19 @@ export class SlskdClient {
     return readSearchResponses(response.data);
   }
 
-  async hydrateCompletedSearch(searchId, data, { deadline = Date.now() + 15000, shouldCancel, signal } = {}) {
+  async hydrateCompletedSearch(
+    searchId,
+    data,
+    { deadline = Date.now() + 15000, shouldCancel, signal } = {},
+  ) {
     const responseCount = Number(data?.responseCount || data?.ResponseCount || 0);
     const fileCount = Number(data?.fileCount || data?.FileCount || 0);
     if (responseCount <= 0 && fileCount <= 0) return data;
     const collectedCount = this.flattenSearchResults(data).length;
     if (collectedCount > 0 && (fileCount <= 0 || collectedCount >= fileCount)) return data;
-    const collected = new Map(this.flattenSearchResults(data).map((file) => [`${file.user}\0${file.file}`, file]));
+    const collected = new Map(
+      this.flattenSearchResults(data).map((file) => [`${file.user}\0${file.file}`, file]),
+    );
     const hydrationDeadline = Math.min(deadline, Date.now() + 15000);
     while (Date.now() < hydrationDeadline && !signal?.aborted && !shouldCancel?.()) {
       const timeout = Math.max(1, Math.min(60000, hydrationDeadline - Date.now()));
@@ -678,20 +772,27 @@ export class SlskdClient {
         this.getSearchResponses(searchId, { timeout, signal }),
       ]);
       const refreshed = status.status === "fulfilled" ? status.value : data;
-      for (const file of this.flattenSearchResults(refreshed)) collected.set(`${file.user}\0${file.file}`, file);
+      for (const file of this.flattenSearchResults(refreshed))
+        collected.set(`${file.user}\0${file.file}`, file);
       if (payload.status === "fulfilled") {
-        for (const file of this.flattenSearchResults(payload.value)) collected.set(`${file.user}\0${file.file}`, file);
+        for (const file of this.flattenSearchResults(payload.value))
+          collected.set(`${file.user}\0${file.file}`, file);
       }
       data = { ...refreshed };
       Object.defineProperty(data, NORMALIZED_SEARCH_RESULTS, { value: [...collected.values()] });
-      if (fileCount > 0 ? collected.size >= fileCount : collected.size > collectedCount) return data;
+      if (fileCount > 0 ? collected.size >= fileCount : collected.size > collectedCount)
+        return data;
       if (Date.now() >= hydrationDeadline || signal?.aborted || shouldCancel?.()) break;
       const failed = [status, payload].find((result) => result.status === "rejected");
       if (failed) throw failed.reason;
       await waitSearchDelay(Math.min(500, hydrationDeadline - Date.now()), signal);
     }
     if (signal?.aborted || shouldCancel?.()) return data;
-    logger.warn("slskd", "slskd search completed with counts but no file payloads", { searchId, responseCount, fileCount });
+    logger.warn("slskd", "slskd search completed with counts but no file payloads", {
+      searchId,
+      responseCount,
+      fileCount,
+    });
     return data;
   }
 
@@ -766,11 +867,18 @@ export class SlskdClient {
   }
 
   async searchQuery(searchText, options = {}) {
-    const timeoutMs = Number(options.timeoutMs) > 0 ? Number(options.timeoutMs)
-      : DEFAULT_SEARCH_TIMEOUT_MS + DEFAULT_SEARCH_GRACE_PERIOD_MS;
+    const timeoutMs =
+      Number(options.timeoutMs) > 0
+        ? Number(options.timeoutMs)
+        : DEFAULT_SEARCH_TIMEOUT_MS + DEFAULT_SEARCH_GRACE_PERIOD_MS;
     const deadline = Number(options.deadline) || Date.now() + timeoutMs;
     const created = await this.createSearch(searchText, {
-      ...options, deadline, searchTimeoutMs: Math.min(Number(options.searchTimeoutMs) || timeoutMs, deadline - Date.now()),
+      ...options,
+      deadline,
+      searchTimeoutMs: Math.min(
+        Number(options.searchTimeoutMs) || timeoutMs,
+        deadline - Date.now(),
+      ),
     });
     const completed = await this.waitForSearch(created.id, timeoutMs, { ...options, deadline });
     return this.flattenSearchResults(completed);
@@ -812,7 +920,8 @@ export class SlskdClient {
           continue;
         }
         const detail = `HTTP ${response.status} ${String(response.data || "")}`;
-        if (/must be connected and logged in/i.test(detail)) throw soulseekLoggedOutError(`enqueue refused (${detail})`);
+        if (/must be connected and logged in/i.test(detail))
+          throw soulseekLoggedOutError(`enqueue refused (${detail})`);
         throw new Error(`slskd enqueue failed: ${detail}`);
       }
       throw new Error("slskd enqueue busy after retries");

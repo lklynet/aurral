@@ -63,7 +63,13 @@ const loadTheme = () => {
 const lowContrastTheme = {
   id: "custom-murky",
   name: "Murky",
-  dark: { background: "#2b2b2b", text: "#6e6e6e", accent: "#3a3a5a", danger: "#5a2a2a", warning: "#4a4a20" },
+  dark: {
+    background: "#2b2b2b",
+    text: "#6e6e6e",
+    accent: "#3a3a5a",
+    danger: "#5a2a2a",
+    warning: "#4a4a20",
+  },
 };
 const lightOnlyTheme = {
   id: "custom-sunny",
@@ -79,7 +85,11 @@ test("every theme is readable in light and dark, including low-contrast and one-
     for (const mode of ["light", "dark"]) {
       const palette = getThemePalette(theme, mode);
       const label = `${theme.name} ${mode}`;
-      assert.equal(luminance(palette.surface) < 0.2, mode === "dark", `${label} surface matches its mode`);
+      assert.equal(
+        luminance(palette.surface) < 0.2,
+        mode === "dark",
+        `${label} surface matches its mode`,
+      );
       assert.ok(contrast(palette.text, palette.surfacePopover) >= 7, `${label} text`);
       assert.ok(contrast(palette.textMuted, palette.surfacePopover) >= 4.5, `${label} muted text`);
       assert.ok(contrast(palette.textSubtle, palette.surfacePopover) >= 3, `${label} subtle text`);
@@ -114,14 +124,16 @@ test("theme choices from the previous version carry over", async () => {
     storage: {
       aurralTheme: "terminal-sexy-1a2b3c4d",
       "aurralThemeAppearance:v1": "dark",
-      "aurralThemes:v1": JSON.stringify([{
-        version: 1,
-        id: "terminal-sexy-1a2b3c4d",
-        name: "Old scheme",
-        appearance: "light",
-        colors: { surface: "#fdf6e3", text: "#586e75", accent: "#268bd2", border: "#58585814" },
-        variants: { dark: { surface: "#002b36", text: "#839496", accent: "#268bd2" } },
-      }]),
+      "aurralThemes:v1": JSON.stringify([
+        {
+          version: 1,
+          id: "terminal-sexy-1a2b3c4d",
+          name: "Old scheme",
+          appearance: "light",
+          colors: { surface: "#fdf6e3", text: "#586e75", accent: "#268bd2", border: "#58585814" },
+          variants: { dark: { surface: "#002b36", text: "#839496", accent: "#268bd2" } },
+        },
+      ]),
     },
   });
   const { getThemeDocument } = await loadTheme();
@@ -131,12 +143,14 @@ test("theme choices from the previous version carry over", async () => {
     themeId: "terminal-sexy-1a2b3c4d",
     appearance: "dark",
     matchArtwork: false,
-    themes: [{
-      id: "terminal-sexy-1a2b3c4d",
-      name: "Old scheme",
-      light: { background: "#fdf6e3", text: "#586e75", accent: "#268bd2" },
-      dark: { background: "#002b36", text: "#839496", accent: "#268bd2" },
-    }],
+    themes: [
+      {
+        id: "terminal-sexy-1a2b3c4d",
+        name: "Old scheme",
+        light: { background: "#fdf6e3", text: "#586e75", accent: "#268bd2" },
+        dark: { background: "#002b36", text: "#839496", accent: "#268bd2" },
+      },
+    ],
   });
   assert.equal(stored.has("aurralTheme"), false);
   assert.equal(stored.has("aurralThemes:v1"), false);
@@ -157,7 +171,9 @@ test("theme choices from the previous version carry over", async () => {
   const crowded = createBrowser({
     storage: {
       aurralTheme: "nord",
-      "aurralThemes:v1": JSON.stringify(Array.from({ length: 55 }, (_, index) => legacyTheme(index))),
+      "aurralThemes:v1": JSON.stringify(
+        Array.from({ length: 55 }, (_, index) => legacyTheme(index)),
+      ),
     },
   });
   const migrated = (await loadTheme()).getThemeDocument();
@@ -165,7 +181,10 @@ test("theme choices from the previous version carry over", async () => {
   assert.equal(selected.name, "Nord");
   assert.equal(selected.dark.accent, "#ff00aa");
   assert.notEqual(selected.id, "nord");
-  assert.ok(crowded.stored.has("aurralThemes:v1"), "the old copy stays while some themes did not fit");
+  assert.ok(
+    crowded.stored.has("aurralThemes:v1"),
+    "the old copy stays while some themes did not fit",
+  );
 });
 
 function fakeAccount(initial = null) {
@@ -188,7 +207,13 @@ function fakeAccount(initial = null) {
 test("the account's saved theme wins and is never echoed back", async () => {
   createBrowser();
   const { getThemeDocument, selectTheme, startThemeAccountSync } = await loadTheme();
-  const accountDocument = { version: 2, themeId: "gruvbox", appearance: "light", matchArtwork: true, themes: [] };
+  const accountDocument = {
+    version: 2,
+    themeId: "gruvbox",
+    appearance: "light",
+    matchArtwork: true,
+    themes: [],
+  };
   const account = fakeAccount(accountDocument);
   const sync = startThemeAccountSync({ userId: 7, ...account });
   await account.answer();
@@ -200,7 +225,10 @@ test("the account's saved theme wins and is never echoed back", async () => {
   selectTheme("nord");
   await sync.refresh;
   await new Promise((resolve) => setImmediate(resolve));
-  assert.deepEqual(account.saves.map((document) => document.themeId), ["nord"]);
+  assert.deepEqual(
+    account.saves.map((document) => document.themeId),
+    ["nord"],
+  );
 });
 
 test("a device's theme is uploaded only to the account that made it", async () => {
@@ -227,7 +255,13 @@ test("a device's theme is uploaded only to the account that made it", async () =
 test("a refresh that started before a local change does not undo it", async () => {
   createBrowser();
   const theme = await loadTheme();
-  const account = fakeAccount({ version: 2, themeId: "gruvbox", appearance: "dark", matchArtwork: false, themes: [] });
+  const account = fakeAccount({
+    version: 2,
+    themeId: "gruvbox",
+    appearance: "dark",
+    matchArtwork: false,
+    themes: [],
+  });
   const sync = theme.startThemeAccountSync({ userId: 5, ...account });
   await account.answer();
   await sync.ready;
@@ -244,7 +278,13 @@ test("a refresh that started before a local change does not undo it", async () =
 test("saves still queued at sign-out are not sent to the next account", async () => {
   createBrowser();
   const theme = await loadTheme();
-  const account = fakeAccount({ version: 2, themeId: "aurral", appearance: "dark", matchArtwork: false, themes: [] });
+  const account = fakeAccount({
+    version: 2,
+    themeId: "aurral",
+    appearance: "dark",
+    matchArtwork: false,
+    themes: [],
+  });
   let releaseFirstSave;
   const firstSave = new Promise((resolve) => {
     releaseFirstSave = resolve;
@@ -253,7 +293,11 @@ test("saves still queued at sign-out are not sent to the next account", async ()
     if (!account.saves.length) await firstSave;
     account.saves.push(document);
   };
-  const sync = theme.startThemeAccountSync({ userId: 6, loadAccountTheme: account.loadAccountTheme, saveAccountTheme });
+  const sync = theme.startThemeAccountSync({
+    userId: 6,
+    loadAccountTheme: account.loadAccountTheme,
+    saveAccountTheme,
+  });
   await account.answer();
   await sync.ready;
 
@@ -264,17 +308,26 @@ test("saves still queued at sign-out are not sent to the next account", async ()
   releaseFirstSave();
   await new Promise((resolve) => setTimeout(resolve, 0));
 
-  assert.deepEqual(account.saves.map((document) => document.themeId), ["nord"]);
+  assert.deepEqual(
+    account.saves.map((document) => document.themeId),
+    ["nord"],
+  );
 });
 
 test("undo does not restore a theme past the limit", async () => {
   createBrowser();
   const theme = await loadTheme();
   for (let index = 0; index < theme.MAX_CUSTOM_THEMES; index += 1) {
-    theme.saveCustomTheme({ name: `Theme ${index}`, dark: { background: "#101820", accent: "#f2aa4c" } }, { select: false });
+    theme.saveCustomTheme(
+      { name: `Theme ${index}`, dark: { background: "#101820", accent: "#f2aa4c" } },
+      { select: false },
+    );
   }
   const removed = theme.removeCustomTheme(theme.getThemeDocument().themes[0].id);
-  theme.saveCustomTheme({ name: "Replacement", dark: { background: "#101820", accent: "#f2aa4c" } }, { select: false });
+  theme.saveCustomTheme(
+    { name: "Replacement", dark: { background: "#101820", accent: "#f2aa4c" } },
+    { select: false },
+  );
 
   assert.throws(() => theme.restoreCustomTheme(removed), /up to/);
   assert.equal(theme.getThemeDocument().themes.length, theme.MAX_CUSTOM_THEMES);
@@ -291,7 +344,11 @@ test("a browser that cannot store themes reports it and keeps the old copy", asy
   assert.equal(theme.getThemeDocument().appearance, "dark");
   assert.equal(stored.get("aurralTheme"), "dark");
   assert.throws(
-    () => theme.saveCustomTheme({ name: "Unsaved", dark: { background: "#101820", accent: "#f2aa4c" } }),
+    () =>
+      theme.saveCustomTheme({
+        name: "Unsaved",
+        dark: { background: "#101820", accent: "#f2aa4c" },
+      }),
     /couldn't save/,
   );
 });
@@ -309,15 +366,26 @@ test("the startup script paints the saved theme before the app loads", async () 
     runInNewContext(source, {
       localStorage: { getItem: (key) => stored.get(key) ?? null },
       matchMedia: () => ({ matches: prefersDark }),
-      document: { documentElement: { dataset, style: { setProperty: (name, value) => variables.set(name, value) } } },
+      document: {
+        documentElement: {
+          dataset,
+          style: { setProperty: (name, value) => variables.set(name, value) },
+        },
+      },
     });
     return { variables, dataset };
   };
 
   const dark = runStartup(true);
   assert.equal(dark.dataset.theme, "dark");
-  assert.equal(dark.variables.get("--aurral-surface"), getThemePalette(findTheme("catppuccin"), "dark").surface);
-  assert.equal(dark.variables.get("--aurral-text-muted"), getThemePalette(findTheme("catppuccin"), "dark").textMuted);
+  assert.equal(
+    dark.variables.get("--aurral-surface"),
+    getThemePalette(findTheme("catppuccin"), "dark").surface,
+  );
+  assert.equal(
+    dark.variables.get("--aurral-text-muted"),
+    getThemePalette(findTheme("catppuccin"), "dark").textMuted,
+  );
 
   const light = runStartup(false);
   assert.equal(light.dataset.theme, "light");
@@ -340,7 +408,10 @@ test("album art tints the theme only while immersive mode is on", async () => {
   const surface = variables.get("--aurral-surface");
   assert.ok(accent && surface);
   assert.notEqual(surface, "#121212");
-  assert.ok(Number.parseInt(accent.slice(1, 3), 16) > Number.parseInt(accent.slice(5, 7), 16), "accent stays red");
+  assert.ok(
+    Number.parseInt(accent.slice(1, 3), 16) > Number.parseInt(accent.slice(5, 7), 16),
+    "accent stays red",
+  );
   assert.ok(contrast(accent, surface) >= 3);
 
   setImmersiveMode(false);
@@ -369,25 +440,42 @@ test("previewing a theme changes the page without changing the saved choice", as
 
 test("removing a theme can be undone in place", async () => {
   createBrowser();
-  const { getThemeDocument, removeCustomTheme, restoreCustomTheme, saveCustomTheme } = await loadTheme();
-  const first = saveCustomTheme({ name: "First", dark: { background: "#101820", accent: "#f2aa4c" } });
-  const second = saveCustomTheme({ name: "Second", light: { background: "#fafafa", accent: "#3366ff" } });
-  saveCustomTheme({ name: "Third", light: { background: "#ffffff", accent: "#00aa77" } }, { select: false });
+  const { getThemeDocument, removeCustomTheme, restoreCustomTheme, saveCustomTheme } =
+    await loadTheme();
+  const first = saveCustomTheme({
+    name: "First",
+    dark: { background: "#101820", accent: "#f2aa4c" },
+  });
+  const second = saveCustomTheme({
+    name: "Second",
+    light: { background: "#fafafa", accent: "#3366ff" },
+  });
+  saveCustomTheme(
+    { name: "Third", light: { background: "#ffffff", accent: "#00aa77" } },
+    { select: false },
+  );
 
   const removed = removeCustomTheme(second.id);
   assert.equal(getThemeDocument().themeId, "aurral");
-  assert.deepEqual(getThemeDocument().themes.map((theme) => theme.name), ["First", "Third"]);
+  assert.deepEqual(
+    getThemeDocument().themes.map((theme) => theme.name),
+    ["First", "Third"],
+  );
 
   restoreCustomTheme(removed);
   assert.equal(getThemeDocument().themeId, second.id);
-  assert.deepEqual(getThemeDocument().themes.map((theme) => theme.id), [first.id, second.id, "custom-third"]);
+  assert.deepEqual(
+    getThemeDocument().themes.map((theme) => theme.id),
+    [first.id, second.id, "custom-third"],
+  );
 });
 
 test("a theme whose background does not match its mode is refused", async () => {
   createBrowser();
   const { saveCustomTheme } = await loadTheme();
   assert.throws(
-    () => saveCustomTheme({ name: "Backwards", dark: { background: "#ffffff", accent: "#3366ff" } }),
+    () =>
+      saveCustomTheme({ name: "Backwards", dark: { background: "#ffffff", accent: "#3366ff" } }),
     /dark background/,
   );
 });
@@ -418,25 +506,45 @@ palette:
     },
   });
 
-  const older = parseThemeText('scheme: "Paper"\nbase00: "f2eede"\nbase05: "000000"\nbase0d: "1e6fcc"\n');
-  assert.deepEqual(older, { name: "Paper", light: { background: "#f2eede", text: "#000000", accent: "#1e6fcc" } });
+  const older = parseThemeText(
+    'scheme: "Paper"\nbase00: "f2eede"\nbase05: "000000"\nbase0d: "1e6fcc"\n',
+  );
+  assert.deepEqual(older, {
+    name: "Paper",
+    light: { background: "#f2eede", text: "#000000", accent: "#1e6fcc" },
+  });
 });
 
 test("Aurral theme files round-trip and old theme files still import", () => {
-  const theme = { id: "custom-dusk", name: "Dusk", dark: { background: "#1b1d2a", accent: "#c3a6ff" } };
+  const theme = {
+    id: "custom-dusk",
+    name: "Dusk",
+    dark: { background: "#1b1d2a", accent: "#c3a6ff" },
+  };
   assert.deepEqual(parseThemeText(serializeThemeFile(theme)), { name: "Dusk", dark: theme.dark });
 
-  const legacy = parseThemeText(JSON.stringify({
-    version: 1,
+  const legacy = parseThemeText(
+    JSON.stringify({
+      version: 1,
+      name: "Legacy",
+      appearance: "dark",
+      colors: { surface: "#181818", text: "#d8d8d8", accent: "#7cafc2", border: "#d8d8d814" },
+    }),
+  );
+  assert.deepEqual(legacy, {
     name: "Legacy",
-    appearance: "dark",
-    colors: { surface: "#181818", text: "#d8d8d8", accent: "#7cafc2", border: "#d8d8d814" },
-  }));
-  assert.deepEqual(legacy, { name: "Legacy", dark: { background: "#181818", text: "#d8d8d8", accent: "#7cafc2" } });
+    dark: { background: "#181818", text: "#d8d8d8", accent: "#7cafc2" },
+  });
 
   assert.throws(() => parseThemeText("hello there"), /base16/);
   assert.throws(() => parseThemeText('{"version": 9, "name": "Future"}'), /version/);
-  assert.throws(() => parseThemeText('{"version": 2, "name": "Broken", "dark": {"background": "#101820", "accent": 123}}'), /invalid/);
+  assert.throws(
+    () =>
+      parseThemeText(
+        '{"version": 2, "name": "Broken", "dark": {"background": "#101820", "accent": 123}}',
+      ),
+    /invalid/,
+  );
 });
 
 test("album art matching picks the vivid color, not the average", () => {
@@ -452,5 +560,8 @@ test("album art matching picks the vivid color, not the average", () => {
   const [r, g, b] = [1, 3, 5].map((index) => Number.parseInt(color.slice(index, index + 2), 16));
   assert.ok(b > r && b > g, `${color} is blue`);
 
-  assert.equal(pickVividColor(Array.from({ length: 400 }, (_, index) => (index % 4 === 3 ? 255 : 90))), null);
+  assert.equal(
+    pickVividColor(Array.from({ length: 400 }, (_, index) => (index % 4 === 3 ? 255 : 90))),
+    null,
+  );
 });

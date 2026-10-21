@@ -22,9 +22,7 @@ export function setSidebarStageBackdropEnabled(userId, enabled) {
   } catch {
     return enabled;
   }
-  window.dispatchEvent(
-    new CustomEvent(SIDEBAR_STAGE_BACKDROP_EVENT, { detail: { userId } }),
-  );
+  window.dispatchEvent(new CustomEvent(SIDEBAR_STAGE_BACKDROP_EVENT, { detail: { userId } }));
   return enabled;
 }
 
@@ -56,10 +54,10 @@ const NIGHTLY_SPARKLES = [
   { x: 246, y: 26 },
 ];
 
-export function resolveSidebarStageBackdropVariant(
-  channel = import.meta.env.VITE_RELEASE_CHANNEL,
-) {
-  const normalized = String(channel || "stable").trim().toLowerCase();
+export function resolveSidebarStageBackdropVariant(channel = import.meta.env.VITE_RELEASE_CHANNEL) {
+  const normalized = String(channel || "stable")
+    .trim()
+    .toLowerCase();
   if (normalized === "nightly") return "nightly";
   if (normalized === "preview") return "preview";
   return null;

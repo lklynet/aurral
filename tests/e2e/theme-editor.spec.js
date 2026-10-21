@@ -1,7 +1,9 @@
 import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
 
-test("the theme editor blocks invalid colors and exports themes that import again", async ({ page }) => {
+test("the theme editor blocks invalid colors and exports themes that import again", async ({
+  page,
+}) => {
   await page.goto("/profile");
   await page.getByRole("button", { name: "Create theme" }).click();
   const editor = page.getByRole("dialog", { name: "Create theme" });
@@ -36,6 +38,9 @@ test("the theme editor blocks invalid colors and exports themes that import agai
   await review.getByRole("button", { name: "Cancel" }).click();
 
   await page.getByRole("button", { name: "Edit E2E export theme" }).click();
-  await page.getByRole("dialog", { name: "Edit theme" }).getByRole("button", { name: "Remove theme" }).click();
+  await page
+    .getByRole("dialog", { name: "Edit theme" })
+    .getByRole("button", { name: "Remove theme" })
+    .click();
   await expect(page.getByRole("button", { name: "Edit E2E export theme" })).toHaveCount(0);
 });

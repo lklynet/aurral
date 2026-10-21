@@ -1,7 +1,12 @@
 import express from "express";
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { db } from "../config/db-sqlite.js";
-import { getLastfmApiKey, getLastfmApiSecret, lastfmGetSession, listenbrainzValidateToken } from "../services/apiClients/index.js";
+import {
+  getLastfmApiKey,
+  getLastfmApiSecret,
+  lastfmGetSession,
+  listenbrainzValidateToken,
+} from "../services/apiClients/index.js";
 import { userOps } from "../db/helpers/index.js";
 import {
   requireAuth,
@@ -10,7 +15,10 @@ import {
 } from "../middleware/requirePermission.js";
 import { validateExternalUrl } from "../middleware/urlValidator.js";
 import { getKoitoListenBrainzBaseUrl, normalizeKoitoBaseUrl } from "../services/koitoClient.js";
-import { getScrobbleEncryptionKey, scrobbleConnectionStore } from "../services/scrobbleConnectionStore.js";
+import {
+  getScrobbleEncryptionKey,
+  scrobbleConnectionStore,
+} from "../services/scrobbleConnectionStore.js";
 import { logger } from "../services/logger.js";
 
 const router = express.Router();
@@ -22,7 +30,10 @@ const providerErrorStatus = (error) => {
 };
 const encode = (value) => Buffer.from(value).toString("base64url");
 const decode = (value) => Buffer.from(String(value || ""), "base64url").toString("utf8");
-const hash = (value) => createHash("sha256").update(String(value || "")).digest("hex");
+const hash = (value) =>
+  createHash("sha256")
+    .update(String(value || ""))
+    .digest("hex");
 
 const insertLinkStateStmt = db.prepare(`
   INSERT INTO lastfm_link_states
@@ -41,7 +52,9 @@ const consumeLinkStateStmt = db.prepare(`
 
 const createLinkToken = (userId) => {
   const payload = `${userId}.${Date.now() + 10 * 60 * 1000}.${randomBytes(12).toString("hex")}`;
-  const signature = createHmac("sha256", getScrobbleEncryptionKey()).update(payload).digest("base64url");
+  const signature = createHmac("sha256", getScrobbleEncryptionKey())
+    .update(payload)
+    .digest("base64url");
   return `${encode(payload)}.${signature}`;
 };
 
@@ -49,8 +62,14 @@ const verifyLinkToken = (token) => {
   const [encodedPayload, signature] = String(token || "").split(".");
   if (!encodedPayload || !signature) return null;
   const payload = decode(encodedPayload);
-  const expected = createHmac("sha256", getScrobbleEncryptionKey()).update(payload).digest("base64url");
-  if (signature.length !== expected.length || !timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return null;
+  const expected = createHmac("sha256", getScrobbleEncryptionKey())
+    .update(payload)
+    .digest("base64url");
+  if (
+    signature.length !== expected.length ||
+    !timingSafeEqual(Buffer.from(signature), Buffer.from(expected))
+  )
+    return null;
   const [userId, expiresAt] = payload.split(".");
   if (!Number.isFinite(Number(userId)) || Number(expiresAt) <= Date.now()) return null;
   return Math.trunc(Number(userId));
@@ -69,13 +88,15 @@ const createLinkState = (userId) => {
 
 export const consumeLinkState = (token, userId, browserNonce) => {
   if (!token || !Number.isFinite(Number(userId)) || !browserNonce) return false;
-  return consumeLinkStateStmt.run(
-    Date.now(),
-    hash(token),
-    Math.trunc(Number(userId)),
-    hash(browserNonce),
-    Date.now(),
-  ).changes === 1;
+  return (
+    consumeLinkStateStmt.run(
+      Date.now(),
+      hash(token),
+      Math.trunc(Number(userId)),
+      hash(browserNonce),
+      Date.now(),
+    ).changes === 1
+  );
 };
 
 const readCookie = (header, name) => {
@@ -99,7 +120,10 @@ const setLinkCookie = (res, req, value, maxAge = Math.floor(LASTFM_LINK_TTL_MS /
     "SameSite=Lax",
   ];
   if (req.protocol === "https") attributes.push("Secure");
-  res.append("Set-Cookie", `${LASTFM_LINK_COOKIE}=${encodeURIComponent(value)}; ${attributes.join("; ")}`);
+  res.append(
+    "Set-Cookie",
+    `${LASTFM_LINK_COOKIE}=${encodeURIComponent(value)}; ${attributes.join("; ")}`,
+  );
 };
 
 const normalizeLinkToken = (value) => {
@@ -162,7 +186,10 @@ router.get("/lastfm/link/callback", async (req, res) => {
     clearCookie();
     return res.status(500).send("Last.fm connection failed");
   }
-  if (userId == null || !consumeLinkState(stateToken, userId, readCookie(req.headers.cookie, LASTFM_LINK_COOKIE))) {
+  if (
+    userId == null ||
+    !consumeLinkState(stateToken, userId, readCookie(req.headers.cookie, LASTFM_LINK_COOKIE))
+  ) {
     clearCookie();
     return res.status(400).send("Invalid Last.fm link state");
   }
@@ -177,7 +204,9 @@ router.get("/lastfm/link/callback", async (req, res) => {
     });
     clearCookie();
     const status = providerErrorStatus(error);
-    return res.status(status).send(status === 400 ? "Last.fm authorization failed" : "Last.fm is unavailable");
+    return res
+      .status(status)
+      .send(status === 400 ? "Last.fm authorization failed" : "Last.fm is unavailable");
   }
   const key = session?.session?.key;
   if (!key) {
@@ -245,40 +274,50 @@ router.delete("/listenbrainz/link", requireAuth, (req, res) => {
   res.status(204).end();
 });
 
-router.put("/koito/link", requirePermission("accessSettings"), requireUserAccount, async (req, res) => {
-  const rawUrl = String(req.body?.url || userOps.getUserById(req.user.id)?.listenHistoryUrl || "").trim();
-  const validation = validateExternalUrl(rawUrl);
-  const token = String(req.body?.token || "").trim();
-  if (!validation.valid || !token) return res.status(400).json({ error: validation.error || "Token is required" });
-  const baseUrl = normalizeKoitoBaseUrl(validation.url);
-  try {
-    const tokenValidation = await listenbrainzValidateToken(
-      token,
-      getKoitoListenBrainzBaseUrl(baseUrl),
-    );
-    if (!tokenValidation?.valid) return res.status(400).json({ error: "Invalid Koito API key" });
-  } catch (error) {
-    logger.warn("scrobbling", "Koito token validation failed", {
-      message: error?.message || String(error),
-      status: error?.response?.status || null,
-    });
-    const status = providerErrorStatus(error);
-    return res.status(status).json({ error: status === 400 ? "Invalid Koito API key" : "Koito is unavailable" });
-  }
-  try {
-    const connection = scrobbleConnectionStore.saveConnection(req.user.id, "koito", {
-      token,
-      baseUrl,
-      displayName: new URL(baseUrl).host,
-    });
-    return res.json({ connected: true, displayName: connection.displayName });
-  } catch (error) {
-    logger.error("scrobbling", "Koito connection could not be saved", {
-      message: error?.message || String(error),
-    });
-    return res.status(500).json({ error: "Koito connection could not be saved" });
-  }
-});
+router.put(
+  "/koito/link",
+  requirePermission("accessSettings"),
+  requireUserAccount,
+  async (req, res) => {
+    const rawUrl = String(
+      req.body?.url || userOps.getUserById(req.user.id)?.listenHistoryUrl || "",
+    ).trim();
+    const validation = validateExternalUrl(rawUrl);
+    const token = String(req.body?.token || "").trim();
+    if (!validation.valid || !token)
+      return res.status(400).json({ error: validation.error || "Token is required" });
+    const baseUrl = normalizeKoitoBaseUrl(validation.url);
+    try {
+      const tokenValidation = await listenbrainzValidateToken(
+        token,
+        getKoitoListenBrainzBaseUrl(baseUrl),
+      );
+      if (!tokenValidation?.valid) return res.status(400).json({ error: "Invalid Koito API key" });
+    } catch (error) {
+      logger.warn("scrobbling", "Koito token validation failed", {
+        message: error?.message || String(error),
+        status: error?.response?.status || null,
+      });
+      const status = providerErrorStatus(error);
+      return res
+        .status(status)
+        .json({ error: status === 400 ? "Invalid Koito API key" : "Koito is unavailable" });
+    }
+    try {
+      const connection = scrobbleConnectionStore.saveConnection(req.user.id, "koito", {
+        token,
+        baseUrl,
+        displayName: new URL(baseUrl).host,
+      });
+      return res.json({ connected: true, displayName: connection.displayName });
+    } catch (error) {
+      logger.error("scrobbling", "Koito connection could not be saved", {
+        message: error?.message || String(error),
+      });
+      return res.status(500).json({ error: "Koito connection could not be saved" });
+    }
+  },
+);
 
 router.delete("/koito/link", requireAuth, (req, res) => {
   scrobbleConnectionStore.deleteConnection(req.user.id, "koito");

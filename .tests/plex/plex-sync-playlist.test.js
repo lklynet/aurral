@@ -287,16 +287,20 @@ test("syncPlaylist keeps removing remaining stale items even if one removal fail
 test("getTracks rejects a timeout while reading a page body instead of returning a partial library", async () => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], now: 0 });
   let readingBody;
-  const bodyStarted = new Promise((resolve) => { readingBody = resolve; });
+  const bodyStarted = new Promise((resolve) => {
+    readingBody = resolve;
+  });
   let pages = 0;
   vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, { signal }) => {
     pages += 1;
-    if (pages === 1) return Response.json({ MediaContainer: { totalSize: 2, Metadata: [{ ratingKey: "1" }] } });
+    if (pages === 1)
+      return Response.json({ MediaContainer: { totalSize: 2, Metadata: [{ ratingKey: "1" }] } });
     const response = Response.json({});
-    response.json = () => new Promise((_resolve, reject) => {
-      signal.addEventListener("abort", () => reject(signal.reason), { once: true });
-      readingBody();
-    });
+    response.json = () =>
+      new Promise((_resolve, reject) => {
+        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+        readingBody();
+      });
     return response;
   });
   const tracks = makeClient().getTracks("9");

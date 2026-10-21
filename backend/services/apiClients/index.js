@@ -42,10 +42,7 @@ export {
   enrichTracksWithDeezerPreviews,
 } from "./deezer.js";
 
-export {
-  resolveArtistAndAlbumMbids,
-  resolveDeezerAlbumToMbid,
-} from "./crossProvider.js";
+export { resolveArtistAndAlbumMbids, resolveDeezerAlbumToMbid } from "./crossProvider.js";
 
 export { youtubeFindTopSongVideo } from "./youtube.js";
 

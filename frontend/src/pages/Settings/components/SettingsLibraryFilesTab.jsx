@@ -55,11 +55,16 @@ function IngestSection({ busy, operation, onChanged, showError }) {
       .then((result) => {
         if (requestId !== requestRef.current) return;
         setCheck({ loading: false, result, error: "" });
-        if (!result.hardlink?.available) setMode((current) => (current === "hardlink" ? "copy" : current));
+        if (!result.hardlink?.available)
+          setMode((current) => (current === "hardlink" ? "copy" : current));
       })
       .catch((error) => {
         if (requestId === requestRef.current) {
-          setCheck({ loading: false, result: null, error: errorMessage(error, "Aurral could not check this folder.") });
+          setCheck({
+            loading: false,
+            result: null,
+            error: errorMessage(error, "Aurral could not check this folder."),
+          });
         }
       });
   }, [sourcePath]);
@@ -68,8 +73,8 @@ function IngestSection({ busy, operation, onChanged, showError }) {
   const hardlinkUnavailable = result && !result.hardlink?.available;
   const folderHelp = check.loading
     ? "Checking the folder…"
-    : check.error
-      || (result
+    : check.error ||
+      (result
         ? `${result.audioFiles} music file${result.audioFiles === 1 ? "" : "s"} found.`
         : "Choose a folder outside the Downloads Folder.");
 
@@ -88,9 +93,15 @@ function IngestSection({ busy, operation, onChanged, showError }) {
   return (
     <SettingsArrFieldSet legend="Import a folder">
       <div className="arr-info">
-        Imports music into the Downloads Folder using Aurral naming. Existing files are never overwritten.
+        Imports music into the Downloads Folder using Aurral naming. Existing files are never
+        overwritten.
       </div>
-      <SettingsArrFormGroup label="Folder" labelFor="library-ingest-source" help={folderHelp} helpWarning={Boolean(check.error)}>
+      <SettingsArrFormGroup
+        label="Folder"
+        labelFor="library-ingest-source"
+        help={folderHelp}
+        helpWarning={Boolean(check.error)}
+      >
         <DownloadFolderField
           id="library-ingest-source"
           value={sourcePath}
@@ -102,12 +113,22 @@ function IngestSection({ busy, operation, onChanged, showError }) {
       <SettingsArrFormGroup
         label="Mode"
         labelFor="library-ingest-mode"
-        help={mode === "copy" && hardlinkUnavailable ? `${MODE_HELP.copy} Hardlink is not available: ${result.hardlink.reason}` : MODE_HELP[mode]}
+        help={
+          mode === "copy" && hardlinkUnavailable
+            ? `${MODE_HELP.copy} Hardlink is not available: ${result.hardlink.reason}`
+            : MODE_HELP[mode]
+        }
       >
-        <SettingsSelect id="library-ingest-mode" value={mode} onChange={(event) => setMode(event.target.value)}>
+        <SettingsSelect
+          id="library-ingest-mode"
+          value={mode}
+          onChange={(event) => setMode(event.target.value)}
+        >
           <option value="move">Move</option>
           <option value="copy">Copy</option>
-          <option value="hardlink" disabled={Boolean(hardlinkUnavailable)}>Hardlink</option>
+          <option value="hardlink" disabled={Boolean(hardlinkUnavailable)}>
+            Hardlink
+          </option>
         </SettingsSelect>
       </SettingsArrFormGroup>
       <SettingsArrFormGroup label="Fill in missing tags" help={FILL_TAGS_HELP}>
@@ -118,8 +139,16 @@ function IngestSection({ busy, operation, onChanged, showError }) {
           aria-label="Fill in missing tags"
         />
       </SettingsArrFormGroup>
-      <SettingsArrFormGroup label="Monitor" labelFor="library-ingest-monitor" help={MONITOR_HELP[monitor]}>
-        <SettingsSelect id="library-ingest-monitor" value={monitor} onChange={(event) => setMonitor(event.target.value)}>
+      <SettingsArrFormGroup
+        label="Monitor"
+        labelFor="library-ingest-monitor"
+        help={MONITOR_HELP[monitor]}
+      >
+        <SettingsSelect
+          id="library-ingest-monitor"
+          value={monitor}
+          onChange={(event) => setMonitor(event.target.value)}
+        >
           <option value="none">None</option>
           <option value="tracks">Tracks</option>
           <option value="albums">Albums</option>
@@ -127,7 +156,8 @@ function IngestSection({ busy, operation, onChanged, showError }) {
       </SettingsArrFormGroup>
       {result?.lidarrRoot ? (
         <p className="arr-form-help arr-form-help--warning">
-          Lidarr uses {result.lidarrRoot}. Moving files breaks its library. Copy and Hardlink keep its files.
+          Lidarr uses {result.lidarrRoot}. Moving files breaks its library. Copy and Hardlink keep
+          its files.
         </p>
       ) : null}
       <div className="settings-library-files__actions">
@@ -137,7 +167,11 @@ function IngestSection({ busy, operation, onChanged, showError }) {
           disabled={!result || !result.audioFiles || busy || starting}
           onClick={start}
         >
-          {starting ? <DotLoader size="sm" label={null} /> : <FolderInput className="artist-icon-xs" aria-hidden />}
+          {starting ? (
+            <DotLoader size="sm" label={null} />
+          ) : (
+            <FolderInput className="artist-icon-xs" aria-hidden />
+          )}
           Import folder
         </button>
       </div>
@@ -193,7 +227,11 @@ export function SettingsLibraryFilesTab({ showError }) {
               disabled={active || cleaningUp}
               onClick={cleanUp}
             >
-              {cleaningUp ? <DotLoader size="sm" label={null} /> : <FolderSync className="artist-icon-xs" aria-hidden />}
+              {cleaningUp ? (
+                <DotLoader size="sm" label={null} />
+              ) : (
+                <FolderSync className="artist-icon-xs" aria-hidden />
+              )}
               Clean up Library
             </button>
           </div>
@@ -205,7 +243,9 @@ export function SettingsLibraryFilesTab({ showError }) {
         </SettingsArrFieldSet>
 
         {files.isError ? (
-          <p className="arr-form-help arr-form-help--warning">Could not load library file operations. Reload the page to try again.</p>
+          <p className="arr-form-help arr-form-help--warning">
+            Could not load library file operations. Reload the page to try again.
+          </p>
         ) : null}
       </div>
     </div>

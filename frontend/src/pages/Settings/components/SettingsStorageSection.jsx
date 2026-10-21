@@ -2,10 +2,7 @@ import { useCallback, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { DotLoader } from "../../../components/DotLoader";
 import { StorageHealthDashboard, StorageHealthSummary } from "./StorageHealthDashboard";
-import {
-  refreshStorageHealth,
-  useStorageHealth,
-} from "../../../hooks/useStorageHealth";
+import { refreshStorageHealth, useStorageHealth } from "../../../hooks/useStorageHealth";
 import { SettingsArrFieldSet } from "./arr/SettingsArrLayout";
 import { runStorageHealthAction } from "../utils/runStorageHealthAction";
 
@@ -166,9 +163,7 @@ export function SettingsStorageHealthSection({
 
   return (
     <>
-      <SettingsArrFieldSet
-        legend="Storage health"
-      >
+      <SettingsArrFieldSet legend="Storage health">
         <div className="settings-storage-health__toolbar">
           <p className="arr-form-help">Checks configured library, download, and playback paths.</p>
           <button
@@ -185,8 +180,15 @@ export function SettingsStorageHealthSection({
             {checkingHealth ? "Checking…" : "Run checks"}
           </button>
         </div>
-        <StorageHealthSummary result={healthResult} loading={checkingHealth || storageHealth.loading} />
-        <StorageHealthDashboard result={healthResult} loading={checkingHealth || storageHealth.loading} showSummary={false} />
+        <StorageHealthSummary
+          result={healthResult}
+          loading={checkingHealth || storageHealth.loading}
+        />
+        <StorageHealthDashboard
+          result={healthResult}
+          loading={checkingHealth || storageHealth.loading}
+          showSummary={false}
+        />
       </SettingsArrFieldSet>
 
       <SettingsArrFieldSet legend="Disk space">
@@ -214,12 +216,8 @@ export function SettingsSystemSection({ health }) {
       </div>
 
       <SystemSection title="Runtime">
-        <SystemRow label="Version">
-          {system.version || health?.appVersion}
-        </SystemRow>
-        <SystemRow label="Uptime">
-          {formatUptime(system.uptimeSeconds)}
-        </SystemRow>
+        <SystemRow label="Version">{system.version || health?.appVersion}</SystemRow>
+        <SystemRow label="Uptime">{formatUptime(system.uptimeSeconds)}</SystemRow>
         <SystemRow label="Environment">
           {system.mode && system.hostname ? `${system.mode} · ${system.hostname}` : null}
         </SystemRow>
@@ -234,9 +232,7 @@ export function SettingsSystemSection({ health }) {
       </SystemSection>
 
       <SystemSection title="Data">
-        <SystemRow label="Database">
-          {system.database?.label}
-        </SystemRow>
+        <SystemRow label="Database">{system.database?.label}</SystemRow>
         <SystemRow label="App data">
           <code>{system.dataDir}</code>
         </SystemRow>

@@ -10,9 +10,8 @@ function positiveInteger(value) {
 
 export function resolveAurralOwnedTrackJob({ trackId, albumId } = {}) {
   const safeTrackId = positiveInteger(trackId);
-  const safeAlbumId = albumId == null || String(albumId).trim() === ""
-    ? null
-    : positiveInteger(albumId);
+  const safeAlbumId =
+    albumId == null || String(albumId).trim() === "" ? null : positiveInteger(albumId);
   if (!safeTrackId || (albumId != null && String(albumId).trim() && !safeAlbumId)) {
     return null;
   }
@@ -50,29 +49,26 @@ export function resolveAurralOwnedTrackJob({ trackId, albumId } = {}) {
 
   const sourceFile = [...ownedFiles].sort(
     (left, right) =>
-      Number(right.mtimeMs || right.createdAt || 0) -
-      Number(left.mtimeMs || left.createdAt || 0),
+      Number(right.mtimeMs || right.createdAt || 0) - Number(left.mtimeMs || left.createdAt || 0),
   )[0];
-  const album = library.albums.find(
-    (entry) => String(entry.id) === String(sourceFile.albumId),
-  );
-  const artist = library.artists.find(
-    (entry) => String(entry.id) === String(album?.artistId),
-  );
+  const album = library.albums.find((entry) => String(entry.id) === String(sourceFile.albumId));
+  const artist = library.artists.find((entry) => String(entry.id) === String(album?.artistId));
   const albumTrack = track?.albums?.find(
     (entry) => String(entry.albumId) === String(sourceFile.albumId),
   );
   const releaseYear = String(album?.releaseDate || "").match(/^\d{4}/)?.[0] || null;
   const albumTracks = album
-    ? getLibraryForAlbumIds({ ids: [album.id] }).tracks
-      .map((entry) => ({
-        title: entry.title,
-        position: entry.albums.find((place) => String(place.albumId) === String(album.id)),
-      }))
-      .filter((entry) => entry.title && entry.position)
-      .sort((left, right) =>
-        Number(left.position.discNumber || 1) - Number(right.position.discNumber || 1)
-        || Number(left.position.trackNumber || 0) - Number(right.position.trackNumber || 0))
+    ? getLibraryForAlbumIds({ ids: [album.id] })
+        .tracks.map((entry) => ({
+          title: entry.title,
+          position: entry.albums.find((place) => String(place.albumId) === String(album.id)),
+        }))
+        .filter((entry) => entry.title && entry.position)
+        .sort(
+          (left, right) =>
+            Number(left.position.discNumber || 1) - Number(right.position.discNumber || 1) ||
+            Number(left.position.trackNumber || 0) - Number(right.position.trackNumber || 0),
+        )
     : [];
 
   return downloadTracker.ensureLibraryTrackJob(
@@ -89,9 +85,7 @@ export function resolveAurralOwnedTrackJob({ trackId, albumId } = {}) {
       discNumber: albumTrack?.discNumber || null,
       albumTrackCount: albumTracks.length || null,
       albumTrackTitles: albumTracks.map((entry) => entry.title),
-      artistAliases: Array.isArray(artist?.metadata?.aliases)
-        ? artist.metadata.aliases
-        : [],
+      artistAliases: Array.isArray(artist?.metadata?.aliases) ? artist.metadata.aliases : [],
       managedBy: "aurral",
     },
     sourceFile.resolvedPath,

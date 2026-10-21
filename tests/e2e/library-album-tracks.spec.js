@@ -14,9 +14,19 @@ const track = (id, index) => ({
   artistName: artist.name,
   monitored: true,
   albums: [{ albumId: 902, discNumber: 1, trackNumber: index + 1 }],
-  files: index === 0
-    ? [{ id, albumId: 902, source: "aurral", format: "flac", durationMs: 180000, available: true }]
-    : [],
+  files:
+    index === 0
+      ? [
+          {
+            id,
+            albumId: 902,
+            source: "aurral",
+            format: "flac",
+            durationMs: 180000,
+            available: true,
+          },
+        ]
+      : [],
   sources: index === 0 ? ["aurral"] : [],
   available: index === 0,
   managedBy: "aurral",
@@ -27,7 +37,8 @@ const track = (id, index) => ({
 function libraryPage(url) {
   const number = Number(url.searchParams.get("page")) || 1;
   const size = Number(url.searchParams.get("pageSize")) || 100;
-  const items = trackIds.slice((number - 1) * size, number * size)
+  const items = trackIds
+    .slice((number - 1) * size, number * size)
     .map((id) => track(id, trackIds.indexOf(id)));
   return {
     kind: "tracks",
@@ -37,24 +48,28 @@ function libraryPage(url) {
     hasMore: number * size < trackIds.length,
     items,
     tracks: items,
-    artists: [{ ...artist, albumIds: [902], managedBy: "aurral", sources: ["aurral"], available: true }],
-    albums: [{
-      id: 902,
-      identityKey: "release-group:box-set-album",
-      mbid: null,
-      releaseGroupMbid: null,
-      artistId: artist.id,
-      title: "Box Set Album",
-      metadata: { monitored: false },
-      trackIds,
-      managedBy: "aurral",
-      monitorMode: null,
-      sources: ["aurral"],
-      available: true,
-      trackCount: trackIds.length,
-      availableTrackCount: 1,
-      coverUrl: null,
-    }],
+    artists: [
+      { ...artist, albumIds: [902], managedBy: "aurral", sources: ["aurral"], available: true },
+    ],
+    albums: [
+      {
+        id: 902,
+        identityKey: "release-group:box-set-album",
+        mbid: null,
+        releaseGroupMbid: null,
+        artistId: artist.id,
+        title: "Box Set Album",
+        metadata: { monitored: false },
+        trackIds,
+        managedBy: "aurral",
+        monitorMode: null,
+        sources: ["aurral"],
+        available: true,
+        trackCount: trackIds.length,
+        availableTrackCount: 1,
+        coverUrl: null,
+      },
+    ],
     genres: [],
   };
 }
@@ -66,7 +81,8 @@ test("an album with more tracks than one page lists every track", async ({ page 
     if (!url.pathname.startsWith("/api/")) return route.continue();
     const path = url.pathname.replace(/^\/api/, "");
     const json = (body) => route.fulfill({ status: 200, json: body });
-    if (path === "/health/bootstrap") return json({ authRequired: false, onboardingRequired: false });
+    if (path === "/health/bootstrap")
+      return json({ authRequired: false, onboardingRequired: false });
     if (path === "/health") return json({ lidarrConfigured: false });
     if (path === "/library/canonical") return json(libraryPage(url));
     if (path === "/settings" || path === "/library/favorites") return json({});

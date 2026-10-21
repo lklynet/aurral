@@ -39,9 +39,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
   const [showStageBackdrop, setShowStageBackdrop] = useState(() =>
     getSidebarStageBackdropEnabled(user?.id),
   );
-  const stageBackdropVariant = showStageBackdrop
-    ? resolveSidebarStageBackdropVariant()
-    : null;
+  const stageBackdropVariant = showStageBackdrop ? resolveSidebarStageBackdropVariant() : null;
   const hasFlowAccess = user?.role === "admin" || !!user?.permissions?.accessFlow;
   const canAccessSettings = user?.role === "admin" || !!user?.permissions?.accessSettings;
   const { hasReview: hasReviewAlert } = useDownloadWorkerActivity({
@@ -99,7 +97,8 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
     if (!isOnLibrary) return null;
     const segment = location.pathname.replace(/^\/library\/?/, "").split("/")[0];
     const visibleViews = LIBRARY_VIEWS.filter(
-      (view) => !view.permission || user?.role === "admin" || !!user?.permissions?.[view.permission],
+      (view) =>
+        !view.permission || user?.role === "admin" || !!user?.permissions?.[view.permission],
     );
     return visibleViews.some((view) => view.id === segment) ? segment : DEFAULT_LIBRARY_VIEW;
   }, [isOnLibrary, location.pathname, user]);
@@ -162,12 +161,21 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
       if (item.path === "/discover" && location.pathname === "/") return true;
       return location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
     },
-    [isDiscoverSectionActive, isOnActivity, isOnLibrary, isOnNews, isOnShows, isOnWanted, location.pathname],
+    [
+      isDiscoverSectionActive,
+      isOnActivity,
+      isOnLibrary,
+      isOnNews,
+      isOnShows,
+      isOnWanted,
+      location.pathname,
+    ],
   );
 
   const navItems = useMemo(() => {
     const libraryViews = LIBRARY_VIEWS.filter(
-      (view) => !view.permission || user?.role === "admin" || !!user?.permissions?.[view.permission],
+      (view) =>
+        !view.permission || user?.role === "admin" || !!user?.permissions?.[view.permission],
     );
     const items = [
       {
@@ -286,7 +294,8 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
             (item.section === "activity"
               ? buildActivityPath(entry.id)
               : `${item.basePath}/${entry.id}`);
-          const showReviewAlert = item.section === "activity" && entry.id === "queue" && hasReviewAlert;
+          const showReviewAlert =
+            item.section === "activity" && entry.id === "queue" && hasReviewAlert;
           return (
             <RouteLink
               key={entry.id}
@@ -372,64 +381,66 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
       <div className={`sidebar-body${isIcons ? " sidebar-body--icons" : ""}`}>
         <div className={`sidebar-nav-wrap${isIcons ? " sidebar-nav-wrap--icons" : ""}`}>
           <nav className="sidebar-nav">
-            {settingsMode ? renderSettingsNav() : navItems.map((item) => {
-              const Icon = item.icon;
-              const active = isNavItemActive(item);
-              const showActivityDot = item.section === "activity" && hasReviewAlert;
-              const activeSubnavId =
-                item.section === "library"
-                  ? activeLibraryView
-                  : item.section === "shows"
-                    ? activeShowsFilter
-                    : item.section === "activity"
-                      ? activeActivityView
-                      : item.section === "wanted"
-                        ? activeWantedView
-                        : null;
+            {settingsMode
+              ? renderSettingsNav()
+              : navItems.map((item) => {
+                  const Icon = item.icon;
+                  const active = isNavItemActive(item);
+                  const showActivityDot = item.section === "activity" && hasReviewAlert;
+                  const activeSubnavId =
+                    item.section === "library"
+                      ? activeLibraryView
+                      : item.section === "shows"
+                        ? activeShowsFilter
+                        : item.section === "activity"
+                          ? activeActivityView
+                          : item.section === "wanted"
+                            ? activeWantedView
+                            : null;
 
-              return (
-                <div key={item.path} className={getNavGroupClassName(item, active)}>
-                  <RouteLink
-                    to={item.path}
-                    onMouseEnter={(event) => {
-                      if (isIcons) positionSidebarTooltip(event);
-                    }}
-                    onFocus={(event) => {
-                      if (isIcons) positionSidebarTooltip(event);
-                    }}
-                    className={`sidebar-link ${
-                      isIcons ? "sidebar-link--icons" : "sidebar-link--full"
-                    }${active ? " is-active" : ""}`}
-                    aria-label={
-                      isIcons
-                        ? showActivityDot
-                          ? `${item.label} (active)`
-                          : item.label
-                        : undefined
-                    }
-                    aria-current={active ? "page" : undefined}
-                  >
-                    <span className="sidebar-link__icon-wrap">
-                      <Icon className="sidebar-link__icon" aria-hidden="true" />
-                      {showActivityDot ? (
-                        <span
-                          className="sidebar-link__activity sidebar-link__activity--review"
-                          aria-hidden="true"
-                        />
-                      ) : null}
-                    </span>
-                    {!isIcons && (
-                      <span className="sidebar-link__label">
-                        {item.label}
-                        {showActivityDot ? <span className="sr-only"> (active)</span> : null}
-                      </span>
-                    )}
-                    {isIcons && <span className="sidebar-tooltip">{item.label}</span>}
-                  </RouteLink>
-                  {renderSubnav(item, activeSubnavId)}
-                </div>
-              );
-            })}
+                  return (
+                    <div key={item.path} className={getNavGroupClassName(item, active)}>
+                      <RouteLink
+                        to={item.path}
+                        onMouseEnter={(event) => {
+                          if (isIcons) positionSidebarTooltip(event);
+                        }}
+                        onFocus={(event) => {
+                          if (isIcons) positionSidebarTooltip(event);
+                        }}
+                        className={`sidebar-link ${
+                          isIcons ? "sidebar-link--icons" : "sidebar-link--full"
+                        }${active ? " is-active" : ""}`}
+                        aria-label={
+                          isIcons
+                            ? showActivityDot
+                              ? `${item.label} (active)`
+                              : item.label
+                            : undefined
+                        }
+                        aria-current={active ? "page" : undefined}
+                      >
+                        <span className="sidebar-link__icon-wrap">
+                          <Icon className="sidebar-link__icon" aria-hidden="true" />
+                          {showActivityDot ? (
+                            <span
+                              className="sidebar-link__activity sidebar-link__activity--review"
+                              aria-hidden="true"
+                            />
+                          ) : null}
+                        </span>
+                        {!isIcons && (
+                          <span className="sidebar-link__label">
+                            {item.label}
+                            {showActivityDot ? <span className="sr-only"> (active)</span> : null}
+                          </span>
+                        )}
+                        {isIcons && <span className="sidebar-tooltip">{item.label}</span>}
+                      </RouteLink>
+                      {renderSubnav(item, activeSubnavId)}
+                    </div>
+                  );
+                })}
           </nav>
         </div>
 

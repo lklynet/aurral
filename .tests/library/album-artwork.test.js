@@ -31,8 +31,12 @@ const [
 const root = path.join(isolatedState.baseDir, "music");
 await mkdir(root);
 const image = await sharp({ create: { width: 16, height: 16, channels: 3, background: "red" } })
-  .png().toBuffer();
-const artist = libraryStore.upsertLibraryArtist({ identityKey: "artwork-artist", name: "Artwork Artist" });
+  .png()
+  .toBuffer();
+const artist = libraryStore.upsertLibraryArtist({
+  identityKey: "artwork-artist",
+  name: "Artwork Artist",
+});
 dbOps.updateSettings({ onboardingComplete: true });
 
 const app = express();
@@ -59,22 +63,47 @@ function audioWithPicture(picture) {
   frame.write("APIC");
   frame.writeUInt32BE(payload.length, 4);
   const size = frame.length + payload.length;
-  const header = Buffer.from([0x49, 0x44, 0x33, 3, 0, 0,
-    (size >>> 21) & 0x7f, (size >>> 14) & 0x7f, (size >>> 7) & 0x7f, size & 0x7f]);
+  const header = Buffer.from([
+    0x49,
+    0x44,
+    0x33,
+    3,
+    0,
+    0,
+    (size >>> 21) & 0x7f,
+    (size >>> 14) & 0x7f,
+    (size >>> 7) & 0x7f,
+    size & 0x7f,
+  ]);
   return Buffer.concat([header, frame, payload, audio]);
 }
 
 async function albumFixture(name, pictures) {
   const folder = path.join(root, name);
   await mkdir(folder);
-  const album = libraryStore.upsertLibraryAlbum({ identityKey: name, artistId: artist.id, title: name });
+  const album = libraryStore.upsertLibraryAlbum({
+    identityKey: name,
+    artistId: artist.id,
+    title: name,
+  });
   for (const [index, picture] of pictures.entries()) {
     const filePath = path.join(folder, `${String(index).padStart(3, "0")}.mp3`);
     await writeFile(filePath, audioWithPicture(picture));
-    const track = libraryStore.upsertLibraryTrack({ identityKey: `${name}:${index}`, title: `${index}` });
-    libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: index + 1 });
+    const track = libraryStore.upsertLibraryTrack({
+      identityKey: `${name}:${index}`,
+      title: `${index}`,
+    });
+    libraryStore.linkLibraryAlbumTrack({
+      albumId: album.id,
+      trackId: track.id,
+      trackNumber: index + 1,
+    });
     libraryStore.upsertLibraryMediaFile({
-      trackId: track.id, albumId: album.id, source: "aurral", path: filePath, available: true,
+      trackId: track.id,
+      albumId: album.id,
+      source: "aurral",
+      path: filePath,
+      available: true,
     });
   }
   return { ...album, folder };
@@ -87,7 +116,9 @@ async function addArtworkAndScan(filePath, contents = image) {
 
 async function requestCover(albumId, { token = session?.token, headers = {} } = {}) {
   const query = token ? `?token=${encodeURIComponent(token)}` : "";
-  const response = await fetch(`${baseUrl}/api/library/albums/${albumId}/cover${query}`, { headers });
+  const response = await fetch(`${baseUrl}/api/library/albums/${albumId}/cover${query}`, {
+    headers,
+  });
   return {
     status: response.status,
     contentType: response.headers.get("content-type"),
@@ -97,14 +128,22 @@ async function requestCover(albumId, { token = session?.token, headers = {} } = 
 }
 
 test("only available unidentified albums gain a local cover URL and remote artwork stays preferred", () => {
-  const albums = buildPublicLibrary({ artists: [], tracks: [], albums: [
-    { id: 12, available: true },
-    { id: 13, available: true, coverUrl: "/existing-cover.webp" },
-    { id: 14, available: false },
-    { id: 15, available: true, releaseGroupMbid: "release-group" },
-    { id: 16, available: true, mbid: "release" },
-    { id: 17, available: true, metadata: { images: [{ remoteUrl: "https://example.invalid/cover.jpg" }] } },
-  ] }).albums;
+  const albums = buildPublicLibrary({
+    artists: [],
+    tracks: [],
+    albums: [
+      { id: 12, available: true },
+      { id: 13, available: true, coverUrl: "/existing-cover.webp" },
+      { id: 14, available: false },
+      { id: 15, available: true, releaseGroupMbid: "release-group" },
+      { id: 16, available: true, mbid: "release" },
+      {
+        id: 17,
+        available: true,
+        metadata: { images: [{ remoteUrl: "https://example.invalid/cover.jpg" }] },
+      },
+    ],
+  }).albums;
   assert.equal(albums[0].coverUrl, "/api/library/albums/12/cover");
   assert.equal(albums[1].coverUrl, "/existing-cover.webp");
   assert.equal(albums[2].coverUrl, null);
@@ -131,8 +170,9 @@ test("custom album artwork keeps the underlying embedded cover available as a fa
     assert.equal(album.customArtworkUrl, album.coverUrl);
     assert.equal(album.defaultCoverUrl, `/api/library/albums/${albumId}/cover`);
   } finally {
-    db.prepare("DELETE FROM custom_artwork WHERE entity_kind = 'album' AND entity_id = ?")
-      .run(albumId);
+    db.prepare("DELETE FROM custom_artwork WHERE entity_kind = 'album' AND entity_id = ?").run(
+      albumId,
+    );
   }
 });
 
@@ -164,7 +204,8 @@ describe("with sign-in required", () => {
   test("cover endpoint reads a differently cased sidecar and resizes it to fit 512 pixels", async () => {
     const album = await albumFixture("sidecar", [null]);
     await sharp({ create: { width: 1024, height: 768, channels: 3, background: "blue" } })
-      .jpeg().toFile(path.join(album.folder, "Cover.JPEG"));
+      .jpeg()
+      .toFile(path.join(album.folder, "Cover.JPEG"));
     const result = await requestCover(album.id);
     assert.equal(result.status, 200);
     const metadata = await sharp(result.body).metadata();
@@ -184,7 +225,10 @@ describe("with sign-in required", () => {
 
   test("cover endpoint refuses unknown albums, external sidecars and anonymous or invalid tokens", async () => {
     const bearer = { authorization: `Bearer ${session.token}` };
-    assert.equal((await requestCover("../etc/passwd", { token: null, headers: bearer })).status, 404);
+    assert.equal(
+      (await requestCover("../etc/passwd", { token: null, headers: bearer })).status,
+      404,
+    );
     assert.equal((await requestCover(999999)).status, 404);
     const album = await albumFixture("symlink", [null]);
     const outside = path.join(root, "private.png");
@@ -205,7 +249,8 @@ describe("with sign-in required", () => {
     await writeFile(oversized, image);
     await truncate(oversized, 25 * 1024 * 1024 + 1);
     await sharp({ create: { width: 8001, height: 5000, channels: 3, background: "red" } })
-      .png().toFile(path.join(invalid.folder, "folder.png"));
+      .png()
+      .toFile(path.join(invalid.folder, "folder.png"));
     assert.equal((await requestCover(invalid.id)).status, 404);
 
     const limit = await albumFixture("byte-limit", [null]);
@@ -218,7 +263,10 @@ describe("with sign-in required", () => {
   test("cover endpoint rejects expired sessions and disabled user accounts", async () => {
     const album = await albumFixture("session", [image]);
     const expired = createSession(user.id);
-    db.prepare("UPDATE sessions SET expires_at = ? WHERE token = ?").run(Date.now() - 1, expired.token);
+    db.prepare("UPDATE sessions SET expires_at = ? WHERE token = ?").run(
+      Date.now() - 1,
+      expired.token,
+    );
     assert.equal((await requestCover(album.id, { token: expired.token })).status, 401);
     const disabled = userOps.createUser("disabled-artwork-user", "unused-hash", "user");
     const disabledSession = createSession(disabled.id);
@@ -228,7 +276,9 @@ describe("with sign-in required", () => {
 
   test("cover scan ignores unavailable files and inspects at most 100 indexed files", async () => {
     const unavailable = await albumFixture("unavailable", [image]);
-    db.prepare("UPDATE library_media_files SET available = 0 WHERE album_id = ?").run(unavailable.id);
+    db.prepare("UPDATE library_media_files SET available = 0 WHERE album_id = ?").run(
+      unavailable.id,
+    );
     assert.equal((await requestCover(unavailable.id)).status, 404);
     const hundredth = await albumFixture("hundredth", [...Array(99).fill(null), image]);
     assert.equal((await requestCover(hundredth.id)).status, 200);
@@ -242,7 +292,10 @@ describe("with sign-in required", () => {
     const albumReads = () => readdir.mock.calls.filter((call) => call[0] === album.folder).length;
 
     const results = await Promise.all(Array.from({ length: 5 }, () => requestCover(album.id)));
-    assert.deepEqual(results.map((result) => result.status), [404, 404, 404, 404, 404]);
+    assert.deepEqual(
+      results.map((result) => result.status),
+      [404, 404, 404, 404, 404],
+    );
     assert.equal(albumReads(), 1);
 
     vi.useFakeTimers({ toFake: ["Date"], now: Date.now() });

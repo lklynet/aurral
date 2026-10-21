@@ -12,11 +12,19 @@ import {
   saveMonitoringDefaults,
 } from "../../../utils/api/endpoints/library.js";
 import { describeAurralMonitoringError } from "../../../utils/aurralMonitoring.js";
-import { describeDownloadCount, describeMonitoringRules, plural } from "../../../utils/monitoringRules.js";
+import {
+  describeDownloadCount,
+  describeMonitoringRules,
+  plural,
+} from "../../../utils/monitoringRules.js";
 import { SettingsArrFieldSet, SettingsArrFormGroup } from "./arr/SettingsArrLayout";
 import { SettingsInput } from "./SettingsField";
 import { IntegrationCard, SettingsIntegrationModal } from "./SettingsIntegrationCards";
-import { SettingsModalCallout, SettingsModalIntro, SettingsModalSection } from "./SettingsModalLayout";
+import {
+  SettingsModalCallout,
+  SettingsModalIntro,
+  SettingsModalSection,
+} from "./SettingsModalLayout";
 
 const sameRules = (left, right) => JSON.stringify(left) === JSON.stringify(right);
 
@@ -34,7 +42,9 @@ function DefaultRulesModal({ defaults, onClose, onSaved, showError }) {
       await saveMonitoringDefaults(rules);
       await onSaved(review?.artistCount ?? defaults.artistCount);
     } catch (error) {
-      showError(`Could not save the default rules. Nothing changed. ${describeAurralMonitoringError(error, "Try again.")}`);
+      showError(
+        `Could not save the default rules. Nothing changed. ${describeAurralMonitoringError(error, "Try again.")}`,
+      );
       setBusy(false);
     }
   };
@@ -52,7 +62,9 @@ function DefaultRulesModal({ defaults, onClose, onSaved, showError }) {
     try {
       setReview(await previewMonitoringDefaults(rules));
     } catch (error) {
-      showError(`Could not check the new rules. Nothing changed. ${describeAurralMonitoringError(error, "Try again.")}`);
+      showError(
+        `Could not check the new rules. Nothing changed. ${describeAurralMonitoringError(error, "Try again.")}`,
+      );
     } finally {
       setBusy(false);
     }
@@ -76,7 +88,12 @@ function DefaultRulesModal({ defaults, onClose, onSaved, showError }) {
           >
             {review ? "Back" : "Cancel"}
           </button>
-          <button type="button" className="arr-btn arr-btn--primary" disabled={busy} onClick={review ? save : reviewChanges}>
+          <button
+            type="button"
+            className="arr-btn arr-btn--primary"
+            disabled={busy}
+            onClick={review ? save : reviewChanges}
+          >
             {busy ? <DotLoader size="sm" label={null} /> : null}
             {review ? `Apply to ${plural(review.artistCount, "artist")}` : "Save"}
           </button>
@@ -87,7 +104,9 @@ function DefaultRulesModal({ defaults, onClose, onSaved, showError }) {
         <SettingsModalCallout>
           <p>
             {plural(review.artistCount, "artist uses", "artists use")} the default rules.
-            {downloads ? ` Aurral will download ${downloads} for them.` : " Nothing new downloads for them now."}
+            {downloads
+              ? ` Aurral will download ${downloads} for them.`
+              : " Nothing new downloads for them now."}
             {review.failedArtistCount
               ? ` ${plural(review.failedArtistCount, "artist")} could not be checked and will be checked again tomorrow.`
               : ""}
@@ -115,9 +134,12 @@ function ExclusionsTable({ showError }) {
   });
   const allow = useMutation({
     mutationFn: (exclusion) => removeMonitoringExclusion(exclusion.id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.monitoringExclusionsPrefix }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.monitoringExclusionsPrefix }),
     onError: (error, exclusion) =>
-      showError(`Could not allow ${exclusion.title} again. Nothing changed. ${describeAurralMonitoringError(error, "Try again.")}`),
+      showError(
+        `Could not allow ${exclusion.title} again. Nothing changed. ${describeAurralMonitoringError(error, "Try again.")}`,
+      ),
   });
   const exclusions = Array.isArray(exclusionsQuery.data) ? exclusionsQuery.data : [];
 
@@ -154,9 +176,19 @@ function ExclusionsTable({ showError }) {
             exclusions.map((exclusion) => (
               <tr key={exclusion.id}>
                 <td>{exclusion.title}</td>
-                <td><span className="arr-table__path">{exclusion.artistName || "Unknown artist"}</span></td>
-                <td><span className="arr-table__path">{exclusion.kind === "album" ? "Release" : "Track"}</span></td>
-                <td><span className="arr-table__path">{formatDate(exclusion.createdAt)}</span></td>
+                <td>
+                  <span className="arr-table__path">
+                    {exclusion.artistName || "Unknown artist"}
+                  </span>
+                </td>
+                <td>
+                  <span className="arr-table__path">
+                    {exclusion.kind === "album" ? "Release" : "Track"}
+                  </span>
+                </td>
+                <td>
+                  <span className="arr-table__path">{formatDate(exclusion.createdAt)}</span>
+                </td>
                 <td className="arr-table__actions">
                   <div className="arr-table__actions-inner">
                     <button
@@ -165,7 +197,9 @@ function ExclusionsTable({ showError }) {
                       disabled={allow.isPending}
                       onClick={() => allow.mutate(exclusion)}
                     >
-                      {allow.isPending && allow.variables?.id === exclusion.id ? <DotLoader size="sm" label={null} /> : null}
+                      {allow.isPending && allow.variables?.id === exclusion.id ? (
+                        <DotLoader size="sm" label={null} />
+                      ) : null}
                       Allow again
                     </button>
                   </div>
@@ -196,7 +230,8 @@ export function SettingsMonitoringTab({ settings, updateSettings, showSuccess, s
       <div className="arr-form">
         <SettingsArrFieldSet legend="Default rules">
           <div className="arr-info">
-            Default download rules for monitored artists. Artist-specific rules override them. Lidarr artists use Lidarr rules.
+            Default download rules for monitored artists. Artist-specific rules override them.
+            Lidarr artists use Lidarr rules.
           </div>
           {defaults ? (
             <IntegrationCard
@@ -250,9 +285,15 @@ export function SettingsMonitoringTab({ settings, updateSettings, showSuccess, s
               }}
               onBlur={(event) => {
                 const days = Math.round(Number(event.target.value));
-                if (event.target.value !== "" && Number.isFinite(days) && !event.target.validity.valid) {
+                if (
+                  event.target.value !== "" &&
+                  Number.isFinite(days) &&
+                  !event.target.validity.valid
+                ) {
                   const { min, max } = event.target;
-                  updateMissingTrackSearch({ intervalDays: Math.min(Number(max), Math.max(Number(min), days)) });
+                  updateMissingTrackSearch({
+                    intervalDays: Math.min(Number(max), Math.max(Number(min), days)),
+                  });
                 }
                 setIntervalDraft(null);
               }}

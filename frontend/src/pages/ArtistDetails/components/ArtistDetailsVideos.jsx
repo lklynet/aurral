@@ -15,7 +15,7 @@ export function ArtistDetailsVideos({ mbid, artistName, tracks }) {
     setFailed(false);
     setLoading(true);
     getArtistVideos(mbid, artistName, tracks, { signal: controller.signal })
-      .then(result => {
+      .then((result) => {
         if (controller.signal.aborted) return;
         setVideos(result.videos);
         setFailed(result.failed);
@@ -33,7 +33,9 @@ export function ArtistDetailsVideos({ mbid, artistName, tracks }) {
 
   return (
     <section className="artist-section" aria-labelledby={headingId}>
-      <h2 className="artist-section-title" id={headingId}>Videos</h2>
+      <h2 className="artist-section-title" id={headingId}>
+        Videos
+      </h2>
       {loading ? (
         <div className="artist-loading" role="status" aria-label="Finding videos">
           <DotLoader size="xl" label={null} />
@@ -42,7 +44,7 @@ export function ArtistDetailsVideos({ mbid, artistName, tracks }) {
         <>
           {videos.length > 0 ? (
             <div className={`artist-videos-grid artist-videos-grid--${videos.length}`}>
-              {videos.map(video => (
+              {videos.map((video) => (
                 <div className="artist-video-card" key={video.videoId}>
                   <div className="artist-video">
                     <iframe
@@ -61,8 +63,14 @@ export function ArtistDetailsVideos({ mbid, artistName, tracks }) {
           ) : null}
           {failed ? (
             <div className="artist-video-status" role="status">
-              <span>{videos.length ? "Some videos could not be loaded." : "Videos could not be loaded."}</span>
-              <button type="button" className="btn btn-surface" onClick={() => setAttempt(value => value + 1)}>
+              <span>
+                {videos.length ? "Some videos could not be loaded." : "Videos could not be loaded."}
+              </span>
+              <button
+                type="button"
+                className="btn btn-surface"
+                onClick={() => setAttempt((value) => value + 1)}
+              >
                 Retry
               </button>
             </div>

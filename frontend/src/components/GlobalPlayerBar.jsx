@@ -186,7 +186,15 @@ function GlobalPlayerBar() {
       currentTrack.title,
     );
   const metaLink = (label, path) =>
-    label ? path ? <Link to={path} className="global-player__link">{label}</Link> : label : null;
+    label ? (
+      path ? (
+        <Link to={path} className="global-player__link">
+          {label}
+        </Link>
+      ) : (
+        label
+      )
+    ) : null;
 
   const handleVolumeChange = (event) => {
     const nextVolume = Math.min(Math.max(Number(event.target.value) || 0, 0), 100);
@@ -222,8 +230,14 @@ function GlobalPlayerBar() {
   const artwork = (className, thumbnail = true) => (
     <span className={className} aria-hidden="true">
       {currentTrack.artwork && currentTrack.artwork !== failedArtwork ? (
-        <ArtworkImage src={currentTrack.artwork} thumbnail={thumbnail} sizes="3rem" alt="" loading="eager"
-          onError={() => setFailedArtwork(currentTrack.artwork)} />
+        <ArtworkImage
+          src={currentTrack.artwork}
+          thumbnail={thumbnail}
+          sizes="3rem"
+          alt=""
+          loading="eager"
+          onError={() => setFailedArtwork(currentTrack.artwork)}
+        />
       ) : (
         <Music />
       )}
@@ -283,134 +297,140 @@ function GlobalPlayerBar() {
         </button>
       </div>
 
-      {sheetPresence !== "closed" ? createPortal(
-        <div
-          className={`now-playing-backdrop is-${sheetPresence}`}
-          onClick={sheetDialog.handleBackdropClick}
-        >
-          <div
-            ref={sheetDialog.dialogRef}
-            className="now-playing"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Now playing"
-            tabIndex={-1}
-            style={{
-              "--now-playing-drag": `${dragOffset}px`,
-              "--now-playing-tint": artTint || "var(--aurral-surface)",
-            }}
-            data-dragging={isDragging || undefined}
-            onPointerDown={handleSheetPointerDown}
-            onPointerMove={handleSheetPointerMove}
-            onPointerUp={handleSheetPointerEnd}
-            onPointerCancel={handleSheetPointerEnd}
-          >
-            <div className="now-playing__header">
-              <button
-                ref={sheetCloseRef}
-                type="button"
-                className="now-playing__icon-button"
-                onClick={closeSheet}
-                aria-label="Close now playing"
+      {sheetPresence !== "closed"
+        ? createPortal(
+            <div
+              className={`now-playing-backdrop is-${sheetPresence}`}
+              onClick={sheetDialog.handleBackdropClick}
+            >
+              <div
+                ref={sheetDialog.dialogRef}
+                className="now-playing"
+                role="dialog"
+                aria-modal="true"
+                aria-label="Now playing"
+                tabIndex={-1}
+                style={{
+                  "--now-playing-drag": `${dragOffset}px`,
+                  "--now-playing-tint": artTint || "var(--aurral-surface)",
+                }}
+                data-dragging={isDragging || undefined}
+                onPointerDown={handleSheetPointerDown}
+                onPointerMove={handleSheetPointerMove}
+                onPointerUp={handleSheetPointerEnd}
+                onPointerCancel={handleSheetPointerEnd}
               >
-                <ChevronDown aria-hidden="true" />
-              </button>
-              <span className="now-playing__eyebrow">Now playing</span>
-              <span className="now-playing__header-actions">
-                {canShareTrack ? (
+                <div className="now-playing__header">
                   <button
+                    ref={sheetCloseRef}
                     type="button"
                     className="now-playing__icon-button"
-                    onClick={shareTrack}
-                    aria-label="Share track"
+                    onClick={closeSheet}
+                    aria-label="Close now playing"
                   >
-                    <Share aria-hidden="true" />
+                    <ChevronDown aria-hidden="true" />
                   </button>
-                ) : null}
-                <button
-                  type="button"
-                  className="now-playing__icon-button"
-                  onClick={clearQueue}
-                  aria-label="Stop and clear queue"
-                >
-                  <X aria-hidden="true" />
-                </button>
-              </span>
-            </div>
+                  <span className="now-playing__eyebrow">Now playing</span>
+                  <span className="now-playing__header-actions">
+                    {canShareTrack ? (
+                      <button
+                        type="button"
+                        className="now-playing__icon-button"
+                        onClick={shareTrack}
+                        aria-label="Share track"
+                      >
+                        <Share aria-hidden="true" />
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="now-playing__icon-button"
+                      onClick={clearQueue}
+                      aria-label="Stop and clear queue"
+                    >
+                      <X aria-hidden="true" />
+                    </button>
+                  </span>
+                </div>
 
-            <div className="now-playing__body">
-              {artwork("global-player__art now-playing__art", false)}
+                <div className="now-playing__body">
+                  {artwork("global-player__art now-playing__art", false)}
 
-              <div className="now-playing__meta">
-                <h2 className="now-playing__title">{currentTrack.title}</h2>
-                {artistLabel || albumLabel ? (
-                  <p className="now-playing__subtitle">
-                    {metaLink(artistLabel, artistPath)}
-                    {artistLabel && albumLabel ? " · " : null}
-                    {metaLink(albumLabel, albumPath)}
-                  </p>
-                ) : null}
-                {playbackError ? (
-                  <p className="now-playing__error" role="alert">
-                    {playbackError}
-                  </p>
-                ) : null}
+                  <div className="now-playing__meta">
+                    <h2 className="now-playing__title">{currentTrack.title}</h2>
+                    {artistLabel || albumLabel ? (
+                      <p className="now-playing__subtitle">
+                        {metaLink(artistLabel, artistPath)}
+                        {artistLabel && albumLabel ? " · " : null}
+                        {metaLink(albumLabel, albumPath)}
+                      </p>
+                    ) : null}
+                    {playbackError ? (
+                      <p className="now-playing__error" role="alert">
+                        {playbackError}
+                      </p>
+                    ) : null}
+                  </div>
+
+                  <PlayerSeek variant="sheet" />
+
+                  <div className="now-playing__controls">
+                    <button
+                      type="button"
+                      className={`now-playing__control now-playing__control--toggle${isShuffleEnabled ? " is-active" : ""}`}
+                      onClick={toggleShuffle}
+                      aria-pressed={isShuffleEnabled}
+                      aria-label={isShuffleEnabled ? "Disable shuffle" : "Enable shuffle"}
+                    >
+                      <Shuffle aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      className="now-playing__control"
+                      onClick={playPrevious}
+                      aria-label="Previous track"
+                    >
+                      <SkipBack aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      className="now-playing__control now-playing__control--primary"
+                      onClick={togglePlayPause}
+                      aria-busy={isLoading || undefined}
+                      aria-label={playPauseLabel}
+                    >
+                      <PlayPauseIcon aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      className="now-playing__control"
+                      onClick={playNext}
+                      aria-label="Next track"
+                    >
+                      <SkipForward aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      className={`now-playing__control now-playing__control--toggle${repeatMode !== "off" ? " is-active" : ""}`}
+                      onClick={toggleRepeat}
+                      aria-pressed={repeatMode !== "off"}
+                      aria-label={repeatLabel}
+                    >
+                      {repeatMode === "one" ? (
+                        <Repeat1 aria-hidden="true" />
+                      ) : (
+                        <Repeat aria-hidden="true" />
+                      )}
+                    </button>
+                  </div>
+
+                  <UpNextQueue className="now-playing__queue" />
+                </div>
               </div>
-
-              <PlayerSeek variant="sheet" />
-
-              <div className="now-playing__controls">
-                <button
-                  type="button"
-                  className={`now-playing__control now-playing__control--toggle${isShuffleEnabled ? " is-active" : ""}`}
-                  onClick={toggleShuffle}
-                  aria-pressed={isShuffleEnabled}
-                  aria-label={isShuffleEnabled ? "Disable shuffle" : "Enable shuffle"}
-                >
-                  <Shuffle aria-hidden="true" />
-                </button>
-                <button
-                  type="button"
-                  className="now-playing__control"
-                  onClick={playPrevious}
-                  aria-label="Previous track"
-                >
-                  <SkipBack aria-hidden="true" />
-                </button>
-                <button
-                  type="button"
-                  className="now-playing__control now-playing__control--primary"
-                  onClick={togglePlayPause}
-                  aria-busy={isLoading || undefined}
-                  aria-label={playPauseLabel}
-                >
-                  <PlayPauseIcon aria-hidden="true" />
-                </button>
-                <button
-                  type="button"
-                  className="now-playing__control"
-                  onClick={playNext}
-                  aria-label="Next track"
-                >
-                  <SkipForward aria-hidden="true" />
-                </button>
-                <button
-                  type="button"
-                  className={`now-playing__control now-playing__control--toggle${repeatMode !== "off" ? " is-active" : ""}`}
-                  onClick={toggleRepeat}
-                  aria-pressed={repeatMode !== "off"}
-                  aria-label={repeatLabel}
-                >
-                  {repeatMode === "one" ? <Repeat1 aria-hidden="true" /> : <Repeat aria-hidden="true" />}
-                </button>
-              </div>
-
-              <UpNextQueue className="now-playing__queue" />
-            </div>
-          </div>
-        </div>,
-        document.body,
-      ) : null}
+            </div>,
+            document.body,
+          )
+        : null}
 
       {queueOpen ? (
         <PlayerQueuePanel id={queuePanelId} onClose={closeQueue} closeRef={queueCloseRef} />
@@ -467,7 +487,11 @@ function GlobalPlayerBar() {
               className="btn btn-accent btn-sm btn-icon global-player__control global-player__control--primary"
               aria-busy={isLoading || undefined}
             >
-              {isPlaying ? <Pause className="artist-icon-sm" /> : <Play className="artist-icon-sm" />}
+              {isPlaying ? (
+                <Pause className="artist-icon-sm" />
+              ) : (
+                <Play className="artist-icon-sm" />
+              )}
             </TooltipButton>
             <TooltipButton
               tooltipPlacement="top"

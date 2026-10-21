@@ -41,8 +41,12 @@ export function buildTrackRequest(context = {}) {
       context.durationMs != null && Number.isFinite(Number(context.durationMs))
         ? Math.max(0, Math.round(Number(context.durationMs)))
         : null,
-    pressingDurationsMs: (Array.isArray(context.pressingDurationsMs) ? context.pressingDurationsMs : [])
-      .map(cleanPositiveInt).filter(Boolean),
+    pressingDurationsMs: (Array.isArray(context.pressingDurationsMs)
+      ? context.pressingDurationsMs
+      : []
+    )
+      .map(cleanPositiveInt)
+      .filter(Boolean),
     artistMbid: cleanText(context.artistMbid),
     albumMbid: cleanText(context.albumMbid || context.releaseGroupMbid),
     releaseMbid: cleanText(context.releaseMbid),

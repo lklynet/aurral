@@ -10,11 +10,7 @@ import {
   isGeneratedPlaylistArtworkFallback,
   writeGeneratedPlaylistArtwork,
 } from "../playlistArtworkGenerator.js";
-import {
-  AURRAL_FLOWS_DIR,
-  PLAYLIST_FILES_DIR,
-  resolveDownloadRoot,
-} from "../downloadPaths.js";
+import { AURRAL_FLOWS_DIR, PLAYLIST_FILES_DIR, resolveDownloadRoot } from "../downloadPaths.js";
 import { scheduleLibraryScan } from "../libraryScanWorker.js";
 import {
   enqueueSystemTaskJob,
@@ -37,7 +33,10 @@ import { collectPlaybackPlaylistTracks } from "../playback/playbackPlaylistTrack
 import { NavidromePlaybackDestination } from "../playback/navidromePlaybackDestination.js";
 import { PlexPlaybackDestination } from "../playback/plexPlaybackDestination.js";
 import { JellyfinPlaybackDestination } from "../playback/jellyfinPlaybackDestination.js";
-import { createPlaybackDeletionGuard, removeUnusedPlaybackFiles } from "../playback/playbackFileRetention.js";
+import {
+  createPlaybackDeletionGuard,
+  removeUnusedPlaybackFiles,
+} from "../playback/playbackFileRetention.js";
 
 const ARTWORK_FILE_EXTENSIONS = [".webp", ".jpg", ".png"];
 const ARTWORK_SUPPRESS_SUFFIX = ".no-artwork";
@@ -48,8 +47,13 @@ const PLAYLIST_SYNC_RETRY_DELAYS_SECONDS = [30, 90, 180, 600];
 const LIBRARY_DOWNLOADS_ID = "library";
 
 function batchSystemTask(payload, { delaySeconds, matches, merge }) {
-  return mergeIntoPendingHonkerJob(getSystemTaskQueueName(payload.kind), { payloadKind: payload.kind, matches, merge })
-    ?? enqueueSystemTaskJob(payload, { delaySeconds });
+  return (
+    mergeIntoPendingHonkerJob(getSystemTaskQueueName(payload.kind), {
+      payloadKind: payload.kind,
+      matches,
+      merge,
+    }) ?? enqueueSystemTaskJob(payload, { delaySeconds })
+  );
 }
 
 function mergeEntityIds(left, right) {
@@ -106,47 +110,71 @@ export class PlaylistManager {
     return this._sanitize(playlistName);
   }
 
-  requestPlaylistSync(entityIds = null, {
-    destinations = null,
-    chain = null,
-    attempt = 0,
-    delaySeconds = playlistSyncDelaySeconds(attempt),
-  } = {}) {
-    const ids = entityIds == null
-      ? null
-      : [...new Set(entityIds.map((id) => String(id ?? "").trim()).filter((id) => id && id !== LIBRARY_DOWNLOADS_ID))];
+  requestPlaylistSync(
+    entityIds = null,
+    {
+      destinations = null,
+      chain = null,
+      attempt = 0,
+      delaySeconds = playlistSyncDelaySeconds(attempt),
+    } = {},
+  ) {
+    const ids =
+      entityIds == null
+        ? null
+        : [
+            ...new Set(
+              entityIds
+                .map((id) => String(id ?? "").trim())
+                .filter((id) => id && id !== LIBRARY_DOWNLOADS_ID),
+            ),
+          ];
     if (ids?.length === 0) return null;
     const keys = destinations ? [...destinations].sort() : null;
     return batchSystemTask(
-      { kind: PLAYLIST_SYNC_KIND, entityIds: ids, attempt, ...(keys ? { destinations: keys, chain } : {}) },
+      {
+        kind: PLAYLIST_SYNC_KIND,
+        entityIds: ids,
+        attempt,
+        ...(keys ? { destinations: keys, chain } : {}),
+      },
       {
         delaySeconds,
-        matches: (payload) => playlistSyncStage(payload.attempt) === playlistSyncStage(attempt)
-          && (payload.chain ?? null) === (keys ? chain : null)
-          && JSON.stringify(payload.destinations ?? null) === JSON.stringify(keys),
+        matches: (payload) =>
+          playlistSyncStage(payload.attempt) === playlistSyncStage(attempt) &&
+          (payload.chain ?? null) === (keys ? chain : null) &&
+          JSON.stringify(payload.destinations ?? null) === JSON.stringify(keys),
         merge: (payload) => ({ ...payload, entityIds: mergeEntityIds(payload.entityIds, ids) }),
       },
     );
   }
 
   async syncPlaylists({ entityIds = null, destinations = null, chain = null, attempt = 0 } = {}) {
-    const scope = this.destinationRegistry.destinations
-      .filter((destination) => !destinations || destinations.includes(destination.key));
+    const scope = this.destinationRegistry.destinations.filter(
+      (destination) => !destinations || destinations.includes(destination.key),
+    );
     const pointerIds = new Set(scope.flatMap((destination) => destination.getPointerEntityIds()));
     const ids = entityIds
-      ? entityIds.filter((id) => pointerIds.has(id)
-        || flowPlaylistConfig.getFlow(id)
-        || flowPlaylistConfig.getStaticPlaylist(id))
-      : [...new Set([
-        ...flowPlaylistConfig.getFlows().map((flow) => flow.id),
-        ...flowPlaylistConfig.getStaticPlaylists().map((playlist) => playlist.id),
-        ...pointerIds,
-      ])];
+      ? entityIds.filter(
+          (id) =>
+            pointerIds.has(id) ||
+            flowPlaylistConfig.getFlow(id) ||
+            flowPlaylistConfig.getStaticPlaylist(id),
+        )
+      : [
+          ...new Set([
+            ...flowPlaylistConfig.getFlows().map((flow) => flow.id),
+            ...flowPlaylistConfig.getStaticPlaylists().map((playlist) => playlist.id),
+            ...pointerIds,
+          ]),
+        ];
     if (entityIds && !ids.length) return;
-    const setupFailures = (await this.destinationRegistry.runOn(
-      scope.map((destination) => destination.key),
-      "ensureLibrary",
-    )).filter((result) => !result.ok);
+    const setupFailures = (
+      await this.destinationRegistry.runOn(
+        scope.map((destination) => destination.key),
+        "ensureLibrary",
+      )
+    ).filter((result) => !result.ok);
     const failedKeys = new Set(setupFailures.map((result) => result.key));
     const keys = scope.map((destination) => destination.key).filter((key) => !failedKeys.has(key));
     const missed = { outage: new Map(), indexing: new Map() };
@@ -156,13 +184,17 @@ export class PlaylistManager {
     }
     for (const id of ids) {
       for (const result of await this._syncEntity(id, keys, context)) {
-        const resultChain = result.ok ? result.pending && "indexing" : result.error?.retryable && "outage";
-        if (resultChain) missed[resultChain].set(result.key, [...(missed[resultChain].get(result.key) ?? []), id]);
+        const resultChain = result.ok
+          ? result.pending && "indexing"
+          : result.error?.retryable && "outage";
+        if (resultChain)
+          missed[resultChain].set(result.key, [...(missed[resultChain].get(result.key) ?? []), id]);
       }
     }
     for (const [nextChain, idsByKey] of Object.entries(missed)) {
       const nextAttempt = nextChain === chain ? attempt + 1 : 1;
-      if (nextChain === "indexing" && nextAttempt > PLAYLIST_SYNC_RETRY_DELAYS_SECONDS.length) continue;
+      if (nextChain === "indexing" && nextAttempt > PLAYLIST_SYNC_RETRY_DELAYS_SECONDS.length)
+        continue;
       const followUps = new Map();
       for (const [key, missedIds] of idsByKey) {
         const groupKey = JSON.stringify(missedIds);
@@ -171,7 +203,11 @@ export class PlaylistManager {
         followUps.set(groupKey, followUp);
       }
       for (const followUp of followUps.values()) {
-        this.requestPlaylistSync(followUp.ids, { destinations: followUp.keys, chain: nextChain, attempt: nextAttempt });
+        this.requestPlaylistSync(followUp.ids, {
+          destinations: followUp.keys,
+          chain: nextChain,
+          attempt: nextAttempt,
+        });
       }
     }
   }
@@ -180,9 +216,14 @@ export class PlaylistManager {
     const foldersByKey = new Map();
     for (const { state, payload } of listHonkerJobs(getSystemTaskQueueName(PLAYBACK_SCAN_KIND))) {
       if (state !== "pending" || payload?.kind !== PLAYBACK_SCAN_KIND) continue;
-      const keys = payload.destinations ?? this.destinationRegistry.destinations.map((destination) => destination.key);
+      const keys =
+        payload.destinations ??
+        this.destinationRegistry.destinations.map((destination) => destination.key);
       for (const key of keys) {
-        foldersByKey.set(key, [...(foldersByKey.get(key) ?? []), ...(payload.folders ?? this.libraryRoots())]);
+        foldersByKey.set(key, [
+          ...(foldersByKey.get(key) ?? []),
+          ...(payload.folders ?? this.libraryRoots()),
+        ]);
       }
     }
     return foldersByKey;
@@ -203,7 +244,9 @@ export class PlaylistManager {
       "deletePlaylist",
       createPlaybackPlaylistIdentity({ entityId: flow.id, ownerUserId: flow.ownerUserId ?? null }),
     );
-    if (results.some((result) => result.destination === this.navidromeDestination.name && result.ok)) {
+    if (
+      results.some((result) => result.destination === this.navidromeDestination.name && result.ok)
+    ) {
       const playlistName = this.navidromeDestination.getPlaylistName({
         entityId: flow.id,
         ownerUserId: flow.ownerUserId ?? null,
@@ -249,9 +292,7 @@ export class PlaylistManager {
           kind: artworkContext?.kind || artworkKind,
         });
       } catch (error) {
-        console.warn(
-          `[PlaylistManager] Artwork generation failed: ${error.message}`,
-        );
+        console.warn(`[PlaylistManager] Artwork generation failed: ${error.message}`);
         if (!existing) {
           await writeGeneratedPlaylistArtwork({
             outputPath: artworkPath,
@@ -259,9 +300,7 @@ export class PlaylistManager {
             kind: artworkContext?.kind || artworkKind,
             style: "aurral",
           }).catch((fallbackError) =>
-            console.warn(
-              `[PlaylistManager] Fallback artwork failed: ${fallbackError.message}`,
-            ),
+            console.warn(`[PlaylistManager] Fallback artwork failed: ${fallbackError.message}`),
           );
         }
       }
@@ -271,14 +310,16 @@ export class PlaylistManager {
   async ensurePlaylistArtwork(entityId) {
     const context = this.getArtworkContextForPlaylistId(entityId);
     if (!context) return;
-    await this._ensureFlowArtwork(entityId, this.getPlaylistName(entityId), context.kind).catch((error) => {
-      console.warn(`[PlaylistManager] Artwork generation failed: ${error.message}`);
-    });
+    await this._ensureFlowArtwork(entityId, this.getPlaylistName(entityId), context.kind).catch(
+      (error) => {
+        console.warn(`[PlaylistManager] Artwork generation failed: ${error.message}`);
+      },
+    );
   }
 
   async _syncNavidromeArtwork(playlistId, clear = false) {
-    const entity = flowPlaylistConfig.getFlow(playlistId)
-      || flowPlaylistConfig.getStaticPlaylist(playlistId);
+    const entity =
+      flowPlaylistConfig.getFlow(playlistId) || flowPlaylistConfig.getStaticPlaylist(playlistId);
     if (!entity) return;
     const operation = clear ? "clearPlaylistArtwork" : "syncPlaylistArtwork";
     if (typeof this.navidromeDestination[operation] !== "function") return;
@@ -352,16 +393,24 @@ export class PlaylistManager {
 
   schedulePlaybackScan(paths, { destinations = null } = {}) {
     this.updateConfig();
-    if (!this.destinationRegistry.destinations.some((destination) => destination.isConfigured())) return null;
+    if (!this.destinationRegistry.destinations.some((destination) => destination.isConfigured()))
+      return null;
     const roots = this.libraryRoots();
     const folders = scanFoldersForPaths(paths, roots);
     if (!folders.length) return null;
-    return batchSystemTask({ kind: PLAYBACK_SCAN_KIND, folders, ...(destinations ? { destinations } : {}) }, {
-      delaySeconds: PLAYBACK_SCAN_BATCH_SECONDS,
-      matches: (payload) => Array.isArray(payload.folders)
-        && JSON.stringify(payload.destinations ?? null) === JSON.stringify(destinations),
-      merge: (payload) => ({ ...payload, folders: scanFoldersForPaths([...payload.folders, ...folders], roots) }),
-    });
+    return batchSystemTask(
+      { kind: PLAYBACK_SCAN_KIND, folders, ...(destinations ? { destinations } : {}) },
+      {
+        delaySeconds: PLAYBACK_SCAN_BATCH_SECONDS,
+        matches: (payload) =>
+          Array.isArray(payload.folders) &&
+          JSON.stringify(payload.destinations ?? null) === JSON.stringify(destinations),
+        merge: (payload) => ({
+          ...payload,
+          folders: scanFoldersForPaths([...payload.folders, ...folders], roots),
+        }),
+      },
+    );
   }
 
   libraryRoots() {
@@ -371,7 +420,10 @@ export class PlaylistManager {
   async scanLibrary(folders, destinations = null) {
     const request = createPlaybackScanRequest({ folders, roots: this.libraryRoots() });
     const results = await this.destinationRegistry.runOn(destinations, "requestScan", request);
-    const deferred = results.filter((result) => result.deferred).map((result) => result.key).sort();
+    const deferred = results
+      .filter((result) => result.deferred)
+      .map((result) => result.key)
+      .sort();
     if (deferred.length) this.schedulePlaybackScan(request.folders, { destinations: deferred });
     return results.length ? results : null;
   }
@@ -393,7 +445,10 @@ export class PlaylistManager {
     let flowFolderTouched = false;
     for (const playlistType of targets) {
       const flowDir = path.join(flowsRoot, playlistType);
-      flowFolderTouched ||= await fs.stat(flowDir).then(() => true, () => false);
+      flowFolderTouched ||= await fs.stat(flowDir).then(
+        () => true,
+        () => false,
+      );
       const jobs = downloadTracker.getByPlaylistId(playlistType);
       for (const job of jobs) {
         if (job.downloadClient === "ytdlp") {
@@ -402,9 +457,8 @@ export class PlaylistManager {
       }
       const playlistDir = path.join(this.playlistFilesRoot, playlistType);
       try {
-        const { relocateSharedFilesBeforePlaylistRemoval } = await import(
-          "../downloadJobs/fileReuse.js"
-        );
+        const { relocateSharedFilesBeforePlaylistRemoval } =
+          await import("../downloadJobs/fileReuse.js");
         await relocateSharedFilesBeforePlaylistRemoval(playlistType, {
           downloadRoot: this.downloadRoot,
           deletionGuard,
@@ -433,8 +487,8 @@ export class PlaylistManager {
 
   getPlaylistName(playlistType) {
     const entity =
-      flowPlaylistConfig.getFlow(playlistType)
-      || flowPlaylistConfig.getStaticPlaylist(playlistType);
+      flowPlaylistConfig.getFlow(playlistType) ||
+      flowPlaylistConfig.getStaticPlaylist(playlistType);
     if (!entity) return playlistType;
     return this.navidromeDestination.getPlaylistName({
       entityId: entity.id,

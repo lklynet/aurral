@@ -21,7 +21,9 @@ export default function DiscoverPlaylistsPage() {
       return (
         <div className="search-empty-panel" role="alert">
           <h2 className="search-empty-panel__title">Playlists didn&rsquo;t load</h2>
-          <p className="search-empty-panel__message">Deezer didn&rsquo;t respond. Try again in a moment.</p>
+          <p className="search-empty-panel__message">
+            Deezer didn&rsquo;t respond. Try again in a moment.
+          </p>
           <button
             type="button"
             className="btn btn-secondary btn-sm"

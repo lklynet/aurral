@@ -46,9 +46,12 @@ export default function ArtworkEditorModal({
     setError("");
   }, [open, title]);
 
-  useEffect(() => () => {
-    if (filePreview) URL.revokeObjectURL(filePreview);
-  }, [filePreview]);
+  useEffect(
+    () => () => {
+      if (filePreview) URL.revokeObjectURL(filePreview);
+    },
+    [filePreview],
+  );
 
   useEffect(() => {
     const candidate = url.trim();
@@ -130,7 +133,11 @@ export default function ArtworkEditorModal({
       await onSaved?.(result);
       onClose();
     } catch (requestError) {
-      setError(requestError?.response?.data?.message || requestError?.message || "Artwork could not be removed.");
+      setError(
+        requestError?.response?.data?.message ||
+          requestError?.message ||
+          "Artwork could not be removed.",
+      );
     } finally {
       setBusy(false);
     }
@@ -158,10 +165,19 @@ export default function ArtworkEditorModal({
       >
         <div className="settings-page__modal-header">
           <div>
-            <h3 id={titleId} className="settings-page__modal-title">Change artwork</h3>
+            <h3 id={titleId} className="settings-page__modal-title">
+              Change artwork
+            </h3>
             <p className="artwork-editor__subtitle">{title}</p>
           </div>
-          <TooltipButton type="button" className="btn btn-ghost btn-icon-square" onClick={onClose} disabled={busy} label="Close" aria-label="Close">
+          <TooltipButton
+            type="button"
+            className="btn btn-ghost btn-icon-square"
+            onClick={onClose}
+            disabled={busy}
+            label="Close"
+            aria-label="Close"
+          >
             <X className="artist-icon-md" aria-hidden="true" />
           </TooltipButton>
         </div>
@@ -208,7 +224,9 @@ export default function ArtworkEditorModal({
           </div>
 
           <section className="artwork-editor__section">
-            <label className="artwork-editor__label" htmlFor={`${titleId}-url`}>Use an image link</label>
+            <label className="artwork-editor__label" htmlFor={`${titleId}-url`}>
+              Use an image link
+            </label>
             <div className="artwork-editor__url-row">
               <LinkIcon aria-hidden="true" />
               <input
@@ -227,19 +245,49 @@ export default function ArtworkEditorModal({
             <section className="artwork-editor__section">
               <span className="artwork-editor__label">New artwork preview</span>
               <div className="artwork-editor__preview">
-                <ArtworkImage src={encodedPreview} alt="New artwork preview" thumbnail={false} onError={() => setError("That image could not be previewed.")} />
+                <ArtworkImage
+                  src={encodedPreview}
+                  alt="New artwork preview"
+                  thumbnail={false}
+                  onError={() => setError("That image could not be previewed.")}
+                />
               </div>
             </section>
           ) : null}
-          {error ? <p className="artwork-editor__error" role="alert">{error}</p> : null}
+          {error ? (
+            <p className="artwork-editor__error" role="alert">
+              {error}
+            </p>
+          ) : null}
         </div>
         <div className="settings-page__modal-actions artwork-editor__actions">
           {hasCustomArtwork ? (
-            <button type="button" className="btn btn-danger btn-sm" onClick={handleRemove} disabled={busy}>Remove custom artwork</button>
-          ) : <span />}
+            <button
+              type="button"
+              className="btn btn-danger btn-sm"
+              onClick={handleRemove}
+              disabled={busy}
+            >
+              Remove custom artwork
+            </button>
+          ) : (
+            <span />
+          )}
           <div className="artwork-editor__actions-main">
-            <button type="button" className="btn btn-secondary btn-sm" onClick={onClose} disabled={busy}>Cancel</button>
-            <button type="button" className="btn btn-primary btn-sm" onClick={handleSave} disabled={busy || !source}>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={onClose}
+              disabled={busy}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={handleSave}
+              disabled={busy || !source}
+            >
               {busy ? "Saving…" : "Save artwork"}
             </button>
           </div>

@@ -101,7 +101,8 @@ test("normal cover requests wait for active artist and release-group refreshes",
     globalThis.fetch = previousFetch;
   });
 
-  const { getArtistCover, getReleaseGroupCover } = await import("../../frontend/src/utils/api/endpoints/artists.js");
+  const { getArtistCover, getReleaseGroupCover } =
+    await import("../../frontend/src/utils/api/endpoints/artists.js");
   const cases = [
     {
       key: "artist",

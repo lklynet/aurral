@@ -3,13 +3,22 @@ import { EventEmitter } from "node:events";
 
 // Recursive fs.watch setup can synchronously traverse a whole library. Keep all
 // filesystem access in a child so even a stalled mount cannot block the API.
-export function createIsolatedLibraryWatcher(root, { pathMappings = [] } = {}, onChange, { forkImpl = fork } = {}) {
+export function createIsolatedLibraryWatcher(
+  root,
+  { pathMappings = [] } = {},
+  onChange,
+  { forkImpl = fork } = {},
+) {
   const watcher = new EventEmitter();
-  const child = forkImpl(new URL("./libraryWatchProcessChild.js", import.meta.url), [root, JSON.stringify(pathMappings)], {
-    execArgv: [],
-    stdio: ["ignore", "ignore", "ignore", "ipc"],
-    windowsHide: true,
-  });
+  const child = forkImpl(
+    new URL("./libraryWatchProcessChild.js", import.meta.url),
+    [root, JSON.stringify(pathMappings)],
+    {
+      execArgv: [],
+      stdio: ["ignore", "ignore", "ignore", "ipc"],
+      windowsHide: true,
+    },
+  );
   let closed = false;
 
   watcher.close = () => {

@@ -29,10 +29,7 @@ test("includes all artist inputs in the shows response cache key", () => {
   const base = {
     userId: 1,
     libraryArtists: [{ name: "Library Artist" }],
-    recommendedArtists: [
-      { name: "Recommended Artist" },
-      { name: "Another Recommended Artist" },
-    ],
+    recommendedArtists: [{ name: "Recommended Artist" }, { name: "Another Recommended Artist" }],
     trendingArtists: [{ name: "Trending Artist" }],
   };
   const key = buildShowsResponseCacheKey(base);
@@ -140,10 +137,7 @@ test("looks up the server location for private, invalid, or spoofed client addre
   await getNearbyShows({ req: { ip: "100.101.102.103" } });
   await getNearbyShows({ req: { ip: "::ffff:198.51.100.7" } });
 
-  assert.deepEqual(lookups, [
-    "https://ipapi.co/json/",
-    "https://ipapi.co/198.51.100.7/json/",
-  ]);
+  assert.deepEqual(lookups, ["https://ipapi.co/json/", "https://ipapi.co/198.51.100.7/json/"]);
 });
 
 test("marks an unresolved postal code instead of returning a normal empty location", async () => {
@@ -165,11 +159,13 @@ test("uses an explicit country when resolving an ambiguous postal code", async (
     if (url === "https://nominatim.openstreetmap.org/search") {
       nominatimParams = options.params;
       return {
-        data: [{
-          address: { city: "Paris", country_code: "fr" },
-          lat: "48.8566",
-          lon: "2.3522",
-        }],
+        data: [
+          {
+            address: { city: "Paris", country_code: "fr" },
+            lat: "48.8566",
+            lon: "2.3522",
+          },
+        ],
       };
     }
     throw new Error(`Unexpected request: ${url}`);

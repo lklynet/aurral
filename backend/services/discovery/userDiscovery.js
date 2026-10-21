@@ -10,7 +10,14 @@ import { getLibraryArtistKeys, matchesArtistKeys } from "./artistKeys.js";
 const FAILED_REFRESH_BACKOFF_MS = 15 * 60 * 1000;
 const servedRecommendationsByUser = new Map();
 
-const getServedRecommendations = ({ userId, source, feedback, discoveryMode, library, isVisible }) => {
+const getServedRecommendations = ({
+  userId,
+  source,
+  feedback,
+  discoveryMode,
+  library,
+  isVisible,
+}) => {
   const key = [
     source.namespace,
     source.lastUpdated,
@@ -21,10 +28,10 @@ const getServedRecommendations = ({ userId, source, feedback, discoveryMode, lib
   ].join("|");
   const cached = servedRecommendationsByUser.get(userId);
   if (cached?.key === key) return cached.recommendations;
-  const recommendations = serveRecommendations(
-    (source.recommendations || []).filter(isVisible),
-    { feedback, discoveryMode },
-  );
+  const recommendations = serveRecommendations((source.recommendations || []).filter(isVisible), {
+    feedback,
+    discoveryMode,
+  });
   servedRecommendationsByUser.set(userId, { key, recommendations });
   return recommendations;
 };

@@ -57,7 +57,8 @@ function describeScope(rules) {
   const catalog = {
     all: "Everything",
     since: `Everything since ${rules.sinceYear}`,
-    latest: rules.latestCount === 1 ? "The latest release" : `The latest ${rules.latestCount} releases`,
+    latest:
+      rules.latestCount === 1 ? "The latest release" : `The latest ${rules.latestCount} releases`,
     none: null,
   }[rules.catalog];
   if (!catalog) return rules.newReleases ? "New releases" : null;
@@ -72,7 +73,9 @@ export function describeMonitoringRules(rules) {
   const parts = [
     scope,
     scope ? (extras.length ? `${types}, including ${joinWords(extras)}` : types) : null,
-    rules.topTracks > 0 ? `Top ${rules.topTracks} ${rules.topTracks === 1 ? "track" : "tracks"}` : null,
+    rules.topTracks > 0
+      ? `Top ${rules.topTracks} ${rules.topTracks === 1 ? "track" : "tracks"}`
+      : null,
     rules.edition === "expanded" ? "Expanded editions" : null,
   ];
   return parts.filter(Boolean).join(" · ");

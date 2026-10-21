@@ -114,10 +114,7 @@ const ShowCard = memo(({ show }) => {
     : {};
 
   return (
-    <Tag
-      {...linkProps}
-      className={`artist-show-card--discover${eventUrl ? "" : " is-disabled"}`}
-    >
+    <Tag {...linkProps} className={`artist-show-card--discover${eventUrl ? "" : " is-disabled"}`}>
       <div className="artist-show-card__image-wrap--discover">
         {show.image ? (
           <img
@@ -160,9 +157,7 @@ const ShowCard = memo(({ show }) => {
           ) : null}
           <h3 className="artist-show-card__body-title--discover">
             <Tooltip content={eventLabel}>
-              <span
-                className="artist-show-card__body-title-text--discover artist-truncate"
-              >
+              <span className="artist-show-card__body-title-text--discover artist-truncate">
                 {eventLabel}
               </span>
             </Tooltip>

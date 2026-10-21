@@ -1,11 +1,4 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router";
 import {
   getDiscoverArtistPath,
@@ -214,11 +207,7 @@ function writeDiscoverRecentPages(pages) {
   } catch {}
 }
 
-function DiscoverFlowLocationSync({
-  recentPages,
-  setDiscoverFlowActive,
-  addRecentPage,
-}) {
+function DiscoverFlowLocationSync({ recentPages, setDiscoverFlowActive, addRecentPage }) {
   const location = useLocation();
 
   useEffect(() => {

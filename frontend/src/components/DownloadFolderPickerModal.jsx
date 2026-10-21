@@ -137,7 +137,10 @@ export default function DownloadFolderPickerModal({
   };
 
   return createPortal(
-    <div className="artist-modal-backdrop file-browser-modal-backdrop" onClick={handleBackdropClick}>
+    <div
+      className="artist-modal-backdrop file-browser-modal-backdrop"
+      onClick={handleBackdropClick}
+    >
       <div
         ref={dialogRef}
         className="file-browser-modal"

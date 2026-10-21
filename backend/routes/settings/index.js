@@ -9,13 +9,16 @@ import { registerPlayback } from "./handlers/playback.js";
 import { registerUpgradeReadiness } from "./handlers/upgradeReadiness.js";
 import mountRoutes from "../shared/mountRoutes.js";
 
-export default mountRoutes([
-  registerGeneral,
-  registerLidarr,
-  registerPlex,
-  registerDownloadClients,
-  registerTasks,
-  registerStorageHealth,
-  registerPlayback,
-  registerUpgradeReadiness,
-], [requireAuth, requireAdmin]);
+export default mountRoutes(
+  [
+    registerGeneral,
+    registerLidarr,
+    registerPlex,
+    registerDownloadClients,
+    registerTasks,
+    registerStorageHealth,
+    registerPlayback,
+    registerUpgradeReadiness,
+  ],
+  [requireAuth, requireAdmin],
+);

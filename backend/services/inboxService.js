@@ -1,10 +1,7 @@
 import { db } from "../config/db-sqlite.js";
 import { dbOps, userOps } from "../db/helpers/index.js";
 import { getTicketmasterApiKey } from "./apiClients/index.js";
-import {
-  getLibraryAlbumsByReleaseDate,
-  getLibraryArtistNames,
-} from "./libraryQueryService.js";
+import { getLibraryAlbumsByReleaseDate, getLibraryArtistNames } from "./libraryQueryService.js";
 import { getNearbyShows } from "./nearbyShowsService.js";
 import { getUserDiscovery } from "./discovery/userDiscovery.js";
 import { logger } from "./logger.js";
@@ -77,7 +74,8 @@ const findActiveInboxRefreshJob = (userId, options = {}) =>
     getSystemTaskQueueName("inbox-refresh"),
     (payload) => payload?.kind === "inbox-refresh" && Number(payload.userId) === userId,
     options,
-  ) || findActiveHonkerJob(
+  ) ||
+  findActiveHonkerJob(
     "system-task",
     (payload) => payload?.kind === "inbox-refresh" && Number(payload.userId) === userId,
     options,
@@ -204,7 +202,9 @@ async function buildDiscoveryItems(userId, now) {
       const subtitle = String(
         artist?.metaText ||
           artist?.sourceArtist ||
-          (artist?.discoveryTier === "deeper" ? "A deeper discovery pick" : "Picked for your profile"),
+          (artist?.discoveryTier === "deeper"
+            ? "A deeper discovery pick"
+            : "Picked for your profile"),
       ).trim();
       return {
         userId,
@@ -223,7 +223,12 @@ async function buildDiscoveryItems(userId, now) {
 
 async function buildShowItems(userId, now, req, ipAddress, zipCode, libraryArtists) {
   const apiKey = getTicketmasterApiKey();
-  if (!apiKey || (!req && !ipAddress) || !Array.isArray(libraryArtists) || libraryArtists.length === 0) {
+  if (
+    !apiKey ||
+    (!req && !ipAddress) ||
+    !Array.isArray(libraryArtists) ||
+    libraryArtists.length === 0
+  ) {
     return [];
   }
   const { shows } = await getNearbyShows({
@@ -320,13 +325,9 @@ export async function refreshInboxForUser(
       ...(jobId ? { jobId } : {}),
     });
     const preferences = getInboxPreferences();
-    const libraryArtists = preferences.shows
-      ? getLibraryArtistNames()
-      : [];
+    const libraryArtists = preferences.shows ? getLibraryArtistNames() : [];
     const enabledNewsKinds = new Set(
-      getEnabledKinds(preferences).filter((kind) =>
-        ["news", "recommendedNews"].includes(kind),
-      ),
+      getEnabledKinds(preferences).filter((kind) => ["news", "recommendedNews"].includes(kind)),
     );
     const results = await Promise.allSettled([
       preferences.releases ? buildReleaseItems(normalizedUserId, now) : [],
@@ -353,14 +354,14 @@ export async function refreshInboxForUser(
       upsertAll(items);
     })();
     refreshState.set(normalizedUserId, { at: now, hadLocationRequest: hasLocationRequest });
-    const refreshStatus = failures.length === 0
-      ? "complete"
-      : failures.length === results.length
-        ? "failed"
-        : "stale";
-    const errorMessage = failures.length > 0
-      ? failures.map(({ result, source }) => `${source}: ${result.reason?.message || "failed"}`).join("; ")
-      : null;
+    const refreshStatus =
+      failures.length === 0 ? "complete" : failures.length === results.length ? "failed" : "stale";
+    const errorMessage =
+      failures.length > 0
+        ? failures
+            .map(({ result, source }) => `${source}: ${result.reason?.message || "failed"}`)
+            .join("; ")
+        : null;
     setStoredRefreshStatus(normalizedUserId, {
       status: refreshStatus,
       stale: failures.length > 0,
@@ -374,22 +375,30 @@ export async function refreshInboxForUser(
       throw error;
     }
     return failures.length === 0;
-  })().catch((error) => {
-    logger.warn("inbox", "Inbox refresh failed", { userId: normalizedUserId, error: error.message });
-    refreshState.set(normalizedUserId, { at: Date.now(), hadLocationRequest: hasLocationRequest });
-    if (!error.inboxStatusWritten) {
-      setStoredRefreshStatus(normalizedUserId, {
-        status: "failed",
-        stale: true,
+  })()
+    .catch((error) => {
+      logger.warn("inbox", "Inbox refresh failed", {
+        userId: normalizedUserId,
         error: error.message,
-        ...(jobId ? { jobId } : {}),
       });
-    }
-    if (throwOnFailure) throw error;
-    return false;
-  }).finally(() => {
-    refreshInflight.delete(normalizedUserId);
-  });
+      refreshState.set(normalizedUserId, {
+        at: Date.now(),
+        hadLocationRequest: hasLocationRequest,
+      });
+      if (!error.inboxStatusWritten) {
+        setStoredRefreshStatus(normalizedUserId, {
+          status: "failed",
+          stale: true,
+          error: error.message,
+          ...(jobId ? { jobId } : {}),
+        });
+      }
+      if (throwOnFailure) throw error;
+      return false;
+    })
+    .finally(() => {
+      refreshInflight.delete(normalizedUserId);
+    });
 
   refreshInflight.set(normalizedUserId, promise);
   return promise;
@@ -411,13 +420,16 @@ export async function enqueueInboxRefreshForUser(
       };
     }
 
-    const jobId = enqueueSystemTaskJob({
-      kind: "inbox-refresh",
-      userId: normalizedUserId,
-      reason: String(reason || "manual"),
-      zipCode: String(zipCode || "").trim(),
-      ipAddress: String(ipAddress || "").trim(),
-    }, { priority: reason === "manual" ? 5 : 0 });
+    const jobId = enqueueSystemTaskJob(
+      {
+        kind: "inbox-refresh",
+        userId: normalizedUserId,
+        reason: String(reason || "manual"),
+        zipCode: String(zipCode || "").trim(),
+        ipAddress: String(ipAddress || "").trim(),
+      },
+      { priority: reason === "manual" ? 5 : 0 },
+    );
     setStoredRefreshStatus(normalizedUserId, {
       status: "queued",
       stale: false,

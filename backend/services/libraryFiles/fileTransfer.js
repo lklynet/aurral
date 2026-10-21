@@ -123,7 +123,12 @@ export async function removeEmptiedFolder(directory, stopAt) {
   if (!folder.startsWith(`${root}${path.sep}`)) return;
   const entries = await fs.readdir(folder, { withFileTypes: true }).catch(() => null);
   if (!entries) return;
-  if (entries.some((entry) => !entry.isFile() || !ALBUM_IMAGE_EXTENSIONS.has(path.extname(entry.name).toLowerCase()))) {
+  if (
+    entries.some(
+      (entry) =>
+        !entry.isFile() || !ALBUM_IMAGE_EXTENSIONS.has(path.extname(entry.name).toLowerCase()),
+    )
+  ) {
     return;
   }
   for (const entry of entries) await fs.rm(path.join(folder, entry.name), { force: true });
@@ -146,8 +151,9 @@ export async function probeHardlink(sourceFile, targetDirectory) {
     await fs.rm(probe, { force: true }).catch(() => {});
     return {
       available: false,
-      reason: HARDLINK_REASONS[error?.code]
-        || `This filesystem does not allow hardlinks here (${error?.code || error?.message || "unknown error"}).`,
+      reason:
+        HARDLINK_REASONS[error?.code] ||
+        `This filesystem does not allow hardlinks here (${error?.code || error?.message || "unknown error"}).`,
     };
   }
 }

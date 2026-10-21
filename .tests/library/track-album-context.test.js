@@ -1,7 +1,11 @@
 import { test, beforeAll, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
-import { cleanupIsolatedState, resetDatabase, setupIsolatedBackend } from "../helpers/backendTestHarness.js";
+import {
+  cleanupIsolatedState,
+  resetDatabase,
+  setupIsolatedBackend,
+} from "../helpers/backendTestHarness.js";
 import { brainzmashGroup, serveGroups } from "../helpers/releaseFixture.js";
 
 const [
@@ -33,8 +37,16 @@ const [
 );
 
 const routes = new Map();
-const route = (method) => (routePath, ...handlers) => routes.set(`${method} ${routePath}`, handlers.at(-1));
-const router = { get: route("GET"), post: route("POST"), put: route("PUT"), delete: route("DELETE") };
+const route =
+  (method) =>
+  (routePath, ...handlers) =>
+    routes.set(`${method} ${routePath}`, handlers.at(-1));
+const router = {
+  get: route("GET"),
+  post: route("POST"),
+  put: route("PUT"),
+  delete: route("DELETE"),
+};
 registerReleaseGroup(router);
 registerDownloads(router);
 registerTracks(router);
@@ -73,7 +85,16 @@ const group = brainzmashGroup({
   title: "Two Sides",
   artist: "Context Artist",
   releases: [
-    { id: DELUXE, tracks: [intro, song, { title: "Bonus", position: 3, disc: 1 }, outro, { title: "Extra", position: 2, disc: 2 }] },
+    {
+      id: DELUXE,
+      tracks: [
+        intro,
+        song,
+        { title: "Bonus", position: 3, disc: 1 },
+        outro,
+        { title: "Extra", position: 2, disc: 2 },
+      ],
+    },
     { id: STANDARD, tracks: [intro, song, outro] },
     { id: PRESSING, tracks: [intro, song, outro] },
   ],
@@ -92,13 +113,17 @@ afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-const requestTrack = (body) => callRoute("POST /downloads/track", {
-  body: { artistName: "Context Artist", albumName: "Two Sides", albumMbid: GROUP, ...body },
-});
+const requestTrack = (body) =>
+  callRoute("POST /downloads/track", {
+    body: { artistName: "Context Artist", albumName: "Two Sides", albumMbid: GROUP, ...body },
+  });
 
-const storedJob = (jobId) => db.prepare(
-  "SELECT release_mbid, track_number, disc_number FROM playlist_download_jobs WHERE id = ?",
-).get(jobId);
+const storedJob = (jobId) =>
+  db
+    .prepare(
+      "SELECT release_mbid, track_number, disc_number FROM playlist_download_jobs WHERE id = ?",
+    )
+    .get(jobId);
 
 test("a release page lists the release and disc a plain request for its track searches", async (t) => {
   await serveGroups(t, [group]);
@@ -106,8 +131,17 @@ test("a release page lists the release and disc a plain request for its track se
   const listed = await callRoute("GET /release-group/:mbid/tracks", { params: { mbid: GROUP } });
 
   assert.deepEqual(
-    listed.body.map((track) => [track.title, track.releaseMbid, track.discNumber, track.trackNumber]),
-    [["Intro", STANDARD, 1, 1], ["Song", STANDARD, 1, 2], ["Outro", STANDARD, 2, 1]],
+    listed.body.map((track) => [
+      track.title,
+      track.releaseMbid,
+      track.discNumber,
+      track.trackNumber,
+    ]),
+    [
+      ["Intro", STANDARD, 1, 1],
+      ["Song", STANDARD, 1, 2],
+      ["Outro", STANDARD, 2, 1],
+    ],
   );
   const plain = await requestTrack({ trackName: "Outro", trackMbid: "rec-outro" });
   const manifest = await resolveReleaseManifest(downloadTracker.getJob(plain.body.jobId));
@@ -115,48 +149,97 @@ test("a release page lists the release and disc a plain request for its track se
 });
 
 function libraryAlbum({ groupMbid, title, metadata = null, recordings = [] }) {
-  const artist = libraryStore.upsertLibraryArtist({ identityKey: "mbid:context-artist", mbid: "context-artist",
-    name: "Context Artist" });
-  const album = libraryStore.upsertLibraryAlbum({ identityKey: `release-group:${groupMbid}`, mbid: groupMbid,
-    releaseGroupMbid: groupMbid, artistId: artist.id, title, metadata });
-  recordings.forEach((recording, index) => {
-    const track = libraryStore.upsertLibraryTrack({ identityKey: `recording:${recording.recordingId}`,
-      mbid: recording.recordingId, title: recording.title, artistName: "Context Artist" });
-    libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: index + 1 });
+  const artist = libraryStore.upsertLibraryArtist({
+    identityKey: "mbid:context-artist",
+    mbid: "context-artist",
+    name: "Context Artist",
   });
-  managementStore.setLibraryManagement({ entityKind: "album", entityId: album.id, managedBy: "aurral" });
+  const album = libraryStore.upsertLibraryAlbum({
+    identityKey: `release-group:${groupMbid}`,
+    mbid: groupMbid,
+    releaseGroupMbid: groupMbid,
+    artistId: artist.id,
+    title,
+    metadata,
+  });
+  recordings.forEach((recording, index) => {
+    const track = libraryStore.upsertLibraryTrack({
+      identityKey: `recording:${recording.recordingId}`,
+      mbid: recording.recordingId,
+      title: recording.title,
+      artistName: "Context Artist",
+    });
+    libraryStore.linkLibraryAlbumTrack({
+      albumId: album.id,
+      trackId: track.id,
+      trackNumber: index + 1,
+    });
+  });
+  managementStore.setLibraryManagement({
+    entityKind: "album",
+    entityId: album.id,
+    managedBy: "aurral",
+  });
   return album;
 }
 
 test("an album page and its Library page list the edition its Library album asks for, which a plain request for its track searches", async (t) => {
   await serveGroups(t, [group]);
-  libraryAlbum({ groupMbid: GROUP, title: "Two Sides", metadata: { edition: "expanded", requestedRelease: DELUXE } });
+  libraryAlbum({
+    groupMbid: GROUP,
+    title: "Two Sides",
+    metadata: { edition: "expanded", requestedRelease: DELUXE },
+  });
 
   const listed = await callRoute("GET /release-group/:mbid/tracks", { params: { mbid: GROUP } });
   const libraryListed = await callRoute("GET /tracks", { query: { releaseGroupMbid: GROUP } });
 
-  const deluxe = [["Intro", DELUXE, 1, 1], ["Song", DELUXE, 1, 2], ["Bonus", DELUXE, 1, 3], ["Outro", DELUXE, 2, 1],
-    ["Extra", DELUXE, 2, 2]];
+  const deluxe = [
+    ["Intro", DELUXE, 1, 1],
+    ["Song", DELUXE, 1, 2],
+    ["Bonus", DELUXE, 1, 3],
+    ["Outro", DELUXE, 2, 1],
+    ["Extra", DELUXE, 2, 2],
+  ];
   for (const { body } of [listed, libraryListed]) {
-    assert.deepEqual(body.map((track) => [track.title, track.releaseMbid, track.discNumber, track.trackNumber]), deluxe);
+    assert.deepEqual(
+      body.map((track) => [track.title, track.releaseMbid, track.discNumber, track.trackNumber]),
+      deluxe,
+    );
   }
   const plain = await requestTrack({ trackName: "Outro", trackMbid: "rec-outro" });
-  assert.equal((await resolveReleaseManifest(downloadTracker.getJob(plain.body.jobId))).releaseMbid, DELUXE);
+  assert.equal(
+    (await resolveReleaseManifest(downloadTracker.getJob(plain.body.jobId))).releaseMbid,
+    DELUXE,
+  );
 });
 
 test("a track added from an album page joins that Library album when another Library album also holds it", async (t) => {
   const SINGLE = "a1a1a1a1-0000-4000-8000-000000000010";
-  const single = brainzmashGroup({ id: SINGLE, title: "Song", artist: "Context Artist",
-    releases: [{ id: "a1a1a1a1-0000-4000-8000-000000000011", tracks: [song] }] });
+  const single = brainzmashGroup({
+    id: SINGLE,
+    title: "Song",
+    artist: "Context Artist",
+    releases: [{ id: "a1a1a1a1-0000-4000-8000-000000000011", tracks: [song] }],
+  });
   await serveGroups(t, [group, single]);
   const settings = dbOps.getSettings();
-  dbOps.updateSettings({ ...settings, integrations: { ...settings.integrations,
-    slskd: { enabled: true, url: "http://127.0.0.1:9", apiKey: "test-key" } } });
+  dbOps.updateSettings({
+    ...settings,
+    integrations: {
+      ...settings.integrations,
+      slskd: { enabled: true, url: "http://127.0.0.1:9", apiKey: "test-key" },
+    },
+  });
   t.onTestFinished(() => dbOps.updateSettings(settings));
   libraryAlbum({ groupMbid: SINGLE, title: "Song", recordings: [song] });
   libraryAlbum({ groupMbid: GROUP, title: "Two Sides", recordings: [intro, song, outro] });
 
-  const added = await requestTrack({ trackName: "Song", trackMbid: "rec-song", releaseMbid: STANDARD });
+  const added = await requestTrack({
+    trackName: "Song",
+    trackMbid: "rec-song",
+    releaseMbid: STANDARD,
+  });
 
   assert.equal(added.statusCode, 202, JSON.stringify(added.body));
   assert.equal(downloadTracker.getJob(added.body.jobId).albumMbid, GROUP);
@@ -166,11 +249,19 @@ test("a track added with its release is queued and searched on that release and 
   await serveGroups(t, [group]);
 
   const added = await requestTrack({
-    trackName: "Outro", trackMbid: "rec-outro", releaseMbid: DELUXE, discNumber: 2, trackNumber: 1,
+    trackName: "Outro",
+    trackMbid: "rec-outro",
+    releaseMbid: DELUXE,
+    discNumber: 2,
+    trackNumber: 1,
   });
 
   assert.equal(added.statusCode, 202);
-  assert.deepEqual(storedJob(added.body.jobId), { release_mbid: DELUXE, track_number: 1, disc_number: 2 });
+  assert.deepEqual(storedJob(added.body.jobId), {
+    release_mbid: DELUXE,
+    track_number: 1,
+    disc_number: 2,
+  });
   const manifest = await resolveReleaseManifest(downloadTracker.getJob(added.body.jobId));
   assert.equal(manifest.releaseMbid, DELUXE);
   assert.equal(manifest.tracks.length, 5);
@@ -179,11 +270,22 @@ test("a track added with its release is queued and searched on that release and 
 test("a release the album does not list, or that is not an ID, still queues the track", async (t) => {
   await serveGroups(t, [group]);
 
-  const foreign = await requestTrack({ trackName: "Intro", trackMbid: "rec-intro", releaseMbid: FOREIGN });
-  const malformed = await requestTrack({ trackName: "Song", trackMbid: "rec-song", releaseMbid: "deluxe" });
+  const foreign = await requestTrack({
+    trackName: "Intro",
+    trackMbid: "rec-intro",
+    releaseMbid: FOREIGN,
+  });
+  const malformed = await requestTrack({
+    trackName: "Song",
+    trackMbid: "rec-song",
+    releaseMbid: "deluxe",
+  });
 
   assert.equal(foreign.statusCode, 202);
-  assert.equal((await resolveReleaseManifest(downloadTracker.getJob(foreign.body.jobId))).releaseMbid, STANDARD);
+  assert.equal(
+    (await resolveReleaseManifest(downloadTracker.getJob(foreign.body.jobId))).releaseMbid,
+    STANDARD,
+  );
   assert.equal(malformed.statusCode, 202);
   assert.equal(storedJob(malformed.body.jobId).release_mbid, null);
 });

@@ -7,7 +7,9 @@ requireCredentials();
 
 const ACTIVE_STATUS = /^(queued|downloading)$/;
 
-test("without Lidarr, an Aurral artist and album are monitored, unmonitored with a warning, and downloaded again", async ({ page }) => {
+test("without Lidarr, an Aurral artist and album are monitored, unmonitored with a warning, and downloaded again", async ({
+  page,
+}) => {
   test.setTimeout(240_000);
   await openApp(page);
   const restoreLidarr = await useAurralWithoutLidarr(page);
@@ -37,16 +39,23 @@ test("without Lidarr, an Aurral artist and album are monitored, unmonitored with
       expect(added.ok).toBe(true);
     }
     await expect
-      .poll(async () => (await apiRequest(page, `/api/library/artists/${artist.mbid}`)).body?.managedBy, {
-        timeout: 30_000,
-      })
+      .poll(
+        async () => (await apiRequest(page, `/api/library/artists/${artist.mbid}`)).body?.managedBy,
+        {
+          timeout: 30_000,
+        },
+      )
       .toBe("aurral");
 
     await page.goto(`/artist/${artist.mbid}`);
-    await expect(page.getByRole("heading", { name: artist.name, level: 1 })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("heading", { name: artist.name, level: 1 })).toBeVisible({
+      timeout: 30_000,
+    });
     const actionBar = page.locator(".artist-action-bar");
     await actionBar.getByRole("button", { name: /^(Monitor|Monitoring: .*)$/ }).click();
-    await expect(page.getByRole("menuitemradio", { name: "Not monitored", exact: true })).toHaveAttribute("aria-checked", "true");
+    await expect(
+      page.getByRole("menuitemradio", { name: "Not monitored", exact: true }),
+    ).toHaveAttribute("aria-checked", "true");
     await expect(page.getByRole("menuitemradio")).toHaveText(["Monitored", "Not monitored"]);
 
     await page.getByRole("menuitem", { name: "Monitoring rules…", exact: true }).click();
@@ -56,36 +65,58 @@ test("without Lidarr, an Aurral artist and album are monitored, unmonitored with
     await rulesDialog.getByLabel("Back catalogue").selectOption("latest");
     await rulesDialog.getByRole("spinbutton", { name: "Number of releases" }).fill("1");
     await rulesDialog.getByRole("checkbox", { name: "EPs", exact: true }).uncheck();
-    await expect(rulesDialog.getByText("Downloads 1 release.", { exact: false })).toBeVisible({ timeout: 60_000 });
-    await expect(rulesDialog.locator(".monitoring-preview__list").first().getByRole("listitem")).toHaveCount(1);
+    await expect(rulesDialog.getByText("Downloads 1 release.", { exact: false })).toBeVisible({
+      timeout: 60_000,
+    });
+    await expect(
+      rulesDialog.locator(".monitoring-preview__list").first().getByRole("listitem"),
+    ).toHaveCount(1);
     await page.screenshot({ path: test.info().outputPath("monitoring-rules-preview.png") });
 
     await rulesDialog.getByRole("button", { name: "Monitor artist", exact: true }).click();
     await expect(
-      page.getByRole("status").filter({ hasText: `Monitoring ${artist.name} with custom rules. Queued 1 release for download` }),
+      page.getByRole("status").filter({
+        hasText: `Monitoring ${artist.name} with custom rules. Queued 1 release for download`,
+      }),
     ).toBeVisible({ timeout: 60_000 });
     await expect(rulesDialog).toHaveCount(0);
-    await expect(actionBar.getByRole("button", { name: /^Monitoring: Custom rules/ })).toBeVisible();
+    await expect(
+      actionBar.getByRole("button", { name: /^Monitoring: Custom rules/ }),
+    ).toBeVisible();
 
     await expect
-      .poll(async () => (await apiRequest(page, `/api/library/albums?artistId=${artist.mbid}`)).body?.length, {
-        timeout: 60_000,
-      })
+      .poll(
+        async () =>
+          (await apiRequest(page, `/api/library/albums?artistId=${artist.mbid}`)).body?.length,
+        {
+          timeout: 60_000,
+        },
+      )
       .toBe(1);
     const albums = await apiRequest(page, `/api/library/albums?artistId=${artist.mbid}`);
     albumId = albums.body[0].id;
     expect(albums.body[0].managedBy).toBe("aurral");
 
     await page.goto(`/library/album/${albumId}`);
-    const albumOptions = page.getByRole("button", { name: `${albums.body[0].title} options`, exact: true });
+    const albumOptions = page.getByRole("button", {
+      name: `${albums.body[0].title} options`,
+      exact: true,
+    });
     const unmonitoredMark = page.locator(".native-library-detail__manager");
     const chooseMonitoring = async (label) => {
       await albumOptions.click();
       await page.getByRole("menuitem", { name: label, exact: true }).click();
     };
-    await expect(page.getByRole("heading", { name: albums.body[0].title })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("heading", { name: albums.body[0].title })).toBeVisible({
+      timeout: 30_000,
+    });
     await expect(unmonitoredMark).toHaveCount(0);
-    await expect(page.getByRole("status").filter({ hasText: /Queued|Downloading/ }).first()).toBeVisible({
+    await expect(
+      page
+        .getByRole("status")
+        .filter({ hasText: /Queued|Downloading/ })
+        .first(),
+    ).toBeVisible({
       timeout: 30_000,
     });
 
@@ -100,38 +131,57 @@ test("without Lidarr, an Aurral artist and album are monitored, unmonitored with
     await expect(albumOptions).toBeFocused();
     await expect(unmonitoredMark).toHaveCount(0);
     expect(albumMonitoringWrites).toHaveLength(0);
-    expect((await apiRequest(page, `/api/library/albums/aurral/${albumId}/status`)).body?.status).toMatch(
-      ACTIVE_STATUS,
-    );
+    expect(
+      (await apiRequest(page, `/api/library/albums/aurral/${albumId}/status`)).body?.status,
+    ).toMatch(ACTIVE_STATUS);
 
     await chooseMonitoring("Stop monitoring album");
     await dialog.getByRole("button", { name: "Stop monitoring", exact: true }).click();
-    await expect(page.getByRole("status").filter({ hasText: /Cancelled \d+ downloads?/ })).toBeVisible({
+    await expect(
+      page.getByRole("status").filter({ hasText: /Cancelled \d+ downloads?/ }),
+    ).toBeVisible({
       timeout: 30_000,
     });
     await expect(unmonitoredMark).toHaveAccessibleName("Not monitored");
     expect(albumMonitoringWrites).toHaveLength(1);
     await expect
-      .poll(async () => (await apiRequest(page, `/api/library/albums/aurral/${albumId}/status`)).body?.status, {
-        timeout: 30_000,
-      })
+      .poll(
+        async () =>
+          (await apiRequest(page, `/api/library/albums/aurral/${albumId}/status`)).body?.status,
+        {
+          timeout: 30_000,
+        },
+      )
       .not.toMatch(ACTIVE_STATUS);
 
     await albumOptions.click();
-    await expect(page.getByRole("menuitem", { name: "Stop monitoring album", exact: true })).toHaveCount(0);
+    await expect(
+      page.getByRole("menuitem", { name: "Stop monitoring album", exact: true }),
+    ).toHaveCount(0);
     await expect(page.getByRole("menuitem", { name: "Monitor album", exact: true })).toHaveCount(0);
     await page.keyboard.press("Escape");
 
-    await page.getByRole("button", { name: `Download ${albums.body[0].title}`, exact: true }).click();
+    await page
+      .getByRole("button", { name: `Download ${albums.body[0].title}`, exact: true })
+      .click();
     await expect(unmonitoredMark).toHaveCount(0);
     expect(albumMonitoringWrites).toHaveLength(1);
-    await expect(page.getByRole("status").filter({ hasText: /Queued|Downloading/ }).first()).toBeVisible({
+    await expect(
+      page
+        .getByRole("status")
+        .filter({ hasText: /Queued|Downloading/ })
+        .first(),
+    ).toBeVisible({
       timeout: 30_000,
     });
     await expect
-      .poll(async () => (await apiRequest(page, `/api/library/albums/aurral/${albumId}/status`)).body?.status, {
-        timeout: 30_000,
-      })
+      .poll(
+        async () =>
+          (await apiRequest(page, `/api/library/albums/aurral/${albumId}/status`)).body?.status,
+        {
+          timeout: 30_000,
+        },
+      )
       .toMatch(ACTIVE_STATUS);
     await page.screenshot({ path: test.info().outputPath("album-downloaded-again.png") });
   } finally {

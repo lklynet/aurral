@@ -10,7 +10,10 @@ export default function DiscoveryStatusPill({
 }) {
   if (isUpdating) {
     return (
-      <span role="status" className="artist-discover-hero__updated artist-discover-hero__updated--refreshing">
+      <span
+        role="status"
+        className="artist-discover-hero__updated artist-discover-hero__updated--refreshing"
+      >
         <DotLoader size="sm" label={null} className="artist-discover-hero__updated-icon" />
         {updateProgressMessage || "Refreshing discovery..."}
       </span>

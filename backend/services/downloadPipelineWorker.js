@@ -38,7 +38,9 @@ async function processLockedPipelineJob(payload, dependencies = {}) {
 }
 
 export function processPipelineJob(payload, dependencies = {}) {
-  return withDownloadPayloadMutation(payload, (current) => processLockedPipelineJob(current, dependencies));
+  return withDownloadPayloadMutation(payload, (current) =>
+    processLockedPipelineJob(current, dependencies),
+  );
 }
 
 const {
@@ -67,12 +69,10 @@ const {
       message,
       stack: error?.stack || null,
     });
-    return withDownloadPayloadMutation(job.payload, async (payload) => continuePipeline(await failPipelineJob(payload, message)));
+    return withDownloadPayloadMutation(job.payload, async (payload) =>
+      continuePipeline(await failPipelineJob(payload, message)),
+    );
   },
 });
 
-export {
-  startDownloadPipelineWorker,
-  stopDownloadPipelineWorker,
-  isDownloadPipelineWorkerRunning,
-};
+export { startDownloadPipelineWorker, stopDownloadPipelineWorker, isDownloadPipelineWorkerRunning };

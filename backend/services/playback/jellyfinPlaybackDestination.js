@@ -3,7 +3,12 @@ import path from "node:path";
 import { userOps } from "../../db/helpers/index.js";
 import { JellyfinClient } from "../jellyfin.js";
 import { jellyfinPlaylistPointerStore } from "../jellyfin/jellyfinPlaylistPointerStore.js";
-import { getPathMappings, pathMatchesPrefix, resolveRemotePath, resolveLocalPath } from "../pathMappings.js";
+import {
+  getPathMappings,
+  pathMatchesPrefix,
+  resolveRemotePath,
+  resolveLocalPath,
+} from "../pathMappings.js";
 import { resolveDownloadRoot } from "../downloadPaths.js";
 import { isPathWithin } from "../libraryFolders.js";
 import { logger } from "../logger.js";
@@ -26,7 +31,13 @@ export const jellyfinSettings = Object.freeze({
   subtitle: "Jellyfin API",
   fields: Object.freeze([
     Object.freeze({ key: "url", label: "Server URL", type: "url", required: true }),
-    Object.freeze({ key: "apiKey", label: "API key", type: "password", secret: true, required: true }),
+    Object.freeze({
+      key: "apiKey",
+      label: "API key",
+      type: "password",
+      secret: true,
+      required: true,
+    }),
     Object.freeze({ key: "userId", label: "User ID", type: "text", required: true }),
   ]),
   defaults: Object.freeze({ url: "", apiKey: "", userId: "" }),
@@ -46,14 +57,21 @@ const providerMbid = (item) => {
   const providerIds = item?.ProviderIds || item?.providerIds || {};
   const key = Object.keys(providerIds).find((candidate) => {
     const normalized = candidate.toLowerCase();
-    return normalized.includes("musicbrainz")
-      && (normalized.includes("recording") || normalized.includes("track"));
+    return (
+      normalized.includes("musicbrainz") &&
+      (normalized.includes("recording") || normalized.includes("track"))
+    );
   });
-  return key ? String(providerIds[key] || "").trim().toLowerCase() : "";
+  return key
+    ? String(providerIds[key] || "")
+        .trim()
+        .toLowerCase()
+    : "";
 };
 
 const itemId = (item) => item?.Id ?? item?.id ?? null;
-const isWithinAny = (folders, candidate) => folders.some((folder) => isPathWithin(folder, candidate));
+const isWithinAny = (folders, candidate) =>
+  folders.some((folder) => isPathWithin(folder, candidate));
 const isServerPathWithinAny = (folders, candidate) =>
   folders.some((folder) => candidate === folder || candidate.startsWith(`${folder}/`));
 const isNotFound = (error) => Number(error?.response?.status) === 404;
@@ -82,9 +100,10 @@ export class JellyfinPlaybackDestination {
     });
     if (key === this._configKey) return;
     this._configKey = key;
-    this.client = config.url && config.apiKey && config.userId
-      ? new JellyfinClient(config.url, config.apiKey, config.userId)
-      : null;
+    this.client =
+      config.url && config.apiKey && config.userId
+        ? new JellyfinClient(config.url, config.apiKey, config.userId)
+        : null;
     this._indexes = new Map();
     this._fullReadAt = new Map();
     this._readErrors = new Map();
@@ -98,12 +117,19 @@ export class JellyfinPlaybackDestination {
   }
 
   async getReferencedPaths({ excludeEntityIds = [] } = {}) {
-    const excluded = new Set(excludeEntityIds.flatMap((id) =>
-      jellyfinPlaylistPointerStore.getPointersForEntity(id)
-        .filter((pointer) => !pointer.serverUrl || pointer.serverUrl === this.client.url)
-        .map((pointer) => pointer.playlistId)));
+    const excluded = new Set(
+      excludeEntityIds.flatMap((id) =>
+        jellyfinPlaylistPointerStore
+          .getPointersForEntity(id)
+          .filter((pointer) => !pointer.serverUrl || pointer.serverUrl === this.client.url)
+          .map((pointer) => pointer.playlistId),
+      ),
+    );
     const paths = await this.client.getPlaylistTrackPaths(excluded);
-    return { ok: true, paths: paths.map((file) => resolveLocalPath(file, getPathMappings("jellyfin"))) };
+    return {
+      ok: true,
+      paths: paths.map((file) => resolveLocalPath(file, getPathMappings("jellyfin"))),
+    };
   }
 
   async _resolveOwnerJellyfinUser(ownerUserId) {
@@ -182,8 +208,9 @@ export class JellyfinPlaybackDestination {
         this.client.getMusicLibraryLocations().catch(() => null),
       ]);
       const now = Date.now();
-      const dropped = new Map([...(this._indexes.get(libraryKey)?.dropped ?? [])]
-        .filter(([, mark]) => mark.until > now));
+      const dropped = new Map(
+        [...(this._indexes.get(libraryKey)?.dropped ?? [])].filter(([, mark]) => mark.until > now),
+      );
       const byPath = new Map();
       const byMbid = new Map();
       const paths = new Map();
@@ -229,7 +256,9 @@ export class JellyfinPlaybackDestination {
       ...folders.map((folder) => ({ folder, until })),
     ];
     const mappings = getPathMappings("jellyfin");
-    const serverFolders = folders.map((folder) => normalizePath(resolveRemotePath(folder, mappings)));
+    const serverFolders = folders.map((folder) =>
+      normalizePath(resolveRemotePath(folder, mappings)),
+    );
     for (const index of this._indexes.values()) {
       for (const [id, itemPath] of index.paths) {
         if (!isServerPathWithinAny(serverFolders, itemPath.key)) continue;
@@ -249,40 +278,60 @@ export class JellyfinPlaybackDestination {
   _resolveItemIds(snapshot, libraryKey, untrustedFolders) {
     const { byPath, byMbid, paths } = this._indexes.get(libraryKey);
     const mappings = getPathMappings("jellyfin");
-    const untrustedServerFolders = untrustedFolders.map((folder) => normalizePath(resolveRemotePath(folder, mappings)));
+    const untrustedServerFolders = untrustedFolders.map((folder) =>
+      normalizePath(resolveRemotePath(folder, mappings)),
+    );
     const settling = [...untrustedFolders, ...this._recentlyScannedFolders()];
     const itemIds = [];
     const missing = [];
     for (const track of snapshot.tracks) {
       const localPath = path.resolve(track.path);
       const remotePath = normalizePath(resolveRemotePath(track.path, mappings));
-      const mbidMatches = byMbid.get(String(track.mbid || "").trim().toLowerCase()) || [];
-      const mbidMatch = mbidMatches.length === 1
-        && !isWithinAny(untrustedFolders, localPath)
-        && !isServerPathWithinAny(untrustedServerFolders, paths.get(mbidMatches[0]).key)
-        ? mbidMatches[0]
-        : null;
+      const mbidMatches =
+        byMbid.get(
+          String(track.mbid || "")
+            .trim()
+            .toLowerCase(),
+        ) || [];
+      const mbidMatch =
+        mbidMatches.length === 1 &&
+        !isWithinAny(untrustedFolders, localPath) &&
+        !isServerPathWithinAny(untrustedServerFolders, paths.get(mbidMatches[0]).key)
+          ? mbidMatches[0]
+          : null;
       const match = byPath.get(remotePath) || mbidMatch;
       if (match) itemIds.push(match);
-      else missing.push({ remotePath, mbid: track.mbid, settling: isWithinAny(settling, localPath) });
+      else
+        missing.push({ remotePath, mbid: track.mbid, settling: isWithinAny(settling, localPath) });
     }
     return { itemIds, missing };
   }
 
   _canHold(libraryKey, { remotePath, mbid }) {
     const { locations } = this._indexes.get(libraryKey);
-    return Boolean(mbid) || locations == null || locations.some((location) => pathMatchesPrefix(remotePath, location));
+    return (
+      Boolean(mbid) ||
+      locations == null ||
+      locations.some((location) => pathMatchesPrefix(remotePath, location))
+    );
   }
 
   async _resolveWithReread(snapshot, libraryKey, untrustedFolders) {
     const resolved = this._resolveItemIds(snapshot, libraryKey, untrustedFolders);
-    const needsRead = resolved.missing.some((track) => !track.settling && this._canHold(libraryKey, track));
+    const needsRead = resolved.missing.some(
+      (track) => !track.settling && this._canHold(libraryKey, track),
+    );
     let result = resolved;
-    if (needsRead && Date.now() - (this._fullReadAt.get(libraryKey) ?? 0) >= FULL_READ_INTERVAL_MS) {
+    if (
+      needsRead &&
+      Date.now() - (this._fullReadAt.get(libraryKey) ?? 0) >= FULL_READ_INTERVAL_MS
+    ) {
       try {
         await this._readIndex(libraryKey);
       } catch (error) {
-        logger.warn("jellyfin", "Could not re-read the Jellyfin music library", { error: error?.message });
+        logger.warn("jellyfin", "Could not re-read the Jellyfin music library", {
+          error: error?.message,
+        });
       }
       result = this._resolveItemIds(snapshot, libraryKey, untrustedFolders);
     }
@@ -339,9 +388,7 @@ export class JellyfinPlaybackDestination {
 
   async _publishPlaylist(snapshot, untrustedFolders) {
     if (!this.isConfigured()) return playbackOperationSuccess();
-    const jellyfinUser = await this._resolveOwnerJellyfinUser(
-      snapshot.ownerUserId,
-    );
+    const jellyfinUser = await this._resolveOwnerJellyfinUser(snapshot.ownerUserId);
     const jellyfinUserId = itemId(jellyfinUser);
 
     if (!jellyfinUserId) {
@@ -446,7 +493,8 @@ export class JellyfinPlaybackDestination {
     try {
       const snapshot = createPlaybackPlaylistSnapshot(value);
       return await this._runPlaylistOperation(this._cacheKey(snapshot), () =>
-        this._publishPlaylist(snapshot, pendingScanFolders.get(this.key) ?? []));
+        this._publishPlaylist(snapshot, pendingScanFolders.get(this.key) ?? []),
+      );
     } catch (error) {
       return playbackOperationFailure({
         code: "PLAYLIST_PUBLISH_FAILED",
@@ -482,7 +530,8 @@ export class JellyfinPlaybackDestination {
       if (!this.isConfigured()) return playbackOperationSuccess();
       for (const { targetKey } of jellyfinPlaylistPointerStore.getPointersForEntity(entityId)) {
         await this._runPlaylistOperation(`${entityId}:${targetKey}`, () =>
-          this._deleteTarget(entityId, targetKey));
+          this._deleteTarget(entityId, targetKey),
+        );
       }
       return playbackOperationSuccess();
     } catch (error) {
@@ -503,11 +552,22 @@ export class JellyfinPlaybackDestination {
       mappings,
     );
     if (targets) {
-      return [...new Set(targets.map((target) =>
-        targets.length > MAX_JELLYFIN_FOLDER_UPDATES ? target.root.path : target.path))];
+      return [
+        ...new Set(
+          targets.map((target) =>
+            targets.length > MAX_JELLYFIN_FOLDER_UPDATES ? target.root.path : target.path,
+          ),
+        ),
+      ];
     }
-    if (claimUnmatchedRootWarning(this._warnedUnmatchedRoots, unmatched.folder, aurralRoots, mappings)) {
-      logger.warn("jellyfin", "Changed folder is outside every Jellyfin music library; reporting all music libraries. Add a path mapping if Jellyfin sees it at another path.", unmatched);
+    if (
+      claimUnmatchedRootWarning(this._warnedUnmatchedRoots, unmatched.folder, aurralRoots, mappings)
+    ) {
+      logger.warn(
+        "jellyfin",
+        "Changed folder is outside every Jellyfin music library; reporting all music libraries. Add a path mapping if Jellyfin sees it at another path.",
+        unmatched,
+      );
     }
     return locations;
   }

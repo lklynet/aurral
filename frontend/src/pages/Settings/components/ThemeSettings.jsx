@@ -24,7 +24,11 @@ import {
   setThemeAppearance,
   THEME_MODES,
 } from "../../../utils/theme.js";
-import { parseThemeText, serializeThemeFile, THEME_GALLERY_URL } from "../../../utils/themeImport.js";
+import {
+  parseThemeText,
+  serializeThemeFile,
+  THEME_GALLERY_URL,
+} from "../../../utils/themeImport.js";
 import "./themeSettings.css";
 
 const APPEARANCE_OPTIONS = [
@@ -89,7 +93,10 @@ function ThemeSwatch({ palette }) {
     >
       <span className="theme-settings__swatch-bar" style={{ background: palette.chrome }} />
       <span className="theme-settings__swatch-line" style={{ background: palette.text }} />
-      <span className="theme-settings__swatch-line is-short" style={{ background: palette.textMuted }} />
+      <span
+        className="theme-settings__swatch-line is-short"
+        style={{ background: palette.textMuted }}
+      />
       <span className="theme-settings__swatch-accent" style={{ background: palette.accent }} />
     </span>
   );
@@ -98,8 +105,15 @@ function ThemeSwatch({ palette }) {
 function ThemeCard({ theme, mode, active, onSelect, onEdit }) {
   const custom = isCustomTheme(theme);
   return (
-    <div className={`theme-settings__card${active ? " is-active" : ""}${custom ? " is-custom" : ""}`}>
-      <button type="button" className="theme-settings__card-select" aria-pressed={active} onClick={onSelect}>
+    <div
+      className={`theme-settings__card${active ? " is-active" : ""}${custom ? " is-custom" : ""}`}
+    >
+      <button
+        type="button"
+        className="theme-settings__card-select"
+        aria-pressed={active}
+        onClick={onSelect}
+      >
         <ThemeSwatch palette={getThemePalette(theme, mode)} />
         <span className="theme-settings__card-copy">
           <span className="theme-settings__card-label">{theme.name}</span>
@@ -125,14 +139,19 @@ function ColorField({ fieldKey, label, value, placeholder, onChange, onInvalidCh
   const id = useId();
   const [text, setText] = useState(value || "");
   const invalid = text.trim() !== "" && !normalizeHexColor(text);
-  useEffect(() => setText((current) => (normalizeHexColor(current) === value ? current : value || "")), [value]);
+  useEffect(
+    () => setText((current) => (normalizeHexColor(current) === value ? current : value || "")),
+    [value],
+  );
   useEffect(() => {
     onInvalidChange(fieldKey, invalid);
     return () => onInvalidChange(fieldKey, false);
   }, [fieldKey, invalid, onInvalidChange]);
   return (
     <div className="theme-settings__color-field">
-      <label className="theme-settings__color-label" htmlFor={id}>{label}</label>
+      <label className="theme-settings__color-label" htmlFor={id}>
+        {label}
+      </label>
       <div className="theme-settings__color-inputs">
         <input
           type="color"
@@ -186,7 +205,9 @@ function ThemeEditor({ draft, title, onClose, onSaved, onRemoved, showError }) {
   const validation = useMemo(() => {
     if (invalidFields.size) return { error: "Enter colors as hex values, like #1b1d2a." };
     try {
-      return { theme: normalizeTheme({ id: draft.id || "draft", name: name || "Untitled", ...seeds }) };
+      return {
+        theme: normalizeTheme({ id: draft.id || "draft", name: name || "Untitled", ...seeds }),
+      };
     } catch (validationError) {
       return { error: validationError.message };
     }
@@ -222,10 +243,20 @@ function ThemeEditor({ draft, title, onClose, onSaved, onRemoved, showError }) {
   };
 
   const handleExport = () => {
-    const url = URL.createObjectURL(new Blob([serializeThemeFile({ name: name.trim() || "Untitled", ...seeds })], { type: "application/json" }));
+    const url = URL.createObjectURL(
+      new Blob([serializeThemeFile({ name: name.trim() || "Untitled", ...seeds })], {
+        type: "application/json",
+      }),
+    );
     const link = Object.assign(document.createElement("a"), {
       href: url,
-      download: `${name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "theme"}.aurral-theme.json`,
+      download: `${
+        name
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, "") || "theme"
+      }.aurral-theme.json`,
     });
     link.click();
     URL.revokeObjectURL(url);
@@ -246,17 +277,33 @@ function ThemeEditor({ draft, title, onClose, onSaved, onRemoved, showError }) {
       footer={
         <>
           {draft.id ? (
-            <button type="button" className="btn btn-ghost-danger theme-settings__footer-start" onClick={handleRemove}>
+            <button
+              type="button"
+              className="btn btn-ghost-danger theme-settings__footer-start"
+              onClick={handleRemove}
+            >
               <Trash2 aria-hidden="true" /> Remove theme
             </button>
           ) : null}
           {draft.id ? (
-            <button type="button" className="btn btn-ghost" onClick={handleExport} disabled={Boolean(validation.error)}>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={handleExport}
+              disabled={Boolean(validation.error)}
+            >
               <Download aria-hidden="true" /> Export
             </button>
           ) : null}
-          <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button type="button" className="btn btn-primary" onClick={handleSave} disabled={Boolean(validation.error)}>
+          <button type="button" className="btn btn-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={handleSave}
+            disabled={Boolean(validation.error)}
+          >
             Save theme
           </button>
         </>
@@ -264,7 +311,9 @@ function ThemeEditor({ draft, title, onClose, onSaved, onRemoved, showError }) {
     >
       <div className="theme-settings__editor">
         <div>
-          <label className="artist-field-label" htmlFor={nameId}>Name</label>
+          <label className="artist-field-label" htmlFor={nameId}>
+            Name
+          </label>
           <input
             id={nameId}
             type="text"
@@ -278,17 +327,19 @@ function ThemeEditor({ draft, title, onClose, onSaved, onRemoved, showError }) {
           />
         </div>
         <div className="theme-settings__tabs" role="group" aria-label="Colors to edit">
-          {THEME_MODES.slice().reverse().map((tabMode) => (
-            <button
-              key={tabMode}
-              type="button"
-              aria-pressed={mode === tabMode}
-              className={`theme-settings__tab${mode === tabMode ? " is-active" : ""}`}
-              onClick={() => setMode(tabMode)}
-            >
-              {MODE_LABELS[tabMode]}
-            </button>
-          ))}
+          {THEME_MODES.slice()
+            .reverse()
+            .map((tabMode) => (
+              <button
+                key={tabMode}
+                type="button"
+                aria-pressed={mode === tabMode}
+                className={`theme-settings__tab${mode === tabMode ? " is-active" : ""}`}
+                onClick={() => setMode(tabMode)}
+              >
+                {MODE_LABELS[tabMode]}
+              </button>
+            ))}
         </div>
         <div className="theme-settings__tab-panel">
           {seed ? (
@@ -300,7 +351,9 @@ function ThemeEditor({ draft, title, onClose, onSaved, onRemoved, showError }) {
                     fieldKey={`${mode}-${role}`}
                     label={label}
                     value={seed[role]}
-                    placeholder={role === "text" ? (mode === "dark" ? "#f5f5f5" : "#171717") : "#000000"}
+                    placeholder={
+                      role === "text" ? (mode === "dark" ? "#f5f5f5" : "#171717") : "#000000"
+                    }
                     onChange={(color) => updateSeed(role, color)}
                     onInvalidChange={setFieldInvalid}
                   />
@@ -331,12 +384,12 @@ function ThemeEditor({ draft, title, onClose, onSaved, onRemoved, showError }) {
               </button>
             </div>
           )}
-          <p className="settings-page__hint">
-            Text and accent colors adjust for readability.
-          </p>
+          <p className="settings-page__hint">Text and accent colors adjust for readability.</p>
         </div>
         {error || validation.error ? (
-          <p className="artist-error-text" role="alert">{error || validation.error}</p>
+          <p className="artist-error-text" role="alert">
+            {error || validation.error}
+          </p>
         ) : null}
       </div>
     </ModalShell>,
@@ -375,18 +428,31 @@ function ThemeImport({ onClose, onParsed }) {
       className="theme-settings__dialog"
       footer={
         <>
-          <button type="button" className="btn btn-ghost theme-settings__footer-start" onClick={() => fileRef.current?.click()}>
+          <button
+            type="button"
+            className="btn btn-ghost theme-settings__footer-start"
+            onClick={() => fileRef.current?.click()}
+          >
             <FileUp aria-hidden="true" /> Choose file
           </button>
-          <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button type="button" className="btn btn-primary" onClick={() => parse(text)} disabled={!text.trim()}>
+          <button type="button" className="btn btn-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => parse(text)}
+            disabled={!text.trim()}
+          >
             Continue
           </button>
         </>
       }
     >
       <div className="theme-settings__editor">
-        <label className="artist-field-label" htmlFor={textId}>Theme</label>
+        <label className="artist-field-label" htmlFor={textId}>
+          Theme
+        </label>
         <textarea
           id={textId}
           className="arr-input arr-textarea theme-settings__import-text"
@@ -416,10 +482,16 @@ function ThemeImport({ onClose, onParsed }) {
         />
         <p className="settings-page__hint">
           Find hundreds of schemes in the{" "}
-          <a href={THEME_GALLERY_URL} target="_blank" rel="noreferrer">Tinted Gallery</a>.
-          Open a scheme&apos;s source file and paste it here.
+          <a href={THEME_GALLERY_URL} target="_blank" rel="noreferrer">
+            Tinted Gallery
+          </a>
+          . Open a scheme&apos;s source file and paste it here.
         </p>
-        {error ? <p className="artist-error-text" role="alert">{error}</p> : null}
+        {error ? (
+          <p className="artist-error-text" role="alert">
+            {error}
+          </p>
+        ) : null}
       </div>
     </ModalShell>,
     document.body,
@@ -438,7 +510,11 @@ export function ThemeSettings({ showSuccess, showError }) {
       type: "editor",
       title: "Create theme",
       draft: {
-        name: isCustomTheme(selected) ? `${selected.name} copy` : selected.id === "aurral" ? "My theme" : `My ${selected.name}`,
+        name: isCustomTheme(selected)
+          ? `${selected.name} copy`
+          : selected.id === "aurral"
+            ? "My theme"
+            : `My ${selected.name}`,
         light: selected.light,
         dark: selected.dark,
       },
@@ -472,7 +548,11 @@ export function ThemeSettings({ showSuccess, showError }) {
         <div className="theme-settings__section-heading">
           <h4 id="theme-mode-heading">Color scheme</h4>
         </div>
-        <div className="theme-settings__mode-grid" role="group" aria-labelledby="theme-mode-heading">
+        <div
+          className="theme-settings__mode-grid"
+          role="group"
+          aria-labelledby="theme-mode-heading"
+        >
           {APPEARANCE_OPTIONS.map(({ id, label, Icon }) => (
             <button
               key={id}
@@ -495,7 +575,11 @@ export function ThemeSettings({ showSuccess, showError }) {
         <div className="theme-settings__section-heading">
           <h4 id="theme-themes-heading">Themes</h4>
           <div className="theme-settings__section-actions">
-            <button type="button" className="btn btn-ghost" onClick={() => setDialog({ type: "import" })}>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => setDialog({ type: "import" })}
+            >
               <FileUp aria-hidden="true" /> Import
             </button>
             <button type="button" className="btn btn-secondary" onClick={openCreate}>
@@ -517,8 +601,12 @@ export function ThemeSettings({ showSuccess, showError }) {
         </div>
         <div className="theme-settings__switch-row">
           <div className="theme-settings__switch-copy">
-            <label className="theme-settings__switch-label" htmlFor="theme-immersive-mode">Immersive mode</label>
-            <p className="settings-page__hint">Use artwork colors for accents, backgrounds, and the player.</p>
+            <label className="theme-settings__switch-label" htmlFor="theme-immersive-mode">
+              Immersive mode
+            </label>
+            <p className="settings-page__hint">
+              Use artwork colors for accents, backgrounds, and the player.
+            </p>
           </div>
           <PillToggle
             id="theme-immersive-mode"

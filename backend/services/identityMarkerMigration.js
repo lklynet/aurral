@@ -26,7 +26,11 @@ function listAurralDownloadedFiles(root) {
   return [...files].sort();
 }
 
-const fileExists = (filePath) => fs.stat(filePath).then((stat) => stat.isFile(), () => false);
+const fileExists = (filePath) =>
+  fs.stat(filePath).then(
+    (stat) => stat.isFile(),
+    () => false,
+  );
 
 export async function migrateIdentityMarkers() {
   const root = path.resolve(resolveDownloadRoot());

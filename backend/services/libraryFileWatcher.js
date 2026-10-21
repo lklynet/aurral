@@ -37,7 +37,8 @@ export function createLibraryFileWatcher({
     const root = String(entry?.path ?? entry ?? "");
     if (!root) continue;
     const key = path.resolve(root);
-    if (!watchRoots.has(key)) watchRoots.set(key, { root, pathMappings: entry?.pathMappings || [] });
+    if (!watchRoots.has(key))
+      watchRoots.set(key, { root, pathMappings: entry?.pathMappings || [] });
   }
 
   const scheduleChange = (root, filename) => {
@@ -51,14 +52,17 @@ export function createLibraryFileWatcher({
           : path.resolve(root, String(filename)),
     );
     if (timer) clearTimeout(timer);
-    timer = setTimeout(() => {
-      timer = null;
-      const roots = [...changedRoots];
-      const paths = [...changedPaths];
-      changedRoots.clear();
-      changedPaths.clear();
-      onChange(roots, paths);
-    }, Math.max(0, Number(debounceMs) || 0));
+    timer = setTimeout(
+      () => {
+        timer = null;
+        const roots = [...changedRoots];
+        const paths = [...changedPaths];
+        changedRoots.clear();
+        changedPaths.clear();
+        onChange(roots, paths);
+      },
+      Math.max(0, Number(debounceMs) || 0),
+    );
     timer.unref?.();
   };
 
@@ -68,10 +72,14 @@ export function createLibraryFileWatcher({
       let duplicate = false;
       let failureReported = false;
       let resolvedKey = null;
-      const watcher = watchImpl(root, { recursive: true, pathMappings }, (_eventType, filename, resolvedRoot = path.resolve(root)) => {
-        if (closed || stopped) return;
-        if (!isIgnoredChange(resolvedRoot, filename)) scheduleChange(resolvedRoot, filename);
-      });
+      const watcher = watchImpl(
+        root,
+        { recursive: true, pathMappings },
+        (_eventType, filename, resolvedRoot = path.resolve(root)) => {
+          if (closed || stopped) return;
+          if (!isIgnoredChange(resolvedRoot, filename)) scheduleChange(resolvedRoot, filename);
+        },
+      );
       const releaseRoot = () => {
         stopped = true;
         watchers.delete(watcher);
@@ -144,12 +152,16 @@ export async function refreshLibraryFileWatcher({ logger = console } = {}) {
   const playlistRoot = path.resolve(resolveDownloadRoot());
   activeWatcher = createLibraryFileWatcher({
     roots: resolveLibraryWatchRoots(),
-    onChange: (changedRoots, changedPaths) => scheduleLibraryScan({
-      includeLidarr: changedRoots.some((root) => path.resolve(root) !== playlistRoot),
-      changedPaths,
-    }),
+    onChange: (changedRoots, changedPaths) =>
+      scheduleLibraryScan({
+        includeLidarr: changedRoots.some((root) => path.resolve(root) !== playlistRoot),
+        changedPaths,
+      }),
     onError: (error, root) => {
-      logger.warn?.(`[Library] Automatic file watching disabled for ${root}; manual library refresh is still available:`, error?.message || error);
+      logger.warn?.(
+        `[Library] Automatic file watching disabled for ${root}; manual library refresh is still available:`,
+        error?.message || error,
+      );
     },
   });
   return true;

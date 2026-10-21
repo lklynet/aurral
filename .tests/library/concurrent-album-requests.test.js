@@ -91,7 +91,10 @@ test("concurrent new-artist album requests search every requested album", async 
         ["album-c", true],
       ],
     );
-    assert.equal(results.every((result) => result.status === "searching"), true);
+    assert.equal(
+      results.every((result) => result.status === "searching"),
+      true,
+    );
   } finally {
     lidarrClient.isConfigured = originalIsConfigured;
     lidarrClient.getArtistByMbid = originalGetArtistByMbid;

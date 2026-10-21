@@ -24,7 +24,10 @@ function nzbLimitError(indexer, until) {
   const minutes = Math.ceil((until - Date.now()) / 60000);
   const message = `${indexer || "The indexer"} has reached its NZB limit.`;
   if (minutes <= 0) return new Error(message);
-  const wait = minutes >= 120 ? `${Math.round(minutes / 60)} hours` : `${minutes} minute${minutes === 1 ? "" : "s"}`;
+  const wait =
+    minutes >= 120
+      ? `${Math.round(minutes / 60)} hours`
+      : `${minutes} minute${minutes === 1 ? "" : "s"}`;
   return new Error(`${message} Aurral will ask it again in ${wait}.`);
 }
 
@@ -145,8 +148,9 @@ function normalizeIndexer(indexer, settings = getSettings()) {
   const id = normalizeInteger(indexer?.id, null);
   const override = id != null ? settings.indexers[String(id)] : null;
   const priority = override?.priority ?? normalizePositiveInteger(indexer?.priority, 25);
-  const musicParams = (indexer?.capabilities?.musicSearchParams || [])
-    .map((param) => String(param || "").toLowerCase());
+  const musicParams = (indexer?.capabilities?.musicSearchParams || []).map((param) =>
+    String(param || "").toLowerCase(),
+  );
   return {
     musicSearch: musicParams.includes("artist") || musicParams.includes("album"),
     id,
@@ -337,7 +341,11 @@ export class ProwlarrClient {
       if (response.status !== 200) {
         throw new Error(`Prowlarr indexer list failed: HTTP ${response.status}`);
       }
-      indexerCache = { key, at: Date.now(), indexers: Array.isArray(response.data) ? response.data : [] };
+      indexerCache = {
+        key,
+        at: Date.now(),
+        indexers: Array.isArray(response.data) ? response.data : [],
+      };
     }
     return indexerCache.indexers
       .map((entry) => normalizeIndexer(entry, settings))

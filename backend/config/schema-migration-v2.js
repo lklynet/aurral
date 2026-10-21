@@ -2,9 +2,7 @@ const SCHEMA_VERSION_KEY = "schemaVersion";
 export const TARGET_SCHEMA_VERSION = 4;
 
 export function getSchemaVersion(db) {
-  const row = db
-    .prepare("SELECT value FROM settings WHERE key = ?")
-    .get(SCHEMA_VERSION_KEY);
+  const row = db.prepare("SELECT value FROM settings WHERE key = ?").get(SCHEMA_VERSION_KEY);
   return Number(row?.value || 1);
 }
 
@@ -16,25 +14,25 @@ export function initializeSchemaOnStartup(db, dbHelpers) {
   const upsertSettingStmt = db.prepare(
     "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
   );
-  return db.transaction(() => {
-    const lockedVersion = getSchemaVersion(db);
-    if (lockedVersion >= TARGET_SCHEMA_VERSION) {
-      return { migrated: false, schemaVersion: lockedVersion };
-    }
-    finalizeV2SettingsKeys(db, dbHelpers);
-    migrateJobsTable(db);
-    ensureSlskdTransferHistoryTable(db);
-    applyOwnershipMigration(db);
-    upsertSettingStmt.run(SCHEMA_VERSION_KEY, String(TARGET_SCHEMA_VERSION));
-    return { migrated: true, schemaVersion: TARGET_SCHEMA_VERSION };
-  }).immediate();
+  return db
+    .transaction(() => {
+      const lockedVersion = getSchemaVersion(db);
+      if (lockedVersion >= TARGET_SCHEMA_VERSION) {
+        return { migrated: false, schemaVersion: lockedVersion };
+      }
+      finalizeV2SettingsKeys(db, dbHelpers);
+      migrateJobsTable(db);
+      ensureSlskdTransferHistoryTable(db);
+      applyOwnershipMigration(db);
+      upsertSettingStmt.run(SCHEMA_VERSION_KEY, String(TARGET_SCHEMA_VERSION));
+      return { migrated: true, schemaVersion: TARGET_SCHEMA_VERSION };
+    })
+    .immediate();
 }
 
 function tableExists(db, name) {
   const row = db
-    .prepare(
-      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
-    )
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
     .get(name);
   return !!row;
 }
@@ -43,7 +41,11 @@ function tryAddColumn(db, sql) {
   try {
     db.exec(sql);
   } catch (error) {
-    if (!String(error?.message || "").toLowerCase().includes("duplicate column name")) {
+    if (
+      !String(error?.message || "")
+        .toLowerCase()
+        .includes("duplicate column name")
+    ) {
       throw error;
     }
   }
@@ -58,15 +60,9 @@ function getTableColumns(db, tableName) {
 }
 
 function buildPlaylistWorkerSettings(weeklyFlowWorker, playlistWorker) {
-  const legacy = weeklyFlowWorker && typeof weeklyFlowWorker === "object"
-    ? weeklyFlowWorker
-    : {};
-  const current = playlistWorker && typeof playlistWorker === "object"
-    ? playlistWorker
-    : {};
-  const parsedConcurrency = Number(
-    current.concurrency ?? legacy.concurrency,
-  );
+  const legacy = weeklyFlowWorker && typeof weeklyFlowWorker === "object" ? weeklyFlowWorker : {};
+  const current = playlistWorker && typeof playlistWorker === "object" ? playlistWorker : {};
+  const parsedConcurrency = Number(current.concurrency ?? legacy.concurrency);
   const concurrency =
     Number.isFinite(parsedConcurrency) && parsedConcurrency >= 1
       ? Math.min(3, Math.floor(parsedConcurrency))
@@ -77,10 +73,11 @@ function buildPlaylistWorkerSettings(weeklyFlowWorker, playlistWorker) {
     : Array.isArray(legacy.retryPausedPlaylistIds)
       ? legacy.retryPausedPlaylistIds
       : [];
-  const existingFileModeRaw =
-    current.existingFileMode ?? legacy.existingFileMode;
+  const existingFileModeRaw = current.existingFileMode ?? legacy.existingFileMode;
   const existingFileMode =
-    String(existingFileModeRaw || "").trim().toLowerCase() === "download"
+    String(existingFileModeRaw || "")
+      .trim()
+      .toLowerCase() === "download"
       ? "download"
       : "reuse";
   return {
@@ -96,25 +93,18 @@ function backfillSlskdSettings(db, dbHelpers) {
   const upsertSettingStmt = db.prepare(
     "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
   );
-  const integrations = dbHelpers.parseJSON(
-    getSettingStmt.get("integrations")?.value,
-  );
+  const integrations = dbHelpers.parseJSON(getSettingStmt.get("integrations")?.value);
   if (!integrations) return;
-  const weeklyFlowWorker = dbHelpers.parseJSON(
-    getSettingStmt.get("weeklyFlowWorker")?.value,
-  );
+  const weeklyFlowWorker = dbHelpers.parseJSON(getSettingStmt.get("weeklyFlowWorker")?.value);
   const slskd = { ...(integrations.slskd || {}) };
   let changed = false;
   if (!slskd.preferredFormat) {
     slskd.preferredFormat =
-      String(weeklyFlowWorker?.preferredFormat || "").toLowerCase() === "mp3"
-        ? "mp3"
-        : "flac";
+      String(weeklyFlowWorker?.preferredFormat || "").toLowerCase() === "mp3" ? "mp3" : "flac";
     changed = true;
   }
   if (slskd.preferredFormatStrict === undefined) {
-    slskd.preferredFormatStrict =
-      weeklyFlowWorker?.preferredFormatStrict === true;
+    slskd.preferredFormatStrict = weeklyFlowWorker?.preferredFormatStrict === true;
     changed = true;
   }
   if (!changed) return;
@@ -134,38 +124,23 @@ export function finalizeV2SettingsKeys(db, dbHelpers) {
   );
 
   const flows = dbHelpers.parseJSON(getSettingStmt.get("flows")?.value);
-  const weeklyFlows = dbHelpers.parseJSON(
-    getSettingStmt.get("weeklyFlows")?.value,
-  );
+  const weeklyFlows = dbHelpers.parseJSON(getSettingStmt.get("weeklyFlows")?.value);
   if (flows == null && weeklyFlows != null) {
     upsertSettingStmt.run("flows", dbHelpers.stringifyJSON(weeklyFlows));
   }
 
-  const sharedPlaylists = dbHelpers.parseJSON(
-    getSettingStmt.get("sharedPlaylists")?.value,
-  );
-  const sharedFlowPlaylists = dbHelpers.parseJSON(
-    getSettingStmt.get("sharedFlowPlaylists")?.value,
-  );
+  const sharedPlaylists = dbHelpers.parseJSON(getSettingStmt.get("sharedPlaylists")?.value);
+  const sharedFlowPlaylists = dbHelpers.parseJSON(getSettingStmt.get("sharedFlowPlaylists")?.value);
   if (sharedPlaylists == null && sharedFlowPlaylists != null) {
-    upsertSettingStmt.run(
-      "sharedPlaylists",
-      dbHelpers.stringifyJSON(sharedFlowPlaylists),
-    );
+    upsertSettingStmt.run("sharedPlaylists", dbHelpers.stringifyJSON(sharedFlowPlaylists));
   }
 
-  const playlistWorker = dbHelpers.parseJSON(
-    getSettingStmt.get("playlistWorker")?.value,
-  );
-  const weeklyFlowWorker = dbHelpers.parseJSON(
-    getSettingStmt.get("weeklyFlowWorker")?.value,
-  );
+  const playlistWorker = dbHelpers.parseJSON(getSettingStmt.get("playlistWorker")?.value);
+  const weeklyFlowWorker = dbHelpers.parseJSON(getSettingStmt.get("weeklyFlowWorker")?.value);
   if (weeklyFlowWorker || playlistWorker) {
     upsertSettingStmt.run(
       "playlistWorker",
-      dbHelpers.stringifyJSON(
-        buildPlaylistWorkerSettings(weeklyFlowWorker, playlistWorker),
-      ),
+      dbHelpers.stringifyJSON(buildPlaylistWorkerSettings(weeklyFlowWorker, playlistWorker)),
     );
   }
 
@@ -296,9 +271,7 @@ function backfillLidarrManagementState(db) {
     return;
   }
   const now = Date.now();
-  const artists = db
-    .prepare("SELECT id, mbid, metadata_json FROM library_artists")
-    .all();
+  const artists = db.prepare("SELECT id, mbid, metadata_json FROM library_artists").all();
   if (!artists.length) return;
   const managedByMbid = tableExists(db, "lidarr_artist_id_map")
     ? new Set(
@@ -444,71 +417,23 @@ function migrateJobsTable(db) {
     tryAddColumn(db, "ALTER TABLE playlist_download_jobs ADD COLUMN playlist_id TEXT");
   }
   if (!columns.includes("playlist_type")) {
-    tryAddColumn(
-      db,
-      "ALTER TABLE playlist_download_jobs ADD COLUMN playlist_type TEXT",
-    );
+    tryAddColumn(db, "ALTER TABLE playlist_download_jobs ADD COLUMN playlist_type TEXT");
   }
-  tryAddColumn(
-    db,
-    "ALTER TABLE playlist_download_jobs ADD COLUMN slskd_search_id TEXT",
-  );
-  tryAddColumn(
-    db,
-    "ALTER TABLE playlist_download_jobs ADD COLUMN slskd_batch_id TEXT",
-  );
-  tryAddColumn(
-    db,
-    "ALTER TABLE playlist_download_jobs ADD COLUMN remote_username TEXT",
-  );
-  tryAddColumn(
-    db,
-    "ALTER TABLE playlist_download_jobs ADD COLUMN remote_filename TEXT",
-  );
-  tryAddColumn(
-    db,
-    "ALTER TABLE playlist_download_jobs ADD COLUMN track_number INTEGER",
-  );
-  tryAddColumn(
-    db,
-    "ALTER TABLE playlist_download_jobs ADD COLUMN album_track_count INTEGER",
-  );
-  tryAddColumn(
-    db,
-    "ALTER TABLE playlist_download_jobs ADD COLUMN album_track_titles TEXT",
-  );
-  tryAddColumn(
-    db,
-    "ALTER TABLE playlist_download_jobs ADD COLUMN artist_aliases TEXT",
-  );
-  tryAddColumn(
-    db,
-    "ALTER TABLE playlist_download_jobs ADD COLUMN download_source TEXT",
-  );
-  tryAddColumn(
-    db,
-    "ALTER TABLE playlist_download_jobs ADD COLUMN download_client TEXT",
-  );
-  tryAddColumn(
-    db,
-    "ALTER TABLE playlist_download_jobs ADD COLUMN download_client_id TEXT",
-  );
-  tryAddColumn(
-    db,
-    "ALTER TABLE playlist_download_jobs ADD COLUMN release_guid TEXT",
-  );
-  tryAddColumn(
-    db,
-    "ALTER TABLE playlist_download_jobs ADD COLUMN release_title TEXT",
-  );
-  tryAddColumn(
-    db,
-    "ALTER TABLE playlist_download_jobs ADD COLUMN indexer_id TEXT",
-  );
-  tryAddColumn(
-    db,
-    "ALTER TABLE playlist_download_jobs ADD COLUMN indexer_name TEXT",
-  );
+  tryAddColumn(db, "ALTER TABLE playlist_download_jobs ADD COLUMN slskd_search_id TEXT");
+  tryAddColumn(db, "ALTER TABLE playlist_download_jobs ADD COLUMN slskd_batch_id TEXT");
+  tryAddColumn(db, "ALTER TABLE playlist_download_jobs ADD COLUMN remote_username TEXT");
+  tryAddColumn(db, "ALTER TABLE playlist_download_jobs ADD COLUMN remote_filename TEXT");
+  tryAddColumn(db, "ALTER TABLE playlist_download_jobs ADD COLUMN track_number INTEGER");
+  tryAddColumn(db, "ALTER TABLE playlist_download_jobs ADD COLUMN album_track_count INTEGER");
+  tryAddColumn(db, "ALTER TABLE playlist_download_jobs ADD COLUMN album_track_titles TEXT");
+  tryAddColumn(db, "ALTER TABLE playlist_download_jobs ADD COLUMN artist_aliases TEXT");
+  tryAddColumn(db, "ALTER TABLE playlist_download_jobs ADD COLUMN download_source TEXT");
+  tryAddColumn(db, "ALTER TABLE playlist_download_jobs ADD COLUMN download_client TEXT");
+  tryAddColumn(db, "ALTER TABLE playlist_download_jobs ADD COLUMN download_client_id TEXT");
+  tryAddColumn(db, "ALTER TABLE playlist_download_jobs ADD COLUMN release_guid TEXT");
+  tryAddColumn(db, "ALTER TABLE playlist_download_jobs ADD COLUMN release_title TEXT");
+  tryAddColumn(db, "ALTER TABLE playlist_download_jobs ADD COLUMN indexer_id TEXT");
+  tryAddColumn(db, "ALTER TABLE playlist_download_jobs ADD COLUMN indexer_name TEXT");
   for (const [name, type] of [
     ["quality_tier", "TEXT"],
     ["quality_format", "TEXT"],
@@ -520,10 +445,7 @@ function migrateJobsTable(db) {
     ["upgrade_for_job_id", "TEXT"],
     ["manual_replacement_search", "INTEGER NOT NULL DEFAULT 0"],
   ]) {
-    tryAddColumn(
-      db,
-      `ALTER TABLE playlist_download_jobs ADD COLUMN ${name} ${type}`,
-    );
+    tryAddColumn(db, `ALTER TABLE playlist_download_jobs ADD COLUMN ${name} ${type}`);
   }
 
   dropLegacyWeeklyFlowJobTriggers(db);

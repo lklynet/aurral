@@ -19,23 +19,25 @@ const [
   { registerAlbums },
   { downloadWorker },
   { clearMetadataProviderCaches },
-] =
-  await setupIsolatedBackend(
-    "artist-automation",
-    "backend/config/db-sqlite.js",
-    "backend/db/helpers/index.js",
-    "backend/services/libraryMediaStore.js",
-    "backend/services/libraryManagementStore.js",
-    "backend/services/lidarrClient.js",
-    "backend/services/libraryManager.js",
-    "backend/routes/library/handlers/artists.js",
-    "backend/routes/library/handlers/albums.js",
-    "backend/services/downloadJobs/downloadWorker.js",
-    "backend/services/providers/brainzmashProvider.js",
-  );
+] = await setupIsolatedBackend(
+  "artist-automation",
+  "backend/config/db-sqlite.js",
+  "backend/db/helpers/index.js",
+  "backend/services/libraryMediaStore.js",
+  "backend/services/libraryManagementStore.js",
+  "backend/services/lidarrClient.js",
+  "backend/services/libraryManager.js",
+  "backend/routes/library/handlers/artists.js",
+  "backend/routes/library/handlers/albums.js",
+  "backend/services/downloadJobs/downloadWorker.js",
+  "backend/services/providers/brainzmashProvider.js",
+);
 
 const routes = new Map();
-const route = (method) => (routePath, ...handlers) => routes.set(`${method} ${routePath}`, handlers.at(-1));
+const route =
+  (method) =>
+  (routePath, ...handlers) =>
+    routes.set(`${method} ${routePath}`, handlers.at(-1));
 for (const register of [registerArtists, registerAlbums]) {
   register({ get: route("GET"), post: route("POST"), put: route("PUT"), delete: route("DELETE") });
 }
@@ -164,7 +166,12 @@ function seedArtist(managedBy, monitorMode) {
     mbid: artistMbid,
     name: "Automation Artist",
   });
-  managementStore.setLibraryManagement({ entityKind: "artist", entityId: artist.id, managedBy, monitorMode });
+  managementStore.setLibraryManagement({
+    entityKind: "artist",
+    entityId: artist.id,
+    managedBy,
+    monitorMode,
+  });
   return artist;
 }
 
@@ -176,8 +183,17 @@ function seedAurralAlbum(artistId) {
     artistId,
     title: "Album 1",
   });
-  managementStore.setLibraryManagement({ entityKind: "album", entityId: album.id, managedBy: "aurral", monitorMode: "monitored" });
-  const track = libraryStore.upsertLibraryTrack({ identityKey: "track:automation", title: "Track", artistName: "Automation Artist" });
+  managementStore.setLibraryManagement({
+    entityKind: "album",
+    entityId: album.id,
+    managedBy: "aurral",
+    monitorMode: "monitored",
+  });
+  const track = libraryStore.upsertLibraryTrack({
+    identityKey: "track:automation",
+    title: "Track",
+    artistName: "Automation Artist",
+  });
   libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
   return { album, track };
 }
@@ -202,14 +218,23 @@ test("with Lidarr connected, monitoring a Lidarr artist lets Lidarr take its Aur
   lidarr.artist = lidarrArtist({ monitored: false });
   lidarr.albums = [lidarrAlbum(1, aurralAlbumMbid, false), lidarrAlbum(2, otherAlbumMbid, false)];
 
-  const result = await libraryManager.setArtistMonitoring(artistMbid, { monitorOption: "all", user: admin });
+  const result = await libraryManager.setArtistMonitoring(artistMbid, {
+    monitorOption: "all",
+    user: admin,
+  });
 
   assert.equal(result.error, undefined);
   assert.deepEqual(lidarr.calls, [["monitor", "all"]]);
   assert.deepEqual(management("artist", artist.id), ["lidarr", "all"]);
-  assert.deepEqual(lidarr.albums.map((entry) => entry.monitored), [true, true]);
+  assert.deepEqual(
+    lidarr.albums.map((entry) => entry.monitored),
+    [true, true],
+  );
   assert.equal(management("album", album.id)[0], "lidarr");
-  assert.equal(db.prepare("SELECT monitored FROM library_tracks WHERE id = ?").get(track.id).monitored, 0);
+  assert.equal(
+    db.prepare("SELECT monitored FROM library_tracks WHERE id = ?").get(track.id).monitored,
+    0,
+  );
 });
 
 test("an album stays Aurral's when Lidarr fails to monitor it", async () => {
@@ -228,29 +253,51 @@ test("an album stays Aurral's when Lidarr fails to monitor it", async () => {
   }
 
   assert.equal(management("album", album.id)[0], "aurral");
-  assert.equal(db.prepare("SELECT monitored FROM library_tracks WHERE id = ?").get(track.id).monitored, 1);
+  assert.equal(
+    db.prepare("SELECT monitored FROM library_tracks WHERE id = ?").get(track.id).monitored,
+    1,
+  );
 });
 
 test("with Lidarr connected, new artists go to Lidarr and Aurral keeps managing its own", async () => {
   const artist = seedArtist("aurral", "none");
   const { album } = seedAurralAlbum(artist.id);
-  managementStore.setLibraryManagement({ entityKind: "album", entityId: album.id, managedBy: "aurral", monitorMode: "unmonitored" });
+  managementStore.setLibraryManagement({
+    entityKind: "album",
+    entityId: album.id,
+    managedBy: "aurral",
+    monitorMode: "unmonitored",
+  });
 
   const add = await callRoute("POST /artists", {
-    body: { foreignArtistId: artistMbid, artistName: "Automation Artist", managedBy: "aurral", monitorOption: "all" },
+    body: {
+      foreignArtistId: artistMbid,
+      artistName: "Automation Artist",
+      managedBy: "aurral",
+      monitorOption: "all",
+    },
   });
-  const future = await libraryManager.setArtistMonitoring(artistMbid, { monitorOption: "future", user: admin });
-  const futureState = management("artist", artist.id);
-  const none = await libraryManager.setArtistMonitoring(artistMbid, { monitorOption: "none", user: admin });
-  const monitorAlbum = await libraryManager.setAurralAlbumMonitoring(album.id, { monitored: true });
-  const request = (albumMbid) => libraryManager.requestAlbumFromSearch({
-    albumMbid,
-    albumName: "Album",
-    artistMbid,
-    artistName: "Automation Artist",
-    managedBy: "aurral",
+  const future = await libraryManager.setArtistMonitoring(artistMbid, {
+    monitorOption: "future",
     user: admin,
-  }).catch((error) => error);
+  });
+  const futureState = management("artist", artist.id);
+  const none = await libraryManager.setArtistMonitoring(artistMbid, {
+    monitorOption: "none",
+    user: admin,
+  });
+  const monitorAlbum = await libraryManager.setAurralAlbumMonitoring(album.id, { monitored: true });
+  const request = (albumMbid) =>
+    libraryManager
+      .requestAlbumFromSearch({
+        albumMbid,
+        albumName: "Album",
+        artistMbid,
+        artistName: "Automation Artist",
+        managedBy: "aurral",
+        user: admin,
+      })
+      .catch((error) => error);
   const retried = await request(aurralAlbumMbid);
   const newAlbum = await request(otherAlbumMbid);
 
@@ -289,7 +336,10 @@ test("without Lidarr, Aurral monitors the artist and Lidarr is never asked", asy
   assert.deepEqual(management("artist", artistId), ["aurral", "future"]);
   assert.equal(untouched.error, undefined);
   assert.equal(lidarrAdd.statusCode, 409);
-  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM library_artists WHERE mbid = ?").get(neverAdded).n, 0);
+  assert.equal(
+    db.prepare("SELECT COUNT(*) AS n FROM library_artists WHERE mbid = ?").get(neverAdded).n,
+    0,
+  );
   assert.deepEqual(lidarr.calls, []);
 });
 
@@ -298,7 +348,10 @@ test("an Aurral monitoring change that cannot load releases leaves the artist as
   metadata.fails = true;
   const artist = seedArtist("aurral", "none");
 
-  const result = await libraryManager.setArtistMonitoring(artistMbid, { monitorOption: "all", user: admin });
+  const result = await libraryManager.setArtistMonitoring(artistMbid, {
+    monitorOption: "all",
+    user: admin,
+  });
 
   assert.equal(result.statusCode, 503);
   assert.deepEqual(management("artist", artist.id), ["aurral", "none"]);
@@ -309,9 +362,15 @@ test("the Lidarr option chosen in Aurral reads back until Lidarr changes", async
   lidarr.artist = lidarrArtist();
   await libraryManager.setArtistMonitoring(artistMbid, { monitorOption: "future", user: admin });
 
-  const chosen = await libraryManager.getArtist(artistMbid, { managedBy: "lidarr", forceRefresh: true });
+  const chosen = await libraryManager.getArtist(artistMbid, {
+    managedBy: "lidarr",
+    forceRefresh: true,
+  });
   lidarr.artist = { ...lidarr.artist, monitorNewItems: "none" };
-  const changedInLidarr = await libraryManager.getArtist(artistMbid, { managedBy: "lidarr", forceRefresh: true });
+  const changedInLidarr = await libraryManager.getArtist(artistMbid, {
+    managedBy: "lidarr",
+    forceRefresh: true,
+  });
 
   assert.deepEqual([chosen.managedBy, chosen.monitorOption], ["lidarr", "future"]);
   assert.equal(changedInLidarr.monitorOption, "none");
@@ -348,18 +407,31 @@ test("adding an artist through monitoring needs permission to add artists", asyn
 
   assert.equal(result.statusCode, 403);
   assert.deepEqual(lidarr.calls, []);
-  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM library_artists WHERE mbid = ?").get(artistMbid).n, 0);
+  assert.equal(
+    db.prepare("SELECT COUNT(*) AS n FROM library_artists WHERE mbid = ?").get(artistMbid).n,
+    0,
+  );
 });
 
 test("adding to Lidarr without monitoring overrides the default monitor option", async () => {
   const settings = dbOps.getSettings();
   dbOps.updateSettings({
     ...settings,
-    integrations: { ...settings.integrations, lidarr: { ...settings.integrations?.lidarr, defaultMonitorOption: "all" } },
+    integrations: {
+      ...settings.integrations,
+      lidarr: { ...settings.integrations?.lidarr, defaultMonitorOption: "all" },
+    },
   });
   try {
-    const chosen = await libraryManager.resolveArtistAddOptions({ managedBy: "lidarr", monitorOption: "none", user: admin });
-    const defaulted = await libraryManager.resolveArtistAddOptions({ managedBy: "lidarr", user: admin });
+    const chosen = await libraryManager.resolveArtistAddOptions({
+      managedBy: "lidarr",
+      monitorOption: "none",
+      user: admin,
+    });
+    const defaulted = await libraryManager.resolveArtistAddOptions({
+      managedBy: "lidarr",
+      user: admin,
+    });
 
     assert.deepEqual([chosen.monitorOption, defaulted.monitorOption], ["none", "all"]);
   } finally {
@@ -373,15 +445,36 @@ test("the monitoring state reports only the manager in charge", async () => {
   const notInLidarr = await libraryManager.getArtistMonitoring(artistMbid);
   lidarr.artist = lidarrArtist({ monitorNewItems: "all" });
   const inLidarr = await libraryManager.getArtistMonitoring(artistMbid);
-  managementStore.setLibraryManagement({ entityKind: "artist", entityId: artist.id, managedBy: "aurral", monitorMode: "none" });
+  managementStore.setLibraryManagement({
+    entityKind: "artist",
+    entityId: artist.id,
+    managedBy: "aurral",
+    monitorMode: "none",
+  });
   await libraryManager.setArtistMonitoring(artistMbid, {
-    monitoring: { monitored: true, useDefault: false, rules: { catalog: "none", newReleases: true } },
+    monitoring: {
+      monitored: true,
+      useDefault: false,
+      rules: { catalog: "none", newReleases: true },
+    },
     user: admin,
   });
   const aurral = await libraryManager.getArtistMonitoring(artistMbid);
 
-  assert.deepEqual(notInLidarr, { manager: "lidarr", added: false, monitorOption: "none", inAurral: false, error: null });
-  assert.deepEqual(inLidarr, { manager: "lidarr", added: true, monitorOption: null, inAurral: false, error: null });
+  assert.deepEqual(notInLidarr, {
+    manager: "lidarr",
+    added: false,
+    monitorOption: "none",
+    inAurral: false,
+    error: null,
+  });
+  assert.deepEqual(inLidarr, {
+    manager: "lidarr",
+    added: true,
+    monitorOption: null,
+    inAurral: false,
+    error: null,
+  });
   assert.equal(aurral.manager, "aurral");
   assert.equal(aurral.monitored, true);
   assert.equal(aurral.useDefault, false);
@@ -407,7 +500,10 @@ test("naming a manager removes only that side", async () => {
   const { album } = seedAurralAlbum(artist.id);
   lidarr.artist = lidarrArtist();
 
-  const fromLidarr = await callRoute("DELETE /artists/:mbid", { params: { mbid: artistMbid }, query: { manager: "lidarr" } });
+  const fromLidarr = await callRoute("DELETE /artists/:mbid", {
+    params: { mbid: artistMbid },
+    query: { manager: "lidarr" },
+  });
 
   assert.equal(fromLidarr.statusCode, 200);
   assert.equal(management("album", album.id)[0], "aurral");
@@ -433,7 +529,10 @@ test("removing from Lidarr while it is not connected is refused", async () => {
   lidarr.configured = false;
   seedArtist("lidarr", "none");
 
-  const response = await callRoute("DELETE /artists/:mbid", { params: { mbid: artistMbid }, query: { manager: "lidarr" } });
+  const response = await callRoute("DELETE /artists/:mbid", {
+    params: { mbid: artistMbid },
+    query: { manager: "lidarr" },
+  });
 
   assert.equal(response.statusCode, 503);
   assert.deepEqual(lidarr.calls, []);
@@ -445,7 +544,9 @@ test("a Lidarr artist's albums add Aurral's albums by MBID, never by number", as
   lidarr.albums = [{ ...lidarrAlbum(7, otherAlbumMbid, true), artistId: aurralArtist.id }];
   const albumsOf = async (foreignArtistId) => {
     lidarr.artist = lidarrArtist({ id: aurralArtist.id, foreignArtistId });
-    const response = await callRoute("GET /albums", { query: { artistId: String(aurralArtist.id), managedBy: "lidarr" } });
+    const response = await callRoute("GET /albums", {
+      query: { artistId: String(aurralArtist.id), managedBy: "lidarr" },
+    });
     return response.body.map((album) => album.mbid);
   };
 
@@ -461,7 +562,10 @@ test("without Lidarr, removing an artist keeps the record Lidarr left behind", a
 
   assert.equal(result.success, true);
   assert.deepEqual(management("artist", artist.id), ["lidarr", "none"]);
-  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM library_artists WHERE id = ?").get(artist.id).n, 1);
+  assert.equal(
+    db.prepare("SELECT COUNT(*) AS n FROM library_artists WHERE id = ?").get(artist.id).n,
+    1,
+  );
 });
 
 test("Lidarr monitoring defaults leave Lidarr alone when given Aurral's own album records", async () => {
@@ -473,7 +577,11 @@ test("Lidarr monitoring defaults leave Lidarr alone when given Aurral's own albu
     artistId: artist.id,
     title: "Album 1",
   });
-  const track = libraryStore.upsertLibraryTrack({ identityKey: "track:automation-fallback", title: "Track", artistName: "Automation Artist" });
+  const track = libraryStore.upsertLibraryTrack({
+    identityKey: "track:automation-fallback",
+    title: "Track",
+    artistName: "Automation Artist",
+  });
   libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
   lidarr.albums = [lidarrAlbum(album.id, otherAlbumMbid, false)];
   const libraryAlbums = await libraryManager.getAlbums(artist.id, null, { managedBy: "aurral" });

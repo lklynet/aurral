@@ -84,10 +84,7 @@ test("bulk album reads use Lidarr artist selectors when requested", async (t) =>
 
   await client.getAllAlbums({ artistIds: [7, 8], forceRefresh: true });
 
-  assert.deepEqual(requests.sort(), [
-    "/api/v1/album?artistId=7",
-    "/api/v1/album?artistId=8",
-  ]);
+  assert.deepEqual(requests.sort(), ["/api/v1/album?artistId=7", "/api/v1/album?artistId=8"]);
   client._httpAgent.destroy();
   client._httpsAgent.destroy();
   client._httpsInsecureAgent.destroy();
@@ -209,9 +206,10 @@ test("bulk track-file reads use bounded repeated ID selectors", async (t) => {
     requests.map((batch) => batch.length).sort((left, right) => left - right),
     [1, 400],
   );
-  assert.deepEqual(requests.flat().sort((left, right) => left - right), [
-    ...Array.from({ length: 401 }, (_, index) => index + 1),
-  ]);
+  assert.deepEqual(
+    requests.flat().sort((left, right) => left - right),
+    [...Array.from({ length: 401 }, (_, index) => index + 1)],
+  );
   client._httpAgent.destroy();
   client._httpsAgent.destroy();
   client._httpsInsecureAgent.destroy();
@@ -824,9 +822,7 @@ test("artist add succeeds when a provider mapping conflict follows a successful 
       return [{ foreignArtistId: providerId, artistName: "Muse" }];
     }
     if (endpoint === "/artist" && method === "GET") {
-      return [
-        { id: 42, foreignArtistId: providerId, artistName: "Muse", monitored: true },
-      ];
+      return [{ id: 42, foreignArtistId: providerId, artistName: "Muse", monitored: true }];
     }
     throw new Error(`Unexpected Lidarr request: ${method} ${endpoint}`);
   };

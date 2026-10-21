@@ -7,17 +7,23 @@ import {
   setupIsolatedBackend,
 } from "./helpers/backendTestHarness.js";
 
-const [state, { dbOps }, { getArtistImage }, { registerDetails }, { registerCover },
-  { registerStream }, { issueStreamToken }] =
-  await setupIsolatedBackend(
-    "artist-image-race",
-    "backend/db/helpers/index.js",
-    "backend/services/imageService.js",
-    "backend/routes/artists/handlers/details.js",
-    "backend/routes/artists/handlers/cover.js",
-    "backend/routes/artists/handlers/stream.js",
-    "backend/middleware/auth.js",
-  );
+const [
+  state,
+  { dbOps },
+  { getArtistImage },
+  { registerDetails },
+  { registerCover },
+  { registerStream },
+  { issueStreamToken },
+] = await setupIsolatedBackend(
+  "artist-image-race",
+  "backend/db/helpers/index.js",
+  "backend/services/imageService.js",
+  "backend/routes/artists/handlers/details.js",
+  "backend/routes/artists/handlers/cover.js",
+  "backend/routes/artists/handlers/stream.js",
+  "backend/middleware/auth.js",
+);
 
 const originalFetch = globalThis.fetch;
 const previousMetadataUrl = process.env.BRAINZMASH_BASE_URL;
@@ -119,9 +125,15 @@ async function whileOldIsBlocked(promise) {
     return await Promise.race([
       promise,
       new Promise((_resolve, reject) => {
-        timer = setTimeout(() => reject(new assert.AssertionError({
-          message: "the newer lookup must progress while the old lookup is blocked",
-        })), 2000);
+        timer = setTimeout(
+          () =>
+            reject(
+              new assert.AssertionError({
+                message: "the newer lookup must progress while the old lookup is blocked",
+              }),
+            ),
+          2000,
+        );
       }),
     ]);
   } finally {
@@ -145,9 +157,10 @@ for (const [index, source, lookup] of [
     const albumId = artistId(index + 200);
     artist(mbid, {
       images: source === "direct image" ? [image(oldImage)] : [],
-      albums: source === "album image"
-        ? [{ id: albumId, title: "Old Album", type: "Album", firstreleasedate: "2020-01-01" }]
-        : [],
+      albums:
+        source === "album image"
+          ? [{ id: albumId, title: "Old Album", type: "Album", firstreleasedate: "2020-01-01" }]
+          : [],
       before: () => oldGate.wait(),
     });
     artist(replacement, { images: [image(newImage)] });
@@ -186,7 +199,10 @@ for (const [index, source, lookup] of [
     }
 
     const oldResult = await oldLookup;
-    assert.equal(oldResult.images[0]?.image || null, source === "not-found result" ? null : oldImage);
+    assert.equal(
+      oldResult.images[0]?.image || null,
+      source === "not-found result" ? null : oldImage,
+    );
     assert.equal(dbOps.getImage(mbid)?.imageUrl, newImage);
     assert.equal(dbOps.getArtistOverride(mbid)?.musicbrainzId, replacement);
   });
@@ -315,7 +331,13 @@ test("an old stream not-found result cannot overwrite the current image", async 
   dbOps.setArtistOverride(mbid, { deezerArtistId: "5432" });
   fixtures.set("api.deezer.com/artist/5432", async () => {
     await oldGate.wait();
-    return { id: 5432, name: "Missing Image", picture: null, picture_medium: null, picture_big: null };
+    return {
+      id: 5432,
+      name: "Missing Image",
+      picture: null,
+      picture_medium: null,
+      picture_big: null,
+    };
   });
   const token = issueStreamToken({ id: 1, username: "test", role: "admin" });
   const oldStream = fetch(`${server.url}/${mbid}/stream?st=${token}`).then(async (response) => {
@@ -462,7 +484,9 @@ test("a forced refresh searches albums that a pending lookup skips", async () =>
   const albumId = artistId(219);
   const lookupGate = gate();
   artist(mbid, {
-    albums: [{ id: albumId, title: "Current Album", type: "Album", firstreleasedate: "2020-01-01" }],
+    albums: [
+      { id: albumId, title: "Current Album", type: "Album", firstreleasedate: "2020-01-01" },
+    ],
     before: () => lookupGate.wait(),
   });
   fixtures.set(`metadata.invalid/album/${albumId}`, async () => ({

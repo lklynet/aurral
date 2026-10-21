@@ -2,15 +2,7 @@ import { randomUUID } from "crypto";
 import pMap from "p-map";
 import { dbOps } from "../../db/helpers/index.js";
 
-export const LASTFM_PERIODS = [
-  "none",
-  "7day",
-  "1month",
-  "3month",
-  "6month",
-  "12month",
-  "overall",
-];
+export const LASTFM_PERIODS = ["none", "7day", "1month", "3month", "6month", "12month", "overall"];
 export const LISTENBRAINZ_RANGE_BY_PERIOD = {
   "7day": "week",
   "1month": "month",
@@ -29,25 +21,18 @@ const DISCOVERY_CANDIDATE_MULTIPLIER = 2.5;
 const DISCOVERY_RECOMMENDATIONS_MAX = 500;
 const DISCOVERY_RECOMMENDATIONS_DEFAULT = 200;
 
-export const getDiscoveryRecommendationPoolLimit = () =>
-  DISCOVERY_RECOMMENDATIONS_MAX;
+export const getDiscoveryRecommendationPoolLimit = () => DISCOVERY_RECOMMENDATIONS_MAX;
 
 export const getDiscoveryRecommendationsPerRefresh = () => {
   const settings = dbOps.getSettings();
-  const parsed = parseInt(
-    settings.integrations?.lastfm?.discoveryRecommendationsPerRefresh,
-    10,
-  );
+  const parsed = parseInt(settings.integrations?.lastfm?.discoveryRecommendationsPerRefresh, 10);
   if (!Number.isFinite(parsed)) return DISCOVERY_RECOMMENDATIONS_DEFAULT;
   return Math.min(DISCOVERY_RECOMMENDATIONS_MAX, Math.max(50, parsed));
 };
 
 export const getDiscoveryAutoRefreshHours = () => {
   const settings = dbOps.getSettings();
-  const parsed = parseInt(
-    settings.integrations?.lastfm?.discoveryAutoRefreshHours,
-    10,
-  );
+  const parsed = parseInt(settings.integrations?.lastfm?.discoveryAutoRefreshHours, 10);
   return [24, 168, 720].includes(parsed) ? parsed : 168;
 };
 
@@ -59,9 +44,7 @@ export const getLastfmDiscoveryPeriod = () => {
 
 export const getDiscoveryMode = () => {
   const settings = dbOps.getSettings();
-  const value = String(
-    settings.integrations?.lastfm?.discoveryMode || "balanced",
-  )
+  const value = String(settings.integrations?.lastfm?.discoveryMode || "balanced")
     .trim()
     .toLowerCase();
   return value === "safer" || value === "deeper" ? value : "balanced";
@@ -72,8 +55,7 @@ export const getLocalDiscoveryPreferences = () => {
   return {
     includeRecommendations:
       settings.integrations?.ticketmaster?.localDiscoveryIncludeRecommendations !== false,
-    includeTrending:
-      settings.integrations?.ticketmaster?.localDiscoveryIncludeTrending !== false,
+    includeTrending: settings.integrations?.ticketmaster?.localDiscoveryIncludeTrending !== false,
   };
 };
 
@@ -83,9 +65,7 @@ export const getListenbrainzRange = (discoveryPeriod) => {
 };
 
 export const getDiscoveryUserRefreshDelaySeconds = () => {
-  const parsed = Number(
-    process.env.AURRAL_DISCOVERY_USER_REFRESH_DELAY_SECONDS,
-  );
+  const parsed = Number(process.env.AURRAL_DISCOVERY_USER_REFRESH_DELAY_SECONDS);
   if (!Number.isFinite(parsed)) return 10;
   return Math.max(5, Math.min(3600, Math.floor(parsed)));
 };
@@ -95,7 +75,9 @@ export const normalizeTextList = (value) => {
   const seen = new Set();
   const out = [];
   for (const entry of value) {
-    const normalized = String(entry || "").trim().toLowerCase();
+    const normalized = String(entry || "")
+      .trim()
+      .toLowerCase();
     if (!normalized || seen.has(normalized)) continue;
     seen.add(normalized);
     out.push(normalized);
@@ -159,16 +141,11 @@ export const getCandidateTagHydrationLimit = (count, failureRatio, depth = 1) =>
   const target = getDiscoveryRecommendationsPerRefresh();
   if (failureRatio >= 0.5) return Math.min(count, depth >= 2 ? 0 : 40);
   if (failureRatio >= 0.3) {
-    return Math.min(
-      count,
-      depth >= 2 ? 24 : Math.max(80, Math.ceil(target * 0.75)),
-    );
+    return Math.min(count, depth >= 2 ? 24 : Math.max(80, Math.ceil(target * 0.75)));
   }
   return Math.min(
     count,
-    depth >= 2
-      ? getSecondHopRecommendationLimit()
-      : Math.max(target, Math.ceil(target * 1.5)),
+    depth >= 2 ? getSecondHopRecommendationLimit() : Math.max(target, Math.ceil(target * 1.5)),
   );
 };
 
@@ -177,9 +154,7 @@ const getDiscoveryCandidateLimit = () =>
     getDiscoveryRecommendationPoolLimit(),
     Math.max(
       160,
-      Math.ceil(
-        getDiscoveryRecommendationsPerRefresh() * DISCOVERY_CANDIDATE_MULTIPLIER,
-      ),
+      Math.ceil(getDiscoveryRecommendationsPerRefresh() * DISCOVERY_CANDIDATE_MULTIPLIER),
     ),
   );
 
@@ -209,15 +184,19 @@ export const mapWithConcurrency = async (
   const options = { concurrency: Math.max(1, Number(concurrency) || 1) };
   if (!stopOnError) return pMap(list, worker, options);
   let firstError;
-  const results = await pMap(list, async (item, index) => {
-    if (firstError) return undefined;
-    try {
-      return await worker(item, index);
-    } catch (error) {
-      firstError ??= error;
-      return undefined;
-    }
-  }, options);
+  const results = await pMap(
+    list,
+    async (item, index) => {
+      if (firstError) return undefined;
+      try {
+        return await worker(item, index);
+      } catch (error) {
+        firstError ??= error;
+        return undefined;
+      }
+    },
+    options,
+  );
   if (firstError) throw firstError;
   return results;
 };
@@ -230,7 +209,11 @@ export const getSeedTagMapKey = (seed) =>
 export const normalizeSeedTagList = (tags) =>
   (Array.isArray(tags) ? tags : [])
     .slice(0, 15)
-    .map((tag) => String(tag || "").trim().replace(/-/g, " "))
+    .map((tag) =>
+      String(tag || "")
+        .trim()
+        .replace(/-/g, " "),
+    )
     .filter(Boolean);
 
 export const INHERITED_TAG_MINIMUM = 3;

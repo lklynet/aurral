@@ -3,10 +3,7 @@ import {
   requestAlbumFromSearch,
   settleLibraryOwnerConflict,
 } from "../utils/api/endpoints/library.js";
-import {
-  addStaticPlaylistTracks,
-  createStaticPlaylist,
-} from "../utils/api/endpoints/playlists.js";
+import { addStaticPlaylistTracks, createStaticPlaylist } from "../utils/api/endpoints/playlists.js";
 import { getTagSuggestions } from "../utils/api/endpoints/discovery.js";
 import { searchLibrary, searchUnified } from "../utils/api/endpoints/search.js";
 import {
@@ -14,11 +11,7 @@ import {
   flattenSuggestionSections,
   navigateFromSearchResult,
 } from "../utils/searchNavigation";
-import {
-  addRecentSearch,
-  clearRecentSearches,
-  readRecentSearches,
-} from "../utils/recentSearches";
+import { addRecentSearch, clearRecentSearches, readRecentSearches } from "../utils/recentSearches";
 
 import {
   AUTOCOMPLETE_DEBOUNCE_MS,
@@ -34,10 +27,12 @@ import {
   isSuggestionInLibrary,
   buildTrackPlaylistPayload,
 } from "../utils/globalSearchUtils";
-import { describeAlbumRequestResult, getAlbumAddAction, shouldTriggerAlbumSearch } from "../utils/albumAddAction";
 import {
-  buildAlbumRequestPayload,
-} from "../utils/libraryDestination";
+  describeAlbumRequestResult,
+  getAlbumAddAction,
+  shouldTriggerAlbumSearch,
+} from "../utils/albumAddAction";
+import { buildAlbumRequestPayload } from "../utils/libraryDestination";
 import { useLibraryDestination } from "../hooks/useLibraryDestination";
 import { useActiveDownloads } from "../hooks/useActiveDownloads";
 import { useDebouncedTask } from "../hooks/useDebouncedTask";
@@ -250,10 +245,7 @@ function GlobalSearch({ settingsMode = false }) {
         () => null,
       );
       if (!isCurrent()) return;
-      showUnifiedSuggestions(
-        { ...suggestionResultsRef.current, library },
-        { resetIndex: true },
-      );
+      showUnifiedSuggestions({ ...suggestionResultsRef.current, library }, { resetIndex: true });
     }, LIBRARY_AUTOCOMPLETE_DEBOUNCE_MS);
 
     scheduleSuggest(async (isCurrent, signal) => {
@@ -405,14 +397,16 @@ function GlobalSearch({ settingsMode = false }) {
       });
       setPendingAlbumIds((prev) => ({ ...prev, [album.id]: true }));
       try {
-        const result = await requestAlbumFromSearch(buildAlbumRequestPayload({
-          albumMbid: album.id,
-          albumName: album.title,
-          artistMbid: album.artistMbid,
-          artistName: album.artistName,
-          managedBy,
-          triggerSearch: shouldTriggerSearch,
-        }));
+        const result = await requestAlbumFromSearch(
+          buildAlbumRequestPayload({
+            albumMbid: album.id,
+            albumName: album.title,
+            artistMbid: album.artistMbid,
+            artistName: album.artistName,
+            managedBy,
+            triggerSearch: shouldTriggerSearch,
+          }),
+        );
         const nextAlbum = {
           inLibrary: true,
           managedBy: result?.album?.managedBy || result?.managedBy || managedBy,
@@ -430,9 +424,11 @@ function GlobalSearch({ settingsMode = false }) {
           showInfo(`${album.title}: ${conflict.message}`);
           return;
         }
-        showError(`Could not download the album: ${
-          err.response?.data?.message || err.response?.data?.error || err.message
-        }`);
+        showError(
+          `Could not download the album: ${
+            err.response?.data?.message || err.response?.data?.error || err.message
+          }`,
+        );
       } finally {
         setPendingAlbumIds(({ [album.id]: _, ...prev }) => prev);
       }
@@ -485,7 +481,14 @@ function GlobalSearch({ settingsMode = false }) {
         setPlaylistMenuSavingKey("");
       }
     },
-    [loadStaticPlaylists, setPlaylistModalError, setStaticPlaylists, staticPlaylists, showError, showSuccess],
+    [
+      loadStaticPlaylists,
+      setPlaylistModalError,
+      setStaticPlaylists,
+      staticPlaylists,
+      showError,
+      showSuccess,
+    ],
   );
 
   const renderSuggestionAction = useCallback(

@@ -17,10 +17,12 @@ function runCallback(env) {
   globalThis.window = env;
   globalThis.location = env.location;
   globalThis.BroadcastChannel = env.BroadcastChannel;
-  globalThis.setTimeout = env.setTimeout || ((fn) => {
-    fn();
-    return 0;
-  });
+  globalThis.setTimeout =
+    env.setTimeout ||
+    ((fn) => {
+      fn();
+      return 0;
+    });
   try {
     new Function(readFileSync(callbackPath, "utf8"))();
   } finally {

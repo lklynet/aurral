@@ -101,9 +101,7 @@ test("lists owned and created-for ListenBrainz playlists without duplicates", as
     return {
       data: {
         playlist_count: 1,
-        playlists: [
-          makeEntry({ id: ownedId, title: "Mine" }),
-        ],
+        playlists: [makeEntry({ id: ownedId, title: "Mine" })],
       },
     };
   });
@@ -130,13 +128,8 @@ test("lists owned and created-for ListenBrainz playlists without duplicates", as
     },
   ]);
   assert.deepEqual(
-    calls
-      .filter(({ url }) => url.includes("/1/user/"))
-      .map(({ url }) => new URL(url).pathname),
-    [
-      "/1/user/playlist-user/playlists",
-      "/1/user/playlist-user/playlists/createdfor",
-    ],
+    calls.filter(({ url }) => url.includes("/1/user/")).map(({ url }) => new URL(url).pathname),
+    ["/1/user/playlist-user/playlists", "/1/user/playlist-user/playlists/createdfor"],
   );
   assert.equal(calls.filter(({ url }) => url.includes("/1/playlist/")).length, 3);
   assert.equal(calls[0].options.headers.Authorization, "Token test-token");

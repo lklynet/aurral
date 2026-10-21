@@ -25,7 +25,8 @@ const normalizeMbid = (value) => {
   const mbid = text(value).toLowerCase();
   return UUID_REGEX.test(mbid) ? mbid : null;
 };
-const firstMbid = (values) => (Array.isArray(values) ? values.map(normalizeMbid).find(Boolean) : null) || null;
+const firstMbid = (values) =>
+  (Array.isArray(values) ? values.map(normalizeMbid).find(Boolean) : null) || null;
 
 const recordHealth = (health, ok) => {
   if (!health) return;
@@ -78,7 +79,12 @@ const getTagArtists = (tag, options) =>
 const getTopTrack = async (artist) => {
   const [track] = await deezerGetArtistTopTrackList(artist.name, { limit: 5 }).catch(() => []);
   return track
-    ? { artistName: artist.name, artistMbid: artist.mbid || null, name: track.name, albumName: track.albumName }
+    ? {
+        artistName: artist.name,
+        artistMbid: artist.mbid || null,
+        name: track.name,
+        albumName: track.albumName,
+      }
     : null;
 };
 

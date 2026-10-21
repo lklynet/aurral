@@ -2,10 +2,7 @@ import { useState, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getNearbyShows } from "../utils/api/endpoints/discovery.js";
 import { queryKeys } from "../queryClient.js";
-import {
-  readStoredNearbyLocation,
-  writeStoredNearbyLocation,
-} from "../pages/discoverUtils";
+import { readStoredNearbyLocation, writeStoredNearbyLocation } from "../pages/discoverUtils";
 
 export function useNearbyShows({ enabled = true } = {}) {
   const [storedLocation, setStoredLocation] = useState(readStoredNearbyLocation);
@@ -20,7 +17,9 @@ export function useNearbyShows({ enabled = true } = {}) {
     const next = {
       mode: "zip",
       zip: String(zip || "").trim(),
-      country: String(country || "").trim().toUpperCase(),
+      country: String(country || "")
+        .trim()
+        .toUpperCase(),
     };
     setStoredLocation(next);
     writeStoredNearbyLocation(next);

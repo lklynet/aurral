@@ -88,7 +88,11 @@ export function DiscoverRail({
             </RouteLink>
           ) : null}
           {overflows ? (
-            <div className="artist-discover-rail__scroll" role="group" aria-label={`Scroll ${title}`}>
+            <div
+              className="artist-discover-rail__scroll"
+              role="group"
+              aria-label={`Scroll ${title}`}
+            >
               <TooltipButton
                 type="button"
                 onClick={() => scrollByAmount(-1)}

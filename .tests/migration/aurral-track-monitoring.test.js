@@ -9,20 +9,24 @@ import { createIsolatedStateDir } from "../helpers/backendTestHarness.js";
 test("upgrading moves album monitoring onto tracks and claims unowned Aurral downloads", async () => {
   const state = await createIsolatedStateDir("aurral-track-monitoring-migration");
   const start = () => {
-    const result = spawnSync(process.execPath, [
-      "--input-type=module",
-      "-e",
-      'const { db } = await import("./backend/config/db-sqlite.js"); db.close();',
-    ], {
-      cwd: new URL("../..", import.meta.url),
-      env: {
-        ...process.env,
-        AURRAL_DATA_DIR: state.dataDir,
-        AURRAL_DB_PATH: state.dbPath,
-        NODE_ENV: "test",
+    const result = spawnSync(
+      process.execPath,
+      [
+        "--input-type=module",
+        "-e",
+        'const { db } = await import("./backend/config/db-sqlite.js"); db.close();',
+      ],
+      {
+        cwd: new URL("../..", import.meta.url),
+        env: {
+          ...process.env,
+          AURRAL_DATA_DIR: state.dataDir,
+          AURRAL_DB_PATH: state.dbPath,
+          NODE_ENV: "test",
+        },
+        encoding: "utf8",
       },
-      encoding: "utf8",
-    });
+    );
     assert.equal(result.status, 0, result.stderr);
   };
 
@@ -30,14 +34,18 @@ test("upgrading moves album monitoring onto tracks and claims unowned Aurral dow
   const db = new Database(state.dbPath);
   try {
     const now = Date.now();
-    const artistId = db.prepare(
-      "INSERT INTO library_artists (identity_key, name, created_at, updated_at) VALUES ('artist:upgrade', 'Upgrade Artist', ?, ?)",
-    ).run(now, now).lastInsertRowid;
+    const artistId = db
+      .prepare(
+        "INSERT INTO library_artists (identity_key, name, created_at, updated_at) VALUES ('artist:upgrade', 'Upgrade Artist', ?, ?)",
+      )
+      .run(now, now).lastInsertRowid;
     const addAlbum = (key, { managedBy = null, monitorMode = null, monitored = true } = {}) => {
-      const albumId = db.prepare(
-        `INSERT INTO library_albums (identity_key, artist_id, title, metadata_json, created_at, updated_at)
+      const albumId = db
+        .prepare(
+          `INSERT INTO library_albums (identity_key, artist_id, title, metadata_json, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?)`,
-      ).run(key, artistId, key, JSON.stringify({ monitored }), now, now).lastInsertRowid;
+        )
+        .run(key, artistId, key, JSON.stringify({ monitored }), now, now).lastInsertRowid;
       if (managedBy) {
         db.prepare(
           `INSERT INTO library_management (entity_kind, entity_id, managed_by, monitor_mode, created_at, updated_at)
@@ -47,9 +55,11 @@ test("upgrading moves album monitoring onto tracks and claims unowned Aurral dow
       return albumId;
     };
     const addTrack = (key, albumIds, file = null) => {
-      const trackId = db.prepare(
-        "INSERT INTO library_tracks (identity_key, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
-      ).run(key, key, now, now).lastInsertRowid;
+      const trackId = db
+        .prepare(
+          "INSERT INTO library_tracks (identity_key, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
+        )
+        .run(key, key, now, now).lastInsertRowid;
       for (const albumId of albumIds) {
         db.prepare(
           "INSERT INTO library_album_tracks (album_id, track_id, created_at) VALUES (?, ?, ?)",
@@ -102,14 +112,21 @@ test("upgrading moves album monitoring onto tracks and claims unowned Aurral dow
     const monitored = (trackId) =>
       db.prepare("SELECT monitored FROM library_tracks WHERE id = ?").get(trackId).monitored;
     const owner = (albumId) =>
-      db.prepare(
-        "SELECT managed_by AS managedBy, monitor_mode AS monitorMode FROM library_management WHERE entity_kind = 'album' AND entity_id = ?",
-      ).get(albumId) || null;
+      db
+        .prepare(
+          "SELECT managed_by AS managedBy, monitor_mode AS monitorMode FROM library_management WHERE entity_kind = 'album' AND entity_id = ?",
+        )
+        .get(albumId) || null;
     const albumMonitored = (albumId) =>
-      JSON.parse(db.prepare("SELECT metadata_json FROM library_albums WHERE id = ?").get(albumId).metadata_json).monitored;
+      JSON.parse(
+        db.prepare("SELECT metadata_json FROM library_albums WHERE id = ?").get(albumId)
+          .metadata_json,
+      ).monitored;
 
     assert.deepEqual(
-      [inMonitored, inUnmonitored, shared, inLidarr, downloaded, copiedIn, flowTrack].map(monitored),
+      [inMonitored, inUnmonitored, shared, inLidarr, downloaded, copiedIn, flowTrack].map(
+        monitored,
+      ),
       [1, 0, 1, 1, 1, 0, 1],
     );
     assert.deepEqual(owner(playlistAlbum), { managedBy: "aurral", monitorMode: null });

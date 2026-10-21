@@ -25,21 +25,26 @@ function normalizeSeed(value, label) {
     if (!color) throw new ThemeValidationError(`${label}.${role} must be a hex color`);
     seed[role] = color;
   }
-  if (!seed.background || !seed.accent) throw new ThemeValidationError(`${label} needs background and accent colors`);
+  if (!seed.background || !seed.accent)
+    throw new ThemeValidationError(`${label} needs background and accent colors`);
   return seed;
 }
 
 function normalizeTheme(value, index) {
   const label = `themes[${index}]`;
   if (!isRecord(value)) throw new ThemeValidationError(`${label} must be an object`);
-  if (typeof value.id !== "string" || !THEME_ID.test(value.id)) throw new ThemeValidationError(`${label}.id is invalid`);
+  if (typeof value.id !== "string" || !THEME_ID.test(value.id))
+    throw new ThemeValidationError(`${label}.id is invalid`);
   const name = typeof value.name === "string" ? value.name.trim().replace(/\s+/g, " ") : "";
-  if (!name || name.length > 48) throw new ThemeValidationError(`${label}.name must be 1 to 48 characters`);
+  if (!name || name.length > 48)
+    throw new ThemeValidationError(`${label}.name must be 1 to 48 characters`);
   const theme = { id: value.id, name };
   for (const mode of MODES) {
-    if (value[mode] !== undefined && value[mode] !== null) theme[mode] = normalizeSeed(value[mode], `${label}.${mode}`);
+    if (value[mode] !== undefined && value[mode] !== null)
+      theme[mode] = normalizeSeed(value[mode], `${label}.${mode}`);
   }
-  if (!theme.light && !theme.dark) throw new ThemeValidationError(`${label} needs light or dark colors`);
+  if (!theme.light && !theme.dark)
+    throw new ThemeValidationError(`${label} needs light or dark colors`);
   return theme;
 }
 
@@ -47,8 +52,10 @@ export function normalizeUserThemeDocument(value) {
   if (!isRecord(value) || value.version !== DOCUMENT_VERSION) {
     throw new ThemeValidationError(`theme.version must be ${DOCUMENT_VERSION}`);
   }
-  if (!APPEARANCES.has(value.appearance)) throw new ThemeValidationError("theme.appearance must be system, light, or dark");
-  if (typeof value.themeId !== "string" || !THEME_ID.test(value.themeId)) throw new ThemeValidationError("theme.themeId is invalid");
+  if (!APPEARANCES.has(value.appearance))
+    throw new ThemeValidationError("theme.appearance must be system, light, or dark");
+  if (typeof value.themeId !== "string" || !THEME_ID.test(value.themeId))
+    throw new ThemeValidationError("theme.themeId is invalid");
   if (!Array.isArray(value.themes) || value.themes.length > MAX_THEMES) {
     throw new ThemeValidationError(`theme.themes must be a list of up to ${MAX_THEMES} themes`);
   }

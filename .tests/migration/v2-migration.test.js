@@ -32,9 +32,13 @@ function createPreMigrationDb() {
 const dbHelpers = {
   parseJSON: (text) => {
     if (!text) return null;
-    try { return JSON.parse(text); } catch { return null; }
+    try {
+      return JSON.parse(text);
+    } catch {
+      return null;
+    }
   },
-  stringifyJSON: (obj) => obj === undefined ? null : JSON.stringify(obj),
+  stringifyJSON: (obj) => (obj === undefined ? null : JSON.stringify(obj)),
 };
 
 test("startup migration from v1 creates playlist_download_jobs table and stores schema version", async () => {
@@ -45,9 +49,12 @@ test("startup migration from v1 creates playlist_download_jobs table and stores 
   const result = initializeSchemaOnStartup(db, dbHelpers);
   assert.equal(result.schemaVersion, 4);
 
-  const tables = db.prepare(
-    "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('weekly_flow_jobs', 'playlist_download_jobs')",
-  ).all().map((row) => row.name);
+  const tables = db
+    .prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('weekly_flow_jobs', 'playlist_download_jobs')",
+    )
+    .all()
+    .map((row) => row.name);
   assert.ok(tables.includes("playlist_download_jobs"));
   assert.ok(
     db
@@ -140,14 +147,10 @@ test("startup migration from v1 drops weekly_flow_jobs after copying data", asyn
   initializeSchemaOnStartup(db, dbHelpers);
 
   const legacyTable = db
-    .prepare(
-      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'weekly_flow_jobs'",
-    )
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'weekly_flow_jobs'")
     .get();
   assert.equal(legacyTable, undefined);
-  assert.ok(
-    db.prepare("SELECT id FROM playlist_download_jobs WHERE id = 'job-1'").get(),
-  );
+  assert.ok(db.prepare("SELECT id FROM playlist_download_jobs WHERE id = 'job-1'").get());
 
   db.close();
 });
@@ -203,23 +206,18 @@ test("startup migration from v1 survives legacy playlist_download_jobs sync trig
   assert.doesNotThrow(() => initializeSchemaOnStartup(reopened, dbHelpers));
   assert.equal(
     reopened
-      .prepare(
-        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'weekly_flow_jobs'",
-      )
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'weekly_flow_jobs'")
       .get(),
     undefined,
   );
-  assert.ok(
-    reopened.prepare("SELECT id FROM playlist_download_jobs WHERE id = 'job-1'").get(),
-  );
+  assert.ok(reopened.prepare("SELECT id FROM playlist_download_jobs WHERE id = 'job-1'").get());
   reopened.close();
 });
 
 test("startup applies the consolidated migration once", async () => {
   const { dbPath } = createPreMigrationDb();
-  const { initializeSchemaOnStartup, TARGET_SCHEMA_VERSION } = await import(
-    "../../backend/config/schema-migration-v2.js",
-  );
+  const { initializeSchemaOnStartup, TARGET_SCHEMA_VERSION } =
+    await import("../../backend/config/schema-migration-v2.js");
   const db = new Database(dbPath);
   db.prepare("INSERT INTO settings (key, value) VALUES ('schemaVersion', '2')").run();
 
@@ -228,9 +226,7 @@ test("startup applies the consolidated migration once", async () => {
   assert.equal(result.schemaVersion, TARGET_SCHEMA_VERSION);
   assert.equal(
     db
-      .prepare(
-        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'weekly_flow_jobs'",
-      )
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'weekly_flow_jobs'")
       .get(),
     undefined,
   );
@@ -241,9 +237,7 @@ test("startup applies the consolidated migration once", async () => {
   assert.equal(secondResult.schemaVersion, TARGET_SCHEMA_VERSION);
   assert.ok(
     db
-      .prepare(
-        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'weekly_flow_jobs'",
-      )
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'weekly_flow_jobs'")
       .get(),
   );
 
@@ -252,12 +246,12 @@ test("startup applies the consolidated migration once", async () => {
 
 test("current schema needs no write lock while another connection writes", async () => {
   const { dbPath } = createPreMigrationDb();
-  const { initializeSchemaOnStartup, TARGET_SCHEMA_VERSION } = await import(
-    "../../backend/config/schema-migration-v2.js"
-  );
+  const { initializeSchemaOnStartup, TARGET_SCHEMA_VERSION } =
+    await import("../../backend/config/schema-migration-v2.js");
   const writer = new Database(dbPath);
   writer.pragma("journal_mode = WAL");
-  writer.prepare("INSERT INTO settings (key, value) VALUES ('schemaVersion', ?)")
+  writer
+    .prepare("INSERT INTO settings (key, value) VALUES ('schemaVersion', ?)")
     .run(String(TARGET_SCHEMA_VERSION));
   const reader = new Database(dbPath);
   reader.pragma("busy_timeout = 20");

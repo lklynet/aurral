@@ -1,11 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  AlertCircle,
-  CheckCircle,
-  Info,
-  TriangleAlert,
-  X,
-} from "lucide-react";
+import { AlertCircle, CheckCircle, Info, TriangleAlert, X } from "lucide-react";
 import { DotLoader } from "./DotLoader";
 
 const TOAST_ICONS = {
@@ -48,10 +42,7 @@ export function Toast({ toast, onDismiss, index = 0 }) {
 
   const pauseTimer = useCallback(() => {
     if (startedAtRef.current === null) return;
-    remainingRef.current = Math.max(
-      0,
-      remainingRef.current - (Date.now() - startedAtRef.current),
-    );
+    remainingRef.current = Math.max(0, remainingRef.current - (Date.now() - startedAtRef.current));
     startedAtRef.current = null;
     clearTimer();
   }, [clearTimer]);
@@ -140,7 +131,9 @@ export function Toast({ toast, onDismiss, index = 0 }) {
       </div>
       <div className="app-toast__content">
         {title && <div className="app-toast__title">{title}</div>}
-        {body && <div className={title ? "app-toast__description" : "app-toast__message"}>{body}</div>}
+        {body && (
+          <div className={title ? "app-toast__description" : "app-toast__message"}>{body}</div>
+        )}
       </div>
       {action?.label && (
         <button type="button" className="app-toast__action" onClick={handleAction}>

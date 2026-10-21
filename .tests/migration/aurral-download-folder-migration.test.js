@@ -260,7 +260,10 @@ test("retains a failed item and completes it safely on retry", async () => {
   shouldFail = false;
   const second = await migrateAurralDownloadFolder({ root, indexDestination });
   assert.equal(second.migrated, 1);
-  assert.equal(downloadTracker.getJob(jobId).finalPath, path.join(root, "Artist", "Album", "Retry.flac"));
+  assert.equal(
+    downloadTracker.getJob(jobId).finalPath,
+    path.join(root, "Artist", "Album", "Retry.flac"),
+  );
   await assert.rejects(() => fs.access(source));
 
   const third = await migrateAurralDownloadFolder({ root, indexDestination });

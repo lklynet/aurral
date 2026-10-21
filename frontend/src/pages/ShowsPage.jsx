@@ -130,9 +130,7 @@ function ShowsPage() {
             <MapPin className="artist-icon-lg" />
           </div>
           <h2 className="search-empty-panel__title">Enter a ZIP or postal code</h2>
-          <p className="search-empty-panel__message">
-            Enter a ZIP or postal code.
-          </p>
+          <p className="search-empty-panel__message">Enter a ZIP or postal code.</p>
         </div>
       ) : hasAnyShows ? (
         <section className="shows-page__content">

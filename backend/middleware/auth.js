@@ -23,7 +23,11 @@ const STREAM_TOKEN_TTL_MS = 2 * 60 * 1000;
 const streamTokenStore = new Map();
 const LOOPBACK_IPS = new Set(["127.0.0.1", "::1"]);
 const privateLanAddresses = new net.BlockList();
-for (const [address, prefix] of [["10.0.0.0", 8], ["172.16.0.0", 12], ["192.168.0.0", 16]]) {
+for (const [address, prefix] of [
+  ["10.0.0.0", 8],
+  ["172.16.0.0", 12],
+  ["192.168.0.0", 16],
+]) {
   privateLanAddresses.addSubnet(address, prefix, "ipv4");
 }
 
@@ -503,15 +507,14 @@ export function resolveUser(username, password) {
 export function resolveSubsonicTokenUser(username, token, salt) {
   if (!/^[a-f\d]{32}$/i.test(String(token || "")) || !String(salt || "")) return null;
   if (userOps.countUsers() === 0) migrateLegacyAdmin();
-  const normalizedUsername = String(username || "").trim().toLowerCase();
+  const normalizedUsername = String(username || "")
+    .trim()
+    .toLowerCase();
   const user = userOps.getUserByUsername(normalizedUsername);
   if (!user) return null;
 
   let password = userOps.getSubsonicPasswordById(user.id);
-  if (
-    !password &&
-    safeCompare(normalizedUsername, String(getAuthUser()).trim().toLowerCase())
-  ) {
+  if (!password && safeCompare(normalizedUsername, String(getAuthUser()).trim().toLowerCase())) {
     password = getAuthPassword().find((candidate) =>
       safeCompare(createSubsonicToken(candidate, salt), token),
     );
@@ -519,9 +522,7 @@ export function resolveSubsonicTokenUser(username, token, salt) {
   if (!password) return null;
 
   const expectedToken = createSubsonicToken(password, salt);
-  return safeCompare(expectedToken, token)
-    ? resolveUser(normalizedUsername, password)
-    : null;
+  return safeCompare(expectedToken, token) ? resolveUser(normalizedUsername, password) : null;
 }
 
 function legacyAuth(username, password) {
@@ -619,64 +620,64 @@ function consumeStreamToken(rawToken) {
 }
 
 export const authMiddleware = (req, res, next) => {
-    if (!req.path.startsWith("/api")) return next();
-    if (
-      req.path === "/api/health" ||
-      req.path === "/api/health/live" ||
-      req.path === "/api/health/bootstrap" ||
-      req.path === "/api/filesystem/browse" ||
-      req.path === "/api/filesystem/ensure" ||
-      ((req.method === "GET" || req.method === "HEAD") && req.path.startsWith("/api/image-proxy/")) ||
-      (req.method === "GET" && /^\/api\/feeds\/lidarr\/flows\/[^/]+\.json$/i.test(req.path))
-    ) {
-      return next();
-    }
-    if (
-      /^\/api\/library\/stream\/[^/]+$/.test(req.path) ||
-      /^\/api\/library\/canonical-stream\/[^/]+\/[^/]+$/i.test(req.path) ||
-      /^\/api\/library\/file-stream\/[^/]+\/[^/]+$/i.test(req.path) ||
-      (req.method === "GET" && /^\/api\/library\/albums\/[1-9]\d*\/cover$/i.test(req.path)) ||
-      (req.method === "GET" && /^\/api\/library\/artwork\/(?:album|track)\/[^/]+$/i.test(req.path)) ||
-      /^\/api\/artists\/[a-f0-9-]{36}\/stream$/i.test(req.path) ||
-      /^\/api\/weekly-flow\/stream\/[^/]+$/i.test(req.path) ||
-      /^\/api\/playlists\/stream\/[^/]+$/i.test(req.path) ||
-      /^\/api\/playlists\/staging-stream\/[^/]+$/i.test(req.path) ||
-      (req.method === "GET" && /^\/api\/weekly-flow\/artwork\/[^/]+$/i.test(req.path)) ||
-      (req.method === "GET" && /^\/api\/playlists\/artwork\/[^/]+$/i.test(req.path)) ||
-      (req.method === "GET" && /^\/api\/playlists\/track-artwork\/[^/]+$/i.test(req.path)) ||
-      (req.method === "GET" && /^\/api\/discover\/artwork\/[^/]+$/i.test(req.path))
-    ) {
-      return next();
-    }
-    if (
-      req.path === "/api/auth/login" ||
-      req.path === "/api/auth/oidc/login" ||
-      req.path === "/api/auth/oidc/exchange" ||
-      req.path === "/api/auth/google/login" ||
-      req.path === "/api/auth/google/exchange" ||
-      req.path === "/api/auth/plex/login/pin" ||
-      req.path === "/api/auth/plex/login/complete" ||
-      (req.method === "GET" && req.path === "/api/scrobbling/lastfm/link/callback")
-    ) {
-      return next();
-    }
+  if (!req.path.startsWith("/api")) return next();
+  if (
+    req.path === "/api/health" ||
+    req.path === "/api/health/live" ||
+    req.path === "/api/health/bootstrap" ||
+    req.path === "/api/filesystem/browse" ||
+    req.path === "/api/filesystem/ensure" ||
+    ((req.method === "GET" || req.method === "HEAD") && req.path.startsWith("/api/image-proxy/")) ||
+    (req.method === "GET" && /^\/api\/feeds\/lidarr\/flows\/[^/]+\.json$/i.test(req.path))
+  ) {
+    return next();
+  }
+  if (
+    /^\/api\/library\/stream\/[^/]+$/.test(req.path) ||
+    /^\/api\/library\/canonical-stream\/[^/]+\/[^/]+$/i.test(req.path) ||
+    /^\/api\/library\/file-stream\/[^/]+\/[^/]+$/i.test(req.path) ||
+    (req.method === "GET" && /^\/api\/library\/albums\/[1-9]\d*\/cover$/i.test(req.path)) ||
+    (req.method === "GET" && /^\/api\/library\/artwork\/(?:album|track)\/[^/]+$/i.test(req.path)) ||
+    /^\/api\/artists\/[a-f0-9-]{36}\/stream$/i.test(req.path) ||
+    /^\/api\/weekly-flow\/stream\/[^/]+$/i.test(req.path) ||
+    /^\/api\/playlists\/stream\/[^/]+$/i.test(req.path) ||
+    /^\/api\/playlists\/staging-stream\/[^/]+$/i.test(req.path) ||
+    (req.method === "GET" && /^\/api\/weekly-flow\/artwork\/[^/]+$/i.test(req.path)) ||
+    (req.method === "GET" && /^\/api\/playlists\/artwork\/[^/]+$/i.test(req.path)) ||
+    (req.method === "GET" && /^\/api\/playlists\/track-artwork\/[^/]+$/i.test(req.path)) ||
+    (req.method === "GET" && /^\/api\/discover\/artwork\/[^/]+$/i.test(req.path))
+  ) {
+    return next();
+  }
+  if (
+    req.path === "/api/auth/login" ||
+    req.path === "/api/auth/oidc/login" ||
+    req.path === "/api/auth/oidc/exchange" ||
+    req.path === "/api/auth/google/login" ||
+    req.path === "/api/auth/google/exchange" ||
+    req.path === "/api/auth/plex/login/pin" ||
+    req.path === "/api/auth/plex/login/complete" ||
+    (req.method === "GET" && req.path === "/api/scrobbling/lastfm/link/callback")
+  ) {
+    return next();
+  }
 
-    const settings = dbOps.getSettings();
-    const onboardingDone = settings.onboardingComplete;
+  const settings = dbOps.getSettings();
+  const onboardingDone = settings.onboardingComplete;
 
-    if (req.path.startsWith("/api/onboarding") && !onboardingDone) return next();
+  if (req.path.startsWith("/api/onboarding") && !onboardingDone) return next();
 
-    const authRequired = isAuthRequiredByConfig();
+  const authRequired = isAuthRequiredByConfig();
 
-    if (!authRequired) return next();
+  if (!authRequired) return next();
 
-    const user = resolveRequestUser(req);
-    if (user) {
-      req.user = user;
-      return next();
-    }
+  const user = resolveRequestUser(req);
+  if (user) {
+    req.user = user;
+    return next();
+  }
 
-    return sendUnauthorizedResponse(req, res);
+  return sendUnauthorizedResponse(req, res);
 };
 
 function getCredentialsFromRequest(req) {

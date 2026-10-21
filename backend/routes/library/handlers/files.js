@@ -15,7 +15,15 @@ import {
   getLibraryFileOperation,
 } from "../../../services/libraryFiles/operationStore.js";
 
-const ITEM_STATUSES = new Set(["new", "pending", "done", "duplicate", "conflict", "skipped", "failed"]);
+const ITEM_STATUSES = new Set([
+  "new",
+  "pending",
+  "done",
+  "duplicate",
+  "conflict",
+  "skipped",
+  "failed",
+]);
 
 function sendError(res, error) {
   if (error?.code === "LIBRARY_FILE_OPERATION_ACTIVE") {
@@ -28,12 +36,16 @@ function sendError(res, error) {
   if (error?.code === "INGEST_SOURCE_INVALID") {
     return res.status(400).json({ error: "invalid_request", message: error.message });
   }
-  return res.status(500).json({ error: "library_files_failed", message: error?.message || "Library file operation failed" });
+  return res.status(500).json({
+    error: "library_files_failed",
+    message: error?.message || "Library file operation failed",
+  });
 }
 
 function findOperation(req, res) {
   const operation = getLibraryFileOperation(req.params.id);
-  if (!operation) res.status(404).json({ error: "not_found", message: "Library file operation not found" });
+  if (!operation)
+    res.status(404).json({ error: "not_found", message: "Library file operation not found" });
   return operation;
 }
 
@@ -101,13 +113,20 @@ export function registerFiles(router) {
     res.json({ operation: describeLibraryFileOperation(getLibraryFileOperation(operation.id)) });
   });
 
-  router.post("/files/operations/:id/remove-sources", requireAuth, requireAdmin, async (req, res) => {
-    const operation = findOperation(req, res);
-    if (!operation) return;
-    try {
-      res.json({ operation: describeLibraryFileOperation(await removeDuplicateFiles(operation.id)) });
-    } catch (error) {
-      sendError(res, error);
-    }
-  });
+  router.post(
+    "/files/operations/:id/remove-sources",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      const operation = findOperation(req, res);
+      if (!operation) return;
+      try {
+        res.json({
+          operation: describeLibraryFileOperation(await removeDuplicateFiles(operation.id)),
+        });
+      } catch (error) {
+        sendError(res, error);
+      }
+    },
+  );
 }

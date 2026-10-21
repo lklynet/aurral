@@ -80,78 +80,81 @@ export async function lastfmRequest(method, params = {}, options = {}) {
     ? Math.max(0, Math.floor(Number(options.maxRetries)))
     : LASTFM_MAX_RETRIES;
 
-  return runSharedInflight(lastfmInflightRequests, cacheKey, async (sharedSignal) => {
-    const isRetryable = (error) => {
-      const status = error.response?.status;
-      const code = error.code;
-      return (
-        code === "ECONNABORTED" ||
-        code === "ETIMEDOUT" ||
-        code === "ECONNRESET" ||
-        code === "ENOTFOUND" ||
-        code === "EAI_AGAIN" ||
-        [408, 425, 500, 502, 503, 504].includes(status)
-      );
-    };
-    const getLogKey = (details) =>
-      `${details.method}:${details.status || "none"}:${details.code || "none"}`;
-    const logError = (message, details) => {
-      const key = getLogKey(details);
-      const now = Date.now();
-      const last = lastfmErrorLogAt.get(key) || 0;
-      if (now - last < 15000) return;
-      lastfmErrorLogAt.set(key, now);
-      logger.error("api", message, details);
-    };
-    let lastError = null;
-    for (let retryCount = 0; retryCount <= maxRetries; retryCount++) {
-      sharedSignal.throwIfAborted?.();
-      try {
-        const response = await lastfmLimiter.schedule(() =>
-          axios.get(LASTFM_API, {
-            params: {
-              method,
-              api_key: apiKey,
-              format: "json",
-              ...params,
-            },
-            timeout: timeoutMs,
-            httpsAgent: lastfmHttpsAgent,
-            signal: sharedSignal,
-          }),
+  return runSharedInflight(
+    lastfmInflightRequests,
+    cacheKey,
+    async (sharedSignal) => {
+      const isRetryable = (error) => {
+        const status = error.response?.status;
+        const code = error.code;
+        return (
+          code === "ECONNABORTED" ||
+          code === "ETIMEDOUT" ||
+          code === "ECONNRESET" ||
+          code === "ENOTFOUND" ||
+          code === "EAI_AGAIN" ||
+          [408, 425, 500, 502, 503, 504].includes(status)
         );
-        lastfmCache.set(cacheKey, response.data);
-        return response.data;
-      } catch (error) {
-        if (sharedSignal.aborted) throw sharedSignal.reason || error;
-        lastError = error;
-        if (retryCount < maxRetries && isRetryable(error)) {
-          const backoffMs = 300 * Math.pow(2, retryCount) + retryCount * 200;
-          await new Promise((resolve) => setTimeout(resolve, backoffMs));
-          continue;
+      };
+      const getLogKey = (details) =>
+        `${details.method}:${details.status || "none"}:${details.code || "none"}`;
+      const logError = (message, details) => {
+        const key = getLogKey(details);
+        const now = Date.now();
+        const last = lastfmErrorLogAt.get(key) || 0;
+        if (now - last < 15000) return;
+        lastfmErrorLogAt.set(key, now);
+        logger.error("api", message, details);
+      };
+      let lastError = null;
+      for (let retryCount = 0; retryCount <= maxRetries; retryCount++) {
+        sharedSignal.throwIfAborted?.();
+        try {
+          const response = await lastfmLimiter.schedule(() =>
+            axios.get(LASTFM_API, {
+              params: {
+                method,
+                api_key: apiKey,
+                format: "json",
+                ...params,
+              },
+              timeout: timeoutMs,
+              httpsAgent: lastfmHttpsAgent,
+              signal: sharedSignal,
+            }),
+          );
+          lastfmCache.set(cacheKey, response.data);
+          return response.data;
+        } catch (error) {
+          if (sharedSignal.aborted) throw sharedSignal.reason || error;
+          lastError = error;
+          if (retryCount < maxRetries && isRetryable(error)) {
+            const backoffMs = 300 * Math.pow(2, retryCount) + retryCount * 200;
+            await new Promise((resolve) => setTimeout(resolve, backoffMs));
+            continue;
+          }
+          break;
         }
-        break;
       }
-    }
-    const status = lastError?.response?.status || null;
-    const payloadError =
-      lastError?.response?.data?.message ||
-      lastError?.response?.data?.error ||
-      null;
-    const details = {
-      method,
-      status,
-      code: lastError?.code || null,
-      message: lastError?.message || "Unknown Last.fm error",
-      error: payloadError,
-    };
-    if (details.code === "ECONNABORTED") {
-      logError(`Last.fm API timeout (${method})`, details);
-    } else {
-      logError(`Last.fm API error (${method})`, details);
-    }
-    return null;
-  }, { signal: options.signal });
+      const status = lastError?.response?.status || null;
+      const payloadError =
+        lastError?.response?.data?.message || lastError?.response?.data?.error || null;
+      const details = {
+        method,
+        status,
+        code: lastError?.code || null,
+        message: lastError?.message || "Unknown Last.fm error",
+        error: payloadError,
+      };
+      if (details.code === "ECONNABORTED") {
+        logError(`Last.fm API timeout (${method})`, details);
+      } else {
+        logError(`Last.fm API error (${method})`, details);
+      }
+      return null;
+    },
+    { signal: options.signal },
+  );
 }
 
 export { lastfmCache };

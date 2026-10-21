@@ -57,7 +57,15 @@ function getRows(item) {
   const id = item.jobId || item.id;
   return [
     ["Type", formatKind(item.kind)],
-    ["Download method", item.downloadMethodLabel || (item.downloadMethod === "album" ? "Album download" : item.downloadMethod === "track" ? "Individual track download" : null)],
+    [
+      "Download method",
+      item.downloadMethodLabel ||
+        (item.downloadMethod === "album"
+          ? "Album download"
+          : item.downloadMethod === "track"
+            ? "Individual track download"
+            : null),
+    ],
     ["Progress", item.progressLabel],
     ["Artist", item.artistName],
     ["Album", item.albumName],
@@ -104,7 +112,9 @@ export default function ActivityInfoModal({ item, onClose }) {
         <div className="artist-modal__header">
           <div>
             {status ? <p className="activity-info-modal__eyebrow">{status}</p> : null}
-            <h2 id={titleId} className="artist-modal__title">{title}</h2>
+            <h2 id={titleId} className="artist-modal__title">
+              {title}
+            </h2>
           </div>
           <TooltipButton
             className="btn btn-ghost btn-icon-square"

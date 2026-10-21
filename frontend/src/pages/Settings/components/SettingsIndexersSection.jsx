@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getProwlarrIndexers, testProwlarrConnection } from "../../../utils/api/endpoints/settings.js";
+import {
+  getProwlarrIndexers,
+  testProwlarrConnection,
+} from "../../../utils/api/endpoints/settings.js";
 import { queryClient, queryKeys } from "../../../queryClient.js";
 
 import { RefreshCw } from "lucide-react";
@@ -129,7 +132,10 @@ export function SettingsIndexersSection({
       setTestStatus({ tone: "success", message: "Connected." });
       showSuccess(result.message || "Prowlarr connection OK");
     } catch (error) {
-      setTestStatus({ tone: "error", message: "Connection failed. Check the URL and API key, then retry." });
+      setTestStatus({
+        tone: "error",
+        message: "Connection failed. Check the URL and API key, then retry.",
+      });
       showError(
         error.response?.data?.message ||
           error.response?.data?.error ||

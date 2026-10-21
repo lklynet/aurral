@@ -9,15 +9,28 @@ import {
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.js";
 
-const [state, { db }, { dbOps, userOps }, { hashPassword }, { authMiddleware },
-  { default: authRouter }, { default: searchRouter }, provider] = await setupIsolatedBackend(
-  "link-search", "backend/config/db-sqlite.js", "backend/db/helpers/index.js",
-  "backend/middleware/passwordHash.js", "backend/middleware/auth.js",
-  "backend/routes/auth.js", "backend/routes/search.js",
+const [
+  state,
+  { db },
+  { dbOps, userOps },
+  { hashPassword },
+  { authMiddleware },
+  { default: authRouter },
+  { default: searchRouter },
+  provider,
+] = await setupIsolatedBackend(
+  "link-search",
+  "backend/config/db-sqlite.js",
+  "backend/db/helpers/index.js",
+  "backend/middleware/passwordHash.js",
+  "backend/middleware/auth.js",
+  "backend/routes/auth.js",
+  "backend/routes/search.js",
   "backend/services/providers/brainzmashProvider.js",
 );
 
-const fixture = (name) => readFile(new URL(`../fixtures/streaming-links/${name}`, import.meta.url), "utf8");
+const fixture = (name) =>
+  readFile(new URL(`../fixtures/streaming-links/${name}`, import.meta.url), "utf8");
 const spotifyAlbumPage = await fixture("spotify-album-songlink.html");
 const appleTrackLookup = await fixture("apple-music-track-lookup.json");
 
@@ -29,7 +42,13 @@ const oneMoreTime = "4b7a5d7b-9a12-4a2c-8f3e-7f0d3d4b3c11";
 
 const artist = (id, artistname) => ({ id, artistname, genres: [], images: [] });
 const albumSearchResult = (id, title, artistEntry) => ({
-  id, title, type: "Album", releasedate: "2001-03-12", artistid: artistEntry.id, artists: [artistEntry], images: [],
+  id,
+  title,
+  type: "Album",
+  releasedate: "2001-03-12",
+  artistid: artistEntry.id,
+  artists: [artistEntry],
+  images: [],
 });
 
 const realFetch = globalThis.fetch;
@@ -48,7 +67,10 @@ function stubServices(t, routes) {
     const route = routes[url.href];
     if (typeof route === "function") return route();
     if (!route) return new Response("Not Found", { status: 404 });
-    return new Response(route.body, { status: route.status || 200, headers: { "Content-Type": route.type } });
+    return new Response(route.body, {
+      status: route.status || 200,
+      headers: { "Content-Type": route.type },
+    });
   });
   return requests;
 }
@@ -66,7 +88,8 @@ beforeAll(async () => {
     const { pathname } = new URL(request.url, "http://metadata.invalid");
     const body = metadataRoutes[pathname];
     response.setHeader("Content-Type", "application/json");
-    if (body === undefined) return response.writeHead(404).end(JSON.stringify({ error: "Not found" }));
+    if (body === undefined)
+      return response.writeHead(404).end(JSON.stringify({ error: "Not found" }));
     response.end(JSON.stringify(body));
   });
   const app = express();
@@ -112,10 +135,17 @@ test("a Spotify album link resolves through song.link to MusicBrainz ids and is 
   metadataRoutes = {
     "/search/artist": [pinkFloydArtist],
     "/search/album": [albumSearchResult(darkSide, "The Dark Side of the Moon", pinkFloydArtist)],
-    [`/album/${darkSide}`]: albumSearchResult(darkSide, "The Dark Side of the Moon", pinkFloydArtist),
+    [`/album/${darkSide}`]: albumSearchResult(
+      darkSide,
+      "The Dark Side of the Moon",
+      pinkFloydArtist,
+    ),
   };
   const requests = stubServices(t, {
-    "https://album.link/s/4LH4d3cOWNNsVw41Gqt2kv": { body: spotifyAlbumPage, type: "text/html; charset=utf-8" },
+    "https://album.link/s/4LH4d3cOWNNsVw41Gqt2kv": {
+      body: spotifyAlbumPage,
+      type: "text/html; charset=utf-8",
+    },
   });
   const link = "https://open.spotify.com/album/4LH4d3cOWNNsVw41Gqt2kv?si=7f3c2a";
 
@@ -142,30 +172,57 @@ test("Apple Music links resolve the artist, album, and recording without reusing
     "/search/album": [albumSearchResult(discovery, "Discovery", daftPunkArtist)],
     [`/album/${discovery}`]: {
       ...albumSearchResult(discovery, "Discovery", daftPunkArtist),
-      releases: [{
-        id: "d5a1d7c4-6f0b-4bd9-9f4f-0c6e7a1d2f10",
-        title: "Discovery",
-        status: "Official",
-        tracks: [
-          { id: "t1", recordingid: oneMoreTime, trackname: "One More Time", trackposition: 1, mediumnumber: 1 },
-          { id: "t2", recordingid: "9a3c5b1e-0d3e-4f4a-9a5b-2c1d0e7f8a92", trackname: "Aerodynamic", trackposition: 2, mediumnumber: 1 },
-        ],
-      }],
+      releases: [
+        {
+          id: "d5a1d7c4-6f0b-4bd9-9f4f-0c6e7a1d2f10",
+          title: "Discovery",
+          status: "Official",
+          tracks: [
+            {
+              id: "t1",
+              recordingid: oneMoreTime,
+              trackname: "One More Time",
+              trackposition: 1,
+              mediumnumber: 1,
+            },
+            {
+              id: "t2",
+              recordingid: "9a3c5b1e-0d3e-4f4a-9a5b-2c1d0e7f8a92",
+              trackname: "Aerodynamic",
+              trackposition: 2,
+              mediumnumber: 1,
+            },
+          ],
+        },
+      ],
     },
   };
   const requests = stubServices(t, {
-    "https://itunes.apple.com/lookup?id=697195462&country=us": { body: appleTrackLookup, type: "text/javascript; charset=utf-8" },
+    "https://itunes.apple.com/lookup?id=697195462&country=us": {
+      body: appleTrackLookup,
+      type: "text/javascript; charset=utf-8",
+    },
     "https://itunes.apple.com/lookup?id=697194438&country=gb": {
-      body: JSON.stringify({ resultCount: 1, results: [{ wrapperType: "collection", artistName: "Daft Punk", collectionName: "Homework" }] }),
+      body: JSON.stringify({
+        resultCount: 1,
+        results: [
+          { wrapperType: "collection", artistName: "Daft Punk", collectionName: "Homework" },
+        ],
+      }),
       type: "text/javascript; charset=utf-8",
     },
     "https://itunes.apple.com/lookup?id=697194438&country=us": {
-      body: JSON.stringify({ resultCount: 1, results: [{ wrapperType: "collection", artistName: "Daft Punk" }] }),
+      body: JSON.stringify({
+        resultCount: 1,
+        results: [{ wrapperType: "collection", artistName: "Daft Punk" }],
+      }),
       type: "text/javascript; charset=utf-8",
     },
   });
 
-  const { status, body } = await resolveLink("https://music.apple.com/us/album/one-more-time/697194953?i=697195462");
+  const { status, body } = await resolveLink(
+    "https://music.apple.com/us/album/one-more-time/697194953?i=697195462",
+  );
   assert.equal(status, 200);
   assert.deepEqual(body, {
     kind: "track",
@@ -182,7 +239,10 @@ test("Apple Music links resolve the artist, album, and recording without reusing
   const untitled = await resolveLink("https://music.apple.com/us/album/homework/697194438");
   assert.equal(untitled.status, 502);
   assert.equal(untitled.body.code, "LINK_SERVICE_UNAVAILABLE");
-  assert.equal((await resolveLink("https://music.apple.com/us/album/homework/697194438")).status, 502);
+  assert.equal(
+    (await resolveLink("https://music.apple.com/us/album/homework/697194438")).status,
+    502,
+  );
   assert.deepEqual(requests, [
     "https://itunes.apple.com/lookup?id=697195462&country=us",
     "https://itunes.apple.com/lookup?id=697194438&country=gb",
@@ -193,7 +253,10 @@ test("Apple Music links resolve the artist, album, and recording without reusing
 
 test("a link with no MusicBrainz match returns its names with null ids", async (t) => {
   stubServices(t, {
-    "https://album.link/s/4LH4d3cOWNNsVw41Gqt2kv": { body: spotifyAlbumPage, type: "text/html; charset=utf-8" },
+    "https://album.link/s/4LH4d3cOWNNsVw41Gqt2kv": {
+      body: spotifyAlbumPage,
+      type: "text/html; charset=utf-8",
+    },
   });
 
   const { status, body } = await resolveLink("https://album.link/s/4LH4d3cOWNNsVw41Gqt2kv");
@@ -233,10 +296,16 @@ test("an unreachable service returns 502 and is retried on the next request", as
     "https://api.deezer.com/artist/27": () => {
       if (deezerState === "down") throw new TypeError("fetch failed");
       if (deezerState === "cut off") {
-        const body = new ReadableStream({ pull(controller) { controller.error(new TypeError("terminated")); } });
+        const body = new ReadableStream({
+          pull(controller) {
+            controller.error(new TypeError("terminated"));
+          },
+        });
         return new Response(body, { headers: { "Content-Type": "application/json" } });
       }
-      return new Response(JSON.stringify({ id: 27, name: "Daft Punk" }), { headers: { "Content-Type": "application/json" } });
+      return new Response(JSON.stringify({ id: 27, name: "Daft Punk" }), {
+        headers: { "Content-Type": "application/json" },
+      });
     },
   });
   const link = "https://www.deezer.com/en/artist/27";
@@ -264,7 +333,10 @@ test("an unreachable service returns 502 and is retried on the next request", as
 
 test("signed-out requests return 401 without contacting any service", async (t) => {
   const requests = stubServices(t, {});
-  const { status, body } = await resolveLink("https://open.spotify.com/album/4LH4d3cOWNNsVw41Gqt2kv", { authenticated: false });
+  const { status, body } = await resolveLink(
+    "https://open.spotify.com/album/4LH4d3cOWNNsVw41Gqt2kv",
+    { authenticated: false },
+  );
   assert.equal(status, 401);
   assert.equal(typeof body.error, "string");
   assert.deepEqual(requests, []);

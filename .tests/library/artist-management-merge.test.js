@@ -66,10 +66,15 @@ test("a canonical artist's management choice wins during a merge", () => {
     syncSearch: false,
   });
   managementStore.setLibraryManagement({
-    entityKind: "artist", entityId: fallback.id, managedBy: "aurral", monitorMode: "all",
+    entityKind: "artist",
+    entityId: fallback.id,
+    managedBy: "aurral",
+    monitorMode: "all",
   });
   managementStore.setLibraryManagement({
-    entityKind: "artist", entityId: resolved.id, managedBy: "lidarr",
+    entityKind: "artist",
+    entityId: resolved.id,
+    managedBy: "lidarr",
   });
 
   libraryStore.upsertLibraryArtist({
@@ -79,6 +84,9 @@ test("a canonical artist's management choice wins during a merge", () => {
     syncSearch: false,
   });
 
-  assert.equal(managementStore.getLibraryManagementEntry("artist", resolved.id)?.managedBy, "lidarr");
+  assert.equal(
+    managementStore.getLibraryManagementEntry("artist", resolved.id)?.managedBy,
+    "lidarr",
+  );
   assert.equal(managementStore.getLibraryManagementEntry("artist", fallback.id), null);
 });

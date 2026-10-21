@@ -150,9 +150,11 @@ export function pickResolvedDurationMs({
   lastfmDurationMs = null,
   matchedTrackDurationMs = null,
 } = {}) {
-  return positiveMs(matchedTrackDurationMs)
-    || positiveMs(playlistDurationMs)
-    || positiveMs(lastfmDurationMs);
+  return (
+    positiveMs(matchedTrackDurationMs) ||
+    positiveMs(playlistDurationMs) ||
+    positiveMs(lastfmDurationMs)
+  );
 }
 
 export function getYear(value) {
@@ -233,10 +235,13 @@ export function rankAlbumCandidates(
   const targetYear = getYear(releaseYear);
   // A free-text search such as "Fleetwood Mac Rumours" names the artist and
   // the title together.
-  const titleScore = (candidate) => Math.max(
-    scoreTextMatch(candidate?.title, albumTitle),
-    normalizedArtist ? 0 : scoreTextMatch(`${candidate?.artistName || ""} ${candidate?.title || ""}`, albumTitle),
-  );
+  const titleScore = (candidate) =>
+    Math.max(
+      scoreTextMatch(candidate?.title, albumTitle),
+      normalizedArtist
+        ? 0
+        : scoreTextMatch(`${candidate?.artistName || ""} ${candidate?.title || ""}`, albumTitle),
+    );
   return [...candidates].sort((left, right) => {
     const leftTitleScore = titleScore(left);
     const rightTitleScore = titleScore(right);
@@ -282,12 +287,15 @@ export function rankAlbumCandidates(
 
 export function tracksInOrder(release) {
   const disc = (track) => Number(track?.mediumNumber ?? track?.discNumber) || 1;
-  return [...(release?.tracks || [])]
-    .sort((left, right) => disc(left) - disc(right) || (left.trackNumber || 0) - (right.trackNumber || 0));
+  return [...(release?.tracks || [])].sort(
+    (left, right) => disc(left) - disc(right) || (left.trackNumber || 0) - (right.trackNumber || 0),
+  );
 }
 
 export function runningOrder(release) {
-  return tracksInOrder(release).map((track) => getNormalizedText(track.title)).join("\n");
+  return tracksInOrder(release)
+    .map((track) => getNormalizedText(track.title))
+    .join("\n");
 }
 
 export function median(values) {
@@ -297,13 +305,21 @@ export function median(values) {
   return sorted.length % 2 ? sorted[middle] : Math.round((sorted[middle - 1] + sorted[middle]) / 2);
 }
 
-const lowerId = (value) => String(value || "").trim().toLowerCase();
+const lowerId = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase();
 const isOfficial = (release) => String(release?.status || "").toLowerCase() === "official";
 
 function recordingIds(track, aliases) {
   const recording = lowerId(track?.recordingId || track?.recordingMbid);
-  return [recording, ...(track?.oldRecordingIds || track?.recordingMbidAliases || []),
-    ...(aliases.get(recording) || [])].map(lowerId).filter(Boolean);
+  return [
+    recording,
+    ...(track?.oldRecordingIds || track?.recordingMbidAliases || []),
+    ...(aliases.get(recording) || []),
+  ]
+    .map(lowerId)
+    .filter(Boolean);
 }
 
 // Each track's lengths, in running order, on the other pressings of a
@@ -316,16 +332,25 @@ export function pressingLengths(releases, release, aliases = new Map()) {
   const own = lowerId(release?.id || release?.releaseMbid);
   const order = runningOrder(release);
   const officialOnly = releases.some(isOfficial);
-  const pressings = releases.filter((entry) => entry !== release
-    && (!own || lowerId(entry?.id || entry?.releaseMbid) !== own)
-    && (!officialOnly || isOfficial(entry))
-    && entry?.tracks?.length === release.tracks.length && runningOrder(entry) === order)
+  const pressings = releases
+    .filter(
+      (entry) =>
+        entry !== release &&
+        (!own || lowerId(entry?.id || entry?.releaseMbid) !== own) &&
+        (!officialOnly || isOfficial(entry)) &&
+        entry?.tracks?.length === release.tracks.length &&
+        runningOrder(entry) === order,
+    )
     .map(tracksInOrder);
   return tracksInOrder(release).map((track, index) => {
     const recordings = recordingIds(track, aliases);
-    return pressings.map((tracks) => tracks[index])
-      .filter((entry) => recordingIds(entry, aliases).some((recording) => recordings.includes(recording)))
-      .map((entry) => Number(entry.durationMs)).filter((length) => length > 0);
+    return pressings
+      .map((tracks) => tracks[index])
+      .filter((entry) =>
+        recordingIds(entry, aliases).some((recording) => recordings.includes(recording)),
+      )
+      .map((entry) => Number(entry.durationMs))
+      .filter((length) => length > 0);
   });
 }
 
@@ -336,7 +361,12 @@ export function withPressingDurations(releases, release) {
   const lengths = pressingLengths(releases, release);
   return {
     ...release,
-    tracks: release.tracks.map((track) => ({ ...track,
-      durationMs: track.durationMs > 0 ? track.durationMs : median(lengths[ordered.indexOf(track)]) ?? track.durationMs })),
+    tracks: release.tracks.map((track) => ({
+      ...track,
+      durationMs:
+        track.durationMs > 0
+          ? track.durationMs
+          : (median(lengths[ordered.indexOf(track)]) ?? track.durationMs),
+    })),
   };
 }

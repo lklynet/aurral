@@ -22,7 +22,9 @@ async function fixture(page, { holdDiscover }) {
     }
     if (path === "/discover/editorial") return json({ forYou: [], genres: [] });
     if (path === "/library/lookup/batch") {
-      return json(Object.fromEntries((request.postDataJSON()?.mbids || []).map((id) => [id, false])));
+      return json(
+        Object.fromEntries((request.postDataJSON()?.mbids || []).map((id) => [id, false])),
+      );
     }
     if (path.endsWith("/cover")) return json({ images: [] });
     if (path === "/artists/release-groups/covers") return json({});
@@ -34,16 +36,24 @@ async function fixture(page, { holdDiscover }) {
   });
 }
 
-test("Discover keeps its heading and reserves section space while loading", async ({ page }, testInfo) => {
+test("Discover keeps its heading and reserves section space while loading", async ({
+  page,
+}, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.emulateMedia({ reducedMotion: "reduce" });
   let release;
-  await fixture(page, { holdDiscover: new Promise((resolve) => { release = resolve; }) });
+  await fixture(page, {
+    holdDiscover: new Promise((resolve) => {
+      release = resolve;
+    }),
+  });
   await page.goto("/");
 
   const busy = page.locator("main [aria-busy=true]").first();
   await expect(page.getByRole("heading", { name: "Discover", level: 1 })).toBeVisible();
-  await expect(page.getByRole("status").filter({ hasText: "Loading recommendations" })).toBeVisible();
+  await expect(
+    page.getByRole("status").filter({ hasText: "Loading recommendations" }),
+  ).toBeVisible();
   const reserved = await busy.boundingBox();
   expect(reserved.height).toBeGreaterThan(800);
   const animations = await busy.evaluate((node) =>
@@ -54,9 +64,17 @@ test("Discover keeps its heading and reserves section space while loading", asyn
   );
   expect(animations.length).toBeGreaterThan(0);
   expect(animations.every((name) => name === "none")).toBe(true);
-  await testInfo.attach("discover-skeleton", { body: await page.screenshot(), contentType: "image/png" });
+  await testInfo.attach("discover-skeleton", {
+    body: await page.screenshot(),
+    contentType: "image/png",
+  });
 
   release();
-  await expect(page.locator("main").getByRole("link", { name: `Open ${artist.name}`, exact: true }).first()).toBeVisible();
+  await expect(
+    page
+      .locator("main")
+      .getByRole("link", { name: `Open ${artist.name}`, exact: true })
+      .first(),
+  ).toBeVisible();
   await expect(page.locator("main [aria-busy=true]")).toHaveCount(0);
 });

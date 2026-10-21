@@ -69,12 +69,21 @@ test("a library artist link falls back to a name match when the ID lookup misses
   const { links, open } = await setup(t, (url) => {
     if (url.pathname.includes("/library/lookup/")) return { body: { exists: false } };
     if (url.pathname.endsWith("/library/canonical")) {
-      return { body: { items: [{ id: 3, name: "Other" }, { id: 9, canonicalId: "c-9", name: "Wanted Artist" }] } };
+      return {
+        body: {
+          items: [
+            { id: 3, name: "Other" },
+            { id: 9, canonicalId: "c-9", name: "Wanted Artist" },
+          ],
+        },
+      };
     }
     return { body: {} };
   });
 
-  const target = await open(links.resolveLibraryArtistPath({ mbid: "mb-1", name: "wanted artist" }));
+  const target = await open(
+    links.resolveLibraryArtistPath({ mbid: "mb-1", name: "wanted artist" }),
+  );
   assert.equal(target.to, "/library/artist/c-9");
 });
 
@@ -85,7 +94,8 @@ test("hovering a resolver link does the lookup the opened page then reuses", asy
   const path = links.resolveArtistPath({ name: "Hovered" });
 
   await prefetchRoute(path);
-  const lookups = () => requests.filter((url) => url.pathname.endsWith("/discover/editorial/links")).length;
+  const lookups = () =>
+    requests.filter((url) => url.pathname.endsWith("/discover/editorial/links")).length;
   assert.equal(lookups(), 1);
 
   const target = await open(path);

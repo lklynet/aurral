@@ -50,12 +50,19 @@ test("a personal refresh in a worker shows as updating only for its user", async
   const { db } = await import("../../backend/config/db-sqlite.js");
   dbOps.updateDiscoveryCache({ recommendations: [{ name: "Stale" }] }, "user:7");
   assert.equal(dbOps.getDiscoveryCache("user:7").recommendations[0].name, "Stale");
-  db.prepare("UPDATE discovery_cache SET value = ? WHERE key = ?")
-    .run(JSON.stringify([{ name: "Fresh" }]), "user:7:recommendations");
+  db.prepare("UPDATE discovery_cache SET value = ? WHERE key = ?").run(
+    JSON.stringify([{ name: "Fresh" }]),
+    "user:7:recommendations",
+  );
 
   try {
     persistence.markDiscoveryRefreshStarted("user:7");
-    persistence.saveDiscoveryRefreshProgress("user:7", "collecting_seeds", "Collecting your seed artists", 10);
+    persistence.saveDiscoveryRefreshProgress(
+      "user:7",
+      "collecting_seeds",
+      "Collecting your seed artists",
+      10,
+    );
     await forwardWorkerBroadcast({
       type: "websocket-broadcast",
       channel: "discovery",

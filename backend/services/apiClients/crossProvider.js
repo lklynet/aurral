@@ -3,21 +3,22 @@ import { resolveAlbumByArtistAndTitle } from "../providers/brainzmashProvider.js
 import { musicbrainzResolveArtistMbidByName } from "./musicbrainz.js";
 
 function normalizeArtistAlbumKey(artistName, albumName) {
-  const a = String(artistName || "").trim().toLowerCase();
-  const b = String(albumName || "").trim().toLowerCase();
+  const a = String(artistName || "")
+    .trim()
+    .toLowerCase();
+  const b = String(albumName || "")
+    .trim()
+    .toLowerCase();
   return `aa:${a}\0${b}`;
 }
 
-export async function resolveDeezerAlbumToMbid(
-  artistName,
-  albumName,
-  deezerAlbumId,
-) {
-  const deezerId = String(deezerAlbumId || "").replace(/^dz-/, "").trim();
+export async function resolveDeezerAlbumToMbid(artistName, albumName, deezerAlbumId) {
+  const deezerId = String(deezerAlbumId || "")
+    .replace(/^dz-/, "")
+    .trim();
   const dzKey = deezerId ? `dz:${deezerId}` : null;
   const aaKey = normalizeArtistAlbumKey(artistName, albumName);
-  const cached =
-    (dzKey && dbOps.getDeezerMbidCache(dzKey)) || dbOps.getDeezerMbidCache(aaKey);
+  const cached = (dzKey && dbOps.getDeezerMbidCache(dzKey)) || dbOps.getDeezerMbidCache(aaKey);
   if (cached) return cached;
 
   const artist = String(artistName || "").trim();

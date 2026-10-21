@@ -91,7 +91,11 @@ test("deemix maps each bitrate to a real quality tier", () => {
   const client = new DeemixClient({ enabled: true, url: "http://deemix.local" });
   const tierIds = new Set(QUALITY_TIERS.map((tier) => tier.id));
 
-  for (const [bitrate, expected] of [[9, "flac-standard"], [3, "mp3-320"], [1, "mp3-128"]]) {
+  for (const [bitrate, expected] of [
+    [9, "flac-standard"],
+    [3, "mp3-320"],
+    [1, "mp3-128"],
+  ]) {
     client.updateConfig({ enabled: true, url: "http://deemix.local", bitrate });
     assert.equal(client.getQualityTierId(), expected);
     assert.equal(tierIds.has(expected), true);
@@ -145,10 +149,12 @@ test("slskd omits the X-API-KEY header when no API key is set", async () => {
   const server = createServer((req, res) => {
     headers.push(req.headers["x-api-key"]);
     res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify({
-      server: { state: "Connected", isConnected: true },
-      directories: {},
-    }));
+    res.end(
+      JSON.stringify({
+        server: { state: "Connected", isConnected: true },
+        directories: {},
+      }),
+    );
   });
 
   try {
@@ -168,7 +174,9 @@ test("slskd omits the X-API-KEY header when no API key is set", async () => {
     assert.deepEqual(headers.slice(0, 2), [undefined, undefined]);
     assert.deepEqual(headers.slice(2, 4), ["secret-key", "secret-key"]);
   } finally {
-    await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+    await new Promise((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
   }
 });
 

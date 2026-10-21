@@ -35,7 +35,9 @@ seed.exec(`
 seed.close();
 applyIsolatedBackendEnv(isolatedState);
 
-const { downloadTracker, DownloadTracker } = await importFromRepo("backend/services/downloadJobs/downloadTracker.js");
+const { downloadTracker, DownloadTracker } = await importFromRepo(
+  "backend/services/downloadJobs/downloadTracker.js",
+);
 const { buildTrackFileName } = await importFromRepo("backend/services/downloadUtils.js");
 
 afterAll(async () => {

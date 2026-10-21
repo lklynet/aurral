@@ -15,16 +15,20 @@ async function openImport(page) {
   return dialog;
 }
 
-test("Last.fm import starts from the profile username and can switch accounts", async ({ page }) => {
+test("Last.fm import starts from the profile username and can switch accounts", async ({
+  page,
+}) => {
   const stationRequests = [];
   let importPayload;
 
   await page.route(apiPath("/playlists/import/spotify/status"), (route) =>
-    route.fulfill({ json: { connected: false, displayName: null } }));
+    route.fulfill({ json: { connected: false, displayName: null } }),
+  );
   await page.route(apiPath("/users/me/listening-history"), (route) =>
     route.fulfill({
       json: { listenHistoryProvider: "lastfm", listenHistoryUsername: "profile-user" },
-    }));
+    }),
+  );
   await page.route(apiPath("/playlists/import/lastfm/playlists"), (route) => {
     const username = new URL(route.request().url()).searchParams.get("username");
     stationRequests.push(username);
@@ -34,7 +38,12 @@ test("Last.fm import starts from the profile username and can switch accounts", 
     return route.fulfill({
       json: {
         playlists: [
-          { id: `${username}-library`, name: `${username} library`, trackCount: 25, sourceType: "lastfm-station" },
+          {
+            id: `${username}-library`,
+            name: `${username} library`,
+            trackCount: 25,
+            sourceType: "lastfm-station",
+          },
         ],
       },
     });
@@ -46,7 +55,8 @@ test("Last.fm import starts from the profile username and can switch accounts", 
         skipped: 1,
         previewTracks: [{ artistName: "Artist L", trackName: "Track L" }],
       },
-    }));
+    }),
+  );
   await page.route(apiPath("/playlists/import/lastfm"), (route) => {
     importPayload = route.request().postDataJSON();
     return route.fulfill({ json: { success: true } });
@@ -74,22 +84,29 @@ test("Last.fm import starts from the profile username and can switch accounts", 
   await expect(dialog.getByLabel("Name in Aurral")).toHaveValue("other-user library");
 
   await dialog.getByRole("button", { name: "Import playlist", exact: true }).click();
-  await expect.poll(() => importPayload).toMatchObject({
-    playlistId: "other-user-library",
-    username: "other-user",
-    externalName: "other-user library",
-    name: "other-user library",
-  });
+  await expect
+    .poll(() => importPayload)
+    .toMatchObject({
+      playlistId: "other-user-library",
+      username: "other-user",
+      externalName: "other-user library",
+      name: "other-user library",
+    });
   expect(stationRequests).toEqual(["profile-user", "missing-user", "other-user"]);
 });
 
 test("a Spotify sign-in that expired returns the import to the connect step", async ({ page }) => {
   await page.route(apiPath("/playlists/import/spotify/status"), (route) =>
-    route.fulfill({ json: { connected: true, displayName: "Spotify Tester" } }));
+    route.fulfill({ json: { connected: true, displayName: "Spotify Tester" } }),
+  );
   await page.route(apiPath("/playlists/import/spotify/playlists"), (route) =>
     route.fulfill({
-      json: { user: "Spotify Tester", playlists: [{ id: "road-trip", name: "Road trip", trackCount: 12 }] },
-    }));
+      json: {
+        user: "Spotify Tester",
+        playlists: [{ id: "road-trip", name: "Road trip", trackCount: 12 }],
+      },
+    }),
+  );
   await page.route(apiPath("/playlists/import/spotify/preview"), (route) =>
     route.fulfill({
       status: 401,
@@ -98,7 +115,8 @@ test("a Spotify sign-in that expired returns the import to the connect step", as
         code: "SPOTIFY_AUTH_REQUIRED",
         message: "Reconnect Spotify to continue",
       },
-    }));
+    }),
+  );
 
   const dialog = await openImport(page);
   await expect(dialog.getByText("Signed in as")).toContainText("Spotify Tester");

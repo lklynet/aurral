@@ -83,7 +83,13 @@ function getLibraryFlowPaths() {
   return [...new Set(rows.map((row) => path.resolve(String(row.final_path))))];
 }
 
-async function syncLibraryFlowFiles(musicRoot, jobMetadataByPath, force, changedPaths, changedFiles) {
+async function syncLibraryFlowFiles(
+  musicRoot,
+  jobMetadataByPath,
+  force,
+  changedPaths,
+  changedFiles,
+) {
   const targeted = Array.isArray(changedPaths);
   const matchesScope = targeted ? createPathScopeMatcher(changedPaths) : () => true;
   const flowPaths = pathsWithin(musicRoot, getLibraryFlowPaths()).filter(matchesScope);
@@ -109,7 +115,8 @@ async function syncLibraryFlowFiles(musicRoot, jobMetadataByPath, force, changed
 async function canonicalizeAurralArtistNames(jobMetadataByPath, paths = null) {
   const candidates = new Map();
   for (const [filePath, metadata] of jobMetadataByPath) {
-    if (Array.isArray(paths) && !paths.some((rootPath) => isPathWithin(rootPath, filePath))) continue;
+    if (Array.isArray(paths) && !paths.some((rootPath) => isPathWithin(rootPath, filePath)))
+      continue;
     const artistMbid = String(metadata?.artistMbid || "").trim();
     const artistName = String(metadata?.artistName || "").trim();
     if (!artistMbid || !/[;,×!]/.test(artistName) || candidates.has(artistMbid)) continue;
@@ -164,16 +171,20 @@ async function completeLibraryTrackLists() {
         return;
       }
     }
-    const release = metadata && isLibraryAlbumReleaseGroup(album, metadata)
-      ? chooseLibraryAlbumRelease(album, metadata.releases, selectAlbumRelease(metadata))
-      : null;
+    const release =
+      metadata && isLibraryAlbumReleaseGroup(album, metadata)
+        ? chooseLibraryAlbumRelease(album, metadata.releases, selectAlbumRelease(metadata))
+        : null;
     const artists = new Map((metadata?.artists || []).map((artist) => [artist.id, artist.name]));
     const compilation = isVariousArtistsCredit(artists.get(metadata?.artistId), metadata?.artistId);
-    if (storeLibraryAlbumTrackList(album.id, {
-      release,
-      basis: album.basis,
-      artistNameFor: (track) => (compilation ? artists.get(track.artistId) : null) || null,
-    })) changed = true;
+    if (
+      storeLibraryAlbumTrackList(album.id, {
+        release,
+        basis: album.basis,
+        artistNameFor: (track) => (compilation ? artists.get(track.artistId) : null) || null,
+      })
+    )
+      changed = true;
   });
   if (unavailable) {
     logger.warn("library", "Stopped listing album tracks; metadata provider unavailable", {
@@ -224,18 +235,23 @@ export async function scanConfiguredLibrary({
   const lidarrActive = isLidarrLibraryActive(lidarrClient);
   const lidarrFolders = activeLidarrRoots(lidarrClient, lidarrRoots);
   try {
-    local = targeted && localPaths.length === 0
-      ? skippedScan()
-      : await scanMusicRoot({
-          rootPath: musicRoot,
-          source: "aurral",
-          changedPaths: targeted ? localPaths : null,
-          force,
-          metadataEnricher: (_metadata, filePath) => jobMetadataByPath.get(path.resolve(filePath)),
-          syncSearch: targeted,
-          isExcluded: createLibraryScanExclusion("aurral", { downloadRoot: musicRoot, lidarrRoots: lidarrFolders }),
-          changedFiles,
-        });
+    local =
+      targeted && localPaths.length === 0
+        ? skippedScan()
+        : await scanMusicRoot({
+            rootPath: musicRoot,
+            source: "aurral",
+            changedPaths: targeted ? localPaths : null,
+            force,
+            metadataEnricher: (_metadata, filePath) =>
+              jobMetadataByPath.get(path.resolve(filePath)),
+            syncSearch: targeted,
+            isExcluded: createLibraryScanExclusion("aurral", {
+              downloadRoot: musicRoot,
+              lidarrRoots: lidarrFolders,
+            }),
+            changedFiles,
+          });
     if (!targeted || localPaths.length > 0) {
       flow = await syncLibraryFlowFiles(
         musicRoot,
@@ -256,12 +272,16 @@ export async function scanConfiguredLibrary({
           force,
           source: "lidarr",
           syncSearch: targeted,
-          isExcluded: createLibraryScanExclusion("lidarr", { downloadRoot: musicRoot, lidarrRoots: lidarrFolders }),
+          isExcluded: createLibraryScanExclusion("lidarr", {
+            downloadRoot: musicRoot,
+            lidarrRoots: lidarrFolders,
+          }),
           changedFiles,
         });
         if (!targeted) {
-          const removedRootPaths = [...getLibraryMediaPaths("lidarr")]
-            .filter((filePath) => !lidarrFolders.some((root) => isPathWithin(root, filePath)));
+          const removedRootPaths = [...getLibraryMediaPaths("lidarr")].filter(
+            (filePath) => !lidarrFolders.some((root) => isPathWithin(root, filePath)),
+          );
           const removedRootFiles = removeMissingLibraryMediaFiles("lidarr", removedRootPaths);
           for (const filePath of removedRootFiles) changedFiles.add(filePath);
           if (removedRootFiles.length > 0) lidarr.changed = true;
@@ -299,8 +319,17 @@ export async function scanConfiguredLibrary({
     scanFailed = true;
     throw error;
   } finally {
-    if (scanFailed || artistsResolved || tracksListed || lidarrRemoved || local?.changed || lidarr?.changed || flow?.changed) {
-      if (!targeted || scanFailed || artistsResolved || flow?.removed > 0) rebuildLibrarySearchIndex();
+    if (
+      scanFailed ||
+      artistsResolved ||
+      tracksListed ||
+      lidarrRemoved ||
+      local?.changed ||
+      lidarr?.changed ||
+      flow?.changed
+    ) {
+      if (!targeted || scanFailed || artistsResolved || flow?.removed > 0)
+        rebuildLibrarySearchIndex();
       if (!targeted) rebuildLibraryGenreStats();
     }
   }

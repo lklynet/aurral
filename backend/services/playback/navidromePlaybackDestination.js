@@ -7,11 +7,7 @@ import { logger } from "../logger.js";
 import { getPathMappings, resolveLocalPath, resolveRemotePath } from "../pathMappings.js";
 import { navidromePlaylistPointerStore } from "../navidrome/navidromePlaylistPointerStore.js";
 import { claimUnmatchedRootWarning, serverScanTargets } from "./playbackScanFolders.js";
-import {
-  AURRAL_FLOWS_DIR,
-  PLAYLIST_FILES_DIR,
-  resolveDownloadRoot,
-} from "../downloadPaths.js";
+import { AURRAL_FLOWS_DIR, PLAYLIST_FILES_DIR, resolveDownloadRoot } from "../downloadPaths.js";
 import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.js";
 import {
   createPlaybackPlaylistIdentity,
@@ -35,13 +31,19 @@ export const navidromeSettings = Object.freeze({
   fields: Object.freeze([
     Object.freeze({ key: "url", label: "Server URL", type: "url", required: true }),
     Object.freeze({ key: "username", label: "Username", type: "text", required: true }),
-    Object.freeze({ key: "password", label: "Password", type: "password", required: true, secret: true }),
+    Object.freeze({
+      key: "password",
+      label: "Password",
+      type: "password",
+      required: true,
+      secret: true,
+    }),
     Object.freeze({
       key: "prefixOwnerUsername",
       label: "Prefix playlist names with the owner username",
       type: "toggle",
       section: "Behavior",
-      hint: "Publishes flow playlists as \"username - playlist name\".",
+      hint: 'Publishes flow playlists as "username - playlist name".',
     }),
   ]),
   defaults: Object.freeze({
@@ -58,9 +60,10 @@ function buildM3uContent(tracks) {
   const lines = ["#EXTM3U"];
   for (const track of tracks) {
     const duration = Math.max(0, Math.round(Number(track.durationMs) / 1000 || 0));
-    const label = track.artist && track.title
-      ? `${track.artist} - ${track.title}`
-      : track.title || track.artist || "";
+    const label =
+      track.artist && track.title
+        ? `${track.artist} - ${track.title}`
+        : track.title || track.artist || "";
     lines.push(`#EXTINF:${duration},${label}`);
     lines.push(String(track.path || "").replace(/\\/g, "/"));
   }
@@ -104,9 +107,10 @@ export class NavidromePlaybackDestination {
       this._playlists = null;
       this._syncHashes.clear();
       this._configGeneration += 1;
-      this.client = config.url && config.username && config.password
-        ? new NavidromeClient(config.url, config.username, config.password)
-        : null;
+      this.client =
+        config.url && config.username && config.password
+          ? new NavidromeClient(config.url, config.username, config.password)
+          : null;
     } else {
       this._playlists = null;
       this._syncHashes.clear();
@@ -119,14 +123,22 @@ export class NavidromePlaybackDestination {
   }
 
   async getReferencedPaths({ excludeEntityIds = [] } = {}) {
-    const excluded = new Set(excludeEntityIds.flatMap((id) =>
-      navidromePlaylistPointerStore.getPointersForEntity(id).map((pointer) => pointer.playlistId)));
+    const excluded = new Set(
+      excludeEntityIds.flatMap((id) =>
+        navidromePlaylistPointerStore.getPointersForEntity(id).map((pointer) => pointer.playlistId),
+      ),
+    );
     const paths = await this.client.getPlaylistTrackPaths(excluded);
-    return { ok: true, paths: paths.map((file) => resolveLocalPath(file, getPathMappings("navidrome"))) };
+    return {
+      ok: true,
+      paths: paths.map((file) => resolveLocalPath(file, getPathMappings("navidrome"))),
+    };
   }
 
   _sanitize(value) {
-    return String(value || "").replace(/[<>:"/\\|?*]/g, "_").trim();
+    return String(value || "")
+      .replace(/[<>:"/\\|?*]/g, "_")
+      .trim();
   }
 
   getPlaylistNames({ entityId, ownerUserId = null, displayName } = {}) {
@@ -174,10 +186,7 @@ export class NavidromePlaybackDestination {
 
   _isActiveNameForOtherEntity(entityId, name) {
     const expected = this._sanitize(name);
-    const entities = [
-      ...flowPlaylistConfig.getFlows(),
-      ...flowPlaylistConfig.getStaticPlaylists(),
-    ];
+    const entities = [...flowPlaylistConfig.getFlows(), ...flowPlaylistConfig.getStaticPlaylists()];
     return entities.some((entity) => {
       if (entity.id === entityId) return false;
       const names = this.getPlaylistNames({
@@ -228,7 +237,8 @@ export class NavidromePlaybackDestination {
 
   async _deleteImportedPlaylists(name) {
     for (const playlist of await this._fetchPlaylists()) {
-      if (playlist.name !== name || navidromePlaylistPointerStore.hasPlaylistId(playlist.id)) continue;
+      if (playlist.name !== name || navidromePlaylistPointerStore.hasPlaylistId(playlist.id))
+        continue;
       await this.client.deletePlaylist(playlist.id);
     }
   }
@@ -251,9 +261,8 @@ export class NavidromePlaybackDestination {
       const artworkPath = path.join(this.libraryRoot, `${this._sanitize(current)}${extension}`);
       const data = await fs.readFile(artworkPath).catch(() => null);
       if (!data) continue;
-      const contentType = extension === ".png"
-        ? "image/png"
-        : extension === ".jpg" ? "image/jpeg" : "image/webp";
+      const contentType =
+        extension === ".png" ? "image/png" : extension === ".jpg" ? "image/jpeg" : "image/webp";
       try {
         await this.client.uploadPlaylistArtwork(
           playlistId,
@@ -277,11 +286,14 @@ export class NavidromePlaybackDestination {
       const targetKey = this._targetKey(ownerUserId);
       const pointer = navidromePlaylistPointerStore.getPointer(entityId, targetKey);
       if (!entity || !pointer?.playlistId) return playbackOperationSuccess();
-      await this._uploadPlaylistArtwork({
-        entityId,
-        ownerUserId,
-        displayName: entity.name,
-      }, pointer.playlistId);
+      await this._uploadPlaylistArtwork(
+        {
+          entityId,
+          ownerUserId,
+          displayName: entity.name,
+        },
+        pointer.playlistId,
+      );
       return playbackOperationSuccess();
     } catch (error) {
       return playbackOperationFailure({
@@ -331,25 +343,32 @@ export class NavidromePlaybackDestination {
     };
     for (const flow of flowPlaylistConfig.getFlows()) {
       if (flow.enabled) addPlaylist(flow);
-      else addArtwork(this.getPlaylistName({
-        entityId: flow.id,
-        ownerUserId: flow.ownerUserId,
-        displayName: flow.name,
-      }));
+      else
+        addArtwork(
+          this.getPlaylistName({
+            entityId: flow.id,
+            ownerUserId: flow.ownerUserId,
+            displayName: flow.name,
+          }),
+        );
     }
     for (const playlist of flowPlaylistConfig.getStaticPlaylists()) addPlaylist(playlist);
     return expected;
   }
 
   _removedEntityPlaylistNames() {
-    const entityIds = new Set([
-      ...flowPlaylistConfig.getFlows(),
-      ...flowPlaylistConfig.getStaticPlaylists(),
-    ].map((entity) => entity.id));
-    return new Set(navidromePlaylistPointerStore.getEntityIds()
-      .filter((entityId) => !entityIds.has(entityId))
-      .flatMap((entityId) => navidromePlaylistPointerStore.getPointersForEntity(entityId))
-      .map((pointer) => this._sanitize(pointer.title)));
+    const entityIds = new Set(
+      [...flowPlaylistConfig.getFlows(), ...flowPlaylistConfig.getStaticPlaylists()].map(
+        (entity) => entity.id,
+      ),
+    );
+    return new Set(
+      navidromePlaylistPointerStore
+        .getEntityIds()
+        .filter((entityId) => !entityIds.has(entityId))
+        .flatMap((entityId) => navidromePlaylistPointerStore.getPointersForEntity(entityId))
+        .map((pointer) => this._sanitize(pointer.title)),
+    );
   }
 
   async _cleanupStaleFiles() {
@@ -359,9 +378,10 @@ export class NavidromePlaybackDestination {
     for (const file of files) {
       const extension = path.extname(file).toLowerCase();
       if (
-        !ARTWORK_FILE_EXTENSIONS.includes(extension)
-        && !PLAYLIST_FILE_EXTENSIONS.includes(extension)
-      ) continue;
+        !ARTWORK_FILE_EXTENSIONS.includes(extension) &&
+        !PLAYLIST_FILE_EXTENSIONS.includes(extension)
+      )
+        continue;
       if (expected.has(file)) continue;
       const name = path.basename(file, extension);
       if (PLAYLIST_FILE_EXTENSIONS.includes(extension) && !removedNames.has(name)) {
@@ -443,7 +463,10 @@ export class NavidromePlaybackDestination {
         pointer = null;
       } else {
         const importedSourceName = this._getImportedSourceName(nativePlaylist?.comment);
-        if (importedSourceName && this._isActiveNameForOtherEntity(snapshot.entityId, importedSourceName)) {
+        if (
+          importedSourceName &&
+          this._isActiveNameForOtherEntity(snapshot.entityId, importedSourceName)
+        ) {
           navidromePlaylistPointerStore.deletePointer(snapshot.entityId, targetKey);
           pointer = null;
         }
@@ -453,12 +476,9 @@ export class NavidromePlaybackDestination {
       return playbackOperationSuccess();
     }
     const files = await fs.readdir(this.libraryRoot).catch(() => []);
-    const normalizeTrackPath = (value) => path
-      .normalize(String(value || "").replace(/\\/g, "/"))
-      .toLowerCase();
-    const trackPaths = new Set(
-      snapshot.tracks.map((track) => normalizeTrackPath(track.path)),
-    );
+    const normalizeTrackPath = (value) =>
+      path.normalize(String(value || "").replace(/\\/g, "/")).toLowerCase();
+    const trackPaths = new Set(snapshot.tracks.map((track) => normalizeTrackPath(track.path)));
     const importedPlaylistNames = [];
     for (const file of files) {
       if (!PLAYLIST_FILE_EXTENSIONS.includes(path.extname(file).toLowerCase())) continue;
@@ -468,13 +488,16 @@ export class NavidromePlaybackDestination {
         continue;
       }
       const content = await fs.readFile(path.join(this.libraryRoot, file), "utf8").catch(() => "");
-      const importedTrackPaths = new Set(content
-        .split(/\r?\n/)
-        .filter((line) => line && !line.startsWith("#"))
-        .map(normalizeTrackPath));
-      const matchesTrackSet = trackPaths.size > 0
-        && importedTrackPaths.size === trackPaths.size
-        && [...importedTrackPaths].every((trackPath) => trackPaths.has(trackPath));
+      const importedTrackPaths = new Set(
+        content
+          .split(/\r?\n/)
+          .filter((line) => line && !line.startsWith("#"))
+          .map(normalizeTrackPath),
+      );
+      const matchesTrackSet =
+        trackPaths.size > 0 &&
+        importedTrackPaths.size === trackPaths.size &&
+        [...importedTrackPaths].every((trackPath) => trackPaths.has(trackPath));
       if (matchesTrackSet) importedPlaylistNames.push(name);
     }
     let importedPlaylistName = null;
@@ -485,16 +508,17 @@ export class NavidromePlaybackDestination {
       const recoverySourceNames = new Set(recoveryNames.map((name) => this._sanitize(name)));
       const importedPlaylist = playlists.find((playlist) => {
         const importedSourceName = this._getImportedSourceName(playlist.comment);
-        const sourceBelongsToOtherEntity = stalePointerDetected
-          && importedSourceName
-          && this._isActiveNameForOtherEntity(snapshot.entityId, importedSourceName);
-        return !sourceBelongsToOtherEntity
-          && (
-            importedPlaylistNames.includes(playlist.name)
-            || (stalePointerDetected && recoveryNameSet.has(playlist.name))
-            || recoverySourceNames.has(importedSourceName)
-          )
-          && !navidromePlaylistPointerStore.hasPlaylistId(playlist.id);
+        const sourceBelongsToOtherEntity =
+          stalePointerDetected &&
+          importedSourceName &&
+          this._isActiveNameForOtherEntity(snapshot.entityId, importedSourceName);
+        return (
+          !sourceBelongsToOtherEntity &&
+          (importedPlaylistNames.includes(playlist.name) ||
+            (stalePointerDetected && recoveryNameSet.has(playlist.name)) ||
+            recoverySourceNames.has(importedSourceName)) &&
+          !navidromePlaylistPointerStore.hasPlaylistId(playlist.id)
+        );
       });
       if (importedPlaylist) {
         importedPlaylistName = importedPlaylist.name;
@@ -503,9 +527,9 @@ export class NavidromePlaybackDestination {
       }
     }
     if (
-      pointer?.title
-      && pointer.title !== current
-      && typeof this.client.renamePlaylist === "function"
+      pointer?.title &&
+      pointer.title !== current &&
+      typeof this.client.renamePlaylist === "function"
     ) {
       await this.client.renamePlaylist(pointer.playlistId, current);
       pointer = { ...pointer, title: current };
@@ -519,15 +543,21 @@ export class NavidromePlaybackDestination {
     const songs = [];
     for (let index = 0; index < remoteTracks.length; index += SONG_LOOKUP_BATCH_SIZE) {
       const batch = remoteTracks.slice(index, index + SONG_LOOKUP_BATCH_SIZE);
-      songs.push(...await Promise.all(
-        batch.map((track) => this.client.findSong(track.title, track.artist, track)),
-      ));
+      songs.push(
+        ...(await Promise.all(
+          batch.map((track) => this.client.findSong(track.title, track.artist, track)),
+        )),
+      );
     }
     const hasUnresolvedSongs = songs.some((song) => !song?.id);
     const songIds = songs.filter((song) => song?.id).map((song) => song.id);
     if (snapshot.tracks.length && !songIds.length && !pointer) {
-      navidromePlaylistPointerStore.setPointer(snapshot.entityId, targetKey, { playlistId: null, title: current });
-      if (fileOnlyTitle && fileOnlyTitle !== current) await this._deleteFiles([fileOnlyTitle], PLAYLIST_FILE_EXTENSIONS);
+      navidromePlaylistPointerStore.setPointer(snapshot.entityId, targetKey, {
+        playlistId: null,
+        title: current,
+      });
+      if (fileOnlyTitle && fileOnlyTitle !== current)
+        await this._deleteFiles([fileOnlyTitle], PLAYLIST_FILE_EXTENSIONS);
       await fs.writeFile(
         path.join(this.libraryRoot, `${this._sanitize(current)}.m3u`),
         buildM3uContent(remoteTracks),
@@ -561,10 +591,12 @@ export class NavidromePlaybackDestination {
     }
     if (!playlist) {
       const playlists = await this._fetchPlaylists();
-      if (importedPlaylistNames.length) playlist = playlists.find((candidate) =>
-        importedPlaylistNames.includes(candidate.name)
-        && !navidromePlaylistPointerStore.hasPlaylistId(candidate.id),
-      );
+      if (importedPlaylistNames.length)
+        playlist = playlists.find(
+          (candidate) =>
+            importedPlaylistNames.includes(candidate.name) &&
+            !navidromePlaylistPointerStore.hasPlaylistId(candidate.id),
+        );
       if (playlist) {
         await this.client.updatePlaylist(playlist.id, { name: current, songIds });
       } else {
@@ -623,8 +655,10 @@ export class NavidromePlaybackDestination {
     const key = `${entityId}:${targetKey}`;
     return this._runPlaylistOperation(key, async () => {
       const pointer = navidromePlaylistPointerStore.getPointer(entityId, targetKey);
-      const fileOnlyName = pointer && !pointer.playlistId
-        && !this._isActiveNameForOtherEntity(entityId, pointer.title) ? pointer.title : null;
+      const fileOnlyName =
+        pointer && !pointer.playlistId && !this._isActiveNameForOtherEntity(entityId, pointer.title)
+          ? pointer.title
+          : null;
       let pointerError = null;
       let pointerResolved = !pointer;
       if (pointer && this.isConfigured()) {
@@ -659,7 +693,11 @@ export class NavidromePlaybackDestination {
       const identity = createPlaybackPlaylistIdentity(value);
       const names = this._getNamesForIdentity(identity);
       if (!names) return playbackOperationSuccess();
-      return await this._deleteTarget(identity.entityId, this._targetKey(identity.ownerUserId), names);
+      return await this._deleteTarget(
+        identity.entityId,
+        this._targetKey(identity.ownerUserId),
+        names,
+      );
     } catch (error) {
       return playbackOperationFailure({
         code: "PLAYLIST_DELETE_FAILED",
@@ -676,7 +714,9 @@ export class NavidromePlaybackDestination {
   async deleteEntityPlaylists(entityId) {
     try {
       for (const pointer of navidromePlaylistPointerStore.getPointersForEntity(entityId)) {
-        const current = this._isActiveNameForOtherEntity(entityId, pointer.title) ? null : pointer.title;
+        const current = this._isActiveNameForOtherEntity(entityId, pointer.title)
+          ? null
+          : pointer.title;
         await this._deleteTarget(entityId, pointer.targetKey, { current, legacy: [] });
       }
       return playbackOperationSuccess();
@@ -704,14 +744,26 @@ export class NavidromePlaybackDestination {
     const mappings = getPathMappings("navidrome");
     const { targets, unmatched } = serverScanTargets(folders, roots, mappings);
     if (!targets) {
-      if (claimUnmatchedRootWarning(this._warnedUnmatchedRoots, unmatched.folder, aurralRoots, mappings)) {
-        logger.warn("navidrome", "Changed folder is outside every Navidrome library; scanning all libraries. Add a path mapping if Navidrome sees it at another path.", unmatched);
+      if (
+        claimUnmatchedRootWarning(
+          this._warnedUnmatchedRoots,
+          unmatched.folder,
+          aurralRoots,
+          mappings,
+        )
+      ) {
+        logger.warn(
+          "navidrome",
+          "Changed folder is outside every Navidrome library; scanning all libraries. Add a path mapping if Navidrome sees it at another path.",
+          unmatched,
+        );
       }
       return null;
     }
-    const scanTargets = targets.length > MAX_NAVIDROME_SCAN_TARGETS
-      ? targets.map(({ root }) => `${root.id}:`)
-      : targets.map(({ root, relative }) => `${root.id}:${relative}`);
+    const scanTargets =
+      targets.length > MAX_NAVIDROME_SCAN_TARGETS
+        ? targets.map(({ root }) => `${root.id}:`)
+        : targets.map(({ root, relative }) => `${root.id}:${relative}`);
     return [...new Set(scanTargets)];
   }
 

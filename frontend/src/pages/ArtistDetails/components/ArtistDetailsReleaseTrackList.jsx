@@ -20,7 +20,15 @@ const formatReleaseTrackDuration = (length) =>
         .padStart(2, "0")}`
     : "—";
 
-export function useReleasePreviewQueue({ release, trackKey, tracks, artistName, artistMbid, artwork, playbackSource }) {
+export function useReleasePreviewQueue({
+  release,
+  trackKey,
+  tracks,
+  artistName,
+  artistMbid,
+  artwork,
+  playbackSource,
+}) {
   const normalizeTrack = useCallback(
     (track, index) =>
       normalizePreviewTrack(
@@ -71,8 +79,11 @@ export function ArtistDetailsReleaseTrackList({
   onLoadPlaylists,
   highlightTrackId = null,
 }) {
-  const ownedTrackSet = new Set((Array.isArray(ownedTrackMbids) ? ownedTrackMbids : []).map(String));
-  const { currentTrack, isPlaying, isLoading, isStarting, playTrack, togglePlayPause } = useAudioQueue();
+  const ownedTrackSet = new Set(
+    (Array.isArray(ownedTrackMbids) ? ownedTrackMbids : []).map(String),
+  );
+  const { currentTrack, isPlaying, isLoading, isStarting, playTrack, togglePlayPause } =
+    useAudioQueue();
   const { isTrackDownloading } = useActiveDownloads();
   const getQueueItems = useQueueTrackActions();
 
@@ -143,41 +154,50 @@ export function ArtistDetailsReleaseTrackList({
       loading: isCurrent && isLoading,
       onPlay: canPlay ? () => handlePlay(track, index) : null,
       badge: isOwned ? <SearchLibraryCheck size="discover" /> : null,
-      menu: items.length || onAddTrackToPlaylist ? {
-        items,
-        triggerLabel: downloading ? `Downloading ${title}` : `Add ${title}`,
-        triggerClassName: "btn btn-add-action btn-add-action--menu",
-        triggerIcon: (
-          <>
-            <span className="btn-add-action__icon">
-              {downloading ? <DotLoader size="sm" label={null} /> : <Plus aria-hidden="true" />}
-            </span>
-            <MoreVertical className="btn-add-action__more" aria-hidden="true" />
-          </>
-        ),
-        ...(items.length ? { additionalItemsAfter: items[items.length - 1].id } : {}),
-        onMenuOpen: onLoadPlaylists,
-        renderAdditionalItems: onAddTrackToPlaylist
-          ? ({ closeMenu }) => (
-              <>
-                {items.length ? <div className="native-library-item-menu__separator" /> : null}
-                <TrackPlaylistSubmenu
-                  label="Add to playlist"
-                  icon={Plus}
-                  track={membershipTrack}
-                  playlists={playlists}
-                  loading={playlistsLoading}
-                  saving={playlistSavingKey === id}
-                  error={playlistError}
-                  defaultNewPlaylistName={getDefaultPlaylistName?.(track, release)}
-                  onSelect={(target) => onAddTrackToPlaylist(track, release, target)}
-                  onClose={closeMenu}
-                  toggleOnClick
-                />
-              </>
-            )
+      menu:
+        items.length || onAddTrackToPlaylist
+          ? {
+              items,
+              triggerLabel: downloading ? `Downloading ${title}` : `Add ${title}`,
+              triggerClassName: "btn btn-add-action btn-add-action--menu",
+              triggerIcon: (
+                <>
+                  <span className="btn-add-action__icon">
+                    {downloading ? (
+                      <DotLoader size="sm" label={null} />
+                    ) : (
+                      <Plus aria-hidden="true" />
+                    )}
+                  </span>
+                  <MoreVertical className="btn-add-action__more" aria-hidden="true" />
+                </>
+              ),
+              ...(items.length ? { additionalItemsAfter: items[items.length - 1].id } : {}),
+              onMenuOpen: onLoadPlaylists,
+              renderAdditionalItems: onAddTrackToPlaylist
+                ? ({ closeMenu }) => (
+                    <>
+                      {items.length ? (
+                        <div className="native-library-item-menu__separator" />
+                      ) : null}
+                      <TrackPlaylistSubmenu
+                        label="Add to playlist"
+                        icon={Plus}
+                        track={membershipTrack}
+                        playlists={playlists}
+                        loading={playlistsLoading}
+                        saving={playlistSavingKey === id}
+                        error={playlistError}
+                        defaultNewPlaylistName={getDefaultPlaylistName?.(track, release)}
+                        onSelect={(target) => onAddTrackToPlaylist(track, release, target)}
+                        onClose={closeMenu}
+                        toggleOnClick
+                      />
+                    </>
+                  )
+                : undefined,
+            }
           : undefined,
-      } : undefined,
     };
   });
 

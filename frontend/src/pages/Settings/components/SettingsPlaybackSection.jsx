@@ -20,22 +20,14 @@ import {
 import { getConfiguredStatus } from "../utils/integrationStatus";
 import { queryKeys } from "../../../queryClient.js";
 
-import {
-  AlertTriangle,
-  CheckCircle,
-  Folder,
-  RefreshCw,
-} from "lucide-react";
+import { AlertTriangle, CheckCircle, Folder, RefreshCw } from "lucide-react";
 import { DotLoader } from "../../../components/DotLoader";
 import PillToggle from "../../../components/PillToggle";
 import DownloadFolderPickerModal from "../../../components/DownloadFolderPickerModal";
 import { SettingsInput, SettingsSelect } from "./SettingsField";
 import { SettingsAdapterFields } from "./SettingsAdapterFields";
 import { IntegrationCard, SettingsIntegrationModal } from "./SettingsIntegrationCards";
-import {
-  SettingsArrCardGrid,
-  SettingsArrFieldSet,
-} from "./arr/SettingsArrLayout";
+import { SettingsArrCardGrid, SettingsArrFieldSet } from "./arr/SettingsArrLayout";
 import {
   SettingsModalActions,
   SettingsModalCallout,
@@ -45,10 +37,7 @@ import {
   SettingsModalToggle,
   SettingsModalToggleGroup,
 } from "./SettingsModalLayout";
-import {
-  pickBestPlexConnection,
-  resolvePlexConnectionUrl,
-} from "../utils/plexConnections";
+import { pickBestPlexConnection, resolvePlexConnectionUrl } from "../utils/plexConnections";
 export function SettingsPlaybackSection({
   settings,
   playbackSettings,
@@ -303,11 +292,17 @@ export function SettingsPlaybackSection({
         }
         setTestStatus({ tone: "success", message: "Connected." });
       } else {
-        setTestStatus({ tone: "error", message: "Connection failed. Check Plex settings and retry." });
+        setTestStatus({
+          tone: "error",
+          message: "Connection failed. Check Plex settings and retry.",
+        });
         showError(`Connection failed: ${result.message || result.error}`);
       }
     } catch (err) {
-      setTestStatus({ tone: "error", message: "Connection failed. Check Plex settings and retry." });
+      setTestStatus({
+        tone: "error",
+        message: "Connection failed. Check Plex settings and retry.",
+      });
       const errorMsg = err.response?.data?.message || err.response?.data?.error || err.message;
       showError(`Connection failed: ${errorMsg}`);
     } finally {
@@ -331,7 +326,10 @@ export function SettingsPlaybackSection({
       setTestStatus({ tone: "success", message: "Connected." });
       showSuccess("Navidrome connection OK");
     } catch (err) {
-      setTestStatus({ tone: "error", message: "Connection failed. Check the URL and credentials, then retry." });
+      setTestStatus({
+        tone: "error",
+        message: "Connection failed. Check the URL and credentials, then retry.",
+      });
       const errorMsg = err.response?.data?.message || err.response?.data?.error || err.message;
       showError(`Navidrome connection failed: ${errorMsg}`);
     } finally {
@@ -342,7 +340,10 @@ export function SettingsPlaybackSection({
   const handleTestJellyfin = async () => {
     setTestStatus(null);
     if (!jellyfin.url || !jellyfin.apiKey || !jellyfin.userId) {
-      setTestStatus({ tone: "error", message: "Enter the server URL, API key, and user ID first." });
+      setTestStatus({
+        tone: "error",
+        message: "Enter the server URL, API key, and user ID first.",
+      });
       showError("Enter the Jellyfin server URL, API key, and user ID first");
       return;
     }
@@ -362,7 +363,10 @@ export function SettingsPlaybackSection({
       setTestStatus({ tone: "success", message: "Connected." });
       showSuccess("Jellyfin connection OK");
     } catch (err) {
-      setTestStatus({ tone: "error", message: "Connection failed. Check the URL, API key, and user ID, then retry." });
+      setTestStatus({
+        tone: "error",
+        message: "Connection failed. Check the URL, API key, and user ID, then retry.",
+      });
       const errorMsg = err.response?.data?.message || err.response?.data?.error || err.message;
       showError(`Jellyfin connection failed: ${errorMsg}`);
     } finally {
@@ -488,9 +492,7 @@ export function SettingsPlaybackSection({
   return (
     <>
       <SettingsArrFieldSet legend="Playback servers">
-        <div className="arr-info">
-          Where Aurral writes playlists.
-        </div>
+        <div className="arr-info">Where Aurral writes playlists.</div>
         <SettingsArrCardGrid>
           <IntegrationCard
             title="Navidrome"
@@ -517,19 +519,18 @@ export function SettingsPlaybackSection({
       </SettingsArrFieldSet>
 
       <SettingsArrFieldSet legend="Scrobbling">
-        <div className="arr-info">
-          Send completed plays to listening services.
-        </div>
+        <div className="arr-info">Send completed plays to listening services.</div>
         <SettingsModalToggleGroup>
           {["lastfm", "listenbrainz", "koito"].map((provider) => {
             const status = scrobbleStatus?.[provider];
-            const label = provider === "lastfm"
-              ? status?.displayName
-                ? `Last.fm — ${status.displayName}`
-                : "Last.fm"
-              : provider === "listenbrainz"
-                ? "ListenBrainz"
-                : "Koito";
+            const label =
+              provider === "lastfm"
+                ? status?.displayName
+                  ? `Last.fm — ${status.displayName}`
+                  : "Last.fm"
+                : provider === "listenbrainz"
+                  ? "ListenBrainz"
+                  : "Koito";
             return (
               <SettingsModalToggle
                 key={provider}
@@ -568,12 +569,20 @@ export function SettingsPlaybackSection({
           ) : null}
           <SettingsModalActions>
             {scrobbleStatus?.lastfm?.configured === true ? (
-              <button type="button" className="arr-btn arr-btn--secondary" onClick={handleLastfmLink}>
+              <button
+                type="button"
+                className="arr-btn arr-btn--secondary"
+                onClick={handleLastfmLink}
+              >
                 {scrobbleStatus?.lastfm?.connected ? "Relink Last.fm" : "Connect Last.fm account"}
               </button>
             ) : null}
             {scrobbleStatus?.lastfm?.connected ? (
-              <button type="button" className="arr-btn arr-btn--ghost" onClick={() => handleUnlink("lastfm")}>
+              <button
+                type="button"
+                className="arr-btn arr-btn--ghost"
+                onClick={() => handleUnlink("lastfm")}
+              >
                 Disconnect
               </button>
             ) : null}
@@ -583,9 +592,7 @@ export function SettingsPlaybackSection({
 
       {activeModal === "listenbrainz" && (
         <SettingsIntegrationModal title="ListenBrainz scrobbling" onClose={closeModal}>
-          <SettingsModalIntro>
-            Enter your ListenBrainz user token.
-          </SettingsModalIntro>
+          <SettingsModalIntro>Enter your ListenBrainz user token.</SettingsModalIntro>
           <SettingsModalSection title="Connection">
             <SettingsModalField label="User token">
               <SettingsInput
@@ -598,11 +605,20 @@ export function SettingsPlaybackSection({
             </SettingsModalField>
           </SettingsModalSection>
           <SettingsModalActions>
-            <button type="button" className="arr-btn arr-btn--secondary" disabled={!listenBrainzToken} onClick={handleListenBrainzLink}>
+            <button
+              type="button"
+              className="arr-btn arr-btn--secondary"
+              disabled={!listenBrainzToken}
+              onClick={handleListenBrainzLink}
+            >
               Connect ListenBrainz
             </button>
             {scrobbleStatus?.listenbrainz?.connected ? (
-              <button type="button" className="arr-btn arr-btn--ghost" onClick={() => handleUnlink("listenbrainz")}>
+              <button
+                type="button"
+                className="arr-btn arr-btn--ghost"
+                onClick={() => handleUnlink("listenbrainz")}
+              >
                 Disconnect
               </button>
             ) : null}
@@ -615,18 +631,38 @@ export function SettingsPlaybackSection({
           <SettingsModalIntro>Koito uses the ListenBrainz format.</SettingsModalIntro>
           <SettingsModalSection title="Connection">
             <SettingsModalField label="Koito URL">
-              <SettingsInput type="url" placeholder="https://koito.example.com" value={koitoUrl} onChange={(event) => setKoitoUrl(event.target.value)} />
+              <SettingsInput
+                type="url"
+                placeholder="https://koito.example.com"
+                value={koitoUrl}
+                onChange={(event) => setKoitoUrl(event.target.value)}
+              />
             </SettingsModalField>
             <SettingsModalField label="API key">
-              <SettingsInput type="password" placeholder="Koito API key" autoComplete="off" value={koitoToken} onChange={(event) => setKoitoToken(event.target.value)} />
+              <SettingsInput
+                type="password"
+                placeholder="Koito API key"
+                autoComplete="off"
+                value={koitoToken}
+                onChange={(event) => setKoitoToken(event.target.value)}
+              />
             </SettingsModalField>
           </SettingsModalSection>
           <SettingsModalActions>
-            <button type="button" className="arr-btn arr-btn--secondary" disabled={!koitoToken} onClick={handleKoitoLink}>
+            <button
+              type="button"
+              className="arr-btn arr-btn--secondary"
+              disabled={!koitoToken}
+              onClick={handleKoitoLink}
+            >
               Connect Koito
             </button>
             {scrobbleStatus?.koito?.connected ? (
-              <button type="button" className="arr-btn arr-btn--ghost" onClick={() => handleUnlink("koito")}>
+              <button
+                type="button"
+                className="arr-btn arr-btn--ghost"
+                onClick={() => handleUnlink("koito")}
+              >
                 Disconnect
               </button>
             ) : null}
@@ -644,7 +680,9 @@ export function SettingsPlaybackSection({
               type="button"
               className="btn btn-secondary"
               onClick={handleTestNavidrome}
-              disabled={testingNavidrome || !navidrome.url || !navidrome.username || !navidrome.password}
+              disabled={
+                testingNavidrome || !navidrome.url || !navidrome.username || !navidrome.password
+              }
             >
               {testingNavidrome ? (
                 <DotLoader size="sm" label={null} />
@@ -686,9 +724,7 @@ export function SettingsPlaybackSection({
             </button>
           }
         >
-          <SettingsModalIntro>
-            Publishes flows and playlists to Jellyfin.
-          </SettingsModalIntro>
+          <SettingsModalIntro>Publishes flows and playlists to Jellyfin.</SettingsModalIntro>
           <SettingsModalSection title="Connection">
             <SettingsAdapterFields
               definition={playbackSettings?.jellyfin}
@@ -720,9 +756,7 @@ export function SettingsPlaybackSection({
             </button>
           }
         >
-          <SettingsModalIntro>
-            Creates a Plex library and playlists for flows.
-          </SettingsModalIntro>
+          <SettingsModalIntro>Creates a Plex library and playlists for flows.</SettingsModalIntro>
 
           <SettingsModalSection title="Account">
             <SettingsModalActions>
@@ -739,11 +773,7 @@ export function SettingsPlaybackSection({
                     : "Connect Plex account"}
               </button>
               {plex.token ? (
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={handleDisconnectPlex}
-                >
+                <button type="button" className="btn btn-secondary" onClick={handleDisconnectPlex}>
                   Disconnect
                 </button>
               ) : null}
@@ -805,11 +835,7 @@ export function SettingsPlaybackSection({
           <SettingsModalSection title="Aurral library path">
             <SettingsModalField
               label="Plex Aurral Library path (optional)"
-              hint={
-                <>
-                  If Plex sees downloads at a different path, enter that path here.
-                </>
-              }
+              hint={<>If Plex sees downloads at a different path, enter that path here.</>}
             >
               <div className="arr-path-input">
                 <SettingsInput
@@ -847,11 +873,7 @@ export function SettingsPlaybackSection({
           <SettingsModalSection title="Main library (optional)">
             <SettingsModalField
               label="Include tracks from an existing library"
-              hint={
-                <>
-                  Reuse tracks from an existing Plex library.
-                </>
-              }
+              hint={<>Reuse tracks from an existing Plex library.</>}
             >
               <SettingsSelect
                 value={plex.mainLibrarySectionId || ""}
@@ -869,8 +891,8 @@ export function SettingsPlaybackSection({
 
             {plex.mainLibrarySectionId && libraryAccessCheck?.checking ? (
               <p className="settings-modal__hint">
-                <DotLoader size="xs" label={null} /> Checking whether Aurral can
-                already read this library…
+                <DotLoader size="xs" label={null} /> Checking whether Aurral can already read this
+                library…
               </p>
             ) : null}
 
@@ -891,14 +913,11 @@ export function SettingsPlaybackSection({
             ) : null}
 
             {plex.mainLibrarySectionId &&
-            (plexLibraryMapping || (libraryAccessCheck?.checked && !libraryAccessCheck.accessible)) ? (
+            (plexLibraryMapping ||
+              (libraryAccessCheck?.checked && !libraryAccessCheck.accessible)) ? (
               <SettingsModalField
                 label="Local path for this library (optional)"
-                hint={
-                  <>
-                    Path as Aurral sees it. Leave blank to remove the mapping.
-                  </>
-                }
+                hint={<>Path as Aurral sees it. Leave blank to remove the mapping.</>}
               >
                 <div className="arr-path-input">
                   <SettingsInput

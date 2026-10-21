@@ -47,9 +47,7 @@ export function registerShows(router) {
       const zipCode = String(req.query.zip || "").trim();
       const countryCode = String(req.query.country || "").trim();
       const settings = dbOps.getSettings();
-      const configuredRadius = Number(
-        settings.integrations?.ticketmaster?.searchRadiusMiles,
-      );
+      const configuredRadius = Number(settings.integrations?.ticketmaster?.searchRadiusMiles);
       const localDiscoveryPreferences = getLocalDiscoveryPreferences();
       const radiusMiles = Number.isFinite(configuredRadius)
         ? Math.max(5, Math.min(250, Math.floor(configuredRadius)))

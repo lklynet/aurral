@@ -24,22 +24,27 @@ export function savePlayQueue(user, { ids, current, position, changedBy }) {
 
 export function getPlayQueue(user) {
   const saved = readQueue.get(user.id);
-  if (!saved) return {
-    username: user.username,
-    changed: new Date(0).toISOString(),
-    changedBy: APP_NAME,
-    entry: [],
-  };
-  const entry = JSON.parse(saved.song_ids).map((id) => getSong(id, user)).filter(Boolean);
+  if (!saved)
+    return {
+      username: user.username,
+      changed: new Date(0).toISOString(),
+      changedBy: APP_NAME,
+      entry: [],
+    };
+  const entry = JSON.parse(saved.song_ids)
+    .map((id) => getSong(id, user))
+    .filter(Boolean);
   const hasCurrent = entry.some((song) => song.id === saved.current_song);
   return {
     username: user.username,
     changed: new Date(saved.changed_at).toISOString(),
     changedBy: saved.changed_by,
-    ...(hasCurrent ? {
-      current: saved.current_song,
-      ...(saved.position == null ? {} : { position: saved.position }),
-    } : {}),
+    ...(hasCurrent
+      ? {
+          current: saved.current_song,
+          ...(saved.position == null ? {} : { position: saved.position }),
+        }
+      : {}),
     entry,
   };
 }

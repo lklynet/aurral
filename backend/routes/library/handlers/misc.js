@@ -45,7 +45,9 @@ const libraryAlbumResult = (album, ownedTrackMbids = []) => ({
   monitored: album.monitored,
   managedBy: album.managedBy || null,
   trackListComplete: album.trackListComplete !== false,
-  ...(album.trackListComplete === false ? {} : { percentOfTracks: Number(album.statistics?.percentOfTracks || 0) }),
+  ...(album.trackListComplete === false
+    ? {}
+    : { percentOfTracks: Number(album.statistics?.percentOfTracks || 0) }),
   sizeOnDisk: Number(album.statistics?.sizeOnDisk || 0),
   trackCount: Number(album.statistics?.trackCount || 0),
   trackFileCount: Number(album.statistics?.trackFileCount || 0),
@@ -87,8 +89,9 @@ export async function getArtistLibraryLookup(mbid) {
   });
   const artist = artists.find((candidate) => candidate.mbid === mbid);
   const libraryArtistId = artist ? String(artist.canonicalId ?? artist.id) : null;
-  const aurralArtist = getLibraryArtistProjection({ reference: mbid })
-    .find((candidate) => candidate.mbid === mbid && candidate.managedBy === "aurral");
+  const aurralArtist = getLibraryArtistProjection({ reference: mbid }).find(
+    (candidate) => candidate.mbid === mbid && candidate.managedBy === "aurral",
+  );
   if (aurralArtist) {
     return {
       exists: true,
@@ -356,9 +359,9 @@ export function registerMisc(router) {
 
   router.get("/recent-releases", async (req, res) => {
     try {
-      const { getRecentMissingReleases } = await import(
-        "../../../services/discovery/recentReleases.js"
-      );      const recentMissing = await getRecentMissingReleases(24);
+      const { getRecentMissingReleases } =
+        await import("../../../services/discovery/recentReleases.js");
+      const recentMissing = await getRecentMissingReleases(24);
 
       const cachedCovers = dbOps.getImages(
         recentMissing

@@ -12,12 +12,12 @@ Aurral has two kinds of playlist:
 
 ## Flows compared with static playlists
 
-| | Flows | Static playlists |
-| --- | --- | --- |
-| Tracklist | Built again on a schedule | Fixed at import, or follows a provider |
-| Failed downloads | Replaced with other tracks | Stay failed until you search again |
-| Settings | Schedule, source mix, Focus, and Deep Dive | Import, sync, and file retention |
-| Downloads | Shared download worker | Shared download worker |
+|                  | Flows                                      | Static playlists                       |
+| ---------------- | ------------------------------------------ | -------------------------------------- |
+| Tracklist        | Built again on a schedule                  | Fixed at import, or follows a provider |
+| Failed downloads | Replaced with other tracks                 | Stay failed until you search again     |
+| Settings         | Schedule, source mix, Focus, and Deep Dive | Import, sync, and file retention       |
+| Downloads        | Shared download worker                     | Shared download worker                 |
 
 A static playlist comes from Spotify, YouTube Music, Last.fm, ListenBrainz, a JSON file, or a flow. A synced static playlist follows the provider's tracklist. See [Playlist imports](/using/playlist-imports/).
 
@@ -84,10 +84,10 @@ The list order sets the rank of each tier. Put the best quality at the top. Turn
 
 The default profile accepts all tiers, with **FLAC standard** as the cutoff.
 
-| Tier | Rule for the downloaded file |
-| --- | --- |
-| FLAC hi-res | More than 16 bits, or more than 48 kHz |
-| FLAC standard | 16 bits or less, and 48 kHz or less |
+| Tier                      | Rule for the downloaded file                 |
+| ------------------------- | -------------------------------------------- |
+| FLAC hi-res               | More than 16 bits, or more than 48 kHz       |
+| FLAC standard             | 16 bits or less, and 48 kHz or less          |
 | MP3 128, 192, 256, or 320 | Average bitrate, rounded to the nearest kbps |
 | M4A 128, 192, 256, or 320 | Average bitrate, rounded to the nearest kbps |
 

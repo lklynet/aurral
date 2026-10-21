@@ -3,7 +3,8 @@ export function describeLidarrConnectionState({ lidarr, health }) {
     return {
       reason: "disabled",
       title: "Lidarr is off",
-      message: "Only music in the Downloads Folder is shown. Enable Lidarr and save to restore its music.",
+      message:
+        "Only music in the Downloads Folder is shown. Enable Lidarr and save to restore its music.",
     };
   }
   if (!String(lidarr?.url || "").trim() || !String(lidarr?.apiKey || "").trim()) {
@@ -13,7 +14,8 @@ export function describeLidarrConnectionState({ lidarr, health }) {
     return {
       reason: "unreachable",
       title: "Lidarr is unreachable",
-      message: "Requests paused after repeated failures. Check Lidarr and test the connection. Its music stays in the Library.",
+      message:
+        "Requests paused after repeated failures. Check Lidarr and test the connection. Its music stays in the Library.",
     };
   }
   return null;

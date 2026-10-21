@@ -33,7 +33,10 @@ test("queue and history requests ask Lidarr to embed album and artist", async (t
     assert.equal(params.get("includeArtist"), "true", endpoint);
   }
   const queueParams = new URL(endpoints[0], "http://lidarr").searchParams;
-  assert.ok(Number(queueParams.get("pageSize")) > 10, "queue must not stop at Lidarr's default page of 10");
+  assert.ok(
+    Number(queueParams.get("pageSize")) > 10,
+    "queue must not stop at Lidarr's default page of 10",
+  );
 });
 
 test("queue endpoint with parameters is still treated as a cached status read", async (t) => {
@@ -56,17 +59,22 @@ test("queue endpoint with parameters is still treated as a cached status read", 
 });
 
 test("activity rows use the embedded album and artist names", async () => {
-  const requests = await buildLidarrRequests({ getAlbum: async () => null }, {
-    queue: [{
-      id: 1,
-      albumId: 48,
-      title: "Rihanna - Good Girl Gone Bad (2007) [FLAC 16bit] [👤 jellyrobin ]",
-      status: "downloading",
-      album: { title: "Good Girl Gone Bad", foreignAlbumId: "rg" },
-      artist: { id: 7, artistName: "Rihanna", foreignArtistId: "ar" },
-    }],
-    history: { records: [] },
-  });
+  const requests = await buildLidarrRequests(
+    { getAlbum: async () => null },
+    {
+      queue: [
+        {
+          id: 1,
+          albumId: 48,
+          title: "Rihanna - Good Girl Gone Bad (2007) [FLAC 16bit] [👤 jellyrobin ]",
+          status: "downloading",
+          album: { title: "Good Girl Gone Bad", foreignAlbumId: "rg" },
+          artist: { id: 7, artistName: "Rihanna", foreignArtistId: "ar" },
+        },
+      ],
+      history: { records: [] },
+    },
+  );
   assert.equal(requests[0].albumName, "Good Girl Gone Bad");
   assert.equal(requests[0].artistName, "Rihanna");
 });

@@ -38,7 +38,8 @@ export default function ManualMissingSearchModal({
   const sourceId = sources.some((source) => source.id === selectedSourceId)
     ? selectedSourceId
     : sources[0]?.id || "";
-  const error = actionError ||
+  const error =
+    actionError ||
     (sourcesQuery.error ? errorMessage(sourcesQuery.error, "Could not load download clients") : "");
 
   useEffect(() => {
@@ -68,7 +69,9 @@ export default function ManualMissingSearchModal({
       if (searchRequestRef.current === requestId) setSearch(result);
     } catch (requestError) {
       if (searchRequestRef.current === requestId) {
-        setActionError(errorMessage(requestError, "The selected download client could not be searched"));
+        setActionError(
+          errorMessage(requestError, "The selected download client could not be searched"),
+        );
       }
     } finally {
       if (searchRequestRef.current === requestId) setSearching(false);
@@ -103,18 +106,34 @@ export default function ManualMissingSearchModal({
       disableClose={submitting}
       footer={
         <>
-          <button type="button" className="btn btn-secondary btn-sm manual-search-modal__action" onClick={onClose} disabled={submitting}>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm manual-search-modal__action"
+            onClick={onClose}
+            disabled={submitting}
+          >
             Cancel
           </button>
-          <button type="button" className="btn btn-primary btn-sm manual-search-modal__action" onClick={queueSelection} disabled={!selectedResult || busy}>
-            {submitting ? <DotLoader size="sm" label={null} /> : <Download className="artist-icon-sm" aria-hidden="true" />}
+          <button
+            type="button"
+            className="btn btn-primary btn-sm manual-search-modal__action"
+            onClick={queueSelection}
+            disabled={!selectedResult || busy}
+          >
+            {submitting ? (
+              <DotLoader size="sm" label={null} />
+            ) : (
+              <Download className="artist-icon-sm" aria-hidden="true" />
+            )}
             Download selected
           </button>
         </>
       }
     >
       <div className="manual-search-modal__controls">
-        <label className="artist-field-label" htmlFor="manual-search-source">Download client</label>
+        <label className="artist-field-label" htmlFor="manual-search-source">
+          Download client
+        </label>
         <div className="manual-search-modal__source-row">
           <select
             id="manual-search-source"
@@ -128,26 +147,64 @@ export default function ManualMissingSearchModal({
             }}
             disabled={busy}
           >
-            {sources.map((source) => <option key={source.id} value={source.id}>{source.label}</option>)}
+            {sources.map((source) => (
+              <option key={source.id} value={source.id}>
+                {source.label}
+              </option>
+            ))}
           </select>
-          <button type="button" className="btn btn-secondary btn-sm manual-search-modal__action" onClick={runSearch} disabled={!sourceId || busy}>
-            {searching ? <DotLoader size="sm" label={null} /> : <Search className="artist-icon-sm" aria-hidden="true" />}
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm manual-search-modal__action"
+            onClick={runSearch}
+            disabled={!sourceId || busy}
+          >
+            {searching ? (
+              <DotLoader size="sm" label={null} />
+            ) : (
+              <Search className="artist-icon-sm" aria-hidden="true" />
+            )}
             Search
           </button>
         </div>
       </div>
 
-      {loadingSources ? <div className="manual-search-modal__loading"><DotLoader size="lg" label="Loading clients" /></div> : null}
-      {!loadingSources && !error && sources.length === 0 ? <p className="manual-search-modal__empty">Set up a download client in Settings → Download clients.</p> : null}
-      {error ? <p className="artist-error-text" role="alert">{error}</p> : null}
-      {search && resultCount === 0 ? <p className="manual-search-modal__empty">No results from this client.</p> : null}
+      {loadingSources ? (
+        <div className="manual-search-modal__loading">
+          <DotLoader size="lg" label="Loading clients" />
+        </div>
+      ) : null}
+      {!loadingSources && !error && sources.length === 0 ? (
+        <p className="manual-search-modal__empty">
+          Set up a download client in Settings → Download clients.
+        </p>
+      ) : null}
+      {error ? (
+        <p className="artist-error-text" role="alert">
+          {error}
+        </p>
+      ) : null}
+      {search && resultCount === 0 ? (
+        <p className="manual-search-modal__empty">No results from this client.</p>
+      ) : null}
       {resultCount > 0 ? (
         <fieldset className="manual-search-results">
-          <legend>{resultCount} result{resultCount === 1 ? "" : "s"}</legend>
+          <legend>
+            {resultCount} result{resultCount === 1 ? "" : "s"}
+          </legend>
           <div className="manual-search-results__list">
             {search.results.map((result) => (
-              <label className={`manual-search-result${selectedId === result.id ? " is-selected" : ""}`} key={result.id}>
-                <input type="radio" name="manual-search-result" value={result.id} checked={selectedId === result.id} onChange={() => setSelectedId(result.id)} />
+              <label
+                className={`manual-search-result${selectedId === result.id ? " is-selected" : ""}`}
+                key={result.id}
+              >
+                <input
+                  type="radio"
+                  name="manual-search-result"
+                  value={result.id}
+                  checked={selectedId === result.id}
+                  onChange={() => setSelectedId(result.id)}
+                />
                 <span className="manual-search-result__content">
                   <strong>{result.title}</strong>
                   {result.subtitle ? <span>{result.subtitle}</span> : null}

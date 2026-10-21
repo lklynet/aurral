@@ -4,27 +4,42 @@ const entities = ["artists", "albums", "tracks"];
 function genreValues(kind, id, metadata, entityFrom = "") {
   const valid = `CASE WHEN json_valid(${metadata}) THEN ${metadata} ELSE '{}' END`;
   const parts = "'[' || replace(json_quote(CAST(genre_value.value AS TEXT)), ';', '\",\"') || ']'";
-  return ["$.genres", "$.genre", "$.common.genre", "$.tags.genre"].map((path) =>
-    `SELECT '${kind}', ${id}, TRIM(genre_part.value)
+  return ["$.genres", "$.genre", "$.common.genre", "$.tags.genre"]
+    .map(
+      (path) =>
+        `SELECT '${kind}', ${id}, TRIM(genre_part.value)
      FROM ${entityFrom ? `${entityFrom}, ` : ""}json_each(${valid}, '${path}') AS genre_value,
        json_each(${parts}) AS genre_part
-     WHERE TRIM(genre_part.value) <> ''`).join(" UNION ");
+     WHERE TRIM(genre_part.value) <> ''`,
+    )
+    .join(" UNION ");
 }
 
 export function initializeLibraryGenreIndex(db) {
-  const current = () => Boolean(db.prepare(
-    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'library_entity_genres'",
-  ).get()) && db.prepare(
-    "SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'trigger' AND name GLOB 'library_genres_*'",
-  ).get().count === 9 && db.prepare(
-    "SELECT value FROM settings WHERE key = 'libraryGenreIndexVersion'",
-  ).get()?.value === GENRE_INDEX_VERSION;
+  const current = () =>
+    Boolean(
+      db
+        .prepare(
+          "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'library_entity_genres'",
+        )
+        .get(),
+    ) &&
+    db
+      .prepare(
+        "SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'trigger' AND name GLOB 'library_genres_*'",
+      )
+      .get().count === 9 &&
+    db.prepare("SELECT value FROM settings WHERE key = 'libraryGenreIndexVersion'").get()?.value ===
+      GENRE_INDEX_VERSION;
   if (current()) return;
   db.transaction(() => {
     if (current()) return;
-    for (const { name } of db.prepare(
-      "SELECT name FROM sqlite_master WHERE type = 'trigger' AND name GLOB 'library_genres_*'",
-    ).all()) db.exec(`DROP TRIGGER "${name}"`);
+    for (const { name } of db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'trigger' AND name GLOB 'library_genres_*'",
+      )
+      .all())
+      db.exec(`DROP TRIGGER "${name}"`);
     db.exec(`
       DROP TABLE IF EXISTS library_entity_genres;
       CREATE TABLE library_entity_genres (
@@ -57,7 +72,8 @@ export function initializeLibraryGenreIndex(db) {
         ${genreValues(kind, "entity.id", "entity.metadata_json", `library_${kind} AS entity`)};
       `);
     }
-    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('libraryGenreIndexVersion', ?)")
-      .run(GENRE_INDEX_VERSION);
+    db.prepare(
+      "INSERT OR REPLACE INTO settings (key, value) VALUES ('libraryGenreIndexVersion', ?)",
+    ).run(GENRE_INDEX_VERSION);
   })();
 }

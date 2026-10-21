@@ -10,7 +10,9 @@ test("submits a release-group ID without claiming a specific release", async (t)
     submitted = JSON.parse(options.body);
     return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
   };
-  t.onTestFinished(() => { globalThis.fetch = originalFetch; });
+  t.onTestFinished(() => {
+    globalThis.fetch = originalFetch;
+  });
 
   await listenbrainzSubmit({
     token: "test-token",

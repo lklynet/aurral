@@ -14,9 +14,16 @@ import {
 
 test("only the owning process supervises isolated queues", () => {
   assert.deepEqual(ISOLATED_WORKER_GROUPS, [
-    "release-metadata", "library", "discovery-refresh",
-    "discovery-user-refresh", "maintenance", "inbox", "notifications",
-    "play-events", "downloads", "scheduler",
+    "release-metadata",
+    "library",
+    "discovery-refresh",
+    "discovery-user-refresh",
+    "maintenance",
+    "inbox",
+    "notifications",
+    "play-events",
+    "downloads",
+    "scheduler",
   ]);
   assert.equal(isQueueOwnedByGroup("library-scan"), false);
   assert.equal(isQueueOwnedByGroup("library-scan", "library"), true);
@@ -58,7 +65,9 @@ test("only the owning process supervises isolated queues", () => {
 });
 
 const quietLogger = { warn() {}, error() {} };
-const heapFixture = fileURLToPath(new URL("./fixtures/heap-limit-background-child.mjs", import.meta.url));
+const heapFixture = fileURLToPath(
+  new URL("./fixtures/heap-limit-background-child.mjs", import.meta.url),
+);
 
 function withEnv(t, name, value) {
   const previous = process.env[name];
@@ -72,7 +81,10 @@ function withEnv(t, name, value) {
 
 function forkHeapFixture(onReady) {
   return (_entry, _args, options) => {
-    const child = fork(heapFixture, [], { ...options, stdio: ["ignore", "ignore", "ignore", "ipc"] });
+    const child = fork(heapFixture, [], {
+      ...options,
+      stdio: ["ignore", "ignore", "ignore", "ipc"],
+    });
     child.once("message", () => onReady(child));
     return child;
   };
@@ -126,9 +138,14 @@ test("supervisor launches only groups with work, forwards messages, and stops wi
 
   assert.equal(supervisor.start(), true);
   assert.equal(supervisor.start(), false);
-  assert.deepEqual(launches.map((child) => child.group), ["library"]);
+  assert.deepEqual(
+    launches.map((child) => child.group),
+    ["library"],
+  );
   launches[0].emit("message", { type: "websocket-broadcast", channel: "library" });
-  assert.deepEqual(messages, [{ message: { type: "websocket-broadcast", channel: "library" }, group: "library" }]);
+  assert.deepEqual(messages, [
+    { message: { type: "websocket-broadcast", channel: "library" }, group: "library" },
+  ]);
   launches[0].emit("message", {
     type: "heartbeat",
     workers: [{ name: "library-scan", running: true }],
@@ -137,7 +154,10 @@ test("supervisor launches only groups with work, forwards messages, and stops wi
 
   withWork = ["library", "discovery"];
   assert.equal(supervisor.wake("discovery"), false);
-  assert.deepEqual(launches.map((child) => child.group), ["library", "discovery"]);
+  assert.deepEqual(
+    launches.map((child) => child.group),
+    ["library", "discovery"],
+  );
   assert.equal(supervisor.wake("discovery"), false);
   launches[1].emit("message", { type: "ready" });
   assert.equal(supervisor.wake("discovery"), true);
@@ -145,14 +165,19 @@ test("supervisor launches only groups with work, forwards messages, and stops wi
   assert.equal(supervisor.wake("missing"), false);
 
   await supervisor.stop();
-  assert.deepEqual(launches.map((child) => child.sent),
-    [[{ type: "shutdown" }], [{ type: "queue-wake" }, { type: "shutdown" }]]);
+  assert.deepEqual(
+    launches.map((child) => child.sent),
+    [[{ type: "shutdown" }], [{ type: "queue-wake" }, { type: "shutdown" }]],
+  );
   assert.deepEqual(supervisor.getGroups(), []);
   assert.deepEqual(supervisor.getWorkerStatuses(), []);
 });
 
 test("an idle worker exits without a restart and returns when work arrives", async () => {
-  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"], now: 0 });
+  vi.useFakeTimers({
+    toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
+    now: 0,
+  });
   const { launches, forkProcess } = createFakeFork();
   const exits = [];
   const warnings = [];
@@ -162,7 +187,9 @@ test("an idle worker exits without a restart and returns when work arrives", asy
     findGroupsWithWork: () => withWork,
     forkProcess,
     logger: { warn: (...args) => warnings.push(args), error() {} },
-    onExit: (group, _code, _signal, _pid, _reason, retired) => { exits.push({ group, retired }); },
+    onExit: (group, _code, _signal, _pid, _reason, retired) => {
+      exits.push({ group, retired });
+    },
   });
   try {
     supervisor.start();
@@ -198,7 +225,10 @@ test("a flow request starts its worker and holds off retirement until answered",
     assert.deepEqual(launches[0].sent, []);
     launches[0].emit("message", { type: "ready" });
     launches[0].emit("message", { type: "idle" });
-    assert.equal(launches[0].sent.some((message) => message.type === "retire"), false);
+    assert.equal(
+      launches[0].sent.some((message) => message.type === "retire"),
+      false,
+    );
     assert.equal(reply(launches[0], true), "waitForIdle");
     assert.equal(await pending, true);
     launches[0].emit("message", { type: "idle" });
@@ -297,7 +327,9 @@ test("flow requests return replies and reject when their owner exits", async () 
     assert.equal(await first, true);
 
     launches[0].emit("message", {
-      type: "heartbeat", workers: [], downloadOwnerStatus: { running: true },
+      type: "heartbeat",
+      workers: [],
+      downloadOwnerStatus: { running: true },
     });
     assert.deepEqual(supervisor.getDownloadOwnerStatus(), { running: true });
     const pending = supervisor.request("downloads", "waitForIdle");
@@ -312,7 +344,9 @@ test("flow requests return replies and reject when their owner exits", async () 
 test("flow restart waits for job recovery", async () => {
   const children = [];
   let finishRecovery;
-  const recovery = new Promise((resolve) => { finishRecovery = resolve; });
+  const recovery = new Promise((resolve) => {
+    finishRecovery = resolve;
+  });
   const supervisor = createBackgroundProcessSupervisor({
     groups: ["downloads"],
     findGroupsWithWork: () => ["downloads"],
@@ -368,7 +402,9 @@ test("only the worker with an overdue job is terminated", async () => {
           queueMicrotask(() => child.emit("exit", 0, null));
         }
       };
-      child.kill = () => { killed.push(group); };
+      child.kill = () => {
+        killed.push(group);
+      };
       children.set(group, child);
       return child;
     },
@@ -376,10 +412,15 @@ test("only the worker with an overdue job is terminated", async () => {
   try {
     supervisor.start();
     children.get("inbox").emit("message", {
-      type: "heartbeat", workers: [], memory: { rss: 300 * 1024 * 1024, heapUsed: 200 * 1024 * 1024 },
+      type: "heartbeat",
+      workers: [],
+      memory: { rss: 300 * 1024 * 1024, heapUsed: 200 * 1024 * 1024 },
     });
     children.get("inbox").emit("message", {
-      type: "job-started", queue: "system-task-inbox", jobId: 42, payload: '{"kind":"disposable"}',
+      type: "job-started",
+      queue: "system-task-inbox",
+      jobId: 42,
+      payload: '{"kind":"disposable"}',
     });
     await new Promise((resolve) => setTimeout(resolve, 65));
     assert.deepEqual(killed, ["inbox"]);
@@ -400,13 +441,15 @@ test("a worker that runs out of heap stops at the configured limit and the log n
     groups: ["notifications"],
     findGroupsWithWork: () => ["notifications"],
     logger: { warn: (line) => warned.resolve(line), error() {} },
-    forkProcess: forkHeapFixture((child) => child.send({
-      type: "run-job",
-      queue: "_outbox:notifications",
-      jobId: 42,
-      payload: '{"kind":"disposable"}',
-      defaultHeapLimit: v8.getHeapStatistics().heap_size_limit,
-    })),
+    forkProcess: forkHeapFixture((child) =>
+      child.send({
+        type: "run-job",
+        queue: "_outbox:notifications",
+        jobId: 42,
+        payload: '{"kind":"disposable"}',
+        defaultHeapLimit: v8.getHeapStatistics().heap_size_limit,
+      }),
+    ),
   });
   t.onTestFinished(() => supervisor.stop());
   supervisor.start();
@@ -419,7 +462,9 @@ test("a worker that runs out of heap stops at the configured limit and the log n
 test("a heap limit set in NODE_OPTIONS reaches background workers unchanged", async (t) => {
   withEnv(t, "NODE_OPTIONS", "--max-old-space-size=123");
   withEnv(t, "AURRAL_WORKER_MAX_HEAP_MB", undefined);
-  const expected = Number(execFileSync(process.execPath, ["-p", "v8.getHeapStatistics().heap_size_limit"]));
+  const expected = Number(
+    execFileSync(process.execPath, ["-p", "v8.getHeapStatistics().heap_size_limit"]),
+  );
   const reported = Promise.withResolvers();
   const supervisor = createBackgroundProcessSupervisor({
     groups: ["library"],
@@ -436,16 +481,24 @@ test("a heap limit set in NODE_OPTIONS reaches background workers unchanged", as
 });
 
 test("a failed deadline inspection retries without requiring another commit", async () => {
-  vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval"], now: 0 });
+  vi.useFakeTimers({
+    toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval"],
+    now: 0,
+  });
   const { launches, forkProcess } = createFakeFork();
   let fail = true;
   const supervisor = createBackgroundProcessSupervisor({
-    groups: ["library"], forkProcess, logger: quietLogger,
+    groups: ["library"],
+    forkProcess,
+    logger: quietLogger,
     getWorkRevision: () => "unchanged",
-    getNextWorkAt: () => Date.now() < 1000 ? 1000 : null,
+    getNextWorkAt: () => (Date.now() < 1000 ? 1000 : null),
     findGroupsWithWork: () => {
       if (Date.now() < 1000) return [];
-      if (fail) { fail = false; throw new Error("Database temporarily busy"); }
+      if (fail) {
+        fail = false;
+        throw new Error("Database temporarily busy");
+      }
       return ["library"];
     },
   });
@@ -462,10 +515,14 @@ test("a failed deadline inspection retries without requiring another commit", as
 
 test("idle demand checks skip queue scans and discover unannounced commits", async () => {
   const [state, { db }, honker] = await setupIsolatedBackend(
-    "idle-demand", "backend/config/db-sqlite.js", "backend/services/honkerDb.js",
+    "idle-demand",
+    "backend/config/db-sqlite.js",
+    "backend/services/honkerDb.js",
   );
   const queue = honker.getMaintenanceTaskQueue();
-  const revision = db.prepare("SELECT data_version, total_changes() AS changes FROM pragma_data_version");
+  const revision = db.prepare(
+    "SELECT data_version, total_changes() AS changes FROM pragma_data_version",
+  );
   const { launches, forkProcess } = createFakeFork();
   let inspections = 0;
   let crossDeadline = false;
@@ -484,17 +541,27 @@ test("idle demand checks skip queue scans and discover unannounced commits", asy
       return groups;
     },
   });
-  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout", "Date"], now: Math.floor(Date.now() / 1000) * 1000 });
+  vi.useFakeTimers({
+    toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout", "Date"],
+    now: Math.floor(Date.now() / 1000) * 1000,
+  });
   try {
     supervisor.start();
     vi.advanceTimersByTime(60000);
     assert.equal(inspections, 1, "an unchanged database must not be repeatedly scanned");
     assert.deepEqual(launches, []);
-    const delayedId = queue.enqueue({ kind: "session-cleanup" }, { runAt: Math.floor(Date.now() / 1000) + 5 });
+    const delayedId = queue.enqueue(
+      { kind: "session-cleanup" },
+      { runAt: Math.floor(Date.now() / 1000) + 5 },
+    );
     vi.advanceTimersByTime(2000);
     assert.deepEqual(launches, [], "a future job must stay pending");
     vi.advanceTimersByTime(3000);
-    assert.deepEqual(supervisor.getGroups(), ["maintenance"], "unchanged delayed work must wake at its deadline");
+    assert.deepEqual(
+      supervisor.getGroups(),
+      ["maintenance"],
+      "unchanged delayed work must wake at its deadline",
+    );
     launches[0].emit("message", { type: "ready" });
     launches[0].emit("message", { type: "idle" });
     queue.cancel(delayedId);
@@ -518,16 +585,30 @@ test("idle demand checks skip queue scans and discover unannounced commits", asy
       const name = "disposable-crossing-schedule";
       if (kind === "schedule") {
         scheduler = honker.getHonkerDb().scheduler();
-        scheduler.add({ name, queue: "system-task-maintenance", schedule: "@every 1h", payload: { kind: "session-cleanup" } });
+        scheduler.add({
+          name,
+          queue: "system-task-maintenance",
+          schedule: "@every 1h",
+          payload: { kind: "session-cleanup" },
+        });
         const tx = honker.getHonkerDb().transaction();
-        tx.execute("UPDATE _honker_scheduler_tasks SET next_fire_at = ? WHERE name = ?", [dueAt, name]);
+        tx.execute("UPDATE _honker_scheduler_tasks SET next_fire_at = ? WHERE name = ?", [
+          dueAt,
+          name,
+        ]);
         tx.commit();
       } else {
-        crossingId = queue.enqueue({ kind: "session-cleanup" }, { runAt: kind === "pending" ? dueAt : dueAt - 120 });
+        crossingId = queue.enqueue(
+          { kind: "session-cleanup" },
+          { runAt: kind === "pending" ? dueAt : dueAt - 120 },
+        );
         if (kind === "processing") {
           assert.equal(queue.claimOne("disposable-crossing-owner")?.id, crossingId);
           const tx = honker.getHonkerDb().transaction();
-          tx.execute("UPDATE _honker_live SET claim_expires_at = ? WHERE id = ?", [dueAt, crossingId]);
+          tx.execute("UPDATE _honker_live SET claim_expires_at = ? WHERE id = ?", [
+            dueAt,
+            crossingId,
+          ]);
           tx.commit();
         }
       }
@@ -535,7 +616,11 @@ test("idle demand checks skip queue scans and discover unannounced commits", asy
       const group = kind === "schedule" ? "scheduler" : "maintenance";
       supervisor.wake(group);
       vi.advanceTimersByTime(1);
-      assert.deepEqual(supervisor.getGroups(), [group], `${kind} work crossed during inspection must still launch its owner`);
+      assert.deepEqual(
+        supervisor.getGroups(),
+        [group],
+        `${kind} work crossed during inspection must still launch its owner`,
+      );
       if (scheduler) scheduler.remove(name);
       else queue.cancel(crossingId);
       const child = launches.at(-1);

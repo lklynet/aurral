@@ -18,21 +18,30 @@ async function fixture(page) {
     if (!pathname.startsWith("/api/")) return route.continue();
     const path = pathname.replace(/^\/api/, "");
     const json = (body, status = 200) => route.fulfill({ status, json: body });
-    if (path === "/health/bootstrap") return json({ authRequired: false, onboardingRequired: false });
+    if (path === "/health/bootstrap")
+      return json({ authRequired: false, onboardingRequired: false });
     if (path === "/discover") return json({ recommendations: artists, configured: true });
     if (path === "/users/me/discover-layout") return json({ layout: [] });
-    if (path === "/discover/feedback" && request.method() === "GET") return json({ feedback: state.feedback });
+    if (path === "/discover/feedback" && request.method() === "GET")
+      return json({ feedback: state.feedback });
     if (path === "/discover/feedback" && request.method() === "POST") {
       const body = request.postDataJSON();
       state.writes.push({ path, body });
-      const entry = { ...body, id: `feedback-${state.writes.length}`, createdAt: new Date().toISOString() };
+      const entry = {
+        ...body,
+        id: `feedback-${state.writes.length}`,
+        createdAt: new Date().toISOString(),
+      };
       state.feedback = [entry, ...state.feedback];
       return json({ success: true, feedback: entry, feedbackList: state.feedback });
     }
     if (path === "/discover/feedback/restore") {
       const body = request.postDataJSON();
       state.writes.push({ path, body });
-      state.feedback = [...body.entries, ...state.feedback.filter((entry) => !body.removeIds.includes(entry.id))];
+      state.feedback = [
+        ...body.entries,
+        ...state.feedback.filter((entry) => !body.removeIds.includes(entry.id)),
+      ];
       return json({ success: true, feedbackList: state.feedback });
     }
     if (path.endsWith("/cover")) return json({ images: [] });
@@ -43,9 +52,15 @@ async function fixture(page) {
   return state;
 }
 
-test("blocking an artist hides its card at once and Undo brings it back in place", async ({ page }) => {
+test("blocking an artist hides its card at once and Undo brings it back in place", async ({
+  page,
+}) => {
   const state = await fixture(page);
-  const names = () => page.getByText(/^Taste Undo [ABC]$/).filter({ visible: true }).allInnerTexts();
+  const names = () =>
+    page
+      .getByText(/^Taste Undo [ABC]$/)
+      .filter({ visible: true })
+      .allInnerTexts();
   await page.goto("/discover");
   await expect.poll(names).toEqual(["Taste Undo A", "Taste Undo B", "Taste Undo C"]);
 
@@ -58,10 +73,9 @@ test("blocking an artist hides its card at once and Undo brings it back in place
   });
   await toast.getByRole("button", { name: "Undo" }).click();
   await expect.poll(names).toEqual(["Taste Undo A", "Taste Undo B", "Taste Undo C"]);
-  await expect.poll(() => state.writes.map((write) => write.path)).toEqual([
-    "/discover/feedback",
-    "/discover/feedback/restore",
-  ]);
+  await expect
+    .poll(() => state.writes.map((write) => write.path))
+    .toEqual(["/discover/feedback", "/discover/feedback/restore"]);
   expect(state.writes[1].body).toEqual({ removeIds: ["feedback-1"], entries: [] });
   expect(state.feedback).toEqual([]);
 });

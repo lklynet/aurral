@@ -42,9 +42,7 @@ const oldTrack = { artistName: "Old Artist", trackName: "Old Song", albumName: "
 const databaseChanges = () => db.prepare("SELECT total_changes() AS changes").get().changes;
 const runScheduledSync = () => processSystemTask({ kind: "import-list-sync" });
 const importLogs = (mock) =>
-  mock.mock.calls
-    .filter((call) => call[0] === "playlist-import")
-    .map((call) => call[2]);
+  mock.mock.calls.filter((call) => call[0] === "playlist-import").map((call) => call[2]);
 
 const createSyncedPlaylist = (name, ownerUserId, provider, externalId) =>
   flowPlaylistConfig.createStaticPlaylist({
@@ -74,14 +72,16 @@ const jsonResponse = (body, status = 200) =>
   });
 
 const playlistPage = (externalId) => ({
-  items: [{
-    item: {
-      type: "track",
-      name: `Song from ${externalId}`,
-      artists: [{ name: "New Artist" }],
-      album: { name: "New Album" },
+  items: [
+    {
+      item: {
+        type: "track",
+        name: `Song from ${externalId}`,
+        artists: [{ name: "New Artist" }],
+        album: { name: "New Album" },
+      },
     },
-  }],
+  ],
   next: null,
   total: 1,
   offset: 0,
@@ -161,12 +161,16 @@ test("disconnected providers pause synced playlists without touching them until 
     const stored = flowPlaylistConfig.getStaticPlaylist(playlist.id);
     assert.equal(stored.importSource.lastSyncAt, lastSyncAt);
     assert.equal(stored.importSource.lastSyncError, null);
-    assert.deepEqual(stored.tracks.map((track) => track.trackName), ["Old Song"]);
+    assert.deepEqual(
+      stored.tracks.map((track) => track.trackName),
+      ["Old Song"],
+    );
   }
 
   await assert.rejects(
     syncStaticPlaylistImport({ playlistId: spotifyPlaylists[0].id, user: { id: 7 }, force: true }),
-    (rejection) => rejection.statusCode === 401 && /Spotify is not connected/.test(rejection.message),
+    (rejection) =>
+      rejection.statusCode === 401 && /Spotify is not connected/.test(rejection.message),
   );
 
   connectSpotify(7, "reconnected-token");
@@ -174,10 +178,10 @@ test("disconnected providers pause synced playlists without touching them until 
   error.mockClear();
   await runScheduledSync();
 
-  assert.deepEqual(
-    requests.map(({ url }) => playlistItemsId(url)).sort(),
-    ["spotify-2024", "spotify-2025"],
-  );
+  assert.deepEqual(requests.map(({ url }) => playlistItemsId(url)).sort(), [
+    "spotify-2024",
+    "spotify-2025",
+  ]);
   assert.deepEqual(importLogs(error), []);
   assert.deepEqual(importLogs(warn), [
     { provider: "ListenBrainz", ownerUserId: 7, playlistCount: 1 },
@@ -217,20 +221,24 @@ test("a Spotify connection revoked mid-run pauses that owner's remaining playlis
   await runScheduledSync();
 
   assert.equal(spotifyConnectionStore.getPublicStatus(7).connected, false);
-  assert.equal(
-    requests.filter(({ token }) => token !== "working-token").length,
-    2,
+  assert.equal(requests.filter(({ token }) => token !== "working-token").length, 2);
+  assert.deepEqual(
+    importLogs(error).map((details) => details.playlistId),
+    [revoked[0].id],
   );
-  assert.deepEqual(importLogs(error).map((details) => details.playlistId), [revoked[0].id]);
-  assert.deepEqual(importLogs(warn), [
-    { provider: "Spotify", ownerUserId: 7, playlistCount: 2 },
-  ]);
+  assert.deepEqual(importLogs(warn), [{ provider: "Spotify", ownerUserId: 7, playlistCount: 2 }]);
   for (const playlist of revoked.slice(1)) {
-    assert.equal(flowPlaylistConfig.getStaticPlaylist(playlist.id).importSource.lastSyncError, null);
+    assert.equal(
+      flowPlaylistConfig.getStaticPlaylist(playlist.id).importSource.lastSyncError,
+      null,
+    );
   }
   const synced = flowPlaylistConfig.getStaticPlaylist(otherOwner.id);
   assert.ok(synced.importSource.lastSyncAt > lastSyncAt);
-  assert.deepEqual(synced.tracks.map((track) => track.trackName), ["Song from other-owner"]);
+  assert.deepEqual(
+    synced.tracks.map((track) => track.trackName),
+    ["Song from other-owner"],
+  );
 });
 
 test("a sync that keeps failing the same way does not rewrite the playlist each run", async () => {

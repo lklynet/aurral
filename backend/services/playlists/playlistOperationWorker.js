@@ -14,8 +14,7 @@ const PERMANENT_ERROR_CODES = new Set([
 let currentLabel = null;
 
 const isPlaylistImport = (payload) =>
-  payload?.kind === "shared-playlist-create" &&
-  payload?.importSource != null;
+  payload?.kind === "shared-playlist-create" && payload?.importSource != null;
 
 const importContext = (payload, job) => ({
   provider: payload?.importSource?.provider || null,
@@ -71,7 +70,12 @@ const worker = createHonkerWorker({
     if (job.payload.kind === "shared-playlist-bulk") {
       const record = getBulkOperation(job.id);
       if (record && record.state !== "completed") {
-        saveBulkOperation({ ...record, state: "queued", message: error.message, updatedAt: Date.now() });
+        saveBulkOperation({
+          ...record,
+          state: "queued",
+          message: error.message,
+          updatedAt: Date.now(),
+        });
       }
     }
   },
@@ -79,7 +83,12 @@ const worker = createHonkerWorker({
     if (job.payload.kind !== "shared-playlist-bulk") return;
     const record = getBulkOperation(job.id);
     if (record && record.state !== "completed") {
-      saveBulkOperation({ ...record, state: "failed", message: error.message, updatedAt: Date.now() });
+      saveBulkOperation({
+        ...record,
+        state: "failed",
+        message: error.message,
+        updatedAt: Date.now(),
+      });
     }
   },
   resolveRetry(error, job) {

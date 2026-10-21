@@ -26,7 +26,9 @@ test("Flow status uses the playlists channel and refreshes after reconnect", asy
   });
   await openApp(page);
   await page.locator("a[href='/flows']").click();
-  await expect.poll(() => page.evaluate(() => window.flowStatusCheck.channels)).toContain("playlists");
+  await expect
+    .poll(() => page.evaluate(() => window.flowStatusCheck.channels))
+    .toContain("playlists");
   expect(await page.evaluate(() => window.flowStatusCheck.channels)).not.toContain("weekly-flow");
   const previous = await page.evaluate(() => {
     const check = window.flowStatusCheck;
@@ -34,7 +36,11 @@ test("Flow status uses the playlists channel and refreshes after reconnect", asy
     check.sockets.at(-1).close(4001, "Reconnect check");
     return result;
   });
-  await expect.poll(() => page.evaluate(() => window.flowStatusCheck.sockets.length)).toBeGreaterThan(previous.sockets);
-  await expect.poll(() => page.evaluate(() => window.flowStatusCheck.reads)).toBeGreaterThan(previous.reads);
+  await expect
+    .poll(() => page.evaluate(() => window.flowStatusCheck.sockets.length))
+    .toBeGreaterThan(previous.sockets);
+  await expect
+    .poll(() => page.evaluate(() => window.flowStatusCheck.reads))
+    .toBeGreaterThan(previous.reads);
   expect(await page.evaluate(() => window.flowStatusCheck.channels)).not.toContain("weekly-flow");
 });

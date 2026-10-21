@@ -5,12 +5,8 @@ import { decryptWithKey, encryptWithKey } from "../config/encryption.js";
 const SETTINGS_KEY = "scrobbleConnections";
 const PROVIDERS = new Set(["lastfm", "listenbrainz", "koito"]);
 const getSettingStmt = db.prepare("SELECT value FROM settings WHERE key = ?");
-const insertSettingStmt = db.prepare(
-  "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)",
-);
-const upsertSettingStmt = db.prepare(
-  "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
-);
+const insertSettingStmt = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)");
+const upsertSettingStmt = db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)");
 const ensureEncryptionKey = db.transaction(() => {
   const stored = getSettingStmt.get("_encryptionKey")?.value;
   if (!stored) {
@@ -60,20 +56,33 @@ export const scrobbleConnectionStore = {
 
   getConnections(userId) {
     const raw = readStore()[userKey(userId)] || {};
-    return Object.fromEntries([...PROVIDERS].map((provider) => {
-      const connection = normalize(provider, raw[provider]);
-      return connection ? [provider, connection] : null;
-    }).filter(Boolean));
+    return Object.fromEntries(
+      [...PROVIDERS]
+        .map((provider) => {
+          const connection = normalize(provider, raw[provider]);
+          return connection ? [provider, connection] : null;
+        })
+        .filter(Boolean),
+    );
   },
 
   getPublicStatus(userId) {
     const connections = this.getConnections(userId);
-    return Object.fromEntries([...PROVIDERS].map((provider) => {
-      const connection = connections[provider];
-      return [provider, connection
-        ? { connected: true, displayName: connection.displayName, connectedAt: connection.connectedAt }
-        : { connected: false, displayName: null, connectedAt: null }];
-    }));
+    return Object.fromEntries(
+      [...PROVIDERS].map((provider) => {
+        const connection = connections[provider];
+        return [
+          provider,
+          connection
+            ? {
+                connected: true,
+                displayName: connection.displayName,
+                connectedAt: connection.connectedAt,
+              }
+            : { connected: false, displayName: null, connectedAt: null },
+        ];
+      }),
+    );
   },
 
   saveConnection(userId, provider, { token, displayName = null, baseUrl = null } = {}) {

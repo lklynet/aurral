@@ -36,10 +36,7 @@ import {
   readReleaseListViewMode,
   writeReleaseListViewMode,
 } from "./utils";
-import {
-  matchesReleaseGroupSearch,
-  matchesReleaseGroupTab,
-} from "./releaseFilters.js";
+import { matchesReleaseGroupSearch, matchesReleaseGroupTab } from "./releaseFilters.js";
 import { getAlbumAddAction } from "../../utils/albumAddAction";
 import { useLibraryDestination } from "../../hooks/useLibraryDestination";
 import {
@@ -166,8 +163,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
   });
 
   const releaseGroups = useMemo(
-    () =>
-      artist?.[isAppearsOn ? "appears-on-release-groups" : "release-groups"] || [],
+    () => artist?.[isAppearsOn ? "appears-on-release-groups" : "release-groups"] || [],
     [artist, isAppearsOn],
   );
   const filteredReleaseGroups = useMemo(
@@ -189,7 +185,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
   );
   const initialAppearsOnOffset =
     isAppearsOn && appearsOnOffsetRef.current.mbid === mbid
-      ? appearsOnOffsetRef.current.offset ?? releaseGroups.length
+      ? (appearsOnOffsetRef.current.offset ?? releaseGroups.length)
       : releaseGroups.length;
   useEffect(() => {
     if (!isAppearsOn) {
@@ -217,9 +213,9 @@ function ArtistReleaseListPage({ mode = "releases" }) {
       }),
     getNextPageParam: (lastPage, pages) => {
       if (!lastPage?.hasMore || !lastPage?.items?.length) return undefined;
-      return initialAppearsOnOffset + pages.reduce(
-        (count, page) => count + (page?.items?.length || 0),
-        0,
+      return (
+        initialAppearsOnOffset +
+        pages.reduce((count, page) => count + (page?.items?.length || 0), 0)
       );
     },
     staleTime: 30_000,
@@ -245,9 +241,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
       };
     });
   }, [appearsOnQuery.data, isAppearsOn, loadingAppearsOn, releaseGroups, setArtist]);
-  const hasMoreAppearances = isAppearsOn && (
-    !appearsOnQuery.data || appearsOnQuery.hasNextPage
-  );
+  const hasMoreAppearances = isAppearsOn && (!appearsOnQuery.data || appearsOnQuery.hasNextPage);
   const loadingMoreAppearances = appearsOnQuery.isFetchingNextPage;
 
   useArtistSearchFocus({
@@ -311,11 +305,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
       setVisibleReleaseCount((current) => current + RELEASE_PAGE_SIZE);
       return;
     }
-    if (
-      !isAppearsOn ||
-      !hasMoreAppearances ||
-      loadingMoreAppearances
-    ) return;
+    if (!isAppearsOn || !hasMoreAppearances || loadingMoreAppearances) return;
     if (appearsOnOffsetRef.current.offset == null) {
       appearsOnOffsetRef.current.offset = initialAppearsOnOffset;
     }
@@ -426,10 +416,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
               </div>
             )}
           </div>
-          <OptionalLink
-            link={releaseLink(releaseGroup, cover)}
-            className="artist-min-0 card-link"
-          >
+          <OptionalLink link={releaseLink(releaseGroup, cover)} className="artist-min-0 card-link">
             <h2 className="artist-release-card__title artist-truncate">{releaseGroup.title}</h2>
             <p className="artist-release-card__meta artist-truncate">{metaLabel}</p>
           </OptionalLink>
@@ -452,7 +439,8 @@ function ArtistReleaseListPage({ mode = "releases" }) {
                   )}
                   ownerConflict={status?.ownerConflict}
                   onAdd={(managedBy) =>
-                    library.handleRequestAlbum(releaseGroup.id, releaseGroup.title, managedBy)}
+                    library.handleRequestAlbum(releaseGroup.id, releaseGroup.title, managedBy)
+                  }
                   isLoading={albumBusy}
                   loadingLabel="Downloading"
                   disabled={albumBusy}
@@ -486,7 +474,8 @@ function ArtistReleaseListPage({ mode = "releases" }) {
                   )}
                   ownerConflict={status?.ownerConflict}
                   onAdd={(managedBy) =>
-                    library.handleRequestAlbum(releaseGroup.id, releaseGroup.title, managedBy)}
+                    library.handleRequestAlbum(releaseGroup.id, releaseGroup.title, managedBy)
+                  }
                   isLoading={albumBusy}
                   loadingLabel="Downloading"
                   disabled={albumBusy}
@@ -576,9 +565,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
                         aria-selected={active}
                       >
                         <span>{option.label}</span>
-                        <span>
-                          {active && <SortDirectionIcon className="artist-icon-xs" />}
-                        </span>
+                        <span>{active && <SortDirectionIcon className="artist-icon-xs" />}</span>
                       </button>
                     );
                   })}
@@ -599,9 +586,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
                 autoComplete="off"
                 aria-label={searchLabel}
               />
-              {!searchTerm && (
-                <div className="global-search__placeholder">{searchLabel}...</div>
-              )}
+              {!searchTerm && <div className="global-search__placeholder">{searchLabel}...</div>}
             </div>
           </div>
 
@@ -679,8 +664,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
           {renderedReleaseGroups.map((releaseGroup) => renderReleaseCard(releaseGroup))}
         </div>
       )}
-      {visibleReleaseCount < filteredReleaseGroups.length ||
-      (isAppearsOn && hasMoreAppearances) ? (
+      {visibleReleaseCount < filteredReleaseGroups.length || (isAppearsOn && hasMoreAppearances) ? (
         <div className="artist-loading" aria-live="polite">
           <button
             type="button"
@@ -688,9 +672,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
             onClick={loadNextPage}
             disabled={loadingMoreAppearances}
           >
-            {loadingMoreAppearances ? (
-              <DotLoader size="sm" label={null} />
-            ) : null}
+            {loadingMoreAppearances ? <DotLoader size="sm" label={null} /> : null}
             Load more
           </button>
         </div>

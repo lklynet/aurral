@@ -14,7 +14,8 @@ const [isolatedState, { db }, { dbOps }, playlistConfigModule] = await setupIsol
   "backend/services/playlists/flowPlaylistConfig.js",
 );
 const { flowPlaylistConfig } = playlistConfigModule;
-const { getDiscoverPlaylistPreset } = await import("../../backend/config/discoverPlaylistPresets.js");
+const { getDiscoverPlaylistPreset } =
+  await import("../../backend/config/discoverPlaylistPresets.js");
 
 beforeEach(() => {
   resetDatabase(db);

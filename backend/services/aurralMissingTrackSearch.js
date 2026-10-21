@@ -61,7 +61,8 @@ const markSearchedStmt = db.prepare(`
 const jobActivityAt = (job) =>
   Math.max(Number(job.createdAt) || 0, Number(job.startedAt) || 0, Number(job.completedAt) || 0);
 
-const isActiveOrCancelled = (job) => ACTIVE_JOB_STATUSES.has(job.status) || job.status === "cancelled";
+const isActiveOrCancelled = (job) =>
+  ACTIVE_JOB_STATUSES.has(job.status) || job.status === "cancelled";
 
 function hasSearchableMissingTrack(album, jobs) {
   return missingTracksStmt.all(album.id).some((track) => {
@@ -73,15 +74,24 @@ function hasSearchableMissingTrack(album, jobs) {
 function selectDueAlbums(intervalDays) {
   const dueBefore = Date.now() - intervalDays * DAY_MS + HOUR_MS;
   const albums = candidateAlbumsStmt.all(dueBefore);
-  const jobsForAlbum = indexAurralAlbumJobs(albums.flatMap((album) => [album.releaseGroupMbid, album.mbid]));
+  const jobsForAlbum = indexAurralAlbumJobs(
+    albums.flatMap((album) => [album.releaseGroupMbid, album.mbid]),
+  );
   const candidates = albums
     .map((album) => {
       const jobs = jobsForAlbum([album.releaseGroupMbid, album.mbid]);
-      const lastActivityAt = Math.max(Number(album.lastSearchedAt) || 0, ...jobs.map(jobActivityAt));
+      const lastActivityAt = Math.max(
+        Number(album.lastSearchedAt) || 0,
+        ...jobs.map(jobActivityAt),
+      );
       return { album, jobs, lastActivityAt };
     })
-    .filter(({ jobs, lastActivityAt }) => lastActivityAt <= dueBefore && !jobs.some(isActiveOrCancelled))
-    .sort((left, right) => left.lastActivityAt - right.lastActivityAt || left.album.id - right.album.id);
+    .filter(
+      ({ jobs, lastActivityAt }) => lastActivityAt <= dueBefore && !jobs.some(isActiveOrCancelled),
+    )
+    .sort(
+      (left, right) => left.lastActivityAt - right.lastActivityAt || left.album.id - right.album.id,
+    );
   return candidates
     .filter(({ album, jobs }) => hasSearchableMissingTrack(album, jobs))
     .map(({ album }) => album);

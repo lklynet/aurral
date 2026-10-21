@@ -28,7 +28,10 @@ function ensureSchema(db) {
 export async function getInstance(db, id) {
   if (!db || !INSTANCE_ID_PATTERN.test(id)) return null;
   await ensureSchema(db);
-  return db.prepare("SELECT id, secret_hash, tunnel_url FROM instances WHERE id = ?").bind(id).first();
+  return db
+    .prepare("SELECT id, secret_hash, tunnel_url FROM instances WHERE id = ?")
+    .bind(id)
+    .first();
 }
 
 export async function saveInstance(db, { id, secretHash, tunnelUrl }) {

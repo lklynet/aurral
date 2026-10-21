@@ -1,23 +1,15 @@
 import { test, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
-import {
-  setupIsolatedBackend,
-  cleanupIsolatedState,
-} from "../helpers/backendTestHarness.js";
+import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.js";
 import { createDiscoveryArtistBatcher } from "../helpers/discoveryFixtures.js";
 
-const [
-  isolatedState,
-  recommendationPipeline,
-  discoveryIndex,
-] = await setupIsolatedBackend(
+const [isolatedState, recommendationPipeline, discoveryIndex] = await setupIsolatedBackend(
   "discovery-recommendation-pool",
   "backend/services/discovery/recommendationPipeline.js",
   "backend/services/discovery/index.js",
 );
 
-const { mergeRetainedRecommendationPool, serveRecommendations } =
-  recommendationPipeline;
+const { mergeRetainedRecommendationPool, serveRecommendations } = recommendationPipeline;
 const {
   getDiscoveryRecommendationsPerRefresh,
   getDiscoveryRecommendationPoolLimit,
@@ -110,12 +102,8 @@ test("repeated refreshes build the pool to the 500 cap", () => {
     });
   }
 
-  const oldestRemaining = pool.filter((item) =>
-    item.name.startsWith("cycle-0-"),
-  ).length;
-  const newestRemaining = pool.filter((item) =>
-    item.name.startsWith("cycle-3-"),
-  ).length;
+  const oldestRemaining = pool.filter((item) => item.name.startsWith("cycle-0-")).length;
+  const newestRemaining = pool.filter((item) => item.name.startsWith("cycle-3-")).length;
 
   assert.equal(pool.length, POOL_LIMIT);
   assert.ok(oldestRemaining > 0);
@@ -142,10 +130,7 @@ test("rotation drops lowest retained artists when fresh batch arrives", () => {
   });
 
   assert.equal(rotated.length, POOL_LIMIT);
-  assert.equal(
-    rotated.filter((item) => item.name.startsWith("fresh-")).length,
-    PER_REFRESH,
-  );
+  assert.equal(rotated.filter((item) => item.name.startsWith("fresh-")).length, PER_REFRESH);
   assert.equal(
     rotated.filter((item) => item.name.startsWith("weak-")).length,
     POOL_LIMIT - PER_REFRESH,
@@ -154,7 +139,10 @@ test("rotation drops lowest retained artists when fresh batch arrives", () => {
     rotated.some((item) => item.name === `weak-${POOL_LIMIT - 1}`),
     false,
   );
-  assert.equal(rotated.some((item) => item.name === "weak-0"), true);
+  assert.equal(
+    rotated.some((item) => item.name === "weak-0"),
+    true,
+  );
 });
 
 test("serveRecommendations ranks less-like artists lower and hides only exact blocks", () => {
@@ -220,10 +208,7 @@ test("enrichment marks returning artists as fresh while preserving firstDiscover
     matchedTags: ["indie", "shoegaze"],
   };
   const enrichmentFresh = rerankCachedRecommendations({
-    recommendations: [
-      enrichedCandidate,
-      ...artists.makeBatch(PER_REFRESH - 1, 190, "enriched"),
-    ],
+    recommendations: [enrichedCandidate, ...artists.makeBatch(PER_REFRESH - 1, 190, "enriched")],
     discoveryMode: "balanced",
     limit: PER_REFRESH,
   });
@@ -234,9 +219,7 @@ test("enrichment marks returning artists as fresh while preserving firstDiscover
     runStartedAt: "2026-06-18T01:00:00.000Z",
     discoveryMode: "balanced",
   });
-  const updatedReturning = enrichedPool.find(
-    (item) => item.id === returningArtist.id,
-  );
+  const updatedReturning = enrichedPool.find((item) => item.id === returningArtist.id);
 
   assert.ok(updatedReturning);
   assert.equal(
@@ -270,12 +253,6 @@ test("merge retains existing artists alongside fresh when fresh batch falls shor
   assert.equal(merged.length, 300);
   assert.ok(merged.filter((item) => item.recommendationPoolState === "fresh").length > 0);
   assert.ok(merged.filter((item) => item.recommendationPoolState === "retained").length > 0);
-  assert.equal(
-    merged.filter((item) => item.name.startsWith("fresh-full-")).length,
-    200,
-  );
-  assert.equal(
-    merged.filter((item) => item.name.startsWith("existing-")).length,
-    100,
-  );
+  assert.equal(merged.filter((item) => item.name.startsWith("fresh-full-")).length, 200);
+  assert.equal(merged.filter((item) => item.name.startsWith("existing-")).length, 100);
 });

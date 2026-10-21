@@ -67,8 +67,9 @@ test("focused Subsonic requests never execute an unfiltered complete-library que
     prepared.push(String(sql));
     return prepare(sql);
   });
-  db.prepare("UPDATE library_tracks SET metadata_json = '{' WHERE identity_key = ?")
-    .run("bounded:track");
+  db.prepare("UPDATE library_tracks SET metadata_json = '{' WHERE identity_key = ?").run(
+    "bounded:track",
+  );
 
   assert.ok(subsonic.listArtists().length);
   assert.ok(subsonic.getArtist(`artist:${encodeURIComponent("bounded:artist")}`));
@@ -78,20 +79,25 @@ test("focused Subsonic requests never execute an unfiltered complete-library que
   assert.ok(subsonic.getSongsByGenre("Rock", { count: 1 }).length);
   assert.deepEqual(subsonic.getGenres(), [{ albumCount: 1, songCount: 1, value: "Rock" }]);
 
-  const completeQueries = prepared.filter((sql) =>
-    sql.includes("FROM library_tracks AS track")
-      && sql.includes("LEFT JOIN library_media_files AS media")
-      && !/\bWHERE\b/.test(sql),
+  const completeQueries = prepared.filter(
+    (sql) =>
+      sql.includes("FROM library_tracks AS track") &&
+      sql.includes("LEFT JOIN library_media_files AS media") &&
+      !/\bWHERE\b/.test(sql),
   );
   assert.deepEqual(completeQueries, []);
-  const hydration = prepared.filter((sql) =>
-    sql.includes("track.id AS track_id") && sql.includes("FROM library_tracks AS track"),
+  const hydration = prepared.filter(
+    (sql) => sql.includes("track.id AS track_id") && sql.includes("FROM library_tracks AS track"),
   );
   assert.ok(hydration.length > 0);
-  assert.equal(hydration.every((sql) => /WHERE (artist|album|track)\.id IN/.test(sql)), true);
-  const artistIndexQuery = prepared.find((sql) =>
-    sql.includes("COUNT(DISTINCT album.id) AS album_count")
-      && sql.includes("FROM library_artists AS artist"),
+  assert.equal(
+    hydration.every((sql) => /WHERE (artist|album|track)\.id IN/.test(sql)),
+    true,
+  );
+  const artistIndexQuery = prepared.find(
+    (sql) =>
+      sql.includes("COUNT(DISTINCT album.id) AS album_count") &&
+      sql.includes("FROM library_artists AS artist"),
   );
   assert.ok(artistIndexQuery);
   assert.match(artistIndexQuery, /media\.available = 1/);
@@ -109,8 +115,9 @@ test("Subsonic genres come from the last library scan until the library changes"
   const setGenre = (genre) => {
     const metadata = JSON.stringify({ genres: [genre] });
     for (const table of ["library_artists", "library_albums", "library_tracks"]) {
-      db.prepare(`UPDATE ${table} SET metadata_json = ? WHERE identity_key LIKE 'bounded:%'`)
-        .run(metadata);
+      db.prepare(`UPDATE ${table} SET metadata_json = ? WHERE identity_key LIKE 'bounded:%'`).run(
+        metadata,
+      );
     }
   };
 

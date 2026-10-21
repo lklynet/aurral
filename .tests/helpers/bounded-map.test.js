@@ -3,7 +3,11 @@ import { test } from "vite-plus/test";
 import BoundedMap from "../../backend/services/boundedMap.js";
 
 test("bounded maps evict the least recently written keys at their limit", () => {
-  const cache = new BoundedMap(3, [["a", 1], ["b", 2], ["c", 3]]);
+  const cache = new BoundedMap(3, [
+    ["a", 1],
+    ["b", 2],
+    ["c", 3],
+  ]);
   cache.set("a", 10);
   cache.set("d", 4);
 

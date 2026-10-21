@@ -18,10 +18,7 @@ export function parsePositiveInt(value, fallback) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-const ALL_RELEASE_TYPES = new Set([
-  ...PRIMARY_RELEASE_TYPE_LIST,
-  ...SECONDARY_RELEASE_TYPE_LIST,
-]);
+const ALL_RELEASE_TYPES = new Set([...PRIMARY_RELEASE_TYPE_LIST, ...SECONDARY_RELEASE_TYPE_LIST]);
 async function getAlbumLibraryLookup(albumMbids) {
   const lookup = new Map();
   if (!lidarrClient.isConfigured() || albumMbids.length === 0) {

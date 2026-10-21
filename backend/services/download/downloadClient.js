@@ -1,9 +1,4 @@
-const REQUIRED_METHODS = [
-  "isConfigured",
-  "testConnection",
-  "getStatus",
-  "updateConfig",
-];
+const REQUIRED_METHODS = ["isConfigured", "testConnection", "getStatus", "updateConfig"];
 
 export function assertDownloadClient(client) {
   if (!client || (typeof client !== "object" && typeof client !== "function")) {

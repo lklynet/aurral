@@ -35,7 +35,9 @@ export default function ArtistMbidModal({ artist, onClose, onSaved }) {
   };
 
   const handleSubmit = () => {
-    const mbid = String(value || "").match(MBID_PATTERN)?.[0]?.toLowerCase();
+    const mbid = String(value || "")
+      .match(MBID_PATTERN)?.[0]
+      ?.toLowerCase();
     if (!mbid) {
       setError("Enter a MusicBrainz artist ID or musicbrainz.org artist link");
       return;
@@ -112,7 +114,11 @@ export default function ArtistMbidModal({ artist, onClose, onSaved }) {
           autoComplete="off"
           autoFocus
         />
-        {error ? <p className="artist-error-text" role="alert">{error}</p> : null}
+        {error ? (
+          <p className="artist-error-text" role="alert">
+            {error}
+          </p>
+        ) : null}
       </div>
     </ModalShell>
   );

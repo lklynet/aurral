@@ -21,7 +21,10 @@ async function enqueueBulkPayload(record) {
       process.send({ type: "queue-wake", queue: "weekly-flow-operation" });
     }
   } catch (error) {
-    logger.warn("playlists", "Accepted playlist operation could not wake its worker", { operationId: result.operationId, reason: error.message });
+    logger.warn("playlists", "Accepted playlist operation could not wake its worker", {
+      operationId: result.operationId,
+      reason: error.message,
+    });
   }
   return result;
 }
@@ -38,11 +41,8 @@ function getStatus() {
   };
 }
 
-export function setPlaylistOperationWorkerState({
-  currentLabel = null,
-} = {}) {
-  workerCurrentLabel =
-    currentLabel == null ? null : String(currentLabel).trim() || null;
+export function setPlaylistOperationWorkerState({ currentLabel = null } = {}) {
+  workerCurrentLabel = currentLabel == null ? null : String(currentLabel).trim() || null;
 }
 
 export const playlistOperationQueue = {

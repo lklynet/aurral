@@ -4,9 +4,12 @@ export const SAME_LENGTH_MS = 3000;
 
 export async function readRecording(filePath, metadata = null) {
   try {
-    const parsed = metadata || await parseFile(filePath, { skipCovers: true, duration: false });
+    const parsed = metadata || (await parseFile(filePath, { skipCovers: true, duration: false }));
     let seconds = Number(parsed.format?.duration);
-    if (!(seconds > 0)) seconds = Number((await parseFile(filePath, { skipCovers: true, duration: true })).format?.duration);
+    if (!(seconds > 0))
+      seconds = Number(
+        (await parseFile(filePath, { skipCovers: true, duration: true })).format?.duration,
+      );
     return {
       durationMs: seconds > 0 ? Math.round(seconds * 1000) : null,
       lossless: parsed.format?.lossless === true,

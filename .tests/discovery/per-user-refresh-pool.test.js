@@ -48,18 +48,15 @@ test("per-user refresh: rerankCachedRecommendations produces a personalized slic
 
   assert.equal(personalized.length, 50);
   assert.equal(
-    personalized.some(
-      (item) => item.id === "00000000-0000-4000-8000-000000000000",
-    ),
+    personalized.some((item) => item.id === "00000000-0000-4000-8000-000000000000"),
     true,
   );
   assert.ok(personalized[0].name !== "Global-Artist-0");
 });
 
 test("per-user refresh: user-specific feedback is isolated from global feedback", async () => {
-  const { addDiscoveryFeedback, getDiscoveryFeedback, resetDiscoveryFeedback } = await importFromRepo(
-    "backend/services/discovery/index.js",
-  );
+  const { addDiscoveryFeedback, getDiscoveryFeedback, resetDiscoveryFeedback } =
+    await importFromRepo("backend/services/discovery/index.js");
 
   resetDiscoveryFeedback("global");
   resetDiscoveryFeedback("user-abc");
@@ -81,12 +78,8 @@ test("per-user refresh: user-specific feedback is isolated from global feedback"
   const globalFeedback = getDiscoveryFeedback("global");
   const userFeedback = getDiscoveryFeedback("user-abc");
 
-  assert.ok(
-    globalFeedback.some((entry) => entry.artistName === "Global Dislike"),
-  );
-  assert.ok(
-    userFeedback.some((entry) => entry.artistName === "User Dislike"),
-  );
+  assert.ok(globalFeedback.some((entry) => entry.artistName === "Global Dislike"));
+  assert.ok(userFeedback.some((entry) => entry.artistName === "User Dislike"));
   assert.equal(
     userFeedback.some((entry) => entry.artistName === "Global Dislike"),
     false,
@@ -142,12 +135,8 @@ test("per-user refresh: mergeRetainedRecommendationPool preserves per-user retai
 
   assert.equal(merged.length, 130);
 
-  const freshInOutput = merged.filter(
-    (item) => item.recommendationPoolState === "fresh",
-  );
-  const retainedInOutput = merged.filter(
-    (item) => item.recommendationPoolState === "retained",
-  );
+  const freshInOutput = merged.filter((item) => item.recommendationPoolState === "fresh");
+  const retainedInOutput = merged.filter((item) => item.recommendationPoolState === "retained");
 
   assert.ok(freshInOutput.length > 0);
   assert.ok(retainedInOutput.length > 0);
@@ -189,9 +178,9 @@ test("per-user refresh: addDiscoveryFeedback deduplicates feedback per user", as
 });
 
 test("per-user refresh: feedback boost affects reranking for per-user pool", async () => {
-  const {
-    rerankRecommendations,
-  } = await importFromRepo("backend/services/discovery/recommendationPipeline.js");
+  const { rerankRecommendations } = await importFromRepo(
+    "backend/services/discovery/recommendationPipeline.js",
+  );
 
   const recPool = [
     {
@@ -237,7 +226,5 @@ test("per-user refresh: feedback boost affects reranking for per-user pool", asy
 
   assert.equal(rankedWithFeedback.length, 2);
   assert.equal(rankedWithFeedback[0].name, "MLR Target");
-  assert.ok(
-    rankedWithFeedback[0].scoreTotal > rankedWithFeedback[1].scoreTotal,
-  );
+  assert.ok(rankedWithFeedback[0].scoreTotal > rankedWithFeedback[1].scoreTotal);
 });

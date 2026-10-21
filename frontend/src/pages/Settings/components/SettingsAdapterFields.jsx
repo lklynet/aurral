@@ -15,7 +15,11 @@ function fieldId(definition, field) {
 }
 
 function fieldValue(definition, settings, field) {
-  return settings?.[field.key] ?? definition?.defaults?.[field.key] ?? (field.type === "toggle" ? false : "");
+  return (
+    settings?.[field.key] ??
+    definition?.defaults?.[field.key] ??
+    (field.type === "toggle" ? false : "")
+  );
 }
 
 function groupFields(fields, advanced) {

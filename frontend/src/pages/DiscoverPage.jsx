@@ -7,7 +7,12 @@ import { getMyDiscoverLayout, updateMyDiscoverLayout } from "../utils/api/endpoi
 
 import { Sparkles, LayoutTemplate } from "lucide-react";
 import { DotLoader } from "../components/DotLoader";
-import { SkeletonDiscoverCard, SkeletonRail, SkeletonShape, SkeletonStatus } from "../components/Skeletons";
+import {
+  SkeletonDiscoverCard,
+  SkeletonRail,
+  SkeletonShape,
+  SkeletonStatus,
+} from "../components/Skeletons";
 import { resolveLibraryArtistPath } from "../navigation/resolveLinks.js";
 import DiscoveryStatusPill from "../components/DiscoveryStatusPill";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
@@ -167,12 +172,7 @@ function DiscoverPage() {
   const lastUpdated = discoveryStatus?.lastUpdated || data?.lastUpdated || null;
   const isActuallyUpdating = isUpdating && !hasData;
 
-  const {
-    recommendations = [],
-    globalTop = [],
-    topGenres = [],
-    basedOn = [],
-  } = data || {};
+  const { recommendations = [], globalTop = [], topGenres = [], basedOn = [] } = data || {};
   const { data: editorialShelf, isPending: editorialShelfPending } = useEditorialShelf();
 
   const nearbyShows = nearbyShowsData?.shows || [];
@@ -346,7 +346,9 @@ function DiscoverPage() {
                     artist={{
                       id: artistId,
                       canonicalId: artist.canonicalId || artist.id,
-                      libraryPath: artistId ? null : `/library/artist/${encodeURIComponent(artist.canonicalId || artist.id)}`,
+                      libraryPath: artistId
+                        ? null
+                        : `/library/artist/${encodeURIComponent(artist.canonicalId || artist.id)}`,
                       name: artist.artistName,
                       image: getLibraryArtistImage(artist),
                       type: "Artist",
@@ -402,18 +404,17 @@ function DiscoverPage() {
     if (id === "news") {
       if (!sectionAvailability.news) return null;
       return (
-        <DiscoverRail
-          key="news"
-          title="Artist news"
-          viewAllTo="/discover/news"
-        >
+        <DiscoverRail key="news" title="Artist news" viewAllTo="/discover/news">
           {newsLoading && newsArticles.length === 0 ? (
             <div className="discover-news-rail-status artist-discover-shelf-card--news-status">
               <DotLoader size="sm" label={null} /> Checking recent stories…
             </div>
           ) : newsArticles.length > 0 ? (
             newsArticles.map((article) => (
-              <div key={article.id} className="artist-discover-shelf-card artist-discover-shelf-card--news">
+              <div
+                key={article.id}
+                className="artist-discover-shelf-card artist-discover-shelf-card--news"
+              >
                 <NewsArticleCard
                   article={article}
                   compact
@@ -434,11 +435,7 @@ function DiscoverPage() {
       if (!sectionAvailability.recommended) return null;
       if (recommendations.length > 0) {
         return (
-          <DiscoverRail
-            key="recommended"
-            title="Recommended"
-            viewAllTo="/search?type=recommended"
-          >
+          <DiscoverRail key="recommended" title="Recommended" viewAllTo="/search?type=recommended">
             <>
               {recommendations.slice(0, DISCOVER_PREVIEW_ITEM_LIMIT).map((artist) => (
                 <div key={artist.id} className="artist-discover-shelf-card">
@@ -480,11 +477,7 @@ function DiscoverPage() {
         );
       }
       return (
-        <DiscoverRail
-          key="recommended"
-          title="Recommended"
-          className="discover-rail--placeholder"
-        >
+        <DiscoverRail key="recommended" title="Recommended" className="discover-rail--placeholder">
           <div className="discover-recommended-empty">
             <p className="discover-recommended-empty__message">
               Add artists you like to get recommendations.
@@ -525,11 +518,7 @@ function DiscoverPage() {
               <p className="artist-nearby-status__text">
                 Add a Ticketmaster key in Settings → Connect to find nearby shows.
               </p>
-              <RouteLink
-                to="/settings"
-                className="btn btn-primary"
-                style={{ marginTop: "1rem" }}
-              >
+              <RouteLink to="/settings" className="btn btn-primary" style={{ marginTop: "1rem" }}>
                 Open Settings
               </RouteLink>
             </div>
@@ -586,10 +575,7 @@ function DiscoverPage() {
           >
             <>
               {nearbyShows.slice(0, DISCOVER_PREVIEW_ITEM_LIMIT).map((show) => (
-                <div
-                  key={show.id}
-                  className="artist-discover-show-rail-card"
-                >
+                <div key={show.id} className="artist-discover-show-rail-card">
                   <ShowCard show={show} />
                 </div>
               ))}
@@ -601,7 +587,9 @@ function DiscoverPage() {
       return (
         <section key="recommendedShows" className="artist-discover-section">
           <div className="artist-nearby-status">
-            <h3 className="artist-nearby-status__title">No matching shows near {nearbyLocationLabel}.</h3>
+            <h3 className="artist-nearby-status__title">
+              No matching shows near {nearbyLocationLabel}.
+            </h3>
           </div>
         </section>
       );
@@ -610,11 +598,7 @@ function DiscoverPage() {
     if (id === "globalTop") {
       if (!sectionAvailability.globalTop) return null;
       return (
-        <DiscoverRail
-          key="globalTop"
-          title="Global trending"
-          viewAllTo="/search?type=trending"
-        >
+        <DiscoverRail key="globalTop" title="Global trending" viewAllTo="/search?type=trending">
           <>
             {globalTop.slice(0, DISCOVER_PREVIEW_ITEM_LIMIT).map((artist) => (
               <div key={artist.id} className="artist-discover-shelf-card">
@@ -653,7 +637,10 @@ function DiscoverPage() {
               >
                 <>
                   {section.artists.slice(0, DISCOVER_PREVIEW_ITEM_LIMIT).map((artist) => (
-                    <div key={`${section.genre}-${artist.id}`} className="artist-discover-shelf-card">
+                    <div
+                      key={`${section.genre}-${artist.id}`}
+                      className="artist-discover-shelf-card"
+                    >
                       <ArtistCard
                         artist={artist}
                         isInLibrary={!!libraryLookup[getArtistId(artist)]}
@@ -770,7 +757,8 @@ function DiscoverPage() {
                             >
                               +{heroBasedOn.length - 4} more
                             </button>
-                          )}                        </>
+                          )}{" "}
+                        </>
                       )}
                     </div>
                   )}

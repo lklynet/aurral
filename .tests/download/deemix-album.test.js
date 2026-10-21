@@ -20,13 +20,26 @@ test("deemix album queue keeps completed file paths when one track fails", async
       return;
     }
     if (request.url === "/api/getQueue") {
-      response.end(JSON.stringify({ queue: { album_302127_1: {
-        uuid: "album_302127_1", type: "album", status: "withErrors", size: 3,
-        downloaded: 2, failed: 1, files: [
-          { path: "/downloads/album/01.flac", data: { id: "first" } },
-          { path: "/downloads/album/02.flac", data: { id: "second" } },
-        ], errors: [{ message: "track unavailable" }],
-      } }, queueOrder: [] }));
+      response.end(
+        JSON.stringify({
+          queue: {
+            album_302127_1: {
+              uuid: "album_302127_1",
+              type: "album",
+              status: "withErrors",
+              size: 3,
+              downloaded: 2,
+              failed: 1,
+              files: [
+                { path: "/downloads/album/01.flac", data: { id: "first" } },
+                { path: "/downloads/album/02.flac", data: { id: "second" } },
+              ],
+              errors: [{ message: "track unavailable" }],
+            },
+          },
+          queueOrder: [],
+        }),
+      );
       return;
     }
     response.statusCode = 404;
@@ -35,7 +48,11 @@ test("deemix album queue keeps completed file paths when one track fails", async
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   try {
     const address = server.address();
-    const client = new DeemixClient({ enabled: true, url: `http://127.0.0.1:${address.port}`, bitrate: 1 });
+    const client = new DeemixClient({
+      enabled: true,
+      url: `http://127.0.0.1:${address.port}`,
+      bitrate: 1,
+    });
     const uuid = await client.addAlbumToQueue("https://www.deezer.com/album/302127", "302127");
     const item = await client.getQueueItem(uuid);
     const result = readDeemixAlbumQueue(item);
@@ -50,8 +67,12 @@ test("deemix album queue keeps completed file paths when one track fails", async
 });
 
 test("deemix album files are unavailable until the queue item finishes", () => {
-  const item = { type: "album", status: "downloading", failed: 1,
-    files: [{ path: "/downloads/album/01.flac" }] };
+  const item = {
+    type: "album",
+    status: "downloading",
+    failed: 1,
+    files: [{ path: "/downloads/album/01.flac" }],
+  };
   assert.deepEqual(readDeemixAlbumQueue(item).filePaths, []);
   const finished = readDeemixAlbumQueue({ ...item, status: "failed", files: [] });
   assert.equal(finished.finished, true);

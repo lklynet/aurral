@@ -87,10 +87,7 @@ test("recommendation candidates aggregate across multiple seeds", () => {
   assert.equal(recommendation.name, "Candidate Artist");
   assert.equal(recommendation.seedCount, 2);
   assert.equal(recommendation.sourceType, "blended");
-  assert.deepEqual(
-    recommendation.sourceArtists.sort(),
-    ["Seed One", "Seed Two"],
-  );
+  assert.deepEqual(recommendation.sourceArtists.sort(), ["Seed One", "Seed Two"]);
   assert.ok(recommendation.scoreTotal > 150);
   assert.ok(recommendation.tags.includes("dream-pop"));
   assert.ok(recommendation.tags.includes("shoegaze"));
@@ -122,10 +119,7 @@ test("mergeResolvedRecommendations collapses name and mbid variants of the same 
   assert.equal(merged.length, 1);
   assert.equal(merged[0].id, "44444444-4444-4444-4444-444444444444");
   assert.equal(merged[0].sourceType, "blended");
-  assert.deepEqual(
-    merged[0].tags.sort(),
-    ["dream-pop", "shoegaze"],
-  );
+  assert.deepEqual(merged[0].tags.sort(), ["dream-pop", "shoegaze"]);
 });
 
 test("mergeResolvedRecommendations does not expose provider IDs as artist routes", () => {
@@ -142,7 +136,6 @@ test("mergeResolvedRecommendations does not expose provider IDs as artist routes
   assert.equal(cachedRecommendation.id, null);
   assert.equal(cachedRecommendation.navigateTo, null);
 });
-
 
 test("rerankRecommendations softens less-like feedback, hard-blocks exact artists, and favors deeper mode diversification", () => {
   const recommendations = [
@@ -284,10 +277,7 @@ test("mergeRetainedRecommendationPool preserves repeats and trims stale low scor
   });
 
   assert.equal(merged.length, 2);
-  assert.deepEqual(
-    merged.map((item) => item.name).sort(),
-    ["Fresh Pick", "Returning Pick"],
-  );
+  assert.deepEqual(merged.map((item) => item.name).sort(), ["Fresh Pick", "Returning Pick"]);
   const returning = merged.find((item) => item.name === "Returning Pick");
   assert.equal(returning.firstDiscoveredAt, "2026-05-01T00:00:00.000Z");
   assert.equal(returning.lastRecommendedAt, runStartedAt);

@@ -85,7 +85,12 @@ test("recent authentication requires a valid bearer session", () => {
 });
 
 test("stream requests need sign-in once an account exists, even without a stored single password", () => {
-  const anonymous = { headers: {}, query: {}, ip: "203.0.113.9", socket: { remoteAddress: "203.0.113.9" } };
+  const anonymous = {
+    headers: {},
+    query: {},
+    ip: "203.0.113.9",
+    socket: { remoteAddress: "203.0.113.9" },
+  };
   assert.equal(auth.verifyTokenAuth({ ...anonymous }), true);
 
   dbOps.updateSettings({ onboardingComplete: true });
@@ -124,15 +129,18 @@ test("Subsonic requests reuse the stored password instead of hashing it on every
   assert.equal(scrypt.mock.calls.length, 1);
 
   assert.equal(
-    (await subsonicPing({ u: "listener", t: subsonicToken("listener-password", salt), s: salt })).status,
+    (await subsonicPing({ u: "listener", t: subsonicToken("listener-password", salt), s: salt }))
+      .status,
     "ok",
   );
   assert.equal((await subsonicPing({ u: "listener", p: "listener-password" })).status, "ok");
   assert.equal(
-    (await subsonicPing({
-      u: "listener",
-      p: `enc:${Buffer.from("listener-password").toString("hex")}`,
-    })).status,
+    (
+      await subsonicPing({
+        u: "listener",
+        p: `enc:${Buffer.from("listener-password").toString("hex")}`,
+      })
+    ).status,
     "ok",
   );
   assert.equal(scrypt.mock.calls.length, 1);
@@ -146,7 +154,8 @@ test("Subsonic requests reuse the stored password instead of hashing it on every
 
   userOps.updateUser(user.id, { status: "disabled" });
   assert.equal(
-    (await subsonicPing({ u: "listener", t: subsonicToken("listener-password", salt), s: salt })).error.code,
+    (await subsonicPing({ u: "listener", t: subsonicToken("listener-password", salt), s: salt }))
+      .error.code,
     41,
   );
   assert.equal((await subsonicPing({ u: "listener", p: "listener-password" })).error.code, 40);
@@ -171,7 +180,8 @@ test("Subsonic stops accepting a password once the account password hash changes
   userOps.updateUser(user.id, { passwordHash: hashPassword("new-password") });
 
   assert.equal(
-    (await subsonicPing({ u: "rotator", t: subsonicToken("old-password", salt), s: salt })).error.code,
+    (await subsonicPing({ u: "rotator", t: subsonicToken("old-password", salt), s: salt })).error
+      .code,
     41,
   );
   assert.equal((await subsonicPing({ u: "rotator", p: "old-password" })).error.code, 40);
@@ -193,13 +203,15 @@ test("Subsonic token auth checks a configured legacy password against the accoun
 
   configureLegacyPassword("stale-password");
   assert.equal(
-    (await subsonicPing({ u: "owner", t: subsonicToken("stale-password", salt), s: salt })).error.code,
+    (await subsonicPing({ u: "owner", t: subsonicToken("stale-password", salt), s: salt })).error
+      .code,
     41,
   );
 
   configureLegacyPassword("current-password");
   assert.equal(
-    (await subsonicPing({ u: "owner", t: subsonicToken("current-password", salt), s: salt })).status,
+    (await subsonicPing({ u: "owner", t: subsonicToken("current-password", salt), s: salt }))
+      .status,
     "ok",
   );
 });
@@ -217,7 +229,8 @@ test("Subsonic never accepts a stored password it cannot decrypt", async () => {
   );
   assert.equal((await subsonicPing({ u: "restored", p: "restored-password" })).status, "ok");
   assert.equal(
-    (await subsonicPing({ u: "restored", t: subsonicToken("restored-password", salt), s: salt })).status,
+    (await subsonicPing({ u: "restored", t: subsonicToken("restored-password", salt), s: salt }))
+      .status,
     "ok",
   );
 });
@@ -230,18 +243,11 @@ test("Basic authentication cannot restore legacy admin access for an inactive da
       general: { authUser: "configured-admin", authPassword: password },
     },
   });
-  const user = userOps.createUser(
-    "configured-admin",
-    bcrypt.hashSync(password, 4),
-    "admin",
-  );
+  const user = userOps.createUser("configured-admin", bcrypt.hashSync(password, 4), "admin");
   userOps.updateUser(user.id, { status: "suspended" });
   const basic = Buffer.from(`configured-admin:${password}`).toString("base64");
 
-  assert.equal(
-    auth.resolveRequestUser({ headers: { authorization: `Basic ${basic}` } }),
-    null,
-  );
+  assert.equal(auth.resolveRequestUser({ headers: { authorization: `Basic ${basic}` } }), null);
 });
 
 test("trusted-local bypass rejects an inactive sole administrator", () => {
@@ -269,9 +275,33 @@ test("trusted-local bypass accepts only addresses on the server's private subnet
     security: { localNetworkBypass: { enabled: true } },
   });
   vi.spyOn(os, "networkInterfaces").mockImplementation(() => ({
-    lo: [{ address: "127.0.0.1", netmask: "255.0.0.0", family: "IPv4", internal: true, cidr: "127.0.0.1/8" }],
-    eth0: [{ address: "192.168.4.115", netmask: "255.255.255.0", family: "IPv4", internal: false, cidr: "192.168.4.115/24" }],
-    eth1: [{ address: "192.168.4.116", netmask: "255.255.255.0", family: "IPv4", internal: false, cidr: "192.168.4.116/24" }],
+    lo: [
+      {
+        address: "127.0.0.1",
+        netmask: "255.0.0.0",
+        family: "IPv4",
+        internal: true,
+        cidr: "127.0.0.1/8",
+      },
+    ],
+    eth0: [
+      {
+        address: "192.168.4.115",
+        netmask: "255.255.255.0",
+        family: "IPv4",
+        internal: false,
+        cidr: "192.168.4.115/24",
+      },
+    ],
+    eth1: [
+      {
+        address: "192.168.4.116",
+        netmask: "255.255.255.0",
+        family: "IPv4",
+        internal: false,
+        cidr: "192.168.4.116/24",
+      },
+    ],
   }));
   const from = (address) => ({
     ip: address,
@@ -282,7 +312,10 @@ test("trusted-local bypass accepts only addresses on the server's private subnet
   });
 
   assert.equal(auth.resolveLocalNetworkBypassUser(from("192.168.4.20"))?.username, "lan-admin");
-  assert.equal(auth.resolveLocalNetworkBypassUser(from("::ffff:192.168.4.20"))?.username, "lan-admin");
+  assert.equal(
+    auth.resolveLocalNetworkBypassUser(from("::ffff:192.168.4.20"))?.username,
+    "lan-admin",
+  );
   assert.equal(auth.resolveLocalNetworkBypassUser(from("192.168.5.20")), null);
   assert.equal(auth.resolveLocalNetworkBypassUser(from("8.8.8.8")), null);
 });

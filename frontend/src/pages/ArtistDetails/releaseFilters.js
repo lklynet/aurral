@@ -18,4 +18,8 @@ export const matchesReleaseGroupTab = (releaseGroup, tab, showLiveAlbums = true)
 export const matchesReleaseGroupSearch = (releaseGroup, searchTerm) =>
   String(releaseGroup?.title || "")
     .toLowerCase()
-    .includes(String(searchTerm || "").trim().toLowerCase());
+    .includes(
+      String(searchTerm || "")
+        .trim()
+        .toLowerCase(),
+    );

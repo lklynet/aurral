@@ -108,10 +108,15 @@ export function ArtistDetailsAppearsOn({
                         )}
                         ownerConflict={status?.ownerConflict}
                         onAdd={(managedBy) =>
-                          handleRequestAlbum(releaseGroup.id, releaseGroup.title, managedBy)}
-                        isLoading={requestingAlbum === releaseGroup.id || isAlbumDownloading(releaseGroup.id)}
+                          handleRequestAlbum(releaseGroup.id, releaseGroup.title, managedBy)
+                        }
+                        isLoading={
+                          requestingAlbum === releaseGroup.id || isAlbumDownloading(releaseGroup.id)
+                        }
                         loadingLabel="Downloading"
-                        disabled={requestingAlbum === releaseGroup.id || isAlbumDownloading(releaseGroup.id)}
+                        disabled={
+                          requestingAlbum === releaseGroup.id || isAlbumDownloading(releaseGroup.id)
+                        }
                       />
                     </div>
                   ) : null}

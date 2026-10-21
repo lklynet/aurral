@@ -1,10 +1,7 @@
 import assert from "node:assert/strict";
 import { test, beforeAll, beforeEach, afterAll } from "vite-plus/test";
 
-import {
-  cleanupIsolatedState,
-  setupIsolatedBackend,
-} from "./helpers/backendTestHarness.js";
+import { cleanupIsolatedState, setupIsolatedBackend } from "./helpers/backendTestHarness.js";
 
 const [
   isolatedState,
@@ -26,12 +23,8 @@ const [
   "lib/axiosFetch.js",
 );
 
-const {
-  enqueueInboxRefreshForUser,
-  getInboxForUser,
-  getInboxRefreshStatus,
-  refreshInboxForUser,
-} = inboxService;
+const { enqueueInboxRefreshForUser, getInboxForUser, getInboxRefreshStatus, refreshInboxForUser } =
+  inboxService;
 const { enqueueHonkerStartupTasks, getHonkerDb, getInboxTaskQueue } = honkerDb;
 const { processSystemTask } = systemTaskWorker;
 
@@ -65,9 +58,7 @@ afterAll(async () => {
 
 test("GET inbox reads cached rows without creating refresh work", () => {
   const result = getInboxForUser(userId);
-  const jobs = getHonkerDb().query(
-    "SELECT id FROM _honker_live WHERE queue = 'system-task-inbox'",
-  );
+  const jobs = getHonkerDb().query("SELECT id FROM _honker_live WHERE queue = 'system-task-inbox'");
 
   assert.equal(result.refreshStatus.status, "idle");
   assert.equal(result.refreshing, false);
@@ -184,13 +175,15 @@ test("provider failure preserves rows and marks the inbox stale", async () => {
     if (String(url).includes("zippopotam.us")) {
       return Promise.resolve({
         data: {
-          places: [{
-            "place name": "New York",
-            state: "New York",
-            "state abbreviation": "NY",
-            latitude: "40.71",
-            longitude: "-74.00",
-          }],
+          places: [
+            {
+              "place name": "New York",
+              state: "New York",
+              "state abbreviation": "NY",
+              latitude: "40.71",
+              longitude: "-74.00",
+            },
+          ],
         },
       });
     }
@@ -265,11 +258,13 @@ test("refresh adds nearby shows for library artists only", async () => {
     const shows = dbOps.getInboxItems(userId, { kinds: ["show"] });
     assert.deepEqual(
       shows.map(({ sourceKey, title, subtitle }) => ({ sourceKey, title, subtitle })),
-      [{
-        sourceKey: "library-show",
-        title: "Inbox Refresh Artist live",
-        subtitle: "Inbox Refresh Artist · 2026-11-01 · Hall · New York",
-      }],
+      [
+        {
+          sourceKey: "library-show",
+          title: "Inbox Refresh Artist live",
+          subtitle: "Inbox Refresh Artist · 2026-11-01 · Hall · New York",
+        },
+      ],
     );
   } finally {
     axios.default.get = originalAxiosGet;

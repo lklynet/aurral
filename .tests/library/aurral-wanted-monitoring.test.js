@@ -4,7 +4,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import express from "express";
 
-import { cleanupIsolatedState, resetDatabase, setupIsolatedBackend } from "../helpers/backendTestHarness.js";
+import {
+  cleanupIsolatedState,
+  resetDatabase,
+  setupIsolatedBackend,
+} from "../helpers/backendTestHarness.js";
 
 const [
   isolatedState,
@@ -84,7 +88,8 @@ async function createLibraryJob({
     artistName: artist.name,
   });
   libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
-  if (!trackMonitored) db.prepare("UPDATE library_tracks SET monitored = 0 WHERE id = ?").run(track.id);
+  if (!trackMonitored)
+    db.prepare("UPDATE library_tracks SET monitored = 0 WHERE id = ?").run(track.id);
 
   const jobId = downloadTracker.addJob(
     {
@@ -125,7 +130,9 @@ async function request(route, options) {
 }
 
 const keepFile = (jobId) => {
-  const { id } = db.prepare("SELECT id FROM library_tracks WHERE mbid = ?").get(downloadTracker.getJob(jobId).trackMbid);
+  const { id } = db
+    .prepare("SELECT id FROM library_tracks WHERE mbid = ?")
+    .get(downloadTracker.getJob(jobId).trackMbid);
   return request(`/tracks/aurral/${id}`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
@@ -133,10 +140,16 @@ const keepFile = (jobId) => {
   });
 };
 
-const upgradeJobsOf = (jobId) => downloadTracker.getAll().filter((job) => job.upgradeForJobId === jobId);
+const upgradeJobsOf = (jobId) =>
+  downloadTracker.getAll().filter((job) => job.upgradeForJobId === jobId);
 
 const upgradedJobIds = () =>
-  new Set(downloadTracker.getAll().filter((job) => job.upgradeForJobId).map((job) => job.upgradeForJobId));
+  new Set(
+    downloadTracker
+      .getAll()
+      .filter((job) => job.upgradeForJobId)
+      .map((job) => job.upgradeForJobId),
+  );
 
 const originalSettings = dbOps.getSettings();
 const originalWorkerStart = downloadWorker.start;
@@ -169,11 +182,20 @@ afterAll(async () => {
 
 test("Wanted reports jobs by their track's monitoring, whatever the album's", async () => {
   const monitoredMissing = await createLibraryJob({ state: "failed" });
-  const missingInUnmonitoredAlbum = await createLibraryJob({ state: "failed", albumMonitored: false });
-  const missingUnmonitoredTrack = await createLibraryJob({ state: "failed", trackMonitored: false });
+  const missingInUnmonitoredAlbum = await createLibraryJob({
+    state: "failed",
+    albumMonitored: false,
+  });
+  const missingUnmonitoredTrack = await createLibraryJob({
+    state: "failed",
+    trackMonitored: false,
+  });
   const monitoredFile = await createLibraryJob();
   const fileInUnmonitoredAlbum = await createLibraryJob({ albumMonitored: false });
-  const unindexedUnmonitoredTrack = await createLibraryJob({ trackMonitored: false, inLibrary: false });
+  const unindexedUnmonitoredTrack = await createLibraryJob({
+    trackMonitored: false,
+    inLibrary: false,
+  });
   const monitoredTrackInUnmonitoredAlbum = await createLibraryJob({
     state: "failed",
     albumMonitored: false,
@@ -198,13 +220,22 @@ test("Wanted reports jobs by their track's monitoring, whatever the album's", as
 
 test("Search all in Wanted skips unmonitored tracks and keeps monitored tracks of unmonitored albums", async () => {
   const monitoredMissing = await createLibraryJob({ state: "failed" });
-  const missingInUnmonitoredAlbum = await createLibraryJob({ state: "failed", albumMonitored: false });
-  const missingUnmonitoredTrack = await createLibraryJob({ state: "failed", trackMonitored: false });
+  const missingInUnmonitoredAlbum = await createLibraryJob({
+    state: "failed",
+    albumMonitored: false,
+  });
+  const missingUnmonitoredTrack = await createLibraryJob({
+    state: "failed",
+    trackMonitored: false,
+  });
   const monitoredFile = await createLibraryJob();
   const fileInUnmonitoredAlbum = await createLibraryJob({ albumMonitored: false });
   const fileOfUnmonitoredTrack = await createLibraryJob({ trackMonitored: false });
   const fileOutsideLibrary = await createLibraryJob({ inLibrary: false });
-  const olderJobOfUnmonitoredTrack = await createLibraryJob({ trackMonitored: false, jobHasAlbum: false });
+  const olderJobOfUnmonitoredTrack = await createLibraryJob({
+    trackMonitored: false,
+    jobHasAlbum: false,
+  });
   const olderFileInUnmonitoredAlbum = await createLibraryJob({
     albumMonitored: false,
     jobHasAlbum: false,
@@ -220,8 +251,9 @@ test("Search all in Wanted skips unmonitored tracks and keeps monitored tracks o
 
   assert.equal(missing.requeued, 1);
   assert.deepEqual(
-    [monitoredMissing, missingInUnmonitoredAlbum, missingUnmonitoredTrack]
-      .map((jobId) => downloadTracker.getJob(jobId).status),
+    [monitoredMissing, missingInUnmonitoredAlbum, missingUnmonitoredTrack].map(
+      (jobId) => downloadTracker.getJob(jobId).status,
+    ),
     ["pending", "failed", "failed"],
   );
   const upgraded = upgradedJobIds();
@@ -252,13 +284,22 @@ test("Keep this file stops upgrades of that file and cancels the upgrade already
 
   const first = await request("/quality-upgrades", { method: "POST" });
   assert.equal(first.queued, 2);
-  assert.deepEqual([kept, other, keptBeforeCheck].map((jobId) => upgradeJobsOf(jobId).length), [1, 1, 0]);
-  assert.deepEqual(downloadTracker.getAll().filter((job) => job.trackMbid === keptLibraryFileMbid), []);
+  assert.deepEqual(
+    [kept, other, keptBeforeCheck].map((jobId) => upgradeJobsOf(jobId).length),
+    [1, 1, 0],
+  );
+  assert.deepEqual(
+    downloadTracker.getAll().filter((job) => job.trackMbid === keptLibraryFileMbid),
+    [],
+  );
 
   const result = await keepFile(kept);
   assert.equal(result.keepFile, true);
   assert.deepEqual(result.cancelledJobIds, [upgradeJobsOf(kept)[0].id]);
-  assert.ok(["cancelled", "cancel_requested"].includes(upgradeJobsOf(kept)[0].status), upgradeJobsOf(kept)[0].status);
+  assert.ok(
+    ["cancelled", "cancel_requested"].includes(upgradeJobsOf(kept)[0].status),
+    upgradeJobsOf(kept)[0].status,
+  );
   assert.notEqual(upgradeJobsOf(other)[0].status, "cancelled");
   assert.equal(downloadTracker.getJob(kept).status, "done");
 

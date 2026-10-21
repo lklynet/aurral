@@ -7,7 +7,10 @@ import {
   importFromRepo,
   resetDatabase,
 } from "../helpers/backendTestHarness.js";
-import { getStaticPlaylistTrackCount, hasReviewActivity } from "../../frontend/src/pages/playlists/playlistStats.js";
+import {
+  getStaticPlaylistTrackCount,
+  hasReviewActivity,
+} from "../../frontend/src/pages/playlists/playlistStats.js";
 
 const [isolatedState, { db }, { dbOps }, { flowPlaylistConfig }, snapshotModule] =
   await setupIsolatedBackend(
@@ -55,10 +58,7 @@ test("status snapshot includes static playlist summaries without embedding track
 
   assert.ok(shared);
   assert.equal(shared.trackCount, 421);
-  assert.equal(
-    getStaticPlaylistTrackCount(shared, status.sharedPlaylistStats[playlist.id]),
-    421,
-  );
+  assert.equal(getStaticPlaylistTrackCount(shared, status.sharedPlaylistStats[playlist.id]), 421);
   assert.equal("tracks" in shared, false);
   assert.ok(Array.isArray(shared.trackIdentities));
   assert.equal(shared.trackIdentities.length, 421);
@@ -128,19 +128,24 @@ test("status snapshot trackCount includes failed download jobs", async () => {
   const shared = status.sharedPlaylists.find((entry) => entry.id === playlist.id);
 
   assert.equal(shared.trackCount, 1);
-  assert.equal(
-    getStaticPlaylistTrackCount(shared, status.sharedPlaylistStats[playlist.id]),
-    1,
-  );
+  assert.equal(getStaticPlaylistTrackCount(shared, status.sharedPlaylistStats[playlist.id]), 1);
 });
 
 test("review count includes Library jobs and respects playlist ownership", async () => {
-  const { downloadTracker } = await importFromRepo("backend/services/downloadJobs/downloadTracker.js");
+  const { downloadTracker } = await importFromRepo(
+    "backend/services/downloadJobs/downloadTracker.js",
+  );
   const ownFlow = flowPlaylistConfig.createFlow({ name: "Mine", ownerUserId: 1 });
   const otherFlow = flowPlaylistConfig.createFlow({ name: "Someone else's", ownerUserId: 2 });
-  const staticPlaylist = flowPlaylistConfig.createStaticPlaylist({ name: "Mine too", ownerUserId: 1 });
+  const staticPlaylist = flowPlaylistConfig.createStaticPlaylist({
+    name: "Mine too",
+    ownerUserId: 1,
+  });
   const held = ["library", ownFlow.id, otherFlow.id, staticPlaylist.id].map((playlistId, index) => {
-    const id = downloadTracker.addJob({ artistName: "Artist", trackName: `Held ${index}` }, playlistId);
+    const id = downloadTracker.addJob(
+      { artistName: "Artist", trackName: `Held ${index}` },
+      playlistId,
+    );
     downloadTracker.setBlocked(id, "Needs review");
     return id;
   });

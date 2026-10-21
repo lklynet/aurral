@@ -59,27 +59,34 @@ function createPreV4Db() {
 const dbHelpers = {
   parseJSON: (text) => {
     if (!text) return null;
-    try { return JSON.parse(text); } catch { return null; }
+    try {
+      return JSON.parse(text);
+    } catch {
+      return null;
+    }
   },
-  stringifyJSON: (obj) => obj === undefined ? null : JSON.stringify(obj),
+  stringifyJSON: (obj) => (obj === undefined ? null : JSON.stringify(obj)),
 };
 
 test("ownership migration adds manager table and job ownership columns", async () => {
   const { dbPath } = createPreV4Db();
-  const { initializeSchemaOnStartup } = await import(
-    "../../backend/config/schema-migration-v2.js",
-  );
+  const { initializeSchemaOnStartup } = await import("../../backend/config/schema-migration-v2.js");
   const db = new Database(dbPath);
 
   const result = initializeSchemaOnStartup(db, dbHelpers);
   assert.equal(result.migrated, true);
   assert.equal(result.schemaVersion, 4);
 
-  const jobColumns = db.prepare("PRAGMA table_info(playlist_download_jobs)").all().map((c) => c.name);
+  const jobColumns = db
+    .prepare("PRAGMA table_info(playlist_download_jobs)")
+    .all()
+    .map((c) => c.name);
   assert.ok(jobColumns.includes("managed_by"));
   assert.ok(jobColumns.includes("request_group_id"));
 
-  const jobs = db.prepare("SELECT id, managed_by, request_group_id FROM playlist_download_jobs ORDER BY id").all();
+  const jobs = db
+    .prepare("SELECT id, managed_by, request_group_id FROM playlist_download_jobs ORDER BY id")
+    .all();
   assert.deepEqual(jobs, [
     { id: "job-aurral", managed_by: "aurral", request_group_id: null },
     { id: "job-flow", managed_by: "aurral", request_group_id: null },
@@ -100,9 +107,7 @@ test("ownership migration adds manager table and job ownership columns", async (
 
 test("ownership migration is idempotent and preserves explicit manager rows", async () => {
   const { dbPath } = createPreV4Db();
-  const { initializeSchemaOnStartup } = await import(
-    "../../backend/config/schema-migration-v2.js",
-  );
+  const { initializeSchemaOnStartup } = await import("../../backend/config/schema-migration-v2.js");
   const db = new Database(dbPath);
 
   initializeSchemaOnStartup(db, dbHelpers);
@@ -118,7 +123,11 @@ test("ownership migration is idempotent and preserves explicit manager rows", as
   );
   rerun.run();
 
-  const monitor = db.prepare("SELECT monitor_mode FROM library_management WHERE entity_kind = 'artist' AND entity_id = 1").get();
+  const monitor = db
+    .prepare(
+      "SELECT monitor_mode FROM library_management WHERE entity_kind = 'artist' AND entity_id = 1",
+    )
+    .get();
   assert.equal(monitor.monitor_mode, "none");
 
   const count = db.prepare("SELECT COUNT(*) AS count FROM library_management").get();
@@ -133,13 +142,13 @@ test("ownership migration runs on fresh databases without lidarr records", async
   const db = new Database(dbPath);
   db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
 
-  const { initializeSchemaOnStartup } = await import(
-    "../../backend/config/schema-migration-v2.js",
-  );
+  const { initializeSchemaOnStartup } = await import("../../backend/config/schema-migration-v2.js");
   const result = initializeSchemaOnStartup(db, dbHelpers);
   assert.equal(result.schemaVersion, 4);
 
-  const table = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'library_management'").get();
+  const table = db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'library_management'")
+    .get();
   assert.ok(table);
 
   const managed = db.prepare("SELECT COUNT(*) AS count FROM library_management").get();

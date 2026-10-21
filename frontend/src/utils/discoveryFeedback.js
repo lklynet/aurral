@@ -1,8 +1,4 @@
-const ARTIST_FEEDBACK_ACTIONS = new Set([
-  "more_like_this",
-  "less_like_this",
-  "block_artist",
-]);
+const ARTIST_FEEDBACK_ACTIONS = new Set(["more_like_this", "less_like_this", "block_artist"]);
 
 export const DISCOVERY_FEEDBACK_LABELS = {
   more_like_this: "More like this",
@@ -20,12 +16,16 @@ export const normalizeDiscoveryFeedbackList = (value) => {
 const getArtistMatchKeys = (artist) => {
   const keys = [];
   for (const value of [artist?.id, artist?.mbid, artist?.foreignArtistId, artist?.artistMbid]) {
-    const artistId = String(value || "").trim().toLowerCase();
+    const artistId = String(value || "")
+      .trim()
+      .toLowerCase();
     if (artistId) keys.push(`id:${artistId}`);
   }
   const aliases = Array.isArray(artist?.artistAliases) ? artist.artistAliases : [];
   for (const value of [artist?.name, artist?.artistName, ...aliases]) {
-    const artistName = String(value || "").trim().toLowerCase();
+    const artistName = String(value || "")
+      .trim()
+      .toLowerCase();
     if (artistName) keys.push(`name:${artistName}`);
   }
   return [...new Set(keys)];
@@ -135,10 +135,17 @@ export const applyArtistDiscoveryFeedback = async ({
   };
 };
 
-export const previewArtistDiscoveryFeedback = (feedbackList, { artist, action, isSelected, payload }) => {
+export const previewArtistDiscoveryFeedback = (
+  feedbackList,
+  { artist, action, isSelected, payload },
+) => {
   const opposite = isSelected ? null : getOppositeRatingAction(action);
   const kept = normalizeDiscoveryFeedbackList(feedbackList).filter(
-    (entry) => !((entry.action === action || entry.action === opposite) && entryMatchesArtist(entry, artist)),
+    (entry) =>
+      !(
+        (entry.action === action || entry.action === opposite) &&
+        entryMatchesArtist(entry, artist)
+      ),
   );
   if (isSelected) return kept;
   return [{ ...payload, id: `pending:${action}`, createdAt: new Date().toISOString() }, ...kept];
@@ -160,7 +167,9 @@ const feedbackTime = (entry) => {
 
 export const revertDiscoveryFeedback = (feedbackList, { added, removed }) => {
   const addedIds = new Set(added.map((entry) => entry.id));
-  const next = normalizeDiscoveryFeedbackList(feedbackList).filter((entry) => !addedIds.has(entry.id));
+  const next = normalizeDiscoveryFeedbackList(feedbackList).filter(
+    (entry) => !addedIds.has(entry.id),
+  );
   for (const entry of removed) {
     if (next.some((existing) => existing.id === entry.id)) continue;
     const index = next.findIndex((existing) => feedbackTime(existing) <= feedbackTime(entry));

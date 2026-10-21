@@ -103,11 +103,15 @@ export function registerLastfmImport(router) {
         });
       }
       const status = getErrorStatus(error);
-      logger[status >= 500 ? "error" : "warn"]("playlist-import", "Last.fm station import request failed", {
-        playlistName: String(req.body?.name || "").trim() || null,
-        stage,
-        reason: safeLogDiagnostic(error),
-      });
+      logger[status >= 500 ? "error" : "warn"](
+        "playlist-import",
+        "Last.fm station import request failed",
+        {
+          playlistName: String(req.body?.name || "").trim() || null,
+          stage,
+          reason: safeLogDiagnostic(error),
+        },
+      );
       res.status(status).json({
         error: "Failed to import Last.fm station",
         message: error?.message || "Unknown error",

@@ -31,7 +31,8 @@ async function runDiscoveryRefresh(payload) {
   await updateDiscoveryCache();
 }
 
-const {  start: startDiscoveryRefreshWorker,
+const {
+  start: startDiscoveryRefreshWorker,
   stop: stopDiscoveryRefreshWorker,
   isRunning: isDiscoveryRefreshWorkerRunning,
 } = createHonkerWorker({
@@ -43,8 +44,4 @@ const {  start: startDiscoveryRefreshWorker,
   onJobSuccess: scheduleNextDiscoveryRefresh,
 });
 
-export {
-  startDiscoveryRefreshWorker,
-  stopDiscoveryRefreshWorker,
-  isDiscoveryRefreshWorkerRunning,
-};
+export { startDiscoveryRefreshWorker, stopDiscoveryRefreshWorker, isDiscoveryRefreshWorkerRunning };

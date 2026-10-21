@@ -6,7 +6,11 @@ process.on("message", (message) => {
   if (message === "advance") mock.timers.tick(30000);
 });
 try {
-  await client.createSearch("First", { id: "backing-off-search", deadline: Date.now() + 90000, searchTimeoutMs: 90000 });
+  await client.createSearch("First", {
+    id: "backing-off-search",
+    deadline: Date.now() + 90000,
+    searchTimeoutMs: 90000,
+  });
   process.send?.({ done: true });
 } catch (error) {
   process.send?.({ error: error.message });

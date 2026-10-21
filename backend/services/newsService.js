@@ -63,17 +63,22 @@ export function invalidateNewsResponseCache() {
   articleMatchCache.flushAll();
 }
 
-const getEnabledFeeds = (settings) => settings.enabled
-  ? settings.feeds.filter((feed) => feed.enabled && (feed.group === "custom" || settings.groups[feed.group] !== false))
-  : [];
+const getEnabledFeeds = (settings) =>
+  settings.enabled
+    ? settings.feeds.filter(
+        (feed) =>
+          feed.enabled && (feed.group === "custom" || settings.groups[feed.group] !== false),
+      )
+    : [];
 
-const normalizeName = (value) => String(value || "")
-  .normalize("NFKD")
-  .replace(/\p{M}+/gu, "")
-  .toLowerCase()
-  .replace(/&/g, " and ")
-  .replace(/[^\p{L}\p{N}]+/gu, " ")
-  .trim();
+const normalizeName = (value) =>
+  String(value || "")
+    .normalize("NFKD")
+    .replace(/\p{M}+/gu, "")
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
 
 const isSingleWordName = (name) => !name.includes(" ");
 
@@ -88,7 +93,7 @@ const parseCategories = (value) => {
 
 async function getNewsArtists(userId) {
   const recommendedArtists = userId
-    ? ((await getUserDiscovery(userId, 50, 0))?.body?.recommendations || [])
+    ? (await getUserDiscovery(userId, 50, 0))?.body?.recommendations || []
     : [];
   const artists = [
     ...getLibraryArtistKeyProjection().map((artist) => ({
@@ -125,9 +130,7 @@ const buildArtistIndex = (artists) => {
 // Feeds that tag stories use categories to name the artists covered. For those
 // stories, a one-word name in the title is too ambiguous to count on its own.
 const findArticleArtists = ({ title, categories }, { names, maxWords }) => {
-  const matched = new Set(
-    categories.map(normalizeName).filter((category) => names.has(category)),
-  );
+  const matched = new Set(categories.map(normalizeName).filter((category) => names.has(category)));
   const requireCategory = categories.length > 0;
   const words = normalizeName(title).split(" ");
   for (let start = 0; start < words.length; start += 1) {
@@ -139,7 +142,9 @@ const findArticleArtists = ({ title, categories }, { names, maxWords }) => {
   }
   const matchedNames = [...matched];
   return matchedNames
-    .filter((name) => !matchedNames.some((other) => other !== name && ` ${other} `.includes(` ${name} `)))
+    .filter(
+      (name) => !matchedNames.some((other) => other !== name && ` ${other} `.includes(` ${name} `)),
+    )
     .flatMap((name) => names.get(name))
     .sort((left, right) => (left.newsType === "recommended") - (right.newsType === "recommended"));
 };
@@ -173,12 +178,7 @@ const toArticle = (row, artists) => ({
   artists,
 });
 
-export async function getNewsForUser({
-  userId,
-  mode = "matched",
-  limit = 60,
-  offset = 0,
-} = {}) {
+export async function getNewsForUser({ userId, mode = "matched", limit = 60, offset = 0 } = {}) {
   const safeLimit = Math.max(1, Math.min(100, Math.floor(Number(limit) || 60)));
   const safeOffset = Math.max(0, Math.floor(Number(offset) || 0));
   const feedUrls = getEnabledFeeds(getNewsSettings()).map((feed) => feed.url);
@@ -235,7 +235,10 @@ export async function refreshNewsFeeds() {
         publishedAt,
       });
     }
-    deleteStaleArticles.run(oldestPublishedAt, JSON.stringify(settings.feeds.map((feed) => feed.url)));
+    deleteStaleArticles.run(
+      oldestPublishedAt,
+      JSON.stringify(settings.feeds.map((feed) => feed.url)),
+    );
     trimArticles.run(MAX_ARTICLES);
     dbOps.setJSONSetting(REFRESH_STATE_KEY, {
       checkedAt: now,

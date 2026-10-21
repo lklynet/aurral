@@ -78,9 +78,7 @@ function Layout({ children, headerActions }) {
   const sectionBarRef = useRef(null);
   const { authRequired, canLogOut, logout, user, bootstrap } = useAuth();
   const { isActive: isPlayerActive } = useAudioQueue();
-  const isArtistDetailsRoute = /^\/artist\/[^/]+(\/(albums|appears-on))?$/.test(
-    location.pathname,
-  );
+  const isArtistDetailsRoute = /^\/artist\/[^/]+(\/(albums|appears-on))?$/.test(location.pathname);
   const isSettingsRoute = location.pathname.startsWith("/settings");
   const closeMobileMenu = useCallback(() => setIsMobileMenuOpen(false), []);
   const mobileMenuDialog = useModalDialog({
@@ -266,36 +264,33 @@ function Layout({ children, headerActions }) {
     [persistSidebarWidth],
   );
 
-  const updateScrollFromPointer = useCallback((clientY) => {
-    const node = mainScrollRef.current;
-    const track = scrollbarTrackRef.current;
-    const session = scrollbarDragRef.current;
-    if (!node || !track || !session) return;
-    const rect = track.getBoundingClientRect();
-    const maxThumbTop = Math.max(rect.height - scrollbar.height, 0);
-    const thumbTop = Math.min(
-      Math.max(clientY - rect.top - session.grabOffset, 0),
-      maxThumbTop,
-    );
-    const scrollRange = Math.max(node.scrollHeight - node.clientHeight, 0);
-    node.scrollTop = maxThumbTop > 0 ? (thumbTop / maxThumbTop) * scrollRange : 0;
-  }, [scrollbar.height]);
-
-  const handleScrollbarPointerDown = useCallback(
-    (event) => {
-      if (event.pointerType === "mouse" && event.button !== 0) return;
-      event.preventDefault();
-      if (scrollbarFadeTimeoutRef.current) clearTimeout(scrollbarFadeTimeoutRef.current);
-      const thumbRect = event.currentTarget.getBoundingClientRect();
-      scrollbarDragRef.current = {
-        pointerId: event.pointerId,
-        grabOffset: event.clientY - thumbRect.top,
-      };
-      event.currentTarget.setPointerCapture?.(event.pointerId);
-      setScrollbar((current) => ({ ...current, active: true }));
+  const updateScrollFromPointer = useCallback(
+    (clientY) => {
+      const node = mainScrollRef.current;
+      const track = scrollbarTrackRef.current;
+      const session = scrollbarDragRef.current;
+      if (!node || !track || !session) return;
+      const rect = track.getBoundingClientRect();
+      const maxThumbTop = Math.max(rect.height - scrollbar.height, 0);
+      const thumbTop = Math.min(Math.max(clientY - rect.top - session.grabOffset, 0), maxThumbTop);
+      const scrollRange = Math.max(node.scrollHeight - node.clientHeight, 0);
+      node.scrollTop = maxThumbTop > 0 ? (thumbTop / maxThumbTop) * scrollRange : 0;
     },
-    [],
+    [scrollbar.height],
   );
+
+  const handleScrollbarPointerDown = useCallback((event) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    event.preventDefault();
+    if (scrollbarFadeTimeoutRef.current) clearTimeout(scrollbarFadeTimeoutRef.current);
+    const thumbRect = event.currentTarget.getBoundingClientRect();
+    scrollbarDragRef.current = {
+      pointerId: event.pointerId,
+      grabOffset: event.clientY - thumbRect.top,
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    setScrollbar((current) => ({ ...current, active: true }));
+  }, []);
 
   const handleScrollbarPointerMove = useCallback(
     (event) => {
@@ -353,10 +348,7 @@ function Layout({ children, headerActions }) {
       frameId = window.requestAnimationFrame(() => setMobileMenuPresence("open"));
     } else {
       setMobileMenuPresence((current) => (current === "closed" ? current : "closing"));
-      timeoutId = window.setTimeout(
-        () => setMobileMenuPresence("closed"),
-        MOBILE_SHEET_EXIT_MS,
-      );
+      timeoutId = window.setTimeout(() => setMobileMenuPresence("closed"), MOBILE_SHEET_EXIT_MS);
     }
     return () => {
       if (frameId) window.cancelAnimationFrame(frameId);
@@ -487,11 +479,7 @@ function Layout({ children, headerActions }) {
         </header>
 
         {sectionNav ? (
-          <nav
-            ref={sectionBarRef}
-            className="app-section-bar"
-            aria-label={sectionNav.label}
-          >
+          <nav ref={sectionBarRef} className="app-section-bar" aria-label={sectionNav.label}>
             {sectionNav.items.map((item) => (
               <RouteLink
                 key={item.id}

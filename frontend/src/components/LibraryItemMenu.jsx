@@ -1,5 +1,13 @@
 import { createPortal } from "react-dom";
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { Check, ChevronRight, MoreVertical } from "lucide-react";
 import TooltipButton from "./TooltipButton";
 import { DotLoader } from "./DotLoader";
@@ -58,11 +66,14 @@ export function LibraryItemSubmenu({
     keepPanelInViewport();
   }, [keepPanelInViewport, open]);
 
-  useEffect(() => () => {
-    if (correctionFrameRef.current != null) {
-      window.cancelAnimationFrame(correctionFrameRef.current);
-    }
-  }, []);
+  useEffect(
+    () => () => {
+      if (correctionFrameRef.current != null) {
+        window.cancelAnimationFrame(correctionFrameRef.current);
+      }
+    },
+    [],
+  );
 
   const handleAction = async (event, item) => {
     event.stopPropagation();
@@ -116,7 +127,9 @@ export function LibraryItemSubmenu({
               key={item.id}
               onClick={(event) => handleAction(event, item)}
               disabled={item.disabled || !!pendingAction}
-              aria-checked={role === "menuitem" ? undefined : Boolean(item.checked ?? item.selected)}
+              aria-checked={
+                role === "menuitem" ? undefined : Boolean(item.checked ?? item.selected)
+              }
             >
               <span className="artist-menu-item__main">
                 {isPending ? (
@@ -126,7 +139,9 @@ export function LibraryItemSubmenu({
                 ) : null}
                 {item.label}
               </span>
-              {item.radio && item.selected ? <Check className="artist-icon-sm" aria-hidden="true" /> : null}
+              {item.radio && item.selected ? (
+                <Check className="artist-icon-sm" aria-hidden="true" />
+              ) : null}
             </button>
           );
         })}
@@ -164,8 +179,7 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
 
   const closeMenu = useCallback((restoreFocus = true) => {
     const registeredCloser = registeredCloserRef.current;
-    const ownsActiveMenu =
-      registeredCloser !== null && activeMenuCloser === registeredCloser;
+    const ownsActiveMenu = registeredCloser !== null && activeMenuCloser === registeredCloser;
     setOpen(false);
     setAnchor(null);
     setPosition(null);
@@ -201,13 +215,16 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
   const openFromTrigger = useCallback(() => {
     const rect = triggerRef.current?.getBoundingClientRect();
     if (!rect) return;
-    openMenu({ kind: "trigger", top: rect.top, left: rect.left, right: rect.right, bottom: rect.bottom });
+    openMenu({
+      kind: "trigger",
+      top: rect.top,
+      left: rect.left,
+      right: rect.right,
+      bottom: rect.bottom,
+    });
   }, [openMenu]);
 
-  const openAt = useCallback(
-    (x, y) => openMenu({ kind: "context", x, y }),
-    [openMenu],
-  );
+  const openAt = useCallback((x, y) => openMenu({ kind: "context", x, y }), [openMenu]);
 
   useImperativeHandle(ref, () => ({ openAt, close: closeMenu }), [closeMenu, openAt]);
 
@@ -278,10 +295,7 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
   useEffect(() => {
     if (!open) return undefined;
     const handlePointerDown = (event) => {
-      if (
-        menuRootRef.current?.contains(event.target) ||
-        menuRef.current?.contains(event.target)
-      ) {
+      if (menuRootRef.current?.contains(event.target) || menuRef.current?.contains(event.target)) {
         return;
       }
       closeMenu(false);
@@ -297,7 +311,14 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
         return;
       }
       const rect = triggerRef.current?.getBoundingClientRect();
-      if (rect) setAnchor({ kind: "trigger", top: rect.top, left: rect.left, right: rect.right, bottom: rect.bottom });
+      if (rect)
+        setAnchor({
+          kind: "trigger",
+          top: rect.top,
+          left: rect.left,
+          right: rect.right,
+          bottom: rect.bottom,
+        });
     };
     document.addEventListener("pointerdown", handlePointerDown);
     document.addEventListener("keydown", handleEscape);
@@ -337,7 +358,8 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
     const gap = 8;
     const width = menu.offsetWidth;
     const height = menu.offsetHeight;
-    let left = anchor.kind === "context" ? anchor.x : align === "start" ? anchor.left : anchor.right - width;
+    let left =
+      anchor.kind === "context" ? anchor.x : align === "start" ? anchor.left : anchor.right - width;
     let top = anchor.kind === "context" ? anchor.y : anchor.bottom + gap;
 
     if (anchor.kind === "trigger" && top + height > window.innerHeight - edge) {
@@ -383,8 +405,9 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
   const handleMenuKeyDown = (event) => {
     const keys = ["ArrowDown", "ArrowUp", "Home", "End"];
     if (!keys.includes(event.key)) return;
-    const buttons = [...(menuRef.current?.querySelectorAll(MENU_ITEM_SELECTOR) || [])]
-      .filter((button) => button.checkVisibility());
+    const buttons = [...(menuRef.current?.querySelectorAll(MENU_ITEM_SELECTOR) || [])].filter(
+      (button) => button.checkVisibility(),
+    );
     if (!buttons.length) return;
     event.preventDefault();
     event.stopPropagation();
@@ -407,7 +430,9 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
         if (Array.isArray(item.submenuItems)) {
           return (
             <div key={item.id}>
-              {item.separatorBefore ? <div className="native-library-item-menu__separator" /> : null}
+              {item.separatorBefore ? (
+                <div className="native-library-item-menu__separator" />
+              ) : null}
               <LibraryItemSubmenu
                 label={item.label}
                 icon={Icon}
@@ -421,7 +446,9 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
         if (item.to && !item.disabled) {
           return (
             <div key={item.id}>
-              {item.separatorBefore ? <div className="native-library-item-menu__separator" /> : null}
+              {item.separatorBefore ? (
+                <div className="native-library-item-menu__separator" />
+              ) : null}
               <RouteLink
                 to={item.to}
                 state={item.state}
@@ -450,7 +477,9 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
               className={`artist-menu-item${item.danger ? " artist-menu-item--danger" : ""}${item.selected ? " is-selected" : ""}`}
               onClick={(event) => handleAction(event, item)}
               disabled={item.disabled || !!pendingAction}
-              aria-checked={role === "menuitem" ? undefined : Boolean(item.checked ?? item.selected)}
+              aria-checked={
+                role === "menuitem" ? undefined : Boolean(item.checked ?? item.selected)
+              }
             >
               <span className="artist-menu-item__main">
                 {isPending ? (
@@ -460,7 +489,9 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
                 ) : null}
                 {item.label}
               </span>
-              {item.radio && item.selected ? <Check className="artist-icon-sm" aria-hidden="true" /> : null}
+              {item.radio && item.selected ? (
+                <Check className="artist-icon-sm" aria-hidden="true" />
+              ) : null}
             </button>
             {item.id === additionalItemsAfter && renderAdditionalItems?.({ closeMenu })}
           </div>

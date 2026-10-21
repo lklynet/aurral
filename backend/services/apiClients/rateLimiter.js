@@ -3,7 +3,11 @@ import PQueue from "p-queue";
 const createError = (message, code) => Object.assign(new Error(message), { code });
 
 export default function createRateLimiter(minTime, { maxQueue = Infinity } = {}) {
-  const queue = new PQueue({ interval: Math.max(0, Number(minTime) || 0), intervalCap: 1, strict: Number(minTime) > 0 });
+  const queue = new PQueue({
+    interval: Math.max(0, Number(minTime) || 0),
+    intervalCap: 1,
+    strict: Number(minTime) > 0,
+  });
 
   const schedule = (fn, { signal, timeoutMs } = {}) => {
     if (typeof fn !== "function") {
@@ -24,10 +28,13 @@ export default function createRateLimiter(minTime, { maxQueue = Infinity } = {})
     );
     const signals = signal ? [signal, expired.signal] : [expired.signal];
     return queue
-      .add(() => {
-        clearTimeout(timer);
-        return fn(deadline - Date.now());
-      }, { signal: AbortSignal.any(signals) })
+      .add(
+        () => {
+          clearTimeout(timer);
+          return fn(deadline - Date.now());
+        },
+        { signal: AbortSignal.any(signals) },
+      )
       .finally(() => clearTimeout(timer));
   };
 

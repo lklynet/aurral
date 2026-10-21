@@ -1,6 +1,10 @@
 import { dbOps } from "../db/helpers/index.js";
 import { buildStableImageProxyUrl } from "./imageProxyService.js";
-import { getArtistByMbid, listArtistAlbums, searchArtists } from "./providers/brainzmashProvider.js";
+import {
+  getArtistByMbid,
+  listArtistAlbums,
+  searchArtists,
+} from "./providers/brainzmashProvider.js";
 import { getLinkedDeezerArtistId } from "./providers/brainzmashMappers.js";
 import {
   fetchDeezerArtistImageUrl,
@@ -343,10 +347,7 @@ export const getArtistImage = async (
         sawTransientError = true;
       }
       if (deezerImage) {
-        const result = buildArtistCoverFromUrl(
-          buildStableImageProxyUrl(deezerImage),
-          ["Artist"],
-        );
+        const result = buildArtistCoverFromUrl(buildStableImageProxyUrl(deezerImage), ["Artist"]);
         if (isCurrentRequest()) {
           negativeImageCache.delete(mbid);
           dbOps.setImage(mbid, result.url, result.images);

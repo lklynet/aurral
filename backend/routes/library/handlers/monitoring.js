@@ -20,19 +20,27 @@ const sendFailure = (res, error, message) =>
   res.status(500).json({ error: message, message: error?.message || message });
 
 export function registerMonitoring(router) {
-  router.post("/artists/:mbid/monitoring/preview", requireAuth, requirePermission("changeMonitoring"), async (req, res) => {
-    if (!UUID_REGEX.test(req.params.mbid)) {
-      return res.status(400).json({ error: "Invalid MBID format" });
-    }
-    try {
-      sendResult(res, await libraryManager.previewAurralArtistMonitoring(req.params.mbid, {
-        monitoring: req.body?.monitoring,
-        artistName: req.body?.artistName,
-      }));
-    } catch (error) {
-      sendFailure(res, error, "Failed to preview artist monitoring");
-    }
-  });
+  router.post(
+    "/artists/:mbid/monitoring/preview",
+    requireAuth,
+    requirePermission("changeMonitoring"),
+    async (req, res) => {
+      if (!UUID_REGEX.test(req.params.mbid)) {
+        return res.status(400).json({ error: "Invalid MBID format" });
+      }
+      try {
+        sendResult(
+          res,
+          await libraryManager.previewAurralArtistMonitoring(req.params.mbid, {
+            monitoring: req.body?.monitoring,
+            artistName: req.body?.artistName,
+          }),
+        );
+      } catch (error) {
+        sendFailure(res, error, "Failed to preview artist monitoring");
+      }
+    },
+  );
 
   router.get("/monitoring/defaults", requireAuth, noCache, (_req, res) => {
     try {
@@ -70,16 +78,22 @@ export function registerMonitoring(router) {
     }
   });
 
-  router.delete("/monitoring/exclusions/:id", requireAuth, requirePermission("changeMonitoring"), (req, res) => {
-    const id = Number(req.params.id);
-    if (!Number.isSafeInteger(id) || id <= 0) {
-      return res.status(400).json({ error: "id must be a positive integer" });
-    }
-    try {
-      if (!removeMonitoringExclusion(id)) return res.status(404).json({ error: "Exclusion not found" });
-      res.json({ success: true });
-    } catch (error) {
-      sendFailure(res, error, "Failed to remove the exclusion");
-    }
-  });
+  router.delete(
+    "/monitoring/exclusions/:id",
+    requireAuth,
+    requirePermission("changeMonitoring"),
+    (req, res) => {
+      const id = Number(req.params.id);
+      if (!Number.isSafeInteger(id) || id <= 0) {
+        return res.status(400).json({ error: "id must be a positive integer" });
+      }
+      try {
+        if (!removeMonitoringExclusion(id))
+          return res.status(404).json({ error: "Exclusion not found" });
+        res.json({ success: true });
+      } catch (error) {
+        sendFailure(res, error, "Failed to remove the exclusion");
+      }
+    },
+  );
 }

@@ -1,11 +1,13 @@
-const jsonResponse = (value, status = 200) => new Response(JSON.stringify(value), {
-  status,
-  headers: { "content-type": "application/json" },
-});
+const jsonResponse = (value, status = 200) =>
+  new Response(JSON.stringify(value), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
 
-const subsonicResponse = (value = {}) => jsonResponse({
-  "subsonic-response": { status: "ok", ...value },
-});
+const subsonicResponse = (value = {}) =>
+  jsonResponse({
+    "subsonic-response": { status: "ok", ...value },
+  });
 
 function startsWithLike(value) {
   const pattern = String(value)
@@ -73,9 +75,9 @@ export function createFakeNavidrome({
       if (failSongRequest(url.searchParams)) return jsonResponse({ error: "unavailable" }, 500);
       const start = Number(url.searchParams.get("_start") || 0);
       const end = Number(url.searchParams.get("_end") || state.songs.length);
-      return jsonResponse(state.songs
-        .filter((song) => matchesSongFilters(song, url.searchParams))
-        .slice(start, end));
+      return jsonResponse(
+        state.songs.filter((song) => matchesSongFilters(song, url.searchParams)).slice(start, end),
+      );
     }
     const params = init.body instanceof URLSearchParams ? init.body : url.searchParams;
     switch (url.pathname) {

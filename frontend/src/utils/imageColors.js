@@ -24,7 +24,10 @@ function averageHex(data) {
     n++;
   }
   if (!n) return null;
-  const h = (v) => Math.round(v / n).toString(16).padStart(2, "0");
+  const h = (v) =>
+    Math.round(v / n)
+      .toString(16)
+      .padStart(2, "0");
   return `#${h(r)}${h(g)}${h(b)}`;
 }
 
@@ -33,7 +36,8 @@ function pickArtworkWash(data) {
   const base = hexToOklch(vivid || averageHex(data));
   if (!base) return null;
   const chroma = vivid ? base.c : Math.min(base.c, NEUTRAL_CHROMA);
-  const tone = ([min, max]) => oklchToHex({ l: Math.min(max, Math.max(min, base.l)), c: chroma, h: base.h });
+  const tone = ([min, max]) =>
+    oklchToHex({ l: Math.min(max, Math.max(min, base.l)), c: chroma, h: base.h });
   return { dark: tone(WASH_LIGHTNESS.dark), light: tone(WASH_LIGHTNESS.light) };
 }
 
@@ -84,7 +88,12 @@ export function extractArtworkAccent(src) {
   if (!src) return Promise.resolve(null);
   if (!accentCache.has(src)) {
     if (accentCache.size >= 200) accentCache.delete(accentCache.keys().next().value);
-    accentCache.set(src, readImagePixels(src).then((data) => (data ? pickVividColor(data) : null)).catch(() => null));
+    accentCache.set(
+      src,
+      readImagePixels(src)
+        .then((data) => (data ? pickVividColor(data) : null))
+        .catch(() => null),
+    );
   }
   return accentCache.get(src);
 }

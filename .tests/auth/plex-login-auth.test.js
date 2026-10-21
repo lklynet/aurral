@@ -60,7 +60,10 @@ test("transient Plex validation failures retain the login transaction for retry"
     subject: "retry-subject",
   });
   vi.spyOn(PlexClient, "generateClientId").mockImplementation(() => "retry-client");
-  vi.spyOn(PlexClient, "generatePin").mockImplementation(async () => ({ id: 10, code: "retry-code" }));
+  vi.spyOn(PlexClient, "generatePin").mockImplementation(async () => ({
+    id: 10,
+    code: "retry-code",
+  }));
   vi.spyOn(PlexClient, "buildAuthUrl").mockImplementation(() => "https://plex.example/auth");
   vi.spyOn(PlexClient, "checkPin").mockImplementation(async () => "authorized-token");
   let validations = 0;
@@ -94,7 +97,10 @@ test("transient Plex validation failures retain the login transaction for retry"
 
 test("definitive Plex validation failures consume the login transaction", async () => {
   vi.spyOn(PlexClient, "generateClientId").mockImplementation(() => "invalid-client");
-  vi.spyOn(PlexClient, "generatePin").mockImplementation(async () => ({ id: 11, code: "invalid-code" }));
+  vi.spyOn(PlexClient, "generatePin").mockImplementation(async () => ({
+    id: 11,
+    code: "invalid-code",
+  }));
   vi.spyOn(PlexClient, "buildAuthUrl").mockImplementation(() => "https://plex.example/auth");
   vi.spyOn(PlexClient, "checkPin").mockImplementation(async () => "invalid-token");
   vi.spyOn(PlexClient, "validateToken").mockImplementation(async () => null);

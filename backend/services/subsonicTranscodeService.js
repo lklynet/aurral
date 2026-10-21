@@ -31,8 +31,20 @@ export async function streamSubsonicAudio(res, filePath, { format, maxBitRate, t
   const bitrate = Math.min(maxBitRate || 192, output.maxBitrate);
   const args = ["-hide_banner", "-loglevel", "error", "-nostdin"];
   if (timeOffset) args.push("-ss", String(timeOffset));
-  args.push("-i", filePath, "-map", "0:a:0", "-vn", "-c:a", output.codec,
-    "-b:a", `${bitrate}k`, "-f", output.container, "pipe:1");
+  args.push(
+    "-i",
+    filePath,
+    "-map",
+    "0:a:0",
+    "-vn",
+    "-c:a",
+    output.codec,
+    "-b:a",
+    `${bitrate}k`,
+    "-f",
+    output.container,
+    "pipe:1",
+  );
 
   return new Promise((resolve) => {
     const child = spawn("ffmpeg", args, { stdio: ["ignore", "pipe", "pipe"] });
@@ -43,7 +55,9 @@ export async function streamSubsonicAudio(res, filePath, { format, maxBitRate, t
     };
     res.once("close", stop);
     child.stderr.resume();
-    child.on("error", (error) => { spawnError = error; });
+    child.on("error", (error) => {
+      spawnError = error;
+    });
     res.set("Content-Type", output.contentType);
     child.stdout.pipe(res, { end: false });
     child.once("close", (code) => {
@@ -54,8 +68,10 @@ export async function streamSubsonicAudio(res, filePath, { format, maxBitRate, t
       } else if (res.headersSent) {
         res.destroy();
       } else {
-        res.status(spawnError?.code === "ENOENT" ? 503 : 500)
-          .type("text/plain").send("Audio transcoding unavailable");
+        res
+          .status(spawnError?.code === "ENOENT" ? 503 : 500)
+          .type("text/plain")
+          .send("Audio transcoding unavailable");
       }
       resolve(true);
     });

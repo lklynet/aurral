@@ -9,20 +9,24 @@ import { createIsolatedStateDir } from "../helpers/backendTestHarness.js";
 test("upgrading turns Aurral monitor modes into monitoring rules and leaves Lidarr artists alone", async () => {
   const state = await createIsolatedStateDir("aurral-monitoring-rules-migration");
   const start = () => {
-    const result = spawnSync(process.execPath, [
-      "--input-type=module",
-      "-e",
-      'const { db } = await import("./backend/config/db-sqlite.js"); db.close();',
-    ], {
-      cwd: new URL("../..", import.meta.url),
-      env: {
-        ...process.env,
-        AURRAL_DATA_DIR: state.dataDir,
-        AURRAL_DB_PATH: state.dbPath,
-        NODE_ENV: "test",
+    const result = spawnSync(
+      process.execPath,
+      [
+        "--input-type=module",
+        "-e",
+        'const { db } = await import("./backend/config/db-sqlite.js"); db.close();',
+      ],
+      {
+        cwd: new URL("../..", import.meta.url),
+        env: {
+          ...process.env,
+          AURRAL_DATA_DIR: state.dataDir,
+          AURRAL_DB_PATH: state.dbPath,
+          NODE_ENV: "test",
+        },
+        encoding: "utf8",
       },
-      encoding: "utf8",
-    });
+    );
     assert.equal(result.status, 0, result.stderr);
   };
 
@@ -32,10 +36,18 @@ test("upgrading turns Aurral monitor modes into monitoring rules and leaves Lida
     const changedAt = 1_700_000_000_000;
     const startedAt = 1_650_000_000_000;
     const addArtist = (key, managedBy, mode) => {
-      const metadata = { monitored: true, monitor: mode, monitorOption: mode, monitorStartedAt: startedAt, addOptions: { monitor: mode } };
-      const artistId = db.prepare(
-        "INSERT INTO library_artists (identity_key, name, metadata_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-      ).run(key, key, JSON.stringify(metadata), changedAt, changedAt).lastInsertRowid;
+      const metadata = {
+        monitored: true,
+        monitor: mode,
+        monitorOption: mode,
+        monitorStartedAt: startedAt,
+        addOptions: { monitor: mode },
+      };
+      const artistId = db
+        .prepare(
+          "INSERT INTO library_artists (identity_key, name, metadata_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+        )
+        .run(key, key, JSON.stringify(metadata), changedAt, changedAt).lastInsertRowid;
       db.prepare(
         `INSERT INTO library_management (entity_kind, entity_id, managed_by, monitor_mode, created_at, updated_at)
          VALUES ('artist', ?, ?, ?, ?, ?)`,
@@ -55,11 +67,14 @@ test("upgrading turns Aurral monitor modes into monitoring rules and leaves Lida
     const migratedTo = Date.now();
 
     const read = (artistId) => {
-      const row = db.prepare(
-        "SELECT monitor_mode, monitor_rules FROM library_management WHERE entity_kind = 'artist' AND entity_id = ?",
-      ).get(artistId);
+      const row = db
+        .prepare(
+          "SELECT monitor_mode, monitor_rules FROM library_management WHERE entity_kind = 'artist' AND entity_id = ?",
+        )
+        .get(artistId);
       const metadata = JSON.parse(
-        db.prepare("SELECT metadata_json FROM library_artists WHERE id = ?").get(artistId).metadata_json,
+        db.prepare("SELECT metadata_json FROM library_artists WHERE id = ?").get(artistId)
+          .metadata_json,
       );
       const stored = JSON.parse(row.monitor_rules ?? "null");
       return {
@@ -72,27 +87,58 @@ test("upgrading turns Aurral monitor modes into monitoring rules and leaves Lida
       };
     };
     assert.deepEqual(read(all), {
-      mode: "all", monitored: true, default: true, catalog: null, newReleases: null, since: [changedAt, changedAt],
+      mode: "all",
+      monitored: true,
+      default: true,
+      catalog: null,
+      newReleases: null,
+      since: [changedAt, changedAt],
     });
     assert.deepEqual(read(future), {
-      mode: "future", monitored: true, default: false, catalog: "none", newReleases: true, since: [startedAt, startedAt],
+      mode: "future",
+      monitored: true,
+      default: false,
+      catalog: "none",
+      newReleases: true,
+      since: [startedAt, startedAt],
     });
     const { since: latestSince, ...latestState } = read(latest);
     assert.deepEqual(latestState, {
-      mode: "latest", monitored: true, default: false, catalog: "latest", newReleases: true,
+      mode: "latest",
+      monitored: true,
+      default: false,
+      catalog: "latest",
+      newReleases: true,
     });
     assert.equal(latestSince[0], latestSince[1]);
-    assert.ok(latestSince[0] >= migratedFrom && latestSince[0] <= migratedTo, String(latestSince[0]));
+    assert.ok(
+      latestSince[0] >= migratedFrom && latestSince[0] <= migratedTo,
+      String(latestSince[0]),
+    );
     assert.deepEqual(read(first), {
-      mode: "none", monitored: false, default: null, catalog: null, newReleases: null, since: null,
+      mode: "none",
+      monitored: false,
+      default: null,
+      catalog: null,
+      newReleases: null,
+      since: null,
     });
     assert.deepEqual(read(none), {
-      mode: "none", monitored: true, default: null, catalog: null, newReleases: null, since: null,
+      mode: "none",
+      monitored: true,
+      default: null,
+      catalog: null,
+      newReleases: null,
+      since: null,
     });
     assert.deepEqual(read(lidarr), {
-      mode: "future", monitored: true, default: null, catalog: null, newReleases: null, since: null,
+      mode: "future",
+      monitored: true,
+      default: null,
+      catalog: null,
+      newReleases: null,
+      since: null,
     });
-
   } finally {
     db.close();
     await rm(state.baseDir, { recursive: true, force: true });

@@ -83,19 +83,26 @@ test("deletes Aurral-owned track files without Lidarr", async () => {
     assert.deepEqual(await libraryManager.deleteTrack(track.id), { success: true });
     await assert.rejects(() => access(filePath));
     assert.equal(
-      db.prepare(
-        "SELECT 1 FROM library_media_files WHERE source = ? AND path = ?",
-      ).get("aurral", filePath),
+      db
+        .prepare("SELECT 1 FROM library_media_files WHERE source = ? AND path = ?")
+        .get("aurral", filePath),
       undefined,
     );
     assert.equal(db.prepare("SELECT 1 FROM library_tracks WHERE id = ?").get(track.id), undefined);
     assert.equal(db.prepare("SELECT 1 FROM library_albums WHERE id = ?").get(album.id), undefined);
-    assert.equal(db.prepare("SELECT 1 FROM library_artists WHERE id = ?").get(artist.id), undefined);
-    for (const [entityKind, entityId] of [["artist", artist.id], ["album", album.id], ["track", track.id]]) {
+    assert.equal(
+      db.prepare("SELECT 1 FROM library_artists WHERE id = ?").get(artist.id),
+      undefined,
+    );
+    for (const [entityKind, entityId] of [
+      ["artist", artist.id],
+      ["album", album.id],
+      ["track", track.id],
+    ]) {
       assert.equal(
-        db.prepare(
-          "SELECT 1 FROM library_search_documents WHERE entity_kind = ? AND entity_id = ?",
-        ).get(entityKind, entityId),
+        db
+          .prepare("SELECT 1 FROM library_search_documents WHERE entity_kind = ? AND entity_id = ?")
+          .get(entityKind, entityId),
         undefined,
       );
     }
@@ -107,8 +114,14 @@ test("deletes Aurral-owned track files without Lidarr", async () => {
     db.prepare(
       "DELETE FROM library_search_documents WHERE (entity_kind, entity_id) IN ((?, ?), (?, ?), (?, ?))",
     ).run("artist", artist.id, "album", album.id, "track", track.id);
-    db.prepare("DELETE FROM library_media_files WHERE source = ? AND path = ?").run("aurral", filePath);
-    db.prepare("DELETE FROM library_album_tracks WHERE album_id = ? AND track_id = ?").run(album.id, track.id);
+    db.prepare("DELETE FROM library_media_files WHERE source = ? AND path = ?").run(
+      "aurral",
+      filePath,
+    );
+    db.prepare("DELETE FROM library_album_tracks WHERE album_id = ? AND track_id = ?").run(
+      album.id,
+      track.id,
+    );
     db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
     db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
@@ -147,15 +160,28 @@ test("deleting a library track removes it from playlists that referenced its dow
     available: true,
   });
   const deletedJobId = downloadTracker.addJob(
-    { artistName: "Artist", trackName: "Track", albumName: "Single", trackMbid: `${identity}-mbid` },
+    {
+      artistName: "Artist",
+      trackName: "Track",
+      albumName: "Single",
+      trackMbid: `${identity}-mbid`,
+    },
     "library",
   );
   downloadTracker.setDone(deletedJobId, filePath, "Single");
-  const keptJobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Other Track" }, "library");
+  const keptJobId = downloadTracker.addJob(
+    { artistName: "Artist", trackName: "Other Track" },
+    "library",
+  );
   const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: `${identity} playlist`,
     tracks: [
-      { artistName: "Artist", trackName: "Track", albumName: "Single", canonicalJobId: deletedJobId },
+      {
+        artistName: "Artist",
+        trackName: "Track",
+        albumName: "Single",
+        canonicalJobId: deletedJobId,
+      },
       { artistName: "Artist", trackName: "Other Track", canonicalJobId: keptJobId },
       { artistName: "Artist", trackName: "Imported Track" },
     ],
@@ -163,25 +189,38 @@ test("deleting a library track removes it from playlists that referenced its dow
   const keptTracks = playlist.tracks.slice(1);
 
   vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => false);
-  const playlistSync = vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
+  const playlistSync = vi
+    .spyOn(playlistManager, "requestPlaylistSync")
+    .mockImplementation(() => null);
 
   try {
     assert.deepEqual(await libraryManager.deleteTrack(track.id), { success: true });
     assert.deepEqual(flowPlaylistConfig.getStaticPlaylist(playlist.id).tracks, keptTracks);
-    const status = getPlaylistStatusSnapshot().sharedPlaylists.find((entry) => entry.id === playlist.id);
+    const status = getPlaylistStatusSnapshot().sharedPlaylists.find(
+      (entry) => entry.id === playlist.id,
+    );
     assert.equal(status.trackCount, 2);
     assert.equal(
       status.trackIdentities.some((entry) => entry.startsWith("artist\u0001track\u0001")),
       false,
     );
-    assert.deepEqual(playlistSync.mock.calls.map((call) => call[0]), [[playlist.id]]);
+    assert.deepEqual(
+      playlistSync.mock.calls.map((call) => call[0]),
+      [[playlist.id]],
+    );
   } finally {
     flowPlaylistConfig.deleteStaticPlaylist(playlist.id);
     db.prepare(
       "DELETE FROM library_search_documents WHERE (entity_kind, entity_id) IN ((?, ?), (?, ?), (?, ?))",
     ).run("artist", artist.id, "album", album.id, "track", track.id);
-    db.prepare("DELETE FROM library_media_files WHERE source = ? AND path = ?").run("aurral", filePath);
-    db.prepare("DELETE FROM library_album_tracks WHERE album_id = ? AND track_id = ?").run(album.id, track.id);
+    db.prepare("DELETE FROM library_media_files WHERE source = ? AND path = ?").run(
+      "aurral",
+      filePath,
+    );
+    db.prepare("DELETE FROM library_album_tracks WHERE album_id = ? AND track_id = ?").run(
+      album.id,
+      track.id,
+    );
     db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
     db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
@@ -219,16 +258,22 @@ test("deleting a library track preserves a file still referenced by a playlist j
     path: filePath,
     available: true,
   });
-  const libraryJobId = downloadTracker.addJob({
-    artistName: "Artist",
-    trackName: "Track",
-    trackMbid: mbid,
-  }, "library");
-  const playlistJobId = downloadTracker.addJob({
-    artistName: "Artist",
-    trackName: "Track",
-    trackMbid: mbid,
-  }, "shared-file-survivor");
+  const libraryJobId = downloadTracker.addJob(
+    {
+      artistName: "Artist",
+      trackName: "Track",
+      trackMbid: mbid,
+    },
+    "library",
+  );
+  const playlistJobId = downloadTracker.addJob(
+    {
+      artistName: "Artist",
+      trackName: "Track",
+      trackMbid: mbid,
+    },
+    "shared-file-survivor",
+  );
   downloadTracker.setDone(libraryJobId, filePath, "Album");
   downloadTracker.setDone(playlistJobId, filePath, "Album");
 
@@ -240,8 +285,14 @@ test("deleting a library track preserves a file still referenced by a playlist j
     assert.equal(downloadTracker.getJob(libraryJobId), null);
     assert.equal(downloadTracker.getJob(playlistJobId)?.finalPath, filePath);
   } finally {
-    db.prepare("DELETE FROM library_media_files WHERE source = ? AND path = ?").run("aurral", filePath);
-    db.prepare("DELETE FROM library_album_tracks WHERE album_id = ? AND track_id = ?").run(album.id, track.id);
+    db.prepare("DELETE FROM library_media_files WHERE source = ? AND path = ?").run(
+      "aurral",
+      filePath,
+    );
+    db.prepare("DELETE FROM library_album_tracks WHERE album_id = ? AND track_id = ?").run(
+      album.id,
+      track.id,
+    );
     db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
     db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
@@ -288,8 +339,12 @@ test("deletes a library file committed while track removal waits for its lock", 
   };
   let signalCommitEntered;
   let releaseCommit;
-  const commitEntered = new Promise((resolve) => { signalCommitEntered = resolve; });
-  const commitGate = new Promise((resolve) => { releaseCommit = resolve; });
+  const commitEntered = new Promise((resolve) => {
+    signalCommitEntered = resolve;
+  });
+  const commitGate = new Promise((resolve) => {
+    releaseCommit = resolve;
+  });
   const commit = withPipelineCommitLock(payload, async () => {
     signalCommitEntered();
     await commitGate;
@@ -315,8 +370,14 @@ test("deletes a library file committed while track removal waits for its lock", 
   } finally {
     releaseCommit();
     await Promise.allSettled([commit, deletion].filter(Boolean));
-    db.prepare("DELETE FROM library_media_files WHERE source = ? AND path = ?").run("aurral", originalPath);
-    db.prepare("DELETE FROM library_album_tracks WHERE album_id = ? AND track_id = ?").run(album.id, track.id);
+    db.prepare("DELETE FROM library_media_files WHERE source = ? AND path = ?").run(
+      "aurral",
+      originalPath,
+    );
+    db.prepare("DELETE FROM library_album_tracks WHERE album_id = ? AND track_id = ?").run(
+      album.id,
+      track.id,
+    );
     db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
     db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
@@ -385,16 +446,16 @@ test("records successful Aurral deletions when another file fails", async () => 
       error: "permission denied",
     });
     assert.equal(
-      db.prepare(
-        "SELECT available FROM library_media_files WHERE source = ? AND path = ?",
-      ).get("aurral", deletedPath)?.available,
+      db
+        .prepare("SELECT available FROM library_media_files WHERE source = ? AND path = ?")
+        .get("aurral", deletedPath)?.available,
       0,
     );
     assert.equal(downloadTracker.getJob(libraryJobId), null);
     assert.equal(
-      db.prepare(
-        "SELECT available FROM library_media_files WHERE source = ? AND path = ?",
-      ).get("aurral", failedPath)?.available,
+      db
+        .prepare("SELECT available FROM library_media_files WHERE source = ? AND path = ?")
+        .get("aurral", failedPath)?.available,
       1,
     );
     await assert.rejects(() => access(deletedPath));
@@ -404,14 +465,20 @@ test("records successful Aurral deletions when another file fails", async () => 
     await assert.rejects(() => access(failedPath));
     assert.equal(db.prepare("SELECT 1 FROM library_tracks WHERE id = ?").get(track.id), undefined);
     assert.equal(db.prepare("SELECT 1 FROM library_albums WHERE id = ?").get(album.id), undefined);
-    assert.equal(db.prepare("SELECT 1 FROM library_artists WHERE id = ?").get(artist.id), undefined);
+    assert.equal(
+      db.prepare("SELECT 1 FROM library_artists WHERE id = ?").get(artist.id),
+      undefined,
+    );
   } finally {
     db.prepare("DELETE FROM library_media_files WHERE source = ? AND path IN (?, ?)").run(
       "aurral",
       deletedPath,
       failedPath,
     );
-    db.prepare("DELETE FROM library_album_tracks WHERE album_id = ? AND track_id = ?").run(album.id, track.id);
+    db.prepare("DELETE FROM library_album_tracks WHERE album_id = ? AND track_id = ?").run(
+      album.id,
+      track.id,
+    );
     db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
     db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
@@ -543,13 +610,21 @@ test("deletes a scanned Lidarr track through the Lidarr album with the same Musi
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
   });
   vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
-  vi.spyOn(lidarrClient, "getAlbumByMbid").mockImplementation(async (mbid) => (mbid === albumMbid ? { id: 70 } : null));
+  vi.spyOn(lidarrClient, "getAlbumByMbid").mockImplementation(async (mbid) =>
+    mbid === albumMbid ? { id: 70 } : null,
+  );
   vi.spyOn(lidarrClient, "getTracksByAlbumId").mockImplementation(async (albumId) =>
-    albumId === 70 ? [{ id: 1, foreignRecordingId: trackMbid, trackFileId: 99, hasFile: true }] : []);
+    albumId === 70
+      ? [{ id: 1, foreignRecordingId: trackMbid, trackFileId: 99, hasFile: true }]
+      : [],
+  );
   const deleted = vi.spyOn(lidarrClient, "deleteTrackFile").mockImplementation(async () => {});
 
   assert.deepEqual(await libraryManager.deleteTrack(track.id), { success: true });
-  assert.deepEqual(deleted.mock.calls.map((call) => call[0]), [99]);
+  assert.deepEqual(
+    deleted.mock.calls.map((call) => call[0]),
+    [99],
+  );
 });
 
 test("a scanned Lidarr track is not deleted when only a title matches more than one Lidarr track", async (t) => {
@@ -563,7 +638,11 @@ test("a scanned Lidarr track is not deleted when only a title matches more than 
     artistId: artist.id,
     title: "Title Album",
   });
-  const track = upsertLibraryTrack({ identityKey: `${identity}:track`, title: "Intro", artistName: "Title Artist" });
+  const track = upsertLibraryTrack({
+    identityKey: `${identity}:track`,
+    title: "Intro",
+    artistName: "Title Artist",
+  });
   linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
   upsertLibraryMediaFile({
     trackId: track.id,

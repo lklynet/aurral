@@ -1,6 +1,12 @@
 import { splitArtistTitleSegments } from "./candidateNormalizer.js";
 import { isPromoGroup, stripPromoDescriptors } from "./semanticPolicy.js";
-import { bestArtistSimilarity, isSameAlbumTitle, MATCH_POLICY, normalizeMatchText, titleSimilarity } from "./nativeMatcher.js";
+import {
+  bestArtistSimilarity,
+  isSameAlbumTitle,
+  MATCH_POLICY,
+  normalizeMatchText,
+  titleSimilarity,
+} from "./nativeMatcher.js";
 import { coreAlbumTitle } from "./titleText.js";
 
 const VIDEO_WORDS = /\b(?:video|mv|clip)\b/iu;
@@ -22,8 +28,8 @@ function channelArtistName(channel) {
 // differently.
 export function readYoutubeUpload(title, channel, artistNames) {
   const channelArtist = channelArtistName(channel);
-  const artistChannel = (bestArtistSimilarity(artistNames, channelArtist) ?? 0)
-    >= MATCH_POLICY.minArtistSimilarity;
+  const artistChannel =
+    (bestArtistSimilarity(artistNames, channelArtist) ?? 0) >= MATCH_POLICY.minArtistSimilarity;
   return {
     channelArtist: artistChannel ? channelArtist : null,
     officialAudio: artistChannel && !VIDEO_WORDS.test(String(title || "").replace(LYRIC_VIDEO, "")),
@@ -38,24 +44,30 @@ export function readYoutubeUpload(title, channel, artistNames) {
 export function parseYoutubeTitle(title, artistNames, requestedTitle) {
   const raw = String(title || "").trim();
   const cleaned = stripPromoDescriptors(raw.replace(/[「『]([^」』]+)[」』]/gu, " - $1 - ")) || raw;
-  const segments = cleaned.split(/\s+\|\s+/u)
+  const segments = cleaned
+    .split(/\s+\|\s+/u)
     .flatMap((part) => splitArtistTitleSegments(part) || [part])
     .map((segment) => segment.trim())
     .filter((segment) => segment && !isPromoGroup(segment));
   if (segments.length === 0) return { title: cleaned, versionTitle: cleaned, artist: null };
   const scores = segments.map((segment) =>
-    segments.length > 1 ? bestArtistSimilarity(artistNames, segment) ?? 0 : 0);
+    segments.length > 1 ? (bestArtistSimilarity(artistNames, segment) ?? 0) : 0,
+  );
   const best = Math.max(...scores);
   const artistIndex = best >= ARTIST_SEGMENT_SIMILARITY ? scores.indexOf(best) : -1;
   const rest = segments.filter((_, index) => index !== artistIndex);
   const versionTitle = rest.join(" - ");
-  const titleOption = [versionTitle, ...(rest.length > 1 ? rest : [])]
-    .reduce((kept, option) =>
-      titleSimilarity(requestedTitle, option) > titleSimilarity(requestedTitle, kept) ? option : kept);
+  const titleOption = [versionTitle, ...(rest.length > 1 ? rest : [])].reduce((kept, option) =>
+    titleSimilarity(requestedTitle, option) > titleSimilarity(requestedTitle, kept) ? option : kept,
+  );
   // In "Other Artist - Title" the first part names whoever else recorded it.
-  const claimedArtist = artistIndex < 0 && segments.length === 2 && titleOption === segments[1]
-    && titleSimilarity(requestedTitle, segments[1]) > titleSimilarity(requestedTitle, segments[0])
-    ? segments[0] : null;
+  const claimedArtist =
+    artistIndex < 0 &&
+    segments.length === 2 &&
+    titleOption === segments[1] &&
+    titleSimilarity(requestedTitle, segments[1]) > titleSimilarity(requestedTitle, segments[0])
+      ? segments[0]
+      : null;
   return {
     title: titleOption,
     versionTitle,
@@ -69,19 +81,28 @@ export function parseYoutubeTitle(title, artistNames, requestedTitle) {
 // artist. Only then does the video title count: YouTube's own track title
 // outranks the uploader's wording, and in "Six Feet Under - Song - AC/DC" the
 // tag names who performs the cover.
-export function readYoutubeFile({ tagTitle, tagArtists = [], videoTitle, channel }, artistNames, requestedTitle) {
+export function readYoutubeFile(
+  { tagTitle, tagArtists = [], videoTitle, channel },
+  artistNames,
+  requestedTitle,
+) {
   const fromTags = parseYoutubeTitle(tagTitle, artistNames, requestedTitle);
   const fromVideo = videoTitle ? parseYoutubeTitle(videoTitle, artistNames, requestedTitle) : null;
   const upload = readYoutubeUpload(videoTitle, channel, artistNames);
   const uploader = normalizeMatchText(channelArtistName(channel));
-  const credited = tagArtists.map(channelArtistName)
+  const credited = tagArtists
+    .map(channelArtistName)
     .filter((name) => upload.channelArtist || !uploader || normalizeMatchText(name) !== uploader)
     .filter((name) => titleSimilarity(requestedTitle, name) < 1);
-  const tagFromVideoTitle = !videoTitle
-    || normalizeMatchText(videoTitle).includes(normalizeMatchText(tagTitle));
-  const title = fromVideo && tagFromVideoTitle
-    && titleSimilarity(requestedTitle, fromVideo.title) > titleSimilarity(requestedTitle, fromTags.title)
-    ? fromVideo.title : fromTags.title;
+  const tagFromVideoTitle =
+    !videoTitle || normalizeMatchText(videoTitle).includes(normalizeMatchText(tagTitle));
+  const title =
+    fromVideo &&
+    tagFromVideoTitle &&
+    titleSimilarity(requestedTitle, fromVideo.title) >
+      titleSimilarity(requestedTitle, fromTags.title)
+      ? fromVideo.title
+      : fromTags.title;
   return {
     title,
     versionTitle: [fromTags.versionTitle, fromVideo?.versionTitle].filter(Boolean).join(" "),
@@ -93,5 +114,7 @@ export function readYoutubeFile({ tagTitle, tagArtists = [], videoTitle, channel
 // Whether a YouTube Music song's album is the requested one. A request that
 // names no album has no other album to rule out.
 export function isRequestedYoutubeAlbum(request, album) {
-  return !request.albumName || isSameAlbumTitle(coreAlbumTitle(request.albumName), coreAlbumTitle(album));
+  return (
+    !request.albumName || isSameAlbumTitle(coreAlbumTitle(request.albumName), coreAlbumTitle(album))
+  );
 }

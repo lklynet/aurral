@@ -22,7 +22,14 @@ export function CollectionPage({ tintSrc, className = "", children }) {
   );
 }
 
-export function CollectionPlayButtons({ label, disabled, isPlaying, isShuffleEnabled, onPlay, onShuffle }) {
+export function CollectionPlayButtons({
+  label,
+  disabled,
+  isPlaying,
+  isShuffleEnabled,
+  onPlay,
+  onShuffle,
+}) {
   return (
     <>
       <button

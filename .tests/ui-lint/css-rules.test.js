@@ -15,7 +15,8 @@ const tokenNames = new Set([
 ]);
 
 test("allows canonical token definitions and valid Aurral token references", () => {
-  const findings = lintCss(`
+  const findings = lintCss(
+    `
     :root {
       --aurral-surface: light-dark(#fff, #111);
       --aurral-text: light-dark(#171717, #f5f5f5);
@@ -25,25 +26,31 @@ test("allows canonical token definitions and valid Aurral token references", () 
       color: var(--aurral-text);
       border-color: var(--aurral-border);
     }
-  `, { filePath: "tokens.css", tokenNames });
+  `,
+    { filePath: "tokens.css", tokenNames },
+  );
 
   assert.deepEqual(findings, []);
 });
 
 test("does not treat color words inside Aurral token names as hard-coded colors", () => {
-  const findings = lintCss(`
+  const findings = lintCss(
+    `
     .card {
       color: var(--aurral-white);
       border-color: var(--aurral-gray-light);
       box-shadow: var(--aurral-gray);
     }
-  `, { filePath: "card.css", tokenNames });
+  `,
+    { filePath: "card.css", tokenNames },
+  );
 
   assert.deepEqual(findings, []);
 });
 
 test("reports hard-coded theme colors with property-matched token suggestions", () => {
-  const findings = lintCss(`
+  const findings = lintCss(
+    `
     .card {
       color: #fff;
       background: rgb(0 0 0 / 0.5);
@@ -52,26 +59,34 @@ test("reports hard-coded theme colors with property-matched token suggestions", 
       outline: 2px solid blue;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
     }
-  `, { filePath: "card.css", tokenNames });
+  `,
+    { filePath: "card.css", tokenNames },
+  );
 
-  assert.deepEqual(findings.map(({ line, ruleId, suggestion }) => ({ line, ruleId, suggestion })), [
-    { line: 3, ruleId: "aurral/no-hard-coded-color", suggestion: "--aurral-text" },
-    { line: 4, ruleId: "aurral/no-hard-coded-color", suggestion: "--aurral-surface" },
-    { line: 5, ruleId: "aurral/no-hard-coded-color", suggestion: "--aurral-border" },
-    { line: 6, ruleId: "aurral/no-hard-coded-color", suggestion: "--aurral-border" },
-    { line: 7, ruleId: "aurral/no-hard-coded-color", suggestion: "--aurral-ring" },
-    { line: 8, ruleId: "aurral/no-hard-coded-color", suggestion: "--aurral-shadow-popover" },
-  ]);
+  assert.deepEqual(
+    findings.map(({ line, ruleId, suggestion }) => ({ line, ruleId, suggestion })),
+    [
+      { line: 3, ruleId: "aurral/no-hard-coded-color", suggestion: "--aurral-text" },
+      { line: 4, ruleId: "aurral/no-hard-coded-color", suggestion: "--aurral-surface" },
+      { line: 5, ruleId: "aurral/no-hard-coded-color", suggestion: "--aurral-border" },
+      { line: 6, ruleId: "aurral/no-hard-coded-color", suggestion: "--aurral-border" },
+      { line: 7, ruleId: "aurral/no-hard-coded-color", suggestion: "--aurral-ring" },
+      { line: 8, ruleId: "aurral/no-hard-coded-color", suggestion: "--aurral-shadow-popover" },
+    ],
+  );
   assert.match(findings[0].message, /card\.css:3/);
   assert.match(findings[0].message, /var\(--aurral-text\)/);
 });
 
 test("reports undefined Aurral variables at the reference line", () => {
-  const findings = lintCss(`
+  const findings = lintCss(
+    `
     .card {
       background: var(--aurral-surfce);
     }
-  `, { filePath: "card.css", tokenNames });
+  `,
+    { filePath: "card.css", tokenNames },
+  );
 
   assert.deepEqual(findings, [
     {
@@ -85,36 +100,45 @@ test("reports undefined Aurral variables at the reference line", () => {
 });
 
 test("allows runtime artwork colors and geometry variables", () => {
-  const findings = lintCss(`
+  const findings = lintCss(
+    `
     .artwork {
       background: var(--artwork-color);
       color: var(--artwork-text-color);
       width: var(--progress-width);
       transform: translateX(var(--thumb-offset));
     }
-  `, { filePath: "artwork.css", tokenNames });
+  `,
+    { filePath: "artwork.css", tokenNames },
+  );
 
   assert.deepEqual(findings, []);
 });
 
 test("allows the DotLoader runtime geometry properties", () => {
-  const findings = lintCss(`
+  const findings = lintCss(
+    `
     .loader {
       grid-template-columns: repeat(3, var(--aurral-dot-loader-tile-size));
       gap: var(--aurral-dot-loader-gap);
     }
-  `, { filePath: "loader.css", tokenNames });
+  `,
+    { filePath: "loader.css", tokenNames },
+  );
 
   assert.deepEqual(findings, []);
 });
 
 test("catches hard-coded colors hidden behind local custom properties", () => {
-  const findings = lintCss(`
+  const findings = lintCss(
+    `
     .card {
       --card-copy: white;
       color: var(--card-copy);
     }
-  `, { filePath: "card.css", tokenNames });
+  `,
+    { filePath: "card.css", tokenNames },
+  );
 
   assert.equal(findings.length, 1);
   assert.equal(findings[0].line, 3);
@@ -136,7 +160,8 @@ const ruleFindings = (findings, ruleId) =>
   findings.filter((finding) => finding.ruleId === ruleId).map(({ line }) => line);
 
 test("reports raw motion durations and easings outside the motion tokens", () => {
-  const findings = lintCss(`
+  const findings = lintCss(
+    `
     :root {
       --aurral-duration-fast: 150ms;
       --aurral-ease-standard: cubic-bezier(0.2, 0, 0, 1);
@@ -151,23 +176,29 @@ test("reports raw motion durations and easings outside the motion tokens", () =>
       animation: loader 1.6s var(--aurral-ease-standard) -0.4s infinite;
       transition-duration: 0.01ms;
     }
-  `, { filePath: "card.css", tokenNames });
+  `,
+    { filePath: "card.css", tokenNames },
+  );
 
   assert.deepEqual(ruleFindings(findings, "aurral/no-raw-motion"), [7, 8, 9]);
 });
 
 test("flags easing keywords in looping animations while allowing their cycle length", () => {
-  const findings = lintCss(`
+  const findings = lintCss(
+    `
     .loader {
       animation: loader 1.6s ease-in-out infinite;
     }
-  `, { filePath: "loader.css", tokenNames });
+  `,
+    { filePath: "loader.css", tokenNames },
+  );
 
   assert.deepEqual(ruleFindings(findings, "aurral/no-raw-motion"), [3]);
 });
 
 test("reports raw z-index numbers outside the layer tokens", () => {
-  const findings = lintCss(`
+  const findings = lintCss(
+    `
     :root {
       --aurral-z-popover: 60;
     }
@@ -179,13 +210,16 @@ test("reports raw z-index numbers outside the layer tokens", () => {
       z-index: auto;
       z-index: var(--local-layer);
     }
-  `, { filePath: "menu.css", tokenNames });
+  `,
+    { filePath: "menu.css", tokenNames },
+  );
 
   assert.deepEqual(ruleFindings(findings, "aurral/no-raw-z-index"), [6, 7, 11]);
 });
 
 test("reports viewport-height units that ignore mobile browser toolbars", () => {
-  const findings = lintCss(`
+  const findings = lintCss(
+    `
     .shell {
       height: 100vh;
       max-height: min(32rem, calc(100vh - 6rem));
@@ -193,13 +227,16 @@ test("reports viewport-height units that ignore mobile browser toolbars", () => 
       top: 35svh;
       width: 50vw;
     }
-  `, { filePath: "shell.css", tokenNames });
+  `,
+    { filePath: "shell.css", tokenNames },
+  );
 
   assert.deepEqual(ruleFindings(findings, "aurral/no-vh"), [3, 4]);
 });
 
 test("reports hover styles that would stick after a tap on touch screens", () => {
-  const findings = lintCss(`
+  const findings = lintCss(
+    `
     .card:hover {
       background: var(--aurral-surface);
     }
@@ -225,7 +262,9 @@ test("reports hover styles that would stick after a tap on touch screens", () =>
     .card:focus-visible {
       background: var(--aurral-surface);
     }
-  `, { filePath: "card.css", tokenNames });
+  `,
+    { filePath: "card.css", tokenNames },
+  );
 
   assert.deepEqual(ruleFindings(findings, "aurral/no-ungated-hover"), [2, 5, 10]);
 });

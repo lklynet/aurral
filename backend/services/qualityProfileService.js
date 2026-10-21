@@ -43,11 +43,8 @@ export function decorateJobQuality(job, profile = getQualityProfile()) {
   return {
     ...job,
     qualityOwned: owned,
-    qualityState: job.status === "done"
-      ? owned
-        ? getQualityState(quality, profile)
-        : "external"
-      : null,
+    qualityState:
+      job.status === "done" ? (owned ? getQualityState(quality, profile) : "external") : null,
     qualityLabel: getQualityTier(quality.tier)?.label || "Unknown",
   };
 }
@@ -88,11 +85,7 @@ async function readQuality(filePath) {
 }
 
 export async function classifyQualityJob(job) {
-  if (
-    !job?.finalPath ||
-    job.status !== "done" ||
-    job.upgradeForJobId
-  ) {
+  if (!job?.finalPath || job.status !== "done" || job.upgradeForJobId) {
     return null;
   }
   let quality;
@@ -120,11 +113,7 @@ export async function reclassifyQualityJobs({ enqueue = false } = {}) {
   const seen = new Set();
   let classified = 0;
   for (const job of downloadTracker.getAll()) {
-    if (
-      !job?.finalPath ||
-      job.status !== "done" ||
-      job.upgradeForJobId
-    ) {
+    if (!job?.finalPath || job.status !== "done" || job.upgradeForJobId) {
       continue;
     }
     const filePath = path.resolve(job.finalPath);
@@ -143,11 +132,13 @@ function hasUpgradeSource() {
   return getEnabledDownloadSources().some((source) => UPGRADE_SOURCE_IDS.has(source.id));
 }
 
-const keptFilePathsStmt = db.prepare(`
+const keptFilePathsStmt = db
+  .prepare(`
   SELECT media.path FROM library_media_files AS media
   JOIN library_tracks AS track ON track.id = media.track_id
   WHERE track.keep_file = 1
-`).pluck();
+`)
+  .pluck();
 
 const isKeptFile = (filePath) => {
   const resolved = path.resolve(filePath);
@@ -169,12 +160,14 @@ async function readUpgradeSearchContext(job) {
 
 function upgradeBlocker(job) {
   if (!job?.id || job.status !== "done" || !isAurralOwnedPath(job.finalPath)) return "ineligible";
-  if (getQualityState({ tier: job.qualityTier }, getQualityProfile()) === "preferred") return "ineligible";
+  if (getQualityState({ tier: job.qualityTier }, getQualityProfile()) === "preferred")
+    return "ineligible";
   if (!hasUpgradeSource()) return "ineligible";
   if (isKeptFile(job.finalPath)) return "kept";
   if (downloadTracker.findActiveUpgradeJob(job)) return "already-queued";
   const playlistId = job.playlistId || job.playlistType;
-  if (!isPipelinePayloadActive({ playlistId, playlistGeneration: job.playlistGeneration })) return "ineligible";
+  if (!isPipelinePayloadActive({ playlistId, playlistGeneration: job.playlistGeneration }))
+    return "ineligible";
   return null;
 }
 
@@ -225,25 +218,32 @@ function classifyLibraryFileQuality(file) {
   try {
     stored = JSON.parse(file.quality_json || "{}") || {};
   } catch {}
-  return classifyAudioQuality({
-    format: {
-      codec: stored.format,
-      bitrate: stored.bitrate,
-      sampleRate: stored.sampleRate,
-      bitsPerSample: stored.bitsPerSample,
+  return classifyAudioQuality(
+    {
+      format: {
+        codec: stored.format,
+        bitrate: stored.bitrate,
+        sampleRate: stored.sampleRate,
+        bitsPerSample: stored.bitsPerSample,
+      },
     },
-  }, file.path);
+    file.path,
+  );
 }
 
 // Monitored Library tracks whose file Aurral did not download have no job
 // yet. Each one below the cutoff gets the Library job an upgrade replaces.
 function listLibraryUpgradeCandidates(profile) {
-  const jobPaths = new Set(downloadTracker.getAll()
-    .filter((job) => job.status === "done" && job.finalPath && !job.upgradeForJobId)
-    .map((job) => path.resolve(job.finalPath)));
+  const jobPaths = new Set(
+    downloadTracker
+      .getAll()
+      .filter((job) => job.status === "done" && job.finalPath && !job.upgradeForJobId)
+      .map((job) => path.resolve(job.finalPath)),
+  );
   const candidates = [];
-  for (const file of db.prepare(
-    `SELECT media.path, media.track_id, media.album_id, media.quality_json,
+  for (const file of db
+    .prepare(
+      `SELECT media.path, media.track_id, media.album_id, media.quality_json,
        COALESCE(album.release_group_mbid, album.mbid) AS album_mbid
      FROM library_media_files AS media
      JOIN library_tracks AS track ON track.id = media.track_id
@@ -251,12 +251,18 @@ function listLibraryUpgradeCandidates(profile) {
      WHERE media.source = 'aurral' AND media.available = 1
        AND track.monitored = 1 AND track.keep_file = 0
      ORDER BY media.id`,
-  ).iterate()) {
+    )
+    .iterate()) {
     const filePath = path.resolve(file.path);
     if (jobPaths.has(filePath) || !isAurralOwnedPath(filePath)) continue;
     const quality = classifyLibraryFileQuality(file);
     if (getQualityState(quality, profile) === "preferred") continue;
-    candidates.push({ trackId: file.track_id, albumId: file.album_id, albumMbid: file.album_mbid, quality });
+    candidates.push({
+      trackId: file.track_id,
+      albumId: file.album_id,
+      albumMbid: file.album_mbid,
+      quality,
+    });
   }
   return candidates;
 }
@@ -268,7 +274,8 @@ async function listUpgradeCandidatesByAlbum({ force, owners, profile }) {
   const isUnmonitored = indexUnmonitoredJobs();
   const keptFiles = new Set(keptFilePathsStmt.all().map((filePath) => path.resolve(filePath)));
   const albums = new Map();
-  const collect = (albumKey, candidate) => albums.set(albumKey, [...(albums.get(albumKey) || []), candidate]);
+  const collect = (albumKey, candidate) =>
+    albums.set(albumKey, [...(albums.get(albumKey) || []), candidate]);
   const seen = new Set();
   for (const job of downloadTracker.getAll()) {
     if (job.status !== "done" || !job.finalPath || job.upgradeForJobId) continue;
@@ -278,21 +285,30 @@ async function listUpgradeCandidatesByAlbum({ force, owners, profile }) {
     if (seen.has(filePath)) continue;
     seen.add(filePath);
     if (!isAurralOwnedPath(filePath) || isUnmonitored(job) || keptFiles.has(filePath)) continue;
-    collect(job.albumMbid || `job:${job.id}`, { owner: job.playlistType, add: async () => {
-      if (!job.qualityCheckedAt) await classifyQualityJob(job);
-      const current = downloadTracker.getJob(job.id);
-      if (getQualityState({ tier: current?.qualityTier }, profile) === "preferred") return {};
-      if (!force && Number(current?.qualityUpgradeCheckedAt || 0) > dueBefore) return {};
-      return prepareQualityUpgrade(current);
-    } });
+    collect(job.albumMbid || `job:${job.id}`, {
+      owner: job.playlistType,
+      add: async () => {
+        if (!job.qualityCheckedAt) await classifyQualityJob(job);
+        const current = downloadTracker.getJob(job.id);
+        if (getQualityState({ tier: current?.qualityTier }, profile) === "preferred") return {};
+        if (!force && Number(current?.qualityUpgradeCheckedAt || 0) > dueBefore) return {};
+        return prepareQualityUpgrade(current);
+      },
+    });
   }
   if ((!owners || owners.has("library")) && hasUpgradeSource()) {
     const { resolveAurralOwnedTrackJob } = await import("./libraryTrackResearchService.js");
     for (const candidate of listLibraryUpgradeCandidates(profile)) {
-      collect(candidate.albumMbid || `track:${candidate.trackId}`, { owner: "library", add: async () => {
-        const job = resolveAurralOwnedTrackJob({ trackId: candidate.trackId, albumId: candidate.albumId });
-        return job ? prepareQualityUpgrade(job) : {};
-      } });
+      collect(candidate.albumMbid || `track:${candidate.trackId}`, {
+        owner: "library",
+        add: async () => {
+          const job = resolveAurralOwnedTrackJob({
+            trackId: candidate.trackId,
+            albumId: candidate.albumId,
+          });
+          return job ? prepareQualityUpgrade(job) : {};
+        },
+      });
     }
   }
   return albums.values();
@@ -300,7 +316,11 @@ async function listUpgradeCandidatesByAlbum({ force, owners, profile }) {
 
 // One check covers every owner it is given, `limit` upgrades each, or
 // `limit` in all when it is given none.
-export async function runQualityUpgradeCheck({ force = false, playlistIds = null, limit = 25 } = {}) {
+export async function runQualityUpgradeCheck({
+  force = false,
+  playlistIds = null,
+  limit = 25,
+} = {}) {
   const profile = getQualityProfile();
   if (!force && !profile.automaticUpgrades) return 0;
   const owners = playlistIds ? new Set(playlistIds) : null;
@@ -331,7 +351,11 @@ async function takeReplacedFileName(oldPath, newPath) {
   const base = path.basename(oldPath, path.extname(oldPath));
   const extension = path.extname(newPath);
   if (path.dirname(newPath) !== directory) return newPath;
-  if (!new RegExp(`^${escapeRegExp(base)} \\(\\d+\\)${escapeRegExp(extension)}$`).test(path.basename(newPath))) {
+  if (
+    !new RegExp(`^${escapeRegExp(base)} \\(\\d+\\)${escapeRegExp(extension)}$`).test(
+      path.basename(newPath),
+    )
+  ) {
     return newPath;
   }
   const target = path.join(directory, `${base}${extension}`);

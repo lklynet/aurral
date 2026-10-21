@@ -41,7 +41,8 @@ export function useStaticPlaylists() {
     staticPlaylists,
     setStaticPlaylists,
     playlistsLoading: query.isLoading,
-    playlistsError: playlistsError || query.error?.response?.data?.message || query.error?.message || "",
+    playlistsError:
+      playlistsError || query.error?.response?.data?.message || query.error?.message || "",
     setPlaylistsError,
     loadStaticPlaylists,
   };

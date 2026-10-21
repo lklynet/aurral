@@ -79,7 +79,9 @@ function MissingJobRow({ job, playlist, actionState, onAction, onInfo, onManualS
   const operationLabel = playlist?.name || "Aurral operation";
   const meta = [job.artistName, job.albumName].filter(Boolean).join(" · ") || operationLabel;
   const hint = isWorking
-    ? isMissing ? "Adding re-search to Queue" : "Adding upgrade search to Queue"
+    ? isMissing
+      ? "Adding re-search to Queue"
+      : "Adding upgrade search to Queue"
     : isQueued
       ? "Upgrade search is in Queue"
       : isMissing
@@ -88,8 +90,14 @@ function MissingJobRow({ job, playlist, actionState, onAction, onInfo, onManualS
             job.qualityState === "below-floor" ? "Below cutoff" : "Upgrade available"
           }`;
   const statusLabel = isWorking
-    ? isMissing ? "Re-searching" : "Queuing upgrade"
-    : isMissing ? "Missing" : isQueued ? "Upgrade queued" : "Cutoff unmet";
+    ? isMissing
+      ? "Re-searching"
+      : "Queuing upgrade"
+    : isMissing
+      ? "Missing"
+      : isQueued
+        ? "Upgrade queued"
+        : "Cutoff unmet";
   const StatusIcon = isMissing ? AlertCircle : ArrowUpCircle;
 
   return (
@@ -104,22 +112,18 @@ function MissingJobRow({ job, playlist, actionState, onAction, onInfo, onManualS
       </Tooltip>
       <div className="activity-row__details">
         <Tooltip content={job.trackName || "Unknown track"}>
-          <h2 className="activity-row__title" >
-            {job.trackName || "Unknown track"}
-          </h2>
+          <h2 className="activity-row__title">{job.trackName || "Unknown track"}</h2>
         </Tooltip>
         <Tooltip content={meta}>
-          <p className="activity-row__meta" >
-            {meta}
-          </p>
+          <p className="activity-row__meta">{meta}</p>
         </Tooltip>
         <Tooltip content={job.error || hint}>
-          <p className="activity-row__hint" >
-            {hint}
-          </p>
+          <p className="activity-row__hint">{hint}</p>
         </Tooltip>
       </div>
-      <span className={`activity-row__status-label activity-row__status-label--${isMissing ? "failed" : "pending"}`}>
+      <span
+        className={`activity-row__status-label activity-row__status-label--${isMissing ? "failed" : "pending"}`}
+      >
         {statusLabel}
       </span>
       <time className="activity-row__time" dateTime={toJobDate(job.createdAt)?.toISOString()}>
@@ -187,7 +191,7 @@ export default function ActivityMissingPage() {
   });
   const statusQuery = usePlaylistStatusQuery();
   const allJobs = useMemo(
-    () => Array.isArray(jobsQuery.data) ? jobsQuery.data : [],
+    () => (Array.isArray(jobsQuery.data) ? jobsQuery.data : []),
     [jobsQuery.data],
   );
   const playlistInfo = useMemo(() => toPlaylistInfo(statusQuery.data), [statusQuery.data]);
@@ -203,9 +207,12 @@ export default function ActivityMissingPage() {
       .sort(sortMissingJobs);
   }, [allJobs]);
   const loading = jobsQuery.isPending || statusQuery.isPending;
-  const error = jobsQuery.error?.response?.data?.message ||
+  const error =
+    jobsQuery.error?.response?.data?.message ||
     statusQuery.error?.response?.data?.message ||
-    jobsQuery.error?.message || statusQuery.error?.message || "";
+    jobsQuery.error?.message ||
+    statusQuery.error?.message ||
+    "";
   const activeTab = searchParams.get("tab") === "cutoff" ? "cutoff" : "missing";
   const showingCutoff = activeTab === "cutoff";
   const filterPlaceholder = showingCutoff ? "Filter cutoff unmet" : "Filter missing tracks";
@@ -261,9 +268,7 @@ export default function ActivityMissingPage() {
     showingCutoff ? isCutoffUnmetAurralJob(job) : isMissingAurralJob(job),
   );
   const actionableJobs = jobs.filter((job) =>
-    showingCutoff
-      ? isCutoffUnmetAurralJob(job) && !job.upgradeQueued
-      : isMissingAurralJob(job),
+    showingCutoff ? isCutoffUnmetAurralJob(job) && !job.upgradeQueued : isMissingAurralJob(job),
   );
   const hasActionableJobs = actionableJobs.length > 0;
   const allUpgradesQueued = showingCutoff && hasWantedJobs && !hasActionableJobs;
@@ -276,9 +281,8 @@ export default function ActivityMissingPage() {
     try {
       if (isMissing) {
         const playlist = playlistInfo.get(String(job.playlistType));
-        const reSearch = playlist?.kind === "playlist"
-          ? reSearchStaticPlaylistTrack
-          : reSearchFlowTrack;
+        const reSearch =
+          playlist?.kind === "playlist" ? reSearchStaticPlaylistTrack : reSearchFlowTrack;
         await reSearch(job.playlistType, job.id);
         queryClient.setQueryData(jobsQueryKey, (current) =>
           (Array.isArray(current) ? current : []).filter((entry) => getMissingJobKey(entry) !== id),
@@ -312,21 +316,19 @@ export default function ActivityMissingPage() {
   const handleSearchAll = useCallback(async () => {
     if (searchingAll || !hasActionableJobs) return;
     setSearchingAll(true);
-    setActionStates((current) => Object.fromEntries([
-      ...Object.entries(current),
-      ...actionableJobs.map((job) => [getMissingJobKey(job), "working"]),
-    ]));
+    setActionStates((current) =>
+      Object.fromEntries([
+        ...Object.entries(current),
+        ...actionableJobs.map((job) => [getMissingJobKey(job), "working"]),
+      ]),
+    );
     try {
-      const result = showingCutoff
-        ? await searchAllUpgrades()
-        : await reSearchAllMissingTracks();
+      const result = showingCutoff ? await searchAllUpgrades() : await reSearchAllMissingTracks();
       if (showingCutoff) {
         const queued = Number(result?.queued || 0);
         setActionStates((current) => ({
           ...current,
-          ...Object.fromEntries(
-            actionableJobs.map((job) => [getMissingJobKey(job), "queued"]),
-          ),
+          ...Object.fromEntries(actionableJobs.map((job) => [getMissingJobKey(job), "queued"])),
         }));
         showSuccess(
           queued > 0
@@ -361,14 +363,20 @@ export default function ActivityMissingPage() {
         requestError.response?.data?.message ||
           requestError.response?.data?.error ||
           requestError.message ||
-          (showingCutoff
-            ? "Failed to search for upgrades"
-            : "Failed to re-search missing tracks"),
+          (showingCutoff ? "Failed to search for upgrades" : "Failed to re-search missing tracks"),
       );
     } finally {
       setSearchingAll(false);
     }
-  }, [actionableJobs, hasActionableJobs, loadJobs, searchingAll, showingCutoff, showError, showSuccess]);
+  }, [
+    actionableJobs,
+    hasActionableJobs,
+    loadJobs,
+    searchingAll,
+    showingCutoff,
+    showError,
+    showSuccess,
+  ]);
 
   const searchAllButton = (
     <button
@@ -387,8 +395,12 @@ export default function ActivityMissingPage() {
       )}
       <span>
         {searchingAll
-          ? showingCutoff ? "Queuing upgrades" : "Re-searching all"
-          : allUpgradesQueued ? "Upgrades queued" : "Search all"}
+          ? showingCutoff
+            ? "Queuing upgrades"
+            : "Re-searching all"
+          : allUpgradesQueued
+            ? "Upgrades queued"
+            : "Search all"}
       </span>
     </button>
   );
@@ -459,7 +471,9 @@ export default function ActivityMissingPage() {
               key={getMissingJobKey(job)}
               job={job}
               playlist={playlistInfo.get(String(job.playlistType))}
-              actionState={actionStates[getMissingJobKey(job)] || (job.upgradeQueued ? "queued" : "")}
+              actionState={
+                actionStates[getMissingJobKey(job)] || (job.upgradeQueued ? "queued" : "")
+              }
               onAction={handleAction}
               onInfo={setInfoJob}
               onManualSearch={setManualSearchJob}
@@ -485,7 +499,9 @@ export default function ActivityMissingPage() {
         onQueued={(job) => {
           const id = getMissingJobKey(job);
           queryClient.setQueryData(jobsQueryKey, (current) =>
-            (Array.isArray(current) ? current : []).filter((entry) => getMissingJobKey(entry) !== id),
+            (Array.isArray(current) ? current : []).filter(
+              (entry) => getMissingJobKey(entry) !== id,
+            ),
           );
           showSuccess(`Downloading ${job.trackName || "selected track"}`);
         }}

@@ -75,9 +75,12 @@ test("extractYoutubePlaylistId accepts only approved HTTPS playlist URLs", () =>
 
 test("validateYoutubePlaylistId accepts raw IDs but not URLs or malformed values", () => {
   assert.equal(validateYoutubePlaylistId("PLabcdefghij_123"), "PLabcdefghij_123");
-  assert.throws(() => validateYoutubePlaylistId("https://youtube.com/playlist?list=PLabcdefghij_123"), {
-    statusCode: 400,
-  });
+  assert.throws(
+    () => validateYoutubePlaylistId("https://youtube.com/playlist?list=PLabcdefghij_123"),
+    {
+      statusCode: 400,
+    },
+  );
   assert.throws(() => validateYoutubePlaylistId("bad/id"), { statusCode: 400 });
 });
 
@@ -94,7 +97,13 @@ test("client follows continuations, normalizes songs and videos, and reuses one 
   const first = {
     header: { title: text("Public playlist") },
     contents: [
-      song({ id: "song-1", title: "Song One", artist: "Artist One", album: "Album One", seconds: 123 }),
+      song({
+        id: "song-1",
+        title: "Song One",
+        artist: "Artist One",
+        album: "Album One",
+        seconds: 123,
+      }),
       null,
       continuation("next-page"),
     ],
@@ -109,15 +118,23 @@ test("client follows continuations, normalizes songs and videos, and reuses one 
   assert.equal(getCreateCalls(), 1);
   assert.equal(result.id, "PLabcdefghij_123");
   assert.equal(result.name, "Public playlist");
-  assert.deepEqual(result.tracks.map(({ artistName, trackName, albumName, durationMs }) => ({
-    artistName,
-    trackName,
-    albumName,
-    durationMs,
-  })), [
-    { artistName: "Artist One", trackName: "Song One", albumName: "Album One", durationMs: 123_000 },
-    { artistName: "Video Artist", trackName: "Video Track", albumName: null, durationMs: 62_000 },
-  ]);
+  assert.deepEqual(
+    result.tracks.map(({ artistName, trackName, albumName, durationMs }) => ({
+      artistName,
+      trackName,
+      albumName,
+      durationMs,
+    })),
+    [
+      {
+        artistName: "Artist One",
+        trackName: "Song One",
+        albumName: "Album One",
+        durationMs: 123_000,
+      },
+      { artistName: "Video Artist", trackName: "Video Track", albumName: null, durationMs: 62_000 },
+    ],
+  );
   assert.deepEqual(result.stats, {
     sourceItems: 7,
     unavailable: 1,
@@ -125,13 +142,16 @@ test("client follows continuations, normalizes songs and videos, and reuses one 
     incomplete: 1,
     duplicate: 1,
   });
-  assert.deepEqual(result.excluded.map(({ position, reason }) => ({ position, reason })), [
-    { position: 2, reason: "unavailable" },
-    { position: 4, reason: "duplicate" },
-    { position: 5, reason: "podcast" },
-    { position: 6, reason: "incomplete" },
-    { position: 7, reason: "podcast" },
-  ]);
+  assert.deepEqual(
+    result.excluded.map(({ position, reason }) => ({ position, reason })),
+    [
+      { position: 2, reason: "unavailable" },
+      { position: 4, reason: "duplicate" },
+      { position: 5, reason: "podcast" },
+      { position: 6, reason: "incomplete" },
+      { position: 7, reason: "podcast" },
+    ],
+  );
 
   await client.getPlaylist("PLabcdefghij_456");
   assert.equal(getCreateCalls(), 1);
@@ -255,44 +275,49 @@ test("client spaces provider requests shared by concurrent playlist loads", asyn
   assert.ok(starts[1].at - starts[0].at >= 20);
 });
 
-test("queued playlist requests keep their own operation timeout context", { timeout: 1_000 }, async () => {
-  const client = new YoutubeMusicPlaylistClient({
-    operationTimeoutMs: 200,
-    playlistRequestIntervalMs: 50,
-    createInnertube: async ({ fetch }) => ({
-      music: {
-        async getPlaylist(id) {
-          if (id === "PLabcdefghij_000") {
-            return {
-              header: { title: text("Warmup") },
-              contents: [song({ id: "warmup", title: "Warmup", artist: "Artist" })],
-            };
-          }
-          await fetch(`https://music.youtube.com/youtubei/v1/browse?id=${id}`);
+test(
+  "queued playlist requests keep their own operation timeout context",
+  { timeout: 1_000 },
+  async () => {
+    const client = new YoutubeMusicPlaylistClient({
+      operationTimeoutMs: 200,
+      playlistRequestIntervalMs: 50,
+      createInnertube: async ({ fetch }) => ({
+        music: {
+          async getPlaylist(id) {
+            if (id === "PLabcdefghij_000") {
+              return {
+                header: { title: text("Warmup") },
+                contents: [song({ id: "warmup", title: "Warmup", artist: "Artist" })],
+              };
+            }
+            await fetch(`https://music.youtube.com/youtubei/v1/browse?id=${id}`);
+          },
         },
-      },
-    }),
-    fetchImpl: async (_url, options) => new Promise((resolve, reject) => {
-      options.signal.addEventListener(
-        "abort",
-        () => reject(options.signal.reason),
-        { once: true },
-      );
-    }),
-  });
+      }),
+      fetchImpl: async (_url, options) =>
+        new Promise((resolve, reject) => {
+          options.signal.addEventListener("abort", () => reject(options.signal.reason), {
+            once: true,
+          });
+        }),
+    });
 
-  await client.getPlaylist("PLabcdefghij_000");
-  const first = client.getPlaylist("PLabcdefghij_123");
-  await new Promise((resolve) => setTimeout(resolve, 10));
-  const second = client.getPlaylist("PLabcdefghij_456");
+    await client.getPlaylist("PLabcdefghij_000");
+    const first = client.getPlaylist("PLabcdefghij_123");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const second = client.getPlaylist("PLabcdefghij_456");
 
-  await assert.rejects(first, { code: "YOUTUBE_PLAYLIST_TIMEOUT" });
-  await assert.rejects(second, { code: "YOUTUBE_PLAYLIST_TIMEOUT" });
-});
+    await assert.rejects(first, { code: "YOUTUBE_PLAYLIST_TIMEOUT" });
+    await assert.rejects(second, { code: "YOUTUBE_PLAYLIST_TIMEOUT" });
+  },
+);
 
 test("cache keeps pending playlist loads available for request coalescing", async () => {
   let releaseRequests;
-  const released = new Promise((resolve) => { releaseRequests = resolve; });
+  const released = new Promise((resolve) => {
+    releaseRequests = resolve;
+  });
   const requests = new Map();
   const client = new YoutubeMusicPlaylistClient({
     maxCachedPlaylists: 1,
@@ -384,7 +409,9 @@ test("client rejects repeated continuations instead of returning a partial playl
   };
   page.getContinuation = async () => page;
   const { client } = makeClient([page]);
-  await assert.rejects(client.getPlaylist("PLabcdefghij_123"), { code: "YOUTUBE_PLAYLIST_INCOMPLETE" });
+  await assert.rejects(client.getPlaylist("PLabcdefghij_123"), {
+    code: "YOUTUBE_PLAYLIST_INCOMPLETE",
+  });
 });
 
 test("client rejects page and row limits without returning partial results", async () => {
@@ -392,19 +419,30 @@ test("client rejects page and row limits without returning partial results", asy
   const first = {
     header: { title: text("Limited") },
     contents: [song({ id: "one", title: "One", artist: "Artist" }), continuation("next")],
-    async getContinuation() { return next; },
+    async getContinuation() {
+      return next;
+    },
   };
   const pageLimited = makeClient([first], { maxPages: 1 }).client;
-  await assert.rejects(pageLimited.getPlaylist("PLabcdefghij_123"), { code: "YOUTUBE_PLAYLIST_LIMIT" });
+  await assert.rejects(pageLimited.getPlaylist("PLabcdefghij_123"), {
+    code: "YOUTUBE_PLAYLIST_LIMIT",
+  });
 
-  const rowLimited = makeClient([{
-    header: { title: text("Limited") },
-    contents: [
-      song({ id: "one", title: "One", artist: "Artist" }),
-      song({ id: "two", title: "Two", artist: "Artist" }),
+  const rowLimited = makeClient(
+    [
+      {
+        header: { title: text("Limited") },
+        contents: [
+          song({ id: "one", title: "One", artist: "Artist" }),
+          song({ id: "two", title: "Two", artist: "Artist" }),
+        ],
+      },
     ],
-  }], { maxItems: 1 }).client;
-  await assert.rejects(rowLimited.getPlaylist("PLabcdefghij_123"), { code: "YOUTUBE_PLAYLIST_LIMIT" });
+    { maxItems: 1 },
+  ).client;
+  await assert.rejects(rowLimited.getPlaylist("PLabcdefghij_123"), {
+    code: "YOUTUBE_PLAYLIST_LIMIT",
+  });
 });
 
 test("client aborts and maps operation timeouts to a safe provider error", async () => {
@@ -422,7 +460,9 @@ test("client aborts and maps operation timeouts to a safe provider error", async
     fetchImpl: async (_url, options) => {
       observedSignal = options.signal;
       await new Promise((resolve, reject) => {
-        options.signal.addEventListener("abort", () => reject(options.signal.reason), { once: true });
+        options.signal.addEventListener("abort", () => reject(options.signal.reason), {
+          once: true,
+        });
       });
     },
   });
@@ -433,32 +473,36 @@ test("client aborts and maps operation timeouts to a safe provider error", async
   assert.equal(observedSignal.aborted, true);
 });
 
-test("client times out stalled session creation and retries with a fresh session", { timeout: 1_000 }, async () => {
-  let createCalls = 0;
-  const client = new YoutubeMusicPlaylistClient({
-    operationTimeoutMs: 20,
-    createInnertube: async () => {
-      createCalls += 1;
-      if (createCalls === 1) return new Promise(() => {});
-      return {
-        music: {
-          async getPlaylist() {
-            return {
-              header: { title: text("Recovered playlist") },
-              contents: [song({ id: "song", title: "Song", artist: "Artist" })],
-            };
+test(
+  "client times out stalled session creation and retries with a fresh session",
+  { timeout: 1_000 },
+  async () => {
+    let createCalls = 0;
+    const client = new YoutubeMusicPlaylistClient({
+      operationTimeoutMs: 20,
+      createInnertube: async () => {
+        createCalls += 1;
+        if (createCalls === 1) return new Promise(() => {});
+        return {
+          music: {
+            async getPlaylist() {
+              return {
+                header: { title: text("Recovered playlist") },
+                contents: [song({ id: "song", title: "Song", artist: "Artist" })],
+              };
+            },
           },
-        },
-      };
-    },
-  });
+        };
+      },
+    });
 
-  await assert.rejects(client.getPlaylist("PLabcdefghij_123"), {
-    code: "YOUTUBE_PLAYLIST_TIMEOUT",
-    statusCode: 504,
-  });
-  const recovered = await client.getPlaylist("PLabcdefghij_123");
+    await assert.rejects(client.getPlaylist("PLabcdefghij_123"), {
+      code: "YOUTUBE_PLAYLIST_TIMEOUT",
+      statusCode: 504,
+    });
+    const recovered = await client.getPlaylist("PLabcdefghij_123");
 
-  assert.equal(createCalls, 2);
-  assert.equal(recovered.name, "Recovered playlist");
-});
+    assert.equal(createCalls, 2);
+    assert.equal(recovered.name, "Recovered playlist");
+  },
+);

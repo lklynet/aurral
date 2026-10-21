@@ -115,11 +115,21 @@ const MIN_KBPS = { lossless: 48, lossy: 12 };
 // or null. A ".m4a" may hold ALAC, so it gets the lossy floor unless
 // `lossless` says what the file holds. A track MusicBrainz titles
 // "[silence]" is digital silence on the release, and its real file is tiny.
-export function implausibleBitrateKbps({ path: filePath, lossless = null, sizeBytes, durationMs, trackTitle = null }) {
+export function implausibleBitrateKbps({
+  path: filePath,
+  lossless = null,
+  sizeBytes,
+  durationMs,
+  trackTitle = null,
+}) {
   if (/^\s*\[silence\]\s*$/iu.test(String(trackTitle || ""))) return null;
   const extension = getFileExtension(filePath);
-  const kind = lossless === true || (lossless == null && LOSSLESS_EXTENSIONS.has(extension)) ? "lossless"
-    : lossless === false || LOSSY_EXTENSIONS.has(extension) ? "lossy" : null;
+  const kind =
+    lossless === true || (lossless == null && LOSSLESS_EXTENSIONS.has(extension))
+      ? "lossless"
+      : lossless === false || LOSSY_EXTENSIONS.has(extension)
+        ? "lossy"
+        : null;
   const size = positiveNumber(sizeBytes);
   const duration = positiveNumber(durationMs);
   if (!kind || !size || !duration) return null;
@@ -180,9 +190,7 @@ export function normalizeCandidate(source, raw = {}, options = {}) {
 
   const durationMs =
     readDurationMs(raw.durationMs) ??
-    (positiveNumber(raw.durationSec)
-      ? Math.round(Number(raw.durationSec) * 1000)
-      : null) ??
+    (positiveNumber(raw.durationSec) ? Math.round(Number(raw.durationSec) * 1000) : null) ??
     (positiveNumber(raw.length) ? Math.round(Number(raw.length) * 1000) : null);
 
   const { artist: filenameArtist, title: filenameTitle } = options.parseFilename
@@ -190,7 +198,10 @@ export function normalizeCandidate(source, raw = {}, options = {}) {
     : { artist: null, title: null };
 
   const artists = readArtists(raw, capabilities);
-  if (filenameArtist && !artists.some((name) => name.toLowerCase() === filenameArtist.toLowerCase())) {
+  if (
+    filenameArtist &&
+    !artists.some((name) => name.toLowerCase() === filenameArtist.toLowerCase())
+  ) {
     artists.push(filenameArtist);
   }
 
@@ -203,8 +214,12 @@ export function normalizeCandidate(source, raw = {}, options = {}) {
     album: cleanText(raw.album || raw.albumName),
     durationMs,
     year: positiveNumber(raw.year) ? Math.round(Number(raw.year)) : null,
-    trackNumber: positiveNumber(raw.trackNumber ?? raw.track) ? Math.round(Number(raw.trackNumber ?? raw.track)) : null,
-    discNumber: positiveNumber(raw.discNumber ?? raw.disc) ? Math.round(Number(raw.discNumber ?? raw.disc)) : null,
+    trackNumber: positiveNumber(raw.trackNumber ?? raw.track)
+      ? Math.round(Number(raw.trackNumber ?? raw.track))
+      : null,
+    discNumber: positiveNumber(raw.discNumber ?? raw.disc)
+      ? Math.round(Number(raw.discNumber ?? raw.disc))
+      : null,
     isrc: cleanText(raw.isrc),
     recordingMbid: cleanText(raw.recordingMbid || raw.trackMbid),
     releaseMbid: cleanText(raw.releaseMbid),
@@ -219,9 +234,7 @@ export function normalizeCandidate(source, raw = {}, options = {}) {
       slots: raw.slots === true,
       locked: raw.locked === true || raw.isLocked === true,
     },
-    directoryPath: filePath
-      ? getPathParts(filePath).slice(0, -1).join("/")
-      : null,
+    directoryPath: filePath ? getPathParts(filePath).slice(0, -1).join("/") : null,
     raw,
   };
 }

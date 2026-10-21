@@ -39,19 +39,29 @@ const SONG_READS = 6;
 const LIVE_STATUSES = new Set(["is_live", "was_live", "post_live", "is_upcoming"]);
 
 export function isYtdlpLiveResult(result) {
-  return LIVE_STATUSES.has(String(result?.liveStatus || "").trim().toLowerCase());
+  return LIVE_STATUSES.has(
+    String(result?.liveStatus || "")
+      .trim()
+      .toLowerCase(),
+  );
 }
 
 // The release audio on the artist's channel is the copy to download, so the
 // next query runs until a usable one turns up.
 export function hasEnoughCandidates(aggregated, resolvedTrack) {
-  const artistNames = [resolvedTrack.artistName, ...(resolvedTrack.artistAliases || [])].filter(Boolean);
+  const artistNames = [resolvedTrack.artistName, ...(resolvedTrack.artistAliases || [])].filter(
+    Boolean,
+  );
   return prefilterCandidates({
     source: "ytdlp",
     candidates: aggregated.filter((result) => !isYtdlpLiveResult(result)),
     request: resolvedTrack,
-  }).some((entry) => !entry.rejected
-    && readYoutubeUpload(entry.candidate.title, entry.candidate.provider?.uploader, artistNames).officialAudio);
+  }).some(
+    (entry) =>
+      !entry.rejected &&
+      readYoutubeUpload(entry.candidate.title, entry.candidate.provider?.uploader, artistNames)
+        .officialAudio,
+  );
 }
 
 async function handleYtdlpSearch(payload, helpers) {
@@ -81,12 +91,20 @@ async function handleYtdlpSearch(payload, helpers) {
   );
   const found = { songs: [], videos: [] };
   const seen = { songs: new Set(), videos: new Set() };
-  const resultKey = (entry) => String(entry.id || entry.url || "").trim().toLowerCase();
+  const resultKey = (entry) =>
+    String(entry.id || entry.url || "")
+      .trim()
+      .toLowerCase();
   let lastError = "";
   const searchOnce = async (kind, query, options) => {
     try {
       const results = await ytdlpClient.search(query, options);
-      mergeSearchResults(found[kind], seen[kind], results.filter((entry) => !deniedIds.has(String(entry.id || "").trim())), resultKey);
+      mergeSearchResults(
+        found[kind],
+        seen[kind],
+        results.filter((entry) => !deniedIds.has(String(entry.id || "").trim())),
+        resultKey,
+      );
     } catch (error) {
       lastError = error?.message || String(error);
       logger.warn("ytdlp", "yt-dlp search failed", {
@@ -103,14 +121,17 @@ async function handleYtdlpSearch(payload, helpers) {
     const videoKeys = new Set(found.videos.map(resultKey));
     return [...found.songs.filter((song) => !videoKeys.has(resultKey(song))), ...found.videos];
   };
-  const evaluateResults = (results) => buildSourceCandidates({
-    source: "ytdlp",
-    // Live streams are not recordings of the requested track.
-    results: results.filter((result) => !isYtdlpLiveResult(result)),
-    request: resolvedTrack,
-  });
-  const holdsTrack = (evaluation) => evaluation.evaluations.some((entry) =>
-    entry.decision === "accept" || entry.decision === "verify");
+  const evaluateResults = (results) =>
+    buildSourceCandidates({
+      source: "ytdlp",
+      // Live streams are not recordings of the requested track.
+      results: results.filter((result) => !isYtdlpLiveResult(result)),
+      request: resolvedTrack,
+    });
+  const holdsTrack = (evaluation) =>
+    evaluation.evaluations.some(
+      (entry) => entry.decision === "accept" || entry.decision === "verify",
+    );
 
   // YouTube Music lists the release audio with its artists, album, and
   // length. Its search reads the next few songs only while none read so far
@@ -119,11 +140,13 @@ async function handleYtdlpSearch(payload, helpers) {
     await searchOnce("songs", queries[0], {
       songs: true,
       limit: SONG_READS,
-      wanted: (song) => !deniedIds.has(song.id) && prefilterCandidates({
-        source: "ytdlp",
-        candidates: [{ ...song, song: true }],
-        request: resolvedTrack,
-      })[0]?.rejected === false,
+      wanted: (song) =>
+        !deniedIds.has(song.id) &&
+        prefilterCandidates({
+          source: "ytdlp",
+          candidates: [{ ...song, song: true }],
+          request: resolvedTrack,
+        })[0]?.rejected === false,
       decided: async (songs) => holdsTrack(await evaluateResults(songs)),
     });
   }
@@ -257,13 +280,21 @@ async function handleYtdlpFinalize(payload, helpers) {
   }
   if (!validation.valid) {
     if (validation.blocked && !payload.heldForReview) {
-      const heldPath = path.join(path.dirname(filePath), "..", `${job.id}-held${path.extname(filePath)}`);
+      const heldPath = path.join(
+        path.dirname(filePath),
+        "..",
+        `${job.id}-held${path.extname(filePath)}`,
+      );
       await fs.rename(filePath, heldPath);
       await ytdlpClient.cleanupStaging(job.id);
       const heldPayload = {
         ...payload,
         downloadedPath: null,
-        heldForReview: holdForReview(job, { source: "ytdlp", sourcePath: heldPath, reason: validation.reason }),
+        heldForReview: holdForReview(job, {
+          source: "ytdlp",
+          sourcePath: heldPath,
+          reason: validation.reason,
+        }),
       };
       return hasNextCandidate(payload)
         ? buildNextCandidatePayload(heldPayload)

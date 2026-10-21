@@ -181,7 +181,10 @@ export function PlayerSeek({ variant }) {
         </span>
         <span className="global-player__progress-thumb" />
         {previewRatio != null && duration > 0 ? (
-          <span className="global-player__progress-preview" style={{ left: `${previewRatio * 100}%` }}>
+          <span
+            className="global-player__progress-preview"
+            style={{ left: `${previewRatio * 100}%` }}
+          >
             {formatPlaybackTime(previewRatio * duration)}
           </span>
         ) : null}

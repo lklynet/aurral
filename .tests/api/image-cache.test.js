@@ -8,17 +8,30 @@ import {
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.js";
 
-const [state, { db }, { dbOps, userOps }, { hashPassword }, { authMiddleware },
-  { default: authRouter }, { default: imageProxyRouter }] = await setupIsolatedBackend(
-  "image-cache", "backend/config/db-sqlite.js", "backend/db/helpers/index.js",
-  "backend/middleware/passwordHash.js", "backend/middleware/auth.js",
-  "backend/routes/auth.js", "backend/routes/imageProxy.js",
+const [
+  state,
+  { db },
+  { dbOps, userOps },
+  { hashPassword },
+  { authMiddleware },
+  { default: authRouter },
+  { default: imageProxyRouter },
+] = await setupIsolatedBackend(
+  "image-cache",
+  "backend/config/db-sqlite.js",
+  "backend/db/helpers/index.js",
+  "backend/middleware/passwordHash.js",
+  "backend/middleware/auth.js",
+  "backend/routes/auth.js",
+  "backend/routes/imageProxy.js",
 );
 
 const realFetch = globalThis.fetch;
 const cover = await sharp({
   create: { width: 64, height: 64, channels: 3, background: { r: 200, g: 40, b: 40 } },
-}).png().toBuffer();
+})
+  .png()
+  .toBuffer();
 let server;
 let baseUrl;
 let token;
@@ -101,7 +114,10 @@ test("a signed-in user gets a same-origin copy of a cover from a host without CO
 test("caching a cover requires a signed-in user and an http image URL", async (t) => {
   const requests = stubCoverHost(t, {});
 
-  assert.equal((await cacheImage("https://images.example/cover.jpg", { authenticated: false })).status, 401);
+  assert.equal(
+    (await cacheImage("https://images.example/cover.jpg", { authenticated: false })).status,
+    401,
+  );
   assert.equal((await cacheImage("file:///etc/passwd")).status, 400);
   assert.equal((await cacheImage("https://images.example/missing.jpg")).status, 404);
   assert.deepEqual(requests, ["https://images.example/missing.jpg"]);

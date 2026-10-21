@@ -15,12 +15,8 @@ const [isolatedState, { db }, { dbOps }] = await setupIsolatedBackend(
 
 const { lidarrClient } = await import("../../backend/services/lidarrClient.js");
 const { registerMisc } = await import("../../backend/routes/library/handlers/misc.js");
-const {
-  resolveLidarrTestCredentials,
-  withTemporaryLidarrClient,
-} = await import(
-  "../../backend/services/lidarrTestSession.js"
-);
+const { resolveLidarrTestCredentials, withTemporaryLidarrClient } =
+  await import("../../backend/services/lidarrTestSession.js");
 
 function setLidarrSettings(lidarr) {
   const settings = dbOps.getSettings();
@@ -88,12 +84,15 @@ test("root folder reads retain saved paths while lidarr is disabled", async () =
     delete() {},
   });
   let body;
-  await routes.get("/rootfolder")({}, {
-    json(value) {
-      body = value;
-      return this;
+  await routes.get("/rootfolder")(
+    {},
+    {
+      json(value) {
+        body = value;
+        return this;
+      },
     },
-  });
+  );
 
   assert.deepEqual(body, [{ path: rootPath }]);
   assert.equal(request.mock.calls.length, 0);
@@ -128,10 +127,7 @@ test("discovered root paths are reused without another root-folder request", asy
 test("saved-credential test fallback is refused while lidarr is disabled", () => {
   setLidarrSettings({ url: "http://127.0.0.1:18686", apiKey: "saved-key", enabled: false });
 
-  assert.throws(
-    () => resolveLidarrTestCredentials({}, lidarrClient),
-    /Lidarr is disabled/,
-  );
+  assert.throws(() => resolveLidarrTestCredentials({}, lidarrClient), /Lidarr is disabled/);
 });
 
 test("explicitly provided test credentials still work while lidarr is disabled", () => {

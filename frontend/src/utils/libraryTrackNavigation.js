@@ -1,4 +1,7 @@
-const normalizeName = (value) => String(value || "").trim().toLocaleLowerCase();
+const normalizeName = (value) =>
+  String(value || "")
+    .trim()
+    .toLocaleLowerCase();
 
 export const libraryRecordId = (entry) => entry?.canonicalId ?? entry?.id ?? null;
 

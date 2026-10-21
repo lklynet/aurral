@@ -12,7 +12,11 @@ import {
 import { recoverExitedWorkerJobs, recoverJobsClaimedBeforeStart } from "./backgroundJobRecovery.js";
 import { createBackgroundProcessSupervisor } from "./backgroundProcessSupervisor.js";
 import { ISOLATED_QUEUE_GROUPS, isQueueOwnedByGroup } from "./backgroundWorkerQueues.js";
-import { getHonkerWorkerStatuses, isHonkerShuttingDown, registerHonkerShutdownHandler } from "./honkerWorkerRuntime.js";
+import {
+  getHonkerWorkerStatuses,
+  isHonkerShuttingDown,
+  registerHonkerShutdownHandler,
+} from "./honkerWorkerRuntime.js";
 import { HONKER_QUEUE_NAMES } from "./honkerDb.js";
 import { configureDownloadOwnerClient } from "./downloadJobs/downloadOwnerClient.js";
 import { getDatabaseRevision } from "../config/db-sqlite.js";
@@ -37,8 +41,10 @@ export function getIsolatedWorkerStatuses() {
 
 const WORKER_SUPERVISOR_POLL_MS = Math.max(
   process.env.AURRAL_BACKGROUND_WORKER_GROUP ? 1000 : 15000,
-  Math.floor(Number(process.env.AURRAL_WORKER_SUPERVISOR_POLL_MS) ||
-    (process.env.AURRAL_BACKGROUND_WORKER_GROUP ? 2000 : 60000)),
+  Math.floor(
+    Number(process.env.AURRAL_WORKER_SUPERVISOR_POLL_MS) ||
+      (process.env.AURRAL_BACKGROUND_WORKER_GROUP ? 2000 : 60000),
+  ),
 );
 
 const WORKER_STARTS = {
@@ -46,7 +52,7 @@ const WORKER_STARTS = {
   "system-task": ["./systemTaskWorker.js", "startSystemTaskWorker"],
   "system-task-maintenance": ["./systemTaskWorker.js", "startMaintenanceTaskWorker"],
   "system-task-inbox": ["./systemTaskWorker.js", "startInboxTaskWorker"],
-  "playback": ["./systemTaskWorker.js", "startPlaybackTaskWorker"],
+  playback: ["./systemTaskWorker.js", "startPlaybackTaskWorker"],
   "library-scan": ["./libraryScanWorker.js", "startLibraryScanWorker"],
   "library-files": ["./libraryFiles/libraryFileWorker.js", "startLibraryFileWorker"],
   "_outbox:notifications": ["./notificationOutboxWorker.js", "startNotificationOutboxWorker"],
@@ -54,8 +60,14 @@ const WORKER_STARTS = {
   "slskd-pipeline": ["./downloadPipelineWorker.js", "startDownloadPipelineWorker"],
   "discovery-refresh": ["./discoveryRefreshWorker.js", "startDiscoveryRefreshWorker"],
   "discovery-user-refresh": ["./discoveryUserRefreshWorker.js", "startDiscoveryUserRefreshWorker"],
-  "weekly-flow-operation": ["./playlists/playlistOperationWorker.js", "startPlaylistOperationWorker"],
-  "playlist-mbid-enrichment": ["./playlistMbidEnrichmentWorker.js", "startPlaylistMbidEnrichmentWorker"],
+  "weekly-flow-operation": [
+    "./playlists/playlistOperationWorker.js",
+    "startPlaylistOperationWorker",
+  ],
+  "playlist-mbid-enrichment": [
+    "./playlistMbidEnrichmentWorker.js",
+    "startPlaylistMbidEnrichmentWorker",
+  ],
 };
 
 const QUEUE_WORKERS = HONKER_QUEUE_NAMES.map((queue) => ({
@@ -96,14 +108,11 @@ function scheduleSupervisorWake(nextClaimAt) {
   if (workerSupervisorTimer && workerSupervisorTimerAt <= target) return;
   clearSupervisorWakeTimer();
   workerSupervisorTimerAt = target;
-  workerSupervisorTimer = setTimeout(
-    () => {
-      workerSupervisorTimer = null;
-      workerSupervisorTimerAt = null;
-      checkQueuedBackgroundWork(supervisedGroup);
-    },
-    target - Date.now(),
-  );
+  workerSupervisorTimer = setTimeout(() => {
+    workerSupervisorTimer = null;
+    workerSupervisorTimerAt = null;
+    checkQueuedBackgroundWork(supervisedGroup);
+  }, target - Date.now());
   if (typeof workerSupervisorTimer.unref === "function") {
     workerSupervisorTimer.unref();
   }
@@ -134,13 +143,25 @@ function checkQueuedBackgroundWork(group = null) {
   if (revision !== previousRevision) dbOps.invalidateSettingsCache();
   let inspected = true;
   sweepExpiredWorkerQueues(group);
-  const running = new Set(getHonkerWorkerStatuses().filter((worker) => worker.running).map((worker) => worker.name));
+  const running = new Set(
+    getHonkerWorkerStatuses()
+      .filter((worker) => worker.running)
+      .map((worker) => worker.name),
+  );
   for (const worker of QUEUE_WORKERS) {
     if (!isQueueOwnedByGroup(worker.queue, group)) continue;
     try {
-      const workerName = worker.queue === "_outbox:notifications" ? "notification-outbox"
-        : worker.queue === "_outbox:play-events" ? "play-event-outbox" : worker.queue;
-      if (!running.has(workerName) && !startingQueues.has(worker.queue) && hasClaimableHonkerJobs(worker.queue)) {
+      const workerName =
+        worker.queue === "_outbox:notifications"
+          ? "notification-outbox"
+          : worker.queue === "_outbox:play-events"
+            ? "play-event-outbox"
+            : worker.queue;
+      if (
+        !running.has(workerName) &&
+        !startingQueues.has(worker.queue) &&
+        hasClaimableHonkerJobs(worker.queue)
+      ) {
         startQueueWorker(worker.start, worker.queue);
       }
       const queueNextClaimAt = getHonkerQueueNextClaimAt(worker.queue);
@@ -174,7 +195,10 @@ export function startWorkerSupervisor({ group = null } = {}) {
   workerSupervisorStarted = true;
   supervisedGroup = group;
   checkQueuedBackgroundWork(group);
-  workerSupervisorInterval = setInterval(() => checkWorkerDatabaseChanges(group), WORKER_SUPERVISOR_POLL_MS);
+  workerSupervisorInterval = setInterval(
+    () => checkWorkerDatabaseChanges(group),
+    WORKER_SUPERVISOR_POLL_MS,
+  );
   workerSweepInterval = setInterval(() => {
     if (sweepExpiredWorkerQueues(group) > 0) checkQueuedBackgroundWork(group);
   }, 30000);
@@ -237,8 +261,9 @@ export function wakeQueuedBackgroundWork(group = supervisedGroup) {
 export function hasQueuedBackgroundWork(group = supervisedGroup) {
   if (startingQueues.size > 0) return true;
   if (getHonkerWorkerStatuses().some((worker) => worker.running)) return true;
-  return QUEUE_WORKERS.some((worker) =>
-    isQueueOwnedByGroup(worker.queue, group) && hasClaimableHonkerJobs(worker.queue));
+  return QUEUE_WORKERS.some(
+    (worker) => isQueueOwnedByGroup(worker.queue, group) && hasClaimableHonkerJobs(worker.queue),
+  );
 }
 
 export function startBackgroundWorkers({ logger = console } = {}) {
@@ -247,7 +272,10 @@ export function startBackgroundWorkers({ logger = console } = {}) {
   }
   backgroundWorkersStarted = true;
   recoverJobsClaimedBeforeStart(logger).catch((error) => {
-    logger.warn?.("[AppRuntime] Could not recover jobs from before the restart:", error?.message || error);
+    logger.warn?.(
+      "[AppRuntime] Could not recover jobs from before the restart:",
+      error?.message || error,
+    );
   });
   import("./honkerTaskStatus.js")
     .then(({ clearStaleHonkerJobs }) => clearStaleHonkerJobs())
@@ -287,38 +315,53 @@ export function startBackgroundWorkers({ logger = console } = {}) {
         return;
       }
       if (message?.type === "download-owner-client-request") {
-        void backgroundProcessSupervisor.request("downloads", message.method, message.args, {
-          timeoutMs: Math.min(30 * 60 * 1000, Number(message.timeoutMs) || 30000),
-        }).then((result) => {
-          if (child.connected) child.send({
-            type: "download-owner-client-response", requestId: message.requestId, result,
+        void backgroundProcessSupervisor
+          .request("downloads", message.method, message.args, {
+            timeoutMs: Math.min(30 * 60 * 1000, Number(message.timeoutMs) || 30000),
+          })
+          .then((result) => {
+            if (child.connected)
+              child.send({
+                type: "download-owner-client-response",
+                requestId: message.requestId,
+                result,
+              });
+          })
+          .catch((error) => {
+            if (child.connected)
+              child.send({
+                type: "download-owner-client-response",
+                requestId: message.requestId,
+                error: error?.message || String(error),
+              });
           });
-        }).catch((error) => {
-          if (child.connected) child.send({
-            type: "download-owner-client-response", requestId: message.requestId,
-            error: error?.message || String(error),
-          });
-        });
         return;
       }
       if (message?.type === "cache-invalidate" && message.cache === "playlists") {
         void Promise.all([
           import("../db/helpers/index.js"),
           import("./playlists/flowPlaylistConfig.js"),
-        ]).then(([{ dbOps }, { invalidateFlowPlaylistConfigCache }]) => {
-          dbOps.invalidateSettingsCache();
-          invalidateFlowPlaylistConfigCache();
-        }).catch((error) => {
-          logger.warn?.("[AppRuntime] Could not refresh flow cache:", error?.message || error);
-        });
+        ])
+          .then(([{ dbOps }, { invalidateFlowPlaylistConfigCache }]) => {
+            dbOps.invalidateSettingsCache();
+            invalidateFlowPlaylistConfigCache();
+          })
+          .catch((error) => {
+            logger.warn?.("[AppRuntime] Could not refresh flow cache:", error?.message || error);
+          });
         return;
       }
       if (message?.type === "cache-invalidate" && message.cache === "lidarr-artists") {
-        void import("./libraryManager.js").then(({ invalidateLidarrArtistCache }) => {
-          invalidateLidarrArtistCache();
-        }).catch((error) => {
-          logger.warn?.("[AppRuntime] Could not refresh Lidarr artist cache:", error?.message || error);
-        });
+        void import("./libraryManager.js")
+          .then(({ invalidateLidarrArtistCache }) => {
+            invalidateLidarrArtistCache();
+          })
+          .catch((error) => {
+            logger.warn?.(
+              "[AppRuntime] Could not refresh Lidarr artist cache:",
+              error?.message || error,
+            );
+          });
         return;
       }
       if (message?.type === "job-finished" && _group === "downloads") {
@@ -332,11 +375,13 @@ export function startBackgroundWorkers({ logger = console } = {}) {
         return;
       }
       if (message?.type === "cache-invalidate" && message.cache === "news") {
-        void import("./newsService.js").then(({ invalidateNewsResponseCache }) => {
-          invalidateNewsResponseCache();
-        }).catch((error) => {
-          logger.warn?.("[AppRuntime] Could not refresh news cache:", error?.message || error);
-        });
+        void import("./newsService.js")
+          .then(({ invalidateNewsResponseCache }) => {
+            invalidateNewsResponseCache();
+          })
+          .catch((error) => {
+            logger.warn?.("[AppRuntime] Could not refresh news cache:", error?.message || error);
+          });
         return;
       }
       void forwardWorkerBroadcast(message).catch((error) => {
@@ -364,7 +409,10 @@ export function startBackgroundWorkers({ logger = console } = {}) {
           });
         })
         .catch((error) => {
-          logger.warn?.("[AppRuntime] Failed to report discovery restart:", error?.message || error);
+          logger.warn?.(
+            "[AppRuntime] Failed to report discovery restart:",
+            error?.message || error,
+          );
         });
       return recovery;
     },
@@ -388,10 +436,7 @@ export function startBackgroundWorkers({ logger = console } = {}) {
       return module.startLibraryFileWatcher({ logger });
     })
     .catch((error) => {
-      logger.warn?.(
-        "[AppRuntime] Failed to start library file watcher:",
-        error?.message || error,
-      );
+      logger.warn?.("[AppRuntime] Failed to start library file watcher:", error?.message || error);
     });
   return true;
 }

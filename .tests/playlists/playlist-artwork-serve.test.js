@@ -46,8 +46,13 @@ afterAll(async () => {
 });
 
 test("serves playlist artwork from a hidden data directory", async () => {
-  const owner = userOps.createUser("listener", hashPassword("listener-password"), "user", { accessFlow: true });
-  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Sunday Morning", ownerUserId: owner.id });
+  const owner = userOps.createUser("listener", hashPassword("listener-password"), "user", {
+    accessFlow: true,
+  });
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
+    name: "Sunday Morning",
+    ownerUserId: owner.id,
+  });
   await playlistManager.generateArtwork(playlist.id);
   const artwork = await playlistManager.resolveArtworkFile(playlist.id);
   assert.ok(artwork.safePath.split(path.sep).some((segment) => segment.startsWith(".")));
@@ -60,18 +65,30 @@ test("serves playlist artwork from a hidden data directory", async () => {
     const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
   });
   try {
-    const response = await fetch(`http://127.0.0.1:${server.address().port}/api/playlists/artwork/${playlist.id}`, {
-      headers: { authorization: `Basic ${Buffer.from("listener:listener-password").toString("base64")}` },
-    });
+    const response = await fetch(
+      `http://127.0.0.1:${server.address().port}/api/playlists/artwork/${playlist.id}`,
+      {
+        headers: {
+          authorization: `Basic ${Buffer.from("listener:listener-password").toString("base64")}`,
+        },
+      },
+    );
     assert.equal(response.status, 200);
-    assert.deepEqual(Buffer.from(await response.arrayBuffer()), await fs.readFile(artwork.safePath));
+    assert.deepEqual(
+      Buffer.from(await response.arrayBuffer()),
+      await fs.readFile(artwork.safePath),
+    );
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
 });
 
 test("a new flow or static playlist has its cover as soon as it is created, with no media server connected", async () => {
-  dbOps.updateSettings({ integrations: {}, playlistArtwork: { style: "aurral" }, onboardingComplete: true });
+  dbOps.updateSettings({
+    integrations: {},
+    playlistArtwork: { style: "aurral" },
+    onboardingComplete: true,
+  });
   userOps.createUser("curator", hashPassword("curator-password"), "admin");
   const authorization = `Basic ${Buffer.from("curator:curator-password").toString("base64")}`;
   const queuedOperations = [];
@@ -96,7 +113,12 @@ test("a new flow or static playlist has its cover as soon as it is created, with
     return { status: response.status, type: response.headers.get("content-type"), body: response };
   };
   try {
-    const flowResponse = await request("/flows", { name: "Fresh Flow", mix: { discover: 100 }, size: 10, scheduleDays: [1] });
+    const flowResponse = await request("/flows", {
+      name: "Fresh Flow",
+      mix: { discover: 100 },
+      size: 10,
+      scheduleDays: [1],
+    });
     assert.equal(flowResponse.status, 200);
     const { flow } = await flowResponse.body.json();
     const flowCover = await request(`/artwork/${flow.id}`);

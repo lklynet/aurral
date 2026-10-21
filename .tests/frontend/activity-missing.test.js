@@ -29,7 +29,12 @@ test("cutoff activity includes owned files below the preferred quality", () => {
     false,
   );
   assert.equal(
-    isCutoffUnmetAurralJob({ status: "done", qualityOwned: true, qualityState: "upgrade", monitored: false }),
+    isCutoffUnmetAurralJob({
+      status: "done",
+      qualityOwned: true,
+      qualityState: "upgrade",
+      monitored: false,
+    }),
     false,
   );
 });

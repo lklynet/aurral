@@ -42,7 +42,9 @@ export function ConnectedAccountsSection({ showSuccess, showError, className = "
     setUnlinkingId(identity.id);
     try {
       await unlinkMyIdentity(identity.id);
-      showSuccess?.(`Disconnected ${PROVIDER_LABELS[identity.providerType] || identity.providerType}.`);
+      showSuccess?.(
+        `Disconnected ${PROVIDER_LABELS[identity.providerType] || identity.providerType}.`,
+      );
       await load();
     } catch (err) {
       if (isReauthRequiredError(err)) {
@@ -77,7 +79,9 @@ export function ConnectedAccountsSection({ showSuccess, showError, className = "
       window.location.assign(result.authUrl);
     } catch (err) {
       showError?.(
-        err.response?.data?.message || err.response?.data?.error || err.message ||
+        err.response?.data?.message ||
+          err.response?.data?.error ||
+          err.message ||
           `Failed to connect ${label}`,
       );
     }
@@ -94,9 +98,7 @@ export function ConnectedAccountsSection({ showSuccess, showError, className = "
     <div className={`settings-page__section${className ? ` ${className}` : ""}`}>
       <div className="settings-page__section-intro">
         <h3 className="settings-page__section-title">Connected accounts</h3>
-        <p className="settings-page__section-note">
-          Additional sign-in methods.
-        </p>
+        <p className="settings-page__section-note">Additional sign-in methods.</p>
       </div>
 
       {loadError ? (

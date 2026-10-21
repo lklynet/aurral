@@ -37,11 +37,7 @@ export const buildArtistFeedbackPayload = (
     artistId: getArtistRecordId(artist),
     artistName: artist?.name || artist?.artistName || null,
     action,
-    sourceContext:
-      sourceContext ||
-      artist?.sourceType ||
-      artist?.discoveryTier ||
-      null,
+    sourceContext: sourceContext || artist?.sourceType || artist?.discoveryTier || null,
     tagContext,
     seedContext,
   };

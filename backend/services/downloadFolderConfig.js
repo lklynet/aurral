@@ -329,7 +329,10 @@ export function listBrowseDirectory(requestedPath, _roots = getFilesystemBrowseR
 }
 
 function normalizeRootForCompare(value) {
-  let normalized = String(value || "").trim().split("\\").join("/");
+  let normalized = String(value || "")
+    .trim()
+    .split("\\")
+    .join("/");
   if (!normalized) return "";
   while (normalized.length > 1 && normalized.endsWith("/")) {
     normalized = normalized.slice(0, -1);
@@ -355,7 +358,9 @@ export function getOverlapCheckedLidarrRoots(lidarrSettings = {}) {
   return [
     ...(Array.isArray(lidarrSettings?.rootFolderPaths) ? lidarrSettings.rootFolderPaths : []),
     lidarrSettings?.rootFolderPath,
-  ].filter(Boolean).map((root) => resolveLocalPath(root, mappings));
+  ]
+    .filter(Boolean)
+    .map((root) => resolveLocalPath(root, mappings));
 }
 
 export function computeLibraryRootOverlaps({ aurralRoot, lidarrRoots } = {}) {

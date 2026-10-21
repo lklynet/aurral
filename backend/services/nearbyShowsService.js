@@ -68,7 +68,10 @@ for (const [network, prefix] of [
 }
 
 const getPublicRequestIp = (req) => {
-  const ip = String(req?.ip || "").trim().replace(/^::ffff:/i, "").toLowerCase();
+  const ip = String(req?.ip || "")
+    .trim()
+    .replace(/^::ffff:/i, "")
+    .toLowerCase();
   const family = isIP(ip);
   if (!family) return "";
   return nonPublicAddresses.check(ip, family === 6 ? "ipv6" : "ipv4") ? "" : ip;
@@ -164,7 +167,10 @@ const resolveZipLocation = async (zipCode, countryCode) => {
   if (cached) return cached;
   return runSharedInflight(nearbyShowsInflight, `zip:${cacheKey}`, async (signal) => {
     try {
-      if (isLikelyUsZip(normalizedZip) && (!normalizedCountryCode || normalizedCountryCode === "US")) {
+      if (
+        isLikelyUsZip(normalizedZip) &&
+        (!normalizedCountryCode || normalizedCountryCode === "US")
+      ) {
         const response = await axios.get(
           `https://api.zippopotam.us/us/${encodeURIComponent(normalizedZip)}`,
           {
@@ -371,35 +377,35 @@ export const getNearbyShows = async ({
 
   let location;
   if (sanitizedZipCode) {
-    location =
-      (await resolveZipLocation(sanitizedZipCode, sanitizedCountryCode)) || {
-        source: "zip",
-        resolved: false,
-        postalCode: sanitizedZipCode,
-        city: null,
-        region: null,
-        regionCode: null,
-        countryCode: sanitizedCountryCode || (isLikelyUsZip(sanitizedZipCode) ? "US" : null),
-        latitude: null,
-        longitude: null,
-        label: sanitizedZipCode,
-      };
+    location = (await resolveZipLocation(sanitizedZipCode, sanitizedCountryCode)) || {
+      source: "zip",
+      resolved: false,
+      postalCode: sanitizedZipCode,
+      city: null,
+      region: null,
+      regionCode: null,
+      countryCode: sanitizedCountryCode || (isLikelyUsZip(sanitizedZipCode) ? "US" : null),
+      latitude: null,
+      longitude: null,
+      label: sanitizedZipCode,
+    };
   } else {
     location = await resolveIpLocation(publicIp);
   }
 
-  const shows = location.resolved === false
-    ? []
-    : sortShows(
-        matchShows(
-          await fetchTicketmasterEvents({ location, radiusMiles }),
-          buildArtistMap([
-            ["library", libraryArtists],
-            ["recommended", recommendedArtists],
-            ["trending", trendingArtists],
-          ]),
-        ),
-      );
+  const shows =
+    location.resolved === false
+      ? []
+      : sortShows(
+          matchShows(
+            await fetchTicketmasterEvents({ location, radiusMiles }),
+            buildArtistMap([
+              ["library", libraryArtists],
+              ["recommended", recommendedArtists],
+              ["trending", trendingArtists],
+            ]),
+          ),
+        );
   const result = { location, shows };
   if (resultCacheKey) nearbyShowsResponseCache.set(resultCacheKey, result);
   return result;

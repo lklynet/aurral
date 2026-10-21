@@ -29,7 +29,9 @@ const apiRequests = (requests, fragment) => requests.filter((path) => path.inclu
 
 test("hovering a playlist link fetches it once and the page reuses the result", async (t) => {
   const playlist = { id: "42", name: "Prefetched", tracks: [] };
-  const { requests, prefetchRoute, queryClient, queryOptions } = await setup(t, () => ({ body: playlist }));
+  const { requests, prefetchRoute, queryClient, queryOptions } = await setup(t, () => ({
+    body: playlist,
+  }));
 
   await Promise.all([
     prefetchRoute("/discover/playlists/deezer/42", { userId: "user-1" }),
@@ -55,7 +57,9 @@ test("a failed prefetch is not retried on the next hover", async (t) => {
   await prefetchRoute("/artist/a/release/rg-1");
   assert.equal(apiRequests(requests, "/artists/release-group/rg-1").length, 1);
 
-  await assert.rejects(queryClient.fetchQuery(queryOptions.releaseGroupDetailsQueryOptions("rg-1")));
+  await assert.rejects(
+    queryClient.fetchQuery(queryOptions.releaseGroupDetailsQueryOptions("rg-1")),
+  );
   assert.equal(apiRequests(requests, "/artists/release-group/rg-1").length, 2);
 });
 

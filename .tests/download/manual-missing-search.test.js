@@ -7,7 +7,17 @@ import {
   resetDatabase,
 } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, { db }, { dbOps }, trackerModule, searchService, orchestrator, qualityService, orchestratorWorker, postDownloadValidator] = await setupIsolatedBackend(
+const [
+  isolatedState,
+  { db },
+  { dbOps },
+  trackerModule,
+  searchService,
+  orchestrator,
+  qualityService,
+  orchestratorWorker,
+  postDownloadValidator,
+] = await setupIsolatedBackend(
   "manual-missing-search",
   "backend/config/db-sqlite.js",
   "backend/db/helpers/index.js",
@@ -51,12 +61,13 @@ test("manual search exposes opaque result ids and binds the selection to its use
   assert.notEqual(response.results[0].id, raw.id);
   assert.equal(JSON.stringify(response).includes(raw.url), false);
   assert.throws(
-    () => searchService.getManualMissingSelection({
-      sessionId: response.sessionId,
-      resultId: response.results[0].id,
-      jobId: "job-1",
-      actorId: "different-user",
-    }),
+    () =>
+      searchService.getManualMissingSelection({
+        sessionId: response.sessionId,
+        resultId: response.results[0].id,
+        jobId: "job-1",
+        actorId: "different-user",
+      }),
     /expired/i,
   );
 
@@ -81,12 +92,13 @@ test("manual search exposes opaque result ids and binds the selection to its use
   );
   assert.equal(searchService.consumeManualMissingSelection(response.sessionId), true);
   assert.throws(
-    () => searchService.getManualMissingSelection({
-      sessionId: response.sessionId,
-      resultId: response.results[0].id,
-      jobId: "job-1",
-      actorId: "user-1",
-    }),
+    () =>
+      searchService.getManualMissingSelection({
+        sessionId: response.sessionId,
+        resultId: response.results[0].id,
+        jobId: "job-1",
+        actorId: "user-1",
+      }),
     /expired/i,
   );
 });
@@ -110,7 +122,9 @@ test("manual selection queues only the exact selected candidate", async () => {
 
 test("failed manual queue handoff keeps the job failed and available to retry", () => {
   const tracker = new DownloadTracker({
-    enqueuePipeline: () => { throw new Error("queue unavailable"); },
+    enqueuePipeline: () => {
+      throw new Error("queue unavailable");
+    },
   });
   const jobId = tracker.addJob({ artistName: "An Artist", trackName: "A Song" }, "manual-test");
   tracker.setFailed(jobId, "Automatic search found nothing");
@@ -128,18 +142,24 @@ test("failed manual queue handoff keeps the job failed and available to retry", 
 
 test("manual replacement queues the exact candidate without changing the current track first", async () => {
   const tracker = new DownloadTracker();
-  const sourceJobId = tracker.addJob({
-    artistName: "An Artist",
-    trackName: "Current Song",
-    managedBy: "aurral",
-  }, "replacement-test");
+  const sourceJobId = tracker.addJob(
+    {
+      artistName: "An Artist",
+      trackName: "Current Song",
+      managedBy: "aurral",
+    },
+    "replacement-test",
+  );
   tracker.setDone(sourceJobId, "C:/aurral/current-song.flac", "Current Album");
   const candidate = { raw: { id: "chosen-replacement" } };
 
-  assert.equal(tracker.enqueueManualReplacementSelection(sourceJobId, {
-    source: "deemix",
-    candidate,
-  }), true);
+  assert.equal(
+    tracker.enqueueManualReplacementSelection(sourceJobId, {
+      source: "deemix",
+      candidate,
+    }),
+    true,
+  );
   assert.equal(tracker.getJob(sourceJobId).status, "done");
   assert.equal(tracker.getJob(sourceJobId).finalPath, "C:/aurral/current-song.flac");
 
@@ -147,8 +167,9 @@ test("manual replacement queues the exact candidate without changing the current
   assert.ok(replacement);
   assert.equal(replacement.manualReplacementSearch, true);
   const { listHonkerJobs } = await import("../../backend/services/honkerDb.js");
-  const queued = listHonkerJobs("slskd-pipeline")
-    .find((entry) => entry.payload?.jobId === replacement.id);
+  const queued = listHonkerJobs("slskd-pipeline").find(
+    (entry) => entry.payload?.jobId === replacement.id,
+  );
   assert.ok(queued);
   assert.equal(queued.payload.manualSelection, true);
   assert.deepEqual(queued.payload.allowedSources, ["deemix"]);
@@ -157,19 +178,27 @@ test("manual replacement queues the exact candidate without changing the current
 
 test("failed manual replacement handoff leaves the current track intact", () => {
   const tracker = new DownloadTracker({
-    enqueuePipeline: () => { throw new Error("queue unavailable"); },
+    enqueuePipeline: () => {
+      throw new Error("queue unavailable");
+    },
   });
-  const sourceJobId = tracker.addJob({
-    artistName: "An Artist",
-    trackName: "Current Song",
-    managedBy: "aurral",
-  }, "replacement-test");
+  const sourceJobId = tracker.addJob(
+    {
+      artistName: "An Artist",
+      trackName: "Current Song",
+      managedBy: "aurral",
+    },
+    "replacement-test",
+  );
   tracker.setDone(sourceJobId, "C:/aurral/current-song.flac", "Current Album");
 
-  assert.equal(tracker.enqueueManualReplacementSelection(sourceJobId, {
-    source: "deemix",
-    candidate: { raw: { id: "chosen-replacement" } },
-  }), false);
+  assert.equal(
+    tracker.enqueueManualReplacementSelection(sourceJobId, {
+      source: "deemix",
+      candidate: { raw: { id: "chosen-replacement" } },
+    }),
+    false,
+  );
   const sourceJob = tracker.getJob(sourceJobId);
   assert.equal(sourceJob.status, "done");
   assert.equal(sourceJob.finalPath, "C:/aurral/current-song.flac");
@@ -177,11 +206,15 @@ test("failed manual replacement handoff leaves the current track intact", () => 
 });
 
 test("manual pipeline failures cannot fall back to another source", () => {
-  const next = orchestrator.buildNextSourcePayload({
-    manualSelection: true,
-    source: "deemix",
-    allowedSources: ["deemix"],
-  }, "deemix", "download failed");
+  const next = orchestrator.buildNextSourcePayload(
+    {
+      manualSelection: true,
+      source: "deemix",
+      allowedSources: ["deemix"],
+    },
+    "deemix",
+    "download failed",
+  );
   assert.equal(next, null);
 });
 
@@ -189,8 +222,12 @@ test("unexpected manual download errors fail once instead of entering worker ret
   const failures = [];
   const payload = { jobId: "job-1", source: "ytdlp", manualSelection: true };
   await orchestratorWorker.processPipelineJob(payload, {
-    processPipelinePayload: async () => { throw new Error("selected result failed"); },
-    continuePipeline: async () => { throw new Error("must not continue"); },
+    processPipelinePayload: async () => {
+      throw new Error("selected result failed");
+    },
+    continuePipeline: async () => {
+      throw new Error("must not continue");
+    },
     failPipelineJob: async (failedPayload, message) => failures.push({ failedPayload, message }),
   });
   assert.equal(failures.length, 1);
@@ -200,7 +237,11 @@ test("unexpected manual download errors fail once instead of entering worker ret
   await assert.rejects(
     orchestratorWorker.processPipelineJob(
       { jobId: "job-2", source: "ytdlp" },
-      { processPipelinePayload: async () => { throw new Error("automatic retry"); } },
+      {
+        processPipelinePayload: async () => {
+          throw new Error("automatic retry");
+        },
+      },
     ),
     /automatic retry/,
   );
@@ -222,7 +263,8 @@ test("manual selection overrides the automatic quality floor but still requires 
     true,
   );
   assert.equal(
-    qualityService.validateParsedQuality({ format: {} }, "track.bin", { manualSelection: true }).valid,
+    qualityService.validateParsedQuality({ format: {} }, "track.bin", { manualSelection: true })
+      .valid,
     false,
   );
 });
@@ -247,21 +289,32 @@ test("manual selection trusts the chosen track identity after technical audio ch
     request: { artistName: "Expected Artist", trackName: "Expected Song" },
     filePath: "broken.mp3",
     source: "deemix",
-    options: { manualSelection: true, parseFile: async () => { throw new Error("broken"); } },
+    options: {
+      manualSelection: true,
+      parseFile: async () => {
+        throw new Error("broken");
+      },
+    },
   });
   assert.equal(unreadable.valid, false);
 });
 
 test("manual Usenet releases choose the requested file without rejecting the selected release", async () => {
   const parsedByPath = new Map([
-    ["01 Other Song.mp3", {
-      common: { title: "Other Song", track: { no: 1 } },
-      format: { container: "MPEG", lossless: false, bitrate: 128000, duration: 180 },
-    }],
-    ["02 Expected Song.mp3", {
-      common: { title: "Expected Song", track: { no: 2 } },
-      format: { container: "MPEG", lossless: false, bitrate: 128000, duration: 200 },
-    }],
+    [
+      "01 Other Song.mp3",
+      {
+        common: { title: "Other Song", track: { no: 1 } },
+        format: { container: "MPEG", lossless: false, bitrate: 128000, duration: 180 },
+      },
+    ],
+    [
+      "02 Expected Song.mp3",
+      {
+        common: { title: "Expected Song", track: { no: 2 } },
+        format: { container: "MPEG", lossless: false, bitrate: 128000, duration: 200 },
+      },
+    ],
   ]);
   const selected = await postDownloadValidator.selectVerifiedDownloadedFile({
     request: { artistName: "Expected Artist", trackName: "Expected Song", trackNumber: 2 },
@@ -279,14 +332,20 @@ test("manual Usenet releases choose the requested file without rejecting the sel
 
 test("manual Usenet file selection prefers title evidence over a coincidental track number", async () => {
   const parsedByPath = new Map([
-    ["02 Unrelated Song.mp3", {
-      common: { title: "Unrelated Song", track: { no: 2 } },
-      format: { container: "MPEG", lossless: false, bitrate: 128000, duration: 180 },
-    }],
-    ["Expected Song.mp3", {
-      common: { title: "Expected Song", track: { no: 7 } },
-      format: { container: "MPEG", lossless: false, bitrate: 128000, duration: 200 },
-    }],
+    [
+      "02 Unrelated Song.mp3",
+      {
+        common: { title: "Unrelated Song", track: { no: 2 } },
+        format: { container: "MPEG", lossless: false, bitrate: 128000, duration: 180 },
+      },
+    ],
+    [
+      "Expected Song.mp3",
+      {
+        common: { title: "Expected Song", track: { no: 7 } },
+        format: { container: "MPEG", lossless: false, bitrate: 128000, duration: 200 },
+      },
+    ],
   ]);
   const selected = await postDownloadValidator.selectVerifiedDownloadedFile({
     request: { artistName: "Expected Artist", trackName: "Expected Song", trackNumber: 2 },
@@ -305,14 +364,20 @@ test("manual Usenet file selection prefers title evidence over a coincidental tr
 
 test("manual Usenet release fails when none of its files match the requested title", async () => {
   const parsedByPath = new Map([
-    ["02 Unrelated Song.mp3", {
-      common: { title: "Unrelated Song", track: { no: 2 } },
-      format: { container: "MPEG", lossless: false, bitrate: 128000, duration: 180 },
-    }],
-    ["07 Another Track.mp3", {
-      common: { title: "Another Track", track: { no: 7 } },
-      format: { container: "MPEG", lossless: false, bitrate: 128000, duration: 200 },
-    }],
+    [
+      "02 Unrelated Song.mp3",
+      {
+        common: { title: "Unrelated Song", track: { no: 2 } },
+        format: { container: "MPEG", lossless: false, bitrate: 128000, duration: 180 },
+      },
+    ],
+    [
+      "07 Another Track.mp3",
+      {
+        common: { title: "Another Track", track: { no: 7 } },
+        format: { container: "MPEG", lossless: false, bitrate: 128000, duration: 200 },
+      },
+    ],
   ]);
   const selected = await postDownloadValidator.selectVerifiedDownloadedFile({
     request: { artistName: "Expected Artist", trackName: "Expected Song", trackNumber: 2 },
@@ -332,7 +397,8 @@ test("manual Usenet release fails when none of its files match the requested tit
 
 test("manual Soulseek search retains ownership after an uncertain creation response", async () => {
   const { createMockHttpServer } = await import("../helpers/backendTestHarness.js");
-  const { clearDownloadProviderWork, listDownloadProviderWork } = await import("../../backend/services/downloadJobs/downloadCancellation.js");
+  const { clearDownloadProviderWork, listDownloadProviderWork } =
+    await import("../../backend/services/downloadJobs/downloadCancellation.js");
   let searchId;
   const mock = await createMockHttpServer((req, res) => {
     if (req.method === "DELETE") {
@@ -342,7 +408,9 @@ test("manual Soulseek search retains ownership after an uncertain creation respo
       return;
     }
     let body = "";
-    req.on("data", (chunk) => { body += chunk; });
+    req.on("data", (chunk) => {
+      body += chunk;
+    });
     req.on("end", () => {
       searchId = JSON.parse(body).id;
       // Simulate another process clearing the record while creation is in flight.
@@ -352,14 +420,29 @@ test("manual Soulseek search retains ownership after an uncertain creation respo
   });
   const settings = dbOps.getSettings();
   try {
-    dbOps.updateSettings({ ...settings, integrations: { ...settings.integrations,
-      slskd: { enabled: true, url: mock.url, cleanupAfterRuns: false } } });
-    await assert.rejects(searchService.createManualMissingSearch({
-      job: { id: "manual-owned-job", artistName: "The Band", trackName: "First" },
-      sourceId: "slskd", actorId: "disposable-user", mode: "replacement",
-    }));
-    const owned = listDownloadProviderWork({ jobIds: ["manual-owned-job"], provider: "slskd-search" });
-    assert.deepEqual(owned.map((work) => work.work_id), [searchId]);
+    dbOps.updateSettings({
+      ...settings,
+      integrations: {
+        ...settings.integrations,
+        slskd: { enabled: true, url: mock.url, cleanupAfterRuns: false },
+      },
+    });
+    await assert.rejects(
+      searchService.createManualMissingSearch({
+        job: { id: "manual-owned-job", artistName: "The Band", trackName: "First" },
+        sourceId: "slskd",
+        actorId: "disposable-user",
+        mode: "replacement",
+      }),
+    );
+    const owned = listDownloadProviderWork({
+      jobIds: ["manual-owned-job"],
+      provider: "slskd-search",
+    });
+    assert.deepEqual(
+      owned.map((work) => work.work_id),
+      [searchId],
+    );
   } finally {
     dbOps.updateSettings(settings);
     await mock.close();

@@ -106,7 +106,7 @@ function useSharedVolume() {
 
 function trackAt(state, playbackIndex) {
   const queueIndex = state.playbackOrder[playbackIndex];
-  return queueIndex == null ? null : state.queue[queueIndex] ?? null;
+  return queueIndex == null ? null : (state.queue[queueIndex] ?? null);
 }
 
 function trackSignature(state, playbackIndex, track, formatKey) {
@@ -175,50 +175,53 @@ export function AudioQueueProvider({ children }) {
     }).catch(() => {});
   }, []);
 
-  const loadTrack = useCallback((s, playbackIndex, { formatAttemptIndex = 0, autoplay = true } = {}) => {
-    const track = trackAt(s, playbackIndex);
-    if (!track?.src) return;
-    const formatAttempts = getFormatLoadAttempts(track);
-    const formatKey = formatAttempts[formatAttemptIndex];
-    if (!formatKey) return;
-    const signature = trackSignature(s, playbackIndex, track, formatKey);
-    if (loadedSignatureRef.current === signature) return;
-    loadedSignatureRef.current = signature;
-    const resumeAt = resumeAtRef.current;
-    if (resumeAt?.entryId !== track.entryId) resumeAtRef.current = null;
+  const loadTrack = useCallback(
+    (s, playbackIndex, { formatAttemptIndex = 0, autoplay = true } = {}) => {
+      const track = trackAt(s, playbackIndex);
+      if (!track?.src) return;
+      const formatAttempts = getFormatLoadAttempts(track);
+      const formatKey = formatAttempts[formatAttemptIndex];
+      if (!formatKey) return;
+      const signature = trackSignature(s, playbackIndex, track, formatKey);
+      if (loadedSignatureRef.current === signature) return;
+      loadedSignatureRef.current = signature;
+      const resumeAt = resumeAtRef.current;
+      if (resumeAt?.entryId !== track.entryId) resumeAtRef.current = null;
 
-    engine.load({
-      src: track.src,
-      format: getHowlerFormat(formatKey),
-      autoplay,
-      startAt: resumeAt?.entryId === track.entryId ? resumeAt.position : 0,
-      onLoadError: () => {
-        loadedSignatureRef.current = null;
-        if (formatAttemptIndex + 1 >= formatAttempts.length) {
-          resumeAtRef.current = null;
-          dispatch({
-            type: "SET_ERROR",
-            error: "Track unavailable. Restore the file or refresh the Library.",
+      engine.load({
+        src: track.src,
+        format: getHowlerFormat(formatKey),
+        autoplay,
+        startAt: resumeAt?.entryId === track.entryId ? resumeAt.position : 0,
+        onLoadError: () => {
+          loadedSignatureRef.current = null;
+          if (formatAttemptIndex + 1 >= formatAttempts.length) {
+            resumeAtRef.current = null;
+            dispatch({
+              type: "SET_ERROR",
+              error: "Track unavailable. Restore the file or refresh the Library.",
+            });
+            engine.pause();
+            return;
+          }
+          loadTrackRef.current(stateRef.current, playbackIndex, {
+            formatAttemptIndex: formatAttemptIndex + 1,
+            autoplay,
           });
-          engine.pause();
-          return;
-        }
-        loadTrackRef.current(stateRef.current, playbackIndex, {
-          formatAttemptIndex: formatAttemptIndex + 1,
-          autoplay,
-        });
-      },
-      onEnd: () => {
-        const cur = stateRef.current;
-        if (cur.currentIndex < 0) return;
-        recordPlay(track);
-        const action = { type: cur.repeatMode === "one" ? "REPLAY" : "NEXT" };
-        const next = queueReducer(cur, action);
-        if (next.autoplay) loadTrackRef.current(next, next.currentIndex);
-        dispatch(action);
-      },
-    });
-  }, [dispatch, engine, recordPlay]);
+        },
+        onEnd: () => {
+          const cur = stateRef.current;
+          if (cur.currentIndex < 0) return;
+          recordPlay(track);
+          const action = { type: cur.repeatMode === "one" ? "REPLAY" : "NEXT" };
+          const next = queueReducer(cur, action);
+          if (next.autoplay) loadTrackRef.current(next, next.currentIndex);
+          dispatch(action);
+        },
+      });
+    },
+    [dispatch, engine, recordPlay],
+  );
 
   const loadTrackAtIndex = useCallback(
     (playbackIndex, options) => loadTrack(stateRef.current, playbackIndex, options),
@@ -265,9 +268,12 @@ export function AudioQueueProvider({ children }) {
 
   const toggleMute = useCallback(() => setMuted(!muted), [muted, setMuted]);
 
-  const setShuffleEnabled = useCallback((enabled) => {
-    dispatch({ type: "SET_SHUFFLE", enabled });
-  }, [dispatch]);
+  const setShuffleEnabled = useCallback(
+    (enabled) => {
+      dispatch({ type: "SET_SHUFFLE", enabled });
+    },
+    [dispatch],
+  );
 
   const toggleShuffle = useCallback(() => {
     dispatch({ type: "SET_SHUFFLE", enabled: !stateRef.current.isShuffleEnabled });
@@ -277,51 +283,55 @@ export function AudioQueueProvider({ children }) {
     dispatch({ type: "TOGGLE_REPEAT" });
   }, [dispatch]);
 
-  const playQueue = useCallback((
-    tracks,
-    { startTrackId = null, source: nextSource = null, shuffle = false } = {},
-  ) => {
-    const normalized = (Array.isArray(tracks) ? tracks : [])
-      .map((track) => normalizeQueueTrack(track))
-      .filter((track) => track.src);
-    if (normalized.length === 0) return false;
-    dispatch({
-      type: "PLAY_QUEUE",
-      tracks: normalized,
-      startTrackId,
-      shuffle,
-      source: nextSource,
-    });
-    return true;
-  }, [dispatch]);
+  const playQueue = useCallback(
+    (tracks, { startTrackId = null, source: nextSource = null, shuffle = false } = {}) => {
+      const normalized = (Array.isArray(tracks) ? tracks : [])
+        .map((track) => normalizeQueueTrack(track))
+        .filter((track) => track.src);
+      if (normalized.length === 0) return false;
+      dispatch({
+        type: "PLAY_QUEUE",
+        tracks: normalized,
+        startTrackId,
+        shuffle,
+        source: nextSource,
+      });
+      return true;
+    },
+    [dispatch],
+  );
 
-  const playTrack = useCallback((track, options = {}) => {
-    const normalized = normalizeQueueTrack(track);
-    if (!normalized.src) return false;
-    const contextTracks = (
-      Array.isArray(options.queue) && options.queue.length > 0
-        ? options.queue
-        : [track]
-    )
-      .map((entry) => normalizeQueueTrack(entry))
-      .filter((entry) => entry.src);
-    if (contextTracks.length === 0) return false;
-    return playQueue(contextTracks, {
-      startTrackId: normalized.id,
-      source: options.source ?? null,
-    });
-  }, [playQueue]);
+  const playTrack = useCallback(
+    (track, options = {}) => {
+      const normalized = normalizeQueueTrack(track);
+      if (!normalized.src) return false;
+      const contextTracks = (
+        Array.isArray(options.queue) && options.queue.length > 0 ? options.queue : [track]
+      )
+        .map((entry) => normalizeQueueTrack(entry))
+        .filter((entry) => entry.src);
+      if (contextTracks.length === 0) return false;
+      return playQueue(contextTracks, {
+        startTrackId: normalized.id,
+        source: options.source ?? null,
+      });
+    },
+    [playQueue],
+  );
 
-  const insertTracks = useCallback((tracks, position, { source: nextSource = null } = {}) => {
-    const normalized = (Array.isArray(tracks) ? tracks : [tracks])
-      .map((track) => normalizeQueueTrack(track))
-      .filter((track) => track.src)
-      .map((track) => ({ ...track, queueSource: nextSource }));
-    if (normalized.length === 0) return false;
-    const started = stateRef.current.currentIndex < 0;
-    dispatch({ type: "INSERT_TRACKS", tracks: normalized, position, source: nextSource });
-    return started ? "started" : "queued";
-  }, [dispatch]);
+  const insertTracks = useCallback(
+    (tracks, position, { source: nextSource = null } = {}) => {
+      const normalized = (Array.isArray(tracks) ? tracks : [tracks])
+        .map((track) => normalizeQueueTrack(track))
+        .filter((track) => track.src)
+        .map((track) => ({ ...track, queueSource: nextSource }));
+      if (normalized.length === 0) return false;
+      const started = stateRef.current.currentIndex < 0;
+      dispatch({ type: "INSERT_TRACKS", tracks: normalized, position, source: nextSource });
+      return started ? "started" : "queued";
+    },
+    [dispatch],
+  );
 
   const queueNext = useCallback(
     (tracks, options) => insertTracks(tracks, "next", options),
@@ -333,13 +343,19 @@ export function AudioQueueProvider({ children }) {
     [insertTracks],
   );
 
-  const removeFromQueue = useCallback((entryId) => {
-    dispatch({ type: "REMOVE_ENTRY", entryId });
-  }, [dispatch]);
+  const removeFromQueue = useCallback(
+    (entryId) => {
+      dispatch({ type: "REMOVE_ENTRY", entryId });
+    },
+    [dispatch],
+  );
 
-  const reorderUpcoming = useCallback((entryIds) => {
-    dispatch({ type: "REORDER_UPCOMING", entryIds });
-  }, [dispatch]);
+  const reorderUpcoming = useCallback(
+    (entryIds) => {
+      dispatch({ type: "REORDER_UPCOMING", entryIds });
+    },
+    [dispatch],
+  );
 
   const clearUpcoming = useCallback(() => {
     const { queue, playbackOrder, isShuffleEnabled } = stateRef.current;
@@ -347,9 +363,12 @@ export function AudioQueueProvider({ children }) {
     return () => dispatch({ type: "RESTORE_ORDER", queue, playbackOrder, isShuffleEnabled });
   }, [dispatch]);
 
-  const updateQueueArtwork = useCallback((target, artwork, artworkSource = null) => {
-    dispatch({ type: "UPDATE_ARTWORK", target, artwork, artworkSource });
-  }, [dispatch]);
+  const updateQueueArtwork = useCallback(
+    (target, artwork, artworkSource = null) => {
+      dispatch({ type: "UPDATE_ARTWORK", target, artwork, artworkSource });
+    },
+    [dispatch],
+  );
 
   const togglePlayPause = useCallback(() => {
     if (stateRef.current.queue.length === 0) return;
@@ -412,10 +431,13 @@ export function AudioQueueProvider({ children }) {
     dispatch({ type: "PREVIOUS" });
   }, [dispatch, engine, seek]);
 
-  const skipTo = useCallback((playbackIndex) => {
-    if (playbackIndex === stateRef.current.currentIndex) return;
-    dispatch({ type: "SKIP_TO", index: playbackIndex });
-  }, [dispatch]);
+  const skipTo = useCallback(
+    (playbackIndex) => {
+      if (playbackIndex === stateRef.current.currentIndex) return;
+      dispatch({ type: "SKIP_TO", index: playbackIndex });
+    },
+    [dispatch],
+  );
 
   const clearQueue = useCallback(() => {
     loadedSignatureRef.current = null;

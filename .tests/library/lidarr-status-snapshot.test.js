@@ -51,13 +51,15 @@ test("Lidarr status consumers share refreshes, idle, failure, and recovery state
     if (fail) throw new Error("provider unavailable");
     return { records: [] };
   });
-  vi.spyOn(lidarrClient, "request").mockImplementation(async (endpoint, method, data, skip, options) => {
-    assert.equal(endpoint, "/command");
-    assert.deepEqual([method, data, skip, options], ["GET", null, false, { forceRefresh: true }]);
-    calls.command += 1;
-    if (fail) throw new Error("provider unavailable");
-    return [];
-  });
+  vi.spyOn(lidarrClient, "request").mockImplementation(
+    async (endpoint, method, data, skip, options) => {
+      assert.equal(endpoint, "/command");
+      assert.deepEqual([method, data, skip, options], ["GET", null, false, { forceRefresh: true }]);
+      calls.command += 1;
+      if (fail) throw new Error("provider unavailable");
+      return [];
+    },
+  );
   vi.spyOn(lidarrClient, "getAllAlbums").mockImplementation(async () => {
     albumCalls += 1;
     return [];
@@ -267,20 +269,41 @@ test("failed or stale history verifies albums with one bulk read", async () => {
 test("album status reads Lidarr event types rather than words in the history", async () => {
   const now = Date.now();
   vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
-  vi.spyOn(lidarrClient, "getAllAlbums").mockImplementation(async () => [{ id: 201, statistics: { trackFileCount: 0 } }]);
+  vi.spyOn(lidarrClient, "getAllAlbums").mockImplementation(async () => [
+    { id: 201, statistics: { trackFileCount: 0 } },
+  ]);
   const at = (minutesAgo) => new Date(now - minutesAgo * 60 * 1000).toISOString();
   const statuses = await getDownloadStatusesForAlbumIds(["200", "201", "202", "203", "204"], {
     queue: [
-      { albumId: 202, trackedDownloadState: "importBlocked", trackedDownloadStatus: "warning", size: 10, sizeleft: 0 },
-      { albumId: 203, trackedDownloadState: "downloading", trackedDownloadStatus: "warning", size: 10, sizeleft: 5 },
+      {
+        albumId: 202,
+        trackedDownloadState: "importBlocked",
+        trackedDownloadStatus: "warning",
+        size: 10,
+        sizeleft: 0,
+      },
+      {
+        albumId: 203,
+        trackedDownloadState: "downloading",
+        trackedDownloadStatus: "warning",
+        size: 10,
+        sizeleft: 5,
+      },
     ],
-    history: { records: [
-      { albumId: 200, eventType: "downloadImported", date: at(30) },
-      { albumId: 200, eventType: "trackFileRenamed", date: at(1) },
-      { albumId: 201, eventType: "grabbed", sourceTitle: "Epic Fail - Album [FLAC]",
-        data: { message: "failover indexer" }, date: at(1) },
-      { albumId: 204, eventType: "trackFileRetagged", date: at(1) },
-    ] },
+    history: {
+      records: [
+        { albumId: 200, eventType: "downloadImported", date: at(30) },
+        { albumId: 200, eventType: "trackFileRenamed", date: at(1) },
+        {
+          albumId: 201,
+          eventType: "grabbed",
+          sourceTitle: "Epic Fail - Album [FLAC]",
+          data: { message: "failover indexer" },
+          date: at(1),
+        },
+        { albumId: 204, eventType: "trackFileRetagged", date: at(1) },
+      ],
+    },
     commands: [],
   });
   assert.equal(statuses[200].status, "added");

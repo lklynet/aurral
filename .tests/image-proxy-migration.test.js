@@ -31,9 +31,8 @@ test("image cache migration removes obsolete web image bytes but keeps native by
       );
     }
 
-    const { getImageProxyCacheSizeBytes } = await import(
-      "../backend/services/imageProxyService.js"
-    );
+    const { getImageProxyCacheSizeBytes } =
+      await import("../backend/services/imageProxyService.js");
     assert.equal(await getImageProxyCacheSizeBytes(), entries[3][0].length);
 
     for (const [cacheKey, profile] of entries) {

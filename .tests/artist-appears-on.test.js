@@ -67,10 +67,34 @@ test("appears-on lists other artists' releases once each, newest first, and neve
       "release-count": 4,
       "release-offset": 0,
       releases: [
-        mbRelease({ id: "r-comp", groupId: "rg-comp", title: "Hits of 1995", date: "1995-03-01", by: credit(VARIOUS_ARTISTS, "Various Artists") }),
-        mbRelease({ id: "r-comp-reissue", groupId: "rg-comp", title: "Hits of 1995", date: "2001-06-01", by: credit(VARIOUS_ARTISTS, "Various Artists") }),
-        mbRelease({ id: "r-own", groupId: "rg-own", title: "Own Album", date: "2020-01-01", by: ownCredit }),
-        mbRelease({ id: "r-feature", groupId: "rg-feature", title: "Host Album", date: "2010-09-09", by: credit(GUEST_HOST, "Host Artist") }),
+        mbRelease({
+          id: "r-comp",
+          groupId: "rg-comp",
+          title: "Hits of 1995",
+          date: "1995-03-01",
+          by: credit(VARIOUS_ARTISTS, "Various Artists"),
+        }),
+        mbRelease({
+          id: "r-comp-reissue",
+          groupId: "rg-comp",
+          title: "Hits of 1995",
+          date: "2001-06-01",
+          by: credit(VARIOUS_ARTISTS, "Various Artists"),
+        }),
+        mbRelease({
+          id: "r-own",
+          groupId: "rg-own",
+          title: "Own Album",
+          date: "2020-01-01",
+          by: ownCredit,
+        }),
+        mbRelease({
+          id: "r-feature",
+          groupId: "rg-feature",
+          title: "Host Album",
+          date: "2010-09-09",
+          by: credit(GUEST_HOST, "Host Artist"),
+        }),
       ],
     });
   });
@@ -98,7 +122,13 @@ test("artist stream sends appearances without waiting for the discography", asyn
         "release-count": 1,
         "release-offset": 0,
         releases: [
-          mbRelease({ id: "r-feature", groupId: "rg-stream-feature", title: "Host Album", date: "2010-09-09", by: credit(GUEST_HOST, "Host Artist") }),
+          mbRelease({
+            id: "r-feature",
+            groupId: "rg-stream-feature",
+            title: "Host Album",
+            date: "2010-09-09",
+            by: credit(GUEST_HOST, "Host Artist"),
+          }),
         ],
       });
     }
@@ -138,7 +168,13 @@ test("a failed MusicBrainz lookup reports an error and the next request retries"
       "release-count": 1,
       "release-offset": 0,
       releases: [
-        mbRelease({ id: "r-feature", groupId: "rg-retry-feature", title: "Host Album", date: "2010-09-09", by: credit(GUEST_HOST, "Host Artist") }),
+        mbRelease({
+          id: "r-feature",
+          groupId: "rg-retry-feature",
+          title: "Host Album",
+          date: "2010-09-09",
+          by: credit(GUEST_HOST, "Host Artist"),
+        }),
       ],
     });
   });
@@ -149,5 +185,8 @@ test("a failed MusicBrainz lookup reports an error and the next request retries"
   musicbrainzUp = true;
   const retried = await postAppearsOn(mbid, { limit: 24 });
   assert.equal(retried.statusCode, 200);
-  assert.deepEqual(retried.body.items.map((item) => item.id), ["rg-retry-feature"]);
+  assert.deepEqual(
+    retried.body.items.map((item) => item.id),
+    ["rg-retry-feature"],
+  );
 });

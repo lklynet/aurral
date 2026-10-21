@@ -1,8 +1,5 @@
 import createCache from "./apiClients/simpleCache.js";
-import {
-  getNormalizedText,
-  scoreTextMatch,
-} from "./providers/brainzmashRanking.js";
+import { getNormalizedText, scoreTextMatch } from "./providers/brainzmashRanking.js";
 import { getMetadataBaseUrl } from "./providers/brainzmashProvider.js";
 import { searchAlbums, searchArtists } from "./providers/brainzmashProvider.js";
 import { flowPlaylistConfig } from "./playlists/flowPlaylistConfig.js";
@@ -121,8 +118,14 @@ function addArtistToIndex(index, artist, target = "library") {
 function dedupeSearchArtists(artists) {
   const seen = new Set();
   return (Array.isArray(artists) ? artists : []).filter((artist) => {
-    const stableField = ["canonicalId", "id", "mbid", "foreignArtistId", "artistMbid", "identityKey"]
-      .find((field) => String(artist?.[field] ?? "").trim());
+    const stableField = [
+      "canonicalId",
+      "id",
+      "mbid",
+      "foreignArtistId",
+      "artistMbid",
+      "identityKey",
+    ].find((field) => String(artist?.[field] ?? "").trim());
     if (!stableField) return true;
     const key = `${stableField}:${String(artist[stableField]).trim()}`;
     if (seen.has(key)) return false;
@@ -446,10 +449,8 @@ async function searchBrainzmashCatalog(query, limit, signal) {
   ]);
   signal?.throwIfAborted();
 
-  const artistResult =
-    artistSettled.status === "fulfilled" ? artistSettled.value : null;
-  const albumResult =
-    albumSettled.status === "fulfilled" ? albumSettled.value : null;
+  const artistResult = artistSettled.status === "fulfilled" ? artistSettled.value : null;
+  const albumResult = albumSettled.status === "fulfilled" ? albumSettled.value : null;
 
   if (artistSettled.status === "rejected") {
     console.warn("[UnifiedSearch] BrainzMash artist search failed:", artistSettled.reason?.message);
@@ -479,7 +480,9 @@ async function searchBrainzmashCatalog(query, limit, signal) {
 }
 
 async function searchCatalog(query, limit, signal) {
-  const cacheKey = String(query || "").trim().toLowerCase();
+  const cacheKey = String(query || "")
+    .trim()
+    .toLowerCase();
   let catalog = catalogSearchCache.get(cacheKey);
   if (!catalog) {
     catalog = await searchBrainzmashCatalog(query, 30, signal);
@@ -495,7 +498,6 @@ async function searchCatalog(query, limit, signal) {
     top: pickCatalogTopFallback(sliced),
   };
 }
-
 
 function getVisiblePlaylistsForUser(user) {
   try {
@@ -547,7 +549,8 @@ export function searchLocalFromData(
   const artistResults = dedupeSearchArtists(artists)
     .map((artist) => {
       const name = String(artist?.artistName || artist?.name || "").trim();
-      const mbid = artist?.mbid || artist?.foreignArtistId || artist?.artistMbid || artist?.id || null;
+      const mbid =
+        artist?.mbid || artist?.foreignArtistId || artist?.artistMbid || artist?.id || null;
       if (!name || !mbid) return null;
       const score = scorePlaylistContentMatch(query, name);
       if (score <= 0) return null;
@@ -652,10 +655,9 @@ function searchLocalLibrary(query, limit, context) {
   ]);
   const artistsById = new Map(artists.map((artist) => [String(artist.id), artist]));
   const albumsById = new Map(
-    [
-      ...(libraryResults.albums?.albums || []),
-      ...(libraryResults.tracks?.albums || []),
-    ].map((album) => [String(album.id), album]),
+    [...(libraryResults.albums?.albums || []), ...(libraryResults.tracks?.albums || [])].map(
+      (album) => [String(album.id), album],
+    ),
   );
   const describeAlbum = (album) => {
     const artist = artistsById.get(String(album.artistId));
@@ -670,9 +672,7 @@ function searchLocalLibrary(query, limit, context) {
   };
   const albums = (libraryResults.albums?.albums || []).map(describeAlbum);
   const tracks = (libraryResults.tracks?.tracks || []).map((track) => {
-    const album = track.albums
-      ?.map((entry) => albumsById.get(String(entry.albumId)))
-      .find(Boolean);
+    const album = track.albums?.map((entry) => albumsById.get(String(entry.albumId))).find(Boolean);
     const albumDetails = album ? describeAlbum(album) : null;
     return {
       id: track.id,
@@ -724,10 +724,7 @@ function getSearchContextOrFallback(user) {
   }
 }
 
-export async function searchUnified(
-  query,
-  { mode = "suggest", limit, user = null, signal } = {},
-) {
+export async function searchUnified(query, { mode = "suggest", limit, user = null, signal } = {}) {
   const trimmed = String(query || "").trim();
   const normalizedMode = normalizeMode(mode);
   const perBucketLimit = bucketLimit(normalizedMode, limit);

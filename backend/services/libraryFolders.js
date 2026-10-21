@@ -20,12 +20,14 @@ export function isLidarrLibraryActive(lidarrClient) {
 
 export function configuredLidarrFolders(lidarrClient, override = null) {
   const mappings = getPathMappings("lidarr");
-  return [...new Set(
-    configuredLidarrRoots(lidarrClient, override)
-      .map((root) => String(root || "").trim())
-      .filter(Boolean)
-      .map((root) => path.resolve(resolveLocalPath(root, mappings))),
-  )];
+  return [
+    ...new Set(
+      configuredLidarrRoots(lidarrClient, override)
+        .map((root) => String(root || "").trim())
+        .filter(Boolean)
+        .map((root) => path.resolve(resolveLocalPath(root, mappings))),
+    ),
+  ];
 }
 
 // Lidarr's root folders belong to the Library only while Lidarr is enabled
@@ -36,8 +38,10 @@ export function activeLidarrRoots(lidarrClient, override = null) {
 
 export function isPathWithin(rootPath, candidatePath) {
   const relative = path.relative(path.resolve(rootPath), path.resolve(candidatePath));
-  return relative === "" ||
-    (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
+  return (
+    relative === "" ||
+    (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))
+  );
 }
 
 const libraryFolders = ({ downloadRoot, lidarrRoots }) => [
@@ -54,10 +58,10 @@ const deepestHolders = (folders, filePath) => {
 
 // The deepest library folder holding a path owns it. Lidarr owns a folder it
 // shares with the Downloads Folder.
-export function libraryFolderOwner(filePath, {
-  downloadRoot = resolveDownloadRoot(),
-  lidarrRoots = [],
-} = {}) {
+export function libraryFolderOwner(
+  filePath,
+  { downloadRoot = resolveDownloadRoot(), lidarrRoots = [] } = {},
+) {
   const holders = deepestHolders(libraryFolders({ downloadRoot, lidarrRoots }), filePath);
   if (holders.length === 0) return null;
   return holders.some(({ owner }) => owner === "lidarr") ? "lidarr" : "aurral";

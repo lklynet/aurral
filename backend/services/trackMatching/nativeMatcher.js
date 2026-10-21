@@ -30,7 +30,9 @@ export function getMatcherStatus() {
 // Rip tools write Spotify or Deezer IDs into the MusicBrainz tags. Only a
 // UUID is a MusicBrainz recording ID.
 export function readRecordingMbid(value) {
-  const id = String(value || "").trim().toLowerCase();
+  const id = String(value || "")
+    .trim()
+    .toLowerCase();
   return UUID_REGEX.test(id) ? id : null;
 }
 
@@ -50,10 +52,19 @@ function listingDisc(segments, encoded, album) {
 // The album, when known, keeps a folder named for it from reading as a disc.
 export function parseListingTitle(path, { album = null } = {}) {
   const segments = String(path || "").split(/[\\/]/);
-  const base = segments.at(-1).replace(/\.[^.]+$/, "").trim();
-  if (/^\d{1,3}$/u.test(base)) return { title: null, trackNumber: Number(base), ...listingDisc(segments, null, album) };
+  const base = segments
+    .at(-1)
+    .replace(/\.[^.]+$/, "")
+    .trim();
+  if (/^\d{1,3}$/u.test(base))
+    return { title: null, trackNumber: Number(base), ...listingDisc(segments, null, album) };
   const placeholder = /^(?:audio\s*)?track\s*(\d{1,3})$/iu.exec(base);
-  if (placeholder) return { title: base, trackNumber: Number(placeholder[1]), ...listingDisc(segments, null, album) };
+  if (placeholder)
+    return {
+      title: base,
+      trackNumber: Number(placeholder[1]),
+      ...listingDisc(segments, null, album),
+    };
   const patterns = [
     /^(\d{1,2})-(\d{1,3})(?:\s*[-.]\s*|\s+)(.+)$/u,
     /^.+?\s+-\s+CD(\d{1,2})\s+-\s+(\d{1,3})\s+(.+)$/iu,
@@ -88,7 +99,17 @@ function similarity(left, right) {
   return keySimilarity(normalizeMatchText(left), normalizeMatchText(right));
 }
 
-const VARIANTS = ["live", "remix", "acoustic", "instrumental", "demo", "edit", "karaoke", "cover", "nightcore"];
+const VARIANTS = [
+  "live",
+  "remix",
+  "acoustic",
+  "instrumental",
+  "demo",
+  "edit",
+  "karaoke",
+  "cover",
+  "nightcore",
+];
 
 function variants(title) {
   const normalized = normalizeMatchText(title);
@@ -100,8 +121,14 @@ function variants(title) {
 
 function coreMatchTitle(title) {
   return (stripPromoDescriptors(title) || String(title || ""))
-    .replace(/\s*[[(][^\])]*\b(?:live|remix|acoustic|instrumental|demo|edit|karaoke|cover|nightcore|mix|mono|stereo|remaster(?:ed)?|feat\.?|ft\.?|featuring|official audio|official video|visualizer|lyrics|album version|original version|bonus|hidden track)\b[^\])]*[\])]/giu, "")
-    .replace(/\s+[-–—]\s+(?:(?:radio|extended|club|dance|single|album)\s+)?(?:edit|mix|live|remix|acoustic|instrumental|demo|karaoke|remaster(?:ed)?)\b.*$/iu, "")
+    .replace(
+      /\s*[[(][^\])]*\b(?:live|remix|acoustic|instrumental|demo|edit|karaoke|cover|nightcore|mix|mono|stereo|remaster(?:ed)?|feat\.?|ft\.?|featuring|official audio|official video|visualizer|lyrics|album version|original version|bonus|hidden track)\b[^\])]*[\])]/giu,
+      "",
+    )
+    .replace(
+      /\s+[-–—]\s+(?:(?:radio|extended|club|dance|single|album)\s+)?(?:edit|mix|live|remix|acoustic|instrumental|demo|karaoke|remaster(?:ed)?)\b.*$/iu,
+      "",
+    )
     .replace(/\s+[-–—]\s+(?:mono|stereo)(?:\s+(?:version|mix))?\s*$/iu, "")
     .replace(/\s+\b(?:feat\.?|ft\.?|featuring)\s+.+$/iu, "")
     .trim();
@@ -118,7 +145,10 @@ function coreArtist(name) {
 // their artists. "AC/DC" has no spaces around its slash and stays whole.
 function creditedArtists(credit) {
   const whole = coreArtist(credit);
-  const parts = whole.split(/\s*[,;]\s*|\s+(?:&|\/|x|×)\s+/iu).map((part) => part.trim()).filter(Boolean);
+  const parts = whole
+    .split(/\s*[,;]\s*|\s+(?:&|\/|x|×)\s+/iu)
+    .map((part) => part.trim())
+    .filter(Boolean);
   return [...new Set([whole, ...parts])];
 }
 
@@ -134,12 +164,20 @@ function artistKeys(name) {
 function keyedArtistSimilarity(requestedKeys, credits) {
   const offered = asNames(credits).flatMap((credit) => creditedArtists(credit).map(artistKeys));
   if (!requestedKeys.length || !asNames(credits).length) return null;
-  return Math.max(0, ...requestedKeys.flatMap(([left, leftJoined]) => offered.map(([right, rightJoined]) =>
-    Math.max(keySimilarity(left, right), keySimilarity(leftJoined, rightJoined)))));
+  return Math.max(
+    0,
+    ...requestedKeys.flatMap(([left, leftJoined]) =>
+      offered.map(([right, rightJoined]) =>
+        Math.max(keySimilarity(left, right), keySimilarity(leftJoined, rightJoined)),
+      ),
+    ),
+  );
 }
 
-const requestedArtistKeys = (names) => asNames(names).filter((name) => !isVariousArtistsCredit(name))
-  .map((name) => artistKeys(coreArtist(name)));
+const requestedArtistKeys = (names) =>
+  asNames(names)
+    .filter((name) => !isVariousArtistsCredit(name))
+    .map((name) => artistKeys(coreArtist(name)));
 
 export function bestArtistSimilarity(requestedNames, credits) {
   return keyedArtistSimilarity(requestedArtistKeys(requestedNames), credits);
@@ -157,14 +195,18 @@ function asNames(value) {
 }
 
 function requestPerformers(request) {
-  return [...asNames(request.artists || request.artist), ...asNames(request.artistAliases)]
-    .filter((name) => !isVariousArtistsCredit(name));
+  return [...asNames(request.artists || request.artist), ...asNames(request.artistAliases)].filter(
+    (name) => !isVariousArtistsCredit(name),
+  );
 }
 
 // The request side of `compareRecording`, worked out once for every
 // candidate compared with it.
 export function prepareRecordingRequest(request) {
-  const lengths = [request.durationMs ?? request.duration_ms, ...asNames(request.pressingDurationsMs)].map(Number);
+  const lengths = [
+    request.durationMs ?? request.duration_ms,
+    ...asNames(request.pressingDurationsMs),
+  ].map(Number);
   return {
     durations: [...new Set(lengths.filter((length) => Number.isFinite(length) && length > 0))],
     variants: prepareVariantRequest({
@@ -183,14 +225,19 @@ export function prepareRecordingRequest(request) {
 // Every name around a request and a candidate can name a version: the
 // title, the file name, the album, the artist, and the folders.
 function variantContradictions(prepared, candidate, labels) {
-  return checkVariantCompatibility(null, {
-    title: candidate.versionTitle || candidate.title,
-    filename: candidate.filename || candidate.fileNameTitle,
-    album: candidate.album,
-    artists: asNames(candidate.artists || candidate.artist),
-    path: candidate.path,
-    directoryPath: candidate.directoryPath,
-  }, prepared.variants, labels).contradictions;
+  return checkVariantCompatibility(
+    null,
+    {
+      title: candidate.versionTitle || candidate.title,
+      filename: candidate.filename || candidate.fileNameTitle,
+      album: candidate.album,
+      artists: asNames(candidate.artists || candidate.artist),
+      path: candidate.path,
+      directoryPath: candidate.directoryPath,
+    },
+    prepared.variants,
+    labels,
+  ).contradictions;
 }
 
 // The shared policy accepts an undeclared copy of a requested edit or mix
@@ -198,28 +245,47 @@ function variantContradictions(prepared, candidate, labels) {
 const EDIT_VARIANTS = new Set(["edit", "remix"]);
 
 function editContradiction(requestTitle, candidateTitle) {
-  const requested = variants(requestTitle).filter((variant) => EDIT_VARIANTS.has(variant) || variant.endsWith("-mix"));
-  const offered = variants(candidateTitle).filter((variant) => variant === "edit" || variant.endsWith("-mix"));
-  return offered.find((variant) => !requested.includes(variant))
-    || requested.find((variant) => !variant.endsWith("-mix") && !variants(candidateTitle).includes(variant))
-    || null;
+  const requested = variants(requestTitle).filter(
+    (variant) => EDIT_VARIANTS.has(variant) || variant.endsWith("-mix"),
+  );
+  const offered = variants(candidateTitle).filter(
+    (variant) => variant === "edit" || variant.endsWith("-mix"),
+  );
+  return (
+    offered.find((variant) => !requested.includes(variant)) ||
+    requested.find(
+      (variant) => !variant.endsWith("-mix") && !variants(candidateTitle).includes(variant),
+    ) ||
+    null
+  );
 }
 
 // `labels` remembers the names read for this request across the candidates
 // of one search or one listing.
-export function compareRecording(request, candidate, policy = MATCH_POLICY, prepared = prepareRecordingRequest(request),
-  labels = new Map()) {
+export function compareRecording(
+  request,
+  candidate,
+  policy = MATCH_POLICY,
+  prepared = prepareRecordingRequest(request),
+  labels = new Map(),
+) {
   const contradictions = [];
   if (nonLatinTitleContradiction(request.title, candidate.title)) contradictions.push("title");
   // MusicBrainz merges duplicate recordings, and files tagged before a merge
   // carry an ID that the recording keeps as an alias.
-  const requestIds = [request.recordingMbid || request.recording_mbid, ...asNames(request.recordingMbidAliases)]
-    .map(readRecordingMbid).filter(Boolean);
+  const requestIds = [
+    request.recordingMbid || request.recording_mbid,
+    ...asNames(request.recordingMbidAliases),
+  ]
+    .map(readRecordingMbid)
+    .filter(Boolean);
   const requestId = requestIds[0] || "";
   const candidateId = readRecordingMbid(candidate.recordingMbid || candidate.recording_mbid) || "";
   const sameRecording = Boolean(candidateId) && requestIds.includes(candidateId);
   if (requestId && candidateId && !sameRecording) contradictions.push("recording-mbid");
-  const offeredTitle = [candidate.versionTitle || candidate.title, candidate.fileNameTitle].filter(Boolean).join(" ");
+  const offeredTitle = [candidate.versionTitle || candidate.title, candidate.fileNameTitle]
+    .filter(Boolean)
+    .join(" ");
   const edit = offeredTitle && editContradiction(request.title, offeredTitle);
   if (edit) contradictions.push(edit);
   for (const contradiction of variantContradictions(prepared, candidate, labels)) {
@@ -228,53 +294,90 @@ export function compareRecording(request, candidate, policy = MATCH_POLICY, prep
   // A track's length on the release, or on another official pressing in the
   // same running order, since a rip of either is the same recording.
   const candidateDuration = Number(candidate.durationMs ?? candidate.duration_ms);
-  const gap = prepared.durations.length && Number.isFinite(candidateDuration) && candidateDuration > 0
-    ? Math.min(...prepared.durations.map((length) => Math.abs(length - candidateDuration))) : null;
+  const gap =
+    prepared.durations.length && Number.isFinite(candidateDuration) && candidateDuration > 0
+      ? Math.min(...prepared.durations.map((length) => Math.abs(length - candidateDuration)))
+      : null;
   if (gap != null && gap > policy.maxDurationGapMs) contradictions.push("duration");
-  if (implausibleBitrateKbps({ path: candidate.path || candidate.filename, sizeBytes: candidate.sizeBytes,
-    durationMs: candidateDuration, trackTitle: request.title }) != null) contradictions.push("implausible-file");
+  if (
+    implausibleBitrateKbps({
+      path: candidate.path || candidate.filename,
+      sizeBytes: candidate.sizeBytes,
+      durationMs: candidateDuration,
+      trackTitle: request.title,
+    }) != null
+  )
+    contradictions.push("implausible-file");
 
   const title = keySimilarity(prepared.titleKey, titleKey(candidate.title));
-  const artist = keyedArtistSimilarity(prepared.performerKeys, candidate.artists || candidate.artist);
-  if (artist != null && artist < policy.minArtistNonConflictSimilarity) contradictions.push("artist");
+  const artist = keyedArtistSimilarity(
+    prepared.performerKeys,
+    candidate.artists || candidate.artist,
+  );
+  if (artist != null && artist < policy.minArtistNonConflictSimilarity)
+    contradictions.push("artist");
   const evidence = [];
   if (sameRecording) evidence.push("recording-mbid");
   if (title >= policy.minTitleSimilarity) evidence.push("title");
   if (artist != null && artist >= policy.minArtistSimilarity) evidence.push("artist");
   if (gap != null && gap <= policy.maxDurationGapMs) evidence.push("duration");
-  const score = Math.min(1,
-    title * 0.55 + (artist ?? 0) * 0.2 + (gap == null ? 0 : Math.max(0, 1 - gap / policy.maxDurationGapMs)) * 0.25
-    + (evidence.includes("recording-mbid") ? 0.2 : 0),
+  const score = Math.min(
+    1,
+    title * 0.55 +
+      (artist ?? 0) * 0.2 +
+      (gap == null ? 0 : Math.max(0, 1 - gap / policy.maxDurationGapMs)) * 0.25 +
+      (evidence.includes("recording-mbid") ? 0.2 : 0),
   );
-  return { contradictions, evidence, score, titleSimilarity: title, artistSimilarity: artist, durationGapMs: gap };
+  return {
+    contradictions,
+    evidence,
+    score,
+    titleSimilarity: title,
+    artistSimilarity: artist,
+    durationGapMs: gap,
+  };
 }
 
 export function decideRecording(request, candidates, policy = MATCH_POLICY) {
   const prepared = prepareRecordingRequest(request);
   const labels = new Map();
   const assessed = candidates.map((candidate, index) => ({
-    index, candidate, ...compareRecording(request, candidate, policy, prepared, labels),
+    index,
+    candidate,
+    ...compareRecording(request, candidate, policy, prepared, labels),
   }));
-  const eligible = assessed.filter((item) => item.contradictions.length === 0
-    && item.evidence.length >= 2 && item.evidence.includes("title"))
+  const eligible = assessed
+    .filter(
+      (item) =>
+        item.contradictions.length === 0 &&
+        item.evidence.length >= 2 &&
+        item.evidence.includes("title"),
+    )
     .sort((left, right) => right.score - left.score || left.index - right.index);
   const best = eligible[0];
   const runnerUp = eligible[1];
   // A request credited only to "Various Artists" has no performer to check.
-  const performerUnknown = requestPerformers(request).length === 0
-    && asNames(request.artists || request.artist).length > 0;
+  const performerUnknown =
+    requestPerformers(request).length === 0 &&
+    asNames(request.artists || request.artist).length > 0;
   let decision = "skip";
   let selectedIndex = null;
   if (best) {
-    const strongDuration = best.evidence.includes("recording-mbid")
-      || (best.durationGapMs != null && best.durationGapMs <= policy.selectedDurationGapMs);
-    const singleCandidateNeedsExactDuration = candidates.length === 1
-      && !best.evidence.includes("recording-mbid") && best.durationGapMs !== 0;
-    decision = strongDuration && !singleCandidateNeedsExactDuration
-      && (!performerUnknown || best.evidence.includes("recording-mbid"))
-      && best.score >= policy.selectableScore
-      && (!runnerUp || best.score - runnerUp.score >= policy.runnerUpMargin)
-      ? "selectable" : "uncertain";
+    const strongDuration =
+      best.evidence.includes("recording-mbid") ||
+      (best.durationGapMs != null && best.durationGapMs <= policy.selectedDurationGapMs);
+    const singleCandidateNeedsExactDuration =
+      candidates.length === 1 &&
+      !best.evidence.includes("recording-mbid") &&
+      best.durationGapMs !== 0;
+    decision =
+      strongDuration &&
+      !singleCandidateNeedsExactDuration &&
+      (!performerUnknown || best.evidence.includes("recording-mbid")) &&
+      best.score >= policy.selectableScore &&
+      (!runnerUp || best.score - runnerUp.score >= policy.runnerUpMargin)
+        ? "selectable"
+        : "uncertain";
     if (decision === "selectable") selectedIndex = best.index;
   }
   return { decision, selectedIndex, candidates: assessed, policyVersion: policy.version };
@@ -299,8 +402,10 @@ function maximumWeightColumns(weights) {
       let smallest = Infinity;
       for (let candidate = 1; candidate <= columnCount; candidate += 1) {
         if (visited[candidate]) continue;
-        const reducedCost = -weights[currentRow - 1][candidate - 1]
-          - rowPotential[currentRow] - columnPotential[candidate];
+        const reducedCost =
+          -weights[currentRow - 1][candidate - 1] -
+          rowPotential[currentRow] -
+          columnPotential[candidate];
         if (reducedCost < distance[candidate]) {
           distance[candidate] = reducedCost;
           previousColumn[candidate] = column;
@@ -333,7 +438,8 @@ function maximumWeightColumns(weights) {
   return columns;
 }
 
-const positiveNumber = (value) => (Number.isInteger(Number(value)) && Number(value) > 0 ? Number(value) : null);
+const positiveNumber = (value) =>
+  Number.isInteger(Number(value)) && Number(value) > 0 ? Number(value) : null;
 
 // Where a file sits against a track: "same", "different", or "unknown". A
 // file's disc, when known, must be the track's. Numbering restarts on each
@@ -348,8 +454,14 @@ export function comparePosition(track, file, runningNumber = null) {
   const trackDisc = positiveNumber(track.discNumber);
   const discAgrees = !fileDisc || !trackDisc || fileDisc === trackDisc;
   if (discAgrees && (fileTrack === trackNumber || fileTrack === runningNumber)) return "same";
-  if (discAgrees && trackDisc && fileTrack > 100 && Math.floor(fileTrack / 100) === trackDisc
-    && fileTrack % 100 === trackNumber) return "same";
+  if (
+    discAgrees &&
+    trackDisc &&
+    fileTrack > 100 &&
+    Math.floor(fileTrack / 100) === trackDisc &&
+    fileTrack % 100 === trackNumber
+  )
+    return "same";
   return "different";
 }
 
@@ -366,8 +478,8 @@ export function pairTracksWithFiles(edges, fileCount) {
   const assignedColumns = edges.length && fileCount ? maximumWeightColumns(weights) : [];
   const trackForFile = new Array(fileCount).fill(-1);
   const pairs = assignedColumns.flatMap((fileIndex, trackIndex) => {
-    const edge = fileIndex < fileCount
-      ? edges[trackIndex].find((item) => item.fileIndex === fileIndex) : null;
+    const edge =
+      fileIndex < fileCount ? edges[trackIndex].find((item) => item.fileIndex === fileIndex) : null;
     if (!edge) return [];
     trackForFile[fileIndex] = trackIndex;
     return [{ ...edge, trackIndex, fileIndex }];
@@ -375,8 +487,8 @@ export function pairTracksWithFiles(edges, fileCount) {
   const paired = new Set(pairs.map((pair) => pair.trackIndex));
   return {
     pairs,
-    unassignedTrackIndexes: edges.flatMap((_, index) => paired.has(index) ? [] : [index]),
-    unassignedFileIndexes: trackForFile.flatMap((track, index) => track < 0 ? [index] : []),
+    unassignedTrackIndexes: edges.flatMap((_, index) => (paired.has(index) ? [] : [index])),
+    unassignedFileIndexes: trackForFile.flatMap((track, index) => (track < 0 ? [index] : [])),
   };
 }
 
@@ -392,36 +504,51 @@ export function isSameAlbumTitle(requested, observed) {
 export function isSiblingTrackPosition(request, actualTrackNumber, actualDiscNumber = null) {
   const expected = Number(request.trackNumber || 0);
   const actual = Number(actualTrackNumber || 0);
-  if (!(expected > 0 && actual > 0 && expected !== actual) || Number(actualDiscNumber) > 1) return false;
+  if (!(expected > 0 && actual > 0 && expected !== actual) || Number(actualDiscNumber) > 1)
+    return false;
   const siblingTitle = request.albumTrackTitles?.[actual - 1];
-  return Boolean(siblingTitle) && normalizeMatchText(siblingTitle) !== normalizeMatchText(request.title);
+  return (
+    Boolean(siblingTitle) && normalizeMatchText(siblingTitle) !== normalizeMatchText(request.title)
+  );
 }
 
 export function verifyDownloadedRecording(request, observed, policy = MATCH_POLICY) {
   const result = compareRecording(request, observed, policy);
-  if (isSameAlbumTitle(request.albumName, observed.album)
-    && isSiblingTrackPosition(request, observed.trackNumber, observed.discNumber)) {
+  if (
+    isSameAlbumTitle(request.albumName, observed.album) &&
+    isSiblingTrackPosition(request, observed.trackNumber, observed.discNumber)
+  ) {
     result.contradictions.push("sibling-track-index");
   }
-  if (observed.fileNameTitle
-    && (nonLatinTitleContradiction(request.title, observed.fileNameTitle)
-      || result.titleSimilarity >= policy.minTitleSimilarity
-        && normalizeMatchText(observed.fileNameTitle)
-        && similarity(coreMatchTitle(request.title), coreMatchTitle(observed.fileNameTitle))
-          < policy.minTitleSimilarity)) {
+  if (
+    observed.fileNameTitle &&
+    (nonLatinTitleContradiction(request.title, observed.fileNameTitle) ||
+      (result.titleSimilarity >= policy.minTitleSimilarity &&
+        normalizeMatchText(observed.fileNameTitle) &&
+        similarity(coreMatchTitle(request.title), coreMatchTitle(observed.fileNameTitle)) <
+          policy.minTitleSimilarity))
+  ) {
     result.contradictions.push("filename-title");
   }
   // Another song by the same artist with a similar length is not a near
   // match: without its title or recording ID, a file is a different song.
-  if (!result.evidence.includes("recording-mbid") && !result.evidence.includes("title")
-    && !result.contradictions.includes("title")) {
+  if (
+    !result.evidence.includes("recording-mbid") &&
+    !result.evidence.includes("title") &&
+    !result.contradictions.includes("title")
+  ) {
     result.contradictions.push("title");
   }
   let decision = "ambiguous";
   if (result.contradictions.length) decision = "no_match";
   else if (result.evidence.includes("recording-mbid")) decision = "matched";
-  else if (result.evidence.includes("title") && result.evidence.includes("artist")
-    && result.durationGapMs != null && result.durationGapMs <= policy.selectedDurationGapMs) decision = "matched";
+  else if (
+    result.evidence.includes("title") &&
+    result.evidence.includes("artist") &&
+    result.durationGapMs != null &&
+    result.durationGapMs <= policy.selectedDurationGapMs
+  )
+    decision = "matched";
   return { decision, ...result, policyVersion: policy.version };
 }
 
@@ -436,23 +563,35 @@ export function titleSimilarity(requested, offered) {
 
 const spelledOut = (title) => String(title || "").replace(/&/gu, " and ");
 
-const songWords = (title) => normalizeMatchText(spelledOut(title)
-  .replace(/\s*[([][^)\]]*[)\]]/gu, " ")
-  .split(/\s(?:-|–|—)\s|\s(?:feat\.?|ft\.?|featuring)\s/iu)[0]).split(" ").filter(Boolean);
+const songWords = (title) =>
+  normalizeMatchText(
+    spelledOut(title)
+      .replace(/\s*[([][^)\]]*[)\]]/gu, " ")
+      .split(/\s(?:-|–|—)\s|\s(?:feat\.?|ft\.?|featuring)\s/iu)[0],
+  )
+    .split(" ")
+    .filter(Boolean);
 
-const holdsWords = (outer, inner) => inner.length * 2 >= outer.length
-  && outer.some((_, start) => inner.every((word, offset) => outer[start + offset] === word));
+const holdsWords = (outer, inner) =>
+  inner.length * 2 >= outer.length &&
+  outer.some((_, start) => inner.every((word, offset) => outer[start + offset] === word));
 
-const withoutGuests = (title) => String(title || "")
-  .replace(/\s*[([]\s*(?:feat\.?|ft\.?|featuring|with)\s[^)\]]*[)\]]/giu, " ")
-  .replace(/\s(?:feat\.?|ft\.?|featuring)\s[^([\-–—]*/giu, " ");
+const withoutGuests = (title) =>
+  String(title || "")
+    .replace(/\s*[([]\s*(?:feat\.?|ft\.?|featuring|with)\s[^)\]]*[)\]]/giu, " ")
+    .replace(/\s(?:feat\.?|ft\.?|featuring)\s[^([\-–—]*/giu, " ");
 
 // A guest's name, such as "feat. Live", says nothing about the version.
 const isOtherVersion = (leftTitle, rightTitle) => {
   const [left, right] = [leftTitle, rightTitle].map(withoutGuests);
-  const version = (title) => variants(title).filter((variant) => variant !== "cover").join("|");
-  const contradicts = (expected, actual) => compareVariantProfiles(extractVariants(expected), extractVariants(actual))
-    .contradictions.some((variant) => variant !== "cover" && !RELEASE_MIX_VARIANTS.has(variant));
+  const version = (title) =>
+    variants(title)
+      .filter((variant) => variant !== "cover")
+      .join("|");
+  const contradicts = (expected, actual) =>
+    compareVariantProfiles(extractVariants(expected), extractVariants(actual)).contradictions.some(
+      (variant) => variant !== "cover" && !RELEASE_MIX_VARIANTS.has(variant),
+    );
   return version(left) !== version(right) || contradicts(left, right) || contradicts(right, left);
 };
 
@@ -465,7 +604,13 @@ export function isSameSongAtPlace(left, right) {
   if (isOtherVersion(left, right)) return false;
   const [a, b] = [songWords(left), songWords(right)];
   if (!a.length || !b.length) return false;
-  const [allA, allB] = [left, right].map((title) => normalizeMatchText(spelledOut(title)).split(" "));
-  return a.join("") === b.join("") || holdsWords(allB, a) || holdsWords(allA, b)
-    || similarity(a.join(" "), b.join(" ")) >= 0.8;
+  const [allA, allB] = [left, right].map((title) =>
+    normalizeMatchText(spelledOut(title)).split(" "),
+  );
+  return (
+    a.join("") === b.join("") ||
+    holdsWords(allB, a) ||
+    holdsWords(allA, b) ||
+    similarity(a.join(" "), b.join(" ")) >= 0.8
+  );
 }

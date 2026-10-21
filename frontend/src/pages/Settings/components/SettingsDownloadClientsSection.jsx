@@ -92,9 +92,7 @@ export function SettingsDownloadClientsSection({
   const qualityEnabled = new Set(
     Array.isArray(qualityProfile.enabled) ? qualityProfile.enabled : qualityOrder,
   );
-  const clientDefinitions = downloadClientSettings
-    ? Object.values(downloadClientSettings)
-    : [];
+  const clientDefinitions = downloadClientSettings ? Object.values(downloadClientSettings) : [];
   const enabledClientDefinitions = clientDefinitions.filter((definition) =>
     isClientEnabled(definition, integrations[definition.key] || {}),
   );
@@ -225,10 +223,7 @@ export function SettingsDownloadClientsSection({
                   key={definition.key}
                   title={definition.label}
                   subtitle={definition.subtitle}
-                  status={getProviderStatus(
-                    true,
-                    isClientConfigured(definition, config, health),
-                  )}
+                  status={getProviderStatus(true, isClientConfigured(definition, config, health))}
                   meta={clientMeta(definition, config)}
                   onClick={() => setActiveModal(definition.key)}
                 />

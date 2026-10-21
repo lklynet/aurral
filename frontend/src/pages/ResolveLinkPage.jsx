@@ -1,7 +1,11 @@
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
-import { SkeletonAlbumDetail, SkeletonLibraryArtist, SkeletonPageTitle } from "../components/Skeletons";
+import {
+  SkeletonAlbumDetail,
+  SkeletonLibraryArtist,
+  SkeletonPageTitle,
+} from "../components/Skeletons";
 import { useToast } from "../contexts/ToastContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { RESOLVE_KINDS, resolveLinkQueryOptions } from "../navigation/resolveLinks.js";
@@ -36,7 +40,11 @@ export default function ResolveLinkPage() {
         <div className="native-library-content">
           <div className="native-library-state" role="alert">
             <strong>
-              {invalid ? "This link isn't valid" : notFound ? error.message : "Couldn't open this link"}
+              {invalid
+                ? "This link isn't valid"
+                : notFound
+                  ? error.message
+                  : "Couldn't open this link"}
             </strong>
             <span>
               {notFound

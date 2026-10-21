@@ -68,7 +68,11 @@ const tracks = {
   calm: trackEntity("202", "Calm", "20", 2),
 };
 
-const page = (kind, items, { albums = [], artists = [artist], trackList = [], hasMore = false, number = 1 } = {}) => ({
+const page = (
+  kind,
+  items,
+  { albums = [], artists = [artist], trackList = [], hasMore = false, number = 1 } = {},
+) => ({
   kind,
   page: number,
   pageSize: 100,
@@ -110,24 +114,30 @@ async function fixture(browserPage) {
     if (path === "/library/canonical") {
       const kind = params.get("kind");
       if (kind === "albums") {
-        return json(page("albums", [earlierAlbum, laterAlbum], { albums: [earlierAlbum, laterAlbum] }));
+        return json(
+          page("albums", [earlierAlbum, laterAlbum], { albums: [earlierAlbum, laterAlbum] }),
+        );
       }
       if (kind === "artists") return json(page("artists", [artist]));
       if (kind === "tracks" && params.get("albumId") === earlierAlbum.id) {
-        return json(page("tracks", [tracks.morning, tracks.noon], {
-          albums: [earlierAlbum],
-          trackList: [tracks.morning, tracks.noon],
-        }));
+        return json(
+          page("tracks", [tracks.morning, tracks.noon], {
+            albums: [earlierAlbum],
+            trackList: [tracks.morning, tracks.noon],
+          }),
+        );
       }
       if (kind === "tracks" && params.get("artistId") === artist.id) {
         const first = params.get("page") !== "2";
         const items = first ? [tracks.calm, tracks.gust] : [tracks.morning, tracks.noon];
-        return json(page("tracks", items, {
-          albums: first ? [laterAlbum] : [earlierAlbum],
-          trackList: items,
-          hasMore: first,
-          number: first ? 1 : 2,
-        }));
+        return json(
+          page("tracks", items, {
+            albums: first ? [laterAlbum] : [earlierAlbum],
+            trackList: items,
+            hasMore: first,
+            number: first ? 1 : 2,
+          }),
+        );
       }
     }
     if (path === "/playlists/status") return json({ sharedPlaylists: [], flows: [] });
@@ -146,7 +156,9 @@ async function upNextTitles(region) {
   return region.locator(".player-queue__list .player-queue__name").allTextContents();
 }
 
-test("album and artist menus queue every Library track in album order", async ({ page: browserPage }) => {
+test("album and artist menus queue every Library track in album order", async ({
+  page: browserPage,
+}) => {
   await fixture(browserPage);
   await browserPage.goto("/library/albums");
 
@@ -166,7 +178,9 @@ test("album and artist menus queue every Library track in album order", async ({
   await expect(bar.locator(".global-player__title")).toHaveText("Morning");
 });
 
-test("adding an artist to a new playlist saves all of its Library tracks", async ({ page: browserPage }) => {
+test("adding an artist to a new playlist saves all of its Library tracks", async ({
+  page: browserPage,
+}) => {
   const created = await fixture(browserPage);
   await browserPage.goto("/library/artists");
 
@@ -174,7 +188,9 @@ test("adding an artist to a new playlist saves all of its Library tracks", async
   await browserPage.getByRole("menuitem", { name: "Add to playlist" }).click();
   await browserPage.getByRole("button", { name: "New playlist" }).click();
 
-  await expect(browserPage.getByText("Collection Artist saved to Collection Artist Picks")).toBeVisible();
+  await expect(
+    browserPage.getByText("Collection Artist saved to Collection Artist Picks"),
+  ).toBeVisible();
   expect(created).toHaveLength(1);
   expect(created[0].name).toBe("Collection Artist Picks");
   expect(created[0].tracks.map((track) => [track.trackName, track.albumName])).toEqual([

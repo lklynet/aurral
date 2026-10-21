@@ -1,14 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import {
-  flowPlaylistConfig,
-  orderJobsByPlaylistTracks,
-} from "../playlists/flowPlaylistConfig.js";
+import { flowPlaylistConfig, orderJobsByPlaylistTracks } from "../playlists/flowPlaylistConfig.js";
 import { downloadTracker } from "../downloadJobs/downloadTracker.js";
-import {
-  resolveExistingTrackPath,
-  resolveDownloadRoot,
-} from "../downloadPaths.js";
+import { resolveExistingTrackPath, resolveDownloadRoot } from "../downloadPaths.js";
 
 async function isFile(filePath) {
   try {
@@ -24,18 +18,12 @@ export async function collectPlaybackPlaylistTracks(entityId, options = {}) {
   const referencedJobs = (playlist?.tracks || [])
     .map((track) => (track?.canonicalJobId ? downloadTracker.getJob(track.canonicalJobId) : null))
     .filter(Boolean);
-  const jobs = [
-    ...referencedJobs,
-    ...downloadTracker.getByPlaylistType(entityId),
-  ]
-    .filter((job, index, values) =>
-      values.findIndex((candidate) => candidate.id === job.id) === index,
+  const jobs = [...referencedJobs, ...downloadTracker.getByPlaylistType(entityId)]
+    .filter(
+      (job, index, values) => values.findIndex((candidate) => candidate.id === job.id) === index,
     )
     .filter((job) => job?.status === "done" && typeof job?.finalPath === "string");
-  const orderedJobs = orderJobsByPlaylistTracks(
-    jobs,
-    playlist?.tracks,
-  );
+  const orderedJobs = orderJobsByPlaylistTracks(jobs, playlist?.tracks);
   const tracks = [];
   for (const job of orderedJobs) {
     const resolved = await resolveExistingTrackPath(job.finalPath, downloadRoot);

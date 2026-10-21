@@ -32,7 +32,13 @@ export default function RelativeTime({ value, unit, className }) {
   const absolute =
     unit === "day"
       ? formatDate(date, { year: "numeric", month: "long", day: "numeric" })
-      : formatDateTime(date, { year: "numeric", month: "long", day: "numeric", hour: "numeric", minute: "2-digit" });
+      : formatDateTime(date, {
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+        });
 
   return (
     <Tooltip content={absolute}>

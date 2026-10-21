@@ -39,21 +39,27 @@ test("invalid Spotify credentials clear the connection after refresh cannot reco
   globalThis.fetch = async () => {
     requestCount += 1;
     if (requestCount === 2) {
-      return new Response(JSON.stringify({
-        access_token: "refreshed-access-token",
-        refresh_token: "refreshed-refresh-token",
-        expires_in: 3600,
-      }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({
+          access_token: "refreshed-access-token",
+          refresh_token: "refreshed-refresh-token",
+          expires_in: 3600,
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      );
     }
-    return new Response(JSON.stringify({
-      error: { status: 401, message: "Missing/invalid/expired access token" },
-    }), {
-      status: 401,
-      headers: { "content-type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({
+        error: { status: 401, message: "Missing/invalid/expired access token" },
+      }),
+      {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      },
+    );
   };
 
   await assert.rejects(
@@ -86,12 +92,15 @@ test("pending track requests cannot repopulate cache after invalidation", async 
       resolveTracksStarted();
       return pendingTracks;
     }
-    return new Response(JSON.stringify({
-      error: { status: 401, message: "Missing/invalid/expired access token" },
-    }), {
-      status: 401,
-      headers: { "content-type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({
+        error: { status: 401, message: "Missing/invalid/expired access token" },
+      }),
+      {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      },
+    );
   };
 
   const pendingRequest = spotifyClient.listPlaylistTracks(7, "playlist");
@@ -100,10 +109,12 @@ test("pending track requests cannot repopulate cache after invalidation", async 
     spotifyClient.listPlaylists(7),
     (error) => error?.code === "SPOTIFY_AUTH_REQUIRED" && error?.statusCode === 401,
   );
-  resolveTracks(new Response(JSON.stringify({ items: [], next: null }), {
-    status: 200,
-    headers: { "content-type": "application/json" },
-  }));
+  resolveTracks(
+    new Response(JSON.stringify({ items: [], next: null }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }),
+  );
   await assert.rejects(
     pendingRequest,
     (error) => error?.code === "SPOTIFY_AUTH_REQUIRED" && error?.statusCode === 401,
@@ -127,19 +138,23 @@ test("playlist fetch follows every current Spotify page without a client-side si
     const offset = Number(new URL(url).searchParams.get("offset") || 0);
     const total = 1001;
     const pageSize = Math.min(50, total - offset);
-    return new Response(JSON.stringify({
-      items: Array.from({ length: pageSize }, (_, index) => ({
-        item: { name: `Song ${offset + index}` },
-      })),
-      total,
-      offset,
-      next: offset + pageSize < total
-        ? `https://api.spotify.com/v1/playlists/playlist/items?offset=${offset + pageSize}&limit=50`
-        : null,
-    }), {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({
+        items: Array.from({ length: pageSize }, (_, index) => ({
+          item: { name: `Song ${offset + index}` },
+        })),
+        total,
+        offset,
+        next:
+          offset + pageSize < total
+            ? `https://api.spotify.com/v1/playlists/playlist/items?offset=${offset + pageSize}&limit=50`
+            : null,
+      }),
+      {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      },
+    );
   };
 
   const items = await spotifyClient.listPlaylistTracks(7, "playlist", { forceRefresh: true });
@@ -160,19 +175,24 @@ test("playlist fetch rejects a response that stops before Spotify's declared tot
     refreshToken: "valid-refresh-token",
     expiresAt: Date.now() + 60 * 60 * 1000,
   });
-  globalThis.fetch = async () => new Response(JSON.stringify({
-    items: [{ item: { name: "Only Song" } }],
-    total: 1001,
-    offset: 0,
-    next: null,
-  }), {
-    status: 200,
-    headers: { "content-type": "application/json" },
-  });
+  globalThis.fetch = async () =>
+    new Response(
+      JSON.stringify({
+        items: [{ item: { name: "Only Song" } }],
+        total: 1001,
+        offset: 0,
+        next: null,
+      }),
+      {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      },
+    );
 
   await assert.rejects(
     spotifyClient.listPlaylistTracks(7, "playlist", { forceRefresh: true }),
-    (error) => error?.code === "SPOTIFY_INCOMPLETE_PLAYLIST" &&
+    (error) =>
+      error?.code === "SPOTIFY_INCOMPLETE_PLAYLIST" &&
       error?.statusCode === 502 &&
       /1 of 1001/.test(error.message),
   );
@@ -184,16 +204,22 @@ test("playlist listing reads the current Spotify items total", async () => {
     refreshToken: "valid-refresh-token",
     expiresAt: Date.now() + 60 * 60 * 1000,
   });
-  globalThis.fetch = async () => new Response(JSON.stringify({
-    items: [{ id: "playlist", name: "Large Playlist", items: { total: 1001 } }],
-    next: null,
-  }), {
-    status: 200,
-    headers: { "content-type": "application/json" },
-  });
+  globalThis.fetch = async () =>
+    new Response(
+      JSON.stringify({
+        items: [{ id: "playlist", name: "Large Playlist", items: { total: 1001 } }],
+        next: null,
+      }),
+      {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      },
+    );
 
   const result = await spotifyClient.listPlaylists(7);
-  assert.deepEqual(result.playlists, [{ id: "playlist", name: "Large Playlist", trackCount: 1001 }]);
+  assert.deepEqual(result.playlists, [
+    { id: "playlist", name: "Large Playlist", trackCount: 1001 },
+  ]);
 });
 
 test("stale refresh failures cannot clear a newly connected account", async () => {
@@ -215,12 +241,15 @@ test("stale refresh failures cannot clear a newly connected account", async () =
   globalThis.fetch = async () => {
     requestCount += 1;
     if (requestCount === 1) {
-      return new Response(JSON.stringify({
-        error: { status: 401, message: "Missing/invalid/expired access token" },
-      }), {
-        status: 401,
-        headers: { "content-type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({
+          error: { status: 401, message: "Missing/invalid/expired access token" },
+        }),
+        {
+          status: 401,
+          headers: { "content-type": "application/json" },
+        },
+      );
     }
     resolveRefreshStarted();
     return pendingRefresh;
@@ -233,12 +262,17 @@ test("stale refresh failures cannot clear a newly connected account", async () =
     refreshToken: "new-refresh-token",
     expiresAt: Date.now() + 60 * 60 * 1000,
   });
-  resolveRefresh(new Response(JSON.stringify({
-    error: { status: 401, message: "Missing/invalid/expired refresh token" },
-  }), {
-    status: 401,
-    headers: { "content-type": "application/json" },
-  }));
+  resolveRefresh(
+    new Response(
+      JSON.stringify({
+        error: { status: 401, message: "Missing/invalid/expired refresh token" },
+      }),
+      {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      },
+    ),
+  );
 
   await assert.rejects(
     request,

@@ -19,10 +19,7 @@ const track = {
 
 test("flow playback can opt out of listening history", () => {
   assert.equal(normalizePlaylistQueueTrack(track).recordHistory, true);
-  assert.equal(
-    normalizePlaylistQueueTrack(track, { recordHistory: false }).recordHistory,
-    false,
-  );
+  assert.equal(normalizePlaylistQueueTrack(track, { recordHistory: false }).recordHistory, false);
 });
 
 test("previews and playlist tracks keep their cover so the player and album-art theme can show it", () => {
@@ -39,7 +36,10 @@ test("previews and playlist tracks keep their cover so the player and album-art 
   );
   assert.equal(releaseTrack.artwork, "https://c/release.jpg");
 
-  const editorialTrack = normalizePlaylistQueueTrack({ ...track, artworkUrl: "https://c/editorial.jpg" });
+  const editorialTrack = normalizePlaylistQueueTrack({
+    ...track,
+    artworkUrl: "https://c/editorial.jpg",
+  });
   assert.equal(editorialTrack.artwork, "https://c/editorial.jpg");
 });
 
@@ -223,7 +223,8 @@ test("previous restarts a track after three seconds and otherwise goes back one 
 });
 
 test("shuffle stays on for every queue played next and the order always matches it", () => {
-  const isInOrder = (state) => state.playbackOrder.every((queueIndex, index) => queueIndex === index);
+  const isInOrder = (state) =>
+    state.playbackOrder.every((queueIndex, index) => queueIndex === index);
   const shuffleOn = queueReducer(startQueue(), { type: "SET_SHUFFLE", enabled: true });
   const orders = new Set();
   for (let run = 0; run < 40; run += 1) {
@@ -256,14 +257,19 @@ test("shuffle stays on for every queue played next and the order always matches 
   assert.equal(inOrder.isShuffleEnabled, false);
   assert.ok(isInOrder(inOrder));
 
-  const cleared = queueReducer(queueReducer(shuffleOn, { type: "TOGGLE_REPEAT" }), { type: "CLEAR_QUEUE" });
+  const cleared = queueReducer(queueReducer(shuffleOn, { type: "TOGGLE_REPEAT" }), {
+    type: "CLEAR_QUEUE",
+  });
   assert.equal(cleared.queue.length, 0);
   assert.equal(cleared.isShuffleEnabled, true);
   assert.equal(cleared.repeatMode, "all");
 
   const shuffleButton = startQueue({ shuffle: true });
   assert.equal(shuffleButton.isShuffleEnabled, true);
-  assert.equal(isInOrder(queueReducer(shuffleButton, { type: "SET_SHUFFLE", enabled: false })), true);
+  assert.equal(
+    isInOrder(queueReducer(shuffleButton, { type: "SET_SHUFFLE", enabled: false })),
+    true,
+  );
 });
 
 const extra = (id) => ({ id, title: id, src: `/stream/${id}` });
@@ -286,7 +292,10 @@ test("with shuffle on, play next is next in the shuffle and stays next when shuf
   const queued = insert(insert(shuffled, ["x"], "next"), ["y"], "end");
   assert.equal(upcomingIds(queued)[0], "x");
   assert.equal(upcomingIds(queued).at(-1), "y");
-  assert.deepEqual([...upcomingIds(queued)].sort(), [...allIds.filter((id) => id !== "t2"), "x", "y"].sort());
+  assert.deepEqual(
+    [...upcomingIds(queued)].sort(),
+    [...allIds.filter((id) => id !== "t2"), "x", "y"].sort(),
+  );
 
   const unshuffled = queueReducer(queued, { type: "SET_SHUFFLE", enabled: false });
   assert.equal(currentId(unshuffled), "t2");
@@ -306,7 +315,10 @@ test("removing and reordering up next keeps the current track playing", () => {
   assert.deepEqual(upcomingIds(removed), ["t5", "t7"]);
   assert.equal(currentId(removed), "t4");
   assert.equal(removed.queueRevision, playing.queueRevision);
-  assert.equal(queueReducer(removed, { type: "REMOVE_ENTRY", entryId: entryOf(removed, "t4") }), removed);
+  assert.equal(
+    queueReducer(removed, { type: "REMOVE_ENTRY", entryId: entryOf(removed, "t4") }),
+    removed,
+  );
 
   const reordered = queueReducer(removed, {
     type: "REORDER_UPCOMING",
@@ -323,10 +335,11 @@ test("removing and reordering up next keeps the current track playing", () => {
   const [first, ...rest] = getUpcomingTracks(shuffled).map(({ track }) => track.entryId);
   const moved = queueReducer(shuffled, { type: "REORDER_UPCOMING", entryIds: [...rest, first] });
   assert.equal(getUpcomingTracks(moved).at(-1).track.entryId, first);
-  assert.deepEqual(
-    upcomingIds(queueReducer(moved, { type: "SET_SHUFFLE", enabled: false })),
-    ["t5", "t6", "t7"],
-  );
+  assert.deepEqual(upcomingIds(queueReducer(moved, { type: "SET_SHUFFLE", enabled: false })), [
+    "t5",
+    "t6",
+    "t7",
+  ]);
 });
 
 test("clearing up next keeps the current track and undo brings the cleared tracks back", () => {
@@ -349,5 +362,8 @@ test("clearing up next keeps the current track and undo brings the cleared track
   const repeating = queueReducer(playing, { type: "TOGGLE_REPEAT" });
   assert.deepEqual(upcomingIds(repeating), ["t4", "t5", "t6", "t7", "t0", "t1", "t2"]);
   const clearedLoop = queueReducer(repeating, { type: "CLEAR_UPCOMING" });
-  assert.deepEqual(clearedLoop.queue.map((track) => track.id), ["t3"]);
+  assert.deepEqual(
+    clearedLoop.queue.map((track) => track.id),
+    ["t3"],
+  );
 });

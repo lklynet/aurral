@@ -35,7 +35,8 @@ function collectStaticStrings(node, scope, seen = new Set()) {
   if (!node) return [];
   if (node.type === "Literal" && typeof node.value === "string") return [node.value];
   if (node.type === "JSXText") return [node.value];
-  if (node.type === "JSXExpressionContainer") return collectStaticStrings(node.expression, scope, seen);
+  if (node.type === "JSXExpressionContainer")
+    return collectStaticStrings(node.expression, scope, seen);
 
   if (node.type === "TemplateLiteral") {
     return [
@@ -85,9 +86,10 @@ function collectClassTokens(attribute, scope) {
   const tokens = new Set();
   if (!attribute) return tokens;
 
-  const value = attribute.value?.type === "JSXExpressionContainer"
-    ? attribute.value.expression
-    : attribute.value;
+  const value =
+    attribute.value?.type === "JSXExpressionContainer"
+      ? attribute.value.expression
+      : attribute.value;
 
   const add = (value) => {
     for (const token of value.split(/\s+/).filter(Boolean)) tokens.add(token);
@@ -95,7 +97,8 @@ function collectClassTokens(attribute, scope) {
 
   const visit = (node, seen = new Set()) => {
     if (!node) return;
-    const literal = node.type === "JSXAttribute" ? readStringValue(node.value) : readStringValue(node);
+    const literal =
+      node.type === "JSXAttribute" ? readStringValue(node.value) : readStringValue(node);
     if (literal !== null) {
       add(literal);
       return;
@@ -151,9 +154,10 @@ function collectClassTokens(attribute, scope) {
 }
 
 function collectGuaranteedClassTokens(attribute, scope) {
-  const value = attribute?.value?.type === "JSXExpressionContainer"
-    ? attribute.value.expression
-    : attribute?.value;
+  const value =
+    attribute?.value?.type === "JSXExpressionContainer"
+      ? attribute.value.expression
+      : attribute?.value;
 
   const tokenize = (value) => new Set(value.split(/\s+/).filter(Boolean));
   const intersect = (left, right) => new Set([...left].filter((token) => right.has(token)));
@@ -232,17 +236,23 @@ function hasVisibleText(node) {
   }
 
   if (node.type === "JSXExpressionContainer") return hasVisibleText(node.expression);
-  if (node.type === "Literal") return typeof node.value === "string" && node.value.trim().length > 0;
+  if (node.type === "Literal")
+    return typeof node.value === "string" && node.value.trim().length > 0;
   if (node.type === "TemplateLiteral") {
-    return node.quasis.some((quasi) => quasi.value.raw.trim().length > 0) || node.expressions.length > 0;
+    return (
+      node.quasis.some((quasi) => quasi.value.raw.trim().length > 0) || node.expressions.length > 0
+    );
   }
   if (node.type === "ConditionalExpression") {
     return hasVisibleText(node.consequent) || hasVisibleText(node.alternate);
   }
   if (node.type === "LogicalExpression") {
     if (node.operator === "&&") return hasVisibleText(node.right);
-    if ((node.operator === "||" || node.operator === "??") && !hasVisibleText(node.right) &&
-      (node.right.type === "JSXElement" || node.right.type === "JSXFragment")) {
+    if (
+      (node.operator === "||" || node.operator === "??") &&
+      !hasVisibleText(node.right) &&
+      (node.right.type === "JSXElement" || node.right.type === "JSXFragment")
+    ) {
       return false;
     }
     return hasVisibleText(node.left) || hasVisibleText(node.right);
@@ -273,9 +283,10 @@ function hasSharedButtonVariant(classTokens) {
 function isUnstyled(classNameAttribute) {
   if (!classNameAttribute) return true;
 
-  const value = classNameAttribute.value?.type === "JSXExpressionContainer"
-    ? classNameAttribute.value.expression
-    : classNameAttribute.value;
+  const value =
+    classNameAttribute.value?.type === "JSXExpressionContainer"
+      ? classNameAttribute.value.expression
+      : classNameAttribute.value;
   return value?.type === "Literal" && typeof value.value === "string" && !value.value.trim();
 }
 
@@ -296,15 +307,18 @@ function matchesException(exception, { file, classTokens, role, classNameAttribu
     return false;
   }
 
-  const hasSelector = Boolean(exception.className || exception.classNameExpression || exception.role);
+  const hasSelector = Boolean(
+    exception.className || exception.classNameExpression || exception.role,
+  );
   if (!hasSelector) return false;
   if (exception.className && !classTokens.has(exception.className)) return false;
   if (exception.role && role !== exception.role) return false;
 
   if (exception.classNameExpression) {
-    const expression = classNameAttribute?.value?.type === "JSXExpressionContainer"
-      ? classNameAttribute.value.expression
-      : null;
+    const expression =
+      classNameAttribute?.value?.type === "JSXExpressionContainer"
+        ? classNameAttribute.value.expression
+        : null;
     if (expression?.type !== "Identifier" || expression.name !== exception.classNameExpression) {
       return false;
     }
@@ -386,9 +400,7 @@ export const sharedControlRules = {
         const classTokens = collectClassTokens(classNameAttribute, scope);
         const guaranteedClassTokens = collectGuaranteedClassTokens(classNameAttribute, scope);
         const role = readAttributeStrings(element, ["role"], scope)[0] ?? null;
-        const file = getRelativeFile(
-          context.filename ?? context.getFilename?.() ?? "<input>",
-        );
+        const file = getRelativeFile(context.filename ?? context.getFilename?.() ?? "<input>");
 
         if (isNativeButton) {
           const excludedRole = role === "menuitem" || role === "switch";

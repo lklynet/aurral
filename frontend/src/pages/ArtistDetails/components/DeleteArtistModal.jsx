@@ -36,7 +36,8 @@ export function DeleteArtistModal({
           Delete artist
         </h3>
         <p className="artist-modal__copy">
-          Delete <strong>{artistName || libraryArtistName}</strong> and its albums from your library?
+          Delete <strong>{artistName || libraryArtistName}</strong> and its albums from your
+          library?
         </p>
 
         <div>

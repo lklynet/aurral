@@ -2,10 +2,7 @@ import { randomUUID } from "crypto";
 import fs from "fs/promises";
 import path from "path";
 import { dbOps } from "../db/helpers/index.js";
-import {
-  getLibraryTrackCount,
-  getLibraryTrackSample,
-} from "./libraryQueryService.js";
+import { getLibraryTrackCount, getLibraryTrackSample } from "./libraryQueryService.js";
 import { lidarrClient } from "./lidarrClient.js";
 import { getDownloadClient } from "./download/downloadClientSettings.js";
 import { NavidromeClient } from "./navidrome.js";
@@ -179,9 +176,13 @@ async function runDirectoryWriteProbe(dirPath) {
     const handle = await fs.open(probeFile, "wx");
     try {
       await handle.writeFile(contents, "utf8");
-      await handle.sync().catch((err) => { console.warn(err); });
+      await handle.sync().catch((err) => {
+        console.warn(err);
+      });
     } finally {
-      await handle.close().catch((err) => { console.warn(err); });
+      await handle.close().catch((err) => {
+        console.warn(err);
+      });
     }
     const readBack = await fs.readFile(probeFile, "utf8");
     if (readBack !== contents) {
@@ -200,7 +201,9 @@ async function runDirectoryWriteProbe(dirPath) {
       detail: `${probeDir}: ${formatProbeError(error)}`,
     };
   } finally {
-    await fs.rm(probeDir, { recursive: true, force: true }).catch((err) => { console.warn(err); });
+    await fs.rm(probeDir, { recursive: true, force: true }).catch((err) => {
+      console.warn(err);
+    });
   }
 }
 
@@ -667,8 +670,7 @@ async function checkSlskdSection() {
     title: "slskd downloads",
     isEnabled: (config) => config.enabled !== false,
     skipReason: "slskd is not configured.",
-    resolveCompletedPath: (_, connection) =>
-      String(connection.downloadPath || "").trim(),
+    resolveCompletedPath: (_, connection) => String(connection.downloadPath || "").trim(),
     missingPathFix:
       "Configure the completed downloads folder in slskd, then make that reported path readable and writable by Aurral through a shared mount or an slskd remote path mapping.",
     pathFix: (downloadPath) =>
@@ -818,18 +820,28 @@ async function checkNavidromeSection() {
 
   if (relevantLibraries.length > 0 && unreadableLibraries.length > 0) {
     steps.push(
-      healthStep("library-readable", "fail", "Relevant Navidrome libraries are readable from Aurral", {
-        detail: formatLimitedList(unreadableLibraries),
-        fix: "Mount the relevant Navidrome music folders into Aurral at the same paths, or verify the corresponding Navidrome libraries separately when the apps have different filesystem views.",
-      }),
+      healthStep(
+        "library-readable",
+        "fail",
+        "Relevant Navidrome libraries are readable from Aurral",
+        {
+          detail: formatLimitedList(unreadableLibraries),
+          fix: "Mount the relevant Navidrome music folders into Aurral at the same paths, or verify the corresponding Navidrome libraries separately when the apps have different filesystem views.",
+        },
+      ),
     );
   } else if (relevantLibraries.length > 0) {
     steps.push(
-      healthStep("library-readable", "pass", "Relevant Navidrome libraries are readable from Aurral", {
-        detail: formatLimitedList(
-          relevantLibraries.map((entry) => String(entry?.path || "").trim()).filter(Boolean),
-        ),
-      }),
+      healthStep(
+        "library-readable",
+        "pass",
+        "Relevant Navidrome libraries are readable from Aurral",
+        {
+          detail: formatLimitedList(
+            relevantLibraries.map((entry) => String(entry?.path || "").trim()).filter(Boolean),
+          ),
+        },
+      ),
     );
   }
 
@@ -905,9 +917,7 @@ function getPlexLibraryLocations(libraries) {
       : library?.Location
         ? [library.Location]
         : [];
-    return locations
-      .map((location) => String(location?.path || "").trim())
-      .filter(Boolean);
+    return locations.map((location) => String(location?.path || "").trim()).filter(Boolean);
   });
 }
 

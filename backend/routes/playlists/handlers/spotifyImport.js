@@ -42,10 +42,14 @@ function sendSpotifyError(res, error, fallback) {
 export function registerSpotifyImport(router) {
   router.get("/import/spotify/status", (req, res) => {
     const status = spotifyConnectionStore.getPublicStatus(req.user.id);
-    const hasSyncedPlaylists = flowPlaylistConfig.getStaticPlaylists().some((playlist) =>
-      Number(playlist?.ownerUserId) === Number(req.user.id) &&
-      playlist?.importSource?.provider === "spotify-playlist" &&
-      playlist.importSource.syncEnabled);
+    const hasSyncedPlaylists = flowPlaylistConfig
+      .getStaticPlaylists()
+      .some(
+        (playlist) =>
+          Number(playlist?.ownerUserId) === Number(req.user.id) &&
+          playlist?.importSource?.provider === "spotify-playlist" &&
+          playlist.importSource.syncEnabled,
+      );
     res.json({ ...status, reconnectRequired: !status.connected && hasSyncedPlaylists });
   });
 
@@ -132,8 +136,7 @@ export function registerSpotifyImport(router) {
         userId: req.user.id,
         externalId: playlistId,
       });
-      const skipped =
-        stats.unavailable + stats.podcast + stats.incomplete + stats.duplicate;
+      const skipped = stats.unavailable + stats.podcast + stats.incomplete + stats.duplicate;
       res.json({
         trackCount: tracks.length,
         skipped,
@@ -155,10 +158,7 @@ export function registerSpotifyImport(router) {
       const externalName = String(req.body?.externalName || "").trim();
       const syncIntervalHours = Number(req.body?.syncIntervalHours ?? 24);
       const keepRemovedTracks = req.body?.keepRemovedTracks !== false;
-      const syncEnabled =
-        req.body?.syncEnabled === false
-          ? false
-          : syncIntervalHours > 0;
+      const syncEnabled = req.body?.syncEnabled === false ? false : syncIntervalHours > 0;
       if (!playlistId) {
         return res.status(400).json({ error: "playlistId is required" });
       }
@@ -202,11 +202,15 @@ export function registerSpotifyImport(router) {
         });
       }
       const status = error?.code === SPOTIFY_AUTH_REQUIRED_CODE ? 401 : error?.statusCode || 500;
-      logger[status >= 500 ? "error" : "warn"]("playlist-import", "Spotify playlist import request failed", {
-        playlistName: String(req.body?.name || "").trim() || null,
-        stage,
-        reason: safeLogDiagnostic(error),
-      });
+      logger[status >= 500 ? "error" : "warn"](
+        "playlist-import",
+        "Spotify playlist import request failed",
+        {
+          playlistName: String(req.body?.name || "").trim() || null,
+          stage,
+          reason: safeLogDiagnostic(error),
+        },
+      );
       sendSpotifyError(res, error, "Failed to import Spotify playlist");
     }
   });

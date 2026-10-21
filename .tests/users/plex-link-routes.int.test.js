@@ -206,11 +206,7 @@ test("admin DELETE /:id/plex-link unlinks a managed user", async () => {
 });
 
 test("admin DELETE /:id/plex-link also removes the user's Plex login identity", async () => {
-  const target = userOps.createUser(
-    "plex-login-target",
-    bcrypt.hashSync("password123", 4),
-    "user",
-  );
+  const target = userOps.createUser("plex-login-target", bcrypt.hashSync("password123", 4), "user");
   plexConnectionStore.saveConnection(target.id, {
     linkType: "self",
     token: "target-token",
@@ -268,11 +264,9 @@ test("admin Plex unlink requires an explicit, recently authenticated force to re
     Date.now() - 20 * 60 * 1000,
     adminToken,
   );
-  const staleForce = await apiFetch(
-    adminToken,
-    `/api/users/${target.id}/plex-link?force=true`,
-    { method: "DELETE" },
-  );
+  const staleForce = await apiFetch(adminToken, `/api/users/${target.id}/plex-link?force=true`, {
+    method: "DELETE",
+  });
   assert.equal(staleForce.response.status, 401);
 
   const reauth = await apiFetch(adminToken, "/api/auth/reauth", {
@@ -280,11 +274,9 @@ test("admin Plex unlink requires an explicit, recently authenticated force to re
     body: JSON.stringify({ currentPassword: "password123" }),
   });
   assert.equal(reauth.response.status, 200);
-  const forced = await apiFetch(
-    adminToken,
-    `/api/users/${target.id}/plex-link?force=true`,
-    { method: "DELETE" },
-  );
+  const forced = await apiFetch(adminToken, `/api/users/${target.id}/plex-link?force=true`, {
+    method: "DELETE",
+  });
   assert.equal(forced.response.status, 200);
   assert.equal(forced.payload.forced, true);
   assert.equal(plexConnectionStore.getConnection(target.id), null);
@@ -321,14 +313,10 @@ test("Plex login rejects an unsafe forwardUrl before ever contacting Plex", asyn
   });
   assert.equal(absoluteResponse.status, 400);
 
-  const { response: protocolRelativeResponse } = await apiFetch(
-    null,
-    "/api/auth/plex/login/pin",
-    {
-      method: "POST",
-      body: JSON.stringify({ forwardUrl: "//evil.example.com/steal" }),
-    },
-  );
+  const { response: protocolRelativeResponse } = await apiFetch(null, "/api/auth/plex/login/pin", {
+    method: "POST",
+    body: JSON.stringify({ forwardUrl: "//evil.example.com/steal" }),
+  });
   assert.equal(protocolRelativeResponse.status, 400);
 
   const { response: backslashResponse } = await apiFetch(null, "/api/auth/plex/login/pin", {
@@ -357,7 +345,11 @@ test("Plex login complete rejects a request with no valid transaction cookie, ev
 
   const { response } = await apiFetch(null, "/api/auth/plex/login/complete", {
     method: "POST",
-    body: JSON.stringify({ pinId: "attacker-pin", code: "attacker-code", clientId: "attacker-client" }),
+    body: JSON.stringify({
+      pinId: "attacker-pin",
+      code: "attacker-code",
+      clientId: "attacker-client",
+    }),
   });
   assert.equal(response.status, 400);
   assert.match(response.headers.get("content-type") || "", /json/);
@@ -526,11 +518,7 @@ test("the protected recovery account can never be approved for SSO adoption", as
 });
 
 test("disconnecting Plex requires a recent reauth, same as the generic identity-unlink route", async () => {
-  const target = userOps.createUser(
-    "plex-reauth-user",
-    bcrypt.hashSync("password123", 4),
-    "user",
-  );
+  const target = userOps.createUser("plex-reauth-user", bcrypt.hashSync("password123", 4), "user");
   plexConnectionStore.saveConnection(target.id, {
     linkType: "self",
     token: "reauth-token",

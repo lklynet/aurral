@@ -78,10 +78,7 @@ export function buildYtdlpInvocationArgs(
   args,
   { nodeAvailable = resolveBinaryExists("node") } = {},
 ) {
-  return [
-    ...(nodeAvailable ? ["--no-js-runtimes", "--js-runtimes", "node"] : []),
-    ...args,
-  ];
+  return [...(nodeAvailable ? ["--no-js-runtimes", "--js-runtimes", "node"] : []), ...args];
 }
 
 function isConfiguredFor(config = null) {
@@ -117,25 +114,27 @@ function runYtdlp(args, { timeoutMs = 120000, cwd, shouldCancel, signal } = {}) 
       terminationError = error;
       signalProcess("SIGKILL");
     }, timeoutMs);
-    const cancellationTimer = typeof shouldCancel === "function"
-      ? setInterval(() => {
-          let cancelled = false;
-          try {
-            cancelled = shouldCancel() === true;
-          } catch {}
-          if (!cancelled || terminationError) return;
-          const error = new Error("yt-dlp download cancelled");
-          error.code = "DOWNLOAD_CANCELLED";
-          terminationError = error;
-          clearTimeout(timer);
-          signalProcess("SIGTERM");
-          forcedKillTimer = setTimeout(() => signalProcess("SIGKILL"), 1000);
-        }, 250)
-      : null;
+    const cancellationTimer =
+      typeof shouldCancel === "function"
+        ? setInterval(() => {
+            let cancelled = false;
+            try {
+              cancelled = shouldCancel() === true;
+            } catch {}
+            if (!cancelled || terminationError) return;
+            const error = new Error("yt-dlp download cancelled");
+            error.code = "DOWNLOAD_CANCELLED";
+            terminationError = error;
+            clearTimeout(timer);
+            signalProcess("SIGTERM");
+            forcedKillTimer = setTimeout(() => signalProcess("SIGKILL"), 1000);
+          }, 250)
+        : null;
     if (typeof cancellationTimer?.unref === "function") cancellationTimer.unref();
     const abort = () => {
       if (terminationError) return;
-      terminationError = signal.reason instanceof Error ? signal.reason : new Error("yt-dlp stopped");
+      terminationError =
+        signal.reason instanceof Error ? signal.reason : new Error("yt-dlp stopped");
       clearTimeout(timer);
       signalProcess("SIGKILL");
     };
@@ -172,7 +171,9 @@ function runYtdlp(args, { timeoutMs = 120000, cwd, shouldCancel, signal } = {}) 
         return;
       }
       if (code !== 0) {
-        const detail = String(stderr || stdout || "").trim().slice(-500);
+        const detail = String(stderr || stdout || "")
+          .trim()
+          .slice(-500);
         reject(new Error(detail || `yt-dlp exited with code ${code}`));
         return;
       }
@@ -195,7 +196,10 @@ async function testConnectionFor(config = null, { force: _force = false } = {}) 
   }
   try {
     const { stdout } = await runYtdlp(["--version"], { timeoutMs: 15000 });
-    const version = String(stdout || "").trim().split(/\s+/)[0] || "ok";
+    const version =
+      String(stdout || "")
+        .trim()
+        .split(/\s+/)[0] || "ok";
     return { configured: true, ok: true, version, message: `yt-dlp ${version}` };
   } catch (error) {
     return { configured: true, ok: false, message: error?.message || String(error) };
@@ -203,13 +207,15 @@ async function testConnectionFor(config = null, { force: _force = false } = {}) 
 }
 
 function readJsonLines(stdout) {
-  return String(stdout || "").split("\n").flatMap((line) => {
-    try {
-      return line.trim() ? [JSON.parse(line)] : [];
-    } catch {
-      return [];
-    }
-  });
+  return String(stdout || "")
+    .split("\n")
+    .flatMap((line) => {
+      try {
+        return line.trim() ? [JSON.parse(line)] : [];
+      } catch {
+        return [];
+      }
+    });
 }
 
 function readDurationSec(value) {
@@ -234,7 +240,9 @@ function readSong(stdout, { id, title }) {
     url: songUrl(id),
     channel: String(entry.channel || entry.uploader || "").trim(),
     durationSec: readDurationSec(entry.duration),
-    liveStatus: String(entry.live_status || "").trim().toLowerCase(),
+    liveStatus: String(entry.live_status || "")
+      .trim()
+      .toLowerCase(),
     artists: [...new Set(artists.map((name) => String(name || "").trim()).filter(Boolean))],
     album: String(entry.album || "").trim() || null,
     song: true,
@@ -250,8 +258,10 @@ function readSong(stdout, { id, title }) {
 // removed) is left out.
 async function searchSongs(query, { limit, wanted = () => true, decided = () => false }) {
   const stop = new AbortController();
-  const deadline = setTimeout(() => stop.abort(
-    new Error(`YouTube Music search took longer than ${SONG_SEARCH_BUDGET_MS}ms`)), SONG_SEARCH_BUDGET_MS);
+  const deadline = setTimeout(
+    () => stop.abort(new Error(`YouTube Music search took longer than ${SONG_SEARCH_BUDGET_MS}ms`)),
+    SONG_SEARCH_BUDGET_MS,
+  );
   try {
     const { stdout } = await runYtdlp(
       [
@@ -265,22 +275,33 @@ async function searchSongs(query, { limit, wanted = () => true, decided = () => 
       { signal: stop.signal },
     );
     const listed = readJsonLines(stdout)
-      .map((entry) => ({ id: String(entry.id || "").trim(), title: String(entry.title || "").trim() }))
+      .map((entry) => ({
+        id: String(entry.id || "").trim(),
+        title: String(entry.title || "").trim(),
+      }))
       .filter((entry) => entry.id && wanted(entry))
       .slice(0, limit);
     const songs = [];
     for (let first = 0; first < listed.length && !stop.signal.aborted; first += SONG_READ_BATCH) {
-      await Promise.all(listed.slice(first, first + SONG_READ_BATCH).map((entry, offset) => runYtdlp(
-        ["--skip-download", "--dump-json", "--no-warnings", "--", songUrl(entry.id)],
-        { signal: stop.signal },
-      ).then(({ stdout: read }) => { songs[first + offset] = readSong(read, entry); }, (error) => {
-        logger.warn("ytdlp", "Could not read YouTube Music song", {
-          query,
-          id: entry.id,
-          error: error?.message || String(error),
-        });
-      })));
-      if (stop.signal.aborted || await decided(songs.filter(Boolean))) break;
+      await Promise.all(
+        listed.slice(first, first + SONG_READ_BATCH).map((entry, offset) =>
+          runYtdlp(["--skip-download", "--dump-json", "--no-warnings", "--", songUrl(entry.id)], {
+            signal: stop.signal,
+          }).then(
+            ({ stdout: read }) => {
+              songs[first + offset] = readSong(read, entry);
+            },
+            (error) => {
+              logger.warn("ytdlp", "Could not read YouTube Music song", {
+                query,
+                id: entry.id,
+                error: error?.message || String(error),
+              });
+            },
+          ),
+        ),
+      );
+      if (stop.signal.aborted || (await decided(songs.filter(Boolean)))) break;
     }
     return songs.filter(Boolean);
   } finally {
@@ -289,7 +310,11 @@ async function searchSongs(query, { limit, wanted = () => true, decided = () => 
   }
 }
 
-async function searchFor(_config = null, query, { limit = SEARCH_LIMIT, songs = false, wanted, decided, timeoutMs = 60000 } = {}) {
+async function searchFor(
+  _config = null,
+  query,
+  { limit = SEARCH_LIMIT, songs = false, wanted, decided, timeoutMs = 60000 } = {},
+) {
   const trimmed = String(query || "").trim();
   if (!trimmed) return [];
   const capped = Math.min(Math.max(Number(limit) || SEARCH_LIMIT, 1), 10);
@@ -307,16 +332,20 @@ async function searchFor(_config = null, query, { limit = SEARCH_LIMIT, songs = 
   return readJsonLines(stdout).flatMap((entry) => {
     const id = String(entry.id || entry.url || "").trim();
     if (!id) return [];
-    return [{
-      id,
-      title: String(entry.title || "").trim(),
-      url:
-        String(entry.webpage_url || entry.url || "").trim() ||
-        `https://www.youtube.com/watch?v=${id}`,
-      channel: String(entry.channel || entry.uploader || "").trim(),
-      durationSec: readDurationSec(entry.duration),
-      liveStatus: String(entry.live_status || "").trim().toLowerCase(),
-    }];
+    return [
+      {
+        id,
+        title: String(entry.title || "").trim(),
+        url:
+          String(entry.webpage_url || entry.url || "").trim() ||
+          `https://www.youtube.com/watch?v=${id}`,
+        channel: String(entry.channel || entry.uploader || "").trim(),
+        durationSec: readDurationSec(entry.duration),
+        liveStatus: String(entry.live_status || "")
+          .trim()
+          .toLowerCase(),
+      },
+    ];
   });
 }
 
@@ -354,7 +383,9 @@ async function downloadAudioFor(config = null, videoUrl, { jobId, shouldCancel }
     "--no-warnings",
     "-x",
     "--embed-metadata",
-    ...(isSongUrl(url) ? [] : ["--parse-metadata", "title:^(?P<artist>.+?)\\s+[-–—]\\s+(?P<title>.+)$"]),
+    ...(isSongUrl(url)
+      ? []
+      : ["--parse-metadata", "title:^(?P<artist>.+?)\\s+[-–—]\\s+(?P<title>.+)$"]),
     "--audio-format",
     AUDIO_FORMAT,
     "--audio-quality",
@@ -387,7 +418,9 @@ async function downloadAudioFor(config = null, videoUrl, { jobId, shouldCancel }
 
 async function cleanupStagingFor(config = null, jobId) {
   await activeDownloads.get(String(jobId || ""))?.catch(() => {});
-  await fsPromises.rm(resolveStagingDir(config, jobId), { recursive: true, force: true }).catch(() => {});
+  await fsPromises
+    .rm(resolveStagingDir(config, jobId), { recursive: true, force: true })
+    .catch(() => {});
 }
 
 export class YtdlpClient {

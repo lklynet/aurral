@@ -21,7 +21,9 @@ test("static playlist opens from Playlists and its scrobble setting persists", a
     await expect(playlistLink).toBeVisible({ timeout: 15_000 });
     await playlistLink.click();
 
-    await expect(page).toHaveURL(new RegExp(`/library/playlists/${encodeURIComponent(playlistId)}$`));
+    await expect(page).toHaveURL(
+      new RegExp(`/library/playlists/${encodeURIComponent(playlistId)}$`),
+    );
     await expect(page.getByRole("heading", { name: playlistName, exact: true })).toBeVisible();
 
     const openMenu = () => page.getByRole("button", { name: `${playlistName} options` }).click();
@@ -33,7 +35,10 @@ test("static playlist opens from Playlists and its scrobble setting persists", a
 
     const statusResponse = await apiRequest(page, "/api/playlists/status");
     expect(statusResponse.ok).toBe(true);
-    expect(statusResponse.body.sharedPlaylists.find((playlist) => playlist.id === playlistId).recordHistory).toBe(false);
+    expect(
+      statusResponse.body.sharedPlaylists.find((playlist) => playlist.id === playlistId)
+        .recordHistory,
+    ).toBe(false);
 
     await page.reload();
     await openMenu();
@@ -53,7 +58,9 @@ test("static playlist opens from Playlists and its scrobble setting persists", a
       .poll(
         async () => {
           const response = await apiRequest(page, "/api/playlists/status");
-          return response.body?.sharedPlaylists?.some((playlist) => playlist.id === playlistId) || false;
+          return (
+            response.body?.sharedPlaylists?.some((playlist) => playlist.id === playlistId) || false
+          );
         },
         { timeout: 15_000 },
       )

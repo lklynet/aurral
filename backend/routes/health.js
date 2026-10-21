@@ -237,9 +237,7 @@ function serializeBootstrapMatcherStatus(status, authenticated) {
     available: Boolean(status.available),
     checked: Boolean(status.checked),
     policyVersion: status.policyVersion || null,
-    error: status.error
-      ? { code: status.error.code || "matcher_error" }
-      : null,
+    error: status.error ? { code: status.error.code || "matcher_error" } : null,
   };
 }
 
@@ -266,10 +264,7 @@ function buildBootstrapPayload(req) {
     timestamp: new Date().toISOString(),
     appVersion: APP_VERSION,
     api: API_CONTRACT,
-    matcher: serializeBootstrapMatcherStatus(
-      getMatcherStatus(),
-      Boolean(currentUser),
-    ),
+    matcher: serializeBootstrapMatcherStatus(getMatcherStatus(), Boolean(currentUser)),
   };
 
   if (currentUser) {
@@ -291,9 +286,12 @@ function buildBootstrapPayload(req) {
     payload.ticketmasterConfigured = !!getTicketmasterApiKey();
     payload.inboxEnabled = settings.inbox?.enabled !== false;
     const newsSettings = getNewsSettings();
-    payload.newsConfigured = newsSettings.enabled && newsSettings.feeds.some(
-      (feed) => feed.enabled && (feed.group === "custom" || newsSettings.groups[feed.group] !== false),
-    );
+    payload.newsConfigured =
+      newsSettings.enabled &&
+      newsSettings.feeds.some(
+        (feed) =>
+          feed.enabled && (feed.group === "custom" || newsSettings.groups[feed.group] !== false),
+      );
     payload.musicbrainzConfigured = !!settings.integrations?.metadata?.baseUrl;
     payload.metadataConfigured = !!settings.integrations?.metadata?.baseUrl;
     payload.slskdConfigured = downloadSources.slskd.configured;

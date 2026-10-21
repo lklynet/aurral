@@ -16,7 +16,9 @@ async function tabTo(page, locator) {
   throw new Error("Keyboard focus never reached the Monitor button");
 }
 
-test("with Lidarr, Monitor adds an artist to Lidarr and changes its monitoring", async ({ page }) => {
+test("with Lidarr, Monitor adds an artist to Lidarr and changes its monitoring", async ({
+  page,
+}) => {
   test.setTimeout(180_000);
   await openApp(page);
   expect(
@@ -26,7 +28,9 @@ test("with Lidarr, Monitor adds an artist to Lidarr and changes its monitoring",
 
   try {
     await page.goto(`/artist/${lidarrArtist.mbid}`);
-    await expect(page.getByRole("heading", { name: lidarrArtist.name, level: 1 })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("heading", { name: lidarrArtist.name, level: 1 })).toBeVisible({
+      timeout: 30_000,
+    });
     const actionBar = page.locator(".artist-action-bar");
     const monitor = actionBar.getByRole("button", { name: /^(Monitor|Monitoring: .*)$/ });
     await expect(monitor).toHaveAccessibleName("Monitor", { timeout: 30_000 });
@@ -46,12 +50,23 @@ test("with Lidarr, Monitor adds an artist to Lidarr and changes its monitoring",
     await monitor.click();
     await menu.getByRole("menuitemradio", { name: "Future albums", exact: true }).click();
     await expect(monitor).toHaveAccessibleName("Monitoring: Future albums", { timeout: 60_000 });
-    await expect.poll(async () => (await lookupArtist(page, lidarrArtist.mbid))?.exists, { timeout: 30_000 }).toBe(true);
-    const monitoring = await apiRequest(page, `/api/library/artists/${lidarrArtist.mbid}/monitoring`);
-    expect(monitoring.body).toMatchObject({ manager: "lidarr", added: true, monitorOption: "future" });
+    await expect
+      .poll(async () => (await lookupArtist(page, lidarrArtist.mbid))?.exists, { timeout: 30_000 })
+      .toBe(true);
+    const monitoring = await apiRequest(
+      page,
+      `/api/library/artists/${lidarrArtist.mbid}/monitoring`,
+    );
+    expect(monitoring.body).toMatchObject({
+      manager: "lidarr",
+      added: true,
+      monitorOption: "future",
+    });
 
     await monitor.click();
-    await expect(menu.getByRole("menuitem", { name: "Customize add…", exact: true })).toHaveCount(0);
+    await expect(menu.getByRole("menuitem", { name: "Customize add…", exact: true })).toHaveCount(
+      0,
+    );
     await menu.getByRole("menuitemradio", { name: "Not monitored", exact: true }).click();
     await expect(monitor).toHaveAccessibleName("Monitor", { timeout: 60_000 });
   } finally {
@@ -63,7 +78,9 @@ test("with Lidarr, Monitor adds an artist to Lidarr and changes its monitoring",
       );
       expect(response.status).toBe(200);
       await expect
-        .poll(async () => (await lookupArtist(page, lidarrArtist.mbid))?.exists, { timeout: 30_000 })
+        .poll(async () => (await lookupArtist(page, lidarrArtist.mbid))?.exists, {
+          timeout: 30_000,
+        })
         .toBe(false);
     }
   }

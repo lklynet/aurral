@@ -21,7 +21,9 @@ test("startup removes the old stored news state and publisher blocks but keeps o
 
   const { db } = await importFromRepo("backend/config/db-sqlite.js");
   try {
-    const keys = db.prepare("SELECT key FROM settings WHERE key LIKE 'user:%' OR key LIKE 'news:%'").all()
+    const keys = db
+      .prepare("SELECT key FROM settings WHERE key LIKE 'user:%' OR key LIKE 'news:%'")
+      .all()
       .map(({ key }) => key);
     assert.deepEqual(keys, ["user:1:discoverLayout"]);
   } finally {

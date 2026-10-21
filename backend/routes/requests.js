@@ -78,9 +78,7 @@ const filterRedundantAurralRequests = (aurralRequests, lidarrRequests) => {
 };
 
 const buildRequestsResponse = async (lidarrClient, { refresh = false, user = null } = {}) => {
-  const snapshot = lidarrClient?.isConfigured()
-    ? await getLidarrStatusSnapshot({ refresh })
-    : null;
+  const snapshot = lidarrClient?.isConfigured() ? await getLidarrStatusSnapshot({ refresh }) : null;
   const [lidarrRequests, aurralRequests] = await Promise.all([
     snapshot ? buildLidarrRequests(lidarrClient, snapshot.provider) : Promise.resolve([]),
     getAurralHistoryRequests(lidarrClient, user),

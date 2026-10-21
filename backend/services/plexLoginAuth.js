@@ -133,8 +133,7 @@ export async function completePlexLogin(req, res) {
   if (!linked) {
     res.status(403).json({
       error: "not_linked",
-      message:
-        "Plex account not linked. Sign in another way and link Plex in Profile.",
+      message: "Plex account not linked. Sign in another way and link Plex in Profile.",
     });
     return;
   }

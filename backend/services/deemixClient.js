@@ -68,21 +68,28 @@ export function buildQueueUuid(trackId, bitrate) {
 // The deemix queue items a download step holds: one track or album, or each
 // wanted track of a release queued by its own URL.
 export function deemixQueueIds(payload) {
-  return [...new Set([payload?.queueUuid, ...(payload?.queueUuids || [])]
-    .map((id) => String(id || "").trim()).filter(Boolean))];
+  return [
+    ...new Set(
+      [payload?.queueUuid, ...(payload?.queueUuids || [])]
+        .map((id) => String(id || "").trim())
+        .filter(Boolean),
+    ),
+  ];
 }
 
 export function readDeemixAlbumQueue(item) {
   const status = String(item?.status || "");
   const finished = ["completed", "withErrors", "failed"].includes(status);
   const seen = new Set();
-  const filePaths = finished && item?.type === "album"
-    ? (Array.isArray(item.files) ? item.files : []).flatMap((file) => {
-      const path = String(file?.path || "").trim();
-      if (!path || seen.has(path)) return [];
-      seen.add(path);
-      return [path];
-    }) : [];
+  const filePaths =
+    finished && item?.type === "album"
+      ? (Array.isArray(item.files) ? item.files : []).flatMap((file) => {
+          const path = String(file?.path || "").trim();
+          if (!path || seen.has(path)) return [];
+          seen.add(path);
+          return [path];
+        })
+      : [];
   return {
     finished,
     status,
@@ -181,8 +188,9 @@ function normalizeTrack(entry) {
     artist: String(entry?.artist?.name || "").trim(),
     album: String(entry?.album?.title || "").trim(),
     albumId,
-    albumUrl: String(entry?.album?.link || "").trim()
-      || (albumId ? `https://www.deezer.com/album/${albumId}` : ""),
+    albumUrl:
+      String(entry?.album?.link || "").trim() ||
+      (albumId ? `https://www.deezer.com/album/${albumId}` : ""),
     durationSec: normalizeInteger(entry?.duration, 0),
     url: String(entry?.link || "").trim() || `https://www.deezer.com/track/${id}`,
     readable: entry?.readable !== false,
@@ -291,10 +299,7 @@ export class DeemixClient {
         };
       } else {
         const user = String(connected?.currentUser?.name || "").trim();
-        const unsupportedBitrate = describeBitrateSupport(
-          connected?.currentUser,
-          settings.bitrate,
-        );
+        const unsupportedBitrate = describeBitrateSupport(connected?.currentUser, settings.bitrate);
         const connectedMessage = `deemix is connected${user ? ` as ${user}` : ""}${suffix}`;
         result = {
           ok: true,

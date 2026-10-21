@@ -47,9 +47,7 @@ async function withFakeLidarr(buildState, run) {
       let albums = state.albums;
       if (foreignAlbumId) {
         albums = albums.filter(
-          (album) =>
-            String(album.foreignAlbumId).toLowerCase() ===
-            foreignAlbumId.toLowerCase(),
+          (album) => String(album.foreignAlbumId).toLowerCase() === foreignAlbumId.toLowerCase(),
         );
       }
       if (artistId) {
@@ -135,8 +133,7 @@ async function withFakeLidarr(buildState, run) {
 test("new-artist album request queues AlbumSearch even when Lidarr already created the album", async () => {
   const originalGetArtist = libraryManager.getArtist;
   const originalResolveArtistAddOptions = libraryManager.resolveArtistAddOptions;
-  const originalAddArtistWithResolvedOptions =
-    libraryManager.addArtistWithResolvedOptions;
+  const originalAddArtistWithResolvedOptions = libraryManager.addArtistWithResolvedOptions;
   const originalEnsureArtistMonitored = libraryManager.ensureArtistMonitored;
   const originalScheduleRequestedAlbumMonitoringRepair =
     libraryManager.scheduleRequestedAlbumMonitoringRepair;
@@ -209,8 +206,7 @@ test("new-artist album request queues AlbumSearch even when Lidarr already creat
       } finally {
         libraryManager.getArtist = originalGetArtist;
         libraryManager.resolveArtistAddOptions = originalResolveArtistAddOptions;
-        libraryManager.addArtistWithResolvedOptions =
-          originalAddArtistWithResolvedOptions;
+        libraryManager.addArtistWithResolvedOptions = originalAddArtistWithResolvedOptions;
         libraryManager.ensureArtistMonitored = originalEnsureArtistMonitored;
         libraryManager.scheduleRequestedAlbumMonitoringRepair =
           originalScheduleRequestedAlbumMonitoringRepair;
@@ -222,8 +218,7 @@ test("new-artist album request queues AlbumSearch even when Lidarr already creat
 test("new-artist album request recovers from AlbumExistsValidator and still searches", async () => {
   const originalGetArtist = libraryManager.getArtist;
   const originalResolveArtistAddOptions = libraryManager.resolveArtistAddOptions;
-  const originalAddArtistWithResolvedOptions =
-    libraryManager.addArtistWithResolvedOptions;
+  const originalAddArtistWithResolvedOptions = libraryManager.addArtistWithResolvedOptions;
   const originalEnsureArtistMonitored = libraryManager.ensureArtistMonitored;
   const originalScheduleRequestedAlbumMonitoringRepair =
     libraryManager.scheduleRequestedAlbumMonitoringRepair;
@@ -308,8 +303,7 @@ test("new-artist album request recovers from AlbumExistsValidator and still sear
         lidarrClient.getAlbumByMbid = originalGetAlbumByMbid;
         libraryManager.getArtist = originalGetArtist;
         libraryManager.resolveArtistAddOptions = originalResolveArtistAddOptions;
-        libraryManager.addArtistWithResolvedOptions =
-          originalAddArtistWithResolvedOptions;
+        libraryManager.addArtistWithResolvedOptions = originalAddArtistWithResolvedOptions;
         libraryManager.ensureArtistMonitored = originalEnsureArtistMonitored;
         libraryManager.scheduleRequestedAlbumMonitoringRepair =
           originalScheduleRequestedAlbumMonitoringRepair;

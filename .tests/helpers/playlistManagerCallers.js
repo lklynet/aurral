@@ -16,17 +16,21 @@ function nextMessage(caller, type) {
 }
 
 export async function callFromProcessesWhileHonkerLocked(t, honker, method, argsPerProcess) {
-  const callers = argsPerProcess.map(() => fork(fixture, { stdio: ["ignore", "ignore", "inherit", "ipc"] }));
+  const callers = argsPerProcess.map(() =>
+    fork(fixture, { stdio: ["ignore", "ignore", "inherit", "ipc"] }),
+  );
   t.onTestFinished(() => callers.forEach((caller) => caller.kill()));
   await Promise.all(callers.map((caller) => nextMessage(caller, "ready")));
 
   const writeLock = honker.getHonkerDb().transaction();
   const scheduled = callers.map((caller) => nextMessage(caller, "scheduled"));
-  await Promise.all(callers.map((caller, index) => {
-    const calling = nextMessage(caller, "calling");
-    caller.send({ method, args: argsPerProcess[index] });
-    return calling;
-  }));
+  await Promise.all(
+    callers.map((caller, index) => {
+      const calling = nextMessage(caller, "calling");
+      caller.send({ method, args: argsPerProcess[index] });
+      return calling;
+    }),
+  );
   await delay(500);
   writeLock.commit();
   return (await Promise.all(scheduled)).map(({ jobId }) => jobId);

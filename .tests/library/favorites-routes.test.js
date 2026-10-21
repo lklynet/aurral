@@ -17,9 +17,8 @@ const [isolatedState, { db }, { userOps }, libraryService, libraryStore] =
     "backend/services/libraryMediaStore.js",
   );
 
-const { registerLibraryIndex } = await import(
-  "../../backend/routes/library/handlers/libraryIndex.js"
-);
+const { registerLibraryIndex } =
+  await import("../../backend/routes/library/handlers/libraryIndex.js");
 const {
   linkLibraryAlbumTrack,
   upsertLibraryAlbum,
@@ -156,10 +155,7 @@ function responseFor() {
 test("native favorites return changed identities and reuse Subsonic star identity", () => {
   const target = `artist:${encodeURIComponent(artist.identity_key)}`;
   const postResponse = responseFor();
-  getRoute("POST /favorites")(
-    { user, body: { ids: [target], starred: true } },
-    postResponse,
-  );
+  getRoute("POST /favorites")({ user, body: { ids: [target], starred: true } }, postResponse);
 
   assert.equal(postResponse.statusCode, 200);
   assert.deepEqual(postResponse.body.changedIds, [target]);
@@ -167,19 +163,28 @@ test("native favorites return changed identities and reuse Subsonic star identit
 
   const getResponse = responseFor();
   getRoute("GET /favorites")({ user }, getResponse);
-  assert.deepEqual(getResponse.body.artist.map((entry) => entry.id), [target]);
+  assert.deepEqual(
+    getResponse.body.artist.map((entry) => entry.id),
+    [target],
+  );
 });
 
 test("native favorites include the library favorite subset", () => {
   const response = responseFor();
   getRoute("GET /favorites")({ user }, response);
 
-  assert.deepEqual(response.body.library.artists.map((entry) => entry.name), ["Favorite Artist"]);
-  assert.deepEqual(response.body.library.albums.map((entry) => entry.title), ["Favorite Album"]);
-  assert.deepEqual(response.body.library.tracks.map((entry) => entry.title), [
-    "Favorite Track",
-    "Favorite Track Two",
-  ]);
+  assert.deepEqual(
+    response.body.library.artists.map((entry) => entry.name),
+    ["Favorite Artist"],
+  );
+  assert.deepEqual(
+    response.body.library.albums.map((entry) => entry.title),
+    ["Favorite Album"],
+  );
+  assert.deepEqual(
+    response.body.library.tracks.map((entry) => entry.title),
+    ["Favorite Track", "Favorite Track Two"],
+  );
   assert.equal(response.body.library.tracks[0].files[0].path, undefined);
 });
 
@@ -197,10 +202,7 @@ test("library pages return bounded collection responses", () => {
   assert.equal(response.body.total, 3);
   assert.equal(response.body.items.length, 1);
   assert.equal(response.body.items[0].artistName, "Favorite Artist");
-  assert.equal(
-    String(response.body.items[0].canonicalId),
-    String(response.body.items[0].id),
-  );
+  assert.equal(String(response.body.items[0].canonicalId), String(response.body.items[0].id));
   assert.equal(response.body.items[0].providerId, null);
   assert.equal(response.body.items[0].source, "aurral");
   assert.equal(response.body.items[0].available, true);
@@ -259,10 +261,7 @@ test("library rejects unbounded requests", () => {
 
 test("native favorites rejects unknown targets without changing stars", () => {
   const response = responseFor();
-  getRoute("POST /favorites")(
-    { user, body: { ids: ["album:missing"], starred: true } },
-    response,
-  );
+  getRoute("POST /favorites")({ user, body: { ids: ["album:missing"], starred: true } }, response);
 
   assert.equal(response.statusCode, 400);
   assert.equal(response.body.error, "Invalid favorite target");
@@ -294,15 +293,23 @@ test("unfavoriting returns the removed stars so restoring keeps their original t
   const first = `song:${encodeURIComponent("favorite-track")}`;
   const second = `song:${encodeURIComponent("favorite-track-two")}`;
   const starResponse = responseFor();
-  getRoute("POST /favorites")({ user, body: { ids: [first, second], starred: true } }, starResponse);
+  getRoute("POST /favorites")(
+    { user, body: { ids: [first, second], starred: true } },
+    starResponse,
+  );
   assert.equal(starResponse.statusCode, 200);
-  db.prepare("UPDATE subsonic_stars SET created_at = 1000 WHERE user_id = ? AND entity_key = ?")
-    .run(user.id, "favorite-track");
-  db.prepare("UPDATE subsonic_stars SET created_at = 2000 WHERE user_id = ? AND entity_key = ?")
-    .run(user.id, "favorite-track-two");
-  const storedSongs = () => db.prepare(
-    "SELECT entity_key, created_at FROM subsonic_stars WHERE user_id = ? AND entity_kind = 'song' ORDER BY created_at",
-  ).all(user.id);
+  db.prepare(
+    "UPDATE subsonic_stars SET created_at = 1000 WHERE user_id = ? AND entity_key = ?",
+  ).run(user.id, "favorite-track");
+  db.prepare(
+    "UPDATE subsonic_stars SET created_at = 2000 WHERE user_id = ? AND entity_key = ?",
+  ).run(user.id, "favorite-track-two");
+  const storedSongs = () =>
+    db
+      .prepare(
+        "SELECT entity_key, created_at FROM subsonic_stars WHERE user_id = ? AND entity_kind = 'song' ORDER BY created_at",
+      )
+      .all(user.id);
 
   const unstarResponse = responseFor();
   getRoute("POST /favorites")({ user, body: { ids: [first], starred: false } }, unstarResponse);

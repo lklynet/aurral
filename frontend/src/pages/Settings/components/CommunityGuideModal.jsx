@@ -22,9 +22,7 @@ export function CommunityGuideModal({ show, onClose, onApply }) {
         <h3 id={titleId} className="settings-page__modal-title">
           Apply recommended settings
         </h3>
-        <p className="settings-page__modal-copy">
-          Apply these guide settings to Lidarr:
-        </p>
+        <p className="settings-page__modal-copy">Apply these guide settings to Lidarr:</p>
         <ul className="settings-page__modal-list">
           <li>Update quality definitions for FLAC and FLAC 24bit</li>
           <li>Add custom formats (Preferred Groups, CD, WEB, Lossless, Vinyl)</li>

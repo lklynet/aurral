@@ -119,10 +119,12 @@ export function listReleaseCalendarArtists() {
 
 export function getReleaseCalendarArtistRefreshes() {
   return new Map(
-    selectArtistRefreshes.all().map((row) => [
-      String(row.artist_id),
-      { refreshedAt: Number(row.refreshed_at) || 0, failedAt: Number(row.failed_at) || 0 },
-    ]),
+    selectArtistRefreshes
+      .all()
+      .map((row) => [
+        String(row.artist_id),
+        { refreshedAt: Number(row.refreshed_at) || 0, failedAt: Number(row.failed_at) || 0 },
+      ]),
   );
 }
 
@@ -136,40 +138,39 @@ export function markReleaseCalendarArtistFailed(artistId, failedAt) {
 
 export function getArtistReleaseCalendar(artistId) {
   return new Map(
-    selectArtistReleases.all(Number(artistId)).map((row) => [
-      row.release_group_mbid,
-      { releaseDate: row.release_date, refreshedAt: Number(row.refreshed_at) },
-    ]),
+    selectArtistReleases
+      .all(Number(artistId))
+      .map((row) => [
+        row.release_group_mbid,
+        { releaseDate: row.release_date, refreshedAt: Number(row.refreshed_at) },
+      ]),
   );
 }
 
 export function isReleaseGroupOwned(releaseGroupMbid) {
-  return selectReleaseGroupOwned.get({
-    releaseGroupMbid: String(releaseGroupMbid || "").trim(),
-  }).owned === 1;
+  return (
+    selectReleaseGroupOwned.get({
+      releaseGroupMbid: String(releaseGroupMbid || "").trim(),
+    }).owned === 1
+  );
 }
 
-export function markUnseenReleaseCalendarEntries(artistId, seenReleaseGroupMbids, refreshedAt = Date.now()) {
+export function markUnseenReleaseCalendarEntries(
+  artistId,
+  seenReleaseGroupMbids,
+  refreshedAt = Date.now(),
+) {
   const seen = new Set(seenReleaseGroupMbids);
   const timestamp = Number(refreshedAt) || Date.now();
   let stale = 0;
   for (const row of selectArtistReleases.all(Number(artistId))) {
     if (seen.has(row.release_group_mbid) || row.present === 0) continue;
-    stale += markReleaseAbsent.run(
-      timestamp,
-      row.release_group_mbid,
-      Number(artistId),
-    ).changes;
+    stale += markReleaseAbsent.run(timestamp, row.release_group_mbid, Number(artistId)).changes;
   }
   return stale;
 }
 
-export function getReleaseCalendarEntries({
-  from,
-  to = null,
-  limit = 100,
-  artistIds = [],
-} = {}) {
+export function getReleaseCalendarEntries({ from, to = null, limit = 100, artistIds = [] } = {}) {
   const fromDate = String(from || "").trim();
   const toDate = String(to || "").trim();
   if (!fromDate) return [];
@@ -183,11 +184,13 @@ export function getReleaseCalendarEntries({
     conditions.push("calendar.release_date <= ?");
     parameters.push(toDate);
   }
-  const normalizedArtistIds = [...new Set(
-    (Array.isArray(artistIds) ? artistIds : [])
-      .map((value) => Number(value))
-      .filter((value) => Number.isSafeInteger(value) && value > 0),
-  )];
+  const normalizedArtistIds = [
+    ...new Set(
+      (Array.isArray(artistIds) ? artistIds : [])
+        .map((value) => Number(value))
+        .filter((value) => Number.isSafeInteger(value) && value > 0),
+    ),
+  ];
   if (Array.isArray(artistIds) && artistIds.length > 0) {
     if (normalizedArtistIds.length === 0) return [];
     conditions.push("calendar.artist_id IN (SELECT CAST(value AS INTEGER) FROM json_each(?))");
@@ -195,7 +198,8 @@ export function getReleaseCalendarEntries({
   }
   parameters.push(Math.min(1000, Math.max(1, Number.parseInt(limit, 10) || 100)));
 
-  const rows = db.prepare(`
+  const rows = db
+    .prepare(`
     WITH eligible_calendar AS MATERIALIZED (
       SELECT
         calendar.*,
@@ -248,7 +252,8 @@ export function getReleaseCalendarEntries({
       AND (media.album_id = relation.album_id OR media.album_id IS NULL)
     GROUP BY calendar.release_group_mbid, calendar.artist_id
     ORDER BY calendar.release_date DESC, calendar.release_group_mbid
-  `).all(...parameters);
+  `)
+    .all(...parameters);
 
   return rows.map((row) => {
     const trackCount = Number(row.track_count || 0);

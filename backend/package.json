@@ -1,28 +1,22 @@
 {
   "name": "aurral-backend",
   "version": "0.0.0",
-  "description": "Self-hosted music discovery and library management.",
   "private": true,
-  "main": "server.js",
+  "description": "Self-hosted music discovery and library management.",
+  "keywords": [
+    "music",
+    "musicbrainz",
+    "request"
+  ],
+  "license": "MIT",
+  "author": "",
   "type": "module",
+  "main": "server.js",
   "scripts": {
     "start": "node --env-file=.env server.js",
     "dev": "node --watch --env-file=.env server.js",
     "test": "cd .. && npm test",
     "auth:reset-admin-password": "node --env-file=.env scripts/resetAdminPassword.js"
-  },
-  "keywords": [
-    "musicbrainz",
-    "music",
-    "request"
-  ],
-  "author": "",
-  "license": "MIT",
-  "optionalDependencies": {
-    "@russellthehippo/honker-node-darwin-arm64": "0.5.1",
-    "@russellthehippo/honker-node-darwin-x64": "0.5.1",
-    "@russellthehippo/honker-node-linux-arm64-gnu": "0.5.1",
-    "@russellthehippo/honker-node-linux-x64-gnu": "0.5.1"
   },
   "dependencies": {
     "@rowanmanning/feed-parser": "^2.1.5",
@@ -45,5 +39,11 @@
     "undici": "^8.12.2",
     "ws": "^8.22.0",
     "youtubei.js": "~18.1.0"
+  },
+  "optionalDependencies": {
+    "@russellthehippo/honker-node-darwin-arm64": "0.5.1",
+    "@russellthehippo/honker-node-darwin-x64": "0.5.1",
+    "@russellthehippo/honker-node-linux-arm64-gnu": "0.5.1",
+    "@russellthehippo/honker-node-linux-x64-gnu": "0.5.1"
   }
 }

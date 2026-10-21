@@ -1,14 +1,12 @@
 import { getData, postData, lidarrCredentialParams } from "../core.js";
 import { queryClient, queryKeys } from "../../../queryClient.js";
 
-export const startPlexAuth = (forwardUrl) =>
-  postData("/settings/plex/auth/pin", { forwardUrl });
+export const startPlexAuth = (forwardUrl) => postData("/settings/plex/auth/pin", { forwardUrl });
 
 export const checkPlexAuth = (pinId, code) =>
   postData("/settings/plex/auth/check", { pinId, code });
 
-export const getPlexResources = (token) =>
-  postData("/settings/plex/resources", { token });
+export const getPlexResources = (token) => postData("/settings/plex/resources", { token });
 
 export const testPlexConnection = (url, token) =>
   postData("/settings/plex/test", {
@@ -39,8 +37,7 @@ export const getAppSettings = () =>
     staleTime: 30_000,
   });
 
-export const fetchPlaybackSettings = ({ signal } = {}) =>
-  getData("/settings/playback", { signal });
+export const fetchPlaybackSettings = ({ signal } = {}) => getData("/settings/playback", { signal });
 
 export const getPlaybackSettings = () =>
   queryClient.fetchQuery({
@@ -121,17 +118,14 @@ export const runStorageHealthCheck = ({ signal } = {}) =>
 
 export const getSettingsTasks = ({ signal } = {}) => getData("/settings/tasks", { signal });
 
-export const clearSettingsStaleTasks = () =>
-  postData("/settings/tasks/clear-stale");
+export const clearSettingsStaleTasks = () => postData("/settings/tasks/clear-stale");
 
 export const testGotifyConnection = (url, token) =>
   postData("/settings/gotify/test", { url, token });
 
-export const testWebhookConnection = (webhook) =>
-  postData("/settings/webhook/test", webhook);
+export const testWebhookConnection = (webhook) => postData("/settings/webhook/test", webhook);
 
-export const applyLidarrCommunityGuide = () =>
-  postData("/settings/lidarr/apply-community-guide");
+export const applyLidarrCommunityGuide = () => postData("/settings/lidarr/apply-community-guide");
 
 export const getUpgradeReadiness = ({ signal } = {}) =>
   getData("/settings/upgrade-readiness", { signal });

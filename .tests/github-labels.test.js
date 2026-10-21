@@ -1,12 +1,6 @@
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
-import {
-  chmodSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  writeFileSync,
-} from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,11 +15,7 @@ function runLabelScript(title) {
   const logPath = join(tempDir, "gh.log");
   const ghPath = join(binDir, "gh");
   mkdirSync(binDir);
-  writeFileSync(
-    ghPath,
-    "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$GH_LOG\"\n",
-    "utf8",
-  );
+  writeFileSync(ghPath, '#!/bin/sh\nprintf \'%s\\n\' "$*" >> "$GH_LOG"\n', "utf8");
   chmodSync(ghPath, 0o755);
 
   execFileSync("bash", [scriptPath], {
@@ -54,9 +44,7 @@ test("PR label automation preserves canonical label colors", () => {
   for (const [title, label, color] of expected) {
     const commands = runLabelScript(title);
     assert.ok(
-      commands.includes(
-        `label create ${label} --repo lklynet/aurral --color ${color} --force`,
-      ),
+      commands.includes(`label create ${label} --repo lklynet/aurral --color ${color} --force`),
       commands.join("\n"),
     );
   }

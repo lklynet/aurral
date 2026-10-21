@@ -12,7 +12,9 @@ const getHistoryArtists = async (userId) => {
   const seen = new Set();
   const artists = [];
   for (const entry of body.basedOn || []) {
-    const source = String(entry?.source || "").trim().toLowerCase();
+    const source = String(entry?.source || "")
+      .trim()
+      .toLowerCase();
     const name = String(entry?.name || entry?.artistName || "").trim();
     if (!source || source === "library" || !name || seen.has(name.toLowerCase())) continue;
     seen.add(name.toLowerCase());
@@ -41,7 +43,9 @@ export async function buildFlowFromTemplate(user, templateId) {
     template.id === LISTENING_HISTORY_TEMPLATE_ID ? await getHistoryArtists(user.id) : [];
   if (template.id === LISTENING_HISTORY_TEMPLATE_ID && relatedArtists.length === 0) {
     throw Object.assign(
-      new Error("Listening History needs listening history. Connect a history provider or play some music first."),
+      new Error(
+        "Listening History needs listening history. Connect a history provider or play some music first.",
+      ),
       { statusCode: 400 },
     );
   }

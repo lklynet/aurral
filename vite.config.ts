@@ -5,9 +5,10 @@ import { readAurralTokens } from "./frontend/scripts/ui-token-source.mjs";
 
 const [tokenSource, sharedControlExceptions] = await Promise.all([
   readAurralTokens(),
-  readFile(new URL("./frontend/lint-rules/shared-control-exceptions.json", import.meta.url), "utf8").then(
-    JSON.parse,
-  ),
+  readFile(
+    new URL("./frontend/lint-rules/shared-control-exceptions.json", import.meta.url),
+    "utf8",
+  ).then(JSON.parse),
 ]);
 const tokenNames = tokenSource.declarations.map(({ name }) => name);
 
@@ -35,7 +36,12 @@ export default defineConfig({
       "no-undef": "error",
       "no-unused-vars": [
         "error",
-        { caughtErrors: "none", argsIgnorePattern: "^_", varsIgnorePattern: "^_", ignoreRestSiblings: true },
+        {
+          caughtErrors: "none",
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          ignoreRestSiblings: true,
+        },
       ],
       "typescript/no-floating-promises": "error",
       "typescript/await-thenable": "off",

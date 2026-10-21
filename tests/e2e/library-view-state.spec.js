@@ -35,7 +35,9 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-test("library keeps its page, sort, view, and search in the URL across Back and reload", async ({ page }) => {
+test("library keeps its page, sort, view, and search in the URL across Back and reload", async ({
+  page,
+}) => {
   const main = page.locator("main.app-main");
   const pageLabel = page.getByText(/^Page \d+ of \d+$/);
   const search = () => new URL(page.url()).search;
@@ -65,7 +67,10 @@ test("library keeps its page, sort, view, and search in the URL across Back and 
   await expect.poll(search).toBe("?sort=newest&page=2&view=list");
   await expect(pageLabel).toHaveText("Page 2 of 3");
   await expect(page.getByRole("combobox", { name: "Sort artists" })).toHaveValue("newest");
-  await expect(page.getByRole("button", { name: "List view" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "List view" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   await expect.poll(() => main.evaluate((node) => node.scrollTop)).toBe(900);
 
   const gridView = page.getByRole("button", { name: "Grid view" });

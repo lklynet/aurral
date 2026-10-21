@@ -190,7 +190,9 @@ export function ArtistDetailsActionBar({
                           ) : (
                             <Ban className="artist-icon-sm" />
                           )}
-                          {tasteFeedbackUsed.block_artist ? "Unblock artist" : getDiscoveryFeedbackLabel("block_artist")}
+                          {tasteFeedbackUsed.block_artist
+                            ? "Unblock artist"
+                            : getDiscoveryFeedbackLabel("block_artist")}
                         </span>
                       </button>
                     </>

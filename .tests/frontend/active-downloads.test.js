@@ -21,7 +21,10 @@ test("tracks match an active download by any MusicBrainz id or by artist and tit
   assert.equal(isTrackDownloading(index, { id: recording, title: "Other" }), true);
   assert.equal(isTrackDownloading(index, { trackMbid: recording }), true);
   assert.equal(isTrackDownloading(index, { artist: " nameless ", title: "UNTAGGED track" }), true);
-  assert.equal(isTrackDownloading(index, { id: 42, artistName: "Artist", title: "Different" }), false);
+  assert.equal(
+    isTrackDownloading(index, { id: 42, artistName: "Artist", title: "Different" }),
+    false,
+  );
   assert.equal(isTrackDownloading(index, { trackName: "Song" }), false);
   assert.equal(isTrackDownloading(index, null), false);
 });

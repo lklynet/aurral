@@ -65,10 +65,7 @@ test("a late close from an old WebSocket cannot orphan its replacement", async (
 
   const first = sockets[0];
   first.readyState = FakeWebSocket.CLOSING;
-  const unsubscribeFirstChannel = webSocketConnection.subscribeToChannel(
-    "first",
-    () => {},
-  );
+  const unsubscribeFirstChannel = webSocketConnection.subscribeToChannel("first", () => {});
   assert.equal(sockets.length, 2);
 
   const replacement = sockets[1];
@@ -77,10 +74,7 @@ test("a late close from an old WebSocket cannot orphan its replacement", async (
   replacement.readyState = FakeWebSocket.OPEN;
   replacement.onopen?.();
 
-  const unsubscribeSecondChannel = webSocketConnection.subscribeToChannel(
-    "second",
-    () => {},
-  );
+  const unsubscribeSecondChannel = webSocketConnection.subscribeToChannel("second", () => {});
   assert.equal(sockets.length, 2);
 
   unsubscribeSecondChannel();

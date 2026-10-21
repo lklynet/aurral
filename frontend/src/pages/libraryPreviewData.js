@@ -33,32 +33,31 @@ const catalog = [
   },
 ];
 
-const PREVIEW_AUDIO_URL = "data:audio/wav;base64,UklGRrQBAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YZABAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA";
+const PREVIEW_AUDIO_URL =
+  "data:audio/wav;base64,UklGRrQBAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YZABAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA";
 
-const tracksForAlbum = (album, albumIndex) => [
-  "Opening Scene",
-  "Common Ground",
-  "Side Street",
-  "Last Light",
-].map((title, trackIndex) => ({
-  id: `preview-track-${albumIndex + 1}-${trackIndex + 1}`,
-  identityKey: `preview-track:${albumIndex + 1}-${trackIndex + 1}`,
-  mbid: null,
-  title,
-  artistName: album.artist,
-  metadata: { genres: album.genres },
-  albums: [{ albumId: album.id, discNumber: 1, trackNumber: trackIndex + 1 }],
-  files: [{
-    source: "aurral",
-    format: "wav",
-    durationMs: 174000 + trackIndex * 11000,
-    quality: { bitrate: 320 },
+const tracksForAlbum = (album, albumIndex) =>
+  ["Opening Scene", "Common Ground", "Side Street", "Last Light"].map((title, trackIndex) => ({
+    id: `preview-track-${albumIndex + 1}-${trackIndex + 1}`,
+    identityKey: `preview-track:${albumIndex + 1}-${trackIndex + 1}`,
+    mbid: null,
+    title,
+    artistName: album.artist,
+    metadata: { genres: album.genres },
+    albums: [{ albumId: album.id, discNumber: 1, trackNumber: trackIndex + 1 }],
+    files: [
+      {
+        source: "aurral",
+        format: "wav",
+        durationMs: 174000 + trackIndex * 11000,
+        quality: { bitrate: 320 },
+        available: true,
+        previewUrl: PREVIEW_AUDIO_URL,
+      },
+    ],
+    sources: ["aurral"],
     available: true,
-    previewUrl: PREVIEW_AUDIO_URL,
-  }],
-  sources: ["aurral"],
-  available: true,
-}));
+  }));
 
 const albums = catalog.flatMap((artist, artistIndex) =>
   artist.albums.map((album, albumIndex) => ({
@@ -91,11 +90,14 @@ const artists = catalog.map((entry) => ({
 
 const tracks = albums.flatMap((album, index) => {
   const artist = artists.find((entry) => entry.id === album.artistId);
-  const albumTracks = tracksForAlbum({
-    ...album,
-    artist: artist.name,
-    genres: album.metadata.genres,
-  }, index);
+  const albumTracks = tracksForAlbum(
+    {
+      ...album,
+      artist: artist.name,
+      genres: album.metadata.genres,
+    },
+    index,
+  );
   album.trackIds = albumTracks.map((track) => track.id);
   return albumTracks;
 });

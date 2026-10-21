@@ -21,19 +21,23 @@ const [
   libraryScanWorker,
   { downloadTracker },
   { playlistManager },
-] =
-  await setupIsolatedBackend(
-    "playlist-config",
-    "backend/config/db-sqlite.js",
-    "backend/db/helpers/index.js",
-    "backend/services/playlists/flowPlaylistConfig.js",
-    "backend/routes/playlists/handlers/utils.js",
-    "backend/routes/playlists/handlers/flows.js",
-    "backend/services/libraryScanWorker.js",
-    "backend/services/downloadJobs/downloadTracker.js",
-    "backend/services/playlists/playlistManager.js",
-  );
-const { flowPlaylistConfig, normalizeImportSource, tracksShareMembership, invalidateFlowPlaylistConfigCache } = playlistConfigModule;
+] = await setupIsolatedBackend(
+  "playlist-config",
+  "backend/config/db-sqlite.js",
+  "backend/db/helpers/index.js",
+  "backend/services/playlists/flowPlaylistConfig.js",
+  "backend/routes/playlists/handlers/utils.js",
+  "backend/routes/playlists/handlers/flows.js",
+  "backend/services/libraryScanWorker.js",
+  "backend/services/downloadJobs/downloadTracker.js",
+  "backend/services/playlists/playlistManager.js",
+);
+const {
+  flowPlaylistConfig,
+  normalizeImportSource,
+  tracksShareMembership,
+  invalidateFlowPlaylistConfigCache,
+} = playlistConfigModule;
 const { validateFlowPayload } = flowHandlerUtils;
 const { registerFlows } = flowHandlersModule;
 const { clearScheduledLibraryScan, getScheduledLibraryScanJobId } = libraryScanWorker;
@@ -61,14 +65,16 @@ test("removing and readding a library membership renews its incarnation", () => 
   const renamed = flowPlaylistConfig.updateStaticPlaylist(playlist.id, { name: "Renamed" });
   assert.equal(renamed.tracks[0].membershipId, first);
   flowPlaylistConfig.updateStaticPlaylist(playlist.id, { tracks: [] });
-  const readded = flowPlaylistConfig.appendStaticPlaylistTracks(playlist.id, [{ ...track, membershipId: first }]);
+  const readded = flowPlaylistConfig.appendStaticPlaylistTracks(playlist.id, [
+    { ...track, membershipId: first },
+  ]);
   assert.notEqual(readded.tracks[0].membershipId, first);
 });
 
-
 test("playlist changes wait for another process's write instead of failing as locked", async () => {
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Busy Database", tracks: [] });
-  const writer = new Worker(`
+  const writer = new Worker(
+    `
     const { parentPort, workerData } = require("node:worker_threads");
     const Database = require("better-sqlite3");
     const db = new Database(workerData.dbPath);
@@ -78,11 +84,15 @@ test("playlist changes wait for another process's write instead of failing as lo
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200);
     db.exec("COMMIT");
     db.close();
-  `, { eval: true, workerData: { dbPath: isolatedState.dbPath } });
+  `,
+    { eval: true, workerData: { dbPath: isolatedState.dbPath } },
+  );
   const exited = once(writer, "exit");
   await once(writer, "message");
 
-  flowPlaylistConfig.appendStaticPlaylistTracks(playlist.id, [{ artistName: "Artist", trackName: "Track" }]);
+  flowPlaylistConfig.appendStaticPlaylistTracks(playlist.id, [
+    { artistName: "Artist", trackName: "Track" },
+  ]);
   await exited;
 
   invalidateFlowPlaylistConfigCache();
@@ -91,7 +101,10 @@ test("playlist changes wait for another process's write instead of failing as lo
     flowPlaylistConfig.getStaticPlaylist(playlist.id).tracks.map((track) => track.trackName),
     ["Track"],
   );
-  assert.equal(db.prepare("SELECT value FROM settings WHERE key = 'otherProcess'").get()?.value, "1");
+  assert.equal(
+    db.prepare("SELECT value FROM settings WHERE key = 'otherProcess'").get()?.value,
+    "1",
+  );
 });
 
 test("creates flows with normalized scheduling and enforces unique names", () => {
@@ -289,15 +302,33 @@ test("keeps flow tracks out of the library until a flow opts in", async () => {
 test("saving a flow as a playlist keeps each track's release and disc", async () => {
   vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
   vi.spyOn(playlistManager, "scheduleScanLibrary").mockImplementation(async () => {});
-  const flow = flowPlaylistConfig.createFlow({ name: "Weekly Keep", size: 20, mix: { discover: 100 }, scheduleDays: [1] });
-  const file = path.join(process.env.WEEKLY_FLOW_FOLDER, "aurral-weekly-flow", flow.id, "Keep.flac");
+  const flow = flowPlaylistConfig.createFlow({
+    name: "Weekly Keep",
+    size: 20,
+    mix: { discover: 100 },
+    scheduleDays: [1],
+  });
+  const file = path.join(
+    process.env.WEEKLY_FLOW_FOLDER,
+    "aurral-weekly-flow",
+    flow.id,
+    "Keep.flac",
+  );
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, "disposable audio");
   const releaseMbid = "7e3f2c61-4b5d-4f60-9b7c-8d9e0f1a2b3c";
-  const flowJobId = downloadTracker.addJob({
-    artistName: "Flow Artist", trackName: "Keep", albumName: "Kept", albumMbid: "8f4a3d72-5c6e-4071-8c8d-9e0f1a2b3c4d",
-    releaseMbid, trackNumber: 4, discNumber: 2,
-  }, flow.id);
+  const flowJobId = downloadTracker.addJob(
+    {
+      artistName: "Flow Artist",
+      trackName: "Keep",
+      albumName: "Kept",
+      albumMbid: "8f4a3d72-5c6e-4071-8c8d-9e0f1a2b3c4d",
+      releaseMbid,
+      trackNumber: 4,
+      discNumber: 2,
+    },
+    flow.id,
+  );
   downloadTracker.setDone(flowJobId, file);
   let saveHandler;
   registerFlows({
@@ -321,14 +352,24 @@ test("saving a flow as a playlist keeps each track's release and disc", async ()
     },
   };
 
-  await saveHandler({ params: { flowId: flow.id }, body: { name: "Kept Mix" }, user: { id: 1, role: "admin" } }, response);
+  await saveHandler(
+    { params: { flowId: flow.id }, body: { name: "Kept Mix" }, user: { id: 1, role: "admin" } },
+    response,
+  );
 
   assert.equal(response.statusCode, 200);
   const playlistId = response.body.playlist.id;
   const [track] = flowPlaylistConfig.getStaticPlaylist(playlistId).tracks;
-  assert.deepEqual([track.trackName, track.releaseMbid, track.discNumber, track.trackNumber], ["Keep", releaseMbid, 2, 4]);
   assert.deepEqual(
-    db.prepare("SELECT release_mbid, track_number, disc_number FROM playlist_download_jobs WHERE playlist_type = ?").all(playlistId),
+    [track.trackName, track.releaseMbid, track.discNumber, track.trackNumber],
+    ["Keep", releaseMbid, 2, 4],
+  );
+  assert.deepEqual(
+    db
+      .prepare(
+        "SELECT release_mbid, track_number, disc_number FROM playlist_download_jobs WHERE playlist_type = ?",
+      )
+      .all(playlistId),
     [{ release_mbid: releaseMbid, track_number: 4, disc_number: 2 }],
   );
 });
@@ -398,16 +439,10 @@ test("partial year updates do not silently swap the untouched bound", () => {
 
 test("rejects flow and static playlist names that collide across types", () => {
   const flow = flowPlaylistConfig.createFlow({ name: "Rock" });
-  assert.throws(
-    () => flowPlaylistConfig.createStaticPlaylist({ name: "rock" }),
-    /already exists/,
-  );
+  assert.throws(() => flowPlaylistConfig.createStaticPlaylist({ name: "rock" }), /already exists/);
 
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Jazz" });
-  assert.throws(
-    () => flowPlaylistConfig.createFlow({ name: "Jazz" }),
-    /already exists/,
-  );
+  assert.throws(() => flowPlaylistConfig.createFlow({ name: "Jazz" }), /already exists/);
 
   flowPlaylistConfig.deleteFlow(flow.id);
   flowPlaylistConfig.deleteStaticPlaylist(playlist.id);
@@ -446,18 +481,20 @@ test("stores full static playlists but exposes trackless summaries for hot paths
   });
 
   const stored = flowPlaylistConfig.getStaticPlaylist(playlist.id);
-  const summaries = flowPlaylistConfig.getStaticPlaylists().map(
-    ({ id, name, ownerUserId, sourceName, sourceFlowId, importedAt, createdAt, trackCount }) => ({
-      id,
-      name,
-      ownerUserId,
-      sourceName,
-      sourceFlowId,
-      importedAt,
-      createdAt,
-      trackCount,
-    }),
-  );
+  const summaries = flowPlaylistConfig
+    .getStaticPlaylists()
+    .map(
+      ({ id, name, ownerUserId, sourceName, sourceFlowId, importedAt, createdAt, trackCount }) => ({
+        id,
+        name,
+        ownerUserId,
+        sourceName,
+        sourceFlowId,
+        importedAt,
+        createdAt,
+        trackCount,
+      }),
+    );
 
   assert.equal(stored?.tracks?.length, 2);
   assert.equal(summaries.length, 1);

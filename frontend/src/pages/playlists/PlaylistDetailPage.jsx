@@ -2,8 +2,16 @@ import { useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { Clock, Download, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { DotLoader } from "../../components/DotLoader";
-import { SkeletonCollectionHeader, SkeletonCollectionTracks, SkeletonStatus } from "../../components/Skeletons";
-import { CollectionHeader, CollectionPage, CollectionPlayButtons } from "../../components/CollectionHeader";
+import {
+  SkeletonCollectionHeader,
+  SkeletonCollectionTracks,
+  SkeletonStatus,
+} from "../../components/Skeletons";
+import {
+  CollectionHeader,
+  CollectionPage,
+  CollectionPlayButtons,
+} from "../../components/CollectionHeader";
 import { LibraryItemMenu } from "../../components/LibraryItemMenu";
 import TooltipButton from "../../components/TooltipButton";
 import { useAuth } from "../../contexts/AuthContext";
@@ -109,12 +117,18 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }) {
   const { showSuccess, showError } = useToast();
   const { artworkUrlFor } = usePlaylistArtwork();
   const showTrackAvailability = playlist.showTrackAvailability === true;
-  const { tracks: savedTracks, loading, error, refresh } = usePlaylistTracks(playlist.id, {
+  const {
+    tracks: savedTracks,
+    loading,
+    error,
+    refresh,
+  } = usePlaylistTracks(playlist.id, {
     pollAvailability: showTrackAvailability,
   });
   const hiddenTrackIds = useHiddenPlaylistTracks().get(playlist.id);
   const tracks = useMemo(
-    () => (hiddenTrackIds ? savedTracks.filter((track) => !hiddenTrackIds.has(track.id)) : savedTracks),
+    () =>
+      hiddenTrackIds ? savedTracks.filter((track) => !hiddenTrackIds.has(track.id)) : savedTracks,
     [hiddenTrackIds, savedTracks],
   );
   const playbackSource = {
@@ -136,7 +150,8 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }) {
   const providerLabel = isSyncable ? getImportedProviderLabel(importSource.provider) : "";
   const totalTracks = Math.max(
     0,
-    getStaticPlaylistTrackCount(playlist, stats, savedTracks.length) - (savedTracks.length - tracks.length),
+    getStaticPlaylistTrackCount(playlist, stats, savedTracks.length) -
+      (savedTracks.length - tracks.length),
   );
   const trackLabel =
     showTrackAvailability && !loading && !error
@@ -174,7 +189,9 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }) {
     setDeleting(true);
     try {
       const result = await deleteStaticPlaylist(playlist.id);
-      showSuccess(result?.queued ? `Removal of ${playlist.name} queued` : `Deleted ${playlist.name}`);
+      showSuccess(
+        result?.queued ? `Removal of ${playlist.name} queued` : `Deleted ${playlist.name}`,
+      );
       await fetchStatus();
       navigate("/library/playlists", { replace: true });
     } catch (err) {

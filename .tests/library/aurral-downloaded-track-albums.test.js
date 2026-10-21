@@ -42,10 +42,17 @@ const [
 );
 
 const routes = new Map();
-const route = (method) => (routePath, ...handlers) => {
-  routes.set(`${method} ${routePath}`, handlers.at(-1));
+const route =
+  (method) =>
+  (routePath, ...handlers) => {
+    routes.set(`${method} ${routePath}`, handlers.at(-1));
+  };
+const router = {
+  get: route("GET"),
+  post: route("POST"),
+  put: route("PUT"),
+  delete: route("DELETE"),
 };
-const router = { get: route("GET"), post: route("POST"), put: route("PUT"), delete: route("DELETE") };
 registerAlbums(router);
 registerDownloads(router);
 
@@ -84,26 +91,33 @@ const metadataServer = await createMockHttpServer((request, response) => {
     response.end(JSON.stringify({ error: "not found" }));
     return;
   }
-  response.end(JSON.stringify({
-    id: albumMbid,
-    title: "Playlist Album",
-    artistid: artistMbid,
-    artists: [{ id: artistMbid, artistname: "Playlist Artist" }],
-    releases: [{
-      id: `${albumMbid}-release`,
-      status: "Official",
-      tracks: trackMbids.map((id, index) => ({
-        id: `${id}-track`,
-        recordingid: id,
-        trackname: `Track ${index + 1}`,
-        trackposition: index + 1,
-        mediumnumber: 1,
-      })),
-    }],
-  }));
+  response.end(
+    JSON.stringify({
+      id: albumMbid,
+      title: "Playlist Album",
+      artistid: artistMbid,
+      artists: [{ id: artistMbid, artistname: "Playlist Artist" }],
+      releases: [
+        {
+          id: `${albumMbid}-release`,
+          status: "Official",
+          tracks: trackMbids.map((id, index) => ({
+            id: `${id}-track`,
+            recordingid: id,
+            trackname: `Track ${index + 1}`,
+            trackposition: index + 1,
+            mediumnumber: 1,
+          })),
+        },
+      ],
+    }),
+  );
 });
 
-async function scanFile(index, { downloadedByAurral, albumTitle = "Playlist Album", releaseGroupMbid = albumMbid }) {
+async function scanFile(
+  index,
+  { downloadedByAurral, albumTitle = "Playlist Album", releaseGroupMbid = albumMbid },
+) {
   const filePath = path.join(musicRoot, "Playlist Artist", albumTitle, `0${index + 1}.flac`);
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, "audio");
@@ -129,14 +143,23 @@ async function scanFile(index, { downloadedByAurral, albumTitle = "Playlist Albu
 }
 
 const albumState = () => {
-  const albumId = db.prepare("SELECT id FROM library_albums WHERE release_group_mbid = ?").get(albumMbid).id;
+  const albumId = db
+    .prepare("SELECT id FROM library_albums WHERE release_group_mbid = ?")
+    .get(albumMbid).id;
   const library = getLibraryForAlbumIds({ ids: [albumId] });
-  const monitoredByMbid = Object.fromEntries(library.tracks.map((track) => [track.mbid, track.monitored]));
-  return { albumId, album: library.albums[0], monitored: trackMbids.map((mbid) => monitoredByMbid[mbid]) };
+  const monitoredByMbid = Object.fromEntries(
+    library.tracks.map((track) => [track.mbid, track.monitored]),
+  );
+  return {
+    albumId,
+    album: library.albums[0],
+    monitored: trackMbids.map((mbid) => monitoredByMbid[mbid]),
+  };
 };
 
 const queuedTrackMbids = () =>
-  downloadTracker.getAll()
+  downloadTracker
+    .getAll()
     .filter((job) => job.status === "pending" && job.albumMbid === albumMbid)
     .map((job) => job.trackMbid)
     .sort();
@@ -214,8 +237,10 @@ test("a downloaded single's album becomes Aurral's, the album can be downloaded,
 test("downloading a missing track of an unmonitored Aurral album monitors and queues only that track", async () => {
   const { albumId } = albumState();
   await libraryManager.setAurralAlbumMonitoring(albumId, { monitored: false });
-  const missing = albumState().album.trackIds
-    .map((id) => getLibraryForAlbumIds({ ids: [albumId] }).tracks.find((track) => track.id === id))
+  const missing = albumState()
+    .album.trackIds.map((id) =>
+      getLibraryForAlbumIds({ ids: [albumId] }).tracks.find((track) => track.id === id),
+    )
     .find((track) => track.mbid === trackMbids[2]);
 
   const response = await callRoute("POST /downloads/track", {
@@ -243,9 +268,17 @@ test("a file scanned into a Lidarr album stays Lidarr's", async () => {
     artistId: artist.id,
     title: "Lidarr Album",
   });
-  managementStore.setLibraryManagement({ entityKind: "album", entityId: album.id, managedBy: "lidarr" });
+  managementStore.setLibraryManagement({
+    entityKind: "album",
+    entityId: album.id,
+    managedBy: "lidarr",
+  });
 
-  await scanFile(0, { downloadedByAurral: true, albumTitle: "Lidarr Album", releaseGroupMbid: lidarrAlbumMbid });
+  await scanFile(0, {
+    downloadedByAurral: true,
+    albumTitle: "Lidarr Album",
+    releaseGroupMbid: lidarrAlbumMbid,
+  });
 
   assert.equal(managementStore.getManagedBy("album", album.id), "lidarr");
 });

@@ -184,23 +184,13 @@ router.post("/complete", async (req, res) => {
     const authPasswordFinal = integrations?.general?.authPassword || "";
     if (authPasswordFinal && userOps.getAllUsers().length === 0) {
       const hash = hashPassword(authPasswordFinal);
-      userOps.createUser(
-        authUserFinal,
-        hash,
-        "admin",
-        null,
-        true,
-        true,
-        authPasswordFinal,
-      );
+      userOps.createUser(authUserFinal, hash, "admin", null, true, true, authPasswordFinal);
     }
 
     reconcileLocalNetworkBypassSetting();
 
     if (integrations?.lidarr?.apiKey) {
-      const { enqueueDiscoveryRefresh } = await import(
-        "../services/discovery/refreshScheduler.js"
-      );
+      const { enqueueDiscoveryRefresh } = await import("../services/discovery/refreshScheduler.js");
       enqueueDiscoveryRefresh({ reason: "onboarding" });
     }
 

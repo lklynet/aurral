@@ -40,9 +40,7 @@ const SPOTIFY_OAUTH_BROADCAST_CHANNEL = "aurral-spotify-oauth";
 const SPOTIFY_AUTH_REQUIRED_CODE = "SPOTIFY_AUTH_REQUIRED";
 
 function getPlaylistMeta(playlist) {
-  const parts = [
-    playlist?.trackCount != null ? `${playlist.trackCount} tracks` : "Playlist",
-  ];
+  const parts = [playlist?.trackCount != null ? `${playlist.trackCount} tracks` : "Playlist"];
   if (playlist?.sourceType === "lastfm-station") parts.push("Updates from Last.fm");
   else if (playlist?.sourceType) parts.push("Updates weekly");
   return parts.join(" · ");
@@ -90,7 +88,9 @@ function PlaylistImportConfig({
             disabled={importing}
           >
             {SYNC_INTERVAL_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>{option.label}</option>
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
             ))}
           </select>
         </div>
@@ -232,9 +232,12 @@ function openSpotifyOAuthPopup(oauthUrl) {
       finish(tokens);
     };
 
-    const timeout = setTimeout(() => {
-      fail("Spotify sign-in timed out");
-    }, 5 * 60 * 1000);
+    const timeout = setTimeout(
+      () => {
+        fail("Spotify sign-in timed out");
+      },
+      5 * 60 * 1000,
+    );
   });
 }
 
@@ -242,10 +245,7 @@ const EMPTY_PLAYLISTS = [];
 
 function errorMessage(error, fallback) {
   return (
-    error?.response?.data?.message ||
-    error?.response?.data?.error ||
-    error?.message ||
-    fallback
+    error?.response?.data?.message || error?.response?.data?.error || error?.message || fallback
   );
 }
 
@@ -255,7 +255,8 @@ function isSpotifyAuthRequired(error) {
 
 function validYoutubePreview(payload) {
   const playlist = payload?.playlist;
-  if (!playlist?.id || !playlist?.name) throw new Error("YouTube Music returned an invalid playlist");
+  if (!playlist?.id || !playlist?.name)
+    throw new Error("YouTube Music returned an invalid playlist");
   return payload;
 }
 
@@ -313,10 +314,7 @@ export function PlaylistImportModal({
   const [jsonReview, setJsonReview] = useState(null);
 
   const reservedNameKeys = useMemo(
-    () =>
-      new Set(
-        existingPlaylistNames.map((name) => normalizeNameKey(name)).filter(Boolean),
-      ),
+    () => new Set(existingPlaylistNames.map((name) => normalizeNameKey(name)).filter(Boolean)),
     [existingPlaylistNames],
   );
 
@@ -339,16 +337,19 @@ export function PlaylistImportModal({
     resetYoutubePreview();
   }, [resetYoutubePreview]);
 
-  const handleSpotifyError = useCallback((error) => {
-    if (!isSpotifyAuthRequired(error)) return;
-    queryClient.removeQueries({ queryKey: queryKeys.playlistImportPrefix("spotify") });
-    queryClient.setQueryData(queryKeys.spotifyImportStatus, {
-      connected: false,
-      displayName: null,
-      connectedAt: null,
-    });
-    resetState();
-  }, [resetState]);
+  const handleSpotifyError = useCallback(
+    (error) => {
+      if (!isSpotifyAuthRequired(error)) return;
+      queryClient.removeQueries({ queryKey: queryKeys.playlistImportPrefix("spotify") });
+      queryClient.setQueryData(queryKeys.spotifyImportStatus, {
+        connected: false,
+        displayName: null,
+        connectedAt: null,
+      });
+      resetState();
+    },
+    [resetState],
+  );
 
   const spotifyStatusQuery = useQuery({
     queryKey: queryKeys.spotifyImportStatus,
@@ -426,7 +427,9 @@ export function PlaylistImportModal({
     handleSpotifyError,
   );
   useErrorToast(
-    source === "listenbrainz" ? scrobbleStatusQuery.error || listenBrainzPlaylistsQuery.error : null,
+    source === "listenbrainz"
+      ? scrobbleStatusQuery.error || listenBrainzPlaylistsQuery.error
+      : null,
     "Failed to load ListenBrainz playlists",
     showError,
   );
@@ -461,7 +464,10 @@ export function PlaylistImportModal({
     mutationFn: () => disconnectSpotify(),
     onSuccess: () => {
       queryClient.removeQueries({ queryKey: queryKeys.playlistImportPrefix("spotify") });
-      queryClient.setQueryData(queryKeys.spotifyImportStatus, { connected: false, displayName: null });
+      queryClient.setQueryData(queryKeys.spotifyImportStatus, {
+        connected: false,
+        displayName: null,
+      });
       setPickedPlaylist(null);
     },
     onError: (error) => {
@@ -478,7 +484,9 @@ export function PlaylistImportModal({
 
   const importing = externalImport.isPending || jsonImport.isPending;
   const spotifyLoading =
-    connectSpotify.isPending || disconnectSpotifyAccount.isPending || spotifyPlaylistsQuery.isLoading;
+    connectSpotify.isPending ||
+    disconnectSpotifyAccount.isPending ||
+    spotifyPlaylistsQuery.isLoading;
   const listenBrainzLoading = scrobbleStatusQuery.isLoading || listenBrainzPlaylistsQuery.isLoading;
 
   const youtubePlaylist = youtubePreview.data
@@ -495,14 +503,18 @@ export function PlaylistImportModal({
   const previewLoading = source === "youtube" ? youtubePreview.isPending : previewQuery.isLoading;
   const previewTrackCount = Number(previewPayload?.trackCount || 0);
   const previewSkipped = Number(previewPayload?.skipped || 0);
-  const previewTracks = Array.isArray(previewPayload?.previewTracks) ? previewPayload.previewTracks : [];
+  const previewTracks = Array.isArray(previewPayload?.previewTracks)
+    ? previewPayload.previewTracks
+    : [];
   const playlistName = playlistNameDraft ?? selectedPlaylist?.name ?? "";
 
   const activePlaylistsData =
     source === "spotify"
       ? spotifyPlaylistsQuery.data
       : source === "listenbrainz"
-        ? listenBrainzStatus.connected ? listenBrainzPlaylistsQuery.data : null
+        ? listenBrainzStatus.connected
+          ? listenBrainzPlaylistsQuery.data
+          : null
         : source === "lastfm"
           ? lastfmPlaylistsQuery.data
           : null;
@@ -640,7 +652,9 @@ export function PlaylistImportModal({
     jsonImport.mutate(jsonReview.flows, {
       onSuccess: ({ importedCount, failed }) => {
         if (importedCount > 0) {
-          showSuccess?.(`${importedCount} ${importedCount === 1 ? "playlist" : "playlists"} imported`);
+          showSuccess?.(
+            `${importedCount} ${importedCount === 1 ? "playlist" : "playlists"} imported`,
+          );
           onImported?.();
           onClose?.();
         }
@@ -697,7 +711,11 @@ export function PlaylistImportModal({
               className="btn btn-primary btn-sm"
               disabled={importing || !canImportExternal}
             >
-              {importing ? <DotLoader size="sm" label={null} /> : <Music2 className="artist-icon-sm" />}
+              {importing ? (
+                <DotLoader size="sm" label={null} />
+              ) : (
+                <Music2 className="artist-icon-sm" />
+              )}
               Import playlist
             </button>
           ) : (
@@ -707,7 +725,11 @@ export function PlaylistImportModal({
               className="btn btn-primary btn-sm"
               disabled={importing || !canImportJson}
             >
-              {importing ? <DotLoader size="sm" label={null} /> : <Upload className="artist-icon-sm" />}
+              {importing ? (
+                <DotLoader size="sm" label={null} />
+              ) : (
+                <Upload className="artist-icon-sm" />
+              )}
               Import JSON
             </button>
           )}
@@ -744,7 +766,10 @@ export function PlaylistImportModal({
             {source === "youtube" ? (
               <div className="playlist-import__youtube">
                 <div className="playlist-modal__fields">
-                  <label className="playlist-import__field-label" htmlFor="playlist-import-youtube-url">
+                  <label
+                    className="playlist-import__field-label"
+                    htmlFor="playlist-import-youtube-url"
+                  >
                     Playlist URL
                   </label>
                   <input
@@ -765,7 +790,11 @@ export function PlaylistImportModal({
                     aria-describedby={youtubeError ? "playlist-import-youtube-error" : undefined}
                   />
                   {youtubeError ? (
-                    <p id="playlist-import-youtube-error" className="settings-page__error" role="alert">
+                    <p
+                      id="playlist-import-youtube-error"
+                      className="settings-page__error"
+                      role="alert"
+                    >
                       {youtubeError}
                     </p>
                   ) : null}
@@ -784,7 +813,9 @@ export function PlaylistImportModal({
                   <>
                     <div className="playlist-import__selected">
                       <div className="playlist-import__selected-copy">
-                        <span className="playlist-import__selected-name">{selectedPlaylist.name}</span>
+                        <span className="playlist-import__selected-name">
+                          {selectedPlaylist.name}
+                        </span>
                         <span className="playlist-import__selected-meta">
                           {getPlaylistMeta(selectedPlaylist)}
                         </span>
@@ -832,11 +863,7 @@ export function PlaylistImportModal({
                 <p className="playlist-import__empty-copy">
                   Connect ListenBrainz in Settings → Playback to import playlists.
                 </p>
-                <Link
-                  to="/settings/playback"
-                  className="btn btn-primary btn-sm"
-                  onClick={onClose}
-                >
+                <Link to="/settings/playback" className="btn btn-primary btn-sm" onClick={onClose}>
                   Open ListenBrainz settings
                 </Link>
               </div>
@@ -849,7 +876,10 @@ export function PlaylistImportModal({
                   </p>
                 </div>
                 <div className="playlist-modal__fields">
-                  <label className="playlist-import__field-label" htmlFor="playlist-import-lastfm-username">
+                  <label
+                    className="playlist-import__field-label"
+                    htmlFor="playlist-import-lastfm-username"
+                  >
                     Last.fm username
                   </label>
                   <input
@@ -864,15 +894,18 @@ export function PlaylistImportModal({
                     autoComplete="off"
                     disabled={lastfmProfileLoading || lastfmLoading || importing}
                   />
-                  <p className="settings-page__hint">
-                    Saved for future syncs.
-                  </p>
+                  <p className="settings-page__hint">Saved for future syncs.</p>
                 </div>
                 <button
                   type="button"
                   className="btn btn-primary btn-sm"
                   onClick={() => loadLastfmPlaylists(lastfmUsernameInput)}
-                  disabled={lastfmProfileLoading || lastfmLoading || !lastfmUsernameInput.trim() || importing}
+                  disabled={
+                    lastfmProfileLoading ||
+                    lastfmLoading ||
+                    !lastfmUsernameInput.trim() ||
+                    importing
+                  }
                 >
                   {lastfmProfileLoading || lastfmLoading ? (
                     <DotLoader size="sm" label={null} />
@@ -885,7 +918,8 @@ export function PlaylistImportModal({
                 <div className="playlist-import__account">
                   <span className="playlist-import__account-status" aria-hidden="true" />
                   <span className="playlist-import__account-label">
-                    Signed in as <strong>
+                    Signed in as{" "}
+                    <strong>
                       {(source === "spotify"
                         ? spotifyStatus
                         : source === "listenbrainz"
@@ -918,7 +952,9 @@ export function PlaylistImportModal({
                 {selectedPlaylist ? (
                   <div className="playlist-import__selected">
                     <div className="playlist-import__selected-copy">
-                      <span className="playlist-import__selected-name">{selectedPlaylist.name}</span>
+                      <span className="playlist-import__selected-name">
+                        {selectedPlaylist.name}
+                      </span>
                       <span className="playlist-import__selected-meta">
                         {getPlaylistMeta(selectedPlaylist)}
                       </span>
@@ -943,7 +979,11 @@ export function PlaylistImportModal({
                       onChange={(event) => setPlaylistQuery(event.target.value)}
                       disabled={importing || spotifyLoading || listenBrainzLoading || lastfmLoading}
                     />
-                    <div className="playlist-import__playlist-list" role="listbox" aria-label={`${externalSource} playlists`}>
+                    <div
+                      className="playlist-import__playlist-list"
+                      role="listbox"
+                      aria-label={`${externalSource} playlists`}
+                    >
                       {(source === "spotify"
                         ? spotifyLoading
                         : source === "listenbrainz"
@@ -1002,7 +1042,9 @@ export function PlaylistImportModal({
               <label className="playlist-import__dropzone">
                 <FileJson className="playlist-import__dropzone-icon" aria-hidden="true" />
                 <span className="playlist-import__dropzone-title">Select JSON file</span>
-                <span className="playlist-import__dropzone-copy">Aurral exports and compatible tracklists</span>
+                <span className="playlist-import__dropzone-copy">
+                  Aurral exports and compatible tracklists
+                </span>
                 <input
                   type="file"
                   accept="application/json,.json"
@@ -1032,7 +1074,10 @@ export function PlaylistImportModal({
                 </div>
                 <div className="playlist-import__json-list">
                   {jsonReview.flows.map((flow, index) => (
-                    <div key={`${flow?.name || "flow"}-${index}`} className="playlist-import__json-item">
+                    <div
+                      key={`${flow?.name || "flow"}-${index}`}
+                      className="playlist-import__json-item"
+                    >
                       <span>{flow?.name || `Playlist ${index + 1}`}</span>
                       <span className="flow-page__badge flow-page__badge--count">
                         {Number(flow?.tracks?.length || 0)} tracks

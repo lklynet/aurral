@@ -4,11 +4,7 @@ export const AUTOCOMPLETE_DEBOUNCE_MS = 250;
 export const LIBRARY_AUTOCOMPLETE_DEBOUNCE_MS = 80;
 export const SUGGEST_LIMIT = 5;
 export const TAG_SUGGESTIONS_LIMIT = 8;
-export const ALBUM_PENDING_STATUSES = new Set([
-  "searching",
-  "downloading",
-  "processing",
-]);
+export const ALBUM_PENDING_STATUSES = new Set(["searching", "downloading", "processing"]);
 
 export function isEditableTarget(target) {
   if (!(target instanceof HTMLElement)) return false;
@@ -50,9 +46,7 @@ export function getSuggestionItemId(item) {
 
 export function getTrackSavingKey(track) {
   return String(
-    track?.id ||
-      track?.trackMbid ||
-      `${track?.artistName || ""}:${track?.title || ""}`,
+    track?.id || track?.trackMbid || `${track?.artistName || ""}:${track?.title || ""}`,
   );
 }
 

@@ -4,9 +4,7 @@ import { getSettingsEncryptionKey } from "../../db/helpers/settings.js";
 
 const SETTINGS_KEY = "plexConnections";
 const getSettingStmt = db.prepare("SELECT value FROM settings WHERE key = ?");
-const upsertSettingStmt = db.prepare(
-  "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
-);
+const upsertSettingStmt = db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)");
 
 const readStore = () => {
   const parsed = dbHelpers.parseJSON(getSettingStmt.get(SETTINGS_KEY)?.value);
@@ -69,7 +67,13 @@ export const plexConnectionStore = {
   getPublicStatus(userId) {
     const connection = this.getConnection(userId);
     if (!connection) {
-      return { connected: false, linkType: null, plexUsername: null, connectedAt: null, lastError: null };
+      return {
+        connected: false,
+        linkType: null,
+        plexUsername: null,
+        connectedAt: null,
+        lastError: null,
+      };
     }
     return {
       connected: true,

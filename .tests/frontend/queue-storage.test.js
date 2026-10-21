@@ -41,7 +41,11 @@ test("a reload brings back the same queue, order, and place, paused", () => {
   assert.equal(restored.repeatMode, "all");
   assert.equal(restored.source.label, "Mix");
   assert.equal(restored.autoplay, false);
-  assert.equal(parseStoredQueue(serializeQueue(state, { owner: "u1", position: 42.5 }), { owner: "u1" }).position, 42.5);
+  assert.equal(
+    parseStoredQueue(serializeQueue(state, { owner: "u1", position: 42.5 }), { owner: "u1" })
+      .position,
+    42.5,
+  );
 
   const unshuffled = queueReducer(restored, { type: "SET_SHUFFLE", enabled: false });
   assert.deepEqual(
@@ -74,7 +78,9 @@ test("another user's saved queue or unreadable data is not restored", () => {
     null,
   );
   assert.equal(
-    parseStoredQueue(JSON.stringify({ ...JSON.parse(stored), playbackOrder: [0, 0, 1] }), { owner: "u1" }),
+    parseStoredQueue(JSON.stringify({ ...JSON.parse(stored), playbackOrder: [0, 0, 1] }), {
+      owner: "u1",
+    }),
     null,
   );
   assert.equal(serializeQueue(initialQueueState, { owner: "u1" }), null);
@@ -90,8 +96,14 @@ test("a very long queue is saved around the current track", () => {
   assert.ok(stored.length < 100_000);
   assert.ok(restored.queue.length <= 200);
   assert.equal(restored.queue[restored.playbackOrder[restored.currentIndex]].title, "Track 600");
-  assert.equal(restored.queue[restored.playbackOrder[restored.currentIndex + 1]].title, "Track 601");
-  assert.equal(restored.queue[restored.playbackOrder[restored.currentIndex - 1]].title, "Track 599");
+  assert.equal(
+    restored.queue[restored.playbackOrder[restored.currentIndex + 1]].title,
+    "Track 601",
+  );
+  assert.equal(
+    restored.queue[restored.playbackOrder[restored.currentIndex - 1]].title,
+    "Track 599",
+  );
 
   const nearEnd = queueReducer(state, { type: "SKIP_TO", index: 995 });
   const restoredNearEnd = restore(nearEnd, { owner: "u1" });
@@ -100,7 +112,9 @@ test("a very long queue is saved around the current track", () => {
 });
 
 test("a saved queue does not replace something that is already playing", () => {
-  const saved = parseStoredQueue(serializeQueue(playing(makeTracks(3)), { owner: "u1" }), { owner: "u1" });
+  const saved = parseStoredQueue(serializeQueue(playing(makeTracks(3)), { owner: "u1" }), {
+    owner: "u1",
+  });
   const current = playing([{ id: "x", title: "Now", src: "/x.mp3" }]);
 
   assert.equal(queueReducer(current, { type: "RESTORE_QUEUE", ...saved }), current);

@@ -57,17 +57,11 @@ function printUsage() {
   console.log("Reset/update admin password from terminal");
   console.log("");
   console.log("Usage:");
-  console.log(
-    '  npm run auth:reset-admin-password -- --password "new-password"',
-  );
-  console.log(
-    "  npm run auth:reset-admin-password -- --username admin --generate",
-  );
+  console.log('  npm run auth:reset-admin-password -- --password "new-password"');
+  console.log("  npm run auth:reset-admin-password -- --username admin --generate");
   console.log("");
   console.log("Flags:");
-  console.log(
-    "  -u, --username   Admin username (default: configured auth user)",
-  );
+  console.log("  -u, --username   Admin username (default: configured auth user)");
   console.log("  -p, --password   New password");
   console.log("  -g, --generate   Generate a random password");
   console.log("  -l, --length     Generated password length (default: 24)");
@@ -84,9 +78,7 @@ function generatePassword(length) {
 }
 
 function resolveConfiguredAdminUsername(settings) {
-  return (
-    settings.integrations?.general?.authUser || process.env.AUTH_USER || "admin"
-  );
+  return settings.integrations?.general?.authUser || process.env.AUTH_USER || "admin";
 }
 
 function upsertGeneralAuth(settings, username, password) {
@@ -116,8 +108,7 @@ function main() {
       .trim()
       .toLowerCase() || "admin";
 
-  const password =
-    args.password || (args.generate ? generatePassword(args.length) : "");
+  const password = args.password || (args.generate ? generatePassword(args.length) : "");
   if (!password) {
     console.error("Missing password. Use --password or --generate.");
     console.error("Run with --help for usage.");

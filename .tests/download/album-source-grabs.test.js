@@ -10,15 +10,38 @@ import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTe
 import { brainzmashGroup, serveGroups } from "../helpers/releaseFixture.js";
 
 const execFileAsync = promisify(execFile);
-const [state, { dbOps, userOps }, { downloadTracker }, { getDownloadClient },
-  { processUsenetPipelinePayload }, { processPipelinePayload }, { downloadWorker },
-  { buildSlskdRankingHistoryOptions }, { prowlarrClient },
-  { beginDownloadAttempt, cancelPlaylistDownloadGeneration, getActiveDownloadAttemptId, setActiveDownloadAttemptId },
-  { queueQualityUpgrade, runQualityUpgradeCheck }, { resolveDownloadRoot }, { registerJobs },
-  { flowPlaylistConfig }, { getHonkerDb, getPipelineQueue, listHonkerJobs },
-  { stopDownloadPipelineWorker }, { getAurralHistoryRequests },
-  { upsertLibraryArtist, upsertLibraryAlbum, upsertLibraryTrack, linkLibraryAlbumTrack, upsertLibraryMediaFile },
-  { libraryManager }] = await setupIsolatedBackend(
+const [
+  state,
+  { dbOps, userOps },
+  { downloadTracker },
+  { getDownloadClient },
+  { processUsenetPipelinePayload },
+  { processPipelinePayload },
+  { downloadWorker },
+  { buildSlskdRankingHistoryOptions },
+  { prowlarrClient },
+  {
+    beginDownloadAttempt,
+    cancelPlaylistDownloadGeneration,
+    getActiveDownloadAttemptId,
+    setActiveDownloadAttemptId,
+  },
+  { queueQualityUpgrade, runQualityUpgradeCheck },
+  { resolveDownloadRoot },
+  { registerJobs },
+  { flowPlaylistConfig },
+  { getHonkerDb, getPipelineQueue, listHonkerJobs },
+  { stopDownloadPipelineWorker },
+  { getAurralHistoryRequests },
+  {
+    upsertLibraryArtist,
+    upsertLibraryAlbum,
+    upsertLibraryTrack,
+    linkLibraryAlbumTrack,
+    upsertLibraryMediaFile,
+  },
+  { libraryManager },
+] = await setupIsolatedBackend(
   "album-source-grabs",
   "backend/db/helpers/index.js",
   "backend/services/downloadJobs/downloadTracker.js",
@@ -47,15 +70,29 @@ afterAll(async () => {
 
 // Serves the album's one release from the metadata provider and returns its ID.
 async function serveRelease(t, group, titles, title = "Album") {
-  await serveGroups(t, [brainzmashGroup({ id: group, title, artist: "The Band", artistId: "the-band",
-    releases: [{ id: `${group}-release`, tracks: titles.map((title) => ({ title, durationMs: 1000 })) }] })]);
+  await serveGroups(t, [
+    brainzmashGroup({
+      id: group,
+      title,
+      artist: "The Band",
+      artistId: "the-band",
+      releases: [
+        { id: `${group}-release`, tracks: titles.map((title) => ({ title, durationMs: 1000 })) },
+      ],
+    }),
+  ]);
   return `${group}-release`;
 }
 
 function useSlskd() {
   const settings = dbOps.getSettings();
-  dbOps.updateSettings({ ...settings, integrations: { metadata: settings.integrations?.metadata,
-    slskd: { enabled: true, url: "http://127.0.0.1:9" } } });
+  dbOps.updateSettings({
+    ...settings,
+    integrations: {
+      metadata: settings.integrations?.metadata,
+      slskd: { enabled: true, url: "http://127.0.0.1:9" },
+    },
+  });
 }
 
 async function writeTracks(folder, titles, numbers = titles.map((_, index) => index + 1)) {
@@ -63,20 +100,52 @@ async function writeTracks(folder, titles, numbers = titles.map((_, index) => in
   const files = [];
   for (const [index, title] of titles.entries()) {
     const filePath = join(folder, `${String(numbers[index]).padStart(2, "0")} ${title}.flac`);
-    await execFileAsync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi",
-      "-i", "anullsrc=r=44100:cl=stereo", "-t", "1", "-c:a", "flac",
-      "-metadata", `title=${title}`, "-metadata", "artist=The Band", filePath]);
+    await execFileAsync("ffmpeg", [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "anullsrc=r=44100:cl=stereo",
+      "-t",
+      "1",
+      "-c:a",
+      "flac",
+      "-metadata",
+      `title=${title}`,
+      "-metadata",
+      "artist=The Band",
+      filePath,
+    ]);
     files.push(filePath);
   }
   return files;
 }
 
-function addAlbumJobs(group, titles, wanted = titles, { requestGroupId = group, playlist = "library" } = {}) {
-  const ids = wanted.map((trackName) => downloadTracker.addJob({
-    artistName: "The Band", albumName: "Album", albumMbid: group,
-    trackName, trackNumber: titles.indexOf(trackName) + 1, durationMs: 1000,
-    requestGroupId, albumTrackCount: titles.length, albumTrackTitles: titles,
-  }, playlist));
+function addAlbumJobs(
+  group,
+  titles,
+  wanted = titles,
+  { requestGroupId = group, playlist = "library" } = {},
+) {
+  const ids = wanted.map((trackName) =>
+    downloadTracker.addJob(
+      {
+        artistName: "The Band",
+        albumName: "Album",
+        albumMbid: group,
+        trackName,
+        trackNumber: titles.indexOf(trackName) + 1,
+        durationMs: 1000,
+        requestGroupId,
+        albumTrackCount: titles.length,
+        albumTrackTitles: titles,
+      },
+      playlist,
+    ),
+  );
   const downloadAttemptId = beginDownloadAttempt(ids[0]);
   for (const id of ids) setActiveDownloadAttemptId(id, downloadAttemptId);
   for (const id of ids.slice(1)) downloadTracker.setDownloading(id);
@@ -88,23 +157,57 @@ async function makeAlbum(t, group) {
   const folder = join(state.baseDir, group);
   const files = await writeTracks(folder, titles);
   const ids = addAlbumJobs(group, titles);
-  return { folder, files, ids, payload: {
-    source: "usenet", phase: "download", jobId: ids[0], downloadAttemptId: getActiveDownloadAttemptId(ids[0]),
-    playlistId: "library", playlistGeneration: 0, releaseMbid: await serveRelease(t, group, titles),
-    destination: `The Band/${group}`, albumGrab: true, albumGroupJobIds: ids,
-  } };
+  return {
+    folder,
+    files,
+    ids,
+    payload: {
+      source: "usenet",
+      phase: "download",
+      jobId: ids[0],
+      downloadAttemptId: getActiveDownloadAttemptId(ids[0]),
+      playlistId: "library",
+      playlistGeneration: 0,
+      releaseMbid: await serveRelease(t, group, titles),
+      destination: `The Band/${group}`,
+      albumGrab: true,
+      albumGroupJobIds: ids,
+    },
+  };
 }
 
 test("one Usenet NZB fills two sibling jobs", async (t) => {
   const album = await makeAlbum(t, "usenet-grab");
   const client = getDownloadClient("nzbget");
-  vi.spyOn(prowlarrClient, "downloadNzb").mockImplementation(async () => Buffer.from("<nzb></nzb>"));
-  const append = vi.spyOn(client, "appendNzb").mockImplementation(async () => ({ nzbId: "nzb-one" }));
-  vi.spyOn(client, "getHistoryItem").mockImplementation(async () => ({ Status: "SUCCESS", FinalDir: album.folder }));
-  const candidate = { raw: { release: { title: "The Band - Album", guid: "release-one",
-    downloadUrl: "https://nzb.test/release" } }, score: 10, resolvedAlbumName: "Other Release" };
-  const queued = await processUsenetPipelinePayload({ ...album.payload, candidates: [candidate],
-    candidateIndex: 0 }, { failOrTryNextSource: (_, __, reason) => { throw new Error(reason); } });
+  vi.spyOn(prowlarrClient, "downloadNzb").mockImplementation(async () =>
+    Buffer.from("<nzb></nzb>"),
+  );
+  const append = vi
+    .spyOn(client, "appendNzb")
+    .mockImplementation(async () => ({ nzbId: "nzb-one" }));
+  vi.spyOn(client, "getHistoryItem").mockImplementation(async () => ({
+    Status: "SUCCESS",
+    FinalDir: album.folder,
+  }));
+  const candidate = {
+    raw: {
+      release: {
+        title: "The Band - Album",
+        guid: "release-one",
+        downloadUrl: "https://nzb.test/release",
+      },
+    },
+    score: 10,
+    resolvedAlbumName: "Other Release",
+  };
+  const queued = await processUsenetPipelinePayload(
+    { ...album.payload, candidates: [candidate], candidateIndex: 0 },
+    {
+      failOrTryNextSource: (_, __, reason) => {
+        throw new Error(reason);
+      },
+    },
+  );
   assert.equal(append.mock.calls.length, 1);
   assert.equal(queued.phase, "poll");
   const polled = await processUsenetPipelinePayload(queued);
@@ -115,10 +218,17 @@ test("one Usenet NZB fills two sibling jobs", async (t) => {
     assert.deepEqual([job.status, job.albumName], ["done", "Album"]);
     assert.ok((await stat(job.finalPath)).isFile());
   }
-  const { getAurralHistoryRequests } = await import("../../backend/services/aurralHistoryService.js");
-  const activity = (await getAurralHistoryRequests()).filter((item) => album.ids.includes(item.jobId));
+  const { getAurralHistoryRequests } =
+    await import("../../backend/services/aurralHistoryService.js");
+  const activity = (await getAurralHistoryRequests()).filter((item) =>
+    album.ids.includes(item.jobId),
+  );
   assert.equal(activity.length, 2);
-  assert.ok(activity.every((item) => item.downloadMethod === "album" && item.actualDownloadSource === "usenet"));
+  assert.ok(
+    activity.every(
+      (item) => item.downloadMethod === "album" && item.actualDownloadSource === "usenet",
+    ),
+  );
 });
 
 test("a Usenet NZB short of the pinned release imports nothing, blocks it for every track, and hands the album to the next album source", async (t) => {
@@ -128,26 +238,52 @@ test("a Usenet NZB short of the pinned release imports nothing, blocks it for ev
   await writeTracks(folder, titles.slice(0, 2));
   const ids = addAlbumJobs(group, titles);
   const settings = dbOps.getSettings();
-  dbOps.updateSettings({ ...settings, integrations: {
-    prowlarr: { enabled: true, url: "http://127.0.0.1:9", apiKey: "disposable" },
-    nzbget: { enabled: true, url: "http://127.0.0.1:9", priority: 1 },
-    deemix: { enabled: true, url: "http://127.0.0.1:9", priority: 2 },
-  } });
+  dbOps.updateSettings({
+    ...settings,
+    integrations: {
+      prowlarr: { enabled: true, url: "http://127.0.0.1:9", apiKey: "disposable" },
+      nzbget: { enabled: true, url: "http://127.0.0.1:9", priority: 1 },
+      deemix: { enabled: true, url: "http://127.0.0.1:9", priority: 2 },
+    },
+  });
   t.onTestFinished(() => dbOps.updateSettings(settings));
   const client = getDownloadClient("nzbget");
   vi.spyOn(client, "deleteHistoryItem").mockImplementation(async () => true);
   vi.spyOn(client, "deleteQueueItem").mockImplementation(async () => true);
   const releaseMbid = await serveRelease(t, group, titles);
   const next = await processUsenetPipelinePayload({
-    source: "usenet", phase: "finalize", jobId: ids[0], playlistId: "library", playlistGeneration: 0,
+    source: "usenet",
+    phase: "finalize",
+    jobId: ids[0],
+    playlistId: "library",
+    playlistGeneration: 0,
     downloadAttemptId: getActiveDownloadAttemptId(ids[0]),
-    destination: `The Band/${group}`, albumGrab: true, albumGroupJobIds: ids, releaseMbid,
-    nzbId: "short-nzb", downloadedPath: folder, history: { Status: "SUCCESS", FinalDir: folder },
-    candidateIndex: 0, candidates: [{ raw: { release: {
-      title: "The Band - Album", guid: "short-release", downloadUrl: "https://nzb.test/short",
-    } }, resolvedAlbumName: "Album", releaseVerified: false }],
+    destination: `The Band/${group}`,
+    albumGrab: true,
+    albumGroupJobIds: ids,
+    releaseMbid,
+    nzbId: "short-nzb",
+    downloadedPath: folder,
+    history: { Status: "SUCCESS", FinalDir: folder },
+    candidateIndex: 0,
+    candidates: [
+      {
+        raw: {
+          release: {
+            title: "The Band - Album",
+            guid: "short-release",
+            downloadUrl: "https://nzb.test/short",
+          },
+        },
+        resolvedAlbumName: "Album",
+        releaseVerified: false,
+      },
+    ],
   });
-  assert.deepEqual([next.source, next.phase, next.albumGrab, next.jobId], ["deemix", "search", true, ids[0]]);
+  assert.deepEqual(
+    [next.source, next.phase, next.albumGrab, next.jobId],
+    ["deemix", "search", true, ids[0]],
+  );
   assert.deepEqual(next.albumGroupJobIds, ids);
   assert.equal(next.releaseMbid, releaseMbid);
   for (const id of ids) {
@@ -163,28 +299,80 @@ async function makeUpgrades(group, titles, { files = titles } = {}) {
   await mkdir(folder, { recursive: true });
   await mkdir(originals, { recursive: true });
   for (const [index, title] of files.entries()) {
-    await execFileAsync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi",
-      "-i", "anullsrc=r=44100:cl=stereo", "-t", "1", "-c:a", "flac",
-      "-metadata", `title=${title}`, "-metadata", "artist=The Band", join(folder, `0${index + 1} ${title}.flac`)]);
+    await execFileAsync("ffmpeg", [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "anullsrc=r=44100:cl=stereo",
+      "-t",
+      "1",
+      "-c:a",
+      "flac",
+      "-metadata",
+      `title=${title}`,
+      "-metadata",
+      "artist=The Band",
+      join(folder, `0${index + 1} ${title}.flac`),
+    ]);
   }
   const upgradeIds = [];
   for (const [index, title] of titles.entries()) {
     const original = join(originals, `${index} ${title}.mp3`);
-    await execFileAsync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi",
-      "-i", "anullsrc", "-t", "1", "-c:a", "libmp3lame", "-b:a", "128k", original]);
-    const sourceId = downloadTracker.addJob({ artistName: "The Band", albumName: group, trackName: title,
-      durationMs: 1000 }, "library");
+    await execFileAsync("ffmpeg", [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "anullsrc",
+      "-t",
+      "1",
+      "-c:a",
+      "libmp3lame",
+      "-b:a",
+      "128k",
+      original,
+    ]);
+    const sourceId = downloadTracker.addJob(
+      { artistName: "The Band", albumName: group, trackName: title, durationMs: 1000 },
+      "library",
+    );
     downloadTracker.setDone(sourceId, original, group);
     downloadTracker.updateQuality(sourceId, { tier: "mp3-128" });
     const upgradeId = downloadTracker.addUpgradeJob(downloadTracker.getJob(sourceId));
     downloadTracker.setDownloading(upgradeId);
     upgradeIds.push(upgradeId);
   }
-  const candidate = { raw: { release: { title: `The Band - ${group} FLAC`, guid: `${group}-release`,
-    downloadUrl: `https://nzb.test/${group}` } }, score: 10, resolvedAlbumName: group };
-  const start = (jobId, helpers) => processUsenetPipelinePayload({ source: "usenet", phase: "download", jobId,
-    upgradeForJobId: downloadTracker.getJob(jobId).upgradeForJobId, playlistId: "library", playlistGeneration: 0,
-    destination: `The Band/${group}`, candidates: [candidate], candidateIndex: 0 }, helpers);
+  const candidate = {
+    raw: {
+      release: {
+        title: `The Band - ${group} FLAC`,
+        guid: `${group}-release`,
+        downloadUrl: `https://nzb.test/${group}`,
+      },
+    },
+    score: 10,
+    resolvedAlbumName: group,
+  };
+  const start = (jobId, helpers) =>
+    processUsenetPipelinePayload(
+      {
+        source: "usenet",
+        phase: "download",
+        jobId,
+        upgradeForJobId: downloadTracker.getJob(jobId).upgradeForJobId,
+        playlistId: "library",
+        playlistGeneration: 0,
+        destination: `The Band/${group}`,
+        candidates: [candidate],
+        candidateIndex: 0,
+      },
+      helpers,
+    );
   return { folder, upgradeIds, start };
 }
 
@@ -201,15 +389,27 @@ async function holdDownloadWorker() {
 
 function mockNzbget(t, folder, nzbIds = [77]) {
   const client = getDownloadClient("nzbget");
-  vi.spyOn(prowlarrClient, "downloadNzb").mockImplementation(async () => Buffer.from("<nzb></nzb>"));
-  const append = vi.spyOn(client, "appendNzb").mockImplementation(async () => ({ nzbId: nzbIds.shift() ?? 99 }));
-  vi.spyOn(client, "getHistoryItem").mockImplementation(async (nzbId) => ({ NZBID: nzbId, Status: "SUCCESS", FinalDir: folder }));
+  vi.spyOn(prowlarrClient, "downloadNzb").mockImplementation(async () =>
+    Buffer.from("<nzb></nzb>"),
+  );
+  const append = vi
+    .spyOn(client, "appendNzb")
+    .mockImplementation(async () => ({ nzbId: nzbIds.shift() ?? 99 }));
+  vi.spyOn(client, "getHistoryItem").mockImplementation(async (nzbId) => ({
+    NZBID: nzbId,
+    Status: "SUCCESS",
+    FinalDir: folder,
+  }));
   const removed = vi.spyOn(client, "deleteHistoryItem").mockImplementation(async () => true);
   vi.spyOn(client, "deleteQueueItem").mockImplementation(async () => true);
   return { append, removed };
 }
 
-const failOnSourceFallback = { failOrTryNextSource: (_, __, reason) => { throw new Error(reason); } };
+const failOnSourceFallback = {
+  failOrTryNextSource: (_, __, reason) => {
+    throw new Error(reason);
+  },
+};
 
 async function runToEnd(payload, helpers = failOnSourceFallback) {
   while (payload?.phase) payload = await processUsenetPipelinePayload(payload, helpers);
@@ -220,7 +420,9 @@ test("upgrades for two tracks of one album share a single Usenet download", asyn
   const { folder, upgradeIds, start } = await makeUpgrades("shared-upgrade", titles);
   const { append, removed } = mockNzbget(t, folder);
 
-  const [first, second] = await Promise.all(upgradeIds.map((id) => start(id, failOnSourceFallback)));
+  const [first, second] = await Promise.all(
+    upgradeIds.map((id) => start(id, failOnSourceFallback)),
+  );
   assert.equal(append.mock.calls.length, 1);
   assert.deepEqual([first.nzbId, second.nzbId], [77, 77]);
 
@@ -231,7 +433,9 @@ test("upgrades for two tracks of one album share a single Usenet download", asyn
   await runToEnd(second);
   assert.equal(downloadTracker.getJob(upgradeIds[1]), null);
   assert.equal(removed.mock.calls.length, 1);
-  const upgraded = downloadTracker.getAll().filter((job) => job.albumName === "shared-upgrade" && !job.upgradeForJobId);
+  const upgraded = downloadTracker
+    .getAll()
+    .filter((job) => job.albumName === "shared-upgrade" && !job.upgradeForJobId);
   assert.deepEqual(upgraded.map((job) => job.trackName).sort(), titles);
   for (const job of upgraded) {
     assert.match(job.finalPath, /\.flac$/);
@@ -240,11 +444,17 @@ test("upgrades for two tracks of one album share a single Usenet download", asyn
 });
 
 test("the last upgrade to reject a shared Usenet download removes it", async (t) => {
-  const { folder, upgradeIds, start } = await makeUpgrades("shared-rejected", ["First", "Second"],
-    { files: ["Other", "Another"] });
+  const { folder, upgradeIds, start } = await makeUpgrades("shared-rejected", ["First", "Second"], {
+    files: ["Other", "Another"],
+  });
   const { append, removed } = mockNzbget(t, folder);
   const ended = [];
-  const helpers = { failOrTryNextSource: (_, job) => { ended.push(job.id); return null; } };
+  const helpers = {
+    failOrTryNextSource: (_, job) => {
+      ended.push(job.id);
+      return null;
+    },
+  };
 
   const started = await Promise.all(upgradeIds.map((id) => start(id, helpers)));
   assert.equal(append.mock.calls.length, 1);
@@ -254,15 +464,22 @@ test("the last upgrade to reject a shared Usenet download removes it", async (t)
 });
 
 test("an upgrade never attaches to a Usenet download that is being removed", async (t) => {
-  const { folder, upgradeIds, start } = await makeUpgrades("removing-download", ["First", "Second"],
-    { files: ["Other"] });
+  const { folder, upgradeIds, start } = await makeUpgrades(
+    "removing-download",
+    ["First", "Second"],
+    { files: ["Other"] },
+  );
   const { append, removed } = mockNzbget(t, folder, [101, 102]);
   let finishRemoval;
   let removalStarted;
-  const started = new Promise((resolve) => { removalStarted = resolve; });
+  const started = new Promise((resolve) => {
+    removalStarted = resolve;
+  });
   removed.mockImplementation(() => {
     removalStarted();
-    return new Promise((resolve) => { finishRemoval = () => resolve(true); });
+    return new Promise((resolve) => {
+      finishRemoval = () => resolve(true);
+    });
   });
   const helpers = { failOrTryNextSource: () => null };
 
@@ -277,7 +494,9 @@ test("an upgrade never attaches to a Usenet download that is being removed", asy
 });
 
 test("upgrades for two copies of one track download the release separately", async (t) => {
-  const { folder, upgradeIds, start } = await makeUpgrades("same-track", ["First", "First"], { files: ["First"] });
+  const { folder, upgradeIds, start } = await makeUpgrades("same-track", ["First", "First"], {
+    files: ["First"],
+  });
   const { append } = mockNzbget(t, folder, [81, 82]);
 
   const started = await Promise.all(upgradeIds.map((id) => start(id, failOnSourceFallback)));
@@ -286,7 +505,11 @@ test("upgrades for two copies of one track download the release separately", asy
 });
 
 test("after a failed Usenet submission, one waiting upgrade submits the release for the others", async () => {
-  const { upgradeIds, start } = await makeUpgrades("failed-submission", ["First", "Second", "Third"]);
+  const { upgradeIds, start } = await makeUpgrades("failed-submission", [
+    "First",
+    "Second",
+    "Third",
+  ]);
   const client = getDownloadClient("nzbget");
   let fetches = 0;
   vi.spyOn(prowlarrClient, "downloadNzb").mockImplementation(async () => {
@@ -300,7 +523,10 @@ test("after a failed Usenet submission, one waiting upgrade submits the release 
   const started = await Promise.all(upgradeIds.map((id) => start(id, helpers)));
   assert.equal(fetches, 2);
   assert.equal(append.mock.calls.length, 1);
-  assert.deepEqual(started.filter(Boolean).map((payload) => payload.nzbId), [91, 91]);
+  assert.deepEqual(
+    started.filter(Boolean).map((payload) => payload.nzbId),
+    [91, 91],
+  );
 });
 
 // A Library track at MP3 128 pinned to its album's release, beside a
@@ -309,40 +535,109 @@ async function pinnedUpgrade(t, group, { releaseCodec = "flac" } = {}) {
   const titles = ["First", "Second"];
   const releaseMbid = await serveRelease(t, group, titles, group);
   const settings = dbOps.getSettings();
-  dbOps.updateSettings({ ...settings, integrations: { metadata: settings.integrations?.metadata,
-    prowlarr: { enabled: true, url: "http://127.0.0.1:9", apiKey: "disposable" },
-    nzbget: { enabled: true, url: "http://127.0.0.1:9" } } });
+  dbOps.updateSettings({
+    ...settings,
+    integrations: {
+      metadata: settings.integrations?.metadata,
+      prowlarr: { enabled: true, url: "http://127.0.0.1:9", apiKey: "disposable" },
+      nzbget: { enabled: true, url: "http://127.0.0.1:9" },
+    },
+  });
   const mp3 = ["-c:a", "libmp3lame", "-b:a", "128k"];
   const original = join(resolveDownloadRoot(), "The Band", group, "02 - Second.mp3");
   await mkdir(dirname(original), { recursive: true });
-  await execFileAsync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "anullsrc",
-    "-t", "1", ...mp3, original]);
+  await execFileAsync("ffmpeg", [
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    "anullsrc",
+    "-t",
+    "1",
+    ...mp3,
+    original,
+  ]);
   const folder = join(state.baseDir, `${group}-release`);
   await mkdir(folder, { recursive: true });
   for (const [index, title] of titles.entries()) {
-    await execFileAsync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi",
-      "-i", "anullsrc=r=44100:cl=stereo", "-t", "1", ...(releaseCodec === "flac" ? ["-c:a", "flac"] : mp3),
-      "-metadata", `title=${title}`, "-metadata", "artist=The Band",
-      join(folder, `0${index + 1} ${title}.${releaseCodec}`)]);
+    await execFileAsync("ffmpeg", [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "anullsrc=r=44100:cl=stereo",
+      "-t",
+      "1",
+      ...(releaseCodec === "flac" ? ["-c:a", "flac"] : mp3),
+      "-metadata",
+      `title=${title}`,
+      "-metadata",
+      "artist=The Band",
+      join(folder, `0${index + 1} ${title}.${releaseCodec}`),
+    ]);
   }
-  const album = { artistName: "The Band", albumName: group, albumMbid: group, releaseMbid, requestGroupId: group,
-    durationMs: 1000, albumTrackCount: 2, albumTrackTitles: titles };
-  const sourceId = downloadTracker.addJob({ ...album, trackName: "Second", trackNumber: 2 }, "library");
+  const album = {
+    artistName: "The Band",
+    albumName: group,
+    albumMbid: group,
+    releaseMbid,
+    requestGroupId: group,
+    durationMs: 1000,
+    albumTrackCount: 2,
+    albumTrackTitles: titles,
+  };
+  const sourceId = downloadTracker.addJob(
+    { ...album, trackName: "Second", trackNumber: 2 },
+    "library",
+  );
   downloadTracker.setDone(sourceId, original, group);
   downloadTracker.updateQuality(sourceId, { tier: "mp3-128" });
-  const siblingId = downloadTracker.addJob({ ...album, trackName: "First", trackNumber: 1 }, "library");
+  const siblingId = downloadTracker.addJob(
+    { ...album, trackName: "First", trackNumber: 1 },
+    "library",
+  );
   const queued = [];
-  vi.spyOn(downloadTracker, "enqueuePipeline").mockImplementation((payload) => queued.push(payload));
+  vi.spyOn(downloadTracker, "enqueuePipeline").mockImplementation((payload) =>
+    queued.push(payload),
+  );
   const runWorker = await holdDownloadWorker();
   assert.equal(await queueQualityUpgrade(downloadTracker.getJob(sourceId)), "queued");
   await runWorker();
   const [attempt] = queued;
-  assert.deepEqual([attempt.albumGrab, attempt.releaseMbid, attempt.albumGroupJobIds],
-    [true, releaseMbid, [attempt.jobId]]);
-  const candidate = { raw: { release: { title: `The Band - ${group}`, guid: `${group}-nzb`,
-    downloadUrl: `https://nzb.test/${group}` } }, score: 10, resolvedAlbumName: group, releaseVerified: false };
-  return { original, folder, sourceId, siblingId, upgradeId: attempt.jobId,
-    download: { ...attempt, source: "usenet", phase: "download", candidates: [candidate], candidateIndex: 0 } };
+  assert.deepEqual(
+    [attempt.albumGrab, attempt.releaseMbid, attempt.albumGroupJobIds],
+    [true, releaseMbid, [attempt.jobId]],
+  );
+  const candidate = {
+    raw: {
+      release: {
+        title: `The Band - ${group}`,
+        guid: `${group}-nzb`,
+        downloadUrl: `https://nzb.test/${group}`,
+      },
+    },
+    score: 10,
+    resolvedAlbumName: group,
+    releaseVerified: false,
+  };
+  return {
+    original,
+    folder,
+    sourceId,
+    siblingId,
+    upgradeId: attempt.jobId,
+    download: {
+      ...attempt,
+      source: "usenet",
+      phase: "download",
+      candidates: [candidate],
+      candidateIndex: 0,
+    },
+  };
 }
 
 test("an upgrade downloads its release first, imports only its own track, and replaces the old file", async (t) => {
@@ -357,19 +652,31 @@ test("an upgrade downloads its release first, imports only its own track, and re
   assert.equal(trackSearch.mock.calls.length, 0);
   assert.equal(downloadTracker.getJob(upgrade.upgradeId), null);
   const upgraded = downloadTracker.getJob(upgrade.sourceId);
-  assert.deepEqual([upgraded.status, basename(upgraded.finalPath), upgraded.qualityTier],
-    ["done", "02 - Second.flac", "flac-standard"]);
+  assert.deepEqual(
+    [upgraded.status, basename(upgraded.finalPath), upgraded.qualityTier],
+    ["done", "02 - Second.flac", "flac-standard"],
+  );
   assert.ok((await stat(upgraded.finalPath)).isFile());
   await assert.rejects(stat(upgrade.original));
-  assert.deepEqual((await readdir(dirname(upgraded.finalPath))).filter((name) => name.includes("First")), []);
-  assert.deepEqual([downloadTracker.getJob(upgrade.siblingId).status, downloadTracker.getJob(upgrade.siblingId).finalPath],
-    ["pending", null]);
+  assert.deepEqual(
+    (await readdir(dirname(upgraded.finalPath))).filter((name) => name.includes("First")),
+    [],
+  );
+  assert.deepEqual(
+    [
+      downloadTracker.getJob(upgrade.siblingId).status,
+      downloadTracker.getJob(upgrade.siblingId).finalPath,
+    ],
+    ["pending", null],
+  );
 });
 
 test("an upgrade's release with no better copy imports nothing and the upgrade searches for its track", async (t) => {
   const upgrade = await pinnedUpgrade(t, "upgrade-not-better", { releaseCodec: "mp3" });
   mockNzbget(t, upgrade.folder);
-  vi.spyOn(prowlarrClient, "getEnabledUsenetIndexers").mockImplementation(async () => [{ id: 1, name: "indexer" }]);
+  vi.spyOn(prowlarrClient, "getEnabledUsenetIndexers").mockImplementation(async () => [
+    { id: 1, name: "indexer" },
+  ]);
   const trackSearch = vi.spyOn(prowlarrClient, "search").mockImplementation(async () => []);
 
   let payload = upgrade.download;
@@ -378,60 +685,151 @@ test("an upgrade's release with no better copy imports nothing and the upgrade s
   assert.ok(trackSearch.mock.calls.some((call) => JSON.stringify(call).includes("Second")));
   assert.equal(downloadTracker.getJob(upgrade.upgradeId), null);
   const kept = downloadTracker.getJob(upgrade.sourceId);
-  assert.deepEqual([kept.status, kept.finalPath, kept.qualityTier], ["done", upgrade.original, "mp3-128"]);
+  assert.deepEqual(
+    [kept.status, kept.finalPath, kept.qualityTier],
+    ["done", upgrade.original, "mp3-128"],
+  );
   assert.ok((await stat(upgrade.original)).isFile());
-  assert.equal(downloadTracker.getAll().some((job) => job.status === "blocked"), false);
+  assert.equal(
+    downloadTracker.getAll().some((job) => job.status === "blocked"),
+    false,
+  );
 });
 
 // Two tracks of one album at MP3 128, by default both in the Library from one
 // request and pinned to one release, and a Usenet download of the album in
 // FLAC not yet fetched.
-async function releaseUpgrades(t, group, {
-  requestGroupIds = [group, group],
-  owners = ["library", "library"],
-  pins = [`${group}-release`, `${group}-release`],
-  missing,
-} = {}) {
+async function releaseUpgrades(
+  t,
+  group,
+  {
+    requestGroupIds = [group, group],
+    owners = ["library", "library"],
+    pins = [`${group}-release`, `${group}-release`],
+    missing,
+  } = {},
+) {
   for (const job of downloadTracker.getAll()) downloadTracker.removeJob(job.id);
   const titles = ["First", "Second"];
-  await serveGroups(t, [brainzmashGroup({ id: group, title: group, artist: "The Band", artistId: "the-band",
-    releases: [...new Set(pins)].map((id) => ({ id, tracks: titles.map((title) => ({ title, durationMs: 1000 })) })) })],
-  { missing });
+  await serveGroups(
+    t,
+    [
+      brainzmashGroup({
+        id: group,
+        title: group,
+        artist: "The Band",
+        artistId: "the-band",
+        releases: [...new Set(pins)].map((id) => ({
+          id,
+          tracks: titles.map((title) => ({ title, durationMs: 1000 })),
+        })),
+      }),
+    ],
+    { missing },
+  );
   const settings = dbOps.getSettings();
-  dbOps.updateSettings({ ...settings, integrations: { metadata: settings.integrations?.metadata,
-    prowlarr: { enabled: true, url: "http://127.0.0.1:9", apiKey: "disposable" },
-    nzbget: { enabled: true, url: "http://127.0.0.1:9" } } });
+  dbOps.updateSettings({
+    ...settings,
+    integrations: {
+      metadata: settings.integrations?.metadata,
+      prowlarr: { enabled: true, url: "http://127.0.0.1:9", apiKey: "disposable" },
+      nzbget: { enabled: true, url: "http://127.0.0.1:9" },
+    },
+  });
   const folder = join(state.baseDir, `${group}-nzb`);
   await mkdir(folder, { recursive: true });
-  const album = { artistName: "The Band", albumName: group, albumMbid: group,
-    durationMs: 1000, albumTrackCount: 2, albumTrackTitles: titles };
+  const album = {
+    artistName: "The Band",
+    albumName: group,
+    albumMbid: group,
+    durationMs: 1000,
+    albumTrackCount: 2,
+    albumTrackTitles: titles,
+  };
   const sourceIds = [];
   for (const [index, title] of titles.entries()) {
-    await execFileAsync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
-      "-t", "1", "-c:a", "flac", "-metadata", `title=${title}`, "-metadata", "artist=The Band",
-      join(folder, `0${index + 1} ${title}.flac`)]);
+    await execFileAsync("ffmpeg", [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "anullsrc=r=44100:cl=stereo",
+      "-t",
+      "1",
+      "-c:a",
+      "flac",
+      "-metadata",
+      `title=${title}`,
+      "-metadata",
+      "artist=The Band",
+      join(folder, `0${index + 1} ${title}.flac`),
+    ]);
     const original = join(resolveDownloadRoot(), "The Band", group, `0${index + 1} - ${title}.mp3`);
     await mkdir(dirname(original), { recursive: true });
-    await execFileAsync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "anullsrc", "-t", "1",
-      "-c:a", "libmp3lame", "-b:a", "128k", original]);
-    const id = downloadTracker.addJob({ ...album, trackName: title, trackNumber: index + 1,
-      releaseMbid: pins[index], requestGroupId: requestGroupIds[index] }, owners[index]);
+    await execFileAsync("ffmpeg", [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "anullsrc",
+      "-t",
+      "1",
+      "-c:a",
+      "libmp3lame",
+      "-b:a",
+      "128k",
+      original,
+    ]);
+    const id = downloadTracker.addJob(
+      {
+        ...album,
+        trackName: title,
+        trackNumber: index + 1,
+        releaseMbid: pins[index],
+        requestGroupId: requestGroupIds[index],
+      },
+      owners[index],
+    );
     downloadTracker.setDone(id, original, group);
     downloadTracker.updateQuality(id, { tier: "mp3-128" });
     sourceIds.push(id);
   }
   const queued = [];
-  vi.spyOn(downloadTracker, "enqueuePipeline").mockImplementation((payload) => queued.push(payload));
-  vi.spyOn(prowlarrClient, "getEnabledUsenetIndexers").mockImplementation(async () => [{ id: 1, name: "indexer" }]);
+  vi.spyOn(downloadTracker, "enqueuePipeline").mockImplementation((payload) =>
+    queued.push(payload),
+  );
+  vi.spyOn(prowlarrClient, "getEnabledUsenetIndexers").mockImplementation(async () => [
+    { id: 1, name: "indexer" },
+  ]);
   const trackSearch = vi.spyOn(prowlarrClient, "search").mockImplementation(async () => []);
-  const candidate = { raw: { release: { title: `The Band - ${group}`, guid: `${group}-guid`,
-    downloadUrl: `https://nzb.test/${group}` } }, score: 10, resolvedAlbumName: group, releaseVerified: false };
-  const download = (attempt) => ({ ...attempt, source: "usenet", phase: "download", candidates: [candidate],
-    candidateIndex: 0 });
-  const landed = () => sourceIds.map((id) => {
-    const job = downloadTracker.getJob(id);
-    return [job.status, basename(job.finalPath), job.qualityTier];
+  const candidate = {
+    raw: {
+      release: {
+        title: `The Band - ${group}`,
+        guid: `${group}-guid`,
+        downloadUrl: `https://nzb.test/${group}`,
+      },
+    },
+    score: 10,
+    resolvedAlbumName: group,
+    releaseVerified: false,
+  };
+  const download = (attempt) => ({
+    ...attempt,
+    source: "usenet",
+    phase: "download",
+    candidates: [candidate],
+    candidateIndex: 0,
   });
+  const landed = () =>
+    sourceIds.map((id) => {
+      const job = downloadTracker.getJob(id);
+      return [job.status, basename(job.finalPath), job.qualityTier];
+    });
   const queueEach = async () => {
     for (const id of sourceIds) {
       const runWorker = await holdDownloadWorker();
@@ -452,14 +850,23 @@ async function oneFolderNzbget(t, group, upgrades) {
     await cp(pristine, upgrades.folder, { recursive: true, force: true });
     return { nzbId: 78 + append.mock.calls.length };
   });
-  upgrades.trackSearch.mockImplementation(async () => [{ guid: `${group}-guid`, protocol: "usenet",
-    title: `The Band - ${group} FLAC`, downloadUrl: `https://nzb.test/${group}`,
-    indexerId: 1, size: 100 * 1024 * 1024, categories: [3040] }]);
+  upgrades.trackSearch.mockImplementation(async () => [
+    {
+      guid: `${group}-guid`,
+      protocol: "usenet",
+      title: `The Band - ${group} FLAC`,
+      downloadUrl: `https://nzb.test/${group}`,
+      indexerId: 1,
+      size: 100 * 1024 * 1024,
+      categories: [3040],
+    },
+  ]);
   return append;
 }
 
 async function stepUntil(payload, done) {
-  for (let step = 0; step < 20 && payload && !done(payload); step += 1) payload = await processPipelinePayload(payload);
+  for (let step = 0; step < 20 && payload && !done(payload); step += 1)
+    payload = await processPipelinePayload(payload);
   return payload;
 }
 
@@ -468,8 +875,13 @@ test("an upgrade started while another upgrade downloads the same release waits 
   const append = await oneFolderNzbget(t, "upgrade-each-release", upgrades);
 
   await upgrades.queueEach();
-  assert.deepEqual(upgrades.queued.map((attempt) => [attempt.albumGrab, attempt.albumGroupJobIds.length]),
-    [[true, 1], [true, 1]]);
+  assert.deepEqual(
+    upgrades.queued.map((attempt) => [attempt.albumGrab, attempt.albumGroupJobIds.length]),
+    [
+      [true, 1],
+      [true, 1],
+    ],
+  );
   let [first, second] = upgrades.queued;
   first = await stepUntil(first, (payload) => payload.phase === "poll");
   assert.equal(append.mock.calls.length, 1);
@@ -483,22 +895,34 @@ test("an upgrade started while another upgrade downloads the same release waits 
   assert.deepEqual(upgrades.landed()[0], ["done", "01 - First.flac", "flac-standard"]);
   await stepUntil(second, () => false);
   assert.equal(append.mock.calls.length, 2);
-  assert.deepEqual(upgrades.landed(),
-    [["done", "01 - First.flac", "flac-standard"], ["done", "02 - Second.flac", "flac-standard"]]);
-  assert.equal(downloadTracker.getAll().some((job) => job.upgradeForJobId), false);
+  assert.deepEqual(upgrades.landed(), [
+    ["done", "01 - First.flac", "flac-standard"],
+    ["done", "02 - Second.flac", "flac-standard"],
+  ]);
+  assert.equal(
+    downloadTracker.getAll().some((job) => job.upgradeForJobId),
+    false,
+  );
 });
 
 test("an upgrade pinned to another pressing of the album waits for the upgrade downloading the album, so NZBGet never holds its NZB twice, and both land", async (t) => {
   const group = "upgrade-two-pressings";
-  const upgrades = await releaseUpgrades(t, group,
-    { requestGroupIds: ["album-request", null], pins: [`${group}-cd`, `${group}-vinyl`] });
+  const upgrades = await releaseUpgrades(t, group, {
+    requestGroupIds: ["album-request", null],
+    pins: [`${group}-cd`, `${group}-vinyl`],
+  });
   const append = await oneFolderNzbget(t, group, upgrades);
 
   const runWorker = await holdDownloadWorker();
   assert.equal(await runQualityUpgradeCheck({ force: true }), 2);
   await runWorker();
-  assert.deepEqual(upgrades.queued.map((attempt) => [attempt.releaseMbid, attempt.albumGroupJobIds.length]),
-    [[`${group}-cd`, 1], [`${group}-vinyl`, 1]]);
+  assert.deepEqual(
+    upgrades.queued.map((attempt) => [attempt.releaseMbid, attempt.albumGroupJobIds.length]),
+    [
+      [`${group}-cd`, 1],
+      [`${group}-vinyl`, 1],
+    ],
+  );
   let [first, second] = upgrades.queued;
   first = await stepUntil(first, (payload) => payload.phase === "poll");
   second = await processPipelinePayload(second);
@@ -508,8 +932,10 @@ test("an upgrade pinned to another pressing of the album waits for the upgrade d
   await stepUntil(first, () => false);
   await stepUntil(second, () => false);
   assert.equal(append.mock.calls.length, 2);
-  assert.deepEqual(upgrades.landed(),
-    [["done", "01 - First.flac", "flac-standard"], ["done", "02 - Second.flac", "flac-standard"]]);
+  assert.deepEqual(upgrades.landed(), [
+    ["done", "01 - First.flac", "flac-standard"],
+    ["done", "02 - Second.flac", "flac-standard"],
+  ]);
 });
 
 test("an upgrade stops waiting once the upgrade ahead of it gives up on the release and searches for its track", async (t) => {
@@ -520,7 +946,10 @@ test("an upgrade stops waiting once the upgrade ahead of it gives up on the rele
   assert.equal(second.phase, "waiting");
 
   first = await stepUntil(first, (payload) => payload.albumGrab !== true);
-  assert.deepEqual([first.albumGrab, downloadTracker.getJob(first.jobId).status], [false, "downloading"]);
+  assert.deepEqual(
+    [first.albumGrab, downloadTracker.getJob(first.jobId).status],
+    [false, "downloading"],
+  );
   second = await processPipelinePayload(second);
   assert.deepEqual([second.phase, second.albumGrab], ["search", false]);
 });
@@ -544,15 +973,24 @@ test("an upgrade waiting for the upgrade ahead of it on the same album stops wai
 test("the upgrade check skips the tracks of a user who is not active, and the Library's upgrade of the same album reaches its search", async (t) => {
   const user = userOps.createUser("upgrade-check-disabled", "hash");
   userOps.updateUser(user.id, { status: "disabled" });
-  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Disabled mix", ownerUserId: user.id });
-  const upgrades = await releaseUpgrades(t, "upgrade-check-inactive-owner",
-    { requestGroupIds: ["playlist-request", null], owners: [playlist.id, "library"] });
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
+    name: "Disabled mix",
+    ownerUserId: user.id,
+  });
+  const upgrades = await releaseUpgrades(t, "upgrade-check-inactive-owner", {
+    requestGroupIds: ["playlist-request", null],
+    owners: [playlist.id, "library"],
+  });
 
   const runWorker = await holdDownloadWorker();
   assert.equal(await runQualityUpgradeCheck({ force: true }), 1);
   await runWorker();
-  assert.deepEqual(upgrades.queued.map((attempt) => attempt.albumGroupJobIds
-    .map((id) => downloadTracker.getJob(id).upgradeForJobId)), [[upgrades.sourceIds[1]]]);
+  assert.deepEqual(
+    upgrades.queued.map((attempt) =>
+      attempt.albumGroupJobIds.map((id) => downloadTracker.getJob(id).upgradeForJobId),
+    ),
+    [[upgrades.sourceIds[1]]],
+  );
   await processPipelinePayload(upgrades.queued[0]);
   assert.ok(upgrades.trackSearch.mock.calls.length > 0);
 });
@@ -560,16 +998,28 @@ test("the upgrade check skips the tracks of a user who is not active, and the Li
 test("an upgrade of a user who is not active waits in the download worker's queue and never leads a release attempt that the Library's upgrade of the album waits for", async (t) => {
   const user = userOps.createUser("upgrade-queue-disabled", "hash");
   userOps.updateUser(user.id, { status: "disabled" });
-  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Disabled queue", ownerUserId: user.id });
-  const upgrades = await releaseUpgrades(t, "upgrade-queue-inactive-owner",
-    { requestGroupIds: ["playlist-request", null], owners: [playlist.id, "library"] });
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
+    name: "Disabled queue",
+    ownerUserId: user.id,
+  });
+  const upgrades = await releaseUpgrades(t, "upgrade-queue-inactive-owner", {
+    requestGroupIds: ["playlist-request", null],
+    owners: [playlist.id, "library"],
+  });
 
   await upgrades.queueEach();
-  assert.deepEqual(upgrades.queued.map((attempt) => downloadTracker.getJob(attempt.jobId).upgradeForJobId),
-    [upgrades.sourceIds[1]]);
+  assert.deepEqual(
+    upgrades.queued.map((attempt) => downloadTracker.getJob(attempt.jobId).upgradeForJobId),
+    [upgrades.sourceIds[1]],
+  );
   assert.equal(upgrades.queued[0].albumGrab, true);
-  const waiting = downloadTracker.findActiveUpgradeJob(downloadTracker.getJob(upgrades.sourceIds[0]));
-  assert.deepEqual([waiting.status, downloadTracker.isSlskdDispatched(waiting.id)], ["pending", false]);
+  const waiting = downloadTracker.findActiveUpgradeJob(
+    downloadTracker.getJob(upgrades.sourceIds[0]),
+  );
+  assert.deepEqual(
+    [waiting.status, downloadTracker.isSlskdDispatched(waiting.id)],
+    ["pending", false],
+  );
   const library = await processPipelinePayload(upgrades.queued[0]);
   assert.notEqual(library?.phase, "waiting");
   assert.ok(upgrades.trackSearch.mock.calls.length > 0);
@@ -577,7 +1027,10 @@ test("an upgrade of a user who is not active waits in the download worker's queu
 
 test("an upgrade whose user is disabled while the upgrade check runs is not held by the Library's release attempt", async (t) => {
   const user = userOps.createUser("upgrade-check-disabling", "hash");
-  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Disabling mix", ownerUserId: user.id });
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
+    name: "Disabling mix",
+    ownerUserId: user.id,
+  });
   const upgrades = await releaseUpgrades(t, "upgrade-owner-disabled-midway", {
     requestGroupIds: [null, "playlist-request"],
     owners: ["library", playlist.id],
@@ -590,8 +1043,10 @@ test("an upgrade whose user is disabled while the upgrade check runs is not held
   const runWorker = await holdDownloadWorker();
   assert.equal(await runQualityUpgradeCheck({ force: true }), 2);
   await runWorker();
-  assert.deepEqual(upgrades.queued[0].albumGroupJobIds.map((id) => downloadTracker.getJob(id).upgradeForJobId),
-    [upgrades.sourceIds[0]]);
+  assert.deepEqual(
+    upgrades.queued[0].albumGroupJobIds.map((id) => downloadTracker.getJob(id).upgradeForJobId),
+    [upgrades.sourceIds[0]],
+  );
 });
 
 async function postUpgrades(t, path = "/quality-upgrades") {
@@ -607,14 +1062,18 @@ async function postUpgrades(t, path = "/quality-upgrades") {
     const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
   });
   t.onTestFinished(() => server.close());
-  const response = await fetch(`http://127.0.0.1:${server.address().port}${path}`, { method: "POST" });
+  const response = await fetch(`http://127.0.0.1:${server.address().port}${path}`, {
+    method: "POST",
+  });
   return response.json();
 }
 
 test("Search all starts the upgrades of one release's tracks from different requests in the Library and a static playlist as one attempt and one Usenet download, and both land", async (t) => {
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Upgrade mix" });
-  const upgrades = await releaseUpgrades(t, "upgrade-all-release",
-    { requestGroupIds: [null, "playlist-request"], owners: ["library", playlist.id] });
+  const upgrades = await releaseUpgrades(t, "upgrade-all-release", {
+    requestGroupIds: [null, "playlist-request"],
+    owners: ["library", playlist.id],
+  });
   const { append } = mockNzbget(t, upgrades.folder);
 
   const runWorker = await holdDownloadWorker();
@@ -622,14 +1081,22 @@ test("Search all starts the upgrades of one release's tracks from different requ
   await runWorker();
   assert.equal(upgrades.queued.length, 1);
   const [attempt] = upgrades.queued;
-  assert.deepEqual(attempt.albumGroupJobIds.map((id) => downloadTracker.getJob(id).upgradeForJobId), upgrades.sourceIds);
+  assert.deepEqual(
+    attempt.albumGroupJobIds.map((id) => downloadTracker.getJob(id).upgradeForJobId),
+    upgrades.sourceIds,
+  );
   let payload = upgrades.download(attempt);
   while (payload) payload = await processPipelinePayload(payload);
   assert.equal(append.mock.calls.length, 1);
   assert.equal(upgrades.trackSearch.mock.calls.length, 0);
-  assert.deepEqual(upgrades.landed(),
-    [["done", "01 - First.flac", "flac-standard"], ["done", "02 - Second.flac", "flac-standard"]]);
-  assert.equal(downloadTracker.getAll().some((job) => job.upgradeForJobId), false);
+  assert.deepEqual(upgrades.landed(), [
+    ["done", "01 - First.flac", "flac-standard"],
+    ["done", "02 - Second.flac", "flac-standard"],
+  ]);
+  assert.equal(
+    downloadTracker.getAll().some((job) => job.upgradeForJobId),
+    false,
+  );
 });
 
 async function gateUpgradeSearches(t, groups) {
@@ -642,8 +1109,18 @@ async function gateUpgradeSearches(t, groups) {
     transaction.commit();
   };
   clearSearches();
-  await serveGroups(t, groups.map((group) => brainzmashGroup({ id: group, title: group, artist: "The Band",
-    artistId: "the-band", releases: [{ id: `${group}-release`, tracks: [{ title: "Only", durationMs: 1000 }] }] })));
+  await serveGroups(
+    t,
+    groups.map((group) =>
+      brainzmashGroup({
+        id: group,
+        title: group,
+        artist: "The Band",
+        artistId: "the-band",
+        releases: [{ id: `${group}-release`, tracks: [{ title: "Only", durationMs: 1000 }] }],
+      }),
+    ),
+  );
   useSlskd();
   const { concurrency } = downloadWorker.getWorkerSettings();
   downloadWorker.updateWorkerSettings({ concurrency: 1 });
@@ -663,24 +1140,60 @@ async function gateUpgradeSearches(t, groups) {
     addSource: async (group) => {
       const original = join(resolveDownloadRoot(), "The Band", group, "01 - Only.mp3");
       await mkdir(dirname(original), { recursive: true });
-      await execFileAsync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "anullsrc", "-t", "1",
-        "-c:a", "libmp3lame", "-b:a", "128k", original]);
-      const id = downloadTracker.addJob({ artistName: "The Band", albumName: group, albumMbid: group,
-        releaseMbid: `${group}-release`, trackName: "Only", trackNumber: 1, durationMs: 1000 }, "library");
+      await execFileAsync("ffmpeg", [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        "anullsrc",
+        "-t",
+        "1",
+        "-c:a",
+        "libmp3lame",
+        "-b:a",
+        "128k",
+        original,
+      ]);
+      const id = downloadTracker.addJob(
+        {
+          artistName: "The Band",
+          albumName: group,
+          albumMbid: group,
+          releaseMbid: `${group}-release`,
+          trackName: "Only",
+          trackNumber: 1,
+          durationMs: 1000,
+        },
+        "library",
+      );
       downloadTracker.setDone(id, original, group);
       downloadTracker.updateQuality(id, { tier: "mp3-128" });
       return id;
     },
-    searching: () => listHonkerJobs("slskd-pipeline").filter((entry) => entry.payload?.phase === "search")
-      .map((entry) => downloadTracker.getJob(entry.payload.jobId)?.upgradeForJobId),
-    waiting: () => downloadTracker.getAll().filter((job) => job.upgradeForJobId && job.status === "pending"
-      && !downloadTracker.isSlskdDispatched(job.id)).map((job) => job.upgradeForJobId),
+    searching: () =>
+      listHonkerJobs("slskd-pipeline")
+        .filter((entry) => entry.payload?.phase === "search")
+        .map((entry) => downloadTracker.getJob(entry.payload.jobId)?.upgradeForJobId),
+    waiting: () =>
+      downloadTracker
+        .getAll()
+        .filter(
+          (job) =>
+            job.upgradeForJobId &&
+            job.status === "pending" &&
+            !downloadTracker.isSlskdDispatched(job.id),
+        )
+        .map((job) => job.upgradeForJobId),
     moveSearchesToPoll: async () => {
       const nextSearch = new Promise((resolve) => {
         searchQueued = resolve;
       });
       const transaction = getHonkerDb().transaction();
-      transaction.execute("UPDATE _honker_live SET payload = json_set(payload, '$.phase', 'poll') WHERE queue = 'slskd-pipeline'");
+      transaction.execute(
+        "UPDATE _honker_live SET payload = json_set(payload, '$.phase', 'poll') WHERE queue = 'slskd-pipeline'",
+      );
       transaction.commit();
       await nextSearch;
       await downloadWorker.waitForIdle();
@@ -726,26 +1239,69 @@ test("the upgrade check queues each album's upgrades for the worker before it ad
   const groups = ["started-first", "started-second"];
   const seen = { queuedWhenSecondRead: null };
   const queued = [];
-  await serveGroups(t, groups.map((group) => brainzmashGroup({ id: group, title: group, artist: "The Band",
-    artistId: "the-band", releases: [{ id: `${group}-release`, tracks: [{ title: "Only", durationMs: 1000 }] }] })),
-  { missing: (pathname) => {
-    if (pathname === "/album/started-second") {
-      seen.queuedWhenSecondRead ??= downloadTracker.peekPending().filter((job) => job.upgradeForJobId).length;
-    }
-    return false;
-  } });
+  await serveGroups(
+    t,
+    groups.map((group) =>
+      brainzmashGroup({
+        id: group,
+        title: group,
+        artist: "The Band",
+        artistId: "the-band",
+        releases: [{ id: `${group}-release`, tracks: [{ title: "Only", durationMs: 1000 }] }],
+      }),
+    ),
+    {
+      missing: (pathname) => {
+        if (pathname === "/album/started-second") {
+          seen.queuedWhenSecondRead ??= downloadTracker
+            .peekPending()
+            .filter((job) => job.upgradeForJobId).length;
+        }
+        return false;
+      },
+    },
+  );
   const settings = dbOps.getSettings();
-  dbOps.updateSettings({ ...settings, integrations: { metadata: settings.integrations?.metadata,
-    prowlarr: { enabled: true, url: "http://127.0.0.1:9", apiKey: "disposable" },
-    nzbget: { enabled: true, url: "http://127.0.0.1:9" } } });
+  dbOps.updateSettings({
+    ...settings,
+    integrations: {
+      metadata: settings.integrations?.metadata,
+      prowlarr: { enabled: true, url: "http://127.0.0.1:9", apiKey: "disposable" },
+      nzbget: { enabled: true, url: "http://127.0.0.1:9" },
+    },
+  });
   const sourceIds = [];
   for (const group of groups) {
     const original = join(resolveDownloadRoot(), "The Band", group, "01 - Only.mp3");
     await mkdir(dirname(original), { recursive: true });
-    await execFileAsync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "anullsrc", "-t", "1",
-      "-c:a", "libmp3lame", "-b:a", "128k", original]);
-    const id = downloadTracker.addJob({ artistName: "The Band", albumName: group, albumMbid: group,
-      releaseMbid: `${group}-release`, trackName: "Only", trackNumber: 1, durationMs: 1000 }, "library");
+    await execFileAsync("ffmpeg", [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "anullsrc",
+      "-t",
+      "1",
+      "-c:a",
+      "libmp3lame",
+      "-b:a",
+      "128k",
+      original,
+    ]);
+    const id = downloadTracker.addJob(
+      {
+        artistName: "The Band",
+        albumName: group,
+        albumMbid: group,
+        releaseMbid: `${group}-release`,
+        trackName: "Only",
+        trackNumber: 1,
+        durationMs: 1000,
+      },
+      "library",
+    );
     downloadTracker.setDone(id, original, group);
     downloadTracker.updateQuality(id, { tier: "mp3-128" });
     sourceIds.push(id);
@@ -759,31 +1315,74 @@ test("the upgrade check queues each album's upgrades for the worker before it ad
   assert.equal(await runQualityUpgradeCheck({ force: true }), 2);
   await runWorker();
   assert.equal(seen.queuedWhenSecondRead, 1);
-  assert.deepEqual(queued.map((payload) => downloadTracker.getJob(payload.jobId).upgradeForJobId), [sourceIds[0]]);
-  assert.deepEqual(downloadTracker.getAll().filter((job) => job.upgradeForJobId).map((job) => job.upgradeForJobId),
-    [sourceIds[0]]);
-  assert.deepEqual([downloadTracker.getJob(sourceIds[1]).status, basename(downloadTracker.getJob(sourceIds[1]).finalPath)],
-    ["done", "01 - Only.mp3"]);
+  assert.deepEqual(
+    queued.map((payload) => downloadTracker.getJob(payload.jobId).upgradeForJobId),
+    [sourceIds[0]],
+  );
+  assert.deepEqual(
+    downloadTracker
+      .getAll()
+      .filter((job) => job.upgradeForJobId)
+      .map((job) => job.upgradeForJobId),
+    [sourceIds[0]],
+  );
+  assert.deepEqual(
+    [
+      downloadTracker.getJob(sourceIds[1]).status,
+      basename(downloadTracker.getJob(sourceIds[1]).finalPath),
+    ],
+    ["done", "01 - Only.mp3"],
+  );
 });
 
 test("a track removed while its upgrade's release details are read gets no upgrade", async (t) => {
   for (const job of downloadTracker.getAll()) downloadTracker.removeJob(job.id);
   const removing = { track: null };
-  await serveGroups(t, [], { missing: () => {
-    const track = downloadTracker.getAll().find((job) => job.status === "done");
-    if (track) removing.track = downloadTracker.removeJob(track.id) && track.id;
-    return true;
-  } });
+  await serveGroups(t, [], {
+    missing: () => {
+      const track = downloadTracker.getAll().find((job) => job.status === "done");
+      if (track) removing.track = downloadTracker.removeJob(track.id) && track.id;
+      return true;
+    },
+  });
   const settings = dbOps.getSettings();
-  dbOps.updateSettings({ ...settings, integrations: { metadata: settings.integrations?.metadata,
-    prowlarr: { enabled: true, url: "http://127.0.0.1:9", apiKey: "disposable" },
-    nzbget: { enabled: true, url: "http://127.0.0.1:9" } } });
+  dbOps.updateSettings({
+    ...settings,
+    integrations: {
+      metadata: settings.integrations?.metadata,
+      prowlarr: { enabled: true, url: "http://127.0.0.1:9", apiKey: "disposable" },
+      nzbget: { enabled: true, url: "http://127.0.0.1:9" },
+    },
+  });
   const original = join(resolveDownloadRoot(), "The Band", "removed-upgrade", "01 - First.mp3");
   await mkdir(dirname(original), { recursive: true });
-  await execFileAsync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "anullsrc", "-t", "1",
-    "-c:a", "libmp3lame", "-b:a", "128k", original]);
-  const id = downloadTracker.addJob({ artistName: "The Band", albumName: "removed-upgrade", albumMbid: "removed-upgrade",
-    trackName: "First", trackNumber: 1, durationMs: 1000 }, "library");
+  await execFileAsync("ffmpeg", [
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    "anullsrc",
+    "-t",
+    "1",
+    "-c:a",
+    "libmp3lame",
+    "-b:a",
+    "128k",
+    original,
+  ]);
+  const id = downloadTracker.addJob(
+    {
+      artistName: "The Band",
+      albumName: "removed-upgrade",
+      albumMbid: "removed-upgrade",
+      trackName: "First",
+      trackNumber: 1,
+      durationMs: 1000,
+    },
+    "library",
+  );
   downloadTracker.setDone(id, original, "removed-upgrade");
   downloadTracker.updateQuality(id, { tier: "mp3-128" });
   const queued = vi.spyOn(downloadTracker, "enqueuePipeline").mockImplementation(() => {});
@@ -797,24 +1396,67 @@ test("a track removed while its upgrade's release details are read gets no upgra
 test("a track whose file is kept while its upgrade's release details are read gets no upgrade", async (t) => {
   for (const job of downloadTracker.getAll()) downloadTracker.removeJob(job.id);
   const original = join(resolveDownloadRoot(), "The Band", "kept-upgrade", "01 - First.mp3");
-  const artist = upsertLibraryArtist({ identityKey: "name:kept-upgrade", name: "The Band", syncSearch: false });
-  const album = upsertLibraryAlbum({ identityKey: "name:kept-upgrade:album", artistId: artist.id,
-    title: "kept-upgrade", syncSearch: false });
-  const track = upsertLibraryTrack({ identityKey: "name:kept-upgrade:first", title: "First",
-    artistName: "The Band", syncSearch: false });
+  const artist = upsertLibraryArtist({
+    identityKey: "name:kept-upgrade",
+    name: "The Band",
+    syncSearch: false,
+  });
+  const album = upsertLibraryAlbum({
+    identityKey: "name:kept-upgrade:album",
+    artistId: artist.id,
+    title: "kept-upgrade",
+    syncSearch: false,
+  });
+  const track = upsertLibraryTrack({
+    identityKey: "name:kept-upgrade:first",
+    title: "First",
+    artistName: "The Band",
+    syncSearch: false,
+  });
   linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, syncSearch: false });
-  upsertLibraryMediaFile({ trackId: track.id, albumId: album.id, source: "aurral", path: original, available: true });
+  upsertLibraryMediaFile({
+    trackId: track.id,
+    albumId: album.id,
+    source: "aurral",
+    path: original,
+    available: true,
+  });
   const keeping = { result: null };
-  await serveGroups(t, [], { missing: () => {
-    keeping.result ??= libraryManager.setTrackKeepFile(String(track.id), { keepFile: true });
-    return true;
-  } });
+  await serveGroups(t, [], {
+    missing: () => {
+      keeping.result ??= libraryManager.setTrackKeepFile(String(track.id), { keepFile: true });
+      return true;
+    },
+  });
   useSlskd();
   await mkdir(dirname(original), { recursive: true });
-  await execFileAsync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "anullsrc", "-t", "1",
-    "-c:a", "libmp3lame", "-b:a", "128k", original]);
-  const id = downloadTracker.addJob({ artistName: "The Band", albumName: "kept-upgrade", albumMbid: "kept-upgrade",
-    trackName: "First", trackNumber: 1, durationMs: 1000 }, "library");
+  await execFileAsync("ffmpeg", [
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    "anullsrc",
+    "-t",
+    "1",
+    "-c:a",
+    "libmp3lame",
+    "-b:a",
+    "128k",
+    original,
+  ]);
+  const id = downloadTracker.addJob(
+    {
+      artistName: "The Band",
+      albumName: "kept-upgrade",
+      albumMbid: "kept-upgrade",
+      trackName: "First",
+      trackNumber: 1,
+      durationMs: 1000,
+    },
+    "library",
+  );
   downloadTracker.setDone(id, original, "kept-upgrade");
   downloadTracker.updateQuality(id, { tier: "mp3-128" });
   const runWorker = await holdDownloadWorker();
@@ -832,10 +1474,33 @@ test("an upgrade still waiting for the worker when every download source is turn
   useSlskd();
   const original = join(resolveDownloadRoot(), "The Band", "sources-off-upgrade", "01 - First.mp3");
   await mkdir(dirname(original), { recursive: true });
-  await execFileAsync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "anullsrc", "-t", "1",
-    "-c:a", "libmp3lame", "-b:a", "128k", original]);
-  const id = downloadTracker.addJob({ artistName: "The Band", albumName: "sources-off-upgrade",
-    albumMbid: "sources-off-upgrade", trackName: "First", trackNumber: 1, durationMs: 1000 }, "library");
+  await execFileAsync("ffmpeg", [
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    "anullsrc",
+    "-t",
+    "1",
+    "-c:a",
+    "libmp3lame",
+    "-b:a",
+    "128k",
+    original,
+  ]);
+  const id = downloadTracker.addJob(
+    {
+      artistName: "The Band",
+      albumName: "sources-off-upgrade",
+      albumMbid: "sources-off-upgrade",
+      trackName: "First",
+      trackNumber: 1,
+      durationMs: 1000,
+    },
+    "library",
+  );
   downloadTracker.setDone(id, original, "sources-off-upgrade");
   downloadTracker.updateQuality(id, { tier: "mp3-128" });
   const runWorker = await holdDownloadWorker();
@@ -843,9 +1508,18 @@ test("an upgrade still waiting for the worker when every download source is turn
   const upgradeId = downloadTracker.findActiveUpgradeJob(downloadTracker.getJob(id)).id;
   const queued = vi.spyOn(downloadTracker, "enqueuePipeline").mockImplementation(() => {});
   const settings = dbOps.getSettings();
-  dbOps.updateSettings({ ...settings, integrations: { ...settings.integrations,
-    ...Object.fromEntries(["slskd", "ytdlp", "deemix", "nzbget", "sabnzbd", "prowlarr"]
-      .map((id) => [id, { ...settings.integrations?.[id], enabled: false }])) } });
+  dbOps.updateSettings({
+    ...settings,
+    integrations: {
+      ...settings.integrations,
+      ...Object.fromEntries(
+        ["slskd", "ytdlp", "deemix", "nzbget", "sabnzbd", "prowlarr"].map((id) => [
+          id,
+          { ...settings.integrations?.[id], enabled: false },
+        ]),
+      ),
+    },
+  });
 
   await runWorker();
 
@@ -863,36 +1537,112 @@ test("a static playlist track whose downloads were cancelled gets no upgrade", a
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Cancelled mix" });
   const original = join(resolveDownloadRoot(), "The Band", "cancelled-upgrade", "01 - First.mp3");
   await mkdir(dirname(original), { recursive: true });
-  await execFileAsync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "anullsrc", "-t", "1",
-    "-c:a", "libmp3lame", "-b:a", "128k", original]);
-  const id = downloadTracker.addJob({ artistName: "The Band", albumName: "cancelled-upgrade",
-    albumMbid: "cancelled-upgrade", trackName: "First", trackNumber: 1, durationMs: 1000 }, playlist.id);
+  await execFileAsync("ffmpeg", [
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    "anullsrc",
+    "-t",
+    "1",
+    "-c:a",
+    "libmp3lame",
+    "-b:a",
+    "128k",
+    original,
+  ]);
+  const id = downloadTracker.addJob(
+    {
+      artistName: "The Band",
+      albumName: "cancelled-upgrade",
+      albumMbid: "cancelled-upgrade",
+      trackName: "First",
+      trackNumber: 1,
+      durationMs: 1000,
+    },
+    playlist.id,
+  );
   downloadTracker.setDone(id, original, "cancelled-upgrade");
   downloadTracker.updateQuality(id, { tier: "mp3-128" });
   cancelPlaylistDownloadGeneration(playlist.id);
 
   assert.equal(await queueQualityUpgrade(downloadTracker.getJob(id)), "ineligible");
-  assert.deepEqual(downloadTracker.getAll().filter((job) => job.upgradeForJobId), []);
+  assert.deepEqual(
+    downloadTracker.getAll().filter((job) => job.upgradeForJobId),
+    [],
+  );
   assert.equal(downloadTracker.getJob(id).qualityUpgradeCheckedAt ?? null, null);
 });
 
 test("a Usenet download of a second-disc track takes the disc in its name", async () => {
   const folder = join(state.baseDir, "usenet-disc-two");
   await mkdir(folder, { recursive: true });
-  await execFileAsync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi",
-    "-i", "anullsrc=r=44100:cl=stereo", "-t", "1", "-c:a", "flac",
-    "-metadata", "title=Bomb", "-metadata", "artist=The Band", join(folder, "Bomb.flac")]);
-  const jobId = downloadTracker.addJob({ artistName: "The Band", albumName: "Disc Album", trackName: "Bomb",
-    trackNumber: 3, discNumber: 2, durationMs: 1000 }, "library");
+  await execFileAsync("ffmpeg", [
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    "anullsrc=r=44100:cl=stereo",
+    "-t",
+    "1",
+    "-c:a",
+    "flac",
+    "-metadata",
+    "title=Bomb",
+    "-metadata",
+    "artist=The Band",
+    join(folder, "Bomb.flac"),
+  ]);
+  const jobId = downloadTracker.addJob(
+    {
+      artistName: "The Band",
+      albumName: "Disc Album",
+      trackName: "Bomb",
+      trackNumber: 3,
+      discNumber: 2,
+      durationMs: 1000,
+    },
+    "library",
+  );
   const client = getDownloadClient("nzbget");
-  vi.spyOn(prowlarrClient, "downloadNzb").mockImplementation(async () => Buffer.from("<nzb></nzb>"));
+  vi.spyOn(prowlarrClient, "downloadNzb").mockImplementation(async () =>
+    Buffer.from("<nzb></nzb>"),
+  );
   vi.spyOn(client, "appendNzb").mockImplementation(async () => ({ nzbId: "nzb-disc-two" }));
-  vi.spyOn(client, "getHistoryItem").mockImplementation(async () => ({ Status: "SUCCESS", FinalDir: folder }));
-  const candidate = { raw: { release: { title: "The Band - Bomb", guid: "release-disc-two",
-    downloadUrl: "https://nzb.test/disc-two" } }, score: 10, resolvedAlbumName: "Disc Album" };
-  const fail = { failOrTryNextSource: (_, __, reason) => { throw new Error(reason); } };
-  let payload = { source: "usenet", phase: "download", jobId, playlistId: "library", playlistGeneration: 0,
-    destination: "The Band/Disc Album", candidates: [candidate], candidateIndex: 0 };
+  vi.spyOn(client, "getHistoryItem").mockImplementation(async () => ({
+    Status: "SUCCESS",
+    FinalDir: folder,
+  }));
+  const candidate = {
+    raw: {
+      release: {
+        title: "The Band - Bomb",
+        guid: "release-disc-two",
+        downloadUrl: "https://nzb.test/disc-two",
+      },
+    },
+    score: 10,
+    resolvedAlbumName: "Disc Album",
+  };
+  const fail = {
+    failOrTryNextSource: (_, __, reason) => {
+      throw new Error(reason);
+    },
+  };
+  let payload = {
+    source: "usenet",
+    phase: "download",
+    jobId,
+    playlistId: "library",
+    playlistGeneration: 0,
+    destination: "The Band/Disc Album",
+    candidates: [candidate],
+    candidateIndex: 0,
+  };
   while (payload?.phase) payload = await processUsenetPipelinePayload(payload, fail);
   const job = downloadTracker.getJob(jobId);
   assert.equal(job.status, "done");
@@ -903,60 +1653,202 @@ test("a Usenet download of a second-disc track takes the disc in its name", asyn
 
 test("a Usenet download of a whole two-disc album takes the copy of a repeated title from the requested disc", async (t) => {
   const group = "usenet-two-disc";
-  const tracklist = [[1, 1, "Bomb"], [1, 2, "Swim"], [2, 1, "Bomb"], [2, 2, "Little Things"]];
-  await serveGroups(t, [brainzmashGroup({ id: group, title: "Disc Album", artist: "The Band", releases: [{
-    id: `${group}-release`, tracks: tracklist.map(([disc, position, title]) => ({ title, disc, position, durationMs: 1000 })) }] })]);
+  const tracklist = [
+    [1, 1, "Bomb"],
+    [1, 2, "Swim"],
+    [2, 1, "Bomb"],
+    [2, 2, "Little Things"],
+  ];
+  await serveGroups(t, [
+    brainzmashGroup({
+      id: group,
+      title: "Disc Album",
+      artist: "The Band",
+      releases: [
+        {
+          id: `${group}-release`,
+          tracks: tracklist.map(([disc, position, title]) => ({
+            title,
+            disc,
+            position,
+            durationMs: 1000,
+          })),
+        },
+      ],
+    }),
+  ]);
   const folder = join(state.baseDir, group);
   for (const [disc, position, title] of tracklist) {
     await mkdir(join(folder, `CD${disc}`), { recursive: true });
-    await execFileAsync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi",
-      "-i", "anullsrc=r=44100:cl=stereo", "-t", "1", "-c:a", "flac", "-metadata", `title=${title}`,
-      "-metadata", "artist=The Band", "-metadata", `track=${position}`, "-metadata", `comment=CD${disc}`,
-      join(folder, `CD${disc}`, `0${position} ${title}.flac`)]);
+    await execFileAsync("ffmpeg", [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "anullsrc=r=44100:cl=stereo",
+      "-t",
+      "1",
+      "-c:a",
+      "flac",
+      "-metadata",
+      `title=${title}`,
+      "-metadata",
+      "artist=The Band",
+      "-metadata",
+      `track=${position}`,
+      "-metadata",
+      `comment=CD${disc}`,
+      join(folder, `CD${disc}`, `0${position} ${title}.flac`),
+    ]);
   }
-  const jobId = downloadTracker.addJob({ artistName: "The Band", albumName: "Disc Album", albumMbid: group,
-    releaseMbid: `${group}-release`, trackName: "Bomb", trackNumber: 1, discNumber: 2, durationMs: 1000 }, "library");
+  const jobId = downloadTracker.addJob(
+    {
+      artistName: "The Band",
+      albumName: "Disc Album",
+      albumMbid: group,
+      releaseMbid: `${group}-release`,
+      trackName: "Bomb",
+      trackNumber: 1,
+      discNumber: 2,
+      durationMs: 1000,
+    },
+    "library",
+  );
   const client = getDownloadClient("nzbget");
-  vi.spyOn(prowlarrClient, "downloadNzb").mockImplementation(async () => Buffer.from("<nzb></nzb>"));
+  vi.spyOn(prowlarrClient, "downloadNzb").mockImplementation(async () =>
+    Buffer.from("<nzb></nzb>"),
+  );
   vi.spyOn(client, "appendNzb").mockImplementation(async () => ({ nzbId: "nzb-two-disc" }));
-  vi.spyOn(client, "getHistoryItem").mockImplementation(async () => ({ Status: "SUCCESS", FinalDir: folder }));
+  vi.spyOn(client, "getHistoryItem").mockImplementation(async () => ({
+    Status: "SUCCESS",
+    FinalDir: folder,
+  }));
   vi.spyOn(client, "deleteHistoryItem").mockImplementation(async () => true);
-  const candidate = { raw: { release: { title: "The Band - Disc Album", guid: "release-two-disc",
-    downloadUrl: "https://nzb.test/two-disc" } }, score: 10, resolvedAlbumName: "Disc Album" };
-  let payload = { source: "usenet", phase: "download", jobId, playlistId: "library", playlistGeneration: 0,
-    destination: "The Band/Disc Album", candidates: [candidate], candidateIndex: 0 };
-  while (payload?.phase) payload = await processUsenetPipelinePayload(payload, failOnSourceFallback);
+  const candidate = {
+    raw: {
+      release: {
+        title: "The Band - Disc Album",
+        guid: "release-two-disc",
+        downloadUrl: "https://nzb.test/two-disc",
+      },
+    },
+    score: 10,
+    resolvedAlbumName: "Disc Album",
+  };
+  let payload = {
+    source: "usenet",
+    phase: "download",
+    jobId,
+    playlistId: "library",
+    playlistGeneration: 0,
+    destination: "The Band/Disc Album",
+    candidates: [candidate],
+    candidateIndex: 0,
+  };
+  while (payload?.phase)
+    payload = await processUsenetPipelinePayload(payload, failOnSourceFallback);
   const job = downloadTracker.getJob(jobId);
   assert.equal(job.status, "done");
   const { common } = await parseFile(job.finalPath);
-  assert.deepEqual(common.comment?.map((entry) => entry.text ?? entry), ["CD2"]);
+  assert.deepEqual(
+    common.comment?.map((entry) => entry.text ?? entry),
+    ["CD2"],
+  );
 });
 
 test("a Usenet download of a pinned track is not imported when its only copy runs longer than the release lists", async (t) => {
   const group = "usenet-long-copy";
-  await serveGroups(t, [brainzmashGroup({ id: group, title: "Long Album", artist: "The Band", releases: [{
-    id: `${group}-release`, tracks: [{ title: "Alpha", durationMs: 1000 }, { title: "Beta", durationMs: 1000 }] }] })]);
+  await serveGroups(t, [
+    brainzmashGroup({
+      id: group,
+      title: "Long Album",
+      artist: "The Band",
+      releases: [
+        {
+          id: `${group}-release`,
+          tracks: [
+            { title: "Alpha", durationMs: 1000 },
+            { title: "Beta", durationMs: 1000 },
+          ],
+        },
+      ],
+    }),
+  ]);
   const folder = join(state.baseDir, group);
   await mkdir(folder, { recursive: true });
-  await execFileAsync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi",
-    "-i", "anullsrc=r=44100:cl=stereo", "-t", "7", "-c:a", "flac", "-metadata", "title=Beta",
-    "-metadata", "artist=The Band", "-metadata", "album=Long Album", "-metadata", "track=2",
-    join(folder, "02 Beta.flac")]);
-  const jobId = downloadTracker.addJob({ artistName: "The Band", albumName: "Long Album", albumMbid: group,
-    releaseMbid: `${group}-release`, trackName: "Beta", trackNumber: 2, durationMs: 1000 }, "library");
+  await execFileAsync("ffmpeg", [
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    "anullsrc=r=44100:cl=stereo",
+    "-t",
+    "7",
+    "-c:a",
+    "flac",
+    "-metadata",
+    "title=Beta",
+    "-metadata",
+    "artist=The Band",
+    "-metadata",
+    "album=Long Album",
+    "-metadata",
+    "track=2",
+    join(folder, "02 Beta.flac"),
+  ]);
+  const jobId = downloadTracker.addJob(
+    {
+      artistName: "The Band",
+      albumName: "Long Album",
+      albumMbid: group,
+      releaseMbid: `${group}-release`,
+      trackName: "Beta",
+      trackNumber: 2,
+      durationMs: 1000,
+    },
+    "library",
+  );
   const client = getDownloadClient("nzbget");
-  vi.spyOn(prowlarrClient, "downloadNzb").mockImplementation(async () => Buffer.from("<nzb></nzb>"));
+  vi.spyOn(prowlarrClient, "downloadNzb").mockImplementation(async () =>
+    Buffer.from("<nzb></nzb>"),
+  );
   vi.spyOn(client, "appendNzb").mockImplementation(async () => ({ nzbId: "nzb-long-copy" }));
-  vi.spyOn(client, "getHistoryItem").mockImplementation(async () => ({ Status: "SUCCESS", FinalDir: folder }));
+  vi.spyOn(client, "getHistoryItem").mockImplementation(async () => ({
+    Status: "SUCCESS",
+    FinalDir: folder,
+  }));
   vi.spyOn(client, "deleteHistoryItem").mockImplementation(async () => true);
   vi.spyOn(client, "deleteQueueItem").mockImplementation(async () => true);
-  const candidate = { raw: { release: { title: "The Band - Beta", guid: "release-long-copy",
-    downloadUrl: "https://nzb.test/long-copy" } }, score: 10, resolvedAlbumName: "Long Album" };
+  const candidate = {
+    raw: {
+      release: {
+        title: "The Band - Beta",
+        guid: "release-long-copy",
+        downloadUrl: "https://nzb.test/long-copy",
+      },
+    },
+    score: 10,
+    resolvedAlbumName: "Long Album",
+  };
   const reasons = [];
-  let payload = { source: "usenet", phase: "download", jobId, playlistId: "library", playlistGeneration: 0,
-    destination: "The Band/Long Album", candidates: [candidate], candidateIndex: 0 };
+  let payload = {
+    source: "usenet",
+    phase: "download",
+    jobId,
+    playlistId: "library",
+    playlistGeneration: 0,
+    destination: "The Band/Long Album",
+    candidates: [candidate],
+    candidateIndex: 0,
+  };
   while (payload?.phase) {
-    payload = await processUsenetPipelinePayload(payload, { failOrTryNextSource: (_, __, reason) => reasons.push(reason) && null });
+    payload = await processUsenetPipelinePayload(payload, {
+      failOrTryNextSource: (_, __, reason) => reasons.push(reason) && null,
+    });
   }
   assert.notEqual(downloadTracker.getJob(jobId).status, "done");
   assert.equal(downloadTracker.getJob(jobId).finalPath, null);
@@ -968,15 +1860,32 @@ test("one Soulseek batch fills two sibling jobs", async (t) => {
   useSlskd();
   const client = getDownloadClient("slskd");
   const remoteFiles = album.files.map((filePath) => ({ file: filePath, size: 0 }));
-  const transfers = album.files.map((filePath, index) => ({ id: `transfer-${index}`,
-    username: "peer", filename: filePath, state: "Completed" }));
-  const enqueue = vi.spyOn(client, "enqueueBatch").mockImplementation(async () => ({ transfers, username: "peer" }));
-  vi.spyOn(client, "getTransfer").mockImplementation(async (_, id) => transfers.find((item) => item.id === id));
+  const transfers = album.files.map((filePath, index) => ({
+    id: `transfer-${index}`,
+    username: "peer",
+    filename: filePath,
+    state: "Completed",
+  }));
+  const enqueue = vi
+    .spyOn(client, "enqueueBatch")
+    .mockImplementation(async () => ({ transfers, username: "peer" }));
+  vi.spyOn(client, "getTransfer").mockImplementation(async (_, id) =>
+    transfers.find((item) => item.id === id),
+  );
   vi.spyOn(client, "getDownloadDirectory").mockImplementation(async () => state.baseDir);
   vi.spyOn(client, "isCleanupAfterRunsEnabled").mockImplementation(() => false);
-  const queued = await processPipelinePayload({ ...album.payload, source: "slskd",
-    candidateIndex: 0, candidates: [{ raw: { user: "peer", files: remoteFiles },
-      resolvedAlbumName: "Album", releaseVerified: true }] });
+  const queued = await processPipelinePayload({
+    ...album.payload,
+    source: "slskd",
+    candidateIndex: 0,
+    candidates: [
+      {
+        raw: { user: "peer", files: remoteFiles },
+        resolvedAlbumName: "Album",
+        releaseVerified: true,
+      },
+    ],
+  });
   assert.equal(enqueue.mock.calls.length, 1);
   assert.equal(enqueue.mock.calls[0][0].files.length, 2);
   const polled = await processPipelinePayload(queued);
@@ -991,23 +1900,47 @@ test("one Soulseek batch fills two sibling jobs", async (t) => {
   const names = album.ids.map((id) => basename(downloadTracker.getJob(id).finalPath));
   assert.match(names[0], /^01 - First\b/);
   assert.match(names[1], /^02 - Second\b/);
-  const { getAurralHistoryRequests } = await import("../../backend/services/aurralHistoryService.js");
-  const activity = (await getAurralHistoryRequests()).filter((item) => album.ids.includes(item.jobId));
+  const { getAurralHistoryRequests } =
+    await import("../../backend/services/aurralHistoryService.js");
+  const activity = (await getAurralHistoryRequests()).filter((item) =>
+    album.ids.includes(item.jobId),
+  );
   assert.equal(activity.length, 2);
-  assert.ok(activity.every((item) => item.downloadMethod === "album" && item.actualDownloadSource === "slskd"));
+  assert.ok(
+    activity.every(
+      (item) => item.downloadMethod === "album" && item.actualDownloadSource === "slskd",
+    ),
+  );
 });
 
 test("a Soulseek album left untouched in the uploader's queue moves on after 10 minutes", async (t) => {
   const album = await makeAlbum(t, "soulseek-queued");
   useSlskd();
   const client = getDownloadClient("slskd");
-  const transfers = album.files.map((filename, index) => ({ id: `queued-${index}`, username: "peer",
-    filename, state: "Requested", bytesTransferred: 0 }));
-  vi.spyOn(client, "getTransfer").mockImplementation(async (_, id) => transfers.find((item) => item.id === id));
+  const transfers = album.files.map((filename, index) => ({
+    id: `queued-${index}`,
+    username: "peer",
+    filename,
+    state: "Requested",
+    bytesTransferred: 0,
+  }));
+  vi.spyOn(client, "getTransfer").mockImplementation(async (_, id) =>
+    transfers.find((item) => item.id === id),
+  );
   const removed = vi.spyOn(client, "deleteTransfer").mockImplementation(async () => true);
-  const remoteFiles = album.files.map((file, index) => ({ file, size: 0, jobId: album.ids[index] }));
-  const polling = { ...album.payload, source: "slskd", phase: "poll", candidateIndex: 0,
-    candidate: { raw: { user: "peer", files: remoteFiles }, releaseVerified: true }, albumTransfers: transfers };
+  const remoteFiles = album.files.map((file, index) => ({
+    file,
+    size: 0,
+    jobId: album.ids[index],
+  }));
+  const polling = {
+    ...album.payload,
+    source: "slskd",
+    phase: "poll",
+    candidateIndex: 0,
+    candidate: { raw: { user: "peer", files: remoteFiles }, releaseVerified: true },
+    albumTransfers: transfers,
+  };
   const waiting = await processPipelinePayload(polling);
   assert.equal(waiting.phase, "poll");
 
@@ -1019,27 +1952,55 @@ test("a Soulseek album left untouched in the uploader's queue moves on after 10 
   assert.equal(removed.mock.calls.length, 2);
 
   transfers[0].placeInQueue = 3;
-  assert.equal((await processPipelinePayload({ ...waiting, lastProgressAt: elevenMinutesAgo })).phase, "poll");
+  assert.equal(
+    (await processPipelinePayload({ ...waiting, lastProgressAt: elevenMinutesAgo })).phase,
+    "poll",
+  );
 });
 
 test("a Soulseek album removes the downloaded files it did not import", async (t) => {
   const album = await makeAlbum(t, "soulseek-unused");
   await rm(album.files[1]);
   const unused = join(album.folder, "02 Somebody Else.flac");
-  await execFileAsync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi",
-    "-i", "anullsrc=r=44100:cl=stereo", "-t", "1", "-c:a", "flac",
-    "-metadata", "title=Somebody Else", "-metadata", "artist=The Band", unused]);
+  await execFileAsync("ffmpeg", [
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    "anullsrc=r=44100:cl=stereo",
+    "-t",
+    "1",
+    "-c:a",
+    "flac",
+    "-metadata",
+    "title=Somebody Else",
+    "-metadata",
+    "artist=The Band",
+    unused,
+  ]);
   useSlskd();
   const client = getDownloadClient("slskd");
   vi.spyOn(client, "getDownloadDirectory").mockImplementation(async () => state.baseDir);
   vi.spyOn(client, "isCleanupAfterRunsEnabled").mockImplementation(() => false);
   const files = [album.files[0], unused];
   const remoteFiles = files.map((file, index) => ({ file, size: 0, jobId: album.ids[index] }));
-  const transfers = files.map((filename, index) => ({ id: `transfer-${index}`, username: "peer",
-    filename, state: "Completed, Succeeded" }));
-  await processPipelinePayload({ ...album.payload, source: "slskd", phase: "finalize", candidateIndex: 0,
+  const transfers = files.map((filename, index) => ({
+    id: `transfer-${index}`,
+    username: "peer",
+    filename,
+    state: "Completed, Succeeded",
+  }));
+  await processPipelinePayload({
+    ...album.payload,
+    source: "slskd",
+    phase: "finalize",
+    candidateIndex: 0,
     candidates: [{ raw: { user: "peer", files: remoteFiles }, releaseVerified: true }],
-    candidate: { raw: { user: "peer", files: remoteFiles }, releaseVerified: true }, albumTransfers: transfers });
+    candidate: { raw: { user: "peer", files: remoteFiles }, releaseVerified: true },
+    albumTransfers: transfers,
+  });
   assert.equal(downloadTracker.getJob(album.ids[0]).status, "done");
   assert.equal(downloadTracker.getJob(album.ids[1]).status, "pending");
   assert.equal(await stat(unused).catch(() => null), null);
@@ -1056,30 +2017,49 @@ test("a Soulseek album queued before candidates said a listing proved their rele
     const { releaseMbid: _releaseMbid, ...legacy } = album.payload;
     const files = (await readdir(album.folder)).map((name) => join(album.folder, name)).sort();
     const remoteFiles = files.map((file, index) => ({ file, size: 0, jobId: album.ids[index] }));
-    const adopted = await processPipelinePayload({ ...legacy, source: "slskd", phase: "finalize", candidateIndex: 0,
-      candidates: [{ raw: { user: "peer", files: remoteFiles } }], candidate: { raw: { user: "peer", files: remoteFiles } },
-      albumTransfers: files.map((filename, index) => ({ id: `transfer-${index}`, username: "peer", filename,
-        state: "Completed, Succeeded" })) });
+    const adopted = await processPipelinePayload({
+      ...legacy,
+      source: "slskd",
+      phase: "finalize",
+      candidateIndex: 0,
+      candidates: [{ raw: { user: "peer", files: remoteFiles } }],
+      candidate: { raw: { user: "peer", files: remoteFiles } },
+      albumTransfers: files.map((filename, index) => ({
+        id: `transfer-${index}`,
+        username: "peer",
+        filename,
+        state: "Completed, Succeeded",
+      })),
+    });
     assert.deepEqual([adopted.phase, adopted.releaseMbid], ["finalize", album.payload.releaseMbid]);
     return processPipelinePayload(adopted);
   };
 
   const whole = await makeAlbum(t, "soulseek-legacy-whole");
   await legacyFinalize(whole);
-  assert.deepEqual(whole.ids.map((id) => downloadTracker.getJob(id).status), ["done", "done"]);
+  assert.deepEqual(
+    whole.ids.map((id) => downloadTracker.getJob(id).status),
+    ["done", "done"],
+  );
 
   const short = await makeAlbum(t, "soulseek-legacy-short");
   await rm(short.files[1]);
   const fallback = await legacyFinalize(short);
   assert.deepEqual([fallback.albumGrab, fallback.jobId], [false, short.ids[0]]);
-  assert.deepEqual(short.ids.map((id) => downloadTracker.getJob(id).status), ["pending", "pending"]);
+  assert.deepEqual(
+    short.ids.map((id) => downloadTracker.getJob(id).status),
+    ["pending", "pending"],
+  );
 });
 
 test("a Usenet album needs every track of the pinned release, imports only the wanted ones, and tries the next release", async (t) => {
   const group = "usenet-next-release";
   const titles = Array.from({ length: 10 }, (_, index) => `Song ${index + 1}`);
   const wanted = ["Song 4", "Song 9"];
-  const folders = { partial: join(state.baseDir, `${group}-partial`), complete: join(state.baseDir, `${group}-complete`) };
+  const folders = {
+    partial: join(state.baseDir, `${group}-partial`),
+    complete: join(state.baseDir, `${group}-complete`),
+  };
   await writeTracks(folders.partial, wanted, [4, 9]);
   await writeTracks(folders.complete, titles);
   const ids = addAlbumJobs(group, titles, wanted);
@@ -1088,54 +2068,122 @@ test("a Usenet album needs every track of the pinned release, imports only the w
     if (url.endsWith("expired")) throw new Error("The indexer did not return the NZB: HTTP 404");
     return Buffer.from(`<nzb>${url}</nzb>`);
   });
-  const append = vi.spyOn(client, "appendNzb").mockImplementation(async ({ content }) => ({ nzbId: content.toString() }));
-  vi.spyOn(client, "getHistoryItem").mockImplementation(async (nzbId) => ({ Status: "SUCCESS",
-    FinalDir: nzbId.includes("partial") ? folders.partial : folders.complete }));
+  const append = vi
+    .spyOn(client, "appendNzb")
+    .mockImplementation(async ({ content }) => ({ nzbId: content.toString() }));
+  vi.spyOn(client, "getHistoryItem").mockImplementation(async (nzbId) => ({
+    Status: "SUCCESS",
+    FinalDir: nzbId.includes("partial") ? folders.partial : folders.complete,
+  }));
   vi.spyOn(client, "deleteQueueItem").mockImplementation(async () => true);
   vi.spyOn(client, "deleteHistoryItem").mockImplementation(async () => true);
-  const candidates = ["partial", "expired", "complete"].map((name) => ({ raw: { release: {
-    title: `The Band - Album ${name}`, guid: `guid-${name}`, downloadUrl: `https://nzb.test/${name}`,
-  } }, score: 10, resolvedAlbumName: "Album", releaseVerified: false }));
-  const helpers = { failOrTryNextSource: (_, __, reason) => { throw new Error(reason); } };
-  let payload = { source: "usenet", phase: "download", jobId: ids[0], playlistId: "library",
+  const candidates = ["partial", "expired", "complete"].map((name) => ({
+    raw: {
+      release: {
+        title: `The Band - Album ${name}`,
+        guid: `guid-${name}`,
+        downloadUrl: `https://nzb.test/${name}`,
+      },
+    },
+    score: 10,
+    resolvedAlbumName: "Album",
+    releaseVerified: false,
+  }));
+  const helpers = {
+    failOrTryNextSource: (_, __, reason) => {
+      throw new Error(reason);
+    },
+  };
+  let payload = {
+    source: "usenet",
+    phase: "download",
+    jobId: ids[0],
+    playlistId: "library",
     downloadAttemptId: getActiveDownloadAttemptId(ids[0]),
-    playlistGeneration: 0, destination: `The Band/${group}`, albumGrab: true,
-    albumGroupJobIds: ids, releaseMbid: await serveRelease(t, group, titles), candidates, candidateIndex: 0 };
+    playlistGeneration: 0,
+    destination: `The Band/${group}`,
+    albumGrab: true,
+    albumGroupJobIds: ids,
+    releaseMbid: await serveRelease(t, group, titles),
+    candidates,
+    candidateIndex: 0,
+  };
   while (payload) payload = await processUsenetPipelinePayload(payload, helpers);
   assert.equal(append.mock.calls.length, 2);
   for (const id of ids) {
     const job = downloadTracker.getJob(id);
     assert.equal(job.status, "done");
-    assert.deepEqual(job.deniedRemoteSources.filter(([, guid]) => guid === "guid-partial"), [["usenet", "guid-partial"]]);
+    assert.deepEqual(
+      job.deniedRemoteSources.filter(([, guid]) => guid === "guid-partial"),
+      [["usenet", "guid-partial"]],
+    );
   }
-  assert.deepEqual(ids.map((id) => basename(downloadTracker.getJob(id).finalPath)), ["04 - Song 4.flac", "09 - Song 9.flac"]);
+  assert.deepEqual(
+    ids.map((id) => basename(downloadTracker.getJob(id).finalPath)),
+    ["04 - Song 4.flac", "09 - Song 9.flac"],
+  );
   const library = join(downloadTracker.getJob(ids[0]).finalPath, "..");
-  assert.deepEqual((await readdir(library)).filter((name) => name.includes("Song")).sort(),
-    ["04 - Song 4.flac", "09 - Song 9.flac"]);
+  assert.deepEqual((await readdir(library)).filter((name) => name.includes("Song")).sort(), [
+    "04 - Song 4.flac",
+    "09 - Song 9.flac",
+  ]);
 });
 
 test("one playlist track outside any album request tries the next Usenet release after one short of its release", async (t) => {
   const group = "usenet-single-track";
   const titles = ["First", "Second", "Third"];
-  const folders = { short: join(state.baseDir, `${group}-short`), whole: join(state.baseDir, `${group}-whole`) };
+  const folders = {
+    short: join(state.baseDir, `${group}-short`),
+    whole: join(state.baseDir, `${group}-whole`),
+  };
   await writeTracks(folders.short, titles.slice(0, 2));
   await writeTracks(folders.whole, titles);
-  const [jobId] = addAlbumJobs(group, titles, ["Second"], { requestGroupId: null, playlist: "static" });
+  const [jobId] = addAlbumJobs(group, titles, ["Second"], {
+    requestGroupId: null,
+    playlist: "static",
+  });
   const client = getDownloadClient("nzbget");
   vi.spyOn(prowlarrClient, "downloadNzb").mockImplementation(async (url) => Buffer.from(url));
-  const append = vi.spyOn(client, "appendNzb").mockImplementation(async ({ content }) => ({ nzbId: content.toString() }));
-  vi.spyOn(client, "getHistoryItem").mockImplementation(async (nzbId) => ({ Status: "SUCCESS",
-    FinalDir: nzbId.endsWith("short") ? folders.short : folders.whole }));
+  const append = vi
+    .spyOn(client, "appendNzb")
+    .mockImplementation(async ({ content }) => ({ nzbId: content.toString() }));
+  vi.spyOn(client, "getHistoryItem").mockImplementation(async (nzbId) => ({
+    Status: "SUCCESS",
+    FinalDir: nzbId.endsWith("short") ? folders.short : folders.whole,
+  }));
   vi.spyOn(client, "deleteQueueItem").mockImplementation(async () => true);
   vi.spyOn(client, "deleteHistoryItem").mockImplementation(async () => true);
-  const candidates = ["short", "whole"].map((name) => ({ raw: { release: {
-    title: `The Band - Album ${name}`, guid: `guid-${name}`, downloadUrl: `https://nzb.test/${name}`,
-  } }, score: 10, resolvedAlbumName: "Album", releaseVerified: false }));
-  const helpers = { failOrTryNextSource: (_, __, reason) => { throw new Error(reason); } };
-  let payload = { source: "usenet", phase: "download", jobId, playlistId: "static", playlistGeneration: 0,
+  const candidates = ["short", "whole"].map((name) => ({
+    raw: {
+      release: {
+        title: `The Band - Album ${name}`,
+        guid: `guid-${name}`,
+        downloadUrl: `https://nzb.test/${name}`,
+      },
+    },
+    score: 10,
+    resolvedAlbumName: "Album",
+    releaseVerified: false,
+  }));
+  const helpers = {
+    failOrTryNextSource: (_, __, reason) => {
+      throw new Error(reason);
+    },
+  };
+  let payload = {
+    source: "usenet",
+    phase: "download",
+    jobId,
+    playlistId: "static",
+    playlistGeneration: 0,
     downloadAttemptId: getActiveDownloadAttemptId(jobId),
-    destination: `The Band/${group}`, albumGrab: true, albumGroupJobIds: [jobId],
-    releaseMbid: await serveRelease(t, group, titles), candidates, candidateIndex: 0 };
+    destination: `The Band/${group}`,
+    albumGrab: true,
+    albumGroupJobIds: [jobId],
+    releaseMbid: await serveRelease(t, group, titles),
+    candidates,
+    candidateIndex: 0,
+  };
   while (payload) payload = await processUsenetPipelinePayload(payload, helpers);
   assert.equal(append.mock.calls.length, 2);
   const job = downloadTracker.getJob(jobId);
@@ -1150,31 +2198,67 @@ test("a Soulseek album gives up on files left queued or crawling and keeps the o
   const client = getDownloadClient("slskd");
   const transfers = [
     { id: "done", username: "peer", filename: album.files[0], state: "Completed, Succeeded" },
-    { id: "stuck", username: "peer", filename: album.files[1], state: "Queued, Remotely", placeInQueue: 9 },
+    {
+      id: "stuck",
+      username: "peer",
+      filename: album.files[1],
+      state: "Queued, Remotely",
+      placeInQueue: 9,
+    },
   ];
-  vi.spyOn(client, "getTransfer").mockImplementation(async (_, id) => transfers.find((item) => item.id === id));
+  vi.spyOn(client, "getTransfer").mockImplementation(async (_, id) =>
+    transfers.find((item) => item.id === id),
+  );
   const removed = vi.spyOn(client, "deleteTransfer").mockImplementation(async () => true);
   vi.spyOn(client, "getDownloadDirectory").mockImplementation(async () => album.folder);
   vi.spyOn(client, "isCleanupAfterRunsEnabled").mockImplementation(() => false);
-  const remoteFiles = album.files.map((filePath, index) => ({ file: filePath, size: 0, jobId: album.ids[index] }));
-  const polling = { ...album.payload, source: "slskd", phase: "poll", candidateIndex: 0,
-    candidate: { raw: { user: "peer", files: remoteFiles }, releaseVerified: true }, albumTransfers: transfers };
+  const remoteFiles = album.files.map((filePath, index) => ({
+    file: filePath,
+    size: 0,
+    jobId: album.ids[index],
+  }));
+  const polling = {
+    ...album.payload,
+    source: "slskd",
+    phase: "poll",
+    candidateIndex: 0,
+    candidate: { raw: { user: "peer", files: remoteFiles }, releaseVerified: true },
+    albumTransfers: transfers,
+  };
   const waiting = await processPipelinePayload(polling);
   assert.equal(waiting.phase, "poll");
   transfers[1].placeInQueue = 8;
   const moving = await processPipelinePayload(waiting);
   assert.equal(moving.phase, "poll");
   transfers[1].placeInQueue = 7;
-  const stalled = await processPipelinePayload({ ...moving, tailSince: Date.now() - 11 * 60 * 1000 });
+  const stalled = await processPipelinePayload({
+    ...moving,
+    tailSince: Date.now() - 11 * 60 * 1000,
+  });
   assert.equal(stalled.phase, "finalize");
-  assert.deepEqual(removed.mock.calls.map((call) => call[1]), ["stuck"]);
-  const crawling = { ...transfers[1], state: "InProgress", bytesTransferred: 4096, placeInQueue: null };
-  vi.spyOn(client, "getTransfer").mockImplementation(async (_, id) => (id === "stuck" ? crawling : transfers[0]));
+  assert.deepEqual(
+    removed.mock.calls.map((call) => call[1]),
+    ["stuck"],
+  );
+  const crawling = {
+    ...transfers[1],
+    state: "InProgress",
+    bytesTransferred: 4096,
+    placeInQueue: null,
+  };
+  vi.spyOn(client, "getTransfer").mockImplementation(async (_, id) =>
+    id === "stuck" ? crawling : transfers[0],
+  );
   crawling.bytesTransferred = 8192;
-  assert.equal((await processPipelinePayload({ ...moving, tailSince: Date.now() - 11 * 60 * 1000 })).phase, "poll");
+  assert.equal(
+    (await processPipelinePayload({ ...moving, tailSince: Date.now() - 11 * 60 * 1000 })).phase,
+    "poll",
+  );
   crawling.bytesTransferred = 12288;
-  assert.equal((await processPipelinePayload({ ...moving, tailSince: Date.now() - 21 * 60 * 1000 })).phase,
-    "finalize");
+  assert.equal(
+    (await processPipelinePayload({ ...moving, tailSince: Date.now() - 21 * 60 * 1000 })).phase,
+    "finalize",
+  );
   await processPipelinePayload(stalled);
   assert.equal(downloadTracker.getJob(album.ids[0]).status, "done");
   assert.equal(downloadTracker.getJob(album.ids[1]).status, "pending");
@@ -1186,25 +2270,55 @@ test("a track that takes the lead of a Soulseek album after the leading track la
   const client = getDownloadClient("slskd");
   const transfers = [
     { id: "done", username: "peer", filename: album.files[0], state: "Completed, Succeeded" },
-    { id: "stuck", username: "peer", filename: album.files[1], state: "Queued, Remotely", placeInQueue: 9 },
+    {
+      id: "stuck",
+      username: "peer",
+      filename: album.files[1],
+      state: "Queued, Remotely",
+      placeInQueue: 9,
+    },
   ];
-  vi.spyOn(client, "getTransfer").mockImplementation(async (_, id) => transfers.find((item) => item.id === id));
+  vi.spyOn(client, "getTransfer").mockImplementation(async (_, id) =>
+    transfers.find((item) => item.id === id),
+  );
   vi.spyOn(client, "deleteTransfer").mockImplementation(async () => true);
   vi.spyOn(client, "getDownloadDirectory").mockImplementation(async () => album.folder);
   vi.spyOn(client, "isCleanupAfterRunsEnabled").mockImplementation(() => false);
-  const remoteFiles = album.files.map((filePath, index) => ({ file: filePath, size: 0, jobId: album.ids[index] }));
-  const folders = ["peer", "other"].map((user) => ({ raw: { user, files: remoteFiles }, releaseVerified: true }));
-  const held = { source: "ytdlp", sourcePath: join(state.baseDir, "soulseek-new-lead-held.mp3"), reason: "Shorter",
-    metadata: {} };
+  const remoteFiles = album.files.map((filePath, index) => ({
+    file: filePath,
+    size: 0,
+    jobId: album.ids[index],
+  }));
+  const folders = ["peer", "other"].map((user) => ({
+    raw: { user, files: remoteFiles },
+    releaseVerified: true,
+  }));
+  const held = {
+    source: "ytdlp",
+    sourcePath: join(state.baseDir, "soulseek-new-lead-held.mp3"),
+    reason: "Shorter",
+    metadata: {},
+  };
   assert.equal(downloadTracker.keepHeldForReview(album.ids[1], held), true);
 
-  const polling = { ...album.payload, source: "slskd", phase: "poll", candidates: folders, candidateIndex: 0,
-    candidate: folders[0], albumTransfers: transfers, tailSince: Date.now() - 11 * 60 * 1000 };
+  const polling = {
+    ...album.payload,
+    source: "slskd",
+    phase: "poll",
+    candidates: folders,
+    candidateIndex: 0,
+    candidate: folders[0],
+    albumTransfers: transfers,
+    tailSince: Date.now() - 11 * 60 * 1000,
+  };
   const finalizing = await processPipelinePayload(polling);
   assert.equal(finalizing.phase, "finalize");
   const next = await processPipelinePayload(finalizing);
   assert.equal(downloadTracker.getJob(album.ids[0]).status, "done");
-  assert.deepEqual([next.jobId, next.candidateIndex, next.heldForReview?.sourcePath], [album.ids[1], 1, held.sourcePath]);
+  assert.deepEqual(
+    [next.jobId, next.candidateIndex, next.heldForReview?.sourcePath],
+    [album.ids[1], 1, held.sourcePath],
+  );
 });
 
 test("a Soulseek album's next folder gets its own queue window", async (t) => {
@@ -1213,23 +2327,49 @@ test("a Soulseek album's next folder gets its own queue window", async (t) => {
   const client = getDownloadClient("slskd");
   const transfers = [
     { id: "failed", username: "peer", filename: album.files[0], state: "Completed, Errored" },
-    { id: "queued", username: "peer", filename: album.files[1], state: "Queued, Remotely", placeInQueue: 4 },
+    {
+      id: "queued",
+      username: "peer",
+      filename: album.files[1],
+      state: "Queued, Remotely",
+      placeInQueue: 4,
+    },
   ];
-  vi.spyOn(client, "getTransfer").mockImplementation(async (_, id) => transfers.find((item) => item.id === id));
+  vi.spyOn(client, "getTransfer").mockImplementation(async (_, id) =>
+    transfers.find((item) => item.id === id),
+  );
   vi.spyOn(client, "deleteTransfer").mockImplementation(async () => true);
   vi.spyOn(client, "getDownloadDirectory").mockImplementation(async () => album.folder);
   vi.spyOn(client, "isCleanupAfterRunsEnabled").mockImplementation(() => false);
-  const folder = (user) => ({ raw: { user, files: album.files.map((filePath, index) =>
-    ({ file: filePath, size: 0, jobId: album.ids[index] })) }, releaseVerified: true });
+  const folder = (user) => ({
+    raw: {
+      user,
+      files: album.files.map((filePath, index) => ({
+        file: filePath,
+        size: 0,
+        jobId: album.ids[index],
+      })),
+    },
+    releaseVerified: true,
+  });
   const candidates = [folder("peer"), folder("other")];
-  const giveUp = await processPipelinePayload({ ...album.payload, source: "slskd", phase: "poll",
-    candidateIndex: 0, candidates, candidate: candidates[0], albumTransfers: transfers,
-    tailSince: Date.now() - 11 * 60 * 1000 });
+  const giveUp = await processPipelinePayload({
+    ...album.payload,
+    source: "slskd",
+    phase: "poll",
+    candidateIndex: 0,
+    candidates,
+    candidate: candidates[0],
+    albumTransfers: transfers,
+    tailSince: Date.now() - 11 * 60 * 1000,
+  });
   assert.equal(giveUp.phase, "finalize");
   assert.equal(buildSlskdRankingHistoryOptions().getUserQueuePenalty("peer"), 0);
   const next = await processPipelinePayload(giveUp);
   assert.equal(next.candidateIndex, 1);
   assert.equal(next.tailSince ?? null, null);
   assert.ok(buildSlskdRankingHistoryOptions().getUserQueuePenalty("peer") > 0);
-  assert.deepEqual(downloadTracker.getJob(album.ids[0]).deniedRemoteSources, [["slskd", `peer\0${album.files[0]}`]]);
+  assert.deepEqual(downloadTracker.getJob(album.ids[0]).deniedRemoteSources, [
+    ["slskd", `peer\0${album.files[0]}`],
+  ]);
 });

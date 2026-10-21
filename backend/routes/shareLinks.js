@@ -61,7 +61,8 @@ router.get("/", (req, res) => {
 
 router.get("/availability", async (req, res) => {
   const target = targetFromInput(req.query);
-  if (!target) return res.status(400).json({ error: "invalid_request", message: "Choose what to share." });
+  if (!target)
+    return res.status(400).json({ error: "invalid_request", message: "Choose what to share." });
   res.json({
     trackCount: resolveShareTarget(target)?.tracks.length || 0,
     tunnelAvailable: await hasCloudflared(),
@@ -70,14 +71,23 @@ router.get("/availability", async (req, res) => {
 
 router.post("/", async (req, res) => {
   const target = targetFromInput(req.body);
-  if (!target) return res.status(400).json({ error: "invalid_request", message: "Choose what to share." });
+  if (!target)
+    return res.status(400).json({ error: "invalid_request", message: "Choose what to share." });
   const payload = text(req.body?.payload);
   if (!PAYLOAD_PATTERN.test(payload)) {
-    return res.status(400).json({ error: "invalid_request", message: "The share link is incomplete.", field: "payload" });
+    return res.status(400).json({
+      error: "invalid_request",
+      message: "The share link is incomplete.",
+      field: "payload",
+    });
   }
   const expiresIn = text(req.body?.expiresIn);
   if (!Object.hasOwn(EXPIRY_OPTIONS, expiresIn)) {
-    return res.status(400).json({ error: "invalid_request", message: "Choose when the link expires.", field: "expiresIn" });
+    return res.status(400).json({
+      error: "invalid_request",
+      message: "Choose when the link expires.",
+      field: "expiresIn",
+    });
   }
   const resolved = resolveShareTarget(target);
   if (!resolved) return notInLibrary(res);

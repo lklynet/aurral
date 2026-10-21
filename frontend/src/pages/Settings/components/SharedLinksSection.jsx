@@ -80,9 +80,7 @@ export function SharedLinksSection({ showSuccess, showError, className = "" }) {
     <div className={`settings-page__section${className ? ` ${className}` : ""}`}>
       <div className="settings-page__section-intro">
         <h3 className="settings-page__section-title">Shared links</h3>
-        <p className="settings-page__section-note">
-          Stopping a link ends access immediately.
-        </p>
+        <p className="settings-page__section-note">Stopping a link ends access immediately.</p>
       </div>
 
       {links.isPending ? (
@@ -120,7 +118,11 @@ export function SharedLinksSection({ showSuccess, showError, className = "" }) {
                     <span className="shared-link-row__meta">{describeLink(link)}</span>
                   </span>
                   <span className="shared-link-row__actions">
-                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => share(link)}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => share(link)}
+                    >
                       Share link
                     </button>
                     <button

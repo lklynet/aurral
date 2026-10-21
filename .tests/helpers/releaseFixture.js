@@ -6,13 +6,23 @@ const METADATA_HOST = "brainzmash.example.test";
 // A release group as BrainzMash serves it. A track is a title, or a title
 // with its place, length, recording, and credit; a track credited to someone
 // else names one of `trackArtists`.
-export function brainzmashGroup({ id, title, artist, artistId = `${id}-artist`, trackArtists = [], secondaryTypes = [],
-  releases }) {
+export function brainzmashGroup({
+  id,
+  title,
+  artist,
+  artistId = `${id}-artist`,
+  trackArtists = [],
+  secondaryTypes = [],
+  releases,
+}) {
   return {
     id,
     title,
     artistid: artistId,
-    artists: [{ id: artistId, name: artist }, ...trackArtists].map((entry) => ({ id: entry.id, artistname: entry.name })),
+    artists: [{ id: artistId, name: artist }, ...trackArtists].map((entry) => ({
+      id: entry.id,
+      artistname: entry.name,
+    })),
     secondarytypes: secondaryTypes,
     releases: releases.map((release) => ({
       id: release.id,
@@ -40,13 +50,25 @@ export function brainzmashGroup({ id, title, artist, artistId = `${id}-artist`, 
 // a release loads by its ID through the real metadata path. An unavailable
 // path answers 503, and a missing one 404, as a provider that does not know it.
 // A searchable provider also finds a group by its exact title.
-export async function serveGroups(t, groups, { unavailable = () => false, missing = () => false,
-  searchable = false } = {}) {
+export async function serveGroups(
+  t,
+  groups,
+  { unavailable = () => false, missing = () => false, searchable = false } = {},
+) {
   const { dbOps } = await import("../../backend/db/helpers/index.js");
   const { clearApiCaches } = await import("../../backend/services/apiClients/clearCache.js");
   const settings = dbOps.getSettings();
-  dbOps.updateSettings({ ...settings, integrations: { ...settings.integrations,
-    metadata: { ...settings.integrations?.metadata, baseUrl: `https://${METADATA_HOST}`, enableNarrowFallbacks: false } } });
+  dbOps.updateSettings({
+    ...settings,
+    integrations: {
+      ...settings.integrations,
+      metadata: {
+        ...settings.integrations?.metadata,
+        baseUrl: `https://${METADATA_HOST}`,
+        enableNarrowFallbacks: false,
+      },
+    },
+  });
   clearApiCaches();
   t.onTestFinished(() => clearApiCaches());
   const byPath = new Map(groups.map((group) => [`/album/${group.id}`, group]));
@@ -55,10 +77,15 @@ export async function serveGroups(t, groups, { unavailable = () => false, missin
     const parsed = new URL(url);
     if (parsed.hostname !== METADATA_HOST) return original.call(axios, url, ...rest);
     const down = unavailable(parsed.pathname);
-    const query = String(rest[0]?.params?.query ?? parsed.searchParams.get("query") ?? "").toLowerCase();
-    const found = searchable && parsed.pathname === "/search/album"
-      ? groups.filter((group) => group.title.toLowerCase() === query).map(({ releases, ...group }) => group)
-      : null;
+    const query = String(
+      rest[0]?.params?.query ?? parsed.searchParams.get("query") ?? "",
+    ).toLowerCase();
+    const found =
+      searchable && parsed.pathname === "/search/album"
+        ? groups
+            .filter((group) => group.title.toLowerCase() === query)
+            .map(({ releases, ...group }) => group)
+        : null;
     const data = down || missing(parsed.pathname) ? null : found || byPath.get(parsed.pathname);
     if (data) return { data: structuredClone(data) };
     const error = new Error(down ? "metadata unavailable" : "not found");
@@ -70,7 +97,8 @@ export async function serveGroups(t, groups, { unavailable = () => false, missin
 // The manifest the resolver builds for a group's first release, for callers
 // that take one directly.
 export async function releaseManifest(spec) {
-  const { toNormalizedAlbum } = await import("../../backend/services/providers/brainzmashMappers.js");
+  const { toNormalizedAlbum } =
+    await import("../../backend/services/providers/brainzmashMappers.js");
   const { toReleaseManifest } = await import("../../backend/services/releaseManifest.js");
   const group = toNormalizedAlbum(brainzmashGroup(spec));
   return toReleaseManifest(group, group.releases[0]);

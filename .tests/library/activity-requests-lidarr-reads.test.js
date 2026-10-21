@@ -69,10 +69,12 @@ test("Activity refreshes reuse recent Lidarr status and album reads", async () =
       })),
     };
   });
-  vi.spyOn(lidarrClient, "request").mockImplementation(async (endpoint, _method, _data, _skip, options) => {
-    if (endpoint === "/command" && options?.forceRefresh) statusReads.push("command");
-    return [];
-  });
+  vi.spyOn(lidarrClient, "request").mockImplementation(
+    async (endpoint, _method, _data, _skip, options) => {
+      if (endpoint === "/command" && options?.forceRefresh) statusReads.push("command");
+      return [];
+    },
+  );
   vi.spyOn(lidarrClient, "getAllAlbums").mockImplementation(async () => []);
   vi.spyOn(lidarrClient, "getAlbum").mockImplementation(async (albumId) => {
     albumReads.push(String(albumId));

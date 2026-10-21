@@ -7,17 +7,17 @@ import {
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.js";
 
-const [isolatedState, { db }, { dbOps }, libraryStore, { setLibraryManagement }] = await setupIsolatedBackend(
-  "canonical-available-only-route",
-  "backend/config/db-sqlite.js",
-  "backend/db/helpers/index.js",
-  "backend/services/libraryMediaStore.js",
-  "backend/services/libraryManagementStore.js",
-);
+const [isolatedState, { db }, { dbOps }, libraryStore, { setLibraryManagement }] =
+  await setupIsolatedBackend(
+    "canonical-available-only-route",
+    "backend/config/db-sqlite.js",
+    "backend/db/helpers/index.js",
+    "backend/services/libraryMediaStore.js",
+    "backend/services/libraryManagementStore.js",
+  );
 
-const { registerLibraryIndex } = await import(
-  "../../backend/routes/library/handlers/libraryIndex.js"
-);
+const { registerLibraryIndex } =
+  await import("../../backend/routes/library/handlers/libraryIndex.js");
 const {
   linkLibraryAlbumTrack,
   upsertLibraryAlbum,
@@ -127,14 +127,20 @@ beforeAll(() => {
   });
 
   const fetchingArtist = upsertLibraryArtist({ identityKey: "fetching-artist", name: "Fetching" });
-  for (const [title, monitored] of [["Requested Album", true], ["Unmonitored Album", false]]) {
+  for (const [title, monitored] of [
+    ["Requested Album", true],
+    ["Unmonitored Album", false],
+  ]) {
     const album = upsertLibraryAlbum({
       identityKey: `aurral-${title}`,
       artistId: fetchingArtist.id,
       title,
       metadata: { librarySource: "aurral", trackListComplete: true, monitored },
     });
-    const track = upsertLibraryTrack({ identityKey: `aurral-${title}-track`, title: `${title} Track` });
+    const track = upsertLibraryTrack({
+      identityKey: `aurral-${title}-track`,
+      title: `${title} Track`,
+    });
     linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
     setLibraryManagement({
       entityKind: "album",
@@ -152,17 +158,30 @@ afterAll(async () => {
 const titles = (page) => page.items.map((entry) => entry.title || entry.name).sort();
 
 test("the Library lists what can be played and what Aurral is fetching, with or without Lidarr", () => {
-  for (const lidarr of [{ url: "http://lidarr:8686", apiKey: "test-key", availableOnly: false }, {}]) {
+  for (const lidarr of [
+    { url: "http://lidarr:8686", apiKey: "test-key", availableOnly: false },
+    {},
+  ]) {
     dbOps.updateSettings({ integrations: { lidarr } });
     const albums = callLibraryPage({ kind: "albums", page: "1", pageSize: "50" });
     assert.deepEqual(titles(albums), ["Owned Album", "Requested Album"]);
     assert.equal(albums.total, 2);
     const artists = callLibraryPage({ kind: "artists", page: "1", pageSize: "50" });
     assert.deepEqual(titles(artists), ["Fetching", "Owns Some"]);
-    assert.deepEqual(artists.items.map((artist) => artist.albumCount), [1, 1]);
+    assert.deepEqual(
+      artists.items.map((artist) => artist.albumCount),
+      [1, 1],
+    );
     const ownsSome = artists.items.find((artist) => artist.name === "Owns Some");
     assert.deepEqual(
-      titles(callLibraryPage({ kind: "albums", page: "1", pageSize: "50", artistId: String(ownsSome.id) })),
+      titles(
+        callLibraryPage({
+          kind: "albums",
+          page: "1",
+          pageSize: "50",
+          artistId: String(ownsSome.id),
+        }),
+      ),
       ["Owned Album"],
     );
   }
@@ -177,8 +196,18 @@ test("a source filter lists and counts only albums and artists with playable fil
 });
 
 test("an explicit availableOnly query param overrides the Library's rule", () => {
-  const playable = callLibraryPage({ kind: "albums", page: "1", pageSize: "50", availableOnly: "true" });
+  const playable = callLibraryPage({
+    kind: "albums",
+    page: "1",
+    pageSize: "50",
+    availableOnly: "true",
+  });
   assert.deepEqual(titles(playable), ["Owned Album"]);
-  const everything = callLibraryPage({ kind: "albums", page: "1", pageSize: "50", availableOnly: "false" });
+  const everything = callLibraryPage({
+    kind: "albums",
+    page: "1",
+    pageSize: "50",
+    availableOnly: "false",
+  });
   assert.equal(everything.total, 5);
 });

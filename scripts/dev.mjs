@@ -19,7 +19,9 @@ function start(command, args, env = process.env) {
   child.once("exit", (code, signal) => {
     if (stopping) return;
     exitCode = 1;
-    console.error(`${command} exited unexpectedly${signal ? ` with ${signal}` : ` with code ${code}`}`);
+    console.error(
+      `${command} exited unexpectedly${signal ? ` with ${signal}` : ` with code ${code}`}`,
+    );
     stop();
   });
   return child;
@@ -46,23 +48,26 @@ process.on("SIGTERM", () => {
   stop();
 });
 
-start(process.execPath, [
-  "--watch",
-  "--env-file=backend/.env",
-  "backend/server.js",
-], { ...process.env, PORT: apiPort });
-start("npm", [
-  "run",
-  "dev",
-  "--workspace",
-  "frontend",
-  "--",
-  "--host",
-  "0.0.0.0",
-  "--port",
-  webPort,
-  "--strictPort",
-], { ...process.env, AURRAL_API_PROXY_TARGET: `http://localhost:${apiPort}` });
+start(process.execPath, ["--watch", "--env-file=backend/.env", "backend/server.js"], {
+  ...process.env,
+  PORT: apiPort,
+});
+start(
+  "npm",
+  [
+    "run",
+    "dev",
+    "--workspace",
+    "frontend",
+    "--",
+    "--host",
+    "0.0.0.0",
+    "--port",
+    webPort,
+    "--strictPort",
+  ],
+  { ...process.env, AURRAL_API_PROXY_TARGET: `http://localhost:${apiPort}` },
+);
 
 while (!stopping) {
   try {

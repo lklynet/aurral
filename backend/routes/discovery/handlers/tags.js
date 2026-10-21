@@ -55,10 +55,8 @@ export function registerTags(router) {
 
       const limitInt = Math.min(parseInt(limit) || 24, 50);
       const offsetInt = parseInt(offset) || 0;
-      const includeLibraryFlag =
-        includeLibrary === "true" || includeLibrary === "1";
-      const scopeValue =
-        scope === "all" || includeLibraryFlag ? "all" : "recommended";
+      const includeLibraryFlag = includeLibrary === "true" || includeLibrary === "1";
+      const scopeValue = scope === "all" || includeLibraryFlag ? "all" : "recommended";
 
       if (scopeValue === "all") {
         const { artists, hasMore } = await getTagArtists(tag, {

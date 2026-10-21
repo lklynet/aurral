@@ -1,10 +1,7 @@
 import { getData } from "../core.js";
 import { queryClient, queryKeys } from "../../../queryClient.js";
 
-export const searchUnified = async (
-  query,
-  { mode = "suggest", limit, signal } = {},
-) => {
+export const searchUnified = async (query, { mode = "suggest", limit, signal } = {}) => {
   const params = { q: query, mode };
   if (limit != null) {
     params.limit = limit;
@@ -32,13 +29,7 @@ export const searchUnified = async (
 export const searchCatalog = async (
   query,
   scope = "artist",
-  {
-    limit = 24,
-    offset = 0,
-    releaseTypes = [],
-    sort,
-    signal,
-  } = {},
+  { limit = 24, offset = 0, releaseTypes = [], sort, signal } = {},
 ) => {
   const params = { q: query, scope, limit, offset };
   if (scope === "album") {
@@ -55,8 +46,7 @@ export const searchCatalog = async (
   }
   return queryClient.fetchQuery({
     queryKey: queryKeys.searchCatalog(query, scope, queryOptions),
-    queryFn: ({ signal: querySignal }) =>
-      getData("/search", { params, signal: querySignal }),
+    queryFn: ({ signal: querySignal }) => getData("/search", { params, signal: querySignal }),
     staleTime: 30_000,
   });
 };

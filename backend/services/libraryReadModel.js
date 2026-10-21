@@ -64,9 +64,7 @@ const buildArtist = (artist, albumsByArtistId, managementByArtistId = new Map())
 
 const buildAlbum = (album, artistsById, tracksById, managementByAlbumId = new Map()) => {
   const artist = artistsById.get(album.artistId);
-  const albumTracks = album.trackIds
-    .map((trackId) => tracksById.get(trackId))
-    .filter(Boolean);
+  const albumTracks = album.trackIds.map((trackId) => tracksById.get(trackId)).filter(Boolean);
   const sizeOnDisk = albumTracks.reduce((total, track) => {
     const file = selectCanonicalFile(track.files, album.id, album.managedBy);
     return total + (file?.available ? Number(file.size || 0) : 0);
@@ -97,14 +95,15 @@ const buildAlbum = (album, artistsById, tracksById, managementByAlbumId = new Ma
     releaseDate: album.releaseDate,
     addedAt: null,
     monitored: Boolean(album.metadata?.monitored),
-    trackListComplete: management?.managedBy !== "aurral" || album.metadata?.trackListComplete === true
-      || Boolean(album.metadata?.trackList?.release),
+    trackListComplete:
+      management?.managedBy !== "aurral" ||
+      album.metadata?.trackListComplete === true ||
+      Boolean(album.metadata?.trackList?.release),
     statistics: {
       trackCount: albumTracks.length,
       trackFileCount,
       sizeOnDisk,
-      percentOfTracks:
-        albumTracks.length > 0 && trackFileCount === albumTracks.length ? 100 : 0,
+      percentOfTracks: albumTracks.length > 0 && trackFileCount === albumTracks.length ? 100 : 0,
     },
     trackIds: [...album.trackIds],
     sources: album.sources,
@@ -123,7 +122,10 @@ const buildTrack = (track, album) => {
     artistId: album.artistId,
     mbid: track.mbid,
     foreignTrackId:
-      track.metadata?.foreignRecordingId || track.metadata?.foreignTrackId || track.mbid || track.identityKey,
+      track.metadata?.foreignRecordingId ||
+      track.metadata?.foreignTrackId ||
+      track.mbid ||
+      track.identityKey,
     trackName: track.title,
     title: track.title,
     trackNumber: relation?.trackNumber || 0,
@@ -178,7 +180,13 @@ export function getLibraryReadModelForArtistPage({
   limit = 10000,
   offset = 0,
 } = {}) {
-  const library = getLibraryArtistPage({ source, availableOnly, limit, offset, includeStats: true });
+  const library = getLibraryArtistPage({
+    source,
+    availableOnly,
+    limit,
+    offset,
+    includeStats: true,
+  });
   return {
     artists: library.artists.map((artist) =>
       buildArtist(artist, new Map(), getManagedByMap("artist")),
@@ -193,9 +201,7 @@ export function getLibraryReadModelForArtists({
   availableOnly = true,
   mbids = [],
 } = {}) {
-  return buildLibraryReadModel(
-    getLibraryForArtists({ source, availableOnly, mbids }),
-  );
+  return buildLibraryReadModel(getLibraryForArtists({ source, availableOnly, mbids }));
 }
 
 export function getLibraryReadModelForArtistReferences({
@@ -213,18 +219,14 @@ export function getLibraryReadModelForAlbumIds({
   availableOnly = true,
   ids = [],
 } = {}) {
-  return buildLibraryReadModel(
-    getLibraryForAlbumIds({ source, availableOnly, ids }),
-  );
+  return buildLibraryReadModel(getLibraryForAlbumIds({ source, availableOnly, ids }));
 }
 export function getLibraryReadModelForAlbumReferences({
   source = "lidarr",
   availableOnly = true,
   references = [],
 } = {}) {
-  return buildLibraryReadModel(
-    getLibraryForAlbumReferences({ source, availableOnly, references }),
-  );
+  return buildLibraryReadModel(getLibraryForAlbumReferences({ source, availableOnly, references }));
 }
 
 export function resolveLibraryTrackPath(albumReference, trackReference) {

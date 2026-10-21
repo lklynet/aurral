@@ -77,14 +77,10 @@ const getDiscoveryCacheStorageKey = (userId) =>
   userId ? `${DISCOVERY_CACHE_KEY}:${userId}` : DISCOVERY_CACHE_KEY;
 
 const getDiscoverRecentlyAddedStorageKey = (userId) =>
-  userId
-    ? `${DISCOVER_RECENTLY_ADDED_KEY}:${userId}`
-    : DISCOVER_RECENTLY_ADDED_KEY;
+  userId ? `${DISCOVER_RECENTLY_ADDED_KEY}:${userId}` : DISCOVER_RECENTLY_ADDED_KEY;
 
 const getDiscoverRecentReleasesStorageKey = (userId) =>
-  userId
-    ? `${DISCOVER_RECENT_RELEASES_KEY}:${userId}`
-    : DISCOVER_RECENT_RELEASES_KEY;
+  userId ? `${DISCOVER_RECENT_RELEASES_KEY}:${userId}` : DISCOVER_RECENT_RELEASES_KEY;
 
 const markStoredAt = (key) => {
   try {
@@ -139,8 +135,7 @@ export const readStoredNearbyLocation = () => {
     const storedMode = localStorage.getItem(DISCOVER_NEARBY_MODE_KEY);
     const storedZip = localStorage.getItem(DISCOVER_NEARBY_ZIP_KEY) || "";
     const storedCountry = localStorage.getItem(DISCOVER_NEARBY_COUNTRY_KEY) || "";
-    const mode =
-      storedMode === "zip" || storedMode === "ip" ? storedMode : "ip";
+    const mode = storedMode === "zip" || storedMode === "ip" ? storedMode : "ip";
     return { mode, zip: storedZip, country: storedCountry };
   } catch {
     return { mode: "ip", zip: "", country: "" };
@@ -162,19 +157,13 @@ export const writeStoredNearbyLocation = ({ mode, zip, country } = {}) => {
 };
 
 export const readStoredRecentlyAdded = (userId) => {
-  return readStoredArray(
-    getDiscoverRecentlyAddedStorageKey(userId),
-    DISCOVER_RECENTLY_ADDED_KEY,
-  );
+  return readStoredArray(getDiscoverRecentlyAddedStorageKey(userId), DISCOVER_RECENTLY_ADDED_KEY);
 };
 
 export const writeStoredRecentlyAdded = (value, userId) => {
   if (!Array.isArray(value)) return;
   try {
-    localStorage.setItem(
-      getDiscoverRecentlyAddedStorageKey(userId),
-      JSON.stringify(value),
-    );
+    localStorage.setItem(getDiscoverRecentlyAddedStorageKey(userId), JSON.stringify(value));
     markStoredAt(getDiscoverRecentlyAddedStorageKey(userId));
   } catch {
     console.warn("Failed to write discover recently-added");
@@ -182,19 +171,13 @@ export const writeStoredRecentlyAdded = (value, userId) => {
 };
 
 export const readStoredRecentReleases = (userId) => {
-  return readStoredArray(
-    getDiscoverRecentReleasesStorageKey(userId),
-    DISCOVER_RECENT_RELEASES_KEY,
-  );
+  return readStoredArray(getDiscoverRecentReleasesStorageKey(userId), DISCOVER_RECENT_RELEASES_KEY);
 };
 
 export const writeStoredRecentReleases = (value, userId) => {
   if (!Array.isArray(value)) return;
   try {
-    localStorage.setItem(
-      getDiscoverRecentReleasesStorageKey(userId),
-      JSON.stringify(value),
-    );
+    localStorage.setItem(getDiscoverRecentReleasesStorageKey(userId), JSON.stringify(value));
     markStoredAt(getDiscoverRecentReleasesStorageKey(userId));
   } catch {
     console.warn("Failed to write discover recent-releases");
@@ -204,9 +187,7 @@ export const writeStoredRecentReleases = (value, userId) => {
 export const normalizeDiscoveryData = (value) => {
   if (!value || typeof value !== "object") return null;
   return {
-    recommendations: Array.isArray(value.recommendations)
-      ? value.recommendations
-      : [],
+    recommendations: Array.isArray(value.recommendations) ? value.recommendations : [],
     globalTop: Array.isArray(value.globalTop) ? value.globalTop : [],
     basedOn: Array.isArray(value.basedOn) ? value.basedOn : [],
     topTags: Array.isArray(value.topTags) ? value.topTags : [],
@@ -236,14 +217,10 @@ export const readStoredDiscoveryData = (userId) => {
   const fromStorage = normalizeDiscoveryData;
   try {
     const primaryKey = getDiscoveryCacheStorageKey(userId);
-    const primary = fromStorage(
-      JSON.parse(localStorage.getItem(primaryKey) || "null"),
-    );
+    const primary = fromStorage(JSON.parse(localStorage.getItem(primaryKey) || "null"));
     if (primary) return primary;
     if (primaryKey === DISCOVERY_CACHE_KEY) return null;
-    return fromStorage(
-      JSON.parse(localStorage.getItem(DISCOVERY_CACHE_KEY) || "null"),
-    );
+    return fromStorage(JSON.parse(localStorage.getItem(DISCOVERY_CACHE_KEY) || "null"));
   } catch {
     return null;
   }
@@ -253,10 +230,7 @@ export const writeStoredDiscoveryData = (value, userId) => {
   const normalized = normalizeDiscoveryData(value);
   if (!normalized) return;
   try {
-    localStorage.setItem(
-      getDiscoveryCacheStorageKey(userId),
-      JSON.stringify(normalized),
-    );
+    localStorage.setItem(getDiscoveryCacheStorageKey(userId), JSON.stringify(normalized));
     markStoredAt(getDiscoveryCacheStorageKey(userId));
   } catch {
     console.warn("Failed to write discover discovery-data");
@@ -265,15 +239,12 @@ export const writeStoredDiscoveryData = (value, userId) => {
 
 export const normalizeDiscoverLayout = (value) => {
   if (!Array.isArray(value)) return null;
-  const defaultsById = new Map(
-    DEFAULT_DISCOVER_SECTIONS.map((item) => [item.id, item]),
-  );
+  const defaultsById = new Map(DEFAULT_DISCOVER_SECTIONS.map((item) => [item.id, item]));
   const normalized = [];
   value.forEach((item) => {
     const id = String(item?.id || "").trim();
     if (!id) return;
-    const enabled =
-      typeof item?.enabled === "boolean" ? item.enabled : undefined;
+    const enabled = typeof item?.enabled === "boolean" ? item.enabled : undefined;
     if (!defaultsById.has(id)) return;
     const base = defaultsById.get(id);
     normalized.push({
@@ -289,14 +260,10 @@ export const normalizeDiscoverLayout = (value) => {
 export const readStoredDiscoverLayout = (userId) => {
   try {
     const primaryKey = getDiscoverLayoutStorageKey(userId);
-    const primary = normalizeDiscoverLayout(
-      JSON.parse(localStorage.getItem(primaryKey) || "null"),
-    );
+    const primary = normalizeDiscoverLayout(JSON.parse(localStorage.getItem(primaryKey) || "null"));
     if (primary) return primary;
     if (primaryKey === DISCOVER_LAYOUT_KEY) return null;
-    return normalizeDiscoverLayout(
-      JSON.parse(localStorage.getItem(DISCOVER_LAYOUT_KEY) || "null"),
-    );
+    return normalizeDiscoverLayout(JSON.parse(localStorage.getItem(DISCOVER_LAYOUT_KEY) || "null"));
   } catch {
     return null;
   }
@@ -304,20 +271,21 @@ export const readStoredDiscoverLayout = (userId) => {
 
 export const writeStoredDiscoverLayout = (layout, userId) => {
   try {
-    localStorage.setItem(
-      getDiscoverLayoutStorageKey(userId),
-      JSON.stringify(layout),
-    );
+    localStorage.setItem(getDiscoverLayoutStorageKey(userId), JSON.stringify(layout));
   } catch {
     console.warn("Failed to write discover layout");
   }
 };
 
 export const getLibraryArtistImage = (artist) => {
-  const images = (Array.isArray(artist?.images) ? artist.images : [])
-    .filter((image) => image?.remoteUrl || image?.url || image?.Url);
-  const kind = (image) => String(image.coverType || image.kind || image.CoverType || "").toLowerCase();
-  const image = images.find((image) => kind(image) === "poster") ||
-    images.find((image) => kind(image) === "fanart") || images[0];
+  const images = (Array.isArray(artist?.images) ? artist.images : []).filter(
+    (image) => image?.remoteUrl || image?.url || image?.Url,
+  );
+  const kind = (image) =>
+    String(image.coverType || image.kind || image.CoverType || "").toLowerCase();
+  const image =
+    images.find((image) => kind(image) === "poster") ||
+    images.find((image) => kind(image) === "fanart") ||
+    images[0];
   return image?.remoteUrl || image?.url || image?.Url || null;
 };

@@ -28,12 +28,18 @@ async function releaseClaimedJob(database, row, logger, reason) {
         recordHonkerTaskRunFinished(run.id, "failed", reason);
       }
     } catch (error) {
-      logger.warn?.(`[AppRuntime] Could not update ${row.queue} task history:`, error?.message || error);
+      logger.warn?.(
+        `[AppRuntime] Could not update ${row.queue} task history:`,
+        error?.message || error,
+      );
     }
     // Honker registers retry on its queue connection, not on the raw query connection.
     getHonkerQueueByName(row.queue)._retry(row.id, row.worker_id, 1, reason);
   } catch (error) {
-    logger.warn?.(`[AppRuntime] Could not requeue ${row.queue} job ${row.id}:`, error?.message || error);
+    logger.warn?.(
+      `[AppRuntime] Could not requeue ${row.queue} job ${row.id}:`,
+      error?.message || error,
+    );
   }
 }
 
