@@ -19,7 +19,7 @@ export interface ApiErrorResponse {
   status: number;
   statusText: string;
   headers: Headers;
-  data: ApiErrorBody | null;
+  data: ApiErrorBody | string | null;
 }
 
 export type ApiError = Error & { response?: ApiErrorResponse };

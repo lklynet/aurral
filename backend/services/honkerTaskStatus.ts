@@ -1,6 +1,12 @@
 import { db } from "../config/db-sqlite.ts";
 import { SCHEDULED_SYSTEM_TASKS } from "./honkerDb.ts";
 import { registerHonkerShutdownHandler } from "./honkerWorkerRuntime.ts";
+import type {
+  HonkerDeadRow,
+  HonkerLiveRow,
+  HonkerSchedulerTasksRow,
+  HonkerTaskRunsRow,
+} from "../db/rows.ts";
 
 export const QUEUE_DEFINITIONS = [
   {
@@ -196,61 +202,12 @@ const STALE_RUNNING_MS = 60 * 60 * 1000;
 const LIVE_JOB_LIMIT = 500;
 const DEAD_JOB_LIMIT = 50;
 
-interface HonkerSchedulerTaskRow {
-  name: string;
-  queue: string;
-  cron_expr: string;
-  payload: string;
-  priority: number;
-  expires_s: number | null;
-  next_fire_at: number | null;
-}
+type HonkerSchedulerTaskRow = Pick<
+  HonkerSchedulerTasksRow,
+  "name" | "queue" | "cron_expr" | "payload" | "priority" | "expires_s"
+> & { next_fire_at: number | null };
 
-interface HonkerLiveRow {
-  id: number;
-  queue: string;
-  payload: string;
-  state: string;
-  priority: number;
-  run_at: number;
-  worker_id: string | null;
-  claim_expires_at: number | null;
-  attempts: number;
-  max_attempts: number;
-  created_at: number;
-  expires_at: number | null;
-}
-
-interface HonkerDeadRow {
-  id: number;
-  queue: string;
-  payload: string;
-  priority: number;
-  run_at: number;
-  attempts: number;
-  max_attempts: number;
-  last_error: string | null;
-  created_at: number;
-  died_at: number;
-}
-
-interface HonkerTaskRunRow {
-  id: number;
-  job_id: number;
-  queue: string;
-  name: string | null;
-  payload: unknown;
-  worker_id: string | null;
-  attempt: number | null;
-  status: string;
-  error: string | null;
-  queued_at: number | null;
-  run_at: number | null;
-  started_at: number;
-  ended_at: number | null;
-  duration_ms: number | null;
-  created_at: number;
-}
+type HonkerTaskRunRow = Omit<HonkerTaskRunsRow, "payload"> & { payload: unknown };
 
 interface HonkerQueueStats {
   queue: string;
@@ -299,9 +256,9 @@ export type TaskQueueRow = TaskQueueRowSource & {
 };
 
 export interface TaskScheduledRow {
-  id: string;
+  id: string | null;
   name: string;
-  scheduleName: string;
+  scheduleName: string | null;
   queue: string;
   queueLabel: string;
   description: string;
