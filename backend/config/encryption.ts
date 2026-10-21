@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import type { StoredIntegrations } from "../db/helpers/settings.ts";
 
 const PREFIX = "AURRAL_ENC:";
 const ALGO = "aes-256-gcm";
@@ -73,7 +74,10 @@ function setAt(obj: object, path: string[], value: unknown) {
   if (cur != null) cur[path[path.length - 1]] = value;
 }
 
-export function decryptIntegrations<T extends object>(integrations: T, key: Buffer): T {
+export function decryptIntegrations(
+  integrations: StoredIntegrations | null | undefined,
+  key: Buffer,
+): StoredIntegrations | null | undefined {
   if (!integrations || typeof integrations !== "object") return integrations;
   const out = structuredClone(integrations);
   for (const path of SENSITIVE_PATHS) {
@@ -83,7 +87,10 @@ export function decryptIntegrations<T extends object>(integrations: T, key: Buff
   return out;
 }
 
-export function encryptIntegrations<T extends object>(integrations: T, key: Buffer): T {
+export function encryptIntegrations(
+  integrations: StoredIntegrations | null | undefined,
+  key: Buffer,
+): StoredIntegrations | null | undefined {
   if (!integrations || typeof integrations !== "object") return integrations;
   const out = structuredClone(integrations);
   for (const path of SENSITIVE_PATHS) {

@@ -146,7 +146,7 @@ interface StoredSecurity {
   ssoOnly?: boolean;
 }
 
-interface StoredPlaylistWorker {
+export interface StoredPlaylistWorker {
   concurrency?: unknown;
   retryPausedPlaylistIds?: unknown;
   existingFileMode?: unknown;

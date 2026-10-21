@@ -1289,12 +1289,10 @@ db.transaction(() => {
     // Latest took whichever release was newest at each scan, so its cutoffs
     // start now rather than when the mode was chosen.
     const since =
-      (
-        {
-          future: Number(artist.startedAt) || Number(artist.updatedAt) || migratedAt,
-          latest: migratedAt,
-        } as Partial<Record<string, number>>
-      )[mode] ??
+      {
+        future: Number(artist.startedAt) || Number(artist.updatedAt) || migratedAt,
+        latest: migratedAt,
+      }[mode] ??
       (Number(artist.updatedAt) || migratedAt);
     const stored =
       mode === "future" || mode === "latest"

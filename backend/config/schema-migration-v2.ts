@@ -1,6 +1,6 @@
 import type Database from "better-sqlite3";
 import type { LibraryArtistsRow, LidarrArtistIdMapRow } from "../db/rows.ts";
-import type { SettingsPlaylistWorker } from "../db/helpers/settings.ts";
+import type { StoredPlaylistWorker } from "../db/helpers/settings.ts";
 import type { dbHelpers as sqliteDbHelpers } from "./db-sqlite.ts";
 
 export interface TableColumnRow {
@@ -81,8 +81,8 @@ function getTableColumns(db: Database.Database, tableName: string) {
 }
 
 function buildPlaylistWorkerSettings(
-  weeklyFlowWorker: Partial<SettingsPlaylistWorker> | null,
-  playlistWorker: Partial<SettingsPlaylistWorker> | null,
+  weeklyFlowWorker: StoredPlaylistWorker | null,
+  playlistWorker: StoredPlaylistWorker | null,
 ) {
   const legacy = weeklyFlowWorker && typeof weeklyFlowWorker === "object" ? weeklyFlowWorker : {};
   const current = playlistWorker && typeof playlistWorker === "object" ? playlistWorker : {};
