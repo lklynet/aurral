@@ -11,7 +11,8 @@ const readHashParams = () => {
   return new URLSearchParams(hash);
 };
 
-let consumedSsoParams = null;
+let consumedSsoParams: { code: string | null; error: string | null; provider: string } | null =
+  null;
 
 const consumeSsoParams = () => {
   if (consumedSsoParams) return consumedSsoParams;

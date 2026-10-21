@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import {
   completeOnboarding,
   getLidarrMetadataProfilesOnboarding,
@@ -40,14 +41,14 @@ function Onboarding() {
   const lidarrModeChangedRef = useRef(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const cardRef = useRef(null);
-  const stepMeasureRef = useRef(null);
-  const heroAnchorRef = useRef(null);
-  const compactAnchorRef = useRef(null);
+  const cardRef = useRef<HTMLFormElement>(null);
+  const stepMeasureRef = useRef<HTMLDivElement>(null);
+  const heroAnchorRef = useRef<HTMLDivElement>(null);
+  const compactAnchorRef = useRef<HTMLDivElement>(null);
   const lidarrTestVersionRef = useRef(0);
-  const [stepHeight, setStepHeight] = useState(null);
+  const [stepHeight, setStepHeight] = useState<number | null>(null);
   const [animateStepHeight, setAnimateStepHeight] = useState(false);
-  const [logoFlyout, setLogoFlyout] = useState({ opacity: 0 });
+  const [logoFlyout, setLogoFlyout] = useState<CSSProperties>({ opacity: 0 });
   const { refreshAuth } = useAuth();
   const { showSuccess } = useToast();
 
@@ -109,7 +110,7 @@ function Onboarding() {
     document.getElementById(firstFieldId)?.focus();
   }, [skipLidarr]);
 
-  const handleLidarrMode = (nextSkip) => {
+  const handleLidarrMode = (nextSkip: boolean) => {
     setError("");
     lidarrTestVersionRef.current += 1;
     setTestingLidarr(false);

@@ -1,13 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
+import type { FormEvent } from "react";
 import { Ban, Search, X } from "lucide-react";
+import type { ArtistIdentity } from "../../../backend/services/discovery/recommendationPipeline.ts";
 import { DotLoader } from "../components/DotLoader";
 import { useArtistTasteFeedback } from "../hooks/useArtistTasteFeedback";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { searchLibrary, searchUnified } from "../utils/api/endpoints/search.ts";
 import { buildBlocklistArtistSuggestions } from "../utils/blocklistSearch.ts";
+import type { DiscoveryFeedbackEntry } from "../utils/discoveryFeedback.ts";
 import TooltipButton from "../components/TooltipButton";
 
-const normalizeArtist = (artist) => ({
+type BlocklistSuggestion = ReturnType<typeof buildBlocklistArtistSuggestions>[number];
+
+const normalizeArtist = (artist: ArtistIdentity | null | undefined) => ({
   id: artist?.id || artist?.mbid || artist?.foreignArtistId || null,
   name: String(artist?.name || artist?.artistName || "").trim(),
 });
@@ -16,9 +21,9 @@ export default function BlocklistPage() {
   useDocumentTitle("Blocked artists");
   const { feedbackList, submitFeedback } = useArtistTasteFeedback();
   const [query, setQuery] = useState("");
-  const [suggestions, setSuggestions] = useState([]);
+  const [suggestions, setSuggestions] = useState<BlocklistSuggestion[]>([]);
   const [searching, setSearching] = useState(false);
-  const [pendingKey, setPendingKey] = useState("");
+  const [pendingKey, setPendingKey] = useState<string | null | undefined>("");
 
   const blockedArtists = useMemo(
     () => feedbackList.filter((entry) => entry?.action === "block_artist"),
@@ -62,7 +67,7 @@ export default function BlocklistPage() {
     };
   }, [query]);
 
-  const blockArtist = async (artist) => {
+  const blockArtist = async (artist: ArtistIdentity) => {
     const normalized = normalizeArtist(artist);
     if (!normalized.name && !normalized.id) return;
     const key = normalized.id || normalized.name.toLowerCase();
@@ -77,7 +82,7 @@ export default function BlocklistPage() {
     }
   };
 
-  const unblockArtist = async (entry) => {
+  const unblockArtist = async (entry: DiscoveryFeedbackEntry) => {
     const artist = { id: entry.artistId, name: entry.artistName };
     const key = entry.id || entry.artistId || entry.artistName;
     setPendingKey(key);
@@ -88,7 +93,7 @@ export default function BlocklistPage() {
     setPendingKey("");
   };
 
-  const submitTypedArtist = async (event) => {
+  const submitTypedArtist = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const trimmed = query.trim();
     if (!trimmed) return;

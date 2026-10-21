@@ -15,9 +15,12 @@ import {
 
 const SHOWS_PAGE_LIMIT = 60;
 
+type ShowSourceType = "library" | "recommended" | "trending";
+type NearbyShow = { sourceTypes?: ShowSourceType[] };
+
 const SHOW_FILTER_MATCHERS = {
-  library: (show) => show.sourceTypes?.includes("library"),
-  discover: (show) => show.sourceTypes?.some((sourceType) => sourceType !== "library"),
+  library: (show: NearbyShow) => show.sourceTypes?.includes("library"),
+  discover: (show: NearbyShow) => show.sourceTypes?.some((sourceType) => sourceType !== "library"),
 };
 
 function ShowsPage() {

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { FormEvent } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { getAppBasePath } from "../utils/basePath.ts";
@@ -6,7 +7,7 @@ import { clearAuthStorage, setStoredAuth } from "../utils/api/core.ts";
 import { startPlexLoginPin, completePlexLogin } from "../utils/api/endpoints/auth.ts";
 import { DotLoader } from "../components/DotLoader";
 
-const buildApiUrl = (path) => {
+const buildApiUrl = (path: string) => {
   const basePath = getAppBasePath();
   const prefix = basePath === "/" ? "" : basePath.replace(/\/$/, "");
   return `${prefix}${path}`;
@@ -29,7 +30,7 @@ const Login = () => {
   const hasSsoOption = oidcEnabled || googleEnabled || plexEnabled;
   const localFormVisible = !ssoOnly || !hasSsoOption || showLocalForm;
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (submitting) return;
     setSubmitting(true);

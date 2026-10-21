@@ -1,7 +1,9 @@
 import { SkeletonRail, SkeletonStatus } from "../components/Skeletons";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
-import { DiscoverPlaylistSection } from "./DiscoverPlaylistSection";
+import { DiscoverPlaylistSection, type EditorialShelfPlaylist } from "./DiscoverPlaylistSection";
 import { useEditorialShelf } from "./useEditorialShelf";
+
+type EditorialGenre = { id: number; name: string; playlists: EditorialShelfPlaylist[] };
 
 export default function DiscoverPlaylistsPage() {
   useDocumentTitle("Playlists");
@@ -38,7 +40,7 @@ export default function DiscoverPlaylistsPage() {
     return (
       <>
         <DiscoverPlaylistSection title="For you" playlists={data?.forYou || []} />
-        {(data?.genres || []).map((genre) => (
+        {(data?.genres || []).map((genre: EditorialGenre) => (
           <DiscoverPlaylistSection key={genre.id} title={genre.name} playlists={genre.playlists} />
         ))}
       </>

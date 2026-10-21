@@ -75,7 +75,7 @@ function ProfilePage() {
         showError={showError}
         showSidebarArt={!!resolveSidebarStageBackdropVariant()}
         sidebarArtEnabled={showSidebarArt}
-        setSidebarArtEnabled={(enabled) =>
+        setSidebarArtEnabled={(enabled: boolean) =>
           setShowSidebarArt(setSidebarStageBackdropEnabled(authUser?.id, enabled))
         }
       />
