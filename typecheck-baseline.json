@@ -242,7 +242,7 @@
   "backend/services/shareLinks/library.ts": 4,
   "backend/services/shareLinks/shareListener.ts": 18,
   "backend/services/shareLinks/tunnel.ts": 3,
-  "backend/services/slskdClient.ts": 221,
+  "backend/services/slskdClient.ts": 26,
   "backend/services/slskdOrchestrator.ts": 169,
   "backend/services/spotify/spotifyClient.ts": 3,
   "backend/services/spotify/spotifyConnectionStore.ts": 1,
