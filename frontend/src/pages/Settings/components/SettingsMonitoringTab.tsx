@@ -3,11 +3,12 @@ import type { ChangeEvent, FocusEvent } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { DotLoader } from "../../../components/DotLoader";
 import { MonitoringRulesFields } from "../../../components/MonitoringRulesFields";
-import type { MonitoringRules } from "../../../components/MonitoringRulesFields";
 import PillToggle from "../../../components/PillToggle";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
 import type { useToast } from "../../../contexts/ToastContext.tsx";
-import type { AppSettings, SettingsUpdate } from "../../../../../backend/db/helpers/settings.ts";
+import type { AppSettings } from "../../../../../backend/db/helpers/settings.ts";
+import type { MonitoringExclusion } from "../../../../../backend/services/aurralMonitoringStore.ts";
+import type { libraryManager } from "../../../../../backend/services/libraryManager.ts";
 import {
   getMonitoringDefaults,
   getMonitoringExclusions,
@@ -29,28 +30,15 @@ import {
   SettingsModalIntro,
   SettingsModalSection,
 } from "./SettingsModalLayout";
-import type { SavedSettings } from "../utils";
+import type { SettingsState } from "../utils";
 
 type Toast = ReturnType<typeof useToast>["showSuccess"];
 type MissingTrackSearch = Partial<NonNullable<AppSettings["missingTrackSearch"]>>;
-type MonitoringDefaults = {
-  rules: MonitoringRules;
-  updatedAt: number | null;
-  artistCount: number;
-};
-type MonitoringPreview = {
-  artistCount: number;
-  releaseCount: number;
-  trackCount: number;
-  failedArtistCount: number;
-};
-type MonitoringExclusion = {
-  id: number;
-  kind: string;
-  title: string;
-  artistName: string | null;
-  createdAt: number;
-};
+type MonitoringDefaults = ReturnType<typeof libraryManager.getMonitoringDefaultsState>;
+type MonitoringPreview = Extract<
+  Awaited<ReturnType<typeof libraryManager.previewMonitoringDefaults>>,
+  { artistCount: number }
+>;
 
 const sameRules = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right);
 
@@ -257,8 +245,8 @@ export function SettingsMonitoringTab({
   showSuccess,
   showError,
 }: {
-  settings: SavedSettings;
-  updateSettings: (settings: SettingsUpdate) => void;
+  settings: SettingsState;
+  updateSettings: (settings: SettingsState) => void;
   showSuccess: Toast;
   showError: Toast;
 }) {

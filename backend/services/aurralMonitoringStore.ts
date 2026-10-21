@@ -1,4 +1,5 @@
 import { db } from "../config/db-sqlite.ts";
+import type { LibraryMonitoringExclusionsRow } from "../db/rows.ts";
 import {
   DEFAULT_MONITORING,
   legacyMonitorMode,
@@ -71,10 +72,20 @@ const EXCLUSION_COLUMNS = `
   normalized_title AS normalizedTitle, created_at AS createdAt
 `;
 
-const listExclusionsStmt = db.prepare(
+export type MonitoringExclusion = Pick<
+  LibraryMonitoringExclusionsRow,
+  "id" | "kind" | "mbid" | "title"
+> & {
+  artistMbid: string | null;
+  artistName: string | null;
+  normalizedTitle: string;
+  createdAt: number;
+};
+
+const listExclusionsStmt = db.prepare<[], MonitoringExclusion>(
   `SELECT ${EXCLUSION_COLUMNS} FROM library_monitoring_exclusions ORDER BY created_at DESC, id DESC`,
 );
-const listArtistExclusionsStmt = db.prepare(
+const listArtistExclusionsStmt = db.prepare<[string], MonitoringExclusion>(
   `SELECT ${EXCLUSION_COLUMNS} FROM library_monitoring_exclusions
    WHERE artist_mbid = ? ORDER BY created_at DESC, id DESC`,
 );

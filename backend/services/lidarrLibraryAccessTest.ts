@@ -1,7 +1,13 @@
 import fs from "fs/promises";
+import type { StorageHealthStep } from "./storageHealthService.ts";
 import { buildTrackFileIndex, enrichLidarrTrackWithFiles } from "./libraryManager.ts";
 import { getPathMappings, looksLikeExternalOnlyPath, resolveLocalPath } from "./pathMappings.ts";
-function step(id, status, label, extra = {}) {
+function step(
+  id: StorageHealthStep["id"],
+  status: StorageHealthStep["status"],
+  label: StorageHealthStep["label"],
+  extra: Partial<Pick<StorageHealthStep, "detail" | "fix">> = {},
+): StorageHealthStep {
   return { id, status, label, ...extra };
 }
 

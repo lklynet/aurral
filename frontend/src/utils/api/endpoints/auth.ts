@@ -90,7 +90,20 @@ export const createUser = (username, password, role, permissions) =>
     permissions,
   });
 
-export const updateUser = (id, data) => patchData(`/users/${id}`, data);
+export type UserUpdate = {
+  password?: string;
+  currentPassword?: string;
+  permissions?: Record<string, boolean>;
+  role?: string;
+  status?: string;
+  allowIdentityAdoption?: boolean;
+  listenHistoryProvider?: string;
+  listenHistoryUsername?: string | null;
+  listenHistoryUrl?: string | null;
+  lastfmUsername?: string;
+};
+
+export const updateUser = (id, data: UserUpdate) => patchData(`/users/${id}`, data);
 
 export const deleteUser = async (id) => {
   await deleteData(`/users/${id}`);

@@ -1,11 +1,12 @@
 import { allReleaseTypes } from "./constants";
 import { normalizeDateTimeFormat } from "../../utils/dateTime.ts";
 import type { AppSettings, StoredIntegrations } from "../../../../backend/db/helpers/settings.ts";
+import type { AppSettingsResponse } from "../../utils/api/endpoints/settings.ts";
 
 export const LEGACY_METADATA_BASE_URL = "https://brainzmash.kell.ly";
 export const DEFAULT_METADATA_BASE_URL = "https://lidarrapi.brainzmash.cc";
 
-export type SavedSettings = Partial<AppSettings>;
+export type SavedSettings = Partial<AppSettingsResponse>;
 
 export const normalizeMetadataBaseUrl = (baseUrl: string | undefined) => {
   const trimmed = String(baseUrl || "")

@@ -11,7 +11,7 @@ import {
   getLibraryArtist,
   readLibraryLookupCache,
 } from "../../../utils/api/endpoints/library.ts";
-import { getAppSettings } from "../../../utils/api/endpoints/settings.ts";
+import { getAppSettings, type AppSettingsResponse } from "../../../utils/api/endpoints/settings.ts";
 import { getStoredAuth } from "../../../utils/api/core.ts";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
 import { useWebSocketChannel } from "../../../hooks/useWebSocket.ts";
@@ -122,7 +122,7 @@ export function useArtistDetailsStream(
   const [loadingLibrary, setLoadingLibrary] = useState(seededExistsInLibrary === undefined);
   const [loadingReleases, setLoadingReleases] = useState(!!mbid);
   const [loadingAppearsOn, setLoadingAppearsOn] = useState(!!mbid);
-  const [appSettings, setAppSettings] = useState(null);
+  const [appSettings, setAppSettings] = useState<AppSettingsResponse | null>(null);
   const [albumCovers, setAlbumCovers] = useState({});
   const [fulfilledCoverIds, setFulfilledCoverIds] = useState(() => new Set());
   const albumCoversRef = useRef(albumCovers);

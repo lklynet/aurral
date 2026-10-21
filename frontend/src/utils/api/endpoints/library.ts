@@ -403,7 +403,10 @@ export const previewMonitoringDefaults = (rules, { signal } = {}) =>
 
 export const saveMonitoringDefaults = (rules) => putData("/library/monitoring/defaults", { rules });
 
-export const getMonitoringExclusions = ({ artistMbid = null, signal } = {}) =>
+export const getMonitoringExclusions = ({
+  artistMbid = null,
+  signal,
+}: { artistMbid?: string | null; signal?: AbortSignal } = {}) =>
   getData("/library/monitoring/exclusions", {
     params: artistMbid ? { artistMbid } : {},
     signal,

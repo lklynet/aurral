@@ -3,20 +3,13 @@ import { ChevronDown } from "lucide-react";
 import { formatDateTime } from "../../../utils/dateTime.ts";
 import { DotLoader } from "../../../components/DotLoader";
 import type { useStorageHealth } from "../../../hooks/useStorageHealth.ts";
+import type { StorageHealthStep } from "../../../../../backend/services/storageHealthService.ts";
 
 type StorageHealthResult = Pick<
   NonNullable<ReturnType<typeof useStorageHealth>["result"]>,
   "ok" | "partial" | "checkedAt" | "sections"
 > & { failedCount?: number; warningCount?: number };
 type StorageHealthSection = StorageHealthResult["sections"][number];
-type StorageStatus = "pass" | "fail" | "warn" | "skip";
-type StorageHealthStep = {
-  id: string;
-  status: StorageStatus;
-  label: string;
-  detail?: string;
-  fix?: string;
-};
 
 const STATUS_LABELS = {
   pass: "PASS",

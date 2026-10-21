@@ -1,5 +1,11 @@
 import { getData, postData, lidarrCredentialParams } from "../core.ts";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
+import type { AppSettings } from "../../../../../backend/db/helpers/settings.ts";
+import type { computeLibraryRootOverlaps } from "../../../../../backend/services/downloadFolderConfig.ts";
+
+export type AppSettingsResponse = AppSettings & {
+  rootWarnings: ReturnType<typeof computeLibraryRootOverlaps>;
+};
 
 export const startPlexAuth = (forwardUrl) => postData("/settings/plex/auth/pin", { forwardUrl });
 
@@ -28,7 +34,8 @@ export const getPlexLibraries = () => getData("/settings/plex/libraries");
 export const checkPlexLibraryAccess = (sectionId) =>
   getData(`/settings/plex/libraries/${encodeURIComponent(sectionId)}/access-check`);
 
-export const fetchAppSettings = ({ signal } = {}) => getData("/settings", { signal });
+export const fetchAppSettings = ({ signal } = {}): Promise<AppSettingsResponse> =>
+  getData("/settings", { signal });
 
 export const getAppSettings = () =>
   queryClient.fetchQuery({
@@ -61,7 +68,8 @@ export const getDownloadClientSettings = () =>
 export const testDownloadClientConnection = (key, config) =>
   postData(`/settings/download-clients/${encodeURIComponent(key)}/test`, config);
 
-export const updateAppSettings = (settings) => postData("/settings", settings);
+export const updateAppSettings = (settings): Promise<AppSettingsResponse> =>
+  postData("/settings", settings);
 
 export const getLidarrRootFolders = (url, apiKey, { signal } = {}) =>
   getData("/settings/lidarr/root-folders", {

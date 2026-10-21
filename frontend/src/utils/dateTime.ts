@@ -38,7 +38,7 @@ export const formatTime = (date, options) => {
   )}`;
 };
 
-export const formatDateTime = (date, options) => {
+export const formatDateTime = (date, options?: Intl.DateTimeFormatOptions) => {
   if (currentFormat === "browser" || Number.isNaN(date.getTime())) {
     return date.toLocaleString(getLocale(), options);
   }

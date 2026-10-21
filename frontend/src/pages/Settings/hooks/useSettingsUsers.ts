@@ -6,6 +6,7 @@ import {
   updateUser,
   deleteUser,
   changeMyPassword,
+  type UserUpdate,
 } from "../../../utils/api/endpoints/auth.ts";
 import { GRANULAR_PERMISSIONS } from "../constants";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
@@ -45,8 +46,7 @@ export function useSettingsUsers(
     onSuccess: invalidateUsers,
   });
   const updateUserMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) =>
-      updateUser(id, data),
+    mutationFn: ({ id, data }: { id: number; data: UserUpdate }) => updateUser(id, data),
     onSuccess: invalidateUsers,
   });
   const deleteUserMutation = useMutation({
@@ -135,8 +135,7 @@ export function useSettingsUsers(
       role: string,
       permissions: Record<string, boolean>,
     ) => createUserMutation.mutateAsync({ username, password, role, permissions }),
-    updateUser: (id: number, data: Record<string, unknown>) =>
-      updateUserMutation.mutateAsync({ id, data }),
+    updateUser: (id: number, data: UserUpdate) => updateUserMutation.mutateAsync({ id, data }),
     deleteUser: (id: number) => deleteUserMutation.mutateAsync(id),
     changeMyPassword: (currentPassword: string, newPassword: string) =>
       changePasswordMutation.mutateAsync({ currentPassword, newPassword }),
