@@ -8,7 +8,7 @@ import { indexUnmonitoredJobs } from "./aurralUnmonitoredJobs.ts";
 import { resolveDownloadRoot, isPathInsideRoot } from "./downloadPaths.ts";
 import { getEnabledDownloadSources } from "./downloadSourceService.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
-import { downloadTracker } from "./downloadJobs/downloadTracker.ts";
+import { downloadTracker, type DownloadJob } from "./downloadJobs/downloadTracker.ts";
 import { isPlaylistOwnerActive } from "./downloadJobs/playlistOwnerStatus.ts";
 import { isPipelinePayloadActive } from "./downloadJobs/downloadCancellation.ts";
 import {
@@ -21,29 +21,30 @@ import {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-interface QualityJob {
-  id: string;
-  status: string;
-  finalPath: string | null;
-  upgradeForJobId: string | null;
-  albumMbid: string | null;
-  artistName: string;
-  trackName: string;
-  albumName: string | null;
-  playlistId: string;
-  playlistType: string;
-  playlistGeneration: number;
-  downloadSource: string | null;
-  downloadClient: string | null;
-  manualReplacementSearch: boolean;
-  qualityTier: string | null;
-  qualityFormat: string | null;
-  qualityBitrateKbps: number | null;
-  qualitySampleRate: number | null;
-  qualityBitDepth: number | null;
-  qualityCheckedAt: number | null;
-  qualityUpgradeCheckedAt: number | null;
-}
+type QualityJob = Pick<
+  DownloadJob,
+  | "id"
+  | "status"
+  | "finalPath"
+  | "upgradeForJobId"
+  | "albumMbid"
+  | "artistName"
+  | "trackName"
+  | "albumName"
+  | "playlistId"
+  | "playlistType"
+  | "playlistGeneration"
+  | "downloadSource"
+  | "downloadClient"
+  | "manualReplacementSearch"
+  | "qualityTier"
+  | "qualityFormat"
+  | "qualityBitrateKbps"
+  | "qualitySampleRate"
+  | "qualityBitDepth"
+  | "qualityCheckedAt"
+  | "qualityUpgradeCheckedAt"
+>;
 
 type AudioQuality = ReturnType<typeof classifyAudioQuality>;
 type QualityProfile = ReturnType<typeof getQualityProfile>;
@@ -241,7 +242,7 @@ async function prepareQualityUpgrade(job: QualityJob | null | undefined) {
   const current = downloadTracker.getJob(job.id);
   const blocker = upgradeBlocker(current);
   if (blocker) return { status: blocker };
-  return { sourceJobId: current.id, context: await readUpgradeSearchContext(current) };
+  return { sourceJobId: current!.id, context: await readUpgradeSearchContext(current!) };
 }
 
 async function addUpgradesAtOnce(
@@ -257,7 +258,7 @@ async function addUpgradesAtOnce(
     const upgradeJobId = downloadTracker.addUpgradeJob(source);
     if (!upgradeJobId) return "ineligible";
     downloadTracker.updateMetadata(upgradeJobId, context);
-    downloadTracker.markQualityUpgradeChecked(sourceJobId);
+    downloadTracker.markQualityUpgradeChecked(sourceJobId!);
     recordTrackJobQueued(downloadTracker.getJob(upgradeJobId));
     queuedIds.push(upgradeJobId);
     return "queued";

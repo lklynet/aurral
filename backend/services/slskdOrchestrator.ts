@@ -4,7 +4,7 @@ import type { Dirent } from "fs";
 import { db } from "../config/db-sqlite.ts";
 import { getDownloadClient } from "./download/downloadClientSettings.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
-import { downloadTracker } from "./downloadJobs/downloadTracker.ts";
+import { downloadTracker, type JobFields } from "./downloadJobs/downloadTracker.ts";
 import {
   buildAlbumSearchTiers,
   buildTrackSearchTiers,
@@ -137,13 +137,10 @@ type SlskdPayload = {
   manualSelection?: boolean;
 };
 
-type SlskdJob = HistoryJob & {
-  remoteUsername?: string | null;
-  slskdSearchId?: string | null;
-  slskdBatchId?: string | null;
-  deniedRemoteSources?: [string, string][] | null;
-  qualityTier?: string | null;
-};
+type SlskdJob = HistoryJob &
+  JobFields<
+    "remoteUsername" | "slskdSearchId" | "slskdBatchId" | "deniedRemoteSources" | "qualityTier"
+  >;
 
 type SlskdHelpers = {
   failOrTryNextSource: (

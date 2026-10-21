@@ -799,7 +799,7 @@ async function researchPlaylistTrack({ playlistId, jobId } = {}) {
     if (!downloadTracker.enqueueDownloadPipeline(replacementJobId)) {
       const replacementJob = downloadTracker.getJob(replacementJobId);
       const { finalizeQualityUpgradeFailure } = await import("../qualityProfileService.ts");
-      await finalizeQualityUpgradeFailure(replacementJob, "Could not queue a replacement search");
+      await finalizeQualityUpgradeFailure(replacementJob!, "Could not queue a replacement search");
       return { success: false, queueFailed: true };
     }
     const replacementJob = downloadTracker.getJob(replacementJobId);
@@ -883,7 +883,7 @@ async function researchLibraryTrack({ trackId, albumId } = {}) {
   if (!downloadTracker.enqueueDownloadPipeline(replacementJobId)) {
     const replacementJob = downloadTracker.getJob(replacementJobId);
     const { finalizeQualityUpgradeFailure } = await import("../qualityProfileService.ts");
-    await finalizeQualityUpgradeFailure(replacementJob, "Could not queue a replacement search");
+    await finalizeQualityUpgradeFailure(replacementJob!, "Could not queue a replacement search");
     return { success: false, queueFailed: true };
   }
 

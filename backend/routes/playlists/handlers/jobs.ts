@@ -175,7 +175,7 @@ export function registerJobs(router) {
       staticPlaylistTracks?.length ? null : limit,
     );
     if (staticPlaylistTracks?.length) {
-      const referencedJobIds = new Set(
+      const referencedJobIds = new Set<string>(
         staticPlaylistTracks.map((track) => String(track?.canonicalJobId || "")).filter(Boolean),
       );
       const referencedJobs = [...referencedJobIds]

@@ -2,16 +2,6 @@ import path from "node:path";
 import { getLibraryForAlbumIds, getLibraryForTrackIds } from "./libraryQueryService.ts";
 import { isAurralOwnedPath } from "./qualityProfileService.ts";
 import { downloadTracker } from "./downloadJobs/downloadTracker.ts";
-import type { PlaylistDownloadJobsRow } from "../db/rows.ts";
-
-interface TrackedJob {
-  status: PlaylistDownloadJobsRow["status"];
-  managedBy: "lidarr" | "aurral";
-  upgradeForJobId?: PlaylistDownloadJobsRow["upgrade_for_job_id"];
-  finalPath: PlaylistDownloadJobsRow["final_path"];
-  completedAt: PlaylistDownloadJobsRow["completed_at"];
-  createdAt: PlaylistDownloadJobsRow["created_at"];
-}
 
 function positiveInteger(value: unknown) {
   const parsed = Number(value);
@@ -45,7 +35,7 @@ export function resolveAurralOwnedTrackJob({
   const sourceJob = downloadTracker
     .getAll()
     .filter(
-      (job: TrackedJob) =>
+      (job) =>
         job.status === "done" &&
         job.managedBy === "aurral" &&
         !job.upgradeForJobId &&
@@ -54,7 +44,7 @@ export function resolveAurralOwnedTrackJob({
         isAurralOwnedPath(job.finalPath),
     )
     .sort(
-      (left: TrackedJob, right: TrackedJob) =>
+      (left, right) =>
         Number(right.completedAt || right.createdAt || 0) -
         Number(left.completedAt || left.createdAt || 0),
     )[0];

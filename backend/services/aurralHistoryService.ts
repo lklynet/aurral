@@ -7,6 +7,7 @@ import { getLibraryForAlbumReferences } from "./libraryQueryService.ts";
 import type { AurralHistoryEntry } from "../db/helpers/history.ts";
 import type { HonkerLiveRow } from "../db/rows.ts";
 import type { RequestUser } from "../middleware/requestUser.ts";
+import type { DownloadJob, JobFields } from "./downloadJobs/downloadTracker.ts";
 import type { LidarrAlbum, LidarrClient, LidarrCommand, LidarrPage } from "./lidarrClient.ts";
 
 type HistoryRequester = { userId: number; username?: string };
@@ -44,25 +45,25 @@ type HistoryEntryInput = Partial<Omit<AurralHistoryEntry, "id" | "metadata">> & 
   metadata?: HistoryMetadata | null;
 };
 
-export type HistoryJob = {
-  id: string;
-  trackName?: string | null;
-  artistName?: string | null;
-  albumName?: string | null;
-  albumMbid?: string | null;
-  playlistId?: string | null;
-  playlistType?: string | null;
-  requestGroupId?: string | null;
-  downloadSource?: string | null;
-  downloadClient?: string | null;
-  remoteFilename?: string | null;
-  stagingPath?: string | null;
-  releaseTitle?: string | null;
-  status?: string;
-  error?: string | null;
-  createdAt?: number;
-  startedAt?: number | null;
-};
+export type HistoryJob = Pick<DownloadJob, "id"> &
+  JobFields<
+    | "trackName"
+    | "artistName"
+    | "albumName"
+    | "albumMbid"
+    | "playlistId"
+    | "playlistType"
+    | "requestGroupId"
+    | "downloadSource"
+    | "downloadClient"
+    | "remoteFilename"
+    | "stagingPath"
+    | "releaseTitle"
+    | "status"
+    | "error"
+    | "createdAt"
+    | "startedAt"
+  >;
 
 const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const STALE_TRACK_JOB_MS = 15 * 60 * 1000;

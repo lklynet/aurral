@@ -3,7 +3,7 @@ import { deemixQueueIds } from "../deemixClient.ts";
 import { mapWithConcurrency } from "../discovery/helpers.ts";
 import { getHonkerQueueByName, listHonkerJobs } from "../honkerDb.ts";
 import { logger } from "../logger.ts";
-import { downloadTracker } from "./downloadTracker.ts";
+import { downloadTracker, type DownloadJob } from "./downloadTracker.ts";
 import { dbOps } from "../../db/helpers/index.ts";
 import { db } from "../../config/db-sqlite.ts";
 import {
@@ -390,7 +390,7 @@ export function markDownloadWorkCancelledForJobs(jobs = []) {
   return normalizedJobs;
 }
 
-export function markPlaylistDownloadWorkCancelled(playlistId, jobs = []) {
+export function markPlaylistDownloadWorkCancelled(playlistId, jobs: DownloadJob[] = []) {
   const safePlaylistId = normalizeId(playlistId);
   if (!safePlaylistId) {
     return { generation: 0, jobs: [], wasActive: false, jobsToRestore: [] };
@@ -496,7 +496,11 @@ export async function clearAllDownloadJobs(downloadTracker) {
   });
 }
 
-export async function cancelPlaylistDownloadWork(playlistId, jobs = [], { lock = true } = {}) {
+export async function cancelPlaylistDownloadWork(
+  playlistId,
+  jobs: DownloadJob[] = [],
+  { lock = true } = {},
+) {
   const cancellation = markPlaylistDownloadWorkCancelled(playlistId, jobs);
   const safePlaylistId = normalizeId(playlistId);
   if (!safePlaylistId) return { cancelled: 0, generation: 0 };

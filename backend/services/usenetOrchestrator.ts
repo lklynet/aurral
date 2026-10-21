@@ -1,6 +1,10 @@
 import path from "path";
 import fs from "fs/promises";
-import { downloadTracker } from "./downloadJobs/downloadTracker.ts";
+import {
+  downloadTracker,
+  type DownloadJob,
+  type JobFields,
+} from "./downloadJobs/downloadTracker.ts";
 import { prowlarrClient } from "./prowlarrClient.ts";
 import { getDownloadClient } from "./download/downloadClientSettings.ts";
 import { logger } from "./logger.ts";
@@ -63,20 +67,20 @@ interface UsenetHistoryItem {
   dir?: string | null;
 }
 
-interface UsenetJob {
-  id: string;
-  status?: string;
-  upgradeForJobId?: string | null;
-  manualReplacementSearch?: boolean;
-  artistName?: string | null;
-  albumName?: string | null;
-  trackName?: string | null;
-  trackMbid?: string | null;
-  downloadSource?: string | null;
-  downloadClient?: string | null;
-  downloadClientId?: NzbId | null;
-  releaseGuid?: string | null;
-}
+type UsenetJob = Pick<DownloadJob, "id"> &
+  JobFields<
+    | "status"
+    | "upgradeForJobId"
+    | "manualReplacementSearch"
+    | "artistName"
+    | "albumName"
+    | "trackName"
+    | "trackMbid"
+    | "downloadSource"
+    | "downloadClient"
+    | "downloadClientId"
+    | "releaseGuid"
+  >;
 
 type RankedRelease = ReturnType<typeof rankUsenetReleases>[number];
 
@@ -91,7 +95,7 @@ type ReleaseManifestOrNull = Awaited<ReturnType<typeof attemptRelease>>;
 
 type QualityOptions = {
   profile: ReturnType<typeof getQualityProfile>;
-  currentTier: string | null;
+  currentTier: string | null | undefined;
   upgrade: boolean;
 };
 

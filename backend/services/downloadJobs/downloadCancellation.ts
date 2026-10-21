@@ -124,7 +124,7 @@ export function cancelDownloadJob(jobId) {
   return cancelDownloadJobs([safeJobId]) > 0;
 }
 
-export function cancelDownloadJobs(jobIds = []) {
+export function cancelDownloadJobs(jobIds: string[] = []) {
   const safeJobIds = [
     ...new Set((Array.isArray(jobIds) ? jobIds : []).map(normalizeId).filter(Boolean)),
   ];
@@ -140,7 +140,7 @@ export function cancelDownloadJobs(jobIds = []) {
   return cancel();
 }
 
-export function restorePlaylistDownloadWork(playlistId, jobIds = []) {
+export function restorePlaylistDownloadWork(playlistId, jobIds: string[] = []) {
   const safePlaylistId = normalizeId(playlistId);
   if (!safePlaylistId) return false;
   const safeJobIds = [...new Set(jobIds.map(normalizeId).filter(Boolean))];

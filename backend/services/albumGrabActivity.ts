@@ -1,27 +1,25 @@
 import { db } from "../config/db-sqlite.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import type { AurralHistoryEntry } from "../db/helpers/history.ts";
+import type { DownloadJob, JobFields } from "./downloadJobs/downloadTracker.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
 
-type AlbumGrabJob = {
-  id: string;
-  managedBy?: string | null;
-  playlistType?: string | null;
-  requestGroupId?: string | null;
-  albumMbid?: string | null;
-  albumName?: string | null;
-  artistName?: string | null;
-  trackMbid?: string | null;
-  trackNumber?: number | null;
-  discNumber?: number | null;
-  trackName?: string | null;
-  createdAt: number;
-  status: string;
-  error?: string | null;
-  completedAt?: string | number | null;
-  downloadSource?: string | null;
-  downloadClient?: string | null;
-};
+type AlbumGrabJob = Pick<DownloadJob, "id" | "createdAt"> & { status: string } & JobFields<
+    | "managedBy"
+    | "playlistType"
+    | "requestGroupId"
+    | "albumMbid"
+    | "albumName"
+    | "artistName"
+    | "trackMbid"
+    | "trackNumber"
+    | "discNumber"
+    | "trackName"
+    | "error"
+    | "completedAt"
+    | "downloadSource"
+    | "downloadClient"
+  >;
 
 type AlbumGrabPayload = {
   jobId: string;

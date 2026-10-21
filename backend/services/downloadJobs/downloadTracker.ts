@@ -1,7 +1,8 @@
 import { randomUUID } from "crypto";
 import path from "node:path";
 import { db } from "../../config/db-sqlite.ts";
-import { enqueuePipelineJob, listHonkerJobs } from "../honkerDb.ts";
+import type { PlaylistDownloadJobsRevisionRow, PlaylistDownloadJobsRow } from "../../db/rows.ts";
+import { enqueuePipelineJob, listHonkerJobs, type HonkerPayload } from "../honkerDb.ts";
 import {
   getQuickSearchSources,
   isAlbumGrabSourceConfigured,
@@ -13,13 +14,14 @@ import {
   parseStringListJson,
   sanitizePathPart,
   stringifyStringListJson,
+  type DownloadTrackFields,
 } from "../downloadUtils.ts";
 import { buildAurralTrackDestination } from "../downloadPaths.ts";
 import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.ts";
 import { isPlaylistOwnerActive } from "./playlistOwnerStatus.ts";
 import { logger } from "../logger.ts";
 import { recordAlbumGrabQueued, recordAlbumTrackState } from "../albumGrabActivity.ts";
-import { mapRequest } from "../releaseManifest.ts";
+import { mapRequest, type ReleaseManifest } from "../releaseManifest.ts";
 import {
   cancelDownloadJob,
   beginDownloadAttempt,
@@ -35,7 +37,64 @@ export const NO_RELEASE_REASON =
   "The requested release could not be resolved; searching for the track";
 export const OFF_RELEASE_REASON = "Track is not on the requested release; searching for the track";
 
-const parseDeniedSources = (raw) => {
+export type DownloadTrackInput = DownloadTrackFields & {
+  reason?: string | null;
+  requestGroupId?: string | null;
+  managedBy?: string | null;
+};
+
+type RequestKind = "album" | "track";
+type TrackerRelease = ReleaseManifest & { groupReleaseMbids?: string[] };
+type TrackerStats = ReturnType<DownloadTracker["_emptyStats"]>;
+type JobStatus = Exclude<keyof TrackerStats, "total">;
+type DeniedRemoteSource = [source: string, key: string];
+type JobRedirect = { fromJobId: string; toJobId: string; dispatched: boolean };
+type PendingOptions = { asRetryCycle?: boolean };
+type QualityUpdate = {
+  tier?: string | null;
+  format?: string | null;
+  bitrateKbps?: number | null;
+  sampleRate?: number | null;
+  bitDepth?: number | null;
+  checkedAt?: number | null;
+  upgradeCheckedAt?: number | null;
+};
+type AddJobOptions = {
+  playlistId?: string;
+  playlistGeneration?: number;
+  requestKind?: RequestKind;
+};
+type ManualCandidate = { raw: HonkerPayload[string] };
+type AlbumGrabAttempt = Omit<ReturnType<typeof listHonkerJobs>[number], "payload"> & {
+  payload: PipelinePayload & { albumGroupJobIds: string[] };
+};
+type ManualSelection = {
+  source?: string;
+  candidate?: ManualCandidate;
+  downloadClient?: string | null;
+};
+type HeldForReview = {
+  source: string;
+  sourcePath: string;
+  reason: string;
+  transferId?: string | null;
+  username?: string | null;
+  metadata?: DownloadMetadata;
+};
+type DownloadMetadataKey = (typeof DOWNLOAD_METADATA_KEYS)[number];
+type DownloadMetadata = Partial<Record<DownloadMetadataKey, string | null>>;
+type TextMetadataKey =
+  | "artistName"
+  | "trackName"
+  | "albumName"
+  | "reason"
+  | "artistMbid"
+  | "albumMbid"
+  | "releaseMbid"
+  | "trackMbid"
+  | "releaseYear";
+
+const parseDeniedSources = (raw: string | null): DeniedRemoteSource[] => {
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
@@ -46,37 +105,39 @@ const parseDeniedSources = (raw) => {
 };
 
 const JOBS_TABLE = "playlist_download_jobs";
-const dataVersionStmt = db.prepare("PRAGMA data_version");
-const persistedRevisionStmt = db.prepare(
+const dataVersionStmt = db.prepare<[], { data_version: number }>("PRAGMA data_version");
+const persistedRevisionStmt = db.prepare<[], Pick<PlaylistDownloadJobsRevisionRow, "revision">>(
   "SELECT revision FROM playlist_download_jobs_revision WHERE id = 1",
 );
-const liveJobStmt = db.prepare(`SELECT * FROM ${JOBS_TABLE} WHERE id = ?`);
-const livePlaylistJobsStmt = db.prepare(
+const liveJobStmt = db.prepare<unknown[], PlaylistDownloadJobsRow>(
+  `SELECT * FROM ${JOBS_TABLE} WHERE id = ?`,
+);
+const livePlaylistJobsStmt = db.prepare<unknown[], PlaylistDownloadJobsRow>(
   `SELECT * FROM ${JOBS_TABLE} WHERE playlist_type = ? ORDER BY created_at, id`,
 );
-const livePlaylistIdJobsStmt = db.prepare(
+const livePlaylistIdJobsStmt = db.prepare<unknown[], PlaylistDownloadJobsRow>(
   `SELECT * FROM ${JOBS_TABLE}
    WHERE playlist_id = ? OR playlist_type = ?
    ORDER BY created_at, id`,
 );
-const livePlaylistJobsLimitedStmt = db.prepare(
+const livePlaylistJobsLimitedStmt = db.prepare<unknown[], PlaylistDownloadJobsRow>(
   `SELECT * FROM ${JOBS_TABLE} WHERE playlist_type = ? ORDER BY created_at, id LIMIT ?`,
 );
-const liveStatusJobsStmt = db.prepare(
+const liveStatusJobsStmt = db.prepare<unknown[], PlaylistDownloadJobsRow>(
   `SELECT * FROM ${JOBS_TABLE} WHERE status = ? ORDER BY created_at, id`,
 );
-const liveStatsStmt = db.prepare(
+const liveStatsStmt = db.prepare<[], { playlist_type: string; status: string; count: number }>(
   `SELECT playlist_type, status, COUNT(*) AS count FROM ${JOBS_TABLE} GROUP BY playlist_type, status`,
 );
-const liveNextPendingStmt = db.prepare(
+const liveNextPendingStmt = db.prepare<[], PlaylistDownloadJobsRow>(
   `SELECT * FROM ${JOBS_TABLE} WHERE status = 'pending' AND upgrade_for_job_id IS NULL
    ORDER BY created_at, id LIMIT 1`,
 );
-const liveDoneWithPathStmt = db.prepare(
+const liveDoneWithPathStmt = db.prepare<unknown[], PlaylistDownloadJobsRow>(
   `SELECT * FROM ${JOBS_TABLE} WHERE status = 'done' AND final_path IS NOT NULL
    ORDER BY created_at, id LIMIT ?`,
 );
-const livePendingStmt = db.prepare(
+const livePendingStmt = db.prepare<unknown[], PlaylistDownloadJobsRow>(
   `SELECT * FROM ${JOBS_TABLE} WHERE status = 'pending' AND upgrade_for_job_id IS NULL
    ORDER BY created_at, id LIMIT ?`,
 );
@@ -84,16 +145,16 @@ const liveActivePlaylistStmt = db.prepare(
   `SELECT 1 FROM ${JOBS_TABLE} WHERE playlist_type = ?
    AND status IN ('pending', 'downloading') LIMIT 1`,
 );
-const liveActivePlaylistJobsStmt = db.prepare(
+const liveActivePlaylistJobsStmt = db.prepare<unknown[], PlaylistDownloadJobsRow>(
   `SELECT * FROM ${JOBS_TABLE} WHERE status IN ('pending', 'downloading')
    AND COALESCE(NULLIF(playlist_type, ''), playlist_id) = ?
    ORDER BY created_at, id`,
 );
-const liveAlbumJobsStmt = db.prepare(
+const liveAlbumJobsStmt = db.prepare<[], PlaylistDownloadJobsRow & { album_mbid: string }>(
   `SELECT * FROM ${JOBS_TABLE} WHERE album_mbid IS NOT NULL AND album_mbid != ''`,
 );
 
-function parseHeldForReview(value) {
+function parseHeldForReview(value: string | null): HeldForReview | null {
   try {
     const held = JSON.parse(value || "null");
     return held?.sourcePath ? held : null;
@@ -102,9 +163,9 @@ function parseHeldForReview(value) {
   }
 }
 
-function rowToJob(row) {
+function rowToJob(row: PlaylistDownloadJobsRow) {
   return {
-    id: row.id,
+    id: row.id!,
     artistName: row.artist_name,
     trackName: row.track_name,
     albumName: row.album_name || null,
@@ -126,14 +187,14 @@ function rowToJob(row) {
     playlistId: row.playlist_id || row.playlist_type,
     playlistGeneration: Number(row.playlist_generation ?? 0),
     playlistType: row.playlist_type || row.playlist_id,
-    managedBy: row.managed_by === "lidarr" ? "lidarr" : "aurral",
+    managedBy: row.managed_by === "lidarr" ? ("lidarr" as const) : ("aurral" as const),
     requestGroupId: row.request_group_id || null,
-    requestKind: row.request_kind === "album" ? "album" : "track",
+    requestKind: row.request_kind === "album" ? ("album" as const) : ("track" as const),
     albumGrabAttempted: row.album_grab_attempted === 1,
     quickSearchedSources: parseStringListJson(row.quick_searched_sources),
     heldForReview: parseHeldForReview(row.held_for_review),
     albumGrabFailures: Number(row.album_grab_failures) || 0,
-    status: row.status,
+    status: row.status as JobStatus,
     startedAt: row.started_at,
     completedAt: row.completed_at,
     stagingPath: row.staging_path,
@@ -166,6 +227,35 @@ function rowToJob(row) {
     retryCycle: false,
   };
 }
+
+type RowJob = ReturnType<typeof rowToJob>;
+type RowOnlyJobKey =
+  | "albumGrabAttempted"
+  | "heldForReview"
+  | "albumGrabFailures"
+  | "downloadSource"
+  | "downloadClient"
+  | "downloadClientId"
+  | "releaseGuid"
+  | "releaseTitle"
+  | "indexerId"
+  | "indexerName"
+  | "slskdSearchId"
+  | "slskdBatchId"
+  | "remoteUsername"
+  | "remoteFilename"
+  | "deniedRemoteSources"
+  | "qualityTier"
+  | "qualityFormat"
+  | "qualityBitrateKbps"
+  | "qualitySampleRate"
+  | "qualityBitDepth"
+  | "qualityCheckedAt"
+  | "qualityUpgradeCheckedAt"
+  | "upgradeForJobId"
+  | "manualReplacementSearch";
+export type DownloadJob = Omit<RowJob, RowOnlyJobKey> & Partial<Pick<RowJob, RowOnlyJobKey>>;
+export type JobFields<Key extends keyof DownloadJob> = { [K in Key]?: DownloadJob[K] | null };
 
 const insertStmt = db.prepare(`
   INSERT INTO ${JOBS_TABLE} (
@@ -263,7 +353,9 @@ const updateAlbumGrabFailuresStmt = db.prepare(
   `UPDATE ${JOBS_TABLE} SET album_grab_failures = ? WHERE id = ?`,
 );
 const deleteAllStmt = db.prepare(`DELETE FROM ${JOBS_TABLE}`);
-const selectAllStmt = db.prepare(`SELECT * FROM ${JOBS_TABLE} ORDER BY created_at ASC, id ASC`);
+const selectAllStmt = db.prepare<[], PlaylistDownloadJobsRow>(
+  `SELECT * FROM ${JOBS_TABLE} ORDER BY created_at ASC, id ASC`,
+);
 const updatePlaylistTypeStmt = db.prepare(
   `UPDATE ${JOBS_TABLE} SET playlist_type = ?, playlist_id = ? WHERE playlist_type = ?`,
 );
@@ -314,7 +406,7 @@ const DOWNLOAD_METADATA_KEYS = [
   "indexerName",
   "remoteUsername",
   "remoteFilename",
-];
+] as const;
 
 const updateDeniedSourcesStmt = db.prepare(`
   UPDATE ${JOBS_TABLE}
@@ -322,7 +414,7 @@ const updateDeniedSourcesStmt = db.prepare(`
   WHERE id = ?
 `);
 
-const sortByCreatedAt = (jobs) =>
+const sortByCreatedAt = <T extends DownloadJob>(jobs: T[]): T[] =>
   jobs.sort((a, b) => {
     const aCreated = Number(a?.createdAt ?? 0);
     const bCreated = Number(b?.createdAt ?? 0);
@@ -336,7 +428,7 @@ const upgradeAttemptOrder = new Map();
 const MAX_UPGRADE_ATTEMPTS_ORDERED = 1000;
 let upgradeAttemptsStarted = 0;
 
-function orderUpgradeAttempt(attemptId) {
+function orderUpgradeAttempt(attemptId: string) {
   upgradeAttemptOrder.set(attemptId, ++upgradeAttemptsStarted);
   if (upgradeAttemptOrder.size > MAX_UPGRADE_ATTEMPTS_ORDERED) {
     upgradeAttemptOrder.delete(upgradeAttemptOrder.keys().next().value);
@@ -345,10 +437,10 @@ function orderUpgradeAttempt(attemptId) {
 
 // A job that ended and is asked for again searches its quick sources again.
 const ENDED_STATUSES = new Set(["done", "failed", "cancelled", "blocked"]);
-const triesRelease = (job) => !job.manualReplacementSearch && !job.albumGrabAttempted;
-const searchesByRelease = (job) => Boolean(job?.albumMbid) && triesRelease(job);
+const triesRelease = (job: DownloadJob) => !job.manualReplacementSearch && !job.albumGrabAttempted;
+const searchesByRelease = (job: DownloadJob) => Boolean(job?.albumMbid) && triesRelease(job);
 
-function buildPipelinePayload(job) {
+function buildPipelinePayload(job: DownloadJob) {
   const playlistId = job.playlistId || job.playlistType;
   const artistDir = sanitizePathPart(job.artistName, "Unknown Artist");
   const albumDir = sanitizePathPart(job.albumName, "Unknown Album");
@@ -390,9 +482,24 @@ function buildPipelinePayload(job) {
   };
 }
 
+type PipelinePayload = ReturnType<typeof buildPipelinePayload> & {
+  quickSearch?: boolean;
+  albumGrab?: boolean;
+  releaseMbid?: string | null;
+  albumGroupJobIds?: string[];
+  source?: string;
+  candidates?: ManualCandidate[];
+  candidateIndex?: number;
+  manualSelection?: boolean;
+  manualDownloadClient?: string | null;
+};
+
 // The files these jobs hold for review: a blocked job's file, unless only
 // the file a job keeps while it searches on is wanted.
-function discardReviewFiles(jobs, { heldOnly = false } = {}) {
+function discardReviewFiles(
+  jobs: DownloadJob[],
+  { heldOnly = false }: { heldOnly?: boolean } = {},
+) {
   const reviewed = heldOnly
     ? []
     : jobs.filter((job) => job?.status === "blocked" && job.stagingPath).map((job) => ({ ...job }));
@@ -413,7 +520,22 @@ function discardReviewFiles(jobs, { heldOnly = false } = {}) {
 }
 
 export class DownloadTracker {
-  constructor({ enqueuePipeline = enqueuePipelineJob } = {}) {
+  declare enqueuePipeline: (payload: PipelinePayload) => unknown;
+  declare jobs: Map<string, DownloadJob>;
+  declare statsByPlaylistType: Map<string, TrackerStats>;
+  declare globalStats: TrackerStats;
+  declare pendingFreshQueue: string[];
+  declare pendingRetryQueue: string[];
+  declare pendingSet: Set<string>;
+  declare pendingRetrySet: Set<string>;
+  declare slskdDispatched: Set<string>;
+  declare revision: number;
+  declare externalDataVersion: number | undefined;
+  declare externalJobsRevision: number | undefined;
+
+  constructor({
+    enqueuePipeline = enqueuePipelineJob,
+  }: { enqueuePipeline?: (payload: PipelinePayload) => unknown } = {}) {
     this.enqueuePipeline = enqueuePipeline;
     this.jobs = new Map();
     this.statsByPlaylistType = new Map();
@@ -441,10 +563,10 @@ export class DownloadTracker {
     this.reconcileCommittedJobs();
   }
 
-  reconcileCommittedJobs(redirects = []) {
+  reconcileCommittedJobs(redirects: JobRedirect[] = []) {
     const previousJobs = this.jobs;
     const previousRetryIds = this.pendingRetrySet;
-    const nextJobs = new Map();
+    const nextJobs = new Map<string, DownloadJob>();
     for (const row of selectAllStmt.all()) {
       const fresh = rowToJob(row);
       const previous = previousJobs.get(fresh.id);
@@ -475,12 +597,12 @@ export class DownloadTracker {
     this.revision += 1;
   }
 
-  isSlskdDispatched(id) {
+  isSlskdDispatched(id: string) {
     const job = this.jobs.get(id);
     return this.slskdDispatched.has(id) || !!job?.slskdBatchId || !!job?.slskdSearchId;
   }
 
-  setAlbumGrabAttempted(id, attempted) {
+  setAlbumGrabAttempted(id: string, attempted: boolean) {
     const job = this.jobs.get(id);
     if (!job) return false;
     job.albumGrabAttempted = attempted === true;
@@ -490,14 +612,14 @@ export class DownloadTracker {
 
   // A quick source counts as searched once its search ends, so a search cut
   // off by a restart runs again.
-  recordQuickSearched(id, source) {
+  recordQuickSearched(id: string, source: string) {
     const job = this.jobs.get(id);
     if (!job || job.quickSearchedSources.includes(source)) return false;
     this._setQuickSearchedSources(job, [...job.quickSearchedSources, source]);
     return true;
   }
 
-  _setQuickSearchedSources(job, sources) {
+  _setQuickSearchedSources(job: DownloadJob, sources: string[]) {
     job.quickSearchedSources = sources;
     updateQuickSearchedSourcesStmt.run(JSON.stringify(sources), job.id);
   }
@@ -505,7 +627,7 @@ export class DownloadTracker {
   // A file a source holds for review stays with the job until the job ends,
   // so a restart or an attempt that hands the job back does not lose it. The
   // job's next attempt carries it on.
-  keepHeldForReview(id, held) {
+  keepHeldForReview(id: string, held: HeldForReview | null) {
     const job = this.jobs.get(id);
     if (!job || ENDED_STATUSES.has(job.status) || !held?.sourcePath) return false;
     if (job.heldForReview?.sourcePath === held.sourcePath) return true;
@@ -513,19 +635,19 @@ export class DownloadTracker {
     return true;
   }
 
-  _setHeldForReview(job, held) {
+  _setHeldForReview(job: DownloadJob, held: HeldForReview | null) {
     job.heldForReview = held;
     updateHeldForReviewStmt.run(held ? JSON.stringify(held) : null, job.id);
   }
 
   // A job that ended keeps no held file, unless that file went to review.
-  _dropHeldForReview(job) {
+  _dropHeldForReview(job: DownloadJob) {
     if (!job.heldForReview) return;
     discardReviewFiles([job], { heldOnly: true });
     this._setHeldForReview(job, null);
   }
 
-  setRequestKind(id, kind) {
+  setRequestKind(id: string, kind: RequestKind) {
     const job = this.jobs.get(id);
     if (!job || !["album", "track"].includes(kind)) return false;
     job.requestKind = kind;
@@ -533,15 +655,15 @@ export class DownloadTracker {
     return true;
   }
 
-  markSlskdDispatched(id) {
+  markSlskdDispatched(id: string) {
     this.slskdDispatched.add(id);
   }
 
-  clearSlskdDispatched(id) {
+  clearSlskdDispatched(id: string) {
     this.slskdDispatched.delete(id);
   }
 
-  clearSlskdPipelineState(id, options = {}) {
+  clearSlskdPipelineState(id: string, options: { clearDownloadMetadata?: boolean } = {}) {
     const clearDownloadMetadata = options.clearDownloadMetadata !== false;
     this.clearSlskdDispatched(id);
     const job = this.jobs.get(id);
@@ -559,7 +681,10 @@ export class DownloadTracker {
     }
   }
 
-  updateDownloadMetadata(id, metadata = {}) {
+  updateDownloadMetadata(
+    id: string,
+    metadata: Partial<Record<DownloadMetadataKey, string | number | null>> = {},
+  ) {
     const job = this.jobs.get(id);
     if (!job || !metadata || typeof metadata !== "object") return false;
     const values = Object.fromEntries(
@@ -577,11 +702,11 @@ export class DownloadTracker {
   // The queued album attempt this job is still part of. A job released from
   // an attempt no longer shares its download attempt, so a step of that
   // attempt that is still queued cannot claim it again.
-  _activeAlbumGrab(jobId) {
+  _activeAlbumGrab(jobId: string) {
     const attemptId = getActiveDownloadAttemptId(jobId);
     if (!attemptId) return null;
     return (
-      listHonkerJobs("slskd-pipeline").find(
+      (listHonkerJobs("slskd-pipeline") as AlbumGrabAttempt[]).find(
         (entry) =>
           entry.payload?.albumGrab === true &&
           entry.payload.downloadAttemptId === attemptId &&
@@ -590,48 +715,48 @@ export class DownloadTracker {
     );
   }
 
-  isInActiveAlbumGrab(jobId) {
+  isInActiveAlbumGrab(jobId: string) {
     return Boolean(this._activeAlbumGrab(jobId));
   }
 
-  releaseFromAlbumGrab(id, reason = null, options = {}) {
+  releaseFromAlbumGrab(id: string, reason: string | null = null, options: PendingOptions = {}) {
     setActiveDownloadAttemptId(id, null);
     return this.setPending(id, reason, options);
   }
 
   // Album attempts that ended on a step that failed every retry since the
   // job last finished or failed.
-  recordAlbumGrabFailure(id) {
+  recordAlbumGrabFailure(id: string) {
     const job = this.jobs.get(id);
     if (!job) return 0;
     this._setAlbumGrabFailures(job, (job.albumGrabFailures || 0) + 1);
     return job.albumGrabFailures;
   }
 
-  _setAlbumGrabFailures(job, count) {
+  _setAlbumGrabFailures(job: DownloadJob, count: number) {
     if ((job.albumGrabFailures || 0) === count) return;
     job.albumGrabFailures = count;
     updateAlbumGrabFailuresStmt.run(count, job.id);
   }
 
-  canSearchByRelease(job) {
+  canSearchByRelease(job: DownloadJob) {
     return !job.upgradeForJobId && searchesByRelease(job) && isAlbumGrabSourceConfigured();
   }
 
   // A track request first searches the sources that download only a track
   // when the user ranks them above every album source, each once per request.
   // A whole-album request never does. It needs no release to start.
-  quickSearchSourcesDue(job) {
+  quickSearchSourcesDue(job: DownloadJob) {
     if (job.requestKind !== "track" || job.upgradeForJobId || !this.canAwaitRelease(job)) return [];
     return getQuickSearchSources().filter((source) => !job.quickSearchedSources.includes(source));
   }
 
-  startsWithQuickSearch(job) {
+  startsWithQuickSearch(job: DownloadJob) {
     return this.canSearchByRelease(job) && this.quickSearchSourcesDue(job).length > 0;
   }
 
   // A track that would search by release once metadata reads its album.
-  canAwaitRelease(job) {
+  canAwaitRelease(job: DownloadJob) {
     return Boolean(job) && triesRelease(job) && isAlbumGrabSourceConfigured();
   }
 
@@ -643,15 +768,16 @@ export class DownloadTracker {
   // upgrade check queues them together. An upgrade whose owner is not active
   // neither leads nor joins one, since its attempt would wait for the owner.
   // No other attempt holds an upgrade or a track still due its quick search.
-  _releaseMembers(job, release) {
-    const listed = (pin) =>
-      !release.groupReleaseMbids || release.groupReleaseMbids.includes(String(pin).toLowerCase());
-    const pinnedElsewhere = (entry) =>
-      entry.releaseMbid && entry.releaseMbid !== release.releaseMbid && listed(entry.releaseMbid);
-    const ownerActive = (entry) => isPlaylistOwnerActive(entry.playlistId || entry.playlistType);
-    const fits = (entry) =>
+  _releaseMembers(job: DownloadJob, release: TrackerRelease | null | undefined) {
+    const listed = (pin: string) =>
+      !release!.groupReleaseMbids || release!.groupReleaseMbids.includes(String(pin).toLowerCase());
+    const pinnedElsewhere = (entry: DownloadJob) =>
+      entry.releaseMbid && entry.releaseMbid !== release!.releaseMbid && listed(entry.releaseMbid);
+    const ownerActive = (entry: DownloadJob) =>
+      isPlaylistOwnerActive(entry.playlistId || entry.playlistType);
+    const fits = (entry: DownloadJob) =>
       entry.albumMbid === job.albumMbid && searchesByRelease(entry) && !pinnedElsewhere(entry);
-    const joins = (entry) =>
+    const joins = (entry: DownloadJob) =>
       entry.status === "pending" &&
       fits(entry) &&
       (job.upgradeForJobId
@@ -667,12 +793,12 @@ export class DownloadTracker {
         : [job];
     const ids = [...mapRequest(release, candidates).wanted.values()];
     if (!ids.includes(job.id)) return [];
-    return [job.id, ...ids.filter((id) => id !== job.id)].map((id) => this.jobs.get(id));
+    return [job.id, ...ids.filter((id) => id !== job.id)].map((id) => this.jobs.get(id)!);
   }
 
   // A job that could have searched by release but searches for the track
   // says why, once.
-  _noteTrackSearch(job, release) {
+  _noteTrackSearch(job: DownloadJob, release: TrackerRelease | null | undefined) {
     if (!this.canSearchByRelease(job)) return;
     const reason = release ? OFF_RELEASE_REASON : NO_RELEASE_REASON;
     if (job.error === reason) return;
@@ -687,7 +813,7 @@ export class DownloadTracker {
   // `release` is the manifest the job just resolved to, or null when it
   // resolved to none. A track that can search by release is never queued
   // without it, so no caller skips the one place that chooses a release.
-  enqueueDownloadPipeline(jobId, { release } = {}) {
+  enqueueDownloadPipeline(jobId: string, { release }: { release?: TrackerRelease | null } = {}) {
     if (!isAnyDownloadSourceConfigured()) return false;
     const job = this.jobs.get(jobId);
     if (!job) return false;
@@ -716,7 +842,7 @@ export class DownloadTracker {
         "A track that can search by release is queued only with the release it resolved to",
       );
     }
-    const payload = buildPipelinePayload(job);
+    const payload: PipelinePayload = buildPipelinePayload(job);
     if (!isPipelinePayloadActive(payload)) return false;
     const members = quick ? [] : this._releaseMembers(job, release);
     if (quick) {
@@ -724,7 +850,7 @@ export class DownloadTracker {
       payload.allowedSources = this.quickSearchSourcesDue(job);
       this.setDownloading(jobId);
     } else if (members.length > 0) {
-      this._holdForRelease(payload, members, release);
+      this._holdForRelease(payload, members, release!);
     } else if (release !== undefined) {
       this._noteTrackSearch(job, release);
     }
@@ -743,7 +869,7 @@ export class DownloadTracker {
     return true;
   }
 
-  _holdForRelease(payload, members, release) {
+  _holdForRelease(payload: PipelinePayload, members: DownloadJob[], release: TrackerRelease) {
     payload.albumGrab = true;
     payload.releaseMbid = release.releaseMbid;
     payload.albumGroupJobIds = members.map((member) => member.id);
@@ -762,7 +888,7 @@ export class DownloadTracker {
   // release attempt therefore waits while one that started before it still
   // downloads an upgrade of the same album by release, and then downloads
   // the release whole.
-  upgradeAttemptAhead(payload) {
+  upgradeAttemptAhead(payload: PipelinePayload) {
     const order = upgradeAttemptOrder.get(payload.downloadAttemptId);
     const albumMbid = this.jobs.get(payload.jobId)?.albumMbid;
     if (order === undefined || !albumMbid) return false;
@@ -777,14 +903,17 @@ export class DownloadTracker {
 
   // An upgrade attempt that searches for its track no longer downloads its
   // release, so no later attempt waits for it.
-  endUpgradeReleaseDownload(attemptId) {
+  endUpgradeReleaseDownload(attemptId: string) {
     upgradeAttemptOrder.delete(attemptId);
   }
 
   // After its quick search found nothing to import, a track request tries
   // its release the way a queued track does. Returns the attempt, or null
   // when the track searches for itself.
-  searchByReleaseAfterQuickSearch(payload, release) {
+  searchByReleaseAfterQuickSearch(
+    payload: PipelinePayload,
+    release: TrackerRelease | null | undefined,
+  ) {
     const job = this.jobs.get(payload.jobId);
     if (!job || !["pending", "downloading"].includes(job.status)) return null;
     const members = this._releaseMembers(job, release);
@@ -792,20 +921,23 @@ export class DownloadTracker {
       this._noteTrackSearch(job, release);
       return null;
     }
-    const attempt = { ...payload };
-    this._holdForRelease(attempt, members, release);
+    const attempt: PipelinePayload = { ...payload };
+    this._holdForRelease(attempt, members, release!);
     recordAlbumGrabQueued(attempt, members);
     return attempt;
   }
 
-  enqueueManualSelection(jobId, { source, candidate, downloadClient = null } = {}) {
+  enqueueManualSelection(
+    jobId: string,
+    { source, candidate, downloadClient = null }: ManualSelection = {},
+  ) {
     const job = this.jobs.get(jobId);
     const normalizedSource = String(source || "").trim();
     if (!job || job.status !== "failed" || job.upgradeForJobId) return false;
     if (!candidate?.raw || !["slskd", "usenet", "deemix", "ytdlp"].includes(normalizedSource)) {
       return false;
     }
-    const payload = {
+    const payload: PipelinePayload = {
       ...buildPipelinePayload(job),
       phase: "download",
       source: normalizedSource,
@@ -830,7 +962,10 @@ export class DownloadTracker {
     }
   }
 
-  enqueueManualReplacementSelection(jobId, { source, candidate, downloadClient = null } = {}) {
+  enqueueManualReplacementSelection(
+    jobId: string,
+    { source, candidate, downloadClient = null }: ManualSelection = {},
+  ) {
     const sourceJob = this.jobs.get(jobId);
     const normalizedSource = String(source || "").trim();
     if (!sourceJob || sourceJob.status !== "done" || !sourceJob.finalPath) return false;
@@ -839,8 +974,8 @@ export class DownloadTracker {
     }
     const replacementJobId = this.addReplacementSearchJob(sourceJob);
     if (!replacementJobId) return false;
-    const replacementJob = this.jobs.get(replacementJobId);
-    const payload = {
+    const replacementJob = this.jobs.get(replacementJobId)!;
+    const payload: PipelinePayload = {
       ...buildPipelinePayload(replacementJob),
       phase: "download",
       source: normalizedSource,
@@ -873,7 +1008,7 @@ export class DownloadTracker {
     };
   }
 
-  _cloneStats(stats) {
+  _cloneStats(stats: Partial<TrackerStats> | null | undefined) {
     return {
       total: Number(stats?.total || 0),
       pending: Number(stats?.pending || 0),
@@ -886,7 +1021,7 @@ export class DownloadTracker {
     };
   }
 
-  _getOrCreatePlaylistStats(playlistType) {
+  _getOrCreatePlaylistStats(playlistType: string | null | undefined) {
     const key = String(playlistType || "");
     let stats = this.statsByPlaylistType.get(key);
     if (!stats) {
@@ -896,7 +1031,11 @@ export class DownloadTracker {
     return stats;
   }
 
-  _applyStatusDelta(playlistType, fromStatus, toStatus) {
+  _applyStatusDelta(
+    playlistType: string | null | undefined,
+    fromStatus: JobStatus | null,
+    toStatus: JobStatus | null,
+  ) {
     if (playlistType) {
       const stats = this._getOrCreatePlaylistStats(playlistType);
       if (fromStatus && stats[fromStatus] > 0) {
@@ -937,7 +1076,7 @@ export class DownloadTracker {
     }
   }
 
-  _removeFromPendingQueues(id) {
+  _removeFromPendingQueues(id: string) {
     this.pendingFreshQueue = this.pendingFreshQueue.filter((entryId) => entryId !== id);
     this.pendingRetryQueue = this.pendingRetryQueue.filter((entryId) => entryId !== id);
   }
@@ -1012,7 +1151,7 @@ export class DownloadTracker {
     this._rebuildStatsByPlaylistType();
   }
 
-  _insert(job) {
+  _insert(job: DownloadJob) {
     const createdAt = job.createdAt ?? Date.now();
     job.createdAt = createdAt;
     insertStmt.run(
@@ -1060,7 +1199,7 @@ export class DownloadTracker {
     this._touchRevision();
   }
 
-  _update(job) {
+  _update(job: DownloadJob) {
     updateStmt.run(
       job.status,
       job.stagingPath ?? null,
@@ -1099,7 +1238,11 @@ export class DownloadTracker {
     this._touchRevision();
   }
 
-  addJob(track, playlistType, options = {}) {
+  addJob(
+    track: DownloadTrackInput | null | undefined,
+    playlistType: string,
+    options: AddJobOptions = {},
+  ) {
     const id = randomUUID();
     const artistName = String(track?.artistName || "").trim();
     const trackName = String(track?.trackName || "").trim();
@@ -1107,7 +1250,7 @@ export class DownloadTracker {
       return null;
     }
     const playlistId = options?.playlistId || playlistType;
-    const job = {
+    const job: DownloadJob = {
       id,
       artistName,
       trackName,
@@ -1129,7 +1272,7 @@ export class DownloadTracker {
       artistAliases: normalizeStringList(track?.artistAliases),
       playlistId,
       playlistGeneration: Number.isInteger(options?.playlistGeneration)
-        ? options.playlistGeneration
+        ? options.playlistGeneration!
         : getPlaylistDownloadGeneration(playlistId),
       playlistType,
       managedBy: track?.managedBy === "lidarr" ? "lidarr" : "aurral",
@@ -1156,7 +1299,7 @@ export class DownloadTracker {
     return id;
   }
 
-  ensureLibraryTrackJob(track, finalPath) {
+  ensureLibraryTrackJob(track: DownloadTrackInput, finalPath: string | null | undefined) {
     const sourcePath = String(finalPath || "").trim();
     if (!sourcePath) return null;
     const resolvedPath = path.resolve(sourcePath);
@@ -1179,7 +1322,7 @@ export class DownloadTracker {
     return this.jobs.get(id) || null;
   }
 
-  addJobs(tracks, playlistType) {
+  addJobs(tracks: DownloadTrackInput[], playlistType: string) {
     const ids = [];
     for (const track of tracks) {
       const id = this.addJob(track, playlistType);
@@ -1189,7 +1332,7 @@ export class DownloadTracker {
     return ids;
   }
 
-  findActiveUpgradeJob(sourceJob) {
+  findActiveUpgradeJob(sourceJob: Pick<DownloadJob, "finalPath"> | null | undefined) {
     if (!sourceJob?.finalPath) return null;
     return (
       [...this.jobs.values()].find((job) => {
@@ -1201,7 +1344,7 @@ export class DownloadTracker {
     );
   }
 
-  addUpgradeJob(sourceJob) {
+  addUpgradeJob(sourceJob: DownloadJob | null | undefined) {
     if (!sourceJob?.id || sourceJob.status !== "done" || !sourceJob.finalPath) return null;
     if (this.findActiveUpgradeJob(sourceJob)) return null;
     const playlistId = sourceJob.playlistId || sourceJob.playlistType;
@@ -1215,12 +1358,12 @@ export class DownloadTracker {
     return id;
   }
 
-  queueFirst(ids) {
+  queueFirst(ids: string[]) {
     const first = new Set(ids);
     this.pendingFreshQueue = [...ids, ...this.pendingFreshQueue.filter((id) => !first.has(id))];
   }
 
-  addReplacementSearchJob(sourceJob) {
+  addReplacementSearchJob(sourceJob: DownloadJob | null | undefined) {
     if (!sourceJob?.id || sourceJob.status !== "done" || !sourceJob.finalPath) return null;
     if (this.findActiveUpgradeJob(sourceJob)) return null;
     const playlistId = sourceJob.playlistId || sourceJob.playlistType;
@@ -1238,7 +1381,7 @@ export class DownloadTracker {
     return id;
   }
 
-  updateQuality(id, quality = {}) {
+  updateQuality(id: string, quality: QualityUpdate = {}) {
     const job = this.jobs.get(id);
     if (!job) return false;
     job.qualityTier = quality.tier || null;
@@ -1254,7 +1397,7 @@ export class DownloadTracker {
     return true;
   }
 
-  markQualityUpgradeChecked(id, checkedAt = Date.now()) {
+  markQualityUpgradeChecked(id: string, checkedAt = Date.now()) {
     const job = this.jobs.get(id);
     if (!job) return false;
     job.qualityUpgradeCheckedAt = checkedAt;
@@ -1262,7 +1405,11 @@ export class DownloadTracker {
     return true;
   }
 
-  replaceFinalPath(sourcePath, finalPath, quality) {
+  replaceFinalPath(
+    sourcePath: string,
+    finalPath: string,
+    quality: QualityUpdate | null | undefined,
+  ) {
     const changed = [];
     for (const job of this.jobs.values()) {
       if (job.status !== "done" || job.finalPath !== sourcePath) continue;
@@ -1281,7 +1428,7 @@ export class DownloadTracker {
     return changed;
   }
 
-  updateFinalPath(id, finalPath) {
+  updateFinalPath(id: string, finalPath: string) {
     const job = this.jobs.get(id);
     if (!job || job.status !== "done") return false;
     job.finalPath = finalPath;
@@ -1289,11 +1436,11 @@ export class DownloadTracker {
     return true;
   }
 
-  updateMetadata(id, metadata = {}) {
+  updateMetadata(id: string, metadata: Partial<DownloadTrackInput> = {}) {
     const job = this.jobs.get(id);
     if (!job || !metadata || typeof metadata !== "object") return false;
     let changed = false;
-    const assignString = (key) => {
+    const assignString = (key: TextMetadataKey) => {
       if (!(key in metadata)) return;
       const nextValue = metadata[key] ? String(metadata[key]).trim() || null : null;
       if (job[key] !== nextValue) {
@@ -1329,7 +1476,7 @@ export class DownloadTracker {
         changed = true;
       }
     }
-    for (const key of ["trackNumber", "discNumber"]) {
+    for (const key of ["trackNumber", "discNumber"] as const) {
       if (!(key in metadata)) continue;
       const next = normalizePositiveInteger(metadata[key]);
       if (job[key] !== next) {
@@ -1359,11 +1506,11 @@ export class DownloadTracker {
     return changed;
   }
 
-  getJob(id) {
-    return this.jobs.get(id) || null;
+  getJob(id: string | null | undefined) {
+    return this.jobs.get(id!) || null;
   }
 
-  removeJob(id) {
+  removeJob(id: string) {
     const job = this.jobs.get(id);
     if (!job) return false;
     discardReviewFiles([job]);
@@ -1379,7 +1526,7 @@ export class DownloadTracker {
     return true;
   }
 
-  _pickPendingFromQueue(queue, lastPlaylistType = null) {
+  _pickPendingFromQueue(queue: string[], lastPlaylistType: string | null = null) {
     let fallbackIndex = -1;
     for (let index = 0; index < queue.length; index += 1) {
       const nextId = queue[index];
@@ -1406,7 +1553,7 @@ export class DownloadTracker {
     return null;
   }
 
-  _compactPendingQueue(queue) {
+  _compactPendingQueue(queue: string[]) {
     return queue.filter((id) => {
       if (!this.pendingSet.has(id)) return false;
       const job = this.jobs.get(id);
@@ -1414,17 +1561,20 @@ export class DownloadTracker {
     });
   }
 
-  getNextPending(lastPlaylistType = null) {
+  getNextPending(lastPlaylistType: string | null = null) {
     return this.getNextPendingMatching(() => true, lastPlaylistType);
   }
 
-  _shouldSkipForWorker(job) {
+  _shouldSkipForWorker(job: DownloadJob | undefined) {
     return job?.status === "pending" && this.isSlskdDispatched(job.id);
   }
 
-  getNextPendingMatching(predicate = null, lastPlaylistType = null) {
+  getNextPendingMatching(
+    predicate: ((job: DownloadJob) => boolean) | null = null,
+    lastPlaylistType: string | null = null,
+  ) {
     const accepts = typeof predicate === "function" ? predicate : () => true;
-    const canProcess = (job) =>
+    const canProcess = (job: DownloadJob | null | undefined) =>
       job &&
       job.status === "pending" &&
       !this._shouldSkipForWorker(job) &&
@@ -1465,7 +1615,7 @@ export class DownloadTracker {
   }
 
   getPending(limit = 10) {
-    const pending = [];
+    const pending: DownloadJob[] = [];
     for (const job of this.jobs.values()) {
       if (job.status === "pending" && pending.length < limit) {
         pending.push(job);
@@ -1474,7 +1624,7 @@ export class DownloadTracker {
     return pending;
   }
 
-  setDownloading(id, stagingPath = null) {
+  setDownloading(id: string, stagingPath: string | null = null) {
     const job = this.jobs.get(id);
     if (!job || this._isCancelledAlbumJob(job)) return false;
     const previousStatus = job.status;
@@ -1491,7 +1641,7 @@ export class DownloadTracker {
     return true;
   }
 
-  setPending(id, error = null, options = {}) {
+  setPending(id: string, error: string | Error | null = null, options: PendingOptions = {}) {
     const job = this.jobs.get(id);
     if (!job || this._isCancelledAlbumJob(job)) return false;
     const previousStatus = job.status;
@@ -1521,7 +1671,11 @@ export class DownloadTracker {
     return true;
   }
 
-  deferPendingToBack(id, error = null, options = {}) {
+  deferPendingToBack(
+    id: string,
+    error: string | Error | null = null,
+    options: { keepRetryTier?: boolean } = {},
+  ) {
     const job = this.jobs.get(id);
     if (!job || job.status !== "pending" || this._isCancelledAlbumJob(job)) return false;
     const keepRetryTier = options?.keepRetryTier === true;
@@ -1541,15 +1695,15 @@ export class DownloadTracker {
     return true;
   }
 
-  _isCancelledAlbumJob(job) {
+  _isCancelledAlbumJob(job: DownloadJob) {
     return Boolean(job?.requestGroupId) && isDownloadJobCancelled(job.id);
   }
 
-  _isInterruptedCancellation(job) {
+  _isInterruptedCancellation(job: DownloadJob) {
     return job.status === "cancel_requested" || this._isCancelledAlbumJob(job);
   }
 
-  setCancelRequested(id) {
+  setCancelRequested(id: string) {
     const job = this.jobs.get(id);
     if (!job || job.status !== "downloading") return false;
     job.status = "cancel_requested";
@@ -1558,7 +1712,7 @@ export class DownloadTracker {
     return true;
   }
 
-  setCancelled(id) {
+  setCancelled(id: string) {
     const job = this.jobs.get(id);
     if (!job || !["pending", "downloading", "cancel_requested"].includes(job.status)) {
       return false;
@@ -1578,7 +1732,13 @@ export class DownloadTracker {
     return true;
   }
 
-  setDone(id, finalPath, albumName = null, externalPath = null, { reusedLibraryFile } = {}) {
+  setDone(
+    id: string,
+    finalPath: string,
+    albumName: string | null | undefined = null,
+    externalPath: string | null = null,
+    { reusedLibraryFile }: { reusedLibraryFile?: boolean } = {},
+  ) {
     const job = this.jobs.get(id);
     if (!job || this._isCancelledAlbumJob(job)) return false;
     const previousStatus = job.status;
@@ -1604,7 +1764,7 @@ export class DownloadTracker {
     return true;
   }
 
-  setFailed(id, error) {
+  setFailed(id: string, error: string | Error | null) {
     const job = this.jobs.get(id);
     if (!job || this._isCancelledAlbumJob(job)) return false;
     const previousStatus = job.status;
@@ -1622,7 +1782,7 @@ export class DownloadTracker {
     return true;
   }
 
-  setBlocked(id, error, stagingPath = null) {
+  setBlocked(id: string, error: string | Error | null, stagingPath: string | null = null) {
     const job = this.jobs.get(id);
     if (!job || this._isCancelledAlbumJob(job)) return false;
     const previousStatus = job.status;
@@ -1640,7 +1800,11 @@ export class DownloadTracker {
     return true;
   }
 
-  recordDeniedSource(id, source, key) {
+  recordDeniedSource(
+    id: string,
+    source: string | null | undefined,
+    key: string | null | undefined,
+  ) {
     const job = this.jobs.get(id);
     if (!job) return false;
     const safeSource = String(source || "").trim();
@@ -1658,7 +1822,7 @@ export class DownloadTracker {
     return true;
   }
 
-  getByPlaylistType(playlistType, limit = null) {
+  getByPlaylistType(playlistType: string, limit: number | null = null) {
     const jobs = [];
     const max =
       Number.isFinite(Number(limit)) && Number(limit) > 0 ? Math.floor(Number(limit)) : null;
@@ -1676,7 +1840,7 @@ export class DownloadTracker {
     return sortByCreatedAt(jobs);
   }
 
-  getByPlaylistId(playlistId) {
+  getByPlaylistId(playlistId: string) {
     const safePlaylistId = String(playlistId || "").trim();
     if (!safePlaylistId) return [];
     return sortByCreatedAt(
@@ -1686,7 +1850,7 @@ export class DownloadTracker {
     );
   }
 
-  getByStatus(status) {
+  getByStatus(status: JobStatus) {
     const jobs = [];
     for (const job of this.jobs.values()) {
       if (job.status === status) {
@@ -1696,7 +1860,7 @@ export class DownloadTracker {
     return jobs;
   }
 
-  migratePlaylistTypes(idMap) {
+  migratePlaylistTypes(idMap: Map<string, string>) {
     if (!idMap || idMap.size === 0) return 0;
     let count = 0;
     for (const [fromId, toId] of idMap.entries()) {
@@ -1747,7 +1911,7 @@ export class DownloadTracker {
     return count;
   }
 
-  getActiveByPlaylistType(playlistType) {
+  getActiveByPlaylistType(playlistType: string) {
     return sortByCreatedAt(
       [...this.jobs.values()].filter(
         (job) =>
@@ -1757,13 +1921,13 @@ export class DownloadTracker {
     );
   }
 
-  getByAlbumMbid(matches) {
+  getByAlbumMbid(matches: (albumMbid: string) => boolean) {
     return sortByCreatedAt(
       [...this.jobs.values()].filter((job) => job.albumMbid && matches(job.albumMbid)),
     );
   }
 
-  hasActiveJobsForPlaylist(playlistType) {
+  hasActiveJobsForPlaylist(playlistType: string) {
     for (const job of this.jobs.values()) {
       if (job.playlistType !== playlistType) continue;
       if (job.status === "pending" || job.status === "downloading") {
@@ -1773,9 +1937,9 @@ export class DownloadTracker {
     return false;
   }
 
-  failActiveJobsForPlaylist(playlistType, error = "Retry cycle paused") {
+  failActiveJobsForPlaylist(playlistType: string, error: string = "Retry cycle paused") {
     let count = 0;
-    const failedJobs = [];
+    const failedJobs: DownloadJob[] = [];
     for (const job of this.jobs.values()) {
       if (job.playlistType !== playlistType) continue;
       if (job.status !== "pending" && job.status !== "downloading") continue;
@@ -1838,8 +2002,8 @@ export class DownloadTracker {
     return this._cloneStats(this.globalStats);
   }
 
-  getStatsByPlaylistType(playlistTypes = []) {
-    const statsByType = {};
+  getStatsByPlaylistType(playlistTypes: string[] = []) {
+    const statsByType: Record<string, TrackerStats> = {};
     if (Array.isArray(playlistTypes) && playlistTypes.length > 0) {
       for (const playlistType of playlistTypes) {
         statsByType[playlistType] = this._cloneStats(
@@ -1854,20 +2018,23 @@ export class DownloadTracker {
     return statsByType;
   }
 
-  getPlaylistTypeStats(playlistType) {
+  getPlaylistTypeStats(playlistType: string) {
     return this._cloneStats(
       this.statsByPlaylistType.get(String(playlistType)) || this._emptyStats(),
     );
   }
 
-  _deleteJobsWhere(matches, { cleanPending = false } = {}) {
-    const toDelete = [];
+  _deleteJobsWhere(
+    matches: (job: DownloadJob, id: string) => boolean,
+    { cleanPending = false }: { cleanPending?: boolean } = {},
+  ) {
+    const toDelete: string[] = [];
     for (const [id, job] of this.jobs.entries()) {
       if (matches(job, id)) {
         toDelete.push(id);
       }
     }
-    discardReviewFiles(toDelete.map((id) => this.jobs.get(id)));
+    discardReviewFiles(toDelete.map((id) => this.jobs.get(id)!));
     cancelDownloadJobs(toDelete);
     for (const id of toDelete) {
       this.jobs.delete(id);
@@ -1893,11 +2060,11 @@ export class DownloadTracker {
     );
   }
 
-  clearByPlaylistType(playlistType) {
+  clearByPlaylistType(playlistType: string) {
     return this._deleteJobsWhere((job) => job.playlistType === playlistType);
   }
 
-  clearByPlaylistId(playlistId) {
+  clearByPlaylistId(playlistId: string) {
     const safePlaylistId = String(playlistId || "").trim();
     if (!safePlaylistId) return 0;
     return this._deleteJobsWhere(
@@ -1905,7 +2072,7 @@ export class DownloadTracker {
     );
   }
 
-  clearPendingByPlaylistType(playlistType) {
+  clearPendingByPlaylistType(playlistType: string) {
     return this._deleteJobsWhere(
       (job) => job.playlistType === playlistType && job.status === "pending",
       { cleanPending: true },
@@ -1932,7 +2099,7 @@ export class DownloadTracker {
   }
 }
 
-const liveJobs = (rows) => rows.map(rowToJob);
+const liveJobs = (rows: PlaylistDownloadJobsRow[]) => rows.map(rowToJob);
 const emptyLiveStats = () => ({
   total: 0,
   pending: 0,
@@ -1942,7 +2109,7 @@ const emptyLiveStats = () => ({
   failed: 0,
 });
 
-function readTrackerFromDatabase(name, args) {
+function readTrackerFromDatabase(name: string, args: unknown[]) {
   const [first, second] = args;
   if (name === "getJob") {
     const row = liveJobStmt.get(first ?? null);
@@ -2031,7 +2198,7 @@ for (const name of Object.getOwnPropertyNames(DownloadTracker.prototype)) {
   if (name === "constructor" || name.startsWith("_")) continue;
   const original = DownloadTracker.prototype[name];
   if (typeof original !== "function") continue;
-  DownloadTracker.prototype[name] = function (...args) {
+  DownloadTracker.prototype[name] = function (...args: unknown[]) {
     if (
       process.env.NODE_ENV !== "test" &&
       process.env.AURRAL_TEST_SERVER !== "1" &&
