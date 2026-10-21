@@ -232,6 +232,21 @@ async function buildSystemPayload(settings) {
   };
 }
 
+export type HealthResponse = BootstrapPayload & {
+  library?: { artistCount: number; lastScan: null };
+  discovery?: ReturnType<typeof getDiscoveryStatus> & {
+    provider: string;
+    recommendationsCount: number;
+    globalTopCount: number;
+    artworkLinkCount: number;
+    nativeImageCacheSizeBytes: number;
+    cachedImagesCount: number;
+    cachedImagesSizeBytes: number;
+  };
+  websocket?: { clients: number; channels: Record<string, number> };
+  system?: Awaited<ReturnType<typeof buildSystemPayload>>;
+};
+
 export type BootstrapPayload = {
   status: string;
   timestamp: string;
@@ -401,7 +416,7 @@ router.get("/", noCache, async (req, res) => {
   try {
     const settings = dbOps.getSettings();
     const currentUser = resolveRequestUser(req);
-    const payload = buildBootstrapPayload(req);
+    const payload: HealthResponse = buildBootstrapPayload(req);
     if (currentUser) {
       const discoveryCache = getDiscoveryCache();
       const wsStats = websocketService.getStats();

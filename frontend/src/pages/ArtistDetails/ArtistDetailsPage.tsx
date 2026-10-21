@@ -225,7 +225,7 @@ function ArtistDetailsPage() {
 
   const libraryLookup = useQuery({
     queryKey: queryKeys.libraryLookupDetails(mbid),
-    queryFn: ({ signal }) => lookupArtistInLibrary(mbid, { signal }),
+    queryFn: ({ signal }) => lookupArtistInLibrary(mbid!, { signal }),
     enabled: false,
   });
   const libraryArtistRecordId = libraryLookup.data?.libraryArtistId || null;

@@ -64,7 +64,9 @@ import type { PlaylistArtworkOkResponse } from "../../../../../backend/routes/pl
 
 type SignalOptions = { signal?: AbortSignal };
 
-type FlowPayload = ReturnType<typeof buildFlowFromForm>;
+type FlowFormPayload = ReturnType<typeof buildFlowFromForm>;
+type FlowCreatePayload = FlowFormPayload | { templateId: string; name?: string };
+type FlowUpdatePayload = Partial<FlowFormPayload> & { showInLibrary?: boolean };
 
 type PlaylistTrackPayload = Partial<NonNullable<ReturnType<typeof normalizePlaylistTrackEntry>>>;
 
@@ -242,7 +244,7 @@ export const downloadManualMissingSearchResult = (
 export const reSearchAllMissingTracks = (): Promise<ReSearchAllMissingTracksResponse> =>
   postData("/playlists/research-missing");
 
-export const createFlow = (payload: FlowPayload): Promise<CreateFlowResponse> =>
+export const createFlow = (payload: FlowCreatePayload): Promise<CreateFlowResponse> =>
   postData("/playlists/flows", payload);
 
 export const getFlowTemplates = (options: SignalOptions = {}): Promise<GetFlowTemplatesResponse> =>
@@ -250,7 +252,7 @@ export const getFlowTemplates = (options: SignalOptions = {}): Promise<GetFlowTe
 
 export const updateFlow = (
   flowId: string,
-  payload: Partial<FlowPayload>,
+  payload: FlowUpdatePayload,
 ): Promise<UpdateFlowResponse> => putData(`/playlists/flows/${flowId}`, payload);
 
 export const deleteFlow = (flowId: string): Promise<DeleteFlowResponse> =>

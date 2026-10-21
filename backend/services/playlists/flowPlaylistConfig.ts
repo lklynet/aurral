@@ -142,9 +142,9 @@ const normalizeStringArray = (value) => {
   return out;
 };
 
-const normalizeScheduleDays = (value) => {
+const normalizeScheduleDays = (value: unknown): number[] => {
   if (!Array.isArray(value)) return [];
-  const out = new Set();
+  const out = new Set<number>();
   for (const entry of value) {
     const day = Number(entry);
     if (!Number.isFinite(day)) continue;
@@ -195,7 +195,7 @@ const computeNextRunAt = (
   return buildScheduledTime(fromTimeMs + 7 * DAY_MS, scheduleTime);
 };
 
-const normalizeMix = (mix) => {
+const normalizeMix = (mix): typeof DEFAULT_MIX => {
   const raw = {
     discover: Number(mix?.discover ?? 0),
     mix: Number(mix?.mix ?? 0),
@@ -206,7 +206,7 @@ const normalizeMix = (mix) => {
   if (!Number.isFinite(sum) || sum <= 0) {
     return { ...DEFAULT_MIX };
   }
-  const weights = [
+  const weights: { key: keyof typeof DEFAULT_MIX; value: number }[] = [
     { key: "discover", value: raw.discover },
     { key: "mix", value: raw.mix },
     { key: "trending", value: raw.trending },
@@ -227,11 +227,11 @@ const normalizeMix = (mix) => {
     ordered[i].count += 1;
     remaining -= 1;
   }
-  const out = {};
+  const out: Partial<typeof DEFAULT_MIX> = {};
   for (const item of ordered) {
     out[item.key] = item.count;
   }
-  return out;
+  return out as typeof DEFAULT_MIX;
 };
 
 const resolvePresetDescription = (discoverPresetId) => {

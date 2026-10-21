@@ -42,6 +42,17 @@ function toBool(value) {
   return value === true || value === "1" || value === 1;
 }
 
+export type PlexHomeUser = {
+  id: string | number;
+  uuid?: string | null;
+  title?: string;
+  username: string | null;
+  email: string | null;
+  restricted: boolean;
+  admin: boolean;
+  guest: boolean;
+};
+
 export class PlexClient {
   constructor(url, token, clientId) {
     this.url = url ? url.replace(/\/+$/, "") : null;
@@ -147,7 +158,7 @@ export class PlexClient {
     return { servers, total: list.length };
   }
 
-  static async getHomeUsers(adminToken, adminClientId) {
+  static async getHomeUsers(adminToken, adminClientId): Promise<PlexHomeUser[]> {
     const { data } = await axios.get(`${PLEX_TV}/api/v2/home/users`, {
       headers: PlexClient.plexHeaders(adminClientId, { token: adminToken }),
     });

@@ -4,6 +4,7 @@ import {
   moveStaticPlaylistTracks,
   removeStaticPlaylistTracks,
 } from "../../utils/api/endpoints/playlists.ts";
+import type { BulkPlaylistOperationResponse } from "../../../../backend/routes/playlists/handlers/staticPlaylists.ts";
 import type { PlaylistStatus } from "./playlistStats.ts";
 import type { PlaylistTrack } from "./trackAvailability.ts";
 
@@ -27,11 +28,7 @@ interface StaticPlaylistOperationResult {
   outcomes?: { status?: string; message?: string | null }[];
 }
 
-interface SubmitResponse {
-  queued?: boolean;
-  operationId?: string;
-  rejected?: { message?: string }[];
-}
+type SubmitResponse = BulkPlaylistOperationResponse;
 
 type MoveTarget = { mode: "new"; name?: string | null } | { mode?: "existing"; playlistId: string };
 
@@ -124,7 +121,7 @@ export function createPlaylistTrackChanges(toast) {
     );
   };
 
-  const follow = async (change: TrackChange, operationId: string | undefined) => {
+  const follow = async (change: TrackChange, operationId: string) => {
     let errors = 0;
     for (let attempt = 0; ; attempt += 1) {
       if (attempt > 0) await wait(Math.min(1000 * 2 ** (attempt - 1), MAX_POLL_DELAY_MS));

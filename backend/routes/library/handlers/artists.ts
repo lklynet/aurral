@@ -349,7 +349,9 @@ export function registerArtists(router) {
   );
 }
 
-type LibraryArtistRecord = ReturnType<typeof libraryManager.mapLidarrArtist>;
+type LibraryArtistRecord =
+  | ReturnType<typeof libraryManager.mapLidarrArtist>
+  | ReturnType<typeof getLibraryArtistProjection>[number];
 
 export type FetchLibraryArtistResponse = LibraryArtistRecord & {
   foreignArtistId: string;

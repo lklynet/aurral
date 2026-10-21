@@ -172,7 +172,12 @@ const libraryPageParams = (options: LibraryPageOptions = {}) =>
     }).filter(([, value]) => value !== undefined && value !== null && value !== ""),
   );
 
-const withAuthenticatedArtwork = <T extends ArtworkEntity>(entity: T): T =>
+type WithAuthenticatedArtwork<T extends ArtworkEntity> = Omit<T, keyof ArtworkEntity> &
+  Partial<Record<keyof ArtworkEntity, string>>;
+
+const withAuthenticatedArtwork = <T extends ArtworkEntity>(
+  entity: T,
+): WithAuthenticatedArtwork<T> =>
   entity && typeof entity === "object"
     ? {
         ...entity,

@@ -140,11 +140,9 @@ export type SetPlaylistRecordHistoryResponse = {
 };
 
 export type BulkPlaylistOperationResponse = {
-  queued: boolean;
-  operationId?: string;
   acceptedJobIds: string[];
   rejected: { jobId: string; message: string }[];
-};
+} & ({ queued: true; operationId: string } | { queued: false; operationId?: undefined });
 
 export function registerStaticPlaylists(router) {
   for (const [path, action] of [

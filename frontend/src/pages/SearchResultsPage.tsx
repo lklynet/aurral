@@ -377,7 +377,7 @@ function SearchResultsPage() {
     const ids = isUnifiedSearch
       ? (unifiedResults?.catalog?.artists || []).map((artist) => artist?.id)
       : results.map((artist) => getArtistRecordId(artist));
-    const uniqueIds = [...new Set(ids.filter(Boolean))];
+    const uniqueIds = [...new Set<string>(ids.filter(Boolean))];
     const batches = [];
     for (let index = 0; index < uniqueIds.length; index += LIBRARY_LOOKUP_BATCH_SIZE) {
       batches.push(uniqueIds.slice(index, index + LIBRARY_LOOKUP_BATCH_SIZE));

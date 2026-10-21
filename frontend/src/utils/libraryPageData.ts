@@ -59,7 +59,7 @@ export const favoriteLibraryFromResponse = (favorites) => {
         files: [
           {
             available: true,
-            previewUrl: getPlaylistTrackStreamUrl(jobId),
+            previewUrl: getPlaylistTrackStreamUrl(jobId!),
             format: track.suffix || null,
             durationMs,
           },

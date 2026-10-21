@@ -9,7 +9,7 @@ import {
 import { plexConnectionStore } from "../../services/plex/plexConnectionStore.ts";
 import { playlistManager } from "../../services/playlists/playlistManager.ts";
 import { logger } from "../../services/logger.ts";
-import type { PlexClient } from "../../services/plex.ts";
+import type { PlexClient, PlexHomeUser } from "../../services/plex.ts";
 
 function getGlobalPlexConfig() {
   return dbOps.getSettings()?.integrations?.plex || {};
@@ -45,17 +45,7 @@ export type PlexCompleteResponse =
   | (PlexConnectedResponse & { pending?: undefined });
 
 export type PlexHomeUsersResponse = {
-  users: {
-    id: number | string;
-    uuid: string | null;
-    title: string;
-    username: string | null;
-    email: string | null;
-    restricted: boolean;
-    admin: boolean;
-    guest: boolean;
-    alreadyLinked: boolean;
-  }[];
+  users: (PlexHomeUser & { alreadyLinked: boolean })[];
 };
 
 export function isPlexLoginEnabled() {

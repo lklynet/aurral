@@ -5,7 +5,11 @@ import type { listBrowseDirectory } from "../../../../../backend/services/downlo
 import type { resolveListenHistorySettings } from "../../../../../backend/services/listeningHistory.ts";
 import type { recordPlayEvent as recordPlayEventService } from "../../../../../backend/services/playEventService.ts";
 import type { LidarrNamedProfile } from "../../../../../backend/services/lidarrSettingsService.ts";
-import type { BootstrapPayload, HealthLiveResponse } from "../../../../../backend/routes/health.ts";
+import type {
+  BootstrapPayload,
+  HealthLiveResponse,
+  HealthResponse,
+} from "../../../../../backend/routes/health.ts";
 import type {
   ApiKeyResponse,
   AuthUrlResponse,
@@ -72,7 +76,7 @@ type LidarrPreferencesUpdate = {
   qualityProfileId: number | null;
 };
 
-export const fetchHealth = ({ signal }: SignalOptions = {}): Promise<BootstrapPayload> =>
+export const fetchHealth = ({ signal }: SignalOptions = {}): Promise<HealthResponse> =>
   getData("/health", { signal });
 
 export const checkHealth = ({ force = false } = {}) =>

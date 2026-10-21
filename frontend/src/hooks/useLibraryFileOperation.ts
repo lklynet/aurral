@@ -23,7 +23,7 @@ export function useLibraryFiles({ enabled = true } = {}) {
 export function useLibraryFileOperation(operationId: number | null | undefined) {
   return useQuery({
     queryKey: [...libraryFilesQueryKey, "operation", operationId],
-    queryFn: () => getLibraryFileOperation(operationId).then((result) => result.operation),
+    queryFn: () => getLibraryFileOperation(operationId!).then((result) => result.operation),
     enabled: operationId != null,
     staleTime: 0,
     refetchInterval: (query) => (POLLING_STATUSES.has(query.state.data?.status) ? 1000 : false),

@@ -386,7 +386,15 @@ export type GetLibraryAlbumsResponse = (LibraryAlbumRecord & {
   statistics: NonNullable<LibraryAlbumRecord["statistics"]>;
 })[];
 
-export type AddLibraryAlbumResponse = ReturnType<typeof libraryManager.mapLidarrAlbum> & {
+type AurralAlbumRecord = Exclude<
+  Awaited<ReturnType<typeof libraryManager._finishAurralAlbum>>,
+  { error: string }
+>;
+
+export type AddLibraryAlbumResponse = (
+  | ReturnType<typeof libraryManager.mapLidarrAlbum>
+  | AurralAlbumRecord
+) & {
   queued: false;
 };
 

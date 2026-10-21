@@ -265,7 +265,7 @@ export const normalizeFlowEntryList = (value: unknown) => {
   return out;
 };
 
-export const normalizeScheduleDays = (value: unknown) => {
+export const normalizeScheduleDays = (value: unknown): number[] => {
   if (!Array.isArray(value)) return [];
   const unique = new Set<number>();
   for (const entry of value) {
@@ -319,7 +319,7 @@ const parseOptionalYearInput = (value: unknown, label: string) => {
   return Math.trunc(parsed);
 };
 
-export const normalizeMixPercent = (mix: Partial<FlowMix> | null | undefined) => {
+export const normalizeMixPercent = (mix: Partial<FlowMix> | null | undefined): FlowMix => {
   const raw = {
     discover: Number(mix?.discover ?? 0),
     mix: Number(mix?.mix ?? 0),
