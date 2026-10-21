@@ -23,6 +23,10 @@ import {
 } from "./playlistPageUtils";
 import { usePlaylistStatus } from "./usePlaylistStatus";
 import { flowPath } from "../../navigation/playlistPaths";
+import type { GetFlowTemplatesResponse } from "../../../../backend/routes/playlists/handlers/flows.ts";
+import type { Flow } from "./playlistStats.ts";
+
+type FlowTemplate = GetFlowTemplatesResponse["templates"][number];
 
 export default function FlowsPage() {
   useDocumentTitle("Flows");
@@ -41,7 +45,7 @@ export default function FlowsPage() {
   });
   const templates = (templatesQuery.data?.templates || []).filter((template) => template.available);
 
-  const handleCreate = async (template = null) => {
+  const handleCreate = async (template: FlowTemplate | null = null) => {
     if (creating) return;
     setCreating(true);
     try {
@@ -66,7 +70,7 @@ export default function FlowsPage() {
     }
   };
 
-  const renderNewFlowMenu = (triggerClassName) => (
+  const renderNewFlowMenu = (triggerClassName: string) => (
     <LibraryItemMenu
       label="New flow"
       contextMenu={false}
@@ -94,7 +98,7 @@ export default function FlowsPage() {
     />
   );
 
-  const describeFlow = (flow) => {
+  const describeFlow = (flow: Flow) => {
     const stats = getPlaylistStats(flow.id);
     const parts = [formatFlowTrackLabel(getFlowDisplayTrackCount(flow, stats), stats)];
     if (flow.ownerUsername && (user?.role === "admin" || flow.ownerUsername !== user?.username)) {

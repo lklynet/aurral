@@ -8,7 +8,6 @@ import {
 } from "../core.ts";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
 import type { CustomArtworkResult } from "./library.ts";
-import type { PlaylistDownloadJobsRow } from "../../../../../backend/db/rows.ts";
 import type {
   createManualMissingSearch,
   getManualDownloadSources,
@@ -64,6 +63,7 @@ import type {
 import type { DeletePlaylistTrackArtworkResponse } from "../../../../../backend/routes/playlists/handlers/trackArtwork.ts";
 import type { PlaylistArtworkOkResponse } from "../../../../../backend/routes/playlists/handlers/artworkManagement.ts";
 import type { getPlaylistStatusSnapshot } from "../../../../../backend/services/playlists/playlistStatusSnapshot.ts";
+import type { PlaylistTrackStatus } from "../../../pages/playlists/trackAvailability.ts";
 
 type SignalOptions = { signal?: AbortSignal };
 
@@ -183,10 +183,28 @@ export const getPlaylistStatus = ({
 };
 
 export interface PlaylistJob {
-  id?: PlaylistDownloadJobsRow["id"];
-  status?: string;
-  albumName?: string | null;
-  reason?: string | null;
+  id: string;
+  artistName: string;
+  trackName: string;
+  albumName: string | null;
+  reason: string | null;
+  artistMbid: string | null;
+  albumMbid: string | null;
+  releaseMbid: string | null;
+  trackMbid: string | null;
+  releaseYear: string | null;
+  durationMs: number | null;
+  trackNumber: number | null;
+  discNumber: number | null;
+  albumTrackCount: number | null;
+  albumTrackTitles: string[];
+  artistAliases: string[];
+  status: PlaylistTrackStatus;
+  error: string | null;
+  upgradeForJobId: string | null;
+  qualityOwned?: boolean;
+  qualityState?: string | null;
+  libraryOwned?: boolean;
   artworkUrl?: string | null;
   customArtworkUrl?: string | null;
 }

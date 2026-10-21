@@ -37,9 +37,9 @@ type TrackSelection = {
 
 type TrackLinkField = {
   label?: string | null;
-  to?: To;
+  to?: To | null;
   state?: unknown;
-  onOpen?: () => void;
+  onOpen?: (() => void) | null;
 };
 
 type TrackCoverField = TrackLinkField & { src?: string | null };
@@ -59,7 +59,7 @@ export type TrackListRow = {
   loading?: boolean;
   selected?: boolean;
   onToggleSelected?: ChangeEventHandler<HTMLInputElement>;
-  onPlay?: () => void;
+  onPlay?: (() => void) | null;
   playDisabled?: boolean;
   cover?: TrackCoverField | null;
   artist?: TrackLinkField | null;

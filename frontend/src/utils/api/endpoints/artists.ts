@@ -193,7 +193,12 @@ export const getArtistCover = async (
 };
 
 export const getReleaseGroupCoversBatch = async (
-  items: { mbid?: string; id?: string; artistName?: string; albumTitle?: string }[] = [],
+  items: {
+    mbid?: string | null;
+    id?: string;
+    artistName?: string | null;
+    albumTitle?: string | null;
+  }[] = [],
 ): Promise<Record<string, ReleaseGroupCoverEntry>> => {
   const normalizedItems = (Array.isArray(items) ? items : [])
     .map((item) => ({

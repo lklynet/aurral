@@ -30,6 +30,7 @@ export interface Flow {
   lastRunAt: number | null;
   ownerUserId: number | null;
   ownerUsername: string | null;
+  showInLibrary?: boolean;
 }
 
 export type PlaylistStats = PlaylistStatusSnapshot["stats"];

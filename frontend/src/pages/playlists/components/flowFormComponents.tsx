@@ -9,6 +9,28 @@ import {
   SCHEDULE_HOUR_OPTIONS,
 } from "./MixSlider.tsx";
 import Tooltip from "../../../components/Tooltip";
+import type { FlowDraft, normalizeMixPercent } from "../flowPageUtils.ts";
+
+type FlowDraftUpdater = (updater: (prev: FlowDraft) => FlowDraft) => void;
+
+interface FlowScheduleFieldsProps {
+  draft: FlowDraft;
+  inputClassName?: string;
+  onDraftChange: FlowDraftUpdater;
+  onClearError?: () => void;
+  sizeLabel?: string;
+}
+
+interface PresetRecipeFieldsProps extends FlowScheduleFieldsProps {
+  errorMessage?: string | null;
+  title: string;
+  description: string;
+}
+
+interface FlowFormFieldsProps extends FlowScheduleFieldsProps {
+  errorMessage?: string | null;
+  normalizeMixPercent: typeof normalizeMixPercent;
+}
 
 export function FlowScheduleFields({
   draft,
@@ -16,8 +38,8 @@ export function FlowScheduleFields({
   onDraftChange,
   onClearError,
   sizeLabel = "Tracks",
-}) {
-  const updateDraft = (updater) => {
+}: FlowScheduleFieldsProps) {
+  const updateDraft = (updater: (prev: FlowDraft) => FlowDraft) => {
     onDraftChange((prev) => updater(prev));
     if (onClearError) onClearError();
   };
@@ -133,7 +155,7 @@ export function PresetRecipeFields({
   title,
   description,
   sizeLabel = "Tracks",
-}) {
+}: PresetRecipeFieldsProps) {
   return (
     <div className="flow-page__form">
       <div className="flow-page__preset-recipe">
@@ -152,7 +174,9 @@ export function PresetRecipeFields({
   );
 }
 
-export function ReleaseRadarRecipeFields(props) {
+export function ReleaseRadarRecipeFields(
+  props: Omit<PresetRecipeFieldsProps, "title" | "description" | "sizeLabel">,
+) {
   return (
     <PresetRecipeFields
       {...props}
@@ -170,8 +194,8 @@ export function FlowFormFields({
   onDraftChange,
   onClearError,
   normalizeMixPercent,
-}) {
-  const updateDraft = (updater) => {
+}: FlowFormFieldsProps) {
+  const updateDraft = (updater: (prev: FlowDraft) => FlowDraft) => {
     onDraftChange((prev) => updater(prev));
     if (onClearError) onClearError();
   };
@@ -204,7 +228,7 @@ export function FlowFormFields({
       ordered[i].count += 1;
       leftover -= 1;
     }
-    const out = {};
+    const out: Record<string, number> = {};
     for (const item of ordered) out[item.key] = item.count;
     return out;
   })();

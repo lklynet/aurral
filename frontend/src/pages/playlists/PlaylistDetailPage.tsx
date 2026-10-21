@@ -46,9 +46,17 @@ import {
 import { countAvailableTracks } from "./trackAvailability.ts";
 import { usePlaylistStatus } from "./usePlaylistStatus";
 import { useHiddenPlaylistTracks } from "./usePlaylistBulkActions.ts";
+import type { PlaylistStats, PlaylistStatus, StaticPlaylist } from "./playlistStats.ts";
 
-function updateCachedPlaylist(playlistId, changes) {
-  queryClient.setQueryData(queryKeys.playlistStatus, (current) =>
+interface PlaylistDetailProps {
+  playlist: StaticPlaylist;
+  stats: PlaylistStats;
+  staticPlaylists: StaticPlaylist[];
+  fetchStatus: () => Promise<unknown>;
+}
+
+function updateCachedPlaylist(playlistId: string, changes: Partial<StaticPlaylist>) {
+  queryClient.setQueryData<PlaylistStatus>(queryKeys.playlistStatus, (current) =>
     current
       ? {
           ...current,
@@ -111,7 +119,7 @@ export default function PlaylistDetailPage() {
   );
 }
 
-function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }) {
+function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: PlaylistDetailProps) {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { showSuccess, showError } = useToast();
@@ -147,7 +155,7 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }) {
 
   const importSource = playlist.importSource || null;
   const isSyncable = SYNCABLE_IMPORT_PROVIDERS.has(importSource?.provider);
-  const providerLabel = isSyncable ? getImportedProviderLabel(importSource.provider) : "";
+  const providerLabel = isSyncable ? getImportedProviderLabel(importSource!.provider) : "";
   const totalTracks = Math.max(
     0,
     getStaticPlaylistTrackCount(playlist, stats, savedTracks.length) -
@@ -168,7 +176,7 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }) {
     );
   }
 
-  const handleRename = async (name) => {
+  const handleRename = async (name: string) => {
     setRenaming(true);
     setRenameError("");
     try {
@@ -234,7 +242,11 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }) {
     }
   };
 
-  const saveSetting = async (action, successMessage, fallbackMessage) => {
+  const saveSetting = async (
+    action: () => Promise<void>,
+    successMessage: string,
+    fallbackMessage: string,
+  ) => {
     try {
       await action();
       showSuccess(successMessage);
@@ -243,7 +255,7 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }) {
     }
   };
 
-  const updateSyncInterval = (hours) =>
+  const updateSyncInterval = (hours: number) =>
     saveSetting(
       async () => {
         await updateStaticPlaylist(playlist.id, {
@@ -255,7 +267,7 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }) {
       "Failed to update sync schedule",
     );
 
-  const updateKeepRemoved = (keepRemovedTracks) =>
+  const updateKeepRemoved = (keepRemovedTracks: boolean) =>
     saveSetting(
       async () => {
         await updateStaticPlaylist(playlist.id, { importSource: { keepRemovedTracks } });
@@ -267,7 +279,7 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }) {
       "Failed to update removed-track setting",
     );
 
-  const updateRecordHistory = (enabled) =>
+  const updateRecordHistory = (enabled: boolean) =>
     saveSetting(
       async () => {
         const result = await setPlaylistRecordHistory(playlist.id, enabled);
@@ -278,7 +290,7 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }) {
       "Failed to update scrobbling setting",
     );
 
-  const updateTrackAvailability = (enabled) =>
+  const updateTrackAvailability = (enabled: boolean) =>
     saveSetting(
       async () => {
         const result = await setPlaylistTrackAvailability(playlist.id, enabled);

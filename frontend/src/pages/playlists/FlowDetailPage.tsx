@@ -58,6 +58,8 @@ import {
   usePlaylistTracks,
 } from "./playlistPageUtils";
 import { usePlaylistStatus } from "./usePlaylistStatus";
+import type { Flow } from "./playlistStats.ts";
+import type { FlowDraft } from "./flowPageUtils.ts";
 
 const FlowFormFields = lazy(() =>
   import("./components/flowFormComponents.tsx").then((m) => ({ default: m.FlowFormFields })),
@@ -121,7 +123,7 @@ export default function FlowDetailPage() {
   return <FlowDetail key={flow.id} flow={flow} />;
 }
 
-function FlowDetail({ flow }) {
+function FlowDetail({ flow }: { flow: Flow }) {
   const lidarrConnected = useLibraryDestination().primary === "lidarr";
   const navigate = useNavigate();
   const location = useLocation();
@@ -132,7 +134,7 @@ function FlowDetail({ flow }) {
   const { artworkUrlFor } = usePlaylistArtwork();
   const { tracks, loading, error, refresh } = usePlaylistTracks(flow.id);
   const [tab, setTab] = useState(location.state?.tab === "recipe" ? "recipe" : "tracks");
-  const [draft, setDraft] = useState(() => flowToForm(flow));
+  const [draft, setDraft] = useState<FlowDraft>(() => flowToForm(flow));
   const [recipeError, setRecipeError] = useState("");
   const [savingRecipe, setSavingRecipe] = useState(false);
   const playback = usePlaylistTrackPlayback({
@@ -204,7 +206,7 @@ function FlowDetail({ flow }) {
     }
   };
 
-  const handleRename = async (name) => {
+  const handleRename = async (name: string) => {
     setRenaming(true);
     setRenameError("");
     try {
@@ -278,7 +280,10 @@ function FlowDetail({ flow }) {
     }
   };
 
-  const updateSetting = async (changes, successMessage) => {
+  const updateSetting = async (
+    changes: { recordHistory?: boolean; showInLibrary?: boolean },
+    successMessage: string,
+  ) => {
     try {
       await updateFlow(flow.id, changes);
       setDraft((current) => ({ ...current, ...changes }));
@@ -293,7 +298,8 @@ function FlowDetail({ flow }) {
     draft,
     inputClassName: "flow-page__field-control",
     errorMessage: recipeError,
-    onDraftChange: (updater) => setDraft((current) => updater(current)),
+    onDraftChange: (updater: (prev: FlowDraft) => FlowDraft) =>
+      setDraft((current) => updater(current)),
     onClearError: () => setRecipeError(""),
   };
 

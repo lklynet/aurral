@@ -4,6 +4,7 @@ import { Circle, CircleDot, Square, SquareCheck } from "lucide-react";
 import { getPlaylistArtworkUrl } from "../../utils/api/endpoints/playlists.ts";
 import { queryClient, queryKeys } from "../../queryClient.ts";
 import { playlistJobsQueryOptions } from "../../queryOptions.ts";
+import type { PlaylistJob } from "../../utils/api/endpoints/playlists.ts";
 import {
   buildStaticTracklistPayload,
   downloadTracklistFile,
@@ -11,14 +12,22 @@ import {
   slugifyFilePart,
 } from "./flowPageUtils";
 import { getPlaylistRunActivity } from "./playlistRunActivity";
+import type { ApiError } from "../../utils/api/core.ts";
 import lastfmLogo from "../../../images/logos/last-fm-color.svg";
 import listenbrainzLogo from "../../../images/logos/listenbrainz-color.svg";
 import spotifyLogo from "../../../images/logos/spotify-color.svg";
 import youtubeMusicLogo from "../../../images/logos/youtube-music-color.svg";
 import deezerLogo from "../../../images/logos/deezer-color.svg";
-import { formatTrackCountLabel, isEditorialFlow } from "./playlistStats";
+import {
+  formatTrackCountLabel,
+  isEditorialFlow,
+  type Flow,
+  type PlaylistStats,
+  type PlaylistStatus,
+  type StaticPlaylist,
+} from "./playlistStats";
 
-export const SYNCABLE_IMPORT_PROVIDERS = new Set([
+export const SYNCABLE_IMPORT_PROVIDERS = new Set<string | null | undefined>([
   "spotify-playlist",
   "listenbrainz-playlist",
   "listenbrainz-createdfor",
@@ -35,7 +44,7 @@ export const SYNC_INTERVAL_OPTIONS = [
   { value: 72, label: "Every 3 days" },
 ];
 
-export function getImportedProviderLogo(provider) {
+export function getImportedProviderLogo(provider: string | null | undefined) {
   if (String(provider || "").startsWith("listenbrainz-")) return listenbrainzLogo;
   if (provider === "lastfm-station") return lastfmLogo;
   if (provider === "youtube-music-playlist") return youtubeMusicLogo;
@@ -44,7 +53,7 @@ export function getImportedProviderLogo(provider) {
   return null;
 }
 
-export function getImportedProviderLabel(provider) {
+export function getImportedProviderLabel(provider: string | null | undefined) {
   if (String(provider || "").startsWith("listenbrainz-")) return "ListenBrainz";
   if (provider === "lastfm-station") return "Last.fm";
   if (provider === "youtube-music-playlist") return "YouTube Music";
@@ -64,12 +73,12 @@ export const choiceMenuItem = <T extends { checked: boolean }>({ checked, ...ite
   icon: checked ? CircleDot : Circle,
 });
 
-export const formatTrackTotal = (count) => `${count} ${count === 1 ? "track" : "tracks"}`;
+export const formatTrackTotal = (count: number) => `${count} ${count === 1 ? "track" : "tracks"}`;
 
-export const formatFlowTrackLabel = (count, stats) =>
+export const formatFlowTrackLabel = (count: number, stats: PlaylistStats | null | undefined) =>
   Number(stats?.total || 0) > 0 ? formatTrackCountLabel(count, stats) : formatTrackTotal(count);
 
-export function describeFlowSchedule(flow, now) {
+export function describeFlowSchedule(flow: Partial<Flow> | null | undefined, now: number) {
   if (isEditorialFlow(flow)) return "No longer updates";
   if (flow?.enabled !== true) return "Off";
   const next = formatNextRun(flow.nextRunAt, now);
@@ -77,7 +86,17 @@ export function describeFlowSchedule(flow, now) {
   return next === "soon" ? "Next update soon" : `Next update in ${next}`;
 }
 
-export const getFlowActivityMessage = ({ flow, status, stats, rerunning = false }) =>
+export const getFlowActivityMessage = ({
+  flow,
+  status,
+  stats,
+  rerunning = false,
+}: {
+  flow: Partial<Flow> | null | undefined;
+  status?: PlaylistStatus | null;
+  stats?: Partial<PlaylistStats> | null;
+  rerunning?: boolean;
+}) =>
   getPlaylistRunActivity({
     playlistId: flow?.id,
     kind: "flow",
@@ -87,7 +106,12 @@ export const getFlowActivityMessage = ({ flow, status, stats, rerunning = false 
     rerunning,
   })?.message || null;
 
-export function usePlaylistTracks(playlistId, { pollAvailability = false } = {}) {
+export type PlaylistTrackRow = ReturnType<typeof usePlaylistTracks>["tracks"][number];
+
+export function usePlaylistTracks(
+  playlistId: string | null | undefined,
+  { pollAvailability = false }: { pollAvailability?: boolean } = {},
+) {
   const query = useQuery({
     ...playlistJobsQueryOptions(playlistId),
     refetchInterval: (currentQuery) => {
@@ -107,12 +131,16 @@ export function usePlaylistTracks(playlistId, { pollAvailability = false } = {})
   return {
     tracks,
     loading: query.isPending,
-    error: query.error?.response?.data?.message || query.error?.message || "",
+    error: (query.error as ApiError | null)?.response?.data?.message || query.error?.message || "",
     refresh,
   };
 }
 
-export function exportPlaylistTracklist(entry, jobs, { sourceFlowId = null } = {}) {
+export function exportPlaylistTracklist(
+  entry: Pick<StaticPlaylist, "name">,
+  jobs: PlaylistJob[],
+  { sourceFlowId = null }: { sourceFlowId?: string | null } = {},
+) {
   const tracks = (Array.isArray(jobs) ? jobs : [])
     .filter((job) => job?.status !== "failed")
     .map((job) => ({
@@ -145,7 +173,7 @@ export function exportPlaylistTracklist(entry, jobs, { sourceFlowId = null } = {
 }
 
 export function usePlaylistArtwork() {
-  const { data: revisions } = useQuery({
+  const { data: revisions } = useQuery<Record<string, number | undefined>>({
     queryKey: queryKeys.playlistArtworkRevisions,
     queryFn: () => ({}),
     initialData: {},
@@ -153,14 +181,17 @@ export function usePlaylistArtwork() {
     gcTime: Infinity,
   });
   const artworkUrlFor = useCallback(
-    (playlistId) => getPlaylistArtworkUrl(playlistId, revisions[playlistId]),
+    (playlistId: string) => getPlaylistArtworkUrl(playlistId, revisions[playlistId]),
     [revisions],
   );
-  const bumpArtwork = useCallback((playlistId) => {
-    queryClient.setQueryData(queryKeys.playlistArtworkRevisions, (current = {}) => ({
-      ...current,
-      [playlistId]: (current[playlistId] || 0) + 1,
-    }));
+  const bumpArtwork = useCallback((playlistId: string) => {
+    queryClient.setQueryData(
+      queryKeys.playlistArtworkRevisions,
+      (current: Record<string, number | undefined> = {}) => ({
+        ...current,
+        [playlistId]: (current[playlistId] || 0) + 1,
+      }),
+    );
   }, []);
   return { artworkUrlFor, bumpArtwork };
 }
