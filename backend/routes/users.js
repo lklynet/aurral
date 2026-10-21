@@ -174,12 +174,22 @@ router.get("/", requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
+const isValidPermissions = (permissions) =>
+  typeof permissions === "object" &&
+  !Array.isArray(permissions) &&
+  Object.values(permissions).every((value) => typeof value === "boolean");
+
+const INVALID_PERMISSIONS_ERROR = "Permissions must be true or false";
+
 router.post("/", requireAuth, requireAdmin, async (req, res) => {
   try {
     const { username, password, role = "user", permissions } = req.body;
     const un = String(username || "").trim();
     if (!un || !password) {
       return res.status(400).json({ error: "Username and password required" });
+    }
+    if (permissions && !isValidPermissions(permissions)) {
+      return res.status(400).json({ error: INVALID_PERMISSIONS_ERROR });
     }
     if (userOps.getUserByUsername(un)) {
       return res.status(409).json({ error: "Username already exists" });
@@ -224,6 +234,9 @@ router.patch("/:id", requireAuth, async (req, res) => {
     const VALID_STATUSES = ["active", "suspended", "disabled"];
     if (status !== undefined && !VALID_STATUSES.includes(status)) {
       return res.status(400).json({ error: "Invalid status" });
+    }
+    if (permissions != null && !isValidPermissions(permissions)) {
+      return res.status(400).json({ error: INVALID_PERMISSIONS_ERROR });
     }
     const existingProfile = getListenHistoryProfile(existing);
     let listenHistoryUpdates = null;

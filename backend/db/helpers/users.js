@@ -41,6 +41,14 @@ const DEFAULT_PERMISSIONS = {
   deleteTrack: false,
 };
 
+function parseStoredPermissions(raw) {
+  const stored = dbHelpers.parseJSON(raw);
+  if (!stored || typeof stored !== "object" || Array.isArray(stored)) {
+    return { ...DEFAULT_PERMISSIONS };
+  }
+  return Object.fromEntries(Object.entries(stored).map(([key, value]) => [key, value === true]));
+}
+
 function encryptSubsonicPassword(password) {
   const value = password == null ? "" : String(password);
   return value ? encryptWithKey(value, getSettingsEncryptionKey()) : null;
@@ -65,9 +73,7 @@ export const userOps = {
       username: row.username,
       passwordHash: row.password_hash,
       role: row.role || "user",
-      permissions: dbHelpers.parseJSON(row.permissions) || {
-        ...DEFAULT_PERMISSIONS,
-      },
+      permissions: parseStoredPermissions(row.permissions),
       lidarrRootFolderPath: row.lidarr_root_folder_path || null,
       lidarrQualityProfileId:
         row.lidarr_quality_profile_id != null ? Number(row.lidarr_quality_profile_id) : null,
@@ -89,9 +95,7 @@ export const userOps = {
       username: row.username,
       passwordHash: row.password_hash,
       role: row.role || "user",
-      permissions: dbHelpers.parseJSON(row.permissions) || {
-        ...DEFAULT_PERMISSIONS,
-      },
+      permissions: parseStoredPermissions(row.permissions),
       lidarrRootFolderPath: row.lidarr_root_folder_path || null,
       lidarrQualityProfileId:
         row.lidarr_quality_profile_id != null ? Number(row.lidarr_quality_profile_id) : null,
@@ -111,9 +115,7 @@ export const userOps = {
       id: row.id,
       username: row.username,
       role: row.role || "user",
-      permissions: dbHelpers.parseJSON(row.permissions) || {
-        ...DEFAULT_PERMISSIONS,
-      },
+      permissions: parseStoredPermissions(row.permissions),
       status: row.status || "active",
       isProtected: !!row.is_protected,
       roleSource: row.role_source || "local",
@@ -143,9 +145,7 @@ export const userOps = {
       id: r.id,
       username: r.username,
       role: r.role || "user",
-      permissions: dbHelpers.parseJSON(r.permissions) || {
-        ...DEFAULT_PERMISSIONS,
-      },
+      permissions: parseStoredPermissions(r.permissions),
       lidarrRootFolderPath: r.lidarr_root_folder_path || null,
       lidarrQualityProfileId:
         r.lidarr_quality_profile_id != null ? Number(r.lidarr_quality_profile_id) : null,
