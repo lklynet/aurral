@@ -98,7 +98,7 @@ export function useAccountSettings(authUser: AuthUser, showError: (message: stri
   });
   const loading = historyQuery.isPending || lidarrQuery.isPending;
   const { mutateAsync: saveHistory } = useMutation({
-    mutationFn: (payload: ListenHistoryPayload) => updateMyListeningHistory(authUser.id, payload),
+    mutationFn: (payload: ListenHistoryPayload) => updateMyListeningHistory(authUser!.id, payload),
     onSuccess: (data) => queryClient.setQueryData(historyQueryKey, data),
   });
   const { mutateAsync: saveLidarr } = useMutation<
@@ -185,7 +185,7 @@ export function useAccountSettings(authUser: AuthUser, showError: (message: stri
     }
     saveQueuedRef.current = false;
 
-    const saveDraft = currentDraftRef.current;
+    const saveDraft = currentDraftRef.current!;
     if (saveDraft.provider === "koito" && !saveDraft.url) {
       showError("Koito URL is required");
       return;

@@ -9,6 +9,21 @@ const getDefaultApiBaseUrl = () => {
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || getDefaultApiBaseUrl();
 
+export interface ApiErrorBody {
+  message?: string;
+  error?: string | Record<string, unknown>;
+  code?: string;
+}
+
+export interface ApiErrorResponse {
+  status: number;
+  statusText: string;
+  headers: Headers;
+  data: ApiErrorBody | null;
+}
+
+export type ApiError = Error & { response?: ApiErrorResponse };
+
 function joinUrl(baseURL, url) {
   if (!url) return baseURL;
   if (String(url).startsWith("http://") || String(url).startsWith("https://")) return url;
@@ -102,7 +117,7 @@ async function request(config) {
     }
     const response = { status: res.status, statusText: res.statusText, headers: res.headers, data };
     if (!res.ok) {
-      const error = new Error(`Request failed with status code ${res.status}`);
+      const error: ApiError = new Error(`Request failed with status code ${res.status}`);
       error.response = response;
       if (res.status === 401 && !isAuthEndpoint) {
         const isAurralAuthError =

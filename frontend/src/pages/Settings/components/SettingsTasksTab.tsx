@@ -2,8 +2,12 @@ import { useCallback, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type {
   clearStaleHonkerJobs,
-  getHonkerTaskStatus,
+  HonkerTaskStatus,
+  TaskQueueRow,
+  TaskScheduledRow,
+  TaskWorkerRow,
 } from "../../../../../backend/services/honkerTaskStatus.ts";
+import type { ApiError } from "../../../utils/api/core.ts";
 import {
   getSettingsTasks,
   clearSettingsStaleTasks,
@@ -17,56 +21,8 @@ import Tooltip from "../../../components/Tooltip";
 import { formatRelativeTime } from "../../../utils/dateTime.ts";
 const POLL_INTERVAL_MS = 5000;
 
-type ScheduledTask = {
-  id: string;
-  name: string;
-  description: string;
-  scheduleName: string;
-  interval: string | null;
-  schedule: string | null;
-  lastExecutionAt: string | null;
-  lastDurationMs: number | null;
-  nextExecutionAt: string | null;
-  lastStatus: string | null;
-};
-type TaskWorker = {
-  queue: string;
-  queueLabel: string;
-  name: string;
-  description: string;
-  status: string;
-  processing: number;
-  queued: number;
-  scheduled: number;
-  failed: number;
-  lastRunAt: string | null;
-};
-type QueueTask = {
-  id: string;
-  name: string;
-  description: string | null;
-  payloadSummary: string | null;
-  status: string;
-  isStale: boolean;
-  duplicateCount: number;
-  error: string | null;
-  queuedAt: string | null;
-  runAt: string | null;
-  startedAt: string | null;
-  endedAt: string | null;
-  durationMs: number | null;
-  runningForMs?: number | null;
-  attempt: number | null;
-  maxAttempts: number | null;
-};
-type TaskSnapshot = {
-  summary: Awaited<ReturnType<typeof getHonkerTaskStatus>>["summary"];
-  scheduled: ScheduledTask[];
-  workers: TaskWorker[];
-  queue: QueueTask[];
-};
 type ClearStaleResult = Awaited<ReturnType<typeof clearStaleHonkerJobs>> & {
-  tasks: TaskSnapshot;
+  tasks: HonkerTaskStatus;
 };
 
 const STATUS_META = {
@@ -148,13 +104,13 @@ function formatCount(value: number | null | undefined) {
   return Number.isFinite(count) ? count : 0;
 }
 
-function isFutureRunAt(task: QueueTask) {
+function isFutureRunAt(task: TaskQueueRow) {
   if (task.status !== "scheduled") return false;
   const runAt = parseDate(task.runAt);
   return runAt ? runAt.getTime() > Date.now() : false;
 }
 
-function formatQueueDuration(task: QueueTask) {
+function formatQueueDuration(task: TaskQueueRow) {
   if (task.status === "running") {
     return formatDuration(task.runningForMs);
   }
@@ -207,7 +163,7 @@ function TasksHealthSummary({
   clearing = false,
   onClearStale,
 }: {
-  summary: TaskSnapshot["summary"] | undefined;
+  summary: HonkerTaskStatus["summary"] | undefined;
   loading: boolean;
   clearing?: boolean;
   onClearStale?: () => void;
@@ -277,7 +233,7 @@ function ScheduledTable({
   scheduled = [],
   loading = false,
 }: {
-  scheduled?: ScheduledTask[];
+  scheduled?: TaskScheduledRow[];
   loading?: boolean;
 }) {
   return (
@@ -327,7 +283,7 @@ function ScheduledTable({
   );
 }
 
-function isIdleWorker(worker: TaskWorker) {
+function isIdleWorker(worker: TaskWorkerRow) {
   return (
     worker.status === "not_loaded" &&
     formatCount(worker.processing) === 0 &&
@@ -343,7 +299,7 @@ function WorkersTable({
   loading = false,
   showAllWorkers = false,
 }: {
-  workers?: TaskWorker[];
+  workers?: TaskWorkerRow[];
   loading?: boolean;
   showAllWorkers?: boolean;
 }) {
@@ -407,7 +363,13 @@ function WorkersTable({
   );
 }
 
-function QueueTable({ queue = [], loading = false }: { queue?: QueueTask[]; loading?: boolean }) {
+function QueueTable({
+  queue = [],
+  loading = false,
+}: {
+  queue?: TaskQueueRow[];
+  loading?: boolean;
+}) {
   return (
     <div className="arr-table-wrap">
       <table className="arr-table arr-table--tasks arr-table--task-queue" aria-busy={loading}>
@@ -501,14 +463,14 @@ export function SettingsTasksTab({
 }) {
   const [clearing, setClearing] = useState(false);
   const [showAllWorkers, setShowAllWorkers] = useState(false);
-  const tasksQuery = useQuery({
+  const tasksQuery = useQuery<HonkerTaskStatus, ApiError>({
     queryKey: queryKeys.settingsTasks,
     queryFn: ({ signal }) => getSettingsTasks({ signal }),
     staleTime: 0,
     refetchInterval: POLL_INTERVAL_MS,
     refetchIntervalInBackground: false,
   });
-  const tasks: TaskSnapshot | undefined = tasksQuery.data;
+  const tasks: HonkerTaskStatus | undefined = tasksQuery.data;
   const loading = tasksQuery.isPending;
   const loadError =
     tasksQuery.error?.response?.data?.message ||

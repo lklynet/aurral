@@ -2,6 +2,12 @@ import { useState } from "react";
 import type { ComponentProps } from "react";
 import { testLidarrConnection } from "../../../utils/api/endpoints/settings.ts";
 import type { AppSettings } from "../../../../../backend/db/helpers/settings.ts";
+import type { BootstrapPayload } from "../../../../../backend/routes/health.ts";
+import type {
+  fetchQualityProfiles,
+  fetchRootFolders,
+  fetchTags,
+} from "../../../../../backend/services/lidarrSettingsService.ts";
 
 import { Link } from "react-router";
 import { RefreshCw } from "lucide-react";
@@ -18,10 +24,10 @@ type LidarrSettings = {
 };
 type LidarrIntegrationDraft = NonNullable<AppSettings["integrations"]["lidarr"]>;
 type LidarrTestStatus = { tone: "success" | "error"; message: string };
-type LidarrRootFolderOption = { path: string };
-type LidarrNamedOption = { id: number; name: string };
-type LidarrTagOption = { id: number; label: string };
-type LidarrHealth = { lidarr?: { circuitOpen?: boolean }; lidarrConfigured?: boolean } | null;
+type LidarrRootFolderOption = Awaited<ReturnType<typeof fetchRootFolders>>[number];
+type LidarrNamedOption = Awaited<ReturnType<typeof fetchQualityProfiles>>[number];
+type LidarrTagOption = Awaited<ReturnType<typeof fetchTags>>[number];
+type LidarrHealth = Pick<BootstrapPayload, "lidarr" | "lidarrConfigured"> | null;
 
 type LidarrSettingsSectionProps = {
   settings: LidarrSettings;

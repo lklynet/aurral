@@ -196,6 +196,158 @@ const STALE_RUNNING_MS = 60 * 60 * 1000;
 const LIVE_JOB_LIMIT = 500;
 const DEAD_JOB_LIMIT = 50;
 
+interface HonkerSchedulerTaskRow {
+  name: string;
+  queue: string;
+  cron_expr: string;
+  payload: string;
+  priority: number;
+  expires_s: number | null;
+  next_fire_at: number | null;
+}
+
+interface HonkerLiveRow {
+  id: number;
+  queue: string;
+  payload: string;
+  state: string;
+  priority: number;
+  run_at: number;
+  worker_id: string | null;
+  claim_expires_at: number | null;
+  attempts: number;
+  max_attempts: number;
+  created_at: number;
+  expires_at: number | null;
+}
+
+interface HonkerDeadRow {
+  id: number;
+  queue: string;
+  payload: string;
+  priority: number;
+  run_at: number;
+  attempts: number;
+  max_attempts: number;
+  last_error: string | null;
+  created_at: number;
+  died_at: number;
+}
+
+interface HonkerTaskRunRow {
+  id: number;
+  job_id: number;
+  queue: string;
+  name: string | null;
+  payload: unknown;
+  worker_id: string | null;
+  attempt: number | null;
+  status: string;
+  error: string | null;
+  queued_at: number | null;
+  run_at: number | null;
+  started_at: number;
+  ended_at: number | null;
+  duration_ms: number | null;
+  created_at: number;
+}
+
+interface HonkerQueueStats {
+  queue: string;
+  liveCount: number;
+  runningCount: number;
+  queuedCount: number;
+  scheduledCount: number;
+  failedCount: number;
+  nextRunAt: string | null;
+  lastRunAt: string | null;
+}
+
+interface WorkerStatus {
+  name: string;
+  running?: boolean;
+}
+
+type TaskQueueRowSource = {
+  source: "live" | "run" | "dead";
+  id: string;
+  jobId: number;
+  queue: string;
+  queueLabel: string;
+  name: string | null;
+  description: string;
+  payloadSummary: string;
+  workerId: string | null;
+  attempt: number | null;
+  maxAttempts: number | null;
+  status: string;
+  state: string;
+  priority: number | null;
+  queuedAt: string | null;
+  runAt: string | null;
+  startedAt: string | null;
+  endedAt: string | null;
+  durationMs: number | null;
+  error: string | null;
+  sortAt: number;
+  duplicateCount: number;
+};
+
+export type TaskQueueRow = TaskQueueRowSource & {
+  runningForMs: number | null;
+  isStale: boolean;
+};
+
+export interface TaskScheduledRow {
+  id: string;
+  name: string;
+  scheduleName: string;
+  queue: string;
+  queueLabel: string;
+  description: string;
+  interval: string;
+  schedule: string;
+  priority: number;
+  payloadSummary: string;
+  lastExecutionAt: string | null;
+  lastDurationMs: number | null;
+  lastStatus: string | null;
+  nextExecutionAt: string | null;
+}
+
+export interface TaskWorkerRow {
+  queue: string;
+  queueLabel: string;
+  worker: string | null;
+  name: string;
+  description: string;
+  status: "running" | "idle" | "not_loaded";
+  running: boolean;
+  queued: number;
+  scheduled: number;
+  processing: number;
+  failed: number;
+  nextRunAt: string | null;
+  lastRunAt: string | null;
+}
+
+export interface TaskSummary {
+  healthy: boolean;
+  activeCount: number;
+  staleCount: number;
+  failedCount: number;
+  workersFailedCount: number;
+  completedCount: number;
+}
+
+export interface HonkerTaskStatus {
+  timestamp: string;
+  summary: TaskSummary;
+  scheduled: TaskScheduledRow[];
+  workers: TaskWorkerRow[];
+  queue: TaskQueueRow[];
+}
+
 const queueDefinitionByName = new Map(
   QUEUE_DEFINITIONS.map((definition) => [definition.queue, definition]),
 );
@@ -332,26 +484,26 @@ export async function stopHonkerTaskCleanup() {
 
 registerHonkerShutdownHandler(stopHonkerTaskCleanup);
 
-function isActiveQueueRow(row) {
+function isActiveQueueRow(row: TaskQueueRowSource) {
   return row.status === "running" || row.status === "queued" || row.status === "scheduled";
 }
 
-function isWithinTaskHistoryWindow(row) {
+function isWithinTaskHistoryWindow(row: TaskQueueRowSource) {
   if (isActiveQueueRow(row)) return true;
   const sortAt = Number(row.sortAt || 0);
   if (!Number.isFinite(sortAt) || sortAt <= 0) return true;
   return sortAt >= getRunLedgerCutoffUnix();
 }
 
-function safeQuery(sql, params = []) {
+function safeQuery<Row>(sql: string, params: unknown[] = []): Row[] {
   try {
-    return db.prepare(sql).all(...params);
+    return db.prepare<unknown[], Row>(sql).all(...params);
   } catch {
     return [];
   }
 }
 
-function safeGet(sql, params = []) {
+function safeGet(sql: string, params: unknown[] = []) {
   try {
     return db.prepare(sql).get(...params) || null;
   } catch {
@@ -359,7 +511,7 @@ function safeGet(sql, params = []) {
   }
 }
 
-function parsePayload(value) {
+function parsePayload(value: unknown) {
   if (value == null) return null;
   if (typeof value === "object") return value;
   try {
@@ -393,7 +545,7 @@ function taskMatchKey(queue, payload) {
   return `${queue || ""}:${payloadKey(payload)}`;
 }
 
-function titleize(value) {
+function titleize(value: unknown): string {
   return String(value || "")
     .replace(/^_outbox:/, "")
     .replace(/[-_:]+/g, " ")
@@ -401,20 +553,20 @@ function titleize(value) {
     .replace(/^\w/, (letter) => letter.toUpperCase());
 }
 
-function queueLabel(queue) {
+function queueLabel(queue: string): string {
   return queueDefinitionByName.get(queue)?.label || titleize(queue) || "Task";
 }
 
-function queueDescription(queue) {
+function queueDescription(queue: string): string {
   return queueDefinitionByName.get(queue)?.description || "";
 }
 
-function workerLabel(queue, worker) {
+function workerLabel(queue: string, worker: string | null | undefined): string {
   const definition = queueDefinitionByName.get(queue);
   return definition?.workerLabel || definition?.label || titleize(worker || queue);
 }
 
-function formatPayloadLabel(value) {
+function formatPayloadLabel(value: unknown): string {
   const trimmed = String(value || "").trim();
   return trimmed ? titleize(trimmed) : "";
 }
@@ -428,7 +580,7 @@ function systemTaskInfo(kind) {
   );
 }
 
-function discoveryRefreshInfo(payload = {}) {
+function discoveryRefreshInfo(payload: Record<string, unknown> = {}) {
   const reason = String(payload?.reason || "").trim();
   if (reason === "scheduled") {
     return {
@@ -460,7 +612,7 @@ function discoveryRefreshInfo(payload = {}) {
   };
 }
 
-export function describeHonkerTask(queue, payloadValue) {
+export function describeHonkerTask(queue: string, payloadValue: unknown): string {
   const payload = parsePayload(payloadValue) || {};
   const safeQueue = String(queue || "").trim();
 
@@ -486,7 +638,7 @@ export function describeHonkerTask(queue, payloadValue) {
   return suffix ? `${def.label}: ${suffix}` : def.label;
 }
 
-function describeHonkerTaskDetail(queue, payloadValue) {
+function describeHonkerTaskDetail(queue: string, payloadValue: unknown): string {
   const payload = parsePayload(payloadValue) || {};
   const safeQueue = String(queue || "").trim();
 
@@ -499,7 +651,7 @@ function describeHonkerTaskDetail(queue, payloadValue) {
   return formatter ? formatter(payload, desc) : desc;
 }
 
-function summarizePayload(queue, payloadValue) {
+function summarizePayload(queue: string, payloadValue: unknown): string {
   const payload = parsePayload(payloadValue);
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     return "";
@@ -550,7 +702,7 @@ function summarizePayload(queue, payloadValue) {
   return parts.slice(0, 4).join(" · ");
 }
 
-function unixToIso(value) {
+function unixToIso(value: unknown): string | null {
   const seconds = Number(value);
   if (!Number.isFinite(seconds) || seconds <= 0) return null;
   return new Date(seconds * 1000).toISOString();
@@ -560,7 +712,7 @@ function nowUnix() {
   return Math.floor(Date.now() / 1000);
 }
 
-function normalizeIntervalUnit(unit, value) {
+function normalizeIntervalUnit(unit: string, value: number): string {
   const units = {
     ms: "millisecond",
     s: "second",
@@ -573,7 +725,7 @@ function normalizeIntervalUnit(unit, value) {
   return `${value} ${label}${Number(value) === 1 ? "" : "s"}`;
 }
 
-function formatSchedule(expr) {
+function formatSchedule(expr: string): string {
   const value = String(expr || "").trim();
   const every = value.match(/^@every\s+(\d+)\s*(ms|s|m|h|d|w)$/i);
   if (every) {
@@ -582,7 +734,7 @@ function formatSchedule(expr) {
   return value || "Manual";
 }
 
-function normalizeRunRow(row) {
+function normalizeRunRow(row: HonkerTaskRunRow) {
   const payload = parsePayload(row.payload);
   return {
     id: row.id,
@@ -604,20 +756,20 @@ function normalizeRunRow(row) {
   };
 }
 
-function getRunningStartsByJobId(rows) {
-  const latest = new Map();
+function getRunningStartsByJobId(rows: HonkerTaskRunRow[]): Map<string, number> {
+  const latest = new Map<string, HonkerTaskRunRow>();
   for (const row of rows) {
     if (row.status !== "running") continue;
     const key = `${row.queue}:${row.job_id}`;
-    if (!latest.has(key) || Number(row.id) > Number(latest.get(key).id)) {
+    if (!latest.has(key) || Number(row.id) > Number(latest.get(key)!.id)) {
       latest.set(key, row);
     }
   }
   return new Map([...latest].map(([key, row]) => [key, Number(row.started_at)]));
 }
 
-function enrichQueueRow(row) {
-  let runningForMs = null;
+function enrichQueueRow(row: TaskQueueRowSource): TaskQueueRow {
+  let runningForMs: number | null = null;
   let isStale = false;
   if (row.status === "running") {
     const startedMs = Date.parse(row.startedAt || "") || Date.parse(row.queuedAt || "");
@@ -633,7 +785,7 @@ function enrichQueueRow(row) {
   };
 }
 
-function buildTaskSummary(queueRows, workerRows) {
+function buildTaskSummary(queueRows: TaskQueueRow[], workerRows: TaskWorkerRow[]): TaskSummary {
   let activeCount = 0;
   let staleCount = 0;
   let failedCount = 0;
@@ -671,7 +823,10 @@ function buildTaskSummary(queueRows, workerRows) {
   };
 }
 
-function normalizeLiveJobRow(row, runningStartsByJobId = new Map()) {
+function normalizeLiveJobRow(
+  row: HonkerLiveRow,
+  runningStartsByJobId: Map<string, number> = new Map(),
+): TaskQueueRowSource {
   const payload = parsePayload(row.payload);
   const currentTime = nowUnix();
   const state = String(row.state || "pending");
@@ -706,7 +861,7 @@ function normalizeLiveJobRow(row, runningStartsByJobId = new Map()) {
   };
 }
 
-function normalizeDeadJobRow(row) {
+function normalizeDeadJobRow(row: HonkerDeadRow): TaskQueueRowSource {
   const payload = parsePayload(row.payload);
   return {
     source: "dead",
@@ -734,8 +889,8 @@ function normalizeDeadJobRow(row) {
   };
 }
 
-function readScheduledRows() {
-  const rows = safeQuery(`
+function readScheduledRows(): HonkerSchedulerTaskRow[] {
+  const rows = safeQuery<HonkerSchedulerTaskRow>(`
     SELECT name, queue, cron_expr, payload, priority, expires_s, next_fire_at
     FROM _honker_scheduler_tasks
     ORDER BY next_fire_at ASC, name ASC
@@ -753,10 +908,10 @@ function readScheduledRows() {
   }));
 }
 
-function readRecentRuns() {
+function readRecentRuns(): HonkerTaskRunRow[] {
   ensureRunSchema();
   const cutoff = getRunLedgerCutoffUnix();
-  return safeQuery(
+  return safeQuery<HonkerTaskRunRow>(
     `
       SELECT *
       FROM honker_task_runs
@@ -768,8 +923,8 @@ function readRecentRuns() {
   );
 }
 
-function getLatestRunsByTask(rows) {
-  const latest = new Map();
+function getLatestRunsByTask(rows: HonkerTaskRunRow[]) {
+  const latest = new Map<string, HonkerTaskRunRow>();
   for (const row of rows) {
     const payload = parsePayload(row.payload);
     const key = taskMatchKey(row.queue, payload);
@@ -778,8 +933,8 @@ function getLatestRunsByTask(rows) {
   return latest;
 }
 
-function readLiveJobs() {
-  return safeQuery(
+function readLiveJobs(): HonkerLiveRow[] {
+  return safeQuery<HonkerLiveRow>(
     `
       SELECT id, queue, payload, state, priority, run_at, worker_id,
              claim_expires_at, attempts, max_attempts, created_at, expires_at
@@ -796,7 +951,14 @@ function readLiveJobs() {
 
 function readLiveJobStats() {
   const currentTime = nowUnix();
-  return safeQuery(
+  return safeQuery<{
+    queue: string;
+    live_count: number;
+    running_count: number;
+    scheduled_count: number;
+    queued_count: number;
+    next_run_at: number | null;
+  }>(
     `
       SELECT queue,
              COUNT(*) AS live_count,
@@ -821,7 +983,7 @@ function readLiveJobStats() {
 }
 
 function readScheduledLiveJobs() {
-  return safeQuery(
+  return safeQuery<Pick<HonkerLiveRow, "queue" | "payload" | "run_at">>(
     `
       SELECT queue, payload, run_at
       FROM _honker_live
@@ -831,9 +993,9 @@ function readScheduledLiveJobs() {
   );
 }
 
-function readDeadJobs() {
+function readDeadJobs(): HonkerDeadRow[] {
   const cutoff = getRunLedgerCutoffUnix();
-  return safeQuery(
+  return safeQuery<HonkerDeadRow>(
     `
       SELECT id, queue, payload, priority, run_at, attempts, max_attempts,
              last_error, created_at, died_at
@@ -846,9 +1008,13 @@ function readDeadJobs() {
   );
 }
 
-function readQueueStats(liveRows = [], liveStats = [], scheduledRows = []) {
+function readQueueStats(
+  liveRows: HonkerLiveRow[] = [],
+  liveStats: Awaited<ReturnType<typeof readLiveJobStats>> = [],
+  scheduledRows: Pick<HonkerLiveRow, "queue" | "payload" | "run_at">[] = [],
+): Map<string, HonkerQueueStats> {
   const currentTime = nowUnix();
-  const deadStats = safeQuery(
+  const deadStats = safeQuery<{ queue: string; failed_count: number }>(
     `
     SELECT queue, COUNT(*) AS failed_count
     FROM _honker_dead
@@ -857,7 +1023,7 @@ function readQueueStats(liveRows = [], liveStats = [], scheduledRows = []) {
   `,
     [getRunLedgerCutoffUnix()],
   );
-  const runStats = safeQuery(
+  const runStats = safeQuery<{ queue: string; last_run_at: number }>(
     `
     SELECT queue, MAX(started_at) AS last_run_at
     FROM honker_task_runs
@@ -867,7 +1033,7 @@ function readQueueStats(liveRows = [], liveStats = [], scheduledRows = []) {
     [getRunLedgerCutoffUnix()],
   );
 
-  const stats = new Map();
+  const stats = new Map<string, HonkerQueueStats & { scheduledKeys: Set<string> }>();
   for (const definition of QUEUE_DEFINITIONS) {
     stats.set(definition.queue, {
       queue: definition.queue,
@@ -882,7 +1048,7 @@ function readQueueStats(liveRows = [], liveStats = [], scheduledRows = []) {
     });
   }
 
-  const ensure = (queue) => {
+  const ensure = (queue: string) => {
     if (!stats.has(queue)) {
       stats.set(queue, {
         queue,
@@ -896,7 +1062,7 @@ function readQueueStats(liveRows = [], liveStats = [], scheduledRows = []) {
         lastRunAt: null,
       });
     }
-    return stats.get(queue);
+    return stats.get(queue)!;
   };
 
   for (const row of liveRows) {
@@ -959,14 +1125,17 @@ async function readWorkerStatuses() {
   }
 }
 
-function normalizeWorkerRows(workerStatuses, queueStats) {
+function normalizeWorkerRows(
+  workerStatuses: WorkerStatus[],
+  queueStats: Map<string, HonkerQueueStats>,
+): TaskWorkerRow[] {
   const workerByName = new Map(workerStatuses.map((worker) => [worker.name, worker]));
-  const rows = [];
-  const seenQueues = new Set();
+  const rows: TaskWorkerRow[] = [];
+  const seenQueues = new Set<string>();
 
   for (const definition of QUEUE_DEFINITIONS) {
     seenQueues.add(definition.queue);
-    const stats = queueStats.get(definition.queue) || {};
+    const stats: Partial<HonkerQueueStats> = queueStats.get(definition.queue) || {};
     const worker = definition.worker ? workerByName.get(definition.worker) : null;
     const processing = Number(stats.runningCount || 0);
     const loopRunning = worker?.running === true;
@@ -1009,7 +1178,10 @@ function normalizeWorkerRows(workerStatuses, queueStats) {
   return rows;
 }
 
-function normalizeScheduledRows(rows, latestRunsByTask) {
+function normalizeScheduledRows(
+  rows: HonkerSchedulerTaskRow[],
+  latestRunsByTask: Map<string, HonkerTaskRunRow>,
+): TaskScheduledRow[] {
   return rows.map((row) => {
     const payload = parsePayload(row.payload);
     const latestRun = latestRunsByTask.get(taskMatchKey(row.queue, payload));
@@ -1032,7 +1204,12 @@ function normalizeScheduledRows(rows, latestRunsByTask) {
   });
 }
 
-function normalizeQueueRows(liveRows, deadRows, runRows, runningStartsByJobId) {
+function normalizeQueueRows(
+  liveRows: HonkerLiveRow[],
+  deadRows: HonkerDeadRow[],
+  runRows: HonkerTaskRunRow[],
+  runningStartsByJobId: Map<string, number>,
+): TaskQueueRow[] {
   const normalizedLive = groupQueueRows(
     liveRows.map((row) => normalizeLiveJobRow(row, runningStartsByJobId)),
   );
@@ -1040,7 +1217,7 @@ function normalizeQueueRows(liveRows, deadRows, runRows, runningStartsByJobId) {
   const runJobKeys = new Set();
   const normalizedRuns = runRows
     .filter((row) => !liveJobKeys.has(`${row.queue}:${row.job_id}`))
-    .map((row) => {
+    .map((row): TaskQueueRowSource => {
       runJobKeys.add(`${row.queue}:${row.job_id}`);
       const run = normalizeRunRow(row);
       return {
@@ -1072,13 +1249,13 @@ function normalizeQueueRows(liveRows, deadRows, runRows, runningStartsByJobId) {
     .map(enrichQueueRow);
 }
 
-function shouldGroupQueueRow(row) {
+function shouldGroupQueueRow(row: TaskQueueRowSource) {
   return row.status === "scheduled" || row.status === "completed";
 }
 
-function groupQueueRows(rows) {
-  const grouped = [];
-  const groupedByTask = new Map();
+function groupQueueRows(rows: TaskQueueRowSource[]): TaskQueueRowSource[] {
+  const grouped: TaskQueueRowSource[] = [];
+  const groupedByTask = new Map<string, TaskQueueRowSource>();
 
   for (const row of rows) {
     if (!shouldGroupQueueRow(row)) {
@@ -1155,7 +1332,11 @@ export function recordHonkerTaskRunStarted(job, queue) {
   }
 }
 
-export function recordHonkerTaskRunFinished(runId, status, error = null) {
+export function recordHonkerTaskRunFinished(
+  runId: unknown,
+  status: string | null,
+  error: string | null = null,
+) {
   try {
     ensureRunSchema();
     const id = Number(runId);
@@ -1253,7 +1434,7 @@ export async function clearStaleHonkerJobs() {
   return { swept, cleared, errors };
 }
 
-export async function getHonkerTaskStatus() {
+export async function getHonkerTaskStatus(): Promise<HonkerTaskStatus> {
   ensureRunSchema();
   const workerStatuses = await readWorkerStatuses();
   const scheduledRows = readScheduledRows();

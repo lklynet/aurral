@@ -70,12 +70,12 @@ export function SettingsRssNewsTab({
       setFeedError("Enter a feed name and a valid HTTP or HTTPS feed URL.");
       return;
     }
-    const nextFeed = { ...feedEditor.draft, name, url };
+    const nextFeed = { ...feedEditor!.draft, name, url };
     updateNews({
       feeds:
-        feedEditor.index === null
+        feedEditor!.index === null
           ? [...feeds, nextFeed]
-          : feeds.map((feed, index) => (index === feedEditor.index ? nextFeed : feed)),
+          : feeds.map((feed, index) => (index === feedEditor!.index ? nextFeed : feed)),
     });
     setFeedEditor(null);
     setFeedError("");
