@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 
-let storedPathMappings = [];
+let storedPathMappings: PathMapping[] = [];
 const PATH_MAPPING_SOURCES = new Set([
   "all",
   "lidarr",
@@ -14,25 +14,25 @@ const PATH_MAPPING_SOURCES = new Set([
   "navidrome",
 ]);
 
-export function syncPathMappings(value) {
+export function syncPathMappings(value: unknown) {
   storedPathMappings = normalizePathMappings(value);
 }
 
-export function normalizePathSeparators(value) {
+export function normalizePathSeparators(value: unknown) {
   return String(value || "")
     .trim()
     .replace(/\\/g, "/")
     .replace(/\/+$/, "");
 }
 
-export function normalizePathMappingSource(value) {
+export function normalizePathMappingSource(value: unknown) {
   const normalized = String(value || "")
     .trim()
     .toLowerCase();
   return PATH_MAPPING_SOURCES.has(normalized) ? normalized : "all";
 }
 
-function isExplicitPathMappingSource(value) {
+function isExplicitPathMappingSource(value: unknown) {
   return PATH_MAPPING_SOURCES.has(
     String(value || "")
       .trim()
@@ -40,7 +40,9 @@ function isExplicitPathMappingSource(value) {
   );
 }
 
-function normalizePathMappingEntry(entry) {
+type PathMappingInput = { source?: unknown; remote?: unknown; local?: unknown } | null | undefined;
+
+function normalizePathMappingEntry(entry: PathMappingInput) {
   const source = normalizePathMappingSource(entry?.source);
   const remote = normalizePathSeparators(entry?.remote);
   const localRaw = String(entry?.local || "").trim();
@@ -49,7 +51,9 @@ function normalizePathMappingEntry(entry) {
   return { source, remote, local };
 }
 
-export function normalizePathMappings(value) {
+export type PathMapping = NonNullable<ReturnType<typeof normalizePathMappingEntry>>;
+
+export function normalizePathMappings(value: unknown) {
   if (!Array.isArray(value)) return [];
   const seen = new Set();
   const result = [];
@@ -99,19 +103,19 @@ export function parsePathMappingsEnv() {
   );
 }
 
-export function getPathMappings(source = null) {
+export function getPathMappings(source: string | null = null) {
   const mappings = normalizePathMappings([...storedPathMappings, ...parsePathMappingsEnv()]);
   if (!source) return mappings;
   const normalizedSource = normalizePathMappingSource(source);
   return mappings.filter((entry) => entry.source === "all" || entry.source === normalizedSource);
 }
 
-export function looksLikeExternalOnlyPath(value) {
+export function looksLikeExternalOnlyPath(value: unknown) {
   const trimmed = String(value || "").trim();
   return /^[A-Za-z]:[\\/]/.test(trimmed) || /^\\\\/.test(trimmed);
 }
 
-function pathExists(targetPath) {
+function pathExists(targetPath: string) {
   try {
     return fs.existsSync(targetPath);
   } catch {
@@ -119,7 +123,7 @@ function pathExists(targetPath) {
   }
 }
 
-export function pathMatchesPrefix(candidate, prefix) {
+export function pathMatchesPrefix(candidate: string, prefix: string) {
   const normalizedCandidate = normalizePathSeparators(candidate);
   const normalizedPrefix = normalizePathSeparators(prefix);
   if (!normalizedCandidate || !normalizedPrefix) return false;
@@ -129,7 +133,10 @@ export function pathMatchesPrefix(candidate, prefix) {
   return normalizedCandidate.toLowerCase().startsWith(`${normalizedPrefix.toLowerCase()}/`);
 }
 
-export function resolveLocalPath(externalPath, mappings = getPathMappings()) {
+export function resolveLocalPath(
+  externalPath: string,
+  mappings: PathMapping[] = getPathMappings(),
+) {
   const raw = String(externalPath || "").trim();
   if (!raw) return raw;
 
@@ -149,7 +156,7 @@ export function resolveLocalPath(externalPath, mappings = getPathMappings()) {
   return resolvedRaw;
 }
 
-export function resolveRemotePath(localPath, mappings = getPathMappings()) {
+export function resolveRemotePath(localPath: string, mappings: PathMapping[] = getPathMappings()) {
   const raw = String(localPath || "").trim();
   if (!raw) return raw;
 

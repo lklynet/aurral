@@ -1,12 +1,13 @@
 import fs from "fs";
 import path from "path";
 import { resolveAurralDataDir } from "../config/data-dir.ts";
+import type { StoredIntegrations } from "../db/helpers/settings.ts";
 import { getPathMappings, resolveLocalPath } from "./pathMappings.ts";
 import { stripTrailingSeparators } from "./textUtils.ts";
 
-let storedDownloadFolderPath = null;
+let storedDownloadFolderPath: string | null = null;
 
-export function syncDownloadFolderPath(value) {
+export function syncDownloadFolderPath(value: unknown) {
   const normalized = String(value ?? "").trim();
   storedDownloadFolderPath = normalized || null;
 }
@@ -15,7 +16,7 @@ export function getStoredDownloadFolderPath() {
   return storedDownloadFolderPath;
 }
 
-function resolvePathValue(raw) {
+function resolvePathValue(raw: unknown) {
   const trimmed = String(raw || "").trim();
   if (!trimmed) return null;
   return path.isAbsolute(trimmed) ? path.resolve(trimmed) : path.resolve(process.cwd(), trimmed);
@@ -29,7 +30,7 @@ export function resolveEnvDownloadFolder() {
   return null;
 }
 
-function isWritableDirectory(targetPath) {
+function isWritableDirectory(targetPath: string) {
   try {
     return (
       fs.statSync(targetPath).isDirectory() &&
@@ -40,7 +41,7 @@ function isWritableDirectory(targetPath) {
   }
 }
 
-export function resolveDefaultDownloadRoot({ dataRoot = "/data" } = {}) {
+export function resolveDefaultDownloadRoot({ dataRoot = "/data" }: { dataRoot?: string } = {}) {
   const envDownloadFolder = resolveEnvDownloadFolder();
   if (envDownloadFolder) {
     return envDownloadFolder;
@@ -55,11 +56,11 @@ export function getSuggestedDownloadFolderPath() {
   return resolveDefaultDownloadRoot();
 }
 
-export function resolveYtdlpStagingRoot(configuredPath) {
+export function resolveYtdlpStagingRoot(configuredPath?: string) {
   return resolvePathValue(configuredPath) || path.join(resolveAurralDataDir(), "_staging");
 }
 
-function isExistingDirectory(targetPath) {
+function isExistingDirectory(targetPath: string) {
   try {
     return fs.existsSync(targetPath) && fs.statSync(targetPath).isDirectory();
   } catch {
@@ -67,12 +68,12 @@ function isExistingDirectory(targetPath) {
   }
 }
 
-export function getFilesystemBrowseRoots() {
+export function getFilesystemBrowseRoots(): string[] {
   const configured = String(process.env.FILE_BROWSE_ROOTS || "")
     .split(",")
     .map((entry) => entry.trim())
     .filter(Boolean)
-    .map((entry) => resolvePathValue(entry))
+    .map((entry) => resolvePathValue(entry) as string)
     .filter((entry) => isExistingDirectory(entry));
   if (configured.length) {
     return [...new Set(configured.map((entry) => fs.realpathSync(entry)))];
@@ -107,7 +108,7 @@ export function getFilesystemBrowseRoots() {
   return [];
 }
 
-export function formatBrowseDisplayPath(pathValue) {
+export function formatBrowseDisplayPath(pathValue: string) {
   if (!pathValue || pathValue === "/") {
     return "";
   }
@@ -115,7 +116,7 @@ export function formatBrowseDisplayPath(pathValue) {
   return normalized.endsWith(path.sep) ? normalized : `${normalized}${path.sep}`;
 }
 
-export function normalizeSelectedFolderPath(pathValue) {
+export function normalizeSelectedFolderPath(pathValue: unknown) {
   const resolved = resolvePathValue(pathValue);
   if (!resolved) {
     return null;
@@ -126,11 +127,11 @@ export function normalizeSelectedFolderPath(pathValue) {
   return stripTrailingSeparators(resolved);
 }
 
-function isFilesystemRoot(resolvedRoot) {
+function isFilesystemRoot(resolvedRoot: string) {
   return resolvedRoot === path.sep || resolvedRoot === "/";
 }
 
-function resolveRealPathIfExists(targetPath) {
+function resolveRealPathIfExists(targetPath: string) {
   const resolved = path.resolve(targetPath);
   if (!fs.existsSync(resolved)) {
     return null;
@@ -142,7 +143,7 @@ function resolveRealPathIfExists(targetPath) {
   }
 }
 
-function isPathWithinRoot(candidate, root) {
+function isPathWithinRoot(candidate: string, root: string) {
   const resolvedRoot = path.resolve(root);
   const resolvedCandidate = path.resolve(candidate);
   if (isFilesystemRoot(resolvedRoot)) {
@@ -167,7 +168,7 @@ function isPathWithinRoot(candidate, root) {
   return false;
 }
 
-function isRealPathWithinRoot(realTarget, realRoot) {
+function isRealPathWithinRoot(realTarget: string, realRoot: string) {
   if (isFilesystemRoot(realRoot)) {
     return (
       realTarget === realRoot || (path.isAbsolute(realTarget) && realTarget.startsWith(path.sep))
@@ -176,10 +177,13 @@ function isRealPathWithinRoot(realTarget, realRoot) {
   return realTarget === realRoot || realTarget.startsWith(`${realRoot}${path.sep}`);
 }
 
-export function resolveSafeBrowsePath(requestedPath, roots = getFilesystemBrowseRoots()) {
+export function resolveSafeBrowsePath(
+  requestedPath: unknown,
+  roots: string[] = getFilesystemBrowseRoots(),
+) {
   const allowedRoots = (Array.isArray(roots) ? roots : [])
     .map((entry) => resolvePathValue(entry))
-    .filter(Boolean);
+    .filter(Boolean) as string[];
   if (!allowedRoots.length) {
     return null;
   }
@@ -209,9 +213,9 @@ export function resolveSafeBrowsePath(requestedPath, roots = getFilesystemBrowse
 }
 
 export function validateDownloadFolderPath(
-  requestedPath,
-  _roots = getFilesystemBrowseRoots(),
-  { create = false } = {},
+  requestedPath: unknown,
+  _roots: string[] = getFilesystemBrowseRoots(),
+  { create = false }: { create?: boolean } = {},
 ): { valid: true; path: string } | { valid: false; error: string } {
   const resolved = normalizeSelectedFolderPath(requestedPath);
   if (!resolved) {
@@ -239,7 +243,7 @@ export function validateDownloadFolderPath(
 }
 
 export function ensureDownloadFolderPath(
-  requestedPath,
+  requestedPath: unknown,
 ): { valid: true; path: string; created: boolean } | { valid: false; error: string } {
   const normalized = normalizeSelectedFolderPath(requestedPath);
   if (!normalized) {
@@ -262,7 +266,10 @@ export function ensureDownloadFolderPath(
   return { ...result, created: !existed };
 }
 
-export function resolveExistingBrowsePath(requestedPath, _roots = getFilesystemBrowseRoots()) {
+export function resolveExistingBrowsePath(
+  requestedPath: unknown,
+  _roots: string[] = getFilesystemBrowseRoots(),
+) {
   const allowedRoots = getFilesystemBrowseRoots();
   if (!allowedRoots.length) {
     return null;
@@ -293,7 +300,10 @@ export function resolveExistingBrowsePath(requestedPath, _roots = getFilesystemB
   return null;
 }
 
-export function listBrowseDirectory(requestedPath, _roots = getFilesystemBrowseRoots()) {
+export function listBrowseDirectory(
+  requestedPath: unknown,
+  _roots: string[] = getFilesystemBrowseRoots(),
+) {
   const allowedRoots = getFilesystemBrowseRoots();
   if (!allowedRoots.length) {
     throw new Error(
@@ -330,7 +340,7 @@ export function listBrowseDirectory(requestedPath, _roots = getFilesystemBrowseR
   };
 }
 
-function normalizeRootForCompare(value) {
+function normalizeRootForCompare(value: unknown) {
   let normalized = String(value || "")
     .trim()
     .split("\\")
@@ -342,7 +352,7 @@ function normalizeRootForCompare(value) {
   return process.platform === "win32" ? normalized.toLowerCase() : normalized;
 }
 
-function compareRoots(left, right) {
+function compareRoots(left: string, right: string) {
   const a = normalizeRootForCompare(left);
   const b = normalizeRootForCompare(right);
   if (!a || !b) return "disjoint";
@@ -354,25 +364,28 @@ function compareRoots(left, right) {
   return "disjoint";
 }
 
-export function getOverlapCheckedLidarrRoots(lidarrSettings = {}) {
+export function getOverlapCheckedLidarrRoots(lidarrSettings: StoredIntegrations["lidarr"] = {}) {
   if (lidarrSettings?.enabled === false) return [];
   const mappings = getPathMappings("lidarr");
-  return [
-    ...(Array.isArray(lidarrSettings?.rootFolderPaths) ? lidarrSettings.rootFolderPaths : []),
-    lidarrSettings?.rootFolderPath,
-  ]
-    .filter(Boolean)
-    .map((root) => resolveLocalPath(root, mappings));
+  return (
+    [
+      ...(Array.isArray(lidarrSettings?.rootFolderPaths) ? lidarrSettings.rootFolderPaths : []),
+      lidarrSettings?.rootFolderPath,
+    ].filter(Boolean) as string[]
+  ).map((root) => resolveLocalPath(root, mappings));
 }
 
-export function computeLibraryRootOverlaps({ aurralRoot, lidarrRoots } = {}) {
+export function computeLibraryRootOverlaps({
+  aurralRoot,
+  lidarrRoots,
+}: { aurralRoot?: unknown; lidarrRoots?: unknown } = {}) {
   const resolvedAurralRoot = String(aurralRoot || "").trim();
   if (!resolvedAurralRoot) return [];
   const candidates = (Array.isArray(lidarrRoots) ? lidarrRoots : [lidarrRoots])
     .map((root) => String(root || "").trim())
     .filter(Boolean);
   const warnings = [];
-  const seen = new Set();
+  const seen = new Set<string>();
   for (const lidarrRoot of candidates) {
     const relation = compareRoots(resolvedAurralRoot, lidarrRoot);
     if (relation === "disjoint" || seen.has(`${relation}:${lidarrRoot}`)) {

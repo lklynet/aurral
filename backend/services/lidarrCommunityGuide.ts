@@ -1,9 +1,71 @@
-const normalizeTypeName = (value) =>
+type LidarrQualityDefinition = {
+  id: number;
+  title?: string;
+  quality?: { id?: number; name?: string };
+};
+type LidarrCustomFormat = { id: number; name: string };
+type LidarrCustomFormatInput = {
+  name: string;
+  includeCustomFormatWhenRenaming: boolean;
+  specifications: unknown[];
+};
+type LidarrReleaseProfile = { id: number; name: string; ignored?: string[] };
+type LidarrAlbumTypeOption =
+  | string
+  | { name?: string; value?: string; albumType?: { name?: string } };
+type LidarrMetadataProfile = {
+  id: number;
+  name: string;
+  primaryAlbumTypes?: LidarrAlbumTypeOption[];
+  secondaryAlbumTypes?: LidarrAlbumTypeOption[];
+};
+type LidarrQualityItem = {
+  id?: number;
+  name?: string;
+  quality?: { id?: number; name?: string };
+  allowed?: boolean;
+  items?: LidarrQualityItem[];
+};
+type LidarrQualityProfile = {
+  id: number;
+  name: string;
+  cutoff?: number;
+  items?: LidarrQualityItem[];
+};
+type LidarrCommunityGuideClient = {
+  getQualityDefinitions(): Promise<LidarrQualityDefinition[]>;
+  updateQualityDefinition(id: number, data: unknown): Promise<unknown>;
+  getCustomFormats(): Promise<LidarrCustomFormat[]>;
+  createCustomFormat(format: LidarrCustomFormatInput): Promise<LidarrCustomFormat>;
+  getReleaseProfiles(): Promise<LidarrReleaseProfile[]>;
+  updateReleaseProfile(id: number, data: unknown): Promise<LidarrReleaseProfile>;
+  createReleaseProfile(data: unknown): Promise<LidarrReleaseProfile>;
+  getMetadataProfiles(): Promise<LidarrMetadataProfile[]>;
+  updateMetadataProfile(id: number, data: unknown): Promise<LidarrMetadataProfile>;
+  createMetadataProfile(data: unknown): Promise<LidarrMetadataProfile>;
+  getNamingConfig(): Promise<Record<string, unknown>>;
+  updateNamingConfig(data: unknown): Promise<unknown>;
+  getQualityProfiles(): Promise<LidarrQualityProfile[]>;
+  createQualityProfile(data: unknown): Promise<LidarrQualityProfile>;
+  updateQualityProfile(id: number, data: unknown): Promise<LidarrQualityProfile>;
+};
+type LidarrSavedRecord = { id: number; name: string; updated?: boolean };
+type LidarrCommunityGuideResult = {
+  qualityDefinitions: { name: string; updated: { min: number; max: number; preferred: number } }[];
+  customFormats: LidarrCustomFormat[];
+  releaseProfile: LidarrSavedRecord | null;
+  metadataProfile: LidarrSavedRecord | null;
+  namingConfig: Record<string, unknown> | null;
+  qualityProfile: LidarrSavedRecord | null;
+  errors: string[];
+};
+
+const normalizeTypeName = (value: unknown) =>
   String(value || "")
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "");
 
-const getTypeName = (item) => {
+const getTypeName = (item: LidarrAlbumTypeOption) => {
   if (!item) return "";
   if (typeof item === "string") return item;
   if (typeof item.name === "string") return item.name;
@@ -12,8 +74,8 @@ const getTypeName = (item) => {
   return "";
 };
 
-export async function applyLidarrCommunityGuide(lidarrClient) {
-  const results = {
+export async function applyLidarrCommunityGuide(lidarrClient: LidarrCommunityGuideClient) {
+  const results: LidarrCommunityGuideResult = {
     qualityDefinitions: [],
     customFormats: [],
     releaseProfile: null,
@@ -167,11 +229,11 @@ export async function applyLidarrCommunityGuide(lidarrClient) {
   };
 
   const existingReleaseProfiles = await lidarrClient.getReleaseProfiles();
-  const normalizeReleaseName = (value) =>
+  const normalizeReleaseName = (value: unknown) =>
     String(value || "")
       .trim()
       .toLowerCase();
-  const hasIgnoredMatch = (profile, value) =>
+  const hasIgnoredMatch = (profile: LidarrReleaseProfile | undefined, value: unknown) =>
     Array.isArray(profile?.ignored) &&
     profile.ignored
       .map((item) => String(item || "").toLowerCase())
@@ -219,7 +281,10 @@ export async function applyLidarrCommunityGuide(lidarrClient) {
   const desiredPrimaryTypes = ["Album", "EP", "Single"];
   const desiredSecondaryTypes = ["Studio", "Soundtrack", "Remix", "DJ-mix", "Compilation"];
 
-  const applyTypeSelection = (available, desired) => {
+  const applyTypeSelection = (
+    available: LidarrAlbumTypeOption[] | undefined,
+    desired: string[],
+  ) => {
     if (!Array.isArray(available) || available.length === 0) {
       return desired.map((name) => ({ name, allowed: true }));
     }
@@ -291,9 +356,9 @@ export async function applyLidarrCommunityGuide(lidarrClient) {
 
   const selectedQualityNames = ["MP3-320", "FLAC"];
   const baseItems = JSON.parse(JSON.stringify(baseProfile.items || []));
-  const qualityItemMap = new Map();
+  const qualityItemMap = new Map<string, LidarrQualityItem>();
 
-  const collectQualityItems = (items) => {
+  const collectQualityItems = (items: LidarrQualityItem[]) => {
     for (const item of items) {
       if (item?.quality?.name) {
         qualityItemMap.set(item.quality.name, item);
@@ -323,16 +388,17 @@ export async function applyLidarrCommunityGuide(lidarrClient) {
     }
   }
 
-  const normalizeQualityItem = (item, allowed) => ({
+  const normalizeQualityItem = (item: LidarrQualityItem, allowed: boolean) => ({
     ...item,
     allowed,
     items: [],
   });
 
-  const selectedItems = selectedQualityNames
-    .map((name) => qualityItemMap.get(name))
-    .filter(Boolean)
-    .map((item) => normalizeQualityItem(item, true));
+  const selectedItems = (
+    selectedQualityNames
+      .map((name) => qualityItemMap.get(name))
+      .filter(Boolean) as LidarrQualityItem[]
+  ).map((item) => normalizeQualityItem(item, true));
 
   const otherItems = Array.from(qualityItemMap.entries())
     .filter(([name]) => !selectedQualityNames.includes(name))
@@ -343,7 +409,7 @@ export async function applyLidarrCommunityGuide(lidarrClient) {
 
   const allCustomFormats = await lidarrClient.getCustomFormats();
   const formatItems = allCustomFormats.map((cf) => {
-    const scores = {
+    const scores: Record<string, number> = {
       "Preferred Groups": 10,
       CD: 2,
       WEB: 1,

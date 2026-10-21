@@ -7,7 +7,17 @@ const MAX_HTML_TITLE_SCAN_LENGTH = 8192;
 const SENSITIVE_LOG_KEY =
   /^(?:arl|authorization|(?:set[_-]?)?cookie|password|(?:client[_-]?)?secret|session|(?:access[_-]?|refresh[_-]?|auth[_-]?)?token|(?:x[_-]?)?api[_-]?key)$/i;
 
-function htmlErrorTitle(raw) {
+declare global {
+  var __aurralDefaultConsolePatched: boolean | undefined;
+}
+
+type Diagnosable =
+  | { message?: string; statusCode?: number; response?: { status?: number } }
+  | null
+  | undefined;
+type LogLevel = "debug" | "info" | "warn" | "error";
+
+function htmlErrorTitle(raw: string) {
   const head = raw.slice(0, MAX_HTML_TITLE_SCAN_LENGTH);
   const lowerHead = head.toLowerCase();
   const start = lowerHead.indexOf("<title");
@@ -21,10 +31,15 @@ function htmlErrorTitle(raw) {
   return head.slice(openEnd + 1, close).trim() || null;
 }
 
-export function safeLogDiagnostic(value) {
-  const raw = typeof value?.message === "string" ? value.message : String(value ?? "");
+export function safeLogDiagnostic(value: unknown) {
+  const raw =
+    typeof (value as Diagnosable)?.message === "string"
+      ? (value as { message: string }).message
+      : String(value ?? "");
   const isHtml = /^\s*(?:<!doctype html|<html\b)/i.test(raw);
-  const status = Number(value?.statusCode ?? value?.response?.status);
+  const status = Number(
+    (value as Diagnosable)?.statusCode ?? (value as Diagnosable)?.response?.status,
+  );
   const title = isHtml ? htmlErrorTitle(raw) : null;
   const diagnostic = isHtml
     ? `Upstream HTML error${Number.isInteger(status) && status >= 400 ? ` (${status})` : ""}${title ? `: ${title}` : ""}`
@@ -53,7 +68,7 @@ export function safeLogDiagnostic(value) {
     : redacted;
 }
 
-function safeLogData(value, depth = 0, seen = new WeakSet()) {
+function safeLogData(value: unknown, depth = 0, seen = new WeakSet<object>()): unknown {
   if (typeof value === "string" || value instanceof Error) return safeLogDiagnostic(value);
   if (value == null || typeof value !== "object") return value;
   if (depth >= 5 || seen.has(value)) return "[omitted]";
@@ -90,7 +105,7 @@ const DEFAULT_VISIBLE_MESSAGES = [
   /Playlist import (queued|job completed|sync completed)/,
 ];
 
-const messageText = (args) =>
+const messageText = (args: unknown[]) =>
   args
     .map((value) =>
       value instanceof Error ? value.message : typeof value === "string" ? value : "",
@@ -98,7 +113,7 @@ const messageText = (args) =>
     .filter(Boolean)
     .join(" ");
 
-export const shouldEmitDefaultConsoleMessage = (method, args = []) => {
+export const shouldEmitDefaultConsoleMessage = (method: string, args: unknown[] = []) => {
   if (method === "debug") return false;
   if (method === "warn" || method === "error") return true;
   return DEFAULT_VISIBLE_MESSAGES.some((pattern) => pattern.test(messageText(args)));
@@ -109,7 +124,7 @@ function patchDefaultConsole() {
   if (globalThis.__aurralDefaultConsolePatched) return;
   globalThis.__aurralDefaultConsolePatched = true;
 
-  for (const method of ["log", "info", "debug"]) {
+  for (const method of ["log", "info", "debug"] as const) {
     const original = console[method].bind(console);
     console[method] = (...args) => {
       if (shouldEmitDefaultConsoleMessage(method, args)) original(...args);
@@ -119,7 +134,7 @@ function patchDefaultConsole() {
 
 patchDefaultConsole();
 
-function log(level, category, message, data = {}) {
+function log(level: LogLevel, category: string, message: string, data: unknown = {}) {
   if (!verboseEnabled && level === "debug") return;
   if (
     !verboseEnabled &&
@@ -128,7 +143,7 @@ function log(level, category, message, data = {}) {
   )
     return;
   const line = `[${level}] [${safeLogDiagnostic(category)}] ${safeLogDiagnostic(message)}`;
-  const keys = Object.keys(data).length;
+  const keys = Object.keys(data as object).length;
   const safeData = keys > 0 ? safeLogData(data) : data;
   if (level === "error") {
     if (keys > 0) console.error("%s", line, safeData);
@@ -143,8 +158,10 @@ function log(level, category, message, data = {}) {
 }
 
 export const logger = {
-  debug: (category, message, data) => log("debug", category, message, data),
-  info: (category, message, data) => log("info", category, message, data),
-  warn: (category, message, data) => log("warn", category, message, data),
-  error: (category, message, data) => log("error", category, message, data),
+  debug: (category: string, message: string, data?: unknown) =>
+    log("debug", category, message, data),
+  info: (category: string, message: string, data?: unknown) => log("info", category, message, data),
+  warn: (category: string, message: string, data?: unknown) => log("warn", category, message, data),
+  error: (category: string, message: string, data?: unknown) =>
+    log("error", category, message, data),
 };

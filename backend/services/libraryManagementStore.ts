@@ -1,11 +1,20 @@
 import { db } from "../config/db-sqlite.ts";
+import type { LibraryManagementRow } from "../db/rows.ts";
+
+type ManagementEntry = {
+  managedBy: string;
+  monitorMode: string | null;
+  monitorRules: Record<string, unknown> | null;
+  updatedAt: number | null;
+};
+type ManagementCache = Record<string, Map<number, ManagementEntry>>;
 
 const LIBRARY_OWNERS = new Set(["aurral", "lidarr"]);
 const ENTITY_KINDS = new Set(["artist", "album"]);
 
 // Monitoring rules belong to one manager and mode. A write that changes either
 // without giving rules clears them, so stale rules never come back.
-const upsertStmt = db.prepare(`
+const upsertStmt = db.prepare<Record<string, unknown>>(`
   INSERT INTO library_management
     (entity_kind, entity_id, managed_by, monitor_mode, monitor_rules, created_at, updated_at)
   VALUES (@kind, @id, @owner, @mode, @rules, @now, @now)
@@ -22,20 +31,26 @@ const upsertStmt = db.prepare(`
     updated_at = excluded.updated_at
 `);
 
-const clearStmt = db.prepare(
+const clearStmt = db.prepare<[string, number]>(
   "DELETE FROM library_management WHERE entity_kind = ? AND entity_id = ?",
 );
 
-const selectAllStmt = db.prepare(
+const selectAllStmt = db.prepare<
+  [],
+  Pick<
+    LibraryManagementRow,
+    "entity_kind" | "entity_id" | "managed_by" | "monitor_mode" | "monitor_rules" | "updated_at"
+  >
+>(
   "SELECT entity_kind, entity_id, managed_by, monitor_mode, monitor_rules, updated_at FROM library_management",
 );
 
-const dataVersionStmt = db.prepare("PRAGMA data_version");
-let cache = null;
-let cacheDataVersion = null;
-let changeListeners = [];
+const dataVersionStmt = db.prepare<[], { data_version: number }>("PRAGMA data_version");
+let cache: ManagementCache | null = null;
+let cacheDataVersion: number | null | undefined = null;
+let changeListeners: (() => void)[] = [];
 
-function parseRules(value) {
+function parseRules(value: string | null): Record<string, unknown> | null {
   if (!value) return null;
   try {
     const parsed = JSON.parse(value);
@@ -53,7 +68,7 @@ function refreshExternalChanges() {
   notifyChanged();
 }
 
-function getCache() {
+function getCache(): ManagementCache {
   if (cache) refreshExternalChanges();
   if (!cache) {
     cacheDataVersion = dataVersionStmt.get()?.data_version;
@@ -77,7 +92,7 @@ export function refreshLibraryManagementCache() {
   getCache();
 }
 
-export function onLibraryManagementChange(listener) {
+export function onLibraryManagementChange(listener: () => void) {
   if (typeof listener === "function") {
     changeListeners.push(listener);
   }
@@ -100,14 +115,14 @@ export function notifyLibraryManagementChanged() {
   notifyChanged();
 }
 
-export function getLibraryManagementEntry(entityKind, entityId) {
+export function getLibraryManagementEntry(entityKind: string, entityId: unknown) {
   if (!ENTITY_KINDS.has(entityKind)) return null;
   const id = Number(entityId);
   if (!Number.isSafeInteger(id) || id <= 0) return null;
   return getCache()[entityKind].get(id) || null;
 }
 
-export function getManagedBy(entityKind, entityId) {
+export function getManagedBy(entityKind: string, entityId: unknown) {
   return getLibraryManagementEntry(entityKind, entityId)?.managedBy ?? null;
 }
 
@@ -119,7 +134,7 @@ export function getManagedByMaps() {
   };
 }
 
-export function getManagedByMap(entityKind) {
+export function getManagedByMap(entityKind: string) {
   if (!ENTITY_KINDS.has(entityKind)) return new Map();
   return getCache()[entityKind];
 }
@@ -130,6 +145,12 @@ export function setLibraryManagement({
   managedBy,
   monitorMode = null,
   monitorRules,
+}: {
+  entityKind?: string;
+  entityId?: unknown;
+  managedBy?: string;
+  monitorMode?: string | null;
+  monitorRules?: unknown;
 } = {}) {
   const kind = String(entityKind || "").trim();
   const id = Number(entityId);
@@ -161,7 +182,7 @@ export function setLibraryManagement({
   return getLibraryManagementEntry(kind, id);
 }
 
-export function clearLibraryManagement(entityKind, entityId) {
+export function clearLibraryManagement(entityKind: string, entityId: unknown) {
   const kind = String(entityKind || "").trim();
   const id = Number(entityId);
   if (!ENTITY_KINDS.has(kind)) return false;

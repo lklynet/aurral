@@ -3,7 +3,18 @@ import { stripTrailingSlashes } from "./textUtils.ts";
 export const LISTEN_HISTORY_PROVIDERS = ["local", "lastfm", "listenbrainz", "koito"];
 export const DEFAULT_LISTEN_HISTORY_PROVIDER = "lastfm";
 
-export function normalizeListenHistoryProvider(value) {
+type ListenHistorySource = {
+  listenHistoryProvider?: unknown;
+  listen_history_provider?: unknown;
+  listenHistoryUsername?: unknown;
+  listen_history_username?: unknown;
+  listenHistoryUrl?: unknown;
+  listen_history_url?: unknown;
+  lastfmUsername?: unknown;
+  lastfm_username?: unknown;
+};
+
+export function normalizeListenHistoryProvider(value: unknown) {
   const normalized = String(value || "")
     .trim()
     .toLowerCase();
@@ -12,20 +23,21 @@ export function normalizeListenHistoryProvider(value) {
     : DEFAULT_LISTEN_HISTORY_PROVIDER;
 }
 
-export function normalizeListenHistoryUsername(value) {
+export function normalizeListenHistoryUsername(value: unknown) {
   if (value == null) return null;
   const normalized = String(value).trim();
   return normalized || null;
 }
 
-export function normalizeListenHistoryUrl(value) {
+export function normalizeListenHistoryUrl(value: unknown) {
   if (value == null) return null;
   const normalized = stripTrailingSlashes(String(value).trim());
   return normalized || null;
 }
 
-export function getListenHistoryProfile(source = {}) {
-  const safeSource = source && typeof source === "object" && !Array.isArray(source) ? source : {};
+export function getListenHistoryProfile(source: ListenHistorySource = {}) {
+  const safeSource: ListenHistorySource =
+    source && typeof source === "object" && !Array.isArray(source) ? source : {};
   const explicitUsername = safeSource.listenHistoryUsername ?? safeSource.listen_history_username;
   const legacyLastfmUsername = safeSource.lastfmUsername ?? safeSource.lastfm_username;
   const username = normalizeListenHistoryUsername(
@@ -60,7 +72,7 @@ export function getListenHistoryProfile(source = {}) {
   };
 }
 
-export function hasListenHistoryProfile(profile) {
+export function hasListenHistoryProfile(profile: ListenHistorySource) {
   const normalized = getListenHistoryProfile(profile);
   if (normalized.listenHistoryProvider === "local") return true;
   if (normalized.listenHistoryProvider === "koito") {
@@ -69,7 +81,7 @@ export function hasListenHistoryProfile(profile) {
   return !!normalizeListenHistoryUsername(normalized.listenHistoryUsername);
 }
 
-export function listenHistoryProfilesEqual(a, b) {
+export function listenHistoryProfilesEqual(a: ListenHistorySource, b: ListenHistorySource) {
   const left = getListenHistoryProfile(a);
   const right = getListenHistoryProfile(b);
   return (
@@ -79,7 +91,7 @@ export function listenHistoryProfilesEqual(a, b) {
   );
 }
 
-export function resolveListenHistorySettings(user = {}) {
+export function resolveListenHistorySettings(user: ListenHistorySource = {}) {
   const profile = getListenHistoryProfile(user);
   if (hasListenHistoryProfile(profile)) {
     return {

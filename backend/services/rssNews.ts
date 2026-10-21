@@ -8,13 +8,25 @@ const MAX_ITEMS_PER_FEED = 100;
 const MAX_CATEGORIES = 20;
 const MAX_DESCRIPTION_LENGTH = 500;
 
-const htmlToText = (value) =>
+type ParsedItem = ReturnType<typeof parseFeed>["items"][number];
+type ParsedMedia = ParsedItem["media"][number];
+type RssFeedInput = { url: string; name?: string | null };
+type RssArticleDraft = {
+  title: string;
+  description: string;
+  categories: string[];
+  url: string;
+  publishedAt: string | null;
+  imageUrl: string | null;
+};
+
+const htmlToText = (value: string | null | undefined) =>
   String(value || "")
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 
-const isUsableImageUrl = (value) => {
+const isUsableImageUrl = (value: string | null | undefined) => {
   const url = String(value || "")
     .trim()
     .toLowerCase();
@@ -23,7 +35,7 @@ const isUsableImageUrl = (value) => {
   );
 };
 
-const getHtmlImage = (html) => {
+const getHtmlImage = (html: string | null | undefined) => {
   const candidates = [
     ...String(html || "").matchAll(
       /<meta\b[^>]*(?:property|name)=["'](?:og:image|twitter:image)["'][^>]*content=["']([^"']+)/gi,
@@ -36,19 +48,19 @@ const getHtmlImage = (html) => {
   return candidates.find(isUsableImageUrl) || null;
 };
 
-const isImageMedia = (media) =>
+const isImageMedia = (media: ParsedMedia) =>
   media.type === "image" ||
   media.mimeType?.startsWith("image/") ||
   (!media.type && !media.mimeType);
 
-const getItemImage = (item) =>
+const getItemImage = (item: ParsedItem) =>
   [...item.media.filter(isImageMedia).map((media) => media.url), item.image?.url]
     .map((url) => decode(url || ""))
     .find(isUsableImageUrl) ||
   getHtmlImage(item.content) ||
   getHtmlImage(item.description);
 
-const resolveUrl = (value, base) => {
+const resolveUrl = (value: string, base: string) => {
   try {
     return new URL(value, base).href;
   } catch {
@@ -56,12 +68,12 @@ const resolveUrl = (value, base) => {
   }
 };
 
-const getItemCategories = (item) =>
+const getItemCategories = (item: ParsedItem) =>
   [...new Set(item.categories.map((category) => htmlToText(category.label || category.term)))]
     .filter(Boolean)
     .slice(0, MAX_CATEGORIES);
 
-const normalizeRssArticle = (article, feed) => ({
+const normalizeRssArticle = (article: RssArticleDraft, feed: { url: string; name: string }) => ({
   id: createHash("sha1").update(`${feed.url}\n${article.url}`).digest("hex"),
   title: article.title,
   description: article.description,
@@ -73,7 +85,7 @@ const normalizeRssArticle = (article, feed) => ({
   imageUrl: article.imageUrl ? resolveUrl(article.imageUrl, feed.url) : null,
 });
 
-export const parseRssFeed = (xml, feed) => {
+export const parseRssFeed = (xml: string, feed: RssFeedInput) => {
   const parsed = parseFeed(xml);
   const source = { ...feed, name: feed.name || parsed.title || new URL(feed.url).hostname };
   return parsed.items
@@ -90,7 +102,7 @@ export const parseRssFeed = (xml, feed) => {
     .map((item) => normalizeRssArticle(item, source));
 };
 
-export async function fetchRssFeed(feed, { signal } = {}) {
+export async function fetchRssFeed(feed: RssFeedInput, { signal }: { signal?: AbortSignal } = {}) {
   const response = await axios.get(feed.url, {
     publicOnly: true,
     signal,
@@ -100,7 +112,7 @@ export async function fetchRssFeed(feed, { signal } = {}) {
   return parseRssFeed(String(response.data || ""), feed);
 }
 
-export async function fetchArticleImage(articleUrl) {
+export async function fetchArticleImage(articleUrl: string) {
   try {
     await assertPublicUrl(articleUrl);
     const response = await axios.get(articleUrl, {

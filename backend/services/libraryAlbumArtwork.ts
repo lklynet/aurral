@@ -10,20 +10,23 @@ import {
 } from "./imageProxyService.ts";
 
 const SIDECAR_NAMES = ["cover", "folder", "front", "album"];
-const SIDECAR_CONTENT_TYPES = {
+const SIDECAR_CONTENT_TYPES: Record<string, string> = {
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
   ".png": "image/png",
   ".webp": "image/webp",
 };
 const missingArtwork = createCache(24 * 60 * 60, 10_000);
-const lookups = new Map();
+const lookups = new Map<string, ReturnType<typeof findAlbumArtwork>>();
 
 const latestScanCompletion = () =>
-  db.prepare("SELECT MAX(completed_at) AS completedAt FROM library_scan_runs").get()?.completedAt ??
-  0;
+  db
+    .prepare<[], { completedAt: number | null }>(
+      "SELECT MAX(completed_at) AS completedAt FROM library_scan_runs",
+    )
+    .get()?.completedAt ?? 0;
 
-async function renderCover(buffer, contentType) {
+async function renderCover(buffer: Uint8Array | undefined, contentType: string) {
   if (!buffer?.length || buffer.length > MAX_SOURCE_IMAGE_BYTES) return null;
   try {
     await inspectImageBuffer(buffer, contentType);
@@ -33,15 +36,15 @@ async function renderCover(buffer, contentType) {
   }
 }
 
-function sidecarRank(name) {
+function sidecarRank(name: string) {
   const extension = path.extname(name).toLowerCase();
   if (!SIDECAR_CONTENT_TYPES[extension]) return -1;
   return SIDECAR_NAMES.indexOf(path.basename(name, path.extname(name)).toLowerCase());
 }
 
-async function readSidecarCover(folder) {
-  let realFolder;
-  let names;
+async function readSidecarCover(folder: string) {
+  let realFolder: string;
+  let names: string[];
   try {
     realFolder = await fs.realpath(folder);
     names = await fs.readdir(folder);
@@ -68,7 +71,7 @@ async function readSidecarCover(folder) {
   return null;
 }
 
-async function readEmbeddedCover(filePath) {
+async function readEmbeddedCover(filePath: string) {
   try {
     const metadata = await parseFile(filePath, { duration: false });
     const picture = selectCover(metadata.common.picture);
@@ -81,11 +84,11 @@ async function readEmbeddedCover(filePath) {
   }
 }
 
-async function findAlbumArtwork(albumId) {
+async function findAlbumArtwork(albumId: string) {
   const scannedAt = latestScanCompletion();
   if (missingArtwork.get(albumId) === scannedAt) return null;
   const files = db
-    .prepare(`SELECT path FROM library_media_files
+    .prepare<[number], { path: string }>(`SELECT path FROM library_media_files
     WHERE album_id = ? AND available = 1 ORDER BY path COLLATE NOCASE LIMIT 100`)
     .all(Number(albumId));
   const checkedFolders = new Set();
@@ -102,7 +105,7 @@ async function findAlbumArtwork(albumId) {
   return null;
 }
 
-export function getLibraryAlbumArtwork(albumId) {
+export function getLibraryAlbumArtwork(albumId: string) {
   const key = String(albumId);
   if (!/^[1-9]\d*$/.test(key)) return Promise.resolve(null);
   if (!lookups.has(key)) {

@@ -1,12 +1,30 @@
 import crypto from "node:crypto";
 import { db, dbHelpers } from "../config/db-sqlite.ts";
+import type { SettingsRow } from "../db/rows.ts";
 import { decryptWithKey, encryptWithKey } from "../config/encryption.ts";
 
 const SETTINGS_KEY = "scrobbleConnections";
-const PROVIDERS = new Set(["lastfm", "listenbrainz", "koito"]);
-const getSettingStmt = db.prepare("SELECT value FROM settings WHERE key = ?");
-const insertSettingStmt = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)");
-const upsertSettingStmt = db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)");
+type ScrobbleProvider = "lastfm" | "listenbrainz" | "koito";
+type StoredConnection = {
+  token: string;
+  connectionRevision: string;
+  displayName: string | null;
+  baseUrl: string | null;
+  connectedAt: number;
+};
+type StoredConnections = Partial<Record<ScrobbleProvider, StoredConnection>>;
+type StoredStore = Record<string, StoredConnections>;
+
+const PROVIDERS = new Set<ScrobbleProvider>(["lastfm", "listenbrainz", "koito"]);
+const getSettingStmt = db.prepare<[string], Pick<SettingsRow, "value">>(
+  "SELECT value FROM settings WHERE key = ?",
+);
+const insertSettingStmt = db.prepare<[string, string]>(
+  "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)",
+);
+const upsertSettingStmt = db.prepare<[string, string | null]>(
+  "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+);
 const ensureEncryptionKey = db.transaction(() => {
   const stored = getSettingStmt.get("_encryptionKey")?.value;
   if (!stored) {
@@ -22,19 +40,20 @@ const getEncryptionKey = () => {
   return key;
 };
 
-const readStore = () => {
+const readStore = (): StoredStore => {
   const parsed = dbHelpers.parseJSON(getSettingStmt.get(SETTINGS_KEY)?.value);
   return parsed && typeof parsed === "object" ? parsed : {};
 };
 
-const writeStore = (store) => upsertSettingStmt.run(SETTINGS_KEY, dbHelpers.stringifyJSON(store));
-const userKey = (userId) => String(Math.trunc(Number(userId)));
-const encryptToken = (token) => encryptWithKey(String(token || ""), getEncryptionKey());
-const decryptToken = (token) => decryptWithKey(token, getEncryptionKey());
+const writeStore = (store: StoredStore) =>
+  upsertSettingStmt.run(SETTINGS_KEY, dbHelpers.stringifyJSON(store));
+const userKey = (userId: number) => String(Math.trunc(Number(userId)));
+const encryptToken = (token: string) => encryptWithKey(String(token || ""), getEncryptionKey());
+const decryptToken = (token: string) => decryptWithKey(token, getEncryptionKey());
 
 export const getScrobbleEncryptionKey = getEncryptionKey;
 
-const normalize = (provider, raw) => {
+const normalize = (provider: ScrobbleProvider, raw: StoredConnection | undefined) => {
   if (!PROVIDERS.has(provider) || !raw || typeof raw !== "object") return null;
   const token = decryptToken(raw.token);
   if (!token) return null;
@@ -49,24 +68,24 @@ const normalize = (provider, raw) => {
 };
 
 export const scrobbleConnectionStore = {
-  getConnection(userId, provider) {
+  getConnection(userId: number, provider: ScrobbleProvider) {
     const connection = normalize(provider, readStore()[userKey(userId)]?.[provider]);
     return connection;
   },
 
-  getConnections(userId) {
-    const raw = readStore()[userKey(userId)] || {};
+  getConnections(userId: number) {
+    const raw: StoredConnections = readStore()[userKey(userId)] || {};
     return Object.fromEntries(
       [...PROVIDERS]
-        .map((provider) => {
+        .map((provider): [ScrobbleProvider, NonNullable<ReturnType<typeof normalize>>] | null => {
           const connection = normalize(provider, raw[provider]);
           return connection ? [provider, connection] : null;
         })
-        .filter(Boolean),
+        .filter(Boolean) as [ScrobbleProvider, NonNullable<ReturnType<typeof normalize>>][],
     );
   },
 
-  getPublicStatus(userId) {
+  getPublicStatus(userId: number) {
     const connections = this.getConnections(userId);
     return Object.fromEntries(
       [...PROVIDERS].map((provider) => {
@@ -85,7 +104,15 @@ export const scrobbleConnectionStore = {
     );
   },
 
-  saveConnection(userId, provider, { token, displayName = null, baseUrl = null } = {}) {
+  saveConnection(
+    userId: number,
+    provider: ScrobbleProvider,
+    {
+      token,
+      displayName = null,
+      baseUrl = null,
+    }: { token?: string; displayName?: string | null; baseUrl?: string | null } = {},
+  ) {
     if (!PROVIDERS.has(provider)) throw new Error("Unsupported scrobble provider");
     const safeToken = String(token || "").trim();
     if (!safeToken) throw new Error("Scrobble token is required");
@@ -103,7 +130,7 @@ export const scrobbleConnectionStore = {
     return this.getConnection(userId, provider);
   },
 
-  deleteConnection(userId, provider) {
+  deleteConnection(userId: number, provider: ScrobbleProvider) {
     const store = readStore();
     const key = userKey(userId);
     if (!store[key]?.[provider]) return false;

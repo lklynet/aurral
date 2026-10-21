@@ -1,4 +1,27 @@
 import path from "path";
+import type { StoredIntegrations } from "../db/helpers/settings.ts";
+
+type SlskdSettings = StoredIntegrations["slskd"];
+type ParsedAudio =
+  | {
+      format?: {
+        container?: string;
+        codec?: string;
+        lossless?: boolean;
+        sampleRate?: number;
+        bitsPerSample?: number;
+        bitrate?: number;
+      };
+    }
+  | null
+  | undefined;
+type ProfileInput = {
+  order?: unknown;
+  enabled?: unknown;
+  cutoff?: unknown;
+  automaticUpgrades?: unknown;
+  intervalDays?: unknown;
+};
 
 export const QUALITY_TIERS = [
   { id: "flac-hires", label: "FLAC hi-res", family: "flac" },
@@ -15,7 +38,7 @@ export const QUALITY_TIERS = [
 
 const TIER_BY_ID = new Map(QUALITY_TIERS.map((tier) => [tier.id, tier]));
 
-export function createDefaultQualityProfile(slskd = {}) {
+export function createDefaultQualityProfile(slskd: SlskdSettings = {}) {
   const preferred =
     String(slskd?.preferredFormat || "flac").toLowerCase() === "mp3" ? "mp3" : "flac";
   const strict = slskd?.preferredFormatStrict === true;
@@ -39,10 +62,11 @@ export function normalizeIntervalDays(value: unknown, fallback: number): number 
   return Number.isFinite(parsed) ? Math.min(365, Math.max(1, Math.round(parsed))) : fallback;
 }
 
-export function normalizeQualityProfile(value, slskd = {}) {
+export function normalizeQualityProfile(value: unknown, slskd: SlskdSettings = {}) {
   const fallback = createDefaultQualityProfile(slskd);
-  const raw = value && typeof value === "object" && !Array.isArray(value) ? value : {};
-  const order = [];
+  const raw: ProfileInput =
+    value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const order: string[] = [];
   for (const id of Array.isArray(raw.order) ? raw.order : fallback.order) {
     const safeId = String(id || "").trim();
     if (TIER_BY_ID.has(safeId) && !order.includes(safeId)) order.push(safeId);
@@ -50,7 +74,7 @@ export function normalizeQualityProfile(value, slskd = {}) {
   for (const tier of QUALITY_TIERS) {
     if (!order.includes(tier.id)) order.push(tier.id);
   }
-  const enabled = [];
+  const enabled: string[] = [];
   for (const id of Array.isArray(raw.enabled) ? raw.enabled : fallback.enabled) {
     const safeId = String(id || "").trim();
     if (TIER_BY_ID.has(safeId) && !enabled.includes(safeId)) enabled.push(safeId);
@@ -59,7 +83,7 @@ export function normalizeQualityProfile(value, slskd = {}) {
   const requestedCutoff = String(raw.cutoff || fallback.cutoff).trim();
   const cutoff = enabled.includes(requestedCutoff)
     ? requestedCutoff
-    : order.find((id) => enabled.includes(id));
+    : (order.find((id) => enabled.includes(id)) as string);
   return {
     order,
     enabled,
@@ -69,7 +93,7 @@ export function normalizeQualityProfile(value, slskd = {}) {
   };
 }
 
-function readAudioFamily(parsed, filePath) {
+function readAudioFamily(parsed: ParsedAudio, filePath: string) {
   const ext = path.extname(String(filePath || "")).toLowerCase();
   const container = String(parsed?.format?.container || "").toLowerCase();
   const codec = String(parsed?.format?.codec || "").toLowerCase();
@@ -97,7 +121,7 @@ function readAudioFamily(parsed, filePath) {
   return null;
 }
 
-function classifyLossyTier(family, bitrateKbps) {
+function classifyLossyTier(family: "mp3" | "m4a", bitrateKbps: number) {
   if (!Number.isFinite(bitrateKbps) || bitrateKbps < 128) return null;
   if (bitrateKbps >= 320) return `${family}-320`;
   if (bitrateKbps >= 256) return `${family}-256`;
@@ -105,7 +129,7 @@ function classifyLossyTier(family, bitrateKbps) {
   return `${family}-128`;
 }
 
-export function classifyAudioQuality(parsed, filePath) {
+export function classifyAudioQuality(parsed: ParsedAudio, filePath: string) {
   const family = readAudioFamily(parsed, filePath);
   const sampleRate = Number(parsed?.format?.sampleRate);
   const bitDepth = Number(parsed?.format?.bitsPerSample);
@@ -115,7 +139,7 @@ export function classifyAudioQuality(parsed, filePath) {
   if (family === "flac" && Number.isFinite(sampleRate) && Number.isFinite(bitDepth)) {
     tier = bitDepth > 16 || sampleRate > 48000 ? "flac-hires" : "flac-standard";
   } else if (family === "mp3" || family === "m4a") {
-    tier = classifyLossyTier(family, bitrateKbps);
+    tier = classifyLossyTier(family, bitrateKbps as number);
   }
   return {
     tier,
@@ -126,7 +150,10 @@ export function classifyAudioQuality(parsed, filePath) {
   };
 }
 
-export function getQualityState(classification, profile) {
+export function getQualityState(
+  classification: { tier?: string | null } | null | undefined,
+  profile: unknown,
+) {
   const normalized = normalizeQualityProfile(profile);
   const tier = String(classification?.tier || "");
   const enabled = new Set(normalized.enabled);
@@ -136,7 +163,11 @@ export function getQualityState(classification, profile) {
   return rank <= cutoffRank ? "preferred" : "upgrade";
 }
 
-export function isQualityUpgrade(candidate, currentTier, profile) {
+export function isQualityUpgrade(
+  candidate: { tier?: string | null } | null | undefined,
+  currentTier: string | null | undefined,
+  profile: unknown,
+) {
   const normalized = normalizeQualityProfile(profile);
   const enabled = new Set(normalized.enabled);
   const candidateTier = String(candidate?.tier || "");
@@ -145,11 +176,11 @@ export function isQualityUpgrade(candidate, currentTier, profile) {
   return normalized.order.indexOf(candidateTier) < normalized.order.indexOf(currentTier);
 }
 
-export function getQualityTier(id) {
+export function getQualityTier(id: unknown) {
   return TIER_BY_ID.get(String(id || "")) || null;
 }
 
-export function classifyAdvertisedQuality(fileName, bitrate = null) {
+export function classifyAdvertisedQuality(fileName: unknown, bitrate: unknown = null) {
   const text = String(fileName || "").toLowerCase();
   if (/\.flac\b|\bflac\b/.test(text)) {
     return /\b(?:24[ -]?bit|(?:88\.2|96|176\.4|192)\s*k?hz)\b/.test(text)
@@ -176,9 +207,13 @@ const NEVER_TIERED_ADVERTISED_EXTENSION =
   /\.(?:opus|ogg|oga|wma|wav|aiff?|ape|mpc|ac3|dts|mka)\s*$/i;
 
 export function isAdvertisedQualityEligible(
-  fileName,
-  bitrate,
-  { profile, currentTier = null, upgrade = false } = {},
+  fileName: unknown,
+  bitrate: unknown,
+  {
+    profile,
+    currentTier = null,
+    upgrade = false,
+  }: { profile?: unknown; currentTier?: string | null; upgrade?: boolean } = {},
 ) {
   const normalized = normalizeQualityProfile(profile);
   const tier = classifyAdvertisedQuality(fileName, bitrate);
@@ -191,9 +226,9 @@ export function isAdvertisedQualityEligible(
   );
 }
 
-export function getAdvertisedQualityRank(fileName, bitrate, profile) {
+export function getAdvertisedQualityRank(fileName: unknown, bitrate: unknown, profile: unknown) {
   const normalized = normalizeQualityProfile(profile);
-  const index = normalized.order.indexOf(classifyAdvertisedQuality(fileName, bitrate));
+  const index = normalized.order.indexOf(classifyAdvertisedQuality(fileName, bitrate) as string);
   return index === -1 ? Number.MAX_SAFE_INTEGER : index;
 }
 

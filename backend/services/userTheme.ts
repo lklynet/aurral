@@ -1,24 +1,37 @@
 const DOCUMENT_VERSION = 2;
-const APPEARANCES = new Set(["system", "light", "dark"]);
-const MODES = ["light", "dark"];
-const SEED_ROLES = ["background", "text", "accent", "danger", "warning", "success", "info"];
+const APPEARANCES: ReadonlySet<unknown> = new Set(["system", "light", "dark"]);
+const MODES = ["light", "dark"] as const;
+const SEED_ROLES = [
+  "background",
+  "text",
+  "accent",
+  "danger",
+  "warning",
+  "success",
+  "info",
+] as const;
 const MAX_THEMES = 50;
 const THEME_ID = /^[a-z0-9](?:[a-z0-9-]{0,63})$/;
 
 export class ThemeValidationError extends Error {}
 
-const isRecord = (value) => Boolean(value) && typeof value === "object" && !Array.isArray(value);
+type SeedRole = (typeof SEED_ROLES)[number];
+type ThemeSeed = Partial<Record<SeedRole, string>>;
+type UserTheme = { id: string; name: string; light?: ThemeSeed; dark?: ThemeSeed };
 
-function normalizeColor(value) {
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+function normalizeColor(value: unknown) {
   if (typeof value !== "string") return null;
   const hex = value.trim().replace(/^#/, "").toLowerCase();
   if (/^[\da-f]{3}$/.test(hex)) return `#${[...hex].map((digit) => digit + digit).join("")}`;
   return /^[\da-f]{6}$/.test(hex) ? `#${hex}` : null;
 }
 
-function normalizeSeed(value, label) {
+function normalizeSeed(value: unknown, label: string): ThemeSeed {
   if (!isRecord(value)) throw new ThemeValidationError(`${label} must be an object`);
-  const seed = {};
+  const seed: ThemeSeed = {};
   for (const role of SEED_ROLES) {
     if (value[role] === undefined || value[role] === null) continue;
     const color = normalizeColor(value[role]);
@@ -30,7 +43,7 @@ function normalizeSeed(value, label) {
   return seed;
 }
 
-function normalizeTheme(value, index) {
+function normalizeTheme(value: unknown, index: number): UserTheme {
   const label = `themes[${index}]`;
   if (!isRecord(value)) throw new ThemeValidationError(`${label} must be an object`);
   if (typeof value.id !== "string" || !THEME_ID.test(value.id))
@@ -38,7 +51,7 @@ function normalizeTheme(value, index) {
   const name = typeof value.name === "string" ? value.name.trim().replace(/\s+/g, " ") : "";
   if (!name || name.length > 48)
     throw new ThemeValidationError(`${label}.name must be 1 to 48 characters`);
-  const theme = { id: value.id, name };
+  const theme: UserTheme = { id: value.id, name };
   for (const mode of MODES) {
     if (value[mode] !== undefined && value[mode] !== null)
       theme[mode] = normalizeSeed(value[mode], `${label}.${mode}`);
@@ -48,7 +61,7 @@ function normalizeTheme(value, index) {
   return theme;
 }
 
-export function normalizeUserThemeDocument(value) {
+export function normalizeUserThemeDocument(value: unknown) {
   if (!isRecord(value) || value.version !== DOCUMENT_VERSION) {
     throw new ThemeValidationError(`theme.version must be ${DOCUMENT_VERSION}`);
   }
@@ -66,7 +79,7 @@ export function normalizeUserThemeDocument(value) {
   return {
     version: DOCUMENT_VERSION,
     themeId: value.themeId,
-    appearance: value.appearance,
+    appearance: value.appearance as "system" | "light" | "dark",
     matchArtwork: value.matchArtwork === true,
     themes,
   };

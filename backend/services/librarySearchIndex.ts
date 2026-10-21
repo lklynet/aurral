@@ -1,18 +1,21 @@
+import type { Statement } from "better-sqlite3";
 import { db } from "../config/db-sqlite.ts";
 import { populateLibrarySearchDocuments } from "../config/library-search-index.ts";
 
 const indexAvailable = Boolean(
   db
-    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
+    .prepare<[string], { name: string }>(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+    )
     .get("library_search_fts"),
 );
 
-const normalize = (value) =>
+const normalize = (value: unknown) =>
   String(value || "")
     .trim()
     .toLocaleLowerCase();
 
-export function getLibrarySearchMatch(value) {
+export function getLibrarySearchMatch(value: unknown) {
   const query = normalize(value);
   if (!indexAvailable || query.length < 3) return null;
   const trigrams = new Set();
@@ -24,11 +27,11 @@ export function getLibrarySearchMatch(value) {
   return trigrams.size ? [...trigrams].join(" AND ") : null;
 }
 
-let upsertDocument;
+let upsertDocument: Statement<[string, number, string, string, string]> | undefined;
 
-function upsertSearchDocument(...values) {
+function upsertSearchDocument(...values: [string, number, string, string, string]) {
   if (!indexAvailable) return false;
-  upsertDocument ??= db.prepare(
+  upsertDocument ??= db.prepare<[string, number, string, string, string]>(
     `INSERT INTO library_search_documents (entity_kind, entity_id, title, artist_name, album_name)
      VALUES (?, ?, ?, ?, ?)
      ON CONFLICT(entity_kind, entity_id) DO UPDATE SET
@@ -42,20 +45,24 @@ function upsertSearchDocument(...values) {
   return upsertDocument.run(...values).changes > 0;
 }
 
-export function syncLibrarySearchArtist(artistId) {
+export function syncLibrarySearchArtist(artistId: unknown) {
   if (!indexAvailable) return false;
   const artist = db
-    .prepare("SELECT id, name FROM library_artists WHERE id = ?")
+    .prepare<[number], { id: number; name: string }>(
+      "SELECT id, name FROM library_artists WHERE id = ?",
+    )
     .get(Number(artistId));
   if (!artist) return false;
   const changed = upsertSearchDocument("artist", artist.id, artist.name, "", "");
   if (!changed) return false;
   for (const album of db
-    .prepare("SELECT id FROM library_albums WHERE artist_id = ?")
+    .prepare<[number], { id: number }>("SELECT id FROM library_albums WHERE artist_id = ?")
     .all(artist.id)) {
     syncLibrarySearchAlbum(album.id);
     for (const track of db
-      .prepare("SELECT track_id FROM library_album_tracks WHERE album_id = ?")
+      .prepare<[number], { track_id: number }>(
+        "SELECT track_id FROM library_album_tracks WHERE album_id = ?",
+      )
       .all(album.id)) {
       syncLibrarySearchTrack(track.track_id);
     }
@@ -63,10 +70,13 @@ export function syncLibrarySearchArtist(artistId) {
   return true;
 }
 
-export function syncLibrarySearchAlbum(albumId) {
+export function syncLibrarySearchAlbum(albumId: unknown) {
   if (!indexAvailable) return false;
   const album = db
-    .prepare(
+    .prepare<
+      [number],
+      { id: number; title: string; album_artist: string | null; artist_name: string }
+    >(
       `SELECT album.id, album.title, album.album_artist, artist.name AS artist_name
      FROM library_albums AS album
      JOIN library_artists AS artist ON artist.id = album.artist_id
@@ -83,10 +93,10 @@ export function syncLibrarySearchAlbum(albumId) {
   );
 }
 
-export function syncLibrarySearchTrack(trackId) {
+export function syncLibrarySearchTrack(trackId: unknown) {
   if (!indexAvailable) return false;
   const track = db
-    .prepare(
+    .prepare<[number], { id: number; title: string; artist_name: string; album_name: string }>(
       `SELECT
        track.id,
        track.title,
@@ -110,11 +120,13 @@ export function syncLibrarySearchTrack(trackId) {
   );
 }
 
-export function removeLibrarySearchDocument(entityKind, entityId) {
+export function removeLibrarySearchDocument(entityKind: unknown, entityId: unknown) {
   if (!indexAvailable) return false;
   return (
     db
-      .prepare("DELETE FROM library_search_documents WHERE entity_kind = ? AND entity_id = ?")
+      .prepare<[string, number]>(
+        "DELETE FROM library_search_documents WHERE entity_kind = ? AND entity_id = ?",
+      )
       .run(String(entityKind || ""), Number(entityId)).changes > 0
   );
 }
