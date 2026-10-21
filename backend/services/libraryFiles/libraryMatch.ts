@@ -12,19 +12,21 @@ import {
   findLibraryAlbumByReleaseMbid,
   isSameLibraryName,
 } from "../libraryMediaStore.ts";
+import type { buildMetadataRecord } from "../libraryFileScanner.ts";
 
-interface LibraryFileRecord {
-  artistName: string;
-  artistMbid: string | null;
-  albumName: string;
-  albumMbid: string | null;
-  releaseGroupMbid: string | null;
-  title: string;
-  trackKey: string | null;
-  trackMbid: string | null;
-  trackNumber: number;
-  discNumber: number;
-}
+type LibraryFileRecord = Pick<
+  ReturnType<typeof buildMetadataRecord>,
+  | "artistName"
+  | "artistMbid"
+  | "albumName"
+  | "albumMbid"
+  | "releaseGroupMbid"
+  | "title"
+  | "trackKey"
+  | "trackMbid"
+  | "trackNumber"
+  | "discNumber"
+>;
 
 type LibraryTrackLink = LibraryTracksRow &
   Pick<LibraryAlbumTracksRow, "disc_number" | "track_number">;

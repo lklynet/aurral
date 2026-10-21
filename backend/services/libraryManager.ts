@@ -1565,7 +1565,7 @@ export class LibraryManager {
     }
 
     try {
-      dbOps.setLidarrArtistIdMap(mbid, providerId);
+      dbOps.setLidarrArtistIdMap(mbid!, providerId);
       return mbid;
     } catch (error) {
       if (error?.code !== "LIDARR_ARTIST_ID_CONFLICT") throw error;

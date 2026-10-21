@@ -54,7 +54,7 @@ interface MusicBrainzReleaseGroup {
   id?: string;
   title?: string;
   "first-release-date"?: string;
-  "primary-type"?: string;
+  "primary-type"?: string | null;
   "secondary-types"?: string[];
   "artist-credit"?: MusicBrainzArtistCredit[];
 }
@@ -62,7 +62,7 @@ interface MusicBrainzReleaseGroup {
 interface MusicBrainzTrackArtistRelease {
   id?: string;
   title?: string;
-  status?: string;
+  status?: string | null;
   date?: string;
   "artist-credit"?: MusicBrainzArtistCredit[];
   "release-group"?: MusicBrainzReleaseGroup;
@@ -406,7 +406,7 @@ export function musicbrainzGetCachedArtistMbidByName(artistName: string | null |
 async function resolveCachedArtistMbid(
   cacheKey: string,
   artistName: string,
-  resolve,
+  resolve: (artistName: string) => Promise<string | null>,
   { throwOnError = false }: { throwOnError?: boolean } = {},
 ) {
   const cached = dbOps.getMusicbrainzArtistMbidCache(cacheKey);

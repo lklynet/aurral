@@ -74,9 +74,9 @@ export const getBlockedArtistKeys = (userId = "global", feedback = getDiscoveryF
 export const isArtistBlockedForUser = (userId = "global", artist: ArtistMatchFields = {}) =>
   matchesArtistKeys(artist, getBlockedArtistKeys(userId));
 
-export const filterBlockedArtistsForUser = (
+export const filterBlockedArtistsForUser = <T extends ArtistMatchFields>(
   userId = "global",
-  artists: ArtistMatchFields[] = [],
+  artists: T[] = [],
   blockedKeys = getBlockedArtistKeys(userId),
 ) => {
   const list = Array.isArray(artists) ? artists : [];

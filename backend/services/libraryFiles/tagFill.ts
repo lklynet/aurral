@@ -164,7 +164,7 @@ export async function planTagFill(
   }: { filePath: string; album: TagFillAlbum; artist: TagFillArtist; file: TagFillFile },
   albums: Map<string, Promise<NormalizedAlbum | null>> = new Map(),
 ) {
-  let current;
+  let current: Awaited<ReturnType<typeof readAudioTags>> & Record<string, unknown>;
   try {
     current = await readAudioTags(filePath);
   } catch (error) {

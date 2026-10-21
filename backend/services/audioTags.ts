@@ -190,10 +190,12 @@ const isEmpty = (value: unknown) => (Array.isArray(value) ? value.length === 0 :
 const normalize = (field: string, value: unknown) => (FIELDS[field].normalize || text)(value);
 const same = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right);
 
+type AudioTagValues = { [K in keyof typeof FIELDS]: ReturnType<(typeof FIELDS)[K]["read"]> };
+
 function readFields(tag: TagLib.Tag) {
   return Object.fromEntries(
     AUDIO_TAG_FIELDS.map((field): [string, TagFieldValue] => [field, FIELDS[field].read(tag)]),
-  );
+  ) as AudioTagValues;
 }
 
 function parseIdentity(value: unknown) {

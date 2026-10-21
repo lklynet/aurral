@@ -234,7 +234,8 @@ const toBatches = <T>(items: T[], size: number) =>
     items.slice(index * size, (index + 1) * size),
   );
 
-const toListenCount = (value: number) => (Number.isInteger(value) && value > 0 ? value : null);
+const toListenCount = (value: number | null | undefined) =>
+  Number.isInteger(value) && value! > 0 ? value! : null;
 
 async function cachedListenbrainzLookup<V>(
   cacheKey: string,
@@ -247,7 +248,7 @@ async function cachedListenbrainzLookup<V>(
     listenbrainzLookupCache.set(cacheKey, value);
     return value;
   } catch {
-    const empty = new Map();
+    const empty = new Map<string, V>();
     listenbrainzLookupCache.set(cacheKey, empty, LISTENBRAINZ_LOOKUP_FAILURE_TTL_SECONDS);
     return empty;
   }
@@ -265,7 +266,7 @@ export const listenbrainzGetReleaseGroupListens = (releaseGroupMbids: string[]) 
       ),
     );
     if (!batches.every(Array.isArray)) throw new TypeError("ListenBrainz popularity is not a list");
-    const listens = new Map();
+    const listens = new Map<string, { listenCount: number; listenerCount: number }>();
     for (const row of batches.flat()) {
       const listenCount = toListenCount(row?.total_listen_count);
       const listenerCount = toListenCount(row?.total_user_count);
@@ -289,7 +290,7 @@ export const listenbrainzGetReleaseGroupDates = (releaseGroupMbids: string[]) =>
     if (!batches.every(isReleaseGroupMetadata)) {
       throw new TypeError("ListenBrainz release group metadata is not keyed by MBID");
     }
-    const dates = new Map();
+    const dates = new Map<string, string>();
     for (const [mbid, metadata] of batches.flatMap(Object.entries)) {
       const date = metadata?.release_group?.date;
       if (typeof date === "string" && date) dates.set(mbid, date);
