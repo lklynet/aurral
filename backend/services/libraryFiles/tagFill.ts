@@ -6,10 +6,34 @@ import {
   resolveAlbumByArtistAndTitle,
   selectAlbumRelease,
 } from "../providers/brainzmashProvider.ts";
+import type {
+  NormalizedAlbum,
+  NormalizedRelease,
+  NormalizedTrack,
+} from "../providers/brainzmashMappers.ts";
+
+interface TagFillAlbum {
+  releaseGroupMbid: string | null;
+  releaseMbid: string | null;
+  title: string;
+  year: string | number | null;
+}
+
+interface TagFillArtist {
+  name: string | null | undefined;
+  mbid: string | null | undefined;
+}
+
+interface TagFillFile {
+  title: string;
+  trackNumber: number | null;
+  discNumber: number | null;
+  durationMs: number | null;
+}
 
 const LENGTH_TOLERANCE_MS = 15000;
 
-const FIELD_LABELS = [
+const FIELD_LABELS: [string, string[]][] = [
   [
     "MusicBrainz IDs",
     ["artistMbid", "albumArtistMbid", "releaseGroupMbid", "releaseMbid", "recordingMbid"],
@@ -24,18 +48,18 @@ const FIELD_LABELS = [
   ["Genre", ["genres"]],
 ];
 
-const yearOf = (value) => Number(String(value || "").match(/^\d{4}/)?.[0]) || 0;
-const isEmpty = (value) => (Array.isArray(value) ? value.length === 0 : !value);
+const yearOf = (value: unknown) => Number(String(value || "").match(/^\d{4}/)?.[0]) || 0;
+const isEmpty = (value: unknown) => (Array.isArray(value) ? value.length === 0 : !value);
 
 // Only an album the provider does not have is no match. Any other failure
 // reaches planTagFill, which says the provider could not be reached.
-const albumOrNone = (mbid) =>
+const albumOrNone = (mbid: string | null) =>
   getAlbumByMbid(mbid).catch((error) => {
     if (isMetadataNotFoundError(error)) return null;
     throw error;
   });
 
-async function resolveMusicBrainzAlbum(album, artist) {
+async function resolveMusicBrainzAlbum(album: TagFillAlbum, artist: TagFillArtist) {
   for (const mbid of [...new Set([album.releaseGroupMbid, album.releaseMbid].filter(Boolean))]) {
     const found = await albumOrNone(mbid);
     if (found?.id) return found;
@@ -55,11 +79,15 @@ async function resolveMusicBrainzAlbum(album, artist) {
   return sameArtist ? found : null;
 }
 
-const atFilePosition = (file) => (entry) =>
+const atFilePosition = (file: TagFillFile) => (entry: NormalizedTrack) =>
   entry.trackNumber === file.trackNumber &&
   (!file.discNumber || (entry.mediumNumber || 1) === file.discNumber);
 
-function matchMusicBrainzTrack(mbAlbum, file, { recordingMbid, releaseMbid }) {
+function matchMusicBrainzTrack(
+  mbAlbum: NormalizedAlbum,
+  file: TagFillFile,
+  { recordingMbid, releaseMbid }: { recordingMbid?: string | null; releaseMbid?: string | null },
+) {
   const own = releaseMbid && mbAlbum.releases?.find((release) => release.id === releaseMbid);
   const chosen = own || selectAlbumRelease(mbAlbum);
   const releases = [
@@ -69,7 +97,7 @@ function matchMusicBrainzTrack(mbAlbum, file, { recordingMbid, releaseMbid }) {
   if (recordingMbid) {
     for (const release of releases) {
       let tracks = (release.tracks || []).filter(
-        (entry) =>
+        (entry: NormalizedTrack) =>
           entry.recordingId === recordingMbid || entry.oldRecordingIds?.includes(recordingMbid),
       );
       if (tracks.length > 1) tracks = file.trackNumber ? tracks.filter(atFilePosition(file)) : [];
@@ -79,7 +107,7 @@ function matchMusicBrainzTrack(mbAlbum, file, { recordingMbid, releaseMbid }) {
     return null;
   }
   for (const release of own ? [own] : releases) {
-    let candidates = (release.tracks || []).filter((entry) =>
+    let candidates = (release.tracks || []).filter((entry: NormalizedTrack) =>
       isSameLibraryName(entry.title, file.title),
     );
     if (file.trackNumber) candidates = candidates.filter(atFilePosition(file));
@@ -95,8 +123,11 @@ function matchMusicBrainzTrack(mbAlbum, file, { recordingMbid, releaseMbid }) {
   return null;
 }
 
-function musicBrainzTags(mbAlbum, { release, track }) {
-  const artists = Array.isArray(mbAlbum.artists) ? mbAlbum.artists : [];
+function musicBrainzTags(
+  mbAlbum: NormalizedAlbum,
+  { release, track }: { release: NormalizedRelease; track: NormalizedTrack },
+) {
+  const artists: NormalizedAlbum["artists"] = Array.isArray(mbAlbum.artists) ? mbAlbum.artists : [];
   const albumArtist = artists.find((entry) => entry.id === mbAlbum.artistId) || artists[0] || null;
   const trackArtist = artists.find((entry) => entry.id === track.artistId);
   return {
@@ -116,7 +147,7 @@ function musicBrainzTags(mbAlbum, { release, track }) {
   };
 }
 
-export function describeTagFields(tags = {}) {
+export function describeTagFields(tags: Record<string, unknown> = {}) {
   return FIELD_LABELS.filter(([, fields]) => fields.some((field) => field in tags)).map(
     ([label]) => label,
   );
@@ -124,7 +155,15 @@ export function describeTagFields(tags = {}) {
 
 // Which of a file's empty tags MusicBrainz can fill in. Tags the file already
 // has are never planned, and a file without a confident match gets none.
-export async function planTagFill({ filePath, album, artist, file }, albums = new Map()) {
+export async function planTagFill(
+  {
+    filePath,
+    album,
+    artist,
+    file,
+  }: { filePath: string; album: TagFillAlbum; artist: TagFillArtist; file: TagFillFile },
+  albums: Map<string, Promise<NormalizedAlbum | null>> = new Map(),
+) {
   let current;
   try {
     current = await readAudioTags(filePath);
@@ -140,7 +179,7 @@ export async function planTagFill({ filePath, album, artist, file }, albums = ne
     album.title || "",
     yearOf(album.year),
   ]);
-  let mbAlbum;
+  let mbAlbum: NormalizedAlbum | null | undefined;
   try {
     if (!albums.has(key)) {
       albums.set(

@@ -2,7 +2,10 @@ import { dbOps } from "../../db/helpers/index.ts";
 import { resolveAlbumByArtistAndTitle } from "../providers/brainzmashProvider.ts";
 import { musicbrainzResolveArtistMbidByName } from "./musicbrainz.ts";
 
-function normalizeArtistAlbumKey(artistName, albumName) {
+function normalizeArtistAlbumKey(
+  artistName: string | null | undefined,
+  albumName: string | null | undefined,
+) {
   const a = String(artistName || "")
     .trim()
     .toLowerCase();
@@ -12,7 +15,11 @@ function normalizeArtistAlbumKey(artistName, albumName) {
   return `aa:${a}\0${b}`;
 }
 
-export async function resolveDeezerAlbumToMbid(artistName, albumName, deezerAlbumId) {
+export async function resolveDeezerAlbumToMbid(
+  artistName: string | null | undefined,
+  albumName: string | null | undefined,
+  deezerAlbumId: string | null | undefined,
+) {
   const deezerId = String(deezerAlbumId || "")
     .replace(/^dz-/, "")
     .trim();
@@ -39,7 +46,17 @@ export async function resolveDeezerAlbumToMbid(artistName, albumName, deezerAlbu
   }
 }
 
-export async function resolveArtistAndAlbumMbids({ artistName, albumName, deezerAlbumId }) {
+interface ArtistAlbumLookup {
+  artistName?: string | null;
+  albumName?: string | null;
+  deezerAlbumId?: string | null;
+}
+
+export async function resolveArtistAndAlbumMbids({
+  artistName,
+  albumName,
+  deezerAlbumId,
+}: ArtistAlbumLookup) {
   const artist = String(artistName || "").trim();
   const album = String(albumName || "").trim();
   const [artistMbid, albumMbid] = await Promise.all([

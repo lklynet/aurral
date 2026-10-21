@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import pMap from "p-map";
 import { dbOps } from "../../db/helpers/index.ts";
+import type { ArtistMatchFields } from "./artistKeys.ts";
 
 export const LASTFM_PERIODS = ["none", "7day", "1month", "3month", "6month", "12month", "overall"];
 export const LISTENBRAINZ_RANGE_BY_PERIOD = {
@@ -62,7 +63,7 @@ export const getLocalDiscoveryPreferences = () => {
   };
 };
 
-export const getListenbrainzRange = (discoveryPeriod) => {
+export const getListenbrainzRange = (discoveryPeriod: string) => {
   if (discoveryPeriod === "none") return null;
   return LISTENBRAINZ_RANGE_BY_PERIOD[discoveryPeriod] || "month";
 };
@@ -73,7 +74,7 @@ export const getDiscoveryUserRefreshDelaySeconds = () => {
   return Math.max(5, Math.min(3600, Math.floor(parsed)));
 };
 
-export const normalizeTextList = (value) => {
+export const normalizeTextList = (value: unknown) => {
   if (!Array.isArray(value)) return [];
   const seen = new Set();
   const out = [];
@@ -88,7 +89,7 @@ export const normalizeTextList = (value) => {
   return out;
 };
 
-export const buildWeightedTopList = (map, limit) =>
+export const buildWeightedTopList = <K>(map: Map<K, number>, limit: number): K[] =>
   Array.from(map.entries())
     .sort((left, right) => {
       if (right[1] !== left[1]) return right[1] - left[1];
@@ -97,7 +98,7 @@ export const buildWeightedTopList = (map, limit) =>
     .slice(0, limit)
     .map(([name]) => name);
 
-export const getSourceFailureRatio = (health) => {
+export const getSourceFailureRatio = (health: { success: number; failure: number }) => {
   const total = health.success + health.failure;
   if (total === 0) return 0;
   return health.failure / total;
@@ -106,7 +107,7 @@ export const getSourceFailureRatio = (health) => {
 export const getDiscoveryRecommendationSeedLimit = () =>
   Math.max(32, Math.min(56, Math.ceil(getDiscoveryRecommendationsPerRefresh() / 4)));
 
-export const getSimilarArtistSampling = (failureRatio) => {
+export const getSimilarArtistSampling = (failureRatio: number) => {
   if (failureRatio >= 0.5) {
     return { similarLimit: 12, maxPerSeed: 10 };
   }
@@ -121,7 +122,7 @@ export const getSimilarArtistSampling = (failureRatio) => {
   };
 };
 
-export const getSecondHopArtistSampling = (failureRatio) => {
+export const getSecondHopArtistSampling = (failureRatio: number) => {
   if (failureRatio >= 0.5) {
     return { seedLimit: 0, similarLimit: 0, maxPerSeed: 0 };
   }
@@ -139,7 +140,7 @@ export const getSecondHopArtistSampling = (failureRatio) => {
 export const getSecondHopRecommendationLimit = () =>
   Math.ceil(getDiscoveryRecommendationsPerRefresh() * 0.35);
 
-export const getCandidateTagHydrationLimit = (count, failureRatio, depth = 1) => {
+export const getCandidateTagHydrationLimit = (count: number, failureRatio: number, depth = 1) => {
   if (count <= 0) return 0;
   const target = getDiscoveryRecommendationsPerRefresh();
   if (failureRatio >= 0.5) return Math.min(count, depth >= 2 ? 0 : 40);
@@ -165,7 +166,7 @@ export const createDiscoveryRunId = () => randomUUID();
 
 export const getDiscoveryNetworkConcurrency = () => DISCOVERY_NETWORK_CONCURRENCY;
 
-export const interleaveLists = (...lists) => {
+export const interleaveLists = <T>(...lists: T[][]): T[] => {
   const result = [];
   const longest = Math.max(0, ...lists.map((list) => list.length));
   for (let index = 0; index < longest; index += 1) {
@@ -179,14 +180,14 @@ export { getDiscoveryCandidateLimit };
 
 export const mapWithConcurrency = async (
   items,
-  concurrency,
+  concurrency: number,
   worker,
   { stopOnError = false } = {},
 ) => {
   const list = Array.isArray(items) ? items : [];
   const options = { concurrency: Math.max(1, Number(concurrency) || 1) };
   if (!stopOnError) return pMap(list, worker, options);
-  let firstError;
+  let firstError: unknown;
   const results = await pMap(
     list,
     async (item, index) => {
@@ -204,12 +205,12 @@ export const mapWithConcurrency = async (
   return results;
 };
 
-export const getSeedTagMapKey = (seed) =>
+export const getSeedTagMapKey = (seed: ArtistMatchFields | null | undefined) =>
   String(seed?.mbid || seed?.id || seed?.artistName || seed?.name || "")
     .trim()
     .toLowerCase();
 
-export const normalizeSeedTagList = (tags) =>
+export const normalizeSeedTagList = (tags: unknown) =>
   (Array.isArray(tags) ? tags : [])
     .slice(0, 15)
     .map((tag) =>
@@ -221,7 +222,11 @@ export const normalizeSeedTagList = (tags) =>
 
 export const INHERITED_TAG_MINIMUM = 3;
 
-export const canInheritTagsFromSeeds = (item) => {
+export const canInheritTagsFromSeeds = (item: {
+  candidateTagsHydrated?: boolean;
+  tagSource?: string;
+  tags?: unknown[];
+}) => {
   if (item.candidateTagsHydrated && item.tagSource === "lastfm_artist") return false;
   const seedTagCount = Array.isArray(item.tags) ? item.tags.length : 0;
   return seedTagCount >= INHERITED_TAG_MINIMUM;

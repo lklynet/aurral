@@ -7,7 +7,9 @@ export const youtubeVideoCache = createCache(24 * 3600);
 const inflight = new Map();
 const liveStatuses = new Set(["is_live", "was_live", "post_live", "is_upcoming"]);
 
-function videoPreference(result, artistChannel) {
+type YoutubeSearchResult = Awaited<ReturnType<typeof ytdlpClient.search>>[number];
+
+function videoPreference(result: YoutubeSearchResult, artistChannel: string | null) {
   const title = result.title;
   const type = /\blyrics?\b/iu.test(title)
     ? 1
@@ -19,7 +21,7 @@ function videoPreference(result, artistChannel) {
   return (artistChannel ? 0 : 4) + type;
 }
 
-async function findVideo(artist, title) {
+async function findVideo(artist: string, title: string) {
   const results = await ytdlpClient.search(`${artist} ${title} official music video`, {
     limit: 10,
     timeoutMs: 15000,
@@ -54,7 +56,10 @@ async function findVideo(artist, title) {
     : null;
 }
 
-export async function youtubeFindTopSongVideo(artistName, trackTitle) {
+export async function youtubeFindTopSongVideo(
+  artistName: string | null | undefined,
+  trackTitle: string | null | undefined,
+) {
   const artist = String(artistName || "").trim();
   const title = String(trackTitle || "").trim();
   if (!artist || !title) return null;

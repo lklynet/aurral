@@ -178,7 +178,15 @@ const RETIRED_NEWS_FEED_URLS = new Set([
   "https://www.reggaeville.com/feeds/news.xml",
 ]);
 
-export const normalizeNewsFeeds = (storedFeeds) => {
+interface StoredNewsFeed {
+  id?: unknown;
+  name?: unknown;
+  url?: unknown;
+  group?: unknown;
+  enabled?: unknown;
+}
+
+export const normalizeNewsFeeds = (storedFeeds: StoredNewsFeed[] | undefined) => {
   const builtInsByUrl = new Map(DEFAULT_NEWS_FEEDS.map((feed) => [feed.url, feed]));
   const feeds = (Array.isArray(storedFeeds) ? storedFeeds : []).filter(
     (feed) => !RETIRED_NEWS_FEED_URLS.has(String(feed?.url || "").trim()),
@@ -227,7 +235,7 @@ export const normalizeNewsFeeds = (storedFeeds) => {
     .slice(0, 50);
 };
 
-export const normalizeNewsGroups = (groups) => {
+export const normalizeNewsGroups = (groups: Record<string, boolean> | undefined) => {
   const enabled = groups && typeof groups === "object" ? groups : {};
   return Object.fromEntries(
     DEFAULT_NEWS_GROUPS.map((group) => [group.id, enabled[group.id] !== false]),

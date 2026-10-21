@@ -2,7 +2,22 @@ import { getReleaseCalendarEntries } from "../releaseCalendarStore.ts";
 
 const RECENT_RELEASE_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
 
-function resolveTimeMs(value, fallback = Date.now()) {
+type TimeInput = string | number | Date | null | undefined;
+
+interface RecentReleaseArtist {
+  id?: string;
+  canonicalId?: string;
+}
+
+interface RecentReleaseOptions {
+  now?: TimeInput;
+  includeFuture?: boolean;
+  artists?: RecentReleaseArtist[] | null;
+}
+
+function resolveTimeMs(value: TimeInput, fallback?: number): number;
+function resolveTimeMs(value: TimeInput, fallback: null): number | null;
+function resolveTimeMs(value: TimeInput, fallback: number | null = Date.now()) {
   if (value == null) return fallback;
   if (value instanceof Date) {
     const time = value.getTime();
@@ -15,7 +30,7 @@ function resolveTimeMs(value, fallback = Date.now()) {
   return Number.isFinite(time) ? time : fallback;
 }
 
-function resolveDayMs(value) {
+function resolveDayMs(value: TimeInput) {
   if (value == null) return null;
   const text = String(value || "").trim();
   const dateOnly = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -26,11 +41,11 @@ function resolveDayMs(value) {
   }
   const time = resolveTimeMs(value, null);
   if (!Number.isFinite(time)) return null;
-  const date = new Date(time);
+  const date = new Date(time!);
   return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
 }
 
-export async function getRecentMissingReleases(limit = 24, options = {}) {
+export async function getRecentMissingReleases(limit = 24, options: RecentReleaseOptions = {}) {
   const now = resolveTimeMs(options?.now);
   const recentCutoff = now - RECENT_RELEASE_WINDOW_MS;
   const today = resolveDayMs(now);
@@ -41,7 +56,7 @@ export async function getRecentMissingReleases(limit = 24, options = {}) {
 
   return getReleaseCalendarEntries({
     from: new Date(recentCutoff).toISOString().slice(0, 10),
-    to: includeFuture ? null : new Date(today).toISOString().slice(0, 10),
+    to: includeFuture ? null : new Date(today!).toISOString().slice(0, 10),
     limit: normalizedLimit,
     artistIds: providedArtists
       ? providedArtists.map((artist) => artist?.canonicalId || artist?.id)

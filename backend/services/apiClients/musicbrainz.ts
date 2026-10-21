@@ -16,6 +16,8 @@ import { getMusicBrainzContact } from "./config.ts";
 import { runSharedInflight } from "../sharedInflight.ts";
 import { logger } from "../logger.ts";
 
+type ArtistAlbum = Awaited<ReturnType<typeof listMetadataArtistAlbums>>[number];
+
 const musicbrainzArtistNameCache = createCache(3600);
 const musicbrainzReleaseGroupsCache = createCache(300);
 const musicbrainzAppearsOnCache = createCache(6 * 60 * 60, 200);
@@ -38,13 +40,56 @@ const SECONDARY_RELEASE_TYPES = [
 
 const mbLimiter = createRateLimiter(1000);
 
-export const musicbrainzRequest = async (endpoint, params = {}) =>
+interface MusicBrainzArtistCredit {
+  name?: string;
+  artist?: { id?: string; name?: string };
+}
+
+interface MusicBrainzArtist {
+  id?: string;
+  name?: string;
+}
+
+interface MusicBrainzReleaseGroup {
+  id?: string;
+  title?: string;
+  "first-release-date"?: string;
+  "primary-type"?: string;
+  "secondary-types"?: string[];
+  "artist-credit"?: MusicBrainzArtistCredit[];
+}
+
+interface MusicBrainzTrackArtistRelease {
+  id?: string;
+  title?: string;
+  status?: string;
+  date?: string;
+  "artist-credit"?: MusicBrainzArtistCredit[];
+  "release-group"?: MusicBrainzReleaseGroup;
+}
+
+interface MusicBrainzTrackArtistReleasesPage {
+  releases?: MusicBrainzTrackArtistRelease[];
+  "release-count"?: number;
+}
+
+interface AppearsOnScanState {
+  byReleaseGroupId: Map<string, ReturnType<typeof mapAppearsOnReleaseGroup>>;
+  nextOffset: number;
+  complete: boolean;
+}
+
+export const musicbrainzRequest = async (endpoint: string, params = {}) =>
   legacyMusicbrainzRequest(endpoint, params);
 
 export async function musicbrainzGetArtistReleaseGroups(
-  mbid,
-  selectedReleaseTypes = null,
-  { includeTrackCounts = true, hydrateLimit = includeTrackCounts ? 30 : 6, signal } = {},
+  mbid: string,
+  selectedReleaseTypes: string[] | null = null,
+  {
+    includeTrackCounts = true,
+    hydrateLimit = includeTrackCounts ? 30 : 6,
+    signal,
+  }: { includeTrackCounts?: boolean; hydrateLimit?: number; signal?: AbortSignal } = {},
 ) {
   const safeHydrateLimit =
     Number.isFinite(Number(hydrateLimit)) && Number(hydrateLimit) >= 0
@@ -62,7 +107,7 @@ export async function musicbrainzGetArtistReleaseGroups(
       hydrateLimit: safeHydrateLimit,
       signal,
     });
-    const mapped = items.map((item) => ({
+    const mapped = items.map((item: ArtistAlbum) => ({
       id: item.id,
       title: item.title || "",
       "first-release-date": item.firstReleaseDate || null,
@@ -87,7 +132,10 @@ export async function musicbrainzGetArtistReleaseGroups(
   }
 }
 
-const artistCreditIncludesMbid = (artistCredit, mbid) => {
+const artistCreditIncludesMbid = (
+  artistCredit: MusicBrainzArtistCredit[] | undefined,
+  mbid: string | null | undefined,
+) => {
   const normalizedMbid = String(mbid || "")
     .trim()
     .toLowerCase();
@@ -105,7 +153,10 @@ const getMusicbrainzUserAgent = () => {
   return `${APP_NAME}/${APP_VERSION} ( ${contact} )`;
 };
 
-const browseMusicbrainzTrackArtistReleases = async (mbid, { offset = 0, signal } = {}) => {
+const browseMusicbrainzTrackArtistReleases = async (
+  mbid: string,
+  { offset = 0, signal }: { offset?: number; signal?: AbortSignal } = {},
+): Promise<MusicBrainzTrackArtistReleasesPage> => {
   const userAgent = getMusicbrainzUserAgent();
   return mbLimiter.schedule(async () => {
     signal?.throwIfAborted?.();
@@ -125,16 +176,19 @@ const browseMusicbrainzTrackArtistReleases = async (mbid, { offset = 0, signal }
   });
 };
 
-const isSpecialPurposeArtist = (artist) =>
-  artist.id === VARIOUS_ARTISTS_MBID || /^\[.*\]$/.test(artist.name);
+const isSpecialPurposeArtist = (artist: MusicBrainzArtist) =>
+  artist.id === VARIOUS_ARTISTS_MBID || /^\[.*\]$/.test(artist.name!);
 
-export async function musicbrainzSearchArtistsByTag(tag, { limit = 25, offset = 0 } = {}) {
+export async function musicbrainzSearchArtistsByTag(
+  tag: string,
+  { limit = 25, offset = 0 }: { limit?: number; offset?: number } = {},
+) {
   const normalizedTag = String(tag || "")
     .trim()
     .toLowerCase();
   if (!normalizedTag) return { total: 0, nextOffset: 0, artists: [] };
-  const safeLimit = Math.min(100, Math.max(1, Number.parseInt(limit, 10) || 25));
-  const safeOffset = Math.max(0, Number.parseInt(offset, 10) || 0);
+  const safeLimit = Math.min(100, Math.max(1, Number.parseInt(String(limit), 10) || 25));
+  const safeOffset = Math.max(0, Number.parseInt(String(offset), 10) || 0);
   const cacheKey = `${normalizedTag}:${safeLimit}:${safeOffset}`;
   const cached = musicbrainzTagArtistsCache.get(cacheKey);
   if (cached) return cached;
@@ -151,7 +205,7 @@ export async function musicbrainzSearchArtistsByTag(tag, { limit = 25, offset = 
     });
     return response.data;
   });
-  const artists = Array.isArray(data?.artists) ? data.artists : [];
+  const artists: MusicBrainzArtist[] = Array.isArray(data?.artists) ? data.artists : [];
   const result = {
     total: Number(data?.count) || 0,
     nextOffset: safeOffset + artists.length,
@@ -163,8 +217,8 @@ export async function musicbrainzSearchArtistsByTag(tag, { limit = 25, offset = 
   return result;
 }
 
-const mapAppearsOnReleaseGroup = (release) => {
-  const releaseGroup = release["release-group"];
+const mapAppearsOnReleaseGroup = (release: MusicBrainzTrackArtistRelease) => {
+  const releaseGroup = release["release-group"]!;
   const artistCredit =
     Array.isArray(releaseGroup["artist-credit"]) && releaseGroup["artist-credit"].length
       ? releaseGroup["artist-credit"]
@@ -194,7 +248,11 @@ const mapAppearsOnReleaseGroup = (release) => {
   };
 };
 
-const scanAppearsOnPage = async (mbid, state, signal) => {
+const scanAppearsOnPage = async (
+  mbid: string,
+  state: AppearsOnScanState,
+  signal: AbortSignal | undefined,
+) => {
   const data = await browseMusicbrainzTrackArtistReleases(mbid, {
     offset: state.nextOffset,
     signal,
@@ -205,7 +263,7 @@ const scanAppearsOnPage = async (mbid, state, signal) => {
     if (!releaseGroupId || state.byReleaseGroupId.has(releaseGroupId)) continue;
     if (
       artistCreditIncludesMbid(release["artist-credit"], mbid) ||
-      artistCreditIncludesMbid(release["release-group"]["artist-credit"], mbid)
+      artistCreditIncludesMbid(release["release-group"]!["artist-credit"], mbid)
     ) {
       continue;
     }
@@ -222,14 +280,19 @@ const scanAppearsOnPage = async (mbid, state, signal) => {
 };
 
 export async function musicbrainzGetArtistAppearsOnReleaseGroups(
-  mbid,
-  { limit = 24, offset = 0, signal, scanPageBudget = 1 } = {},
+  mbid: string,
+  {
+    limit = 24,
+    offset = 0,
+    signal,
+    scanPageBudget = 1,
+  }: { limit?: number; offset?: number; signal?: AbortSignal; scanPageBudget?: number } = {},
 ) {
   if (!mbid) return [];
-  const safeLimit = Math.min(250, Math.max(1, Number.parseInt(limit, 10) || 24));
-  const safeOffset = Math.min(250, Math.max(0, Number.parseInt(offset, 10) || 0));
+  const safeLimit = Math.min(250, Math.max(1, Number.parseInt(String(limit), 10) || 24));
+  const safeOffset = Math.min(250, Math.max(0, Number.parseInt(String(offset), 10) || 0));
   const targetCount = Math.min(250, safeOffset + safeLimit);
-  const parsedScanPageBudget = Number.parseInt(scanPageBudget, 10);
+  const parsedScanPageBudget = Number.parseInt(String(scanPageBudget), 10);
   const safeScanPageBudget = Math.min(
     10,
     Math.max(0, Number.isFinite(parsedScanPageBudget) ? parsedScanPageBudget : 1),
@@ -252,7 +315,7 @@ export async function musicbrainzGetArtistAppearsOnReleaseGroups(
       state = await runSharedInflight(
         musicbrainzInflightRequests,
         `appears-on-page:${mbid}`,
-        (sharedSignal) => scanAppearsOnPage(mbid, current, sharedSignal),
+        (sharedSignal: AbortSignal) => scanAppearsOnPage(mbid, current, sharedSignal),
         { signal },
       );
     }
@@ -275,7 +338,7 @@ export async function musicbrainzGetArtistAppearsOnReleaseGroups(
     .slice(safeOffset, targetCount);
 }
 
-export const getMusicbrainzAppearsOnScanState = (mbid) => {
+export const getMusicbrainzAppearsOnScanState = (mbid: string) => {
   const state = musicbrainzAppearsOnCache.get(mbid);
   if (!state) return { complete: false, nextOffset: 0 };
   return {
@@ -284,7 +347,10 @@ export const getMusicbrainzAppearsOnScanState = (mbid) => {
   };
 };
 
-export async function musicbrainzGetArtistNameByMbid(mbid, { signal } = {}) {
+export async function musicbrainzGetArtistNameByMbid(
+  mbid: string,
+  { signal }: { signal?: AbortSignal } = {},
+) {
   if (!mbid) return null;
   const cached = musicbrainzArtistNameCache.get(mbid);
   if (cached !== undefined) return cached;
@@ -299,7 +365,10 @@ export async function musicbrainzGetArtistNameByMbid(mbid, { signal } = {}) {
   }
 }
 
-export async function musicbrainzGetArtistIdentityByMbid(mbid, { signal } = {}) {
+export async function musicbrainzGetArtistIdentityByMbid(
+  mbid: string | null | undefined,
+  { signal }: { signal?: AbortSignal } = {},
+) {
   const normalizedMbid = String(mbid || "").trim();
   if (!normalizedMbid) return null;
   try {
@@ -315,13 +384,13 @@ export async function musicbrainzGetArtistIdentityByMbid(mbid, { signal } = {}) 
   }
 }
 
-function normalizeArtistNameKey(artistName) {
+function normalizeArtistNameKey(artistName: string | null | undefined) {
   return String(artistName || "")
     .trim()
     .toLowerCase();
 }
 
-export function musicbrainzGetCachedArtistMbidByName(artistName) {
+export function musicbrainzGetCachedArtistMbidByName(artistName: string | null | undefined) {
   const normalized = normalizeArtistNameKey(artistName);
   if (!normalized) return null;
   const cached = dbOps.getMusicbrainzArtistMbidCache(normalized);
@@ -335,10 +404,10 @@ export function musicbrainzGetCachedArtistMbidByName(artistName) {
 }
 
 async function resolveCachedArtistMbid(
-  cacheKey,
-  artistName,
+  cacheKey: string,
+  artistName: string,
   resolve,
-  { throwOnError = false } = {},
+  { throwOnError = false }: { throwOnError?: boolean } = {},
 ) {
   const cached = dbOps.getMusicbrainzArtistMbidCache(cacheKey);
   const now = Date.now();
@@ -364,7 +433,7 @@ async function resolveCachedArtistMbid(
   }
 }
 
-export async function musicbrainzResolveArtistMbidByName(artistName) {
+export async function musicbrainzResolveArtistMbidByName(artistName: string | null | undefined) {
   const rawName = String(artistName || "").trim();
   if (!rawName) return null;
   return resolveCachedArtistMbid(
@@ -374,7 +443,7 @@ export async function musicbrainzResolveArtistMbidByName(artistName) {
   );
 }
 
-export async function musicbrainzResolveLibraryArtistMbid(artistName) {
+export async function musicbrainzResolveLibraryArtistMbid(artistName: string | null | undefined) {
   const rawName = String(artistName || "").trim();
   if (!rawName) return null;
   return resolveCachedArtistMbid(

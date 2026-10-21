@@ -9,13 +9,13 @@ import { normalizeMatchText } from "../trackMatching/nativeMatcher.ts";
 import { stripReleaseTypeSuffix } from "./trackSearchQueries.ts";
 import { coreAlbumTitle } from "../trackMatching/titleText.ts";
 
-function quote(value) {
+function quote(value: string | null | undefined) {
   return String(value || "")
     .replace(/"/g, " ")
     .trim();
 }
 
-function uniqueQueries(queries) {
+function uniqueQueries(queries: string[]) {
   const seen = new Set();
   return queries.filter((query) => {
     const key = normalizeReleaseText(query);
@@ -25,12 +25,18 @@ function uniqueQueries(queries) {
   });
 }
 
-export function isSameCoreAlbum(left, right) {
+export function isSameCoreAlbum(left: string | null | undefined, right: string | null | undefined) {
   const key = normalizeMatchText(coreAlbumTitle(left));
   return Boolean(key) && key === normalizeMatchText(coreAlbumTitle(right));
 }
 
-export function buildDeemixAlbumSearchQueries(context) {
+interface DeemixAlbumContext {
+  albumName?: string | null;
+  artistName?: string | null;
+  compilation?: boolean;
+}
+
+export function buildDeemixAlbumSearchQueries(context: DeemixAlbumContext) {
   const albumName = stripReleaseTypeSuffix(context?.albumName);
   const coreAlbum = coreAlbumTitle(albumName);
   const artistName = context?.compilation ? "" : String(context?.artistName || "").trim();
@@ -42,7 +48,14 @@ export function buildDeemixAlbumSearchQueries(context) {
   );
 }
 
-export function buildDeemixSearchQueries(context) {
+interface DeemixTrackContext {
+  trackName?: string | null;
+  title?: string | null;
+  artistName?: string | null;
+  artist?: string | null;
+}
+
+export function buildDeemixSearchQueries(context: DeemixTrackContext) {
   const trackName = String(context?.trackName || context?.title || "").trim();
   const artistName = String(context?.artistName || context?.artist || "").trim();
   if (!trackName) return [];

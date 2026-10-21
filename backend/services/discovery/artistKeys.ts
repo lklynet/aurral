@@ -3,12 +3,22 @@ import {
   getLibraryArtistsSignature,
 } from "../libraryQueryService.ts";
 
-const normalizeArtistKey = (value) =>
+export interface ArtistMatchFields {
+  id?: string | number | null;
+  mbid?: string | null;
+  foreignArtistId?: string | null;
+  artistMbid?: string | null;
+  name?: string | null;
+  artistName?: string | null;
+  artistAliases?: string[];
+}
+
+const normalizeArtistKey = (value: unknown) =>
   String(value || "")
     .trim()
     .toLowerCase();
 
-export const getArtistMatchKeys = (artist) =>
+export const getArtistMatchKeys = (artist: ArtistMatchFields | null | undefined) =>
   [
     artist?.id,
     artist?.mbid,
@@ -21,18 +31,23 @@ export const getArtistMatchKeys = (artist) =>
     .map(normalizeArtistKey)
     .filter(Boolean);
 
-export const buildArtistMatchKeySet = (artists = []) => {
-  const keys = new Set();
+export const buildArtistMatchKeySet = (artists: ArtistMatchFields[] = []) => {
+  const keys = new Set<string>();
   for (const artist of Array.isArray(artists) ? artists : []) {
     for (const key of getArtistMatchKeys(artist)) keys.add(key);
   }
   return keys;
 };
 
-export const matchesArtistKeys = (artist, keys) =>
-  keys?.size > 0 && getArtistMatchKeys(artist).some((key) => keys.has(key));
+export const matchesArtistKeys = (
+  artist: ArtistMatchFields | null | undefined,
+  keys: Set<string>,
+) => keys?.size > 0 && getArtistMatchKeys(artist).some((key) => keys.has(key));
 
-let libraryArtistKeys = { signature: null, keys: new Set() };
+let libraryArtistKeys: { signature: string | null; keys: Set<string> } = {
+  signature: null,
+  keys: new Set(),
+};
 
 export const getLibraryArtistKeys = () => {
   const signature = getLibraryArtistsSignature();

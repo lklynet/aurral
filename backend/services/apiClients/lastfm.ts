@@ -8,6 +8,16 @@ import { LASTFM_API } from "../../config/constants.ts";
 import { getLastfmApiKey, getLastfmApiSecret } from "./config.ts";
 import { runSharedInflight } from "../sharedInflight.ts";
 
+interface LastfmScrobbleEvent {
+  playedAt: number | string;
+  artist: string;
+  title: string;
+  album?: string | null;
+  durationMs?: number | null;
+  trackMbid?: string | null;
+  artistMbid?: string | null;
+}
+
 const lastfmCache = createCache(300);
 
 const lastfmLimiter = createRateLimiter(200);
@@ -21,17 +31,24 @@ const lastfmHttpsAgent = new https.Agent({
 });
 
 const LASTFM_TIMEOUT_MS =
-  Math.max(3000, parseInt(process.env.AURRAL_LASTFM_TIMEOUT_MS, 10) || 0) || 15000;
+  Math.max(3000, parseInt(String(process.env.AURRAL_LASTFM_TIMEOUT_MS), 10) || 0) || 15000;
 const LASTFM_MAX_RETRIES = 2;
 
 const lastfmInflightRequests = new Map();
 const lastfmErrorLogAt = new Map();
 
-const signedLastfmRequest = async (method, params = {}) => {
+const signedLastfmRequest = async (
+  method: string,
+  params: Record<string, string | number | null | undefined> = {},
+) => {
   const apiKey = getLastfmApiKey();
   const apiSecret = getLastfmApiSecret();
   if (!apiKey || !apiSecret) throw new Error("Last.fm API credentials are not configured");
-  const signedParams = { ...params, api_key: apiKey, method };
+  const signedParams: Record<string, string | number | null | undefined> = {
+    ...params,
+    api_key: apiKey,
+    method,
+  };
   const signature = Object.keys(signedParams)
     .sort()
     .map((key) => `${key}${signedParams[key]}`)
@@ -51,10 +68,10 @@ const signedLastfmRequest = async (method, params = {}) => {
   return response.data;
 };
 
-export const lastfmGetSession = (token) =>
+export const lastfmGetSession = (token: string | null | undefined) =>
   signedLastfmRequest("auth.getSession", { token: String(token || "").trim() });
 
-export const lastfmScrobble = (event, sessionKey) =>
+export const lastfmScrobble = (event: LastfmScrobbleEvent, sessionKey: string | null | undefined) =>
   signedLastfmRequest("track.scrobble", {
     sk: sessionKey,
     artist: event.artist,
@@ -66,7 +83,11 @@ export const lastfmScrobble = (event, sessionKey) =>
     ...(event.durationMs ? { duration: Math.round(event.durationMs / 1000) } : {}),
   });
 
-export async function lastfmRequest(method, params = {}, options = {}) {
+export async function lastfmRequest(
+  method: string,
+  params: Record<string, string | number | null | undefined> = {},
+  options: { timeoutMs?: number; maxRetries?: number; signal?: AbortSignal } = {},
+) {
   const apiKey = getLastfmApiKey();
   if (!apiKey) return null;
 
@@ -83,7 +104,7 @@ export async function lastfmRequest(method, params = {}, options = {}) {
   return runSharedInflight(
     lastfmInflightRequests,
     cacheKey,
-    async (sharedSignal) => {
+    async (sharedSignal: AbortSignal) => {
       const isRetryable = (error) => {
         const status = error.response?.status;
         const code = error.code;

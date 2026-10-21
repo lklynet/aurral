@@ -4,6 +4,17 @@ import createCache from "./simpleCache.ts";
 import { logger } from "../logger.ts";
 import { APP_NAME, APP_VERSION, LISTENBRAINZ_API } from "../../config/constants.ts";
 
+interface ListenbrainzSubmitEvent {
+  playedAt: number | string;
+  artist: string;
+  title: string;
+  album?: string | null;
+  durationMs?: number | null;
+  trackMbid?: string | null;
+  albumMbid?: string | null;
+  artistMbid?: string | null;
+}
+
 const listenbrainzCache = createCache(300);
 const listenbrainzLookupCache = createCache(3600, 200);
 const LISTENBRAINZ_LOOKUP_FAILURE_TTL_SECONDS = 300;
@@ -28,7 +39,7 @@ const getRateLimitWaitMs = (error) => {
   return Math.min(seconds, LISTENBRAINZ_MAX_RATE_LIMIT_WAIT_SECONDS) * 1000 + 250;
 };
 
-const normalizeListenbrainzBaseUrl = (baseUrl) => {
+const normalizeListenbrainzBaseUrl = (baseUrl: string | null | undefined) => {
   const candidate =
     String(baseUrl || "")
       .trim()
@@ -43,7 +54,11 @@ const normalizeListenbrainzBaseUrl = (baseUrl) => {
   }
 };
 
-const listenbrainzWrite = async (baseUrl, path, { token, data } = {}) => {
+const listenbrainzWrite = async (
+  baseUrl: string,
+  path: string,
+  { token, data }: { token?: string | null; data?: unknown } = {},
+) => {
   const response = await listenbrainzLimiter.schedule(() =>
     axios.post(`${String(baseUrl).replace(/\/+$/, "")}${path}`, data, {
       headers: {
@@ -57,7 +72,10 @@ const listenbrainzWrite = async (baseUrl, path, { token, data } = {}) => {
   return response.data;
 };
 
-export const listenbrainzValidateToken = async (token, baseUrl = LISTENBRAINZ_API) => {
+export const listenbrainzValidateToken = async (
+  token: string | null | undefined,
+  baseUrl: string | null | undefined = LISTENBRAINZ_API,
+) => {
   const root = normalizeListenbrainzBaseUrl(baseUrl);
   const response = await listenbrainzLimiter.schedule(() =>
     axios.get(`${root}/1/validate-token`, {
@@ -72,7 +90,15 @@ export const listenbrainzValidateToken = async (token, baseUrl = LISTENBRAINZ_AP
   return response.data;
 };
 
-export const listenbrainzSubmit = async ({ token, baseUrl = LISTENBRAINZ_API, event }) => {
+export const listenbrainzSubmit = async ({
+  token,
+  baseUrl = LISTENBRAINZ_API,
+  event,
+}: {
+  token?: string | null;
+  baseUrl?: string | null;
+  event: ListenbrainzSubmitEvent;
+}) => {
   const root = normalizeListenbrainzBaseUrl(baseUrl);
   const listenedAt = Math.floor(Number(event?.playedAt) / 1000);
   if (!Number.isFinite(listenedAt) || listenedAt <= 0) {
@@ -105,7 +131,7 @@ export const listenbrainzSubmit = async ({ token, baseUrl = LISTENBRAINZ_API, ev
 };
 
 export async function listenbrainzRequest(
-  path,
+  path: string,
   params = {},
   {
     token = null,
@@ -161,7 +187,7 @@ export async function listenbrainzRequest(
               ...(isAuthenticated ? { Authorization: `Token ${String(token).trim()}` } : {}),
             },
             timeout: timeoutMs,
-            validateStatus: (status) => (status >= 200 && status < 300) || status === 204,
+            validateStatus: (status: number) => (status >= 200 && status < 300) || status === 204,
           };
           return data
             ? axios.post(`${root}${path}`, data, config)
@@ -203,14 +229,17 @@ export async function listenbrainzRequest(
   }
 }
 
-const toBatches = (items, size) =>
+const toBatches = <T>(items: T[], size: number) =>
   Array.from({ length: Math.ceil(items.length / size) }, (_, index) =>
     items.slice(index * size, (index + 1) * size),
   );
 
-const toListenCount = (value) => (Number.isInteger(value) && value > 0 ? value : null);
+const toListenCount = (value: number) => (Number.isInteger(value) && value > 0 ? value : null);
 
-async function cachedListenbrainzLookup(cacheKey, lookup) {
+async function cachedListenbrainzLookup<V>(
+  cacheKey: string,
+  lookup: () => Promise<Map<string, V>>,
+): Promise<Map<string, V>> {
   const cached = listenbrainzLookupCache.get(cacheKey);
   if (cached) return cached;
   try {
@@ -224,7 +253,7 @@ async function cachedListenbrainzLookup(cacheKey, lookup) {
   }
 }
 
-export const listenbrainzGetReleaseGroupListens = (releaseGroupMbids) =>
+export const listenbrainzGetReleaseGroupListens = (releaseGroupMbids: string[]) =>
   cachedListenbrainzLookup(`listens:${releaseGroupMbids.join(",")}`, async () => {
     const batches = await Promise.all(
       toBatches(releaseGroupMbids, LISTENBRAINZ_POPULARITY_BATCH_SIZE).map((mbids) =>
@@ -247,10 +276,10 @@ export const listenbrainzGetReleaseGroupListens = (releaseGroupMbids) =>
     return listens;
   });
 
-const isReleaseGroupMetadata = (batch) =>
-  Boolean(batch) && typeof batch === "object" && !Array.isArray(batch) && !("error" in batch);
+const isReleaseGroupMetadata = (batch: unknown) =>
+  Boolean(batch) && typeof batch === "object" && !Array.isArray(batch) && !("error" in batch!);
 
-export const listenbrainzGetReleaseGroupDates = (releaseGroupMbids) =>
+export const listenbrainzGetReleaseGroupDates = (releaseGroupMbids: string[]) =>
   cachedListenbrainzLookup(`dates:${releaseGroupMbids.join(",")}`, async () => {
     const batches = await Promise.all(
       toBatches(releaseGroupMbids, LISTENBRAINZ_METADATA_BATCH_SIZE).map((mbids) =>
