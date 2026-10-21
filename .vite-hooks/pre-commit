@@ -1,19 +1,12 @@
-#!/bin/sh
-
 branch="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
 
 if [ "$branch" = "main" ]; then
-  cat >&2 <<EOF
+  cat >&2 <<MESSAGE
 Direct commits to 'main' are blocked.
 
 Create a short-lived branch from main and open a pull request.
-EOF
+MESSAGE
   exit 1
 fi
 
-vp="$(git rev-parse --show-toplevel)/node_modules/.bin/vp"
-if [ -x "$vp" ]; then
-  exec "$vp" staged
-fi
-
-exit 0
+vp staged

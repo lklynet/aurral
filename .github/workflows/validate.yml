@@ -29,32 +29,29 @@ jobs:
         with:
           fail-on-severity: high
 
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: voidzero-dev/setup-vp@68f39c78aaf39be468cabd2afb09c162574c84af # v1.21.2
         with:
           node-version-file: .nvmrc
-          cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            docs/package-lock.json
+          cache: true
+          run-install: |
+            - args: ["--frozen-lockfile"]
+            - cwd: docs
+              args: ["--frozen-lockfile"]
 
-      - run: npm ci
-
-      - run: npm run check
+      - run: vp run check
 
       - name: Build app
-        run: npm run build
+        run: vp run build
 
       - name: Build docs
-        run: |
-          npm ci
-          npm run build
+        run: npm run build
         working-directory: docs
 
       - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+        run: vp exec playwright install --with-deps chromium
 
       - name: Run component tests in Chromium
-        run: npm run test:browser
+        run: vp run test:browser
 
       - name: Start app
         run: |
@@ -82,9 +79,9 @@ jobs:
         env:
           AURRAL_BASE_URL: http://127.0.0.1:3001
         run: |
-          npx playwright test tests/e2e/library-track-performer.spec.js
-          npx playwright test tests/e2e/library-add-menu.spec.js tests/e2e/playlist-bulk-actions.spec.js
-          npx playwright test tests/e2e/local-album-artwork.spec.js
+          vp exec playwright test tests/e2e/library-track-performer.spec.js
+          vp exec playwright test tests/e2e/library-add-menu.spec.js tests/e2e/playlist-bulk-actions.spec.js
+          vp exec playwright test tests/e2e/local-album-artwork.spec.js
 
       - name: Print app log on failure
         if: failure()
@@ -112,12 +109,6 @@ jobs:
         shard: [1, 2]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-          cache-dependency-path: package-lock.json
 
       # The runner's Ubuntu mirror sometimes serves packages at under 100 kB/s.
       - name: Restore validation package cache
@@ -166,10 +157,15 @@ jobs:
             ffmpeg fontconfig fonts-dejavu-core fonts-noto-color-emoji
           find /var/cache/apt/archives -maxdepth 1 -name '*.deb' -exec cp -t ~/apt-archives/ {} +
 
-      - run: npm ci
+      - uses: voidzero-dev/setup-vp@68f39c78aaf39be468cabd2afb09c162574c84af # v1.21.2
+        with:
+          node-version-file: .nvmrc
+          cache: true
+          run-install: |
+            - args: ["--frozen-lockfile"]
 
       - name: Run test suite
-        run: npm test -- --shard=${{ matrix.shard }}/2
+        run: vp run test --shard=${{ matrix.shard }}/2
 
   integration-tests:
     name: Integration tests
@@ -178,12 +174,6 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-          cache-dependency-path: package-lock.json
-
       - name: Ensure transcoding runtime dependency
         run: |
           if ! command -v ffmpeg >/dev/null 2>&1; then
@@ -191,10 +181,15 @@ jobs:
             sudo apt-get install -y --no-install-recommends ffmpeg
           fi
 
-      - run: npm ci
+      - uses: voidzero-dev/setup-vp@68f39c78aaf39be468cabd2afb09c162574c84af # v1.21.2
+        with:
+          node-version-file: .nvmrc
+          cache: true
+          run-install: |
+            - args: ["--frozen-lockfile"]
 
       - name: Run integration tests
-        run: npm run test:integration
+        run: vp run test:integration
 
   container:
     name: Production container
