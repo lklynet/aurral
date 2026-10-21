@@ -4,14 +4,16 @@ import postcss from "postcss";
 
 const defaultTokenSource = fileURLToPath(new URL("../src/index.css", import.meta.url));
 
-function isRootSelector(selector) {
+type AurralTokenDeclaration = { name: string; selector: string; value: string };
+
+function isRootSelector(selector: string) {
   return selector.split(",").some((part) => {
     const trimmed = part.trim();
     return trimmed === ":root" || /^:root(?:\[|:not\()/.test(trimmed);
   });
 }
 
-export function parseAurralTokens(css, source = "<input>") {
+export function parseAurralTokens(css: string, source = "<input>") {
   let root;
 
   try {
@@ -22,7 +24,7 @@ export function parseAurralTokens(css, source = "<input>") {
     });
   }
 
-  const declarations = [];
+  const declarations: AurralTokenDeclaration[] = [];
   const references = new Set();
 
   root.walkRules((rule) => {

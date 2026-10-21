@@ -2,6 +2,7 @@ import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import postcss from "postcss";
+import type { AtRule, Container, Declaration, Document, Rule } from "postcss";
 
 import { readAurralTokens } from "./ui-token-source.mts";
 
@@ -56,7 +57,7 @@ const colorKeywords = new Set(
 const colorFunctionPattern =
   /\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|light-dark|device-cmyk)\s*\(/i;
 const hexColorPattern = /#[\da-f]{3,8}\b/i;
-const propertySuggestions = [
+const propertySuggestions: [RegExp, string][] = [
   [
     /^(?:color|text-decoration-color|fill|stroke|caret-color|flood-color|lighting-color|stop-color)$/,
     "--aurral-text",
@@ -68,14 +69,14 @@ const propertySuggestions = [
   [/^(?:accent-color|column-rule-color)$/, "--aurral-accent"],
 ];
 
-function isRootTokenSelector(selector) {
+function isRootTokenSelector(selector: string) {
   return selector.split(",").some((part) => {
     const trimmed = part.trim();
     return trimmed === ":root" || /^:root(?:\[|:not\()/.test(trimmed);
   });
 }
 
-function isAurralTokenDefinition(declaration) {
+function isAurralTokenDefinition(declaration: Declaration) {
   return (
     declaration.prop.startsWith("--aurral-") &&
     declaration.parent?.type === "rule" &&
@@ -83,7 +84,7 @@ function isAurralTokenDefinition(declaration) {
   );
 }
 
-export function hasStaticColor(value) {
+export function hasStaticColor(value: string) {
   const withoutUrlsAndComments = value
     .replace(/url\([^)]*\)/gi, "")
     .replace(/\/\*[\s\S]*?\*\//g, "");
@@ -103,17 +104,17 @@ export function hasStaticColor(value) {
   );
 }
 
-export function isColorBearingProperty(property) {
+export function isColorBearingProperty(property: string) {
   return colorBearingProperties.has(property) || property.startsWith("border");
 }
 
-export function getSuggestedToken(property, tokenNames) {
+export function getSuggestedToken(property: string, tokenNames: Set<string>) {
   const entry = propertySuggestions.find(([pattern]) => pattern.test(property));
   if (entry && tokenNames.has(entry[1])) return entry[1];
   return null;
 }
 
-function editDistance(left, right) {
+function editDistance(left: string, right: string) {
   const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
 
   for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
@@ -135,7 +136,7 @@ function editDistance(left, right) {
   return previous[right.length];
 }
 
-export function getClosestToken(name, tokenNames) {
+export function getClosestToken(name: string, tokenNames: Set<string>) {
   let closest = null;
   let closestDistance = Number.POSITIVE_INFINITY;
 
@@ -157,7 +158,7 @@ const rawEasingPattern =
 const rawDurationPattern = /(?<![\w.#-])-?\d*\.?\d+m?s(?![\w-])/gi;
 const allowedDurations = new Set(["0s", "0ms", "0.01ms"]);
 
-export function findRawMotion(property, value) {
+export function findRawMotion(property: string, value: string) {
   if (!motionProperties.test(property)) return null;
   const withoutVariables = value.replace(/var\([^()]*(?:\([^()]*\)[^()]*)*\)/g, "");
   if (rawEasingPattern.test(withoutVariables)) return "easing";
@@ -171,21 +172,21 @@ export function findRawMotion(property, value) {
 
 const zIndexKeywords = new Set(["auto", "inherit", "initial", "unset", "revert", "revert-layer"]);
 
-export function hasRawZIndex(value) {
+export function hasRawZIndex(value: string) {
   const trimmed = value.trim().toLowerCase();
   return !zIndexKeywords.has(trimmed) && !/var\(\s*--aurral-z-[\w-]+/.test(trimmed);
 }
 
-export function hasStaticViewportHeight(value) {
+export function hasStaticViewportHeight(value: string) {
   return /(?<![\w.-])\d*\.?\d+vh\b/i.test(value);
 }
 
-function isInsideHoverMedia(node) {
-  for (let parent = node.parent; parent; parent = parent.parent) {
+function isInsideHoverMedia(node: Rule) {
+  for (let parent: Container | Document | undefined = node.parent; parent; parent = parent.parent) {
     if (
       parent.type === "atrule" &&
-      parent.name === "media" &&
-      /\(\s*hover\s*:\s*hover\s*\)/.test(parent.params)
+      (parent as AtRule).name === "media" &&
+      /\(\s*hover\s*:\s*hover\s*\)/.test((parent as AtRule).params)
     ) {
       return true;
     }
@@ -193,15 +194,29 @@ function isInsideHoverMedia(node) {
   return false;
 }
 
-function sourceLine(declaration) {
+function sourceLine(declaration: Declaration) {
   return declaration.source?.start?.line ?? 1;
 }
 
-function createFinding(filePath, line, ruleId, message, suggestion = null) {
+function createFinding(
+  filePath: string,
+  line: number,
+  ruleId: string,
+  message: string,
+  suggestion: string | null = null,
+) {
   return { filePath, line, ruleId, suggestion, message: `${filePath}:${line} ${message}` };
 }
 
-export function lintCss(css, { filePath = "<input>", tokenNames = new Set() } = {}) {
+type CssFinding = ReturnType<typeof createFinding>;
+
+export function lintCss(
+  css: string,
+  {
+    filePath = "<input>",
+    tokenNames = new Set<string>(),
+  }: { filePath?: string; tokenNames?: Set<string> } = {},
+) {
   let root;
 
   try {
@@ -218,8 +233,8 @@ export function lintCss(css, { filePath = "<input>", tokenNames = new Set() } = 
     ];
   }
 
-  const findings = [];
-  const localPropertySuggestions = new Map();
+  const findings: CssFinding[] = [];
+  const localPropertySuggestions = new Map<string, string>();
 
   root.walkDecls((declaration) => {
     if (declaration.prop.startsWith("--")) return;
@@ -331,7 +346,7 @@ export function lintCss(css, { filePath = "<input>", tokenNames = new Set() } = 
   return findings;
 }
 
-async function findCssFiles(directory) {
+async function findCssFiles(directory: string): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true });
   const nested = await Promise.all(
     entries.map(async (entry) => {
