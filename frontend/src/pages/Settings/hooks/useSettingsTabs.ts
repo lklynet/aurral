@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from "react";
 import { useNavigate, useParams } from "react-router";
+import type { useAuth } from "../../../contexts/AuthContext";
 import {
   DEFAULT_SETTINGS_TAB,
   getSettingsTabById,
@@ -8,7 +9,9 @@ import {
   SETTINGS_TAB_IDS,
 } from "../settingsTabsConfig";
 
-export function useSettingsTabs(authUser) {
+type AuthUser = NonNullable<ReturnType<typeof useAuth>>["user"];
+
+export function useSettingsTabs(authUser: AuthUser) {
   const navigate = useNavigate();
   const { tab: tabParam } = useParams();
 
@@ -27,7 +30,7 @@ export function useSettingsTabs(authUser) {
   const activeTabMeta = useMemo(() => getSettingsTabById(activeTab), [activeTab]);
 
   const setActiveTab = useCallback(
-    (tabId) => {
+    (tabId: string) => {
       const nextTab = normalizeSettingsTabId(tabId);
       if (nextTab === activeTab) return;
       navigate(`/settings/${nextTab}`);

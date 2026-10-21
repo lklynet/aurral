@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
+import type { FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   getProwlarrIndexers,
   testProwlarrConnection,
 } from "../../../utils/api/endpoints/settings.ts";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
+import type { AppSettings } from "../../../../../backend/db/helpers/settings.ts";
+import type { prowlarrClient } from "../../../../../backend/services/prowlarrClient.ts";
 
 import { RefreshCw } from "lucide-react";
 import { DotLoader } from "../../../components/DotLoader";
@@ -17,7 +20,26 @@ import {
   SettingsModalToggle,
 } from "./SettingsModalLayout";
 import { getIndexerStatus, getProviderStatus } from "../utils/integrationStatus";
-function toNumber(value, fallback) {
+
+type ProwlarrDraft = NonNullable<AppSettings["integrations"]["prowlarr"]>;
+type ProwlarrIndexerOverride = NonNullable<ProwlarrDraft["indexers"]>[string];
+type ProwlarrIndexer = Awaited<ReturnType<typeof prowlarrClient.listUsenetIndexers>>[number];
+type TestStatus = { tone: "success" | "error"; message: string };
+
+type SettingsIndexersSectionProps = {
+  settings: { integrations?: Partial<AppSettings["integrations"]> };
+  updateSettings: (next: { integrations?: Partial<AppSettings["integrations"]> }) => void;
+  health?: { prowlarrConfigured?: boolean } | null;
+  handleSaveSettings: (
+    event?: FormEvent<HTMLFormElement>,
+    settingsOverride?: { integrations?: Partial<AppSettings["integrations"]> },
+  ) => unknown;
+  showSuccess: (message: string) => void;
+  showError: (message: string) => void;
+  showInfo: (message: string) => void;
+};
+
+function toNumber(value: string, fallback: number) {
   const next = parseInt(value, 10);
   return Number.isFinite(next) ? next : fallback;
 }
@@ -30,12 +52,12 @@ export function SettingsIndexersSection({
   showSuccess,
   showError,
   showInfo,
-}) {
-  const [activeModal, setActiveModal] = useState(null);
+}: SettingsIndexersSectionProps) {
+  const [activeModal, setActiveModal] = useState<string | null>(null);
   const [testingProwlarr, setTestingProwlarr] = useState(false);
-  const [testStatus, setTestStatus] = useState(null);
+  const [testStatus, setTestStatus] = useState<TestStatus | null>(null);
 
-  const prowlarr = settings.integrations?.prowlarr || {};
+  const prowlarr: ProwlarrDraft = settings.integrations?.prowlarr || {};
   const prowlarrConfigured = Boolean(prowlarr.url && prowlarr.apiKey);
   const prowlarrEnabled = prowlarr.enabled === true;
   const indexersQuery = useQuery({
@@ -44,7 +66,7 @@ export function SettingsIndexersSection({
     enabled: health?.prowlarrConfigured === true,
     staleTime: 60_000,
   });
-  const prowlarrIndexers = health?.prowlarrConfigured
+  const prowlarrIndexers: ProwlarrIndexer[] = health?.prowlarrConfigured
     ? Array.isArray(indexersQuery.data?.indexers)
       ? indexersQuery.data.indexers
       : []
@@ -55,7 +77,7 @@ export function SettingsIndexersSection({
     setTestStatus(null);
   }, [activeModal]);
 
-  const updateIntegration = (key, patch) => {
+  const updateIntegration = (key: "prowlarr", patch: ProwlarrDraft) => {
     setTestStatus(null);
     updateSettings({
       ...settings,
@@ -91,7 +113,7 @@ export function SettingsIndexersSection({
     }
   };
 
-  const updateProwlarrIndexer = (id, patch) => {
+  const updateProwlarrIndexer = (id: number, patch: ProwlarrIndexerOverride) => {
     const key = String(id);
     updateIntegration("prowlarr", {
       indexers: {
@@ -104,8 +126,9 @@ export function SettingsIndexersSection({
     });
   };
 
-  const getIndexerState = (indexer) => {
-    const override = prowlarr.indexers?.[String(indexer.id)] || {};
+  const getIndexerState = (indexer: ProwlarrIndexer) => {
+    const override: Partial<ProwlarrIndexerOverride> =
+      prowlarr.indexers?.[String(indexer.id)] || {};
     const aurralEnabled = override.enabled !== false;
     const effectiveEnabled = indexer.enabledInProwlarr !== false && aurralEnabled;
     return {

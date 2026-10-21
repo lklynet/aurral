@@ -1,4 +1,12 @@
-export function SettingsInput({ legacyStyle = false, className = "", ...props }) {
+import type { InputHTMLAttributes, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
+
+type LegacyStyleProps = { legacyStyle?: boolean };
+
+export function SettingsInput({
+  legacyStyle = false,
+  className = "",
+  ...props
+}: InputHTMLAttributes<HTMLInputElement> & LegacyStyleProps) {
   return (
     <input
       className={
@@ -11,7 +19,12 @@ export function SettingsInput({ legacyStyle = false, className = "", ...props })
   );
 }
 
-export function SettingsSelect({ legacyStyle = false, className = "", children, ...props }) {
+export function SettingsSelect({
+  legacyStyle = false,
+  className = "",
+  children,
+  ...props
+}: SelectHTMLAttributes<HTMLSelectElement> & LegacyStyleProps) {
   return (
     <select
       className={
@@ -26,7 +39,11 @@ export function SettingsSelect({ legacyStyle = false, className = "", children, 
   );
 }
 
-export function SettingsTextarea({ legacyStyle = false, className = "", ...props }) {
+export function SettingsTextarea({
+  legacyStyle = false,
+  className = "",
+  ...props
+}: TextareaHTMLAttributes<HTMLTextAreaElement> & LegacyStyleProps) {
   return (
     <textarea
       className={

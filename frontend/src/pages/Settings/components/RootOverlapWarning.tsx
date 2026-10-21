@@ -1,6 +1,9 @@
+import type { computeLibraryRootOverlaps } from "../../../../../backend/services/downloadFolderConfig.ts";
 import { describeRootOverlapWarning } from "../utils/librarySettings";
 
-export function RootOverlapWarning({ rootWarnings }) {
+type RootWarning = ReturnType<typeof computeLibraryRootOverlaps>[number];
+
+export function RootOverlapWarning({ rootWarnings }: { rootWarnings?: RootWarning[] }) {
   const warning = describeRootOverlapWarning(rootWarnings);
   if (!warning) return null;
   return (

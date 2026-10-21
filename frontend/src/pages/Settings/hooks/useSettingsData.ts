@@ -409,7 +409,7 @@ export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
   ]);
 
   const refreshLidarrResources = useCallback(
-    async (config = null) => {
+    async (config: { url: string; apiKey: string } | null = null) => {
       const nextConfig = updateLidarrResourceConfig(
         config || getLidarrResourceConfig(settingsRef.current),
       );

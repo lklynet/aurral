@@ -1,10 +1,12 @@
 import { useState } from "react";
+import type { FormEvent } from "react";
 import { Pencil, Plus, Save, Trash2 } from "lucide-react";
 import PillToggle from "../../../components/PillToggle";
 import { SettingsInput } from "./SettingsField";
 import { SettingsArrFieldSet, SettingsArrFormGroup } from "./arr/SettingsArrLayout";
 import { SettingsIntegrationModal } from "./SettingsIntegrationCards";
 import Tooltip from "../../../components/Tooltip";
+import type { AppSettings } from "../../../../../backend/db/helpers/settings.ts";
 
 const GROUPS = [
   ["major", "Music publications"],
@@ -21,24 +23,41 @@ const GROUPS = [
   ["concerts", "Live music"],
 ];
 
-export function SettingsRssNewsTab({ settings, updateSettings, handleSaveSettings }) {
-  const [feedEditor, setFeedEditor] = useState(null);
-  const [feedError, setFeedError] = useState("");
-  const news = settings.integrations?.news || { enabled: true, feeds: [], groups: {} };
-  const feeds = Array.isArray(news.feeds) ? news.feeds : [];
+type NewsDraft = NonNullable<AppSettings["integrations"]["news"]>;
+type NewsFeed = NonNullable<NewsDraft["feeds"]>[number];
+type FeedEditor = { index: number | null; draft: NewsFeed };
 
-  const updateNews = (patch) =>
+type SettingsRssNewsTabProps = {
+  settings: { integrations?: Partial<AppSettings["integrations"]> };
+  updateSettings: (next: { integrations?: Partial<AppSettings["integrations"]> }) => void;
+  handleSaveSettings: (
+    event?: FormEvent<HTMLFormElement>,
+    settingsOverride?: { integrations?: Partial<AppSettings["integrations"]> },
+  ) => unknown;
+};
+
+export function SettingsRssNewsTab({
+  settings,
+  updateSettings,
+  handleSaveSettings,
+}: SettingsRssNewsTabProps) {
+  const [feedEditor, setFeedEditor] = useState<FeedEditor | null>(null);
+  const [feedError, setFeedError] = useState("");
+  const news: NewsDraft = settings.integrations?.news || { enabled: true, feeds: [], groups: {} };
+  const feeds: NewsFeed[] = Array.isArray(news.feeds) ? news.feeds : [];
+
+  const updateNews = (patch: NewsDraft) =>
     updateSettings({
       ...settings,
       integrations: { ...settings.integrations, news: { ...news, ...patch } },
     });
 
-  const updateFeed = (index, patch) =>
+  const updateFeed = (index: number, patch: Partial<NewsFeed>) =>
     updateNews({
       feeds: feeds.map((feed, feedIndex) => (feedIndex === index ? { ...feed, ...patch } : feed)),
     });
 
-  const removeFeed = (index) =>
+  const removeFeed = (index: number) =>
     updateNews({ feeds: feeds.filter((_, feedIndex) => feedIndex !== index) });
 
   const saveFeed = () => {
@@ -77,12 +96,12 @@ export function SettingsRssNewsTab({ settings, updateSettings, handleSaveSetting
     });
   };
 
-  const editFeed = (index) => {
+  const editFeed = (index: number) => {
     setFeedError("");
     setFeedEditor({ index, draft: { ...feeds[index] } });
   };
 
-  const renderFeed = (feed, index) => (
+  const renderFeed = (feed: NewsFeed, index: number) => (
     <div className="settings-news-feed" key={feed.id || `${feed.url}-${index}`}>
       {feed.builtIn ? (
         <div className="settings-news-feed__details">

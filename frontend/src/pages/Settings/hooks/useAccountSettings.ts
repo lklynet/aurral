@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import type { DefaultError } from "@tanstack/react-query";
 import {
   getMyListeningHistory,
   getMyLidarrPreferences,
@@ -7,8 +8,31 @@ import {
   updateMyLidarrPreferences,
 } from "../../../utils/api/endpoints/auth.ts";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
+import type { useAuth } from "../../../contexts/AuthContext";
+import type { lidarrClient } from "../../../../../backend/services/lidarrClient.ts";
 
-function areDraftsEqual(left, right) {
+type AuthUser = NonNullable<ReturnType<typeof useAuth>>["user"];
+type LidarrPreferences = Awaited<ReturnType<typeof lidarrClient.getArtistAddPreferenceSummary>>;
+type LidarrRootFolder = LidarrPreferences["rootFolders"][number];
+type LidarrQualityProfile = LidarrPreferences["qualityProfiles"][number];
+type AccountDraft = {
+  provider: string;
+  username: string;
+  url: string;
+  rootFolderPath: string;
+  qualityProfileId: string;
+};
+type ListenHistoryPayload = {
+  listenHistoryProvider: string;
+  listenHistoryUsername: string | null;
+  listenHistoryUrl: string | null;
+};
+type LidarrPreferencesPayload = {
+  rootFolderPath: string | null;
+  qualityProfileId: number | null;
+};
+
+function areDraftsEqual(left: AccountDraft | null, right: AccountDraft | null) {
   return (
     left?.provider === right?.provider &&
     left?.username === right?.username &&
@@ -18,10 +42,10 @@ function areDraftsEqual(left, right) {
   );
 }
 
-const isCurrentAccount = (activeAccountId, savedAccountId) =>
+const isCurrentAccount = (activeAccountId: number | null, savedAccountId: number) =>
   activeAccountId != null && activeAccountId === savedAccountId;
 
-export function useAccountSettings(authUser, showError) {
+export function useAccountSettings(authUser: AuthUser, showError: (message: string) => void) {
   const [listenHistoryProvider, setListenHistoryProvider] = useState("lastfm");
   const [listenHistoryUsername, setListenHistoryUsername] = useState("");
   const [listenHistoryUrl, setListenHistoryUrl] = useState("");
@@ -29,24 +53,24 @@ export function useAccountSettings(authUser, showError) {
   const [savedListenHistoryUsername, setSavedListenHistoryUsername] = useState("");
   const [savedListenHistoryUrl, setSavedListenHistoryUrl] = useState("");
   const [lidarrConfigured, setLidarrConfigured] = useState(false);
-  const [lidarrRootFolders, setLidarrRootFolders] = useState([]);
-  const [lidarrQualityProfiles, setLidarrQualityProfiles] = useState([]);
+  const [lidarrRootFolders, setLidarrRootFolders] = useState<LidarrRootFolder[]>([]);
+  const [lidarrQualityProfiles, setLidarrQualityProfiles] = useState<LidarrQualityProfile[]>([]);
   const [lidarrRootFolderPath, setLidarrRootFolderPath] = useState("");
   const [savedLidarrRootFolderPath, setSavedLidarrRootFolderPath] = useState("");
   const [lidarrQualityProfileId, setLidarrQualityProfileId] = useState("");
   const [savedLidarrQualityProfileId, setSavedLidarrQualityProfileId] = useState("");
   const [saving, setSaving] = useState(false);
-  const saveTimerRef = useRef(null);
-  const handleSaveRef = useRef(null);
-  const saveInFlightRef = useRef(null);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleSaveRef = useRef<(() => Promise<boolean | undefined>) | null>(null);
+  const saveInFlightRef = useRef<Promise<boolean> | null>(null);
   const saveQueuedRef = useRef(false);
-  const currentDraftRef = useRef(null);
+  const currentDraftRef = useRef<AccountDraft | null>(null);
   const hasUnsavedChangesRef = useRef(false);
   const isListenHistoryValidRef = useRef(false);
-  const activeAccountIdRef = useRef(null);
-  const saveInFlightAccountIdRef = useRef(null);
-  const hydratedHistoryAccountRef = useRef(null);
-  const hydratedLidarrAccountRef = useRef(null);
+  const activeAccountIdRef = useRef<number | null>(null);
+  const saveInFlightAccountIdRef = useRef<number | null>(null);
+  const hydratedHistoryAccountRef = useRef<number | null>(null);
+  const hydratedLidarrAccountRef = useRef<number | null>(null);
 
   const hasUnsavedChanges =
     listenHistoryProvider !== savedListenHistoryProvider ||
@@ -74,10 +98,14 @@ export function useAccountSettings(authUser, showError) {
   });
   const loading = historyQuery.isPending || lidarrQuery.isPending;
   const { mutateAsync: saveHistory } = useMutation({
-    mutationFn: (payload) => updateMyListeningHistory(authUser.id, payload),
+    mutationFn: (payload: ListenHistoryPayload) => updateMyListeningHistory(authUser.id, payload),
     onSuccess: (data) => queryClient.setQueryData(historyQueryKey, data),
   });
-  const { mutateAsync: saveLidarr } = useMutation({
+  const { mutateAsync: saveLidarr } = useMutation<
+    LidarrPreferences,
+    DefaultError,
+    LidarrPreferencesPayload
+  >({
     mutationFn: updateMyLidarrPreferences,
     onSuccess: (data) => queryClient.setQueryData(lidarrQueryKey, data),
   });

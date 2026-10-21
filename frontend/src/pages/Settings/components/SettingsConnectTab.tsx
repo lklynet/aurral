@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from "react";
+import type { FormEvent } from "react";
 import {
   testGotifyConnection,
   testWebhookConnection,
@@ -24,8 +25,37 @@ import {
 import PillToggle from "../../../components/PillToggle";
 import { DotLoader } from "../../../components/DotLoader";
 import { getConfiguredStatus } from "../utils/integrationStatus";
+import type { AppSettings } from "../../../../../backend/db/helpers/settings.ts";
 
-const EMPTY_WEBHOOKS = Object.freeze([]);
+type IntegrationDraft<K extends "gotify" | "lastfm" | "ticketmaster" | "google"> = NonNullable<
+  AppSettings["integrations"][K]
+>;
+type Webhook = NonNullable<AppSettings["integrations"]["webhooks"]>[number];
+type WebhookHeader = NonNullable<Webhook["headers"]>[number];
+type WebhookEventsDraft = NonNullable<AppSettings["integrations"]["webhookEvents"]>;
+type TestStatus = { tone: "success" | "error"; message: string };
+type WebhookTestStatus = TestStatus & { index: number };
+
+type SettingsDraft = {
+  integrations?: Partial<AppSettings["integrations"]>;
+  inbox?: Partial<AppSettings["inbox"]>;
+};
+
+type SettingsConnectTabProps = {
+  settings: SettingsDraft;
+  updateSettings: (next: SettingsDraft) => void;
+  health?: { lastfmConfigured?: boolean; ticketmasterConfigured?: boolean } | null;
+  handleSaveSettings: (
+    event?: FormEvent<HTMLFormElement>,
+    settingsOverride?: SettingsDraft,
+  ) => unknown;
+  testingGotify: boolean;
+  setTestingGotify: (testing: boolean) => void;
+  showSuccess: (message: string) => void;
+  showError: (message: string) => void;
+};
+
+const EMPTY_WEBHOOKS: readonly Webhook[] = Object.freeze([]);
 
 export function SettingsConnectTab({
   settings,
@@ -36,16 +66,16 @@ export function SettingsConnectTab({
   setTestingGotify,
   showSuccess,
   showError,
-}) {
-  const [activeModal, setActiveModal] = useState(null);
-  const [testStatus, setTestStatus] = useState(null);
-  const [testingWebhookIndex, setTestingWebhookIndex] = useState(null);
-  const [webhookTestStatus, setWebhookTestStatus] = useState(null);
-  const gotify = settings.integrations?.gotify || {};
-  const lastfm = settings.integrations?.lastfm || {};
-  const ticketmaster = settings.integrations?.ticketmaster || {};
-  const google = settings.integrations?.google || {};
-  const inbox = settings.inbox || {};
+}: SettingsConnectTabProps) {
+  const [activeModal, setActiveModal] = useState<string | null>(null);
+  const [testStatus, setTestStatus] = useState<TestStatus | null>(null);
+  const [testingWebhookIndex, setTestingWebhookIndex] = useState<number | null>(null);
+  const [webhookTestStatus, setWebhookTestStatus] = useState<WebhookTestStatus | null>(null);
+  const gotify: IntegrationDraft<"gotify"> = settings.integrations?.gotify || {};
+  const lastfm: IntegrationDraft<"lastfm"> = settings.integrations?.lastfm || {};
+  const ticketmaster: IntegrationDraft<"ticketmaster"> = settings.integrations?.ticketmaster || {};
+  const google: IntegrationDraft<"google"> = settings.integrations?.google || {};
+  const inbox: Partial<AppSettings["inbox"]> = settings.inbox || {};
   const gotifyConfigured = Boolean(gotify.url && gotify.token);
   const lastfmConfigured = Boolean(health?.lastfmConfigured);
   const ticketmasterConfigured = Boolean(health?.ticketmasterConfigured);
@@ -54,15 +84,15 @@ export function SettingsConnectTab({
   );
 
   const configuredWebhooks = settings.integrations?.webhooks;
-  const webhooks = configuredWebhooks || EMPTY_WEBHOOKS;
-  const webhookEvents = settings.integrations?.webhookEvents || {};
+  const webhooks: readonly Webhook[] = configuredWebhooks || EMPTY_WEBHOOKS;
+  const webhookEvents: WebhookEventsDraft = settings.integrations?.webhookEvents || {};
   const webhookRevisionRef = useRef(0);
 
   useEffect(() => {
     webhookRevisionRef.current += 1;
   }, [configuredWebhooks]);
 
-  const updateWebhooks = (newWebhooks) => {
+  const updateWebhooks = (newWebhooks: Webhook[]) => {
     webhookRevisionRef.current += 1;
     updateSettings({
       ...settings,
@@ -73,7 +103,7 @@ export function SettingsConnectTab({
     });
   };
 
-  const updateWebhookEvents = (patch) => {
+  const updateWebhookEvents = (patch: Partial<WebhookEventsDraft>) => {
     updateSettings({
       ...settings,
       integrations: {
@@ -83,7 +113,7 @@ export function SettingsConnectTab({
     });
   };
 
-  const updateGotify = (patch) => {
+  const updateGotify = (patch: Partial<IntegrationDraft<"gotify">>) => {
     setTestStatus(null);
     updateSettings({
       ...settings,
@@ -94,7 +124,7 @@ export function SettingsConnectTab({
     });
   };
 
-  const updateLastfm = (patch) =>
+  const updateLastfm = (patch: Partial<IntegrationDraft<"lastfm">>) =>
     updateSettings({
       ...settings,
       integrations: {
@@ -103,7 +133,7 @@ export function SettingsConnectTab({
       },
     });
 
-  const updateTicketmaster = (patch) =>
+  const updateTicketmaster = (patch: Partial<IntegrationDraft<"ticketmaster">>) =>
     updateSettings({
       ...settings,
       integrations: {
@@ -112,7 +142,7 @@ export function SettingsConnectTab({
       },
     });
 
-  const updateGoogle = (patch) =>
+  const updateGoogle = (patch: Partial<IntegrationDraft<"google">>) =>
     updateSettings({
       ...settings,
       integrations: {
@@ -121,14 +151,14 @@ export function SettingsConnectTab({
       },
     });
 
-  const updateInbox = (patch) =>
+  const updateInbox = (patch: Partial<AppSettings["inbox"]>) =>
     updateSettings({
       ...settings,
       inbox: { ...inbox, ...patch },
     });
 
-  const [dragIdx, setDragIdx] = useState(null);
-  const allowDragRef = useRef(null);
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const allowDragRef = useRef<number | null>(null);
 
   useEffect(() => {
     setTestStatus(null);
@@ -164,12 +194,12 @@ export function SettingsConnectTab({
     updateWebhooks([...webhooks, { url: "", body: null, headers: [] }]);
   };
 
-  const removeWebhook = (index) => {
+  const removeWebhook = (index: number) => {
     setWebhookTestStatus(null);
     updateWebhooks(webhooks.filter((_, i) => i !== index));
   };
 
-  const moveWebhook = (from, to) => {
+  const moveWebhook = (from: number, to: number) => {
     setWebhookTestStatus(null);
     const next = [...webhooks];
     const [moved] = next.splice(from, 1);
@@ -177,12 +207,12 @@ export function SettingsConnectTab({
     updateWebhooks(next);
   };
 
-  const updateWebhook = (index, patch) => {
+  const updateWebhook = (index: number, patch: Partial<Webhook>) => {
     setWebhookTestStatus(null);
     updateWebhooks(webhooks.map((wh, i) => (i === index ? { ...wh, ...patch } : wh)));
   };
 
-  const handleTestWebhook = async (index) => {
+  const handleTestWebhook = async (index: number) => {
     const webhook = webhooks[index];
     const url = String(webhook?.url || "").trim();
     if (!url) return;
@@ -216,7 +246,7 @@ export function SettingsConnectTab({
     }
   };
 
-  const addHeader = (whIndex) => {
+  const addHeader = (whIndex: number) => {
     const wh = webhooks[whIndex];
     if ((wh.headers || []).length >= 10) return;
     updateWebhook(whIndex, {
@@ -224,21 +254,21 @@ export function SettingsConnectTab({
     });
   };
 
-  const removeHeader = (whIndex, hIndex) => {
+  const removeHeader = (whIndex: number, hIndex: number) => {
     const wh = webhooks[whIndex];
     updateWebhook(whIndex, {
       headers: (wh.headers || []).filter((_, i) => i !== hIndex),
     });
   };
 
-  const updateHeader = (whIndex, hIndex, patch) => {
+  const updateHeader = (whIndex: number, hIndex: number, patch: Partial<WebhookHeader>) => {
     const wh = webhooks[whIndex];
     updateWebhook(whIndex, {
       headers: (wh.headers || []).map((h, i) => (i === hIndex ? { ...h, ...patch } : h)),
     });
   };
 
-  const handleSave = (e) => {
+  const handleSave = (e: FormEvent<HTMLFormElement>) => {
     const cleanedWebhooks = webhooks.map((wh) => ({
       ...wh,
       headers: (wh.headers || []).filter((h) => (h.key || "").trim() && (h.value || "").trim()),
