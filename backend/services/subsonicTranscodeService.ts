@@ -11,11 +11,16 @@ const OUTPUT_FORMATS = {
 };
 
 type OutputFormat = keyof typeof OUTPUT_FORMATS;
+export type SubsonicStreamFormat = "" | "raw" | OutputFormat;
 
 export async function streamSubsonicAudio(
   res: Response,
   filePath: string,
-  { format, maxBitRate, timeOffset }: { format: string; maxBitRate: number; timeOffset?: number },
+  {
+    format,
+    maxBitRate,
+    timeOffset,
+  }: { format: SubsonicStreamFormat; maxBitRate: number; timeOffset?: number },
 ) {
   if (format === "raw" || (!format && !maxBitRate)) return streamAudioFile(res, filePath);
   if (!format) {
@@ -34,7 +39,7 @@ export async function streamSubsonicAudio(
     if (error.code === "ENOENT" || error.code === "ENOTDIR") return false;
     throw error;
   }
-  const output = OUTPUT_FORMATS[(format || "mp3") as OutputFormat];
+  const output = OUTPUT_FORMATS[format || "mp3"];
   const bitrate = Math.min(maxBitRate || 192, output.maxBitrate);
   const args = ["-hide_banner", "-loglevel", "error", "-nostdin"];
   if (timeOffset) args.push("-ss", String(timeOffset));

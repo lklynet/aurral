@@ -12,7 +12,7 @@ declare global {
 }
 
 type Diagnosable =
-  | { message?: string; statusCode?: number; response?: { status?: number } }
+  | { message?: unknown; statusCode?: unknown; response?: { status?: unknown } }
   | null
   | undefined;
 type LogLevel = "debug" | "info" | "warn" | "error";
@@ -134,7 +134,7 @@ function patchDefaultConsole() {
 
 patchDefaultConsole();
 
-function log(level: LogLevel, category: string, message: string, data: unknown = {}) {
+function log(level: LogLevel, category: string, message: string, data: object = {}) {
   if (!verboseEnabled && level === "debug") return;
   if (
     !verboseEnabled &&
@@ -143,7 +143,7 @@ function log(level: LogLevel, category: string, message: string, data: unknown =
   )
     return;
   const line = `[${level}] [${safeLogDiagnostic(category)}] ${safeLogDiagnostic(message)}`;
-  const keys = Object.keys(data as object).length;
+  const keys = Object.keys(data).length;
   const safeData = keys > 0 ? safeLogData(data) : data;
   if (level === "error") {
     if (keys > 0) console.error("%s", line, safeData);

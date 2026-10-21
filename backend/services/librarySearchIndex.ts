@@ -1,6 +1,12 @@
 import type { Statement } from "better-sqlite3";
 import { db } from "../config/db-sqlite.ts";
 import { populateLibrarySearchDocuments } from "../config/library-search-index.ts";
+import type {
+  LibraryAlbumsRow,
+  LibraryAlbumTracksRow,
+  LibraryArtistsRow,
+  LibraryTracksRow,
+} from "../db/rows.ts";
 
 const indexAvailable = Boolean(
   db
@@ -48,7 +54,7 @@ function upsertSearchDocument(...values: [string, number, string, string, string
 export function syncLibrarySearchArtist(artistId: unknown) {
   if (!indexAvailable) return false;
   const artist = db
-    .prepare<[number], { id: number; name: string }>(
+    .prepare<[number], Pick<LibraryArtistsRow, "id" | "name">>(
       "SELECT id, name FROM library_artists WHERE id = ?",
     )
     .get(Number(artistId));
@@ -56,11 +62,13 @@ export function syncLibrarySearchArtist(artistId: unknown) {
   const changed = upsertSearchDocument("artist", artist.id, artist.name, "", "");
   if (!changed) return false;
   for (const album of db
-    .prepare<[number], { id: number }>("SELECT id FROM library_albums WHERE artist_id = ?")
+    .prepare<[number], Pick<LibraryAlbumsRow, "id">>(
+      "SELECT id FROM library_albums WHERE artist_id = ?",
+    )
     .all(artist.id)) {
     syncLibrarySearchAlbum(album.id);
     for (const track of db
-      .prepare<[number], { track_id: number }>(
+      .prepare<[number], Pick<LibraryAlbumTracksRow, "track_id">>(
         "SELECT track_id FROM library_album_tracks WHERE album_id = ?",
       )
       .all(album.id)) {
@@ -75,7 +83,7 @@ export function syncLibrarySearchAlbum(albumId: unknown) {
   const album = db
     .prepare<
       [number],
-      { id: number; title: string; album_artist: string | null; artist_name: string }
+      Pick<LibraryAlbumsRow, "id" | "title" | "album_artist"> & { artist_name: string }
     >(
       `SELECT album.id, album.title, album.album_artist, artist.name AS artist_name
      FROM library_albums AS album
@@ -96,7 +104,10 @@ export function syncLibrarySearchAlbum(albumId: unknown) {
 export function syncLibrarySearchTrack(trackId: unknown) {
   if (!indexAvailable) return false;
   const track = db
-    .prepare<[number], { id: number; title: string; artist_name: string; album_name: string }>(
+    .prepare<
+      [number],
+      Pick<LibraryTracksRow, "id" | "title"> & { artist_name: string; album_name: string }
+    >(
       `SELECT
        track.id,
        track.title,

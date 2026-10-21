@@ -4,7 +4,10 @@ import express from "express";
 import { APP_NAME, APP_VERSION } from "../config/constants.ts";
 import { hasPermission, resolveSubsonicTokenUser, resolveUser } from "../middleware/auth.ts";
 import { getPlayQueue, savePlayQueue } from "../services/subsonicPlayQueueService.ts";
-import { streamSubsonicAudio } from "../services/subsonicTranscodeService.ts";
+import {
+  streamSubsonicAudio,
+  type SubsonicStreamFormat,
+} from "../services/subsonicTranscodeService.ts";
 import { getLyricsBySongId } from "../services/subsonicLyricsService.ts";
 import { streamAudioFile } from "../services/audioFileStream.ts";
 import {
@@ -662,7 +665,7 @@ async function handleSubsonicRequest(req, res) {
       method === "download"
         ? await streamAudioFile(res, filePath)
         : await streamSubsonicAudio(res, filePath, {
-            format: outputFormat,
+            format: outputFormat as SubsonicStreamFormat,
             maxBitRate: Number(bitrate) || 0,
             timeOffset: Number(offset) || 0,
           });

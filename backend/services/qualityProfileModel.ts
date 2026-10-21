@@ -1,17 +1,14 @@
 import path from "path";
+import type { IFormat } from "music-metadata";
 import type { StoredIntegrations } from "../db/helpers/settings.ts";
 
 type SlskdSettings = StoredIntegrations["slskd"];
 type ParsedAudio =
   | {
-      format?: {
-        container?: string;
-        codec?: string;
-        lossless?: boolean;
-        sampleRate?: number;
-        bitsPerSample?: number;
-        bitrate?: number;
-      };
+      format?: Pick<
+        IFormat,
+        "container" | "codec" | "lossless" | "sampleRate" | "bitsPerSample" | "bitrate"
+      >;
     }
   | null
   | undefined;
@@ -121,7 +118,7 @@ function readAudioFamily(parsed: ParsedAudio, filePath: string) {
   return null;
 }
 
-function classifyLossyTier(family: "mp3" | "m4a", bitrateKbps: number) {
+function classifyLossyTier(family: "mp3" | "m4a", bitrateKbps: number | null) {
   if (!Number.isFinite(bitrateKbps) || bitrateKbps < 128) return null;
   if (bitrateKbps >= 320) return `${family}-320`;
   if (bitrateKbps >= 256) return `${family}-256`;
@@ -139,7 +136,7 @@ export function classifyAudioQuality(parsed: ParsedAudio, filePath: string) {
   if (family === "flac" && Number.isFinite(sampleRate) && Number.isFinite(bitDepth)) {
     tier = bitDepth > 16 || sampleRate > 48000 ? "flac-hires" : "flac-standard";
   } else if (family === "mp3" || family === "m4a") {
-    tier = classifyLossyTier(family, bitrateKbps as number);
+    tier = classifyLossyTier(family, bitrateKbps);
   }
   return {
     tier,
@@ -228,13 +225,25 @@ export function isAdvertisedQualityEligible(
 
 export function getAdvertisedQualityRank(fileName: unknown, bitrate: unknown, profile: unknown) {
   const normalized = normalizeQualityProfile(profile);
-  const index = normalized.order.indexOf(classifyAdvertisedQuality(fileName, bitrate) as string);
+  const index = normalized.order.indexOf(classifyAdvertisedQuality(fileName, bitrate));
   return index === -1 ? Number.MAX_SAFE_INTEGER : index;
 }
 
-export function orderAdvertisedQualityCandidates(
-  entries,
-  { profile, currentTier = null, upgrade = false, readName, readBitrate } = {},
+export function orderAdvertisedQualityCandidates<T>(
+  entries: T[],
+  {
+    profile,
+    currentTier = null,
+    upgrade = false,
+    readName,
+    readBitrate,
+  }: {
+    profile?: unknown;
+    currentTier?: string | null;
+    upgrade?: boolean;
+    readName?: (entry: T) => string | null | undefined;
+    readBitrate?: (entry: T) => unknown;
+  } = {},
 ) {
   const normalized = normalizeQualityProfile(profile);
   return (Array.isArray(entries) ? entries : [])

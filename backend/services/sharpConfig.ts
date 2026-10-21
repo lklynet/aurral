@@ -3,7 +3,9 @@ const SHARP_CONCURRENCY = Math.max(
   Math.min(4, Math.floor(Number(process.env.AURRAL_SHARP_CONCURRENCY) || 2)),
 );
 
-let sharpReady;
+import type Sharp from "sharp";
+
+let sharpReady: Promise<typeof Sharp> | undefined;
 
 export default function getSharp() {
   return (sharpReady ||= import("sharp").then(({ default: sharp }) => {

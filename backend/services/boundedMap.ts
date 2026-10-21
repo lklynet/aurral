@@ -1,5 +1,5 @@
 export default class BoundedMap extends Map {
-  constructor(maxEntries = 1000, entries) {
+  constructor(maxEntries = 1000, entries?: Iterable<readonly [unknown, unknown]>) {
     super();
     const parsed = Math.floor(Number(maxEntries));
     this.maxEntries = Number.isFinite(parsed) && parsed > 0 ? parsed : 1000;
