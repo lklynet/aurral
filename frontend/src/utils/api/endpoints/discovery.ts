@@ -96,7 +96,7 @@ export const getDiscoveryFeedback = (): Promise<DiscoveryFeedbackResponse> =>
   getData("/discover/feedback");
 
 export const addDiscoveryFeedback = (
-  payload: DiscoveryFeedbackInput,
+  payload: Partial<DiscoveryFeedbackInput>,
 ): Promise<DiscoveryFeedbackAddResponse> => postData("/discover/feedback", payload);
 
 export const removeDiscoveryFeedback = (id: string): Promise<DiscoveryFeedbackListResponse> =>

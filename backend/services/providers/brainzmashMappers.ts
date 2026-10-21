@@ -343,7 +343,7 @@ export function toLegacyArtist(normalizedArtist: NormalizedArtist) {
 }
 
 export function toLegacyReleaseGroupSummary(
-  album: NormalizedAlbum & { artistName?: unknown; firstReleaseDate?: unknown },
+  album: NormalizedAlbum & { artistName?: unknown; firstReleaseDate?: string | null },
   artist: { id?: unknown; name?: unknown } | null = null,
   { score = 0 }: { score?: number } = {},
 ) {

@@ -69,8 +69,8 @@ export const filterBlockedArtistsForUser = (
 };
 
 export type DiscoveryFeedbackInput = {
-  id?: string;
-  action: string;
+  id?: string | null;
+  action: string | null;
   artistId?: string | null;
   artistName?: string | null;
   sourceContext?: string | null;

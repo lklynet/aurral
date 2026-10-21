@@ -8,6 +8,7 @@ import {
 } from "../core.ts";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
 import type { CustomArtworkResult } from "./library.ts";
+import type { PlaylistDownloadJobsRow } from "../../../../../backend/db/rows.ts";
 import type {
   createManualMissingSearch,
   getManualDownloadSources,
@@ -182,7 +183,7 @@ export const getPlaylistStatus = ({
 };
 
 export interface PlaylistJob {
-  id?: string | number;
+  id?: PlaylistDownloadJobsRow["id"];
   status?: string;
   albumName?: string | null;
   reason?: string | null;

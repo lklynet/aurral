@@ -255,13 +255,13 @@ export const getReleaseGroupCover = async (
     albumTitle = "",
     bypassCache = false,
   }: { artistName?: string; albumTitle?: string; bypassCache?: boolean } = {},
-): Promise<ReleaseGroupCoverResponse> => {
+): Promise<ReleaseGroupCoverResponse | ReleaseGroupCoverEntry> => {
   const cacheKey = releaseGroupCoverCacheKey(mbid, artistName, albumTitle);
   const refreshKey = `${cacheKey}:refresh`;
   if (!bypassCache) {
     const refresh = coverInflightRequests.get(refreshKey);
     if (refresh) return refresh as Promise<ReleaseGroupCoverResponse>;
-    const cached = getCoverCacheEntry<ReleaseGroupCoverResponse>(cacheKey);
+    const cached = getCoverCacheEntry<ReleaseGroupCoverResponse | ReleaseGroupCoverEntry>(cacheKey);
     if (cached) {
       return cached;
     }
