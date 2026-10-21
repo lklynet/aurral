@@ -12,15 +12,17 @@ const FOCUSABLE_SELECTOR = [
 
 let bodyScrollLockCount = 0;
 let previousBodyOverflow = "";
+type InertableElement = Element & { inert?: boolean };
+
 interface IsolatedElementState {
   count: number;
   hadInertAttribute: boolean;
-  inert: boolean;
+  inert?: boolean;
   ariaHidden: string | null;
 }
 
 const openDialogStack: symbol[] = [];
-const isolatedElementState = new WeakMap<HTMLElement, IsolatedElementState>();
+const isolatedElementState = new WeakMap<Element, IsolatedElementState>();
 
 function getFocusableElements(container: HTMLElement | null) {
   if (!container) return [];
@@ -45,7 +47,7 @@ function unlockBodyScroll() {
   }
 }
 
-function isolateElement(element: HTMLElement) {
+function isolateElement(element: InertableElement) {
   const current = isolatedElementState.get(element);
   if (current) {
     current.count += 1;
@@ -62,7 +64,7 @@ function isolateElement(element: HTMLElement) {
   element.setAttribute("aria-hidden", "true");
 }
 
-function restoreElement(element: HTMLElement) {
+function restoreElement(element: InertableElement) {
   const state = isolatedElementState.get(element);
   if (!state) return;
   state.count -= 1;
@@ -83,12 +85,12 @@ function restoreElement(element: HTMLElement) {
 }
 
 function isolateDialogBackground(dialog: HTMLElement) {
-  const isolated: HTMLElement[] = [];
+  const isolated: InertableElement[] = [];
   let branch = dialog;
 
   while (branch?.parentElement && branch.parentElement !== document.body) {
     const parent = branch.parentElement;
-    for (const sibling of parent.children as HTMLCollectionOf<HTMLElement>) {
+    for (const sibling of parent.children) {
       if (sibling === branch || sibling.contains(dialog)) continue;
       isolateElement(sibling);
       isolated.push(sibling);
@@ -97,7 +99,7 @@ function isolateDialogBackground(dialog: HTMLElement) {
   }
 
   if (branch?.parentElement === document.body) {
-    for (const sibling of document.body.children as HTMLCollectionOf<HTMLElement>) {
+    for (const sibling of document.body.children) {
       if (sibling === branch || sibling.contains(dialog)) continue;
       isolateElement(sibling);
       isolated.push(sibling);

@@ -4,10 +4,23 @@ import {
   subscribeToChannel,
   subscribeToStatus,
 } from "../utils/webSocketConnection.ts";
+import type { getPlaylistStatusSnapshot } from "../../../backend/services/playlists/playlistStatusSnapshot.ts";
 
-interface ChannelMessage {
-  type: string;
-}
+type DownloadStatusEntry = { status: string; updatedAt: string; progress?: number };
+
+type ChannelMessage = { channel: string; timestamp: number } & (
+  | {
+      type: "download_statuses";
+      statuses: Partial<Record<string, DownloadStatusEntry>>;
+      stale: boolean;
+      error: string | null;
+      updatedAt: string | null;
+    }
+  | { type: "library_scan_completed" }
+  | { type: "release_metadata_refreshed" }
+  | { type: "playlist_status"; status: ReturnType<typeof getPlaylistStatusSnapshot> }
+  | { type: "discovery_update" }
+);
 
 export function useWebSocketChannel(
   channel: string,

@@ -24,7 +24,7 @@ interface LibraryFileOperationResponse {
   operation: { status: string };
 }
 
-export function useLibraryFileOperation(operationId: string | null | undefined) {
+export function useLibraryFileOperation(operationId: number | null | undefined) {
   return useQuery({
     queryKey: [...libraryFilesQueryKey, "operation", operationId],
     queryFn: () =>

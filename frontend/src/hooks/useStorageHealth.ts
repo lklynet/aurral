@@ -2,11 +2,18 @@ import { useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getStorageHealth, runStorageHealthCheck } from "../utils/api/endpoints/settings.ts";
 import { queryClient, queryKeys } from "../queryClient.ts";
+import type { getStorageHealthSnapshot } from "../../../backend/services/storageHealthService.ts";
 
-interface StorageHealthResult {
-  ok?: boolean;
-  checkedAt?: string | null;
-}
+type StoredStorageHealth = NonNullable<ReturnType<typeof getStorageHealthSnapshot>>;
+
+type StorageHealthResult = { success: boolean } & (
+  | StoredStorageHealth
+  | (Pick<StoredStorageHealth, "partial" | "sections"> & {
+      ok: null;
+      checkedAt: null;
+      unavailable: true;
+    })
+);
 
 const toSnapshot = (result: StorageHealthResult | null | undefined, dataUpdatedAt = 0) => ({
   ok: result?.ok !== false,
