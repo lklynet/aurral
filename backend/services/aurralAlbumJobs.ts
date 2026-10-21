@@ -57,7 +57,26 @@ export function jobMatchesTrack(job, track) {
   return normalizeKey(job.trackName) === normalizeKey(track.title);
 }
 
-function selectStatus(counts, { sourceConfigured, sourceMessage, failedError }) {
+type AurralAlbumStatus =
+  | "complete"
+  | "downloading"
+  | "queued"
+  | "blocked"
+  | "cancelled"
+  | "failed"
+  | "partial"
+  | "missing";
+
+type AurralAlbumRecovery = {
+  code: "review_required" | "download_source_missing" | "source_failed";
+  message: string;
+  action: string;
+};
+
+function selectStatus(
+  counts,
+  { sourceConfigured, sourceMessage, failedError },
+): { status: AurralAlbumStatus; recovery?: AurralAlbumRecovery | null } {
   const unavailable = counts.total - counts.available;
   if (counts.total > 0 && unavailable === 0) return { status: "complete" };
   if (counts.downloading + counts.cancel_requested + counts.done > 0) {
@@ -85,7 +104,7 @@ function selectStatus(counts, { sourceConfigured, sourceMessage, failedError }) 
       },
     };
   }
-  const sourceFailed =
+  const sourceFailed: AurralAlbumRecovery | null =
     counts.failed > 0
       ? {
           code: "source_failed",

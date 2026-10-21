@@ -65,7 +65,7 @@ export function AurralAlbumStatus({
     refetchIntervalInBackground: false,
   });
   const state = describeAurralAlbumStatus(statusQuery.data || {});
-  const previousStatusRef = useRef<AlbumStatus | null>(null);
+  const previousStatusRef = useRef<AlbumStatus | null | undefined>(null);
 
   useEffect(() => {
     const status = statusQuery.data?.status;
