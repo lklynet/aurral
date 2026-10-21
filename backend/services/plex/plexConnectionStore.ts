@@ -17,7 +17,7 @@ type StoredPlexConnection = {
   linkType?: unknown;
   token?: unknown;
   clientId?: unknown;
-  plexAccountId?: unknown;
+  plexAccountId?: string | number | null;
   plexUuid?: unknown;
   plexUsername?: unknown;
   linkedByAdminId?: unknown;
@@ -29,7 +29,7 @@ type PlexLinkInput = {
   linkType?: PlexLinkType;
   token?: string | null;
   clientId?: string | null;
-  plexAccountId?: unknown;
+  plexAccountId?: string | number | null;
   plexUuid?: unknown;
   plexUsername?: unknown;
   linkedByAdminId?: number | null;
