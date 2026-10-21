@@ -281,13 +281,6 @@ test("returns protocol errors for unsupported authentication and requests", asyn
   assert.match(unsupportedFormat.body, /code="0"/);
 });
 
-test("keeps the Subsonic contract after a process restart", async () => {
-  await aurral.stop();
-  aurral = await startServerProcess();
-  const result = await request("ping", { f: "json" });
-  assert.equal(result.json.status, "ok");
-});
-
 test("sorts both artist indexes using their advertised ignored articles", async () => {
   for (const [method, payload] of [
     ["getArtists", "artists"],

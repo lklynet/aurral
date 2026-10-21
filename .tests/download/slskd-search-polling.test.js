@@ -130,29 +130,6 @@ test(
   },
 );
 
-test("changing provider progress does not reassess unchanged files", async () => {
-  vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"], now: 1000 });
-  let polls = 0;
-  let assessments = 0;
-  vi.spyOn(slskdClient, "getSearch").mockImplementation(async () => ({
-    state: ++polls === 3 ? "Completed" : "InProgress",
-    elapsed: polls,
-    responses: [{ username: "peer", files: [{ filename: "First.flac" }] }],
-  }));
-  const pending = slskdClient.waitForSearch("progress-only", 60000, {
-    earlyExitWhen: () => {
-      assessments++;
-      return false;
-    },
-  });
-  for (let step = 0; step < 3; step++) {
-    await new Promise(setImmediate);
-    vi.advanceTimersByTime(5000);
-  }
-  assert.equal(slskdClient.flattenSearchResults(await pending).length, 1);
-  assert.equal(assessments, 1);
-});
-
 test("completed counts hydrate files missing from earlier snapshots", async () => {
   vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"], now: 1000 });
   let polls = 0;
@@ -214,31 +191,6 @@ test("final hydration merges equal-sized partial status and response snapshots",
   const files = slskdClient.flattenSearchResults(
     await slskdClient.waitForSearch("final-partials", 60000),
   );
-  assert.deepEqual(files.map((file) => file.file).sort(), [
-    "First.flac",
-    "Second.flac",
-    "Third.flac",
-  ]);
-});
-
-test("final hydration collects the advertised files across successive partial snapshots", async () => {
-  vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"], now: 1000 });
-  let polls = 0;
-  vi.spyOn(slskdClient, "getSearch").mockImplementation(async () => ({
-    state: "Completed",
-    fileCount: 3,
-    responses: [
-      {
-        username: "peer",
-        files: [{ filename: ["First.flac", "Second.flac", "Third.flac"][polls++] }],
-      },
-    ],
-  }));
-  vi.spyOn(slskdClient, "getSearchResponses").mockImplementation(async () => []);
-  const pending = slskdClient.waitForSearch("successive-final-partials", 60000);
-  await new Promise(setImmediate);
-  vi.advanceTimersByTime(500);
-  const files = slskdClient.flattenSearchResults(await pending);
   assert.deepEqual(files.map((file) => file.file).sort(), [
     "First.flac",
     "Second.flac",

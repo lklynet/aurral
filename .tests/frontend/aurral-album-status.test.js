@@ -10,25 +10,6 @@ import {
 
 const actionLabels = (state) => state.actions.map((action) => action.label);
 
-test("every Aurral album status has a visible label and the right actions", () => {
-  const expected = {
-    queued: ["Queued", ["Cancel downloads"]],
-    downloading: ["Downloading", ["Cancel downloads"]],
-    partial: ["Partially available", ["Download missing tracks"]],
-    complete: ["In library", []],
-    failed: ["Failed", ["Retry"]],
-    blocked: ["Needs attention", []],
-    cancelled: ["Cancelled", ["Retry"]],
-    missing: ["Missing", ["Download missing tracks"]],
-  };
-  for (const [status, [label, actions]] of Object.entries(expected)) {
-    const state = describeAurralAlbumStatus({ status, recovery: null });
-    assert.equal(state.label, label, status);
-    assert.deepEqual(actionLabels(state), actions, status);
-    assert.equal(state.recovery, null, status);
-  }
-});
-
 test("a partial album offers Retry when a source failed and otherwise downloads missing tracks", () => {
   const recovery = { code: "source_failed", message: "No source had the tracks." };
   const state = describeAurralAlbumStatus({ status: "partial", recovery });

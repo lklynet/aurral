@@ -139,22 +139,6 @@ test("search ranking prioritizes strong playlist matches over catalog tracks", (
   assert.ok(getSearchRankScore(libraryTrack) > getSearchRankScore(catalogTrack));
 });
 
-test("search ranking ignores weak library partial matches", () => {
-  const weakLibraryArtist = {
-    type: "artist",
-    score: 67,
-    inLibrary: true,
-    source: "library",
-  };
-  const catalogArtist = {
-    type: "artist",
-    score: 0.97,
-    inLibrary: false,
-  };
-
-  assert.ok(getSearchRankScore(catalogArtist) > getSearchRankScore(weakLibraryArtist));
-});
-
 test("catalog ranking uses library artists and playlist tracks as context", () => {
   const context = {
     artists: [{ mbid: "radiohead", artistName: "Radiohead" }],

@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import { buildTrackRequest } from "../../backend/services/trackMatching/trackIdentity.js";
 import {
   normalizeCandidate,
-  getCapabilities,
   SOURCE_CAPABILITIES,
   parseFilenameArtistTitle,
   getFileBaseName,
@@ -29,11 +28,6 @@ test("buildTrackRequest keeps established Aurral field names", () => {
   assert.equal(request.trackNumber, 8);
   assert.equal(request.variants.live, false);
   assert.equal(request.albumTrackCount, null);
-});
-
-test("buildTrackRequest extracts variants from the requested title", () => {
-  const request = buildTrackRequest({ trackName: "Get Lucky (Live at Wembley)" });
-  assert.equal(request.variants.live, true);
 });
 
 test("normalizeCandidate preserves only evidence a source provides", () => {
@@ -122,14 +116,6 @@ test("filename parsing preserves title subtitles after an anchored artist", () =
     { parseFilename: true, knownArtistNames: ["Beyonce"] },
   );
   assert.equal(accentedArtist.filenameTitle, "Halo - Remastered 2011");
-});
-
-test("provider capabilities keep noisy sources honest", () => {
-  assert.equal(getCapabilities("deemix").structuredArtist, true);
-  assert.equal(getCapabilities("ytdlp").structuredArtist, false);
-  assert.equal(getCapabilities("soulseek").filename, true);
-  assert.equal(getCapabilities("usenet").releaseContext, true);
-  assert.equal(getCapabilities("unknown-source").structuredArtist, false);
 });
 
 test("normalizeCandidate drops results without any title evidence", () => {

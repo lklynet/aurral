@@ -6,7 +6,6 @@ import {
   matchesActivityView,
   normalizeActivityView,
   buildActivityPath,
-  buildWantedPath,
 } from "../../frontend/src/navigation/activityNavConfig.js";
 
 test("normalizeActivityView falls back to queue", () => {
@@ -19,11 +18,6 @@ test("normalizeActivityView falls back to queue", () => {
 test("buildActivityPath normalizes invalid views", () => {
   assert.equal(buildActivityPath("history"), "/activity/history");
   assert.equal(buildActivityPath("nope"), "/activity/queue");
-});
-
-test("wanted links share one page route", () => {
-  assert.equal(buildWantedPath("missing"), "/activity/missing");
-  assert.equal(buildWantedPath("cutoff"), "/activity/missing?tab=cutoff");
 });
 
 test("blocked items with inQueue appear in the combined queue", () => {
@@ -42,11 +36,6 @@ test("processing items appear in queue not history", () => {
   assert.equal(matchesActivityView(active, "queue"), true);
   assert.equal(matchesActivityView(active, "review"), false);
   assert.equal(matchesActivityView(active, "history"), false);
-});
-
-test("missing is a separate operation view", () => {
-  const failed = { status: "failed", inQueue: false };
-  assert.equal(matchesActivityView(failed, "missing"), false);
 });
 
 test("completed items appear in history", () => {

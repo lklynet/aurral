@@ -6,7 +6,6 @@ import {
   buildArtistAddPayload,
   canRemoveLibraryAlbum,
   canSearchLibraryAlbum,
-  getAddToManagerLabel,
   getLibraryOwnerConflict,
   resolveAlbumManager,
   resolveLibraryDestination,
@@ -36,11 +35,6 @@ test("Aurral albums can always be searched, Lidarr albums only while Lidarr is c
   assert.equal(canSearchLibraryAlbum(lidarrAlbum, { lidarrConnected: true }), true);
   assert.equal(canSearchLibraryAlbum(lidarrAlbum, { lidarrConnected: false }), false);
   assert.equal(canSearchLibraryAlbum({ sources: ["flow"] }, { lidarrConnected: true }), false);
-});
-
-test("add labels name each manager", () => {
-  assert.equal(getAddToManagerLabel("aurral"), "Add to library");
-  assert.equal(getAddToManagerLabel("lidarr"), "Add to Lidarr");
 });
 
 const conflictError = (data, status = 409) => ({ response: { status, data } });

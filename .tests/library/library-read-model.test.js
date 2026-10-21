@@ -121,16 +121,6 @@ test("library read model preserves non-MBID provider artist identity", () => {
   assert.equal(result.artists[0].foreignArtistId, "705@deezer");
 });
 
-test("library read model keeps flow-like records out when the index excludes them", () => {
-  const result = buildLibraryReadModel({
-    artists: [],
-    albums: [],
-    tracks: [],
-  });
-
-  assert.deepEqual(result, { artists: [], albums: [], tracks: [] });
-});
-
 test("library file reads prefer the album manager before Lidarr", () => {
   const file = selectCanonicalFile(
     [

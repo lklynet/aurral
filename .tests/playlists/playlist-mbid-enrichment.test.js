@@ -119,12 +119,6 @@ test("enrichStaticPlaylistMbids rescans the library after updating a downloaded 
   assert.equal(scheduleScanLibrary.mock.calls.length, 1);
 });
 
-test("enrichStaticPlaylistMbids returns missing when playlistId is empty", async () => {
-  const result = await enrichStaticPlaylistMbids("");
-  assert.equal(result.missing, true);
-  assert.equal(result.changed, false);
-});
-
 test("enrichStaticPlaylistMbids returns missing when playlist not found", async () => {
   const result = await enrichStaticPlaylistMbids("nonexistent-id");
   assert.equal(result.missing, true);

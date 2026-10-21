@@ -815,26 +815,6 @@ export class SlskdClient {
     }
   }
 
-  async settleSearch(searchId, { cancel = false, maxWaitMs = 120000 } = {}) {
-    const id = String(searchId || "").trim();
-    if (!id) return null;
-    if (cancel) {
-      await this.deleteSearch(id);
-      return null;
-    }
-    const deadline = Date.now() + Math.max(1000, Number(maxWaitMs) || 120000);
-    let lastData = null;
-    while (Date.now() < deadline) {
-      lastData = await this.getSearch(id);
-      if (!isSearchInProgress(lastData)) {
-        return lastData;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-    }
-    await this.deleteSearch(id);
-    return lastData;
-  }
-
   flattenSearchResults(searchData) {
     if (searchData?.[NORMALIZED_SEARCH_RESULTS]) return searchData[NORMALIZED_SEARCH_RESULTS];
     const results = [];

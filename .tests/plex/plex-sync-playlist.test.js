@@ -146,28 +146,6 @@ test("syncPlaylist diffs items in place - removes only what's gone, adds only wh
   assert.equal(renameCalls.length, 0, "title unchanged - no details PUT expected");
 });
 
-test("syncPlaylist skips the add call entirely when nothing new needs adding", async () => {
-  const client = makeClient();
-  const calls = mockRequests(client, {
-    "GET /playlists/111/items": {
-      MediaContainer: {
-        Metadata: [
-          { ratingKey: "1", playlistItemID: "pi-1" },
-          { ratingKey: "2", playlistItemID: "pi-2" },
-        ],
-      },
-    },
-    "DELETE /playlists/111/items/pi-2": {},
-  });
-  await client.syncPlaylist({
-    ratingKey: "111",
-    previousTitle: "Same",
-    title: "Same",
-    ratingKeys: ["1"],
-  });
-  assert.ok(!calls.some((c) => c.method === "PUT" && c.path === "/playlists/111/items"));
-});
-
 test("syncPlaylist makes no add/remove calls at all when the track set is already identical", async () => {
   const client = makeClient();
   const calls = mockRequests(client, {

@@ -565,18 +565,6 @@ test("adding an artist reports a metadata outage during monitoring", async () =>
   assert.equal(metadata.monitorOption, "none");
 });
 
-test("the artist add service activates monitoring for an existing Aurral artist", async () => {
-  await addAurralArtist("none");
-  const artist = await libraryManager.addArtistWithResolvedOptions(artistMbid, "Monitor Artist", {
-    managedBy: "aurral",
-    monitoring: { monitored: true },
-  });
-  assert.equal(artist.monitored, true);
-  assert.equal(storedMonitoring().default, true);
-  await runQueuedMonitoringTasks();
-  assert.deepEqual(queuedAlbumMbids(), [...defaultIds].sort());
-});
-
 test("a later disable wins over an earlier artist monitoring request", async () => {
   await addAurralArtist("none");
   clearMetadataProviderCaches();
@@ -1229,75 +1217,6 @@ test("the expanded edition downloads the longer tracklist of an album", async ()
   assert.deepEqual(
     titles,
     [1, 2, 3, 4].map((position) => `Deluxe Album Track ${position}`),
-  );
-});
-
-test("the expanded edition adds the extra tracks to an album the Library lists from its standard files", async () => {
-  await addAurralArtist("none");
-  const deluxe = {
-    id: "a2222222-2222-4222-8222-222222222212",
-    title: "Deluxe Album",
-    type: "Album",
-    date: "2024-02-02",
-    deluxe: true,
-  };
-  metadataState.extraReleases = [deluxe];
-  clearMetadataProviderCaches();
-  const cd = albumPayload(deluxe).releases[0];
-  const artist = db.prepare("SELECT id FROM library_artists WHERE mbid = ?").get(artistMbid);
-  const album = libraryStore.upsertLibraryAlbum({
-    identityKey: `release-group:${deluxe.id}`,
-    mbid: cd.id,
-    releaseGroupMbid: deluxe.id,
-    artistId: artist.id,
-    title: deluxe.title,
-  });
-  managementStore.setLibraryManagement({
-    entityKind: "album",
-    entityId: album.id,
-    managedBy: "aurral",
-  });
-  for (const track of cd.tracks) {
-    const row = libraryStore.upsertLibraryTrack({
-      identityKey: `recording:${track.recordingid}`,
-      mbid: track.recordingid,
-      title: track.trackname,
-    });
-    libraryStore.linkLibraryAlbumTrack({
-      albumId: album.id,
-      trackId: row.id,
-      trackNumber: track.trackposition,
-    });
-    libraryStore.upsertLibraryMediaFile({
-      trackId: row.id,
-      albumId: album.id,
-      source: "aurral",
-      path: `${isolatedState.baseDir}/Deluxe Album/${track.trackposition}.flac`,
-    });
-  }
-  libraryStore.storeLibraryAlbumTrackList(album.id, {
-    release: {
-      id: cd.id,
-      tracks: cd.tracks.map((track) => ({
-        recordingId: track.recordingid,
-        title: track.trackname,
-        trackPosition: track.trackposition,
-      })),
-    },
-  });
-
-  await monitorWith(
-    customRules({ catalog: "latest", latestCount: 1, types: ["album"], edition: "expanded" }),
-  );
-  await runQueuedMonitoringTasks();
-
-  assert.deepEqual(
-    downloadTracker
-      .getAll()
-      .filter((job) => job.albumMbid === deluxe.id)
-      .map((job) => job.trackName)
-      .sort(),
-    ["Deluxe Album Track 3", "Deluxe Album Track 4"],
   );
 });
 

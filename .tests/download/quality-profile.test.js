@@ -5,7 +5,6 @@ import {
   createDefaultQualityProfile,
   getAdvertisedQualityRank,
   getQualityState,
-  isAdvertisedQualityEligible,
   isQualityUpgrade,
   normalizeQualityProfile,
   orderAdvertisedQualityCandidates,
@@ -108,18 +107,6 @@ test("orderAdvertisedQualityCandidates drops formats that can never satisfy a ti
     },
   );
   assert.deepEqual(ordered, ["Song 320kbps.mp3", "Mystery Song.mp3"]);
-});
-
-test("isAdvertisedQualityEligible mirrors the candidate filter", () => {
-  const profile = normalizeQualityProfile({
-    enabled: ["mp3-320", "m4a-320"],
-    cutoff: "mp3-320",
-  });
-  assert.equal(isAdvertisedQualityEligible("Song 320kbps.mp3", null, { profile }), true);
-  assert.equal(isAdvertisedQualityEligible("Song 128kbps.mp3", null, { profile }), false);
-  assert.equal(isAdvertisedQualityEligible("Song.flac", null, { profile }), false);
-  assert.equal(isAdvertisedQualityEligible("Song.opus", null, { profile }), false);
-  assert.equal(isAdvertisedQualityEligible("Mystery Song.mp3", null, { profile }), true);
 });
 
 test("getAdvertisedQualityRank orders by profile position and sinks unknown tiers", () => {

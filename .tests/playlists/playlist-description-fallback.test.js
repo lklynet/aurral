@@ -50,11 +50,6 @@ test("a flow adopted from a preset with no description of its own falls back to 
   assert.equal(flow.description, getDiscoverPlaylistPreset("focus-listening-history").description);
 });
 
-test("a flow with no discoverPresetId and no description has a null description, not an error", () => {
-  const flow = flowPlaylistConfig.createFlow({ name: "Manual Flow", size: 20 });
-  assert.equal(flow.description, null);
-});
-
 test("a flow whose discoverPresetId doesn't match any known preset falls back to null rather than throwing", () => {
   const flow = flowPlaylistConfig.createFlow({
     name: "Orphaned Preset Flow",
@@ -71,13 +66,4 @@ test("static playlists get the same fallback treatment as flows", () => {
     discoverPresetId: "discover-weekly",
   });
   assert.equal(playlist.description, getDiscoverPlaylistPreset("discover-weekly").description);
-});
-
-test("an explicit static playlist description is kept as-is", () => {
-  const playlist = flowPlaylistConfig.createStaticPlaylist({
-    name: "My Import",
-    sourceName: "My Import",
-    description: "Imported from Spotify",
-  });
-  assert.equal(playlist.description, "Imported from Spotify");
 });

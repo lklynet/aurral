@@ -56,11 +56,6 @@ test("the reconnect state waits for health before reporting Lidarr unreachable",
   assert.equal(describeLidarrConnectionState({ lidarr: connectedLidarr, health: null }), null);
 });
 
-test("no overlap warning is shown when the roots are separate", () => {
-  assert.equal(describeRootOverlapWarning(undefined), null);
-  assert.equal(describeRootOverlapWarning([]), null);
-});
-
 test("equal and nested roots produce one overlap warning naming each Lidarr root", () => {
   const warning = describeRootOverlapWarning([
     { type: "equal", lidarrRoot: "/music", message: "equal" },

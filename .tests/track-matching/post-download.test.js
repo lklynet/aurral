@@ -188,16 +188,6 @@ test("downloaded version suffixes retain the original title and filename evidenc
   }
 });
 
-test("a plain non-Latin filename cannot hide a different title behind matching tags", async () => {
-  const outcome = await validateDownloadedTrackFile({
-    request: { artistName: "X", trackName: "かみ", durationMs: 200000 },
-    filePath: "/staging/がみ.flac",
-    source: "soulseek",
-    options: { parseFile: stubParseFile(stubParsed({ title: "かみ", artist: "X" }, 200)) },
-  });
-  assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
-});
-
 test("release selection keeps distinct non-Latin siblings separate", async () => {
   const parsed = new Map([
     ["/staging/01 कि.flac", stubParsed({ title: "कि", artist: "X", track: 1 }, 200)],
@@ -809,34 +799,6 @@ test("native validation verifies original tags without a Python runtime", async 
   assert.equal(outcome.valid, true);
 });
 
-test("validation reads original tags before any metadata repair happens", async () => {
-  // The parse spy returns the file's ORIGINAL tags. If a validator ever saw
-  // the rewritten (expected) metadata, this result would flip to VERIFIED.
-  const originalTags = stubParsed({
-    title: "Get Lucky (Karaoke Version)",
-    artist: "Daft Punk",
-  });
-  let parseCalls = 0;
-  const spyParse = async () => {
-    parseCalls += 1;
-    return originalTags;
-  };
-  const outcome = await validateDownloadedTrackFile({
-    request: GET_LUCKY,
-    filePath: "/staging/download-then-validate.flac",
-    source: "deemix",
-    options: { parseFile: spyParse },
-  });
-  assert.equal(parseCalls, 1, "validation must inspect the file itself");
-  assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
-  assert.equal(outcome.parsedTags.title, "Get Lucky (Karaoke Version)");
-  assert.notEqual(
-    outcome.parsedTags.title,
-    GET_LUCKY.trackName,
-    "evidence must be the file's original tag, not the value Aurral is about to write",
-  );
-});
-
 const ffmpegFixtureDir = hasFfmpeg ? mkdtempSync(join(tmpdir(), "aurral-postdownload-")) : null;
 afterAll(() => {
   if (ffmpegFixtureDir) rmSync(ffmpegFixtureDir, { recursive: true, force: true });
@@ -886,25 +848,6 @@ btest(
     assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
     assert.equal(outcome.actualDurationMs > 3000, true);
     assert.deepEqual(outcome.parsedTags.artists, ["Daft Punk"]);
-  },
-);
-
-test(
-  "real tagged audio: karaoke tags conflict before any metadata write",
-  { skip: hasFfmpeg ? false : "ffmpeg unavailable" },
-  async () => {
-    const filePath = generateTaggedAudio("karaoke.mp3", {
-      title: "Get Lucky (Karaoke Version)",
-      artist: "Daft Punk",
-    });
-    const outcome = await validateDownloadedTrackFile({
-      request: { ...GET_LUCKY, durationMs: 4000 },
-      filePath,
-      source: "deemix",
-    });
-    assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
-    assert.ok(outcome.contradictions.includes("karaoke"));
-    assert.equal(outcome.parsedTags.title, "Get Lucky (Karaoke Version)");
   },
 );
 

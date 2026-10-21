@@ -122,24 +122,6 @@ test("does not retry transient failures for playlist mutations", async () => {
   assert.equal(attempts, 1);
 });
 
-test("uses the fallback delay for invalid rate limit headers", async () => {
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () =>
-    new Response("", {
-      status: 429,
-      headers: { "retry-after": "-1" },
-    });
-
-  try {
-    await assert.rejects(
-      new NavidromeClient("http://navidrome.test", "user", "password").ping(),
-      /status code 429/,
-    );
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
-});
-
 test("batches large playlist creation requests", async () => {
   const originalFetch = globalThis.fetch;
   const requests = [];

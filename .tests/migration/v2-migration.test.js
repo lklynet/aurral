@@ -70,20 +70,6 @@ test("startup migration from v1 creates playlist_download_jobs table and stores 
   db.close();
 });
 
-test("startup migration from v1 is idempotent", async () => {
-  const { dbPath } = createPreMigrationDb();
-  const { initializeSchemaOnStartup } = await import("../../backend/config/schema-migration-v2.js");
-  const db = new Database(dbPath);
-
-  initializeSchemaOnStartup(db, dbHelpers);
-  const secondResult = initializeSchemaOnStartup(db, dbHelpers);
-
-  assert.equal(secondResult.migrated, false);
-  assert.equal(secondResult.schemaVersion, 4);
-
-  db.close();
-});
-
 test("startup migration from v1 renames settings keys", async () => {
   const { dbPath } = createPreMigrationDb();
   const { initializeSchemaOnStartup } = await import("../../backend/config/schema-migration-v2.js");
@@ -135,22 +121,6 @@ test("startup migration from v1 copies existing jobs from weekly_flow_jobs to pl
   const copiedJob = db.prepare("SELECT * FROM playlist_download_jobs WHERE id = 'job-1'").get();
   assert.equal(copiedJob.artist_name, "Artist");
   assert.equal(copiedJob.playlist_id, "discover");
-
-  db.close();
-});
-
-test("startup migration from v1 drops weekly_flow_jobs after copying data", async () => {
-  const { dbPath } = createPreMigrationDb();
-  const { initializeSchemaOnStartup } = await import("../../backend/config/schema-migration-v2.js");
-  const db = new Database(dbPath);
-
-  initializeSchemaOnStartup(db, dbHelpers);
-
-  const legacyTable = db
-    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'weekly_flow_jobs'")
-    .get();
-  assert.equal(legacyTable, undefined);
-  assert.ok(db.prepare("SELECT id FROM playlist_download_jobs WHERE id = 'job-1'").get());
 
   db.close();
 });

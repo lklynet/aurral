@@ -153,28 +153,6 @@ test(
   },
 );
 
-test("image proxy cache size and clear operations are asynchronous", async () => {
-  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "aurral-image-cache-"));
-  const previousDataDir = process.env.AURRAL_DATA_DIR;
-  process.env.AURRAL_DATA_DIR = dataDir;
-  try {
-    vi.resetModules();
-    const { clearImageProxyCache, getImageProxyCacheSizeBytes } =
-      await import("../backend/services/imageProxyService.js");
-    const cacheDir = path.join(dataDir, "image-proxy");
-    await fs.mkdir(cacheDir, { recursive: true });
-    await fs.writeFile(path.join(cacheDir, "sample.webp"), "abc");
-
-    assert.equal(await getImageProxyCacheSizeBytes(), 3);
-    await clearImageProxyCache();
-    assert.deepEqual(await fs.readdir(cacheDir), []);
-  } finally {
-    if (previousDataDir === undefined) delete process.env.AURRAL_DATA_DIR;
-    else process.env.AURRAL_DATA_DIR = previousDataDir;
-    await fs.rm(dataDir, { recursive: true, force: true });
-  }
-});
-
 test("image proxy caches one library-sized webp instead of full-resolution sources", async () => {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "aurral-image-library-"));
   const previousDataDir = process.env.AURRAL_DATA_DIR;

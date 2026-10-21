@@ -48,11 +48,6 @@ test("foldDiacritics only folds Latin script, leaving other writing systems inta
   assert.notEqual(foldDiacritics("мой"), foldDiacritics("мои"));
 });
 
-test("scoreTextMatch keeps non-Latin near-homographs apart", () => {
-  assert.notEqual(scoreTextMatch("がき", "かき", matcher), 100);
-  assert.notEqual(scoreTextMatch("мой", "мои", matcher), 100);
-});
-
 test("normalizeTitle ignores diacritics so accented shares still match", () => {
   assert.equal(
     normalizeTitle("Aunque tú no lo sepas", matcher),

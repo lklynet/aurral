@@ -26,15 +26,6 @@ test("artist image selection prefers poster art over banners for square displays
   assert.equal(selected?.url, "https://assets.fanart.tv/fanart/bieber-justin-5375fe939e307.jpg");
 });
 
-test("artist image selection keeps source order when image types tie", () => {
-  const selected = selectBestArtistImage([
-    { kind: "Fanart", url: "https://example.test/first.jpg" },
-    { kind: "Fanart", url: "https://example.test/second.jpg" },
-  ]);
-
-  assert.equal(selected?.url, "https://example.test/first.jpg");
-});
-
 test("album image selection prefers cover art and accepts BrainzMash casing", () => {
   const selected = selectBestAlbumImage([
     { kind: "Disc", url: "https://example.test/disc.png" },

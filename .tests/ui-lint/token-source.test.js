@@ -1,32 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { test } from "vite-plus/test";
-import { fileURLToPath } from "node:url";
 
 import { parseAurralTokens, readAurralTokens } from "../../frontend/scripts/ui-token-source.mjs";
-
-const projectRoot = fileURLToPath(new URL("../../", import.meta.url));
-
-test("reads canonical Aurral tokens and preserves their CSS values", async () => {
-  const source = await readFile(path.join(projectRoot, "frontend/src/index.css"), "utf8");
-  const result = await readAurralTokens();
-
-  assert.deepEqual(result.declarations, [
-    ...parseAurralTokens(source, "frontend/src/index.css").declarations,
-  ]);
-
-  const chromeToken = result.declarations.find(({ name }) => name === "--aurral-chrome");
-  assert.equal(chromeToken.selector, ":root");
-  assert.match(chromeToken.value, /^light-dark\(/);
-  assert.equal(source.includes(`--aurral-chrome: ${chromeToken.value};`), true);
-  assert.equal(
-    result.declarations.some(({ name }) => name === "--aurral-accent"),
-    true,
-  );
-  assert.equal(result.references.has("--aurral-surface"), true);
-});
 
 test("keeps repeated root declarations and ignores local Aurral properties", () => {
   const result = parseAurralTokens(

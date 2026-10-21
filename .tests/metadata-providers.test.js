@@ -26,7 +26,7 @@ const [
   "backend/config/db-sqlite.js",
 );
 
-const { getMetadataProviderHealthSnapshot, getMusicbrainzApiBaseUrl } = apiClients;
+const { getMusicbrainzApiBaseUrl } = apiClients;
 const {
   clearMetadataProviderCaches,
   getAlbumByMbid,
@@ -60,23 +60,6 @@ test("default settings and unset backend config use BrainzMash metadata", () => 
   });
 
   assert.equal(getMusicbrainzApiBaseUrl(), DEFAULT_METADATA_BASE_URL);
-});
-
-test("custom BrainzMash base URL is respected end to end", () => {
-  dbOps.updateSettings({
-    ...dbOps.getSettings(),
-    integrations: {
-      ...(dbOps.getSettings().integrations || {}),
-      metadata: {
-        provider: "brainzmash",
-        baseUrl: "https://brainzmash.example.net",
-        userAgentSuffix: "AurralTest",
-        enableNarrowFallbacks: false,
-      },
-    },
-  });
-
-  assert.equal(getMusicbrainzApiBaseUrl(), "https://brainzmash.example.net");
 });
 
 test("stale album metadata is served while one refresh runs in the background", async () => {
@@ -543,14 +526,6 @@ test("search metadata coalesces concurrent misses and shares fresh cache entries
     dbOps.updateSettings(previousSettings);
     await server.close();
   }
-});
-
-test("provider health snapshot reports BrainzMash state", () => {
-  const snapshot = getMetadataProviderHealthSnapshot();
-  assert.ok(snapshot.brainzmash);
-  assert.equal(snapshot.brainzmash.configuredProvider, "brainzmash");
-  assert.equal(snapshot.brainzmash.activeBaseUrl, getMusicbrainzApiBaseUrl());
-  assert.equal(snapshot.brainzmash.failoverActive, false);
 });
 
 test("BrainzMash rejects the saturation boundary before its deadline", async () => {

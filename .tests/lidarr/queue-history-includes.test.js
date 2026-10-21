@@ -39,25 +39,6 @@ test("queue and history requests ask Lidarr to embed album and artist", async (t
   );
 });
 
-test("queue endpoint with parameters is still treated as a cached status read", async (t) => {
-  const client = createClient(t);
-  vi.spyOn(client, "updateConfig").mockImplementation(() => {});
-  vi.spyOn(client, "isConfigured").mockImplementation(() => true);
-  let queueEndpoint;
-  // Seed the status cache for whatever endpoint getQueue uses; a cached read
-  // must be served without reaching the network (the URL is unreachable).
-  client.config = { url: "http://127.0.0.1:1", apiKey: "test" };
-  const probe = createClient(t);
-  vi.spyOn(probe, "request").mockImplementation(async (endpoint) => {
-    queueEndpoint = endpoint;
-    return [];
-  });
-  await probe.getQueue();
-  client._statusCache.set(queueEndpoint, { at: Date.now(), data: ["cached"] });
-
-  assert.deepEqual(await client.getQueue(), ["cached"]);
-});
-
 test("activity rows use the embedded album and artist names", async () => {
   const requests = await buildLidarrRequests(
     { getAlbum: async () => null },

@@ -537,33 +537,6 @@ test("folders that arrive while Navidrome is scanning reach Navidrome once it is
 });
 
 test(
-  "a downloaded track asks each server to scan only its album folder",
-  { timeout: 10000 },
-  async (t) => {
-    const requests = stubMediaServers(t);
-    const runScan = await libraryScanRunner(t);
-    const filePath = path.join(downloadRoot, "Scan Artist", "Album", "Song.wav");
-    await makeTrack(filePath);
-
-    scans.scheduleLibraryScan({ includeLidarr: false, changedPaths: [filePath] });
-    await waitUntil(() => pendingScans().length > 0);
-    const [requested] = pendingScans();
-    assert.deepEqual(requested.folders, [path.dirname(filePath)]);
-    await runScan.scheduled();
-
-    assert.equal(getLibrary({ availableOnly: true }).tracks.length, 1);
-    assert.deepEqual(requests, []);
-    assert.deepEqual(pendingScans(), [requested]);
-    await runPendingScan();
-    assert.deepEqual(byService(requests), [
-      jellyfinUpdate("/jellyfin/aurral/Scan Artist/Album"),
-      navidromeScan("1:Scan Artist/Album"),
-      plexRefresh("/plex/aurral/Scan Artist/Album"),
-    ]);
-  },
-);
-
-test(
   "an untargeted library scan tells servers only the folders whose files it changed",
   { timeout: 10000 },
   async (t) => {

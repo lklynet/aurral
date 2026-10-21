@@ -70,7 +70,7 @@ function uniqueQueries(values, limit = 12) {
   return queries.slice(0, limit);
 }
 
-export function buildTrackQueryVariants(trackName) {
+function buildTrackQueryVariants(trackName) {
   const raw = String(trackName || "").trim();
   if (!raw) return [];
   const variants = [raw];

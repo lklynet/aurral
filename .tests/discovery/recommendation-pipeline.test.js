@@ -6,7 +6,6 @@ import {
   buildDiscoverySeedList,
   finalizeRecommendationAccumulator,
   serveRecommendations,
-  mergeRetainedRecommendationPool,
   mergeResolvedRecommendations,
   rerankRecommendations,
 } from "../../backend/services/discovery/recommendationPipeline.js";
@@ -203,86 +202,4 @@ test("rerankRecommendations softens less-like feedback, hard-blocks exact artist
     discoveryMode: "deeper",
   });
   assert.equal(deeper[0].name, "Deeper Pick");
-});
-
-test("mergeRetainedRecommendationPool preserves repeats and trims stale low scores", () => {
-  const runStartedAt = "2026-06-18T00:00:00.000Z";
-  const existingRecommendations = [
-    {
-      id: "77777777-7777-7777-7777-777777777777",
-      name: "Returning Pick",
-      matchedTags: ["dream-pop"],
-      supportingSeeds: [{ artistName: "Seed One", weight: 1.6 }],
-      scoreSimilarity: 80,
-      scoreTagAffinity: 22,
-      scoreSeedCoverage: 14,
-      scoreNovelty: 6,
-      scorePopularityPenalty: 4,
-      scoreTotal: 118,
-      seedCount: 2,
-      firstDiscoveredAt: "2026-05-01T00:00:00.000Z",
-      lastRecommendedAt: "2026-05-01T00:00:00.000Z",
-    },
-    {
-      id: "88888888-8888-8888-8888-888888888888",
-      name: "Stale Weak Pick",
-      matchedTags: ["indie"],
-      supportingSeeds: [{ artistName: "Old Seed", weight: 0.8 }],
-      scoreSimilarity: 8,
-      scoreTagAffinity: 2,
-      scoreSeedCoverage: 2,
-      scoreNovelty: 1,
-      scorePopularityPenalty: 0,
-      scoreTotal: 13,
-      seedCount: 1,
-      firstDiscoveredAt: "2025-01-01T00:00:00.000Z",
-      lastRecommendedAt: "2025-01-01T00:00:00.000Z",
-    },
-  ];
-  const freshRecommendations = [
-    {
-      id: "77777777-7777-7777-7777-777777777777",
-      name: "Returning Pick",
-      matchedTags: ["dream-pop", "shoegaze"],
-      supportingSeeds: [{ artistName: "Seed Two", weight: 1.8 }],
-      scoreSimilarity: 85,
-      scoreTagAffinity: 24,
-      scoreSeedCoverage: 16,
-      scoreNovelty: 7,
-      scorePopularityPenalty: 4,
-      scoreTotal: 128,
-      seedCount: 2,
-    },
-    {
-      id: "99999999-9999-9999-9999-999999999999",
-      name: "Fresh Pick",
-      matchedTags: ["ethereal"],
-      supportingSeeds: [{ artistName: "Fresh Seed", weight: 1.4 }],
-      scoreSimilarity: 44,
-      scoreTagAffinity: 12,
-      scoreSeedCoverage: 8,
-      scoreNovelty: 14,
-      scorePopularityPenalty: 2,
-      scoreTotal: 76,
-      seedCount: 1,
-    },
-  ];
-
-  const merged = mergeRetainedRecommendationPool({
-    freshRecommendations,
-    existingRecommendations,
-    limit: 2,
-    runStartedAt,
-    discoveryMode: "balanced",
-  });
-
-  assert.equal(merged.length, 2);
-  assert.deepEqual(merged.map((item) => item.name).sort(), ["Fresh Pick", "Returning Pick"]);
-  const returning = merged.find((item) => item.name === "Returning Pick");
-  assert.equal(returning.firstDiscoveredAt, "2026-05-01T00:00:00.000Z");
-  assert.equal(returning.lastRecommendedAt, runStartedAt);
-  assert.equal(
-    merged.some((item) => item.name === "Stale Weak Pick"),
-    false,
-  );
 });

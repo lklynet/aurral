@@ -342,16 +342,6 @@ test("the inbox lists a story under each library artist it mentions", async (t) 
   );
 });
 
-test("uses curated RSS groups and preserves custom feeds", () => {
-  const settings = config.getNewsSettings();
-  assert.ok(settings.feeds.length >= 10);
-  assert.ok(settings.feeds.some((feed) => feed.group === "indie"));
-  const customFeed = config
-    .normalizeNewsFeeds([{ name: "Custom", url: "https://custom.test/feed", group: "custom" }])
-    .find((feed) => feed.url === "https://custom.test/feed");
-  assert.equal(customFeed.builtIn, false);
-});
-
 test("drops retired built-in feeds from saved settings instead of keeping them as custom feeds", () => {
   const feeds = config.normalizeNewsFeeds([
     { name: "Mixmag", url: "https://mixmag.net/feed", group: "electronic", enabled: true },

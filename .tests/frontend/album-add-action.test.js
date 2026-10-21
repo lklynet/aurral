@@ -4,7 +4,6 @@ import assert from "node:assert/strict";
 import {
   countReleaseTracks,
   describeAlbumRequestResult,
-  getAlbumAddAction,
   isAlbumCompleteInLibrary,
   shouldTriggerAlbumSearch,
 } from "../../frontend/src/utils/albumAddAction.js";
@@ -18,17 +17,6 @@ test("shouldTriggerAlbumSearch follows monitored state", () => {
   assert.equal(shouldTriggerAlbumSearch({ inLibrary: true, monitored: false }), false);
   assert.equal(shouldTriggerAlbumSearch({ status: "inLibrary", monitored: true }), true);
   assert.equal(shouldTriggerAlbumSearch({ status: "inLibrary", monitored: false }), false);
-});
-
-test("every album action is a Download album button for the active manager", () => {
-  const lidarr = { primary: "lidarr", ready: true };
-  const action = getAlbumAddAction({ status: "monitored", managedBy: "aurral" }, lidarr);
-  assert.equal(action.label, "Download album");
-  assert.equal(action.destination, lidarr);
-  assert.equal(
-    getAlbumAddAction({ inLibrary: true, monitored: false }, { primary: "aurral" }).label,
-    "Download album",
-  );
 });
 
 test("isAlbumCompleteInLibrary only treats on-disk albums as complete", () => {

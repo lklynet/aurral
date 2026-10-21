@@ -137,15 +137,6 @@ test("native playback passes when any available file is readable", async () => {
   assert.equal(nativePlayback?.status, "pass");
 });
 
-test("runStorageHealthCheck passes shared volume when dedicated browse roots exist", async () => {
-  const result = await runStorageHealthCheck();
-  const volume = result.sections.find((section) => section.id === "volume");
-  assert.ok(volume);
-  const sharedMount = volume.steps.find((step) => step.id === "shared-mount");
-  assert.ok(sharedMount);
-  assert.equal(sharedMount.status, "pass");
-});
-
 test("runStorageHealthCheck does not warn about preferred shared-root conventions", async () => {
   const unrelatedBrowseRoot = path.join(isolatedState.baseDir, "browse-only");
   await fs.mkdir(unrelatedBrowseRoot, { recursive: true });

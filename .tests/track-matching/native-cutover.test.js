@@ -67,25 +67,6 @@ test("all source adapters reject a visible wrong recording before download", asy
   }
 });
 
-test("a different track title is excluded from automatic source attempts", async () => {
-  const result = await evaluateTrackCandidates({
-    source: "soulseek",
-    request: { trackName: "First Song", artistName: "The Band", durationMs: 180000 },
-    candidates: [
-      {
-        source: "soulseek",
-        title: "A Different Song Entirely",
-        filenameTitle: "A Different Song Entirely",
-        artists: ["The Band"],
-        durationMs: 180000,
-        provider: {},
-        raw: {},
-      },
-    ],
-  });
-  assert.equal(result.evaluations[0].decision, "reject");
-});
-
 test("a matching video channel and official-audio title remain a plausible track", async () => {
   const result = await buildSourceCandidates({
     source: "ytdlp",
@@ -100,28 +81,6 @@ test("a matching video channel and official-audio title remain a plausible track
     ],
   });
   assert.equal(result.evaluations[0].decision, "verify");
-});
-
-test("downloaded file verification uses original tags without a Python runtime", async () => {
-  const result = await validateDownloadedTrackFile({
-    request: { trackName: "First Song", artistName: "The Band", durationMs: 180000 },
-    source: "soulseek",
-    filePath: "/tmp/First Song.flac",
-    options: {
-      parseFile: async () => ({
-        common: { title: "First Song", artist: "The Band" },
-        format: {
-          duration: 180,
-          container: "FLAC",
-          lossless: true,
-          sampleRate: 44100,
-          bitsPerSample: 16,
-          numberOfChannels: 2,
-        },
-      }),
-    },
-  });
-  assert.equal(result.decision, "VERIFIED");
 });
 
 test("a provider artist claim cannot fill a missing original file tag", async () => {

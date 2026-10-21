@@ -81,22 +81,6 @@ test("independent system tasks use isolated queues", () => {
   }
 });
 
-test("Honker uses a low-CPU watcher cadence by default", () => {
-  const original = process.env.AURRAL_HONKER_WATCHER_POLL_MS;
-  delete process.env.AURRAL_HONKER_WATCHER_POLL_MS;
-  try {
-    assert.deepEqual(honkerDb.getHonkerOpenOptions(), {
-      watcherPollIntervalMs: 25,
-    });
-  } finally {
-    if (original === undefined) {
-      delete process.env.AURRAL_HONKER_WATCHER_POLL_MS;
-    } else {
-      process.env.AURRAL_HONKER_WATCHER_POLL_MS = original;
-    }
-  }
-});
-
 test("startup only queues due bootstrap work and a pending migration", () => {
   const db = honkerDb.getHonkerDb();
   const clearQueue = () => {

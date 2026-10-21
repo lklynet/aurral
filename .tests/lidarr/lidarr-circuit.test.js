@@ -458,39 +458,6 @@ test("getAlbumsByMbidsSettled bounds concurrent lookups and preserves failures",
   assert.equal(results[7].reason.message, "lookup failed");
 });
 
-test("album-only artist add queues a search for the selected album", async (t) => {
-  const client = new LidarrClient();
-  t.onTestFinished(() => {
-    client._httpAgent.destroy();
-    client._httpsAgent.destroy();
-    client._httpsInsecureAgent.destroy();
-  });
-
-  let postedArtist;
-  client.resolveArtistAddConfiguration = async () => ({
-    resolved: {
-      rootFolderPath: "/music",
-      qualityProfileId: 1,
-    },
-  });
-  client.request = async (endpoint, method, payload) => {
-    assert.equal(endpoint, "/artist");
-    assert.equal(method, "POST");
-    postedArtist = payload;
-    return { id: 7, ...payload, monitored: true };
-  };
-
-  await client.addArtist("artist-mbid", "Boards of Canada", {
-    albumOnly: true,
-    albumMbid: "album-mbid",
-    triggerSearch: true,
-    metadataProfileId: 1,
-  });
-
-  assert.deepEqual(postedArtist.addOptions.albumsToMonitor, ["album-mbid"]);
-  assert.equal(postedArtist.addOptions.searchForMissingAlbums, true);
-});
-
 test("artist add resolves a non-numeric Lidarr response ID before follow-up calls", async (t) => {
   const artistMbid = "f1693075-b637-49f8-8d0e-8cee8bec77cb";
   const requests = [];

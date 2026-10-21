@@ -327,9 +327,6 @@ export class FlowTrackSource {
   }
 
   _resolveDiscoveryCache(options = {}) {
-    if (options?.discoveryCache && typeof options.discoveryCache === "object") {
-      return options.discoveryCache;
-    }
     return getUserDiscovery(options?.ownerUserId ?? this._firstActiveAdminId(), 0).body;
   }
 

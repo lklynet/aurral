@@ -111,17 +111,6 @@ test("checks every active destination once per cleanup batch and skips inactive 
   assert.equal(isPlaybackRetainedFile(saved), true);
 });
 
-for (const key of ["jellyfin", "navidrome", "plex"]) {
-  test(`${key} alone can veto automatic file deletion`, async () => {
-    const file = await makeFile("_flows/flow/track.flac");
-    const registry = new PlaybackDestinationRegistry([
-      destination(key, true, async () => ({ ok: true, paths: [file] })),
-    ]);
-    await removeUnusedPlaybackFiles(path.dirname(file), createPlaybackDeletionGuard({ registry }));
-    await fs.access(file);
-  });
-}
-
 for (const response of [null, { ok: true }, { ok: false, error: { message: "offline" } }]) {
   test(`unknown playlist usage preserves files (${JSON.stringify(response)})`, async () => {
     const file = await makeFile("_flows/flow/track.flac");

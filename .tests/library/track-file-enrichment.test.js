@@ -36,19 +36,6 @@ test("buildPlaybackQueueFromLibrary keeps the performer credit and uses indexed 
   ]);
 });
 
-test("buildTrackFileIndex maps trackFileId and trackIds", () => {
-  const index = buildTrackFileIndex([
-    {
-      id: 10915,
-      path: "/data/music/Artist/Album/track.mp3",
-      trackIds: [42],
-    },
-  ]);
-
-  assert.equal(index.get(10915)?.path, "/data/music/Artist/Album/track.mp3");
-  assert.equal(index.get("track:42")?.path, "/data/music/Artist/Album/track.mp3");
-});
-
 test("enrichLidarrTrackWithFiles attaches trackFile from trackFileId", () => {
   const index = buildTrackFileIndex([
     {

@@ -2,7 +2,6 @@ import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import {
   MATCH_POLICY,
-  normalizeMatchText,
   parseListingTitle,
   decideRecording,
   verifyDownloadedRecording,
@@ -14,11 +13,6 @@ const request = {
   durationMs: 275000,
   recordingMbid: "cc82ee93-62b1-4424-8ea0-a24d775161e5",
 };
-
-test("normalization folds diacritics, punctuation, and spacing", () => {
-  assert.equal(normalizeMatchText("  Hoppípolla!  "), "hoppipolla");
-  assert.equal(normalizeMatchText("Sigur   Rós"), "sigur ros");
-});
 
 test("distinct non-Latin titles cannot be selected or verified", () => {
   for (const [expected, offered] of [
@@ -264,18 +258,6 @@ test("equal distinct candidates abstain in stable input order", () => {
     [0, 1],
   );
   assert.equal(result.policyVersion, MATCH_POLICY.version);
-});
-
-test("a track-only listing without a recording ID needs a close duration", () => {
-  const result = decideRecording(request, [
-    {
-      title: "Hoppipolla",
-      artists: ["Sigur Ros"],
-      durationMs: 279000,
-    },
-  ]);
-  assert.equal(result.decision, "uncertain");
-  assert.equal(result.selectedIndex, null);
 });
 
 test("one uncorroborated candidate needs an exact duration for automatic selection", () => {

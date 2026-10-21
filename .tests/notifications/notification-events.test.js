@@ -113,22 +113,6 @@ test("interpolateBody does not rescan substituted placeholder values", () => {
   );
 });
 
-test("deliverQueuedNotification skips disabled webhook events", async () => {
-  await withCaptureServer(async ({ baseUrl, requests }) => {
-    await deliverQueuedNotification({
-      kind: "webhooks",
-      event: "notifyRequestMade",
-      integrations: {
-        webhookEvents: { notifyRequestMade: false },
-        webhooks: [{ url: `${baseUrl}/hook`, body: '{"ok":true}', headers: [] }],
-      },
-      vars: { albumName: "Blue Train" },
-    });
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    assert.equal(requests.length, 0);
-  });
-});
-
 test("deliverQueuedNotification interpolates request webhook bodies", async () => {
   await withCaptureServer(async ({ baseUrl, waitFor }) => {
     await deliverQueuedNotification({

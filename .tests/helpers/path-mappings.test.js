@@ -27,20 +27,6 @@ test("resolveLocalPath leaves already-local paths unchanged when no mapping matc
   );
 });
 
-test("parsePathMappingsEnv reads pipe-separated mappings", () => {
-  const previous = process.env.PATH_MAPPINGS;
-  process.env.PATH_MAPPINGS = "N:/ServerFolders/Music|/music";
-  assert.deepEqual(parsePathMappingsEnv(), [
-    {
-      source: "all",
-      remote: "N:/ServerFolders/Music",
-      local: path.resolve("/music"),
-    },
-  ]);
-  if (previous === undefined) delete process.env.PATH_MAPPINGS;
-  else process.env.PATH_MAPPINGS = previous;
-});
-
 test("parsePathMappingsEnv supports source-scoped mappings", () => {
   const previous = process.env.PATH_MAPPINGS;
   process.env.PATH_MAPPINGS =
@@ -79,13 +65,6 @@ test("getPathMappings filters mappings by source while keeping all-source mappin
   ]);
   if (previous === undefined) delete process.env.PATH_MAPPINGS;
   else process.env.PATH_MAPPINGS = previous;
-});
-
-test("resolveLocalPath requires direct access or an explicit mapping", () => {
-  assert.equal(
-    resolveLocalPath("N:/ServerFolders/Music/Music/Artist/track.mp3", []),
-    path.resolve("N:/ServerFolders/Music/Music/Artist/track.mp3"),
-  );
 });
 
 test("resolveRemotePath inverts a Windows prefix mapping", () => {

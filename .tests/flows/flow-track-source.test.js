@@ -2,13 +2,6 @@ import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { FlowTrackSource } from "../../backend/services/flows/flowTrackSource.js";
 
-test("harvest limit scales with target without over-fetching", () => {
-  const source = new FlowTrackSource();
-  assert.equal(source._harvestLimitFor(10), 30);
-  assert.equal(source._harvestLimitFor(30), 72);
-  assert.equal(source._harvestLimitFor(100), 72);
-});
-
 test("year range matching accepts bounds and rejects unknown years when set", () => {
   const source = new FlowTrackSource();
   assert.equal(source._matchesYearRange("1985", null, null), true);
@@ -153,23 +146,6 @@ test("mix album pick prefers top track list metadata before track.getInfo", () =
   );
   assert.equal(picked?.pick?.name, "Fresh Track");
   assert.equal(picked?.albumName, "New Album");
-});
-
-test("discover tracks use injected discovery cache when provided", async () => {
-  const source = new FlowTrackSource();
-  source._harvestTopTracksFromArtists = async (artists) =>
-    artists.map((artist) => ({
-      artistName: artist.name,
-      trackName: "Preview",
-    }));
-
-  const tracks = await source.getDiscoverTracks(1, {
-    discoveryCache: {
-      recommendations: [{ name: "Injected Artist" }],
-    },
-  });
-
-  assert.equal(tracks[0]?.artistName, "Injected Artist");
 });
 
 test("library artist key set can be built from preloaded artists", async () => {

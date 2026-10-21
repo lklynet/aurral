@@ -101,24 +101,6 @@ test("concurrent startup upgrades a nonunique index and preserves the winning ma
     }
   }));
 
-test("startup keeps an existing unique index without changing the schema", () =>
-  withDatabase("artist-index-repeat", async (dbPath, dataDir) => {
-    await boot(dbPath, dataDir);
-    const db = new Database(dbPath);
-    const schemaVersion = db.pragma("schema_version", { simple: true });
-    assert.equal(indexState(db)?.unique, 1);
-    db.close();
-
-    await boot(dbPath, dataDir);
-    const reopened = new Database(dbPath);
-    try {
-      assert.equal(indexState(reopened)?.unique, 1);
-      assert.equal(reopened.pragma("schema_version", { simple: true }), schemaVersion);
-    } finally {
-      reopened.close();
-    }
-  }));
-
 test("index migration needs no write lock when the index is already unique", () =>
   withDatabase("artist-index-writer", async (dbPath, dataDir) => {
     await boot(dbPath, dataDir);

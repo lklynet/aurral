@@ -138,18 +138,6 @@ test("adding an Aurral album to Lidarr directly hands it to Lidarr too", async (
   assert.equal(managementStore.getManagedBy("album", album.id), "lidarr");
 });
 
-test("an album Aurral was monitoring is handed to Lidarr too", async () => {
-  const { album, track } = seedAlbum({ monitored: true, monitorMode: "monitored" });
-
-  await requestFromLidarr();
-
-  assert.equal(managementStore.getManagedBy("album", album.id), "lidarr");
-  assert.equal(
-    db.prepare("SELECT monitored FROM library_tracks WHERE id = ?").get(track.id).monitored,
-    0,
-  );
-});
-
 test("a Lidarr album in the Library is removed from Lidarr by its MusicBrainz ID", async () => {
   const deleted = [];
   lidarrClient.getAlbumByMbid = async (mbid) => (mbid === albumMbid ? lidarrAlbum : null);

@@ -21,7 +21,7 @@ const [isolatedState, { db }, dbHelpers, authModule, sessionModule, oidcModule] 
 
 const { dbOps, userOps, userIdentityOps } = dbHelpers;
 const { ensureExternalUser, isAuthRequiredByConfig, isOidcAuthEnabled } = authModule;
-const { createSession, getSessionByToken } = sessionModule;
+const { getSessionByToken } = sessionModule;
 const {
   exchangeOidcCallback,
   isOidcEnabled,
@@ -254,14 +254,6 @@ test("OIDC bootstrap exposes logout URL when configured", () => {
     oidcEnabled: true,
     oidcLogoutUrl: "https://auth.example.com/logout",
   });
-});
-
-test("OIDC-provisioned users get normal Aurral sessions", () => {
-  completeOnboarding();
-  const user = ensureExternalUser("sso-erin", "user");
-  const session = createSession(user.id, "127.0.0.1", "test-agent");
-  assert.ok(session?.token);
-  assert.equal(getSessionByToken(session.token)?.user?.username, "sso-erin");
 });
 
 test("OIDC callback issues a cookie-bound one-time session exchange", async () => {

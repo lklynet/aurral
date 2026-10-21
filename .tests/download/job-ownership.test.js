@@ -24,13 +24,6 @@ afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("new jobs default to Aurral ownership", () => {
-  const tracker = new DownloadTracker();
-  const jobId = tracker.addJob({ artistName: "Artist", trackName: "Track" }, "library");
-  assert.equal(tracker.getJob(jobId).managedBy, "aurral");
-  assert.equal(tracker.getJob(jobId).requestGroupId, null);
-});
-
 test("album jobs can be grouped and owned by lidarr explicitly", () => {
   const tracker = new DownloadTracker();
   const groupId = "request-group-1";

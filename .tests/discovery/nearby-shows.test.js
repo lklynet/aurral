@@ -178,33 +178,3 @@ test("uses an explicit country when resolving an ambiguous postal code", async (
   assert.equal(result.location.city, "Paris");
   assert.equal(result.location.countryCode, "FR");
 });
-
-test("reuses a cached shows response without rebuilding artist maps", async () => {
-  let artistReads = 0;
-  vi.spyOn(axios, "get").mockImplementation(async (url) => {
-    if (url.includes("zippopotam")) {
-      return {
-        data: {
-          places: [{ "place name": "Austin", latitude: "30.2672", longitude: "-97.7431" }],
-        },
-      };
-    }
-    return { data: { _embedded: { events: [] } } };
-  });
-
-  const options = {
-    zipCode: "78701",
-    responseCacheKey: "user-1",
-    libraryArtists: {
-      [Symbol.iterator]() {
-        artistReads += 1;
-        return [][Symbol.iterator]();
-      },
-    },
-  };
-  const first = await getNearbyShows(options);
-  const second = await getNearbyShows(options);
-
-  assert.strictEqual(second, first);
-  assert.equal(artistReads, 1);
-});

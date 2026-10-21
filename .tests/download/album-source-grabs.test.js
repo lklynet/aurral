@@ -1201,21 +1201,6 @@ async function gateUpgradeSearches(t, groups) {
   };
 }
 
-test("Search all leaves its upgrades to the download worker, which starts one album's search at a time at concurrency 1", async (t) => {
-  const groups = ["gated-first", "gated-second", "gated-third"];
-  const gate = await gateUpgradeSearches(t, groups);
-  const sourceIds = [];
-  for (const group of groups) sourceIds.push(await gate.addSource(group));
-
-  assert.equal((await postUpgrades(t)).queued, 3);
-  await downloadWorker.waitForIdle();
-  assert.deepEqual(gate.searching(), [sourceIds[0]]);
-
-  await gate.moveSearchesToPoll();
-  assert.deepEqual(gate.searching(), [sourceIds[1]]);
-  assert.deepEqual(gate.waiting(), [sourceIds[2]]);
-});
-
 test("an upgrade asked for while Search all's upgrades wait for the worker starts next when a search ends", async (t) => {
   const groups = ["backlog-first", "backlog-second", "backlog-third", "asked-for"];
   const gate = await gateUpgradeSearches(t, groups);

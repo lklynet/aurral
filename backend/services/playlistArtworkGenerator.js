@@ -47,7 +47,7 @@ export async function isGeneratedPlaylistArtworkFallback(filePath, { title, kind
   }
 }
 
-export async function buildGeneratedPlaylistArtworkBuffer({
+async function buildGeneratedPlaylistArtworkBuffer({
   title,
   kind = "Playlist",
   style = null,

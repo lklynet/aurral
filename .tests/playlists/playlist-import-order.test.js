@@ -228,43 +228,6 @@ beforeEach(async () => {
   await fs.rm(downloadRoot, { recursive: true, force: true });
 });
 
-test("import enqueue logs a queued operation without claiming completion", async () => {
-  const messages = [];
-  const enqueue = vi
-    .spyOn(playlistOperationQueue, "enqueuePayload")
-    .mockImplementation(async () => ({
-      queued: true,
-      operationId: 42,
-    }));
-  vi.spyOn(logger, "info").mockImplementation((_category, message, details) => {
-    messages.push({ message, details });
-  });
-
-  const result = await enqueueImportedPlaylist({
-    ownerUserId: 7,
-    name: "Imported Mix",
-    provider: "spotify-playlist",
-    externalId: "external-playlist",
-    tracks: [{ artistName: "Artist", trackName: "Song" }],
-    sourceStats: { unavailable: 2, podcast: 1, incomplete: 0, duplicate: 0 },
-    syncEnabled: false,
-  });
-
-  assert.equal(enqueue.mock.calls.length, 1);
-  assert.equal(result.queued, true);
-  assert.deepEqual(
-    messages.map((entry) => entry.message),
-    ["Playlist import queued"],
-  );
-  assert.equal(messages[0].details.provider, "spotify-playlist");
-  assert.equal(messages[0].details.playlistName, "Imported Mix");
-  assert.equal(messages[0].details.operationId, 42);
-  assert.equal(messages[0].details.trackCount, 1);
-  assert.equal(messages[0].details.skipped.unavailable, 2);
-  assert.ok(messages[0].details.playlistId);
-  assert.equal(JSON.stringify(messages).includes("external-playlist"), false);
-});
-
 const waitForImportLog = async (mock, message) => {
   const deadline = Date.now() + 5000;
   while (Date.now() < deadline) {

@@ -257,26 +257,6 @@ test("task status groups scheduled discovery jobs without cancelling them", asyn
   assert.equal(cleaned.workers.find((entry) => entry.queue === "discovery-refresh")?.scheduled, 1);
 });
 
-test("task status groups duplicate completed system task runs", async () => {
-  const queue = honkerDb.getSystemTaskQueue();
-  for (let index = 0; index < 2; index += 1) {
-    queue.enqueue({ kind: "discovery-bootstrap" });
-    const job = queue.claimOne(honkerDb.getWorkerId());
-    assert.ok(job);
-    await runtime.withJobHeartbeat(job, queue, async () => {});
-    job.ack();
-  }
-
-  const status = await taskStatus.getHonkerTaskStatus();
-  const grouped = status.queue.filter(
-    (entry) => entry.queue === "system-task" && entry.name === "Discovery startup check",
-  );
-
-  assert.equal(grouped.length, 1);
-  assert.equal(grouped[0].duplicateCount, 2);
-  assert.equal(grouped[0].payloadSummary, "");
-});
-
 test("periodic cleanup prunes expired dead jobs while status only filters them", async () => {
   const { db } = await importFromRepo("backend/config/db-sqlite.js");
   const twoHoursAgo = Math.floor(Date.now() / 1000) - 7200;

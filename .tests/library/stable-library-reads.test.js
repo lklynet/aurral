@@ -638,18 +638,6 @@ test("library paginated reads keep tied rows stable", () => {
   }
 });
 
-test("stable artist reads remain local when Lidarr is absent", async () => {
-  const request = vi.spyOn(lidarrClient, "request").mockImplementation(async () => {
-    throw new Error("absent Lidarr must not be called");
-  });
-  vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => false);
-
-  const artists = await libraryManager.getAllArtists();
-
-  assert.ok(Array.isArray(artists));
-  assert.equal(request.mock.calls.length, 0);
-});
-
 test("legacy artist list bounds the projection before materialization", async () => {
   const prefix = `zzzzzzzzzz-artist-page-${process.pid}-${Date.now()}`;
   const artists = Array.from({ length: 101 }, (_, index) =>

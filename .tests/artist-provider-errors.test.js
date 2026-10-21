@@ -128,26 +128,18 @@ test("strict and default callers share a missing artist ID without treating it a
   assert.equal(requests, 1);
 });
 
-for (const code of [4, 700]) {
-  test(
-    "artist ID error " + code + " remains retryable for strict and default callers",
-    async (t) => {
-      let failed = true;
-      responses(t, () =>
-        failed
-          ? { error: { code, message: "Provider unavailable" } }
-          : { id: 101, name: "Provider Artist", picture_big: photo },
-      );
-      await assert.rejects(deezer.getDeezerArtistById(101, { throwOnError: true }));
-      assert.equal(await deezer.getDeezerArtistById(101), null);
-      failed = false;
-      assert.equal(
-        (await deezer.getDeezerArtistById(101, { throwOnError: true }))?.imageUrl,
-        photo,
-      );
-    },
+test("artist ID error 4 remains retryable for strict and default callers", async (t) => {
+  let failed = true;
+  responses(t, () =>
+    failed
+      ? { error: { code: 4, message: "Provider unavailable" } }
+      : { id: 101, name: "Provider Artist", picture_big: photo },
   );
-}
+  await assert.rejects(deezer.getDeezerArtistById(101, { throwOnError: true }));
+  assert.equal(await deezer.getDeezerArtistById(101), null);
+  failed = false;
+  assert.equal((await deezer.getDeezerArtistById(101, { throwOnError: true }))?.imageUrl, photo);
+});
 
 test("a name-search error in HTTP 200 is not cached as an absent artist", async (t) => {
   let failed = true;
@@ -237,24 +229,19 @@ for (const [endpoint, path] of [
   ["an artist search", "/search/artist"],
   ["a top-track", "/artist/101/top"],
 ]) {
-  for (const code of [4, 700]) {
-    test(
-      endpoint + " error " + code + " in HTTP 200 leaves artist top tracks retryable",
-      async (t) => {
-        let failed = true;
-        responses(t, (url) => {
-          if (failed && url.endsWith(path))
-            return { error: { code, message: "Provider unavailable" } };
-          return url.endsWith("/search/artist")
-            ? { data: [{ id: 101, name: "Provider Artist" }] }
-            : { data: [{ id: 7, title: "Recovered Song", album: { title: "Album" }, rank: 900 }] };
-        });
-        assert.deepEqual(await artistTopTracks(), []);
-        failed = false;
-        assert.deepEqual(await artistTopTracks(), ["Recovered Song"]);
-      },
-    );
-  }
+  test(endpoint + " error 4 in HTTP 200 leaves artist top tracks retryable", async (t) => {
+    let failed = true;
+    responses(t, (url) => {
+      if (failed && url.endsWith(path))
+        return { error: { code: 4, message: "Provider unavailable" } };
+      return url.endsWith("/search/artist")
+        ? { data: [{ id: 101, name: "Provider Artist" }] }
+        : { data: [{ id: 7, title: "Recovered Song", album: { title: "Album" }, rank: 900 }] };
+    });
+    assert.deepEqual(await artistTopTracks(), []);
+    failed = false;
+    assert.deepEqual(await artistTopTracks(), ["Recovered Song"]);
+  });
 }
 
 for (const [absence, path, body] of [

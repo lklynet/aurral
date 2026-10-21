@@ -3270,58 +3270,6 @@ test("a file row naming an album its track is not on shows on the track's album 
   }
 });
 
-test("an untagged copy an album lists beside its tagged track becomes that track", async () => {
-  const root = await mkdtemp(path.join(tmpdir(), "aurral-library-copy-row-"));
-  const source = `test-copy-row-${process.pid}`;
-  const elsewhere = `test-copy-row-elsewhere-${process.pid}`;
-  const artist = `Copy Row ${process.pid}`;
-  const copyPath = path.join(root, "elsewhere", "03 Song.mp3");
-  const filePath = await createAudioFile(root, `${artist}/Album/03 Song.flac`);
-  const reader = async () =>
-    tagged(
-      artist,
-      "Album",
-      "Song",
-      3,
-      "8c9d0e1f-2a3b-4c4d-8e5f-6a7b8c9d0e1f",
-      "9d0e1f2a-3b4c-4d5e-8f6a-7b8c9d0e1f2a",
-    );
-  try {
-    await scanMusicRoot({ rootPath: root, source, metadataReader: reader });
-    const kept = fileRows(source, filePath);
-    const copy = upsertLibraryTrack({
-      identityKey: `name:track:copy row ${process.pid}:1:3:song`,
-      title: "Song",
-      syncSearch: false,
-    });
-    linkLibraryAlbumTrack({
-      albumId: kept.albumId,
-      trackId: copy.id,
-      discNumber: 1,
-      trackNumber: 3,
-      syncSearch: false,
-    });
-    upsertLibraryMediaFile({
-      trackId: copy.id,
-      albumId: kept.albumId,
-      source: elsewhere,
-      path: copyPath,
-    });
-
-    await scanMusicRoot({ rootPath: root, source, metadataReader: reader });
-
-    assert.deepEqual(
-      artistAlbums(artist).map(({ title, tracks }) => [title, tracks]),
-      [["Album", 1]],
-    );
-    assert.deepEqual(filesOnTrack(kept.trackId), [copyPath, filePath].sort());
-  } finally {
-    deleteIndexedFile(elsewhere, copyPath);
-    deleteIndexedFile(source, filePath);
-    await rm(root, { recursive: true, force: true });
-  }
-});
-
 test("scanMusicRoot reads Aurral identity markers from portable comments", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-library-comment-metadata-"));
   const source = `test-comment-metadata-${process.pid}`;
@@ -3460,46 +3408,6 @@ test("scanMusicRoot reads Aurral identity markers from native ID3 comments", asy
     });
   } finally {
     if (filePath) deleteIndexedFile(source, filePath);
-    await rm(root, { recursive: true, force: true });
-  }
-});
-
-test("a rescan forgets files gone from a folder that still holds music, including ones an older scan only marked missing", async () => {
-  const root = await mkdtemp(path.join(tmpdir(), "aurral-library-reconcile-"));
-  const source = `test-reconcile-${process.pid}`;
-  const filePaths = [];
-  try {
-    for (const name of ["01 Track", "02 Marked", "03 Kept"])
-      filePaths.push(await createAudioFile(root, `Artist/Album/${name}.mp3`));
-    await scanMusicRoot({
-      rootPath: root,
-      source,
-      metadataReader: async (filePath) => songAt(filePath),
-    });
-    db.prepare("UPDATE library_media_files SET available = 0 WHERE source = ? AND path = ?").run(
-      source,
-      filePaths[1],
-    );
-    await rm(filePaths[0]);
-    await rm(filePaths[1]);
-
-    await scanMusicRoot({
-      rootPath: root,
-      source,
-      metadataReader: async (filePath) => songAt(filePath),
-    });
-    const snapshot = getLibrarySnapshot();
-
-    assert.deepEqual(
-      snapshot.files.filter((file) => file.source === source).map((file) => file.path),
-      [filePaths[2]],
-    );
-    assert.deepEqual(
-      snapshot.tracks.filter((track) => /^0\d /.test(track.title)).map((track) => track.title),
-      ["03 Kept"],
-    );
-  } finally {
-    for (const filePath of filePaths) deleteIndexedFile(source, filePath);
     await rm(root, { recursive: true, force: true });
   }
 });

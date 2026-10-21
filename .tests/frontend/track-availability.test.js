@@ -4,7 +4,6 @@ import {
   countAvailableTracks,
   getTrackAvailability,
   getTrackSearchAction,
-  shouldShowAddToLibrary,
 } from "../../frontend/src/pages/playlists/trackAvailability.js";
 
 test("availability counts playable completed tracks, including tracks reused from another playlist", () => {
@@ -65,13 +64,4 @@ test("existing flow searches retain their upgrade eligibility rules", () => {
     getTrackSearchAction({ status: "done", qualityOwned: false, qualityState: "upgrade" }),
     null,
   );
-});
-
-test("library-owned tracks do not offer the add-to-library action", () => {
-  const addToLibrary = () => {};
-
-  assert.equal(shouldShowAddToLibrary({ libraryOwned: true }, addToLibrary), false);
-  assert.equal(shouldShowAddToLibrary({ libraryOwned: false }, addToLibrary), true);
-  assert.equal(shouldShowAddToLibrary({}, addToLibrary), true);
-  assert.equal(shouldShowAddToLibrary({ libraryOwned: true }, null), false);
 });

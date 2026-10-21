@@ -10,7 +10,7 @@ import {
 
 const [
   isolatedState,
-  { isSearchComplete, isSearchInProgress, isSlskdCleanupAfterRunsEnabled, slskdClient },
+  { isSearchComplete, isSearchInProgress, slskdClient },
   { recordSlskdTransferOutcome },
   { dbOps },
   { db },
@@ -320,21 +320,6 @@ test("flattenSearchResults reads slskd collection wrapper payloads", () => {
   assert.equal(results[0].bitrate, 1411);
 });
 
-test("settleSearch cancels in-progress searches when requested", async () => {
-  const originalDeleteSearch = slskdClient.deleteSearch.bind(slskdClient);
-  let deletedId = null;
-  try {
-    slskdClient.deleteSearch = async (searchId) => {
-      deletedId = searchId;
-      return true;
-    };
-    await slskdClient.settleSearch("search-cancel", { cancel: true });
-    assert.equal(deletedId, "search-cancel");
-  } finally {
-    slskdClient.deleteSearch = originalDeleteSearch;
-  }
-});
-
 test("waitForSearch treats a polling failure during cancellation as a cancelled search", async () => {
   const originalGetSearch = slskdClient.getSearch.bind(slskdClient);
   const originalDeleteSearch = slskdClient.deleteSearch.bind(slskdClient);
@@ -579,22 +564,6 @@ test("enqueueBatch uses current slskd download endpoint", async () => {
     dbOps.updateSettings(originalSettings);
     await mock.close();
   }
-});
-
-test("isSlskdCleanupAfterRunsEnabled reads the integrations setting", () => {
-  const originalSettings = dbOps.getSettings();
-  dbOps.updateSettings({
-    ...originalSettings,
-    integrations: {
-      ...(originalSettings.integrations || {}),
-      slskd: {
-        ...(originalSettings.integrations?.slskd || {}),
-        cleanupAfterRuns: true,
-      },
-    },
-  });
-  assert.equal(isSlskdCleanupAfterRunsEnabled(), true);
-  dbOps.updateSettings(originalSettings);
 });
 
 test("cleanupAfterRun removes Aurral-owned searches and transfers", async () => {

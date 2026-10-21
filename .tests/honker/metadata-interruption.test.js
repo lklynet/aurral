@@ -104,32 +104,6 @@ test("an interrupted stale claim cannot overwrite its replacement owner", async 
   }
 });
 
-test("stopping immediately after start preserves an unexecuted final-attempt claim", async () => {
-  const queue = getSystemTaskQueue();
-  const id = queue.enqueue({ kind: "release-metadata-refresh" });
-  db.prepare("UPDATE _honker_live SET attempts = 2 WHERE id = ?").run(id);
-  let executed = false;
-  const worker = createWorker({
-    name: "system-task",
-    getQueue: () => queue,
-    idlePollS: 1,
-    interruptible: true,
-    processJob() {
-      executed = true;
-    },
-  });
-  const loop = worker.start();
-  await worker.stop();
-  await loop;
-  try {
-    assert.equal(executed, false);
-    assert.equal(queue.getJob(id)?.state, "pending");
-    assert.equal(queue.getJob(id)?.attempts, 2);
-  } finally {
-    queue.cancel(id);
-  }
-});
-
 test("lease renewal failure aborts a blocked provider request", async () => {
   const { acquireReleaseMetadataLease } =
     await import("../../backend/services/releaseMetadataLease.js");

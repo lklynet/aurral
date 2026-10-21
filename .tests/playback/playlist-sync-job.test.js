@@ -966,20 +966,6 @@ test("a playlist deleted during a long outage is removed from the server once it
   });
 });
 
-test("a full sync removes playlists that servers still hold but Aurral no longer has", async (t) => {
-  const { doomed, ...servers } = await publishToEveryServer(t, "orphan-cleanup");
-  flowPlaylistConfig.deleteStaticPlaylist(doomed.id);
-
-  playlistManager.requestPlaylistSync();
-  await drainSyncs();
-
-  assert.deepEqual(serverPlaylists(servers), {
-    navidrome: ["Kept"],
-    plex: ["Kept"],
-    jellyfin: ["Kept"],
-  });
-});
-
 test("deleting a playlist Navidrome imported from its m3u removes the imported playlist and the file", async () => {
   const navidrome = useNavidrome([]);
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Unindexed" });

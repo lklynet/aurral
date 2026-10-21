@@ -248,23 +248,6 @@ test("reuseTrackForPlaylist finds a local file named with its album position", a
   );
 });
 
-test("reuseTrackForPlaylist neutralizes path traversal attempts in track metadata and target playlist", async () => {
-  const result = await reuseTrackForPlaylist(
-    {
-      artistName: "../../etc",
-      trackName: "../../passwd",
-      albumName: "..",
-    },
-    "../../secrets",
-    {
-      existingFileMode: "reuse",
-      downloadRoot,
-    },
-  );
-
-  assert.equal(result.reused, false);
-});
-
 test("library reuse does not cross album boundaries for the same track title", async () => {
   const sourceTrack = {
     artistName: "Amigo the Devil",

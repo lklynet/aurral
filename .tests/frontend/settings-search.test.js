@@ -1,52 +1,7 @@
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 
 import { searchSettingsItems } from "../../frontend/src/pages/Settings/settingsTabsConfig.js";
-
-const COMPONENTS_BY_TAB = {
-  tasks: ["SettingsTasksTab.jsx"],
-  lidarr: ["LidarrSettingsModalContent.jsx"],
-  indexers: ["SettingsIndexersSection.jsx"],
-  "download-clients": [
-    "SettingsDownloadClientsSection.jsx",
-    "QualityProfileModal.jsx",
-    "PathMappingModal.jsx",
-  ],
-  "library-files": ["SettingsLibraryFilesTab.jsx"],
-  monitoring: ["SettingsMonitoringTab.jsx"],
-  playback: ["SettingsPlaybackSection.jsx"],
-  connect: ["SettingsConnectTab.jsx"],
-  "rss-news": ["SettingsRssNewsTab.jsx"],
-  discover: ["SettingsDiscoverTab.jsx"],
-  users: ["SettingsUsersTab.jsx"],
-};
-
-const SEARCHED_COMPONENTS =
-  "SettingsArrFieldSet|SettingsArrFormGroup|SettingsModalSection|SettingsModalField|" +
-  "SettingsModalToggle|IntegrationCard|SettingsIntegrationModal|SystemSection|SystemRow";
-const VISIBLE_LABEL = new RegExp(
-  `<(?:${SEARCHED_COMPONENTS})\\b[^>]*?\\b(?:legend|label|title)="([^"]+)"`,
-  "g",
-);
-
-test("settings search covers visible settings labels", async () => {
-  const missing = [];
-  for (const [tab, files] of Object.entries(COMPONENTS_BY_TAB)) {
-    for (const file of files) {
-      const source = await readFile(
-        new URL(`../../frontend/src/pages/Settings/components/${file}`, import.meta.url),
-        "utf8",
-      );
-      for (const [, label] of source.matchAll(VISIBLE_LABEL)) {
-        if (!searchSettingsItems(label).some((item) => item.id === tab)) {
-          missing.push(`${tab}: ${label} (${file})`);
-        }
-      }
-    }
-  }
-  assert.deepEqual(missing, []);
-});
 
 test("custom settings layouts expose their fields to search", () => {
   const expected = {

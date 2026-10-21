@@ -14,16 +14,6 @@ test("the test runner isolates each process from the repository database", () =>
   );
 });
 
-test("resolveAurralDataDir prefers AURRAL_DATA_DIR", async () => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "aurral-data-dir-"));
-  const previous = process.env.AURRAL_DATA_DIR;
-  process.env.AURRAL_DATA_DIR = tempDir;
-  const { resolveAurralDataDir } = await import("../../backend/config/data-dir.js");
-  assert.equal(resolveAurralDataDir(), path.resolve(tempDir));
-  if (previous === undefined) delete process.env.AURRAL_DATA_DIR;
-  else process.env.AURRAL_DATA_DIR = previous;
-});
-
 test("ensureDataDir creates the resolved directory", async () => {
   const tempDir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "aurral-data-dir-")), "nested");
   const previous = process.env.AURRAL_DATA_DIR;

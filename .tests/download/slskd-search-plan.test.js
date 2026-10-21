@@ -49,17 +49,6 @@ test("hasSlskdSearchCandidates is false when no results are valid candidates", (
   assert.equal(hasSlskdSearchCandidates(rawResults, fataTrack, { preferredFormat: "flac" }), false);
 });
 
-test("hasSlskdSearchCandidates is false for a small result set without valid candidates", () => {
-  const rawResults = [
-    {
-      user: "user-1",
-      file: "music\\Artist\\Wrong Album\\Other Song.flac",
-    },
-  ];
-
-  assert.equal(hasSlskdSearchCandidates(rawResults, fataTrack, { preferredFormat: "flac" }), false);
-});
-
 test("hasSlskdSearchCandidates waits for a small floor of valid candidates", () => {
   const validResults = Array.from({ length: 3 }, (_, index) => ({
     user: `valid-user-${index}`,

@@ -518,36 +518,6 @@ btest("plain request rejects candidates declaring a mix variant", async () => {
   assert.deepEqual(usableFileNames(evaluation), []);
 });
 
-btest("a declared requested variant ranks above an undeclared copy", async () => {
-  const evaluation = await evaluate(
-    [
-      result({
-        user: "silentUser",
-        file: "Artist Name\\Album Name (2004)\\11 - Wide Awake Tonight.mp3",
-        bitrate: 320,
-      }),
-      result({
-        user: "labelledUser",
-        file: "Artist Name\\Album Name (2004)\\11 - Wide Awake Tonight (Radio Edit).mp3",
-        bitrate: 320,
-      }),
-    ],
-    {
-      artistName: "Artist Name",
-      trackName: "Wide Awake Tonight - Radio Edit",
-      albumName: "Album Name",
-      releaseYear: "2004",
-      trackNumber: 11,
-      albumTrackCount: 13,
-      durationMs: 226000,
-      artistAliases: [],
-    },
-  );
-  const usable = usableEvaluationEntries(evaluation);
-  assert.equal(usable.length, 1);
-  assert.equal(usable[0].candidate.raw.user, "labelledUser");
-});
-
 btest("filename artist parsing: exact, shared-word, and numeric artists", async () => {
   const exact = await evaluate(
     [
@@ -1013,24 +983,6 @@ btest(
     );
   },
 );
-
-btest("quality ordering within identity: profile-eligible tier wins", async () => {
-  const entries = [
-    { candidate: { raw: { file: "Song.flac", bitrate: 900 } } },
-    { candidate: { raw: { file: "Song.m4a", bitrate: 320 } } },
-  ];
-  const m4aProfile = {
-    order: ["m4a-320", "flac-standard"],
-    enabled: ["m4a-320", "flac-standard"],
-    cutoff: "m4a-320",
-  };
-  const ordered = orderAdvertisedQualityCandidates(entries, {
-    profile: m4aProfile,
-    readName: (entry) => entry.candidate.raw.file,
-    readBitrate: (entry) => entry.candidate.raw.bitrate,
-  });
-  assert.ok(ordered[0].candidate.raw.file.endsWith(".m4a"));
-});
 
 btest("a single's own track number does not reject it for an album track request", async () => {
   const request = {

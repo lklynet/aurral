@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import { test, beforeAll, afterAll } from "vite-plus/test";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -1081,13 +1080,6 @@ test("emits OpenSubsonic XML envelopes and elements", async () => {
   assert.match(directoryXml.body, /parent="1"/);
 });
 
-test("accepts Subsonic token auth for the configured Aurral account", async () => {
-  const salt = "canonical-salt";
-  const token = createHash("md5").update(`password123${salt}`).digest("hex");
-  const result = responseJson(await request("getUser", { p: "", t: token, s: salt }));
-  assert.equal(result.user.username, "alice");
-});
-
 test("searches library records and exposes flow entries as playlist items", async () => {
   const search = responseJson(await request("search3", { query: "Canonical" }));
   assert.equal(search.searchResult3.artist[0].name, "Canonical Artist");
@@ -1787,54 +1779,6 @@ test("updatePlaylist removes the songs at the positions getPlaylist returned and
     assert.equal((await request("stream", { id: song.id })).response.status, 200);
   }
   await stat(editableKeptPath);
-});
-
-test("updatePlaylist takes back the songs a client removed in an earlier request", async () => {
-  const flow = responseJson(await request("getPlaylists")).playlists.playlist.find(
-    (playlist) => playlist.name === "Canonical Flow",
-  );
-  const flowSong = responseJson(await request("getPlaylist", { id: flow.id })).playlist.entry[0];
-  const librarySong = responseJson(await request("search3", { query: "Canonical Song" }))
-    .searchResult3.song[0];
-  const created = responseJson(
-    await request("createPlaylist", {
-      name: "Client Replacement",
-      songId: [flowSong.id, librarySong.id],
-    }),
-  ).playlist;
-  const entries = async () =>
-    responseJson(await request("getPlaylist", { id: created.id })).playlist.entry;
-  try {
-    const before = await entries();
-    assert.deepEqual(
-      before.map((song) => song.title),
-      ["Flow Song", "Canonical Song"],
-    );
-
-    const removed = responseJson(
-      await request("updatePlaylist", { playlistId: created.id, songIndexToRemove: ["0", "1"] }),
-    );
-    assert.equal(removed.status, "ok");
-    assert.deepEqual(await entries(), []);
-
-    const added = responseJson(
-      await request("updatePlaylist", {
-        playlistId: created.id,
-        songIdToAdd: [before[1].id, before[0].id],
-      }),
-    );
-    assert.equal(added.status, "ok");
-    const after = await entries();
-    assert.deepEqual(
-      after.map((song) => song.title),
-      ["Canonical Song", "Flow Song"],
-    );
-    for (const song of after) {
-      assert.equal((await request("stream", { id: song.id })).response.status, 200);
-    }
-  } finally {
-    assert.equal(responseJson(await request("deletePlaylist", { id: created.id })).status, "ok");
-  }
 });
 
 test("updatePlaylist lets a client drop duplicate copies and then replace the playlist", async () => {

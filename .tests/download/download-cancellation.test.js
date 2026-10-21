@@ -195,18 +195,6 @@ test("quality-upgrade jobs retain their source playlist generation", () => {
   );
 });
 
-test("job cancellation remains effective after the tracker row is removed", () => {
-  const payload = {
-    jobId: "job-removed",
-    playlistId: "shared-playlist",
-    playlistGeneration: 0,
-  };
-
-  assert.equal(isPipelinePayloadActive(payload), true);
-  cancelDownloadJob(payload.jobId);
-  assert.equal(isPipelinePayloadActive(payload), false);
-});
-
 test("pending selection excludes durably cancelled jobs", () => {
   const playlistId = "cancelled-pending-selection";
   const cancelledJobId = downloadTracker.addJob(

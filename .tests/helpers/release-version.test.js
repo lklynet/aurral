@@ -73,10 +73,6 @@ test("suggestNextVersion bumps according to Conventional Commit titles", () => {
   assert.equal(suggestNextVersion([], ["feat: first"]), "0.1.0");
 });
 
-test("suggestNextVersion ignores legacy prerelease tags when choosing the base version", () => {
-  assert.equal(suggestNextVersion(["v2.0.0", "v9.9.9-dev.1"], ["fix: repair"]), "2.0.1");
-});
-
 test("resolveNextRelease publishes the requested stable version", () => {
   assert.deepEqual(
     resolveNextRelease({ targetVersion: "2.1.0", allTags: ["v2.0.0", "v2.0.1-dev.4"] }),

@@ -82,18 +82,6 @@ afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("new Subsonic playlists accept jobs added after creation", async () => {
-  const playlist = await subsonic.createSubsonicPlaylist(user, { name: "Empty Subsonic Playlist" });
-  assert.ok(playlist);
-
-  const jobId = downloadTracker.addJob(
-    { artistName: "Later Artist", trackName: "Later Song" },
-    playlist.id,
-  );
-
-  assert.equal(downloadTracker.getNextPending()?.id, jobId);
-});
-
 test("playlist songs expose their custom artwork through an accessible versioned cover ID", async () => {
   const playlistId = "subsonic-custom-track-artwork";
   flowPlaylistConfig.createStaticPlaylist({

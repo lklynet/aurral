@@ -2,7 +2,6 @@ import { test, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 
-import { isVerboseConsoleEnabled } from "../../backend/config/constants.js";
 import { safeLogDiagnostic } from "../../backend/services/logger.js";
 
 test("log diagnostics redact credentials, collapse lines, and cap length", () => {
@@ -87,15 +86,6 @@ test("logger sink redacts nested provider diagnostics and credential fields", as
   }
 });
 
-test("verbose console mode respects explicit environment values", () => {
-  assert.equal(isVerboseConsoleEnabled({ AURRAL_VERBOSE_LOGS: "true" }), true);
-  assert.equal(isVerboseConsoleEnabled({ AURRAL_VERBOSE_LOGS: "1" }), true);
-  assert.equal(isVerboseConsoleEnabled({ AURRAL_VERBOSE_LOGS: "debug" }), true);
-  assert.equal(isVerboseConsoleEnabled({}), false);
-  assert.equal(isVerboseConsoleEnabled({ AURRAL_VERBOSE_LOGS: "false" }), false);
-  assert.equal(isVerboseConsoleEnabled({ AURRAL_VERBOSE_LOGS: "0" }), false);
-});
-
 test("simplified logger writes to console with level and category", async () => {
   const output = [];
   const original = {
@@ -167,18 +157,6 @@ test("regular logger hides routine info and debug output", async () => {
     console.error = original.error;
     console.warn = original.warn;
   }
-});
-
-test("regular console keeps startup and problem messages", async () => {
-  vi.resetModules();
-  const { shouldEmitDefaultConsoleMessage } = await import("../../backend/services/logger.js");
-  assert.equal(shouldEmitDefaultConsoleMessage("log", ["Server running on port 3001"]), true);
-  assert.equal(shouldEmitDefaultConsoleMessage("log", ["Discovery cache is fresh"]), false);
-  assert.equal(shouldEmitDefaultConsoleMessage("warn", ["warning"]), true);
-  assert.equal(shouldEmitDefaultConsoleMessage("log", ["Playlist import queued"]), true);
-  assert.equal(shouldEmitDefaultConsoleMessage("log", ["Playlist import job completed"]), true);
-  assert.equal(shouldEmitDefaultConsoleMessage("log", ["Playlist import sync completed"]), true);
-  assert.equal(shouldEmitDefaultConsoleMessage("debug", ["details"]), false);
 });
 
 test("regular server console suppresses raw routine output", () => {

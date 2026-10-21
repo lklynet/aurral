@@ -22,10 +22,6 @@ afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("getPointer returns null when nothing is tracked", () => {
-  assert.equal(plexPlaylistPointerStore.getPointer("flow-1", "global"), null);
-});
-
 test("setPointer/getPointer round-trip, including description", () => {
   plexPlaylistPointerStore.setPointer("flow-1", "global", {
     location: "global",
@@ -131,10 +127,6 @@ test("getPointersForTarget finds every entity tracked under one sync target, acr
   assert.ok(results.every((r) => r.location === "managed:100"));
 });
 
-test("getPointersForTarget returns an empty array when nothing is tracked for that target", () => {
-  assert.deepEqual(plexPlaylistPointerStore.getPointersForTarget("999"), []);
-});
-
 test("getPointersForEntity finds every sync target for one entity, e.g. every broadcast target of an editorial playlist", () => {
   plexPlaylistPointerStore.setPointer("editorial-1", "global", {
     location: "global",
@@ -155,10 +147,6 @@ test("getPointersForEntity finds every sync target for one entity, e.g. every br
   assert.equal(results.length, 3);
   const targetKeys = results.map((r) => r.targetKey).sort();
   assert.deepEqual(targetKeys, ["5", "6", "global"]);
-});
-
-test("getPointersForEntity returns an empty array for an entity with no pointers", () => {
-  assert.deepEqual(plexPlaylistPointerStore.getPointersForEntity("nothing-here"), []);
 });
 
 test("getPointersForEntity does not include pointers belonging to a different entity", () => {

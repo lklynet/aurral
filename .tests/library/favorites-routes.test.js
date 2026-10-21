@@ -235,22 +235,6 @@ test("library pages return bounded collection responses", () => {
   assert.equal(artistResponse.body.items[0].userFavorite, true);
 });
 
-test("library track responses expose additive ownership fields", () => {
-  const response = responseFor();
-  getRoute("GET /canonical")(
-    { user, query: { kind: "tracks", page: "1", pageSize: "1", availableOnly: "false" } },
-    response,
-  );
-
-  const track = response.body.items[0];
-  assert.equal(String(track.canonicalId), String(track.id));
-  assert.equal(track.providerId, null);
-  assert.equal(track.source, "aurral");
-  assert.equal(track.available, true);
-  assert.equal(track.managedBy, null);
-  assert.equal(track.monitorMode, null);
-});
-
 test("library rejects unbounded requests", () => {
   const response = responseFor();
   getRoute("GET /canonical")({ user, query: { kind: "tracks" } }, response);

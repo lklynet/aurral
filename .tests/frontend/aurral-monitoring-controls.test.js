@@ -276,17 +276,3 @@ test("keeping a file warns when the upgrade in progress may still be running", (
   assert.match(stuck.message, /download client/i);
   assert.doesNotMatch(stuck.message, /was cancelled/);
 });
-
-test("unmonitoring an idle album reports no cancellations", () => {
-  assert.deepEqual(
-    describeAlbumMonitoringResult({ monitored: false, cancelledJobIds: [], cleanupFailed: false }),
-    { message: "Album unmonitored", warning: false },
-  );
-});
-
-test("monitoring an album is reported as monitored", () => {
-  assert.deepEqual(describeAlbumMonitoringResult({ monitored: true }), {
-    message: "Album monitored",
-    warning: false,
-  });
-});

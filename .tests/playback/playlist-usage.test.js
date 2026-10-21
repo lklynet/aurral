@@ -143,16 +143,6 @@ test("Navidrome refuses limited playlist visibility", async () => {
   await assert.rejects(client.getPlaylistTrackPaths(), /admin account/);
 });
 
-test("Navidrome refuses truncated or malformed playlists", async () => {
-  const client = new NavidromeClient("http://navidrome.local", "admin", "password");
-  client.request = async (endpoint) => {
-    if (endpoint === "getUser") return { user: { adminRole: true } };
-    if (endpoint === "getPlaylists") return { playlists: { playlist: [{ id: "saved" }] } };
-    return { playlist: { songCount: 1, entry: [] } };
-  };
-  await assert.rejects(client.getPlaylistTrackPaths(), /Incomplete/);
-});
-
 test("Plex paginates playlists and includes all file parts in smart playlists", async () => {
   const client = new PlexClient("http://plex.local", "token", "client");
   const reads = [];

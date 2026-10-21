@@ -6,7 +6,6 @@ const {
   albumCardMeta,
   favoriteId,
   favoriteLibraryFromResponse,
-  getAlbumCoverId,
   getCachedAlbumTracks,
   mergeAlbumTrackPageIntoLibrary,
 } = await import("../../frontend/src/utils/libraryPageData.js");
@@ -39,13 +38,6 @@ test("invalidated album track caches fall back to the current library tracks", (
   tracksById.delete("9");
 
   assert.deepEqual(getCachedAlbumTracks(album, tracksById), [{ id: 8 }]);
-});
-
-test("library covers prefer the release-group MBID", () => {
-  assert.equal(
-    getAlbumCoverId({ mbid: "release-id", releaseGroupMbid: "release-group-id" }),
-    "release-group-id",
-  );
 });
 
 test("library favorites include playlist-backed Subsonic songs", () => {

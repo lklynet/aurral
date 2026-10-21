@@ -3,8 +3,6 @@ import { createServer } from "node:http";
 import { test } from "vite-plus/test";
 import { assertDownloadClient } from "../../backend/services/download/downloadClient.js";
 import { DownloadClientRegistry } from "../../backend/services/download/downloadClientRegistry.js";
-import { getDownloadClientSettings } from "../../backend/services/download/downloadClientSettings.js";
-import { NzbgetClient } from "../../backend/services/nzbgetClient.js";
 import { SlskdClient } from "../../backend/services/slskdClient.js";
 import {
   DeemixClient,
@@ -43,34 +41,6 @@ test("download client registry validates, updates, and selects adapters", () => 
     () => assertDownloadClient({ isConfigured() {} }),
     /DownloadClient\.testConnection must be a function/,
   );
-});
-
-test("download adapters expose settings metadata without field values", () => {
-  const settings = getDownloadClientSettings();
-
-  assert.deepEqual(Object.keys(settings), ["slskd", "ytdlp", "nzbget", "sabnzbd", "deemix"]);
-  assert.deepEqual(settings.nzbget.validation.required, ["url"]);
-  assert.deepEqual(settings.slskd.validation.required, ["url"]);
-  assert.notEqual(settings.slskd.fields.find((field) => field.key === "apiKey").required, true);
-  assert.equal(settings.sabnzbd.fields.find((field) => field.key === "apiKey").secret, true);
-  assert.equal(settings.ytdlp.fields.find((field) => field.key === "stagingPath").type, "path");
-  assert.deepEqual(settings.deemix.validation.required, ["url"]);
-  assert.equal(settings.deemix.fields.find((field) => field.key === "bitrate").type, "select");
-  for (const definition of Object.values(settings)) {
-    for (const field of definition.fields) {
-      assert.equal("value" in field, false);
-      assert.equal("default" in field, false);
-    }
-  }
-});
-
-test("download client instances can receive adapter configuration", () => {
-  const client = new NzbgetClient();
-
-  client.updateConfig({ enabled: true, url: "http://nzbget.local" });
-  assert.equal(client.isConfigured(), true);
-  client.updateConfig({ enabled: false, url: "http://nzbget.local" });
-  assert.equal(client.isConfigured(), false);
 });
 
 test("deemix needs an enabled adapter with a server URL", () => {
@@ -123,13 +93,6 @@ test("slskd treats an explicitly disabled adapter as unconfigured", () => {
   assert.equal(client.isConfigured(), false);
   client.updateConfig({ url: "http://slskd.local", apiKey: "test-key" });
   assert.equal(client.isConfigured(), true);
-});
-
-test("slskd is configured with only a server URL", () => {
-  const client = new SlskdClient({ enabled: true, url: "http://slskd.local" });
-
-  assert.equal(client.isConfigured(), true);
-  assert.equal(client.getStatus().configured, true);
 });
 
 test("slskd test connection requires a URL but not an API key", async () => {

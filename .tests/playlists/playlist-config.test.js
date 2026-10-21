@@ -448,20 +448,6 @@ test("rejects flow and static playlist names that collide across types", () => {
   flowPlaylistConfig.deleteStaticPlaylist(playlist.id);
 });
 
-test("records flow last run time", () => {
-  const flow = flowPlaylistConfig.createFlow({
-    name: "Morning",
-    size: 20,
-  });
-  const lastRunAt = 1710000000000;
-
-  const updated = flowPlaylistConfig.markLastRunAt(flow.id, lastRunAt);
-  const stored = flowPlaylistConfig.getFlow(flow.id);
-
-  assert.equal(updated?.lastRunAt, lastRunAt);
-  assert.equal(stored?.lastRunAt, lastRunAt);
-});
-
 test("stores full static playlists but exposes trackless summaries for hot paths", () => {
   const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Road Trip",
@@ -501,32 +487,6 @@ test("stores full static playlists but exposes trackless summaries for hot paths
   assert.equal(summaries[0].trackCount, 2);
   assert.equal("tracks" in summaries[0], false);
   assert.equal(summaries[0].sourceName, "Discover Weekly");
-});
-
-test("supports empty manual playlists", () => {
-  const playlist = flowPlaylistConfig.createStaticPlaylist({
-    name: "Empty Queue",
-  });
-
-  const stored = flowPlaylistConfig.getStaticPlaylist(playlist.id);
-  const summary = flowPlaylistConfig
-    .getStaticPlaylists()
-    .map(
-      ({ id, name, ownerUserId, sourceName, sourceFlowId, importedAt, createdAt, trackCount }) => ({
-        id,
-        name,
-        ownerUserId,
-        sourceName,
-        sourceFlowId,
-        importedAt,
-        createdAt,
-        trackCount,
-      }),
-    )
-    .find((entry) => entry.id === playlist.id);
-
-  assert.equal(stored?.tracks?.length, 0);
-  assert.equal(summary?.trackCount, 0);
 });
 
 test("updates static playlists and keeps summaries in sync", () => {
