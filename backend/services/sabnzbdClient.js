@@ -67,6 +67,14 @@ export const sabnzbdSettings = Object.freeze({
 let connectionCache = { checkedAt: 0, result: null, settingsKey: null };
 let folderCleanup = Promise.resolve();
 
+function normalizeStoragePath(value) {
+  const normalized = String(value || "")
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/\/+$/, "");
+  return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+}
+
 function getSettings(config = null) {
   const sabnzbd = config || dbOps.getSettings()?.integrations?.sabnzbd || {};
   return {
@@ -267,11 +275,7 @@ export class SabnzbdClient {
 
   async sharesDownloadFolder(item) {
     const id = String(item?.nzo_id || "").trim();
-    const storage = String(item?.storage || "")
-      .trim()
-      .replace(/\\/g, "/")
-      .replace(/\/+$/, "")
-      .toLowerCase();
+    const storage = normalizeStoragePath(item?.storage);
     if (!storage) return false;
     const [queueResult, historyResult] = await Promise.all([
       this.api("queue"),
@@ -280,11 +284,7 @@ export class SabnzbdClient {
     return [...(queueResult?.queue?.slots || []), ...(historyResult?.history?.slots || [])].some(
       (entry) =>
         String(entry?.nzo_id || "").trim() !== id &&
-        String(entry?.storage || "")
-          .trim()
-          .replace(/\\/g, "/")
-          .replace(/\/+$/, "")
-          .toLowerCase() === storage,
+        normalizeStoragePath(entry?.storage) === storage,
     );
   }
 

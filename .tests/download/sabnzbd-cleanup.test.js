@@ -15,6 +15,7 @@ const [
   { SabnzbdClient },
   { removeSabnzbdDownloadFolder },
   { syncPathMappings },
+  { lidarrClient },
 ] = await setupIsolatedBackend(
   "sabnzbd-cleanup",
   "backend/config/db-sqlite.js",
@@ -22,6 +23,7 @@ const [
   "backend/services/sabnzbdClient.js",
   "backend/services/sabnzbdCleanup.js",
   "backend/services/pathMappings.js",
+  "backend/services/lidarrClient.js",
 );
 
 let sequence = 0;
@@ -134,6 +136,22 @@ test("the last history item sharing a completed folder removes it", async () => 
   assert.equal(await exists(folder()), false);
 });
 
+test("case-sensitive SABnzbd folders are not treated as shared", async () => {
+  if (process.platform === "win32") return;
+  const client = new SabnzbdClient({ category: "aurral", deleteLeftovers: true });
+  vi.spyOn(client, "api").mockImplementation(async (mode) => {
+    if (mode === "queue") {
+      return { queue: { slots: [{ nzo_id: "other", storage: "/complete/album" }] } };
+    }
+    return { history: { slots: [] } };
+  });
+
+  assert.equal(
+    await client.sharesDownloadFolder({ nzo_id: "job", storage: "/complete/Album" }),
+    false,
+  );
+});
+
 test("refuses a completed folder that contains the music library", async () => {
   dbOps.updateSettings({
     ...dbOps.getSettings(),
@@ -144,4 +162,21 @@ test("refuses a completed folder that contains the music library", async () => {
   await assert.rejects(remove(), /music library/);
 
   assert.equal(await exists(folder()), true);
+});
+
+test("protects configured Lidarr roots while Lidarr is disabled", async () => {
+  const musicLibrary = path.join(folder(), "Music");
+  await fs.mkdir(musicLibrary, { recursive: true });
+  const enabled = vi.spyOn(lidarrClient, "isEnabled").mockReturnValue(false);
+  const roots = vi
+    .spyOn(lidarrClient, "getConfiguredRootFolderPaths")
+    .mockReturnValue([musicLibrary]);
+
+  try {
+    await assert.rejects(remove(), /music library/);
+    assert.equal(await exists(folder()), true);
+  } finally {
+    enabled.mockRestore();
+    roots.mockRestore();
+  }
 });

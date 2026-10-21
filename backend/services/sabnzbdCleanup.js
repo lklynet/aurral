@@ -61,11 +61,9 @@ export async function removeSabnzbdDownloadFolder(historyItem, directories, cate
 
   const libraries = [
     resolveDownloadRoot(),
-    ...(lidarrClient.isEnabled()
-      ? lidarrClient
-          .getConfiguredRootFolderPaths()
-          .map((root) => resolveLocalPath(root, getPathMappings("lidarr")))
-      : []),
+    ...lidarrClient
+      .getConfiguredRootFolderPaths()
+      .map((root) => resolveLocalPath(root, getPathMappings("lidarr"))),
   ].filter(Boolean);
   for (const library of await Promise.all(
     libraries.map((root) => realpathOr(path.resolve(root))),
