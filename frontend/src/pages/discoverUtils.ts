@@ -1,3 +1,13 @@
+import type { DiscoveryCache } from "../../../backend/db/helpers/discovery.ts";
+
+export type DiscoverUserId = number | string | null | undefined;
+
+export interface DiscoverSection {
+  id: string;
+  label: string;
+  enabled: boolean;
+}
+
 export const TAG_COLORS = [
   "#845336",
   "#57553c",
@@ -15,7 +25,16 @@ export const TAG_COLORS = [
   "#bc9d66",
 ];
 
-export const getTagColor = (name) => {
+interface LibraryArtistImage {
+  remoteUrl?: string | null;
+  url?: string | null;
+  Url?: string | null;
+  coverType?: string | null;
+  kind?: string | null;
+  CoverType?: string | null;
+}
+
+export const getTagColor = (name: string | null | undefined) => {
   if (!name) return "#211f27";
   let hash = 0;
   for (let i = 0; i < name.length; i++) {
@@ -45,7 +64,7 @@ export const DISCOVER_NEARBY_ZIP_KEY = "discoverNearbyZip";
 export const DISCOVER_NEARBY_COUNTRY_KEY = "discoverNearbyCountry";
 export const DISCOVER_PREVIEW_ITEM_LIMIT = 12;
 
-export const shuffleWithSeed = (items, seed) => {
+export const shuffleWithSeed = <T>(items: T[], seed: string | null | undefined) => {
   let state = 2166136261;
   for (const char of String(seed || "")) {
     state = Math.imul(state ^ char.charCodeAt(0), 16777619);
@@ -63,32 +82,35 @@ export const shuffleWithSeed = (items, seed) => {
   return shuffled;
 };
 
-export const artistMatchesGenre = (artist, genre) => {
+export const artistMatchesGenre = (
+  artist: { matchedTags?: unknown[] | null; tags?: unknown[] | null } | null | undefined,
+  genre: string | null | undefined,
+) => {
   const normalizedGenre = String(genre || "").toLowerCase();
   return (artist?.matchedTags || artist?.tags || []).some((tag) =>
     String(tag).toLowerCase().includes(normalizedGenre),
   );
 };
 
-const getDiscoverLayoutStorageKey = (userId) =>
+const getDiscoverLayoutStorageKey = (userId: DiscoverUserId) =>
   userId ? `${DISCOVER_LAYOUT_KEY}:${userId}` : DISCOVER_LAYOUT_KEY;
 
-const getDiscoveryCacheStorageKey = (userId) =>
+const getDiscoveryCacheStorageKey = (userId: DiscoverUserId) =>
   userId ? `${DISCOVERY_CACHE_KEY}:${userId}` : DISCOVERY_CACHE_KEY;
 
-const getDiscoverRecentlyAddedStorageKey = (userId) =>
+const getDiscoverRecentlyAddedStorageKey = (userId: DiscoverUserId) =>
   userId ? `${DISCOVER_RECENTLY_ADDED_KEY}:${userId}` : DISCOVER_RECENTLY_ADDED_KEY;
 
-const getDiscoverRecentReleasesStorageKey = (userId) =>
+const getDiscoverRecentReleasesStorageKey = (userId: DiscoverUserId) =>
   userId ? `${DISCOVER_RECENT_RELEASES_KEY}:${userId}` : DISCOVER_RECENT_RELEASES_KEY;
 
-const markStoredAt = (key) => {
+const markStoredAt = (key: string) => {
   try {
     localStorage.setItem(`${key}:at`, String(Date.now()));
   } catch {}
 };
 
-const readStoredAt = (key) => {
+const readStoredAt = (key: string) => {
   try {
     const at = Number(localStorage.getItem(`${key}:at`));
     return Number.isFinite(at) ? at : 0;
@@ -97,7 +119,7 @@ const readStoredAt = (key) => {
   }
 };
 
-const getStoredArraySourceKey = (primaryKey, fallbackKey) => {
+const getStoredArraySourceKey = (primaryKey: string, fallbackKey: string) => {
   try {
     const primary = JSON.parse(localStorage.getItem(primaryKey) || "null");
     if (Array.isArray(primary)) return primaryKey;
@@ -109,7 +131,7 @@ const getStoredArraySourceKey = (primaryKey, fallbackKey) => {
   }
 };
 
-const readStoredArray = (primaryKey, fallbackKey) => {
+const readStoredArray = (primaryKey: string, fallbackKey: string) => {
   const sourceKey = getStoredArraySourceKey(primaryKey, fallbackKey);
   if (!sourceKey) return null;
   try {
@@ -119,15 +141,15 @@ const readStoredArray = (primaryKey, fallbackKey) => {
   }
 };
 
-const readStoredArrayAt = (primaryKey, fallbackKey) => {
+const readStoredArrayAt = (primaryKey: string, fallbackKey: string) => {
   const sourceKey = getStoredArraySourceKey(primaryKey, fallbackKey);
   return sourceKey ? readStoredAt(sourceKey) : 0;
 };
 
-export const getStoredRecentlyAddedAt = (userId) =>
+export const getStoredRecentlyAddedAt = (userId: DiscoverUserId) =>
   readStoredArrayAt(getDiscoverRecentlyAddedStorageKey(userId), DISCOVER_RECENTLY_ADDED_KEY);
 
-export const getStoredRecentReleasesAt = (userId) =>
+export const getStoredRecentReleasesAt = (userId: DiscoverUserId) =>
   readStoredArrayAt(getDiscoverRecentReleasesStorageKey(userId), DISCOVER_RECENT_RELEASES_KEY);
 
 export const readStoredNearbyLocation = () => {
@@ -142,7 +164,11 @@ export const readStoredNearbyLocation = () => {
   }
 };
 
-export const writeStoredNearbyLocation = ({ mode, zip, country } = {}) => {
+export const writeStoredNearbyLocation = ({
+  mode,
+  zip,
+  country,
+}: { mode?: string; zip?: string; country?: string } = {}) => {
   try {
     if (mode === "zip" || mode === "ip") {
       localStorage.setItem(DISCOVER_NEARBY_MODE_KEY, mode);
@@ -156,11 +182,11 @@ export const writeStoredNearbyLocation = ({ mode, zip, country } = {}) => {
   } catch {}
 };
 
-export const readStoredRecentlyAdded = (userId) => {
+export const readStoredRecentlyAdded = (userId: DiscoverUserId) => {
   return readStoredArray(getDiscoverRecentlyAddedStorageKey(userId), DISCOVER_RECENTLY_ADDED_KEY);
 };
 
-export const writeStoredRecentlyAdded = (value, userId) => {
+export const writeStoredRecentlyAdded = (value: unknown, userId: DiscoverUserId) => {
   if (!Array.isArray(value)) return;
   try {
     localStorage.setItem(getDiscoverRecentlyAddedStorageKey(userId), JSON.stringify(value));
@@ -170,11 +196,11 @@ export const writeStoredRecentlyAdded = (value, userId) => {
   }
 };
 
-export const readStoredRecentReleases = (userId) => {
+export const readStoredRecentReleases = (userId: DiscoverUserId) => {
   return readStoredArray(getDiscoverRecentReleasesStorageKey(userId), DISCOVER_RECENT_RELEASES_KEY);
 };
 
-export const writeStoredRecentReleases = (value, userId) => {
+export const writeStoredRecentReleases = (value: unknown, userId: DiscoverUserId) => {
   if (!Array.isArray(value)) return;
   try {
     localStorage.setItem(getDiscoverRecentReleasesStorageKey(userId), JSON.stringify(value));
@@ -184,7 +210,12 @@ export const writeStoredRecentReleases = (value, userId) => {
   }
 };
 
-export const normalizeDiscoveryData = (value) => {
+export const normalizeDiscoveryData = (
+  value:
+    | (Partial<DiscoveryCache> & { configured?: unknown; discoveryMode?: unknown })
+    | null
+    | undefined,
+) => {
   if (!value || typeof value !== "object") return null;
   return {
     recommendations: Array.isArray(value.recommendations) ? value.recommendations : [],
@@ -213,7 +244,7 @@ export const normalizeDiscoveryData = (value) => {
   };
 };
 
-export const readStoredDiscoveryData = (userId) => {
+export const readStoredDiscoveryData = (userId: DiscoverUserId) => {
   const fromStorage = normalizeDiscoveryData;
   try {
     const primaryKey = getDiscoveryCacheStorageKey(userId);
@@ -226,7 +257,10 @@ export const readStoredDiscoveryData = (userId) => {
   }
 };
 
-export const writeStoredDiscoveryData = (value, userId) => {
+export const writeStoredDiscoveryData = (
+  value: Parameters<typeof normalizeDiscoveryData>[0],
+  userId: DiscoverUserId,
+) => {
   const normalized = normalizeDiscoveryData(value);
   if (!normalized) return;
   try {
@@ -237,16 +271,16 @@ export const writeStoredDiscoveryData = (value, userId) => {
   }
 };
 
-export const normalizeDiscoverLayout = (value) => {
+export const normalizeDiscoverLayout = (value: unknown): DiscoverSection[] | null => {
   if (!Array.isArray(value)) return null;
   const defaultsById = new Map(DEFAULT_DISCOVER_SECTIONS.map((item) => [item.id, item]));
-  const normalized = [];
+  const normalized: DiscoverSection[] = [];
   value.forEach((item) => {
     const id = String(item?.id || "").trim();
     if (!id) return;
     const enabled = typeof item?.enabled === "boolean" ? item.enabled : undefined;
     if (!defaultsById.has(id)) return;
-    const base = defaultsById.get(id);
+    const base = defaultsById.get(id)!;
     normalized.push({
       ...base,
       enabled: enabled ?? base.enabled,
@@ -257,7 +291,7 @@ export const normalizeDiscoverLayout = (value) => {
   return normalized;
 };
 
-export const readStoredDiscoverLayout = (userId) => {
+export const readStoredDiscoverLayout = (userId: DiscoverUserId) => {
   try {
     const primaryKey = getDiscoverLayoutStorageKey(userId);
     const primary = normalizeDiscoverLayout(JSON.parse(localStorage.getItem(primaryKey) || "null"));
@@ -269,7 +303,7 @@ export const readStoredDiscoverLayout = (userId) => {
   }
 };
 
-export const writeStoredDiscoverLayout = (layout, userId) => {
+export const writeStoredDiscoverLayout = (layout: DiscoverSection[], userId: DiscoverUserId) => {
   try {
     localStorage.setItem(getDiscoverLayoutStorageKey(userId), JSON.stringify(layout));
   } catch {
@@ -277,11 +311,13 @@ export const writeStoredDiscoverLayout = (layout, userId) => {
   }
 };
 
-export const getLibraryArtistImage = (artist) => {
+export const getLibraryArtistImage = (
+  artist: { images?: LibraryArtistImage[] | null } | null | undefined,
+) => {
   const images = (Array.isArray(artist?.images) ? artist.images : []).filter(
     (image) => image?.remoteUrl || image?.url || image?.Url,
   );
-  const kind = (image) =>
+  const kind = (image: LibraryArtistImage) =>
     String(image.coverType || image.kind || image.CoverType || "").toLowerCase();
   const image =
     images.find((image) => kind(image) === "poster") ||

@@ -4,56 +4,96 @@ import {
   moveStaticPlaylistTracks,
   removeStaticPlaylistTracks,
 } from "../../utils/api/endpoints/playlists.ts";
+import type { PlaylistStatus } from "./playlistStats.ts";
+import type { PlaylistTrack } from "./trackAvailability.ts";
+
+interface ApiErrorLike {
+  response?: { data?: { message?: string; error?: string } };
+}
+
+interface TrackChange {
+  key: number;
+  action: "move" | "remove";
+  sourceId: string;
+  sourceName: string;
+  targetId?: string | null;
+  targetName?: string;
+  jobIds: string[];
+  label: string;
+  phase: "undo" | "saving";
+  toastId?: string;
+}
+
+interface StaticPlaylistOperationResult {
+  state?: string;
+  message?: string | null;
+  targetPlaylistId?: string | null;
+  outcomes?: { status?: string; message?: string | null }[];
+}
+
+interface SubmitResponse {
+  queued?: boolean;
+  operationId?: string;
+  rejected?: { message?: string }[];
+}
+
+type MoveTarget = { mode: "new"; name?: string | null } | { mode?: "existing"; playlistId: string };
 
 const UNDO_DURATION_MS = 8000;
 const MAX_POLL_DELAY_MS = 8000;
 const MAX_POLL_ERRORS = 30;
-const EMPTY_IDS = new Set();
+const EMPTY_IDS = new Set<string>();
 
-export const trackCountLabel = (count) => `${count} track${count === 1 ? "" : "s"}`;
+export const trackCountLabel = (count: number) => `${count} track${count === 1 ? "" : "s"}`;
 
-const stayLabel = (count) => (count === 1 ? "It stays" : "They stay");
+const stayLabel = (count: number) => (count === 1 ? "It stays" : "They stay");
 
-const errorReason = (error) => {
-  const reason = error?.response?.data?.message || error?.response?.data?.error || "";
+const errorReason = (error: unknown) => {
+  const reason =
+    (error as ApiErrorLike | null | undefined)?.response?.data?.message ||
+    (error as ApiErrorLike | null | undefined)?.response?.data?.error ||
+    "";
   return reason && !/[.!?]$/.test(reason) ? `${reason}.` : reason;
 };
 
-const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const describeTracks = (tracks, jobIds) => {
+const describeTracks = (tracks: PlaylistTrack[], jobIds: string[]) => {
   const named =
     jobIds.length === 1 ? tracks.find((track) => track?.id === jobIds[0])?.trackName : "";
   return named || trackCountLabel(jobIds.length);
 };
 
-const playlistName = (playlistId) =>
+const playlistName = (playlistId: string | null | undefined) =>
   queryClient
-    .getQueryData(queryKeys.playlistStatus)
+    .getQueryData<PlaylistStatus>(queryKeys.playlistStatus)
     ?.sharedPlaylists?.find((playlist) => playlist.id === playlistId)?.name || "the playlist";
 
 export function createPlaylistTrackChanges(toast) {
-  let changes = [];
-  let hidden = new Map();
+  let changes: TrackChange[] = [];
+  let hidden = new Map<string | undefined, Set<string>>();
   let nextKey = 0;
-  const listeners = new Set();
+  const listeners = new Set<() => void>();
 
-  const publish = (next) => {
+  const publish = (next: TrackChange[]) => {
     changes = next;
     hidden = new Map();
     for (const change of changes) {
-      const ids = hidden.get(change.sourceId) || new Set();
+      const ids = hidden.get(change.sourceId) || new Set<string>();
       change.jobIds.forEach((id) => ids.add(id));
       hidden.set(change.sourceId, ids);
     }
     listeners.forEach((listener) => listener());
   };
-  const find = (key) => changes.find((change) => change.key === key);
-  const update = (key, patch) =>
+  const find = (key: number) => changes.find((change) => change.key === key);
+  const update = (key: number, patch: Partial<TrackChange>) =>
     publish(changes.map((change) => (change.key === key ? { ...change, ...patch } : change)));
-  const release = (key) => publish(changes.filter((change) => change.key !== key));
+  const release = (key: number) => publish(changes.filter((change) => change.key !== key));
 
-  const settle = async (change, { error = null, success = null } = {}) => {
+  const settle = async (
+    change: TrackChange,
+    { error = null, success = null }: { error?: string | null; success?: string | null } = {},
+  ) => {
     await Promise.all(
       [change.sourceId, change.targetId]
         .filter(Boolean)
@@ -65,12 +105,12 @@ export function createPlaylistTrackChanges(toast) {
     if (error) toast.showError(error, 8000);
   };
 
-  const report = (change, result) => {
+  const report = (change: TrackChange, result: StaticPlaylistOperationResult | undefined) => {
     const outcomes = Array.isArray(result?.outcomes) ? result.outcomes : [];
     const failed = outcomes.filter((outcome) => outcome.status === "failed");
     const moved = outcomes.filter((outcome) => outcome.status === "moved").length;
     const targetName = change.targetName || playlistName(result?.targetPlaylistId);
-    const phrase = (what) =>
+    const phrase = (what: string) =>
       change.action === "move"
         ? `move ${what} to ${targetName}`
         : `remove ${what} from ${change.sourceName}`;
@@ -91,7 +131,7 @@ export function createPlaylistTrackChanges(toast) {
     );
   };
 
-  const follow = async (change, operationId) => {
+  const follow = async (change: TrackChange, operationId: string | undefined) => {
     let errors = 0;
     for (let attempt = 0; ; attempt += 1) {
       if (attempt > 0) await wait(Math.min(1000 * 2 ** (attempt - 1), MAX_POLL_DELAY_MS));
@@ -113,7 +153,7 @@ export function createPlaylistTrackChanges(toast) {
     }
   };
 
-  const submit = async (change, request) => {
+  const submit = async (change: TrackChange, request: () => Promise<SubmitResponse>) => {
     let response;
     try {
       response = await request();
@@ -137,7 +177,7 @@ export function createPlaylistTrackChanges(toast) {
     return follow(change, response.operationId);
   };
 
-  const commit = (key) => {
+  const commit = (key: number) => {
     const change = find(key);
     if (!change || change.phase !== "undo") return;
     update(key, { phase: "saving" });
@@ -146,14 +186,14 @@ export function createPlaylistTrackChanges(toast) {
     );
   };
 
-  const undo = (key) => {
+  const undo = (key: number) => {
     const change = find(key);
     if (!change || change.phase !== "undo") return;
     release(key);
     toast.showSuccess(`Restored ${change.label} to ${change.sourceName}`);
   };
 
-  const pendingIds = (source, tracks) => {
+  const pendingIds = (source: { id: string } | null | undefined, tracks: PlaylistTrack[]) => {
     const taken = hidden.get(source?.id) || EMPTY_IDS;
     return [...new Set(tracks.map((track) => track?.id).filter(Boolean))].filter(
       (id) => !taken.has(id),
@@ -161,16 +201,19 @@ export function createPlaylistTrackChanges(toast) {
   };
 
   return {
-    subscribe(listener) {
+    subscribe(listener: () => void) {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
     getHidden: () => hidden,
-    remove(source, tracks) {
+    remove(
+      source: { id: string; name?: string | null } | null | undefined,
+      tracks: PlaylistTrack[],
+    ) {
       const jobIds = pendingIds(source, tracks);
       if (!source?.id || !jobIds.length) return;
       const key = ++nextKey;
-      const change = {
+      const change: TrackChange = {
         key,
         action: "remove",
         sourceId: source.id,
@@ -191,14 +234,18 @@ export function createPlaylistTrackChanges(toast) {
       );
       if (find(key)) update(key, { toastId });
     },
-    move(source, tracks, target) {
+    move(
+      source: { id: string; name?: string | null } | null | undefined,
+      tracks: PlaylistTrack[],
+      target: MoveTarget | null | undefined,
+    ) {
       const jobIds = pendingIds(source, tracks);
       if (!source?.id || !jobIds.length || !target) return;
       const creating = target.mode === "new";
       const targetName = creating
         ? String(target.name || "").trim() || "Playlist"
         : playlistName(target.playlistId);
-      const change = {
+      const change: TrackChange = {
         key: ++nextKey,
         action: "move",
         sourceId: source.id,

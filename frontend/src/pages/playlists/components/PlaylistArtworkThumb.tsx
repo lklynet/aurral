@@ -1,6 +1,16 @@
 import { useState, useEffect } from "react";
 
-export function PlaylistArtworkThumb({ artworkUrl, name, className = "", onClick }) {
+export function PlaylistArtworkThumb({
+  artworkUrl,
+  name,
+  className = "",
+  onClick,
+}: {
+  artworkUrl?: string | null;
+  name?: string;
+  className?: string;
+  onClick?: () => void;
+}) {
   const [imageFailed, setImageFailed] = useState(false);
 
   useEffect(() => {

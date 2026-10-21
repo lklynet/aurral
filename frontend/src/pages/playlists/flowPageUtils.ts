@@ -1,5 +1,96 @@
 import { parseFlowTimestamp } from "./playlistStats";
+import type { Flow, FlowMix } from "./playlistStats";
 import { formatDate } from "../../utils/dateTime.ts";
+
+export interface FlowDraft {
+  name?: string;
+  size?: number | string;
+  mix?: Partial<FlowMix>;
+  includeTags?: string;
+  includeRelatedArtists?: string;
+  deepDive?: boolean;
+  recordHistory?: boolean;
+  yearFrom?: string;
+  yearTo?: string;
+  scheduleDays?: number[];
+  scheduleTime?: string;
+}
+
+interface TracklistTrack {
+  artistName?: string | null;
+  trackName?: string | null;
+  albumName?: string | null;
+  artistMbid?: string | null;
+  albumMbid?: string | null;
+  trackMbid?: string | null;
+  releaseYear?: string | null;
+  durationMs?: unknown;
+  artistAliases?: unknown;
+  releaseMbid?: string | null;
+  trackNumber?: unknown;
+  discNumber?: unknown;
+}
+
+interface ImportedTrack {
+  artistName?: unknown;
+  artist?: unknown;
+  artist_name?: unknown;
+  "Artist Name(s)"?: unknown;
+  trackName?: unknown;
+  title?: unknown;
+  name?: unknown;
+  track?: unknown;
+  "Track Name"?: unknown;
+  albumName?: unknown;
+  album?: unknown;
+  "Album Name"?: unknown;
+  artistMbid?: unknown;
+  artistId?: unknown;
+  albumMbid?: unknown;
+  releaseGroupMbid?: unknown;
+  albumId?: unknown;
+  trackMbid?: unknown;
+  recordingMbid?: unknown;
+  recordingId?: unknown;
+  mbid?: unknown;
+  releaseYear?: unknown;
+  year?: unknown;
+  durationMs?: unknown;
+  artistAliases?: unknown;
+  reason?: unknown;
+  releaseMbid?: unknown;
+  trackNumber?: unknown;
+  discNumber?: unknown;
+}
+
+interface TracklistEntry {
+  name?: unknown;
+  sourceName?: unknown;
+  sourceFlowId?: unknown;
+  source?: { name?: unknown; id?: unknown } | null;
+  tracks?: unknown;
+  playlist?: { name?: unknown; tracks?: unknown } | null;
+}
+
+type ImportedValue = ImportedTrack | string | number | boolean | unknown[] | null | undefined;
+
+type TracklistInput =
+  | TracklistEntry
+  | ImportedValue[]
+  | string
+  | number
+  | boolean
+  | null
+  | undefined;
+
+interface FlowEntryObject {
+  name?: unknown;
+  artistName?: unknown;
+  artist?: unknown;
+  tag?: unknown;
+  label?: unknown;
+  value?: unknown;
+}
 
 export const DEFAULT_MIX = { discover: 34, mix: 33, trending: 33, focus: 0 };
 export const DEFAULT_SIZE = 30;
@@ -20,14 +111,14 @@ export const NEW_FLOW_TEMPLATE = {
 const FLOW_SHARE_FILE_VERSION = 1;
 const FLOW_SHARE_FILE_TYPE = "aurral-static-tracklist";
 
-function getNextRunDiff(nextRunAt, now = Date.now()) {
+function getNextRunDiff(nextRunAt: number | null | undefined, now = Date.now()) {
   if (!nextRunAt) return null;
   const ts = parseFlowTimestamp(nextRunAt);
   if (!Number.isFinite(ts)) return null;
   return ts - now;
 }
 
-export function formatNextRun(nextRunAt, now = Date.now()) {
+export function formatNextRun(nextRunAt: number | null | undefined, now = Date.now()) {
   const diff = getNextRunDiff(nextRunAt, now);
   if (diff === null) return null;
   if (diff <= 0) return "soon";
@@ -46,7 +137,7 @@ export function formatNextRun(nextRunAt, now = Date.now()) {
   return days === 1 ? "1 day" : `${days} days`;
 }
 
-export function formatNextRunShort(nextRunAt, now = Date.now()) {
+export function formatNextRunShort(nextRunAt: number | null | undefined, now = Date.now()) {
   const diff = getNextRunDiff(nextRunAt, now);
   if (diff === null) return null;
   if (diff <= 0) return "soon";
@@ -58,7 +149,7 @@ export function formatNextRunShort(nextRunAt, now = Date.now()) {
   return "soon";
 }
 
-export function formatFlowLastRunShort(lastRunAt) {
+export function formatFlowLastRunShort(lastRunAt: number | null | undefined) {
   const timestamp = parseFlowTimestamp(lastRunAt);
   if (!Number.isFinite(timestamp) || timestamp <= 0) return null;
   const date = new Date(timestamp);
@@ -66,7 +157,7 @@ export function formatFlowLastRunShort(lastRunAt) {
   return formatDate(date, { month: "numeric", day: "numeric" });
 }
 
-export const slugifyFilePart = (value, fallback = "flow") => {
+export const slugifyFilePart = (value: string | null | undefined, fallback = "flow") => {
   const slug = String(value || "")
     .trim()
     .toLowerCase()
@@ -76,12 +167,15 @@ export const slugifyFilePart = (value, fallback = "flow") => {
   return slug || fallback;
 };
 
-export const normalizeNameKey = (value) =>
+export const normalizeNameKey = (value: string | null | undefined) =>
   String(value || "")
     .trim()
     .toLowerCase();
 
-export const reserveUniqueName = (reservedNames, baseName) => {
+export const reserveUniqueName = (
+  reservedNames: Set<string>,
+  baseName: string | null | undefined,
+) => {
   const normalizedBase = String(baseName || "").trim() || "Flow";
   const baseKey = normalizeNameKey(normalizedBase);
   if (!reservedNames.has(baseKey)) {
@@ -103,7 +197,7 @@ export const reserveUniqueName = (reservedNames, baseName) => {
   return fallback;
 };
 
-export const getNextFlowName = (flows, baseName = "Discover") =>
+export const getNextFlowName = (flows: Partial<Flow>[] | null | undefined, baseName = "Discover") =>
   reserveUniqueName(
     new Set(
       (Array.isArray(flows) ? flows : [])
@@ -113,21 +207,21 @@ export const getNextFlowName = (flows, baseName = "Discover") =>
     String(baseName || "").trim() || "Discover",
   );
 
-export const normalizeDurationMs = (value) => {
+export const normalizeDurationMs = (value: unknown) => {
   const numeric = Number(value);
   return value != null && Number.isFinite(numeric) ? Math.max(0, Math.round(numeric)) : null;
 };
 
-export const normalizeArtistAliases = (aliases) =>
+export const normalizeArtistAliases = (aliases: unknown) =>
   Array.isArray(aliases) ? aliases.map((entry) => String(entry || "").trim()).filter(Boolean) : [];
 
-const parseListInput = (value) =>
+const parseListInput = (value: string | null | undefined) =>
   String(value ?? "")
     .split(",")
     .map((entry) => entry.trim())
     .filter(Boolean);
 
-const getFlowEntryName = (value) => {
+const getFlowEntryName = (value: string | number | FlowEntryObject | null | undefined) => {
   if (typeof value === "string" || typeof value === "number") {
     const text = String(value).trim();
     return text || null;
@@ -150,7 +244,7 @@ const getFlowEntryName = (value) => {
   return null;
 };
 
-export const normalizeFlowEntryList = (value) => {
+export const normalizeFlowEntryList = (value: unknown) => {
   const raw = Array.isArray(value)
     ? value
     : value && typeof value === "object"
@@ -171,9 +265,9 @@ export const normalizeFlowEntryList = (value) => {
   return out;
 };
 
-export const normalizeScheduleDays = (value) => {
+export const normalizeScheduleDays = (value: unknown) => {
   if (!Array.isArray(value)) return [];
-  const unique = new Set();
+  const unique = new Set<number>();
   for (const entry of value) {
     const day = Number(entry);
     if (!Number.isFinite(day)) continue;
@@ -184,7 +278,7 @@ export const normalizeScheduleDays = (value) => {
   return [...unique].sort((a, b) => a - b);
 };
 
-export const normalizeScheduleTime = (value) => {
+export const normalizeScheduleTime = (value: unknown) => {
   const text = String(value ?? "").trim();
   const match = /^(\d{1,2}):(\d{2})$/.exec(text);
   if (!match) return "00:00";
@@ -195,7 +289,7 @@ export const normalizeScheduleTime = (value) => {
   return `${String(hours).padStart(2, "0")}:00`;
 };
 
-export const normalizeYearBound = (value) => {
+export const normalizeYearBound = (value: unknown) => {
   if (value == null || value === "") return null;
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return null;
@@ -204,7 +298,7 @@ export const normalizeYearBound = (value) => {
   return year;
 };
 
-export const normalizeYearRange = (yearFrom, yearTo) => {
+export const normalizeYearRange = (yearFrom: unknown, yearTo: unknown) => {
   let from = normalizeYearBound(yearFrom);
   let to = normalizeYearBound(yearTo);
   if (from != null && to != null && from > to) {
@@ -215,7 +309,7 @@ export const normalizeYearRange = (yearFrom, yearTo) => {
   return { yearFrom: from, yearTo: to };
 };
 
-const parseOptionalYearInput = (value, label) => {
+const parseOptionalYearInput = (value: unknown, label: string) => {
   const text = String(value ?? "").trim();
   if (!text) return null;
   const parsed = Number(text);
@@ -225,7 +319,7 @@ const parseOptionalYearInput = (value, label) => {
   return Math.trunc(parsed);
 };
 
-export const normalizeMixPercent = (mix) => {
+export const normalizeMixPercent = (mix: Partial<FlowMix> | null | undefined) => {
   const raw = {
     discover: Number(mix?.discover ?? 0),
     mix: Number(mix?.mix ?? 0),
@@ -236,7 +330,7 @@ export const normalizeMixPercent = (mix) => {
   if (!Number.isFinite(sum) || sum <= 0) {
     return { ...DEFAULT_MIX };
   }
-  const weights = [
+  const weights: { key: keyof FlowMix; value: number }[] = [
     { key: "discover", value: raw.discover },
     { key: "mix", value: raw.mix },
     { key: "trending", value: raw.trending },
@@ -257,14 +351,14 @@ export const normalizeMixPercent = (mix) => {
     ordered[i].count += 1;
     remaining -= 1;
   }
-  const out = {};
+  const out: Partial<FlowMix> = {};
   for (const item of ordered) {
     out[item.key] = item.count;
   }
-  return out;
+  return out as FlowMix;
 };
 
-export const flowToForm = (flow) => {
+export const flowToForm = (flow: Partial<Flow> | null | undefined) => {
   const tagsList = normalizeFlowEntryList(flow?.tags);
   const relatedList = normalizeFlowEntryList(flow?.relatedArtists);
   const scheduleDays = normalizeScheduleDays(flow?.scheduleDays);
@@ -287,7 +381,7 @@ export const flowToForm = (flow) => {
   };
 };
 
-export const buildFlowFromForm = (draft) => {
+export const buildFlowFromForm = (draft: FlowDraft | null | undefined) => {
   const name = String(draft?.name ?? "").trim();
   if (!name) {
     throw new Error("Flow name is required");
@@ -328,8 +422,8 @@ export const buildFlowFromForm = (draft) => {
   };
 };
 
-const normalizeDraftForCompare = (draft) => {
-  const normalizeList = (value) =>
+const normalizeDraftForCompare = (draft: FlowDraft | null | undefined) => {
+  const normalizeList = (value: string | null | undefined) =>
     parseListInput(value)
       .map((entry) => entry.toLowerCase())
       .sort((a, b) => a.localeCompare(b))
@@ -350,26 +444,36 @@ const normalizeDraftForCompare = (draft) => {
   };
 };
 
-export const isFlowDirty = (flow, draft) => {
+export const isFlowDirty = (
+  flow: Partial<Flow> | null | undefined,
+  draft: FlowDraft | null | undefined,
+) => {
   const base = normalizeDraftForCompare(flowToForm(flow));
   const next = normalizeDraftForCompare(draft);
   return JSON.stringify(base) !== JSON.stringify(next);
 };
 
-const normalizeScheduleDraftForCompare = (draft) => ({
+const normalizeScheduleDraftForCompare = (draft: FlowDraft | null | undefined) => ({
   size: Number(draft?.size ?? 0),
   recordHistory: draft?.recordHistory !== false,
   scheduleDays: normalizeScheduleDays(draft?.scheduleDays),
   scheduleTime: normalizeScheduleTime(draft?.scheduleTime),
 });
 
-export const isScheduleOnlyFlowDirty = (flow, draft) => {
+export const isScheduleOnlyFlowDirty = (
+  flow: Partial<Flow> | null | undefined,
+  draft: FlowDraft | null | undefined,
+) => {
   const base = normalizeScheduleDraftForCompare(flowToForm(flow));
   const next = normalizeScheduleDraftForCompare(draft);
   return JSON.stringify(base) !== JSON.stringify(next);
 };
 
-export const buildScheduleOnlyFlowFromForm = (flow, draft, { sizeError } = {}) => {
+export const buildScheduleOnlyFlowFromForm = (
+  flow: Partial<Flow> | null | undefined,
+  draft: FlowDraft | null | undefined,
+  { sizeError }: { sizeError?: string } = {},
+) => {
   const sizeValue = Number(draft?.size);
   if (!Number.isFinite(sizeValue) || sizeValue <= 0) {
     throw new Error(sizeError || "Tracks must be a positive number");
@@ -393,21 +497,24 @@ export const buildScheduleOnlyFlowFromForm = (flow, draft, { sizeError } = {}) =
   };
 };
 
-export const buildReleaseRadarFlowFromForm = (flow, draft) =>
+export const buildReleaseRadarFlowFromForm = (
+  flow: Partial<Flow> | null | undefined,
+  draft: FlowDraft | null | undefined,
+) =>
   buildScheduleOnlyFlowFromForm(flow, draft, {
     sizeError: "Max tracks must be a positive number",
   });
 
-const positiveInteger = (value) =>
+const positiveInteger = (value: unknown) =>
   Number.isInteger(Number(value)) && Number(value) > 0 ? Number(value) : null;
 
-const albumPlacement = (track) => ({
+const albumPlacement = (track: ImportedTrack | TracklistTrack | null | undefined) => ({
   releaseMbid: String(track?.releaseMbid || "").trim() || null,
   trackNumber: positiveInteger(track?.trackNumber),
   discNumber: positiveInteger(track?.discNumber),
 });
 
-export const normalizePlaylistTrackEntry = (track) => {
+export const normalizePlaylistTrackEntry = (track: ImportedValue) => {
   if (!track || typeof track !== "object" || Array.isArray(track)) return null;
   const artistName = String(
     track.artistName ?? track.artist ?? track.artist_name ?? track["Artist Name(s)"] ?? "",
@@ -438,7 +545,17 @@ export const normalizePlaylistTrackEntry = (track) => {
   };
 };
 
-export const buildStaticTracklistPayload = ({ name, sourceName, sourceFlowId, tracks }) => ({
+export const buildStaticTracklistPayload = ({
+  name,
+  sourceName,
+  sourceFlowId,
+  tracks,
+}: {
+  name?: string | null;
+  sourceName?: string | null;
+  sourceFlowId?: string | null;
+  tracks?: TracklistTrack[] | null;
+}) => ({
   type: FLOW_SHARE_FILE_TYPE,
   version: FLOW_SHARE_FILE_VERSION,
   exportedAt: new Date().toISOString(),
@@ -460,7 +577,10 @@ export const buildStaticTracklistPayload = ({ name, sourceName, sourceFlowId, tr
   })),
 });
 
-export const downloadTracklistFile = (fileName, payload) => {
+export const downloadTracklistFile = (
+  fileName: string,
+  payload: ReturnType<typeof buildStaticTracklistPayload>,
+) => {
   const blob = new Blob([JSON.stringify(payload, null, 2)], {
     type: "application/json",
   });
@@ -476,7 +596,7 @@ export const downloadTracklistFile = (fileName, payload) => {
   }, 0);
 };
 
-export const parseTracklistImportFile = (content) => {
+export const parseTracklistImportFile = (content: string) => {
   let parsed;
   try {
     parsed = JSON.parse(content);
@@ -484,7 +604,7 @@ export const parseTracklistImportFile = (content) => {
     throw new Error("Import file is not valid JSON");
   }
 
-  const toPlaylistPayload = (entry, index) => {
+  const toPlaylistPayload = (entry: TracklistInput, index: number) => {
     if (Array.isArray(entry)) {
       const tracks = entry.map(normalizePlaylistTrackEntry).filter(Boolean);
       if (tracks.length === 0) {
@@ -524,7 +644,7 @@ export const parseTracklistImportFile = (content) => {
     };
   };
 
-  let entries = [];
+  let entries: TracklistInput[] = [];
   if (Array.isArray(parsed)) {
     const looksLikeTrackArray = parsed.every(
       (entry) => entry && typeof entry === "object" && !Array.isArray(entry),

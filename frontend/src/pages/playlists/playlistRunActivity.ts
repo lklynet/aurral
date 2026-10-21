@@ -1,7 +1,9 @@
+import type { PlaylistStats, PlaylistStatus } from "./playlistStats.ts";
+
 const GENERATION_ACTIONS = new Set(["enable", "scheduled", "manual-start"]);
 const CLEANUP_ACTIONS = new Set(["disable", "delete", "reset"]);
 
-export function parseOperationQueueLabel(label) {
+export function parseOperationQueueLabel(label: string | null | undefined) {
   const trimmed = String(label || "").trim();
   if (!trimmed.includes(":")) {
     return { action: trimmed, flowId: "" };
@@ -23,6 +25,16 @@ export function getPlaylistRunActivity({
   togglingToEnabled = null,
   addingTrack = false,
   reSearchingCount = 0,
+}: {
+  playlistId?: string | null;
+  kind?: string;
+  enabled?: boolean;
+  status?: PlaylistStatus | null;
+  stats?: Partial<PlaylistStats> | null;
+  rerunning?: boolean;
+  togglingToEnabled?: boolean | null;
+  addingTrack?: boolean;
+  reSearchingCount?: number;
 } = {}) {
   if (!playlistId) return null;
 

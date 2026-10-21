@@ -1,4 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
+import type { DiscoverSection, DiscoverUserId } from "./discoverUtils";
+
+interface DiscoverLayoutResponse {
+  layout?: unknown;
+}
 
 export function useDiscoverLayoutState({
   defaultSections,
@@ -10,6 +15,18 @@ export function useDiscoverLayoutState({
   saveServerLayout,
   showSuccess,
   showError,
+}: {
+  defaultSections: DiscoverSection[];
+  userId: DiscoverUserId;
+  normalizeLayout: (value: unknown) => DiscoverSection[] | null;
+  readStoredLayout: (userId: DiscoverUserId) => DiscoverSection[] | null;
+  writeStoredLayout: (layout: DiscoverSection[], userId: DiscoverUserId) => void;
+  loadServerLayout: () => Promise<DiscoverLayoutResponse | null | undefined>;
+  saveServerLayout: (
+    layout: DiscoverSection[],
+  ) => Promise<DiscoverLayoutResponse | null | undefined>;
+  showSuccess: (message: string) => unknown;
+  showError: (message: string) => unknown;
 }) {
   const getDefaultSections = useCallback(
     () => defaultSections.map((item) => ({ ...item })),
@@ -58,7 +75,7 @@ export function useDiscoverLayoutState({
   ]);
 
   const saveDiscoverLayout = useCallback(
-    (layout) => {
+    (layout: DiscoverSection[]) => {
       const nextLayout = layout.map((item) => ({ ...item }));
       setIsSavingDiscoverLayout(true);
       return saveServerLayout(nextLayout)

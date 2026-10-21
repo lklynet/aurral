@@ -20,17 +20,29 @@ export const UNIFIED_FILTER_OPTIONS = [
   { value: "singles", label: "Singles" },
 ];
 
-export function isAlbumCompilation(album) {
+interface SearchAlbum {
+  id?: string | null;
+  primaryType?: string | null;
+  secondaryTypes?: string[] | null;
+}
+
+interface SearchArtist {
+  id?: string | null;
+  mbid?: string | null;
+  foreignArtistId?: string | null;
+}
+
+export function isAlbumCompilation(album: SearchAlbum | null | undefined) {
   return (
     album?.primaryType === "Compilation" || (album?.secondaryTypes || []).includes("Compilation")
   );
 }
 
-export function isAlbumSingleOrEp(album) {
+export function isAlbumSingleOrEp(album: SearchAlbum | null | undefined) {
   return album?.primaryType === "Single" || album?.primaryType === "EP";
 }
 
-export function matchesAlbumReleaseTab(album, tab) {
+export function matchesAlbumReleaseTab(album: SearchAlbum | null | undefined, tab: string) {
   if (tab === "all") return true;
   if (tab === "compilations") return isAlbumCompilation(album);
   if (tab === "singles") {
@@ -41,7 +53,7 @@ export function matchesAlbumReleaseTab(album, tab) {
 
 import { getArtistRecordId } from "../utils/artistTaste";
 
-export function dedupeArtists(artists) {
+export function dedupeArtists(artists: SearchArtist[]) {
   const seen = new Set();
   return artists.filter((artist) => {
     const artistId = getArtistRecordId(artist);
@@ -51,7 +63,7 @@ export function dedupeArtists(artists) {
   });
 }
 
-export function dedupeAlbums(albums) {
+export function dedupeAlbums(albums: SearchAlbum[]) {
   const seen = new Set();
   return albums.filter((album) => {
     if (!album?.id || seen.has(album.id)) return false;

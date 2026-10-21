@@ -1,15 +1,89 @@
 import { formatDateTime } from "../../utils/dateTime.ts";
 
+export interface FlowMix {
+  discover: number;
+  mix: number;
+  trending: number;
+  focus: number;
+}
+
+export interface Flow {
+  id: string;
+  name: string;
+  enabled: boolean;
+  type: string | null;
+  discoverPresetId: string | null;
+  size: number;
+  mix: FlowMix;
+  tags: string[];
+  relatedArtists: string[];
+  deepDive: boolean;
+  recordHistory: boolean;
+  yearFrom: number | null;
+  yearTo: number | null;
+  scheduleDays: number[];
+  scheduleTime: string;
+  nextRunAt: number | null;
+  lastRunAt: number | null;
+  ownerUserId: number | null;
+  ownerUsername: string | null;
+}
+
+export interface PlaylistStats {
+  total: number;
+  pending: number;
+  downloading: number;
+  blocked: number;
+  done: number;
+  failed: number;
+}
+
+export interface StaticPlaylist {
+  id: string;
+  name: string;
+  ownerUserId: number | null;
+  ownerUsername: string | null;
+  sourceName: string | null;
+  sourceFlowId: string | null;
+  trackCount: number;
+  recordHistory: boolean;
+  showTrackAvailability: boolean;
+}
+
+export interface PlaylistStatus {
+  stats?: PlaylistStats;
+  sharedStats?: PlaylistStats;
+  reviewCount?: number;
+  worker?: {
+    running?: boolean;
+    currentJob?: {
+      playlistType?: string;
+      artistName?: string;
+      trackName?: string;
+      progressPct?: number;
+    } | null;
+  };
+  operationQueue?: { processing?: boolean; currentLabel?: string | null };
+  hint?: { phase?: string; message?: string };
+  flows?: Flow[];
+  sharedPlaylists?: StaticPlaylist[];
+}
+
 export const RELEASE_RADAR_PRESET_ID = "release-radar";
 
-export const isReleaseRadarFlow = (flow) =>
+export const isReleaseRadarFlow = (flow: Partial<Flow> | null | undefined) =>
   String(flow?.discoverPresetId || "").trim() === RELEASE_RADAR_PRESET_ID;
 
-export const isEditorialFlow = (flow) => String(flow?.type || "").trim() === "editorial";
+export const isEditorialFlow = (flow: Partial<Flow> | null | undefined) =>
+  String(flow?.type || "").trim() === "editorial";
 
-const statCount = (value) => Number(value || 0);
+const statCount = (value: number | null | undefined) => Number(value || 0);
 
-export const getFlowDisplayTrackCount = (flow, stats, trackListLength = 0) => {
+export const getFlowDisplayTrackCount = (
+  flow: Partial<Flow> | null | undefined,
+  stats: PlaylistStats | null | undefined,
+  trackListLength = 0,
+) => {
   if (isReleaseRadarFlow(flow)) {
     const actual = Math.max(statCount(trackListLength), statCount(stats?.total));
     return actual > 0 ? actual : statCount(flow?.size);
@@ -17,7 +91,11 @@ export const getFlowDisplayTrackCount = (flow, stats, trackListLength = 0) => {
   return Math.max(statCount(flow?.size), statCount(trackListLength), statCount(stats?.total));
 };
 
-export const getStaticPlaylistTrackCount = (playlist, stats, trackListLength = 0) => {
+export const getStaticPlaylistTrackCount = (
+  playlist: Partial<StaticPlaylist> | null | undefined,
+  stats: PlaylistStats | null | undefined,
+  trackListLength = 0,
+) => {
   return Math.max(
     statCount(playlist?.trackCount),
     statCount(trackListLength),
@@ -25,7 +103,7 @@ export const getStaticPlaylistTrackCount = (playlist, stats, trackListLength = 0
   );
 };
 
-export const EMPTY_PLAYLIST_STATS = {
+export const EMPTY_PLAYLIST_STATS: PlaylistStats = {
   total: 0,
   done: 0,
   pending: 0,
@@ -34,7 +112,10 @@ export const EMPTY_PLAYLIST_STATS = {
   failed: 0,
 };
 
-export const getPlaylistDownloadProgressPct = (stats, trackCount = 0) => {
+export const getPlaylistDownloadProgressPct = (
+  stats: PlaylistStats | null | undefined,
+  trackCount = 0,
+) => {
   const done = statCount(stats?.done);
   const total = Math.max(
     statCount(trackCount),
@@ -48,7 +129,10 @@ export const getPlaylistDownloadProgressPct = (stats, trackCount = 0) => {
   return Math.min(100, Math.round((done / total) * 100));
 };
 
-export const formatTrackCountLabel = (trackCount, stats) => {
+export const formatTrackCountLabel = (
+  trackCount: number,
+  stats: PlaylistStats | null | undefined,
+) => {
   const count = statCount(trackCount);
   const trackWord = count === 1 ? "track" : "tracks";
   const base = `${count} ${trackWord}`;
@@ -57,10 +141,10 @@ export const formatTrackCountLabel = (trackCount, stats) => {
   return `${base} · ${pct}%`;
 };
 
-export const parseFlowTimestamp = (value) =>
-  typeof value === "number" ? value : Number.parseInt(value, 10);
+export const parseFlowTimestamp = (value: number | string | null | undefined) =>
+  typeof value === "number" ? value : Number.parseInt(String(value), 10);
 
-export const formatFlowLastRun = (lastRunAt) => {
+export const formatFlowLastRun = (lastRunAt: number | null | undefined) => {
   const timestamp = parseFlowTimestamp(lastRunAt);
   if (!Number.isFinite(timestamp) || timestamp <= 0) return null;
   const date = new Date(timestamp);
@@ -73,7 +157,7 @@ export const formatFlowLastRun = (lastRunAt) => {
   });
 };
 
-export const sanitizePlaylistStats = (stats) => {
+export const sanitizePlaylistStats = (stats: Partial<PlaylistStats> | null | undefined) => {
   const pending = statCount(stats?.pending);
   const downloading = statCount(stats?.downloading);
   const blocked = statCount(stats?.blocked);
@@ -89,14 +173,14 @@ export const sanitizePlaylistStats = (stats) => {
   };
 };
 
-export const getPlaylistStateFromStats = (stats) => {
+export const getPlaylistStateFromStats = (stats: PlaylistStats) => {
   if (stats.total === 0) return "idle";
   if (stats.downloading > 0 || stats.pending > 0) return "running";
   if (stats.done > 0) return "completed";
   return "idle";
 };
 
-export const getCombinedActivityStats = (status) => {
+export const getCombinedActivityStats = (status: PlaylistStatus | null | undefined) => {
   const flow = status?.stats || EMPTY_PLAYLIST_STATS;
   const shared = status?.sharedStats || EMPTY_PLAYLIST_STATS;
   const pending = statCount(flow.pending) + statCount(shared.pending);
@@ -114,7 +198,7 @@ export const getCombinedActivityStats = (status) => {
   };
 };
 
-export const hasDownloadWorkerActivity = (status) => {
+export const hasDownloadWorkerActivity = (status: PlaylistStatus | null | undefined) => {
   if (!status) return false;
   if (status.worker?.running === true) return true;
   if (status.operationQueue?.processing === true) return true;
@@ -122,7 +206,7 @@ export const hasDownloadWorkerActivity = (status) => {
   return stats.pending > 0 || stats.downloading > 0;
 };
 
-export const hasReviewActivity = (status) => {
+export const hasReviewActivity = (status: PlaylistStatus | null | undefined) => {
   if (!status) return false;
   return statCount(status.reviewCount) > 0;
 };

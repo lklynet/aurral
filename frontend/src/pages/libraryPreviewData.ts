@@ -36,7 +36,10 @@ const catalog = [
 const PREVIEW_AUDIO_URL =
   "data:audio/wav;base64,UklGRrQBAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YZABAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA";
 
-const tracksForAlbum = (album, albumIndex) =>
+const tracksForAlbum = (
+  album: { id: string; artist: string; genres: string[] },
+  albumIndex: number,
+) =>
   ["Opening Scene", "Common Ground", "Side Street", "Last Light"].map((title, trackIndex) => ({
     id: `preview-track-${albumIndex + 1}-${trackIndex + 1}`,
     identityKey: `preview-track:${albumIndex + 1}-${trackIndex + 1}`,
@@ -70,7 +73,7 @@ const albums = catalog.flatMap((artist, artistIndex) =>
     albumArtist: artist.artist,
     releaseDate: album.year,
     metadata: { genres: album.genres },
-    trackIds: [],
+    trackIds: [] as string[],
     sources: ["aurral"],
     available: true,
   })),

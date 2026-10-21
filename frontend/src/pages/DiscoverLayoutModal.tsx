@@ -18,11 +18,21 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { restrictToParentElement, restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import { GripVertical, X } from "lucide-react";
+import type { DragEndEvent } from "@dnd-kit/core";
 import { DotLoader } from "../components/DotLoader";
 import { useModalDialog } from "../hooks/useModalDialog.ts";
 import TooltipButton from "../components/TooltipButton";
+import type { DiscoverSection } from "./discoverUtils";
 
-function SortableSectionRow({ item, onToggle, showUnavailable }) {
+function SortableSectionRow({
+  item,
+  onToggle,
+  showUnavailable,
+}: {
+  item: DiscoverSection;
+  onToggle: (id: string) => void;
+  showUnavailable: boolean;
+}) {
   const {
     attributes,
     listeners,
@@ -88,6 +98,15 @@ export function DiscoverLayoutModal({
   onClose,
   onSave,
   onReset,
+}: {
+  open: boolean;
+  sections: DiscoverSection[];
+  onSectionsChange: (update: (prev: DiscoverSection[]) => DiscoverSection[]) => void;
+  sectionAvailability: Record<string, boolean | undefined>;
+  isSaving: boolean;
+  onClose: () => void;
+  onSave: () => void;
+  onReset: () => void;
 }) {
   const sectionIds = useMemo(() => sections.map((item) => item.id), [sections]);
 
@@ -105,7 +124,7 @@ export function DiscoverLayoutModal({
     closeDisabled: isSaving,
   });
 
-  const handleDragEnd = (event) => {
+  const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     onSectionsChange((prev) => {

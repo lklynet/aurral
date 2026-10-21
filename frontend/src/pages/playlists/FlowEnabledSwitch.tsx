@@ -3,14 +3,15 @@ import PillToggle from "../../components/PillToggle";
 import { useToast } from "../../contexts/ToastContext";
 import { setFlowEnabled } from "../../utils/api/endpoints/playlists.ts";
 import { ConfirmModal } from "../../components/ConfirmModal.tsx";
+import type { Flow } from "./playlistStats.ts";
 
-export function FlowEnabledSwitch({ flow, onChanged }) {
+export function FlowEnabledSwitch({ flow, onChanged }: { flow: Flow; onChanged?: () => unknown }) {
   const { showSuccess, showError } = useToast();
-  const [pendingEnabled, setPendingEnabled] = useState(null);
+  const [pendingEnabled, setPendingEnabled] = useState<boolean | null>(null);
   const [confirmDisable, setConfirmDisable] = useState(false);
   const enabled = pendingEnabled ?? flow.enabled === true;
 
-  const applyEnabled = async (nextEnabled) => {
+  const applyEnabled = async (nextEnabled: boolean) => {
     setPendingEnabled(nextEnabled);
     try {
       await setFlowEnabled(flow.id, nextEnabled);
@@ -30,7 +31,7 @@ export function FlowEnabledSwitch({ flow, onChanged }) {
         checked={enabled}
         aria-label={`${flow.name || "Flow"} ${enabled ? "on" : "off"}`}
         disabled={pendingEnabled !== null}
-        onChange={(event) => {
+        onChange={(event: { target: { checked: boolean } }) => {
           if (event.target.checked) void applyEnabled(true);
           else setConfirmDisable(true);
         }}

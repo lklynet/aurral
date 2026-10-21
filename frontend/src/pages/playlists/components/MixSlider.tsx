@@ -1,20 +1,68 @@
-import { useEffect, useRef, useCallback, useMemo, useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useCallback,
+  useMemo,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
 import { getTagSuggestions } from "../../../utils/api/endpoints/discovery.ts";
 import { searchUnified } from "../../../utils/api/endpoints/search.ts";
 import { TAG_COLORS } from "../../discoverUtils";
 import { getTagColor } from "../../ArtistDetails/utils";
 import { useDebouncedTask } from "../../../hooks/useDebouncedTask";
+import type { CSSProperties } from "react";
+import type { FlowMix } from "../playlistStats.ts";
+import type { FlowDraft, normalizeMixPercent } from "../flowPageUtils.ts";
 
 import { Search } from "lucide-react";
 import { DotLoader } from "../../../components/DotLoader";
-const SOURCE_MIX_COLORS = {
+
+type NormalizeMix = typeof normalizeMixPercent;
+
+interface FocusSuggestion {
+  label: string;
+  meta: string;
+}
+
+interface FocusSuggestionObject {
+  label?: unknown;
+  name?: unknown;
+  title?: unknown;
+  meta?: unknown;
+  sourceLabel?: unknown;
+}
+
+type FocusEntry = string | number | FocusSuggestionObject | null | undefined;
+
+interface MixHandle {
+  key: string;
+  position: number;
+  visualPosition: number;
+  minimum: number;
+  maximum: number;
+  handleIndex: number;
+  ariaLabel: string;
+  ariaValueText: string;
+}
+
+interface MixDragState {
+  handle: number;
+  pointerId: number;
+  target: HTMLElement;
+  grabOffset: number;
+}
+
+const SOURCE_MIX_COLORS: Record<keyof FlowMix, string> = {
   discover: TAG_COLORS[10],
   mix: TAG_COLORS[4],
   trending: TAG_COLORS[12],
   focus: TAG_COLORS[2],
 };
 
-export const SOURCE_MIX_OPTIONS = [
+export const SOURCE_MIX_OPTIONS: { key: keyof FlowMix; label: string }[] = [
   { key: "discover", label: "Discover" },
   { key: "mix", label: "Library" },
   { key: "trending", label: "Trending" },
@@ -43,21 +91,25 @@ export const SCHEDULE_HOUR_OPTIONS = Array.from({ length: 24 }, (_, hour) => {
   };
 });
 
-const getEnabledSourceKeys = (mix) =>
+const getEnabledSourceKeys = (mix: Partial<FlowMix> | null | undefined) =>
   SOURCE_MIX_OPTIONS.map((option) => option.key).filter((key) => Number(mix?.[key] || 0) > 0);
 
-const distributeEvenly = (keys, total = 100) => {
+const distributeEvenly = (keys: (keyof FlowMix)[], total = 100): Partial<FlowMix> => {
   if (!Array.isArray(keys) || keys.length === 0) return {};
   const base = Math.floor(total / keys.length);
   let remainder = total - base * keys.length;
-  return keys.reduce((acc, key) => {
+  return keys.reduce<Partial<FlowMix>>((acc, key) => {
     acc[key] = base + (remainder > 0 ? 1 : 0);
     if (remainder > 0) remainder -= 1;
     return acc;
   }, {});
 };
 
-const toggleSourceInMix = (mix, key, normalizeMixPercent) => {
+const toggleSourceInMix = (
+  mix: Partial<FlowMix>,
+  key: keyof FlowMix,
+  normalizeMixPercent: NormalizeMix,
+) => {
   const normalized = normalizeMixPercent(mix);
   const activeKeys = getEnabledSourceKeys(normalized);
   const isActive = normalized[key] > 0;
@@ -93,14 +145,20 @@ export function MixSlider({
   normalizeMixPercent,
   trackCounts = {},
   trailingControl = null,
+}: {
+  mix?: Partial<FlowMix> | null;
+  onChange: (mix: FlowMix) => void;
+  normalizeMixPercent: NormalizeMix;
+  trackCounts?: Partial<Record<keyof FlowMix, number>>;
+  trailingControl?: ReactNode;
 }) {
   const normalized = normalizeMixPercent(mix);
   const activeKeys = getEnabledSourceKeys(normalized);
-  const barRef = useRef(null);
-  const dragRef = useRef(null);
+  const barRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<MixDragState | null>(null);
 
   const updateBoundaryValue = useCallback(
-    (handleIndex, percent) => {
+    (handleIndex: number, percent: number) => {
       if (activeKeys.length < 2) return;
       const leftKey = activeKeys[handleIndex];
       const rightKey = activeKeys[handleIndex + 1];
@@ -128,7 +186,7 @@ export function MixSlider({
   );
 
   const updateFromClientX = useCallback(
-    (clientX, handleIndex) => {
+    (clientX: number, handleIndex: number) => {
       const rect = barRef.current?.getBoundingClientRect();
       if (!rect) return;
       const clampedX = Math.min(Math.max(clientX - rect.left, 0), rect.width);
@@ -138,7 +196,7 @@ export function MixSlider({
     [updateBoundaryValue],
   );
 
-  const startDrag = (event, handle) => {
+  const startDrag = (event: ReactPointerEvent<HTMLDivElement>, handle: number) => {
     if (event.pointerType === "mouse" && event.button !== 0) return;
     event.preventDefault();
     const handleRect = event.currentTarget.getBoundingClientRect();
@@ -154,11 +212,11 @@ export function MixSlider({
   };
 
   useEffect(() => {
-    const handleMove = (event) => {
+    const handleMove = (event: PointerEvent) => {
       if (!dragRef.current || dragRef.current.pointerId !== event.pointerId) return;
       updateFromClientX(event.clientX - dragRef.current.grabOffset, dragRef.current.handle);
     };
-    const handleUp = (event) => {
+    const handleUp = (event: PointerEvent) => {
       if (!dragRef.current || dragRef.current.pointerId !== event.pointerId) return;
       const { target, pointerId } = dragRef.current;
       dragRef.current = null;
@@ -174,7 +232,7 @@ export function MixSlider({
     };
   }, [updateFromClientX]);
 
-  const handleHandleKeyDown = (event, handle) => {
+  const handleHandleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>, handle: MixHandle) => {
     const step = event.shiftKey ? 5 : 1;
     let nextPosition = handle.position;
     if (event.key === "ArrowLeft" || event.key === "ArrowDown") nextPosition -= step;
@@ -195,7 +253,7 @@ export function MixSlider({
     runningPosition += Number(normalized[key] || 0);
     cumulativePositions.push(runningPosition);
   }
-  const handles = cumulativePositions.slice(0, -1).map((position, index) => {
+  const handles: MixHandle[] = cumulativePositions.slice(0, -1).map((position, index) => {
     const leftKey = activeKeys[index];
     const rightKey = activeKeys[index + 1];
     const leftLabel =
@@ -263,10 +321,12 @@ export function MixSlider({
               <div
                 key={key}
                 className={`flow-page__mix-segment flow-page__mix-segment--${key}`}
-                style={{
-                  width: `${percent}%`,
-                  "--flow-mix-color": SOURCE_MIX_COLORS[key],
-                }}
+                style={
+                  {
+                    width: `${percent}%`,
+                    "--flow-mix-color": SOURCE_MIX_COLORS[key],
+                  } as CSSProperties
+                }
               >
                 {showLabel ? `${option.label} (${trackCounts[key] ?? 0})` : ""}
               </div>
@@ -297,7 +357,10 @@ export function MixSlider({
   );
 }
 
-function getCommaTokenInputState(value, options = {}) {
+function getCommaTokenInputState(
+  value: string | null | undefined,
+  options: { commitAll?: boolean } = {},
+) {
   const raw = String(value ?? "");
   const endsWithComma = raw.endsWith(",");
   const commitAll = options?.commitAll === true;
@@ -316,7 +379,7 @@ function getCommaTokenInputState(value, options = {}) {
   };
 }
 
-function dedupeTokenEntries(entries) {
+function dedupeTokenEntries(entries: string[]) {
   const seen = new Set();
   return entries
     .map((entry) => String(entry || "").trim())
@@ -329,7 +392,7 @@ function dedupeTokenEntries(entries) {
     });
 }
 
-function buildCommaTokenInputValue(committed, pending) {
+function buildCommaTokenInputValue(committed: string[], pending: string | null | undefined) {
   const safeCommitted = dedupeTokenEntries(committed);
   const rawPending = String(pending ?? "").replace(/^\s+/, "");
   const normalizedPending = rawPending.trim();
@@ -338,7 +401,7 @@ function buildCommaTokenInputValue(committed, pending) {
   return `${safeCommitted.join(", ")}, ${rawPending}`;
 }
 
-function normalizeFocusSuggestion(entry, fallbackMeta = "") {
+function normalizeFocusSuggestion(entry: FocusEntry, fallbackMeta = ""): FocusSuggestion | null {
   if (typeof entry === "string" || typeof entry === "number") {
     const label = String(entry).trim();
     return label ? { label, meta: fallbackMeta } : null;
@@ -352,7 +415,10 @@ function normalizeFocusSuggestion(entry, fallbackMeta = "") {
   };
 }
 
-function dedupeFocusSuggestions(entries, existingEntries = []) {
+function dedupeFocusSuggestions(
+  entries: FocusEntry[] | null | undefined,
+  existingEntries: string[] = [],
+) {
   const seen = new Set(
     (Array.isArray(existingEntries) ? existingEntries : [])
       .map((entry) =>
@@ -373,10 +439,10 @@ function dedupeFocusSuggestions(entries, existingEntries = []) {
   return out;
 }
 
-export async function fetchFlowTagSuggestions(query, existingEntries = []) {
+export async function fetchFlowTagSuggestions(query: string, existingEntries: string[] = []) {
   const data = await getTagSuggestions(query, FLOW_FOCUS_SUGGESTION_LIMIT);
   return dedupeFocusSuggestions(
-    (Array.isArray(data?.tags) ? data.tags : []).map((tag) => ({
+    (Array.isArray(data?.tags) ? data.tags : []).map((tag: string) => ({
       label: tag,
       meta: "Tag",
     })),
@@ -384,7 +450,7 @@ export async function fetchFlowTagSuggestions(query, existingEntries = []) {
   );
 }
 
-export async function fetchFlowArtistSuggestions(query, existingEntries = []) {
+export async function fetchFlowArtistSuggestions(query: string, existingEntries: string[] = []) {
   const data = await searchUnified(query, {
     mode: "suggest",
     limit: FLOW_FOCUS_SUGGESTION_LIMIT,
@@ -402,7 +468,10 @@ export async function fetchFlowArtistSuggestions(query, existingEntries = []) {
   );
 }
 
-export function getFocusDraftValidation(draft, normalizeMixPercent) {
+export function getFocusDraftValidation(
+  draft: FlowDraft | null | undefined,
+  normalizeMixPercent: NormalizeMix,
+) {
   const normalizedMix = normalizeMixPercent(draft?.mix);
   const focusEnabled = Number(normalizedMix.focus || 0) > 0;
   const hasFocusFilters =
@@ -423,12 +492,18 @@ export function CommaTokenInput({
   onChange,
   fetchSuggestions,
   suggestionLabel = "suggestions",
+}: {
+  value?: string | null;
+  placeholder?: string;
+  onChange: (value: string) => void;
+  fetchSuggestions?: (query: string, existingEntries: string[]) => Promise<FocusSuggestion[]>;
+  suggestionLabel?: string;
 }) {
   const [isFocused, setIsFocused] = useState(false);
-  const [suggestions, setSuggestions] = useState([]);
+  const [suggestions, setSuggestions] = useState<FocusSuggestion[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
-  const inputRef = useRef(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const { schedule: scheduleSuggest, cancel: cancelSuggest } = useDebouncedTask();
   const { committed, pending } = useMemo(
     () =>
@@ -453,7 +528,7 @@ export function CommaTokenInput({
   }, []);
 
   const selectSuggestion = useCallback(
-    (suggestion) => {
+    (suggestion: FocusSuggestion) => {
       const normalized = normalizeFocusSuggestion(suggestion);
       if (!normalized) return;
       const nextCommitted = [...committed, normalized.label];
@@ -483,7 +558,7 @@ export function CommaTokenInput({
       return;
     }
 
-    scheduleSuggest(async (isCurrent) => {
+    scheduleSuggest(async (isCurrent: () => boolean) => {
       setLoadingSuggestions(true);
       try {
         const nextSuggestions = await fetchSuggestions(query, committed);
