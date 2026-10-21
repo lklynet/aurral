@@ -71,7 +71,7 @@ const DEFAULT_CAPABILITIES: SourceCapabilities = Object.freeze({
   releaseContext: false,
 });
 
-export function getCapabilities(source: string): SourceCapabilities {
+export function getCapabilities(source?: string): SourceCapabilities {
   const key = String(source || "").toLowerCase();
   return SOURCE_CAPABILITIES[key] || { ...DEFAULT_CAPABILITIES };
 }
@@ -254,7 +254,7 @@ function readQuality(raw: RawCandidate, capabilities: Partial<SourceCapabilities
 }
 
 export function normalizeCandidate<Raw extends RawCandidate = RawCandidate>(
-  source: string,
+  source?: string,
   raw: Partial<Raw> = {},
   options: NormalizeOptions = {},
 ) {

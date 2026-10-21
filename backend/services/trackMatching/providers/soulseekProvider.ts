@@ -17,7 +17,7 @@ import type { TrackRequest } from "../trackIdentity.ts";
 import { getNormalizedText } from "../../providers/brainzmashRanking.ts";
 import { groupSoulseekSearchResults } from "../../downloadJobs/trackSearchQueries.ts";
 
-type SlskdFile = RawCandidate & { size?: unknown };
+type SlskdFile = RawCandidate & { file?: string | null; size?: unknown };
 
 type SoulseekGroup = {
   user: string;

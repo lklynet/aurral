@@ -208,6 +208,9 @@ export function toReleaseManifest(group, release) {
   };
 }
 
+export type ReleaseManifest = NonNullable<ReturnType<typeof toReleaseManifest>>;
+export type ReleaseManifestTrack = ReleaseManifest["tracks"][number];
+
 function recordingIds(track) {
   return [track.recordingMbid, ...(track.recordingMbidAliases || [])].map(id).filter(Boolean);
 }

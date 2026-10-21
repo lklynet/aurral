@@ -19,8 +19,9 @@ import {
 } from "./youtubeEvidence.ts";
 import type { buildSoulseekCandidates } from "./providers/soulseekProvider.ts";
 
-export type SearchResult = RawCandidate & { source?: string; song?: unknown };
-type NormalizedCandidate = CandidateTrack<SearchResult>;
+type RawSearchResult = RawCandidate & { file?: string | null; source?: never; song?: unknown };
+type NormalizedCandidate = CandidateTrack<RawSearchResult> & { song?: never };
+export type SearchResult = RawSearchResult | NormalizedCandidate;
 type ProviderEvidence = ReturnType<typeof buildSoulseekCandidates>["providerEvidence"][number];
 type EvidenceSource =
   | ProviderEvidence[]
@@ -37,7 +38,7 @@ function isYoutubeSong(candidate: NormalizedCandidate) {
 }
 
 function normalizeSourceCandidates(
-  source: string,
+  source: string | undefined,
   candidates: SearchResult[],
   request: TrackRequest,
 ): NormalizedCandidate[] {

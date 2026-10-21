@@ -27,26 +27,28 @@ import {
   otherProductMarker,
 } from "./titleText.ts";
 import { implausibleBitrateKbps } from "./candidateNormalizer.ts";
+import type {
+  ReleaseManifest as BuiltReleaseManifest,
+  ReleaseManifestTrack as BuiltReleaseManifestTrack,
+} from "../releaseManifest.ts";
 
 const IDENTITY_BLOCKERS = new Set(["title", "recording-mbid", "artist", "duration", "position"]);
 const PLACEHOLDER_TITLE = /^(?:audio\s*)?track\s*\d{1,3}$/u;
 
-type ReleaseManifestTrack = {
-  title: string | null;
-  artists?: NameList;
-  artistAliases?: NameList;
-  durationMs?: number | null;
-  pressingDurationsMs?: number[] | null;
-  trackNumber?: number | null;
-  discNumber?: number | null;
-  recordingMbid?: string | null;
-  recordingMbidAliases?: NameList;
-};
+type ReleaseManifestTrack = Pick<
+  BuiltReleaseManifestTrack,
+  | "title"
+  | "artists"
+  | "artistAliases"
+  | "durationMs"
+  | "pressingDurationsMs"
+  | "trackNumber"
+  | "discNumber"
+  | "recordingMbid"
+  | "recordingMbidAliases"
+>;
 
-type ReleaseManifest = {
-  title: string | null;
-  artistNames: string[];
-  secondaryTypes?: NameList;
+type ReleaseManifest = Pick<BuiltReleaseManifest, "title" | "artistNames" | "secondaryTypes"> & {
   tracks: ReleaseManifestTrack[];
 };
 
