@@ -19,7 +19,12 @@ import { refetchDiscoveryStatus } from "../../../hooks/useDiscoveryStatus";
 import { refreshDiscovery } from "../../../utils/api/endpoints/discovery.ts";
 import { DISCOVERY_MANUAL_REFRESH_KEY } from "../../../utils/discoverRecentNavigation.ts";
 import { allReleaseTypes } from "../constants";
-import { DEFAULT_METADATA_BASE_URL, checkForChanges, normalizeSettings } from "../utils";
+import {
+  DEFAULT_METADATA_BASE_URL,
+  checkForChanges,
+  normalizeSettings,
+  type SettingsState,
+} from "../utils";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
 
 const defaultSettings = {
@@ -200,7 +205,7 @@ const defaultSettings = {
     },
   },
   playlistArtwork: {
-    style: "photo",
+    style: "photo" as const,
   },
   inbox: {
     enabled: true,
@@ -256,16 +261,16 @@ const buildLidarrQueries = ({ url, apiKey, credentialsRevision }, enabled) => [
 ];
 
 export function useSettingsData(showSuccess, showError, showInfo, activeTab) {
-  const [settings, setSettingsState] = useState(defaultSettings);
+  const [settings, setSettingsState] = useState<SettingsState>(defaultSettings);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
-  const [originalSettings, setOriginalSettings] = useState(null);
+  const [originalSettings, setOriginalSettings] = useState<SettingsState | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [testingLidarr, setTestingLidarr] = useState(false);
   const [testingGotify, setTestingGotify] = useState(false);
   const [showCommunityGuideModal, setShowCommunityGuideModal] = useState(false);
   const comparisonEnabledRef = useRef(false);
-  const settingsRef = useRef(defaultSettings);
-  const originalSettingsRef = useRef(null);
+  const settingsRef = useRef<SettingsState>(defaultSettings);
+  const originalSettingsRef = useRef<SettingsState | null>(null);
   const hasUnsavedChangesRef = useRef(false);
   const saveTimerRef = useRef(null);
   const persistSettingsRef = useRef(null);

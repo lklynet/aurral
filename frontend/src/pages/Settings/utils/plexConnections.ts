@@ -1,15 +1,24 @@
-function normalizePort(value) {
-  const port = Number.parseInt(value, 10);
+export type PlexConnection = {
+  uri?: string;
+  local?: boolean | number | string;
+  address?: string;
+  port?: number | string;
+};
+
+export type PlexServer = { connections?: PlexConnection[] };
+
+function normalizePort(value: number | string | null | undefined) {
+  const port = Number.parseInt(String(value), 10);
   return Number.isFinite(port) && port > 0 ? String(port) : "";
 }
 
-function normalizeHost(value) {
+function normalizeHost(value: string) {
   const host = String(value || "").trim();
   if (!host) return "";
   return host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
 }
 
-function parseConnectionAddress(value, fallbackPort) {
+function parseConnectionAddress(value: string | null | undefined, fallbackPort: string) {
   const address = String(value || "").trim();
   if (!address) return { host: "", port: "" };
 
@@ -35,11 +44,11 @@ function parseConnectionAddress(value, fallbackPort) {
   return { host: address, port: fallbackPort };
 }
 
-function isLocalConnection(connection) {
+function isLocalConnection(connection: PlexConnection | null | undefined) {
   return connection?.local === true || connection?.local === 1 || connection?.local === "1";
 }
 
-export function resolvePlexConnectionUrl(connection) {
+export function resolvePlexConnectionUrl(connection: PlexConnection | null | undefined) {
   const uri = String(connection?.uri || "").trim();
   const address = parseConnectionAddress(connection?.address, normalizePort(connection?.port));
   const host = normalizeHost(address.host);
@@ -52,7 +61,7 @@ export function resolvePlexConnectionUrl(connection) {
   return uri;
 }
 
-export function pickBestPlexConnection(server) {
+export function pickBestPlexConnection(server: PlexServer | null | undefined) {
   const connections = Array.isArray(server?.connections) ? server.connections : [];
   return (
     connections.find(

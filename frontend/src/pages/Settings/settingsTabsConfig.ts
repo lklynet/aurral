@@ -341,13 +341,26 @@ const SETTINGS_SEARCH_METADATA = {
   },
 };
 
-const normalizeSearchText = (value) =>
+const normalizeSearchText = (value: string) =>
   String(value || "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
 
-const createSettingsSearchItem = (tab, kind, label, keywords = "") => ({
+type SettingsTab = (typeof SETTINGS_TABS)[number];
+
+type SettingsSearchMetadata = {
+  sections?: string[];
+  services?: Record<string, string>;
+  fields?: Record<string, string>;
+};
+
+const createSettingsSearchItem = (
+  tab: SettingsTab,
+  kind: "page" | "section" | "service" | "setting",
+  label: string,
+  keywords = "",
+) => ({
   id: tab.id,
   key: `${tab.id}:${kind}:${label}`,
   label,
@@ -357,7 +370,7 @@ const createSettingsSearchItem = (tab, kind, label, keywords = "") => ({
 });
 
 export const SETTINGS_SEARCH_ITEMS = SETTINGS_TABS.flatMap((tab) => {
-  const metadata = SETTINGS_SEARCH_METADATA[tab.id] || {};
+  const metadata: SettingsSearchMetadata = SETTINGS_SEARCH_METADATA[tab.id] || {};
   const items = [createSettingsSearchItem(tab, "page", tab.label, tab.id)];
 
   for (const section of metadata.sections || []) {
@@ -382,7 +395,7 @@ export const SETTINGS_SEARCH_ITEMS = SETTINGS_TABS.flatMap((tab) => {
   return items;
 });
 
-export function searchSettingsItems(query) {
+export function searchSettingsItems(query: string) {
   const terms = normalizeSearchText(query).split(" ").filter(Boolean);
   if (!terms.length) return [];
   return SETTINGS_SEARCH_ITEMS.filter((item) =>
@@ -404,14 +417,14 @@ export const LEGACY_SETTINGS_TAB_MAP = {
   notifications: "connect",
 };
 
-export function normalizeSettingsTabId(tabId) {
+export function normalizeSettingsTabId(tabId: string | null | undefined) {
   if (!tabId) return DEFAULT_SETTINGS_TAB;
   const legacy = LEGACY_SETTINGS_TAB_MAP[tabId];
   if (legacy) return legacy;
   return SETTINGS_TAB_IDS.includes(tabId) ? tabId : DEFAULT_SETTINGS_TAB;
 }
 
-export function getSettingsTabById(tabId) {
+export function getSettingsTabById(tabId: string | null | undefined) {
   const normalized = normalizeSettingsTabId(tabId);
   return SETTINGS_TABS.find((tab) => tab.id === normalized) || SETTINGS_TABS[0];
 }

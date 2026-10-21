@@ -1,6 +1,17 @@
 import { useId } from "react";
+import type { ReactNode } from "react";
 
-export function SettingsArrFieldSet({ legend, actions = null, className = "", children }) {
+export function SettingsArrFieldSet({
+  legend,
+  actions = null,
+  className = "",
+  children,
+}: {
+  legend: ReactNode;
+  actions?: ReactNode;
+  className?: string;
+  children: ReactNode;
+}) {
   const headingId = useId();
 
   return (
@@ -24,6 +35,13 @@ export function SettingsArrFormGroup({
   helpWarning = false,
   size = "small",
   children,
+}: {
+  label: ReactNode;
+  labelFor?: string;
+  help?: ReactNode;
+  helpWarning?: boolean;
+  size?: "small" | "large";
+  children: ReactNode;
 }) {
   return (
     <div className={`arr-form-group arr-form-group--${size}`}>
@@ -40,6 +58,6 @@ export function SettingsArrFormGroup({
   );
 }
 
-export function SettingsArrCardGrid({ children }) {
+export function SettingsArrCardGrid({ children }: { children: ReactNode }) {
   return <div className="arr-card-grid">{children}</div>;
 }

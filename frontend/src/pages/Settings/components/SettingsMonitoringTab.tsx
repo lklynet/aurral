@@ -1,9 +1,13 @@
 import { useState } from "react";
+import type { ChangeEvent, FocusEvent } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { DotLoader } from "../../../components/DotLoader";
 import { MonitoringRulesFields } from "../../../components/MonitoringRulesFields";
+import type { MonitoringRules } from "../../../components/MonitoringRulesFields";
 import PillToggle from "../../../components/PillToggle";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
+import type { useToast } from "../../../contexts/ToastContext.tsx";
+import type { AppSettings, SettingsUpdate } from "../../../../../backend/db/helpers/settings.ts";
 import {
   getMonitoringDefaults,
   getMonitoringExclusions,
@@ -25,15 +29,47 @@ import {
   SettingsModalIntro,
   SettingsModalSection,
 } from "./SettingsModalLayout";
+import type { SavedSettings } from "../utils";
 
-const sameRules = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+type Toast = ReturnType<typeof useToast>["showSuccess"];
+type MissingTrackSearch = Partial<NonNullable<AppSettings["missingTrackSearch"]>>;
+type MonitoringDefaults = {
+  rules: MonitoringRules;
+  updatedAt: number | null;
+  artistCount: number;
+};
+type MonitoringPreview = {
+  artistCount: number;
+  releaseCount: number;
+  trackCount: number;
+  failedArtistCount: number;
+};
+type MonitoringExclusion = {
+  id: number;
+  kind: string;
+  title: string;
+  artistName: string | null;
+  createdAt: number;
+};
 
-const formatDate = (timestamp) =>
+const sameRules = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right);
+
+const formatDate = (timestamp: number | null | undefined) =>
   timestamp ? new Date(timestamp).toLocaleDateString(undefined, { dateStyle: "medium" }) : "";
 
-function DefaultRulesModal({ defaults, onClose, onSaved, showError }) {
+function DefaultRulesModal({
+  defaults,
+  onClose,
+  onSaved,
+  showError,
+}: {
+  defaults: MonitoringDefaults;
+  onClose: () => void;
+  onSaved: (artistCount: number) => Promise<void>;
+  showError: Toast;
+}) {
   const [rules, setRules] = useState(defaults.rules);
-  const [review, setReview] = useState(null);
+  const [review, setReview] = useState<MonitoringPreview | null>(null);
   const [busy, setBusy] = useState(false);
 
   const save = async () => {
@@ -127,13 +163,13 @@ function DefaultRulesModal({ defaults, onClose, onSaved, showError }) {
   );
 }
 
-function ExclusionsTable({ showError }) {
+function ExclusionsTable({ showError }: { showError: Toast }) {
   const exclusionsQuery = useQuery({
     queryKey: queryKeys.monitoringExclusions(null),
     queryFn: ({ signal }) => getMonitoringExclusions({ signal }),
   });
   const allow = useMutation({
-    mutationFn: (exclusion) => removeMonitoringExclusion(exclusion.id),
+    mutationFn: (exclusion: MonitoringExclusion) => removeMonitoringExclusion(exclusion.id),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: queryKeys.monitoringExclusionsPrefix }),
     onError: (error, exclusion) =>
@@ -141,7 +177,9 @@ function ExclusionsTable({ showError }) {
         `Could not allow ${exclusion.title} again. Nothing changed. ${describeAurralMonitoringError(error, "Try again.")}`,
       ),
   });
-  const exclusions = Array.isArray(exclusionsQuery.data) ? exclusionsQuery.data : [];
+  const exclusions: MonitoringExclusion[] = Array.isArray(exclusionsQuery.data)
+    ? exclusionsQuery.data
+    : [];
 
   return (
     <div className="arr-table-wrap">
@@ -213,16 +251,26 @@ function ExclusionsTable({ showError }) {
   );
 }
 
-export function SettingsMonitoringTab({ settings, updateSettings, showSuccess, showError }) {
+export function SettingsMonitoringTab({
+  settings,
+  updateSettings,
+  showSuccess,
+  showError,
+}: {
+  settings: SavedSettings;
+  updateSettings: (settings: SettingsUpdate) => void;
+  showSuccess: Toast;
+  showError: Toast;
+}) {
   const [editing, setEditing] = useState(false);
-  const [intervalDraft, setIntervalDraft] = useState(null);
+  const [intervalDraft, setIntervalDraft] = useState<string | null>(null);
   const defaultsQuery = useQuery({
     queryKey: queryKeys.monitoringDefaults,
     queryFn: ({ signal }) => getMonitoringDefaults({ signal }),
   });
   const defaults = defaultsQuery.data;
-  const missingTrackSearch = settings.missingTrackSearch || {};
-  const updateMissingTrackSearch = (patch) =>
+  const missingTrackSearch: MissingTrackSearch = settings.missingTrackSearch || {};
+  const updateMissingTrackSearch = (patch: MissingTrackSearch) =>
     updateSettings({ ...settings, missingTrackSearch: { ...missingTrackSearch, ...patch } });
 
   return (
@@ -277,13 +325,13 @@ export function SettingsMonitoringTab({ settings, updateSettings, showSuccess, s
               max="365"
               value={intervalDraft ?? missingTrackSearch.intervalDays ?? 1}
               disabled={missingTrackSearch.enabled !== true}
-              onChange={(event) => {
+              onChange={(event: ChangeEvent<HTMLInputElement>) => {
                 setIntervalDraft(event.target.value);
                 if (event.target.value !== "" && event.target.validity.valid) {
                   updateMissingTrackSearch({ intervalDays: Number(event.target.value) });
                 }
               }}
-              onBlur={(event) => {
+              onBlur={(event: FocusEvent<HTMLInputElement>) => {
                 const days = Math.round(Number(event.target.value));
                 if (
                   event.target.value !== "" &&

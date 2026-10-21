@@ -6,6 +6,7 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
+import type { DragEndEvent } from "@dnd-kit/core";
 import {
   SortableContext,
   arrayMove,
@@ -15,6 +16,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { restrictToParentElement, restrictToVerticalAxis } from "@dnd-kit/modifiers";
+import type { ChangeEvent } from "react";
 import { GripVertical } from "lucide-react";
 import { SettingsInput } from "./SettingsField";
 import { SettingsIntegrationModal } from "./SettingsIntegrationCards";
@@ -25,6 +27,7 @@ import {
   SettingsModalToggle,
 } from "./SettingsModalLayout";
 import Tooltip from "../../../components/Tooltip";
+import type { QualityProfile } from "../../../../../backend/db/helpers/settings.ts";
 
 export const QUALITY_TIER_LABELS = {
   "flac-hires": "FLAC hi-res",
@@ -39,7 +42,21 @@ export const QUALITY_TIER_LABELS = {
   "m4a-128": "M4A 128",
 };
 
-function SortableQuality({ id, enabled, cutoff, aboveCutoff, onToggle, onCutoff }) {
+function SortableQuality({
+  id,
+  enabled,
+  cutoff,
+  aboveCutoff,
+  onToggle,
+  onCutoff,
+}: {
+  id: string;
+  enabled: boolean;
+  cutoff: boolean;
+  aboveCutoff: boolean;
+  onToggle: (id: string) => void;
+  onCutoff: (id: string) => void;
+}) {
   const {
     attributes,
     listeners,
@@ -93,7 +110,15 @@ function SortableQuality({ id, enabled, cutoff, aboveCutoff, onToggle, onCutoff 
   );
 }
 
-export function QualityProfileModal({ profile, onChange, onClose }) {
+export function QualityProfileModal({
+  profile,
+  onChange,
+  onClose,
+}: {
+  profile: QualityProfile;
+  onChange: (patch: Partial<QualityProfile>) => void;
+  onClose: () => void;
+}) {
   const order = Array.isArray(profile.order) ? profile.order : Object.keys(QUALITY_TIER_LABELS);
   const enabled = new Set(Array.isArray(profile.enabled) ? profile.enabled : order);
   const cutoffIndex = order.indexOf(profile.cutoff);
@@ -102,7 +127,7 @@ export function QualityProfileModal({ profile, onChange, onClose }) {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  const toggle = (id) => {
+  const toggle = (id: string) => {
     const nextEnabled = enabled.has(id)
       ? [...enabled].filter((tierId) => tierId !== id)
       : [...enabled, id];
@@ -115,9 +140,11 @@ export function QualityProfileModal({ profile, onChange, onClose }) {
     });
   };
 
-  const handleDragEnd = ({ active, over }) => {
+  const handleDragEnd = ({ active, over }: DragEndEvent) => {
     if (!over || active.id === over.id) return;
-    onChange({ order: arrayMove(order, order.indexOf(active.id), order.indexOf(over.id)) });
+    onChange({
+      order: arrayMove(order, order.indexOf(active.id as string), order.indexOf(over.id as string)),
+    });
   };
 
   return (
@@ -167,7 +194,7 @@ export function QualityProfileModal({ profile, onChange, onClose }) {
             max="365"
             value={profile.intervalDays ?? 2}
             disabled={profile.automaticUpgrades !== true}
-            onChange={(event) =>
+            onChange={(event: ChangeEvent<HTMLInputElement>) =>
               onChange({ intervalDays: Number.parseInt(event.target.value, 10) || 2 })
             }
           />

@@ -9,8 +9,20 @@ import {
 } from "../../../utils/api/endpoints/auth.ts";
 import { GRANULAR_PERMISSIONS } from "../constants";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
+import type { useAuth } from "../../../contexts/AuthContext.tsx";
+import type { useToast } from "../../../contexts/ToastContext.tsx";
+import type { userOps } from "../../../../../backend/db/helpers/users.ts";
 
-export function useSettingsUsers(authUser, showSuccess, showError, activeTab) {
+type AuthUser = NonNullable<NonNullable<ReturnType<typeof useAuth>>["user"]>;
+type SettingsUser = ReturnType<typeof userOps.getAllUsers>[number];
+type Toast = ReturnType<typeof useToast>["showSuccess"];
+
+export function useSettingsUsers(
+  authUser: AuthUser | null,
+  showSuccess: Toast,
+  showError: Toast,
+  activeTab: string,
+) {
   const usersQuery = useQuery({
     queryKey: queryKeys.users,
     queryFn: getUsers,
@@ -19,12 +31,22 @@ export function useSettingsUsers(authUser, showSuccess, showError, activeTab) {
   });
   const invalidateUsers = () => queryClient.invalidateQueries({ queryKey: queryKeys.users });
   const createUserMutation = useMutation({
-    mutationFn: ({ username, password, role, permissions }) =>
-      createUser(username, password, role, permissions),
+    mutationFn: ({
+      username,
+      password,
+      role,
+      permissions,
+    }: {
+      username: string;
+      password: string;
+      role: string;
+      permissions: Record<string, boolean>;
+    }) => createUser(username, password, role, permissions),
     onSuccess: invalidateUsers,
   });
   const updateUserMutation = useMutation({
-    mutationFn: ({ id, data }) => updateUser(id, data),
+    mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) =>
+      updateUser(id, data),
     onSuccess: invalidateUsers,
   });
   const deleteUserMutation = useMutation({
@@ -32,8 +54,13 @@ export function useSettingsUsers(authUser, showSuccess, showError, activeTab) {
     onSuccess: invalidateUsers,
   });
   const changePasswordMutation = useMutation({
-    mutationFn: ({ currentPassword, newPassword }) =>
-      changeMyPassword(currentPassword, newPassword),
+    mutationFn: ({
+      currentPassword,
+      newPassword,
+    }: {
+      currentPassword: string;
+      newPassword: string;
+    }) => changeMyPassword(currentPassword, newPassword),
   });
   const [newUserUsername, setNewUserUsername] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");
@@ -42,7 +69,7 @@ export function useSettingsUsers(authUser, showSuccess, showError, activeTab) {
   });
   const [creatingUser, setCreatingUser] = useState(false);
   const [showAddUserModal, setShowAddUserModal] = useState(false);
-  const [editUser, setEditUser] = useState(null);
+  const [editUser, setEditUser] = useState<SettingsUser | null>(null);
   const [editPassword, setEditPassword] = useState("");
   const [editCurrentPassword, setEditCurrentPassword] = useState("");
   const [editPermissions, setEditPermissions] = useState({
@@ -55,7 +82,7 @@ export function useSettingsUsers(authUser, showSuccess, showError, activeTab) {
   const [changePwNew, setChangePwNew] = useState("");
   const [changePwConfirm, setChangePwConfirm] = useState("");
   const [changingPassword, setChangingPassword] = useState(false);
-  const [deleteUserTarget, setDeleteUserTarget] = useState(null);
+  const [deleteUserTarget, setDeleteUserTarget] = useState<SettingsUser | null>(null);
   const [deletingUser, setDeletingUser] = useState(false);
 
   const refreshUsers = () => {
@@ -102,11 +129,16 @@ export function useSettingsUsers(authUser, showSuccess, showError, activeTab) {
     deletingUser,
     setDeletingUser,
     refreshUsers,
-    createUser: (username, password, role, permissions) =>
-      createUserMutation.mutateAsync({ username, password, role, permissions }),
-    updateUser: (id, data) => updateUserMutation.mutateAsync({ id, data }),
-    deleteUser: (id) => deleteUserMutation.mutateAsync(id),
-    changeMyPassword: (currentPassword, newPassword) =>
+    createUser: (
+      username: string,
+      password: string,
+      role: string,
+      permissions: Record<string, boolean>,
+    ) => createUserMutation.mutateAsync({ username, password, role, permissions }),
+    updateUser: (id: number, data: Record<string, unknown>) =>
+      updateUserMutation.mutateAsync({ id, data }),
+    deleteUser: (id: number) => deleteUserMutation.mutateAsync(id),
+    changeMyPassword: (currentPassword: string, newPassword: string) =>
       changePasswordMutation.mutateAsync({ currentPassword, newPassword }),
     showSuccess,
     showError,

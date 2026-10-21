@@ -1,4 +1,4 @@
-export function getProviderStatus(enabled, configured) {
+export function getProviderStatus(enabled: boolean, configured: boolean) {
   if (enabled && configured) {
     return { label: "Enabled", className: "is-enabled" };
   }
@@ -11,14 +11,17 @@ export function getProviderStatus(enabled, configured) {
   return { label: "Not configured", className: "is-muted" };
 }
 
-export function getConfiguredStatus(configured) {
+export function getConfiguredStatus(configured: boolean) {
   if (configured) {
     return { label: "Enabled", className: "is-enabled" };
   }
   return { label: "Not configured", className: "is-muted" };
 }
 
-export function getIndexerStatus(indexer, enabled) {
+export function getIndexerStatus(
+  indexer: { enabledInProwlarr?: boolean } | null | undefined,
+  enabled: boolean,
+) {
   if (indexer?.enabledInProwlarr === false) {
     return { label: "Disabled in Prowlarr", className: "is-muted" };
   }

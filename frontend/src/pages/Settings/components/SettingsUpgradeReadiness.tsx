@@ -8,6 +8,16 @@ import {
 } from "../../../utils/api/endpoints/settings.ts";
 import { formatDateTime } from "../../../utils/dateTime.ts";
 import { queryKeys } from "../../../queryClient.ts";
+import type { useToast } from "../../../contexts/ToastContext.tsx";
+import type { checkUpgradeReadiness } from "../../../../../backend/services/upgradeReadiness.ts";
+
+type UpgradeReadiness = ReturnType<typeof checkUpgradeReadiness>;
+type UpgradeBlocker = UpgradeReadiness["blockers"][number];
+type ReviewBlocker = UpgradeBlocker & {
+  totalItems?: number;
+  items?: { path: string; reason?: string | null }[];
+};
+type Toast = ReturnType<typeof useToast>["showSuccess"];
 
 const BLOCKER_TITLES = {
   schema: "Database upgrade",
@@ -18,7 +28,7 @@ const BLOCKER_TITLES = {
   "single-password": "Admin account",
 };
 
-function ReviewItems({ blocker }) {
+function ReviewItems({ blocker }: { blocker: ReviewBlocker }) {
   const items = blocker.items || [];
   const remaining = Math.max(0, (blocker.totalItems || items.length) - items.length);
   return (
@@ -39,9 +49,15 @@ function ReviewItems({ blocker }) {
   );
 }
 
-export function SettingsUpgradeReadiness({ showSuccess, showError }) {
+export function SettingsUpgradeReadiness({
+  showSuccess,
+  showError,
+}: {
+  showSuccess: Toast;
+  showError: Toast;
+}) {
   const queryClient = useQueryClient();
-  const readinessQuery = useQuery({
+  const readinessQuery = useQuery<UpgradeReadiness>({
     queryKey: queryKeys.upgradeReadiness,
     queryFn: ({ signal }) => getUpgradeReadiness({ signal }),
     staleTime: 0,

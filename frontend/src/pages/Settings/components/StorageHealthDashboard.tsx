@@ -2,6 +2,21 @@ import { useEffect, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { formatDateTime } from "../../../utils/dateTime.ts";
 import { DotLoader } from "../../../components/DotLoader";
+import type { useStorageHealth } from "../../../hooks/useStorageHealth.ts";
+
+type StorageHealthResult = Pick<
+  NonNullable<ReturnType<typeof useStorageHealth>["result"]>,
+  "ok" | "partial" | "checkedAt" | "sections"
+> & { failedCount?: number; warningCount?: number };
+type StorageHealthSection = StorageHealthResult["sections"][number];
+type StorageStatus = "pass" | "fail" | "warn" | "skip";
+type StorageHealthStep = {
+  id: string;
+  status: StorageStatus;
+  label: string;
+  detail?: string;
+  fix?: string;
+};
 
 const STATUS_LABELS = {
   pass: "PASS",
@@ -10,29 +25,35 @@ const STATUS_LABELS = {
   skip: "SKIP",
 };
 
-function formatCheckedAt(value) {
+function formatCheckedAt(value: string | null) {
   if (!value) return null;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
   return formatDateTime(date);
 }
 
-function defaultExpandedBySection(sections) {
-  const next = {};
+function defaultExpandedBySection(sections: StorageHealthSection[]) {
+  const next: Record<string, boolean> = {};
   for (const section of sections) {
     next[section.id] = section.status === "fail";
   }
   return next;
 }
 
-function getSummary(result) {
+function getSummary(result: StorageHealthResult) {
   const activeSections = result.sections.filter((section) => section.status !== "skip");
   const status = result.ok ? (result.partial ? "warn" : "pass") : "fail";
   const label = result.ok ? (result.partial ? "Review recommended" : "Healthy") : "Needs attention";
   return { activeSections, status, label, checkedAt: formatCheckedAt(result.checkedAt) };
 }
 
-export function StorageHealthSummary({ result, loading = false }) {
+export function StorageHealthSummary({
+  result,
+  loading = false,
+}: {
+  result?: StorageHealthResult | null;
+  loading?: boolean;
+}) {
   if (!result?.sections?.length) {
     return (
       <div className="arr-health__summary is-warn">
@@ -69,7 +90,7 @@ export function StorageHealthSummary({ result, loading = false }) {
   );
 }
 
-function summarizeDetail(detail) {
+function summarizeDetail(detail: string) {
   const text = String(detail || "").trim();
   if (text.length <= 180) return null;
   if (/ENOENT|no such file/i.test(text)) return "Some configured paths could not be found.";
@@ -77,7 +98,7 @@ function summarizeDetail(detail) {
   return "Show technical details";
 }
 
-function HealthDetail({ detail }) {
+function HealthDetail({ detail }: { detail: string }) {
   const text = String(detail || "").trim();
   const summary = summarizeDetail(text);
   if (!summary) return <code className="arr-health__path">{text}</code>;
@@ -90,8 +111,16 @@ function HealthDetail({ detail }) {
   );
 }
 
-export function StorageHealthDashboard({ result, loading = false, showSummary = true }) {
-  const [expanded, setExpanded] = useState({});
+export function StorageHealthDashboard({
+  result,
+  loading = false,
+  showSummary = true,
+}: {
+  result?: StorageHealthResult | null;
+  loading?: boolean;
+  showSummary?: boolean;
+}) {
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const sections = result?.sections;
 
   useEffect(() => {
@@ -112,7 +141,7 @@ export function StorageHealthDashboard({ result, loading = false, showSummary = 
     return null;
   }
 
-  const toggleSection = (sectionId) => {
+  const toggleSection = (sectionId: string) => {
     setExpanded((current) => ({
       ...current,
       [sectionId]: !current[sectionId],
@@ -155,7 +184,17 @@ export function StorageHealthDashboard({ result, loading = false, showSummary = 
   );
 }
 
-function SectionGroup({ section, isExpanded, isCollapsible, onToggle }) {
+function SectionGroup({
+  section,
+  isExpanded,
+  isCollapsible,
+  onToggle,
+}: {
+  section: StorageHealthSection;
+  isExpanded: boolean;
+  isCollapsible: boolean;
+  onToggle: () => void;
+}) {
   return (
     <>
       <tr
@@ -194,7 +233,7 @@ function SectionGroup({ section, isExpanded, isCollapsible, onToggle }) {
         </td>
       </tr>
       {isExpanded
-        ? (section.steps || []).map((step) => (
+        ? (section.steps || []).map((step: StorageHealthStep) => (
             <tr
               key={`${section.id}-${step.id}`}
               className={`arr-health__step-row is-${step.status}`}

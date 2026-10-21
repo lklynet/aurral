@@ -1,15 +1,30 @@
 import { useId } from "react";
+import type { ReactNode } from "react";
 import { Pencil, X } from "lucide-react";
 import { useModalDialog } from "../../../hooks/useModalDialog.ts";
 
-function statusTone(className) {
+type IntegrationStatus = { label: string; className: string };
+
+function statusTone(className: string) {
   if (className === "is-enabled") return "ok";
   if (className === "is-warning") return "warn";
   if (className === "is-disabled") return "danger";
   return "muted";
 }
 
-export function IntegrationCard({ title, subtitle, status, meta, onClick }) {
+export function IntegrationCard({
+  title,
+  subtitle,
+  status,
+  meta,
+  onClick,
+}: {
+  title: ReactNode;
+  subtitle?: ReactNode;
+  status: IntegrationStatus;
+  meta?: ReactNode;
+  onClick: () => void;
+}) {
   return (
     <button type="button" className="arr-card" onClick={onClick}>
       <span className="arr-card__main">
@@ -38,6 +53,13 @@ export function SettingsIntegrationModal({
   wide = true,
   footerActions = null,
   testStatus = null,
+}: {
+  title: ReactNode;
+  children: ReactNode;
+  onClose: () => void;
+  wide?: boolean;
+  footerActions?: ReactNode;
+  testStatus?: { tone: string; message: ReactNode } | null;
 }) {
   const titleId = useId();
   const { dialogRef, handleBackdropClick } = useModalDialog({

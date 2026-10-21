@@ -1,6 +1,15 @@
+import type { ChangeEvent } from "react";
 import { SettingsSelect } from "./SettingsField";
 
-export function SettingsMobileNav({ tabs, activeTab, onSelectTab }) {
+export function SettingsMobileNav({
+  tabs,
+  activeTab,
+  onSelectTab,
+}: {
+  tabs: readonly { id: string; label: string }[];
+  activeTab: string;
+  onSelectTab: (tabId: string) => void;
+}) {
   return (
     <div className="settings-arr__mobile-nav">
       <label htmlFor="settings-tab-select" className="settings-arr__mobile-label">
@@ -9,7 +18,7 @@ export function SettingsMobileNav({ tabs, activeTab, onSelectTab }) {
       <SettingsSelect
         id="settings-tab-select"
         value={activeTab}
-        onChange={(event) => onSelectTab(event.target.value)}
+        onChange={(event: ChangeEvent<HTMLSelectElement>) => onSelectTab(event.target.value)}
       >
         {tabs.map((tab) => (
           <option key={tab.id} value={tab.id}>

@@ -1,32 +1,43 @@
 import { allReleaseTypes } from "./constants";
 import { normalizeDateTimeFormat } from "../../utils/dateTime.ts";
+import type { AppSettings, StoredIntegrations } from "../../../../backend/db/helpers/settings.ts";
 
 export const LEGACY_METADATA_BASE_URL = "https://brainzmash.kell.ly";
 export const DEFAULT_METADATA_BASE_URL = "https://lidarrapi.brainzmash.cc";
 
-export const normalizeMetadataBaseUrl = (baseUrl) => {
+export type SavedSettings = Partial<AppSettings>;
+
+export const normalizeMetadataBaseUrl = (baseUrl: string | undefined) => {
   const trimmed = String(baseUrl || "")
     .trim()
     .replace(/\/+$/, "");
   return trimmed === LEGACY_METADATA_BASE_URL ? DEFAULT_METADATA_BASE_URL : trimmed;
 };
 
-export const normalizeSettings = (savedSettings) => {
-  const lidarr = savedSettings.integrations?.lidarr || {};
-  const lastfm = savedSettings.integrations?.lastfm || {};
-  const legacyMusicbrainz = savedSettings.integrations?.musicbrainz || {};
-  const metadata = savedSettings.integrations?.metadata || {};
-  const news = savedSettings.integrations?.news || {};
-  const parsedAutoRefreshHours = parseInt(lastfm.discoveryAutoRefreshHours, 10);
+export const normalizeSettings = (savedSettings: SavedSettings) => {
+  const lidarr: NonNullable<StoredIntegrations["lidarr"]> =
+    savedSettings.integrations?.lidarr || {};
+  const lastfm: NonNullable<StoredIntegrations["lastfm"]> & { discoverFlowArtworkStyle?: string } =
+    savedSettings.integrations?.lastfm || {};
+  const legacyMusicbrainz: NonNullable<StoredIntegrations["musicbrainz"]> =
+    savedSettings.integrations?.musicbrainz || {};
+  const metadata: NonNullable<StoredIntegrations["metadata"]> =
+    savedSettings.integrations?.metadata || {};
+  const news: NonNullable<StoredIntegrations["news"]> = savedSettings.integrations?.news || {};
+  const parsedAutoRefreshHours = parseInt(String(lastfm.discoveryAutoRefreshHours), 10);
   const normalizedAutoRefreshHours = [24, 168, 720].includes(parsedAutoRefreshHours)
     ? parsedAutoRefreshHours
     : 168;
-  const parsedRecommendationsPerRefresh = parseInt(lastfm.discoveryRecommendationsPerRefresh, 10);
+  const parsedRecommendationsPerRefresh = parseInt(
+    String(lastfm.discoveryRecommendationsPerRefresh),
+    10,
+  );
   const normalizedRecommendationsPerRefresh = Number.isFinite(parsedRecommendationsPerRefresh)
     ? Math.min(500, Math.max(50, parsedRecommendationsPerRefresh))
     : 200;
-  const playlistArtwork = savedSettings.playlistArtwork || {};
-  const playlistArtworkStyle =
+  const playlistArtwork: Partial<AppSettings["playlistArtwork"]> =
+    savedSettings.playlistArtwork || {};
+  const playlistArtworkStyle: "aurral" | "photo" =
     playlistArtwork.style === "aurral" || lastfm.discoverFlowArtworkStyle === "aurral"
       ? "aurral"
       : "photo";
@@ -71,10 +82,10 @@ export const normalizeSettings = (savedSettings) => {
         defaultMonitorOption: "none",
         ...lidarr,
         qualityProfileId:
-          lidarr.qualityProfileId != null ? parseInt(lidarr.qualityProfileId, 10) : null,
+          lidarr.qualityProfileId != null ? parseInt(String(lidarr.qualityProfileId), 10) : null,
         metadataProfileId:
-          lidarr.metadataProfileId != null ? parseInt(lidarr.metadataProfileId, 10) : null,
-        tagId: lidarr.tagId != null ? parseInt(lidarr.tagId, 10) : null,
+          lidarr.metadataProfileId != null ? parseInt(String(lidarr.metadataProfileId), 10) : null,
+        tagId: lidarr.tagId != null ? parseInt(String(lidarr.tagId), 10) : null,
       },
       navidrome: {
         url: "",
@@ -227,7 +238,9 @@ export const normalizeSettings = (savedSettings) => {
   };
 };
 
-export const checkForChanges = (newSettings, originalSettings) => {
+export const checkForChanges = (newSettings: unknown, originalSettings: unknown) => {
   if (!originalSettings) return false;
   return JSON.stringify(newSettings) !== JSON.stringify(originalSettings);
 };
+
+export type SettingsState = ReturnType<typeof normalizeSettings>;

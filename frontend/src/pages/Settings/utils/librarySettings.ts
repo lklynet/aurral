@@ -1,4 +1,15 @@
-export function describeLidarrConnectionState({ lidarr, health }) {
+import type { StoredIntegrations } from "../../../../../backend/db/helpers/settings.ts";
+import type { computeLibraryRootOverlaps } from "../../../../../backend/services/downloadFolderConfig.ts";
+
+type RootOverlapWarning = ReturnType<typeof computeLibraryRootOverlaps>[number];
+
+export function describeLidarrConnectionState({
+  lidarr,
+  health,
+}: {
+  lidarr?: StoredIntegrations["lidarr"] | null;
+  health?: { lidarr?: { circuitOpen?: boolean } } | null;
+}) {
   if (lidarr?.enabled === false) {
     return {
       reason: "disabled",
@@ -21,7 +32,7 @@ export function describeLidarrConnectionState({ lidarr, health }) {
   return null;
 }
 
-function describeRootOverlap(warning) {
+function describeRootOverlap(warning: RootOverlapWarning) {
   const root = warning?.lidarrRoot;
   if (warning?.type === "equal") return `The Lidarr root ${root} is the Downloads Folder.`;
   if (warning?.type === "nested-b-in-a") {
@@ -33,7 +44,7 @@ function describeRootOverlap(warning) {
   return warning?.message || "";
 }
 
-export function describeRootOverlapWarning(rootWarnings) {
+export function describeRootOverlapWarning(rootWarnings: RootOverlapWarning[] | null | undefined) {
   const warnings = Array.isArray(rootWarnings) ? rootWarnings : [];
   if (warnings.length === 0) return null;
   return {

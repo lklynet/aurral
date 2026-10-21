@@ -1,7 +1,15 @@
 import { useId } from "react";
 import { useModalDialog } from "../../../hooks/useModalDialog.ts";
 
-export function CommunityGuideModal({ show, onClose, onApply }) {
+export function CommunityGuideModal({
+  show,
+  onClose,
+  onApply,
+}: {
+  show: boolean;
+  onClose: () => void;
+  onApply: () => void;
+}) {
   const titleId = useId();
   const { dialogRef, handleBackdropClick } = useModalDialog({
     open: show,
