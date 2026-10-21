@@ -41,7 +41,9 @@ function log(logger, method, message, details = null) {
 interface MigrationItem {
   status?: string;
   destination?: string;
-  [field: string]: unknown;
+  reason?: string;
+  updatedAt?: number;
+  identity?: Awaited<ReturnType<typeof resolveIdentity>>;
 }
 
 export interface MigrationState {

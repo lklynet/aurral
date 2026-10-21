@@ -281,7 +281,12 @@ async function runDownloadTransferProbe(sourceDir, targetRoot) {
   }
 }
 
-function buildSection(id, title, steps, { skipped = false, skipReason = null } = {}) {
+function buildSection(
+  id,
+  title,
+  steps,
+  { skipped = false, skipReason = null }: { skipped?: boolean; skipReason?: string | null } = {},
+) {
   const status = skipped
     ? "skip"
     : steps.some((entry) => entry.status === "fail")
