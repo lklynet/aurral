@@ -1,14 +1,22 @@
-import { createServer } from "node:http";
-import { expect, test } from "@playwright/test";
+import { createServer, type IncomingHttpHeaders } from "node:http";
+import type { AddressInfo } from "node:net";
+import { expect, test, type Request as PlaywrightRequest } from "@playwright/test";
 import { apiRequest, openApp, requireCredentials } from "./helpers.ts";
 
 requireCredentials();
 
+type ReceivedRequest = {
+  method: string | undefined;
+  url: string | undefined;
+  headers: IncomingHttpHeaders;
+  body: unknown;
+};
+
 async function startReceiver() {
-  const requests = [];
+  const requests: ReceivedRequest[] = [];
   let responseStatus = 200;
   const server = createServer((req, res) => {
-    const chunks = [];
+    const chunks: Buffer[] = [];
     req.on("data", (chunk) => chunks.push(chunk));
     req.on("end", () => {
       const rawBody = Buffer.concat(chunks).toString("utf8");
@@ -22,19 +30,19 @@ async function startReceiver() {
       res.end(responseStatus === 200 ? "ok" : "failed");
     });
   });
-  await new Promise((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", resolve);
   });
 
   return {
     requests,
-    setResponseStatus(status) {
+    setResponseStatus(status: number) {
       responseStatus = status;
     },
-    url: `http://127.0.0.1:${server.address().port}/hook`,
+    url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/hook`,
     close: () =>
-      new Promise((resolve, reject) =>
+      new Promise<void>((resolve, reject) =>
         server.close((error) => (error ? reject(error) : resolve())),
       ),
   };
@@ -73,8 +81,8 @@ test("tests the selected webhook without saving settings", async ({ page }) => {
     await page.goto("/settings/connect");
     const card = page.locator(".arr-webhook-card").first();
     await expect(card).toBeVisible();
-    const settingsPosts = [];
-    const onRequest = (request) => {
+    const settingsPosts: PlaywrightRequest[] = [];
+    const onRequest = (request: PlaywrightRequest) => {
       const requestUrl = new URL(request.url());
       if (request.method() === "POST" && requestUrl.pathname === "/api/settings") {
         settingsPosts.push(request);

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { recordViewTransitions } from "./helpers.ts";
 
 test.use({ serviceWorkers: "block", storageState: { cookies: [], origins: [] } });
@@ -6,11 +6,11 @@ test.use({ serviceWorkers: "block", storageState: { cookies: [], origins: [] } }
 const artist = { id: "nav-link-artist", name: "Link Test Artist", tags: [], genres: [] };
 const playlist = { id: "908622995", name: "Link Test Mix", trackCount: 2, artworkUrl: null };
 const playlistPath = `/discover/playlists/deezer/${playlist.id}`;
-const trackTitle = (page, title) =>
+const trackTitle = (page: Page, title: string) =>
   page.getByRole("list", { name: `${playlist.name} tracks` }).getByText(title, { exact: true });
 
-async function fixture(page, { holdPlaylist } = {}) {
-  const requests = [];
+async function fixture(page: Page, { holdPlaylist }: { holdPlaylist?: Promise<unknown> } = {}) {
+  const requests: string[] = [];
   await page.routeWebSocket("**/ws**", (socket) => socket.close());
   await page.route("**/api/**", async (route) => {
     const request = route.request();
@@ -18,7 +18,7 @@ async function fixture(page, { holdPlaylist } = {}) {
     if (!pathname.startsWith("/api/")) return route.continue();
     const path = pathname.replace(/^\/api/, "");
     requests.push(path);
-    const json = (body, status = 200) => route.fulfill({ status, json: body });
+    const json = (body: unknown, status = 200) => route.fulfill({ status, json: body });
     if (path === "/health/bootstrap") {
       return json({ authRequired: false, onboardingRequired: false, lidarrConfigured: true });
     }
@@ -53,7 +53,7 @@ async function fixture(page, { holdPlaylist } = {}) {
     }
     if (path === "/library/lookup/batch") {
       return json(
-        Object.fromEntries((request.postDataJSON()?.mbids || []).map((id) => [id, false])),
+        Object.fromEntries((request.postDataJSON()?.mbids || []).map((id: string) => [id, false])),
       );
     }
     if (path.endsWith("/cover")) return json({ images: [] });
@@ -137,7 +137,7 @@ test("hovering a card prefetches its page and the click reuses it", async ({ pag
 test("a playlist opened from its card shows its header before the tracks load", async ({
   page,
 }) => {
-  let release;
+  let release!: (value?: unknown) => void;
   await fixture(page, {
     holdPlaylist: new Promise((resolve) => {
       release = resolve;
@@ -167,7 +167,7 @@ test("a playlist opened directly still loads without card data", async ({ page }
   await expect(trackTitle(page, "First Link Track")).toBeVisible();
 });
 
-async function openPlaylistAgain(page) {
+async function openPlaylistAgain(page: Page) {
   const link = page
     .locator("main")
     .getByRole("link", { name: `Open ${playlist.name}`, exact: true });
@@ -222,7 +222,7 @@ test("track artist names are links that resolve in place without a history entry
   await expect(page).toHaveURL(new RegExp(`${playlistPath}$`));
 });
 
-const settleScroll = async (page, locator) => {
+const settleScroll = async (page: Page, locator: Locator) => {
   await locator.scrollIntoViewIfNeeded();
   await page.evaluate(
     () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
@@ -247,7 +247,7 @@ test("right-clicking a Discover artist card opens its menu in place", async ({ p
 test.describe("on a touch screen", () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
-  async function touchPath(page, points, holdMs) {
+  async function touchPath(page: Page, points: { x: number; y: number }[], holdMs: number) {
     const cdp = await page.context().newCDPSession(page);
     const [first, ...rest] = points;
     await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [first] });
@@ -259,7 +259,7 @@ test.describe("on a touch screen", () => {
     await cdp.detach();
   }
 
-  async function artistCardCenter(page) {
+  async function artistCardCenter(page: Page) {
     const artistLink = page
       .locator("main")
       .getByRole("link", { name: `Open ${artist.name}`, exact: true })

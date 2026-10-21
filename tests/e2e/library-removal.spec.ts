@@ -1,11 +1,13 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { apiRequest, openApp, requireCredentials, useAurralWithoutLidarr } from "./helpers.ts";
 
 const artist = { mbid: "f22942a1-6f70-4f48-866e-238cb2308fbd", name: "Aphex Twin" };
 
+type LibraryAlbum = { id: string; mbid: string | null; managedBy: string | null };
+
 requireCredentials();
 
-async function ensureAurralArtist(page) {
+async function ensureAurralArtist(page: Page) {
   const existing = await apiRequest(page, `/api/library/artists/${artist.mbid}`);
   if (existing.status !== 404) {
     expect(
@@ -32,7 +34,7 @@ async function ensureAurralArtist(page) {
   return record;
 }
 
-async function openRemovalDialog(page, itemName, actionName) {
+async function openRemovalDialog(page: Page, itemName: string, actionName: string) {
   await page
     .getByRole("button", { name: `${itemName} options` })
     .first()
@@ -59,7 +61,8 @@ test("without Lidarr, an album and artist are deleted with their files", async (
 
     const details = await apiRequest(page, `/api/artists/${artist.mbid}`);
     const releaseGroup = (details.body?.["release-groups"] || []).find(
-      (entry) => entry["primary-type"] === "Album" && !(entry["secondary-types"] || []).length,
+      (entry: { "primary-type"?: string; "secondary-types"?: string[] }) =>
+        entry["primary-type"] === "Album" && !(entry["secondary-types"] || []).length,
     );
     expect(
       releaseGroup,
@@ -79,27 +82,30 @@ test("without Lidarr, an album and artist are deleted with their files", async (
       expect(addedAlbum.ok, JSON.stringify(addedAlbum.body)).toBe(true);
     }).toPass({ timeout: 60_000 });
 
-    let libraryAlbum = null;
+    let libraryAlbum: LibraryAlbum | null = null;
     await expect
       .poll(
         async () => {
           const albums = await apiRequest(page, `/api/library/albums?artistId=${artist.mbid}`);
           libraryAlbum =
-            (albums.body || []).find((album) => album.mbid === releaseGroup.id) || null;
+            (albums.body || []).find((album: LibraryAlbum) => album.mbid === releaseGroup.id) ||
+            null;
           return libraryAlbum?.managedBy;
         },
         { timeout: 30_000 },
       )
       .toBe("aurral");
 
-    await page.goto(`/library/album/${libraryAlbum.id}`);
+    await page.goto(`/library/album/${libraryAlbum!.id}`);
     const albumDialog = await openRemovalDialog(page, releaseGroup.title, "Delete album");
     await albumDialog.getByLabel("Delete album files").check();
     await albumDialog.getByRole("button", { name: "Delete album" }).click();
     await expect(albumDialog).toHaveCount(0, { timeout: 30_000 });
     await expect(page.getByRole("status").filter({ hasText: "Album deleted" })).toBeVisible();
     const albums = await apiRequest(page, `/api/library/albums?artistId=${artist.mbid}`);
-    expect((albums.body || []).some((album) => album.mbid === releaseGroup.id)).toBe(false);
+    expect((albums.body || []).some((album: LibraryAlbum) => album.mbid === releaseGroup.id)).toBe(
+      false,
+    );
 
     const artistRecord = await apiRequest(page, `/api/library/artists/${artist.mbid}`);
     await page.goto(`/library/artist/${artistRecord.body.id}`);

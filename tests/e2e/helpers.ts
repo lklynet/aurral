@@ -1,5 +1,13 @@
 import { isIP } from "node:net";
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+
+type RouteTransitionName = string | { name: string; inScope: boolean };
+
+declare global {
+  interface Window {
+    __routeTransitions: RouteTransitionName[][];
+  }
+}
 
 export const credentials = {
   username: String(process.env.AURRAL_TEST_USERNAME || "").trim(),
@@ -16,7 +24,7 @@ export function requireCredentials() {
   });
 }
 
-export function assertSafeCredentialTransport(address) {
+export function assertSafeCredentialTransport(address: string) {
   const url = new URL(address);
   const hostname = url.hostname.replace(/^\[|\]$/g, "");
   const isLoopback =
@@ -28,12 +36,16 @@ export function assertSafeCredentialTransport(address) {
   }
 }
 
-export async function openApp(page, navigation = "Primary navigation") {
+export async function openApp(page: Page, navigation = "Primary navigation") {
   await page.goto("/");
   await expect(page.getByLabel(navigation)).toBeVisible();
 }
 
-export function apiRequest(page, path, { method = "GET", body } = {}) {
+export function apiRequest(
+  page: Page,
+  path: string,
+  { method = "GET", body }: { method?: string; body?: unknown } = {},
+) {
   return page.evaluate(
     async ({ requestPath, requestMethod, requestBody }) => {
       const token = localStorage.getItem("auth_token");
@@ -57,11 +69,11 @@ export function apiRequest(page, path, { method = "GET", body } = {}) {
   );
 }
 
-export async function useAurralWithoutLidarr(page) {
+export async function useAurralWithoutLidarr(page: Page) {
   const settings = await apiRequest(page, "/api/settings");
   expect(settings.ok).toBe(true);
   const wasEnabled = settings.body?.integrations?.lidarr?.enabled !== false;
-  const setEnabled = async (enabled) => {
+  const setEnabled = async (enabled: boolean) => {
     const response = await apiRequest(page, "/api/settings", {
       method: "POST",
       body: { integrations: { lidarr: { enabled } } },
@@ -75,14 +87,14 @@ export async function useAurralWithoutLidarr(page) {
   return () => (wasEnabled ? setEnabled(true) : undefined);
 }
 
-export function recordViewTransitions(page, scope) {
+export function recordViewTransitions(page: Page, scope?: string) {
   return page.addInitScript((scopeSelector) => {
     window.__routeTransitions = [];
     const start = document.startViewTransition?.bind(document);
     if (!start) return;
     document.startViewTransition = (update) => {
       window.__routeTransitions.push(
-        [...document.querySelectorAll("[style*=view-transition-name]")].map((node) =>
+        [...document.querySelectorAll<HTMLElement>("[style*=view-transition-name]")].map((node) =>
           scopeSelector
             ? { name: node.style.viewTransitionName, inScope: Boolean(node.closest(scopeSelector)) }
             : node.style.viewTransitionName,

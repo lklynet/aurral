@@ -1,4 +1,4 @@
-import { devices, expect, test } from "@playwright/test";
+import { devices, expect, test, type Page } from "@playwright/test";
 import { openApp, requireCredentials } from "./helpers.ts";
 
 const { defaultBrowserType: _defaultBrowserType, ...iPhone } = devices["iPhone 13"];
@@ -12,13 +12,17 @@ const release = {
 
 requireCredentials();
 
-function pageMetrics(page) {
+function pageMetrics(page: Page) {
   return page.evaluate(() => ({
     viewportWidth: window.innerWidth,
     viewportHeight: window.innerHeight,
     documentWidth: document.documentElement.scrollWidth,
     documentHeight: document.documentElement.scrollHeight,
-    smallTextFields: [...document.querySelectorAll("input, select, textarea")]
+    smallTextFields: [
+      ...document.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
+        "input, select, textarea",
+      ),
+    ]
       .filter((field) => !["checkbox", "radio", "range", "hidden"].includes(field.type))
       .filter((field) => field.getClientRects().length > 0)
       .filter((field) => parseFloat(getComputedStyle(field).fontSize) < 16)
@@ -186,7 +190,7 @@ test("item menus open as bottom sheets and a tap outside only closes them", asyn
   await page.getByRole("button", { name: `${trackName} options` }).tap();
   const menu = page.getByRole("menu", { name: `${trackName} actions` });
   await expect(menu).toBeVisible();
-  const viewport = page.viewportSize();
+  const viewport = page.viewportSize()!;
   await expect
     .poll(async () => {
       const box = await menu.boundingBox();

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page, type Route } from "@playwright/test";
 
 test.use({ serviceWorkers: "block", storageState: { cookies: [], origins: [] } });
 
@@ -12,17 +12,19 @@ const artist = {
 };
 const release = { id: "library-menu-album", title: "Menu Test Album", "primary-type": "Album" };
 
-const monitorButton = (page) =>
+const monitorButton = (page: Page) =>
   page.locator(".artist-action-bar").getByRole("button", { name: /^(Monitor|Monitoring: .*)$/ });
 
-async function openCustomize(page) {
+async function openCustomize(page: Page) {
   await monitorButton(page).click();
   await page.getByRole("menuitem", { name: "Customize add…", exact: true }).click();
   return page.getByRole("dialog", { name: `Customize Lidarr add: ${artist.name}`, exact: true });
 }
 
+type FixtureRouteHandler = (route: Route, body: unknown) => Promise<void>;
+
 async function fixture(
-  page,
+  page: Page,
   {
     configured = true,
     add,
@@ -33,16 +35,26 @@ async function fixture(
     existingAfterAdd,
     albumOwner,
     releases = [],
+  }: {
+    configured?: boolean | null;
+    add?: FixtureRouteHandler;
+    update?: FixtureRouteHandler;
+    albumAdd?: FixtureRouteHandler;
+    health?: (route: Route) => Promise<void>;
+    monitoring?: () => unknown;
+    existingAfterAdd?: unknown;
+    albumOwner?: string;
+    releases?: (typeof release)[];
   } = {},
 ) {
-  const writes = [];
+  const writes: { path: string; body: { managedBy?: string } }[] = [];
   await page.routeWebSocket("**/ws**", (socket) => socket.close());
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const pathname = new URL(request.url()).pathname;
     if (!pathname.startsWith("/api/")) return route.continue();
     const path = pathname.replace(/^\/api/, "");
-    const json = (body, status = 200) => route.fulfill({ status, json: body });
+    const json = (body: unknown, status = 200) => route.fulfill({ status, json: body });
     if (path === "/health/bootstrap") {
       return json({
         authRequired: false,
@@ -87,7 +99,9 @@ async function fixture(
       });
     }
     if (path === "/library/lookup/batch") {
-      return json(Object.fromEntries(request.postDataJSON().mbids.map((id) => [id, false])));
+      return json(
+        Object.fromEntries(request.postDataJSON().mbids.map((id: string) => [id, false])),
+      );
     }
     if (path.startsWith("/library/lookup/"))
       return json(
@@ -236,7 +250,7 @@ test("customized Lidarr failure keeps the dialog available and never falls back 
 });
 
 test("a pending change prevents duplicates and a failure allows a retry", async ({ page }) => {
-  let finishUpdate;
+  let finishUpdate!: (value?: unknown) => void;
   const gate = new Promise((resolve) => {
     finishUpdate = resolve;
   });

@@ -1,8 +1,8 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 test.use({ serviceWorkers: "block", storageState: { cookies: [], origins: [] } });
 
-function silentWav(seconds, sampleRate = 8000) {
+function silentWav(seconds: number, sampleRate = 8000) {
   const dataSize = seconds * sampleRate;
   const wav = Buffer.alloc(44 + dataSize, 128);
   wav.write("RIFF", 0);
@@ -32,7 +32,7 @@ const artist = {
   sources: ["aurral"],
 };
 
-const albumEntity = (id, title, releaseDate, trackIds) => ({
+const albumEntity = (id: string, title: string, releaseDate: string, trackIds: string[]) => ({
   id,
   identityKey: `album:${id}`,
   mbid: null,
@@ -47,7 +47,7 @@ const albumEntity = (id, title, releaseDate, trackIds) => ({
   sources: ["aurral"],
 });
 
-const trackEntity = (id, title, albumId, trackNumber) => ({
+const trackEntity = (id: string, title: string, albumId: string, trackNumber: number) => ({
   id,
   identityKey: `track:${id}`,
   mbid: null,
@@ -68,10 +68,26 @@ const tracks = {
   calm: trackEntity("202", "Calm", "20", 2),
 };
 
+type ArtistEntity = typeof artist;
+type AlbumEntity = ReturnType<typeof albumEntity>;
+type TrackEntity = ReturnType<typeof trackEntity>;
+
 const page = (
-  kind,
-  items,
-  { albums = [], artists = [artist], trackList = [], hasMore = false, number = 1 } = {},
+  kind: string,
+  items: (ArtistEntity | AlbumEntity | TrackEntity)[],
+  {
+    albums = [],
+    artists = [artist],
+    trackList = [],
+    hasMore = false,
+    number = 1,
+  }: {
+    albums?: AlbumEntity[];
+    artists?: ArtistEntity[];
+    trackList?: TrackEntity[];
+    hasMore?: boolean;
+    number?: number;
+  } = {},
 ) => ({
   kind,
   page: number,
@@ -85,8 +101,8 @@ const page = (
   genres: [],
 });
 
-async function fixture(browserPage) {
-  const created = [];
+async function fixture(browserPage: Page) {
+  const created: { name: string; tracks: { trackName: string; albumName: string }[] }[] = [];
   await browserPage.routeWebSocket("**/ws**", (socket) => socket.close());
   await browserPage.route("**/api/**", async (route) => {
     const request = route.request();
@@ -94,7 +110,7 @@ async function fixture(browserPage) {
     if (!url.pathname.startsWith("/api/")) return route.continue();
     const path = url.pathname.replace(/^\/api/, "");
     const params = url.searchParams;
-    const json = (body, status = 200) => route.fulfill({ status, json: body });
+    const json = (body: unknown, status = 200) => route.fulfill({ status, json: body });
     if (path.startsWith("/library/canonical-stream/")) {
       const match = /bytes=(\d+)-(\d*)/.exec(request.headers().range || "");
       const headers = { "content-type": "audio/wav", "accept-ranges": "bytes" };
@@ -152,7 +168,7 @@ async function fixture(browserPage) {
   return created;
 }
 
-async function upNextTitles(region) {
+async function upNextTitles(region: Locator) {
   return region.locator(".player-queue__list .player-queue__name").allTextContents();
 }
 

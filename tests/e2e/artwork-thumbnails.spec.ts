@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 test.use({ serviceWorkers: "block", storageState: { cookies: [], origins: [] } });
 
@@ -32,9 +32,15 @@ const artist = {
   ],
 };
 
-async function fixture(page, { missingPreviews = false, missingOriginal = false } = {}) {
-  const imageRequests = [];
-  const coverRequests = [];
+async function fixture(
+  page: Page,
+  {
+    missingPreviews = false,
+    missingOriginal = false,
+  }: { missingPreviews?: boolean; missingOriginal?: boolean } = {},
+) {
+  const imageRequests: URL[] = [];
+  const coverRequests: string[] = [];
   await page.routeWebSocket("**/ws**", (socket) => socket.close());
   await page.route("https://assets.fanart.tv/**", (route) => {
     const url = new URL(route.request().url());
@@ -62,7 +68,7 @@ async function fixture(page, { missingPreviews = false, missingOriginal = false 
   await page.route("**/api/**", (route) => {
     const pathname = new URL(route.request().url()).pathname;
     if (!pathname.startsWith("/api/")) return route.continue();
-    const json = (body) => route.fulfill({ json: body });
+    const json = (body: unknown) => route.fulfill({ json: body });
     if (pathname === "/api/health/bootstrap") {
       return json({ authRequired: false, onboardingRequired: false, lidarrConfigured: true });
     }
@@ -125,11 +131,11 @@ async function fixture(page, { missingPreviews = false, missingOriginal = false 
   return { imageRequests, coverRequests };
 }
 
-const loadedSource = (image) =>
-  image.evaluate((element) =>
+const loadedSource = (image: Locator) =>
+  image.evaluate((element: HTMLImageElement) =>
     element.complete && element.naturalWidth > 0 ? element.currentSrc : null,
   );
-const albumImage = (page) =>
+const albumImage = (page: Page) =>
   page.locator(".artist-release-card").filter({ hasText: release.title }).locator("img");
 
 for (const density of [1, 2, 3]) {

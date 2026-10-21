@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { recordViewTransitions } from "./helpers.ts";
 
 test.use({ serviceWorkers: "block", storageState: { cookies: [], origins: [] } });
@@ -28,9 +28,21 @@ const tracks = Array.from({ length: 7 }, (_, index) => ({
 
 const cover = "/pick-header-cover.svg";
 
+type ReleaseGroup = typeof album & { listenerCount?: number; listenCount?: number };
+
 async function fixture(
-  page,
-  { withCover = false, releaseGroups = [album], previewTracks = [], findVideo = () => null } = {},
+  page: Page,
+  {
+    withCover = false,
+    releaseGroups = [album],
+    previewTracks = [],
+    findVideo = () => null,
+  }: {
+    withCover?: boolean;
+    releaseGroups?: ReleaseGroup[];
+    previewTracks?: typeof tracks;
+    findVideo?: (title: string | null) => { videoId: string; embedUrl: string } | null;
+  } = {},
 ) {
   await page.route(`**${cover}`, (route) =>
     route.fulfill({
@@ -44,7 +56,7 @@ async function fixture(
     const pathname = new URL(request.url()).pathname;
     if (!pathname.startsWith("/api/")) return route.continue();
     const path = pathname.replace(/^\/api/, "");
-    const json = (body, status = 200) => route.fulfill({ status, json: body });
+    const json = (body: unknown, status = 200) => route.fulfill({ status, json: body });
     if (path === "/health/bootstrap") {
       return json({ authRequired: false, onboardingRequired: false, lidarrConfigured: true });
     }
@@ -83,7 +95,7 @@ async function fixture(
     }
     if (path === "/library/lookup/batch") {
       return json(
-        Object.fromEntries((request.postDataJSON()?.mbids || []).map((id) => [id, false])),
+        Object.fromEntries((request.postDataJSON()?.mbids || []).map((id: string) => [id, false])),
       );
     }
     if (path.startsWith("/library/lookup/")) return json({ exists: false });
@@ -257,7 +269,7 @@ test("the artist pick stays on the album the user downloads", async ({ page }) =
   await expect(panel.getByRole("heading", { level: 2 })).toHaveText(album.title);
 });
 
-async function panelCornerColors(panel) {
+async function panelCornerColors(panel: Locator) {
   const box = await panel.boundingBox();
   const png = (await panel.screenshot()).toString("base64");
   return panel.page().evaluate(
@@ -269,10 +281,10 @@ async function panelCornerColors(panel) {
         width: image.naturalWidth,
         height: image.naturalHeight,
       });
-      const context = canvas.getContext("2d");
+      const context = canvas.getContext("2d")!;
       context.drawImage(image, 0, 0);
       const scale = image.naturalWidth / width;
-      const pixel = (x, y) => [
+      const pixel = (x: number, y: number) => [
         ...context
           .getImageData(Math.round(x * scale), Math.round(y * scale), 1, 1)
           .data.slice(0, 3),
@@ -283,7 +295,7 @@ async function panelCornerColors(panel) {
   );
 }
 
-for (const colorScheme of ["light", "dark"]) {
+for (const colorScheme of ["light", "dark"] as const) {
   test(`the artist pick takes a ${colorScheme} tint from its cover and stays plain without one`, async ({
     page,
   }) => {
@@ -326,7 +338,7 @@ test("Popular stays three rows tall and native videos adapt to the available mat
 }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 1100 });
   let matches = [1, 3, 6];
-  const findVideo = (title) => {
+  const findVideo = (title: string | null) => {
     const rank = Number(title.split(" ").at(-1));
     return matches.includes(rank)
       ? {

@@ -1,4 +1,22 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+import type { AurralRequestItem } from "../../backend/services/aurralHistoryService.ts";
+
+declare global {
+  interface Window {
+    sharedTrack?: { url: string };
+  }
+}
+
+type PlaylistWriteBody = { name: string; tracks: unknown[] };
+type DownloadWriteBody = {
+  artistName: string;
+  artistMbid: string;
+  trackName: string;
+  albumName: string;
+  albumMbid: string;
+  canonicalTrackId: string;
+};
+type WriteRecord = { path: string; body: PlaylistWriteBody | DownloadWriteBody };
 
 test.use({ serviceWorkers: "block", storageState: { cookies: [], origins: [] } });
 
@@ -30,7 +48,13 @@ const album = {
   availableTrackCount: 3,
   sources: ["aurral"],
 };
-const track = (id, title, artistName, trackNumber, available = true) => ({
+const track = (
+  id: string,
+  title: string,
+  artistName: string,
+  trackNumber: number,
+  available = true,
+) => ({
   id,
   identityKey: `track:${id}`,
   title,
@@ -64,8 +88,14 @@ wav.writeUInt16LE(8, 34);
 wav.write("data", 36);
 wav.writeUInt32LE(wav.length - 44, 40);
 
-async function fixture(page, { ownerArtistMbid = ownerMbid, activity = [] } = {}) {
-  const writes = [];
+async function fixture(
+  page: Page,
+  {
+    ownerArtistMbid = ownerMbid,
+    activity = [],
+  }: { ownerArtistMbid?: string | null; activity?: Partial<AurralRequestItem>[] } = {},
+) {
+  const writes: WriteRecord[] = [];
   const albumArtist = {
     ...artist,
     mbid: ownerArtistMbid,
@@ -73,7 +103,7 @@ async function fixture(page, { ownerArtistMbid = ownerMbid, activity = [] } = {}
   };
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "share", {
-      value: async (data) => {
+      value: async (data: { url: string }) => {
         window.sharedTrack = data;
       },
     });
@@ -83,7 +113,7 @@ async function fixture(page, { ownerArtistMbid = ownerMbid, activity = [] } = {}
     const request = route.request();
     const url = new URL(request.url());
     const path = url.pathname.replace(/^\/api/, "");
-    const json = (body) => route.fulfill({ json: body });
+    const json = (body: unknown) => route.fulfill({ json: body });
     if (path === "/health/bootstrap")
       return json({ authRequired: false, onboardingRequired: false, lidarrConfigured: false });
     if (path.startsWith("/health")) return json({ lidarrConfigured: false });
@@ -250,8 +280,8 @@ test("a shared track carries the performer credit without the owner's artist ide
     .getByRole("button", { name: "Share link", exact: true })
     .click();
   await expect.poll(() => page.evaluate(() => window.sharedTrack?.url)).toBeTruthy();
-  const url = await page.evaluate(() => window.sharedTrack.url);
-  const payload = Buffer.from(new URL(url).pathname.split("/").at(-1), "base64url");
+  const url = await page.evaluate(() => window.sharedTrack!.url);
+  const payload = Buffer.from(new URL(url).pathname.split("/").at(-1)!, "base64url");
   expect([...payload.subarray(0, 3)]).toEqual([1, 3, 3]);
   expect(payload.subarray(3, 19).toString("hex")).toBe("33333333333343338333333333333333");
   expect(payload.subarray(19, 35).toString("hex")).toBe("22222222222242228222222222222222");

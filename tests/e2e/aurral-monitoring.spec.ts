@@ -22,14 +22,14 @@ test("without Lidarr, an Aurral artist and album are monitored, unmonitored with
     ).toBe("aurral");
   }
 
-  const albumMonitoringWrites = [];
+  const albumMonitoringWrites: string[] = [];
   page.on("request", (request) => {
     if (request.method() === "PUT" && /\/library\/albums\/aurral\//.test(request.url())) {
       albumMonitoringWrites.push(request.url());
     }
   });
 
-  let albumId = null;
+  let albumId: string | null = null;
   try {
     if (existing.status === 404) {
       const added = await apiRequest(page, "/api/library/artists", {
@@ -103,7 +103,7 @@ test("without Lidarr, an Aurral artist and album are monitored, unmonitored with
       exact: true,
     });
     const unmonitoredMark = page.locator(".native-library-detail__manager");
-    const chooseMonitoring = async (label) => {
+    const chooseMonitoring = async (label: string) => {
       await albumOptions.click();
       await page.getByRole("menuitem", { name: label, exact: true }).click();
     };

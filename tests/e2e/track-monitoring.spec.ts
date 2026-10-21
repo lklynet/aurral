@@ -1,4 +1,23 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+
+type TrackFixture = {
+  id: number;
+  title: string;
+  available: boolean;
+  monitored: boolean;
+  keepFile?: boolean;
+};
+
+type LibraryFixture = {
+  albumMonitored: boolean;
+  pendingDownload: boolean;
+  tracks: TrackFixture[];
+  writes: ({ id: number; monitored: boolean } | { id: number; keepFile: boolean })[];
+  page?: () => unknown;
+  upgrading?: boolean;
+  writeGate?: Promise<unknown>;
+  failWrites?: boolean;
+};
 
 test.use({ serviceWorkers: "block", storageState: { cookies: [], origins: [] } });
 
@@ -9,8 +28,11 @@ const artist = {
   name: "Track Monitoring Artist",
 };
 
-function createLibrary({ albumMonitored = true, pendingDownload = false } = {}) {
-  const state = {
+function createLibrary({
+  albumMonitored = true,
+  pendingDownload = false,
+}: { albumMonitored?: boolean; pendingDownload?: boolean } = {}): LibraryFixture {
+  const state: LibraryFixture = {
     albumMonitored,
     tracks: [
       { id: 811, title: "Kept Track", available: true, monitored: true },
@@ -19,7 +41,7 @@ function createLibrary({ albumMonitored = true, pendingDownload = false } = {}) 
     pendingDownload,
     writes: [],
   };
-  const track = (entry, index) => ({
+  const track = (entry: TrackFixture, index: number) => ({
     id: entry.id,
     canonicalId: String(entry.id),
     identityKey: `recording:${entry.id}`,
@@ -85,24 +107,24 @@ function createLibrary({ albumMonitored = true, pendingDownload = false } = {}) 
   return state;
 }
 
-async function fixture(page, library) {
+async function fixture(page: Page, library: LibraryFixture) {
   await page.routeWebSocket("**/ws**", (socket) => socket.close());
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const pathname = new URL(request.url()).pathname;
     if (!pathname.startsWith("/api/")) return route.continue();
     const path = pathname.replace(/^\/api/, "");
-    const json = (body, status = 200) => route.fulfill({ status, json: body });
+    const json = (body: unknown, status = 200) => route.fulfill({ status, json: body });
     if (path === "/health/bootstrap")
       return json({ authRequired: false, onboardingRequired: false });
     if (path === "/health") return json({ lidarrConfigured: false });
-    if (path === "/library/canonical") return json(library.page());
+    if (path === "/library/canonical") return json(library.page!());
     const trackWrite = path.match(/^\/library\/tracks\/aurral\/(\d+)$/);
     if (trackWrite && request.method() === "PUT") {
       await library.writeGate;
       if (library.failWrites) return json({ error: "Fixture write failed" }, 500);
       const { monitored, keepFile } = request.postDataJSON();
-      const entry = library.tracks.find((candidate) => candidate.id === Number(trackWrite[1]));
+      const entry = library.tracks.find((candidate) => candidate.id === Number(trackWrite[1]))!;
       if (keepFile !== undefined) {
         library.writes.push({ id: entry.id, keepFile });
         entry.keepFile = keepFile;
@@ -148,15 +170,15 @@ async function fixture(page, library) {
   });
 }
 
-const trackOptions = (page, title) =>
+const trackOptions = (page: Page, title: string) =>
   page.getByRole("button", { name: `${title} options`, exact: true });
 
-const chooseFromTrackMenu = async (page, title, label) => {
+const chooseFromTrackMenu = async (page: Page, title: string, label: string) => {
   await trackOptions(page, title).click();
   await page.getByRole("menuitem", { name: label, exact: true }).click();
 };
 
-const trackRow = (page, title) =>
+const trackRow = (page: Page, title: string) =>
   page.getByRole("listitem").filter({ has: page.getByText(title, { exact: true }) });
 
 test("unmonitoring a track survives a reload and monitoring it again clears the marker", async ({
@@ -222,7 +244,7 @@ test("keeping a file cancels its upgrade, survives a reload, and can be undone",
     { id: 811, keepFile: true },
     { id: 811, keepFile: false },
   ]);
-  expect(library.tracks.find((entry) => entry.id === 811).monitored).toBe(true);
+  expect(library.tracks.find((entry) => entry.id === 811)!.monitored).toBe(true);
 });
 
 test("a track with an unfinished download asks before cancelling it", async ({ page }) => {
@@ -267,7 +289,7 @@ test("stopping monitoring marks the track at once and takes the marker back if t
   page,
 }) => {
   const library = createLibrary();
-  let releaseWrite;
+  let releaseWrite!: (value?: unknown) => void;
   library.writeGate = new Promise((resolve) => {
     releaseWrite = resolve;
   });

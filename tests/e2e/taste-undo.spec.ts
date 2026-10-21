@@ -1,4 +1,7 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+import type { getDiscoveryFeedback } from "../../backend/services/discovery/feedback.ts";
+
+type FeedbackEntry = ReturnType<typeof getDiscoveryFeedback>[number];
 
 test.use({ serviceWorkers: "block", storageState: { cookies: [], origins: [] } });
 
@@ -9,15 +12,18 @@ const artists = ["A", "B", "C"].map((letter) => ({
   genres: [],
 }));
 
-async function fixture(page) {
-  const state = { feedback: [], writes: [] };
+async function fixture(page: Page) {
+  const state: { feedback: FeedbackEntry[]; writes: { path: string; body: unknown }[] } = {
+    feedback: [],
+    writes: [],
+  };
   await page.routeWebSocket("**/ws**", (socket) => socket.close());
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const pathname = new URL(request.url()).pathname;
     if (!pathname.startsWith("/api/")) return route.continue();
     const path = pathname.replace(/^\/api/, "");
-    const json = (body, status = 200) => route.fulfill({ status, json: body });
+    const json = (body: unknown, status = 200) => route.fulfill({ status, json: body });
     if (path === "/health/bootstrap")
       return json({ authRequired: false, onboardingRequired: false });
     if (path === "/discover") return json({ recommendations: artists, configured: true });

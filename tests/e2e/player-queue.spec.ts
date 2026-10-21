@@ -1,4 +1,15 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type BrowserContext, type Locator, type Page } from "@playwright/test";
+
+type MediaActionHandlers = Partial<Record<MediaSessionAction, MediaSessionActionHandler | null>>;
+
+declare global {
+  interface Window {
+    __mediaHandlers: MediaActionHandlers;
+    __mediaEvents: { type: "playing" | "ended"; src: string; at: number }[];
+    __mediaSession: { handlers: MediaActionHandlers; positions: (MediaPositionState | null)[] };
+    __titles: string[];
+  }
+}
 
 const PLAYLIST_ID = "e2e-player-queue";
 const PLAYLIST_NAME = "E2E queue";
@@ -9,7 +20,7 @@ const GAPLESS_PLAYLIST_NAME = "E2E gapless";
 const GAPLESS_TRACK_SECONDS = 4;
 const AUDIO_LATENCY_MS = 1000;
 
-function silentWav(seconds, sampleRate = 8000) {
+function silentWav(seconds: number, sampleRate = 8000) {
   const dataSize = seconds * sampleRate;
   const wav = Buffer.alloc(44 + dataSize, 128);
   wav.write("RIFF", 0);
@@ -32,11 +43,11 @@ const wav = silentWav(TRACK_SECONDS);
 const gaplessWav = silentWav(GAPLESS_TRACK_SECONDS);
 
 function routeEditorialPlaylist(
-  target,
-  id,
-  name,
-  seconds,
-  { prefix = "", artworkUrl = null } = {},
+  target: Page | BrowserContext,
+  id: string,
+  name: string,
+  seconds: number,
+  { prefix = "", artworkUrl = null }: { prefix?: string; artworkUrl?: string | null } = {},
 ) {
   return target.route(`**/api/discover/editorial/${id}`, (route) =>
     route.fulfill({
@@ -89,7 +100,7 @@ test.beforeEach(async ({ page, context }) => {
   await expect(page.getByRole("heading", { name: PLAYLIST_NAME })).toBeVisible();
 });
 
-function playerControls(page) {
+function playerControls(page: Page) {
   const bar = page.locator(".global-player__inner");
   return {
     bar,
@@ -102,7 +113,9 @@ function playerControls(page) {
   };
 }
 
-async function waitUntilPlaying(player) {
+type PlayerControls = ReturnType<typeof playerControls>;
+
+async function waitUntilPlaying(player: PlayerControls) {
   await expect(player.playPause).toHaveAccessibleName("Pause");
   await expect(player.seek).toBeEnabled();
 }
@@ -114,7 +127,7 @@ test("shuffle plays the chosen track first, plays every other track once, and ke
   await page.getByRole("button", { name: `Shuffle ${PLAYLIST_NAME} previews` }).click();
   await expect(player.title).toHaveText(new RegExp(`^(${TRACK_NAMES.join("|")})$`));
   const shuffledFirst = await player.title.textContent();
-  const chosen = TRACK_NAMES.find((name) => name !== shuffledFirst);
+  const chosen = TRACK_NAMES.find((name) => name !== shuffledFirst)!;
 
   await page.getByRole("button", { name: `Play ${chosen}`, exact: true }).click();
   await expect(player.title).toHaveText(chosen);
@@ -122,7 +135,7 @@ test("shuffle plays the chosen track first, plays every other track once, and ke
   const played = [chosen];
   for (let step = 1; step < TRACK_NAMES.length; step += 1) {
     await player.next.click();
-    await expect(player.title).not.toHaveText(played.at(-1));
+    await expect(player.title).not.toHaveText(played.at(-1)!);
     played.push(await player.title.textContent());
   }
   expect([...played].sort()).toEqual([...TRACK_NAMES].sort());
@@ -159,7 +172,7 @@ test("shuffle stays on after the player closes and shuffles the next queue after
   const played = [await player.title.textContent()];
   for (let step = 1; step < TRACK_NAMES.length; step += 1) {
     await player.next.click();
-    await expect(player.title).not.toHaveText(played.at(-1));
+    await expect(player.title).not.toHaveText(played.at(-1)!);
     played.push(await player.title.textContent());
   }
   expect(played).toEqual(["Alpha", "Charlie", "Delta", "Echo", "Bravo"]);
@@ -275,7 +288,7 @@ test("hovering the seek bar previews the time and clicking there seeks to it", a
   await page.mouse.move(box.x + box.width * 0.5, box.y - 80);
   await expect(preview).toHaveCount(0);
 
-  const width = (selector) =>
+  const width = (selector: string) =>
     wrap.locator(selector).evaluate((node) => node.getBoundingClientRect().width);
   await expect
     .poll(() => width(".global-player__progress-buffered"))
@@ -313,7 +326,7 @@ test("the next track starts without waiting for the network when the current one
     HTMLMediaElement.prototype.load = function observeLoad(...args) {
       if (!observed.has(this)) {
         observed.add(this);
-        for (const type of ["playing", "ended"]) {
+        for (const type of ["playing", "ended"] as const) {
           this.addEventListener(type, () =>
             window.__mediaEvents.push({ type, src: this.currentSrc, at: performance.now() }),
           );
@@ -431,8 +444,14 @@ test("lock-screen controls seek, follow play and pause, and clear with the queue
   await expect(player.playPause).toHaveAccessibleName("Play");
 
   const lastPosition = () => page.evaluate(() => window.__mediaSession.positions.at(-1));
-  const runAction = (action, details = {}) =>
-    page.evaluate(
+  const runAction = (
+    action: MediaSessionAction,
+    details: Omit<MediaSessionActionDetails, "action"> = {},
+  ) =>
+    page.evaluate<
+      void | undefined,
+      [MediaSessionAction, Omit<MediaSessionActionDetails, "action">]
+    >(
       ([name, value]) => window.__mediaSession.handlers[name]?.({ action: name, ...value }),
       [action, details],
     );
@@ -460,7 +479,7 @@ test("lock-screen controls seek, follow play and pause, and clear with the queue
   expect(await page.evaluate(() => navigator.mediaSession.playbackState)).toBe("none");
 });
 
-async function upNextTitles(region) {
+async function upNextTitles(region: Locator) {
   return region.locator(".player-queue__list .player-queue__name").allTextContents();
 }
 
@@ -538,7 +557,8 @@ test("with the queue open, player tooltips leave the volume controls uncovered",
   await toggle.hover();
   const tooltip = page.getByRole("tooltip", { name: "Hide queue" });
   await expect(tooltip).toBeVisible();
-  const overlaps = (a, b) =>
+  type Box = { x: number; y: number; width: number; height: number };
+  const overlaps = (a: Box, b: Box) =>
     a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
   const tip = await tooltip.boundingBox();
   for (const control of [
@@ -692,7 +712,7 @@ test("the tab title shows the playing track and goes back to the page title on p
 test("the playing row shows moving bars, still bars when paused, and can be paused while it loads", async ({
   page,
 }) => {
-  let releaseBravo;
+  let releaseBravo!: (value?: unknown) => void;
   const bravoHeld = new Promise((resolve) => {
     releaseBravo = resolve;
   });
@@ -747,7 +767,7 @@ test("the playing row shows moving bars, still bars when paused, and can be paus
 const RED_COVER =
   '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="#c82828"/></svg>';
 
-async function playCoveredPlaylist(page, artworkUrl) {
+async function playCoveredPlaylist(page: Page, artworkUrl: string) {
   await page.route("**/e2e-art/**", (route) =>
     route.request().url().includes("/missing")
       ? route.fulfill({ status: 404, body: "" })
@@ -761,15 +781,20 @@ async function playCoveredPlaylist(page, artworkUrl) {
   await expect(page.locator(".global-player")).toBeAttached();
 }
 
-function firstColor(page, selector, property, pseudo = null) {
-  return page.evaluate(
+function firstColor(
+  page: Page,
+  selector: string,
+  property: "backgroundColor" | "backgroundImage",
+  pseudo: string | null = null,
+) {
+  return page.evaluate<number[], [string, "backgroundColor" | "backgroundImage", string | null]>(
     ([target, name, element]) => {
       const value = getComputedStyle(document.querySelector(target), element)[name];
       const color = /(?:rgba?|color)\([^)]*\)/.exec(value)?.[0] ?? "transparent";
       const context = Object.assign(document.createElement("canvas"), {
         width: 1,
         height: 1,
-      }).getContext("2d");
+      }).getContext("2d")!;
       context.fillStyle = color;
       context.fillRect(0, 0, 1, 1);
       return [...context.getImageData(0, 0, 1, 1).data];

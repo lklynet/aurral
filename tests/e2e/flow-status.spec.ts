@@ -3,16 +3,22 @@ import { openApp, requireCredentials } from "./helpers.ts";
 
 requireCredentials();
 
+declare global {
+  interface Window {
+    flowStatusCheck: { sockets: WebSocket[]; channels: string[]; reads: number };
+  }
+}
+
 test("Flow status uses the playlists channel and refreshes after reconnect", async ({ page }) => {
   await page.addInitScript(() => {
     window.flowStatusCheck = { sockets: [], channels: [], reads: 0 };
     const NativeWebSocket = window.WebSocket;
     window.WebSocket = class extends NativeWebSocket {
-      constructor(...args) {
+      constructor(...args: ConstructorParameters<typeof WebSocket>) {
         super(...args);
         window.flowStatusCheck.sockets.push(this);
       }
-      send(data) {
+      send(data: string) {
         const message = JSON.parse(data);
         if (message.type === "subscribe") window.flowStatusCheck.channels.push(...message.channels);
         super.send(data);
@@ -33,7 +39,7 @@ test("Flow status uses the playlists channel and refreshes after reconnect", asy
   const previous = await page.evaluate(() => {
     const check = window.flowStatusCheck;
     const result = { reads: check.reads, sockets: check.sockets.length };
-    check.sockets.at(-1).close(4001, "Reconnect check");
+    check.sockets.at(-1)!.close(4001, "Reconnect check");
     return result;
   });
   await expect

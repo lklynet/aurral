@@ -1,10 +1,17 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+import type { AppSettings, SettingsUpdate } from "../../backend/db/helpers/settings.ts";
 import { apiRequest, openApp, requireCredentials } from "./helpers.ts";
 
 requireCredentials();
 
-async function holdSettingsSaves(page) {
-  const saves = [];
+type HeldSave = {
+  body: { inbox: NonNullable<SettingsUpdate["inbox"]> };
+  released: Promise<void>;
+  release: () => void;
+};
+
+async function holdSettingsSaves(page: Page) {
+  const saves: HeldSave[] = [];
   let inFlight = 0;
   let overlapped = false;
   await page.route("**/api/settings", async (route) => {
@@ -12,7 +19,7 @@ async function holdSettingsSaves(page) {
       await route.fallback();
       return;
     }
-    const save = { body: route.request().postDataJSON() };
+    const save = { body: route.request().postDataJSON() } as HeldSave;
     save.released = new Promise((resolve) => {
       save.release = resolve;
     });
@@ -33,13 +40,13 @@ async function holdSettingsSaves(page) {
   };
 }
 
-async function readInbox(page) {
+async function readInbox(page: Page): Promise<Partial<AppSettings["inbox"]>> {
   const response = await apiRequest(page, "/api/settings");
   expect(response.ok).toBe(true);
   return response.body?.inbox || {};
 }
 
-async function restoreInbox(page, inbox) {
+async function restoreInbox(page: Page, inbox: Partial<AppSettings["inbox"]>) {
   await page.unrouteAll({ behavior: "wait" });
   const restored = await apiRequest(page, "/api/settings", { method: "POST", body: { inbox } });
   expect(restored.ok).toBe(true);
