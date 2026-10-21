@@ -1,41 +1,32 @@
 import { queryClient, queryKeys } from "../queryClient.ts";
 import { getPlaylistTrackStreamUrl } from "./api/endpoints/playlists.ts";
+import type {
+  LibraryAlbum as BackendLibraryAlbum,
+  LibraryArtist as BackendLibraryArtist,
+  LibraryGenre,
+  LibraryTrack as BackendLibraryTrack,
+  LibraryTrackFile as BackendLibraryTrackFile,
+} from "../../../backend/services/libraryQueryService.ts";
 
-interface LibraryEntity {
-  id: string | number;
+interface LibraryArtworkFields {
+  userFavorite?: boolean;
+  coverUrl?: string | null;
+  defaultCoverUrl?: string | null;
+  customArtworkUrl?: string | null;
+  artworkUrl?: string | null;
 }
 
-interface LibraryTrackFile {
-  available?: boolean;
-  albumId?: string | number | null;
-}
-
-export interface LibraryTrack extends LibraryEntity {
-  files?: LibraryTrackFile[] | null;
-}
-
-interface AlbumMetadata {
-  albumType?: string | null;
-  releaseType?: string | null;
-  tags?: { releasetype?: string | string[] } | null;
-  monitored?: boolean | null;
-}
-
-export interface LibraryAlbum extends LibraryEntity {
-  releaseGroupMbid?: string | null;
-  mbid?: string | null;
-  releaseDate?: string | null;
-  trackCount?: number;
-  availableTrackCount?: number;
-  trackIds?: (string | number)[] | null;
-  metadata?: AlbumMetadata | null;
-}
+export type LibraryArtist = BackendLibraryArtist & LibraryArtworkFields;
+export type LibraryAlbum = BackendLibraryAlbum & LibraryArtworkFields;
+type LibraryTrackFile = BackendLibraryTrackFile & { previewUrl?: string };
+export type LibraryTrack = Omit<BackendLibraryTrack, "files"> &
+  LibraryArtworkFields & { files: LibraryTrackFile[] };
 
 interface LibraryData {
-  artists: LibraryEntity[];
+  artists: LibraryArtist[];
   albums: LibraryAlbum[];
   tracks: LibraryTrack[];
-  genres: string[];
+  genres: LibraryGenre[];
 }
 
 const text = (value: unknown) => String(value || "").trim();
@@ -138,7 +129,7 @@ export const mergeAlbumTrackPageIntoLibrary = (
   albumId: string | number,
   tracks: LibraryTrack[],
 ) => {
-  const merge = (kind: "artists" | "albums" | "tracks") => {
+  const merge = <Kind extends "artists" | "albums" | "tracks">(kind: Kind): LibraryData[Kind] => {
     const existing = current[kind] || [];
     const merged = [...existing, ...(Array.isArray(page?.[kind]) ? page[kind] : [])].filter(
       (entity, index, values) =>
@@ -150,7 +141,7 @@ export const mergeAlbumTrackPageIntoLibrary = (
       : merged;
   };
   const artists = merge("artists");
-  const mergedAlbums: LibraryAlbum[] = merge("albums");
+  const mergedAlbums = merge("albums");
   const availableTrackCount = tracks.filter((track) => firstAvailableFile(track)).length;
   let albumsChanged = mergedAlbums !== current.albums;
   const albums = mergedAlbums.map((entity) => {

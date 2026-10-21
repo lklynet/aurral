@@ -3,7 +3,7 @@ export const QUEUE_STORAGE_KEY = "aurral.player.queue.v1";
 const VERSION = 1;
 const MAX_STORED_TRACKS = 200;
 const HISTORY_KEPT = 20;
-const REPEAT_MODES = new Set(["off", "all", "one"]);
+const REPEAT_MODES = new Set<unknown>(["off", "all", "one"]);
 
 type QueueTrack = { entryId?: unknown } & Record<string, unknown>;
 
@@ -110,7 +110,7 @@ function isPermutation(order: unknown, length: number): order is number[] {
 
 export function parseStoredQueue(
   raw: string | null,
-  { owner, token }: { owner: string | null; token: string | null | undefined },
+  { owner, token }: { owner: string | null; token?: string | null },
 ) {
   if (!raw || owner == null) return null;
   let stored: StoredQueue;
@@ -130,15 +130,22 @@ export function parseStoredQueue(
     return null;
   }
   if (!isPermutation(playbackOrder, tracks.length)) return null;
-  if (!Number.isInteger(currentIndex) || currentIndex < 0 || currentIndex >= tracks.length)
+  if (
+    !Number.isInteger(currentIndex) ||
+    (currentIndex as number) < 0 ||
+    (currentIndex as number) >= tracks.length
+  )
     return null;
   return {
     queue: tracks.map((track) => restoredTrack(track, token)),
     playbackOrder,
     currentIndex,
     isShuffleEnabled: stored.isShuffleEnabled === true,
-    repeatMode: REPEAT_MODES.has(stored.repeatMode) ? stored.repeatMode : "off",
+    repeatMode: REPEAT_MODES.has(stored.repeatMode) ? (stored.repeatMode as string) : "off",
     source: stored.source && typeof stored.source === "object" ? stored.source : null,
-    position: Number.isFinite(stored.position) && stored.position > 0 ? stored.position : 0,
+    position:
+      Number.isFinite(stored.position) && (stored.position as number) > 0
+        ? (stored.position as number)
+        : 0,
   };
 }

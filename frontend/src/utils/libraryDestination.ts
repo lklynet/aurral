@@ -13,7 +13,7 @@ interface LibrarySourceFields {
 interface LibraryAlbumRef extends LibrarySourceFields {
   releaseGroupMbid?: string | null;
   mbid?: string | null;
-  providerId?: string | null;
+  providerId?: string | number | null;
 }
 
 export const normalizeLibraryManager = (value: unknown): LibraryManager | null => {

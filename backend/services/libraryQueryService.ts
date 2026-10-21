@@ -142,6 +142,82 @@ const CANONICAL_FROM = `FROM library_artists AS artist
     ON media.track_id = track.id
     AND ${albumMediaCondition("media", "album_track")}`;
 
+export interface LibraryAlbumMetadata {
+  albumType?: string | null;
+  releaseType?: string | null;
+  tags?: { releasetype?: string | string[] } | null;
+  monitored?: boolean | null;
+}
+
+export interface LibraryTrackFile {
+  id: number;
+  albumId: number | null;
+  source: string;
+  path: string;
+  format: string | null;
+  size: number;
+  mtimeMs: number | null;
+  durationMs: number | null;
+  quality: unknown;
+  available: boolean;
+  createdAt: number;
+}
+
+export interface LibraryTrackAlbumRef {
+  albumId: number;
+  discNumber: number;
+  trackNumber: number;
+}
+
+export interface LibraryAlbum {
+  id: number;
+  canonicalId?: string;
+  identityKey: string;
+  mbid: string | null;
+  releaseGroupMbid: string | null;
+  artistId: number;
+  title: string;
+  albumArtist: string | null;
+  releaseDate: string | null;
+  createdAt: number;
+  metadata: LibraryAlbumMetadata | null;
+  providerId?: string | number | null;
+  monitored?: boolean;
+  monitorOption?: string;
+  trackIds: number[];
+  sources: string[];
+  source?: string | null;
+  available: boolean;
+  managedBy?: string | null;
+  monitorMode?: string | null;
+  trackCount?: number;
+  availableTrackCount?: number;
+}
+
+export interface LibraryTrack {
+  id: number;
+  canonicalId?: string;
+  identityKey: string;
+  mbid: string | null;
+  title: string;
+  artistName: string | null;
+  createdAt: number;
+  metadata: Record<string, unknown> | null;
+  providerId?: string | number | null;
+  monitored: boolean;
+  keepFile: boolean;
+  albums: LibraryTrackAlbumRef[];
+  files: LibraryTrackFile[];
+  sources: string[];
+  source?: string | null;
+  available: boolean;
+  managedBy?: string | null;
+  monitorMode?: string | null;
+}
+
+export type LibraryArtist = NonNullable<ReturnType<typeof getLibraryArtistPage>["artists"][number]>;
+export type LibraryGenre = ReturnType<typeof computeLibraryGenreStats>[number];
+
 function buildLibraryFromRows(rows) {
   const artistManagement = getManagedByMap("artist");
   const albumManagement = getManagedByMap("album");

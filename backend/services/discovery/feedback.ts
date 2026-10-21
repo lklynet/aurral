@@ -12,7 +12,19 @@ const normalizeFeedbackAction = (value) => {
   return ["more_like_this", "less_like_this", "block_artist"].includes(action) ? action : null;
 };
 
-const normalizeFeedbackList = (value) =>
+export interface DiscoveryFeedbackEntry {
+  id: string | null;
+  artistId: string | null;
+  artistName: string | null;
+  action: string | null;
+  sourceContext: string | null;
+  tagContext: string[];
+  seedContext: string[];
+  createdAt: string | number | null;
+  expiresAt: string | number | null;
+}
+
+const normalizeFeedbackList = (value): DiscoveryFeedbackEntry[] =>
   (Array.isArray(value) ? value : [])
     .filter((entry) => entry && typeof entry === "object")
     .map((entry) => ({

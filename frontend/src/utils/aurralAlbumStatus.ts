@@ -14,12 +14,12 @@ export type AlbumStatus = keyof typeof STATUS_DISPLAY;
 const ACTIVE_STATUSES = new Set<AlbumStatus | null | undefined>(["queued", "downloading"]);
 const RETRY_STATUSES = new Set<AlbumStatus | undefined>(["failed", "cancelled"]);
 
-const RECOVERY_LINKS = {
+type RecoveryCode = "download_source_missing" | "review_required" | "source_failed";
+
+const RECOVERY_LINKS: Partial<Record<RecoveryCode, { to: string; label: string }>> = {
   download_source_missing: { to: "/settings/download-clients", label: "Set up a download client" },
   review_required: { to: "/activity/queue", label: "Review in Activity" },
 };
-
-type RecoveryCode = keyof typeof RECOVERY_LINKS | "source_failed";
 
 interface AlbumRecovery {
   code: RecoveryCode;
@@ -64,7 +64,7 @@ export const describeAurralAlbumStatus = ({ status, recovery }: AlbumStatusEntry
     active: shouldPollAlbumStatus(status),
     actions: albumActions(status, code),
     recovery: code
-      ? { code, message: recovery.message || "", link: RECOVERY_LINKS[code] || null }
+      ? { code, message: recovery!.message || "", link: RECOVERY_LINKS[code] || null }
       : null,
   };
 };

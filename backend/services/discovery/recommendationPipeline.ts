@@ -122,7 +122,7 @@ export interface RecommendationFeedback {
   artistName?: string | null;
   tagContext?: string[];
   seedContext?: string[];
-  expiresAt?: string | null;
+  expiresAt?: string | number | null;
 }
 
 interface DiscoveryModeMultipliers {

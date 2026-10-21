@@ -1,15 +1,28 @@
-export interface DiscoveryFeedbackEntry {
-  id?: string | null;
-  action?: string | null;
-  artistId?: string | null;
-  artistName?: string | null;
-  createdAt?: string | null;
+import type { DiscoveryFeedbackEntry as BackendDiscoveryFeedbackEntry } from "../../../backend/services/discovery/feedback.ts";
+
+export type DiscoveryFeedbackEntry = Partial<BackendDiscoveryFeedbackEntry>;
+
+interface DiscoveryFeedbackGetResponse {
+  feedback: DiscoveryFeedbackEntry[];
+  feedbackList?: undefined;
 }
 
-interface DiscoveryFeedbackResponse {
-  feedback?: DiscoveryFeedbackEntry[];
-  feedbackList?: DiscoveryFeedbackEntry[];
+interface DiscoveryFeedbackPostResponse {
+  success: boolean;
+  feedback: DiscoveryFeedbackEntry;
+  feedbackList: DiscoveryFeedbackEntry[];
 }
+
+interface DiscoveryFeedbackListResponse {
+  success: boolean;
+  feedback?: undefined;
+  feedbackList: DiscoveryFeedbackEntry[];
+}
+
+type DiscoveryFeedbackResponse =
+  | DiscoveryFeedbackGetResponse
+  | DiscoveryFeedbackPostResponse
+  | DiscoveryFeedbackListResponse;
 
 type DiscoveryFeedbackInput =
   | DiscoveryFeedbackEntry[]
@@ -164,8 +177,8 @@ export const applyArtistDiscoveryFeedback = async ({
   payload: DiscoveryFeedbackEntry;
   addDiscoveryFeedback: (
     payload: DiscoveryFeedbackEntry,
-  ) => Promise<DiscoveryFeedbackResponse | undefined>;
-  removeDiscoveryFeedback: (id: string) => Promise<DiscoveryFeedbackResponse | undefined>;
+  ) => Promise<DiscoveryFeedbackPostResponse | undefined>;
+  removeDiscoveryFeedback: (id: string) => Promise<DiscoveryFeedbackListResponse | undefined>;
 }) => {
   let feedback = normalizeDiscoveryFeedbackList(feedbackList);
 

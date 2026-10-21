@@ -121,8 +121,8 @@ export const describeAurralMonitoringError = (
 
 export const getAlbumMonitoredState = (album: AurralAlbumMonitoredRef | null) => {
   if (normalizeLibraryManager(album?.managedBy) !== "aurral") return null;
-  const monitored = album.monitored ?? album.metadata?.monitored;
-  return monitored === true && album.monitorMode !== "unmonitored";
+  const monitored = album!.monitored ?? album!.metadata?.monitored;
+  return monitored === true && album!.monitorMode !== "unmonitored";
 };
 
 export const getMonitoringMenuAction = ({
