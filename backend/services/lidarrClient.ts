@@ -42,7 +42,7 @@ type LidarrAxiosConfig = Parameters<typeof axios>[0];
 type LidarrHttpMethod = "GET" | "POST" | "PUT" | "DELETE";
 
 interface LidarrPage<T> {
-  records?: T[];
+  records: T[];
 }
 
 interface LidarrAddArtistOptions {
@@ -52,8 +52,8 @@ interface LidarrAddArtistOptions {
   searchForMissingAlbums?: boolean;
 }
 
-interface LidarrArtist {
-  id: number;
+interface LidarrArtistLookup {
+  id?: number;
   artistName?: string;
   foreignArtistId?: string;
   monitored?: boolean;
@@ -66,6 +66,17 @@ interface LidarrArtist {
   addOptions?: LidarrAddArtistOptions;
 }
 
+interface LidarrArtist extends LidarrArtistLookup {
+  id: number;
+}
+
+interface LidarrAlbumStatistics {
+  trackCount?: number;
+  trackFileCount?: number;
+  percentOfTracks?: number;
+  sizeOnDisk?: number;
+}
+
 interface LidarrAlbum {
   id: number;
   title?: string | null;
@@ -74,6 +85,8 @@ interface LidarrAlbum {
   artist?: LidarrArtist;
   monitored?: boolean;
   anyReleaseOk?: boolean;
+  releaseDate?: string | null;
+  statistics?: LidarrAlbumStatistics;
 }
 
 interface LidarrTrack {
@@ -130,7 +143,7 @@ interface LidarrHistoryItem {
   sourceTitle?: string;
   date?: string;
   eventType?: string;
-  data?: Record<string, string>;
+  data?: Record<string, string | null>;
   downloadId?: string;
   album?: LidarrAlbum;
   artist?: LidarrArtist;
@@ -156,6 +169,31 @@ export interface LidarrRootFolder {
 export interface LidarrTag {
   id: number;
   label?: string | null;
+}
+
+export interface LidarrCustomFormat {
+  id: number;
+  name: string;
+}
+
+export type LidarrAlbumTypeOption =
+  | string
+  | { name?: string; value?: string; albumType?: { name?: string } };
+
+export interface LidarrMetadataProfile {
+  id: number;
+  name: string;
+  primaryAlbumTypes?: LidarrAlbumTypeOption[];
+  secondaryAlbumTypes?: LidarrAlbumTypeOption[];
+}
+
+export interface LidarrNamingConfig {
+  id: number;
+  renameTracks?: boolean;
+  replaceIllegalCharacters?: boolean;
+  standardTrackFormat?: string;
+  multiDiscTrackFormat?: string;
+  artistFolderFormat?: string;
 }
 
 interface LidarrCommand {
@@ -205,7 +243,7 @@ interface LidarrConfig {
   insecure: boolean;
   timeoutMs: number;
   circuitDisabled: boolean;
-  enabled: boolean;
+  enabled?: boolean;
 }
 
 interface LidarrCircuitProbe {
@@ -252,7 +290,11 @@ function normalizeRootFolderPath(value: unknown): string | null {
 
 function normalizeRootFolderPaths(values: unknown) {
   return [
-    ...new Set((Array.isArray(values) ? values : []).map(normalizeRootFolderPath).filter(Boolean)),
+    ...new Set(
+      (Array.isArray(values) ? values : [])
+        .map(normalizeRootFolderPath)
+        .filter(Boolean) as string[],
+    ),
   ];
 }
 
@@ -1321,7 +1363,7 @@ export class LidarrClient {
         throw error;
       }
 
-      const lookup = await this.request<LidarrArtist[]>(
+      const lookup = await this.request<LidarrArtistLookup[]>(
         `/artist/lookup?term=${encodeURIComponent(canonicalName)}`,
       );
       const canonicalProviderIds = new Set(
@@ -1990,15 +2032,25 @@ export class LidarrClient {
   }
 
   async getMetadataProfiles(skipConfigUpdate = false) {
-    return this.request<LidarrNamedProfile[]>("/metadataprofile", "GET", null, skipConfigUpdate);
+    return this.request<LidarrMetadataProfile[]>("/metadataprofile", "GET", null, skipConfigUpdate);
   }
 
   async createMetadataProfile(profileData: unknown, skipConfigUpdate = false) {
-    return this.request("/metadataprofile", "POST", profileData, skipConfigUpdate);
+    return this.request<LidarrMetadataProfile>(
+      "/metadataprofile",
+      "POST",
+      profileData,
+      skipConfigUpdate,
+    );
   }
 
   async updateMetadataProfile(profileId: number, profileData: unknown, skipConfigUpdate = false) {
-    return this.request(`/metadataprofile/${profileId}`, "PUT", profileData, skipConfigUpdate);
+    return this.request<LidarrMetadataProfile>(
+      `/metadataprofile/${profileId}`,
+      "PUT",
+      profileData,
+      skipConfigUpdate,
+    );
   }
 
   async getQualityProfile(profileId: number, skipConfigUpdate = false) {
@@ -2029,15 +2081,15 @@ export class LidarrClient {
   }
 
   async getCustomFormats(skipConfigUpdate = false) {
-    return this.request("/customformat", "GET", null, skipConfigUpdate);
+    return this.request<LidarrCustomFormat[]>("/customformat", "GET", null, skipConfigUpdate);
   }
 
   async createCustomFormat(formatData: unknown, skipConfigUpdate = false) {
-    return this.request("/customformat", "POST", formatData, skipConfigUpdate);
+    return this.request<LidarrCustomFormat>("/customformat", "POST", formatData, skipConfigUpdate);
   }
 
   async getNamingConfig(skipConfigUpdate = false) {
-    return this.request("/config/naming", "GET", null, skipConfigUpdate);
+    return this.request<LidarrNamingConfig>("/config/naming", "GET", null, skipConfigUpdate);
   }
 
   async updateNamingConfig(configData: unknown, skipConfigUpdate = false) {

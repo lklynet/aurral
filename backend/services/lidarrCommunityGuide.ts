@@ -1,24 +1,21 @@
+import type {
+  LidarrAlbumTypeOption,
+  LidarrCustomFormat,
+  LidarrMetadataProfile,
+  LidarrNamingConfig,
+} from "./lidarrClient.ts";
+
 type LidarrQualityDefinition = {
   id: number;
   title?: string;
   quality?: { id?: number; name?: string };
 };
-type LidarrCustomFormat = { id: number; name: string };
 type LidarrCustomFormatInput = {
   name: string;
   includeCustomFormatWhenRenaming: boolean;
   specifications: unknown[];
 };
 type LidarrReleaseProfile = { id: number; name: string; ignored?: string[] };
-type LidarrAlbumTypeOption =
-  | string
-  | { name?: string; value?: string; albumType?: { name?: string } };
-type LidarrMetadataProfile = {
-  id: number;
-  name: string;
-  primaryAlbumTypes?: LidarrAlbumTypeOption[];
-  secondaryAlbumTypes?: LidarrAlbumTypeOption[];
-};
 type LidarrQualityItem = {
   id?: number;
   name?: string;
@@ -43,7 +40,7 @@ type LidarrCommunityGuideClient = {
   getMetadataProfiles(): Promise<LidarrMetadataProfile[]>;
   updateMetadataProfile(id: number, data: unknown): Promise<LidarrMetadataProfile>;
   createMetadataProfile(data: unknown): Promise<LidarrMetadataProfile>;
-  getNamingConfig(): Promise<Record<string, unknown>>;
+  getNamingConfig(): Promise<LidarrNamingConfig>;
   updateNamingConfig(data: unknown): Promise<unknown>;
   getQualityProfiles(): Promise<LidarrQualityProfile[]>;
   createQualityProfile(data: unknown): Promise<LidarrQualityProfile>;

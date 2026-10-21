@@ -4,7 +4,7 @@ import type { buildOnboardingPayload } from "../../onboardingPayload.ts";
 import type { listBrowseDirectory } from "../../../../../backend/services/downloadFolderConfig.ts";
 import type { resolveListenHistorySettings } from "../../../../../backend/services/listeningHistory.ts";
 import type { recordPlayEvent as recordPlayEventService } from "../../../../../backend/services/playEventService.ts";
-import type { LidarrNamedProfile } from "../../../../../backend/services/lidarrSettingsService.ts";
+import type { LidarrNamedProfile } from "../../../../../backend/services/lidarrClient.ts";
 import type {
   BootstrapPayload,
   HealthLiveResponse,
