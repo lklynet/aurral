@@ -1,5 +1,6 @@
 import path from "path";
 import fs from "fs/promises";
+import type { Dirent } from "fs";
 import { db } from "../config/db-sqlite.ts";
 import { getDownloadClient } from "./download/downloadClientSettings.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
@@ -57,6 +58,136 @@ import {
 import { deferForInactiveOwner } from "./downloadJobs/playlistOwnerStatus.ts";
 import { cacheSearchResults, getCachedSearchResults } from "./downloadJobs/searchResultCache.ts";
 import createCache from "./apiClients/simpleCache.ts";
+import type { DownloadTrackFields } from "./downloadUtils.ts";
+import type { SoulseekSearchItem, TrackSearchContext } from "./downloadJobs/trackSearchQueries.ts";
+import type { TrackRequest } from "./trackMatching/trackIdentity.ts";
+import type { HistoryJob } from "./aurralHistoryService.ts";
+
+type SlskdTransfer = {
+  id?: string;
+  Id?: string;
+  transferId?: string;
+  TransferId?: string;
+  username?: string;
+  Username?: string;
+  filename?: string;
+  Filename?: string;
+  file?: string;
+  File?: string;
+  state?: string;
+  State?: string;
+  exception?: string;
+  Exception?: string;
+  bytesTransferred?: number;
+  BytesTransferred?: number;
+  placeInQueue?: number;
+  PlaceInQueue?: number;
+};
+
+type SlskdValues = { $values?: SlskdTransfer[] };
+type SlskdBatch = {
+  transfers?: SlskdTransfer[] | SlskdValues;
+  Transfers?: SlskdTransfer[] | SlskdValues;
+};
+
+type SlskdAlbumFile = { file?: string | null; size?: number | null; jobId?: string | null };
+
+type SlskdCandidate = {
+  raw: {
+    user?: string | null;
+    file?: string | null;
+    size?: number | null;
+    files?: SlskdAlbumFile[];
+  };
+  resolvedAlbumName?: string | null;
+  evaluation?: { decision?: string | null };
+  candidate?: unknown;
+};
+
+type SlskdPayload = {
+  jobId: string;
+  playlistId?: string | null;
+  phase: "search" | "download" | "poll" | "finalize";
+  track?: DownloadTrackFields;
+  albumGrab?: boolean;
+  albumTransfers?: SlskdTransfer[] | null;
+  searchQueries?: string[];
+  searchQueryIndex?: number;
+  searchIds?: string[];
+  searchId?: string | null;
+  activeSearch?: { id: string; query: string; startedAt: number; queued?: boolean } | null;
+  soulseekLoggedOutSince?: number | null;
+  candidates?: SlskdCandidate[];
+  candidate?: SlskdCandidate | null;
+  candidateIndex?: number;
+  candidateRetryCounts?: Record<number, number>;
+  pollAttempts?: number;
+  delaySeconds?: number;
+  eventOffset?: number | null;
+  legacyTransfer?: { id?: string; username?: string } | null;
+  lastProgress?: string | null;
+  lastProgressAt?: number | null;
+  tailSince?: number | null;
+  batch?: SlskdBatch | null;
+  batchId?: string | null;
+  destination?: string | null;
+  heldForReview?: unknown;
+  upgradeForJobId?: string | null;
+  upgrade?: boolean;
+  manualSelection?: boolean;
+};
+
+type SlskdJob = HistoryJob & {
+  remoteUsername?: string | null;
+  slskdSearchId?: string | null;
+  slskdBatchId?: string | null;
+  deniedRemoteSources?: [string, string][] | null;
+  qualityTier?: string | null;
+};
+
+type SlskdHelpers = {
+  failOrTryNextSource: (
+    payload: SlskdPayload,
+    job: SlskdJob,
+    message: string,
+    logDetails?: object,
+  ) => Promise<SlskdPayload | null>;
+};
+
+type SearchStepFields = {
+  cancelled?: undefined;
+  loggedOut?: undefined;
+  payload?: undefined;
+  aggregated?: undefined;
+  searchIds?: undefined;
+  queryCount?: undefined;
+};
+type SearchStep<T> = T & Omit<SearchStepFields, keyof T>;
+type SlskdSearchStep =
+  | SearchStep<{ cancelled: true }>
+  | SearchStep<{ payload: SlskdPayload }>
+  | SearchStep<{ loggedOut: unknown; payload: SlskdPayload }>
+  | SearchStep<{ aggregated: SoulseekSearchItem[]; searchIds: string[]; queryCount: number }>;
+type FileMatch = { path: string; size: number; mtimeMs: number };
+
+type SlskdSearchOptions = Awaited<ReturnType<typeof getWorkerSearchOptions>> & {
+  deniedSourceKeys: Set<string>;
+  qualityProfile: ReturnType<typeof getQualityProfile>;
+  currentTier: string | null | undefined;
+  upgrade: boolean;
+  albumJobs: SlskdJob[] | null;
+  manifest: Awaited<ReturnType<typeof attemptRelease>>;
+};
+
+type PayloadOutcomeDetails = {
+  candidate?: SlskdCandidate | { raw: { user?: string | null; file?: string | null } } | null;
+  transfer?: SlskdTransfer | null;
+  transferId?: string | null;
+  batchId?: string | null;
+  sourcePath?: string | null;
+  finalPath?: string | null;
+  validation?: unknown;
+};
 
 import { getQualityProfile } from "./qualityProfileService.ts";
 import {
@@ -97,11 +228,14 @@ const SOULSEEK_LOGIN_WAIT_LIMIT_MS = 45 * 60 * 1000;
 export const SLSKD_NOT_CONFIGURED_MESSAGE =
   "slskd is not configured. Enable slskd and add its Server URL in Settings > Download clients to enable Soulseek downloads for flows and playlists.";
 
-export function buildSlskdSearchTierGroups(resolvedTrack) {
+export function buildSlskdSearchTierGroups(resolvedTrack: TrackSearchContext) {
   return buildTrackSearchTiers(resolvedTrack);
 }
 
-function isDeniedSoulseekFile(raw, deniedSourceKeys) {
+function isDeniedSoulseekFile(
+  raw: { user?: unknown; file?: unknown } | null | undefined,
+  deniedSourceKeys: ReadonlySet<string> | null | undefined,
+) {
   const user = String(raw?.user || "")
     .trim()
     .toLowerCase();
@@ -111,7 +245,7 @@ function isDeniedSoulseekFile(raw, deniedSourceKeys) {
   return deniedSourceKeys?.has(`${user}\0${file}`) === true;
 }
 
-function selectAlbumFolders(aggregated, searchOptions) {
+function selectAlbumFolders(aggregated: SoulseekSearchItem[], searchOptions: SlskdSearchOptions) {
   return selectSoulseekAlbumFolder(
     aggregated.filter(
       (raw) =>
@@ -126,7 +260,11 @@ function selectAlbumFolders(aggregated, searchOptions) {
   );
 }
 
-export function hasSlskdSearchCandidates(aggregated, resolvedTrack, searchOptions) {
+export function hasSlskdSearchCandidates(
+  aggregated: SoulseekSearchItem[],
+  resolvedTrack: TrackRequest,
+  searchOptions: SlskdSearchOptions | undefined,
+) {
   if (searchOptions?.albumJobs) {
     return selectAlbumFolders(aggregated, searchOptions).decision === "selectable";
   }
@@ -167,7 +305,7 @@ async function getWorkerSearchOptions() {
   };
 }
 
-function classifyTransferState(state) {
+function classifyTransferState(state: string | null | undefined) {
   const normalized = String(state || "").toLowerCase();
   if (!normalized) return "pending";
   if (
@@ -187,46 +325,50 @@ function classifyTransferState(state) {
   return "pending";
 }
 
-function readBatchTransfers(batch) {
+function readBatchTransfers(batch: SlskdBatch | null | undefined): SlskdTransfer[] {
   const transfers = batch?.transfers || batch?.Transfers;
   if (Array.isArray(transfers)) return transfers;
   if (Array.isArray(transfers?.$values)) return transfers.$values;
   return [];
 }
 
-function readTransferState(transfer) {
+function readTransferState(transfer: SlskdTransfer | null | undefined) {
   return transfer?.state || transfer?.State || "";
 }
 
-function describeTransferFailure(transfer) {
+function describeTransferFailure(transfer: SlskdTransfer | null | undefined) {
   const exception = String(transfer?.exception || transfer?.Exception || "").trim();
   return exception ? `slskd transfer failed: ${exception}` : "slskd transfer failed";
 }
 
-function readTransferId(transfer) {
+function readTransferId(transfer: SlskdTransfer | null | undefined) {
   return String(
     transfer?.id || transfer?.Id || transfer?.transferId || transfer?.TransferId || "",
   ).trim();
 }
 
-function getPayloadSearchIds(payload) {
-  const ids = [];
+function getPayloadSearchIds(payload: SlskdPayload) {
+  const ids: string[] = [];
   if (Array.isArray(payload?.searchIds)) ids.push(...payload.searchIds);
   if (payload?.searchId) ids.push(payload.searchId);
   return [...new Set(ids.map((entry) => String(entry || "").trim()).filter(Boolean))];
 }
 
-function getCandidateRetryCount(payload, candidateIndex = null) {
+function getCandidateRetryCount(payload: SlskdPayload, candidateIndex: number | null = null) {
   const index =
     candidateIndex == null ? Number(payload?.candidateIndex || 0) : Number(candidateIndex || 0);
-  const counts =
+  const counts: Record<number, number> =
     payload?.candidateRetryCounts && typeof payload.candidateRetryCounts === "object"
       ? payload.candidateRetryCounts
       : {};
   return Number(counts[index] || 0);
 }
 
-function withCandidateRetryCount(payload, candidateIndex, retryCount) {
+function withCandidateRetryCount(
+  payload: SlskdPayload,
+  candidateIndex: number,
+  retryCount: number,
+) {
   return {
     ...payload,
     candidateRetryCounts: {
@@ -236,7 +378,7 @@ function withCandidateRetryCount(payload, candidateIndex, retryCount) {
   };
 }
 
-function buildRetrySameCandidatePayload(payload, delaySeconds = 5) {
+function buildRetrySameCandidatePayload(payload: SlskdPayload, delaySeconds = 5) {
   const candidateIndex = Number(payload?.candidateIndex || 0);
   const retryCount = getCandidateRetryCount(payload, candidateIndex) + 1;
   return {
@@ -249,7 +391,7 @@ function buildRetrySameCandidatePayload(payload, delaySeconds = 5) {
   };
 }
 
-function readEventData(record) {
+function readEventData(record: { data?: unknown; Data?: unknown } | null | undefined) {
   const data = record?.data ?? record?.Data;
   if (!data) return null;
   if (typeof data === "object") return data;
@@ -260,14 +402,17 @@ function readEventData(record) {
   }
 }
 
-function normalizeRemotePath(value) {
+function normalizeRemotePath(value: unknown) {
   return String(value || "")
     .replace(/\\/g, "/")
     .toLowerCase();
 }
 
-function eventMatchesCandidate(record, candidate) {
-  const raw = candidate?.raw || {};
+function eventMatchesCandidate(
+  record: { data?: unknown; Data?: unknown } | null | undefined,
+  candidate: SlskdCandidate | null | undefined,
+) {
+  const raw: SlskdCandidate["raw"] = candidate?.raw || {};
   const expectedUser = String(raw.user || "")
     .trim()
     .toLowerCase();
@@ -298,7 +443,7 @@ function eventMatchesCandidate(record, candidate) {
   return !!eventDir && !!expectedParent && eventDir.endsWith(expectedParent);
 }
 
-async function pollSlskdEventsForCandidate(payload) {
+async function pollSlskdEventsForCandidate(payload: SlskdPayload) {
   const offset = Number(payload?.eventOffset);
   if (!Number.isFinite(offset) || offset < 0) {
     return { eventOffset: payload?.eventOffset ?? null, completionTransfer: null };
@@ -335,7 +480,7 @@ async function readCurrentEventOffset() {
   }
 }
 
-function isPathInside(childPath, rootPath) {
+function isPathInside(childPath: unknown, rootPath: unknown) {
   if (!String(childPath || "").trim() || !String(rootPath || "").trim()) {
     return false;
   }
@@ -344,7 +489,7 @@ function isPathInside(childPath, rootPath) {
   return child === root || child.startsWith(`${root}${path.sep}`);
 }
 
-export function parseSlskdRemoteFile(remoteFile) {
+export function parseSlskdRemoteFile(remoteFile: unknown) {
   const normalized = String(remoteFile || "")
     .replace(/\\/g, "/")
     .trim();
@@ -358,7 +503,10 @@ export function parseSlskdRemoteFile(remoteFile) {
   };
 }
 
-export function predictSlskdLocalPathCandidates(root, remoteFile) {
+export function predictSlskdLocalPathCandidates(
+  root: string | null | undefined,
+  remoteFile: string | null | undefined,
+) {
   const base = String(root || "").trim();
   if (!base) return [];
   const { fileName, parentDir } = parseSlskdRemoteFile(remoteFile);
@@ -377,13 +525,16 @@ export function predictSlskdLocalPathCandidates(root, remoteFile) {
   });
 }
 
-function readTransferFilename(transfer) {
+function readTransferFilename(transfer: SlskdTransfer | null | undefined) {
   return String(
     transfer?.filename || transfer?.Filename || transfer?.file || transfer?.File || "",
   ).trim();
 }
 
-function resolveTransferLocalPath(transferFilename, slskdRoot) {
+function resolveTransferLocalPath(
+  transferFilename: string | null | undefined,
+  slskdRoot: string | null | undefined,
+) {
   const raw = String(transferFilename || "").trim();
   if (!raw) return null;
   const normalized = raw.replace(/\\/g, path.sep);
@@ -400,7 +551,7 @@ function resolveTransferLocalPath(transferFilename, slskdRoot) {
   return path.resolve(resolvedBase, normalized);
 }
 
-async function statMatchingFile(filePath, expectedSizeBytes) {
+async function statMatchingFile(filePath: string, expectedSizeBytes: number | null | undefined) {
   try {
     const stat = await fs.stat(filePath);
     if (!stat.isFile()) return null;
@@ -412,10 +563,16 @@ async function statMatchingFile(filePath, expectedSizeBytes) {
   }
 }
 
-async function findFileRecursive(dir, fileName, expectedSizeBytes, depth = 0, matches = null) {
+async function findFileRecursive(
+  dir: string,
+  fileName: string,
+  expectedSizeBytes: number | null | undefined,
+  depth = 0,
+  matches: FileMatch[] | null = null,
+): Promise<string | FileMatch[] | null> {
   if (depth > 8) return matches;
   const collected = matches || [];
-  let entries = [];
+  let entries: Dirent[] = [];
   try {
     entries = await fs.readdir(dir, { withFileTypes: true });
   } catch {
@@ -444,7 +601,7 @@ async function findFileRecursive(dir, fileName, expectedSizeBytes, depth = 0, ma
   return pickBestFileMatch(collected, expectedSizeBytes);
 }
 
-function pickBestFileMatch(matches, expectedSizeBytes) {
+function pickBestFileMatch(matches: FileMatch[], expectedSizeBytes: number | null | undefined) {
   if (!Array.isArray(matches) || matches.length === 0) return null;
   const expected = Number(expectedSizeBytes || 0);
   if (expected > 0) {
@@ -459,7 +616,12 @@ function pickBestFileMatch(matches, expectedSizeBytes) {
   return matches.sort((left, right) => right.mtimeMs - left.mtimeMs)[0].path;
 }
 
-export async function locateCompletedDownload(slskdRoot, playlistRoot, remoteFile, options = {}) {
+export async function locateCompletedDownload(
+  slskdRoot: string | null | undefined,
+  playlistRoot: string | null | undefined,
+  remoteFile: string | null | undefined,
+  options: { expectedSizeBytes?: number | null; transfer?: SlskdTransfer | null } = {},
+) {
   const expectedSizeBytes = Number(options.expectedSizeBytes || 0);
   const transferFilename = readTransferFilename(options.transfer);
   const transferPath = resolveTransferLocalPath(transferFilename, slskdRoot);
@@ -468,7 +630,7 @@ export async function locateCompletedDownload(slskdRoot, playlistRoot, remoteFil
     if (directTransfer) return directTransfer;
   }
 
-  const searchRoots = [];
+  const searchRoots: string[] = [];
   if (slskdRoot) searchRoots.push(slskdRoot);
   if (playlistRoot) {
     const resolvedPlaylist = path.resolve(playlistRoot);
@@ -504,16 +666,24 @@ async function cleanupRejectedDownload({
   playlistRoot,
   transfer,
   username,
+}: {
+  sourcePath?: string | null;
+  slskdRoot?: string | null;
+  playlistRoot?: string | null;
+  transfer?: SlskdTransfer | null;
+  username?: string | null;
 } = {}) {
   const transferId = readTransferId(transfer);
   const transferUser = String(username || transfer?.username || transfer?.Username || "").trim();
   if (transferUser && transferId) {
-    await slskdClient.deleteTransfer(transferUser, transferId, { remove: true }).catch((err) => {
-      logger.warn("slskd", "Failed to clean up transfer", {
-        transferId,
-        error: err?.message || String(err),
+    await slskdClient
+      .deleteTransfer(transferUser, transferId, { remove: true })
+      .catch((err: unknown) => {
+        logger.warn("slskd", "Failed to clean up transfer", {
+          transferId,
+          error: err?.message || String(err),
+        });
       });
-    });
   }
   const safeSource = String(sourcePath || "").trim();
   const safeSlskdRoot = String(slskdRoot || "").trim();
@@ -524,7 +694,7 @@ async function cleanupRejectedDownload({
     isPathInside(safeSource, safeSlskdRoot) &&
     (!safePlaylistRoot || !isPathInside(safeSource, safePlaylistRoot))
   ) {
-    await fs.rm(safeSource, { force: true }).catch((err) => {
+    await fs.rm(safeSource, { force: true }).catch((err: unknown) => {
       logger.warn("slskd", "Failed to remove rejected download file", {
         sourcePath: safeSource,
         error: err?.message || String(err),
@@ -534,7 +704,10 @@ async function cleanupRejectedDownload({
   }
 }
 
-async function cleanupTransferForPayload(payload, transfer) {
+async function cleanupTransferForPayload(
+  payload: SlskdPayload,
+  transfer: SlskdTransfer | null | undefined,
+) {
   const transferId = readTransferId(transfer);
   if (!transferId) return;
   const candidate = getPayloadCandidate(payload);
@@ -542,7 +715,7 @@ async function cleanupTransferForPayload(payload, transfer) {
     transfer?.username || transfer?.Username || candidate?.raw?.user || "",
   ).trim();
   if (!username) return;
-  await slskdClient.deleteTransfer(username, transferId, { remove: true }).catch((err) => {
+  await slskdClient.deleteTransfer(username, transferId, { remove: true }).catch((err: unknown) => {
     logger.warn("slskd", "Failed to clean up transfer for payload", {
       transferId,
       error: err?.message || String(err),
@@ -550,14 +723,17 @@ async function cleanupTransferForPayload(payload, transfer) {
   });
 }
 
-function clearTrackedSearches(searchIds = []) {
+function clearTrackedSearches(searchIds: string[] | null | undefined = []) {
   const ids = Array.isArray(searchIds) ? searchIds : [];
   for (const searchId of new Set(ids.map((entry) => String(entry || "").trim()).filter(Boolean))) {
     clearDownloadProviderWork({ provider: "slskd-search", workId: searchId });
   }
 }
 
-async function cleanupSuccessfulRunArtifacts(payload, transfer) {
+async function cleanupSuccessfulRunArtifacts(
+  payload: SlskdPayload,
+  transfer: SlskdTransfer | null | undefined,
+) {
   if (!slskdClient.isCleanupAfterRunsEnabled()) return;
   const searchIds = getPayloadSearchIds(payload);
   const transferId = readTransferId(transfer);
@@ -587,7 +763,7 @@ async function cleanupSuccessfulRunArtifacts(payload, transfer) {
   }
 }
 
-async function cleanupEmptyAncestors(dir, rootBoundary) {
+async function cleanupEmptyAncestors(dir: string, rootBoundary: string | null | undefined) {
   const root = path.resolve(String(rootBoundary || "").trim());
   if (!root) return;
   let current = path.resolve(String(dir || "").trim());
@@ -605,7 +781,13 @@ async function cleanupEmptyAncestors(dir, rootBoundary) {
   }
 }
 
-function recordPayloadOutcome(job, payload, status, reason, details = {}) {
+function recordPayloadOutcome(
+  job: SlskdJob | null | undefined,
+  payload: SlskdPayload,
+  status: string,
+  reason: string | null,
+  details: PayloadOutcomeDetails = {},
+) {
   recordSlskdTransferOutcome({
     job,
     candidate: details.candidate || getPayloadCandidate(payload),
@@ -621,7 +803,7 @@ function recordPayloadOutcome(job, payload, status, reason, details = {}) {
   });
 }
 
-function retrySameCandidateAllowed(payload) {
+function retrySameCandidateAllowed(payload: SlskdPayload) {
   if (payload?.manualSelection === true) return false;
   return (
     getCandidateRetryCount(payload, Number(payload?.candidateIndex || 0)) <
@@ -629,7 +811,13 @@ function retrySameCandidateAllowed(payload) {
   );
 }
 
-function retrySameCandidateOrNext(payload, job, status, reason, details = {}) {
+function retrySameCandidateOrNext(
+  payload: SlskdPayload,
+  job: SlskdJob,
+  status: string,
+  reason: string,
+  details: PayloadOutcomeDetails = {},
+) {
   recordPayloadOutcome(job, payload, status, reason, details);
   if (retrySameCandidateAllowed(payload)) {
     return buildRetrySameCandidatePayload(payload, 5);
@@ -640,10 +828,10 @@ function retrySameCandidateOrNext(payload, job, status, reason, details = {}) {
   return null;
 }
 
-function recordTrackJobHistory(recorderName, job, ...args) {
+function recordTrackJobHistory(recorderName: string, job: SlskdJob, ...args: string[]) {
   import("./aurralHistoryService.ts")
     .then((history) => history[recorderName](job, ...args))
-    .catch((err) => {
+    .catch((err: unknown) => {
       logger.warn("slskd", "Failed to record track job activity", {
         jobId: job.id,
         error: err?.message || String(err),
@@ -651,16 +839,21 @@ function recordTrackJobHistory(recorderName, job, ...args) {
     });
 }
 
-async function isLoggedOut(options) {
+async function isLoggedOut(options?: { force?: boolean }) {
   const status = await slskdClient.testConnection(options);
   return status?.ok === true && status.connected !== true;
 }
 
-async function isStillLoggedOut(payload) {
+async function isStillLoggedOut(payload: SlskdPayload) {
   return Boolean(payload.soulseekLoggedOutSince) && isLoggedOut();
 }
 
-async function waitToRetryAfterLogin(payload, job, helpers, reason) {
+async function waitToRetryAfterLogin(
+  payload: SlskdPayload,
+  job: SlskdJob,
+  helpers: SlskdHelpers,
+  reason: string,
+) {
   if (!(await isLoggedOut({ force: true }))) return null;
   return waitForSoulseekLogin(
     { ...payload, ...TRANSFER_RESET, phase: "download", candidate: null, pollAttempts: 0 },
@@ -670,7 +863,12 @@ async function waitToRetryAfterLogin(payload, job, helpers, reason) {
   );
 }
 
-function waitForSoulseekLogin(payload, job, helpers, detail) {
+function waitForSoulseekLogin(
+  payload: SlskdPayload,
+  job: SlskdJob,
+  helpers: SlskdHelpers,
+  detail?: string,
+) {
   const since = Number(payload.soulseekLoggedOutSince) || Date.now();
   if (Date.now() - since >= SOULSEEK_LOGIN_WAIT_LIMIT_MS) {
     return helpers.failOrTryNextSource(
@@ -698,7 +896,11 @@ function waitForSoulseekLogin(payload, job, helpers, detail) {
   };
 }
 
-function probeAggregatedResults(aggregated, queryResults, seen) {
+function probeAggregatedResults(
+  aggregated: SoulseekSearchItem[],
+  queryResults: SoulseekSearchItem[],
+  seen: Set<string>,
+) {
   const probe = aggregated.slice();
   const probeSeen = new Set(seen);
   for (const result of queryResults) {
@@ -710,20 +912,24 @@ function probeAggregatedResults(aggregated, queryResults, seen) {
   return probe;
 }
 
-function trackSearchWork(payload) {
+function trackSearchWork(payload: SlskdPayload) {
   return {
-    onSearchCreated: (id) =>
+    onSearchCreated: (id: string) =>
       registerDownloadProviderWork({
         jobId: payload.jobId,
         playlistId: payload.playlistId,
         provider: "slskd-search",
         workId: id,
       }),
-    onSearchSettled: (id) => clearDownloadProviderWork({ provider: "slskd-search", workId: id }),
+    onSearchSettled: (id: string) =>
+      clearDownloadProviderWork({ provider: "slskd-search", workId: id }),
   };
 }
 
-function searchMonitorFor(payload, activeSearch) {
+function searchMonitorFor(
+  payload: SlskdPayload,
+  activeSearch: NonNullable<SlskdPayload["activeSearch"]>,
+) {
   let monitor = searchMonitors.get(activeSearch.id);
   if (!monitor) {
     monitor = slskdClient.monitorSearch(activeSearch.id, {
@@ -736,19 +942,25 @@ function searchMonitorFor(payload, activeSearch) {
   return monitor;
 }
 
-async function stopSearch(searchId) {
+async function stopSearch(searchId: string) {
   const deleted = await slskdClient.deleteSearch(searchId, { timeout: 20000 }).catch(() => false);
   if (deleted) clearDownloadProviderWork({ provider: "slskd-search", workId: searchId });
 }
 
-const searchResultKey = (result) => `${result.user}\0${result.file}`;
+const searchResultKey = (result: SoulseekSearchItem) => `${result.user}\0${result.file}`;
 
 // One step of a search: either one poll of the running slskd search, or the
 // start of the next query. Results of finished queries live in the shared
 // search cache, so a restart only repeats the queries it lost.
-async function advanceSlskdSearch(payload, job, queries, resolvedTrack, searchOptions) {
-  const aggregated = [];
-  const seen = new Set();
+async function advanceSlskdSearch(
+  payload: SlskdPayload,
+  job: SlskdJob,
+  queries: string[],
+  resolvedTrack: TrackRequest,
+  searchOptions: SlskdSearchOptions,
+): Promise<SlskdSearchStep> {
+  const aggregated: SoulseekSearchItem[] = [];
+  const seen = new Set<string>();
   let index = Number(payload.searchQueryIndex || 0);
   for (let queryIndex = 0; queryIndex < index; queryIndex += 1) {
     const cached = getCachedSearchResults("slskd", queries[queryIndex]);
@@ -759,7 +971,8 @@ async function advanceSlskdSearch(payload, job, queries, resolvedTrack, searchOp
     mergeSearchResults(aggregated, seen, cached, searchResultKey);
   }
   const isCancelled = () => !isPipelinePayloadActive(payload);
-  const enough = (results) => hasSlskdSearchCandidates(results, resolvedTrack, searchOptions);
+  const enough = (results: SoulseekSearchItem[]) =>
+    hasSlskdSearchCandidates(results, resolvedTrack, searchOptions);
   const activeSearch = payload.activeSearch?.query === queries[index] ? payload.activeSearch : null;
   if (payload.activeSearch && !activeSearch) {
     searchMonitors.delete(payload.activeSearch.id);
@@ -771,7 +984,7 @@ async function advanceSlskdSearch(payload, job, queries, resolvedTrack, searchOp
     try {
       result = await monitor.poll({
         shouldCancel: isCancelled,
-        earlyExitWhen: (data) =>
+        earlyExitWhen: (data: unknown) =>
           enough(probeAggregatedResults(aggregated, slskdClient.flattenSearchResults(data), seen)),
       });
     } catch (error) {
@@ -846,8 +1059,8 @@ async function advanceSlskdSearch(payload, job, queries, resolvedTrack, searchOp
   return { aggregated, searchIds, queryCount: index };
 }
 
-async function handleSearch(payload, helpers) {
-  const job = downloadTracker.getJob(payload.jobId);
+async function handleSearch(payload: SlskdPayload, helpers: SlskdHelpers) {
+  const job: SlskdJob | null = downloadTracker.getJob(payload.jobId);
   if (!job) return null;
   if (job.status === "failed" || job.status === "done") return null;
   if (await isStillLoggedOut(payload)) return waitForSoulseekLogin(payload, job, helpers);
@@ -875,7 +1088,7 @@ async function handleSearch(payload, helpers) {
     ? downloadTracker.getJob(payload.upgradeForJobId)?.qualityTier
     : null;
   const deniedSources = Array.isArray(job.deniedRemoteSources) ? job.deniedRemoteSources : [];
-  const deniedSourceKeys = albumJobs
+  const deniedSourceKeys: Set<string> = albumJobs
     ? deniedAlbumSources([job, ...albumJobs], "slskd")
     : new Set(
         deniedSources
@@ -904,7 +1117,7 @@ async function handleSearch(payload, helpers) {
   );
   if (step.cancelled || !isPipelinePayloadActive(payload)) return null;
   if (step.loggedOut)
-    return waitForSoulseekLogin(step.payload, job, helpers, step.loggedOut.message);
+    return waitForSoulseekLogin(step.payload!, job, helpers, step.loggedOut.message);
   if (step.payload) return step.payload;
   const { aggregated, searchIds, queryCount } = step;
   const searchId = payload.searchId || searchIds[0] || null;
@@ -1015,8 +1228,8 @@ async function handleSearch(payload, helpers) {
   };
 }
 
-async function handleDownload(payload, helpers) {
-  const job = downloadTracker.getJob(payload.jobId);
+async function handleDownload(payload: SlskdPayload, helpers: SlskdHelpers) {
+  const job: SlskdJob | null = downloadTracker.getJob(payload.jobId);
   if (!job) return null;
   if (job.status === "failed" || job.status === "done") return null;
   if (await isStillLoggedOut(payload)) return waitForSoulseekLogin(payload, job, helpers);
@@ -1026,7 +1239,7 @@ async function handleDownload(payload, helpers) {
   const index = Number(payload.candidateIndex || 0);
   const candidate = candidates[index];
   if (payload.albumGrab === true) {
-    const activeJobIds = new Set(albumGrabJobs(payload).map((entry) => entry.id));
+    const activeJobIds = new Set(albumGrabJobs(payload).map((entry: { id: string }) => entry.id));
     const files = (candidate?.raw?.files || []).filter(
       (file) => !file.jobId || activeJobIds.has(file.jobId),
     );
@@ -1043,7 +1256,7 @@ async function handleDownload(payload, helpers) {
           username: candidate.raw.user,
           files: files.map((file) => ({ filename: file.file, size: Number(file.size || 0) })),
         });
-        const transfers = Array.isArray(result.transfers) ? result.transfers : [];
+        const transfers: SlskdTransfer[] = Array.isArray(result.transfers) ? result.transfers : [];
         if (
           transfers.length !== files.length ||
           transfers.some((transfer) => !readTransferId(transfer))
@@ -1161,7 +1374,7 @@ async function handleDownload(payload, helpers) {
 // slskd re-requests a queued file now and then, which cycles its state
 // through "Requested" and back without anything moving, so only the outcome,
 // the bytes, and the queue position count as progress.
-function readTransferProgress(transfer) {
+function readTransferProgress(transfer: SlskdTransfer | null | undefined) {
   if (!transfer) return "missing";
   return [
     classifyTransferState(readTransferState(transfer)),
@@ -1172,7 +1385,7 @@ function readTransferProgress(transfer) {
 
 // A transfer times out only when nothing about it moves for a while, so a
 // slow upload or a moving remote queue keeps going.
-function trackTransferProgress(payload, progress, now = Date.now()) {
+function trackTransferProgress(payload: SlskdPayload, progress: string, now = Date.now()) {
   const changed = progress !== payload.lastProgress;
   const lastProgressAt =
     changed || !Number(payload.lastProgressAt) ? now : Number(payload.lastProgressAt);
@@ -1183,7 +1396,7 @@ function trackTransferProgress(payload, progress, now = Date.now()) {
   };
 }
 
-function isQueuedUntouched(transfer) {
+function isQueuedUntouched(transfer: SlskdTransfer) {
   return (
     /queued/i.test(readTransferState(transfer)) &&
     !Number(transfer.bytesTransferred ?? transfer.BytesTransferred)
@@ -1193,7 +1406,7 @@ function isQueuedUntouched(transfer) {
 // Once every other file of the album finished or failed, the rest get a
 // limited window: files still in the uploader's queue 10 minutes, a file
 // still transferring 20. Then the album imports what finished and moves on.
-function albumTailWindow(transfers) {
+function albumTailWindow(transfers: (SlskdTransfer | null)[]) {
   const pending = transfers.filter(
     (transfer) => !transfer || classifyTransferState(readTransferState(transfer)) === "pending",
   );
@@ -1207,14 +1420,14 @@ function albumTailWindow(transfers) {
   return pending.every(isQueuedUntouched) ? QUEUED_TRANSFER_MS : TAIL_ALBUM_TRANSFER_MS;
 }
 
-async function handlePoll(payload, helpers) {
-  const job = downloadTracker.getJob(payload.jobId);
+async function handlePoll(payload: SlskdPayload, helpers: SlskdHelpers) {
+  const job: SlskdJob | null = downloadTracker.getJob(payload.jobId);
   if (!job) return null;
   if (job.status === "failed" || job.status === "done") return null;
   const pollAttempts = Number(payload.pollAttempts || 0) + 1;
   if (payload.albumGrab === true) {
     const username = payload.candidate?.raw?.user;
-    const transfers = await Promise.all(
+    const transfers: (SlskdTransfer | null)[] = await Promise.all(
       (payload.albumTransfers || []).map(async (transfer) =>
         slskdClient.getTransfer(username, readTransferId(transfer)).catch(() => null),
       ),
@@ -1237,7 +1450,7 @@ async function handlePoll(payload, helpers) {
     if (
       !progress.stalled &&
       !queuedTooLong &&
-      !(tailSince && Date.now() - tailSince > tailWindow)
+      !(tailSince && Date.now() - tailSince > tailWindow!)
     ) {
       return {
         ...payload,
@@ -1250,12 +1463,12 @@ async function handlePoll(payload, helpers) {
       };
     }
     // Keep the files that finished. The album attempt continues for the rest.
-    const settled = transfers.map((transfer, index) => transfer || payload.albumTransfers[index]);
+    const settled = transfers.map((transfer, index) => transfer || payload.albumTransfers![index]);
     for (const transfer of settled) {
       if (classifyTransferState(readTransferState(transfer)) !== "pending") continue;
       const id = readTransferId(transfer);
       if (id)
-        await slskdClient.deleteTransfer(username, id, { remove: true }).catch((error) =>
+        await slskdClient.deleteTransfer(username, id, { remove: true }).catch((error: unknown) =>
           logger.warn("slskd", "Stalled album transfer cleanup failed", {
             jobId: job.id,
             transferId: id,
@@ -1356,8 +1569,8 @@ async function handlePoll(payload, helpers) {
   return helpers.failOrTryNextSource(basePayload, job, "slskd transfer stalled");
 }
 
-async function handleFinalize(payload, helpers) {
-  const job = downloadTracker.getJob(payload.jobId);
+async function handleFinalize(payload: SlskdPayload, helpers: SlskdHelpers) {
+  const job: SlskdJob | null = downloadTracker.getJob(payload.jobId);
   if (!job) return null;
   if (job.status === "failed" || job.status === "done") return null;
   if (payload.albumGrab === true) {
@@ -1368,7 +1581,7 @@ async function handleFinalize(payload, helpers) {
     const playlistRoot = resolveDownloadRoot();
     const remoteFiles = payload.candidate?.raw?.files || [];
     const paths = [];
-    const isPeerFailure = (transfer) => {
+    const isPeerFailure = (transfer: SlskdTransfer | null | undefined) => {
       const transferState = readTransferState(transfer);
       return classifyTransferState(transferState) === "failed" && !/cancel/i.test(transferState);
     };
@@ -1422,7 +1635,7 @@ async function handleFinalize(payload, helpers) {
         .filter((entry) => entry.username && entry.transferId);
       await slskdClient
         .cleanupAfterRun({ searchIds: getPayloadSearchIds(payload), transfers })
-        .catch((error) =>
+        .catch((error: unknown) =>
           logger.warn("slskd", "Album transfer cleanup failed", {
             jobId: job.id,
             reason: safeLogDiagnostic(error),
@@ -1556,7 +1769,7 @@ async function handleFinalize(payload, helpers) {
   const committed = await withPipelineCommitLock(payload, async () => {
     import("./aurralHistoryService.ts")
       .then(({ recordTrackJobMoving }) => recordTrackJobMoving(job))
-      .catch((err) => {
+      .catch((err: unknown) => {
         logger.warn("slskd", "Failed to record track job moving", {
           jobId: job.id,
           error: err?.message || String(err),
@@ -1598,7 +1811,7 @@ async function handleFinalize(payload, helpers) {
   return committed.result;
 }
 
-export async function discardSlskdSearch(payload) {
+export async function discardSlskdSearch(payload: SlskdPayload) {
   if (!payload.activeSearch?.id || !slskdClient.isConfigured()) return;
   searchMonitors.delete(payload.activeSearch.id);
   await stopSearch(payload.activeSearch.id);
@@ -1606,7 +1819,7 @@ export async function discardSlskdSearch(payload) {
 
 // The running search and queued transfers of a payload dropped before its
 // step finished with them.
-export async function discardSlskdWork(payload) {
+export async function discardSlskdWork(payload: SlskdPayload) {
   if (!slskdClient.isConfigured()) return;
   await discardSlskdSearch(payload);
   for (const transfer of [...(payload.albumTransfers || []), payload.legacyTransfer].filter(
@@ -1616,7 +1829,15 @@ export async function discardSlskdWork(payload) {
   }
 }
 
-export async function discardSlskdDownload({ sourcePath, transferId, username }) {
+export async function discardSlskdDownload({
+  sourcePath,
+  transferId,
+  username,
+}: {
+  sourcePath: string;
+  transferId?: string | null;
+  username?: string | null;
+}) {
   await cleanupRejectedDownload({
     sourcePath,
     slskdRoot: resolveLocalPath(await slskdClient.getDownloadDirectory(), getPathMappings("slskd")),
@@ -1626,7 +1847,7 @@ export async function discardSlskdDownload({ sourcePath, transferId, username })
   });
 }
 
-export function processSlskdPipelinePayload(payload, helpers) {
+export function processSlskdPipelinePayload(payload: SlskdPayload, helpers: SlskdHelpers) {
   switch (payload.phase) {
     case "search":
       return handleSearch(payload, helpers);
