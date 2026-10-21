@@ -48,7 +48,7 @@ export const TRACK_SKIP_REASONS = {
 };
 
 const labelsFor = (
-  values: string[] | null | undefined,
+  values: readonly string[] | null | undefined,
   options: { value: string; label: string }[],
 ) => options.filter((option) => values?.includes(option.value)).map((option) => option.label);
 
