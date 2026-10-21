@@ -406,8 +406,7 @@ export const LEGACY_SETTINGS_TAB_MAP = {
 
 export function normalizeSettingsTabId(tabId) {
   if (!tabId) return DEFAULT_SETTINGS_TAB;
-  const legacy = LEGACY_SETTINGS_TAB_MAP[tabId];
-  if (legacy) return legacy;
+  if (Object.hasOwn(LEGACY_SETTINGS_TAB_MAP, tabId)) return LEGACY_SETTINGS_TAB_MAP[tabId];
   return SETTINGS_TAB_IDS.includes(tabId) ? tabId : DEFAULT_SETTINGS_TAB;
 }
 
