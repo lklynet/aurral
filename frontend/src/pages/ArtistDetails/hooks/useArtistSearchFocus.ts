@@ -1,6 +1,22 @@
 import { useEffect, useRef } from "react";
 
-export function useArtistSearchFocus({ navigate, mbid, locationState }) {
+interface ArtistSearchFocusState {
+  focusReleaseGroupMbid?: string | null;
+  focusTrackMbid?: string | null;
+  focusTrackTitle?: string | null;
+  artistName?: string | null;
+  inLibrary?: boolean;
+  libraryArtist?: unknown;
+  focusReleaseGroup?: unknown;
+}
+
+interface ArtistSearchFocusOptions {
+  navigate: (to: string, options: { replace: boolean; state: unknown }) => void;
+  mbid: string | undefined;
+  locationState: ArtistSearchFocusState | null | undefined;
+}
+
+export function useArtistSearchFocus({ navigate, mbid, locationState }: ArtistSearchFocusOptions) {
   const focusReleaseGroupMbid = locationState?.focusReleaseGroupMbid || null;
   const focusTrackMbid = locationState?.focusTrackMbid || null;
   const appliedRef = useRef(false);

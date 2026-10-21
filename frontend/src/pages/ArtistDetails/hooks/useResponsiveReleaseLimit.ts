@@ -3,16 +3,16 @@ import { useCallback, useEffect, useState } from "react";
 const RELEASE_CARD_MIN_WIDTH = 144;
 const RELEASE_GRID_GAP = 12;
 
-export const getResponsiveReleaseLimit = (width, cardMinWidth = RELEASE_CARD_MIN_WIDTH) =>
+export const getResponsiveReleaseLimit = (width: number, cardMinWidth = RELEASE_CARD_MIN_WIDTH) =>
   Math.max(
     1,
     Math.floor((Math.max(0, Number(width)) + RELEASE_GRID_GAP) / (cardMinWidth + RELEASE_GRID_GAP)),
   );
 
 export function useResponsiveReleaseLimit({ cardMinWidth = RELEASE_CARD_MIN_WIDTH } = {}) {
-  const [gridElement, setGridElement] = useState(null);
+  const [gridElement, setGridElement] = useState<HTMLElement | null>(null);
   const [limit, setLimit] = useState(6);
-  const gridRef = useCallback((element) => setGridElement(element), []);
+  const gridRef = useCallback((element: HTMLElement | null) => setGridElement(element), []);
 
   useEffect(() => {
     if (!gridElement) return undefined;

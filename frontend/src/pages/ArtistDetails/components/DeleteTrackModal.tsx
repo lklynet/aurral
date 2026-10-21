@@ -2,7 +2,23 @@ import { useId } from "react";
 import { DotLoader } from "../../../components/DotLoader";
 import { useModalDialog } from "../../../hooks/useModalDialog.ts";
 
-export function DeleteTrackModal({ show, title, hasFile = true, onCancel, onConfirm, deleting }) {
+interface DeleteTrackModalProps {
+  show: boolean;
+  title?: string | null;
+  hasFile?: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+  deleting?: boolean;
+}
+
+export function DeleteTrackModal({
+  show,
+  title,
+  hasFile = true,
+  onCancel,
+  onConfirm,
+  deleting,
+}: DeleteTrackModalProps) {
   const titleId = useId();
   const { dialogRef } = useModalDialog({
     open: show,

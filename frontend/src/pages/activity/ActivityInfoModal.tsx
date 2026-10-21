@@ -3,10 +3,11 @@ import { X } from "lucide-react";
 import TooltipButton from "../../components/TooltipButton";
 import { useModalDialog } from "../../hooks/useModalDialog.ts";
 import { formatDateTime } from "../../utils/dateTime.ts";
+import type { ActivityRequest } from "./activityListUtils.ts";
 
-const text = (value) => String(value ?? "").trim();
+const text = (value: unknown) => String(value ?? "").trim();
 
-const formatTimestamp = (value) => {
+const formatTimestamp = (value: string | number | null | undefined) => {
   if (value == null || value === "") return "";
   const raw = text(value);
   const date = new Date(/^-?\d+(\.\d+)?$/.test(raw) ? Number(raw) : value);
@@ -20,7 +21,7 @@ const formatTimestamp = (value) => {
   });
 };
 
-const formatSource = (item) => {
+const formatSource = (item: ActivityRequest) => {
   if (item.sourceSummary) return item.sourceSummary;
   if (item.albumGrab) return text(item.actualDownloadSource) || "Unknown";
   const source = text(item.downloadSource || item.downloadClient || item.source);
@@ -28,7 +29,7 @@ const formatSource = (item) => {
   return source === "lidarr" ? "Lidarr" : source === "aurral" ? "Aurral" : source;
 };
 
-const formatKind = (kind) => {
+const formatKind = (kind: string | null | undefined) => {
   const labels = {
     album_requested: "Album request",
     album_download: "Album download",
@@ -40,7 +41,7 @@ const formatKind = (kind) => {
   return labels[kind] || text(kind).replace(/[_-]+/g, " ");
 };
 
-const formatQualityState = (state) => {
+const formatQualityState = (state: string | null | undefined) => {
   const labels = {
     "below-floor": "Below floor",
     upgrade: "Upgrade available",
@@ -50,7 +51,7 @@ const formatQualityState = (state) => {
   return labels[state] || text(state);
 };
 
-function getRows(item) {
+function getRows(item: ActivityRequest) {
   const requester = item.requestedBy?.username || item.requestedBy?.id;
   const operation = item.playlistName || item.playlistId || item.playlistType;
   const details = item.error || item.subtitle;
@@ -86,7 +87,13 @@ function getRows(item) {
   ].filter(([, value]) => text(value));
 }
 
-export default function ActivityInfoModal({ item, onClose }) {
+export default function ActivityInfoModal({
+  item,
+  onClose,
+}: {
+  item: ActivityRequest | null | undefined;
+  onClose: () => void;
+}) {
   const titleId = useId();
   const { dialogRef, handleBackdropClick } = useModalDialog({
     open: Boolean(item),

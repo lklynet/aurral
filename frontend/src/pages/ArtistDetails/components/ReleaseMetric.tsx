@@ -1,6 +1,7 @@
 import { Headphones, Star } from "lucide-react";
+import type { ReleaseMetricValue } from "../utils";
 
-export function ReleaseMetric({ metric }) {
+export function ReleaseMetric({ metric }: { metric: ReleaseMetricValue }) {
   const Icon = metric.type === "rating" ? Star : Headphones;
   return (
     <>

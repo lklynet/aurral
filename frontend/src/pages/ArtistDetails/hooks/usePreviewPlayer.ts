@@ -2,9 +2,16 @@ import { useState, useEffect, useCallback } from "react";
 import { useAudioQueue } from "../../../contexts/audioQueueContext";
 import { getArtistPreview } from "../../../utils/api/endpoints/artists.ts";
 import { normalizePreviewTrack } from "../../../utils/audioQueue";
+import type { deezerGetArtistTopTracksById } from "../../../../../backend/services/apiClients/index.ts";
 
-export function usePreviewPlayer(mbid, artistNameFromNav, artist) {
-  const [previewTracks, setPreviewTracks] = useState([]);
+export type ArtistPreviewTrack = Awaited<ReturnType<typeof deezerGetArtistTopTracksById>>[number];
+
+export function usePreviewPlayer(
+  mbid: string | undefined,
+  artistNameFromNav: string | null | undefined,
+  artist: { name?: string | null } | null | undefined,
+) {
+  const [previewTracks, setPreviewTracks] = useState<ArtistPreviewTrack[]>([]);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [buildingQueue, setBuildingQueue] = useState(false);
   const {
@@ -50,7 +57,7 @@ export function usePreviewPlayer(mbid, artistNameFromNav, artist) {
     [previewTracks],
   );
 
-  const handlePreviewPlay = (track) => {
+  const handlePreviewPlay = (track: ArtistPreviewTrack) => {
     if (!track?.preview_url) return;
 
     const normalized = normalizePreviewTrack(track, artistName, { artistMbid: mbid });

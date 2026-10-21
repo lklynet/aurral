@@ -1,8 +1,14 @@
-const hasReleaseGroupType = (releaseGroup, type) =>
+import type { ReleaseGroup } from "./utils.ts";
+
+const hasReleaseGroupType = (releaseGroup: ReleaseGroup | null | undefined, type: string) =>
   releaseGroup?.["primary-type"] === type ||
   (releaseGroup?.["secondary-types"] || []).includes(type);
 
-export const matchesReleaseGroupTab = (releaseGroup, tab, showLiveAlbums = true) => {
+export const matchesReleaseGroupTab = (
+  releaseGroup: ReleaseGroup | null | undefined,
+  tab: string,
+  showLiveAlbums = true,
+) => {
   const isLive = hasReleaseGroupType(releaseGroup, "Live");
   if (!showLiveAlbums && isLive) return false;
   if (tab === "all") return true;
@@ -15,7 +21,10 @@ export const matchesReleaseGroupTab = (releaseGroup, tab, showLiveAlbums = true)
   return releaseGroup?.["primary-type"] === "Album";
 };
 
-export const matchesReleaseGroupSearch = (releaseGroup, searchTerm) =>
+export const matchesReleaseGroupSearch = (
+  releaseGroup: ReleaseGroup | null | undefined,
+  searchTerm: string | null | undefined,
+) =>
   String(releaseGroup?.title || "")
     .toLowerCase()
     .includes(

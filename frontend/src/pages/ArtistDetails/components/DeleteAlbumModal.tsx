@@ -2,6 +2,18 @@ import { useId, useRef } from "react";
 import { DotLoader } from "../../../components/DotLoader";
 import { useModalDialog } from "../../../hooks/useModalDialog.ts";
 
+interface DeleteAlbumModalProps {
+  show: boolean;
+  title?: string | null;
+  managedBy?: string | null;
+  keepFilesAction?: "remove" | "unmonitor";
+  deleteFiles: boolean;
+  onDeleteFilesChange: (checked: boolean) => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+  removing?: boolean | null;
+}
+
 export function DeleteAlbumModal({
   show,
   title,
@@ -12,7 +24,7 @@ export function DeleteAlbumModal({
   onCancel,
   onConfirm,
   removing,
-}) {
+}: DeleteAlbumModalProps) {
   const titleId = useId();
   const cancelRef = useRef(null);
   const { dialogRef } = useModalDialog({

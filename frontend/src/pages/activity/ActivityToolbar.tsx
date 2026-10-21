@@ -1,7 +1,17 @@
 import { RefreshCw, Search, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import TooltipButton from "../../components/TooltipButton";
 import { DotLoader } from "../../components/DotLoader";
+
+interface ActivityToolbarProps {
+  filterValue: string;
+  onFilterChange: (value: string) => void;
+  onRefresh?: () => void;
+  refreshing?: boolean;
+  action?: ReactNode;
+  placeholder?: string;
+}
 
 export default function ActivityToolbar({
   filterValue,
@@ -10,7 +20,7 @@ export default function ActivityToolbar({
   refreshing = false,
   action = null,
   placeholder = "Filter activity",
-}) {
+}: ActivityToolbarProps) {
   const [filterOpen, setFilterOpen] = useState(Boolean(filterValue));
 
   useEffect(() => {

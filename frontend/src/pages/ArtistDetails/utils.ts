@@ -4,7 +4,89 @@ import { shouldTriggerAlbumSearch } from "../../utils/albumAddAction.ts";
 import { formatDate } from "../../utils/dateTime.ts";
 import { formatCompactNumber } from "../../utils/numberFormat.ts";
 
-export const readReleaseListViewMode = () => {
+export type ReleaseListViewMode = "grid" | "list";
+
+export interface ReleaseRating {
+  count: number;
+  value: number | null;
+}
+
+export interface ReleaseGroup {
+  id?: string | null;
+  mbid?: string | null;
+  foreignAlbumId?: string | null;
+  title?: string;
+  releaseDate?: string | null;
+  firstReleaseDate?: string | null;
+  "first-release-date"?: string | null;
+  "primary-type"?: string | null;
+  "secondary-types"?: string[] | null;
+  rating?: ReleaseRating | null;
+  listenerCount?: number | null;
+  coverUrl?: string | null;
+  _coverUrl?: string | null;
+  _deezerAlbumId?: string | null;
+}
+
+export interface ReleaseTrack {
+  length?: number | null;
+  duration_ms?: number | null;
+}
+
+export interface ReleaseMetricValue {
+  label: string;
+  sortValue: number;
+  type: "listeners" | "rating";
+  title: string;
+}
+
+export interface PlayableTrack {
+  previewProvider?: string | null;
+  streamPath?: string | null;
+}
+
+export interface ArtistCoverImage {
+  image: string;
+  front?: boolean;
+  types?: string[];
+  coverType?: string;
+  kind?: string;
+  CoverType?: string;
+}
+
+export interface ReleaseLibraryInfo {
+  inLibrary?: boolean;
+  managedBy?: string | null;
+  monitored?: boolean;
+  trackListComplete?: boolean;
+  trackCount?: number;
+  trackFileCount?: number;
+  percentOfTracks?: number;
+  sizeOnDisk?: number;
+}
+
+export interface ReleaseDownloadStatus {
+  status?: string | null;
+}
+
+interface ReleaseLibraryDisplay {
+  kind: "missing" | "complete" | "failed" | "active" | "incomplete" | "monitored" | "unmonitored";
+  label: string | null;
+  isComplete: boolean;
+  isInLibrary: boolean;
+}
+
+export type ReleaseGroupStatusLookup = (
+  releaseGroupId: string,
+) => { status?: string | null } | null | undefined;
+
+interface LibraryAlbum extends Pick<ReleaseGroup, "mbid" | "foreignAlbumId"> {
+  id?: string | number | null;
+  artistId?: string | number | null;
+  monitored?: boolean;
+}
+
+export const readReleaseListViewMode = (): ReleaseListViewMode => {
   if (typeof window === "undefined") return "grid";
   try {
     const value = window.localStorage.getItem(RELEASE_LIST_VIEW_MODE_KEY);
@@ -14,7 +96,7 @@ export const readReleaseListViewMode = () => {
   }
 };
 
-export const writeReleaseListViewMode = (mode) => {
+export const writeReleaseListViewMode = (mode: ReleaseListViewMode) => {
   if (typeof window === "undefined") return;
   if (mode !== "grid" && mode !== "list") return;
   try {
@@ -22,7 +104,7 @@ export const writeReleaseListViewMode = (mode) => {
   } catch {}
 };
 
-export const getTagColor = (name) => {
+export const getTagColor = (name: string | null | undefined) => {
   if (!name) return "#121212";
   let hash = 0;
   for (let i = 0; i < name.length; i++) {
@@ -31,7 +113,10 @@ export const getTagColor = (name) => {
   return TAG_COLORS[Math.abs(hash) % TAG_COLORS.length];
 };
 
-export const isVisibleLibraryAlbum = (album, { requestingAlbum = null } = {}) => {
+export const isVisibleLibraryAlbum = (
+  album: LibraryAlbum | null | undefined,
+  { requestingAlbum = null }: { requestingAlbum?: string | null } = {},
+) => {
   if (!album || String(album.id ?? "").startsWith("pending-")) return false;
   if (album.monitored) return true;
   return (
@@ -40,7 +125,7 @@ export const isVisibleLibraryAlbum = (album, { requestingAlbum = null } = {}) =>
   );
 };
 
-export const deduplicateAlbums = (albums) => {
+export const deduplicateAlbums = <T extends LibraryAlbum>(albums: T[]): T[] => {
   const seen = new Map();
   return albums.filter((album) => {
     const key = album.id || `${album.mbid}-${album.artistId}`;
@@ -50,12 +135,15 @@ export const deduplicateAlbums = (albums) => {
   });
 };
 
-export const normalizePlaylistNameKey = (value) =>
+export const normalizePlaylistNameKey = (value: string | null | undefined) =>
   String(value || "")
     .trim()
     .toLowerCase();
 
-export const reserveUniquePlaylistName = (playlists, baseName = "Playlist") => {
+export const reserveUniquePlaylistName = (
+  playlists: readonly { name?: string | null }[] | null | undefined,
+  baseName = "Playlist",
+) => {
   const normalizedBase = String(baseName || "").trim() || "Playlist";
   const existing = new Set(
     (Array.isArray(playlists) ? playlists : [])
@@ -76,7 +164,7 @@ export const reserveUniquePlaylistName = (playlists, baseName = "Playlist") => {
   return `${normalizedBase} ${Date.now()}`;
 };
 
-const normalizeTrackDurationMs = (value) =>
+const normalizeTrackDurationMs = (value: unknown) =>
   value != null && Number.isFinite(Number(value)) ? Number(value) : null;
 
 export const buildStaticPlaylistTrackPayload = ({
@@ -108,7 +196,12 @@ export const buildStaticPlaylistTrackPayload = ({
   artistAliases: [],
 });
 
-export const formatLifeSpan = (lifeSpan) => {
+export const formatLifeSpan = (
+  lifeSpan:
+    | { begin?: string | null; end?: string | null; ended?: boolean | null }
+    | null
+    | undefined,
+) => {
   if (!lifeSpan) return null;
   const { begin, end, ended } = lifeSpan;
   if (!begin) return null;
@@ -120,7 +213,7 @@ export const formatLifeSpan = (lifeSpan) => {
   return `${beginYear} - Present`;
 };
 
-export const getArtistType = (type) => {
+export const getArtistType = (type: string) => {
   const types = {
     Person: "Solo artist",
     Group: "Band",
@@ -132,16 +225,19 @@ export const getArtistType = (type) => {
   return types[type] || type;
 };
 
-export const getCoverImage = (coverImages) => {
+export const getCoverImage = (coverImages: readonly ArtistCoverImage[] | null | undefined) => {
   if (!coverImages?.length) return null;
   const front = coverImages.find((img) => img.front);
   return front?.image || coverImages[0]?.image;
 };
 
 export const getReleaseGroupCoverUrl = (
-  releaseGroup,
-  albumCovers = {},
-  { artistFallback = "", resolved = false } = {},
+  releaseGroup: ReleaseGroup | null | undefined,
+  albumCovers: Record<string, string | undefined> = {},
+  {
+    artistFallback = "",
+    resolved = false,
+  }: { artistFallback?: string | null; resolved?: boolean } = {},
 ) => {
   if (!releaseGroup) return "";
   const id = releaseGroup.id || releaseGroup.mbid || releaseGroup.foreignAlbumId;
@@ -151,7 +247,7 @@ export const getReleaseGroupCoverUrl = (
   return resolved && artistFallback ? artistFallback : "";
 };
 
-const getImageKinds = (image) => {
+const getImageKinds = (image: ArtistCoverImage | null | undefined) => {
   const kinds = [
     image?.coverType,
     image?.kind,
@@ -165,12 +261,15 @@ const getImageKinds = (image) => {
   );
 };
 
-const imageMatchesKinds = (image, kinds) => {
+const imageMatchesKinds = (
+  image: ArtistCoverImage | null | undefined,
+  kinds: readonly string[],
+) => {
   const imageKinds = getImageKinds(image);
   return imageKinds.some((kind) => kinds.includes(kind));
 };
 
-export const getArtistHeroImage = (coverImages) => {
+export const getArtistHeroImage = (coverImages: readonly ArtistCoverImage[] | null | undefined) => {
   if (!coverImages?.length) return null;
   const fanart = coverImages.find((image) =>
     imageMatchesKinds(image, ["fanart", "background", "banner"]),
@@ -178,7 +277,7 @@ export const getArtistHeroImage = (coverImages) => {
   return fanart?.image || getCoverImage(coverImages);
 };
 
-export const getReleaseYear = (releaseGroupOrAlbum) => {
+export const getReleaseYear = (releaseGroupOrAlbum: ReleaseGroup | null | undefined) => {
   const value =
     releaseGroupOrAlbum?.["first-release-date"] ||
     releaseGroupOrAlbum?.releaseDate ||
@@ -188,7 +287,7 @@ export const getReleaseYear = (releaseGroupOrAlbum) => {
   return /^\d{4}$/.test(year) ? year : "";
 };
 
-export const formatReleaseDate = (releaseGroupOrAlbum) => {
+export const formatReleaseDate = (releaseGroupOrAlbum: ReleaseGroup | null | undefined) => {
   const value =
     releaseGroupOrAlbum?.["first-release-date"] ||
     releaseGroupOrAlbum?.releaseDate ||
@@ -213,13 +312,13 @@ export const formatReleaseDate = (releaseGroupOrAlbum) => {
   return getReleaseYear(releaseGroupOrAlbum) || raw;
 };
 
-export const sumTrackDurationMs = (tracks = []) =>
+export const sumTrackDurationMs = (tracks: ReleaseTrack[] | null | undefined = []) =>
   (Array.isArray(tracks) ? tracks : []).reduce((total, track) => {
     const length = Number(track?.length || track?.duration_ms || 0);
     return Number.isFinite(length) && length > 0 ? total + length : total;
   }, 0);
 
-export const formatAlbumDuration = (durationMs) => {
+export const formatAlbumDuration = (durationMs: number) => {
   if (!Number.isFinite(durationMs) || durationMs <= 0) return "";
   const totalSeconds = Math.floor(durationMs / 1000);
   const hours = Math.floor(totalSeconds / 3600);
@@ -228,7 +327,7 @@ export const formatAlbumDuration = (durationMs) => {
   return `${minutes} min`;
 };
 
-const getReleaseTypeLabel = (release) => {
+const getReleaseTypeLabel = (release: ReleaseGroup | null | undefined) => {
   const types = [
     release?.["primary-type"],
     ...(Array.isArray(release?.["secondary-types"]) ? release["secondary-types"] : []),
@@ -236,7 +335,10 @@ const getReleaseTypeLabel = (release) => {
   return types.length ? types.join(" · ") : null;
 };
 
-export const mergeReleaseDetails = (baseRelease, details) => {
+export const mergeReleaseDetails = (
+  baseRelease: ReleaseGroup,
+  details: ReleaseGroup | null | undefined,
+) => {
   if (!details) return baseRelease;
   return {
     ...baseRelease,
@@ -252,7 +354,10 @@ export const mergeReleaseDetails = (baseRelease, details) => {
   };
 };
 
-export const buildReleaseHeaderMeta = (release, tracks = []) => {
+export const buildReleaseHeaderMeta = (
+  release: ReleaseGroup,
+  tracks: ReleaseTrack[] | null | undefined = [],
+) => {
   const typeLabel = getReleaseTypeLabel(release);
   const trackCount = Array.isArray(tracks) ? tracks.length : 0;
   const metric = getReleaseMetric(release);
@@ -268,8 +373,11 @@ export const buildReleaseHeaderMeta = (release, tracks = []) => {
   return { typeLabel, meta };
 };
 
-export const resolveReleaseLibraryDisplay = (libraryInfo, downloadStatus) => {
-  const withAction = (display) => ({
+export const resolveReleaseLibraryDisplay = (
+  libraryInfo: ReleaseLibraryInfo | null | undefined,
+  downloadStatus: ReleaseDownloadStatus | null | undefined,
+) => {
+  const withAction = (display: ReleaseLibraryDisplay) => ({
     ...display,
     triggerSearch: shouldTriggerAlbumSearch({
       inLibrary: display.isInLibrary,
@@ -353,12 +461,14 @@ export const resolveReleaseLibraryDisplay = (libraryInfo, downloadStatus) => {
   });
 };
 
-const getReleaseListeners = (releaseGroup) =>
+const getReleaseListeners = (releaseGroup: ReleaseGroup | null | undefined) =>
   Number.isFinite(releaseGroup?.listenerCount) && releaseGroup.listenerCount > 0
     ? releaseGroup.listenerCount
     : 0;
 
-export const getReleaseMetric = (releaseGroup) => {
+export const getReleaseMetric = (
+  releaseGroup: ReleaseGroup | null | undefined,
+): ReleaseMetricValue => {
   const listeners = getReleaseListeners(releaseGroup);
   if (listeners > 0) {
     return {
@@ -387,24 +497,29 @@ export const getReleaseMetric = (releaseGroup) => {
 
 const RELEASE_KIND_ORDER = ["Album", "EP", "Single"];
 
-const getReleaseKindRank = (releaseGroup) => {
+const getReleaseKindRank = (releaseGroup: ReleaseGroup | null | undefined) => {
   if (releaseGroup?.["secondary-types"]?.length) return RELEASE_KIND_ORDER.length;
   const rank = RELEASE_KIND_ORDER.indexOf(releaseGroup?.["primary-type"]);
   return rank === -1 ? RELEASE_KIND_ORDER.length : rank;
 };
 
-const compareReleaseGroupsByPopularity = (a, b) =>
+const compareReleaseGroupsByPopularity = (a: ReleaseGroup, b: ReleaseGroup) =>
   getReleaseMetric(b).sortValue - getReleaseMetric(a).sortValue ||
   getReleaseKindRank(a) - getReleaseKindRank(b) ||
   String(b?.["first-release-date"] || "").localeCompare(String(a?.["first-release-date"] || ""));
 
-export const sortReleaseGroupsByPopularity = (releaseGroups = []) =>
+export const sortReleaseGroupsByPopularity = <T extends ReleaseGroup>(releaseGroups: T[] = []) =>
   [...releaseGroups].sort(compareReleaseGroupsByPopularity);
 
-export const getPopularReleaseGroups = (releaseGroups = [], limit = 6) =>
-  sortReleaseGroupsByPopularity(releaseGroups).slice(0, limit);
+export const getPopularReleaseGroups = <T extends ReleaseGroup>(
+  releaseGroups: T[] = [],
+  limit = 6,
+) => sortReleaseGroupsByPopularity(releaseGroups).slice(0, limit);
 
-const isUnrequestedReleaseGroup = (getAlbumStatus, releaseGroupId) => {
+const isUnrequestedReleaseGroup = (
+  getAlbumStatus: ReleaseGroupStatusLookup | undefined,
+  releaseGroupId: string,
+) => {
   const status = getAlbumStatus?.(releaseGroupId)?.status;
   return !status || status === "unmonitored";
 };
@@ -413,6 +528,10 @@ export const buildAurralPick = ({
   releaseGroups = [],
   getAlbumStatus,
   requestedReleaseGroupId = null,
+}: {
+  releaseGroups?: ReleaseGroup[];
+  getAlbumStatus?: ReleaseGroupStatusLookup;
+  requestedReleaseGroupId?: string | null;
 } = {}) => {
   const releaseGroup =
     releaseGroups.find((item) => item?.id && item.id === requestedReleaseGroupId) ||
@@ -431,10 +550,13 @@ export const buildAurralPick = ({
   };
 };
 
-export const isLibraryPlaybackTrack = (track) =>
+export const isLibraryPlaybackTrack = (track: PlayableTrack | null | undefined) =>
   track?.previewProvider === "lidarr" || !!track?.streamPath;
 
-export const getTrackPlayAccessibilityLabel = (track, isPlaying) => {
+export const getTrackPlayAccessibilityLabel = (
+  track: PlayableTrack | null | undefined,
+  isPlaying: boolean,
+) => {
   const fromLibrary = isLibraryPlaybackTrack(track);
   if (isPlaying) {
     return fromLibrary ? "Pause library playback" : "Pause preview";

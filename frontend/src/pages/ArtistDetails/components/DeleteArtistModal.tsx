@@ -2,6 +2,17 @@ import { useId, useRef } from "react";
 import { DotLoader } from "../../../components/DotLoader";
 import { useModalDialog } from "../../../hooks/useModalDialog.ts";
 
+interface DeleteArtistModalProps {
+  show: boolean;
+  artistName?: string | null;
+  libraryArtistName?: string | null;
+  deleteFiles: boolean;
+  onDeleteFilesChange: (checked: boolean) => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+  deleting?: boolean;
+}
+
 export function DeleteArtistModal({
   show,
   artistName,
@@ -11,7 +22,7 @@ export function DeleteArtistModal({
   onCancel,
   onConfirm,
   deleting,
-}) {
+}: DeleteArtistModalProps) {
   const titleId = useId();
   const cancelRef = useRef(null);
   const { dialogRef } = useModalDialog({

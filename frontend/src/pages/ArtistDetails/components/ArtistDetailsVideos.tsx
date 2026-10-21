@@ -1,10 +1,23 @@
 import { useEffect, useId, useState } from "react";
 import { getArtistVideos } from "../../../utils/api/endpoints/artists.ts";
 import { DotLoader } from "../../../components/DotLoader";
+import type { ArtistPreviewTrack } from "../hooks/usePreviewPlayer";
 
-export function ArtistDetailsVideos({ mbid, artistName, tracks }) {
+interface ArtistVideo {
+  videoId: string;
+  embedUrl: string;
+  trackTitle: string;
+}
+
+interface ArtistDetailsVideosProps {
+  mbid: string;
+  artistName: string;
+  tracks: ArtistPreviewTrack[];
+}
+
+export function ArtistDetailsVideos({ mbid, artistName, tracks }: ArtistDetailsVideosProps) {
   const headingId = useId();
-  const [videos, setVideos] = useState([]);
+  const [videos, setVideos] = useState<ArtistVideo[]>([]);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);

@@ -28,6 +28,7 @@ import {
   mergeActivityRequests,
   groupAlbumGrabRequests,
   matchesActivitySearch,
+  type ActivityListEntry,
 } from "./activity/activityListUtils";
 import ActivityRequestRow from "./activity/ActivityRequestRow";
 import ActivityAlbumRow from "./activity/ActivityAlbumRow";
@@ -153,7 +154,7 @@ function ActivityPage() {
 
   const listEntries = useMemo(() => {
     if (isListLikeView) {
-      return visibleRequests.map((request) => ({
+      return visibleRequests.map((request): ActivityListEntry => ({
         type: "item",
         request,
         key: request.id || request.mbid,
