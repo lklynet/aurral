@@ -15,8 +15,8 @@ export interface MonitoringRules {
   sinceYear: number | null;
   latestCount: number;
   newReleases: boolean;
-  types: string[];
-  extraTypes: string[];
+  types: readonly string[];
+  extraTypes: readonly string[];
   edition: "standard" | "expanded";
   topTracks: number;
 }
@@ -80,7 +80,7 @@ function NumberField({ id, label, value, min, max, disabled, onChange }: NumberF
 interface ChoiceGroupProps {
   legend: string;
   options: ChoiceOption[];
-  selected: string[];
+  selected: readonly string[];
   disabled: boolean;
   keepOne?: boolean;
   onToggle: (value: string) => void;

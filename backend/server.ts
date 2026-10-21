@@ -15,7 +15,7 @@ import { createRequestFailureLogger } from "./middleware/requestFailureLogger.ts
 import { handleOidcCallback, isOidcEnabled } from "./services/oidcAuth.ts";
 import { handleGoogleCallback } from "./services/googleAuth.ts";
 import { logger } from "./services/logger.ts";
-import { websocketService } from "./services/websocketService.ts";
+import { websocketService, type WebSocketChannelPayload } from "./services/websocketService.ts";
 import {
   getLidarrStatusSnapshot,
   hasActiveLidarrStatusSnapshot,
@@ -295,7 +295,7 @@ const broadcastDownloadStatuses = async () => {
   try {
     if (!hasWsSubscribers("downloads") && !hasActiveLidarrStatusSnapshot()) return;
     const snapshot = await getLidarrStatusSnapshot();
-    const message = {
+    const message: WebSocketChannelPayload = {
       type: "download_statuses",
       statuses: snapshot.statuses,
       stale: snapshot.stale,

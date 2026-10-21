@@ -7,15 +7,41 @@ import {
 } from "./apiClients/deezer.ts";
 import { getAlbumByMbid, resolveAlbumByArtistAndTitle } from "./providers/brainzmashProvider.ts";
 import { getLinkedDeezerArtistId } from "./providers/brainzmashMappers.ts";
+import type { NormalizedAlbum } from "./providers/brainzmashMappers.ts";
 
 export const LEGACY_COVER_HOST_PATTERN = /https?:\/\/(?:archive\.org|[\w-]+\.ca\.archive\.org)\//i;
 
+type DeezerArtistId = Parameters<typeof getDeezerArtistById>[0];
+type CoverWriteOptions = { persist?: boolean };
+type ReleaseGroupCoverOptions = {
+  artistName?: string;
+  albumTitle?: string;
+  bypassCache?: boolean;
+};
+type BatchItemInput =
+  | {
+      mbid?: unknown;
+      id?: unknown;
+      artistName?: unknown;
+      albumTitle?: unknown;
+    }
+  | null
+  | undefined;
+type ReleaseGroupCoverBatchEntry = {
+  image: string | null;
+  notFound: boolean;
+  transientError?: boolean;
+};
+
 const RG_CACHE_PREFIX = "rg:";
-const releaseGroupRefreshRequests = new Map();
+const releaseGroupRefreshRequests = new Map<
+  string,
+  ReturnType<typeof fetchReleaseGroupCoverUncached>
+>();
 
-const getImageUrl = (image) => image?.url || image?.Url || null;
+const getImageUrl = (image: NormalizedAlbum["images"][number]) => image?.url || image?.Url || null;
 
-const pickAlbumCoverUrl = (images = []) => {
+const pickAlbumCoverUrl = (images: NormalizedAlbum["images"] = []) => {
   if (!Array.isArray(images) || images.length === 0) return null;
   const ranked = images
     .map((image) => ({
@@ -31,12 +57,12 @@ const pickAlbumCoverUrl = (images = []) => {
 
 export { warmPublicImageUrl };
 
-const toPublicCoverUrl = (imageUrl) => {
+const toPublicCoverUrl = (imageUrl: string | null) => {
   if (!imageUrl || imageUrl === "NOT_FOUND") return null;
   return buildStableImageProxyUrl(imageUrl);
 };
 
-const getCachedUrl = (cacheKey) => {
+const getCachedUrl = (cacheKey: string) => {
   const cached = dbOps.getImage(cacheKey);
   if (
     cached?.imageUrl &&
@@ -57,11 +83,15 @@ const getCachedUrl = (cacheKey) => {
   return undefined;
 };
 
-const persistCover = (cacheKey, proxiedUrl) => {
+const persistCover = (cacheKey: string, proxiedUrl: string) => {
   dbOps.setImage(cacheKey, proxiedUrl);
 };
 
-const acceptCoverUrl = async (cacheKey, imageUrl, { persist = true } = {}) => {
+const acceptCoverUrl = async (
+  cacheKey: string,
+  imageUrl: string | null,
+  { persist = true }: CoverWriteOptions = {},
+) => {
   const proxiedUrl = toPublicCoverUrl(imageUrl);
   if (!proxiedUrl) return null;
   if (persist) persistCover(cacheKey, proxiedUrl);
@@ -73,7 +103,11 @@ const acceptCoverUrl = async (cacheKey, imageUrl, { persist = true } = {}) => {
   };
 };
 
-const buildReleaseGroupCoverResult = async (cacheKey, album, { persist = true } = {}) => {
+const buildReleaseGroupCoverResult = async (
+  cacheKey: string,
+  album: NormalizedAlbum,
+  { persist = true }: CoverWriteOptions = {},
+) => {
   const imageUrl = pickAlbumCoverUrl(album?.images);
   if (!imageUrl) {
     return { imageUrl: null, types: [], notFound: true, transientError: false };
@@ -89,9 +123,13 @@ const buildReleaseGroupCoverResult = async (cacheKey, album, { persist = true } 
 };
 
 const fetchDeezerAlbumCover = async (
-  cacheKey,
-  { artistName = "", deezerArtistId = null, albumTitle = "" } = {},
-  { persist = true } = {},
+  cacheKey: string,
+  {
+    artistName = "",
+    deezerArtistId = null,
+    albumTitle = "",
+  }: { artistName?: string; deezerArtistId?: DeezerArtistId; albumTitle?: string } = {},
+  { persist = true }: CoverWriteOptions = {},
 ) => {
   if (!albumTitle) return null;
   try {
@@ -111,6 +149,10 @@ export const fetchDeezerArtistImageUrl = async ({
   artistName = "",
   deezerArtistId = null,
   throwOnError = false,
+}: {
+  artistName?: string;
+  deezerArtistId?: DeezerArtistId;
+  throwOnError?: boolean;
 } = {}) => {
   try {
     const artist = deezerArtistId
@@ -127,8 +169,8 @@ export const fetchDeezerArtistImageUrl = async ({
 };
 
 const fetchReleaseGroupCoverUncached = async (
-  releaseGroupMbid,
-  { artistName = "", albumTitle = "", bypassCache = false } = {},
+  releaseGroupMbid: string,
+  { artistName = "", albumTitle = "", bypassCache = false }: ReleaseGroupCoverOptions = {},
 ) => {
   const cacheKey = `${RG_CACHE_PREFIX}${releaseGroupMbid}`;
   const cached = bypassCache ? undefined : getCachedUrl(cacheKey);
@@ -189,7 +231,10 @@ const fetchReleaseGroupCoverUncached = async (
   return { imageUrl: null, types: [], notFound: true, transientError: false };
 };
 
-export const fetchReleaseGroupCoverUrl = async (releaseGroupMbid, options = {}) => {
+export const fetchReleaseGroupCoverUrl = async (
+  releaseGroupMbid: string,
+  options: ReleaseGroupCoverOptions = {},
+) => {
   if (options?.bypassCache !== true) {
     return fetchReleaseGroupCoverUncached(releaseGroupMbid, options);
   }
@@ -215,7 +260,7 @@ export const fetchReleaseGroupCoverUrl = async (releaseGroupMbid, options = {}) 
   return request;
 };
 
-const normalizeBatchItem = (item) => {
+const normalizeBatchItem = (item: BatchItemInput) => {
   const mbid = String(item?.mbid || item?.id || "").trim();
   if (!mbid) return null;
   return {
@@ -225,7 +270,12 @@ const normalizeBatchItem = (item) => {
   };
 };
 
-export const attachCachedCoverUrls = (releaseGroups = [], limit = null) => {
+type BatchItem = NonNullable<ReturnType<typeof normalizeBatchItem>>;
+
+export const attachCachedCoverUrls = <T extends { id?: string | null }>(
+  releaseGroups: T[] = [],
+  limit: number | null = null,
+) => {
   if (!Array.isArray(releaseGroups) || releaseGroups.length === 0) {
     return releaseGroups;
   }
@@ -253,13 +303,13 @@ export const attachCachedCoverUrls = (releaseGroups = [], limit = null) => {
 };
 
 export const resolveReleaseGroupCoversBatch = async (
-  items = [],
-  { concurrency = 6, signal } = {},
+  items: BatchItemInput[] = [],
+  { concurrency = 6, signal }: { concurrency?: number; signal?: AbortSignal } = {},
 ) => {
   const seen = new Set();
   const normalized = items
     .map(normalizeBatchItem)
-    .filter((item) => {
+    .filter((item): item is BatchItem => {
       if (!item || seen.has(item.mbid)) return false;
       seen.add(item.mbid);
       return true;
@@ -269,7 +319,7 @@ export const resolveReleaseGroupCoversBatch = async (
     return {};
   }
 
-  const covers = {};
+  const covers: Record<string, ReleaseGroupCoverBatchEntry> = {};
   const cachedEntries = dbOps.getImages(normalized.map((item) => `${RG_CACHE_PREFIX}${item.mbid}`));
   const missing = [];
 
@@ -292,7 +342,7 @@ export const resolveReleaseGroupCoversBatch = async (
     missing.push(item);
   }
 
-  const safeConcurrency = Math.min(12, Math.max(1, Number.parseInt(concurrency, 10) || 6));
+  const safeConcurrency = Math.min(12, Math.max(1, Number.parseInt(String(concurrency), 10) || 6));
 
   for (let index = 0; index < missing.length; index += safeConcurrency) {
     signal?.throwIfAborted?.();

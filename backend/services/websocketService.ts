@@ -1,4 +1,5 @@
-import { WebSocketServer } from "ws";
+import { WebSocketServer, type RawData, type WebSocket } from "ws";
+import type { IncomingMessage, Server } from "node:http";
 import { EventEmitter } from "node:events";
 import { dbOps, userOps } from "../db/helpers/index.ts";
 import { logger } from "./logger.ts";
@@ -10,6 +11,57 @@ import {
   resolveSessionUserFromToken,
   resolveProxyUser,
 } from "../middleware/auth.ts";
+import type { getPlaylistStatusSnapshot } from "./playlists/playlistStatusSnapshot.ts";
+import type { getDiscoveryMode } from "./discovery/helpers.ts";
+
+type DownloadStatusEntry = { status: string; updatedAt: string; progress?: number };
+
+type DiscoveryUpdateFields = {
+  isUpdating: boolean;
+  configured?: boolean;
+  phase?: string | null;
+  progress?: number;
+  progressMessage?: string;
+  error?: string;
+  reason?: string;
+  provider?: string | null;
+  lastUpdated?: string | null;
+  discoveryMode?: ReturnType<typeof getDiscoveryMode>;
+};
+
+export type WebSocketChannelPayload =
+  | {
+      type: "download_statuses";
+      statuses: Partial<Record<string, DownloadStatusEntry>>;
+      stale: boolean;
+      error: string | null;
+      updatedAt: string | null;
+    }
+  | { type: "library_scan_completed" }
+  | { type: "release_metadata_refreshed" }
+  | { type: "playlist_status"; status: ReturnType<typeof getPlaylistStatusSnapshot> }
+  | ({ type: "discovery_update" } & DiscoveryUpdateFields);
+
+export type WebSocketServerMessage =
+  | { type: "connected"; clientId: string; subscriptions: string[] }
+  | { type: "subscribed"; channels: string[]; subscriptions: string[] }
+  | { type: "unsubscribed"; channels: string[]; subscriptions: string[] }
+  | { type: "pong"; timestamp: number }
+  | ({ channel: string; timestamp: number } & WebSocketChannelPayload);
+
+type ClientMessage = { type?: string; channels?: string[] };
+
+type ClientUser = NonNullable<ReturnType<typeof resolveSessionUserFromToken>>;
+
+type WebSocketClient = {
+  id: string;
+  ws: WebSocket;
+  user: ClientUser | null;
+  authSource: "session" | "local-network-bypass" | null;
+  subscriptions: Set<string>;
+  connectedAt: number;
+  _lastPlaylistStatusHashByChannel?: Map<string, string>;
+};
 
 const isAuthRequired = () => {
   const settings = dbOps.getSettings();
@@ -20,6 +72,11 @@ const isAuthRequired = () => {
 };
 
 class WebSocketService extends EventEmitter {
+  declare wss: WebSocketServer | null;
+  declare clients: Set<WebSocketClient>;
+  declare subscriptions: Map<string, unknown>;
+  declare startTime: number;
+
   constructor() {
     super();
     this.wss = null;
@@ -28,7 +85,7 @@ class WebSocketService extends EventEmitter {
     this.startTime = Date.now();
   }
 
-  initialize(server) {
+  initialize(server: Server) {
     this.startTime = Date.now();
     this.wss = new WebSocketServer({
       server,
@@ -43,9 +100,9 @@ class WebSocketService extends EventEmitter {
     return this;
   }
 
-  handleConnection(ws, req) {
-    let sessionUser = null;
-    let authSource = null;
+  handleConnection(ws: WebSocket, req: IncomingMessage) {
+    let sessionUser: WebSocketClient["user"] = null;
+    let authSource: WebSocketClient["authSource"] = null;
     if (isAuthRequired()) {
       const requestUrl = new URL(req.url || "", "http://localhost");
       const token = requestUrl.searchParams.get("token");
@@ -75,7 +132,7 @@ class WebSocketService extends EventEmitter {
 
     const clientId = this.generateClientId();
 
-    const client = {
+    const client: WebSocketClient = {
       id: clientId,
       ws,
       user: sessionUser,
@@ -112,9 +169,9 @@ class WebSocketService extends EventEmitter {
     });
   }
 
-  handleMessage(client, rawMessage) {
+  handleMessage(client: WebSocketClient, rawMessage: RawData) {
     try {
-      const message = JSON.parse(rawMessage.toString());
+      const message: ClientMessage | null = JSON.parse(rawMessage.toString());
 
       switch (message.type) {
         case "subscribe":
@@ -134,7 +191,7 @@ class WebSocketService extends EventEmitter {
     }
   }
 
-  handleSubscribe(client, channels) {
+  handleSubscribe(client: WebSocketClient, channels: string[]) {
     for (const channel of channels) {
       client.subscriptions.add(channel);
       if (channel === "weekly-flow") noteDeprecatedUsage("weekly-flow-channel");
@@ -148,7 +205,7 @@ class WebSocketService extends EventEmitter {
     this.emit("subscriptions-changed");
   }
 
-  handleUnsubscribe(client, channels) {
+  handleUnsubscribe(client: WebSocketClient, channels: string[]) {
     for (const channel of channels) {
       client.subscriptions.delete(channel);
       client._lastPlaylistStatusHashByChannel?.delete(channel);
@@ -163,13 +220,17 @@ class WebSocketService extends EventEmitter {
     this.emit("subscriptions-changed");
   }
 
-  send(client, data) {
+  send(client: WebSocketClient, data: WebSocketServerMessage) {
     if (client.ws.readyState === 1) {
       client.ws.send(JSON.stringify(data));
     }
   }
 
-  broadcast(channel, data, { userId = null } = {}) {
+  broadcast(
+    channel: string,
+    data: WebSocketChannelPayload,
+    { userId = null }: { userId?: number | null } = {},
+  ) {
     if (process.env.AURRAL_BACKGROUND_WORKER_GROUP && process.connected && process.send) {
       process.send({ type: "websocket-broadcast", channel, data, userId });
       return 0;
@@ -195,7 +256,10 @@ class WebSocketService extends EventEmitter {
     return sent;
   }
 
-  broadcastPerClient(channel, buildData) {
+  broadcastPerClient(
+    channel: string,
+    buildData: (client: WebSocketClient) => WebSocketChannelPayload | null,
+  ) {
     let sent = 0;
     for (const client of this.clients) {
       if (!(client.subscriptions.has(channel) || client.subscriptions.has("*"))) {
@@ -234,7 +298,7 @@ class WebSocketService extends EventEmitter {
     }
   }
 
-  disconnectUser(userId) {
+  disconnectUser(userId: number) {
     const targetUserId = Number(userId);
     if (!Number.isFinite(targetUserId)) return 0;
     let disconnected = 0;
@@ -253,7 +317,10 @@ class WebSocketService extends EventEmitter {
     return disconnected;
   }
 
-  emitDiscoveryUpdate(data, { userId = null } = {}) {
+  emitDiscoveryUpdate(
+    data: DiscoveryUpdateFields,
+    { userId = null }: { userId?: number | null } = {},
+  ) {
     this.broadcast(
       "discovery",
       {

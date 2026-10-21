@@ -1,3 +1,4 @@
+import type { toNormalizedArtistAlbum } from "./providers/brainzmashMappers.ts";
 import { listArtistAlbums } from "./providers/brainzmashProvider.ts";
 
 export const RELEASE_TYPES = ["album", "ep", "single"];
@@ -15,7 +16,31 @@ const EDITIONS = new Set(["standard", "expanded"]);
 export const MAX_LATEST_RELEASES = 10;
 export const MAX_TOP_TRACKS = 50;
 
-export const FACTORY_MONITOR_RULES = Object.freeze({
+type MonitoredRelease = ReturnType<typeof toNormalizedArtistAlbum>;
+
+type MonitorRules = {
+  catalog: "none" | "all" | "since" | "latest";
+  sinceYear: number | null;
+  latestCount: number;
+  newReleases: boolean;
+  types: readonly string[];
+  extraTypes: readonly string[];
+  edition: "standard" | "expanded";
+  topTracks: number;
+};
+
+type MonitorRulesResult =
+  | { rules: MonitorRules; error?: undefined; statusCode?: undefined; code?: undefined }
+  | { rules?: undefined; error: string; statusCode: number; code: string };
+
+type StoredArtistMonitoring = {
+  default?: unknown;
+  rules?: unknown;
+  catalogAt?: unknown;
+  newSince?: unknown;
+};
+
+export const FACTORY_MONITOR_RULES: MonitorRules = Object.freeze({
   catalog: "all",
   sinceYear: null,
   latestCount: 1,
@@ -38,27 +63,28 @@ export const MONITORED_AURRAL_ALBUM_CONDITION = `
   AND json_extract(album.metadata_json, '$.monitored') = 1
 `;
 
-export const monitoredTrackCondition = (trackAlias) => `${trackAlias}.monitored = 1`;
+export const monitoredTrackCondition = (trackAlias: string) => `${trackAlias}.monitored = 1`;
 
-const invalidRules = (message) => ({
+const invalidRules = (message: string) => ({
   error: message,
   statusCode: 400,
   code: "invalid_monitor_rules",
 });
 
-const lower = (value) =>
+const lower = (value: unknown) =>
   String(value ?? "")
     .trim()
     .toLowerCase();
 
-const isWholeNumber = (value, min, max) => Number.isInteger(value) && value >= min && value <= max;
+const isWholeNumber = (value: number, min: number, max: number) =>
+  Number.isInteger(value) && value >= min && value <= max;
 
-const pickTypes = (value, allowed) =>
+const pickTypes = (value: unknown, allowed: readonly string[]) =>
   Array.isArray(value) && value.every((entry) => allowed.includes(lower(entry)))
     ? allowed.filter((type) => value.some((entry) => lower(entry) === type))
     : null;
 
-export function normalizeMonitorRules(value) {
+export function normalizeMonitorRules(value: unknown): MonitorRulesResult {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return invalidRules("Monitoring rules must be an object");
   }
@@ -67,7 +93,7 @@ export function normalizeMonitorRules(value) {
     return invalidRules("Choose None, Everything, Since a year, or Latest for the back catalogue");
   const lastYear = new Date().getUTCFullYear() + 1;
   const sinceYear = input.catalog === "since" ? Number(input.sinceYear) : null;
-  if (input.catalog === "since" && !isWholeNumber(sinceYear, 1900, lastYear)) {
+  if (input.catalog === "since" && !isWholeNumber(sinceYear!, 1900, lastYear)) {
     return invalidRules(`Choose a year between 1900 and ${lastYear}`);
   }
   const latestCount = Number(input.latestCount);
@@ -102,12 +128,13 @@ export function normalizeMonitorRules(value) {
   };
 }
 
-export const storedRules = (value) =>
+export const storedRules = (value: unknown): MonitorRules =>
   normalizeMonitorRules(value).rules || { ...FACTORY_MONITOR_RULES };
 
-export const sameRules = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+export const sameRules = (left: unknown, right: unknown) =>
+  JSON.stringify(left) === JSON.stringify(right);
 
-export function releaseMatchesRules(release, rules) {
+export function releaseMatchesRules(release: MonitoredRelease, rules: MonitorRules) {
   if (!rules.types.includes(lower(release?.type))) return false;
   const secondaryTypes = Array.isArray(release.secondaryTypes) ? release.secondaryTypes : [];
   if (!secondaryTypes.every((type) => rules.extraTypes.includes(lower(type)))) return false;
@@ -115,17 +142,21 @@ export function releaseMatchesRules(release, rules) {
   return statuses.length === 0 || statuses.includes("Official");
 }
 
-export const isStudioAlbum = (release) =>
+export const isStudioAlbum = (release: MonitoredRelease) =>
   lower(release?.type) === "album" && !(release.secondaryTypes?.length > 0);
 
-const releaseDate = (release) => String(release?.firstReleaseDate || "").trim();
+const releaseDate = (release: MonitoredRelease) => String(release?.firstReleaseDate || "").trim();
 
-const isoDay = (timestamp) => new Date(Number(timestamp) || 0).toISOString().slice(0, 10);
+const isoDay = (timestamp: number) => new Date(Number(timestamp) || 0).toISOString().slice(0, 10);
 
 // The back catalogue is what was out when the rules were saved, so "Latest 3"
 // stays three releases. New releases are those dated after monitoring of new
 // releases began.
-export function selectMonitoredReleases(releases, rules, { catalogAt, newSince }) {
+export function selectMonitoredReleases(
+  releases: MonitoredRelease[],
+  rules: MonitorRules,
+  { catalogAt, newSince }: { catalogAt: number; newSince: number },
+) {
   const matching = releases.filter((release) => releaseMatchesRules(release, rules));
   const dated = matching
     .filter(releaseDate)
@@ -135,13 +166,13 @@ export function selectMonitoredReleases(releases, rules, { catalogAt, newSince }
   const catalog = {
     all: () => [...released, ...matching.filter((release) => !releaseDate(release))],
     since: () =>
-      released.filter((release) => Number(releaseDate(release).slice(0, 4)) >= rules.sinceYear),
+      released.filter((release) => Number(releaseDate(release).slice(0, 4)) >= rules.sinceYear!),
     latest: () => released.slice(-rules.latestCount),
     none: () => [],
   }[rules.catalog]();
   const newDay = isoDay(newSince);
   const fresh = rules.newReleases ? dated.filter((release) => releaseDate(release) > newDay) : [];
-  const selected = new Map([...catalog, ...fresh].map((release) => [release.id, release]));
+  const selected = new Map([...catalog, ...fresh].map((release) => [release.id, release] as const));
   return [...selected.values()].sort(
     (left, right) =>
       Number(isStudioAlbum(right)) - Number(isStudioAlbum(left)) ||
@@ -149,7 +180,13 @@ export function selectMonitoredReleases(releases, rules, { catalogAt, newSince }
   );
 }
 
-export const DEFAULT_MONITORING = Object.freeze({
+type MonitoringDefaults = {
+  rules: MonitorRules;
+  updatedAt: number;
+  newReleasesSince: number;
+};
+
+export const DEFAULT_MONITORING: MonitoringDefaults = Object.freeze({
   rules: FACTORY_MONITOR_RULES,
   updatedAt: 0,
   newReleasesSince: 0,
@@ -158,12 +195,8 @@ export const DEFAULT_MONITORING = Object.freeze({
 // An artist that uses the default follows later changes to it from the
 // moment of each change, the same as if its own rules had been saved then.
 export function resolveArtistMonitoring(
-  stored,
-  defaults: {
-    rules: ReturnType<typeof storedRules>;
-    updatedAt: number;
-    newReleasesSince: number;
-  } = DEFAULT_MONITORING,
+  stored: StoredArtistMonitoring | null | undefined,
+  defaults: MonitoringDefaults = DEFAULT_MONITORING,
 ) {
   if (!stored || typeof stored !== "object") return null;
   const catalogAt = Number(stored.catalogAt) || 0;
@@ -179,9 +212,21 @@ export function resolveArtistMonitoring(
   return { useDefault: false, rules: storedRules(stored.rules), catalogAt, newSince };
 }
 
-export const monitoringToken = (effective) => (effective ? JSON.stringify(effective) : null);
+type ResolvedArtistMonitoring = NonNullable<ReturnType<typeof resolveArtistMonitoring>>;
 
-export function nextArtistMonitoring(previous, { useDefault, rules }, defaults, now = Date.now()) {
+type ArtistMonitoringRequest =
+  | { useDefault: true; rules?: null }
+  | { useDefault: false; rules: MonitorRules };
+
+export const monitoringToken = (effective: unknown) =>
+  effective ? JSON.stringify(effective) : null;
+
+export function nextArtistMonitoring(
+  previous: ResolvedArtistMonitoring | null | undefined,
+  { useDefault, rules }: ArtistMonitoringRequest,
+  defaults: MonitoringDefaults,
+  now = Date.now(),
+) {
   const nextRules = useDefault ? defaults.rules : rules;
   const unchanged = previous && sameRules(previous.rules, nextRules);
   const keepNewSince = previous?.rules.newReleases && nextRules.newReleases;
@@ -193,7 +238,11 @@ export function nextArtistMonitoring(previous, { useDefault, rules }, defaults, 
   };
 }
 
-export function nextMonitoringDefaults(previous, rules, now = Date.now()) {
+export function nextMonitoringDefaults(
+  previous: MonitoringDefaults,
+  rules: MonitorRules,
+  now = Date.now(),
+) {
   if (sameRules(previous.rules, rules)) return previous;
   return {
     rules,
@@ -204,7 +253,7 @@ export function nextMonitoringDefaults(previous, rules, now = Date.now()) {
 }
 
 // Older builds read monitor_mode, so it keeps the closest of their modes.
-export function legacyMonitorMode(effective) {
+export function legacyMonitorMode(effective: { rules: MonitorRules } | null | undefined) {
   if (!effective?.rules.newReleases) return "none";
   if (effective.rules.catalog === "all") return "all";
   return effective.rules.catalog === "latest" ? "latest" : "future";
@@ -213,7 +262,9 @@ export function legacyMonitorMode(effective) {
 // Earlier builds stored one mode per artist. "all" became the default rules;
 // "first" never followed new releases, so its album stays and the artist
 // stops being monitored.
-export function monitoringFromLegacyMode(mode) {
+export function monitoringFromLegacyMode(
+  mode: unknown,
+): ArtistMonitoringRequest | null | undefined {
   switch (
     String(mode || "none")
       .trim()
@@ -235,6 +286,6 @@ export function monitoringFromLegacyMode(mode) {
   }
 }
 
-export async function listAurralArtistReleases(artistMbid) {
+export async function listAurralArtistReleases(artistMbid: string) {
   return listArtistAlbums(artistMbid, { hydrateLimit: 100 });
 }

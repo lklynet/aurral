@@ -5,14 +5,88 @@ import { normalizeBaseUrl, normalizeInteger } from "./usenetClientCommon.ts";
 const DEFAULT_MUSIC_CATEGORIES = [3000];
 const DEFAULT_MAX_RESULTS = 60;
 
-let connectionCache = { checkedAt: 0, result: null };
-let indexerCache = { key: null, at: 0, indexers: [] };
+type ProwlarrCategory = {
+  id?: number;
+  name?: string | null;
+  subCategories?: ProwlarrCategory[] | null;
+};
+
+type ProwlarrDownloadProtocol = "unknown" | "usenet" | "torrent";
+
+type ProwlarrIndexer = {
+  id?: number;
+  name?: string | null;
+  definitionName?: string | null;
+  protocol?: ProwlarrDownloadProtocol;
+  enable?: boolean;
+  supportsSearch?: boolean;
+  priority?: number;
+  capabilities?: {
+    categories?: ProwlarrCategory[] | null;
+    musicSearchParams?: string[] | null;
+  };
+};
+
+type ProwlarrRelease = {
+  id?: number;
+  guid?: string | null;
+  size?: number;
+  files?: number | null;
+  grabs?: number | null;
+  indexerId?: number;
+  indexer?: string | null;
+  title?: string | null;
+  sortTitle?: string | null;
+  releaseHash?: string | null;
+  publishDate?: string;
+  downloadUrl?: string | null;
+  infoUrl?: string | null;
+  protocol?: ProwlarrDownloadProtocol;
+  categories?: ProwlarrCategory[] | null;
+};
+
+type ProwlarrIndexerOverride = { enabled: boolean; priority: number | null };
+
+type ProwlarrSettings = ReturnType<typeof getSettings>;
+
+type NormalizedIndexer = ReturnType<typeof normalizeIndexer>;
+
+type ProwlarrConnectionStatus = {
+  ok: boolean;
+  configured: boolean;
+  connected: boolean;
+  message: string;
+  version?: string | null;
+  appName?: string;
+  indexerCount?: number;
+  usenetIndexerCount?: number;
+  enabledUsenetIndexerCount?: number;
+  indexers?: NormalizedIndexer[];
+};
+
+type ProwlarrSearchOptions = {
+  indexers?: NormalizedIndexer[];
+  categories?: number[];
+  type?: string;
+  limit?: number;
+  offset?: number;
+};
+
+let connectionCache: { checkedAt: number; result: ProwlarrConnectionStatus | null } = {
+  checkedAt: 0,
+  result: null,
+};
+let indexerCache: { key: string | null; at: number; indexers: ProwlarrIndexer[] } = {
+  key: null,
+  at: 0,
+  indexers: [],
+};
 const INDEXER_CACHE_MS = 5 * 60 * 1000;
 const NZB_LIMIT_FALLBACK_MS = 60 * 60 * 1000;
 const NZB_LIMIT_MAX_MS = 24 * 60 * 60 * 1000;
-const nzbLimitedUntil = new Map();
+const nzbLimitedUntil = new Map<string, number>();
 
-function readRetryAfterMs(value) {
+function readRetryAfterMs(value: unknown) {
   const text = String(value ?? "").trim();
   const seconds = Number(text);
   const ms = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(text) - Date.now();
@@ -20,7 +94,7 @@ function readRetryAfterMs(value) {
   return Math.min(Math.max(ms, 0), NZB_LIMIT_MAX_MS);
 }
 
-function nzbLimitError(indexer, until) {
+function nzbLimitError(indexer: string | null | undefined, until: number) {
   const minutes = Math.ceil((until - Date.now()) / 60000);
   const message = `${indexer || "The indexer"} has reached its NZB limit.`;
   if (minutes <= 0) return new Error(message);
@@ -31,13 +105,15 @@ function nzbLimitError(indexer, until) {
   return new Error(`${message} Aurral will ask it again in ${wait}.`);
 }
 
-function normalizePositiveInteger(value, fallback) {
+function normalizePositiveInteger(value: unknown, fallback: number): number;
+function normalizePositiveInteger(value: unknown, fallback: null): number | null;
+function normalizePositiveInteger(value: unknown, fallback: number | null): number | null {
   const parsed = normalizeInteger(value, null);
   if (parsed == null || parsed <= 0) return fallback;
   return parsed;
 }
 
-function normalizeCategoryList(value) {
+function normalizeCategoryList(value: unknown) {
   const raw = Array.isArray(value)
     ? value
     : String(value || "")
@@ -49,11 +125,11 @@ function normalizeCategoryList(value) {
   return categories.length > 0 ? [...new Set(categories)] : DEFAULT_MUSIC_CATEGORIES;
 }
 
-function normalizeIndexerOverrides(value) {
+function normalizeIndexerOverrides(value: unknown): Record<string, ProwlarrIndexerOverride> {
   if (Array.isArray(value)) {
     return Object.fromEntries(
       value
-        .map((entry) => {
+        .map((entry): [string, ProwlarrIndexerOverride] | null => {
           const id = normalizeInteger(entry?.id, null);
           if (id == null) return null;
           return [
@@ -64,11 +140,11 @@ function normalizeIndexerOverrides(value) {
             },
           ];
         })
-        .filter(Boolean),
+        .filter(Boolean) as [string, ProwlarrIndexerOverride][],
     );
   }
   if (!value || typeof value !== "object") return {};
-  const out = {};
+  const out: Record<string, ProwlarrIndexerOverride> = {};
   for (const [key, entry] of Object.entries(value)) {
     const id = normalizeInteger(key, null);
     if (id == null) continue;
@@ -92,7 +168,7 @@ function getSettings() {
   };
 }
 
-function buildClientFromCredentials(url, apiKey) {
+function buildClientFromCredentials(url: string, apiKey: string) {
   const trimmedUrl = normalizeBaseUrl(url);
   const trimmedKey = String(apiKey || "").trim();
   if (!trimmedUrl || !trimmedKey) {
@@ -114,16 +190,16 @@ function buildClient() {
   return buildClientFromCredentials(url, apiKey);
 }
 
-function normalizeProtocol(value) {
+function normalizeProtocol(value: unknown) {
   const protocol = String(value || "")
     .trim()
     .toLowerCase();
   return protocol;
 }
 
-function readCategoryIds(categories) {
+function readCategoryIds(categories: unknown) {
   if (!Array.isArray(categories)) return [];
-  const ids = [];
+  const ids: number[] = [];
   for (const category of categories) {
     const id = normalizeInteger(category?.id ?? category, null);
     if (id != null) ids.push(id);
@@ -131,7 +207,10 @@ function readCategoryIds(categories) {
   return [...new Set(ids)];
 }
 
-function hasMusicCategory(indexer, configuredCategories = DEFAULT_MUSIC_CATEGORIES) {
+function hasMusicCategory(
+  indexer: ProwlarrIndexer,
+  configuredCategories = DEFAULT_MUSIC_CATEGORIES,
+) {
   const supported = readCategoryIds(indexer?.capabilities?.categories);
   if (supported.length === 0) return true;
   return supported.some((id) =>
@@ -144,7 +223,7 @@ function hasMusicCategory(indexer, configuredCategories = DEFAULT_MUSIC_CATEGORI
   );
 }
 
-function normalizeIndexer(indexer, settings = getSettings()) {
+function normalizeIndexer(indexer: ProwlarrIndexer, settings: ProwlarrSettings = getSettings()) {
   const id = normalizeInteger(indexer?.id, null);
   const override = id != null ? settings.indexers[String(id)] : null;
   const priority = override?.priority ?? normalizePositiveInteger(indexer?.priority, 25);
@@ -165,7 +244,7 @@ function normalizeIndexer(indexer, settings = getSettings()) {
   };
 }
 
-function resolveProwlarrUrl(value) {
+function resolveProwlarrUrl(value: unknown) {
   const url = String(value || "").trim();
   if (!url) return "";
   if (/^https?:\/\//i.test(url)) return url;
@@ -174,7 +253,7 @@ function resolveProwlarrUrl(value) {
   return `${base}${url.startsWith("/") ? "" : "/"}${url}`;
 }
 
-function normalizeRelease(release) {
+function normalizeRelease(release: ProwlarrRelease) {
   const indexerId = normalizeInteger(release?.indexerId, null);
   const title = String(release?.title || release?.sortTitle || "").trim();
   const downloadUrl = resolveProwlarrUrl(release?.downloadUrl);
@@ -196,7 +275,7 @@ function normalizeRelease(release) {
   };
 }
 
-function formatHttpErrorBody(data) {
+function formatHttpErrorBody(data: unknown): string {
   if (!data) return "";
   if (typeof data === "string") return data.trim().slice(0, 500);
   if (Array.isArray(data)) {
@@ -224,7 +303,21 @@ function formatHttpErrorBody(data) {
   return String(data).trim().slice(0, 500);
 }
 
-function buildSearchParams({ query, indexerIds, categories, type = "search", limit, offset = 0 }) {
+function buildSearchParams({
+  query,
+  indexerIds,
+  categories,
+  type = "search",
+  limit,
+  offset = 0,
+}: {
+  query: string;
+  indexerIds?: (number | null)[];
+  categories?: unknown;
+  type?: string;
+  limit?: number | null;
+  offset?: number;
+}) {
   const params = new URLSearchParams();
   params.set("query", String(query || "").trim());
   params.set("type", type);
@@ -259,7 +352,9 @@ export class ProwlarrClient {
     };
   }
 
-  async testConnection({ force = false } = {}) {
+  async testConnection({
+    force = false,
+  }: { force?: boolean } = {}): Promise<ProwlarrConnectionStatus> {
     const settings = getSettings();
     if (!settings.enabled) {
       return {
@@ -296,7 +391,7 @@ export class ProwlarrClient {
         connectionCache = { checkedAt: Date.now(), result };
         return result;
       }
-      const indexers = Array.isArray(indexerRes.data) ? indexerRes.data : [];
+      const indexers: ProwlarrIndexer[] = Array.isArray(indexerRes.data) ? indexerRes.data : [];
       const normalized = indexers.map((entry) => normalizeIndexer(entry, settings));
       const usenet = normalized.filter(
         (entry) =>
@@ -332,7 +427,7 @@ export class ProwlarrClient {
 
   // Every search reads the indexer list, so it is kept for a few minutes.
   // The settings page asks for a fresh list.
-  async listUsenetIndexers({ force = false } = {}) {
+  async listUsenetIndexers({ force = false }: { force?: boolean } = {}) {
     const settings = getSettings();
     if (!this.isConfigured()) return [];
     const key = `${settings.url}\0${settings.apiKey}`;
@@ -367,7 +462,7 @@ export class ProwlarrClient {
     return indexers.filter((entry) => entry.enabled);
   }
 
-  async search(query, options = {}) {
+  async search(query: string, options: ProwlarrSearchOptions = {}) {
     if (!this.isConfigured()) {
       throw new Error("Prowlarr is not configured");
     }
@@ -400,7 +495,13 @@ export class ProwlarrClient {
 
   // Like Lidarr, Aurral fetches the NZB itself and hands the download client
   // the file, so the client never needs to reach Prowlarr at Aurral's address.
-  async downloadNzb(downloadUrl, { indexerId = null, indexer = "" } = {}) {
+  async downloadNzb(
+    downloadUrl: string | null | undefined,
+    {
+      indexerId = null,
+      indexer = "",
+    }: { indexerId?: string | number | null; indexer?: string | null } = {},
+  ) {
     const url = String(downloadUrl || "").trim();
     if (!url) throw new Error("No Usenet release URL available");
     const limitKey = String(indexerId ?? "").trim();
@@ -422,7 +523,9 @@ export class ProwlarrClient {
     const content = Buffer.from(response.data || []);
     const head = content.subarray(0, 65536).toString("utf8");
     if (!/<nzb[\s>]/iu.test(head)) {
-      const error = new Error("The indexer did not return an NZB file");
+      const error: Error & { nzbGrabSpent?: boolean } = new Error(
+        "The indexer did not return an NZB file",
+      );
       error.nzbGrabSpent = !/<error[\s>]/iu.test(head);
       throw error;
     }

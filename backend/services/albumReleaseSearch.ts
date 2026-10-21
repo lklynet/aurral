@@ -1,4 +1,9 @@
-import { groupSoulseekSearchResults } from "./downloadJobs/trackSearchQueries.ts";
+import {
+  groupSoulseekSearchResults,
+  type SoulseekFolder,
+  type SoulseekSearchItem,
+} from "./downloadJobs/trackSearchQueries.ts";
+import type { PlaylistDownloadJobsRow } from "../db/rows.ts";
 import { getFileExtension, getPathParts } from "./trackMatching/candidateNormalizer.ts";
 import {
   MATCH_POLICY,
@@ -29,7 +34,22 @@ const AUDIO_EXTENSIONS = new Set([
 ]);
 const MAX_FOLDER_CANDIDATES = 3;
 
-function requestedArtistNames(manifest) {
+type ReleaseManifest = {
+  title: string;
+  compilation: boolean;
+  artistNames: string[];
+  tracks: { artists?: string[]; artistAliases?: string[] }[];
+};
+type AlbumJob = Pick<PlaylistDownloadJobsRow, "id">;
+type SoulseekAudioFolder = ReturnType<typeof groupSoulseekSearchResults>[number];
+type FolderOption = {
+  group: SoulseekAudioFolder;
+  files: (SoulseekSearchItem & { jobId: AlbumJob["id"] })[];
+  fit: number;
+  qualityRank: number;
+};
+
+function requestedArtistNames(manifest: ReleaseManifest) {
   return [
     ...new Set(
       [
@@ -45,13 +65,13 @@ function requestedArtistNames(manifest) {
   ];
 }
 
-function folderLabels(folder) {
+function folderLabels(folder: SoulseekFolder) {
   return String(folder.directoryPath || "")
     .split(/[\\/]/)
     .map(normalizeMatchText);
 }
 
-function folderArtist(folder, names) {
+function folderArtist(folder: SoulseekFolder, names: string[]) {
   const labels = folderLabels(folder);
   return (
     names.find((name) => {
@@ -61,7 +81,7 @@ function folderArtist(folder, names) {
   );
 }
 
-const albumLabel = (folder) =>
+const albumLabel = (folder: SoulseekFolder) =>
   String(folder.directoryPath || "")
     .split(/[\\/]/)
     .at(-1);
@@ -69,7 +89,7 @@ const albumLabel = (folder) =>
 // Only a folder named for the album, spaced or not ("LP 4" for "LP4"), goes
 // to the judge, unless the name cannot be compared: a title with no letters,
 // such as "÷", or a folder named in another script.
-function folderMayHoldAlbum(folder, manifest) {
+function folderMayHoldAlbum(folder: SoulseekFolder, manifest: ReleaseManifest) {
   const albumName = normalizeMatchText(coreAlbumTitle(manifest.title));
   return (
     !albumName ||
@@ -78,15 +98,20 @@ function folderMayHoldAlbum(folder, manifest) {
   );
 }
 
-function groupAlbumDiscFolders(groups, manifest) {
-  const albums = new Map();
+function groupAlbumDiscFolders(groups: SoulseekAudioFolder[], manifest: ReleaseManifest) {
+  const albums = new Map<string, SoulseekAudioFolder>();
   for (const group of groups) {
     const parts = String(group.directoryPath || "").split("/");
     const discDirectory = discFolderNumber(parts.at(-1), { album: manifest.title }) != null;
     const directoryPath =
       discDirectory && parts.length > 1 ? parts.slice(0, -1).join("/") : group.directoryPath;
     const key = `${group.user}\0${directoryPath}`;
-    const album = albums.get(key) || { ...group, directoryPath, files: [], audioFiles: [] };
+    const album: SoulseekAudioFolder = albums.get(key) || {
+      ...group,
+      directoryPath,
+      files: [],
+      audioFiles: [],
+    };
     album.files.push(...group.files);
     album.audioFiles.push(...group.audioFiles);
     albums.set(key, album);
@@ -96,10 +121,15 @@ function groupAlbumDiscFolders(groups, manifest) {
 
 // A folder that names the requested artist vouches for the artist of files
 // whose names carry only a title.
-function soulseekFile(item, names, artistFromFolder, manifest) {
+function soulseekFile(
+  item: SoulseekSearchItem,
+  names: string[],
+  artistFromFolder: string | null,
+  manifest: ReleaseManifest,
+) {
   const parsed = parseListingTitle(item.file, { album: manifest.title });
   let title = parsed.title || "";
-  let artist = null;
+  let artist: string | null = null;
   for (const name of names) {
     const prefix = new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s+[-–—]\\s+`, "iu");
     if (prefix.test(title)) {
@@ -124,7 +154,10 @@ function soulseekFile(item, names, artistFromFolder, manifest) {
   };
 }
 
-export function buildSoulseekReleaseFolders(results, manifest) {
+export function buildSoulseekReleaseFolders(
+  results: SoulseekSearchItem[] | null | undefined,
+  manifest: ReleaseManifest | null,
+) {
   if (!manifest?.tracks?.length) return [];
   const names = requestedArtistNames(manifest);
   return groupAlbumDiscFolders(
@@ -146,7 +179,11 @@ export function buildSoulseekReleaseFolders(results, manifest) {
 
 // The files of every folder that holds the job's place on the pinned release,
 // whole or missing only other tracks, keyed by user and path.
-export function soulseekReleaseCopies(results, manifest, job) {
+export function soulseekReleaseCopies(
+  results: SoulseekSearchItem[] | null | undefined,
+  manifest: ReleaseManifest | null,
+  job: AlbumJob,
+) {
   const index = manifest ? manifestIndexFor(manifest, job) : null;
   if (index == null) return new Set();
   return new Set(
@@ -156,8 +193,8 @@ export function soulseekReleaseCopies(results, manifest, job) {
   );
 }
 
-function peerOrder(option) {
-  const raw = option.files[0] || {};
+function peerOrder(option: FolderOption) {
+  const raw: Partial<SoulseekSearchItem> = option.files[0] || {};
   return {
     freeSlot: Number(raw.slots) > 0 ? 0 : 1,
     queueLength: Number(raw.queueLength) || 0,
@@ -165,7 +202,7 @@ function peerOrder(option) {
   };
 }
 
-function compareFolderOptions(left, right) {
+function compareFolderOptions(left: FolderOption, right: FolderOption) {
   const leftPeer = peerOrder(left);
   const rightPeer = peerOrder(right);
   return (
@@ -177,14 +214,21 @@ function compareFolderOptions(left, right) {
   );
 }
 
-export function selectSoulseekAlbumFolder(results, jobs, { manifest = null, profile = null } = {}) {
+export function selectSoulseekAlbumFolder(
+  results: SoulseekSearchItem[] | null | undefined,
+  jobs: AlbumJob[] | null | undefined,
+  {
+    manifest = null,
+    profile = null,
+  }: { manifest?: ReleaseManifest | null; profile?: unknown } = {},
+) {
   if (!Array.isArray(jobs) || !jobs.length || !manifest?.tracks?.length) {
     return { decision: "skip", selected: null, candidates: [] };
   }
   const { wanted, offManifest } = mapRequest(manifest, jobs);
   if (!wanted.size || offManifest.length)
     return { decision: "skip", selected: null, candidates: [] };
-  const qualityAllowed = (item) =>
+  const qualityAllowed = (item: SoulseekSearchItem) =>
     item.locked !== true &&
     item.isLocked !== true &&
     (!profile || isAdvertisedQualityEligible(item.file, item.bitrate ?? item.bitRate, { profile }));
@@ -193,10 +237,10 @@ export function selectSoulseekAlbumFolder(results, jobs, { manifest = null, prof
       if (listing.files.length < manifest.tracks.length) return [];
       const assessment = judgeRelease(manifest, listing);
       if (assessment.kind !== "exact") return [];
-      const files = [];
+      const files: FolderOption["files"] = [];
       for (const [trackIndex, jobId] of wanted) {
-        const copies = assessment.copiesForTrack[trackIndex]
-          .map((index) => listing.files[index].raw)
+        const copies: SoulseekSearchItem[] = assessment.copiesForTrack[trackIndex]
+          .map((index: number) => listing.files[index].raw)
           .filter(qualityAllowed);
         copies.sort((left, right) =>
           profile
