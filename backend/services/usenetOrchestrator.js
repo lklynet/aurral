@@ -575,6 +575,9 @@ async function handleUsenetDownload(payload, helpers) {
         ...releaseMetadata,
         downloadClientId: appended.nzbId,
       });
+      // Client IDs can be reused after an earlier item was removed. A
+      // successful append establishes a new item that may be shared again.
+      retiredNzbs.delete(nzbKey(clientKey, appended.nzbId));
       return appended;
     });
   } catch (error) {

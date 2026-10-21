@@ -546,6 +546,8 @@ test("a track awaiting a shared NZB submits a new one if the old download is ret
 
   assert.equal(next.nzbId, 85);
   assert.equal(append.mock.calls.length, 1);
+  downloadTracker.removeJob(firstJobId);
+  downloadTracker.removeJob(nextJobId);
 });
 
 test("upgrades for two copies of one track share the release without moving its file early", async (t) => {
@@ -688,6 +690,9 @@ test("a pending review keeps a shared Usenet file until its final consumer relea
   });
   await assert.rejects(stat(sourcePath));
   assert.equal(removed.mock.calls.length, 1);
+  downloadTracker.setPending(reviewedJobId);
+  downloadTracker.removeJob(reviewedJobId);
+  downloadTracker.removeJob(pendingJobId);
 });
 
 test("after a failed Usenet submission, one waiting upgrade submits the release for the others", async () => {
