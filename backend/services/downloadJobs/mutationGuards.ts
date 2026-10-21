@@ -16,9 +16,9 @@ const normalizePlaylistTypes = (playlistTypes) => [
   ),
 ];
 
-async function withOwnerLocks(lockKind, ownerIds, operation) {
+async function withOwnerLocks<T>(lockKind, ownerIds, operation: () => T | Promise<T>): Promise<T> {
   const sortedIds = [...ownerIds].sort();
-  const runAtIndex = async (index) => {
+  const runAtIndex = async (index: number): Promise<T> => {
     if (index >= sortedIds.length) {
       return operation();
     }

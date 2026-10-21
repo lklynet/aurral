@@ -251,7 +251,7 @@ const publishGlobalDiscovery = (discoveryData) => {
   });
 };
 
-export const updateDiscoveryCache = async (options = {}) => {
+export const updateDiscoveryCache = async (options = {}): Promise<void> => {
   const { withHonkerLock } = await import("../honkerDb.ts");
   if (options.skipHonkerLock !== true) {
     return withHonkerLock(
@@ -442,7 +442,12 @@ const buildUserRecommendations = async ({ userId, user, existing, startedAt }) =
   return { recommendations, seeds, topGenres };
 };
 
-export const updateUserDiscoveryCache = async (userId, options = {}) => {
+export const updateUserDiscoveryCache = async (
+  userId,
+  options = {},
+): Promise<
+  { skipped: true; reason: string } | { refreshed: true; recommendationCount: number }
+> => {
   const { withHonkerLock } = await import("../honkerDb.ts");
   if (options.skipHonkerLock !== true) {
     return withHonkerLock(

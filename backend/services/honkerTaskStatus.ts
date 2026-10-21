@@ -1,3 +1,5 @@
+import type { Statement } from "better-sqlite3";
+import type { Job, Queue } from "@russellthehippo/honker-node";
 import { db } from "../config/db-sqlite.ts";
 import { SCHEDULED_SYSTEM_TASKS } from "./honkerDb.ts";
 import { registerHonkerShutdownHandler } from "./honkerWorkerRuntime.ts";
@@ -309,36 +311,47 @@ const queueDefinitionByName = new Map(
   QUEUE_DEFINITIONS.map((definition) => [definition.queue, definition]),
 );
 
+interface TaskPayloadView {
+  kind?: unknown;
+  label?: unknown;
+  phase?: unknown;
+  playlistId?: unknown;
+  force?: unknown;
+  listenHistoryProfile?: { listenHistoryUsername?: unknown } | null;
+}
+
 const PAYLOAD_LABEL_KEY = {
   "slskd-pipeline": "phase",
-  "weekly-flow-operation": (p) => formatPayloadLabel(p?.label || p?.kind) || null,
+  "weekly-flow-operation": (p: TaskPayloadView | null | undefined) =>
+    formatPayloadLabel(p?.label || p?.kind) || null,
   "playlist-mbid-enrichment": "playlistId",
-  "library-scan": (p) => (p?.force ? "Manual" : null),
-  "discovery-user-refresh": (p) => p?.listenHistoryProfile?.listenHistoryUsername || null,
+  "library-scan": (p: TaskPayloadView | null | undefined) => (p?.force ? "Manual" : null),
+  "discovery-user-refresh": (p: TaskPayloadView | null | undefined) =>
+    p?.listenHistoryProfile?.listenHistoryUsername || null,
 };
 
 const PAYLOAD_DETAIL_KEY = {
-  "slskd-pipeline": (p, desc) =>
+  "slskd-pipeline": (p: TaskPayloadView | null | undefined, desc: string) =>
     p?.phase ? `${desc} Current phase: ${formatPayloadLabel(p.phase)}.` : desc,
-  "playlist-mbid-enrichment": (p, _desc) =>
+  "playlist-mbid-enrichment": (p: TaskPayloadView | null | undefined, _desc: string) =>
     p?.playlistId
       ? `Finds missing MusicBrainz IDs for ${formatPayloadLabel(p.playlistId)}.`
       : "Scans playlists for tracks missing MusicBrainz IDs and queues enrichment jobs.",
-  "library-scan": (p, desc) =>
+  "library-scan": (p: TaskPayloadView | null | undefined, desc: string) =>
     p?.force ? "Refreshes Aurral's library view after a requested refresh." : desc,
-  "discovery-user-refresh": (p, desc) =>
+  "discovery-user-refresh": (p: TaskPayloadView | null | undefined, desc: string) =>
     p?.listenHistoryProfile?.listenHistoryUsername
       ? `Refreshes listening history for ${p.listenHistoryProfile.listenHistoryUsername}.`
       : desc,
 };
 
 let schemaEnsured = false;
-let insertRunStatement = null;
-let updateRunStatement = null;
-let pruneRunsStatement = null;
-let pruneDeadJobsStatement = null;
-let cleanupTimer = null;
-let cleanupPromise = null;
+let insertRunStatement: Statement<unknown[]> | null = null;
+let updateRunStatement: Statement<unknown[]> | null = null;
+let pruneRunsStatement: Statement<unknown[]> | null = null;
+let pruneDeadJobsStatement: Statement<unknown[]> | null = null;
+let cleanupTimer: ReturnType<typeof setInterval> | null = null;
+let cleanupPromise: Promise<void> | null = null;
 
 function ensureRunSchema() {
   if (schemaEnsured) return;
@@ -406,8 +419,8 @@ function getRunLedgerCutoffUnix() {
 async function pruneExpiredRuns() {
   ensureRunSchema();
   const cutoff = getRunLedgerCutoffUnix();
-  pruneRunsStatement.run(cutoff);
-  pruneDeadJobsStatement.run(cutoff);
+  pruneRunsStatement!.run(cutoff);
+  pruneDeadJobsStatement!.run(cutoff);
   const { pruneDuplicateScheduledDiscoveryRefreshes } =
     await import("./discovery/refreshScheduler.ts");
   pruneDuplicateScheduledDiscoveryRefreshes();
@@ -460,9 +473,9 @@ function safeQuery<Row>(sql: string, params: unknown[] = []): Row[] {
   }
 }
 
-function safeGet(sql: string, params: unknown[] = []) {
+function safeGet<Row>(sql: string, params: unknown[] = []): Row | null {
   try {
-    return db.prepare(sql).get(...params) || null;
+    return db.prepare<unknown[], Row>(sql).get(...params) || null;
   } catch {
     return null;
   }
@@ -478,19 +491,19 @@ function parsePayload(value: unknown) {
   }
 }
 
-function stableValue(value) {
+function stableValue(value: unknown): unknown {
   if (!value || typeof value !== "object") return value;
   if (Array.isArray(value)) return value.map(stableValue);
   return Object.keys(value)
     .sort()
-    .reduce((acc, key) => {
+    .reduce<Record<string, unknown>>((acc, key) => {
       if (key === "requestedAt") return acc;
       acc[key] = stableValue(value[key]);
       return acc;
     }, {});
 }
 
-function payloadKey(payload) {
+function payloadKey(payload: unknown) {
   try {
     return JSON.stringify(stableValue(payload ?? null));
   } catch {
@@ -498,7 +511,7 @@ function payloadKey(payload) {
   }
 }
 
-function taskMatchKey(queue, payload) {
+function taskMatchKey(queue: string | null | undefined, payload: unknown) {
   return `${queue || ""}:${payloadKey(payload)}`;
 }
 
@@ -528,7 +541,7 @@ function formatPayloadLabel(value: unknown): string {
   return trimmed ? titleize(trimmed) : "";
 }
 
-function systemTaskInfo(kind) {
+function systemTaskInfo(kind: string) {
   return (
     SYSTEM_TASK_LABELS[kind] || {
       label: formatPayloadLabel(kind) || "System task",
@@ -1257,12 +1270,12 @@ function groupQueueRows(rows: TaskQueueRowSource[]): TaskQueueRowSource[] {
   return grouped;
 }
 
-export function recordHonkerTaskRunStarted(job, queue) {
+export function recordHonkerTaskRunStarted(job: Job, queue: Queue) {
   try {
     ensureRunSchema();
     const queueName = String(job?.queue || queue?.name || "").trim();
     if (!job?.id || !queueName) return null;
-    const liveRow = safeGet(
+    const liveRow = safeGet<Pick<HonkerLiveRow, "created_at" | "run_at">>(
       `
         SELECT created_at, run_at
         FROM _honker_live
@@ -1272,7 +1285,7 @@ export function recordHonkerTaskRunStarted(job, queue) {
     );
     const startedAt = nowUnix();
     const payloadText = JSON.stringify(job.payload ?? null);
-    const info = insertRunStatement.run(
+    const info = insertRunStatement!.run(
       job.id,
       queueName,
       describeHonkerTask(queueName, job.payload),
@@ -1298,12 +1311,15 @@ export function recordHonkerTaskRunFinished(
     ensureRunSchema();
     const id = Number(runId);
     if (!Number.isFinite(id) || id <= 0) return;
-    const row = safeGet("SELECT started_at FROM honker_task_runs WHERE id = ?", [id]);
+    const row = safeGet<Pick<HonkerTaskRunsRow, "started_at">>(
+      "SELECT started_at FROM honker_task_runs WHERE id = ?",
+      [id],
+    );
     const endedAt = nowUnix();
     const durationMs = row?.started_at
       ? Math.max(0, (endedAt - Number(row.started_at)) * 1000)
       : null;
-    updateRunStatement.run(
+    updateRunStatement!.run(
       status || "completed",
       error ? String(error).slice(0, 2000) : null,
       endedAt,

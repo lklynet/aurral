@@ -652,8 +652,8 @@ const loadPendingPlaylistImportHistory = async (user: RequesterUser | null | und
         ORDER BY created_at ASC, id ASC
       `,
       ["weekly-flow-operation"],
-    );
-    return rows.flatMap((row: Pick<HonkerLiveRow, "id" | "payload" | "state" | "created_at">) => {
+    ) as Pick<HonkerLiveRow, "id" | "payload" | "state" | "created_at">[];
+    return rows.flatMap((row) => {
       const payload = parseHonkerPayload(row?.payload);
       if (payload?.kind !== "shared-playlist-create") return [];
       if (

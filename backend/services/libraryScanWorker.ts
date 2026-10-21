@@ -1,4 +1,5 @@
 import path from "node:path";
+import type { JsonValue } from "@russellthehippo/honker-node";
 import createHonkerWorker from "./honkerWorkerFactory.ts";
 import { db, dbHelpers } from "../config/db-sqlite.ts";
 import { dbOps } from "../db/helpers/index.ts";
@@ -211,7 +212,7 @@ function registerLibraryScan({
   return jobId;
 }
 
-export function claimScheduledLibraryScanJob(jobId, jobPayload = null) {
+export function claimScheduledLibraryScanJob(jobId, jobPayload: JsonValue = null) {
   const normalizedJobId = normalizeJobId(jobId);
   if (normalizedJobId == null) return false;
   const rawPayload = jobPayload ?? getLibraryScanQueue().getJob(normalizedJobId)?.payload;

@@ -7,6 +7,10 @@ import { getCachedArtists } from "./libraryManager.ts";
 import { getLibrarySearchPage } from "./libraryQueryService.ts";
 import { compareSearchResults, getLocalMatchThreshold } from "./searchRanking.ts";
 import { parsePositiveInt } from "./searchService.ts";
+import type { RequestUser } from "../middleware/requestUser.ts";
+
+type BrainzmashArtistItem = Awaited<ReturnType<typeof searchArtists>>["items"][number];
+type BrainzmashAlbumItem = Awaited<ReturnType<typeof searchAlbums>>["items"][number];
 
 const unifiedSearchCache = createCache(60);
 const catalogSearchCache = createCache(60);
@@ -47,6 +51,7 @@ export type ArtistSearchResult = SearchContextAnnotations & {
   inLibrary: boolean;
   hasMbid: boolean;
   score: number;
+  libraryBoostEligible?: boolean;
 };
 
 type AlbumSearchResult = SearchContextAnnotations & {
@@ -58,6 +63,7 @@ type AlbumSearchResult = SearchContextAnnotations & {
   artistName: string;
   artistMbid: string | null;
   canonicalId?: string;
+  albumMbid?: string | null;
   releaseDate?: string | null;
   status?: "available";
   primaryType?: string | null;
@@ -78,6 +84,8 @@ export type TrackSearchResult = SearchContextAnnotations & {
   albumMbid: string | null;
   albumCanonicalId: string | null;
   streamPath: string | null;
+  trackMbid?: string | null;
+  artistMbid?: string | null;
   inLibrary: boolean;
   score: number;
 };
@@ -88,16 +96,71 @@ type UnifiedSearchResponse = {
   query: string;
   mode: "suggest" | "full";
   top: UnifiedSearchItem | null;
-  catalog: {
-    artists: ArtistSearchResult[];
-    albums: AlbumSearchResult[];
-    tracks: TrackSearchResult[];
-  };
+  catalog: BrainzmashCatalog;
   localSearchConfigured: boolean;
   filters: string[];
 };
 
-const EMPTY_SEARCH_CONTEXT = {
+type SearchContextIndex = {
+  libraryArtistIds: Set<string>;
+  libraryArtistNames: Set<string>;
+  libraryTrackCoreKeys: Set<string>;
+  libraryTrackFullKeys: Set<string>;
+  playlistArtistIds: Map<string, number>;
+  playlistArtistNames: Map<string, number>;
+  playlistAlbumIds: Map<string, number>;
+  playlistAlbumKeys: Map<string, number>;
+  playlistTrackIds: Map<string, number>;
+  playlistTrackCoreKeys: Map<string, number>;
+  playlistTrackFullKeys: Map<string, number>;
+};
+
+type SearchItemLike = {
+  type?: string;
+  id?: string | number | null;
+  mbid?: string | null;
+  foreignArtistId?: string | null;
+  artistMbid?: string | null;
+  artistId?: string | null;
+  artistName?: string | null;
+  artist?: string | null;
+  name?: string | null;
+  canonicalId?: string | null;
+  identityKey?: string | null;
+  title?: string | null;
+  trackName?: string | null;
+  trackMbid?: string | null;
+  recordingMbid?: string | null;
+  album?: string | null;
+  albumName?: string | null;
+  albumTitle?: string | null;
+  albumMbid?: string | null;
+  albumId?: string | null;
+  albumCanonicalId?: string | null;
+  albumArtist?: string | null;
+  releaseGroupMbid?: string | null;
+  releaseDate?: string | null;
+  streamPath?: string | null;
+};
+
+type PlaylistLike = { tracks?: SearchItemLike[] };
+
+type SearchContext = {
+  playlists: PlaylistLike[];
+  artists: SearchItemLike[];
+  tracks: SearchItemLike[];
+  index: SearchContextIndex;
+};
+
+type SearchUser = RequestUser | null;
+
+type BrainzmashCatalog = {
+  artists: ArtistSearchResult[];
+  albums: AlbumSearchResult[];
+  tracks: TrackSearchResult[];
+};
+
+const EMPTY_SEARCH_CONTEXT: SearchContext = {
   playlists: [],
   artists: [],
   tracks: [],
@@ -116,7 +179,7 @@ const EMPTY_SEARCH_CONTEXT = {
   },
 };
 
-function scorePlaylistContentMatch(query, text) {
+function scorePlaylistContentMatch(query: string, text: string | null | undefined) {
   const normalizedQuery = getNormalizedText(query);
   const normalizedText = getNormalizedText(text);
   if (!normalizedQuery || !normalizedText) return 0;
@@ -125,51 +188,65 @@ function scorePlaylistContentMatch(query, text) {
   return 0;
 }
 
-function normalizeKey(value) {
+function normalizeKey(value: unknown) {
   return getNormalizedText(value);
 }
 
-function addCount(map, key, increment = 1) {
+function addCount(map: Map<string, number>, key: string | null | undefined, increment = 1) {
   if (!key) return;
   map.set(key, (map.get(key) || 0) + increment);
 }
 
-function hasSetValue(set, value) {
+function hasSetValue(set: Set<string>, value: unknown) {
   const key = String(value || "").trim();
   return Boolean(key && set.has(key));
 }
 
-function getCount(map, value) {
+function getCount(map: Map<string, number>, value: unknown) {
   const key = String(value || "").trim();
   return key ? map.get(key) || 0 : 0;
 }
 
-function getNormalizedCount(map, value) {
+function getNormalizedCount(map: Map<string, number>, value: unknown) {
   return getCount(map, normalizeKey(value));
 }
 
-function buildCoreTrackKey(artistName, title) {
+function buildCoreTrackKey(
+  artistName: string | null | undefined,
+  title: string | null | undefined,
+) {
   const artistKey = normalizeKey(artistName);
   const titleKey = normalizeKey(title);
   if (!artistKey || !titleKey) return "";
   return `${artistKey}\u0001${titleKey}`;
 }
 
-function buildFullTrackKey(artistName, title, albumTitle) {
+function buildFullTrackKey(
+  artistName: string | null | undefined,
+  title: string | null | undefined,
+  albumTitle: string | null | undefined,
+) {
   const coreKey = buildCoreTrackKey(artistName, title);
   const albumKey = normalizeKey(albumTitle);
   if (!coreKey || !albumKey) return "";
   return `${coreKey}\u0001${albumKey}`;
 }
 
-function buildAlbumKey(artistName, albumTitle) {
+function buildAlbumKey(
+  artistName: string | null | undefined,
+  albumTitle: string | null | undefined,
+) {
   const artistKey = normalizeKey(artistName);
   const albumKey = normalizeKey(albumTitle);
   if (!artistKey || !albumKey) return "";
   return `${artistKey}\u0001${albumKey}`;
 }
 
-function addArtistToIndex(index, artist, target = "library") {
+function addArtistToIndex(
+  index: SearchContextIndex,
+  artist: SearchItemLike,
+  target: "library" | "playlist" = "library",
+) {
   const id = String(
     artist?.mbid || artist?.foreignArtistId || artist?.artistMbid || artist?.id || "",
   ).trim();
@@ -186,17 +263,12 @@ function addArtistToIndex(index, artist, target = "library") {
   addCount(index.playlistArtistNames, normalizeKey(name));
 }
 
-function dedupeSearchArtists(artists) {
+function dedupeSearchArtists<T extends SearchItemLike>(artists: T[]): T[] {
   const seen = new Set();
   return (Array.isArray(artists) ? artists : []).filter((artist) => {
-    const stableField = [
-      "canonicalId",
-      "id",
-      "mbid",
-      "foreignArtistId",
-      "artistMbid",
-      "identityKey",
-    ].find((field) => String(artist?.[field] ?? "").trim());
+    const stableField = (
+      ["canonicalId", "id", "mbid", "foreignArtistId", "artistMbid", "identityKey"] as const
+    ).find((field) => String(artist?.[field] ?? "").trim());
     if (!stableField) return true;
     const key = `${stableField}:${String(artist[stableField]).trim()}`;
     if (seen.has(key)) return false;
@@ -205,7 +277,7 @@ function dedupeSearchArtists(artists) {
   });
 }
 
-function addPlaylistTrackToIndex(index, track) {
+function addPlaylistTrackToIndex(index: SearchContextIndex, track: SearchItemLike) {
   const artistName = String(track?.artistName || track?.artist || "").trim();
   const title = String(track?.trackName || track?.title || track?.name || "").trim();
   const albumTitle = String(track?.albumName || track?.albumTitle || track?.album || "").trim();
@@ -223,7 +295,7 @@ function addPlaylistTrackToIndex(index, track) {
   addCount(index.playlistTrackFullKeys, buildFullTrackKey(artistName, title, albumTitle));
 }
 
-function addLibraryTrackToIndex(index, track) {
+function addLibraryTrackToIndex(index: SearchContextIndex, track: SearchItemLike) {
   const artistName = String(track?.artist || track?.artistName || "").trim();
   const title = String(track?.title || track?.trackName || "").trim();
   const albumTitle = String(track?.album || track?.albumTitle || "").trim();
@@ -233,8 +305,16 @@ function addLibraryTrackToIndex(index, track) {
   if (fullKey) index.libraryTrackFullKeys.add(fullKey);
 }
 
-export function buildSearchContextIndex({ playlists = [], artists = [], tracks = [] } = {}) {
-  const index = {
+export function buildSearchContextIndex({
+  playlists = [],
+  artists = [],
+  tracks = [],
+}: {
+  playlists?: PlaylistLike[];
+  artists?: SearchItemLike[];
+  tracks?: SearchItemLike[];
+} = {}): SearchContextIndex {
+  const index: SearchContextIndex = {
     libraryArtistIds: new Set(),
     libraryArtistNames: new Set(),
     libraryTrackCoreKeys: new Set(),
@@ -267,21 +347,24 @@ export function buildSearchContextIndex({ playlists = [], artists = [], tracks =
   return index;
 }
 
-function isArtistInLibrary(item, index) {
+function isArtistInLibrary(item: SearchItemLike | null | undefined, index: SearchContextIndex) {
   return (
     hasSetValue(index.libraryArtistIds, item?.id || item?.artistMbid) ||
     index.libraryArtistNames.has(normalizeKey(item?.name || item?.artistName))
   );
 }
 
-function getPlaylistArtistMatchCount(item, index) {
+function getPlaylistArtistMatchCount(
+  item: SearchItemLike | null | undefined,
+  index: SearchContextIndex,
+) {
   return (
     getCount(index.playlistArtistIds, item?.id || item?.artistMbid) +
     getNormalizedCount(index.playlistArtistNames, item?.name || item?.artistName)
   );
 }
 
-function getPrimarySearchText(item) {
+function getPrimarySearchText(item: SearchItemLike | null | undefined) {
   if (item?.type === "artist") return item.name || item.artistName || "";
   if (item?.type === "album") return item.title || "";
   if (item?.type === "track") return item.title || "";
@@ -289,7 +372,11 @@ function getPrimarySearchText(item) {
   return "";
 }
 
-function annotateSearchItem(item, query, context = EMPTY_SEARCH_CONTEXT) {
+function annotateSearchItem<T extends UnifiedSearchItem>(
+  item: T,
+  query: string,
+  context: SearchContext = EMPTY_SEARCH_CONTEXT,
+): T {
   if (!item || typeof item !== "object") return item;
   const index = context.index || EMPTY_SEARCH_CONTEXT.index;
   const next = { ...item };
@@ -301,7 +388,7 @@ function annotateSearchItem(item, query, context = EMPTY_SEARCH_CONTEXT) {
   let contextBoost = Number.isFinite(baseContextBoost) ? baseContextBoost : 0;
   const contextReasons = Array.isArray(next.contextReasons) ? [...next.contextReasons] : [];
 
-  const addBoost = (amount, reason) => {
+  const addBoost = (amount: number, reason: string) => {
     if (!Number.isFinite(amount) || amount <= 0) return;
     contextBoost += amount;
     if (reason && !contextReasons.includes(reason)) {
@@ -427,14 +514,14 @@ function annotateSearchItem(item, query, context = EMPTY_SEARCH_CONTEXT) {
   return next;
 }
 
-function sliceCatalogItems(items, limit = FULL_LIMIT) {
+function sliceCatalogItems<T>(items: T[] | null | undefined, limit = FULL_LIMIT): T[] {
   return (Array.isArray(items) ? items : []).filter(Boolean).slice(0, limit);
 }
 
 export function applyCatalogSearchContext(
-  rawCatalog,
-  query,
-  context = EMPTY_SEARCH_CONTEXT,
+  rawCatalog: Partial<BrainzmashCatalog> | null | undefined,
+  query: string,
+  context: SearchContext = EMPTY_SEARCH_CONTEXT,
   limit = FULL_LIMIT,
 ) {
   const artists = (rawCatalog?.artists || []).map((artist) =>
@@ -454,16 +541,16 @@ export function applyCatalogSearchContext(
   };
 }
 
-function pickCatalogTopFallback(catalog) {
+function pickCatalogTopFallback(catalog: Partial<BrainzmashCatalog> | null | undefined) {
   if (!catalog) return null;
   return catalog.artists?.[0] || catalog.albums?.[0] || catalog.tracks?.[0] || null;
 }
 
-function normalizeMode(value): "full" | "suggest" {
+function normalizeMode(value: unknown): "full" | "suggest" {
   return String(value || "").trim() === "full" ? "full" : "suggest";
 }
 
-function bucketLimit(mode, requestedLimit) {
+function bucketLimit(mode: string, requestedLimit: unknown) {
   const fallback = mode === "full" ? FULL_LIMIT : SUGGEST_LIMIT;
   return Math.min(30, parsePositiveInt(requestedLimit, fallback));
 }
@@ -472,7 +559,7 @@ function isCatalogSearchAvailable() {
   return Boolean(getMetadataBaseUrl());
 }
 
-function mapBrainzmashArtist(item): ArtistSearchResult {
+function mapBrainzmashArtist(item: BrainzmashArtistItem & { score?: number }): ArtistSearchResult {
   return {
     type: "artist",
     source: "brainzmash",
@@ -486,7 +573,7 @@ function mapBrainzmashArtist(item): ArtistSearchResult {
   };
 }
 
-function mapBrainzmashAlbum(item): AlbumSearchResult {
+function mapBrainzmashAlbum(item: BrainzmashAlbumItem): AlbumSearchResult {
   return {
     type: "album",
     source: "brainzmash",
@@ -504,7 +591,11 @@ function mapBrainzmashAlbum(item): AlbumSearchResult {
   };
 }
 
-async function searchBrainzmashCatalog(query, limit, signal) {
+async function searchBrainzmashCatalog(
+  query: string,
+  limit: number,
+  signal: AbortSignal | undefined,
+): Promise<BrainzmashCatalog> {
   const RELEVANCE_THRESHOLD = 60;
   const trimmed = String(query || "").trim();
 
@@ -550,11 +641,11 @@ async function searchBrainzmashCatalog(query, limit, signal) {
   };
 }
 
-async function searchCatalog(query, limit, signal) {
+async function searchCatalog(query: string, limit: number, signal: AbortSignal | undefined) {
   const cacheKey = String(query || "")
     .trim()
     .toLowerCase();
-  let catalog = catalogSearchCache.get(cacheKey);
+  let catalog: BrainzmashCatalog | undefined = catalogSearchCache.get(cacheKey);
   if (!catalog) {
     catalog = await searchBrainzmashCatalog(query, 30, signal);
     catalogSearchCache.set(cacheKey, catalog);
@@ -570,7 +661,7 @@ async function searchCatalog(query, limit, signal) {
   };
 }
 
-function getVisiblePlaylistsForUser(user) {
+function getVisiblePlaylistsForUser(user: SearchUser) {
   try {
     return user ? flowPlaylistConfig.getStaticPlaylistsForUser(user) : [];
   } catch (error) {
@@ -579,7 +670,7 @@ function getVisiblePlaylistsForUser(user) {
   }
 }
 
-function loadSearchContext(user) {
+function loadSearchContext(user: SearchUser): SearchContext {
   const playlists = getVisiblePlaylistsForUser(user);
   const artists = getCachedArtists();
   const context = {
@@ -593,7 +684,7 @@ function loadSearchContext(user) {
   };
 }
 
-function getSearchContext(user) {
+function getSearchContext(user: SearchUser): SearchContext {
   const cacheKey = user?.id || "anon";
   const cached = searchContextCache.get(cacheKey);
   if (cached) return cached;
@@ -608,8 +699,12 @@ export function clearSearchContextCache() {
 }
 
 export function searchLocalFromData(
-  query,
-  { artists = [], albums = [], tracks = [] } = {},
+  query: string,
+  {
+    artists = [],
+    albums = [],
+    tracks = [],
+  }: { artists?: SearchItemLike[]; albums?: SearchItemLike[]; tracks?: SearchItemLike[] } = {},
   limit = SUGGEST_LIMIT,
 ) {
   const normalizedQuery = getNormalizedText(query);
@@ -626,8 +721,8 @@ export function searchLocalFromData(
       const score = scorePlaylistContentMatch(query, name);
       if (score <= 0) return null;
       return {
-        type: "artist",
-        source: "library",
+        type: "artist" as const,
+        source: "library" as const,
         id: mbid,
         canonicalId: artist?.canonicalId || null,
         key: `library-artist:${artist?.canonicalId || mbid}`,
@@ -653,8 +748,8 @@ export function searchLocalFromData(
       );
       if (score <= 0) return null;
       return {
-        type: "album",
-        source: "library",
+        type: "album" as const,
+        source: "library" as const,
         id: album.releaseGroupMbid || null,
         canonicalId: album.canonicalId,
         key: `library-album:${album.canonicalId}`,
@@ -662,7 +757,7 @@ export function searchLocalFromData(
         artistName: artistName || "Unknown Artist",
         artistMbid: album.artistMbid || null,
         releaseDate: album.releaseDate || null,
-        status: "available",
+        status: "available" as const,
         inLibrary: true,
         score,
       };
@@ -684,8 +779,8 @@ export function searchLocalFromData(
       );
       if (score <= 0) return null;
       return {
-        type: "track",
-        source: "library",
+        type: "track" as const,
+        source: "library" as const,
         id: track.id,
         key: track.id,
         title,
@@ -709,7 +804,11 @@ export function searchLocalFromData(
   };
 }
 
-function searchLocalLibrary(query, limit, context) {
+type LibraryAlbumRow = NonNullable<
+  ReturnType<typeof getLibrarySearchPage>["albums"]
+>["albums"][number];
+
+function searchLocalLibrary(query: string, limit: number, context: SearchContext) {
   const libraryResults = getLibrarySearchPage({
     source: "all",
     availableOnly: true,
@@ -730,7 +829,7 @@ function searchLocalLibrary(query, limit, context) {
       (album) => [String(album.id), album],
     ),
   );
-  const describeAlbum = (album) => {
+  const describeAlbum = (album: LibraryAlbumRow) => {
     const artist = artistsById.get(String(album.artistId));
     return {
       canonicalId: String(album.id),
@@ -768,7 +867,10 @@ function searchLocalLibrary(query, limit, context) {
   );
 }
 
-export function searchLibrary(query, { limit, user = null } = {}) {
+export function searchLibrary(
+  query: string,
+  { limit, user = null }: { limit?: number; user?: SearchUser } = {},
+) {
   const trimmed = String(query || "").trim();
   if (!trimmed) {
     return { query: "", artists: [], albums: [], tracks: [] };
@@ -780,7 +882,7 @@ export function searchLibrary(query, { limit, user = null } = {}) {
   };
 }
 
-function getSearchContextOrFallback(user) {
+function getSearchContextOrFallback(user: SearchUser): SearchContext {
   try {
     return getSearchContext(user);
   } catch (error) {
@@ -796,8 +898,13 @@ function getSearchContextOrFallback(user) {
 }
 
 export async function searchUnified(
-  query,
-  { mode = "suggest", limit, user = null, signal } = {},
+  query: string,
+  {
+    mode = "suggest",
+    limit,
+    user = null,
+    signal,
+  }: { mode?: string; limit?: number; user?: SearchUser; signal?: AbortSignal } = {},
 ): Promise<UnifiedSearchResponse> {
   const trimmed = String(query || "").trim();
   const normalizedMode = normalizeMode(mode);
