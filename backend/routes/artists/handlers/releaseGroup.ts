@@ -1,3 +1,4 @@
+import type { Request, Router } from "express";
 import { UUID_REGEX } from "../../../../lib/uuid.ts";
 import { dbOps } from "../../../db/helpers/index.ts";
 import { cacheMiddleware, noCache } from "../../../middleware/cache.ts";
@@ -17,6 +18,8 @@ import {
 } from "../../../services/providers/brainzmashMappers.ts";
 import { logger } from "../../../services/logger.ts";
 import { chooseLibraryRelease } from "../../../services/releaseResolver.ts";
+
+type MbidRequest = Request<{ mbid: string }>;
 
 type ReleaseGroupAlbum = Awaited<ReturnType<typeof getAlbumByMbid>>;
 
@@ -64,7 +67,7 @@ export type ReleaseGroupTrack = {
   previewTrackId: string | null;
 };
 
-export function registerReleaseGroup(router) {
+export function registerReleaseGroup(router: Router) {
   router.post("/release-groups/ratings", async (req, res) => {
     const ids = [...new Set(Array.isArray(req.body?.ids) ? req.body.ids : [])]
       .map((id) => String(id || "").trim())
@@ -76,7 +79,7 @@ export function registerReleaseGroup(router) {
     res.on("close", () => {
       if (!res.writableEnded) controller.abort();
     });
-    const ratings = {};
+    const ratings: ReleaseGroupRatingsResponse["ratings"] = {};
     try {
       for (let index = 0; index < ids.length; index += 6) {
         controller.signal.throwIfAborted?.();
@@ -127,7 +130,7 @@ export function registerReleaseGroup(router) {
     }
   });
 
-  router.get("/release-group/:mbid", cacheMiddleware(3600), async (req, res) => {
+  router.get("/release-group/:mbid", cacheMiddleware(3600), async (req: MbidRequest, res) => {
     try {
       const { mbid } = req.params;
       if (!UUID_REGEX.test(mbid)) {
@@ -157,7 +160,7 @@ export function registerReleaseGroup(router) {
     }
   });
 
-  router.get("/release-group/:mbid/cover", async (req, res) => {
+  router.get("/release-group/:mbid/cover", async (req: MbidRequest, res) => {
     const bypassCache = req.query.refresh === "true";
     try {
       const { mbid } = req.params;
@@ -209,7 +212,7 @@ export function registerReleaseGroup(router) {
     }
   });
 
-  router.get("/release-group/:mbid/tracks", noCache, async (req, res) => {
+  router.get("/release-group/:mbid/tracks", noCache, async (req: MbidRequest, res) => {
     try {
       const { mbid } = req.params;
       if (!UUID_REGEX.test(mbid)) {

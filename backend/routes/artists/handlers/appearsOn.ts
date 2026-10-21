@@ -1,8 +1,11 @@
+import type { Request, Router } from "express";
 import { UUID_REGEX } from "../../../../lib/uuid.ts";
 import {
   getMusicbrainzAppearsOnScanState,
   musicbrainzGetArtistAppearsOnReleaseGroups,
 } from "../../../services/apiClients/index.ts";
+
+type MbidRequest = Request<{ mbid: string }>;
 
 export type ArtistAppearsOnResponse = {
   items: Awaited<ReturnType<typeof musicbrainzGetArtistAppearsOnReleaseGroups>>;
@@ -10,8 +13,8 @@ export type ArtistAppearsOnResponse = {
   hasMore: boolean;
 };
 
-export function registerAppearsOn(router) {
-  router.post("/:mbid/appears-on", async (req, res) => {
+export function registerAppearsOn(router: Router) {
+  router.post("/:mbid/appears-on", async (req: MbidRequest, res) => {
     const { mbid } = req.params;
     if (!UUID_REGEX.test(mbid)) {
       return res.status(400).json({ error: "Invalid MBID format" });
@@ -21,8 +24,8 @@ export function registerAppearsOn(router) {
     const offset = Math.min(250, Math.max(0, Number.parseInt(req.body?.offset, 10) || 0));
     const excludeIds = new Set(
       (Array.isArray(req.body?.excludeIds) ? req.body.excludeIds : [])
-        .map((id) => String(id || "").trim())
-        .filter((id) => UUID_REGEX.test(id)),
+        .map((id: unknown) => String(id || "").trim())
+        .filter((id: string) => UUID_REGEX.test(id)),
     );
     const controller = new AbortController();
     res.on("close", () => {

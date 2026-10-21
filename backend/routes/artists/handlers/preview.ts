@@ -1,3 +1,4 @@
+import type { Request, Router } from "express";
 import {
   deezerGetArtistTopTracks,
   deezerGetArtistTopTracksById,
@@ -8,8 +9,10 @@ import { cacheMiddleware } from "../../../middleware/cache.ts";
 import { getArtistByMbid } from "../../../services/providers/brainzmashProvider.ts";
 import { getLinkedDeezerArtistId } from "../../../services/providers/brainzmashMappers.ts";
 
-export function registerPreview(router) {
-  router.get("/:mbid/preview", cacheMiddleware(60), async (req, res) => {
+type MbidRequest = Request<{ mbid: string }>;
+
+export function registerPreview(router: Router) {
+  router.get("/:mbid/preview", cacheMiddleware(60), async (req: MbidRequest, res) => {
     const { mbid } = req.params;
 
     if (!UUID_REGEX.test(mbid)) {

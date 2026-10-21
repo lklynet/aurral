@@ -12,7 +12,7 @@ export const getMusicDataSourceName = () => activeSource().name;
 export const getSimilarArtists = (artist, options) =>
   activeSource().getSimilarArtists(artist, options);
 
-export const getArtistTagLists = (artists, options) =>
+export const getArtistTagLists = (artists, options?) =>
   activeSource().getArtistTagLists(artists, options);
 
 export const getArtistTopTracks = (artist, options) =>

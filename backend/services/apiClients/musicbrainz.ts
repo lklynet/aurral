@@ -286,7 +286,7 @@ export async function musicbrainzGetArtistAppearsOnReleaseGroups(
     offset = 0,
     signal,
     scanPageBudget = 1,
-  }: { limit?: number; offset?: number; signal?: AbortSignal; scanPageBudget?: number } = {},
+  }: { limit?: number | null; offset?: number; signal?: AbortSignal; scanPageBudget?: number } = {},
 ) {
   if (!mbid) return [];
   const safeLimit = Math.min(250, Math.max(1, Number.parseInt(String(limit), 10) || 24));

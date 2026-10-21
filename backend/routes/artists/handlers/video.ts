@@ -1,13 +1,16 @@
+import type { Request, Router } from "express";
 import { youtubeFindTopSongVideo } from "../../../services/apiClients/index.ts";
 import { UUID_REGEX } from "../../../../lib/uuid.ts";
 import { noCache } from "../../../middleware/cache.ts";
+
+type MbidRequest = Request<{ mbid: string }>;
 
 export type ArtistVideoResponse = {
   video: { videoId: string; embedUrl: string } | null;
 };
 
-export function registerVideo(router) {
-  router.get("/:mbid/video", noCache, async (req, res) => {
+export function registerVideo(router: Router) {
+  router.get("/:mbid/video", noCache, async (req: MbidRequest, res) => {
     const { mbid } = req.params;
 
     if (!UUID_REGEX.test(mbid)) {

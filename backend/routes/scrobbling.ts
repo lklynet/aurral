@@ -1,4 +1,4 @@
-import express from "express";
+import express, { type Request, type Response } from "express";
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { db } from "../config/db-sqlite.ts";
 import {
@@ -24,13 +24,13 @@ import { logger } from "../services/logger.ts";
 const router = express.Router();
 const LASTFM_LINK_COOKIE = "aurral_lastfm_link";
 const LASTFM_LINK_TTL_MS = 10 * 60 * 1000;
-const providerErrorStatus = (error) => {
+const providerErrorStatus = (error: unknown) => {
   const status = Number(error?.response?.status);
   return status >= 400 && status < 500 ? 400 : 502;
 };
-const encode = (value) => Buffer.from(value).toString("base64url");
-const decode = (value) => Buffer.from(String(value || ""), "base64url").toString("utf8");
-const hash = (value) =>
+const encode = (value: string) => Buffer.from(value).toString("base64url");
+const decode = (value: string) => Buffer.from(String(value || ""), "base64url").toString("utf8");
+const hash = (value: string) =>
   createHash("sha256")
     .update(String(value || ""))
     .digest("hex");
@@ -50,7 +50,7 @@ const consumeLinkStateStmt = db.prepare(`
     AND expires_at > ? AND consumed_at IS NULL
 `);
 
-const createLinkToken = (userId) => {
+const createLinkToken = (userId: number) => {
   const payload = `${userId}.${Date.now() + 10 * 60 * 1000}.${randomBytes(12).toString("hex")}`;
   const signature = createHmac("sha256", getScrobbleEncryptionKey())
     .update(payload)
@@ -58,7 +58,7 @@ const createLinkToken = (userId) => {
   return `${encode(payload)}.${signature}`;
 };
 
-const verifyLinkToken = (token) => {
+const verifyLinkToken = (token: string) => {
   const [encodedPayload, signature] = String(token || "").split(".");
   if (!encodedPayload || !signature) return null;
   const payload = decode(encodedPayload);
@@ -75,7 +75,7 @@ const verifyLinkToken = (token) => {
   return Math.trunc(Number(userId));
 };
 
-const createLinkState = (userId) => {
+const createLinkState = (userId: number) => {
   const token = createLinkToken(userId);
   const browserNonce = randomBytes(32).toString("base64url");
   const expiresAt = Date.now() + LASTFM_LINK_TTL_MS;
@@ -86,7 +86,7 @@ const createLinkState = (userId) => {
   return { token, browserNonce };
 };
 
-export const consumeLinkState = (token, userId, browserNonce) => {
+export const consumeLinkState = (token: string, userId: number, browserNonce: string) => {
   if (!token || !Number.isFinite(Number(userId)) || !browserNonce) return false;
   return (
     consumeLinkStateStmt.run(
@@ -99,7 +99,7 @@ export const consumeLinkState = (token, userId, browserNonce) => {
   );
 };
 
-const readCookie = (header, name) => {
+const readCookie = (header: string | undefined, name: string) => {
   const entry = String(header || "")
     .split(";")
     .map((part) => part.trim())
@@ -112,7 +112,12 @@ const readCookie = (header, name) => {
   }
 };
 
-const setLinkCookie = (res, req, value, maxAge = Math.floor(LASTFM_LINK_TTL_MS / 1000)) => {
+const setLinkCookie = (
+  res: Response,
+  req: Request,
+  value: string,
+  maxAge = Math.floor(LASTFM_LINK_TTL_MS / 1000),
+) => {
   const attributes = [
     "Path=/api/scrobbling/lastfm/link/callback",
     `Max-Age=${Math.max(0, Math.trunc(maxAge))}`,
@@ -126,12 +131,12 @@ const setLinkCookie = (res, req, value, maxAge = Math.floor(LASTFM_LINK_TTL_MS /
   );
 };
 
-const normalizeLinkToken = (value) => {
+const normalizeLinkToken = (value: unknown) => {
   const token = String(value || "").trim();
   return token.includes(".") ? token : decode(token);
 };
 
-export const callbackUrl = (req, token) => {
+export const callbackUrl = (req: Request, token: string) => {
   const configuredOrigin = String(process.env.AURRAL_PUBLIC_URL || "").trim();
   if (configuredOrigin) {
     try {
@@ -147,7 +152,7 @@ export const callbackUrl = (req, token) => {
 };
 
 router.get("/status", requireAuth, (req, res) => {
-  const status = scrobbleConnectionStore.getPublicStatus(req.user.id);
+  const status = scrobbleConnectionStore.getPublicStatus(req.user!.id);
   status.lastfm.configured = Boolean(getLastfmApiKey() && getLastfmApiSecret());
   res.json(status);
 });
@@ -157,11 +162,11 @@ router.get("/lastfm/link", requireAuth, requireUserAccount, (req, res) => {
   if (!configured) {
     return res.status(400).json({ error: "Last.fm API key and secret are required first." });
   }
-  const { token, browserNonce } = createLinkState(req.user.id);
+  const { token, browserNonce } = createLinkState(req.user!.id);
   setLinkCookie(res, req, browserNonce);
   res.json({
     configured: true,
-    connected: scrobbleConnectionStore.getConnection(req.user.id, "lastfm") != null,
+    connected: scrobbleConnectionStore.getConnection(req.user!.id, "lastfm") != null,
     authorizeUrl: `https://www.last.fm/api/auth/?api_key=${encodeURIComponent(getLastfmApiKey()!)}&cb=${encodeURIComponent(callbackUrl(req, token))}`,
   });
 });
@@ -230,12 +235,12 @@ router.get("/lastfm/link/callback", async (req, res) => {
 });
 
 router.delete("/lastfm/link", requireAuth, (req, res) => {
-  scrobbleConnectionStore.deleteConnection(req.user.id, "lastfm");
+  scrobbleConnectionStore.deleteConnection(req.user!.id, "lastfm");
   res.status(204).end();
 });
 
 router.get("/listenbrainz/link", requireAuth, (req, res) => {
-  const connection = scrobbleConnectionStore.getConnection(req.user.id, "listenbrainz");
+  const connection = scrobbleConnectionStore.getConnection(req.user!.id, "listenbrainz");
   res.json({ connected: Boolean(connection), displayName: connection?.displayName || null });
 });
 
@@ -256,11 +261,11 @@ router.put("/listenbrainz/link", requireAuth, requireUserAccount, async (req, re
   }
   if (!validation?.valid) return res.status(400).json({ error: "Invalid token" });
   try {
-    const connection = scrobbleConnectionStore.saveConnection(req.user.id, "listenbrainz", {
+    const connection = scrobbleConnectionStore.saveConnection(req.user!.id, "listenbrainz", {
       token,
       displayName: validation.user_name,
     });
-    return res.json({ connected: true, displayName: connection.displayName });
+    return res.json({ connected: true, displayName: connection!.displayName });
   } catch (error) {
     logger.error("scrobbling", "ListenBrainz connection could not be saved", {
       message: error?.message || String(error),
@@ -270,7 +275,7 @@ router.put("/listenbrainz/link", requireAuth, requireUserAccount, async (req, re
 });
 
 router.delete("/listenbrainz/link", requireAuth, (req, res) => {
-  scrobbleConnectionStore.deleteConnection(req.user.id, "listenbrainz");
+  scrobbleConnectionStore.deleteConnection(req.user!.id, "listenbrainz");
   res.status(204).end();
 });
 
@@ -280,7 +285,7 @@ router.put(
   requireUserAccount,
   async (req, res) => {
     const rawUrl = String(
-      req.body?.url || userOps.getUserById(req.user.id)?.listenHistoryUrl || "",
+      req.body?.url || userOps.getUserById(req.user!.id)?.listenHistoryUrl || "",
     ).trim();
     const validation = validateExternalUrl(rawUrl);
     const token = String(req.body?.token || "").trim();
@@ -304,12 +309,12 @@ router.put(
         .json({ error: status === 400 ? "Invalid Koito API key" : "Koito is unavailable" });
     }
     try {
-      const connection = scrobbleConnectionStore.saveConnection(req.user.id, "koito", {
+      const connection = scrobbleConnectionStore.saveConnection(req.user!.id, "koito", {
         token,
         baseUrl,
         displayName: new URL(baseUrl).host,
       });
-      return res.json({ connected: true, displayName: connection.displayName });
+      return res.json({ connected: true, displayName: connection!.displayName });
     } catch (error) {
       logger.error("scrobbling", "Koito connection could not be saved", {
         message: error?.message || String(error),
@@ -320,7 +325,7 @@ router.put(
 );
 
 router.delete("/koito/link", requireAuth, (req, res) => {
-  scrobbleConnectionStore.deleteConnection(req.user.id, "koito");
+  scrobbleConnectionStore.deleteConnection(req.user!.id, "koito");
   res.status(204).end();
 });
 

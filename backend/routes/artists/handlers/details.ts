@@ -1,3 +1,4 @@
+import type { Request, Router } from "express";
 import { UUID_REGEX } from "../../../../lib/uuid.ts";
 import { logger } from "../../../services/logger.ts";
 import {
@@ -18,7 +19,9 @@ import {
 } from "../shared/transform.ts";
 import { getLibraryArtistProjection } from "../../../services/libraryQueryService.ts";
 
-export function getLibraryLidarrArtist(reference) {
+type MbidRequest = Request<{ mbid: string }>;
+
+export function getLibraryLidarrArtist(reference: string) {
   const artist = getLibraryArtistProjection({ reference })[0] || null;
   if (!artist?.lidarrManaged) return null;
   return {
@@ -68,8 +71,8 @@ export type ArtistDetailsResponse =
   | ArtistDetailsCore
   | ArtistDetailsFallback;
 
-export function registerDetails(router) {
-  const parseSelectedReleaseTypes = (value) =>
+export function registerDetails(router: Router) {
+  const parseSelectedReleaseTypes = (value: unknown) =>
     typeof value === "string" && value.trim()
       ? value
           .split(",")
@@ -77,8 +80,8 @@ export function registerDetails(router) {
           .filter(Boolean)
       : null;
 
-  const parseAppearsOnLimit = (value) => {
-    const parsed = Number.parseInt(value, 10);
+  const parseAppearsOnLimit = (value: unknown) => {
+    const parsed = Number.parseInt(String(value), 10);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
   };
 
@@ -89,7 +92,7 @@ export function registerDetails(router) {
     });
   });
 
-  router.get("/:mbid/overrides", requireAuth, async (req, res) => {
+  router.get("/:mbid/overrides", requireAuth, async (req: MbidRequest, res) => {
     const { mbid } = req.params;
     if (!UUID_REGEX.test(mbid)) {
       return res.status(400).json({
@@ -105,7 +108,7 @@ export function registerDetails(router) {
     });
   });
 
-  router.put("/:mbid/overrides", requireAuth, async (req, res) => {
+  router.put("/:mbid/overrides", requireAuth, async (req: MbidRequest, res) => {
     const { mbid } = req.params;
     if (!UUID_REGEX.test(mbid)) {
       return res.status(400).json({
@@ -154,7 +157,7 @@ export function registerDetails(router) {
     return res.json(saved);
   });
 
-  router.get("/:mbid", cacheMiddleware(300), async (req, res) => {
+  router.get("/:mbid", cacheMiddleware(300), async (req: MbidRequest, res) => {
     try {
       const { mbid } = req.params;
       const responseMode =
