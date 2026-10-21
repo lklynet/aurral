@@ -1,4 +1,4 @@
-import { test, beforeEach, afterAll, vi } from "vite-plus/test";
+import { test, beforeEach, afterAll, onTestFinished, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -99,6 +99,53 @@ test("single-track removal retains the job and provider work needed by another l
       .playlistId,
     survivor.id,
   );
+});
+
+function failOrphanPrunesAfterFirst() {
+  const original = downloadWorker.pruneOrphanedJobState;
+  let calls = 0;
+  downloadWorker.pruneOrphanedJobState = () =>
+    ++calls === 1 ? Promise.resolve() : Promise.reject(new Error("Download worker is not ready"));
+  onTestFinished(() => {
+    downloadWorker.pruneOrphanedJobState = original;
+  });
+}
+
+async function collectEscapedRejections(run) {
+  const escaped = [];
+  const record = (reason) => escaped.push(reason);
+  process.on("unhandledRejection", record);
+  try {
+    await run();
+    await new Promise((resolve) => setImmediate(resolve));
+  } finally {
+    process.off("unhandledRejection", record);
+  }
+  return escaped;
+}
+
+test("replacing playlist tracks succeeds when only a later orphan prune would fail", async () => {
+  const { source } = fixture();
+  failOrphanPrunesAfterFirst();
+  const escaped = await collectEscapedRejections(() =>
+    operations.updateStaticPlaylist({ playlistId: source.id, tracks: [], hasTracksUpdate: true }),
+  );
+  assert.deepEqual(escaped, []);
+  assert.equal(config.flowPlaylistConfig.getStaticPlaylist(source.id).tracks.length, 0);
+});
+
+test("removing a playlist track succeeds when only a later orphan prune would fail", async () => {
+  const { source, jobId } = fixture();
+  failOrphanPrunesAfterFirst();
+  const escaped = await collectEscapedRejections(() =>
+    operations.processPlaylistOperation({
+      kind: "shared-playlist-delete-track",
+      playlistId: source.id,
+      jobId,
+    }),
+  );
+  assert.deepEqual(escaped, []);
+  assert.equal(config.flowPlaylistConfig.getStaticPlaylist(source.id).tracks.length, 0);
 });
 
 test("deleting the original playlist preserves a survivor's completed media", async () => {
