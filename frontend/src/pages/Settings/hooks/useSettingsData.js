@@ -123,6 +123,7 @@ const defaultSettings = {
       completedPath: "",
     },
     sabnzbd: {
+      deleteLeftovers: true,
       enabled: false,
       url: "",
       apiKey: "",

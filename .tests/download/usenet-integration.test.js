@@ -370,12 +370,19 @@ test("SABnzbd client uploads the NZB file", async () => {
 });
 
 test("SABnzbd client reads the completed download folder", async () => {
-  const client = new SabnzbdClient();
-  client.api = async () => ({
-    config: { misc: { complete_dir: "/downloads/complete" } },
-  });
+  const client = new SabnzbdClient({ category: "aurral" });
+  client.api = async (_mode, params) =>
+    params.section === "categories"
+      ? { config: { categories: [{ name: "aurral", dir: "music" }] } }
+      : { config: { misc: { complete_dir: "/downloads/complete" } } };
 
-  assert.equal((await client.getDownloadDirectories()).destDir, "/downloads/complete");
+  assert.deepEqual(await client.getDownloadDirectories(), {
+    completedPath: "",
+    categoryDestDir: "music",
+    destDir: "/downloads/complete",
+    interDir: "",
+    mainDir: "",
+  });
 });
 
 test("SABnzbd client removes queued and historical jobs", async () => {

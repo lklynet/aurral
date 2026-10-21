@@ -119,6 +119,26 @@ test("NZBGet leftover deletion defaults on and keeps an opt-out across partial s
   assert.equal(dbOps.getSettings().integrations.nzbget.deleteLeftovers, false);
 });
 
+test("SABnzbd leftover deletion defaults on and keeps an opt-out across partial saves", async () => {
+  const { postSettings } = captureSettingsRoutes();
+  const enabled = await postSettings({
+    integrations: {
+      sabnzbd: {
+        enabled: true,
+        url: "http://sabnzbd.local",
+        apiKey: "test-key",
+        priority: 5,
+      },
+    },
+  });
+  assert.equal(enabled.statusCode, 200);
+  assert.equal(enabled.body.integrations.sabnzbd.deleteLeftovers, true);
+  assert.equal(enabled.body.integrations.sabnzbd.priority, 5);
+  await postSettings({ integrations: { sabnzbd: { deleteLeftovers: false } } });
+  await postSettings({ integrations: { sabnzbd: { addPaused: true } } });
+  assert.equal(dbOps.getSettings().integrations.sabnzbd.deleteLeftovers, false);
+});
+
 test("the maximum review wait is validated and kept across partial saves", async () => {
   const { postSettings } = captureSettingsRoutes();
   for (const invalid of [-1, 1.5, 721, "24"]) {

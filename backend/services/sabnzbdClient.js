@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { dbOps } from "../db/helpers/index.js";
 import { normalizeBaseUrl, normalizeInteger, sanitizeNzbName } from "./usenetClientCommon.js";
 import axios from "../../lib/axiosFetch.js";
+import { removeSabnzbdDownloadFolder } from "./sabnzbdCleanup.js";
 
 export const sabnzbdSettings = Object.freeze({
   key: "sabnzbd",
@@ -29,6 +30,12 @@ export const sabnzbdSettings = Object.freeze({
     }),
     Object.freeze({ key: "category", label: "Category", type: "text", section: "Downloads" }),
     Object.freeze({
+      key: "deleteLeftovers",
+      label: "Delete leftover files",
+      type: "toggle",
+      section: "Downloads",
+    }),
+    Object.freeze({
       key: "priority",
       label: "Source priority",
       type: "number",
@@ -49,6 +56,7 @@ export const sabnzbdSettings = Object.freeze({
     url: "",
     apiKey: "",
     category: "aurral",
+    deleteLeftovers: true,
     priority: 20,
     addPaused: false,
   }),
@@ -57,6 +65,7 @@ export const sabnzbdSettings = Object.freeze({
 });
 
 let connectionCache = { checkedAt: 0, result: null, settingsKey: null };
+let folderCleanup = Promise.resolve();
 
 function getSettings(config = null) {
   const sabnzbd = config || dbOps.getSettings()?.integrations?.sabnzbd || {};
@@ -65,6 +74,7 @@ function getSettings(config = null) {
     url: normalizeBaseUrl(sabnzbd.url),
     apiKey: String(sabnzbd.apiKey || "").trim(),
     category: String(sabnzbd.category || "aurral").trim(),
+    deleteLeftovers: sabnzbd.deleteLeftovers !== false,
     priority: normalizeInteger(sabnzbd.priority, 20),
     addPaused: sabnzbd.addPaused === true,
   };
@@ -112,6 +122,25 @@ function readConfigValue(entries, name) {
     }
   }
   return "";
+}
+
+function readCategoryDirectory(entries, category) {
+  const wanted = String(category || "")
+    .trim()
+    .toLowerCase();
+  if (!wanted) return "";
+  const categories = Array.isArray(entries)
+    ? entries
+    : entries && typeof entries === "object"
+      ? Object.values(entries)
+      : [];
+  const match = categories.find(
+    (entry) =>
+      String(entry?.name || "")
+        .trim()
+        .toLowerCase() === wanted,
+  );
+  return String(match?.dir || "").trim();
 }
 
 export class SabnzbdClient {
@@ -205,11 +234,28 @@ export class SabnzbdClient {
     return slots.find((s) => String(s.nzo_id) === id) || null;
   }
 
-  async deleteHistoryItem(nzoId) {
+  async deleteHistoryItem(nzoId, { deleteFiles = false, historyItem = null } = {}) {
     const id = String(nzoId || "").trim();
     if (!id) return false;
-    const result = await this.api("history", { name: "delete", value: id, del_files: 1 });
-    return result?.status === true;
+    const removeHistory = async () => {
+      const result = await this.api("history", { name: "delete", value: id, del_files: 1 });
+      return result?.status === true;
+    };
+    const settings = this._getSettings();
+    if (!deleteFiles || !settings.deleteLeftovers) return removeHistory();
+    const cleanup = folderCleanup.then(async () => {
+      const item = historyItem || (await this.getHistoryItem(id));
+      if (item && !(await this.sharesDownloadFolder(item))) {
+        await removeSabnzbdDownloadFolder(
+          item,
+          await this.getDownloadDirectories(),
+          settings.category,
+        );
+      }
+      return removeHistory();
+    });
+    folderCleanup = cleanup.catch(() => {});
+    return cleanup;
   }
 
   async deleteQueueItem(nzoId) {
@@ -219,11 +265,39 @@ export class SabnzbdClient {
     return result?.status === true;
   }
 
+  async sharesDownloadFolder(item) {
+    const id = String(item?.nzo_id || "").trim();
+    const storage = String(item?.storage || "")
+      .trim()
+      .replace(/\\/g, "/")
+      .replace(/\/+$/, "")
+      .toLowerCase();
+    if (!storage) return false;
+    const [queueResult, historyResult] = await Promise.all([
+      this.api("queue"),
+      this.api("history"),
+    ]);
+    return [...(queueResult?.queue?.slots || []), ...(historyResult?.history?.slots || [])].some(
+      (entry) =>
+        String(entry?.nzo_id || "").trim() !== id &&
+        String(entry?.storage || "")
+          .trim()
+          .replace(/\\/g, "/")
+          .replace(/\/+$/, "")
+          .toLowerCase() === storage,
+    );
+  }
+
   async getDownloadDirectories() {
-    const result = await this.api("get_config", { section: "misc" }).catch(() => null);
-    const entries = result?.config?.misc || [];
+    const settings = this._getSettings();
+    const [miscResult, categoryResult] = await Promise.all([
+      this.api("get_config", { section: "misc" }).catch(() => null),
+      this.api("get_config", { section: "categories" }).catch(() => null),
+    ]);
+    const entries = miscResult?.config?.misc || [];
     return {
       completedPath: "",
+      categoryDestDir: readCategoryDirectory(categoryResult?.config?.categories, settings.category),
       destDir: readConfigValue(entries, "complete_dir"),
       interDir: "",
       mainDir: "",

@@ -353,6 +353,7 @@ export function registerGeneral(router) {
           typeof nextSabnzbd.apiKey === "string" ? nextSabnzbd.apiKey.trim() : "";
         nextSabnzbd.enabled = nextSabnzbd.enabled === true;
         nextSabnzbd.category = String(nextSabnzbd.category || "aurral").trim() || "aurral";
+        nextSabnzbd.deleteLeftovers = nextSabnzbd.deleteLeftovers !== false;
         const priority = Number.parseInt(nextSabnzbd.priority, 10);
         nextSabnzbd.priority = Number.isFinite(priority)
           ? Math.min(1000, Math.max(1, priority))

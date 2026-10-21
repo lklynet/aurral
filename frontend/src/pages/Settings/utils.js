@@ -159,6 +159,7 @@ export const normalizeSettings = (savedSettings) => {
         ...(savedSettings.integrations?.nzbget || {}),
       },
       sabnzbd: {
+        deleteLeftovers: true,
         enabled: false,
         url: "",
         apiKey: "",

@@ -90,6 +90,7 @@ export const defaultData = {
         url: "",
         apiKey: "",
         category: "aurral",
+        deleteLeftovers: true,
         priority: 20,
         addPaused: false,
       },

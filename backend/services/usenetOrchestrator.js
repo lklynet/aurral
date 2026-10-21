@@ -143,9 +143,9 @@ function sharedUpgradeNzb(clientKey, release, job) {
   return { nzbId: users[0]?.downloadClientId ?? pending?.nzbId ?? null };
 }
 
-// Both clients drop the queue and history entry. SABnzbd also deletes the
-// job's files; NZBGet does with deleteFiles, unless its setting is off. A
-// download another upgrade still reads is left to the last one.
+// Both clients drop the queue and history entry. With deleteFiles, Aurral also
+// removes the completed folder unless that client's setting is off. A download
+// another upgrade still reads is left to the last one.
 async function removeUsenetItem(payload, jobId, options = {}) {
   const client = getUsenetClient(payload.downloadClient || payload.manualDownloadClient);
   const key = nzbKey(client.key, payload.nzbId);
