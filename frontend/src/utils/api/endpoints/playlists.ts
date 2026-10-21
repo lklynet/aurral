@@ -401,7 +401,7 @@ export const startSpotifyOAuth = (callbackUrl: string): Promise<StartSpotifyOAut
 export const completeSpotifyOAuth = (payload: {
   accessToken: string;
   refreshToken: string;
-  expiresIn?: number;
+  expiresIn?: string | number | null;
 }): Promise<CompleteSpotifyOAuthResponse> =>
   postData("/playlists/import/spotify/oauth/complete", payload);
 

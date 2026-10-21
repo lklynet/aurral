@@ -55,7 +55,7 @@ const mapPreviewTracks = (
     albumName: track?.albumName || null,
     durationMs: track?.durationMs || null,
     reason: "Deezer playlist",
-    status: track?.preview_url ? "done" : "pending",
+    status: track?.preview_url ? ("done" as const) : ("pending" as const),
     streamUrl: track?.preview_url || null,
     artworkUrl: track?.artworkUrl || null,
     deezerAlbumId: track?.deezerAlbumId || null,

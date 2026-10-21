@@ -41,7 +41,6 @@ import { getTrackSearchAction } from "./trackAvailability.ts";
 import { normalizeNameKey, normalizePlaylistTrackEntry, reserveUniqueName } from "./flowPageUtils";
 import type { Flow, StaticPlaylist } from "./playlistStats.ts";
 import type { PlaylistTrackRow } from "./playlistPageUtils.ts";
-import type { PlaylistJob } from "../../utils/api/endpoints/playlists.ts";
 import type { ApiError } from "../../utils/api/core.ts";
 
 const errorMessage = (err: ApiError | null, fallback: string) =>
@@ -278,7 +277,7 @@ export function PlaylistTracks({
     if (!searchAction) return;
     setReSearchingTrackIds((prev) => ({ ...prev, [jobId]: true }));
     if (searchAction === "research") {
-      queryClient.setQueryData<PlaylistJob[]>(queryKeys.playlistJobs(entry.id), (prev) =>
+      queryClient.setQueryData<PlaylistTrackRow[]>(queryKeys.playlistJobs(entry.id), (prev) =>
         (prev || []).map((job) =>
           job?.id === jobId ? { ...job, status: "pending", error: null, streamUrl: null } : job,
         ),
