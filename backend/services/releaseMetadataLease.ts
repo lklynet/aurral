@@ -7,7 +7,7 @@ import { honkerJobInterruption } from "./honkerWorkerRuntime.ts";
 const LOCK_NAME = "release-metadata-refresh";
 const TTL_SECONDS = 120;
 
-export async function acquireReleaseMetadataLease({ signal } = {}) {
+export async function acquireReleaseMetadataLease({ signal }: { signal?: AbortSignal } = {}) {
   const controller = new AbortController();
   const interrupt = () => controller.abort(honkerJobInterruption("Metadata refresh interrupted"));
   signal?.addEventListener("abort", interrupt, { once: true });
@@ -33,7 +33,7 @@ export async function acquireReleaseMetadataLease({ signal } = {}) {
     }
   }, 30000);
   heartbeat.unref();
-  const write = db.transaction((fn) => {
+  const write = db.transaction((fn: () => unknown) => {
     controller.signal.throwIfAborted();
     const held = db
       .prepare(
@@ -48,7 +48,7 @@ export async function acquireReleaseMetadataLease({ signal } = {}) {
   });
   return {
     signal: controller.signal,
-    write(fn) {
+    write(fn: () => unknown) {
       return write.immediate(fn);
     },
     release() {

@@ -1,4 +1,6 @@
 import { logger } from "./logger.ts";
+import type { DownloadTracker } from "./downloadJobs/downloadTracker.ts";
+import type { HistoryJob } from "./aurralHistoryService.ts";
 
 // Fields of a search in progress; a new search or a download clears them.
 export const SEARCH_RESET = Object.freeze({
@@ -32,7 +34,12 @@ export function buildNextCandidatePayload(payload, sourceResetFields = {}) {
   };
 }
 
-export function mergeSearchResults(aggregated, seen, items, buildKey) {
+export function mergeSearchResults<T, K>(
+  aggregated: T[],
+  seen: Set<K>,
+  items: T[],
+  buildKey: (item: T) => K,
+) {
   for (const item of items) {
     const key = buildKey(item);
     if (seen.has(key)) continue;
@@ -65,7 +72,17 @@ export function holdForReview(job, { source, sourcePath, reason, ...details }) {
   };
 }
 
-export function blockPipelineJobForReview({ downloadTracker, job, validation, sourcePath }) {
+export function blockPipelineJobForReview({
+  downloadTracker,
+  job,
+  validation,
+  sourcePath,
+}: {
+  downloadTracker: DownloadTracker;
+  job: HistoryJob;
+  validation: { blocked?: boolean; reason?: string | null } | null | undefined;
+  sourcePath: string | null | undefined;
+}) {
   const stagingPath = String(sourcePath || "").trim();
   if (!validation?.blocked || !stagingPath) return false;
   const reason = validation.reason || "Blocked for review";

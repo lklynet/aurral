@@ -7,16 +7,35 @@ import { logger } from "./logger.ts";
 
 const libraryTrackStmt = db.prepare("SELECT 1 FROM library_tracks WHERE mbid = ? LIMIT 1");
 
-const sameText = (left, right) =>
+const sameText = (left: unknown, right: unknown) =>
   String(left || "").toLocaleLowerCase() === String(right || "").toLocaleLowerCase();
 
-export function findQueuedLibraryTrackJob({ artistName, trackName, trackMbid = null }) {
+export function findQueuedLibraryTrackJob({
+  artistName,
+  trackName,
+  trackMbid = null,
+}: {
+  artistName: string;
+  trackName: string;
+  trackMbid?: string | null;
+}) {
   return (
-    downloadTracker.getAll().find((job) => {
-      if (job.playlistType !== "library" || ["failed", "done"].includes(job.status)) return false;
-      if (trackMbid) return job.trackMbid === trackMbid;
-      return sameText(job.artistName, artistName) && sameText(job.trackName, trackName);
-    }) || null
+    downloadTracker
+      .getAll()
+      .find(
+        (job: {
+          playlistType: string;
+          status: string;
+          trackMbid: string | null;
+          artistName: string;
+          trackName: string;
+        }) => {
+          if (job.playlistType !== "library" || ["failed", "done"].includes(job.status))
+            return false;
+          if (trackMbid) return job.trackMbid === trackMbid;
+          return sameText(job.artistName, artistName) && sameText(job.trackName, trackName);
+        },
+      ) || null
   );
 }
 

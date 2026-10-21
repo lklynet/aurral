@@ -9,7 +9,7 @@ const SOURCE_LABELS = {
   ytdlp: "yt-dlp",
 };
 
-function normalizePriority(value, fallback) {
+function normalizePriority(value: unknown, fallback: number) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
   return Math.trunc(parsed);
@@ -137,6 +137,6 @@ export function getDownloadSourceNotConfiguredMessage() {
   return `No download source is configured. Configure ${pieces.join(" or ")} in Settings > Download clients; configure Prowlarr under Settings > Indexers to enable downloads for flows and playlists.`;
 }
 
-export function getSourceLabel(sourceId) {
+export function getSourceLabel(sourceId: string | null | undefined) {
   return SOURCE_LABELS[String(sourceId || "")] || String(sourceId || "download source");
 }

@@ -2,13 +2,26 @@ import path from "node:path";
 import { getLibraryForAlbumIds, getLibraryForTrackIds } from "./libraryQueryService.ts";
 import { isAurralOwnedPath } from "./qualityProfileService.ts";
 import { downloadTracker } from "./downloadJobs/downloadTracker.ts";
+import type { PlaylistDownloadJobsRow } from "../db/rows.ts";
 
-function positiveInteger(value) {
+interface TrackedJob {
+  status: PlaylistDownloadJobsRow["status"];
+  managedBy: "lidarr" | "aurral";
+  upgradeForJobId?: PlaylistDownloadJobsRow["upgrade_for_job_id"];
+  finalPath: PlaylistDownloadJobsRow["final_path"];
+  completedAt: PlaylistDownloadJobsRow["completed_at"];
+  createdAt: PlaylistDownloadJobsRow["created_at"];
+}
+
+function positiveInteger(value: unknown) {
   const parsed = Number(value);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
-export function resolveAurralOwnedTrackJob({ trackId, albumId } = {}) {
+export function resolveAurralOwnedTrackJob({
+  trackId,
+  albumId,
+}: { trackId?: unknown; albumId?: unknown } = {}) {
   const safeTrackId = positiveInteger(trackId);
   const safeAlbumId =
     albumId == null || String(albumId).trim() === "" ? null : positiveInteger(albumId);
@@ -32,16 +45,16 @@ export function resolveAurralOwnedTrackJob({ trackId, albumId } = {}) {
   const sourceJob = downloadTracker
     .getAll()
     .filter(
-      (job) =>
+      (job: TrackedJob) =>
         job.status === "done" &&
         job.managedBy === "aurral" &&
         !job.upgradeForJobId &&
         job.finalPath &&
-        ownedFiles.some((file) => file.resolvedPath === path.resolve(job.finalPath)) &&
+        ownedFiles.some((file) => file.resolvedPath === path.resolve(job.finalPath!)) &&
         isAurralOwnedPath(job.finalPath),
     )
     .sort(
-      (left, right) =>
+      (left: TrackedJob, right: TrackedJob) =>
         Number(right.completedAt || right.createdAt || 0) -
         Number(left.completedAt || left.createdAt || 0),
     )[0];
@@ -66,8 +79,8 @@ export function resolveAurralOwnedTrackJob({ trackId, albumId } = {}) {
         .filter((entry) => entry.title && entry.position)
         .sort(
           (left, right) =>
-            Number(left.position.discNumber || 1) - Number(right.position.discNumber || 1) ||
-            Number(left.position.trackNumber || 0) - Number(right.position.trackNumber || 0),
+            Number(left.position!.discNumber || 1) - Number(right.position!.discNumber || 1) ||
+            Number(left.position!.trackNumber || 0) - Number(right.position!.trackNumber || 0),
         )
     : [];
 

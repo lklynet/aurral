@@ -13,7 +13,13 @@ import { recordAlbumGrabQueued, recordAlbumGrabPhase } from "./albumGrabActivity
 import { downloadTracker } from "./downloadJobs/downloadTracker.ts";
 import { withDownloadPayloadMutation } from "./downloadJobs/mutationGuards.ts";
 
-async function processLockedPipelineJob(payload, dependencies = {}) {
+interface PipelineDependencies {
+  processPipelinePayload?: typeof processPipelinePayload;
+  continuePipeline?: typeof continuePipeline;
+  failPipelineJob?: typeof failPipelineJob;
+}
+
+async function processLockedPipelineJob(payload, dependencies: PipelineDependencies = {}) {
   const processPayload = dependencies.processPipelinePayload || processPipelinePayload;
   const continuePayload = dependencies.continuePipeline || continuePipeline;
   const failPayload = dependencies.failPipelineJob || failPipelineJob;
@@ -37,7 +43,7 @@ async function processLockedPipelineJob(payload, dependencies = {}) {
   }
 }
 
-export function processPipelineJob(payload, dependencies = {}) {
+export function processPipelineJob(payload, dependencies: PipelineDependencies = {}) {
   return withDownloadPayloadMutation(payload, (current) =>
     processLockedPipelineJob(current, dependencies),
   );

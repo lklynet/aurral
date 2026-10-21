@@ -3,8 +3,15 @@ import { db } from "../config/db-sqlite.ts";
 import { isAurralAlbumJob, jobMatchesTrack } from "./aurralAlbumJobs.ts";
 import { monitoredTrackCondition } from "./aurralMonitoring.ts";
 
+interface UnmonitoredTrack {
+  albumMbid: string | null;
+  releaseGroupMbid: string | null;
+  mbid: string | null;
+  title: string;
+}
+
 const unmonitoredFilePathsStmt = db
-  .prepare(`
+  .prepare<[], string>(`
   SELECT media.path
   FROM library_media_files AS media
   JOIN library_tracks AS track ON track.id = media.track_id
@@ -13,7 +20,7 @@ const unmonitoredFilePathsStmt = db
 `)
   .pluck();
 
-const unmonitoredTracksStmt = db.prepare(`
+const unmonitoredTracksStmt = db.prepare<[], UnmonitoredTrack>(`
   SELECT album.mbid AS albumMbid, album.release_group_mbid AS releaseGroupMbid,
     track.mbid, track.title
   FROM library_album_tracks AS link
@@ -25,14 +32,14 @@ const unmonitoredTracksStmt = db.prepare(`
     AND NOT (${monitoredTrackCondition("track")})
 `);
 
-const albumKey = (value) =>
+const albumKey = (value: string | null | undefined) =>
   String(value || "")
     .trim()
     .toLowerCase();
 
 export function indexUnmonitoredJobs() {
   const filePaths = new Set(unmonitoredFilePathsStmt.all());
-  const tracksByAlbum = new Map();
+  const tracksByAlbum = new Map<string, UnmonitoredTrack[]>();
   for (const track of unmonitoredTracksStmt.all()) {
     for (const key of new Set(
       [track.albumMbid, track.releaseGroupMbid].filter(Boolean).map(albumKey),
@@ -40,7 +47,7 @@ export function indexUnmonitoredJobs() {
       tracksByAlbum.set(key, [...(tracksByAlbum.get(key) || []), track]);
     }
   }
-  return (job) => {
+  return (job: { finalPath?: string | null; albumMbid?: string | null } | null | undefined) => {
     if (job?.finalPath && filePaths.has(path.resolve(job.finalPath))) return true;
     if (!job || !isAurralAlbumJob(job)) return false;
     const key = albumKey(job.albumMbid);

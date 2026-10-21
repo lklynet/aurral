@@ -5,8 +5,11 @@ import {
   downloadedFileEvidence,
   validateDownloadedTrackFile,
 } from "./trackMatching/postDownloadValidator.ts";
-import { mapRequest, trackRequestFor } from "./releaseManifest.ts";
+import { mapRequest, trackRequestFor, type ReleaseManifest } from "./releaseManifest.ts";
 import { judgeRelease } from "./trackMatching/releaseJudge.ts";
+
+type ManifestJob = Parameters<typeof mapRequest>[1][number];
+type AlbumJob = ManifestJob & { upgradeForJobId?: string | null };
 
 export async function assignDownloadedAlbumFiles({
   jobs,
@@ -15,6 +18,13 @@ export async function assignDownloadedAlbumFiles({
   manifest,
   verified = false,
   parseAudio = parseFile,
+}: {
+  jobs: AlbumJob[];
+  filePaths?: string[] | null;
+  source: "deemix" | "soulseek" | "usenet";
+  manifest: ReleaseManifest;
+  verified?: boolean;
+  parseAudio?: typeof parseFile;
 }) {
   const readable = [];
   const seen = new Set();
@@ -35,7 +45,7 @@ export async function assignDownloadedAlbumFiles({
     }
   }
   const unreadableCount = (filePaths || []).length - readable.length;
-  const failedRelease = (reason) => ({
+  const failedRelease = (reason: string) => ({
     accepted: [],
     rejected: jobs.map((job) => ({ jobId: job.id, reason })),
     unreadableCount,

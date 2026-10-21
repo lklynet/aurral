@@ -11,8 +11,8 @@ const WORKER_NAME = "notification-outbox";
 
 let running = false;
 let stopRequested = false;
-let _loopPromise = null;
-let abortController = null;
+let _loopPromise: Promise<void> | null = null;
+let abortController: ReturnType<typeof createIdleAbortController> | null = null;
 
 async function runLoop() {
   abortController = createIdleAbortController({

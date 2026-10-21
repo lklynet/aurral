@@ -1,6 +1,12 @@
 import { validateExternalUrl } from "../middleware/urlValidator.ts";
+import type { LidarrClient } from "./lidarrClient.ts";
 
-export function resolveLidarrTestCredentials(query = {}, configuredClient = null) {
+type LidarrTestConfig = Partial<ReturnType<LidarrClient["getConfig"]>>;
+
+export function resolveLidarrTestCredentials(
+  query: { url?: unknown; apiKey?: unknown } = {},
+  configuredClient: LidarrClient | null = null,
+) {
   const testUrl = String(query.url || "").trim();
   const testApiKey = String(query.apiKey || "").trim();
   if (testUrl && testApiKey) {
@@ -8,11 +14,11 @@ export function resolveLidarrTestCredentials(query = {}, configuredClient = null
   }
   configuredClient?.updateConfig?.();
   if (configuredClient?.isEnabled?.() === false) {
-    const error = new Error("Lidarr is disabled");
+    const error: Error & { statusCode?: number } = new Error("Lidarr is disabled");
     error.statusCode = 400;
     throw error;
   }
-  const config = configuredClient?.getConfig?.() || {};
+  const config: LidarrTestConfig = configuredClient?.getConfig?.() || {};
   return {
     url: String(config.url || "").trim(),
     apiKey: String(config.apiKey || "").trim(),
@@ -20,7 +26,10 @@ export function resolveLidarrTestCredentials(query = {}, configuredClient = null
   };
 }
 
-export function validateLidarrTestCredentials(url, apiKey) {
+export function validateLidarrTestCredentials(
+  url: string,
+  apiKey: string,
+): { valid: false; error: string } | { valid: true; url: string } {
   if (!url || !apiKey) {
     return { valid: false, error: "Lidarr URL and API key are required" };
   }
@@ -31,7 +40,11 @@ export function validateLidarrTestCredentials(url, apiKey) {
   return { valid: true, url: urlValidation.url.replace(/\/+$/, "") };
 }
 
-export async function withTemporaryLidarrClient(url, apiKey, fn) {
+export async function withTemporaryLidarrClient<T>(
+  url: string,
+  apiKey: string,
+  fn: (client: LidarrClient) => T,
+): Promise<Awaited<T>> {
   const { LidarrClient } = await import("./lidarrClient.ts");
   // Keep test credentials, cached responses and discovered paths out of the saved client.
   const lidarrClient = new LidarrClient({ persistRootFolderPaths: false });

@@ -10,8 +10,8 @@ import {
 const WORKER_NAME = "play-event-outbox";
 let running = false;
 let stopRequested = false;
-let loopPromise = null;
-let abortController = null;
+let loopPromise: Promise<void> | null = null;
+let abortController: ReturnType<typeof createIdleAbortController> | null = null;
 
 async function runLoop() {
   abortController = createIdleAbortController({

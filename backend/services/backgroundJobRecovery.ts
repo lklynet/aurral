@@ -1,7 +1,15 @@
 import { ISOLATED_QUEUE_GROUPS } from "./backgroundWorkerQueues.ts";
 import { getHonkerDb, getHonkerQueueByName } from "./honkerDb.ts";
+import type { HonkerLiveRow } from "../db/rows.ts";
 
-async function releaseClaimedJob(database, row, logger, reason) {
+type ClaimedJobRow = Pick<HonkerLiveRow, "id" | "queue" | "payload" | "worker_id">;
+
+async function releaseClaimedJob(
+  database: ReturnType<typeof getHonkerDb>,
+  row: ClaimedJobRow,
+  logger: Console,
+  reason: string,
+) {
   try {
     if (row.queue === "library-scan") {
       const { restoreLibraryScanAfterWorkerExit } = await import("./libraryScanWorker.ts");
@@ -43,13 +51,18 @@ async function releaseClaimedJob(database, row, logger, reason) {
   }
 }
 
-export async function recoverExitedWorkerJobs(group, pid, logger = console, reason = null) {
-  if (!Number.isInteger(pid) || pid <= 0) return;
+export async function recoverExitedWorkerJobs(
+  group: string,
+  pid: number | undefined,
+  logger: Console = console,
+  reason: string | null = null,
+) {
+  if (!Number.isInteger(pid) || pid! <= 0) return;
   const database = getHonkerDb();
   const rows = database.query(
     "SELECT id, queue, payload, worker_id FROM _honker_live WHERE worker_id = ? AND state = 'processing'",
     [`aurral-${pid}`],
-  );
+  ) as ClaimedJobRow[];
   for (const row of rows) {
     if (ISOLATED_QUEUE_GROUPS[row.queue] !== group) continue;
     await releaseClaimedJob(database, row, logger, reason || "Background worker process exited");
@@ -63,12 +76,12 @@ export async function recoverExitedWorkerJobs(group, pid, logger = console, reas
 // A job claimed before this process started belongs to a process that no
 // longer exists, so it runs again now instead of after its claim expires.
 // A claim stamps its expiry one visibility timeout ahead.
-export async function recoverJobsClaimedBeforeStart(logger = console) {
+export async function recoverJobsClaimedBeforeStart(logger: Console = console) {
   const startedAt = Math.floor(Date.now() / 1000 - process.uptime());
   const database = getHonkerDb();
   const rows = database.query(
     "SELECT id, queue, payload, worker_id, claim_expires_at FROM _honker_live WHERE state = 'processing'",
-  );
+  ) as (ClaimedJobRow & Pick<HonkerLiveRow, "claim_expires_at">)[];
   for (const row of rows) {
     const visibilityTimeoutS = Number(getHonkerQueueByName(row.queue)?.visibilityTimeoutS);
     if (!Number.isFinite(visibilityTimeoutS)) continue;
