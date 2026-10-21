@@ -27,6 +27,11 @@ import type {
   PlayEventsRow,
   SubsonicPlayQueuesRow,
 } from "../db/rows.ts";
+import type {
+  NormalizedAlbum,
+  NormalizedRelease,
+  NormalizedTrack,
+} from "./providers/brainzmashMappers.ts";
 
 const now = () => Date.now();
 
@@ -1376,7 +1381,7 @@ function foldLibraryAlbum(
       dropped.push(track.id);
     }
   }
-  db.prepare(
+  db.prepare<[number, number]>(
     `DELETE FROM library_album_tracks
      WHERE album_id = ? AND track_id IN (SELECT track_id FROM library_album_tracks WHERE album_id = ?)`,
   ).run(album.id, target.id);
@@ -1473,26 +1478,25 @@ export function getLibraryAlbumsToList() {
 
 export type LibraryAlbumToList = ReturnType<typeof getLibraryAlbumsToList>[number];
 
-type ReleaseTrack = {
-  id?: string | null;
-  recordingId?: string | null;
-  oldRecordingIds?: string[];
-  title?: string | null;
-  artistId?: string | null;
-  mediumNumber?: number | null;
-  trackPosition?: number | null;
-  trackNumber?: number | null;
-};
+type ReleaseTrack = Partial<
+  Pick<
+    NormalizedTrack,
+    | "id"
+    | "recordingId"
+    | "oldRecordingIds"
+    | "title"
+    | "artistId"
+    | "mediumNumber"
+    | "trackPosition"
+    | "trackNumber"
+  >
+>;
 
-type AlbumRelease = { id?: string | null; tracks?: ReleaseTrack[] };
+type AlbumRelease = Partial<Pick<NormalizedRelease, "id" | "tracks">>;
 
-type ReleaseGroup = {
-  artistId?: string | null;
-  artists?: { id?: string | null }[];
-  releases?: AlbumRelease[];
-};
+type ReleaseGroup = Partial<Pick<NormalizedAlbum, "artistId" | "artists" | "releases">>;
 
-type LibraryAlbumFile = { mbid: string | null; title: string };
+type LibraryAlbumFile = Pick<LibraryTracksRow, "mbid" | "title">;
 
 // A release's track stands for its recording and the ones MusicBrainz merged
 // into it.
@@ -1594,7 +1598,7 @@ export function storeLibraryAlbumTrackList(
     };
     const atPlace = (track: PlannedTrack) => (entry: LibraryAlbumTrack) =>
       entry.disc_number === track.discNumber && entry.track_number === track.trackNumber;
-    const recorded = (track: PlannedTrack) => (entry: LibraryAlbumTrack) =>
+    const recorded = (track: { mbids: readonly (string | null)[] }) => (entry: LibraryAlbumTrack) =>
       track.mbids.includes(entry.mbid);
     const files = () => unused.filter((entry) => entry.has_files);
     const songs = Map.groupBy(tracks, (track) => songKey(track.title));
