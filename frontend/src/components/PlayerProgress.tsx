@@ -168,7 +168,7 @@ export function PlayerSeek({ variant }: PlayerSeekProps) {
   if (variant === "sheet") {
     return (
       <div className="now-playing__progress">
-        {input("now-playing__seek", { "--seek-percent": `${progress * 100}%` } as CSSProperties)}
+        {input("now-playing__seek", { "--seek-percent": `${progress * 100}%` })}
         <div className="now-playing__times">
           <span>{formatPlaybackTime(displayPosition)}</span>
           <span>{formatPlaybackTime(duration)}</span>
@@ -187,12 +187,10 @@ export function PlayerSeek({ variant }: PlayerSeekProps) {
   return (
     <div
       className={className}
-      style={
-        {
-          "--progress": progress,
-          "--buffered": Math.max(fraction(buffered, duration), progress),
-        } as CSSProperties
-      }
+      style={{
+        "--progress": progress,
+        "--buffered": Math.max(fraction(buffered, duration), progress),
+      }}
     >
       <span className="global-player__progress-time global-player__progress-time--current">
         {formatPlaybackTime(displayPosition)}
@@ -227,7 +225,7 @@ export function PlayerMiniProgress() {
     <span
       className={`global-player__mini-progress${isPlaying ? " is-playing" : ""}`}
       aria-hidden="true"
-      style={{ "--progress": fraction(position, duration) } as CSSProperties}
+      style={{ "--progress": fraction(position, duration) }}
     >
       <span />
     </span>

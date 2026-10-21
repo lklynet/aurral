@@ -1,5 +1,5 @@
 import ArtworkImage from "./ArtworkImage";
-import { useEffect, useId, useState, type CSSProperties, type RefObject } from "react";
+import { useEffect, useId, useState, type RefObject } from "react";
 import {
   DndContext,
   KeyboardSensor,
@@ -221,7 +221,7 @@ export function PlayerQueuePanel({ id, onClose, closeRef }: PlayerQueuePanelProp
       id={id}
       className="player-queue"
       aria-labelledby={titleId}
-      style={height ? ({ "--player-queue-height": `${height}px` } as CSSProperties) : undefined}
+      style={height ? { "--player-queue-height": `${height}px` } : undefined}
     >
       <div className="player-queue__header">
         <h2 id={titleId} className="player-queue__title">

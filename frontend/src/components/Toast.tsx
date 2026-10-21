@@ -3,7 +3,6 @@ import {
   useEffect,
   useRef,
   useState,
-  type CSSProperties,
   type FocusEvent,
   type MouseEvent,
   type ReactNode,
@@ -147,7 +146,7 @@ export function Toast({ toast, onDismiss, index = 0 }: ToastProps) {
       className={`app-toast app-toast--${type}${isExiting ? " app-toast--exiting" : ""}`}
       role={type === "error" ? "alert" : "status"}
       aria-live={type === "error" ? "assertive" : "polite"}
-      style={{ "--toast-index": index } as CSSProperties}
+      style={{ "--toast-index": index }}
       onMouseEnter={handleInteractionStart}
       onMouseLeave={handleInteractionEnd}
       onFocusCapture={handleInteractionStart}

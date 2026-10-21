@@ -13,7 +13,6 @@ import { searchUnified } from "../../../utils/api/endpoints/search.ts";
 import { TAG_COLORS } from "../../discoverUtils";
 import { getTagColor } from "../../ArtistDetails/utils";
 import { useDebouncedTask } from "../../../hooks/useDebouncedTask";
-import type { CSSProperties } from "react";
 import type { FlowMix } from "../playlistStats.ts";
 import type { FlowDraft, normalizeMixPercent } from "../flowPageUtils.ts";
 
@@ -321,12 +320,10 @@ export function MixSlider({
               <div
                 key={key}
                 className={`flow-page__mix-segment flow-page__mix-segment--${key}`}
-                style={
-                  {
-                    width: `${percent}%`,
-                    "--flow-mix-color": SOURCE_MIX_COLORS[key],
-                  } as CSSProperties
-                }
+                style={{
+                  width: `${percent}%`,
+                  "--flow-mix-color": SOURCE_MIX_COLORS[key],
+                }}
               >
                 {showLabel ? `${option.label} (${trackCounts[key] ?? 0})` : ""}
               </div>
