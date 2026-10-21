@@ -18,9 +18,14 @@ const result = spawnSync(process.execPath, [fileURLToPath(tsc), "-p", ".", "--pr
 const output = `${result.stdout}${result.stderr}`;
 const errorLines = output.split("\n").filter((line) => /: error TS\d+:/.test(line));
 
-if (result.status !== 0 && errorLines.length === 0) {
+const finishedWithErrors = result.status === 1 && errorLines.length > 0;
+const finishedClean = result.status === 0 && errorLines.length === 0;
+if (result.error || result.signal || !(finishedClean || finishedWithErrors)) {
   process.stderr.write(output);
-  process.exit(result.status ?? 1);
+  console.error(
+    `tsc did not finish: ${result.error?.message ?? result.signal ?? `exit ${result.status}`}`,
+  );
+  process.exit(1);
 }
 
 const counts: Record<string, number> = {};

@@ -26,7 +26,7 @@ export default defineConfig({
     "*": "vp check --fix",
   },
   lint: {
-    plugins: ["eslint", "oxc", "react", "unicorn", "typescript"],
+    plugins: ["eslint", "oxc", "react", "unicorn", "typescript", "import"],
     jsPlugins: ["./frontend/lint-rules/index.js"],
     categories: { correctness: "error" },
     env: { builtin: true, node: true },
@@ -112,6 +112,10 @@ export default defineConfig({
           "frontend/src/pages/SsoComplete.tsx",
         ],
         rules: { "aurral/single-main": "off" },
+      },
+      {
+        files: ["backend/**", "lib/**", "scripts/**", ".tests/**", "tests/**"],
+        rules: { "import/extensions": ["error", "always", { ignorePackages: true }] },
       },
       {
         files: [
