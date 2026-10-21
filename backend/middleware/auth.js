@@ -270,7 +270,8 @@ export const resolveSessionUserFromToken = (token) => {
 
 function resolveApiKeyUser(req) {
   const headerKey = (req.headers["x-api-key"] || "").trim();
-  const queryKey = (req.query?.api_key || "").trim();
+  const queryValue = req.query?.api_key;
+  const queryKey = typeof queryValue === "string" ? queryValue.trim() : "";
   const incoming = headerKey || queryKey;
   if (!incoming) return null;
   try {
