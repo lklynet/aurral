@@ -1,4 +1,5 @@
 import * as client from "openid-client";
+import type { Request, Response } from "express";
 import { db } from "../config/db-sqlite.ts";
 import { createSession } from "../config/session-helpers.ts";
 import { createSystemProvisionedUser, toResolvedUser } from "../middleware/auth.ts";
@@ -7,12 +8,34 @@ import { userOps, userIdentityOps } from "../db/helpers/index.ts";
 const STATE_TTL_MS = 10 * 60 * 1000;
 const EXCHANGE_TTL_MS = 60 * 1000;
 const OIDC_TRANSACTION_COOKIE = "aurral_oidc_transaction";
-const pendingLogins = new Map();
-const pendingExchanges = new Map();
-let discoveryConfig = null;
+type DiscoveryConfig = Awaited<ReturnType<typeof client.discovery>>;
+type OidcTokens = Awaited<ReturnType<typeof client.authorizationCodeGrant>>;
+type OidcClaims = { sub?: string; [claim: string]: unknown };
+
+const pendingLogins = new Map<
+  string,
+  {
+    codeVerifier: string;
+    nonce: string;
+    transactionId: string;
+    expiresAt: number;
+    mode: "login" | "link";
+    linkUserId: number | null;
+  }
+>();
+const pendingExchanges = new Map<
+  string,
+  {
+    expiresAt: number;
+    transactionId: string;
+    linked: boolean;
+    user: ReturnType<typeof toResolvedUser>;
+  }
+>();
+let discoveryConfig: DiscoveryConfig | null = null;
 let discoveryKey = "";
 
-function parseCsv(value) {
+function parseCsv(value: string | undefined) {
   if (!value) return [];
   return String(value)
     .split(",")
@@ -32,7 +55,7 @@ function prunePendingExchanges(now = Date.now()) {
   }
 }
 
-function getTransactionCookie(req) {
+function getTransactionCookie(req: Request) {
   const cookies = String(req.headers?.cookie || "").split(";");
   for (const cookie of cookies) {
     const [name, ...parts] = cookie.trim().split("=");
@@ -46,7 +69,7 @@ function getTransactionCookie(req) {
   return "";
 }
 
-function setTransactionCookie(req, res, value, maxAge) {
+function setTransactionCookie(req: Request, res: Response, value: string, maxAge?: number) {
   const secure = req.secure || req.protocol === "https";
   const attributes = [
     `${OIDC_TRANSACTION_COOKIE}=${encodeURIComponent(value)}`,
@@ -111,7 +134,7 @@ function getTokenEndpointAuthMethod() {
   return method || "client_secret_basic";
 }
 
-function buildClientAuthentication(method, clientSecret) {
+function buildClientAuthentication(method: string, clientSecret: string) {
   switch (method) {
     case "client_secret_post":
       return client.ClientSecretPost(clientSecret);
@@ -126,7 +149,7 @@ function buildClientAuthentication(method, clientSecret) {
   }
 }
 
-function generateUniqueUsername(base) {
+function generateUniqueUsername(base: string) {
   const trimmed = String(base || "")
     .trim()
     .toLowerCase();
@@ -139,7 +162,7 @@ function generateUniqueUsername(base) {
   throw new Error("Could not generate a unique username for OIDC provisioning");
 }
 
-function normalizeGroups(value) {
+function normalizeGroups(value: unknown) {
   if (Array.isArray(value)) {
     return value
       .map((item) =>
@@ -156,7 +179,7 @@ function normalizeGroups(value) {
     .filter(Boolean);
 }
 
-export function resolveOidcRole(username, claims = {}) {
+export function resolveOidcRole(username: string | null | undefined, claims: OidcClaims = {}) {
   const adminUsers = parseCsv(process.env.OIDC_ADMIN_USERS).map((u) => u.toLowerCase());
   if (adminUsers.includes(String(username || "").toLowerCase())) return "admin";
 
@@ -172,7 +195,7 @@ export function resolveOidcRole(username, claims = {}) {
     : "user";
 }
 
-export function resolveOidcUsername(claims = {}) {
+export function resolveOidcUsername(claims: OidcClaims = {}) {
   const claimName = getUsernameClaim();
   const primary = String(claims[claimName] || "").trim();
   if (primary) return primary.toLowerCase();
@@ -181,7 +204,7 @@ export function resolveOidcUsername(claims = {}) {
   return "";
 }
 
-async function fetchEffectiveClaims(oidc, tokens, claims) {
+async function fetchEffectiveClaims(oidc: DiscoveryConfig, tokens: OidcTokens, claims: OidcClaims) {
   if (!claims.sub || !tokens.access_token) return claims;
 
   try {
@@ -219,11 +242,11 @@ async function getDiscoveryConfig() {
   return { config, oidc: discoveryConfig };
 }
 
-function toDisplayName(claims) {
+function toDisplayName(claims: OidcClaims) {
   return resolveOidcUsername(claims) || String(claims.email || "").trim() || null;
 }
 
-function resolveOidcSessionUser(config, claims) {
+function resolveOidcSessionUser(config: { issuer: string }, claims: OidcClaims) {
   const subject = String(claims.sub || "").trim();
   if (!subject) {
     throw Object.assign(new Error("OIDC identity did not include a usable subject"), {
@@ -309,7 +332,7 @@ function resolveOidcSessionUser(config, claims) {
   return toResolvedUser(provisionUser());
 }
 
-function buildCallbackUrl(req) {
+function buildCallbackUrl(req: Request) {
   const redirectUri = getRequiredConfig()?.redirectUri;
   if (!redirectUri) throw new Error("OIDC_REDIRECT_URI is required");
   const url = new URL(redirectUri);
@@ -325,9 +348,13 @@ function buildCallbackUrl(req) {
 }
 
 export async function startOidcLogin(
-  req,
-  res,
-  { mode = "login", linkUserId = null, returnUrl = false } = {},
+  req: Request,
+  res: Response,
+  {
+    mode = "login",
+    linkUserId = null,
+    returnUrl = false,
+  }: { mode?: "login" | "link"; linkUserId?: number | null; returnUrl?: boolean } = {},
 ) {
   if (!isOidcEnabled()) {
     res.status(404).json({ error: "OIDC is not enabled" });
@@ -369,7 +396,11 @@ export async function startOidcLogin(
   res.redirect(302, redirectTo.href);
 }
 
-function linkOidcIdentity(config, claims, linkUserId) {
+function linkOidcIdentity(
+  config: { issuer: string },
+  claims: OidcClaims,
+  linkUserId: number | null,
+) {
   const linkUser = userOps.getUserById(linkUserId);
   if (!linkUser) {
     throw Object.assign(new Error("Linking user no longer exists"), { status: 400 });
@@ -409,7 +440,7 @@ function linkOidcIdentity(config, claims, linkUserId) {
   return toResolvedUser(userOps.getUserById(linkUser.id));
 }
 
-export async function handleOidcCallback(req) {
+export async function handleOidcCallback(req: Request) {
   if (!isOidcEnabled()) {
     throw Object.assign(new Error("OIDC is not enabled"), { status: 404 });
   }
@@ -452,7 +483,7 @@ export async function handleOidcCallback(req) {
   };
 }
 
-export function exchangeOidcCallback(code, req) {
+export function exchangeOidcCallback(code: string | null | undefined, req: Request) {
   if (!isOidcEnabled()) {
     throw Object.assign(new Error("OIDC is not enabled"), { status: 404 });
   }
@@ -478,6 +509,6 @@ export function exchangeOidcCallback(code, req) {
   };
 }
 
-export function clearOidcTransactionCookie(req, res) {
+export function clearOidcTransactionCookie(req: Request, res: Response) {
   setTransactionCookie(req, res, "", 0);
 }

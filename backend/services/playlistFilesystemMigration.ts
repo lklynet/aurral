@@ -4,7 +4,7 @@ import { PLAYLIST_FILES_DIR, resolveDownloadRoot } from "./downloadPaths.ts";
 
 const PLAYLIST_SIDECAR_EXT = new Set([".m3u", ".nsp", ".webp", ".png"]);
 
-function relocatePlaylistSidecars(playlistRoot) {
+function relocatePlaylistSidecars(playlistRoot: string) {
   const playlistsDir = path.join(playlistRoot, "_playlists");
   fs.mkdirSync(playlistsDir, { recursive: true });
   let moved = 0;
@@ -26,7 +26,7 @@ function relocatePlaylistSidecars(playlistRoot) {
   return moved;
 }
 
-export function ensurePlaylistFilesystemLayout(options = {}) {
+export function ensurePlaylistFilesystemLayout(options: { root?: string | null } = {}) {
   const root = resolveDownloadRoot(options.root);
   const playlistRoot = path.join(root, PLAYLIST_FILES_DIR);
 

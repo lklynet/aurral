@@ -1,4 +1,4 @@
-import { readdirSync } from "fs";
+import { readdirSync, type Dirent } from "fs";
 import fs from "fs/promises";
 import path from "path";
 import {
@@ -18,7 +18,7 @@ function defaultPlaylistRoot() {
   return resolveDefaultDownloadRoot();
 }
 
-export function resolveDownloadRoot(explicitRoot) {
+export function resolveDownloadRoot(explicitRoot?: string | null) {
   const override = String(explicitRoot ?? "").trim();
   if (override) {
     return path.isAbsolute(override) ? override : path.resolve(process.cwd(), override);
@@ -37,7 +37,10 @@ export function resolveDownloadRoot(explicitRoot) {
   return defaultPlaylistRoot();
 }
 
-export function remapLegacyPath(finalPath, playlistRoot = resolveDownloadRoot()) {
+export function remapLegacyPath(
+  finalPath: string | null | undefined,
+  playlistRoot = resolveDownloadRoot(),
+) {
   let resolved = path.resolve(String(finalPath || "").trim());
   const root = path.resolve(playlistRoot);
   const legacyRoot = path.resolve(LEGACY_DOCKER_PLAYLIST_ROOT);
@@ -59,14 +62,14 @@ export function remapLegacyPath(finalPath, playlistRoot = resolveDownloadRoot())
   return resolved;
 }
 
-const folderKey = (name) =>
+const folderKey = (name: string) =>
   name
     .normalize("NFKC")
     .toLowerCase()
     .replace(/[\u2018\u2019\u02bc`]/g, "'")
     .replace(/[\u2010-\u2015]/g, "-");
 
-function existingEntryName(directory, name, isKind) {
+function existingEntryName(directory: string, name: string, isKind: (entry: Dirent) => boolean) {
   let entries;
   try {
     entries = readdirSync(directory, { withFileTypes: true });
@@ -85,11 +88,11 @@ function existingEntryName(directory, name, isKind) {
 
 // Names that differ only in case or quote and dash style are one folder, so a
 // change in how a name is written never starts a second folder beside it.
-const existingFolderName = (directory, name) =>
+const existingFolderName = (directory: string, name: string) =>
   existingEntryName(directory, name, (entry) => entry.isDirectory()) || name;
 
 // The file already at this name, however its case or quotes are written.
-export function findLibraryFileVariant(filePath) {
+export function findLibraryFileVariant(filePath: string) {
   const name = existingEntryName(
     path.dirname(filePath),
     path.basename(filePath),
@@ -98,13 +101,13 @@ export function findLibraryFileVariant(filePath) {
   return name ? path.join(path.dirname(filePath), name) : null;
 }
 
-export const libraryPathKey = (filePath) => folderKey(path.resolve(filePath));
+export const libraryPathKey = (filePath: string) => folderKey(path.resolve(filePath));
 
 export function buildAurralTrackDestination(
-  playlistId,
-  artistDir,
-  albumDir,
-  { ephemeral = false, root } = {},
+  playlistId: string | null | undefined,
+  artistDir: string | null | undefined,
+  albumDir: string | null | undefined,
+  { ephemeral = false, root }: { ephemeral?: boolean; root?: string | null } = {},
 ) {
   const artist = String(artistDir || "Unknown Artist");
   const album = String(albumDir || "Unknown Album");
@@ -114,12 +117,22 @@ export function buildAurralTrackDestination(
   return path.posix.join(artistName, existingFolderName(path.join(base, artistName), album));
 }
 
-const folderName = (value, fallback) =>
+const folderName = (value: string | null | undefined, fallback: string) =>
   sanitizePathPart(sanitizePathPart(value, "").replace(/^\.+/, ""), fallback);
 
 // The Library's naming: Artist/Album/07 - Title.ext, or 2-07 - Title.ext past
 // the first disc, under the Downloads Folder.
-export function buildLibraryTrackPath(root, track, ext) {
+export function buildLibraryTrackPath(
+  root: string,
+  track: {
+    artistName?: string | null;
+    albumName?: string | null;
+    trackName?: string | null;
+    trackNumber?: number | null;
+    discNumber?: number | null;
+  },
+  ext: string,
+) {
   return path.resolve(
     root,
     buildAurralTrackDestination(
@@ -132,12 +145,15 @@ export function buildLibraryTrackPath(root, track, ext) {
   );
 }
 
-export function isPathInsideRoot(candidatePath, rootPath) {
+export function isPathInsideRoot(candidatePath: string, rootPath: string) {
   const relative = path.relative(rootPath, candidatePath);
   return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
 }
 
-export async function resolveExistingTrackPath(finalPath, playlistRoot = resolveDownloadRoot()) {
+export async function resolveExistingTrackPath(
+  finalPath: string | null | undefined,
+  playlistRoot = resolveDownloadRoot(),
+) {
   const direct = path.resolve(String(finalPath || "").trim());
   const root = path.resolve(playlistRoot);
   const candidates = [...new Set([direct, remapLegacyPath(direct, root)])];

@@ -1,4 +1,5 @@
 import { db } from "../config/db-sqlite.ts";
+import type { LibraryAlbumsRow } from "../db/rows.ts";
 import createCache from "./apiClients/simpleCache.ts";
 import {
   getAlbumByMbid,
@@ -7,6 +8,32 @@ import {
 } from "./providers/brainzmashProvider.ts";
 import { invalidateLibraryQueryCache } from "./libraryQueryService.ts";
 import { manifestIndexFor, releasesHolding, toReleaseManifest } from "./releaseManifest.ts";
+
+interface MetadataRelease {
+  id?: string | null;
+  tracks?: unknown[] | null;
+}
+
+interface MetadataGroup {
+  id?: string | null;
+  releases: MetadataRelease[];
+}
+
+interface ResolverJob {
+  albumMbid?: string | null;
+  releaseMbid?: string | null;
+  trackName?: string | null;
+  playlistId?: string | null;
+  playlistType?: string | null;
+}
+
+interface LibraryAlbumMetadata {
+  edition?: string;
+  requestedRelease?: string | null;
+  trackList?: { release?: string | null } | null;
+}
+
+type ReleaseManifest = ReturnType<typeof toReleaseManifest>;
 
 const MANIFEST_TTL_SECONDS = 60 * 60;
 // A release its group does not list is looked for again after a minute.
@@ -22,7 +49,10 @@ export const MAX_RELEASE_WAITS = 30;
 const UNREACHABLE_TTL_SECONDS = RELEASE_WAIT_SECONDS / 2;
 const unreachableGroups = createCache(UNREACHABLE_TTL_SECONDS, MAX_MANIFESTS);
 
-const libraryAlbumStmt = db.prepare(
+const libraryAlbumStmt = db.prepare<
+  [string, string, string],
+  Pick<LibraryAlbumsRow, "metadata_json">
+>(
   `SELECT metadata_json FROM library_albums
    WHERE lower(release_group_mbid) = ? OR lower(mbid) = ?
    ORDER BY lower(release_group_mbid) = ? DESC, id
@@ -35,7 +65,7 @@ const replaceRequestedReleaseStmt = db.prepare(
      AND json_valid(metadata_json) AND lower(json_extract(metadata_json, '$.requestedRelease')) = ?`,
 );
 
-const id = (value) =>
+const id = (value: unknown) =>
   String(value || "")
     .trim()
     .toLowerCase();
@@ -47,7 +77,7 @@ export function clearReleaseManifests() {
 
 // Every track of an album asks for its group, so while one cannot be read
 // the provider is asked for it again once in each wait, not by every track.
-async function readGroup(groupMbid) {
+async function readGroup(groupMbid: string) {
   if (unreachableGroups.get(groupMbid)) return UNREACHABLE;
   try {
     const group = await getAlbumByMbid(groupMbid);
@@ -59,23 +89,26 @@ async function readGroup(groupMbid) {
   }
 }
 
-async function loadGroup(groupMbid) {
+async function loadGroup(groupMbid: string) {
   const group = await readGroup(groupMbid);
   return group === UNREACHABLE ? null : group;
 }
 
-function releaseById(group, releaseMbid) {
+function releaseById(
+  group: MetadataGroup | null | undefined,
+  releaseMbid: string | null | undefined,
+) {
   return (group?.releases || []).find((release) => id(release?.id) === id(releaseMbid)) || null;
 }
 
-function remember(manifest) {
+function remember(manifest: ReleaseManifest) {
   if (manifest) manifests.set(id(manifest.releaseMbid), manifest);
   return manifest;
 }
 
 // The group's releases tell a pin MusicBrainz merged away from one it still
 // lists.
-function manifestOf(group, release) {
+function manifestOf(group: MetadataGroup, release: MetadataRelease | null | undefined) {
   const manifest = toReleaseManifest(group, release);
   return (
     manifest && {
@@ -90,7 +123,10 @@ function manifestOf(group, release) {
 // not list it. A job with no release learns only whether its group reads.
 // The group comes from the metadata cache, which keeps it across restarts,
 // so only a cold cache asks the provider again.
-export async function readReleaseManifest(albumMbid, releaseMbid) {
+export async function readReleaseManifest(
+  albumMbid: string | null | undefined,
+  releaseMbid: string | null | undefined,
+) {
   const groupMbid = id(albumMbid);
   if (!groupMbid) return { manifest: null, unreachable: false };
   const key = id(releaseMbid) || `group:${groupMbid}`;
@@ -115,20 +151,26 @@ export async function readReleaseManifest(albumMbid, releaseMbid) {
   };
 }
 
-export async function loadReleaseManifest(albumMbid, releaseMbid) {
+export async function loadReleaseManifest(
+  albumMbid: string | null | undefined,
+  releaseMbid: string | null | undefined,
+) {
   return id(releaseMbid) ? (await readReleaseManifest(albumMbid, releaseMbid)).manifest : null;
 }
 
 // The release an attempt searches for: an album attempt keeps the one it
 // was started with, and a track search uses its job's.
-export function attemptRelease(payload, job) {
+export function attemptRelease(
+  payload: { albumGrab?: boolean; releaseMbid?: string | null } | null | undefined,
+  job: ResolverJob | null | undefined,
+) {
   return loadReleaseManifest(
     job?.albumMbid,
     payload?.albumGrab === true ? payload.releaseMbid : job?.releaseMbid,
   );
 }
 
-function libraryAlbum(groupMbid) {
+function libraryAlbum(groupMbid: string): LibraryAlbumMetadata | null {
   try {
     const row = libraryAlbumStmt.get(groupMbid, groupMbid, groupMbid);
     const metadata = row ? JSON.parse(row.metadata_json || "{}") : null;
@@ -138,16 +180,22 @@ function libraryAlbum(groupMbid) {
   }
 }
 
-const isLibraryJob = (job) => (job?.playlistId || job?.playlistType) === "library";
+const isLibraryJob = (job: ResolverJob | null | undefined) =>
+  (job?.playlistId || job?.playlistType) === "library";
 
 // The edition a Library album asks for: the one it was added with, else the
 // release its files list unless it wants the expanded edition, else the
 // commonest edition of its kind.
 export function chooseRequestedRelease(
-  group,
-  { requestedRelease = null, listedRelease = null, edition = "standard" } = {},
+  group: MetadataGroup,
+  {
+    requestedRelease = null,
+    listedRelease = null,
+    edition = "standard",
+  }: { requestedRelease?: string | null; listedRelease?: string | null; edition?: string } = {},
 ) {
-  const usable = (release) => (release?.tracks?.length ? release : null);
+  const usable = (release: MetadataRelease | null | undefined) =>
+    release?.tracks?.length ? release : null;
   return (
     usable(releaseById(group, requestedRelease)) ||
     (edition !== "expanded" && usable(releaseById(group, listedRelease))) ||
@@ -158,12 +206,12 @@ export function chooseRequestedRelease(
 // The release a Library request for this album downloads unless a track
 // pins another: the Library album's edition, else the standard edition. An
 // album page lists it, so the release a track is added from is the album's.
-export function chooseLibraryRelease(group) {
+export function chooseLibraryRelease(group: MetadataGroup) {
   const album = libraryAlbum(id(group?.id));
   return album ? albumEdition(group, album) : selectAlbumRelease(group);
 }
 
-function albumEdition(group, album) {
+function albumEdition(group: MetadataGroup, album: LibraryAlbumMetadata) {
   return chooseRequestedRelease(group, {
     requestedRelease: album.requestedRelease,
     listedRelease: album.trackList?.release,
@@ -173,13 +221,17 @@ function albumEdition(group, album) {
 
 // The chosen release as the group lists it: the provider's choice carries
 // lengths averaged across pressings, and the manifest keeps the release's own.
-function holding(group, release, job) {
+function holding(
+  group: MetadataGroup,
+  release: MetadataRelease | null | undefined,
+  job: ResolverJob,
+) {
   const manifest = manifestOf(group, releaseById(group, release?.id));
   return remember(manifest && manifestIndexFor(manifest, job) != null ? manifest : null);
 }
 
 // The commonest tracklist among the releases that hold the track.
-function holdingRelease(group, job) {
+function holdingRelease(group: MetadataGroup, job: ResolverJob) {
   const releases = releasesHolding(group, job);
   return releases.length ? selectAlbumRelease({ releases }) : null;
 }
@@ -190,7 +242,7 @@ function holdingRelease(group, job) {
 // another edition. A pin MusicBrainz no longer lists, as after a merge, is
 // chosen again, and a Library album that asked for it asks for the new
 // choice from then on.
-export async function resolveReleaseManifest(job) {
+export async function resolveReleaseManifest(job: ResolverJob) {
   const groupMbid = id(job?.albumMbid);
   if (!groupMbid || !String(job?.trackName || "").trim()) return null;
   const group = await loadGroup(groupMbid);
@@ -216,7 +268,7 @@ export async function resolveReleaseManifest(job) {
   return manifest;
 }
 
-function chooseRelease(group, groupMbid, job) {
+function chooseRelease(group: MetadataGroup, groupMbid: string, job: ResolverJob) {
   const album = libraryAlbum(groupMbid);
   const edition = album?.edition === "expanded" ? "expanded" : "standard";
   const requested = releaseById(group, album?.requestedRelease);

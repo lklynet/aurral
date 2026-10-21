@@ -1,4 +1,11 @@
-import { albumHasTrackFiles, getLidarrAlbumsById } from "./albumSearchState.ts";
+import {
+  albumHasTrackFiles,
+  getLidarrAlbumsById,
+  type LidarrHistoryRecord,
+  type LidarrQueueItem,
+  type LidarrRecords,
+} from "./albumSearchState.ts";
+import type { LidarrClient } from "./lidarrClient.ts";
 
 const STALE_GRABBED_MS = 15 * 60 * 1000;
 
@@ -22,15 +29,18 @@ export interface LidarrRequestItem {
   canReSearch: boolean;
 }
 
-const toIso = (value) => {
+const toIso = (value: string | null | undefined) => {
   if (value == null) return null;
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 };
 
 export const buildLidarrRequests = async (
-  lidarrClient,
-  snapshot = null,
+  lidarrClient: LidarrClient,
+  snapshot: {
+    queue: LidarrRecords<LidarrQueueItem>;
+    history: LidarrRecords<LidarrHistoryRecord>;
+  } | null = null,
 ): Promise<LidarrRequestItem[]> => {
   const [queue, history] = snapshot
     ? [snapshot.queue, snapshot.history]
@@ -41,7 +51,7 @@ export const buildLidarrRequests = async (
 
   const requestsByAlbumId = new Map<string, LidarrRequestItem>();
   const queueItems = Array.isArray(queue) ? queue : queue?.records || [];
-  const queueByAlbumId = new Map();
+  const queueByAlbumId = new Map<string, LidarrQueueItem>();
   for (const item of queueItems) {
     const albumId = item?.albumId ?? item?.album?.id;
     if (albumId == null) continue;
@@ -61,7 +71,7 @@ export const buildLidarrRequests = async (
     const downloadStatus = String(item.trackedDownloadStatus || "").toLowerCase();
     const errMsg = String(item.errorMessage || "").toLowerCase();
     const msgs = Array.isArray(item.statusMessages)
-      ? item.statusMessages.map((m) => String(m || "").toLowerCase()).join(" ")
+      ? item.statusMessages.map((m: unknown) => String(m || "").toLowerCase()).join(" ")
       : "";
 
     const isFailed =
@@ -102,7 +112,10 @@ export const buildLidarrRequests = async (
       ? history
       : [];
 
-  const latestHistoryByAlbum = new Map();
+  const latestHistoryByAlbum = new Map<
+    string,
+    { record: LidarrHistoryRecord; recordTime: number }
+  >();
   for (const record of historyRecords) {
     const albumId = record?.albumId;
     if (albumId == null) continue;
@@ -121,7 +134,7 @@ export const buildLidarrRequests = async (
     const artistName = record?.artist?.artistName || "Artist";
     const artistMbid = record?.artist?.foreignArtistId || null;
     const eventType = String(record?.eventType || "").toLowerCase();
-    const data = record?.data || {};
+    const data: NonNullable<LidarrHistoryRecord["data"]> = record?.data || {};
     const msgs = Array.isArray(data?.statusMessages)
       ? data.statusMessages.map((m) => String(m || "").toLowerCase()).join(" ")
       : String(data?.statusMessages?.[0] || "").toLowerCase();

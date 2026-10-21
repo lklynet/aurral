@@ -1,4 +1,5 @@
 import * as client from "openid-client";
+import type { Request, Response } from "express";
 import { createSession } from "../config/session-helpers.ts";
 import { toResolvedUser } from "../middleware/auth.ts";
 import { dbOps, userOps, userIdentityOps } from "../db/helpers/index.ts";
@@ -7,13 +8,33 @@ const REAL_GOOGLE_ISSUER = "https://accounts.google.com";
 const STATE_TTL_MS = 10 * 60 * 1000;
 const EXCHANGE_TTL_MS = 60 * 1000;
 const TRANSACTION_COOKIE = "aurral_google_transaction";
-const pendingLogins = new Map();
-const pendingExchanges = new Map();
-let discoveryConfig = null;
-let discoveryKey = "";
-let issuerOverride = null;
+type DiscoveryConfig = Awaited<ReturnType<typeof client.discovery>>;
+type OidcClaims = { sub?: string; [claim: string]: unknown };
 
-export function setGoogleIssuerForTests(issuerUrl) {
+const pendingLogins = new Map<
+  string,
+  {
+    codeVerifier: string;
+    nonce: string;
+    transactionId: string;
+    expiresAt: number;
+    mode: "login" | "link";
+    linkUserId: number | null;
+  }
+>();
+const pendingExchanges = new Map<
+  string,
+  {
+    expiresAt: number;
+    transactionId: string;
+    result: { linked: boolean; user: ReturnType<typeof toResolvedUser> };
+  }
+>();
+let discoveryConfig: DiscoveryConfig | null = null;
+let discoveryKey = "";
+let issuerOverride: string | null = null;
+
+export function setGoogleIssuerForTests(issuerUrl: string | null | undefined) {
   issuerOverride = issuerUrl || null;
   discoveryConfig = null;
   discoveryKey = "";
@@ -49,7 +70,7 @@ function prunePendingExchanges(now = Date.now()) {
   }
 }
 
-function getTransactionCookie(req) {
+function getTransactionCookie(req: Request) {
   const cookies = String(req.headers?.cookie || "").split(";");
   for (const cookie of cookies) {
     const [name, ...parts] = cookie.trim().split("=");
@@ -63,7 +84,7 @@ function getTransactionCookie(req) {
   return "";
 }
 
-function setTransactionCookie(req, res, value, maxAge) {
+function setTransactionCookie(req: Request, res: Response, value: string, maxAge?: number) {
   const secure = req.secure || req.protocol === "https";
   const attributes = [
     `${TRANSACTION_COOKIE}=${encodeURIComponent(value)}`,
@@ -76,7 +97,7 @@ function setTransactionCookie(req, res, value, maxAge) {
   res.setHeader("Set-Cookie", attributes.join("; "));
 }
 
-async function getDiscoveryConfig(config) {
+async function getDiscoveryConfig(config: { clientId: string; clientSecret: string }) {
   const key = `${config.clientId}|${config.clientSecret}`;
   if (discoveryConfig && discoveryKey === key) return discoveryConfig;
   const issuerUrl = new URL(getGoogleIssuer());
@@ -93,7 +114,7 @@ async function getDiscoveryConfig(config) {
   return discoveryConfig;
 }
 
-function buildCallbackUrl(req, redirectUri) {
+function buildCallbackUrl(req: Request, redirectUri: string) {
   const url = new URL(redirectUri);
   for (const [key, value] of Object.entries(req.query || {})) {
     if (value == null) continue;
@@ -106,7 +127,11 @@ function buildCallbackUrl(req, redirectUri) {
   return url;
 }
 
-export async function startGoogleAuth(req, res, mode) {
+export async function startGoogleAuth(
+  req: Request,
+  res: Response,
+  mode: { mode: "login" | "link"; linkUserId?: number | null; returnUrl?: boolean },
+) {
   const config = getGoogleConfig();
   if (!config) {
     res.status(404).json({ error: "Google login is not enabled" });
@@ -148,7 +173,7 @@ export async function startGoogleAuth(req, res, mode) {
   res.redirect(302, redirectTo.href);
 }
 
-export async function handleGoogleCallback(req) {
+export async function handleGoogleCallback(req: Request) {
   const config = getGoogleConfig();
   if (!config) {
     throw Object.assign(new Error("Google login is not enabled"), { status: 404 });
@@ -175,7 +200,7 @@ export async function handleGoogleCallback(req) {
     },
   );
 
-  const claims = tokens.claims() || {};
+  const claims: OidcClaims = tokens.claims() || {};
   const subject = String(claims.sub || "").trim();
   if (!subject) {
     throw Object.assign(new Error("Google identity did not include a usable subject"), {
@@ -244,7 +269,7 @@ export async function handleGoogleCallback(req) {
   return { code, ...result };
 }
 
-export function exchangeGoogleCallback(code, req) {
+export function exchangeGoogleCallback(code: string | null | undefined, req: Request) {
   const transactionId = getTransactionCookie(req);
   const exchangeCode = String(code || "");
   prunePendingExchanges();
@@ -270,6 +295,6 @@ export function exchangeGoogleCallback(code, req) {
   };
 }
 
-export function clearGoogleTransactionCookie(req, res) {
+export function clearGoogleTransactionCookie(req: Request, res: Response) {
   setTransactionCookie(req, res, "", 0);
 }

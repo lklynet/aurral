@@ -64,10 +64,37 @@ export const sabnzbdSettings = Object.freeze({
   testConnection: true,
 });
 
-let connectionCache = { checkedAt: 0, result: null, settingsKey: null };
-let folderCleanup = Promise.resolve();
+type SabnzbdConfig = {
+  enabled?: boolean;
+  url?: string | null;
+  apiKey?: string | null;
+  category?: string | null;
+  priority?: number | string | null;
+  addPaused?: boolean;
+};
 
-function normalizeStoragePath(value) {
+type SabnzbdConnection = {
+  ok: boolean;
+  configured: boolean;
+  connected: boolean;
+  message: string;
+  version?: string | null;
+  downloadPaused?: boolean;
+  downloadRate?: number;
+  downloadPath?: string | null;
+  directories?: Awaited<ReturnType<SabnzbdClient["getDownloadDirectories"]>>;
+};
+
+type SabnzbdSlot = { nzo_id: string };
+
+let connectionCache: {
+  checkedAt: number;
+  result: SabnzbdConnection | null;
+  settingsKey: string | null;
+} = { checkedAt: 0, result: null, settingsKey: null };
+let folderCleanup: Promise<unknown> = Promise.resolve();
+
+function normalizeStoragePath(value: unknown) {
   const normalized = String(value || "")
     .trim()
     .replace(/\\/g, "/")
@@ -75,7 +102,7 @@ function normalizeStoragePath(value) {
   return process.platform === "win32" ? normalized.toLowerCase() : normalized;
 }
 
-function getSettings(config = null) {
+function getSettings(config: SabnzbdConfig | null = null) {
   const sabnzbd = config || dbOps.getSettings()?.integrations?.sabnzbd || {};
   return {
     enabled: sabnzbd.enabled === true,
@@ -88,17 +115,17 @@ function getSettings(config = null) {
   };
 }
 
-function getSettingsKey(settings) {
+function getSettingsKey(settings: { url: string; apiKey: string }) {
   return JSON.stringify([settings.url, settings.apiKey]);
 }
 
-function buildUrl(url, apiKey) {
+function buildUrl(url: string | null | undefined, apiKey: string) {
   const base = normalizeBaseUrl(url);
   if (!base) return "";
   return `${base}/api?apikey=${encodeURIComponent(apiKey)}&output=json`;
 }
 
-function buildNzbUpload(fileName, content) {
+function buildNzbUpload(fileName: string, content: Buffer) {
   const boundary = `aurral-${randomUUID()}`;
   const header =
     `--${boundary}\r\nContent-Disposition: form-data; name="name"; ` +
@@ -113,12 +140,12 @@ function buildNzbUpload(fileName, content) {
   };
 }
 
-function mapPriority(addPaused) {
+function mapPriority(addPaused: boolean) {
   if (addPaused) return -2;
   return 0;
 }
 
-function readConfigValue(entries, name) {
+function readConfigValue(entries: unknown, name: string) {
   const key = String(name || "").toLowerCase();
   if (Array.isArray(entries)) {
     const entry = entries.find((item) => String(item?.name || "").toLowerCase() === key);
@@ -152,13 +179,17 @@ function readCategoryDirectory(entries, category) {
 }
 
 export class SabnzbdClient {
-  constructor(config = null) {
+  declare key: string;
+  declare name: string;
+  declare _config: SabnzbdConfig | null;
+
+  constructor(config: SabnzbdConfig | null = null) {
     this.key = "sabnzbd";
     this.name = "SABnzbd";
     this._config = config;
   }
 
-  updateConfig(config = null) {
+  updateConfig(config: SabnzbdConfig | null = null) {
     this._config = config;
   }
 
@@ -183,7 +214,11 @@ export class SabnzbdClient {
     };
   }
 
-  async api(mode, params = {}, { file = null } = {}) {
+  async api(
+    mode: string,
+    params: Record<string, string | number | null | undefined> = {},
+    { file = null }: { file?: ReturnType<typeof buildNzbUpload> | null } = {},
+  ) {
     const settings = this._getSettings();
     const base = buildUrl(settings.url, settings.apiKey);
     const query = Object.entries({ mode, ...params })
@@ -202,7 +237,19 @@ export class SabnzbdClient {
     return response.data;
   }
 
-  async appendNzb({ name, content, category, priority, addPaused }) {
+  async appendNzb({
+    name,
+    content,
+    category,
+    priority,
+    addPaused,
+  }: {
+    name: string;
+    content: Buffer | null | undefined;
+    category?: string | null;
+    priority?: number | string | null;
+    addPaused?: boolean | null;
+  }) {
     const settings = this._getSettings();
     if (!content?.length) throw new Error("SABnzbd append requires an NZB file");
     const nzbName = `${sanitizeNzbName(name)}.nzb`;
@@ -226,23 +273,29 @@ export class SabnzbdClient {
     };
   }
 
-  async getQueueItem(nzoId) {
+  async getQueueItem(nzoId: string | null | undefined) {
     const id = String(nzoId || "").trim();
     if (!id) return null;
     const result = await this.api("queue", { nzo_ids: id });
     const slots = result?.queue?.slots || [];
-    return slots.find((s) => String(s.nzo_id) === id) || null;
+    return slots.find((s: SabnzbdSlot) => String(s.nzo_id) === id) || null;
   }
 
-  async getHistoryItem(nzoId) {
+  async getHistoryItem(nzoId: string | null | undefined) {
     const id = String(nzoId || "").trim();
     if (!id) return null;
     const result = await this.api("history", { nzo_ids: id });
     const slots = result?.history?.slots || [];
-    return slots.find((s) => String(s.nzo_id) === id) || null;
+    return slots.find((s: SabnzbdSlot) => String(s.nzo_id) === id) || null;
   }
 
-  async deleteHistoryItem(nzoId, { deleteFiles = false, historyItem = null } = {}) {
+  async deleteHistoryItem(
+    nzoId: string | null | undefined,
+    {
+      deleteFiles = false,
+      historyItem = null,
+    }: { deleteFiles?: boolean; historyItem?: SabnzbdSlot | null } = {},
+  ) {
     const id = String(nzoId || "").trim();
     if (!id) return false;
     const removeHistory = async () => {
@@ -266,7 +319,7 @@ export class SabnzbdClient {
     return cleanup;
   }
 
-  async deleteQueueItem(nzoId) {
+  async deleteQueueItem(nzoId: string | null | undefined) {
     const id = String(nzoId || "").trim();
     if (!id) return false;
     const result = await this.api("queue", { name: "delete", value: id, del_files: 1 });

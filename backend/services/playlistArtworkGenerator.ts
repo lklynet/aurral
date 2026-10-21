@@ -19,7 +19,7 @@ export function getArtworkExtensionForStyle(style = getPlaylistArtworkStyle()) {
   return style === "photo" ? ".jpg" : ".webp";
 }
 
-export function getArtworkContentTypeForExtension(extension) {
+export function getArtworkContentTypeForExtension(extension: string) {
   const normalized = String(extension || "").toLowerCase();
   if (normalized === ".webp") return "image/webp";
   if (normalized === ".jpg" || normalized === ".jpeg") return "image/jpeg";
@@ -30,7 +30,10 @@ export async function resolvePlaylistSourceImageUrl() {
   return `https://picsum.photos/800/800?random=${randomUUID()}`;
 }
 
-export async function isGeneratedPlaylistArtworkFallback(filePath, { title, kind }) {
+export async function isGeneratedPlaylistArtworkFallback(
+  filePath: string,
+  { title, kind }: { title: string; kind: string },
+) {
   try {
     const sharp = await getSharp();
     const metadata = await sharp(filePath).metadata();
@@ -52,6 +55,11 @@ async function buildGeneratedPlaylistArtworkBuffer({
   kind = "Playlist",
   style = null,
   paletteSeed = null,
+}: {
+  title: string;
+  kind?: string;
+  style?: string | null;
+  paletteSeed?: string | null;
 }) {
   const resolvedStyle = style || getPlaylistArtworkStyle();
   const displayTitle = String(title || "").trim() || "Untitled";
@@ -72,7 +80,7 @@ async function buildGeneratedPlaylistArtworkBuffer({
   });
 }
 
-const resolveArtworkOutputPath = (outputPath, style) => {
+const resolveArtworkOutputPath = (outputPath: string, style: string) => {
   const extension = getArtworkExtensionForStyle(style);
   const directory = path.dirname(outputPath);
   const baseName = path.basename(outputPath, path.extname(outputPath));
@@ -85,6 +93,12 @@ export async function writeGeneratedPlaylistArtwork({
   kind = "Playlist",
   style = null,
   paletteSeed = null,
+}: {
+  outputPath: string;
+  title: string;
+  kind?: string;
+  style?: string | null;
+  paletteSeed?: string | null;
 }) {
   const resolvedStyle = style || getPlaylistArtworkStyle();
   const targetPath = resolveArtworkOutputPath(outputPath, resolvedStyle);
