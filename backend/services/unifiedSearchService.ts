@@ -26,6 +26,77 @@ const CONTEXT_BOOST = {
 
 const searchContextCache = createCache(SEARCH_CONTEXT_TTL_SECONDS);
 
+type SearchContextAnnotations = {
+  primaryMatchScore?: number;
+  contextBoost?: number;
+  contextReasons?: string[];
+  inPlaylist?: boolean;
+  playlistMatchCount?: number;
+  artistInLibrary?: boolean;
+  artistInPlaylist?: boolean;
+};
+
+export type ArtistSearchResult = SearchContextAnnotations & {
+  type: "artist";
+  source: "brainzmash" | "library";
+  id: string;
+  key: string;
+  name: string;
+  sortName: string;
+  canonicalId?: string | null;
+  inLibrary: boolean;
+  hasMbid: boolean;
+  score: number;
+};
+
+type AlbumSearchResult = SearchContextAnnotations & {
+  type: "album";
+  source: "brainzmash" | "library";
+  id: string | null;
+  key: string;
+  title: string;
+  artistName: string;
+  artistMbid: string | null;
+  canonicalId?: string;
+  releaseDate?: string | null;
+  status?: "available";
+  primaryType?: string | null;
+  secondaryTypes?: string[];
+  coverUrl?: string | null;
+  inLibrary: boolean;
+  score: number;
+};
+
+export type TrackSearchResult = SearchContextAnnotations & {
+  type: "track";
+  source: "library";
+  id: string;
+  key: string;
+  title: string;
+  artistName: string;
+  albumTitle: string | null;
+  albumMbid: string | null;
+  albumCanonicalId: string | null;
+  streamPath: string | null;
+  inLibrary: boolean;
+  score: number;
+};
+
+export type UnifiedSearchItem = ArtistSearchResult | AlbumSearchResult | TrackSearchResult;
+
+type UnifiedSearchResponse = {
+  query: string;
+  mode: "suggest" | "full";
+  top: UnifiedSearchItem | null;
+  catalog: {
+    artists: ArtistSearchResult[];
+    albums: AlbumSearchResult[];
+    tracks: TrackSearchResult[];
+  };
+  localSearchConfigured: boolean;
+  filters: string[];
+};
+
 const EMPTY_SEARCH_CONTEXT = {
   playlists: [],
   artists: [],
@@ -388,7 +459,7 @@ function pickCatalogTopFallback(catalog) {
   return catalog.artists?.[0] || catalog.albums?.[0] || catalog.tracks?.[0] || null;
 }
 
-function normalizeMode(value) {
+function normalizeMode(value): "full" | "suggest" {
   return String(value || "").trim() === "full" ? "full" : "suggest";
 }
 
@@ -401,7 +472,7 @@ function isCatalogSearchAvailable() {
   return Boolean(getMetadataBaseUrl());
 }
 
-function mapBrainzmashArtist(item) {
+function mapBrainzmashArtist(item): ArtistSearchResult {
   return {
     type: "artist",
     source: "brainzmash",
@@ -415,7 +486,7 @@ function mapBrainzmashArtist(item) {
   };
 }
 
-function mapBrainzmashAlbum(item) {
+function mapBrainzmashAlbum(item): AlbumSearchResult {
   return {
     type: "album",
     source: "brainzmash",
@@ -724,7 +795,10 @@ function getSearchContextOrFallback(user) {
   }
 }
 
-export async function searchUnified(query, { mode = "suggest", limit, user = null, signal } = {}) {
+export async function searchUnified(
+  query,
+  { mode = "suggest", limit, user = null, signal } = {},
+): Promise<UnifiedSearchResponse> {
   const trimmed = String(query || "").trim();
   const normalizedMode = normalizeMode(mode);
   const perBucketLimit = bucketLimit(normalizedMode, limit);

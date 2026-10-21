@@ -1,21 +1,17 @@
-type ArtistRecord = {
-  id?: string | null;
-  mbid?: string | null;
-  foreignArtistId?: string | null;
-};
+import type {
+  ArtistIdentity,
+  DiscoveryRecommendation,
+} from "../../../backend/services/discovery/recommendationPipeline.ts";
 
-type ArtistFeedbackSource = ArtistRecord & {
-  name?: string | null;
-  artistName?: string | null;
-  matchedTags?: string[] | null;
-  tags?: string[] | null;
-  genres?: string[] | null;
-  supportingSeeds?: { artistName?: string | null }[] | null;
-  sourceArtists?: string[] | null;
-  sourceArtist?: string | null;
-  sourceType?: string | null;
-  discoveryTier?: string | null;
-};
+type ArtistFeedbackSource = ArtistIdentity &
+  Pick<
+    DiscoveryRecommendation,
+    "tags" | "matchedTags" | "supportingSeeds" | "sourceArtist" | "sourceArtists"
+  > & {
+    genres?: string[] | null;
+    sourceType?: string | null;
+    discoveryTier?: string | null;
+  };
 
 type ArtistFeedbackAction = "more_like_this" | "less_like_this" | "block_artist";
 

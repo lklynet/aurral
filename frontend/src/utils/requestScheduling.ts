@@ -5,7 +5,7 @@ const ACTIVITY_HISTORY_RECONCILE_MS = 5 * 60_000;
 const BOOTSTRAP_DISCONNECTED_POLL_MS = 30_000;
 const BOOTSTRAP_CONNECTED_POLL_MS = 2 * 60_000;
 
-type NavigatorWithConnection = Navigator & { connection?: { saveData?: boolean } };
+declare const navigator: Navigator & { connection?: { saveData?: boolean } };
 
 export const getActivityPollIntervalMs = ({
   isConnected,
@@ -22,10 +22,6 @@ export const getBootstrapPollIntervalMs = ({ isConnected }: { isConnected?: bool
 
 export const canPrefetchInBackground = () => {
   if (typeof document !== "undefined" && document.visibilityState === "hidden") return false;
-  if (
-    typeof navigator !== "undefined" &&
-    (navigator as NavigatorWithConnection).connection?.saveData === true
-  )
-    return false;
+  if (typeof navigator !== "undefined" && navigator.connection?.saveData === true) return false;
   return true;
 };

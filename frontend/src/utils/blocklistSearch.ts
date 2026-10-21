@@ -1,18 +1,15 @@
-type ArtistCandidate = {
-  id?: string | null;
-  mbid?: string | null;
-  foreignArtistId?: string | null;
-  name?: string | null;
-  artistName?: string | null;
-};
+import type { ArtistIdentity } from "../../../backend/services/discovery/recommendationPipeline.ts";
+import type { ArtistSearchResult } from "../../../backend/services/unifiedSearchService.ts";
+
+type BlocklistArtist = Partial<ArtistSearchResult>;
 
 type BlocklistSearchResponse = {
-  top?: (ArtistCandidate & { type?: string }) | null;
-  catalog?: { artists?: ArtistCandidate[] | null } | null;
-  library?: { artists?: ArtistCandidate[] | null } | null;
+  top?: BlocklistArtist | null;
+  catalog?: { artists?: BlocklistArtist[] | null } | null;
+  library?: { artists?: BlocklistArtist[] | null } | null;
 };
 
-function normalizeArtist(artist: ArtistCandidate | null | undefined) {
+function normalizeArtist(artist: ArtistIdentity | null | undefined) {
   return {
     id: artist?.id || artist?.mbid || artist?.foreignArtistId || null,
     name: String(artist?.name || artist?.artistName || "").trim(),

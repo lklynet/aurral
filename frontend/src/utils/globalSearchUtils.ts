@@ -1,29 +1,14 @@
 import { getArtistRecordId } from "./artistTaste";
+import type {
+  TrackSearchResult,
+  UnifiedSearchItem,
+} from "../../../backend/services/unifiedSearchService.ts";
 
 export const AUTOCOMPLETE_DEBOUNCE_MS = 250;
 export const LIBRARY_AUTOCOMPLETE_DEBOUNCE_MS = 80;
 export const SUGGEST_LIMIT = 5;
 export const TAG_SUGGESTIONS_LIMIT = 8;
 export const ALBUM_PENDING_STATUSES = new Set(["searching", "downloading", "processing"]);
-
-type SearchItem = {
-  type?: "artist" | "album" | "track" | "playlist";
-  id?: string | null;
-  mbid?: string | null;
-  foreignArtistId?: string | null;
-  trackMbid?: string | null;
-  name?: string | null;
-  title?: string | null;
-  artistName?: string | null;
-  albumTitle?: string | null;
-  artistMbid?: string | null;
-  albumMbid?: string | null;
-  releaseYear?: string | null;
-  durationMs?: number | null;
-  trackCount?: number | null;
-  status?: string;
-  inLibrary?: boolean;
-};
 
 export function isEditableTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
@@ -32,7 +17,7 @@ export function isEditableTarget(target: EventTarget | null) {
   return ["input", "textarea", "select"].includes(tagName);
 }
 
-export function getSuggestionTitle(item: SearchItem | null | undefined) {
+export function getSuggestionTitle(item: UnifiedSearchItem | null | undefined) {
   if (item?.type === "artist") return item.name || "";
   if (item?.type === "album") return item.title || "";
   if (item?.type === "track") return item.title || "";
@@ -40,7 +25,7 @@ export function getSuggestionTitle(item: SearchItem | null | undefined) {
   return "";
 }
 
-export function getSuggestionMeta(item: SearchItem | null | undefined) {
+export function getSuggestionMeta(item: UnifiedSearchItem | null | undefined) {
   if (item?.type === "artist") return "Artist";
   if (item?.type === "album") {
     return item.artistName ? `Album · ${item.artistName}` : "Album";
@@ -56,14 +41,14 @@ export function getSuggestionMeta(item: SearchItem | null | undefined) {
   return null;
 }
 
-export function getSuggestionItemId(item: SearchItem | null | undefined) {
+export function getSuggestionItemId(item: UnifiedSearchItem | null | undefined) {
   if (!item) return "";
   if (item.type === "artist") return getArtistRecordId(item) || "";
   if (item.type === "track") return item.id || item.trackMbid || "";
   return item.id || "";
 }
 
-export function getTrackSavingKey(track: SearchItem | null | undefined) {
+export function getTrackSavingKey(track: TrackSearchResult | null | undefined) {
   return String(
     track?.id || track?.trackMbid || `${track?.artistName || ""}:${track?.title || ""}`,
   );
@@ -71,7 +56,7 @@ export function getTrackSavingKey(track: SearchItem | null | undefined) {
 
 import { isAlbumCompleteInLibrary } from "./albumAddAction";
 
-export function isSuggestionInLibrary(item: SearchItem | null | undefined) {
+export function isSuggestionInLibrary(item: UnifiedSearchItem | null | undefined) {
   if (!item) return false;
   if (item.type === "album") {
     return isAlbumCompleteInLibrary({ status: item.status });
@@ -80,7 +65,7 @@ export function isSuggestionInLibrary(item: SearchItem | null | undefined) {
   return false;
 }
 
-export function buildTrackPlaylistPayload(track: SearchItem | null | undefined) {
+export function buildTrackPlaylistPayload(track: TrackSearchResult | null | undefined) {
   const payload = {
     artistName: track?.artistName || "",
     trackName: track?.title || "",
