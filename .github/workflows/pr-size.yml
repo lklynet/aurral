@@ -3,7 +3,7 @@ name: Label PR size
 on:
   pull_request_target:
     branches: ["main"]
-    types: [opened, reopened, synchronize, ready_for_review, converted_to_draft]
+    types: [opened, reopened, synchronize]
 
 permissions:
   contents: read

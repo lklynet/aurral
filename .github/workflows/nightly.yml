@@ -9,13 +9,42 @@ permissions:
   contents: read
 
 jobs:
+  check-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      checks: read
+      contents: read
+      pull-requests: read
+    outputs:
+      validated: ${{ steps.check.outputs.validated }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Reuse the pull request validation for this tree
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash scripts/check-nightly-validation.sh
+
   validate:
+    needs: check-validation
+    if: needs.check-validation.outputs.validated != 'true'
     uses: ./.github/workflows/validate.yml
-    with:
-      concurrency-key: ${{ github.sha }}
+    permissions:
+      contents: read
+      issues: write
+      packages: write
+      pull-requests: write
 
   publish-image:
-    needs: validate
+    needs: [check-validation, validate]
+    if: >-
+      !cancelled() &&
+      needs.check-validation.result == 'success' &&
+      (needs.validate.result == 'success' || needs.validate.result == 'skipped')
     concurrency:
       group: nightly-publication
       queue: max

@@ -2,18 +2,9 @@ name: Validate
 
 on:
   workflow_call:
-    inputs:
-      concurrency-key:
-        description: Additional key for callers that must validate separate commits independently.
-        type: string
-        default: ""
 
 permissions:
   contents: read
-
-concurrency:
-  group: validate-${{ github.workflow }}-${{ github.ref }}-${{ inputs.concurrency-key }}
-  cancel-in-progress: true
 
 jobs:
   checks:
@@ -157,27 +148,71 @@ jobs:
     name: Production container
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: write
+      packages: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Check Dockerfile
         run: docker build --check .
 
-      - name: Build and smoke-test production container
+      - name: Choose image settings
+        id: image
+        env:
+          PREVIEW: >-
+            ${{
+              github.event_name == 'pull_request' &&
+              github.base_ref == 'main' &&
+              github.event.pull_request.head.repo.full_name == github.repository &&
+              github.event.pull_request.user.login != 'dependabot[bot]'
+            }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          PR_NUMBER: ${{ github.event.number }}
+        run: |
+          if [ "${PREVIEW}" = "true" ]; then
+            {
+              echo "preview=true"
+              echo "version=pr.${PR_NUMBER}+${HEAD_SHA:0:7}"
+              echo "channel=preview"
+              echo "tag=pr-${PR_NUMBER}"
+            } >> "${GITHUB_OUTPUT}"
+          else
+            {
+              echo "preview=false"
+              echo "version=ci-${HEAD_SHA}"
+              echo "channel=stable"
+            } >> "${GITHUB_OUTPUT}"
+          fi
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+
+      - name: Build production image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          load: true
+          tags: aurral-ci:${{ github.sha }}
+          platforms: linux/amd64
+          build-args: |
+            APP_VERSION=${{ steps.image.outputs.version }}
+            GITHUB_REPO=${{ github.repository }}
+            RELEASE_CHANNEL=${{ steps.image.outputs.channel }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke-test production container
         run: |
           IMAGE="aurral-ci:${GITHUB_SHA}"
           CONTAINER="aurral-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
 
           cleanup() {
             docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
-            docker image rm "$IMAGE" >/dev/null 2>&1 || true
           }
           trap cleanup EXIT
 
-          docker build \
-            --build-arg "APP_VERSION=ci-${GITHUB_SHA}" \
-            --tag "$IMAGE" \
-            .
           docker run --detach --name "$CONTAINER" --env PUID=3007 --env PGID=3001 "$IMAGE"
 
           ready=0
@@ -203,6 +238,48 @@ jobs:
             'fetch("http://127.0.0.1:3001/api/health").then((r) => r.json()).then((body) => { if (body.matcher?.available !== true || !body.matcher?.policyVersion) { console.error("native matcher not available in health payload:", JSON.stringify(body.matcher)); process.exit(1); } })'
 
           docker logs "$CONTAINER"
+
+      - name: Log into ghcr.io
+        if: steps.image.outputs.preview == 'true'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push preview image
+        if: steps.image.outputs.preview == 'true'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          push: true
+          provenance: mode=max
+          sbom: true
+          tags: ghcr.io/${{ github.repository }}:${{ steps.image.outputs.tag }}
+          platforms: linux/amd64
+          build-args: |
+            APP_VERSION=${{ steps.image.outputs.version }}
+            GITHUB_REPO=${{ github.repository }}
+            RELEASE_CHANNEL=${{ steps.image.outputs.channel }}
+          cache-from: type=gha
+
+      - name: Comment preview image on pull request and linked issues
+        if: steps.image.outputs.preview == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE_TAG: ${{ steps.image.outputs.tag }}
+          PR_NUMBER: ${{ github.event.number }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          {
+            echo "### Preview image"
+            echo
+            echo '```bash'
+            echo "docker pull ghcr.io/${REPOSITORY}:${IMAGE_TAG}"
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"
+          bash scripts/comment-preview-image.sh
 
   # Branch protection requires this check name.
   validate:

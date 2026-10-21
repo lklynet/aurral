@@ -2,11 +2,19 @@ name: CI
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
   contents: read
 
+concurrency:
+  group: pull-request-${{ github.event.number }}
+  cancel-in-progress: true
+
 jobs:
   validate:
     uses: ./.github/workflows/validate.yml
+    permissions:
+      contents: read
+      issues: write
+      packages: write
+      pull-requests: write

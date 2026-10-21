@@ -16,11 +16,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  validate:
-    uses: ./.github/workflows/validate.yml
-
   guard-main:
-    needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
