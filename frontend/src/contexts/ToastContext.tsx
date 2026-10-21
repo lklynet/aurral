@@ -1,22 +1,42 @@
 import { createContext, useContext, useState, useCallback, useRef, useMemo } from "react";
+import type { ReactNode } from "react";
 import { ToastContainer } from "../components/Toast";
 
 const MAX_TOASTS = 4;
 
-const ToastContext = createContext();
+type ToastType = "success" | "error" | "info";
+type ToastContent = {
+  message?: ReactNode;
+  title?: ReactNode;
+  description?: ReactNode;
+  action?: { label: string; onClick: () => void };
+  duration?: number;
+  onClose?: () => void;
+};
+type ToastMessage = string | ToastContent;
+type ToastEntry = ToastContent & { id: string; type: ToastType; duration: number };
+type ToastApi = {
+  addToast: (message: ToastMessage, type?: ToastType, duration?: number) => string;
+  removeToast: (id: string) => void;
+  showSuccess: (message: ToastMessage, duration?: number) => string;
+  showError: (message: ToastMessage, duration?: number) => string;
+  showInfo: (message: ToastMessage, duration?: number) => string;
+};
 
-export function ToastProvider({ children }) {
-  const [toasts, setToasts] = useState([]);
-  const toastsRef = useRef([]);
+const ToastContext = createContext<ToastApi | undefined>();
+
+export function ToastProvider({ children }: { children: ReactNode }) {
+  const [toasts, setToasts] = useState<ToastEntry[]>([]);
+  const toastsRef = useRef<ToastEntry[]>([]);
   const nextToastIdRef = useRef(0);
 
-  const replaceToasts = useCallback((next) => {
+  const replaceToasts = useCallback((next: ToastEntry[]) => {
     toastsRef.current = next;
     setToasts(next);
   }, []);
 
   const addToast = useCallback(
-    (message, type = "info", duration = 3000) => {
+    (message: ToastMessage, type: ToastType = "info", duration = 3000) => {
       const id = `${Date.now()}-${nextToastIdRef.current++}`;
       const content =
         message &&
@@ -39,7 +59,7 @@ export function ToastProvider({ children }) {
   );
 
   const removeToast = useCallback(
-    (id) => {
+    (id: string) => {
       const toast = toastsRef.current.find((entry) => entry.id === id);
       if (!toast) return;
       replaceToasts(toastsRef.current.filter((entry) => entry.id !== id));
@@ -49,21 +69,21 @@ export function ToastProvider({ children }) {
   );
 
   const showSuccess = useCallback(
-    (message, duration) => {
+    (message: ToastMessage, duration?: number) => {
       return addToast(message, "success", duration);
     },
     [addToast],
   );
 
   const showError = useCallback(
-    (message, duration) => {
+    (message: ToastMessage, duration?: number) => {
       return addToast(message, "error", duration);
     },
     [addToast],
   );
 
   const showInfo = useCallback(
-    (message, duration) => {
+    (message: ToastMessage, duration?: number) => {
       return addToast(message, "info", duration);
     },
     [addToast],

@@ -1,4 +1,7 @@
 import { queryOptions } from "@tanstack/react-query";
+
+type MaybeId = string | number | null | undefined;
+type MaybeText = string | null | undefined;
 import { resolveEditorialTrackLinks } from "../utils/api/endpoints/discovery.ts";
 import {
   getLibraryPage,
@@ -13,9 +16,9 @@ import {
 
 export const RESOLVE_KINDS = ["artist", "album", "library-artist", "library-album"];
 
-const text = (value) => String(value ?? "").trim();
+const text = (value: unknown) => String(value ?? "").trim();
 
-const buildPath = (kind, params) => {
+const buildPath = (kind: string, params: Record<string, unknown>) => {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (text(value)) search.set(key, text(value));
@@ -23,20 +26,42 @@ const buildPath = (kind, params) => {
   return `/go/${kind}?${search}`;
 };
 
-export const resolveArtistPath = ({ name }) => (text(name) ? buildPath("artist", { name }) : null);
+export const resolveArtistPath = ({ name }: { name?: MaybeText }) =>
+  text(name) ? buildPath("artist", { name }) : null;
 
-export const resolveAlbumPath = ({ artistName, albumName, deezerAlbumId }) =>
+export const resolveAlbumPath = ({
+  artistName,
+  albumName,
+  deezerAlbumId,
+}: {
+  artistName?: MaybeText;
+  albumName?: MaybeText;
+  deezerAlbumId?: MaybeId;
+}) =>
   text(artistName) && text(albumName)
     ? buildPath("album", { artist: artistName, name: albumName, deezer: deezerAlbumId })
     : null;
 
-export const resolveLibraryArtistPath = ({ mbid, name }) =>
+export const resolveLibraryArtistPath = ({ mbid, name }: { mbid?: MaybeText; name?: MaybeText }) =>
   text(mbid) || text(name) ? buildPath("library-artist", { mbid, name }) : null;
 
-export const resolveLibraryAlbumPath = ({ mbid, name, artistName }) =>
+export const resolveLibraryAlbumPath = ({
+  mbid,
+  name,
+  artistName,
+}: {
+  mbid?: MaybeText;
+  name?: MaybeText;
+  artistName?: MaybeText;
+}) =>
   text(mbid) || text(name) ? buildPath("library-album", { mbid, name, artist: artistName }) : null;
 
-const releaseTarget = (artistMbid, albumMbid, artistName, albumName) => ({
+const releaseTarget = (
+  artistMbid: string,
+  albumMbid: string,
+  artistName: string,
+  albumName: string,
+) => ({
   to: `/artist/${artistMbid}/release/${albumMbid}`,
   state: {
     artistName,
@@ -45,9 +70,13 @@ const releaseTarget = (artistMbid, albumMbid, artistName, albumName) => ({
   },
 });
 
-const notFound = (message) => Object.assign(new Error(message), { resolveNotFound: true });
+const notFound = (message: string) => Object.assign(new Error(message), { resolveNotFound: true });
 
-async function resolveCatalog(kind, params, signal) {
+async function resolveCatalog(
+  kind: string,
+  params: URLSearchParams,
+  signal: AbortSignal | undefined,
+) {
   const artistName = text(kind === "artist" ? params.get("name") : params.get("artist"));
   const albumName = kind === "album" ? text(params.get("name")) : "";
   const { artistMbid, albumMbid } = await resolveEditorialTrackLinks(
@@ -69,7 +98,7 @@ async function resolveCatalog(kind, params, signal) {
   };
 }
 
-async function resolveLibraryArtist(params, signal) {
+async function resolveLibraryArtist(params: URLSearchParams, signal: AbortSignal | undefined) {
   const mbid = text(params.get("mbid"));
   const name = text(params.get("name"));
   let canonicalId = null;
@@ -88,7 +117,7 @@ async function resolveLibraryArtist(params, signal) {
   return { to: `/library/artist/${encodeURIComponent(canonicalId)}` };
 }
 
-async function resolveLibraryAlbum(params, signal) {
+async function resolveLibraryAlbum(params: URLSearchParams, signal: AbortSignal | undefined) {
   const mbid = text(params.get("mbid"));
   const name = text(params.get("name"));
   let canonicalId = null;
@@ -109,14 +138,18 @@ async function resolveLibraryAlbum(params, signal) {
   return { to: `/library/album/${encodeURIComponent(canonicalId)}` };
 }
 
-export function resolveLinkTarget(kind, params, { signal } = {}) {
+export function resolveLinkTarget(
+  kind: string,
+  params: URLSearchParams,
+  { signal }: { signal?: AbortSignal } = {},
+) {
   if (kind === "artist" || kind === "album") return resolveCatalog(kind, params, signal);
   if (kind === "library-artist") return resolveLibraryArtist(params, signal);
   if (kind === "library-album") return resolveLibraryAlbum(params, signal);
   return Promise.reject(notFound("This link isn't valid"));
 }
 
-export const resolveLinkQueryOptions = (kind, search) => {
+export const resolveLinkQueryOptions = (kind: string, search: string) => {
   const params = new URLSearchParams(search);
   params.sort();
   return queryOptions({

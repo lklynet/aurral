@@ -18,15 +18,47 @@ import {
 import { clearLibraryFavoritesCache } from "../utils/api/endpoints/library.ts";
 import { setDateTimeFormat } from "../utils/dateTime.ts";
 import { queryClient } from "../queryClient.ts";
+import type { ReactNode } from "react";
 
-const AuthContext = createContext(null);
+type AuthUser = {
+  id?: number;
+  username?: string;
+  role: string;
+  permissions: Record<string, boolean>;
+};
+type AuthBootstrap = {
+  dateTimeFormat?: string;
+  token?: string;
+  onboardingRequired?: boolean;
+  authRequired?: boolean;
+  user?: AuthUser;
+  oidcLogoutUrl?: string | null;
+  proxyLogoutUrl?: string | null;
+  proxyAuthEnabled?: boolean;
+};
+type LoginResult = { ok: boolean; status?: number };
+type AuthContextValue = {
+  isAuthenticated: boolean;
+  isLoading: boolean;
+  user: AuthUser | null;
+  bootstrap: AuthBootstrap | null;
+  login: (password: string, username: string) => Promise<LoginResult>;
+  logout: () => Promise<void>;
+  canLogOut: boolean;
+  authRequired: boolean;
+  onboardingRequired: boolean;
+  refreshAuth: () => Promise<boolean>;
+  hasPermission: (perm: string) => boolean;
+};
 
-export const AuthProvider = ({ children }) => {
+const AuthContext = createContext<AuthContextValue | null>(null);
+
+export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authRequired, setAuthRequired] = useState(false);
   const [onboardingRequired, setOnboardingRequired] = useState(false);
-  const [user, setUser] = useState(null);
-  const [bootstrap, setBootstrap] = useState(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [bootstrap, setBootstrap] = useState<AuthBootstrap | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const authResolvedRef = useRef(false);
 
@@ -110,7 +142,7 @@ export const AuthProvider = ({ children }) => {
     checkAuthStatus();
   }, [checkAuthStatus]);
 
-  const login = useCallback(async (password, username) => {
+  const login = useCallback(async (password: string, username: string) => {
     const normalizedUsername = String(username || "").trim();
     if (!normalizedUsername || !password) return { ok: false };
 
@@ -158,7 +190,7 @@ export const AuthProvider = ({ children }) => {
   }, [bootstrap]);
 
   const hasPermission = useCallback(
-    (perm) => {
+    (perm: string) => {
       if (!user) return false;
       if (user.role === "admin") return true;
       return !!user.permissions?.[perm];

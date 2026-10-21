@@ -1,5 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { useLocation } from "react-router";
+import type { Location as RouterLocation } from "react-router";
 import {
   getDiscoverArtistPath,
   pickDiscoverRecentPageState,
@@ -11,13 +13,35 @@ const DISCOVER_RECENT_PAGES_KEY = "aurral.discover.recentPages";
 const DISCOVER_FLOW_ACTIVE_KEY = "aurral.discover.flowActive";
 const DISCOVER_RECENT_PAGES_LIMIT = 5;
 
-const DiscoverRecentContext = createContext(null);
+type DiscoverRouteState = {
+  artistName?: string;
+  inLibrary?: boolean;
+  libraryArtist?: unknown;
+  focusTrackTitle?: string;
+  focusReleaseGroup?: { title?: string };
+};
+type DiscoverRecentPage = {
+  id: string;
+  path: string;
+  label: string;
+  state: DiscoverRouteState;
+};
+type DiscoverRecentValue = {
+  recentPages: DiscoverRecentPage[];
+  discoverFlowActive: boolean;
+  isDiscoverSectionActive: boolean;
+  addRecentPage: (path: string, state?: DiscoverRouteState) => void;
+  clearRecentPages: () => void;
+  shouldRecordNavigation: (fromLocation?: RouterLocation) => boolean;
+};
 
-function isDiscoverHomePath(pathname) {
+const DiscoverRecentContext = createContext<DiscoverRecentValue | null>(null);
+
+function isDiscoverHomePath(pathname: string) {
   return DISCOVER_HOME_PATHS.has(pathname);
 }
 
-function isDiscoverBrowsePath(pathname) {
+function isDiscoverBrowsePath(pathname: string) {
   if (!pathname) return false;
   if (pathname === "/discover/news" || pathname.startsWith("/discover/news/")) return false;
   if (pathname.startsWith("/artist/")) return true;
@@ -26,12 +50,12 @@ function isDiscoverBrowsePath(pathname) {
   return false;
 }
 
-function isDiscoverRecentArtistPath(path) {
+function isDiscoverRecentArtistPath(path: string | undefined) {
   if (!path || typeof path !== "string") return false;
   return path.split("?")[0] === getDiscoverArtistPath(path);
 }
 
-function isDiscoverExitPath(pathname) {
+function isDiscoverExitPath(pathname: string) {
   if (!pathname) return false;
   if (pathname.startsWith("/library")) return true;
   if (pathname.startsWith("/shows")) return true;
@@ -43,12 +67,16 @@ function isDiscoverExitPath(pathname) {
   return false;
 }
 
-function getDiscoverPathFromLocation(location) {
+function getDiscoverPathFromLocation(location: RouterLocation | null | undefined) {
   if (!location) return "";
   return `${location.pathname || ""}${location.search || ""}`;
 }
 
-function shouldRecordDiscoverNavigation(location, recentPages, flowActive) {
+function shouldRecordDiscoverNavigation(
+  location: RouterLocation | null | undefined,
+  recentPages: DiscoverRecentPage[],
+  flowActive: boolean,
+) {
   const pathname = location?.pathname || "";
   const path = getDiscoverPathFromLocation(location);
   if (isDiscoverHomePath(pathname)) return true;
@@ -56,7 +84,11 @@ function shouldRecordDiscoverNavigation(location, recentPages, flowActive) {
   return recentPages.some((entry) => entry.path === path);
 }
 
-function shouldKeepDiscoverSectionActive(location, recentPages, flowActive) {
+function shouldKeepDiscoverSectionActive(
+  location: RouterLocation | null | undefined,
+  recentPages: DiscoverRecentPage[],
+  flowActive: boolean,
+) {
   const pathname = location?.pathname || "";
   const path = getDiscoverPathFromLocation(location);
   if (isDiscoverHomePath(pathname)) return true;
@@ -74,7 +106,7 @@ function readDiscoverFlowActive() {
   }
 }
 
-function writeDiscoverFlowActive(active) {
+function writeDiscoverFlowActive(active: boolean) {
   if (typeof window === "undefined") return;
   try {
     if (active) {
@@ -85,7 +117,7 @@ function writeDiscoverFlowActive(active) {
   } catch {}
 }
 
-function normalizeDiscoverPath(path) {
+function normalizeDiscoverPath(path: string | undefined) {
   if (!path || typeof path !== "string") return "";
   const [pathname, search = ""] = path.split("?");
   const artistPath = getDiscoverArtistPath(pathname);
@@ -104,7 +136,7 @@ function normalizeDiscoverPath(path) {
   return normalizedSearch ? `${normalizedPathname}?${normalizedSearch}` : normalizedPathname;
 }
 
-function buildDiscoverRecentLabel(path, state = {}) {
+function buildDiscoverRecentLabel(path: string, state: DiscoverRouteState = {}) {
   const pathname = path.split("?")[0];
   const params = new URLSearchParams(path.includes("?") ? path.split("?")[1] : "");
 
@@ -171,7 +203,7 @@ function buildDiscoverRecentLabel(path, state = {}) {
   }
 }
 
-function filterDiscoverRecentPages(pages) {
+function filterDiscoverRecentPages(pages: DiscoverRecentPage[]) {
   if (!Array.isArray(pages)) return [];
   return pages.filter((entry) => isDiscoverRecentArtistPath(entry?.path));
 }
@@ -197,7 +229,7 @@ function readDiscoverRecentPages() {
   }
 }
 
-function writeDiscoverRecentPages(pages) {
+function writeDiscoverRecentPages(pages: DiscoverRecentPage[]) {
   if (typeof window === "undefined") return;
   try {
     localStorage.setItem(
@@ -207,7 +239,15 @@ function writeDiscoverRecentPages(pages) {
   } catch {}
 }
 
-function DiscoverFlowLocationSync({ recentPages, setDiscoverFlowActive, addRecentPage }) {
+function DiscoverFlowLocationSync({
+  recentPages,
+  setDiscoverFlowActive,
+  addRecentPage,
+}: {
+  recentPages: DiscoverRecentPage[];
+  setDiscoverFlowActive: (active: boolean) => void;
+  addRecentPage: (path: string, state?: DiscoverRouteState) => void;
+}) {
   const location = useLocation();
 
   useEffect(() => {
@@ -237,12 +277,12 @@ function DiscoverFlowLocationSync({ recentPages, setDiscoverFlowActive, addRecen
   return null;
 }
 
-export function DiscoverRecentProvider({ children }) {
+export function DiscoverRecentProvider({ children }: { children: ReactNode }) {
   const location = useLocation();
   const [recentPages, setRecentPages] = useState(() => readDiscoverRecentPages());
   const [discoverFlowActive, setDiscoverFlowActiveState] = useState(() => readDiscoverFlowActive());
 
-  const setDiscoverFlowActive = useCallback((active) => {
+  const setDiscoverFlowActive = useCallback((active: boolean) => {
     writeDiscoverFlowActive(active);
     setDiscoverFlowActiveState(active);
   }, []);
@@ -254,7 +294,7 @@ export function DiscoverRecentProvider({ children }) {
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
-    const onStorage = (event) => {
+    const onStorage = (event: StorageEvent) => {
       if (
         event.key === null ||
         event.key === DISCOVER_RECENT_PAGES_KEY ||
@@ -268,7 +308,7 @@ export function DiscoverRecentProvider({ children }) {
   }, [syncFromStorage]);
 
   const addRecentPage = useCallback(
-    (path, state = {}) => {
+    (path: string, state: DiscoverRouteState = {}) => {
       const normalizedPath = normalizeDiscoverPath(path);
       if (!normalizedPath || !shouldTrackDiscoverPath(normalizedPath)) return;
 

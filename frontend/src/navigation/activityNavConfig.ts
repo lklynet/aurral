@@ -11,12 +11,17 @@ export const WANTED_VIEWS = [
 
 export const DEFAULT_ACTIVITY_VIEW = "queue";
 
-export function normalizeActivityView(view) {
+export function normalizeActivityView(view: string | null | undefined) {
   if (!view) return DEFAULT_ACTIVITY_VIEW;
   return ACTIVITY_VIEWS.some((entry) => entry.id === view) ? view : DEFAULT_ACTIVITY_VIEW;
 }
 
-export function isActivityQueueItem(request) {
+type ActivityRequest = {
+  status?: string;
+  inQueue?: boolean;
+};
+
+export function isActivityQueueItem(request: ActivityRequest | null | undefined) {
   return (
     request?.status === "blocked" ||
     request?.inQueue === true ||
@@ -25,14 +30,14 @@ export function isActivityQueueItem(request) {
   );
 }
 
-export function matchesActivityView(request, view) {
+export function matchesActivityView(request: ActivityRequest | null | undefined, view: string) {
   if (view === "queue") return isActivityQueueItem(request);
   if (view === "review") return false;
   if (view === "missing") return false;
   return !isActivityQueueItem(request) && request?.status !== "blocked";
 }
 
-export function buildActivityPath(view) {
+export function buildActivityPath(view: string | null | undefined) {
   const nextView = normalizeActivityView(view);
   return `/activity/${nextView}`;
 }

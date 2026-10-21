@@ -8,21 +8,30 @@ import {
   getPlaylistTrackStreamUrl,
 } from "./utils/api/endpoints/playlists.ts";
 
-export const editorialShelfQueryOptions = (userId) =>
+type MaybeId = string | number | null | undefined;
+type MaybeText = string | null | undefined;
+type PlaylistJob = {
+  id?: string | number;
+  status?: string;
+  albumName?: string | null;
+  reason?: string | null;
+};
+
+export const editorialShelfQueryOptions = (userId: MaybeId) =>
   queryOptions({
     queryKey: queryKeys.editorialShelf(userId),
     queryFn: ({ signal }) => getEditorialShelf({ signal }),
     staleTime: 60 * 60 * 1000,
   });
 
-export const editorialPlaylistQueryOptions = (userId, playlistId) =>
+export const editorialPlaylistQueryOptions = (userId: MaybeId, playlistId: MaybeId) =>
   queryOptions({
     queryKey: queryKeys.editorialPlaylist(userId, playlistId),
     queryFn: ({ signal }) => getEditorialPlaylist(playlistId, { signal }),
     staleTime: 5 * 60 * 1000,
   });
 
-export const releaseGroupDetailsQueryOptions = (releaseMbid) =>
+export const releaseGroupDetailsQueryOptions = (releaseMbid: MaybeText) =>
   queryOptions({
     queryKey: queryKeys.releaseGroupDetails(releaseMbid),
     queryFn: ({ signal }) => getReleaseGroupDetails(releaseMbid, { signal }),
@@ -37,7 +46,7 @@ export const playlistStatusQueryOptions = () =>
     staleTime: 4_000,
   });
 
-const normalizePlaylistJobs = (jobs) =>
+const normalizePlaylistJobs = (jobs: PlaylistJob[]) =>
   (Array.isArray(jobs) ? jobs : []).map((job) => ({
     ...job,
     albumName: job?.albumName || null,
@@ -45,7 +54,7 @@ const normalizePlaylistJobs = (jobs) =>
     streamUrl: job?.status === "done" && job?.id ? getPlaylistTrackStreamUrl(job.id) : null,
   }));
 
-export const playlistJobsQueryOptions = (playlistId) =>
+export const playlistJobsQueryOptions = (playlistId: MaybeId) =>
   queryOptions({
     queryKey: queryKeys.playlistJobs(playlistId),
     queryFn: ({ signal }) =>

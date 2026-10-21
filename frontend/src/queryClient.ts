@@ -1,7 +1,21 @@
-import { QueryClient } from "@tanstack/react-query";
+import { QueryClient, type QueryKey } from "@tanstack/react-query";
 
-const LIBRARY_PAGE_QUERY_KEY = ["library", "page"];
-const LIBRARY_VIEW_QUERY_KEY = ["library", "view"];
+type MaybeId = string | number | null | undefined;
+type MaybeText = string | null | undefined;
+type LibraryViewOptions = {
+  preview?: boolean;
+  section?: string;
+  pageIndex?: number;
+  query?: string;
+  genre?: string;
+  sort?: string;
+  direction?: string;
+  albumId?: MaybeId;
+  artistId?: MaybeId;
+};
+
+const LIBRARY_PAGE_QUERY_KEY: QueryKey = ["library", "page"];
+const LIBRARY_VIEW_QUERY_KEY = ["library", "view"] as const;
 const LIBRARY_ALBUM_TRACKS_QUERY_KEY = ["library", "tracks"];
 let libraryPageGeneration = 0;
 
@@ -23,11 +37,16 @@ export const queryClient = new QueryClient({
 
 export const queryKeys = {
   authBootstrap: ["auth", "bootstrap"],
-  discovery: (userId) => ["discovery", "home", userId || null],
+  discovery: (userId: MaybeId): QueryKey => ["discovery", "home", userId || null],
   discoveryStatusPrefix: ["discovery", "status"],
-  discoveryStatus: (userId) => ["discovery", "status", userId || null],
-  editorialShelf: (userId) => ["discovery", "editorial", "shelf", userId || null],
-  editorialPlaylist: (userId, playlistId) => [
+  discoveryStatus: (userId: MaybeId): QueryKey => ["discovery", "status", userId || null],
+  editorialShelf: (userId: MaybeId): QueryKey => [
+    "discovery",
+    "editorial",
+    "shelf",
+    userId || null,
+  ],
+  editorialPlaylist: (userId: MaybeId, playlistId: MaybeId): QueryKey => [
     "discovery",
     "editorial",
     "playlist",
@@ -38,82 +57,121 @@ export const queryKeys = {
   appSettings: ["settings", "app"],
   playbackSettings: ["settings", "playback"],
   downloadClientSettings: ["settings", "download-clients"],
-  lidarrRootFolders: (url, credentialsRevision = 0) => [
+  lidarrRootFolders: (url: MaybeText, credentialsRevision = 0): QueryKey => [
     "settings",
     "lidarr",
     "root-folders",
     url || "",
     credentialsRevision,
   ],
-  lidarrProfiles: (url, credentialsRevision = 0) => [
+  lidarrProfiles: (url: MaybeText, credentialsRevision = 0): QueryKey => [
     "settings",
     "lidarr",
     "profiles",
     url || "",
     credentialsRevision,
   ],
-  lidarrMetadataProfiles: (url, credentialsRevision = 0) => [
+  lidarrMetadataProfiles: (url: MaybeText, credentialsRevision = 0): QueryKey => [
     "settings",
     "lidarr",
     "metadata-profiles",
     url || "",
     credentialsRevision,
   ],
-  lidarrTags: (url, credentialsRevision = 0) => [
+  lidarrTags: (url: MaybeText, credentialsRevision = 0): QueryKey => [
     "settings",
     "lidarr",
     "tags",
     url || "",
     credentialsRevision,
   ],
-  activityRequests: (userId) => ["activity", "requests", userId || null],
-  libraryActivityRequests: (userId) => ["library", "activity-requests", userId || null],
-  inbox: (userId, zip, limit) => ["inbox", userId || null, zip || "", limit],
-  shareLinks: (userId) => ["share-links", userId || null],
-  listeningHistory: (userId) => ["auth", "listening-history", userId || null],
-  lidarrPreferences: (userId) => ["auth", "lidarr-preferences", userId || null],
+  activityRequests: (userId: MaybeId): QueryKey => ["activity", "requests", userId || null],
+  libraryActivityRequests: (userId: MaybeId): QueryKey => [
+    "library",
+    "activity-requests",
+    userId || null,
+  ],
+  inbox: (userId: MaybeId, zip: MaybeText, limit: number): QueryKey => [
+    "inbox",
+    userId || null,
+    zip || "",
+    limit,
+  ],
+  shareLinks: (userId: MaybeId): QueryKey => ["share-links", userId || null],
+  listeningHistory: (userId: MaybeId): QueryKey => ["auth", "listening-history", userId || null],
+  lidarrPreferences: (userId: MaybeId): QueryKey => ["auth", "lidarr-preferences", userId || null],
   libraryPrefix: ["library"],
   libraryFavorites: ["library", "favorites"],
-  libraryAlbums: (artistId) => ["library", "albums", artistId || null],
+  libraryAlbums: (artistId: MaybeId): QueryKey => ["library", "albums", artistId || null],
   libraryAlbumsPrefix: ["library", "albums"],
-  libraryArtist: (mbid) => ["library", "artist", mbid || null],
-  artistMonitoring: (mbid) => ["library", "artist", mbid || null, "monitoring"],
+  libraryArtist: (mbid: MaybeText): QueryKey => ["library", "artist", mbid || null],
+  artistMonitoring: (mbid: MaybeText): QueryKey => [
+    "library",
+    "artist",
+    mbid || null,
+    "monitoring",
+  ],
   monitoringDefaults: ["library", "monitoring", "defaults"],
   monitoringExclusionsPrefix: ["library", "monitoring", "exclusions"],
-  monitoringExclusions: (artistMbid) => ["library", "monitoring", "exclusions", artistMbid || null],
-  libraryLookupDetails: (mbid) => ["library", "lookup-details", mbid || null],
-  libraryView: (options) => [...LIBRARY_VIEW_QUERY_KEY, options],
-  libraryLookup: (id) => ["library", "lookup", id],
-  libraryLookupBatch: (ids) => ["library", "lookup-batch", [...ids].sort()],
+  monitoringExclusions: (artistMbid: MaybeText): QueryKey => [
+    "library",
+    "monitoring",
+    "exclusions",
+    artistMbid || null,
+  ],
+  libraryLookupDetails: (mbid: MaybeText): QueryKey => ["library", "lookup-details", mbid || null],
+  libraryView: (
+    options: LibraryViewOptions,
+  ): readonly [...typeof LIBRARY_VIEW_QUERY_KEY, LibraryViewOptions] => [
+    ...LIBRARY_VIEW_QUERY_KEY,
+    options,
+  ],
+  libraryLookup: (id: string): QueryKey => ["library", "lookup", id],
+  libraryLookupBatch: (ids: string[]): QueryKey => ["library", "lookup-batch", [...ids].sort()],
   libraryViewPrefix: LIBRARY_VIEW_QUERY_KEY,
   libraryPagePrefix: LIBRARY_PAGE_QUERY_KEY,
-  libraryPage: (options) => [...LIBRARY_PAGE_QUERY_KEY, libraryPageGeneration, options],
-  libraryAlbumLookup: (ids) => ["library", "album-lookup", [...ids].sort()],
+  libraryPage: (options: unknown): QueryKey => [
+    ...LIBRARY_PAGE_QUERY_KEY,
+    libraryPageGeneration,
+    options,
+  ],
+  libraryAlbumLookup: (ids: string[]): QueryKey => ["library", "album-lookup", [...ids].sort()],
   libraryAlbumLookupPrefix: ["library", "album-lookup"],
   libraryAlbumTracksPrefix: LIBRARY_ALBUM_TRACKS_QUERY_KEY,
-  libraryAlbumTracks: (albumId, releaseGroupMbid) => [
+  libraryAlbumTracks: (albumId: string, releaseGroupMbid: MaybeText): QueryKey => [
     ...LIBRARY_ALBUM_TRACKS_QUERY_KEY,
     albumId,
     releaseGroupMbid || null,
   ],
-  nearbyShows: (zip, country) => ["shows", "nearby", zip || null, country || null],
-  recentlyAdded: (userId) => ["library", "recently-added", userId || null],
-  recentReleases: (userId) => ["library", "recent-releases", userId || null],
-  news: (userId, mode, limit) => ["news", "library", userId || null, mode, limit],
+  nearbyShows: (zip: MaybeText, country: MaybeText): QueryKey => [
+    "shows",
+    "nearby",
+    zip || null,
+    country || null,
+  ],
+  recentlyAdded: (userId: MaybeId): QueryKey => ["library", "recently-added", userId || null],
+  recentReleases: (userId: MaybeId): QueryKey => ["library", "recent-releases", userId || null],
+  news: (userId: MaybeId, mode: string, limit: number): QueryKey => [
+    "news",
+    "library",
+    userId || null,
+    mode,
+    limit,
+  ],
   playlistStatus: ["playlists", "status"],
-  flowTemplates: (userId) => ["playlists", "flow-templates", userId || null],
-  playlistJobs: (flowId) => ["playlists", "jobs", flowId || "all"],
+  flowTemplates: (userId: MaybeId): QueryKey => ["playlists", "flow-templates", userId || null],
+  playlistJobs: (flowId?: MaybeId): QueryKey => ["playlists", "jobs", flowId || "all"],
   playlistArtworkRevisions: ["playlists", "artwork-revisions"],
-  playlistImportPrefix: (source) => ["playlists", "import", source],
+  playlistImportPrefix: (source: string): QueryKey => ["playlists", "import", source],
   spotifyImportStatus: ["playlists", "spotify-import-status"],
-  playlistImportList: (source, username) => [
+  playlistImportList: (source: string, username?: MaybeText): QueryKey => [
     "playlists",
     "import",
     source,
     "playlists",
     username || null,
   ],
-  playlistImportPreview: (source, playlistId, options) => [
+  playlistImportPreview: (source: string, playlistId: MaybeId, options: unknown): QueryKey => [
     "playlists",
     "import",
     source,
@@ -121,10 +179,27 @@ export const queryKeys = {
     playlistId || null,
     options,
   ],
-  releaseGroupDetails: (id) => ["artists", "release-group", id],
-  releaseGroupTracks: (id, context) => ["artists", "release-group-tracks", id, context],
-  releaseGroupRatings: (ids) => ["artists", "release-group-ratings", [...ids].sort()],
-  artistDetails: (mbid, options = {}) => [
+  releaseGroupDetails: (id: MaybeText): QueryKey => ["artists", "release-group", id],
+  releaseGroupTracks: (id: MaybeText, context: unknown): QueryKey => [
+    "artists",
+    "release-group-tracks",
+    id,
+    context,
+  ],
+  releaseGroupRatings: (ids: string[]): QueryKey => [
+    "artists",
+    "release-group-ratings",
+    [...ids].sort(),
+  ],
+  artistDetails: (
+    mbid: MaybeText,
+    options: {
+      artistName?: string;
+      mode?: string;
+      releaseTypes?: string[];
+      appearsOnLimit?: number;
+    } = {},
+  ): QueryKey => [
     "artists",
     "details",
     mbid || null,
@@ -134,8 +209,8 @@ export const queryKeys = {
     options.appearsOnLimit || null,
   ],
   artistDetailsPrefix: ["artists", "details"],
-  artistOverrides: (mbid) => ["artists", "overrides", mbid || null],
-  artistSimilar: (mbid, artistName, limit) => [
+  artistOverrides: (mbid: MaybeText): QueryKey => ["artists", "overrides", mbid || null],
+  artistSimilar: (mbid: MaybeText, artistName: MaybeText, limit: number): QueryKey => [
     "artists",
     "similar",
     mbid || null,
@@ -143,24 +218,44 @@ export const queryKeys = {
     limit,
   ],
   artistSimilarPrefix: ["artists", "similar"],
-  artistAppearsOn: (mbid) => ["artists", "appears-on", mbid || null],
+  artistAppearsOn: (mbid: MaybeText): QueryKey => ["artists", "appears-on", mbid || null],
   activeDownloads: ["downloads", "active"],
-  downloadStatus: (ids) => ["library", "download-status", [...ids].sort()],
-  aurralAlbumStatus: (canonicalId) => ["library", "aurral-album-status", String(canonicalId)],
-  searchCatalog: (query, scope, options) => ["search", scope, query, options],
-  searchDiscovery: (offset, limit) => ["search", "discovery", offset || 0, limit || null],
-  searchUnified: (query, mode, limit) => ["search", "unified", query, mode, limit],
-  searchLibrary: (query, limit) => ["search", "library", query, limit],
+  downloadStatus: (ids: MaybeId[]): QueryKey => ["library", "download-status", [...ids].sort()],
+  aurralAlbumStatus: (canonicalId: MaybeId): QueryKey => [
+    "library",
+    "aurral-album-status",
+    String(canonicalId),
+  ],
+  searchCatalog: (query: string, scope: string, options: unknown): QueryKey => [
+    "search",
+    scope,
+    query,
+    options,
+  ],
+  searchDiscovery: (offset: number, limit?: number): QueryKey => [
+    "search",
+    "discovery",
+    offset || 0,
+    limit || null,
+  ],
+  searchUnified: (query: string, mode: string, limit: number): QueryKey => [
+    "search",
+    "unified",
+    query,
+    mode,
+    limit,
+  ],
+  searchLibrary: (query: string, limit: number): QueryKey => ["search", "library", query, limit],
   storageHealth: ["settings", "storage-health"],
   settingsTasks: ["settings", "tasks"],
   prowlarrIndexers: ["settings", "prowlarr-indexers"],
-  tasteFeedback: (userId) => ["discovery", "feedback", userId],
+  tasteFeedback: (userId: MaybeId): QueryKey => ["discovery", "feedback", userId],
   scrobbleStatus: ["scrobbling", "status"],
   apiKey: ["auth", "api-key"],
-  myPlexLinkStatus: (userId) => ["auth", "plex-link", userId || null],
+  myPlexLinkStatus: (userId: MaybeId): QueryKey => ["auth", "plex-link", userId || null],
   plexHomeUsers: ["auth", "plex-home-users"],
   upgradeReadiness: ["settings", "upgrade-readiness"],
-  manualMissingSearchSources: (jobId, mode, playlistId) => [
+  manualMissingSearchSources: (jobId: MaybeId, mode: string, playlistId: MaybeId): QueryKey => [
     "playlists",
     "manual-search-sources",
     jobId || null,

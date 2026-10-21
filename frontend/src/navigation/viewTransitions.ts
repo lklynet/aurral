@@ -3,7 +3,7 @@ import { useLocation, useViewTransitionState } from "react-router";
 
 const SHARED_ARTWORK_NAME = "shared-artwork";
 
-let pendingArtwork = null;
+let pendingArtwork: { pathname: string; element: HTMLElement } | null = null;
 
 const reducedMotionQuery =
   typeof window !== "undefined" && typeof window.matchMedia === "function"
@@ -19,10 +19,12 @@ const releaseSourceArtwork = () => {
   if (pendingArtwork?.element) pendingArtwork.element.style.viewTransitionName = "";
 };
 
-export function markSharedArtwork(link, pathname) {
+export function markSharedArtwork(link: HTMLElement, pathname: string) {
   releaseSourceArtwork();
   pendingArtwork = null;
-  const artwork = link.closest("[data-artwork-scope]")?.querySelector("[data-artwork]");
+  const artwork = link
+    .closest("[data-artwork-scope]")
+    ?.querySelector<HTMLElement>("[data-artwork]");
   if (!artwork || !pathname) return;
   artwork.style.viewTransitionName = SHARED_ARTWORK_NAME;
   pendingArtwork = { pathname, element: artwork };

@@ -6,7 +6,7 @@ export const SHOWS_FILTERS = [
 
 export const DEFAULT_SHOWS_FILTER = "all";
 
-export function normalizeShowsFilter(filter) {
+export function normalizeShowsFilter(filter: string | null | undefined) {
   if (!filter) return DEFAULT_SHOWS_FILTER;
   return SHOWS_FILTERS.some((entry) => entry.id === filter) ? filter : DEFAULT_SHOWS_FILTER;
 }
