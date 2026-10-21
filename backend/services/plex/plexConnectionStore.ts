@@ -1,33 +1,62 @@
 import { db, dbHelpers } from "../../config/db-sqlite.ts";
 import { decryptWithKey, encryptWithKey } from "../../config/encryption.ts";
 import { getSettingsEncryptionKey } from "../../db/helpers/settings.ts";
+import type { SettingsRow } from "../../db/rows.ts";
 
 const SETTINGS_KEY = "plexConnections";
-const getSettingStmt = db.prepare("SELECT value FROM settings WHERE key = ?");
-const upsertSettingStmt = db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)");
+const getSettingStmt = db.prepare<[string], Pick<SettingsRow, "value">>(
+  "SELECT value FROM settings WHERE key = ?",
+);
+const upsertSettingStmt = db.prepare<[string, string | null]>(
+  "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+);
 
-const readStore = () => {
+type PlexLinkType = "managed" | "self";
+
+type StoredPlexConnection = {
+  linkType?: PlexLinkType;
+  token?: string | null;
+  clientId?: string;
+  plexAccountId?: string | number | null;
+  plexUuid?: string | null;
+  plexUsername?: string | null;
+  linkedByAdminId?: number | null;
+  connectedAt?: number;
+  lastError?: { message: string; at: number } | null;
+};
+
+type PlexLinkInput = {
+  linkType?: PlexLinkType;
+  token?: string | null;
+  clientId?: string | null;
+  plexAccountId?: string | number | null;
+  plexUuid?: string | null;
+  plexUsername?: string | null;
+  linkedByAdminId?: number | null;
+};
+
+const readStore = (): Record<string, StoredPlexConnection> => {
   const parsed = dbHelpers.parseJSON(getSettingStmt.get(SETTINGS_KEY)?.value);
   return parsed && typeof parsed === "object" ? parsed : {};
 };
 
-const writeStore = (store) => {
+const writeStore = (store: Record<string, StoredPlexConnection>) => {
   upsertSettingStmt.run(SETTINGS_KEY, dbHelpers.stringifyJSON(store));
 };
 
-const userKey = (userId) => String(Math.trunc(Number(userId)));
+const userKey = (userId: number) => String(Math.trunc(Number(userId)));
 
-const encryptToken = (value) => {
+const encryptToken = (value: string | null | undefined) => {
   const key = getSettingsEncryptionKey();
   return encryptWithKey(String(value || ""), key);
 };
 
-const decryptToken = (value) => {
+const decryptToken = (value: string | null | undefined) => {
   const key = getSettingsEncryptionKey();
   return decryptWithKey(value, key);
 };
 
-const normalizeConnection = (raw) => {
+const normalizeConnection = (raw: StoredPlexConnection | null) => {
   if (!raw || typeof raw !== "object") return null;
   const token = decryptToken(raw.token);
   const clientId = String(raw.clientId || "").trim();
@@ -59,12 +88,12 @@ const normalizeConnection = (raw) => {
 };
 
 export const plexConnectionStore = {
-  getConnection(userId) {
+  getConnection(userId: number) {
     const store = readStore();
     return normalizeConnection(store[userKey(userId)] || null);
   },
 
-  getPublicStatus(userId) {
+  getPublicStatus(userId: number) {
     const connection = this.getConnection(userId);
     if (!connection) {
       return {
@@ -85,7 +114,7 @@ export const plexConnectionStore = {
   },
 
   saveConnection(
-    userId,
+    userId: number,
     {
       linkType,
       token,
@@ -94,7 +123,7 @@ export const plexConnectionStore = {
       plexUuid = null,
       plexUsername = null,
       linkedByAdminId = null,
-    } = {},
+    }: PlexLinkInput = {},
   ) {
     const safeToken = String(token || "").trim();
     const safeClientId = String(clientId || "").trim();
@@ -123,7 +152,7 @@ export const plexConnectionStore = {
     return this.getConnection(userId);
   },
 
-  updateToken(userId, { token, clientId } = {}) {
+  updateToken(userId: number, { token, clientId }: Pick<PlexLinkInput, "token" | "clientId"> = {}) {
     const current = readStore();
     const key = userKey(userId);
     const existing = current[key];
@@ -135,7 +164,7 @@ export const plexConnectionStore = {
     return this.getConnection(userId);
   },
 
-  setLastError(userId, message) {
+  setLastError(userId: number, message: string | null | undefined) {
     const store = readStore();
     const key = userKey(userId);
     const existing = store[key];
@@ -145,7 +174,7 @@ export const plexConnectionStore = {
     return this.getConnection(userId);
   },
 
-  clearConnection(userId) {
+  clearConnection(userId: number) {
     const store = readStore();
     const key = userKey(userId);
     if (!store[key]) return false;
@@ -156,7 +185,7 @@ export const plexConnectionStore = {
 
   getAllLinkedPlexAccountIds() {
     const store = readStore();
-    const ids = new Set();
+    const ids = new Set<string>();
     for (const entry of Object.values(store)) {
       if (entry?.plexAccountId != null) ids.add(String(entry.plexAccountId));
     }
