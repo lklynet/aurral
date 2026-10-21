@@ -1,4 +1,5 @@
 import express from "express";
+import type { Response } from "express";
 import { requireAuth, requireUserAccount } from "../middleware/requirePermission.ts";
 import { resolveShareTarget } from "../services/shareLinks/library.ts";
 import { syncShareListener } from "../services/shareLinks/shareListener.ts";
@@ -16,24 +17,36 @@ const EXPIRY_OPTIONS = { "1d": DAY_MS, "7d": 7 * DAY_MS, "30d": 30 * DAY_MS, nev
 const KINDS = new Set(["track", "album", "artist"]);
 const PAYLOAD_PATTERN = /^[A-Za-z0-9_-]{4,700}$/;
 
-const text = (value) => String(value ?? "").trim();
+type ShareLink = NonNullable<ReturnType<typeof createShareLink>>;
 
-function targetFromInput(input) {
+type ShareTargetBody = {
+  kind?: unknown;
+  libraryTrackId?: unknown;
+  trackMbid?: unknown;
+  libraryAlbumId?: unknown;
+  albumMbid?: unknown;
+  libraryArtistId?: unknown;
+  artistMbid?: unknown;
+};
+
+const text = (value: unknown) => String(value ?? "").trim();
+
+function targetFromInput(input: ShareTargetBody | undefined) {
   const kind = text(input?.kind);
   if (!KINDS.has(kind)) return null;
   if (kind === "track") {
-    const targetRef = text(input.libraryTrackId) || text(input.trackMbid);
-    return targetRef ? { kind, targetRef, albumRef: text(input.libraryAlbumId) || null } : null;
+    const targetRef = text(input!.libraryTrackId) || text(input!.trackMbid);
+    return targetRef ? { kind, targetRef, albumRef: text(input!.libraryAlbumId) || null } : null;
   }
   if (kind === "album") {
-    const targetRef = text(input.libraryAlbumId) || text(input.albumMbid);
+    const targetRef = text(input!.libraryAlbumId) || text(input!.albumMbid);
     return targetRef ? { kind, targetRef, albumRef: null } : null;
   }
-  const targetRef = text(input.libraryArtistId) || text(input.artistMbid);
+  const targetRef = text(input!.libraryArtistId) || text(input!.artistMbid);
   return targetRef ? { kind, targetRef, albumRef: null } : null;
 }
 
-const toResponse = (link) => ({
+const toResponse = (link: ShareLink) => ({
   id: link.id,
   kind: link.kind,
   title: link.title,
@@ -46,7 +59,7 @@ const toResponse = (link) => ({
 
 export type ShareLinkResponse = ReturnType<typeof toResponse>;
 
-const notInLibrary = (res) =>
+const notInLibrary = (res: Response) =>
   res.status(404).json({
     error: "not_in_library",
     message: "No Library tracks available to share.",
@@ -56,7 +69,7 @@ router.use(requireAuth, requireUserAccount);
 
 router.get("/", (req, res) => {
   res.json({
-    links: listShareLinks(Number(req.user.id)).map(toResponse),
+    links: listShareLinks(Number(req.user!.id)).map(toResponse),
     tunnel: getShareTunnelState(),
   });
 });
@@ -99,10 +112,10 @@ router.post("/", async (req, res) => {
       message: "Install cloudflared on your server to share playback.",
     });
   }
-  const duration = EXPIRY_OPTIONS[expiresIn];
+  const duration = EXPIRY_OPTIONS[expiresIn as keyof typeof EXPIRY_OPTIONS];
   const link = createShareLink({
     ...target,
-    userId: Number(req.user.id),
+    userId: Number(req.user!.id),
     payload,
     title: resolved.title,
     artistName: resolved.artistName,
@@ -114,7 +127,7 @@ router.post("/", async (req, res) => {
 });
 
 router.delete("/:id", async (req, res) => {
-  if (!deleteShareLink(Number(req.user.id), req.params.id)) {
+  if (!deleteShareLink(Number(req.user!.id), req.params.id)) {
     return res.status(404).json({ error: "not_found", message: "This link was already stopped." });
   }
   await syncShareListener();

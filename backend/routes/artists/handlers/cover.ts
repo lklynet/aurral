@@ -1,3 +1,4 @@
+import type { Router } from "express";
 import { UUID_REGEX } from "../../../../lib/uuid.ts";
 import { logger } from "../../../services/logger.ts";
 import { dbOps } from "../../../db/helpers/index.ts";
@@ -9,10 +10,11 @@ export type ArtistCoverImage = { image: string; front: boolean; types: string[] 
 
 export type ArtistCoverResponse = { images: ArtistCoverImage[]; error?: string };
 
-export const getCachedCoverCacheControl = (images) =>
-  images.length > 0 ? "public, max-age=31536000, immutable" : "no-store";
+export const getCachedCoverCacheControl = (
+  images: Awaited<ReturnType<typeof getArtistImage>>["images"],
+) => (images.length > 0 ? "public, max-age=31536000, immutable" : "no-store");
 
-export function registerCover(router) {
+export function registerCover(router: Router) {
   router.get("/:mbid/cover", async (req, res) => {
     const { mbid } = req.params;
     const { refresh = false, artistName: queryArtistName } = req.query;

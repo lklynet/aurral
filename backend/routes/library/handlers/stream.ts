@@ -1,9 +1,10 @@
+import type { Router } from "express";
 import axios from "../../../../lib/axiosFetch.ts";
 import { noCache } from "../../../middleware/cache.ts";
 import { verifyTokenAuth } from "../../../middleware/auth.ts";
 import { dbOps } from "../../../db/helpers/index.ts";
 
-export function registerStream(router) {
+export function registerStream(router: Router) {
   router.get("/stream/:songId", noCache, async (req, res) => {
     if (!verifyTokenAuth(req)) {
       return res.status(401).json({ error: "Unauthorized" });

@@ -1,4 +1,5 @@
 import express from "express";
+import type { Request } from "express";
 import { dbOps } from "../db/helpers/index.ts";
 import { noCache } from "../middleware/cache.ts";
 import { resolveRequestUser } from "../middleware/auth.ts";
@@ -6,7 +7,7 @@ import { ensureDownloadFolderPath, listBrowseDirectory } from "../services/downl
 
 const router = express.Router();
 
-function canBrowseFilesystem(req) {
+function canBrowseFilesystem(req: Request) {
   const settings = dbOps.getSettings();
   if (!settings.onboardingComplete) {
     return true;
