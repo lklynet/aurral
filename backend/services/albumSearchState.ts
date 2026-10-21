@@ -1,4 +1,11 @@
-import type { LidarrClient } from "./lidarrClient.ts";
+import type {
+  LidarrAlbum,
+  LidarrClient,
+  LidarrCommand,
+  LidarrHistoryItem,
+  LidarrPage,
+  LidarrQueueItem,
+} from "./lidarrClient.ts";
 import { mapWithConcurrency } from "./discovery/helpers.ts";
 
 const MIN_SEARCH_MS = 30 * 1000;
@@ -7,53 +14,7 @@ const RECENT_COMMAND_MS = 2 * 60 * 60 * 1000;
 const RECENT_HISTORY_MS = 60 * 60 * 1000;
 const ALBUM_LOOKUP_TTL_MS = 30 * 1000;
 const ALBUM_LOOKUP_CONCURRENCY = 4;
-export interface LidarrAlbum {
-  id?: number;
-  title?: string;
-  statistics?: { trackFileCount?: number };
-  artist?: { id?: number; artistName?: string; foreignArtistId?: string };
-}
-
-export interface LidarrQueueItem {
-  id?: number;
-  albumId?: number | null;
-  album?: { id?: number; title?: string; foreignAlbumId?: string };
-  artist?: { id?: number; artistName?: string; foreignArtistId?: string };
-  title?: string;
-  added?: string;
-  status?: string;
-  errorMessage?: string;
-  statusMessages?: unknown[];
-  trackedDownloadState?: string;
-  trackedDownloadStatus?: string;
-  size?: number;
-  sizeleft?: number;
-}
-
-export interface LidarrHistoryRecord {
-  id?: number;
-  albumId?: number | null;
-  album?: { title?: string; foreignAlbumId?: string };
-  artist?: { id?: number; artistName?: string; foreignArtistId?: string };
-  sourceTitle?: string;
-  date?: string;
-  eventDate?: string;
-  eventType?: string;
-  data?: { statusMessages?: unknown[] | string | Record<number, unknown>; errorMessage?: string };
-}
-
-interface LidarrCommand {
-  name?: string;
-  commandName?: string;
-  status?: string;
-  ended?: string;
-  completedAt?: string;
-  endTime?: string;
-  body?: { albumIds?: number[] };
-  albumIds?: number[];
-}
-
-export type LidarrRecords<T> = T[] | { records?: T[] } | null;
+export type LidarrRecords<T> = T[] | LidarrPage<T> | null;
 
 type AlbumLookup = { at: number; album: Promise<LidarrAlbum | null | undefined> };
 
@@ -144,7 +105,7 @@ export const parseLidarrSearchContext = ({
   commands,
 }: {
   queue?: LidarrRecords<LidarrQueueItem>;
-  history?: LidarrRecords<LidarrHistoryRecord>;
+  history?: LidarrRecords<LidarrHistoryItem>;
   commands?: LidarrRecords<LidarrCommand>;
 } = {}) => {
   const queueItems = normalizeItems(queue);

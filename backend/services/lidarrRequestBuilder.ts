@@ -1,11 +1,5 @@
-import {
-  albumHasTrackFiles,
-  getLidarrAlbumsById,
-  type LidarrHistoryRecord,
-  type LidarrQueueItem,
-  type LidarrRecords,
-} from "./albumSearchState.ts";
-import type { LidarrClient } from "./lidarrClient.ts";
+import { albumHasTrackFiles, getLidarrAlbumsById, type LidarrRecords } from "./albumSearchState.ts";
+import type { LidarrClient, LidarrHistoryItem, LidarrQueueItem } from "./lidarrClient.ts";
 
 const STALE_GRABBED_MS = 15 * 60 * 1000;
 
@@ -39,7 +33,7 @@ export const buildLidarrRequests = async (
   lidarrClient: LidarrClient,
   snapshot: {
     queue: LidarrRecords<LidarrQueueItem>;
-    history: LidarrRecords<LidarrHistoryRecord>;
+    history: LidarrRecords<LidarrHistoryItem>;
   } | null = null,
 ): Promise<LidarrRequestItem[]> => {
   const [queue, history] = snapshot
@@ -112,10 +106,7 @@ export const buildLidarrRequests = async (
       ? history
       : [];
 
-  const latestHistoryByAlbum = new Map<
-    string,
-    { record: LidarrHistoryRecord; recordTime: number }
-  >();
+  const latestHistoryByAlbum = new Map<string, { record: LidarrHistoryItem; recordTime: number }>();
   for (const record of historyRecords) {
     const albumId = record?.albumId;
     if (albumId == null) continue;
@@ -134,7 +125,7 @@ export const buildLidarrRequests = async (
     const artistName = record?.artist?.artistName || "Artist";
     const artistMbid = record?.artist?.foreignArtistId || null;
     const eventType = String(record?.eventType || "").toLowerCase();
-    const data: NonNullable<LidarrHistoryRecord["data"]> = record?.data || {};
+    const data: NonNullable<LidarrHistoryItem["data"]> = record?.data || {};
     const msgs = Array.isArray(data?.statusMessages)
       ? data.statusMessages.map((m) => String(m || "").toLowerCase()).join(" ")
       : String(data?.statusMessages?.[0] || "").toLowerCase();

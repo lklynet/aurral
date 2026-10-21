@@ -157,7 +157,14 @@ export const DEFAULT_MONITORING = Object.freeze({
 
 // An artist that uses the default follows later changes to it from the
 // moment of each change, the same as if its own rules had been saved then.
-export function resolveArtistMonitoring(stored, defaults = DEFAULT_MONITORING) {
+export function resolveArtistMonitoring(
+  stored,
+  defaults: {
+    rules: ReturnType<typeof storedRules>;
+    updatedAt: number;
+    newReleasesSince: number;
+  } = DEFAULT_MONITORING,
+) {
   if (!stored || typeof stored !== "object") return null;
   const catalogAt = Number(stored.catalogAt) || 0;
   const newSince = Number(stored.newSince) || 0;

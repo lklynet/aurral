@@ -191,7 +191,9 @@ export function indexArtistExclusions(artistMbid: string | null | undefined) {
     exclusions.filter((entry) => entry.kind === "album").map((entry) => entry.mbid),
   );
   const tracks = exclusions.filter((entry) => entry.kind === "track");
-  const trackMbids = new Set(tracks.map((entry) => entry.mbid).filter(Boolean));
+  const trackMbids = new Set<string | null | undefined>(
+    tracks.map((entry) => entry.mbid).filter(Boolean),
+  );
   const trackTitles = new Set(tracks.map((entry) => entry.normalizedTitle));
   return {
     isAlbumExcluded: (mbid: string | null) => albums.has(mbid),

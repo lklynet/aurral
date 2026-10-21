@@ -7,17 +7,8 @@ import {
   selectAlbumRelease,
 } from "./providers/brainzmashProvider.ts";
 import { invalidateLibraryQueryCache } from "./libraryQueryService.ts";
+import type { NormalizedAlbum, NormalizedRelease } from "./providers/brainzmashMappers.ts";
 import { manifestIndexFor, releasesHolding, toReleaseManifest } from "./releaseManifest.ts";
-
-interface MetadataRelease {
-  id?: string | null;
-  tracks?: unknown[] | null;
-}
-
-interface MetadataGroup {
-  id?: string | null;
-  releases: MetadataRelease[];
-}
 
 interface ResolverJob {
   albumMbid?: string | null;
@@ -95,7 +86,7 @@ async function loadGroup(groupMbid: string) {
 }
 
 function releaseById(
-  group: MetadataGroup | null | undefined,
+  group: NormalizedAlbum | null | undefined,
   releaseMbid: string | null | undefined,
 ) {
   return (group?.releases || []).find((release) => id(release?.id) === id(releaseMbid)) || null;
@@ -108,7 +99,7 @@ function remember(manifest: ReleaseManifest) {
 
 // The group's releases tell a pin MusicBrainz merged away from one it still
 // lists.
-function manifestOf(group: MetadataGroup, release: MetadataRelease | null | undefined) {
+function manifestOf(group: NormalizedAlbum, release: NormalizedRelease | null | undefined) {
   const manifest = toReleaseManifest(group, release);
   return (
     manifest && {
@@ -187,14 +178,14 @@ const isLibraryJob = (job: ResolverJob | null | undefined) =>
 // release its files list unless it wants the expanded edition, else the
 // commonest edition of its kind.
 export function chooseRequestedRelease(
-  group: MetadataGroup,
+  group: NormalizedAlbum,
   {
     requestedRelease = null,
     listedRelease = null,
     edition = "standard",
   }: { requestedRelease?: string | null; listedRelease?: string | null; edition?: string } = {},
 ) {
-  const usable = (release: MetadataRelease | null | undefined) =>
+  const usable = (release: NormalizedRelease | null | undefined) =>
     release?.tracks?.length ? release : null;
   return (
     usable(releaseById(group, requestedRelease)) ||
@@ -206,12 +197,12 @@ export function chooseRequestedRelease(
 // The release a Library request for this album downloads unless a track
 // pins another: the Library album's edition, else the standard edition. An
 // album page lists it, so the release a track is added from is the album's.
-export function chooseLibraryRelease(group: MetadataGroup) {
+export function chooseLibraryRelease(group: NormalizedAlbum) {
   const album = libraryAlbum(id(group?.id));
   return album ? albumEdition(group, album) : selectAlbumRelease(group);
 }
 
-function albumEdition(group: MetadataGroup, album: LibraryAlbumMetadata) {
+function albumEdition(group: NormalizedAlbum, album: LibraryAlbumMetadata) {
   return chooseRequestedRelease(group, {
     requestedRelease: album.requestedRelease,
     listedRelease: album.trackList?.release,
@@ -222,8 +213,8 @@ function albumEdition(group: MetadataGroup, album: LibraryAlbumMetadata) {
 // The chosen release as the group lists it: the provider's choice carries
 // lengths averaged across pressings, and the manifest keeps the release's own.
 function holding(
-  group: MetadataGroup,
-  release: MetadataRelease | null | undefined,
+  group: NormalizedAlbum,
+  release: NormalizedRelease | null | undefined,
   job: ResolverJob,
 ) {
   const manifest = manifestOf(group, releaseById(group, release?.id));
@@ -231,7 +222,7 @@ function holding(
 }
 
 // The commonest tracklist among the releases that hold the track.
-function holdingRelease(group: MetadataGroup, job: ResolverJob) {
+function holdingRelease(group: NormalizedAlbum, job: ResolverJob) {
   const releases = releasesHolding(group, job);
   return releases.length ? selectAlbumRelease({ releases }) : null;
 }
@@ -268,7 +259,7 @@ export async function resolveReleaseManifest(job: ResolverJob) {
   return manifest;
 }
 
-function chooseRelease(group: MetadataGroup, groupMbid: string, job: ResolverJob) {
+function chooseRelease(group: NormalizedAlbum, groupMbid: string, job: ResolverJob) {
   const album = libraryAlbum(groupMbid);
   const edition = album?.edition === "expanded" ? "expanded" : "standard";
   const requested = releaseById(group, album?.requestedRelease);

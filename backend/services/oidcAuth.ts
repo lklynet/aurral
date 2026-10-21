@@ -1,4 +1,5 @@
 import * as client from "openid-client";
+import type { IDToken, UserInfoResponse } from "openid-client";
 import type { Request, Response } from "express";
 import { db } from "../config/db-sqlite.ts";
 import { createSession } from "../config/session-helpers.ts";
@@ -10,7 +11,7 @@ const EXCHANGE_TTL_MS = 60 * 1000;
 const OIDC_TRANSACTION_COOKIE = "aurral_oidc_transaction";
 type DiscoveryConfig = Awaited<ReturnType<typeof client.discovery>>;
 type OidcTokens = Awaited<ReturnType<typeof client.authorizationCodeGrant>>;
-type OidcClaims = { sub?: string; [claim: string]: unknown };
+type OidcClaims = Partial<IDToken & UserInfoResponse>;
 
 const pendingLogins = new Map<
   string,
@@ -500,7 +501,11 @@ export function exchangeOidcCallback(code: string | null | undefined, req: Reque
   if (pending.linked) {
     return { linked: true, user: pending.user };
   }
-  const session = createSession(pending.user.id, req.ip || null, req.headers["user-agent"] || null);
+  const session = createSession(
+    pending.user!.id,
+    req.ip || null,
+    req.headers["user-agent"] || null,
+  );
   return {
     linked: false,
     token: session.token,

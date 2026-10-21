@@ -41,7 +41,7 @@ const VALID_MONITOR_OPTIONS = new Set([
 type LidarrAxiosConfig = Parameters<typeof axios>[0];
 type LidarrHttpMethod = "GET" | "POST" | "PUT" | "DELETE";
 
-interface LidarrPage<T> {
+export interface LidarrPage<T> {
   records: T[];
 }
 
@@ -77,7 +77,7 @@ interface LidarrAlbumStatistics {
   sizeOnDisk?: number;
 }
 
-interface LidarrAlbum {
+export interface LidarrAlbum {
   id: number;
   title?: string | null;
   foreignAlbumId?: string;
@@ -112,7 +112,7 @@ interface LidarrTrackFile {
   qualityCutoffNotMet?: boolean;
 }
 
-interface LidarrQueueItem {
+export interface LidarrQueueItem {
   id: number;
   artistId?: number;
   albumId?: number;
@@ -135,7 +135,7 @@ interface LidarrQueueItem {
   added?: string;
 }
 
-interface LidarrHistoryItem {
+export interface LidarrHistoryItem {
   id: number;
   albumId?: number;
   artistId?: number;
@@ -196,7 +196,7 @@ export interface LidarrNamingConfig {
   artistFolderFormat?: string;
 }
 
-interface LidarrCommand {
+export interface LidarrCommand {
   id?: number;
   name?: string;
   commandName?: string;

@@ -9,6 +9,7 @@ import {
   readLidarrQueueItemStatus,
   resolveAlbumSearchOutcome,
 } from "../../../services/albumSearchState.ts";
+import type { LidarrCommand, LidarrPage } from "../../../services/lidarrClient.ts";
 import { UUID_REGEX } from "../../../../lib/uuid.ts";
 import { logger } from "../../../services/logger.ts";
 import { requestLibraryTrack } from "../../../services/libraryTrackRequests.ts";
@@ -153,7 +154,13 @@ const computeLidarrStatusSnapshot = async () => {
   const [queue, history, commands] = await Promise.all([
     lidarrClient.getQueue({ forceRefresh: true }),
     lidarrClient.getHistory(1, 200, "date", "descending", { forceRefresh: true }),
-    lidarrClient.request("/command", "GET", null, false, { forceRefresh: true }),
+    lidarrClient.request<LidarrCommand[] | LidarrPage<LidarrCommand>>(
+      "/command",
+      "GET",
+      null,
+      false,
+      { forceRefresh: true },
+    ),
   ]);
   const provider = { queue, history, commands };
   const queueItems = Array.isArray(queue) ? queue : queue.records || [];

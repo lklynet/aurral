@@ -1,4 +1,5 @@
 import * as client from "openid-client";
+import type { IDToken, UserInfoResponse } from "openid-client";
 import type { Request, Response } from "express";
 import { createSession } from "../config/session-helpers.ts";
 import { toResolvedUser } from "../middleware/auth.ts";
@@ -9,7 +10,7 @@ const STATE_TTL_MS = 10 * 60 * 1000;
 const EXCHANGE_TTL_MS = 60 * 1000;
 const TRANSACTION_COOKIE = "aurral_google_transaction";
 type DiscoveryConfig = Awaited<ReturnType<typeof client.discovery>>;
-type OidcClaims = { sub?: string; [claim: string]: unknown };
+type GoogleClaims = Partial<Pick<IDToken, "sub"> & Pick<UserInfoResponse, "email" | "name">>;
 
 const pendingLogins = new Map<
   string,
@@ -200,7 +201,7 @@ export async function handleGoogleCallback(req: Request) {
     },
   );
 
-  const claims: OidcClaims = tokens.claims() || {};
+  const claims: GoogleClaims = tokens.claims() || {};
   const subject = String(claims.sub || "").trim();
   if (!subject) {
     throw Object.assign(new Error("Google identity did not include a usable subject"), {
@@ -283,7 +284,7 @@ export function exchangeGoogleCallback(code: string | null | undefined, req: Req
     return { linked: true, user: pending.result.user };
   }
   const session = createSession(
-    pending.result.user.id,
+    pending.result.user!.id,
     req.ip || null,
     req.headers["user-agent"] || null,
   );

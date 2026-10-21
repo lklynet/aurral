@@ -238,7 +238,7 @@ export function recordAlbumTrackState(job: AlbumGrabJob, importedSource: string 
         completedAt: terminal
           ? new Date(
               Math.max(
-                ...members.map(
+                ...(members as NonNullable<(typeof members)[number]>[]).map(
                   (entry) => Date.parse(entry.metadata.completedAt) || entry.createdAt,
                 ),
               ),
@@ -260,7 +260,7 @@ export function recordAlbumGrabPhase(
   try {
     const activity = getAlbumGrabActivity(payload?.jobId);
     if (!activity) return;
-    const existing = dbOps.getAurralHistoryById(activity.id);
+    const existing = dbOps.getAurralHistoryById(activity.id)!;
     dbOps.insertAurralHistory({
       ...existing,
       createdAt: Date.now(),
