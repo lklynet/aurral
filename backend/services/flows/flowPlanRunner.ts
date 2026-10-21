@@ -1,16 +1,23 @@
 import { fork } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { flowTrackSource } from "./flowTrackSource.ts";
+import {
+  flowTrackSource,
+  type FlowRunOptions,
+  type FlowRunPlan,
+  type FlowRunSpec,
+} from "./flowTrackSource.ts";
+
+type FlowPlanChildMessage = { type?: string; plan?: FlowRunPlan; error?: string } | null;
 
 const ENTRY = fileURLToPath(new URL("./flowPlanProcess.ts", import.meta.url));
 const PLAN_TIMEOUT_MS = 30 * 60 * 1000;
 
 export function createFlowPlanRunner({ forkProcess = fork, timeoutMs = PLAN_TIMEOUT_MS } = {}) {
-  return function buildFlowRunPlan(flow, options = {}) {
+  return function buildFlowRunPlan(flow: FlowRunSpec, options: FlowRunOptions = {}) {
     if (process.env.NODE_ENV === "test") {
       return flowTrackSource.buildFlowRunPlan(flow, options);
     }
-    return new Promise((resolve, reject) => {
+    return new Promise<FlowRunPlan | null | undefined>((resolve, reject) => {
       let child;
       try {
         child = forkProcess(ENTRY, [], {
@@ -33,7 +40,7 @@ export function createFlowPlanRunner({ forkProcess = fork, timeoutMs = PLAN_TIME
       }
 
       let settled = false;
-      const finish = (error, plan, acknowledge = false) => {
+      const finish = (error: unknown, plan?: FlowRunPlan | null, acknowledge = false) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
@@ -75,14 +82,14 @@ export function createFlowPlanRunner({ forkProcess = fork, timeoutMs = PLAN_TIME
           } catch {}
         }
       };
-      const onMessage = (message) => {
+      const onMessage = (message: FlowPlanChildMessage) => {
         if (message?.type === "flow-plan-result") finish(null, message.plan, true);
         if (message?.type === "flow-plan-error") {
           finish(new Error(message.error || "Flow planning failed"), null, true);
         }
       };
-      const onError = (error) => finish(error);
-      const onExit = (code, signal) =>
+      const onError = (error: Error) => finish(error);
+      const onExit = (code: number | null, signal: NodeJS.Signals | null) =>
         finish(new Error(`Flow planner exited before returning a plan (${signal || code})`));
       const timer = setTimeout(() => {
         finish(new Error("Flow planning timed out"));

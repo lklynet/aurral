@@ -15,7 +15,7 @@ type LibraryMetadata = {
   id?: number | string | null;
   artistId?: number | string | null;
   librarySource?: string;
-  monitored?: boolean;
+  monitored?: boolean | null;
   monitor?: string;
   monitorOption?: string;
   addOptions?: { monitor?: string };
@@ -62,7 +62,7 @@ type LibraryAlbumRecord = {
   albumArtist: string | null;
   releaseDate: string | null;
   metadata: LibraryMetadata | null;
-  managedBy: string | null;
+  managedBy?: string | null;
   source?: string | null;
   trackIds: number[];
   sources: string[];
