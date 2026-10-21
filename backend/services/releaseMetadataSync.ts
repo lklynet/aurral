@@ -28,15 +28,18 @@ const DAY_MS = 24 * HOUR_MS;
 const ARTIST_REFRESH_INTERVAL_MS = 20 * HOUR_MS;
 const ARTIST_FAILURE_RETRY_MS = HOUR_MS;
 
-const text = (value) => String(value || "").trim();
+const text = (value: unknown) => String(value || "").trim();
 
-function getReleaseTime(releaseDate) {
+function getReleaseTime(releaseDate: unknown) {
   if (!text(releaseDate)) return null;
   const releaseTime = new Date(text(releaseDate)).getTime();
   return Number.isFinite(releaseTime) ? releaseTime : null;
 }
 
-function shouldFetchReleaseDate(stored, nowMs) {
+function shouldFetchReleaseDate(
+  stored: { releaseDate: string | null; refreshedAt: number } | undefined,
+  nowMs: number,
+) {
   if (!stored) return true;
   const age = nowMs - stored.refreshedAt;
   if (age > 60 * DAY_MS) return true;
@@ -45,7 +48,9 @@ function shouldFetchReleaseDate(stored, nowMs) {
   return releaseTime != null && releaseTime > nowMs - 30 * DAY_MS;
 }
 
-function listArtistsDue(artists, nowMs) {
+type CalendarArtist = ReturnType<typeof listReleaseCalendarArtists>[number];
+
+function listArtistsDue(artists: CalendarArtist[], nowMs: number) {
   const refreshes = getReleaseCalendarArtistRefreshes();
   return artists.filter((artist) => {
     if (!UUID_REGEX.test(text(artist?.mbid))) return false;
@@ -58,7 +63,9 @@ function listArtistsDue(artists, nowMs) {
   });
 }
 
-function isValidCatalogueRelease(release) {
+function isValidCatalogueRelease(
+  release: { id?: unknown; title?: unknown; type?: unknown } | null | undefined,
+) {
   const releaseGroupMbid = text(release?.id);
   return Boolean(
     release &&
@@ -100,11 +107,18 @@ export function scheduleReleaseMetadataRefresh({ delaySeconds = 0 } = {}) {
   return enqueueSystemTaskJob({ kind: TASK_KIND }, { delaySeconds: normalizedDelay, priority: -5 });
 }
 
+type ReleaseMetadataLease = Awaited<ReturnType<typeof acquireReleaseMetadataLease>>;
+
 export async function refreshReleaseMetadata({
   artists = null,
   now = Date.now(),
   signal,
   lease = null,
+}: {
+  artists?: CalendarArtist[] | null;
+  now?: number;
+  signal?: AbortSignal;
+  lease?: ReleaseMetadataLease | null;
 } = {}) {
   if (!lease) {
     const acquired = await acquireReleaseMetadataLease({ signal });
@@ -155,7 +169,7 @@ export async function refreshReleaseMetadata({
     }
 
     const calendar = getArtistReleaseCalendar(artist.id);
-    const entries = [];
+    const entries: Parameters<typeof upsertReleaseCalendarEntry>[0][] = [];
     for (const release of releases) {
       if (!releaseMatchesRules(release, FACTORY_MONITOR_RULES)) continue;
       const releaseGroupMbid = text(release.id);

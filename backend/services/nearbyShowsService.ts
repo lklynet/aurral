@@ -4,6 +4,45 @@ import createCache from "./apiClients/simpleCache.ts";
 import { getTicketmasterApiKey } from "./apiClients/index.ts";
 import { runSharedInflight } from "./sharedInflight.ts";
 
+type NearbyLocation = {
+  source: string;
+  resolved: boolean;
+  postalCode: string | null;
+  city: string | null;
+  region: string | null;
+  regionCode: string | null;
+  countryCode: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  label?: string;
+};
+
+type TicketmasterImage = { ratio?: string; url?: string; width?: number };
+
+type TicketmasterAttraction = { name?: string; url?: string; images?: TicketmasterImage[] };
+
+type TicketmasterEvent = {
+  id?: string;
+  name?: string;
+  url?: string;
+  images?: TicketmasterImage[];
+  distance?: number;
+  dates?: { start?: { localDate?: string; localTime?: string; dateTime?: string } };
+  _embedded?: {
+    attractions?: TicketmasterAttraction[];
+    venues?: {
+      name?: string;
+      city?: { name?: string };
+      state?: { stateCode?: string; name?: string };
+      country?: { countryCode?: string };
+    }[];
+  };
+};
+
+type ArtistInput = { artistName?: unknown; name?: unknown };
+
+type ArtistSource = "library" | "recommended" | "trending";
+
 const ticketmasterEventCache = createCache(15 * 60);
 const ipLocationCache = createCache(30 * 60);
 const zipLocationCache = createCache(24 * 60 * 60);
@@ -14,7 +53,7 @@ const DEFAULT_RADIUS_MILES = 250;
 const MAX_EVENT_RESULTS = 200;
 const TICKETMASTER_BASE_URL = "https://app.ticketmaster.com/discovery/v2";
 
-const toArtistKey = (value) =>
+const toArtistKey = (value: unknown) =>
   String(value || "")
     .normalize("NFKD")
     .replace(/\p{M}/gu, "")
@@ -25,20 +64,20 @@ const toArtistKey = (value) =>
     .replace(/^the /, "")
     .replace(/ /g, "");
 
-const sanitizeZipCode = (value) =>
+const sanitizeZipCode = (value: unknown) =>
   String(value || "")
     .trim()
     .replace(/[^a-zA-Z0-9 -]/g, "")
     .slice(0, 12);
 
-const isLikelyUsZip = (value) => /^\d{5}(-\d{4})?$/.test(String(value || "").trim());
+const isLikelyUsZip = (value: unknown) => /^\d{5}(-\d{4})?$/.test(String(value || "").trim());
 
-const normalizeUsZip = (value) =>
+const normalizeUsZip = (value: unknown) =>
   String(value || "")
     .trim()
     .split("-")[0];
 
-const sanitizeCountryCode = (value) => {
+const sanitizeCountryCode = (value: unknown) => {
   const country = String(value || "")
     .trim()
     .replace(/[^a-zA-Z]/g, "")
@@ -55,7 +94,7 @@ for (const [network, prefix] of [
   ["169.254.0.0", 16],
   ["172.16.0.0", 12],
   ["192.168.0.0", 16],
-]) {
+] as const) {
   nonPublicAddresses.addSubnet(network, prefix, "ipv4");
 }
 for (const [network, prefix] of [
@@ -63,11 +102,11 @@ for (const [network, prefix] of [
   ["::1", 128],
   ["fc00::", 7],
   ["fe80::", 10],
-]) {
+] as const) {
   nonPublicAddresses.addSubnet(network, prefix, "ipv6");
 }
 
-const getPublicRequestIp = (req) => {
+const getPublicRequestIp = (req: { ip?: string } | undefined) => {
   const ip = String(req?.ip || "")
     .trim()
     .replace(/^::ffff:/i, "")
@@ -77,14 +116,14 @@ const getPublicRequestIp = (req) => {
   return nonPublicAddresses.check(ip, family === 6 ? "ipv6" : "ipv4") ? "" : ip;
 };
 
-const buildLocationLabel = (location) =>
+const buildLocationLabel = (location: NearbyLocation) =>
   [location.city, location.regionCode || location.region, location.countryCode]
     .filter(Boolean)
     .join(", ") ||
   location.postalCode ||
   "Your area";
 
-const selectImage = (images = []) => {
+const selectImage = (images: TicketmasterImage[] = []) => {
   if (!Array.isArray(images) || images.length === 0) return null;
   for (const ratio of ["16_9", "3_2", "4_3"]) {
     const match = images
@@ -95,7 +134,7 @@ const selectImage = (images = []) => {
   return images.find((image) => image?.url)?.url || null;
 };
 
-const toEventRecord = (event) => {
+const toEventRecord = (event: TicketmasterEvent) => {
   const attractions = Array.isArray(event?._embedded?.attractions)
     ? event._embedded.attractions
     : [];
@@ -132,7 +171,7 @@ const buildDateRange = () => {
   };
 };
 
-const getTicketmasterLocationParams = (location, radiusMiles) => {
+const getTicketmasterLocationParams = (location: NearbyLocation, radiusMiles: number) => {
   const latitude = Number(location.latitude);
   const longitude = Number(location.longitude);
   if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
@@ -157,7 +196,7 @@ const getTicketmasterLocationParams = (location, radiusMiles) => {
   throw new Error("Unable to determine a search location");
 };
 
-const resolveZipLocation = async (zipCode, countryCode) => {
+const resolveZipLocation = async (zipCode: unknown, countryCode: unknown) => {
   const zip = sanitizeZipCode(zipCode);
   if (!zip) return null;
   const normalizedCountryCode = sanitizeCountryCode(countryCode);
@@ -184,7 +223,7 @@ const resolveZipLocation = async (zipCode, countryCode) => {
         );
         const place = response.data?.places?.[0];
         if (place) {
-          const location = {
+          const location: NearbyLocation = {
             source: "zip",
             resolved: true,
             postalCode: normalizedZip,
@@ -222,7 +261,7 @@ const resolveZipLocation = async (zipCode, countryCode) => {
       const result = Array.isArray(response.data) ? response.data[0] : null;
       if (!result) return null;
       const address = result.address || {};
-      const location = {
+      const location: NearbyLocation = {
         source: "zip",
         resolved: true,
         postalCode: normalizedZip,
@@ -244,7 +283,7 @@ const resolveZipLocation = async (zipCode, countryCode) => {
   });
 };
 
-const resolveIpLocation = async (publicIp) => {
+const resolveIpLocation = async (publicIp: string) => {
   const cacheKey = publicIp || "server";
   const cached = ipLocationCache.get(cacheKey);
   if (cached) return cached;
@@ -261,7 +300,7 @@ const resolveIpLocation = async (publicIp) => {
     if (response.data?.error) {
       throw new Error(response.data.reason || "IP lookup failed");
     }
-    const location = {
+    const location: NearbyLocation = {
       source: "ip",
       resolved: true,
       postalCode: sanitizeZipCode(response.data?.postal),
@@ -278,7 +317,13 @@ const resolveIpLocation = async (publicIp) => {
   });
 };
 
-const fetchTicketmasterEvents = async ({ location, radiusMiles }) => {
+const fetchTicketmasterEvents = async ({
+  location,
+  radiusMiles,
+}: {
+  location: NearbyLocation;
+  radiusMiles: number;
+}) => {
   const apiKey = getTicketmasterApiKey();
   if (!apiKey) return [];
   const cacheKey = JSON.stringify({
@@ -307,16 +352,16 @@ const fetchTicketmasterEvents = async ({ location, radiusMiles }) => {
       signal,
     });
     const events = (response.data?._embedded?.events || [])
-      .filter((event) => event?.id)
+      .filter((event: TicketmasterEvent) => event?.id)
       .map(toEventRecord)
-      .filter((event) => event.performerKeys.length > 0);
+      .filter((event: ReturnType<typeof toEventRecord>) => event.performerKeys.length > 0);
     ticketmasterEventCache.set(cacheKey, events);
     return events;
   });
 };
 
-const buildArtistMap = (artistsBySource) => {
-  const map = new Map();
+const buildArtistMap = (artistsBySource: [ArtistSource, ArtistInput[] | undefined][]) => {
+  const map = new Map<string, { name: string; sourceType: ArtistSource }>();
   for (const [sourceType, artists] of artistsBySource) {
     for (const artist of artists || []) {
       const name = String(artist?.artistName || artist?.name || "").trim();
@@ -327,7 +372,10 @@ const buildArtistMap = (artistsBySource) => {
   return map;
 };
 
-const matchShows = (events, artistMap) => {
+const matchShows = (
+  events: Awaited<ReturnType<typeof fetchTicketmasterEvents>>,
+  artistMap: ReturnType<typeof buildArtistMap>,
+) => {
   const shows = [];
   for (const { performerKeys, ...event } of events) {
     const matches = new Map();
@@ -345,7 +393,11 @@ const matchShows = (events, artistMap) => {
   return shows;
 };
 
-const sortShows = (shows) =>
+const sortShows = <
+  Show extends { dateTime: string | null; date: string | null; distance: number | null },
+>(
+  shows: Show[],
+) =>
   shows.sort((a, b) => {
     const aTime = a.dateTime || a.date || "";
     const bTime = b.dateTime || b.date || "";
@@ -362,6 +414,15 @@ export const getNearbyShows = async ({
   trendingArtists = [],
   radiusMiles = DEFAULT_RADIUS_MILES,
   responseCacheKey = null,
+}: {
+  req?: { ip?: string };
+  zipCode?: unknown;
+  countryCode?: unknown;
+  libraryArtists?: ArtistInput[];
+  recommendedArtists?: ArtistInput[];
+  trendingArtists?: ArtistInput[];
+  radiusMiles?: number;
+  responseCacheKey?: string | null;
 }) => {
   const sanitizedZipCode = sanitizeZipCode(zipCode);
   const sanitizedCountryCode = sanitizeCountryCode(countryCode);
@@ -375,7 +436,7 @@ export const getNearbyShows = async ({
   const cachedResult = resultCacheKey ? nearbyShowsResponseCache.get(resultCacheKey) : null;
   if (cachedResult) return cachedResult;
 
-  let location;
+  let location: NearbyLocation;
   if (sanitizedZipCode) {
     location = (await resolveZipLocation(sanitizedZipCode, sanitizedCountryCode)) || {
       source: "zip",

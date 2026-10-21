@@ -2,9 +2,25 @@ import { db } from "../config/db-sqlite.ts";
 import { getHonkerDb, getPlayEventOutbox } from "./honkerDb.ts";
 import { scrobbleConnectionStore } from "./scrobbleConnectionStore.ts";
 import { getKoitoListenBrainzBaseUrl } from "./koitoClient.ts";
+import type { PlayEventsRow } from "../db/rows.ts";
 
-const getEventStmt = db.prepare("SELECT * FROM play_events WHERE id = ?");
-const resolveAlbumKeyStmt = db.prepare(`
+type PlayEventInput = {
+  trackId?: unknown;
+  title?: unknown;
+  artist?: unknown;
+  album?: unknown;
+  albumKey?: unknown;
+  albumId?: unknown;
+  albumMbid?: unknown;
+  artistMbid?: unknown;
+  trackMbid?: unknown;
+  durationMs?: unknown;
+  playedAt?: unknown;
+  source?: unknown;
+};
+
+const getEventStmt = db.prepare<[number], PlayEventsRow>("SELECT * FROM play_events WHERE id = ?");
+const resolveAlbumKeyStmt = db.prepare<[string, string, string, string], { identity_key: string }>(`
   SELECT identity_key
   FROM library_albums
   WHERE identity_key = ?
@@ -13,10 +29,18 @@ const resolveAlbumKeyStmt = db.prepare(`
     OR CAST(id AS TEXT) = ?
   LIMIT 2
 `);
-const getHistoryStmt = db.prepare(
+const getHistoryStmt = db.prepare<[number, number, number], PlayEventsRow>(
   "SELECT * FROM play_events WHERE user_id = ? ORDER BY played_at DESC, id DESC LIMIT ? OFFSET ?",
 );
-const getArtistsStmt = db.prepare(`
+const getArtistsStmt = db.prepare<
+  [number, number],
+  {
+    artist: string;
+    artist_mbid: string | null;
+    play_count: number;
+    last_played_at: number;
+  }
+>(`
   SELECT artist, MAX(artist_mbid) AS artist_mbid, COUNT(*) AS play_count,
          MAX(played_at) AS last_played_at
   FROM play_events
@@ -26,16 +50,19 @@ const getArtistsStmt = db.prepare(`
   LIMIT ?
 `);
 
-const text = (value, max = 500) =>
+const text = (value: unknown, max = 500) =>
   String(value || "")
     .trim()
     .slice(0, max);
-const positiveInt = (value, fallback = null) => {
+const positiveInt = <Fallback extends number | null = null>(
+  value: unknown,
+  fallback: Fallback = null as Fallback,
+) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : fallback;
 };
 
-const albumReference = (value) => {
+const albumReference = (value: unknown) => {
   const raw = text(value, 500);
   if (!raw.startsWith("album:")) return raw;
   try {
@@ -45,7 +72,7 @@ const albumReference = (value) => {
   }
 };
 
-const resolveAlbumKey = (input) => {
+const resolveAlbumKey = (input: PlayEventInput) => {
   const explicit = albumReference(input.albumKey);
   if (explicit) return explicit;
   for (const value of [input.albumId, input.albumMbid]) {
@@ -57,7 +84,7 @@ const resolveAlbumKey = (input) => {
   return null;
 };
 
-const toPublicEvent = (row) =>
+const toPublicEvent = (row: PlayEventsRow | undefined) =>
   row && {
     id: row.id,
     userId: row.user_id,
@@ -74,13 +101,16 @@ const toPublicEvent = (row) =>
     source: row.source,
   };
 
-export const getPlayHistory = (userId, { limit = 50, offset = 0 } = {}) => {
+export const getPlayHistory = (
+  userId: number,
+  { limit = 50, offset = 0 }: { limit?: unknown; offset?: unknown } = {},
+) => {
   const safeLimit = Math.min(100, Math.max(1, positiveInt(limit, 50)));
   const safeOffset = Math.max(0, positiveInt(offset, 0));
   return getHistoryStmt.all(userId, safeLimit, safeOffset).map(toPublicEvent);
 };
 
-export const getTopPlayedArtists = (userId, { limit = 20 } = {}) => {
+export const getTopPlayedArtists = (userId: number, { limit = 20 }: { limit?: unknown } = {}) => {
   const safeLimit = Math.min(100, Math.max(1, positiveInt(limit, 20)));
   return getArtistsStmt.all(userId, safeLimit).map((row) => ({
     artistName: row.artist,
@@ -90,7 +120,7 @@ export const getTopPlayedArtists = (userId, { limit = 20 } = {}) => {
   }));
 };
 
-export const recordPlayEvent = (userId, input = {}) => {
+export const recordPlayEvent = (userId: number, input: PlayEventInput = {}) => {
   const trackId = text(input.trackId, 500);
   const title = text(input.title, 500);
   const artist = text(input.artist, 500);
@@ -105,7 +135,7 @@ export const recordPlayEvent = (userId, input = {}) => {
   const connections = scrobbleConnectionStore.getConnections(userId);
   const honker = getHonkerDb();
   const tx = honker.transaction();
-  let eventId;
+  let eventId: number | undefined;
   try {
     const rows = tx.query(
       `
@@ -130,7 +160,7 @@ export const recordPlayEvent = (userId, input = {}) => {
         text(input.source, 50) || "unknown",
         Date.now(),
       ],
-    );
+    ) as { id: number }[];
     eventId = rows[0]?.id;
     for (const [provider, connection] of Object.entries(connections)) {
       getPlayEventOutbox().enqueueTx(tx, {
@@ -151,7 +181,17 @@ export const recordPlayEvent = (userId, input = {}) => {
   return event;
 };
 
-export const deliverPlayEvent = async ({ eventId, userId, provider, connectionRevision }) => {
+export const deliverPlayEvent = async ({
+  eventId,
+  userId,
+  provider,
+  connectionRevision,
+}: {
+  eventId: number;
+  userId: number;
+  provider: "lastfm" | "listenbrainz" | "koito";
+  connectionRevision: string;
+}) => {
   const event = toPublicEvent(getEventStmt.get(eventId));
   const connection = scrobbleConnectionStore.getConnection(userId, provider);
   if (

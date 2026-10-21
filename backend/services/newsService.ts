@@ -7,6 +7,7 @@ import { fetchArticleImage, fetchRssFeed } from "./rssNews.ts";
 import { mapWithConcurrency } from "./discovery/helpers.ts";
 import { getUserDiscovery } from "./discovery/userDiscovery.ts";
 import createCache from "./apiClients/simpleCache.ts";
+import type { NewsArticlesRow } from "../db/rows.ts";
 
 const REFRESH_STATE_KEY = "news:refreshState";
 const ARTICLE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -38,7 +39,7 @@ const trimArticles = db.prepare(`
     SELECT id FROM news_articles ORDER BY published_at DESC, id LIMIT -1 OFFSET ?
   )
 `);
-const selectArticlesMissingImages = db.prepare(`
+const selectArticlesMissingImages = db.prepare<[number], Pick<NewsArticlesRow, "id" | "url">>(`
   SELECT id, url FROM news_articles
   WHERE image_url IS NULL AND image_checked = 0
   ORDER BY published_at DESC
@@ -47,13 +48,15 @@ const selectArticlesMissingImages = db.prepare(`
 const setArticleImage = db.prepare(
   "UPDATE news_articles SET image_url = ?, image_checked = 1 WHERE id = ?",
 );
-const selectArticleTerms = db.prepare("SELECT id, title, categories FROM news_articles");
-const selectActiveArticleIds = db.prepare(`
+const selectArticleTerms = db.prepare<[], Pick<NewsArticlesRow, "id" | "title" | "categories">>(
+  "SELECT id, title, categories FROM news_articles",
+);
+const selectActiveArticleIds = db.prepare<[string], Pick<NewsArticlesRow, "id">>(`
   SELECT id FROM news_articles
   WHERE source_url IN (SELECT value FROM json_each(?))
   ORDER BY published_at DESC, id
 `);
-const selectArticlesByIds = db.prepare(`
+const selectArticlesByIds = db.prepare<[string], NewsArticlesRow>(`
   SELECT * FROM news_articles
   WHERE id IN (SELECT value FROM json_each(?))
   ORDER BY published_at DESC, id
@@ -63,7 +66,9 @@ export function invalidateNewsResponseCache() {
   articleMatchCache.flushAll();
 }
 
-const getEnabledFeeds = (settings) =>
+type NewsFeed = ReturnType<typeof getEnabledFeeds>[number];
+
+const getEnabledFeeds = (settings: ReturnType<typeof getNewsSettings>) =>
   settings.enabled
     ? settings.feeds.filter(
         (feed) =>
@@ -71,7 +76,7 @@ const getEnabledFeeds = (settings) =>
       )
     : [];
 
-const normalizeName = (value) =>
+const normalizeName = (value: unknown) =>
   String(value || "")
     .normalize("NFKD")
     .replace(/\p{M}+/gu, "")
@@ -80,9 +85,9 @@ const normalizeName = (value) =>
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim();
 
-const isSingleWordName = (name) => !name.includes(" ");
+const isSingleWordName = (name: string) => !name.includes(" ");
 
-const parseCategories = (value) => {
+const parseCategories = (value: string | null): string[] => {
   try {
     const categories = JSON.parse(value || "[]");
     return Array.isArray(categories) ? categories : [];
@@ -91,7 +96,9 @@ const parseCategories = (value) => {
   }
 };
 
-async function getNewsArtists(userId) {
+type RecommendedArtist = { mbid?: unknown; id?: unknown; name?: unknown; artistName?: unknown };
+
+async function getNewsArtists(userId: number | null | undefined) {
   const recommendedArtists = userId
     ? (await getUserDiscovery(userId, 50, 0))?.body?.recommendations || []
     : [];
@@ -101,13 +108,13 @@ async function getNewsArtists(userId) {
       artistName: String(artist.artistName || "").trim(),
       newsType: "library",
     })),
-    ...recommendedArtists.map((artist) => ({
+    ...recommendedArtists.map((artist: RecommendedArtist) => ({
       artistMbid: String(artist?.mbid || artist?.id || "").trim() || null,
       artistName: String(artist?.name || artist?.artistName || "").trim(),
       newsType: "recommended",
     })),
   ];
-  const byIdentity = new Map();
+  const byIdentity = new Map<string, (typeof artists)[number]>();
   for (const artist of artists) {
     const identity = artist.artistMbid || `name:${artist.artistName.toLowerCase()}`;
     if (artist.artistName && !byIdentity.has(identity)) byIdentity.set(identity, artist);
@@ -115,8 +122,10 @@ async function getNewsArtists(userId) {
   return [...byIdentity.values()];
 }
 
-const buildArtistIndex = (artists) => {
-  const names = new Map();
+type NewsArtist = Awaited<ReturnType<typeof getNewsArtists>>[number];
+
+const buildArtistIndex = (artists: NewsArtist[]) => {
+  const names = new Map<string, NewsArtist[]>();
   let maxWords = 0;
   for (const artist of artists) {
     const name = normalizeName(artist.artistName);
@@ -129,7 +138,10 @@ const buildArtistIndex = (artists) => {
 
 // Feeds that tag stories use categories to name the artists covered. For those
 // stories, a one-word name in the title is too ambiguous to count on its own.
-const findArticleArtists = ({ title, categories }, { names, maxWords }) => {
+const findArticleArtists = (
+  { title, categories }: { title: string; categories: string[] },
+  { names, maxWords }: ReturnType<typeof buildArtistIndex>,
+) => {
   const matched = new Set(categories.map(normalizeName).filter((category) => names.has(category)));
   const requireCategory = categories.length > 0;
   const words = normalizeName(title).split(" ");
@@ -145,16 +157,16 @@ const findArticleArtists = ({ title, categories }, { names, maxWords }) => {
     .filter(
       (name) => !matchedNames.some((other) => other !== name && ` ${other} `.includes(` ${name} `)),
     )
-    .flatMap((name) => names.get(name))
+    .flatMap((name) => names.get(name)!)
     .sort((left, right) => (left.newsType === "recommended") - (right.newsType === "recommended"));
 };
 
-async function getArticleMatches(userId) {
+async function getArticleMatches(userId: number | null | undefined) {
   const cacheKey = String(userId || "");
   const cached = articleMatchCache.get(cacheKey);
   if (cached) return cached;
   const artistIndex = buildArtistIndex(await getNewsArtists(userId));
-  const matches = new Map();
+  const matches = new Map<string | null, NewsArtist[]>();
   for (const row of selectArticleTerms.all()) {
     const artists = findArticleArtists(
       { title: row.title, categories: parseCategories(row.categories) },
@@ -166,7 +178,7 @@ async function getArticleMatches(userId) {
   return matches;
 }
 
-const toArticle = (row, artists) => ({
+const toArticle = (row: NewsArticlesRow, artists: NewsArtist[]) => ({
   id: row.id,
   title: row.title,
   description: row.description || "",
@@ -178,7 +190,17 @@ const toArticle = (row, artists) => ({
   artists,
 });
 
-export async function getNewsForUser({ userId, mode = "matched", limit = 60, offset = 0 } = {}) {
+export async function getNewsForUser({
+  userId,
+  mode = "matched",
+  limit = 60,
+  offset = 0,
+}: {
+  userId?: number | null;
+  mode?: "matched" | "top";
+  limit?: unknown;
+  offset?: unknown;
+} = {}) {
   const safeLimit = Math.max(1, Math.min(100, Math.floor(Number(limit) || 60)));
   const safeOffset = Math.max(0, Math.floor(Number(offset) || 0));
   const feedUrls = getEnabledFeeds(getNewsSettings()).map((feed) => feed.url);
@@ -205,10 +227,14 @@ export async function getNewsForUser({ userId, mode = "matched", limit = 60, off
 
 async function lookupMissingImages() {
   const articles = selectArticlesMissingImages.all(MAX_IMAGE_LOOKUPS);
-  const images = await mapWithConcurrency(articles, 3, async ({ id, url }) => ({
-    id,
-    imageUrl: await fetchArticleImage(url),
-  }));
+  const images = await mapWithConcurrency(
+    articles,
+    3,
+    async ({ id, url }: Pick<NewsArticlesRow, "id" | "url">) => ({
+      id,
+      imageUrl: await fetchArticleImage(url),
+    }),
+  );
   db.transaction(() => {
     for (const { id, imageUrl } of images) setArticleImage.run(imageUrl, id);
   })();
@@ -217,7 +243,7 @@ async function lookupMissingImages() {
 export async function refreshNewsFeeds() {
   const settings = getNewsSettings();
   const feeds = getEnabledFeeds(settings);
-  const results = await mapWithConcurrency(feeds, 3, async (feed) => {
+  const results = await mapWithConcurrency(feeds, 3, async (feed: NewsFeed) => {
     try {
       return { feed, articles: await fetchRssFeed(feed) };
     } catch {
@@ -253,7 +279,7 @@ export async function refreshNewsFeeds() {
   invalidateNewsResponseCache();
 }
 
-export const disableNewsFeed = (sourceUrl) => {
+export const disableNewsFeed = (sourceUrl: unknown) => {
   const news = getNewsSettings();
   const url = String(sourceUrl || "").trim();
   if (!news.feeds.some((feed) => feed.url === url && feed.enabled)) return news;

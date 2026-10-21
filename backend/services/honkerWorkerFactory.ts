@@ -10,14 +10,49 @@ import {
 import { getWorkerId, requeueInterruptedHonkerJob, adjustHonkerClaimAttempts } from "./honkerDb.ts";
 import { shouldStartQueueHere } from "./backgroundWorkerQueues.ts";
 import { logger } from "./logger.ts";
+import type { Job, JsonValue, Queue } from "@russellthehippo/honker-node";
 
-function payloadSummary(payload) {
+type PreparedJob = { release?: () => void };
+
+type RetryDecision = { action?: "fail" | "retry"; message?: string; delayS?: number };
+
+type TypedJob<Payload> = Job & { payload: Payload };
+
+type HonkerWorkerOptions<Payload> = {
+  name: string;
+  getQueue: () => Queue;
+  processJob: (
+    payload: Payload,
+    job: TypedJob<Payload>,
+    context: { signal: AbortSignal } & PreparedJob,
+  ) => unknown;
+  prepareJob?: (
+    payload: Payload,
+    job: TypedJob<Payload>,
+    context: { signal: AbortSignal },
+  ) => PreparedJob | null | Promise<PreparedJob | null>;
+  interruptible?: boolean | ((payload: Payload) => boolean);
+  idlePollS?: number;
+  retryDelayS?: number;
+  shouldRestart?: () => boolean;
+  onStart?: () => unknown;
+  filterJob?: (job: TypedJob<Payload>) => boolean;
+  resolveRetry?: (error: unknown, job: TypedJob<Payload>) => RetryDecision | null | undefined;
+  onJobDequeue?: (payload: Payload, job: TypedJob<Payload>) => void;
+  onJobSuccess?: (payload: Payload, job: TypedJob<Payload>) => void;
+  onJobError?: (error: unknown, job: TypedJob<Payload>) => void;
+  onFinalFailure?: (job: TypedJob<Payload>, error: unknown) => unknown;
+  onLoopError?: (error: unknown) => void;
+  shouldLogFailure?: (job: TypedJob<Payload>) => boolean;
+};
+
+function payloadSummary(payload: unknown) {
   if (payload == null) return null;
   const text = typeof payload === "string" ? payload : JSON.stringify(payload);
   return text.length > 200 ? `${text.slice(0, 200)}…` : text;
 }
 
-export default function createHonkerWorker({
+export default function createHonkerWorker<Payload = JsonValue>({
   name,
   getQueue,
   processJob,
@@ -35,17 +70,17 @@ export default function createHonkerWorker({
   onFinalFailure,
   onLoopError,
   shouldLogFailure = () => true,
-}) {
+}: HonkerWorkerOptions<Payload>) {
   let running = false;
   let stopRequested = false;
-  let idleController = null;
-  let loopPromise = null;
-  let jobController = null;
+  let idleController: ReturnType<typeof createIdleAbortController> | null = null;
+  let loopPromise: Promise<void> | null = null;
+  let jobController: AbortController | null = null;
   let activeInterruptible = false;
 
-  async function handleJobFailure(error, job, queue) {
+  async function handleJobFailure(error: unknown, job: TypedJob<Payload>, queue: Queue) {
     const message = error?.message || String(error);
-    const logFailure = (action) => {
+    const logFailure = (action: "fail" | "retry") => {
       if (!shouldLogFailure(job)) return;
       logger[action === "fail" ? "error" : "warn"](
         "jobs",
@@ -115,7 +150,7 @@ export default function createHonkerWorker({
       for await (const job of queue.claim(workerId, {
         idlePollS,
         signal: idleController.signal,
-      })) {
+      }) as AsyncIterableIterator<TypedJob<Payload>>) {
         idleController.disarm();
         if (!running || stopRequested) {
           const canInterrupt =
@@ -152,7 +187,7 @@ export default function createHonkerWorker({
         let waitingAttempt = false;
         if (stopRequested && activeInterruptible)
           jobController.abort(honkerJobInterruption("Background worker shutting down"));
-        let prepared;
+        let prepared: PreparedJob | null | undefined;
         let announced = false;
         try {
           await withJobHeartbeat(job, queue, async () => {
@@ -163,7 +198,7 @@ export default function createHonkerWorker({
             }
             prepared =
               typeof prepareJob === "function"
-                ? await prepareJob(job.payload, job, { signal: jobController.signal })
+                ? await prepareJob(job.payload, job, { signal: jobController!.signal })
                 : null;
             if (waitingAttempt) {
               if (!adjustHonkerClaimAttempts(job, queue, 1))
@@ -179,7 +214,7 @@ export default function createHonkerWorker({
               });
               announced = true;
             }
-            return processJob(job.payload, job, { signal: jobController.signal, ...prepared });
+            return processJob(job.payload, job, { signal: jobController!.signal, ...prepared });
           });
           job.ack();
           if (typeof onJobSuccess === "function") {

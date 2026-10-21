@@ -4,13 +4,13 @@ import { resolveDownloadRoot } from "./downloadPaths.ts";
 import { isLibraryScanExcludedDirectory } from "./libraryFileScanner.ts";
 import { lidarrClient } from "./lidarrClient.ts";
 import { scheduleLibraryScan } from "./libraryScanWorker.ts";
-import { getPathMappings } from "./pathMappings.ts";
+import { getPathMappings, type PathMapping } from "./pathMappings.ts";
 import { readOnlyFolderPaths } from "./libraryFolders.ts";
 import { createIsolatedLibraryWatcher } from "./libraryWatchProcess.ts";
 
 const DEFAULT_DEBOUNCE_MS = 2000;
 
-function isIgnoredChange(root, filename) {
+function isIgnoredChange(root: string, filename: string | null) {
   if (filename == null || filename === "") return false;
   const changedPath = path.isAbsolute(String(filename))
     ? path.resolve(String(filename))
@@ -20,20 +20,43 @@ function isIgnoredChange(root, filename) {
   return isLibraryScanExcludedDirectory(firstSegment);
 }
 
+type WatchRootEntry = string | { path: string; pathMappings: PathMapping[] } | null;
+
+type WatchChange = (eventType: string, filename: string | null, resolvedRoot: string) => void;
+
+type LibraryWatcher = {
+  close(): void;
+  on?(event: "ready", listener: (root: string) => void): unknown;
+  on?(event: "close", listener: () => void): unknown;
+  on?(event: "error", listener: (error: Error) => void): unknown;
+};
+
+type LibraryFileWatcherOptions = {
+  roots?: readonly WatchRootEntry[];
+  debounceMs?: number;
+  watchImpl?: (
+    root: string,
+    options: { recursive: boolean; pathMappings: PathMapping[] },
+    onChange: WatchChange,
+  ) => LibraryWatcher;
+  onChange?: (roots: string[], changedPaths: string[]) => void;
+  onError?: (error: Error, root: string) => void;
+};
+
 export function createLibraryFileWatcher({
   roots = [],
   debounceMs = DEFAULT_DEBOUNCE_MS,
   watchImpl = createIsolatedLibraryWatcher,
   onChange = (_roots, changedPaths) => scheduleLibraryScan({ changedPaths }),
   onError = () => {},
-} = {}) {
-  const watchers = new Set();
-  const activeRoots = new Map();
+}: LibraryFileWatcherOptions = {}) {
+  const watchers = new Set<LibraryWatcher>();
+  const activeRoots = new Map<string | null, LibraryWatcher>();
   let closed = false;
-  let timer = null;
-  const changedRoots = new Set();
-  const changedPaths = new Set();
-  const watchRoots = new Map();
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const changedRoots = new Set<string>();
+  const changedPaths = new Set<string>();
+  const watchRoots = new Map<string, { root: string; pathMappings: PathMapping[] }>();
   for (const entry of roots) {
     const root = String(entry?.path ?? entry ?? "");
     if (!root) continue;
@@ -42,7 +65,7 @@ export function createLibraryFileWatcher({
       watchRoots.set(key, { root, pathMappings: entry?.pathMappings || [] });
   }
 
-  const scheduleChange = (root, filename) => {
+  const scheduleChange = (root: string, filename: string | null) => {
     if (closed) return;
     changedRoots.add(root);
     changedPaths.add(
@@ -72,7 +95,7 @@ export function createLibraryFileWatcher({
       let stopped = false;
       let duplicate = false;
       let failureReported = false;
-      let resolvedKey = null;
+      let resolvedKey: string | null = null;
       const watcher = watchImpl(
         root,
         { recursive: true, pathMappings },
@@ -130,7 +153,7 @@ export function createLibraryFileWatcher({
 }
 
 export function resolveLibraryWatchRoots() {
-  const roots = [resolveDownloadRoot(), ...readOnlyFolderPaths()];
+  const roots: WatchRootEntry[] = [resolveDownloadRoot(), ...readOnlyFolderPaths()];
   if (lidarrClient.isConfigured()) {
     // Path mapping checks whether the original path exists; defer that I/O to
     // the watcher child along with recursive watcher creation.
@@ -145,7 +168,7 @@ export function resolveLibraryWatchRoots() {
 }
 
 let watcherStarted = false;
-let activeWatcher = null;
+let activeWatcher: LibraryWatcher | null = null;
 
 export async function refreshLibraryFileWatcher({ logger = console } = {}) {
   if (!watcherStarted) return false;

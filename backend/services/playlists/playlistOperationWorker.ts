@@ -32,7 +32,7 @@ function syncWorkerState() {
 const worker = createHonkerWorker({
   name: "weekly-flow-operation",
   getQueue: getPlaylistOperationQueue,
-  async processJob(payload, job) {
+  async processJob(payload: Record<string, unknown>, job) {
     if (payload.kind !== "shared-playlist-bulk") return processPlaylistOperation(payload);
     const record = getBulkOperation(job.id);
     if (!record || ["completed", "failed"].includes(record.state)) return;
