@@ -9,6 +9,7 @@ import {
   cleanupIsolatedState,
   resetDatabase,
   startServerProcess,
+  importFromRepo,
 } from "../helpers/backendTestHarness.js";
 
 const [isolatedState, { db }, { userOps, dbOps }] = await setupIsolatedBackend(
@@ -714,4 +715,55 @@ test("POST /library/artists returns 409 when saved defaults are stale", async ()
   assert.equal(payload.field, "rootFolderPath");
   assert.match(payload.message, /saved Lidarr root folder/i);
   assert.equal(fakeLidarr.state.postedArtists.length, 0);
+});
+
+test("POST /library/artists/:mbid/refresh searches only monitored Lidarr artists that follow albums", async () => {
+  const { upsertLibraryArtist } = await importFromRepo("backend/services/libraryMediaStore.js");
+  const followedMbid = "12121212-1212-1212-1212-121212121212";
+  const albumOnlyMbid = "13131313-1313-1313-1313-131313131313";
+  const aurralOnlyMbid = "14141414-1414-1414-1414-141414141414";
+  await postLibraryArtist({
+    foreignArtistId: followedMbid,
+    artistName: "Followed Artist",
+    monitorOption: "all",
+  });
+  await postLibraryArtist({
+    foreignArtistId: albumOnlyMbid,
+    artistName: "Album Only Artist",
+    monitorOption: "none",
+  });
+  for (const artist of fakeLidarr.state.artists) delete artist.monitor;
+  const aurralOnly = upsertLibraryArtist({
+    identityKey: `mbid:${aurralOnlyMbid}`,
+    mbid: aurralOnlyMbid,
+    name: "Aurral Only Artist",
+  });
+  fakeLidarr.state.artists.push(
+    lidarrArtist(
+      Number(aurralOnly.id),
+      "Unrelated Artist",
+      "15151515-1515-1515-1515-151515151515",
+      {
+        monitored: true,
+        monitor: undefined,
+        addOptions: { monitor: "all" },
+      },
+    ),
+  );
+  const followedId = fakeLidarr.state.artists.find(
+    (artist) => artist.foreignArtistId === followedMbid,
+  ).id;
+  fakeLidarr.state.commands = [];
+
+  for (const mbid of [followedMbid, albumOnlyMbid, aurralOnlyMbid]) {
+    const { response, payload } = await apiFetch(`/api/library/artists/${mbid}/refresh`, {
+      method: "POST",
+    });
+    assert.equal(response.status, 200, JSON.stringify(payload));
+  }
+
+  assert.deepEqual(
+    fakeLidarr.state.commands.map((command) => [command.name, command.artistIds]),
+    [["ArtistSearch", [followedId]]],
+  );
 });
