@@ -1,7 +1,7 @@
 import fs from "fs/promises";
 import path from "path";
 import { db } from "../../config/db-sqlite.ts";
-import { downloadTracker } from "./downloadTracker.ts";
+import { downloadTracker, type DownloadJob, type DownloadTrackInput } from "./downloadTracker.ts";
 import { flowPlaylistConfig, tracksShareMembership } from "../playlists/flowPlaylistConfig.ts";
 import {
   buildLibraryReadModel,
@@ -32,6 +32,43 @@ import {
 } from "../playback/playbackFileRetention.ts";
 export { EXISTING_FILE_MODES, normalizeExistingFileMode } from "./fileReuseMode.ts";
 
+type DeletionGuard = ReturnType<typeof createPlaybackDeletionGuard>;
+type FolderSource = keyof typeof FOLDER_SOURCES;
+type SourceOptions = {
+  targetPlaylistType?: string | null;
+  downloadRoot?: string | null;
+  excludeJobIds?: string[] | null;
+  allowLidarr?: boolean;
+};
+type ReuseOptions = SourceOptions & { existingFileMode?: string | null };
+type ReuseTrackOptions = ReuseOptions & {
+  existingJobId?: string | null;
+  skipHistory?: boolean;
+  libraryScanChangedPaths?: string[] | null;
+};
+type RestoreOptions = ReuseOptions & {
+  requeueOnMissing?: boolean;
+  resolveSource?: typeof resolveRepairTrackSource;
+};
+type ReuseSource = {
+  sourceType: string;
+  sourcePath: string;
+  sourceJob?: DownloadJob | null;
+  externalPath?: string;
+  albumName: string | null;
+};
+type LibraryReadModel = ReturnType<typeof buildLibraryReadModel>;
+type ReadArtist = LibraryReadModel["artists"][number];
+type ReadAlbum = LibraryReadModel["albums"][number];
+type ReadTrack = LibraryReadModel["tracks"][number];
+export type RemovedFolderRequeue = {
+  downloadRoot?: string;
+  removedFolders?: string[];
+  keptFolders?: string[];
+  externalFiles?: boolean;
+  reason?: string;
+};
+
 const VALID_AUDIO_EXTENSIONS = new Set([
   ".mp3",
   ".flac",
@@ -43,9 +80,9 @@ const VALID_AUDIO_EXTENSIONS = new Set([
   ".ape",
 ]);
 
-export function sortJobsForTrackReuse(jobs) {
+export function sortJobsForTrackReuse<T extends DownloadJob>(jobs: T[]): T[] {
   return [...jobs].sort((a, b) => {
-    const priority = (job) => {
+    const priority = (job: DownloadJob) => {
       if (job?.status === "done") return 0;
       if (job?.status === "failed") return 1;
       if (job?.status === "downloading") return 2;
@@ -58,7 +95,7 @@ export function sortJobsForTrackReuse(jobs) {
   });
 }
 
-function normalizeText(value) {
+function normalizeText(value: unknown) {
   return String(value || "")
     .toLowerCase()
     .replace(/&/g, " and ")
@@ -68,7 +105,7 @@ function normalizeText(value) {
     .trim();
 }
 
-async function statFilesystemLocation(targetPath) {
+async function statFilesystemLocation(targetPath: string | null | undefined) {
   const resolved = path.resolve(String(targetPath || ""));
   if (!resolved) {
     throw new Error("empty path");
@@ -92,7 +129,10 @@ async function statFilesystemLocation(targetPath) {
   }
 }
 
-export async function pathsShareDevice(leftPath, rightPath) {
+export async function pathsShareDevice(
+  leftPath: string | null | undefined,
+  rightPath: string | null | undefined,
+) {
   try {
     const [leftStat, rightStat] = await Promise.all([
       statFilesystemLocation(leftPath),
@@ -104,7 +144,7 @@ export async function pathsShareDevice(leftPath, rightPath) {
   }
 }
 
-async function fileExists(filePath) {
+async function fileExists(filePath: string) {
   try {
     const stat = await fs.stat(filePath);
     return stat.isFile();
@@ -113,7 +153,7 @@ async function fileExists(filePath) {
   }
 }
 
-function sortReusableJobs(jobs) {
+function sortReusableJobs<T extends DownloadJob>(jobs: T[]): T[] {
   return [...jobs].sort((left, right) => {
     const leftCreated = Number(left?.createdAt || 0);
     const rightCreated = Number(right?.createdAt || 0);
@@ -128,7 +168,7 @@ function sortReusableJobs(jobs) {
  * @param {string} playlistType - Target playlist identifier.
  * @returns {boolean} True if the playlist type is a configured flow.
  */
-function isFlowPlaylistType(playlistType) {
+function isFlowPlaylistType(playlistType: string) {
   return Boolean(flowPlaylistConfig.getFlow(String(playlistType || "").trim()));
 }
 
@@ -138,7 +178,7 @@ function isFlowPlaylistType(playlistType) {
  * @param {string} playlistType - Target playlist identifier.
  * @returns {boolean} True for the library and static playlists.
  */
-function usesLibraryFolders(playlistType) {
+function usesLibraryFolders(playlistType: string) {
   const key = String(playlistType || "").trim();
   return key === "library" || Boolean(flowPlaylistConfig.getStaticPlaylist(key));
 }
@@ -150,7 +190,7 @@ function usesLibraryFolders(playlistType) {
  * @param {string} [fallback="Unknown"] - Safe fallback if value is empty or resolves to traversal.
  * @returns {string} Sanitized directory or file name.
  */
-function sanitizeSafeSegment(value, fallback = "Unknown") {
+function sanitizeSafeSegment(value: string | null | undefined, fallback = "Unknown") {
   const text = sanitizePathPart(value, fallback);
   if (!text || text === "." || text === ".." || text.startsWith(".")) {
     return fallback;
@@ -161,15 +201,20 @@ function sanitizeSafeSegment(value, fallback = "Unknown") {
 // Downloads are named "Title" or, with a known album position, "07 - Title",
 // or "2-07 - Title" past the first disc. An album can repeat a title, so a
 // known position must match too.
-function isTrackFileBaseName(baseName, title, trackNumber, discNumber) {
+function isTrackFileBaseName(
+  baseName: string,
+  title: string,
+  trackNumber: number | null,
+  discNumber: number | null,
+) {
   if (baseName === title) return true;
   const position =
     baseName.endsWith(` - ${title}`) &&
     /^(?:(\d+)-)?(\d{2,3}) - $/.exec(baseName.slice(0, -title.length));
   return (
     Boolean(position) &&
-    (!trackNumber || Number(position[2]) === trackNumber) &&
-    Number(position[1] || 1) === (discNumber || 1)
+    (!trackNumber || Number((position as RegExpExecArray)[2]) === trackNumber) &&
+    Number((position as RegExpExecArray)[1] || 1) === (discNumber || 1)
   );
 }
 
@@ -180,7 +225,10 @@ function isTrackFileBaseName(baseName, title, trackNumber, discNumber) {
  * @param {object} [options={}] - Options containing targetPlaylistType and downloadRoot.
  * @returns {Promise<{sourceType: string, sourcePath: string, sourceJob: null, albumName: string|null}|null>} Resolved source or null.
  */
-async function findLocalExistingSource(track, options = {}) {
+async function findLocalExistingSource(
+  track: DownloadTrackInput,
+  options: SourceOptions = {},
+): Promise<ReuseSource | null> {
   const targetPlaylistType = sanitizeSafeSegment(options.targetPlaylistType, "");
   if (!targetPlaylistType) return null;
 
@@ -253,7 +301,7 @@ async function findLocalExistingSource(track, options = {}) {
   return null;
 }
 
-function tracksShareLibraryMembership(left, right) {
+function tracksShareLibraryMembership(left: DownloadTrackInput, right: DownloadTrackInput) {
   const leftTrackMbid = String(left?.trackMbid || "").trim();
   const rightTrackMbid = String(right?.trackMbid || "").trim();
   if (leftTrackMbid && rightTrackMbid && leftTrackMbid !== rightTrackMbid) return false;
@@ -269,7 +317,10 @@ function tracksShareLibraryMembership(left, right) {
   return tracksShareMembership(left, right);
 }
 
-async function findAurralSource(track, options = {}) {
+async function findAurralSource(
+  track: DownloadTrackInput,
+  options: SourceOptions = {},
+): Promise<ReuseSource | null> {
   const downloadRoot = path.resolve(options.downloadRoot || resolveDownloadRoot());
   const targetPlaylistType = String(options.targetPlaylistType || "").trim();
   const excludeJobIds = new Set(
@@ -307,7 +358,7 @@ async function findAurralSource(track, options = {}) {
   };
 }
 
-export function jobDownloadedItsFile(job) {
+export function jobDownloadedItsFile(job: DownloadJob | null | undefined) {
   return (
     job?.status === "done" &&
     Boolean(job.finalPath) &&
@@ -317,7 +368,7 @@ export function jobDownloadedItsFile(job) {
   );
 }
 
-function noPlaylistDownloadedFile(filePath, jobId, downloadRoot) {
+function noPlaylistDownloadedFile(filePath: string, jobId: string, downloadRoot: string) {
   const resolved = path.resolve(filePath);
   return !downloadTracker
     .getAll()
@@ -330,7 +381,12 @@ function noPlaylistDownloadedFile(filePath, jobId, downloadRoot) {
     );
 }
 
-function retargetJobsToPath(oldPath, newPath, downloadRoot, albumName = null) {
+function retargetJobsToPath(
+  oldPath: string,
+  newPath: string,
+  downloadRoot: string,
+  albumName: string | null = null,
+) {
   const resolvedOld = path.resolve(oldPath);
   const resolvedNew = path.resolve(newPath);
   if (resolvedOld === resolvedNew) return;
@@ -348,10 +404,10 @@ function retargetJobsToPath(oldPath, newPath, downloadRoot, albumName = null) {
 }
 
 export async function adoptFileIntoPlaylist(
-  sourcePath,
-  targetPlaylistType,
-  downloadRoot,
-  options = {},
+  sourcePath: string,
+  targetPlaylistType: string,
+  downloadRoot: string,
+  options: { track?: DownloadTrackInput; protectPlayback?: boolean } = {},
 ) {
   const safeTarget = String(targetPlaylistType || "").trim();
   const root = path.resolve(downloadRoot || resolveDownloadRoot());
@@ -409,7 +465,14 @@ export async function adoptFileIntoPlaylist(
   return path.resolve(committed);
 }
 
-export async function relocateSharedFilesBeforePlaylistRemoval(playlistType, options = {}) {
+export async function relocateSharedFilesBeforePlaylistRemoval(
+  playlistType: string,
+  options: {
+    downloadRoot?: string | null;
+    deletionGuard?: DeletionGuard;
+    protectPlayback?: boolean;
+  } = {},
+) {
   const downloadRoot = path.resolve(options.downloadRoot || resolveDownloadRoot());
   const safePlaylistType = String(playlistType || "").trim();
   if (!safePlaylistType) return { relocated: 0 };
@@ -449,7 +512,18 @@ export async function relocateSharedFilesBeforePlaylistRemoval(playlistType, opt
   return { relocated };
 }
 
-export async function removePlaylistFileIfUnshared(finalPath, playlistId, options = {}) {
+export async function removePlaylistFileIfUnshared(
+  finalPath: string | null | undefined,
+  playlistId: string,
+  options: {
+    downloadRoot?: string | null;
+    excludeJobIds?: string[] | null;
+    deleteIfUnshared?: boolean;
+    shouldDelete?: () => boolean | Promise<boolean>;
+    deletionGuard?: DeletionGuard;
+    protectPlayback?: boolean;
+  } = {},
+) {
   const downloadRoot = path.resolve(options.downloadRoot || resolveDownloadRoot());
   const safePlaylistId = String(playlistId || "").trim();
   if (!safePlaylistId || typeof finalPath !== "string") return { action: "skipped" };
@@ -508,7 +582,7 @@ export async function removePlaylistFileIfUnshared(finalPath, playlistId, option
   return { action: "deleted" };
 }
 
-function findMatchingArtist(artists, track) {
+function findMatchingArtist(artists: ReadArtist[], track: DownloadTrackInput) {
   const artistMbid = String(track?.artistMbid || "").trim();
   if (artistMbid) {
     const match = artists.find(
@@ -526,11 +600,11 @@ function findMatchingArtist(artists, track) {
   );
 }
 
-function rankAlbums(albums, track) {
+function rankAlbums(albums: ReadAlbum[], track: DownloadTrackInput) {
   const albumMbid = String(track?.albumMbid || "").trim();
   const albumKey = normalizeText(track?.albumName);
   return [...albums].sort((left, right) => {
-    const score = (album) => {
+    const score = (album: ReadAlbum) => {
       let total = 0;
       if (
         albumMbid &&
@@ -549,7 +623,7 @@ function rankAlbums(albums, track) {
   });
 }
 
-function findMatchingTrack(tracks, track, strictAlbum = false) {
+function findMatchingTrack(tracks: ReadTrack[], track: DownloadTrackInput, strictAlbum = false) {
   const trackMbid = String(track?.trackMbid || "").trim();
   if (trackMbid) {
     const match = tracks.find(
@@ -571,14 +645,18 @@ function findMatchingTrack(tracks, track, strictAlbum = false) {
 const FOLDER_SOURCES = {
   lidarr: {
     label: "Lidarr",
-    mapPath: (filePath) => resolveLocalPath(filePath, getPathMappings("lidarr")),
+    mapPath: (filePath: string) => resolveLocalPath(filePath, getPathMappings("lidarr")),
   },
-  readonly: { label: "Read-only folder", mapPath: (filePath) => filePath },
+  readonly: { label: "Read-only folder", mapPath: (filePath: string) => filePath },
 };
 
 // Lidarr's files and read-only folders stay where they are, so a playlist
 // uses the file in place.
-async function findLibraryFolderSource(track, options = {}, source = "lidarr") {
+async function findLibraryFolderSource(
+  track: DownloadTrackInput,
+  options: SourceOptions = {},
+  source: FolderSource = "lidarr",
+): Promise<ReuseSource | null> {
   const { label, mapPath } = FOLDER_SOURCES[source];
   const strictAlbum = options.targetPlaylistType === "library";
   const { artists, albums, tracks } = buildLibraryReadModel(
@@ -655,7 +733,10 @@ async function findLibraryFolderSource(track, options = {}, source = "lidarr") {
   return null;
 }
 
-async function findFolderSource(track, options) {
+async function findFolderSource(
+  track: DownloadTrackInput,
+  options: SourceOptions,
+): Promise<ReuseSource | null> {
   if (options.allowLidarr === false) return null;
   const { lidarrClient } = await import("../lidarrClient.ts");
   return (
@@ -672,7 +753,10 @@ async function findFolderSource(track, options) {
  * @param {object} [options={}] - Reuse options including targetPlaylistType and existingFileMode.
  * @returns {Promise<{source: object|null, reason: string|null}>}
  */
-export async function resolveReusableTrackSource(track, options = {}) {
+export async function resolveReusableTrackSource(
+  track: DownloadTrackInput,
+  options: ReuseOptions = {},
+) {
   const mode = normalizeExistingFileMode(options.existingFileMode);
   if (mode === "download") {
     return { source: null, reason: "Existing file reuse is disabled" };
@@ -695,7 +779,10 @@ export async function resolveReusableTrackSource(track, options = {}) {
  * @param {object} [options={}] - Repair options including targetPlaylistType and existingFileMode.
  * @returns {Promise<{source: object|null, reason: string|null}>}
  */
-export async function resolveRepairTrackSource(track, options = {}) {
+export async function resolveRepairTrackSource(
+  track: DownloadTrackInput,
+  options: ReuseOptions = {},
+) {
   const mode = normalizeExistingFileMode(options.existingFileMode);
   if (mode === "download") {
     return { source: null, reason: "Existing file reuse is disabled" };
@@ -711,7 +798,7 @@ export async function resolveRepairTrackSource(track, options = {}) {
   return { source: null, reason: "No reusable Aurral, Lidarr, or read-only folder file found" };
 }
 
-export async function restoreCompletedTrack(job, options = {}) {
+export async function restoreCompletedTrack(job: DownloadJob, options: RestoreOptions = {}) {
   const mode = normalizeExistingFileMode(options.existingFileMode);
   if (mode === "download") {
     return { action: "skipped", reason: "Existing file reuse is disabled" };
@@ -779,7 +866,7 @@ export async function restoreCompletedTrack(job, options = {}) {
   };
 }
 
-const isWithinFolder = (folder, filePath) =>
+const isWithinFolder = (folder: string, filePath: string) =>
   filePath === path.resolve(folder) || isPathInsideRoot(filePath, path.resolve(folder));
 
 // A download that reused a file outside the Downloads Folder needs Aurral's
@@ -790,7 +877,7 @@ export function requeueJobsUsingRemovedFolders({
   keptFolders = [],
   externalFiles = false,
   reason,
-} = {}) {
+}: RemovedFolderRequeue = {}) {
   const root = path.resolve(downloadRoot);
   let requeued = 0;
   for (const job of downloadTracker.getAll()) {
@@ -807,7 +894,10 @@ export function requeueJobsUsingRemovedFolders({
   return requeued;
 }
 
-export async function repairJobsUnderRemovedPlaylistDir(playlistType, options = {}) {
+export async function repairJobsUnderRemovedPlaylistDir(
+  playlistType: string,
+  options: ReuseOptions = {},
+) {
   const downloadRoot = path.resolve(options.downloadRoot || resolveDownloadRoot());
   const safePlaylistType = String(playlistType || "").trim();
   if (!safePlaylistType) {
@@ -821,7 +911,7 @@ export async function repairJobsUnderRemovedPlaylistDir(playlistType, options = 
   let repaired = 0;
   let requeued = 0;
   let skipped = 0;
-  const changedPlaylistTypes = new Set();
+  const changedPlaylistTypes = new Set<string>();
 
   for (const job of downloadTracker.getAll()) {
     if (job?.status !== "done" || typeof job?.finalPath !== "string") continue;
@@ -862,7 +952,7 @@ export async function repairJobsUnderRemovedPlaylistDir(playlistType, options = 
   };
 }
 
-function parsePlaylistIdFromFinalPath(finalPath, downloadRoot) {
+function parsePlaylistIdFromFinalPath(finalPath: string, downloadRoot: string) {
   const resolved = path.resolve(remapLegacyPath(finalPath, downloadRoot));
   for (const directory of [PLAYLIST_FILES_DIR, AURRAL_FLOWS_DIR]) {
     const marker = `${path.sep}${directory}${path.sep}`;
@@ -875,15 +965,17 @@ function parsePlaylistIdFromFinalPath(finalPath, downloadRoot) {
   return null;
 }
 
-export async function repairOrphanedPlaylistTrackPaths(options = {}) {
+export async function repairOrphanedPlaylistTrackPaths(options: ReuseOptions = {}) {
   const downloadRoot = path.resolve(options.downloadRoot || resolveDownloadRoot());
   const { flowPlaylistConfig } = await import("../playlists/flowPlaylistConfig.ts");
   const activeIds = new Set([
-    ...flowPlaylistConfig.getFlows().map((flow) => String(flow.id)),
-    ...flowPlaylistConfig.getStaticPlaylists().map((playlist) => String(playlist.id)),
+    ...flowPlaylistConfig.getFlows().map((flow: { id: string }) => String(flow.id)),
+    ...flowPlaylistConfig
+      .getStaticPlaylists()
+      .map((playlist: { id: string }) => String(playlist.id)),
   ]);
 
-  const removedIds = new Set();
+  const removedIds = new Set<string>();
   for (const job of downloadTracker.getAll()) {
     if (job?.status !== "done" || typeof job?.finalPath !== "string") continue;
     const finalPath = path.resolve(remapLegacyPath(job.finalPath, downloadRoot));
@@ -911,7 +1003,9 @@ export async function repairOrphanedPlaylistTrackPaths(options = {}) {
 
 const REUSE_REPAIR_BATCH_SIZE = 50;
 
-export async function repairReusableTrackLinks(options = {}) {
+export async function repairReusableTrackLinks(
+  options: ReuseOptions & { batchSize?: number; cursor?: number } = {},
+) {
   const mode = normalizeExistingFileMode(options.existingFileMode);
   if (mode === "download") {
     return {
@@ -944,7 +1038,7 @@ export async function repairReusableTrackLinks(options = {}) {
   let requeued = 0;
   let skipped = 0;
   let failures = 0;
-  const changedPlaylistTypes = new Set();
+  const changedPlaylistTypes = new Set<string>();
   for (const job of batch) {
     try {
       const result = await restoreCompletedTrack(job, {
@@ -1005,7 +1099,7 @@ export async function repairReusableTrackLinks(options = {}) {
 }
 
 const handedOverAurralPathsStmt = db
-  .prepare(`
+  .prepare<[], string>(`
   SELECT media.path
   FROM library_media_files AS media
   JOIN library_albums AS album ON album.id = media.album_id
@@ -1019,7 +1113,13 @@ const handedOverAurralPathsStmt = db
 `)
   .pluck();
 
-export async function moveHandedOverTracksToLidarr(options = {}) {
+export async function moveHandedOverTracksToLidarr(
+  options: {
+    existingFileMode?: string | null;
+    downloadRoot?: string | null;
+    deletionGuard?: DeletionGuard;
+  } = {},
+) {
   if (normalizeExistingFileMode(options.existingFileMode) === "download")
     return { moved: 0, deleted: 0 };
   const downloadRoot = path.resolve(options.downloadRoot || resolveDownloadRoot());
@@ -1036,7 +1136,7 @@ export async function moveHandedOverTracksToLidarr(options = {}) {
   }
 
   const movedPaths = [];
-  const changedPlaylistTypes = new Set();
+  const changedPlaylistTypes = new Set<string>();
   let moved = 0;
   for (const [oldPath, jobs] of jobsByPath) {
     const source = await findLibraryFolderSource(jobs[0], { targetPlaylistType: "library" });
@@ -1074,9 +1174,9 @@ export async function moveHandedOverTracksToLidarr(options = {}) {
 }
 
 async function refreshPlaylistAfterReuse(
-  playlistType,
+  playlistType: string,
   shouldScheduleLibraryScan = false,
-  changedPaths = null,
+  changedPaths: string[] | null = null,
 ) {
   const { playlistManager } = await import("../playlists/playlistManager.ts");
   playlistManager.requestPlaylistSync([playlistType]);
@@ -1088,7 +1188,11 @@ async function refreshPlaylistAfterReuse(
   }
 }
 
-export async function reuseTrackForPlaylist(track, playlistType, options = {}) {
+export async function reuseTrackForPlaylist(
+  track: DownloadTrackInput,
+  playlistType: string,
+  options: ReuseTrackOptions = {},
+) {
   const mode = normalizeExistingFileMode(options.existingFileMode);
   if (mode === "download") {
     return { reused: false, reason: "Existing file reuse is disabled" };
@@ -1130,7 +1234,7 @@ export async function reuseTrackForPlaylist(track, playlistType, options = {}) {
 
   const finalPath =
     targetPlaylistType === "library" && source.sourceType === "aurral"
-      ? await adoptFileIntoPlaylist(source.sourcePath, "library", downloadRoot, { track })
+      ? (await adoptFileIntoPlaylist(source.sourcePath, "library", downloadRoot, { track }))!
       : path.resolve(source.sourcePath);
   if (!(await fileExists(finalPath))) {
     return { reused: false, reason: "Source file is missing" };

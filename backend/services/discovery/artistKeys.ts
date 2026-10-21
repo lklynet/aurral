@@ -10,7 +10,7 @@ export interface ArtistMatchFields {
   artistMbid?: string | null;
   name?: string | null;
   artistName?: string | null;
-  artistAliases?: string[];
+  artistAliases?: string[] | null;
 }
 
 const normalizeArtistKey = (value: unknown) =>

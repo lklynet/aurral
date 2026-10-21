@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { dbOps } from "../../db/helpers/index.ts";
 import { localFileKey } from "./playlistUsage.ts";
+import type { PlaybackDestinationRegistry } from "./playbackDestinationRegistry.ts";
 import { isPathInsideRoot, resolveDownloadRoot } from "../downloadPaths.ts";
 
 const SETTINGS_KEY = "playbackRetainedFiles";
@@ -42,6 +43,10 @@ export function createPlaybackDeletionGuard({
   excludeEntityIds = [],
   registry = null,
   playlistRoot = resolveDownloadRoot(),
+}: {
+  excludeEntityIds?: string[];
+  registry?: PlaybackDestinationRegistry | null;
+  playlistRoot?: string;
 } = {}) {
   const retentionRoot = path.resolve(playlistRoot);
   let snapshot;
