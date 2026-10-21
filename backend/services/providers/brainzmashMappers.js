@@ -37,17 +37,19 @@ export function toNormalizedArtistLink(link) {
   };
 }
 
-const LINKED_ARTIST_PROVIDERS = {
-  "deezer.com": "deezer",
-  "discogs.com": "discogs",
-};
+const LINKED_ARTIST_PROVIDERS = new Map([
+  ["deezer.com", "deezer"],
+  ["discogs.com", "discogs"],
+]);
 
 export function getLinkedArtistProviderIds(links = []) {
   const providerIds = [];
   for (const link of normalizeArray(links)) {
     try {
       const url = new URL(normalizeString(link?.target || link?.url?.resource));
-      const provider = LINKED_ARTIST_PROVIDERS[url.hostname.toLowerCase().replace(/^www\./, "")];
+      const provider = LINKED_ARTIST_PROVIDERS.get(
+        url.hostname.toLowerCase().replace(/^www\./, ""),
+      );
       const segments = url.pathname.split("/").filter(Boolean);
       const artistIndex = segments.findIndex((segment) => segment.toLowerCase() === "artist");
       const id = String(segments[artistIndex + 1] || "").match(/^\d+/)?.[0];

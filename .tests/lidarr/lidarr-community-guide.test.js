@@ -9,6 +9,11 @@ function createClient({ failCustomFormats = false } = {}) {
     name: "Existing Unrelated",
     specifications: [],
   };
+  const formatNamedLikeObjectProperty = {
+    id: 98,
+    name: "constructor",
+    specifications: [],
+  };
   const createdFormats = [];
   const state = {
     customFormatPayloads: [],
@@ -23,7 +28,11 @@ function createClient({ failCustomFormats = false } = {}) {
       { id: 2, title: "FLAC", quality: { id: 2, name: "FLAC" } },
     ],
     updateQualityDefinition: async (_id, payload) => payload,
-    getCustomFormats: async () => [unrelatedFormat, ...createdFormats],
+    getCustomFormats: async () => [
+      unrelatedFormat,
+      formatNamedLikeObjectProperty,
+      ...createdFormats,
+    ],
     createCustomFormat: async (payload) => {
       state.customFormatPayloads.push(payload);
       if (failCustomFormats) {
@@ -83,9 +92,12 @@ test("applies the guide with Lidarr custom-format and profile contracts", async 
     ),
   );
   assert.deepEqual(
-    client.state.qualityProfilePayload.formatItems.map(({ name, score }) => ({ name, score })),
+    JSON.parse(JSON.stringify(client.state.qualityProfilePayload.formatItems)).map(
+      ({ name, score }) => ({ name, score }),
+    ),
     [
       { name: "Existing Unrelated", score: 0 },
+      { name: "constructor", score: 0 },
       { name: "Preferred Groups", score: 10 },
       { name: "CD", score: 2 },
       { name: "WEB", score: 1 },

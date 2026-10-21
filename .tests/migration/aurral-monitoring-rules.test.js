@@ -60,6 +60,7 @@ test("upgrading turns Aurral monitor modes into monitoring rules and leaves Lida
     const first = addArtist("artist:first", "aurral", "first");
     const none = addArtist("artist:none", "aurral", "none");
     const lidarr = addArtist("artist:lidarr", "lidarr", "future");
+    const unknown = addArtist("artist:unknown", "aurral", "constructor");
     db.prepare("DELETE FROM settings WHERE key = 'migration:aurral-monitoring-rules-v1'").run();
 
     const migratedFrom = Date.now();
@@ -130,6 +131,14 @@ test("upgrading turns Aurral monitor modes into monitoring rules and leaves Lida
       catalog: null,
       newReleases: null,
       since: null,
+    });
+    assert.deepEqual(read(unknown), {
+      mode: "constructor",
+      monitored: true,
+      default: true,
+      catalog: null,
+      newReleases: null,
+      since: [changedAt, changedAt],
     });
     assert.deepEqual(read(lidarr), {
       mode: "future",

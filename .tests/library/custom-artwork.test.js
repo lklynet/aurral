@@ -73,3 +73,21 @@ test("a removal requested during a save cannot delete the replacement file after
   assert.equal(getCustomArtwork("track", "99"), null);
   assert.equal(getCustomArtworkMap("track", ["99"]).has("99"), false);
 });
+
+test("artwork whose content type names an object property is rejected as unsupported", async () => {
+  await assert.rejects(
+    saveCustomArtworkUpload("track", "43", sourceImage, "constructor"),
+    /Unsupported image content type/,
+  );
+
+  vi.spyOn(globalThis, "fetch").mockImplementation(
+    async () => new Response(sourceImage, { headers: { "Content-Type": "constructor" } }),
+  );
+  await assert.rejects(
+    saveCustomArtworkUrl("album", "8", "https://artwork.example/constructor.png"),
+    /Upstream response is not a supported image/,
+  );
+
+  assert.equal(getCustomArtwork("track", "43"), null);
+  assert.equal(getCustomArtwork("album", "8"), null);
+});

@@ -203,3 +203,32 @@ test("rerankRecommendations softens less-like feedback, hard-blocks exact artist
   });
   assert.equal(deeper[0].name, "Deeper Pick");
 });
+
+test("unknown discovery modes and seed sources that name object properties use the defaults", () => {
+  const recommendations = [
+    {
+      id: "77777777-7777-7777-7777-777777777777",
+      name: "Any Pick",
+      matchedTags: ["shoegaze"],
+      supportingSeeds: [{ artistName: "Slowdive", weight: 2 }],
+      scoreSimilarity: 90,
+      scoreTagAffinity: 20,
+      scoreSeedCoverage: 10,
+      scoreNovelty: 12,
+      scorePopularityPenalty: 6,
+      scoreTotal: 126,
+      seedCount: 1,
+      sourceType: "lastfm",
+    },
+  ];
+  assert.deepEqual(
+    rerankRecommendations(recommendations, 10, { discoveryMode: "constructor" }),
+    rerankRecommendations(recommendations, 10, { discoveryMode: "balanced" }),
+  );
+
+  const seedWeight = (source) =>
+    buildDiscoverySeedList({
+      historyArtists: [{ artistName: "History Artist", source, playcount: 12 }],
+    })[0].weight;
+  assert.equal(seedWeight("constructor"), seedWeight("unknown-source"));
+});

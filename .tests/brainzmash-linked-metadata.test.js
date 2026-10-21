@@ -20,6 +20,7 @@ const linkedArtist = {
     { type: "deezer", target: "https://www.deezer.com/en/artist/412" },
     { type: "discogs", target: "https://www.discogs.com/artist/81013-Queen" },
     { type: "wikidata", target: "https://www.wikidata.org/wiki/Q15862" },
+    { type: "other", target: "https://constructor/artist/1" },
   ],
   Albums: [],
 };

@@ -48,15 +48,15 @@ const MIME_EXTENSION_MAP = {
   "image/avif": "avif",
   "image/svg+xml": "svg",
 };
-const IMAGE_FORMATS_BY_CONTENT_TYPE = {
-  "image/jpeg": new Set(["jpeg"]),
-  "image/png": new Set(["png"]),
-  "image/apng": new Set(["png"]),
-  "image/webp": new Set(["webp"]),
-  "image/gif": new Set(["gif"]),
-  "image/avif": new Set(["heif"]),
-  "image/svg+xml": new Set(["svg"]),
-};
+const IMAGE_FORMATS_BY_CONTENT_TYPE = new Map([
+  ["image/jpeg", new Set(["jpeg"])],
+  ["image/png", new Set(["png"])],
+  ["image/apng", new Set(["png"])],
+  ["image/webp", new Set(["webp"])],
+  ["image/gif", new Set(["gif"])],
+  ["image/avif", new Set(["heif"])],
+  ["image/svg+xml", new Set(["svg"])],
+]);
 const OPTIMIZABLE_CONTENT_TYPES = new Set([
   "image/jpeg",
   "image/png",
@@ -361,7 +361,9 @@ const writeCacheEntry = async (
   await ensureCacheDir();
   const profile = normalizeImageProfile(imageProfile);
   const normalizedSourceUrl = normalizeKnownImageUrl(sourceUrl) || sourceUrl;
-  const extension = MIME_EXTENSION_MAP[contentType] || "img";
+  const extension = Object.hasOwn(MIME_EXTENSION_MAP, contentType)
+    ? MIME_EXTENSION_MAP[contentType]
+    : "img";
   const { metaPath, baseImagePath } = getCachePaths(cacheKey);
   const imagePath = `${baseImagePath}.${extension}`;
   const fetchedAt = Date.now();
@@ -397,7 +399,7 @@ const shouldNormalizeCachedEntry = (entry) => {
 };
 
 export const inspectImageBuffer = async (buffer, contentType) => {
-  const expectedFormats = IMAGE_FORMATS_BY_CONTENT_TYPE[contentType];
+  const expectedFormats = IMAGE_FORMATS_BY_CONTENT_TYPE.get(contentType);
   if (!expectedFormats) {
     throw new Error("Unsupported image content type");
   }
@@ -543,7 +545,7 @@ const fetchRemoteImage = async (sourceUrl) => {
         .split(";")[0]
         .trim()
         .toLowerCase();
-      if (!IMAGE_FORMATS_BY_CONTENT_TYPE[contentType]) {
+      if (!IMAGE_FORMATS_BY_CONTENT_TYPE.has(contentType)) {
         await response.body?.cancel();
         throw new Error("Upstream response is not a supported image");
       }

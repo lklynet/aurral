@@ -353,7 +353,7 @@ export async function applyLidarrCommunityGuide(lidarrClient) {
     return {
       format: cf.id,
       name: cf.name,
-      score: scores[cf.name] || 0,
+      score: Object.hasOwn(scores, cf.name) ? scores[cf.name] : 0,
     };
   });
 

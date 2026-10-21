@@ -58,7 +58,7 @@ const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
 const normalizeDiscoveryMode = (value) => {
   const mode = normalizeText(value);
-  return DISCOVERY_MODE_MULTIPLIERS[mode] ? mode : "balanced";
+  return Object.hasOwn(DISCOVERY_MODE_MULTIPLIERS, mode) ? mode : "balanced";
 };
 
 const sortByValueThenName = (entries) =>
@@ -172,7 +172,7 @@ export const applyHydratedCandidateTags = (
 
 const calculateSeedWeight = (seed, index) => {
   const source = normalizeText(seed?.source) || "library";
-  const baseWeight = SOURCE_BASE_WEIGHTS[source] || 1;
+  const baseWeight = Object.hasOwn(SOURCE_BASE_WEIGHTS, source) ? SOURCE_BASE_WEIGHTS[source] : 1;
 
   if (source === "library") {
     const recencyBoost = Math.max(0, 0.5 - Math.max(index, 0) * 0.02);
