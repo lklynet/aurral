@@ -31,8 +31,8 @@ function Onboarding() {
   const [localNetworkBypass, setLocalNetworkBypass] = useState(false);
   const [lidarrUrl, setLidarrUrl] = useState("");
   const [lidarrApiKey, setLidarrApiKey] = useState("");
-  const [lidarrQualityProfileId, setLidarrQualityProfileId] = useState(null);
-  const [lidarrMetadataProfileId, setLidarrMetadataProfileId] = useState(null);
+  const [lidarrQualityProfileId, setLidarrQualityProfileId] = useState<number | null>(null);
+  const [lidarrMetadataProfileId, setLidarrMetadataProfileId] = useState<number | null>(null);
   const [lidarrTestSuccess, setLidarrTestSuccess] = useState(false);
   const [testingLidarr, setTestingLidarr] = useState(false);
   const [skipLidarr, setSkipLidarr] = useState(false);

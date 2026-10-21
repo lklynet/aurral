@@ -521,7 +521,7 @@ export function SettingsPlaybackSection({
       <SettingsArrFieldSet legend="Scrobbling">
         <div className="arr-info">Send completed plays to listening services.</div>
         <SettingsModalToggleGroup>
-          {["lastfm", "listenbrainz", "koito"].map((provider) => {
+          {(["lastfm", "listenbrainz", "koito"] as const).map((provider) => {
             const status = scrobbleStatus?.[provider];
             const label =
               provider === "lastfm"

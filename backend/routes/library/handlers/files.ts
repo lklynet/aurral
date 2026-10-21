@@ -159,3 +159,15 @@ export function registerFiles(router) {
     },
   );
 }
+
+export type LibraryFileOperationResponse = {
+  operation: ReturnType<typeof describeLibraryFileOperation>;
+};
+
+export type CheckLibraryIngestSourceResponse = Awaited<ReturnType<typeof checkIngestSource>>;
+
+export type LibraryFileOperationItemsResponse = {
+  items: ReturnType<typeof describeLibraryFileOperationItems>;
+  offset: number;
+  limit: number;
+};

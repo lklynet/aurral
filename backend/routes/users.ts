@@ -30,6 +30,7 @@ import { normalizeKoitoBaseUrl } from "../services/koitoClient.ts";
 import { registerPlexLink, resolveGlobalPlexAccount } from "./users/plexLinkHandlers.ts";
 import { registerIdentityLink } from "./users/identityLinkHandlers.ts";
 import { plexConnectionStore } from "../services/plex/plexConnectionStore.ts";
+import type { lidarrClient } from "../services/lidarrClient.ts";
 
 const buildListenHistoryUpdates = (body, existing) => {
   const hasLegacyLastfmUpdate = Object.hasOwn(body, "lastfmUsername");
@@ -628,5 +629,54 @@ router.delete("/:id", requireAuth, requireAdmin, (req, res) => {
 
 registerPlexLink(router);
 registerIdentityLink(router);
+
+type UserRecord = NonNullable<ReturnType<typeof userOps.getUserById>>;
+
+export type DiscoverLayoutItem = { id: string; enabled: boolean };
+
+export type UserListResponse = (ReturnType<typeof userOps.getAllUsers>[number] & {
+  plexLink: ReturnType<typeof plexConnectionStore.getPublicStatus>;
+  plexGlobalAccount: Awaited<ReturnType<typeof resolveGlobalPlexAccount>>;
+})[];
+
+export type CreateUserResponse = Pick<
+  NonNullable<ReturnType<typeof userOps.createUser>>,
+  "id" | "username" | "role" | "permissions" | "lidarrRootFolderPath" | "lidarrQualityProfileId"
+>;
+
+export type UpdateUserResponse =
+  | ReturnType<typeof userOps.updateUser>
+  | (Pick<
+      UserRecord,
+      | "id"
+      | "username"
+      | "role"
+      | "listenHistoryProvider"
+      | "listenHistoryUsername"
+      | "listenHistoryUrl"
+      | "lastfmUsername"
+      | "lidarrRootFolderPath"
+      | "lidarrQualityProfileId"
+    > & { permissions?: UserRecord["permissions"] });
+
+export type UserThemeResponse = { theme: ReturnType<typeof normalizeUserThemeDocument> | null };
+
+export type SavedUserThemeResponse = { theme: ReturnType<typeof normalizeUserThemeDocument> };
+
+export type DiscoverLayoutResponse = { layout: DiscoverLayoutItem[] | null };
+
+export type SavedDiscoverLayoutResponse = { layout: DiscoverLayoutItem[] };
+
+export type LidarrPreferencesResponse = Awaited<
+  ReturnType<typeof lidarrClient.getArtistAddPreferenceSummary>
+>;
+
+export type UnconfiguredLidarrPreferencesResponse = {
+  configured: false;
+  rootFolders: [];
+  qualityProfiles: [];
+  savedDefaults: { rootFolderPath: string | null; qualityProfileId: number | null };
+  fallbacks: { rootFolderPath: null; qualityProfileId: null };
+};
 
 export default router;

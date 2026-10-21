@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { UserIdentitiesResponse } from "../../../../../backend/routes/users/identityLinkHandlers.ts";
 import {
   getMyIdentities,
   startGoogleLink,
@@ -16,7 +17,7 @@ const PROVIDER_LABELS = {
 
 export function ConnectedAccountsSection({ showSuccess, showError, className = "" }) {
   const { bootstrap } = useAuth();
-  const [identities, setIdentities] = useState([]);
+  const [identities, setIdentities] = useState<UserIdentitiesResponse["identities"]>([]);
   const [hasLocalPassword, setHasLocalPassword] = useState(true);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);

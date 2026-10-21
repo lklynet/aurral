@@ -448,4 +448,6 @@ router.get("/ws", requireAuth, noCache, (req, res) => {
   }
 });
 
+export type HealthLiveResponse = { status: "ok" };
+
 export default router;

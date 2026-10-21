@@ -348,3 +348,37 @@ export function registerArtists(router) {
     },
   );
 }
+
+type LibraryArtistRecord = ReturnType<typeof libraryManager.mapLidarrArtist>;
+
+export type FetchLibraryArtistResponse = LibraryArtistRecord & {
+  foreignArtistId: string;
+  added: LibraryArtistRecord["addedAt"];
+};
+
+export type AddArtistToLibraryResponse = {
+  queued: false;
+  foreignArtistId: string;
+  artistName: string;
+  artist: FetchLibraryArtistResponse;
+};
+
+export type UpdateLibraryArtistMbidResponse = {
+  id: number;
+  mbid: string | null;
+  name: string;
+  musicbrainzName: string | null;
+  merged: boolean;
+};
+
+export type UpdateLibraryArtistResponse = Awaited<
+  ReturnType<typeof libraryManager.setArtistMonitoring>
+>;
+
+export type GetArtistMonitoringResponse = Awaited<
+  ReturnType<typeof libraryManager.getArtistMonitoring>
+>;
+
+export type DeleteArtistFromLibraryResponse = { success: true; message: string };
+
+export type RefreshLibraryArtistResponse = { success: true; message: string; albums: number };

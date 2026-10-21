@@ -42,6 +42,8 @@ function requireAccessibleJob(req, res, next) {
   return next();
 }
 
+export type DeletePlaylistTrackArtworkResponse = { ok: true };
+
 export function registerTrackArtworkServe(router) {
   router.get("/track-artwork/:jobId", (req, res) => {
     if (!verifyTokenAuth(req)) {

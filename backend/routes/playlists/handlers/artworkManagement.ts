@@ -10,6 +10,8 @@ const artworkUploadParser = express.raw({
   },
 });
 
+export type PlaylistArtworkOkResponse = { ok: true };
+
 export function registerArtworkManagement(router) {
   router.put("/artwork/:playlistId", artworkUploadParser, async (req, res) => {
     const { playlistId } = req.params;

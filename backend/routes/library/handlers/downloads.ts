@@ -606,3 +606,21 @@ export function registerDownloads(router) {
     }
   });
 }
+
+export type ResearchLibraryTrackResponse = {
+  success: true;
+  queued: true;
+  operationId: Awaited<ReturnType<typeof playlistOperationQueue.enqueuePayload>>["operationId"];
+};
+
+export type DownloadTrackToLibraryResponse = { success: true } & Awaited<
+  ReturnType<typeof requestLibraryTrack>
+>;
+
+export type DownloadAlbumResponse = { success: true; message: string };
+
+export type TriggerAlbumSearchResponse = { success: true; message: string };
+
+export type GetActiveDownloadsResponse = Awaited<ReturnType<typeof getActiveLibraryDownloads>>;
+
+export type GetDownloadStatusResponse = Awaited<ReturnType<typeof getDownloadStatusesForAlbumIds>>;

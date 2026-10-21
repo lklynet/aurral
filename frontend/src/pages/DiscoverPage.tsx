@@ -250,7 +250,7 @@ function DiscoverPage() {
   }, []);
 
   const discoverArtistIds = useMemo(() => {
-    const ids = new Set();
+    const ids = new Set<string>();
     for (const artist of data?.recommendations || []) {
       const id = getArtistId(artist);
       if (id) ids.add(id);

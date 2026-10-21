@@ -2,6 +2,17 @@ import { userOps, userIdentityOps } from "../../db/helpers/index.ts";
 import { requireAuth, requireRecentAuth } from "../../middleware/requirePermission.ts";
 import { disconnectUserPlex } from "./plexLinkHandlers.ts";
 
+export type UserIdentitiesResponse = {
+  hasLocalPassword: boolean;
+  identities: {
+    id: number;
+    providerType: string;
+    providerKey: string;
+    displayName: string | null;
+    linkedAt: number;
+  }[];
+};
+
 export function registerIdentityLink(router) {
   router.get("/me/identities", requireAuth, (req, res) => {
     const user = userOps.getUserById(req.user.id);

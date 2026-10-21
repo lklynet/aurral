@@ -112,7 +112,9 @@ export function useArtistDetailsStream(
   seedCoverImagesRef.current = seedCoverImages;
   const [coverImages, setCoverImages] = useState(seedCoverImages);
   const [libraryArtist, setLibraryArtist] = useState(seededLibraryArtist);
-  const [libraryAlbums, setLibraryAlbums] = useState([]);
+  const [libraryAlbums, setLibraryAlbums] = useState<Awaited<ReturnType<typeof getLibraryAlbums>>>(
+    [],
+  );
   const [similarArtists, setSimilarArtists] = useState([]);
   const [loading, setLoading] = useState(!mbid);
   const [error, setError] = useState(null);

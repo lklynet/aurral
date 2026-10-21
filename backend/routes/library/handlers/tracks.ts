@@ -336,3 +336,11 @@ export function registerTracks(router) {
     }
   });
 }
+
+export type DeleteLibraryTrackResponse = { success: true; message: string };
+
+export type GetLibraryTrackFilesResponse = { paths: string[] };
+
+export type SetAurralTrackKeepFileResponse = Awaited<
+  ReturnType<typeof libraryManager.setTrackKeepFile>
+>;

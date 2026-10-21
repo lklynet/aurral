@@ -18,6 +18,29 @@ import {
 import { normalizeFlowMixForValidation } from "../../../services/flows/flowValidation.ts";
 import { logger } from "../../../services/logger.ts";
 import { isDownloadJobCancelled } from "../../../services/downloadJobs/downloadCancellation.ts";
+import type { fetchImportedPlaylistTracks } from "../../../services/importLists/importPlaylist.ts";
+
+export type ImportedPlaylistPreviewResponse = {
+  trackCount: number;
+  skipped: number;
+  previewTracks: Awaited<ReturnType<typeof fetchImportedPlaylistTracks>>["tracks"];
+};
+
+export type PlaylistImportQueuedResponse = {
+  success: true;
+  playlist: null;
+  tracksQueued: number;
+  tracksReused: number;
+  queued: boolean;
+};
+
+export type ResearchTrackResponse = {
+  success: true;
+  jobId: string;
+  playlistId: string;
+  queued: true;
+  operationId: string;
+};
 
 export const EXISTING_FILE_MODE_OPTIONS = ["download", "reuse"];
 export const DEFAULT_LIMIT = DEFAULT_SIZE;

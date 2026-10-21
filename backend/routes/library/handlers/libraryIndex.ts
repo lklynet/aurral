@@ -262,3 +262,29 @@ export function registerLibraryIndex(router) {
 }
 
 export { toPublicLibrary };
+
+export type RequestLibraryRefreshResponse = {
+  queued: true;
+  jobId: ReturnType<typeof scheduleLibraryScan>;
+  status: ReturnType<typeof getLibraryScanStatus>;
+};
+
+export type GetActiveLibraryRefreshResponse = {
+  jobId: ReturnType<typeof getScheduledLibraryScanJobId>;
+  status: ReturnType<typeof getLibraryScanStatus>;
+};
+
+export type GetLibraryRefreshStatusResponse = NonNullable<ReturnType<typeof getLibraryScanStatus>>;
+
+export type FetchLibraryPageResponse = ReturnType<typeof toPublicLibraryPage>;
+
+export type FetchLibraryFavoritesResponse = ReturnType<typeof getStarredWithLibrary>["starred"] & {
+  library: ReturnType<typeof toPublicLibrary>;
+};
+
+export type UpdateLibraryFavoritesResponse = {
+  changedIds: string[];
+  removed?: NonNullable<ReturnType<typeof unstarMany>>;
+};
+
+export type RestoreLibraryFavoritesResponse = { restoredIds: string[] };

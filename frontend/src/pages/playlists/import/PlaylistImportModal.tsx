@@ -319,7 +319,7 @@ export function PlaylistImportModal({
   );
 
   const youtubePreview = useMutation({
-    mutationFn: (url) => previewYoutubeMusicPlaylist(url).then(validYoutubePreview),
+    mutationFn: (url: string) => previewYoutubeMusicPlaylist(url).then(validYoutubePreview),
   });
   const resetYoutubePreview = youtubePreview.reset;
 

@@ -204,4 +204,8 @@ router.post("/complete", async (req, res) => {
   }
 });
 
+export type OnboardingCompleteResponse = { success: true };
+
+export type LidarrTestResponse = { success: true; message: string };
+
 export default router;

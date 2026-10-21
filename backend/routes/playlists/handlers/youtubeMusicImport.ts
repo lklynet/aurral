@@ -23,6 +23,13 @@ const sendProviderError = (res, error, fallback) => {
   });
 };
 
+export type PreviewYoutubeMusicPlaylistResponse = {
+  playlist: { id: string; name: string };
+  trackCount: number;
+  skipped: number;
+  previewTracks: Awaited<ReturnType<typeof youtubeMusicPlaylistClient.getPlaylist>>["tracks"];
+};
+
 export function registerYoutubeMusicImport(router) {
   router.post("/import/youtube-music/preview", async (req, res) => {
     try {

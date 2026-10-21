@@ -78,6 +78,39 @@ function getManualSearchMode(value) {
   return String(value || "").trim() === "replacement" ? "replacement" : "missing";
 }
 
+export type GetJobFilesResponse = { paths: string[] };
+
+export type DownloadManualMissingSearchResultResponse = { success: true; jobId: string };
+
+export type ReSearchAllMissingTracksResponse = {
+  success: true;
+  requeued: number;
+  queued?: undefined;
+  playlistCount?: undefined;
+};
+
+export type SearchTrackUpgradeResponse = {
+  success: true;
+  queued: number;
+  alreadyQueued?: true;
+  jobId: string;
+};
+
+export type SearchAllUpgradesResponse = {
+  success: true;
+  queued: number;
+  playlistCount: number;
+  requeued?: undefined;
+};
+
+export type ApproveBlockedJobResponse = { success: true; path?: string };
+
+export type DenyBlockedJobResponse = { success: true };
+
+export type CancelDownloadJobResponse = { jobId: string; status: string; cleanupFailed: boolean };
+
+export type RetryDownloadJobResponse = { jobId: string; status: "pending"; retried: true };
+
 export function canAccessJobThroughPlaylist(user, job, playlistId) {
   const safePlaylistId = String(playlistId || "").trim();
   if (!safePlaylistId) return filterJobsForUser(user, [job]).length > 0;

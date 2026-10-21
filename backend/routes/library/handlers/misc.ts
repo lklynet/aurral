@@ -1,4 +1,5 @@
 import { UUID_REGEX } from "../../../../lib/uuid.ts";
+import type { getRecentMissingReleases } from "../../../services/discovery/recentReleases.ts";
 import { dbOps } from "../../../db/helpers/index.ts";
 import { noCache } from "../../../middleware/cache.ts";
 import { buildImageProxyUrl } from "../../../services/imageProxyService.ts";
@@ -421,3 +422,42 @@ export function registerMisc(router) {
     }
   });
 }
+
+export type GetLibraryArtistLookupResponse = Awaited<ReturnType<typeof getArtistLibraryLookup>>;
+
+export type LookupArtistsInLibraryBatchResponse = Record<string, boolean>;
+
+type LidarrAlbumLookupResult = {
+  inLibrary: true;
+  canonicalInLibrary: false;
+  libraryAlbumId: string | null;
+  libraryArtistId: string | null;
+  status: "available" | "monitored" | "unmonitored";
+  monitored: boolean;
+  trackListComplete: true;
+  percentOfTracks: number;
+  sizeOnDisk: number;
+  trackCount: number;
+  trackFileCount: number;
+  ownedTrackMbids: ReturnType<typeof ownedLidarrTrackMbids>;
+  albumName: string;
+  releaseDate: string;
+};
+
+export type LookupAlbumsInLibraryBatchResponse = Record<
+  string,
+  ReturnType<typeof libraryAlbumResult> | LidarrAlbumLookupResult
+>;
+
+type RecentlyAddedArtist = ReturnType<typeof getRecentlyAddedLibraryArtists>[number];
+
+export type GetRecentlyAddedResponse = (RecentlyAddedArtist & {
+  foreignArtistId: string;
+  added: RecentlyAddedArtist["addedAt"];
+})[];
+
+export type GetRecentReleasesResponse = (Awaited<
+  ReturnType<typeof getRecentMissingReleases>
+>[number] & {
+  coverUrl: string | null;
+})[];

@@ -39,6 +39,23 @@ function sendSpotifyError(res, error, fallback) {
   });
 }
 
+export type GetSpotifyImportStatusResponse = {
+  connected: boolean;
+  displayName: string | null;
+  connectedAt: number | null;
+  reconnectRequired: boolean;
+};
+
+export type StartSpotifyOAuthResponse = { oauthUrl: string };
+
+export type CompleteSpotifyOAuthResponse = {
+  connected: true;
+  displayName: string | null;
+  connectedAt: number;
+};
+
+export type DisconnectSpotifyResponse = { connected: false };
+
 export function registerSpotifyImport(router) {
   router.get("/import/spotify/status", (req, res) => {
     const status = spotifyConnectionStore.getPublicStatus(req.user.id);

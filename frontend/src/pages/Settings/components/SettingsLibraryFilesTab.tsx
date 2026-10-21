@@ -199,10 +199,14 @@ function ReadOnlyFoldersSection({ onChanged, showError }) {
 
 function IngestSection({ busy, operation, onChanged, showError }) {
   const [sourcePath, setSourcePath] = useState("");
-  const [mode, setMode] = useState("copy");
+  const [mode, setMode] = useState<Parameters<typeof startLibraryIngest>[1]>("copy");
   const [monitor, setMonitor] = useState("tracks");
   const [fillTags, setFillTags] = useState(true);
-  const [check, setCheck] = useState({ loading: false, result: null, error: "" });
+  const [check, setCheck] = useState<{
+    loading: boolean;
+    result: Awaited<ReturnType<typeof checkLibraryIngestSource>> | null;
+    error: string;
+  }>({ loading: false, result: null, error: "" });
   const [starting, setStarting] = useState(false);
   const requestRef = useRef(0);
 

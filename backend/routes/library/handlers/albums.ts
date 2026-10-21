@@ -377,3 +377,33 @@ export function registerAlbums(router) {
     }
   });
 }
+
+type LibraryAlbumRecord = Awaited<ReturnType<typeof libraryManager.getAlbums>>[number];
+
+export type GetLibraryAlbumsResponse = (LibraryAlbumRecord & {
+  foreignAlbumId: string;
+  title: string;
+  statistics: NonNullable<LibraryAlbumRecord["statistics"]>;
+})[];
+
+export type AddLibraryAlbumResponse = ReturnType<typeof libraryManager.mapLidarrAlbum> & {
+  queued: false;
+};
+
+export type RequestAlbumFromSearchResponse = Awaited<
+  ReturnType<typeof libraryManager.requestAlbumFromSearch>
+> & { queued: boolean };
+
+export type GetAurralAlbumStatusResponse = ReturnType<typeof libraryManager.getAurralAlbumStatus>;
+
+export type DeleteAurralAlbumFromLibraryResponse = Awaited<
+  ReturnType<typeof libraryManager.deleteAurralAlbum>
+>;
+
+export type CancelAurralAlbumResponse = Awaited<
+  ReturnType<typeof libraryManager.cancelAurralAlbum>
+>;
+
+export type UpdateLibraryAlbumResponse = Awaited<ReturnType<typeof libraryManager.updateAlbum>>;
+
+export type DeleteLibraryAlbumResponse = { success: true; message: string };

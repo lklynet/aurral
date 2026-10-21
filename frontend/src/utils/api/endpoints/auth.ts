@@ -1,7 +1,79 @@
 import { getData, postData, putData, patchData, deleteData } from "../core.ts";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
+import type { buildOnboardingPayload } from "../../onboardingPayload.ts";
+import type { listBrowseDirectory } from "../../../../../backend/services/downloadFolderConfig.ts";
+import type { resolveListenHistorySettings } from "../../../../../backend/services/listeningHistory.ts";
+import type { recordPlayEvent as recordPlayEventService } from "../../../../../backend/services/playEventService.ts";
+import type { LidarrNamedProfile } from "../../../../../backend/services/lidarrSettingsService.ts";
+import type { BootstrapPayload, HealthLiveResponse } from "../../../../../backend/routes/health.ts";
+import type {
+  ApiKeyResponse,
+  AuthUrlResponse,
+  CurrentUserResponse,
+  GoogleExchangeResponse,
+  LoginResponse,
+  OidcExchangeResponse,
+  PlexLoginCompleteResponse,
+  SuccessResponse,
+} from "../../../../../backend/routes/auth.ts";
+import type {
+  KoitoLinkResponse,
+  LastfmLinkResponse,
+  ListenBrainzLinkResponse,
+  ScrobbleStatusResponse,
+} from "../../../../../backend/routes/scrobbling.ts";
+import type {
+  LidarrTestResponse,
+  OnboardingCompleteResponse,
+} from "../../../../../backend/routes/onboarding.ts";
+import type {
+  CreateUserResponse,
+  DiscoverLayoutItem,
+  DiscoverLayoutResponse,
+  LidarrPreferencesResponse,
+  SavedDiscoverLayoutResponse,
+  SavedUserThemeResponse,
+  UpdateUserResponse,
+  UserListResponse,
+  UserThemeResponse,
+} from "../../../../../backend/routes/users.ts";
+import type {
+  PlexCompleteResponse,
+  PlexConnectedResponse,
+  PlexHomeUsersResponse,
+  PlexLinkStatusResponse,
+  PlexPinResponse,
+} from "../../../../../backend/routes/users/plexLinkHandlers.ts";
+import type { UserIdentitiesResponse } from "../../../../../backend/routes/users/identityLinkHandlers.ts";
 
-export const fetchHealth = ({ signal } = {}) => getData("/health", { signal });
+type SignalOptions = { signal?: AbortSignal };
+
+type ListeningHistoryUpdate = {
+  listenHistoryProvider: string;
+  listenHistoryUsername: string | null;
+  listenHistoryUrl: string | null;
+};
+
+type PlayEventPayload = {
+  trackId: string;
+  title: string;
+  artist: string;
+  album?: string;
+  artistMbid?: string | null;
+  albumMbid?: string | null;
+  trackMbid?: string | null;
+  durationMs?: number;
+  playedAt?: number;
+  source?: string;
+};
+
+type LidarrPreferencesUpdate = {
+  rootFolderPath: string | null;
+  qualityProfileId: number | null;
+};
+
+export const fetchHealth = ({ signal }: SignalOptions = {}): Promise<BootstrapPayload> =>
+  getData("/health", { signal });
 
 export const checkHealth = ({ force = false } = {}) =>
   queryClient.fetchQuery({
@@ -10,79 +82,102 @@ export const checkHealth = ({ force = false } = {}) =>
     staleTime: force ? 0 : 5_000,
   });
 
-export const checkHealthLive = () => getData("/health/live", { timeout: 5000 });
+export const checkHealthLive = (): Promise<HealthLiveResponse> =>
+  getData("/health/live", { timeout: 5000 });
 
 export const invalidateBootstrapCache = () => {
   queryClient.removeQueries({ queryKey: queryKeys.authBootstrap });
 };
 
-export const getBootstrapStatus = () =>
+export const getBootstrapStatus = (): Promise<BootstrapPayload> =>
   queryClient.fetchQuery({
     queryKey: queryKeys.authBootstrap,
     queryFn: ({ signal: querySignal }) => getData("/health/bootstrap", { signal: querySignal }),
     staleTime: 25_000,
   });
 
-export const browseFilesystem = (pathValue) =>
+export const browseFilesystem = (
+  pathValue?: string,
+): Promise<ReturnType<typeof listBrowseDirectory>> =>
   getData("/filesystem/browse", {
     params: pathValue ? { path: pathValue } : undefined,
   });
 
-export const ensureFilesystemPath = (pathValue) =>
+export const ensureFilesystemPath = (
+  pathValue: string,
+): Promise<ReturnType<typeof listBrowseDirectory> & { path: string; created: boolean }> =>
   postData("/filesystem/ensure", {
     path: pathValue,
   });
 
-export const loginApi = async (username, password) => {
+export const loginApi = async (username: string, password: string): Promise<LoginResponse> => {
   const result = await postData("/auth/login", { username, password });
   invalidateBootstrapCache();
   return result;
 };
 
-export const exchangeOidcCode = (code) => postData("/auth/oidc/exchange", { code });
+export const exchangeOidcCode = (code: string): Promise<OidcExchangeResponse> =>
+  postData("/auth/oidc/exchange", { code });
 
-export const exchangeGoogleCode = (code) => postData("/auth/google/exchange", { code });
+export const exchangeGoogleCode = (code: string): Promise<GoogleExchangeResponse> =>
+  postData("/auth/google/exchange", { code });
 
-export const startGoogleLink = () => postData("/auth/google/link/start");
+export const startGoogleLink = (): Promise<AuthUrlResponse> => postData("/auth/google/link/start");
 
-export const startOidcLink = () => postData("/auth/oidc/link/start");
+export const startOidcLink = (): Promise<AuthUrlResponse> => postData("/auth/oidc/link/start");
 
-export const reauthApi = (currentPassword) => postData("/auth/reauth", { currentPassword });
+export const reauthApi = (currentPassword: string): Promise<SuccessResponse> =>
+  postData("/auth/reauth", { currentPassword });
 
-export const startPlexLoginPin = (forwardUrl) => postData("/auth/plex/login/pin", { forwardUrl });
+export const startPlexLoginPin = (forwardUrl?: string): Promise<AuthUrlResponse> =>
+  postData("/auth/plex/login/pin", { forwardUrl });
 
-export const completePlexLogin = () => postData("/auth/plex/login/complete");
+export const completePlexLogin = (): Promise<PlexLoginCompleteResponse> =>
+  postData("/auth/plex/login/complete");
 
-export const logoutApi = async () => {
+export const logoutApi = async (): Promise<SuccessResponse> => {
   const result = await postData("/auth/logout");
   invalidateBootstrapCache();
   return result;
 };
 
-export const getMe = () => getData("/auth/me");
+export const getMe = (): Promise<CurrentUserResponse> => getData("/auth/me");
 
-export const getApiKey = ({ signal } = {}) => getData("/auth/api-key", { signal });
+export const getApiKey = ({ signal }: SignalOptions = {}): Promise<ApiKeyResponse> =>
+  getData("/auth/api-key", { signal });
 
-export const rotateApiKey = () => postData("/auth/api-key/rotate");
+export const rotateApiKey = (): Promise<ApiKeyResponse> => postData("/auth/api-key/rotate");
 
-export const completeOnboarding = async (payload) => {
+export const completeOnboarding = async (
+  payload: ReturnType<typeof buildOnboardingPayload>,
+): Promise<OnboardingCompleteResponse> => {
   const result = await postData("/onboarding/complete", payload);
   invalidateBootstrapCache();
   return result;
 };
 
-export const testLidarrOnboarding = (url, apiKey) =>
+export const testLidarrOnboarding = (url: string, apiKey: string): Promise<LidarrTestResponse> =>
   postData("/onboarding/lidarr/test", { url, apiKey });
 
-export const getLidarrProfilesOnboarding = (url, apiKey) =>
-  postData("/onboarding/lidarr/profiles", { url, apiKey });
+export const getLidarrProfilesOnboarding = (
+  url: string,
+  apiKey: string,
+): Promise<LidarrNamedProfile[]> => postData("/onboarding/lidarr/profiles", { url, apiKey });
 
-export const getLidarrMetadataProfilesOnboarding = (url, apiKey) =>
+export const getLidarrMetadataProfilesOnboarding = (
+  url: string,
+  apiKey: string,
+): Promise<LidarrNamedProfile[]> =>
   postData("/onboarding/lidarr/metadata-profiles", { url, apiKey });
 
-export const getUsers = () => getData("/users");
+export const getUsers = (): Promise<UserListResponse> => getData("/users");
 
-export const createUser = (username, password, role, permissions) =>
+export const createUser = (
+  username: string,
+  password: string,
+  role: string,
+  permissions: Record<string, boolean>,
+): Promise<CreateUserResponse> =>
   postData("/users", {
     username,
     password,
@@ -95,7 +190,7 @@ export type UserUpdate = {
   currentPassword?: string;
   permissions?: Record<string, boolean>;
   role?: string;
-  status?: string;
+  status?: "active" | "suspended" | "disabled";
   allowIdentityAdoption?: boolean;
   listenHistoryProvider?: string;
   listenHistoryUsername?: string | null;
@@ -103,61 +198,97 @@ export type UserUpdate = {
   lastfmUsername?: string;
 };
 
-export const updateUser = (id, data: UserUpdate) => patchData(`/users/${id}`, data);
+export const updateUser = (id: number, data: UserUpdate): Promise<UpdateUserResponse> =>
+  patchData(`/users/${id}`, data);
 
-export const deleteUser = async (id) => {
+export const deleteUser = async (id: number) => {
   await deleteData(`/users/${id}`);
 };
 
-export const changeMyPassword = async (currentPassword, newPassword) => {
+export const changeMyPassword = async (currentPassword: string, newPassword: string) => {
   await postData("/users/me/password", { currentPassword, newPassword });
 };
 
-export const getMyListeningHistory = ({ signal } = {}) =>
-  getData("/users/me/listening-history", { signal });
+export const getMyListeningHistory = ({ signal }: SignalOptions = {}): Promise<
+  ReturnType<typeof resolveListenHistorySettings>
+> => getData("/users/me/listening-history", { signal });
 
-export const recordPlayEvent = (payload) => postData("/play-events", payload);
+export const recordPlayEvent = (
+  payload: PlayEventPayload,
+): Promise<{ event: ReturnType<typeof recordPlayEventService> }> =>
+  postData("/play-events", payload);
 
-export const getScrobbleStatus = ({ signal } = {}) => getData("/scrobbling/status", { signal });
-export const getLastfmScrobbleLink = () => getData("/scrobbling/lastfm/link");
-export const linkListenBrainz = (token) => putData("/scrobbling/listenbrainz/link", { token });
-export const unlinkScrobbleProvider = (provider) => deleteData(`/scrobbling/${provider}/link`);
-export const linkKoito = (token, url) => putData("/scrobbling/koito/link", { token, url });
+export const getScrobbleStatus = ({
+  signal,
+}: SignalOptions = {}): Promise<ScrobbleStatusResponse> =>
+  getData("/scrobbling/status", { signal });
+export const getLastfmScrobbleLink = (): Promise<LastfmLinkResponse> =>
+  getData("/scrobbling/lastfm/link");
+export const linkListenBrainz = (token: string): Promise<ListenBrainzLinkResponse> =>
+  putData("/scrobbling/listenbrainz/link", { token });
+export const unlinkScrobbleProvider = (provider: "lastfm" | "listenbrainz" | "koito") =>
+  deleteData(`/scrobbling/${provider}/link`);
+export const linkKoito = (token: string, url: string): Promise<KoitoLinkResponse> =>
+  putData("/scrobbling/koito/link", { token, url });
 
-export const getMyLidarrPreferences = ({ signal } = {}) =>
+export const getMyLidarrPreferences = ({
+  signal,
+}: SignalOptions = {}): Promise<LidarrPreferencesResponse> =>
   getData("/users/me/lidarr-preferences", { signal });
 
-export const getMyDiscoverLayout = () => getData("/users/me/discover-layout");
+export const getMyDiscoverLayout = (): Promise<DiscoverLayoutResponse> =>
+  getData("/users/me/discover-layout");
 
-export const getMyTheme = () => getData("/users/me/theme");
+export const getMyTheme = (): Promise<UserThemeResponse> => getData("/users/me/theme");
 
-export const saveMyTheme = (theme) => putData("/users/me/theme", { theme });
+export const saveMyTheme = (theme: unknown): Promise<SavedUserThemeResponse> =>
+  putData("/users/me/theme", { theme });
 
-export const updateMyListeningHistory = (userId, payload) => patchData(`/users/${userId}`, payload);
+export const updateMyListeningHistory = (
+  userId: number | undefined,
+  payload: ListeningHistoryUpdate,
+): Promise<UpdateUserResponse> => patchData(`/users/${userId}`, payload);
 
-export const updateMyLidarrPreferences = (payload) =>
+export const updateMyLidarrPreferences = (payload: LidarrPreferencesUpdate) =>
   patchData("/users/me/lidarr-preferences", payload);
 
-export const updateMyDiscoverLayout = (layout) =>
-  patchData("/users/me/discover-layout", { layout });
+export const updateMyDiscoverLayout = (
+  layout: DiscoverLayoutItem[],
+): Promise<SavedDiscoverLayoutResponse> => patchData("/users/me/discover-layout", { layout });
 
-export const getMyPlexLinkStatus = ({ signal } = {}) =>
+export const getMyPlexLinkStatus = ({
+  signal,
+}: SignalOptions = {}): Promise<PlexLinkStatusResponse> =>
   getData("/users/me/plex-link/status", { signal });
 
-export const startMyPlexLinkPin = (forwardUrl) =>
+export const startMyPlexLinkPin = (forwardUrl?: string): Promise<PlexPinResponse> =>
   postData("/users/me/plex-link/oauth/pin", { forwardUrl });
 
-export const completeMyPlexLink = (pinId, code, clientId) =>
+export const completeMyPlexLink = (
+  pinId: string | number,
+  code: string,
+  clientId: string,
+): Promise<PlexCompleteResponse> =>
   postData("/users/me/plex-link/oauth/complete", { pinId, code, clientId });
 
 export const disconnectMyPlex = async () => {
   await deleteData("/users/me/plex-link");
 };
 
-export const getPlexHomeUsersForAdmin = ({ signal } = {}) =>
+export const getPlexHomeUsersForAdmin = ({
+  signal,
+}: SignalOptions = {}): Promise<PlexHomeUsersResponse> =>
   getData("/users/plex-link/home-users", { signal });
 
-export const linkManagedPlexUser = (userId, plexUserId, { plexUsername, plexUuid, pin } = {}) =>
+export const linkManagedPlexUser = (
+  userId: number,
+  plexUserId: string | number,
+  {
+    plexUsername,
+    plexUuid,
+    pin,
+  }: { plexUsername?: string | null; plexUuid?: string | null; pin?: string } = {},
+): Promise<PlexConnectedResponse> =>
   postData(`/users/${userId}/plex-link/managed`, {
     plexUserId,
     plexUsername,
@@ -165,12 +296,13 @@ export const linkManagedPlexUser = (userId, plexUserId, { plexUsername, plexUuid
     pin,
   });
 
-export const adminUnlinkPlex = async (userId, { force = false } = {}) => {
+export const adminUnlinkPlex = async (userId: number, { force = false } = {}) => {
   await deleteData(`/users/${userId}/plex-link`, force ? { params: { force: true } } : undefined);
 };
 
-export const getMyIdentities = () => getData("/users/me/identities");
+export const getMyIdentities = (): Promise<UserIdentitiesResponse> =>
+  getData("/users/me/identities");
 
-export const unlinkMyIdentity = async (identityId) => {
+export const unlinkMyIdentity = async (identityId: number) => {
   await deleteData(`/users/me/identities/${identityId}`);
 };

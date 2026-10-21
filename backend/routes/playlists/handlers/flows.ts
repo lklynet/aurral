@@ -30,6 +30,51 @@ import { buildFlowFromTemplate, listFlowTemplates } from "../../../services/flow
 
 const RETIRED_FLOW_MESSAGE = "This flow's source was retired, so it no longer updates";
 
+export type CreateFlowResponse = {
+  success: true;
+  flow: ReturnType<typeof flowPlaylistConfig.createFlow>;
+};
+
+export type GetFlowTemplatesResponse = {
+  templates: Awaited<ReturnType<typeof listFlowTemplates>>;
+};
+
+export type UpdateFlowResponse = {
+  success: true;
+  flow: NonNullable<ReturnType<typeof flowPlaylistConfig.updateFlow>>;
+};
+
+export type DeleteFlowResponse = {
+  success: true;
+  flowId: string;
+  queued: true;
+  operationId: string;
+};
+
+export type ConvertFlowToStaticPlaylistResponse = {
+  success: true;
+  playlist: ReturnType<typeof flowPlaylistConfig.createStaticPlaylist>;
+  trackCount: number;
+};
+
+export type SetFlowEnabledResponse =
+  | {
+      success: true;
+      flowId: string;
+      enabled: true;
+      tracksQueued: number;
+      message: string;
+    }
+  | {
+      success: true;
+      flowId: string;
+      enabled: false;
+      queued: true;
+      operationId: string;
+    };
+
+export type GetFlowLidarrImportListUrlResponse = { token: string; itemCount: number };
+
 export function registerFlows(router) {
   router.post("/start/:flowId", async (req, res) => {
     try {

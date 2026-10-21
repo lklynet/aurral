@@ -19,6 +19,29 @@ const sendResult = (res, result, successStatus = 200) => {
 const sendFailure = (res, error, message) =>
   res.status(500).json({ error: message, message: error?.message || message });
 
+export type PreviewArtistMonitoringResponse = Extract<
+  Awaited<ReturnType<typeof libraryManager.previewAurralArtistMonitoring>>,
+  { monitoring: unknown }
+>;
+
+export type GetMonitoringDefaultsResponse = ReturnType<
+  typeof libraryManager.getMonitoringDefaultsState
+>;
+
+export type PreviewMonitoringDefaultsResponse = Awaited<
+  ReturnType<typeof libraryManager.previewMonitoringDefaults>
+>;
+
+export type SaveMonitoringDefaultsResponse = ReturnType<
+  typeof libraryManager.setMonitoringDefaults
+>;
+
+export type GetMonitoringExclusionsResponse = ReturnType<
+  typeof libraryManager.listMonitoringExclusions
+>;
+
+export type RemoveMonitoringExclusionResponse = { success: true };
+
 export function registerMonitoring(router) {
   router.post(
     "/artists/:mbid/monitoring/preview",

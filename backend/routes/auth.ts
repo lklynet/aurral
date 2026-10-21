@@ -21,6 +21,7 @@ import {
 } from "../services/googleAuth.ts";
 import { startPlexLogin, completePlexLogin } from "../services/plexLoginAuth.ts";
 import { logger } from "../services/logger.ts";
+import type { RequestUser } from "../middleware/requestUser.ts";
 
 const router = express.Router();
 
@@ -231,5 +232,32 @@ router.post("/plex/login/complete", async (req, res) => {
     }
   }
 });
+
+type SessionUser = Pick<RequestUser, "id" | "username" | "role" | "permissions">;
+
+export type LoginResponse = {
+  token: string;
+  expiresAt: number;
+  user: SessionUser;
+};
+
+export type CurrentUserResponse = {
+  user: SessionUser;
+  expiresAt: number | null;
+};
+
+export type SuccessResponse = { success: true };
+
+export type ApiKeyResponse = { apiKey: string };
+
+export type AuthUrlResponse = { authUrl: string };
+
+export type OidcExchangeResponse = ReturnType<typeof exchangeOidcCallback>;
+
+export type GoogleExchangeResponse = ReturnType<typeof exchangeGoogleCallback>;
+
+export type PlexLoginCompleteResponse =
+  | (LoginResponse & { pending?: undefined })
+  | { pending: true; token?: undefined; expiresAt?: undefined; user?: undefined };
 
 export default router;

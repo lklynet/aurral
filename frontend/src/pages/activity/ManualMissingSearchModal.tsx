@@ -23,7 +23,9 @@ export default function ManualMissingSearchModal({
   const [selectedSourceId, setSelectedSourceId] = useState("");
   const [searching, setSearching] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [search, setSearch] = useState(null);
+  const [search, setSearch] = useState<Awaited<
+    ReturnType<typeof searchMissingTrackManually>
+  > | null>(null);
   const [selectedId, setSelectedId] = useState("");
   const [actionError, setActionError] = useState("");
   const searchRequestRef = useRef(0);

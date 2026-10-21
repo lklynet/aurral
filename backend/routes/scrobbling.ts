@@ -324,4 +324,32 @@ router.delete("/koito/link", requireAuth, (req, res) => {
   res.status(204).end();
 });
 
+type ScrobbleProviderStatus = {
+  connected: boolean;
+  displayName: string | null;
+  connectedAt: number | null;
+};
+
+export type ScrobbleStatusResponse = {
+  lastfm: ScrobbleProviderStatus & { configured: boolean };
+  listenbrainz: ScrobbleProviderStatus;
+  koito: ScrobbleProviderStatus;
+};
+
+export type LastfmLinkResponse = {
+  configured: true;
+  connected: boolean;
+  authorizeUrl: string;
+};
+
+export type ListenBrainzLinkResponse = {
+  connected: boolean;
+  displayName: string | null;
+};
+
+export type KoitoLinkResponse = {
+  connected: true;
+  displayName: string;
+};
+
 export default router;

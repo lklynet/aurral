@@ -50,6 +50,10 @@ function validateTarget(req, res, next) {
   return next();
 }
 
+export type UploadLibraryCustomArtworkResponse = { ok: true; updatedAt: number };
+
+export type DeleteLibraryCustomArtworkResponse = { ok: true };
+
 export function registerArtwork(router) {
   router.get("/artwork/:kind/:id", async (req, res) => {
     if (!verifyTokenAuth(req)) {
