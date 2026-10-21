@@ -1,8 +1,9 @@
 import crypto from "crypto";
 import { dbOps, userOps } from "../db/helpers/index.ts";
+import type { AppSettings } from "../db/helpers/settings.ts";
 import { hashPassword } from "../middleware/passwordHash.ts";
 
-function parseArgs(argv) {
+function parseArgs(argv: string[]) {
   const args = {
     username: "",
     password: "",
@@ -68,7 +69,7 @@ function printUsage() {
   console.log("  -h, --help       Show this help");
 }
 
-function generatePassword(length) {
+function generatePassword(length: number) {
   const safeLength = Math.min(128, Math.max(12, Number(length) || 24));
   let out = "";
   while (out.length < safeLength) {
@@ -77,11 +78,11 @@ function generatePassword(length) {
   return out.slice(0, safeLength);
 }
 
-function resolveConfiguredAdminUsername(settings) {
+function resolveConfiguredAdminUsername(settings: AppSettings) {
   return settings.integrations?.general?.authUser || process.env.AUTH_USER || "admin";
 }
 
-function upsertGeneralAuth(settings, username, password) {
+function upsertGeneralAuth(settings: AppSettings, username: string, password: string) {
   return {
     ...settings,
     integrations: {

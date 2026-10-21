@@ -1,6 +1,7 @@
 import { audioContentType } from "./audioFileStream.ts";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
+import type { RequestUser } from "../middleware/requestUser.ts";
 import { dbOps, userOps } from "../db/helpers/index.ts";
 import { db } from "../config/db-sqlite.ts";
 import {
@@ -572,7 +573,7 @@ export function getMusicDirectory(value, user) {
   return null;
 }
 
-export function searchLibrary(query, options = {}, user = null) {
+export function searchLibrary(query, options = {}, user: RequestUser | null = null) {
   if (!includesAurralMusicFolder(options)) return { artist: [], album: [], song: [] };
   const needle = String(query || "")
     .trim()
@@ -602,7 +603,7 @@ export function searchLibrary(query, options = {}, user = null) {
   };
 }
 
-export function getRandomSongs(options = {}, user = null) {
+export function getRandomSongs(options = {}, user: RequestUser | null = null) {
   if (!includesAurralMusicFolder(options)) return [];
   const library = indexFocusedLibrary(
     getLibraryTrackPage({
@@ -619,7 +620,7 @@ export function getRandomSongs(options = {}, user = null) {
   return library.tracks.map((track) => toSong(library, track));
 }
 
-export function getAlbumList(options = {}, user = null) {
+export function getAlbumList(options = {}, user: RequestUser | null = null) {
   if (!includesAurralMusicFolder(options)) return [];
   const type = String(options.type || "alphabeticalByName");
   const offset = normalizeOffset(options.offset);
@@ -1379,7 +1380,7 @@ export function getArtistInfo(value) {
   return getArtist(value) ? { similarArtist: [] } : null;
 }
 
-export function getTopSongs(artist, options = {}, user = null) {
+export function getTopSongs(artist, options = {}, user: RequestUser | null = null) {
   const target = String(artist || "").trim();
   if (!target) return [];
   const library = indexFocusedLibrary(

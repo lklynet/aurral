@@ -4,14 +4,35 @@ import os from "os";
 import { dbOps, userOps } from "../db/helpers/index.ts";
 import { createSession, getSessionByToken } from "../config/session-helpers.ts";
 import { hashPassword, verifyPassword, needsRehash } from "./passwordHash.ts";
+import type { Request, Response, NextFunction } from "express";
+import type { RequestUser } from "./requestUser.ts";
+import type { UserPermissions, UserRecord } from "../db/helpers/users.ts";
 
-const safeCompare = (a, b) => {
+type ClientRequest = {
+  headers?: Request["headers"];
+  socket?: { remoteAddress?: string };
+  connection?: { remoteAddress?: string };
+  ip?: string;
+  ips?: string[];
+};
+
+export type AuthRequest = Pick<
+  Request,
+  "headers" | "query" | "path" | "method" | "ip" | "ips" | "socket" | "connection" | "user"
+>;
+
+type ResolvableUser = Pick<
+  UserRecord,
+  "id" | "username" | "role" | "permissions" | "status" | "isProtected" | "roleSource"
+>;
+
+const safeCompare = (a: unknown, b: unknown) => {
   const bufA = Buffer.from(String(a));
   const bufB = Buffer.from(String(b));
   return bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB);
 };
 
-function createSubsonicToken(password, salt) {
+function createSubsonicToken(password: string, salt: unknown) {
   // Subsonic requires MD5(password + salt) for token authentication; this digest is never stored.
   //
   // codeql[js/insufficient-password-hash]
@@ -27,7 +48,7 @@ for (const [address, prefix] of [
   ["10.0.0.0", 8],
   ["172.16.0.0", 12],
   ["192.168.0.0", 16],
-]) {
+] as const) {
   privateLanAddresses.addSubnet(address, prefix, "ipv4");
 }
 
@@ -102,7 +123,7 @@ export const isProxyAuthEnabled = () => {
   return !!process.env.AUTH_PROXY_HEADER;
 };
 
-function parseCsv(value) {
+function parseCsv(value: string | undefined) {
   if (!value) return [];
   return String(value)
     .split(",")
@@ -115,13 +136,13 @@ function getProxyHeaderName() {
   return String(header).trim().toLowerCase();
 }
 
-function getHeaderValue(req, headerName) {
+function getHeaderValue(req: AuthRequest, headerName: string) {
   const value = req.headers[headerName];
   if (Array.isArray(value)) return value[0];
   return value;
 }
 
-function normalizeIp(value) {
+function normalizeIp(value: string | null | undefined) {
   const raw = String(value || "")
     .trim()
     .toLowerCase();
@@ -130,11 +151,11 @@ function normalizeIp(value) {
   return withoutBrackets.startsWith("::ffff:") ? withoutBrackets.slice(7) : withoutBrackets;
 }
 
-function isLoopbackIp(ip) {
+function isLoopbackIp(ip: string) {
   return LOOPBACK_IPS.has(normalizeIp(ip));
 }
 
-function isPrivateIpv4(ip) {
+function isPrivateIpv4(ip: string) {
   return net.isIPv4(ip) && privateLanAddresses.check(ip, "ipv4");
 }
 
@@ -169,7 +190,7 @@ export function inferTrustedLocalSubnet() {
   return sameSubnet ? first.subnet : null;
 }
 
-function getRequestIps(req) {
+function getRequestIps(req: ClientRequest) {
   const ips = [
     req?.socket?.remoteAddress,
     req?.connection?.remoteAddress,
@@ -181,14 +202,14 @@ function getRequestIps(req) {
   return Array.from(new Set(ips));
 }
 
-function isTrustedProxy(req) {
+function isTrustedProxy(req: ClientRequest) {
   const allowed = parseCsv(process.env.AUTH_PROXY_TRUSTED_IPS).map((ip) => normalizeIp(ip));
   if (allowed.length === 0) return true;
   const requestIps = getRequestIps(req);
   return requestIps.some((ip) => allowed.includes(ip));
 }
 
-function buildPermissions(role, permissions) {
+function buildPermissions(role: string, permissions?: UserPermissions) {
   if (role === "admin") {
     return {
       accessSettings: true,
@@ -208,7 +229,7 @@ function buildPermissions(role, permissions) {
   };
 }
 
-export function toResolvedUser(user) {
+export function toResolvedUser(user: ResolvableUser | null) {
   if (!user) return null;
   return {
     id: user.id,
@@ -221,7 +242,7 @@ export function toResolvedUser(user) {
   };
 }
 
-const toSessionUser = (session) => {
+const toSessionUser = (session: ReturnType<typeof getSessionByToken>) => {
   if (!session?.user) return null;
   const baseUser = session.user;
   return {
@@ -232,14 +253,14 @@ const toSessionUser = (session) => {
   };
 };
 
-const getBearerToken = (req) => {
+const getBearerToken = (req: AuthRequest) => {
   const authHeader = String(req.headers.authorization || "");
   if (!authHeader.startsWith("Bearer ")) return null;
   const token = authHeader.slice(7).trim();
   return token || null;
 };
 
-export function getUnauthorizedDetails(req) {
+export function getUnauthorizedDetails(req: AuthRequest) {
   if (getBearerToken(req)) {
     return {
       code: "SESSION_INVALID",
@@ -252,7 +273,11 @@ export function getUnauthorizedDetails(req) {
   };
 }
 
-export function sendUnauthorizedResponse(req, res, { challenge = false, ...overrides } = {}) {
+export function sendUnauthorizedResponse(
+  req: AuthRequest,
+  res: Response,
+  { challenge = false, ...overrides }: { challenge?: boolean } = {},
+) {
   if (challenge) {
     res.setHeader("WWW-Authenticate", 'Basic realm="Aurral"');
   }
@@ -263,13 +288,13 @@ export function sendUnauthorizedResponse(req, res, { challenge = false, ...overr
   });
 }
 
-export const resolveSessionUserFromToken = (token) => {
+export const resolveSessionUserFromToken = (token: unknown) => {
   if (!token) return null;
   return toSessionUser(getSessionByToken(token));
 };
 
-function resolveApiKeyUser(req) {
-  const headerKey = (req.headers["x-api-key"] || "").trim();
+function resolveApiKeyUser(req: AuthRequest) {
+  const headerKey = ((req.headers["x-api-key"] as string | undefined) || "").trim();
   const queryKey = (req.query?.api_key || "").trim();
   const incoming = headerKey || queryKey;
   if (!incoming) return null;
@@ -314,7 +339,7 @@ export function getSoleAdminUser() {
   return user;
 }
 
-export function isRequestFromTrustedLocalSubnet(req) {
+export function isRequestFromTrustedLocalSubnet(req: ClientRequest) {
   const requestIps = getRequestIps(req);
   if (requestIps.some((ip) => isLoopbackIp(ip))) {
     return true;
@@ -324,7 +349,7 @@ export function isRequestFromTrustedLocalSubnet(req) {
   return requestIps.some((ip) => isPrivateIpv4(ip) && subnet.check(ip, "ipv4"));
 }
 
-export function getLocalNetworkBypassStatus(req) {
+export function getLocalNetworkBypassStatus(req: ClientRequest) {
   const settings = dbOps.getSettings();
   const config = getLocalNetworkBypassConfig(settings);
   const onboardingDone = settings?.onboardingComplete === true;
@@ -392,7 +417,7 @@ export function reconcileLocalNetworkBypassSetting() {
   };
 }
 
-export function createSystemProvisionedUser(username, role) {
+export function createSystemProvisionedUser(username: string, role: string) {
   const passwordHash = hashPassword(crypto.randomBytes(32).toString("hex"));
   const created = userOps.createUser(username, passwordHash, role, null, false);
   return created
@@ -400,7 +425,7 @@ export function createSystemProvisionedUser(username, role) {
     : toResolvedUser(userOps.getUserByUsername(username));
 }
 
-export function ensureExternalUser(username, role) {
+export function ensureExternalUser(username: string, role: string) {
   const existing = userOps.getUserByUsername(username);
   if (existing) {
     if (existing.isProtected) {
@@ -415,7 +440,7 @@ export function ensureExternalUser(username, role) {
   return createSystemProvisionedUser(username, role);
 }
 
-function isProxyAdmin(req, username) {
+function isProxyAdmin(req: AuthRequest, username: string) {
   const adminUsers = parseCsv(process.env.AUTH_PROXY_ADMIN_USERS).map((u) => u.toLowerCase());
   if (adminUsers.includes(username.toLowerCase())) return true;
 
@@ -433,7 +458,7 @@ function isProxyAdmin(req, username) {
   return groups.some((g) => adminGroups.includes(g));
 }
 
-function resolveProxyRole(req, username) {
+function resolveProxyRole(req: AuthRequest, username: string) {
   const defaultRole =
     (process.env.AUTH_PROXY_DEFAULT_ROLE || "user").trim().toLowerCase() === "admin"
       ? "admin"
@@ -441,7 +466,7 @@ function resolveProxyRole(req, username) {
   return isProxyAdmin(req, username) ? "admin" : defaultRole;
 }
 
-export function resolveProxyUser(req) {
+export function resolveProxyUser(req: AuthRequest) {
   if (!isProxyAuthEnabled()) return null;
   if (!isTrustedProxy(req)) return null;
   const headerName = getProxyHeaderName();
@@ -454,7 +479,7 @@ export function resolveProxyUser(req) {
   return user?.status === "active" ? user : null;
 }
 
-export function issueProxySession(req) {
+export function issueProxySession(req: AuthRequest) {
   if (!isAuthRequiredByConfig()) return null;
   if (resolveSessionUserFromToken(getBearerToken(req))) return null;
   const proxyUser = resolveProxyUser(req);
@@ -473,7 +498,7 @@ export function migrateLegacyAdmin() {
   userOps.createUser(authUser, hash, "admin", null, true, true, authPassword);
 }
 
-export function resolveUser(username, password) {
+export function resolveUser(username: string, password: string) {
   if (userOps.countUsers() === 0) {
     migrateLegacyAdmin();
     if (userOps.countUsers() === 0) return null;
@@ -504,7 +529,7 @@ export function resolveUser(username, password) {
   };
 }
 
-export function resolveSubsonicTokenUser(username, token, salt) {
+export function resolveSubsonicTokenUser(username: string, token: unknown, salt: unknown) {
   if (!/^[a-f\d]{32}$/i.test(String(token || "")) || !String(salt || "")) return null;
   if (userOps.countUsers() === 0) migrateLegacyAdmin();
   const normalizedUsername = String(username || "")
@@ -525,7 +550,7 @@ export function resolveSubsonicTokenUser(username, token, salt) {
   return safeCompare(expectedToken, token) ? resolveUser(normalizedUsername, password) : null;
 }
 
-function legacyAuth(username, password) {
+function legacyAuth(username: string, password: string) {
   const authUser = getAuthUser();
   const passwords = getAuthPassword();
   if (passwords.length === 0) return null;
@@ -549,14 +574,14 @@ function legacyAuth(username, password) {
   };
 }
 
-export function resolveLocalNetworkBypassUser(req) {
+export function resolveLocalNetworkBypassUser(req: ClientRequest) {
   const status = getLocalNetworkBypassStatus(req);
   if (!status.active) return null;
   const user = getSoleAdminUser();
   return user?.status === "active" ? toResolvedUser(user) : null;
 }
 
-export function resolveRequestUser(req) {
+export function resolveRequestUser(req: AuthRequest) {
   const sessionUser = resolveSessionUserFromToken(getBearerToken(req));
   if (sessionUser) return sessionUser;
   const proxyUser = resolveProxyUser(req);
@@ -590,7 +615,7 @@ function pruneExpiredStreamTokens() {
   }
 }
 
-export function issueStreamToken(user, ttlMs = STREAM_TOKEN_TTL_MS) {
+export function issueStreamToken(user: RequestUser | null, ttlMs = STREAM_TOKEN_TTL_MS) {
   if (!user) return null;
   pruneExpiredStreamTokens();
   const token = crypto.randomBytes(24).toString("base64url");
@@ -606,7 +631,7 @@ export function issueStreamToken(user, ttlMs = STREAM_TOKEN_TTL_MS) {
   return token;
 }
 
-function consumeStreamToken(rawToken) {
+function consumeStreamToken(rawToken: unknown) {
   if (!rawToken) return null;
   pruneExpiredStreamTokens();
   const token = String(rawToken).trim();
@@ -619,7 +644,7 @@ function consumeStreamToken(rawToken) {
   return payload.user || null;
 }
 
-export const authMiddleware = (req, res, next) => {
+export const authMiddleware = (req: AuthRequest, res: Response, next: NextFunction) => {
   if (!req.path.startsWith("/api")) return next();
   if (
     req.path === "/api/health" ||
@@ -680,7 +705,13 @@ export const authMiddleware = (req, res, next) => {
   return sendUnauthorizedResponse(req, res);
 };
 
-function getCredentialsFromRequest(req) {
+function getCredentialsFromRequest(req: AuthRequest):
+  | {
+      type: "session";
+      user: NonNullable<ReturnType<typeof resolveSessionUserFromToken>>;
+    }
+  | { type: "basic"; username: string; password: string }
+  | null {
   const sessionUser = resolveSessionUserFromToken(req.query.token);
   if (sessionUser) {
     return { type: "session", user: sessionUser };
@@ -701,7 +732,7 @@ function getCredentialsFromRequest(req) {
   return null;
 }
 
-export const verifyTokenAuth = (req) => {
+export const verifyTokenAuth = (req: AuthRequest) => {
   const user = resolveRequestUser(req);
   if (user) {
     req.user = user;
@@ -730,13 +761,16 @@ export const verifyTokenAuth = (req) => {
   return !isAuthRequiredByConfig();
 };
 
-export function hasPermission(user, permission) {
+export function hasPermission(
+  user: Pick<RequestUser, "role" | "permissions"> | null | undefined,
+  permission: string,
+) {
   if (!user) return false;
   if (user.role === "admin") return true;
   return !!user.permissions?.[permission];
 }
 
-export const requirePasswordStrength = (password) => {
+export const requirePasswordStrength = (password: unknown) => {
   const raw = String(password || "");
   if (raw.length < 8) {
     return {

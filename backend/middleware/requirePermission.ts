@@ -1,22 +1,23 @@
-import { hasPermission, sendUnauthorizedResponse } from "./auth.ts";
+import { hasPermission, sendUnauthorizedResponse, type AuthRequest } from "./auth.ts";
 import { getSessionByToken } from "../config/session-helpers.ts";
+import type { Response, NextFunction } from "express";
 
 const DEFAULT_REAUTH_MAX_AGE_MINUTES = 15;
 
-function getBearerToken(req) {
+function getBearerToken(req: AuthRequest) {
   const authHeader = String(req.headers?.authorization || "");
   if (!authHeader.startsWith("Bearer ")) return null;
   return authHeader.slice(7).trim();
 }
 
-export function requireAuth(req, res, next) {
+export function requireAuth(req: AuthRequest, res: Response, next: NextFunction) {
   if (!req.user) {
     return sendUnauthorizedResponse(req, res);
   }
   next();
 }
 
-export function requireUserAccount(req, res, next) {
+export function requireUserAccount(req: AuthRequest, res: Response, next: NextFunction) {
   const userId = Number(req.user?.id);
   if (!Number.isSafeInteger(userId) || userId <= 0) {
     return res.status(403).json({
@@ -27,14 +28,17 @@ export function requireUserAccount(req, res, next) {
   next();
 }
 
-export function requireAdmin(req, res, next) {
+export function requireAdmin(req: AuthRequest, res: Response, next: NextFunction) {
   if (!req.user || req.user.role !== "admin") {
     return res.status(403).json({ error: "Forbidden", message: "Admin access required" });
   }
   next();
 }
 
-export function isRecentlyAuthenticated(req, maxAgeMinutes = DEFAULT_REAUTH_MAX_AGE_MINUTES) {
+export function isRecentlyAuthenticated(
+  req: AuthRequest,
+  maxAgeMinutes = DEFAULT_REAUTH_MAX_AGE_MINUTES,
+) {
   const token = getBearerToken(req);
   if (!token) return false;
   const session = getSessionByToken(token);
@@ -44,7 +48,7 @@ export function isRecentlyAuthenticated(req, maxAgeMinutes = DEFAULT_REAUTH_MAX_
 }
 
 export function requireRecentAuth(maxAgeMinutes = DEFAULT_REAUTH_MAX_AGE_MINUTES) {
-  return (req, res, next) => {
+  return (req: AuthRequest, res: Response, next: NextFunction) => {
     if (!req.user) {
       return sendUnauthorizedResponse(req, res);
     }
@@ -58,8 +62,8 @@ export function requireRecentAuth(maxAgeMinutes = DEFAULT_REAUTH_MAX_AGE_MINUTES
   };
 }
 
-export function requirePermission(permission) {
-  return (req, res, next) => {
+export function requirePermission(permission: string) {
+  return (req: AuthRequest, res: Response, next: NextFunction) => {
     if (!req.user) {
       return sendUnauthorizedResponse(req, res);
     }

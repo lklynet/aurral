@@ -1,13 +1,16 @@
 import crypto from "crypto";
 import { db } from "./db-sqlite.ts";
 import { userOps } from "../db/helpers/index.ts";
+import type { SessionsRow } from "../db/rows.ts";
 
 const DEFAULT_EXPIRY_HOURS = 24 * 30;
 
 const insertSessionStmt = db.prepare(
   "INSERT INTO sessions (user_id, token, created_at, expires_at, ip_address, user_agent, reauthenticated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
 );
-const getSessionByTokenStmt = db.prepare("SELECT * FROM sessions WHERE token = ? LIMIT 1");
+const getSessionByTokenStmt = db.prepare<[string], SessionsRow>(
+  "SELECT * FROM sessions WHERE token = ? LIMIT 1",
+);
 const deleteSessionByTokenStmt = db.prepare("DELETE FROM sessions WHERE token = ?");
 const deleteSessionsByUserIdStmt = db.prepare("DELETE FROM sessions WHERE user_id = ?");
 const deleteExpiredSessionsStmt = db.prepare("DELETE FROM sessions WHERE expires_at <= ?");
@@ -19,7 +22,7 @@ const getSessionExpiryMs = () => {
   return safeHours * 60 * 60 * 1000;
 };
 
-const toUserPayload = (user) => {
+const toUserPayload = (user: ReturnType<typeof userOps.getUserAuthById>) => {
   if (!user) return null;
   return {
     id: user.id,
@@ -29,7 +32,11 @@ const toUserPayload = (user) => {
   };
 };
 
-export const createSession = (userId, ipAddress = null, userAgent = null) => {
+export const createSession = (
+  userId: number,
+  ipAddress: string | null = null,
+  userAgent: string | null = null,
+) => {
   const now = Date.now();
   const expiresAt = now + getSessionExpiryMs();
   const token = crypto.randomBytes(32).toString("hex");
@@ -48,14 +55,14 @@ export const createSession = (userId, ipAddress = null, userAgent = null) => {
   };
 };
 
-export const touchReauth = (token) => {
+export const touchReauth = (token: string | null) => {
   const rawToken = String(token || "").trim();
   if (!rawToken) return false;
   const result = touchReauthStmt.run(Date.now(), rawToken);
   return result.changes > 0;
 };
 
-export const getSessionByToken = (token) => {
+export const getSessionByToken = (token: unknown) => {
   const rawToken = String(token || "").trim();
   if (!rawToken) return null;
   const row = getSessionByTokenStmt.get(rawToken);
@@ -82,12 +89,12 @@ export const getSessionByToken = (token) => {
   };
 };
 
-export const deleteSession = (token) => {
+export const deleteSession = (token: string | null) => {
   const result = deleteSessionByTokenStmt.run(String(token || "").trim());
   return result.changes > 0;
 };
 
-export const deleteSessionsByUserId = (userId) => {
+export const deleteSessionsByUserId = (userId: number) => {
   const result = deleteSessionsByUserIdStmt.run(Number(userId));
   return result.changes;
 };

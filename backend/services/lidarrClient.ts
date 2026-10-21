@@ -2,6 +2,7 @@ import axios from "../../lib/axiosFetch.ts";
 import http from "http";
 import https from "https";
 import { dbOps } from "../db/helpers/index.ts";
+import type { UserRecord } from "../db/helpers/users.ts";
 import { logger } from "./logger.ts";
 import BoundedMap from "./boundedMap.ts";
 import { mapWithConcurrency } from "./discovery/helpers.ts";
@@ -823,7 +824,9 @@ export class LidarrClient {
     };
   }
 
-  async getArtistAddPreferenceSummary(user = null) {
+  async getArtistAddPreferenceSummary(
+    user: Pick<UserRecord, "lidarrRootFolderPath" | "lidarrQualityProfileId"> | null = null,
+  ) {
     const settings = dbOps.getSettings();
     const savedTagId = normalizeProfileId(settings.integrations?.lidarr?.tagId);
 

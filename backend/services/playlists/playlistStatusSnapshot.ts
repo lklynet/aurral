@@ -183,7 +183,7 @@ function collectPlaylistTrackEntries(jobs) {
 }
 
 function buildOwnerMap(flows, staticPlaylists) {
-  const ownerIds = new Set();
+  const ownerIds = new Set<number>();
   for (const item of [
     ...(Array.isArray(flows) ? flows : []),
     ...(Array.isArray(staticPlaylists) ? staticPlaylists : []),

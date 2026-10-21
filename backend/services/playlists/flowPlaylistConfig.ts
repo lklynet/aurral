@@ -971,6 +971,18 @@ export const flowPlaylistConfig = {
     importSource = null,
     description = null,
     recordHistory = true,
+  }: {
+    id?: string | null;
+    name: string;
+    sourceName?: string | null;
+    sourceFlowId?: string | null;
+    discoverPresetId?: string | null;
+    type?: string | null;
+    tracks?: unknown[];
+    ownerUserId?: number | null;
+    importSource?: string | null;
+    description?: string | null;
+    recordHistory?: boolean;
   }) {
     const playlists = getStoredStaticPlaylists();
     const normalizedOwnerUserId = normalizeOwnerUserId(ownerUserId);

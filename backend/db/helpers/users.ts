@@ -8,23 +8,75 @@ import {
   normalizeListenHistoryUsername,
   normalizeListenHistoryUrl,
 } from "../../services/listeningHistory.ts";
+import type { UsersRow } from "../rows.ts";
 
-const getUserByUsernameStmt = db.prepare("SELECT * FROM users WHERE username = ?");
-const getAllUsersStmt = db.prepare(
+export type UserPermissions = Record<string, boolean>;
+
+interface UserUpdate {
+  username?: string;
+  passwordHash?: string;
+  subsonicPassword?: string | null;
+  role?: string;
+  permissions?: UserPermissions;
+  lastfmUsername?: string | null;
+  listenHistoryProvider?: string | null;
+  listenHistoryUsername?: string | null;
+  listenHistoryUrl?: string | null;
+  lidarrRootFolderPath?: string | null;
+  lidarrQualityProfileId?: number | string | null;
+  status?: string;
+  roleSource?: string;
+  hasLocalPassword?: boolean;
+  needsIdentityMigration?: boolean;
+  allowIdentityAdoption?: boolean;
+}
+
+type UsersListRow = Pick<
+  UsersRow,
+  | "id"
+  | "username"
+  | "role"
+  | "permissions"
+  | "lastfm_username"
+  | "listen_history_provider"
+  | "listen_history_username"
+  | "listen_history_url"
+  | "lidarr_root_folder_path"
+  | "lidarr_quality_profile_id"
+  | "status"
+  | "is_protected"
+  | "role_source"
+  | "has_local_password"
+  | "needs_identity_migration"
+  | "allow_identity_adoption"
+>;
+
+const getUserByUsernameStmt = db.prepare<[string], UsersRow>(
+  "SELECT * FROM users WHERE username = ?",
+);
+const getAllUsersStmt = db.prepare<[], UsersListRow>(
   "SELECT id, username, role, permissions, lastfm_username, listen_history_provider, listen_history_username, listen_history_url, lidarr_root_folder_path, lidarr_quality_profile_id, status, is_protected, role_source, has_local_password, needs_identity_migration, allow_identity_adoption FROM users ORDER BY username",
 );
-const getUserByIdStmt = db.prepare("SELECT * FROM users WHERE id = ?");
-const getUserAuthByIdStmt = db.prepare(
+const getUserByIdStmt = db.prepare<[number], UsersRow>("SELECT * FROM users WHERE id = ?");
+const getUserAuthByIdStmt = db.prepare<
+  [number],
+  Pick<
+    UsersRow,
+    "id" | "username" | "role" | "permissions" | "status" | "is_protected" | "role_source"
+  >
+>(
   "SELECT id, username, role, permissions, status, is_protected, role_source FROM users WHERE id = ?",
 );
-const countUsersStmt = db.prepare("SELECT COUNT(*) AS count FROM users");
+const countUsersStmt = db.prepare<[], { count: number }>("SELECT COUNT(*) AS count FROM users");
 const insertUserStmt = db.prepare(
   "INSERT INTO users (username, password_hash, subsonic_password, role, permissions, lidarr_root_folder_path, lidarr_quality_profile_id, has_local_password, is_protected) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
 );
 const updateUserStmt = db.prepare(
   "UPDATE users SET username = ?, password_hash = ?, subsonic_password = ?, role = ?, permissions = ?, lastfm_username = ?, listen_history_provider = ?, listen_history_username = ?, listen_history_url = ?, lidarr_root_folder_path = ?, lidarr_quality_profile_id = ?, status = ?, role_source = ?, has_local_password = ?, needs_identity_migration = ?, allow_identity_adoption = ? WHERE id = ?",
 );
-const getSubsonicPasswordByIdStmt = db.prepare("SELECT subsonic_password FROM users WHERE id = ?");
+const getSubsonicPasswordByIdStmt = db.prepare<[number], Pick<UsersRow, "subsonic_password">>(
+  "SELECT subsonic_password FROM users WHERE id = ?",
+);
 const updateSubsonicPasswordStmt = db.prepare(
   "UPDATE users SET subsonic_password = ? WHERE id = ?",
 );
@@ -41,12 +93,12 @@ const DEFAULT_PERMISSIONS = {
   deleteTrack: false,
 };
 
-function encryptSubsonicPassword(password) {
+function encryptSubsonicPassword(password: string | null | undefined) {
   const value = password == null ? "" : String(password);
   return value ? encryptWithKey(value, getSettingsEncryptionKey()) : null;
 }
 
-function decryptSubsonicPassword(value) {
+function decryptSubsonicPassword(value: string | null | undefined) {
   if (!value) return null;
   const decrypted = decryptWithKey(value, getSettingsEncryptionKey());
   return decrypted && decrypted !== value ? decrypted : null;
@@ -56,7 +108,7 @@ export const userOps = {
   getDefaultPermissions() {
     return { ...DEFAULT_PERMISSIONS };
   },
-  getUserByUsername(username) {
+  getUserByUsername(username: string) {
     const row = getUserByUsernameStmt.get(String(username).trim().toLowerCase());
     if (!row) return null;
     const history = getListenHistoryProfile(row);
@@ -65,7 +117,7 @@ export const userOps = {
       username: row.username,
       passwordHash: row.password_hash,
       role: row.role || "user",
-      permissions: dbHelpers.parseJSON(row.permissions) || {
+      permissions: (dbHelpers.parseJSON(row.permissions) as UserPermissions | null) || {
         ...DEFAULT_PERMISSIONS,
       },
       lidarrRootFolderPath: row.lidarr_root_folder_path || null,
@@ -80,8 +132,8 @@ export const userOps = {
       ...history,
     };
   },
-  getUserById(id) {
-    const row = getUserByIdStmt.get(parseInt(id, 10));
+  getUserById(id: number | string) {
+    const row = getUserByIdStmt.get(parseInt(String(id), 10));
     if (!row) return null;
     const history = getListenHistoryProfile(row);
     return {
@@ -89,7 +141,7 @@ export const userOps = {
       username: row.username,
       passwordHash: row.password_hash,
       role: row.role || "user",
-      permissions: dbHelpers.parseJSON(row.permissions) || {
+      permissions: (dbHelpers.parseJSON(row.permissions) as UserPermissions | null) || {
         ...DEFAULT_PERMISSIONS,
       },
       lidarrRootFolderPath: row.lidarr_root_folder_path || null,
@@ -104,14 +156,14 @@ export const userOps = {
       ...history,
     };
   },
-  getUserAuthById(id) {
-    const row = getUserAuthByIdStmt.get(parseInt(id, 10));
+  getUserAuthById(id: number | string) {
+    const row = getUserAuthByIdStmt.get(parseInt(String(id), 10));
     if (!row) return null;
     return {
       id: row.id,
       username: row.username,
       role: row.role || "user",
-      permissions: dbHelpers.parseJSON(row.permissions) || {
+      permissions: (dbHelpers.parseJSON(row.permissions) as UserPermissions | null) || {
         ...DEFAULT_PERMISSIONS,
       },
       status: row.status || "active",
@@ -119,12 +171,12 @@ export const userOps = {
       roleSource: row.role_source || "local",
     };
   },
-  getSubsonicPasswordById(id) {
-    const row = getSubsonicPasswordByIdStmt.get(parseInt(id, 10));
+  getSubsonicPasswordById(id: number | string) {
+    const row = getSubsonicPasswordByIdStmt.get(parseInt(String(id), 10));
     return decryptSubsonicPassword(row?.subsonic_password);
   },
-  syncSubsonicPassword(id, password) {
-    const userId = parseInt(id, 10);
+  syncSubsonicPassword(id: number | string, password: string | null | undefined) {
+    const userId = parseInt(String(id), 10);
     const row = getSubsonicPasswordByIdStmt.get(userId);
     if (!row) return false;
     const current = decryptSubsonicPassword(row.subsonic_password);
@@ -134,7 +186,7 @@ export const userOps = {
     return true;
   },
   countUsers() {
-    return countUsersStmt.get().count;
+    return countUsersStmt.get()!.count;
   },
   getAllUsers() {
     const rows = getAllUsersStmt.all();
@@ -143,7 +195,7 @@ export const userOps = {
       id: r.id,
       username: r.username,
       role: r.role || "user",
-      permissions: dbHelpers.parseJSON(r.permissions) || {
+      permissions: (dbHelpers.parseJSON(r.permissions) as UserPermissions | null) || {
         ...DEFAULT_PERMISSIONS,
       },
       lidarrRootFolderPath: r.lidarr_root_folder_path || null,
@@ -158,10 +210,10 @@ export const userOps = {
     }));
   },
   createUser(
-    username,
-    passwordHash,
+    username: string,
+    passwordHash: string,
     role = "user",
-    permissions = null,
+    permissions: UserPermissions | null = null,
     hasLocalPassword = true,
     isProtected = false,
     subsonicPassword: string | null = null,
@@ -184,7 +236,7 @@ export const userOps = {
         isProtected ? 1 : 0,
       );
       return {
-        id: result.lastInsertRowid,
+        id: result.lastInsertRowid as number,
         username: un,
         role,
         permissions: perms,
@@ -205,9 +257,9 @@ export const userOps = {
       return null;
     }
   },
-  updateUser(id, data) {
+  updateUser(id: number | string, data: UserUpdate) {
     const existing = userOps.getUserById(id);
-    const existingRow = getUserByIdStmt.get(parseInt(id, 10));
+    const existingRow = getUserByIdStmt.get(parseInt(String(id), 10));
     if (!existing || !existingRow) return null;
     const username = data.username !== undefined ? String(data.username).trim() : existing.username;
     const passwordHash =
@@ -295,10 +347,10 @@ export const userOps = {
         hasLocalPassword ? 1 : 0,
         needsIdentityMigration ? 1 : 0,
         allowIdentityAdoption ? 1 : 0,
-        parseInt(id, 10),
+        parseInt(String(id), 10),
       );
       return {
-        id: parseInt(id, 10),
+        id: parseInt(String(id), 10),
         username,
         role,
         permissions,
@@ -319,20 +371,22 @@ export const userOps = {
       return null;
     }
   },
-  setProtected(id, isProtected) {
+  setProtected(id: number | string, isProtected: boolean) {
     try {
-      setProtectedStmt.run(isProtected ? 1 : 0, parseInt(id, 10));
+      setProtectedStmt.run(isProtected ? 1 : 0, parseInt(String(id), 10));
       return true;
     } catch (e) {
       return false;
     }
   },
-  deleteUser(id) {
+  deleteUser(id: number | string) {
     try {
-      deleteUserStmt.run(parseInt(id, 10));
+      deleteUserStmt.run(parseInt(String(id), 10));
       return true;
     } catch (e) {
       return false;
     }
   },
 };
+
+export type UserRecord = NonNullable<ReturnType<typeof userOps.getUserById>>;

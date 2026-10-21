@@ -1,16 +1,17 @@
+import type { NextFunction, Request, Response } from "express";
 import { logger, safeLogDiagnostic } from "../services/logger.ts";
 
 const MAX_LOG_VALUE_LENGTH = 300;
 
-function logValue(value) {
+function logValue(value: unknown) {
   return typeof value === "string" ? safeLogDiagnostic(value).slice(0, MAX_LOG_VALUE_LENGTH) : null;
 }
 
 export function createRequestFailureLogger(log = logger) {
-  return (req, res, next) => {
-    let responseReason = null;
+  return (req: Request, res: Response, next: NextFunction) => {
+    let responseReason: string | null = null;
     const sendJson = res.json;
-    res.json = function (body) {
+    res.json = function (body: Record<string, unknown> | null | undefined) {
       if (res.statusCode >= 500 && body && typeof body === "object") {
         responseReason = logValue(body.message) || logValue(body.error);
       }
