@@ -36,12 +36,6 @@ import { useLibraryShareAction, useShareAction } from "../hooks/useShareAction.t
 import { useCollectionTint } from "./CollectionHeader";
 import ArtworkImage from "./ArtworkImage";
 
-declare module "react" {
-  interface CSSProperties {
-    [customProperty: `--${string}`]: string | number | undefined;
-  }
-}
-
 const SHEET_EXIT_MS = 260;
 const SHEET_DISMISS_DISTANCE = 120;
 const SEEK_SHORTCUT_SECONDS = 5;

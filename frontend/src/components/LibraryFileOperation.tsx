@@ -28,30 +28,38 @@ const GROUPS = [
 
 const RUNNING = { move: "Moving files", copy: "Copying files", hardlink: "Linking files" };
 
-type FileOperation = {
+type FileOperationBase = {
   id: number;
-  kind: "ingest" | "cleanup";
   status: string;
-  options?: { mode?: "move" | "copy" | "hardlink" } | null;
-  summary?: {
+  summary: {
     unchanged?: number;
-    removingSources?: boolean;
+    removingSources?: number | null;
     monitor?: string;
     doubles?: string;
-  } | null;
-  counts?: Record<string, number>;
-  progress?: { done: number; total: number } | null;
+  };
+  counts: Record<string, number>;
+  progress: { done: number; total: number };
   sources?: { removable: number; removed: number } | null;
   error?: string | null;
   updatedAt: number;
 };
+
+type FileOperation =
+  | (FileOperationBase & {
+      kind: "ingest";
+      options: { mode: "move" | "copy" | "hardlink" };
+    })
+  | (FileOperationBase & {
+      kind: "cleanup";
+      options: { mode?: undefined };
+    });
 
 type LibraryFileOperationItem = {
   position: number;
   status: string;
   reason?: string | null;
   source: string;
-  target: string;
+  target: string | null;
 };
 
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
