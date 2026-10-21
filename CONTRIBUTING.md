@@ -64,6 +64,20 @@ Keep UI changes focused and explain any new interaction in the pull request.
 
 Before opening the pull request, run the checks that apply to your change and describe any manual testing in the pull request. Maintainers may ask for a smaller diff, more context, or a separate pull request.
 
+## Run the checks
+
+Aurral uses [Vite+](https://viteplus.dev) for formatting, linting, tests, and frontend builds. Run these from the repository root:
+
+```sh
+npm run check             # formatting, lint, and UI style checks
+npm test                  # unit tests
+npm run test:integration  # integration tests
+npm run test:browser      # component tests in headless Chromium
+npm run build             # frontend build
+```
+
+Run `npm run format` to format the whole repository. After `npm install`, the pre-commit hook formats and lints the files you stage. It adds its fixes to the commit and stops the commit when a lint error remains.
+
 ## Run browser smoke tests
 
 Start the candidate application before running the browser suite. Set `AURRAL_BASE_URL` to its URL, and set `AURRAL_TEST_USERNAME` and `AURRAL_TEST_PASSWORD` to a disposable test account.

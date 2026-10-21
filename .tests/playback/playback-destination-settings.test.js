@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vite-plus/test";
 import { getPlaybackDestinationSettings } from "../../backend/services/playback/playbackDestinationSettings.js";
 
 test("playback adapters expose declarative connection settings without credentials", () => {

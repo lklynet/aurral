@@ -11,7 +11,7 @@ export const json = (body, status = 200) =>
 export function stubFetch(t, handler) {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (url, init) => handler(new URL(String(url)), init);
-  t.after(() => {
+  t.onTestFinished(() => {
     globalThis.fetch = originalFetch;
   });
 }

@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import {
@@ -20,7 +20,7 @@ const [isolatedState, { db }, { dbOps }, { flowPlaylistConfig }, snapshotModule]
 
 const { getPlaylistStatusSnapshot } = snapshotModule;
 
-test.beforeEach(() => {
+beforeEach(() => {
   resetDatabase(db);
   dbOps.updateSettings({
     integrations: {},
@@ -30,7 +30,7 @@ test.beforeEach(() => {
   });
 });
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 

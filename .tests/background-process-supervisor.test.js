@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync, fork } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { test } from "node:test";
+import { test, vi } from "vite-plus/test";
 import { fileURLToPath } from "node:url";
 import v8 from "node:v8";
 import { setupIsolatedBackend, cleanupIsolatedState } from "./helpers/backendTestHarness.js";
@@ -64,7 +64,7 @@ function withEnv(t, name, value) {
   const previous = process.env[name];
   if (value === undefined) delete process.env[name];
   else process.env[name] = value;
-  t.after(() => {
+  t.onTestFinished(() => {
     if (previous === undefined) delete process.env[name];
     else process.env[name] = previous;
   });
@@ -151,8 +151,8 @@ test("supervisor launches only groups with work, forwards messages, and stops wi
   assert.deepEqual(supervisor.getWorkerStatuses(), []);
 });
 
-test("an idle worker exits without a restart and returns when work arrives", async (t) => {
-  t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
+test("an idle worker exits without a restart and returns when work arrives", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"], now: 0 });
   const { launches, forkProcess } = createFakeFork();
   const exits = [];
   const warnings = [];
@@ -172,7 +172,7 @@ test("an idle worker exits without a restart and returns when work arrives", asy
     assert.deepEqual(launches[0].sent, [{ type: "retire" }]);
     exitIdle(launches[0]);
     await flush();
-    t.mock.timers.tick(60000);
+    vi.advanceTimersByTime(60000);
     await flush();
     assert.equal(launches.length, 1);
     assert.deepEqual(supervisor.getGroups(), []);
@@ -180,7 +180,7 @@ test("an idle worker exits without a restart and returns when work arrives", asy
     assert.deepEqual(warnings, []);
 
     withWork = ["library"];
-    t.mock.timers.tick(2000);
+    vi.advanceTimersByTime(2000);
     assert.equal(launches.length, 2);
   } finally {
     await supervisor.stop();
@@ -408,7 +408,7 @@ test("a worker that runs out of heap stops at the configured limit and the log n
       defaultHeapLimit: v8.getHeapStatistics().heap_size_limit,
     })),
   });
-  t.after(() => supervisor.stop());
+  t.onTestFinished(() => supervisor.stop());
   supervisor.start();
   assert.match(
     await warned.promise,
@@ -430,13 +430,13 @@ test("a heap limit set in NODE_OPTIONS reaches background workers unchanged", as
       if (message.type === "heap-limit") reported.resolve(message.bytes);
     },
   });
-  t.after(() => supervisor.stop());
+  t.onTestFinished(() => supervisor.stop());
   supervisor.start();
   assert.equal(await reported.promise, expected);
 });
 
-test("a failed deadline inspection retries without requiring another commit", async (t) => {
-  t.mock.timers.enable({ apis: ["Date", "setTimeout", "setInterval"], now: 0 });
+test("a failed deadline inspection retries without requiring another commit", async () => {
+  vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval"], now: 0 });
   const { launches, forkProcess } = createFakeFork();
   let fail = true;
   const supervisor = createBackgroundProcessSupervisor({
@@ -451,16 +451,16 @@ test("a failed deadline inspection retries without requiring another commit", as
   });
   try {
     supervisor.start();
-    t.mock.timers.tick(1000);
+    vi.advanceTimersByTime(1000);
     assert.deepEqual(launches, []);
-    t.mock.timers.tick(1000);
+    vi.advanceTimersByTime(1000);
     assert.deepEqual(supervisor.getGroups(), ["library"]);
   } finally {
     await supervisor.stop();
   }
 });
 
-test("idle demand checks skip queue scans and discover unannounced commits", async (t) => {
+test("idle demand checks skip queue scans and discover unannounced commits", async () => {
   const [state, { db }, honker] = await setupIsolatedBackend(
     "idle-demand", "backend/config/db-sqlite.js", "backend/services/honkerDb.js",
   );
@@ -479,38 +479,38 @@ test("idle demand checks skip queue scans and discover unannounced commits", asy
       const groups = honker.listBackgroundGroupsWithWork(now);
       if (crossDeadline) {
         crossDeadline = false;
-        t.mock.timers.setTime(Date.now() + 1100);
+        vi.setSystemTime(Date.now() + 1100);
       }
       return groups;
     },
   });
-  t.mock.timers.enable({ apis: ["setInterval", "setTimeout", "Date"], now: Math.floor(Date.now() / 1000) * 1000 });
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout", "Date"], now: Math.floor(Date.now() / 1000) * 1000 });
   try {
     supervisor.start();
-    t.mock.timers.tick(60000);
+    vi.advanceTimersByTime(60000);
     assert.equal(inspections, 1, "an unchanged database must not be repeatedly scanned");
     assert.deepEqual(launches, []);
     const delayedId = queue.enqueue({ kind: "session-cleanup" }, { runAt: Math.floor(Date.now() / 1000) + 5 });
-    t.mock.timers.tick(2000);
+    vi.advanceTimersByTime(2000);
     assert.deepEqual(launches, [], "a future job must stay pending");
-    t.mock.timers.tick(3000);
+    vi.advanceTimersByTime(3000);
     assert.deepEqual(supervisor.getGroups(), ["maintenance"], "unchanged delayed work must wake at its deadline");
     launches[0].emit("message", { type: "ready" });
     launches[0].emit("message", { type: "idle" });
     queue.cancel(delayedId);
     exitIdle(launches[0]);
     await flush();
-    t.mock.timers.tick(2000);
+    vi.advanceTimersByTime(2000);
     assert.deepEqual(supervisor.getGroups(), []);
     const immediateId = queue.enqueue({ kind: "session-cleanup" });
-    t.mock.timers.tick(2000);
+    vi.advanceTimersByTime(2000);
     assert.deepEqual(supervisor.getGroups(), ["maintenance"]);
     queue.cancel(immediateId);
     launches[1].emit("message", { type: "ready" });
     launches[1].emit("message", { type: "idle" });
     exitIdle(launches[1]);
     await flush();
-    t.mock.timers.tick(2000);
+    vi.advanceTimersByTime(2000);
     for (const kind of ["pending", "processing", "schedule"]) {
       const dueAt = Math.floor(Date.now() / 1000) + 1;
       let crossingId;
@@ -534,7 +534,7 @@ test("idle demand checks skip queue scans and discover unannounced commits", asy
       crossDeadline = true;
       const group = kind === "schedule" ? "scheduler" : "maintenance";
       supervisor.wake(group);
-      t.mock.timers.tick(1);
+      vi.advanceTimersByTime(1);
       assert.deepEqual(supervisor.getGroups(), [group], `${kind} work crossed during inspection must still launch its owner`);
       if (scheduler) scheduler.remove(name);
       else queue.cancel(crossingId);
@@ -543,12 +543,12 @@ test("idle demand checks skip queue scans and discover unannounced commits", asy
       child.emit("message", { type: "idle" });
       exitIdle(child);
       await flush();
-      t.mock.timers.tick(2000);
+      vi.advanceTimersByTime(2000);
       assert.deepEqual(supervisor.getGroups(), []);
     }
   } finally {
     await supervisor.stop();
-    t.mock.timers.reset();
+    vi.useRealTimers();
     await cleanupIsolatedState(state);
   }
 });

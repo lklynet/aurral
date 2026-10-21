@@ -272,7 +272,7 @@ export function normalizeTitle(title) {
   return String(title || "")
     .toLowerCase()
     .replace(
-      /\s*[\(\[](deluxe|remaster|anniversary|expanded|bonus|edition|live|mono|stereo|\d{4}).*[\)\]]/gi,
+      /\s*[([](deluxe|remaster|anniversary|expanded|bonus|edition|live|mono|stereo|\d{4}).*[)\]]/gi,
       "",
     )
     .replace(

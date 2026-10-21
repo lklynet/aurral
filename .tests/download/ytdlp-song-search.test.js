@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { access, chmod, mkdir, readFile, writeFile } from "node:fs/promises";
@@ -65,14 +65,14 @@ await writeFile(path.join(binDir, "yt-dlp"), [
 await chmod(path.join(binDir, "yt-dlp"), 0o755);
 process.env.PATH = `${binDir}${path.delimiter}${previousPath || ""}`;
 
-test.beforeEach(async () => {
+beforeEach(async () => {
   resetDatabase(db);
   await writeFile(fixturePath, JSON.stringify(recorded));
   await writeFile(logPath, "");
   await writeFile(pidPath, "");
 });
 
-test.after(async () => {
+afterAll(async () => {
   process.env.PATH = previousPath;
   await cleanupIsolatedState(state);
 });
@@ -139,9 +139,9 @@ function waitForExit(pids) {
   while (!pids.every(hasExited)) assert.ok(Date.now() < giveUp, `yt-dlp ${pids} did not exit`);
 }
 
-function warnings(t) {
+function warnings() {
   const warned = [];
-  t.mock.method(console, "warn", (...args) => { warned.push(JSON.stringify(args)); });
+  vi.spyOn(console, "warn").mockImplementation((...args) => { warned.push(JSON.stringify(args)); });
   return (text) => warned.some((line) => line.includes(text));
 }
 
@@ -169,8 +169,8 @@ for (const { name, track, unreadable = [], delays = {}, chosen } of [
     chosen: [["5oWyMakvQew", "accept"], ["m8i5WiWCN-c", "verify"]],
   },
 ]) {
-  test(`yt-dlp YouTube Music search ${name}`, async (t) => {
-    const warned = warnings(t);
+  test(`yt-dlp YouTube Music search ${name}`, async () => {
+    const warned = warnings();
     await useFixtures((fixtures) => {
       unreadable.forEach((id) => delete fixtures.songs[id]);
       Object.entries(delays).forEach(([id, delay]) => Object.assign(fixtures.songs[id], { delay }));
@@ -184,28 +184,28 @@ for (const { name, track, unreadable = [], delays = {}, chosen } of [
   });
 }
 
-test("yt-dlp keeps reading a song that finishes 10 seconds into the YouTube Music search", { timeout: 20000 }, async (t) => {
+test("yt-dlp keeps reading a song that finishes 10 seconds into the YouTube Music search", { timeout: 20000 }, async () => {
   await useFixtures((fixtures) => { fixtures.songs["4D7u5KF7SP8"].delay = 500; });
-  t.mock.timers.enable({ apis: ["setTimeout"] });
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], now: 0 });
   const searching = search({
     artistName: "Daft Punk", trackName: "Get Lucky", albumName: "Random Access Memories", durationMs: 369000,
   });
   await startedPid("4D7u5KF7SP8");
-  t.mock.timers.tick(10000);
+  vi.advanceTimersByTime(10000);
   const { next } = await searching;
   assert.equal(next.phase, "download", next.failed);
   assert.deepEqual(choices(next), [["4D7u5KF7SP8", "accept"]]);
 });
 
-test("yt-dlp keeps the songs a stalled read's batch holds at the search deadline and reads no more", { timeout: 20000 }, async (t) => {
-  const warned = warnings(t);
+test("yt-dlp keeps the songs a stalled read's batch holds at the search deadline and reads no more", { timeout: 20000 }, async () => {
+  const warned = warnings();
   await useFixtures((fixtures) => { fixtures.songs["5oWyMakvQew"].delay = 600000; });
-  t.mock.timers.enable({ apis: ["setTimeout"] });
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], now: 0 });
   const searching = search({ artistName: "Fleetwood Mac", trackName: "Dreams", albumName: "Rumours", durationMs: 257000 });
   const [read, readToo] = await Promise.all(["swJOIjjW69U", "m8i5WiWCN-c"].map(startedPid));
   await startedPid("5oWyMakvQew");
   waitForExit([read, readToo]);
-  t.mock.timers.tick(60000);
+  vi.advanceTimersByTime(60000);
   const { next } = await searching;
   assert.deepEqual(choices(next), [["swJOIjjW69U", "accept"], ["m8i5WiWCN-c", "verify"]]);
   assert.deepEqual(await calls(), [
@@ -218,15 +218,15 @@ test("yt-dlp keeps the songs a stalled read's batch holds at the search deadline
   assert.ok(warned("5oWyMakvQew"), "no warning names the song the deadline stopped reading");
 });
 
-test("yt-dlp gives up on a stalled song read at the search deadline and searches videos", { timeout: 20000 }, async (t) => {
+test("yt-dlp gives up on a stalled song read at the search deadline and searches videos", { timeout: 20000 }, async () => {
   await useFixtures((fixtures) => { fixtures.songs.BGMfbFzONp8.delay = 600000; });
-  t.mock.timers.enable({ apis: ["setTimeout"] });
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], now: 0 });
   const searching = search({
     artistName: "宇多田ヒカル", artistAliases: ["Utada Hikaru", "Hikaru Utada"],
     trackName: "First Love", albumName: "First Love", durationMs: 257000,
   });
   const stalled = await startedPid("BGMfbFzONp8");
-  t.mock.timers.tick(60000);
+  vi.advanceTimersByTime(60000);
   const { next } = await searching;
   assert.equal(next.candidates[0].raw.id, "o1sUaVJUeB0");
   assert.ok((await calls()).includes("video search 宇多田ヒカル First Love"));

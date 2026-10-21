@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { access, mkdir } from "node:fs/promises";
@@ -46,13 +46,13 @@ const [
   "backend/services/downloadJobs/blockedJobReview.js",
 );
 
-test.after(() => cleanupIsolatedState(state));
-test.beforeEach((t) => {
+afterAll(() => cleanupIsolatedState(state));
+beforeEach(() => {
   resetDatabase(db);
   // A released track wakes the worker, and a queued step would start the
   // pipeline worker; these tests drive both themselves.
-  t.mock.method(downloadWorker, "start", async () => {});
-  t.mock.method(downloadTracker, "enqueuePipeline", (payload) => getPipelineQueue().enqueue(payload, {}));
+  vi.spyOn(downloadWorker, "start").mockImplementation(async () => {});
+  vi.spyOn(downloadTracker, "enqueuePipeline").mockImplementation((payload) => getPipelineQueue().enqueue(payload, {}));
 });
 
 const slskd = getDownloadClient("slskd");
@@ -114,15 +114,15 @@ function soulseekFolders(artist, albumName, titles) {
 
 function mockSoulseekSearch(t, responses) {
   let searches = 0;
-  const created = t.mock.method(slskd, "createSearch", async (query, options) => {
+  const created = vi.spyOn(slskd, "createSearch").mockImplementation(async (query, options) => {
     const id = `release-first-${++searches}`;
     options.onSearchCreated?.(id);
     return { id, searchText: query };
   });
-  t.mock.method(slskd, "getSearch", async () => ({ state: "Completed, Succeeded",
+  vi.spyOn(slskd, "getSearch").mockImplementation(async () => ({ state: "Completed, Succeeded",
     fileCount: responses.reduce((count, response) => count + response.files.length, 0), responses }));
-  t.mock.method(slskd, "deleteSearch", async () => true);
-  t.mock.method(slskd, "isCleanupAfterRunsEnabled", () => false);
+  vi.spyOn(slskd, "deleteSearch").mockImplementation(async () => true);
+  vi.spyOn(slskd, "isCleanupAfterRunsEnabled").mockImplementation(() => false);
   return created;
 }
 
@@ -133,14 +133,14 @@ test("every album source is searched by release in priority order before any tra
     prowlarr: { enabled: true, url: "http://127.0.0.1:9", apiKey: "disposable" },
     nzbget: { enabled: true, url: "http://127.0.0.1:9", priority: 20 },
   });
-  t.mock.method(ytdlp, "isConfigured", () => true);
-  const ytdlpSearch = t.mock.method(ytdlp, "search", async () => []);
+  vi.spyOn(ytdlp, "isConfigured").mockImplementation(() => true);
+  const ytdlpSearch = vi.spyOn(ytdlp, "search").mockImplementation(async () => []);
   const group = album("priority", "Priority Band", [{ id: "priority-release", tracks: ["First", "Second", "Third"] }]);
   await serveGroups(t, [group]);
   // Every folder holds the whole release plus a bonus song, so none is the requested release.
   mockSoulseekSearch(t, soulseekFolders("Priority Band", "priority Album", ["First", "Second", "Third", "Bonus"]));
-  t.mock.method(prowlarrClient, "getEnabledUsenetIndexers", async () => []);
-  const usenetSearch = t.mock.method(prowlarrClient, "search", async () => []);
+  vi.spyOn(prowlarrClient, "getEnabledUsenetIndexers").mockImplementation(async () => []);
+  const usenetSearch = vi.spyOn(prowlarrClient, "search").mockImplementation(async () => []);
   const [jobId] = libraryJobs(group, ["Second"]);
 
   let payload = albumAttempt([jobId]);
@@ -151,9 +151,9 @@ test("every album source is searched by release in priority order before any tra
   }
 
   assert.deepEqual(sources, ["slskd", "usenet"]);
-  assert.ok(usenetSearch.mock.callCount() > 0);
-  assert.ok(usenetSearch.mock.calls.every((call) => !String(call.arguments[0]).includes("Second")));
-  assert.equal(ytdlpSearch.mock.callCount(), 0);
+  assert.ok(usenetSearch.mock.calls.length > 0);
+  assert.ok(usenetSearch.mock.calls.every((call) => !String(call[0]).includes("Second")));
+  assert.equal(ytdlpSearch.mock.calls.length, 0);
   assert.equal(payload.albumGrab, false);
   assert.equal(buildNextSourcePayload(payload).source, "ytdlp");
   assert.notEqual(downloadTracker.getJob(jobId).status, "failed");
@@ -161,27 +161,27 @@ test("every album source is searched by release in priority order before any tra
 
 // yt-dlp ranked above Soulseek, with every search logged in order and
 // whether a release attempt made it.
-function useQuickSources(t) {
+function useQuickSources() {
   useSources({
     ytdlp: { enabled: true, priority: 1 },
     slskd: { enabled: true, url: "http://127.0.0.1:9", priority: 10 },
   });
-  t.mock.method(ytdlp, "isConfigured", () => true);
+  vi.spyOn(ytdlp, "isConfigured").mockImplementation(() => true);
   const searches = [];
   const log = { albumStep: false };
-  const ytdlpSearch = t.mock.method(ytdlp, "search", async () => {
+  const ytdlpSearch = vi.spyOn(ytdlp, "search").mockImplementation(async () => {
     searches.push("yt-dlp");
     return [];
   });
-  t.mock.method(slskd, "createSearch", async (query, options) => {
+  vi.spyOn(slskd, "createSearch").mockImplementation(async (query, options) => {
     searches.push(log.albumStep ? "soulseek album" : "soulseek track");
     const id = `quick-${searches.length}`;
     options.onSearchCreated?.(id);
     return { id, searchText: query };
   });
-  t.mock.method(slskd, "getSearch", async () => ({ state: "Completed, Succeeded", fileCount: 0, responses: [] }));
-  t.mock.method(slskd, "deleteSearch", async () => true);
-  t.mock.method(slskd, "isCleanupAfterRunsEnabled", () => false);
+  vi.spyOn(slskd, "getSearch").mockImplementation(async () => ({ state: "Completed, Succeeded", fileCount: 0, responses: [] }));
+  vi.spyOn(slskd, "deleteSearch").mockImplementation(async () => true);
+  vi.spyOn(slskd, "isCleanupAfterRunsEnabled").mockImplementation(() => false);
   return Object.assign(log, { ytdlpSearch, searched: () => searches.filter((entry, index) => entry !== searches[index - 1]),
     clear: () => { searches.length = 0; } });
 }
@@ -198,7 +198,7 @@ const storedRequest = (jobId) => db.prepare(
   "SELECT request_kind, quick_searched_sources, status FROM playlist_download_jobs WHERE id = ?").get(jobId);
 
 test("a track request searches yt-dlp ranked first before its release, and never again after; a whole-album request starts on its release", async (t) => {
-  const sources = useQuickSources(t);
+  const sources = useQuickSources();
   const group = album("quick", "Quick Band", [{ id: "quick-release", tracks: ["First", "Second", "Third"] }]);
   await serveGroups(t, [group]);
 
@@ -223,7 +223,7 @@ test("a track request searches yt-dlp ranked first before its release, and never
 });
 
 test("a track request starts on its release as before when an album source ranks above yt-dlp", async (t) => {
-  const sources = useQuickSources(t);
+  const sources = useQuickSources();
   useSources({
     ytdlp: { enabled: true, priority: 20 },
     slskd: { enabled: true, url: "http://127.0.0.1:9", priority: 10 },
@@ -238,7 +238,7 @@ test("a track request starts on its release as before when an album source ranks
 });
 
 test("a track request asked for again after its search ended searches yt-dlp first again", async (t) => {
-  const sources = useQuickSources(t);
+  const sources = useQuickSources();
   const group = album("again", "Again Band", [{ id: "again-release", tracks: ["First", "Second", "Third"] }]);
   await serveGroups(t, [group]);
   const [failed, imported] = libraryJobs(group, ["Second", "Third"], { requestGroupId: null });
@@ -261,7 +261,7 @@ test("a track request asked for again after its search ended searches yt-dlp fir
 });
 
 test("a quick search cut off by a restart searches yt-dlp again", async (t) => {
-  useQuickSources(t);
+  useQuickSources();
   const group = album("restart", "Restart Band", [{ id: "restart-release", tracks: ["First", "Second"] }]);
   await serveGroups(t, [group]);
   const [track] = libraryJobs(group, ["Second"]);
@@ -275,7 +275,7 @@ test("a quick search cut off by a restart searches yt-dlp again", async (t) => {
 });
 
 test("yt-dlp stays searched once for a track request after the user ranks it below Soulseek mid-search", async (t) => {
-  const sources = useQuickSources(t);
+  const sources = useQuickSources();
   const group = album("reranked", "Reranked Band", [{ id: "reranked-release", tracks: ["First", "Second"] }]);
   await serveGroups(t, [group]);
   const [track] = libraryJobs(group, ["Second"]);
@@ -294,7 +294,7 @@ test("yt-dlp stays searched once for a track request after the user ranks it bel
 });
 
 test("while metadata cannot be read, a track request of a known album starts its quick search, and a track whose album is not known yet waits", async (t) => {
-  useQuickSources(t);
+  useQuickSources();
   const group = album("unread", "Unread Band", [{ id: "unread-release", tracks: ["First", "Second", "Third"] }]);
   await serveGroups(t, [group], { unavailable: () => true, searchable: true });
   clearApiCaches();
@@ -312,7 +312,7 @@ test("while metadata cannot be read, a track request of a known album starts its
 // The quick search's step after yt-dlp downloaded a song of the given
 // length for a 15-second track, as its download step records it.
 async function quickSearchDownloaded(t, name, artist, seconds, { unavailable } = {}) {
-  const sources = useQuickSources(t);
+  const sources = useQuickSources();
   const group = album(name, artist, [{ id: `${name}-release`,
     tracks: ["First", { title: "Second", durationMs: 15000 }, "Third"] }]);
   await serveGroups(t, [group], { unavailable });
@@ -364,7 +364,7 @@ test("a file the quick search holds waits with it while the release cannot be re
   assert.deepEqual([attempt.albumGrab, attempt.albumGroupJobIds], [true, [track]]);
   await runToEnd(attempt, sources);
   assert.deepEqual(sources.searched(), ["soulseek album", "soulseek track"]);
-  assert.equal(sources.ytdlpSearch.mock.callCount(), 0);
+  assert.equal(sources.ytdlpSearch.mock.calls.length, 0);
   const job = downloadTracker.getJob(track);
   assert.deepEqual([job.status, job.downloadSource], ["blocked", "ytdlp"]);
   assert.match(job.error, /shorter than the requested track/);
@@ -376,7 +376,7 @@ test("a file the quick search holds waits with it while the release cannot be re
 test("a track waiting for its release after its quick search does not hold back another track's quick search", async (t) => {
   for (const job of downloadTracker.getAll()) downloadTracker.removeJob(job.id);
   for (const entry of listHonkerJobs("slskd-pipeline")) getPipelineQueue().cancel(entry.id);
-  useQuickSources(t);
+  useQuickSources();
   const group = album("slot", "Slot Band", [{ id: "slot-release", tracks: ["First", "Second"] }]);
   let down = false;
   await serveGroups(t, [group], { unavailable: () => down });
@@ -391,11 +391,11 @@ test("a track waiting for its release after its quick search does not hold back 
 
   const worker = new DownloadWorker(state.baseDir);
   worker.updateWorkerSettings({ concurrency: 1 });
-  const dispatched = t.mock.method(worker, "processJob", async () => {});
-  t.mock.method(worker, "scheduleReuseLinkRepair", () => {});
+  const dispatched = vi.spyOn(worker, "processJob").mockImplementation(async () => {});
+  vi.spyOn(worker, "scheduleReuseLinkRepair").mockImplementation(() => {});
   await worker.start();
   try {
-    assert.deepEqual(dispatched.mock.calls.map((call) => call.arguments[0].id), [nextId]);
+    assert.deepEqual(dispatched.mock.calls.map((call) => call[0].id), [nextId]);
   } finally {
     worker.stop();
     await stopDownloadPipelineWorker();
@@ -403,7 +403,7 @@ test("a track waiting for its release after its quick search does not hold back 
 });
 
 test("a track request whose release cannot be read through every wait after its quick search searches for the track", async (t) => {
-  const sources = useQuickSources(t);
+  const sources = useQuickSources();
   const group = album("long-unread", "Unread Band", [{ id: "long-unread-release", tracks: ["First", "Second"] }]);
   let down = false;
   await serveGroups(t, [group], { unavailable: () => down });
@@ -509,7 +509,7 @@ test("one wanted track of an exact Soulseek release downloads only that track's 
   const group = album("single", "Single Band", [{ id: "single-soulseek", tracks: ["First", "Second", "Third"] }]);
   await serveGroups(t, [group]);
   mockSoulseekSearch(t, soulseekFolders("Single Band", "single Album", ["First", "Second", "Third"]));
-  const enqueue = t.mock.method(slskd, "enqueueBatch", async ({ files }) => ({
+  const enqueue = vi.spyOn(slskd, "enqueueBatch").mockImplementation(async ({ files }) => ({
     transfers: files.map((_, index) => ({ id: `transfer-${index}` })),
   }));
   const [jobId] = libraryJobs(group, ["Second"]);
@@ -527,23 +527,23 @@ test("one wanted track of an exact Soulseek release downloads only that track's 
   const polling = await processPipelinePayload(payload);
   assert.equal(polling.phase, "poll");
   assert.equal(polling.candidate.releaseVerified, true);
-  assert.equal(enqueue.mock.callCount(), 1);
-  assert.deepEqual(enqueue.mock.calls[0].arguments[0].files.map((file) => file.filename.split("\\").at(-1)),
+  assert.equal(enqueue.mock.calls.length, 1);
+  assert.deepEqual(enqueue.mock.calls[0][0].files.map((file) => file.filename.split("\\").at(-1)),
     ["02 - Second.flac"]);
 });
 
 function mockDeemix(t, tracks) {
-  t.mock.method(deemix, "searchAlbums", async () => [{ id: "42", title: "deezer Album", artist: "Deezer Band",
+  vi.spyOn(deemix, "searchAlbums").mockImplementation(async () => [{ id: "42", title: "deezer Album", artist: "Deezer Band",
     url: "https://www.deezer.com/album/42" }]);
-  t.mock.method(deemix, "getAlbumTracks", async () => tracks.map((title, index) => ({
+  vi.spyOn(deemix, "getAlbumTracks").mockImplementation(async () => tracks.map((title, index) => ({
     id: `track-${index + 1}`, title, artist: "Deezer Band", durationSec: 200, trackNumber: index + 1,
     discNumber: 1, url: `https://www.deezer.com/track/${index + 1}`, readable: true,
   })));
-  t.mock.method(deemix, "getQueueItem", async (uuid) => ({ status: "completed", type: "track",
+  vi.spyOn(deemix, "getQueueItem").mockImplementation(async (uuid) => ({ status: "completed", type: "track",
     files: [{ path: `/deemix/${uuid}.flac` }] }));
   return {
-    track: t.mock.method(deemix, "addToQueue", async (_url, id) => `${id}_9`),
-    album: t.mock.method(deemix, "addAlbumToQueue", async (_url, id) => `album_${id}_9`),
+    track: vi.spyOn(deemix, "addToQueue").mockImplementation(async (_url, id) => `${id}_9`),
+    album: vi.spyOn(deemix, "addAlbumToQueue").mockImplementation(async (_url, id) => `album_${id}_9`),
   };
 }
 
@@ -560,9 +560,9 @@ test("an exact deemix release queues each wanted track by its own URL, and the a
     candidate.raw.tracks.map((track) => [track.jobId, track.url])]),
   [["tracks", true, [[ids[0], "https://www.deezer.com/track/1"], [ids[1], "https://www.deezer.com/track/3"]]]]);
   const polling = await processPipelinePayload(searched);
-  assert.deepEqual(queued.track.mock.calls.map((call) => call.arguments), [
+  assert.deepEqual(queued.track.mock.calls.map((call) => call), [
     ["https://www.deezer.com/track/1", "track-1"], ["https://www.deezer.com/track/3", "track-3"]]);
-  assert.equal(queued.album.mock.callCount(), 0);
+  assert.equal(queued.album.mock.calls.length, 0);
   const finalizing = await processPipelinePayload(polling);
   assert.equal(finalizing.phase, "finalize");
   assert.equal(finalizing.albumGrab, true);
@@ -574,16 +574,16 @@ test("an exact deemix release queues each wanted track by its own URL, and the a
   const searchedWhole = await processPipelinePayload(albumAttempt(whole, { source: "deemix" }));
   assert.deepEqual(searchedWhole.candidates.map((candidate) => candidate.kind), ["album"]);
   await processPipelinePayload(searchedWhole);
-  assert.deepEqual(queued.album.mock.calls.map((call) => call.arguments), [["https://www.deezer.com/album/42", "42"]]);
-  assert.equal(queued.track.mock.callCount(), 2);
+  assert.deepEqual(queued.album.mock.calls.map((call) => call), [["https://www.deezer.com/album/42", "42"]]);
+  assert.equal(queued.track.mock.calls.length, 2);
 });
 
 test("every deemix track an attempt queued is removed on cancel, and its track search after a fallback removes only its own", async (t) => {
   useSources({ deemix: { enabled: true, url: "http://127.0.0.1:9", bitrate: 9 } });
   const titles = ["First", "Second", "Third"];
   mockDeemix(t, titles);
-  const removed = t.mock.method(deemix, "removeFromQueue", async () => true);
-  const removedIds = () => removed.mock.calls.map((call) => call.arguments[0]).sort();
+  const removed = vi.spyOn(deemix, "removeFromQueue").mockImplementation(async () => true);
+  const removedIds = () => removed.mock.calls.map((call) => call[0]).sort();
   const group = album("deezer", "Deezer Band", [{ id: "deemix-cancelled", tracks: titles }]);
   await serveGroups(t, [group]);
 
@@ -595,18 +595,18 @@ test("every deemix track an attempt queued is removed on cancel, and its track s
 
   resetDatabase(db);
   useSources({ deemix: { enabled: true, url: "http://127.0.0.1:9", bitrate: 9 } });
-  removed.mock.resetCalls();
+  removed.mockClear();
   const ids = libraryJobs(group, ["First", "Third"]);
   const finalizing = await processPipelinePayload(await processPipelinePayload(await processPipelinePayload(
     albumAttempt(ids, { source: "deemix" }))));
   const fallback = await processPipelinePayload(finalizing);
   assert.equal(fallback.albumGrab, false);
   assert.equal(downloadTracker.getJob(ids[1]).status, "pending");
-  t.mock.method(deemix, "search", async () => [{ id: "track-1", title: "First", artist: "Deezer Band", album: "deezer Album",
+  vi.spyOn(deemix, "search").mockImplementation(async () => [{ id: "track-1", title: "First", artist: "Deezer Band", album: "deezer Album",
     albumId: "7", durationSec: 200, url: "https://www.deezer.com/track/1", readable: true }]);
   const polling = await processPipelinePayload(await processPipelinePayload(fallback));
   assert.equal(polling.phase, "poll");
-  removed.mock.resetCalls();
+  removed.mockClear();
   await processPipelinePayload({ ...polling, pollAttempts: 200 });
   assert.deepEqual(removedIds(), ["track-1_9"]);
 });
@@ -615,9 +615,9 @@ test("a later deemix release queues only the tracks its attempt still wants, by 
   useSources({ deemix: { enabled: true, url: "http://127.0.0.1:9", bitrate: 9 } });
   const titles = ["First", "Second", "Third"];
   const queued = mockDeemix(t, titles);
-  t.mock.method(deemix, "searchAlbums", async () => ["42", "43"].map((id) => ({ id, title: "deezer Album",
+  vi.spyOn(deemix, "searchAlbums").mockImplementation(async () => ["42", "43"].map((id) => ({ id, title: "deezer Album",
     artist: "Deezer Band", url: `https://www.deezer.com/album/${id}` })));
-  t.mock.method(deemix, "removeFromQueue", async () => true);
+  vi.spyOn(deemix, "removeFromQueue").mockImplementation(async () => true);
   const group = album("deezer", "Deezer Band", [{ id: "deemix-later", tracks: titles }]);
   await serveGroups(t, [group]);
   const ids = libraryJobs(group, titles);
@@ -628,8 +628,8 @@ test("a later deemix release queues only the tracks its attempt still wants, by 
   assert.equal(next.phase, "download");
   downloadTracker.setDone(ids[2], "/library/Deezer Band/03 Third.flac");
   const polling = await processPipelinePayload(next);
-  assert.deepEqual(queued.album.mock.calls.map((call) => call.arguments), [["https://www.deezer.com/album/42", "42"]]);
-  assert.deepEqual(queued.track.mock.calls.map((call) => call.arguments), [
+  assert.deepEqual(queued.album.mock.calls.map((call) => call), [["https://www.deezer.com/album/42", "42"]]);
+  assert.deepEqual(queued.track.mock.calls.map((call) => call), [
     ["https://www.deezer.com/track/1", "track-1"], ["https://www.deezer.com/track/2", "track-2"]]);
   const finalizing = await processPipelinePayload(polling);
   assert.deepEqual(finalizing.downloadedPaths, ["/deemix/track-1_9.flac", "/deemix/track-2_9.flac"]);
@@ -639,7 +639,7 @@ test("a finished album download waits while its release cannot be read, and goes
   useSources({ deemix: { enabled: true, url: "http://127.0.0.1:9", bitrate: 9 } });
   const titles = ["First", "Second", "Third"];
   mockDeemix(t, titles);
-  const removed = t.mock.method(deemix, "removeFromQueue", async () => true);
+  const removed = vi.spyOn(deemix, "removeFromQueue").mockImplementation(async () => true);
   const group = album("deezer", "Deezer Band", [{ id: "deemix-blink", tracks: titles }]);
   let down = false;
   await serveGroups(t, [group], { unavailable: () => down });
@@ -650,21 +650,21 @@ test("a finished album download waits while its release cannot be read, and goes
   clearApiCaches();
   const waiting = await processPipelinePayload(finalizing);
   assert.deepEqual([waiting.phase, waiting.albumGrab, waiting.delaySeconds > 0], ["finalize", true, true]);
-  assert.equal(removed.mock.callCount(), 0);
+  assert.equal(removed.mock.calls.length, 0);
   assert.equal(downloadTracker.getJob(ids[1]).status, "downloading");
 
   down = false;
   clearApiCaches();
   const fallback = await processPipelinePayload(waiting);
   assert.deepEqual([fallback.albumGrab, fallback.delaySeconds || 0], [false, 0]);
-  assert.deepEqual(removed.mock.calls.map((call) => call.arguments[0]).sort(), ["track-1_9", "track-3_9"]);
+  assert.deepEqual(removed.mock.calls.map((call) => call[0]).sort(), ["track-1_9", "track-3_9"]);
 });
 
 test("a finished album download takes the release a merge left in its place, and a later outage waits as long again before it goes on without one", async (t) => {
   useSources({ deemix: { enabled: true, url: "http://127.0.0.1:9", bitrate: 9 } });
   const titles = ["First", "Second", "Third"];
   mockDeemix(t, titles);
-  const removed = t.mock.method(deemix, "removeFromQueue", async () => true);
+  const removed = vi.spyOn(deemix, "removeFromQueue").mockImplementation(async () => true);
   const group = album("deezer", "Deezer Band", [{ id: "deemix-waits", tracks: titles }]);
   let unknown = false;
   await serveGroups(t, [group], { missing: () => unknown });
@@ -682,7 +682,7 @@ test("a finished album download takes the release a merge left in its place, and
   step = await processPipelinePayload(step);
   assert.deepEqual([step.phase, step.releaseMbid, step.delaySeconds], ["finalize", "deemix-waits-merged", 0]);
   assert.deepEqual(ids.map((id) => downloadTracker.getJob(id).releaseMbid), ["deemix-waits-merged", "deemix-waits-merged"]);
-  assert.equal(removed.mock.callCount(), 0);
+  assert.equal(removed.mock.calls.length, 0);
 
   unknown = true;
   clearApiCaches();
@@ -691,7 +691,7 @@ test("a finished album download takes the release a merge left in its place, and
   assert.ok(waits > 30 && waits < 100, `${waits} steps`);
   assert.equal(step.albumGrab, false);
   assert.equal(downloadTracker.getJob(ids[1]).error, NO_RELEASE_REASON);
-  assert.equal(removed.mock.callCount(), 2);
+  assert.equal(removed.mock.calls.length, 2);
 });
 
 test("an album attempt whose release cannot be read when it searches gives every track back untried, and they wait to search by release until it can", async (t) => {
@@ -709,7 +709,7 @@ test("an album attempt whose release cannot be read when it searches gives every
   down = true;
   clearApiCaches();
   assert.equal(await processPipelinePayload(attempt), null);
-  assert.equal(created.mock.callCount(), 0);
+  assert.equal(created.mock.calls.length, 0);
   for (const id of ids) {
     assert.deepEqual([downloadTracker.getJob(id).status, downloadTracker.getJob(id).albumGrabAttempted], ["pending", false]);
   }
@@ -720,9 +720,9 @@ test("an album attempt whose release cannot be read when it searches gives every
     assert.notEqual(downloadTracker.getJob(id).error, NO_RELEASE_REASON);
   }
   assert.equal(downloadWorker._getNextReadyPendingJob(), null);
-  t.mock.timers.enable({ apis: ["Date"], now: Date.now() + 61 * 1000 });
+  vi.useFakeTimers({ toFake: ["Date"], now: Date.now() + 61 * 1000 });
   assert.ok(ids.includes(downloadWorker._getNextReadyPendingJob()?.id));
-  t.mock.timers.reset();
+  vi.useRealTimers();
 
   down = false;
   clearApiCaches();
@@ -782,8 +782,8 @@ test("an album attempt whose leading track stopped gives the rest back untried a
   let down = false;
   await serveGroups(t, [group], { unavailable: () => down });
   const nzbget = getDownloadClient("nzbget");
-  const removedQueue = t.mock.method(nzbget, "deleteQueueItem", async () => true);
-  const removedHistory = t.mock.method(nzbget, "deleteHistoryItem", async () => true);
+  const removedQueue = vi.spyOn(nzbget, "deleteQueueItem").mockImplementation(async () => true);
+  const removedHistory = vi.spyOn(nzbget, "deleteHistoryItem").mockImplementation(async () => true);
   const finalizing = async (ids, nzbId) => {
     await downloadWorker.processJob(downloadTracker.getJob(ids[0]));
     const attempt = claimQueued(ids[0]);
@@ -796,33 +796,33 @@ test("an album attempt whose leading track stopped gives the rest back untried a
   assert.equal(await processPipelinePayload(await finalizing(stopped, "nzb-stopped")), null);
   assert.deepEqual([downloadTracker.getJob(stopped[1]).status, downloadTracker.getJob(stopped[1]).albumGrabAttempted],
     ["pending", false]);
-  assert.deepEqual([removedQueue, removedHistory].map((mock) => mock.mock.calls.map((call) => call.arguments[0])),
+  assert.deepEqual([removedQueue, removedHistory].map((mock) => mock.mock.calls.map((call) => call[0])),
     [["nzb-stopped"], ["nzb-stopped"]]);
 
   resetDatabase(db);
   useSources({ nzbget: { enabled: true, url: "http://127.0.0.1:9" },
     prowlarr: { enabled: true, url: "http://127.0.0.1:9", apiKey: "key" } });
-  removedQueue.mock.resetCalls();
+  removedQueue.mockClear();
   const blinked = libraryJobs(group, ["First", "Second"], { requestGroupId: "blinked-request" });
   const payload = await finalizing(blinked, "nzb-blinked");
   down = true;
   clearApiCaches();
   assert.equal(await processPipelinePayload(payload), null);
   assert.equal(downloadTracker.getJob(blinked[1]).status, "pending");
-  assert.deepEqual(removedQueue.mock.calls.map((call) => call.arguments[0]), ["nzb-blinked"]);
+  assert.deepEqual(removedQueue.mock.calls.map((call) => call[0]), ["nzb-blinked"]);
 });
 
 test("a Soulseek album attempt whose leading track stopped removes the transfers it queued", async (t) => {
   useSources({ slskd: { enabled: true, url: "http://127.0.0.1:9" } });
   const group = album("transfers", "Transfer Band", [{ id: "transfers-release", tracks: ["First", "Second"] }]);
   await serveGroups(t, [group]);
-  const removed = t.mock.method(slskd, "deleteTransfer", async () => true);
+  const removed = vi.spyOn(slskd, "deleteTransfer").mockImplementation(async () => true);
   const ids = libraryJobs(group, ["First", "Second"]);
   downloadTracker.setDone(ids[0], "/library/Transfer Band/01 First.flac");
 
   assert.equal(await processPipelinePayload(albumAttempt(ids, { phase: "poll", source: "slskd",
     candidate: { raw: { user: "peer", files: [] } }, albumTransfers: [{ id: "first" }, { id: "second" }] })), null);
-  assert.deepEqual(removed.mock.calls.map((call) => call.arguments.slice(0, 2)), [["peer", "first"], ["peer", "second"]]);
+  assert.deepEqual(removed.mock.calls.map((call) => call.slice(0, 2)), [["peer", "first"], ["peer", "second"]]);
   assert.equal(downloadTracker.getJob(ids[1]).status, "pending");
 });
 
@@ -830,7 +830,7 @@ test("cancelling only the leading track of a queued album attempt gives the rest
   useSources({ slskd: { enabled: true, url: "http://127.0.0.1:9" } });
   const group = album("leader-cancel", "Cancel Band", [{ id: "leader-cancel-release", tracks: ["First", "Second", "Third"] }]);
   await serveGroups(t, [group]);
-  const stopped = t.mock.method(slskd, "deleteSearch", async () => true);
+  const stopped = vi.spyOn(slskd, "deleteSearch").mockImplementation(async () => true);
   const ids = libraryJobs(group, ["First", "Second", "Third"]);
   await downloadWorker.processJob(downloadTracker.getJob(ids[0]));
   const attempt = queued(ids[0]);
@@ -840,7 +840,7 @@ test("cancelling only the leading track of a queued album attempt gives the rest
   await cancelDownloadWorkForJobs([downloadTracker.getJob(ids[0])]);
   downloadTracker.removeJob(ids[0]);
   assert.deepEqual(queuedFor(ids), []);
-  assert.deepEqual(stopped.mock.calls.map((call) => call.arguments[0]), ["album-search"]);
+  assert.deepEqual(stopped.mock.calls.map((call) => call[0]), ["album-search"]);
   for (const id of ids.slice(1)) {
     assert.deepEqual([downloadTracker.getJob(id).status, downloadTracker.getJob(id).albumGrabAttempted], ["pending", false]);
   }
@@ -854,9 +854,9 @@ test("an album step that fails on every retry blocks the release it downloaded, 
   const group = album("retries", "Retry Band", [{ id: "retries-release", tracks: ["First", "Second"] }]);
   await serveGroups(t, [group]);
   const nzbget = getDownloadClient("nzbget");
-  const removedQueue = t.mock.method(nzbget, "deleteQueueItem", async () => true);
-  t.mock.method(nzbget, "deleteHistoryItem", async () => true);
-  t.mock.method(nzbget, "getHistoryItem", async () => { throw new Error("connect ECONNREFUSED"); });
+  const removedQueue = vi.spyOn(nzbget, "deleteQueueItem").mockImplementation(async () => true);
+  vi.spyOn(nzbget, "deleteHistoryItem").mockImplementation(async () => true);
+  vi.spyOn(nzbget, "getHistoryItem").mockImplementation(async () => { throw new Error("connect ECONNREFUSED"); });
   const ids = libraryJobs(group, ["First", "Second"]);
   const failAttempt = async (attempt) => {
     await downloadWorker.processJob(downloadTracker.getJob(ids[0]));
@@ -881,7 +881,7 @@ test("an album step that fails on every retry blocks the release it downloaded, 
     assert.deepEqual(queuedFor(ids), []);
   }
   const trackSearch = await failAttempt(3);
-  assert.deepEqual(removedQueue.mock.calls.map((call) => call.arguments[0]), ["nzb-1", "nzb-2", "nzb-3"]);
+  assert.deepEqual(removedQueue.mock.calls.map((call) => call[0]), ["nzb-1", "nzb-2", "nzb-3"]);
   assert.deepEqual([trackSearch.jobId, trackSearch.albumGrab, trackSearch.phase], [ids[0], false, "search"]);
   assert.deepEqual([downloadTracker.getJob(ids[1]).status, downloadTracker.getJob(ids[1]).albumGrabAttempted],
     ["pending", true]);
@@ -893,8 +893,8 @@ test("an album source whose step fails on every retry hands the attempt to the n
     prowlarr: { enabled: true, url: "http://127.0.0.1:9", apiKey: "key" } });
   const group = album("refused", "Refused Band", [{ id: "refused-release", tracks: ["First", "Second"] }]);
   await serveGroups(t, [group]);
-  const stopped = t.mock.method(slskd, "deleteSearch", async () => true);
-  t.mock.method(slskd, "isCleanupAfterRunsEnabled", () => false);
+  const stopped = vi.spyOn(slskd, "deleteSearch").mockImplementation(async () => true);
+  vi.spyOn(slskd, "isCleanupAfterRunsEnabled").mockImplementation(() => false);
   const ids = libraryJobs(group, ["First", "Second"]);
   await downloadWorker.processJob(downloadTracker.getJob(ids[0]));
   const searching = { ...claimQueued(ids[0]), source: "slskd", activeSearch: { id: "refused-search" } };
@@ -902,15 +902,15 @@ test("an album source whose step fails on every retry hands the attempt to the n
   const next = await failPipelineJob(searching, "Request failed with status code 401");
   assert.deepEqual([next.source, next.phase, next.albumGrab, next.albumGroupJobIds, next.downloadAttemptId],
     ["usenet", "search", true, ids, searching.downloadAttemptId]);
-  assert.deepEqual(stopped.mock.calls.map((call) => call.arguments[0]), ["refused-search"]);
+  assert.deepEqual(stopped.mock.calls.map((call) => call[0]), ["refused-search"]);
   assert.equal(downloadTracker.getJob(ids[1]).status, "downloading");
 });
 
-test("a track step that fails on every retry hands the track to the next source and removes its search", async (t) => {
+test("a track step that fails on every retry hands the track to the next source and removes its search", async () => {
   useSources({ slskd: { enabled: true, url: "http://127.0.0.1:9", priority: 1 },
     nzbget: { enabled: true, url: "http://127.0.0.1:9", priority: 2 },
     prowlarr: { enabled: true, url: "http://127.0.0.1:9", apiKey: "key" } });
-  const stopped = t.mock.method(slskd, "deleteSearch", async () => true);
+  const stopped = vi.spyOn(slskd, "deleteSearch").mockImplementation(async () => true);
   const id = downloadTracker.addJob({ artistName: "Lone Band", trackName: "Lone Song", durationMs: 200000 }, "library");
   await downloadWorker.processJob(downloadTracker.getJob(id));
   const queuedStep = claimQueued(id);
@@ -920,7 +920,7 @@ test("a track step that fails on every retry hands the track to the next source 
     assert.deepEqual([next?.source, next?.phase, next?.albumGrab === true], ["usenet", "search", false]);
     assert.equal(downloadTracker.getJob(id).status, "pending");
   }
-  assert.deepEqual(stopped.mock.calls.map((call) => call.arguments[0]), ["lone-search"]);
+  assert.deepEqual(stopped.mock.calls.map((call) => call[0]), ["lone-search"]);
 });
 
 test("an album attempt whose first source is down searches the next source once, then searches for the track on every other source before the one that failed", async (t) => {
@@ -930,18 +930,18 @@ test("an album attempt whose first source is down searches the next source once,
   const group = album("down", "Down Band", [{ id: "down-release", tracks: ["First", "Second"] }]);
   await serveGroups(t, [group]);
   const searches = [];
-  t.mock.method(slskd, "createSearch", async () => {
+  vi.spyOn(slskd, "createSearch").mockImplementation(async () => {
     searches.push("soulseek");
     throw Object.assign(new Error("Request failed with status code 401"), { response: { status: 401 } });
   });
-  t.mock.method(slskd, "deleteSearch", async () => true);
-  t.mock.method(prowlarrClient, "getEnabledUsenetIndexers", async () => [{ id: 1, name: "indexer" }]);
-  t.mock.method(prowlarrClient, "search", async (query) => {
+  vi.spyOn(slskd, "deleteSearch").mockImplementation(async () => true);
+  vi.spyOn(prowlarrClient, "getEnabledUsenetIndexers").mockImplementation(async () => [{ id: 1, name: "indexer" }]);
+  vi.spyOn(prowlarrClient, "search").mockImplementation(async (query) => {
     searches.push(String(query?.query ?? query).includes("Second") ? "usenet track" : "usenet album");
     return [];
   });
-  t.mock.method(ytdlp, "isConfigured", () => true);
-  t.mock.method(ytdlp, "search", async () => {
+  vi.spyOn(ytdlp, "isConfigured").mockImplementation(() => true);
+  vi.spyOn(ytdlp, "search").mockImplementation(async () => {
     searches.push("yt-dlp");
     return [];
   });
@@ -984,15 +984,15 @@ test("a track's release is chosen once, pinned on every track of its attempt, an
   assert.equal("release" in payload, false);
   assert.deepEqual(db.prepare("SELECT release_mbid FROM playlist_download_jobs WHERE id IN (?, ?) ORDER BY id = ?")
     .all(sibling, leader, leader).map((row) => row.release_mbid), ["resolved-release", "resolved-release"]);
-  assert.equal(created.mock.callCount(), 0);
+  assert.equal(created.mock.calls.length, 0);
 
   // A restart empties the process caches; the release loads again from the metadata cache.
   clearReleaseManifests();
-  const lookups = metadata.mock.callCount();
+  const lookups = metadata.mock.calls.length;
   const searching = await processPipelinePayload(payload);
   assert.equal(searching.albumGrab, true);
-  assert.equal(created.mock.callCount(), 1);
-  assert.equal(metadata.mock.callCount(), lookups);
+  assert.equal(created.mock.calls.length, 1);
+  assert.equal(metadata.mock.calls.length, lookups);
 });
 
 test("each track joins only an attempt for the release it is pinned to and listed on, and a track on none says why", async (t) => {
@@ -1002,14 +1002,14 @@ test("each track joins only an attempt for the release it is pinned to and liste
     { id: "deluxe", tracks: ["First", "Second", "Bonus Song"] },
   ]);
   await serveGroups(t, [group]);
-  const info = t.mock.method(logger, "info");
+  const info = vi.spyOn(logger, "info");
   const [offRelease, first] = libraryJobs(group, ["Bonus Song", "First"], { releaseMbid: "standard" });
   const [deluxeSecond, deluxeBonus] = libraryJobs(group, ["Second", "Bonus Song"], { releaseMbid: "deluxe" });
 
   await downloadWorker.processJob(downloadTracker.getJob(offRelease));
   assert.equal(queued(offRelease).albumGrab, undefined);
   assert.equal(downloadTracker.getJob(offRelease).error, OFF_RELEASE_REASON);
-  assert.equal(info.mock.calls.filter((call) => call.arguments[1] === "Searching for the track without its release").length, 1);
+  assert.equal(info.mock.calls.filter((call) => call[1] === "Searching for the track without its release").length, 1);
   for (const id of [first, deluxeSecond, deluxeBonus]) {
     assert.equal(downloadTracker.getJob(id).status, "pending");
     assert.notEqual(downloadTracker.getJob(id).albumGrabAttempted, true);
@@ -1058,14 +1058,14 @@ test("a track that can search by release, found mid-search with no queued step, 
 
 test("an album attempt with no album source enabled searches for the track instead of failing", async (t) => {
   useSources({ ytdlp: { enabled: true } });
-  t.mock.method(ytdlp, "isConfigured", () => true);
-  const search = t.mock.method(ytdlp, "search", async () => []);
+  vi.spyOn(ytdlp, "isConfigured").mockImplementation(() => true);
+  const search = vi.spyOn(ytdlp, "search").mockImplementation(async () => []);
   const group = album("video", "Video Band", [{ id: "no-album-source", tracks: ["First", "Second"] }]);
   await serveGroups(t, [group]);
   const [jobId] = libraryJobs(group, ["Second"]);
 
   await processPipelinePayload(albumAttempt([jobId]));
-  assert.ok(search.mock.callCount() > 0);
+  assert.ok(search.mock.calls.length > 0);
   assert.doesNotMatch(String(downloadTracker.getJob(jobId).error || ""), /not configured/i);
 });
 
@@ -1081,17 +1081,17 @@ const legacyTransfer = { phase: "poll", source: "slskd", candidate: { raw: { use
 test("an album transfer queued before attempts named their release keeps its transfer on the release it resolves to", async (t) => {
   useSources({ slskd: { enabled: true, url: "http://127.0.0.1:9" } });
   const metadata = await serveGroups(t, [resolvedGroup]);
-  const transfer = t.mock.method(slskd, "getTransfer", async () => null);
+  const transfer = vi.spyOn(slskd, "getTransfer").mockImplementation(async () => null);
   const [leader, sibling] = resolvedJobs(["Second", "Third"]);
 
   const resumed = await processPipelinePayload(legacyAttempt([leader, sibling], legacyTransfer));
   assert.deepEqual([resumed.phase, resumed.albumGrab, resumed.releaseMbid], ["poll", true, "resolved-release"]);
   assert.deepEqual([leader, sibling].map((id) => downloadTracker.getJob(id).releaseMbid),
     ["resolved-release", "resolved-release"]);
-  assert.equal(transfer.mock.callCount(), 0);
-  const lookups = metadata.mock.callCount();
+  assert.equal(transfer.mock.calls.length, 0);
+  const lookups = metadata.mock.calls.length;
   await processPipelinePayload(resumed);
-  assert.equal(metadata.mock.callCount(), lookups);
+  assert.equal(metadata.mock.calls.length, lookups);
 });
 
 test("an album transfer queued before attempts named their release waits while its release cannot be read, and finishes without one only after the last wait", async (t) => {
@@ -1124,15 +1124,15 @@ test("an album search queued before attempts named their release stops its searc
   useSources({ slskd: { enabled: true, url: "http://127.0.0.1:9" } });
   await serveGroups(t, [resolvedGroup]);
   const created = mockSoulseekSearch(t, []);
-  const stopped = t.mock.method(slskd, "deleteSearch", async () => true);
+  const stopped = vi.spyOn(slskd, "deleteSearch").mockImplementation(async () => true);
   const [leader, sibling] = resolvedJobs(["Second", "Third"]);
   await downloadWorker.processJob(downloadTracker.getJob(leader));
   const { releaseMbid: _releaseMbid, ...queuedLegacy } = claimQueued(leader);
 
   assert.equal(await processPipelinePayload({ ...queuedLegacy, source: "slskd", searchIds: ["legacy-search"],
     activeSearch: { id: "legacy-search", query: "Resolved Band Resolved Album", startedAt: Date.now() } }), null);
-  assert.equal(created.mock.callCount(), 0);
-  assert.deepEqual(stopped.mock.calls.map((call) => call.arguments[0]), ["legacy-search"]);
+  assert.equal(created.mock.calls.length, 0);
+  assert.deepEqual(stopped.mock.calls.map((call) => call[0]), ["legacy-search"]);
   for (const id of [leader, sibling]) {
     assert.deepEqual([downloadTracker.getJob(id).status, downloadTracker.getJob(id).albumGrabAttempted], ["pending", false]);
   }

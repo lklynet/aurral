@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -23,7 +23,7 @@ const [state, { dbOps }, { downloadTracker }, { processDeemixPipelinePayload }, 
   "backend/services/downloadJobs/downloadCancellation.js",
 );
 
-test.after(async () => cleanupIsolatedState(state));
+afterAll(async () => cleanupIsolatedState(state));
 
 // Serves the requested release, in the group `${id}-group`, from the
 // metadata provider and returns its ID.
@@ -104,12 +104,12 @@ test("one deemix album queue fills verified siblings and retries only a missing 
     assert.equal(queued.phase, "poll");
     const polled = await processDeemixPipelinePayload(queued, helpers);
     assert.equal(polled.phase, "finalize");
-    const start = t.mock.method(downloadWorker, "start", async () => {});
+    const start = vi.spyOn(downloadWorker, "start").mockImplementation(async () => {});
     await processDeemixPipelinePayload(polled, helpers);
-    for (let tick = 0; tick < 100 && start.mock.callCount() === 0; tick += 1) {
+    for (let tick = 0; tick < 100 && start.mock.calls.length === 0; tick += 1) {
       await new Promise((resolve) => setImmediate(resolve));
     }
-    assert.equal(start.mock.callCount(), 1);
+    assert.equal(start.mock.calls.length, 1);
     assert.equal(added, 1);
     assert.equal(removed, 1);
     assert.equal(downloadTracker.getJob(ids[0]).status, "done");
@@ -165,7 +165,7 @@ test("deemix album grab takes only an album whose whole tracklist is the request
     hidden: ["First", "Second", "Bonus"].map((title, index) => albumTrack(title, index, { readable: index < 2 })),
     exact: ["First", "Second"].map((title, index) => albumTrack(title, index)),
   };
-  t.mock.method(client, "searchAlbums", async () => [
+  vi.spyOn(client, "searchAlbums").mockImplementation(async () => [
     { id: "other", title: "Other Album", url: "https://album.invalid/other" },
     { id: "wrong", title: "Album", url: "https://album.invalid/wrong" },
     { id: "locked", title: "Album", url: "https://album.invalid/locked" },
@@ -173,34 +173,34 @@ test("deemix album grab takes only an album whose whole tracklist is the request
     { id: "hidden", title: "Album", url: "https://album.invalid/hidden" },
     { id: "exact", title: "Album", url: "https://album.invalid/exact" },
   ]);
-  const tracklist = t.mock.method(client, "getAlbumTracks", async (id) => tracklists[id]);
+  const tracklist = vi.spyOn(client, "getAlbumTracks").mockImplementation(async (id) => tracklists[id]);
   const result = await searchWith(albumJobs("deemix-tracklist"), await serveStandard(t));
   assert.equal(result.phase, "download");
   assert.deepEqual(result.candidates.map((candidate) => [candidate.raw.albumId, candidate.kind,
     candidate.releaseVerified]), [["exact", "album", true]]);
-  assert.ok(!tracklist.mock.calls.some((call) => call.arguments[0] === "other"));
+  assert.ok(!tracklist.mock.calls.some((call) => call[0] === "other"));
 });
 
 test("deemix album grab tries the plain album query when the advanced one finds no fitting album", async (t) => {
   const { getDownloadClient } = await import("../../backend/services/download/downloadClientSettings.js");
   const client = getDownloadClient("deemix");
-  const search = t.mock.method(client, "searchAlbums", async (query) => [query.includes("artist:")
+  const search = vi.spyOn(client, "searchAlbums").mockImplementation(async (query) => [query.includes("artist:")
     ? { id: "single", title: "Album", url: "https://album.invalid/single" }
     : { id: "42", title: "Album", url: "https://album.invalid/42" }]);
-  t.mock.method(client, "getAlbumTracks", async (id) => (id === "single" ? ["Other"] : ["First", "Second"])
+  vi.spyOn(client, "getAlbumTracks").mockImplementation(async (id) => (id === "single" ? ["Other"] : ["First", "Second"])
     .map((title, index) => albumTrack(title, index)));
   const result = await searchWith(albumJobs("deemix-plain"), await serveStandard(t));
-  assert.equal(search.mock.callCount(), 2);
+  assert.equal(search.mock.calls.length, 2);
   assert.equal(result.candidates[0].raw.albumId, "42");
 });
 
 test("deemix searches a compilation by its album title alone", async (t) => {
   const { getDownloadClient } = await import("../../backend/services/download/downloadClientSettings.js");
   const client = getDownloadClient("deemix");
-  const search = t.mock.method(client, "searchAlbums", async () => [
+  const search = vi.spyOn(client, "searchAlbums").mockImplementation(async () => [
     { id: "mix", title: "Guardians of the Galaxy: Awesome Mix, Vol. 1", url: "https://album.invalid/mix" },
   ]);
-  t.mock.method(client, "getAlbumTracks", async () => [
+  vi.spyOn(client, "getAlbumTracks").mockImplementation(async () => [
     albumTrack("Hooked on a Feeling", 0, { artist: "Blue Swede" }),
     albumTrack("Go All the Way", 1, { artist: "Raspberries" }),
   ]);
@@ -214,5 +214,5 @@ test("deemix searches a compilation by its album title alone", async (t) => {
     ["Hooked on a Feeling", 180000, "Blue Swede"], ["Go All the Way", 180000, "Raspberries"],
   ], { artist: "Various Artists", artistId: "89ad4ac3-39f7-470e-963a-56509c546377" }));
   assert.equal(result.candidates[0].raw.albumId, "mix");
-  assert.ok(search.mock.calls.every((call) => !/Blue Swede|Raspberries/.test(call.arguments[0])));
+  assert.ok(search.mock.calls.every((call) => !/Blue Swede|Raspberries/.test(call[0])));
 });

@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -26,7 +26,7 @@ const [isolatedState, { toReleaseManifest, mapRequest, trackRequestFor }, { reso
   "backend/services/albumReleaseAssignment.js",
 );
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
@@ -70,7 +70,7 @@ const titles = (manifest) => manifest?.tracks.map((entry) => entry.title);
 // with its title, place, and length.
 async function downloadedAlbum(t, folder, files) {
   const root = await mkdtemp(join(tmpdir(), "aurral-release-manifest-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(root, { recursive: true, force: true }));
   const parsed = new Map();
   for (const file of files) {
     const filePath = join(root, folder, file.path);
@@ -175,7 +175,7 @@ test("a pinned edition with a live disc imports from a folder naming that disc, 
       { id: "deluxe", title: "Big Album", status: "Official", tracks: [...disc(studio, 1, 1), ...disc(live, 2, 3)] }] }]);
   const jobsFor = (releaseMbid) => studio.map((name, index) => ({ ...job(name, `big-${index + 1}`), id: `${releaseMbid}-${index + 1}`,
     albumMbid: expanded, albumName: "Big Album", releaseMbid }));
-  const files = (manifest) => manifest.tracks.map((entry, index) => ({ title: entry.title, trackNumber: entry.trackNumber,
+  const files = (manifest) => manifest.tracks.map((entry) => ({ title: entry.title, trackNumber: entry.trackNumber,
     discNumber: entry.discNumber, durationMs: entry.durationMs,
     path: `CD${entry.discNumber}/0${entry.trackNumber} ${entry.title}.flac` }));
   const folder = "The Band - Big Album (Deluxe Edition) (Bonus Live Disc)";

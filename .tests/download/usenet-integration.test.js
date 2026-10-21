@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import {
@@ -34,11 +34,11 @@ const [
   "backend/config/db-sqlite.js",
 );
 
-test.beforeEach(() => {
+beforeEach(() => {
   resetDatabase(db);
 });
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
@@ -439,8 +439,8 @@ test("Usenet matcher prefers matching audio releases and keeps fallback candidat
 });
 
 for (const albumGrab of [false, true]) {
-  test(`Usenet continues past ${albumGrab ? "track-only album-grab" : "denied"} results`, async (t) => {
-    t.mock.method(prowlarrClient, "getEnabledUsenetIndexers", async () => [{ id: 1, musicSearch: true }]);
+  test(`Usenet continues past ${albumGrab ? "track-only album-grab" : "denied"} results`, async () => {
+    vi.spyOn(prowlarrClient, "getEnabledUsenetIndexers").mockImplementation(async () => [{ id: 1, musicSearch: true }]);
     const artist = albumGrab ? "The Bend" : "The Band";
     const jobId = downloadTracker.addJob({ artistName: artist, trackName: "First",
       albumName: "Album", durationMs: 180000 }, "usenet-exclusions");
@@ -472,8 +472,8 @@ for (const albumGrab of [false, true]) {
   });
 }
 
-test("a Usenet track search tries the requested album before a single of the track within a quality tier", async (t) => {
-  t.mock.method(prowlarrClient, "getEnabledUsenetIndexers", async () => []);
+test("a Usenet track search tries the requested album before a single of the track within a quality tier", async () => {
+  vi.spyOn(prowlarrClient, "getEnabledUsenetIndexers").mockImplementation(async () => []);
   for (const [name, albumFormat, expected] of [
     ["Order", "FLAC", ["album", "single"]],
     ["Quality", "MP3", ["single", "album"]],
@@ -481,42 +481,42 @@ test("a Usenet track search tries the requested album before a single of the tra
     const releases = [["single", `${name} Band - A Song (2020) FLAC`], ["album", `${name} Band - Zebra Album ${albumFormat}`]]
       .map(([guid, title], index) => ({ guid, title, protocol: "usenet", downloadUrl: `https://nzb.invalid/${name}/${guid}`,
         indexerId: index + 1, size: 100 * 1024 * 1024, categories: [3010] }));
-    const search = t.mock.method(prowlarrClient, "search", async () => releases);
+    const search = vi.spyOn(prowlarrClient, "search").mockImplementation(async () => releases);
     const jobId = downloadTracker.addJob({ artistName: `${name} Band`, trackName: "A Song", albumName: "Zebra Album",
       releaseYear: "2020", durationMs: 180000 }, "usenet-order");
     const result = await searchUntilDone({ phase: "search", source: "usenet", jobId },
       { failOrTryNextSource: (_payload, _job, reason) => ({ error: reason }) });
     assert.deepEqual(result.candidates.map((entry) => entry.raw.guid), expected);
-    search.mock.restore();
+    search.mockRestore();
   }
 });
 
-test("a Usenet search runs one Prowlarr query per pipeline step", async (t) => {
+test("a Usenet search runs one Prowlarr query per pipeline step", async () => {
   for (const [name, results, error] of [
     ["Step", async () => [], "No suitable Usenet search results"],
     ["Down", async () => { throw new Error("indexer down"); }, "Prowlarr search failed: indexer down"],
   ]) {
-    const search = t.mock.method(prowlarrClient, "search", results);
+    const search = vi.spyOn(prowlarrClient, "search").mockImplementation(results);
     const jobId = downloadTracker.addJob({ artistName: `${name} Artist`, trackName: `${name} Song`,
       albumName: `${name} Album`, durationMs: 180000 }, "usenet-steps");
     const helpers = { failOrTryNextSource: (_payload, _job, reason) => ({ error: reason }) };
     let payload = { phase: "search", source: "usenet", jobId };
     let steps = 0;
     while (payload?.phase === "search" && steps < 20) {
-      const before = search.mock.callCount();
+      const before = search.mock.calls.length;
       payload = await processUsenetPipelinePayload(payload, helpers);
-      assert.ok(search.mock.callCount() - before <= 1);
+      assert.ok(search.mock.calls.length - before <= 1);
       steps += 1;
     }
     assert.equal(payload.error, error);
-    assert.equal(steps, search.mock.callCount());
-    search.mock.restore();
+    assert.equal(steps, search.mock.calls.length);
+    search.mockRestore();
   }
 });
 
 test("a Usenet compilation grab searches as VA and by its title, never by a track artist", async (t) => {
-  t.mock.method(prowlarrClient, "getEnabledUsenetIndexers", async () => [{ id: 1, musicSearch: true }]);
-  const search = t.mock.method(prowlarrClient, "search", async () => []);
+  vi.spyOn(prowlarrClient, "getEnabledUsenetIndexers").mockImplementation(async () => [{ id: 1, musicSearch: true }]);
+  const search = vi.spyOn(prowlarrClient, "search").mockImplementation(async () => []);
   const albumName = "Guardians of the Galaxy: Awesome Mix, Vol. 1: Original Motion Picture Soundtrack";
   const ids = [["Blue Swede", "Hooked on a Feeling"], ["Raspberries", "Go All the Way"]]
     .map(([artistName, trackName], index) => downloadTracker.addJob({
@@ -532,7 +532,7 @@ test("a Usenet compilation grab searches as VA and by its title, never by a trac
   await searchUntilDone({ phase: "search", source: "usenet", jobId: ids[0], albumGrab: true, albumGroupJobIds: ids,
     releaseMbid: "usenet-compilation-release" },
   { failOrTryNextSource: (_payload, _job, reason) => ({ error: reason }) });
-  assert.deepEqual(search.mock.calls.map((call) => call.arguments[0]), [
+  assert.deepEqual(search.mock.calls.map((call) => call[0]), [
     "VA Guardians of the Galaxy Awesome Mix Vol 1",
     "Guardians of the Galaxy Awesome Mix Vol 1",
   ]);
@@ -688,7 +688,7 @@ function trackReleases(artistName, downloadUrl) {
 }
 
 test("an indexer that answers HTTP 429 gets no NZB request from any job until its Retry-After passes", async (t) => {
-  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2000-01-01T12:00:00Z") });
+  vi.useFakeTimers({ toFake: ["Date"], now: Date.parse("2000-01-01T12:00:00Z") });
   const requests = [];
   const server = await createMockHttpServer((req, res) => {
     requests.push(req.url);
@@ -700,9 +700,9 @@ test("an indexer that answers HTTP 429 gets no NZB request from any job until it
     res.writeHead(200, { "Content-Type": "text/html" });
     res.end("<html><body>Not an NZB</body></html>");
   });
-  t.after(() => server.close());
-  t.mock.method(prowlarrClient, "getEnabledUsenetIndexers", async () => []);
-  t.mock.method(prowlarrClient, "search", async (query) => {
+  t.onTestFinished(() => server.close());
+  vi.spyOn(prowlarrClient, "getEnabledUsenetIndexers").mockImplementation(async () => []);
+  vi.spyOn(prowlarrClient, "search").mockImplementation(async (query) => {
     const artistName = query.split(" ").slice(0, 2).join(" ");
     return trackReleases(artistName, (indexerId) => `${server.url}/${indexerId}/${artistName.replace(" ", "-")}`)
       .filter((release) => release.indexerId <= (artistName === "Limited Two" ? 1 : 2));
@@ -716,17 +716,17 @@ test("an indexer that answers HTTP 429 gets no NZB request from any job until it
   assert.equal(first.error, "The indexer did not return an NZB file");
   assert.equal(second.error, "Indexer 1 has reached its NZB limit. Aurral will ask it again in 10 minutes.");
 
-  t.mock.timers.tick(601 * 1000);
+  vi.advanceTimersByTime(601 * 1000);
   await run("Limited Three");
   assert.deepEqual(requests.slice(2), ["/1/Limited-Three", "/2/Limited-Three"]);
 
-  t.mock.timers.tick(30 * 60 * 1000);
+  vi.advanceTimersByTime(30 * 60 * 1000);
   await run("Limited Four");
   assert.deepEqual(requests.slice(4), ["/2/Limited-Four"]);
 });
 
 test("a track spends its two NZB grabs on indexers that answer, not on ones that are limited", async (t) => {
-  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2000-01-02T12:00:00Z") });
+  vi.useFakeTimers({ toFake: ["Date"], now: Date.parse("2000-01-02T12:00:00Z") });
   const requests = [];
   const server = await createMockHttpServer((req, res) => {
     requests.push(req.url);
@@ -739,16 +739,16 @@ test("a track spends its two NZB grabs on indexers that answer, not on ones that
     res.writeHead(200, { "Content-Type": "application/x-nzb" });
     res.end('<?xml version="1.0"?><nzb xmlns="http://www.newzbin.com/DTD/2003/nzb"></nzb>');
   });
-  t.after(() => server.close());
-  t.mock.method(prowlarrClient, "getEnabledUsenetIndexers", async () => []);
-  t.mock.method(prowlarrClient, "search", async (query) => {
+  t.onTestFinished(() => server.close());
+  vi.spyOn(prowlarrClient, "getEnabledUsenetIndexers").mockImplementation(async () => []);
+  vi.spyOn(prowlarrClient, "search").mockImplementation(async (query) => {
     const artistName = query.split(" ").slice(0, 2).join(" ");
     return trackReleases(artistName, (indexerId) => `${server.url}/${indexerId}/${artistName.replace(" ", "-")}`);
   });
-  const appended = t.mock.method(nzbgetClient, "appendNzb", async () => ({ nzbId: requests.length }));
-  t.mock.method(nzbgetClient, "getHistoryItem", async (nzbId) => ({ NZBID: nzbId, Status: "FAILURE/HEALTH" }));
-  t.mock.method(nzbgetClient, "deleteQueueItem", async () => true);
-  t.mock.method(nzbgetClient, "deleteHistoryItem", async () => true);
+  const appended = vi.spyOn(nzbgetClient, "appendNzb").mockImplementation(async () => ({ nzbId: requests.length }));
+  vi.spyOn(nzbgetClient, "getHistoryItem").mockImplementation(async (nzbId) => ({ NZBID: nzbId, Status: "FAILURE/HEALTH" }));
+  vi.spyOn(nzbgetClient, "deleteQueueItem").mockImplementation(async () => true);
+  vi.spyOn(nzbgetClient, "deleteHistoryItem").mockImplementation(async () => true);
   const run = (artistName) => runUntilSettled({ phase: "search", source: "usenet",
     jobId: downloadTracker.addJob({ artistName, trackName: "Atomic", durationMs: 230000 }, "usenet-grab-slots") });
 
@@ -758,7 +758,7 @@ test("a track spends its two NZB grabs on indexers that answer, not on ones that
 
   await run("Grab Two");
   assert.deepEqual(requests.slice(4), ["/2/Grab-Two", "/3/Grab-Two", "/4/Grab-Two"]);
-  assert.equal(appended.mock.callCount(), 4);
+  assert.equal(appended.mock.calls.length, 4);
 });
 
 test("a track spends a grab on a broken NZB but not on a Newznab error", async (t) => {
@@ -770,9 +770,9 @@ test("a track spends a grab on a broken NZB but not on a Newznab error", async (
       ? '<?xml version="1.0"?><error code="300" description="No such item"/>'
       : '<?xml version="1.0"?><nz');
   });
-  t.after(() => server.close());
-  t.mock.method(prowlarrClient, "getEnabledUsenetIndexers", async () => []);
-  t.mock.method(prowlarrClient, "search", async () =>
+  t.onTestFinished(() => server.close());
+  vi.spyOn(prowlarrClient, "getEnabledUsenetIndexers").mockImplementation(async () => []);
+  vi.spyOn(prowlarrClient, "search").mockImplementation(async () =>
     trackReleases("Broken Grab", (indexerId) => `${server.url}/${indexerId}/broken`));
   const jobId = downloadTracker.addJob({ artistName: "Broken Grab", trackName: "Atomic", durationMs: 230000 },
     "usenet-broken-nzb");

@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { judgeRelease, releaseHolds } from "../../backend/services/trackMatching/releaseJudge.js";
 import { parseListingTitle } from "../../backend/services/trackMatching/nativeMatcher.js";

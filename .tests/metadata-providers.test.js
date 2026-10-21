@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, afterAll } from "vite-plus/test";
 import { execFile, fork } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
@@ -35,7 +35,7 @@ const {
   searchArtists,
 } = brainzmashProvider;
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
@@ -156,7 +156,7 @@ test("stale album metadata is served while one refresh runs in the background", 
           reject(error);
         }
       };
-      poll();
+      void poll();
     });
     assert.equal(requests, 2);
     assert.equal(refreshed.title, "Album v2");
@@ -480,7 +480,7 @@ test("search metadata coalesces concurrent misses and shares fresh cache entries
     response.setHeader("content-type", "application/json");
     const requestNumber = ++requests;
     resolveRequestStarted();
-    responseReleased.then(() => {
+    void responseReleased.then(() => {
       response.end(JSON.stringify([{ id: `artist-${requestNumber}`, name: "Artist" }]));
     });
   });

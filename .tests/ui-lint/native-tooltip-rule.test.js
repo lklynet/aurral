@@ -1,7 +1,7 @@
-import test from "node:test";
-import { RuleTester } from "eslint";
+import { test } from "vite-plus/test";
+import { RuleTester } from "vite-plus/lint/plugins-dev";
 
-import { noNativeTooltipRules } from "../../frontend/eslint-rules/native-tooltip-rules.js";
+import { noNativeTooltipRules } from "../../frontend/lint-rules/native-tooltip-rules.js";
 
 const tester = new RuleTester({
   languageOptions: {

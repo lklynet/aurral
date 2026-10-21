@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, afterEach, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { runInNewContext } from "node:vm";
@@ -12,7 +12,7 @@ const originals = {
   matchMedia: globalThis.matchMedia,
 };
 
-test.afterEach(() => {
+afterEach(() => {
   Object.assign(globalThis, originals);
 });
 
@@ -55,8 +55,10 @@ function createBrowser({ storage = {}, prefersDark = false } = {}) {
   return { stored, variables, dataset };
 }
 
-let moduleCount = 0;
-const loadTheme = () => import(`../../frontend/src/utils/theme.js?browser=${++moduleCount}`);
+const loadTheme = () => {
+  vi.resetModules();
+  return import("../../frontend/src/utils/theme.js");
+};
 
 const lowContrastTheme = {
   id: "custom-murky",

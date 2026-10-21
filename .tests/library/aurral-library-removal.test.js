@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll, afterEach, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -174,7 +174,7 @@ function registerSlskdSearch(jobId) {
 
 let lidarrCalls;
 let originalRequest;
-test.beforeEach(() => {
+beforeEach(() => {
   downloadTracker.clearAll();
   lidarrCalls = [];
   originalRequest = lidarrClient.request;
@@ -184,12 +184,12 @@ test.beforeEach(() => {
   };
 });
 
-test.afterEach(() => {
+afterEach(() => {
   lidarrClient.request = originalRequest;
   assert.equal(lidarrCalls.length, 0);
 });
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
@@ -319,7 +319,7 @@ function makeMonitoredArtist(artist, monitored = true) {
   });
 }
 
-test("removing a monitored Aurral artist clears its albums, files, and monitoring", async (t) => {
+test("removing a monitored Aurral artist clears its albums, files, and monitoring", async () => {
   const first = await createAurralAlbum();
   const second = await createAurralAlbum({ trackCount: 2, filesFor: [0], artist: first.artist });
   makeMonitoredArtist(first.artist);
@@ -341,7 +341,7 @@ test("removing a monitored Aurral artist clears its albums, files, and monitorin
   assert.equal(managementStore.getLibraryManagementEntry("artist", first.artist.id), null);
 
   const planned = [];
-  t.mock.method(libraryManager, "planAurralArtistMonitoring", async (artist) => {
+  vi.spyOn(libraryManager, "planAurralArtistMonitoring").mockImplementation(async (artist) => {
     planned.push(artist.mbid);
     return { releases: [], topTracks: [] };
   });
@@ -447,17 +447,17 @@ test("a failed artist removal stops monitoring and finishes on retry", async () 
   }
 });
 
-test("deleting a Lidarr artist also deletes its Aurral albums and their files", async (t) => {
+test("deleting a Lidarr artist also deletes its Aurral albums and their files", async () => {
   const { artist, album, tracks } = await createAurralAlbum();
   managementStore.setLibraryManagement({ entityKind: "artist", entityId: artist.id, managedBy: "lidarr" });
   const deleted = [];
-  t.mock.method(lidarrClient, "isConfigured", () => true);
-  t.mock.method(lidarrClient, "getArtistByMbid", async (mbid) => ({
+  vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
+  vi.spyOn(lidarrClient, "getArtistByMbid").mockImplementation(async (mbid) => ({
     id: 41,
     foreignArtistId: mbid,
     artistName: artist.name,
   }));
-  t.mock.method(lidarrClient, "deleteArtist", async (id, deleteFiles) => {
+  vi.spyOn(lidarrClient, "deleteArtist").mockImplementation(async (id, deleteFiles) => {
     deleted.push({ id, deleteFiles });
   });
 

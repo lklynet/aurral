@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { fork } from "node:child_process";
-import { test, after } from "node:test";
+import { test, afterAll } from "vite-plus/test";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { setupIsolatedBackend, cleanupIsolatedState, createMockHttpServer } from "../helpers/backendTestHarness.js";
@@ -8,7 +8,7 @@ import { setupIsolatedBackend, cleanupIsolatedState, createMockHttpServer } from
 const [paths, honker, { dbOps }, { upsertLibraryArtist }, { db }] = await setupIsolatedBackend(
   "metadata-process-isolation", "backend/services/honkerDb.js", "backend/db/helpers/index.js",
   "backend/services/libraryMediaStore.js", "backend/config/db-sqlite.js");
-after(() => cleanupIsolatedState(paths));
+afterAll(() => cleanupIsolatedState(paths));
 
 test("an isolated metadata request does not delay unrelated system tasks", { timeout: 10000 }, async () => {
   let requested, release;

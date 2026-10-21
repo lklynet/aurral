@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, afterAll } from "vite-plus/test";
 import express from "express";
 import {
   cleanupIsolatedState,
@@ -52,7 +52,7 @@ registerCover(app);
 registerStream(app);
 const server = await createMockHttpServer(app);
 
-test.after(async () => {
+afterAll(async () => {
   await server.close();
   globalThis.fetch = originalFetch;
   if (previousMetadataUrl === undefined) delete process.env.BRAINZMASH_BASE_URL;

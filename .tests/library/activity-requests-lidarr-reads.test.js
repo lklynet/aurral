@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, beforeAll, afterAll, vi } from "vite-plus/test";
 import express from "express";
 import {
   cleanupIsolatedState,
@@ -25,7 +25,7 @@ const [
 
 let app;
 
-test.before(async () => {
+beforeAll(async () => {
   resetDatabase(db);
   const expressApp = express();
   expressApp.use((req, _res, next) => {
@@ -41,23 +41,23 @@ test.before(async () => {
   });
 });
 
-test.after(async () => {
+afterAll(async () => {
   await new Promise((resolve) => app.server.close(resolve));
   await cleanupIsolatedState(isolatedState);
 });
 
-test("Activity refreshes reuse recent Lidarr status and album reads", async (t) => {
-  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-01T12:00:00Z") });
+test("Activity refreshes reuse recent Lidarr status and album reads", async () => {
+  vi.useFakeTimers({ toFake: ["Date"], now: Date.parse("2026-10-01T12:00:00Z") });
   const statusReads = [];
   const albumReads = [];
   const failedAt = new Date().toISOString();
-  t.mock.method(lidarrClient, "isConfigured", () => true);
-  t.mock.method(lidarrClient, "isCircuitOpen", () => false);
-  t.mock.method(lidarrClient, "getQueue", async (options) => {
+  vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
+  vi.spyOn(lidarrClient, "isCircuitOpen").mockImplementation(() => false);
+  vi.spyOn(lidarrClient, "getQueue").mockImplementation(async (options) => {
     if (options?.forceRefresh) statusReads.push("queue");
     return [];
   });
-  t.mock.method(lidarrClient, "getHistory", async (...args) => {
+  vi.spyOn(lidarrClient, "getHistory").mockImplementation(async (...args) => {
     if (args[4]?.forceRefresh) statusReads.push("history");
     return {
       records: [201, 202, 203].map((albumId) => ({
@@ -69,12 +69,12 @@ test("Activity refreshes reuse recent Lidarr status and album reads", async (t) 
       })),
     };
   });
-  t.mock.method(lidarrClient, "request", async (endpoint, _method, _data, _skip, options) => {
+  vi.spyOn(lidarrClient, "request").mockImplementation(async (endpoint, _method, _data, _skip, options) => {
     if (endpoint === "/command" && options?.forceRefresh) statusReads.push("command");
     return [];
   });
-  t.mock.method(lidarrClient, "getAllAlbums", async () => []);
-  t.mock.method(lidarrClient, "getAlbum", async (albumId) => {
+  vi.spyOn(lidarrClient, "getAllAlbums").mockImplementation(async () => []);
+  vi.spyOn(lidarrClient, "getAlbum").mockImplementation(async (albumId) => {
     albumReads.push(String(albumId));
     if (String(albumId) === "203") throw new Error("Lidarr album not found");
     return {
@@ -99,12 +99,12 @@ test("Activity refreshes reuse recent Lidarr status and album reads", async (t) 
   assert.equal(statusReads.length, 3);
   assert.deepEqual(albumReads.sort(), ["201", "202", "203"]);
 
-  t.mock.timers.tick(10_000);
+  vi.advanceTimersByTime(10_000);
   assert.deepEqual(await refresh(), ["202", "203"]);
   assert.equal(statusReads.length, 6);
   assert.equal(albumReads.length, 3);
 
-  t.mock.timers.tick(20_000);
+  vi.advanceTimersByTime(20_000);
   assert.deepEqual(await refresh(), ["202", "203"]);
   assert.equal(albumReads.length, 6);
 });

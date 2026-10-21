@@ -4,7 +4,7 @@
 // must produce compatible identity decisions. Provider evidence may change
 // confidence (accept vs verify) and contradictions must reject everywhere.
 
-import test from "node:test";
+import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import {
   buildSourceCandidates,

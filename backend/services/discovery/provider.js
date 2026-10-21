@@ -265,7 +265,7 @@ export const updateDiscoveryCache = async (options = {}) => {
   markDiscoveryRefreshStarted();
   logger.info('discovery', "Starting background update of discovery data...");
   recordDiscoveryUpdateProgress("starting", "Preparing discovery refresh", 5);
-  recordHistory("recordDiscoveryRefreshStarted");
+  void recordHistory("recordDiscoveryRefreshStarted");
 
   try {
     const provider = getMusicDataSourceName();
@@ -314,7 +314,7 @@ export const updateDiscoveryCache = async (options = {}) => {
     notifyDiscoveryUpdated().catch((err) =>
       logger.warn('discovery', "[Discovery] Notification failed:", err.message),
     );
-    recordHistory("recordDiscoveryUpdated", { recommendationCount: 0, genreCount: 0 });
+    void recordHistory("recordDiscoveryUpdated", { recommendationCount: 0, genreCount: 0 });
 
     try {
       const cleaned = dbOps.cleanOldImageCache(30);
@@ -337,7 +337,7 @@ export const updateDiscoveryCache = async (options = {}) => {
       progressMessage: "Discovery refresh failed",
       error: error.message,
     });
-    recordHistory("recordDiscoveryRefreshFailed", error.message);
+    void recordHistory("recordDiscoveryRefreshFailed", error.message);
   }
 };
 

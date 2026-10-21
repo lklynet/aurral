@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import express from "express";
 import os from "node:os";
 import path from "node:path";
-import test from "node:test";
+import { test, vi } from "vite-plus/test";
 import { randomBytes } from "node:crypto";
 import { createIsolatedStateDir } from "./helpers/backendTestHarness.js";
 
@@ -20,7 +20,8 @@ test("cached artwork remains available while a remote refresh fails", { timeout:
   try {
     const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
     global.fetch = async () => new Response(png, { headers: { "content-type": "image/png" } });
-    const seed = await import(`../backend/services/imageProxyService.js?refresh-seed=${Date.now()}`);
+    vi.resetModules();
+    const seed = await import("../backend/services/imageProxyService.js");
     const sourceUrl = "https://images.example/cached-refresh.png";
     const cached = await seed.warmImageProxy(sourceUrl);
     const legacyPath = cached.imagePath.replace(/\.webp$/, ".png");
@@ -29,12 +30,13 @@ test("cached artwork remains available while a remote refresh fails", { timeout:
       ...cached.meta, extension: "png", contentType: "image/png", size: png.length, fetchedAt: 0,
     }));
     await fs.unlink(cached.imagePath);
-    const { warmImageProxy, handleImageProxyRequest } = await import(`../backend/services/imageProxyService.js?refresh-read=${Date.now()}`);
+    vi.resetModules();
+    const { warmImageProxy, handleImageProxyRequest } = await import("../backend/services/imageProxyService.js");
     const app = express();
     app.get("/api/image-proxy/:cacheKey", (req, res, next) => {
       const pending = handleImageProxyRequest(req, res);
       localStarted.resolve();
-      pending.catch(next);
+      pending.catch((error) => next(error));
     });
     server = await new Promise((resolve) => {
       const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
@@ -81,8 +83,9 @@ test("image bursts limit upstream work, share duplicates, and release slots afte
   let requests;
   process.env.AURRAL_DATA_DIR = dataDir;
   try {
+    vi.resetModules();
     const { warmImageProxy } = await import(
-      `../backend/services/imageProxyService.js?burst-test=${Date.now()}`
+      "../backend/services/imageProxyService.js"
     );
     const png = Buffer.from(
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
@@ -130,8 +133,9 @@ test("image proxy cache size and clear operations are asynchronous", async () =>
   const previousDataDir = process.env.AURRAL_DATA_DIR;
   process.env.AURRAL_DATA_DIR = dataDir;
   try {
+    vi.resetModules();
     const { clearImageProxyCache, getImageProxyCacheSizeBytes } = await import(
-      `../backend/services/imageProxyService.js?cache-test=${Date.now()}`
+      "../backend/services/imageProxyService.js"
     );
     const cacheDir = path.join(dataDir, "image-proxy");
     await fs.mkdir(cacheDir, { recursive: true });
@@ -154,8 +158,9 @@ test("image proxy caches one library-sized webp instead of full-resolution sourc
   process.env.AURRAL_DATA_DIR = dataDir;
   try {
     const sharp = (await import("sharp")).default;
+    vi.resetModules();
     const { warmImageProxy } = await import(
-      `../backend/services/imageProxyService.js?library-test=${Date.now()}`
+      "../backend/services/imageProxyService.js"
     );
     const source = await sharp({
       create: {
@@ -200,8 +205,9 @@ test("image proxy serves cached images from hidden worktree paths", async () => 
     global.fetch = async () =>
       new Response(png, { headers: { "content-type": "image/png" } });
 
+    vi.resetModules();
     const { handleImageProxyRequest, warmImageProxy } = await import(
-      `../backend/services/imageProxyService.js?hidden-path-test=${Date.now()}`
+      "../backend/services/imageProxyService.js"
     );
     const cached = await warmImageProxy("https://images.example/hidden-path.png");
     global.fetch = originalFetch;
@@ -237,8 +243,9 @@ test("image proxy cache prunes oldest entries over the size cap", async () => {
   process.env.AURRAL_IMAGE_PROXY_MAX_BYTES = String(200 * 1024);
   try {
     const sharp = (await import("sharp")).default;
+    vi.resetModules();
     const { warmImageProxy, getImageProxyCacheSizeBytes } = await import(
-      `../backend/services/imageProxyService.js?cap-test=${Date.now()}`
+      "../backend/services/imageProxyService.js"
     );
     const noise = Buffer.alloc(512 * 512 * 3);
     for (let i = 0; i < noise.length; i += 1) {

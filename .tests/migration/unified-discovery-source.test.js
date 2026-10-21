@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { rm } from "node:fs/promises";
-import test from "node:test";
+import { test } from "vite-plus/test";
 import Database from "better-sqlite3";
 
 import { createIsolatedStateDir } from "../helpers/backendTestHarness.js";

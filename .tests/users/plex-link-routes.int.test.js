@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeAll, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import bcrypt from "bcrypt";
@@ -58,7 +58,7 @@ async function apiFetch(token, path, options = {}) {
   return { response, payload };
 }
 
-test.before(async () => {
+beforeAll(async () => {
   resetDatabase(db);
   dbOps.updateSettings({ integrations: {}, onboardingComplete: true });
   const admin = userOps.createUser("plex-admin", bcrypt.hashSync("password123", 4), "admin");
@@ -74,7 +74,7 @@ test.before(async () => {
   userBToken = await login("plex-user-b", "password123");
 });
 
-test.after(async () => {
+afterAll(async () => {
   await server?.stop();
   await cleanupIsolatedState(isolatedState);
 });

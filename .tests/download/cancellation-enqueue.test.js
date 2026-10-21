@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import {
   setupIsolatedBackend,
@@ -82,17 +82,17 @@ const createFlow = ({ enabled = false, name } = {}) => {
   return flow;
 };
 
-test.beforeEach(() => {
+beforeEach(() => {
   resetDatabase(db);
   dbOps.updateSettings({ integrations: {}, onboardingComplete: true, flows: [], sharedPlaylists: [] });
   downloadTracker.clearAll();
 });
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("a failed flow-delete enqueue restores active download work", async (t) => {
+test("a failed flow-delete enqueue restores active download work", async () => {
   const user = { id: 1, role: "user" };
   const flow = createFlow({ name: "Delete queue rollback" });
   const tokenScope = `flow:${flow.id}:mutation`;
@@ -100,7 +100,7 @@ test("a failed flow-delete enqueue restores active download work", async (t) => 
   dbOps.setJSONSetting(tokenKey, "previous-delete-token");
   const generation = activatePlaylistDownloadGeneration(flow.id);
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Song" }, flow.id);
-  t.mock.method(playlistOperationQueue, "enqueuePayload", async () => {
+  vi.spyOn(playlistOperationQueue, "enqueuePayload").mockImplementation(async () => {
     throw new Error("queue unavailable");
   });
   const response = createResponse();
@@ -114,7 +114,7 @@ test("a failed flow-delete enqueue restores active download work", async (t) => 
   assert.equal(dbOps.getJSONSetting(tokenKey), "previous-delete-token");
 });
 
-test("a failed flow-disable enqueue restores enabled state and active downloads", async (t) => {
+test("a failed flow-disable enqueue restores enabled state and active downloads", async () => {
   const user = { id: 1, role: "user" };
   const flow = createFlow({ name: "Disable queue rollback", enabled: true });
   const tokenScope = `flow:${flow.id}:mutation`;
@@ -122,8 +122,8 @@ test("a failed flow-disable enqueue restores enabled state and active downloads"
   dbOps.setJSONSetting(tokenKey, "previous-disable-token");
   const generation = activatePlaylistDownloadGeneration(flow.id);
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Song" }, flow.id);
-  const playlistSync = t.mock.method(playlistManager, "requestPlaylistSync", () => null);
-  t.mock.method(playlistOperationQueue, "enqueuePayload", async () => {
+  const playlistSync = vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
+  vi.spyOn(playlistOperationQueue, "enqueuePayload").mockImplementation(async () => {
     throw new Error("queue unavailable");
   });
   const response = createResponse();
@@ -139,10 +139,10 @@ test("a failed flow-disable enqueue restores enabled state and active downloads"
   assert.equal(isDownloadJobCancelled(jobId), false);
   assert.equal(isPipelinePayloadActive({ jobId, playlistId: flow.id, playlistGeneration: generation }), true);
   assert.equal(dbOps.getJSONSetting(tokenKey), "previous-disable-token");
-  assert.equal(playlistSync.mock.callCount(), 0);
+  assert.equal(playlistSync.mock.calls.length, 0);
 });
 
-test("a failed flow disable does not undo a later disable", async (t) => {
+test("a failed flow disable does not undo a later disable", async () => {
   const user = { id: 1, role: "user" };
   const flow = createFlow({ name: "Overlapping flow disables", enabled: true });
   const generation = activatePlaylistDownloadGeneration(flow.id);
@@ -152,8 +152,8 @@ test("a failed flow disable does not undo a later disable", async (t) => {
   const firstEnqueueStarted = new Promise((resolve) => { signalFirstEnqueue = resolve; });
   const firstEnqueue = new Promise((resolve, reject) => { failFirstEnqueue = reject; });
   let enqueueCalls = 0;
-  t.mock.method(playlistManager, "requestPlaylistSync", () => null);
-  t.mock.method(playlistOperationQueue, "enqueuePayload", async () => {
+  vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
+  vi.spyOn(playlistOperationQueue, "enqueuePayload").mockImplementation(async () => {
     enqueueCalls += 1;
     if (enqueueCalls === 1) {
       signalFirstEnqueue();
@@ -182,14 +182,14 @@ test("a failed flow disable does not undo a later disable", async (t) => {
   assert.equal(isPipelinePayloadActive({ jobId, playlistId: flow.id, playlistGeneration: generation }), false);
 });
 
-test("a successful flow disable reports the accepted cleanup operation", async (t) => {
+test("a successful flow disable reports the accepted cleanup operation", async () => {
   const user = { id: 1, role: "user" };
   const flow = createFlow({ name: "Queued flow disable", enabled: true });
   const generation = activatePlaylistDownloadGeneration(flow.id);
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Song" }, flow.id);
-  t.mock.method(playlistManager, "requestPlaylistSync", () => null);
+  vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
   let queuedPayload;
-  t.mock.method(playlistOperationQueue, "enqueuePayload", async (payload) => {
+  vi.spyOn(playlistOperationQueue, "enqueuePayload").mockImplementation(async (payload) => {
     queuedPayload = payload;
     return { operationId: "disable-operation" };
   });
@@ -210,7 +210,7 @@ test("a successful flow disable reports the accepted cleanup operation", async (
   assert.equal(isPipelinePayloadActive({ jobId, playlistId: flow.id, playlistGeneration: generation }), false);
 });
 
-test("flow settings updates wait for in-progress playlist mutations", async (t) => {
+test("flow settings updates wait for in-progress playlist mutations", async () => {
   const user = { id: 1, role: "user" };
   dbOps.updateSettings({
     ...dbOps.getSettings(),
@@ -231,7 +231,7 @@ test("flow settings updates wait for in-progress playlist mutations", async (t) 
 
   try {
     await mutationEntered;
-    t.mock.method(playlistManager, "requestPlaylistSync", () => null);
+    vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
     update = flowUpdateHandlers.get("/flows/:flowId")({
       params: { flowId: flow.id },
       body: { name: "Updated while serialized" },
@@ -248,7 +248,7 @@ test("flow settings updates wait for in-progress playlist mutations", async (t) 
   assert.equal(flowPlaylistConfig.getFlow(flow.id).name, "Updated while serialized");
 });
 
-test("a failed shared-track delete enqueue clears only its new job-cancellation marker", async (t) => {
+test("a failed shared-track delete enqueue clears only its new job-cancellation marker", async () => {
   const user = { id: 1, role: "user" };
   const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Track queue rollback",
@@ -257,7 +257,7 @@ test("a failed shared-track delete enqueue clears only its new job-cancellation 
   });
   const generation = activatePlaylistDownloadGeneration(playlist.id);
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Song" }, playlist.id);
-  t.mock.method(playlistOperationQueue, "enqueuePayload", async () => {
+  vi.spyOn(playlistOperationQueue, "enqueuePayload").mockImplementation(async () => {
     throw new Error("queue unavailable");
   });
   const response = createResponse();
@@ -273,7 +273,7 @@ test("a failed shared-track delete enqueue clears only its new job-cancellation 
   assert.equal(isPipelinePayloadActive({ jobId, playlistId: playlist.id, playlistGeneration: generation }), true);
 });
 
-test("a failed static playlist delete does not reactivate previously cancelled work", async (t) => {
+test("a failed static playlist delete does not reactivate previously cancelled work", async () => {
   const user = { id: 1, role: "user" };
   const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Already cancelled playlist",
@@ -282,7 +282,7 @@ test("a failed static playlist delete does not reactivate previously cancelled w
   });
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Song" }, playlist.id);
   cancelPlaylistDownloadGeneration(playlist.id);
-  t.mock.method(playlistOperationQueue, "enqueuePayload", async () => {
+  vi.spyOn(playlistOperationQueue, "enqueuePayload").mockImplementation(async () => {
     throw new Error("queue unavailable");
   });
   const response = createResponse();
@@ -298,7 +298,7 @@ test("a failed static playlist delete does not reactivate previously cancelled w
   assert.equal(isPipelinePayloadActive({ jobId, playlistId: playlist.id, playlistGeneration: 0 }), false);
 });
 
-test("a failed track-delete enqueue preserves an existing job-cancellation marker", async (t) => {
+test("a failed track-delete enqueue preserves an existing job-cancellation marker", async () => {
   const user = { id: 1, role: "user" };
   const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Already cancelled track",
@@ -307,7 +307,7 @@ test("a failed track-delete enqueue preserves an existing job-cancellation marke
   });
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Song" }, playlist.id);
   cancelDownloadJob(jobId);
-  t.mock.method(playlistOperationQueue, "enqueuePayload", async () => {
+  vi.spyOn(playlistOperationQueue, "enqueuePayload").mockImplementation(async () => {
     throw new Error("queue unavailable");
   });
   const response = createResponse();

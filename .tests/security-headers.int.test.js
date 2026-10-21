@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, beforeAll, afterAll } from "vite-plus/test";
 
 import {
   cleanupIsolatedState,
@@ -10,11 +10,11 @@ import {
 const [isolatedState] = await setupIsolatedBackend("security-headers");
 let server;
 
-test.before(async () => {
+beforeAll(async () => {
   server = await startServerProcess({ extraEnv: { CORS_ORIGIN: "https://allowed.example" } });
 });
 
-test.after(async () => {
+afterAll(async () => {
   await server?.stop();
   await cleanupIsolatedState(isolatedState);
 });

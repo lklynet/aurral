@@ -4,11 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview",
-    "lint:ui": "node scripts/lint-ui-css.mjs && eslint src --max-warnings 0",
-    "lint": "eslint . --max-warnings 0 && node scripts/lint-ui-css.mjs"
+    "dev": "vp dev",
+    "build": "vp build",
+    "preview": "vp preview"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -23,14 +21,10 @@
     "react-router": "^8.4.0"
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
     "@vitejs/plugin-react": "^6.1.2",
-    "eslint": "^10.12.0",
-    "eslint-plugin-react": "^7.37.3",
-    "eslint-plugin-react-hooks": "^7.1.1",
-    "globals": "^17.13.0",
     "postcss": "^8.5.30",
-    "vite": "^8.3.4",
-    "vite-plugin-pwa": "^2.0.0"
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.3.0",
+    "vite-plugin-pwa": "^2.0.0",
+    "vite-plus": "1.3.0"
   }
 }

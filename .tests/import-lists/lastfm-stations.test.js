@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import { parseLastfmStation } from "../../backend/services/importLists/lastfmTracks.js";
@@ -15,8 +15,8 @@ const [isolatedState, { db }, { userOps }, { lastfmStationClient }] = await setu
   "backend/services/importLists/lastfmStations.js",
 );
 
-test.beforeEach(() => resetDatabase(db));
-test.after(() => cleanupIsolatedState(isolatedState));
+beforeEach(() => resetDatabase(db));
+afterAll(() => cleanupIsolatedState(isolatedState));
 
 test("parseLastfmStation maps tracks, durations, and skipped entries", () => {
   const { tracks, stats } = parseLastfmStation({
@@ -45,9 +45,9 @@ test("parseLastfmStation maps tracks, durations, and skipped entries", () => {
   assert.deepEqual(stats, { incomplete: 1, duplicate: 1 });
 });
 
-test("lastfmStationClient lists the three stations in a stable order", async (t) => {
+test("lastfmStationClient lists the three stations in a stable order", async () => {
   const calls = [];
-  t.mock.method(globalThis, "fetch", async (url, options) => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (url, options) => {
     calls.push({ url, options });
     const station = new URL(url).pathname.split("/").pop();
     return {
@@ -84,14 +84,14 @@ test("lastfmStationClient lists the three stations in a stable order", async (t)
   assert.equal(calls[0].options.headers.Accept, "application/json");
 });
 
-test("lastfmStationClient reuses a Last.fm username from the profile", async (t) => {
+test("lastfmStationClient reuses a Last.fm username from the profile", async () => {
   const user = userOps.createUser("profile-user", "hash");
   userOps.updateUser(user.id, {
     listenHistoryProvider: "lastfm",
     listenHistoryUsername: "profile-lastfm",
   });
   let requestedUrl = "";
-  t.mock.method(globalThis, "fetch", async (url) => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
     requestedUrl = url;
     return {
       ok: true,

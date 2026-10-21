@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, afterAll } from "vite-plus/test";
 import Database from "better-sqlite3";
 import {
   cleanupIsolatedState,
@@ -12,7 +12,7 @@ const [state, { db }, store, { getLibraryPage }] = await setupIsolatedBackend(
   "backend/services/libraryMediaStore.js",
   "backend/services/libraryQueryService.js",
 );
-test.after(() => cleanupIsolatedState(state));
+afterAll(() => cleanupIsolatedState(state));
 
 test("page totals stay exact after local writes, worker commits, and rollbacks", () => {
   const artist = store.upsertLibraryArtist({ identityKey: "totals:artist", name: "Totals Artist" });

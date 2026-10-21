@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeAll, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import {
@@ -25,11 +25,11 @@ const { computeLibraryRootOverlaps } = await import(
   "../../backend/services/downloadFolderConfig.js"
 );
 
-test.before(() => {
+beforeAll(() => {
   resetDatabase(db);
 });
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, beforeAll, afterAll, vi } from "vite-plus/test";
 import {
   cleanupIsolatedState,
   resetDatabase,
@@ -25,7 +25,7 @@ const [
 let album;
 let track;
 
-test.before(() => {
+beforeAll(() => {
   resetDatabase(db);
   const artist = libraryStore.upsertLibraryArtist({
     identityKey: "bounded:artist",
@@ -56,14 +56,14 @@ test.before(() => {
   });
 });
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("focused Subsonic requests never execute an unfiltered complete-library query", (t) => {
+test("focused Subsonic requests never execute an unfiltered complete-library query", () => {
   const prepared = [];
   const prepare = db.prepare.bind(db);
-  t.mock.method(db, "prepare", (sql) => {
+  vi.spyOn(db, "prepare").mockImplementation((sql) => {
     prepared.push(String(sql));
     return prepare(sql);
   });

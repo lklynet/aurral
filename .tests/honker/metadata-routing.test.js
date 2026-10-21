@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { test, after } from "node:test";
+import { test, afterAll } from "vite-plus/test";
 import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.js";
 const [paths, honker, { db }, { scheduleReleaseMetadataRefresh }] = await setupIsolatedBackend(
   "metadata-routing", "backend/services/honkerDb.js", "backend/config/db-sqlite.js",
   "backend/services/releaseMetadataSync.js");
-after(() => cleanupIsolatedState(paths));
+afterAll(() => cleanupIsolatedState(paths));
 db.prepare(`INSERT INTO library_artists (identity_key, mbid, name, created_at, updated_at)
   VALUES (?, ?, ?, ?, ?)`).run("mbid:5a5a5a5a-5a5a-45a5-85a5-5a5a5a5a5a5a",
   "5a5a5a5a-5a5a-45a5-85a5-5a5a5a5a5a5a", "Calendar Artist", Date.now(), Date.now());

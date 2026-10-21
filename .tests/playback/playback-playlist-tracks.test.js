@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "fs/promises";
 import path from "path";
@@ -25,13 +25,13 @@ const [
 
 const downloadRoot = process.env.WEEKLY_FLOW_FOLDER;
 
-test.beforeEach(async () => {
+beforeEach(async () => {
   await resetDatabase(db);
   downloadTracker.clearAll();
   await fs.rm(downloadRoot, { recursive: true, force: true });
 });
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 

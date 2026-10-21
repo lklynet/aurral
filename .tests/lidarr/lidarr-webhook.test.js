@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, beforeEach, afterAll } from "vite-plus/test";
 
 import {
   setupIsolatedBackend,
@@ -36,12 +36,12 @@ function createResponse() {
   };
 }
 
-test.beforeEach(() => {
+beforeEach(() => {
   resetDatabase(db);
   db.prepare("DELETE FROM aurral_history").run();
 });
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 

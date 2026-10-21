@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import { NavidromeClient } from "../backend/services/navidrome.js";
@@ -437,8 +437,8 @@ test("looks up songs by path again after Navidrome comes back", async () => {
   assert.equal(song.id, "path-match");
 });
 
-test("picks up a song Navidrome indexed again under a new ID", async (t) => {
-  t.mock.timers.enable({ apis: ["Date"] });
+test("picks up a song Navidrome indexed again under a new ID", async () => {
+  vi.useFakeTimers({ toFake: ["Date"], now: 0 });
   const libraries = [{ id: 1, name: "Aurral Playlists", path: "/data/music" }];
   const indexed = { id: "first-id", libraryPath: "/data/music", path: "Artist/Album/track.flac" };
   const navidrome = createFakeNavidrome({ libraries, songs: [indexed] });
@@ -448,7 +448,7 @@ test("picks up a song Navidrome indexed again under a new ID", async (t) => {
     const client = await connectToLibraries(libraries);
     const song = await client.findSong("Track", "Artist", track);
     indexed.id = "second-id";
-    t.mock.timers.tick(24 * 60 * 60_000);
+    vi.advanceTimersByTime(24 * 60 * 60_000);
     return [song, await client.findSong("Track", "Artist", track)];
   });
 
@@ -456,8 +456,8 @@ test("picks up a song Navidrome indexed again under a new ID", async (t) => {
   assert.equal(later.id, "second-id");
 });
 
-test("looks up songs by path once Navidrome is updated to a version that supports it", async (t) => {
-  t.mock.timers.enable({ apis: ["Date"] });
+test("looks up songs by path once Navidrome is updated to a version that supports it", async () => {
+  vi.useFakeTimers({ toFake: ["Date"], now: 0 });
   const libraries = [{ id: 1, name: "Aurral Playlists", path: "/data/music" }];
   const navidrome = createFakeNavidrome({
     libraries,
@@ -477,7 +477,7 @@ test("looks up songs by path once Navidrome is updated to a version that support
     const client = await connectToLibraries(libraries);
     const song = await client.findSong("Wanted title", "Wanted artist", track);
     navidrome.serverVersion = "0.62.0 (0f9f0a4c)";
-    t.mock.timers.tick(24 * 60 * 60_000);
+    vi.advanceTimersByTime(24 * 60 * 60_000);
     return [song, await client.findSong("Wanted title", "Wanted artist", track)];
   });
 

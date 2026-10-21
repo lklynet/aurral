@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, afterAll } from "vite-plus/test";
 import {
   cleanupIsolatedState,
   setupIsolatedBackend,
@@ -8,7 +8,7 @@ import {
 const [state, store] = await setupIsolatedBackend(
   "library-scoped-paths", "backend/services/libraryMediaStore.js",
 );
-test.after(() => cleanupIsolatedState(state));
+afterAll(() => cleanupIsolatedState(state));
 
 test("scoped media paths preserve exact files, descendants, and source boundaries", () => {
   const track = store.upsertLibraryTrack({ identityKey: "scoped:track", title: "Scoped Track" });

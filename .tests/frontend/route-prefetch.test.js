@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
-import test from "node:test";
-import { startFrontendServer } from "../helpers/frontendServer.js";
+import { test, vi } from "vite-plus/test";
 
 async function setup(t, respond) {
-  const vite = await startFrontendServer();
+  vi.resetModules();
   const previousFetch = globalThis.fetch;
   const requests = [];
   globalThis.fetch = async (input) => {
@@ -15,16 +14,15 @@ async function setup(t, respond) {
       headers: { "content-type": "application/json" },
     });
   };
-  const { prefetchRoute } = await vite.ssrLoadModule("/src/navigation/routePrefetch.js");
-  const { queryClient } = await vite.ssrLoadModule("/src/queryClient.js");
-  const queryOptions = await vite.ssrLoadModule("/src/queryOptions.js");
-  t.after(async () => {
+  const { prefetchRoute } = await import("../../frontend/src/navigation/routePrefetch.js");
+  const { queryClient } = await import("../../frontend/src/queryClient.js");
+  const queryOptions = await import("../../frontend/src/queryOptions.js");
+  t.onTestFinished(async () => {
     queryClient.clear();
     globalThis.fetch = previousFetch;
     delete globalThis.document;
-    await vite.close();
   });
-  return { vite, requests, prefetchRoute, queryClient, queryOptions };
+  return { requests, prefetchRoute, queryClient, queryOptions };
 }
 
 const apiRequests = (requests, fragment) => requests.filter((path) => path.includes(fragment));
@@ -72,12 +70,12 @@ test("no prefetch runs while the tab is hidden or for links outside the app", as
 });
 
 test("a library album prefetch matches the page query whatever its list state", async (t) => {
-  const { vite, requests, prefetchRoute, queryClient } = await setup(t, (url) => ({
+  const { requests, prefetchRoute, queryClient } = await setup(t, (url) => ({
     body: url.pathname.includes("/library")
       ? { tracks: [{ id: 1, title: "Track" }], total: 1 }
       : {},
   }));
-  const { libraryViewQueryOptions } = await vite.ssrLoadModule("/src/pages/libraryViewQuery.js");
+  const { libraryViewQueryOptions } = await import("../../frontend/src/pages/libraryViewQuery.js");
 
   await prefetchRoute("/library/album/7");
   const prefetched = requests.length;
@@ -99,8 +97,8 @@ test("a library album prefetch matches the page query whatever its list state", 
 });
 
 test("a route counts as ready only after its page code has loaded", async (t) => {
-  const { vite, prefetchRoute } = await setup(t, () => ({ body: {} }));
-  const { isRouteModuleLoaded } = await vite.ssrLoadModule("/src/navigation/routePrefetch.js");
+  const { prefetchRoute } = await setup(t, () => ({ body: {} }));
+  const { isRouteModuleLoaded } = await import("../../frontend/src/navigation/routePrefetch.js");
 
   assert.equal(isRouteModuleLoaded("/discover/news"), false);
   await prefetchRoute("/discover/news");

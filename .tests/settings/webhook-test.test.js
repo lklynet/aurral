@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import test from "node:test";
+import { test, beforeEach, afterAll } from "vite-plus/test";
 
 import {
   cleanupIsolatedState,
@@ -84,11 +84,11 @@ async function withReceiver(statusCode, callback) {
   }
 }
 
-test.beforeEach(() => {
+beforeEach(() => {
   resetDatabase(db);
 });
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 

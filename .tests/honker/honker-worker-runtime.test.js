@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
@@ -25,7 +25,7 @@ const [
 
 const STALE_RUNNING_MS = 60 * 60 * 1000;
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
@@ -438,11 +438,11 @@ test("an idle shutdown lets the process exit without waiting out its timeout", (
 
 test("periodic cleanup retries failed passes and stops on shutdown", async (t) => {
   const { db } = await importFromRepo("backend/config/db-sqlite.js");
-  t.mock.timers.enable({ apis: ["setInterval"] });
-  t.after(async () => {
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"], now: 0 });
+  t.onTestFinished(async () => {
     await taskStatus.stopHonkerTaskCleanup();
     db.exec("DROP TRIGGER IF EXISTS block_task_cleanup");
-    t.mock.timers.reset();
+    vi.useRealTimers();
   });
   const old = Math.floor(Date.now() / 1000) - 7200;
   db.prepare("INSERT INTO honker_task_runs(job_id, queue, status, started_at, ended_at) VALUES(?, ?, 'completed', ?, ?)").run(777777, "system-task", old, old);
@@ -450,12 +450,12 @@ test("periodic cleanup retries failed passes and stops on shutdown", async (t) =
   await taskStatus.startHonkerTaskCleanup();
   assert.ok(db.prepare("SELECT id FROM honker_task_runs WHERE job_id = 777777").get());
   db.exec("DROP TRIGGER block_task_cleanup");
-  t.mock.timers.tick(60000);
+  vi.advanceTimersByTime(60000);
   await taskStatus.startHonkerTaskCleanup();
   assert.equal(db.prepare("SELECT id FROM honker_task_runs WHERE job_id = 777777").get(), undefined);
   await taskStatus.stopHonkerTaskCleanup();
   db.prepare("INSERT INTO honker_task_runs(job_id, queue, status, started_at, ended_at) VALUES(?, ?, 'completed', ?, ?)").run(777778, "system-task", old, old);
-  t.mock.timers.tick(60000);
+  vi.advanceTimersByTime(60000);
   await Promise.resolve();
   assert.ok(db.prepare("SELECT id FROM honker_task_runs WHERE job_id = 777778").get());
 });
@@ -465,14 +465,14 @@ test("a notification outbox worker stops on its own once no delivery is in fligh
   const outbox = honkerDb.getNotificationOutbox();
   outbox.enqueue({ message: "disposable in-flight delivery" });
   const delivery = outbox.queue.claimOne("disposable-delivery-owner");
-  t.mock.timers.enable({ apis: ["setTimeout"] });
-  t.after(() => outboxWorker.stopNotificationOutboxWorker());
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], now: 0 });
+  t.onTestFinished(() => outboxWorker.stopNotificationOutboxWorker());
   const loop = outboxWorker.startNotificationOutboxWorker();
-  t.mock.timers.tick(60000);
+  vi.advanceTimersByTime(60000);
   await new Promise(setImmediate);
   assert.equal(outboxWorker.isNotificationOutboxWorkerRunning(), true);
   assert.equal(delivery.ack(), true);
-  t.mock.timers.tick(60000);
+  vi.advanceTimersByTime(60000);
   await loop;
   assert.equal(outboxWorker.isNotificationOutboxWorkerRunning(), false);
 });

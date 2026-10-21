@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -13,7 +13,7 @@ const [state, { db }, { dbOps, userOps }, config, { downloadTracker }, { playlis
   "backend/services/playlists/bulkOperationStore.js", "backend/services/honkerDb.js",
   "backend/routes/playlists/handlers/staticPlaylists.js",
 );
-test.beforeEach(() => {
+beforeEach(() => {
   resetDatabase(db);
   config.invalidateFlowPlaylistConfigCache();
   downloadTracker.clearAll();
@@ -21,7 +21,7 @@ test.beforeEach(() => {
   honker.getPlaylistOperationQueue();
   db.prepare("DELETE FROM _honker_live").run();
 });
-test.after(() => cleanupIsolatedState(state));
+afterAll(() => cleanupIsolatedState(state));
 
 function fixture(t, count = 3) {
   const user = userOps.createUser("bulk-user", "unused");
@@ -32,8 +32,8 @@ function fixture(t, count = 3) {
     jobPlaylistId: source.id, jobGeneration: job.playlistGeneration, jobCreatedAt: job.createdAt }));
   const refreshes = [];
   let scans = 0;
-  t.mock.method(playlistManager, "requestPlaylistSync", (ids) => { refreshes.push(...ids); });
-  t.mock.method(playlistManager, "scheduleScanLibrary", async () => { scans++; });
+  vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation((ids) => { refreshes.push(...ids); });
+  vi.spyOn(playlistManager, "scheduleScanLibrary").mockImplementation(async () => { scans++; });
   return { user, source, jobs, selections, refreshes, scans: () => scans };
 }
 
@@ -126,7 +126,7 @@ test("batch acceptance validates, deduplicates and scopes its durable result to 
 test("synchronization failure preserves applied outcomes and retries only unfinished synchronization", async (t) => {
   const f = fixture(t, 2);
   let attempts = 0;
-  t.mock.method(playlistManager, "requestPlaylistSync", () => {
+  vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => {
     if (++attempts === 1) throw new Error("fixture queue unavailable");
   });
   const { operationId } = store.enqueueBulkOperation({ ownerUserId: f.user.id, sourcePlaylistId: f.source.id, action: "remove", selections: f.selections });
@@ -182,8 +182,8 @@ test("partial provider failure preserves the failed membership and completes the
   const f = fixture(t, 2);
   const { getDownloadClient } = await import("../../backend/services/download/downloadClientSettings.js");
   const client = getDownloadClient("deemix");
-  t.mock.method(client, "isConfigured", () => true);
-  t.mock.method(client, "removeFromQueue", async () => false);
+  vi.spyOn(client, "isConfigured").mockImplementation(() => true);
+  vi.spyOn(client, "removeFromQueue").mockImplementation(async () => false);
   honker.getPipelineQueue().enqueue({ jobId: f.jobs[0].id, playlistId: f.source.id, playlistGeneration: 0, phase: "poll", source: "deemix", queueUuid: "refused-provider-work" });
   const result = await execute({ ownerUserId: f.user.id, sourcePlaylistId: f.source.id, action: "remove", selections: f.selections });
   assert.deepEqual(result.outcomes.map((outcome) => outcome.status), ["failed", "removed"]);
@@ -238,8 +238,8 @@ test("failed provider cleanup leaves a retained quality upgrade recoverable", as
   downloadTracker.setDownloading(upgradeId);
   const { getDownloadClient } = await import("../../backend/services/download/downloadClientSettings.js");
   const client = getDownloadClient("deemix");
-  t.mock.method(client, "isConfigured", () => true);
-  t.mock.method(client, "removeFromQueue", async () => false);
+  vi.spyOn(client, "isConfigured").mockImplementation(() => true);
+  vi.spyOn(client, "removeFromQueue").mockImplementation(async () => false);
   honker.getPipelineQueue().enqueue({ jobId: upgradeId, playlistId: f.source.id, playlistGeneration: 0,
     phase: "poll", source: "deemix", queueUuid: "refused-upgrade-work" });
   const result = await execute({ ownerUserId: f.user.id, sourcePlaylistId: f.source.id, action: "remove", selections: f.selections });
@@ -248,7 +248,7 @@ test("failed provider cleanup leaves a retained quality upgrade recoverable", as
   assert.equal(downloadTracker.getJob(f.jobs[0].id).status, "done");
   assert.equal(await fs.readFile(file, "utf8"), "original audio");
   assert.equal(downloadTracker.getJob(upgradeId).status, "failed");
-  t.mock.method(client, "removeFromQueue", async () => true);
+  vi.spyOn(client, "removeFromQueue").mockImplementation(async () => true);
   const retry = await execute({ ownerUserId: f.user.id, sourcePlaylistId: f.source.id, action: "remove", selections: f.selections });
   assert.equal(retry.outcomes[0].status, "removed");
   assert.ok(!downloadTracker.getJob(upgradeId));
@@ -272,7 +272,7 @@ test("a bulk move finalizes retained media under the configured playlist root", 
   const previousRoot = downloadWorker.downloadRoot;
   const root = path.join(state.baseDir, "custom-playlists");
   downloadWorker.downloadRoot = root;
-  t.after(() => { downloadWorker.downloadRoot = previousRoot; });
+  t.onTestFinished(() => { downloadWorker.downloadRoot = previousRoot; });
   const file = path.join(root, "_flows", f.source.id, "Original.flac");
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, "retained custom-root audio");

@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import {
@@ -17,11 +17,11 @@ const bcryptModule = await import("bcrypt");
 
 const bcrypt = bcryptModule.default;
 
-test.beforeEach(() => {
+beforeEach(() => {
   resetDatabase(db);
 });
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 

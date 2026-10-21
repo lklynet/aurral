@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { Worker } from "node:worker_threads";
@@ -38,7 +38,7 @@ const { validateFlowPayload } = flowHandlerUtils;
 const { registerFlows } = flowHandlersModule;
 const { clearScheduledLibraryScan, getScheduledLibraryScanJobId } = libraryScanWorker;
 
-test.beforeEach(() => {
+beforeEach(() => {
   resetDatabase(db);
   invalidateFlowPlaylistConfigCache();
   dbOps.updateSettings({
@@ -49,7 +49,7 @@ test.beforeEach(() => {
   });
 });
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
@@ -286,9 +286,9 @@ test("keeps flow tracks out of the library until a flow opts in", async () => {
   clearScheduledLibraryScan();
 });
 
-test("saving a flow as a playlist keeps each track's release and disc", async (t) => {
-  t.mock.method(playlistManager, "requestPlaylistSync", () => null);
-  t.mock.method(playlistManager, "scheduleScanLibrary", async () => {});
+test("saving a flow as a playlist keeps each track's release and disc", async () => {
+  vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
+  vi.spyOn(playlistManager, "scheduleScanLibrary").mockImplementation(async () => {});
   const flow = flowPlaylistConfig.createFlow({ name: "Weekly Keep", size: 20, mix: { discover: 100 }, scheduleDays: [1] });
   const file = path.join(process.env.WEEKLY_FLOW_FOLDER, "aurral-weekly-flow", flow.id, "Keep.flac");
   await fs.mkdir(path.dirname(file), { recursive: true });

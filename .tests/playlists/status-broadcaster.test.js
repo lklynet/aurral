@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import test from "node:test";
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import Database from "better-sqlite3";
 import { setupIsolatedBackend, cleanupIsolatedState, resetDatabase } from "../helpers/backendTestHarness.js";
 
@@ -47,17 +47,17 @@ class SocketTransport extends EventEmitter {
   }
 }
 
-test.beforeEach(() => {
+beforeEach(() => {
   resetDatabase(db);
   dbOps.updateSettings({ integrations: {}, flows: [], sharedPlaylists: [] });
   invalidateFlowPlaylistConfigCache();
 });
-test.after(() => cleanupIsolatedState(state));
+afterAll(() => cleanupIsolatedState(state));
 
 function start(t, websocket) {
-  t.mock.timers.enable({ apis: ["Date", "setInterval", "setTimeout"], now: Date.now() });
+  vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval", "setTimeout", "clearTimeout"], now: Date.now() });
   const stop = startPlaylistStatusBroadcasts({ websocket });
-  t.after(stop);
+  t.onTestFinished(stop);
   return stop;
 }
 
@@ -67,9 +67,9 @@ test("unchanged playlist subscribers avoid rebuilding their status", (t) => {
   const client = socket.connect("first", { id: 1, role: "admin" });
   start(t, socket);
   assert.equal(client.messages.length, 1);
-  t.mock.timers.tick(4000);
+  vi.advanceTimersByTime(4000);
   const inspections = socket.inspections;
-  t.mock.timers.tick(60000);
+  vi.advanceTimersByTime(60000);
   assert.equal(socket.inspections, inspections, "an unchanged status must not traverse or rebuild client payloads");
   assert.equal(client.messages.length, 1);
 });
@@ -89,25 +89,25 @@ test("new and wildcard subscribers receive current status immediately with owner
 test("local and external commits refresh status and reconnects receive an unchanged snapshot", (t) => {
   const previousMode = process.env.NODE_ENV;
   process.env.NODE_ENV = "development";
-  t.after(() => { process.env.NODE_ENV = previousMode; });
+  t.onTestFinished(() => { process.env.NODE_ENV = previousMode; });
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Original", ownerUserId: 1 });
   const socket = new SocketTransport();
   const client = socket.connect("first", { id: 1, role: "user" });
   start(t, socket);
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Waiting" }, playlist.id);
-  t.mock.timers.tick(4000);
+  vi.advanceTimersByTime(4000);
   assert.equal(client.messages.at(-1).status.sharedPlaylistStats[playlist.id].pending, 1);
   const external = new Database(state.dbPath);
   try {
     external.prepare("UPDATE playlist_download_jobs SET status = 'failed' WHERE id = ?").run(jobId);
-    t.mock.timers.tick(4000);
+    vi.advanceTimersByTime(4000);
     assert.equal(client.messages.at(-1).status.sharedPlaylistStats[playlist.id].failed, 1);
   } finally {
     external.close();
   }
   socket.disconnect(client);
   const inspections = socket.inspections;
-  t.mock.timers.tick(60000);
+  vi.advanceTimersByTime(60000);
   assert.equal(socket.inspections, inspections);
   const reconnected = socket.connect("second", { id: 1, role: "user" });
   assert.equal(reconnected.messages[0]?.status.sharedPlaylistStats[playlist.id].failed, 1);
@@ -123,9 +123,9 @@ test("completed flow countdowns advance without a database write", (t) => {
   const client = socket.connect("first", { id: 1, role: "admin" });
   start(t, socket);
   assert.equal(client.messages.at(-1).status.hint.message, "Next update in 2 minutes");
-  t.mock.timers.tick(60000);
+  vi.advanceTimersByTime(60000);
   assert.equal(client.messages.at(-1).status.hint.message, "Next update in 1 minute");
-  t.mock.timers.tick(60000);
+  vi.advanceTimersByTime(60000);
   assert.equal(client.messages.at(-1).status.hint.message, "Next update soon");
 });
 
@@ -151,10 +151,10 @@ test("each user's countdown advances while the globally earliest countdown stays
   const earlierUser = socket.connect("earlier", { id: 1, role: "user" });
   const laterUser = socket.connect("later", { id: 2, role: "user" });
   start(t, socket);
-  t.mock.timers.tick(4000);
+  vi.advanceTimersByTime(4000);
   assert.equal(earlierUser.messages.at(-1).status.hint.message, "Next update in 1 minute");
   assert.equal(laterUser.messages.at(-1).status.hint.message, "Next update in 2 minutes");
-  t.mock.timers.tick(4000);
+  vi.advanceTimersByTime(4000);
   assert.equal(earlierUser.messages.at(-1).status.hint.message, "Next update in 1 minute");
   assert.equal(laterUser.messages.at(-1).status.hint.message, "Next update in 1 minute");
 });

@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -16,7 +16,7 @@ const [state, { dbOps }, honker, { playlistManager }, { flowPlaylistConfig }, { 
 );
 const originalFetch = globalThis.fetch;
 
-test.after(async () => {
+afterAll(async () => {
   globalThis.fetch = originalFetch;
   await shutdownHonkerInfrastructure();
   if (previousGroup === undefined) delete process.env.AURRAL_BACKGROUND_WORKER_GROUP;

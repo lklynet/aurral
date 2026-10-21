@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 
@@ -49,7 +49,8 @@ test("logger sink redacts nested provider diagnostics and credential fields", as
   const originalError = console.error;
   console.error = (...args) => output.push(args);
   try {
-    const { logger } = await import(`../../backend/services/logger.js?safety-test=${Date.now()}`);
+    vi.resetModules();
+    const { logger } = await import("../../backend/services/logger.js");
     logger.error("workers", "Provider failed", {
       reason: new Error("Failed at /config/private/provider.json: https://user:pass@example.test/?token=url-secret"),
       headers: { authorization: "Bearer bearer-secret", clientSecret: "client-secret" },
@@ -89,8 +90,9 @@ test("simplified logger writes to console with level and category", async () => 
   console.warn = (...args) => output.push(["warn", ...args]);
 
   try {
+    vi.resetModules();
     const { logger } = await import(
-      `../../backend/services/logger.js?console-test=${Date.now()}`
+      "../../backend/services/logger.js"
     );
     logger.info("test", "Server running on port 3001", { key: "val" });
     logger.warn("test", "warn message");
@@ -122,8 +124,9 @@ test("regular logger hides routine info and debug output", async () => {
 
   try {
     process.env.AURRAL_VERBOSE_LOGS = "";
+    vi.resetModules();
     const { logger } = await import(
-      `../../backend/services/logger.js?regular-test=${Date.now()}`
+      "../../backend/services/logger.js"
     );
     logger.info("test", "routine info");
     logger.info("playlist-import", "Playlist import job completed");
@@ -145,8 +148,9 @@ test("regular logger hides routine info and debug output", async () => {
 });
 
 test("regular console keeps startup and problem messages", async () => {
+  vi.resetModules();
   const { shouldEmitDefaultConsoleMessage } = await import(
-    `../../backend/services/logger.js?policy-test=${Date.now()}`
+    "../../backend/services/logger.js"
   );
   assert.equal(
     shouldEmitDefaultConsoleMessage("log", ["Server running on port 3001"]),

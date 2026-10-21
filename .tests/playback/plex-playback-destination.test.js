@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
-import test, { mock } from "node:test";
+import { test, beforeEach, afterAll, afterEach, vi } from "vite-plus/test";
 import {
   cleanupIsolatedState,
   resetDatabase,
@@ -31,7 +31,7 @@ const [
 
 const downloadRoot = process.env.WEEKLY_FLOW_FOLDER;
 
-test.beforeEach(async () => {
+beforeEach(async () => {
   resetDatabase(db);
   await fs.rm(downloadRoot, { recursive: true, force: true });
   dbOps.updateSettings({
@@ -43,8 +43,8 @@ test.beforeEach(async () => {
   });
 });
 
-test.afterEach(() => mock.restoreAll());
-test.after(() => cleanupIsolatedState(isolatedState));
+afterEach(() => vi.restoreAllMocks());
+afterAll(() => cleanupIsolatedState(isolatedState));
 
 function makeDestination(config = {}) {
   const destination = new PlexPlaybackDestination(downloadRoot);
@@ -58,10 +58,10 @@ function makeDestination(config = {}) {
 }
 
 function servePlex(sections) {
-  mock.method(PlexClient.prototype, "ensureAurralLibrary", async () => ({ key: "7" }));
-  mock.method(PlexClient.prototype, "getTracks", async (sectionId) => sections[sectionId] ?? []);
+  vi.spyOn(PlexClient.prototype, "ensureAurralLibrary").mockImplementation(async () => ({ key: "7" }));
+  vi.spyOn(PlexClient.prototype, "getTracks").mockImplementation(async (sectionId) => sections[sectionId] ?? []);
   const published = [];
-  mock.method(PlexClient.prototype, "syncPlaylist", async (value) => {
+  vi.spyOn(PlexClient.prototype, "syncPlaylist").mockImplementation(async (value) => {
     published.push(value);
     return { ratingKey: "88" };
   });
@@ -123,11 +123,11 @@ test("recovers a managed-user token and retries with the stored client identifie
     clientId: "managed-client",
     plexAccountId: 77,
   });
-  mock.method(PlexClient, "switchHomeUser", async (_id, _token, _adminId, targetId) => {
+  vi.spyOn(PlexClient, "switchHomeUser").mockImplementation(async (_id, _token, _adminId, targetId) => {
     assert.equal(targetId, "managed-client");
     return "fresh-token";
   });
-  mock.method(PlexClient, "getResources", async () => ({ servers: [] }));
+  vi.spyOn(PlexClient, "getResources").mockImplementation(async () => ({ servers: [] }));
   const destination = makeDestination();
   destination.client._machineIdentifier = "server-id";
   const seen = [];
@@ -274,7 +274,7 @@ test("deletes the pointed playlist and forgets only that entity-owner state", as
     title: "Keep",
   });
   const deleted = [];
-  mock.method(PlexClient.prototype, "deletePlaylist", async (ratingKey) => {
+  vi.spyOn(PlexClient.prototype, "deletePlaylist").mockImplementation(async (ratingKey) => {
     deleted.push(ratingKey);
   });
 
@@ -293,7 +293,7 @@ test("an entity delete that Plex rejects keeps the pointer so the sync job can r
   });
   let available = false;
   const deleted = [];
-  mock.method(PlexClient.prototype, "deletePlaylist", async (ratingKey) => {
+  vi.spyOn(PlexClient.prototype, "deletePlaylist").mockImplementation(async (ratingKey) => {
     if (!available) throw Object.assign(new Error("Plex unavailable"), { response: { status: 503 } });
     deleted.push(ratingKey);
   });
@@ -325,12 +325,12 @@ test("refreshes only changed folders inside the Aurral section", async () => {
   const destination = makeDestination({ downloadsPath: "/downloads" });
   const calls = [];
   let reportedLocations = [];
-  mock.method(PlexClient.prototype, "ensureAurralLibrary", async (libraryPath) => {
+  vi.spyOn(PlexClient.prototype, "ensureAurralLibrary").mockImplementation(async (libraryPath) => {
     calls.push(["ensure", libraryPath]);
     return { key: "7", Location: reportedLocations.map((location) => ({ path: location })) };
   });
-  mock.method(PlexClient.prototype, "getTracks", async () => []);
-  mock.method(PlexClient.prototype, "request", async (endpoint, { params } = {}) => {
+  vi.spyOn(PlexClient.prototype, "getTracks").mockImplementation(async () => []);
+  vi.spyOn(PlexClient.prototype, "request").mockImplementation(async (endpoint, { params } = {}) => {
     calls.push([endpoint, params]);
   });
   const album = path.join(downloadRoot, "Artist", "Album (2001)");
@@ -375,7 +375,7 @@ test("configures Plex with the download root and explicit flow location", async 
   const root = "/downloads/aurral";
   const calls = [];
   let reads = 0;
-  mock.method(client, "getLibraries", async () => {
+  vi.spyOn(client, "getLibraries").mockImplementation(async () => {
     reads += 1;
     return reads === 1
       ? []
@@ -387,7 +387,7 @@ test("configures Plex with the download root and explicit flow location", async 
           ],
         }];
   });
-  mock.method(client, "request", async (requestPath, options) => {
+  vi.spyOn(client, "request").mockImplementation(async (requestPath, options) => {
     calls.push({ requestPath, options });
     return {};
   });
@@ -401,8 +401,8 @@ test("configures Plex with the download root and explicit flow location", async 
   assert.equal(calls[0].options.method, "POST");
 });
 
-test("keeps Navidrome and Plex failures isolated when both destinations are configured", async (t) => {
-  t.mock.method(console, "warn", () => {});
+test("keeps Navidrome and Plex failures isolated when both destinations are configured", async () => {
+  vi.spyOn(console, "warn").mockImplementation(() => {});
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Isolation" });
   const manager = new PlaylistManager(downloadRoot);
   const calls = [];
@@ -430,8 +430,8 @@ test("keeps Navidrome and Plex failures isolated when both destinations are conf
   await assert.doesNotReject(manager.syncPlaylists());
 });
 
-test("a destination whose library cannot be verified gets no publishes while the others still do", async (t) => {
-  t.mock.method(console, "warn", () => {});
+test("a destination whose library cannot be verified gets no publishes while the others still do", async () => {
+  vi.spyOn(console, "warn").mockImplementation(() => {});
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Blocked setup" });
   const manager = new PlaylistManager(downloadRoot);
   const published = [];

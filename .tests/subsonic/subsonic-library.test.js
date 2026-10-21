@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, beforeAll, afterAll, vi } from "vite-plus/test";
 import { execFile } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -133,7 +133,7 @@ test("starMany validates duplicate and equivalent encoded library targets", () =
   assert.equal(starMany(user, [encoded, "song:missing"]), false);
 });
 
-test.before(() => {
+beforeAll(() => {
   resetDatabase(db);
   const artistA = upsertLibraryArtist({
     identityKey: "test-artist:artist-a",
@@ -171,7 +171,7 @@ test.before(() => {
   ).run();
 });
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
@@ -385,7 +385,7 @@ test("playlist entries resolve a featured library track by its performer or albu
   const { downloadTracker } = await import("../../backend/services/downloadJobs/downloadTracker.js");
   const { flowPlaylistConfig } = await import("../../backend/services/playlists/flowPlaylistConfig.js");
   const root = await mkdtemp(path.join(tmpdir(), "aurral-subsonic-featured-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(root, { recursive: true, force: true }));
   const file = path.join(root, "01.flac");
   await promisify(execFile)("ffmpeg", [
     "-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i", "sine=frequency=440:duration=0.1",
@@ -426,10 +426,10 @@ test("a Subsonic playlist reuses the album owner's Library job for a featured so
   const { downloadTracker } = await import("../../backend/services/downloadJobs/downloadTracker.js");
   const { playlistManager } = await import("../../backend/services/playlists/playlistManager.js");
   for (const name of ["updateConfig", "requestPlaylistSync", "scheduleScanLibrary"]) {
-    t.mock.method(playlistManager, name, async () => {});
+    vi.spyOn(playlistManager, name).mockImplementation(async () => {});
   }
   const root = await mkdtemp(path.join(tmpdir(), "aurral-subsonic-featured-job-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(root, { recursive: true, force: true }));
   const file = path.join(root, "01.flac");
   await promisify(execFile)("ffmpeg", [
     "-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i", "sine=frequency=440:duration=0.1",

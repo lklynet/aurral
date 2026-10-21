@@ -33,7 +33,7 @@ function rankCandidates(candidates, expectedTitle, expectedYear = null) {
   return [...list]
     .map((candidate) => {
       const title =
-        candidate?.title || candidate?.["title"] || candidate?.["release-group"]?.title || "";
+        candidate?.title || candidate?.["release-group"]?.title || "";
       const year =
         candidate?.["first-release-date"] ||
         candidate?.date ||

@@ -416,7 +416,7 @@ async function deleteFlow({ flowId, tokenScope = null, token = null } = {}) {
     if (!isLatestPlaylistOperationToken(tokenScope, token)) {
       return;
     }
-    downloadWorker.setRetryCyclePaused(safeFlowId, false);
+    void downloadWorker.setRetryCyclePaused(safeFlowId, false);
     playlistManager.updateConfig();
     await playlistManager.weeklyReset([safeFlowId], { protectPlayback: false });
     downloadTracker.clearByPlaylistId(safeFlowId);
@@ -904,7 +904,7 @@ async function deleteStaticPlaylist({ playlistId } = {}) {
       const failed = result.outcomes.find((outcome) => outcome.status === "failed");
       if (failed) throw new Error(failed.message);
       await cancelPlaylistDownloadWork(safePlaylistId, downloadTracker.getByPlaylistId(safePlaylistId), { lock: false });
-      downloadWorker.setRetryCyclePaused(safePlaylistId, false);
+      void downloadWorker.setRetryCyclePaused(safePlaylistId, false);
       playlistManager.updateConfig();
       const playlistJobs = downloadTracker.getByPlaylistId(safePlaylistId);
       const removedJobIds = playlistJobs.map((job) => job.id);

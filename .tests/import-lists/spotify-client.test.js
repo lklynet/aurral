@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import {
@@ -18,12 +18,12 @@ const [isolatedState, { db }, , { spotifyConnectionStore }, { spotifyClient }] =
 
 const originalFetch = globalThis.fetch;
 
-test.beforeEach(() => {
+beforeEach(() => {
   resetDatabase(db);
   spotifyClient.clearPlaylistTrackCache();
 });
 
-test.after(async () => {
+afterAll(async () => {
   globalThis.fetch = originalFetch;
   await cleanupIsolatedState(isolatedState);
 });

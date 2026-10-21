@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeAll, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import express from "express";
 import {
@@ -106,7 +106,7 @@ const respond = (url) => {
   return json({ error: "unexpected" }, 404);
 };
 
-test.before(() => {
+beforeAll(() => {
   resetDatabase(db);
   delete process.env.LASTFM_API_KEY;
   dbOps.invalidateSettingsCache();
@@ -127,11 +127,11 @@ test.before(() => {
   });
 });
 
-test.beforeEach(() => {
+beforeEach(() => {
   requests = [];
 });
 
-test.after(async () => {
+afterAll(async () => {
   globalThis.fetch = originalFetch;
   if (originalLastfmApiKey !== undefined) process.env.LASTFM_API_KEY = originalLastfmApiKey;
   await cleanupIsolatedState(isolatedState);

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vite-plus/test";
 
 import { listenbrainzSubmit } from "../../backend/services/apiClients/listenbrainz.js";
 
@@ -10,7 +10,7 @@ test("submits a release-group ID without claiming a specific release", async (t)
     submitted = JSON.parse(options.body);
     return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
   };
-  t.after(() => { globalThis.fetch = originalFetch; });
+  t.onTestFinished(() => { globalThis.fetch = originalFetch; });
 
   await listenbrainzSubmit({
     token: "test-token",

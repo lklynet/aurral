@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, afterAll } from "vite-plus/test";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
@@ -15,7 +15,7 @@ const [isolatedState, { db }, libraryStore, searchIndex] = await setupIsolatedBa
   "backend/services/librarySearchIndex.js",
 );
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 

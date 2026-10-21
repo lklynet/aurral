@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, beforeAll, beforeEach, afterAll, vi } from "vite-plus/test";
 import express from "express";
 import sharp from "sharp";
 import {
@@ -25,7 +25,7 @@ let token;
 
 function stubCoverHost(t, routes) {
   const requests = [];
-  t.mock.method(globalThis, "fetch", async (input, init) => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     const url = new URL(String(input));
     if (url.hostname === "127.0.0.1") return realFetch(input, init);
     requests.push(url.href);
@@ -47,7 +47,7 @@ function cacheImage(src, { authenticated = true } = {}) {
   });
 }
 
-test.before(async () => {
+beforeAll(async () => {
   const app = express();
   app.use(express.json());
   app.use(authMiddleware);
@@ -59,7 +59,7 @@ test.before(async () => {
   baseUrl = `http://127.0.0.1:${server.address().port}`;
 });
 
-test.beforeEach(async () => {
+beforeEach(async () => {
   resetDatabase(db);
   dbOps.updateSettings({
     onboardingComplete: true,
@@ -75,7 +75,7 @@ test.beforeEach(async () => {
   token = (await login.json()).token;
 });
 
-test.after(async () => {
+afterAll(async () => {
   await new Promise((resolve) => server?.close(resolve));
   await cleanupIsolatedState(state);
 });

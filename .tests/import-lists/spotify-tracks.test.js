@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { parseSpotifyPlaylistItems } from "../../backend/services/importLists/spotifyTracks.js";
 

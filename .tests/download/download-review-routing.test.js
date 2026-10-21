@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -21,7 +21,7 @@ const [
   { dbOps },
   { db },
   pipelineHelpersModule,
-  playlistManagerModule,
+  ,
   downloadWorkerModule,
   cancellationModule,
   { processPipelinePayload },
@@ -49,7 +49,6 @@ const [
 const { blockPipelineJobForReview, finalizePipelineJobSuccess } = pipelineHelpersModule;
 
 const btest = test;
-const { playlistManager } = playlistManagerModule;
 const { downloadWorker } = downloadWorkerModule;
 const { cancelDownloadJob } = cancellationModule;
 
@@ -82,10 +81,10 @@ test("yt-dlp live results cannot satisfy the search early-exit check", () => {
   );
 });
 
-test("yt-dlp searches a compilation track by its own artist and reverses an empty search", async (t) => {
+test("yt-dlp searches a compilation track by its own artist and reverses an empty search", async () => {
   const client = getDownloadClient("ytdlp");
   const queries = [];
-  t.mock.method(client, "search", async (query, options = {}) => {
+  vi.spyOn(client, "search").mockImplementation(async (query, options = {}) => {
     queries.push(options.songs ? `songs: ${query}` : query);
     return query.startsWith("Go All the Way")
       ? [{ id: "song", title: "Go All the Way", channel: "Raspberries - Topic", durationSec: 203, url: "https://example.test/song" }]
@@ -160,11 +159,11 @@ test("cancelling deemix finalization leaves a provider-reported library file unt
   }
 });
 
-test.beforeEach(() => {
+beforeEach(() => {
   resetDatabase(db);
 });
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
@@ -251,7 +250,7 @@ async function assertReviewable(jobId, source) {
 
 function useOnlySources(t, ...sources) {
   for (const id of ["slskd", "deemix", "ytdlp", "nzbget", "sabnzbd"]) {
-    t.mock.method(getDownloadClient(id), "isConfigured", () => sources.includes(id));
+    vi.spyOn(getDownloadClient(id), "isConfigured").mockImplementation(() => sources.includes(id));
   }
 }
 
@@ -708,8 +707,8 @@ btest("Soulseek tries the other candidates before sending a file to review", asy
   useOnlySources(t, "slskd");
   const root = path.join(isolatedState.baseDir, "slskd-held");
   const client = getDownloadClient("slskd");
-  t.mock.method(client, "getDownloadDirectory", async () => root);
-  t.mock.method(client, "isCleanupAfterRunsEnabled", () => false);
+  vi.spyOn(client, "getDownloadDirectory").mockImplementation(async () => root);
+  vi.spyOn(client, "isCleanupAfterRunsEnabled").mockImplementation(() => false);
   const candidate = (name) => ({ raw: { user: name, file: `Music\\Artist Name\\${name}.mp3`, size: 0 } });
   const finalize = (payload) => processPipelinePayload({ ...payload, phase: "finalize", source: "slskd" });
 
@@ -744,11 +743,11 @@ btest("a yt-dlp file waits for review while the next source is tried", async (t)
   dbOps.updateSettings({ ...dbOps.getSettings(), integrations: {
     ...dbOps.getSettings().integrations, slskd: { enabled: true, url: "http://127.0.0.1:9" } } });
   useOnlySources(t, "ytdlp", "slskd");
-  t.mock.method(downloadWorker, "start", async () => {});
+  vi.spyOn(downloadWorker, "start").mockImplementation(async () => {});
   const root = path.join(isolatedState.baseDir, "ytdlp-held-slskd");
   const client = getDownloadClient("slskd");
-  t.mock.method(client, "getDownloadDirectory", async () => root);
-  t.mock.method(client, "isCleanupAfterRunsEnabled", () => false);
+  vi.spyOn(client, "getDownloadDirectory").mockImplementation(async () => root);
+  vi.spyOn(client, "isCleanupAfterRunsEnabled").mockImplementation(() => false);
   const peer = (name) => ({ raw: { user: "peer", file: `Music\\Artist Name\\${name}.mp3`, size: 0 } });
   const fromYtdlp = async (jobId, seconds) => {
     const video = path.join(isolatedState.baseDir, "ytdlp-held", "ytdlp", jobId, "video.mp3");
@@ -785,8 +784,8 @@ btest("a yt-dlp file waits for review while the next source is tried", async (t)
   await assert.rejects(access(retry.heldForReview.sourcePath));
 });
 
-btest("denying a held file starts a stopped worker to search again", async (t) => {
-  const start = t.mock.method(downloadWorker, "start", async () => {});
+btest("denying a held file starts a stopped worker to search again", async () => {
+  const start = vi.spyOn(downloadWorker, "start").mockImplementation(async () => {});
   const jobId = addDurationMismatchJob("deny-restart");
   const staged = path.join(isolatedState.baseDir, "deny-restart", "held.mp3");
   await writeOneSecondMp3(staged);
@@ -794,7 +793,7 @@ btest("denying a held file starts a stopped worker to search again", async (t) =
   const { denyBlockedJob } = await import("../../backend/services/downloadJobs/blockedJobReview.js");
   assert.equal((await denyBlockedJob(jobId)).status, 200);
   assert.equal(downloadTracker.getJob(jobId).status, "pending");
-  assert.equal(start.mock.callCount(), 1);
+  assert.equal(start.mock.calls.length, 1);
 });
 
 async function waitUntilGone(filePath) {
@@ -820,8 +819,8 @@ btest("removing a job in review discards its file but leaves a Library file", as
   await access(inLibrary);
 });
 
-btest("denying a review removes its file and yt-dlp folder but leaves a Library file", async (t) => {
-  t.mock.method(downloadWorker, "start", async () => {});
+btest("denying a review removes its file and yt-dlp folder but leaves a Library file", async () => {
+  vi.spyOn(downloadWorker, "start").mockImplementation(async () => {});
   const stagingRoot = path.join(isolatedState.baseDir, "deny-cleanup");
   dbOps.updateSettings({ ...dbOps.getSettings(), integrations: {
     ...dbOps.getSettings().integrations, ytdlp: { stagingPath: stagingRoot } } });
@@ -839,7 +838,7 @@ btest("denying a review removes its file and yt-dlp folder but leaves a Library 
   const ytdlpJobId = await review((jobId) => path.join(stagingRoot, "ytdlp", jobId, "video-1.mp3"), "ytdlp");
   await assert.rejects(access(path.join(stagingRoot, "ytdlp", ytdlpJobId)));
 
-  t.mock.method(getDownloadClient("slskd"), "getDownloadDirectory", async () => {
+  vi.spyOn(getDownloadClient("slskd"), "getDownloadDirectory").mockImplementation(async () => {
     throw new Error("slskd is unreachable");
   });
   const fromSoulseek = path.join(stagingRoot, "slskd", "Artist Name", "01 Correct Track.mp3");
@@ -866,7 +865,7 @@ exec "${ffmpeg}" "$@"
 `, { mode: 0o755 });
   const originalPath = process.env.PATH;
   process.env.PATH = `${bin}${path.delimiter}${originalPath}`;
-  t.after(() => {
+  t.onTestFinished(() => {
     process.env.PATH = originalPath;
   });
 }
@@ -883,13 +882,13 @@ btest("a download is tagged after it reaches the Library, so a slow download fol
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ jsonrpc: "2.0", id: 1, result: [] }));
   });
-  t.after(() => server.close());
+  t.onTestFinished(() => server.close());
   dbOps.updateSettings({ ...dbOps.getSettings(), integrations: { ...dbOps.getSettings().integrations,
     nzbget: { enabled: true, url: server.url, completedPath: path.join(slowFolder, "usenet") },
     slskd: { enabled: true, url: "http://127.0.0.1:9" } } });
   const slskd = getDownloadClient("slskd");
-  t.mock.method(slskd, "getDownloadDirectory", async () => slskdRoot);
-  t.mock.method(slskd, "isCleanupAfterRunsEnabled", () => false);
+  vi.spyOn(slskd, "getDownloadDirectory").mockImplementation(async () => slskdRoot);
+  vi.spyOn(slskd, "isCleanupAfterRunsEnabled").mockImplementation(() => false);
   await failFfmpegIn(t, slowFolder);
   const addJob = (trackName, trackNumber) => {
     const jobId = downloadTracker.addJob({ artistName: "Artist Name", trackName, albumName: "Album Name",

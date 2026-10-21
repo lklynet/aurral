@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { copyFile, link, mkdir, readFile, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
@@ -100,7 +100,7 @@ function useSettings() {
   });
 }
 
-test.beforeEach(async () => {
+beforeEach(async () => {
   await rm(root, { recursive: true, force: true });
   await rm(outside, { recursive: true, force: true });
   resetDatabase(db);
@@ -109,7 +109,7 @@ test.beforeEach(async () => {
   useSettings();
 });
 
-test.after(async () => {
+afterAll(async () => {
   dbOps.updateSettings(originalSettings);
   await cleanupIsolatedState(isolatedState);
 });
@@ -159,7 +159,7 @@ test("a second-disc file takes the disc in its name once, and first-disc and und
   assert.deepEqual(renames((await cleanUp()).items), []);
 });
 
-test("a rename a restart interrupted still refreshes the playlists that use the file", async (t) => {
+test("a rename a restart interrupted still refreshes the playlists that use the file", async () => {
   const oldPath = await makeTrack(path.join(root, "loose", "track.flac"), {
     artist: "Resume Artist", album: "Resume Album", title: "Song", track: "2",
   });
@@ -167,7 +167,7 @@ test("a rename a restart interrupted still refreshes the playlists that use the 
   const jobId = downloadTracker.addJob({ artistName: "Resume Artist", trackName: "Song" }, "static-mix");
   downloadTracker.setDone(jobId, oldPath, "Resume Album");
   const refreshed = [];
-  t.mock.method(playlistManager, "requestPlaylistSync", (playlistIds) => { refreshed.push(...playlistIds); });
+  vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation((playlistIds) => { refreshed.push(...playlistIds); });
 
   const operation = await operations.startCleanup();
   await runUntilChecked(operation.id);
@@ -207,7 +207,7 @@ const availablePaths = (title) => db.prepare(
    WHERE track.title = ? AND media.available = 1 ORDER BY media.path`,
 ).pluck().all(title);
 
-test("a second copy of a track is a duplicate, removed only when asked, and playlists and favorites stay on the kept copy", async (t) => {
+test("a second copy of a track is a duplicate, removed only when asked, and playlists and favorites stay on the kept copy", async () => {
   const tags = { artist: "Twice", album: "Album", title: "Song", track: "1" };
   const first = await makeTrack(path.join(root, "loose a", "track.flac"), tags);
   const second = path.join(root, "loose b", "track.flac");
@@ -222,7 +222,7 @@ test("a second copy of a track is a duplicate, removed only when asked, and play
   const jobId = downloadTracker.addJob({ artistName: "Twice", trackName: "Song" }, "static-mix");
   downloadTracker.setDone(jobId, second, "Album");
   const refreshed = [];
-  t.mock.method(playlistManager, "requestPlaylistSync", (playlistIds) => { refreshed.push(...playlistIds); });
+  vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation((playlistIds) => { refreshed.push(...playlistIds); });
 
   const { id, items } = await cleanUp();
 
@@ -292,7 +292,7 @@ test("the better copy of a track keeps its name, and a copy of a different lengt
   assert.equal(await exists(secondSilence), true);
 });
 
-test("removing duplicates finishes a removal a restart interrupted, and a failed name transfer keeps playlists on the better copy", async (t) => {
+test("removing duplicates finishes a removal a restart interrupted, and a failed name transfer keeps playlists on the better copy", async () => {
   const pair = async (artist) => {
     const tags = { artist, album: "Album", title: "Song", track: "1" };
     return {
@@ -310,13 +310,13 @@ test("removing duplicates finishes a removal a restart interrupted, and a failed
   const stuckJob = downloadTracker.addJob({ artistName: "Stuck", trackName: "Song" }, "stuck-mix");
   downloadTracker.setDone(stuckJob, stuck.better, "Album");
   const refreshed = [];
-  t.mock.method(playlistManager, "requestPlaylistSync", (playlistIds) => { refreshed.push(...playlistIds); });
+  vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation((playlistIds) => { refreshed.push(...playlistIds); });
 
   const { id } = await cleanUp();
   assert.deepEqual(describe(id).sources, { removable: 2, removed: 0 });
   await rm(gone.worse);
   const realLink = fsPromises.link;
-  t.mock.method(fsPromises, "link", async (from, to) => {
+  vi.spyOn(fsPromises, "link").mockImplementation(async (from, to) => {
     if (path.resolve(from) === stuck.better) throw Object.assign(new Error("denied"), { code: "EACCES" });
     return realLink(from, to);
   });
@@ -336,7 +336,7 @@ test("removing duplicates finishes a removal a restart interrupted, and a failed
   assert.ok(refreshed.includes("stuck-mix"));
 });
 
-test("a duplicate stays when a playlist still uses it or its name is behind a linked folder, and nothing deletes it later", async (t) => {
+test("a duplicate stays when a playlist still uses it or its name is behind a linked folder, and nothing deletes it later", async () => {
   const pair = async (artist) => {
     const tags = { artist, album: "Album", title: "Song", track: "1" };
     return {
@@ -354,7 +354,7 @@ test("a duplicate stays when a playlist still uses it or its name is behind a li
   await rename(path.dirname(linked.worse), realFolder);
   await symlink(realFolder, path.dirname(linked.worse));
   let referenced = [listed.worse];
-  t.mock.method(playlistManager.destinationRegistry, "run", async (operation) =>
+  vi.spyOn(playlistManager.destinationRegistry, "run").mockImplementation(async (operation) =>
     (operation === "getReferencedPaths" ? [{ destination: "test", ok: true, paths: referenced }] : []));
   await operations.removeDuplicateFiles(id);
   assert.equal((await runUntilSettled(id)).status, "complete");

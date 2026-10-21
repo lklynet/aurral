@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import dns from "node:dns";
 import fs from "node:fs/promises";
@@ -54,7 +54,7 @@ test("image proxy validates every hop and bounds untrusted image data", async ()
 
   try {
     const { warmImageProxy } = await import(
-      `../backend/services/imageProxyService.js?security-test=${Date.now()}`
+      "../backend/services/imageProxyService.js"
     );
 
     let calls = 0;

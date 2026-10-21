@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.js";
 
@@ -7,7 +7,7 @@ const [state, { dbOps }, { flowPlaylistConfig }, { downloadTracker }, { processP
   "backend/services/downloadJobs/downloadTracker.js", "backend/services/downloadPipelineWorker.js",
   "backend/services/downloadJobs/mutationGuards.js", "backend/services/downloadJobs/downloadCancellation.js",
 );
-test.after(() => cleanupIsolatedState(state));
+afterAll(() => cleanupIsolatedState(state));
 const deferred = () => Promise.withResolvers();
 
 test("playlist mutation waits for the active provider stage before changing ownership", async () => {

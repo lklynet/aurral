@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, beforeEach, afterAll } from "vite-plus/test";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import express from "express";
@@ -50,13 +50,13 @@ async function complete(body) {
   return { status: response.status, body: await response.json() };
 }
 
-test.beforeEach(() => {
+beforeEach(() => {
   resetDatabase(db);
   dbOps.updateSettings({ onboardingComplete: false });
   lidarrRequests.length = 0;
 });
 
-test.after(async () => {
+afterAll(async () => {
   await new Promise((resolve) => server.close(resolve));
   await lidarr.close();
   db.close();

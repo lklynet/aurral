@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdtemp, rename, rm, writeFile } from "node:fs/promises";
@@ -161,7 +161,7 @@ test("startup repair tags existing completed yt-dlp M4As", async () => {
   });
 });
 
-test.after(async () => {
+afterAll(async () => {
   await rm(tempDir, { recursive: true, force: true });
 });
 

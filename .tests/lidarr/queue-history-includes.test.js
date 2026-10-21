@@ -1,11 +1,11 @@
-import test from "node:test";
+import { test, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { LidarrClient } from "../../backend/services/lidarrClient.js";
 import { buildLidarrRequests } from "../../backend/services/lidarrRequestBuilder.js";
 
 function createClient(t) {
   const client = new LidarrClient();
-  t.after(() => {
+  t.onTestFinished(() => {
     client._httpAgent.destroy();
     client._httpsAgent.destroy();
     client._httpsInsecureAgent.destroy();
@@ -19,7 +19,7 @@ function createClient(t) {
 test("queue and history requests ask Lidarr to embed album and artist", async (t) => {
   const client = createClient(t);
   const endpoints = [];
-  t.mock.method(client, "request", async (endpoint) => {
+  vi.spyOn(client, "request").mockImplementation(async (endpoint) => {
     endpoints.push(endpoint);
     return { records: [] };
   });
@@ -38,14 +38,14 @@ test("queue and history requests ask Lidarr to embed album and artist", async (t
 
 test("queue endpoint with parameters is still treated as a cached status read", async (t) => {
   const client = createClient(t);
-  t.mock.method(client, "updateConfig", () => {});
-  t.mock.method(client, "isConfigured", () => true);
+  vi.spyOn(client, "updateConfig").mockImplementation(() => {});
+  vi.spyOn(client, "isConfigured").mockImplementation(() => true);
   let queueEndpoint;
   // Seed the status cache for whatever endpoint getQueue uses; a cached read
   // must be served without reaching the network (the URL is unreachable).
   client.config = { url: "http://127.0.0.1:1", apiKey: "test" };
   const probe = createClient(t);
-  t.mock.method(probe, "request", async (endpoint) => {
+  vi.spyOn(probe, "request").mockImplementation(async (endpoint) => {
     queueEndpoint = endpoint;
     return [];
   });

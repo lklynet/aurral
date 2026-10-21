@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vite-plus/test";
 
 import { formatPlaybackTime } from "../../frontend/src/utils/playbackTime.js";
 

@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
-import { startFrontendServer } from "../helpers/frontendServer.js";
+import { test, vi } from "vite-plus/test";
 
 const json = (value, status = 200) => new Response(JSON.stringify(value), {
   status,
@@ -43,11 +42,9 @@ const createToasts = () => {
 };
 
 const openHarness = async (t, suffix, { failRemoval = false } = {}) => {
-  const vite = await startFrontendServer();
-  const { createPlaylistTrackChanges } = await vite.ssrLoadModule(
-    `/src/pages/playlists/playlistTrackChanges.js?${suffix}`,
-  );
-  const { queryClient } = await vite.ssrLoadModule("/src/queryClient.js");
+  vi.resetModules();
+  const { createPlaylistTrackChanges } = await import("../../frontend/src/pages/playlists/playlistTrackChanges.js");
+  const { queryClient } = await import("../../frontend/src/queryClient.js");
   const originalFetch = globalThis.fetch;
   const removals = [];
   globalThis.fetch = async (url, init = {}) => {
@@ -64,10 +61,9 @@ const openHarness = async (t, suffix, { failRemoval = false } = {}) => {
     }
     return json([]);
   };
-  t.after(() => {
+  t.onTestFinished(() => {
     globalThis.fetch = originalFetch;
     queryClient.clear();
-    return vite.close();
   });
   const toast = createToasts();
   const changes = createPlaylistTrackChanges(toast);

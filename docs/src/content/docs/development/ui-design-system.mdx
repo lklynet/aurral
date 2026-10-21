@@ -7,9 +7,9 @@ Aurral's interface puts the music first. It uses compact, neutral surfaces, clea
 
 ## Run the UI checks
 
-Run `npm run lint:ui` from the repository root to check stylesheets and JSX. Run `npm run lint` to include the UI checks with the other lint rules.
+Run `npm run lint:ui` from the repository root to check stylesheets and JSX. Run `npm run check` to include the UI checks with formatting and the other lint rules.
 
-The UI checks are part of the frontend lint step, so CI reports violations through the root lint command.
+CI runs `npm run check`, so it reports UI violations with the other checks.
 
 ## Use Aurral theme tokens
 
@@ -45,7 +45,7 @@ Use `TooltipButton` for icon-only actions. Give it a `label`, and include `.btn`
 </TooltipButton>
 ```
 
-Use `Tooltip` for a tooltip on another element. A `Tooltip` opens on hover and on keyboard focus, but not on a mouse click that moves focus. ESLint rejects native `title` tooltips on HTML elements. Keep `iframe` titles, because they name the frame for assistive technology.
+Use `Tooltip` for a tooltip on another element. A `Tooltip` opens on hover and on keyboard focus, but not on a mouse click that moves focus. The linter rejects native `title` tooltips on HTML elements. Keep `iframe` titles, because they name the frame for assistive technology.
 
 ```jsx
 <Tooltip content={fullTrackName}>
@@ -62,23 +62,27 @@ Menu items and switches have different roles. Use `role="menuitem"` or `role="sw
 Use `SectionRail` on long pages with several titled sections. Render it as the first child of the page's content column and point it at the sections. It finds them in the page, so sections that appear later or only in some setups are picked up. It shows only when the column has a left margin wide enough for it, and never on touch screens.
 
 ```jsx
-const pageRef = useRef(null);
+function ProfilePage({ sections }) {
+  const pageRef = useRef(null);
 
-<div ref={pageRef} className="profile-page">
-  <SectionRail
-    containerRef={pageRef}
-    sectionSelector=".profile-settings__section"
-    titleSelector=".settings-page__section-title"
-    descriptionSelector=".settings-page__section-note"
-    label="Profile sections"
-  />
-  {sections}
-</div>
+  return (
+    <div ref={pageRef} className="profile-page">
+      <SectionRail
+        containerRef={pageRef}
+        sectionSelector=".profile-settings__section"
+        titleSelector=".settings-page__section-title"
+        descriptionSelector=".settings-page__section-note"
+        label="Profile sections"
+      />
+      {sections}
+    </div>
+  );
+}
 ```
 
 ## Add a narrow exception
 
-Add an entry to `frontend/eslint-rules/shared-control-exceptions.json` only when an existing control must keep a different pattern. Each entry needs a unique `id`, a source `file`, one exact class, class expression, or role, and a reason.
+Add an entry to `frontend/lint-rules/shared-control-exceptions.json` only when an existing control must keep a different pattern. Each entry needs a unique `id`, a source `file`, one exact class, class expression, or role, and a reason.
 
 The checker matches exceptions by both file and selector. It does not support file or directory-wide ignores. Add a rule test for each exception.
 

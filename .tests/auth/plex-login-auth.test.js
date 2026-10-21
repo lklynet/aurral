@@ -1,4 +1,4 @@
-import test, { mock } from "node:test";
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import {
@@ -36,7 +36,7 @@ const createResponse = () => ({
   },
 });
 
-test.beforeEach(() => {
+beforeEach(() => {
   resetDatabase(db);
   dbOps.updateSettings({
     onboardingComplete: true,
@@ -50,21 +50,21 @@ test.beforeEach(() => {
   });
 });
 
-test.after(async () => cleanupIsolatedState(isolatedState));
+afterAll(async () => cleanupIsolatedState(isolatedState));
 
-test("transient Plex validation failures retain the login transaction for retry", async (t) => {
+test("transient Plex validation failures retain the login transaction for retry", async () => {
   const user = userOps.createUser("plex-retry-user", "unused", "user");
   userIdentityOps.link(user.id, {
     providerType: "plex",
     providerKey: "plex",
     subject: "retry-subject",
   });
-  t.mock.method(PlexClient, "generateClientId", () => "retry-client");
-  t.mock.method(PlexClient, "generatePin", async () => ({ id: 10, code: "retry-code" }));
-  t.mock.method(PlexClient, "buildAuthUrl", () => "https://plex.example/auth");
-  t.mock.method(PlexClient, "checkPin", async () => "authorized-token");
+  vi.spyOn(PlexClient, "generateClientId").mockImplementation(() => "retry-client");
+  vi.spyOn(PlexClient, "generatePin").mockImplementation(async () => ({ id: 10, code: "retry-code" }));
+  vi.spyOn(PlexClient, "buildAuthUrl").mockImplementation(() => "https://plex.example/auth");
+  vi.spyOn(PlexClient, "checkPin").mockImplementation(async () => "authorized-token");
   let validations = 0;
-  t.mock.method(PlexClient, "validateToken", async () => {
+  vi.spyOn(PlexClient, "validateToken").mockImplementation(async () => {
     validations += 1;
     if (validations === 1) {
       throw Object.assign(new Error("temporary outage"), { response: { status: 503 } });
@@ -92,12 +92,12 @@ test("transient Plex validation failures retain the login transaction for retry"
   assert.equal(validations, 2);
 });
 
-test("definitive Plex validation failures consume the login transaction", async (t) => {
-  t.mock.method(PlexClient, "generateClientId", () => "invalid-client");
-  t.mock.method(PlexClient, "generatePin", async () => ({ id: 11, code: "invalid-code" }));
-  t.mock.method(PlexClient, "buildAuthUrl", () => "https://plex.example/auth");
-  t.mock.method(PlexClient, "checkPin", async () => "invalid-token");
-  t.mock.method(PlexClient, "validateToken", async () => null);
+test("definitive Plex validation failures consume the login transaction", async () => {
+  vi.spyOn(PlexClient, "generateClientId").mockImplementation(() => "invalid-client");
+  vi.spyOn(PlexClient, "generatePin").mockImplementation(async () => ({ id: 11, code: "invalid-code" }));
+  vi.spyOn(PlexClient, "buildAuthUrl").mockImplementation(() => "https://plex.example/auth");
+  vi.spyOn(PlexClient, "checkPin").mockImplementation(async () => "invalid-token");
+  vi.spyOn(PlexClient, "validateToken").mockImplementation(async () => null);
 
   const startResponse = createResponse();
   await startPlexLogin({ body: {}, headers: {}, secure: false }, startResponse);

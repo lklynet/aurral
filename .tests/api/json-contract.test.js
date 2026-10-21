@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, beforeAll, afterAll } from "vite-plus/test";
 import express from "express";
 import { mkdir, writeFile, stat } from "node:fs/promises";
 import path from "node:path";
@@ -77,7 +77,7 @@ async function hold(trackName) {
   return { jobId, stagingPath };
 }
 
-test.before(async () => {
+beforeAll(async () => {
   resetDatabase(db);
   metadataServer = await createMockHttpServer((request, response) => {
     response.setHeader("Content-Type", "application/json");
@@ -135,7 +135,7 @@ test.before(async () => {
   token = login.token;
 });
 
-test.after(async () => {
+afterAll(async () => {
   await downloadWorker.stopAndDrain();
   await new Promise((resolve) => server?.close(resolve));
   await metadataServer?.close();

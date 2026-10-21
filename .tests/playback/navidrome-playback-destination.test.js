@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -119,13 +119,13 @@ function rejectMissingPlaylist(client, playlistId) {
   };
 }
 
-test.beforeEach(async () => {
+beforeEach(async () => {
   await resetDatabase(db);
   dbOps.updateSettings({ pathMappings: [] });
   await fs.rm(downloadRoot, { recursive: true, force: true });
 });
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
@@ -1204,7 +1204,7 @@ test("serializes playlist deletion behind an in-flight publish", async () => {
     lookupStartedResolve = resolve;
   });
   let lookupStartedDone = false;
-  lookupStarted.then(() => {
+  void lookupStarted.then(() => {
     lookupStartedDone = true;
   });
   let blockMissing = false;
@@ -1466,8 +1466,8 @@ test("publishing adopts one legacy playlist and removes the other legacy copies"
   assert.deepEqual(client.calls.deleted, ["prefixed"]);
 });
 
-test("scans only changed folders inside Navidrome libraries and every library when one is outside them", async (t) => {
-  const warn = t.mock.method(logger, "warn", () => {});
+test("scans only changed folders inside Navidrome libraries and every library when one is outside them", async () => {
+  const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
   const originalMappings = process.env.PATH_MAPPINGS;
   const musicRoot = path.dirname(downloadRoot);
   const album = path.join(downloadRoot, "Artist", "Album");
@@ -1495,7 +1495,7 @@ test("scans only changed folders inside Navidrome libraries and every library wh
       assert.deepEqual(await destination.requestScan({ folders: [musicRoot, album] }), { ok: true });
     });
     assert.deepEqual(partial.scans, [[`1:${path.basename(downloadRoot)}/Artist/Album`], []]);
-    assert.deepEqual(warn.mock.calls.map(({ arguments: [category, , data] }) => [category, data.folder]), [
+    assert.deepEqual(warn.mock.calls.map(([category, , data]) => [category, data.folder]), [
       ["navidrome", album],
       ["navidrome", "/elsewhere/Artist"],
       ["navidrome", musicRoot],

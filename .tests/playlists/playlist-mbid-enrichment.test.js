@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import {
@@ -30,7 +30,7 @@ const [
   "backend/services/playlistMbidEnrichmentService.js",
 );
 
-test.beforeEach(() => {
+beforeEach(() => {
   downloadTracker.clearAll();
   resetDatabase(db);
   dbOps.updateSettings({
@@ -41,7 +41,7 @@ test.beforeEach(() => {
   });
 });
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
@@ -97,7 +97,7 @@ test("enrichStaticPlaylistMbids fills missing playlist and job MBIDs", async () 
   assert.equal(storedJob.albumTrackCount, 12);
 });
 
-test("enrichStaticPlaylistMbids rescans the library after updating a downloaded job", async (t) => {
+test("enrichStaticPlaylistMbids rescans the library after updating a downloaded job", async () => {
   const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Downloaded",
     tracks: [{ artistName: "Refused", trackName: "New Noise" }],
@@ -107,10 +107,9 @@ test("enrichStaticPlaylistMbids rescans the library after updating a downloaded 
     playlist.id,
   );
   downloadTracker.setDone(jobId, "/library/Refused/New Noise.flac");
-  const scheduleScanLibrary = t.mock.method(
+  const scheduleScanLibrary = vi.spyOn(
     playlistManager,
-    "scheduleScanLibrary",
-    () => 1,
+    "scheduleScanLibrary").mockImplementation(() => 1,
   );
 
   await enrichStaticPlaylistMbids(playlist.id, {
@@ -122,7 +121,7 @@ test("enrichStaticPlaylistMbids rescans the library after updating a downloaded 
     }),
   });
 
-  assert.equal(scheduleScanLibrary.mock.callCount(), 1);
+  assert.equal(scheduleScanLibrary.mock.calls.length, 1);
 });
 
 test("enrichStaticPlaylistMbids returns missing when playlistId is empty", async () => {

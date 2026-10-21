@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, vi } from "vite-plus/test";
 
 import { db } from "../../backend/config/db-sqlite.js";
 import {
@@ -31,7 +31,7 @@ import { getLibraryLidarrArtist } from "../../backend/routes/artists/handlers/de
 import { registerArtists } from "../../backend/routes/library/handlers/artists.js";
 import { getLibrarySearchMatch } from "../../backend/services/librarySearchIndex.js";
 
-test("stable artist and discovery reads do not call Lidarr", async (t) => {
+test("stable artist and discovery reads do not call Lidarr", async () => {
   const identityKey = `stable-read-test:${Date.now()}`;
   const artist = upsertLibraryArtist({
     identityKey,
@@ -40,10 +40,10 @@ test("stable artist and discovery reads do not call Lidarr", async (t) => {
     metadata: { id: 9911, monitored: true },
   });
   const originalConfigured = lidarrClient.isConfigured;
-  const request = t.mock.method(lidarrClient, "request", async () => {
+  const request = vi.spyOn(lidarrClient, "request").mockImplementation(async () => {
     throw new Error("stable reads must not call Lidarr");
   });
-  t.mock.method(lidarrClient, "getAllAlbums", async () => {
+  vi.spyOn(lidarrClient, "getAllAlbums").mockImplementation(async () => {
     throw new Error("stable reads must not call Lidarr");
   });
   lidarrClient.isConfigured = () => true;
@@ -58,14 +58,14 @@ test("stable artist and discovery reads do not call Lidarr", async (t) => {
     assert.equal(projectedArtist?.id, String(artist.id));
     assert.equal(projectedArtist?.canonicalId, String(artist.id));
     assert.deepEqual(releases, []);
-    assert.equal(request.mock.callCount(), 0);
+    assert.equal(request.mock.calls.length, 0);
   } finally {
     lidarrClient.isConfigured = originalConfigured;
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
   }
 });
 
-test("optional Lidarr reads use indexed Aurral media without provider calls", async (t) => {
+test("optional Lidarr reads use indexed Aurral media without provider calls", async () => {
   const key = `optional-lidarr-read-${process.pid}-${Date.now()}`;
   const artist = upsertLibraryArtist({
     identityKey: `${key}:artist`,
@@ -94,8 +94,8 @@ test("optional Lidarr reads use indexed Aurral media without provider calls", as
     path: filePath,
     available: true,
   });
-  t.mock.method(lidarrClient, "isConfigured", () => false);
-  const request = t.mock.method(lidarrClient, "request", async () => {
+  vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => false);
+  const request = vi.spyOn(lidarrClient, "request").mockImplementation(async () => {
     throw new Error("optional reads must not call Lidarr");
   });
   for (const method of [
@@ -105,7 +105,7 @@ test("optional Lidarr reads use indexed Aurral media without provider calls", as
     "getTracksByAlbumId",
     "getTrackFilesByAlbumId",
   ]) {
-    t.mock.method(lidarrClient, method, async () => {
+    vi.spyOn(lidarrClient, method).mockImplementation(async () => {
       throw new Error("optional reads must not call Lidarr");
     });
   }
@@ -131,7 +131,7 @@ test("optional Lidarr reads use indexed Aurral media without provider calls", as
       queue.find((entry) => entry.id === `lib-${artist.id}-${album.id}-${track.id}`)?.streamPath,
       `/library/canonical-stream/${album.id}/${track.id}`,
     );
-    assert.equal(request.mock.callCount(), 0);
+    assert.equal(request.mock.calls.length, 0);
   } finally {
     db.prepare("DELETE FROM library_media_files WHERE path = ?").run(filePath);
     db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(album.id);
@@ -141,7 +141,7 @@ test("optional Lidarr reads use indexed Aurral media without provider calls", as
   }
 });
 
-test("configured Lidarr read failures fall back to the library index", async (t) => {
+test("configured Lidarr read failures fall back to the library index", async () => {
   const key = `fallback-lidarr-read-${process.pid}-${Date.now()}`;
   const artist = upsertLibraryArtist({
     identityKey: `${key}:artist`,
@@ -169,17 +169,17 @@ test("configured Lidarr read failures fall back to the library index", async (t)
     path: filePath,
     available: true,
   });
-  t.mock.method(lidarrClient, "isConfigured", () => true);
-  t.mock.method(lidarrClient, "getArtistByMbid", async () => {
+  vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
+  vi.spyOn(lidarrClient, "getArtistByMbid").mockImplementation(async () => {
     throw new Error("Lidarr connection refused");
   });
-  t.mock.method(lidarrClient, "getArtist", async () => {
+  vi.spyOn(lidarrClient, "getArtist").mockImplementation(async () => {
     throw new Error("Lidarr connection refused");
   });
-  t.mock.method(lidarrClient, "getHistory", async () => {
+  vi.spyOn(lidarrClient, "getHistory").mockImplementation(async () => {
     throw new Error("Lidarr connection refused");
   });
-  t.mock.method(lidarrClient, "getAlbum", async () => {
+  vi.spyOn(lidarrClient, "getAlbum").mockImplementation(async () => {
     throw new Error("Lidarr connection refused");
   });
 
@@ -205,7 +205,7 @@ test("configured Lidarr read failures fall back to the library index", async (t)
   }
 });
 
-test("artist key reads use identity columns and preserve metadata foreign IDs", (t) => {
+test("artist key reads use identity columns and preserve metadata foreign IDs", () => {
   const identityKey = `artist-key-read:${Date.now()}`;
   const foreignArtistId = "artist-key-foreign-id";
   const artist = upsertLibraryArtist({
@@ -215,7 +215,7 @@ test("artist key reads use identity columns and preserve metadata foreign IDs", 
   });
   const prepared = [];
   const prepare = db.prepare.bind(db);
-  t.mock.method(db, "prepare", (sql) => {
+  vi.spyOn(db, "prepare").mockImplementation((sql) => {
     prepared.push(String(sql));
     return prepare(sql);
   });
@@ -240,17 +240,17 @@ test("artist key reads use identity columns and preserve metadata foreign IDs", 
   }
 });
 
-test("artist monitoring mutations dedupe library reconciliation scans", async (t) => {
+test("artist monitoring mutations dedupe library reconciliation scans", async () => {
   clearScheduledLibraryScan();
-  t.mock.method(lidarrClient, "isConfigured", () => true);
-  t.mock.method(lidarrClient, "getArtistByMbid", async () => ({
+  vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
+  vi.spyOn(lidarrClient, "getArtistByMbid").mockImplementation(async () => ({
     id: 9922,
     artistName: "Monitoring Artist",
     foreignArtistId: "33333333-3333-4333-8333-333333333333",
     monitored: false,
   }));
-  t.mock.method(lidarrClient, "updateArtistMonitoring", async () => ({}));
-  t.mock.method(lidarrClient, "getArtist", async () => ({
+  vi.spyOn(lidarrClient, "updateArtistMonitoring").mockImplementation(async () => ({}));
+  vi.spyOn(lidarrClient, "getArtist").mockImplementation(async () => ({
     id: 9922,
     artistName: "Monitoring Artist",
     foreignArtistId: "33333333-3333-4333-8333-333333333333",
@@ -281,7 +281,7 @@ test("artist monitoring mutations dedupe library reconciliation scans", async (t
   }
 });
 
-test("deleting a Lidarr artist clears library provider state for both IDs", async (t) => {
+test("deleting a Lidarr artist clears library provider state for both IDs", async () => {
   const mbid = "89898989-8989-4898-8989-898989898989";
   const foreignArtistId = "8989@deezer";
   const artist = upsertLibraryArtist({
@@ -305,13 +305,13 @@ test("deleting a Lidarr artist clears library provider state for both IDs", asyn
     },
   });
   clearScheduledLibraryScan();
-  t.mock.method(lidarrClient, "isConfigured", () => true);
-  t.mock.method(lidarrClient, "getArtistByMbid", async () => ({
+  vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
+  vi.spyOn(lidarrClient, "getArtistByMbid").mockImplementation(async () => ({
     id: 8989,
     artistName: "Deleted Provider Artist",
     foreignArtistId,
   }));
-  t.mock.method(lidarrClient, "deleteArtist", async () => true);
+  vi.spyOn(lidarrClient, "deleteArtist").mockImplementation(async () => true);
 
   try {
     assert.deepEqual(await libraryManager.deleteArtist(mbid), { success: true });
@@ -595,26 +595,26 @@ test("library paginated reads keep tied rows stable", () => {
   }
 });
 
-test("stable artist reads remain local when Lidarr is absent", async (t) => {
-  const request = t.mock.method(lidarrClient, "request", async () => {
+test("stable artist reads remain local when Lidarr is absent", async () => {
+  const request = vi.spyOn(lidarrClient, "request").mockImplementation(async () => {
     throw new Error("absent Lidarr must not be called");
   });
-  t.mock.method(lidarrClient, "isConfigured", () => false);
+  vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => false);
 
   const artists = await libraryManager.getAllArtists();
 
   assert.ok(Array.isArray(artists));
-  assert.equal(request.mock.callCount(), 0);
+  assert.equal(request.mock.calls.length, 0);
 });
 
-test("legacy artist list bounds the projection before materialization", async (t) => {
+test("legacy artist list bounds the projection before materialization", async () => {
   const prefix = `zzzzzzzzzz-artist-page-${process.pid}-${Date.now()}`;
   const artists = Array.from({ length: 101 }, (_, index) => upsertLibraryArtist({
     identityKey: `${prefix}:${index}`,
     name: `${prefix}-${String(index).padStart(3, "0")}`,
     sortName: `${prefix}-${String(index).padStart(3, "0")}`,
   }));
-  t.mock.method(libraryManager, "getAllArtists", async () => {
+  vi.spyOn(libraryManager, "getAllArtists").mockImplementation(async () => {
     throw new Error("legacy artist list must not materialize all projection pages");
   });
 
@@ -716,15 +716,15 @@ test("library artist page totals match hydrated items", () => {
   }
 });
 
-test("explicit artist synchronization retains its Lidarr request", async (t) => {
+test("explicit artist synchronization retains its Lidarr request", async () => {
   const originalConfigured = lidarrClient.isConfigured;
-  const request = t.mock.method(lidarrClient, "request", async () => []);
-  t.mock.method(libraryManager, "backfillLidarrArtistMappings", async () => {});
+  const request = vi.spyOn(lidarrClient, "request").mockImplementation(async () => []);
+  vi.spyOn(libraryManager, "backfillLidarrArtistMappings").mockImplementation(async () => {});
   lidarrClient.isConfigured = () => true;
 
   try {
     await libraryManager.syncLidarrArtists({ forceRefresh: true });
-    assert.deepEqual(request.mock.calls.map((call) => call.arguments[0]), ["/artist"]);
+    assert.deepEqual(request.mock.calls.map((call) => call[0]), ["/artist"]);
   } finally {
     const jobId = getScheduledLibraryScanJobId();
     if (jobId) getLibraryScanQueue().cancel(jobId);

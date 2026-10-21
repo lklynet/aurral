@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, truncate, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";

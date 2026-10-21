@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, beforeAll, beforeEach, afterAll } from "vite-plus/test";
 
 import {
   cleanupIsolatedState,
@@ -45,7 +45,7 @@ function clearRefreshState() {
   db.prepare("DELETE FROM settings WHERE key LIKE 'inboxRefresh:%'").run();
 }
 
-test.before(() => {
+beforeAll(() => {
   getInboxTaskQueue();
   userId = userOps.createUser("inbox-refresh-user", "password-hash").id;
   upsertLibraryArtist({
@@ -55,11 +55,11 @@ test.before(() => {
   });
 });
 
-test.beforeEach(() => {
+beforeEach(() => {
   clearRefreshState();
 });
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 

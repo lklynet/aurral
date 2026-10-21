@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeAll, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -145,7 +145,7 @@ const originalSettings = dbOps.getSettings();
 const originalLidarrConfigured = lidarrClient.isConfigured;
 const originalWorkerStart = downloadWorker.start;
 
-test.before(() => {
+beforeAll(() => {
   dbOps.updateSettings({
     ...originalSettings,
     integrations: {
@@ -163,7 +163,7 @@ test.before(() => {
   downloadWorker.start = async () => {};
 });
 
-test.after(async () => {
+afterAll(async () => {
   lidarrClient.isConfigured = originalLidarrConfigured;
   downloadWorker.start = originalWorkerStart;
   dbOps.updateSettings(originalSettings);

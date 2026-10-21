@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeAll, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import http from "node:http";
 
@@ -334,7 +334,7 @@ function seedLidarrArtistAlbum(artist, album) {
   fakeLidarr.state.albums.push(album);
 }
 
-test.before(async () => {
+beforeAll(async () => {
   resetDatabase(db);
   fakeLidarr = await startFakeLidarr();
   dbOps.updateSettings({
@@ -354,7 +354,7 @@ test.before(async () => {
   authToken = await loginAsAdmin();
 });
 
-test.beforeEach(async () => {
+beforeEach(async () => {
   fakeLidarr.reset();
   userOps.updateUser(adminUserId, {
     lidarrRootFolderPath: null,
@@ -363,7 +363,7 @@ test.beforeEach(async () => {
   await saveLidarrSettings();
 });
 
-test.after(async () => {
+afterAll(async () => {
   await server?.stop();
   await fakeLidarr?.stop();
   await cleanupIsolatedState(isolatedState);

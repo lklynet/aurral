@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -24,7 +24,7 @@ test("buildGeneratedPlaylistArtworkBuffer returns aurral WebP artwork", async ()
 });
 
 test("photo source failures preserve existing playlist artwork", async (t) => {
-  t.mock.method(axios, "get", async () => {
+  vi.spyOn(axios, "get").mockImplementation(async () => {
     const error = new Error("Request failed with status code 503");
     error.response = { status: 503 };
     throw error;
@@ -34,7 +34,7 @@ test("photo source failures preserve existing playlist artwork", async (t) => {
   const existingPath = path.join(directory, "road-trip.webp");
   const existing = Buffer.from("existing photo artwork");
   await fs.writeFile(existingPath, existing);
-  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  t.onTestFinished(() => fs.rm(directory, { recursive: true, force: true }));
 
   await assert.rejects(
     writeGeneratedPlaylistArtwork({

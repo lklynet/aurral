@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeAll, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import {
@@ -33,11 +33,11 @@ function setLidarrSettings(lidarr) {
   });
 }
 
-test.before(() => {
+beforeAll(() => {
   resetDatabase(db);
 });
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
@@ -66,7 +66,7 @@ test("an explicit false disables lidarr without clearing saved settings", () => 
   assert.equal(lidarrClient.getConfig().apiKey, "saved-key");
 });
 
-test("root folder reads retain saved paths while lidarr is disabled", async (t) => {
+test("root folder reads retain saved paths while lidarr is disabled", async () => {
   const rootPath = "/data/music";
   setLidarrSettings({
     url: "http://127.0.0.1:18686",
@@ -75,7 +75,7 @@ test("root folder reads retain saved paths while lidarr is disabled", async (t) 
     rootFolderPath: null,
     rootFolderPaths: [rootPath],
   });
-  const request = t.mock.method(lidarrClient, "request", async () => {
+  const request = vi.spyOn(lidarrClient, "request").mockImplementation(async () => {
     throw new Error("disabled root-folder reads must stay local");
   });
   const routes = new Map();
@@ -96,7 +96,7 @@ test("root folder reads retain saved paths while lidarr is disabled", async (t) 
   });
 
   assert.deepEqual(body, [{ path: rootPath }]);
-  assert.equal(request.mock.callCount(), 0);
+  assert.equal(request.mock.calls.length, 0);
 });
 
 test("disabled lidarr makes no network call from client requests", async () => {
@@ -108,7 +108,7 @@ test("disabled lidarr makes no network call from client requests", async () => {
   );
 });
 
-test("discovered root paths are reused without another root-folder request", async (t) => {
+test("discovered root paths are reused without another root-folder request", async () => {
   const rootPath = "/data/music";
   setLidarrSettings({
     url: "http://127.0.0.1:18686",
@@ -117,12 +117,12 @@ test("discovered root paths are reused without another root-folder request", asy
     rootFolderPath: null,
     rootFolderPaths: [rootPath],
   });
-  const request = t.mock.method(lidarrClient, "request", async () => {
+  const request = vi.spyOn(lidarrClient, "request").mockImplementation(async () => {
     throw new Error("root-folder discovery should be cached");
   });
 
   assert.deepEqual(await lidarrClient.getRootFolders(), [{ path: rootPath }]);
-  assert.equal(request.mock.callCount(), 0);
+  assert.equal(request.mock.calls.length, 0);
 });
 
 test("saved-credential test fallback is refused while lidarr is disabled", () => {

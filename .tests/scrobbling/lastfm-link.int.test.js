@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeAll, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import {
@@ -22,7 +22,7 @@ let apiKey = "";
 let sessionToken = "";
 let userId = null;
 
-test.before(async () => {
+beforeAll(async () => {
   resetDatabase(db);
   dbOps.updateSettings({
     integrations: {
@@ -37,7 +37,7 @@ test.before(async () => {
   server = await startServerProcess();
 });
 
-test.after(async () => {
+afterAll(async () => {
   await server?.stop();
   await cleanupIsolatedState(isolatedState);
 });

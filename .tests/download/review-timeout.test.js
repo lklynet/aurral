@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -15,11 +15,11 @@ const [state, { db }, { dbOps }, { downloadTracker }, { denyExpiredReviews },
 const HOUR = 60 * 60 * 1000;
 let sequence = 0;
 
-test.beforeEach(() => {
+beforeEach(() => {
   downloadTracker.clearAll();
   resetDatabase(db);
 });
-test.after(() => cleanupIsolatedState(state));
+afterAll(() => cleanupIsolatedState(state));
 
 async function holdForReview(trackName) {
   const stagingPath = path.join(state.baseDir, `held-${++sequence}`, `${trackName}.flac`);

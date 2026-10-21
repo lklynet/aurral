@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import axios from "../../lib/axiosFetch.js";
 
@@ -8,7 +8,7 @@ import { getNearbyShows } from "../../backend/services/nearbyShowsService.js";
 const withTicketmasterKey = (t) => {
   const original = process.env.TICKETMASTER_API_KEY;
   process.env.TICKETMASTER_API_KEY = "test-ticketmaster-key";
-  t.after(() => {
+  t.onTestFinished(() => {
     if (original === undefined) delete process.env.TICKETMASTER_API_KEY;
     else process.env.TICKETMASTER_API_KEY = original;
   });
@@ -69,7 +69,7 @@ test("includes all artist inputs in the shows response cache key", () => {
 
 test("matches event performers to library and Discover artists by name", async (t) => {
   withTicketmasterKey(t);
-  t.mock.method(axios, "get", async (url) => {
+  vi.spyOn(axios, "get").mockImplementation(async (url) => {
     if (url.includes("zippopotam")) {
       return {
         data: {
@@ -124,9 +124,9 @@ test("matches event performers to library and Discover artists by name", async (
   );
 });
 
-test("looks up the server location for private, invalid, or spoofed client addresses", async (t) => {
+test("looks up the server location for private, invalid, or spoofed client addresses", async () => {
   const lookups = [];
-  t.mock.method(axios, "get", async (url) => {
+  vi.spyOn(axios, "get").mockImplementation(async (url) => {
     lookups.push(url);
     return { data: { city: "Somewhere", latitude: 40.2, longitude: -74.2 } };
   });
@@ -146,8 +146,8 @@ test("looks up the server location for private, invalid, or spoofed client addre
   ]);
 });
 
-test("marks an unresolved postal code instead of returning a normal empty location", async (t) => {
-  t.mock.method(axios, "get", async (url) => {
+test("marks an unresolved postal code instead of returning a normal empty location", async () => {
+  vi.spyOn(axios, "get").mockImplementation(async (url) => {
     assert.equal(url, "https://nominatim.openstreetmap.org/search");
     return { data: [] };
   });
@@ -158,9 +158,9 @@ test("marks an unresolved postal code instead of returning a normal empty locati
   assert.deepEqual(result.shows, []);
 });
 
-test("uses an explicit country when resolving an ambiguous postal code", async (t) => {
+test("uses an explicit country when resolving an ambiguous postal code", async () => {
   let nominatimParams;
-  t.mock.method(axios, "get", async (url, options = {}) => {
+  vi.spyOn(axios, "get").mockImplementation(async (url, options = {}) => {
     if (url.includes("zippopotam")) return { data: { places: [] } };
     if (url === "https://nominatim.openstreetmap.org/search") {
       nominatimParams = options.params;
@@ -183,9 +183,9 @@ test("uses an explicit country when resolving an ambiguous postal code", async (
   assert.equal(result.location.countryCode, "FR");
 });
 
-test("reuses a cached shows response without rebuilding artist maps", async (t) => {
+test("reuses a cached shows response without rebuilding artist maps", async () => {
   let artistReads = 0;
-  t.mock.method(axios, "get", async (url) => {
+  vi.spyOn(axios, "get").mockImplementation(async (url) => {
     if (url.includes("zippopotam")) {
       return {
         data: {

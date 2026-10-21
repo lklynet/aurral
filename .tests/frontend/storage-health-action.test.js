@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import { runStorageHealthAction } from "../../frontend/src/pages/Settings/utils/runStorageHealthAction.js";

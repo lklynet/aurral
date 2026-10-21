@@ -1,7 +1,5 @@
-import test from "node:test";
+import { test, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
-import path from "path";
-import { pathToFileURL } from "url";
 
 import {
   setupIsolatedBackend,
@@ -15,7 +13,7 @@ const [isolatedState, { db }, { dbOps }] = await setupIsolatedBackend(
   "backend/db/helpers/index.js",
 );
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
@@ -30,10 +28,7 @@ test("getDiscoveryCache preserves lastUpdated after an empty completed refresh",
     topGenres: [],
   });
 
-  const moduleUrl = pathToFileURL(
-    path.join(process.cwd(), "backend/services/discovery/index.js"),
-  ).href;
-  const { getDiscoveryCache } = await import(`${moduleUrl}?t=${Date.now()}`);
+  const { getDiscoveryCache } = await import("../../backend/services/discovery/index.js");
   const cache = getDiscoveryCache();
 
   assert.ok(cache.lastUpdated);

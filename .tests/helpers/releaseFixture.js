@@ -1,3 +1,4 @@
+import { vi } from "vite-plus/test";
 import axios from "../../lib/axiosFetch.js";
 
 const METADATA_HOST = "brainzmash.example.test";
@@ -47,10 +48,10 @@ export async function serveGroups(t, groups, { unavailable = () => false, missin
   dbOps.updateSettings({ ...settings, integrations: { ...settings.integrations,
     metadata: { ...settings.integrations?.metadata, baseUrl: `https://${METADATA_HOST}`, enableNarrowFallbacks: false } } });
   clearApiCaches();
-  t.after(() => clearApiCaches());
+  t.onTestFinished(() => clearApiCaches());
   const byPath = new Map(groups.map((group) => [`/album/${group.id}`, group]));
   const original = axios.get;
-  return t.mock.method(axios, "get", async (url, ...rest) => {
+  return vi.spyOn(axios, "get").mockImplementation(async (url, ...rest) => {
     const parsed = new URL(url);
     if (parsed.hostname !== METADATA_HOST) return original.call(axios, url, ...rest);
     const down = unavailable(parsed.pathname);

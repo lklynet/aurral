@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { link, mkdtemp, readFile, rm, stat } from "node:fs/promises";
@@ -45,7 +45,7 @@ const cover = taglib.Picture.fromFullData(
   "",
 );
 
-test.after(async () => {
+afterAll(async () => {
   await rm(tempDir, { recursive: true, force: true });
 });
 

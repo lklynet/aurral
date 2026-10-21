@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.js";
@@ -13,7 +13,7 @@ const [state, { db }, { dbOps }, { flowPlaylistConfig }, { downloadTracker }, { 
     "backend/services/playlists/playlistStatusSnapshot.js",
   );
 
-test.after(() => cleanupIsolatedState(state));
+afterAll(() => cleanupIsolatedState(state));
 
 function writeFromAnotherProcess(sql, parameters) {
   const script = `

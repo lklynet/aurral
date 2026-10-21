@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeAll, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import bcrypt from "bcrypt";
@@ -61,18 +61,18 @@ function ageSessionByToken(token, ageMs) {
   );
 }
 
-test.before(async () => {
+beforeAll(async () => {
   resetDatabase(db);
   dbOps.updateSettings({ integrations: {}, onboardingComplete: true });
   server = await startServerProcess();
 });
 
-test.after(async () => {
+afterAll(async () => {
   await server?.stop();
   await cleanupIsolatedState(isolatedState);
 });
 
-test.beforeEach(() => {
+beforeEach(() => {
   resetDatabase(db);
   dbOps.updateSettings({ integrations: {}, onboardingComplete: true });
 });
@@ -84,7 +84,7 @@ test("GET /me/identities requires authentication", async () => {
 
 test("GET /me/identities lists only the caller's own linked identities", async () => {
   const userA = userOps.createUser("identity-user-a", bcrypt.hashSync("password123", 4), "user");
-  const userB = userOps.createUser("identity-user-b", bcrypt.hashSync("password123", 4), "user");
+  userOps.createUser("identity-user-b", bcrypt.hashSync("password123", 4), "user");
   userIdentityOps.link(userA.id, {
     providerType: "oidc",
     providerKey: "https://issuer.example/",
@@ -173,7 +173,7 @@ test("unlinking an identity requires a recent reauth and succeeds after confirmi
 
 test("unlinking a nonexistent or another user's identity 404s", async () => {
   const userA = userOps.createUser("owner-user", bcrypt.hashSync("password123", 4), "user");
-  const userB = userOps.createUser("other-user", bcrypt.hashSync("password123", 4), "user");
+  userOps.createUser("other-user", bcrypt.hashSync("password123", 4), "user");
   const identity = userIdentityOps.link(userA.id, {
     providerType: "oidc",
     providerKey: "https://issuer.example/",
@@ -208,7 +208,7 @@ test("a successful local login records that the account has a usable local passw
 });
 
 test("changing a password requires a recent auth, so a stale session cannot take the account over", async () => {
-  const user = userOps.createUser(
+  userOps.createUser(
     "stale-password-user",
     bcrypt.hashSync("password123", 4),
     "user",

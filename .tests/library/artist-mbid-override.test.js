@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, beforeAll, beforeEach, afterAll, vi } from "vite-plus/test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -36,7 +36,7 @@ let providerAvailable = true;
 let server;
 let musicRoot;
 
-test.before(async () => {
+beforeAll(async () => {
   resetDatabase(db);
   server = await createMockHttpServer((request, response) => {
     if (!providerAvailable) {
@@ -75,12 +75,12 @@ test.before(async () => {
   musicRoot = await mkdtemp(path.join(tmpdir(), "aurral-mbid-override-"));
 });
 
-test.beforeEach(() => {
+beforeEach(() => {
   providerAvailable = true;
   provider.clearMetadataProviderCaches();
 });
 
-test.after(async () => {
+afterAll(async () => {
   await server?.close();
   if (musicRoot) await rm(musicRoot, { recursive: true, force: true });
   await cleanupIsolatedState(isolatedState);
@@ -228,14 +228,14 @@ test("MBID edits are rejected without changing the artist when they cannot be ve
   assert.equal(artistRow(lidarr.artist.id).mbid, null);
 });
 
-test("the Discover lookup points to the library artist whether or not Lidarr manages it", async (t) => {
+test("the Discover lookup points to the library artist whether or not Lidarr manages it", async () => {
   const indexed = createArtist("Indexed Only Artist", { mbid: LINKED_MBID });
   const managed = createArtist("Lidarr Managed Artist", { mbid: LIDARR_MBID, metadata: { id: 4242 } });
   const lidarrArtist = { id: 4242, foreignArtistId: LIDARR_MBID, artistName: "Lidarr Managed Artist" };
-  t.mock.method(lidarrClient, "isConfigured", () => true);
-  t.mock.method(lidarrClient, "getArtistByMbid", async (mbid) =>
+  vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
+  vi.spyOn(lidarrClient, "getArtistByMbid").mockImplementation(async (mbid) =>
     mbid === LIDARR_MBID ? lidarrArtist : null);
-  t.mock.method(lidarrClient, "request", async () => []);
+  vi.spyOn(lidarrClient, "request").mockImplementation(async () => []);
 
   const indexedLookup = await getArtistLibraryLookup(LINKED_MBID);
   const managedLookup = await getArtistLibraryLookup(LIDARR_MBID);

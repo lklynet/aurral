@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import http from "node:http";
 import path from "node:path";
-import test from "node:test";
+import { test, beforeAll, afterAll } from "vite-plus/test";
 
 import bcrypt from "bcrypt";
 
@@ -67,7 +67,7 @@ async function waitForLibraryVerification(startIndex) {
   throw new Error("Timed out waiting for Navidrome library verification");
 }
 
-test.before(async () => {
+beforeAll(async () => {
   resetDatabase(db);
   dbOps.updateSettings({ integrations: {}, onboardingComplete: true });
   userOps.createUser("admin", bcrypt.hashSync("password123", 4), "admin");
@@ -116,7 +116,7 @@ test.before(async () => {
   assert.equal(login.status, 200);
 });
 
-test.after(async () => {
+afterAll(async () => {
   await aurral?.stop();
   await new Promise((resolve) => navidrome?.close(resolve));
   await cleanupIsolatedState(isolatedState);

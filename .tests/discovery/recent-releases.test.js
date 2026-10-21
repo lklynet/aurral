@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import axios from "../../lib/axiosFetch.js";
@@ -61,7 +61,7 @@ const catalogueRelease = (id, title, type = "Album") => ({
 function stubBrainzMash(t, { catalogues = {}, albumDates = {}, onArtist } = {}) {
   const albumRequests = [];
   let requests = 0;
-  t.mock.method(axios, "get", async (url) => {
+  vi.spyOn(axios, "get").mockImplementation(async (url) => {
     requests += 1;
     const [, kind, mbid] = new URL(url).pathname.match(/^\/(artist|album)\/([^/]+)$/) || [];
     if (kind === "artist" && catalogues[mbid]) {

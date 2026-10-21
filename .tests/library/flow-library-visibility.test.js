@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll, afterEach } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -28,17 +28,17 @@ const [
 
 let root;
 
-test.beforeEach(async () => {
+beforeEach(async () => {
   resetDatabase(db);
   dbOps.updateSettings({ integrations: {}, flows: [], sharedPlaylists: [] });
   root = await mkdtemp(path.join(tmpdir(), "aurral-flow-library-"));
 });
 
-test.afterEach(async () => {
+afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 

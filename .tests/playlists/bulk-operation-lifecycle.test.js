@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.js";
 
@@ -6,7 +6,7 @@ const [state, { db }, honker, store] = await setupIsolatedBackend(
   "bulk-operation-lifecycle", "backend/config/db-sqlite.js", "backend/services/honkerDb.js",
   "backend/services/playlists/bulkOperationStore.js",
 );
-test.after(() => cleanupIsolatedState(state));
+afterAll(() => cleanupIsolatedState(state));
 
 test("bulk acceptance commits its queue job and durable progress together", () => {
   const result = store.enqueueBulkOperation({ ownerUserId: 1, sourcePlaylistId: "source", action: "remove", selections: [{ jobId: "one" }] });

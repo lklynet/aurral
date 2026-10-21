@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import path from "node:path";
-import test from "node:test";
+import { test, beforeEach, afterAll } from "vite-plus/test";
 
 import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTestHarness.js";
 
@@ -60,7 +60,7 @@ function finishMigrations() {
 const queuedKinds = () =>
   honkerDb.getHonkerDb().query("SELECT payload FROM _honker_live ORDER BY id").map((row) => JSON.parse(row.payload).kind);
 
-test.beforeEach(() => {
+beforeEach(() => {
   for (const key of [
     honkerDb.STORED_DATA_MIGRATION_SETTING,
     honkerDb.IDENTITY_MARKER_MIGRATION_SETTING,
@@ -77,7 +77,7 @@ test.beforeEach(() => {
   tx.commit();
 });
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 

@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -29,14 +29,14 @@ const { DownloadWorker } = workerModule;
 // tests drive themselves.
 const enqueuePipeline = (payload) => honkerDb.getPipelineQueue().enqueue(payload, {});
 
-test.beforeEach(async (t) => {
+beforeEach(async () => {
   await resetDatabase(db);
   trackerModule.downloadTracker.clearAll();
-  t.mock.method(trackerModule.downloadTracker, "enqueuePipeline", enqueuePipeline);
-  t.mock.method(workerModule.downloadWorker, "start", async () => {});
+  vi.spyOn(trackerModule.downloadTracker, "enqueuePipeline").mockImplementation(enqueuePipeline);
+  vi.spyOn(workerModule.downloadWorker, "start").mockImplementation(async () => {});
 });
 
-test.after(async () => {
+afterAll(async () => {
   db.close();
   await cleanupIsolatedState(isolatedState);
 });
@@ -506,11 +506,11 @@ test("a started worker keeps its process busy only while downloads are pending",
   }
 });
 
-test("a worker starts no more searches than its concurrency allows", async (t) => {
+test("a worker starts no more searches than its concurrency allows", async () => {
   const worker = new DownloadWorker(isolatedState.baseDir);
   worker.updateWorkerSettings({ concurrency: 1 });
-  const dispatched = t.mock.method(worker, "processJob", async () => {});
-  t.mock.method(worker, "scheduleReuseLinkRepair", () => {});
+  const dispatched = vi.spyOn(worker, "processJob").mockImplementation(async () => {});
+  vi.spyOn(worker, "scheduleReuseLinkRepair").mockImplementation(() => {});
   const transaction = honkerDb.getHonkerDb().transaction();
   transaction.execute("DELETE FROM _honker_live WHERE queue = 'slskd-pipeline'");
   transaction.commit();
@@ -521,10 +521,10 @@ test("a worker starts no more searches than its concurrency allows", async (t) =
   );
   await worker.start();
   try {
-    assert.equal(dispatched.mock.callCount(), 0);
+    assert.equal(dispatched.mock.calls.length, 0);
     worker.updateWorkerSettings({ concurrency: 2 });
     worker.processLoop();
-    assert.deepEqual(dispatched.mock.calls.map((call) => call.arguments[0].id), [jobId]);
+    assert.deepEqual(dispatched.mock.calls.map((call) => call[0].id), [jobId]);
   } finally {
     worker.stop();
   }

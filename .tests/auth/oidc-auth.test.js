@@ -1,4 +1,4 @@
-import test, { mock } from "node:test";
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { createSign, generateKeyPairSync } from "node:crypto";
 
@@ -173,13 +173,13 @@ async function completeOidcLogin(pending) {
   });
 }
 
-test.beforeEach(() => {
+beforeEach(() => {
   resetDatabase(db);
   resetOidcEnv();
   dbOps.updateSettings({ onboardingComplete: false });
 });
 
-test.after(async () => {
+afterAll(async () => {
   resetOidcEnv();
   await cleanupIsolatedState(isolatedState);
 });
@@ -398,7 +398,7 @@ test("OIDC groups claim ignores UserInfo-only admin groups", async () => {
 test("OIDC callback rejects an expired state without creating a session", async () => {
   const pending = await createPendingOidcLogin();
   const now = Date.now();
-  const clock = mock.method(Date, "now", () => now + 11 * 60 * 1000);
+  const clock = vi.spyOn(Date, "now").mockImplementation(() => now + 11 * 60 * 1000);
 
   try {
     await assert.rejects(
@@ -412,7 +412,7 @@ test("OIDC callback rejects an expired state without creating a session", async 
     );
     assert.equal(db.prepare("SELECT COUNT(*) AS count FROM sessions").get().count, 0);
   } finally {
-    clock.mock.restore();
+    clock.mockRestore();
     await pending.close();
   }
 });

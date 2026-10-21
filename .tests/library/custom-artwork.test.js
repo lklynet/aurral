@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import test from "node:test";
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import sharp from "sharp";
 import {
   cleanupIsolatedState,
@@ -28,8 +28,8 @@ const sourceImage = await sharp({
   create: { width: 80, height: 60, channels: 3, background: { r: 80, g: 120, b: 200 } },
 }).png().toBuffer();
 
-test.beforeEach(() => resetDatabase(db));
-test.after(() => cleanupIsolatedState(state));
+beforeEach(() => resetDatabase(db));
+afterAll(() => cleanupIsolatedState(state));
 
 test("custom artwork uploads are validated, optimized, listed, and removed", async () => {
   const saved = await saveCustomArtworkUpload("track", "42", sourceImage, "image/png");
@@ -49,9 +49,9 @@ test("custom artwork uploads are validated, optimized, listed, and removed", asy
   assert.ok(getCustomArtworkRevision("track") > savedRevision);
 });
 
-test("custom artwork URLs use the protected image fetcher and become persistent files", async (t) => {
+test("custom artwork URLs use the protected image fetcher and become persistent files", async () => {
   const sourceUrl = "https://artwork.example/album.png";
-  t.mock.method(globalThis, "fetch", async (input) => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     assert.equal(String(input), sourceUrl);
     return new Response(sourceImage, { headers: { "Content-Type": "image/png" } });
   });

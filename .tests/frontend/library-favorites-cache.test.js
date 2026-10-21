@@ -1,24 +1,22 @@
 import assert from "node:assert/strict";
-import test from "node:test";
-import { startFrontendServer } from "../helpers/frontendServer.js";
+import { test, vi } from "vite-plus/test";
 
 const jsonResponse = (value) => new Response(JSON.stringify(value), {
   status: 200,
   headers: { "content-type": "application/json" },
 });
 
-const openFavoritesHarness = async (t, suffix) => {
-  const vite = await startFrontendServer();
+const openFavoritesHarness = async (t) => {
+  vi.resetModules();
 
-  const favorites = await vite.ssrLoadModule(`/src/utils/api/endpoints/library.js?${suffix}`);
-  const { queryClient, queryKeys } = await vite.ssrLoadModule("/src/queryClient.js");
+  const favorites = await import("../../frontend/src/utils/api/endpoints/library.js");
+  const { queryClient, queryKeys } = await import("../../frontend/src/queryClient.js");
   const originalFetch = globalThis.fetch;
   const requests = [];
-  t.after(() => {
+  t.onTestFinished(() => {
     globalThis.fetch = originalFetch;
     queryClient.clear();
   });
-  t.after(() => vite.close());
   globalThis.fetch = async (_url, init = {}) => new Promise((resolve) => {
     requests.push({ method: init.method || "GET", resolve });
   });
@@ -31,7 +29,7 @@ const openFavoritesHarness = async (t, suffix) => {
 
 test("an older favorites read cannot overwrite a newer mutation cache", async (t) => {
   const { getLibraryFavorites, updateLibraryFavorites, requests, waitForRequests } =
-    await openFavoritesHarness(t, "favorites-race-test");
+    await openFavoritesHarness(t);
 
   const staleFavorites = { artist: [], album: [], song: [], library: { tracks: [] } };
   const mutationResponse = {
@@ -58,7 +56,7 @@ test("an older favorites read cannot overwrite a newer mutation cache", async (t
 
 test("a favorites read waits when it completes before the mutation refresh", async (t) => {
   const { getLibraryFavorites, updateLibraryFavorites, requests, waitForRequests } =
-    await openFavoritesHarness(t, "favorites-read-before-refresh-test");
+    await openFavoritesHarness(t);
   const read = getLibraryFavorites();
   await waitForRequests(1);
   const mutation = updateLibraryFavorites(["song:1"], true);
@@ -84,7 +82,7 @@ test("a favorites read waits when it completes before the mutation refresh", asy
 
 test("favorite writes serialize and the final refresh includes both mutations", async (t) => {
   const { updateLibraryFavorites, queryClient, queryKeys, requests, waitForRequests } =
-    await openFavoritesHarness(t, "favorites-refresh-generation-test");
+    await openFavoritesHarness(t);
   const initial = { version: "initial" };
   queryClient.setQueryData(queryKeys.libraryFavorites, initial);
 
@@ -113,7 +111,7 @@ test("favorite writes serialize and the final refresh includes both mutations", 
 
 test("a failed favorite refresh does not block the next queued mutation", async (t) => {
   const { updateLibraryFavorites, queryClient, queryKeys, requests, waitForRequests } =
-    await openFavoritesHarness(t, "favorites-refresh-failure-test");
+    await openFavoritesHarness(t);
   const initial = { version: "initial" };
   queryClient.setQueryData(queryKeys.libraryFavorites, initial);
 

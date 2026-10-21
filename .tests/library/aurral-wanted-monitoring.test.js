@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeAll, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -141,12 +141,12 @@ const upgradedJobIds = () =>
 const originalSettings = dbOps.getSettings();
 const originalWorkerStart = downloadWorker.start;
 
-test.before(async () => {
+beforeAll(async () => {
   await fs.mkdir(managedRoot, { recursive: true });
   downloadWorker.start = async () => {};
 });
 
-test.beforeEach(() => {
+beforeEach(() => {
   downloadTracker.clearAll();
   resetDatabase(db);
   db.prepare("DELETE FROM library_management").run();
@@ -160,7 +160,7 @@ test.beforeEach(() => {
   });
 });
 
-test.after(async () => {
+afterAll(async () => {
   downloadWorker.start = originalWorkerStart;
   dbOps.updateSettings(originalSettings);
   await new Promise((resolve) => server.close(resolve));

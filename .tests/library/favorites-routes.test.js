@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, beforeAll, afterAll } from "vite-plus/test";
 import { Writable } from "node:stream";
 
 import {
@@ -31,7 +31,7 @@ const {
 let user;
 let artist;
 
-test.before(() => {
+beforeAll(() => {
   resetDatabase(db);
   user = userOps.getUserById(userOps.createUser("native", "hash").id);
   artist = upsertLibraryArtist({
@@ -101,7 +101,7 @@ test.before(() => {
   });
 });
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 

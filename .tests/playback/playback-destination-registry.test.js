@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, vi } from "vite-plus/test";
 import { PlaybackDestinationRegistry } from "../../backend/services/playback/playbackDestinationRegistry.js";
 
 function destination(name, configured, result = { ok: true }) {
@@ -59,8 +59,8 @@ test("runs zero, one, or multiple configured destinations from settings", async 
   assert.deepEqual(second.calls.at(-1), ["deletePlaylist", { entityId: "playlist-1" }]);
 });
 
-test("records destination failures without blocking other destinations", async (t) => {
-  t.mock.method(console, "warn", () => {});
+test("records destination failures without blocking other destinations", async () => {
+  vi.spyOn(console, "warn").mockImplementation(() => {});
   const rejected = destination("Rejected", true, new Error("offline"));
   const failed = destination("Failed", true, {
     ok: false,

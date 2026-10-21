@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeAll, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import express from "express";
 import {
@@ -90,7 +90,7 @@ const play = (userId, artist, index) =>
     source: "native-player",
   });
 
-test.before(() => {
+beforeAll(() => {
   resetDatabase(db);
   dbOps.invalidateSettingsCache();
   process.env.LASTFM_API_KEY = "test-key";
@@ -120,7 +120,7 @@ test.before(() => {
   play(alice.id, "Disliked Artist", 2);
 });
 
-test.after(async () => {
+afterAll(async () => {
   globalThis.fetch = originalFetch;
   if (originalLastfmApiKey === undefined) delete process.env.LASTFM_API_KEY;
   else process.env.LASTFM_API_KEY = originalLastfmApiKey;

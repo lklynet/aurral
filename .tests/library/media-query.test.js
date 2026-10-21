@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -459,7 +459,7 @@ test("scoped library reads keep ownership lookups off unrelated library records"
   }
 });
 
-test("artist and album reference reads resolve through indexed entity lookups", (t) => {
+test("artist and album reference reads resolve through indexed entity lookups", () => {
   const key = `query-plan-${process.pid}-${Date.now()}`;
   const artist = upsertLibraryArtist({
     identityKey: `${key}:artist`,
@@ -487,7 +487,7 @@ test("artist and album reference reads resolve through indexed entity lookups", 
   });
   const prepared = [];
   const prepare = db.prepare.bind(db);
-  const spy = t.mock.method(db, "prepare", (sql) => {
+  const spy = vi.spyOn(db, "prepare").mockImplementation((sql) => {
     prepared.push(String(sql));
     return prepare(sql);
   });
@@ -508,7 +508,7 @@ test("artist and album reference reads resolve through indexed entity lookups", 
       getLibraryForAlbumReferences({ references: [album.release_group_mbid] }).albums.map(({ id }) => id),
       [album.id],
     );
-    spy.mock.restore();
+    spy.mockRestore();
 
     const lookups = prepared.filter((sql) =>
       /^SELECT id FROM library_(artists|albums)/.test(sql.trim()),
@@ -535,7 +535,7 @@ test("artist and album reference reads resolve through indexed entity lookups", 
       assert.equal(plan.some(({ detail }) => /SCAN (album|album_track)/.test(detail)), false);
     }
   } finally {
-    spy.mock.restore();
+    spy.mockRestore();
     db.prepare("DELETE FROM library_media_files WHERE track_id = ?").run(track.id);
     db.prepare("DELETE FROM library_album_tracks WHERE track_id = ?").run(track.id);
     db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);

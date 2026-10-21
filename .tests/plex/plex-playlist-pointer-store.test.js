@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import {
@@ -14,11 +14,11 @@ const [isolatedState, { db }, , { plexPlaylistPointerStore }] = await setupIsola
   "backend/services/plex/plexPlaylistPointerStore.js",
 );
 
-test.beforeEach(() => {
+beforeEach(() => {
   resetDatabase(db);
 });
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import test from "node:test";
+import { test } from "vite-plus/test";
 import { assertDownloadClient } from "../../backend/services/download/downloadClient.js";
 import { DownloadClientRegistry } from "../../backend/services/download/downloadClientRegistry.js";
 import { getDownloadClientSettings } from "../../backend/services/download/downloadClientSettings.js";

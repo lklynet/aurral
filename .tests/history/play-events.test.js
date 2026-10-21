@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, beforeEach, afterAll } from "vite-plus/test";
 
 import {
   cleanupIsolatedState,
@@ -15,12 +15,12 @@ const [isolatedState, playEvents, scrobbleStore, honkerDbModule] = await setupIs
 );
 const { db } = await import("../../backend/config/db-sqlite.js");
 
-test.beforeEach(() => {
+beforeEach(() => {
   resetDatabase(db);
   db.prepare("INSERT INTO users (username, password_hash) VALUES (?, ?)").run("listener", "test");
 });
 
-test.after(async () => cleanupIsolatedState(isolatedState));
+afterAll(async () => cleanupIsolatedState(isolatedState));
 
 test("records local plays and aggregates artists without provider access", () => {
   const first = playEvents.recordPlayEvent(1, {

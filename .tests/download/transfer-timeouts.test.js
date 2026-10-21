@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { setupIsolatedBackend, cleanupIsolatedState, resetDatabase } from "../helpers/backendTestHarness.js";
 
@@ -13,8 +13,8 @@ const [state, { db }, { dbOps }, { downloadTracker }, { getDownloadClient },
   "backend/services/usenetOrchestrator.js",
 );
 
-test.beforeEach(() => resetDatabase(db));
-test.after(() => cleanupIsolatedState(state));
+beforeEach(() => resetDatabase(db));
+afterAll(() => cleanupIsolatedState(state));
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -24,16 +24,16 @@ function addJob() {
 
 const failSource = { failOrTryNextSource: (_payload, _job, reason) => ({ failed: reason }) };
 
-test("a stalled slskd transfer is cancelled and the next candidate is tried", async (t) => {
+test("a stalled slskd transfer is cancelled and the next candidate is tried", async () => {
   dbOps.updateSettings({ ...dbOps.getSettings(), integrations: {
     slskd: { enabled: true, url: "http://127.0.0.1:9" },
   } });
   const client = getDownloadClient("slskd");
   const queued = { id: "transfer-1", username: "slow", state: "Queued, Remotely",
     bytesTransferred: 0, placeInQueue: 12 };
-  t.mock.method(client, "getEvents", async () => ({ events: [], totalCount: 0 }));
-  t.mock.method(client, "getTransfer", async () => queued);
-  const removed = t.mock.method(client, "deleteTransfer", async () => true);
+  vi.spyOn(client, "getEvents").mockImplementation(async () => ({ events: [], totalCount: 0 }));
+  vi.spyOn(client, "getTransfer").mockImplementation(async () => queued);
+  const removed = vi.spyOn(client, "deleteTransfer").mockImplementation(async () => true);
   const jobId = addJob();
   const polling = { phase: "poll", source: "slskd", jobId, eventOffset: 0,
     legacyTransfer: { id: "transfer-1", username: "slow" }, candidateIndex: 0,
@@ -44,10 +44,10 @@ test("a stalled slskd transfer is cancelled and the next candidate is tried", as
   const longAgo = Date.now() - HOUR_MS;
   const moving = await processPipelinePayload({ ...waiting, lastProgress: "older", lastProgressAt: longAgo });
   assert.equal(moving.phase, "poll");
-  assert.equal(removed.mock.callCount(), 0);
+  assert.equal(removed.mock.calls.length, 0);
 
   const stalled = await processPipelinePayload({ ...waiting, lastProgressAt: longAgo });
-  assert.equal(removed.mock.callCount(), 1);
+  assert.equal(removed.mock.calls.length, 1);
   assert.equal(stalled.phase, "download");
   assert.equal(stalled.candidateIndex, 1);
 
@@ -55,15 +55,15 @@ test("a stalled slskd transfer is cancelled and the next candidate is tried", as
   assert.equal((await processPipelinePayload(polling)).phase, "download");
 });
 
-test("a rejected slskd transfer moves to the next user instead of retrying the same one", async (t) => {
+test("a rejected slskd transfer moves to the next user instead of retrying the same one", async () => {
   dbOps.updateSettings({ ...dbOps.getSettings(), integrations: {
     slskd: { enabled: true, url: "http://127.0.0.1:9" },
   } });
   const client = getDownloadClient("slskd");
-  t.mock.method(client, "getEvents", async () => ({ events: [], totalCount: 0 }));
-  t.mock.method(client, "getTransfer", async () => ({ id: "transfer-1", username: "strict",
+  vi.spyOn(client, "getEvents").mockImplementation(async () => ({ events: [], totalCount: 0 }));
+  vi.spyOn(client, "getTransfer").mockImplementation(async () => ({ id: "transfer-1", username: "strict",
     state: "Completed, Rejected", exception: "Transfer rejected: Banned" }));
-  t.mock.method(client, "deleteTransfer", async () => true);
+  vi.spyOn(client, "deleteTransfer").mockImplementation(async () => true);
   const jobId = addJob();
   const polling = { phase: "poll", source: "slskd", jobId, eventOffset: 0,
     legacyTransfer: { id: "transfer-1", username: "strict" }, candidateIndex: 0,
@@ -74,15 +74,15 @@ test("a rejected slskd transfer moves to the next user instead of retrying the s
   assert.equal(next.candidateIndex, 1);
 });
 
-test("a file in an uploader's queue moves to the next candidate after 10 minutes", async (t) => {
+test("a file in an uploader's queue moves to the next candidate after 10 minutes", async () => {
   dbOps.updateSettings({ ...dbOps.getSettings(), integrations: {
     slskd: { enabled: true, url: "http://127.0.0.1:9" },
   } });
   const client = getDownloadClient("slskd");
-  t.mock.method(client, "getEvents", async () => ({ events: [], totalCount: 0 }));
-  t.mock.method(client, "getTransfer", async () => ({ id: "transfer-1", username: "busy",
+  vi.spyOn(client, "getEvents").mockImplementation(async () => ({ events: [], totalCount: 0 }));
+  vi.spyOn(client, "getTransfer").mockImplementation(async () => ({ id: "transfer-1", username: "busy",
     state: "Queued, Remotely", bytesTransferred: 0 }));
-  const removed = t.mock.method(client, "deleteTransfer", async () => true);
+  const removed = vi.spyOn(client, "deleteTransfer").mockImplementation(async () => true);
   const jobId = addJob();
   const polling = { phase: "poll", source: "slskd", jobId, eventOffset: 0,
     legacyTransfer: { id: "transfer-1", username: "busy" }, candidateIndex: 0,
@@ -93,16 +93,16 @@ test("a file in an uploader's queue moves to the next candidate after 10 minutes
   const moved = await processPipelinePayload({ ...waiting, lastProgressAt: quarterHourAgo });
   assert.equal(moved.phase, "download");
   assert.equal(moved.candidateIndex, 1);
-  assert.equal(removed.mock.callCount(), 1);
+  assert.equal(removed.mock.calls.length, 1);
 
   const lastCandidate = await processPipelinePayload({ ...waiting, candidateIndex: 1, lastProgressAt: quarterHourAgo });
   assert.equal(lastCandidate.phase, "poll");
 });
 
-test("a paused Usenet download keeps waiting while the client holds it", async (t) => {
+test("a paused Usenet download keeps waiting while the client holds it", async () => {
   const client = getDownloadClient("nzbget");
-  t.mock.method(client, "getHistoryItem", async () => null);
-  t.mock.method(client, "getQueueItem", async () => ({ NZBID: 7, Status: "PAUSED" }));
+  vi.spyOn(client, "getHistoryItem").mockImplementation(async () => null);
+  vi.spyOn(client, "getQueueItem").mockImplementation(async () => ({ NZBID: 7, Status: "PAUSED" }));
   const jobId = addJob();
   const next = await processUsenetPipelinePayload({ phase: "poll", source: "usenet", jobId,
     downloadClient: "nzbget", nzbId: 7, pollAttempts: 5000 }, failSource);
@@ -110,10 +110,10 @@ test("a paused Usenet download keeps waiting while the client holds it", async (
   assert.equal(next.missingPolls, 0);
 });
 
-test("a Usenet download that leaves the client moves to the next release", async (t) => {
+test("a Usenet download that leaves the client moves to the next release", async () => {
   const client = getDownloadClient("nzbget");
-  t.mock.method(client, "getHistoryItem", async () => null);
-  t.mock.method(client, "getQueueItem", async () => null);
+  vi.spyOn(client, "getHistoryItem").mockImplementation(async () => null);
+  vi.spyOn(client, "getQueueItem").mockImplementation(async () => null);
   const jobId = addJob();
   const payload = { phase: "poll", source: "usenet", jobId, downloadClient: "nzbget", nzbId: 7,
     candidateIndex: 0, candidates: [{ raw: { release: { guid: "a" } } }, { raw: { release: { guid: "b" } } }] };
@@ -126,24 +126,24 @@ test("a Usenet download that leaves the client moves to the next release", async
   assert.equal(next.nzbId, null);
 });
 
-test("an NZBGet download that failed is removed from the client", async (t) => {
+test("an NZBGet download that failed is removed from the client", async () => {
   const client = getDownloadClient("nzbget");
-  t.mock.method(client, "getHistoryItem", async () => ({ NZBID: 7, Status: "FAILURE/PAR" }));
-  const fromQueue = t.mock.method(client, "deleteQueueItem", async () => true);
-  const fromHistory = t.mock.method(client, "deleteHistoryItem", async () => true);
+  vi.spyOn(client, "getHistoryItem").mockImplementation(async () => ({ NZBID: 7, Status: "FAILURE/PAR" }));
+  const fromQueue = vi.spyOn(client, "deleteQueueItem").mockImplementation(async () => true);
+  const fromHistory = vi.spyOn(client, "deleteHistoryItem").mockImplementation(async () => true);
   const jobId = addJob();
   const result = await processUsenetPipelinePayload({ phase: "poll", source: "usenet", jobId,
     downloadClient: "nzbget", nzbId: 7, candidateIndex: 0,
     candidates: [{ raw: { release: { guid: "broken" } } }] }, failSource);
   assert.match(result.failed, /Usenet download failed/);
-  assert.deepEqual(fromQueue.mock.calls.map((call) => call.arguments[0]), [7]);
-  assert.deepEqual(fromHistory.mock.calls.map((call) => call.arguments[0]), [7]);
+  assert.deepEqual(fromQueue.mock.calls.map((call) => call[0]), [7]);
+  assert.deepEqual(fromHistory.mock.calls.map((call) => call[0]), [7]);
 });
 
-test("a Usenet download still post-processing in the client keeps waiting", async (t) => {
+test("a Usenet download still post-processing in the client keeps waiting", async () => {
   const client = getDownloadClient("sabnzbd");
-  t.mock.method(client, "getHistoryItem", async () => ({ nzo_id: "SAB_1", status: "Extracting" }));
-  t.mock.method(client, "getQueueItem", async () => null);
+  vi.spyOn(client, "getHistoryItem").mockImplementation(async () => ({ nzo_id: "SAB_1", status: "Extracting" }));
+  vi.spyOn(client, "getQueueItem").mockImplementation(async () => null);
   const jobId = addJob();
   const next = await processUsenetPipelinePayload({ phase: "poll", source: "usenet", jobId,
     downloadClient: "sabnzbd", nzbId: "SAB_1", missingPolls: 60 }, failSource);

@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { evaluateTrackCandidates } from "../../backend/services/trackMatching/decisionEngine.js";
 import { buildTrackRequest } from "../../backend/services/trackMatching/trackIdentity.js";

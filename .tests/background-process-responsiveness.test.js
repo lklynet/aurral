@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { fork } from "node:child_process";
-import { test } from "node:test";
+import { test } from "vite-plus/test";
 import { fileURLToPath } from "node:url";
 import { createBackgroundProcessSupervisor } from "../backend/services/backgroundProcessSupervisor.js";
 

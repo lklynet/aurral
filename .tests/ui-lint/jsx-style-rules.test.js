@@ -1,10 +1,10 @@
-import test from "node:test";
-import { RuleTester } from "eslint";
+import { test } from "vite-plus/test";
+import { RuleTester } from "vite-plus/lint/plugins-dev";
 
 import {
   noHardCodedStyleColor,
   noUndefinedStyleToken,
-} from "../../frontend/eslint-rules/ui-style-rules.js";
+} from "../../frontend/lint-rules/ui-style-rules.js";
 
 const tokenNames = [
   "--aurral-accent",

@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -66,7 +66,7 @@ const { resolveYtdlpStagingRoot } = downloadFolderConfigModule;
 const { sabnzbdClient } = sabnzbdModule;
 const { nzbgetClient } = nzbgetModule;
 
-test.beforeEach(async () => {
+beforeEach(async () => {
   await resetDatabase(db);
   db.exec("DELETE FROM weekly_flow_download_job_cancellations");
   db.exec("DELETE FROM weekly_flow_download_cancellations");
@@ -74,24 +74,24 @@ test.beforeEach(async () => {
   downloadWorker.stop();
 });
 
-test.after(async () => {
+afterAll(async () => {
   db.close();
   await cleanupIsolatedState(isolatedState);
 });
 
-test("provider cancellation retry retains IDs from pipeline rows removed on the first attempt", async (t) => {
+test("provider cancellation retry retains IDs from pipeline rows removed on the first attempt", async () => {
   const { getDownloadClient } = await importFromRepo("backend/services/download/downloadClientSettings.js");
   const client = getDownloadClient("deemix");
-  t.mock.method(client, "isConfigured", () => true);
+  vi.spyOn(client, "isConfigured").mockImplementation(() => true);
   let succeeds = false;
-  const remove = t.mock.method(client, "removeFromQueue", async () => succeeds);
+  const remove = vi.spyOn(client, "removeFromQueue").mockImplementation(async () => succeeds);
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Track" }, "cancellation-retry");
   honkerModule.getPipelineQueue().enqueue({ jobId, playlistId: "cancellation-retry", playlistGeneration: 0, source: "deemix", phase: "poll", queueUuid: "provider-id-only-in-payload" });
   await assert.rejects(cancellationServiceModule.cancelDownloadWorkForJobs([downloadTracker.getJob(jobId)]));
   succeeds = true;
   await cancellationServiceModule.cancelDownloadWorkForJobs([downloadTracker.getJob(jobId)]);
-  assert.equal(remove.mock.callCount(), 2);
-  assert.equal(remove.mock.calls[1].arguments[0], "provider-id-only-in-payload");
+  assert.equal(remove.mock.calls.length, 2);
+  assert.equal(remove.mock.calls[1][0], "provider-id-only-in-payload");
 });
 
 test("playlist deletion invalidates queued payloads across recreation", () => {
@@ -236,7 +236,7 @@ test("deletion marks queued work cancelled before the background operation start
   assert.equal(listHonkerJobs("slskd-pipeline").some((row) => row.id === queueJobId), true);
 });
 
-test("static playlist deletion cancels its pipeline before clearing the tracker", async (t) => {
+test("static playlist deletion cancels its pipeline before clearing the tracker", async () => {
   const playlistId = "deleted-playlist";
   flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,
@@ -264,14 +264,14 @@ test("static playlist deletion cancels its pipeline before clearing the tracker"
     source: "slskd",
   });
 
-  t.mock.method(downloadWorker, "blockPlaylist", async () => {});
-  t.mock.method(downloadWorker, "waitForPlaylistIdle", async () => {});
-  t.mock.method(downloadWorker, "unblockPlaylist", async () => {});
-  t.mock.method(downloadWorker, "pruneOrphanedJobState", async () => {});
-  t.mock.method(downloadWorker, "setRetryCyclePaused", () => {});
-  t.mock.method(playlistManager, "updateConfig", () => {});
-  t.mock.method(playlistManager, "weeklyReset", async () => {});
-  t.mock.method(playlistManager, "requestPlaylistSync", () => null);
+  vi.spyOn(downloadWorker, "blockPlaylist").mockImplementation(async () => {});
+  vi.spyOn(downloadWorker, "waitForPlaylistIdle").mockImplementation(async () => {});
+  vi.spyOn(downloadWorker, "unblockPlaylist").mockImplementation(async () => {});
+  vi.spyOn(downloadWorker, "pruneOrphanedJobState").mockImplementation(async () => {});
+  vi.spyOn(downloadWorker, "setRetryCyclePaused").mockImplementation(() => {});
+  vi.spyOn(playlistManager, "updateConfig").mockImplementation(() => {});
+  vi.spyOn(playlistManager, "weeklyReset").mockImplementation(async () => {});
+  vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
 
   await processPlaylistOperation({
     kind: "shared-playlist-delete",
@@ -290,7 +290,7 @@ test("static playlist deletion cancels its pipeline before clearing the tracker"
   assert.equal(listHonkerJobs("slskd-pipeline").some((row) => row.id === upgradeQueueJobId), false);
 });
 
-test("static playlist track replacement cancels dependent quality upgrades", async (t) => {
+test("static playlist track replacement cancels dependent quality upgrades", async () => {
   const playlistId = "replaced-playlist";
   flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,
@@ -312,14 +312,14 @@ test("static playlist track replacement cancels dependent quality upgrades", asy
     upgrade: true,
   });
 
-  t.mock.method(downloadWorker, "blockPlaylist", async () => {});
-  t.mock.method(downloadWorker, "waitForPlaylistIdle", async () => {});
-  t.mock.method(downloadWorker, "unblockPlaylist", async () => {});
-  t.mock.method(downloadWorker, "pruneOrphanedJobState", async () => {});
-  t.mock.method(downloadWorker, "setRetryCyclePaused", () => {});
-  t.mock.method(playlistManager, "updateConfig", () => {});
-  t.mock.method(playlistManager, "requestPlaylistSync", () => null);
-  t.mock.method(playlistManager, "scheduleScanLibrary", async () => {});
+  vi.spyOn(downloadWorker, "blockPlaylist").mockImplementation(async () => {});
+  vi.spyOn(downloadWorker, "waitForPlaylistIdle").mockImplementation(async () => {});
+  vi.spyOn(downloadWorker, "unblockPlaylist").mockImplementation(async () => {});
+  vi.spyOn(downloadWorker, "pruneOrphanedJobState").mockImplementation(async () => {});
+  vi.spyOn(downloadWorker, "setRetryCyclePaused").mockImplementation(() => {});
+  vi.spyOn(playlistManager, "updateConfig").mockImplementation(() => {});
+  vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
+  vi.spyOn(playlistManager, "scheduleScanLibrary").mockImplementation(async () => {});
 
   await operationsModule.updateStaticPlaylist({
     playlistId,
@@ -337,7 +337,7 @@ test("static playlist track replacement cancels dependent quality upgrades", asy
   assert.equal(listHonkerJobs("slskd-pipeline").some((row) => row.id === queueJobId), false);
 });
 
-test("playlist deletion cancels durably recorded slskd searches", async (t) => {
+test("playlist deletion cancels durably recorded slskd searches", async () => {
   const playlistId = "provider-work-playlist";
   const jobId = "provider-work-job";
   const originalSettings = dbOps.getSettings();
@@ -386,7 +386,7 @@ test("playlist deletion cancels durably recorded slskd searches", async (t) => {
   }
 });
 
-test("settled slskd searches no longer block playlist cancellation", async (t) => {
+test("settled slskd searches no longer block playlist cancellation", async () => {
   const playlistId = "settled-search-playlist";
   const originalSettings = dbOps.getSettings();
   const { slskdClient } = await importFromRepo("backend/services/slskdClient.js");
@@ -403,14 +403,14 @@ test("settled slskd searches no longer block playlist cancellation", async (t) =
     playlistId,
   );
   let searchCount = 0;
-  t.mock.method(slskdClient, "createSearch", async (_query, options) => {
+  vi.spyOn(slskdClient, "createSearch").mockImplementation(async (_query, options) => {
     const id = `settled-search-${++searchCount}`;
     options.onSearchCreated(id);
     return { id };
   });
-  t.mock.method(slskdClient, "getSearch", async () => ({ state: "Completed, TimedOut", responses: [] }));
-  t.mock.method(slskdClient, "isCleanupAfterRunsEnabled", () => false);
-  t.mock.method(slskdClient, "cleanupAfterRun", async () => ({ cleanedSearchIds: [] }));
+  vi.spyOn(slskdClient, "getSearch").mockImplementation(async () => ({ state: "Completed, TimedOut", responses: [] }));
+  vi.spyOn(slskdClient, "isCleanupAfterRunsEnabled").mockImplementation(() => false);
+  vi.spyOn(slskdClient, "cleanupAfterRun").mockImplementation(async () => ({ cleanedSearchIds: [] }));
 
   try {
     let payload = { phase: "search", source: "slskd", jobId, playlistId };
@@ -592,7 +592,7 @@ test("failed static playlist deletion preserves membership and leaves a recovera
   }
 });
 
-test("SABnzbd cancellation retains a job when a refused queue deletion leaves it queued", async (t) => {
+test("SABnzbd cancellation retains a job when a refused queue deletion leaves it queued", async () => {
   const playlistId = "sabnzbd-refused-delete";
   const jobId = downloadTracker.addJob(
     { artistName: "Artist", trackName: "Queued Song" },
@@ -602,11 +602,11 @@ test("SABnzbd cancellation retains a job when a refused queue deletion leaves it
     downloadClient: "sabnzbd",
     downloadClientId: "SABnzbd_nzo_refused",
   });
-  t.mock.method(sabnzbdClient, "isConfigured", () => true);
-  t.mock.method(sabnzbdClient, "deleteQueueItem", async () => false);
-  t.mock.method(sabnzbdClient, "deleteHistoryItem", async () => false);
-  t.mock.method(sabnzbdClient, "getQueueItem", async () => ({ nzo_id: "SABnzbd_nzo_refused" }));
-  t.mock.method(sabnzbdClient, "getHistoryItem", async () => null);
+  vi.spyOn(sabnzbdClient, "isConfigured").mockImplementation(() => true);
+  vi.spyOn(sabnzbdClient, "deleteQueueItem").mockImplementation(async () => false);
+  vi.spyOn(sabnzbdClient, "deleteHistoryItem").mockImplementation(async () => false);
+  vi.spyOn(sabnzbdClient, "getQueueItem").mockImplementation(async () => ({ nzo_id: "SABnzbd_nzo_refused" }));
+  vi.spyOn(sabnzbdClient, "getHistoryItem").mockImplementation(async () => null);
 
   await assert.rejects(
     cancellationServiceModule.cancelPlaylistDownloadWork(
@@ -618,7 +618,7 @@ test("SABnzbd cancellation retains a job when a refused queue deletion leaves it
   assert.equal(downloadTracker.getJob(jobId)?.downloadClientId, "SABnzbd_nzo_refused");
 });
 
-test("SABnzbd cancellation accepts already absent queue and history items", async (t) => {
+test("SABnzbd cancellation accepts already absent queue and history items", async () => {
   const playlistId = "sabnzbd-already-absent";
   const jobId = downloadTracker.addJob(
     { artistName: "Artist", trackName: "Completed Song" },
@@ -628,11 +628,11 @@ test("SABnzbd cancellation accepts already absent queue and history items", asyn
     downloadClient: "sabnzbd",
     downloadClientId: "SABnzbd_nzo_absent",
   });
-  t.mock.method(sabnzbdClient, "isConfigured", () => true);
-  t.mock.method(sabnzbdClient, "deleteQueueItem", async () => false);
-  t.mock.method(sabnzbdClient, "deleteHistoryItem", async () => false);
-  t.mock.method(sabnzbdClient, "getQueueItem", async () => null);
-  t.mock.method(sabnzbdClient, "getHistoryItem", async () => null);
+  vi.spyOn(sabnzbdClient, "isConfigured").mockImplementation(() => true);
+  vi.spyOn(sabnzbdClient, "deleteQueueItem").mockImplementation(async () => false);
+  vi.spyOn(sabnzbdClient, "deleteHistoryItem").mockImplementation(async () => false);
+  vi.spyOn(sabnzbdClient, "getQueueItem").mockImplementation(async () => null);
+  vi.spyOn(sabnzbdClient, "getHistoryItem").mockImplementation(async () => null);
 
   await assert.doesNotReject(
     cancellationServiceModule.cancelPlaylistDownloadWork(
@@ -642,7 +642,7 @@ test("SABnzbd cancellation accepts already absent queue and history items", asyn
   );
 });
 
-test("NZBGet cancellation deletes the tracked queue and history items", async (t) => {
+test("NZBGet cancellation deletes the tracked queue and history items", async () => {
   const playlistId = "nzbget-cancelled-playlist";
   const jobId = downloadTracker.addJob(
     { artistName: "Artist", trackName: "Queued Song" },
@@ -653,8 +653,8 @@ test("NZBGet cancellation deletes the tracked queue and history items", async (t
     downloadClientId: 42,
   });
   const calls = [];
-  t.mock.method(nzbgetClient, "isConfigured", () => true);
-  t.mock.method(nzbgetClient, "rpc", async (method, params) => {
+  vi.spyOn(nzbgetClient, "isConfigured").mockImplementation(() => true);
+  vi.spyOn(nzbgetClient, "rpc").mockImplementation(async (method, params) => {
     calls.push([method, params]);
     return true;
   });
@@ -761,36 +761,36 @@ test("Deemix cleanup ignores jobs without a queue identifier", async () => {
   );
 });
 
-test("clearing a shown flow or deleting any flow rescans the library", async (t) => {
+test("clearing a shown flow or deleting any flow rescans the library", async () => {
   const shown = flowPlaylistConfig.createFlow({ name: "Shown Flow", size: 10 });
   flowPlaylistConfig.updateFlow(shown.id, { showInLibrary: true });
   const hidden = flowPlaylistConfig.createFlow({ name: "Hidden Flow", size: 10 });
 
-  t.mock.method(downloadWorker, "blockPlaylist", async () => {});
-  t.mock.method(downloadWorker, "waitForPlaylistIdle", async () => {});
-  t.mock.method(downloadWorker, "unblockPlaylist", async () => {});
-  t.mock.method(downloadWorker, "setRetryCyclePaused", () => {});
-  t.mock.method(playlistManager, "updateConfig", () => {});
-  t.mock.method(playlistManager, "weeklyReset", async () => {});
-  t.mock.method(playlistManager, "requestPlaylistSync", () => null);
-  const scans = t.mock.method(playlistManager, "scheduleScanLibrary", () => {});
+  vi.spyOn(downloadWorker, "blockPlaylist").mockImplementation(async () => {});
+  vi.spyOn(downloadWorker, "waitForPlaylistIdle").mockImplementation(async () => {});
+  vi.spyOn(downloadWorker, "unblockPlaylist").mockImplementation(async () => {});
+  vi.spyOn(downloadWorker, "setRetryCyclePaused").mockImplementation(() => {});
+  vi.spyOn(playlistManager, "updateConfig").mockImplementation(() => {});
+  vi.spyOn(playlistManager, "weeklyReset").mockImplementation(async () => {});
+  vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
+  const scans = vi.spyOn(playlistManager, "scheduleScanLibrary").mockImplementation(() => {});
 
   await processPlaylistOperation({ kind: "disable-flow-cleanup", flowId: hidden.id });
   await processPlaylistOperation({ kind: "reset-playlists", playlistTypes: [hidden.id] });
-  assert.equal(scans.mock.callCount(), 0);
+  assert.equal(scans.mock.calls.length, 0);
 
   await processPlaylistOperation({ kind: "disable-flow-cleanup", flowId: shown.id });
-  assert.equal(scans.mock.callCount(), 1);
+  assert.equal(scans.mock.calls.length, 1);
   await processPlaylistOperation({ kind: "reset-playlists", playlistTypes: [shown.id] });
-  assert.equal(scans.mock.callCount(), 2);
+  assert.equal(scans.mock.calls.length, 2);
   await processPlaylistOperation({ kind: "delete-flow", flowId: shown.id });
-  assert.equal(scans.mock.callCount(), 3);
+  assert.equal(scans.mock.calls.length, 3);
   assert.equal(flowPlaylistConfig.getFlow(shown.id), null);
   await processPlaylistOperation({ kind: "delete-flow", flowId: hidden.id });
-  assert.equal(scans.mock.callCount(), 4);
+  assert.equal(scans.mock.calls.length, 4);
 });
 
-test("rotating a flow shown in the library rescans the library", async (t) => {
+test("rotating a flow shown in the library rescans the library", async () => {
   dbOps.updateSettings({
     integrations: {
       lastfm: { apiKey: "test" },
@@ -800,18 +800,18 @@ test("rotating a flow shown in the library rescans the library", async (t) => {
   const flow = flowPlaylistConfig.createFlow({ name: "Rotating Shown Flow", size: 10 });
   flowPlaylistConfig.updateFlow(flow.id, { showInLibrary: true });
 
-  t.mock.method(downloadWorker, "blockPlaylist", async () => {});
-  t.mock.method(downloadWorker, "waitForPlaylistIdle", async () => {});
-  t.mock.method(downloadWorker, "unblockPlaylist", async () => {});
-  t.mock.method(downloadWorker, "prepareFlowRunPlan", async () => ({}));
-  t.mock.method(downloadWorker, "seedFlowRun", async () => ({ jobIds: [], tracksQueued: 0 }));
-  t.mock.method(playlistManager, "updateConfig", () => {});
-  t.mock.method(playlistManager, "weeklyReset", async () => {});
-  t.mock.method(playlistManager, "requestPlaylistSync", () => null);
-  const scans = t.mock.method(playlistManager, "scheduleScanLibrary", () => {});
+  vi.spyOn(downloadWorker, "blockPlaylist").mockImplementation(async () => {});
+  vi.spyOn(downloadWorker, "waitForPlaylistIdle").mockImplementation(async () => {});
+  vi.spyOn(downloadWorker, "unblockPlaylist").mockImplementation(async () => {});
+  vi.spyOn(downloadWorker, "prepareFlowRunPlan").mockImplementation(async () => ({}));
+  vi.spyOn(downloadWorker, "seedFlowRun").mockImplementation(async () => ({ jobIds: [], tracksQueued: 0 }));
+  vi.spyOn(playlistManager, "updateConfig").mockImplementation(() => {});
+  vi.spyOn(playlistManager, "weeklyReset").mockImplementation(async () => {});
+  vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
+  const scans = vi.spyOn(playlistManager, "scheduleScanLibrary").mockImplementation(() => {});
 
   const result = await processPlaylistOperation({ kind: "manual-start-flow", flowId: flow.id });
 
   assert.equal(result.empty, true);
-  assert.equal(scans.mock.callCount(), 1);
+  assert.equal(scans.mock.calls.length, 1);
 });

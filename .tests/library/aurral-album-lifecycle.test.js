@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -102,18 +102,18 @@ async function callRoute(key, params = {}, body = {}, query = {}) {
 
 async function callRouteAsWebProcess(t, ...args) {
   const statement = Object.getPrototypeOf(db.prepare("SELECT 1"));
-  const reads = ["all", "get", "iterate"].map((method) => t.mock.method(statement, method));
+  const reads = ["all", "get", "iterate"].map((method) => vi.spyOn(statement, method));
   const previousMode = process.env.NODE_ENV;
   process.env.NODE_ENV = "production";
   try {
     const response = await callRoute(...args);
     const jobReads = reads
-      .flatMap((read) => read.mock.calls)
-      .filter((call) => /\bplaylist_download_jobs\b/.test(call.this.source));
+      .flatMap((read) => read.mock.contexts)
+      .filter((statement) => /\bplaylist_download_jobs\b/.test(statement.source));
     return { response, jobReads: jobReads.length };
   } finally {
     process.env.NODE_ENV = previousMode;
-    for (const read of reads) read.mock.restore();
+    for (const read of reads) read.mockRestore();
   }
 }
 
@@ -188,12 +188,12 @@ function addAlbumJob(trackName, requestGroupId = "group-1") {
   );
 }
 
-test.beforeEach(() => {
+beforeEach(() => {
   downloadTracker.clearAll();
   requestUser = { id: 1, role: "admin" };
 });
 
-test.after(async () => {
+afterAll(async () => {
   await new Promise((resolve) => server.close(resolve));
   await cleanupIsolatedState(isolatedState);
 });
@@ -231,9 +231,9 @@ test("a Library requester can cancel without flow permission and cannot cancel a
   assert.equal(downloadTracker.getJob(other).status, "pending");
 });
 
-test("a Library requester can retry failed and stalled downloads without duplicating active work", async (t) => {
+test("a Library requester can retry failed and stalled downloads without duplicating active work", async () => {
   await downloadWorker.stopAndDrain();
-  t.mock.method(downloadWorker, "start", async () => {});
+  vi.spyOn(downloadWorker, "start").mockImplementation(async () => {});
   const fixture = createLibraryAlbum();
   const failed = fixture.jobFor(0);
   const stalled = fixture.jobFor(1);
@@ -291,7 +291,7 @@ test("album-grab request rows include canonical ids and request groups", async (
   assert.equal(albumRequest.requestGroupId, downloadTracker.getJob(ids[0]).requestGroupId);
 });
 
-test("track cancellation keeps failed provider cleanup pending and succeeds after recovery", async (t) => {
+test("track cancellation keeps failed provider cleanup pending and succeeds after recovery", async () => {
   const fixture = createLibraryAlbum();
   const id = fixture.jobFor(0);
   downloadTracker.setDownloading(id);
@@ -302,16 +302,16 @@ test("track cancellation keeps failed provider cleanup pending and succeeds afte
   assert.equal(first.body.cleanupFailed, true);
   const { getDownloadClient } = await import("../../backend/services/download/downloadClientSettings.js");
   const client = getDownloadClient("sabnzbd");
-  t.mock.method(client, "isConfigured", () => true);
-  t.mock.method(client, "deleteQueueItem", async () => true);
-  t.mock.method(client, "deleteHistoryItem", async () => true);
+  vi.spyOn(client, "isConfigured").mockImplementation(() => true);
+  vi.spyOn(client, "deleteQueueItem").mockImplementation(async () => true);
+  vi.spyOn(client, "deleteHistoryItem").mockImplementation(async () => true);
   const recovered = await apiRequest(`/api/playlists/jobs/${id}/cancel`, "POST");
   assert.equal(recovered.body.status, "cancelled");
   assert.equal(recovered.body.cleanupFailed, false);
   assert.equal(db.prepare("SELECT monitored FROM library_tracks WHERE id = ?").get(fixture.tracks[0].id).monitored, 1);
 });
 
-test("retry keeps a cancelled queued job blocked until provider cleanup succeeds", async (t) => {
+test("retry keeps a cancelled queued job blocked until provider cleanup succeeds", async () => {
   const fixture = createLibraryAlbum();
   const id = fixture.jobFor(0);
   downloadTracker.updateDownloadMetadata(id, {
@@ -332,9 +332,9 @@ test("retry keeps a cancelled queued job blocked until provider cleanup succeeds
 
   const { getDownloadClient } = await import("../../backend/services/download/downloadClientSettings.js");
   const client = getDownloadClient("sabnzbd");
-  t.mock.method(client, "isConfigured", () => true);
-  t.mock.method(client, "deleteQueueItem", async () => true);
-  t.mock.method(client, "deleteHistoryItem", async () => true);
+  vi.spyOn(client, "isConfigured").mockImplementation(() => true);
+  vi.spyOn(client, "deleteQueueItem").mockImplementation(async () => true);
+  vi.spyOn(client, "deleteHistoryItem").mockImplementation(async () => true);
 
   const recoveredRetry = await apiRequest(`/api/playlists/jobs/${id}/retry`, "POST");
   assert.deepEqual(recoveredRetry.body, { jobId: id, status: "pending", retried: true });
@@ -342,7 +342,7 @@ test("retry keeps a cancelled queued job blocked until provider cleanup succeeds
   assert.equal(cancellation.isDownloadJobCancelled(id), false);
 });
 
-test("retry keeps a failed job blocked until its provider request is cleaned up", async (t) => {
+test("retry keeps a failed job blocked until its provider request is cleaned up", async () => {
   const fixture = createLibraryAlbum();
   const id = fixture.jobFor(0);
   downloadTracker.setDownloading(id);
@@ -361,9 +361,9 @@ test("retry keeps a failed job blocked until its provider request is cleaned up"
 
   const { getDownloadClient } = await import("../../backend/services/download/downloadClientSettings.js");
   const client = getDownloadClient("sabnzbd");
-  t.mock.method(client, "isConfigured", () => true);
-  t.mock.method(client, "deleteQueueItem", async () => true);
-  t.mock.method(client, "deleteHistoryItem", async () => true);
+  vi.spyOn(client, "isConfigured").mockImplementation(() => true);
+  vi.spyOn(client, "deleteQueueItem").mockImplementation(async () => true);
+  vi.spyOn(client, "deleteHistoryItem").mockImplementation(async () => true);
 
   const recoveredRetry = await apiRequest(`/api/playlists/jobs/${id}/retry`, "POST");
   assert.deepEqual(recoveredRetry.body, { jobId: id, status: "pending", retried: true });
@@ -405,9 +405,9 @@ test("cancelling an album leader keeps its held peer and shared transfer running
   assert.ok(honker.listHonkerJobs("slskd-pipeline").some((row) => row.payload.jobId === peer));
 });
 
-test("restarting a held album track detaches it from the previous shared attempt", async (t) => {
+test("restarting a held album track detaches it from the previous shared attempt", async () => {
   await downloadWorker.stopAndDrain();
-  t.mock.method(downloadWorker, "start", async () => {});
+  vi.spyOn(downloadWorker, "start").mockImplementation(async () => {});
   const fixture = createLibraryAlbum({ trackCount: 2 });
   const leader = fixture.jobFor(0);
   const peer = fixture.jobFor(1);
@@ -741,10 +741,8 @@ test("a download status poll finds album jobs under either album ID in any spell
       legacy.jobFor(0, { albumMbid: releaseMbid }),
       legacy.jobFor(1),
     ];
-    const newerJobs = [
-      legacy.jobFor(0),
-      legacy.jobFor(1, { albumMbid: releaseMbid }),
-    ];
+    legacy.jobFor(0);
+    legacy.jobFor(1, { albumMbid: releaseMbid });
     olderJobs.forEach((jobId) => downloadTracker.setFailed(jobId, "No matching source result"));
 
     const spelled = createLibraryAlbum({ trackCount: 2 });
@@ -947,7 +945,7 @@ test("an album asks for its most common edition and a shorter download leaves it
   clearApiCaches();
   downloadWorker.start = async () => {};
   lidarrClient.isConfigured = () => false;
-  t.after(async () => {
+  t.onTestFinished(async () => {
     downloadWorker.start = originalWorkerStart;
     lidarrClient.isConfigured = originalIsConfigured;
     dbOps.updateSettings(originalSettings);
@@ -1027,7 +1025,7 @@ test("an album that wants the expanded edition keeps wanting the extra track a d
   const defaults = libraryManager.getMonitoringDefaultsState().rules;
   libraryManager.setMonitoringDefaults({ ...defaults, edition: "expanded" });
   let ids = [];
-  t.after(async () => {
+  t.onTestFinished(async () => {
     for (const id of ids) {
       if (downloadTracker.getJob(id)?.status === "pending") downloadTracker.setCancelled(id);
     }
@@ -1091,7 +1089,7 @@ test("a two-disc album downloads a title it repeats on each disc to two names", 
   clearApiCaches();
   downloadWorker.start = async () => {};
   lidarrClient.isConfigured = () => false;
-  t.after(async () => {
+  t.onTestFinished(async () => {
     downloadWorker.start = originalWorkerStart;
     lidarrClient.isConfigured = originalIsConfigured;
     dbOps.updateSettings(originalSettings);
@@ -1155,7 +1153,7 @@ test("an album asks for its release's own lengths and fills a missing one from p
   clearApiCaches();
   downloadWorker.start = async () => {};
   lidarrClient.isConfigured = () => false;
-  t.after(async () => {
+  t.onTestFinished(async () => {
     downloadWorker.start = originalWorkerStart;
     lidarrClient.isConfigured = originalIsConfigured;
     dbOps.updateSettings(originalSettings);
@@ -1200,7 +1198,7 @@ test("asking for an album downloads the missing tracks of the edition its track 
   clearApiCaches();
   downloadWorker.start = async () => {};
   lidarrClient.isConfigured = () => false;
-  t.after(async () => {
+  t.onTestFinished(async () => {
     downloadWorker.start = originalWorkerStart;
     lidarrClient.isConfigured = originalIsConfigured;
     dbOps.updateSettings(originalSettings);

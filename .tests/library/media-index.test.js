@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { access, mkdtemp, mkdir, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
@@ -321,7 +321,7 @@ test("turning Lidarr off removes its music from the Library and keeps Aurral's",
   const downloads = await mkdtemp(path.join(tmpdir(), "aurral-lidarr-off-downloads-"));
   const music = await mkdtemp(path.join(tmpdir(), "aurral-lidarr-off-music-"));
   const tag = `Off ${process.pid}`;
-  t.after(async () => {
+  t.onTestFinished(async () => {
     removeArtistsNamed(`${tag}%`);
     await rm(downloads, { recursive: true, force: true });
     await rm(music, { recursive: true, force: true });
@@ -396,7 +396,7 @@ test("a scan of several roots drops songs whose files are gone from albums nobod
   const source = `test-roots-gone-${process.pid}`;
   const artist = `Roots Gone ${process.pid}`;
   const tags = {};
-  t.after(async () => {
+  t.onTestFinished(async () => {
     for (const filePath of Object.keys(tags)) deleteIndexedFile(source, filePath);
     removeArtistsNamed(artist);
     await Promise.all(roots.map((root) => rm(root, { recursive: true, force: true })));
@@ -421,7 +421,7 @@ test("files in a folder Lidarr no longer has leave the Library", async (t) => {
   const kept = await mkdtemp(path.join(tmpdir(), "aurral-dropped-root-kept-"));
   const dropped = await mkdtemp(path.join(tmpdir(), "aurral-dropped-root-gone-"));
   const tag = `Dropped Root ${process.pid}`;
-  t.after(async () => {
+  t.onTestFinished(async () => {
     removeArtistsNamed(`${tag}%`);
     await Promise.all([downloads, kept, dropped].map((root) => rm(root, { recursive: true, force: true })));
   });
@@ -439,7 +439,7 @@ test("a Lidarr root folder inside the Downloads Folder belongs to Lidarr while i
   const downloads = await mkdtemp(path.join(tmpdir(), "aurral-nested-lidarr-"));
   const music = path.join(downloads, "music");
   const tag = `Nested ${process.pid}`;
-  t.after(async () => {
+  t.onTestFinished(async () => {
     removeArtistsNamed(`${tag}%`);
     await rm(downloads, { recursive: true, force: true });
   });
@@ -466,7 +466,7 @@ test("each folder is scanned by its deepest manager when Lidarr and Aurral folde
   const downloads = path.join(music, "downloads");
   const innerLidarr = path.join(downloads, "lidarr");
   const tag = `Deep ${process.pid}`;
-  t.after(async () => {
+  t.onTestFinished(async () => {
     removeArtistsNamed(`${tag}%`);
     await rm(music, { recursive: true, force: true });
   });
@@ -484,7 +484,7 @@ test("each folder is scanned by its deepest manager when Lidarr and Aurral folde
 test("turning Lidarr off drops a Lidarr-only album link from a track Aurral keeps elsewhere", async (t) => {
   const downloads = await mkdtemp(path.join(tmpdir(), "aurral-off-links-"));
   const tag = `Links ${process.pid}`;
-  t.after(async () => {
+  t.onTestFinished(async () => {
     removeArtistsNamed(`${tag}%`);
     await rm(downloads, { recursive: true, force: true });
   });
@@ -1034,7 +1034,7 @@ test("a release that lists a song twice lists it at both places, and a file numb
   const artist = `Twice List ${process.pid}`;
   const twice = listedAlbum(artist, uuid("dddddddd", 5), `Twice ${process.pid}`, 50, ["Intro", "Song", "Intro"]);
   const numbered = listedAlbum(artist, uuid("dddddddd", 5), `Numbered ${process.pid}`, 51, ["First", "Second"]);
-  t.after(async () => {
+  t.onTestFinished(async () => {
     removeArtistsNamed(artist);
     await rm(root, { recursive: true, force: true });
   });
@@ -1062,7 +1062,7 @@ test("a song an album keeps after its untagged file is gone is listed once, and 
   const artist = `Kept List ${process.pid}`;
   const title = `Kept ${process.pid}`;
   const album = listedAlbum(artist, uuid("dddddddd", 4), title, 40, ["One", "Two", "Three"]);
-  t.after(async () => {
+  t.onTestFinished(async () => {
     removeArtistsNamed(artist);
     await Promise.all([downloads, music].map((root) => rm(root, { recursive: true, force: true })));
   });
@@ -1099,7 +1099,7 @@ test("an album lists the edition its files come from, again when a file of anoth
     { id: uuid("bbbbbbbb", 61), titles: standard },
     { id: uuid("bbbbbbbb", 62), titles: deluxe },
   ]);
-  t.after(async () => {
+  t.onTestFinished(async () => {
     removeArtistsNamed(artist);
     await rm(root, { recursive: true, force: true });
   });
@@ -1139,7 +1139,7 @@ test("an album lists the release whose recordings its files are tagged with when
     { id: uuid("bbbbbbbb", 91), titles: ["One", "Two"] },
     { id: uuid("bbbbbbbb", 92), titles: ["One", "Two", "Bonus"], recordings: remastered },
   ]);
-  t.after(async () => {
+  t.onTestFinished(async () => {
     removeArtistsNamed(artist);
     await rm(root, { recursive: true, force: true });
   });
@@ -1167,7 +1167,7 @@ test("remastered files numbered as one disc list each song of their edition once
     { id: uuid("bbbbbbbb", 71), titles: songs.slice(0, 4), perDisc: 2 },
     { id: uuid("bbbbbbbb", 72), titles: songs, perDisc: 2 },
   ]);
-  t.after(async () => {
+  t.onTestFinished(async () => {
     removeArtistsNamed(artist);
     await rm(root, { recursive: true, force: true });
   });
@@ -1216,7 +1216,7 @@ test("an untagged file at a listed song's place is that song when its title is s
   const title = `Place ${process.pid}`;
   const album = listedAlbum(artist, uuid("dddddddd", 8), title, 80,
     ["Tongue Tied", "Fly", "Hooray", "The Rat House", "Today", "Stand by Me Tonight", "Get Down With Me", "Anchor", "Glide (Sped Up)", "Drift (Extended)", "Halo", "Spark", "Echo", "Ember", "Fable"]);
-  t.after(async () => {
+  t.onTestFinished(async () => {
     removeArtistsNamed(artist);
     await rm(root, { recursive: true, force: true });
   });
@@ -1271,7 +1271,7 @@ test("an untagged song numbered apart from the album's song with its title stays
   const title = `Apart ${process.pid}`;
   const album = listedAlbum(artist, uuid("dddddddd", 10), title, 100,
     ["Intro", "Interlude", "Outro", "Skit", "Theme", "Theme (Remastered)"]);
-  t.after(async () => {
+  t.onTestFinished(async () => {
     removeArtistsNamed(artist);
     await rm(root, { recursive: true, force: true });
   });
@@ -1317,7 +1317,7 @@ test("a file at a listed song's place is that song, keeping its own title when t
   const titles = ["One", "You're in My Head", "Two", "Three"];
   const merged = { Three: [uuid("c1c1c1c1", 4)] };
   const album = listedAlbum(artist, uuid("dddddddd", 11), title, 110, titles, [{ id: uuid("bbbbbbbb", 110), titles, merged }]);
-  t.after(async () => {
+  t.onTestFinished(async () => {
     removeArtistsNamed(artist);
     await rm(root, { recursive: true, force: true });
   });
@@ -1339,7 +1339,7 @@ test("a file is the listed song its recording is, before another whose title it 
   const artist = `Recording First List ${process.pid}`;
   const title = `Recording First ${process.pid}`;
   const album = listedAlbum(artist, uuid("dddddddd", 16), title, 160, ["Tonight", "Tonight, Tonight"]);
-  t.after(async () => {
+  t.onTestFinished(async () => {
     removeArtistsNamed(artist);
     await rm(root, { recursive: true, force: true });
   });
@@ -1362,7 +1362,7 @@ test("a file tagged with a recording MusicBrainz merged into a release's song is
     { id: uuid("bbbbbbbb", 121), titles: ["One", "Two"] },
     { id: uuid("bbbbbbbb", 122), titles: ["One", "Two", "Three", "Bonus"], recordings: remastered, merged },
   ]);
-  t.after(async () => {
+  t.onTestFinished(async () => {
     removeArtistsNamed(artist);
     await rm(root, { recursive: true, force: true });
   });
@@ -1380,7 +1380,7 @@ test("a tagged file numbered apart from its release is the release's song with i
   const artist = `Tagged Apart List ${process.pid}`;
   const title = `Tagged Apart ${process.pid}`;
   const album = listedAlbum(artist, uuid("dddddddd", 13), title, 130, ["When You Die", "Intro", "Song", "Intro", "Outro"]);
-  t.after(async () => {
+  t.onTestFinished(async () => {
     removeArtistsNamed(artist);
     await rm(root, { recursive: true, force: true });
   });
@@ -1415,7 +1415,7 @@ test("a second file of a song, tagged with a recording its album's release does 
      WHERE track.title = ? AND media.available = 1 ORDER BY media.path`,
   ).pluck().all(name);
   const listed = [["3 A.M.", "have"], ["Kids (Live)", "have"], ["Kids", "missing"], ["Sex & Candy", "have"], ["Sex and Candy", "have"], ["Song", "missing"]];
-  t.after(async () => {
+  t.onTestFinished(async () => {
     removeArtistsNamed(artist);
     await rm(root, { recursive: true, force: true });
   });
@@ -1456,7 +1456,7 @@ test("an album lists its release group only when the group holds one of its file
   const titleOnly = album("Title Only", 142, ["One", "Two"]);
   const featured = album("Featured", 143, ["One", "Two"]);
   const credited = album("Credited", 144, ["Duet", "Solo"]);
-  t.after(async () => {
+  t.onTestFinished(async () => {
     removeArtistsNamed(artist);
     await rm(root, { recursive: true, force: true });
   });
@@ -1491,7 +1491,7 @@ test("an album someone asked for keeps the release it lists after its files are 
   const title = `Gone ${process.pid}`;
   const album = listedAlbum(artist, uuid("dddddddd", 18), title, 180, ["One", "Two"]);
   const listedRelease = () => JSON.parse(db.prepare("SELECT metadata_json FROM library_albums WHERE title = ?").pluck().get(title)).trackList.release;
-  t.after(async () => {
+  t.onTestFinished(async () => {
     removeArtistsNamed(artist);
     await rm(root, { recursive: true, force: true });
   });
@@ -1545,7 +1545,7 @@ test("an album lists the same songs, with the same ids, as Lidarr is turned off 
   const title = `Switch ${process.pid}`;
   const album = listedAlbum(artist, uuid("dddddddd", 3), title, 30, ["One", "Two", "Three"]);
   const release = uuid("bbbbbbbb", 30);
-  t.after(async () => {
+  t.onTestFinished(async () => {
     removeArtistsNamed(artist);
     await Promise.all([downloads, music].map((root) => rm(root, { recursive: true, force: true })));
   });

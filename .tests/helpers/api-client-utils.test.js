@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import http from "node:http";
 import { spawnSync } from "node:child_process";
-import test from "node:test";
+import { test } from "vite-plus/test";
 import { setTimeout as delay } from "node:timers/promises";
 import createCache from "../../backend/services/apiClients/simpleCache.js";
 import createRateLimiter from "../../backend/services/apiClients/rateLimiter.js";

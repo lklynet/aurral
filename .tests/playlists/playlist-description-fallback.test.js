@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import {
@@ -16,7 +16,7 @@ const [isolatedState, { db }, { dbOps }, playlistConfigModule] = await setupIsol
 const { flowPlaylistConfig } = playlistConfigModule;
 const { getDiscoverPlaylistPreset } = await import("../../backend/config/discoverPlaylistPresets.js");
 
-test.beforeEach(() => {
+beforeEach(() => {
   resetDatabase(db);
   dbOps.updateSettings({
     integrations: {},
@@ -26,7 +26,7 @@ test.beforeEach(() => {
   });
 });
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import path from "node:path";
-import { test } from "node:test";
+import { test } from "vite-plus/test";
 import { recoverExitedWorkerJobs, recoverJobsClaimedBeforeStart } from "../../backend/services/backgroundJobRecovery.js";
 import { getHonkerDb, getLibraryScanQueue } from "../../backend/services/honkerDb.js";
 import {
@@ -15,7 +15,7 @@ test("an exited scan process releases its claimed job for retry", async (t) => {
   const pid = 900000001;
   const workerId = `aurral-${pid}`;
   const jobId = queue.enqueue({ force: true });
-  t.after(() => queue.cancel(jobId));
+  t.onTestFinished(() => queue.cancel(jobId));
   const claim = queue.claimOne(workerId);
   assert.equal(claim?.id, jobId);
   assert.equal(queue.getJob(jobId)?.state, "processing");
@@ -42,7 +42,7 @@ test("a worker exit preserves a full rescan requested during the active scan", a
   const queue = getLibraryScanQueue();
   const pid = 900000002;
   const jobId = queue.enqueue({ force: false });
-  t.after(() => queue.cancel(jobId));
+  t.onTestFinished(() => queue.cancel(jobId));
   assert.equal(queue.claimOne(`aurral-${pid}`)?.id, jobId);
   dbOps.setJSONSetting("pendingLibraryScanJob", {
     jobId,
@@ -67,7 +67,7 @@ test("a scan claimed before Aurral restarted runs again at startup with the file
   const queue = getLibraryScanQueue();
   const earlier = queue.enqueue({ force: false });
   const current = queue.enqueue({ force: false });
-  t.after(() => {
+  t.onTestFinished(() => {
     queue.cancel(earlier);
     queue.cancel(current);
   });
@@ -177,14 +177,14 @@ test("an exited personal discovery process stops reporting that user's refresh a
   const { getDiscoveryStatus } = await import("../../backend/services/discovery/userDiscovery.js");
   const originalLastfmApiKey = process.env.LASTFM_API_KEY;
   process.env.LASTFM_API_KEY = "test-key";
-  t.after(() => {
+  t.onTestFinished(() => {
     if (originalLastfmApiKey === undefined) delete process.env.LASTFM_API_KEY;
     else process.env.LASTFM_API_KEY = originalLastfmApiKey;
   });
   const queue = getDiscoveryUserRefreshQueue();
   const pid = 900000003;
   const jobId = queue.enqueue({ userId: 41, requestedAt: Date.now() });
-  t.after(() => queue.cancel(jobId));
+  t.onTestFinished(() => queue.cancel(jobId));
   assert.equal(queue.claimOne(`aurral-${pid}`)?.id, jobId);
   persistence.markDiscoveryRefreshStarted("user:41");
   assert.equal(getDiscoveryStatus(41).isUpdating, true);

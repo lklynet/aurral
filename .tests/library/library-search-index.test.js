@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, afterAll } from "vite-plus/test";
 import {
   cleanupIsolatedState,
   importFromRepo,
@@ -11,7 +11,7 @@ const [isolatedState, { db }] = await setupIsolatedBackend(
   "backend/config/db-sqlite.js",
 );
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 

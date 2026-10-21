@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import {
@@ -15,7 +15,7 @@ const [isolatedState, { db }, { dbOps }, { runStorageHealthCheck }] =
     "backend/services/storageHealthService.js",
   );
 
-test.beforeEach(async () => {
+beforeEach(async () => {
   await resetDatabase(db);
   const downloadFolder = process.env.DOWNLOAD_FOLDER;
   dbOps.updateSettings({
@@ -26,7 +26,7 @@ test.beforeEach(async () => {
   });
 });
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vite-plus/test";
 
 import { registerAppearsOn } from "../backend/routes/artists/handlers/appearsOn.js";
 import { json, openArtistStream, stubFetch } from "./helpers/artistStream.js";
@@ -107,7 +107,7 @@ test("artist stream sends appearances without waiting for the discography", asyn
   });
 
   const stream = openArtistStream(mbid, { artistName: "Guest Artist", appearsOnLimit: "24" });
-  t.after(() => {
+  t.onTestFinished(() => {
     releaseDiscography();
     stream.close();
   });

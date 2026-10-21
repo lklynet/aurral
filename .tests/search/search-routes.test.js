@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, beforeAll, beforeEach, afterAll } from "vite-plus/test";
 import express from "express";
 import {
   cleanupIsolatedState,
@@ -23,7 +23,7 @@ let metadataServer;
 let metadataRequests = [];
 let metadataHandler = null;
 
-test.before(async () => {
+beforeAll(async () => {
   resetDatabase(db);
   metadataServer = await createMockHttpServer((request, response) => {
     metadataRequests.push({ url: request.url, response });
@@ -52,13 +52,13 @@ test.before(async () => {
   });
 });
 
-test.beforeEach(() => {
+beforeEach(() => {
   metadataRequests = [];
   metadataHandler = null;
   provider.clearMetadataProviderCaches();
 });
 
-test.after(async () => {
+afterAll(async () => {
   await new Promise((resolve) => app.server.close(resolve));
   await metadataServer.close();
   await cleanupIsolatedState(isolatedState);

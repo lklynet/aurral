@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { DeemixClient, readDeemixAlbumQueue } from "../../backend/services/deemixClient.js";

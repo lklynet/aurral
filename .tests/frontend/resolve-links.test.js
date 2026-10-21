@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
-import test from "node:test";
-import { startFrontendServer } from "../helpers/frontendServer.js";
+import { test, vi } from "vite-plus/test";
 
 async function setup(t, respond) {
-  const vite = await startFrontendServer();
+  vi.resetModules();
   const previousFetch = globalThis.fetch;
   const requests = [];
   globalThis.fetch = async (input, init) => {
@@ -15,13 +14,12 @@ async function setup(t, respond) {
       headers: { "content-type": "application/json" },
     });
   };
-  const links = await vite.ssrLoadModule("/src/navigation/resolveLinks.js");
-  const { prefetchRoute } = await vite.ssrLoadModule("/src/navigation/routePrefetch.js");
-  const { queryClient } = await vite.ssrLoadModule("/src/queryClient.js");
-  t.after(async () => {
+  const links = await import("../../frontend/src/navigation/resolveLinks.js");
+  const { prefetchRoute } = await import("../../frontend/src/navigation/routePrefetch.js");
+  const { queryClient } = await import("../../frontend/src/queryClient.js");
+  t.onTestFinished(async () => {
     queryClient.clear();
     globalThis.fetch = previousFetch;
-    await vite.close();
   });
   const open = (path) => {
     const url = new URL(path, "http://aurral.test");

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, beforeAll, afterAll } from "vite-plus/test";
 import { readFile, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -70,7 +70,7 @@ async function assertValid(method, params = {}) {
   return body["subsonic-response"];
 }
 
-test.before(async () => {
+beforeAll(async () => {
   resetDatabase(db);
   dbOps.updateSettings({
     integrations: { general: { authUser: "alice", authPassword: "password123" } },
@@ -119,7 +119,7 @@ test.before(async () => {
   aurral = await startServerProcess({ extraEnv: { CORS_ORIGIN: "" } });
 });
 
-test.after(async () => {
+afterAll(async () => {
   await aurral?.stop();
   await cleanupIsolatedState(isolatedState);
 });

@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeAll, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -107,7 +107,7 @@ const originalLidarr = {
 };
 const originalWorkerStart = downloadWorker.start;
 
-test.before(() => {
+beforeAll(() => {
   dbOps.updateSettings({
     ...originalSettings,
     integrations: {
@@ -125,12 +125,12 @@ test.before(() => {
   downloadWorker.start = async () => {};
 });
 
-test.beforeEach(() => {
+beforeEach(() => {
   downloadTracker.clearAll();
   lidarrCalls.length = 0;
 });
 
-test.after(async () => {
+afterAll(async () => {
   Object.assign(lidarrClient, originalLidarr);
   downloadWorker.start = originalWorkerStart;
   dbOps.updateSettings(originalSettings);

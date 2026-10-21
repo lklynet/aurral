@@ -16,7 +16,7 @@ async function enqueueBulkPayload(record) {
   try {
     if (shouldStartQueueHere("weekly-flow-operation") && process.env.NODE_ENV !== "test") {
       const { startPlaylistOperationWorker } = await import("./playlistOperationWorker.js");
-      startPlaylistOperationWorker();
+      void startPlaylistOperationWorker();
     } else if (process.env.AURRAL_BACKGROUND_WORKER_GROUP && process.connected) {
       process.send({ type: "queue-wake", queue: "weekly-flow-operation" });
     }

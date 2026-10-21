@@ -1,12 +1,12 @@
-import test from "node:test";
+import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { fork } from "node:child_process";
 import { once } from "node:events";
 import { setupIsolatedBackend, cleanupIsolatedState, createMockHttpServer, resetDatabase } from "../helpers/backendTestHarness.js";
 const [state, { SlskdClient }, { db }] = await setupIsolatedBackend(
   "slskd-backoff", "backend/services/slskdClient.js", "backend/config/db-sqlite.js");
-test.after(() => cleanupIsolatedState(state));
-test.beforeEach(() => resetDatabase(db));
+afterAll(() => cleanupIsolatedState(state));
+beforeEach(() => resetDatabase(db));
 
 test("searches from different processes start at least five seconds apart", { timeout: 20000 }, async () => {
   const started = [];

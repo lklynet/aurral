@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -22,7 +22,7 @@ import {
 
 test("track performer stays distinct from the album owner without changing audio tags", async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-performer-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(root, { recursive: true, force: true }));
   const file = path.join(root, "Owner", "Album", "01.mp3");
   await mkdir(path.dirname(file), { recursive: true });
   await writeFile(file, "original audio");
@@ -39,7 +39,7 @@ test("track performer stays distinct from the album owner without changing audio
 
 test("scanned featured tracks are owned by both their performer and album owner", async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-featured-ownership-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(root, { recursive: true, force: true }));
   const file = path.join(root, "01.flac");
   await promisify(execFile)("ffmpeg", [
     "-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i", "sine=frequency=440:duration=0.1",
@@ -86,7 +86,7 @@ test("scanned featured tracks are owned by both their performer and album owner"
 
 test("rescanning updates a local title when its normalized identity stays the same", async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-title-rescan-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(root, { recursive: true, force: true }));
   const file = path.join(root, "Title Artist", "Title Album", "01.mp3");
   await mkdir(path.dirname(file), { recursive: true });
   await writeFile(file, "original audio");
@@ -110,7 +110,7 @@ test("rescanning updates a local title when its normalized identity stays the sa
 
 test("reused canonical tracks refresh performer tags without replacing identity", async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-canonical-performer-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(root, { recursive: true, force: true }));
   const file = path.join(root, "Canonical Owner", "Canonical Album", "01.mp3");
   await mkdir(path.dirname(file), { recursive: true });
   await writeFile(file, "original audio");
@@ -150,7 +150,7 @@ test("reused canonical tracks refresh performer tags without replacing identity"
 
 test("a track whose files credit different performers keeps one credit whatever the scan order", async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-performer-order-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(root, { recursive: true, force: true }));
   const files = ["a.mp3", "b.mp3"].map((name) => path.join(root, "Order Owner", "Order Album", name));
   await mkdir(path.dirname(files[0]), { recursive: true });
   for (const file of files) await writeFile(file, "audio");
@@ -170,7 +170,7 @@ test("a track whose files credit different performers keeps one credit whatever 
 
 test("a recording keeps its performer when a rescan finds no artist tag", async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-performer-mbid-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(root, { recursive: true, force: true }));
   const file = path.join(root, "Mbid Owner", "Mbid Album", "01.mp3");
   await mkdir(path.dirname(file), { recursive: true });
   await writeFile(file, "audio");
@@ -189,7 +189,7 @@ test("a recording keeps its performer when a rescan finds no artist tag", async 
 
 test("a tagged performer beats files without an artist tag whatever the scan order", async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-performer-untagged-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(root, { recursive: true, force: true }));
   const credits = { "a.mp3": undefined, "b.flac": "Untagged Owner feat. Guest", "c.mp3": "Untagged Owner feat. Other" };
   const orders = [["a.mp3", "b.flac"], ["b.flac", "a.mp3"], ["a.mp3", "c.mp3", "b.flac"], ["c.mp3", "a.mp3", "b.flac"]];
   for (const [index, order] of orders.entries()) {

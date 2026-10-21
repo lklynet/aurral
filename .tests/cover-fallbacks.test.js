@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -11,7 +11,7 @@ test("warmPublicImageUrl rejects empty values and failed upstream fetches", asyn
   process.env.AURRAL_DATA_DIR = dataDir;
   try {
     const { warmPublicImageUrl } = await import(
-      `../backend/services/imageProxyService.js?warm-public=${Date.now()}`
+      "../backend/services/imageProxyService.js"
     );
     assert.equal(await warmPublicImageUrl(""), null);
     assert.equal(await warmPublicImageUrl("NOT_FOUND"), null);

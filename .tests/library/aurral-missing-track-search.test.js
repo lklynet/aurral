@@ -1,4 +1,4 @@
-import test, { mock } from "node:test";
+import { test, beforeAll, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -45,11 +45,11 @@ const lidarrCalls = [];
 let sequence = 0;
 
 function atTime(now, create) {
-  mock.timers.enable({ apis: ["Date"], now });
+  vi.useFakeTimers({ toFake: ["Date"], now: now });
   try {
     return create();
   } finally {
-    mock.timers.reset();
+    vi.useRealTimers();
   }
 }
 
@@ -185,7 +185,7 @@ const originalLidarr = {
 };
 const originalWorkerStart = downloadWorker.start;
 
-test.before(() => {
+beforeAll(() => {
   setDownloadSourceConfigured(true);
   dbOps.updateSettings({ ...dbOps.getSettings(), missingTrackSearch: { enabled: true, intervalDays: 1 } });
   lidarrClient.isConfigured = () => false;
@@ -198,7 +198,7 @@ test.before(() => {
   downloadWorker.start = async () => {};
 });
 
-test.beforeEach(() => {
+beforeEach(() => {
   downloadTracker.clearAll();
   db.prepare("DELETE FROM library_management").run();
   db.prepare("DELETE FROM library_media_files").run();
@@ -210,7 +210,7 @@ test.beforeEach(() => {
   lidarrCalls.length = 0;
 });
 
-test.after(async () => {
+afterAll(async () => {
   Object.assign(lidarrClient, originalLidarr);
   downloadWorker.start = originalWorkerStart;
   dbOps.updateSettings(originalSettings);

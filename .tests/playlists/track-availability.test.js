@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { setupIsolatedBackend, cleanupIsolatedState, resetDatabase } from "../helpers/backendTestHarness.js";
 
@@ -42,7 +42,7 @@ const updateRecordHistory = (id, enabled, user = { id: 1, role: "user" }) => {
   return response;
 };
 
-test.beforeEach(() => {
+beforeEach(() => {
   for (const playlist of flowPlaylistConfig.getStaticPlaylists()) {
     flowPlaylistConfig.deleteStaticPlaylist(playlist.id);
   }
@@ -50,13 +50,13 @@ test.beforeEach(() => {
   downloadTracker.clearAll();
   dbOps.updateSettings({ integrations: {}, onboardingComplete: true, flows: [], sharedPlaylists: [] });
 });
-test.after(async () => {
+afterAll(async () => {
   db.close();
   await cleanupIsolatedState(state);
 });
 
-test("availability is opt-in, persists per playlist, and does not queue playback changes", async (t) => {
-  t.mock.method(playlistOperationQueue, "enqueuePayload", () => { throw new Error("Display settings must not queue playback changes"); });
+test("availability is opt-in, persists per playlist, and does not queue playback changes", async () => {
+  vi.spyOn(playlistOperationQueue, "enqueuePayload").mockImplementation(() => { throw new Error("Display settings must not queue playback changes"); });
   const first = flowPlaylistConfig.createStaticPlaylist({ name: "First", ownerUserId: 1, tracks: [{ artistName: "Artist", trackName: "Song" }] });
   const second = flowPlaylistConfig.createStaticPlaylist({ name: "Second", ownerUserId: 1 });
   assert.equal(first.showTrackAvailability, false);
@@ -88,8 +88,8 @@ test("availability validates input and respects playlist ownership", () => {
   assert.equal(updateAvailability(playlist.id, true, { id: 2, role: "admin" }).statusCode, 200);
 });
 
-test("history is enabled by default, persists per playlist, and does not queue playback changes", async (t) => {
-  t.mock.method(playlistOperationQueue, "enqueuePayload", () => { throw new Error("History preferences must not queue downloads"); });
+test("history is enabled by default, persists per playlist, and does not queue playback changes", async () => {
+  vi.spyOn(playlistOperationQueue, "enqueuePayload").mockImplementation(() => { throw new Error("History preferences must not queue downloads"); });
   const first = flowPlaylistConfig.createStaticPlaylist({ name: "History On", ownerUserId: 1 });
   const second = flowPlaylistConfig.createStaticPlaylist({ name: "History Off", ownerUserId: 1, recordHistory: false });
 
@@ -120,7 +120,7 @@ test("history preference validates input and respects playlist ownership", () =>
   assert.equal(updateRecordHistory(playlist.id, false, { id: 2, role: "admin" }).statusCode, 200);
 });
 
-test("a failed playlist-delete enqueue restores the active download generation", async (t) => {
+test("a failed playlist-delete enqueue restores the active download generation", async () => {
   const user = { id: 1, role: "user" };
   const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Delete Retry",
@@ -129,7 +129,7 @@ test("a failed playlist-delete enqueue restores the active download generation",
   });
   const generation = activatePlaylistDownloadGeneration(playlist.id);
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Song" }, playlist.id);
-  t.mock.method(playlistOperationQueue, "enqueuePayload", async () => {
+  vi.spyOn(playlistOperationQueue, "enqueuePayload").mockImplementation(async () => {
     throw new Error("queue unavailable");
   });
   const response = {

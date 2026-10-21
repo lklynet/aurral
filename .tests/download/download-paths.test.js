@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import path from "path";
 
@@ -13,12 +13,12 @@ const [isolatedState, downloadPaths] = await setupIsolatedBackend(
 );
 
 const {
-  resolveDownloadRoot: resolveDownloadRoot,
-  remapLegacyPath: remapLegacyPath,
-  resolveExistingTrackPath: resolveExistingTrackPath,
+  resolveDownloadRoot,
+  remapLegacyPath,
+  resolveExistingTrackPath,
 } = downloadPaths;
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 

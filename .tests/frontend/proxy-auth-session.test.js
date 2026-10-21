@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
-import { startFrontendServer } from "../helpers/frontendServer.js";
+import { test, vi } from "vite-plus/test";
 
 const createStorage = (initial = {}) => {
   const values = new Map(Object.entries(initial));
@@ -18,18 +17,15 @@ const withApiClient = async (t) => {
     sessionStorage: globalThis.sessionStorage,
     window: globalThis.window,
   };
-  const vite = await startFrontendServer();
+  vi.resetModules();
 
-  t.after(async () => {
-    await vite.close();
+  t.onTestFinished(async () => {
     Object.assign(globalThis, originalGlobals);
   });
-
-  return vite;
 };
 
 test("proxy-authenticated requests carry the issued Aurral session token", async (t) => {
-  const vite = await withApiClient(t);
+  await withApiClient(t);
 
   globalThis.sessionStorage = createStorage();
   globalThis.localStorage = createStorage({ auth_token: "session-token" });
@@ -40,14 +36,14 @@ test("proxy-authenticated requests carry the issued Aurral session token", async
     return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
   };
 
-  const { default: api } = await vite.ssrLoadModule("/src/utils/api/core.js");
+  const { default: api } = await import("../../frontend/src/utils/api/core.js");
 
   await api.get("/health/bootstrap");
   assert.equal(sentAuthorization, "Bearer session-token");
 });
 
 test("a proxy auth redirect drops the service worker and reloads through the proxy", async (t) => {
-  const vite = await withApiClient(t);
+  await withApiClient(t);
 
   const unregistered = [];
   const deletedCaches = [];
@@ -84,7 +80,7 @@ test("a proxy auth redirect drops the service worker and reloads through the pro
     text: async () => "",
   });
 
-  const { default: api } = await vite.ssrLoadModule("/src/utils/api/core.js");
+  const { default: api } = await import("../../frontend/src/utils/api/core.js");
 
   await assert.rejects(api.get("/health/bootstrap"), /redirected to an authentication provider/);
   await new Promise((resolve) => setTimeout(resolve, 10));
@@ -94,14 +90,14 @@ test("a proxy auth redirect drops the service worker and reloads through the pro
   assert.equal(reloads, 1);
   assert.equal(globalThis.localStorage.getItem("auth_token"), null);
 
-  t.after(() => {
+  t.onTestFinished(() => {
     if (originalNavigator) Object.defineProperty(globalThis, "navigator", originalNavigator);
     delete globalThis.caches;
   });
 });
 
 test("an unauthorized response drops the stored session without navigating away", async (t) => {
-  const vite = await withApiClient(t);
+  await withApiClient(t);
 
   const currentUrl = "https://aurral.example.com/discover";
   let reloads = 0;
@@ -123,7 +119,7 @@ test("an unauthorized response drops the stored session without navigating away"
       headers: { "content-type": "application/json" },
     });
 
-  const { default: api } = await vite.ssrLoadModule("/src/utils/api/core.js");
+  const { default: api } = await import("../../frontend/src/utils/api/core.js");
 
   await assert.rejects(api.get("/health/bootstrap"), /status code 401/);
   assert.equal(globalThis.localStorage.getItem("auth_token"), null);
@@ -134,7 +130,7 @@ test("an unauthorized response drops the stored session without navigating away"
 });
 
 test("a proxy 401 with a nested error body reauthenticates through the proxy", async (t) => {
-  const vite = await withApiClient(t);
+  await withApiClient(t);
 
   let reloads = 0;
   let resolveReload;
@@ -161,7 +157,7 @@ test("a proxy 401 with a nested error body reauthenticates through the proxy", a
       headers: { "content-type": "application/json" },
     });
 
-  const { default: api } = await vite.ssrLoadModule("/src/utils/api/core.js");
+  const { default: api } = await import("../../frontend/src/utils/api/core.js");
 
   await assert.rejects(api.get("/playlists/import/spotify/playlists"), /status code 401/);
   await reloadCompleted;
@@ -171,7 +167,7 @@ test("a proxy 401 with a nested error body reauthenticates through the proxy", a
 });
 
 test("a Spotify provider 401 does not drop the Aurral session", async (t) => {
-  const vite = await withApiClient(t);
+  await withApiClient(t);
 
   let reloads = 0;
   globalThis.sessionStorage = createStorage({ auth_token: "valid-token" });
@@ -195,7 +191,7 @@ test("a Spotify provider 401 does not drop the Aurral session", async (t) => {
       headers: { "content-type": "application/json" },
     });
 
-  const { default: api } = await vite.ssrLoadModule("/src/utils/api/core.js");
+  const { default: api } = await import("../../frontend/src/utils/api/core.js");
 
   await assert.rejects(api.get("/playlists/import/spotify/playlists"), /status code 401/);
   assert.equal(reloads, 0);
@@ -204,7 +200,7 @@ test("a Spotify provider 401 does not drop the Aurral session", async (t) => {
 });
 
 test("a proxy 401 without an Aurral error body reloads through the proxy", async (t) => {
-  const vite = await withApiClient(t);
+  await withApiClient(t);
 
   let reloads = 0;
   globalThis.sessionStorage = createStorage();
@@ -224,7 +220,7 @@ test("a proxy 401 without an Aurral error body reloads through the proxy", async
       headers: { "content-type": "text/html" },
     });
 
-  const { default: api } = await vite.ssrLoadModule("/src/utils/api/core.js");
+  const { default: api } = await import("../../frontend/src/utils/api/core.js");
 
   await assert.rejects(api.get("/health/bootstrap"), /status code 401/);
   await new Promise((resolve) => setTimeout(resolve, 10));
@@ -232,7 +228,7 @@ test("a proxy 401 without an Aurral error body reloads through the proxy", async
 });
 
 test("a failed login response keeps the stored session untouched", async (t) => {
-  const vite = await withApiClient(t);
+  await withApiClient(t);
 
   globalThis.sessionStorage = createStorage({ auth_token: "existing-token" });
   globalThis.localStorage = createStorage({ auth_token: "existing-token" });
@@ -243,7 +239,7 @@ test("a failed login response keeps the stored session untouched", async (t) => 
       headers: { "content-type": "application/json" },
     });
 
-  const { default: api } = await vite.ssrLoadModule("/src/utils/api/core.js");
+  const { default: api } = await import("../../frontend/src/utils/api/core.js");
 
   await assert.rejects(api.post("/auth/login", { username: "a", password: "b" }), /401/);
   assert.equal(globalThis.localStorage.getItem("auth_token"), "existing-token");

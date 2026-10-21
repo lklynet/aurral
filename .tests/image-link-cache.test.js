@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, afterAll } from "vite-plus/test";
 import {
   cleanupIsolatedState,
   createMockHttpServer,
@@ -123,7 +123,7 @@ const [
   "backend/routes/artists/handlers/cover.js",
 );
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
   await providerServer.close();
   delete process.env.BRAINZMASH_BASE_URL;

@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, afterAll } from "vite-plus/test";
 import { createBackgroundProcessSupervisor } from "../../backend/services/backgroundProcessSupervisor.js";
 import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.js";
 
 const [state, honker, { getDatabaseRevision }] = await setupIsolatedBackend("on-demand-workers", "backend/services/honkerDb.js", "backend/config/db-sqlite.js");
-test.after(() => cleanupIsolatedState(state));
+afterAll(() => cleanupIsolatedState(state));
 
 test("a due schedule runs in background processes that exit once idle", { timeout: 30000 }, async (t) => {
   const scheduler = honker.getHonkerDb().scheduler();
@@ -42,7 +42,7 @@ test("a due schedule runs in background processes that exit once idle", { timeou
       if (exits.length === 2) exited.resolve();
     },
   });
-  t.after(async () => {
+  t.onTestFinished(async () => {
     await supervisor.stop();
     scheduler.remove("disposable-on-demand");
     process.env.NODE_ENV = "test";
@@ -72,7 +72,7 @@ test("the download owner cancels one persisted job over IPC", { timeout: 30000 }
   downloadTracker.setPending(jobId, "Waiting for retry", { asRetryCycle: true });
   const supervisor = createBackgroundProcessSupervisor({ groups: ["downloads"] });
   process.env.NODE_ENV = "production";
-  t.after(async () => {
+  t.onTestFinished(async () => {
     await supervisor.stop();
     process.env.NODE_ENV = "test";
     downloadTracker.reconcileCommittedJobs();

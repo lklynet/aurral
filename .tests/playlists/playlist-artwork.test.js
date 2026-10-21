@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import fs from "node:fs/promises";
@@ -21,7 +21,7 @@ const [isolatedState, { db }, { dbOps }, { flowPlaylistConfig }, { PlaylistManag
     "backend/services/playlists/playlistManager.js",
   );
 
-test.beforeEach(() => {
+beforeEach(() => {
   resetDatabase(db);
   dbOps.updateSettings({
     integrations: {},
@@ -32,7 +32,7 @@ test.beforeEach(() => {
   });
 });
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
@@ -103,7 +103,7 @@ test("writes WebP artwork for flows and playlists without M3U files", async () =
   assert.equal(playlistMeta.format, "webp");
 });
 
-test("serves temporary artwork and replaces it when the photo source recovers", async (t) => {
+test("serves temporary artwork and replaces it when the photo source recovers", async () => {
   dbOps.updateSettings({ playlistArtwork: { style: "photo" } });
   const source = await sharp({
     create: {
@@ -116,7 +116,7 @@ test("serves temporary artwork and replaces it when the photo source recovers", 
     .jpeg()
     .toBuffer();
   let sourceAvailable = false;
-  t.mock.method(axios, "get", async () => {
+  vi.spyOn(axios, "get").mockImplementation(async () => {
     if (!sourceAvailable) throw new Error("Request failed with status code 503");
     return { data: source };
   });
@@ -136,7 +136,7 @@ test("serves temporary artwork and replaces it when the photo source recovers", 
   assert.equal((await manager.resolveArtworkFile(playlist.id))?.extension, ".jpg");
 });
 
-test("replaces the old generated JPEG fallback with photo artwork", async (t) => {
+test("replaces the old generated JPEG fallback with photo artwork", async () => {
   dbOps.updateSettings({ playlistArtwork: { style: "photo" } });
   const source = await sharp({
     create: {
@@ -148,7 +148,7 @@ test("replaces the old generated JPEG fallback with photo artwork", async (t) =>
   })
     .jpeg()
     .toBuffer();
-  t.mock.method(axios, "get", async () => ({ data: source }));
+  vi.spyOn(axios, "get").mockImplementation(async () => ({ data: source }));
   const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Legacy Fallback",
     tracks: [{ artistName: "A", trackName: "One" }],
@@ -173,7 +173,7 @@ test("replaces the old generated JPEG fallback with photo artwork", async (t) =>
   assert.equal(metadata.height, 1200);
 });
 
-test("does not replace uploaded artwork in photo mode", async (t) => {
+test("does not replace uploaded artwork in photo mode", async () => {
   const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Custom Cover",
     tracks: [{ artistName: "A", trackName: "One" }],
@@ -194,7 +194,7 @@ test("does not replace uploaded artwork in photo mode", async (t) => {
   const before = await fs.readFile(artworkPath);
   dbOps.updateSettings({ playlistArtwork: { style: "photo" } });
   let photoRequests = 0;
-  t.mock.method(axios, "get", async () => {
+  vi.spyOn(axios, "get").mockImplementation(async () => {
     photoRequests += 1;
     throw new Error("Unexpected photo request");
   });
@@ -297,9 +297,9 @@ test("does not regenerate artwork after explicit remove until generate", async (
   await assert.doesNotReject(() => fs.access(flowWebp));
 });
 
-test("generates fallback artwork when the photo source is down", async (t) => {
+test("generates fallback artwork when the photo source is down", async () => {
   dbOps.updateSettings({ playlistArtwork: { style: "photo" } });
-  t.mock.method(axios, "get", async () => {
+  vi.spyOn(axios, "get").mockImplementation(async () => {
     throw new Error("Request failed with status code 503");
   });
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Offline Generate" });

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import {
   cleanupIsolatedState, createMockHttpServer, resetDatabase, setupIsolatedBackend,
 } from "./helpers/backendTestHarness.js";
@@ -24,13 +24,13 @@ const [state, { default: axios }, deezer, { getArtistImage }, { dbOps }, { db },
   "backend/services/musicDataSource/listenbrainz.js",
 );
 
-test.beforeEach(() => {
+beforeEach(() => {
   artistLinked = true;
   resetDatabase(db);
   clearMetadataProviderCaches();
   for (const cache of [deezer.deezerArtistCache, deezer.deezerAlbumCache, deezer.deezerTopTrackCache]) cache.flushAll();
 });
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(state);
   await provider.close();
   delete process.env.BRAINZMASH_BASE_URL;
@@ -38,7 +38,7 @@ test.after(async () => {
 
 function responses(t, respond) {
   const realGet = axios.get.bind(axios);
-  t.mock.method(axios, "get", async (url, options) => {
+  vi.spyOn(axios, "get").mockImplementation(async (url, options) => {
     if (String(url).startsWith(provider.url)) return realGet(url, options);
     assert.equal(new URL(url).hostname, "api.deezer.com");
     return { data: await respond(String(url), options) };
@@ -70,7 +70,7 @@ test("strict and default callers share a missing artist ID without treating it a
   let release;
   let requests = 0;
   const gate = new Promise(resolve => { release = resolve; });
-  t.after(() => release());
+  t.onTestFinished(() => release());
   responses(t, async () => { requests++; await gate; return missingArtist; });
   const results = Promise.allSettled([
     deezer.getDeezerArtistById(101, { throwOnError: true }),
@@ -109,7 +109,7 @@ test("a name-search error in HTTP 200 is not cached as an absent artist", async 
 test("strict and fallback callers sharing an artist lookup retain their error contracts", async t => {
   let release;
   const gate = new Promise(resolve => { release = resolve; });
-  t.after(() => release());
+  t.onTestFinished(() => release());
   responses(t, async () => { await gate; throw new Error("Provider unavailable"); });
   const results = Promise.allSettled([
     deezer.getDeezerArtistById(101),

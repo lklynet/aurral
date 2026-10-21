@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeAll, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import path from "node:path";
 
@@ -21,7 +21,7 @@ const lidarrArtist = { id: 41, artistName: "Handover Artist", foreignArtistId: a
 const lidarrAlbum = { id: 91, artistId: 41, title: "Handover Album", foreignAlbumId: albumMbid, monitored: true };
 const originalClient = { ...lidarrClient };
 
-test.before(() => {
+beforeAll(() => {
   lidarrClient.isConfigured = () => true;
   lidarrClient.request = async () => {
     throw new Error("Lidarr scans are not part of this test");
@@ -33,7 +33,7 @@ test.before(() => {
   lidarrClient.getAlbum = async () => lidarrAlbum;
 });
 
-test.beforeEach(() => {
+beforeEach(() => {
   db.prepare("DELETE FROM library_management").run();
   db.prepare("DELETE FROM library_media_files").run();
   db.prepare("DELETE FROM library_album_tracks").run();
@@ -43,7 +43,7 @@ test.beforeEach(() => {
   managementStore.invalidateLibraryManagementCache();
 });
 
-test.after(async () => {
+afterAll(async () => {
   Object.assign(lidarrClient, originalClient);
   await cleanupIsolatedState(isolatedState);
 });

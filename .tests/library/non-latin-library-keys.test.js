@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { mkdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -29,12 +29,12 @@ const [
 
 const root = path.join(isolatedState.baseDir, "music");
 
-test.beforeEach(async () => {
+beforeEach(async () => {
   resetDatabase(db);
   db.prepare("DELETE FROM library_management").run();
   await rm(root, { recursive: true, force: true });
 });
-test.after(() => cleanupIsolatedState(isolatedState));
+afterAll(() => cleanupIsolatedState(isolatedState));
 
 async function writeLibrary(files) {
   const tagsByPath = new Map();

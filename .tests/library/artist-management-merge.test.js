@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, afterAll } from "vite-plus/test";
 
 import {
   cleanupIsolatedState,
@@ -14,7 +14,7 @@ const [isolatedState, { db }, libraryStore, managementStore] = await setupIsolat
   "backend/services/libraryManagementStore.js",
 );
 
-test.after(() => cleanupIsolatedState(isolatedState));
+afterAll(() => cleanupIsolatedState(isolatedState));
 
 test("merging an artist into its MBID identity retains management settings", () => {
   resetDatabase(db);

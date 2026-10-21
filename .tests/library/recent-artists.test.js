@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
@@ -50,15 +50,15 @@ function addFile(artist, name, createdAt, { available = true } = {}) {
   db.prepare("UPDATE library_media_files SET created_at = ? WHERE id = ?").run(Date.parse(createdAt), file.id);
 }
 
-test.beforeEach(() => {
+beforeEach(() => {
   resetDatabase(db);
   management.invalidateLibraryManagementCache();
 });
-test.after(() => cleanupIsolatedState(state));
+afterAll(() => cleanupIsolatedState(state));
 
-test("recent artists combines both owners with artwork and library identities while Lidarr is unavailable", async (t) => {
-  t.mock.method(lidarrClient, "isConfigured", () => true);
-  t.mock.method(lidarrClient, "request", async () => {
+test("recent artists combines both owners with artwork and library identities while Lidarr is unavailable", async () => {
+  vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
+  vi.spyOn(lidarrClient, "request").mockImplementation(async () => {
     throw new Error("Lidarr is unavailable");
   });
   const aurral = store.upsertLibraryArtist({
@@ -86,7 +86,7 @@ test("recent artists combines both owners with artwork and library identities wh
   assert.deepEqual(recent[1].images, lidarrImages);
 });
 
-test("recent artists follow the newest library file instead of the Lidarr added date", async (t) => {
+test("recent artists follow the newest library file instead of the Lidarr added date", async () => {
   const oldLidarr = store.upsertLibraryArtist({
     identityKey: "name:old-lidarr", name: "Old Lidarr Artist",
     metadata: { added: "2020-01-01T12:00:00Z", librarySource: "lidarr" },
@@ -107,7 +107,7 @@ test("recent artists follow the newest library file instead of the Lidarr added 
   addFile(missing, "Gone", "2026-10-08T12:00:00Z", { available: false });
 
   for (const connected of [false, true]) {
-    t.mock.method(lidarrClient, "isConfigured", () => connected);
+    vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => connected);
     const recent = await getRecent();
     assert.deepEqual(recent.map((artist) => artist.artistName), ["Old Lidarr Artist", "Recent Lidarr Artist"]);
     assert.deepEqual(recent.map((artist) => artist.added), ["2026-10-07T12:00:00.000Z", "2026-09-15T12:00:00.000Z"]);

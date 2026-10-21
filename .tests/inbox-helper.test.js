@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, beforeAll, afterAll } from "vite-plus/test";
 import {
   cleanupIsolatedState,
   resetDatabase,
@@ -14,12 +14,12 @@ const [isolatedState, { db }, { dbOps, userOps }] = await setupIsolatedBackend(
 
 let userId;
 
-test.before(() => {
+beforeAll(() => {
   resetDatabase(db);
   userId = userOps.createUser("inbox-user", "password-hash").id;
 });
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 

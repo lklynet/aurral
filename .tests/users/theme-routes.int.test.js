@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeAll, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import bcrypt from "bcrypt";
@@ -55,18 +55,18 @@ const duskDocument = {
   themes: [{ id: "custom-dusk", name: "  Dusk  ", dark: { background: "#1B1D2A", text: "#eee", accent: "#C3A6FF" } }],
 };
 
-test.before(async () => {
+beforeAll(async () => {
   resetDatabase(db);
   dbOps.updateSettings({ integrations: {}, onboardingComplete: true });
   server = await startServerProcess();
 });
 
-test.after(async () => {
+afterAll(async () => {
   await server?.stop();
   await cleanupIsolatedState(isolatedState);
 });
 
-test.beforeEach(() => {
+beforeEach(() => {
   resetDatabase(db);
   dbOps.updateSettings({ integrations: {}, onboardingComplete: true });
 });

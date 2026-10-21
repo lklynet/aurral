@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll, afterEach, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "fs/promises";
 import path from "path";
@@ -109,9 +109,9 @@ async function waitForApprovalFollowUps() {
   while (hasApprovalFollowUps()) await new Promise((resolve) => setTimeout(resolve, 5));
 }
 
-test.afterEach(waitForApprovalFollowUps);
+afterEach(waitForApprovalFollowUps);
 
-test.beforeEach(async () => {
+beforeEach(async () => {
   await resetDatabase(db);
   downloadTracker.clearAll();
   await fs.mkdir(process.env.DOWNLOAD_FOLDER, { recursive: true });
@@ -204,7 +204,7 @@ test("playlist job file paths are only returned to admins", async (t) => {
   const finalPath = path.join(process.env.DOWNLOAD_FOLDER, "Path Artist", "Path Track.FLAC");
   downloadTracker.setDownloading(jobId, path.join(process.env.DOWNLOAD_FOLDER, "staging.flac"));
   downloadTracker.setDone(jobId, finalPath, "Path Album");
-  t.after(() => {
+  t.onTestFinished(() => {
     requestUser = { role: "admin" };
   });
 
@@ -229,7 +229,7 @@ test("playlist job file paths are only returned to admins", async (t) => {
   assert.equal((await fetch(`${baseUrl}/jobs/missing-job/files`)).status, 404);
 });
 
-test.after(async () => {
+afterAll(async () => {
   await new Promise((resolve) => server.close(resolve));
   db.close();
   await cleanupIsolatedState(isolatedState);
@@ -268,7 +268,7 @@ test("approving a reviewed download commits it inside the managed playlist libra
   await assert.rejects(fs.access(path.join(playlistManager.libraryRoot, "Reviewed.m3u")));
 });
 
-test("approving a reviewed download queues its playlist sync instead of waiting on the media server", async (t) => {
+test("approving a reviewed download queues its playlist sync instead of waiting on the media server", async () => {
   takePlaylistSyncs();
   const playlistId = "reviewed-slow-publish";
   flowPlaylistConfig.createStaticPlaylist({
@@ -284,7 +284,7 @@ test("approving a reviewed download queues its playlist sync instead of waiting 
     playlistId,
   );
   downloadTracker.setBlocked(jobId, "blocked-duration-mismatch", sourcePath);
-  const serverCalls = t.mock.method(playlistManager.navidromeDestination.client, "getPlaylists", () => new Promise(() => {}));
+  const serverCalls = vi.spyOn(playlistManager.navidromeDestination.client, "getPlaylists").mockImplementation(() => new Promise(() => {}));
 
   const response = await fetch(`${baseUrl}/jobs/${jobId}/approve`, { method: "POST" });
   assert.equal(response.status, 200);
@@ -297,7 +297,7 @@ test("approving a reviewed download queues its playlist sync instead of waiting 
 
   assert.equal(changed, true);
   assert.equal(downloadTracker.getJob(jobId)?.status, "done");
-  assert.equal(serverCalls.mock.callCount(), 0);
+  assert.equal(serverCalls.mock.calls.length, 0);
   assert.deepEqual(takePlaylistSyncs(), [{ kind: "playback-playlist-sync", entityIds: [playlistId], attempt: 0 }]);
 });
 
@@ -344,7 +344,7 @@ test("approving a library track does not wait for another library track's downlo
   }
 });
 
-test("a track committed after an approved review joins the same pending playlist sync", async (t) => {
+test("a track committed after an approved review joins the same pending playlist sync", async () => {
   const playlistId = "reviewed-concurrent-commit";
   flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,
@@ -377,7 +377,7 @@ test("a track committed after an approved review joins the same pending playlist
 
   takePlaylistSyncs();
   const published = [];
-  t.mock.method(playlistManager.navidromeDestination, "publishPlaylist", async (snapshot) => {
+  vi.spyOn(playlistManager.navidromeDestination, "publishPlaylist").mockImplementation(async (snapshot) => {
     if (snapshot.entityId === playlistId) published.push(snapshot.tracks.map((track) => track.path));
     return { ok: true };
   });
@@ -567,8 +567,8 @@ test("failed clear-all leaves jobs stopped and visible so provider cleanup can b
   }
 });
 
-test("approving a reviewed upgrade replaces the source playlist file", async (t) => {
-  const scan = t.mock.method(playlistManager, "scheduleScanLibrary", () => {});
+test("approving a reviewed upgrade replaces the source playlist file", async () => {
+  const scan = vi.spyOn(playlistManager, "scheduleScanLibrary").mockImplementation(() => {});
   const flow = flowPlaylistConfig.createFlow({
     name: "Reviewed upgrade flow",
     size: 10,
@@ -615,7 +615,7 @@ test("approving a reviewed upgrade replaces the source playlist file", async (t)
   assert.equal(downloadTracker.getJob(sourceJobId)?.finalPath, expectedPath);
   assert.equal(await fs.readFile(expectedPath, "utf8"), "upgrade audio");
   await assert.rejects(fs.access(originalPath));
-  assert.equal(scan.mock.callCount(), 1);
+  assert.equal(scan.mock.calls.length, 1);
 });
 
 test("reports when an upgrade search is already queued for a track", async () => {

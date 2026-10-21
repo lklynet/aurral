@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeAll, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import {
@@ -88,7 +88,7 @@ const metadataServer = await createMockHttpServer((request, response) => {
   response.end(JSON.stringify({ id: artistMbid, artistname: "Automation Artist", Albums: [] }));
 });
 
-test.before(() => {
+beforeAll(() => {
   dbOps.updateSettings({
     ...originalSettings,
     integrations: {
@@ -138,7 +138,7 @@ test.before(() => {
   };
 });
 
-test.beforeEach(() => {
+beforeEach(() => {
   db.prepare("DELETE FROM library_management").run();
   db.prepare("DELETE FROM library_album_tracks").run();
   db.prepare("DELETE FROM library_tracks").run();
@@ -150,7 +150,7 @@ test.beforeEach(() => {
   clearMetadataProviderCaches();
 });
 
-test.after(async () => {
+afterAll(async () => {
   downloadWorker.start = originalWorkerStart;
   Object.assign(lidarrClient, originalClient);
   dbOps.updateSettings(originalSettings);

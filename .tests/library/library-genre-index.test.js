@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, afterAll } from "vite-plus/test";
 import {
   cleanupIsolatedState,
   setupIsolatedBackend,
@@ -12,7 +12,7 @@ const [state, { db }, store, query, { initializeLibraryGenreIndex }] = await set
   "backend/services/libraryQueryService.js",
   "backend/config/library-genre-index.js",
 );
-test.after(() => cleanupIsolatedState(state));
+afterAll(() => cleanupIsolatedState(state));
 
 test("genre reads retain inheritance, metadata shapes, availability, and updates", () => {
   const artist = store.upsertLibraryArtist({

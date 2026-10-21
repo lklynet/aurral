@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { access, copyFile, mkdir, rm, writeFile } from "node:fs/promises";
@@ -36,7 +36,7 @@ const mediaServers = {
 };
 const lidarr = { enabled: true, url: "http://127.0.0.1:9", apiKey: "test-key", rootFolderPath: lidarrRoot };
 
-test.beforeEach(async () => {
+beforeEach(async () => {
   await rm(downloadRoot, { recursive: true, force: true });
   await rm(lidarrRoot, { recursive: true, force: true });
   resetDatabase(db);
@@ -55,7 +55,7 @@ test.beforeEach(async () => {
   });
 });
 
-test.after(async () => {
+afterAll(async () => {
   await scans.stopLibraryScanWorker();
   if (previousGroup === undefined) delete process.env.AURRAL_BACKGROUND_WORKER_GROUP;
   else process.env.AURRAL_BACKGROUND_WORKER_GROUP = previousGroup;
@@ -74,19 +74,19 @@ function stubMediaServers(t, {
     if (failed === service) throw new Error(`${service} unavailable`);
     return {};
   };
-  t.mock.method(PlexClient.prototype, "request", async (endpoint, { params } = {}) =>
+  vi.spyOn(PlexClient.prototype, "request").mockImplementation(async (endpoint, { params } = {}) =>
     record("Plex", { endpoint, params }));
-  t.mock.method(JellyfinClient.prototype, "request", async (method, endpoint, { data } = {}) =>
+  vi.spyOn(JellyfinClient.prototype, "request").mockImplementation(async (method, endpoint, { data } = {}) =>
     endpoint === "/Library/VirtualFolders"
       ? jellyfinLocations.map((location) => ({ Locations: [location] }))
       : record("Jellyfin", { method, endpoint, data }));
-  t.mock.method(NavidromeClient.prototype, "request", async (endpoint, params = {}) =>
+  vi.spyOn(NavidromeClient.prototype, "request").mockImplementation(async (endpoint, params = {}) =>
     endpoint === "getScanStatus"
       ? { scanStatus: { scanning: navidromeScanning() } }
       : record("Navidrome", { endpoint, params }));
-  t.mock.method(NavidromeClient.prototype, "getLibraries", async () => navidromeLibraries);
-  t.mock.method(PlexClient.prototype, "ensureAurralLibrary", async () => ({ key: "7" }));
-  t.mock.method(PlexClient.prototype, "getTracks", async () => []);
+  vi.spyOn(NavidromeClient.prototype, "getLibraries").mockImplementation(async () => navidromeLibraries);
+  vi.spyOn(PlexClient.prototype, "ensureAurralLibrary").mockImplementation(async () => ({ key: "7" }));
+  vi.spyOn(PlexClient.prototype, "getTracks").mockImplementation(async () => []);
   return requests;
 }
 
@@ -124,9 +124,9 @@ async function makeTrack(filePath, title = "Song", artist = "Scan Artist") {
 }
 
 async function libraryScanRunner(t) {
-  t.mock.method(axios, "get", async () => ({ data: [] }));
+  vi.spyOn(axios, "get").mockImplementation(async () => ({ data: [] }));
   const events = honker.getHonkerDb().updateEvents();
-  t.after(async () => {
+  t.onTestFinished(async () => {
     events.close();
     await scans.stopLibraryScanWorker();
   });
@@ -145,7 +145,7 @@ async function libraryScanRunner(t) {
 function playlistReferences(t, paths) {
   const { destinationRegistry } = playlistManager;
   const run = destinationRegistry.run.bind(destinationRegistry);
-  t.mock.method(destinationRegistry, "run", (method, request) => method === "getReferencedPaths"
+  vi.spyOn(destinationRegistry, "run").mockImplementation((method, request) => method === "getReferencedPaths"
     ? paths.map((file) => ({ destination: "Plex", ok: true, paths: [file] }))
     : run(method, request));
   return paths;
@@ -260,7 +260,7 @@ test("a queued media scan without folders reports unavailable services and scans
     const failed = stubMediaServers(t, { failed: service });
     await assert.rejects(processSystemTask({ kind: "playback-library-scan" }), new RegExp(`${service} unavailable`));
     assert.deepEqual(failed.map((request) => request.service).sort(), ["Jellyfin", "Navidrome", "Plex"]);
-    t.mock.restoreAll();
+    vi.restoreAllMocks();
   }
   const recovered = stubMediaServers(t);
   await processSystemTask({ kind: "playback-library-scan" });
@@ -314,7 +314,7 @@ test("a Downloads Folder inside a Lidarr root is still scanned on every server",
 test("a folder a server cannot place in its libraries gets a broad scan instead of none", async (t) => {
   const musicRoot = state.baseDir;
   const downloads = path.relative(musicRoot, downloadRoot).split(path.sep).join("/");
-  const warn = t.mock.method(logger, "warn", () => {});
+  const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
   dbOps.updateSettings({
     integrations: { ...mediaServers, lidarr: { ...lidarr, rootFolderPath: musicRoot } },
     pathMappings: [
@@ -342,7 +342,7 @@ test("a folder a server cannot place in its libraries gets a broad scan instead 
     jellyfinUpdate("/media"), jellyfinUpdate("/media"), navidromeScanAll, navidromeScanAll,
     plexRefresh("/plex/aurral/Artist/Album"),
   ]);
-  assert.deepEqual(warn.mock.calls.map(({ arguments: [category, , data] }) => [category, data.folder]).sort(), [
+  assert.deepEqual(warn.mock.calls.map(([category, , data]) => [category, data.folder]).sort(), [
     ["jellyfin", musicRoot],
     ["navidrome", musicRoot],
   ]);
@@ -534,15 +534,15 @@ test("a retained Library file deleted by a scan leaves the Library and reaches t
   await retain(path.join(goneAlbum, "Gone.wav"), "Gone Song");
   await scans.stopLibraryScanWorker();
   const events = honker.getHonkerDb().updateEvents();
-  t.after(() => events.close());
+  t.onTestFinished(() => events.close());
   const jobId = scans.scheduleLibraryScan({ includeLidarr: false, changedPaths: [path.join(album, "Song.wav")] });
   while (pendingScans().length === 0) await events.next();
-  const failed = t.mock.method(lidarrClient, "isConfigured", () => {
+  const failed = vi.spyOn(lidarrClient, "isConfigured").mockImplementationOnce(() => {
     throw new Error("Lidarr check failed");
-  }, { times: 1 });
+  });
   scans.startLibraryScanWorker();
   const job = () => scans.getLibraryScanStatus(jobId);
-  while (!(failed.mock.callCount() === 1 && job().status === "queued")) await events.next();
+  while (!(failed.mock.calls.length > 0 && job().status === "queued")) await events.next();
   await assert.rejects(access(path.join(goneAlbum, "Gone.wav")), { code: "ENOENT" });
   assert.deepEqual(availableTitles(), ["Gone Song", "Song"]);
   assert.deepEqual(pendingScans().map(({ folders }) => folders), [[goneAlbum, album]]);
@@ -558,9 +558,9 @@ test("deleting a flow indexes a shared file moved into the Downloads Folder and 
   const runScan = await libraryScanRunner(t);
   playlistReferences(t, []);
   for (const method of ["blockPlaylist", "waitForPlaylistIdle", "unblockPlaylist", "setRetryCyclePaused"]) {
-    t.mock.method(downloadWorker, method, async () => {});
+    vi.spyOn(downloadWorker, method).mockImplementation(async () => {});
   }
-  t.mock.method(playlistManager, "requestPlaylistSync", () => null);
+  vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
   const flow = flowPlaylistConfig.createFlow({ name: "Hidden Flow", size: 10 });
   const original = path.join(downloadRoot, "_flows", flow.id, "Scan Artist", "Album", "Song.wav");
   await makeTrack(original);
@@ -593,7 +593,7 @@ test("a Library scan stopped after indexing has already queued its server notice
   await makeTrack(path.join(album, "Song.wav"), "Song", "Held Artist");
   let release;
   const held = new Promise((resolve) => {
-    axios.get.mock.mockImplementationOnce(() => {
+    axios.get.mockImplementationOnce(() => {
       resolve();
       return new Promise((resume) => { release = resume; });
     });
@@ -651,7 +651,7 @@ test("deleting a Library track tells servers its album folder", { timeout: 15000
       return child;
     },
   });
-  t.after(() => watcher.close());
+  t.onTestFinished(() => watcher.close());
   await ready;
 
   const removed = getLibrary({ availableOnly: true }).tracks.find((track) => track.title === "Removed");

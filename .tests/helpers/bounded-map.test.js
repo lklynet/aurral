@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vite-plus/test";
 import BoundedMap from "../../backend/services/boundedMap.js";
 
 test("bounded maps evict the least recently written keys at their limit", () => {

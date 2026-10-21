@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { setupIsolatedBackend, cleanupIsolatedState, resetDatabase } from "../helpers/backendTestHarness.js";
 
@@ -8,11 +8,11 @@ const [state, { db }, { dbOps }, persistedDiscovery, { getUserDiscovery }, disco
   "backend/services/libraryMediaStore.js",
 );
 
-test.beforeEach(() => {
+beforeEach(() => {
   resetDatabase(db);
   dbOps.invalidateSettingsCache();
 });
-test.after(() => cleanupIsolatedState(state));
+afterAll(() => cleanupIsolatedState(state));
 
 test("cached discovery excludes library identities and paginates the remaining recommendations", async () => {
   db.prepare(`INSERT INTO library_artists (id, identity_key, mbid, name, metadata_json, created_at, updated_at)

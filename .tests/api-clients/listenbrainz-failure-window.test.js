@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, vi } from "vite-plus/test";
 
 import {
   listenbrainzGetReleaseGroupDates,
@@ -8,7 +8,7 @@ import {
 
 test("a ListenBrainz failure is asked again after five minutes instead of the hour a good answer is kept", async (t) => {
   const originalFetch = globalThis.fetch;
-  t.after(() => {
+  t.onTestFinished(() => {
     globalThis.fetch = originalFetch;
   });
   const releaseGroupMbids = ["99999999-0000-4000-8000-000000000001"];
@@ -30,9 +30,9 @@ test("a ListenBrainz failure is asked again after five minutes instead of the ho
   assert.deepEqual(await lookUp(), [new Map(), new Map()]);
   assert.deepEqual(requests, asked);
 
-  t.mock.timers.enable({ apis: ["Date"], now: Date.now() + 301_000 });
+  vi.useFakeTimers({ toFake: ["Date"], now: Date.now() + 301_000 });
   assert.deepEqual(await listenbrainzGetReleaseGroupListens(releaseGroupMbids), new Map());
-  t.mock.timers.tick(1000);
+  vi.advanceTimersByTime(1000);
   assert.deepEqual(await listenbrainzGetReleaseGroupDates(releaseGroupMbids), new Map());
   assert.deepEqual(requests, [...asked, ...asked]);
 });

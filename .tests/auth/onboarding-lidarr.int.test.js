@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeAll, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import http from "node:http";
 
@@ -88,7 +88,7 @@ async function startFakeLidarr() {
 let server = null;
 let fakeLidarr = null;
 
-test.before(async () => {
+beforeAll(async () => {
   resetDatabase(db);
   dbOps.updateSettings({
     integrations: {},
@@ -98,7 +98,7 @@ test.before(async () => {
   server = await startServerProcess();
 });
 
-test.after(async () => {
+afterAll(async () => {
   await server?.stop();
   await fakeLidarr?.stop();
   await cleanupIsolatedState(isolatedState);

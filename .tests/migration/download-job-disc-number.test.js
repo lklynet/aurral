@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import Database from "better-sqlite3";
 
@@ -38,7 +38,7 @@ applyIsolatedBackendEnv(isolatedState);
 const { downloadTracker, DownloadTracker } = await importFromRepo("backend/services/downloadJobs/downloadTracker.js");
 const { buildTrackFileName } = await importFromRepo("backend/services/downloadUtils.js");
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 

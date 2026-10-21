@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { setTimeout as delay } from "node:timers/promises";
-import test from "node:test";
+import { test } from "vite-plus/test";
 
 process.env.NODE_ENV = "test";
 
@@ -45,7 +45,7 @@ test("Honker shutdown waits for in-flight worker work before closing infrastruct
     },
   });
 
-  worker.start();
+  void worker.start();
   await workStarted.promise;
 
   let shutdownSettled = false;

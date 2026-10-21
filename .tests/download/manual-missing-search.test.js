@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import {
@@ -21,12 +21,12 @@ const [isolatedState, { db }, { dbOps }, trackerModule, searchService, orchestra
 
 const { DownloadTracker } = trackerModule;
 
-test.beforeEach(() => {
+beforeEach(() => {
   resetDatabase(db);
   searchService.clearManualMissingSearchSessions();
 });
 
-test.after(async () => {
+afterAll(async () => {
   db.close();
   await cleanupIsolatedState(isolatedState);
 });

@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -16,7 +16,7 @@ const [state, { db }, { dbOps }, { downloadTracker }, { getDownloadClient }, { p
     "backend/services/pipelineHelpers.js",
   );
 
-test.after(() => cleanupIsolatedState(state));
+afterAll(() => cleanupIsolatedState(state));
 
 dbOps.updateSettings({ ...dbOps.getSettings(), integrations: {
   slskd: { enabled: true, url: "http://127.0.0.1:9" },
@@ -34,7 +34,7 @@ function storedMetadata(jobId) {
 
 function useOnlySources(t, ...sources) {
   for (const id of ["slskd", "deemix", "ytdlp", "nzbget", "sabnzbd"]) {
-    t.mock.method(getDownloadClient(id), "isConfigured", () => sources.includes(id));
+    vi.spyOn(getDownloadClient(id), "isConfigured").mockImplementation(() => sources.includes(id));
   }
 }
 
@@ -45,10 +45,10 @@ function jobMetadata(jobId) {
 
 test("a job that moves from yt-dlp to slskd names only slskd's download", async (t) => {
   useOnlySources(t, "ytdlp", "slskd");
-  t.mock.method(getDownloadClient("ytdlp"), "downloadAudio", async () => ({ filePath: "" }));
+  vi.spyOn(getDownloadClient("ytdlp"), "downloadAudio").mockImplementation(async () => ({ filePath: "" }));
   const slskd = getDownloadClient("slskd");
-  t.mock.method(slskd, "enqueueBatch", async ({ username }) => ({ username, transfers: [{ id: "transfer-1" }] }));
-  t.mock.method(slskd, "getEvents", async () => []);
+  vi.spyOn(slskd, "enqueueBatch").mockImplementation(async ({ username }) => ({ username, transfers: [{ id: "transfer-1" }] }));
+  vi.spyOn(slskd, "getEvents").mockImplementation(async () => []);
   const jobId = downloadTracker.addJob({ artistName: "The Cure", trackName: "Boys Don't Cry" }, "library");
   downloadTracker.setDownloading(jobId);
 
@@ -82,7 +82,7 @@ test("a Usenet file held while slskd is tried goes to review with its own releas
   useOnlySources(t, "nzbget", "slskd");
   const jobId = downloadTracker.addJob({ artistName: "The Cure", trackName: "Fire in Cairo" }, "library");
   let enqueuedFrom = null;
-  t.mock.method(getDownloadClient("slskd"), "enqueueBatch", async () => {
+  vi.spyOn(getDownloadClient("slskd"), "enqueueBatch").mockImplementation(async () => {
     enqueuedFrom = jobMetadata(jobId);
     throw new Error("peer refused");
   });

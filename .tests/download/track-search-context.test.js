@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import axios from "../../lib/axiosFetch.js";
 
@@ -18,7 +18,7 @@ const [isolatedState, { dbOps }, { resolveTrackSearchContext }] =
     "backend/services/downloadJobs/trackSearchContext.js",
   );
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
@@ -76,12 +76,12 @@ test("resolveTrackSearchContext replaces a stale album MBID before resolving dur
     },
   });
   clearMetadataProviderCaches();
-  t.after(() => {
+  t.onTestFinished(() => {
     clearMetadataProviderCaches();
     dbOps.updateSettings(originalSettings);
   });
 
-  t.mock.method(axios, "get", async (url, options) => {
+  vi.spyOn(axios, "get").mockImplementation(async (url, options) => {
     const path = new URL(url).pathname;
     if (path === "/search/album") {
       return {
@@ -185,11 +185,11 @@ test("resolveTrackSearchContext preserves a recording from a non-representative 
     },
   });
   clearMetadataProviderCaches();
-  t.after(() => {
+  t.onTestFinished(() => {
     clearMetadataProviderCaches();
     dbOps.updateSettings(originalSettings);
   });
-  const get = t.mock.method(axios, "get", async (url) => {
+  const get = vi.spyOn(axios, "get").mockImplementation(async (url) => {
     assert.equal(new URL(url).pathname, "/album/b1392450-e666-3926-a536-22c65f834433");
     return { data: {
       id: "b1392450-e666-3926-a536-22c65f834433",
@@ -248,7 +248,7 @@ test("resolveTrackSearchContext preserves a recording from a non-representative 
     artistAliases: ["Radio Head"],
   };
   const resolved = await resolveTrackSearchContext(job);
-  assert.equal(get.mock.callCount(), 1);
+  assert.equal(get.mock.calls.length, 1);
   assert.equal(resolved.artistMbid, job.artistMbid);
   assert.equal(resolved.trackMbid, job.trackMbid);
   assert.equal(resolved.trackNumber, 2);
@@ -265,13 +265,13 @@ test("resolveTrackSearchContext learns a track's disc and keeps a known disc for
     },
   });
   clearMetadataProviderCaches();
-  t.after(() => {
+  t.onTestFinished(() => {
     clearMetadataProviderCaches();
     dbOps.updateSettings(originalSettings);
   });
   const track = (mediumnumber, trackposition, trackname, recordingid) =>
     ({ id: `${recordingid}-${mediumnumber}`, recordingid, trackname, trackposition, mediumnumber, durationms: 200000 });
-  t.mock.method(axios, "get", async () => ({ data: {
+  vi.spyOn(axios, "get").mockImplementation(async () => ({ data: {
     id: "sixteen-stone",
     title: "Sixteen Stone",
     artistid: "bush",
@@ -307,11 +307,11 @@ test("resolveTrackSearchContext repairs a stored Last.fm release-track ID", asyn
     },
   });
   clearMetadataProviderCaches();
-  t.after(() => {
+  t.onTestFinished(() => {
     clearMetadataProviderCaches();
     dbOps.updateSettings(originalSettings);
   });
-  t.mock.method(axios, "get", async (url) => {
+  vi.spyOn(axios, "get").mockImplementation(async (url) => {
     assert.equal(new URL(url).pathname, "/album/legacy-album");
     return { data: {
       id: "legacy-album",
@@ -347,8 +347,8 @@ test("resolveTrackSearchContext repairs a stored Last.fm release-track ID", asyn
 
 test("resolveTrackSearchContext drops an unverified stored recording ID", async (t) => {
   clearMetadataProviderCaches();
-  t.after(() => clearMetadataProviderCaches());
-  t.mock.method(axios, "get", async () => {
+  t.onTestFinished(() => clearMetadataProviderCaches());
+  vi.spyOn(axios, "get").mockImplementation(async () => {
     const error = new Error("metadata unavailable");
     error.response = { status: 503 };
     throw error;
@@ -382,11 +382,11 @@ test("resolveTrackSearchContext takes neither a recording ID nor a length from L
     },
   });
   clearMetadataProviderCaches();
-  t.after(() => {
+  t.onTestFinished(() => {
     clearMetadataProviderCaches();
     dbOps.updateSettings(originalSettings);
   });
-  t.mock.method(axios, "get", async (url, options) => {
+  vi.spyOn(axios, "get").mockImplementation(async (url, options) => {
     if (options?.params?.method === "track.getInfo") {
       return { data: { track: { mbid: "stale-lastfm-recording", duration: "233000",
         artist: { name: "Lastfm Artist" }, album: { title: "Lastfm Album" } } } };
@@ -418,12 +418,12 @@ function stubMetadata(t, respond) {
   });
   clearMetadataProviderCaches();
   clearReleaseManifests();
-  t.after(() => {
+  t.onTestFinished(() => {
     clearMetadataProviderCaches();
     clearReleaseManifests();
     dbOps.updateSettings(originalSettings);
   });
-  t.mock.method(axios, "get", async (url, options) => ({ data: respond(new URL(url).pathname, options?.params || {}) ?? {} }));
+  vi.spyOn(axios, "get").mockImplementation(async (url, options) => ({ data: respond(new URL(url).pathname, options?.params || {}) ?? {} }));
 }
 
 const artistEntry = (id, name, extra = {}) => ({ id, artistname: name, type: "Group", ...extra });

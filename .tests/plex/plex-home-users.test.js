@@ -1,15 +1,15 @@
-import test, { mock } from "node:test";
+import { test, afterEach, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import axios from "../../lib/axiosFetch.js";
 import { PlexClient } from "../../backend/services/plex.js";
 
-test.afterEach(() => {
-  mock.restoreAll();
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 test("getHomeUsers normalizes a JSON { users: [...] } response", async () => {
-  mock.method(axios, "get", async () => ({
+  vi.spyOn(axios, "get").mockImplementation(async () => ({
     data: {
       users: [
         { id: 1, uuid: "u1", title: "Kid", restricted: "1", admin: "0", guest: "0" },
@@ -34,7 +34,7 @@ test("getHomeUsers normalizes a JSON { users: [...] } response", async () => {
 });
 
 test("getHomeUsers normalizes a legacy MediaContainer.User JSON response", async () => {
-  mock.method(axios, "get", async () => ({
+  vi.spyOn(axios, "get").mockImplementation(async () => ({
     data: { MediaContainer: { User: [{ id: 3, uuid: "u3", title: "Solo", restricted: "1" }] } },
   }));
   const users = await PlexClient.getHomeUsers("admin-token", "admin-client");
@@ -43,7 +43,7 @@ test("getHomeUsers normalizes a legacy MediaContainer.User JSON response", async
 });
 
 test("getHomeUsers tolerates a raw XML string response", async () => {
-  mock.method(axios, "get", async () => ({
+  vi.spyOn(axios, "get").mockImplementation(async () => ({
     data:
       '<MediaContainer size="2">' +
       '<User id="10" uuid="uuid-10" title="Kiddo" restricted="1" admin="0" guest="0"/>' +
@@ -61,14 +61,14 @@ test("getHomeUsers tolerates a raw XML string response", async () => {
 });
 
 test("getHomeUsers returns an empty list rather than throwing on an unrecognized shape", async () => {
-  mock.method(axios, "get", async () => ({ data: { unexpected: true } }));
+  vi.spyOn(axios, "get").mockImplementation(async () => ({ data: { unexpected: true } }));
   const users = await PlexClient.getHomeUsers("admin-token", "admin-client");
   assert.deepEqual(users, []);
 });
 
 test("switchHomeUser succeeds on the v2 path with a JSON authToken", async () => {
   let requestedUrl = null;
-  mock.method(axios, "post", async (url) => {
+  vi.spyOn(axios, "post").mockImplementation(async (url) => {
     requestedUrl = url;
     return { data: { authToken: "fresh-token" } };
   });
@@ -79,7 +79,7 @@ test("switchHomeUser succeeds on the v2 path with a JSON authToken", async () =>
 
 test("switchHomeUser falls back to the legacy path when v2 404s", async () => {
   let call = 0;
-  mock.method(axios, "post", async (url) => {
+  vi.spyOn(axios, "post").mockImplementation(async (url) => {
     call += 1;
     if (call === 1) {
       assert.match(url, /\/api\/v2\//);
@@ -96,7 +96,7 @@ test("switchHomeUser falls back to the legacy path when v2 404s", async () => {
 });
 
 test("switchHomeUser tolerates a raw XML response", async () => {
-  mock.method(axios, "post", async () => ({
+  vi.spyOn(axios, "post").mockImplementation(async () => ({
     data: '<user id="42" authenticationToken="xml-token"/>',
   }));
   const token = await PlexClient.switchHomeUser(42, "admin-token", "admin-client", "target-client");
@@ -105,7 +105,7 @@ test("switchHomeUser tolerates a raw XML response", async () => {
 
 test("switchHomeUser propagates a non-404 error without trying the fallback path", async () => {
   let calls = 0;
-  mock.method(axios, "post", async () => {
+  vi.spyOn(axios, "post").mockImplementation(async () => {
     calls += 1;
     const error = new Error("Forbidden");
     error.response = { status: 403 };
@@ -121,7 +121,7 @@ test("switchHomeUser propagates a non-404 error without trying the fallback path
 test("switchHomeUser sends the pin and the target user's own clientId", async () => {
   let sentParams = null;
   let sentHeaders = null;
-  mock.method(axios, "post", async (_url, _data, config) => {
+  vi.spyOn(axios, "post").mockImplementation(async (_url, _data, config) => {
     sentParams = config.params;
     sentHeaders = config.headers;
     return { data: { authToken: "token-with-pin" } };

@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
-import { startFrontendServer } from "../helpers/frontendServer.js";
+import { test, vi } from "vite-plus/test";
 import { contrastRatio, hexToOklch } from "../../frontend/src/utils/themeColor.js";
 
 const APP_ORIGIN = "https://aurral.example";
@@ -16,7 +15,7 @@ async function loadImageColors(t, { cacheImage, apiBase = "/api", paint = fill(R
   const previousApiUrl = process.env.VITE_API_URL;
   if (apiBase === "/api") delete process.env.VITE_API_URL;
   else process.env.VITE_API_URL = apiBase;
-  const vite = await startFrontendServer();
+  vi.resetModules();
   const previous = {
     document: globalThis.document,
     Image: globalThis.Image,
@@ -65,14 +64,13 @@ async function loadImageColors(t, { cacheImage, apiBase = "/api", paint = fill(R
       }),
     }),
   };
-  t.after(async () => {
+  t.onTestFinished(async () => {
     Object.assign(globalThis, previous);
     if (previousApiUrl === undefined) delete process.env.VITE_API_URL;
     else process.env.VITE_API_URL = previousApiUrl;
-    await vite.close();
   });
 
-  const module = await vite.ssrLoadModule(`/src/utils/imageColors.js?test=${Date.now()}-${Math.random()}`);
+  const module = await import("../../frontend/src/utils/imageColors.js");
   return { ...module, cacheRequests, loadedImage: () => loadedImage };
 }
 

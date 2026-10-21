@@ -1,7 +1,10 @@
-import test from "node:test";
-import { RuleTester } from "eslint";
+import { test } from "vite-plus/test";
+import { fileURLToPath } from "node:url";
+import { RuleTester } from "vite-plus/lint/plugins-dev";
 
-import { sharedControlRules } from "../../frontend/eslint-rules/shared-control-rules.js";
+import { sharedControlRules } from "../../frontend/lint-rules/shared-control-rules.js";
+
+const frontendFile = (file) => fileURLToPath(new URL(`../../frontend/${file}`, import.meta.url));
 
 const rowException = {
   id: "media-row-icon-action",
@@ -84,17 +87,17 @@ test("shared control rules accept Aurral button patterns and named exceptions", 
         options: controlOptions,
       },
       {
-        filename: "src/MediaRow.jsx",
+        filename: frontendFile("src/MediaRow.jsx"),
         code: '<button className="media-row-button" onClick={open}>Album</button>;',
         options: controlOptions,
       },
       {
-        filename: "src/MediaRow.jsx",
+        filename: frontendFile("src/MediaRow.jsx"),
         code: '<button className="btn btn-icon-square" aria-label="Play album"><PlayIcon /></button>;',
         options: controlOptions,
       },
       {
-        filename: "src/pages/Settings/components/SettingsUsersTab.jsx",
+        filename: frontendFile("src/pages/Settings/components/SettingsUsersTab.jsx"),
         code: '<button className="arr-btn btn-danger">Delete</button>;',
         options: controlOptions,
       },
@@ -146,13 +149,13 @@ test("shared control rules accept Aurral button patterns and named exceptions", 
         errors: [{ messageId: "iconAction" }],
       },
       {
-        filename: "src/OtherRow.jsx",
+        filename: frontendFile("src/OtherRow.jsx"),
         code: '<button className="btn btn-icon-square" aria-label="Play album"><PlayIcon /></button>;',
         options: controlOptions,
         errors: [{ messageId: "iconAction" }],
       },
       {
-        filename: "src/OtherSettings.jsx",
+        filename: frontendFile("src/OtherSettings.jsx"),
         code: '<button className="arr-btn btn-danger">Delete</button>;',
         options: controlOptions,
         errors: [{ messageId: "standardAction" }],

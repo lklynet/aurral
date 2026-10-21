@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -80,13 +80,13 @@ const { flowPlaylistConfig } = await importFromRepo("backend/services/playlists/
 const { playlistManager } = await importFromRepo("backend/services/playlists/playlistManager.js");
 const { processPlaylistOperation } = await importFromRepo("backend/services/playlists/playlistOperations.js");
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("deleting a playlist saved by an older version keeps the Library files it reused", async (t) => {
+test("deleting a playlist saved by an older version keeps the Library files it reused", async () => {
   for (const name of ["requestPlaylistSync", "scheduleScanLibrary"]) {
-    t.mock.method(playlistManager, name, async () => {});
+    vi.spyOn(playlistManager, name).mockImplementation(async () => {});
   }
   flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,

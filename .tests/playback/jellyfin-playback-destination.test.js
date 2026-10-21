@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
-import test from "node:test";
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import { JellyfinClient } from "../../backend/services/jellyfin.js";
 import {
   cleanupIsolatedState,
@@ -21,13 +21,13 @@ const [isolatedState, { db }, { dbOps, userOps }, { jellyfinPlaylistPointerStore
 const downloadRoot = process.env.WEEKLY_FLOW_FOLDER;
 const userId = "jellyfin-user";
 
-test.beforeEach(async () => {
+beforeEach(async () => {
   resetDatabase(db);
   await fs.rm(downloadRoot, { recursive: true, force: true });
   dbOps.updateSettings({ integrations: {} });
 });
 
-test.after(async () => {
+afterAll(async () => {
   db.close();
   await cleanupIsolatedState(isolatedState);
 });
@@ -148,9 +148,9 @@ test("publishes, updates, scans, and deletes a managed playlist", async () => {
   }
 });
 
-test("tells Jellyfin about changed folders in its music libraries and reports every music library when one is outside them", async (t) => {
+test("tells Jellyfin about changed folders in its music libraries and reports every music library when one is outside them", async () => {
   const calls = [];
-  const warn = t.mock.method(logger, "warn", () => {});
+  const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
   const musicLocations = ["D:\\Music\\FLAC", "\\\\nas\\music\\"];
   const destination = new JellyfinPlaybackDestination(downloadRoot, {
     client: makeClient(calls, { libraries: [
@@ -189,7 +189,7 @@ test("tells Jellyfin about changed folders in its music libraries and reports ev
       musicLocations,
       [musicLocations[0]],
     ]);
-    assert.deepEqual(warn.mock.calls.map(({ arguments: [category, , data] }) => [category, data.folder]), [
+    assert.deepEqual(warn.mock.calls.map(([category, , data]) => [category, data.folder]), [
       ["jellyfin", "/srv/media/Artist"],
       ["jellyfin", "/srv/elsewhere/Album"],
       ["jellyfin", "/srv/elsewhere/Album"],

@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import { dbOps } from "../../backend/db/helpers/index.js";
@@ -7,7 +7,7 @@ import { libraryManager } from "../../backend/services/libraryManager.js";
 const canonicalMbid = "b1f5d7e2-1d5c-4c9f-9d5f-3e7b4c1a2f68";
 const providerArtistId = "1182@deezer";
 
-test.after(() => {
+afterAll(() => {
   dbOps.deleteLidarrArtistIdMap(canonicalMbid);
 });
 

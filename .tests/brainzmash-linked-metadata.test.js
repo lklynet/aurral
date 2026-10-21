@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, afterAll, vi } from "vite-plus/test";
 import {
   cleanupIsolatedState,
   createMockHttpServer,
@@ -79,7 +79,7 @@ const [
   "backend/services/releaseGroupCoverService.js",
 );
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
   await providerServer.close();
   delete process.env.BRAINZMASH_BASE_URL;
@@ -124,10 +124,10 @@ const externalResponse = (url, options) => {
   return {};
 };
 
-function recordExternalRequests(t) {
+function recordExternalRequests() {
   const requests = [];
   const providerGet = axios.get.bind(axios);
-  t.mock.method(axios, "get", async (url, options) => {
+  vi.spyOn(axios, "get").mockImplementation(async (url, options) => {
     if (String(url).startsWith(providerServer.url)) return providerGet(url, options);
     requests.push(options?.params?.method ? `${url}?method=${options.params.method}` : url);
     return { data: externalResponse(url, options) };
@@ -135,8 +135,8 @@ function recordExternalRequests(t) {
   return requests;
 }
 
-test("artist identity comes from BrainzMash names, aliases, and linked provider IDs", async (t) => {
-  const requests = recordExternalRequests(t);
+test("artist identity comes from BrainzMash names, aliases, and linked provider IDs", async () => {
+  const requests = recordExternalRequests();
 
   assert.deepEqual(await musicbrainzGetArtistIdentityByMbid(linkedArtistMbid), {
     mbid: linkedArtistMbid,
@@ -150,8 +150,8 @@ test("artist identity comes from BrainzMash names, aliases, and linked provider 
 
 test("artist genres come from BrainzMash and Last.fm only fills artists without genres with real genres", async (t) => {
   process.env.LASTFM_API_KEY = "test-key";
-  t.after(() => delete process.env.LASTFM_API_KEY);
-  const requests = recordExternalRequests(t);
+  t.onTestFinished(() => delete process.env.LASTFM_API_KEY);
+  const requests = recordExternalRequests();
 
   const linked = await getArtistTagPayload(
     linkedArtistMbid,
@@ -171,8 +171,8 @@ test("artist genres come from BrainzMash and Last.fm only fills artists without 
   assert.match(requests[0], /method=artist\.getTopTags$/);
 });
 
-test("artist previews use the BrainzMash Deezer link instead of a name search", async (t) => {
-  const requests = recordExternalRequests(t);
+test("artist previews use the BrainzMash Deezer link instead of a name search", async () => {
+  const requests = recordExternalRequests();
   let handler;
   registerPreview({
     get: (_path, ...handlers) => {
@@ -193,8 +193,8 @@ test("artist previews use the BrainzMash Deezer link instead of a name search", 
   assert.deepEqual(requests, ["https://api.deezer.com/artist/412/top"]);
 });
 
-test("artist images fall back to the BrainzMash-linked Deezer artist", async (t) => {
-  const requests = recordExternalRequests(t);
+test("artist images fall back to the BrainzMash-linked Deezer artist", async () => {
+  const requests = recordExternalRequests();
 
   const result = await getArtistImage(linkedArtistMbid, { forceRefresh: true });
 
@@ -202,8 +202,8 @@ test("artist images fall back to the BrainzMash-linked Deezer artist", async (t)
   assert.deepEqual(requests, ["https://api.deezer.com/artist/412"]);
 });
 
-test("album covers fall back to the Deezer artist linked on the BrainzMash album", async (t) => {
-  const requests = recordExternalRequests(t);
+test("album covers fall back to the Deezer artist linked on the BrainzMash album", async () => {
+  const requests = recordExternalRequests();
 
   const result = await fetchReleaseGroupCoverUrl(albumMbid, {
     artistName: "Queen",

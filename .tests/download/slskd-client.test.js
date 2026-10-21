@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import {
@@ -27,11 +27,11 @@ const [
   "backend/config/db-sqlite.js",
 );
 
-test.beforeEach(() => {
+beforeEach(() => {
   resetDatabase(db);
 });
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
@@ -687,11 +687,11 @@ test("flattenSearchResults does not fall back to length when size is absent", ()
   assert.equal(results[0].length, 226);
 });
 
-test("waitForSearch stops its owned active search when collection is sufficient", async (t) => {
+test("waitForSearch stops its owned active search when collection is sufficient", async () => {
   const snapshot = { state: "InProgress", responses: [{ username: "peer", files: [{ filename: "Artist/Album/First.flac" }] }] };
   const deleted = [];
-  t.mock.method(slskdClient, "getSearch", async () => snapshot);
-  t.mock.method(slskdClient, "deleteSearch", async (id) => { deleted.push(id); return true; });
+  vi.spyOn(slskdClient, "getSearch").mockImplementation(async () => snapshot);
+  vi.spyOn(slskdClient, "deleteSearch").mockImplementation(async (id) => { deleted.push(id); return true; });
   const result = await slskdClient.waitForSearch("owned-early-search", 1000, { earlyExitWhen: () => true });
   assert.deepEqual(result, snapshot);
   assert.deepEqual(deleted, ["owned-early-search"]);
@@ -699,11 +699,11 @@ test("waitForSearch stops its owned active search when collection is sufficient"
 
 
 
-test("failed search deletion retains ownership and collected files", async (t) => {
+test("failed search deletion retains ownership and collected files", async () => {
   const snapshot = { state: "InProgress", responses: [{ username: "peer", files: [{ filename: "First.flac" }] }] };
   const settled = [];
-  t.mock.method(slskdClient, "getSearch", async () => snapshot);
-  t.mock.method(slskdClient, "deleteSearch", async () => false);
+  vi.spyOn(slskdClient, "getSearch").mockImplementation(async () => snapshot);
+  vi.spyOn(slskdClient, "deleteSearch").mockImplementation(async () => false);
   const result = await slskdClient.waitForSearch("failed-delete", 1000, {
     earlyExitWhen: () => true, onSearchSettled: (id) => settled.push(id),
   });
@@ -711,8 +711,8 @@ test("failed search deletion retains ownership and collected files", async (t) =
   assert.deepEqual(settled, []);
 });
 
-test("searchQuery passes its operation deadline through creation and collection", async (t) => {
-  t.mock.timers.enable({ apis: ["Date"], now: 1000 });
+test("searchQuery passes its operation deadline through creation and collection", async () => {
+  vi.useFakeTimers({ toFake: ["Date"], now: 1000 });
   let postedBody;
   let searchId;
   const server = await createMockHttpServer((req, res) => {
@@ -743,11 +743,11 @@ test("searchQuery passes its operation deadline through creation and collection"
   } finally { await server.close(); }
 });
 
-test("completed search cleanup failure retains ownership", async (t) => {
+test("completed search cleanup failure retains ownership", async () => {
   const { SlskdClient } = await import("../../backend/services/slskdClient.js");
   const client = new SlskdClient({ enabled: true, url: "http://service.invalid", cleanupAfterRuns: true });
-  t.mock.method(client, "getSearch", async () => ({ state: "Completed", responses: [] }));
-  t.mock.method(client, "deleteSearch", async () => false);
+  vi.spyOn(client, "getSearch").mockImplementation(async () => ({ state: "Completed", responses: [] }));
+  vi.spyOn(client, "deleteSearch").mockImplementation(async () => false);
   let settled = false;
   await client.waitForSearch("completed-retained", 1000, { onSearchSettled: () => { settled = true; } });
   assert.equal(settled, false);
@@ -756,8 +756,8 @@ test("completed search cleanup failure retains ownership", async (t) => {
 
 
 
-test("cancellation interrupts an in-flight Soulseek HTTP request", { timeout: 3000 }, async (t) => {
-  t.mock.timers.enable({ apis: ["Date", "setInterval"], now: Date.now() });
+test("cancellation interrupts an in-flight Soulseek HTTP request", { timeout: 3000 }, async () => {
+  vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"], now: Date.now() });
   let cancelled = false;
   let notifyPoll;
   const pollStarted = new Promise((resolve) => { notifyPoll = resolve; });
@@ -772,7 +772,7 @@ test("cancellation interrupts an in-flight Soulseek HTTP request", { timeout: 30
     const pending = client.waitForSearch("cancel-http", 60000, { shouldCancel: () => cancelled });
     await pollStarted;
     cancelled = true;
-    t.mock.timers.tick(100);
+    vi.advanceTimersByTime(100);
     assert.equal(await pending, null);
     assert.deepEqual(deleted, ["/api/v0/searches/cancel-http"]);
   } finally { await server.close(); }

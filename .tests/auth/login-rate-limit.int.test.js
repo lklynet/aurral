@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, beforeAll, afterAll } from "vite-plus/test";
 
 import bcrypt from "bcrypt";
 
@@ -25,14 +25,14 @@ const login = (password) =>
     body: JSON.stringify({ username: "admin", password }),
   });
 
-test.before(async () => {
+beforeAll(async () => {
   resetDatabase(db);
   dbOps.updateSettings({ integrations: {}, onboardingComplete: true });
   userOps.createUser("admin", bcrypt.hashSync("password123", 4), "admin");
   aurral = await startServerProcess();
 });
 
-test.after(async () => {
+afterAll(async () => {
   await aurral?.stop();
   await cleanupIsolatedState(isolatedState);
 });

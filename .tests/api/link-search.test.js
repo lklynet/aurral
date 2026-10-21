@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, beforeAll, beforeEach, afterAll, vi } from "vite-plus/test";
 import express from "express";
 import { readFile } from "node:fs/promises";
 import {
@@ -41,7 +41,7 @@ let token;
 
 function stubServices(t, routes) {
   const requests = [];
-  t.mock.method(globalThis, "fetch", async (input, init) => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     const url = new URL(String(input));
     if (url.hostname === "127.0.0.1") return realFetch(input, init);
     requests.push(url.href);
@@ -61,7 +61,7 @@ async function resolveLink(url, { authenticated = true } = {}) {
   return { status: response.status, body: await response.json() };
 }
 
-test.before(async () => {
+beforeAll(async () => {
   metadataServer = await createMockHttpServer((request, response) => {
     const { pathname } = new URL(request.url, "http://metadata.invalid");
     const body = metadataRoutes[pathname];
@@ -80,7 +80,7 @@ test.before(async () => {
   baseUrl = `http://127.0.0.1:${server.address().port}`;
 });
 
-test.beforeEach(async () => {
+beforeEach(async () => {
   resetDatabase(db);
   provider.clearMetadataProviderCaches();
   metadataRoutes = { "/search/artist": [], "/search/album": [] };
@@ -101,7 +101,7 @@ test.beforeEach(async () => {
   token = (await login.json()).token;
 });
 
-test.after(async () => {
+afterAll(async () => {
   await new Promise((resolve) => server?.close(resolve));
   await metadataServer?.close();
   await cleanupIsolatedState(state);

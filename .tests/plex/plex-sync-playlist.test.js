@@ -1,4 +1,4 @@
-import test, { mock } from "node:test";
+import { test, afterEach, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import { PlexClient } from "../../backend/services/plex.js";
@@ -11,7 +11,7 @@ function makeClient() {
 
 function mockRequests(client, responses) {
   const calls = [];
-  mock.method(client, "request", async (path, opts = {}) => {
+  vi.spyOn(client, "request").mockImplementation(async (path, opts = {}) => {
     const method = opts.method || "GET";
     calls.push({ path, method, params: opts.params });
     const key = `${method} ${path}`;
@@ -24,8 +24,8 @@ function mockRequests(client, responses) {
   return calls;
 }
 
-test.afterEach(() => {
-  mock.restoreAll();
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 test("syncPlaylist creates fresh when no ratingKey is provided - no title search involved", async () => {
@@ -284,12 +284,12 @@ test("syncPlaylist keeps removing remaining stale items even if one removal fail
   assert.deepEqual(deletedIds, ["pi-2"]);
 });
 
-test("getTracks rejects a timeout while reading a page body instead of returning a partial library", async (t) => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
+test("getTracks rejects a timeout while reading a page body instead of returning a partial library", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], now: 0 });
   let readingBody;
   const bodyStarted = new Promise((resolve) => { readingBody = resolve; });
   let pages = 0;
-  t.mock.method(globalThis, "fetch", async (_url, { signal }) => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, { signal }) => {
     pages += 1;
     if (pages === 1) return Response.json({ MediaContainer: { totalSize: 2, Metadata: [{ ratingKey: "1" }] } });
     const response = Response.json({});
@@ -302,6 +302,6 @@ test("getTracks rejects a timeout while reading a page body instead of returning
   const tracks = makeClient().getTracks("9");
   const rejected = assert.rejects(tracks, { code: "ECONNABORTED" });
   await bodyStarted;
-  t.mock.timers.tick(30_001);
+  vi.advanceTimersByTime(30_001);
   await rejected;
 });

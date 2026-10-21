@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -10,8 +10,8 @@ const [state, { db }, { dbOps }, { downloadTracker }, { getDownloadClient }, dee
     "backend/services/downloadJobs/downloadTracker.js",
     "backend/services/download/downloadClientSettings.js", "backend/services/deemixOrchestrator.js",
     "backend/services/ytdlpOrchestrator.js", "backend/services/downloadPipeline.js");
-test.beforeEach(() => resetDatabase(db));
-test.after(() => cleanupIsolatedState(state));
+beforeEach(() => resetDatabase(db));
+afterAll(() => cleanupIsolatedState(state));
 
 for (const [source, processPayload] of [
   ["deemix", deemix.processDeemixPipelinePayload],
@@ -42,28 +42,28 @@ for (const [source, processPayload] of [
   ["deemix", deemix.processDeemixPipelinePayload],
   ["ytdlp", ytdlp.processYtdlpPipelinePayload],
 ]) {
-  test(`${source} blocks a track that fails validation from the next search`, async (t) => {
+  test(`${source} blocks a track that fails validation from the next search`, async () => {
     const jobId = downloadTracker.addJob({ artistName: "The Band", trackName: "First", durationMs: 180000 }, "search-exclusions");
     const staging = join(state.baseDir, `${source}-rejected`);
     await mkdir(staging, { recursive: true });
     const filePath = join(staging, "First.flac");
     await writeFile(filePath, "not audio");
     const client = getDownloadClient(source);
-    if (source === "deemix") t.mock.method(client, "removeFromQueue", async () => true);
-    else t.mock.method(client, "cleanupStaging", async () => {});
+    if (source === "deemix") vi.spyOn(client, "removeFromQueue").mockImplementation(async () => true);
+    else vi.spyOn(client, "cleanupStaging").mockImplementation(async () => {});
     const helpers = { failOrTryNextSource: (_payload, _job, reason) => ({ error: reason }) };
     await processPayload({ phase: "finalize", source, jobId, queueUuid: "queued",
       downloadedPath: filePath, candidateIndex: 0,
       candidates: [{ raw: { id: "rejected", url: "https://track.invalid/rejected" } }] }, helpers);
     assert.deepEqual(downloadTracker.getJob(jobId).deniedRemoteSources, [[source, "rejected"]]);
-    t.mock.method(client, "search", async () => ["rejected", "allowed"].map((id) => ({ id,
+    vi.spyOn(client, "search").mockImplementation(async () => ["rejected", "allowed"].map((id) => ({ id,
       title: "First", artist: "The Band", channel: "The Band", durationSec: 180, readable: true })));
     const result = await processPayload({ phase: "search", source, jobId }, helpers);
     assert.deepEqual(result.candidates.map((entry) => entry.raw.id), ["allowed"]);
   });
 }
 
-test("slskd blocks a file that fails validation", async (t) => {
+test("slskd blocks a file that fails validation", async () => {
   dbOps.updateSettings({ ...dbOps.getSettings(), integrations: {
     slskd: { enabled: true, url: "http://127.0.0.1:9" },
   } });
@@ -72,8 +72,8 @@ test("slskd blocks a file that fails validation", async (t) => {
   await mkdir(join(root, "The Band"), { recursive: true });
   await writeFile(join(root, "The Band", "First.flac"), "not audio");
   const client = getDownloadClient("slskd");
-  t.mock.method(client, "getDownloadDirectory", async () => root);
-  t.mock.method(client, "isCleanupAfterRunsEnabled", () => false);
+  vi.spyOn(client, "getDownloadDirectory").mockImplementation(async () => root);
+  vi.spyOn(client, "isCleanupAfterRunsEnabled").mockImplementation(() => false);
   const remoteFile = "Music\\The Band\\First.flac";
   await slskd.processPipelinePayload({ phase: "finalize", source: "slskd", jobId,
     candidateIndex: 0, candidates: [{ raw: { user: "peer", file: remoteFile, size: 0 } }] });

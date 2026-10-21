@@ -4,17 +4,15 @@
 // decisions. Identity correctness gates the candidate list; quality profile
 // preference only orders candidates that already passed identity.
 
-import test from "node:test";
+import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import {
   buildSourceCandidates,
-  hasUsableSearchCandidates,
   usableEvaluationEntries,
 } from "../../backend/services/trackMatching/index.js";
 
 const btest = test;
-import { orderAdvertisedQualityCandidates, getAdvertisedQualityRank } from "../../backend/services/qualityProfileModel.js";
-import { getQualityProfile } from "../../backend/services/qualityProfileService.js";
+import { orderAdvertisedQualityCandidates } from "../../backend/services/qualityProfileModel.js";
 
 const result = (overrides) => ({
   size: 30000000,

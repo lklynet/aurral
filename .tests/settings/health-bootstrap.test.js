@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, beforeEach, afterAll } from "vite-plus/test";
 import express from "express";
 import {
   cleanupIsolatedState,
@@ -32,11 +32,11 @@ async function bootstrapAsUser() {
   return response.json();
 }
 
-test.beforeEach(() => {
+beforeEach(() => {
   resetDatabase(db);
 });
 
-test.after(async () => {
+afterAll(async () => {
   await new Promise((resolve) => server.close(resolve));
   db.close();
   await cleanupIsolatedState(isolatedState);

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { after, before, describe, test } from "node:test";
-import fs, { mkdir, rm, symlink, writeFile, truncate } from "node:fs/promises";
+import { describe, test, beforeAll, afterAll, vi } from "vite-plus/test";
+import fs, { mkdir, symlink, writeFile, truncate } from "node:fs/promises";
 import path from "node:path";
 import express from "express";
 import sharp from "sharp";
@@ -44,7 +44,7 @@ const server = await new Promise((resolve) => {
 const baseUrl = `http://127.0.0.1:${server.address().port}`;
 let session = null;
 
-after(async () => {
+afterAll(async () => {
   await new Promise((resolve) => server.close(resolve));
   await cleanupIsolatedState(isolatedState);
 });
@@ -145,7 +145,7 @@ test("installs without sign-in serve covers to requests without a token", async 
 
 describe("with sign-in required", () => {
   let user;
-  before(() => {
+  beforeAll(() => {
     user = userOps.createUser("artwork-test-user", "unused-hash", "user");
     session = createSession(user.id);
   });
@@ -236,17 +236,17 @@ describe("with sign-in required", () => {
     assert.equal((await requestCover(beyond.id)).status, 404);
   });
 
-  test("concurrent requests share one album lookup and missing artwork stays cached until a Library scan", async (t) => {
+  test("concurrent requests share one album lookup and missing artwork stays cached until a Library scan", async () => {
     const album = await albumFixture("missing-artwork-cache", [null, null]);
-    const readdir = t.mock.method(fs, "readdir");
-    const albumReads = () => readdir.mock.calls.filter((call) => call.arguments[0] === album.folder).length;
+    const readdir = vi.spyOn(fs, "readdir");
+    const albumReads = () => readdir.mock.calls.filter((call) => call[0] === album.folder).length;
 
     const results = await Promise.all(Array.from({ length: 5 }, () => requestCover(album.id)));
     assert.deepEqual(results.map((result) => result.status), [404, 404, 404, 404, 404]);
     assert.equal(albumReads(), 1);
 
-    t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
-    t.mock.timers.tick(60 * 60 * 1000);
+    vi.useFakeTimers({ toFake: ["Date"], now: Date.now() });
+    vi.advanceTimersByTime(60 * 60 * 1000);
     assert.equal((await requestCover(album.id)).status, 404);
     assert.equal(albumReads(), 1);
 

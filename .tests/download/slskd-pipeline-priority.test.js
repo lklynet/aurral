@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import {
@@ -13,7 +13,7 @@ const [isolatedState, honkerDb] = await setupIsolatedBackend(
 
 const { getPipelineQueue, enqueuePipelineJob } = honkerDb;
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 

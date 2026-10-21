@@ -1,10 +1,6 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vite-plus/test";
 import { idFor } from "../../backend/services/subsonicLibraryService.js";
-import { startFrontendServer } from "../helpers/frontendServer.js";
-
-const vite = await startFrontendServer();
-test.after(() => vite.close());
 
 const {
   albumCardMeta,
@@ -13,8 +9,8 @@ const {
   getAlbumCoverId,
   getCachedAlbumTracks,
   mergeAlbumTrackPageIntoLibrary,
-} = await vite.ssrLoadModule("/src/utils/libraryPageData.js");
-const { queryClient, queryKeys } = await vite.ssrLoadModule("/src/queryClient.js");
+} = await import("../../frontend/src/utils/libraryPageData.js");
+const { queryClient, queryKeys } = await import("../../frontend/src/queryClient.js");
 
 test("album track hydration does not rewrite unchanged library state", () => {
   const album = { id: 7, title: "Album", trackCount: 0, availableTrackCount: 0 };
@@ -33,7 +29,7 @@ test("album track hydration does not rewrite unchanged library state", () => {
 });
 
 test("invalidated album track caches fall back to the current library tracks", (t) => {
-  t.after(() => queryClient.clear());
+  t.onTestFinished(() => queryClient.clear());
   const album = { id: 7, trackIds: [8, 9] };
   const tracksById = new Map([
     ["8", { id: 8 }],
@@ -42,7 +38,7 @@ test("invalidated album track caches fall back to the current library tracks", (
   const queryKey = queryKeys.libraryAlbumTracks("7", null);
   queryClient.setQueryData(queryKey, { tracks: [{ id: 8 }, { id: 9 }] });
 
-  queryClient.invalidateQueries({ queryKey, refetchType: "none" });
+  void queryClient.invalidateQueries({ queryKey, refetchType: "none" });
   tracksById.delete("9");
 
   assert.deepEqual(getCachedAlbumTracks(album, tracksById), [{ id: 8 }]);

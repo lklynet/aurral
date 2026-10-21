@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
-import test from "node:test";
-import { startFrontendServer } from "../helpers/frontendServer.js";
+import { test, vi } from "vite-plus/test";
 
 test("artist REST details coalesce identical requests through Query", async (t) => {
-  const vite = await startFrontendServer();
+  vi.resetModules();
   const previousFetch = globalThis.fetch;
   let requestCount = 0;
   globalThis.fetch = async () => {
@@ -13,14 +12,11 @@ test("artist REST details coalesce identical requests through Query", async (t) 
       headers: { "content-type": "application/json" },
     });
   };
-  t.after(async () => {
+  t.onTestFinished(async () => {
     globalThis.fetch = previousFetch;
-    await vite.close();
   });
 
-  const { getArtistDetails } = await vite.ssrLoadModule(
-    "/src/utils/api/endpoints/artists.js?artist-query-cache-test",
-  );
+  const { getArtistDetails } = await import("../../frontend/src/utils/api/endpoints/artists.js");
   const options = { mode: "core", releaseTypes: ["Album"] };
   const [first, second] = await Promise.all([
     getArtistDetails("artist-1", "Artist", options),
@@ -33,7 +29,7 @@ test("artist REST details coalesce identical requests through Query", async (t) 
 });
 
 test("artist cover refreshes do not reuse or get overwritten by normal requests", async (t) => {
-  const vite = await startFrontendServer();
+  vi.resetModules();
   const previousFetch = globalThis.fetch;
   let requestCount = 0;
   let resolveNormal;
@@ -51,14 +47,11 @@ test("artist cover refreshes do not reuse or get overwritten by normal requests"
     }
     return response("https://images.example/refreshed.jpg");
   };
-  t.after(async () => {
+  t.onTestFinished(async () => {
     globalThis.fetch = previousFetch;
-    await vite.close();
   });
 
-  const { getArtistCover } = await vite.ssrLoadModule(
-    "/src/utils/api/endpoints/artists.js?artist-cover-refresh-test",
-  );
+  const { getArtistCover } = await import("../../frontend/src/utils/api/endpoints/artists.js");
   const normal = getArtistCover("artist-1", "Artist");
   while (!resolveNormal) await new Promise((resolve) => setImmediate(resolve));
   const refresh = getArtistCover("artist-1", "Artist", true);
@@ -75,7 +68,7 @@ test("artist cover refreshes do not reuse or get overwritten by normal requests"
 });
 
 test("normal cover requests wait for active artist and release-group refreshes", async (t) => {
-  const vite = await startFrontendServer();
+  vi.resetModules();
   const previousFetch = globalThis.fetch;
   const requestCounts = new Map();
   const releaseRefreshes = new Map();
@@ -104,14 +97,11 @@ test("normal cover requests wait for active artist and release-group refreshes",
       );
     });
   };
-  t.after(async () => {
+  t.onTestFinished(async () => {
     globalThis.fetch = previousFetch;
-    await vite.close();
   });
 
-  const { getArtistCover, getReleaseGroupCover } = await vite.ssrLoadModule(
-    "/src/utils/api/endpoints/artists.js?cover-refresh-priority-test",
-  );
+  const { getArtistCover, getReleaseGroupCover } = await import("../../frontend/src/utils/api/endpoints/artists.js");
   const cases = [
     {
       key: "artist",

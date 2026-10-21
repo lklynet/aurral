@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { chmod, copyFile, link, mkdir, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
@@ -80,13 +80,13 @@ async function apply(id) {
 const exists = (filePath) => stat(filePath).then(() => true, () => false);
 const libraryAlbums = () => db.prepare("SELECT * FROM library_albums ORDER BY id").all();
 
-test.beforeEach(async () => {
+beforeEach(async () => {
   await rm(root, { recursive: true, force: true });
   resetDatabase(db);
   db.prepare("DELETE FROM library_management").run();
 });
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 

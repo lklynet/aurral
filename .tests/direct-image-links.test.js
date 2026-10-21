@@ -1,10 +1,7 @@
 import assert from "node:assert/strict";
-import test from "node:test";
-
-const { buildImageProxyUrl, buildStableImageProxyUrl } = await import(
-  `../backend/services/imageProxyService.js?direct-image-links=${Date.now()}`
-);
-const { withImageCacheBust } = await import("../frontend/src/utils/normalizeMediaUrl.js");
+import { test } from "vite-plus/test";
+import { buildImageProxyUrl, buildStableImageProxyUrl } from "../backend/services/imageProxyService.js";
+import { withImageCacheBust } from "../frontend/src/utils/normalizeMediaUrl.js";
 
 test("image links return source URLs by default", () => {
   const source = "https://images.example/artist.jpg?size=512&format=webp";

@@ -11,4 +11,9 @@ EOF
   exit 1
 fi
 
+vp="$(git rev-parse --show-toplevel)/node_modules/.bin/vp"
+if [ -x "$vp" ]; then
+  exec "$vp" staged
+fi
+
 exit 0

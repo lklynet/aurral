@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import {
   setupIsolatedBackend,
@@ -103,14 +103,14 @@ function setDiscoveryCache({ lastUpdated = null, ...data } = {}) {
   if (lastUpdated) db.prepare("UPDATE discovery_cache SET last_updated = ?").run(lastUpdated);
 }
 
-test.beforeEach(() => {
+beforeEach(() => {
   clearDiscoveryRefreshJobs();
   setDiscoveryCache();
   releaseHeldGlobalRefreshLock();
   clearLibraryArtists();
 });
 
-test.after(async () => {
+afterAll(async () => {
   if (originalLastfmApiKey === undefined) delete process.env.LASTFM_API_KEY;
   else process.env.LASTFM_API_KEY = originalLastfmApiKey;
   releaseHeldGlobalRefreshLock();

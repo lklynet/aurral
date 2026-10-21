@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -40,7 +40,7 @@ const [
   ].map(importFromRepo),
 );
 
-test.after(async () => {
+afterAll(async () => {
   db.close();
   await cleanupIsolatedState(isolatedState);
 });
@@ -70,12 +70,12 @@ test("serves playlist artwork from a hidden data directory", async () => {
   }
 });
 
-test("a new flow or static playlist has its cover as soon as it is created, with no media server connected", async (t) => {
+test("a new flow or static playlist has its cover as soon as it is created, with no media server connected", async () => {
   dbOps.updateSettings({ integrations: {}, playlistArtwork: { style: "aurral" }, onboardingComplete: true });
   userOps.createUser("curator", hashPassword("curator-password"), "admin");
   const authorization = `Basic ${Buffer.from("curator:curator-password").toString("base64")}`;
   const queuedOperations = [];
-  t.mock.method(playlistOperationQueue, "enqueuePayload", async (payload) => {
+  vi.spyOn(playlistOperationQueue, "enqueuePayload").mockImplementation(async (payload) => {
     queuedOperations.push(payload);
     return { queued: true, operationId: `operation-${queuedOperations.length}` };
   });

@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { copyFile, link, mkdir, readFile, rm, stat } from "node:fs/promises";
@@ -188,7 +188,7 @@ async function checkAndRun(operation) {
 
 const originalSettings = dbOps.getSettings();
 
-test.beforeEach(async () => {
+beforeEach(async () => {
   providerDown = false;
   await rm(root, { recursive: true, force: true });
   await rm(outside, { recursive: true, force: true });
@@ -204,7 +204,7 @@ test.beforeEach(async () => {
   });
 });
 
-test.after(async () => {
+afterAll(async () => {
   dbOps.updateSettings(originalSettings);
   await metadataServer.close();
   await cleanupIsolatedState(isolatedState);

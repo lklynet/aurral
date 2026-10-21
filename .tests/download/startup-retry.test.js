@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import {
@@ -23,7 +23,7 @@ const [
   "backend/services/downloadJobs/downloadWorker.js",
 );
 
-test.beforeEach(() => {
+beforeEach(() => {
   downloadTracker.clearAll();
   resetDatabase(db);
   dbOps.updateSettings({
@@ -34,7 +34,7 @@ test.beforeEach(() => {
   });
 });
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 

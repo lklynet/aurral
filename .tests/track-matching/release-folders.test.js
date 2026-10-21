@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { selectSoulseekAlbumFolder, soulseekReleaseCopies } from "../../backend/services/albumReleaseSearch.js";
 import { SAME_VERSION_LABELS } from "./version-labels.js";

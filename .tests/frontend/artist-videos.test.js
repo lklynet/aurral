@@ -1,15 +1,12 @@
 import assert from "node:assert/strict";
-import test from "node:test";
-import { startFrontendServer } from "../helpers/frontendServer.js";
+import { test, vi } from "vite-plus/test";
 
-const vite = await startFrontendServer();
-const { getArtistVideos } = await vite.ssrLoadModule("/src/utils/api/endpoints/artists.js");
+const { getArtistVideos } = await import("../../frontend/src/utils/api/endpoints/artists.js");
 const tracks = Array.from({ length: 8 }, (_, index) => ({ title: `Track ${index + 1}` }));
-test.after(() => vite.close());
 
 function stubVideos(t, respond) {
   const requested = [];
-  t.mock.method(globalThis, "fetch", async (url, options) => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (url, options) => {
     const title = new URL(String(url), "http://localhost").searchParams.get("trackTitle");
     requested.push(title);
     const response = await respond(Number(title.split(" ")[1]), options);

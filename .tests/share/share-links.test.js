@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, beforeEach, afterAll } from "vite-plus/test";
 import crypto from "node:crypto";
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -191,7 +191,7 @@ const apiServer = await new Promise((resolve) => {
 });
 const apiUrl = `http://127.0.0.1:${apiServer.address().port}/api/share-links`;
 
-test.after(async () => {
+afterAll(async () => {
   await listener.stopShareListener();
   await new Promise((resolve) => apiServer.close(resolve));
   await lookup.close();
@@ -199,7 +199,7 @@ test.after(async () => {
   await rm(fakeBin, { recursive: true, force: true });
 });
 
-test.beforeEach(async () => {
+beforeEach(async () => {
   db.prepare("DELETE FROM share_links").run();
   await listener.syncShareListener();
   await writeFile(launchLog, "");

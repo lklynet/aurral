@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import {
@@ -21,8 +21,8 @@ const [{ db }, discovery, flowTrackSourceModule, { registerFeedback }] = await P
 
 const { FlowTrackSource } = flowTrackSourceModule;
 
-test.beforeEach(() => resetDatabase(db));
-test.after(async () => cleanupIsolatedState(isolatedState));
+beforeEach(() => resetDatabase(db));
+afterAll(async () => cleanupIsolatedState(isolatedState));
 
 test("artist blocks are per-user and match ids, names, and track aliases", () => {
   discovery.addDiscoveryFeedback("7", {

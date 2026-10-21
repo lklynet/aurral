@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, afterAll } from "vite-plus/test";
 import { fork } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { createBackgroundProcessSupervisor } from "../../backend/services/backgroundProcessSupervisor.js";
 import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.js";
 
 const [state, honker] = await setupIsolatedBackend("queue-wake", "backend/services/honkerDb.js");
-test.after(() => cleanupIsolatedState(state));
+afterAll(() => cleanupIsolatedState(state));
 
 test("web enqueue persists registered and outbox jobs before notifying their owner", () => {
   process.env.NODE_ENV = "production";
@@ -93,7 +93,7 @@ test("web wakeups drain a burst in a real isolated owner process", { timeout: 10
       }
     },
   });
-  t.after(async () => {
+  t.onTestFinished(async () => {
     honker.configureHonkerQueueWake(null);
     process.env.NODE_ENV = "test";
     await supervisor.stop();

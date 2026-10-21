@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
-import test from "node:test";
+import { test, beforeEach, afterAll, afterEach, vi } from "vite-plus/test";
 import sharp from "sharp";
 
 import {
@@ -62,7 +62,7 @@ const playlistManagerMethods = [
 ];
 let originalPlaylistManagerMethods;
 
-test.beforeEach(() => {
+beforeEach(() => {
   resetDatabase(db);
   downloadTracker.clearAll();
   invalidateFlowPlaylistConfigCache();
@@ -74,13 +74,13 @@ test.beforeEach(() => {
   }
 });
 
-test.afterEach(() => {
+afterEach(() => {
   for (const [name, method] of originalPlaylistManagerMethods) {
     playlistManager[name] = method;
   }
 });
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
@@ -485,7 +485,7 @@ test("Subsonic edits wait behind other playlist mutations", async () => {
   assert.equal(flowPlaylistConfig.getStaticPlaylist(playlistId)?.name, "After Ordered Edit");
 });
 
-test("a rejected Subsonic edit does not leave later jobs cancelled", async (t) => {
+test("a rejected Subsonic edit does not leave later jobs cancelled", async () => {
   const playlistId = "subsonic-rejected-edit";
   flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,
@@ -497,7 +497,7 @@ test("a rejected Subsonic edit does not leave later jobs cancelled", async (t) =
     { artistName: "Old Artist", trackName: "Old Song" },
     playlistId,
   );
-  t.mock.method(flowPlaylistConfig, "updateStaticPlaylist", () => null);
+  vi.spyOn(flowPlaylistConfig, "updateStaticPlaylist").mockImplementation(() => null);
 
   assert.equal(
     await subsonic.updateSubsonicPlaylist(user, { playlistId, name: "Rejected name" }),
@@ -510,7 +510,7 @@ test("a rejected Subsonic edit does not leave later jobs cancelled", async (t) =
   assert.equal(downloadTracker.getNextPendingMatching((job) => job.id === laterJobId)?.id, laterJobId);
 });
 
-test("a failed Subsonic edit does not revive a previously cancelled job", async (t) => {
+test("a failed Subsonic edit does not revive a previously cancelled job", async () => {
   const playlistId = "subsonic-edit-existing-cancellation";
   flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,
@@ -520,7 +520,7 @@ test("a failed Subsonic edit does not revive a previously cancelled job", async 
   });
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Old Song" }, playlistId);
   cancelDownloadJob(jobId);
-  t.mock.method(flowPlaylistConfig, "updateStaticPlaylist", () => null);
+  vi.spyOn(flowPlaylistConfig, "updateStaticPlaylist").mockImplementation(() => null);
 
   assert.equal(await subsonic.updateSubsonicPlaylist(user, { playlistId, name: "Rejected" }), null);
   assert.equal(isDownloadJobCancelled(jobId), true);

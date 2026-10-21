@@ -1,4 +1,4 @@
-import test, { mock } from "node:test";
+import { test, beforeEach, afterAll, afterEach, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "fs/promises";
 import path from "path";
@@ -27,7 +27,7 @@ const [
 
 const root = process.env.WEEKLY_FLOW_FOLDER;
 
-test.beforeEach(async () => {
+beforeEach(async () => {
   await fs.rm(root, { recursive: true, force: true });
   resetDatabase(db);
   downloadTracker.clearAll();
@@ -40,12 +40,12 @@ test.beforeEach(async () => {
   dbOps.setJSONSetting("aurralDownloadFolderMigration", null);
 });
 
-test.after(async () => {
+afterAll(async () => {
   db.close();
   await cleanupIsolatedState(isolatedState);
 });
 
-test.afterEach(() => mock.restoreAll());
+afterEach(() => vi.restoreAllMocks());
 
 test("migrates permanent tracks, isolates active flows, and removes unkept flow files", async () => {
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Saved" });
@@ -137,7 +137,7 @@ test("retains a permanent source when tracker updates are not persisted", async 
     playlist.id,
   );
   downloadTracker.setDone(jobId, source);
-  mock.method(downloadTracker, "updateFinalPath", () => false);
+  vi.spyOn(downloadTracker, "updateFinalPath").mockImplementation(() => false);
 
   const result = await migrateAurralDownloadFolder({
     root,

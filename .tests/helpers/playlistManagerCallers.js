@@ -17,7 +17,7 @@ function nextMessage(caller, type) {
 
 export async function callFromProcessesWhileHonkerLocked(t, honker, method, argsPerProcess) {
   const callers = argsPerProcess.map(() => fork(fixture, { stdio: ["ignore", "ignore", "inherit", "ipc"] }));
-  t.after(() => callers.forEach((caller) => caller.kill()));
+  t.onTestFinished(() => callers.forEach((caller) => caller.kill()));
   await Promise.all(callers.map((caller) => nextMessage(caller, "ready")));
 
   const writeLock = honker.getHonkerDb().transaction();

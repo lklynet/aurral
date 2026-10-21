@@ -481,7 +481,7 @@ export class DownloadWorker {
 
     this.runGeneration += 1;
     this.running = true;
-    startDownloadPipelineWorker();
+    void startDownloadPipelineWorker();
     console.log("[DownloadWorker] Starting worker...");
 
     this.processLoop = () => {

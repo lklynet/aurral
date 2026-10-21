@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, beforeEach, afterAll, afterEach, vi } from "vite-plus/test";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { setupIsolatedBackend, cleanupIsolatedState, resetDatabase } from "../helpers/backendTestHarness.js";
@@ -19,15 +19,15 @@ const [state, { db }, { dbOps }, retention, { playlistManager }, { downloadTrack
 const { createPlaybackDeletionGuard, removeUnusedPlaybackFiles, isPlaybackRetainedFile, retryPlaybackRetainedFiles } = retention;
 const root = process.env.WEEKLY_FLOW_FOLDER;
 
-test.beforeEach(async () => {
+beforeEach(async () => {
   resetDatabase(db);
   downloadTracker.clearAll();
   dbOps.updateSettings({ integrations: {}, flows: [], sharedPlaylists: [], onboardingComplete: true, downloadFolderPath: root });
   await fs.rm(root, { recursive: true, force: true });
 });
-test.after(async () => { db.close(); await cleanupIsolatedState(state); });
+afterAll(async () => { db.close(); await cleanupIsolatedState(state); });
 
-test.afterEach(async () => {
+afterEach(async () => {
   const { syncPathMappings } = await import("../../backend/services/pathMappings.js");
   syncPathMappings([]);
 });
@@ -114,14 +114,14 @@ test("configuration changes invalidate deletion permission within a batch", asyn
   assert.equal(await guard.canDelete(file), false);
 });
 
-test("flow reset retains external files at the same path and clears outgoing jobs", async (t) => {
+test("flow reset retains external files at the same path and clears outgoing jobs", async () => {
   const saved = await makeFile("_flows/flow/saved.flac");
   const unused = await makeFile("_flows/flow/unused.flac");
   const legacy = await makeFile("aurral-weekly-flow/flow/legacy.flac");
   const id = downloadTracker.addJob({ artistName: "Artist", trackName: "Saved" }, "flow");
   downloadTracker.setDone(id, saved);
   let calls = 0;
-  t.mock.method(playlistManager.destinationRegistry, "run", async (operation, options) => {
+  vi.spyOn(playlistManager.destinationRegistry, "run").mockImplementation(async (operation, options) => {
     assert.equal(operation, "getReferencedPaths");
     assert.deepEqual(options.excludeEntityIds, ["flow"]);
     calls += 1;
@@ -135,27 +135,27 @@ test("flow reset retains external files at the same path and clears outgoing job
   assert.equal(calls, 1);
 });
 
-test("explicit manual reset deletes externally referenced files without contacting services", async (t) => {
+test("explicit manual reset deletes externally referenced files without contacting services", async () => {
   const saved = await makeFile("_flows/flow/saved.flac");
-  t.mock.method(playlistManager.destinationRegistry, "run", async () => { assert.fail("manual deletion queried playback"); });
+  vi.spyOn(playlistManager.destinationRegistry, "run").mockImplementation(async () => { assert.fail("manual deletion queried playback"); });
   await playlistManager.weeklyReset(["flow"], { protectPlayback: false });
   await assert.rejects(fs.access(saved), { code: "ENOENT" });
 });
 
-test("individual automatic cleanup retains a track while explicit deletion bypasses the check", async (t) => {
+test("individual automatic cleanup retains a track while explicit deletion bypasses the check", async () => {
   const flow = flowPlaylistConfig.createFlow({ name: "Flow", size: 5 });
   const file = await makeFile(`_flows/${flow.id}/track.flac`);
-  t.mock.method(playlistManager.destinationRegistry, "run", async () => [{ destination: "Plex", ok: true, paths: [file] }]);
+  vi.spyOn(playlistManager.destinationRegistry, "run").mockImplementation(async () => [{ destination: "Plex", ok: true, paths: [file] }]);
   assert.deepEqual(await reuse.removePlaylistFileIfUnshared(file, flow.id), { action: "retained" });
   assert.deepEqual(await reuse.removePlaylistFileIfUnshared(file, flow.id, { protectPlayback: false }), { action: "deleted" });
   await assert.rejects(fs.access(file), { code: "ENOENT" });
 });
 
-test("a later scan retries retained files but never removes a file still owned by Aurral", async (t) => {
+test("a later scan retries retained files but never removes a file still owned by Aurral", async () => {
   const saved = await makeFile("_flows/flow/saved.flac");
   const owned = await makeFile("_flows/flow/owned.flac");
   let paths = [saved, owned];
-  t.mock.method(playlistManager.destinationRegistry, "run", async () => [{ destination: "Jellyfin", ok: true, paths }]);
+  vi.spyOn(playlistManager.destinationRegistry, "run").mockImplementation(async () => [{ destination: "Jellyfin", ok: true, paths }]);
   const guard = createPlaybackDeletionGuard();
   assert.equal(await guard.canDelete(saved), false);
   assert.equal(await guard.canDelete(owned), false);
@@ -191,7 +191,7 @@ for (const service of ["jellyfin", "navidrome"]) {
   });
 }
 
-test("Plex checks global and linked accounts and maps its downloads path", async (t) => {
+test("Plex checks global and linked accounts and maps its downloads path", async () => {
   const { userOps } = await import("../../backend/db/helpers/index.js");
   const { PlexClient } = await import("../../backend/services/plex.js");
   const { PlexPlaybackDestination } = await import("../../backend/services/playback/plexPlaybackDestination.js");
@@ -203,7 +203,7 @@ test("Plex checks global and linked accounts and maps its downloads path", async
   const destination = new PlexPlaybackDestination(root);
   destination.updateConfig({ url: "http://plex", token: "admin-token", downloadsPath: "/server-music" });
   const seen = [];
-  t.mock.method(PlexClient.prototype, "getPlaylistTrackPaths", async function (excluded) {
+  vi.spyOn(PlexClient.prototype, "getPlaylistTrackPaths").mockImplementation(async function (excluded) {
     seen.push(this.token);
     assert.deepEqual([...excluded], ["outgoing"]);
     return this.token === "listener-token" ? ["/server-music/_flows/flow/saved.flac"] : [];
@@ -214,7 +214,7 @@ test("Plex checks global and linked accounts and maps its downloads path", async
   assert.deepEqual(seen.sort(), ["admin-token", "listener-token"]);
 });
 
-test("Plex does not add retained files back to a refreshed flow", async (t) => {
+test("Plex does not add retained files back to a refreshed flow", async () => {
   const { PlexPlaybackDestination } = await import("../../backend/services/playback/plexPlaybackDestination.js");
   const { PlexClient } = await import("../../backend/services/plex.js");
   const file = await makeFile("_flows/flow/saved.flac");
@@ -222,10 +222,10 @@ test("Plex does not add retained files back to a refreshed flow", async (t) => {
   await createPlaybackDeletionGuard({ registry }).canDelete(file);
   const playback = new PlexPlaybackDestination(root);
   playback.updateConfig({ url: "http://plex", token: "admin-token" });
-  t.mock.method(PlexClient.prototype, "ensureAurralLibrary", async () => ({ key: "7" }));
-  t.mock.method(PlexClient.prototype, "getTracks", async () => [{ ratingKey: "saved", files: [file] }]);
+  vi.spyOn(PlexClient.prototype, "ensureAurralLibrary").mockImplementation(async () => ({ key: "7" }));
+  vi.spyOn(PlexClient.prototype, "getTracks").mockImplementation(async () => [{ ratingKey: "saved", files: [file] }]);
   const published = [];
-  t.mock.method(PlexClient.prototype, "syncPlaylist", async ({ ratingKeys }) => {
+  vi.spyOn(PlexClient.prototype, "syncPlaylist").mockImplementation(async ({ ratingKeys }) => {
     published.push(ratingKeys);
     return { ratingKey: "playlist" };
   });
@@ -237,13 +237,13 @@ test("Plex does not add retained files back to a refreshed flow", async (t) => {
   assert.deepEqual(published, [["saved"]]);
 });
 
-test("automatic cleanup keeps a shared file in place; explicit deletion preserves other Aurral jobs by moving it", async (t) => {
+test("automatic cleanup keeps a shared file in place; explicit deletion preserves other Aurral jobs by moving it", async () => {
   const flow = flowPlaylistConfig.createFlow({ name: "Shared source", size: 5 });
   const other = flowPlaylistConfig.createFlow({ name: "Other", size: 5 });
   const file = await makeFile(`_flows/${flow.id}/saved.flac`);
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Saved" }, other.id);
   downloadTracker.setDone(jobId, file);
-  t.mock.method(playlistManager.destinationRegistry, "run", async () => [{ destination: "Jellyfin", ok: true, paths: [file] }]);
+  vi.spyOn(playlistManager.destinationRegistry, "run").mockImplementation(async () => [{ destination: "Jellyfin", ok: true, paths: [file] }]);
   await playlistManager.weeklyReset([flow.id]);
   assert.equal(downloadTracker.getAll().find((job) => job.id === jobId).finalPath, file);
   await fs.access(file);
@@ -254,26 +254,26 @@ test("automatic cleanup keeps a shared file in place; explicit deletion preserve
   await assert.rejects(fs.access(file), { code: "ENOENT" });
 });
 
-test("quality upgrades preserve the old file when another playback playlist uses it", async (t) => {
+test("quality upgrades preserve the old file when another playback playlist uses it", async () => {
   const { finalizeQualityUpgradeSuccess } = await import("../../backend/services/qualityProfileService.js");
   const oldFile = await makeFile("_flows/upgrade/old.mp3");
   const newFile = await makeFile("_flows/upgrade/new.flac");
   const originalId = downloadTracker.addJob({ artistName: "Artist", trackName: "Upgrade" }, "upgrade");
   downloadTracker.setDone(originalId, oldFile);
-  t.mock.method(playlistManager, "requestPlaylistSync", () => null);
-  t.mock.method(playlistManager, "scheduleScanLibrary", () => {});
-  t.mock.method(playlistManager.destinationRegistry, "run", async () => [{ destination: "Navidrome", ok: true, paths: [oldFile] }]);
+  vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
+  vi.spyOn(playlistManager, "scheduleScanLibrary").mockImplementation(() => {});
+  vi.spyOn(playlistManager.destinationRegistry, "run").mockImplementation(async () => [{ destination: "Navidrome", ok: true, paths: [oldFile] }]);
   await finalizeQualityUpgradeSuccess({ id: "upgrade-job", upgradeForJobId: originalId }, newFile, { tier: "lossless" });
   assert.equal(downloadTracker.getJob(originalId).finalPath, newFile);
   await fs.access(oldFile);
   assert.equal(isPlaybackRetainedFile(oldFile), true);
 });
 
-test("startup migration leaves an externally referenced orphan at its original path", async (t) => {
+test("startup migration leaves an externally referenced orphan at its original path", async () => {
   const { migrateAurralDownloadFolder } = await import("../../backend/services/aurralDownloadFolderMigration.js");
   const flow = flowPlaylistConfig.createFlow({ name: "Migration source", enabled: true });
   const file = await makeFile(`aurral-weekly-flow/${flow.id}/Artist/Album/Saved.flac`);
-  t.mock.method(playlistManager.destinationRegistry, "run", async () => [{ destination: "Jellyfin", ok: true, paths: [file] }]);
+  vi.spyOn(playlistManager.destinationRegistry, "run").mockImplementation(async () => [{ destination: "Jellyfin", ok: true, paths: [file] }]);
   const options = { root, indexDestination: async () => {}, logger: { info() {}, warn() {}, error() {} } };
   const result = await migrateAurralDownloadFolder(options);
   assert.equal(result.removed, 0);
@@ -285,7 +285,7 @@ test("startup migration leaves an externally referenced orphan at its original p
 
 for (const mode of ["completed-flow", "shared-direct", "shared-batch", "shared-batch-without-job"]) {
   for (const usage of ["referenced", "unavailable", "unused"]) {
-    test(`indexed migration checks ${mode} sources when playback usage is ${usage}`, async (t) => {
+    test(`indexed migration checks ${mode} sources when playback usage is ${usage}`, async () => {
       const { migrateAurralDownloadFolder } = await import("../../backend/services/aurralDownloadFolderMigration.js");
       const isFlow = mode === "completed-flow";
       const playlist = isFlow
@@ -301,7 +301,7 @@ for (const mode of ["completed-flow", "shared-direct", "shared-batch", "shared-b
         downloadTracker.setDone(jobId, source);
       }
       let currentUsage = usage;
-      const checks = t.mock.method(playlistManager.destinationRegistry, "run", async (_operation, { excludeEntityIds }) => {
+      const checks = vi.spyOn(playlistManager.destinationRegistry, "run").mockImplementation(async (_operation, { excludeEntityIds }) => {
         assert.deepEqual(excludeEntityIds, [playlist.id]);
         return currentUsage === "unavailable" ? [{ ok: false }] : [{ ok: true, paths: currentUsage === "referenced" ? [source] : [] }];
       });
@@ -312,7 +312,7 @@ for (const mode of ["completed-flow", "shared-direct", "shared-batch", "shared-b
       };
       const first = await migrateAurralDownloadFolder(options);
       assert.equal(first.failed, 0);
-      assert.equal(checks.mock.callCount(), 1);
+      assert.equal(checks.mock.calls.length, 1);
       assert.equal(await fs.readFile(destinationPath, "utf8"), "audio");
       if (jobId) assert.equal(downloadTracker.getJob(jobId).finalPath, destinationPath);
       if (usage === "unused") {
@@ -354,7 +354,7 @@ test("Jellyfin excludes legacy outgoing pointers but keeps pointers from other s
   await playback.getReferencedPaths({ excludeEntityIds: ["flow"] });
 });
 
-test("retained retries preserve exclusions and share a snapshot only within matching groups", async (t) => {
+test("retained retries preserve exclusions and share a snapshot only within matching groups", async () => {
   const first = await makeFile("_flows/a/first.flac");
   const second = await makeFile("_flows/a/second.flac");
   const third = await makeFile("_flows/b/third.flac");
@@ -368,7 +368,7 @@ test("retained retries preserve exclusions and share a snapshot only within matc
     await createPlaybackDeletionGuard({ registry, excludeEntityIds }).canDelete(file);
   }
   const calls = [];
-  t.mock.method(playlistManager.destinationRegistry, "run", async (_operation, { excludeEntityIds }) => {
+  vi.spyOn(playlistManager.destinationRegistry, "run").mockImplementation(async (_operation, { excludeEntityIds }) => {
     calls.push(excludeEntityIds);
     return [{ ok: true, paths: excludeEntityIds.includes("a") ? [third, external] : [first, second, external] }];
   });
@@ -380,14 +380,14 @@ test("retained retries preserve exclusions and share a snapshot only within matc
 });
 
 for (const changeBeforeReset of [false, true]) {
-  test(`retained files use their recorded root when settings change ${changeBeforeReset ? "before" : "after"} cleanup`, async (t) => {
+  test(`retained files use their recorded root when settings change ${changeBeforeReset ? "before" : "after"} cleanup`, async () => {
     const file = await makeFile("_flows/old-root/saved.flac");
     const newRoot = path.join(state.baseDir, "new-downloads");
     await fs.mkdir(newRoot, { recursive: true });
     const unrelated = path.join(newRoot, "unrelated.flac");
     await fs.writeFile(unrelated, "unrelated");
     let unavailable = true;
-    t.mock.method(playlistManager.destinationRegistry, "run", async () =>
+    vi.spyOn(playlistManager.destinationRegistry, "run").mockImplementation(async () =>
       unavailable ? [{ ok: false }] : [{ ok: true, paths: [] }]);
     if (changeBeforeReset) dbOps.updateSettings({ downloadFolderPath: newRoot });
     await playlistManager.weeklyReset(["old-root"]);
@@ -403,14 +403,14 @@ for (const changeBeforeReset of [false, true]) {
   });
 }
 
-test("retry accepts legacy records only inside the current root and rejects mismatched recorded roots", async (t) => {
+test("retry accepts legacy records only inside the current root and rejects mismatched recorded roots", async () => {
   const legacy = await makeFile("_flows/legacy/saved.flac");
   const mismatch = await makeFile("_flows/mismatch/saved.flac");
   dbOps.setJSONSetting("playbackRetainedFiles", {
     [localFileKey(legacy)]: { excludeEntityIds: ["legacy"] },
     [localFileKey(mismatch)]: { playlistRoot: path.join(state.baseDir, "different-root") },
   });
-  t.mock.method(playlistManager.destinationRegistry, "run", async (_operation, { excludeEntityIds }) => {
+  vi.spyOn(playlistManager.destinationRegistry, "run").mockImplementation(async (_operation, { excludeEntityIds }) => {
     assert.deepEqual(excludeEntityIds, ["legacy"]);
     return [{ ok: true, paths: [] }];
   });
@@ -419,7 +419,7 @@ test("retry accepts legacy records only inside the current root and rejects mism
   await fs.access(mismatch);
 });
 
-test("explicit reset removes symbolic links without touching their targets; automatic cleanup leaves links alone", async (t) => {
+test("explicit reset removes symbolic links without touching their targets; automatic cleanup leaves links alone", async () => {
   const target = path.join(state.baseDir, "linked-library");
   await fs.mkdir(target, { recursive: true });
   const targetFile = path.join(target, "saved.flac");
@@ -430,7 +430,7 @@ test("explicit reset removes symbolic links without touching their targets; auto
     await fs.mkdir(path.dirname(link), { recursive: true });
     await fs.symlink(target, link, process.platform === "win32" ? "junction" : "dir");
   }
-  t.mock.method(playlistManager.destinationRegistry, "run", async () => { assert.fail("symbolic link cleanup queried playback"); });
+  vi.spyOn(playlistManager.destinationRegistry, "run").mockImplementation(async () => { assert.fail("symbolic link cleanup queried playback"); });
   await playlistManager.weeklyReset(["linked"]);
   for (const relative of links) assert.equal((await fs.lstat(path.join(root, relative))).isSymbolicLink(), true);
   await playlistManager.weeklyReset(["linked"], { protectPlayback: false });

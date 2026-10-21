@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import {
@@ -23,28 +23,28 @@ const [
   "backend/services/logger.js",
 );
 
-test.beforeEach(() => resetDatabase(db));
-test.after(async () => cleanupIsolatedState(isolatedState));
+beforeEach(() => resetDatabase(db));
+afterAll(async () => cleanupIsolatedState(isolatedState));
 
-test("deemix queue cleanup logs a safe diagnostic when removal fails", async (t) => {
+test("deemix queue cleanup logs a safe diagnostic when removal fails", async () => {
   const jobId = downloadTracker.addJob(
     { artistName: "Artist", trackName: "Song" },
     "playlist-id",
   );
   const client = getDownloadClient("deemix");
-  t.mock.method(client, "removeFromQueue", async () => {
+  vi.spyOn(client, "removeFromQueue").mockImplementation(async () => {
     throw new Error("Failed at https://user:pass@example.test/api?token=secret-value");
   });
   const warnings = [];
-  t.mock.method(logger, "warn", (...args) => warnings.push(args));
-  const failOrTryNextSource = t.mock.fn(async () => null);
+  vi.spyOn(logger, "warn").mockImplementation((...args) => warnings.push(args));
+  const failOrTryNextSource = vi.fn(async () => null);
 
   await processDeemixPipelinePayload(
     { phase: "poll", source: "deemix", jobId, queueUuid: "queue-id", pollAttempts: 200 },
     { failOrTryNextSource },
   );
 
-  assert.equal(failOrTryNextSource.mock.callCount(), 1);
+  assert.equal(failOrTryNextSource.mock.calls.length, 1);
   const warning = warnings.find(([, message]) => message === "Could not remove timed-out queue item");
   assert.ok(warning);
   assert.equal(warning[2].jobId, jobId);

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vite-plus/test";
 import Database from "better-sqlite3";
 import {
   applyIsolatedBackendEnv,

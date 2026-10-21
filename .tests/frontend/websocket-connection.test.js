@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
-import { startFrontendServer } from "../helpers/frontendServer.js";
+import { test, vi } from "vite-plus/test";
 
 const createStorage = (initial = {}) => {
   const values = new Map(Object.entries(initial));
@@ -54,16 +53,13 @@ test("a late close from an old WebSocket cannot orphan its replacement", async (
   globalThis.window = browserWindow();
   globalThis.WebSocket = FakeWebSocket;
 
-  const vite = await startFrontendServer();
+  vi.resetModules();
 
-  t.after(async () => {
-    await vite.close();
+  t.onTestFinished(async () => {
     Object.assign(globalThis, originalGlobals);
   });
 
-  const webSocketConnection = await vite.ssrLoadModule(
-    "/src/utils/webSocketConnection.js?late-close-test",
-  );
+  const webSocketConnection = await import("../../frontend/src/utils/webSocketConnection.js");
   const unsubscribeStatus = webSocketConnection.subscribeToStatus(() => {});
   assert.equal(sockets.length, 1);
 
@@ -128,16 +124,13 @@ test("a missed WebSocket heartbeat retires the dead socket for reconnection", as
   globalThis.window = browserWindow();
   globalThis.WebSocket = DeadWebSocket;
 
-  const vite = await startFrontendServer();
+  vi.resetModules();
 
-  t.after(async () => {
-    await vite.close();
+  t.onTestFinished(async () => {
     Object.assign(globalThis, originalGlobals);
   });
 
-  const webSocketConnection = await vite.ssrLoadModule(
-    "/src/utils/webSocketConnection.js?heartbeat-test",
-  );
+  const webSocketConnection = await import("../../frontend/src/utils/webSocketConnection.js");
   const unsubscribe = webSocketConnection.subscribeToStatus(() => {});
   const current = sockets[0];
   current.readyState = DeadWebSocket.OPEN;

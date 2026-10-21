@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, beforeAll, afterAll } from "vite-plus/test";
 
 import {
   cleanupIsolatedState,
@@ -56,7 +56,7 @@ function callLibraryPage(query) {
   return body;
 }
 
-test.before(() => {
+beforeAll(() => {
   resetDatabase(db);
 
   // Artist who owns some but not all of their discography (the issue's "Muse" case).
@@ -145,7 +145,7 @@ test.before(() => {
   }
 });
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 

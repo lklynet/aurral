@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import http from "node:http";
-import test from "node:test";
+import { test, vi } from "vite-plus/test";
 
 import {
   getDownloadStatusesForAlbumIds,
@@ -11,10 +11,10 @@ import {
 import { LidarrClient, lidarrClient } from "../../backend/services/lidarrClient.js";
 import { buildLidarrRequests } from "../../backend/services/lidarrRequestBuilder.js";
 
-test("disabled status reads stay local", async (t) => {
-  t.mock.method(lidarrClient, "isConfigured", () => false);
-  t.mock.method(lidarrClient, "isCircuitOpen", () => false);
-  const request = t.mock.method(lidarrClient, "request", async () => {
+test("disabled status reads stay local", async () => {
+  vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => false);
+  vi.spyOn(lidarrClient, "isCircuitOpen").mockImplementation(() => false);
+  const request = vi.spyOn(lidarrClient, "request").mockImplementation(async () => {
     throw new Error("disabled status reads must not call Lidarr");
   });
   invalidateAllDownloadStatusesCache();
@@ -27,38 +27,38 @@ test("disabled status reads stay local", async (t) => {
     commands: [],
   });
   assert.deepEqual(snapshot.statuses, {});
-  assert.equal(request.mock.callCount(), 0);
+  assert.equal(request.mock.calls.length, 0);
 });
 
-test("Lidarr status consumers share refreshes, idle, failure, and recovery state", async (t) => {
+test("Lidarr status consumers share refreshes, idle, failure, and recovery state", async () => {
   let active = false;
   let fail = false;
   let queueGate = null;
   let albumCalls = 0;
   const calls = { queue: 0, history: 0, command: 0 };
-  t.mock.method(lidarrClient, "isConfigured", () => true);
-  t.mock.method(lidarrClient, "isCircuitOpen", () => false);
-  t.mock.method(lidarrClient, "getQueue", async (options) => {
+  vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
+  vi.spyOn(lidarrClient, "isCircuitOpen").mockImplementation(() => false);
+  vi.spyOn(lidarrClient, "getQueue").mockImplementation(async (options) => {
     assert.equal(options.forceRefresh, true);
     calls.queue += 1;
     if (fail) throw new Error("provider unavailable");
     if (queueGate) await queueGate.promise;
     return active ? [{ id: 1, albumId: 10, status: "downloading", size: 10, sizeleft: 5 }] : [];
   });
-  t.mock.method(lidarrClient, "getHistory", async (...args) => {
+  vi.spyOn(lidarrClient, "getHistory").mockImplementation(async (...args) => {
     assert.deepEqual(args, [1, 200, "date", "descending", { forceRefresh: true }]);
     calls.history += 1;
     if (fail) throw new Error("provider unavailable");
     return { records: [] };
   });
-  t.mock.method(lidarrClient, "request", async (endpoint, method, data, skip, options) => {
+  vi.spyOn(lidarrClient, "request").mockImplementation(async (endpoint, method, data, skip, options) => {
     assert.equal(endpoint, "/command");
     assert.deepEqual([method, data, skip, options], ["GET", null, false, { forceRefresh: true }]);
     calls.command += 1;
     if (fail) throw new Error("provider unavailable");
     return [];
   });
-  t.mock.method(lidarrClient, "getAllAlbums", async () => {
+  vi.spyOn(lidarrClient, "getAllAlbums").mockImplementation(async () => {
     albumCalls += 1;
     return [];
   });
@@ -116,25 +116,25 @@ test("Lidarr status consumers share refreshes, idle, failure, and recovery state
   assert.deepEqual(calls, { queue: 6, history: 6, command: 6 });
 });
 
-test("invalidating a failed refresh allows immediate recovery", async (t) => {
+test("invalidating a failed refresh allows immediate recovery", async () => {
   let fail = false;
   let refreshGate = null;
   const calls = { queue: 0, history: 0, command: 0 };
-  t.mock.method(lidarrClient, "isConfigured", () => true);
-  t.mock.method(lidarrClient, "isCircuitOpen", () => false);
-  t.mock.method(lidarrClient, "getQueue", async () => {
+  vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
+  vi.spyOn(lidarrClient, "isCircuitOpen").mockImplementation(() => false);
+  vi.spyOn(lidarrClient, "getQueue").mockImplementation(async () => {
     calls.queue += 1;
     if (refreshGate) await refreshGate.promise;
     if (fail) throw new Error("provider unavailable");
     return [];
   });
-  t.mock.method(lidarrClient, "getHistory", async () => {
+  vi.spyOn(lidarrClient, "getHistory").mockImplementation(async () => {
     calls.history += 1;
     if (refreshGate) await refreshGate.promise;
     if (fail) throw new Error("provider unavailable");
     return { records: [] };
   });
-  t.mock.method(lidarrClient, "request", async () => {
+  vi.spyOn(lidarrClient, "request").mockImplementation(async () => {
     calls.command += 1;
     if (refreshGate) await refreshGate.promise;
     if (fail) throw new Error("provider unavailable");
@@ -173,7 +173,7 @@ test("forced Lidarr status reads bypass the client cache", async (t) => {
     response.end(JSON.stringify([{ id: calls }]));
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  t.after(async () => {
+  t.onTestFinished(async () => {
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
   });
@@ -186,7 +186,7 @@ test("forced Lidarr status reads bypass the client cache", async (t) => {
     timeoutMs: 2000,
     circuitDisabled: true,
   };
-  t.after(() => {
+  t.onTestFinished(() => {
     client._httpAgent.destroy();
     client._httpsAgent.destroy();
     client._httpsInsecureAgent.destroy();
@@ -198,12 +198,12 @@ test("forced Lidarr status reads bypass the client cache", async (t) => {
   assert.equal(calls, 2);
 });
 
-test("failed or stale history verifies albums with one bulk read", async (t) => {
+test("failed or stale history verifies albums with one bulk read", async () => {
   const now = Date.now();
   const calls = { bulk: 0, detail: 0 };
   let bulkFailure = false;
-  t.mock.method(lidarrClient, "isConfigured", () => true);
-  t.mock.method(lidarrClient, "getAllAlbums", async () => {
+  vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
+  vi.spyOn(lidarrClient, "getAllAlbums").mockImplementation(async () => {
     calls.bulk += 1;
     if (bulkFailure) throw new Error("provider unavailable");
     return [
@@ -211,7 +211,7 @@ test("failed or stale history verifies albums with one bulk read", async (t) => 
       { id: 102, statistics: { trackFileCount: 0 } },
     ];
   });
-  t.mock.method(lidarrClient, "getAlbum", async () => {
+  vi.spyOn(lidarrClient, "getAlbum").mockImplementation(async () => {
     calls.detail += 1;
     return null;
   });
@@ -264,10 +264,10 @@ test("failed or stale history verifies albums with one bulk read", async (t) => 
   assert.deepEqual(calls, { bulk: 2, detail: 0 });
 });
 
-test("album status reads Lidarr event types rather than words in the history", async (t) => {
+test("album status reads Lidarr event types rather than words in the history", async () => {
   const now = Date.now();
-  t.mock.method(lidarrClient, "isConfigured", () => true);
-  t.mock.method(lidarrClient, "getAllAlbums", async () => [{ id: 201, statistics: { trackFileCount: 0 } }]);
+  vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
+  vi.spyOn(lidarrClient, "getAllAlbums").mockImplementation(async () => [{ id: 201, statistics: { trackFileCount: 0 } }]);
   const at = (minutesAgo) => new Date(now - minutesAgo * 60 * 1000).toISOString();
   const statuses = await getDownloadStatusesForAlbumIds(["200", "201", "202", "203", "204"], {
     queue: [

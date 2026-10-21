@@ -420,7 +420,7 @@ export function registerJobs(router) {
 
   router.post("/worker/start", requireAdmin, async (req, res) => {
     try {
-      startDownloadPipelineWorker();
+      void startDownloadPipelineWorker();
       await downloadWorker.start();
       res.json({ success: true, message: "Worker started" });
     } catch (error) {

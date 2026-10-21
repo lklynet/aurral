@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, beforeAll, afterAll, vi } from "vite-plus/test";
 import {
   cleanupIsolatedState,
   resetDatabase,
@@ -17,7 +17,7 @@ let artist;
 let album;
 let track;
 
-test.before(() => {
+beforeAll(() => {
   resetDatabase(db);
   artist = libraryStore.upsertLibraryArtist({
     identityKey: "measured:artist",
@@ -43,14 +43,14 @@ test.before(() => {
   });
 });
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("substring search uses the trigram index with stable pagination", (t) => {
+test("substring search uses the trigram index with stable pagination", () => {
   const prepared = [];
   const prepare = db.prepare.bind(db);
-  t.mock.method(db, "prepare", (sql) => {
+  vi.spyOn(db, "prepare").mockImplementation((sql) => {
     prepared.push(String(sql));
     return prepare(sql);
   });
@@ -185,7 +185,7 @@ test("unchanged library upserts do not rewrite search documents", () => {
   }
 });
 
-test("library page search uses FTS and genre reads use the stored scan snapshot", (t) => {
+test("library page search uses FTS and genre reads use the stored scan snapshot", () => {
   queryService.rebuildLibraryGenreStats();
   queryService.invalidateLibraryQueryCache({ persistedGenres: false });
   const storedBefore = db.prepare(
@@ -193,7 +193,7 @@ test("library page search uses FTS and genre reads use the stored scan snapshot"
   ).all();
   const prepared = [];
   const prepare = db.prepare.bind(db);
-  t.mock.method(db, "prepare", (sql) => {
+  vi.spyOn(db, "prepare").mockImplementation((sql) => {
     prepared.push(String(sql));
     return prepare(sql);
   });
@@ -225,7 +225,7 @@ test("library page search uses FTS and genre reads use the stored scan snapshot"
   );
 });
 
-test("search documents update transactionally and random reads use rowid sampling", (t) => {
+test("search documents update transactionally and random reads use rowid sampling", () => {
   libraryStore.upsertLibraryTrack({
     identityKey: "measured:track",
     title: "Renamed Needle Song",
@@ -238,11 +238,11 @@ test("search documents update transactionally and random reads use rowid samplin
 
   const prepared = [];
   const prepare = db.prepare.bind(db);
-  t.mock.method(db, "prepare", (sql) => {
+  vi.spyOn(db, "prepare").mockImplementation((sql) => {
     prepared.push(String(sql));
     return prepare(sql);
   });
-  t.mock.method(Math, "random", () => 0.999);
+  vi.spyOn(Math, "random").mockImplementation(() => 0.999);
   const result = queryService.getLibraryTrackPage({
     source: "all",
     availableOnly: true,
@@ -259,7 +259,7 @@ test("search documents update transactionally and random reads use rowid samplin
   assert.equal(plan.some((row) => row.detail.includes("USE TEMP B-TREE")), false);
 });
 
-test("artist pages project a large discography without library row hydration", (t) => {
+test("artist pages project a large discography without library row hydration", () => {
   const key = `measured-artist-page-${process.pid}-${Date.now()}`;
   const artist = libraryStore.upsertLibraryArtist({
     identityKey: `${key}:artist`,
@@ -288,7 +288,7 @@ test("artist pages project a large discography without library row hydration", (
 
   const prepared = [];
   const prepare = db.prepare.bind(db);
-  const spy = t.mock.method(db, "prepare", (sql) => {
+  const spy = vi.spyOn(db, "prepare").mockImplementation((sql) => {
     prepared.push(String(sql));
     return prepare(sql);
   });
@@ -309,7 +309,7 @@ test("artist pages project a large discography without library row hydration", (
       0,
     );
   } finally {
-    spy.mock.restore();
+    spy.mockRestore();
     db.prepare("DELETE FROM library_media_files WHERE path LIKE ?").run(`/tmp/${key}/%`);
     db.prepare("DELETE FROM library_album_tracks WHERE album_id IN (SELECT id FROM library_albums WHERE identity_key LIKE ?)").run(`${key}:album:%`);
     db.prepare("DELETE FROM library_tracks WHERE identity_key LIKE ?").run(`${key}:track:%`);
@@ -318,7 +318,7 @@ test("artist pages project a large discography without library row hydration", (
   }
 });
 
-test("album track pages count and hydrate only the requested track slice", (t) => {
+test("album track pages count and hydrate only the requested track slice", () => {
   const key = `measured-album-page-${process.pid}-${Date.now()}`;
   const artist = libraryStore.upsertLibraryArtist({
     identityKey: `${key}:artist`,
@@ -356,7 +356,7 @@ test("album track pages count and hydrate only the requested track slice", (t) =
 
   const prepared = [];
   const prepare = db.prepare.bind(db);
-  const spy = t.mock.method(db, "prepare", (sql) => {
+  const spy = vi.spyOn(db, "prepare").mockImplementation((sql) => {
     prepared.push(String(sql));
     return prepare(sql);
   });
@@ -386,7 +386,7 @@ test("album track pages count and hydrate only the requested track slice", (t) =
     assert.ok(page.items.every((track) =>
       track.albums.every((relation) => relation.albumId === album.id)));
   } finally {
-    spy.mock.restore();
+    spy.mockRestore();
     db.prepare("DELETE FROM library_media_files WHERE path LIKE ?").run(`/tmp/${key}/%`);
     db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(album.id);
     db.prepare("DELETE FROM library_tracks WHERE identity_key LIKE ?").run(`${key}:track:%`);

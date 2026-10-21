@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vite-plus/test";
 
 test("completed child scans invalidate the API's library cache", async () => {
   const { db } = await import("../../backend/config/db-sqlite.js");

@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeAll, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -52,12 +52,12 @@ function metadataAlbum(mbid, tracks, title = "Aurral Album") {
   };
 }
 
-test.before(() => {
+beforeAll(() => {
   db.prepare("DELETE FROM library_management").run();
   downloadTracker.clearAll();
 });
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 

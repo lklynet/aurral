@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vite-plus/test";
 import { JellyfinClient } from "../../backend/services/jellyfin.js";
 import { NavidromeClient } from "../../backend/services/navidrome.js";
 import { PlexClient } from "../../backend/services/plex.js";

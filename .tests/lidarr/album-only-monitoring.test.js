@@ -1,15 +1,15 @@
-import test from "node:test";
+import { test, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { LidarrClient } from "../../backend/services/lidarrClient.js";
 
 function createClient(t) {
   const client = new LidarrClient();
-  t.after(() => {
+  t.onTestFinished(() => {
     client._httpAgent.destroy();
     client._httpsAgent.destroy();
     client._httpsInsecureAgent.destroy();
   });
-  t.mock.method(client, "resolveArtistAddConfiguration", async () => ({
+  vi.spyOn(client, "resolveArtistAddConfiguration").mockImplementation(async () => ({
     resolved: { rootFolderPath: "/music", qualityProfileId: 1 },
   }));
   return client;
@@ -26,7 +26,7 @@ for (const triggerSearch of [false, true]) {
         { foreignAlbumId: "requested-album", monitored: false },
         { foreignAlbumId: "other-missing-album", monitored: false },
       ];
-      t.mock.method(client, "request", async (endpoint, method = "GET", payload) => {
+      vi.spyOn(client, "request").mockImplementation(async (endpoint, method = "GET", payload) => {
         if (endpoint === "/artist" && method === "POST") {
           postedArtist = structuredClone(payload);
           // Lidarr's AddArtistService disables the artist for monitor=none.
@@ -72,7 +72,7 @@ for (const monitorOption of ["none", "all"]) {
   test(`ordinary artist add preserves the ${monitorOption} monitoring option`, async (t) => {
     const client = createClient(t);
     let postedArtist;
-    t.mock.method(client, "request", async (endpoint, method, payload) => {
+    vi.spyOn(client, "request").mockImplementation(async (endpoint, method, payload) => {
       assert.equal(endpoint, "/artist");
       assert.equal(method, "POST");
       postedArtist = payload;

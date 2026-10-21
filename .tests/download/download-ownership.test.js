@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { setupIsolatedBackend, cleanupIsolatedState, resetDatabase } from "../helpers/backendTestHarness.js";
 
@@ -8,14 +8,14 @@ const [state, { db }, { dbOps }, { flowPlaylistConfig }, { downloadTracker }, ho
   "backend/services/honkerDb.js", "backend/services/downloadJobs/downloadOwnership.js",
   "backend/services/downloadJobs/downloadCancellation.js",
 );
-test.beforeEach(() => {
+beforeEach(() => {
   resetDatabase(db);
   downloadTracker.clearAll();
   dbOps.updateSettings({ integrations: {}, flows: [], sharedPlaylists: [] });
   honker.getPipelineQueue();
   db.prepare("DELETE FROM _honker_live WHERE queue = 'slskd-pipeline'").run();
 });
-test.after(() => cleanupIsolatedState(state));
+afterAll(() => cleanupIsolatedState(state));
 
 test("ownership transfer preserves a provider attempt and rejects it after explicit retry", () => {
   const source = flowPlaylistConfig.createStaticPlaylist({ name: "Source" });

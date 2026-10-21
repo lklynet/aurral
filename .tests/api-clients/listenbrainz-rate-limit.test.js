@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vite-plus/test";
 
 import { listenbrainzRequest } from "../../backend/services/apiClients/listenbrainz.js";
 
 test("a ListenBrainz rate limit holds every request until the window resets, then retries", async (t) => {
   const originalFetch = globalThis.fetch;
-  t.after(() => {
+  t.onTestFinished(() => {
     globalThis.fetch = originalFetch;
   });
   const json = (body, status, headers = {}) =>

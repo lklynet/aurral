@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, vi } from "vite-plus/test";
 
 import { db } from "../../backend/config/db-sqlite.js";
 import { registerStream as registerArtistStream } from "../../backend/routes/artists/handlers/stream.js";
@@ -51,7 +51,7 @@ test("artist batch lookup rejects oversized batches", async () => {
   assert.equal(body?.error, "mbids must contain at most 100 unique values");
 });
 
-test("artist lookup follows fresh Lidarr artist and album membership while the library index catches up", async (t) => {
+test("artist lookup follows fresh Lidarr artist and album membership while the library index catches up", async () => {
   const mbid = "55555555-5555-4555-8555-555555555555";
   const artist = upsertLibraryArtist({
     identityKey: `artist-lookup-stale-${process.pid}-${Date.now()}`,
@@ -79,16 +79,16 @@ test("artist lookup follows fresh Lidarr artist and album membership while the l
     },
     post() {},
   });
-  t.mock.method(lidarrClient, "isConfigured", () => true);
+  vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
   let artistRemoved = false;
-  t.mock.method(lidarrClient, "getArtistByMbid", async (_mbid, options) => {
+  vi.spyOn(lidarrClient, "getArtistByMbid").mockImplementation(async (_mbid, options) => {
     assert.equal(_mbid, mbid);
     assert.deepEqual(options, { forceRefresh: true });
     return artistRemoved
       ? null
       : { id: 41, foreignArtistId: mbid, artistName: "Stale Artist", monitored: true };
   });
-  t.mock.method(lidarrClient, "request", async (path, method, data, skip, options) => {
+  vi.spyOn(lidarrClient, "request").mockImplementation(async (path, method, data, skip, options) => {
     assert.equal(path, "/album?artistId=41");
     assert.deepEqual([method, data, skip, options], ["GET", null, false, { forceRefresh: true }]);
     return [];
@@ -155,7 +155,7 @@ test("artist lookup follows fresh Lidarr artist and album membership while the l
   }
 });
 
-test("artist lookup does not restore an Aurral-only artist after a Lidarr error", async (t) => {
+test("artist lookup does not restore an Aurral-only artist after a Lidarr error", async () => {
   const mbid = "88888888-8888-4888-8888-888888888888";
   const key = `artist-lookup-aurral-only-${process.pid}-${Date.now()}`;
   const artist = upsertLibraryArtist({
@@ -183,8 +183,8 @@ test("artist lookup does not restore an Aurral-only artist after a Lidarr error"
     post() {},
   });
   let lookupCount = 0;
-  t.mock.method(lidarrClient, "isConfigured", () => true);
-  t.mock.method(lidarrClient, "getArtistByMbid", async () => {
+  vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
+  vi.spyOn(lidarrClient, "getArtistByMbid").mockImplementation(async () => {
     lookupCount += 1;
     if (lookupCount === 1) return null;
     throw new Error("Lidarr connection refused");
@@ -213,7 +213,7 @@ test("artist lookup does not restore an Aurral-only artist after a Lidarr error"
   }
 });
 
-test("artist lookup reports an Aurral-owned artist even when Lidarr does not have it", async (t) => {
+test("artist lookup reports an Aurral-owned artist even when Lidarr does not have it", async () => {
   const mbid = "99999999-9999-4999-8999-999999999999";
   const artist = upsertLibraryArtist({
     identityKey: `artist-lookup-aurral-owned-${process.pid}-${Date.now()}`,
@@ -236,8 +236,8 @@ test("artist lookup reports an Aurral-owned artist even when Lidarr does not hav
     post() {},
   });
   let lidarrLookups = 0;
-  t.mock.method(lidarrClient, "isConfigured", () => true);
-  t.mock.method(lidarrClient, "getArtistByMbid", async () => {
+  vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
+  vi.spyOn(lidarrClient, "getArtistByMbid").mockImplementation(async () => {
     lidarrLookups += 1;
     return null;
   });
@@ -262,7 +262,7 @@ test("artist lookup reports an Aurral-owned artist even when Lidarr does not hav
   }
 });
 
-test("artist lookup sees a fresh Lidarr add before the library index catches up", async (t) => {
+test("artist lookup sees a fresh Lidarr add before the library index catches up", async () => {
   const mbid = "66666666-6666-4666-8666-666666666666";
   const routes = new Map();
   registerMisc({
@@ -271,8 +271,8 @@ test("artist lookup sees a fresh Lidarr add before the library index catches up"
     },
     post() {},
   });
-  t.mock.method(lidarrClient, "isConfigured", () => true);
-  t.mock.method(lidarrClient, "getArtistByMbid", async (_mbid, options) => {
+  vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
+  vi.spyOn(lidarrClient, "getArtistByMbid").mockImplementation(async (_mbid, options) => {
     assert.equal(_mbid, mbid);
     assert.deepEqual(options, { forceRefresh: true });
     return {
@@ -282,7 +282,7 @@ test("artist lookup sees a fresh Lidarr add before the library index catches up"
       monitored: true,
     };
   });
-  t.mock.method(lidarrClient, "request", async () => []);
+  vi.spyOn(lidarrClient, "request").mockImplementation(async () => []);
   let body;
 
   await routes.get("/lookup/:mbid")(
@@ -525,7 +525,7 @@ test("library album lookup reports partial ownership, its manager, and the compl
   }
 });
 
-test("album lookup follows fresh Lidarr removal but keeps Aurral's albums", async (t) => {
+test("album lookup follows fresh Lidarr removal but keeps Aurral's albums", async () => {
   const key = `album-lookup-stale-${process.pid}-${Date.now()}`;
   const artist = upsertLibraryArtist({
     identityKey: `${key}:artist`,
@@ -552,8 +552,8 @@ test("album lookup follows fresh Lidarr removal but keeps Aurral's albums", asyn
       routes.set(path, handler);
     },
   });
-  t.mock.method(lidarrClient, "isConfigured", () => true);
-  t.mock.method(lidarrClient, "getAlbumsByMbidsSettled", async (mbids, options) => {
+  vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
+  vi.spyOn(lidarrClient, "getAlbumsByMbidsSettled").mockImplementation(async (mbids, options) => {
     assert.deepEqual(mbids, [album.mbid]);
     assert.deepEqual(options, { forceRefresh: true });
     return [{ status: "fulfilled", value: undefined }];

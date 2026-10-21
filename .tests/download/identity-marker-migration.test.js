@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import test from "node:test";
+import { test, afterAll } from "vite-plus/test";
 import { parseFile } from "music-metadata";
 
 import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTestHarness.js";
@@ -57,7 +57,7 @@ const legacyMarkerTagIds = async (filePath) =>
     .filter((tag) => JSON.stringify(tag.value).includes("AURRAL_IDS="))
     .map((tag) => tag.id);
 
-test.after(async () => {
+afterAll(async () => {
   await rm(outsideRoot, { recursive: true, force: true });
   await cleanupIsolatedState(isolatedState);
 });

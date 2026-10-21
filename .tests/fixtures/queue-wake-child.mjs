@@ -11,7 +11,7 @@ const worker = createHonkerWorker({
 });
 const poll = setInterval(() => worker.start(), 2000);
 process.on("message", async (message) => {
-  if (message?.type === "queue-wake") worker.start();
+  if (message?.type === "queue-wake") void worker.start();
   if (message?.type === "park") {
     await worker.stop();
     process.send({ type: "parked" });

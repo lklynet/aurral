@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, afterAll, vi } from "vite-plus/test";
 
 import {
   cleanupIsolatedState,
@@ -22,7 +22,7 @@ const [
   "backend/services/systemTaskWorker.js",
 );
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
@@ -154,7 +154,7 @@ test("startup only queues due bootstrap work and a pending migration", () => {
   ]);
 });
 
-test("playlists publish from the startup task, not when a process loads the playlist manager", async (t) => {
+test("playlists publish from the startup task, not when a process loads the playlist manager", async () => {
   dbOps.updateSettings({
     integrations: {
       navidrome: { url: "http://navidrome.invalid", username: "test", password: "password" },
@@ -167,11 +167,11 @@ test("playlists publish from the startup task, not when a process loads the play
   flowPlaylistConfig.setEnabled(flow.id, true);
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Startup Playlist" });
   const calls = [];
-  t.mock.method(NavidromePlaybackDestination.prototype, "ensureLibrary", async () => {
+  vi.spyOn(NavidromePlaybackDestination.prototype, "ensureLibrary").mockImplementation(async () => {
     calls.push("ensure library");
     return { ok: true };
   });
-  t.mock.method(NavidromePlaybackDestination.prototype, "publishPlaylist", async (snapshot) => {
+  vi.spyOn(NavidromePlaybackDestination.prototype, "publishPlaylist").mockImplementation(async (snapshot) => {
     calls.push(snapshot.entityId);
     return { ok: true };
   });
@@ -179,7 +179,7 @@ test("playlists publish from the startup task, not when a process loads the play
   const nodeEnv = process.env.NODE_ENV;
   delete process.env.NODE_ENV;
   try {
-    await import(`../../backend/services/playlists/playlistManager.js?process=${Date.now()}`);
+    await import(/* @vite-ignore */ `../../backend/services/playlists/playlistManager.js?process=${Date.now()}`);
   } finally {
     process.env.NODE_ENV = nodeEnv;
   }

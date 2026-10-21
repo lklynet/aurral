@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeAll, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import { cleanupIsolatedState, resetDatabase, setupIsolatedBackend } from "../helpers/backendTestHarness.js";
@@ -80,14 +80,14 @@ const group = brainzmashGroup({
 });
 
 const originalWorkerStart = downloadWorker.start;
-test.before(() => {
+beforeAll(() => {
   downloadWorker.start = async () => {};
 });
-test.beforeEach(() => {
+beforeEach(() => {
   resetDatabase(db);
   downloadTracker.clearAll();
 });
-test.after(async () => {
+afterAll(async () => {
   downloadWorker.start = originalWorkerStart;
   await cleanupIsolatedState(isolatedState);
 });
@@ -152,7 +152,7 @@ test("a track added from an album page joins that Library album when another Lib
   const settings = dbOps.getSettings();
   dbOps.updateSettings({ ...settings, integrations: { ...settings.integrations,
     slskd: { enabled: true, url: "http://127.0.0.1:9", apiKey: "test-key" } } });
-  t.after(() => dbOps.updateSettings(settings));
+  t.onTestFinished(() => dbOps.updateSettings(settings));
   libraryAlbum({ groupMbid: SINGLE, title: "Song", recordings: [song] });
   libraryAlbum({ groupMbid: GROUP, title: "Two Sides", recordings: [intro, song, outro] });
 

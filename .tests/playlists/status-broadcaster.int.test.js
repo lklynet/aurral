@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { on, once } from "node:events";
-import test from "node:test";
+import { test, afterAll } from "vite-plus/test";
 import bcrypt from "bcrypt";
 import { WebSocket } from "ws";
 import { setupIsolatedBackend, cleanupIsolatedState, startServerProcess } from "../helpers/backendTestHarness.js";
@@ -9,7 +9,7 @@ const [state, { dbOps, userOps }, { flowPlaylistConfig }] = await setupIsolatedB
   "playlist-websocket", "backend/db/helpers/index.js", "backend/services/playlists/flowPlaylistConfig.js",
 );
 let server;
-test.after(async () => {
+afterAll(async () => {
   await server?.stop();
   await cleanupIsolatedState(state);
 });
@@ -28,7 +28,7 @@ test("playlist sockets deliver initial state, persisted changes, and a fresh sta
   const { token } = await login.json();
   const socket = new WebSocket(`ws://127.0.0.1:${server.port}/ws?token=${encodeURIComponent(token)}`);
   const messages = on(socket, "message");
-  t.after(() => { socket.terminate(); return messages.return(); });
+  t.onTestFinished(() => { socket.terminate(); return messages.return(); });
   const next = async (predicate) => {
     for (;;) {
       const { value } = await messages.next();

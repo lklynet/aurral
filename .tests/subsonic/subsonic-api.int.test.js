@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import test from "node:test";
+import { test, beforeAll, afterAll } from "vite-plus/test";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { parseBuffer } from "music-metadata";
@@ -121,7 +121,7 @@ function canonicalTags(title, trackNumber, recordingMbid) {
   };
 }
 
-test.before(async () => {
+beforeAll(async () => {
   resetDatabase(db);
   dbOps.updateSettings({
     integrations: { general: { authUser: "alice", authPassword: "password123" } },
@@ -300,7 +300,7 @@ test.before(async () => {
   assert.equal(login.status, 200);
 });
 
-test.after(async () => {
+afterAll(async () => {
   await aurral?.stop();
   if (syncedFavoritePlaylist) {
     downloadTracker.clearByPlaylistType(syncedFavoritePlaylist.id);

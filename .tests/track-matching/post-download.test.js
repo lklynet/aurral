@@ -4,10 +4,10 @@
 // the metadata Aurral is about to write. Real-file cases use ffmpeg to
 // generate tagged audio; unit cases inject a parse function.
 
-import test from "node:test";
+import { test, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { execFileSync } from "child_process";
-import { mkdtempSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -609,7 +609,7 @@ test("validation reads original tags before any metadata repair happens", async 
 const ffmpegFixtureDir = hasFfmpeg
   ? mkdtempSync(join(tmpdir(), "aurral-postdownload-"))
   : null;
-test.after(() => {
+afterAll(() => {
   if (ffmpegFixtureDir) rmSync(ffmpegFixtureDir, { recursive: true, force: true });
 });
 

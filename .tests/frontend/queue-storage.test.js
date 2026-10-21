@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vite-plus/test";
 
 import { initialQueueState, queueReducer } from "../../frontend/src/utils/audioQueue.js";
 import { parseStoredQueue, serializeQueue } from "../../frontend/src/utils/queueStorage.js";

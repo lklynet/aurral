@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeAll, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTestHarness.js";
@@ -32,7 +32,7 @@ const lidarrAlbum = {
 
 const originalClient = { ...lidarrClient };
 
-test.before(() => {
+beforeAll(() => {
   lidarrClient.isConfigured = () => true;
   lidarrClient.request = async () => {
     throw new Error("Lidarr scan is not part of this test");
@@ -44,14 +44,14 @@ test.before(() => {
   lidarrClient.getAlbum = async () => lidarrAlbum;
 });
 
-test.beforeEach(() => {
+beforeEach(() => {
   db.prepare("DELETE FROM library_management").run();
   db.prepare("DELETE FROM library_albums").run();
   db.prepare("DELETE FROM library_artists").run();
   managementStore.invalidateLibraryManagementCache();
 });
 
-test.after(async () => {
+afterAll(async () => {
   Object.assign(lidarrClient, originalClient);
   await cleanupIsolatedState(isolatedState);
 });

@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import {
@@ -41,13 +41,13 @@ function resetProxyEnv() {
   delete process.env.AUTH_PROXY_ADMIN_GROUPS;
 }
 
-test.beforeEach(() => {
+beforeEach(() => {
   resetDatabase(db);
   resetProxyEnv();
   dbOps.updateSettings({ onboardingComplete: false });
 });
 
-test.after(async () => {
+afterAll(async () => {
   delete process.env.AUTH_PROXY_ENABLED;
   delete process.env.AUTH_PROXY_HEADER;
   delete process.env.AUTH_PROXY_TRUSTED_IPS;

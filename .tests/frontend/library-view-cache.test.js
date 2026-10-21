@@ -1,17 +1,11 @@
 import assert from "node:assert/strict";
-import test from "node:test";
-import { startFrontendServer } from "../helpers/frontendServer.js";
+import { test, vi } from "vite-plus/test";
 
-test("clearing library pages preserves the mounted view during favorite updates", async (t) => {
-  const vite = await startFrontendServer();
-  t.after(() => vite.close());
+test("clearing library pages preserves the mounted view during favorite updates", async () => {
+  vi.resetModules();
 
-  const { queryClient, queryKeys } = await vite.ssrLoadModule(
-    "/src/queryClient.js",
-  );
-  const { clearLibraryPageCache } = await vite.ssrLoadModule(
-    "/src/utils/api/endpoints/library.js?library-view-cache-test",
-  );
+  const { queryClient, queryKeys } = await import("../../frontend/src/queryClient.js");
+  const { clearLibraryPageCache } = await import("../../frontend/src/utils/api/endpoints/library.js");
   const viewKey = queryKeys.libraryView({ albumId: "7" });
   const pageKey = queryKeys.libraryPage({ kind: "tracks", albumId: "7" });
   const view = {

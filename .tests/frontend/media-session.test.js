@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vite-plus/test";
 
 import { mediaSessionArtwork, mediaSessionPosition } from "../../frontend/src/utils/mediaSession.js";
 

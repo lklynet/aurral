@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, afterAll } from "vite-plus/test";
 
 import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTestHarness.js";
 
@@ -33,7 +33,7 @@ function withEnv(values, run) {
   }
 }
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 

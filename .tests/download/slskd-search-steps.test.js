@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { setupIsolatedBackend, cleanupIsolatedState, createMockHttpServer, resetDatabase } from "../helpers/backendTestHarness.js";
 
@@ -15,7 +15,7 @@ const [state, { db }, { dbOps }, { downloadTracker, DownloadTracker }, { getDown
     "backend/services/downloadJobs/downloadWorker.js",
   );
 
-test.after(() => cleanupIsolatedState(state));
+afterAll(() => cleanupIsolatedState(state));
 
 dbOps.updateSettings({ ...dbOps.getSettings(), integrations: {
   slskd: { enabled: true, url: "http://127.0.0.1:9" },
@@ -37,14 +37,14 @@ function folderResponses(artist, album, titles) {
 
 function mockSearch(t, searches) {
   let searchCount = 0;
-  const created = t.mock.method(client, "createSearch", async (query, options) => {
+  const created = vi.spyOn(client, "createSearch").mockImplementation(async (query, options) => {
     const id = `search-${++searchCount}`;
     options.onSearchCreated?.(id);
     return { id, searchText: query };
   });
-  const polled = t.mock.method(client, "getSearch", async () => searches.shift());
-  t.mock.method(client, "deleteSearch", async () => true);
-  t.mock.method(client, "isCleanupAfterRunsEnabled", () => false);
+  const polled = vi.spyOn(client, "getSearch").mockImplementation(async () => searches.shift());
+  vi.spyOn(client, "deleteSearch").mockImplementation(async () => true);
+  vi.spyOn(client, "isCleanupAfterRunsEnabled").mockImplementation(() => false);
   return { created, polled };
 }
 
@@ -70,56 +70,56 @@ test("a Soulseek search advances one poll per pipeline step", async (t) => {
   assert.equal(first.phase, "search");
   assert.equal(first.activeSearch.id, "search-1");
   assert.ok(first.delaySeconds >= 1);
-  assert.equal(polled.mock.callCount(), 0);
+  assert.equal(polled.mock.calls.length, 0);
 
   const second = await processPipelinePayload(first);
   assert.equal(second.phase, "search");
-  assert.equal(polled.mock.callCount(), 1);
+  assert.equal(polled.mock.calls.length, 1);
 
   const third = await processPipelinePayload(second);
   assert.equal(third.phase, "download");
   assert.equal(third.activeSearch, null);
-  assert.equal(created.mock.callCount(), 1);
+  assert.equal(created.mock.calls.length, 1);
   assert.ok(third.candidates.length > 0);
 });
 
 test("a Soulseek search that slskd keeps queued past five minutes waits for it to run", async (t) => {
-  t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+  vi.useFakeTimers({ toFake: ["Date"], now: Date.now() });
   const responses = folderResponses("Queued Band", "Queued Album", ["Song"]);
   let running = false;
   const { created } = mockSearch(t, []);
-  t.mock.method(client, "getSearch", async () => running
+  vi.spyOn(client, "getSearch").mockImplementation(async () => running
     ? { state: "Completed, Succeeded", fileCount: 3, responses }
     : { state: "Queued", responses: [] });
   const jobId = downloadTracker.addJob({ artistName: "Queued Band", trackName: "Song", durationMs: 200000 }, "library");
 
   const started = await processPipelinePayload({ phase: "search", source: "slskd", jobId });
   const queuedAt = Date.now();
-  t.mock.timers.tick(30000);
+  vi.advanceTimersByTime(30000);
   let next = started;
   while (Date.now() - queuedAt < 10 * 60 * 1000) {
-    t.mock.timers.tick(next.delaySeconds * 1000);
+    vi.advanceTimersByTime(next.delaySeconds * 1000);
     next = await processPipelinePayload(next);
     assert.equal(next.phase, "search");
     assert.equal(next.activeSearch?.id, started.activeSearch.id);
   }
-  assert.equal(created.mock.callCount(), 1);
+  assert.equal(created.mock.calls.length, 1);
   assert.notEqual(downloadTracker.getJob(jobId).status, "failed");
 
   running = true;
-  t.mock.timers.tick(next.delaySeconds * 1000);
+  vi.advanceTimersByTime(next.delaySeconds * 1000);
   const ran = await processPipelinePayload(next);
   assert.equal(ran.phase, "download");
-  assert.equal(created.mock.callCount(), 1);
+  assert.equal(created.mock.calls.length, 1);
   assert.match(ran.candidates[0].raw.file, /Queued Album\\01 - Song\.flac$/);
 });
 
 test("a Soulseek search that starts running just before its monitor is rebuilt keeps its results", async (t) => {
-  t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+  vi.useFakeTimers({ toFake: ["Date"], now: Date.now() });
   const responses = folderResponses("Late Band", "Late Album", ["Song"]);
   const createdAt = Date.now();
   const { created } = mockSearch(t, []);
-  t.mock.method(client, "getSearch", async (id, options) => {
+  vi.spyOn(client, "getSearch").mockImplementation(async (id, options) => {
     if (options.timeout < 50) throw new Error("This operation was aborted");
     const elapsed = Date.now() - createdAt;
     if (elapsed < 9 * 60 * 1000 + 50000) return { state: "Queued", responses: [] };
@@ -130,11 +130,11 @@ test("a Soulseek search that starts running just before its monitor is rebuilt k
 
   let next = await processPipelinePayload({ phase: "search", source: "slskd", jobId });
   while (next?.phase === "search" && Date.now() - createdAt < 15 * 60 * 1000) {
-    t.mock.timers.tick(next.delaySeconds * 1000);
+    vi.advanceTimersByTime(next.delaySeconds * 1000);
     next = await processPipelinePayload(next);
   }
   assert.equal(next.phase, "download");
-  assert.equal(created.mock.callCount(), 1);
+  assert.equal(created.mock.calls.length, 1);
   assert.match(next.candidates[0].raw.file, /Late Album\\01 - Song\.flac$/);
 });
 
@@ -150,20 +150,20 @@ test("tracks from one album reuse the album search", async (t) => {
   assert.equal(firstResult.next.phase, "download");
   const secondResult = await runToDownload({ phase: "search", source: "slskd", jobId: second });
   assert.equal(secondResult.next.phase, "download");
-  assert.equal(created.mock.callCount(), 1);
+  assert.equal(created.mock.calls.length, 1);
   assert.match(secondResult.next.candidates[0].raw.file, /Second\.flac$/);
 });
 
-test("a failed Soulseek poll moves on to the next query", async (t) => {
+test("a failed Soulseek poll moves on to the next query", async () => {
   let searchCount = 0;
-  const created = t.mock.method(client, "createSearch", async (query, options) => {
+  const created = vi.spyOn(client, "createSearch").mockImplementation(async (query, options) => {
     const id = `failing-${++searchCount}`;
     options.onSearchCreated?.(id);
     return { id, searchText: query };
   });
-  t.mock.method(client, "getSearch", async () => { throw new Error("slskd restarted"); });
-  t.mock.method(client, "deleteSearch", async () => true);
-  t.mock.method(client, "isCleanupAfterRunsEnabled", () => false);
+  vi.spyOn(client, "getSearch").mockImplementation(async () => { throw new Error("slskd restarted"); });
+  vi.spyOn(client, "deleteSearch").mockImplementation(async () => true);
+  vi.spyOn(client, "isCleanupAfterRunsEnabled").mockImplementation(() => false);
   const jobId = downloadTracker.addJob({ artistName: "Failing Band", trackName: "Lost Song",
     albumName: "Lost Album", durationMs: 200000 }, "library");
 
@@ -172,7 +172,7 @@ test("a failed Soulseek poll moves on to the next query", async (t) => {
   assert.equal(second.phase, "search");
   assert.equal(second.searchQueryIndex, 1);
   assert.notEqual(second.activeSearch.query, first.activeSearch.query);
-  assert.equal(created.mock.callCount(), 2);
+  assert.equal(created.mock.calls.length, 2);
 });
 
 async function startSoulseek(t) {
@@ -225,8 +225,8 @@ async function startSoulseek(t) {
     slskd: { enabled: true, url: server.url },
     deemix: { enabled: true, url: "http://127.0.0.1:9" },
   } });
-  t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
-  t.after(async () => {
+  vi.useFakeTimers({ toFake: ["Date"], now: Date.now() });
+  t.onTestFinished(async () => {
     dbOps.updateSettings(originalSettings);
     await server.close();
   });
@@ -254,14 +254,14 @@ test("a download waits while Soulseek logs in instead of skipping or blaming pee
   assert.ok(held.delaySeconds > 0);
   assert.equal(transferHistoryCount(), 0);
 
-  t.mock.timers.tick(held.delaySeconds * 1000);
+  vi.advanceTimersByTime(held.delaySeconds * 1000);
   const stillHeld = await processPipelinePayload(held);
   assert.equal(stillHeld.candidateIndex, 0);
   assert.equal(transferHistoryCount(), 0);
   assert.notEqual(downloadTracker.getJob(jobId).status, "failed");
 
   soulseek.loggedIn = true;
-  t.mock.timers.tick(stillHeld.delaySeconds * 1000);
+  vi.advanceTimersByTime(stillHeld.delaySeconds * 1000);
   const resumed = await processPipelinePayload(stillHeld);
   assert.equal(resumed.phase, "poll");
   assert.deepEqual(soulseek.enqueues, ["first-peer"]);
@@ -278,13 +278,13 @@ test("a search refused while Soulseek logs in waits and resumes after login", as
   assert.ok(held.delaySeconds > 0);
   assert.equal(downloadTracker.getJob(jobId).status, "downloading");
 
-  t.mock.timers.tick(held.delaySeconds * 1000);
+  vi.advanceTimersByTime(held.delaySeconds * 1000);
   const stillHeld = await processPipelinePayload(held);
   assert.equal(stillHeld.phase, "search");
   assert.equal(soulseek.searches.length, 0);
 
   soulseek.loggedIn = true;
-  t.mock.timers.tick(stillHeld.delaySeconds * 1000);
+  vi.advanceTimersByTime(stillHeld.delaySeconds * 1000);
   const resumed = await processPipelinePayload(stillHeld);
   assert.equal(resumed.phase, "search");
   assert.equal(soulseek.searches.length, 1);
@@ -311,7 +311,7 @@ test("a transfer that fails while Soulseek logs in is retried from the same peer
   assert.deepEqual(soulseek.deleted, ["/api/v0/transfers/downloads/first-peer/transfer-1"]);
 
   soulseek.loggedIn = true;
-  t.mock.timers.tick(held.delaySeconds * 1000);
+  vi.advanceTimersByTime(held.delaySeconds * 1000);
   const resumed = await processPipelinePayload(held);
   assert.equal(resumed.phase, "poll");
   assert.equal(resumed.candidateIndex, 0);
@@ -357,7 +357,7 @@ test("after a restart Aurral resumes downloads first, then deletes only its slsk
   const soulseek = await startSoulseek(t);
   soulseek.loggedIn = true;
   const { searching: dropped } = await startUpgradeSearch("Orphan Band");
-  t.mock.timers.tick(5000);
+  vi.advanceTimersByTime(5000);
   const liveId = downloadTracker.addJob({ artistName: "Live Band", trackName: "Live Song",
     albumName: "Live Album", durationMs: 200000 }, "library");
   const live = await processPipelinePayload({ phase: "search", source: "slskd", jobId: liveId });
@@ -365,12 +365,12 @@ test("after a restart Aurral resumes downloads first, then deletes only its slsk
 
   downloadTracker.resetDownloadingToPending();
   new DownloadTracker();
-  const workerStarts = t.mock.method(downloadWorker, "start", async () => {});
+  const workerStarts = vi.spyOn(downloadWorker, "start").mockImplementation(async () => {});
   const heldDelete = new Promise((resolve) => { soulseek.holdDelete = resolve; });
   const startup = processSystemTask({ kind: "weekly-flow-startup-check" });
   const respond = await Promise.race([heldDelete, new Promise((resolve) => setTimeout(resolve, 2000, null))]);
   assert.ok(respond, "slskd never received a delete for the dropped upgrade's search");
-  assert.equal(workerStarts.mock.callCount(), 1, "the download worker must start before Aurral waits on slskd");
+  assert.equal(workerStarts.mock.calls.length, 1, "the download worker must start before Aurral waits on slskd");
   respond(503);
   await assert.rejects(startup, { message: "Could not cancel slskd work" });
   assert.deepEqual(trackedSlskdSearchIds(), [dropped.activeSearch.id, live.activeSearch.id].sort());
@@ -389,7 +389,7 @@ for (const phase of ["search", "download"]) {
     let next = await processPipelinePayload({ phase, source: "slskd", jobId,
       candidates: [soulseekCandidate("first-peer")], candidateIndex: 0 });
     while (next?.source === "slskd" && Date.now() - heldAt < 2 * 60 * 60 * 1000) {
-      t.mock.timers.tick(next.delaySeconds * 1000);
+      vi.advanceTimersByTime(next.delaySeconds * 1000);
       next = await processPipelinePayload(next);
     }
     assert.equal(next.source, "deemix");

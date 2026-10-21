@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import {
@@ -27,7 +27,7 @@ const { upsertLibraryArtist, upsertLibraryAlbum, upsertLibraryTrack, linkLibrary
 const { getHonkerDb } = await importFromRepo("backend/services/honkerDb.js");
 const { lidarrClient } = await importFromRepo("backend/services/lidarrClient.js");
 
-test.beforeEach(() => {
+beforeEach(() => {
   resetDatabase(db);
   const transaction = getHonkerDb().transaction();
   transaction.execute("DELETE FROM _honker_live WHERE queue IN (?, ?)", ["weekly-flow-operation", "slskd-pipeline"]);
@@ -35,17 +35,17 @@ test.beforeEach(() => {
   downloadTracker.clearAll();
 });
 
-test("activity reads stay local when Lidarr is disabled", async (t) => {
-  t.mock.method(lidarrClient, "isConfigured", () => false);
-  const request = t.mock.method(lidarrClient, "request", async () => {
+test("activity reads stay local when Lidarr is disabled", async () => {
+  vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => false);
+  const request = vi.spyOn(lidarrClient, "request").mockImplementation(async () => {
     throw new Error("disabled activity reads must not call Lidarr");
   });
 
   assert.deepEqual(await getAurralHistoryRequests(lidarrClient), []);
-  assert.equal(request.mock.callCount(), 0);
+  assert.equal(request.mock.calls.length, 0);
 });
 
-test.after(async () => {
+afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
@@ -515,7 +515,7 @@ const lidarrWithAlbum = (getAlbum) => ({
 });
 
 test("a request for an album since deleted from Lidarr leaves the activity feed", async (t) => {
-  t.after(() => db.prepare("DELETE FROM aurral_history").run());
+  t.onTestFinished(() => db.prepare("DELETE FROM aurral_history").run());
   historyModule.recordAlbumRequested({
     albumId: "5151",
     albumName: "Deleted Album",
@@ -530,7 +530,7 @@ test("a request for an album since deleted from Lidarr leaves the activity feed"
 });
 
 test("a request survives Lidarr being unreachable", async (t) => {
-  t.after(() => db.prepare("DELETE FROM aurral_history").run());
+  t.onTestFinished(() => db.prepare("DELETE FROM aurral_history").run());
   historyModule.recordAlbumRequested({
     albumId: "5252",
     albumName: "Kept Album",
@@ -545,7 +545,7 @@ test("a request survives Lidarr being unreachable", async (t) => {
   assert.notEqual(entries.find((item) => item.albumName === "Kept Album"), undefined);
 });
 
-test("Aurral album requests are not checked against Lidarr by library album ID", async (t) => {
+test("Aurral album requests are not checked against Lidarr by library album ID", async () => {
   const lidarrAlbumLookups = [];
   const lidarrStub = {
     isConfigured: () => true,

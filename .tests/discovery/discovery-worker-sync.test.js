@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vite-plus/test";
 
 test("discovery worker progress and completed data reach the API without shared memory", async () => {
   const { dbOps } = await import("../../backend/db/helpers/index.js");

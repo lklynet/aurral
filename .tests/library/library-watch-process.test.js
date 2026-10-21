@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, beforeEach, vi } from "vite-plus/test";
 import { EventEmitter, once } from "node:events";
 import { fork } from "node:child_process";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
@@ -8,10 +8,10 @@ import path from "node:path";
 import http from "node:http";
 import { createIsolatedLibraryWatcher } from "../../backend/services/libraryWatchProcess.js";
 
-test.beforeEach((t) => {
+beforeEach((t) => {
   // Production watchers intentionally do not keep the parent process alive.
   const keepAlive = setInterval(() => {}, 1000);
-  t.after(() => clearInterval(keepAlive));
+  t.onTestFinished(() => clearInterval(keepAlive));
 });
 
 function fakeChild() {
@@ -40,15 +40,15 @@ function waitForWatcherStartup(watcher) {
 }
 
 test("a slow watcher setup is kept until it becomes ready", (t) => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], now: 0 });
   const child = fakeChild();
   const changes = [];
   const readyRoots = [];
   const watcher = createIsolatedLibraryWatcher("/slow", {}, (...args) => changes.push(args), { forkImpl: () => child });
-  t.after(() => watcher.close());
+  t.onTestFinished(() => watcher.close());
   watcher.on("ready", (root) => readyRoots.push(root));
   watcher.on("error", (error) => assert.fail(error.message));
-  t.mock.timers.tick(10 * 60_000);
+  vi.advanceTimersByTime(10 * 60_000);
   assert.deepEqual(child.signals, []);
   child.emit("message", { type: "ready", root: "/resolved-library" });
   child.emit("message", { type: "change", eventType: "rename", filename: "album/track.flac" });
@@ -100,7 +100,7 @@ test(`real recursive watcher reports nested changes and exits on close (mapped: 
   await mkdir(album, { recursive: true });
   let child;
   let watcher;
-  t.after(async () => {
+  t.onTestFinished(async () => {
     if (child && child.exitCode == null && child.signalCode == null) {
       child.ref();
       const exited = once(child, "exit");
@@ -128,7 +128,7 @@ for (const operation of ["watch", "existsSync"]) {
 test(`HTTP remains responsive while child ${operation} blocks synchronously`, { timeout: 10_000 }, async (t) => {
   const server = http.createServer((_req, res) => res.end("ok"));
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  t.after(() => new Promise((resolve) => server.close(resolve)));
+  t.onTestFinished(() => new Promise((resolve) => server.close(resolve)));
   let child;
   const watcher = createIsolatedLibraryWatcher(operation === "watch" ? "/slow-root" : "/slow-path-mapping", {}, () => {}, {
     forkImpl: (_module, args, options) => {
@@ -136,7 +136,7 @@ test(`HTTP remains responsive while child ${operation} blocks synchronously`, { 
       return child;
     },
   });
-  t.after(() => watcher.close());
+  t.onTestFinished(() => watcher.close());
   watcher.on("error", (error) => assert.fail(error.message));
   const exited = once(child, "exit");
   const [message] = await once(child, "message");
@@ -152,9 +152,9 @@ test(`HTTP remains responsive while child ${operation} blocks synchronously`, { 
 
 test("a missing root reports ENOENT instead of becoming ready", { timeout: 5_000 }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-watch-missing-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  t.onTestFinished(() => rm(root, { recursive: true, force: true }));
   const watcher = createIsolatedLibraryWatcher(path.join(root, "absent"), {}, () => {});
-  t.after(() => watcher.close());
+  t.onTestFinished(() => watcher.close());
   const outcome = await waitForWatcherStartup(watcher);
   assert.equal(outcome.type, "error", `Missing library root unexpectedly became ready: ${outcome.root}`);
   assert.equal(outcome.error.code, "ENOENT", `Missing library root reported ${outcome.error.code}: ${outcome.error.message}`);

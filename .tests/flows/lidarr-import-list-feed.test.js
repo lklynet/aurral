@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import {
   setupIsolatedBackend,
@@ -12,7 +12,7 @@ const [isolatedState, { buildLidarrImportListItems, verifyFlowLidarrFeedToken },
     "backend/services/playlists/flowPlaylistConfig.js",
   );
 
-test.after(() => cleanupIsolatedState(isolatedState));
+afterAll(() => cleanupIsolatedState(isolatedState));
 
 test("buildLidarrImportListItems maps jobs to lidarr custom list rows", () => {
   const items = buildLidarrImportListItems([

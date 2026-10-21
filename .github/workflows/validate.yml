@@ -39,7 +39,7 @@ jobs:
 
       - run: npm ci
 
-      - run: npm run lint
+      - run: npm run check
 
       - name: Build app
         run: npm run build
@@ -49,6 +49,12 @@ jobs:
           npm ci
           npm run build
         working-directory: docs
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run component tests in Chromium
+        run: npm run test:browser
 
       - name: Start app
         run: |
@@ -76,7 +82,6 @@ jobs:
         env:
           AURRAL_BASE_URL: http://127.0.0.1:3001
         run: |
-          npx playwright install --with-deps chromium
           npx playwright test tests/e2e/library-track-performer.spec.js
           npx playwright test tests/e2e/library-add-menu.spec.js tests/e2e/playlist-bulk-actions.spec.js
           npx playwright test tests/e2e/local-album-artwork.spec.js
@@ -164,9 +169,7 @@ jobs:
       - run: npm ci
 
       - name: Run test suite
-        run: npm test
-        env:
-          NODE_OPTIONS: --test-shard=${{ matrix.shard }}/2
+        run: npm test -- --shard=${{ matrix.shard }}/2
 
   integration-tests:
     name: Integration tests

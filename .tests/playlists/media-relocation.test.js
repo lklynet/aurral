@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -10,7 +10,7 @@ const [state, { db }, { dbOps }, { downloadTracker }, { finalizeRetainedPlaylist
   "backend/services/playlists/flowPlaylistConfig.js", "backend/services/playlists/trackRemoval.js",
   "backend/services/downloadJobs/downloadWorker.js",
 );
-test.after(() => cleanupIsolatedState(state));
+afterAll(() => cleanupIsolatedState(state));
 
 test("relocation retries a copied file after path persistence fails and preserves every shared job", async () => {
   dbOps.updateSettings({ integrations: {}, flows: [], sharedPlaylists: [] });

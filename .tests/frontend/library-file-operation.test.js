@@ -1,17 +1,13 @@
 import assert from "node:assert/strict";
-import test from "node:test";
-import { createRequire } from "node:module";
+import { test, vi } from "vite-plus/test";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { startFrontendServer } from "../helpers/frontendServer.js";
 
-const frontendRequire = createRequire(new URL("../../frontend/package.json", import.meta.url));
-const { createElement } = frontendRequire("react");
-const { renderToStaticMarkup } = frontendRequire("react-dom/server");
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 
 async function renderOperation(t, operation) {
-  const vite = await startFrontendServer();
-  t.after(() => vite.close());
-  const { default: LibraryFileOperation } = await vite.ssrLoadModule("/src/components/LibraryFileOperation.jsx");
+  vi.resetModules();
+  const { default: LibraryFileOperation } = await import("../../frontend/src/components/LibraryFileOperation.jsx");
   return renderToStaticMarkup(createElement(
     QueryClientProvider,
     { client: new QueryClient() },

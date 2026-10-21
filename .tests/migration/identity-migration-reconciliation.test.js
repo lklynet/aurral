@@ -1,7 +1,5 @@
-import { test } from "node:test";
+import { test, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
-import { pathToFileURL } from "url";
-import { join } from "path";
 import Database from "better-sqlite3";
 
 import {
@@ -10,12 +8,9 @@ import {
   cleanupIsolatedState,
 } from "../helpers/backendTestHarness.js";
 
-const dbModuleUrl = pathToFileURL(
-  join(process.cwd(), "backend/config/db-sqlite.js"),
-).href;
-
-async function bootDb() {
-  return import(`${dbModuleUrl}?boot=${Date.now()}-${Math.random()}`);
+function bootDb() {
+  vi.resetModules();
+  return import("../../backend/config/db-sqlite.js");
 }
 
 test("identity upgrade protects the historical recovery admin, expires ambiguous sessions, and enables cascades", async () => {

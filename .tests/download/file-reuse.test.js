@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "fs/promises";
 import path from "path";
@@ -49,7 +49,7 @@ const {
 
 const downloadRoot = process.env.WEEKLY_FLOW_FOLDER;
 
-test.beforeEach(async () => {
+beforeEach(async () => {
   await resetDatabase(db);
   dbOps.updateSettings({
     integrations: {},
@@ -61,7 +61,7 @@ test.beforeEach(async () => {
   await fs.rm(downloadRoot, { recursive: true, force: true });
 });
 
-test.after(async () => {
+afterAll(async () => {
   const { downloadWorker } = await importFromRepo(
     "backend/services/downloadJobs/downloadWorker.js",
   );
@@ -113,7 +113,7 @@ test("reuseTrackForPlaylist references a completed Aurral track path", async () 
   assert.equal(downloadTracker.getJob(result.jobId)?.finalPath, sourcePath);
 });
 
-test("reusing an existing track for a flow does not schedule a full library scan", async (t) => {
+test("reusing an existing track for a flow does not schedule a full library scan", async () => {
   const flow = flowPlaylistConfig.createFlow({ name: "Reuse Flow", size: 10 });
   const track = {
     artistName: "System of a Down",
@@ -130,8 +130,8 @@ test("reusing an existing track for a flow does not schedule a full library scan
   );
   await fs.mkdir(path.dirname(sourcePath), { recursive: true });
   await fs.writeFile(sourcePath, "audio");
-  const scheduleScanLibrary = t.mock.method(playlistManager, "scheduleScanLibrary", () => 1);
-  t.mock.method(playlistManager, "requestPlaylistSync", () => null);
+  const scheduleScanLibrary = vi.spyOn(playlistManager, "scheduleScanLibrary").mockImplementation(() => 1);
+  vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
 
   const result = await reuseTrackForPlaylist(track, flow.id, {
     existingFileMode: "reuse",
@@ -140,7 +140,7 @@ test("reusing an existing track for a flow does not schedule a full library scan
   await new Promise((resolve) => setImmediate(resolve));
 
   assert.equal(result.reused, true);
-  assert.equal(scheduleScanLibrary.mock.callCount(), 0);
+  assert.equal(scheduleScanLibrary.mock.calls.length, 0);
 });
 
 test("reuseTrackForPlaylist detects and reuses local audio file from disk without prior tracker job (#741)", async () => {
@@ -342,7 +342,7 @@ test("restoreCompletedTrack requeues done jobs when the file and reuse source ar
   assert.equal(downloadTracker.getJob(jobId)?.finalPath, null);
 });
 
-test("repairJobsUnderRemovedPlaylistDir requeues other playlists that reused a deleted flow folder", async (t) => {
+test("repairJobsUnderRemovedPlaylistDir requeues other playlists that reused a deleted flow folder", async () => {
   const track = {
     artistName: "Metric",
     trackName: "Victim of Luck",
@@ -359,7 +359,7 @@ test("repairJobsUnderRemovedPlaylistDir requeues other playlists that reused a d
   );
   const jobId = downloadTracker.addJob(track, "active-playlist");
   downloadTracker.setDone(jobId, reusedPath, track.albumName);
-  const scheduleScanLibrary = t.mock.method(playlistManager, "scheduleScanLibrary", () => 1);
+  const scheduleScanLibrary = vi.spyOn(playlistManager, "scheduleScanLibrary").mockImplementation(() => 1);
 
   const result = await repairJobsUnderRemovedPlaylistDir(deletedFlowId, {
     existingFileMode: "reuse",
@@ -370,7 +370,7 @@ test("repairJobsUnderRemovedPlaylistDir requeues other playlists that reused a d
   assert.equal(result.requeued, 1);
   assert.equal(downloadTracker.getJob(jobId)?.status, "pending");
   assert.equal(downloadTracker.getJob(jobId)?.finalPath, null);
-  assert.equal(scheduleScanLibrary.mock.callCount(), 0);
+  assert.equal(scheduleScanLibrary.mock.calls.length, 0);
 });
 
 test("repairOrphanedPlaylistTrackPaths finds removed playlist ids from missing file paths", async () => {
@@ -402,7 +402,7 @@ test("repairOrphanedPlaylistTrackPaths finds removed playlist ids from missing f
   assert.equal(downloadTracker.getJob(jobId)?.status, "pending");
 });
 
-test("repairReusableTrackLinks requeues missing completed tracks and refreshes playlists", async (t) => {
+test("repairReusableTrackLinks requeues missing completed tracks and refreshes playlists", async () => {
   const track = {
     artistName: "Portishead",
     trackName: "Glory Box",
@@ -416,7 +416,7 @@ test("repairReusableTrackLinks requeues missing completed tracks and refreshes p
   );
   const jobId = downloadTracker.addJob(track, "flow-playlist");
   downloadTracker.setDone(jobId, missingPath, track.albumName);
-  const scheduleScanLibrary = t.mock.method(playlistManager, "scheduleScanLibrary", () => 1);
+  const scheduleScanLibrary = vi.spyOn(playlistManager, "scheduleScanLibrary").mockImplementation(() => 1);
 
   const result = await repairReusableTrackLinks({
     existingFileMode: "reuse",
@@ -426,10 +426,10 @@ test("repairReusableTrackLinks requeues missing completed tracks and refreshes p
 
   assert.equal(result.requeued, 1);
   assert.equal(downloadTracker.getJob(jobId)?.status, "pending");
-  assert.equal(scheduleScanLibrary.mock.callCount(), 0);
+  assert.equal(scheduleScanLibrary.mock.calls.length, 0);
 });
 
-test("repairReusableTrackLinks scans after repairing a library track", async (t) => {
+test("repairReusableTrackLinks scans after repairing a library track", async () => {
   const track = {
     artistName: "Portishead",
     trackName: "Glory Box",
@@ -440,7 +440,7 @@ test("repairReusableTrackLinks scans after repairing a library track", async (t)
   const missingPath = path.join(downloadRoot, "Portishead", "Dummy", "Glory Box.flac");
   const jobId = downloadTracker.addJob(track, "library");
   downloadTracker.setDone(jobId, missingPath, track.albumName);
-  const scheduleScanLibrary = t.mock.method(playlistManager, "scheduleScanLibrary", () => 1);
+  const scheduleScanLibrary = vi.spyOn(playlistManager, "scheduleScanLibrary").mockImplementation(() => 1);
 
   const result = await repairReusableTrackLinks({
     existingFileMode: "reuse",
@@ -453,7 +453,7 @@ test("repairReusableTrackLinks scans after repairing a library track", async (t)
 
   assert.equal(result.repaired, 1);
   assert.equal(downloadTracker.getJob(jobId)?.finalPath, sourcePath);
-  assert.equal(scheduleScanLibrary.mock.callCount(), 1);
+  assert.equal(scheduleScanLibrary.mock.calls.length, 1);
 });
 
 test("reuseTrackForPlaylist path-shares flow files until refresh relocates them", async () => {
@@ -655,8 +655,8 @@ async function seedHandoverAlbum({ handedOver = true } = {}) {
 
 const fileExists = (filePath) => fs.access(filePath).then(() => true, () => false);
 
-test("a playlist track of an album handed to Lidarr moves onto Lidarr's file and the Aurral copy goes", async (t) => {
-  t.mock.method(playlistManager, "requestPlaylistSync", () => null);
+test("a playlist track of an album handed to Lidarr moves onto Lidarr's file and the Aurral copy goes", async () => {
+  vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
   const { jobId, aurralPath, lidarrPath } = await seedHandoverAlbum();
 
   const result = await moveHandedOverTracksToLidarr({
@@ -671,8 +671,8 @@ test("a playlist track of an album handed to Lidarr moves onto Lidarr's file and
   assert.equal(await fs.readFile(lidarrPath, "utf8"), "lidarr");
 });
 
-test("Aurral copies stay when the album was not handed over or playback still uses them", async (t) => {
-  t.mock.method(playlistManager, "requestPlaylistSync", () => null);
+test("Aurral copies stay when the album was not handed over or playback still uses them", async () => {
+  vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
   const notHandedOver = await seedHandoverAlbum({ handedOver: false });
 
   await moveHandedOverTracksToLidarr({ downloadRoot, existingFileMode: "reuse" });
@@ -692,7 +692,7 @@ test("Aurral copies stay when the album was not handed over or playback still us
   assert.equal(await fileExists(inUse.aurralPath), true);
 });
 
-test("turning Lidarr off requeues downloads that used a Lidarr file", async (t) => {
+test("turning Lidarr off requeues downloads that used a Lidarr file", async () => {
   const { downloadWorker } = await importFromRepo("backend/services/downloadJobs/downloadWorker.js");
   const { lidarrClient } = await importFromRepo("backend/services/lidarrClient.js");
   const musicRoot = path.join(isolatedState.baseDir, "music");
@@ -700,8 +700,8 @@ test("turning Lidarr off requeues downloads that used a Lidarr file", async (t) 
     integrations: { lidarr: { enabled: false, apiKey: "key", rootFolderPath: musicRoot } },
   });
   lidarrClient.updateConfig();
-  t.mock.method(downloadWorker, "start", async () => {});
-  t.mock.method(downloadWorker, "wake", () => {});
+  vi.spyOn(downloadWorker, "start").mockImplementation(async () => {});
+  vi.spyOn(downloadWorker, "wake").mockImplementation(() => {});
   const doneJob = (trackName, finalPath, externalPath = null) => {
     const id = downloadTracker.addJob({ artistName: "Artist", trackName }, "library");
     downloadTracker.setDone(id, finalPath, "Album", externalPath);
@@ -734,7 +734,7 @@ test("playlists reuse a Lidarr file only while Lidarr is on", async (t) => {
     dbOps.updateSettings({ integrations: { lidarr: { enabled, apiKey: "key" } } });
     lidarrClient.updateConfig();
   };
-  t.after(() => setLidarr(false));
+  t.onTestFinished(() => setLidarr(false));
   const lidarrPath = path.join(isolatedState.baseDir, "music", "Reuse Artist", "Reuse Album", "01 Song.flac");
   await fs.mkdir(path.dirname(lidarrPath), { recursive: true });
   await fs.writeFile(lidarrPath, "lidarr");

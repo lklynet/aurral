@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import { setTimeout as delay } from "node:timers/promises";
@@ -30,7 +30,7 @@ test("bulk track reads use Lidarr artist selectors", async (t) => {
     response.end(JSON.stringify([{ id: 1, albumId: 2 }]));
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  t.after(async () => {
+  t.onTestFinished(async () => {
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
   });
@@ -67,7 +67,7 @@ test("bulk album reads use Lidarr artist selectors when requested", async (t) =>
     response.end("[]");
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  t.after(async () => {
+  t.onTestFinished(async () => {
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
   });
@@ -96,7 +96,7 @@ test("bulk album reads use Lidarr artist selectors when requested", async (t) =>
 test("no-response Lidarr errors identify the endpoint and timeout", async (t) => {
   const server = http.createServer((request) => request.destroy());
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  t.after(async () => {
+  t.onTestFinished(async () => {
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
   });
@@ -113,7 +113,7 @@ test("no-response Lidarr errors identify the endpoint and timeout", async (t) =>
   const originalConsoleError = console.error;
   const errors = [];
   console.error = (...args) => errors.push(args);
-  t.after(() => {
+  t.onTestFinished(() => {
     console.error = originalConsoleError;
     client._httpAgent.destroy();
     client._httpsAgent.destroy();
@@ -185,7 +185,7 @@ test("bulk track-file reads use bounded repeated ID selectors", async (t) => {
     response.end("[]");
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  t.after(async () => {
+  t.onTestFinished(async () => {
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
   });
@@ -227,7 +227,7 @@ test("testConnection preserves Lidarr HTTP diagnostics", async (t) => {
     response.end(JSON.stringify({ message: `failure-${status}` }));
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  t.after(async () => {
+  t.onTestFinished(async () => {
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
   });
@@ -266,7 +266,7 @@ test("missing Lidarr resources are absent records, not endpoint failures", async
     response.end(JSON.stringify({ message: "Artist with ID 2411485 does not exist" }));
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  t.after(async () => {
+  t.onTestFinished(async () => {
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
   });
@@ -283,7 +283,7 @@ test("missing Lidarr resources are absent records, not endpoint failures", async
   const originalConsoleError = console.error;
   const errors = [];
   console.error = (...args) => errors.push(args);
-  t.after(() => {
+  t.onTestFinished(() => {
     console.error = originalConsoleError;
     client._httpAgent.destroy();
     client._httpsAgent.destroy();
@@ -322,7 +322,7 @@ test("getAlbumByMbid avoids unrelated broken albums in Lidarr", async (t) => {
     response.end();
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  t.after(async () => {
+  t.onTestFinished(async () => {
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
   });
@@ -362,7 +362,7 @@ test("getAlbumByMbid selects the matching album from filtered results", async (t
     );
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  t.after(async () => {
+  t.onTestFinished(async () => {
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
   });
@@ -407,7 +407,7 @@ test("getAlbumByMbid accepts wrapped Lidarr album results", async (t) => {
     );
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  t.after(async () => {
+  t.onTestFinished(async () => {
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
   });
@@ -433,7 +433,7 @@ test("getAlbumByMbid accepts wrapped Lidarr album results", async (t) => {
 
 test("getAlbumsByMbidsSettled bounds concurrent lookups and preserves failures", async (t) => {
   const client = new LidarrClient();
-  t.after(() => {
+  t.onTestFinished(() => {
     client._httpAgent.destroy();
     client._httpsAgent.destroy();
     client._httpsInsecureAgent.destroy();
@@ -462,7 +462,7 @@ test("getAlbumsByMbidsSettled bounds concurrent lookups and preserves failures",
 
 test("album-only artist add queues a search for the selected album", async (t) => {
   const client = new LidarrClient();
-  t.after(() => {
+  t.onTestFinished(() => {
     client._httpAgent.destroy();
     client._httpsAgent.destroy();
     client._httpsInsecureAgent.destroy();
@@ -570,7 +570,7 @@ test("artist add resolves a non-numeric Lidarr response ID before follow-up call
     response.end();
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  t.after(async () => {
+  t.onTestFinished(async () => {
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
   });
@@ -616,7 +616,7 @@ test("artist add resolves a numeric metadata-provider response ID", async (t) =>
   const requests = [];
   let providerPayload;
   const client = new LidarrClient();
-  t.after(() => {
+  t.onTestFinished(() => {
     dbOps.deleteLidarrArtistIdMap(artistMbid);
     client._httpAgent.destroy();
     client._httpsAgent.destroy();
@@ -687,7 +687,7 @@ test("artist add resolves a numeric metadata-provider response ID", async (t) =>
 test("artist add rejects a MusicBrainz ID and name mismatch", async (t) => {
   const artistMbid = "f1693075-b637-49f8-8d0e-8cee8bec77cb";
   const client = new LidarrClient();
-  t.after(() => {
+  t.onTestFinished(() => {
     dbOps.deleteLidarrArtistIdMap(artistMbid);
     client._httpAgent.destroy();
     client._httpsAgent.destroy();
@@ -727,7 +727,7 @@ test("artist add accepts a MusicBrainz alias when resolving a provider ID", asyn
   const artistMbid = "c5c3e287-d2a7-497f-a212-e2cfb7bcb90c";
   const providerArtistId = "181216727@deezer";
   const client = new LidarrClient();
-  t.after(() => {
+  t.onTestFinished(() => {
     dbOps.deleteLidarrArtistIdMap(artistMbid);
     client._httpAgent.destroy();
     client._httpsAgent.destroy();
@@ -791,7 +791,7 @@ test("artist add succeeds when a provider mapping conflict follows a successful 
   const existingMbid = "mapping-conflict-existing-mbid";
   const providerId = "mapping-conflict-provider@deezer";
   const client = new LidarrClient();
-  t.after(() => {
+  t.onTestFinished(() => {
     dbOps.deleteLidarrArtistIdMap(artistMbid);
     dbOps.deleteLidarrArtistIdMap(existingMbid);
     client._httpAgent.destroy();
@@ -841,7 +841,7 @@ test("Lidarr artist provider mappings reject reverse-ID conflicts", async (t) =>
   const firstMbid = "mapping-first-mbid";
   const secondMbid = "mapping-second-mbid";
   const providerId = "mapping-provider-id@deezer";
-  t.after(() => {
+  t.onTestFinished(() => {
     dbOps.deleteLidarrArtistIdMap(firstMbid);
     dbOps.deleteLidarrArtistIdMap(secondMbid);
   });
@@ -859,7 +859,7 @@ test("Lidarr artist provider mappings reject reverse-ID conflicts", async (t) =>
 test("artist add fails when Lidarr cannot resolve a numeric ID", async (t) => {
   const artistMbid = "f1693075-b637-49f8-8d0e-8cee8bec77cb";
   const client = new LidarrClient();
-  t.after(() => {
+  t.onTestFinished(() => {
     client._httpAgent.destroy();
     client._httpsAgent.destroy();
     client._httpsInsecureAgent.destroy();
@@ -907,7 +907,7 @@ test("artist add fails when Lidarr cannot resolve a numeric ID", async (t) => {
 
 test("artist add does not retry creation after monitoring fails", async (t) => {
   const client = new LidarrClient();
-  t.after(() => {
+  t.onTestFinished(() => {
     client._httpAgent.destroy();
     client._httpsAgent.destroy();
     client._httpsInsecureAgent.destroy();
@@ -970,7 +970,7 @@ test("Lidarr cooldown permits only one half-open recovery request", async (t) =>
     response.end(JSON.stringify({ ok: true }));
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  t.after(async () => {
+  t.onTestFinished(async () => {
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
   });
@@ -1016,7 +1016,7 @@ test("a failed Lidarr recovery probe reopens the cooldown", async (t) => {
     response.end(JSON.stringify({ error: "unavailable" }));
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  t.after(async () => {
+  t.onTestFinished(async () => {
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
   });

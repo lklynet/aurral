@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import { test, after } from "node:test";
+import { test, afterAll, vi } from "vite-plus/test";
 import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.js";
 
 const [paths, { default: createWorker }, { getSystemTaskQueue }, { db }] =
   await setupIsolatedBackend("metadata-interruption", "backend/services/honkerWorkerFactory.js",
     "backend/services/honkerDb.js", "backend/config/db-sqlite.js");
-after(() => cleanupIsolatedState(paths));
+afterAll(() => cleanupIsolatedState(paths));
 
 test("shutdown preserves unfinished metadata at its final retry attempt", async () => {
   const queue = getSystemTaskQueue();
@@ -100,15 +100,15 @@ test("stopping immediately after start preserves an unexecuted final-attempt cla
   } finally { queue.cancel(id); }
 });
 
-test("lease renewal failure aborts a blocked provider request", async (t) => {
+test("lease renewal failure aborts a blocked provider request", async () => {
   const { acquireReleaseMetadataLease } = await import("../../backend/services/releaseMetadataLease.js");
   const { refreshReleaseMetadata } = await import("../../backend/services/releaseMetadataSync.js");
   const { default: axios } = await import("../../lib/axiosFetch.js");
-  t.mock.timers.enable({ apis: ["setInterval"] });
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"], now: 0 });
   const lease = await acquireReleaseMetadataLease();
   let requested;
   const started = new Promise((resolve) => { requested = resolve; });
-  t.mock.method(axios, "get", (_url, { signal }) => new Promise((_resolve, reject) => {
+  vi.spyOn(axios, "get").mockImplementation((_url, { signal }) => new Promise((_resolve, reject) => {
     signal.addEventListener("abort", () => reject(signal.reason), { once: true });
     requested();
   }));
@@ -120,11 +120,11 @@ test("lease renewal failure aborts a blocked provider request", async (t) => {
     await started;
     db.prepare("UPDATE _honker_locks SET owner = ? WHERE name = ?")
       .run("replacement-owner", "release-metadata-refresh");
-    t.mock.timers.tick(30000);
+    vi.advanceTimersByTime(30000);
     await assert.rejects(refresh, { code: "HONKER_JOB_INTERRUPTED" });
   } finally {
     lease.release();
     db.prepare("DELETE FROM _honker_locks WHERE name = ?").run("release-metadata-refresh");
-    t.mock.timers.reset();
+    vi.useRealTimers();
   }
 });

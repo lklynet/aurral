@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vite-plus/test";
 import { createMockHttpServer } from "./helpers/backendTestHarness.js";
 import { JellyfinClient } from "../backend/services/jellyfin.js";
 
@@ -446,22 +446,23 @@ test("falls back to legacy metadata reads on 405, including rename verification"
   }
 });
 
-test("does not fall back or mutate playlists on other metadata errors", async (t) => {
-  for (const status of [401, 403, 404, 500, undefined]) {
-    await t.test(String(status ?? "network failure"), async () => {
-      const client = new JellyfinClient("http://jellyfin.test", "api-key", "configured-user");
-      const failure = new Error("Metadata read failed");
-      if (status !== undefined) failure.response = { status };
-      const requests = [];
-      client.request = async (method, endpoint) => {
-        requests.push({ method, endpoint });
-        throw failure;
-      };
-      await assert.rejects(
-        client.updatePlaylist("playlist-1", { name: "Renamed", itemIds: ["track-1"] }),
-        (error) => error === failure,
-      );
-      assert.deepEqual(requests, [{ method: "GET", endpoint: "/Items/playlist-1" }]);
-    });
-  }
-});
+test.each(
+  [401, 403, 404, 500, undefined].map((status) => ({ status, label: String(status ?? "network failure") })),
+)(
+  "does not fall back or mutate playlists on metadata error $label",
+  async ({ status }) => {
+  const client = new JellyfinClient("http://jellyfin.test", "api-key", "configured-user");
+  const failure = new Error("Metadata read failed");
+  if (status !== undefined) failure.response = { status };
+  const requests = [];
+  client.request = async (method, endpoint) => {
+    requests.push({ method, endpoint });
+    throw failure;
+  };
+  await assert.rejects(
+    client.updatePlaylist("playlist-1", { name: "Renamed", itemIds: ["track-1"] }),
+    (error) => error === failure,
+  );
+  assert.deepEqual(requests, [{ method: "GET", endpoint: "/Items/playlist-1" }]);
+  },
+);

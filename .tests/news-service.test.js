@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import express from "express";
 import axios from "../lib/axiosFetch.js";
 import { cleanupIsolatedState, resetDatabase, setupIsolatedBackend } from "./helpers/backendTestHarness.js";
@@ -20,11 +20,11 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const TAGGED_FEED = "https://tagged.test/feed";
 const UNTAGGED_FEED = "https://untagged.test/feed";
 
-test.beforeEach(() => {
+beforeEach(() => {
   resetDatabase(db);
 });
 
-test.after(async () => {
+afterAll(async () => {
   db.close();
   await cleanupIsolatedState(isolatedState);
 });
@@ -56,7 +56,7 @@ const rss = (items) => `<rss xmlns:media="http://search.yahoo.com/mrss/"><channe
   </item>`)
   .join("")}</channel></rss>`;
 
-const serveFeeds = (t, responses) => t.mock.method(axios, "get", async (url) => {
+const serveFeeds = (t, responses) => vi.spyOn(axios, "get").mockImplementation(async (url) => {
   const response = responses[url];
   if (response === undefined) throw new Error(`Unexpected request: ${url}`);
   return { data: response };
@@ -94,8 +94,8 @@ test("parses RSS items, Atom entries, entities, categories, and images", () => {
   assert.equal(articles[0].imageUrl, "https://example.test/image.jpg");
 });
 
-test("fetches RSS feed articles under the feed's configured name", async (t) => {
-  t.mock.method(axios, "get", async () => ({
+test("fetches RSS feed articles under the feed's configured name", async () => {
+  vi.spyOn(axios, "get").mockImplementation(async () => ({
     data: "<feed><title>Feed Name</title><entry><title>Artist One news</title><link href=\"https://example.test/story\"/><summary>News</summary></entry></feed>",
   }));
 
@@ -212,11 +212,11 @@ test("keeps cached stories and warns when every feed fails", async (t) => {
   assert.match(result.refresh.warning, /could not be refreshed/);
 });
 
-test("looks up a missing story image once", async (t) => {
+test("looks up a missing story image once", async () => {
   configureFeeds([UNTAGGED_FEED]);
   const storyUrl = "https://93.184.216.34/story";
   const storyRequests = [];
-  t.mock.method(axios, "get", async (url) => {
+  vi.spyOn(axios, "get").mockImplementation(async (url) => {
     if (url === UNTAGGED_FEED) return { data: rss([{ title: "Story without image", url: storyUrl }]) };
     storyRequests.push(url);
     return { data: '<meta property="og:image" content="https://93.184.216.34/cover.jpg">' };
@@ -248,7 +248,7 @@ test("only admins can disable a feed, and its stories leave the news list", asyn
   const server = await new Promise((resolve) => {
     const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
   });
-  t.after(() => server.close());
+  t.onTestFinished(() => server.close());
   const disable = () => fetch(`http://127.0.0.1:${server.address().port}/api/news/feeds/disable`, {
     method: "POST",
     headers: { "content-type": "application/json" },

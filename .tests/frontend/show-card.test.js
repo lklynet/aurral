@@ -1,16 +1,12 @@
 import assert from "node:assert/strict";
-import test from "node:test";
-import { createRequire } from "node:module";
-import { startFrontendServer } from "../helpers/frontendServer.js";
+import { test, vi } from "vite-plus/test";
 
-const frontendRequire = createRequire(new URL("../../frontend/package.json", import.meta.url));
-const { createElement } = frontendRequire("react");
-const { renderToStaticMarkup } = frontendRequire("react-dom/server");
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 
 async function renderShow(t, show) {
-  const vite = await startFrontendServer();
-  t.after(() => vite.close());
-  const { default: ShowCard } = await vite.ssrLoadModule("/src/components/ShowCard.jsx");
+  vi.resetModules();
+  const { default: ShowCard } = await import("../../frontend/src/components/ShowCard.jsx");
   return renderToStaticMarkup(createElement(ShowCard, { show }));
 }
 

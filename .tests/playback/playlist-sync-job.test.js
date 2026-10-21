@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeEach, afterAll, afterEach, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -33,7 +33,7 @@ registerFlows({
   delete() {},
 });
 
-test.beforeEach(() => {
+beforeEach(() => {
   resetDatabase(db);
   invalidateFlowPlaylistConfigCache();
   downloadTracker.clearAll();
@@ -49,11 +49,11 @@ test.beforeEach(() => {
   });
 });
 
-test.afterEach(() => {
+afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
-test.after(async () => {
+afterAll(async () => {
   if (previousGroup === undefined) delete process.env.AURRAL_BACKGROUND_WORKER_GROUP;
   else process.env.AURRAL_BACKGROUND_WORKER_GROUP = previousGroup;
   await cleanupIsolatedState(state);
@@ -81,7 +81,7 @@ function useJellyfin(t, url) {
     items: [], locations: [downloadRoot, lidarrRoot], playlists: new Map(), available: true, failDeletes: 0, failureStatus: 503, reads: 0,
   };
   const unavailable = () => Object.assign(new Error("Jellyfin unavailable"), { response: { status: jellyfin.failureStatus } });
-  t.mock.method(JellyfinClient.prototype, "request", async (method, endpoint, { params } = {}) => {
+  vi.spyOn(JellyfinClient.prototype, "request").mockImplementation(async (method, endpoint, { params } = {}) => {
     if (`${method} ${endpoint}` === "GET /Library/VirtualFolders") {
       if (!jellyfin.available) throw unavailable();
       return [{ CollectionType: "music", Locations: jellyfin.locations }];
@@ -95,17 +95,17 @@ function useJellyfin(t, url) {
       TotalRecordCount: jellyfin.items.length,
     };
   });
-  t.mock.method(JellyfinClient.prototype, "createPlaylist", async ({ name, itemIds }) => {
+  vi.spyOn(JellyfinClient.prototype, "createPlaylist").mockImplementation(async ({ name, itemIds }) => {
     const id = `jellyfin-${jellyfin.playlists.size + 1}`;
     jellyfin.playlists.set(id, { name, itemIds: [...itemIds] });
     return { Id: id };
   });
-  t.mock.method(JellyfinClient.prototype, "updatePlaylist", async (id, { name, itemIds }) => {
+  vi.spyOn(JellyfinClient.prototype, "updatePlaylist").mockImplementation(async (id, { name, itemIds }) => {
     if (!jellyfin.playlists.has(id)) throw Object.assign(new Error("Not found"), { response: { status: 404 } });
     jellyfin.playlists.set(id, { name, itemIds: [...itemIds] });
     return { Id: id, managedItemIds: itemIds };
   });
-  t.mock.method(JellyfinClient.prototype, "deletePlaylist", async (id) => {
+  vi.spyOn(JellyfinClient.prototype, "deletePlaylist").mockImplementation(async (id) => {
     if (!jellyfin.available) throw unavailable();
     if (jellyfin.failDeletes > 0) {
       jellyfin.failDeletes -= 1;
@@ -126,8 +126,8 @@ function usePlex(t, { mainLibrarySectionId = "" } = {}) {
     plex: { url: `http://plex-${plexServers}.test`, token: "plex-token", mainLibrarySectionId },
   } });
   const plex = { sections: { 9: [], 5: [] }, mainRoots: [lidarrRoot], reads: [], failReads: null, playlists: new Map(), deleteStatus: null };
-  t.mock.method(PlexClient.prototype, "ensureAurralLibrary", async (libraryPath) => ({ key: "9", Location: [{ path: libraryPath }] }));
-  t.mock.method(PlexClient.prototype, "request", async (endpoint, { params } = {}) => {
+  vi.spyOn(PlexClient.prototype, "ensureAurralLibrary").mockImplementation(async (libraryPath) => ({ key: "9", Location: [{ path: libraryPath }] }));
+  vi.spyOn(PlexClient.prototype, "request").mockImplementation(async (endpoint, { params } = {}) => {
     if (endpoint === "/library/sections") {
       return { MediaContainer: { Directory: [{ key: "5", Location: plex.mainRoots.map((root) => ({ path: root })) }] } };
     }
@@ -147,13 +147,13 @@ function usePlex(t, { mainLibrarySectionId = "" } = {}) {
       })),
     } };
   });
-  t.mock.method(PlexClient.prototype, "scanLibrary", async () => null);
-  t.mock.method(PlexClient.prototype, "syncPlaylist", async ({ ratingKey, title, ratingKeys }) => {
+  vi.spyOn(PlexClient.prototype, "scanLibrary").mockImplementation(async () => null);
+  vi.spyOn(PlexClient.prototype, "syncPlaylist").mockImplementation(async ({ ratingKey, title, ratingKeys }) => {
     const key = ratingKey ?? `plex-${plex.playlists.size + 1}`;
     plex.playlists.set(key, { title, ratingKeys: [...ratingKeys] });
     return { ratingKey: key };
   });
-  t.mock.method(PlexClient.prototype, "deletePlaylist", async (key) => {
+  vi.spyOn(PlexClient.prototype, "deletePlaylist").mockImplementation(async (key) => {
     if (plex.deleteStatus) throw Object.assign(new Error("Plex rejected the delete"), { response: { status: plex.deleteStatus } });
     plex.playlists.delete(key);
   });
@@ -167,10 +167,10 @@ const plexRatingKeys = (plex) => Object.fromEntries([...plex.playlists.values()]
 
 const useOnly = (key) => dbOps.updateSettings({ integrations: { [key]: dbOps.getSettings().integrations[key] } });
 
-function useClock(t) {
+function useClock() {
   const realNow = Date.now;
   let offsetMs = 0;
-  t.mock.method(Date, "now", () => realNow.call(Date) + offsetMs);
+  vi.spyOn(Date, "now").mockImplementation(() => realNow.call(Date) + offsetMs);
   return { advance: (ms) => { offsetMs += ms; } };
 }
 
@@ -333,7 +333,7 @@ test("a track the server has not indexed is retried for its playlist only, acros
   assert.deepEqual(pendingSyncs(), []);
 });
 
-test("disabling a flow removes its playlist from the media server through the sync job", async (t) => {
+test("disabling a flow removes its playlist from the media server through the sync job", async () => {
   const navidrome = useNavidrome([indexedSong("Flow Song")]);
   const flow = flowPlaylistConfig.createFlow({ name: "Leaving Soon", ownerUserId: user.id, mix: { discover: 100 } });
   flowPlaylistConfig.setEnabled(flow.id, true);
@@ -343,7 +343,7 @@ test("disabling a flow removes its playlist from the media server through the sy
   assert.deepEqual(songIdsByName(navidrome), { "Leaving Soon": ["Flow Song"] });
 
   const { playlistOperationQueue } = await import("../../backend/services/playlists/playlistOperationQueue.js");
-  t.mock.method(playlistOperationQueue, "enqueuePayload", async () => ({ operationId: "disable" }));
+  vi.spyOn(playlistOperationQueue, "enqueuePayload").mockImplementation(async () => ({ operationId: "disable" }));
   const response = { statusCode: 200, status(code) { this.statusCode = code; return this; }, json() { return this; } };
   await flowHandlers.get("/flows/:flowId/enabled")({ params: { flowId: flow.id }, body: { enabled: false }, user }, response);
   assert.equal(response.statusCode, 200);
@@ -370,11 +370,11 @@ test("disabling a flow removes its playlist from the media server through the sy
 });
 
 test("Jellyfin keeps its library index across syncs and scans and rereads it for a missing track at most every 30 seconds", async (t) => {
-  const clock = useClock(t);
+  const clock = useClock();
   const jellyfin = useJellyfin(t, "http://jellyfin-index.test");
   useOnly("jellyfin");
-  t.mock.method(JellyfinClient.prototype, "getMusicLibraryLocations", async () => [downloadRoot]);
-  t.mock.method(JellyfinClient.prototype, "reportUpdatedFolders", async () => {});
+  vi.spyOn(JellyfinClient.prototype, "getMusicLibraryLocations").mockImplementation(async () => [downloadRoot]);
+  vi.spyOn(JellyfinClient.prototype, "reportUpdatedFolders").mockImplementation(async () => {});
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Indexed" });
   const first = await addDownloadedTrack(playlist.id, "First");
   jellyfin.items = [{ Id: "first", Path: first }];
@@ -457,7 +457,7 @@ test("a file downloaded again at the same path is published with the rating key 
 });
 
 test("a track the incremental Plex read misses is found by one full read, at most every 30 seconds", async (t) => {
-  const clock = useClock(t);
+  const clock = useClock();
   const plex = usePlex(t);
   useOnly("plex");
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Backfilled" });
@@ -494,7 +494,7 @@ test("a track the incremental Plex read misses is found by one full read, at mos
 });
 
 test("a Plex read that fails while publishing leaves the playlist as it was and retries it", async (t) => {
-  const clock = useClock(t);
+  const clock = useClock();
   const plex = usePlex(t, { mainLibrarySectionId: "5" });
   useOnly("plex");
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Steady" });
@@ -805,7 +805,7 @@ for (const status of [401, 503]) {
 }
 
 test("one sync reads the Jellyfin library once however many playlists are missing tracks", async (t) => {
-  const clock = useClock(t);
+  const clock = useClock();
   const jellyfin = useJellyfin(t, "http://jellyfin-reads.test");
   const navidrome = useNavidrome();
   const playlists = [];
@@ -849,7 +849,7 @@ test("a finished Library download sends nothing to the media servers", async (t)
 });
 
 test("a server that comes back after a long outage still gets the tracks it indexes later", async (t) => {
-  const clock = useClock(t);
+  const clock = useClock();
   const jellyfin = useJellyfin(t, "http://jellyfin-comeback.test");
   useNavidrome([indexedSong("Ready"), indexedSong("Late")]);
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Comeback" });
@@ -896,7 +896,7 @@ test("a server that rejects Aurral is not called again while another server is r
 });
 
 test("a file downloaded again before Plex scans it stays off the playlist until Plex indexes the new file", async (t) => {
-  const clock = useClock(t);
+  const clock = useClock();
   const plex = usePlex(t);
   useOnly("plex");
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Upgraded" });
@@ -939,13 +939,13 @@ test("a file downloaded again before Plex scans it stays off the playlist until 
 
 for (const recoveredId of ["before", "after"]) {
   test(`a moved Jellyfin track returns after scanning with item ID ${recoveredId}`, async (t) => {
-    const clock = useClock(t);
+    const clock = useClock();
     const jellyfin = useJellyfin(t, `http://jellyfin-moved-${recoveredId}.test`);
     useOnly("jellyfin");
     const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Moved" });
     const before = path.join(downloadRoot, "Artist", "Album", "Song.flac");
     const after = path.join(downloadRoot, "Artist", "Album (Deluxe)", "Song.flac");
-    t.after(() => fs.rm(after, { force: true }));
+    t.onTestFinished(() => fs.rm(after, { force: true }));
     await fs.mkdir(path.dirname(before), { recursive: true });
     await fs.writeFile(before, "song");
     const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Song", albumName: "Album", trackMbid: "recording-1" }, playlist.id);
@@ -980,7 +980,7 @@ for (const recoveredId of ["before", "after"]) {
 }
 
 test("new flow tracks waiting on a pending scan do not make Plex read the whole section", async (t) => {
-  const clock = useClock(t);
+  const clock = useClock();
   const plex = usePlex(t);
   useOnly("plex");
   const flow = flowPlaylistConfig.createFlow({ name: "Batch Flow", size: 10 });
@@ -1006,7 +1006,7 @@ test("new flow tracks waiting on a pending scan do not make Plex read the whole 
 });
 
 test("a flow track added to an album Plex already has keeps the album's other tracks on the playlist without a full read", async (t) => {
-  const clock = useClock(t);
+  const clock = useClock();
   const plex = usePlex(t);
   useOnly("plex");
   const flow = flowPlaylistConfig.createFlow({ name: "Album Flow", size: 10 });
@@ -1048,7 +1048,7 @@ test("a flow track added to an album Plex already has keeps the album's other tr
 });
 
 test("a file retagged in place keeps its Plex rating key once a read after the scan confirms it", async (t) => {
-  const clock = useClock(t);
+  const clock = useClock();
   const plex = usePlex(t);
   useOnly("plex");
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Retagged" });
@@ -1105,7 +1105,7 @@ test("a file retagged in place keeps its Plex rating key once a read after the s
 });
 
 test("a track outside every media server library does not make Plex or Jellyfin read everything", async (t) => {
-  const clock = useClock(t);
+  const clock = useClock();
   const jellyfin = useJellyfin(t, "http://jellyfin-outside.test");
   const plex = usePlex(t);
   const { integrations } = dbOps.getSettings();
@@ -1131,7 +1131,7 @@ test("a track outside every media server library does not make Plex or Jellyfin 
 
 for (const server of ["plex", "jellyfin"]) {
   test(`five ${server} playlists missing a track make one full read per sync when that read fails`, async (t) => {
-    const clock = useClock(t);
+    const clock = useClock();
     const plex = server === "plex" ? usePlex(t) : null;
     const jellyfin = server === "jellyfin" ? useJellyfin(t, "http://jellyfin-failing-read.test") : null;
     useOnly(server);
@@ -1221,7 +1221,7 @@ test("a Plex main library that cannot be read still publishes a track linked int
 });
 
 test("a retagged Plex flow file outside the download jobs is retried and restored", async (t) => {
-  const clock = useClock(t);
+  const clock = useClock();
   const plex = usePlex(t);
   useOnly("plex");
   const flow = flowPlaylistConfig.createFlow({ name: "Extra flow track", size: 10 });
@@ -1253,7 +1253,7 @@ test("a retagged Plex flow file outside the download jobs is retried and restore
 });
 
 test("Jellyfin retries a recording match outside its library paths when that recording arrives later", async (t) => {
-  const clock = useClock(t);
+  const clock = useClock();
   const jellyfin = useJellyfin(t, "http://jellyfin-recording-later.test");
   useOnly("jellyfin");
   jellyfin.locations = [downloadRoot];

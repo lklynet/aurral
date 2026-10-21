@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { groupAlbumGrabRequests, matchesActivitySearch } from "../../frontend/src/pages/activity/activityListUtils.js";
 import { matchesActivityView } from "../../frontend/src/navigation/activityNavConfig.js";

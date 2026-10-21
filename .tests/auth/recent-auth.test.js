@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test, beforeAll, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { syncBuiltinESMExports } from "node:module";
@@ -37,15 +37,15 @@ const [
 
 let subsonicServer;
 
-test.before(async () => {
+beforeAll(async () => {
   const app = express();
   app.use("/rest", express.urlencoded({ extended: false }), subsonicRouter);
   subsonicServer = await new Promise((resolve) => {
     const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
   });
 });
-test.beforeEach(() => resetDatabase(db));
-test.after(async () => {
+beforeEach(() => resetDatabase(db));
+afterAll(async () => {
   await new Promise((resolve) => subsonicServer.close(resolve));
   await cleanupIsolatedState(isolatedState);
 });
@@ -62,10 +62,10 @@ const subsonicToken = (password, salt) =>
   crypto.createHash("md5").update(`${password}${salt}`).digest("hex");
 
 function watchPasswordHashing(t) {
-  const scrypt = t.mock.method(crypto, "scryptSync");
+  const scrypt = vi.spyOn(crypto, "scryptSync");
   syncBuiltinESMExports();
-  t.after(() => {
-    scrypt.mock.restore();
+  t.onTestFinished(() => {
+    scrypt.mockRestore();
     syncBuiltinESMExports();
   });
   return scrypt;
@@ -121,7 +121,7 @@ test("Subsonic requests reuse the stored password instead of hashing it on every
   const scrypt = watchPasswordHashing(t);
 
   assert.equal((await subsonicPing({ u: "listener", p: "listener-password" })).status, "ok");
-  assert.equal(scrypt.mock.callCount(), 1);
+  assert.equal(scrypt.mock.calls.length, 1);
 
   assert.equal(
     (await subsonicPing({ u: "listener", t: subsonicToken("listener-password", salt), s: salt })).status,
@@ -135,7 +135,7 @@ test("Subsonic requests reuse the stored password instead of hashing it on every
     })).status,
     "ok",
   );
-  assert.equal(scrypt.mock.callCount(), 1);
+  assert.equal(scrypt.mock.calls.length, 1);
 
   assert.equal((await subsonicPing({ u: "listener", p: "listener-passwore" })).error.code, 40);
   assert.equal((await subsonicPing({ u: "listener", p: "wrong" })).error.code, 40);
@@ -262,13 +262,13 @@ test("trusted-local bypass rejects an inactive sole administrator", () => {
   assert.equal(auth.resolveLocalNetworkBypassUser(req), null);
 });
 
-test("trusted-local bypass accepts only addresses on the server's private subnet", (t) => {
+test("trusted-local bypass accepts only addresses on the server's private subnet", () => {
   userOps.createUser("lan-admin", bcrypt.hashSync("password123", 4), "admin");
   dbOps.updateSettings({
     onboardingComplete: true,
     security: { localNetworkBypass: { enabled: true } },
   });
-  t.mock.method(os, "networkInterfaces", () => ({
+  vi.spyOn(os, "networkInterfaces").mockImplementation(() => ({
     lo: [{ address: "127.0.0.1", netmask: "255.0.0.0", family: "IPv4", internal: true, cidr: "127.0.0.1/8" }],
     eth0: [{ address: "192.168.4.115", netmask: "255.255.255.0", family: "IPv4", internal: false, cidr: "192.168.4.115/24" }],
     eth1: [{ address: "192.168.4.116", netmask: "255.255.255.0", family: "IPv4", internal: false, cidr: "192.168.4.116/24" }],

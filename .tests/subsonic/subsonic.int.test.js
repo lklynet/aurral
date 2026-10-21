@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
-import test from "node:test";
+import { test, beforeAll, afterAll } from "vite-plus/test";
 
 import {
   cleanupIsolatedState,
@@ -43,7 +43,7 @@ async function request(method, params) {
   };
 }
 
-test.before(async () => {
+beforeAll(async () => {
   resetDatabase(db);
   dbOps.updateSettings({ integrations: {}, onboardingComplete: true });
   userOps.createUser("alice", hashPassword("password123"), "user");
@@ -58,7 +58,7 @@ test.before(async () => {
   aurral = await startServerProcess({ extraEnv: { CORS_ORIGIN: "" } });
 });
 
-test.after(async () => {
+afterAll(async () => {
   await aurral?.stop();
   await cleanupIsolatedState(isolatedState);
 });

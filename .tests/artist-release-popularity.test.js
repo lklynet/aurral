@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vite-plus/test";
 
 import { registerDetails } from "../backend/routes/artists/handlers/details.js";
 import { listenbrainzGetReleaseGroupListens } from "../backend/services/apiClients/listenbrainz.js";
@@ -123,7 +123,7 @@ test("the artist stream gives each release the ListenBrainz listeners of its own
   });
 
   const stream = openArtistStream(artist.mbid);
-  t.after(() => stream.close());
+  t.onTestFinished(() => stream.close());
 
   assert.deepEqual(await discographyOf(stream), scoredPlaid);
   await stream.waitFor(({ event }) => event === "complete");
@@ -168,7 +168,7 @@ listenBrainzFailures.forEach(([failure, respond], index) => {
 
     for (let load = 0; load < 2; load += 1) {
       const stream = openArtistStream(artist.mbid);
-      t.after(() => stream.close());
+      t.onTestFinished(() => stream.close());
 
       assert.deepEqual(await discographyOf(stream), unscoredPlaid);
       await stream.waitFor(({ event }) => event === "complete");
@@ -200,7 +200,7 @@ test("the artist stream fills missing release dates from ListenBrainz and keeps 
   });
 
   const stream = openArtistStream(artist.mbid);
-  t.after(() => stream.close());
+  t.onTestFinished(() => stream.close());
   const { data } = await stream.waitFor(
     ({ event, data }) => event === "artist" && "release-groups" in data,
   );
@@ -227,10 +227,10 @@ test("the artist stream sends the discography without listeners when ListenBrain
     answer = resolve;
   });
   stubPlaid(t, artist, () => unanswered);
-  t.after(() => answer(json([])));
+  t.onTestFinished(() => answer(json([])));
 
   const stream = openArtistStream(artist.mbid);
-  t.after(() => stream.close());
+  t.onTestFinished(() => stream.close());
 
   assert.deepEqual(await discographyOf(stream, { timeoutMs: 4000 }), unscoredPlaid);
 });

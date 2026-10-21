@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test, vi } from "vite-plus/test";
 import path from "node:path";
 import fs from "node:fs";
 import { EventEmitter } from "node:events";
@@ -40,7 +40,7 @@ test("library scans are not scheduled as a recurring background task", () => {
   assert.equal(getHonkerDb().scheduler().list().some((task) => task.queue === "library-scan"), false);
 });
 
-test("library bootstrap runs until the first completed scan, and again while a turned-off Lidarr's music remains", async (t) => {
+test("library bootstrap runs until the first completed scan, and again while a turned-off Lidarr's music remains", async () => {
   const queue = getLibraryScanQueue();
   db.prepare("DELETE FROM library_scan_runs").run();
   clearScheduledLibraryScan();
@@ -61,10 +61,10 @@ test("library bootstrap runs until the first completed scan, and again while a t
       `INSERT INTO library_management (entity_kind, entity_id, managed_by, created_at, updated_at)
        VALUES ('artist', 987654, 'lidarr', 0, 0)`,
     ).run();
-    t.mock.method(lidarrClient, "isConfigured", () => true);
+    vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
     await processSystemTask({ kind: "library-index-bootstrap" });
     assert.equal(getScheduledLibraryScanJobId(), null);
-    t.mock.method(lidarrClient, "isConfigured", () => false);
+    vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => false);
     await processSystemTask({ kind: "library-index-bootstrap" });
     bootstrapJobId = getScheduledLibraryScanJobId();
     assert.ok(bootstrapJobId, "a turned-off Lidarr's indexed music is removed after startup");
@@ -363,7 +363,7 @@ test("claiming an unregistered scan does not inherit stale Lidarr mode", () => {
   }
 });
 
-test("an early replacement claim retains in-flight, pending, and new scan paths", (t) => {
+test("an early replacement claim retains in-flight, pending, and new scan paths", () => {
   const queue = getLibraryScanQueue();
   clearScheduledLibraryScan();
   let staleJobId;
@@ -380,7 +380,7 @@ test("an early replacement claim retains in-flight, pending, and new scan paths"
     });
 
     const enqueue = queue.enqueue.bind(queue);
-    t.mock.method(queue, "enqueue", (payload, options) => {
+    vi.spyOn(queue, "enqueue").mockImplementation((payload, options) => {
       const id = enqueue(payload, options);
       const claimed = queue.claimOne("early-replacement-library-scan-test");
       assert.equal(claimed?.id, id);
@@ -408,14 +408,14 @@ test("an early replacement claim retains in-flight, pending, and new scan paths"
   }
 });
 
-test("an early first claim uses its targeted payload without stale Lidarr mode", (t) => {
+test("an early first claim uses its targeted payload without stale Lidarr mode", () => {
   const queue = getLibraryScanQueue();
   clearScheduledLibraryScan();
   dbOps.setJSONSetting("pendingLibraryScanJob", { includeLidarr: true });
   let jobId;
   try {
     const enqueue = queue.enqueue.bind(queue);
-    t.mock.method(queue, "enqueue", (payload, options) => {
+    vi.spyOn(queue, "enqueue").mockImplementation((payload, options) => {
       const id = enqueue(payload, options);
       const claimed = queue.claimOne("early-first-library-scan-test");
       assert.equal(claimed?.id, id);
@@ -491,22 +491,22 @@ test("library file watcher debounces library changes and ignores generated folde
   watcher.close();
 });
 
-test("library watcher reuses configured roots without querying Lidarr", (t) => {
+test("library watcher reuses configured roots without querying Lidarr", () => {
   const rootPath = path.resolve("/data/music");
-  const pathProbe = t.mock.method(fs, "existsSync", () => { throw new Error("Main-thread path probe"); });
-  t.mock.method(lidarrClient, "isConfigured", () => true);
-  t.mock.method(lidarrClient, "getConfiguredRootFolderPaths", () => [rootPath]);
-  const rootRequest = t.mock.method(lidarrClient, "getRootFolders", async () => {
+  const pathProbe = vi.spyOn(fs, "existsSync").mockImplementation(() => { throw new Error("Main-thread path probe"); });
+  vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
+  vi.spyOn(lidarrClient, "getConfiguredRootFolderPaths").mockImplementation(() => [rootPath]);
+  const rootRequest = vi.spyOn(lidarrClient, "getRootFolders").mockImplementation(async () => {
     throw new Error("watcher should not discover roots");
   });
 
   assert.equal(resolveLibraryWatchRoots().some((root) => root?.path === rootPath), true);
-  assert.equal(rootRequest.mock.callCount(), 0);
-  assert.equal(pathProbe.mock.callCount(), 0);
+  assert.equal(rootRequest.mock.calls.length, 0);
+  assert.equal(pathProbe.mock.calls.length, 0);
 });
 
-test("library watcher creates roots without probing the filesystem on the main thread", (t) => {
-  t.mock.method(fs, "existsSync", () => { throw new Error("Synchronous filesystem probe"); });
+test("library watcher creates roots without probing the filesystem on the main thread", () => {
+  vi.spyOn(fs, "existsSync").mockImplementation(() => { throw new Error("Synchronous filesystem probe"); });
   const roots = [];
   const watcher = createLibraryFileWatcher({
     roots: ["", null, "/slow-root", "/slow-root"],
@@ -580,7 +580,7 @@ function createMappedWatcherTest(t) {
     onChange: (roots, paths) => scanned.push({ roots, paths }),
     onError: (error) => errors.push(error),
   });
-  t.after(() => watcher.close());
+  t.onTestFinished(() => watcher.close());
   return { localRoot, watcher, children, scanned, errors };
 }
 
