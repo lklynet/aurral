@@ -94,7 +94,7 @@ type LibraryPageOptions = {
   sort?: string;
   direction?: string;
   artistId?: string;
-  albumId?: string;
+  albumId?: string | number;
   source?: string;
   availableOnly?: boolean | null;
 };
@@ -331,7 +331,7 @@ export const getLibraryTrackFiles = (
 export const getLibraryCustomArtworkUrl = (
   kind: "album" | "track",
   id: string | number,
-  version = "current",
+  version: string | number = "current",
 ) =>
   buildAuthenticatedApiUrl(
     `/library/artwork/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`,

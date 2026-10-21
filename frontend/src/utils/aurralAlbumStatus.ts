@@ -44,7 +44,7 @@ const albumActions = (status: AlbumStatus | undefined, recoveryCode: RecoveryCod
   return [];
 };
 
-export const aurralAlbumStatusKey = (canonicalId: string) => `aurral:${canonicalId}`;
+export const aurralAlbumStatusKey = (canonicalId: string | number) => `aurral:${canonicalId}`;
 
 export const shouldPollAlbumStatus = (status: AlbumStatus | null | undefined) =>
   ACTIVE_STATUSES.has(status);

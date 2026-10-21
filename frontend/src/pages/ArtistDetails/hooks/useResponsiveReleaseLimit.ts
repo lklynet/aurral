@@ -32,5 +32,5 @@ export function useResponsiveReleaseLimit({ cardMinWidth = RELEASE_CARD_MIN_WIDT
     return () => observer.disconnect();
   }, [cardMinWidth, gridElement]);
 
-  return [gridRef, limit];
+  return [gridRef, limit] as const;
 }
