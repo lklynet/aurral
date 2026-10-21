@@ -80,6 +80,8 @@ Aurral is written in TypeScript and Node runs the `.ts` files directly, so use o
 
 The code is moving to strict type checking. `typecheck-baseline.json` lists how many type errors each file still has, and `npm run check` fails when a file has more. When you fix type errors, run `npm run typecheck -- --update` to lower the baseline. Never raise it.
 
+`backend/db/rows.ts` holds one row type per SQLite table, generated from the schema. Run `npm run db:types` after a schema change, and type queries with them, for example `db.prepare<[number], UsersRow>("SELECT * FROM users WHERE id = ?")`.
+
 Run `npm run format` to format the whole repository. After `npm install`, the pre-commit hook formats and lints the files you stage. It adds its fixes to the commit and stops the commit when a lint error remains.
 
 ## Run browser smoke tests

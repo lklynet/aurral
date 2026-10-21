@@ -44,6 +44,11 @@ export default defineConfig({
         },
       ],
       "typescript/no-floating-promises": "error",
+      "typescript/no-explicit-any": "error",
+      "typescript/ban-ts-comment": [
+        "error",
+        { "ts-expect-error": true, "ts-ignore": true, "ts-nocheck": true },
+      ],
       "no-case-declarations": "error",
       "no-fallthrough": "error",
       "no-prototype-builtins": "error",

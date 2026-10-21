@@ -19,7 +19,7 @@
   "scripts": {
     "build": "npm run build --workspace frontend",
     "start": "node --env-file=backend/.env backend/server.ts",
-    "check": "vp check && node frontend/scripts/lint-ui-css.mts && node scripts/typecheck.mts",
+    "check": "vp check && node frontend/scripts/lint-ui-css.mts && node scripts/db-types.mts --check && node scripts/typecheck.mts",
     "lint": "vp lint && node frontend/scripts/lint-ui-css.mts",
     "typecheck": "node scripts/typecheck.mts",
     "lint:ui": "node frontend/scripts/lint-ui-css.mts && vp lint frontend/src",
@@ -38,13 +38,20 @@
     "docker:run": "docker run -p 3001:3001 -v $(pwd)/backend/data:/app/backend/data aurral",
     "docs:dev": "npm run dev --prefix docs",
     "docs:build": "npm run build --prefix docs",
-    "prepare": "vp config"
+    "prepare": "vp config",
+    "db:types": "node scripts/db-types.mts"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.1",
+    "@types/bcrypt": "^6.0.0",
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/howler": "^2.2.13",
     "@types/node": "^26.6.5",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "@types/ws": "^8.18.2",
     "@vitest/browser-playwright": "5.0.5",
     "ajv": "^8.20.0",
     "typescript": "^7.0.2",
