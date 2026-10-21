@@ -417,7 +417,7 @@ export class LidarrClient {
     return !!this.config?.apiKey?.trim();
   }
 
-  getAuthHeaders() {
+  getAuthHeaders(): Record<string, string> {
     if (!this.config.apiKey) {
       return {};
     }

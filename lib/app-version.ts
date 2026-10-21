@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { normalizeReleaseVersion, parseReleaseVersion } from "./release-version.ts";
 
-function runGit(args, cwd = process.cwd()) {
+function runGit(args: string[], cwd = process.cwd()) {
   try {
     return execFileSync("git", args, {
       cwd,
@@ -27,7 +27,11 @@ export function getShortGitSha(cwd = process.cwd()) {
   return runGit(["rev-parse", "--short", "HEAD"], cwd);
 }
 
-export function resolveAppVersion({ envValue, cwd = process.cwd(), fallback = "unknown" } = {}) {
+export function resolveAppVersion({
+  envValue,
+  cwd = process.cwd(),
+  fallback = "unknown",
+}: { envValue?: string; cwd?: string; fallback?: string } = {}) {
   const normalizedEnv = String(envValue || "").trim();
   if (normalizedEnv) {
     return normalizeReleaseVersion(normalizedEnv);

@@ -1,18 +1,72 @@
+import type { Agent as HttpsAgent } from "node:https";
 import { Readable } from "node:stream";
-import { Agent, EnvHttpProxyAgent, fetch as undiciFetch } from "undici";
+import type { ReadableStream as NodeReadableStream } from "node:stream/web";
+import {
+  Agent,
+  EnvHttpProxyAgent,
+  fetch as undiciFetch,
+  type Dispatcher,
+  type Response as UndiciResponse,
+} from "undici";
 import { resolvePublicUrl } from "./publicUrl.ts";
+
+type FetchResponse = UndiciResponse | Response;
+
+interface FetchInit {
+  method: string;
+  headers: Record<string, string>;
+  signal: AbortSignal;
+  dispatcher: Dispatcher;
+  body?: string | URLSearchParams | Uint8Array;
+}
+
+interface AxiosBasicAuth {
+  username?: string;
+  password?: string;
+}
+
+interface AxiosRequestConfig {
+  url?: string;
+  method?: string;
+  baseURL?: string;
+  params?: Record<string, string | number | boolean | null | undefined>;
+  headers?: Record<string, string>;
+  auth?: AxiosBasicAuth;
+  data?: unknown;
+  timeout?: number;
+  maxRedirects?: number;
+  signal?: AbortSignal;
+  responseType?: "arraybuffer" | "stream";
+  validateStatus?: (status: number) => boolean;
+  httpsAgent?: HttpsAgent;
+  publicOnly?: boolean;
+  preserveMethodOnRedirect?: boolean;
+}
+
+interface AxiosResponse {
+  status: number;
+  statusText: string;
+  headers: Record<string, string>;
+  data: unknown;
+}
+
+interface AxiosError extends Error {
+  code?: string;
+  request?: { method: string; url: string };
+  response?: AxiosResponse;
+}
 
 const usesNativeFetch = () =>
   Function.prototype.toString.call(globalThis.fetch).includes("internal/deps/undici");
 
-function joinUrl(baseURL, url) {
+function joinUrl(baseURL: string | undefined, url: string | undefined) {
   if (!url) return baseURL || "";
   if (String(url).startsWith("http://") || String(url).startsWith("https://")) return url;
   if (!baseURL) return url;
   return `${String(baseURL).replace(/\/+$/, "")}/${String(url).replace(/^\/+/, "")}`;
 }
 
-function appendParams(url, params) {
+function appendParams(url: string, params: AxiosRequestConfig["params"]) {
   if (!params || typeof params !== "object") return url;
   const target = new URL(url);
   for (const [key, value] of Object.entries(params)) {
@@ -22,11 +76,13 @@ function appendParams(url, params) {
   return target.toString();
 }
 
-function headersToObject(headers) {
-  const output = {};
+function headersToObject(
+  headers: FetchResponse["headers"] | AxiosRequestConfig["headers"],
+): Record<string, string> {
+  const output: Record<string, string> = {};
   if (!headers) return output;
   if (typeof headers.forEach === "function") {
-    headers.forEach((value, key) => {
+    headers.forEach((value: string, key: string) => {
       output[key] = value;
     });
     return output;
@@ -40,7 +96,7 @@ const defaultDispatcher = new Agent({
   keepAliveMaxTimeout: 60_000,
 });
 
-let envProxyDispatcher = null;
+let envProxyDispatcher: EnvHttpProxyAgent | null = null;
 
 const insecureDispatcher = new Agent({
   connections: 16,
@@ -49,7 +105,7 @@ const insecureDispatcher = new Agent({
   connect: { rejectUnauthorized: false },
 });
 
-function resolveDispatcher(config) {
+function resolveDispatcher(config: AxiosRequestConfig) {
   if (config.httpsAgent?.options?.rejectUnauthorized === false) {
     return insecureDispatcher;
   }
@@ -60,9 +116,9 @@ function resolveDispatcher(config) {
   return defaultDispatcher;
 }
 
-async function readBody(response, config) {
+async function readBody(response: FetchResponse, config: AxiosRequestConfig) {
   if (config.responseType === "stream") {
-    if (response.body) return Readable.fromWeb(response.body);
+    if (response.body) return Readable.fromWeb(response.body as NodeReadableStream);
     return Readable.from([]);
   }
   if (config.responseType === "arraybuffer") {
@@ -79,7 +135,7 @@ async function readBody(response, config) {
   return response.text();
 }
 
-function buildAuthHeader(auth) {
+function buildAuthHeader(auth: AxiosBasicAuth | undefined) {
   if (!auth?.username && !auth?.password) return null;
   const encoded = Buffer.from(`${auth.username || ""}:${auth.password || ""}`).toString("base64");
   return `Basic ${encoded}`;
@@ -88,15 +144,19 @@ function buildAuthHeader(auth) {
 const SENSITIVE_REDIRECT_HEADERS = new Set(["authorization", "proxy-authorization", "cookie"]);
 const BODY_HEADERS = new Set(["content-length", "content-type", "transfer-encoding"]);
 
-function removeHeaders(headers, names) {
+function removeHeaders(headers: Record<string, string>, names: Set<string>) {
   for (const name of Object.keys(headers)) {
     if (names.has(name.toLowerCase())) delete headers[name];
   }
 }
 
-async function createPublicDispatcher(url) {
+async function createPublicDispatcher(url: string) {
   const { addresses } = await resolvePublicUrl(url);
-  const lookup = (_hostname, options, callback) => {
+  const lookup = (
+    _hostname: string,
+    options: { all?: boolean } | undefined,
+    callback: (error: Error | null, address: string | typeof addresses, family?: number) => void,
+  ) => {
     queueMicrotask(() => {
       if (options?.all) callback(null, addresses);
       else callback(null, addresses[0].address, addresses[0].family);
@@ -105,7 +165,7 @@ async function createPublicDispatcher(url) {
   return new Agent({ connections: 1, connect: { lookup } });
 }
 
-async function axiosRequest(inputConfig) {
+async function axiosRequest(inputConfig: AxiosRequestConfig) {
   const config = { ...inputConfig };
   const method = String(config.method || "GET").toUpperCase();
   let url = config.url || "";
@@ -118,7 +178,7 @@ async function axiosRequest(inputConfig) {
 
   const controller = new AbortController();
   const externalSignal = config.signal;
-  const handleExternalAbort = () => controller.abort(externalSignal.reason);
+  const handleExternalAbort = () => controller.abort(externalSignal!.reason);
   if (externalSignal?.aborted) {
     controller.abort(externalSignal.reason);
   } else {
@@ -135,7 +195,7 @@ async function axiosRequest(inputConfig) {
   }
 
   const publicDispatchers = [];
-  const init = {
+  const init: FetchInit = {
     method,
     headers,
     signal: controller.signal,
@@ -159,7 +219,7 @@ async function axiosRequest(inputConfig) {
       init.dispatcher = await createPublicDispatcher(url);
       publicDispatchers.push(init.dispatcher);
     }
-    let response;
+    let response!: FetchResponse;
     let requestMethod = method;
     for (let redirectCount = 0; redirectCount <= 5; redirectCount += 1) {
       const requestFetch = usesNativeFetch() ? undiciFetch : globalThis.fetch;
@@ -201,9 +261,9 @@ async function axiosRequest(inputConfig) {
     const validateStatus =
       typeof config.validateStatus === "function"
         ? config.validateStatus
-        : (status) => status >= 200 && status < 300;
+        : (status: number) => status >= 200 && status < 300;
     if (!validateStatus(response.status)) {
-      const error = new Error(`Request failed with status code ${response.status}`);
+      const error: AxiosError = new Error(`Request failed with status code ${response.status}`);
       error.response = axiosResponse;
       error.code = controller.signal.aborted ? "ECONNABORTED" : undefined;
       throw error;
@@ -231,27 +291,34 @@ async function axiosRequest(inputConfig) {
   }
 }
 
-function create(defaults = {}) {
-  const withDefaults = (config = {}) => axiosRequest({ ...defaults, ...config });
+function create(defaults: AxiosRequestConfig = {}) {
+  const withDefaults = (config: AxiosRequestConfig = {}) =>
+    axiosRequest({ ...defaults, ...config });
   withDefaults.request = withDefaults;
-  withDefaults.get = (url, config = {}) => withDefaults({ ...config, method: "GET", url });
-  withDefaults.post = (url, data, config = {}) =>
+  withDefaults.get = (url: string, config: AxiosRequestConfig = {}) =>
+    withDefaults({ ...config, method: "GET", url });
+  withDefaults.post = (url: string, data: unknown, config: AxiosRequestConfig = {}) =>
     withDefaults({ ...config, method: "POST", url, data });
-  withDefaults.put = (url, data, config = {}) =>
+  withDefaults.put = (url: string, data: unknown, config: AxiosRequestConfig = {}) =>
     withDefaults({ ...config, method: "PUT", url, data });
-  withDefaults.delete = (url, config = {}) => withDefaults({ ...config, method: "DELETE", url });
+  withDefaults.delete = (url: string, config: AxiosRequestConfig = {}) =>
+    withDefaults({ ...config, method: "DELETE", url });
   return withDefaults;
 }
 
-function axios(config) {
+function axios(config: AxiosRequestConfig) {
   return axiosRequest(config);
 }
 
 axios.request = axiosRequest;
-axios.get = (url, config = {}) => axiosRequest({ ...config, method: "GET", url });
-axios.post = (url, data, config = {}) => axiosRequest({ ...config, method: "POST", url, data });
-axios.put = (url, data, config = {}) => axiosRequest({ ...config, method: "PUT", url, data });
-axios.delete = (url, config = {}) => axiosRequest({ ...config, method: "DELETE", url });
+axios.get = (url: string, config: AxiosRequestConfig = {}) =>
+  axiosRequest({ ...config, method: "GET", url });
+axios.post = (url: string, data: unknown, config: AxiosRequestConfig = {}) =>
+  axiosRequest({ ...config, method: "POST", url, data });
+axios.put = (url: string, data: unknown, config: AxiosRequestConfig = {}) =>
+  axiosRequest({ ...config, method: "PUT", url, data });
+axios.delete = (url: string, config: AxiosRequestConfig = {}) =>
+  axiosRequest({ ...config, method: "DELETE", url });
 axios.create = create;
 
 export { defaultDispatcher };

@@ -17,7 +17,7 @@ for (const [address, prefix] of [
   ["203.0.113.0", 24],
   ["224.0.0.0", 4],
   ["240.0.0.0", 4],
-]) {
+] as const) {
   nonPublicAddresses.addSubnet(address, prefix, "ipv4");
 }
 for (const [address, prefix] of [
@@ -33,11 +33,11 @@ for (const [address, prefix] of [
   ["fe80::", 10],
   ["fec0::", 10],
   ["ff00::", 8],
-]) {
+] as const) {
   nonPublicAddresses.addSubnet(address, prefix, "ipv6");
 }
 
-export const isPrivateAddress = (address) => {
+export const isPrivateAddress = (address: string) => {
   const normalized = String(address || "").split("%")[0];
   const family = net.isIP(normalized);
   if (family === 0) return true;
@@ -48,14 +48,14 @@ export const isPrivateAddress = (address) => {
   return nonPublicAddresses.check(normalized, family === 4 ? "ipv4" : "ipv6");
 };
 
-const stripBrackets = (hostname) => {
+const stripBrackets = (hostname: string) => {
   const value = String(hostname || "")
     .trim()
     .toLowerCase();
   return value.startsWith("[") && value.endsWith("]") ? value.slice(1, -1) : value;
 };
 
-export const isPrivateHostname = (hostname) => {
+export const isPrivateHostname = (hostname: string) => {
   const normalized = stripBrackets(hostname);
   if (!normalized) return true;
   if (
@@ -69,7 +69,7 @@ export const isPrivateHostname = (hostname) => {
   return net.isIP(normalized) ? isPrivateAddress(normalized) : false;
 };
 
-export const isPublicUrl = (value) => {
+export const isPublicUrl = (value: string) => {
   let parsed;
   try {
     parsed = new URL(String(value || "").trim());
@@ -79,7 +79,7 @@ export const isPublicUrl = (value) => {
   return ["http:", "https:"].includes(parsed.protocol) && !isPrivateHostname(parsed.hostname);
 };
 
-export async function resolvePublicUrl(value) {
+export async function resolvePublicUrl(value: string) {
   if (!isPublicUrl(value)) throw new Error("Only public HTTP and HTTPS URLs are allowed");
   const hostname = stripBrackets(new URL(value).hostname);
   const addresses = net.isIP(hostname)
@@ -91,7 +91,7 @@ export async function resolvePublicUrl(value) {
   return { url: value, addresses };
 }
 
-export const assertPublicUrl = async (value) => {
+export const assertPublicUrl = async (value: string) => {
   await resolvePublicUrl(value);
   return value;
 };
