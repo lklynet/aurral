@@ -14,24 +14,24 @@ const upsertSettingStmt = db.prepare<[string, string | null]>(
 type PlexLinkType = "managed" | "self";
 
 type StoredPlexConnection = {
-  linkType?: PlexLinkType;
-  token?: string | null;
-  clientId?: string;
-  plexAccountId?: string | number | null;
-  plexUuid?: string | null;
-  plexUsername?: string | null;
-  linkedByAdminId?: number | null;
-  connectedAt?: number;
-  lastError?: { message: string; at: number } | null;
+  linkType?: unknown;
+  token?: unknown;
+  clientId?: unknown;
+  plexAccountId?: unknown;
+  plexUuid?: unknown;
+  plexUsername?: unknown;
+  linkedByAdminId?: unknown;
+  connectedAt?: unknown;
+  lastError?: unknown;
 };
 
 type PlexLinkInput = {
   linkType?: PlexLinkType;
   token?: string | null;
   clientId?: string | null;
-  plexAccountId?: string | number | null;
-  plexUuid?: string | null;
-  plexUsername?: string | null;
+  plexAccountId?: unknown;
+  plexUuid?: unknown;
+  plexUsername?: unknown;
   linkedByAdminId?: number | null;
 };
 

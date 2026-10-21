@@ -146,7 +146,7 @@ export class JellyfinPlaybackDestination {
     this._warnedUnmatchedRoots.clear();
   }
 
-  isConfigured(): this is this & { client: JellyfinClient & { url: string; userId: string } } {
+  isConfigured(): boolean {
     return Boolean(this.client?.isConfigured());
   }
 
@@ -155,11 +155,11 @@ export class JellyfinPlaybackDestination {
       excludeEntityIds.flatMap((id) =>
         jellyfinPlaylistPointerStore
           .getPointersForEntity(id)
-          .filter((pointer) => !pointer.serverUrl || pointer.serverUrl === this.client.url)
+          .filter((pointer) => !pointer.serverUrl || pointer.serverUrl === this.client!.url)
           .map((pointer) => pointer.playlistId),
       ),
     );
-    const paths = await this.client.getPlaylistTrackPaths(excluded);
+    const paths = await this.client!.getPlaylistTrackPaths(excluded);
     return {
       ok: true,
       paths: paths.map((file) => resolveLocalPath(file, getPathMappings("jellyfin"))),
@@ -167,12 +167,12 @@ export class JellyfinPlaybackDestination {
   }
 
   async _resolveOwnerJellyfinUser(ownerUserId: number | null) {
-    if (ownerUserId == null) return { Id: this.client.userId };
+    if (ownerUserId == null) return { Id: this.client!.userId };
 
     const owner = userOps.getUserById(ownerUserId);
     if (!owner?.username) return null;
 
-    return this.client.findUserByUsername(owner.username);
+    return this.client!.findUserByUsername(owner.username);
   }
 
   _targetKey(ownerUserId: number | null) {
@@ -191,7 +191,7 @@ export class JellyfinPlaybackDestination {
       });
     }
     try {
-      await this.client.ping();
+      await this.client!.ping();
       await this.client.getUser();
       await this.client.getUsers();
       return playbackOperationSuccess();
@@ -206,7 +206,7 @@ export class JellyfinPlaybackDestination {
 
   async ensureLibrary() {
     if (!this.isConfigured()) return playbackOperationSuccess();
-    return this._loadLibrary(this.client.userId);
+    return this._loadLibrary(this.client!.userId);
   }
 
   async _loadLibrary(userId: string | null) {
@@ -590,7 +590,7 @@ export class JellyfinPlaybackDestination {
 
   async _updatedFolders(folders: readonly string[], aurralRoots: readonly string[]) {
     const mappings = getPathMappings("jellyfin");
-    const locations = await this.client.getMusicLibraryLocations();
+    const locations = await this.client!.getMusicLibraryLocations();
     const { targets, unmatched } = serverScanTargets(
       folders,
       locations.map((location: string) => ({ path: location })),

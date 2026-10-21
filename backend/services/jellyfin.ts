@@ -82,7 +82,7 @@ export class JellyfinClient {
     if (!Array.isArray(users) || !users.length || users.some((user) => !user?.Id)) {
       throw new Error("Cannot enumerate Jellyfin users for playlist protection");
     }
-    const paths = new Set();
+    const paths = new Set<string>();
     for (const user of users) {
       const playlists = await readPlaylistPages(async (startIndex: number) => {
         const page: JellyfinItemsPage<{ Id?: string }> = await this.request("GET", "/Items", {
