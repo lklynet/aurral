@@ -51,7 +51,10 @@ const VARIANT_PATTERNS = [
   { value: "eight_d", pattern: /\b8d\s*audio\b/i },
   { value: "remaster", pattern: /\b(?:re-?master(?:ed)?|20\d\d\s*re-?master)\b/i },
   { value: "rehearsal", pattern: /\brehearsal\b/i },
-];
+] as const;
+
+type VariantFlag = (typeof VARIANT_PATTERNS)[number]["value"] | "remix";
+type VariantFlags = Partial<Record<VariantFlag, boolean>>;
 
 const NOISE_PATTERNS = [
   { value: "reaction", pattern: /\breaction\b/i },
@@ -62,7 +65,7 @@ const NOISE_PATTERNS = [
   { value: "loop", pattern: /\b(?:10\s*hour|10hr|hours?\s+long|1\s*hour\s+version)\b/i },
 ];
 
-function normalizeVariantText(value) {
+function normalizeVariantText(value: string | null | undefined) {
   return String(value || "")
     .toLowerCase()
     .replace(/&/g, " and ")
@@ -71,10 +74,10 @@ function normalizeVariantText(value) {
     .trim();
 }
 
-export function extractVariants(value) {
+export function extractVariants(value: string | null | undefined) {
   const rawText = String(value || "");
   const text = normalizeVariantText(rawText);
-  const variants = {
+  const variants: VariantFlags = {
     live: false,
     acoustic: false,
     instrumental: false,
@@ -111,7 +114,7 @@ export function extractVariants(value) {
   };
 }
 
-export function detectNoise(value) {
+export function detectNoise(value: string | null | undefined) {
   const text = normalizeVariantText(value);
   if (!text) return [];
   return NOISE_PATTERNS.filter((entry) => entry.pattern.test(text)).map((entry) => entry.value);
@@ -120,7 +123,7 @@ export function detectNoise(value) {
 // Variants where ANY difference between the requested and offered version is
 // a hard contradiction (mirrors the Soulseek matcher's hardMismatch set, so
 // the shared layer never loosens existing behavior).
-const CONTRADICTION_VARIANTS = [
+const CONTRADICTION_VARIANTS: readonly VariantFlag[] = [
   "live",
   "concert",
   "acoustic",
@@ -138,14 +141,20 @@ const CONTRADICTION_VARIANTS = [
 // title calls it, so only a request's candidates are held to these.
 export const RELEASE_MIX_VARIANTS = new Set(["alternate_mix", "mono", "stereo"]);
 
-function contradictionLabel(variantName) {
+function contradictionLabel(variantName: string) {
   return variantName;
 }
+
+type VariantProfile = ReturnType<typeof extractVariants>;
 
 // `allowed` names versions the request's artist or album carries, such as a
 // live album: an offered title may say so without the requested title saying
 // it too.
-export function compareVariantProfiles(expected, actual, allowed = null) {
+export function compareVariantProfiles(
+  expected: VariantProfile,
+  actual: VariantProfile,
+  allowed: Set<string> | null = null,
+) {
   const contradictions = [];
   let score = 0;
 
@@ -212,7 +221,7 @@ export function compareVariantProfiles(expected, actual, allowed = null) {
   return { score, contradictions };
 }
 
-const MERGEABLE_VARIANT_KEYS = [
+const MERGEABLE_VARIANT_KEYS: (keyof VariantProfile)[] = [
   ...CONTRADICTION_VARIANTS,
   "remaster",
   "mixVariant",
@@ -220,7 +229,7 @@ const MERGEABLE_VARIANT_KEYS = [
   "contentRating",
 ];
 
-export function mergeVariantProfiles(primary, secondary) {
+export function mergeVariantProfiles(primary: VariantProfile, secondary: VariantProfile | null) {
   if (!secondary) return primary;
   const merged = { ...primary };
   for (const key of MERGEABLE_VARIANT_KEYS) {
@@ -229,9 +238,48 @@ export function mergeVariantProfiles(primary, secondary) {
   return merged;
 }
 
+export type NameList = string | (string | null)[] | null | undefined;
+
+export type ReleaseTrack = { title?: string | null; discNumber?: number | null };
+
+type VariantRequest = {
+  trackName?: string | null;
+  title?: NameList;
+  albumName?: NameList;
+  album?: NameList;
+  artistName?: NameList;
+  artist?: NameList;
+  artists?: NameList;
+  artistAliases?: NameList;
+  secondaryTypes?: NameList;
+  releaseTracks?: ReleaseTrack[] | null;
+  variants?: VariantProfile | null;
+};
+
+type VariantCandidate = {
+  title?: string | null;
+  filename?: string | null;
+  album?: NameList;
+  artist?: NameList;
+  artists?: NameList;
+  path?: string | null;
+  directoryPath?: string | null;
+  variants?: VariantProfile | null;
+};
+
+type RequestedNames = ReturnType<typeof requestedNames>;
+
+type PreparedVariantRequest = {
+  requested: RequestedNames;
+  expected: VariantProfile;
+  allowed: Set<string>;
+  labelAllowed: Set<string>;
+  labelNames: LabelName[] | null;
+};
+
 // A requested variant profile is built from the requested track name plus any
 // explicit variant hints carried by the request context.
-export function buildRequestVariantProfile(request) {
+export function buildRequestVariantProfile(request: VariantRequest | null) {
   const fromTitle = extractVariants(request?.trackName);
   const requested = request?.variants;
   if (!requested || typeof requested !== "object") return fromTitle;
@@ -250,7 +298,7 @@ const NEVER_ORIGINAL_VARIANTS = new Set(["karaoke", "sped_up", "slowed", "nightc
 // "Covers" alone names artwork ("[FLAC+Covers]", "Covers-Album Art") or a
 // label ("Run for Cover Records"), and "bonus" or "deluxe" an edition, not a
 // version.
-const LABEL_VERSIONS = [
+const LABEL_VERSIONS: [string, RegExp][] = [
   ["live", / live /u],
   ["concert", / concert /u],
   ["acoustic", / (?:acoustic|unplugged) /u],
@@ -276,7 +324,7 @@ const ANY_LABEL_VERSION = new RegExp(
   "u",
 );
 
-function spacedWords(folded) {
+function spacedWords(folded: string) {
   const words = folded
     .replace(/&/gu, " and ")
     .replace(/[^\p{L}\p{N}]+/gu, " ")
@@ -285,7 +333,7 @@ function spacedWords(folded) {
 }
 
 // The words of a label: scene names separate words with "_" or ".".
-function labelWords(value) {
+function labelWords(value: string | null | undefined) {
   return spacedWords(foldDiacritics(String(value || "")).toLowerCase());
 }
 
@@ -294,7 +342,7 @@ function labelWords(value) {
 // hyphen joins words inside one ("Sped-Up", scene names), so each group keeps
 // its dash pieces for names that stand alone. Taking names out only removes
 // words, so a label without a version word names none.
-function readLabel(label) {
+function readLabel(label: string | null | undefined) {
   const folded = foldDiacritics(String(label || "")).toLowerCase();
   if (!ANY_LABEL_VERSION.test(spacedWords(folded))) return null;
   return folded
@@ -310,7 +358,9 @@ function readLabel(label) {
 // and "Live at the Paradiso" is still a live album. Each group is read on its
 // own, so "[Covers] [Album Art]" is not a covers album, though a name such as
 // "Live - The Album" is taken out across groups.
-function labelVersions(labelGroups, names) {
+type LabelName = { text: string; oneWord: boolean; pattern: RegExp };
+
+function labelVersions(labelGroups: string[][], names: LabelName[]) {
   const groups = labelGroups.map((pieces) => [...pieces]);
   for (const name of names.filter((entry) => entry.oneWord)) {
     const pieces = groups.find((entry) => entry.includes(name.text));
@@ -326,7 +376,7 @@ function labelVersions(labelGroups, names) {
   return LABEL_VERSIONS.filter(([, pattern]) => pattern.test(rest)).map(([variant]) => variant);
 }
 
-function labelNames(prepared) {
+function labelNames(prepared: PreparedVariantRequest) {
   prepared.labelNames ??= [
     ...new Set(prepared.requested.names.map(labelWords).filter((name) => name.trim())),
   ]
@@ -342,7 +392,10 @@ function labelNames(prepared) {
   return prepared.labelNames;
 }
 
-function groupsContradictions(labelGroups, prepared) {
+function groupsContradictions(
+  labelGroups: string[][] | null | undefined,
+  prepared: PreparedVariantRequest,
+) {
   if (!labelGroups) return [];
   return labelVersions(labelGroups, labelNames(prepared)).filter(
     (variant) => !prepared.labelAllowed.has(variant),
@@ -351,7 +404,10 @@ function groupsContradictions(labelGroups, prepared) {
 
 // The versions a release, folder, or credit name claims that the request
 // does not ask for.
-export function labelContradictions(label, prepared) {
+export function labelContradictions(
+  label: string | null | undefined,
+  prepared: PreparedVariantRequest,
+) {
   return groupsContradictions(readLabel(label), prepared);
 }
 
@@ -378,11 +434,11 @@ const SECONDARY_TYPE_VARIANTS = new Map([
   ["demo", "demo"],
 ]);
 
-function escapeRegExp(value) {
+function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function asList(value) {
+function asList(value: unknown) {
   return (Array.isArray(value) ? value : [value])
     .map((entry) => String(entry || "").trim())
     .filter(Boolean);
@@ -390,7 +446,7 @@ function asList(value) {
 
 const namePatterns = new Map();
 
-function namePattern(name) {
+function namePattern(name: string) {
   if (!namePatterns.has(name)) {
     const words = normalizeVariantText(name).split(" ").filter(Boolean);
     if (namePatterns.size >= 4096) namePatterns.clear();
@@ -413,7 +469,7 @@ function namePattern(name) {
 // A requested name such as "Live Through This" or "Acoustic Alchemy" is a
 // name, not a version, so its first appearance is taken out of the offered
 // text before looking for versions. A second "Live" is still a version.
-function withoutNames(text, names) {
+function withoutNames(text: string | null | undefined, names: string[]) {
   let rest = String(text || "");
   let lower = rest.toLowerCase();
   for (const name of names) {
@@ -428,21 +484,21 @@ function withoutNames(text, names) {
   return rest;
 }
 
-function profileNames(profile) {
-  const names = CONTRADICTION_VARIANTS.filter((name) => profile[name]);
+function profileNames(profile: VariantProfile) {
+  const names: string[] = CONTRADICTION_VARIANTS.filter((name) => profile[name]);
   if (profile.remix) names.push("remix");
   if (profile.mixVariant) names.push(profile.mixVariant);
   return names;
 }
 
-function isBareLive(text) {
+function isBareLive(text: string) {
   const words = normalizeVariantText(text)
     .split(" ")
     .filter((word) => word && !isReleaseNoiseWord(word));
   return words.length === 1 && words[0] === "live";
 }
 
-function startsWithLiveVenue(text) {
+function startsWithLiveVenue(text: string) {
   const words = normalizeVariantText(text).split(" ").filter(Boolean);
   const start = words.findIndex((word) => !isReleaseNoiseWord(word));
   return (
@@ -453,7 +509,7 @@ function startsWithLiveVenue(text) {
 // Versions a requested artist, album, or track name asks for. `release` marks
 // an album name, where "Live" alone or "Live in Paris" names a live album; an
 // artist can be called Live.
-function contextVariants(text, { release = false } = {}) {
+function contextVariants(text: string, { release = false }: { release?: boolean } = {}) {
   const found = new Set(profileNames(extractVariants(text)).filter((name) => name !== "cover"));
   for (const { value, pattern } of CONTEXT_VARIANT_PATTERNS) {
     if (pattern.test(text)) found.add(value);
@@ -462,7 +518,7 @@ function contextVariants(text, { release = false } = {}) {
   return found;
 }
 
-function requestedNames(request) {
+function requestedNames(request: VariantRequest | null) {
   const trackName = request?.trackName ?? request?.title;
   const albumName = request?.albumName ?? request?.album;
   const artists = [
@@ -495,7 +551,7 @@ function requestedNames(request) {
 // Versions the request asks for: those its track title names, and those its
 // artist, album, or release-group type names, such as every track of a live
 // album. Another track of the release naming a version does not ask for it.
-function allowedVariants(expected, requested) {
+function allowedVariants(expected: VariantProfile, requested: RequestedNames) {
   const allowed = new Set(profileNames(expected));
   for (const name of requested.trackName) {
     for (const variant of contextVariants(withoutNames(name, requested.names)))
@@ -525,7 +581,7 @@ function allowedVariants(expected, requested) {
 // edition, or a single of a song's remix, demo, and instrumental. One live
 // bonus track, alone or on its own disc, does not make the album live, and a
 // track's title still may not name another track's version.
-function labelAllowedVariants(allowed, requested) {
+function labelAllowedVariants(allowed: Set<string>, requested: RequestedNames) {
   const labelAllowed = new Set(allowed);
   for (const disc of Map.groupBy(
     requested.releaseTracks,
@@ -541,7 +597,7 @@ function labelAllowedVariants(allowed, requested) {
   return labelAllowed;
 }
 
-function candidateFolders(candidate, album) {
+function candidateFolders(candidate: VariantCandidate | null | undefined, album: string) {
   const parts = candidate?.directoryPath
     ? getPathParts(candidate.directoryPath)
     : getPathParts(candidate?.path).slice(0, -1);
@@ -556,9 +612,13 @@ function candidateFolders(candidate, album) {
 // so they count only for versions that are never the original. `labels`
 // remembers each name read for this request, since one release shares its
 // folder and album names across many files.
-function contextContradictions(candidate, prepared, labels) {
-  const found = [];
-  const check = (field, text, neverOriginalOnly = false) => {
+function contextContradictions(
+  candidate: VariantCandidate | null | undefined,
+  prepared: PreparedVariantRequest,
+  labels: Map<string, string[][] | null>,
+) {
+  const found: { field: string; variant: string }[] = [];
+  const check = (field: string, text: string, neverOriginalOnly = false) => {
     if (!labels.has(text)) labels.set(text, readLabel(text));
     for (const variant of groupsContradictions(labels.get(text), prepared)) {
       if (!neverOriginalOnly || NEVER_ORIGINAL_VARIANTS.has(variant))
@@ -575,7 +635,7 @@ function contextContradictions(candidate, prepared, labels) {
 
 // The request side of a variant check, worked out once for every candidate
 // compared with it.
-export function prepareVariantRequest(request) {
+export function prepareVariantRequest(request: VariantRequest | null): PreparedVariantRequest {
   const requested = requestedNames(request);
   // Snot's song "Unplugged" is a name on both sides, not a version.
   const expected = buildRequestVariantProfile({
@@ -593,10 +653,10 @@ export function prepareVariantRequest(request) {
 }
 
 export function checkVariantCompatibility(
-  request,
-  candidate,
-  prepared = prepareVariantRequest(request),
-  labels = new Map(),
+  request: VariantRequest | null,
+  candidate: VariantCandidate | null | undefined,
+  prepared: PreparedVariantRequest = prepareVariantRequest(request),
+  labels: Map<string, string[][] | null> = new Map(),
 ) {
   const { requested, expected, allowed } = prepared;
   const candidateText = [candidate?.title, candidate?.filename]
@@ -678,31 +738,31 @@ const PROMO_GROUP_WORDS = new Set([
   "360",
 ]);
 
-function groupWords(inner) {
+function groupWords(inner: string) {
   return normalizeVariantText(inner).split(" ").filter(Boolean);
 }
 
-function isDescriptorGroup(inner) {
+function isDescriptorGroup(inner: string) {
   // "Live at Wembley" or "2011 Remaster" carry extra words next to the
   // descriptor, so a single descriptor word is enough to classify the group.
   const words = groupWords(inner);
   return words.some((word) => DESCRIPTOR_GROUP_WORDS.has(word));
 }
 
-export function isPromoGroup(inner) {
+export function isPromoGroup(inner: string) {
   const words = groupWords(inner);
   return words.length > 0 && words.every((word) => PROMO_GROUP_WORDS.has(word));
 }
 
 // Version descriptors move a lot in file and video titles. Identity scoring
 // compares core titles after variant compatibility is checked.
-export function stripPromoDescriptors(value) {
+export function stripPromoDescriptors(value: string | null | undefined) {
   let text = String(value || "").trim();
   text = text.replace(/[([]([^)\]]*)[)\]]/g, (group, inner) => (isPromoGroup(inner) ? " " : group));
   return text.replace(/\s+/g, " ").trim();
 }
 
-export function getCoreTitle(value) {
+export function getCoreTitle(value: string | null | undefined) {
   let text = String(value || "").trim();
   text = stripPromoDescriptors(text);
   // Leading track numbers ("07. Song", "01 - Song"). A bare space after the

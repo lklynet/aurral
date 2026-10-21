@@ -26,7 +26,7 @@ const id = (value) =>
 const text = (value) => String(value ?? "").trim();
 const positive = (value) =>
   Number.isFinite(Number(value)) && Number(value) > 0 ? Math.round(Number(value)) : null;
-const unique = (values) => [...new Set(values.map(text).filter(Boolean))];
+const unique = (values: unknown[]) => [...new Set(values.map(text).filter(Boolean))];
 
 // "Song" and "Song (Live)" score as the same title, so a title only names a
 // release track when both carry the same versions.

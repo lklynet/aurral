@@ -6,7 +6,7 @@ const EDITION_WORDS =
 const SOUNDTRACK_WORDS =
   /\b(?:soundtrack|ost|score|cast recording|music from (?:and inspired by )?the (?:motion picture|film|series|movie))\b/iu;
 
-function plainWords(value) {
+function plainWords(value: string | null | undefined) {
   return String(value || "")
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, " ")
@@ -15,18 +15,21 @@ function plainWords(value) {
 
 const NON_LATIN_LETTER = /(?!\p{Script=Latin})\p{L}/u;
 
-export function hasNonLatinLetter(value) {
+export function hasNonLatinLetter(value: string | null | undefined) {
   return NON_LATIN_LETTER.test(String(value || ""));
 }
 
 // Names in different scripts, such as "Кино" and "Kino", cannot be compared,
 // so neither contradicts the other.
-export function inOtherScript(left, right) {
+export function inOtherScript(left: string | null | undefined, right: string | null | undefined) {
   return hasNonLatinLetter(left) !== hasNonLatinLetter(right);
 }
 
 // "Various Artists" credits a compilation, not a performer.
-export function isVariousArtistsCredit(name, mbid = null) {
+export function isVariousArtistsCredit(
+  name: string | null | undefined,
+  mbid: string | null = null,
+) {
   return (
     String(mbid || "")
       .trim()
@@ -38,7 +41,7 @@ export function isVariousArtistsCredit(name, mbid = null) {
 // Single", and "Film: Awesome Mix, Vol. 1: Original Motion Picture
 // Soundtrack" lose the edition and soundtrack wording; "Album (Part 2)" does
 // not.
-export function coreAlbumTitle(value) {
+export function coreAlbumTitle(value: string | null | undefined) {
   const text = String(value || "")
     .replace(/\s+(?:-|–|—)\s+(?:single|ep|album)\s*$/iu, "")
     .replace(/\s+[[(](?:single|ep|album)[)\]]\s*$/iu, "")
@@ -60,7 +63,7 @@ const REMASTER_LABEL_WORD =
 
 // "Song (Remastered 2012)" and "Song - 2011 Remaster" are the song itself; a
 // live, demo, or remixed version is not.
-export function withoutRemasterLabel(value) {
+export function withoutRemasterLabel(value: string | null | undefined) {
   const title = String(value || "").trim();
   const match =
     title.match(/^(.+?)\s*[([]([^)\]]*)[)\]]$/u) || title.match(/^(.+)\s(?:-|–|—)\s+(.+)$/u);
@@ -92,11 +95,11 @@ const DISC_FOLDER = new RegExp(
   "iu",
 );
 
-const words = (value) => plainWords(value).split(" ").filter(Boolean);
+const words = (value: string | null | undefined) => plainWords(value).split(" ").filter(Boolean);
 
 // Where a run of words spells the name, spaced or not: "LP 4" spells "LP4".
 // Returns the index after the run, or -1.
-function spelledAt(labelWords, nameWords, start) {
+function spelledAt(labelWords: string[], nameWords: string[], start: number) {
   const name = nameWords.join("");
   let spelled = "";
   for (let end = start; end < labelWords.length && spelled.length < name.length; end += 1) {
@@ -107,7 +110,7 @@ function spelledAt(labelWords, nameWords, start) {
 }
 
 // True when the label holds the name as whole words, spaced or not.
-export function labelSpells(label, name) {
+export function labelSpells(label: string | null | undefined, name: string | null | undefined) {
   const nameWords = words(name);
   const labelWords = words(label);
   return (
@@ -118,7 +121,7 @@ export function labelSpells(label, name) {
 
 // "LP4 (2010) [Japan]", "LP 4", and "LP1 - Deluxe Edition" name the albums
 // LP4 and LP1: the title, then only notes in brackets, years, or formats.
-function namesAlbum(folder, album) {
+function namesAlbum(folder: string, album: string) {
   const title = words(coreAlbumTitle(album));
   const name = words(coreAlbumTitle(String(folder).replace(/[[({][^\])}]*[\])}]/gu, " ")));
   const end = title.length ? spelledAt(name, title, 0) : -1;
@@ -128,7 +131,10 @@ function namesAlbum(folder, album) {
 // "CD2", "Disc Two", "LP 2", "CD1 [FLAC]", and "Disc 1 - Dawn to Dusk" hold
 // one disc of the release folder above them, unless the folder is named for
 // the album, as Ratatat's "LP4" is.
-export function discFolderNumber(name, { album = null } = {}) {
+export function discFolderNumber(
+  name: string | null | undefined,
+  { album = null }: { album?: string | null } = {},
+) {
   const text = String(name || "").trim();
   const match = DISC_FOLDER.exec(text);
   if (!match || (album && namesAlbum(text, album))) return null;
@@ -145,7 +151,7 @@ const RELEASE_NOISE_WORD = new RegExp(
 
 // Years, disc labels, and formats around a release name: "2009 Live",
 // "CD 2 - Live", "Live [FLAC]".
-export function isReleaseNoiseWord(word) {
+export function isReleaseNoiseWord(word: string) {
   return RELEASE_NOISE_WORD.test(word);
 }
 
@@ -164,10 +170,14 @@ const OTHER_ALBUMS = [
 // album a hits or complete-works collection, is a different product from the
 // one requested, unless the request names it too. A version, such as a live
 // or karaoke release, is the variant policy's to judge.
-export function otherProductMarker(name, requested, { album = false } = {}) {
+export function otherProductMarker(
+  name: string | null | undefined,
+  requested: (string | null | undefined)[],
+  { album = false }: { album?: boolean } = {},
+) {
   const label = ` ${plainWords(name)} `;
   const wanted = ` ${requested.map(plainWords).join(" ")} `;
-  const named = (text, marker) => text.includes(` ${marker} `);
+  const named = (text: string, marker: string) => text.includes(` ${marker} `);
   for (const entry of [...OTHER_PRODUCTS, ...(album ? OTHER_ALBUMS : [])]) {
     const family = [entry].flat();
     const marker = family.find((word) => named(label, word));

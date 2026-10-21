@@ -5,28 +5,55 @@
 // the semantic variant profile extracted from the requested title.
 
 import { extractVariants } from "./semanticPolicy.ts";
+import type { ReleaseTrack } from "./semanticPolicy.ts";
 import { getYear } from "../providers/brainzmashRanking.ts";
 
-function cleanText(value) {
+type TrackContext = {
+  artistName?: unknown;
+  artistAliases?: unknown;
+  trackName?: unknown;
+  featuredArtists?: unknown;
+  albumName?: unknown;
+  releaseYear?: unknown;
+  trackNumber?: unknown;
+  discNumber?: unknown;
+  durationMs?: unknown;
+  pressingDurationsMs?: unknown;
+  artistMbid?: unknown;
+  albumMbid?: unknown;
+  releaseGroupMbid?: unknown;
+  releaseMbid?: unknown;
+  recordingMbid?: unknown;
+  trackMbid?: unknown;
+  recordingMbidAliases?: unknown;
+  isrc?: unknown;
+  albumTrackCount?: unknown;
+  albumTrackTitles?: unknown;
+  secondaryTypes?: unknown;
+};
+
+function cleanText(value: unknown) {
   return String(value ?? "").trim() || null;
 }
 
-function cleanTextList(value) {
+function cleanTextList(value: unknown) {
   return Array.isArray(value)
     ? value.map((entry) => String(entry ?? "").trim()).filter(Boolean)
     : [];
 }
 
-function cleanPositiveInt(value) {
+function cleanPositiveInt(value: unknown) {
   const number = Number(value);
   return Number.isFinite(number) && number > 0 ? Math.round(number) : null;
 }
 
-function cleanYear(value) {
+function cleanYear(value: unknown) {
   return getYear(value);
 }
 
-export function buildTrackRequest(context = {}) {
+export type TrackRequest = ReturnType<typeof buildTrackRequest>;
+
+export function buildTrackRequest(context: TrackContext = {}) {
   const trackName = cleanText(context.trackName);
   return {
     artistName: cleanText(context.artistName),
@@ -64,7 +91,10 @@ export function buildTrackRequest(context = {}) {
 // and a downloaded file, so a file is held to the lengths and names its
 // listing was. A file imported with the whole `importedRelease` may sit in a
 // folder that names a version the release's own tracks are.
-export function recordingRequest(request, importedRelease = null) {
+export function recordingRequest(
+  request: TrackRequest,
+  importedRelease: { tracks?: ReleaseTrack[] | null } | null = null,
+) {
   return {
     title: request.trackName,
     artists: request.artistName ? [request.artistName] : [],

@@ -10,6 +10,7 @@ import {
 import { foldDiacritics } from "../providers/brainzmashRanking.ts";
 import { discFolderNumber, isVariousArtistsCredit } from "./titleText.ts";
 import { implausibleBitrateKbps } from "./candidateNormalizer.ts";
+import type { NameList, ReleaseTrack } from "./semanticPolicy.ts";
 import { UUID_REGEX } from "../../../lib/uuid.ts";
 
 export const MATCH_POLICY = Object.freeze({
@@ -23,20 +24,59 @@ export const MATCH_POLICY = Object.freeze({
   runnerUpMargin: 0.05,
 });
 
+type MatchPolicy = typeof MATCH_POLICY;
+
 export function getMatcherStatus() {
   return { available: true, checked: true, policyVersion: MATCH_POLICY.version, error: null };
 }
 
 // Rip tools write Spotify or Deezer IDs into the MusicBrainz tags. Only a
 // UUID is a MusicBrainz recording ID.
-export function readRecordingMbid(value) {
+export function readRecordingMbid(value: unknown) {
   const id = String(value || "")
     .trim()
     .toLowerCase();
   return UUID_REGEX.test(id) ? id : null;
 }
 
-export function normalizeMatchText(value) {
+type RecordingRequest = {
+  title?: string | null;
+  albumName?: string | null;
+  artists?: NameList;
+  artist?: NameList;
+  artistAliases?: NameList;
+  secondaryTypes?: NameList;
+  releaseTracks?: ReleaseTrack[] | null;
+  albumTrackTitles?: string[] | null;
+  trackNumber?: unknown;
+  durationMs?: unknown;
+  duration_ms?: unknown;
+  pressingDurationsMs?: unknown;
+  recordingMbid?: unknown;
+  recording_mbid?: unknown;
+  recordingMbidAliases?: NameList;
+};
+
+type RecordingCandidate = {
+  title?: string | null;
+  versionTitle?: string | null;
+  fileNameTitle?: string | null;
+  filename?: string | null;
+  album?: NameList;
+  artists?: NameList;
+  artist?: NameList;
+  path?: string | null;
+  directoryPath?: string | null;
+  recordingMbid?: unknown;
+  recording_mbid?: unknown;
+  durationMs?: unknown;
+  duration_ms?: unknown;
+  sizeBytes?: unknown;
+  trackNumber?: unknown;
+  discNumber?: unknown;
+};
+
+export function normalizeMatchText(value: string | null | undefined) {
   return foldDiacritics(String(value || "").normalize("NFKD"))
     .toLowerCase()
     .replace(/[^\p{L}\p{N}\p{M}]+/gu, " ")
@@ -44,16 +84,19 @@ export function normalizeMatchText(value) {
     .replace(/\s+/g, " ");
 }
 
-function listingDisc(segments, encoded, album) {
+function listingDisc(segments: string[], encoded: number | null, album: string | null | undefined) {
   const disc = encoded ?? discFolderNumber(segments.at(-2), { album });
-  return Number.isInteger(disc) && disc > 0 ? { discNumber: disc } : {};
+  return Number.isInteger(disc) && disc! > 0 ? { discNumber: disc } : {};
 }
 
 // The album, when known, keeps a folder named for it from reading as a disc.
-export function parseListingTitle(path, { album = null } = {}) {
+export function parseListingTitle(
+  path: string | null | undefined,
+  { album = null }: { album?: string | null } = {},
+) {
   const segments = String(path || "").split(/[\\/]/);
   const base = segments
-    .at(-1)
+    .at(-1)!
     .replace(/\.[^.]+$/, "")
     .trim();
   if (/^\d{1,3}$/u.test(base))
@@ -76,7 +119,7 @@ export function parseListingTitle(path, { album = null } = {}) {
   for (const [index, pattern] of patterns.entries()) {
     const match = pattern.exec(base);
     if (!match) continue;
-    const title = index === 5 ? match[1] : match.at(-1);
+    const title = index === 5 ? match[1] : match.at(-1)!;
     const trackNumber = Number(index < 3 ? match[2] : index === 5 ? match[2] : match[1]);
     return {
       title: title.trim(),
@@ -88,14 +131,14 @@ export function parseListingTitle(path, { album = null } = {}) {
 }
 
 // Similarity of two normalized texts, from 0 to 1.
-export function keySimilarity(a, b) {
+export function keySimilarity(a: string | null | undefined, b: string | null | undefined) {
   if (!a || !b) return 0;
   if (a.length > 512 || b.length > 512) return 0;
   if (a === b) return 1;
   return 1 - distance(a, b) / Math.max(a.length, b.length);
 }
 
-function similarity(left, right) {
+function similarity(left: string | null | undefined, right: string | null | undefined) {
   return keySimilarity(normalizeMatchText(left), normalizeMatchText(right));
 }
 
@@ -111,7 +154,7 @@ const VARIANTS = [
   "nightcore",
 ];
 
-function variants(title) {
+function variants(title: string | null | undefined) {
   const normalized = normalizeMatchText(title);
   const found = VARIANTS.filter((variant) => new RegExp(`\\b${variant}\\b`, "u").test(normalized));
   const mix = /\b(extended|radio|club|dance|single|album) mix\b/u.exec(normalized);
@@ -119,7 +162,7 @@ function variants(title) {
   return found;
 }
 
-function coreMatchTitle(title) {
+function coreMatchTitle(title: string | null | undefined) {
   return (stripPromoDescriptors(title) || String(title || ""))
     .replace(
       /\s*[[(][^\])]*\b(?:live|remix|acoustic|instrumental|demo|edit|karaoke|cover|nightcore|mix|mono|stereo|remaster(?:ed)?|feat\.?|ft\.?|featuring|official audio|official video|visualizer|lyrics|album version|original version|bonus|hidden track)\b[^\])]*[\])]/giu,
@@ -134,7 +177,7 @@ function coreMatchTitle(title) {
     .trim();
 }
 
-function coreArtist(name) {
+function coreArtist(name: string | null | undefined) {
   return String(name || "")
     .replace(/\s*[([]\s*(?:feat\.?|ft\.?|featuring|with)\s+[^)\]]*[)\]]/giu, "")
     .replace(/\s+\b(?:feat\.?|ft\.?|featuring)\s+.+$/iu, "")
@@ -143,7 +186,7 @@ function coreArtist(name) {
 
 // "Kendrick Lamar, Drake" and "Blue Swede & Björn Skifs" credit each of
 // their artists. "AC/DC" has no spaces around its slash and stays whole.
-function creditedArtists(credit) {
+function creditedArtists(credit: string | null | undefined) {
   const whole = coreArtist(credit);
   const parts = whole
     .split(/\s*[,;]\s*|\s+(?:&|\/|x|×)\s+/iu)
@@ -152,16 +195,16 @@ function creditedArtists(credit) {
   return [...new Set([whole, ...parts])];
 }
 
-function artistKey(name) {
+function artistKey(name: string | null | undefined) {
   return normalizeMatchText(String(name || "").replace(/&/g, " and ")).replace(/^the (?=\S)/u, "");
 }
 
-function artistKeys(name) {
+function artistKeys(name: string | null | undefined) {
   const key = artistKey(name);
   return [key, key.replace(/ /g, "")];
 }
 
-function keyedArtistSimilarity(requestedKeys, credits) {
+function keyedArtistSimilarity(requestedKeys: string[][], credits: NameList) {
   const offered = asNames(credits).flatMap((credit) => creditedArtists(credit).map(artistKeys));
   if (!requestedKeys.length || !asNames(credits).length) return null;
   return Math.max(
@@ -174,27 +217,30 @@ function keyedArtistSimilarity(requestedKeys, credits) {
   );
 }
 
-const requestedArtistKeys = (names) =>
+const requestedArtistKeys = (names: NameList) =>
   asNames(names)
     .filter((name) => !isVariousArtistsCredit(name))
     .map((name) => artistKeys(coreArtist(name)));
 
-export function bestArtistSimilarity(requestedNames, credits) {
+export function bestArtistSimilarity(requestedNames: NameList, credits: NameList) {
   return keyedArtistSimilarity(requestedArtistKeys(requestedNames), credits);
 }
 
-function nonLatinTitleContradiction(left, right) {
+function nonLatinTitleContradiction(
+  left: string | null | undefined,
+  right: string | null | undefined,
+) {
   const a = normalizeMatchText(coreMatchTitle(left));
   const b = normalizeMatchText(coreMatchTitle(right));
   return Boolean(a && b && a !== b && /(?!\p{Script=Latin})\p{L}/u.test(`${a} ${b}`));
 }
 
-function asNames(value) {
+function asNames<T>(value: T | T[] | null | undefined): T[] {
   if (Array.isArray(value)) return value.filter(Boolean);
   return value ? [value] : [];
 }
 
-function requestPerformers(request) {
+function requestPerformers(request: RecordingRequest) {
   return [...asNames(request.artists || request.artist), ...asNames(request.artistAliases)].filter(
     (name) => !isVariousArtistsCredit(name),
   );
@@ -202,7 +248,7 @@ function requestPerformers(request) {
 
 // The request side of `compareRecording`, worked out once for every
 // candidate compared with it.
-export function prepareRecordingRequest(request) {
+export function prepareRecordingRequest(request: RecordingRequest) {
   const lengths = [
     request.durationMs ?? request.duration_ms,
     ...asNames(request.pressingDurationsMs),
@@ -224,7 +270,11 @@ export function prepareRecordingRequest(request) {
 
 // Every name around a request and a candidate can name a version: the
 // title, the file name, the album, the artist, and the folders.
-function variantContradictions(prepared, candidate, labels) {
+function variantContradictions(
+  prepared: ReturnType<typeof prepareRecordingRequest>,
+  candidate: RecordingCandidate,
+  labels: Map<string, string[][] | null>,
+) {
   return checkVariantCompatibility(
     null,
     {
@@ -244,7 +294,10 @@ function variantContradictions(prepared, candidate, labels) {
 // and does not know a bare "(Edit)" or a radio, dance, single, or album mix.
 const EDIT_VARIANTS = new Set(["edit", "remix"]);
 
-function editContradiction(requestTitle, candidateTitle) {
+function editContradiction(
+  requestTitle: string | null | undefined,
+  candidateTitle: string | null | undefined,
+) {
   const requested = variants(requestTitle).filter(
     (variant) => EDIT_VARIANTS.has(variant) || variant.endsWith("-mix"),
   );
@@ -263,13 +316,13 @@ function editContradiction(requestTitle, candidateTitle) {
 // `labels` remembers the names read for this request across the candidates
 // of one search or one listing.
 export function compareRecording(
-  request,
-  candidate,
-  policy = MATCH_POLICY,
-  prepared = prepareRecordingRequest(request),
-  labels = new Map(),
+  request: RecordingRequest,
+  candidate: RecordingCandidate,
+  policy: MatchPolicy = MATCH_POLICY,
+  prepared: ReturnType<typeof prepareRecordingRequest> = prepareRecordingRequest(request),
+  labels: Map<string, string[][] | null> = new Map(),
 ) {
-  const contradictions = [];
+  const contradictions: string[] = [];
   if (nonLatinTitleContradiction(request.title, candidate.title)) contradictions.push("title");
   // MusicBrainz merges duplicate recordings, and files tagged before a merge
   // carry an ID that the recording keeps as an alias.
@@ -338,7 +391,11 @@ export function compareRecording(
   };
 }
 
-export function decideRecording(request, candidates, policy = MATCH_POLICY) {
+export function decideRecording(
+  request: RecordingRequest,
+  candidates: RecordingCandidate[],
+  policy: MatchPolicy = MATCH_POLICY,
+) {
   const prepared = prepareRecordingRequest(request);
   const labels = new Map();
   const assessed = candidates.map((candidate, index) => ({
@@ -383,7 +440,7 @@ export function decideRecording(request, candidates, policy = MATCH_POLICY) {
   return { decision, selectedIndex, candidates: assessed, policyVersion: policy.version };
 }
 
-function maximumWeightColumns(weights) {
+function maximumWeightColumns(weights: number[][]) {
   const rowCount = weights.length;
   const columnCount = weights[0]?.length || 0;
   const rowPotential = new Array(rowCount + 1).fill(0);
@@ -438,7 +495,7 @@ function maximumWeightColumns(weights) {
   return columns;
 }
 
-const positiveNumber = (value) =>
+const positiveNumber = (value: unknown) =>
   Number.isInteger(Number(value)) && Number(value) > 0 ? Number(value) : null;
 
 // Where a file sits against a track: "same", "different", or "unknown". A
@@ -446,7 +503,11 @@ const positiveNumber = (value) =>
 // disc, runs on across discs when `runningNumber` gives the place on a
 // complete, ordered tracklist, or counts discs in hundreds ("203" is disc 2,
 // track 3).
-export function comparePosition(track, file, runningNumber = null) {
+export function comparePosition(
+  track: { trackNumber?: unknown; discNumber?: unknown },
+  file: { trackNumber?: unknown; discNumber?: unknown },
+  runningNumber: number | null = null,
+) {
   const fileTrack = positiveNumber(file.trackNumber);
   const trackNumber = positiveNumber(track.trackNumber);
   if (!fileTrack || !(trackNumber || runningNumber)) return "unknown";
@@ -468,7 +529,10 @@ export function comparePosition(track, file, runningNumber = null) {
 // One-to-one: each track takes at most one file and each file at most one
 // track, with as many pairs as possible and then the highest total score.
 // `edges[trackIndex]` lists the files that track may take.
-export function pairTracksWithFiles(edges, fileCount) {
+export function pairTracksWithFiles<Edge extends { fileIndex: number; score: number }>(
+  edges: Edge[][],
+  fileCount: number,
+) {
   const cardinalityBonus = edges.length + 1;
   const weights = edges.map((trackEdges) => {
     const row = new Array(fileCount + edges.length).fill(0);
@@ -492,7 +556,10 @@ export function pairTracksWithFiles(edges, fileCount) {
   };
 }
 
-export function isSameAlbumTitle(requested, observed) {
+export function isSameAlbumTitle(
+  requested: string | null | undefined,
+  observed: string | null | undefined,
+) {
   const left = normalizeMatchText(requested);
   return Boolean(left) && left === normalizeMatchText(observed);
 }
@@ -501,7 +568,11 @@ export function isSameAlbumTitle(requested, observed) {
 // probably mislabeled. A file from a single, a compilation, or another
 // edition has its own numbering, so its position says nothing, and so does
 // a position on a later disc, which starts again at 1.
-export function isSiblingTrackPosition(request, actualTrackNumber, actualDiscNumber = null) {
+export function isSiblingTrackPosition(
+  request: RecordingRequest,
+  actualTrackNumber: unknown,
+  actualDiscNumber: unknown = null,
+) {
   const expected = Number(request.trackNumber || 0);
   const actual = Number(actualTrackNumber || 0);
   if (!(expected > 0 && actual > 0 && expected !== actual) || Number(actualDiscNumber) > 1)
@@ -512,7 +583,11 @@ export function isSiblingTrackPosition(request, actualTrackNumber, actualDiscNum
   );
 }
 
-export function verifyDownloadedRecording(request, observed, policy = MATCH_POLICY) {
+export function verifyDownloadedRecording(
+  request: RecordingRequest,
+  observed: RecordingCandidate & { album?: string | null },
+  policy: MatchPolicy = MATCH_POLICY,
+) {
   const result = compareRecording(request, observed, policy);
   if (
     isSameAlbumTitle(request.albumName, observed.album) &&
@@ -553,17 +628,21 @@ export function verifyDownloadedRecording(request, observed, policy = MATCH_POLI
 }
 
 // The comparable core of a title, without versions, guests, and promotion.
-export function titleKey(title) {
+export function titleKey(title: string | null | undefined) {
   return normalizeMatchText(coreMatchTitle(title));
 }
 
-export function titleSimilarity(requested, offered) {
+export function titleSimilarity(
+  requested: string | null | undefined,
+  offered: string | null | undefined,
+) {
   return keySimilarity(titleKey(requested), titleKey(offered));
 }
 
-const spelledOut = (title) => String(title || "").replace(/&/gu, " and ");
+const spelledOut = (title: string | null | undefined) =>
+  String(title || "").replace(/&/gu, " and ");
 
-const songWords = (title) =>
+const songWords = (title: string | null | undefined) =>
   normalizeMatchText(
     spelledOut(title)
       .replace(/\s*[([][^)\]]*[)\]]/gu, " ")
@@ -572,23 +651,26 @@ const songWords = (title) =>
     .split(" ")
     .filter(Boolean);
 
-const holdsWords = (outer, inner) =>
+const holdsWords = (outer: string[], inner: string[]) =>
   inner.length * 2 >= outer.length &&
   outer.some((_, start) => inner.every((word, offset) => outer[start + offset] === word));
 
-const withoutGuests = (title) =>
+const withoutGuests = (title: string | null | undefined) =>
   String(title || "")
     .replace(/\s*[([]\s*(?:feat\.?|ft\.?|featuring|with)\s[^)\]]*[)\]]/giu, " ")
     .replace(/\s(?:feat\.?|ft\.?|featuring)\s[^([\-–—]*/giu, " ");
 
 // A guest's name, such as "feat. Live", says nothing about the version.
-const isOtherVersion = (leftTitle, rightTitle) => {
+const isOtherVersion = (
+  leftTitle: string | null | undefined,
+  rightTitle: string | null | undefined,
+) => {
   const [left, right] = [leftTitle, rightTitle].map(withoutGuests);
-  const version = (title) =>
+  const version = (title: string | null | undefined) =>
     variants(title)
       .filter((variant) => variant !== "cover")
       .join("|");
-  const contradicts = (expected, actual) =>
+  const contradicts = (expected: string | null | undefined, actual: string | null | undefined) =>
     compareVariantProfiles(extractVariants(expected), extractVariants(actual)).contradictions.some(
       (variant) => variant !== "cover" && !RELEASE_MIX_VARIANTS.has(variant),
     );
@@ -600,7 +682,10 @@ const isOtherVersion = (leftTitle, rightTitle) => {
 // in brackets or after a dash, or in words one adds, and neither is a live, sped-up, edited, or other version the other is
 // not. A note that the artist covers the song changes nothing on their own
 // album.
-export function isSameSongAtPlace(left, right) {
+export function isSameSongAtPlace(
+  left: string | null | undefined,
+  right: string | null | undefined,
+) {
   if (isOtherVersion(left, right)) return false;
   const [a, b] = [songWords(left), songWords(right)];
   if (!a.length || !b.length) return false;

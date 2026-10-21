@@ -6,9 +6,27 @@
 // context. Identity decisions are made by the shared trackMatching engine;
 // this module only produces evidence and candidates.
 
-import { normalizeCandidate, getFileBaseName, getFileExtension } from "../candidateNormalizer.ts";
+import {
+  normalizeCandidate,
+  getFileBaseName,
+  getFileExtension,
+  type CandidateTrack,
+  type RawCandidate,
+} from "../candidateNormalizer.ts";
+import type { TrackRequest } from "../trackIdentity.ts";
 import { getNormalizedText } from "../../providers/brainzmashRanking.ts";
 import { groupSoulseekSearchResults } from "../../downloadJobs/trackSearchQueries.ts";
+
+type SlskdFile = RawCandidate & { size?: unknown };
+
+type SoulseekGroup = {
+  user: string;
+  directoryPath: string;
+  parts: string[];
+  audioFiles: SlskdFile[];
+};
+
+type SoulseekOptions = { isUserBlacklisted?: (user: string) => boolean };
 
 const AUDIO_EXTENSIONS = new Set([
   ".flac",
@@ -23,11 +41,11 @@ const AUDIO_EXTENSIONS = new Set([
   ".wma",
 ]);
 
-export function isSoulseekAudioFile(filePath) {
+export function isSoulseekAudioFile(filePath: string) {
   return AUDIO_EXTENSIONS.has(getFileExtension(filePath));
 }
 
-function readComparableAlbumName(request) {
+function readComparableAlbumName(request: TrackRequest) {
   return String(request?.albumName || "")
     .replace(/\s+(?:-|–|—)\s+(?:single|ep|album)\s*$/i, "")
     .replace(/\s+[[(](?:single|ep|album)[)\]]\s*$/i, "")
@@ -38,7 +56,7 @@ function readComparableAlbumName(request) {
 // A self-titled single ("Song - Single"): the folder proves nothing except
 // the artist, so a folder that does not name the requested artist is a
 // different artist's same-titled single.
-function isAmbiguousTitleAlbumContext(request) {
+function isAmbiguousTitleAlbumContext(request: TrackRequest) {
   const albumName = String(request?.albumName || "");
   const hasSingleSuffix =
     /\s+(?:-|–|—)\s+(?:single|ep)\s*$/i.test(albumName) ||
@@ -48,17 +66,17 @@ function isAmbiguousTitleAlbumContext(request) {
   return hasSingleSuffix && Boolean(albumKey) && Boolean(trackKey) && albumKey === trackKey;
 }
 
-function extractYears(value) {
+function extractYears(value: string | null | undefined) {
   return [...String(value || "").matchAll(/\b(19\d{2}|20\d{2})\b/g)].map((match) => match[1]);
 }
 
-function artistNames(request) {
+function artistNames(request: TrackRequest) {
   return [request?.artistName, ...(request?.artistAliases || [])]
     .map((entry) => String(entry || "").trim())
     .filter(Boolean);
 }
 
-function pathContainsLabel(text, target) {
+function pathContainsLabel(text: string | null | undefined, target: string | null | undefined) {
   const label = getNormalizedText(target);
   if (!label) return false;
   return String(text || "")
@@ -69,14 +87,14 @@ function pathContainsLabel(text, target) {
     });
 }
 
-function bestArtistScore(request, text) {
+function bestArtistScore(request: TrackRequest, text: string) {
   return artistNames(request).reduce(
     (best, entry) => Math.max(best, pathContainsLabel(text, entry) ? 100 : 0),
     0,
   );
 }
 
-function comparableTrackTitle(fileName, request) {
+function comparableTrackTitle(fileName: string, request: TrackRequest) {
   const parsed = parseFilenameArtistTitle(fileName, request);
   const title = parsed?.title || String(fileName || "");
   return getNormalizedText(
@@ -84,7 +102,7 @@ function comparableTrackTitle(fileName, request) {
   );
 }
 
-function scoreTracklistMatch(audioFiles, request) {
+function scoreTracklistMatch(audioFiles: SlskdFile[], request: TrackRequest) {
   const titles = Array.isArray(request?.albumTrackTitles) ? request.albumTrackTitles : [];
   if (titles.length === 0) return { score: 0, matchedCount: 0, ratio: 0 };
   const fileNames = (audioFiles || []).map((item) =>
@@ -119,7 +137,11 @@ function scoreTracklistMatch(audioFiles, request) {
 // Release-context plausibility: is this folder plausibly a copy of the
 // requested release at all? This is acquisition context, not identity —
 // identity is decided by the shared engine per file.
-export function isReleaseFolderPlausible(group, request, folder) {
+export function isReleaseFolderPlausible(
+  group: SoulseekGroup,
+  request: TrackRequest,
+  folder: ReturnType<typeof buildFolderEvidence>,
+) {
   const albumName = readComparableAlbumName(request);
   if (!albumName) return true;
   const expectedCount = Number(request?.albumTrackCount);
@@ -152,7 +174,11 @@ export function isReleaseFolderPlausible(group, request, folder) {
   return true;
 }
 
-function buildFolderEvidence(group, request, options = {}) {
+function buildFolderEvidence(
+  group: SoulseekGroup,
+  request: TrackRequest,
+  options: SoulseekOptions = {},
+) {
   const directoryText = String(group.directoryPath || "");
   const albumName = readComparableAlbumName(request);
   const artistScore = bestArtistScore(request, directoryText);
@@ -193,17 +219,18 @@ function buildFolderEvidence(group, request, options = {}) {
 // number. A parsed artist that does not match the request is kept as
 // contradicted evidence (negative evidence, not missing evidence), while a
 // purely numeric leading segment is a track number, never an artist.
-function parseFilenameArtistTitle(baseName, request) {
+function parseFilenameArtistTitle(baseName: string | null | undefined, request: TrackRequest) {
   const known = artistNames(request);
   const normalizedKnown = known.map((name) => getNormalizedText(name));
-  const isKnownArtist = (name) =>
+  const isKnownArtist = (name: string) =>
     normalizedKnown.length === 0 || normalizedKnown.includes(getNormalizedText(name));
-  const isNumericName = (name) => /^\d{1,3}$/.test(String(name || "").trim());
+  const isNumericName = (name: string | null | undefined) =>
+    /^\d{1,3}$/.test(String(name || "").trim());
   const raw = String(baseName || "").trim();
   const leading = /^(\d{1,3})(?:\s*[-._)\]]|\s+-\s+)\s*/.exec(raw);
   const leadingTrackNumber = leading ? Number(leading[1]) : null;
   const withoutNumber = leading ? raw.slice(leading[0].length).trim() : raw;
-  const tryParse = (text) => {
+  const tryParse = (text: string | null | undefined) => {
     const segments = String(text || "")
       .split(/\s+(?:-|–|—)\s+/)
       .map((segment) => segment.trim())
@@ -234,7 +261,7 @@ function parseFilenameArtistTitle(baseName, request) {
   return null;
 }
 
-function readAdvertisedDurationMs(item) {
+function readAdvertisedDurationMs(item: SlskdFile) {
   const seconds = Number(item?.length);
   return Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds * 1000) : null;
 }
@@ -242,7 +269,11 @@ function readAdvertisedDurationMs(item) {
 // Turns raw slskd search results into canonical candidates enriched with
 // folder evidence. Identity decisions belong to the shared engine; this only
 // gathers what Soulseek can (and cannot) prove about each file.
-export function buildSoulseekCandidates(results, request, options = {}) {
+export function buildSoulseekCandidates(
+  results: SlskdFile[],
+  request: TrackRequest,
+  options: SoulseekOptions = {},
+) {
   const groups = groupSoulseekSearchResults(results, { isAudioFile: isSoulseekAudioFile });
   const entries = [];
   const albumName = readComparableAlbumName(request);
@@ -257,7 +288,7 @@ export function buildSoulseekCandidates(results, request, options = {}) {
       const filePath = String(item?.file || "");
       const baseName = getFileBaseName(filePath);
       const parsed = parseFilenameArtistTitle(baseName, request);
-      const candidate = normalizeCandidate("soulseek", item, {
+      const candidate: CandidateTrack | null = normalizeCandidate("soulseek", item, {
         capabilities: { filename: true },
         parseFilename: false,
       });
@@ -283,7 +314,7 @@ export function buildSoulseekCandidates(results, request, options = {}) {
       // artist is a contradiction.
       const folderVouchesForArtist = folder.artistScore >= 92;
       const artistContradicted =
-        Boolean(parsed?.artist) && !parsed.matched && !folderVouchesForArtist;
+        Boolean(parsed?.artist) && !parsed!.matched && !folderVouchesForArtist;
       const artistMissing = !parsed?.artist && !candidate.artists.length && folder.artistScore < 45;
       const ambiguousTitleAlbumArtist =
         !artistContradicted &&

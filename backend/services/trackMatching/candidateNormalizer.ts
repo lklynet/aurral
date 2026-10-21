@@ -48,7 +48,20 @@ export const SOURCE_CAPABILITIES = {
   },
 };
 
-const DEFAULT_CAPABILITIES = Object.freeze({
+type SourceCapabilities = {
+  structuredArtist: boolean;
+  structuredAlbum: boolean;
+  structuredDuration: boolean;
+  providerTrackId: boolean;
+  filename: boolean;
+  directoryContext: boolean;
+  releaseContext: boolean;
+  uploaderChannel?: boolean;
+  advertisedDuration?: boolean;
+  filenameMayBeUnavailablePreDownload?: boolean;
+};
+
+const DEFAULT_CAPABILITIES: SourceCapabilities = Object.freeze({
   structuredArtist: false,
   structuredAlbum: false,
   structuredDuration: false,
@@ -58,51 +71,103 @@ const DEFAULT_CAPABILITIES = Object.freeze({
   releaseContext: false,
 });
 
-export function getCapabilities(source) {
+export function getCapabilities(source: string): SourceCapabilities {
   const key = String(source || "").toLowerCase();
   return SOURCE_CAPABILITIES[key] || { ...DEFAULT_CAPABILITIES };
 }
 
-function cleanText(value) {
+function cleanText(value: unknown) {
   return String(value ?? "").trim() || null;
 }
 
-function positiveNumber(value) {
+function positiveNumber(value: unknown) {
   const number = Number(value);
   return Number.isFinite(number) && number > 0 ? number : null;
 }
 
-function readDurationMs(value) {
+function readDurationMs(value: unknown) {
   if (value == null) return null;
   const number = Number(value);
   if (!Number.isFinite(number) || number <= 0) return null;
   return Math.round(number);
 }
 
-export function getPathParts(filePath) {
+export function getPathParts(filePath: unknown) {
   return String(filePath || "")
     .split(/[\\/]+/)
     .map((entry) => entry.trim())
     .filter(Boolean);
 }
 
-export function getFileName(filePath) {
+export function getFileName(filePath: unknown) {
   const parts = getPathParts(filePath);
   return parts.length > 0 ? parts[parts.length - 1] : "";
 }
 
-export function getFileExtension(filePath) {
+export function getFileExtension(filePath: unknown) {
   const fileName = getFileName(filePath);
   const dot = fileName.lastIndexOf(".");
   if (dot <= 0) return "";
   return fileName.slice(dot).toLowerCase();
 }
 
-export function getFileBaseName(filePath) {
+export function getFileBaseName(filePath: unknown) {
   const fileName = getFileName(filePath);
   const ext = getFileExtension(filePath);
   return ext ? fileName.slice(0, -ext.length) : fileName;
 }
+
+export type RawCandidate = {
+  file?: unknown;
+  path?: unknown;
+  filename?: unknown;
+  title?: unknown;
+  durationMs?: unknown;
+  durationSec?: unknown;
+  length?: unknown;
+  artists?: unknown;
+  artistName?: unknown;
+  artist?: unknown;
+  format?: unknown;
+  ext?: unknown;
+  bitrate?: unknown;
+  bitRate?: unknown;
+  bitDepth?: unknown;
+  sampleRate?: unknown;
+  album?: unknown;
+  albumName?: unknown;
+  year?: unknown;
+  trackNumber?: unknown;
+  track?: unknown;
+  discNumber?: unknown;
+  disc?: unknown;
+  isrc?: unknown;
+  recordingMbid?: unknown;
+  trackMbid?: unknown;
+  releaseMbid?: unknown;
+  id?: unknown;
+  guid?: unknown;
+  user?: unknown;
+  channel?: unknown;
+  uploader?: unknown;
+  uploaderId?: unknown;
+  speed?: unknown;
+  slots?: unknown;
+  locked?: unknown;
+  isLocked?: unknown;
+  url?: unknown;
+  downloadUrl?: unknown;
+};
+
+type NormalizeOptions = {
+  capabilities?: Partial<SourceCapabilities>;
+  parseFilename?: boolean;
+  knownArtistNames?: string[];
+};
+
+export type CandidateTrack = NonNullable<ReturnType<typeof normalizeCandidate>> & {
+  sizeBytes?: number;
+};
 
 const LOSSLESS_EXTENSIONS = new Set([".flac", ".alac", ".ape", ".wav", ".aiff", ".aif", ".wv"]);
 const LOSSY_EXTENSIONS = new Set([".mp3", ".aac", ".m4a", ".ogg", ".oga", ".opus", ".wma"]);
@@ -121,6 +186,12 @@ export function implausibleBitrateKbps({
   sizeBytes,
   durationMs,
   trackTitle = null,
+}: {
+  path?: unknown;
+  lossless?: boolean | null;
+  sizeBytes?: unknown;
+  durationMs?: unknown;
+  trackTitle?: unknown;
 }) {
   if (/^\s*\[silence\]\s*$/iu.test(String(trackTitle || ""))) return null;
   const extension = getFileExtension(filePath);
@@ -139,7 +210,7 @@ export function implausibleBitrateKbps({
 
 // Splits "Artist - Title" style segments. Returns null when the text does not
 // look like an artist/title pair.
-export function splitArtistTitleSegments(text) {
+export function splitArtistTitleSegments(text: string | null | undefined) {
   const segments = String(text || "")
     .split(/\s+(?:-|–|—)\s+/)
     .map((segment) => segment.trim())
@@ -150,13 +221,13 @@ export function splitArtistTitleSegments(text) {
 // Unstructured sources commonly expose "Artist - Title (Descriptor)" in one
 // string. The trailing segment is the strongest available claim about the
 // track title; the full string stays in `title` for evidence.
-export function claimedTitle(title) {
+export function claimedTitle(title: string | null | undefined) {
   const segments = splitArtistTitleSegments(title);
   if (!segments) return cleanText(title);
   return segments[segments.length - 1];
 }
 
-function readArtists(raw, capabilities) {
+function readArtists(raw: RawCandidate, capabilities: Partial<SourceCapabilities>) {
   if (capabilities?.structuredArtist !== true) return [];
   if (Array.isArray(raw.artists)) {
     const names = raw.artists.map((entry) => cleanText(entry)).filter(Boolean);
@@ -166,7 +237,7 @@ function readArtists(raw, capabilities) {
   return artist ? [artist] : [];
 }
 
-function readQuality(raw, capabilities) {
+function readQuality(raw: RawCandidate, capabilities: Partial<SourceCapabilities>) {
   const format =
     cleanText(raw.format || raw.ext || getFileExtension(raw.file || raw.path || "").slice(1)) ||
     null;
@@ -180,7 +251,11 @@ function readQuality(raw, capabilities) {
   };
 }
 
-export function normalizeCandidate(source, raw = {}, options = {}) {
+export function normalizeCandidate(
+  source: string,
+  raw: RawCandidate = {},
+  options: NormalizeOptions = {},
+) {
   const capabilities = options.capabilities || getCapabilities(source);
   const filePath = cleanText(raw.file || raw.path || raw.filename);
   const fileName = filePath ? getFileName(filePath) : null;
@@ -241,7 +316,10 @@ export function normalizeCandidate(source, raw = {}, options = {}) {
 
 // Parses "Artist - Title" file names using the known artist names as anchors
 // so numeric artist names ("50 Cent") survive a leading track number.
-export function parseFilenameArtistTitle(baseName, knownArtistNames = []) {
+export function parseFilenameArtistTitle(
+  baseName: string | null | undefined,
+  knownArtistNames: string[] = [],
+) {
   const candidates = [String(baseName || "")];
   const stripped = candidates[0].replace(/^\s*\d{1,3}(?:\s*[-._)\]]|\s+)/, "").trim();
   if (stripped) candidates.unshift(stripped);
