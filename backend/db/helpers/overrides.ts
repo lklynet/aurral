@@ -1,12 +1,39 @@
+import type Database from "better-sqlite3";
 import { db } from "../../config/db-sqlite.ts";
+import type { ArtistOverridesRow } from "../rows.ts";
 
-const getArtistOverrideStmt = db.prepare("SELECT * FROM artist_overrides WHERE mbid = ?");
-const upsertArtistOverrideStmt = db.prepare(
+export interface ArtistOverride {
+  mbid: string;
+  musicbrainzId: string | null;
+  deezerArtistId: string | null;
+  updatedAt: number | null;
+}
+
+export interface ArtistOverrideOps {
+  getArtistOverride: (mbid: string) => ArtistOverride | null;
+  setArtistOverride: (
+    mbid: string,
+    overrides?: { musicbrainzId?: string | null; deezerArtistId?: string | null },
+  ) => {
+    mbid: string;
+    musicbrainzId: string | null;
+    deezerArtistId: string | null;
+    updatedAt: number;
+  } | null;
+  deleteArtistOverride: (mbid: string) => Database.RunResult | null;
+}
+
+const getArtistOverrideStmt = db.prepare<[string], ArtistOverridesRow>(
+  "SELECT * FROM artist_overrides WHERE mbid = ?",
+);
+const upsertArtistOverrideStmt = db.prepare<[string, string | null, string | null, number]>(
   "INSERT OR REPLACE INTO artist_overrides (mbid, musicbrainz_id, deezer_artist_id, updated_at) VALUES (?, ?, ?, ?)",
 );
-const deleteArtistOverrideStmt = db.prepare("DELETE FROM artist_overrides WHERE mbid = ?");
+const deleteArtistOverrideStmt = db.prepare<[string]>(
+  "DELETE FROM artist_overrides WHERE mbid = ?",
+);
 
-export default function register(dbOps) {
+export default function register(dbOps: ArtistOverrideOps) {
   dbOps.getArtistOverride = function (mbid) {
     if (!mbid) return null;
     const row = getArtistOverrideStmt.get(mbid);

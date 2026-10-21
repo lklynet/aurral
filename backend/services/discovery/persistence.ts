@@ -1,8 +1,9 @@
 import { dbOps } from "../../db/helpers/index.ts";
+import type { DiscoveryCache } from "../../db/helpers/discovery.ts";
 import { websocketService } from "../websocketService.ts";
 import { isHonkerLockHeld } from "../honkerDb.ts";
 
-export const EMPTY_CACHE = {
+export const EMPTY_CACHE: DiscoveryCache = {
   recommendations: [],
   globalTop: [],
   basedOn: [],

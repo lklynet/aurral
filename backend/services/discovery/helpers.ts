@@ -25,14 +25,17 @@ export const getDiscoveryRecommendationPoolLimit = () => DISCOVERY_RECOMMENDATIO
 
 export const getDiscoveryRecommendationsPerRefresh = () => {
   const settings = dbOps.getSettings();
-  const parsed = parseInt(settings.integrations?.lastfm?.discoveryRecommendationsPerRefresh, 10);
+  const parsed = parseInt(
+    String(settings.integrations?.lastfm?.discoveryRecommendationsPerRefresh),
+    10,
+  );
   if (!Number.isFinite(parsed)) return DISCOVERY_RECOMMENDATIONS_DEFAULT;
   return Math.min(DISCOVERY_RECOMMENDATIONS_MAX, Math.max(50, parsed));
 };
 
 export const getDiscoveryAutoRefreshHours = () => {
   const settings = dbOps.getSettings();
-  const parsed = parseInt(settings.integrations?.lastfm?.discoveryAutoRefreshHours, 10);
+  const parsed = parseInt(String(settings.integrations?.lastfm?.discoveryAutoRefreshHours), 10);
   return [24, 168, 720].includes(parsed) ? parsed : 168;
 };
 

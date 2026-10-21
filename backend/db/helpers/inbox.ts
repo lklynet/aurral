@@ -1,6 +1,62 @@
+import type Database from "better-sqlite3";
 import { db, dbHelpers } from "../../config/db-sqlite.ts";
+import type { InboxItemsRow } from "../rows.ts";
 
-const mapInboxRow = (row) => {
+export interface InboxItem {
+  id: string;
+  userId: number;
+  kind: string;
+  sourceKey: string;
+  title: string;
+  subtitle: string | null;
+  href: string | null;
+  imageUrl: string | null;
+  metadata: Record<string, unknown>;
+  isRead: boolean;
+  isSaved: boolean;
+  isDismissed: boolean;
+  isAdded: boolean;
+  dismissedUntil: number | null;
+  expiresAt: number | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface InboxItemInput {
+  id?: string;
+  userId: number;
+  kind: string;
+  sourceKey: string;
+  title: string;
+  subtitle?: string | null;
+  href?: string | null;
+  imageUrl?: string | null;
+  metadata?: Record<string, unknown> | null;
+  expiresAt?: number | null;
+  createdAt?: number;
+}
+
+export interface InboxItemUpdates {
+  isRead?: boolean;
+  isSaved?: boolean;
+  isDismissed?: boolean;
+  isAdded?: boolean;
+  dismissedUntil?: number | null;
+}
+
+export interface InboxOps {
+  getInboxItems: (
+    userId: number,
+    options?: { limit?: number; unreadOnly?: boolean; kinds?: string[] },
+  ) => (InboxItem | null)[];
+  getInboxUnreadCount: (userId: number, kinds?: string[]) => number;
+  getInboxItem: (userId: number, itemId: string) => InboxItem | null;
+  upsertInboxItem: (item: InboxItemInput) => InboxItem | null;
+  updateInboxItem: (userId: number, itemId: string, updates?: InboxItemUpdates) => InboxItem | null;
+  markAllInboxItemsRead: (userId: number) => Database.RunResult;
+}
+
+const mapInboxRow = (row: InboxItemsRow | undefined): InboxItem | null => {
   if (!row) return null;
   return {
     id: row.id,
@@ -23,7 +79,7 @@ const mapInboxRow = (row) => {
   };
 };
 
-const getInboxItemsStmt = db.prepare(`
+const getInboxItemsStmt = db.prepare<[number, number, number], InboxItemsRow>(`
   SELECT *
   FROM inbox_items
   WHERE user_id = ?
@@ -33,7 +89,7 @@ const getInboxItemsStmt = db.prepare(`
   LIMIT ?
 `);
 
-const getUnreadInboxItemsStmt = db.prepare(`
+const getUnreadInboxItemsStmt = db.prepare<[number, number, number], InboxItemsRow>(`
   SELECT *
   FROM inbox_items
   WHERE user_id = ?
@@ -44,7 +100,7 @@ const getUnreadInboxItemsStmt = db.prepare(`
   LIMIT ?
 `);
 
-const getUnreadCountStmt = db.prepare(`
+const getUnreadCountStmt = db.prepare<[number, number], { count: number }>(`
   SELECT COUNT(*) AS count
   FROM inbox_items
   WHERE user_id = ?
@@ -53,18 +109,35 @@ const getUnreadCountStmt = db.prepare(`
     AND (expires_at IS NULL OR expires_at > ?)
 `);
 
-const getItemStmt = db.prepare("SELECT * FROM inbox_items WHERE user_id = ? AND id = ?");
+const getItemStmt = db.prepare<[number, string], InboxItemsRow>(
+  "SELECT * FROM inbox_items WHERE user_id = ? AND id = ?",
+);
 
-const normalizeKinds = (kinds) => [
+const normalizeKinds = (kinds: string[]) => [
   ...new Set(
     (Array.isArray(kinds) ? kinds : []).map((kind) => String(kind || "").trim()).filter(Boolean),
   ),
 ];
 
-const kindClause = (kinds) =>
+const kindClause = (kinds: string[]) =>
   kinds.length ? ` AND kind IN (${kinds.map(() => "?").join(",")})` : "";
 
-const upsertInboxItemStmt = db.prepare(`
+const upsertInboxItemStmt = db.prepare<
+  [
+    string,
+    number,
+    string,
+    string,
+    string,
+    string | null,
+    string | null,
+    string | null,
+    string | null,
+    number | null,
+    number,
+    number,
+  ]
+>(`
   INSERT INTO inbox_items (
     id,
     user_id,
@@ -104,12 +177,12 @@ const upsertInboxItemStmt = db.prepare(`
     updated_at = excluded.updated_at
 `);
 
-export default function register(dbOps) {
+export default function register(dbOps: InboxOps) {
   dbOps.getInboxItems = function (userId, { limit = 50, unreadOnly = false, kinds = [] } = {}) {
     const safeLimit = Math.max(1, Math.min(50, Math.floor(Number(limit) || 50)));
     const selectedKinds = normalizeKinds(kinds);
     if (selectedKinds.length > 0) {
-      const statement = db.prepare(`
+      const statement = db.prepare<[number, number, ...string[], number], InboxItemsRow>(`
         SELECT *
         FROM inbox_items
         WHERE user_id = ?
@@ -131,7 +204,7 @@ export default function register(dbOps) {
   dbOps.getInboxUnreadCount = function (userId, kinds = []) {
     const selectedKinds = normalizeKinds(kinds);
     if (selectedKinds.length > 0) {
-      const statement = db.prepare(`
+      const statement = db.prepare<[number, number, ...string[]], { count: number }>(`
         SELECT COUNT(*) AS count
         FROM inbox_items
         WHERE user_id = ?
@@ -186,7 +259,7 @@ export default function register(dbOps) {
     const nextAdded = updates.isAdded === undefined ? current.is_added : updates.isAdded ? 1 : 0;
     const nextDismissedUntil =
       updates.dismissedUntil === undefined ? current.dismissed_until : updates.dismissedUntil;
-    db.prepare(`
+    db.prepare<[number, number, number, number, number | null, number, number, string]>(`
       UPDATE inbox_items
       SET is_read = ?, is_saved = ?, is_dismissed = ?, is_added = ?,
           dismissed_until = ?, updated_at = ?
@@ -206,7 +279,7 @@ export default function register(dbOps) {
 
   dbOps.markAllInboxItemsRead = function (userId) {
     return db
-      .prepare(`
+      .prepare<[number, number]>(`
       UPDATE inbox_items
       SET is_read = 1, updated_at = ?
       WHERE user_id = ? AND is_dismissed = 0 AND is_read = 0

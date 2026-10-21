@@ -38,7 +38,22 @@ function log(logger, method, message, details = null) {
   fn.call(logger, message, ...(details ? [details] : []));
 }
 
-function newMigrationState(rootPath) {
+interface MigrationItem {
+  status?: string;
+  destination?: string;
+  [field: string]: unknown;
+}
+
+interface MigrationState {
+  version: number;
+  rootPath: string;
+  status: string;
+  items: Record<string, MigrationItem>;
+  updatedAt: number;
+  lastResult?: unknown;
+}
+
+function newMigrationState(rootPath: string): MigrationState {
   return {
     version: AURRAL_DOWNLOAD_FOLDER_MIGRATION_VERSION,
     rootPath,
@@ -48,8 +63,8 @@ function newMigrationState(rootPath) {
   };
 }
 
-function loadMigrationState(rootPath) {
-  const stored = dbOps.getJSONSetting(AURRAL_DOWNLOAD_FOLDER_MIGRATION_SETTING);
+function loadMigrationState(rootPath: string) {
+  const stored = dbOps.getJSONSetting<MigrationState>(AURRAL_DOWNLOAD_FOLDER_MIGRATION_SETTING);
   if (
     !stored ||
     stored.version !== AURRAL_DOWNLOAD_FOLDER_MIGRATION_VERSION ||

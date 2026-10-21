@@ -162,7 +162,7 @@ router.get("/lastfm/link", requireAuth, requireUserAccount, (req, res) => {
   res.json({
     configured: true,
     connected: scrobbleConnectionStore.getConnection(req.user.id, "lastfm") != null,
-    authorizeUrl: `https://www.last.fm/api/auth/?api_key=${encodeURIComponent(getLastfmApiKey())}&cb=${encodeURIComponent(callbackUrl(req, token))}`,
+    authorizeUrl: `https://www.last.fm/api/auth/?api_key=${encodeURIComponent(getLastfmApiKey()!)}&cb=${encodeURIComponent(callbackUrl(req, token))}`,
   });
 });
 

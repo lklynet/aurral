@@ -219,7 +219,7 @@ export const normalizeNewsFeeds = (storedFeeds) => {
         builtIn: Boolean(builtIn),
       };
     })
-    .filter((feed) => {
+    .filter((feed): feed is NonNullable<typeof feed> => {
       if (!feed || seen.has(feed.url)) return false;
       seen.add(feed.url);
       return true;

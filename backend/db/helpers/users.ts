@@ -164,7 +164,7 @@ export const userOps = {
     permissions = null,
     hasLocalPassword = true,
     isProtected = false,
-    subsonicPassword = null,
+    subsonicPassword: string | null = null,
   ) {
     const un = String(username).trim();
     if (!un) return null;

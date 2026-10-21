@@ -1,20 +1,79 @@
+import type Database from "better-sqlite3";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { db } from "../../config/db-sqlite.ts";
+import type {
+  DeezerMbidCacheRow,
+  ImagesCacheRow,
+  MetadataResponseCacheRow,
+  MusicbrainzArtistMbidCacheRow,
+} from "../rows.ts";
 
-const getImageStmt = db.prepare("SELECT * FROM images_cache WHERE mbid = ?");
-const getImageJsonStmt = db.prepare("SELECT images_json FROM images_cache WHERE mbid = ?");
-const upsertImageStmt = db.prepare(
+export interface CachedArtistImage {
+  image: string;
+  front: boolean;
+  types: string[];
+}
+
+export interface CachedImage {
+  mbid: string;
+  imageUrl: string | null;
+  images: CachedArtistImage[] | null;
+  cacheAge: number | null;
+}
+
+interface MetadataResponseEntry {
+  value: unknown;
+  freshUntil: number;
+  staleUntil: number;
+}
+
+export interface CacheOps {
+  getImage: (mbid: string) => CachedImage | null;
+  getImages: (mbids: string[]) => Record<string, Omit<CachedImage, "mbid">>;
+  setImage: (mbid: string, imageUrl: string, images?: CachedArtistImage[] | null) => void;
+  countImages: () => number;
+  deleteImage: (mbid: string) => Database.RunResult;
+  clearImages: () => Database.RunResult;
+  cleanOldImageCache: (maxAgeDays?: number) => Database.RunResult;
+  getDeezerMbidCache: (cacheKey: string) => string | null;
+  setDeezerMbidCache: (cacheKey: string, mbid: string) => void;
+  getMusicbrainzArtistMbidCache: (
+    artistNameKey: string,
+  ) => { mbid: string | null; updatedAt: number } | null;
+  setMusicbrainzArtistMbidCache: (
+    artistNameKey: string,
+    mbid?: string | null,
+  ) => { artistNameKey: string; mbid: string | null; updatedAt: number } | null;
+  cleanOldMusicbrainzArtistMbidCache: (maxAgeDays?: number) => Database.RunResult;
+  getMetadataResponse: (cacheKey: string) => MetadataResponseEntry | null;
+  setMetadataResponse: (cacheKey: string, entry: MetadataResponseEntry) => void;
+  deleteMetadataResponse: (cacheKey: string) => Database.RunResult;
+  clearMetadataResponses: () => Database.RunResult;
+  cleanMetadataResponses: (maxEntries: number) => number;
+}
+
+type ImageSummaryRow = Pick<ImagesCacheRow, "mbid" | "image_url" | "images_json" | "cache_age">;
+
+const getImageStmt = db.prepare<[string], ImagesCacheRow>(
+  "SELECT * FROM images_cache WHERE mbid = ?",
+);
+const getImageJsonStmt = db.prepare<[string], Pick<ImagesCacheRow, "images_json">>(
+  "SELECT images_json FROM images_cache WHERE mbid = ?",
+);
+const upsertImageStmt = db.prepare<[string, string, string | null, number, string]>(
   "INSERT OR REPLACE INTO images_cache (mbid, image_url, images_json, cache_age, created_at) VALUES (?, ?, ?, ?, ?)",
 );
-const countImagesStmt = db.prepare("SELECT COUNT(*) as count FROM images_cache");
-const deleteImageStmt = db.prepare("DELETE FROM images_cache WHERE mbid = ?");
-const clearImagesStmt = db.prepare("DELETE FROM images_cache");
-const cleanOldImagesStmt = db.prepare("DELETE FROM images_cache WHERE cache_age < ?");
+const countImagesStmt = db.prepare<[], { count: number }>(
+  "SELECT COUNT(*) as count FROM images_cache",
+);
+const deleteImageStmt = db.prepare<[string]>("DELETE FROM images_cache WHERE mbid = ?");
+const clearImagesStmt = db.prepare<[]>("DELETE FROM images_cache");
+const cleanOldImagesStmt = db.prepare<[number]>("DELETE FROM images_cache WHERE cache_age < ?");
 
 const NOT_FOUND_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const getImagesStmtsByCount = new Map();
+const getImagesStmtsByCount = new Map<number, Database.Statement<string[], ImageSummaryRow>>();
 
-const parseImages = (value) => {
+const parseImages = (value: string | null): CachedArtistImage[] | null => {
   if (!value) return null;
   try {
     const images = JSON.parse(value);
@@ -24,42 +83,47 @@ const parseImages = (value) => {
   }
 };
 
-const serializeImages = (images) => (Array.isArray(images) ? JSON.stringify(images) : null);
+const serializeImages = (images: CachedArtistImage[] | null) =>
+  Array.isArray(images) ? JSON.stringify(images) : null;
 
-const getDeezerMbidCacheStmt = db.prepare("SELECT mbid FROM deezer_mbid_cache WHERE cache_key = ?");
-const setDeezerMbidCacheStmt = db.prepare(
+const getDeezerMbidCacheStmt = db.prepare<[string], Pick<DeezerMbidCacheRow, "mbid">>(
+  "SELECT mbid FROM deezer_mbid_cache WHERE cache_key = ?",
+);
+const setDeezerMbidCacheStmt = db.prepare<[string, string]>(
   "INSERT OR REPLACE INTO deezer_mbid_cache (cache_key, mbid) VALUES (?, ?)",
 );
-const getMusicbrainzArtistMbidCacheStmt = db.prepare(
-  "SELECT mbid, updated_at FROM musicbrainz_artist_mbid_cache WHERE artist_name_key = ?",
-);
-const setMusicbrainzArtistMbidCacheStmt = db.prepare(
+const getMusicbrainzArtistMbidCacheStmt = db.prepare<
+  [string],
+  Pick<MusicbrainzArtistMbidCacheRow, "mbid" | "updated_at">
+>("SELECT mbid, updated_at FROM musicbrainz_artist_mbid_cache WHERE artist_name_key = ?");
+const setMusicbrainzArtistMbidCacheStmt = db.prepare<[string, string | null, number]>(
   "INSERT OR REPLACE INTO musicbrainz_artist_mbid_cache (artist_name_key, mbid, updated_at) VALUES (?, ?, ?)",
 );
-const cleanOldMusicbrainzArtistMbidCacheStmt = db.prepare(
+const cleanOldMusicbrainzArtistMbidCacheStmt = db.prepare<[number]>(
   "DELETE FROM musicbrainz_artist_mbid_cache WHERE updated_at < ?",
 );
 
-const getMetadataResponseStmt = db.prepare(
-  "SELECT response, fresh_until, stale_until FROM metadata_response_cache WHERE cache_key = ?",
-);
-const setMetadataResponseStmt = db.prepare(
+const getMetadataResponseStmt = db.prepare<
+  [string],
+  Pick<MetadataResponseCacheRow, "response" | "fresh_until" | "stale_until">
+>("SELECT response, fresh_until, stale_until FROM metadata_response_cache WHERE cache_key = ?");
+const setMetadataResponseStmt = db.prepare<[string, Buffer, number, number]>(
   "INSERT OR REPLACE INTO metadata_response_cache (cache_key, response, fresh_until, stale_until) VALUES (?, ?, ?, ?)",
 );
-const deleteMetadataResponseStmt = db.prepare(
+const deleteMetadataResponseStmt = db.prepare<[string]>(
   "DELETE FROM metadata_response_cache WHERE cache_key = ?",
 );
-const clearMetadataResponsesStmt = db.prepare("DELETE FROM metadata_response_cache");
-const cleanExpiredMetadataResponsesStmt = db.prepare(
+const clearMetadataResponsesStmt = db.prepare<[]>("DELETE FROM metadata_response_cache");
+const cleanExpiredMetadataResponsesStmt = db.prepare<[number]>(
   "DELETE FROM metadata_response_cache WHERE stale_until < ?",
 );
-const trimMetadataResponsesStmt = db.prepare(
+const trimMetadataResponsesStmt = db.prepare<[number]>(
   `DELETE FROM metadata_response_cache WHERE cache_key IN (
     SELECT cache_key FROM metadata_response_cache ORDER BY stale_until DESC LIMIT -1 OFFSET ?
   )`,
 );
 
-export default function register(dbOps) {
+export default function register(dbOps: CacheOps) {
   dbOps.getImage = function (mbid) {
     const row = getImageStmt.get(mbid);
     if (!row) return null;
@@ -80,14 +144,14 @@ export default function register(dbOps) {
     let stmt = getImagesStmtsByCount.get(mbids.length);
     if (!stmt) {
       const placeholders = mbids.map(() => "?").join(",");
-      stmt = db.prepare(
+      stmt = db.prepare<string[], ImageSummaryRow>(
         `SELECT mbid, image_url, images_json, cache_age FROM images_cache WHERE mbid IN (${placeholders})`,
       );
       getImagesStmtsByCount.set(mbids.length, stmt);
     }
     const rows = stmt.all(...mbids);
     const now = Date.now();
-    const result = {};
+    const result: Record<string, Omit<CachedImage, "mbid">> = {};
     for (const row of rows) {
       if (row.image_url === "NOT_FOUND" && now - row.cache_age > NOT_FOUND_TTL_MS) {
         deleteImageStmt.run(row.mbid);

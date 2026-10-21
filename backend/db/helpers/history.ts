@@ -1,28 +1,75 @@
 import { db, dbHelpers } from "../../config/db-sqlite.ts";
+import type { AurralHistoryRow } from "../rows.ts";
 
-const insertAurralHistoryStmt = db.prepare(`
+export interface AurralHistoryEntry {
+  id: string;
+  kind: string;
+  title: string;
+  subtitle: string | null;
+  status: string;
+  statusLabel: string | null;
+  href: string | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: number;
+}
+
+export interface AurralHistoryInput {
+  id: string;
+  kind?: string;
+  title: string;
+  subtitle?: string | null;
+  status?: string;
+  statusLabel?: string | null;
+  href?: string | null;
+  metadata?: Record<string, unknown> | null;
+  createdAt?: number;
+}
+
+export interface AurralHistoryOps {
+  insertAurralHistory: (entry: AurralHistoryInput) => AurralHistoryInput | null;
+  deleteAurralHistoryById: (id: string) => boolean;
+  getAurralHistoryById: (id: string) => AurralHistoryEntry | null;
+  getAurralHistory: (options?: { since?: number; limit?: number }) => AurralHistoryEntry[];
+  pruneAurralHistory: (options?: { maxAgeMs?: number; maxEntries?: number }) => void;
+}
+
+const insertAurralHistoryStmt = db.prepare<
+  [
+    string,
+    string,
+    string,
+    string | null,
+    string,
+    string | null,
+    string | null,
+    string | null,
+    number,
+  ]
+>(`
   INSERT OR REPLACE INTO aurral_history (
     id, kind, title, subtitle, status, status_label, href, metadata, created_at
   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
-const getAurralHistoryStmt = db.prepare(`
+const getAurralHistoryStmt = db.prepare<[number, number], AurralHistoryRow>(`
   SELECT id, kind, title, subtitle, status, status_label, href, metadata, created_at
   FROM aurral_history
   WHERE created_at >= ?
   ORDER BY created_at DESC
   LIMIT ?
 `);
-const getAurralHistoryByIdStmt = db.prepare(`
+const getAurralHistoryByIdStmt = db.prepare<[string], AurralHistoryRow>(`
   SELECT id, kind, title, subtitle, status, status_label, href, metadata, created_at
   FROM aurral_history
   WHERE id = ?
 `);
-const deleteAurralHistoryByIdStmt = db.prepare("DELETE FROM aurral_history WHERE id = ?");
-const deleteAurralHistoryOlderThanStmt = db.prepare(
+const deleteAurralHistoryByIdStmt = db.prepare<[string]>("DELETE FROM aurral_history WHERE id = ?");
+const deleteAurralHistoryOlderThanStmt = db.prepare<[number]>(
   "DELETE FROM aurral_history WHERE created_at < ?",
 );
-const countAurralHistoryStmt = db.prepare("SELECT COUNT(*) as count FROM aurral_history");
-const deleteOldestAurralHistoryStmt = db.prepare(`
+const countAurralHistoryStmt = db.prepare<[], { count: number }>(
+  "SELECT COUNT(*) as count FROM aurral_history",
+);
+const deleteOldestAurralHistoryStmt = db.prepare<[number]>(`
   DELETE FROM aurral_history
   WHERE id IN (
     SELECT id FROM aurral_history
@@ -31,7 +78,7 @@ const deleteOldestAurralHistoryStmt = db.prepare(`
   )
 `);
 
-export default function register(dbOps) {
+export default function register(dbOps: AurralHistoryOps) {
   dbOps.insertAurralHistory = function (entry) {
     if (!entry?.id || !entry?.title) return null;
     insertAurralHistoryStmt.run(

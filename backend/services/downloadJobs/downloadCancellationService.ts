@@ -22,7 +22,10 @@ import {
 const PIPELINE_QUEUE = "slskd-pipeline";
 
 function captureCancellationWork(key, jobs, payloads) {
-  const previous = dbOps.getJSONSetting(key) || { jobs: [], payloads: [] };
+  const previous = dbOps.getJSONSetting<{ jobs: unknown[]; payloads: unknown[] }>(key) || {
+    jobs: [],
+    payloads: [],
+  };
   const unique = (values) => [
     ...new Map(values.map((value) => [JSON.stringify(value), value])).values(),
   ];

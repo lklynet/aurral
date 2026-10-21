@@ -1,14 +1,77 @@
+import type Database from "better-sqlite3";
 import { db, dbHelpers } from "../../config/db-sqlite.ts";
+import type { DiscoveryCacheRow } from "../rows.ts";
 
-const getDiscoveryCacheStmt = db.prepare(
-  "SELECT value, last_updated FROM discovery_cache WHERE key = ?",
-);
-const upsertDiscoveryCacheStmt = db.prepare(
+export interface DiscoveryMetadata {
+  recommendationQuality?: string | null;
+  isEnriching?: boolean;
+  discoveryRunId?: string | null;
+  enrichmentStartedAt?: string | null;
+  enrichmentCompletedAt?: string | null;
+  enrichmentProgressMessage?: string | null;
+  [field: string]: unknown;
+}
+
+export interface DiscoveryBasedOn {
+  id?: string | null;
+  name?: string;
+  artistName?: string;
+  source?: string;
+  profileBucket?: string | null;
+}
+
+export interface DiscoveryCache {
+  recommendations: unknown[];
+  globalTop: unknown[];
+  basedOn: DiscoveryBasedOn[];
+  topTags: unknown[];
+  topGenres: unknown[];
+  provider: string | null;
+  lastUpdated: string | null;
+  metadata: DiscoveryMetadata;
+  recommendationQuality: string | null;
+  isEnriching: boolean;
+  discoveryRunId: string | null;
+  enrichmentStartedAt: string | null;
+  enrichmentCompletedAt: string | null;
+  enrichmentProgressMessage: string | null;
+}
+
+export interface DiscoveryCacheUpdate extends DiscoveryMetadata {
+  recommendations?: unknown[] | null;
+  globalTop?: unknown[] | null;
+  basedOn?: DiscoveryBasedOn[] | null;
+  topTags?: unknown[] | null;
+  topGenres?: unknown[] | null;
+  provider?: string | null;
+  lastUpdated?: string | null;
+  metadata?: DiscoveryMetadata;
+}
+
+export interface DiscoveryRefreshSource {
+  metadata: DiscoveryMetadata;
+  lastUpdated: string | null;
+}
+
+export interface DiscoveryCacheOps {
+  getDiscoveryRefreshSource: (cacheNamespace?: string | null) => DiscoveryRefreshSource;
+  getDiscoveryCache: (cacheNamespace?: string | null) => DiscoveryCache;
+  updateDiscoveryCache: (discovery: DiscoveryCacheUpdate, cacheNamespace?: string | null) => void;
+  invalidateDiscoveryCache: (cacheNamespace: string) => void;
+  deleteDiscoveryCacheByPrefix: (prefix: string) => Database.RunResult;
+}
+
+const getDiscoveryCacheStmt = db.prepare<
+  [string],
+  Pick<DiscoveryCacheRow, "value" | "last_updated">
+>("SELECT value, last_updated FROM discovery_cache WHERE key = ?");
+const upsertDiscoveryCacheStmt = db.prepare<[string, string | null, string]>(
   "INSERT OR REPLACE INTO discovery_cache (key, value, last_updated) VALUES (?, ?, ?)",
 );
-const getDiscoveryCacheUpdatedAtStmt = db.prepare(
-  "SELECT last_updated FROM discovery_cache WHERE key = ?",
-);
+const getDiscoveryCacheUpdatedAtStmt = db.prepare<
+  [string],
+  Pick<DiscoveryCacheRow, "last_updated">
+>("SELECT last_updated FROM discovery_cache WHERE key = ?");
 const DISCOVERY_METADATA_FIELDS = [
   "recommendationQuality",
   "isEnriching",
@@ -18,7 +81,7 @@ const DISCOVERY_METADATA_FIELDS = [
   "enrichmentProgressMessage",
 ];
 
-const discoveryUserCache = new Map();
+const discoveryUserCache = new Map<string, { at: number; value: DiscoveryCache }>();
 const DISCOVERY_USER_CACHE_TTL_MS = 10_000;
 
 function pruneDiscoveryUserCache() {
@@ -30,22 +93,22 @@ function pruneDiscoveryUserCache() {
   }
 }
 
-function readUpdatedAt(key) {
+function readUpdatedAt(key: string) {
   return getDiscoveryCacheUpdatedAtStmt.get(key)?.last_updated || null;
 }
 
-function readLastUpdated(cacheNamespace, prefix) {
+function readLastUpdated(cacheNamespace: string | null | undefined, prefix: string) {
   return cacheNamespace
     ? getDiscoveryCacheStmt.get(`${prefix}lastUpdated`)?.value ||
         readUpdatedAt(`${prefix}recommendations`)
     : readUpdatedAt(`${prefix}recommendations`) || readUpdatedAt(`${prefix}globalTop`);
 }
 
-function readMetadata(prefix) {
+function readMetadata(prefix: string): DiscoveryMetadata {
   return dbHelpers.parseJSON(getDiscoveryCacheStmt.get(`${prefix}metadata`)?.value) || {};
 }
 
-export default function register(dbOps) {
+export default function register(dbOps: DiscoveryCacheOps) {
   dbOps.getDiscoveryRefreshSource = function (cacheNamespace = null) {
     const prefix = cacheNamespace ? `${cacheNamespace}:` : "";
     return {
@@ -181,6 +244,6 @@ export default function register(dbOps) {
     for (const namespace of discoveryUserCache.keys()) {
       if (`${namespace}:`.startsWith(prefix)) discoveryUserCache.delete(namespace);
     }
-    return db.prepare("DELETE FROM discovery_cache WHERE key LIKE ?").run(`${prefix}%`);
+    return db.prepare<[string]>("DELETE FROM discovery_cache WHERE key LIKE ?").run(`${prefix}%`);
   };
 }

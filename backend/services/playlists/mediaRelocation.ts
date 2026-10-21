@@ -10,6 +10,14 @@ import { isPathInsideRoot, resolveDownloadRoot } from "../downloadPaths.ts";
 import { joinUnderRoot } from "../downloadUtils.ts";
 import { createPlaybackDeletionGuard } from "../playback/playbackFileRetention.ts";
 
+interface PlaylistMediaIntent {
+  sourcePlaylistId: string;
+  from: string;
+  to: string;
+  hash: string;
+  state: string;
+}
+
 async function digest(file) {
   const hash = createHash("sha256");
   for await (const chunk of createReadStream(file)) hash.update(chunk);
@@ -27,7 +35,7 @@ export async function prepareRetainedPlaylistFile({
     return { finalPath: job?.finalPath || null };
   const root = path.resolve(downloadRoot);
   const key = `playlistMediaRelocation:${jobId}`;
-  let intent = dbOps.getJSONSetting(key);
+  let intent = dbOps.getJSONSetting<PlaylistMediaIntent>(key);
   if (!intent || intent.sourcePlaylistId !== sourcePlaylistId) {
     const from = path.resolve(job.finalPath);
     if (

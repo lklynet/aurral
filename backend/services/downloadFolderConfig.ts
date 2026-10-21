@@ -212,7 +212,7 @@ export function validateDownloadFolderPath(
   requestedPath,
   _roots = getFilesystemBrowseRoots(),
   { create = false } = {},
-) {
+): { valid: true; path: string } | { valid: false; error: string } {
   const resolved = normalizeSelectedFolderPath(requestedPath);
   if (!resolved) {
     return {
@@ -238,7 +238,9 @@ export function validateDownloadFolderPath(
   return { valid: true, path: resolved };
 }
 
-export function ensureDownloadFolderPath(requestedPath) {
+export function ensureDownloadFolderPath(
+  requestedPath,
+): { valid: true; path: string; created: boolean } | { valid: false; error: string } {
   const normalized = normalizeSelectedFolderPath(requestedPath);
   if (!normalized) {
     return {
