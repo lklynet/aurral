@@ -1,4 +1,4 @@
-import type { getPlaylistStatusSnapshot } from "../../../backend/services/playlists/playlistStatusSnapshot.ts";
+import type { WebSocketChannelMessage } from "../../../backend/services/websocketService.ts";
 import { getRequestToken } from "./api/core.ts";
 
 function getWsUrl() {
@@ -21,22 +21,7 @@ function getWsUrl() {
   return url.toString();
 }
 
-export type DownloadStatusEntry = { status: string; updatedAt: string; progress?: number };
-
-export type ChannelMessage = { channel: string; timestamp: number } & (
-  | {
-      type: "download_statuses";
-      statuses: Partial<Record<string, DownloadStatusEntry>>;
-      stale: boolean;
-      error: string | null;
-      updatedAt: string | null;
-    }
-  | { type: "library_scan_completed" }
-  | { type: "release_metadata_refreshed" }
-  | { type: "playlist_status"; status: ReturnType<typeof getPlaylistStatusSnapshot> }
-  | { type: "discovery_update" }
-);
-type ChannelListener = (message: ChannelMessage) => void;
+type ChannelListener = (message: WebSocketChannelMessage) => void;
 type StatusListener = (isConnected: boolean) => void;
 
 const OPEN = WebSocket.OPEN;

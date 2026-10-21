@@ -14,7 +14,7 @@ interface DeemixUser {
 interface DeemixConnectResponse {
   autologin?: boolean;
   deezerAvailable?: boolean;
-  singleUser?: { arl?: string };
+  singleUser?: { arl?: string | null };
   update?: { deemixVersion?: string };
   currentUser?: DeemixUser;
 }

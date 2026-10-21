@@ -4,11 +4,11 @@ import {
   subscribeToChannel,
   subscribeToStatus,
 } from "../utils/webSocketConnection.ts";
-import type { ChannelMessage } from "../utils/webSocketConnection.ts";
+import type { WebSocketChannelMessage } from "../../../backend/services/websocketService.ts";
 
 export function useWebSocketChannel(
   channel: string,
-  onMessage: (message: ChannelMessage) => void,
+  onMessage: (message: WebSocketChannelMessage) => void,
   options: { enabled?: boolean } = {},
 ) {
   const { enabled = true } = options;
@@ -23,7 +23,7 @@ export function useWebSocketChannel(
     }
 
     const unsubscribeStatus = subscribeToStatus(setIsConnected);
-    const unsubscribeChannel = subscribeToChannel(channel, (message: ChannelMessage) => {
+    const unsubscribeChannel = subscribeToChannel(channel, (message: WebSocketChannelMessage) => {
       onMessageRef.current?.(message);
     });
 

@@ -18,7 +18,7 @@ export const MAX_TOP_TRACKS = 50;
 
 type MonitoredRelease = ReturnType<typeof toNormalizedArtistAlbum>;
 
-type MonitorRules = {
+export type MonitorRules = {
   catalog: "none" | "all" | "since" | "latest";
   sinceYear: number | null;
   latestCount: number;
@@ -28,10 +28,6 @@ type MonitorRules = {
   edition: "standard" | "expanded";
   topTracks: number;
 };
-
-type MonitorRulesResult =
-  | { rules: MonitorRules; error?: undefined; statusCode?: undefined; code?: undefined }
-  | { rules?: undefined; error: string; statusCode: number; code: string };
 
 type StoredArtistMonitoring = {
   default?: unknown;
@@ -65,7 +61,23 @@ export const MONITORED_AURRAL_ALBUM_CONDITION = `
 
 export const monitoredTrackCondition = (trackAlias: string) => `${trackAlias}.monitored = 1`;
 
-const invalidRules = (message: string) => ({
+type InvalidRulesMessage =
+  | "Monitoring rules must be an object"
+  | "Choose None, Everything, Since a year, or Latest for the back catalogue"
+  | `Choose a year between 1900 and ${number}`
+  | `Latest must be between 1 and ${number} releases`
+  | "New releases must be on or off"
+  | "Choose at least one of Album, EP, or Single"
+  | "Unknown release type"
+  | "Choose Standard or Expanded for the edition"
+  | `Top tracks must be between 0 and ${number}`
+  | "Choose a back catalogue, new releases, or top tracks to monitor";
+
+type MonitorRulesResult =
+  | { rules: MonitorRules; error?: undefined; statusCode?: undefined; code?: undefined }
+  | { rules?: undefined; error: InvalidRulesMessage; statusCode: number; code: string };
+
+const invalidRules = (message: InvalidRulesMessage) => ({
   error: message,
   statusCode: 400,
   code: "invalid_monitor_rules",

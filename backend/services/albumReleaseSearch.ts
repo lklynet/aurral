@@ -3,7 +3,6 @@ import {
   type SoulseekFolder,
   type SoulseekSearchItem,
 } from "./downloadJobs/trackSearchQueries.ts";
-import type { PlaylistDownloadJobsRow } from "../db/rows.ts";
 import { getFileExtension, getPathParts } from "./trackMatching/candidateNormalizer.ts";
 import {
   MATCH_POLICY,
@@ -11,7 +10,12 @@ import {
   parseListingTitle,
 } from "./trackMatching/nativeMatcher.ts";
 import { getAdvertisedQualityRank, isAdvertisedQualityEligible } from "./qualityProfileModel.ts";
-import { manifestIndexFor, mapRequest } from "./releaseManifest.ts";
+import {
+  manifestIndexFor,
+  mapRequest,
+  type ReleaseManifest,
+  type ReleaseManifestTrack,
+} from "./releaseManifest.ts";
 import { judgeRelease, releaseHolds } from "./trackMatching/releaseJudge.ts";
 import {
   coreAlbumTitle,
@@ -34,13 +38,15 @@ const AUDIO_EXTENSIONS = new Set([
 ]);
 const MAX_FOLDER_CANDIDATES = 3;
 
-type ReleaseManifest = {
-  title: string;
-  compilation: boolean;
-  artistNames: string[];
-  tracks: { artists?: string[]; artistAliases?: string[] }[];
+type AlbumJob = {
+  id: string;
+  trackName?: string | null;
+  trackMbid?: string | null;
+  recordingMbid?: string | null;
+  recordingMbidAliases?: string[] | null;
+  trackNumber?: number | null;
+  discNumber?: number | null;
 };
-type AlbumJob = Pick<PlaylistDownloadJobsRow, "id">;
 type SoulseekAudioFolder = ReturnType<typeof groupSoulseekSearchResults>[number];
 type FolderOption = {
   group: SoulseekAudioFolder;
@@ -54,7 +60,7 @@ function requestedArtistNames(manifest: ReleaseManifest) {
     ...new Set(
       [
         ...(manifest.artistNames || []),
-        ...manifest.tracks.flatMap((track) => [
+        ...manifest.tracks.flatMap((track: ReleaseManifestTrack) => [
           ...(track.artists || []),
           ...(track.artistAliases || []),
         ]),
@@ -188,7 +194,7 @@ export function soulseekReleaseCopies(
   if (index == null) return new Set();
   return new Set(
     buildSoulseekReleaseFolders(results, manifest)
-      .filter(({ listing }) => releaseHolds(manifest, listing, index))
+      .filter(({ listing }) => releaseHolds(manifest!, listing, index))
       .flatMap(({ group, listing }) => listing.files.map((file) => `${group.user}\0${file.path}`)),
   );
 }

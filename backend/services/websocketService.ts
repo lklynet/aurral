@@ -14,7 +14,7 @@ import {
 import type { getPlaylistStatusSnapshot } from "./playlists/playlistStatusSnapshot.ts";
 import type { getDiscoveryMode } from "./discovery/helpers.ts";
 
-type DownloadStatusEntry = { status: string; updatedAt: string; progress?: number };
+export type DownloadStatusEntry = { status: string; updatedAt: string; progress?: number };
 
 type DiscoveryUpdateFields = {
   isUpdating: boolean;
@@ -42,12 +42,17 @@ export type WebSocketChannelPayload =
   | { type: "playlist_status"; status: ReturnType<typeof getPlaylistStatusSnapshot> }
   | ({ type: "discovery_update" } & DiscoveryUpdateFields);
 
+export type WebSocketChannelMessage = {
+  channel: string;
+  timestamp: number;
+} & WebSocketChannelPayload;
+
 export type WebSocketServerMessage =
   | { type: "connected"; clientId: string; subscriptions: string[] }
   | { type: "subscribed"; channels: string[]; subscriptions: string[] }
   | { type: "unsubscribed"; channels: string[]; subscriptions: string[] }
   | { type: "pong"; timestamp: number }
-  | ({ channel: string; timestamp: number } & WebSocketChannelPayload);
+  | WebSocketChannelMessage;
 
 type ClientMessage = { type?: string; channels?: string[] };
 
