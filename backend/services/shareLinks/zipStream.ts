@@ -83,7 +83,7 @@ function localHeader(entry: ZipEntry) {
   header.writeUInt16LE(0, 8);
   header.writeUInt16LE(entry.time, 10);
   header.writeUInt16LE(entry.date, 12);
-  header.writeUInt32LE(entry.crc, 14);
+  header.writeUInt32LE(entry.crc!, 14);
   header.writeUInt32LE(entry.localZip64 ? MAX32 : entry.size, 18);
   header.writeUInt32LE(entry.localZip64 ? MAX32 : entry.size, 22);
   header.writeUInt16LE(entry.name.length, 26);
@@ -109,7 +109,7 @@ function centralHeader(entry: ZipEntry) {
   header.writeUInt16LE(0, 10);
   header.writeUInt16LE(entry.time, 12);
   header.writeUInt16LE(entry.date, 14);
-  header.writeUInt32LE(entry.crc, 16);
+  header.writeUInt32LE(entry.crc!, 16);
   header.writeUInt32LE(entry.centralZip64 ? MAX32 : entry.size, 20);
   header.writeUInt32LE(entry.centralZip64 ? MAX32 : entry.size, 24);
   header.writeUInt16LE(entry.name.length, 28);

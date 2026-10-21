@@ -146,7 +146,7 @@ const LINKED_ARTIST_PROVIDERS = {
   "discogs.com": "discogs",
 };
 
-export function getLinkedArtistProviderIds(links: RawLink[] = []) {
+export function getLinkedArtistProviderIds(links: (RawLink | null | undefined)[] = []) {
   const providerIds = [];
   for (const link of normalizeArray(links)) {
     try {
@@ -161,7 +161,7 @@ export function getLinkedArtistProviderIds(links: RawLink[] = []) {
   return [...new Set(providerIds)];
 }
 
-export function getLinkedDeezerArtistId(links: RawLink[] = []) {
+export function getLinkedDeezerArtistId(links: (RawLink | null | undefined)[] = []) {
   const providerId = getLinkedArtistProviderIds(links).find((id) => id.endsWith("@deezer"));
   return providerId ? providerId.split("@")[0] : null;
 }

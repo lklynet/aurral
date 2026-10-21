@@ -35,5 +35,5 @@ export const formatGap = (ms: number) => {
 };
 
 // Above zero when the left copy is better: lossless first, then bitrate.
-export const compareQuality = (left, right) =>
+export const compareQuality = (left: Recording, right: Recording) =>
   Number(left.lossless) - Number(right.lossless) || left.bitrate - right.bitrate;

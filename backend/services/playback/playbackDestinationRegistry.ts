@@ -2,16 +2,11 @@ import {
   assertPlaybackDestination,
   isRetryablePlaybackError,
   playbackOperationFailure,
+  type PlaybackDestination,
+  type PlaybackResultOperation,
 } from "./playbackDestination.ts";
 
 const DELETE_OPERATIONS = new Set(["deletePlaylist", "deleteEntityPlaylists"]);
-
-type PlaybackDestination = {
-  key: string;
-  name: string;
-  isConfigured(): boolean;
-  updateConfig(config: unknown): void;
-};
 
 export class PlaybackDestinationRegistry {
   declare destinations: PlaybackDestination[];
@@ -39,11 +34,11 @@ export class PlaybackDestinationRegistry {
     }
   }
 
-  async run(operation: string, ...args: unknown[]) {
+  async run(operation: PlaybackResultOperation, ...args: unknown[]) {
     return this.runOn(null, operation, ...args);
   }
 
-  async runOn(keys: string[] | null, operation: string, ...args: unknown[]) {
+  async runOn(keys: string[] | null, operation: PlaybackResultOperation, ...args: unknown[]) {
     return Promise.all(
       this.destinations
         .filter(

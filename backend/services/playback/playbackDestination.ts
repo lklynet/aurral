@@ -8,7 +8,30 @@ const REQUIRED_METHODS = [
   "deleteEntityPlaylists",
   "getPointerEntityIds",
   "requestScan",
-];
+] as const;
+
+type PlaybackOperation = (typeof REQUIRED_METHODS)[number] | "getReferencedPaths";
+
+export type PlaybackResultOperation = Exclude<PlaybackOperation, "getPointerEntityIds">;
+
+type PlaybackOperationResult = {
+  ok: boolean;
+  pending?: boolean;
+  deferred?: boolean;
+  paths?: string[];
+  error?: { code: string; message: string; retryable: boolean };
+};
+
+export type PlaybackDestination = {
+  key: string;
+  name: string;
+  isConfigured(): boolean;
+  updateConfig(config: unknown): void;
+  getPointerEntityIds(): unknown;
+} & Record<
+  PlaybackResultOperation,
+  (...args: unknown[]) => PlaybackOperationResult | Promise<PlaybackOperationResult>
+>;
 
 const REJECTED_HTTP_STATUSES = new Set([400, 401, 403]);
 const REJECTED_SUBSONIC_CODES = new Set([10, 40, 41, 50]);
@@ -152,7 +175,9 @@ export function playbackOperationFailure({
   });
 }
 
-export function assertPlaybackDestination(destination) {
+export function assertPlaybackDestination<T extends Partial<Record<PlaybackOperation, unknown>>>(
+  destination: T,
+): T {
   if (!destination || (typeof destination !== "object" && typeof destination !== "function")) {
     throw new TypeError("PlaybackDestination must be an object");
   }

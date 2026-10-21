@@ -1,8 +1,12 @@
 import path from "node:path";
 
+type PlaylistUsagePage<T> = { items: T[] | undefined; total?: number | null };
+
 // Deletion checks must not turn malformed or truncated responses into "unused".
-export async function readPlaylistPages(fetchPage) {
-  const result = [];
+export async function readPlaylistPages<T>(
+  fetchPage: (start: number) => Promise<PlaylistUsagePage<T>>,
+): Promise<T[]> {
+  const result: T[] = [];
   let previousPage: string | null = null;
   for (let page = 0; page < 10_000; page += 1) {
     const { items, total } = await fetchPage(result.length);

@@ -4,6 +4,9 @@ import { readPlaylistPages, requirePlaylistPath } from "./playback/playlistUsage
 const CLIENT_NAME = "Aurral";
 const CLIENT_VERSION = "1.0.0";
 const JELLYFIN_TIMEOUT_MS = 30_000;
+
+type JellyfinItemsPage<T> = { Items?: T[]; TotalRecordCount?: number };
+
 const NON_MUSIC_COLLECTION_TYPES = new Set([
   "movies",
   "tvshows",
@@ -82,7 +85,7 @@ export class JellyfinClient {
     const paths = new Set();
     for (const user of users) {
       const playlists = await readPlaylistPages(async (startIndex: number) => {
-        const page = await this.request("GET", "/Items", {
+        const page: JellyfinItemsPage<{ Id?: string }> = await this.request("GET", "/Items", {
           params: {
             userId: user.Id,
             recursive: true,
@@ -99,15 +102,19 @@ export class JellyfinClient {
         const id = String(playlist.Id);
         if (excludedIds.has(id)) continue;
         const entries = await readPlaylistPages(async (startIndex: number) => {
-          const page = await this.request("GET", `/Playlists/${encodeURIComponent(id)}/Items`, {
-            params: {
-              userId: user.Id,
-              startIndex,
-              limit: 200,
-              fields: "Path",
-              enableImages: false,
+          const page: JellyfinItemsPage<{ Type?: string; Path?: string }> = await this.request(
+            "GET",
+            `/Playlists/${encodeURIComponent(id)}/Items`,
+            {
+              params: {
+                userId: user.Id,
+                startIndex,
+                limit: 200,
+                fields: "Path",
+                enableImages: false,
+              },
             },
-          });
+          );
           return { items: page?.Items, total: page?.TotalRecordCount };
         });
         for (const entry of entries) {

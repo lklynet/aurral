@@ -14,6 +14,11 @@ const MUSIC_SCANNER = "Plex Music";
 const TRACK_TYPE = 10; // Plex metadata type for audio tracks
 const READ_TIMEOUT_MS = 30_000;
 
+type PlexMetadata = { ratingKey?: string | number; Media?: { Part?: { file?: string }[] }[] };
+type PlexContainerPage = {
+  MediaContainer?: { Metadata?: PlexMetadata[]; size?: number; totalSize?: number };
+};
+
 const xmlParser = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: "",
@@ -411,7 +416,7 @@ export class PlexClient {
   async getPlaylistTrackPaths(excludedIds = new Set()) {
     const read = (endpoint, params = {}) =>
       readPlaylistPages(async (start) => {
-        const data = await this.request(endpoint, {
+        const data: PlexContainerPage = await this.request(endpoint, {
           timeout: 30_000,
           params: {
             ...params,

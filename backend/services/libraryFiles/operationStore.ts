@@ -224,7 +224,7 @@ export function listLibraryFileOperationItems(
      WHERE operation_id = ? ${filter}
      ORDER BY position LIMIT ? OFFSET ?`,
     )
-    .all(Number(id), ...(filter ? statuses : []), Number(limit), Number(offset))
+    .all(Number(id), ...(filter ? statuses! : []), Number(limit), Number(offset))
     .map(toItem);
 }
 

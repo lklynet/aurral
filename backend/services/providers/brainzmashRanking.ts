@@ -17,6 +17,7 @@ type ArtistCandidate = {
 };
 
 type AlbumCandidate = {
+  id?: string;
   title?: unknown;
   artistName?: unknown;
   artistId?: unknown;
@@ -27,7 +28,7 @@ type AlbumCandidate = {
   score?: unknown;
 };
 
-const UNDECOMPOSED_LETTERS: Record<string, string> = {
+const UNDECOMPOSED_LETTERS = {
   ø: "o",
   Ø: "O",
   æ: "ae",
@@ -44,14 +45,17 @@ const UNDECOMPOSED_LETTERS: Record<string, string> = {
   Þ: "TH",
   ß: "ss",
   ẞ: "SS",
-};
+} satisfies Record<string, string>;
 
 export function foldDiacritics(value: unknown) {
   return String(value || "")
     .normalize("NFD")
     .replace(/(\p{Script=Latin})\p{M}+/gu, "$1")
     .normalize("NFC")
-    .replace(/[øØæÆœŒđĐðÐłŁþÞßẞ]/g, (letter) => UNDECOMPOSED_LETTERS[letter]);
+    .replace(
+      /[øØæÆœŒđĐðÐłŁþÞßẞ]/g,
+      (letter) => UNDECOMPOSED_LETTERS[letter as keyof typeof UNDECOMPOSED_LETTERS],
+    );
 }
 
 function normalizeText(value: unknown) {
@@ -231,7 +235,10 @@ export function artistNamesMatch(left: unknown, right: unknown) {
   return Boolean(a) && a === b;
 }
 
-export function rankArtistCandidates(query: unknown, candidates: ArtistCandidate[] = []) {
+export function rankArtistCandidates<T extends ArtistCandidate>(
+  query: unknown,
+  candidates: T[] = [],
+): T[] {
   const normalizedQuery = normalizeText(query);
   return [...candidates].sort((left, right) => {
     const leftName = String(left?.name || "").trim();
@@ -266,16 +273,16 @@ export function rankArtistCandidates(query: unknown, candidates: ArtistCandidate
   });
 }
 
-export function rankAlbumCandidates(
+export function rankAlbumCandidates<T extends AlbumCandidate>(
   albumTitle: unknown,
-  candidates: AlbumCandidate[] = [],
+  candidates: T[] = [],
   { artistName = "", releaseYear = null }: { artistName?: unknown; releaseYear?: unknown } = {},
-) {
+): T[] {
   const normalizedArtist = normalizeText(artistName);
   const targetYear = getYear(releaseYear);
   // A free-text search such as "Fleetwood Mac Rumours" names the artist and
   // the title together.
-  const titleScore = (candidate: AlbumCandidate) =>
+  const titleScore = (candidate: T) =>
     Math.max(
       scoreTextMatch(candidate?.title, albumTitle),
       normalizedArtist
