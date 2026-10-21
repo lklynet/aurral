@@ -230,7 +230,7 @@ const touchCacheEntry = (imagePath: string) => {
 const hashValue = (value: string) =>
   crypto.createHash("sha256").update(String(value)).digest("hex");
 
-const normalizeImageProfile = (): "library" => "library";
+const normalizeImageProfile: (profile?: unknown) => "library" = () => "library";
 
 const buildImageCacheKey = (sourceUrl: string, profile = "library") =>
   hashValue(`${normalizeImageProfile(profile)}:${sourceUrl}`);
@@ -420,14 +420,20 @@ const writeCacheEntry = async (
   return entry;
 };
 
-const shouldNormalizeCachedEntry = (entry: CachedImageEntry | null) => {
+type CachedImageEntryWithContentType = CachedImageEntry & {
+  meta: StoredCachedImageMeta & { contentType: string };
+};
+
+const shouldNormalizeCachedEntry = (
+  entry: CachedImageEntry | null,
+): entry is CachedImageEntryWithContentType => {
   if (!entry?.imagePath || !entry?.meta?.contentType) return false;
   if (!OPTIMIZABLE_CONTENT_TYPES.has(entry.meta.contentType)) return false;
   const profile = IMAGE_PROFILES[normalizeImageProfile(entry.meta.profile)];
   return entry.meta.contentType !== "image/webp" || Number(entry.meta.size || 0) > profile.maxBytes;
 };
 
-export const inspectImageBuffer = async (buffer: Buffer, contentType: string) => {
+export const inspectImageBuffer = async (buffer: Uint8Array, contentType: string) => {
   const expectedFormats = IMAGE_FORMATS_BY_CONTENT_TYPE[contentType];
   if (!expectedFormats) {
     throw new Error("Unsupported image content type");
@@ -449,8 +455,8 @@ export const inspectImageBuffer = async (buffer: Buffer, contentType: string) =>
   return metadata;
 };
 
-export const optimizeImageBuffer = async (
-  buffer: Buffer,
+export const optimizeImageBuffer = async <B extends Uint8Array>(
+  buffer: B,
   contentType: string,
   imageProfile = "library",
 ) => {
@@ -485,7 +491,7 @@ const normalizeCachedEntryIfNeeded = async (entry: CachedImageEntry) => {
   return runImageWork(`normalize:${entry.cacheKey}`, () => normalizeCachedEntry(entry));
 };
 
-const normalizeCachedEntry = async (entry: CachedImageEntry) => {
+const normalizeCachedEntry = async (entry: CachedImageEntryWithContentType) => {
   let buffer = null;
   try {
     buffer = await fs.promises.readFile(entry.imagePath);
@@ -692,7 +698,7 @@ export const buildImageProxyUrl = (sourceUrl: string | null | undefined) => {
   return buildStableImageProxyUrl(sourceUrl);
 };
 
-export const buildStableImageProxyUrl = (sourceUrl: string | null | undefined) => {
+export const buildStableImageProxyUrl = (sourceUrl: string | null | undefined): string | null => {
   const normalized = normalizeKnownImageUrl(sourceUrl);
   if (!normalized) return null;
 

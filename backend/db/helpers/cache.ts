@@ -9,7 +9,7 @@ import type {
 } from "../rows.ts";
 
 export interface CachedArtistImage {
-  image: string;
+  image: string | null;
   front: boolean;
   types: string[];
 }
@@ -30,7 +30,7 @@ interface MetadataResponseEntry {
 export interface CacheOps {
   getImage: (mbid: string) => CachedImage | null;
   getImages: (mbids: string[]) => Record<string, Omit<CachedImage, "mbid">>;
-  setImage: (mbid: string, imageUrl: string, images?: CachedArtistImage[] | null) => void;
+  setImage: (mbid: string, imageUrl: string | null, images?: CachedArtistImage[] | null) => void;
   countImages: () => number;
   deleteImage: (mbid: string) => Database.RunResult;
   clearImages: () => Database.RunResult;
@@ -61,7 +61,7 @@ const getImageStmt = db.prepare<[string], CachedImageRow>(
 const getImageJsonStmt = db.prepare<[string], Pick<ImagesCacheRow, "images_json">>(
   "SELECT images_json FROM images_cache WHERE mbid = ?",
 );
-const upsertImageStmt = db.prepare<[string, string, string | null, number, string]>(
+const upsertImageStmt = db.prepare<[string, string | null, string | null, number, string]>(
   "INSERT OR REPLACE INTO images_cache (mbid, image_url, images_json, cache_age, created_at) VALUES (?, ?, ?, ?, ?)",
 );
 const countImagesStmt = db.prepare<[], { count: number }>(

@@ -46,7 +46,7 @@ const list = (value: unknown) =>
     .map(text)
     .filter(Boolean);
 
-const FIELDS: Record<string, TagFieldSpec> = {
+const FIELDS = {
   title: {
     read: (tag) => text(tag.title),
     write: (tag, value: string) => {
@@ -135,7 +135,7 @@ const FIELDS: Record<string, TagFieldSpec> = {
       tag.musicBrainzTrackId = value;
     },
   },
-};
+} satisfies Record<string, TagFieldSpec>;
 
 export const AUDIO_TAG_FIELDS = Object.keys(FIELDS);
 

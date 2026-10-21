@@ -2,22 +2,35 @@ import { fork, type ChildProcess } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import v8 from "node:v8";
 import { ISOLATED_WORKER_GROUPS } from "./backgroundWorkerQueues.ts";
+import type { getHonkerWorkerStatuses } from "./honkerWorkerRuntime.ts";
 
-interface WorkerMessage {
-  type?: string;
-  queue?: string;
-  jobId?: number;
-  payload?: unknown;
-  requestId?: number;
-  method?: string;
-  args?: unknown[];
-  timeoutMs?: number;
-  error?: string;
-  result?: unknown;
-  workers?: unknown[];
-  memory?: { rss: number; heapUsed: number };
-  downloadOwnerStatus?: unknown;
-}
+type HonkerWorkerStatus = ReturnType<typeof getHonkerWorkerStatuses>[number];
+
+type WorkerMessage =
+  | { type: "ready"; group: string }
+  | {
+      type: "heartbeat";
+      group: string;
+      memory: { rss: number; heapUsed: number };
+      workers: HonkerWorkerStatus[];
+      downloadOwnerStatus?: unknown;
+    }
+  | { type: "idle" }
+  | { type: "busy" }
+  | { type: "job-started"; queue: string; jobId: number; payload: string | null }
+  | { type: "job-finished"; queue: string; jobId: number }
+  | { type: "queue-wake"; queue: string }
+  | { type: "cache-invalidate"; cache: "playlists" | "lidarr-artists" | "news" }
+  | { type: "websocket-broadcast"; channel: string; data: unknown; userId: number | null }
+  | {
+      type: "download-owner-client-request";
+      requestId: number;
+      method: string;
+      args: unknown[];
+      timeoutMs: number;
+    }
+  | { type: "download-owner-response"; requestId: number; result?: unknown; error?: undefined }
+  | { type: "download-owner-response"; requestId: number; error: string; result?: undefined };
 
 const ENTRY = fileURLToPath(new URL("./backgroundWorkerProcess.ts", import.meta.url));
 const RESTART_BASE_MS = 1000;
@@ -193,7 +206,7 @@ export function createBackgroundProcessSupervisor({
     startWatchdog();
     lastSeen.set(group, Date.now());
     const startedAt = Date.now();
-    child.on("message", (message) => {
+    child.on("message", (message: WorkerMessage) => {
       lastSeen.set(group, Date.now());
       if (message?.type === "idle") {
         retire(group, child);

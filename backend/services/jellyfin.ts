@@ -282,7 +282,7 @@ export class JellyfinClient {
    */
   async syncPlaylistItems(
     playlistId: string,
-    itemIds,
+    itemIds: unknown,
     {
       userId = this.userId,
       managedItemIds = [],
@@ -293,7 +293,7 @@ export class JellyfinClient {
       onManagedItemsChange?: (ids: string[]) => void | Promise<void>;
     } = {},
   ) {
-    const validIds = (ids: unknown) =>
+    const validIds = (ids: unknown): ids is string[] =>
       Array.isArray(ids) &&
       ids.every((id) => typeof id === "string" && id.length > 0 && id === id.trim());
     if (!validIds(itemIds) || !validIds(managedItemIds)) {
