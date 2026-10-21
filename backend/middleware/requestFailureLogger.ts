@@ -11,9 +11,11 @@ export function createRequestFailureLogger(log = logger) {
   return (req: Request, res: Response, next: NextFunction) => {
     let responseReason: string | null = null;
     const sendJson = res.json;
-    res.json = function (body: Record<string, unknown> | null | undefined) {
+    res.json = function (body: unknown) {
       if (res.statusCode >= 500 && body && typeof body === "object") {
-        responseReason = logValue(body.message) || logValue(body.error);
+        responseReason =
+          logValue((body as Record<string, unknown>).message) ||
+          logValue((body as Record<string, unknown>).error);
       }
       return sendJson.call(this, body);
     };

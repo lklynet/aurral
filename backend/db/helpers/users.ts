@@ -10,7 +10,7 @@ import {
 } from "../../services/listeningHistory.ts";
 import type { UsersRow } from "../rows.ts";
 
-export type UserPermissions = Record<string, boolean>;
+export type UserPermissions = Record<string, unknown>;
 
 interface UserUpdate {
   username?: string;

@@ -2,7 +2,7 @@ export interface RequestUser {
   id: number;
   username: string;
   role: string;
-  permissions: Record<string, boolean>;
+  permissions: Record<string, unknown>;
   status?: string;
   isProtected?: boolean;
   roleSource?: string;

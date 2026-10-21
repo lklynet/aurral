@@ -980,7 +980,7 @@ export const flowPlaylistConfig = {
     type?: string | null;
     tracks?: unknown[];
     ownerUserId?: number | null;
-    importSource?: string | null;
+    importSource?: ReturnType<typeof normalizeImportSource>;
     description?: string | null;
     recordHistory?: boolean;
   }) {
