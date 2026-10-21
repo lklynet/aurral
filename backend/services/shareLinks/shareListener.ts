@@ -1,6 +1,7 @@
 import express from "express";
 import type { NextFunction, Request, Response } from "express";
 import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { userOps } from "../../db/helpers/index.ts";
 import { streamAudioFile } from "../audioFileStream.ts";
@@ -10,6 +11,8 @@ import { playsInBrowsers, resolveShareTarget } from "./library.ts";
 import { getLiveShareLink, getShareInstance, getShareLinkSchedule } from "./store.ts";
 import { startShareTunnel, stopShareTunnel } from "./tunnel.ts";
 import { planZip, zipStream } from "./zipStream.ts";
+
+declare function clearTimeout(timeout: NodeJS.Timeout | string | number | null | undefined): void;
 
 const MAX_TIMER_MS = 6 * 60 * 60 * 1000;
 
@@ -226,9 +229,12 @@ async function applySchedule() {
   if (count > 0) {
     if (!server) {
       server = await listen();
-      logger.info("share", `Share listener running on 127.0.0.1:${server.address().port}`);
+      logger.info(
+        "share",
+        `Share listener running on 127.0.0.1:${(server.address() as AddressInfo).port}`,
+      );
     }
-    startShareTunnel(server.address().port);
+    startShareTunnel((server.address() as AddressInfo).port);
   } else if (server) {
     const current = server;
     server = null;

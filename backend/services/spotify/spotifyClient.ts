@@ -21,12 +21,19 @@ interface SpotifyTokenPayload {
   expiresIn?: number;
 }
 
-interface SpotifyTrack {
-  type?: string;
+interface SpotifyTrackItem {
+  type: "track";
   name?: string;
   artists?: { name?: string }[];
   album?: { name?: string };
 }
+
+interface SpotifyEpisodeItem {
+  type: "episode";
+  name?: string;
+}
+
+type SpotifyTrack = SpotifyTrackItem | SpotifyEpisodeItem;
 
 interface SpotifyPlaylistItem {
   item?: SpotifyTrack | null;
@@ -149,11 +156,11 @@ const refreshConnection = (
   userId: number,
   refreshToken: string,
   { force = false }: { force?: boolean } = {},
-): Promise<SpotifyConnection | null> =>
+): Promise<SpotifyConnection> =>
   runSharedInflight(tokenRefreshInflight, String(userId), async (signal: AbortSignal) => {
     const latest = spotifyConnectionStore.getConnection(userId);
     if (!force && latest?.expiresAt - TOKEN_REFRESH_BUFFER_MS > Date.now()) {
-      return latest;
+      return latest!;
     }
     const renewed = await renewAccessToken(latest?.refreshToken || refreshToken, signal);
     const current = spotifyConnectionStore.getConnection(userId);
@@ -164,7 +171,7 @@ const refreshConnection = (
     ) {
       return current;
     }
-    return spotifyConnectionStore.updateTokens(userId, renewed);
+    return spotifyConnectionStore.updateTokens(userId, renewed)!;
   });
 
 async function getValidConnection(userId: number) {

@@ -3,6 +3,8 @@ import readline from "node:readline";
 import { logger } from "../logger.ts";
 import { getShareInstance, SHARE_ORIGIN } from "./store.ts";
 
+declare function clearTimeout(timeout: NodeJS.Timeout | string | number | null | undefined): void;
+
 const TUNNEL_URL_PATTERN = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/;
 const RESTART_DELAYS_MS = [5000, 15000, 60000, 300000];
 const REGISTER_DELAYS_MS = [2000, 5000, 10000, 20000, 30000, 60000];

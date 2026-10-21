@@ -45,6 +45,9 @@ type ArtistAlbumResponse = NonNullable<Parameters<typeof toNormalizedArtistAlbum
 type AlbumResponse = NonNullable<Parameters<typeof toNormalizedAlbum>[0]>;
 type ImageResponse = NonNullable<Parameters<typeof toNormalizedArtistImage>[0]>;
 type ArtistDetailResponse = ArtistResponse & { Albums?: ArtistAlbumResponse[] };
+type ArtistDetailAlbum = Omit<ReturnType<typeof toNormalizedArtistAlbum>, "rating"> & {
+  rating: NormalizedAlbum["rating"];
+};
 
 interface AlbumSearchEntry {
   id?: string;
@@ -868,8 +871,8 @@ export async function listArtistAlbums(
     { signal, forceRefresh },
   );
   const artist = toNormalizedArtist(rawArtist);
-  let albums = (Array.isArray(rawArtist?.Albums) ? rawArtist.Albums : []).map((entry) =>
-    toNormalizedArtistAlbum(entry),
+  let albums: ArtistDetailAlbum[] = (Array.isArray(rawArtist?.Albums) ? rawArtist.Albums : []).map(
+    (entry) => toNormalizedArtistAlbum(entry),
   );
   albums = applyReleaseTypeFilter(albums, releaseTypes);
   albums.sort((left, right) => {

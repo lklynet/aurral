@@ -12,11 +12,11 @@ const upsertSettingStmt = db.prepare<[string, string | null]>(
 );
 
 interface StoredSpotifyConnection {
-  accessToken?: string;
-  refreshToken?: string;
-  expiresAt?: number;
-  displayName?: string | null;
-  connectedAt?: number;
+  accessToken?: unknown;
+  refreshToken?: unknown;
+  expiresAt?: unknown;
+  displayName?: unknown;
+  connectedAt?: unknown;
 }
 
 type StoredSpotifyConnections = Record<string, StoredSpotifyConnection>;
@@ -44,7 +44,7 @@ const encryptToken = (value: string) => {
   return encryptWithKey(String(value || ""), key)!;
 };
 
-const decryptToken = (value: string | undefined) => {
+const decryptToken = (value: unknown) => {
   const key = getSettingsEncryptionKey();
   return decryptWithKey(value, key);
 };
