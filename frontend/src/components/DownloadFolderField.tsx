@@ -4,6 +4,18 @@ import DownloadFolderPickerModal from "./DownloadFolderPickerModal";
 
 import { Folder } from "lucide-react";
 import Tooltip from "./Tooltip";
+
+interface DownloadFolderFieldProps {
+  value?: string;
+  onChange?: (path: string) => void;
+  disabled?: boolean;
+  autoApplySuggestion?: boolean;
+  suggestFolder?: boolean;
+  createOnConfirm?: boolean;
+  id?: string;
+  helperText?: string;
+}
+
 export default function DownloadFolderField({
   value = "",
   onChange,
@@ -13,7 +25,7 @@ export default function DownloadFolderField({
   createOnConfirm = true,
   id,
   helperText = "",
-}) {
+}: DownloadFolderFieldProps) {
   const [draft, setDraft] = useState(() => String(value || "").trim());
   const [showPicker, setShowPicker] = useState(false);
   const [prefilled, setPrefilled] = useState(false);
@@ -51,7 +63,7 @@ export default function DownloadFolderField({
     };
   }, [autoApplySuggestion, disabled, prefilled, suggestFolder, value]);
 
-  const commitDraft = (nextValue) => {
+  const commitDraft = (nextValue: string) => {
     const trimmed = String(nextValue ?? draft).trim();
     setDraft(trimmed);
     if (trimmed === String(value || "").trim()) return;

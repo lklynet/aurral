@@ -1,17 +1,32 @@
 import { Play } from "lucide-react";
+import type { CSSProperties, ElementType, ReactNode, Ref } from "react";
 import { CollectionHeader } from "./CollectionHeader";
 
-const range = (count) => Array.from({ length: count }, (_, index) => index);
+type LibraryCardKind = "album" | "artist" | "playlist";
+type RailKind = "album" | "artist" | "news" | "playlist" | "show";
+type SearchResultsMode = "all" | "albums" | "artist-list" | "artists" | "round-artists";
+
+const range = (count: number) => Array.from({ length: count }, (_, index) => index);
 
 const TEXT_WIDTHS = ["72%", "58%", "84%", "64%"];
-const COVER_CLASS = {
+const COVER_CLASS: Partial<Record<LibraryCardKind, string>> = {
   artist: " native-library-card__cover--round",
   playlist: " playlists-page__cover",
 };
-const isTallCard = (index) => index % 3 === 1;
-const textWidth = (index, offset = 0) => TEXT_WIDTHS[(index + offset) % TEXT_WIDTHS.length];
+const isTallCard = (index: number) => index % 3 === 1;
+const textWidth = (index: number, offset = 0) => TEXT_WIDTHS[(index + offset) % TEXT_WIDTHS.length];
 
-export function SkeletonStatus({ label, as: Tag = "div", className = "", children }) {
+export function SkeletonStatus({
+  label,
+  as: Tag = "div",
+  className = "",
+  children,
+}: {
+  label: string;
+  as?: ElementType;
+  className?: string;
+  children?: ReactNode;
+}) {
   return (
     <Tag
       className={`skeleton-status${className ? ` ${className}` : ""}`}
@@ -26,19 +41,33 @@ export function SkeletonStatus({ label, as: Tag = "div", className = "", childre
   );
 }
 
-export function SkeletonText({ width = "60%" }) {
+export function SkeletonText({ width = "60%" }: { width?: string }) {
   return (
-    <span className="skeleton-text" style={{ "--skeleton-width": width }}>
+    <span className="skeleton-text" style={{ "--skeleton-width": width } as CSSProperties}>
       {"\u200b"}
     </span>
   );
 }
 
-export function SkeletonShape({ as: Tag = "span", className = "", children = null }) {
+export function SkeletonShape({
+  as: Tag = "span",
+  className = "",
+  children = null,
+}: {
+  as?: ElementType;
+  className?: string;
+  children?: ReactNode;
+}) {
   return <Tag className={`${className} skeleton-shape`}>{children}</Tag>;
 }
 
-export function SkeletonDiscoverCard({ kind = "artist", index = 0 }) {
+export function SkeletonDiscoverCard({
+  kind = "artist",
+  index = 0,
+}: {
+  kind?: RailKind;
+  index?: number;
+}) {
   const cover = <SkeletonShape as="div" className="artist-discover-card__cover" />;
   return (
     <div className={`artist-discover-card artist-discover-card--${kind}`}>
@@ -66,7 +95,7 @@ export function SkeletonDiscoverCard({ kind = "artist", index = 0 }) {
   );
 }
 
-export function SkeletonShowCard({ index = 0 }) {
+export function SkeletonShowCard({ index = 0 }: { index?: number }) {
   return (
     <article className="artist-show-card--discover">
       <SkeletonShape as="div" className="artist-show-card__image-wrap--discover" />
@@ -94,7 +123,7 @@ export function SkeletonShowCard({ index = 0 }) {
   );
 }
 
-export function SkeletonNewsCard({ compact = false }) {
+export function SkeletonNewsCard({ compact = false }: { compact?: boolean }) {
   return (
     <article className="discover-news-card-shell">
       <div className={`discover-news-card${compact ? " discover-news-card--compact" : ""}`}>
@@ -130,7 +159,13 @@ export function SkeletonNewsCard({ compact = false }) {
   );
 }
 
-export function SkeletonReleaseCard({ index = 0, search = false }) {
+export function SkeletonReleaseCard({
+  index = 0,
+  search = false,
+}: {
+  index?: number;
+  search?: boolean;
+}) {
   const cover = search ? (
     <div className="search-album-results__cover-wrap">
       <SkeletonShape
@@ -163,7 +198,15 @@ export function SkeletonReleaseCard({ index = 0, search = false }) {
   );
 }
 
-export function SkeletonSearchResults({ mode = "all", count = 12, gridColumns }) {
+export function SkeletonSearchResults({
+  mode = "all",
+  count = 12,
+  gridColumns,
+}: {
+  mode?: SearchResultsMode;
+  count?: number;
+  gridColumns?: number;
+}) {
   if (mode === "albums") {
     return (
       <div className="artist-albums-grid">
@@ -262,7 +305,7 @@ export function SkeletonSearchResults({ mode = "all", count = 12, gridColumns })
   );
 }
 
-const RAIL_CARDS = {
+const RAIL_CARDS: Partial<Record<RailKind, (index: number) => ReactNode>> = {
   show: (index) => (
     <div key={index} className="artist-discover-show-rail-card">
       <SkeletonShowCard index={index} />
@@ -275,7 +318,7 @@ const RAIL_CARDS = {
   ),
 };
 
-export function SkeletonRail({ count = 8, kind = "artist" }) {
+export function SkeletonRail({ count = 8, kind = "artist" }: { count?: number; kind?: RailKind }) {
   return (
     <section className="artist-discover-rail">
       <div className="artist-discover-rail__header">
@@ -300,7 +343,13 @@ export function SkeletonRail({ count = 8, kind = "artist" }) {
   );
 }
 
-export function SkeletonLibraryCard({ kind = "album", index = 0 }) {
+export function SkeletonLibraryCard({
+  kind = "album",
+  index = 0,
+}: {
+  kind?: LibraryCardKind;
+  index?: number;
+}) {
   return (
     <article className="native-library-card">
       <div className="native-library-card__cover-wrap">
@@ -337,6 +386,11 @@ export function SkeletonLibraryGrid({
   count = 14,
   kind = "album",
   className = "native-library-grid",
+}: {
+  ref?: Ref<HTMLDivElement>;
+  count?: number;
+  kind?: LibraryCardKind;
+  className?: string;
 }) {
   return (
     <div ref={ref} className={className}>
@@ -347,7 +401,13 @@ export function SkeletonLibraryGrid({
   );
 }
 
-export function SkeletonTrackList({ count = 10, variant = "collection" }) {
+export function SkeletonTrackList({
+  count = 10,
+  variant = "collection",
+}: {
+  count?: number;
+  variant?: "collection" | "release";
+}) {
   const isCollection = variant === "collection";
   return (
     <div className={`native-library-track-list native-library-track-list--${variant}`}>
@@ -403,7 +463,13 @@ export function SkeletonTrackList({ count = 10, variant = "collection" }) {
   );
 }
 
-export function SkeletonCollectionTracks({ count = 10, toolbar = true }) {
+export function SkeletonCollectionTracks({
+  count = 10,
+  toolbar = true,
+}: {
+  count?: number;
+  toolbar?: boolean;
+}) {
   return (
     <div className="collection-tracks">
       {toolbar ? (
@@ -416,7 +482,7 @@ export function SkeletonCollectionTracks({ count = 10, toolbar = true }) {
   );
 }
 
-export function SkeletonPlayButtons({ icons = 2 }) {
+export function SkeletonPlayButtons({ icons = 2 }: { icons?: number }) {
   return (
     <>
       <SkeletonShape className="native-library-page-play">
@@ -435,6 +501,11 @@ export function SkeletonCollectionHeader({
   subtitle = false,
   description = false,
   icons = 2,
+}: {
+  kicker?: boolean;
+  subtitle?: boolean;
+  description?: boolean;
+  icons?: number;
 }) {
   return (
     <CollectionHeader
@@ -458,7 +529,7 @@ export function SkeletonCollectionHeader({
   );
 }
 
-export function SkeletonAlbumDetail({ label }) {
+export function SkeletonAlbumDetail({ label }: { label: string }) {
   return (
     <SkeletonStatus label={label} className="native-library-detail">
       <SkeletonCollectionHeader subtitle icons={4} />
@@ -467,7 +538,7 @@ export function SkeletonAlbumDetail({ label }) {
   );
 }
 
-export function SkeletonLibraryArtist({ label }) {
+export function SkeletonLibraryArtist({ label }: { label: string }) {
   return (
     <SkeletonStatus label={label} className="native-library-detail">
       <div className="native-library-detail__hero native-library-detail__hero--artist">
@@ -505,7 +576,7 @@ export function SkeletonLibraryArtist({ label }) {
   );
 }
 
-export function SkeletonPageTitle({ label }) {
+export function SkeletonPageTitle({ label }: { label: string }) {
   return (
     <SkeletonStatus label={label}>
       <h1 className="page-title">
@@ -515,7 +586,17 @@ export function SkeletonPageTitle({ label }) {
   );
 }
 
-export function SkeletonActivityList({ count = 8, dateGroup = false, hint = false, actions = 1 }) {
+export function SkeletonActivityList({
+  count = 8,
+  dateGroup = false,
+  hint = false,
+  actions = 1,
+}: {
+  count?: number;
+  dateGroup?: boolean;
+  hint?: boolean;
+  actions?: number;
+}) {
   return (
     <div className="activity-list">
       {dateGroup ? (

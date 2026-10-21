@@ -1,3 +1,4 @@
+import type { ComponentProps } from "react";
 import ArtistImage from "./ArtistImage";
 import SearchLibraryCheck from "./SearchLibraryCheck";
 import { ArtistContextMenu } from "./ArtistContextMenu";
@@ -6,6 +7,40 @@ import { getArtistRecordId } from "../utils/artistTaste";
 import Tooltip from "./Tooltip";
 import RecommendationMeta from "./RecommendationMeta";
 import RouteLink from "./RouteLink";
+
+type LifeSpan = { begin?: string | null; end?: string | null; ended?: boolean | null };
+type SearchArtist = {
+  id?: string | number | null;
+  mbid?: string | null;
+  foreignArtistId?: string | null;
+  name?: string | null;
+  image?: string | null;
+  imageUrl?: string | null;
+  artistType?: string | null;
+  type?: string | null;
+  area?: string | null;
+  country?: string | null;
+  disambiguation?: string | null;
+  sourceArtist?: string | null;
+  matchPercent?: number | null;
+  begin?: string | null;
+  end?: string | null;
+  ended?: boolean | null;
+  lifeSpan?: LifeSpan;
+  "life-span"?: LifeSpan;
+};
+type SearchImageMap = Record<string, string | undefined>;
+
+interface SearchArtistResultsProps {
+  artists: SearchArtist[];
+  type: string;
+  artistImages: SearchImageMap;
+  libraryLookup: Record<string, boolean | undefined>;
+  onArtistFeedback?: ComponentProps<typeof ArtistContextMenu>["onFeedback"];
+  artistFeedbackLookup?: Parameters<typeof getArtistFeedbackFlags>[0];
+  variant?: "grid" | "list" | "round" | "square";
+  gridColumns?: number;
+}
 
 function SearchArtistResults({
   artists,
@@ -16,8 +51,8 @@ function SearchArtistResults({
   artistFeedbackLookup,
   variant = "square",
   gridColumns,
-}) {
-  const formatLifeSpan = (artist) => {
+}: SearchArtistResultsProps) {
+  const formatLifeSpan = (artist: SearchArtist) => {
     const begin = artist?.begin || artist?.["life-span"]?.begin || artist?.lifeSpan?.begin;
     if (!begin) return null;
     const ended = artist?.ended ?? artist?.["life-span"]?.ended ?? artist?.lifeSpan?.ended ?? false;
@@ -30,7 +65,7 @@ function SearchArtistResults({
     return `${beginYear} - Present`;
   };
 
-  const normalizeArtistType = (artist) => {
+  const normalizeArtistType = (artist: SearchArtist) => {
     const raw = artist?.artistType || artist?.type || null;
     if (!raw) return null;
     const types = {
@@ -44,13 +79,13 @@ function SearchArtistResults({
     return types[raw] || raw;
   };
 
-  const normalizeArea = (artist) => {
+  const normalizeArea = (artist: SearchArtist) => {
     const value = artist?.area || artist?.area?.name || null;
     if (!value) return null;
     return String(value).trim() || null;
   };
 
-  const artistLinkState = (artist, artistId) => ({
+  const artistLinkState = (artist: SearchArtist, artistId: string | undefined) => ({
     artistName: artist.name,
     artistImage: artistImages[artistId] || artist.image || artist.imageUrl || undefined,
     ...(typeof libraryLookup[artistId] === "boolean" ? { inLibrary: libraryLookup[artistId] } : {}),

@@ -1523,7 +1523,7 @@ function SearchResultsPage() {
           <SkeletonSearchResults
             mode={
               isUnifiedSearch
-                ? { all: "all", artists: "round-artists" }[activeFilter] || "albums"
+                ? ({ all: "all", artists: "round-artists" } as const)[activeFilter] || "albums"
                 : isAlbumSearch
                   ? "albums"
                   : ["recommended", "trending", "tag"].includes(normalizedType) &&

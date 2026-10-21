@@ -1,7 +1,28 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import RouteLink from "./RouteLink";
 import TooltipButton from "./TooltipButton";
+
+interface DiscoverRailProps {
+  title: string;
+  subtitle?: ReactNode;
+  mobileTitle?: string;
+  viewAllTo?: string;
+  afterTitle?: ReactNode;
+  headerActions?: ReactNode;
+  children?: ReactNode;
+  className?: string;
+  headerClassName?: string;
+  style?: CSSProperties;
+  footer?: ReactNode;
+}
 
 export function DiscoverRail({
   title,
@@ -15,8 +36,8 @@ export function DiscoverRail({
   headerClassName = "",
   style,
   footer,
-}) {
-  const scrollRef = useRef(null);
+}: DiscoverRailProps) {
+  const scrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
 
@@ -28,7 +49,7 @@ export function DiscoverRail({
     setCanScrollRight(node.scrollLeft < maxScrollLeft - 2);
   }, []);
 
-  const scrollByAmount = useCallback((direction) => {
+  const scrollByAmount = useCallback((direction: number) => {
     if (!scrollRef.current) return;
     const width = scrollRef.current.clientWidth;
     const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;

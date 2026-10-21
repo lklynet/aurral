@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Eye, MoreVertical, Plus, SlidersHorizontal } from "lucide-react";
 import AddActionButton from "./AddActionButton";
@@ -20,7 +20,20 @@ import {
   isArtistMonitored,
 } from "../utils/artistMonitoring.ts";
 
-const isUnchanged = (state, request) => {
+type MonitoringData = Awaited<ReturnType<typeof getArtistMonitoring>>;
+type MonitoringRequest = Parameters<
+  Parameters<typeof buildArtistMonitoringItems>[0]["onSelect"]
+>[0];
+
+interface UseArtistMonitoringOptions {
+  mbid: string;
+  artistName?: string;
+  canChange?: boolean;
+  canAdd?: boolean;
+  onChanged?: (() => unknown) | null;
+}
+
+const isUnchanged = (state: MonitoringData | null, request: MonitoringRequest) => {
   if (request.monitorOption) return request.monitorOption === getArtistMonitorOption(state);
   if (!state || state.added === false) return request.monitoring.monitored === false;
   const { monitored, useDefault, rules } = request.monitoring;
@@ -28,7 +41,7 @@ const isUnchanged = (state, request) => {
   return useDefault === undefined && rules === undefined;
 };
 
-const optimisticState = (existing, request) => {
+const optimisticState = (existing: MonitoringData | undefined, request: MonitoringRequest) => {
   if (!existing) return existing;
   if (request.monitorOption)
     return { ...existing, added: true, monitorOption: request.monitorOption };
@@ -47,7 +60,7 @@ export function useArtistMonitoring({
   canChange = false,
   canAdd = false,
   onChanged = null,
-}) {
+}: UseArtistMonitoringOptions) {
   const destination = useLibraryDestination();
   const { isArtistDownloading } = useActiveDownloads();
   const { showSuccess, showError } = useToast();
@@ -64,7 +77,7 @@ export function useArtistMonitoring({
   const manager = state?.manager || destination.primary;
   const name = artistName || "this artist";
 
-  const choose = async (request) => {
+  const choose = async (request: MonitoringRequest) => {
     if (pendingRef.current) return false;
     if (isUnchanged(state, request)) return true;
     const queryKey = queryKeys.artistMonitoring(mbid);
@@ -73,7 +86,7 @@ export function useArtistMonitoring({
     setPending(true);
     await queryClient.cancelQueries({ queryKey });
     const previous = queryClient.getQueryData(queryKey);
-    const optimistic = queryClient.setQueryData(queryKey, (existing) =>
+    const optimistic = queryClient.setQueryData<MonitoringData>(queryKey, (existing) =>
       optimisticState(existing, request),
     );
     try {
@@ -144,7 +157,15 @@ export function useArtistMonitoring({
   };
 }
 
-const ButtonContent = ({ icon, label, pending }) => (
+const ButtonContent = ({
+  icon,
+  label,
+  pending,
+}: {
+  icon: ReactNode;
+  label: string;
+  pending: boolean;
+}) => (
   <>
     <span className="btn-add-action__icon">
       {pending ? <DotLoader size="sm" label={null} /> : icon}
@@ -154,7 +175,14 @@ const ButtonContent = ({ icon, label, pending }) => (
   </>
 );
 
-export function ArtistMonitoringButtons({ onCustomizeLidarr = null, ...props }) {
+type ArtistMonitoringButtonsProps = UseArtistMonitoringOptions & {
+  onCustomizeLidarr?: (() => void) | null;
+};
+
+export function ArtistMonitoringButtons({
+  onCustomizeLidarr = null,
+  ...props
+}: ArtistMonitoringButtonsProps) {
   const monitoring = useArtistMonitoring(props);
   const { manager, monitored, reason, monitoringItems, pending, downloading, state } = monitoring;
 

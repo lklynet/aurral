@@ -1,4 +1,5 @@
 import { ChevronRight, ListMusic, Music } from "lucide-react";
+import type { SearchItem } from "./SearchMixedResultList";
 import ArtistImage from "./ArtistImage";
 import SearchLibraryCheck from "./SearchLibraryCheck";
 import { getSearchResultLink } from "../utils/searchNavigation";
@@ -8,14 +9,17 @@ import RouteLink from "./RouteLink";
 import ArtworkImage from "./ArtworkImage";
 import { useThemeDocument } from "../hooks/useThemeDocument.ts";
 
-function getPrimaryLabel(item) {
+type PreviewTrack = { title?: string | null };
+type SearchImageMap = Record<string, string | undefined>;
+
+function getPrimaryLabel(item: SearchItem | null | undefined) {
   if (item?.type === "artist") return item.name || "";
   if (item?.type === "album" || item?.type === "track") return item.title || "";
   if (item?.type === "playlist") return item.name || "";
   return "";
 }
 
-function getMetaLabel(item) {
+function getMetaLabel(item: SearchItem | null | undefined) {
   if (item?.type === "artist") return "Artist";
   if (item?.type === "album") {
     return item.artistName ? `Album · ${item.artistName}` : "Album";
@@ -31,7 +35,7 @@ function getMetaLabel(item) {
   return "";
 }
 
-function getPreviewLabel(item, previewTracks) {
+function getPreviewLabel(item: SearchItem | null | undefined, previewTracks: PreviewTrack[]) {
   const trackTitles = (previewTracks || [])
     .map((track) => track?.title)
     .filter(Boolean)
@@ -45,7 +49,17 @@ function getPreviewLabel(item, previewTracks) {
   return null;
 }
 
-function TopResultArtwork({ item, artistImages, albumCovers, isInLibrary }) {
+function TopResultArtwork({
+  item,
+  artistImages,
+  albumCovers,
+  isInLibrary,
+}: {
+  item: SearchItem;
+  artistImages: SearchImageMap;
+  albumCovers: SearchImageMap;
+  isInLibrary: boolean | undefined;
+}) {
   if (item.type === "artist") {
     const artistId = getArtistRecordId(item);
     return (
@@ -89,7 +103,11 @@ function TopResultArtwork({ item, artistImages, albumCovers, isInLibrary }) {
   );
 }
 
-function getBackdropSrc(item, artistImages, albumCovers) {
+function getBackdropSrc(
+  item: SearchItem,
+  artistImages: SearchImageMap,
+  albumCovers: SearchImageMap,
+) {
   if (item.type === "artist") {
     const artistId = getArtistRecordId(item);
     return artistImages[artistId] || item.image || item.imageUrl || "";
@@ -103,6 +121,16 @@ function getBackdropSrc(item, artistImages, albumCovers) {
   return "";
 }
 
+interface SearchTopArtistCardProps {
+  item?: SearchItem | null;
+  artist?: SearchItem | null;
+  artistImages: SearchImageMap;
+  albumCovers?: SearchImageMap;
+  libraryLookup: Record<string, boolean | undefined>;
+  query?: string;
+  previewTracks?: PreviewTrack[];
+}
+
 function SearchTopArtistCard({
   item,
   artist: legacyArtist,
@@ -111,7 +139,7 @@ function SearchTopArtistCard({
   libraryLookup,
   query = "",
   previewTracks = [],
-}) {
+}: SearchTopArtistCardProps) {
   const { matchArtwork: immersiveMode } = useThemeDocument();
   const result = item || legacyArtist;
   const label = getPrimaryLabel(result);

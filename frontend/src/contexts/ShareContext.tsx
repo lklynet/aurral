@@ -1,11 +1,20 @@
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { ShareModal } from "../components/ShareModal";
+import type { buildShareUrl } from "../utils/shareLink";
 
-const ShareContext = createContext(null);
+type ShareItem = Parameters<typeof buildShareUrl>[0];
+type ShareRequest = { item: ShareItem; label: string | null };
+type ShareContextValue = { openShare: (item: ShareItem, label: string | null) => void };
 
-export function ShareProvider({ children }) {
-  const [request, setRequest] = useState(null);
-  const openShare = useCallback((item, label) => setRequest({ item, label }), []);
+const ShareContext = createContext<ShareContextValue | null>(null);
+
+export function ShareProvider({ children }: { children: ReactNode }) {
+  const [request, setRequest] = useState<ShareRequest | null>(null);
+  const openShare = useCallback(
+    (item: ShareItem, label: string | null) => setRequest({ item, label }),
+    [],
+  );
   const close = useCallback(() => setRequest(null), []);
   const value = useMemo(() => ({ openShare }), [openShare]);
 
