@@ -53,7 +53,7 @@ export function matchesAlbumReleaseTab(album: SearchAlbum | null | undefined, ta
 
 import { getArtistRecordId } from "../utils/artistTaste";
 
-export function dedupeArtists(artists: SearchArtist[]) {
+export function dedupeArtists<T extends SearchArtist>(artists: T[]): T[] {
   const seen = new Set();
   return artists.filter((artist) => {
     const artistId = getArtistRecordId(artist);
@@ -63,7 +63,7 @@ export function dedupeArtists(artists: SearchArtist[]) {
   });
 }
 
-export function dedupeAlbums(albums: SearchAlbum[]) {
+export function dedupeAlbums<T extends SearchAlbum>(albums: T[]): T[] {
   const seen = new Set();
   return albums.filter((album) => {
     if (!album?.id || seen.has(album.id)) return false;

@@ -1,10 +1,5 @@
 import type { ReactNode } from "react";
 
-interface ApiErrorLike {
-  message?: string;
-  response?: { data?: { message?: string; error?: string } };
-}
-
 export const STEPS = ["admin", "lidarr"];
 
 export function OnboardingStep({
@@ -50,10 +45,7 @@ export function OnboardingHint({
 }
 
 export const getApiErrorMessage = (error: unknown, fallback: string) =>
-  (error as ApiErrorLike | null | undefined)?.response?.data?.message ||
-  (error as ApiErrorLike | null | undefined)?.response?.data?.error ||
-  (error as ApiErrorLike | null | undefined)?.message ||
-  fallback;
+  error?.response?.data?.message || error?.response?.data?.error || error?.message || fallback;
 
 export const ONBOARDING_HERO_LOGO_SIZE = 56;
 export const ONBOARDING_COMPACT_LOGO_SIZE = 28;

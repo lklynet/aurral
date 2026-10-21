@@ -7,10 +7,6 @@ import {
 import type { PlaylistStatus } from "./playlistStats.ts";
 import type { PlaylistTrack } from "./trackAvailability.ts";
 
-interface ApiErrorLike {
-  response?: { data?: { message?: string; error?: string } };
-}
-
 interface TrackChange {
   key: number;
   action: "move" | "remove";
@@ -49,10 +45,7 @@ export const trackCountLabel = (count: number) => `${count} track${count === 1 ?
 const stayLabel = (count: number) => (count === 1 ? "It stays" : "They stay");
 
 const errorReason = (error: unknown) => {
-  const reason =
-    (error as ApiErrorLike | null | undefined)?.response?.data?.message ||
-    (error as ApiErrorLike | null | undefined)?.response?.data?.error ||
-    "";
+  const reason = error?.response?.data?.message || error?.response?.data?.error || "";
   return reason && !/[.!?]$/.test(reason) ? `${reason}.` : reason;
 };
 

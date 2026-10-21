@@ -1,4 +1,7 @@
+import type { getPlaylistStatusSnapshot } from "../../../../backend/services/playlists/playlistStatusSnapshot.ts";
 import { formatDateTime } from "../../utils/dateTime.ts";
+
+type PlaylistStatusSnapshot = ReturnType<typeof getPlaylistStatusSnapshot>;
 
 export interface FlowMix {
   discover: number;
@@ -29,14 +32,7 @@ export interface Flow {
   ownerUsername: string | null;
 }
 
-export interface PlaylistStats {
-  total: number;
-  pending: number;
-  downloading: number;
-  blocked: number;
-  done: number;
-  failed: number;
-}
+export type PlaylistStats = PlaylistStatusSnapshot["stats"];
 
 export interface StaticPlaylist {
   id: string;
@@ -50,24 +46,10 @@ export interface StaticPlaylist {
   showTrackAvailability: boolean;
 }
 
-export interface PlaylistStatus {
-  stats?: PlaylistStats;
-  sharedStats?: PlaylistStats;
-  reviewCount?: number;
-  worker?: {
-    running?: boolean;
-    currentJob?: {
-      playlistType?: string;
-      artistName?: string;
-      trackName?: string;
-      progressPct?: number;
-    } | null;
-  };
-  operationQueue?: { processing?: boolean; currentLabel?: string | null };
-  hint?: { phase?: string; message?: string };
-  flows?: Flow[];
-  sharedPlaylists?: StaticPlaylist[];
-}
+export type PlaylistStatus = Omit<PlaylistStatusSnapshot, "flows" | "sharedPlaylists"> & {
+  flows: Flow[];
+  sharedPlaylists: StaticPlaylist[];
+};
 
 export const RELEASE_RADAR_PRESET_ID = "release-radar";
 

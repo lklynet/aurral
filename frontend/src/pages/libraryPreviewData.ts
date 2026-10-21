@@ -96,7 +96,7 @@ const tracks = albums.flatMap((album, index) => {
   const albumTracks = tracksForAlbum(
     {
       ...album,
-      artist: artist.name,
+      artist: artist!.name,
       genres: album.metadata.genres,
     },
     index,
