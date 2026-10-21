@@ -13,7 +13,18 @@ import { implausibleBitrateKbps } from "./candidateNormalizer.ts";
 import type { NameList, ReleaseTrack } from "./semanticPolicy.ts";
 import { UUID_REGEX } from "../../../lib/uuid.ts";
 
-export const MATCH_POLICY = Object.freeze({
+type MatchPolicy = {
+  version: string;
+  maxDurationGapMs: number;
+  selectedDurationGapMs: number;
+  minTitleSimilarity: number;
+  minArtistSimilarity: number;
+  minArtistNonConflictSimilarity: number;
+  selectableScore: number;
+  runnerUpMargin: number;
+};
+
+export const MATCH_POLICY: MatchPolicy = Object.freeze({
   version: "aurral-native-6",
   maxDurationGapMs: 10000,
   selectedDurationGapMs: 2000,
@@ -23,8 +34,6 @@ export const MATCH_POLICY = Object.freeze({
   selectableScore: 0.78,
   runnerUpMargin: 0.05,
 });
-
-type MatchPolicy = typeof MATCH_POLICY;
 
 export function getMatcherStatus() {
   return { available: true, checked: true, policyVersion: MATCH_POLICY.version, error: null };

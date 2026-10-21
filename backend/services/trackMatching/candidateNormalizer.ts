@@ -165,7 +165,9 @@ type NormalizeOptions = {
   knownArtistNames?: string[];
 };
 
-export type CandidateTrack = NonNullable<ReturnType<typeof normalizeCandidate>> & {
+export type CandidateTrack<Raw extends RawCandidate = RawCandidate> = NonNullable<
+  ReturnType<typeof normalizeCandidate<Raw>>
+> & {
   sizeBytes?: number;
 };
 
@@ -251,9 +253,9 @@ function readQuality(raw: RawCandidate, capabilities: Partial<SourceCapabilities
   };
 }
 
-export function normalizeCandidate(
+export function normalizeCandidate<Raw extends RawCandidate = RawCandidate>(
   source: string,
-  raw: RawCandidate = {},
+  raw: Partial<Raw> = {},
   options: NormalizeOptions = {},
 ) {
   const capabilities = options.capabilities || getCapabilities(source);
@@ -275,7 +277,7 @@ export function normalizeCandidate(
   const artists = readArtists(raw, capabilities);
   if (
     filenameArtist &&
-    !artists.some((name) => name.toLowerCase() === filenameArtist.toLowerCase())
+    !artists.some((name) => name!.toLowerCase() === filenameArtist.toLowerCase())
   ) {
     artists.push(filenameArtist);
   }
@@ -318,7 +320,7 @@ export function normalizeCandidate(
 // so numeric artist names ("50 Cent") survive a leading track number.
 export function parseFilenameArtistTitle(
   baseName: string | null | undefined,
-  knownArtistNames: string[] = [],
+  knownArtistNames: (string | null | undefined)[] = [],
 ) {
   const candidates = [String(baseName || "")];
   const stripped = candidates[0].replace(/^\s*\d{1,3}(?:\s*[-._)\]]|\s+)/, "").trim();

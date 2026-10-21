@@ -54,7 +54,8 @@ const VARIANT_PATTERNS = [
 ] as const;
 
 type VariantFlag = (typeof VARIANT_PATTERNS)[number]["value"] | "remix";
-type VariantFlags = Partial<Record<VariantFlag, boolean>>;
+type VariantFlags = Record<Exclude<VariantFlag, "concert" | "rehearsal">, boolean> &
+  Partial<Record<"concert" | "rehearsal", boolean>>;
 
 const NOISE_PATTERNS = [
   { value: "reaction", pattern: /\breaction\b/i },
@@ -229,7 +230,10 @@ const MERGEABLE_VARIANT_KEYS: (keyof VariantProfile)[] = [
   "contentRating",
 ];
 
-export function mergeVariantProfiles(primary: VariantProfile, secondary: VariantProfile | null) {
+export function mergeVariantProfiles(
+  primary: VariantProfile,
+  secondary: Partial<VariantProfile> | null,
+) {
   if (!secondary) return primary;
   const merged = { ...primary };
   for (const key of MERGEABLE_VARIANT_KEYS) {
@@ -238,7 +242,7 @@ export function mergeVariantProfiles(primary: VariantProfile, secondary: Variant
   return merged;
 }
 
-export type NameList = string | (string | null)[] | null | undefined;
+export type NameList = string | (string | null | undefined)[] | null | undefined;
 
 export type ReleaseTrack = { title?: string | null; discNumber?: number | null };
 
@@ -253,7 +257,7 @@ type VariantRequest = {
   artistAliases?: NameList;
   secondaryTypes?: NameList;
   releaseTracks?: ReleaseTrack[] | null;
-  variants?: VariantProfile | null;
+  variants?: Partial<VariantProfile> | null;
 };
 
 type VariantCandidate = {
@@ -264,7 +268,7 @@ type VariantCandidate = {
   artists?: NameList;
   path?: string | null;
   directoryPath?: string | null;
-  variants?: VariantProfile | null;
+  variants?: Partial<VariantProfile> | null;
 };
 
 type RequestedNames = ReturnType<typeof requestedNames>;

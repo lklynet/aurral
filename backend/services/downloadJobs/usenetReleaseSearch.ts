@@ -22,6 +22,7 @@ import {
   checkVariantCompatibility,
   labelContradictions,
   prepareVariantRequest,
+  type ReleaseTrack,
 } from "../trackMatching/semanticPolicy.ts";
 
 const AUDIO_CATEGORY_MIN = 3000;
@@ -48,7 +49,7 @@ export interface UsenetSearchContext {
   albumTrackCount?: number | null;
   compilation?: boolean;
   secondaryTypes?: string[];
-  releaseTracks?: unknown[];
+  releaseTracks?: ReleaseTrack[];
 }
 
 interface UsenetRankOptions {

@@ -288,7 +288,7 @@ export function buildSoulseekCandidates(
       const filePath = String(item?.file || "");
       const baseName = getFileBaseName(filePath);
       const parsed = parseFilenameArtistTitle(baseName, request);
-      const candidate: CandidateTrack | null = normalizeCandidate("soulseek", item, {
+      const candidate: CandidateTrack<SlskdFile> | null = normalizeCandidate("soulseek", item, {
         capabilities: { filename: true },
         parseFilename: false,
       });
