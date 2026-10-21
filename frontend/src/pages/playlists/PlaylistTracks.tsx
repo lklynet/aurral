@@ -18,6 +18,7 @@ import {
   downloadTrackToLibrary,
   fetchLibraryFavorites,
   updateLibraryFavorites,
+  type CustomArtworkResult,
 } from "../../utils/api/endpoints/library.ts";
 import {
   resolveLibraryAlbumPath,
@@ -145,7 +146,7 @@ export function PlaylistTracks({
     });
   };
 
-  const handleArtworkSaved = async (result) => {
+  const handleArtworkSaved = async (result: CustomArtworkResult) => {
     if (artworkEditor) {
       updateQueueArtwork(
         { id: artworkEditor.id },

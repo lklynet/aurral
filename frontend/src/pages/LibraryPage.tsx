@@ -98,6 +98,8 @@ import {
   updateLibraryAlbum,
   updateLibraryFavorites,
   uploadLibraryCustomArtwork,
+  type AurralMonitoringResult,
+  type CustomArtworkResult,
 } from "../utils/api/endpoints/library.ts";
 import { addStaticPlaylistTracks, createStaticPlaylist } from "../utils/api/endpoints/playlists.ts";
 import { buildAuthenticatedApiUrl } from "../utils/api/core.ts";
@@ -928,7 +930,7 @@ function LibraryPage() {
   }, []);
 
   const handleArtworkSaved = useCallback(
-    async (result) => {
+    async (result: CustomArtworkResult) => {
       const editor = artworkEditor;
       if (editor) {
         const artwork = result?.updatedAt
@@ -1436,7 +1438,7 @@ function LibraryPage() {
     [activityQueryKey],
   );
   const updateAlbumMonitoringState = useCallback(
-    (albumId, result) => {
+    (albumId, result: AurralMonitoringResult) => {
       const monitored = result?.monitored === true;
       setLibrary((current) => ({
         ...current,
@@ -1475,7 +1477,8 @@ function LibraryPage() {
     [refreshLibraryActivity, setLibrary],
   );
   const updateTrackMonitoringState = useCallback(
-    (trackId, result) => patchLibraryTrack(trackId, { monitored: result?.monitored !== false }),
+    (trackId, result: AurralMonitoringResult) =>
+      patchLibraryTrack(trackId, { monitored: result?.monitored !== false }),
     [patchLibraryTrack],
   );
   const trackMonitoring = useAurralTrackMonitoring({

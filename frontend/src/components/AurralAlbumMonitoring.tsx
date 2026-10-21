@@ -3,7 +3,11 @@ import { Eye, EyeOff } from "lucide-react";
 
 import { useToast } from "../contexts/ToastContext";
 import { queryClient, queryKeys } from "../queryClient.ts";
-import { getAurralAlbumStatus, setAurralAlbumMonitoring } from "../utils/api/endpoints/library.ts";
+import {
+  getAurralAlbumStatus,
+  setAurralAlbumMonitoring,
+  type AurralMonitoringResult,
+} from "../utils/api/endpoints/library.ts";
 import {
   describeAlbumMonitoringResult,
   getAlbumMonitoredState,
@@ -32,7 +36,7 @@ interface AurralAlbumMonitoringOptions {
   enabled: boolean;
   canChange: boolean;
   hasMissingTracks: boolean;
-  onChanged?: (albumId: AurralAlbumId, result: unknown) => void;
+  onChanged?: (albumId: AurralAlbumId, result: AurralMonitoringResult) => void;
 }
 
 export function useAurralAlbumMonitoring({

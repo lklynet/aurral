@@ -5,6 +5,7 @@ import { useToast } from "../contexts/ToastContext";
 import {
   setAurralTrackKeepFile,
   setAurralTrackMonitoring,
+  type AurralMonitoringResult,
 } from "../utils/api/endpoints/library.ts";
 import {
   describeKeepFileResult,
@@ -46,7 +47,7 @@ const trackTitle = (track: AurralTrackRef | null | undefined) =>
 
 interface AurralTrackMonitoringOptions {
   canChange: boolean;
-  onChanged?: (trackId: AurralTrackId, result: unknown) => void | Promise<void>;
+  onChanged?: (trackId: AurralTrackId, result: AurralMonitoringResult) => void | Promise<void>;
   onKeepFileChanged?: (trackId: AurralTrackId, result: TrackKeepFileResult) => void | Promise<void>;
 }
 
@@ -157,7 +158,7 @@ export function useAurralTrackMonitoring({
         busyLabel="Stopping"
         busy={pending !== null}
         onCancel={() => setConfirming(null)}
-        onConfirm={() => apply(confirming, false)}
+        onConfirm={() => apply(confirming as AurralTrackRef, false)}
       />
     ),
   };

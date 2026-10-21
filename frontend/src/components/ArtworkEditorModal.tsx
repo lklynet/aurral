@@ -5,6 +5,7 @@ import ArtworkImage from "./ArtworkImage.tsx";
 import Tooltip from "./Tooltip.tsx";
 import TooltipButton from "./TooltipButton.tsx";
 import { cacheImageLocally } from "../utils/api/endpoints/images.ts";
+import type { CustomArtworkResult } from "../utils/api/endpoints/library.ts";
 
 const isWebUrl = (value: string) => {
   try {
@@ -20,10 +21,10 @@ interface ArtworkEditorModalProps {
   currentArtwork?: string | null;
   hasCustomArtwork?: boolean;
   onClose: () => void;
-  onUpload: (file: File) => Promise<unknown>;
-  onSaveUrl: (url: string) => Promise<unknown>;
-  onRemove: () => Promise<unknown>;
-  onSaved?: (result: unknown) => void | Promise<void>;
+  onUpload: (file: File) => Promise<CustomArtworkResult>;
+  onSaveUrl: (url: string) => Promise<CustomArtworkResult>;
+  onRemove: () => Promise<CustomArtworkResult>;
+  onSaved?: (result: CustomArtworkResult) => void | Promise<void>;
 }
 
 export default function ArtworkEditorModal({
@@ -122,7 +123,7 @@ export default function ArtworkEditorModal({
     setBusy(true);
     setError("");
     try {
-      const result = source === "url" ? await onSaveUrl(url.trim()) : await onUpload(file);
+      const result = source === "url" ? await onSaveUrl(url.trim()) : await onUpload(file as File);
       await onSaved?.(result);
       onClose();
     } catch (requestError) {

@@ -129,7 +129,7 @@ export function Toast({ toast, onDismiss, index = 0 }: ToastProps) {
   };
 
   const handleInteractionEnd = (event: FocusEvent<HTMLDivElement> | MouseEvent<HTMLDivElement>) => {
-    if (event?.currentTarget?.contains(event.relatedTarget as Node | null)) return;
+    if (event?.currentTarget?.contains(event.relatedTarget)) return;
     interactionRef.current = false;
     syncTimer();
   };

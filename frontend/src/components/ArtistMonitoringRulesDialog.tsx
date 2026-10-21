@@ -43,7 +43,7 @@ interface PlannedRelease {
   type: string | null;
   secondaryTypes: string[];
   releaseDate: string | null;
-  existing?: object | null;
+  existing: boolean;
 }
 
 interface MonitoringPlan {

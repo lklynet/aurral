@@ -158,15 +158,19 @@ export const getLibraryCustomArtworkUrl = (kind, id, version = "current") =>
     { v: version },
   );
 
-export const uploadLibraryCustomArtwork = (kind, id, file) =>
+export interface CustomArtworkResult {
+  updatedAt?: number;
+}
+
+export const uploadLibraryCustomArtwork = (kind, id, file): Promise<CustomArtworkResult> =>
   putData(`/library/artwork/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`, file, {
     headers: { "Content-Type": file.type || "application/octet-stream" },
   });
 
-export const setLibraryCustomArtworkUrl = (kind, id, url) =>
+export const setLibraryCustomArtworkUrl = (kind, id, url): Promise<CustomArtworkResult> =>
   putData(`/library/artwork/${encodeURIComponent(kind)}/${encodeURIComponent(id)}/url`, { url });
 
-export const deleteLibraryCustomArtwork = (kind, id) =>
+export const deleteLibraryCustomArtwork = (kind, id): Promise<CustomArtworkResult> =>
   deleteData(`/library/artwork/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`);
 
 export const getActiveLibraryRefresh = () => getData("/library/refresh");
@@ -589,12 +593,18 @@ export const cancelAurralAlbum = (canonicalId) =>
     postData(`/library/albums/aurral/${encodeURIComponent(canonicalId)}/cancel`),
   );
 
-export const setAurralAlbumMonitoring = (canonicalId, monitored) =>
+export interface AurralMonitoringResult {
+  monitored: boolean;
+  cancelledJobIds?: string[];
+  cleanupFailed?: boolean;
+}
+
+export const setAurralAlbumMonitoring = (canonicalId, monitored): Promise<AurralMonitoringResult> =>
   refreshActiveDownloadsAfter(
     putData(`/library/albums/aurral/${encodeURIComponent(canonicalId)}`, { monitored }),
   );
 
-export const setAurralTrackMonitoring = (canonicalId, monitored) =>
+export const setAurralTrackMonitoring = (canonicalId, monitored): Promise<AurralMonitoringResult> =>
   refreshActiveDownloadsAfter(
     putData(`/library/tracks/aurral/${encodeURIComponent(canonicalId)}`, { monitored }),
   );

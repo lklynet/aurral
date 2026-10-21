@@ -7,6 +7,7 @@ import {
   resolveAuthenticatedApiAssetUrl,
 } from "../core.ts";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
+import type { CustomArtworkResult } from "./library.ts";
 
 export const getPlaylistTrackStreamUrl = (jobId) =>
   buildAuthenticatedApiUrl(`/playlists/stream/${encodeURIComponent(jobId)}`);
@@ -31,15 +32,15 @@ const withAuthenticatedTrackArtwork = (job) =>
       }
     : job;
 
-export const uploadPlaylistTrackArtwork = (playlistId, jobId, file) =>
+export const uploadPlaylistTrackArtwork = (playlistId, jobId, file): Promise<CustomArtworkResult> =>
   putData(playlistTrackArtworkPath(jobId, playlistId), file, {
     headers: { "Content-Type": file.type || "application/octet-stream" },
   });
 
-export const setPlaylistTrackArtworkUrl = (playlistId, jobId, url) =>
+export const setPlaylistTrackArtworkUrl = (playlistId, jobId, url): Promise<CustomArtworkResult> =>
   putData(playlistTrackArtworkPath(jobId, playlistId, "/url"), { url });
 
-export const deletePlaylistTrackArtwork = (playlistId, jobId) =>
+export const deletePlaylistTrackArtwork = (playlistId, jobId): Promise<CustomArtworkResult> =>
   deleteData(playlistTrackArtworkPath(jobId, playlistId));
 
 export const getStagingStreamUrl = (jobId) =>
