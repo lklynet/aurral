@@ -4,16 +4,16 @@ import { getNearbyShows } from "../utils/api/endpoints/discovery.ts";
 import { queryKeys } from "../queryClient.ts";
 import { readStoredNearbyLocation, writeStoredNearbyLocation } from "../pages/discoverUtils";
 
-export function useNearbyShows({ enabled = true } = {}) {
+export function useNearbyShows({ enabled = true }: { enabled?: boolean } = {}) {
   const [storedLocation, setStoredLocation] = useState(readStoredNearbyLocation);
   const { mode: locationMode, zip: appliedZip, country: appliedCountry } = storedLocation;
 
-  const setLocationMode = useCallback((mode) => {
+  const setLocationMode = useCallback((mode: (typeof storedLocation)["mode"]) => {
     setStoredLocation((current) => ({ ...current, mode }));
     writeStoredNearbyLocation({ mode });
   }, []);
 
-  const setAppliedZip = useCallback((zip, country = "") => {
+  const setAppliedZip = useCallback((zip: string, country = "") => {
     const next = {
       mode: "zip",
       zip: String(zip || "").trim(),

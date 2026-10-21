@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { useLocation, useNavigate } from "react-router";
+import { useLocation, useNavigate, type NavigateOptions, type To } from "react-router";
 import { useDiscoverRecent } from "../contexts/DiscoverRecentProvider";
 import { shouldTrackDiscoverPath } from "../utils/discoverRecentNavigation";
 
@@ -9,7 +9,7 @@ export function useDiscoverNavigation() {
   const { addRecentPage, shouldRecordNavigation } = useDiscoverRecent();
 
   return useCallback(
-    (to, options) => {
+    (to: To, options?: NavigateOptions) => {
       if (
         typeof to === "string" &&
         shouldTrackDiscoverPath(to) &&

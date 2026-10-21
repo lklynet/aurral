@@ -1,7 +1,23 @@
 import { useCallback, useMemo } from "react";
 import { useAudioQueue } from "../contexts/audioQueueContext";
 
-export function useAlbumTrackListToolbar({ getQueueTracks, playbackSource }) {
+export interface PlaybackSource {
+  type: string;
+  id: string;
+  label: string;
+}
+
+interface ToolbarTrack {
+  id: string | number;
+}
+
+export function useAlbumTrackListToolbar({
+  getQueueTracks,
+  playbackSource,
+}: {
+  getQueueTracks: () => ToolbarTrack[];
+  playbackSource: PlaybackSource | null;
+}) {
   const {
     playQueue,
     togglePlayPause,

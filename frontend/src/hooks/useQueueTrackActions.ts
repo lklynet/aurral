@@ -2,17 +2,33 @@ import { useCallback } from "react";
 import { ListEnd, ListStart } from "lucide-react";
 import { useAudioQueue } from "../contexts/audioQueueContext";
 import { useToast } from "../contexts/ToastContext";
+import type { PlaybackSource } from "./useAlbumTrackListToolbar";
+
+interface QueueTrackInput {
+  src?: string | null;
+}
 
 export function useQueueTrackActions() {
   const { queueNext, addToQueue } = useAudioQueue();
   const { showSuccess } = useToast();
 
   return useCallback(
-    (track, { source = null, disabled = false } = {}) => {
+    (
+      track: QueueTrackInput | null | undefined,
+      {
+        source = null,
+        disabled = false,
+      }: { source?: PlaybackSource | null; disabled?: boolean } = {},
+    ) => {
       if (!track?.src) return [];
-      const run = (insert, message) => () => {
-        if (insert(track, { source }) === "queued") showSuccess(message);
-      };
+      const run =
+        (
+          insert: (track: QueueTrackInput, options: { source: PlaybackSource | null }) => unknown,
+          message: string,
+        ) =>
+        () => {
+          if (insert(track, { source }) === "queued") showSuccess(message);
+        };
       return [
         {
           id: "queue-next",

@@ -9,7 +9,7 @@ function applyTitle() {
   document.title = nowPlayingTitle || (pageTitle ? `${pageTitle} - Aurral` : DEFAULT_TITLE);
 }
 
-export function useDocumentTitle(title) {
+export function useDocumentTitle(title: string | null | undefined) {
   useEffect(() => {
     pageTitle = title?.trim() || "";
     applyTitle();
@@ -20,7 +20,7 @@ export function useDocumentTitle(title) {
   }, [title]);
 }
 
-export function useNowPlayingTitle(title) {
+export function useNowPlayingTitle(title: string | null | undefined) {
   useEffect(() => {
     nowPlayingTitle = title?.trim() || "";
     applyTitle();

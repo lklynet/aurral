@@ -20,10 +20,17 @@ export function useLibraryFiles({ enabled = true } = {}) {
   });
 }
 
-export function useLibraryFileOperation(operationId) {
+interface LibraryFileOperationResponse {
+  operation: { status: string };
+}
+
+export function useLibraryFileOperation(operationId: string | null | undefined) {
   return useQuery({
     queryKey: [...libraryFilesQueryKey, "operation", operationId],
-    queryFn: () => getLibraryFileOperation(operationId).then((result) => result.operation),
+    queryFn: () =>
+      getLibraryFileOperation(operationId).then(
+        (result: LibraryFileOperationResponse) => result.operation,
+      ),
     enabled: operationId != null,
     staleTime: 0,
     refetchInterval: (query) => (POLLING_STATUSES.has(query.state.data?.status) ? 1000 : false),

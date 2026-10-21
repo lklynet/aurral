@@ -5,7 +5,15 @@ import {
   subscribeToStatus,
 } from "../utils/webSocketConnection.ts";
 
-export function useWebSocketChannel(channel, onMessage, options = {}) {
+interface ChannelMessage {
+  type: string;
+}
+
+export function useWebSocketChannel(
+  channel: string,
+  onMessage: (message: ChannelMessage) => void,
+  options: { enabled?: boolean } = {},
+) {
   const { enabled = true } = options;
   const onMessageRef = useRef(onMessage);
   const [isConnected, setIsConnected] = useState(isWebSocketOpen);
@@ -18,7 +26,7 @@ export function useWebSocketChannel(channel, onMessage, options = {}) {
     }
 
     const unsubscribeStatus = subscribeToStatus(setIsConnected);
-    const unsubscribeChannel = subscribeToChannel(channel, (message) => {
+    const unsubscribeChannel = subscribeToChannel(channel, (message: ChannelMessage) => {
       onMessageRef.current?.(message);
     });
 

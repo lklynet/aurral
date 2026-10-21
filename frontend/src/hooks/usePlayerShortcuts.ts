@@ -42,13 +42,13 @@ const SPACE_ACTIVATED = [
   "[role='menuitem']",
 ].join(",");
 
-function scrollsSideways(element) {
+function scrollsSideways(element: Element | null) {
   if (!element || element === document.body || element === document.documentElement) return false;
   if (element.scrollWidth <= element.clientWidth) return false;
   return ["auto", "scroll"].includes(window.getComputedStyle(element).overflowX);
 }
 
-function shortcutFor(event) {
+function shortcutFor(event: KeyboardEvent) {
   if (event.defaultPrevented || event.isComposing) return null;
   if (event.ctrlKey || event.metaKey || event.altKey) return null;
   const target = event.target instanceof Element ? event.target : null;
@@ -71,13 +71,15 @@ function shortcutFor(event) {
   return null;
 }
 
-export function usePlayerShortcuts(enabled, actions) {
+type PlayerShortcut = NonNullable<ReturnType<typeof shortcutFor>>;
+
+export function usePlayerShortcuts(enabled: boolean, actions: Record<PlayerShortcut, () => void>) {
   const actionsRef = useRef(actions);
   actionsRef.current = actions;
 
   useEffect(() => {
     if (!enabled) return undefined;
-    const handleKeyDown = (event) => {
+    const handleKeyDown = (event: KeyboardEvent) => {
       const shortcut = shortcutFor(event);
       if (!shortcut) return;
       event.preventDefault();

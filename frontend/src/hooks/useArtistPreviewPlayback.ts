@@ -3,7 +3,26 @@ import { useAudioQueue } from "../contexts/audioQueueContext";
 import { getArtistPreview } from "../utils/api/endpoints/artists.ts";
 import { normalizePreviewTrack } from "../utils/audioQueue";
 
-export function useArtistPreviewPlayback({ mbid, artistName, enabled = true } = {}) {
+interface ArtistPreviewTrack {
+  preview_url?: string | null;
+}
+
+interface ArtistPreviewResponse {
+  tracks?: ArtistPreviewTrack[];
+}
+
+interface ArtistPreviewPlaybackOptions {
+  mbid?: string | null;
+  artistName?: string | null;
+  enabled?: boolean;
+  isInLibrary?: boolean;
+}
+
+export function useArtistPreviewPlayback({
+  mbid,
+  artistName,
+  enabled = true,
+}: ArtistPreviewPlaybackOptions = {}) {
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const { playQueue, togglePlayPause, matchesSource, isPlaying, isLoading } = useAudioQueue();
 
@@ -31,7 +50,10 @@ export function useArtistPreviewPlayback({ mbid, artistName, enabled = true } = 
 
     setIsLoadingPreview(true);
     try {
-      const data = await getArtistPreview(mbid, artistName);
+      const data: ArtistPreviewResponse | null | undefined = await getArtistPreview(
+        mbid,
+        artistName,
+      );
       const tracks = (Array.isArray(data?.tracks) ? data.tracks : [])
         .filter((track) => track?.preview_url)
         .map((track) => normalizePreviewTrack(track, artistName, { artistMbid: mbid }));
