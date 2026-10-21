@@ -205,7 +205,17 @@ export function fallbackAlbumGrabToTracks(payload, reason = null, reasons = new 
 
 export async function finishAlbumGrab(
   payload,
-  { filePaths, source, album = null, resetFields = {} } = {},
+  {
+    filePaths,
+    source,
+    album = null,
+    resetFields = {},
+  }: {
+    filePaths?: string[];
+    source?: string;
+    album?: string | null;
+    resetFields?: Record<string, unknown>;
+  } = {},
 ) {
   const jobs = albumGrabJobs(payload);
   if (jobs.length === 0) return null;

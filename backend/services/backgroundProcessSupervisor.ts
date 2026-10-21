@@ -3,10 +3,11 @@ import { fileURLToPath } from "node:url";
 import v8 from "node:v8";
 import { ISOLATED_WORKER_GROUPS } from "./backgroundWorkerQueues.ts";
 import type { getHonkerWorkerStatuses } from "./honkerWorkerRuntime.ts";
+import type { WebSocketChannelPayload } from "./websocketService.ts";
 
 type HonkerWorkerStatus = ReturnType<typeof getHonkerWorkerStatuses>[number];
 
-type WorkerMessage =
+export type WorkerMessage =
   | { type: "ready"; group: string }
   | {
       type: "heartbeat";
@@ -21,7 +22,12 @@ type WorkerMessage =
   | { type: "job-finished"; queue: string; jobId: number }
   | { type: "queue-wake"; queue: string }
   | { type: "cache-invalidate"; cache: "playlists" | "lidarr-artists" | "news" }
-  | { type: "websocket-broadcast"; channel: string; data: unknown; userId: number | null }
+  | {
+      type: "websocket-broadcast";
+      channel: string;
+      data: WebSocketChannelPayload;
+      userId?: number | null;
+    }
   | {
       type: "download-owner-client-request";
       requestId: number;

@@ -37,7 +37,7 @@ import {
   verifyDownloadedRecording,
 } from "./nativeMatcher.ts";
 import { judgeRelease } from "./releaseJudge.ts";
-import { manifestIndexFor } from "../releaseManifest.ts";
+import { manifestIndexFor, type ReleaseManifest } from "../releaseManifest.ts";
 import { isRequestedYoutubeAlbum, readYoutubeFile } from "./youtubeEvidence.ts";
 import { scoreTextMatch } from "../providers/brainzmashRanking.ts";
 import { validateParsedQuality } from "../qualityProfileService.ts";
@@ -108,7 +108,17 @@ export function downloadedFileEvidence(filePath, parsed, { album = null } = {}) 
 // Builds the canonical candidate representation from what the FILE itself
 // claims (embedded tags first, filename as secondary evidence). This is the
 // evidence that gets validated — never the values Aurral is about to write.
-export function buildActualFileCandidate(parsed, filePath, source, preDownloadCandidate = null) {
+type PreDownloadCandidate = {
+  provider?: { id?: string | null; uploader?: string | null } | null;
+  raw?: Record<string, unknown> | null;
+};
+
+export function buildActualFileCandidate(
+  parsed,
+  filePath,
+  source,
+  preDownloadCandidate: PreDownloadCandidate | null = null,
+) {
   const common = parsed?.common || {};
   const artists = [
     ...new Set(
@@ -499,6 +509,18 @@ export async function selectVerifiedDownloadedFile({
   candidate = null,
   source,
   options = {},
+}: {
+  request?: Parameters<typeof normalizeValidationRequest>[0];
+  context?: Parameters<typeof normalizeValidationRequest>[1];
+  filePaths?: string[];
+  candidate?: PreDownloadCandidate | null;
+  source?: string;
+  options?: {
+    parseFile?: typeof parseFile;
+    manualSelection?: boolean;
+    strict?: boolean;
+    release?: ReleaseManifest | null;
+  };
 } = {}) {
   const trackRequest = normalizeValidationRequest(request, context);
   const parseFn = options.parseFile || parseFile;

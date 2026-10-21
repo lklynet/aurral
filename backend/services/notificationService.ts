@@ -2,8 +2,52 @@ import axios from "../../lib/axiosFetch.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import { logger } from "./logger.ts";
 import { enqueueNotification } from "./honkerDb.ts";
+import type { StoredIntegrations } from "../db/helpers/settings.ts";
 
-function redactUrl(value) {
+type WebhookTarget = NonNullable<StoredIntegrations["webhooks"]>[number];
+type WebhookHeader = NonNullable<WebhookTarget["headers"]>[number];
+type WebhookEvent = keyof NonNullable<StoredIntegrations["webhookEvents"]> | "webhookTest";
+
+interface WebhookDelivery {
+  webhooks?: WebhookTarget[];
+  webhookEvents?: Partial<Record<WebhookEvent, boolean>>;
+}
+
+interface WebhookVars {
+  flowPath: string;
+  flowName: string;
+  albumName: string;
+  artistName: string;
+  username: string;
+  userId: string;
+  event: string;
+}
+
+interface RequestActor {
+  username?: string;
+  userId?: number | string;
+  id?: number | string;
+}
+
+interface RequestNotice {
+  albumName?: string;
+  artistName?: string;
+  user?: RequestActor | null;
+}
+
+interface QueuedNotification {
+  kind?: string;
+  title?: string;
+  message?: string;
+  priority?: number;
+  integrations?: StoredIntegrations;
+  event?: WebhookEvent;
+  vars?: Partial<WebhookVars>;
+  flowPath?: string;
+  flowName?: string;
+}
+
+function redactUrl(value: string) {
   try {
     const url = new URL(String(value));
     url.username = "";
@@ -16,7 +60,12 @@ function redactUrl(value) {
   }
 }
 
-function logDeliveryFailure(kind, event, url, error) {
+function logDeliveryFailure(
+  kind: string,
+  event: WebhookEvent | null | undefined,
+  url: string,
+  error,
+) {
   logger.error("notifications", "Notification delivery failed", {
     kind,
     event: event || null,
@@ -26,7 +75,11 @@ function logDeliveryFailure(kind, event, url, error) {
   });
 }
 
-async function sendGotifyDirect(title, message, priority = 5) {
+async function sendGotifyDirect(
+  title: string | undefined,
+  message: string | undefined,
+  priority = 5,
+) {
   const settings = dbOps.getSettings();
   const gotify = settings.integrations?.gotify || {};
   const url = (gotify.url || "").trim().replace(/\/+$/, "");
@@ -45,9 +98,9 @@ async function sendGotifyDirect(title, message, priority = 5) {
   }
 }
 
-function buildHeaders(headers) {
+function buildHeaders(headers: WebhookHeader[] | undefined) {
   if (!Array.isArray(headers)) return {};
-  const result = {};
+  const result: Record<string, string> = {};
   for (const { key, value } of headers) {
     const k = (key || "").trim();
     const v = (value || "").trim();
@@ -56,7 +109,7 @@ function buildHeaders(headers) {
   return result;
 }
 
-function escapeJsonString(value) {
+function escapeJsonString(value: unknown) {
   return JSON.stringify(String(value ?? "")).slice(1, -1);
 }
 
@@ -70,13 +123,13 @@ const WEBHOOK_PLACEHOLDERS = [
   "event",
 ];
 
-export function interpolateBody(str, vars = {}) {
+export function interpolateBody(str: string | null | undefined, vars: Partial<WebhookVars> = {}) {
   const source = String(str ?? "");
   const pattern = new RegExp(`\\$(${WEBHOOK_PLACEHOLDERS.join("|")})`, "g");
-  return source.replace(pattern, (_, key) => escapeJsonString(vars[key] ?? ""));
+  return source.replace(pattern, (_, key: keyof WebhookVars) => escapeJsonString(vars[key] ?? ""));
 }
 
-function normalizeWebhookVars(vars = {}, flowPath = "", flowName = "") {
+function normalizeWebhookVars(vars: Partial<WebhookVars> = {}, flowPath = "", flowName = "") {
   if (vars && typeof vars === "object" && !Array.isArray(vars)) {
     return {
       flowPath: vars.flowPath ?? flowPath ?? "",
@@ -99,7 +152,7 @@ function normalizeWebhookVars(vars = {}, flowPath = "", flowName = "") {
   };
 }
 
-function requestActorVars(user = null) {
+function requestActorVars(user: RequestActor | null = null) {
   if (!user || typeof user !== "object") {
     return { username: "", userId: "" };
   }
@@ -111,13 +164,17 @@ function requestActorVars(user = null) {
   };
 }
 
-function formatRequestSubject(albumName, artistName) {
+function formatRequestSubject(albumName?: string, artistName?: string) {
   const album = String(albumName || "").trim() || "Album";
   const artist = String(artistName || "").trim();
   return artist ? `${album} by ${artist}` : album;
 }
 
-async function sendWebhooksDirect({ webhooks, webhookEvents = {} }, event, vars = {}) {
+async function sendWebhooksDirect(
+  { webhooks, webhookEvents = {} }: WebhookDelivery,
+  event: WebhookEvent,
+  vars: Partial<WebhookVars> = {},
+) {
   if (!webhookEvents[event]) return;
   if (!Array.isArray(webhooks) || webhooks.length === 0) return;
 
@@ -158,7 +215,7 @@ async function sendWebhooksDirect({ webhooks, webhookEvents = {} }, event, vars 
   }
 }
 
-export async function deliverQueuedNotification(payload = {}) {
+export async function deliverQueuedNotification(payload: QueuedNotification = {}) {
   const kind = String(payload?.kind || "").trim();
   switch (kind) {
     case "gotify":
@@ -176,7 +233,7 @@ export async function deliverQueuedNotification(payload = {}) {
   }
 }
 
-function queueGotify(title, message, priority = 5) {
+function queueGotify(title: string, message: string, priority = 5) {
   return enqueueNotification({
     kind: "gotify",
     title,
@@ -186,7 +243,11 @@ function queueGotify(title, message, priority = 5) {
   });
 }
 
-function queueWebhooks(integrations, event, vars = {}) {
+function queueWebhooks(
+  integrations: StoredIntegrations,
+  event: WebhookEvent,
+  vars: Partial<WebhookVars> = {},
+) {
   const resolved = normalizeWebhookVars({ ...vars, event });
   return enqueueNotification({
     kind: "webhooks",
@@ -199,11 +260,14 @@ function queueWebhooks(integrations, event, vars = {}) {
   });
 }
 
-export async function sendGotifyTest(url, token) {
+export async function sendGotifyTest(
+  url: string | null | undefined,
+  token: string | null | undefined,
+) {
   const base = (url || "").trim().replace(/\/+$/, "");
   const t = (token || "").trim();
   if (!base || !t) {
-    const err = new Error("Gotify URL and token are required");
+    const err: Error & { code?: string } = new Error("Gotify URL and token are required");
     err.code = "MISSING_CONFIG";
     throw err;
   }
@@ -229,7 +293,7 @@ const WEBHOOK_TEST_VARS = Object.freeze({
   userId: "webhook-test-user",
 });
 
-export async function sendWebhookTest(webhook) {
+export async function sendWebhookTest(webhook: WebhookTarget) {
   await sendWebhooksDirect(
     {
       webhooks: [webhook],
@@ -257,7 +321,12 @@ export async function notifyDiscoveryUpdated() {
   await Promise.all(tasks);
 }
 
-export async function notifyFlowDone(playlistType, stats = {}, flowPath = "", flowName = "") {
+export async function notifyFlowDone(
+  playlistType: string,
+  stats: { completed?: number; failed?: number } = {},
+  flowPath = "",
+  flowName = "",
+) {
   const settings = dbOps.getSettings();
   const gotify = settings.integrations?.gotify || {};
   const completed = stats.completed ?? 0;
@@ -282,7 +351,11 @@ export async function notifyFlowDone(playlistType, stats = {}, flowPath = "", fl
   await Promise.all(tasks);
 }
 
-export async function notifyRequestMade({ albumName, artistName, user = null } = {}) {
+export async function notifyRequestMade({
+  albumName,
+  artistName,
+  user = null,
+}: RequestNotice = {}) {
   const settings = dbOps.getSettings();
   const gotify = settings.integrations?.gotify || {};
   const actor = requestActorVars(user);
@@ -302,7 +375,11 @@ export async function notifyRequestMade({ albumName, artistName, user = null } =
   await Promise.all(tasks);
 }
 
-export async function notifyRequestAvailable({ albumName, artistName, user = null } = {}) {
+export async function notifyRequestAvailable({
+  albumName,
+  artistName,
+  user = null,
+}: RequestNotice = {}) {
   const settings = dbOps.getSettings();
   const gotify = settings.integrations?.gotify || {};
   const actor = requestActorVars(user);

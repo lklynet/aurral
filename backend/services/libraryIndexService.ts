@@ -1,5 +1,6 @@
 import path from "node:path";
 import { db } from "../config/db-sqlite.ts";
+import type { LibraryArtistsRow, PlaylistDownloadJobsRow } from "../db/rows.ts";
 import { resolveDownloadRoot } from "./downloadPaths.ts";
 import { createPathScopeMatcher, scanMusicRoot, scanMusicRoots } from "./libraryFileScanner.ts";
 import {
@@ -39,9 +40,48 @@ import {
   readOnlyFolderPaths,
 } from "./libraryFolders.ts";
 
+interface AurralJobMetadata {
+  artistName: string;
+  albumName: string | null;
+  trackName: string;
+  artistMbid: string | null;
+  albumMbid: string | null;
+  trackMbid: string | null;
+  releaseYear: string | null;
+  trackNumber: number | null;
+  discNumber: number | null;
+}
+
+type LibraryAlbumToList = ReturnType<typeof getLibraryAlbumsToList>[number];
+
+type FolderScan = {
+  skipped?: boolean;
+  error?: string;
+  filesSeen?: number;
+  filesIndexed?: number;
+  filesFailed?: number;
+  changed?: boolean;
+  removed?: number;
+};
+
 function getAurralJobMetadataByPath() {
   const rows = db
-    .prepare(
+    .prepare<
+      [],
+      Pick<
+        PlaylistDownloadJobsRow,
+        | "final_path"
+        | "artist_name"
+        | "album_name"
+        | "track_name"
+        | "artist_mbid"
+        | "album_mbid"
+        | "track_mbid"
+        | "release_year"
+        | "track_number"
+        | "disc_number"
+      >
+    >(
       `SELECT final_path, artist_name, album_name, track_name,
         artist_mbid, album_mbid, track_mbid, release_year, track_number, disc_number
        FROM playlist_download_jobs
@@ -49,7 +89,7 @@ function getAurralJobMetadataByPath() {
        ORDER BY completed_at DESC, created_at DESC`,
     )
     .all();
-  const byPath = new Map();
+  const byPath = new Map<string, AurralJobMetadata>();
   for (const row of rows) {
     const filePath = String(row.final_path || "").trim();
     if (!filePath || byPath.has(path.resolve(filePath))) continue;
@@ -71,12 +111,12 @@ function getAurralJobMetadataByPath() {
 function getLibraryFlowPaths() {
   const flowIds = flowPlaylistConfig
     .getFlows()
-    .filter((flow) => flow.showInLibrary === true)
-    .map((flow) => flow.id);
+    .filter((flow: { showInLibrary?: boolean }) => flow.showInLibrary === true)
+    .map((flow: { id: string }) => flow.id);
   if (flowIds.length === 0) return [];
   const placeholders = flowIds.map(() => "?").join(",");
   const rows = db
-    .prepare(
+    .prepare<string[], Pick<PlaylistDownloadJobsRow, "final_path">>(
       `SELECT DISTINCT final_path
        FROM playlist_download_jobs
        WHERE status = 'done' AND final_path IS NOT NULL
@@ -87,12 +127,12 @@ function getLibraryFlowPaths() {
 }
 
 async function syncLibraryFlowFiles(
-  musicRoot,
-  jobMetadataByPath,
-  force,
+  musicRoot: string,
+  jobMetadataByPath: Map<string, AurralJobMetadata>,
+  force: boolean,
   changedPaths: string[] | null,
   changedFiles: Set<string>,
-) {
+): Promise<FolderScan> {
   const targeted = Array.isArray(changedPaths);
   const matchesScope = targeted ? createPathScopeMatcher(changedPaths) : () => true;
   const flowPaths = pathsWithin(musicRoot, getLibraryFlowPaths()).filter(matchesScope);
@@ -115,7 +155,10 @@ async function syncLibraryFlowFiles(
   return { ...scan, removed, changed: scan.changed || removed > 0 };
 }
 
-async function canonicalizeAurralArtistNames(jobMetadataByPath, paths = null) {
+async function canonicalizeAurralArtistNames(
+  jobMetadataByPath: Map<string, AurralJobMetadata>,
+  paths: string[] | null = null,
+) {
   const candidates = new Map();
   for (const [filePath, metadata] of jobMetadataByPath) {
     if (Array.isArray(paths) && !paths.some((rootPath) => isPathWithin(rootPath, filePath)))
@@ -127,7 +170,11 @@ async function canonicalizeAurralArtistNames(jobMetadataByPath, paths = null) {
   }
 
   for (const artistMbid of candidates.keys()) {
-    const existing = db.prepare("SELECT id FROM library_artists WHERE mbid = ?").get(artistMbid);
+    const existing = db
+      .prepare<[string], Pick<LibraryArtistsRow, "id">>(
+        "SELECT id FROM library_artists WHERE mbid = ?",
+      )
+      .get(artistMbid);
     if (!existing) continue;
     const artistName = await musicbrainzGetArtistNameByMbid(artistMbid).catch(() => null);
     if (!artistName) continue;
@@ -162,8 +209,8 @@ async function resolveUnmatchedLibraryArtists() {
 // by a wrong guess carry, lists only the album's files.
 async function completeLibraryTrackLists() {
   let changed = false;
-  let unavailable = null;
-  await mapWithConcurrency(getLibraryAlbumsToList(), 4, async (album) => {
+  let unavailable: unknown = null;
+  await mapWithConcurrency(getLibraryAlbumsToList(), 4, async (album: LibraryAlbumToList) => {
     if (unavailable) return;
     let metadata = null;
     try {
@@ -197,12 +244,12 @@ async function completeLibraryTrackLists() {
   return changed;
 }
 
-function isPathWithin(rootPath, candidatePath) {
+function isPathWithin(rootPath: string, candidatePath: string) {
   const relative = path.relative(path.resolve(rootPath), path.resolve(candidatePath));
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
-function pathsWithin(rootPath, paths) {
+function pathsWithin(rootPath: string, paths: string[] | null | undefined) {
   return (Array.isArray(paths) ? paths : []).filter((candidatePath) =>
     isPathWithin(rootPath, candidatePath),
   );
@@ -210,7 +257,20 @@ function pathsWithin(rootPath, paths) {
 
 // A folder that left the list takes its music out of the Library. Its files
 // stay on disk.
-async function scanReadOnlyFolders(roots, { changedPaths, force, isExcluded, changedFiles }) {
+async function scanReadOnlyFolders(
+  roots: string[],
+  {
+    changedPaths,
+    force,
+    isExcluded,
+    changedFiles,
+  }: {
+    changedPaths: string[] | null;
+    force: boolean;
+    isExcluded: ReturnType<typeof createLibraryScanExclusion>;
+    changedFiles: Set<string>;
+  },
+): Promise<FolderScan> {
   const scan =
     roots.length > 0
       ? await scanMusicRoots({
@@ -258,10 +318,10 @@ export async function scanConfiguredLibrary({
   const jobMetadataByPath = getAurralJobMetadataByPath();
   const targeted = Array.isArray(changedPaths);
   const localPaths = pathsWithin(musicRoot, changedPaths);
-  let local;
-  let lidarr = { skipped: true, filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
-  let flow = skippedScan();
-  let readOnly = skippedScan();
+  let local: FolderScan | undefined;
+  let lidarr: FolderScan = { skipped: true, filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
+  let flow: FolderScan = skippedScan();
+  let readOnly: FolderScan = skippedScan();
   let scanFailed = false;
   let artistsResolved = false;
   let tracksListed = false;

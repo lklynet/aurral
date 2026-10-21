@@ -21,19 +21,20 @@ import { HONKER_QUEUE_NAMES } from "./honkerDb.ts";
 import { configureDownloadOwnerClient } from "./downloadJobs/downloadOwnerClient.ts";
 import { getDatabaseRevision } from "../config/db-sqlite.ts";
 import { dbOps } from "../db/helpers/index.ts";
+import type { WorkerMessage } from "./backgroundProcessSupervisor.ts";
 
 let backgroundWorkersStarted = false;
 let workerSupervisorStarted = false;
-let workerSupervisorInterval = null;
-let workerSupervisorTimer = null;
-let workerSupervisorTimerAt = null;
-let workerSweepInterval = null;
-const startingQueues = new Set();
-let supervisedGroup = null;
-let backgroundProcessSupervisor = null;
+let workerSupervisorInterval: ReturnType<typeof setInterval> | null = null;
+let workerSupervisorTimer: ReturnType<typeof setTimeout> | null = null;
+let workerSupervisorTimerAt: number | null = null;
+let workerSweepInterval: ReturnType<typeof setInterval> | null = null;
+const startingQueues = new Set<string>();
+let supervisedGroup: string | null = null;
+let backgroundProcessSupervisor: ReturnType<typeof createBackgroundProcessSupervisor> | null = null;
 let lastExpiredSweepAt = 0;
-let stopLibraryFileWatcher = null;
-let lastWorkerDatabaseRevision = null;
+let stopLibraryFileWatcher: (() => void) | null = null;
+let lastWorkerDatabaseRevision: ReturnType<typeof getDatabaseRevision> | null = null;
 
 export function getIsolatedWorkerStatuses() {
   return backgroundProcessSupervisor?.getWorkerStatuses() || [];
@@ -75,7 +76,7 @@ const QUEUE_WORKERS = HONKER_QUEUE_NAMES.map((queue) => ({
   start: WORKER_STARTS[queue],
 })).filter((worker) => Array.isArray(worker.start));
 
-function startQueueWorker([modulePath, startName], queueName) {
+function startQueueWorker([modulePath, startName]: [string, string], queueName: string) {
   if (startingQueues.has(queueName)) return;
   startingQueues.add(queueName);
   import(modulePath)
@@ -96,7 +97,7 @@ function clearSupervisorWakeTimer() {
   workerSupervisorTimerAt = null;
 }
 
-function scheduleSupervisorWake(nextClaimAt) {
+function scheduleSupervisorWake(nextClaimAt: number | null) {
   const timestamp = Number(nextClaimAt);
   if (!Number.isFinite(timestamp) || timestamp <= 0) {
     clearSupervisorWakeTimer();
@@ -105,7 +106,7 @@ function scheduleSupervisorWake(nextClaimAt) {
   const waitMs = timestamp * 1000 - Date.now();
   if (waitMs <= 0) return;
   const target = Date.now() + Math.max(1000, Math.min(waitMs, 2147483647));
-  if (workerSupervisorTimer && workerSupervisorTimerAt <= target) return;
+  if (workerSupervisorTimer && workerSupervisorTimerAt! <= target) return;
   clearSupervisorWakeTimer();
   workerSupervisorTimerAt = target;
   workerSupervisorTimer = setTimeout(() => {
@@ -118,7 +119,7 @@ function scheduleSupervisorWake(nextClaimAt) {
   }
 }
 
-function sweepExpiredWorkerQueues(group) {
+function sweepExpiredWorkerQueues(group: string | null) {
   if (Date.now() - lastExpiredSweepAt < 30000) return 0;
   lastExpiredSweepAt = Date.now();
   let swept = 0;
@@ -134,9 +135,9 @@ function sweepExpiredWorkerQueues(group) {
   return swept;
 }
 
-function checkQueuedBackgroundWork(group = null) {
+function checkQueuedBackgroundWork(group: string | null = null) {
   if (process.env.AURRAL_TEST_SERVER === "1" || isHonkerShuttingDown()) return;
-  let nextClaimAt = null;
+  let nextClaimAt: number | null = null;
   const previousRevision = lastWorkerDatabaseRevision;
   lastWorkerDatabaseRevision = null;
   const revision = getDatabaseRevision();
@@ -180,7 +181,7 @@ function checkQueuedBackgroundWork(group = null) {
   lastWorkerDatabaseRevision = inspected ? revision : null;
 }
 
-function checkWorkerDatabaseChanges(group) {
+function checkWorkerDatabaseChanges(group: string | null) {
   try {
     if (getDatabaseRevision() !== lastWorkerDatabaseRevision) checkQueuedBackgroundWork(group);
   } catch (error) {
@@ -188,7 +189,7 @@ function checkWorkerDatabaseChanges(group) {
   }
 }
 
-export function startWorkerSupervisor({ group = null } = {}) {
+export function startWorkerSupervisor({ group = null }: { group?: string | null } = {}) {
   if (workerSupervisorStarted || process.env.AURRAL_TEST_SERVER === "1") {
     return;
   }
@@ -227,7 +228,7 @@ registerHonkerShutdownHandler(() => {
   return backgroundProcessSupervisor?.stop();
 });
 
-export async function forwardWorkerBroadcast(message) {
+export async function forwardWorkerBroadcast(message: WorkerMessage) {
   if (message?.type !== "websocket-broadcast" || typeof message.channel !== "string") return;
   const { websocketService } = await import("./websocketService.ts");
   const userId = message.userId ?? null;
@@ -310,12 +311,12 @@ export function startBackgroundWorkers({ logger = console } = {}) {
     onMessage(message, _group, child) {
       if (message?.type === "queue-wake") {
         const owner = ISOLATED_QUEUE_GROUPS[message.queue];
-        if (owner) backgroundProcessSupervisor.wake(owner);
+        if (owner) backgroundProcessSupervisor!.wake(owner);
         else if (isQueueOwnedByGroup(message.queue)) checkQueuedBackgroundWork();
         return;
       }
       if (message?.type === "download-owner-client-request") {
-        void backgroundProcessSupervisor
+        void backgroundProcessSupervisor!
           .request("downloads", message.method, message.args, {
             timeoutMs: Math.min(30 * 60 * 1000, Number(message.timeoutMs) || 30000),
           })
@@ -419,13 +420,13 @@ export function startBackgroundWorkers({ logger = console } = {}) {
   });
   configureDownloadOwnerClient({
     request: (method, args, options) =>
-      backgroundProcessSupervisor.request("downloads", method, args, options),
-    getStatus: () => backgroundProcessSupervisor.getDownloadOwnerStatus(),
+      backgroundProcessSupervisor!.request("downloads", method, args, options),
+    getStatus: () => backgroundProcessSupervisor!.getDownloadOwnerStatus(),
   });
-  configureHonkerQueueWake((queue) => {
+  configureHonkerQueueWake((queue: string) => {
     if (isHonkerShuttingDown()) return;
     const owner = ISOLATED_QUEUE_GROUPS[queue];
-    if (owner) backgroundProcessSupervisor.wake(owner);
+    if (owner) backgroundProcessSupervisor!.wake(owner);
     else checkQueuedBackgroundWork();
   });
   backgroundProcessSupervisor.start();

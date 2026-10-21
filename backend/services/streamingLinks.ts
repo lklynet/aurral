@@ -20,7 +20,7 @@ const SERVICE_NAMES = {
   songlink: "song.link",
 };
 
-const LINK_HOSTS = new Map([
+const LINK_HOSTS = new Map<string, Source>([
   ["open.spotify.com", "spotify"],
   ["music.apple.com", "appleMusic"],
   ["music.youtube.com", "youtubeMusic"],
@@ -33,9 +33,67 @@ const LINK_HOSTS = new Map([
   ["album.link", "songlink"],
 ]);
 
-const KINDS = { album: "album", track: "track", song: "track", artist: "artist" };
+const KINDS = { album: "album", track: "track", song: "track", artist: "artist" } as const;
 
-const linkError = (message, statusCode, code) =>
+type Source = keyof typeof SERVICE_NAMES;
+type LinkKind = (typeof KINDS)[keyof typeof KINDS];
+
+interface ParsedLink {
+  kind: LinkKind | null;
+  id: string;
+  country?: string;
+  path?: string;
+  pageUrl?: string;
+}
+
+interface StreamingLink extends ParsedLink {
+  source: Source;
+  cacheKey: string;
+}
+
+interface LinkLookup {
+  kind: LinkKind | null;
+  artistName: string | null;
+  albumTitle?: string | null;
+  trackTitle?: string | null;
+  deezerAlbumId?: string | number | null;
+}
+
+interface SonglinkPageData {
+  entityData?: { type?: string; artistName?: string; title?: string };
+  sections?: { links?: { platform?: string; url?: string }[] }[];
+}
+
+interface NextData {
+  props?: { pageProps?: { error?: unknown; pageData?: SonglinkPageData } };
+}
+
+interface JsonLdItem {
+  "@id"?: string;
+  name?: string;
+  byArtist?: { name?: string }[];
+  inAlbum?: { name?: string };
+}
+
+interface DeezerBody {
+  error?: { code?: number };
+  name?: string;
+  title?: string;
+  id?: number;
+  artist?: { name?: string };
+  album?: { title?: string; id?: number };
+}
+
+interface AppleLookupBody {
+  results?: {
+    wrapperType?: string;
+    artistName?: string;
+    collectionName?: string;
+    trackName?: string;
+  }[];
+}
+
+const linkError = (message: string, statusCode: number, code: string) =>
   Object.assign(new Error(message), { statusCode, code });
 
 const unsupportedLink = () =>
@@ -45,18 +103,18 @@ const unsupportedLink = () =>
     "LINK_UNSUPPORTED",
   );
 
-const notFound = (source) =>
+const notFound = (source: Source) =>
   linkError(`${SERVICE_NAMES[source]} could not find this link`, 404, "LINK_NOT_FOUND");
 
-const unavailable = (source, detail = "could not be reached") =>
+const unavailable = (source: Source, detail = "could not be reached") =>
   linkError(`${SERVICE_NAMES[source]} ${detail}`, 502, "LINK_SERVICE_UNAVAILABLE");
 
-const parsers = {
+const parsers: Record<Source, (url: URL) => ParsedLink | null> = {
   spotify(url) {
     const match = url.pathname.match(
       /^\/(?:intl-[a-z]{2}(?:-[a-z]{2})?\/)?(album|track|artist)\/([A-Za-z0-9]{22})\/?$/i,
     );
-    return match && { kind: KINDS[match[1].toLowerCase()], id: match[2] };
+    return match && { kind: KINDS[match[1].toLowerCase() as keyof typeof KINDS], id: match[2] };
   },
   appleMusic(url) {
     const match = url.pathname.match(
@@ -68,30 +126,30 @@ const parsers = {
     if (match[2].toLowerCase() === "album" && trackId) {
       return /^\d+$/.test(trackId) ? { kind: "track", id: trackId, country } : null;
     }
-    return { kind: KINDS[match[2].toLowerCase()], id: match[3], country };
+    return { kind: KINDS[match[2].toLowerCase() as keyof typeof KINDS], id: match[3], country };
   },
   youtubeMusic(url) {
     const path = url.pathname.replace(/\/$/, "");
     const videoId = url.searchParams.get("v");
     if (path === "/watch" && /^[A-Za-z0-9_-]{11}$/.test(videoId || "")) {
-      return { kind: "track", id: videoId, path: `/watch?v=${videoId}` };
+      return { kind: "track", id: videoId!, path: `/watch?v=${videoId}` };
     }
     const listId = url.searchParams.get("list");
     if (path === "/playlist" && /^OLAK5uy_[A-Za-z0-9_-]{1,100}$/.test(listId || "")) {
-      return { kind: "album", id: listId, path: `/playlist?list=${listId}` };
+      return { kind: "album", id: listId!, path: `/playlist?list=${listId}` };
     }
     const channel = path.match(/^\/channel\/(UC[A-Za-z0-9_-]{22})$/);
     return channel && { kind: "artist", id: channel[1], path: `/channel/${channel[1]}` };
   },
   tidal(url) {
     const match = url.pathname.match(/^\/(?:browse\/)?(album|track|artist)\/(\d+)(?:\/u)?\/?$/i);
-    return match && { kind: KINDS[match[1].toLowerCase()], id: match[2] };
+    return match && { kind: KINDS[match[1].toLowerCase() as keyof typeof KINDS], id: match[2] };
   },
   deezer(url) {
     const match = url.pathname.match(
       /^\/(?:[a-z]{2}(?:-[a-z]{2})?\/)?(album|track|artist)\/(\d+)\/?$/i,
     );
-    return match && { kind: KINDS[match[1].toLowerCase()], id: match[2] };
+    return match && { kind: KINDS[match[1].toLowerCase() as keyof typeof KINDS], id: match[2] };
   },
   songlink(url) {
     const match = url.pathname.match(/^\/([A-Za-z0-9_-]{1,64})(?:\/([A-Za-z0-9_-]{1,64}))?\/?$/);
@@ -101,7 +159,7 @@ const parsers = {
   },
 };
 
-function parseStreamingLink(value) {
+function parseStreamingLink(value: unknown): StreamingLink {
   let url;
   try {
     url = new URL(String(value || "").trim());
@@ -127,8 +185,15 @@ function parseStreamingLink(value) {
   };
 }
 
-async function fetchUpstream(source, url, { accept = "application/json", headers = {} } = {}) {
-  let response;
+async function fetchUpstream(
+  source: Source,
+  url: string | URL,
+  {
+    accept = "application/json",
+    headers = {},
+  }: { accept?: string; headers?: Record<string, string> } = {},
+) {
+  let response: Response;
   try {
     response = await fetch(url, {
       headers: { Accept: accept, ...headers },
@@ -153,7 +218,7 @@ async function fetchUpstream(source, url, { accept = "application/json", headers
   }
 }
 
-async function fetchJson(source, url) {
+async function fetchJson<T = unknown>(source: Source, url: string | URL): Promise<T> {
   const text = await fetchUpstream(source, url);
   try {
     return JSON.parse(text);
@@ -162,16 +227,16 @@ async function fetchJson(source, url) {
   }
 }
 
-const fetchHtml = (source, url) =>
+const fetchHtml = (source: Source, url: string) =>
   fetchUpstream(source, url, { accept: "text/html", headers: { "Accept-Language": "en" } });
 
-const clean = (value) => {
+const clean = (value: unknown) => {
   const text = decode(String(value ?? "")).trim();
   return text || null;
 };
 
-function readMetaTags(html) {
-  const tags = {};
+function readMetaTags(html: string) {
+  const tags: Record<string, string | null> = {};
   for (const [tag] of html.matchAll(/<meta\b[^>]*>/gi)) {
     const attributes = Object.fromEntries(
       [...tag.matchAll(/([\w:-]+)\s*=\s*"([^"]*)"/g)].map(([, name, value]) => [
@@ -185,8 +250,8 @@ function readMetaTags(html) {
   return tags;
 }
 
-function readJsonLd(html) {
-  const items = [];
+function readJsonLd(html: string): JsonLdItem[] {
+  const items: JsonLdItem[] = [];
   for (const [, body] of html.matchAll(
     /<script\b[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi,
   )) {
@@ -199,7 +264,7 @@ function readJsonLd(html) {
   return items;
 }
 
-function readNextData(html) {
+function readNextData(html: string): NextData | null {
   const match = html.match(/<script\b[^>]*id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i);
   if (!match) return null;
   try {
@@ -209,8 +274,8 @@ function readNextData(html) {
   }
 }
 
-async function lookupDeezer({ kind, id }) {
-  const body = await fetchJson("deezer", `https://api.deezer.com/${kind}/${id}`);
+async function lookupDeezer({ kind, id }: StreamingLink) {
+  const body = await fetchJson<DeezerBody>("deezer", `https://api.deezer.com/${kind}/${id}`);
   if (body?.error) {
     if (body.error.code === DEEZER_NO_DATA_CODE) throw notFound("deezer");
     if (body.error.code === DEEZER_QUOTA_CODE) {
@@ -242,13 +307,13 @@ async function lookupDeezer({ kind, id }) {
 
 const APPLE_WRAPPERS = { artist: "artist", album: "collection", track: "track" };
 
-async function lookupAppleMusic({ kind, id, country }) {
+async function lookupAppleMusic({ kind, id, country }: StreamingLink) {
   const url = new URL("https://itunes.apple.com/lookup");
   url.searchParams.set("id", id);
-  url.searchParams.set("country", country);
-  const body = await fetchJson("appleMusic", url);
+  url.searchParams.set("country", country!);
+  const body = await fetchJson<AppleLookupBody>("appleMusic", url);
   const item = (Array.isArray(body?.results) ? body.results : []).find(
-    (entry) => entry?.wrapperType === APPLE_WRAPPERS[kind],
+    (entry) => entry?.wrapperType === APPLE_WRAPPERS[kind!],
   );
   if (!item) throw notFound("appleMusic");
   const albumTitle = clean(String(item.collectionName || "").replace(/ - (?:Single|EP)$/, ""));
@@ -262,7 +327,7 @@ async function lookupAppleMusic({ kind, id, country }) {
   };
 }
 
-async function lookupSonglinkPage(source, pageUrl) {
+async function lookupSonglinkPage(source: Source, pageUrl: string) {
   const data = readNextData(await fetchHtml(source, pageUrl));
   const pageData = data?.props?.pageProps?.pageData;
   const entity = pageData?.entityData;
@@ -273,15 +338,15 @@ async function lookupSonglinkPage(source, pageUrl) {
   }
   const result = {
     kind,
-    artistName: clean(entity.artistName),
+    artistName: clean(entity!.artistName),
     ...(kind === "album"
-      ? { albumTitle: clean(entity.title) }
-      : { trackTitle: clean(entity.title) }),
+      ? { albumTitle: clean(entity!.title) }
+      : { trackTitle: clean(entity!.title) }),
   };
-  const deezerUrl = (Array.isArray(pageData.sections) ? pageData.sections : [])
+  const deezerUrl = (Array.isArray(pageData!.sections) ? pageData!.sections : [])
     .flatMap((section) => (Array.isArray(section?.links) ? section.links : []))
     .find((link) => link?.platform === "deezer" && link.url)?.url;
-  let deezer = null;
+  let deezer: StreamingLink | null = null;
   try {
     deezer = deezerUrl ? parseStreamingLink(deezerUrl) : null;
   } catch {
@@ -295,7 +360,7 @@ async function lookupSonglinkPage(source, pageUrl) {
     : result;
 }
 
-async function lookupSpotify({ kind, id }) {
+async function lookupSpotify({ kind, id }: StreamingLink) {
   if (kind !== "artist") {
     return lookupSonglinkPage(
       "spotify",
@@ -304,11 +369,11 @@ async function lookupSpotify({ kind, id }) {
   }
   const url = new URL("https://open.spotify.com/oembed");
   url.searchParams.set("url", `https://open.spotify.com/artist/${id}`);
-  const body = await fetchJson("spotify", url);
+  const body = await fetchJson<{ title?: string }>("spotify", url);
   return { kind, artistName: clean(body?.title) };
 }
 
-async function lookupTidal({ kind, id }) {
+async function lookupTidal({ kind, id }: StreamingLink) {
   const pageUrl = `https://tidal.com/${kind}/${id}`;
   const item = readJsonLd(await fetchHtml("tidal", pageUrl)).find(
     (entry) => entry?.["@id"] === pageUrl,
@@ -320,7 +385,7 @@ async function lookupTidal({ kind, id }) {
   return { kind, artistName, trackTitle: clean(item.name), albumTitle: clean(item.inAlbum?.name) };
 }
 
-async function lookupYoutubeMusic({ kind, path }) {
+async function lookupYoutubeMusic({ kind, path }: StreamingLink) {
   const tags = readMetaTags(await fetchHtml("youtubeMusic", `https://music.youtube.com${path}`));
   const title = tags["og:title"];
   if (!title) throw notFound("youtubeMusic");
@@ -331,17 +396,17 @@ async function lookupYoutubeMusic({ kind, path }) {
   return { kind, artistName: clean(description), trackTitle: title };
 }
 
-const lookups = {
+const lookups: Record<Source, (link: StreamingLink) => Promise<LinkLookup>> = {
   spotify: lookupSpotify,
   appleMusic: lookupAppleMusic,
   youtubeMusic: lookupYoutubeMusic,
   tidal: lookupTidal,
   deezer: lookupDeezer,
-  songlink: (link) => lookupSonglinkPage("songlink", link.pageUrl),
+  songlink: (link) => lookupSonglinkPage("songlink", link.pageUrl!),
 };
 
-async function lookupLink(link) {
-  const cached = lookupCache.get(link.cacheKey);
+async function lookupLink(link: StreamingLink) {
+  const cached = lookupCache.get(link.cacheKey) as LinkLookup | undefined;
   if (cached) return cached;
   const result = await lookups[link.source](link);
   if (
@@ -355,13 +420,16 @@ async function lookupLink(link) {
   return result;
 }
 
-async function matchTrackMbid(albumMbid, trackTitle) {
+async function matchTrackMbid(
+  albumMbid: string | null | undefined,
+  trackTitle: string | null | undefined,
+) {
   if (!albumMbid || !trackTitle) return null;
   const tracks = await getAlbumTracksByAlbumMbid(albumMbid).catch(() => []);
   return matchTrackByTitle(tracks, trackTitle)?.recordingId || null;
 }
 
-export async function resolveStreamingLink(value) {
+export async function resolveStreamingLink(value: unknown) {
   const link = parseStreamingLink(value);
   const { kind, artistName, albumTitle, trackTitle, deezerAlbumId } = await lookupLink(link);
   const { artistMbid, albumMbid } = await resolveArtistAndAlbumMbids({

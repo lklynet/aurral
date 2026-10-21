@@ -2,6 +2,7 @@ import { dbOps } from "../db/helpers/index.ts";
 import { normalizeBaseUrl, normalizeInteger, sanitizeNzbName } from "./usenetClientCommon.ts";
 import axios from "../../lib/axiosFetch.ts";
 import { removeNzbgetDownloadFolder } from "./nzbgetCleanup.ts";
+import type { StoredIntegrations } from "../db/helpers/settings.ts";
 
 export const nzbgetSettings = Object.freeze({
   key: "nzbget",
@@ -88,10 +89,53 @@ export const nzbgetSettings = Object.freeze({
   testConnection: true,
 });
 
-let connectionCache = { checkedAt: 0, result: null, settingsKey: null };
-let folderCleanup = Promise.resolve();
+type NzbgetConfig = NonNullable<StoredIntegrations["nzbget"]>;
+type NzbId = number | string | null | undefined;
+type NzbgetDirectories = Awaited<ReturnType<NzbgetClient["getDownloadDirectories"]>>;
 
-function getSettings(config = null) {
+interface NzbgetStatus {
+  DownloadPaused?: boolean;
+  DownloadRateLo?: number;
+  DownloadRate?: number;
+}
+
+interface NzbgetConfigEntry {
+  Name?: string;
+  name?: string;
+  Value?: string;
+  value?: string;
+}
+
+interface NzbgetQueueItem {
+  NZBID?: number;
+  NZBName?: string;
+}
+
+interface NzbgetHistoryItem extends NzbgetQueueItem {
+  ID?: number;
+  DestDir?: string;
+}
+
+interface NzbgetConnection {
+  ok: boolean;
+  configured: boolean;
+  connected: boolean;
+  message: string;
+  version?: string;
+  downloadPaused?: boolean;
+  downloadRate?: number;
+  downloadPath?: string | null;
+  directories?: NzbgetDirectories;
+}
+
+let connectionCache: {
+  checkedAt: number;
+  result: NzbgetConnection | null;
+  settingsKey: string | null;
+} = { checkedAt: 0, result: null, settingsKey: null };
+let folderCleanup: Promise<unknown> = Promise.resolve();
+
+function getSettings(config: NzbgetConfig | null = null) {
   const nzbget = config || dbOps.getSettings()?.integrations?.nzbget || {};
   return {
     enabled: nzbget.enabled === true,
@@ -107,23 +151,23 @@ function getSettings(config = null) {
   };
 }
 
-function getSettingsKey(settings) {
+function getSettingsKey(settings: ReturnType<typeof getSettings>) {
   return JSON.stringify([settings.url, settings.username, settings.password]);
 }
 
-function buildRpcUrl(baseUrl) {
+function buildRpcUrl(baseUrl: string) {
   const url = normalizeBaseUrl(baseUrl);
   if (!url) return "";
   if (/\/jsonrpc$/i.test(url)) return url;
   return `${url}/jsonrpc`;
 }
 
-function buildAuthFromCredentials(username, password) {
+function buildAuthFromCredentials(username: string, password: string) {
   if (!username && !password) return undefined;
   return { username, password };
 }
 
-function readConfigValue(configEntries, name) {
+function readConfigValue(configEntries: NzbgetConfigEntry[], name: string) {
   const key = String(name || "").toLowerCase();
   const entry = (Array.isArray(configEntries) ? configEntries : []).find(
     (item) => String(item?.Name || item?.name || "").toLowerCase() === key,
@@ -132,13 +176,17 @@ function readConfigValue(configEntries, name) {
 }
 
 export class NzbgetClient {
-  constructor(config = null) {
+  declare key: string;
+  declare name: string;
+  declare _config: NzbgetConfig | null;
+
+  constructor(config: NzbgetConfig | null = null) {
     this.key = "nzbget";
     this.name = "NZBGet";
     this._config = config;
   }
 
-  updateConfig(config = null) {
+  updateConfig(config: NzbgetConfig | null = null) {
     this._config = config;
   }
 
@@ -164,7 +212,7 @@ export class NzbgetClient {
     };
   }
 
-  async rpc(method, params = []) {
+  async rpc<T = unknown>(method: string, params: unknown[] = []): Promise<T> {
     const { url, username, password } = this._getSettings();
     const rpcUrl = buildRpcUrl(url);
     if (!rpcUrl) throw new Error("NZBGet not configured");
@@ -198,24 +246,24 @@ export class NzbgetClient {
   }
 
   async version() {
-    return this.rpc("version", []);
+    return this.rpc<string>("version", []);
   }
 
   async status() {
-    return this.rpc("status", []);
+    return this.rpc<NzbgetStatus>("status", []);
   }
 
   async config() {
-    return this.rpc("config", []);
+    return this.rpc<NzbgetConfigEntry[]>("config", []);
   }
 
   async listGroups() {
-    const result = await this.rpc("listgroups", [0]);
+    const result = await this.rpc<NzbgetQueueItem[]>("listgroups", [0]);
     return Array.isArray(result) ? result : [];
   }
 
   async history(includeHidden = false) {
-    const result = await this.rpc("history", [includeHidden === true]);
+    const result = await this.rpc<NzbgetHistoryItem[]>("history", [includeHidden === true]);
     return Array.isArray(result) ? result : [];
   }
 
@@ -231,6 +279,18 @@ export class NzbgetClient {
     dupeMode = "FORCE",
     autoCategory = false,
     ppParameters = [],
+  }: {
+    name: string;
+    content: Buffer | null | undefined;
+    category?: string | null;
+    priority?: number | string | null;
+    addToTop?: boolean;
+    addPaused?: boolean | null;
+    dupeKey?: string;
+    dupeScore?: number;
+    dupeMode?: string;
+    autoCategory?: boolean;
+    ppParameters?: unknown[];
   }) {
     const settings = this._getSettings();
     if (!content?.length) throw new Error("NZBGet append requires an NZB file");
@@ -258,21 +318,21 @@ export class NzbgetClient {
     };
   }
 
-  async getQueueItem(nzbId) {
+  async getQueueItem(nzbId: NzbId) {
     const id = normalizeInteger(nzbId, null);
     if (id == null) return null;
     const groups = await this.listGroups();
     return groups.find((group) => normalizeInteger(group?.NZBID, null) === id) || null;
   }
 
-  async getHistoryItem(nzbId) {
+  async getHistoryItem(nzbId: NzbId) {
     const id = normalizeInteger(nzbId, null);
     if (id == null) return null;
     const items = await this.history(false);
     return items.find((item) => normalizeInteger(item?.NZBID ?? item?.ID, null) === id) || null;
   }
 
-  async deleteQueueItem(nzbId) {
+  async deleteQueueItem(nzbId: NzbId) {
     return this.editItem("GroupFinalDelete", nzbId);
   }
 
@@ -280,7 +340,13 @@ export class NzbgetClient {
   // first. If that fails, the history entry stays for a manual cleanup.
   // Cleanups run one at a time so two downloads that share a folder cannot
   // each leave it to the other.
-  async deleteHistoryItem(nzbId, { deleteFiles = false, historyItem = null } = {}) {
+  async deleteHistoryItem(
+    nzbId: NzbId,
+    {
+      deleteFiles = false,
+      historyItem = null,
+    }: { deleteFiles?: boolean; historyItem?: NzbgetHistoryItem | null } = {},
+  ) {
     const settings = this._getSettings();
     if (!deleteFiles || !settings.deleteLeftovers)
       return this.editItem("HistoryFinalDelete", nzbId);
@@ -301,9 +367,10 @@ export class NzbgetClient {
 
   // NZBGet moves a download into the folder named after it even when another
   // download of the same name already uses that folder. The last one removes it.
-  async sharesDownloadFolder(item) {
+  async sharesDownloadFolder(item: NzbgetHistoryItem) {
     const id = normalizeInteger(item.NZBID ?? item.ID, null);
-    const isOther = (entry) => normalizeInteger(entry?.NZBID ?? entry?.ID, null) !== id;
+    const isOther = (entry: NzbgetHistoryItem) =>
+      normalizeInteger(entry?.NZBID ?? entry?.ID, null) !== id;
     const [queue, history] = await Promise.all([this.listGroups(), this.history(false)]);
     return (
       queue.some((entry) => isOther(entry) && entry.NZBName === item.NZBName) ||
@@ -311,7 +378,7 @@ export class NzbgetClient {
     );
   }
 
-  async editItem(command, nzbId) {
+  async editItem(command: string, nzbId: NzbId) {
     const id = normalizeInteger(nzbId, 0);
     if (id <= 0) return false;
     return (await this.rpc("editqueue", [command, "", [id]])) === true;
@@ -328,7 +395,7 @@ export class NzbgetClient {
     return {
       completedPath: settings.completedPath || "",
       categoryDestDir: categoryEntry
-        ? readConfigValue(config, categoryEntry.Name.replace(/\.Name$/i, ".DestDir"))
+        ? readConfigValue(config, categoryEntry.Name!.replace(/\.Name$/i, ".DestDir"))
         : "",
       destDir: readConfigValue(config, "DestDir"),
       interDir: readConfigValue(config, "InterDir"),
@@ -336,7 +403,7 @@ export class NzbgetClient {
     };
   }
 
-  async testConnection({ force = false } = {}) {
+  async testConnection({ force = false }: { force?: boolean } = {}) {
     const settings = this._getSettings();
     if (!settings.enabled) {
       return {

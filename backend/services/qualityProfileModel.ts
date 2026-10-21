@@ -5,10 +5,11 @@ import type { StoredIntegrations } from "../db/helpers/settings.ts";
 type SlskdSettings = StoredIntegrations["slskd"];
 type ParsedAudio =
   | {
-      format?: Pick<
-        IFormat,
-        "container" | "codec" | "lossless" | "sampleRate" | "bitsPerSample" | "bitrate"
-      >;
+      format?: {
+        [K in "container" | "codec" | "lossless" | "sampleRate" | "bitsPerSample" | "bitrate"]?:
+          | IFormat[K]
+          | null;
+      };
     }
   | null
   | undefined;

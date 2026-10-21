@@ -18,7 +18,7 @@ function normalizeArtistAlbumKey(
 export async function resolveDeezerAlbumToMbid(
   artistName: string | null | undefined,
   albumName: string | null | undefined,
-  deezerAlbumId: string | null | undefined,
+  deezerAlbumId: string | number | null | undefined,
 ) {
   const deezerId = String(deezerAlbumId || "")
     .replace(/^dz-/, "")
@@ -49,7 +49,7 @@ export async function resolveDeezerAlbumToMbid(
 interface ArtistAlbumLookup {
   artistName?: string | null;
   albumName?: string | null;
-  deezerAlbumId?: string | null;
+  deezerAlbumId?: string | number | null;
 }
 
 export async function resolveArtistAndAlbumMbids({
