@@ -16,6 +16,13 @@ import {
   queueReducer,
   shouldRestartTrack,
 } from "../utils/audioQueue";
+import type {
+  ArtworkTarget,
+  QueueAction,
+  QueueSource,
+  QueueState,
+  QueueTrackInput,
+} from "../utils/audioQueue";
 import { AudioQueueContext } from "./audioQueueContext";
 import { useAuth } from "./AuthContext";
 import { getRequestToken } from "../utils/api/core";
@@ -104,7 +111,7 @@ function useSharedVolume() {
   return { ...audio, setVolume, setMuted };
 }
 
-function trackAt(state, playbackIndex) {
+function trackAt(state: QueueState, playbackIndex: number) {
   const queueIndex = state.playbackOrder[playbackIndex];
   return queueIndex == null ? null : (state.queue[queueIndex] ?? null);
 }
@@ -213,7 +220,7 @@ export function AudioQueueProvider({ children }) {
           const cur = stateRef.current;
           if (cur.currentIndex < 0) return;
           recordPlay(track);
-          const action = { type: cur.repeatMode === "one" ? "REPLAY" : "NEXT" };
+          const action: QueueAction = { type: cur.repeatMode === "one" ? "REPLAY" : "NEXT" };
           const next = queueReducer(cur, action);
           if (next.autoplay) loadTrackRef.current(next, next.currentIndex);
           dispatch(action);
@@ -269,7 +276,7 @@ export function AudioQueueProvider({ children }) {
   const toggleMute = useCallback(() => setMuted(!muted), [muted, setMuted]);
 
   const setShuffleEnabled = useCallback(
-    (enabled) => {
+    (enabled: boolean) => {
       dispatch({ type: "SET_SHUFFLE", enabled });
     },
     [dispatch],
@@ -284,7 +291,18 @@ export function AudioQueueProvider({ children }) {
   }, [dispatch]);
 
   const playQueue = useCallback(
-    (tracks, { startTrackId = null, source: nextSource = null, shuffle = false } = {}) => {
+    (
+      tracks: QueueTrackInput[],
+      {
+        startTrackId = null,
+        source: nextSource = null,
+        shuffle = false,
+      }: {
+        startTrackId?: string | number | null;
+        source?: QueueSource | null;
+        shuffle?: boolean;
+      } = {},
+    ) => {
       const normalized = (Array.isArray(tracks) ? tracks : [])
         .map((track) => normalizeQueueTrack(track))
         .filter((track) => track.src);
@@ -302,7 +320,10 @@ export function AudioQueueProvider({ children }) {
   );
 
   const playTrack = useCallback(
-    (track, options = {}) => {
+    (
+      track: QueueTrackInput,
+      options: { queue?: QueueTrackInput[]; source?: QueueSource | null } = {},
+    ) => {
       const normalized = normalizeQueueTrack(track);
       if (!normalized.src) return false;
       const contextTracks = (
@@ -320,7 +341,11 @@ export function AudioQueueProvider({ children }) {
   );
 
   const insertTracks = useCallback(
-    (tracks, position, { source: nextSource = null } = {}) => {
+    (
+      tracks: QueueTrackInput | QueueTrackInput[],
+      position: "next" | "end",
+      { source: nextSource = null }: { source?: QueueSource | null } = {},
+    ) => {
       const normalized = (Array.isArray(tracks) ? tracks : [tracks])
         .map((track) => normalizeQueueTrack(track))
         .filter((track) => track.src)
@@ -334,24 +359,26 @@ export function AudioQueueProvider({ children }) {
   );
 
   const queueNext = useCallback(
-    (tracks, options) => insertTracks(tracks, "next", options),
+    (tracks: QueueTrackInput | QueueTrackInput[], options?: { source?: QueueSource | null }) =>
+      insertTracks(tracks, "next", options),
     [insertTracks],
   );
 
   const addToQueue = useCallback(
-    (tracks, options) => insertTracks(tracks, "end", options),
+    (tracks: QueueTrackInput | QueueTrackInput[], options?: { source?: QueueSource | null }) =>
+      insertTracks(tracks, "end", options),
     [insertTracks],
   );
 
   const removeFromQueue = useCallback(
-    (entryId) => {
+    (entryId: string) => {
       dispatch({ type: "REMOVE_ENTRY", entryId });
     },
     [dispatch],
   );
 
   const reorderUpcoming = useCallback(
-    (entryIds) => {
+    (entryIds: string[]) => {
       dispatch({ type: "REORDER_UPCOMING", entryIds });
     },
     [dispatch],
@@ -364,7 +391,7 @@ export function AudioQueueProvider({ children }) {
   }, [dispatch]);
 
   const updateQueueArtwork = useCallback(
-    (target, artwork, artworkSource = null) => {
+    (target: ArtworkTarget, artwork: string | null, artworkSource: string | null = null) => {
       dispatch({ type: "UPDATE_ARTWORK", target, artwork, artworkSource });
     },
     [dispatch],
@@ -411,7 +438,7 @@ export function AudioQueueProvider({ children }) {
   );
 
   const seek = useCallback(
-    (position) => {
+    (position: number) => {
       const { duration } = engine.getSnapshot();
       if (!Number.isFinite(position)) return;
       const target = Math.max(0, duration > 0 ? Math.min(position, duration) : position);
@@ -432,7 +459,7 @@ export function AudioQueueProvider({ children }) {
   }, [dispatch, engine, seek]);
 
   const skipTo = useCallback(
-    (playbackIndex) => {
+    (playbackIndex: number) => {
       if (playbackIndex === stateRef.current.currentIndex) return;
       dispatch({ type: "SKIP_TO", index: playbackIndex });
     },
@@ -475,7 +502,7 @@ export function AudioQueueProvider({ children }) {
     if (!owner || cur.currentIndex >= 0) return;
     const saved = readStoredQueue(owner);
     if (!saved) return;
-    const action = { type: "RESTORE_QUEUE", ...saved };
+    const action: QueueAction = { type: "RESTORE_QUEUE", ...saved };
     const restored = queueReducer(cur, action);
     const track = trackAt(restored, restored.currentIndex);
     resumeAtRef.current = track ? { entryId: track.entryId, position: saved.position } : null;
@@ -624,7 +651,7 @@ export function AudioQueueProvider({ children }) {
     currentTrack && "queueSource" in currentTrack ? currentTrack.queueSource : state.source;
 
   const matchesSource = useCallback(
-    (candidate) => {
+    (candidate: Partial<QueueSource> | null | undefined) => {
       if (!candidate || !activeSource) return false;
       if (candidate.type && candidate.type !== activeSource.type) return false;
       if (candidate.id != null && String(candidate.id) !== String(activeSource.id)) return false;

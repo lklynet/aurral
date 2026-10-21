@@ -12,14 +12,52 @@ const FORMAT_BY_EXTENSION = {
 
 const DEFAULT_FORMAT_ATTEMPTS = ["mp3", "m4a", "flac", "ogg", "aac"];
 
-function extensionFromPath(value) {
+export type QueueSource = { type: string; id: string | number; label?: string };
+
+export type RepeatMode = "off" | "all" | "one";
+
+export type QueueTrackInput = {
+  id?: string | number | null;
+  trackId?: string | number | null;
+  mbid?: string | null;
+  title?: string | null;
+  trackName?: string | null;
+  name?: string | null;
+  artist?: string | null;
+  artistName?: string | null;
+  artistId?: string | number | null;
+  artistMbid?: string | number | null;
+  album?: string | null;
+  albumName?: string | null;
+  albumId?: string | number | null;
+  albumMbid?: string | number | null;
+  releaseGroupMbid?: string | null;
+  artwork?: string | null;
+  artworkUrl?: string | null;
+  artworkSource?: string | null;
+  coverUrl?: string | null;
+  customArtworkUrl?: string | null;
+  src?: string | null;
+  streamUrl?: string | null;
+  preview_url?: string | null;
+  streamFormat?: string | null;
+  quality?: string | null;
+  finalPath?: string | null;
+  durationMs?: number | null;
+  recordHistory?: boolean;
+  trackMbid?: string | null;
+  libraryTrackId?: string | number | null;
+  libraryAlbumId?: string | number | null;
+};
+
+function extensionFromPath(value: unknown) {
   const path = String(value || "")
     .split("?")[0]
     .toLowerCase();
   return path.match(/\.([a-z0-9]+)$/i)?.[1] || null;
 }
 
-function qualityToFormat(quality) {
+function qualityToFormat(quality: unknown) {
   const normalized = String(quality || "").toLowerCase();
   if (!normalized) return null;
   if (normalized.includes("flac")) return "flac";
@@ -30,7 +68,7 @@ function qualityToFormat(quality) {
   return null;
 }
 
-export function resolveTrackStreamFormat(track) {
+export function resolveTrackStreamFormat(track: QueueTrackInput | null | undefined) {
   const direct =
     track?.streamFormat ||
     extensionFromPath(track?.finalPath) ||
@@ -41,7 +79,7 @@ export function resolveTrackStreamFormat(track) {
   return qualityToFormat(track?.quality);
 }
 
-export function getFormatLoadAttempts(track) {
+export function getFormatLoadAttempts(track: QueueTrackInput | null | undefined) {
   const primary = resolveTrackStreamFormat(track);
   const attempts = primary ? [primary] : [];
   for (const format of DEFAULT_FORMAT_ATTEMPTS) {
@@ -50,16 +88,16 @@ export function getFormatLoadAttempts(track) {
   return attempts;
 }
 
-export function getHowlerFormat(formatKey) {
+export function getHowlerFormat(formatKey: string) {
   return FORMAT_BY_EXTENSION[formatKey] || [formatKey];
 }
 
-function usesTrackArtwork(track) {
+function usesTrackArtwork(track: QueueTrackInput) {
   if (track?.artworkSource) return track.artworkSource === "track";
   return String(track?.artwork || "").includes("/library/artwork/track/");
 }
 
-export function normalizeQueueTrack(track, overrides = {}) {
+export function normalizeQueueTrack(track: QueueTrackInput, overrides: QueueTrackInput = {}) {
   const id = String(track?.id ?? track?.trackId ?? track?.mbid ?? overrides.id ?? "");
   const src = track?.src ?? track?.streamUrl ?? track?.preview_url ?? "";
   const artwork = track?.artwork ?? track?.artworkUrl ?? overrides.artwork ?? null;
@@ -98,7 +136,12 @@ export function normalizeQueueTrack(track, overrides = {}) {
   };
 }
 
-export function normalizePlaylistQueueTrack(track, overrides = {}) {
+type QueueTrack = ReturnType<typeof normalizeQueueTrack>;
+
+export function normalizePlaylistQueueTrack(
+  track: QueueTrackInput,
+  overrides: QueueTrackInput = {},
+) {
   return normalizeQueueTrack(
     {
       id: track.id,
@@ -120,7 +163,11 @@ export function normalizePlaylistQueueTrack(track, overrides = {}) {
   );
 }
 
-export function normalizePreviewTrack(track, artistName, overrides = {}) {
+export function normalizePreviewTrack(
+  track: QueueTrackInput,
+  artistName: string | null | undefined,
+  overrides: QueueTrackInput = {},
+) {
   return normalizeQueueTrack(
     {
       id: track?.id ?? track?.mbid,
@@ -136,7 +183,14 @@ export function normalizePreviewTrack(track, artistName, overrides = {}) {
   );
 }
 
-export function isDownloadedLibraryAlbum(album, downloadStatuses = {}) {
+export function isDownloadedLibraryAlbum(
+  album: {
+    id?: string | number | null;
+    monitored?: boolean;
+    statistics?: { percentOfTracks?: number; sizeOnDisk?: number };
+  } | null,
+  downloadStatuses: Record<string, unknown> = {},
+) {
   if (String(album?.id ?? "").startsWith("pending-")) return false;
   return (
     album?.monitored ||
@@ -146,9 +200,79 @@ export function isDownloadedLibraryAlbum(album, downloadStatuses = {}) {
   );
 }
 
+export type QueueEntry = QueueTrack & { entryId: string; queueSource?: QueueSource | null };
+
+export type QueueState = {
+  queue: QueueEntry[];
+  currentIndex: number;
+  source: QueueSource | null;
+  error: string | null;
+  isShuffleEnabled: boolean;
+  playbackOrder: number[];
+  repeatMode: RepeatMode;
+  autoplay: boolean;
+  queueRevision: number;
+  nextEntryId: number;
+};
+
+export type ArtworkTarget = {
+  id?: string | number | null;
+  libraryTrackId?: string | number | null;
+  libraryAlbumId?: string | number | null;
+};
+
+export type QueueAction =
+  | {
+      type: "PLAY_QUEUE";
+      tracks: QueueTrack[];
+      startTrackId?: string | number | null;
+      shuffle?: boolean;
+      source?: QueueSource | null;
+    }
+  | { type: "SET_ALBUM_ARTWORK"; albumMbid: string | number; artwork: string }
+  | {
+      type: "UPDATE_ARTWORK";
+      target?: ArtworkTarget;
+      artwork?: string | null;
+      artworkSource?: string | null;
+    }
+  | { type: "SKIP_TO"; index: number }
+  | { type: "NEXT" }
+  | { type: "REPLAY" }
+  | { type: "PREVIOUS" }
+  | {
+      type: "INSERT_TRACKS";
+      tracks: QueueTrack[];
+      position: "next" | "end";
+      source?: QueueSource | null;
+    }
+  | { type: "REMOVE_ENTRY"; entryId: string }
+  | { type: "REORDER_UPCOMING"; entryIds: string[] }
+  | { type: "CLEAR_UPCOMING" }
+  | {
+      type: "RESTORE_ORDER";
+      queue: QueueEntry[];
+      playbackOrder: number[];
+      isShuffleEnabled: boolean;
+    }
+  | {
+      type: "RESTORE_QUEUE";
+      queue: QueueTrack[];
+      playbackOrder: number[];
+      currentIndex: number;
+      source?: QueueSource | null;
+      isShuffleEnabled?: boolean;
+      repeatMode?: RepeatMode;
+    }
+  | { type: "SET_ERROR"; error: string }
+  | { type: "CLEAR_ERROR" }
+  | { type: "SET_SHUFFLE"; enabled: boolean }
+  | { type: "TOGGLE_REPEAT" }
+  | { type: "CLEAR_QUEUE" };
+
 const RESTART_THRESHOLD_SECONDS = 3;
 
-function shuffleIndices(indices) {
+function shuffleIndices(indices: number[]) {
   const shuffled = [...indices];
   for (let i = shuffled.length - 1; i > 0; i -= 1) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -157,30 +281,37 @@ function shuffleIndices(indices) {
   return shuffled;
 }
 
-function buildPlaybackOrder(trackCount, shuffle, firstQueueIndex) {
+function buildPlaybackOrder(
+  trackCount: number,
+  shuffle: boolean,
+  firstQueueIndex: number | null | undefined,
+) {
   const indices = Array.from({ length: trackCount }, (_, index) => index);
   if (!shuffle) return indices;
   if (firstQueueIndex == null) return shuffleIndices(indices);
   return [firstQueueIndex, ...shuffleIndices(indices.filter((index) => index !== firstQueueIndex))];
 }
 
-function withEntryIds(state, tracks) {
+function withEntryIds(
+  state: Pick<QueueState, "nextEntryId">,
+  tracks: QueueTrack[],
+): [QueueEntry[], number] {
   let nextEntryId = state.nextEntryId ?? 0;
   const entries = tracks.map((track) => ({ ...track, entryId: `q${nextEntryId++}` }));
   return [entries, nextEntryId];
 }
 
-function playbackEntries(state) {
+function playbackEntries(state: QueueState) {
   return state.playbackOrder.map((queueIndex) => state.queue[queueIndex]);
 }
 
-function currentEntryId(state) {
+function currentEntryId(state: QueueState) {
   return state.queue[state.playbackOrder[state.currentIndex]]?.entryId ?? null;
 }
 
-function upcomingPositions(state) {
+function upcomingPositions(state: QueueState) {
   if (state.currentIndex < 0) return [];
-  const positions = [];
+  const positions: number[] = [];
   for (let index = state.currentIndex + 1; index < state.playbackOrder.length; index += 1) {
     positions.push(index);
   }
@@ -190,14 +321,14 @@ function upcomingPositions(state) {
   return positions;
 }
 
-export function getUpcomingTracks(state) {
+export function getUpcomingTracks(state: QueueState) {
   return upcomingPositions(state).map((index) => ({
     index,
     track: state.queue[state.playbackOrder[index]],
   }));
 }
 
-function arrange(state, queue, playback) {
+function arrange(state: QueueState, queue: QueueEntry[], playback: QueueEntry[]) {
   const current = currentEntryId(state);
   const naturalQueue = state.isShuffleEnabled ? queue : playback;
   const queueIndexById = new Map(naturalQueue.map((track, index) => [track.entryId, index]));
@@ -209,7 +340,7 @@ function arrange(state, queue, playback) {
   };
 }
 
-function playAt(state, index, autoplay) {
+function playAt(state: QueueState, index: number, autoplay: boolean): QueueState {
   return {
     ...state,
     currentIndex: index,
@@ -219,7 +350,7 @@ function playAt(state, index, autoplay) {
   };
 }
 
-export const initialQueueState = {
+export const initialQueueState: QueueState = {
   queue: [],
   currentIndex: -1,
   source: null,
@@ -232,13 +363,16 @@ export const initialQueueState = {
   nextEntryId: 0,
 };
 
-export function shouldRestartTrack(state, position) {
+export function shouldRestartTrack(
+  state: Pick<QueueState, "currentIndex" | "repeatMode">,
+  position: number,
+) {
   return (
     position > RESTART_THRESHOLD_SECONDS || (state.currentIndex <= 0 && state.repeatMode !== "all")
   );
 }
 
-export function queueReducer(state, action) {
+export function queueReducer(state: QueueState, action: QueueAction): QueueState {
   switch (action.type) {
     case "PLAY_QUEUE": {
       const { tracks, startTrackId, source } = action;
@@ -276,7 +410,7 @@ export function queueReducer(state, action) {
     }
     case "UPDATE_ARTWORK": {
       const target = action.target || {};
-      const matches = (track) => {
+      const matches = (track: QueueEntry) => {
         if (target.libraryTrackId != null) {
           return String(track.libraryTrackId ?? "") === String(target.libraryTrackId);
         }
@@ -344,7 +478,7 @@ export function queueReducer(state, action) {
     case "REMOVE_ENTRY": {
       if (!action.entryId || action.entryId === currentEntryId(state)) return state;
       if (!state.queue.some((track) => track.entryId === action.entryId)) return state;
-      const keep = (track) => track.entryId !== action.entryId;
+      const keep = (track: QueueEntry) => track.entryId !== action.entryId;
       return arrange(state, state.queue.filter(keep), playbackEntries(state).filter(keep));
     }
     case "REORDER_UPCOMING": {
@@ -370,7 +504,7 @@ export function queueReducer(state, action) {
       const order = playbackEntries(state);
       const cleared = new Set(upcomingPositions(state).map((index) => order[index].entryId));
       if (cleared.size === 0) return state;
-      const keep = (track) => !cleared.has(track.entryId);
+      const keep = (track: QueueEntry) => !cleared.has(track.entryId);
       return arrange(state, state.queue.filter(keep), order.filter(keep));
     }
     case "RESTORE_ORDER": {
@@ -418,7 +552,7 @@ export function queueReducer(state, action) {
       };
     }
     case "TOGGLE_REPEAT": {
-      const modes = ["off", "all", "one"];
+      const modes: RepeatMode[] = ["off", "all", "one"];
       const nextMode = modes[(modes.indexOf(state.repeatMode) + 1) % modes.length];
       return { ...state, repeatMode: nextMode };
     }

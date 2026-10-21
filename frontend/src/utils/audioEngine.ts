@@ -1,6 +1,32 @@
 import { Howl } from "howler";
 
-const IDLE_SNAPSHOT = {
+type AudioSnapshot = {
+  isLoading: boolean;
+  isPlaying: boolean;
+  isStarting: boolean;
+  duration: number;
+};
+
+type AudioHandlers = {
+  onEnd?: () => void;
+  onLoadError?: (...args: unknown[]) => void;
+};
+
+type AudioEntry = {
+  src: string;
+  format: string[];
+  wantsPlay: boolean;
+  startAt: number;
+  loaded: boolean;
+  failed: boolean;
+  handlers: AudioHandlers | null;
+  howl: Howl;
+  node: HTMLAudioElement | null;
+  onMediaEvent: () => void;
+  onEnded: () => void;
+};
+
+const IDLE_SNAPSHOT: AudioSnapshot = {
   isLoading: false,
   isPlaying: false,
   isStarting: false,
@@ -10,11 +36,11 @@ const IDLE_SNAPSHOT = {
 const HOWL_EVENTS = ["load", "loaderror", "play", "playerror", "pause", "stop", "end", "seek"];
 const MEDIA_EVENTS = ["playing", "pause", "waiting", "seeked", "canplay", "durationchange"];
 
-function mediaNode(howl) {
+function mediaNode(howl: Howl) {
   return howl?._sounds?.[0]?._node ?? null;
 }
 
-function readSnapshot(entry) {
+function readSnapshot(entry: AudioEntry | null): AudioSnapshot {
   const howl = entry?.howl;
   if (!howl || howl.state() === "unloaded") return IDLE_SNAPSHOT;
   const isLoading = howl.state() === "loading";
@@ -27,21 +53,21 @@ function readSnapshot(entry) {
   };
 }
 
-function sameSnapshot(a, b) {
-  return Object.keys(IDLE_SNAPSHOT).every((key) => a[key] === b[key]);
+function sameSnapshot(a: AudioSnapshot, b: AudioSnapshot) {
+  return (Object.keys(IDLE_SNAPSHOT) as (keyof AudioSnapshot)[]).every((key) => a[key] === b[key]);
 }
 
-function sameSource(entry, src, format) {
+function sameSource(entry: AudioEntry | null, src: string, format: string[]) {
   return entry?.src === src && String(entry.format) === String(format);
 }
 
 export function createAudioEngine() {
-  let current = null;
-  let preloaded = null;
+  let current: AudioEntry | null = null;
+  let preloaded: AudioEntry | null = null;
   let volume = 1;
   let muted = false;
-  let snapshot = IDLE_SNAPSHOT;
-  const listeners = new Set();
+  let snapshot: AudioSnapshot = IDLE_SNAPSHOT;
+  const listeners = new Set<() => void>();
 
   const emit = () => {
     const next = readSnapshot(current);
@@ -50,7 +76,7 @@ export function createAudioEngine() {
     for (const listener of listeners) listener();
   };
 
-  const createEntry = ({ src, format }) => {
+  const createEntry = ({ src, format }: { src: string; format: string[] }) => {
     const entry = {
       src,
       format,
@@ -59,7 +85,7 @@ export function createAudioEngine() {
       loaded: false,
       failed: false,
       handlers: null,
-    };
+    } as AudioEntry;
     entry.howl = new Howl({
       src: [src],
       format,
@@ -80,7 +106,7 @@ export function createAudioEngine() {
       entry.wantsPlay = false;
     });
     for (const event of HOWL_EVENTS) {
-      entry.howl.on(event, (...args) => {
+      entry.howl.on(event, (...args: unknown[]) => {
         if (entry !== current) return;
         emit();
         if (event === "loaderror") entry.handlers?.onLoadError?.(...args);
@@ -100,7 +126,7 @@ export function createAudioEngine() {
     return entry;
   };
 
-  const release = (entry) => {
+  const release = (entry: AudioEntry | null) => {
     if (!entry) return;
     entry.handlers = null;
     entry.node?.removeEventListener("ended", entry.onEnded);
@@ -114,14 +140,26 @@ export function createAudioEngine() {
   };
 
   return {
-    subscribe(listener) {
+    subscribe(listener: () => void) {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
     getSnapshot() {
       return snapshot;
     },
-    load({ src, format, autoplay = true, startAt = 0, onEnd, onLoadError }) {
+    load({
+      src,
+      format,
+      autoplay = true,
+      startAt = 0,
+      onEnd,
+      onLoadError,
+    }: AudioHandlers & {
+      src: string;
+      format: string[];
+      autoplay?: boolean;
+      startAt?: number;
+    }) {
       const reusable = sameSource(preloaded, src, format) && !preloaded.failed ? preloaded : null;
       if (reusable) preloaded = null;
       else if (sameSource(preloaded, src, format)) discardPreload();
@@ -137,7 +175,7 @@ export function createAudioEngine() {
       if (autoplay) current.howl.play();
       emit();
     },
-    preload({ src, format }) {
+    preload({ src, format }: { src: string; format: string[] }) {
       if (!src || sameSource(current, src, format) || sameSource(preloaded, src, format)) return;
       discardPreload();
       preloaded = createEntry({ src, format });
@@ -155,7 +193,7 @@ export function createAudioEngine() {
       current.howl.pause();
       emit();
     },
-    seek(position) {
+    seek(position: number) {
       if (!current || !Number.isFinite(position)) return;
       const target = Math.max(0, position);
       if (!current.loaded) current.startAt = target;
@@ -178,12 +216,12 @@ export function createAudioEngine() {
       }
       return 0;
     },
-    setVolume(nextVolume) {
+    setVolume(nextVolume: number) {
       volume = nextVolume;
       current?.howl.volume(nextVolume);
       preloaded?.howl.volume(nextVolume);
     },
-    setMuted(nextMuted) {
+    setMuted(nextMuted: boolean) {
       muted = nextMuted;
       current?.howl.mute(nextMuted);
       preloaded?.howl.mute(nextMuted);

@@ -1,6 +1,63 @@
 import { flowPath, playlistPath } from "../navigation/playlistPaths.ts";
 
-export function getSearchResultLabel(item) {
+type SearchItem = {
+  type?: string | null;
+  key?: string | null;
+  id?: string | number | null;
+  name?: string | null;
+  title?: string | null;
+  albumTitle?: string | null;
+  artistName?: string | null;
+  artistMbid?: string | null;
+  artistInLibrary?: boolean | null;
+  albumMbid?: string | null;
+  albumCanonicalId?: string | null;
+  canonicalId?: string | null;
+  trackMbid?: string | null;
+  inLibrary?: boolean | null;
+  source?: string | null;
+  score?: number | null;
+  sortName?: string | null;
+  hasMbid?: boolean | null;
+  releaseDate?: string | null;
+  firstReleaseDate?: string | null;
+  releaseYear?: number | string | null;
+  primaryType?: string | null;
+  releaseType?: string | null;
+  albumType?: string | null;
+  secondaryTypes?: string[] | null;
+  coverUrl?: string | null;
+  imageUrl?: string | null;
+  image?: string | null;
+  deezerAlbumId?: string | number | null;
+  _deezerAlbumId?: string | number | null;
+  rating?: number | null;
+  streamPath?: string | null;
+  sourceFlowId?: string | null;
+  foreignArtistId?: string | null;
+  mbid?: string | null;
+  artistId?: string | null;
+};
+
+type SearchBuckets = {
+  artists?: SearchItem[] | null;
+  albums?: SearchItem[] | null;
+  tracks?: SearchItem[] | null;
+};
+
+type SearchResponse = {
+  query?: string | null;
+  top?: SearchItem | null;
+  catalog?: SearchBuckets | null;
+  library?: SearchBuckets | null;
+};
+
+type LibraryFlags = {
+  artistIds?: ReadonlySet<unknown>;
+  albumIds?: ReadonlySet<unknown>;
+};
+
+export function getSearchResultLabel(item: SearchItem | null | undefined) {
   if (!item) return "";
   if (item.type === "artist") return item.name || "";
   if (item.type === "playlist") return item.name || "";
@@ -17,19 +74,25 @@ export function getSearchResultLabel(item) {
   return "";
 }
 
-export function getSearchResultKey(item, index = 0) {
+export function getSearchResultKey(item: SearchItem | null | undefined, index = 0) {
   if (!item) return `search-item-${index}`;
   return item.key || item.id || `${item.type}:${getSearchResultLabel(item).toLowerCase()}:${index}`;
 }
 
-export function buildArtistFocusState(item, overrides = {}) {
-  const state = { ...overrides };
+export function buildArtistFocusState(
+  item: SearchItem | null | undefined,
+  overrides: Record<string, unknown> = {},
+) {
+  const state: Record<string, unknown> = { ...overrides };
   if (item?.artistName || item?.name) state.artistName = item.artistName || item.name;
   if (typeof item?.inLibrary === "boolean") state.inLibrary = item.inLibrary;
   return state;
 }
 
-function buildReleaseFocusState(item, releaseGroupMbid) {
+function buildReleaseFocusState(
+  item: SearchItem | null | undefined,
+  releaseGroupMbid: string | number,
+) {
   const releaseTitle = item?.type === "album" ? item.title : item?.albumTitle;
   const releaseDate =
     item?.releaseDate ||
@@ -47,9 +110,38 @@ function buildReleaseFocusState(item, releaseGroupMbid) {
   };
 }
 
+type ReleaseGroupInput = {
+  id?: string | null;
+  title?: string | null;
+  "first-release-date"?: string | null;
+  "primary-type"?: string | null;
+  "secondary-types"?: string[] | null;
+  _coverUrl?: string | null;
+  coverUrl?: string | null;
+  _deezerAlbumId?: string | number | null;
+  rating?: number | null;
+};
+
+type LibraryAlbumInput = {
+  releaseGroupMbid?: string | null;
+  mbid?: string | null;
+  foreignAlbumId?: string | null;
+  albumName?: string | null;
+  title?: string | null;
+  artistName?: string | null;
+  releaseDate?: string | null;
+  albumType?: string | null;
+};
+
+type NavigationItemOptions = {
+  artistMbid?: string | null;
+  artistName?: string | null;
+  coverUrl?: string;
+};
+
 export function buildReleaseGroupNavigationItem(
-  releaseGroup,
-  { artistMbid, artistName, coverUrl = "" } = {},
+  releaseGroup: ReleaseGroupInput | null | undefined,
+  { artistMbid, artistName, coverUrl = "" }: NavigationItemOptions = {},
 ) {
   if (!releaseGroup?.id || !artistMbid) return null;
   return {
@@ -70,8 +162,8 @@ export function buildReleaseGroupNavigationItem(
 }
 
 export function buildLibraryAlbumNavigationItem(
-  libraryAlbum,
-  { artistMbid, artistName, coverUrl = "" } = {},
+  libraryAlbum: LibraryAlbumInput | null | undefined,
+  { artistMbid, artistName, coverUrl = "" }: NavigationItemOptions = {},
 ) {
   const releaseGroupMbid =
     libraryAlbum?.releaseGroupMbid || libraryAlbum?.mbid || libraryAlbum?.foreignAlbumId || null;
@@ -88,21 +180,27 @@ export function buildLibraryAlbumNavigationItem(
   };
 }
 
-export function getReleaseGroupLink(releaseGroup, { artistMbid, artistName, coverUrl = "" } = {}) {
+export function getReleaseGroupLink(
+  releaseGroup: ReleaseGroupInput | null | undefined,
+  { artistMbid, artistName, coverUrl = "" }: NavigationItemOptions = {},
+) {
   const target = getReleaseNavigationTarget(
     buildReleaseGroupNavigationItem(releaseGroup, { artistMbid, artistName, coverUrl }),
   );
   return target ? { to: target.pathname, state: target.state } : null;
 }
 
-export function getLibraryAlbumLink(libraryAlbum, { artistMbid, artistName, coverUrl = "" } = {}) {
+export function getLibraryAlbumLink(
+  libraryAlbum: LibraryAlbumInput | null | undefined,
+  { artistMbid, artistName, coverUrl = "" }: NavigationItemOptions = {},
+) {
   const target = getReleaseNavigationTarget(
     buildLibraryAlbumNavigationItem(libraryAlbum, { artistMbid, artistName, coverUrl }),
   );
   return target ? { to: target.pathname, state: target.state } : null;
 }
 
-export function getReleaseNavigationTarget(item) {
+export function getReleaseNavigationTarget(item: SearchItem | null | undefined) {
   if (!item?.artistMbid) return null;
   const releaseGroupMbid = item.type === "album" ? item.id : item.albumMbid;
   if (!releaseGroupMbid) return null;
@@ -121,7 +219,7 @@ export function getReleaseNavigationTarget(item) {
   };
 }
 
-function getLibraryResultPath(item) {
+function getLibraryResultPath(item: SearchItem) {
   if (item?.source !== "library") return null;
   if (item.type === "artist" && item.canonicalId) {
     return `/library/artist/${encodeURIComponent(item.canonicalId)}`;
@@ -135,7 +233,7 @@ function getLibraryResultPath(item) {
   return null;
 }
 
-export function getSearchResultLink(item, { query = "" } = {}) {
+export function getSearchResultLink(item: SearchItem | null | undefined, { query = "" } = {}) {
   if (!item) return null;
 
   const libraryPath = getLibraryResultPath(item);
@@ -176,7 +274,11 @@ export function getSearchResultLink(item, { query = "" } = {}) {
   return null;
 }
 
-export function navigateFromSearchResult(navigate, item, { query = "" } = {}) {
+export function navigateFromSearchResult(
+  navigate: (to: string, options?: { state: Record<string, unknown> }) => void,
+  item: SearchItem | null | undefined,
+  { query = "" } = {},
+) {
   if (typeof navigate !== "function") return;
   const link = getSearchResultLink(item, { query });
   if (!link) return;
@@ -187,7 +289,7 @@ export function navigateFromSearchResult(navigate, item, { query = "" } = {}) {
   navigate(link.to);
 }
 
-function normalizeSearchText(value) {
+function normalizeSearchText(value: unknown) {
   return String(value || "")
     .normalize("NFKD")
     .toLowerCase()
@@ -196,7 +298,7 @@ function normalizeSearchText(value) {
     .trim();
 }
 
-function applyLibraryFlags(item, libraryFlags = {}) {
+function applyLibraryFlags(item: SearchItem, libraryFlags: LibraryFlags = {}) {
   if (!item || item.inLibrary) return item;
   const artistIds = libraryFlags.artistIds;
   const albumIds = libraryFlags.albumIds;
@@ -212,19 +314,23 @@ function applyLibraryFlags(item, libraryFlags = {}) {
   return item;
 }
 
-function prepareSearchCandidates(items, libraryFlags) {
+function prepareSearchCandidates(items: SearchItem[], libraryFlags: LibraryFlags) {
   return items.filter(Boolean).map((item) => applyLibraryFlags(item, libraryFlags));
 }
 
-function getResultIdentity(item) {
+function getResultIdentity(item: SearchItem | null | undefined) {
   if (!item) return null;
   if (item.id) return `${item.type}:${item.id}`;
   if (item.key) return String(item.key);
   return null;
 }
 
-function dedupeItems(items, seen, seenArtistNames = null) {
-  const unique = [];
+function dedupeItems(
+  items: SearchItem[],
+  seen: Set<string>,
+  seenArtistNames: Set<string> | null = null,
+) {
+  const unique: SearchItem[] = [];
   for (const item of items) {
     if (item.type === "artist" && seenArtistNames) {
       const nameKey = normalizeSearchText(item.name);
@@ -243,9 +349,9 @@ function dedupeItems(items, seen, seenArtistNames = null) {
   return unique;
 }
 
-export function dedupeArtistsByName(artists) {
-  const seen = new Set();
-  const result = [];
+export function dedupeArtistsByName(artists: SearchItem[]) {
+  const seen = new Set<string>();
+  const result: SearchItem[] = [];
   for (const artist of artists) {
     const key = normalizeSearchText(artist?.name);
     if (!key || seen.has(key)) continue;
@@ -255,7 +361,10 @@ export function dedupeArtistsByName(artists) {
   return result;
 }
 
-function findArtistMatch(artists, { id, name }) {
+function findArtistMatch(
+  artists: SearchItem[],
+  { id, name }: { id?: string | number | null; name?: string | null },
+) {
   if (id) {
     const byId = artists.find((artist) => artist?.id === id || artist?.key === id);
     if (byId) return byId;
@@ -267,11 +376,11 @@ function findArtistMatch(artists, { id, name }) {
   return null;
 }
 
-function compactSearchText(value) {
+function compactSearchText(value: unknown) {
   return normalizeSearchText(value).replace(/\s+/g, "");
 }
 
-function queryMatchesArtistName(query, artistName) {
+function queryMatchesArtistName(query: string, artistName: unknown) {
   const normalizedQuery = normalizeSearchText(query);
   const normalizedName = normalizeSearchText(artistName);
   if (!normalizedQuery || !normalizedName) return false;
@@ -279,7 +388,7 @@ function queryMatchesArtistName(query, artistName) {
   return compactSearchText(normalizedQuery) === compactSearchText(normalizedName);
 }
 
-function findQueryArtist(allArtists, query) {
+function findQueryArtist(allArtists: SearchItem[], query: string) {
   const exact = findArtistMatch(allArtists, { name: query });
   if (exact) return exact;
 
@@ -288,7 +397,7 @@ function findQueryArtist(allArtists, query) {
   return allArtists.find((artist) => compactSearchText(artist?.name) === compactQuery) || null;
 }
 
-function artistFromAlbumTop(album) {
+function artistFromAlbumTop(album: SearchItem) {
   if (!album?.artistName) return null;
   return {
     type: "artist",
@@ -303,7 +412,7 @@ function artistFromAlbumTop(album) {
   };
 }
 
-function artistFromPerformerFields(item) {
+function artistFromPerformerFields(item: SearchItem) {
   if (!item?.artistName && !item?.artistMbid) return null;
   return {
     type: "artist",
@@ -316,7 +425,10 @@ function artistFromPerformerFields(item) {
   };
 }
 
-export function resolveSearchTopResult(data, libraryFlags = {}) {
+export function resolveSearchTopResult(
+  data: SearchResponse | null | undefined,
+  libraryFlags: LibraryFlags = {},
+) {
   if (!data) return null;
 
   const query = String(data.query || "").trim();
@@ -353,7 +465,10 @@ export function resolveSearchTopResult(data, libraryFlags = {}) {
   return prepareSearchCandidates([fallback], libraryFlags)[0];
 }
 
-export function resolveSearchTopArtist(data, libraryFlags = {}) {
+export function resolveSearchTopArtist(
+  data: SearchResponse | null | undefined,
+  libraryFlags: LibraryFlags = {},
+) {
   const top = resolveSearchTopResult(data, libraryFlags);
   if (!top) return null;
   if (top.type === "artist") return top;
@@ -371,7 +486,10 @@ export function resolveSearchTopArtist(data, libraryFlags = {}) {
   return catalogArtists[0] || null;
 }
 
-export function buildSearchArtistResults(data, libraryFlags = {}) {
+export function buildSearchArtistResults(
+  data: SearchResponse | null | undefined,
+  libraryFlags: LibraryFlags = {},
+) {
   if (!data) return [];
 
   const candidates = [...(data.catalog?.artists || [])];
@@ -392,7 +510,7 @@ export function buildSearchArtistResults(data, libraryFlags = {}) {
   );
 }
 
-function getSearchResultBuckets(data) {
+function getSearchResultBuckets(data: SearchResponse) {
   return [
     ...(data.catalog?.artists || []),
     ...(data.catalog?.albums || []),
@@ -401,8 +519,18 @@ function getSearchResultBuckets(data) {
 }
 
 export function buildMixedSearchPageItems(
-  data,
-  { limit = 24, excludeArtist = null, excludeItem = null, libraryFlags = {} } = {},
+  data: SearchResponse | null | undefined,
+  {
+    limit = 24,
+    excludeArtist = null,
+    excludeItem = null,
+    libraryFlags = {},
+  }: {
+    limit?: number;
+    excludeArtist?: SearchItem | null;
+    excludeItem?: SearchItem | null;
+    libraryFlags?: LibraryFlags;
+  } = {},
 ) {
   if (!data) return [];
 
@@ -428,18 +556,18 @@ export function buildMixedSearchPageItems(
     },
   );
 
-  const seen = new Set();
-  const seenArtistNames = new Set();
+  const seen = new Set<string>();
+  const seenArtistNames = new Set<string>();
   if (excludeName) seenArtistNames.add(excludeName);
   return dedupeItems(candidates, seen, seenArtistNames).slice(0, limit);
 }
 
-export function buildUnifiedSuggestionSections(data) {
+export function buildUnifiedSuggestionSections(data: SearchResponse | null | undefined) {
   if (!data) return [];
 
-  const seen = new Set();
-  const seenArtistNames = new Set();
-  const sections = [];
+  const seen = new Set<string>();
+  const seenArtistNames = new Set<string>();
+  const sections: { key: string; label: string; items: SearchItem[] }[] = [];
 
   const libraryArtists = dedupeItems(data.library?.artists || [], seen, seenArtistNames);
   const libraryAlbums = dedupeItems(data.library?.albums || [], seen, seenArtistNames);
@@ -493,7 +621,9 @@ export function buildUnifiedSuggestionSections(data) {
   return sections;
 }
 
-export function flattenSuggestionSections(sections) {
+export function flattenSuggestionSections(
+  sections: { key: string; label: string; items: SearchItem[] }[],
+) {
   const rows = [];
   for (const section of sections) {
     rows.push({
