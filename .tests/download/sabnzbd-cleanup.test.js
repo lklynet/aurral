@@ -77,6 +77,20 @@ test("uses SABnzbd path mappings and refuses an unmapped Windows path", async ()
   assert.equal(await exists(folder()), false);
 });
 
+test("uses a SABnzbd path mapping scoped to the category folder", async () => {
+  syncPathMappings([
+    {
+      source: "sabnzbd",
+      remote: "D:\\completed\\aurral",
+      local: path.join(root, "aurral"),
+    },
+  ]);
+
+  await remove({ storage: "D:\\completed\\aurral\\release" }, { destDir: "D:\\completed" });
+
+  assert.equal(await exists(folder()), false);
+});
+
 test("keeps history when cleanup is unsafe and honors the opt-out", async () => {
   const client = new SabnzbdClient({ category: "aurral", deleteLeftovers: true });
   const api = vi.spyOn(client, "api").mockImplementation(async (mode, params = {}) => {

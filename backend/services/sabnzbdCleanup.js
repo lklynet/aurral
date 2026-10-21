@@ -18,6 +18,12 @@ function isAbsoluteExternalPath(value) {
   return path.isAbsolute(raw) || /^[A-Za-z]:[\\/]/.test(raw) || /^\\\\/.test(raw);
 }
 
+function appendExternalPath(root, parts) {
+  const raw = String(root || "").trim();
+  const base = raw.replace(/[\\/]+$/, "");
+  return `${base || (raw.startsWith("/") ? "/" : "")}${base ? "/" : ""}${parts.join("/")}`;
+}
+
 export async function removeSabnzbdDownloadFolder(historyItem, directories, category) {
   const storage = String(historyItem?.storage || "").trim();
   if (!storage) return;
@@ -39,17 +45,22 @@ export async function removeSabnzbdDownloadFolder(historyItem, directories, cate
   if (!stat) return;
   if (!stat.isDirectory()) throw new Error("SABnzbd download folder is not a directory");
 
-  const roots = [directories.completedPath, directories.destDir].map(toLocal).filter(Boolean);
+  const rootPaths = [directories.completedPath, directories.destDir]
+    .map((root) => String(root || "").trim())
+    .filter(Boolean);
+  const roots = rootPaths.map(toLocal).filter(Boolean);
   const categoryDestDir = String(directories.categoryDestDir || "").trim();
   const categoryDestParts = safePathParts(categoryDestDir);
   const configuredCategoryDirs = isAbsoluteExternalPath(categoryDestDir)
     ? [toLocal(categoryDestDir)].filter(Boolean)
     : categoryDestParts.length
-      ? roots.map((root) => path.join(root, ...categoryDestParts))
+      ? rootPaths
+          .map((root) => toLocal(appendExternalPath(root, categoryDestParts)))
+          .filter(Boolean)
       : [];
   const categoryParts = safePathParts(category);
   const defaultCategoryDirs = categoryParts.length
-    ? roots.map((root) => path.join(root, ...categoryParts))
+    ? rootPaths.map((root) => toLocal(appendExternalPath(root, categoryParts))).filter(Boolean)
     : [];
   const parents = await Promise.all(
     [...roots, ...configuredCategoryDirs, ...defaultCategoryDirs].map(realpathOr),
