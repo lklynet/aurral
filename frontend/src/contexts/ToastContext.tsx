@@ -1,18 +1,19 @@
 import { createContext, useContext, useState, useCallback, useRef, useMemo } from "react";
 import type { ReactNode } from "react";
 import { ToastContainer } from "../components/Toast";
+import type { ToastType } from "../components/Toast";
 
 const MAX_TOASTS = 4;
 
-type ToastType = "success" | "error" | "info";
 type ToastContent = {
-  message?: ReactNode;
-  title?: ReactNode;
-  description?: ReactNode;
-  action?: { label: string; onClick: () => void };
   duration?: number;
   onClose?: () => void;
-};
+} & (
+  | { message: ReactNode }
+  | { title: ReactNode }
+  | { description: ReactNode }
+  | { action: { label: string; onClick: () => void } }
+);
 type ToastMessage = string | ToastContent;
 type ToastEntry = ToastContent & { id: string; type: ToastType; duration: number };
 type ToastApi = {
@@ -38,7 +39,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const addToast = useCallback(
     (message: ToastMessage, type: ToastType = "info", duration = 3000) => {
       const id = `${Date.now()}-${nextToastIdRef.current++}`;
-      const content =
+      const content: ToastContent =
         message &&
         typeof message === "object" &&
         ("message" in message ||

@@ -19,9 +19,9 @@ const TOAST_ICONS = {
   loading: DotLoader,
 };
 
-const TOAST_EXIT_DURATION = 180;
+export type ToastType = keyof typeof TOAST_ICONS;
 
-type ToastType = keyof typeof TOAST_ICONS;
+const TOAST_EXIT_DURATION = 180;
 
 export interface ToastItem {
   id: string;

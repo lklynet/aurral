@@ -1,4 +1,5 @@
 import express from "express";
+import type { RequestUser } from "../middleware/requestUser.ts";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
@@ -231,6 +232,66 @@ async function buildSystemPayload(settings) {
   };
 }
 
+export type BootstrapPayload = {
+  status: string;
+  timestamp: string;
+  appVersion: string;
+  api: typeof API_CONTRACT;
+  matcher: {
+    available: boolean;
+    checked: boolean;
+    policyVersion: string | null;
+    error: { code: string } | null;
+  };
+  authRequired: boolean;
+  proxyAuthEnabled: boolean;
+  oidcEnabled: boolean;
+  oidcLogoutUrl: string | null;
+  googleLoginEnabled: boolean;
+  plexLoginEnabled: boolean;
+  ssoOnly: boolean;
+  onboardingRequired: boolean;
+  dateTimeFormat: string;
+  token?: string;
+  user?: Pick<RequestUser, "id" | "username" | "role" | "permissions">;
+  authUser?: string;
+  proxyLogoutUrl?: string | null;
+  rootFolderConfigured?: boolean;
+  lidarr?: { configured: boolean; circuitOpen: boolean };
+  lidarrConfigured?: boolean;
+  lastfmConfigured?: boolean;
+  ticketmasterConfigured?: boolean;
+  inboxEnabled?: boolean;
+  newsConfigured?: boolean;
+  musicbrainzConfigured?: boolean;
+  metadataConfigured?: boolean;
+  slskdConfigured?: boolean;
+  prowlarrConfigured?: boolean;
+  nzbgetConfigured?: boolean;
+  sabnzbdConfigured?: boolean;
+  usenetConfigured?: boolean;
+  ytdlpConfigured?: boolean;
+  deemixConfigured?: boolean;
+  downloadSources?: ReturnType<typeof getDownloadSourceStatus>;
+  metadataProviders?: {
+    brainzmash: {
+      configuredProvider: string;
+      activeBaseUrl: string;
+      failoverActive: boolean;
+      lastCheckedAt: string | null;
+      lastSuccessAt: string | null;
+      lastFailureAt: string | null;
+      lastFailureReason: string;
+    };
+  };
+  localNetworkBypass?: {
+    enabled: boolean;
+    eligible: boolean;
+    active: boolean;
+    reason: string | null;
+  };
+};
+
 function serializeBootstrapMatcherStatus(status, authenticated) {
   if (authenticated) return status;
   return {
@@ -250,7 +311,7 @@ function buildBootstrapPayload(req) {
   const lidarrConfigured = lidarrClient.isConfigured();
 
   const oidcInfo = getOidcBootstrapInfo();
-  const payload = {
+  const payload: BootstrapPayload = {
     status: "ok",
     authRequired,
     proxyAuthEnabled: isProxyAuthEnabled(),

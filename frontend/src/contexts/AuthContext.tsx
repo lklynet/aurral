@@ -19,6 +19,7 @@ import { clearLibraryFavoritesCache } from "../utils/api/endpoints/library.ts";
 import { setDateTimeFormat } from "../utils/dateTime.ts";
 import { queryClient } from "../queryClient.ts";
 import type { ReactNode } from "react";
+import type { BootstrapPayload } from "../../../backend/routes/health.ts";
 
 type AuthUser = {
   id?: number;
@@ -26,22 +27,12 @@ type AuthUser = {
   role: string;
   permissions: Record<string, boolean>;
 };
-type AuthBootstrap = {
-  dateTimeFormat?: string;
-  token?: string;
-  onboardingRequired?: boolean;
-  authRequired?: boolean;
-  user?: AuthUser;
-  oidcLogoutUrl?: string | null;
-  proxyLogoutUrl?: string | null;
-  proxyAuthEnabled?: boolean;
-};
 type LoginResult = { ok: boolean; status?: number };
 type AuthContextValue = {
   isAuthenticated: boolean;
   isLoading: boolean;
   user: AuthUser | null;
-  bootstrap: AuthBootstrap | null;
+  bootstrap: BootstrapPayload | null;
   login: (password: string, username: string) => Promise<LoginResult>;
   logout: () => Promise<void>;
   canLogOut: boolean;
@@ -58,7 +49,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [authRequired, setAuthRequired] = useState(false);
   const [onboardingRequired, setOnboardingRequired] = useState(false);
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [bootstrap, setBootstrap] = useState<AuthBootstrap | null>(null);
+  const [bootstrap, setBootstrap] = useState<BootstrapPayload | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const authResolvedRef = useRef(false);
 
