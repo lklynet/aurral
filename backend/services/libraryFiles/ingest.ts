@@ -1,8 +1,13 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { parseFile } from "music-metadata";
+import { parseFile, type IAudioMetadata } from "music-metadata";
 import { db } from "../../config/db-sqlite.ts";
+import type {
+  LibraryAlbumsRow,
+  LibraryFileOperationItemsRow,
+  LibraryMediaFilesRow,
+} from "../../db/rows.ts";
 import {
   buildLibraryTrackPath,
   findLibraryFileVariant,
@@ -30,7 +35,13 @@ import {
 import { writeAudioTags } from "../audioTags.ts";
 import { rekeyLibraryAlbum } from "../libraryMediaStore.ts";
 import { findLibraryTrackAtPath, matchLibraryRecord } from "./libraryMatch.ts";
-import { SAME_LENGTH_MS, differentTracks, formatGap, readRecording } from "./recordings.ts";
+import {
+  SAME_LENGTH_MS,
+  type Recording,
+  differentTracks,
+  formatGap,
+  readRecording,
+} from "./recordings.ts";
 import { planTagFill } from "./tagFill.ts";
 import {
   addLibraryFileOperationItems,
@@ -44,14 +55,29 @@ import {
 
 const CHUNK = 200;
 
+type LibraryFileOperation = NonNullable<ReturnType<typeof getLibraryFileOperation>>;
+type LibraryFileItem = ReturnType<typeof listLibraryFileOperationItems>[number];
+type FiledItem = LibraryFileItem & { targetPath: string };
+type LibraryFileRecord = ReturnType<typeof buildMetadataRecord>;
+type LibraryMatch = ReturnType<typeof matchLibraryRecord>;
+type TagFillAlbums = NonNullable<Parameters<typeof planTagFill>[1]>;
+type TagFillTags = NonNullable<Awaited<ReturnType<typeof planTagFill>>["tags"]>;
+type TransferMode = Parameters<typeof placeFile>[2];
+type SettledItem = Pick<
+  LibraryFileOperationItemsRow,
+  "position" | "source_path" | "details_json" | "target_path"
+>;
+type Placed = { item: SettledItem; media: LibraryMediaFilesRow };
+
 export class IngestSourceError extends Error {
-  constructor(message) {
+  declare code: string;
+  constructor(message: string) {
     super(message);
     this.code = "INGEST_SOURCE_INVALID";
   }
 }
 
-async function* walkAudioFiles(directory) {
+async function* walkAudioFiles(directory: string): AsyncGenerator<string> {
   let entries;
   try {
     entries = await fs.readdir(directory, { withFileTypes: true });
@@ -70,11 +96,12 @@ async function* walkAudioFiles(directory) {
   }
 }
 
-const overlaps = (left, right) => isPathWithin(left, right) || isPathWithin(right, left);
+const overlaps = (left: string, right: string) =>
+  isPathWithin(left, right) || isPathWithin(right, left);
 
 export async function resolveIngestSource(
-  sourcePath,
-  { downloadRoot = resolveDownloadRoot() } = {},
+  sourcePath: unknown,
+  { downloadRoot = resolveDownloadRoot() }: { downloadRoot?: string } = {},
 ) {
   const requested = String(sourcePath || "").trim();
   if (!requested || !path.isAbsolute(requested)) {
@@ -98,7 +125,10 @@ export async function resolveIngestSource(
   return source;
 }
 
-export async function checkIngestSource({ sourcePath, lidarrClient = null } = {}) {
+export async function checkIngestSource({
+  sourcePath,
+  lidarrClient = null,
+}: { sourcePath?: unknown; lidarrClient?: Parameters<typeof configuredLidarrFolders>[0] } = {}) {
   const downloadRoot = resolveDownloadRoot();
   const source = await resolveIngestSource(sourcePath, { downloadRoot });
   let audioFiles = 0;
@@ -121,15 +151,18 @@ export async function checkIngestSource({ sourcePath, lidarrClient = null } = {}
   };
 }
 
-const MONITOR_CHOICES = new Set(["none", "tracks", "albums"]);
+const MONITOR_CHOICES = new Set<unknown>(["none", "tracks", "albums"]);
 
-export function validateIngestOptions({ mode, monitor } = {}) {
+export function validateIngestOptions({
+  mode,
+  monitor,
+}: { mode?: unknown; monitor?: unknown } = {}) {
   if (!TRANSFER_MODES.has(mode)) throw new IngestSourceError("Choose Move, Copy, or Hardlink.");
   if (!MONITOR_CHOICES.has(monitor))
     throw new IngestSourceError("Choose None, Tracks, or Albums to monitor.");
 }
 
-async function listSourceFiles(operation) {
+async function listSourceFiles(operation: LibraryFileOperation) {
   deleteLibraryFileOperationItems(operation.id, ["new"]);
   const files = [];
   for await (const filePath of walkAudioFiles(operation.options.sourcePath)) {
@@ -141,10 +174,16 @@ async function listSourceFiles(operation) {
   if (files.length) addLibraryFileOperationItems(operation.id, files);
 }
 
-const unknownIdentity = (record) =>
+const unknownIdentity = (record: LibraryFileRecord) =>
   record.artistName === "Unknown Artist" || record.albumName === "Unknown Album";
 
-async function planFill(item, record, match, metadata, albums) {
+async function planFill(
+  item: LibraryFileItem,
+  record: LibraryFileRecord,
+  match: LibraryMatch,
+  metadata: IAudioMetadata,
+  albums: TagFillAlbums,
+) {
   const durationS = Number(metadata.format?.duration);
   return planTagFill(
     {
@@ -172,7 +211,7 @@ const TAKEN_NAME_REASON =
 
 // Matching tags are not proof: a mistagged demo can claim to be an album
 // track. The Library has the same recording only when the lengths agree.
-async function compareWithLibrary(source, candidates, title) {
+async function compareWithLibrary(source: Recording, candidates: string[], title: string) {
   const copies = await Promise.all(
     candidates.map(async (targetPath) => ({ targetPath, ...(await readRecording(targetPath)) })),
   );
@@ -181,7 +220,7 @@ async function compareWithLibrary(source, candidates, title) {
       ? []
       : copies
           .filter((copy) => copy.durationMs != null)
-          .map((copy) => ({ ...copy, gap: source.durationMs - copy.durationMs }));
+          .map((copy) => ({ ...copy, gap: source.durationMs! - copy.durationMs! }));
   if (!measured.length) {
     return {
       targetPath: candidates[0],
@@ -209,14 +248,14 @@ async function compareWithLibrary(source, candidates, title) {
   };
 }
 
-const plannedIdentity = (record, tags = {}) => {
+const plannedIdentity = (record: LibraryFileRecord, tags: TagFillTags = {}) => {
   const planned = {
     ...record,
     trackMbid: record.trackMbid || tags.recordingMbid || null,
     releaseGroupMbid: record.releaseGroupMbid || tags.releaseGroupMbid || null,
     albumMbid: record.albumMbid || tags.releaseMbid || null,
   };
-  const changed = ["trackMbid", "releaseGroupMbid", "albumMbid"].some(
+  const changed = (["trackMbid", "releaseGroupMbid", "albumMbid"] as const).some(
     (field) => planned[field] !== record[field],
   );
   return changed ? planned : null;
@@ -226,8 +265,14 @@ const plannedIdentity = (record, tags = {}) => {
 // they number the disc differently. The MusicBrainz IDs the ingest would fill
 // in are what the Library scan matches the filed copy by, so the ingest looks
 // the track up by them too, whether or not it writes them.
-async function placeRecord(item, record, metadata, albums, recording) {
-  const sameTrack = async (found) => {
+async function placeRecord(
+  item: LibraryFileItem,
+  record: LibraryFileRecord,
+  metadata: IAudioMetadata,
+  albums: TagFillAlbums,
+  recording: Recording,
+) {
+  const sameTrack = async (found: LibraryMatch) => {
     const files = [];
     for (const file of found.files)
       if (!differentTracks(recording, await readRecording(file))) files.push(file);
@@ -242,7 +287,12 @@ async function placeRecord(item, record, metadata, albums, recording) {
   return { match: better ? byIds : match, fill };
 }
 
-async function planItem(operation, item, plannedTargets, albums) {
+async function planItem(
+  operation: LibraryFileOperation,
+  item: LibraryFileItem,
+  plannedTargets: Set<string>,
+  albums: TagFillAlbums,
+) {
   const { sourcePath: sourceRoot, mode } = operation.options;
   const root = resolveDownloadRoot();
   let metadata;
@@ -269,17 +319,17 @@ async function planItem(operation, item, plannedTargets, albums) {
     trackNumber: record.trackNumber || null,
     existingAlbum: Boolean(match.album),
   };
-  const libraryCopy = async (candidates) => {
+  const libraryCopy = async (candidates: string[]) => {
     for (const candidate of candidates) {
       if (await filesIdentical(item.sourcePath, candidate).catch(() => false)) return candidate;
     }
     return null;
   };
-  const identicalCopy = (targetPath) =>
+  const identicalCopy = (targetPath: string) =>
     mode === "move"
       ? { status: "pending", targetPath, details: { ...details, action: "remove-duplicate" } }
       : { status: "duplicate", targetPath, reason: "The Library already has this file.", details };
-  const sameRecording = async (candidates, title) => {
+  const sameRecording = async (candidates: string[], title: string) => {
     const verdict = await compareWithLibrary(recording, candidates, title);
     if (verdict.reason)
       return { status: "skipped", targetPath: verdict.targetPath, reason: verdict.reason, details };
@@ -292,7 +342,7 @@ async function planItem(operation, item, plannedTargets, albums) {
   };
   if (match.files.length) {
     const identical = await libraryCopy(match.files);
-    return identical ? identicalCopy(identical) : sameRecording(match.files, match.track.title);
+    return identical ? identicalCopy(identical) : sameRecording(match.files, match.track!.title);
   }
   const target = buildLibraryTrackPath(
     root,
@@ -344,15 +394,15 @@ async function planItem(operation, item, plannedTargets, albums) {
   return {
     status: "pending",
     targetPath: target,
-    reason: fill.reason || null,
+    reason: fill!.reason || null,
     details: {
       ...details,
       action: "file",
-      ...(fill.tags
+      ...(fill!.tags
         ? {
             actions: ["file", "tags"],
-            tags: fill.tags,
-            tagFields: fill.fields,
+            tags: fill!.tags,
+            tagFields: fill!.fields,
             albumId: match.album?.id || null,
           }
         : {}),
@@ -360,14 +410,14 @@ async function planItem(operation, item, plannedTargets, albums) {
   };
 }
 
-export async function planIngest(operation, deadline) {
+export async function planIngest(operation: LibraryFileOperation, deadline: number) {
   if (!operation.summary.listed) {
     await listSourceFiles(operation);
     updateLibraryFileOperation(operation.id, { summary: { listed: true } });
   }
   const plannedTargets = new Set(
     db
-      .prepare(
+      .prepare<[number], string>(
         `SELECT target_path FROM library_file_operation_items
      WHERE operation_id = ? AND status = 'pending' AND target_path IS NOT NULL`,
       )
@@ -391,7 +441,7 @@ export async function planIngest(operation, deadline) {
   return false;
 }
 
-async function removeDuplicateSource(item) {
+async function removeDuplicateSource(item: FiledItem) {
   if (!(await fs.lstat(item.sourcePath).catch(() => null))) {
     await transferSidecars(item.sourcePath, item.targetPath, "move").catch(() => {});
     return { status: "duplicate", reason: "The Library already has this file." };
@@ -409,7 +459,7 @@ async function removeDuplicateSource(item) {
 
 // Removing a source the user asked to remove checks it against the Library's
 // copy again, since either file may have changed since the ingest.
-async function removeKeptSource(item) {
+async function removeKeptSource(item: FiledItem) {
   const details = { ...item.details, removable: false };
   if (!(await fs.lstat(item.sourcePath).catch(() => null))) {
     return {
@@ -440,7 +490,7 @@ async function removeKeptSource(item) {
   };
 }
 
-async function fileItem(operation, item) {
+async function fileItem(operation: LibraryFileOperation, item: FiledItem) {
   const { mode } = operation.options;
   const source = item.sourcePath;
   const target = item.targetPath;
@@ -475,7 +525,7 @@ async function fileItem(operation, item) {
   return { status: "done", details: { ...item.details, sidecars } };
 }
 
-const resolvesToSameFile = async (left, right) => {
+const resolvesToSameFile = async (left: string, right: string) => {
   const [a, b] = await Promise.all([
     fs.realpath(left).catch(() => null),
     fs.realpath(right).catch(() => null),
@@ -485,10 +535,12 @@ const resolvesToSameFile = async (left, right) => {
 
 // A file that gains a release group ID would otherwise start a second copy of
 // the untagged album it joined.
-function keepAlbumTogether(albumId, tags) {
+function keepAlbumTogether(albumId: number | null, tags: TagFillTags) {
   if (!albumId || !tags.releaseGroupMbid) return;
   const album = db
-    .prepare("SELECT release_group_mbid FROM library_albums WHERE id = ?")
+    .prepare<[number], Pick<LibraryAlbumsRow, "release_group_mbid">>(
+      "SELECT release_group_mbid FROM library_albums WHERE id = ?",
+    )
     .get(albumId);
   if (album && !album.release_group_mbid)
     rekeyLibraryAlbum(albumId, `release-group:${tags.releaseGroupMbid}`);
@@ -496,7 +548,7 @@ function keepAlbumTogether(albumId, tags) {
 
 // Tags are filled in on the Library's copy once it is in place, so the
 // source keeps its own tags.
-async function fillTags(item) {
+async function fillTags(item: FiledItem) {
   try {
     await writeAudioTags(item.targetPath, item.details.tags, { fillOnly: true });
   } catch (error) {
@@ -512,7 +564,7 @@ async function fillTags(item) {
 // A restart can stop an ingest after the tags were filled in on the Library's
 // copy. That copy is the source with the planned tags filled in, so the resume
 // finishes it instead of calling it a conflict.
-async function isFilledCopy({ sourcePath, targetPath, details }) {
+async function isFilledCopy({ sourcePath, targetPath, details }: FiledItem) {
   if (
     !(await fs.stat(sourcePath).catch(() => null)) ||
     !(await fs.stat(targetPath).catch(() => null))
@@ -533,7 +585,7 @@ async function isFilledCopy({ sourcePath, targetPath, details }) {
   }
 }
 
-export async function applyIngestItem(operation, item) {
+export async function applyIngestItem(operation: LibraryFileOperation, item: FiledItem) {
   const root = resolveDownloadRoot();
   if (!isPathInsideRoot(item.targetPath, root)) {
     return { status: "failed", reason: "The destination is outside the Downloads Folder." };
@@ -565,7 +617,10 @@ export async function applyIngestItem(operation, item) {
     : result;
 }
 
-export function ingestScanRequest(operation, items) {
+export function ingestScanRequest(
+  operation: LibraryFileOperation,
+  items: { status: string; sourcePath: string; targetPath?: string | null }[],
+) {
   const changedPaths = items
     .filter((item) => ["done", "duplicate"].includes(item.status) && item.targetPath)
     .map((item) => item.targetPath);
@@ -576,13 +631,19 @@ export function ingestScanRequest(operation, items) {
 // Album art beside the music follows it when the whole folder went to one
 // album. A moved folder that is left empty is removed. A source that Move kept
 // because the Library already has its track keeps its folder and art.
-export async function finishIngest(operation) {
+export async function finishIngest(operation: LibraryFileOperation) {
   const { sourcePath: sourceRoot, mode } = operation.options;
   restoreUnremovedDuplicates(operation.id);
   const folders = new Map();
   const unfiled = new Set();
   const items = db
-    .prepare(
+    .prepare<
+      [number],
+      Pick<
+        LibraryFileOperationItemsRow,
+        "position" | "source_path" | "target_path" | "status" | "details_json"
+      >
+    >(
       "SELECT position, source_path, target_path, status, details_json FROM library_file_operation_items WHERE operation_id = ?",
     )
     .all(operation.id);
@@ -606,7 +667,7 @@ export async function finishIngest(operation) {
     if (targets.size !== 1 || unfiled.has(folder)) continue;
     const [target] = targets;
     const entries = await fs.readdir(folder, { withFileTypes: true }).catch(() => []);
-    const art = [];
+    const art: string[] = [];
     for (const entry of entries) {
       if (!entry.isFile() || !ALBUM_IMAGE_EXTENSIONS.has(path.extname(entry.name).toLowerCase()))
         continue;
@@ -662,13 +723,13 @@ export async function finishIngest(operation) {
   );
 }
 
-const fileExists = (filePath) =>
+const fileExists = (filePath: string) =>
   fs.lstat(filePath).then(
     () => true,
     () => false,
   );
 
-async function rescan(changedPaths, { includeLidarr }) {
+async function rescan(changedPaths: string[], { includeLidarr }: { includeLidarr: boolean }) {
   if (!changedPaths.length) return;
   const { scheduleLibraryScan } = await import("../libraryScanWorker.ts");
   scheduleLibraryScan({ includeLidarr, changedPaths });
@@ -677,7 +738,7 @@ async function rescan(changedPaths, { includeLidarr }) {
 // Album art this ingest brought along goes with the last music it filed in a
 // folder: Move returns each image to its source folder, and Copy and Hardlink
 // remove theirs.
-async function takeBackAlbumArt(folder, art, mode) {
+async function takeBackAlbumArt(folder: string, art: Map<string, string>, mode: TransferMode) {
   const entries = await fs.readdir(folder, { withFileTypes: true }).catch(() => null);
   if (!entries) return;
   if (
@@ -701,9 +762,14 @@ async function takeBackAlbumArt(folder, art, mode) {
 // recording the Library already had, the ingest takes it back out: Copy and
 // Hardlink remove it, since the source still has it, and Move returns it to
 // the source folder to be offered for removal like any source the Library has.
-async function takeBackDouble(operation, item, media, removed) {
+async function takeBackDouble(
+  operation: LibraryFileOperation,
+  item: SettledItem,
+  media: LibraryMediaFilesRow,
+  removed: Set<string>,
+) {
   const others = db
-    .prepare(
+    .prepare<[number, number | null, string], string>(
       `SELECT path FROM library_media_files
      WHERE track_id = ? AND album_id IS ? AND source = 'aurral' AND available = 1 AND path != ?
      ORDER BY id`,
@@ -720,11 +786,13 @@ async function takeBackDouble(operation, item, media, removed) {
   if (!kept.length) return null;
   const details = JSON.parse(item.details_json || "{}");
   const title =
-    db.prepare("SELECT title FROM library_tracks WHERE id = ?").pluck().get(media.track_id) ||
-    details.title;
+    db
+      .prepare<[number], string>("SELECT title FROM library_tracks WHERE id = ?")
+      .pluck()
+      .get(media.track_id) || details.title;
   const verdict = await compareWithLibrary(filed, kept, title);
   if (verdict.reason) return null;
-  const sidecars = (details.sidecars || []).map((extension) => [
+  const sidecars = (details.sidecars || []).map((extension: string) => [
     `${item.target_path.slice(0, -path.extname(item.target_path).length)}${extension}`,
     `${item.source_path.slice(0, -path.extname(item.source_path).length)}${extension}`,
   ]);
@@ -754,7 +822,7 @@ async function takeBackDouble(operation, item, media, removed) {
     : [item.target_path];
 }
 
-async function monitorTracks(operation, placed) {
+async function monitorTracks(operation: LibraryFileOperation, placed: Placed[]) {
   const trackIds = new Set(placed.map(({ media }) => media.track_id));
   const albumIds = new Set(placed.map(({ media }) => media.album_id).filter(Boolean));
   const monitorTrack = db.prepare("UPDATE library_tracks SET monitored = 1 WHERE id = ?");
@@ -776,21 +844,21 @@ async function monitorTracks(operation, placed) {
   }
 }
 
-async function settleIngest(operation) {
+async function settleIngest(operation: LibraryFileOperation) {
   const items = db
-    .prepare(
+    .prepare<[number], SettledItem>(
       `SELECT position, source_path, target_path, details_json FROM library_file_operation_items
      WHERE operation_id = ? AND status = 'done' ORDER BY position`,
     )
     .all(operation.id);
-  let placed = [];
+  let placed: Placed[] = [];
   for (const item of items) {
     const media = getLibraryMediaFile({ source: "aurral", path: item.target_path });
     if (media?.available === 1) placed.push({ item, media });
     else if (await fileExists(item.target_path)) return;
   }
   if (operation.summary.doubles === "pending") {
-    const removed = new Set();
+    const removed = new Set<string>();
     const changed = [];
     const art = new Map();
     for (const entry of placed) {
@@ -829,7 +897,7 @@ async function settleIngest(operation) {
 // has indexed every file the ingest placed.
 export async function settleIngestedMusic() {
   const pending = db
-    .prepare(
+    .prepare<[], number>(
       `SELECT id FROM library_file_operations
      WHERE kind = 'ingest' AND status IN ('complete', 'cancelled') AND (
        json_extract(summary_json, '$.monitor') = 'pending'
@@ -840,7 +908,7 @@ export async function settleIngestedMusic() {
     .all();
   for (const id of pending) {
     try {
-      await settleIngest(getLibraryFileOperation(id));
+      await settleIngest(getLibraryFileOperation(id)!);
     } catch (error) {
       logger.warn("library-files", "Ingest could not finish checking its music", {
         operationId: id,

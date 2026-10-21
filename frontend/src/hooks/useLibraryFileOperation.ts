@@ -7,7 +7,7 @@ import {
 } from "../utils/api/endpoints/library.ts";
 
 export const ACTIVE_LIBRARY_FILE_STATUSES = new Set(["planning", "running"]);
-const POLLING_STATUSES = new Set(["planning", "running"]);
+const POLLING_STATUSES = new Set<string | undefined>(["planning", "running"]);
 
 export const libraryFilesQueryKey = ["library-files"];
 

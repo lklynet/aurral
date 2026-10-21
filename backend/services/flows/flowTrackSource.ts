@@ -36,12 +36,7 @@ type ArtistTopTrack = {
 
 type TagArtist = { name: string; mbid: string | null };
 
-type ChartTrack = {
-  artistName: string;
-  artistMbid: string | null;
-  name: string;
-  albumName: string | null;
-};
+type ChartTrack = Awaited<ReturnType<typeof musicData.getTrendingTracks>>[number];
 
 type LibraryArtistRow = ReturnType<typeof getLibraryArtistProjection>[number];
 
@@ -2004,7 +1999,7 @@ export class FlowTrackSource {
   }
 
   async getTrendingTracks(limit: number, options: FlowStageOptions = {}) {
-    const tracks: ChartTrack[] = await musicData.getTrendingTracks({
+    const tracks = await musicData.getTrendingTracks({
       limit: Math.max(limit * 3, 50),
     });
     return this._buildChartTracks(tracks, limit, options, "From trending tracks");

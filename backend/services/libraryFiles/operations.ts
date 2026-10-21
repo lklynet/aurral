@@ -24,10 +24,12 @@ import {
   updateLibraryFileOperationItem,
 } from "./operationStore.ts";
 
+type LibraryFileOperation = NonNullable<ReturnType<typeof getLibraryFileOperation>>;
+
 const BUDGET_MS = 20000;
 const BATCH = 50;
 
-async function enqueue(operationId, { dedupe = true } = {}) {
+async function enqueue(operationId: number, { dedupe = true }: { dedupe?: boolean } = {}) {
   const { enqueueLibraryFileJob, findActiveHonkerJob } = await import("../honkerDb.ts");
   if (
     dedupe &&
@@ -41,20 +43,30 @@ async function enqueue(operationId, { dedupe = true } = {}) {
   enqueueLibraryFileJob({ operationId });
 }
 
-export async function startIngest({ sourcePath, mode, monitor = "none", fillTags = false } = {}) {
+export async function startIngest({
+  sourcePath,
+  mode,
+  monitor = "none",
+  fillTags = false,
+}: {
+  sourcePath?: unknown;
+  mode?: unknown;
+  monitor?: unknown;
+  fillTags?: unknown;
+} = {}) {
   validateIngestOptions({ mode, monitor });
   const source = await resolveIngestSource(sourcePath);
   const operation = createLibraryFileOperation({
     kind: "ingest",
     options: { sourcePath: source, mode, monitor, fillTags: fillTags === true },
   });
-  await enqueue(operation.id);
+  await enqueue(operation!.id);
   return operation;
 }
 
 export async function startCleanup() {
   const operation = createLibraryFileOperation({ kind: "cleanup", options: {} });
-  await enqueue(operation.id);
+  await enqueue(operation!.id);
   return operation;
 }
 
@@ -65,11 +77,15 @@ const UNFINISHED_REASONS = {
 
 // A Move ingest keeps sources the Library has in another file, and Clean up
 // keeps the extra copies of a track, until the user asks to remove them.
-const removesDuplicates = (operation) =>
+type DuplicateRemovingOperation = LibraryFileOperation & { kind: "ingest" | "cleanup" };
+
+const removesDuplicates = (
+  operation: LibraryFileOperation | undefined,
+): operation is DuplicateRemovingOperation =>
   operation?.kind === "cleanup" ||
   (operation?.kind === "ingest" && operation.options.mode === "move");
 
-export async function removeDuplicateFiles(id) {
+export async function removeDuplicateFiles(id: number) {
   const operation = getLibraryFileOperation(id);
   if (!removesDuplicates(operation)) {
     throw new IngestSourceError("Only a Move ingest removes its source files.");
@@ -78,19 +94,21 @@ export async function removeDuplicateFiles(id) {
   return getLibraryFileOperation(id);
 }
 
-export function cancelLibraryFileOperation(id) {
+export function cancelLibraryFileOperation(id: number) {
   return transitionLibraryFileOperation(id, ["planning", "running"], "cancelled");
 }
 
 export async function resumeLibraryFileOperations() {
   const { listUnfinishedLibraryFileOperations } = await import("./operationStore.ts");
-  for (const operation of listUnfinishedLibraryFileOperations()) await enqueue(operation.id);
+  for (const operation of listUnfinishedLibraryFileOperations()) await enqueue(operation!.id);
 }
 
 const handlers = {
   ingest: { plan: planIngest, apply: applyIngestItem, finish: finishIngest },
   cleanup: { plan: planCleanup, apply: applyCleanupItem, finish: finishCleanup },
 };
+
+type Handler = (typeof handlers)[keyof typeof handlers];
 
 async function requestScan(request: LibraryScanRequest) {
   const changedPaths = [...new Set((request?.changedPaths || []).filter(Boolean))];
@@ -99,8 +117,8 @@ async function requestScan(request: LibraryScanRequest) {
   scheduleLibraryScan({ includeLidarr: request.includeLidarr === true, changedPaths });
 }
 
-async function finish(operation, handler, status) {
-  const current = getLibraryFileOperation(operation.id);
+async function finish(operation: LibraryFileOperation, handler: Handler, status: string) {
+  const current = getLibraryFileOperation(operation.id)!;
   if (current.summary.finished) return;
   await requestScan(await handler.finish(current));
   updateLibraryFileOperation(operation.id, {
@@ -109,7 +127,7 @@ async function finish(operation, handler, status) {
   });
 }
 
-async function applyBatch(operation, handler, deadline) {
+async function applyBatch(operation: LibraryFileOperation, handler: Handler, deadline: number) {
   const context = operation.kind === "cleanup" ? createCleanupContext() : null;
   await context?.prepare();
   const processed = [];
@@ -144,7 +162,10 @@ async function applyBatch(operation, handler, deadline) {
 // One bounded slice of work. Each file is checked before anything changes,
 // then the changes are applied. The worker queues the next slice until the
 // operation finishes or is stopped, so a restart resumes where it stopped.
-export async function runLibraryFileOperation(id, { budgetMs = BUDGET_MS } = {}) {
+export async function runLibraryFileOperation(
+  id: number,
+  { budgetMs = BUDGET_MS }: { budgetMs?: number } = {},
+) {
   const operation = getLibraryFileOperation(id);
   const handler = handlers[operation?.kind];
   if (!operation || !handler) return { done: true };
@@ -180,19 +201,19 @@ export async function runLibraryFileOperation(id, { budgetMs = BUDGET_MS } = {})
   }
 }
 
-export async function processLibraryFileJob(payload = {}) {
+export async function processLibraryFileJob(payload: { operationId?: unknown } = {}) {
   const operationId = Number(payload.operationId);
   const { done } = await runLibraryFileOperation(operationId);
   if (!done) await enqueue(operationId, { dedupe: false });
 }
 
-const relative = (root, filePath) => {
+const relative = (root: string, filePath: string | null | undefined) => {
   if (!filePath) return null;
   const value = path.relative(root, filePath);
   return value && !value.startsWith("..") && !path.isAbsolute(value) ? value : filePath;
 };
 
-export function describeLibraryFileOperation(operation) {
+export function describeLibraryFileOperation(operation: LibraryFileOperation | undefined) {
   if (!operation) return null;
   const counts = countLibraryFileOperationItems(operation.id);
   const total = Object.values(counts).reduce((sum, count) => sum + count, 0);
@@ -200,7 +221,7 @@ export function describeLibraryFileOperation(operation) {
   const removing = operation.status === "running" && summary.removingSources;
   return {
     id: operation.id,
-    kind: operation.kind,
+    kind: operation.kind as "ingest" | "cleanup",
     status: operation.status,
     options: operation.options,
     summary,
@@ -223,14 +244,17 @@ export function describeLibraryFileOperation(operation) {
   };
 }
 
-export function describeLibraryFileOperationItems(operation, options) {
+export function describeLibraryFileOperationItems(
+  operation: LibraryFileOperation,
+  options: Parameters<typeof listLibraryFileOperationItems>[1],
+) {
   const downloadRoot = path.resolve(resolveDownloadRoot());
   const sourceRoot = operation.kind === "ingest" ? operation.options.sourcePath : downloadRoot;
   return listLibraryFileOperationItems(operation.id, options).map((item) => ({
     position: item.position,
     status: item.status,
     reason: item.reason,
-    source: relative(sourceRoot, item.sourcePath),
+    source: relative(sourceRoot, item.sourcePath) as string,
     target: relative(downloadRoot, item.targetPath),
     actions: item.details.actions || [item.details.action].filter(Boolean),
     tagFields: item.details.tagFields || [],
