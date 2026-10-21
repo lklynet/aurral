@@ -450,3 +450,24 @@ test("queues a news refresh only when news settings change", async () => {
   assert.ok(queuedNewsRefresh());
   clearNewsRefresh();
 });
+
+test("the Downloads Folder cannot move into or around a read-only folder", async (t) => {
+  const { mkdtemp, mkdir, rm } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const folder = await mkdtemp(join(tmpdir(), "aurral-settings-read-only-"));
+  t.onTestFinished(async () => {
+    dbOps.setJSONSetting("readOnlyFolders", []);
+    await rm(folder, { recursive: true, force: true });
+  });
+  await mkdir(join(folder, "Inside"));
+  dbOps.setJSONSetting("readOnlyFolders", [folder]);
+  const { postSettings } = captureSettingsRoutes();
+  const before = dbOps.getSettings().downloadFolderPath;
+
+  for (const rejected of [folder, join(folder, "Inside"), tmpdir()]) {
+    const response = await postSettings({ downloadFolderPath: rejected });
+    assert.equal(response.statusCode, 400, rejected);
+  }
+  dbOps.invalidateSettingsCache();
+  assert.equal(dbOps.getSettings().downloadFolderPath, before);
+});

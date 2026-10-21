@@ -18,6 +18,7 @@ import {
   getOverlapCheckedLidarrRoots,
 } from "../../../services/downloadFolderConfig.js";
 import { normalizePathMappings } from "../../../services/pathMappings.js";
+import { readOnlyFolderOverlapping } from "../../../services/libraryFolders.js";
 import { logger } from "../../../services/logger.js";
 import { normalizeLidarrApiKey, normalizeLidarrUrl } from "../../../services/lidarrClient.js";
 import { testNavidromeConnection } from "../../shared/navidromeTest.js";
@@ -154,6 +155,16 @@ export function registerGeneral(router) {
       ) {
         return res.status(400).json({
           error: `reviewTimeoutHours must be a whole number from 0 to ${MAX_REVIEW_TIMEOUT_HOURS}`,
+        });
+      }
+
+      const readOnlyOverlap =
+        typeof downloadFolderPath === "string" && downloadFolderPath.trim()
+          ? readOnlyFolderOverlapping(downloadFolderPath.trim())
+          : null;
+      if (readOnlyOverlap) {
+        return res.status(400).json({
+          error: `The Downloads Folder cannot overlap the read-only folder ${readOnlyOverlap}. Choose another folder, or remove the read-only folder in Settings > Library files.`,
         });
       }
 

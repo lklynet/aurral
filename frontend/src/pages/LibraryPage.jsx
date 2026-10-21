@@ -185,6 +185,9 @@ const hasGenre = (genre, ...entities) => {
 
 const hasAurralTrackFile = (track) => (track?.files || []).some((file) => file.source === "aurral");
 
+const hasDeletableTrackFile = (track) =>
+  (track?.files || []).some((file) => file.available && file.source !== "readonly");
+
 const firstAvailableAurralFile = (track) =>
   (track?.files || []).find((file) => file.source === "aurral" && file.available) || null;
 
@@ -2231,7 +2234,10 @@ function LibraryPage() {
         )?.trackNumber;
         const isFavorite = favoriteIds.has(favoriteId("song", track));
         const monitoringItem = trackMonitoring.getMenuItem(track, {
-          aurral: album?.managedBy === "aurral" || hasAurralTrackFile(track) || downloadPending,
+          aurral:
+            (album?.managedBy === "aurral" && (!file || hasDeletableTrackFile(track))) ||
+            hasAurralTrackFile(track) ||
+            downloadPending,
           hasFile: Boolean(file),
           downloadPending,
         });
@@ -2306,7 +2312,7 @@ function LibraryPage() {
             : []),
           ...(monitoringItem ? [monitoringItem] : []),
           ...(keepFileItem ? [{ ...keepFileItem, separatorBefore: !monitoringItem }] : []),
-          ...(canDeleteTrack && (file || hasAurralTrackFile(track))
+          ...(canDeleteTrack && (hasDeletableTrackFile(track) || hasAurralTrackFile(track))
             ? [
                 {
                   id: "delete",

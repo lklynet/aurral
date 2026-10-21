@@ -119,6 +119,14 @@ export const updateLibraryArtistMbid = async (artistId, mbid) => {
 
 export const getLibraryFiles = () => getData("/library/files");
 
+export const getReadOnlyFolders = () => getData("/library/files/read-only-folders");
+
+export const addReadOnlyFolder = (folderPath) =>
+  postData("/library/files/read-only-folders", { path: folderPath });
+
+export const removeReadOnlyFolder = (folderPath) =>
+  deleteData("/library/files/read-only-folders", { data: { path: folderPath } });
+
 export const checkLibraryIngestSource = (sourcePath) =>
   postData("/library/files/ingest/check", { sourcePath });
 

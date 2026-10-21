@@ -140,6 +140,23 @@ services:
 
 `./config:/config` holds Aurral's database, settings, users, and jobs. Do not share `/config` with Lidarr, Navidrome, Plex, or a download client.
 
+## Mount a read-only folder
+
+A [read-only folder](/using/library/#add-music-aurral-only-reads) is music that Aurral indexes but never changes. Mount it in Aurral with `:ro`, at a path outside the Downloads Folder:
+
+```yaml
+services:
+  aurral:
+    volumes:
+      - ${MEDIA_ROOT:-/srv/media}:/data
+      - /srv/music:/music:ro
+      - ./config:/config
+```
+
+Then add `/music` in **Settings > Library files > Read-only folders**. To pick it with **Browse folders**, set `FILE_BROWSE_ROOTS=/data,/music`. You can also type the path.
+
+Aurral plays the folder's music itself and serves it to Subsonic clients. A playlist that Aurral publishes to Navidrome, Plex, or Jellyfin can include a read-only track only when that server also has the folder in its library.
+
 The containers can use different Docker networks and service URLs. They still need compatible mounts to see the same files.
 
 ## Set the paths in each application

@@ -3872,6 +3872,16 @@ export class LibraryManager {
         }
       }
 
+      if (
+        lidarrFiles.length === 0 &&
+        track.files.some((file) => file.source === "readonly" && file.available)
+      ) {
+        return {
+          success: false,
+          code: "read_only",
+          error: "The track's file is in a read-only folder",
+        };
+      }
       const lidarr = await getLidarrClient();
       if (!lidarr || !lidarr.isConfigured()) {
         return { success: false, code: "lidarr_unavailable", error: "Lidarr is not configured" };

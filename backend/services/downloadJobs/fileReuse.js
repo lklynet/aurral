@@ -568,11 +568,22 @@ function findMatchingTrack(tracks, track, strictAlbum = false) {
   );
 }
 
-async function findLidarrSource(track, options = {}) {
+const FOLDER_SOURCES = {
+  lidarr: {
+    label: "Lidarr",
+    mapPath: (filePath) => resolveLocalPath(filePath, getPathMappings("lidarr")),
+  },
+  readonly: { label: "Read-only folder", mapPath: (filePath) => filePath },
+};
+
+// Lidarr's files and read-only folders stay where they are, so a playlist
+// uses the file in place.
+async function findLibraryFolderSource(track, options = {}, source = "lidarr") {
+  const { label, mapPath } = FOLDER_SOURCES[source];
   const strictAlbum = options.targetPlaylistType === "library";
   const { artists, albums, tracks } = buildLibraryReadModel(
     getLibraryForArtistReferences({
-      source: "lidarr",
+      source,
       availableOnly: false,
       references: [track?.artistMbid, track?.artistName],
     }),
@@ -581,7 +592,7 @@ async function findLidarrSource(track, options = {}) {
     findLibraryArtist(artists, track?.artistMbid) || findMatchingArtist(artists, track);
   if (!artist) {
     console.log(
-      `[FileReuse] Lidarr: no artist match for "${track?.artistName}" (mbid ${track?.artistMbid || "none"}, ${artists.length} Lidarr artists checked)`,
+      `[FileReuse] ${label}: no artist match for "${track?.artistName}" (mbid ${track?.artistMbid || "none"}, ${artists.length} artists checked)`,
     );
     return null;
   }
@@ -591,7 +602,7 @@ async function findLidarrSource(track, options = {}) {
   const artistAlbums = albums.filter((album) => String(album.artistId) === String(artist.id));
   if (!artistAlbums.length) {
     console.log(
-      `[FileReuse] Lidarr: artist "${artist.artistName}" (id ${artistId}) matched but has 0 albums`,
+      `[FileReuse] ${label}: artist "${artist.artistName}" (id ${artistId}) matched but has 0 albums`,
     );
     return null;
   }
@@ -618,37 +629,40 @@ async function findLidarrSource(track, options = {}) {
     foundTitleOnAnyAlbum = true;
     if (matchedTrack.hasFile !== true || !matchedTrack.path) {
       console.log(
-        `[FileReuse] Lidarr: "${track.trackName}" found on album "${album.albumName}" (id ${album.id}) but hasFile=${matchedTrack.hasFile} path=${matchedTrack.path || "none"}`,
+        `[FileReuse] ${label}: "${track.trackName}" found on album "${album.albumName}" (id ${album.id}) but hasFile=${matchedTrack.hasFile} path=${matchedTrack.path || "none"}`,
       );
       continue;
     }
-    const sourcePath = path.resolve(resolveLocalPath(matchedTrack.path, getPathMappings("lidarr")));
+    const sourcePath = path.resolve(mapPath(matchedTrack.path));
     if (!(await fileExists(sourcePath))) {
       console.warn(
-        `[FileReuse] Lidarr track exists but file is not accessible from Aurral: ${matchedTrack.path} (resolved to ${sourcePath})`,
+        `[FileReuse] ${label} track exists but file is not accessible from Aurral: ${matchedTrack.path} (resolved to ${sourcePath})`,
       );
       continue;
     }
     return {
-      sourceType: "lidarr",
+      sourceType: source,
       sourcePath,
       externalPath: matchedTrack.path,
-      lidarrTrack: matchedTrack,
       albumName: album.albumName || track.albumName || null,
     };
   }
   if (!foundTitleOnAnyAlbum) {
     console.log(
-      `[FileReuse] Lidarr: artist "${artist.artistName}" matched (${artistAlbums.length} albums checked) but no album's tracklist contained "${track.trackName}"`,
+      `[FileReuse] ${label}: artist "${artist.artistName}" matched (${artistAlbums.length} albums checked) but no album's tracklist contained "${track.trackName}"`,
     );
   }
   return null;
 }
 
-async function canReuseLidarrFiles(options) {
-  if (options.allowLidarr === false) return false;
+async function findFolderSource(track, options) {
+  if (options.allowLidarr === false) return null;
   const { lidarrClient } = await import("../lidarrClient.js");
-  return lidarrClient.isConfigured();
+  return (
+    (lidarrClient.isConfigured()
+      ? await findLibraryFolderSource(track, options, "lidarr")
+      : null) || findLibraryFolderSource(track, options, "readonly")
+  );
 }
 
 /**
@@ -669,11 +683,9 @@ export async function resolveReusableTrackSource(track, options = {}) {
 
   const aurralSource = await findAurralSource(track, options);
   if (aurralSource) return { source: aurralSource, reason: null };
-  if (await canReuseLidarrFiles(options)) {
-    const lidarrSource = await findLidarrSource(track, options);
-    if (lidarrSource) return { source: lidarrSource, reason: null };
-  }
-  return { source: null, reason: "No reusable Aurral or Lidarr file found" };
+  const folderSource = await findFolderSource(track, options);
+  if (folderSource) return { source: folderSource, reason: null };
+  return { source: null, reason: "No reusable Aurral, Lidarr, or read-only folder file found" };
 }
 
 /**
@@ -692,13 +704,11 @@ export async function resolveRepairTrackSource(track, options = {}) {
   const localSource = await findLocalExistingSource(track, options);
   if (localSource) return { source: localSource, reason: null };
 
-  if (await canReuseLidarrFiles(options)) {
-    const lidarrSource = await findLidarrSource(track, options);
-    if (lidarrSource) return { source: lidarrSource, reason: null };
-  }
+  const folderSource = await findFolderSource(track, options);
+  if (folderSource) return { source: folderSource, reason: null };
   const aurralSource = await findAurralSource(track, options);
   if (aurralSource) return { source: aurralSource, reason: null };
-  return { source: null, reason: "No reusable Aurral or Lidarr file found" };
+  return { source: null, reason: "No reusable Aurral, Lidarr, or read-only folder file found" };
 }
 
 export async function restoreCompletedTrack(job, options = {}) {
@@ -769,11 +779,17 @@ export async function restoreCompletedTrack(job, options = {}) {
   };
 }
 
-// A download that reused a Lidarr file needs Aurral's own copy once Lidarr
-// is turned off.
-export function requeueJobsUsingLidarrFiles({
+const isWithinFolder = (folder, filePath) =>
+  filePath === path.resolve(folder) || isPathInsideRoot(filePath, path.resolve(folder));
+
+// A download that reused a file outside the Downloads Folder needs Aurral's
+// own copy once that file's folder leaves the Library.
+export function requeueJobsUsingRemovedFolders({
   downloadRoot = resolveDownloadRoot(),
-  lidarrRoots = [],
+  removedFolders = [],
+  keptFolders = [],
+  externalFiles = false,
+  reason,
 } = {}) {
   const root = path.resolve(downloadRoot);
   let requeued = 0;
@@ -782,13 +798,11 @@ export function requeueJobsUsingLidarrFiles({
       continue;
     const finalPath = path.resolve(remapLegacyPath(job.finalPath, root));
     if (isPathInsideRoot(finalPath, root)) continue;
-    const inLidarrRoot = lidarrRoots.some(
-      (lidarrRoot) =>
-        finalPath === path.resolve(lidarrRoot) ||
-        isPathInsideRoot(finalPath, path.resolve(lidarrRoot)),
-    );
-    if (!job.externalPath && !inLidarrRoot) continue;
-    if (downloadTracker.setPending(job.id, "Lidarr was turned off")) requeued += 1;
+    if (keptFolders.some((folder) => isWithinFolder(folder, finalPath))) continue;
+    const removed =
+      removedFolders.some((folder) => isWithinFolder(folder, finalPath)) ||
+      (externalFiles && Boolean(job.externalPath));
+    if (removed && downloadTracker.setPending(job.id, reason)) requeued += 1;
   }
   return requeued;
 }
@@ -1025,7 +1039,7 @@ export async function moveHandedOverTracksToLidarr(options = {}) {
   const changedPlaylistTypes = new Set();
   let moved = 0;
   for (const [oldPath, jobs] of jobsByPath) {
-    const source = await findLidarrSource(jobs[0], { targetPlaylistType: "library" });
+    const source = await findLibraryFolderSource(jobs[0], { targetPlaylistType: "library" });
     if (!source || !(await fileExists(source.sourcePath))) continue;
     for (const job of jobs) {
       downloadTracker.setDone(

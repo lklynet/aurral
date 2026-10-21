@@ -8,7 +8,11 @@ import {
   buildMetadataRecord,
   scanMusicRoot,
 } from "../libraryFileScanner.js";
-import { activeLidarrRoots, createLibraryScanExclusion } from "../libraryFolders.js";
+import {
+  activeLidarrRoots,
+  createLibraryScanExclusion,
+  readOnlyFolderPaths,
+} from "../libraryFolders.js";
 import {
   findLibraryAlbumByArtistTitle,
   findLibraryAlbumByReleaseMbid,
@@ -80,6 +84,7 @@ export async function adoptLibraryFileIdentity(filePath, { previousPath = filePa
     isExcluded: createLibraryScanExclusion("aurral", {
       downloadRoot: root,
       lidarrRoots: activeLidarrRoots(null),
+      readOnlyRoots: readOnlyFolderPaths(),
     }),
   });
   const after = getLibraryMediaFile({ source: "aurral", path: current });

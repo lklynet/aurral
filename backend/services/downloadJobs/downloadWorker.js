@@ -19,12 +19,17 @@ import {
   repairOrphanedPlaylistTrackPaths,
   moveHandedOverTracksToLidarr,
   repairReusableTrackLinks,
-  requeueJobsUsingLidarrFiles,
+  requeueJobsUsingRemovedFolders,
   reuseTrackForPlaylist,
 } from "./fileReuse.js";
 import { AURRAL_FLOWS_DIR, resolveDownloadRoot } from "../downloadPaths.js";
 import { startDownloadPipelineWorker } from "../downloadPipelineWorker.js";
-import { configuredLidarrFolders, isLidarrLibraryActive } from "../libraryFolders.js";
+import {
+  activeLidarrRoots,
+  configuredLidarrFolders,
+  isLidarrLibraryActive,
+  readOnlyFolderPaths,
+} from "../libraryFolders.js";
 import { listHonkerJobs, withHonkerLock } from "../honkerDb.js";
 import { isPlaylistOwnerActive } from "./playlistOwnerStatus.js";
 import {
@@ -423,9 +428,27 @@ export class DownloadWorker {
   async releaseLidarrFiles() {
     const { lidarrClient } = await import("../lidarrClient.js");
     if (isLidarrLibraryActive(lidarrClient)) return 0;
-    const requeued = requeueJobsUsingLidarrFiles({
+    return this.requeueRemovedFolderFiles({
+      removedFolders: configuredLidarrFolders(lidarrClient),
+      keptFolders: readOnlyFolderPaths(),
+      externalFiles: true,
+      reason: "Lidarr was turned off",
+    });
+  }
+
+  async releaseReadOnlyFolderFiles(folders) {
+    const { lidarrClient } = await import("../lidarrClient.js");
+    return this.requeueRemovedFolderFiles({
+      removedFolders: folders,
+      keptFolders: [...readOnlyFolderPaths(), ...activeLidarrRoots(lidarrClient)],
+      reason: "Its read-only folder left the Library",
+    });
+  }
+
+  async requeueRemovedFolderFiles(options) {
+    const requeued = requeueJobsUsingRemovedFolders({
       downloadRoot: this.downloadRoot,
-      lidarrRoots: configuredLidarrFolders(lidarrClient),
+      ...options,
     });
     if (requeued > 0) {
       if (this.running) this.wake();

@@ -12,7 +12,7 @@ import {
 } from "./libraryManagementStore.js";
 import { selectCanonicalFile } from "./canonicalFileSelector.js";
 
-const SOURCES = new Set(["aurral", "lidarr", "flow"]);
+const SOURCES = new Set(["aurral", "lidarr", "readonly", "flow"]);
 const libraryCache = new Map();
 const pageCountCache = new Map();
 const countDataVersion = db.prepare("PRAGMA data_version");

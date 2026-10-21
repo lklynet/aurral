@@ -1,6 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { queryClient } from "../queryClient.js";
-import { getLibraryFileOperation, getLibraryFiles } from "../utils/api/endpoints/library.js";
+import {
+  getLibraryFileOperation,
+  getLibraryFiles,
+  getReadOnlyFolders,
+} from "../utils/api/endpoints/library.js";
 
 export const ACTIVE_LIBRARY_FILE_STATUSES = new Set(["planning", "running"]);
 const POLLING_STATUSES = new Set(["planning", "running"]);
@@ -23,6 +27,15 @@ export function useLibraryFileOperation(operationId) {
     enabled: operationId != null,
     staleTime: 0,
     refetchInterval: (query) => (POLLING_STATUSES.has(query.state.data?.status) ? 1000 : false),
+  });
+}
+
+export function useReadOnlyFolders() {
+  return useQuery({
+    queryKey: [...libraryFilesQueryKey, "read-only-folders"],
+    queryFn: getReadOnlyFolders,
+    staleTime: 0,
+    refetchInterval: (query) => (query.state.data?.scanning ? 2000 : false),
   });
 }
 

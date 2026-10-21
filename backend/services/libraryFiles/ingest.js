@@ -11,7 +11,7 @@ import {
   resolveDownloadRoot,
 } from "../downloadPaths.js";
 import { AUDIO_EXTENSIONS, buildMetadataRecord } from "../libraryFileScanner.js";
-import { configuredLidarrFolders, isPathWithin } from "../libraryFolders.js";
+import { configuredLidarrFolders, isPathWithin, readOnlyFolderPaths } from "../libraryFolders.js";
 import { getLibraryMediaFile } from "../libraryMediaStore.js";
 import { invalidateLibraryQueryCache } from "../libraryQueryService.js";
 import { logger, safeLogDiagnostic } from "../logger.js";
@@ -117,6 +117,7 @@ export async function checkIngestSource({ sourcePath, lidarrClient = null } = {}
       ? await probeHardlink(firstFile, downloadRoot)
       : { available: false, reason: "The folder has no music files." },
     lidarrRoot,
+    readOnlyFolder: readOnlyFolderPaths().find((root) => overlaps(root, source)) || null,
   };
 }
 

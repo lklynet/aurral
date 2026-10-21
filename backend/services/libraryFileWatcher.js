@@ -5,6 +5,7 @@ import { isLibraryScanExcludedDirectory } from "./libraryFileScanner.js";
 import { lidarrClient } from "./lidarrClient.js";
 import { scheduleLibraryScan } from "./libraryScanWorker.js";
 import { getPathMappings } from "./pathMappings.js";
+import { readOnlyFolderPaths } from "./libraryFolders.js";
 import { createIsolatedLibraryWatcher } from "./libraryWatchProcess.js";
 
 const DEFAULT_DEBOUNCE_MS = 2000;
@@ -129,7 +130,7 @@ export function createLibraryFileWatcher({
 }
 
 export function resolveLibraryWatchRoots() {
-  const roots = [resolveDownloadRoot()];
+  const roots = [resolveDownloadRoot(), ...readOnlyFolderPaths()];
   if (lidarrClient.isConfigured()) {
     // Path mapping checks whether the original path exists; defer that I/O to
     // the watcher child along with recursive watcher creation.

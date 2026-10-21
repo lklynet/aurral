@@ -158,6 +158,25 @@ test("startup repair tags existing completed yt-dlp M4As", async () => {
   });
 });
 
+test("startup repair leaves a file that a yt-dlp job later reused from outside Aurral", async () => {
+  const filePath = createUntaggedM4a("reused-elsewhere.m4a");
+  const before = await parseFile(filePath);
+  const result = await repairYtdlpMetadata([
+    {
+      status: "done",
+      downloadClient: "ytdlp",
+      finalPath: filePath,
+      externalPath: filePath,
+      trackName: "Dead And Lovely",
+      artistName: "Tom Waits",
+      albumName: "Real Gone (Original Version)",
+    },
+  ]);
+
+  assert.deepEqual(result, { scanned: 0, repaired: 0, failed: 0 });
+  assert.deepEqual((await parseFile(filePath)).common, before.common);
+});
+
 afterAll(async () => {
   await rm(tempDir, { recursive: true, force: true });
 });

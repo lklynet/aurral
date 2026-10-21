@@ -267,6 +267,11 @@ export async function processSystemTask(payload = {}, job = null, context = {}) 
       await downloadWorker.releaseLidarrFiles();
       return;
     }
+    case "read-only-folder-release": {
+      const { downloadWorker } = await import("./downloadJobs/downloadWorker.js");
+      await downloadWorker.releaseReadOnlyFolderFiles(payload.folders || []);
+      return;
+    }
     case "lidarr-retry": {
       const { libraryManager } = await import("./libraryManager.js");
       await libraryManager.syncLidarrArtists({ forceRefresh: true });

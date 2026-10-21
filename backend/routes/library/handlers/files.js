@@ -11,6 +11,11 @@ import {
   startIngest,
 } from "../../../services/libraryFiles/operations.js";
 import {
+  addReadOnlyFolder,
+  describeReadOnlyFolders,
+  removeReadOnlyFolder,
+} from "../../../services/libraryFiles/readOnlyFolders.js";
+import {
   getLatestLibraryFileOperation,
   getLibraryFileOperation,
 } from "../../../services/libraryFiles/operationStore.js";
@@ -33,7 +38,7 @@ function sendError(res, error) {
       operation: describeLibraryFileOperation(error.operation),
     });
   }
-  if (error?.code === "INGEST_SOURCE_INVALID") {
+  if (error?.code === "INGEST_SOURCE_INVALID" || error?.code === "READ_ONLY_FOLDER_INVALID") {
     return res.status(400).json({ error: "invalid_request", message: error.message });
   }
   return res.status(500).json({
@@ -52,6 +57,30 @@ function findOperation(req, res) {
 export function registerFiles(router) {
   router.get("/files", requireAuth, requireAdmin, noCache, (_req, res) => {
     res.json({ operation: describeLibraryFileOperation(getLatestLibraryFileOperation()) });
+  });
+
+  router.get("/files/read-only-folders", requireAuth, requireAdmin, noCache, async (_req, res) => {
+    try {
+      res.json(await describeReadOnlyFolders());
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  router.post("/files/read-only-folders", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      res.status(201).json(await addReadOnlyFolder(req.body?.path));
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  router.delete("/files/read-only-folders", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      res.json(await removeReadOnlyFolder(req.body?.path));
+    } catch (error) {
+      sendError(res, error);
+    }
   });
 
   router.post("/files/ingest/check", requireAuth, requireAdmin, async (req, res) => {

@@ -34,6 +34,7 @@ import {
   activeLidarrRoots,
   createLibraryScanExclusion,
   isLidarrLibraryActive,
+  readOnlyFolderPaths,
 } from "./libraryFolders.js";
 
 function getAurralJobMetadataByPath() {
@@ -205,6 +206,31 @@ function pathsWithin(rootPath, paths) {
   );
 }
 
+// A folder that left the list takes its music out of the Library. Its files
+// stay on disk.
+async function scanReadOnlyFolders(roots, { changedPaths, force, isExcluded, changedFiles }) {
+  const scan =
+    roots.length > 0
+      ? await scanMusicRoots({
+          rootPaths: roots,
+          changedPaths,
+          force,
+          source: "readonly",
+          syncSearch: Array.isArray(changedPaths),
+          isExcluded,
+          changedFiles,
+        })
+      : skippedScan();
+  if (Array.isArray(changedPaths)) return scan;
+  const leftPaths = [...getLibraryMediaPaths("readonly")].filter(
+    (filePath) => !roots.some((root) => isPathWithin(root, filePath)) || isExcluded(filePath),
+  );
+  const removed = removeMissingLibraryMediaFiles("readonly", leftPaths);
+  for (const filePath of removed) changedFiles.add(filePath);
+  if (removed.length > 0) reconcileLibraryAlbums();
+  return { ...scan, changed: scan.changed || removed.length > 0 };
+}
+
 const skippedScan = () => ({
   skipped: true,
   filesSeen: 0,
@@ -228,12 +254,15 @@ export async function scanConfiguredLibrary({
   let local;
   let lidarr = { skipped: true, filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
   let flow = skippedScan();
+  let readOnly = skippedScan();
   let scanFailed = false;
   let artistsResolved = false;
   let tracksListed = false;
   let lidarrRemoved = false;
   const lidarrActive = isLidarrLibraryActive(lidarrClient);
   const lidarrFolders = activeLidarrRoots(lidarrClient, lidarrRoots);
+  const readOnlyRoots = readOnlyFolderPaths();
+  const folders = { downloadRoot: musicRoot, lidarrRoots: lidarrFolders, readOnlyRoots };
   try {
     local =
       targeted && localPaths.length === 0
@@ -246,10 +275,7 @@ export async function scanConfiguredLibrary({
             metadataEnricher: (_metadata, filePath) =>
               jobMetadataByPath.get(path.resolve(filePath)),
             syncSearch: targeted,
-            isExcluded: createLibraryScanExclusion("aurral", {
-              downloadRoot: musicRoot,
-              lidarrRoots: lidarrFolders,
-            }),
+            isExcluded: createLibraryScanExclusion("aurral", folders),
             changedFiles,
           });
     if (!targeted || localPaths.length > 0) {
@@ -272,10 +298,7 @@ export async function scanConfiguredLibrary({
           force,
           source: "lidarr",
           syncSearch: targeted,
-          isExcluded: createLibraryScanExclusion("lidarr", {
-            downloadRoot: musicRoot,
-            lidarrRoots: lidarrFolders,
-          }),
+          isExcluded: createLibraryScanExclusion("lidarr", folders),
           changedFiles,
         });
         if (!targeted) {
@@ -298,6 +321,22 @@ export async function scanConfiguredLibrary({
           filesIndexed: 0,
           filesFailed: 0,
         };
+      }
+    }
+    if (includeLidarr) {
+      try {
+        readOnly = await scanReadOnlyFolders(readOnlyRoots, {
+          changedPaths: targeted ? changedPaths : null,
+          force,
+          isExcluded: createLibraryScanExclusion("readonly", folders),
+          changedFiles,
+        });
+      } catch (error) {
+        scanFailed = true;
+        logger.error("library", "Read-only folder scan failed", {
+          message: error?.message || String(error),
+        });
+        readOnly = { ...skippedScan(), skipped: false, error: error?.message || String(error) };
       }
     }
     if (lidarrActive) assignLidarrAlbumOwners();
@@ -326,6 +365,7 @@ export async function scanConfiguredLibrary({
       lidarrRemoved ||
       local?.changed ||
       lidarr?.changed ||
+      readOnly?.changed ||
       flow?.changed
     ) {
       if (!targeted || scanFailed || artistsResolved || flow?.removed > 0)
@@ -333,5 +373,5 @@ export async function scanConfiguredLibrary({
       if (!targeted) rebuildLibraryGenreStats();
     }
   }
-  return { local, lidarr, flow, lidarrRemoved };
+  return { local, lidarr, readOnly, flow, lidarrRemoved };
 }

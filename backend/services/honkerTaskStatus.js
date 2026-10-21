@@ -175,6 +175,10 @@ export const SYSTEM_TASK_LABELS = {
     label: "Lidarr turned off",
     description: "Downloads Aurral copies of playlist and flow tracks that used Lidarr files.",
   },
+  "read-only-folder-release": {
+    label: "Read-only folder removed",
+    description: "Downloads Aurral copies of playlist and flow tracks that used its files.",
+  },
   "lidarr-retry": {
     label: "Lidarr retry",
     description: "Retries Lidarr library access after a temporary connection problem.",

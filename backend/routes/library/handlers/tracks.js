@@ -53,6 +53,13 @@ export function registerTracks(router) {
             message: "The track or its file no longer exists.",
           });
         }
+        if (result?.code === "read_only") {
+          return res.status(409).json({
+            error: "Read-only file",
+            message:
+              "This file is in a read-only folder, so Aurral did not delete it. Remove it from the folder yourself.",
+          });
+        }
         if (result?.code === "lidarr_unavailable") {
           return res.status(503).json({
             error: "Lidarr unavailable",

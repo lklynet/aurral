@@ -350,7 +350,7 @@ export async function scanMusicRoot({
   changedFiles = new Set(),
 } = {}) {
   const resolvedRoot = path.resolve(String(rootPath || ""));
-  await fs.mkdir(resolvedRoot, { recursive: true });
+  if (source !== "readonly") await fs.mkdir(resolvedRoot, { recursive: true });
   mergeReleaseKeyedLibraryAlbums();
   const changed = Array.isArray(changedPaths)
     ? await resolveChangedFiles(resolvedRoot, changedPaths, isExcluded)
@@ -450,7 +450,7 @@ export async function scanMusicRoot({
             metadata: record.albumMetadata,
             syncSearch,
           });
-          if (source === "aurral") claimUnownedAlbum(album);
+          if (source === "aurral" || source === "readonly") claimUnownedAlbum(album);
           let listedMetadata = null;
           try {
             listedMetadata = JSON.parse(listedTrack?.metadata_json || "null");
@@ -463,7 +463,7 @@ export async function scanMusicRoot({
               trackPerformerStmt.get(trackKey, filePath, filePath, record.trackArtistName || null)
                 ?.artist_tag ?? (trackCreditedStmt.get(trackKey) ? null : record.artistName),
             metadata: { ...listedMetadata, ...record.trackMetadata },
-            monitored: source !== "aurral" || downloadedByAurral,
+            monitored: source === "readonly" ? false : source !== "aurral" || downloadedByAurral,
             syncSearch,
           });
           linkLibraryAlbumTrack({

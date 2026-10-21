@@ -274,6 +274,7 @@ export async function repairYtdlpMetadata(jobs = []) {
     if (
       job?.status !== "done" ||
       job?.downloadClient !== "ytdlp" ||
+      job?.externalPath ||
       path.extname(job?.finalPath || "").toLowerCase() !== ".m4a"
     ) {
       continue;

@@ -44,6 +44,36 @@ export function isPathWithin(rootPath, candidatePath) {
   );
 }
 
+const READ_ONLY_FOLDERS_SETTING = "readOnlyFolders";
+
+const uniqueResolvedPaths = (paths) => [
+  ...new Set(
+    (Array.isArray(paths) ? paths : [])
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+      .map((value) => path.resolve(value)),
+  ),
+];
+
+export function readOnlyFolderPaths() {
+  return uniqueResolvedPaths(dbOps.getJSONSetting(READ_ONLY_FOLDERS_SETTING));
+}
+
+export function saveReadOnlyFolderPaths(paths) {
+  const folders = uniqueResolvedPaths(paths);
+  dbOps.setJSONSetting(READ_ONLY_FOLDERS_SETTING, folders);
+  return folders;
+}
+
+export function readOnlyFolderOverlapping(candidate) {
+  const resolved = path.resolve(String(candidate || ""));
+  return (
+    readOnlyFolderPaths().find(
+      (folder) => isPathWithin(folder, resolved) || isPathWithin(resolved, folder),
+    ) || null
+  );
+}
+
 const libraryFolders = ({ downloadRoot, lidarrRoots }) => [
   ...lidarrRoots.map((root) => ({ owner: "lidarr", root: path.resolve(root) })),
   { owner: "aurral", root: path.resolve(downloadRoot) },
@@ -57,21 +87,44 @@ const deepestHolders = (folders, filePath) => {
 };
 
 // The deepest library folder holding a path owns it. Lidarr owns a folder it
-// shares with the Downloads Folder.
+// shares with the Downloads Folder or a read-only folder, and a read-only
+// folder owns what it shares with the Downloads Folder.
 export function libraryFolderOwner(
   filePath,
-  { downloadRoot = resolveDownloadRoot(), lidarrRoots = [] } = {},
+  {
+    downloadRoot = resolveDownloadRoot(),
+    lidarrRoots = [],
+    readOnlyRoots = readOnlyFolderPaths(),
+  } = {},
 ) {
   const holders = deepestHolders(libraryFolders({ downloadRoot, lidarrRoots }), filePath);
-  if (holders.length === 0) return null;
-  return holders.some(({ owner }) => owner === "lidarr") ? "lidarr" : "aurral";
+  const owner =
+    holders.length === 0
+      ? null
+      : holders.some(({ owner }) => owner === "lidarr")
+        ? "lidarr"
+        : "aurral";
+  if (owner === "lidarr") return owner;
+  const readOnlyDepth = Math.max(
+    ...readOnlyRoots
+      .map((root) => path.resolve(root))
+      .filter((root) => isPathWithin(root, filePath))
+      .map((root) => root.length),
+  );
+  if (readOnlyDepth >= (owner ? path.resolve(downloadRoot).length : 0)) return "readonly";
+  return owner;
 }
 
-// A scan skips a path that a deeper folder of the other manager holds. A
-// folder both managers share is scanned by both.
-export function createLibraryScanExclusion(source, { downloadRoot, lidarrRoots }) {
+// A scan skips a path that a deeper folder of another owner holds. A folder
+// Lidarr shares with the Downloads Folder is scanned by both.
+export function createLibraryScanExclusion(
+  source,
+  { downloadRoot, lidarrRoots, readOnlyRoots = [] },
+) {
   const folders = libraryFolders({ downloadRoot, lidarrRoots });
   return (filePath) => {
+    const owner = libraryFolderOwner(filePath, { downloadRoot, lidarrRoots, readOnlyRoots });
+    if (source === "readonly" || owner === "readonly") return owner !== source;
     const holders = deepestHolders(folders, filePath);
     return holders.length > 0 && !holders.some(({ owner }) => owner === source);
   };

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { FolderInput, FolderSync } from "lucide-react";
+import { FolderInput, FolderPlus, FolderSync, Trash2 } from "lucide-react";
+import { ConfirmModal } from "../../../components/ConfirmModal";
 import DownloadFolderField from "../../../components/DownloadFolderField";
 import { DotLoader } from "../../../components/DotLoader";
 import LibraryFileOperation from "../../../components/LibraryFileOperation";
@@ -9,9 +10,12 @@ import {
   refreshLibraryFiles,
   useLibraryFileOperation,
   useLibraryFiles,
+  useReadOnlyFolders,
 } from "../../../hooks/useLibraryFileOperation.js";
 import {
+  addReadOnlyFolder,
   checkLibraryIngestSource,
+  removeReadOnlyFolder,
   startLibraryCleanup,
   startLibraryIngest,
 } from "../../../utils/api/endpoints/library.js";
@@ -34,6 +38,164 @@ const FILL_TAGS_HELP = "Fills missing MusicBrainz tags. Existing tags stay.";
 
 const errorMessage = (error, fallback) =>
   error?.response?.data?.message || error?.message || fallback;
+
+const trackCount = (count) => `${count.toLocaleString()} track${count === 1 ? "" : "s"}`;
+
+function folderStatus(folder, scanning) {
+  if (!folder.readable) return { text: "Aurral cannot read this folder.", warning: true };
+  if (folder.lidarrRoot) return { text: "Lidarr manages this folder while Lidarr is on." };
+  if (scanning && folder.tracks === 0) return { text: "Scanning…" };
+  return { text: trackCount(folder.tracks) };
+}
+
+function ReadOnlyFoldersSection({ onChanged, showError }) {
+  const query = useReadOnlyFolders();
+  const [draft, setDraft] = useState("");
+  const [fieldKey, setFieldKey] = useState(0);
+  const [adding, setAdding] = useState(false);
+  const [addError, setAddError] = useState("");
+  const [removing, setRemoving] = useState(null);
+  const [removeBusy, setRemoveBusy] = useState(false);
+  const folders = query.data?.folders || [];
+  const scanning = query.data?.scanning === true;
+
+  const add = async () => {
+    setAdding(true);
+    setAddError("");
+    try {
+      await addReadOnlyFolder(draft);
+      setDraft("");
+      setFieldKey((key) => key + 1);
+      await onChanged();
+    } catch (error) {
+      setAddError(errorMessage(error, "Aurral could not add this folder. Nothing was changed."));
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const remove = async () => {
+    setRemoveBusy(true);
+    try {
+      await removeReadOnlyFolder(removing);
+      setRemoving(null);
+      await onChanged();
+    } catch (error) {
+      showError(errorMessage(error, "Aurral could not remove this folder. Nothing was changed."));
+    } finally {
+      setRemoveBusy(false);
+    }
+  };
+
+  return (
+    <SettingsArrFieldSet legend="Read-only folders">
+      <div className="arr-info">
+        Aurral adds the music in these folders to the Library and never changes, moves, or deletes
+        it. New downloads go to the Downloads Folder.
+      </div>
+      <div className="arr-table-wrap">
+        <table className="arr-table">
+          <thead>
+            <tr>
+              <th scope="col">Folder</th>
+              <th scope="col">Library</th>
+              <th scope="col" className="arr-table__actions-head">
+                <span className="sr-only">Actions</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {query.isLoading ? (
+              <tr className="arr-table__empty-row">
+                <td colSpan={3}>Loading folders…</td>
+              </tr>
+            ) : query.isError ? (
+              <tr className="arr-table__empty-row">
+                <td colSpan={3}>Could not load read-only folders. Reload the page to try again.</td>
+              </tr>
+            ) : folders.length === 0 ? (
+              <tr className="arr-table__empty-row">
+                <td colSpan={3}>No read-only folders. Add one below.</td>
+              </tr>
+            ) : (
+              folders.map((folder) => {
+                const status = folderStatus(folder, scanning);
+                return (
+                  <tr key={folder.path}>
+                    <td>
+                      <code className="arr-table__path">{folder.path}</code>
+                    </td>
+                    <td
+                      className={status.warning ? "arr-form-help--warning" : undefined}
+                      aria-live="polite"
+                    >
+                      {status.text}
+                    </td>
+                    <td className="arr-table__actions">
+                      <div className="arr-table__actions-inner">
+                        <button
+                          type="button"
+                          className="arr-btn arr-btn--ghost arr-btn--icon"
+                          aria-label={`Remove read-only folder ${folder.path}`}
+                          onClick={() => setRemoving(folder.path)}
+                        >
+                          <Trash2 className="artist-icon-sm" aria-hidden />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+      <SettingsArrFormGroup
+        label="Add a folder"
+        labelFor="library-read-only-folder"
+        help={addError || "Choose a folder outside the Downloads Folder."}
+        helpWarning={Boolean(addError)}
+      >
+        <DownloadFolderField
+          key={fieldKey}
+          id="library-read-only-folder"
+          value={draft}
+          suggestFolder={false}
+          createOnConfirm={false}
+          onChange={(value) => {
+            setDraft(value);
+            setAddError("");
+          }}
+        />
+      </SettingsArrFormGroup>
+      <div className="settings-library-files__actions">
+        <button
+          type="button"
+          className="arr-btn arr-btn--primary"
+          disabled={!draft || adding}
+          onClick={add}
+        >
+          {adding ? (
+            <DotLoader size="sm" label={null} />
+          ) : (
+            <FolderPlus className="artist-icon-xs" aria-hidden />
+          )}
+          Add folder
+        </button>
+      </div>
+      <ConfirmModal
+        open={Boolean(removing)}
+        title="Remove this read-only folder?"
+        body={`The music in ${removing} leaves the Library. The files stay on disk. Playlist and flow tracks that use them download again.`}
+        confirmLabel="Remove folder"
+        busyLabel="Removing…"
+        busy={removeBusy}
+        onCancel={() => setRemoving(null)}
+        onConfirm={remove}
+      />
+    </SettingsArrFieldSet>
+  );
+}
 
 function IngestSection({ busy, operation, onChanged, showError }) {
   const [sourcePath, setSourcePath] = useState("");
@@ -93,8 +255,9 @@ function IngestSection({ busy, operation, onChanged, showError }) {
   return (
     <SettingsArrFieldSet legend="Import a folder">
       <div className="arr-info">
-        Imports music into the Downloads Folder using Aurral naming. Existing files are never
-        overwritten.
+        Imports music into the Downloads Folder, where Aurral manages it with Aurral naming.
+        Existing files are never overwritten. To let Aurral see a folder without changing it, add it
+        as a read-only folder instead.
       </div>
       <SettingsArrFormGroup
         label="Folder"
@@ -154,6 +317,12 @@ function IngestSection({ busy, operation, onChanged, showError }) {
           <option value="albums">Albums</option>
         </SettingsSelect>
       </SettingsArrFormGroup>
+      {result?.readOnlyFolder ? (
+        <p className="arr-form-help arr-form-help--warning">
+          {result.readOnlyFolder} is a read-only folder. Moving files takes them out of it. Copy and
+          Hardlink keep its files.
+        </p>
+      ) : null}
       {result?.lidarrRoot ? (
         <p className="arr-form-help arr-form-help--warning">
           Lidarr uses {result.lidarrRoot}. Moving files breaks its library. Copy and Hardlink keep
@@ -207,6 +376,8 @@ export function SettingsLibraryFilesTab({ showError }) {
   return (
     <div className="arr-page">
       <div className="arr-form">
+        <ReadOnlyFoldersSection onChanged={refresh} showError={showError} />
+
         <IngestSection
           busy={active}
           operation={operation?.kind === "ingest" ? operation : null}
