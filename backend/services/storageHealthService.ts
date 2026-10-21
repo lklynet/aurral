@@ -5,7 +5,7 @@ import { dbOps } from "../db/helpers/index.ts";
 import { getLibraryTrackCount, getLibraryTrackSample } from "./libraryQueryService.ts";
 import { lidarrClient } from "./lidarrClient.ts";
 import { getDownloadClient } from "./download/downloadClientSettings.ts";
-import { NavidromeClient } from "./navidrome.ts";
+import { NavidromeClient, type NavidromeLibrary } from "./navidrome.ts";
 import { PlexClient } from "./plex.ts";
 import { runLidarrLibraryAccessTest } from "./lidarrLibraryAccessTest.ts";
 import { resolveDownloadRoot } from "./downloadPaths.ts";
@@ -135,7 +135,7 @@ function getLikelySharedBrowseRoots(browseRoots) {
   });
 }
 
-async function checkPathReadable(filePath, mappingSource = null) {
+async function checkPathReadable(filePath: unknown, mappingSource: string | null = null) {
   const raw = String(filePath || "").trim();
   if (!raw) return false;
   const mappings = getPathMappings(mappingSource || undefined);
@@ -792,7 +792,7 @@ async function checkNavidromeSection() {
   );
   const expectedLibraryCandidates = [expectedLibraryPath];
 
-  let libraries = [];
+  let libraries: NavidromeLibrary[] = [];
   let librariesListed = true;
   try {
     libraries = await client.getLibraries();
@@ -967,7 +967,7 @@ async function checkPlexSection() {
     return buildSection("plex", "Plex playback", steps);
   }
 
-  let libraries;
+  let libraries: NavidromeLibrary[] | undefined;
   try {
     libraries = await client.getLibraries();
   } catch (error) {
