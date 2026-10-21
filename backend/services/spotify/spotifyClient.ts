@@ -1,8 +1,69 @@
 import { SPOTIFY_API_BASE, SPOTIFY_RENEW_URI } from "./spotifyConfig.ts";
-import { spotifyConnectionStore } from "./spotifyConnectionStore.ts";
+import { spotifyConnectionStore, type SpotifyConnection } from "./spotifyConnectionStore.ts";
 import createCache from "../apiClients/simpleCache.ts";
 import { runSharedInflight } from "../sharedInflight.ts";
 import { logger } from "../logger.ts";
+
+interface SpotifyError extends Error {
+  code?: string;
+  statusCode?: number;
+  playlistId?: string;
+  reportedTotal?: number | null;
+  fetchedCount?: number;
+}
+
+interface SpotifyTokenPayload {
+  access_token?: string;
+  accessToken?: string;
+  refresh_token?: string;
+  refreshToken?: string;
+  expires_in?: number;
+  expiresIn?: number;
+}
+
+interface SpotifyTrack {
+  type?: string;
+  name?: string;
+  artists?: { name?: string }[];
+  album?: { name?: string };
+}
+
+interface SpotifyPlaylistItem {
+  item?: SpotifyTrack | null;
+}
+
+interface SpotifyPlaylistSummary {
+  id?: string;
+  name?: string;
+  items?: { total?: number };
+  tracks?: { total?: number };
+}
+
+interface SpotifyPage<T> {
+  items?: T[];
+  next?: string | null;
+  total?: number;
+  offset?: number;
+}
+
+interface SpotifyPageSummary {
+  offset: number | null;
+  total: number | null;
+  itemCount: number;
+}
+
+type SpotifySearchParams = Record<string, string | number>;
+
+interface SpotifyRequestOptions {
+  searchParams?: SpotifySearchParams;
+  url?: string;
+}
+
+interface FetchAllPagesOptions {
+  searchParams?: SpotifySearchParams;
+  itemsKey?: "items";
+  onPage?: (page: SpotifyPageSummary) => void;
+}
 
 const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;
 export const SPOTIFY_AUTH_REQUIRED_CODE = "SPOTIFY_AUTH_REQUIRED";
@@ -11,31 +72,36 @@ const playlistTrackInflight = new Map();
 const playlistTrackGeneration = new Map();
 const tokenRefreshInflight = new Map();
 
-const getPlaylistTrackGeneration = (userId) => playlistTrackGeneration.get(String(userId)) || 0;
+const getPlaylistTrackGeneration = (userId: number | string) =>
+  playlistTrackGeneration.get(String(userId)) || 0;
 
-const bumpPlaylistTrackGeneration = (userId) => {
+const bumpPlaylistTrackGeneration = (userId: number) => {
   const key = String(userId);
   const generation = getPlaylistTrackGeneration(key) + 1;
   playlistTrackGeneration.set(key, generation);
   return generation;
 };
 
-const playlistTrackCacheKey = (userId, playlistId) =>
+const playlistTrackCacheKey = (userId: number, playlistId: string) =>
   `${String(userId)}:${getPlaylistTrackGeneration(userId)}:${String(playlistId)}`;
 
-const createAuthRequiredError = (message) => {
-  const error = new Error(message);
+const createAuthRequiredError = (message: string) => {
+  const error: SpotifyError = new Error(message);
   error.code = SPOTIFY_AUTH_REQUIRED_CODE;
   error.statusCode = 401;
   return error;
 };
 
-const createIncompletePlaylistError = (playlistId, reportedTotal, fetchedCount) => {
+const createIncompletePlaylistError = (
+  playlistId: string,
+  reportedTotal: number | null,
+  fetchedCount: number,
+) => {
   const message =
     reportedTotal == null
       ? "Spotify did not report a playlist item total"
       : `Spotify returned ${fetchedCount} of ${reportedTotal} playlist items`;
-  const error = new Error(message);
+  const error: SpotifyError = new Error(message);
   error.code = "SPOTIFY_INCOMPLETE_PLAYLIST";
   error.statusCode = 502;
   error.playlistId = playlistId;
@@ -44,24 +110,26 @@ const createIncompletePlaylistError = (playlistId, reportedTotal, fetchedCount) 
   return error;
 };
 
-const invalidateConnection = (userId, expectedConnection) => {
+const invalidateConnection = (userId: number, expectedConnection: SpotifyConnection) => {
   if (spotifyConnectionStore.clearConnectionIfMatches(userId, expectedConnection)) {
     bumpPlaylistTrackGeneration(userId);
   }
   return createAuthRequiredError("Spotify connection expired");
 };
 
-async function renewAccessToken(refreshToken, signal) {
+async function renewAccessToken(refreshToken: string, signal: AbortSignal) {
   const url = new URL(SPOTIFY_RENEW_URI);
   url.searchParams.set("refresh_token", refreshToken);
   const response = await fetch(url, { method: "GET", signal });
   if (!response.ok) {
     const body = await response.text().catch(() => "");
-    const error = new Error(body || `Spotify token refresh failed (${response.status})`);
+    const error: SpotifyError = new Error(
+      body || `Spotify token refresh failed (${response.status})`,
+    );
     error.statusCode = response.status;
     throw error;
   }
-  const payload = await response.json();
+  const payload: SpotifyTokenPayload = await response.json();
   const accessToken = String(payload?.access_token || payload?.accessToken || "").trim();
   const nextRefreshToken = String(
     payload?.refresh_token || payload?.refreshToken || refreshToken,
@@ -77,8 +145,12 @@ async function renewAccessToken(refreshToken, signal) {
   };
 }
 
-const refreshConnection = (userId, refreshToken, { force = false } = {}) =>
-  runSharedInflight(tokenRefreshInflight, String(userId), async (signal) => {
+const refreshConnection = (
+  userId: number,
+  refreshToken: string,
+  { force = false }: { force?: boolean } = {},
+): Promise<SpotifyConnection | null> =>
+  runSharedInflight(tokenRefreshInflight, String(userId), async (signal: AbortSignal) => {
     const latest = spotifyConnectionStore.getConnection(userId);
     if (!force && latest?.expiresAt - TOKEN_REFRESH_BUFFER_MS > Date.now()) {
       return latest;
@@ -95,7 +167,7 @@ const refreshConnection = (userId, refreshToken, { force = false } = {}) =>
     return spotifyConnectionStore.updateTokens(userId, renewed);
   });
 
-async function getValidConnection(userId) {
+async function getValidConnection(userId: number) {
   let connection = spotifyConnectionStore.getConnection(userId);
   if (!connection) {
     throw createAuthRequiredError("Spotify is not connected");
@@ -111,7 +183,11 @@ async function getValidConnection(userId) {
   }
 }
 
-async function spotifyRequest(userId, path, { searchParams, url: absoluteUrl } = {}) {
+async function spotifyRequest(
+  userId: number,
+  path: string | null,
+  { searchParams, url: absoluteUrl }: SpotifyRequestOptions = {},
+) {
   const connection = await getValidConnection(userId);
   const url = absoluteUrl ? new URL(absoluteUrl) : new URL(`${SPOTIFY_API_BASE}${path}`);
   if (!absoluteUrl && searchParams && typeof searchParams === "object") {
@@ -148,7 +224,7 @@ async function spotifyRequest(userId, path, { searchParams, url: absoluteUrl } =
   if (!response.ok) {
     const body = await response.text().catch(() => "");
     if (response.status === 401) throw invalidateConnection(userId, nextConnection);
-    const error = new Error(body || `Spotify request failed (${response.status})`);
+    const error: SpotifyError = new Error(body || `Spotify request failed (${response.status})`);
     error.statusCode = response.status;
     throw error;
   }
@@ -156,11 +232,15 @@ async function spotifyRequest(userId, path, { searchParams, url: absoluteUrl } =
   return response.json();
 }
 
-async function fetchAllPages(userId, path, { searchParams, itemsKey = "items", onPage } = {}) {
-  const items = [];
-  let nextUrl = null;
+async function fetchAllPages<T>(
+  userId: number,
+  path: string,
+  { searchParams, itemsKey = "items", onPage }: FetchAllPagesOptions = {},
+): Promise<T[]> {
+  const items: T[] = [];
+  let nextUrl: string | null = null;
   while (true) {
-    const payload = nextUrl
+    const payload: SpotifyPage<T> = nextUrl
       ? await spotifyRequest(userId, null, { url: nextUrl })
       : await spotifyRequest(userId, path, { searchParams });
     const pageItems = Array.isArray(payload?.[itemsKey]) ? payload[itemsKey] : [];
@@ -183,12 +263,12 @@ async function fetchAllPages(userId, path, { searchParams, itemsKey = "items", o
 }
 
 export const spotifyClient = {
-  getProfile(userId) {
+  getProfile(userId: number) {
     return spotifyRequest(userId, "/me");
   },
 
-  async listPlaylists(userId) {
-    const playlists = await fetchAllPages(userId, "/me/playlists", {
+  async listPlaylists(userId: number) {
+    const playlists = await fetchAllPages<SpotifyPlaylistSummary | null>(userId, "/me/playlists", {
       searchParams: { limit: 50 },
     });
     const connection = spotifyConnectionStore.getPublicStatus(userId);
@@ -205,7 +285,11 @@ export const spotifyClient = {
     };
   },
 
-  async listPlaylistTracks(userId, playlistId, { forceRefresh = false } = {}) {
+  async listPlaylistTracks(
+    userId: number,
+    playlistId: string,
+    { forceRefresh = false }: { forceRefresh?: boolean } = {},
+  ) {
     await getValidConnection(userId);
     const generation = getPlaylistTrackGeneration(userId);
     const cacheKey = playlistTrackCacheKey(userId, playlistId);
@@ -216,15 +300,19 @@ export const spotifyClient = {
       if (inflight) return inflight;
     }
 
-    const pages = [];
-    const request = fetchAllPages(userId, `/playlists/${encodeURIComponent(playlistId)}/items`, {
-      searchParams: {
-        limit: 50,
-        additional_types: "episode",
-        fields: "items(item(type,name,artists(name),album(name))),next,total,offset",
+    const pages: SpotifyPageSummary[] = [];
+    const request = fetchAllPages<SpotifyPlaylistItem | null>(
+      userId,
+      `/playlists/${encodeURIComponent(playlistId)}/items`,
+      {
+        searchParams: {
+          limit: 50,
+          additional_types: "episode",
+          fields: "items(item(type,name,artists(name),album(name))),next,total,offset",
+        },
+        onPage: (page) => pages.push(page),
       },
-      onPage: (page) => pages.push(page),
-    }).then((items) => {
+    ).then((items) => {
       if (getPlaylistTrackGeneration(userId) !== generation) {
         throw createAuthRequiredError("Spotify connection expired");
       }
@@ -259,7 +347,7 @@ export const spotifyClient = {
     }
   },
 
-  clearPlaylistTrackCache(userId) {
+  clearPlaylistTrackCache(userId?: number | null) {
     if (userId != null) {
       bumpPlaylistTrackGeneration(userId);
       return;

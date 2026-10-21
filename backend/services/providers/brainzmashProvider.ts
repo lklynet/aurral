@@ -24,6 +24,10 @@ import {
   toNormalizedAlbum,
   toNormalizedArtist,
   toNormalizedArtistAlbum,
+  type toNormalizedArtistImage,
+  type NormalizedAlbum,
+  type NormalizedArtist,
+  type NormalizedRelease,
 } from "./brainzmashMappers.ts";
 import { selectBestAlbumImage } from "../imageService.ts";
 import createRateLimiter from "../apiClients/rateLimiter.ts";
@@ -35,6 +39,51 @@ import {
   reserveMetadataProviderRequest,
   setMetadataProviderCooldown,
 } from "../metadataProviderBudget.ts";
+
+type ArtistResponse = NonNullable<Parameters<typeof toNormalizedArtist>[0]>;
+type ArtistAlbumResponse = NonNullable<Parameters<typeof toNormalizedArtistAlbum>[0]>;
+type AlbumResponse = NonNullable<Parameters<typeof toNormalizedAlbum>[0]>;
+type ImageResponse = NonNullable<Parameters<typeof toNormalizedArtistImage>[0]>;
+type ArtistDetailResponse = ArtistResponse & { Albums?: ArtistAlbumResponse[] };
+
+interface AlbumSearchEntry {
+  id?: string;
+  title?: string;
+  artistid?: string;
+  artists?: ArtistResponse[];
+  type?: string;
+  secondarytypes?: string[];
+  releasedate?: string;
+  images?: ImageResponse[];
+}
+
+interface AlbumSearchItem {
+  id?: string;
+  title: string;
+  artistName: string;
+  artistId: string | null;
+  type: string;
+  secondaryTypes: string[];
+  releaseDate: string | null;
+  coverUrl: string | null;
+  images: ImageResponse[];
+  inLibrary: boolean;
+  score: number;
+  releaseStatuses: string[];
+}
+
+interface MetadataRequestOptions {
+  signal?: AbortSignal;
+  forceRefresh?: boolean;
+}
+
+type MetadataParams = Record<string, string | number>;
+
+interface MetadataError extends Error {
+  code?: string;
+  retryAfterMs?: number;
+  response?: { status?: number; headers?: Record<string, string> };
+}
 
 const METADATA_ENTITY_CACHE_TTL_SECONDS = 7 * 24 * 60 * 60;
 const METADATA_ENTITY_STALE_TTL_SECONDS = 30 * 24 * 60 * 60;
@@ -76,7 +125,15 @@ export function clearMetadataProviderCaches() {
   providerInflightRequests.clear();
 }
 
-const healthState = {
+const healthState: {
+  configuredProvider: string;
+  activeBaseUrl: string | null;
+  failoverActive: boolean;
+  lastCheckedAt: string | null;
+  lastSuccessAt: string | null;
+  lastFailureAt: string | null;
+  lastFailureReason: string;
+} = {
   configuredProvider: "brainzmash",
   activeBaseUrl: null,
   failoverActive: false,
@@ -120,23 +177,23 @@ function getUserAgent() {
   return `${APP_NAME}/${APP_VERSION}`;
 }
 
-function isEntityMetadataPath(path) {
+function isEntityMetadataPath(path: string) {
   return /^\/(?:album|artist)\/[^/]+$/.test(path);
 }
 
-export function isMetadataNotFoundError(error) {
+export function isMetadataNotFoundError(error: unknown) {
   return error?.code === "ERR_METADATA_NOT_FOUND" || error?.response?.status === 404;
 }
 
 function createMetadataNotFoundError() {
-  const error = new Error("Metadata resource not found");
+  const error: MetadataError = new Error("Metadata resource not found");
   error.code = "ERR_METADATA_NOT_FOUND";
   error.response = { status: 404 };
   return error;
 }
 
-function createMetadataCircuitError(code, status, remainingMs) {
-  const error = new Error(
+function createMetadataCircuitError(code: string, status: number, remainingMs: number) {
+  const error: MetadataError = new Error(
     code === "ERR_METADATA_FORBIDDEN"
       ? "Metadata provider access is temporarily blocked"
       : "Metadata provider rate limit cooldown is active",
@@ -147,11 +204,11 @@ function createMetadataCircuitError(code, status, remainingMs) {
   return error;
 }
 
-function isMetadataCircuitError(error) {
+function isMetadataCircuitError(error: unknown) {
   return error?.code === "ERR_METADATA_FORBIDDEN" || error?.code === "ERR_METADATA_RATE_LIMITED";
 }
 
-function getRetryAfterMs(error) {
+function getRetryAfterMs(error: unknown) {
   const retryAfter =
     error?.response?.headers?.["retry-after"] ?? error?.response?.headers?.["Retry-After"];
   const seconds = Number(retryAfter);
@@ -171,7 +228,7 @@ function getRetryAfterMs(error) {
   return METADATA_RATE_LIMIT_FALLBACK_COOLDOWN_MS;
 }
 
-function getMetadataCircuitError(baseUrl) {
+function getMetadataCircuitError(baseUrl: string) {
   const now = Date.now();
   const budget = getMetadataProviderBudget(baseUrl);
   if (budget.forbidden_until > now) {
@@ -187,19 +244,19 @@ function getMetadataCircuitError(baseUrl) {
   return null;
 }
 
-function openMetadataCircuit(baseUrl, status, error) {
+function openMetadataCircuit(baseUrl: string, status: number, error: unknown) {
   const cooldownMs = status === 403 ? METADATA_FORBIDDEN_COOLDOWN_MS : getRetryAfterMs(error);
   setMetadataProviderCooldown(baseUrl, status, Date.now() + cooldownMs);
 }
 
-function isRetryable(error) {
+function isRetryable(error: unknown) {
   return (
     ["ECONNABORTED", "ETIMEDOUT", "ECONNRESET", "ENOTFOUND", "EAI_AGAIN"].includes(error?.code) ||
     [408, 425, 429, 500, 502, 503, 504].includes(error?.response?.status)
   );
 }
 
-function getMetadataCachePolicy(path) {
+function getMetadataCachePolicy(path: string) {
   if (isEntityMetadataPath(path)) {
     return {
       freshTtlSeconds: METADATA_ENTITY_CACHE_TTL_SECONDS,
@@ -212,7 +269,7 @@ function getMetadataCachePolicy(path) {
   };
 }
 
-function readCachedMetadata(cacheKey) {
+function readCachedMetadata(cacheKey: string) {
   let entry = metadataHotCache.get(cacheKey);
   if (!entry) {
     entry = dbOps.getMetadataResponse(cacheKey);
@@ -224,7 +281,11 @@ function readCachedMetadata(cacheKey) {
   return { value: entry.value, stale: entry.freshUntil < now };
 }
 
-function storeMetadata(cacheKey, value, { freshTtlSeconds, staleTtlSeconds }) {
+function storeMetadata(
+  cacheKey: string,
+  value: unknown,
+  { freshTtlSeconds, staleTtlSeconds }: ReturnType<typeof getMetadataCachePolicy>,
+) {
   const now = Date.now();
   const freshUntil = now + freshTtlSeconds * 1000;
   const entry = { value, freshUntil, staleUntil: freshUntil + staleTtlSeconds * 1000 };
@@ -242,12 +303,17 @@ function storeMetadata(cacheKey, value, { freshTtlSeconds, staleTtlSeconds }) {
   }
 }
 
-function forgetMetadata(cacheKey) {
+function forgetMetadata(cacheKey: string) {
   metadataHotCache.delete(cacheKey);
   dbOps.deleteMetadataResponse(cacheKey);
 }
 
-function refreshMetadata(cacheKey, path, params, { signal } = {}) {
+function refreshMetadata<T>(
+  cacheKey: string,
+  path: string,
+  params: MetadataParams,
+  { signal }: MetadataRequestOptions = {},
+): Promise<T> {
   const baseUrl = getMetadataBaseUrl();
   const cachePolicy = getMetadataCachePolicy(path);
   const circuitError = getMetadataCircuitError(baseUrl);
@@ -258,7 +324,7 @@ function refreshMetadata(cacheKey, path, params, { signal } = {}) {
   return runSharedInflight(
     providerInflightRequests,
     cacheKey,
-    async (sharedSignal) => {
+    async (sharedSignal: AbortSignal) => {
       for (let attempt = 0; attempt <= METADATA_MAX_RETRIES; attempt += 1) {
         if (sharedSignal.aborted)
           throw sharedSignal.reason || new Error("The operation was aborted");
@@ -276,7 +342,9 @@ function refreshMetadata(cacheKey, path, params, { signal } = {}) {
                 )) > 0
               ) {
                 if (waitMs >= remainingMs - (Date.now() - admissionStarted)) {
-                  const error = new Error("Metadata provider request deadline exceeded");
+                  const error: MetadataError = new Error(
+                    "Metadata provider request deadline exceeded",
+                  );
                   error.code = "ETIMEDOUT";
                   throw error;
                 }
@@ -288,7 +356,9 @@ function refreshMetadata(cacheKey, path, params, { signal } = {}) {
               if (circuitAfterWait) throw circuitAfterWait;
               const requestTimeoutMs = remainingMs - (Date.now() - admissionStarted);
               if (requestTimeoutMs <= 0) {
-                const error = new Error("Metadata provider request deadline exceeded");
+                const error: MetadataError = new Error(
+                  "Metadata provider request deadline exceeded",
+                );
                 error.code = "ETIMEDOUT";
                 throw error;
               }
@@ -328,7 +398,7 @@ function refreshMetadata(cacheKey, path, params, { signal } = {}) {
             metadataNotFoundCache.set(cacheKey, true);
           }
           if (attempt === METADATA_MAX_RETRIES || !isRetryable(error)) throw error;
-          await new Promise((resolve, reject) => {
+          await new Promise<void>((resolve, reject) => {
             const onAbort = () => {
               clearTimeout(timer);
               reject(sharedSignal.reason || new Error("The operation was aborted"));
@@ -348,7 +418,11 @@ function refreshMetadata(cacheKey, path, params, { signal } = {}) {
   );
 }
 
-async function request(path, params = {}, { signal, forceRefresh = false } = {}) {
+async function request<T>(
+  path: string,
+  params: MetadataParams = {},
+  { signal, forceRefresh = false }: MetadataRequestOptions = {},
+): Promise<T> {
   const baseUrl = getMetadataBaseUrl();
   const cacheKey = `${baseUrl}${path}:${JSON.stringify(params)}`;
   if (!forceRefresh && metadataNotFoundCache.get(cacheKey)) {
@@ -357,14 +431,17 @@ async function request(path, params = {}, { signal, forceRefresh = false } = {})
   const cached = forceRefresh ? null : readCachedMetadata(cacheKey);
   if (cached) {
     if (cached.stale) {
-      void refreshMetadata(cacheKey, path, params).catch(() => {});
+      void refreshMetadata<T>(cacheKey, path, params).catch(() => {});
     }
     return cached.value;
   }
-  return refreshMetadata(cacheKey, path, params, { signal });
+  return refreshMetadata<T>(cacheKey, path, params, { signal });
 }
 
-function applyReleaseTypeFilter(albums, releaseTypes = []) {
+function applyReleaseTypeFilter<T extends { type: string; secondaryTypes?: string[] }>(
+  albums: T[],
+  releaseTypes: string[] | string = [],
+): T[] {
   const normalizedSet = new Set(
     (Array.isArray(releaseTypes)
       ? releaseTypes
@@ -381,8 +458,8 @@ function applyReleaseTypeFilter(albums, releaseTypes = []) {
   });
 }
 
-function tally(releases, key) {
-  const counts = new Map();
+function tally<T, K>(releases: T[], key: (release: T) => K) {
+  const counts = new Map<K, number>();
   for (const release of releases) counts.set(key(release), (counts.get(key(release)) || 0) + 1);
   return counts;
 }
@@ -394,7 +471,10 @@ function tally(releases, key) {
 // and digital copies, comes first. The expanded edition is the longest one
 // that keeps every standard track and is at most twice as long, which leaves
 // out box sets.
-export function selectAlbumRelease(album, { edition = "standard" } = {}) {
+export function selectAlbumRelease(
+  album: { releases?: NormalizedRelease[] } | null | undefined,
+  { edition = "standard" }: { edition?: string } = {},
+) {
   const releases = Array.isArray(album?.releases) ? album.releases : [];
   const withTracks = releases.filter(
     (release) => Array.isArray(release?.tracks) && release.tracks.length > 0,
@@ -409,7 +489,7 @@ export function selectAlbumRelease(album, { edition = "standard" } = {}) {
   )[0];
   const standard = chooseTracklist(pool, trackCount);
   if (edition !== "expanded") return standard;
-  const keepsStandardTracks = (release) => {
+  const keepsStandardTracks = (release: NormalizedRelease) => {
     const unmatched = [...release.tracks];
     return standard.tracks.every((track) => {
       const index = unmatched.findIndex((candidate) =>
@@ -432,39 +512,45 @@ export function selectAlbumRelease(album, { edition = "standard" } = {}) {
   return chooseTracklist(longer, Math.max(...longer.map((release) => release.tracks.length)));
 }
 
-function chooseTracklist(pool, trackCount) {
+function chooseTracklist(pool: NormalizedRelease[], trackCount: number) {
   const sameCount = pool.filter((release) => release.tracks.length === trackCount);
-  const orders = new Map(sameCount.map((release) => [release, runningOrder(release)]));
+  const orders = new Map(sameCount.map((release) => [release, runningOrder(release)] as const));
   const orderCounts = tally(sameCount, (release) => orders.get(release));
-  const discs = (release) => new Set(release.tracks.map((track) => track.mediumNumber || 1)).size;
+  const discs = (release: NormalizedRelease) =>
+    new Set(release.tracks.map((track) => track.mediumNumber || 1)).size;
   const chosen = sameCount.reduce((best, release) => {
-    const commoner = orderCounts.get(orders.get(release)) - orderCounts.get(orders.get(best));
+    const commoner = orderCounts.get(orders.get(release))! - orderCounts.get(orders.get(best))!;
     return commoner > 0 || (commoner === 0 && discs(release) < discs(best)) ? release : best;
   });
   return withPressingDurations(sameCount, chosen);
 }
 
-function storeAlbumReleaseMappings(album) {
+function storeAlbumReleaseMappings(album: NormalizedAlbum) {
   for (const release of album?.releases || []) {
     releaseCache.set(release.id, structuredClone({ albumId: album.id, release }));
   }
 }
 
-export async function getArtistByMbid(mbid, { signal } = {}) {
-  const data = await request(`/artist/${mbid}`, {}, { signal });
+export async function getArtistByMbid(mbid: string, { signal }: MetadataRequestOptions = {}) {
+  const data = await request<ArtistResponse>(`/artist/${mbid}`, {}, { signal });
   return toNormalizedArtist(data);
 }
 
-export async function getAlbumByMbid(albumMbid, { signal, forceRefresh = false } = {}) {
-  const data = await request(`/album/${albumMbid}`, {}, { signal, forceRefresh });
+export async function getAlbumByMbid(
+  albumMbid: string,
+  { signal, forceRefresh = false }: MetadataRequestOptions = {},
+) {
+  const data = await request<AlbumResponse>(`/album/${albumMbid}`, {}, { signal, forceRefresh });
   const normalized = toNormalizedAlbum(data);
   storeAlbumReleaseMappings(normalized);
   return normalized;
 }
 
 export async function getAlbumTracksByAlbumMbid(
-  albumMbid,
-  { chooseRelease = selectAlbumRelease } = {},
+  albumMbid: string,
+  {
+    chooseRelease = selectAlbumRelease,
+  }: { chooseRelease?: (album: NormalizedAlbum) => NormalizedRelease | null | undefined } = {},
 ) {
   const album = await getAlbumByMbid(albumMbid);
   const release = chooseRelease(album);
@@ -473,10 +559,17 @@ export async function getAlbumTracksByAlbumMbid(
     : [];
 }
 
-export async function searchArtists(query, { limit = 24, offset = 0, signal } = {}) {
-  let items = [];
+export async function searchArtists(
+  query: string,
+  {
+    limit = 24,
+    offset = 0,
+    signal,
+  }: { limit?: number; offset?: number; signal?: AbortSignal } = {},
+) {
+  let items: NormalizedArtist[] = [];
   try {
-    const data = await request(
+    const data = await request<ArtistResponse[]>(
       "/search/artist",
       {
         query,
@@ -500,7 +593,7 @@ export async function searchArtists(query, { limit = 24, offset = 0, signal } = 
 }
 
 export async function searchAlbums(
-  query,
+  query: string,
   {
     artistName = "",
     limit = 24,
@@ -509,17 +602,25 @@ export async function searchAlbums(
     sort = "relevance",
     signal,
     throwOnFailure = false,
+  }: {
+    artistName?: string;
+    limit?: number;
+    offset?: number;
+    releaseTypes?: string[] | string;
+    sort?: string;
+    signal?: AbortSignal;
+    throwOnFailure?: boolean;
   } = {},
 ) {
   // Relevance ranking reorders what the provider returns, so a short list
   // still looks at enough results to find the album. One more than the page
   // shows whether another page exists.
   const requestedLimit = Math.max(limit + offset + 1, MIN_ALBUM_SEARCH_WINDOW);
-  let items = [];
-  let failure = null;
+  let items: AlbumSearchItem[] = [];
+  let failure: unknown = null;
 
   try {
-    const data = await request(
+    const data = await request<AlbumSearchEntry[]>(
       "/search/album",
       {
         query,
@@ -557,7 +658,7 @@ export async function searchAlbums(
 
   if (items.length === 0 && isNarrowFallbacksEnabled()) {
     failure = null;
-    const escapeLucenePhrase = (value) =>
+    const escapeLucenePhrase = (value: string) =>
       String(value || "")
         .replace(/\\/g, "\\\\")
         .replace(/"/g, '\\"');
@@ -633,7 +734,9 @@ export async function searchAlbums(
   };
 }
 
-function artistNameForms(name) {
+type ArtistLike = { id?: string | null; name?: string; aliases?: string[] } | null | undefined;
+
+function artistNameForms(name: unknown) {
   const value = String(name || "")
     .trim()
     .replace(/&/g, " and ");
@@ -643,12 +746,12 @@ function artistNameForms(name) {
   return variants.map((variant) => getNormalizedText(variant).replace(/^the /, "")).filter(Boolean);
 }
 
-const leadArtistName = (credit) =>
+const leadArtistName = (credit: unknown) =>
   String(credit || "")
     .replace(/\s+(?:feat\.?|ft\.?|featuring)\s+.+$/iu, "")
     .trim();
 
-const hasArtistName = (name, artist) => {
+const hasArtistName = (name: unknown, artist: ArtistLike) => {
   const forms = new Set(artistNameForms(name));
   return [artist?.name, ...(artist?.aliases || [])].some((candidate) =>
     artistNameForms(candidate).some((form) => forms.has(form)),
@@ -657,14 +760,14 @@ const hasArtistName = (name, artist) => {
 
 // An artist is the one a credit names when the credit, or its lead artist as
 // in "Koyo feat. DRAIN", is the artist's name or one of its aliases.
-export function isCreditedArtist(credit, artist) {
+export function isCreditedArtist(credit: unknown, artist: ArtistLike) {
   return hasArtistName(credit, artist) || hasArtistName(leadArtistName(credit), artist);
 }
 
 // Search also finds artists that share only a word with the name, such as
 // "Andrew Dance" for "Dance Gavin Dance feat. Andrew Wells", so a match must
 // carry the name. A credit with a guest falls back to its lead artist.
-export async function resolveArtistByName(name) {
+export async function resolveArtistByName(name: string): Promise<string | null> {
   const result = await searchArtists(name, { limit: 10, offset: 0 });
   const ranked = rankArtistCandidates(name, result.items);
   const named = ranked.find((artist) => hasArtistName(name, artist));
@@ -673,10 +776,13 @@ export async function resolveArtistByName(name) {
   return lead && lead !== String(name || "").trim() ? resolveArtistByName(lead) : null;
 }
 
-export async function resolveLibraryArtistByName(name) {
+export async function resolveLibraryArtistByName(name: string) {
   const forms = new Set(artistNameForms(name));
   if (forms.size === 0) return null;
-  const data = await request("/search/artist", { query: String(name).trim(), limit: 10 });
+  const data = await request<ArtistResponse[]>("/search/artist", {
+    query: String(name).trim(),
+    limit: 10,
+  });
   const matches = new Set(
     (Array.isArray(data) ? data : [])
       .map(toNormalizedArtist)
@@ -704,13 +810,19 @@ export async function resolveAlbumByArtistAndTitle({
   albumTitle = "",
   releaseYear = null,
   holds = null,
+}: {
+  artistName?: string;
+  artistMbid?: string;
+  albumTitle?: string;
+  releaseYear?: string | number | null;
+  holds?: ((albumId: string) => boolean | Promise<boolean>) | null;
 }) {
-  const albumOrNone = (mbid) =>
+  const albumOrNone = (mbid: string) =>
     getAlbumByMbid(mbid).catch((error) => {
       if (isMetadataNotFoundError(error)) return null;
       throw error;
     });
-  const byArtist = (album) =>
+  const byArtist = (album: NormalizedAlbum | null) =>
     [{ id: album?.artistId }, ...(album?.artists || [])].some(
       (artist) => (artistMbid && artist.id === artistMbid) || isCreditedArtist(artistName, artist),
     );
@@ -735,16 +847,26 @@ export async function resolveAlbumByArtistAndTitle({
 }
 
 export async function listArtistAlbums(
-  artistMbid,
+  artistMbid: string,
   {
     releaseTypes = [],
     includeTrackCounts = false,
     hydrateLimit = 30,
     signal,
     forceRefresh = false,
+  }: {
+    releaseTypes?: string[] | string;
+    includeTrackCounts?: boolean;
+    hydrateLimit?: number;
+    signal?: AbortSignal;
+    forceRefresh?: boolean;
   } = {},
 ) {
-  const rawArtist = await request(`/artist/${artistMbid}`, {}, { signal, forceRefresh });
+  const rawArtist = await request<ArtistDetailResponse>(
+    `/artist/${artistMbid}`,
+    {},
+    { signal, forceRefresh },
+  );
   const artist = toNormalizedArtist(rawArtist);
   let albums = (Array.isArray(rawArtist?.Albums) ? rawArtist.Albums : []).map((entry) =>
     toNormalizedArtistAlbum(entry),
@@ -790,12 +912,15 @@ export async function listArtistAlbums(
   }));
 }
 
-export async function getArtistGenres(artistMbid) {
+export async function getArtistGenres(artistMbid: string) {
   const artist = await getArtistByMbid(artistMbid);
   return artist.genres || [];
 }
 
-export async function getArtistNameByMbid(artistMbid, { signal } = {}) {
+export async function getArtistNameByMbid(
+  artistMbid: string,
+  { signal }: MetadataRequestOptions = {},
+) {
   const artist = await getArtistByMbid(artistMbid, { signal });
   return artist.name || null;
 }
@@ -814,7 +939,10 @@ export function getMetadataProviderHealthSnapshot() {
   };
 }
 
-export async function legacyMusicbrainzRequest(endpoint, params = {}) {
+export async function legacyMusicbrainzRequest(
+  endpoint: string,
+  params: { query?: string; artist?: string; limit?: number; offset?: number } = {},
+) {
   const normalizedEndpoint = String(endpoint || "").trim();
   if (normalizedEndpoint.startsWith("/artist/")) {
     const mbid = normalizedEndpoint.replace(/^\/artist\//, "").trim();
@@ -845,8 +973,8 @@ export async function legacyMusicbrainzRequest(endpoint, params = {}) {
       const items = await listArtistAlbums(String(params.artist).trim(), {
         releaseTypes: [],
       });
-      const offset = Number.parseInt(params.offset, 10) || 0;
-      const limit = Number.parseInt(params.limit, 10) || items.length;
+      const offset = Number.parseInt(String(params.offset), 10) || 0;
+      const limit = Number.parseInt(String(params.limit), 10) || items.length;
       const paged = items.slice(offset, offset + limit);
       return {
         "release-group-count": items.length,

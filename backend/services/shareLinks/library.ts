@@ -8,7 +8,18 @@ import { selectCanonicalFile } from "../canonicalFileSelector.ts";
 
 const BROWSER_FORMATS = new Set(["mp3", "flac", "ogg", "oga", "opus", "wav", "aac", "webm"]);
 
-export function playsInBrowsers(file) {
+interface PlayableFile {
+  format?: string | null;
+  quality?: { format?: string | null } | null;
+}
+
+interface ShareTarget {
+  kind: string;
+  targetRef: string;
+  albumRef: string | null;
+}
+
+export function playsInBrowsers(file: PlayableFile | null | undefined) {
   const format = String(file?.format || "").toLowerCase();
   if (BROWSER_FORMATS.has(format)) return true;
   return (
@@ -16,9 +27,10 @@ export function playsInBrowsers(file) {
   );
 }
 
-const isPositiveId = (value) => /^\d+$/.test(String(value ?? "")) && Number(value) > 0;
+const isPositiveId = (value: string | null) =>
+  /^\d+$/.test(String(value ?? "")) && Number(value) > 0;
 
-function loadLibrary({ kind, targetRef, albumRef }) {
+function loadLibrary({ kind, targetRef, albumRef }: ShareTarget) {
   if (kind === "track") {
     return getLibraryTrack({
       trackId: targetRef,
@@ -37,10 +49,10 @@ function loadLibrary({ kind, targetRef, albumRef }) {
   return { artists: [], albums: [], tracks: [] };
 }
 
-const compareText = (left, right) =>
+const compareText = (left: string | null | undefined, right: string | null | undefined) =>
   String(left || "").localeCompare(String(right || ""), undefined, { sensitivity: "base" });
 
-export function resolveShareTarget(target) {
+export function resolveShareTarget(target: ShareTarget) {
   const library = loadLibrary(target);
   const artists = new Map(library.artists.map((artist) => [artist.id, artist]));
   const tracksById = new Map(library.tracks.map((track) => [track.id, track]));

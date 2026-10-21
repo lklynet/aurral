@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import readline from "node:readline";
 import { logger } from "../logger.ts";
 import { getShareInstance, SHARE_ORIGIN } from "./store.ts";
@@ -9,14 +9,28 @@ const REGISTER_DELAYS_MS = [2000, 5000, 10000, 20000, 30000, 60000];
 const REGISTER_TIMEOUT_MS = 15000;
 const VERIFY_GRACE_MS = 2 * 60 * 1000;
 
-let tunnel = null;
-let state = "off";
-let restartTimer = null;
+type TunnelState = "off" | "starting" | "online" | "unreachable" | "unavailable";
+
+interface ShareTunnel {
+  child: ChildProcess;
+  port: number;
+  url: string | null;
+  retryTimer: NodeJS.Timeout | null;
+}
+
+interface ShareLookupError extends Error {
+  status?: number;
+}
+
+let tunnel: ShareTunnel | null = null;
+let state: TunnelState = "off";
+let restartTimer: NodeJS.Timeout | null = null;
 let restartAttempt = 0;
 
-const delayFor = (delays, attempt) => delays[Math.min(attempt, delays.length - 1)];
+const delayFor = (delays: number[], attempt: number) =>
+  delays[Math.min(attempt, delays.length - 1)];
 
-async function callLookup(method, body) {
+async function callLookup(method: "PUT" | "DELETE", body: { url?: string }) {
   const { id, secret } = getShareInstance();
   const response = await fetch(`${SHARE_ORIGIN}/api/instances/${id}`, {
     method,
@@ -26,7 +40,7 @@ async function callLookup(method, body) {
   });
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
-    const error = new Error(
+    const error: ShareLookupError = new Error(
       `aurral.org answered ${response.status}${detail ? `: ${detail.slice(0, 200)}` : ""}`,
     );
     error.status = response.status;
@@ -34,7 +48,7 @@ async function callLookup(method, body) {
   }
 }
 
-async function register(current, url) {
+async function register(current: ShareTunnel, url: string) {
   const foundAt = Date.now();
   for (let attempt = 0; tunnel === current; attempt += 1) {
     try {
@@ -61,13 +75,13 @@ async function register(current, url) {
   }
 }
 
-function launch(port) {
+function launch(port: number) {
   const child = spawn(
     "cloudflared",
     ["tunnel", "--no-autoupdate", "--metrics", "127.0.0.1:0", "--url", `http://127.0.0.1:${port}`],
     { stdio: ["ignore", "ignore", "pipe"] },
   );
-  const current = { child, port, url: null, retryTimer: null };
+  const current: ShareTunnel = { child, port, url: null, retryTimer: null };
   tunnel = current;
   state = "starting";
 
@@ -78,7 +92,7 @@ function launch(port) {
     void register(current, current.url);
   });
 
-  child.on("error", (error) => {
+  child.on("error", (error: NodeJS.ErrnoException) => {
     if (tunnel !== current) return;
     if (error.code === "ENOENT") {
       tunnel = null;
@@ -103,7 +117,7 @@ function launch(port) {
   });
 }
 
-export function startShareTunnel(port) {
+export function startShareTunnel(port: number) {
   if (tunnel?.port === port || restartTimer) return;
   restartAttempt = 0;
   launch(port);
@@ -135,7 +149,7 @@ export async function stopShareTunnel() {
 let cloudflaredCheck = null;
 
 export function hasCloudflared() {
-  cloudflaredCheck ??= new Promise((resolve) => {
+  cloudflaredCheck ??= new Promise<boolean>((resolve) => {
     const child = spawn("cloudflared", ["--version"], { stdio: "ignore" });
     child.on("error", () => resolve(false));
     child.on("exit", (code) => resolve(code === 0));

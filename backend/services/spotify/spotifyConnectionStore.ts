@@ -1,33 +1,55 @@
 import { db, dbHelpers } from "../../config/db-sqlite.ts";
 import { decryptWithKey, encryptWithKey } from "../../config/encryption.ts";
 import { getSettingsEncryptionKey } from "../../db/helpers/settings.ts";
+import type { SettingsRow } from "../../db/rows.ts";
 
 const SETTINGS_KEY = "spotifyConnections";
-const getSettingStmt = db.prepare("SELECT value FROM settings WHERE key = ?");
-const upsertSettingStmt = db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)");
+const getSettingStmt = db.prepare<[string], Pick<SettingsRow, "value">>(
+  "SELECT value FROM settings WHERE key = ?",
+);
+const upsertSettingStmt = db.prepare<[string, string | null]>(
+  "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+);
 
-const readStore = () => {
+interface StoredSpotifyConnection {
+  accessToken?: string;
+  refreshToken?: string;
+  expiresAt?: number;
+  displayName?: string | null;
+  connectedAt?: number;
+}
+
+type StoredSpotifyConnections = Record<string, StoredSpotifyConnection>;
+
+interface SpotifyConnectionInput {
+  accessToken?: string;
+  refreshToken?: string;
+  expiresAt?: number;
+  displayName?: string | null;
+}
+
+const readStore = (): StoredSpotifyConnections => {
   const parsed = dbHelpers.parseJSON(getSettingStmt.get(SETTINGS_KEY)?.value);
   return parsed && typeof parsed === "object" ? parsed : {};
 };
 
-const writeStore = (store) => {
+const writeStore = (store: StoredSpotifyConnections) => {
   upsertSettingStmt.run(SETTINGS_KEY, dbHelpers.stringifyJSON(store));
 };
 
-const userKey = (userId) => String(Math.trunc(Number(userId)));
+const userKey = (userId: number) => String(Math.trunc(Number(userId)));
 
-const encryptToken = (value) => {
+const encryptToken = (value: string) => {
   const key = getSettingsEncryptionKey();
-  return encryptWithKey(String(value || ""), key);
+  return encryptWithKey(String(value || ""), key)!;
 };
 
-const decryptToken = (value) => {
+const decryptToken = (value: string | undefined) => {
   const key = getSettingsEncryptionKey();
   return decryptWithKey(value, key);
 };
 
-const normalizeConnection = (raw) => {
+const normalizeConnection = (raw: StoredSpotifyConnection | null) => {
   if (!raw || typeof raw !== "object") return null;
   const accessToken = decryptToken(raw.accessToken);
   const refreshToken = decryptToken(raw.refreshToken);
@@ -45,13 +67,15 @@ const normalizeConnection = (raw) => {
   };
 };
 
+export type SpotifyConnection = NonNullable<ReturnType<typeof normalizeConnection>>;
+
 export const spotifyConnectionStore = {
-  getConnection(userId) {
+  getConnection(userId: number) {
     const store = readStore();
     return normalizeConnection(store[userKey(userId)] || null);
   },
 
-  getPublicStatus(userId) {
+  getPublicStatus(userId: number) {
     const connection = this.getConnection(userId);
     if (!connection) {
       return { connected: false, displayName: null, connectedAt: null };
@@ -63,7 +87,10 @@ export const spotifyConnectionStore = {
     };
   },
 
-  saveConnection(userId, { accessToken, refreshToken, expiresAt, displayName = null } = {}) {
+  saveConnection(
+    userId: number,
+    { accessToken, refreshToken, expiresAt, displayName = null }: SpotifyConnectionInput = {},
+  ) {
     const safeAccessToken = String(accessToken || "").trim();
     const safeRefreshToken = String(refreshToken || "").trim();
     if (!safeAccessToken || !safeRefreshToken) {
@@ -86,7 +113,10 @@ export const spotifyConnectionStore = {
     return this.getConnection(userId);
   },
 
-  updateTokens(userId, { accessToken, refreshToken, expiresAt } = {}) {
+  updateTokens(
+    userId: number,
+    { accessToken, refreshToken, expiresAt }: SpotifyConnectionInput = {},
+  ) {
     const current = this.getConnection(userId);
     if (!current) return null;
     return this.saveConnection(userId, {
@@ -97,7 +127,7 @@ export const spotifyConnectionStore = {
     });
   },
 
-  clearConnection(userId) {
+  clearConnection(userId: number) {
     const store = readStore();
     const key = userKey(userId);
     if (!store[key]) return false;
@@ -106,7 +136,10 @@ export const spotifyConnectionStore = {
     return true;
   },
 
-  clearConnectionIfMatches(userId, expected = {}) {
+  clearConnectionIfMatches(
+    userId: number,
+    expected: Partial<Pick<SpotifyConnection, "accessToken" | "refreshToken">> = {},
+  ) {
     const store = readStore();
     const key = userKey(userId);
     const current = normalizeConnection(store[key] || null);

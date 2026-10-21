@@ -2004,7 +2004,7 @@ export class LibraryManager {
     };
     if (!effective || !artist?.mbid) return plan;
     const { rules } = effective;
-    let releases = [];
+    let releases: Awaited<ReturnType<typeof listAurralArtistReleases>> = [];
     if (rules.catalog !== "none" || rules.newReleases) {
       try {
         releases = await listAurralArtistReleases(artist.mbid);
@@ -2042,7 +2042,7 @@ export class LibraryManager {
     const plannedTitles = new Set();
     for (const { release, existing, complete } of candidates) {
       const studioAlbum = isStudioAlbum(release);
-      let tracks = [];
+      let tracks: { recording: string; title: string }[] = [];
       if (needsTracklists || complete) {
         try {
           tracks = await this._releaseTracks(release.id, rules.edition);

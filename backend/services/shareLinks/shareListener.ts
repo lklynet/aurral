@@ -1,5 +1,6 @@
 import express from "express";
-import { createServer } from "node:http";
+import type { NextFunction, Request, Response } from "express";
+import { createServer, type Server } from "node:http";
 import path from "node:path";
 import { userOps } from "../../db/helpers/index.ts";
 import { streamAudioFile } from "../audioFileStream.ts";
@@ -12,24 +13,28 @@ import { planZip, zipStream } from "./zipStream.ts";
 
 const MAX_TIMER_MS = 6 * 60 * 60 * 1000;
 
-const notFound = (res) =>
+type LiveShareLink = NonNullable<ReturnType<typeof getLiveShareLink>>;
+type ResolvedShareTarget = NonNullable<ReturnType<typeof resolveShareTarget>>;
+type ResolvedShareTrack = ResolvedShareTarget["tracks"][number];
+
+const notFound = (res: Response) =>
   res.status(404).json({ error: "not_found", message: "This link has expired or was stopped." });
 
-function loadShare(req, res) {
+function loadShare(req: Request<{ token?: string }>, res: Response) {
   const link = getLiveShareLink(req.params.token);
   const owner = link ? userOps.getUserById(link.userId) : null;
-  const target = owner?.status === "active" ? resolveShareTarget(link) : null;
+  const target = owner?.status === "active" ? resolveShareTarget(link!) : null;
   if (!target) {
     notFound(res);
     return null;
   }
   return { link, target } as {
-    link: NonNullable<ReturnType<typeof getLiveShareLink>>;
+    link: LiveShareLink;
     target: typeof target;
   };
 }
 
-function findTrack(target, req) {
+function findTrack(target: ResolvedShareTarget, req: Request) {
   const albumId = Number(req.params.albumId);
   const trackId = Number(req.params.trackId);
   return (
@@ -37,13 +42,13 @@ function findTrack(target, req) {
   );
 }
 
-const safeSegment = (value) =>
+const safeSegment = (value: string | null | undefined) =>
   String(value || "")
     .replace(/[\\/:*?"<>|\p{Cc}]/gu, "_")
     .replace(/^[\s.]+|[\s.]+$/g, "")
     .slice(0, 120) || "Untitled";
 
-function zipEntries(link, target) {
+function zipEntries(link: LiveShareLink, target: ResolvedShareTarget) {
   const used = new Set();
   return target.tracks.map((track) => {
     const folder =
@@ -60,7 +65,7 @@ function zipEntries(link, target) {
   });
 }
 
-async function sendDownload(res, track) {
+async function sendDownload(res: Response, track: ResolvedShareTrack) {
   res.attachment(path.basename(track.file.path));
   if (!(await streamAudioFile(res, track.file.path))) notFound(res);
 }
@@ -176,7 +181,7 @@ export function createShareApp() {
 
   app.use((req, res) => notFound(res));
 
-  app.use((error, req, res, next) => {
+  app.use((error: unknown, req: Request, res: Response, next: NextFunction) => {
     logger.error("share", "Share request failed:", { message: error?.message });
     if (res.headersSent) return next(error);
     return res.status(500).json({ error: "internal_error" });
@@ -185,12 +190,12 @@ export function createShareApp() {
   return app;
 }
 
-let server = null;
-let expiryTimer = null;
+let server: Server | null = null;
+let expiryTimer: NodeJS.Timeout | null = null;
 let syncing = Promise.resolve();
 
 function listen() {
-  return new Promise((resolve, reject) => {
+  return new Promise<Server>((resolve, reject) => {
     const next = createServer(createShareApp());
     next.once("error", reject);
     next.listen(0, "127.0.0.1", () => {
@@ -200,14 +205,14 @@ function listen() {
   });
 }
 
-function close(current) {
-  return new Promise((resolve) => {
+function close(current: Server) {
+  return new Promise<void>((resolve) => {
     current.close(() => resolve());
     current.closeAllConnections();
   });
 }
 
-function scheduleExpiry(nextExpiresAt) {
+function scheduleExpiry(nextExpiresAt: number | null) {
   clearTimeout(expiryTimer);
   expiryTimer = null;
   if (nextExpiresAt == null) return;
