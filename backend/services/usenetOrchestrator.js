@@ -85,12 +85,12 @@ function trackedConsumers(clientKey, nzbId) {
   return downloadTracker.getAll().filter((entry) => {
     if (
       !downloadTracker.hasPersistedJob(entry.id) ||
-      !["downloading", "blocked"].includes(entry.status) ||
-      downloadTracker.isInActiveAlbumGrab(entry.id) ||
       releasedNzbs.has(`${entry.id}\0${nzbKey(clientKey, id)}`)
     )
       return false;
     const currentMatches =
+      ["downloading", "blocked"].includes(entry.status) &&
+      !downloadTracker.isInActiveAlbumGrab(entry.id) &&
       entry.downloadSource === "usenet" &&
       entry.downloadClient === clientKey &&
       String(entry.downloadClientId ?? "").trim() === id;
@@ -150,7 +150,7 @@ async function removeUsenetItem(payload, jobId, options = {}) {
   if (payload.albumGrab !== true) {
     const consumers = consumersForNzb(client.key, payload.nzbId, jobId);
     consumers.delete(jobId);
-    if (consumers.size > 0) return;
+    if (consumers.size > 0) return false;
   }
   retireNzb(key);
   for (const [entry, remove] of [
@@ -164,6 +164,7 @@ async function removeUsenetItem(payload, jobId, options = {}) {
       });
     });
   }
+  return true;
 }
 
 export async function discardUsenetWork(payload) {
@@ -173,7 +174,7 @@ export async function discardUsenetWork(payload) {
 // A song held for review keeps its release until it is approved, denied, or removed.
 export async function removeReviewedUsenetDownload(job) {
   if (job?.downloadSource !== "usenet" || !job.downloadClientId) return;
-  await removeUsenetItem(
+  return removeUsenetItem(
     { downloadClient: job.downloadClient, nzbId: job.downloadClientId },
     job.id,
     { deleteFiles: true },
@@ -546,7 +547,8 @@ async function handleUsenetDownload(payload, helpers) {
       claimed = { nzbId, settle, job };
       pendingTrackSubmissions.set(submissionKey, claimed);
     } else {
-      sharedNzbId = await shared.nzbId;
+      const sharedId = await shared.nzbId;
+      if (!retiredNzbs.has(nzbKey(clientKey, sharedId))) sharedNzbId = sharedId;
     }
   }
   if (sharedNzbId != null) {
@@ -754,8 +756,12 @@ async function handleUsenetFinalize(payload, helpers) {
       .catch((err) => {
         console.warn(err);
       });
+    const preserveSource = hasOtherNzbConsumers(client.key, payload.nzbId, job.id);
+    // Once the last consumer commits, no later job may attach to a source
+    // that this operation is about to move away.
+    if (!preserveSource) retireNzb(nzbKey(client.key, payload.nzbId));
     const committedFinalPath = await commitDownloadedFile(found.filePath, finalPath, {
-      preserveSource: hasOtherNzbConsumers(client.key, payload.nzbId, job.id),
+      preserveSource,
     });
     await writeImportedFileMetadata(committedFinalPath, resolvedTrack, {
       source: "usenet",
