@@ -217,7 +217,7 @@ export default function EditorialPlaylistDetailPage() {
             {canAdd && inLibrary ? (
               <Tooltip content={addLabel}>
                 <RouteLink
-                  to={playlistPath(playlist!.libraryPlaylistId)}
+                  to={playlistPath(playlist!.libraryPlaylistId!)}
                   state={{ created: true }}
                   className="native-library-favorite is-active"
                   aria-label={addLabel}

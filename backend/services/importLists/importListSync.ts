@@ -113,7 +113,7 @@ async function syncStaticPlaylistImportHere({ playlistId, user, force = false } 
       mergeImportSource: true,
     });
     const previousIdentities = new Set((playlist.tracks || []).map(buildPlaylistTrackIdentity));
-    const currentIdentities = new Set(
+    const currentIdentities = new Set<string>(
       (result?.playlist?.tracks || []).map(buildPlaylistTrackIdentity),
     );
     const acceptedNotStored = tracks.filter(

@@ -3,7 +3,7 @@ import * as musicData from "../musicDataSource/index.ts";
 import { getUserDiscovery } from "../discovery/userDiscovery.ts";
 import { userOps } from "../../db/helpers/index.ts";
 import { logger } from "../logger.ts";
-import { normalizeWeightMap } from "../playlists/flowPlaylistConfig.ts";
+import { normalizeWeightMap, type FlowConfig } from "../playlists/flowPlaylistConfig.ts";
 import { getBlockedArtistKeys } from "../discovery/feedback.ts";
 import { mapWithConcurrency } from "../discovery/helpers.ts";
 import { getYear } from "../providers/brainzmashRanking.ts";
@@ -74,18 +74,21 @@ type ArtistKeySetCacheEntry =
 
 type AlbumMbidCacheEntry = { set: Set<string>; expiresAt: number };
 
-export type FlowRunSpec = {
-  id?: string;
-  ownerUserId?: number | null;
-  deepDive?: boolean;
-  size?: number;
-  mix?: FlowMix;
-  tags?: string[];
-  relatedArtists?: string[];
-  yearFrom?: number | null;
-  yearTo?: number | null;
-  discoverPresetId?: string | null;
-};
+export type FlowRunSpec = Partial<
+  Pick<
+    FlowConfig,
+    | "id"
+    | "ownerUserId"
+    | "deepDive"
+    | "size"
+    | "mix"
+    | "tags"
+    | "relatedArtists"
+    | "yearFrom"
+    | "yearTo"
+    | "discoverPresetId"
+  >
+>;
 
 export type FlowRunOptions = {
   ownerUserId?: number | null;

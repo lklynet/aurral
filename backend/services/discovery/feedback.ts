@@ -14,7 +14,7 @@ interface RawDiscoveryFeedbackEntry {
   expiresAt?: string | number | null;
 }
 
-const getDiscoveryFeedbackKey = (userId: string | number = "global") =>
+const getDiscoveryFeedbackKey = (userId: string | number | null = "global") =>
   `discoveryFeedback:${String(userId || "global").trim()}`;
 
 const normalizeFeedbackAction = (value: unknown) => {
@@ -59,13 +59,13 @@ const normalizeFeedbackList = (
       return Number.isFinite(time) ? time > Date.now() : true;
     });
 
-export const getDiscoveryFeedback = (userId: string | number = "global") =>
+export const getDiscoveryFeedback = (userId: string | number | null = "global") =>
   normalizeFeedbackList(
     dbOps.getJSONSetting<RawDiscoveryFeedbackEntry[]>(getDiscoveryFeedbackKey(userId)),
   );
 
 export const getBlockedArtistKeys = (
-  userId: string | number = "global",
+  userId: string | number | null = "global",
   feedback = getDiscoveryFeedback(userId),
 ) =>
   buildArtistMatchKeySet(
@@ -74,8 +74,10 @@ export const getBlockedArtistKeys = (
       .map((entry) => ({ id: entry.artistId, name: entry.artistName })),
   );
 
-export const isArtistBlockedForUser = (userId = "global", artist: ArtistMatchFields = {}) =>
-  matchesArtistKeys(artist, getBlockedArtistKeys(userId));
+export const isArtistBlockedForUser = (
+  userId: string | number | null = "global",
+  artist: ArtistMatchFields = {},
+) => matchesArtistKeys(artist, getBlockedArtistKeys(userId));
 
 export const filterBlockedArtistsForUser = <T extends ArtistMatchFields>(
   userId = "global",

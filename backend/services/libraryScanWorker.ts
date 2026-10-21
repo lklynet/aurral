@@ -121,7 +121,7 @@ export function clearScheduledLibraryScan(jobId = null) {
 export function scheduleLibraryScan(options: LibraryScanRequest = {}) {
   if (Array.isArray(options.changedPaths) && options.changedPaths.length > 0) {
     import("./playlists/playlistManager.ts")
-      .then(({ playlistManager }) => playlistManager.schedulePlaybackScan(options.changedPaths))
+      .then(({ playlistManager }) => playlistManager.schedulePlaybackScan(options.changedPaths!))
       .catch((error) =>
         console.error("[libraryScanWorker] Could not queue media server scan:", error),
       );

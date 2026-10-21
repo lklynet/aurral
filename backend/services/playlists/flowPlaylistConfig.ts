@@ -3,9 +3,154 @@ import { dbOps } from "../../db/helpers/index.ts";
 import { downloadTracker } from "../downloadJobs/downloadTracker.ts";
 import { getDiscoverPlaylistPreset } from "../../config/discoverPlaylistPresets.ts";
 import { UUID_REGEX } from "../../../lib/uuid.ts";
+import type { RequestUser } from "../../middleware/requestUser.ts";
+
+type AccessUser = Pick<RequestUser, "id" | "role"> | null | undefined;
+type OwnedEntity = { ownerUserId?: number | null };
+
+export interface FlowMixInput {
+  discover?: unknown;
+  mix?: unknown;
+  trending?: unknown;
+  focus?: unknown;
+}
+
+type FlowEntryObject = {
+  name?: unknown;
+  artistName?: unknown;
+  artist?: unknown;
+  tag?: unknown;
+  label?: unknown;
+  value?: unknown;
+};
+
+type FlowEntry = string | number | FlowEntryObject | null | undefined;
+
+export interface StoredFlow {
+  id?: string;
+  name?: unknown;
+  ownerUserId?: unknown;
+  enabled?: unknown;
+  recordHistory?: unknown;
+  showInLibrary?: unknown;
+  scheduleDays?: unknown;
+  scheduleTime?: unknown;
+  deepDive?: unknown;
+  yearFrom?: unknown;
+  yearTo?: unknown;
+  nextRunAt?: unknown;
+  lastRunAt?: unknown;
+  size?: unknown;
+  mix?: FlowMixInput | null;
+  tags?: unknown;
+  relatedArtists?: unknown;
+  discoverPresetId?: unknown;
+  type?: string | null;
+  tag?: unknown;
+  description?: unknown;
+  lidarrFeedToken?: unknown;
+  createdAt?: unknown;
+}
+
+export type CreateFlowInput = StoredFlow & { name: string };
+
+export interface FlowUpdates {
+  name?: string;
+  size?: unknown;
+  mix?: unknown;
+  tags?: unknown;
+  relatedArtists?: unknown;
+  scheduleDays?: unknown;
+  scheduleTime?: unknown;
+  deepDive?: unknown;
+  recordHistory?: unknown;
+  showInLibrary?: unknown;
+  yearFrom?: unknown;
+  yearTo?: unknown;
+}
+
+export interface StoredImportSource {
+  provider?: unknown;
+  externalId?: unknown;
+  externalUsername?: unknown;
+  externalName?: unknown;
+  syncEnabled?: unknown;
+  syncIntervalHours?: unknown;
+  keepRemovedTracks?: unknown;
+  lastSyncAt?: unknown;
+  lastSyncError?: unknown;
+  lastSyncTrackCount?: unknown;
+}
+
+export interface PlaylistTrackInput {
+  artistName?: unknown;
+  artist?: unknown;
+  artist_name?: unknown;
+  "Artist Name(s)"?: unknown;
+  trackName?: unknown;
+  title?: unknown;
+  name?: unknown;
+  track?: unknown;
+  "Track Name"?: unknown;
+  albumName?: unknown;
+  album?: unknown;
+  "Album Name"?: unknown;
+  artistMbid?: unknown;
+  artistId?: unknown;
+  albumMbid?: unknown;
+  releaseGroupMbid?: unknown;
+  albumId?: unknown;
+  trackMbid?: unknown;
+  recordingMbid?: unknown;
+  recordingId?: unknown;
+  mbid?: unknown;
+  releaseMbid?: unknown;
+  releaseYear?: unknown;
+  year?: unknown;
+  durationMs?: unknown;
+  trackNumber?: unknown;
+  discNumber?: unknown;
+  artistAliases?: unknown;
+  reason?: unknown;
+  canonicalJobId?: unknown;
+  libraryJobId?: unknown;
+  membershipId?: unknown;
+}
+
+export type PlaylistJob = PlaylistTrackInput & { id: string; createdAt?: unknown };
+
+export interface StoredStaticPlaylist {
+  id?: string;
+  name?: unknown;
+  ownerUserId?: unknown;
+  sourceName?: unknown;
+  sourceFlowId?: unknown;
+  discoverPresetId?: unknown;
+  type?: string | null;
+  description?: unknown;
+  importSource?: StoredImportSource | null;
+  recordHistory?: unknown;
+  showTrackAvailability?: unknown;
+  importedAt?: unknown;
+  createdAt?: unknown;
+  tracks?: PlaylistTrackInput[];
+}
+
+export interface StaticPlaylistUpdates {
+  name?: string;
+  sourceName?: string | null;
+  sourceFlowId?: string | null;
+  discoverPresetId?: string | null;
+  description?: string | null;
+  recordHistory?: unknown;
+  showTrackAvailability?: unknown;
+  importSource?: StoredImportSource | null;
+  tracks?: PlaylistTrackInput[];
+}
 
 const LEGACY_TYPES = ["discover", "mix", "trending"];
-export const isRetiredFlow = (flow) => flow?.type === "editorial";
+export const isRetiredFlow = (flow: { type?: string | null } | null | undefined) =>
+  flow?.type === "editorial";
 export const IMPORT_SOURCE_PROVIDERS = new Set([
   "spotify-playlist",
   "listenbrainz-playlist",
@@ -18,11 +163,11 @@ const DEFAULT_MIX = { discover: 34, mix: 33, trending: 33, focus: 0 };
 export const DEFAULT_SIZE = 30;
 const DEFAULT_SCHEDULE_TIME = "00:00";
 const DAY_MS = 24 * 60 * 60 * 1000;
-let cachedFlows = null;
-let cachedStaticPlaylists = null;
+let cachedFlows: FlowConfig[] | null = null;
+let cachedStaticPlaylists: StaticPlaylist[] | null = null;
 let flowsCachedAt = 0;
 let staticPlaylistsCachedAt = 0;
-const childCacheExpired = (cachedAt) =>
+const childCacheExpired = (cachedAt: number) =>
   !!process.env.AURRAL_BACKGROUND_WORKER_GROUP && Date.now() - cachedAt >= 2000;
 
 export function invalidateFlowPlaylistConfigCache() {
@@ -32,19 +177,19 @@ export function invalidateFlowPlaylistConfigCache() {
   staticPlaylistsCachedAt = 0;
 }
 
-const clampSize = (value) => {
+const clampSize = (value: unknown) => {
   const n = Number(value);
   if (!Number.isFinite(n)) return DEFAULT_SIZE;
   return Math.max(Math.round(n), 1);
 };
 
-const normalizeOwnerUserId = (value) => {
+const normalizeOwnerUserId = (value: unknown) => {
   if (value == null) return null;
   const userId = Number(value);
   return Number.isSafeInteger(userId) && userId > 0 ? userId : null;
 };
 
-export const normalizeYearBound = (value) => {
+export const normalizeYearBound = (value: unknown) => {
   if (value == null || value === "") return null;
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return null;
@@ -53,7 +198,7 @@ export const normalizeYearBound = (value) => {
   return year;
 };
 
-export const normalizeYearRange = (yearFrom, yearTo) => {
+export const normalizeYearRange = (yearFrom: unknown, yearTo: unknown) => {
   let from = normalizeYearBound(yearFrom);
   let to = normalizeYearBound(yearTo);
   if (from != null && to != null && from > to) {
@@ -64,7 +209,10 @@ export const normalizeYearRange = (yearFrom, yearTo) => {
   return { yearFrom: from, yearTo: to };
 };
 
-export const resolveYearRangeUpdate = (current, updates = {}) => {
+export const resolveYearRangeUpdate = (
+  current: { yearFrom?: unknown; yearTo?: unknown } | null | undefined,
+  updates: { yearFrom?: unknown; yearTo?: unknown } = {},
+) => {
   const hasYearFromUpdate = Object.prototype.hasOwnProperty.call(updates, "yearFrom");
   const hasYearToUpdate = Object.prototype.hasOwnProperty.call(updates, "yearTo");
   if (!hasYearFromUpdate && !hasYearToUpdate) {
@@ -89,9 +237,9 @@ export const resolveYearRangeUpdate = (current, updates = {}) => {
   return { yearFrom, yearTo };
 };
 
-export const normalizeWeightMap = (value) => {
+export const normalizeWeightMap = (value: unknown) => {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-  const out = {};
+  const out: Record<string, number> = {};
   for (const [key, rawValue] of Object.entries(value)) {
     const name = String(key || "").trim();
     if (!name) continue;
@@ -104,7 +252,7 @@ export const normalizeWeightMap = (value) => {
   return out;
 };
 
-const getFlowEntryName = (value) => {
+const getFlowEntryName = (value: FlowEntry) => {
   if (typeof value === "string" || typeof value === "number") {
     const text = String(value).trim();
     return text || null;
@@ -127,8 +275,8 @@ const getFlowEntryName = (value) => {
   return null;
 };
 
-const normalizeStringArray = (value) => {
-  const raw = Array.isArray(value) ? value : value == null ? [] : [value];
+const normalizeStringArray = (value: unknown) => {
+  const raw: FlowEntry[] = Array.isArray(value) ? value : value == null ? [] : [value];
   const seen = new Set();
   const out = [];
   for (const entry of raw) {
@@ -157,7 +305,7 @@ const normalizeScheduleDays = (value: unknown): number[] => {
 
 const getDefaultScheduleDay = (timeMs = Date.now()) => new Date(timeMs).getDay();
 
-const normalizeScheduleTime = (value) => {
+const normalizeScheduleTime = (value: unknown) => {
   const text = String(value ?? "").trim();
   const match = /^(\d{1,2}):(\d{2})$/.exec(text);
   if (!match) return DEFAULT_SCHEDULE_TIME;
@@ -168,7 +316,7 @@ const normalizeScheduleTime = (value) => {
   return `${String(hours).padStart(2, "0")}:00`;
 };
 
-const buildScheduledTime = (baseTimeMs, scheduleTime) => {
+const buildScheduledTime = (baseTimeMs: number, scheduleTime: unknown) => {
   const [hoursText, minutesText] = normalizeScheduleTime(scheduleTime).split(":");
   const candidate = new Date(baseTimeMs);
   candidate.setHours(Number(hoursText), Number(minutesText), 0, 0);
@@ -176,8 +324,8 @@ const buildScheduledTime = (baseTimeMs, scheduleTime) => {
 };
 
 const computeNextRunAt = (
-  scheduleDays,
-  scheduleTime = DEFAULT_SCHEDULE_TIME,
+  scheduleDays: unknown,
+  scheduleTime: unknown = DEFAULT_SCHEDULE_TIME,
   fromTimeMs = Date.now(),
 ) => {
   const normalized = normalizeScheduleDays(scheduleDays);
@@ -195,7 +343,7 @@ const computeNextRunAt = (
   return buildScheduledTime(fromTimeMs + 7 * DAY_MS, scheduleTime);
 };
 
-const normalizeMix = (mix): typeof DEFAULT_MIX => {
+const normalizeMix = (mix: FlowMixInput | null | undefined): typeof DEFAULT_MIX => {
   const raw = {
     discover: Number(mix?.discover ?? 0),
     mix: Number(mix?.mix ?? 0),
@@ -234,13 +382,13 @@ const normalizeMix = (mix): typeof DEFAULT_MIX => {
   return out as typeof DEFAULT_MIX;
 };
 
-const resolvePresetDescription = (discoverPresetId) => {
+const resolvePresetDescription = (discoverPresetId: unknown) => {
   const id = String(discoverPresetId || "").trim();
   if (!id) return null;
   return getDiscoverPlaylistPreset(id)?.description || null;
 };
 
-const normalizeFlow = (flow) => {
+const normalizeFlow = (flow: StoredFlow) => {
   const name = String(flow?.name || "").trim();
   const size = clampSize(flow?.size);
   const mix = normalizeMix(flow?.mix);
@@ -289,10 +437,10 @@ const normalizeFlow = (flow) => {
   };
 };
 
-const positiveInteger = (value) =>
+const positiveInteger = (value: unknown) =>
   Number.isInteger(Number(value)) && Number(value) > 0 ? Number(value) : null;
 
-export const normalizePlaylistTrack = (track) => {
+export const normalizePlaylistTrack = (track: PlaylistTrackInput | null | undefined) => {
   if (!track || typeof track !== "object" || Array.isArray(track)) return null;
   const artistName = String(
     track.artistName ?? track.artist ?? track.artist_name ?? track["Artist Name(s)"] ?? "",
@@ -340,7 +488,7 @@ export const normalizePlaylistTrack = (track) => {
   };
 };
 
-export const buildPlaylistTrackIdentity = (track) =>
+export const buildPlaylistTrackIdentity = (track: PlaylistTrackInput | null | undefined) =>
   [
     String(track?.artistName || "")
       .trim()
@@ -357,7 +505,7 @@ export const buildPlaylistTrackIdentity = (track) =>
     String(track?.releaseYear || "").trim(),
   ].join("\u0001");
 
-export const buildImportTrackIdentity = (track) =>
+export const buildImportTrackIdentity = (track: PlaylistTrackInput | null | undefined) =>
   [track?.artistName, track?.trackName, track?.albumName]
     .map((value) =>
       String(value || "")
@@ -366,7 +514,7 @@ export const buildImportTrackIdentity = (track) =>
     )
     .join("\u0001");
 
-export const buildCoreTrackIdentity = (track) => {
+export const buildCoreTrackIdentity = (track: PlaylistTrackInput | null | undefined) => {
   const artistName = String(track?.artistName || "")
     .trim()
     .toLowerCase();
@@ -377,7 +525,10 @@ export const buildCoreTrackIdentity = (track) => {
   return `${artistName}\u0001${trackName}`;
 };
 
-export const tracksShareMembership = (left, right) => {
+export const tracksShareMembership = (
+  left: PlaylistTrackInput | null | undefined,
+  right: PlaylistTrackInput | null | undefined,
+) => {
   if (buildPlaylistTrackIdentity(left) === buildPlaylistTrackIdentity(right)) {
     return true;
   }
@@ -386,7 +537,7 @@ export const tracksShareMembership = (left, right) => {
   return Boolean(leftCore) && leftCore === rightCore;
 };
 
-export const sortJobsByCreatedAt = (jobs) =>
+export const sortJobsByCreatedAt = <T extends PlaylistJob>(jobs: T[] | null | undefined): T[] =>
   [...(Array.isArray(jobs) ? jobs : [])].sort((left, right) => {
     const leftCreated = Number(left?.createdAt || 0);
     const rightCreated = Number(right?.createdAt || 0);
@@ -394,10 +545,13 @@ export const sortJobsByCreatedAt = (jobs) =>
     return String(left?.id || "").localeCompare(String(right?.id || ""));
   });
 
-export const pairJobsWithPlaylistTracks = (jobs, tracks) => {
+export const pairJobsWithPlaylistTracks = <T extends PlaylistJob>(
+  jobs: T[] | null | undefined,
+  tracks: PlaylistTrackInput[] | null | undefined,
+) => {
   const unmatchedJobs = sortJobsByCreatedAt(jobs);
   const trackList = Array.isArray(tracks) ? tracks : [];
-  const takeJob = (predicate) => {
+  const takeJob = (predicate: (job: T) => boolean) => {
     const index = unmatchedJobs.findIndex(predicate);
     return index < 0 ? null : unmatchedJobs.splice(index, 1)[0];
   };
@@ -417,10 +571,12 @@ export const pairJobsWithPlaylistTracks = (jobs, tracks) => {
   ];
 };
 
-export const orderJobsByPlaylistTracks = (jobs, tracks) =>
-  pairJobsWithPlaylistTracks(jobs, tracks).map(({ job }) => job);
+export const orderJobsByPlaylistTracks = <T extends PlaylistJob>(
+  jobs: T[] | null | undefined,
+  tracks: PlaylistTrackInput[] | null | undefined,
+) => pairJobsWithPlaylistTracks(jobs, tracks).map(({ job }) => job);
 
-export const dedupePlaylistTracks = (tracks) => {
+export const dedupePlaylistTracks = (tracks: PlaylistTrackInput[] | null | undefined) => {
   const seen = new Set();
   const uniqueTracks = [];
   for (const track of Array.isArray(tracks) ? tracks : []) {
@@ -434,7 +590,10 @@ export const dedupePlaylistTracks = (tracks) => {
   return uniqueTracks;
 };
 
-export const rebuildStaticPlaylistTracksFromJobs = (configTracks, jobs) => {
+export const rebuildStaticPlaylistTracksFromJobs = (
+  configTracks: PlaylistTrackInput[] | null | undefined,
+  jobs: PlaylistJob[] | null | undefined,
+) => {
   const jobList = Array.isArray(jobs) ? jobs : [];
   const unmatchedJobIds = new Set(jobList.map((job) => job.id));
   const remainingTracks = [];
@@ -469,7 +628,10 @@ export const rebuildStaticPlaylistTracksFromJobs = (configTracks, jobs) => {
   return remainingTracks;
 };
 
-export const filterMissingPlaylistTracks = (existingTracks, incomingTracks) => {
+export const filterMissingPlaylistTracks = (
+  existingTracks: PlaylistTrackInput[] | null | undefined,
+  incomingTracks: PlaylistTrackInput[] | null | undefined,
+) => {
   const seen = new Set(
     dedupePlaylistTracks(existingTracks).map((track) => buildPlaylistTrackIdentity(track)),
   );
@@ -485,7 +647,7 @@ export const filterMissingPlaylistTracks = (existingTracks, incomingTracks) => {
   return missingTracks;
 };
 
-export function normalizeImportSource(value) {
+export function normalizeImportSource(value: StoredImportSource | null | undefined) {
   if (!value || typeof value !== "object") return null;
   const provider = String(value.provider || "").trim();
   if (!IMPORT_SOURCE_PROVIDERS.has(provider)) return null;
@@ -512,7 +674,7 @@ export function normalizeImportSource(value) {
   };
 }
 
-const normalizeStaticPlaylist = (playlist) => {
+const normalizeStaticPlaylist = (playlist: StoredStaticPlaylist | null | undefined) => {
   const name = String(playlist?.name || "").trim();
   const membershipIds = new Set();
   const tracks = dedupePlaylistTracks(playlist?.tracks).map((track) => {
@@ -550,6 +712,10 @@ const normalizeStaticPlaylist = (playlist) => {
     trackCount: tracks.length,
   };
 };
+
+export type FlowConfig = ReturnType<typeof normalizeFlow>;
+export type PlaylistTrack = NonNullable<ReturnType<typeof normalizePlaylistTrack>>;
+export type StaticPlaylist = ReturnType<typeof normalizeStaticPlaylist>;
 
 const getStoredFlows = () => {
   if (cachedFlows && !childCacheExpired(flowsCachedAt)) {
@@ -597,7 +763,7 @@ const getStoredFlows = () => {
   return cachedFlows;
 };
 
-const setFlows = (flows) => {
+const setFlows = (flows: FlowConfig[]) => {
   cachedFlows = flows;
   flowsCachedAt = Date.now();
   const current = dbOps.getSettings();
@@ -636,7 +802,7 @@ const getStoredStaticPlaylists = () => {
   return cachedStaticPlaylists;
 };
 
-const setStaticPlaylists = (playlists) => {
+const setStaticPlaylists = (playlists: StaticPlaylist[]) => {
   cachedStaticPlaylists = playlists;
   staticPlaylistsCachedAt = Date.now();
   const current = dbOps.getSettings();
@@ -649,35 +815,43 @@ const setStaticPlaylists = (playlists) => {
   }
 };
 
-const normalizeNameKey = (value) =>
+const normalizeNameKey = (value: unknown) =>
   String(value || "")
     .trim()
     .toLowerCase();
 
-const createNameConflictError = (name) => {
-  const error = new Error(`Flow name "${name}" already exists`);
+const createNameConflictError = (name: string) => {
+  const error: Error & { code?: string } = new Error(`Flow name "${name}" already exists`);
   error.code = "FLOW_NAME_CONFLICT";
   return error;
 };
 
-const createStaticPlaylistNameConflictError = (name) => {
-  const error = new Error(`Playlist "${name}" already exists`);
+const createStaticPlaylistNameConflictError = (name: string) => {
+  const error: Error & { code?: string } = new Error(`Playlist "${name}" already exists`);
   error.code = "STATIC_PLAYLIST_NAME_CONFLICT";
   return error;
 };
 
-const canUserAccessOwnerScopedEntity = (user, ownerUserId) => {
+const canUserAccessOwnerScopedEntity = (user: AccessUser, ownerUserId: number | null) => {
   if (user?.role === "admin") return true;
   if (!user || ownerUserId == null) return false;
   return Number(user.id) === Number(ownerUserId);
 };
 
-const isOwnedByUser = (entity, userId) => Number(entity?.ownerUserId) === Number(userId);
+const isOwnedByUser = (entity: OwnedEntity | null | undefined, userId: number | null) =>
+  Number(entity?.ownerUserId) === Number(userId);
 
-const entitiesRelevantForNameCheck = (entities, { ownerUserId }) =>
-  entities.filter((e) => isOwnedByUser(e, ownerUserId));
+const entitiesRelevantForNameCheck = <T extends OwnedEntity>(
+  entities: T[],
+  { ownerUserId }: { ownerUserId: number | null },
+) => entities.filter((e) => isOwnedByUser(e, ownerUserId));
 
-const assertUniqueFlowName = (flows, sameOwnerPlaylists, nextName, exceptFlowId = null) => {
+const assertUniqueFlowName = (
+  flows: FlowConfig[],
+  sameOwnerPlaylists: StaticPlaylist[],
+  nextName: string,
+  exceptFlowId: string | null = null,
+) => {
   const key = normalizeNameKey(nextName);
   if (!key) return;
   const flowConflict = flows.some((flow) => {
@@ -694,10 +868,10 @@ const assertUniqueFlowName = (flows, sameOwnerPlaylists, nextName, exceptFlowId 
 };
 
 const assertUniqueStaticPlaylistName = (
-  playlists,
-  sameOwnerFlows,
-  nextName,
-  exceptPlaylistId = null,
+  playlists: StaticPlaylist[],
+  sameOwnerFlows: FlowConfig[],
+  nextName: string,
+  exceptPlaylistId: string | null = null,
 ) => {
   const key = normalizeNameKey(nextName);
   if (!key) return;
@@ -713,11 +887,14 @@ const assertUniqueStaticPlaylistName = (
 };
 
 export const flowPlaylistConfig = {
-  canUserAccessFlow(user, flow) {
+  canUserAccessFlow<T extends OwnedEntity>(user: AccessUser, flow: T | null | undefined) {
     return canUserAccessOwnerScopedEntity(user, flow?.ownerUserId ?? null);
   },
 
-  canUserAccessStaticPlaylist(user, playlist) {
+  canUserAccessStaticPlaylist<T extends OwnedEntity>(
+    user: AccessUser,
+    playlist: T | null | undefined,
+  ) {
     return canUserAccessOwnerScopedEntity(user, playlist?.ownerUserId ?? null);
   },
 
@@ -729,24 +906,24 @@ export const flowPlaylistConfig = {
     setFlows(getStoredFlows());
   },
 
-  getFlowsForUser(user) {
+  getFlowsForUser(user: AccessUser) {
     return getStoredFlows().filter((flow) => this.canUserAccessFlow(user, flow));
   },
 
-  getFlowsOwnedByUser(userId) {
+  getFlowsOwnedByUser(userId: number | null) {
     return getStoredFlows().filter((flow) => isOwnedByUser(flow, userId));
   },
 
-  getFlow(flowId) {
+  getFlow(flowId: string) {
     return getStoredFlows().find((flow) => flow.id === flowId) || null;
   },
 
-  getFlowForUser(user, flowId) {
+  getFlowForUser(user: AccessUser, flowId: string) {
     const flow = this.getFlow(flowId);
     return this.canUserAccessFlow(user, flow) ? flow : null;
   },
 
-  ensureLidarrFeedToken(flowId) {
+  ensureLidarrFeedToken(flowId: string) {
     const flows = getStoredFlows();
     const index = flows.findIndex((flow) => flow.id === flowId);
     if (index === -1) return null;
@@ -761,7 +938,7 @@ export const flowPlaylistConfig = {
     return next;
   },
 
-  isEnabled(flowId) {
+  isEnabled(flowId: string) {
     const flow = this.getFlow(flowId);
     return flow?.enabled === true;
   },
@@ -783,7 +960,7 @@ export const flowPlaylistConfig = {
     type = null,
     tag = null,
     description = null,
-  }) {
+  }: CreateFlowInput) {
     const flows = getStoredFlows();
     const normalizedOwnerUserId = normalizeOwnerUserId(ownerUserId);
     assertUniqueFlowName(
@@ -820,7 +997,7 @@ export const flowPlaylistConfig = {
     return flow;
   },
 
-  updateFlow(flowId, updates) {
+  updateFlow(flowId: string, updates?: FlowUpdates | null) {
     const flows = getStoredFlows();
     const index = flows.findIndex((flow) => flow.id === flowId);
     if (index === -1) return null;
@@ -876,7 +1053,7 @@ export const flowPlaylistConfig = {
     return next;
   },
 
-  deleteFlow(flowId) {
+  deleteFlow(flowId: string) {
     const flows = getStoredFlows();
     const next = flows.filter((flow) => flow.id !== flowId);
     if (next.length === flows.length) return false;
@@ -884,7 +1061,7 @@ export const flowPlaylistConfig = {
     return true;
   },
 
-  setEnabled(flowId, enabled) {
+  setEnabled(flowId: string, enabled: boolean) {
     const flows = getStoredFlows();
     const index = flows.findIndex((flow) => flow.id === flowId);
     if (index === -1) return null;
@@ -897,7 +1074,7 @@ export const flowPlaylistConfig = {
     return flow;
   },
 
-  markLastRunAt(flowId, lastRunAt = Date.now()) {
+  markLastRunAt(flowId: string, lastRunAt = Date.now()) {
     const flows = getStoredFlows();
     const index = flows.findIndex((flow) => flow.id === flowId);
     if (index === -1) return null;
@@ -909,7 +1086,7 @@ export const flowPlaylistConfig = {
     return flow;
   },
 
-  scheduleNextRun(flowId) {
+  scheduleNextRun(flowId: string) {
     const flows = getStoredFlows();
     const index = flows.findIndex((flow) => flow.id === flowId);
     if (index === -1) return null;
@@ -940,21 +1117,21 @@ export const flowPlaylistConfig = {
     return getStoredStaticPlaylists();
   },
 
-  getStaticPlaylistsForUser(user) {
+  getStaticPlaylistsForUser(user: AccessUser) {
     return getStoredStaticPlaylists().filter((playlist) =>
       this.canUserAccessStaticPlaylist(user, playlist),
     );
   },
 
-  getStaticPlaylistsOwnedByUser(userId) {
+  getStaticPlaylistsOwnedByUser(userId: number | null) {
     return getStoredStaticPlaylists().filter((playlist) => isOwnedByUser(playlist, userId));
   },
 
-  getStaticPlaylist(playlistId) {
+  getStaticPlaylist(playlistId: string) {
     return getStoredStaticPlaylists().find((playlist) => playlist.id === playlistId) || null;
   },
 
-  getStaticPlaylistForUser(user, playlistId) {
+  getStaticPlaylistForUser(user: AccessUser, playlistId: string) {
     const playlist = this.getStaticPlaylist(playlistId);
     return this.canUserAccessStaticPlaylist(user, playlist) ? playlist : null;
   },
@@ -978,7 +1155,7 @@ export const flowPlaylistConfig = {
     sourceFlowId?: string | null;
     discoverPresetId?: string | null;
     type?: string | null;
-    tracks?: unknown[];
+    tracks?: PlaylistTrackInput[];
     ownerUserId?: number | null;
     importSource?: ReturnType<typeof normalizeImportSource>;
     description?: string | null;
@@ -1013,7 +1190,7 @@ export const flowPlaylistConfig = {
     return playlist;
   },
 
-  appendStaticPlaylistTracks(playlistId, tracks) {
+  appendStaticPlaylistTracks(playlistId: string, tracks: PlaylistTrackInput[]) {
     const playlists = getStoredStaticPlaylists();
     const index = playlists.findIndex((playlist) => playlist.id === playlistId);
     if (index === -1) return null;
@@ -1033,7 +1210,7 @@ export const flowPlaylistConfig = {
     return next;
   },
 
-  updateStaticPlaylist(playlistId, updates) {
+  updateStaticPlaylist(playlistId: string, updates?: StaticPlaylistUpdates) {
     const playlists = getStoredStaticPlaylists();
     const index = playlists.findIndex((playlist) => playlist.id === playlistId);
     if (index === -1) return null;
@@ -1080,7 +1257,7 @@ export const flowPlaylistConfig = {
     return next;
   },
 
-  deleteStaticPlaylist(playlistId) {
+  deleteStaticPlaylist(playlistId: string) {
     const playlists = getStoredStaticPlaylists();
     const next = playlists.filter((playlist) => playlist.id !== playlistId);
     if (next.length === playlists.length) return false;

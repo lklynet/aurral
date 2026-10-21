@@ -9,6 +9,9 @@ import { downloadDestinationForJob } from "../downloadJobs/downloadOwnership.ts"
 import { isPathInsideRoot, resolveDownloadRoot } from "../downloadPaths.ts";
 import { joinUnderRoot } from "../downloadUtils.ts";
 import { createPlaybackDeletionGuard } from "../playback/playbackFileRetention.ts";
+import type { SettingsRow } from "../../db/rows.ts";
+
+export type PreparedRetainedPlaylistFile = Awaited<ReturnType<typeof prepareRetainedPlaylistFile>>;
 
 interface PlaylistMediaIntent {
   sourcePlaylistId: string;
@@ -18,7 +21,7 @@ interface PlaylistMediaIntent {
   state: string;
 }
 
-async function digest(file) {
+async function digest(file: string) {
   const hash = createHash("sha256");
   for await (const chunk of createReadStream(file)) hash.update(chunk);
   return hash.digest("hex");
@@ -29,6 +32,11 @@ export async function prepareRetainedPlaylistFile({
   sourcePlaylistId,
   targetPlaylistId,
   downloadRoot = resolveDownloadRoot(),
+}: {
+  jobId: string;
+  sourcePlaylistId: string;
+  targetPlaylistId: string;
+  downloadRoot?: string;
 }) {
   const job = downloadTracker.getJob(jobId);
   if (!job?.finalPath || job.status !== "done" || job.externalPath || job.managedBy !== "aurral")
@@ -92,7 +100,9 @@ export async function prepareRetainedPlaylistFile({
   return { finalPath: intent.to, key, intent };
 }
 
-export function commitRetainedPlaylistRelocationInTransaction(prepared) {
+export function commitRetainedPlaylistRelocationInTransaction(
+  prepared: PreparedRetainedPlaylistFile | null | undefined,
+) {
   if (!prepared?.intent) return;
   if (!db.inTransaction)
     throw new Error("Retained media paths must change inside the membership transaction");
@@ -104,11 +114,13 @@ export function commitRetainedPlaylistRelocationInTransaction(prepared) {
 }
 
 export async function finalizeRetainedPlaylistRelocations(
-  sourcePlaylistId,
-  { downloadRoot = resolveDownloadRoot() } = {},
+  sourcePlaylistId: string,
+  { downloadRoot = resolveDownloadRoot() }: { downloadRoot?: string } = {},
 ) {
   const rows = db
-    .prepare("SELECT key, value FROM settings WHERE key LIKE 'playlistMediaRelocation:%'")
+    .prepare<[], Pick<SettingsRow, "value"> & { key: string }>(
+      "SELECT key, value FROM settings WHERE key LIKE 'playlistMediaRelocation:%'",
+    )
     .all();
   const root = path.resolve(downloadRoot);
   const guard = createPlaybackDeletionGuard({
@@ -116,7 +128,7 @@ export async function finalizeRetainedPlaylistRelocations(
     playlistRoot: root,
   });
   for (const row of rows) {
-    const intent = JSON.parse(row.value);
+    const intent: PlaylistMediaIntent = JSON.parse(row.value);
     if (intent.sourcePlaylistId !== sourcePlaylistId || intent.state !== "paths-committed")
       continue;
     if (!isPathInsideRoot(intent.from, root) || !isPathInsideRoot(intent.to, root)) continue;
