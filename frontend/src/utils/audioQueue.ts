@@ -335,7 +335,7 @@ function arrange(state: QueueState, queue: QueueEntry[], playback: QueueEntry[])
   return {
     ...state,
     queue: naturalQueue,
-    playbackOrder: playback.map((track) => queueIndexById.get(track.entryId)),
+    playbackOrder: playback.map((track) => queueIndexById.get(track.entryId)!),
     currentIndex: playback.findIndex((track) => track.entryId === current),
   };
 }
@@ -497,7 +497,7 @@ export function queueReducer(state: QueueState, action: QueueAction): QueueState
       return arrange(state, state.queue, [
         ...history,
         order[state.currentIndex],
-        ...entryIds.map((entryId) => upcomingById.get(entryId)),
+        ...entryIds.map((entryId) => upcomingById.get(entryId)!),
       ]);
     }
     case "CLEAR_UPCOMING": {

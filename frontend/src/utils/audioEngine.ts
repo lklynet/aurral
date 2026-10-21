@@ -57,7 +57,7 @@ function sameSnapshot(a: AudioSnapshot, b: AudioSnapshot) {
   return (Object.keys(IDLE_SNAPSHOT) as (keyof AudioSnapshot)[]).every((key) => a[key] === b[key]);
 }
 
-function sameSource(entry: AudioEntry | null, src: string, format: string[]) {
+function sameSource(entry: AudioEntry | null, src: string, format: string[]): entry is AudioEntry {
   return entry?.src === src && String(entry.format) === String(format);
 }
 

@@ -79,15 +79,27 @@ export function getSearchResultKey(item: SearchItem | null | undefined, index = 
   return item.key || item.id || `${item.type}:${getSearchResultLabel(item).toLowerCase()}:${index}`;
 }
 
-export function buildArtistFocusState(
+type ArtistFocusState = {
+  artistName?: string | null;
+  inLibrary?: boolean;
+};
+
+export function buildArtistFocusState<Overrides extends object = Record<never, never>>(
   item: SearchItem | null | undefined,
-  overrides: Record<string, unknown> = {},
+  overrides: Overrides = {} as Overrides,
 ) {
-  const state: Record<string, unknown> = { ...overrides };
+  const state: ArtistFocusState & Overrides = { ...overrides };
   if (item?.artistName || item?.name) state.artistName = item.artistName || item.name;
   if (typeof item?.inLibrary === "boolean") state.inLibrary = item.inLibrary;
   return state;
 }
+
+type ReleaseFocusState = {
+  focusReleaseGroupMbid: string | number;
+  focusReleaseGroup: ReturnType<typeof buildReleaseFocusState>;
+  focusTrackMbid?: string | number;
+  focusTrackTitle?: string;
+};
 
 function buildReleaseFocusState(
   item: SearchItem | null | undefined,
@@ -171,11 +183,11 @@ export function buildLibraryAlbumNavigationItem(
   return {
     type: "album",
     id: releaseGroupMbid,
-    title: libraryAlbum.albumName || libraryAlbum.title || "",
+    title: libraryAlbum!.albumName || libraryAlbum!.title || "",
     artistMbid,
-    artistName: artistName || libraryAlbum.artistName || "",
-    releaseDate: libraryAlbum.releaseDate || "",
-    primaryType: libraryAlbum.albumType || "Album",
+    artistName: artistName || libraryAlbum!.artistName || "",
+    releaseDate: libraryAlbum!.releaseDate || "",
+    primaryType: libraryAlbum!.albumType || "Album",
     coverUrl,
   };
 }
@@ -204,7 +216,7 @@ export function getReleaseNavigationTarget(item: SearchItem | null | undefined) 
   if (!item?.artistMbid) return null;
   const releaseGroupMbid = item.type === "album" ? item.id : item.albumMbid;
   if (!releaseGroupMbid) return null;
-  const state = buildArtistFocusState(item, {
+  const state: ArtistFocusState & ReleaseFocusState = buildArtistFocusState(item, {
     focusReleaseGroupMbid: releaseGroupMbid,
     focusReleaseGroup: buildReleaseFocusState(item, releaseGroupMbid),
   });
@@ -349,9 +361,9 @@ function dedupeItems(
   return unique;
 }
 
-export function dedupeArtistsByName(artists: SearchItem[]) {
+export function dedupeArtistsByName<T extends SearchItem>(artists: T[]): T[] {
   const seen = new Set<string>();
-  const result: SearchItem[] = [];
+  const result: T[] = [];
   for (const artist of artists) {
     const key = normalizeSearchText(artist?.name);
     if (!key || seen.has(key)) continue;
@@ -473,7 +485,7 @@ export function resolveSearchTopArtist(
   if (!top) return null;
   if (top.type === "artist") return top;
 
-  const catalogArtists = data.catalog?.artists || [];
+  const catalogArtists = data!.catalog?.artists || [];
   const matched =
     findArtistMatch(catalogArtists, {
       id: top.artistMbid,

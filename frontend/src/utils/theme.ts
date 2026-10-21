@@ -7,6 +7,7 @@ import {
   mixColors,
   normalizeHexColor,
   oklchToHex,
+  type HexColor,
   withAlpha,
 } from "./themeColor.ts";
 import { THEME_PRESETS } from "./themePresets.ts";
@@ -21,7 +22,7 @@ export const LEGACY_THEME_STORAGE_KEYS = [
 ];
 export const THEME_DOCUMENT_VERSION = 2;
 export const DEFAULT_THEME_ID = "aurral";
-export const THEME_APPEARANCES = ["system", "light", "dark"];
+export const THEME_APPEARANCES: readonly unknown[] = ["system", "light", "dark"];
 export const THEME_MODES = ["light", "dark"] as const;
 export const MAX_CUSTOM_THEMES = 50;
 export const THEME_SEED_ROLES = [
@@ -61,12 +62,15 @@ export const THEME_COLOR_ROLES = [
 type ThemeMode = (typeof THEME_MODES)[number];
 type ThemeSeedRole = (typeof THEME_SEED_ROLES)[number];
 type ThemeColorRole = (typeof THEME_COLOR_ROLES)[number];
-type ThemeSeed = Partial<Record<ThemeSeedRole, string>> & {
-  background: string;
-  accent: string;
+type ThemeSeed = Partial<Record<ThemeSeedRole, HexColor>> & {
+  background: HexColor;
+  accent: HexColor;
 };
 type StoredThemeSeed = Partial<Record<ThemeSeedRole, unknown>>;
-type Theme = { id: string; name: string; light?: ThemeSeed; dark?: ThemeSeed };
+type Theme = { id: string; name: string } & (
+  | { light: ThemeSeed; dark?: ThemeSeed }
+  | { light?: ThemeSeed; dark: ThemeSeed }
+);
 type StoredTheme = {
   id?: unknown;
   name?: unknown;
@@ -110,24 +114,24 @@ const cssVariable = (role: ThemeColorRole) =>
 const STATUS_DEFAULTS = {
   light: { danger: "#dc2626", warning: "#b45309", success: "#15803d", info: "#2563eb" },
   dark: { danger: "#ef4444", warning: "#f59e0b", success: "#22c55e", info: "#60a5fa" },
-};
+} satisfies Record<ThemeMode, Record<"danger" | "warning" | "success" | "info", HexColor>>;
 
 export const AURRAL_THEME = {
   id: DEFAULT_THEME_ID,
   name: "Aurral",
   light: { background: "#ffffff", text: "#171717", accent: "#525252" },
   dark: { background: "#121212", text: "#ffffff", accent: "#b3b3b3" },
-};
+} satisfies Theme;
 
-export const BUILT_IN_THEMES = [AURRAL_THEME, ...THEME_PRESETS];
-const BUILT_IN_THEME_IDS = new Set(BUILT_IN_THEMES.map((theme) => theme.id));
+export const BUILT_IN_THEMES: Theme[] = [AURRAL_THEME, ...THEME_PRESETS];
+const BUILT_IN_THEME_IDS = new Set<string>(BUILT_IN_THEMES.map((theme) => theme.id));
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 const otherMode = (mode: ThemeMode): ThemeMode => (mode === "dark" ? "light" : "dark");
 
-function readableOn(background: string, candidates: string[]) {
+function readableOn(background: HexColor, candidates: HexColor[]) {
   return (
-    [...candidates, "#ffffff", "#000000"].find(
+    ([...candidates, "#ffffff", "#000000"] satisfies HexColor[]).find(
       (color) => contrastRatio(color, background) >= 4.5,
     ) ||
     (contrastRatio("#ffffff", background) >= contrastRatio("#000000", background)
@@ -138,8 +142,8 @@ function readableOn(background: string, candidates: string[]) {
 
 export function createThemePalette(seed: ThemeSeed) {
   const dark = isDarkColor(seed.background);
-  const surface = normalizeHexColor(seed.background);
-  const base = hexToOklch(surface);
+  const surface = normalizeHexColor(seed.background)!;
+  const base = hexToOklch(surface)!;
   const shade = (delta: number) => oklchToHex({ ...base, l: base.l + delta });
   const toward = dark ? 1 : -1;
   const surfaceRaised = shade(toward * (dark ? 0.05 : 0.035));
@@ -150,7 +154,7 @@ export function createThemePalette(seed: ThemeSeed) {
   const textSeed =
     seed.text || oklchToHex({ l: dark ? 0.96 : 0.2, c: Math.min(base.c, 0.02), h: base.h });
   const text = adjustLightnessForContrast(textSeed, surfacePopover, 7);
-  const textColor = hexToOklch(text);
+  const textColor = hexToOklch(text)!;
   const textContrast = contrastRatio(text, surfacePopover);
   const mutedTarget = clamp(textContrast * 0.48, 4.6, textContrast);
   const subtleTarget = clamp(textContrast * 0.25, 3.2, mutedTarget);
@@ -162,9 +166,9 @@ export function createThemePalette(seed: ThemeSeed) {
   const status = Object.fromEntries(
     Object.entries(STATUS_DEFAULTS[dark ? "dark" : "light"]).map(([role, fallback]) => [
       role,
-      adjustLightnessForContrast(seed[role] || fallback, surfacePopover, 4.5),
+      adjustLightnessForContrast(seed[role as ThemeSeedRole] || fallback, surfacePopover, 4.5),
     ]),
-  );
+  ) as Record<"danger" | "warning" | "success" | "info", HexColor>;
 
   return {
     chrome,
@@ -192,7 +196,7 @@ type ThemePalette = ReturnType<typeof createThemePalette>;
 
 function mirrorSeed(seed: ThemeSeed, mode: ThemeMode): ThemeSeed {
   const dark = mode === "dark";
-  const background = hexToOklch(seed.background);
+  const background = hexToOklch(seed.background)!;
   const mirrored: ThemeSeed = {
     background: oklchToHex(
       dark
@@ -202,7 +206,7 @@ function mirrorSeed(seed: ThemeSeed, mode: ThemeMode): ThemeSeed {
     accent: seed.accent,
   };
   if (seed.text) {
-    const text = hexToOklch(seed.text);
+    const text = hexToOklch(seed.text)!;
     mirrored.text = oklchToHex({ l: dark ? 0.93 : 0.24, c: Math.min(text.c, 0.03), h: text.h });
   }
   for (const role of ["danger", "warning", "success", "info"] as const) {
@@ -212,7 +216,7 @@ function mirrorSeed(seed: ThemeSeed, mode: ThemeMode): ThemeSeed {
 }
 
 export function getThemeSeed(theme: Theme, mode: ThemeMode): ThemeSeed {
-  return theme[mode] || mirrorSeed(theme[otherMode(mode)], mode);
+  return theme[mode] || mirrorSeed(theme[otherMode(mode)]!, mode);
 }
 
 const paletteCache = new WeakMap<Theme, Partial<Record<ThemeMode, ThemePalette>>>();
@@ -227,9 +231,9 @@ export function getThemePalette(theme: Theme, mode: ThemeMode) {
   return palettes[mode];
 }
 
-export function tintSeedWithArtwork(seed: ThemeSeed, artwork: string): ThemeSeed {
-  const art = hexToOklch(artwork);
-  const background = hexToOklch(seed.background);
+export function tintSeedWithArtwork(seed: ThemeSeed, artwork: HexColor): ThemeSeed {
+  const art = hexToOklch(artwork)!;
+  const background = hexToOklch(seed.background)!;
   const dark = isDarkColor(seed.background);
   return {
     ...seed,
@@ -246,7 +250,7 @@ function normalizeSeed(value: StoredThemeSeed, mode: ThemeMode, themeName: strin
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`${themeName} has unreadable ${mode} colors.`);
   }
-  const seed: Partial<Record<ThemeSeedRole, string>> = {};
+  const seed: Partial<Record<ThemeSeedRole, HexColor>> = {};
   for (const role of THEME_SEED_ROLES) {
     if (value[role] === undefined || value[role] === null || value[role] === "") continue;
     const color = normalizeHexColor(value[role]);
@@ -277,13 +281,16 @@ export function normalizeTheme(value: StoredTheme): Theme {
     throw new Error("This theme is unreadable.");
   const name = normalizeThemeName(value.name);
   if (!isThemeId(value.id)) throw new Error(`${name} has an invalid id.`);
-  const theme: Theme = { id: value.id, name };
+  const theme: { id: string; name: string; light?: ThemeSeed; dark?: ThemeSeed } = {
+    id: value.id,
+    name,
+  };
   for (const mode of THEME_MODES) {
     if (value[mode] !== undefined && value[mode] !== null)
       theme[mode] = normalizeSeed(value[mode], mode, name);
   }
   if (!theme.light && !theme.dark) throw new Error(`${name} needs light or dark colors.`);
-  return theme;
+  return theme as Theme;
 }
 
 export function createThemeId(name: unknown, takenIds: string[] = []) {
@@ -313,9 +320,10 @@ export function normalizeThemeDocument(value: StoredThemeDocument): ThemeDocumen
   const document = createDefaultThemeDocument();
   if (!value || typeof value !== "object" || value.version !== THEME_DOCUMENT_VERSION)
     return document;
-  if (THEME_APPEARANCES.includes(value.appearance)) document.appearance = value.appearance;
+  if (THEME_APPEARANCES.includes(value.appearance))
+    document.appearance = value.appearance as string;
   document.matchArtwork = value.matchArtwork === true;
-  const seen = new Set(BUILT_IN_THEME_IDS);
+  const seen = new Set<string>(BUILT_IN_THEME_IDS);
   for (const item of Array.isArray(value.themes) ? value.themes : []) {
     if (document.themes.length >= MAX_CUSTOM_THEMES) break;
     try {
@@ -423,7 +431,7 @@ function readLocalDocument(): ThemeDocument {
 }
 
 let documentCache: ThemeDocument | null = null;
-let artworkColor: string | null = null;
+let artworkColor: HexColor | null = null;
 let preview: { theme: Theme; mode: ThemeMode } | null = null;
 let saveToAccount: ((document: ThemeDocument) => void) | null = null;
 let appliedPalette: ThemePalette | null = null;
@@ -450,7 +458,7 @@ export function findTheme(themeId: string, document = getThemeDocument()) {
 }
 
 export function isCustomTheme(theme: Theme | null) {
-  return Boolean(theme) && !BUILT_IN_THEME_IDS.has(theme.id);
+  return Boolean(theme) && !BUILT_IN_THEME_IDS.has(theme!.id);
 }
 
 function commit(document: ThemeDocument, { fromAccount = false }: { fromAccount?: boolean } = {}) {
@@ -485,7 +493,7 @@ export function saveCustomTheme(value: StoredTheme, { select = true }: { select?
   const document = getThemeDocument();
   const exists = document.themes.some((theme) => theme.id === value.id);
   const id = exists
-    ? value.id
+    ? (value.id as string)
     : createThemeId(
         value.name,
         document.themes.map((theme) => theme.id),
@@ -619,7 +627,7 @@ export function resolveThemeMode(appearance = getThemeDocument().appearance): Th
 }
 
 function mixPaletteColor(from: string, to: string, amount: number) {
-  const rgb = mixColors(from.slice(0, 7), to.slice(0, 7), amount);
+  const rgb = mixColors(from.slice(0, 7) as HexColor, to.slice(0, 7) as HexColor, amount);
   if (from.length === 7 && to.length === 7) return rgb;
   const alpha = (hex: string) => (hex.length === 9 ? Number.parseInt(hex.slice(7), 16) / 255 : 1);
   return withAlpha(rgb, alpha(from) + (alpha(to) - alpha(from)) * amount);
@@ -676,7 +684,7 @@ function paint(
         root,
         Object.fromEntries(
           THEME_COLOR_ROLES.map((role) => [role, mixPaletteColor(from[role], to[role], eased)]),
-        ),
+        ) as ThemePalette,
       );
       tweenFrame = globalThis.requestAnimationFrame(step);
       return;

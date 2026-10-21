@@ -210,4 +210,4 @@ export const THEME_PRESETS = [
       info: "#8be9fd",
     },
   },
-];
+] as const;
