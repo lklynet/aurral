@@ -1,4 +1,5 @@
 import { db } from "../../config/db-sqlite.ts";
+import type { LibraryAlbumsRow } from "../../db/rows.ts";
 import {
   buildFallbackIdentityKey,
   findLibraryAlbumByArtistTitle,
@@ -27,7 +28,7 @@ function findAlbum(record, artist) {
   if (record.releaseGroupMbid) {
     const byReleaseGroup =
       db
-        .prepare(
+        .prepare<[string, string], LibraryAlbumsRow>(
           "SELECT * FROM library_albums WHERE release_group_mbid = ? OR identity_key = ? ORDER BY id LIMIT 1",
         )
         .get(record.releaseGroupMbid, `release-group:${record.releaseGroupMbid}`) ||
@@ -38,7 +39,7 @@ function findAlbum(record, artist) {
     const byRelease =
       findLibraryAlbumByReleaseMbid(record.albumMbid) ||
       db
-        .prepare(
+        .prepare<[string, string], LibraryAlbumsRow>(
           "SELECT * FROM library_albums WHERE mbid = ? OR identity_key = ? ORDER BY id LIMIT 1",
         )
         .get(record.albumMbid, `album:${record.albumMbid}`);

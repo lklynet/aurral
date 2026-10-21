@@ -17,27 +17,37 @@ import {
   syncLibrarySearchArtist,
   syncLibrarySearchTrack,
 } from "./librarySearchIndex.ts";
+import type {
+  LibraryAlbumsRow,
+  LibraryAlbumTracksRow,
+  LibraryArtistsRow,
+  LibraryMediaFilesRow,
+  LibraryTracksRow,
+  PlayAlbumStatsRow,
+  PlayEventsRow,
+  SubsonicPlayQueuesRow,
+} from "../db/rows.ts";
 
 const now = () => Date.now();
 
-const stringify = (value) => dbHelpers.stringifyJSON(value) || null;
+const stringify = (value: unknown) => dbHelpers.stringifyJSON(value) || null;
 
-const normalizeText = (value) => String(value || "").trim();
+const normalizeText = (value: unknown) => String(value || "").trim();
 
 const LETTER_SPELLINGS = { æ: "ae", œ: "oe", ß: "ss", ø: "o", đ: "d", ð: "d", ł: "l", þ: "th" };
-const spellLetters = (value) =>
+const spellLetters = (value: unknown) =>
   normalizeText(value)
     .toLowerCase()
-    .replace(/[æœßøđðłþ]/g, (letter) => LETTER_SPELLINGS[letter]);
+    .replace(/[æœßøđðłþ]/g, (letter) => LETTER_SPELLINGS[letter as keyof typeof LETTER_SPELLINGS]);
 
-const hasNonLatinLetters = (value) =>
+const hasNonLatinLetters = (value: unknown) =>
   /(?![a-z0-9])[\p{L}\p{N}]/u.test(
     spellLetters(value)
       .normalize("NFKD")
       .replace(/[̀-ͯ]/g, ""),
   );
 
-const asciiKeyPart = (value) =>
+const asciiKeyPart = (value: unknown) =>
   normalizeText(value)
     .toLowerCase()
     .normalize("NFKD")
@@ -47,7 +57,7 @@ const asciiKeyPart = (value) =>
 
 // A name with letters ASCII cannot spell keeps them as written, or every
 // name written only in such letters, such as Japanese, would share one key.
-const normalizeKeyPart = (value) =>
+const normalizeKeyPart = (value: unknown) =>
   hasNonLatinLetters(value)
     ? normalizeText(value)
         .normalize("NFKC")
@@ -56,7 +66,9 @@ const normalizeKeyPart = (value) =>
         .trim()
     : asciiKeyPart(value);
 
-const joinFallbackKey = (keyPart, parts) => {
+type KeyPart = (value: unknown) => string;
+
+const joinFallbackKey = (keyPart: KeyPart, parts: unknown[]) => {
   const normalized = parts.map(keyPart).filter(Boolean);
   return normalized.length ? `name:${normalized.join(":")}` : null;
 };
@@ -74,10 +86,27 @@ const LIDARR_METADATA_KEYS = [
   "statistics",
 ];
 
-const getLibraryMediaFileStmt = db.prepare(
+const getLibraryMediaFileStmt = db.prepare<[string, string], LibraryMediaFilesRow>(
   "SELECT * FROM library_media_files WHERE source = ? AND path = ?",
 );
-const upsertLibraryMediaFileStmt = db.prepare(
+const upsertLibraryMediaFileStmt = db.prepare<
+  [
+    number,
+    number | null,
+    string,
+    string,
+    string | null,
+    number,
+    number | null,
+    number | null,
+    string | null,
+    string | null,
+    number,
+    number,
+    number,
+    number,
+  ]
+>(
   `INSERT INTO library_media_files
     (track_id, album_id, source, path, format, size, mtime_ms, duration_ms, quality_json, artist_tag, available, last_seen_scan_id, created_at, updated_at)
    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -98,7 +127,7 @@ const upsertLibraryMediaFileStmt = db.prepare(
 
 let libraryScanDepth = 0;
 let libraryCacheInvalidationPending = false;
-const libraryScanContext = new AsyncLocalStorage();
+const libraryScanContext = new AsyncLocalStorage<{ changed: boolean }>();
 
 const invalidateLibraryCache = () => {
   const scan = libraryScanContext.getStore();
@@ -110,20 +139,25 @@ const invalidateLibraryCache = () => {
   invalidateLibraryQueryCache();
 };
 
-export function buildIdentityKey(prefix, value) {
+export function buildIdentityKey(prefix: string, value: unknown) {
   const normalized = normalizeText(value);
   if (!normalized) return null;
   return `${prefix}:${normalized}`;
 }
 
-export function buildFallbackIdentityKey(...parts) {
+export function buildFallbackIdentityKey(...parts: unknown[]) {
   return joinFallbackKey(normalizeKeyPart, parts);
 }
 
-export function beginLibraryScan({ source, rootPath = null } = {}) {
+type LibraryScanCounts = { filesSeen?: number; filesIndexed?: number; filesFailed?: number };
+
+export function beginLibraryScan({
+  source,
+  rootPath = null,
+}: { source?: string; rootPath?: string | null } = {}) {
   const startedAt = now();
   const result = db
-    .prepare(
+    .prepare<[string, string | null, number]>(
       `INSERT INTO library_scan_runs (source, root_path, status, started_at)
        VALUES (?, ?, 'running', ?)`,
     )
@@ -132,10 +166,16 @@ export function beginLibraryScan({ source, rootPath = null } = {}) {
 }
 
 export function finishLibraryScan(
-  scanId,
-  { status = "complete", error = null, filesSeen = 0, filesIndexed = 0, filesFailed = 0 } = {},
+  scanId: number,
+  {
+    status = "complete",
+    error = null,
+    filesSeen = 0,
+    filesIndexed = 0,
+    filesFailed = 0,
+  }: { status?: string; error?: unknown } & LibraryScanCounts = {},
 ) {
-  db.prepare(
+  db.prepare<[string, number, string | null, number, number, number, number]>(
     `UPDATE library_scan_runs
      SET status = ?, completed_at = ?, error = ?, files_seen = ?, files_indexed = ?, files_failed = ?
      WHERE id = ?`,
@@ -150,9 +190,9 @@ export function finishLibraryScan(
   );
 }
 
-const copyLibraryStars = (entityKind, fromKey, toKey) =>
+const copyLibraryStars = (entityKind: string, fromKey: string, toKey: string) =>
   db
-    .prepare(
+    .prepare<[string, string, string]>(
       `INSERT OR IGNORE INTO subsonic_stars (user_id, entity_kind, entity_key, created_at)
    SELECT user_id, entity_kind, ?, created_at
    FROM subsonic_stars
@@ -160,29 +200,34 @@ const copyLibraryStars = (entityKind, fromKey, toKey) =>
     )
     .run(toKey, entityKind, fromKey).changes > 0;
 
-function moveLibraryStars(entityKind, fromKey, toKey) {
+function moveLibraryStars(entityKind: string, fromKey: string, toKey: string) {
   const copied = copyLibraryStars(entityKind, fromKey, toKey);
   const deleted =
     db
-      .prepare("DELETE FROM subsonic_stars WHERE entity_kind = ? AND entity_key = ?")
+      .prepare<[string, string]>(
+        "DELETE FROM subsonic_stars WHERE entity_kind = ? AND entity_key = ?",
+      )
       .run(entityKind, fromKey).changes > 0;
   return copied || deleted;
 }
 
-const moveLibraryArtistStars = (fromKey, toKey) => moveLibraryStars("artist", fromKey, toKey);
+const moveLibraryArtistStars = (fromKey: string, toKey: string) =>
+  moveLibraryStars("artist", fromKey, toKey);
 
-export const subsonicId = (kind, key) =>
+export const subsonicId = (kind: string, key: unknown) =>
   `${kind}:${encodeURIComponent(String(key)).replaceAll("%3A", ":")}`;
 
-function moveQueuedLibrarySong(fromKey, toKey) {
+function moveQueuedLibrarySong(fromKey: string, toKey: string) {
   const from = subsonicId("song", fromKey);
   const to = subsonicId("song", toKey);
   for (const queue of db
-    .prepare("SELECT user_id, song_ids, current_song FROM subsonic_play_queues")
+    .prepare<[], Pick<SubsonicPlayQueuesRow, "user_id" | "song_ids" | "current_song">>(
+      "SELECT user_id, song_ids, current_song FROM subsonic_play_queues",
+    )
     .all()) {
-    const ids = JSON.parse(queue.song_ids);
+    const ids: string[] = JSON.parse(queue.song_ids);
     if (!ids.includes(from) && queue.current_song !== from) continue;
-    db.prepare(
+    db.prepare<[string, string | null, number]>(
       "UPDATE subsonic_play_queues SET song_ids = ?, current_song = ? WHERE user_id = ?",
     ).run(
       JSON.stringify(ids.map((id) => (id === from ? to : id))),
@@ -192,23 +237,35 @@ function moveQueuedLibrarySong(fromKey, toKey) {
   }
 }
 
-function mergeLibraryArtistInto(fallback, resolved, { syncSearch = true } = {}) {
+type ArtistIdentity = Pick<LibraryArtistsRow, "id" | "identity_key">;
+
+function mergeLibraryArtistInto(
+  fallback: ArtistIdentity | null | undefined,
+  resolved: ArtistIdentity | null | undefined,
+  { syncSearch = true }: { syncSearch?: boolean } = {},
+) {
   if (!fallback || !resolved || fallback.id === resolved.id) return false;
   const movedAlbums = syncSearch
-    ? db.prepare("SELECT id FROM library_albums WHERE artist_id = ?").all(fallback.id)
+    ? db
+        .prepare<[number], Pick<LibraryAlbumsRow, "id">>(
+          "SELECT id FROM library_albums WHERE artist_id = ?",
+        )
+        .all(fallback.id)
     : [];
   let changed = moveLibraryArtistStars(fallback.identity_key, resolved.identity_key);
   changed =
     db
-      .prepare("UPDATE OR IGNORE library_release_calendar SET artist_id = ? WHERE artist_id = ?")
+      .prepare<[number, number]>(
+        "UPDATE OR IGNORE library_release_calendar SET artist_id = ? WHERE artist_id = ?",
+      )
       .run(resolved.id, fallback.id).changes > 0 || changed;
   changed =
     db
-      .prepare("UPDATE library_albums SET artist_id = ? WHERE artist_id = ?")
+      .prepare<[number, number]>("UPDATE library_albums SET artist_id = ? WHERE artist_id = ?")
       .run(resolved.id, fallback.id).changes > 0 || changed;
   const copiedManagement =
     db
-      .prepare(`
+      .prepare<[number, number]>(`
     INSERT OR IGNORE INTO library_management
       (entity_kind, entity_id, managed_by, monitor_mode, monitor_rules, created_at, updated_at, last_missing_search_at)
     SELECT entity_kind, ?, managed_by, monitor_mode, monitor_rules, created_at, updated_at, last_missing_search_at
@@ -217,18 +274,23 @@ function mergeLibraryArtistInto(fallback, resolved, { syncSearch = true } = {}) 
       .run(resolved.id, fallback.id).changes > 0;
   const removedManagement =
     db
-      .prepare("DELETE FROM library_management WHERE entity_kind = 'artist' AND entity_id = ?")
+      .prepare<[number]>(
+        "DELETE FROM library_management WHERE entity_kind = 'artist' AND entity_id = ?",
+      )
       .run(fallback.id).changes > 0;
   if (copiedManagement || removedManagement) invalidateLibraryManagementCache();
   changed = copiedManagement || removedManagement || changed;
   changed =
-    db.prepare("DELETE FROM library_artists WHERE id = ?").run(fallback.id).changes > 0 || changed;
+    db.prepare<[number]>("DELETE FROM library_artists WHERE id = ?").run(fallback.id).changes > 0 ||
+    changed;
   if (syncSearch) {
     removeLibrarySearchDocument("artist", fallback.id);
     for (const album of movedAlbums) {
       syncLibrarySearchAlbum(album.id);
       for (const track of db
-        .prepare("SELECT track_id FROM library_album_tracks WHERE album_id = ?")
+        .prepare<[number], Pick<LibraryAlbumTracksRow, "track_id">>(
+          "SELECT track_id FROM library_album_tracks WHERE album_id = ?",
+        )
         .all(album.id))
         syncLibrarySearchTrack(track.track_id);
     }
@@ -238,7 +300,7 @@ function mergeLibraryArtistInto(fallback, resolved, { syncSearch = true } = {}) 
 
 export function getUnresolvedLibraryArtists() {
   return db
-    .prepare(
+    .prepare<[], Pick<LibraryArtistsRow, "id" | "name">>(
       `SELECT DISTINCT artist.id, artist.name
      FROM library_artists AS artist
      JOIN library_albums AS album ON album.artist_id = artist.id
@@ -251,16 +313,20 @@ export function getUnresolvedLibraryArtists() {
     .all();
 }
 
-export function assignLibraryArtistMbid(artistId, mbid) {
+export type UnresolvedLibraryArtist = ReturnType<typeof getUnresolvedLibraryArtists>[number];
+
+export function assignLibraryArtistMbid(artistId: number, mbid: string) {
   const key = buildIdentityKey("mbid", mbid);
   if (!key) return null;
   const artist = db.transaction(() => {
     const fallback = db
-      .prepare("SELECT id, identity_key FROM library_artists WHERE id = ? AND mbid IS NULL")
+      .prepare<[number], ArtistIdentity>(
+        "SELECT id, identity_key FROM library_artists WHERE id = ? AND mbid IS NULL",
+      )
       .get(artistId);
     if (!fallback) return null;
     const resolved = db
-      .prepare(
+      .prepare<[string, string, string], ArtistIdentity>(
         `SELECT id, identity_key FROM library_artists
          WHERE identity_key = ? OR mbid = ?
          ORDER BY identity_key = ? DESC, id
@@ -272,7 +338,7 @@ export function assignLibraryArtistMbid(artistId, mbid) {
       return resolved;
     }
     moveLibraryArtistStars(fallback.identity_key, key);
-    db.prepare(
+    db.prepare<[string, string, number, number]>(
       "UPDATE library_artists SET identity_key = ?, mbid = ?, updated_at = ? WHERE id = ?",
     ).run(key, mbid, now(), fallback.id);
     return fallback;
@@ -281,9 +347,11 @@ export function assignLibraryArtistMbid(artistId, mbid) {
   return artist;
 }
 
-export function setLibraryArtistMbid(artistId, mbid) {
+export function setLibraryArtistMbid(artistId: number, mbid: string | null) {
   const result = db.transaction(() => {
-    const artist = db.prepare("SELECT * FROM library_artists WHERE id = ?").get(artistId);
+    const artist = db
+      .prepare<[number], LibraryArtistsRow>("SELECT * FROM library_artists WHERE id = ?")
+      .get(artistId);
     if (!artist) return { error: "not_found" };
     const metadata = dbHelpers.parseJSON(artist.metadata_json) || {};
     if (metadata.id != null) return { error: "lidarr_managed" };
@@ -291,7 +359,9 @@ export function setLibraryArtistMbid(artistId, mbid) {
     const fallbackTaken =
       !mbid &&
       db
-        .prepare("SELECT 1 FROM library_artists WHERE id != ? AND identity_key = ?")
+        .prepare<[number, string | null], { 1: number }>(
+          "SELECT 1 FROM library_artists WHERE id != ? AND identity_key = ?",
+        )
         .get(artist.id, fallbackKey);
     const key = mbid
       ? buildIdentityKey("mbid", mbid)
@@ -300,7 +370,7 @@ export function setLibraryArtistMbid(artistId, mbid) {
         : fallbackKey;
     const target = mbid
       ? db
-          .prepare(
+          .prepare<[number, string | null, string, string | null], LibraryArtistsRow>(
             "SELECT * FROM library_artists WHERE id != ? AND (identity_key = ? OR mbid = ?) ORDER BY identity_key = ? DESC, id LIMIT 1",
           )
           .get(artist.id, key, mbid, key)
@@ -308,23 +378,27 @@ export function setLibraryArtistMbid(artistId, mbid) {
     if (target) {
       const targetMetadata = dbHelpers.parseJSON(target.metadata_json) || {};
       mergeLibraryArtistInto(artist, target);
-      db.prepare("UPDATE library_artists SET metadata_json = ?, updated_at = ? WHERE id = ?").run(
-        stringify({ ...targetMetadata, mbidSource: "manual" }),
-        now(),
-        target.id,
-      );
+      db.prepare<[string | null, number, number]>(
+        "UPDATE library_artists SET metadata_json = ?, updated_at = ? WHERE id = ?",
+      ).run(stringify({ ...targetMetadata, mbidSource: "manual" }), now(), target.id);
       return {
-        artist: db.prepare("SELECT * FROM library_artists WHERE id = ?").get(target.id),
+        artist: db
+          .prepare<[number], LibraryArtistsRow>("SELECT * FROM library_artists WHERE id = ?")
+          .get(target.id),
         mergedArtistId: artist.id,
       };
     }
     moveLibraryArtistStars(artist.identity_key, key);
-    db.prepare(
+    db.prepare<[string, string | null, string | null, number, number]>(
       `UPDATE library_artists
        SET identity_key = ?, mbid = ?, metadata_json = ?, updated_at = ?
        WHERE id = ?`,
     ).run(key, mbid || null, stringify({ ...metadata, mbidSource: "manual" }), now(), artist.id);
-    return { artist: db.prepare("SELECT * FROM library_artists WHERE id = ?").get(artist.id) };
+    return {
+      artist: db
+        .prepare<[number], LibraryArtistsRow>("SELECT * FROM library_artists WHERE id = ?")
+        .get(artist.id),
+    };
   })();
   if (result.artist) {
     syncLibrarySearchArtist(result.artist.id);
@@ -340,6 +414,13 @@ export function upsertLibraryArtist({
   sortName = null,
   metadata = null,
   syncSearch = true,
+}: {
+  identityKey: string | null;
+  mbid?: string | null;
+  name: string;
+  sortName?: string | null;
+  metadata?: Record<string, unknown> | null;
+  syncSearch?: boolean;
 }) {
   const timestamp = now();
   const key = normalizeText(identityKey);
@@ -353,14 +434,14 @@ export function upsertLibraryArtist({
     const fallbackKey = buildFallbackIdentityKey("artist", artistName);
     const findFallbackArtist = () => {
       return db
-        .prepare(
+        .prepare<[string | null], ArtistIdentity>(
           "SELECT id, identity_key FROM library_artists WHERE identity_key = ? AND mbid IS NULL",
         )
         .get(fallbackKey);
     };
     const findResolvedArtist = () => {
       const exact = db
-        .prepare(
+        .prepare<[string], LibraryArtistsRow>(
           `SELECT * FROM library_artists
            WHERE mbid IS NOT NULL AND name = ? COLLATE NOCASE
            ORDER BY id
@@ -370,24 +451,31 @@ export function upsertLibraryArtist({
       if (exact.length === 1) return exact[0];
       // ponytail: normalized duplicate repair scans artist rows; add a persisted normalized name if this becomes hot.
       const matches = db
-        .prepare("SELECT * FROM library_artists WHERE mbid IS NOT NULL")
+        .prepare<[], LibraryArtistsRow>("SELECT * FROM library_artists WHERE mbid IS NOT NULL")
         .all()
         .filter((row) => buildFallbackIdentityKey("artist", row.name) === fallbackKey);
       return matches.length === 1 ? matches[0] : null;
     };
-    const mergeFallbackArtist = (fallback, resolved) => {
+    const mergeFallbackArtist = (
+      fallback: ArtistIdentity | undefined,
+      resolved: ArtistIdentity,
+    ) => {
       libraryChanged = mergeLibraryArtistInto(fallback, resolved, { syncSearch }) || libraryChanged;
     };
     if (mbid) {
       const resolved = db
-        .prepare("SELECT id, identity_key FROM library_artists WHERE identity_key = ?")
+        .prepare<[string], ArtistIdentity>(
+          "SELECT id, identity_key FROM library_artists WHERE identity_key = ?",
+        )
         .get(key);
       const fallback = fallbackKey === key ? null : findFallbackArtist();
       if (fallback && !resolved) {
         libraryChanged = moveLibraryArtistStars(fallback.identity_key, key) || libraryChanged;
         libraryChanged =
           db
-            .prepare("UPDATE library_artists SET identity_key = ?, updated_at = ? WHERE id = ?")
+            .prepare<[string, number, number]>(
+              "UPDATE library_artists SET identity_key = ?, updated_at = ? WHERE id = ?",
+            )
             .run(key, timestamp, fallback.id).changes > 0 || libraryChanged;
       } else if (fallback && resolved && fallback.id !== resolved.id) {
         mergeFallbackArtist(fallback, resolved);
@@ -400,7 +488,9 @@ export function upsertLibraryArtist({
         return resolved;
       }
     }
-    const existing = db.prepare("SELECT * FROM library_artists WHERE identity_key = ?").get(key);
+    const existing = db
+      .prepare<[string], LibraryArtistsRow>("SELECT * FROM library_artists WHERE identity_key = ?")
+      .get(key);
     const mergedMetadataText =
       existing && metadata
         ? stringify({ ...dbHelpers.parseJSON(existing.metadata_json), ...metadata })
@@ -415,7 +505,7 @@ export function upsertLibraryArtist({
       if (syncSearch) syncLibrarySearchArtist(existing.id);
       return existing;
     }
-    db.prepare(
+    db.prepare<[string, string | null, string, string | null, string | null, number, number]>(
       `INSERT INTO library_artists (identity_key, mbid, name, sort_name, metadata_json, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(identity_key) DO UPDATE SET
@@ -426,7 +516,9 @@ export function upsertLibraryArtist({
          updated_at = excluded.updated_at`,
     ).run(key, artistMbid, artistName, artistSortName, mergedMetadataText, timestamp, timestamp);
     libraryChanged = true;
-    const row = db.prepare("SELECT * FROM library_artists WHERE identity_key = ?").get(key);
+    const row = db
+      .prepare<[string], LibraryArtistsRow>("SELECT * FROM library_artists WHERE identity_key = ?")
+      .get(key)!;
     if (syncSearch) syncLibrarySearchArtist(row?.id);
     return row;
   })();
@@ -434,27 +526,31 @@ export function upsertLibraryArtist({
   return artist;
 }
 
-function clearLidarrMetadata(table, where, parameters) {
+function clearLidarrMetadata(
+  table: "library_artists" | "library_albums",
+  where: string,
+  parameters: string[],
+) {
   const row = db
-    .prepare(`SELECT id, metadata_json FROM ${table} WHERE ${where} LIMIT 1`)
+    .prepare<string[], Pick<LibraryArtistsRow | LibraryAlbumsRow, "id" | "metadata_json">>(
+      `SELECT id, metadata_json FROM ${table} WHERE ${where} LIMIT 1`,
+    )
     .get(...parameters);
   if (!row) return false;
-  let metadata = {};
+  let metadata: Record<string, unknown> = {};
   try {
     const parsed = JSON.parse(row.metadata_json || "{}");
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) metadata = parsed;
   } catch {}
   for (const key of LIDARR_METADATA_KEYS) delete metadata[key];
-  db.prepare(`UPDATE ${table} SET metadata_json = ?, updated_at = ? WHERE id = ?`).run(
-    stringify(metadata),
-    now(),
-    row.id,
-  );
+  db.prepare<[string | null, number, number]>(
+    `UPDATE ${table} SET metadata_json = ?, updated_at = ? WHERE id = ?`,
+  ).run(stringify(metadata), now(), row.id);
   invalidateLibraryCache();
   return true;
 }
 
-export function clearLibraryLidarrArtist(reference) {
+export function clearLibraryLidarrArtist(reference: string) {
   const value = normalizeText(reference);
   if (!value) return false;
   return clearLidarrMetadata(
@@ -467,7 +563,7 @@ export function clearLibraryLidarrArtist(reference) {
   );
 }
 
-export function clearLibraryLidarrAlbum(reference) {
+export function clearLibraryLidarrAlbum(reference: string) {
   const value = normalizeText(reference);
   if (!value) return false;
   return clearLidarrMetadata(
@@ -490,6 +586,16 @@ export function upsertLibraryAlbum({
   releaseDate = null,
   metadata = null,
   syncSearch = true,
+}: {
+  identityKey: string | null;
+  mbid?: string | null;
+  releaseGroupMbid?: string | null;
+  artistId: number;
+  title: string;
+  albumArtist?: string | null;
+  releaseDate?: string | null;
+  metadata?: Record<string, unknown> | null;
+  syncSearch?: boolean;
 }) {
   const timestamp = now();
   const key = normalizeText(identityKey);
@@ -504,7 +610,9 @@ export function upsertLibraryAlbum({
   }
   let libraryChanged = false;
   const album = db.transaction(() => {
-    const existing = db.prepare("SELECT * FROM library_albums WHERE identity_key = ?").get(key);
+    const existing = db
+      .prepare<[string], LibraryAlbumsRow>("SELECT * FROM library_albums WHERE identity_key = ?")
+      .get(key);
     const mergedMetadataText =
       existing && metadata
         ? stringify({ ...dbHelpers.parseJSON(existing.metadata_json), ...metadata })
@@ -522,14 +630,29 @@ export function upsertLibraryAlbum({
       const searchChanged = syncSearch && syncLibrarySearchAlbum(existing.id);
       if (searchChanged) {
         for (const track of db
-          .prepare("SELECT track_id FROM library_album_tracks WHERE album_id = ?")
+          .prepare<[number], Pick<LibraryAlbumTracksRow, "track_id">>(
+            "SELECT track_id FROM library_album_tracks WHERE album_id = ?",
+          )
           .all(existing.id)) {
           syncLibrarySearchTrack(track.track_id);
         }
       }
       return existing;
     }
-    db.prepare(
+    db.prepare<
+      [
+        string,
+        string | null,
+        string | null,
+        number,
+        string,
+        string | null,
+        string | null,
+        string | null,
+        number,
+        number,
+      ]
+    >(
       `INSERT INTO library_albums
         (identity_key, mbid, release_group_mbid, artist_id, title, album_artist, release_date, metadata_json, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -555,11 +678,15 @@ export function upsertLibraryAlbum({
       timestamp,
     );
     libraryChanged = true;
-    const row = db.prepare("SELECT * FROM library_albums WHERE identity_key = ?").get(key);
+    const row = db
+      .prepare<[string], LibraryAlbumsRow>("SELECT * FROM library_albums WHERE identity_key = ?")
+      .get(key)!;
     const searchChanged = syncSearch && syncLibrarySearchAlbum(row?.id);
     if (row?.id && searchChanged) {
       for (const track of db
-        .prepare("SELECT track_id FROM library_album_tracks WHERE album_id = ?")
+        .prepare<[number], Pick<LibraryAlbumTracksRow, "track_id">>(
+          "SELECT track_id FROM library_album_tracks WHERE album_id = ?",
+        )
         .all(row.id)) {
         syncLibrarySearchTrack(track.track_id);
       }
@@ -578,6 +705,14 @@ export function upsertLibraryTrack({
   metadata = null,
   monitored = true,
   syncSearch = true,
+}: {
+  identityKey: string | null;
+  mbid?: string | null;
+  title: string;
+  artistName?: string | null;
+  metadata?: Record<string, unknown> | null;
+  monitored?: boolean;
+  syncSearch?: boolean;
 }) {
   const timestamp = now();
   const key = normalizeText(identityKey);
@@ -588,7 +723,9 @@ export function upsertLibraryTrack({
   if (!key || !trackTitle) throw new Error("Library track identityKey and title are required");
   let libraryChanged = false;
   const track = db.transaction(() => {
-    const existing = db.prepare("SELECT * FROM library_tracks WHERE identity_key = ?").get(key);
+    const existing = db
+      .prepare<[string], LibraryTracksRow>("SELECT * FROM library_tracks WHERE identity_key = ?")
+      .get(key);
     // "Various Artists" credits a compilation, not a performer, so it never
     // replaces a track's own artist.
     const nextArtistName =
@@ -605,7 +742,9 @@ export function upsertLibraryTrack({
       if (syncSearch) syncLibrarySearchTrack(existing.id);
       return existing;
     }
-    db.prepare(
+    db.prepare<
+      [string, string | null, string, string | null, string | null, number, number, number]
+    >(
       `INSERT INTO library_tracks (identity_key, mbid, title, artist_name, metadata_json, monitored, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(identity_key) DO UPDATE SET
@@ -625,7 +764,9 @@ export function upsertLibraryTrack({
       timestamp,
     );
     libraryChanged = true;
-    const row = db.prepare("SELECT * FROM library_tracks WHERE identity_key = ?").get(key);
+    const row = db
+      .prepare<[string], LibraryTracksRow>("SELECT * FROM library_tracks WHERE identity_key = ?")
+      .get(key)!;
     if (syncSearch) syncLibrarySearchTrack(row?.id);
     return row;
   })();
@@ -635,8 +776,11 @@ export function upsertLibraryTrack({
 
 // library_album_tracks has no updated_at and rows are deleted outright, so relation changes ride
 // on the album's timestamp to stay visible in getLibraryIndexLastModified.
-const touchLibraryAlbum = (albumId) => {
-  db.prepare("UPDATE library_albums SET updated_at = ? WHERE id = ?").run(now(), Number(albumId));
+const touchLibraryAlbum = (albumId: number) => {
+  db.prepare<[number, number]>("UPDATE library_albums SET updated_at = ? WHERE id = ?").run(
+    now(),
+    Number(albumId),
+  );
 };
 
 // A scan passes keepPosition: a file whose tags number it differently from
@@ -648,19 +792,28 @@ export function linkLibraryAlbumTrack({
   trackNumber = 0,
   keepPosition = false,
   syncSearch = true,
+}: {
+  albumId: number;
+  trackId: number;
+  discNumber?: number;
+  trackNumber?: number;
+  keepPosition?: boolean;
+  syncSearch?: boolean;
 }) {
   const changed = db.transaction(() => {
     if (
       keepPosition &&
       db
-        .prepare("SELECT 1 FROM library_album_tracks WHERE album_id = ? AND track_id = ? LIMIT 1")
+        .prepare<[number, number], { 1: number }>(
+          "SELECT 1 FROM library_album_tracks WHERE album_id = ? AND track_id = ? LIMIT 1",
+        )
         .get(Number(albumId), Number(trackId))
     ) {
       if (syncSearch) syncLibrarySearchTrack(trackId);
       return false;
     }
     const result = db
-      .prepare(
+      .prepare<[number, number, number, number, number]>(
         `INSERT OR IGNORE INTO library_album_tracks
         (album_id, track_id, disc_number, track_number, created_at)
        VALUES (?, ?, ?, ?, ?)`,
@@ -681,12 +834,12 @@ export function linkLibraryAlbumTrack({
 
 // A scan stores a file's release ID in its album's mbid. A release ID used
 // as a release group names that album, not a new one.
-export function findLibraryAlbumByReleaseMbid(mbid) {
+export function findLibraryAlbumByReleaseMbid(mbid: string | null | undefined) {
   const releaseMbid = normalizeText(mbid);
   if (!releaseMbid) return null;
   return (
     db
-      .prepare(
+      .prepare<[string], LibraryAlbumsRow>(
         `SELECT * FROM library_albums
      WHERE mbid = ? AND release_group_mbid IS NOT NULL AND release_group_mbid != mbid
      ORDER BY id LIMIT 1`,
@@ -697,38 +850,47 @@ export function findLibraryAlbumByReleaseMbid(mbid) {
 
 // Names with letters ASCII cannot spell, such as Japanese titles, compare as
 // written, since their ASCII keys would drop those letters and match each other.
-const libraryNameKey = (value) => {
+const libraryNameKey = (value: string | null | undefined) => {
   const ascii = asciiKeyPart(spellLetters(value));
   return ascii && !hasNonLatinLetters(value)
     ? ascii
     : normalizeText(value).normalize("NFKC").toLowerCase();
 };
 
-export function isSameLibraryName(left, right) {
+export function isSameLibraryName(
+  left: string | null | undefined,
+  right: string | null | undefined,
+) {
   const key = libraryNameKey(left);
   return Boolean(key) && key === libraryNameKey(right);
 }
 
 // A remastered song keeps its name: "Song (Remastered 2012)" is "Song".
-const songKey = (title) => libraryNameKey(withoutRemasterLabel(title));
+const songKey = (title: string | null | undefined) => libraryNameKey(withoutRemasterLabel(title));
 
-const isSameSong = (left, right) => {
+const isSameSong = (left: string | null | undefined, right: string | null | undefined) => {
   const key = songKey(left);
   return Boolean(key) && key === songKey(right);
 };
 
 // A file without MusicBrainz album tags belongs to the artist's album with
 // the same title, so an untagged copy never splits an album in two.
-export function findLibraryAlbumByArtistTitle(artistId, title, trackTitle = null) {
+export function findLibraryAlbumByArtistTitle(
+  artistId: number,
+  title: string | null | undefined,
+  trackTitle: string | null = null,
+) {
   if (!normalizeText(title) || !Number.isSafeInteger(Number(artistId))) return null;
   const matches = db
-    .prepare("SELECT * FROM library_albums WHERE artist_id = ? ORDER BY id")
+    .prepare<[number], LibraryAlbumsRow>(
+      "SELECT * FROM library_albums WHERE artist_id = ? ORDER BY id",
+    )
     .all(Number(artistId))
     .filter((album) => isSameLibraryName(album.title, title));
   return chooseLibraryAlbum(matches, trackTitle ? [trackTitle] : []);
 }
 
-export function moveLibraryMediaFilePath(source, fromPath, toPath) {
+export function moveLibraryMediaFilePath(source: string, fromPath: string, toPath: string) {
   const from = normalizeText(fromPath);
   const to = normalizeText(toPath);
   const fileSource = normalizeText(source);
@@ -737,12 +899,11 @@ export function moveLibraryMediaFilePath(source, fromPath, toPath) {
     const file = getLibraryMediaFileStmt.get(fileSource, from);
     if (!file) return false;
     const occupied = getLibraryMediaFileStmt.get(fileSource, to);
-    if (occupied) db.prepare("DELETE FROM library_media_files WHERE id = ?").run(occupied.id);
-    db.prepare("UPDATE library_media_files SET path = ?, updated_at = ? WHERE id = ?").run(
-      to,
-      now(),
-      file.id,
-    );
+    if (occupied)
+      db.prepare<[number]>("DELETE FROM library_media_files WHERE id = ?").run(occupied.id);
+    db.prepare<[string, number, number]>(
+      "UPDATE library_media_files SET path = ?, updated_at = ? WHERE id = ?",
+    ).run(to, now(), file.id);
     return true;
   })();
   if (moved) invalidateLibraryCache();
@@ -751,27 +912,29 @@ export function moveLibraryMediaFilePath(source, fromPath, toPath) {
 
 // An upgrade can bring a file with new identity tags. The track keeps its
 // row, favorites, and monitoring, or folds into the track that already has them.
-export function rekeyLibraryTrack(trackId, identityKey) {
+export function rekeyLibraryTrack(trackId: number, identityKey: string) {
   const key = normalizeText(identityKey);
   const id = Number(trackId);
   if (!key || !Number.isSafeInteger(id)) return null;
   const result = db
     .transaction(() => {
-      const track = db.prepare("SELECT * FROM library_tracks WHERE id = ?").get(id);
+      const track = db
+        .prepare<[number], LibraryTracksRow>("SELECT * FROM library_tracks WHERE id = ?")
+        .get(id);
       if (!track) return null;
       if (track.identity_key === key) return { id, changed: false };
       moveLibraryStars("song", track.identity_key, key);
       moveQueuedLibrarySong(track.identity_key, key);
-      const target = db.prepare("SELECT * FROM library_tracks WHERE identity_key = ?").get(key);
+      const target = db
+        .prepare<[string], LibraryTracksRow>("SELECT * FROM library_tracks WHERE identity_key = ?")
+        .get(key);
       if (!target) {
-        db.prepare("UPDATE library_tracks SET identity_key = ?, updated_at = ? WHERE id = ?").run(
-          key,
-          now(),
-          id,
-        );
+        db.prepare<[string, number, number]>(
+          "UPDATE library_tracks SET identity_key = ?, updated_at = ? WHERE id = ?",
+        ).run(key, now(), id);
         return { id, changed: true };
       }
-      db.prepare(
+      db.prepare<[number, number, number]>(
         `INSERT OR IGNORE INTO library_album_tracks (album_id, track_id, disc_number, track_number, created_at)
        SELECT link.album_id, ?, link.disc_number, link.track_number, link.created_at
        FROM library_album_tracks AS link
@@ -781,14 +944,13 @@ export function rekeyLibraryTrack(trackId, identityKey) {
            AND kept.disc_number = link.disc_number AND kept.track_number = link.track_number
        )`,
       ).run(target.id, id, target.id);
-      db.prepare("UPDATE library_media_files SET track_id = ? WHERE track_id = ?").run(
-        target.id,
-        id,
-      );
+      db.prepare<[number, number]>(
+        "UPDATE library_media_files SET track_id = ? WHERE track_id = ?",
+      ).run(target.id, id);
       if (track.monitored === 1)
-        db.prepare("UPDATE library_tracks SET monitored = 1 WHERE id = ?").run(target.id);
-      db.prepare("DELETE FROM library_album_tracks WHERE track_id = ?").run(id);
-      db.prepare("DELETE FROM library_tracks WHERE id = ?").run(id);
+        db.prepare<[number]>("UPDATE library_tracks SET monitored = 1 WHERE id = ?").run(target.id);
+      db.prepare<[number]>("DELETE FROM library_album_tracks WHERE track_id = ?").run(id);
+      db.prepare<[number]>("DELETE FROM library_tracks WHERE id = ?").run(id);
       removeLibrarySearchDocument("track", id);
       return { id: target.id, changed: true };
     })
@@ -800,38 +962,42 @@ export function rekeyLibraryTrack(trackId, identityKey) {
   return result?.id ?? null;
 }
 
-export function rekeyLibraryAlbum(albumId, identityKey) {
+export function rekeyLibraryAlbum(albumId: number, identityKey: string) {
   const key = normalizeText(identityKey);
   const id = Number(albumId);
   if (!key || !Number.isSafeInteger(id)) return null;
   const result = db
     .transaction(() => {
-      const album = db.prepare("SELECT * FROM library_albums WHERE id = ?").get(id);
+      const album = db
+        .prepare<[number], LibraryAlbumsRow>("SELECT * FROM library_albums WHERE id = ?")
+        .get(id);
       if (!album) return null;
       if (album.identity_key === key) return { id, changed: false };
       moveLibraryStars("album", album.identity_key, key);
-      db.prepare(
+      db.prepare<[string, string]>(
         `INSERT INTO play_album_stats (user_id, album_key, play_count, last_played_at)
        SELECT user_id, ?, play_count, last_played_at FROM play_album_stats WHERE album_key = ?
        ON CONFLICT (user_id, album_key) DO UPDATE SET
          play_count = play_album_stats.play_count + excluded.play_count,
          last_played_at = MAX(play_album_stats.last_played_at, excluded.last_played_at)`,
       ).run(key, album.identity_key);
-      db.prepare("DELETE FROM play_album_stats WHERE album_key = ?").run(album.identity_key);
-      db.prepare("UPDATE play_events SET album_key = ? WHERE album_key = ?").run(
+      db.prepare<[string]>("DELETE FROM play_album_stats WHERE album_key = ?").run(
+        album.identity_key,
+      );
+      db.prepare<[string, string]>("UPDATE play_events SET album_key = ? WHERE album_key = ?").run(
         key,
         album.identity_key,
       );
-      const target = db.prepare("SELECT * FROM library_albums WHERE identity_key = ?").get(key);
+      const target = db
+        .prepare<[string], LibraryAlbumsRow>("SELECT * FROM library_albums WHERE identity_key = ?")
+        .get(key);
       if (!target) {
-        db.prepare("UPDATE library_albums SET identity_key = ?, updated_at = ? WHERE id = ?").run(
-          key,
-          now(),
-          id,
-        );
+        db.prepare<[string, number, number]>(
+          "UPDATE library_albums SET identity_key = ?, updated_at = ? WHERE id = ?",
+        ).run(key, now(), id);
         return { id, changed: true };
       }
-      db.prepare(
+      db.prepare<[number, number, number]>(
         `INSERT OR IGNORE INTO library_album_tracks (album_id, track_id, disc_number, track_number, created_at)
        SELECT ?, link.track_id, link.disc_number, link.track_number, link.created_at
        FROM library_album_tracks AS link
@@ -841,23 +1007,24 @@ export function rekeyLibraryAlbum(albumId, identityKey) {
            AND kept.disc_number = link.disc_number AND kept.track_number = link.track_number
        )`,
       ).run(target.id, id, target.id);
-      db.prepare("UPDATE library_media_files SET album_id = ? WHERE album_id = ?").run(
-        target.id,
-        id,
-      );
-      db.prepare(
+      db.prepare<[number, number]>(
+        "UPDATE library_media_files SET album_id = ? WHERE album_id = ?",
+      ).run(target.id, id);
+      db.prepare<[number, number]>(
         `INSERT OR IGNORE INTO library_management
         (entity_kind, entity_id, managed_by, monitor_mode, created_at, updated_at, last_missing_search_at)
        SELECT entity_kind, ?, managed_by, monitor_mode, created_at, updated_at, last_missing_search_at
        FROM library_management WHERE entity_kind = 'album' AND entity_id = ?`,
       ).run(target.id, id);
-      db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(id);
+      db.prepare<[number]>("DELETE FROM library_album_tracks WHERE album_id = ?").run(id);
       clearLibraryManagement("album", id);
-      db.prepare("DELETE FROM library_albums WHERE id = ?").run(id);
+      db.prepare<[number]>("DELETE FROM library_albums WHERE id = ?").run(id);
       removeLibrarySearchDocument("album", id);
       touchLibraryAlbum(target.id);
       const trackIds = db
-        .prepare("SELECT DISTINCT track_id FROM library_album_tracks WHERE album_id = ?")
+        .prepare<[number], number>(
+          "SELECT DISTINCT track_id FROM library_album_tracks WHERE album_id = ?",
+        )
         .pluck()
         .all(target.id);
       return { id: target.id, changed: true, trackIds };
@@ -872,14 +1039,16 @@ export function rekeyLibraryAlbum(albumId, identityKey) {
   return result?.id ?? null;
 }
 
-const deleteAlbumStmt = db.prepare("DELETE FROM library_albums WHERE id = ?");
-const artistHasAlbumStmt = db.prepare("SELECT 1 FROM library_albums WHERE artist_id = ? LIMIT 1");
-const artistManagedStmt = db.prepare(
+const deleteAlbumStmt = db.prepare<[number]>("DELETE FROM library_albums WHERE id = ?");
+const artistHasAlbumStmt = db.prepare<[number], { 1: number }>(
+  "SELECT 1 FROM library_albums WHERE artist_id = ? LIMIT 1",
+);
+const artistManagedStmt = db.prepare<[number], { 1: number }>(
   "SELECT 1 FROM library_management WHERE entity_kind = 'artist' AND entity_id = ?",
 );
-const deleteArtistStmt = db.prepare("DELETE FROM library_artists WHERE id = ?");
+const deleteArtistStmt = db.prepare<[number]>("DELETE FROM library_artists WHERE id = ?");
 
-function deleteLibraryAlbumRow(albumId, artistId) {
+function deleteLibraryAlbumRow(albumId: number, artistId: number | null | undefined) {
   clearLibraryManagement("album", albumId);
   deleteAlbumStmt.run(albumId);
   removeLibrarySearchDocument("album", albumId);
@@ -891,41 +1060,61 @@ function deleteLibraryAlbumRow(albumId, artistId) {
 
 // Removes an album link an upgrade left behind, and the album, track, or
 // artist it emptied.
-export function unlinkLibraryAlbumTrackWithoutMedia(albumId, trackId) {
+export function unlinkLibraryAlbumTrackWithoutMedia(albumId: number, trackId: number) {
   const album = Number(albumId);
   const track = Number(trackId);
   const removed = db
     .transaction(() => {
       const hasMedia = db
-        .prepare("SELECT 1 FROM library_media_files WHERE track_id = ? AND album_id = ? LIMIT 1")
+        .prepare<[number, number], { 1: number }>(
+          "SELECT 1 FROM library_media_files WHERE track_id = ? AND album_id = ? LIMIT 1",
+        )
         .get(track, album);
       if (hasMedia) return false;
       const artistId = db
-        .prepare("SELECT artist_id FROM library_albums WHERE id = ?")
+        .prepare<[number], Pick<LibraryAlbumsRow, "artist_id">>(
+          "SELECT artist_id FROM library_albums WHERE id = ?",
+        )
         .get(album)?.artist_id;
       if (
         db
-          .prepare("DELETE FROM library_album_tracks WHERE album_id = ? AND track_id = ?")
+          .prepare<[number, number]>(
+            "DELETE FROM library_album_tracks WHERE album_id = ? AND track_id = ?",
+          )
           .run(album, track).changes === 0
       ) {
         return false;
       }
       if (
-        !db.prepare("SELECT 1 FROM library_album_tracks WHERE track_id = ? LIMIT 1").get(track) &&
-        !db.prepare("SELECT 1 FROM library_media_files WHERE track_id = ? LIMIT 1").get(track)
+        !db
+          .prepare<[number], { 1: number }>(
+            "SELECT 1 FROM library_album_tracks WHERE track_id = ? LIMIT 1",
+          )
+          .get(track) &&
+        !db
+          .prepare<[number], { 1: number }>(
+            "SELECT 1 FROM library_media_files WHERE track_id = ? LIMIT 1",
+          )
+          .get(track)
       ) {
-        db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track);
+        db.prepare<[number]>("DELETE FROM library_tracks WHERE id = ?").run(track);
         removeLibrarySearchDocument("track", track);
       } else {
         syncLibrarySearchTrack(track);
       }
       if (
-        !db.prepare("SELECT 1 FROM library_album_tracks WHERE album_id = ? LIMIT 1").get(album) &&
         !db
-          .prepare("SELECT 1 FROM library_media_files WHERE album_id = ? AND available = 1 LIMIT 1")
+          .prepare<[number], { 1: number }>(
+            "SELECT 1 FROM library_album_tracks WHERE album_id = ? LIMIT 1",
+          )
+          .get(album) &&
+        !db
+          .prepare<[number], { 1: number }>(
+            "SELECT 1 FROM library_media_files WHERE album_id = ? AND available = 1 LIMIT 1",
+          )
           .get(album)
       ) {
-        db.prepare("DELETE FROM library_media_files WHERE album_id = ?").run(album);
+        db.prepare<[number]>("DELETE FROM library_media_files WHERE album_id = ?").run(album);
         deleteLibraryAlbumRow(album, artistId);
       } else {
         touchLibraryAlbum(album);
@@ -940,20 +1129,30 @@ export function unlinkLibraryAlbumTrackWithoutMedia(albumId, trackId) {
   return removed;
 }
 
-const isNameKey = (key) => String(key || "").startsWith("name:");
+const isNameKey = (key: string | null | undefined) => String(key || "").startsWith("name:");
 
 // A file whose tags gained MusicBrainz IDs is still the album and track it
 // was, so those rows take the new identity with their favorites, play counts,
 // and monitoring, as an upgrade's do. Returns what the file was on, for
 // releaseLibraryFileRows once the scan has filed it.
 export function followLibraryFileIdentity(
-  media,
-  { artistId, albumKey, albumTitle, trackKey, title },
+  media: LibraryMediaFilesRow,
+  {
+    artistId,
+    albumKey,
+    albumTitle,
+    trackKey,
+    title,
+  }: { artistId: number; albumKey: string; albumTitle: string; trackKey: string; title: string },
 ) {
   const album = media.album_id
-    ? db.prepare("SELECT * FROM library_albums WHERE id = ?").get(media.album_id)
+    ? db
+        .prepare<[number], LibraryAlbumsRow>("SELECT * FROM library_albums WHERE id = ?")
+        .get(media.album_id)
     : null;
-  const track = db.prepare("SELECT * FROM library_tracks WHERE id = ?").get(media.track_id);
+  const track = db
+    .prepare<[number], LibraryTracksRow>("SELECT * FROM library_tracks WHERE id = ?")
+    .get(media.track_id);
   const before = {
     albumId: media.album_id,
     trackId: media.track_id,
@@ -969,7 +1168,9 @@ export function followLibraryFileIdentity(
     rekeyLibraryAlbum(album.id, albumKey);
   }
   const shared = db
-    .prepare("SELECT 1 FROM library_media_files WHERE track_id = ? AND id != ? LIMIT 1")
+    .prepare<[number, number], { 1: number }>(
+      "SELECT 1 FROM library_media_files WHERE track_id = ? AND id != ? LIMIT 1",
+    )
     .get(media.track_id, media.id);
   if (
     track &&
@@ -986,7 +1187,10 @@ export function followLibraryFileIdentity(
 // A file the scan filed under other rows leaves no empty link behind on the
 // untagged album or track it was on. Rows with MusicBrainz IDs may be
 // Lidarr's or a wanted album's, so they keep theirs.
-export function releaseLibraryFileRows(before, after) {
+export function releaseLibraryFileRows(
+  before: { named: boolean; albumId: number | null; trackId: number },
+  after: { albumId: number; trackId: number },
+) {
   if (!before.named || !before.albumId) return;
   if (before.albumId === after.albumId && before.trackId === after.trackId) return;
   unlinkLibraryAlbumTrackWithoutMedia(before.albumId, before.trackId);
@@ -994,7 +1198,15 @@ export function releaseLibraryFileRows(before, after) {
     unlinkLibraryAlbumTrackWithoutMedia(before.albumId, after.trackId);
 }
 
-const albumTracksStmt = db.prepare(
+export type LibraryAlbumTrack = LibraryTracksRow &
+  Pick<LibraryAlbumTracksRow, "disc_number" | "track_number"> & { has_files: number };
+
+type MatchableTrack = Pick<
+  LibraryAlbumTrack,
+  "id" | "title" | "identity_key" | "disc_number" | "track_number"
+>;
+
+const albumTracksStmt = db.prepare<[number], LibraryAlbumTrack>(
   `SELECT track.*, link.disc_number, link.track_number,
      EXISTS (
        SELECT 1 FROM library_media_files AS media
@@ -1037,7 +1249,10 @@ export const ALBUM_IS_OWNED = `(
 // A file without a recording ID is the album's song at its place, even
 // spelled another way, or with its title when either has no place; the
 // tagged one when an untagged copy sits beside it.
-function matchLibraryAlbumTrack(tracks, { title, discNumber, trackNumber }) {
+function matchLibraryAlbumTrack<T extends MatchableTrack>(
+  tracks: T[],
+  { title, discNumber, trackNumber }: { title: string; discNumber: number; trackNumber: number },
+) {
   const same = [
     ...new Map(
       tracks
@@ -1056,9 +1271,14 @@ function matchLibraryAlbumTrack(tracks, { title, discNumber, trackNumber }) {
   return tagged.length === 1 ? tagged[0] : null;
 }
 
-export function findLibraryAlbumTrack(albumKey, { title, discNumber, trackNumber }) {
+export function findLibraryAlbumTrack(
+  albumKey: string,
+  { title, discNumber, trackNumber }: { title: string; discNumber: number; trackNumber: number },
+) {
   const album = db
-    .prepare("SELECT id FROM library_albums WHERE identity_key = ?")
+    .prepare<[string], Pick<LibraryAlbumsRow, "id">>(
+      "SELECT id FROM library_albums WHERE identity_key = ?",
+    )
     .get(normalizeText(albumKey));
   if (!album) return null;
   return matchLibraryAlbumTrack(albumTracksStmt.all(album.id), { title, discNumber, trackNumber });
@@ -1067,7 +1287,7 @@ export function findLibraryAlbumTrack(albumKey, { title, discNumber, trackNumber
 // Of an artist's albums with one title, an untagged album or file belongs to
 // the only one, else the only one holding its tracks, else the only one of
 // those with files.
-function chooseLibraryAlbum(albums, titles) {
+function chooseLibraryAlbum(albums: LibraryAlbumsRow[], titles: string[]) {
   if (albums.length <= 1) return albums[0] || null;
   const holding = titles.length
     ? albums.filter((album) => {
@@ -1090,7 +1310,7 @@ function chooseLibraryAlbum(albums, titles) {
 // track is on several.
 function repairLibraryFileAlbums() {
   return db
-    .prepare(
+    .prepare<[]>(
       `UPDATE library_media_files SET album_id = (
        SELECT CASE WHEN COUNT(DISTINCT link.album_id) = 1 THEN MIN(link.album_id) END
        FROM library_album_tracks AS link WHERE link.track_id = library_media_files.track_id
@@ -1103,20 +1323,28 @@ function repairLibraryFileAlbums() {
     .run().changes;
 }
 
-const unlinkAlbumTrackStmt = db.prepare(
+const unlinkAlbumTrackStmt = db.prepare<[number, number]>(
   "DELETE FROM library_album_tracks WHERE album_id = ? AND track_id = ?",
 );
-const trackLinkedStmt = db.prepare("SELECT 1 FROM library_album_tracks WHERE track_id = ? LIMIT 1");
-const trackHasFileStmt = db.prepare("SELECT 1 FROM library_media_files WHERE track_id = ? LIMIT 1");
-const deleteTrackStmt = db.prepare("DELETE FROM library_tracks WHERE id = ?");
+const trackLinkedStmt = db.prepare<[number], { 1: number }>(
+  "SELECT 1 FROM library_album_tracks WHERE track_id = ? LIMIT 1",
+);
+const trackHasFileStmt = db.prepare<[number], { 1: number }>(
+  "SELECT 1 FROM library_media_files WHERE track_id = ? LIMIT 1",
+);
+const deleteTrackStmt = db.prepare<[number]>("DELETE FROM library_tracks WHERE id = ?");
 
-const moveAlbumFilesStmt = db.prepare(
+const moveAlbumFilesStmt = db.prepare<[number, number, number, number]>(
   "UPDATE library_media_files SET track_id = ?, updated_at = ? WHERE track_id = ? AND album_id = ?",
 );
 
 // A track becomes the matching track for one album. A track other albums
 // still list stays itself there, and only this album's files move.
-function becomeAlbumTrack(albumId, track, match) {
+function becomeAlbumTrack(
+  albumId: number,
+  track: Pick<LibraryTracksRow, "id">,
+  match: Pick<LibraryTracksRow, "id" | "identity_key">,
+) {
   unlinkAlbumTrackStmt.run(albumId, track.id);
   if (!trackLinkedStmt.get(track.id)) {
     rekeyLibraryTrack(track.id, match.identity_key);
@@ -1128,7 +1356,11 @@ function becomeAlbumTrack(albumId, track, match) {
 
 // A track takes its twin's identity only when nothing plays it under its
 // own: a tagged recording with files on another album stays that recording.
-function foldLibraryAlbum(album, tracks, target) {
+function foldLibraryAlbum(
+  album: LibraryAlbumsRow,
+  tracks: LibraryAlbumTrack[],
+  target: LibraryAlbumsRow,
+) {
   const targetTracks = albumTracksStmt.all(target.id);
   const dropped = [];
   for (const track of tracks) {
@@ -1152,7 +1384,7 @@ function foldLibraryAlbum(album, tracks, target) {
   for (const trackId of dropped) unlinkFilelessAlbumTrack(target.id, trackId);
 }
 
-function unlinkFilelessAlbumTrack(albumId, trackId) {
+function unlinkFilelessAlbumTrack(albumId: number, trackId: number) {
   unlinkAlbumTrackStmt.run(albumId, trackId);
   if (!trackLinkedStmt.get(trackId) && !trackHasFileStmt.get(trackId)) {
     deleteTrackStmt.run(trackId);
@@ -1162,7 +1394,7 @@ function unlinkFilelessAlbumTrack(albumId, trackId) {
   }
 }
 
-function removeEmptyLibraryAlbum(album, tracks) {
+function removeEmptyLibraryAlbum(album: LibraryAlbumsRow, tracks: LibraryAlbumTrack[]) {
   for (const track of tracks) unlinkFilelessAlbumTrack(album.id, track.id);
   deleteLibraryAlbumRow(album.id, album.artist_id);
 }
@@ -1171,7 +1403,7 @@ function removeEmptyLibraryAlbum(album, tracks) {
 // files for.
 function dropUnfiledAlbumTracks() {
   const links = db
-    .prepare(
+    .prepare<[], { albumId: number; trackId: number }>(
       `SELECT link.album_id AS albumId, link.track_id AS trackId
      FROM library_album_tracks AS link
      JOIN library_albums AS album ON album.id = link.album_id
@@ -1195,7 +1427,14 @@ function dropUnfiledAlbumTracks() {
 // track list it was requested with.
 export function getLibraryAlbumsToList() {
   const albums = db
-    .prepare(
+    .prepare<
+      [],
+      Pick<LibraryAlbumsRow, "id" | "mbid"> & {
+        releaseGroupMbid: string;
+        artistMbid: string | null;
+        listedFor: string | null;
+      }
+    >(
       `SELECT album.id, album.mbid, album.release_group_mbid AS releaseGroupMbid, artist.mbid AS artistMbid,
        CASE WHEN json_valid(album.metadata_json) THEN json_extract(album.metadata_json, '$.trackList.for') END AS listedFor
      FROM library_albums AS album
@@ -1206,7 +1445,11 @@ export function getLibraryAlbumsToList() {
      ORDER BY album.id`,
     )
     .iterate();
-  const albumFiles = db.prepare(
+  const albumFiles = db.prepare<
+    [number],
+    Pick<LibraryTracksRow, "mbid" | "title"> &
+      Pick<LibraryMediaFilesRow, "path"> & { mtimeMs: number | null }
+  >(
     `SELECT DISTINCT track.mbid, track.title, media.path, media.mtime_ms AS mtimeMs
      FROM library_album_tracks AS link
      JOIN library_tracks AS track ON track.id = link.track_id
@@ -1228,9 +1471,32 @@ export function getLibraryAlbumsToList() {
   return pending;
 }
 
+export type LibraryAlbumToList = ReturnType<typeof getLibraryAlbumsToList>[number];
+
+type ReleaseTrack = {
+  id?: string | null;
+  recordingId?: string | null;
+  oldRecordingIds?: string[];
+  title?: string | null;
+  artistId?: string | null;
+  mediumNumber?: number | null;
+  trackPosition?: number | null;
+  trackNumber?: number | null;
+};
+
+type AlbumRelease = { id?: string | null; tracks?: ReleaseTrack[] };
+
+type ReleaseGroup = {
+  artistId?: string | null;
+  artists?: { id?: string | null }[];
+  releases?: AlbumRelease[];
+};
+
+type LibraryAlbumFile = { mbid: string | null; title: string };
+
 // A release's track stands for its recording and the ones MusicBrainz merged
 // into it.
-const releaseRecordings = (track) =>
+const releaseRecordings = (track: ReleaseTrack) =>
   [track?.recordingId || track?.id, ...(track?.oldRecordingIds || [])]
     .map(normalizeText)
     .filter(Boolean);
@@ -1240,14 +1506,17 @@ const releaseRecordings = (track) =>
 // title when it is another artist's. A wrong guess tags files with a group
 // that holds none of them, or with another artist's group and recordings of
 // its other songs. An album without files lists the group it was asked for.
-export function isLibraryAlbumReleaseGroup({ artistMbid = null, files = [] }, group) {
+export function isLibraryAlbumReleaseGroup(
+  { artistMbid = null, files = [] }: { artistMbid?: string | null; files?: LibraryAlbumFile[] },
+  group: ReleaseGroup,
+) {
   if (!files.length) return true;
   const own =
     !artistMbid ||
     [group?.artistId, ...(group?.artists || []).map((artist) => artist.id)].includes(artistMbid);
   const tracks = (group?.releases || []).flatMap((release) => release.tracks || []);
-  const holds = (file, track) => {
-    const recorded = Boolean(file.mbid) && releaseRecordings(track).includes(file.mbid);
+  const holds = (file: LibraryAlbumFile, track: ReleaseTrack) => {
+    const recorded = Boolean(file.mbid) && releaseRecordings(track).includes(file.mbid!);
     if (own ? recorded : !recorded) return recorded;
     return isSameSong(track.title, file.title) || isSameSongAtPlace(track.title, file.title);
   };
@@ -1258,12 +1527,12 @@ export function isLibraryAlbumReleaseGroup({ artistMbid = null, files = [] }, gr
 // their recordings, then most of their songs by title, then the release they
 // are tagged with, then the standard one, then the shortest.
 export function chooseLibraryAlbumRelease(
-  { mbid = null, files = [] },
-  releases = [],
-  standard = null,
+  { mbid = null, files = [] }: { mbid?: string | null; files?: LibraryAlbumFile[] },
+  releases: AlbumRelease[] = [],
+  standard: AlbumRelease | null = null,
 ) {
   const fileSongs = files.map((file) => songKey(file.title)).filter(Boolean);
-  let best = null;
+  let best: { release: AlbumRelease; rank: number[] } | null = null;
   for (const release of releases) {
     if (!release?.tracks?.length) continue;
     const recordings = new Set(release.tracks.flatMap(releaseRecordings));
@@ -1272,10 +1541,10 @@ export function chooseLibraryAlbumRelease(
       files.filter((file) => file.mbid && recordings.has(file.mbid)).length,
       fileSongs.filter((song) => songs.has(song)).length,
       Number(release.id === mbid),
-      Number(Boolean(standard?.id) && release.id === standard.id),
+      Number(Boolean(standard?.id) && release.id === standard!.id),
       -release.tracks.length,
     ];
-    const differs = best ? rank.findIndex((value, index) => value !== best.rank[index]) : -1;
+    const differs = best ? rank.findIndex((value, index) => value !== best!.rank[index]) : -1;
     if (!best || (differs >= 0 && rank[differs] > best.rank[differs])) best = { release, rank };
   }
   return best?.release || standard;
@@ -1289,8 +1558,16 @@ export function chooseLibraryAlbumRelease(
 // an untagged copy then folds into its track. Missing tracks download only
 // once someone asks for them.
 export function storeLibraryAlbumTrackList(
-  albumId,
-  { release, basis = null, artistNameFor = () => null },
+  albumId: number,
+  {
+    release,
+    basis = null,
+    artistNameFor = () => null,
+  }: {
+    release: AlbumRelease | null;
+    basis?: string | null;
+    artistNameFor?: (track: ReleaseTrack) => string | null;
+  },
 ) {
   const tracks = (Array.isArray(release?.tracks) ? release.tracks : [])
     .map((track) => ({
@@ -1303,17 +1580,22 @@ export function storeLibraryAlbumTrackList(
     }))
     .filter((track) => track.mbid && track.title);
   const stored = db.transaction(() => {
-    const album = db.prepare("SELECT * FROM library_albums WHERE id = ?").get(albumId);
+    const album = db
+      .prepare<[number], LibraryAlbumsRow>("SELECT * FROM library_albums WHERE id = ?")
+      .get(albumId);
     if (!album) return false;
     const unused = albumTracksStmt.all(album.id);
-    const take = (entry) => entry && unused.splice(unused.indexOf(entry), 1)[0];
-    const places = tracks.map(() => null);
-    const fill = (find) => {
+    const take = (entry: LibraryAlbumTrack | null | undefined) =>
+      entry && unused.splice(unused.indexOf(entry), 1)[0];
+    const places: (LibraryAlbumTrack | null | undefined)[] = tracks.map(() => null);
+    type PlannedTrack = (typeof tracks)[number];
+    const fill = (find: (track: PlannedTrack) => LibraryAlbumTrack | null | undefined) => {
       for (const [index, track] of tracks.entries()) places[index] ||= take(find(track));
     };
-    const atPlace = (track) => (entry) =>
+    const atPlace = (track: PlannedTrack) => (entry: LibraryAlbumTrack) =>
       entry.disc_number === track.discNumber && entry.track_number === track.trackNumber;
-    const recorded = (track) => (entry) => track.mbids.includes(entry.mbid);
+    const recorded = (track: PlannedTrack) => (entry: LibraryAlbumTrack) =>
+      track.mbids.includes(entry.mbid);
     const files = () => unused.filter((entry) => entry.has_files);
     const songs = Map.groupBy(tracks, (track) => songKey(track.title));
     fill((track) => files().find((entry) => recorded(track)(entry) && atPlace(track)(entry)));
@@ -1328,7 +1610,7 @@ export function storeLibraryAlbumTrackList(
       const named = files().filter(
         (entry) => entry.mbid && songKey(entry.title) === songKey(track.title),
       );
-      return songs.get(songKey(track.title)).length === 1 && named.length === 1 ? named[0] : null;
+      return songs.get(songKey(track.title))!.length === 1 && named.length === 1 ? named[0] : null;
     });
     fill((track) => unused.find(recorded(track)));
     const recordings = [];
@@ -1340,7 +1622,11 @@ export function storeLibraryAlbumTrackList(
       }
       const key = buildIdentityKey("recording", track.mbid);
       const row =
-        db.prepare("SELECT * FROM library_tracks WHERE identity_key = ?").get(key) ||
+        db
+          .prepare<[string | null], LibraryTracksRow>(
+            "SELECT * FROM library_tracks WHERE identity_key = ?",
+          )
+          .get(key) ||
         upsertLibraryTrack({
           identityKey: key,
           mbid: track.mbid,
@@ -1355,7 +1641,7 @@ export function storeLibraryAlbumTrackList(
       });
       recordings.push(track.mbid);
     }
-    db.prepare(
+    db.prepare<[string, number, number]>(
       `UPDATE library_albums
        SET metadata_json = json_set(
            CASE WHEN NOT json_valid(metadata_json) THEN '{}' WHEN json_type(metadata_json) = 'object' THEN metadata_json ELSE '{}' END,
@@ -1373,6 +1659,9 @@ export function storeLibraryAlbumTrackList(
   return stored;
 }
 
+type LibraryTrackCopy = Pick<LibraryAlbumTracksRow, "album_id" | "disc_number" | "track_number"> &
+  Pick<LibraryTracksRow, "id" | "title" | "identity_key"> & { has_files: number; listed: number };
+
 // An untagged copy of a track its album already lists with MusicBrainz IDs
 // is that track: the one at its place, else, for copies numbered another way,
 // as one disc for a release of several, the only one with its title that has
@@ -1381,7 +1670,7 @@ export function storeLibraryAlbumTrackList(
 // carries, is the song the release lists at its place.
 function foldLibraryTrackCopies() {
   const links = db
-    .prepare(
+    .prepare<[], LibraryTrackCopy>(
       `SELECT link.album_id, link.disc_number, link.track_number, track.id, track.title, track.identity_key,
        EXISTS (
          SELECT 1 FROM library_media_files AS media
@@ -1410,7 +1699,7 @@ function foldLibraryTrackCopies() {
      ORDER BY link.album_id`,
     )
     .all();
-  const place = (track) => ({
+  const place = (track: LibraryTrackCopy) => ({
     title: track.title,
     discNumber: track.disc_number,
     trackNumber: track.track_number,
@@ -1421,17 +1710,17 @@ function foldLibraryTrackCopies() {
     const listed = tagged.filter((track) => track.listed);
     const copies = tagged
       .filter((track) => !track.listed && track.has_files)
-      .map((track) => [track, matchLibraryAlbumTrack(listed, place(track))])
+      .map((track) => [track, matchLibraryAlbumTrack(listed, place(track))] as const)
       .filter(([, match]) => match);
     const copied = new Set(copies.map(([track]) => track.id));
     const targets = tagged.filter((track) => !copied.has(track.id));
     const folds = tracks
       .filter((track) => isNameKey(track.identity_key))
-      .map((track) => [track, matchLibraryAlbumTrack(targets, place(track))]);
+      .map((track) => [track, matchLibraryAlbumTrack(targets, place(track))] as const);
     const filled = new Set(folds.map(([, match]) => match?.id));
     const left = folds.filter(([, match]) => !match).map(([track]) => track);
     for (const track of left) {
-      const named = (entry) => songKey(entry.title) === songKey(track.title);
+      const named = (entry: LibraryTrackCopy) => songKey(entry.title) === songKey(track.title);
       const songs = new Set(targets.filter(named).map((entry) => entry.id));
       const match =
         songs.size === 1 &&
@@ -1453,12 +1742,14 @@ function foldLibraryTrackCopies() {
 // into the album with its title, taking its files, favorites, and plays, as
 // does an album whose files all moved to another. One with no files and
 // nowhere to go is removed; its favorites and plays come back with it.
-const albumExistsStmt = db.prepare("SELECT 1 FROM library_albums WHERE id = ?");
-const artistAlbumsStmt = db.prepare(
+const albumExistsStmt = db.prepare<[number], { 1: number }>(
+  "SELECT 1 FROM library_albums WHERE id = ?",
+);
+const artistAlbumsStmt = db.prepare<[number, number], LibraryAlbumsRow>(
   "SELECT * FROM library_albums WHERE artist_id = ? AND id != ? ORDER BY id",
 );
 
-const markLibraryTidiedStmt = db.prepare(
+const markLibraryTidiedStmt = db.prepare<[number, number]>(
   "INSERT INTO library_scan_runs (source, status, started_at, completed_at) VALUES ('library-tidy', 'complete', ?, ?)",
 );
 
@@ -1477,7 +1768,7 @@ export function reconcileLibraryAlbums() {
 function reconcileAlbums() {
   let changed = repairLibraryFileAlbums();
   const albums = db
-    .prepare(
+    .prepare<[], LibraryAlbumsRow & { owned: number; has_files: number }>(
       `SELECT album.*, ${ALBUM_IS_OWNED} AS owned, ${ALBUM_HAS_FILES} AS has_files
      FROM library_albums AS album
      WHERE album.identity_key LIKE 'name:%' OR (NOT ${ALBUM_HAS_FILES} AND NOT ${ALBUM_IS_OWNED})
@@ -1518,7 +1809,7 @@ function reconcileAlbums() {
 // album folds into the album the release belongs to.
 export function mergeReleaseKeyedLibraryAlbums() {
   const pairs = db
-    .prepare(
+    .prepare<[], { duplicateId: number; duplicateKey: string; albumId: number; albumKey: string }>(
       `SELECT duplicate.id AS duplicateId, duplicate.identity_key AS duplicateKey,
        album.id AS albumId, album.identity_key AS albumKey
      FROM library_albums AS album
@@ -1530,7 +1821,7 @@ export function mergeReleaseKeyedLibraryAlbums() {
   if (pairs.length === 0) return 0;
   db.transaction(() => {
     for (const pair of pairs) {
-      db.prepare(
+      db.prepare<[number, number, number]>(
         `INSERT OR IGNORE INTO library_album_tracks (album_id, track_id, disc_number, track_number, created_at)
          SELECT ?, link.track_id, link.disc_number, link.track_number, link.created_at
          FROM library_album_tracks AS link
@@ -1538,21 +1829,22 @@ export function mergeReleaseKeyedLibraryAlbums() {
            SELECT 1 FROM library_album_tracks AS kept WHERE kept.album_id = ? AND kept.track_id = link.track_id
          )`,
       ).run(pair.albumId, pair.duplicateId, pair.albumId);
-      db.prepare("UPDATE library_media_files SET album_id = ? WHERE album_id = ?").run(
-        pair.albumId,
-        pair.duplicateId,
-      );
-      db.prepare(
+      db.prepare<[number, number]>(
+        "UPDATE library_media_files SET album_id = ? WHERE album_id = ?",
+      ).run(pair.albumId, pair.duplicateId);
+      db.prepare<[string, string]>(
         `INSERT OR IGNORE INTO subsonic_stars (user_id, entity_kind, entity_key, created_at)
          SELECT user_id, entity_kind, ?, created_at FROM subsonic_stars
          WHERE entity_kind = 'album' AND entity_key = ?`,
       ).run(pair.albumKey, pair.duplicateKey);
-      db.prepare("DELETE FROM subsonic_stars WHERE entity_kind = 'album' AND entity_key = ?").run(
-        pair.duplicateKey,
+      db.prepare<[string]>(
+        "DELETE FROM subsonic_stars WHERE entity_kind = 'album' AND entity_key = ?",
+      ).run(pair.duplicateKey);
+      db.prepare<[number]>("DELETE FROM library_album_tracks WHERE album_id = ?").run(
+        pair.duplicateId,
       );
-      db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(pair.duplicateId);
       clearLibraryManagement("album", pair.duplicateId);
-      db.prepare("DELETE FROM library_albums WHERE id = ?").run(pair.duplicateId);
+      db.prepare<[number]>("DELETE FROM library_albums WHERE id = ?").run(pair.duplicateId);
       removeLibrarySearchDocument("album", pair.duplicateId);
       touchLibraryAlbum(pair.albumId);
     }
@@ -1562,11 +1854,13 @@ export function mergeReleaseKeyedLibraryAlbums() {
   return pairs.length;
 }
 
-const isAsciiText = (column) => `length(CAST(${column} AS BLOB)) = length(${column})`;
+const isAsciiText = (column: string) => `length(CAST(${column} AS BLOB)) = length(${column})`;
 
 // Whether a stored key is the one scans wrote before key parts kept letters
 // ASCII cannot spell, for names whose key now keeps them. Such keys are ASCII.
-const isLegacyFallbackKey = (key, build) => {
+type KeyBuilder = (part: KeyPart) => string | null;
+
+const isLegacyFallbackKey = (key: string, build: KeyBuilder) => {
   const legacy = build(asciiKeyPart);
   return legacy === key && legacy !== build(normalizeKeyPart);
 };
@@ -1575,20 +1869,25 @@ const legacyAlbumKeyBuilders = ({
   album_title: title,
   album_artist: albumArtist,
   artist_mbid: artistMbid,
+}: {
+  album_title: string;
+  album_artist: string | null;
+  artist_mbid: string | null;
 }) =>
   [
     albumArtist &&
-      ((part) =>
+      ((part: KeyPart) =>
         joinFallbackKey(part, ["album", joinFallbackKey(part, ["artist", albumArtist]), title])),
     artistMbid &&
-      ((part) => joinFallbackKey(part, ["album", buildIdentityKey("mbid", artistMbid), title])),
-  ].filter(Boolean);
+      ((part: KeyPart) =>
+        joinFallbackKey(part, ["album", buildIdentityKey("mbid", artistMbid), title])),
+  ].filter(Boolean) as KeyBuilder[];
 
 const MBID_GLOB = [8, 4, 4, 4, 12].map((length) => "[0-9a-f]".repeat(length)).join("-");
 
-const keyedByForeignIds = (table, prefixes) =>
+const keyedByForeignIds = (table: string, prefixes: string[]) =>
   db
-    .prepare(
+    .prepare<[], number>(
       `SELECT id FROM ${table} WHERE ${prefixes
         .map(
           (prefix) =>
@@ -1599,13 +1898,27 @@ const keyedByForeignIds = (table, prefixes) =>
     .pluck()
     .all();
 
+type LegacyAlbumRow = Pick<LibraryAlbumsRow, "id" | "identity_key"> & {
+  album_title: string;
+  album_artist: string | null;
+  artist_mbid: string | null;
+};
+
+type LegacyTrackRow = Pick<LibraryTracksRow, "id" | "identity_key" | "title"> &
+  Pick<LibraryAlbumTracksRow, "disc_number" | "track_number"> & {
+    album_key: string;
+    album_title: string;
+    album_artist: string | null;
+    artist_mbid: string | null;
+  };
+
 // Scans once gave every name written only in letters ASCII cannot spell the
 // same key, so such artists, albums, and tracks share rows, and took any value
 // in a MusicBrainz ID tag as an ID, capitals or another service's ID. These
 // are the files on rows still keyed that way, which a scan reads again.
-export function findLegacyKeyedLibraryFiles(source) {
+export function findLegacyKeyedLibraryFiles(source: string) {
   const artistIds = db
-    .prepare(
+    .prepare<[], Pick<LibraryArtistsRow, "id" | "identity_key" | "name">>(
       `SELECT id, identity_key, name FROM library_artists
      WHERE identity_key LIKE 'name:%' AND ${isAsciiText("identity_key")} AND NOT ${isAsciiText("name")}`,
     )
@@ -1619,7 +1932,7 @@ export function findLegacyKeyedLibraryFiles(source) {
     )
     .map((artist) => artist.id);
   const albumIds = db
-    .prepare(
+    .prepare<[], LegacyAlbumRow>(
       `SELECT album.id, album.identity_key, album.title AS album_title, album.album_artist,
        artist.mbid AS artist_mbid
      FROM library_albums AS album
@@ -1637,7 +1950,7 @@ export function findLegacyKeyedLibraryFiles(source) {
     )
     .map((album) => album.id);
   const trackIds = db
-    .prepare(
+    .prepare<[], LegacyTrackRow>(
       `SELECT track.id, track.identity_key, track.title, link.disc_number, link.track_number,
        album.identity_key AS album_key, album.title AS album_title, album.album_artist,
        artist.mbid AS artist_mbid
@@ -1670,10 +1983,10 @@ export function findLegacyKeyedLibraryFiles(source) {
   albumIds.push(...keyedByForeignIds("library_albums", ["release-group", "album"]));
   trackIds.push(...keyedByForeignIds("library_tracks", ["recording"]));
   if (!artistIds.length && !albumIds.length && !trackIds.length) {
-    return { paths: new Set(), albumIds: new Set() };
+    return { paths: new Set<string>(), albumIds: new Set<number>() };
   }
   const paths = db
-    .prepare(
+    .prepare<[string, string, string, string], string>(
       `SELECT path FROM library_media_files
      WHERE source = ? AND (
        track_id IN (SELECT value FROM json_each(?))
@@ -1703,18 +2016,27 @@ const CARRIED_ARTIST_METADATA_KEYS = [
 
 // Plays move to the album whose title they name as soon as it has split off.
 // The shared row's last split also takes what no title claims.
-function moveLegacyAlbumPlays(album, targets, { final }) {
-  const counts = new Map();
-  const count = (userId, target, plays, playedAt) => {
+function moveLegacyAlbumPlays(
+  album: LibraryAlbumsRow,
+  targets: LibraryAlbumsRow[],
+  { final }: { final: boolean },
+) {
+  const counts = new Map<
+    string,
+    { userId: number; target: LibraryAlbumsRow; plays: number; playedAt: number }
+  >();
+  const count = (userId: number, target: LibraryAlbumsRow, plays: number, playedAt: number) => {
     const key = `${userId}:${target.id}`;
     const entry = counts.get(key) || { userId, target, plays: 0, playedAt: 0 };
     entry.plays += plays;
     entry.playedAt = Math.max(entry.playedAt, Number(playedAt) || 0);
     counts.set(key, entry);
   };
-  const movedByUser = new Map();
+  const movedByUser = new Map<number, number>();
   for (const event of db
-    .prepare("SELECT id, user_id, artist, album, played_at FROM play_events WHERE album_key = ?")
+    .prepare<[string], Pick<PlayEventsRow, "id" | "user_id" | "artist" | "album" | "played_at">>(
+      "SELECT id, user_id, artist, album, played_at FROM play_events WHERE album_key = ?",
+    )
     .all(album.identity_key)) {
     const target =
       targets.find(
@@ -1725,27 +2047,27 @@ function moveLegacyAlbumPlays(album, targets, { final }) {
       targets.find((entry) => isSameLibraryName(entry.title, event.album)) ||
       (final ? targets[0] : null);
     if (!target) continue;
-    db.prepare("UPDATE play_events SET album_key = ? WHERE id = ?").run(
+    db.prepare<[string, number]>("UPDATE play_events SET album_key = ? WHERE id = ?").run(
       target.identity_key,
       event.id,
     );
     count(event.user_id, target, 1, event.played_at);
     movedByUser.set(event.user_id, (movedByUser.get(event.user_id) || 0) + 1);
   }
-  const takePlays = db.prepare(
+  const takePlays = db.prepare<[number, number, string]>(
     "UPDATE play_album_stats SET play_count = MAX(play_count - ?, 0) WHERE user_id = ? AND album_key = ?",
   );
   for (const [userId, moved] of movedByUser) takePlays.run(moved, userId, album.identity_key);
   if (final) {
     for (const stats of db
-      .prepare(
+      .prepare<[string], Pick<PlayAlbumStatsRow, "user_id" | "play_count" | "last_played_at">>(
         "SELECT user_id, play_count, last_played_at FROM play_album_stats WHERE album_key = ? AND play_count > 0",
       )
       .all(album.identity_key)) {
       count(stats.user_id, targets[0], stats.play_count, stats.last_played_at);
     }
   }
-  const addPlays = db.prepare(
+  const addPlays = db.prepare<[number, string, number, number]>(
     `INSERT INTO play_album_stats (user_id, album_key, play_count, last_played_at)
      VALUES (?, ?, ?, ?)
      ON CONFLICT (user_id, album_key) DO UPDATE SET
@@ -1755,15 +2077,36 @@ function moveLegacyAlbumPlays(album, targets, { final }) {
   for (const entry of counts.values()) {
     addPlays.run(entry.userId, entry.target.identity_key, entry.plays, entry.playedAt);
   }
-  if (final) db.prepare("DELETE FROM play_album_stats WHERE album_key = ?").run(album.identity_key);
+  if (final)
+    db.prepare<[string]>("DELETE FROM play_album_stats WHERE album_key = ?").run(
+      album.identity_key,
+    );
 }
+
+type LegacyKeyedMove = {
+  fromTrackId: number;
+  toTrackId: number;
+  fromAlbumId: number | null;
+  toAlbumId: number;
+  fromArtistId?: number | null;
+  toArtistId: number;
+};
+
+type LibraryRowByTable = {
+  library_tracks: LibraryTracksRow;
+  library_albums: LibraryAlbumsRow;
+  library_artists: LibraryArtistsRow;
+};
 
 // A scan files what shared a legacy key under rows of its own. Each of those
 // rows gets the shared row's favorites, monitoring, and the plays naming it,
 // since a split can take more than one scan. Once no file is left on the
 // shared row, the rest of its plays and its queue places move, and it goes.
-export function splitLegacyKeyedLibraryRows(moves) {
-  const targetsOf = (from, to) => {
+export function splitLegacyKeyedLibraryRows(moves: LegacyKeyedMove[]) {
+  const targetsOf = (
+    from: "fromTrackId" | "fromAlbumId" | "fromArtistId",
+    to: "toTrackId" | "toAlbumId" | "toArtistId",
+  ) => {
     const targets = new Map();
     for (const move of moves) {
       if (move[from] == null || move[to] == null || move[from] === move[to]) continue;
@@ -1772,15 +2115,26 @@ export function splitLegacyKeyedLibraryRows(moves) {
     }
     return targets;
   };
-  const rows = (table, fromId, toIds) => {
-    const read = db.prepare(`SELECT * FROM ${table} WHERE id = ?`);
-    return { row: read.get(fromId), targets: [...toIds].map((id) => read.get(id)).filter(Boolean) };
+  const rows = <T extends keyof LibraryRowByTable>(
+    table: T,
+    fromId: number,
+    toIds: Set<number>,
+  ) => {
+    const read = db.prepare<[number], LibraryRowByTable[T]>(`SELECT * FROM ${table} WHERE id = ?`);
+    return {
+      row: read.get(fromId),
+      targets: [...toIds].map((id) => read.get(id)).filter(Boolean) as LibraryRowByTable[T][],
+    };
   };
-  const removed = { track: [], album: [], artist: [] };
+  const removed: { track: number[]; album: number[]; artist: number[] } = {
+    track: [],
+    album: [],
+    artist: [],
+  };
   db.transaction(() => {
     for (const move of moves) {
       if (move.fromAlbumId == null || move.fromAlbumId === move.toAlbumId) continue;
-      db.prepare(
+      db.prepare<[number, number, number, number]>(
         `DELETE FROM library_album_tracks WHERE album_id = ? AND track_id = ? AND NOT EXISTS (
            SELECT 1 FROM library_media_files WHERE album_id = ? AND track_id = ?
          )`,
@@ -1793,16 +2147,24 @@ export function splitLegacyKeyedLibraryRows(moves) {
         copyLibraryStars("song", track.identity_key, target.identity_key);
       if (track.monitored === 1) {
         for (const target of targets) {
-          db.prepare("UPDATE library_tracks SET monitored = 1 WHERE id = ?").run(target.id);
+          db.prepare<[number]>("UPDATE library_tracks SET monitored = 1 WHERE id = ?").run(
+            target.id,
+          );
         }
       }
-      if (db.prepare("SELECT 1 FROM library_media_files WHERE track_id = ? LIMIT 1").get(track.id))
+      if (
+        db
+          .prepare<[number], { 1: number }>(
+            "SELECT 1 FROM library_media_files WHERE track_id = ? LIMIT 1",
+          )
+          .get(track.id)
+      )
         continue;
       moveQueuedLibrarySong(track.identity_key, targets[0].identity_key);
-      db.prepare("DELETE FROM subsonic_stars WHERE entity_kind = 'song' AND entity_key = ?").run(
-        track.identity_key,
-      );
-      db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);
+      db.prepare<[string]>(
+        "DELETE FROM subsonic_stars WHERE entity_kind = 'song' AND entity_key = ?",
+      ).run(track.identity_key);
+      db.prepare<[number]>("DELETE FROM library_tracks WHERE id = ?").run(track.id);
       removed.track.push(track.id);
     }
     for (const [fromId, toIds] of targetsOf("fromAlbumId", "toAlbumId")) {
@@ -1811,7 +2173,7 @@ export function splitLegacyKeyedLibraryRows(moves) {
       for (const target of targets)
         copyLibraryStars("album", album.identity_key, target.identity_key);
       const final = !db
-        .prepare(
+        .prepare<[number, number], { 1: number }>(
           `SELECT 1 FROM library_media_files WHERE album_id = ?
          UNION ALL SELECT 1 FROM library_album_tracks WHERE album_id = ? LIMIT 1`,
         )
@@ -1819,7 +2181,7 @@ export function splitLegacyKeyedLibraryRows(moves) {
       moveLegacyAlbumPlays(album, targets, { final });
       const monitored = dbHelpers.parseJSON(album.metadata_json)?.monitored === true;
       for (const target of targets) {
-        db.prepare(
+        db.prepare<[number, number]>(
           `INSERT INTO library_management
             (entity_kind, entity_id, managed_by, monitor_mode, created_at, updated_at, last_missing_search_at)
            SELECT 'album', ?, managed_by, monitor_mode, created_at, updated_at, last_missing_search_at
@@ -1829,7 +2191,7 @@ export function splitLegacyKeyedLibraryRows(moves) {
            WHERE library_management.managed_by = excluded.managed_by`,
         ).run(target.id, album.id);
         if (monitored) {
-          db.prepare(
+          db.prepare<[number, number]>(
             `UPDATE library_albums
              SET metadata_json = json_set(
                CASE WHEN json_valid(metadata_json) THEN metadata_json ELSE '{}' END,
@@ -1842,11 +2204,11 @@ export function splitLegacyKeyedLibraryRows(moves) {
         }
       }
       if (!final) continue;
-      db.prepare("DELETE FROM subsonic_stars WHERE entity_kind = 'album' AND entity_key = ?").run(
-        album.identity_key,
-      );
+      db.prepare<[string]>(
+        "DELETE FROM subsonic_stars WHERE entity_kind = 'album' AND entity_key = ?",
+      ).run(album.identity_key);
       clearLibraryManagement("album", album.id);
-      db.prepare("DELETE FROM library_albums WHERE id = ?").run(album.id);
+      db.prepare<[number]>("DELETE FROM library_albums WHERE id = ?").run(album.id);
       removed.album.push(album.id);
     }
     for (const [fromId, toIds] of targetsOf("fromArtistId", "toArtistId")) {
@@ -1861,7 +2223,9 @@ export function splitLegacyKeyedLibraryRows(moves) {
           (key) => metadata[key] !== undefined && targetMetadata[key] === undefined,
         );
         if (carried.length) {
-          db.prepare("UPDATE library_artists SET metadata_json = ? WHERE id = ?").run(
+          db.prepare<[string | null, number]>(
+            "UPDATE library_artists SET metadata_json = ? WHERE id = ?",
+          ).run(
             stringify({
               ...targetMetadata,
               ...Object.fromEntries(carried.map((key) => [key, metadata[key]])),
@@ -1869,20 +2233,26 @@ export function splitLegacyKeyedLibraryRows(moves) {
             target.id,
           );
         }
-        db.prepare(
+        db.prepare<[number, number]>(
           `INSERT OR IGNORE INTO library_management
             (entity_kind, entity_id, managed_by, monitor_mode, monitor_rules, created_at, updated_at, last_missing_search_at)
            SELECT entity_kind, ?, managed_by, monitor_mode, monitor_rules, created_at, updated_at, last_missing_search_at
            FROM library_management WHERE entity_kind = 'artist' AND entity_id = ?`,
         ).run(target.id, artist.id);
       }
-      if (db.prepare("SELECT 1 FROM library_albums WHERE artist_id = ? LIMIT 1").get(artist.id))
+      if (
+        db
+          .prepare<[number], { 1: number }>(
+            "SELECT 1 FROM library_albums WHERE artist_id = ? LIMIT 1",
+          )
+          .get(artist.id)
+      )
         continue;
-      db.prepare("DELETE FROM subsonic_stars WHERE entity_kind = 'artist' AND entity_key = ?").run(
-        artist.identity_key,
-      );
+      db.prepare<[string]>(
+        "DELETE FROM subsonic_stars WHERE entity_kind = 'artist' AND entity_key = ?",
+      ).run(artist.identity_key);
       clearLibraryManagement("artist", artist.id);
-      db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
+      db.prepare<[number]>("DELETE FROM library_artists WHERE id = ?").run(artist.id);
       removed.artist.push(artist.id);
     }
   }).immediate();
@@ -1893,25 +2263,29 @@ export function splitLegacyKeyedLibraryRows(moves) {
   invalidateLibraryCache();
 }
 
-export function removeLibraryTrackIfNoAvailableMedia(trackId) {
+export function removeLibraryTrackIfNoAvailableMedia(trackId: number) {
   const normalizedTrackId = Number(trackId);
   if (!Number.isSafeInteger(normalizedTrackId)) return false;
   const removed = db.transaction(() => {
     const mediaFiles = db
-      .prepare("SELECT album_id, available FROM library_media_files WHERE track_id = ?")
+      .prepare<[number], Pick<LibraryMediaFilesRow, "album_id" | "available">>(
+        "SELECT album_id, available FROM library_media_files WHERE track_id = ?",
+      )
       .all(normalizedTrackId);
     if (!mediaFiles.length || mediaFiles.some((file) => file.available === 1)) return false;
 
     const albumIds = new Set([
       ...db
-        .prepare("SELECT album_id FROM library_album_tracks WHERE track_id = ?")
+        .prepare<[number], Pick<LibraryAlbumTracksRow, "album_id">>(
+          "SELECT album_id FROM library_album_tracks WHERE track_id = ?",
+        )
         .all(normalizedTrackId)
         .map((row) => row.album_id),
       ...mediaFiles.map((file) => file.album_id).filter((albumId) => albumId != null),
     ]);
     const artistIds = new Set(
       db
-        .prepare(
+        .prepare<number[], Pick<LibraryAlbumsRow, "artist_id">>(
           `SELECT artist_id
          FROM library_albums
          WHERE id IN (${[...albumIds].map(() => "?").join(",") || "NULL"})`,
@@ -1921,13 +2295,17 @@ export function removeLibraryTrackIfNoAvailableMedia(trackId) {
     );
 
     removeLibrarySearchDocument("track", normalizedTrackId);
-    db.prepare("DELETE FROM library_media_files WHERE track_id = ?").run(normalizedTrackId);
-    db.prepare("DELETE FROM library_album_tracks WHERE track_id = ?").run(normalizedTrackId);
-    db.prepare("DELETE FROM library_tracks WHERE id = ?").run(normalizedTrackId);
+    db.prepare<[number]>("DELETE FROM library_media_files WHERE track_id = ?").run(
+      normalizedTrackId,
+    );
+    db.prepare<[number]>("DELETE FROM library_album_tracks WHERE track_id = ?").run(
+      normalizedTrackId,
+    );
+    db.prepare<[number]>("DELETE FROM library_tracks WHERE id = ?").run(normalizedTrackId);
 
     for (const albumId of albumIds) {
       const result = db
-        .prepare(
+        .prepare<[number, number]>(
           `DELETE FROM library_albums
          WHERE id = ?
            AND NOT EXISTS (SELECT 1 FROM library_album_tracks WHERE album_id = ?)`,
@@ -1938,7 +2316,7 @@ export function removeLibraryTrackIfNoAvailableMedia(trackId) {
     }
     for (const artistId of artistIds) {
       const result = db
-        .prepare(
+        .prepare<[number, number]>(
           `DELETE FROM library_artists
          WHERE id = ?
            AND NOT EXISTS (SELECT 1 FROM library_albums WHERE artist_id = ?)`,
@@ -1952,12 +2330,12 @@ export function removeLibraryTrackIfNoAvailableMedia(trackId) {
   return removed;
 }
 
-export function removeLibraryArtistIfEmpty(artistId) {
+export function removeLibraryArtistIfEmpty(artistId: number) {
   const normalizedArtistId = Number(artistId);
   if (!Number.isSafeInteger(normalizedArtistId)) return false;
   const removed =
     db
-      .prepare(
+      .prepare<[number, number]>(
         `DELETE FROM library_artists
      WHERE id = ?
        AND NOT EXISTS (SELECT 1 FROM library_albums WHERE artist_id = ?)`,
@@ -1970,13 +2348,13 @@ export function removeLibraryArtistIfEmpty(artistId) {
   return removed;
 }
 
-export function removeLibraryAlbumTracksWithoutAvailableMedia(albumId) {
+export function removeLibraryAlbumTracksWithoutAvailableMedia(albumId: number) {
   const normalizedAlbumId = Number(albumId);
   if (!Number.isSafeInteger(normalizedAlbumId)) return { albumRemoved: false };
   const result = db
     .transaction(() => {
       const trackIds = db
-        .prepare(
+        .prepare<[number], { id: number }>(
           `SELECT link.track_id AS id
        FROM library_album_tracks link
        WHERE link.album_id = ?
@@ -1989,37 +2367,37 @@ export function removeLibraryAlbumTracksWithoutAvailableMedia(albumId) {
         .map((row) => row.id);
 
       for (const trackId of trackIds) {
-        db.prepare("DELETE FROM library_album_tracks WHERE album_id = ? AND track_id = ?").run(
-          normalizedAlbumId,
-          trackId,
-        );
+        db.prepare<[number, number]>(
+          "DELETE FROM library_album_tracks WHERE album_id = ? AND track_id = ?",
+        ).run(normalizedAlbumId, trackId);
         const linkedElsewhere = db
-          .prepare("SELECT 1 FROM library_album_tracks WHERE track_id = ? LIMIT 1")
+          .prepare<[number], { 1: number }>(
+            "SELECT 1 FROM library_album_tracks WHERE track_id = ? LIMIT 1",
+          )
           .get(trackId);
         if (linkedElsewhere) {
-          db.prepare("DELETE FROM library_media_files WHERE track_id = ? AND album_id = ?").run(
-            trackId,
-            normalizedAlbumId,
-          );
+          db.prepare<[number, number]>(
+            "DELETE FROM library_media_files WHERE track_id = ? AND album_id = ?",
+          ).run(trackId, normalizedAlbumId);
           continue;
         }
         removeLibrarySearchDocument("track", trackId);
-        db.prepare("DELETE FROM library_media_files WHERE track_id = ?").run(trackId);
-        db.prepare("DELETE FROM library_tracks WHERE id = ?").run(trackId);
+        db.prepare<[number]>("DELETE FROM library_media_files WHERE track_id = ?").run(trackId);
+        db.prepare<[number]>("DELETE FROM library_tracks WHERE id = ?").run(trackId);
       }
 
       const albumRemoved =
         db
-          .prepare(
+          .prepare<[number, number]>(
             `DELETE FROM library_albums
        WHERE id = ?
          AND NOT EXISTS (SELECT 1 FROM library_album_tracks WHERE album_id = ?)`,
           )
           .run(normalizedAlbumId, normalizedAlbumId).changes > 0;
       if (albumRemoved) {
-        db.prepare("DELETE FROM library_media_files WHERE album_id = ? AND available = 0").run(
-          normalizedAlbumId,
-        );
+        db.prepare<[number]>(
+          "DELETE FROM library_media_files WHERE album_id = ? AND available = 0",
+        ).run(normalizedAlbumId);
         removeLibrarySearchDocument("album", normalizedAlbumId);
       } else {
         touchLibraryAlbum(normalizedAlbumId);
@@ -2044,6 +2422,19 @@ export function upsertLibraryMediaFile({
   artistTag = null,
   available = true,
   scanId,
+}: {
+  trackId: number;
+  albumId?: number | null;
+  source: string;
+  path: string;
+  format?: string | null;
+  size?: number;
+  mtimeMs?: number | null;
+  durationMs?: number | null;
+  quality?: unknown;
+  artistTag?: string | null;
+  available?: boolean;
+  scanId: number;
 }) {
   const filePath = normalizeText(path);
   const fileSource = normalizeText(source);
@@ -2095,17 +2486,22 @@ export function upsertLibraryMediaFile({
   return getLibraryMediaFileStmt.get(fileSource, filePath);
 }
 
-export function getAvailableLibraryMediaPaths(source, scopes = null) {
+export function getAvailableLibraryMediaPaths(source: string, scopes: string[] | null = null) {
   const mediaSource = normalizeText(source);
   const paths = new Set();
   if (!Array.isArray(scopes)) {
     for (const row of db
-      .prepare("SELECT path FROM library_media_files WHERE source = ? AND available = 1")
+      .prepare<[string], Pick<LibraryMediaFilesRow, "path">>(
+        "SELECT path FROM library_media_files WHERE source = ? AND available = 1",
+      )
       .iterate(mediaSource))
       paths.add(row.path);
     return paths;
   }
-  const readScope = db.prepare(
+  const readScope = db.prepare<
+    [string, string, string, string, string],
+    Pick<LibraryMediaFilesRow, "path">
+  >(
     `SELECT path FROM library_media_files WHERE source = ? AND available = 1 AND path = ?
      UNION ALL
      SELECT path FROM library_media_files
@@ -2121,20 +2517,22 @@ export function getAvailableLibraryMediaPaths(source, scopes = null) {
   return paths;
 }
 
-export function getLibraryMediaPaths(source) {
+export function getLibraryMediaPaths(source: string) {
   return new Set(
     db
-      .prepare("SELECT path FROM library_media_files WHERE source = ?")
+      .prepare<[string], Pick<LibraryMediaFilesRow, "path">>(
+        "SELECT path FROM library_media_files WHERE source = ?",
+      )
       .all(normalizeText(source))
       .map((row) => row.path),
   );
 }
 
-export function markLibraryMediaFilesUnavailable(source, paths) {
+export function markLibraryMediaFilesUnavailable(source: string, paths: string[]) {
   const mediaSource = normalizeText(source);
   const missingPaths = [...new Set(paths)].map(normalizeText).filter(Boolean);
   if (!mediaSource || missingPaths.length === 0) return [];
-  const update = db.prepare(
+  const update = db.prepare<[number, string, string]>(
     `UPDATE library_media_files
      SET available = 0, updated_at = ?
      WHERE source = ? AND path = ? AND available = 1`,
@@ -2147,14 +2545,16 @@ export function markLibraryMediaFilesUnavailable(source, paths) {
 }
 
 // A file a scan cannot find is gone. Touching its song tells clients it changed.
-export function removeMissingLibraryMediaFiles(source, paths) {
+export function removeMissingLibraryMediaFiles(source: string, paths: string[]) {
   const mediaSource = normalizeText(source);
   const missingPaths = [...new Set(paths)].map(normalizeText).filter(Boolean);
   if (!mediaSource || missingPaths.length === 0) return [];
-  const remove = db.prepare(
+  const remove = db.prepare<[string, string], Pick<LibraryMediaFilesRow, "track_id">>(
     "DELETE FROM library_media_files WHERE source = ? AND path = ? RETURNING track_id",
   );
-  const touchTrack = db.prepare("UPDATE library_tracks SET updated_at = ? WHERE id = ?");
+  const touchTrack = db.prepare<[number, number]>(
+    "UPDATE library_tracks SET updated_at = ? WHERE id = ?",
+  );
   const removed = db.transaction(() =>
     missingPaths.filter((filePath) => {
       const rows = remove.all(mediaSource, filePath);
@@ -2166,7 +2566,7 @@ export function removeMissingLibraryMediaFiles(source, paths) {
   return removed;
 }
 
-export function removeLibraryMediaFiles(source, paths) {
+export function removeLibraryMediaFiles(source: string, paths: string[]) {
   const mediaSource = normalizeText(source);
   const removedPaths = [...new Set(paths)].map(normalizeText).filter(Boolean);
   let removed = 0;
@@ -2174,13 +2574,17 @@ export function removeLibraryMediaFiles(source, paths) {
     const file = getLibraryMediaFileStmt.get(mediaSource, filePath);
     if (!file) continue;
     const otherFiles = db
-      .prepare("SELECT COUNT(*) AS count FROM library_media_files WHERE track_id = ? AND id != ?")
-      .get(file.track_id, file.id).count;
+      .prepare<[number, number], { count: number }>(
+        "SELECT COUNT(*) AS count FROM library_media_files WHERE track_id = ? AND id != ?",
+      )
+      .get(file.track_id, file.id)!.count;
     if (otherFiles === 0) {
-      db.prepare("UPDATE library_media_files SET available = 0 WHERE id = ?").run(file.id);
+      db.prepare<[number]>("UPDATE library_media_files SET available = 0 WHERE id = ?").run(
+        file.id,
+      );
       removeLibraryTrackIfNoAvailableMedia(file.track_id);
     } else {
-      db.prepare("DELETE FROM library_media_files WHERE id = ?").run(file.id);
+      db.prepare<[number]>("DELETE FROM library_media_files WHERE id = ?").run(file.id);
     }
     removed += 1;
   }
@@ -2188,12 +2592,16 @@ export function removeLibraryMediaFiles(source, paths) {
   return removed;
 }
 
-export async function withLibraryScan(source, rootPath, run) {
+export async function withLibraryScan(
+  source: string,
+  rootPath: string | null,
+  run: (scanId: number) => Promise<LibraryScanCounts>,
+) {
   const parentScan = libraryScanContext.getStore();
   const scan = { changed: false };
   return libraryScanContext.run(scan, async () => {
     libraryScanDepth += 1;
-    let scanId;
+    let scanId: number | undefined;
     try {
       scanId = beginLibraryScan({ source, rootPath });
       const result = await run(scanId);
@@ -2213,7 +2621,7 @@ export async function withLibraryScan(source, rootPath, run) {
   });
 }
 
-export function getLibraryMediaFile({ source, path }) {
+export function getLibraryMediaFile({ source, path }: { source: string; path: string }) {
   return getLibraryMediaFileStmt.get(normalizeText(source), normalizeText(path));
 }
 
@@ -2230,7 +2638,7 @@ const AURRAL_REQUESTED_ALBUM = `
 export function assignLidarrAlbumOwners() {
   const timestamp = now();
   const changed = db
-    .prepare(
+    .prepare<[number, number]>(
       `INSERT INTO library_management (entity_kind, entity_id, managed_by, monitor_mode, created_at, updated_at)
      SELECT 'album', album.id, 'lidarr', NULL, ?, ?
      FROM library_albums AS album
@@ -2268,7 +2676,7 @@ const LIDARR_METADATA_PATHS = [...LIDARR_METADATA_KEYS, "monitorOption"]
 export function hasLidarrLibraryData() {
   return (
     db
-      .prepare(
+      .prepare<[], { present: number }>(
         `SELECT EXISTS (SELECT 1 FROM library_media_files WHERE source = 'lidarr')
        OR EXISTS (SELECT 1 FROM library_management WHERE managed_by = 'lidarr')
        OR EXISTS (
@@ -2280,7 +2688,7 @@ export function hasLidarrLibraryData() {
          WHERE json_valid(metadata_json) AND json_extract(metadata_json, '$.librarySource') = 'lidarr'
        ) AS present`,
       )
-      .get().present === 1
+      .get()!.present === 1
   );
 }
 
@@ -2289,12 +2697,16 @@ export function removeLidarrLibrary() {
   const timestamp = now();
   db.transaction(() => {
     const trackIds = db
-      .prepare("SELECT DISTINCT track_id FROM library_media_files WHERE source = 'lidarr'")
+      .prepare<[], number>(
+        "SELECT DISTINCT track_id FROM library_media_files WHERE source = 'lidarr'",
+      )
       .pluck()
       .all();
-    db.prepare("DELETE FROM library_media_files WHERE source = 'lidarr'").run();
-    const hasMedia = db.prepare("SELECT 1 FROM library_media_files WHERE track_id = ? LIMIT 1");
-    const unlinkOutsideAurral = db.prepare(
+    db.prepare<[]>("DELETE FROM library_media_files WHERE source = 'lidarr'").run();
+    const hasMedia = db.prepare<[number], { 1: number }>(
+      "SELECT 1 FROM library_media_files WHERE track_id = ? LIMIT 1",
+    );
+    const unlinkOutsideAurral = db.prepare<[number]>(
       `DELETE FROM library_album_tracks
        WHERE track_id = ? AND album_id NOT IN (
          SELECT entity_id FROM library_management
@@ -2309,13 +2721,15 @@ export function removeLidarrLibrary() {
            AND ${TRACK_IS_LISTED}
        )`,
     );
-    const isLinked = db.prepare("SELECT 1 FROM library_album_tracks WHERE track_id = ? LIMIT 1");
-    const deleteTrack = db.prepare("DELETE FROM library_tracks WHERE id = ?");
+    const isLinked = db.prepare<[number], { 1: number }>(
+      "SELECT 1 FROM library_album_tracks WHERE track_id = ? LIMIT 1",
+    );
+    const deleteTrack = db.prepare<[number]>("DELETE FROM library_tracks WHERE id = ?");
     for (const trackId of trackIds) {
       unlinkOutsideAurral.run(trackId);
       if (!hasMedia.get(trackId) && !isLinked.get(trackId)) deleteTrack.run(trackId);
     }
-    db.prepare(
+    db.prepare<[]>(
       `DELETE FROM library_albums
        WHERE NOT EXISTS (SELECT 1 FROM library_album_tracks WHERE album_id = library_albums.id)
          AND id NOT IN (
@@ -2323,7 +2737,7 @@ export function removeLidarrLibrary() {
            WHERE entity_kind = 'album' AND managed_by = 'aurral'
          )`,
     ).run();
-    db.prepare(
+    db.prepare<[]>(
       `DELETE FROM library_artists
        WHERE NOT EXISTS (SELECT 1 FROM library_albums WHERE artist_id = library_artists.id)
          AND id NOT IN (
@@ -2331,12 +2745,12 @@ export function removeLidarrLibrary() {
            WHERE entity_kind = 'artist' AND managed_by = 'aurral'
          )`,
     ).run();
-    db.prepare(
+    db.prepare<[]>(
       `DELETE FROM library_management
        WHERE (entity_kind = 'album' AND entity_id NOT IN (SELECT id FROM library_albums))
           OR (entity_kind = 'artist' AND entity_id NOT IN (SELECT id FROM library_artists))`,
     ).run();
-    db.prepare(
+    db.prepare<[number]>(
       `UPDATE library_management
        SET managed_by = 'aurral',
          monitor_mode = CASE entity_kind WHEN 'artist' THEN 'none' ELSE NULL END,
@@ -2344,7 +2758,7 @@ export function removeLidarrLibrary() {
        WHERE managed_by = 'lidarr'`,
     ).run(timestamp);
     for (const table of ["library_artists", "library_albums"]) {
-      db.prepare(
+      db.prepare<[number]>(
         `UPDATE ${table}
          SET metadata_json = json_remove(metadata_json, ${LIDARR_METADATA_PATHS}), updated_at = ?
          WHERE json_valid(metadata_json) AND json_extract(metadata_json, '$.librarySource') = 'lidarr'`,
