@@ -2,7 +2,7 @@ export const EXISTING_FILE_MODES = new Set(["download", "reuse"]);
 const LEGACY_REUSE_MODES = new Set(["hardlink", "copy"]);
 const DEFAULT_EXISTING_FILE_MODE = "reuse";
 
-export function normalizeExistingFileMode(value) {
+export function normalizeExistingFileMode(value: unknown) {
   const normalized = String(value || "")
     .trim()
     .toLowerCase();

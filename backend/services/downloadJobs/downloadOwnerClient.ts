@@ -1,6 +1,25 @@
-let requester = null;
-let statusReader = () => null;
-const pending = new Map();
+import type { DownloadWorker } from "./downloadWorker.ts";
+import type { getPlaylistOperationWorkerStatus } from "../playlists/playlistOperationWorker.ts";
+
+export type DownloadOwnerStatus = ReturnType<DownloadWorker["getStatus"]> & {
+  operationWorker: ReturnType<typeof getPlaylistOperationWorkerStatus>;
+};
+
+type DownloadOwnerRequester = (
+  method: string,
+  args: unknown[],
+  options: { timeoutMs: number },
+) => Promise<unknown>;
+
+interface PendingRequest {
+  resolve: (result: unknown) => void;
+  reject: (error: unknown) => void;
+  timer: ReturnType<typeof setTimeout>;
+}
+
+let requester: DownloadOwnerRequester | null = null;
+let statusReader: () => DownloadOwnerStatus | null = () => null;
+const pending = new Map<number, PendingRequest>();
 let nextRequestId = 0;
 let listening = false;
 
@@ -12,7 +31,13 @@ export function isDownloadOwnerProcess() {
   );
 }
 
-export function configureDownloadOwnerClient({ request, getStatus }) {
+export function configureDownloadOwnerClient({
+  request,
+  getStatus,
+}: {
+  request: DownloadOwnerRequester;
+  getStatus: () => DownloadOwnerStatus | null;
+}) {
   requester = request;
   statusReader = getStatus;
 }
@@ -21,8 +46,12 @@ export function getDownloadOwnerStatus() {
   return statusReader?.() || null;
 }
 
-export function requestDownloadOwner(method, args = [], { timeoutMs = 30000 } = {}) {
-  if (requester) return requester(method, args, { timeoutMs });
+export function requestDownloadOwner<T = unknown>(
+  method: string,
+  args: unknown[] = [],
+  { timeoutMs = 30000 }: { timeoutMs?: number } = {},
+): Promise<T> {
+  if (requester) return requester(method, args, { timeoutMs }) as Promise<T>;
   if (!process.env.AURRAL_BACKGROUND_WORKER_GROUP || !process.connected || !process.send) {
     return Promise.reject(new Error("Download worker is not ready"));
   }
@@ -38,7 +67,7 @@ export function requestDownloadOwner(method, args = [], { timeoutMs = 30000 } = 
       else entry.resolve(message.result);
     });
   }
-  return new Promise((resolve, reject) => {
+  return new Promise<unknown>((resolve, reject) => {
     const requestId = ++nextRequestId;
     const timer = setTimeout(() => {
       pending.delete(requestId);
@@ -46,11 +75,11 @@ export function requestDownloadOwner(method, args = [], { timeoutMs = 30000 } = 
     }, timeoutMs);
     pending.set(requestId, { resolve, reject, timer });
     try {
-      process.send({ type: "download-owner-client-request", requestId, method, args, timeoutMs });
+      process.send!({ type: "download-owner-client-request", requestId, method, args, timeoutMs });
     } catch (error) {
       clearTimeout(timer);
       pending.delete(requestId);
       reject(error);
     }
-  });
+  }) as Promise<T>;
 }

@@ -1,15 +1,31 @@
 import { db, dbHelpers } from "../../config/db-sqlite.ts";
+import type { SettingsRow } from "../../db/rows.ts";
+
+interface StoredPointer {
+  playlistId?: unknown;
+  title?: unknown;
+  serverUrl?: unknown;
+  jellyfinUserId?: unknown;
+  managedItemIds?: unknown;
+  updatedAt?: unknown;
+}
+
+type PointerStore = Record<string, Record<string, StoredPointer>>;
 
 const SETTINGS_KEY = "jellyfinPlaylistPointers";
-const getSettingStmt = db.prepare("SELECT value FROM settings WHERE key = ?");
-const upsertSettingStmt = db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)");
+const getSettingStmt = db.prepare<[string], Pick<SettingsRow, "value">>(
+  "SELECT value FROM settings WHERE key = ?",
+);
+const upsertSettingStmt = db.prepare<[string, string | null]>(
+  "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+);
 
-const readStore = () => {
+const readStore = (): PointerStore => {
   const parsed = dbHelpers.parseJSON(getSettingStmt.get(SETTINGS_KEY)?.value);
   return parsed && typeof parsed === "object" ? parsed : {};
 };
 
-const writeStore = (store) => {
+const writeStore = (store: PointerStore) => {
   upsertSettingStmt.run(SETTINGS_KEY, dbHelpers.stringifyJSON(store));
 };
 
@@ -20,13 +36,13 @@ const writeStore = (store) => {
  * @param {unknown} ids - Stored ownership history to validate.
  * @returns {string[]} A fresh copy of valid IDs, or an empty array if any value is invalid.
  */
-const normalizeManagedIds = (ids) =>
+const normalizeManagedIds = (ids: unknown): string[] =>
   Array.isArray(ids) &&
   ids.every((id) => typeof id === "string" && id.length > 0 && id === id.trim())
     ? [...ids]
     : [];
 
-const normalizePointer = (raw) => {
+const normalizePointer = (raw: StoredPointer | null) => {
   if (!raw || typeof raw !== "object") return null;
   const playlistId = raw.playlistId != null ? String(raw.playlistId) : null;
   if (!playlistId) return null;
@@ -45,7 +61,7 @@ export const jellyfinPlaylistPointerStore = {
     return Object.keys(readStore());
   },
 
-  getPointersForEntity(entityId) {
+  getPointersForEntity(entityId: string) {
     return Object.entries(readStore()[entityId] || {})
       .map(([targetKey, raw]) => {
         const pointer = normalizePointer(raw);
@@ -54,14 +70,26 @@ export const jellyfinPlaylistPointerStore = {
       .filter(Boolean);
   },
 
-  getPointer(entityId, targetKey) {
+  getPointer(entityId: string, targetKey: string) {
     return normalizePointer(readStore()[entityId]?.[targetKey] || null);
   },
 
   setPointer(
-    entityId,
-    targetKey,
-    { playlistId, title, serverUrl, jellyfinUserId = null, managedItemIds = [] },
+    entityId: string,
+    targetKey: string,
+    {
+      playlistId,
+      title,
+      serverUrl,
+      jellyfinUserId = null,
+      managedItemIds = [],
+    }: {
+      playlistId: string;
+      title: string;
+      serverUrl: string;
+      jellyfinUserId?: string | null;
+      managedItemIds?: string[];
+    },
   ) {
     const store = readStore();
     if (!store[entityId]) store[entityId] = {};
@@ -76,7 +104,7 @@ export const jellyfinPlaylistPointerStore = {
     writeStore(store);
   },
 
-  deletePointer(entityId, targetKey) {
+  deletePointer(entityId: string, targetKey: string) {
     const store = readStore();
     if (!store[entityId]?.[targetKey]) return false;
     delete store[entityId][targetKey];

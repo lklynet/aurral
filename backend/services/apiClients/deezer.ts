@@ -2,6 +2,62 @@ import axios from "../../../lib/axiosFetch.ts";
 import createCache from "./simpleCache.ts";
 import createRateLimiter from "./rateLimiter.ts";
 
+interface DeezerArtist {
+  id?: number | string;
+  name?: string;
+  picture_big?: string;
+  picture_medium?: string;
+  picture?: string;
+}
+
+interface DeezerTrack {
+  id: number | string;
+  title?: string;
+  title_short?: string;
+  preview?: string;
+  duration?: number;
+  rank?: number;
+  track_position?: number;
+  disk_number?: number;
+  album?: { title?: string; cover_medium?: string };
+  artist?: { name?: string };
+}
+
+interface DeezerAlbum {
+  id: number | string;
+  title?: string;
+  record_type?: string;
+  type?: string;
+  release_date?: string;
+  cover_big?: string;
+  cover_medium?: string;
+  cover?: string;
+  fans?: number;
+}
+
+type NumericField = string | number | null | undefined;
+
+interface TrackLike {
+  trackPosition?: NumericField;
+  track_position?: NumericField;
+  trackNumber?: NumericField;
+  tracknumber?: NumericField;
+  position?: NumericField;
+  mediumNumber?: NumericField;
+  mediumnumber?: NumericField;
+  disk_number?: NumericField;
+  diskNumber?: NumericField;
+  durationMs?: NumericField;
+  duration_ms?: NumericField;
+  durationms?: NumericField;
+  length?: NumericField;
+  title?: string | null;
+  trackName?: string | null;
+  trackname?: string | null;
+}
+
+type DeezerArtistId = string | number | null;
+
 const deezerArtistCache = createCache(3600);
 
 const deezerAlbumCache = createCache(3600);
@@ -11,10 +67,16 @@ const deezerTopTrackCache = createCache(3600);
 const deezerInflightRequests = new Map();
 const deezerTrackListLimiter = createRateLimiter(110);
 
-const isDeezerOutage = (data) => Boolean(data?.error) && data.error.code !== 800;
+const isDeezerOutage = (data: { error?: { code?: number } } | null | undefined) =>
+  Boolean(data?.error) && data.error.code !== 800;
 
-async function cachedOrInflight(cache, key, inflight, fn) {
-  const cached = cache.get(key);
+async function cachedOrInflight<T>(
+  cache: ReturnType<typeof createCache>,
+  key: string,
+  inflight: Map<string, Promise<T>>,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const cached: T | undefined = cache.get(key);
   if (cached !== undefined) return cached;
   const existing = inflight.get(key);
   if (existing) return existing;
@@ -28,7 +90,10 @@ async function cachedOrInflight(cache, key, inflight, fn) {
   }
 }
 
-export async function getDeezerArtist(artistName, { throwOnError = false } = {}) {
+export async function getDeezerArtist(
+  artistName: string,
+  { throwOnError = false }: { throwOnError?: boolean } = {},
+) {
   const normalizedName = artistName.toLowerCase().trim();
 
   try {
@@ -42,14 +107,14 @@ export async function getDeezerArtist(artistName, { throwOnError = false } = {})
           timeout: 3000,
         });
         if (searchRes.data?.error) throw new Error("Deezer artist search unavailable");
-        const artists = searchRes.data?.data;
+        const artists: DeezerArtist[] | undefined = searchRes.data?.data;
         if (!artists?.length) {
           deezerArtistCache.set(normalizedName, null);
           return null;
         }
 
         const searchLower = normalizedName.replace(/^the\s+/i, "");
-        let bestMatch = null;
+        let bestMatch: DeezerArtist | null = null;
 
         for (const a of artists) {
           if (!a?.id) continue;
@@ -87,7 +152,10 @@ export async function getDeezerArtist(artistName, { throwOnError = false } = {})
   }
 }
 
-export async function getDeezerArtistById(artistId, { throwOnError = false } = {}) {
+export async function getDeezerArtistById(
+  artistId: DeezerArtistId,
+  { throwOnError = false }: { throwOnError?: boolean } = {},
+) {
   const normalizedId = String(artistId || "").trim();
   if (!normalizedId) return null;
   const cacheKey = `id:${normalizedId}`;
@@ -98,7 +166,7 @@ export async function getDeezerArtistById(artistId, { throwOnError = false } = {
         timeout: 3000,
       });
       if (isDeezerOutage(res.data)) throw new Error("Deezer artist unavailable");
-      const data = res.data;
+      const data: DeezerArtist | null | undefined = res.data;
       if (!data?.id) {
         deezerArtistCache.set(cacheKey, null);
         return null;
@@ -117,7 +185,7 @@ export async function getDeezerArtistById(artistId, { throwOnError = false } = {
   }
 }
 
-async function getDeezerArtistTopTracksById(artistId) {
+async function getDeezerArtistTopTracksById(artistId: DeezerArtistId) {
   const normalizedId = String(artistId || "").trim();
   if (!normalizedId) return [];
   const cacheKey = `dz-top:${normalizedId}`;
@@ -129,9 +197,9 @@ async function getDeezerArtistTopTracksById(artistId) {
     });
     if (topRes.data?.error) throw new Error("Deezer popular tracks unavailable");
     const tracks = (topRes.data?.data || [])
-      .filter((track) => track.preview)
+      .filter((track: DeezerTrack) => track.preview)
       .slice(0, 6)
-      .map((track) => ({
+      .map((track: DeezerTrack) => ({
         id: String(track.id),
         title: track.title,
         album: track.album?.title ?? null,
@@ -144,7 +212,7 @@ async function getDeezerArtistTopTracksById(artistId) {
   });
 }
 
-const artistNameKey = (value) =>
+const artistNameKey = (value: unknown) =>
   String(value || "")
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -153,7 +221,7 @@ const artistNameKey = (value) =>
     .replace(/&/g, " and ")
     .replace(/[^\p{L}\p{N}]+/gu, "");
 
-async function findDeezerArtistIdByExactName(artistName) {
+async function findDeezerArtistIdByExactName(artistName: string) {
   const wanted = artistNameKey(artistName);
   if (!wanted) return null;
   return cachedOrInflight(
@@ -169,7 +237,7 @@ async function findDeezerArtistIdByExactName(artistName) {
       );
       if (isDeezerOutage(response.data)) throw new Error("Deezer artist search unavailable");
       const match = (response.data?.data || []).find(
-        (artist) => artist?.id && artistNameKey(artist.name) === wanted,
+        (artist: DeezerArtist) => artist?.id && artistNameKey(artist.name) === wanted,
       );
       const id = match ? String(match.id) : null;
       deezerArtistCache.set(`exact:${wanted}`, id);
@@ -178,7 +246,10 @@ async function findDeezerArtistIdByExactName(artistName) {
   );
 }
 
-export async function deezerGetArtistTopTrackList(artistName, { limit = 25 } = {}) {
+export async function deezerGetArtistTopTrackList(
+  artistName: string,
+  { limit = 25 }: { limit?: number } = {},
+) {
   const artistId = await findDeezerArtistIdByExactName(artistName);
   if (!artistId) return [];
   const safeLimit = Math.min(100, Math.max(1, Number(limit) || 25));
@@ -195,8 +266,8 @@ export async function deezerGetArtistTopTrackList(artistName, { limit = 25 } = {
       );
       if (isDeezerOutage(response.data)) throw new Error("Deezer popular tracks unavailable");
       const tracks = (response.data?.data || [])
-        .filter((track) => String(track?.title || "").trim())
-        .map((track) => ({
+        .filter((track: DeezerTrack) => String(track?.title || "").trim())
+        .map((track: DeezerTrack) => ({
           name: String(track.title).trim(),
           albumName: String(track.album?.title || "").trim() || null,
           mbid: null,
@@ -209,7 +280,7 @@ export async function deezerGetArtistTopTrackList(artistName, { limit = 25 } = {
   );
 }
 
-export async function deezerGetArtistTopTracks(artistName) {
+export async function deezerGetArtistTopTracks(artistName: string) {
   try {
     const artist = await getDeezerArtist(artistName);
     if (!artist) return [];
@@ -219,7 +290,7 @@ export async function deezerGetArtistTopTracks(artistName) {
   }
 }
 
-export async function deezerGetArtistTopTracksById(artistId) {
+export async function deezerGetArtistTopTracksById(artistId: DeezerArtistId) {
   try {
     return await getDeezerArtistTopTracksById(artistId);
   } catch {
@@ -227,7 +298,10 @@ export async function deezerGetArtistTopTracksById(artistId) {
   }
 }
 
-export function selectDeezerTrackPreview(candidates, { artistName, trackName }) {
+export function selectDeezerTrackPreview(
+  candidates: DeezerTrack[] | null | undefined,
+  { artistName, trackName }: { artistName: string; trackName: string },
+) {
   const targetArtist = normalizeTitle(artistName);
   const targetTrack = normalizeTitle(trackName);
   if (!targetArtist || !targetTrack) return null;
@@ -248,7 +322,13 @@ export function selectDeezerTrackPreview(candidates, { artistName, trackName }) 
   );
 }
 
-export async function deezerGetTrackPreview({ artistName, trackName }) {
+export async function deezerGetTrackPreview({
+  artistName,
+  trackName,
+}: {
+  artistName: string;
+  trackName: string;
+}) {
   if (!String(artistName || "").trim() || !String(trackName || "").trim()) return null;
   try {
     const response = await axios.get("https://api.deezer.com/search", {
@@ -268,7 +348,7 @@ export async function deezerGetTrackPreview({ artistName, trackName }) {
   }
 }
 
-export function normalizeTitle(title) {
+export function normalizeTitle(title: unknown) {
   return String(title || "")
     .toLowerCase()
     .replace(
@@ -287,25 +367,25 @@ export function normalizeTitle(title) {
     .trim();
 }
 
-function getReleaseYear(value) {
+function getReleaseYear(value: unknown) {
   const match = String(value || "").match(/\d{4}/);
   return match ? Number.parseInt(match[0], 10) : null;
 }
 
-function normalizeDeezerPrimaryType(value) {
+function normalizeDeezerPrimaryType(value: unknown) {
   const normalized = String(value || "album").toLowerCase();
   if (normalized === "ep") return "EP";
   if (normalized === "single") return "Single";
   return "Album";
 }
 
-function normalizeMbidTrackNumber(value) {
+function normalizeMbidTrackNumber(value: unknown) {
   const raw = String(value || "").trim();
   const numeric = Number.parseInt(raw, 10);
   return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
 }
 
-function getTrackPosition(track) {
+function getTrackPosition(track: TrackLike) {
   const raw =
     track?.trackPosition ??
     track?.track_position ??
@@ -317,7 +397,7 @@ function getTrackPosition(track) {
   return normalizeMbidTrackNumber(raw);
 }
 
-function getTrackMedium(track) {
+function getTrackMedium(track: TrackLike) {
   const numeric = Number.parseInt(
     track?.mediumNumber ?? track?.mediumnumber ?? track?.disk_number ?? track?.diskNumber,
     10,
@@ -325,17 +405,19 @@ function getTrackMedium(track) {
   return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
 }
 
-function getTrackDurationMs(track) {
+function getTrackDurationMs(track: TrackLike) {
   const raw = track?.durationMs ?? track?.duration_ms ?? track?.durationms ?? track?.length ?? null;
   const numeric = Number(raw);
   return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
 }
 
-function getTrackTitle(track) {
+function getTrackTitle(track: TrackLike) {
   return track?.title || track?.trackName || track?.trackname || "";
 }
 
-export async function getDeezerAlbumsForArtist(artist) {
+export async function getDeezerAlbumsForArtist(
+  artist: { id?: number | string } | null | undefined,
+) {
   if (!artist?.id) return [];
   const cacheKey = `dz-albums:${artist.id}`;
   return cachedOrInflight(deezerAlbumCache, cacheKey, deezerInflightRequests, async () => {
@@ -344,7 +426,7 @@ export async function getDeezerAlbumsForArtist(artist) {
       timeout: 3000,
     });
     if (res.data?.error) throw new Error("Deezer artist catalog unavailable");
-    const raw = res.data?.data || [];
+    const raw: DeezerAlbum[] = res.data?.data || [];
     const allowed = ["album", "ep", "single"];
     const albums = raw
       .filter((a) => allowed.includes((a.record_type || a.type || "").toLowerCase()))
@@ -371,8 +453,12 @@ export async function getDeezerAlbumsForArtist(artist) {
 }
 
 export function selectBestDeezerAlbumMatch(
-  deezerAlbums,
-  { albumTitle = "", releaseType = "", releaseDate = "" } = {},
+  deezerAlbums: Awaited<ReturnType<typeof getDeezerAlbumsForArtist>>,
+  {
+    albumTitle = "",
+    releaseType = "",
+    releaseDate = "",
+  }: { albumTitle?: string; releaseType?: string; releaseDate?: string } = {},
 ) {
   if (!Array.isArray(deezerAlbums) || deezerAlbums.length === 0 || !albumTitle) {
     return null;
@@ -418,6 +504,12 @@ export async function resolveDeezerAlbumForPreview({
   albumTitle = "",
   releaseType = "",
   releaseDate = "",
+}: {
+  artistName?: string;
+  deezerArtistId?: DeezerArtistId;
+  albumTitle?: string;
+  releaseType?: string;
+  releaseDate?: string;
 } = {}) {
   const artist = deezerArtistId
     ? await getDeezerArtistById(deezerArtistId)
@@ -432,7 +524,7 @@ export async function resolveDeezerAlbumForPreview({
   });
 }
 
-export function scoreDeezerTrackMatch(track, deezerTrack) {
+export function scoreDeezerTrackMatch(track: TrackLike, deezerTrack: TrackLike) {
   const targetTitle = normalizeTitle(getTrackTitle(track));
   const candidateTitle = normalizeTitle(getTrackTitle(deezerTrack));
   const trackPosition = getTrackPosition(track);
@@ -467,13 +559,16 @@ export function scoreDeezerTrackMatch(track, deezerTrack) {
   return score;
 }
 
-export function attachDeezerTrackPreviews(tracks, deezerTracks) {
+export function attachDeezerTrackPreviews(
+  tracks,
+  deezerTracks: Awaited<ReturnType<typeof deezerGetAlbumTracks>>,
+) {
   if (!Array.isArray(tracks) || tracks.length === 0) return tracks || [];
   if (!Array.isArray(deezerTracks) || deezerTracks.length === 0) return tracks;
 
-  const used = new Set();
+  const used = new Set<string>();
   return tracks.map((track) => {
-    let best = null;
+    let best: { track: (typeof deezerTracks)[number]; score: number } | null = null;
     for (const candidate of deezerTracks) {
       if (!candidate?.preview_url || used.has(candidate.id)) continue;
       const score = scoreDeezerTrackMatch(track, candidate);
@@ -492,7 +587,7 @@ export function attachDeezerTrackPreviews(tracks, deezerTracks) {
   });
 }
 
-export async function deezerGetAlbumTracks(deezerAlbumId) {
+export async function deezerGetAlbumTracks(deezerAlbumId: string | number) {
   const id = String(deezerAlbumId).replace(/^dz-/, "");
   if (!id || id === "dz") return [];
   const cacheKey = `dz-tracks:${id}`;
@@ -502,7 +597,7 @@ export async function deezerGetAlbumTracks(deezerAlbumId) {
       const res = await axios.get(`https://api.deezer.com/album/${id}/tracks`, {
         timeout: 3000,
       });
-      const raw = res.data?.data || [];
+      const raw: DeezerTrack[] = res.data?.data || [];
       const tracks = raw.map((t, i) => ({
         id: String(t.id),
         mbid: String(t.id),
@@ -533,6 +628,14 @@ export async function enrichTracksWithDeezerPreviews(
     releaseType = "",
     releaseDate = "",
     cacheKey = "",
+  }: {
+    artistName?: string;
+    deezerArtistId?: DeezerArtistId;
+    deezerAlbumId?: string | number | null;
+    albumTitle?: string;
+    releaseType?: string;
+    releaseDate?: string;
+    cacheKey?: string;
   } = {},
 ) {
   if (!Array.isArray(tracks) || tracks.length === 0) return tracks || [];

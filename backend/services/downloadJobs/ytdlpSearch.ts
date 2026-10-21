@@ -7,7 +7,15 @@ import { isVariousArtistsCredit } from "../trackMatching/titleText.ts";
 // compilation track is searched by its own artist. YouTube returns nothing
 // for some logged-out searches in that order, so "Title Artist" is kept as
 // the fallback for when the others find nothing.
-export function buildYtdlpSearchQueries(context) {
+type YtdlpSearchContext = {
+  trackName?: string;
+  title?: string;
+  artistName?: string;
+  artist?: string;
+  artistAliases?: string[];
+};
+
+export function buildYtdlpSearchQueries(context: YtdlpSearchContext | undefined) {
   const trackName = String(context?.trackName || context?.title || "").trim();
   const credited = String(context?.artistName || context?.artist || "").trim();
   const artistName = isVariousArtistsCredit(credited)

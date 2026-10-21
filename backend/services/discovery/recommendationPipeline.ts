@@ -1,6 +1,155 @@
 import { UUID_REGEX } from "../../../lib/uuid.ts";
 
-const SOURCE_BASE_WEIGHTS = {
+export interface ArtistIdentity {
+  id?: string | null;
+  mbid?: string | null;
+  foreignArtistId?: string | null;
+  name?: string | null;
+  artistName?: string | null;
+}
+
+export interface SeedArtistInput extends ArtistIdentity {
+  source?: string | null;
+  playcount?: number | null;
+  affinityWeight?: number | null;
+  profileBucket?: string | null;
+}
+
+export interface DiscoverySeed {
+  mbid: string | null;
+  artistName: string;
+  source: string;
+  identityKeys: string[];
+  playcount: number;
+  weight: number;
+  affinityWeight: number;
+  profileBucket: string | null;
+}
+
+export interface RecommendationSeed {
+  artistName: string;
+  source?: string;
+  weight?: number;
+  affinityWeight?: number;
+  profileBucket?: string | null;
+  similarityMultiplier?: number;
+  tagAffinityMultiplier?: number;
+  discoveryDepth?: number;
+}
+
+export interface RecommendationCandidate {
+  mbid?: string | null;
+  name?: string | null;
+  image?: string | null;
+  match?: number;
+  similarityMultiplier?: number;
+  tagAffinityMultiplier?: number;
+  discoveryDepth?: number;
+}
+
+export interface SupportingSeed {
+  artistName: string;
+  source: string;
+  weight: number;
+  profileBucket: string | null;
+}
+
+export interface RecommendationAccumulatorEntry {
+  id: string | null;
+  name: string;
+  type: string;
+  image: string | null;
+  bestMatch: number;
+  rawContribution: number;
+  scoreSimilarity: number;
+  scoreTagAffinity: number;
+  tagOverlapCount: number;
+  tags: Set<string>;
+  seedWeights: number[];
+  matchedTagWeights: Map<string, number>;
+  discoveryDepth: number;
+  sourceTypes: Set<string>;
+  supportingSeeds: Map<string, SupportingSeed>;
+}
+
+export type RecommendationAccumulator = Map<string, RecommendationAccumulatorEntry>;
+
+export interface DiscoveryRecommendation extends ArtistIdentity {
+  navigateTo?: string | null;
+  type?: string;
+  image?: string | null;
+  tags?: string[];
+  matchedTags?: string[];
+  supportingSeeds?: Partial<SupportingSeed>[];
+  seedCount?: number;
+  score?: number;
+  scoreTotal?: number;
+  scoreSimilarity?: number;
+  scoreTagAffinity?: number;
+  scoreSeedCoverage?: number;
+  scoreNovelty?: number;
+  scoreDiversityPenalty?: number;
+  scorePopularityPenalty?: number;
+  scoreFreshnessBoost?: number;
+  scoreAgingPenalty?: number;
+  sourceArtist?: string | null;
+  sourceArtists?: string[];
+  sourceType?: string;
+  sourceTypes?: string[];
+  sourceMix?: string[];
+  discoveryDepth?: number;
+  bestMatch?: number;
+  reasonCodes?: string[];
+  discoveryTier?: string;
+  confidence?: number;
+  candidateTagsHydrated?: boolean;
+  tagSource?: string;
+  popularityLabel?: string | null;
+  popularityRank?: number | null;
+  listeners?: number;
+  playcount?: number;
+  firstDiscoveredAt?: string | null;
+  discoveredAt?: string | null;
+  lastRecommendedAt?: string | null;
+  recommendationPoolState?: string;
+  recommendationPoolRank?: number;
+  matchPercent?: number;
+}
+
+export interface RecommendationFeedback {
+  action?: string | null;
+  artistId?: string | null;
+  artistName?: string | null;
+  tagContext?: string[];
+  seedContext?: string[];
+  expiresAt?: string | null;
+}
+
+interface DiscoveryModeMultipliers {
+  similarity: number;
+  tagAffinity: number;
+  seedCoverage: number;
+  novelty: number;
+  popularityPenalty: number;
+  diversityPenalty: number;
+}
+
+interface RecommendationPoolMetadata {
+  firstDiscoveredAt: string | null;
+  lastRecommendedAt: string | null;
+}
+
+interface MergedRecommendation extends DiscoveryRecommendation {
+  tags: string[];
+  matchedTags: string[];
+  sourceArtists: string[];
+  sourceTypes: string[];
+  supportingSeeds: Partial<SupportingSeed>[];
+  sourceMix: string[];
+  reasonCodes: string[];
+}
+
+const SOURCE_BASE_WEIGHTS: Record<string, number> = {
   library: 1,
   local: 1.25,
   lastfm: 1.2,
@@ -9,7 +158,7 @@ const SOURCE_BASE_WEIGHTS = {
   feedback: 1.5,
 };
 
-const DISCOVERY_MODE_MULTIPLIERS = {
+const DISCOVERY_MODE_MULTIPLIERS: Record<string, DiscoveryModeMultipliers> = {
   safer: {
     similarity: 1.2,
     tagAffinity: 0.9,
@@ -36,43 +185,43 @@ const DISCOVERY_MODE_MULTIPLIERS = {
   },
 };
 
-const normalizeText = (value) =>
+const normalizeText = (value: unknown) =>
   String(value || "")
     .trim()
     .toLowerCase();
 
-const normalizeMbid = (value) => {
+const normalizeMbid = (value: unknown) => {
   const normalized = normalizeText(value);
   return UUID_REGEX.test(normalized) ? normalized : null;
 };
 
-const buildSeedIdentityKeys = (mbid, artistName) => {
-  const keys = [];
+const buildSeedIdentityKeys = (mbid: string | null, artistName: string) => {
+  const keys: string[] = [];
   if (mbid) keys.push(`mbid:${mbid}`);
   const normalizedName = normalizeText(artistName);
   if (normalizedName) keys.push(`name:${normalizedName}`);
   return keys;
 };
 
-const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
-const normalizeDiscoveryMode = (value) => {
+const normalizeDiscoveryMode = (value: unknown) => {
   const mode = normalizeText(value);
   return DISCOVERY_MODE_MULTIPLIERS[mode] ? mode : "balanced";
 };
 
-const sortByValueThenName = (entries) =>
+const sortByValueThenName = (entries: Iterable<[string, number]>) =>
   [...entries].sort((left, right) => {
     if (right[1] !== left[1]) return right[1] - left[1];
     return String(left[0] || "").localeCompare(String(right[0] || ""));
   });
 
-const topKeysFromMap = (map, limit = 4) =>
+const topKeysFromMap = (map: Map<string, number>, limit = 4) =>
   sortByValueThenName(map.entries())
     .slice(0, limit)
     .map(([key]) => key);
 
-const summarizeSourceArtists = (sourceArtists) => {
+const summarizeSourceArtists = (sourceArtists: Iterable<string>) => {
   const artists = [...sourceArtists].filter(Boolean);
   if (artists.length === 0) return null;
   if (artists.length === 1) return artists[0];
@@ -80,7 +229,7 @@ const summarizeSourceArtists = (sourceArtists) => {
   return `${artists[0]}, ${artists[1]} +${artists.length - 2} more`;
 };
 
-const mergeTags = (target, sourceTags = []) => {
+const mergeTags = (target: Set<string>, sourceTags: string[] = []) => {
   for (const tag of sourceTags) {
     const normalized = normalizeText(tag);
     if (!normalized) continue;
@@ -89,11 +238,11 @@ const mergeTags = (target, sourceTags = []) => {
   }
 };
 
-const normalizeTagList = (tags = []) =>
+const normalizeTagList = (tags: string[] = []) =>
   (Array.isArray(tags) ? tags : []).map(normalizeText).filter(Boolean);
 
-export const normalizeArtistIdentityKeys = (artist) => {
-  const keys = [];
+export const normalizeArtistIdentityKeys = (artist: ArtistIdentity) => {
+  const keys: string[] = [];
   const mbids = [artist?.id, artist?.mbid, artist?.foreignArtistId]
     .map(normalizeMbid)
     .filter(Boolean);
@@ -107,8 +256,8 @@ export const normalizeArtistIdentityKeys = (artist) => {
   return [...new Set(keys)];
 };
 
-export const buildExistingArtistKeySet = (artists = []) => {
-  const keys = new Set();
+export const buildExistingArtistKeySet = (artists: ArtistIdentity[] = []) => {
+  const keys = new Set<string>();
   for (const artist of Array.isArray(artists) ? artists : []) {
     for (const key of normalizeArtistIdentityKeys(artist)) {
       keys.add(key);
@@ -118,10 +267,10 @@ export const buildExistingArtistKeySet = (artists = []) => {
 };
 
 export const applyHydratedCandidateTags = (
-  recommendation,
-  candidateTags = [],
-  profileTagWeights = new Map(),
-  options = {},
+  recommendation: DiscoveryRecommendation,
+  candidateTags: string[] = [],
+  profileTagWeights: Map<string, number> = new Map(),
+  options: { source?: string; tagAffinityMultiplier?: number } = {},
 ) => {
   const normalizedTags = normalizeTagList(candidateTags);
   if (!recommendation || normalizedTags.length === 0) return recommendation;
@@ -135,7 +284,7 @@ export const applyHydratedCandidateTags = (
     };
   }
 
-  const matchedTagWeights = new Map();
+  const matchedTagWeights = new Map<string, number>();
   for (const tag of normalizedTags) {
     if (!profileTagWeights.has(tag)) continue;
     matchedTagWeights.set(tag, Number(profileTagWeights.get(tag) || 0));
@@ -170,7 +319,10 @@ export const applyHydratedCandidateTags = (
   };
 };
 
-const calculateSeedWeight = (seed, index) => {
+const calculateSeedWeight = (
+  seed: { source?: string; playcount?: number | null },
+  index: number,
+) => {
   const source = normalizeText(seed?.source) || "library";
   const baseWeight = SOURCE_BASE_WEIGHTS[source] || 1;
 
@@ -184,13 +336,16 @@ const calculateSeedWeight = (seed, index) => {
   return Number((baseWeight + playcountBoost).toFixed(4));
 };
 
-export const buildDiscoverySeedList = ({ libraryArtists = [], historyArtists = [] } = {}) => {
+export const buildDiscoverySeedList = ({
+  libraryArtists = [],
+  historyArtists = [],
+}: { libraryArtists?: SeedArtistInput[]; historyArtists?: SeedArtistInput[] } = {}) => {
   const combined = [
     ...(Array.isArray(historyArtists) ? historyArtists : []),
     ...(Array.isArray(libraryArtists) ? libraryArtists : []),
   ];
-  const seedsByKey = new Map();
-  const seeds = [];
+  const seedsByKey = new Map<string, DiscoverySeed>();
+  const seeds: DiscoverySeed[] = [];
 
   for (let index = 0; index < combined.length; index += 1) {
     const artist = combined[index];
@@ -238,7 +393,7 @@ export const buildDiscoverySeedList = ({ libraryArtists = [], historyArtists = [
       continue;
     }
 
-    const seed = {
+    const seed: DiscoverySeed = {
       mbid,
       artistName,
       source,
@@ -276,8 +431,14 @@ export const selectDiscoverySeeds = ({
   libraryArtists = [],
   limit = 50,
   excludedKeys = new Set(),
+}: {
+  likedArtists?: SeedArtistInput[];
+  historyArtists?: SeedArtistInput[];
+  libraryArtists?: SeedArtistInput[];
+  limit?: number;
+  excludedKeys?: Set<string>;
 } = {}) => {
-  const isAllowed = (artist) =>
+  const isAllowed = (artist: SeedArtistInput) =>
     !normalizeArtistIdentityKeys(artist).some((key) => excludedKeys.has(key));
   const liked = likedArtists.filter(isAllowed);
   const history = historyArtists.filter(isAllowed);
@@ -314,8 +475,16 @@ const buildReasonCodes = ({
   scorePopularityPenalty,
   discoveryMode,
   discoveryDepth,
+}: {
+  tagOverlapCount: number;
+  seedCoverage: number;
+  sourceTypes: string[];
+  scoreNovelty: number;
+  scorePopularityPenalty: number;
+  discoveryMode: string;
+  discoveryDepth: number;
 }) => {
-  const codes = [];
+  const codes: string[] = [];
   if (tagOverlapCount >= 2) codes.push("tag_affinity_strong");
   else if (tagOverlapCount >= 1) codes.push("tag_affinity");
   if (seedCoverage >= 3) codes.push("multi_seed");
@@ -332,13 +501,19 @@ const buildReasonCodes = ({
 };
 
 export const addRecommendationCandidate = (
-  accumulator,
+  accumulator: RecommendationAccumulator,
   {
     candidate,
     seed,
     sourceTags = [],
     profileTagWeights = new Map(),
     existingArtistKeys = new Set(),
+  }: {
+    candidate?: RecommendationCandidate;
+    seed?: RecommendationSeed;
+    sourceTags?: string[];
+    profileTagWeights?: Map<string, number>;
+    existingArtistKeys?: Set<string>;
   } = {},
 ) => {
   if (!accumulator || !candidate || !seed) return;
@@ -424,9 +599,9 @@ export const addRecommendationCandidate = (
     return;
   }
 
-  const tags = new Set();
+  const tags = new Set<string>();
   mergeTags(tags, normalizedTags);
-  const matchedTagWeights = new Map();
+  const matchedTagWeights = new Map<string, number>();
   matchedTags.forEach((tag) => {
     matchedTagWeights.set(tag, Number(profileTagWeights.get(tag) || 0));
   });
@@ -459,7 +634,10 @@ export const addRecommendationCandidate = (
   });
 };
 
-const finalizeRecommendationEntry = (entry, discoveryMode = "balanced") => {
+const finalizeRecommendationEntry = (
+  entry: RecommendationAccumulatorEntry,
+  discoveryMode = "balanced",
+) => {
   const supportCount = entry.supportingSeeds.size;
   const matchedTags = topKeysFromMap(entry.matchedTagWeights, 4);
   const averageSeedWeight =
@@ -542,7 +720,11 @@ const finalizeRecommendationEntry = (entry, discoveryMode = "balanced") => {
   };
 };
 
-export const finalizeRecommendationAccumulator = (accumulator, limit = 100, options = {}) => {
+export const finalizeRecommendationAccumulator = (
+  accumulator: RecommendationAccumulator,
+  limit = 100,
+  options: { discoveryMode?: string } = {},
+) => {
   const discoveryMode = normalizeDiscoveryMode(options?.discoveryMode);
   return [...accumulator.values()]
     .map((entry) => finalizeRecommendationEntry(entry, discoveryMode))
@@ -562,16 +744,20 @@ export const finalizeRecommendationAccumulator = (accumulator, limit = 100, opti
     .slice(0, Math.max(1, Number(limit) || 100));
 };
 
-const FEEDBACK_ACTIONS = new Set(["more_like_this", "less_like_this", "block_artist"]);
+const FEEDBACK_ACTIONS = new Set<string | null | undefined>([
+  "more_like_this",
+  "less_like_this",
+  "block_artist",
+]);
 
-const isActiveFeedback = (entry, now) => {
+const isActiveFeedback = (entry: RecommendationFeedback, now: number) => {
   if (!entry || typeof entry !== "object" || !FEEDBACK_ACTIONS.has(entry.action)) return false;
   if (!entry.expiresAt) return true;
   const time = new Date(entry.expiresAt).getTime();
   return Number.isFinite(time) ? time > now : true;
 };
 
-const buildFeedbackSignals = (feedbackList = []) => {
+const buildFeedbackSignals = (feedbackList: RecommendationFeedback[] = []) => {
   const now = Date.now();
   return (Array.isArray(feedbackList) ? feedbackList : [])
     .filter((entry) => isActiveFeedback(entry, now))
@@ -587,7 +773,7 @@ const buildFeedbackSignals = (feedbackList = []) => {
     }));
 };
 
-const countMatches = (values, lookup) => {
+const countMatches = (values: string[], lookup: Set<string>) => {
   let count = 0;
   for (const value of values) {
     if (lookup.has(value)) count += 1;
@@ -595,7 +781,10 @@ const countMatches = (values, lookup) => {
   return count;
 };
 
-const feedbackAdjustmentForCandidate = (candidate, signals) => {
+const feedbackAdjustmentForCandidate = (
+  candidate: RerankEntry,
+  signals: ReturnType<typeof buildFeedbackSignals>,
+) => {
   if (signals.length === 0) return { adjustment: 0, hidden: false };
   const candidateKeys = new Set(normalizeArtistIdentityKeys(candidate));
   const candidateTags = [...new Set(normalizeTagList(candidate.matchedTags))];
@@ -624,7 +813,7 @@ const feedbackAdjustmentForCandidate = (candidate, signals) => {
   return { adjustment, hidden: false };
 };
 
-const normalizeRerankEntry = (entry, mode) => ({
+const normalizeRerankEntry = (entry: DiscoveryRecommendation, mode: string) => ({
   ...entry,
   matchedTags: Array.isArray(entry?.matchedTags)
     ? [...entry.matchedTags]
@@ -658,7 +847,9 @@ const normalizeRerankEntry = (entry, mode) => ({
   confidence: Number(entry?.confidence || 0) || 0,
 });
 
-const compareByStoredScore = (left, right) => {
+type RerankEntry = ReturnType<typeof normalizeRerankEntry>;
+
+const compareByStoredScore = (left: RerankEntry, right: RerankEntry) => {
   const leftScore = Number(left.scoreTotal || left.score || 0);
   const rightScore = Number(right.scoreTotal || right.score || 0);
   if (rightScore !== leftScore) return rightScore - leftScore;
@@ -668,7 +859,11 @@ const compareByStoredScore = (left, right) => {
   return String(left.name || "").localeCompare(String(right.name || ""));
 };
 
-export const rerankRecommendations = (recommendations = [], limit = 100, options = {}) => {
+export const rerankRecommendations = (
+  recommendations: DiscoveryRecommendation[] = [],
+  limit = 100,
+  options: { discoveryMode?: string; feedback?: RecommendationFeedback[] } = {},
+) => {
   const mode = normalizeDiscoveryMode(options.discoveryMode);
   const multipliers = DISCOVERY_MODE_MULTIPLIERS[mode];
   const feedbackSignals = buildFeedbackSignals(options.feedback);
@@ -700,9 +895,9 @@ export const rerankRecommendations = (recommendations = [], limit = 100, options
   pool.sort((left, right) => compareByStoredScore(left.entry, right.entry));
 
   const maxSelected = Math.max(1, Number(limit) || 100);
-  const selectedTagCounts = new Map();
-  const selectedSeedCounts = new Map();
-  const diversityPenaltyFor = (candidate) => {
+  const selectedTagCounts = new Map<string, number>();
+  const selectedSeedCounts = new Map<string, number>();
+  const diversityPenaltyFor = (candidate: { tags: string[]; seeds: string[] }) => {
     let penalty = 0;
     for (const tag of candidate.tags) penalty += (selectedTagCounts.get(tag) || 0) * 1.8;
     for (const seed of candidate.seeds) penalty += (selectedSeedCounts.get(seed) || 0) * 2.6;
@@ -742,7 +937,7 @@ export const rerankRecommendations = (recommendations = [], limit = 100, options
   return selected;
 };
 
-export const withArtistRouteId = (recommendation) => {
+export const withArtistRouteId = (recommendation: DiscoveryRecommendation) => {
   const mbid = normalizeMbid(recommendation?.id) || normalizeMbid(recommendation?.navigateTo);
   return recommendation?.id === mbid && recommendation?.navigateTo === mbid
     ? recommendation
@@ -752,7 +947,7 @@ export const withArtistRouteId = (recommendation) => {
 const TOP_MATCH_PERCENT = 99;
 const LOWEST_MATCH_PERCENT = 55;
 
-const matchPercentForRank = (index, count) =>
+const matchPercentForRank = (index: number, count: number) =>
   count <= 1
     ? TOP_MATCH_PERCENT
     : Math.round(
@@ -760,8 +955,11 @@ const matchPercentForRank = (index, count) =>
       );
 
 export const serveRecommendations = (
-  recommendations = [],
-  { feedback = [], discoveryMode } = {},
+  recommendations: DiscoveryRecommendation[] = [],
+  {
+    feedback = [],
+    discoveryMode,
+  }: { feedback?: RecommendationFeedback[]; discoveryMode?: string } = {},
 ) => {
   const ranked = rerankRecommendations(recommendations, recommendations.length, {
     feedback,
@@ -775,24 +973,24 @@ export const serveRecommendations = (
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-const parseTimeMs = (value, fallback = Date.now()) => {
+const parseTimeMs = (value: string | null | undefined, fallback = Date.now()) => {
   const time = new Date(value || "").getTime();
   return Number.isFinite(time) ? time : fallback;
 };
 
-const getRecommendationPoolKeys = (recommendation) => {
+const getRecommendationPoolKeys = (recommendation: DiscoveryRecommendation) => {
   const keys = normalizeArtistIdentityKeys(recommendation);
   if (keys.length > 0) return keys;
   const name = normalizeText(recommendation?.name);
   return name ? [`name:${name}`] : [];
 };
 
-const buildRecommendationPoolMetadataMap = (recommendations = []) => {
-  const metadata = new Map();
+const buildRecommendationPoolMetadataMap = (recommendations: DiscoveryRecommendation[] = []) => {
+  const metadata = new Map<string, RecommendationPoolMetadata>();
   for (const recommendation of Array.isArray(recommendations) ? recommendations : []) {
     const keys = getRecommendationPoolKeys(recommendation);
     if (keys.length === 0) continue;
-    const entry = {
+    const entry: RecommendationPoolMetadata = {
       firstDiscoveredAt:
         recommendation.firstDiscoveredAt ||
         recommendation.discoveredAt ||
@@ -811,7 +1009,10 @@ const buildRecommendationPoolMetadataMap = (recommendations = []) => {
   return metadata;
 };
 
-const findRecommendationPoolMetadata = (recommendation, metadataMap) => {
+const findRecommendationPoolMetadata = (
+  recommendation: DiscoveryRecommendation,
+  metadataMap: Map<string, RecommendationPoolMetadata>,
+) => {
   for (const key of getRecommendationPoolKeys(recommendation)) {
     const metadata = metadataMap.get(key);
     if (metadata) return metadata;
@@ -820,8 +1021,20 @@ const findRecommendationPoolMetadata = (recommendation, metadataMap) => {
 };
 
 const applyRecommendationPoolMetadata = (
-  recommendation,
-  { fresh = false, index = 0, metadata = null, runStartedAt, runStartedMs } = {},
+  recommendation: DiscoveryRecommendation,
+  {
+    fresh = false,
+    index = 0,
+    metadata = null,
+    runStartedAt,
+    runStartedMs,
+  }: {
+    fresh?: boolean;
+    index?: number;
+    metadata?: RecommendationPoolMetadata | null;
+    runStartedAt: string;
+    runStartedMs: number;
+  } = {},
 ) => {
   const firstDiscoveredAt =
     metadata?.firstDiscoveredAt ||
@@ -854,6 +1067,14 @@ export const mergeRetainedRecommendationPool = ({
   runStartedAt = new Date().toISOString(),
   discoveryMode = "balanced",
   feedback = [],
+}: {
+  freshRecommendations?: DiscoveryRecommendation[];
+  existingRecommendations?: DiscoveryRecommendation[];
+  existingArtistKeys?: Set<string>;
+  limit?: number;
+  runStartedAt?: string;
+  discoveryMode?: string;
+  feedback?: RecommendationFeedback[];
 } = {}) => {
   const normalizedLimit = Math.max(1, Number(limit) || 500);
   const runStartedMs = parseTimeMs(runStartedAt);
@@ -889,11 +1110,11 @@ export const mergeRetainedRecommendationPool = ({
 };
 
 export const mergeResolvedRecommendations = (
-  recommendations = [],
-  existingArtistKeys = new Set(),
+  recommendations: DiscoveryRecommendation[] = [],
+  existingArtistKeys: Set<string> = new Set(),
 ) => {
-  const merged = new Map();
-  const aliases = new Map();
+  const merged = new Map<string | null, MergedRecommendation>();
+  const aliases = new Map<string | null, string | null>();
 
   for (const recommendation of Array.isArray(recommendations) ? recommendations : []) {
     const keys = normalizeArtistIdentityKeys(recommendation);

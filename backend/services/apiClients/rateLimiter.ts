@@ -1,15 +1,23 @@
 import PQueue from "p-queue";
 
-const createError = (message, code) => Object.assign(new Error(message), { code });
+const createError = (message: string, code: string) => Object.assign(new Error(message), { code });
 
-export default function createRateLimiter(minTime, { maxQueue = Infinity } = {}) {
+type ScheduleOptions = { signal?: AbortSignal; timeoutMs?: number };
+
+export default function createRateLimiter(
+  minTime: number,
+  { maxQueue = Infinity }: { maxQueue?: number } = {},
+) {
   const queue = new PQueue({
     interval: Math.max(0, Number(minTime) || 0),
     intervalCap: 1,
     strict: Number(minTime) > 0,
   });
 
-  const schedule = (fn, { signal, timeoutMs } = {}) => {
+  const schedule = <T>(
+    fn: (remainingMs: number) => T,
+    { signal, timeoutMs }: ScheduleOptions = {},
+  ) => {
     if (typeof fn !== "function") {
       return Promise.reject(new TypeError("Rate limiter callback must be a function"));
     }
@@ -39,8 +47,8 @@ export default function createRateLimiter(minTime, { maxQueue = Infinity } = {})
   };
 
   let resumeAt = 0;
-  let resumeTimer = null;
-  const pauseFor = (ms) => {
+  let resumeTimer: NodeJS.Timeout | null = null;
+  const pauseFor = (ms: number) => {
     const until = Date.now() + Math.max(0, Number(ms) || 0);
     if (until <= resumeAt) return;
     resumeAt = until;
@@ -52,8 +60,8 @@ export default function createRateLimiter(minTime, { maxQueue = Infinity } = {})
   return {
     schedule,
     pauseFor,
-    wrap(fn) {
-      return (...args) => schedule(() => fn(...args));
+    wrap<A extends unknown[], R>(fn: (...args: A) => R) {
+      return (...args: A) => schedule(() => fn(...args));
     },
   };
 }

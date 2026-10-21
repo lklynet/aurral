@@ -41,7 +41,11 @@ export async function syncStaticPlaylistImport(options = {}) {
   if (isDownloadOwnerProcess()) return syncStaticPlaylistImportHere(options);
   const { playlistId, user, force = false } = options;
   try {
-    const response = await requestDownloadOwner(
+    const response = await requestDownloadOwner<{
+      ok?: boolean;
+      error?: { message?: string; code?: string; statusCode?: number };
+      result?: Record<string, unknown>;
+    }>(
       "syncStaticPlaylistImport",
       [
         {

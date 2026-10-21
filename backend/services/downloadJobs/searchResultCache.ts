@@ -5,17 +5,17 @@ import createCache from "../apiClients/simpleCache.ts";
 const SEARCH_RESULT_TTL_SECONDS = 15 * 60;
 const results = createCache(SEARCH_RESULT_TTL_SECONDS, 200);
 
-function cacheKey(source, query) {
+function cacheKey(source: string, query: string | undefined) {
   return `${source}\0${String(query || "")
     .trim()
     .toLowerCase()
     .replace(/\s+/g, " ")}`;
 }
 
-export function getCachedSearchResults(source, query) {
+export function getCachedSearchResults(source: string, query: string | undefined) {
   return results.get(cacheKey(source, query));
 }
 
-export function cacheSearchResults(source, query, items) {
+export function cacheSearchResults(source: string, query: string | undefined, items: unknown) {
   results.set(cacheKey(source, query), Array.isArray(items) ? items : []);
 }

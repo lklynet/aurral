@@ -1,14 +1,21 @@
 const SWEEP_INTERVAL_MS = 60_000;
-const idleCaches = new Set();
-let idleSweepTimer = null;
 
-function removeExpired(cache, currentTime) {
+type CacheEntry = { expires: number; staleUntil: number };
+type CacheRegistration = {
+  cache: WeakRef<Map<unknown, CacheEntry>>;
+  now: () => number;
+};
+
+const idleCaches = new Set<CacheRegistration>();
+let idleSweepTimer: NodeJS.Timeout | null = null;
+
+function removeExpired(cache: Map<unknown, CacheEntry>, currentTime: number) {
   for (const [key, entry] of cache) {
     if (entry.staleUntil < currentTime) cache.delete(key);
   }
 }
 
-function scheduleIdleSweep(registration) {
+function scheduleIdleSweep(registration: CacheRegistration) {
   idleCaches.add(registration);
   if (idleSweepTimer) return;
   idleSweepTimer = setInterval(() => {
@@ -34,14 +41,14 @@ export default function createCache(
   const registration = { cache: new WeakRef(cache), now };
   let nextSweepAt = now() + SWEEP_INTERVAL_MS;
 
-  const sweepExpired = (currentTime) => {
+  const sweepExpired = (currentTime: number) => {
     if (currentTime < nextSweepAt) return;
     nextSweepAt = currentTime + SWEEP_INTERVAL_MS;
     removeExpired(cache, currentTime);
   };
 
   return {
-    get(key) {
+    get(key: unknown) {
       const currentTime = now();
       sweepExpired(currentTime);
       const entry = cache.get(key);
@@ -52,7 +59,7 @@ export default function createCache(
       }
       return entry.value;
     },
-    getWithStale(key) {
+    getWithStale(key: unknown) {
       const currentTime = now();
       sweepExpired(currentTime);
       const entry = cache.get(key);
@@ -66,7 +73,7 @@ export default function createCache(
       cache.delete(key);
       return undefined;
     },
-    set(key, value, ttlSeconds = defaultTtlSeconds, staleTtlSeconds = 0) {
+    set(key: unknown, value: unknown, ttlSeconds = defaultTtlSeconds, staleTtlSeconds = 0) {
       const currentTime = now();
       sweepExpired(currentTime);
       if (cache.has(key)) cache.delete(key);
@@ -80,7 +87,7 @@ export default function createCache(
       if (cache.size > maxEntries) cache.delete(cache.keys().next().value);
       scheduleIdleSweep(registration);
     },
-    delete(key) {
+    delete(key: unknown) {
       cache.delete(key);
     },
     flushAll() {

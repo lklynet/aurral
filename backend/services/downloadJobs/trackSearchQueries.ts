@@ -9,7 +9,47 @@ import { getYear } from "../providers/brainzmashRanking.ts";
 import { getPathParts } from "../trackMatching/candidateNormalizer.ts";
 import { coreAlbumTitle, isVariousArtistsCredit } from "../trackMatching/titleText.ts";
 
-export function bypassBannedArtistTerm(name) {
+export interface TrackSearchContext {
+  artistName?: string | null;
+  albumName?: string | null;
+  trackName?: string | null;
+  artistAliases?: string[] | null;
+  compilation?: boolean;
+  releaseYear?: string | number | null;
+}
+
+export interface SoulseekSearchItem {
+  user?: string | null;
+  file?: string | null;
+  size?: number;
+  slots?: number;
+  speed?: number;
+  queueLength?: number;
+  bitRate?: number | null;
+  bitrate?: number | null;
+  length?: number | null;
+  extension?: string | null;
+  locked?: boolean;
+  isLocked?: boolean;
+}
+
+export interface SoulseekFolder {
+  key: string;
+  user: string;
+  directoryPath: string;
+  parts: string[];
+  files: SoulseekSearchItem[];
+  audioFiles?: SoulseekSearchItem[];
+}
+
+interface SearchTier {
+  name: string;
+  queries: string[];
+}
+
+type ResolvedSearchContext = ReturnType<typeof readTrackSearchContext>;
+
+export function bypassBannedArtistTerm(name: string | null | undefined) {
   const trimmed = String(name || "").trim();
   if (!trimmed || trimmed.length < 2) {
     return trimmed;
@@ -23,14 +63,14 @@ export function bypassBannedArtistTerm(name) {
     .join(" ");
 }
 
-function stripParenthetical(value) {
+function stripParenthetical(value: string) {
   return String(value || "")
     .replace(/\(.*?\)|\[.*?\]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-export function stripReleaseTypeSuffix(value) {
+export function stripReleaseTypeSuffix(value: string | null | undefined) {
   const text = String(value || "").trim();
   if (!text) return "";
   const stripped = text
@@ -41,7 +81,7 @@ export function stripReleaseTypeSuffix(value) {
   return stripped || text;
 }
 
-export function stripVersionSuffix(value) {
+export function stripVersionSuffix(value: string | null | undefined) {
   const text = String(value || "").trim();
   if (!text) return "";
   const stripped = text
@@ -54,7 +94,7 @@ export function stripVersionSuffix(value) {
   return stripped || text;
 }
 
-function uniqueQueries(values, limit = 12) {
+function uniqueQueries(values: Array<string | null | undefined>, limit = 12) {
   const seen = new Set();
   const queries = [];
   for (const value of values) {
@@ -70,7 +110,7 @@ function uniqueQueries(values, limit = 12) {
   return queries.slice(0, limit);
 }
 
-function buildTrackQueryVariants(trackName) {
+function buildTrackQueryVariants(trackName: string | null | undefined) {
   const raw = String(trackName || "").trim();
   if (!raw) return [];
   const variants = [raw];
@@ -95,7 +135,7 @@ function buildTrackQueryVariants(trackName) {
 // Soulseek splits file paths into words at every character that is not a
 // letter or digit and matches whole words, so "Pepper's" is found as
 // "Pepper s" and never as "Peppers", and "Film: Part" never matches at all.
-export function soulseekQueryText(value) {
+export function soulseekQueryText(value: string | null | undefined) {
   return String(value || "")
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .replace(/\s+/g, " ")
@@ -122,7 +162,7 @@ const ROMAN_NUMERALS = [
 ];
 
 // "Vol. 2" is also written "Volume II"; folders use either.
-function volumeVariant(value) {
+function volumeVariant(value: string | null | undefined) {
   const match = VOLUME_PATTERN.exec(String(value || ""));
   if (!match) return "";
   const number = match[2].toLowerCase();
@@ -134,11 +174,11 @@ function volumeVariant(value) {
   return String(value).replace(match[0], replacement);
 }
 
-function sameWords(left, right) {
+function sameWords(left: string, right: string | null | undefined) {
   return Boolean(left) && left.toLowerCase() === String(right || "").toLowerCase();
 }
 
-function readTrackSearchContext(context) {
+function readTrackSearchContext(context: TrackSearchContext) {
   const rawArtist = String(context?.artistName || "").trim();
   const compilation = context?.compilation === true || isVariousArtistsCredit(rawArtist);
   const rawAlbum = stripReleaseTypeSuffix(context?.albumName);
@@ -167,7 +207,7 @@ function readTrackSearchContext(context) {
   };
 }
 
-function joinSearchParts(...parts) {
+function joinSearchParts(...parts: Array<string | null | undefined>) {
   return parts
     .map((entry) => String(entry || "").trim())
     .filter(Boolean)
@@ -178,7 +218,11 @@ function joinSearchParts(...parts) {
 // Weezer" lists every Weezer song; a short title such as "21" takes the year
 // to stay specific. Many folders leave the year out, so a short title is
 // also asked without it.
-function artistAlbumQuery(ctx, artistName = ctx.artistName, { year = true } = {}) {
+function artistAlbumQuery(
+  ctx: ResolvedSearchContext,
+  artistName = ctx.artistName,
+  { year = true } = {},
+) {
   if (!artistName || !ctx.albumName) return "";
   if (ctx.selfTitled) return year ? joinSearchParts(artistName, ctx.releaseYear) : "";
   return joinSearchParts(
@@ -188,14 +232,14 @@ function artistAlbumQuery(ctx, artistName = ctx.artistName, { year = true } = {}
   );
 }
 
-function albumAloneQueries(ctx) {
+function albumAloneQueries(ctx: ResolvedSearchContext) {
   if (!ctx.albumName || ctx.selfTitled || ctx.shortAlbum) return [];
   return [ctx.albumName];
 }
 
 // Keeps each query once, in the first tier that asks it, and numbers the
 // remaining tiers in order.
-function orderTiers(tiers) {
+function orderTiers(tiers: SearchTier[]) {
   const seen = new Set();
   return tiers
     .map((tier) => ({
@@ -211,7 +255,7 @@ function orderTiers(tiers) {
     .map((tier, index) => ({ tier: index, ...tier }));
 }
 
-function releaseFallbackTiers(ctx) {
+function releaseFallbackTiers(ctx: ResolvedSearchContext) {
   const wildcardArtist = bypassBannedArtistTerm(ctx.artistName);
   const wildcard = wildcardArtist !== ctx.artistName;
   return [
@@ -249,7 +293,7 @@ function releaseFallbackTiers(ctx) {
 // compilation is searched without "Various Artists", which folder names
 // rarely contain. A self-titled album falls back to the artist alone, the
 // broadest query, last.
-export function buildAlbumSearchTiers(context) {
+export function buildAlbumSearchTiers(context: TrackSearchContext) {
   const ctx = readTrackSearchContext(context);
   return orderTiers([
     { name: "base_album", queries: [artistAlbumQuery(ctx) || ctx.albumName] },
@@ -261,7 +305,7 @@ export function buildAlbumSearchTiers(context) {
 
 // A track search asks for the artist and album, then the artist and title.
 // The album title alone matches the most unrelated folders, so it is last.
-export function buildTrackSearchTiers(context) {
+export function buildTrackSearchTiers(context: TrackSearchContext) {
   const ctx = readTrackSearchContext(context);
   const [track, ...trackVariants] = ctx.trackVariants;
   const strippedTrack = stripVersionSuffix(track);
@@ -297,7 +341,7 @@ export function buildTrackSearchTiers(context) {
   ]);
 }
 
-function getDirectoryKey(item) {
+function getDirectoryKey(item: SoulseekSearchItem) {
   const parts = getPathParts(item?.file);
   if (parts.length === 0) return null;
   const directory = parts.slice(0, -1).join("/");
@@ -305,19 +349,25 @@ function getDirectoryKey(item) {
   return `${user}\0${directory}`;
 }
 
-export function isLockedSearchResult(item) {
+export function isLockedSearchResult(item: SoulseekSearchItem) {
   return item?.locked === true || item?.isLocked === true;
 }
 
-export function countAudioFiles(files, isAudioFile) {
+export function countAudioFiles(
+  files: SoulseekSearchItem[],
+  isAudioFile: (filePath: string) => boolean,
+) {
   return files.filter((item) => isAudioFile(String(item?.file || ""))).length;
 }
 
 // Groups raw slskd search results into per-user release folders, attaching
 // the audio files each folder holds. Folder grouping is Soulseek-specific
 // acquisition context that the shared engine never sees.
-export function groupSoulseekSearchResults(results, { isAudioFile } = {}) {
-  const groups = new Map();
+export function groupSoulseekSearchResults(
+  results: SoulseekSearchItem[] | null | undefined,
+  { isAudioFile }: { isAudioFile?: (filePath: string) => boolean } = {},
+) {
+  const groups = new Map<string, SoulseekFolder>();
   for (const item of Array.isArray(results) ? results : []) {
     const key = getDirectoryKey(item);
     if (!key) continue;
@@ -331,29 +381,31 @@ export function groupSoulseekSearchResults(results, { isAudioFile } = {}) {
     existing.files.push(item);
     groups.set(key, existing);
   }
-  const grouped = [];
+  const grouped: Array<SoulseekFolder & { audioFiles: SoulseekSearchItem[] }> = [];
   for (const group of groups.values()) {
     group.audioFiles = group.files.filter(
       (item) =>
         !isLockedSearchResult(item) && (isAudioFile ? isAudioFile(String(item?.file || "")) : true),
     );
     if (group.audioFiles.length === 0) continue;
-    grouped.push(group);
+    grouped.push(group as SoulseekFolder & { audioFiles: SoulseekSearchItem[] });
   }
   return grouped;
 }
 
 // Keeps candidate diversity: at most one attempt per user first, then
 // additional files as needed.
-export function selectRankedMatchAttempts(matches, limit = 5) {
+export function selectRankedMatchAttempts<
+  T extends { raw?: { user?: string | null; file?: string | null } | null },
+>(matches: T[] | null | undefined, limit = 5) {
   const ranked = Array.isArray(matches) ? matches : [];
   const max = Number.isFinite(Number(limit)) && Number(limit) > 0 ? Math.floor(Number(limit)) : 5;
   if (ranked.length <= max) return ranked.slice(0, max);
 
-  const selected = [];
+  const selected: T[] = [];
   const seenKeys = new Set();
   const seenUsers = new Set();
-  const getKey = (match) =>
+  const getKey = (match: T) =>
     `${String(match?.raw?.user || "")
       .trim()
       .toLowerCase()}\0${String(match?.raw?.file || "")

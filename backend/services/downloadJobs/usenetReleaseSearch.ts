@@ -28,7 +28,36 @@ const AUDIO_CATEGORY_MIN = 3000;
 const AUDIO_CATEGORY_MAX = 3999;
 const DEFAULT_MAX_RELEASE_SIZE_MB = 2500;
 
-function hasAudioCategory(release) {
+export interface UsenetRelease {
+  guid?: string | null;
+  title?: string;
+  size?: number;
+  downloadUrl?: string;
+  indexerId?: number | null;
+  indexer?: string | null;
+  protocol?: string;
+  categories?: number[];
+}
+
+export interface UsenetSearchContext {
+  artistName?: string | null;
+  artistAliases?: string[];
+  albumName?: string | null;
+  trackName?: string | null;
+  releaseYear?: string | number | null;
+  albumTrackCount?: number | null;
+  compilation?: boolean;
+  secondaryTypes?: string[];
+  releaseTracks?: unknown[];
+}
+
+interface UsenetRankOptions {
+  maxReleaseSizeMb?: number;
+}
+
+type PhraseSpan = [start: number, end: number];
+
+function hasAudioCategory(release: UsenetRelease) {
   const categories = Array.isArray(release?.categories) ? release.categories : [];
   if (categories.length === 0) return true;
   return categories.some((category) => {
@@ -37,7 +66,7 @@ function hasAudioCategory(release) {
   });
 }
 
-function hasConflictingYear(title, expectedYear) {
+function hasConflictingYear(title: string, expectedYear: string | null) {
   const expected = getYear(expectedYear);
   if (!expected) return false;
   const years = [...String(title || "").matchAll(/\b(19\d{2}|20\d{2})\b/g)].map(
@@ -46,7 +75,7 @@ function hasConflictingYear(title, expectedYear) {
   return years.length > 0 && !years.includes(expected);
 }
 
-function scoreFormat(title) {
+function scoreFormat(title: string) {
   const text = normalizeText(title);
   if (/\bflac\b|\blossless\b|\blossless\b|\b24bit\b|\b24 bit\b/.test(text)) {
     return 12;
@@ -55,7 +84,7 @@ function scoreFormat(title) {
   return 0;
 }
 
-function scoreNoise(title) {
+function scoreNoise(title: string) {
   const text = normalizeText(title);
   let penalty = 0;
   if (/\bdiscography\b|\bcomplete\b|\bcollection\b|\bbox set\b/.test(text)) {
@@ -70,7 +99,11 @@ function scoreNoise(title) {
   return penalty;
 }
 
-function scoreReleaseSize(release, context, options) {
+function scoreReleaseSize(
+  release: UsenetRelease,
+  context: UsenetSearchContext,
+  options: UsenetRankOptions,
+) {
   const size = Number(release?.size || 0);
   if (!size) return 0;
   const sizeMb = size / (1024 * 1024);
@@ -88,7 +121,7 @@ function scoreReleaseSize(release, context, options) {
   return -18;
 }
 
-function readComparableAlbumName(context) {
+function readComparableAlbumName(context: UsenetSearchContext) {
   return String(context?.albumName || "")
     .replace(/\s+(?:-|–|—)\s+(?:single|ep|album)\s*$/i, "")
     .replace(/\s+[[(](?:single|ep|album)[)\]]\s*$/i, "")
@@ -96,7 +129,7 @@ function readComparableAlbumName(context) {
     .trim();
 }
 
-function releaseKey(release) {
+function releaseKey(release: UsenetRelease) {
   return [release?.guid, release?.downloadUrl, release?.indexerId, normalizeTitle(release?.title)]
     .map((entry) =>
       String(entry || "")
@@ -106,7 +139,7 @@ function releaseKey(release) {
     .join("\0");
 }
 
-function titleWords(value) {
+function titleWords(value: string) {
   return foldDiacritics(String(value || ""))
     .toLowerCase()
     .replace(/&/gu, " and ")
@@ -120,9 +153,9 @@ function titleWords(value) {
 // release title adds the year, format, and group around the artist and
 // album, so the whole-title similarity used before rejected short albums:
 // "Lemonade" in "Beyonce feat. Kendrick Lamar - Lemonade (2016) MP3".
-function phraseSpans(words, phrase) {
+function phraseSpans(words: string[], phrase: string) {
   const target = titleWords(phrase);
-  const spans = [];
+  const spans: PhraseSpan[] = [];
   if (target.length === 0) return spans;
   for (let start = 0; start + target.length <= words.length; start += 1) {
     if (target.every((word, offset) => words[start + offset] === word)) {
@@ -132,18 +165,18 @@ function phraseSpans(words, phrase) {
   return spans;
 }
 
-function containsPhrase(words, phrase) {
+function containsPhrase(words: string[], phrase: string) {
   return phraseSpans(words, phrase).length > 0;
 }
 
 // A self-titled album only counts when its title appears apart from the
 // artist's name: "A New Found Glory - From The Screen To Your Stereo" names
 // the artist once and is a different album. "Queen II" still names both.
-function containsAlbumApartFromArtist(words, album, artists) {
+function containsAlbumApartFromArtist(words: string[], album: string, artists: string[]) {
   const artistSpans = artists.flatMap((name) => phraseSpans(words, name));
-  const apart = ([start, end], [artistStart, artistEnd]) =>
+  const apart = ([start, end]: PhraseSpan, [artistStart, artistEnd]: PhraseSpan) =>
     artistEnd <= start || end <= artistStart;
-  const inside = ([start, end], [artistStart, artistEnd]) =>
+  const inside = ([start, end]: PhraseSpan, [artistStart, artistEnd]: PhraseSpan) =>
     start <= artistStart && artistEnd <= end && artistEnd - artistStart < end - start;
   return phraseSpans(words, album).some(
     (span) =>
@@ -152,14 +185,14 @@ function containsAlbumApartFromArtist(words, album, artists) {
   );
 }
 
-function withoutCredits(title) {
+function withoutCredits(title: string) {
   return String(title || "")
     .replace(/\s*[[(][^\])]*[\])]/gu, " ")
     .replace(/\s+(?:feat\.?|ft\.?|featuring)\s+.+$/iu, "")
     .trim();
 }
 
-function readReleaseRequest(context) {
+function readReleaseRequest(context: UsenetSearchContext) {
   const compilation = context?.compilation === true || isVariousArtistsCredit(context?.artistName);
   const artists = (
     compilation
@@ -182,7 +215,11 @@ function readReleaseRequest(context) {
   };
 }
 
-export function rankUsenetReleases(releases, context, options = {}) {
+export function rankUsenetReleases(
+  releases: UsenetRelease[],
+  context: UsenetSearchContext,
+  options: UsenetRankOptions = {},
+) {
   const request = readReleaseRequest(context);
   const albumVersions = prepareVariantRequest({
     albumName: request.albumName,
@@ -299,7 +336,10 @@ export function rankUsenetReleases(releases, context, options = {}) {
   });
 }
 
-export function selectRankedUsenetCandidates(ranked, limit = 5) {
+export function selectRankedUsenetCandidates(
+  ranked: ReturnType<typeof rankUsenetReleases>,
+  limit = 5,
+) {
   const max = Math.max(1, Math.floor(Number(limit) || 5));
   const selected = [];
   const seenIndexers = new Set();
@@ -330,7 +370,7 @@ const PROWLARR_MUSIC_QUERY = /^\{artist:/iu;
 // characters other than letters, digits, and apostrophes becomes a space.
 // "AC/DC Back in Black" found 2 releases on a test indexer set; "AC DC Back
 // in Black" found 75.
-export function newznabQueryText(value) {
+export function newznabQueryText(value: string | null | undefined) {
   const text = foldDiacritics(String(value || ""))
     .replace(/[\u0060\u00B4\u2018\u2019]/gu, "'")
     .replace(/[^\p{L}\p{N}']+/gu, " ")
@@ -344,13 +384,22 @@ export function newznabQueryText(value) {
 // one "Artist Album" text search. A track also tries "Artist Title" for a
 // single. A compilation is listed as "VA" or by its title alone.
 // A compilation track's job names the track's own artist as an alias.
-function creditedArtists(context) {
+function creditedArtists(context: UsenetSearchContext) {
   return (context?.artistAliases || [])
     .map((name) => String(name || "").trim())
     .filter((name) => name && !isVariousArtistsCredit(name));
 }
 
-export function buildUsenetSearchQueries(context, { musicSearch = false, albumGrab = false } = {}) {
+export function buildUsenetSearchQueries(
+  context: UsenetSearchContext,
+  {
+    musicSearch = false,
+    albumGrab = false,
+  }: {
+    musicSearch?: boolean;
+    albumGrab?: boolean;
+  } = {},
+) {
   const compilation = context?.compilation === true || isVariousArtistsCredit(context?.artistName);
   const artist = compilation ? "VA" : newznabQueryText(context?.artistName);
   const trackArtist = compilation ? newznabQueryText(creditedArtists(context)[0]) : artist;
@@ -358,8 +407,8 @@ export function buildUsenetSearchQueries(context, { musicSearch = false, albumGr
   const track = albumGrab ? "" : newznabQueryText(context?.trackName);
   const year =
     album && artist.toLowerCase() === album.toLowerCase() ? getYear(context?.releaseYear) : null;
-  const join = (...parts) => parts.filter(Boolean).join(" ");
-  const queries = [];
+  const join = (...parts: (string | null)[]) => parts.filter(Boolean).join(" ");
+  const queries: string[] = [];
   if (musicSearch && !compilation && artist && album) {
     queries.push(`{artist:${artist}}{album:${album}}${year ? `{year:${year}}` : ""}`);
   }
@@ -369,11 +418,11 @@ export function buildUsenetSearchQueries(context, { musicSearch = false, albumGr
   return [...new Set(queries)];
 }
 
-export function isProwlarrMusicQuery(query) {
+export function isProwlarrMusicQuery(query: string) {
   return PROWLARR_MUSIC_QUERY.test(String(query || ""));
 }
 
-export function isAudioFile(filePath) {
+export function isAudioFile(filePath: string) {
   const ext = path.extname(String(filePath || "")).toLowerCase();
   return [
     ".flac",
