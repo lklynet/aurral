@@ -3,7 +3,7 @@ import { X } from "lucide-react";
 import TooltipButton from "../../components/TooltipButton";
 import { useModalDialog } from "../../hooks/useModalDialog.ts";
 import { formatDateTime } from "../../utils/dateTime.ts";
-import type { ActivityRequest } from "./activityListUtils.ts";
+import { lookupLabel, type ActivityRequest } from "./activityListUtils.ts";
 
 const text = (value: unknown) => String(value ?? "").trim();
 
@@ -38,7 +38,7 @@ const formatKind = (kind: string | null | undefined) => {
     track_reused_aurral: "Reused track",
     track_reused_lidarr: "Reused track",
   };
-  return labels[kind ?? ""] || text(kind).replace(/[_-]+/g, " ");
+  return lookupLabel(labels, kind) || text(kind).replace(/[_-]+/g, " ");
 };
 
 const formatQualityState = (state: string | null | undefined) => {
@@ -48,7 +48,7 @@ const formatQualityState = (state: string | null | undefined) => {
     preferred: "Preferred",
     external: "External file",
   };
-  return labels[state ?? ""] || text(state);
+  return lookupLabel(labels, state) || text(state);
 };
 
 function getRows(item: Partial<ActivityRequest>) {

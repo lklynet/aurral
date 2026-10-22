@@ -19,6 +19,11 @@ const ALBUM_PHASE_LABELS: Partial<Record<string, string>> = {
   finalize: "Processing",
 };
 
+export const lookupLabel = (
+  table: Partial<Record<string, string>>,
+  key: string | null | undefined,
+) => (key != null && Object.hasOwn(table, key) ? table[key] : undefined);
+
 type SharedKeys = keyof LidarrRequestItem & keyof AurralRequestItem;
 
 export type ActivityRequest = {
@@ -91,7 +96,7 @@ export function groupAlbumGrabRequests(requests: ActivityRequest[]) {
       ? processing
         ? "Downloading tracks"
         : "Searching for tracks"
-      : ALBUM_PHASE_LABELS[grab.phase] || "Queued";
+      : lookupLabel(ALBUM_PHASE_LABELS, grab.phase) || "Queued";
     const allCancelled = children.every((child) => child.status === "cancelled");
     const status = blocked
       ? "blocked"
@@ -125,9 +130,9 @@ export function groupAlbumGrabRequests(requests: ActivityRequest[]) {
       ),
     ];
     const sourceSummary = sources.length
-      ? sources.map((source) => SOURCE_NAMES[source] || source).join(", ")
+      ? sources.map((source) => lookupLabel(SOURCE_NAMES, source) || source).join(", ")
       : active && grab.source
-        ? SOURCE_NAMES[grab.source] || grab.source
+        ? lookupLabel(SOURCE_NAMES, grab.source) || grab.source
         : "Unknown";
     const progressLabel =
       `${ready} of ${total} tracks ready` +
