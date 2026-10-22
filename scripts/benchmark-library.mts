@@ -5,6 +5,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { performance } from "node:perf_hooks";
 import { spawn } from "node:child_process";
+import type * as DbSqlite from "../backend/config/db-sqlite.ts";
+import type { LibraryMediaFilesRow } from "../backend/db/rows.ts";
+import type * as LibraryQueryService from "../backend/services/libraryQueryService.ts";
+
+type Database = typeof DbSqlite.db;
+type LibraryPage = ReturnType<typeof LibraryQueryService.getLibraryPage>;
+type LibraryPageOptions = Parameters<typeof LibraryQueryService.getLibraryPage>[0];
+type ArtistProjection = ReturnType<typeof LibraryQueryService.getLibraryArtistProjection>;
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const commit = (() => {
@@ -20,7 +28,7 @@ const commit = (() => {
 
 const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
 
-function readOption(args, name, fallback) {
+function readOption<T extends string | number>(args: string[], name: string, fallback: T) {
   const index = args.indexOf(`--${name}`);
   if (index < 0) return fallback;
   const value = args[index + 1];
@@ -28,7 +36,7 @@ function readOption(args, name, fallback) {
   return value;
 }
 
-function positiveInteger(value, name) {
+function positiveInteger(value: string | number, name: string) {
   const parsed = Number(value);
   if (!Number.isSafeInteger(parsed) || parsed < 1) {
     throw new Error(`--${name} must be a positive integer`);
@@ -36,7 +44,7 @@ function positiveInteger(value, name) {
   return parsed;
 }
 
-function parseOptions(args) {
+function parseOptions(args: string[]) {
   if (args.includes("--help")) {
     console.log(`Usage: npm run perf:library -- [options]
 
@@ -78,6 +86,8 @@ Options:
   };
 }
 
+type BenchmarkOptions = ReturnType<typeof parseOptions>;
+
 function memoryStats() {
   const memory = process.memoryUsage();
   return {
@@ -88,9 +98,9 @@ function memoryStats() {
   };
 }
 
-function summarizeSamples(samples) {
+function summarizeSamples<T extends { elapsedMs: number }>(samples: T[]) {
   const values = samples.map((sample) => sample.elapsedMs).sort((a, b) => a - b);
-  const percentile = (fraction) =>
+  const percentile = (fraction: number) =>
     values[Math.min(values.length - 1, Math.ceil(values.length * fraction) - 1)];
   return {
     samples,
@@ -101,7 +111,7 @@ function summarizeSamples(samples) {
   };
 }
 
-function measure(operation) {
+function measure<T>(operation: () => T) {
   const before = memoryStats();
   const started = performance.now();
   const value = operation();
@@ -119,7 +129,17 @@ function measure(operation) {
   };
 }
 
-function pageSummary(page) {
+type Sample = Omit<ReturnType<typeof measure<unknown>>, "value">;
+type SampleSummary = ReturnType<typeof summarizeSamples<Sample>>;
+type PageSummary = ReturnType<typeof pageSummary>;
+type ArtistSummary = ReturnType<typeof artistProjectionSummary>;
+type PageSamples = {
+  shape: PageSummary | ArtistSummary | undefined;
+  cold: SampleSummary;
+  warm: SampleSummary;
+};
+
+function pageSummary(page: LibraryPage) {
   return {
     total: page.total,
     page: page.page,
@@ -130,12 +150,12 @@ function pageSummary(page) {
   };
 }
 
-function artistProjectionSummary(artists) {
+function artistProjectionSummary(artists: ArtistProjection) {
   return { itemCount: artists.length };
 }
 
-async function writeScanFixture(filePath, title) {
-  const word = (value) => {
+async function writeScanFixture(filePath: string, title: string) {
+  const word = (value: number) => {
     const buffer = Buffer.alloc(4);
     buffer.writeUInt32LE(value);
     return buffer;
@@ -171,7 +191,16 @@ async function writeScanFixture(filePath, title) {
   );
 }
 
-function seedDatabase(database, { tracks, tracksPerAlbum, musicRoot }) {
+function seedDatabase(
+  database: Database,
+  {
+    tracks,
+    tracksPerAlbum,
+    musicRoot,
+  }: Pick<BenchmarkOptions, "tracks" | "tracksPerAlbum"> & {
+    musicRoot: string;
+  },
+) {
   const albumCount = Math.ceil(tracks / tracksPerAlbum);
   const artistCount = Math.ceil(albumCount / 10);
   const metadata = JSON.stringify({
@@ -205,8 +234,8 @@ function seedDatabase(database, { tracks, tracksPerAlbum, musicRoot }) {
       (track_id, album_id, source, path, format, size, mtime_ms, duration_ms, quality_json, available, created_at, updated_at)
      VALUES (?, ?, 'lidarr', ?, 'flac', 1000, ?, 180000, ?, 1, ?, ?)`,
   );
-  const artistIds = [];
-  const albumIds = [];
+  const artistIds: number[] = [];
+  const albumIds: number[] = [];
   const transaction = database.transaction(() => {
     for (let artistIndex = 0; artistIndex < artistCount; artistIndex += 1) {
       const name = `Benchmark Artist ${String(artistIndex).padStart(5, "0")}`;
@@ -285,7 +314,7 @@ function seedDatabase(database, { tracks, tracksPerAlbum, musicRoot }) {
   };
 }
 
-function seedSubsonicFavorite(database) {
+function seedSubsonicFavorite(database: Database) {
   const now = Date.now();
   const userId = Number(
     database
@@ -304,7 +333,7 @@ function seedSubsonicFavorite(database) {
   return { id: userId, username: "benchmark", permissions: { accessFlow: true } };
 }
 
-function collectPageSamples(getPage, invalidate, repeats) {
+function collectPageSamples(getPage: () => LibraryPage, invalidate: () => void, repeats: number) {
   const coldSamples = [];
   const warmSamples = [];
   let shape;
@@ -318,7 +347,7 @@ function collectPageSamples(getPage, invalidate, repeats) {
     const result = measure(() => getPage());
     warmSamples.push(result);
   }
-  const strip = ({ value: _value, ...sample }) => sample;
+  const strip = <T extends { value: unknown }>({ value: _value, ...sample }: T) => sample;
   return {
     shape,
     cold: summarizeSamples(coldSamples.map(strip)),
@@ -326,7 +355,43 @@ function collectPageSamples(getPage, invalidate, repeats) {
   };
 }
 
-function runChild({ dataDir, dbPath, code, timeoutMs, heapMb, env = {} }) {
+type ChildProbe = {
+  jsonBytes: number;
+  rssDeltaBytes: number;
+  heapDeltaBytes: number;
+  rssBytes: number;
+  heapUsedBytes: number;
+  counts: Record<string, number>;
+};
+
+type ChildResult =
+  | ({ status: "completed"; elapsedMs: number } & ChildProbe)
+  | { status: "timeout"; elapsedMs: number; timeoutMs: number }
+  | {
+      status: "failed";
+      elapsedMs: number;
+      exitCode?: number | null;
+      signal?: NodeJS.Signals | null;
+      error: string;
+    };
+
+type CompletedChild = Extract<ChildResult, { status: "completed" }>;
+
+function runChild({
+  dataDir,
+  dbPath,
+  code,
+  timeoutMs,
+  heapMb,
+  env = {},
+}: {
+  dataDir: string;
+  dbPath: string;
+  code: string;
+  timeoutMs: number;
+  heapMb: number;
+  env?: Record<string, string>;
+}): Promise<ChildResult> {
   return new Promise((resolve) => {
     const started = performance.now();
     const child = spawn(
@@ -377,7 +442,7 @@ function runChild({ dataDir, dbPath, code, timeoutMs, heapMb, env = {} }) {
         return;
       }
       const lines = stdout.trim().split("\n").filter(Boolean);
-      let value = null;
+      let value: ChildProbe | null = null;
       try {
         value = JSON.parse(lines.at(-1) || "null");
       } catch {
@@ -476,8 +541,10 @@ console.log(JSON.stringify({
 }));
 `;
 
-function summarizeReadSamples(samples) {
-  const completed = samples.filter((sample) => sample.status === "completed");
+function summarizeReadSamples(samples: ChildResult[]) {
+  const completed = samples.filter(
+    (sample): sample is CompletedChild => sample.status === "completed",
+  );
   const statisticsComplete =
     samples.length > 0 &&
     completed.length === samples.length &&
@@ -489,9 +556,9 @@ function summarizeReadSamples(samples) {
   const values = statisticsComplete
     ? completed.map((sample) => sample.elapsedMs).sort((a, b) => a - b)
     : [];
-  const percentile = (fraction) =>
+  const percentile = (fraction: number) =>
     values[Math.min(values.length - 1, Math.ceil(values.length * fraction) - 1)];
-  const itemTotal = (sample) =>
+  const itemTotal = (sample: CompletedChild) =>
     Object.values(sample.counts || {}).reduce(
       (total, count) => total + (Number.isFinite(Number(count)) ? Number(count) : 0),
       0,
@@ -519,8 +586,10 @@ function summarizeReadSamples(samples) {
   };
 }
 
-function isFiniteBelow(value, limit) {
-  return Number.isFinite(value) && value < limit;
+type ReadSummary = ReturnType<typeof summarizeReadSamples>;
+
+function isFiniteBelow(value: number | null, limit: number) {
+  return Number.isFinite(value) && value! < limit;
 }
 
 async function main() {
@@ -552,7 +621,7 @@ async function main() {
       tracks: [],
     });
     const seedElapsedMs = Number((performance.now() - seedStarted).toFixed(3));
-    const pageCases = [
+    const pageCases: [string, LibraryPageOptions][] = [
       ["artists", { kind: "artists", page: 1, pageSize: 100 }],
       ["albums", { kind: "albums", page: 1, pageSize: 100, sort: "newest" }],
       ["tracks", { kind: "tracks", page: 1, pageSize: 100 }],
@@ -592,7 +661,7 @@ async function main() {
         },
       ],
     ];
-    const pages = {};
+    const pages: Record<string, PageSamples> = {};
     for (const [name, pageOptions] of pageCases) {
       pages[name] = collectPageSamples(
         () => queryService.getLibraryPage(pageOptions),
@@ -609,7 +678,8 @@ async function main() {
         measure(() => queryService.getLibraryArtistProjection({ page: 1, pageSize: 100 })),
       );
     }
-    const stripProjection = ({ value: _value, ...sample }) => sample;
+    const stripProjection = <T extends { value: unknown }>({ value: _value, ...sample }: T) =>
+      sample;
     pages["artist-projection"] = {
       shape: artistProjectionSummary(artistProjectionCold.value),
       cold: summarizeSamples([stripProjection(artistProjectionCold)]),
@@ -641,9 +711,11 @@ async function main() {
     await writeScanFixture(target, previousTitle);
     await scanConfiguredLibrary(scanOptions);
     const fixtureAlbumId = database
-      .prepare("SELECT album_id FROM library_media_files WHERE source = 'lidarr' AND path = ?")
+      .prepare<[string], Pick<LibraryMediaFilesRow, "album_id">>(
+        "SELECT album_id FROM library_media_files WHERE source = 'lidarr' AND path = ?",
+      )
       .get(target).album_id;
-    const searchFixture = (query) =>
+    const searchFixture = (query: string) =>
       queryService.getLibraryPage({
         kind: "tracks",
         query,
@@ -678,7 +750,7 @@ async function main() {
     const targetedScans = summarizeSamples(targetedScanSamples);
     database.close();
     database = null;
-    const subsonicReads = {};
+    const subsonicReads: Record<string, ReadSummary> = {};
     for (const operation of [
       "getIndexes",
       "getArtist",

@@ -377,7 +377,7 @@
   "frontend/src/utils/theme.ts": 1,
   "lib/axiosFetch.ts": 5,
   "lib/nightly-image.ts": 1,
-  "scripts/benchmark-library.mts": 85,
+  "scripts/benchmark-library.mts": 3,
   "tests/e2e/artist-pick-header.spec.ts": 7,
   "tests/e2e/library-add-menu.spec.ts": 8,
   "tests/e2e/library-files.spec.ts": 2,
