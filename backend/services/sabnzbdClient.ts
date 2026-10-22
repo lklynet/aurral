@@ -72,6 +72,7 @@ type SabnzbdConfig = {
   category?: string | null;
   priority?: number | string | null;
   addPaused?: boolean;
+  deleteLeftovers?: boolean;
 };
 
 type SabnzbdConnection = {
@@ -86,7 +87,7 @@ type SabnzbdConnection = {
   directories?: Awaited<ReturnType<SabnzbdClient["getDownloadDirectories"]>>;
 };
 
-type SabnzbdSlot = { nzo_id: string };
+type SabnzbdSlot = { nzo_id: string; storage?: string | null };
 type NzbId = string | number | null | undefined;
 
 let connectionCache: {
@@ -161,7 +162,7 @@ function readConfigValue(entries: unknown, name: string) {
   return "";
 }
 
-function readCategoryDirectory(entries, category) {
+function readCategoryDirectory(entries: unknown, category: unknown) {
   const wanted = String(category || "")
     .trim()
     .toLowerCase();
@@ -172,7 +173,7 @@ function readCategoryDirectory(entries, category) {
       ? Object.values(entries)
       : [];
   const match = categories.find(
-    (entry) =>
+    (entry: { name?: unknown; dir?: unknown } | null | undefined) =>
       String(entry?.name || "")
         .trim()
         .toLowerCase() === wanted,
@@ -296,7 +297,7 @@ export class SabnzbdClient {
     {
       deleteFiles = false,
       historyItem = null,
-    }: { deleteFiles?: boolean; historyItem?: SabnzbdSlot | null } = {},
+    }: { deleteFiles?: boolean; historyItem?: Partial<SabnzbdSlot> | null } = {},
   ) {
     const id = String(nzoId || "").trim();
     if (!id) return false;
@@ -328,7 +329,7 @@ export class SabnzbdClient {
     return result?.status === true;
   }
 
-  async sharesDownloadFolder(item) {
+  async sharesDownloadFolder(item: Partial<SabnzbdSlot>) {
     const id = String(item?.nzo_id || "").trim();
     const storage = normalizeStoragePath(item?.storage);
     if (!storage) return false;

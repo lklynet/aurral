@@ -2007,7 +2007,7 @@ export class DownloadTracker {
     return sortByCreatedAt(Array.from(this.jobs.values()));
   }
 
-  hasPersistedJob(id) {
+  hasPersistedJob(id: string | null | undefined) {
     return Boolean(liveJobStmt.get(id ?? null));
   }
 

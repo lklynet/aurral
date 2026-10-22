@@ -83,6 +83,7 @@ type UsenetJob = Pick<DownloadJob, "id"> &
     | "downloadClient"
     | "downloadClientId"
     | "releaseGuid"
+    | "heldForReview"
   >;
 
 type RankedRelease = ReturnType<typeof rankUsenetReleases>[number];
@@ -133,7 +134,10 @@ interface UsenetPayload {
   heldForReview?: HeldForReviewDraft;
 }
 
-type UsenetRemovePayload = Pick<UsenetPayload, "downloadClient" | "manualDownloadClient" | "nzbId">;
+type UsenetRemovePayload = Pick<
+  UsenetPayload,
+  "downloadClient" | "manualDownloadClient" | "nzbId" | "albumGrab"
+>;
 
 interface PipelineHelpers {
   failOrTryNextSource: (
@@ -193,7 +197,7 @@ function trackedConsumers(clientKey: string, nzbId: NzbId | null | undefined) {
     )
       return false;
     const currentMatches =
-      ["downloading", "blocked"].includes(entry.status) &&
+      (entry.status === "downloading" || entry.status === "blocked") &&
       !downloadTracker.isInActiveAlbumGrab(entry.id) &&
       entry.downloadSource === "usenet" &&
       entry.downloadClient === clientKey &&
@@ -300,7 +304,7 @@ export async function removeReviewedUsenetDownload(
   );
 }
 
-export function shouldPreserveReviewedUsenetSource(job) {
+export function shouldPreserveReviewedUsenetSource(job: UsenetJob | null | undefined) {
   if (job?.downloadSource !== "usenet" || !job.downloadClientId || !job.id) return false;
   const client = getUsenetClient(job.downloadClient);
   return hasOtherNzbConsumers(client.key, job.downloadClientId, job.id);

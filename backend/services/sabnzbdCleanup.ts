@@ -2,34 +2,47 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { isPathInsideRoot, resolveDownloadRoot } from "./downloadPaths.ts";
 import { lidarrClient } from "./lidarrClient.ts";
+import { asAppError } from "../../lib/errors.ts";
 import { getPathMappings, resolveLocalPath } from "./pathMappings.ts";
 
-const realpathOr = (dir) => fs.realpath(dir).catch(() => dir);
+const isPresent = (value: string | null): value is string => Boolean(value);
 
-function safePathParts(value) {
+const realpathOr = (dir: string) => fs.realpath(dir).catch(() => dir);
+
+function safePathParts(value: unknown) {
   const parts = String(value || "").split(/[\\/]/);
   return parts.length > 0 && parts.every((part) => part && part !== "." && part !== "..")
     ? parts
     : [];
 }
 
-function isAbsoluteExternalPath(value) {
+function isAbsoluteExternalPath(value: unknown) {
   const raw = String(value || "").trim();
   return path.isAbsolute(raw) || /^[A-Za-z]:[\\/]/.test(raw) || /^\\\\/.test(raw);
 }
 
-function appendExternalPath(root, parts) {
+function appendExternalPath(root: unknown, parts: string[]) {
   const raw = String(root || "").trim();
   const base = raw.replace(/[\\/]+$/, "");
   return `${base || (raw.startsWith("/") ? "/" : "")}${base ? "/" : ""}${parts.join("/")}`;
 }
 
-export async function removeSabnzbdDownloadFolder(historyItem, directories, category) {
+type SabnzbdDirectories = {
+  completedPath?: unknown;
+  destDir?: unknown;
+  categoryDestDir?: unknown;
+};
+
+export async function removeSabnzbdDownloadFolder(
+  historyItem: { storage?: string | null } | null | undefined,
+  directories: SabnzbdDirectories,
+  category: unknown,
+) {
   const storage = String(historyItem?.storage || "").trim();
   if (!storage) return;
 
   const mappings = getPathMappings("sabnzbd");
-  const toLocal = (value) => {
+  const toLocal = (value: unknown) => {
     const raw = String(value || "").trim();
     if (!raw) return null;
     const local = resolveLocalPath(raw, mappings);
@@ -39,7 +52,7 @@ export async function removeSabnzbdDownloadFolder(historyItem, directories, cate
   if (!target) throw new Error("SABnzbd download folder is missing or unmapped");
 
   const stat = await fs.lstat(target).catch((error) => {
-    if (error.code === "ENOENT") return null;
+    if (asAppError(error)?.code === "ENOENT") return null;
     throw error;
   });
   if (!stat) return;
@@ -48,19 +61,19 @@ export async function removeSabnzbdDownloadFolder(historyItem, directories, cate
   const rootPaths = [directories.completedPath, directories.destDir]
     .map((root) => String(root || "").trim())
     .filter(Boolean);
-  const roots = rootPaths.map(toLocal).filter(Boolean);
+  const roots = rootPaths.map(toLocal).filter(isPresent);
   const categoryDestDir = String(directories.categoryDestDir || "").trim();
   const categoryDestParts = safePathParts(categoryDestDir);
   const configuredCategoryDirs = isAbsoluteExternalPath(categoryDestDir)
-    ? [toLocal(categoryDestDir)].filter(Boolean)
+    ? [toLocal(categoryDestDir)].filter(isPresent)
     : categoryDestParts.length
       ? rootPaths
           .map((root) => toLocal(appendExternalPath(root, categoryDestParts)))
-          .filter(Boolean)
+          .filter(isPresent)
       : [];
   const categoryParts = safePathParts(category);
   const defaultCategoryDirs = categoryParts.length
-    ? rootPaths.map((root) => toLocal(appendExternalPath(root, categoryParts))).filter(Boolean)
+    ? rootPaths.map((root) => toLocal(appendExternalPath(root, categoryParts))).filter(isPresent)
     : [];
   const parents = await Promise.all(
     [...roots, ...configuredCategoryDirs, ...defaultCategoryDirs].map(realpathOr),
