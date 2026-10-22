@@ -1,0 +1,124 @@
+import { test, afterAll } from "vite-plus/test";
+import assert from "node:assert/strict";
+
+import {
+  createMockHttpServer,
+  setupIsolatedBackend,
+  cleanupIsolatedState,
+} from "../helpers/backendTestHarness.ts";
+
+const [
+  isolatedState,
+  { db },
+  { dbOps },
+  { libraryManager },
+  { downloadTracker },
+  { downloadWorker },
+  { lidarrClient },
+  { clearMetadataProviderCaches },
+] = await setupIsolatedBackend(
+  "aurral-album-added-date",
+  "backend/config/db-sqlite.ts",
+  "backend/db/helpers/index.ts",
+  "backend/services/libraryManager.ts",
+  "backend/services/downloadJobs/downloadTracker.ts",
+  "backend/services/downloadJobs/downloadWorker.ts",
+  "backend/services/lidarrClient.ts",
+  "backend/services/providers/brainzmashProvider.ts",
+);
+
+const artistMbid = "11111111-1111-4111-8111-111111111111";
+const albumMbid = "22222222-2222-4222-8222-222222222222";
+const trackMbid = "33333333-3333-4333-8333-333333333331";
+
+afterAll(async () => {
+  await cleanupIsolatedState(isolatedState);
+});
+
+test("re-adding an Aurral album keeps the date it was first added", async () => {
+  const server = await createMockHttpServer((request, response) => {
+    const pathname = new URL(request.url || "/", "http://127.0.0.1").pathname;
+    response.setHeader("content-type", "application/json");
+    if (pathname === `/artist/${artistMbid}`) {
+      response.end(
+        JSON.stringify({ id: artistMbid, artistname: "Aurral Artist", sortname: "Aurral Artist" }),
+      );
+      return;
+    }
+    if (pathname === `/album/${albumMbid}`) {
+      response.end(
+        JSON.stringify({
+          id: albumMbid,
+          title: "Aurral Album",
+          artistid: artistMbid,
+          artists: [{ id: artistMbid, artistname: "Aurral Artist" }],
+          releasedate: "2026-01-02",
+          releases: [
+            {
+              id: `${albumMbid}-release`,
+              status: "Official",
+              tracks: [
+                {
+                  id: `${trackMbid}-recording`,
+                  recordingid: trackMbid,
+                  trackname: "Track 1",
+                  trackposition: 1,
+                  mediumnumber: 1,
+                  durationms: 180000,
+                },
+              ],
+            },
+          ],
+        }),
+      );
+      return;
+    }
+    response.writeHead(404);
+    response.end(JSON.stringify({ error: "not found" }));
+  });
+  const originalSettings = dbOps.getSettings();
+  const originalIsConfigured = lidarrClient.isConfigured;
+  const originalWorkerStart = downloadWorker.start;
+  dbOps.updateSettings({
+    ...originalSettings,
+    integrations: {
+      ...originalSettings.integrations,
+      slskd: { enabled: true, url: "http://127.0.0.1:9", apiKey: "test-key" },
+      metadata: {
+        ...originalSettings.integrations?.metadata,
+        baseUrl: server.url,
+        enableNarrowFallbacks: false,
+      },
+    },
+  });
+  clearMetadataProviderCaches();
+  lidarrClient.isConfigured = () => false;
+  downloadWorker.start = async () => {};
+
+  try {
+    const artist = await libraryManager.addArtist(artistMbid, "Aurral Artist");
+    await libraryManager.addAlbum(artist.id, albumMbid, "Aurral Album", { managedBy: "aurral" });
+
+    const firstAdded = "2020-01-02T03:04:05.000Z";
+    const row = db
+      .prepare("SELECT id, metadata_json FROM library_albums WHERE mbid = ?")
+      .get(albumMbid);
+    const metadata = JSON.parse(row.metadata_json);
+    db.prepare("UPDATE library_albums SET metadata_json = ? WHERE id = ?").run(
+      JSON.stringify({ ...metadata, added: firstAdded, trackListComplete: false }),
+      row.id,
+    );
+
+    downloadTracker.clearAll();
+    await libraryManager.addAlbum(artist.id, albumMbid, "Aurral Album", { managedBy: "aurral" });
+
+    const after = db.prepare("SELECT metadata_json FROM library_albums WHERE id = ?").get(row.id);
+    assert.equal(JSON.parse(after.metadata_json).added, firstAdded);
+  } finally {
+    downloadWorker.start = originalWorkerStart;
+    lidarrClient.isConfigured = originalIsConfigured;
+    dbOps.updateSettings(originalSettings);
+    clearMetadataProviderCaches();
+    await server.close();
+  }
+});

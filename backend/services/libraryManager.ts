@@ -3588,7 +3588,7 @@ export class LibraryManager {
           id: normalizedAlbumMbid,
           foreignAlbumId: normalizedAlbumMbid,
           librarySource: "aurral",
-          added: existing?.metadata?.added || new Date().toISOString(),
+          added: existing?.addedAt || new Date().toISOString(),
           monitored: options.monitored !== false,
           trackListComplete: true,
           edition,
