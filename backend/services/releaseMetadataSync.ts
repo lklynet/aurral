@@ -4,7 +4,7 @@ import { asAppError } from "../../lib/errors.ts";
 import {
   enqueueSystemTaskJob,
   findActiveHonkerJob,
-  getHonkerQueueByName,
+  requireHonkerQueueByName,
   getSystemTaskQueueName,
   listHonkerJobs,
 } from "./honkerDb.ts";
@@ -97,13 +97,13 @@ export function scheduleReleaseMetadataRefresh({ delaySeconds = 0 } = {}) {
   const [pending, ...duplicates] = active
     .filter((job) => job.state === "pending")
     .sort((a, b) => Number(a.run_at || 0) - Number(b.run_at || 0));
-  for (const job of duplicates) getHonkerQueueByName(job.queue)!.cancel(job.id);
+  for (const job of duplicates) requireHonkerQueueByName(job.queue).cancel(job.id);
   if (pending?.id) {
     const existingRunAt = Number(pending.run_at || 0);
     if (existingRunAt === 0 || existingRunAt <= requestedRunAt) {
       return pending.id;
     }
-    if (!getHonkerQueueByName(pending.queue)!.cancel(pending.id)) return pending.id;
+    if (!requireHonkerQueueByName(pending.queue).cancel(pending.id)) return pending.id;
   }
   return enqueueSystemTaskJob({ kind: TASK_KIND }, { delaySeconds: normalizedDelay, priority: -5 });
 }

@@ -1,7 +1,7 @@
 import axios from "../../lib/axiosFetch.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import { logger } from "./logger.ts";
-import { enqueueNotification, type HonkerPayload } from "./honkerDb.ts";
+import { enqueueNotification, parseHonkerPayload } from "./honkerDb.ts";
 import { asAppError } from "../../lib/errors.ts";
 import type { StoredIntegrations } from "../db/helpers/settings.ts";
 
@@ -253,7 +253,7 @@ function queueWebhooks(
   const resolved = normalizeWebhookVars({ ...vars, event });
   return enqueueNotification({
     kind: "webhooks",
-    integrations: integrations as HonkerPayload,
+    integrations: parseHonkerPayload(JSON.stringify(integrations)) ?? {},
     event,
     vars: resolved,
     flowPath: resolved.flowPath,

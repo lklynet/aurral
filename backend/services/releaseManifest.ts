@@ -183,13 +183,14 @@ export function toReleaseManifest(
   group: ManifestGroupInput,
   release: ManifestReleaseInput | null | undefined,
 ) {
-  const releaseMbid = text(release?.id || release?.releaseMbid);
+  if (!release) return null;
+  const releaseMbid = text(release.id || release.releaseMbid);
   const aliases = recordingAliases(group);
   const listed = tracklist(release, aliases);
   if (!listed) return null;
   // A release keeps the lengths it lists, since a rip of it matches those.
   // A length it lacks is the median of its pressings' lengths.
-  const lengths = pressingLengths(group?.releases || [], release!, aliases);
+  const lengths = pressingLengths(group?.releases || [], release, aliases);
   const tracks = listed.map((track, index) => ({
     ...track,
     durationMs: track.durationMs ?? median(lengths[index]),

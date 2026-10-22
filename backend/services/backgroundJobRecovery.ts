@@ -1,5 +1,5 @@
 import { getIsolatedQueueGroup } from "./backgroundWorkerQueues.ts";
-import { getHonkerDb, getHonkerQueueByName } from "./honkerDb.ts";
+import { getHonkerDb, getHonkerQueueByName, requireHonkerQueueByName } from "./honkerDb.ts";
 import type { HonkerLiveRow } from "../db/rows.ts";
 import type { RuntimeLogger } from "./logger.ts";
 import { asAppError } from "../../lib/errors.ts";
@@ -47,7 +47,7 @@ async function releaseClaimedJob(
       );
     }
     // Honker registers retry on its queue connection, not on the raw query connection.
-    getHonkerQueueByName(row.queue)!._retry(row.id, row.worker_id, 1, reason);
+    requireHonkerQueueByName(row.queue)._retry(row.id, row.worker_id, 1, reason);
   } catch (error) {
     logger.warn?.(
       `[AppRuntime] Could not requeue ${row.queue} job ${row.id}:`,

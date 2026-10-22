@@ -11,6 +11,7 @@ import {
   computeLibraryGenreStats,
   rebuildStoredLibraryGenreStats,
 } from "../config/library-search-index.ts";
+import { isOwnKey } from "../../lib/ownKey.ts";
 import { getLibrarySearchMatch } from "./librarySearchIndex.ts";
 import {
   getManagedByMap,
@@ -1322,15 +1323,12 @@ const CANONICAL_FAVORITE_TABLES = {
   song: "library_tracks",
 };
 
-const isFavoriteKind = (kind: string): kind is keyof typeof CANONICAL_FAVORITE_TABLES =>
-  Object.hasOwn(CANONICAL_FAVORITE_TABLES, kind);
-
 function parseLibraryFavoriteId(value: unknown) {
   const input = String(value || "").trim();
   const separator = input.indexOf(":");
   if (separator <= 0) return null;
   const kind = input.slice(0, separator);
-  if (!isFavoriteKind(kind)) return null;
+  if (!isOwnKey(CANONICAL_FAVORITE_TABLES, kind)) return null;
   const rawKey = input.slice(separator + 1);
   if (!rawKey) return null;
   try {

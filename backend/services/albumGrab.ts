@@ -35,9 +35,22 @@ import {
 import { downloadDestinationForJob } from "./downloadJobs/downloadOwnership.ts";
 import { attemptRelease } from "./releaseResolver.ts";
 
+type AlbumGrabCandidate = {
+  raw?: {
+    user?: string | null;
+    files?: { jobId?: string | null; file?: string | null }[];
+    release?: { guid?: string | null };
+    albumId?: string;
+  };
+  releaseVerified?: boolean;
+};
+
 type AlbumGrabPayload = Parameters<typeof recordAlbumGrabPhase>[0] & {
   downloadAttemptId?: string | null;
   heldForReview?: unknown;
+  candidate?: AlbumGrabCandidate | null;
+  candidates?: AlbumGrabCandidate[];
+  candidateIndex?: number;
 };
 
 const NOT_IN_ALBUM_REASON = "Track was not in the album download";
@@ -100,19 +113,17 @@ export function deniedAlbumSources(jobs: JobFields<"deniedRemoteSources">[], sou
 // Blocks the attempted release for every track it did not fill, so neither
 // the next album attempt nor a per-track search takes it again.
 export function blockAlbumGrabSource(payload: AlbumGrabPayload, jobs: DownloadJob[]) {
-  const candidate = getPayloadCandidate(payload);
+  const raw = getPayloadCandidate(payload)?.raw;
   for (const job of jobs) {
     if (payload.source === "slskd") {
-      const file = (candidate?.raw?.files || []).find(
-        (entry: { jobId?: string }) => entry.jobId === job.id,
-      );
+      const file = (raw?.files || []).find((entry) => entry.jobId === job.id);
       if (file) {
-        downloadTracker.recordDeniedSource(job.id, "slskd", `${candidate.raw.user}\0${file.file}`);
+        downloadTracker.recordDeniedSource(job.id, "slskd", `${raw?.user}\0${file.file}`);
       }
-    } else if (payload.source === "usenet" && candidate?.raw?.release?.guid) {
-      downloadTracker.recordDeniedSource(job.id, "usenet", candidate.raw.release.guid);
-    } else if (payload.source === "deemix" && candidate?.raw?.albumId) {
-      downloadTracker.recordDeniedSource(job.id, "deemix", `album:${candidate.raw.albumId}`);
+    } else if (payload.source === "usenet" && raw?.release?.guid) {
+      downloadTracker.recordDeniedSource(job.id, "usenet", raw.release.guid);
+    } else if (payload.source === "deemix" && raw?.albumId) {
+      downloadTracker.recordDeniedSource(job.id, "deemix", `album:${raw.albumId}`);
     }
   }
 }

@@ -968,6 +968,12 @@ export function getHonkerQueueByName(queueName: string) {
   return queueByName.get(queueName)?.getQueue() ?? null;
 }
 
+export function requireHonkerQueueByName(queueName: string) {
+  const queue = getHonkerQueueByName(queueName);
+  if (!queue) throw new Error(`Honker queue is not registered: ${queueName}`);
+  return queue;
+}
+
 export function getHonkerQueueNextClaimAt(queueName: string) {
   const safeQueue = String(queueName || "").trim();
   if (!safeQueue) return null;
