@@ -4,6 +4,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { getAppBasePath } from "../utils/basePath.ts";
 import { clearAuthStorage, setStoredAuth } from "../utils/api/core.ts";
+import { getApiErrorBody, getApiErrorText } from "./onboardingUtils";
 import { startPlexLoginPin, completePlexLogin } from "../utils/api/endpoints/auth.ts";
 import { DotLoader } from "../components/DotLoader";
 
@@ -74,8 +75,8 @@ const Login = () => {
       } catch (err) {
         if (popup && !popup.closed) popup.close();
         setError(
-          err.response?.data?.message ||
-            err.response?.data?.error ||
+          getApiErrorText(err, "message") ||
+            getApiErrorText(err, "error") ||
             "Failed to start Plex sign-in",
         );
         return;
@@ -91,10 +92,13 @@ const Login = () => {
           result = res;
           break;
         } catch (err) {
-          if (err.response?.data?.retryable) continue;
+          const body = getApiErrorBody(err);
+          if (body && "retryable" in body && body.retryable) continue;
           if (popup && !popup.closed) popup.close();
           setError(
-            err.response?.data?.message || err.response?.data?.error || "Plex sign-in failed",
+            getApiErrorText(err, "message") ||
+              getApiErrorText(err, "error") ||
+              "Plex sign-in failed",
           );
           return;
         }

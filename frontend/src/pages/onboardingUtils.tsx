@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { asApiError } from "../utils/api/core.ts";
 
 export const STEPS = ["admin", "lidarr"];
 
@@ -44,8 +45,21 @@ export function OnboardingHint({
   return <p className={`onboarding-hint${center ? " onboarding-hint--center" : ""}`}>{children}</p>;
 }
 
+export const getApiErrorBody = (error: unknown) => {
+  const data = asApiError(error)?.response?.data;
+  return typeof data === "object" && data ? data : undefined;
+};
+
+export const getApiErrorText = (error: unknown, key: "message" | "error") => {
+  const value = getApiErrorBody(error)?.[key];
+  return typeof value === "string" ? value : undefined;
+};
+
 export const getApiErrorMessage = (error: unknown, fallback: string) =>
-  error?.response?.data?.message || error?.response?.data?.error || error?.message || fallback;
+  getApiErrorText(error, "message") ||
+  getApiErrorText(error, "error") ||
+  asApiError(error)?.message ||
+  fallback;
 
 export const ONBOARDING_HERO_LOGO_SIZE = 56;
 export const ONBOARDING_COMPACT_LOGO_SIZE = 28;

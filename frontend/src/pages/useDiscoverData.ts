@@ -27,6 +27,8 @@ import {
 } from "./discoverUtils";
 
 import { useWebSocketChannel } from "../hooks/useWebSocket";
+import { asApiError } from "../utils/api/core.ts";
+import { getApiErrorText } from "./onboardingUtils";
 import { useDiscoveryStatus } from "../hooks/useDiscoveryStatus";
 import { useToast } from "../contexts/ToastContext";
 import { useAuth } from "../contexts/AuthContext";
@@ -145,7 +147,7 @@ export function useDiscoverData() {
   }, [authUser?.id, data]);
 
   const error = discoveryQuery.error
-    ? discoveryQuery.error?.response?.data?.message || "Failed to load discovery data"
+    ? getApiErrorText(discoveryQuery.error, "message") || "Failed to load discovery data"
     : null;
 
   useEffect(() => {
@@ -214,7 +216,9 @@ export function useDiscoverData() {
         }
         showError(
           `Could not download the album: ${
-            err.response?.data?.message || err.response?.data?.error || err.message
+            getApiErrorText(err, "message") ||
+            getApiErrorText(err, "error") ||
+            asApiError(err)?.message
           }`,
         );
       } finally {

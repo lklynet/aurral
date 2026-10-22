@@ -3,6 +3,8 @@ import { Check } from "lucide-react";
 import { ModalShell } from "../components/PlaylistModals";
 import { DotLoader } from "../components/DotLoader";
 import { updateLibraryArtistMbid } from "../utils/api/endpoints/library.ts";
+import { asApiError } from "../utils/api/core.ts";
+import { getApiErrorText } from "./onboardingUtils";
 
 const MBID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
@@ -36,8 +38,8 @@ export default function ArtistMbidModal({
       onSaved?.(result);
     } catch (requestError) {
       setError(
-        requestError.response?.data?.error ||
-          requestError.message ||
+        getApiErrorText(requestError, "error") ||
+          asApiError(requestError)?.message ||
           "Could not update the MusicBrainz ID",
       );
     } finally {
