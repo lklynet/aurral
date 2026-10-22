@@ -484,8 +484,10 @@ export function registerDownloads(router: Router) {
           name: "AlbumSearch",
           albumIds: [parseInt(albumId, 10)],
         });
-        await libraryManager.ensureRequestedAlbumMonitoring(artist.id, albumId);
-        libraryManager.scheduleRequestedAlbumMonitoringRepair(artist.id, albumId);
+        if (artist?.id) {
+          await libraryManager.ensureRequestedAlbumMonitoring(artist.id, albumId);
+          libraryManager.scheduleRequestedAlbumMonitoringRepair(artist.id, albumId);
+        }
       }
       invalidateAllDownloadStatusesCache();
 
