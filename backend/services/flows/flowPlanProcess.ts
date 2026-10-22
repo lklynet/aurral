@@ -20,11 +20,11 @@ process.on("message", async (message) => {
     const plan = await flowTrackSource.buildFlowRunPlan(message.flow, message.options);
     resultExitCode = 0;
     awaitingAcknowledgement = true;
-    process.send({ type: "flow-plan-result", plan });
+    process.send!({ type: "flow-plan-result", plan });
   } catch (error) {
     resultExitCode = 1;
     awaitingAcknowledgement = true;
-    process.send({ type: "flow-plan-error", error: error?.message || String(error) });
+    process.send!({ type: "flow-plan-error", error: error?.message || String(error) });
   }
 });
 

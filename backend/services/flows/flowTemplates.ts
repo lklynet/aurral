@@ -3,11 +3,12 @@ import {
   RELEASE_RADAR_PRESET,
 } from "../../config/discoverPlaylistPresets.ts";
 import { getUserDiscovery } from "../discovery/userDiscovery.ts";
+import type { RequestUser } from "../../middleware/requestUser.ts";
 
 const LISTENING_HISTORY_TEMPLATE_ID = "focus-listening-history";
 const TEMPLATES = [...DISCOVER_PLAYLIST_PRESETS, RELEASE_RADAR_PRESET];
 
-const getHistoryArtists = async (userId) => {
+const getHistoryArtists = async (userId: number) => {
   const { body } = await getUserDiscovery(userId, 0, 0);
   const seen = new Set();
   const artists = [];
@@ -24,7 +25,7 @@ const getHistoryArtists = async (userId) => {
   return artists;
 };
 
-export async function listFlowTemplates(user) {
+export async function listFlowTemplates(user: RequestUser) {
   const historyArtists = await getHistoryArtists(user.id);
   return TEMPLATES.map((template) => ({
     id: template.id,
@@ -34,7 +35,7 @@ export async function listFlowTemplates(user) {
   }));
 }
 
-export async function buildFlowFromTemplate(user, templateId) {
+export async function buildFlowFromTemplate(user: RequestUser, templateId: unknown) {
   const template = TEMPLATES.find((entry) => entry.id === String(templateId || "").trim());
   if (!template) {
     throw Object.assign(new Error("Unknown flow template"), { statusCode: 400 });

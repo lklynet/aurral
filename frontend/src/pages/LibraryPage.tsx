@@ -759,7 +759,8 @@ function LibraryPage() {
     queryData?.library || (forcePreview ? libraryPreviewData : EMPTY_LIBRARY);
   const favoriteIds = useMemo(
     () =>
-      queryData?.favoriteIds || (isPreviewLibrary ? new Set(libraryPreviewFavorites) : new Set()),
+      queryData?.favoriteIds ||
+      (isPreviewLibrary ? new Set(libraryPreviewFavorites) : new Set<string>()),
     [isPreviewLibrary, queryData?.favoriteIds],
   );
   const loading = !forcePreview && libraryQuery.isPending;
@@ -805,7 +806,8 @@ function LibraryPage() {
       queryClient.setQueryData(libraryQueryKey, (current) => {
         if (!current && !forcePreview) return current;
         const previous =
-          current?.favoriteIds || (forcePreview ? new Set(libraryPreviewFavorites) : new Set());
+          current?.favoriteIds ||
+          (forcePreview ? new Set(libraryPreviewFavorites) : new Set<string>());
         const next = typeof updater === "function" ? updater(previous) : updater;
         if (current && next === previous) return current;
         return { ...(current || {}), favoriteIds: next };
