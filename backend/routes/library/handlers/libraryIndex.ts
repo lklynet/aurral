@@ -216,6 +216,15 @@ export function registerLibraryIndex(router: Router) {
           error: "kind and pageSize (1-100) are required",
         });
       }
+      const { artistId, albumId } = req.query;
+      if (
+        (artistId !== undefined && typeof artistId !== "string") ||
+        (albumId !== undefined && typeof albumId !== "string")
+      ) {
+        return res.status(400).json({
+          error: "artistId and albumId must each be a single value",
+        });
+      }
       return res.json(
         toPublicLibraryPage(
           getLibraryPage({
@@ -228,8 +237,8 @@ export function registerLibraryIndex(router: Router) {
             genre: req.query.genre,
             sort: req.query.sort,
             direction: req.query.direction,
-            artistId: req.query.artistId,
-            albumId: req.query.albumId,
+            artistId,
+            albumId,
           }),
           favoriteKeys,
         ),
