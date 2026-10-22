@@ -1,5 +1,5 @@
 import { useRef, useState, type ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { skipToken, useQuery } from "@tanstack/react-query";
 import { Eye, MoreVertical, Plus, SlidersHorizontal } from "lucide-react";
 import AddActionButton from "./AddActionButton";
 import { ArtistMonitoringRulesDialog } from "./ArtistMonitoringRulesDialog";
@@ -26,7 +26,7 @@ type MonitoringRequest = Parameters<
 >[0];
 
 interface UseArtistMonitoringOptions {
-  mbid: string;
+  mbid: string | null | undefined;
   artistName?: string;
   canChange?: boolean;
   canAdd?: boolean;
@@ -71,7 +71,7 @@ export function useArtistMonitoring({
   const pendingRef = useRef(false);
   const monitoringQuery = useQuery({
     queryKey: queryKeys.artistMonitoring(mbid),
-    queryFn: ({ signal }) => getArtistMonitoring(mbid, { signal }),
+    queryFn: mbid ? ({ signal }) => getArtistMonitoring(mbid, { signal }) : skipToken,
     enabled: Boolean(mbid),
     staleTime: 0,
   });
@@ -80,7 +80,7 @@ export function useArtistMonitoring({
   const name = artistName || "this artist";
 
   const choose = async (request: MonitoringRequest) => {
-    if (pendingRef.current) return false;
+    if (!mbid || pendingRef.current) return false;
     if (isUnchanged(state, request)) return true;
     const queryKey = queryKeys.artistMonitoring(mbid);
     const adding = state?.added === false;

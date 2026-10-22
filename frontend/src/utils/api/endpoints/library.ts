@@ -660,10 +660,10 @@ export const removeMonitoringExclusion = (
   deleteData(`/library/monitoring/exclusions/${encodeURIComponent(id)}`);
 
 export const deleteLidarrAlbumFromLibrary = (
-  mbid: string,
+  mbid: string | null,
   deleteFiles = false,
 ): Promise<DeleteLibraryAlbumResponse> =>
-  deleteData(`/library/albums/lidarr/${encodeURIComponent(mbid)}`, {
+  deleteData(`/library/albums/lidarr/${encodeURIComponent(String(mbid))}`, {
     params: { deleteFiles },
   });
 

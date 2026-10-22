@@ -18,11 +18,30 @@ interface LibraryArtworkFields {
 
 export type LibraryArtist = BackendLibraryArtist & LibraryArtworkFields;
 export type LibraryAlbum = BackendLibraryAlbum & LibraryArtworkFields;
-type LibraryTrackFile = Omit<BackendLibraryTrackFile, "path"> & { previewUrl?: string };
-export type LibraryTrack = Omit<BackendLibraryTrack, "files"> &
-  LibraryArtworkFields & { files: LibraryTrackFile[] };
+type PlaylistSongFileFields =
+  | "id"
+  | "albumId"
+  | "source"
+  | "size"
+  | "mtimeMs"
+  | "quality"
+  | "createdAt";
+type LibraryTrackFile = Omit<BackendLibraryTrackFile, "path" | PlaylistSongFileFields> &
+  Partial<Pick<BackendLibraryTrackFile, PlaylistSongFileFields>> & { previewUrl?: string };
+type PlaylistSongFields =
+  | "id"
+  | "mbid"
+  | "createdAt"
+  | "metadata"
+  | "monitored"
+  | "keepFile"
+  | "sources"
+  | "available";
+export type LibraryTrack = Omit<BackendLibraryTrack, "files" | PlaylistSongFields> &
+  Partial<Omit<Pick<BackendLibraryTrack, PlaylistSongFields>, "id">> &
+  LibraryArtworkFields & { id: number | string; files: LibraryTrackFile[] };
 
-interface LibraryData {
+export interface LibraryData {
   artists: LibraryArtist[];
   albums: LibraryAlbum[];
   tracks: LibraryTrack[];
@@ -110,16 +129,16 @@ export const favoriteLibraryFromResponse = (
       return {
         id: track.id,
         identityKey: track.id,
-        title: track.title,
-        artistName: track.artist,
-        albumName: track.album,
+        title: typeof track.title === "string" ? track.title : "",
+        artistName: typeof track.artist === "string" ? track.artist : null,
+        albumName: typeof track.album === "string" ? track.album : null,
         durationMs,
         albums: [],
         files: [
           {
             available: true,
             previewUrl: getPlaylistTrackStreamUrl(jobId!),
-            format: track.suffix || null,
+            format: typeof track.suffix === "string" && track.suffix ? track.suffix : null,
             durationMs,
           },
         ],

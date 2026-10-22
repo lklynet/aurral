@@ -241,7 +241,7 @@ export interface LibraryAlbumMetadata {
   images?: LibraryArtistImage[] | null;
   albumType?: string | null;
   releaseType?: string | null;
-  tags?: { releasetype?: string | string[] } | null;
+  tags?: { releasetype?: string | string[]; genre?: string[] } | null;
   monitored?: boolean | null;
 }
 

@@ -8,7 +8,7 @@ import type {
   DiscoveryFeedbackListResponse,
   DiscoveryFeedbackResponse,
 } from "../../../../../backend/routes/discovery/handlers/feedback.ts";
-import type { getDiscoveryFeedback as getDiscoveryFeedbackRecord } from "../../../../../backend/services/discovery/index.ts";
+import type { restoreDiscoveryFeedback as restoreDiscoveryFeedbackRecord } from "../../../../../backend/services/discovery/index.ts";
 import type { DiscoveryFeedbackInput } from "../../../../../backend/services/discovery/feedback.ts";
 import type {
   EditorialLibraryAddResponse,
@@ -18,7 +18,9 @@ import type {
 } from "../../../../../backend/services/discovery/editorialPlaylists.ts";
 import type { getDiscoveryStatus as getDiscoveryStatusRecord } from "../../../../../backend/services/discovery/userDiscovery.ts";
 
-type DiscoveryFeedbackEntry = ReturnType<typeof getDiscoveryFeedbackRecord>[number];
+type RestoreDiscoveryFeedbackInput = NonNullable<
+  Parameters<typeof restoreDiscoveryFeedbackRecord>[1]
+>;
 
 export const getDiscovery = (
   options:
@@ -107,7 +109,7 @@ export const restoreDiscoveryFeedback = ({
   entries = [],
 }: {
   removeIds?: string[];
-  entries?: Partial<DiscoveryFeedbackEntry>[];
+  entries?: RestoreDiscoveryFeedbackInput["entries"];
 }): Promise<DiscoveryFeedbackListResponse> =>
   postData("/discover/feedback/restore", { removeIds, entries });
 

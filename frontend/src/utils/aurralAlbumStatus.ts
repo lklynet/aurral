@@ -11,8 +11,11 @@ const STATUS_DISPLAY = {
 
 export type AlbumStatus = keyof typeof STATUS_DISPLAY;
 
-const ACTIVE_STATUSES = new Set<AlbumStatus | null | undefined>(["queued", "downloading"]);
-const RETRY_STATUSES = new Set<AlbumStatus | undefined>(["failed", "cancelled"]);
+const isAlbumStatus = (status: string): status is AlbumStatus =>
+  Object.hasOwn(STATUS_DISPLAY, status);
+
+const ACTIVE_STATUSES = new Set<string | null | undefined>(["queued", "downloading"]);
+const RETRY_STATUSES = new Set<string | null | undefined>(["failed", "cancelled"]);
 
 type RecoveryCode = "download_source_missing" | "review_required" | "source_failed";
 
@@ -27,7 +30,7 @@ interface AlbumRecovery {
 }
 
 interface AlbumStatusEntry {
-  status?: AlbumStatus;
+  status?: string | null;
   recovery?: AlbumRecovery | null;
 }
 
@@ -35,7 +38,7 @@ const CANCEL_ACTION = { id: "cancel", label: "Cancel downloads" };
 const RETRY_ACTION = { id: "retry", label: "Retry" };
 const DOWNLOAD_MISSING_ACTION = { id: "retry", label: "Download missing tracks" };
 
-const albumActions = (status: AlbumStatus | undefined, recoveryCode: RecoveryCode | null) => {
+const albumActions = (status: string | null | undefined, recoveryCode: RecoveryCode | null) => {
   if (ACTIVE_STATUSES.has(status)) return [CANCEL_ACTION];
   if (status === "missing") return [DOWNLOAD_MISSING_ACTION];
   if (RETRY_STATUSES.has(status)) return [RETRY_ACTION];
@@ -46,7 +49,7 @@ const albumActions = (status: AlbumStatus | undefined, recoveryCode: RecoveryCod
 
 export const aurralAlbumStatusKey = (canonicalId: string | number) => `aurral:${canonicalId}`;
 
-export const shouldPollAlbumStatus = (status: AlbumStatus | null | undefined) =>
+export const shouldPollAlbumStatus = (status: string | null | undefined) =>
   ACTIVE_STATUSES.has(status);
 
 export const shouldPollAlbumStatuses = (
@@ -54,8 +57,8 @@ export const shouldPollAlbumStatuses = (
 ) => Object.values(statuses || {}).some((entry) => shouldPollAlbumStatus(entry?.status));
 
 export const describeAurralAlbumStatus = ({ status, recovery }: AlbumStatusEntry = {}) => {
-  const display = status ? STATUS_DISPLAY[status] : undefined;
-  if (!display) return null;
+  if (!status || !isAlbumStatus(status)) return null;
+  const display = STATUS_DISPLAY[status];
   const code = recovery?.code || null;
   return {
     status,

@@ -1,3 +1,10 @@
+import type {
+  LibraryAlbum,
+  LibraryArtist,
+  LibraryData,
+  LibraryTrack,
+} from "../utils/libraryPageData.ts";
+
 const catalog = [
   {
     artist: "The Night Archive",
@@ -36,25 +43,45 @@ const catalog = [
 const PREVIEW_AUDIO_URL =
   "data:audio/wav;base64,UklGRrQBAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YZABAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA";
 
+const yearTimestamp = (year: string) => Date.UTC(Number(year), 0, 1);
+
+const albumSeeds = catalog.flatMap((entry, artistIndex) =>
+  entry.albums.map((album, albumIndex) => ({
+    ...album,
+    artist: entry.artist,
+    artistNumber: artistIndex + 1,
+    albumNumber: albumIndex + 1,
+  })),
+);
+
 const tracksForAlbum = (
-  album: { id: string; artist: string; genres: string[] },
-  albumIndex: number,
-) =>
+  seed: (typeof albumSeeds)[number],
+  albumId: number,
+  firstTrackId: number,
+): (LibraryTrack & { id: number })[] =>
   ["Opening Scene", "Common Ground", "Side Street", "Last Light"].map((title, trackIndex) => ({
-    id: `preview-track-${albumIndex + 1}-${trackIndex + 1}`,
-    identityKey: `preview-track:${albumIndex + 1}-${trackIndex + 1}`,
+    id: firstTrackId + trackIndex,
+    identityKey: `preview-track:${albumId}-${trackIndex + 1}`,
     mbid: null,
     title,
-    artistName: album.artist,
-    metadata: { genres: album.genres },
-    albums: [{ albumId: album.id, discNumber: 1, trackNumber: trackIndex + 1 }],
+    artistName: seed.artist,
+    createdAt: yearTimestamp(seed.year),
+    metadata: { genres: seed.genres },
+    monitored: false,
+    keepFile: false,
+    albums: [{ albumId, discNumber: 1, trackNumber: trackIndex + 1 }],
     files: [
       {
+        id: firstTrackId + trackIndex,
+        albumId: null,
         source: "aurral",
         format: "wav",
+        size: 4_200_000 + trackIndex * 310_000,
+        mtimeMs: null,
         durationMs: 174000 + trackIndex * 11000,
         quality: { bitrate: 320 },
         available: true,
+        createdAt: yearTimestamp(seed.year),
         previewUrl: PREVIEW_AUDIO_URL,
       },
     ],
@@ -62,50 +89,41 @@ const tracksForAlbum = (
     available: true,
   }));
 
-const albums = catalog.flatMap((artist, artistIndex) =>
-  artist.albums.map((album, albumIndex) => ({
-    id: `preview-album-${artistIndex + 1}-${albumIndex + 1}`,
-    identityKey: `preview-album:${artistIndex + 1}-${albumIndex + 1}`,
-    mbid: null,
-    releaseGroupMbid: null,
-    artistId: artist.artistId,
-    title: album.title,
-    albumArtist: artist.artist,
-    releaseDate: album.year,
-    metadata: { genres: album.genres },
-    trackIds: [] as string[],
-    sources: ["aurral"],
-    available: true,
-  })),
-);
+const tracks = albumSeeds.flatMap((seed, index) => tracksForAlbum(seed, index + 1, index * 4 + 1));
 
-const artists = catalog.map((entry) => ({
-  id: entry.artistId,
+const albums: LibraryAlbum[] = albumSeeds.map((seed, index) => ({
+  id: index + 1,
+  identityKey: `preview-album:${seed.artistNumber}-${seed.albumNumber}`,
+  mbid: null,
+  releaseGroupMbid: null,
+  artistId: seed.artistNumber,
+  title: seed.title,
+  albumArtist: seed.artist,
+  releaseDate: seed.year,
+  createdAt: yearTimestamp(seed.year),
+  metadata: { tags: { genre: seed.genres } },
+  trackIds: tracks
+    .filter((track) => track.albums.some((relation) => relation.albumId === index + 1))
+    .map((track) => track.id),
+  sources: ["aurral"],
+  available: true,
+}));
+
+const artists: LibraryArtist[] = catalog.map((entry, index) => ({
+  id: index + 1,
   identityKey: `preview-artist:${entry.artistId}`,
   mbid: null,
   name: entry.artist,
   sortName: entry.artist,
   metadata: { genres: [...new Set(entry.albums.flatMap((album) => album.genres))] },
-  albumIds: albums.filter((album) => album.artistId === entry.artistId).map((album) => album.id),
+  albumIds: albums.filter((album) => album.artistId === index + 1).map((album) => album.id),
+  managedBy: null,
+  monitorMode: null,
   sources: ["aurral"],
   available: true,
 }));
 
-const tracks = albums.flatMap((album, index) => {
-  const artist = artists.find((entry) => entry.id === album.artistId);
-  const albumTracks = tracksForAlbum(
-    {
-      ...album,
-      artist: artist!.name,
-      genres: album.metadata.genres,
-    },
-    index,
-  );
-  album.trackIds = albumTracks.map((track) => track.id);
-  return albumTracks;
-});
-
-export const libraryPreviewData = { artists, albums, tracks };
+export const libraryPreviewData: LibraryData = { artists, albums, tracks, genres: [] };
 
 export const libraryPreviewFavorites = new Set([
   "artist:preview-artist%3Apreview-artist-night-archive",
