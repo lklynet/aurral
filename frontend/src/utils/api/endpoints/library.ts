@@ -206,17 +206,49 @@ const withAuthenticatedLibraryArtwork = (
   library: FetchLibraryPageResponse,
 ): FetchLibraryPageResponse => {
   if (!library || typeof library !== "object") return library;
-  const albums = withAuthenticatedArtworkList(library.albums);
-  const tracks = withAuthenticatedArtworkList(library.tracks);
+  const collections = {
+    ...(Array.isArray(library.albums)
+      ? { albums: withAuthenticatedArtworkList(library.albums) }
+      : {}),
+    ...(Array.isArray(library.tracks)
+      ? { tracks: withAuthenticatedArtworkList(library.tracks) }
+      : {}),
+  };
   switch (library.kind) {
     case "artists":
-      return { ...library, albums, tracks, items: withAuthenticatedArtworkList(library.items) };
+      return {
+        ...library,
+        ...collections,
+        ...(Array.isArray(library.items)
+          ? { items: withAuthenticatedArtworkList(library.items) }
+          : {}),
+      };
     case "albums":
-      return { ...library, albums, tracks, items: withAuthenticatedArtworkList(library.items) };
+      return {
+        ...library,
+        ...collections,
+        ...(Array.isArray(library.items)
+          ? { items: withAuthenticatedArtworkList(library.items) }
+          : {}),
+      };
     case "tracks":
-      return { ...library, albums, tracks, items: withAuthenticatedArtworkList(library.items) };
+      return {
+        ...library,
+        ...collections,
+        ...(Array.isArray(library.items)
+          ? { items: withAuthenticatedArtworkList(library.items) }
+          : {}),
+      };
     case "genres":
-      return { ...library, albums, tracks, items: withAuthenticatedArtworkList(library.items) };
+      return {
+        ...library,
+        ...collections,
+        ...(Array.isArray(library.items)
+          ? { items: withAuthenticatedArtworkList(library.items) }
+          : {}),
+      };
+    default:
+      return library;
   }
 };
 
