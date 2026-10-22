@@ -1,14 +1,12 @@
 import { asApiError } from "../../../utils/api/core.ts";
+import { getApiErrorBody, getApiErrorText } from "../../onboardingUtils.tsx";
 
 export function readApiError(error: unknown) {
-  const failure = asApiError(error);
-  const data = failure?.response?.data;
-  const body = typeof data === "object" && data ? data : undefined;
   return {
-    status: failure?.response?.status,
-    body,
-    message: body?.message,
-    error: typeof body?.error === "string" ? body.error : undefined,
-    text: failure?.message,
+    status: asApiError(error)?.response?.status,
+    body: getApiErrorBody(error),
+    message: getApiErrorText(error, "message"),
+    error: getApiErrorText(error, "error"),
+    text: asApiError(error)?.message,
   };
 }

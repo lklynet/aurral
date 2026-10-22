@@ -320,14 +320,9 @@ export function SettingsPlaybackSection({
     }
     setTestingPlex(true);
     try {
-      const result = await testPlaybackConnection("plex", plex);
-      if (result.success) {
-        showSuccess(`Connected to Plex${result.version ? ` (v${result.version})` : ""}.`);
-        if (result.machineIdentifier) {
-          updatePlex({ machineIdentifier: result.machineIdentifier });
-        }
-        setTestStatus({ tone: "success", message: "Connected." });
-      }
+      await testPlaybackConnection("plex", plex);
+      showSuccess("Connected to Plex.");
+      setTestStatus({ tone: "success", message: "Connected." });
     } catch (err) {
       setTestStatus({
         tone: "error",
