@@ -9,12 +9,13 @@ import {
 import { isReauthRequiredError, promptReauth } from "../../../utils/reauth.ts";
 import { useAuth } from "../../../contexts/AuthContext";
 import type { useToast } from "../../../contexts/ToastContext";
+import { readApiError } from "../utils/apiError.ts";
 
 type Toast = ReturnType<typeof useToast>["showSuccess"];
 type Identity = UserIdentitiesResponse["identities"][number];
 type StartLink = typeof startGoogleLink;
 
-const PROVIDER_LABELS = {
+const PROVIDER_LABELS: Partial<Record<string, string>> = {
   oidc: "Single sign-on",
   google: "Google",
   plex: "Plex",
@@ -71,13 +72,12 @@ export function ConnectedAccountsSection({
             );
             await load();
           } catch (retryErr) {
-            showError?.(retryErr.response?.data?.message || "Failed to disconnect");
+            showError?.(readApiError(retryErr).message || "Failed to disconnect");
           }
         }
       } else {
-        showError?.(
-          err.response?.data?.message || err.response?.data?.error || "Failed to disconnect",
-        );
+        const failure = readApiError(err);
+        showError?.(failure.message || failure.error || "Failed to disconnect");
       }
     } finally {
       setUnlinkingId(null);
@@ -92,12 +92,8 @@ export function ConnectedAccountsSection({
       if (!result?.authUrl) throw new Error(`${label} did not return an authorization URL`);
       window.location.assign(result.authUrl);
     } catch (err) {
-      showError?.(
-        err.response?.data?.message ||
-          err.response?.data?.error ||
-          err.message ||
-          `Failed to connect ${label}`,
-      );
+      const failure = readApiError(err);
+      showError?.(failure.message || failure.error || failure.text || `Failed to connect ${label}`);
     }
   };
 

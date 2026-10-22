@@ -185,7 +185,7 @@ async function computeDiskSpacePayload(settings: AppSettings) {
     await Promise.all(
       unique.map((candidate) => getDiskSpaceEntry(candidate.location, candidate.role)),
     )
-  ).filter(Boolean);
+  ).filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
 }
 
 function readSqliteVersion() {

@@ -14,6 +14,7 @@ import { isReauthRequiredError, promptReauth } from "../../../utils/reauth.ts";
 import { useAuth } from "../../../contexts/AuthContext";
 import { DotLoader } from "../../../components/DotLoader";
 import type { useSettingsData } from "../hooks/useSettingsData";
+import { readApiError } from "../utils/apiError.ts";
 import type { useSettingsUsers } from "../hooks/useSettingsUsers";
 import type { UserListResponse } from "../../../../../backend/routes/users.ts";
 
@@ -258,16 +259,12 @@ export function SettingsUsersTab({
                   try {
                     await applyPasswordChange();
                   } catch (retryErr) {
-                    showError(
-                      retryErr.response?.data?.error ||
-                        retryErr.message ||
-                        "Failed to change password",
-                    );
+                    const failure = readApiError(retryErr);
+                    showError(failure.error || failure.text || "Failed to change password");
                   }
                 } else if (!isReauthRequiredError(err)) {
-                  showError(
-                    err.response?.data?.error || err.message || "Failed to change password",
-                  );
+                  const failure = readApiError(err);
+                  showError(failure.error || failure.text || "Failed to change password");
                 }
               } finally {
                 setChangingPassword(false);
@@ -382,7 +379,7 @@ export function SettingsUsersTab({
                       await handleSaveSettings(null, nextSettings);
                     } catch (err) {
                       updateSettings(previousSettings);
-                      showError(err.response?.data?.message || "Failed to save sign-in mode");
+                      showError(readApiError(err).message || "Failed to save sign-in mode");
                     }
                   }}
                   aria-label="SSO-only sign-in mode"
@@ -567,7 +564,7 @@ export function SettingsUsersTab({
                               await refreshUsers();
                               await refreshSettingsData();
                             } catch (err) {
-                              showError(err.response?.data?.error || "Failed to delete");
+                              showError(readApiError(err).error || "Failed to delete");
                             } finally {
                               setDeletingUser(false);
                             }
@@ -639,9 +636,8 @@ export function SettingsUsersTab({
                             await refreshUsers();
                             await refreshSettingsData();
                           } catch (err) {
-                            showError(
-                              err.response?.data?.error || err.message || "Failed to create user",
-                            );
+                            const failure = readApiError(err);
+                            showError(failure.error || failure.text || "Failed to create user");
                           } finally {
                             setCreatingUser(false);
                           }
@@ -750,20 +746,25 @@ export function SettingsUsersTab({
                               showSuccess("Password changed");
                               setEditUser(null);
                             } catch (err) {
-                              showError(
-                                err.response?.data?.error || err.message || "Failed to update",
-                              );
+                              const failure = readApiError(err);
+                              showError(failure.error || failure.text || "Failed to update");
                             } finally {
                               setSavingEdit(false);
                             }
                             return;
                           }
                           setSavingEdit(true);
+                          const status =
+                            editStatus === "active" ||
+                            editStatus === "suspended" ||
+                            editStatus === "disabled"
+                              ? editStatus
+                              : undefined;
                           const applyEdit = () =>
                             updateUser(editUser.id, {
                               ...(editPassword ? { password: editPassword } : {}),
                               permissions: editPermissions,
-                              status: editStatus,
+                              status,
                               ...(ssoEnabled &&
                               editUser.needsIdentityMigration &&
                               !editUser.isProtected
@@ -783,9 +784,8 @@ export function SettingsUsersTab({
                             await refreshSettingsData();
                           } catch (err) {
                             if (!isReauthRequiredError(err)) {
-                              showError(
-                                err.response?.data?.error || err.message || "Failed to update",
-                              );
+                              const failure = readApiError(err);
+                              showError(failure.error || failure.text || "Failed to update");
                             }
                           } finally {
                             setSavingEdit(false);

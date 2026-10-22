@@ -6,6 +6,7 @@ import TooltipButton from "../../../components/TooltipButton.tsx";
 import { ModalShell } from "../../../components/PlaylistModals.tsx";
 import { useToast } from "../../../contexts/ToastContext";
 import { useThemeDocument } from "../../../hooks/useThemeDocument.ts";
+import { asApiError } from "../../../utils/api/core.ts";
 import { normalizeHexColor, type HexColor } from "../../../utils/themeColor.ts";
 import {
   BUILT_IN_THEMES,
@@ -263,7 +264,7 @@ function ThemeEditor({
         theme: normalizeTheme({ id: draft.id || "draft", name: name || "Untitled", ...seeds }),
       };
     } catch (validationError) {
-      return { error: validationError.message };
+      return { error: asApiError(validationError)?.message };
     }
   }, [draft.id, invalidFields, name, seeds]);
 
@@ -292,7 +293,7 @@ function ThemeEditor({
       const saved = saveCustomTheme({ id: draft.id, name, ...seeds });
       onSaved(saved);
     } catch (saveError) {
-      setError(saveError.message);
+      setError(asApiError(saveError)?.message ?? "");
     }
   };
 
@@ -475,7 +476,7 @@ function ThemeImport({
     try {
       onParsed(parseThemeText(source));
     } catch (parseError) {
-      setError(parseError.message);
+      setError(asApiError(parseError)?.message ?? "");
     }
   };
 
@@ -598,7 +599,7 @@ export function ThemeSettings({
             try {
               restoreCustomTheme(removed);
             } catch (restoreError) {
-              showError?.(restoreError.message);
+              showError?.(asApiError(restoreError)?.message ?? "");
             }
           },
         },

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, type FormEvent } from "react";
 import { useMutation, useQueries, useQuery } from "@tanstack/react-query";
-import api, { type ApiError } from "../../../utils/api/core.ts";
+import api from "../../../utils/api/core.ts";
 import type { useToast } from "../../../contexts/ToastContext";
 import type { useSettingsTabs } from "./useSettingsTabs";
 import { checkHealth, fetchHealth } from "../../../utils/api/endpoints/auth.ts";
@@ -28,6 +28,7 @@ import {
   type SettingsState,
 } from "../utils";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
+import { readApiError } from "../utils/apiError.ts";
 
 type Toast = ReturnType<typeof useToast>["showSuccess"];
 type LidarrResourceConfig = { url: string; apiKey: string; credentialsRevision: number };
@@ -437,11 +438,29 @@ export function useSettingsData(
         config || getLidarrResourceConfig(settingsRef.current),
       );
       if (!nextConfig.url || !nextConfig.apiKey) return [];
-      return Promise.all(
-        buildLidarrQueries(nextConfig).map(({ queryKey, queryFn }) =>
-          queryClient.fetchQuery({ queryKey, queryFn, staleTime: 0 }),
-        ),
-      );
+      const [rootFolders, profiles, metadataProfiles, tags] = buildLidarrQueries(nextConfig);
+      return Promise.all([
+        queryClient.fetchQuery({
+          queryKey: rootFolders.queryKey,
+          queryFn: rootFolders.queryFn,
+          staleTime: 0,
+        }),
+        queryClient.fetchQuery({
+          queryKey: profiles.queryKey,
+          queryFn: profiles.queryFn,
+          staleTime: 0,
+        }),
+        queryClient.fetchQuery({
+          queryKey: metadataProfiles.queryKey,
+          queryFn: metadataProfiles.queryFn,
+          staleTime: 0,
+        }),
+        queryClient.fetchQuery({
+          queryKey: tags.queryKey,
+          queryFn: tags.queryFn,
+          staleTime: 0,
+        }),
+      ]);
     },
     [updateLidarrResourceConfig],
   );
@@ -510,7 +529,7 @@ export function useSettingsData(
         return true;
       } catch (err) {
         if (mountedRef.current) {
-          showError("Failed to save settings: " + err.message);
+          showError("Failed to save settings: " + readApiError(err).text);
         }
         return false;
       }
@@ -563,11 +582,9 @@ export function useSettingsData(
     onSuccess: () => {
       localStorage.setItem(DISCOVERY_MANUAL_REFRESH_KEY, "1");
     },
-    onError: (err: ApiError) => {
-      showError(
-        "Failed to start refresh: " +
-          (err.response?.data?.message || err.response?.data?.error || err.message),
-      );
+    onError: (err) => {
+      const failure = readApiError(err);
+      showError("Failed to start refresh: " + (failure.message || failure.error || failure.text));
     },
     onSettled: () => refetchDiscoveryStatus(),
   });
@@ -585,11 +602,9 @@ export function useSettingsData(
       showSuccess("Artwork cache cleared.");
       await refreshHealth();
     },
-    onError: (err: ApiError) => {
-      showError(
-        "Failed to clear cache: " +
-          (err.response?.data?.message || err.response?.data?.error || err.message),
-      );
+    onError: (err) => {
+      const failure = readApiError(err);
+      showError("Failed to clear cache: " + (failure.message || failure.error || failure.text));
     },
   });
   const clearingCache = clearCacheMutation.isPending;
@@ -603,8 +618,9 @@ export function useSettingsData(
 
   const communityGuideMutation = useMutation({
     mutationFn: () => applyLidarrCommunityGuide(),
-    onError: (err: ApiError) => {
-      const errorMsg = err.response?.data?.message || err.response?.data?.error || err.message;
+    onError: (err) => {
+      const failure = readApiError(err);
+      const errorMsg = failure.message || failure.error || failure.text;
       showError(`Failed to apply community guide: ${errorMsg}`);
     },
   });
@@ -655,7 +671,8 @@ export function useSettingsData(
       try {
         await refreshLidarrResources();
       } catch (err) {
-        const errorMsg = err.response?.data?.message || err.response?.data?.error || err.message;
+        const failure = readApiError(err);
+        const errorMsg = failure.message || failure.error || failure.text;
         showError(`Failed to apply community guide: ${errorMsg}`);
       }
     }

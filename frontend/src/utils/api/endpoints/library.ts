@@ -25,6 +25,7 @@ import type {
   RestoreLibraryFavoritesResponse,
   UpdateLibraryFavoritesResponse,
 } from "../../../../../backend/routes/library/handlers/libraryIndex.ts";
+import type { describeReadOnlyFolders } from "../../../../../backend/services/libraryFiles/readOnlyFolders.ts";
 import type {
   CheckLibraryIngestSourceResponse,
   LibraryFileOperationItemsResponse,
@@ -268,7 +269,9 @@ export const updateLibraryArtistMbid = async (
 export const getLibraryFiles = (): Promise<LibraryFileOperationResponse> =>
   getData("/library/files");
 
-export const getReadOnlyFolders = () => getData("/library/files/read-only-folders");
+export const getReadOnlyFolders = (): Promise<
+  Awaited<ReturnType<typeof describeReadOnlyFolders>>
+> => getData("/library/files/read-only-folders");
 
 export const addReadOnlyFolder = (folderPath) =>
   postData("/library/files/read-only-folders", { path: folderPath });

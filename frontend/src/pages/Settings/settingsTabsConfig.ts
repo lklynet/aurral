@@ -34,7 +34,7 @@ export const SETTINGS_TABS = [
 
 export const SETTINGS_NAV_TABS = SETTINGS_TABS.filter((tab) => !tab.hidden);
 
-const SETTINGS_SEARCH_METADATA = {
+const SETTINGS_SEARCH_METADATA: Partial<Record<string, SettingsSearchMetadata>> = {
   system: {
     sections: ["Runtime", "Aurral 3.0", "Data", "Display", "API key", "More info"],
     services: {

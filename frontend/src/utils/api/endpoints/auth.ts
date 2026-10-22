@@ -115,7 +115,10 @@ export const ensureFilesystemPath = (
     path: pathValue,
   });
 
-export const loginApi = async (username: string, password: string): Promise<LoginResponse> => {
+export const loginApi = async (
+  username: string | undefined,
+  password: string,
+): Promise<LoginResponse> => {
   const result = await postData("/auth/login", { username, password });
   invalidateBootstrapCache();
   return result;

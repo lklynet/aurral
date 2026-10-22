@@ -14,8 +14,9 @@ import {
 } from "../../../utils/api/endpoints/settings.ts";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
 import { SettingsArrFieldSet } from "./arr/SettingsArrLayout";
+import { readApiError } from "../utils/apiError.ts";
 
-import { AlertCircle, Check, Clock, XCircle } from "lucide-react";
+import { AlertCircle, Check, Clock, XCircle, type LucideIcon } from "lucide-react";
 import { DotLoader } from "../../../components/DotLoader";
 import Tooltip from "../../../components/Tooltip";
 import { formatRelativeTime } from "../../../utils/dateTime.ts";
@@ -25,7 +26,15 @@ type ClearStaleResult = Awaited<ReturnType<typeof clearStaleHonkerJobs>> & {
   tasks: HonkerTaskStatus;
 };
 
-const STATUS_META = {
+type StatusMeta = {
+  label: string;
+  tone: string;
+  icon?: LucideIcon;
+  spinning?: boolean;
+  title: string | null;
+};
+
+const STATUS_META: Partial<Record<string, StatusMeta>> = {
   interrupted: {
     label: "Interrupted",
     tone: "muted",
@@ -472,11 +481,8 @@ export function SettingsTasksTab({
   });
   const tasks: HonkerTaskStatus | undefined = tasksQuery.data;
   const loading = tasksQuery.isPending;
-  const loadError =
-    tasksQuery.error?.response?.data?.message ||
-    tasksQuery.error?.response?.data?.error ||
-    tasksQuery.error?.message ||
-    null;
+  const tasksFailure = readApiError(tasksQuery.error);
+  const loadError = tasksFailure.message || tasksFailure.error || tasksFailure.text || null;
   const clearMutation = useMutation<ClearStaleResult>({
     mutationFn: clearSettingsStaleTasks,
     onSuccess: (result) => queryClient.setQueryData(queryKeys.settingsTasks, result.tasks || null),
@@ -493,11 +499,9 @@ export function SettingsTasksTab({
         showSuccess?.("No stuck jobs.");
       }
     } catch (error) {
+      const failure = readApiError(error);
       const message =
-        error.response?.data?.message ||
-        error.response?.data?.error ||
-        error.message ||
-        "Failed to clear stuck jobs";
+        failure.message || failure.error || failure.text || "Failed to clear stuck jobs";
       showError(message);
     } finally {
       setClearing(false);

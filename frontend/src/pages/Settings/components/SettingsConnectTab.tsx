@@ -27,6 +27,7 @@ import { DotLoader } from "../../../components/DotLoader";
 import { getConfiguredStatus } from "../utils/integrationStatus";
 import type { AppSettings } from "../../../../../backend/db/helpers/settings.ts";
 import type { SettingsState } from "../utils";
+import { readApiError } from "../utils/apiError.ts";
 
 type IntegrationDraft<K extends "gotify" | "lastfm" | "ticketmaster"> =
   SettingsState["integrations"][K];
@@ -179,7 +180,8 @@ export function SettingsConnectTab({
         tone: "error",
         message: "Test failed. Check the URL and token, then retry.",
       });
-      const msg = err.response?.data?.message || err.response?.data?.error || err.message;
+      const failure = readApiError(err);
+      const msg = failure.message || failure.error || failure.text;
       showError(`Gotify test failed: ${msg}`);
     } finally {
       setTestingGotify(false);
@@ -230,7 +232,8 @@ export function SettingsConnectTab({
       showSuccess("Test webhook sent.");
     } catch (err) {
       if (webhookRevisionRef.current !== testRevision) return;
-      const message = err.response?.data?.message || err.response?.data?.error || err.message;
+      const failure = readApiError(err);
+      const message = failure.message || failure.error || failure.text;
       setWebhookTestStatus({
         index,
         tone: "error",

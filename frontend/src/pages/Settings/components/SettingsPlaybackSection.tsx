@@ -39,6 +39,7 @@ import {
 } from "./SettingsModalLayout";
 import { pickBestPlexConnection, resolvePlexConnectionUrl } from "../utils/plexConnections";
 import type { useSettingsData } from "../hooks/useSettingsData";
+import { readApiError } from "../utils/apiError.ts";
 
 type SettingsData = ReturnType<typeof useSettingsData>;
 type Integrations = SettingsData["settings"]["integrations"];
@@ -281,7 +282,8 @@ export function SettingsPlaybackSection({
           : "Signed in to Plex. Select your server below.",
       );
     } catch (err) {
-      const errorMsg = err.response?.data?.message || err.response?.data?.error || err.message;
+      const failure = readApiError(err);
+      const errorMsg = failure.message || failure.error || failure.text;
       showError(`Plex sign-in failed: ${errorMsg}`);
     } finally {
       setPlexConnecting(false);
@@ -325,19 +327,14 @@ export function SettingsPlaybackSection({
           updatePlex({ machineIdentifier: result.machineIdentifier });
         }
         setTestStatus({ tone: "success", message: "Connected." });
-      } else {
-        setTestStatus({
-          tone: "error",
-          message: "Connection failed. Check Plex settings and retry.",
-        });
-        showError(`Connection failed: ${result.message || result.error}`);
       }
     } catch (err) {
       setTestStatus({
         tone: "error",
         message: "Connection failed. Check Plex settings and retry.",
       });
-      const errorMsg = err.response?.data?.message || err.response?.data?.error || err.message;
+      const failure = readApiError(err);
+      const errorMsg = failure.message || failure.error || failure.text;
       showError(`Connection failed: ${errorMsg}`);
     } finally {
       setTestingPlex(false);
@@ -364,7 +361,8 @@ export function SettingsPlaybackSection({
         tone: "error",
         message: "Connection failed. Check the URL and credentials, then retry.",
       });
-      const errorMsg = err.response?.data?.message || err.response?.data?.error || err.message;
+      const failure = readApiError(err);
+      const errorMsg = failure.message || failure.error || failure.text;
       showError(`Navidrome connection failed: ${errorMsg}`);
     } finally {
       setTestingNavidrome(false);
@@ -401,7 +399,8 @@ export function SettingsPlaybackSection({
         tone: "error",
         message: "Connection failed. Check the URL, API key, and user ID, then retry.",
       });
-      const errorMsg = err.response?.data?.message || err.response?.data?.error || err.message;
+      const failure = readApiError(err);
+      const errorMsg = failure.message || failure.error || failure.text;
       showError(`Jellyfin connection failed: ${errorMsg}`);
     } finally {
       setTestingJellyfin(false);
@@ -433,13 +432,14 @@ export function SettingsPlaybackSection({
       const deadline = Date.now() + 3 * 60 * 1000;
       lastfmPollRef.current = window.setInterval(() => {
         if (popup.closed || Date.now() >= deadline) {
-          window.clearInterval(lastfmPollRef.current);
+          if (lastfmPollRef.current) window.clearInterval(lastfmPollRef.current);
           lastfmPollRef.current = null;
           refreshScrobbleStatus();
         }
       }, 500);
     } catch (error) {
-      showError(error.response?.data?.error || error.message || "Could not start Last.fm linking");
+      const failure = readApiError(error);
+      showError(failure.error || failure.text || "Could not start Last.fm linking");
     }
   };
 
@@ -450,7 +450,8 @@ export function SettingsPlaybackSection({
       refreshScrobbleStatus();
       showSuccess("ListenBrainz connected.");
     } catch (error) {
-      showError(error.response?.data?.error || error.message || "Could not connect ListenBrainz");
+      const failure = readApiError(error);
+      showError(failure.error || failure.text || "Could not connect ListenBrainz");
     }
   };
 
@@ -461,7 +462,8 @@ export function SettingsPlaybackSection({
       refreshScrobbleStatus();
       showSuccess("Koito connected.");
     } catch (error) {
-      showError(error.response?.data?.error || error.message || "Could not connect Koito");
+      const failure = readApiError(error);
+      showError(failure.error || failure.text || "Could not connect Koito");
     }
   };
 
@@ -474,7 +476,8 @@ export function SettingsPlaybackSection({
         `${provider === "lastfm" ? "Last.fm" : provider === "listenbrainz" ? "ListenBrainz" : "Koito"} disconnected.`,
       );
     } catch (error) {
-      showError(error.response?.data?.error || error.message || "Could not disconnect provider");
+      const failure = readApiError(error);
+      showError(failure.error || failure.text || "Could not disconnect provider");
     }
   };
 
@@ -509,7 +512,8 @@ export function SettingsPlaybackSection({
         );
       }
     } catch (err) {
-      const errorMsg = err.response?.data?.message || err.response?.data?.error || err.message;
+      const failure = readApiError(err);
+      const errorMsg = failure.message || failure.error || failure.text;
       showError(`Plex sync failed: ${errorMsg}`);
     } finally {
       setSyncingPlex(false);

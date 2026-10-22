@@ -12,6 +12,7 @@ import { RotateCcw } from "lucide-react";
 import { DotLoader } from "../../../components/DotLoader";
 import type { useAccountSettings } from "../hooks/useAccountSettings";
 import type { useToast } from "../../../contexts/ToastContext";
+import { readApiError } from "../utils/apiError.ts";
 
 type Toast = ReturnType<typeof useToast>["showSuccess"];
 
@@ -75,7 +76,7 @@ export function SettingsAccountTab({
       await resetDiscoveryFeedback();
       showSuccess?.("Discovery tastes reset");
     } catch (error) {
-      showError?.(error.response?.data?.message || "Failed to reset discovery tastes");
+      showError?.(readApiError(error).message || "Failed to reset discovery tastes");
     } finally {
       setResettingTastes(false);
     }

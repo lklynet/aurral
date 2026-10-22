@@ -8,6 +8,7 @@ import {
 import { queryClient, queryKeys } from "../../../queryClient.ts";
 import type { AppSettings } from "../../../../../backend/db/helpers/settings.ts";
 import type { SettingsState } from "../utils";
+import { readApiError } from "../utils/apiError.ts";
 import type { prowlarrClient } from "../../../../../backend/services/prowlarrClient.ts";
 
 import { RefreshCw } from "lucide-react";
@@ -104,11 +105,9 @@ export function SettingsIndexersSection({
       }
     } catch (error) {
       if (!quiet) {
+        const failure = readApiError(error);
         showError(
-          error.response?.data?.message ||
-            error.response?.data?.error ||
-            error.message ||
-            "Failed to load Prowlarr indexers",
+          failure.message || failure.error || failure.text || "Failed to load Prowlarr indexers",
         );
       }
     }
@@ -160,12 +159,8 @@ export function SettingsIndexersSection({
         tone: "error",
         message: "Connection failed. Check the URL and API key, then retry.",
       });
-      showError(
-        error.response?.data?.message ||
-          error.response?.data?.error ||
-          error.message ||
-          "Prowlarr connection failed",
-      );
+      const failure = readApiError(error);
+      showError(failure.message || failure.error || failure.text || "Prowlarr connection failed");
     } finally {
       setTestingProwlarr(false);
     }

@@ -8,6 +8,7 @@ import { SettingsArrFieldSet } from "./arr/SettingsArrLayout";
 import { runStorageHealthAction } from "../utils/runStorageHealthAction";
 import type { HealthResponse } from "../../../../../backend/routes/health.ts";
 import type { SettingsState } from "../utils";
+import { readApiError } from "../utils/apiError.ts";
 import type { useToast } from "../../../contexts/ToastContext";
 
 type Toast = ReturnType<typeof useToast>["showSuccess"];
@@ -160,11 +161,9 @@ export function SettingsStorageHealthSection({
         }
         return result;
       } catch (error) {
+        const failure = readApiError(error);
         const message =
-          error.response?.data?.message ||
-          error.response?.data?.error ||
-          error.message ||
-          "Storage health check failed";
+          failure.message || failure.error || failure.text || "Storage health check failed";
         if (notify) {
           showError(message);
         }

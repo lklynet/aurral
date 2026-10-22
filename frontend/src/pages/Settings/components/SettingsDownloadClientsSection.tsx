@@ -10,6 +10,7 @@ import { SettingsArrFieldSet, SettingsArrFormGroup } from "./arr/SettingsArrLayo
 import { SettingsInput } from "./SettingsField";
 import { RootOverlapWarning } from "./RootOverlapWarning";
 import { getProviderStatus } from "../utils/integrationStatus";
+import { readApiError } from "../utils/apiError.ts";
 import { PATH_MAPPING_SOURCE_OPTIONS, PathMappingModal } from "./PathMappingModal";
 import { QUALITY_TIER_LABELS, QualityProfileModal } from "./QualityProfileModal";
 import type { useSettingsData } from "../hooks/useSettingsData";
@@ -131,7 +132,11 @@ export function SettingsDownloadClientsSection({
     (definition) => !isClientEnabled(definition, integrations[definition.key] || {}),
   );
   const activeClient: DownloadClientDefinition | null =
-    downloadClientSettings?.[activeModal] || null;
+    (activeModal !== null &&
+    activeModal !== ADD_CLIENT_MODAL &&
+    activeModal !== QUALITY_PROFILE_MODAL
+      ? downloadClientSettings?.[activeModal]
+      : undefined) || null;
 
   const updateIntegration = (
     key: DownloadClientDefinition["key"],
@@ -234,11 +239,9 @@ export function SettingsDownloadClientsSection({
         showError(message);
       }
     } catch (error) {
+      const failure = readApiError(error);
       const message =
-        error.response?.data?.message ||
-        error.response?.data?.error ||
-        error.message ||
-        `${definition.label} connection failed`;
+        failure.message || failure.error || failure.text || `${definition.label} connection failed`;
       setTestStatus({ tone: "error", message });
       showError(message);
     } finally {
@@ -289,7 +292,7 @@ export function SettingsDownloadClientsSection({
           title="Default"
           subtitle={`${qualityEnabled.size} qualities allowed`}
           status={{ label: "Configured", className: "is-enabled" }}
-          meta={`Cutoff ${QUALITY_TIER_LABELS[qualityProfile.cutoff] || "not set"}`}
+          meta={`Cutoff ${(qualityProfile.cutoff !== undefined ? QUALITY_TIER_LABELS[qualityProfile.cutoff] : undefined) || "not set"}`}
           onClick={() => setActiveModal(QUALITY_PROFILE_MODAL)}
         />
       </SettingsArrFieldSet>

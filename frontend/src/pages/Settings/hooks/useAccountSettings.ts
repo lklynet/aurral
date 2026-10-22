@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import type { DefaultError } from "@tanstack/react-query";
 import {
   getMyListeningHistory,
   getMyLidarrPreferences,
@@ -26,10 +25,6 @@ type ListenHistoryPayload = {
   listenHistoryProvider: string;
   listenHistoryUsername: string | null;
   listenHistoryUrl: string | null;
-};
-type LidarrPreferencesPayload = {
-  rootFolderPath: string | null;
-  qualityProfileId: number | null;
 };
 
 function areDraftsEqual(left: AccountDraft | null, right: AccountDraft | null) {
@@ -101,11 +96,7 @@ export function useAccountSettings(authUser: AuthUser, showError: (message: stri
     mutationFn: (payload: ListenHistoryPayload) => updateMyListeningHistory(authUser!.id, payload),
     onSuccess: (data) => queryClient.setQueryData(historyQueryKey, data),
   });
-  const { mutateAsync: saveLidarr } = useMutation<
-    LidarrPreferences,
-    DefaultError,
-    LidarrPreferencesPayload
-  >({
+  const { mutateAsync: saveLidarr } = useMutation({
     mutationFn: updateMyLidarrPreferences,
     onSuccess: (data) => queryClient.setQueryData(lidarrQueryKey, data),
   });

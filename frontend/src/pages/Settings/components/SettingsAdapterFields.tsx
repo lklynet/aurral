@@ -42,9 +42,9 @@ function fieldId(definition: AdapterDefinition | undefined, field: AdapterField)
 
 function fieldValue(
   definition: AdapterDefinition | undefined,
-  settings: Record<string, AdapterValue | undefined> | undefined,
+  settings: Record<string, unknown> | undefined,
   field: AdapterField,
-): AdapterValue {
+): unknown {
   return (
     settings?.[field.key] ??
     definition?.defaults?.[field.key] ??
@@ -73,7 +73,7 @@ export function SettingsAdapterFields({
   onChange,
 }: {
   definition?: AdapterDefinition;
-  settings?: Record<string, AdapterValue | undefined>;
+  settings?: Record<string, unknown>;
   onChange: (patch: Record<string, AdapterValue>) => void;
 }) {
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -101,7 +101,7 @@ export function SettingsAdapterFields({
         <SettingsModalField key={field.key} label={field.label} htmlFor={id} hint={field.hint}>
           <DownloadFolderField
             id={id}
-            value={value}
+            value={String(value || "")}
             autoApplySuggestion={false}
             onChange={updateValue}
           />
@@ -115,7 +115,7 @@ export function SettingsAdapterFields({
           <SettingsSelect
             id={id}
             required={field.required === true}
-            value={value}
+            value={String(value)}
             onChange={(event) => updateValue(event.target.value)}
           >
             {(field.options || []).map((option) => {
@@ -141,7 +141,7 @@ export function SettingsAdapterFields({
           max={field.max}
           placeholder={field.placeholder}
           autoComplete={field.secret ? "new-password" : "off"}
-          value={value}
+          value={String(value)}
           onChange={(event) => {
             const nextValue = event.target.value;
             updateValue(

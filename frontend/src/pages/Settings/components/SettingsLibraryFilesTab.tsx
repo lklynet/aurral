@@ -23,6 +23,7 @@ import type { ComponentProps } from "react";
 import { SettingsArrFieldSet, SettingsArrFormGroup } from "./arr/SettingsArrLayout";
 import { SettingsSelect } from "./SettingsField";
 import type { useToast } from "../../../contexts/ToastContext";
+import { readApiError } from "../utils/apiError.ts";
 
 type Toast = ReturnType<typeof useToast>["showSuccess"];
 type FileOperation = ComponentProps<typeof LibraryFileOperation>["operation"];
@@ -47,8 +48,10 @@ const MONITOR_HELP = {
 
 const FILL_TAGS_HELP = "Fills missing MusicBrainz tags. Existing tags stay.";
 
-const errorMessage = (error: unknown, fallback: string) =>
-  error?.response?.data?.message || error?.message || fallback;
+const errorMessage = (error: unknown, fallback: string) => {
+  const failure = readApiError(error);
+  return failure.message || failure.text || fallback;
+};
 
 const trackCount = (count: number) => `${count.toLocaleString()} track${count === 1 ? "" : "s"}`;
 
@@ -317,7 +320,10 @@ function IngestSection({
         <SettingsSelect
           id="library-ingest-mode"
           value={mode}
-          onChange={(event) => setMode(event.target.value)}
+          onChange={(event) => {
+            const next = event.target.value;
+            if (next === "move" || next === "copy" || next === "hardlink") setMode(next);
+          }}
         >
           <option value="move">Move</option>
           <option value="copy">Copy</option>
@@ -342,7 +348,10 @@ function IngestSection({
         <SettingsSelect
           id="library-ingest-monitor"
           value={monitor}
-          onChange={(event) => setMonitor(event.target.value)}
+          onChange={(event) => {
+            const next = event.target.value;
+            if (next === "none" || next === "tracks" || next === "albums") setMonitor(next);
+          }}
         >
           <option value="none">None</option>
           <option value="tracks">Tracks</option>

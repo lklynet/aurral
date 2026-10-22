@@ -1,6 +1,10 @@
 import { allReleaseTypes } from "./constants";
 import { normalizeDateTimeFormat } from "../../utils/dateTime.ts";
-import type { AppSettings, StoredIntegrations } from "../../../../backend/db/helpers/settings.ts";
+import type {
+  AppSettings,
+  QualityProfile,
+  StoredIntegrations,
+} from "../../../../backend/db/helpers/settings.ts";
 import type { AppSettingsResponse } from "../../utils/api/endpoints/settings.ts";
 
 export const LEGACY_METADATA_BASE_URL = "https://brainzmash.kell.ly";
@@ -38,6 +42,9 @@ export const normalizeSettings = (savedSettings: SavedSettings) => {
     : 200;
   const playlistArtwork: Partial<AppSettings["playlistArtwork"]> =
     savedSettings.playlistArtwork || {};
+  const qualityProfile: Partial<QualityProfile> | undefined = savedSettings.qualityProfile;
+  const missingTrackSearch: Partial<AppSettings["missingTrackSearch"]> | undefined =
+    savedSettings.missingTrackSearch;
   const playlistArtworkStyle: "aurral" | "photo" =
     playlistArtwork.style === "aurral" || lastfm.discoverFlowArtworkStyle === "aurral"
       ? "aurral"
@@ -67,7 +74,8 @@ export const normalizeSettings = (savedSettings: SavedSettings) => {
     },
     releaseTypes: savedSettings.releaseTypes || allReleaseTypes,
     quality: savedSettings.quality || "standard",
-    qualityProfile: savedSettings.qualityProfile,
+    qualityProfile,
+    missingTrackSearch,
     security: {
       ...(savedSettings.security || {}),
       localNetworkBypass: {

@@ -11,7 +11,7 @@ type StorageHealthResult = Pick<
 > & { failedCount?: number; warningCount?: number };
 type StorageHealthSection = StorageHealthResult["sections"][number];
 
-const STATUS_LABELS = {
+const STATUS_LABELS: Partial<Record<string, string>> = {
   pass: "PASS",
   fail: "FAIL",
   warn: "WARN",
@@ -64,16 +64,15 @@ export function StorageHealthSummary({
   }
 
   const { activeSections, status, label, checkedAt } = getSummary(result);
+  const { failedCount = 0, warningCount = 0 } = result;
   return (
     <div className={`arr-health__summary is-${status}`}>
       <div className="arr-health__summary-main">
         <span className={`arr-health__badge arr-health__badge--${status}`}>{label}</span>
         <span className="arr-health__summary-text">
           {activeSections.length} checks reviewed
-          {result.failedCount > 0 ? ` · ${result.failedCount} failed` : ""}
-          {result.warningCount > 0
-            ? ` · ${result.warningCount} warning${result.warningCount === 1 ? "" : "s"}`
-            : ""}
+          {failedCount > 0 ? ` · ${failedCount} failed` : ""}
+          {warningCount > 0 ? ` · ${warningCount} warning${warningCount === 1 ? "" : "s"}` : ""}
         </span>
       </div>
       {checkedAt ? (

@@ -42,7 +42,8 @@ type NavidromeIntegration = IntegrationDefaults["navidrome"] & {
   pathMappings?: unknown;
 };
 
-type PlexIntegration = IntegrationDefaults["plex"] & {
+type PlexIntegration = Omit<IntegrationDefaults["plex"], "plexUsername"> & {
+  plexUsername: string | null;
   loginEnabled?: boolean;
   configuredByUserId?: number;
 };

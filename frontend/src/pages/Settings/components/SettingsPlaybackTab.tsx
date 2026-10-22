@@ -61,15 +61,17 @@ export function SettingsPlaybackTab({
             <SettingsSelect
               id="playlist-artwork-style"
               value={playlistArtworkStyle}
-              onChange={(event) =>
+              onChange={(event) => {
+                const style = event.target.value;
+                if (style !== "aurral" && style !== "photo") return;
                 updateSettings({
                   ...settings,
                   playlistArtwork: {
                     ...(settings.playlistArtwork || {}),
-                    style: event.target.value,
+                    style,
                   },
-                })
-              }
+                });
+              }}
             >
               {PLAYLIST_ARTWORK_STYLE_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>

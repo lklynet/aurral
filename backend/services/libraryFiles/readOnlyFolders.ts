@@ -81,7 +81,7 @@ async function describeFolder(folder: string, lidarrRoots: string[]) {
   return {
     path: folder,
     readable,
-    tracks: countTracksStmt.get(folder, prefix.length, prefix),
+    tracks: countTracksStmt.get(folder, prefix.length, prefix)!,
     lidarrRoot: lidarrRoots.find((root) => isPathWithin(root, folder)) || null,
   };
 }

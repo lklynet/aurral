@@ -10,11 +10,16 @@ import type {
   ShareLinksResponse,
 } from "../../../../../backend/routes/shareLinks.ts";
 import type { useToast } from "../../../contexts/ToastContext";
+import { readApiError } from "../utils/apiError.ts";
 
 type Toast = ReturnType<typeof useToast>["showSuccess"];
 
-const KIND_LABELS = { artist: "Artist", album: "Album", track: "Track" };
-const TUNNEL_NOTES = {
+const KIND_LABELS: Partial<Record<string, string>> = {
+  artist: "Artist",
+  album: "Album",
+  track: "Track",
+};
+const TUNNEL_NOTES: Partial<Record<ShareLinksResponse["tunnel"], string>> = {
   starting: "Connecting your links to aurral.org…",
   unreachable: "Links cannot play yet. Retrying the connection to aurral.org.",
   unavailable: "Install cloudflared on your server to enable playback links.",
@@ -65,15 +70,19 @@ export function SharedLinksSection({
   const stop = useMutation({
     mutationFn: (link: ShareLinkResponse) => deleteShareLink(link.id),
     onSuccess: (_, link) => {
-      queryClient.setQueryData<ShareLinksResponse>(queryKey, (current) => ({
-        ...current,
-        links: (current?.links || []).filter((entry) => entry.id !== link.id),
-      }));
+      queryClient.setQueryData<ShareLinksResponse>(
+        queryKey,
+        (current) =>
+          current && {
+            ...current,
+            links: current.links.filter((entry) => entry.id !== link.id),
+          },
+      );
       showSuccess?.(`Stopped sharing ${link.title}.`);
     },
     onError: (error) => {
       showError?.(
-        error.response?.data?.message || "Could not stop sharing. The link still works. Try again.",
+        readApiError(error).message || "Could not stop sharing. The link still works. Try again.",
       );
       queryClient.invalidateQueries({ queryKey });
     },
@@ -89,7 +98,8 @@ export function SharedLinksSection({
   };
 
   const items = links.data?.links || [];
-  const tunnelNote = items.length ? TUNNEL_NOTES[links.data?.tunnel] : null;
+  const tunnel = links.data?.tunnel;
+  const tunnelNote = items.length && tunnel ? TUNNEL_NOTES[tunnel] : null;
 
   return (
     <div className={`settings-page__section${className ? ` ${className}` : ""}`}>

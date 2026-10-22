@@ -29,7 +29,7 @@ import {
 import Tooltip from "../../../components/Tooltip";
 import type { QualityProfile } from "../../../../../backend/db/helpers/settings.ts";
 
-export const QUALITY_TIER_LABELS = {
+export const QUALITY_TIER_LABELS: Partial<Record<string, string>> = {
   "flac-hires": "FLAC hi-res",
   "flac-standard": "FLAC standard",
   "mp3-320": "MP3 320",
@@ -115,13 +115,13 @@ export function QualityProfileModal({
   onChange,
   onClose,
 }: {
-  profile: QualityProfile;
+  profile: Partial<QualityProfile>;
   onChange: (patch: Partial<QualityProfile>) => void;
   onClose: () => void;
 }) {
   const order = Array.isArray(profile.order) ? profile.order : Object.keys(QUALITY_TIER_LABELS);
   const enabled = new Set(Array.isArray(profile.enabled) ? profile.enabled : order);
-  const cutoffIndex = order.indexOf(profile.cutoff);
+  const cutoffIndex = profile.cutoff === undefined ? -1 : order.indexOf(profile.cutoff);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -134,9 +134,10 @@ export function QualityProfileModal({
     if (!nextEnabled.length) return;
     onChange({
       enabled: nextEnabled,
-      cutoff: nextEnabled.includes(profile.cutoff)
-        ? profile.cutoff
-        : order.find((tierId) => nextEnabled.includes(tierId)),
+      cutoff:
+        profile.cutoff !== undefined && nextEnabled.includes(profile.cutoff)
+          ? profile.cutoff
+          : order.find((tierId) => nextEnabled.includes(tierId)),
     });
   };
 

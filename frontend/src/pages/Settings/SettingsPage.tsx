@@ -177,8 +177,6 @@ function SettingsPage() {
             settings={data.settings}
             updateSettings={data.updateSettings}
             health={data.health}
-            hasUnsavedChanges={data.hasUnsavedChanges}
-            saving={data.saving}
             handleSaveSettings={data.handleSaveSettings}
             testingGotify={data.testingGotify}
             setTestingGotify={data.setTestingGotify}

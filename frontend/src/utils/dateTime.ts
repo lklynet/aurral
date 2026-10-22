@@ -2,8 +2,8 @@ export const DATE_TIME_FORMATS: readonly string[] = ["browser", "day-first", "ye
 
 let currentFormat = "browser";
 
-export const normalizeDateTimeFormat = (value: string): string =>
-  DATE_TIME_FORMATS.includes(value) ? value : "browser";
+export const normalizeDateTimeFormat = (value: string | undefined): string =>
+  value !== undefined && DATE_TIME_FORMATS.includes(value) ? value : "browser";
 
 export const setDateTimeFormat = (value: string) => {
   currentFormat = normalizeDateTimeFormat(value);
