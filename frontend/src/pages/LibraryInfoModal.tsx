@@ -102,7 +102,7 @@ const formatQuality = (quality: LibraryQuality | string | null | undefined) => {
   if (!quality || typeof quality !== "object") return text(quality);
   return [
     quality.bitrate ? quality.bitrate + " kbps" : "",
-    quality.bitDepth ? quality.bitDepth + " bit" : "",
+    quality.bitsPerSample ? quality.bitsPerSample + " bit" : "",
   ]
     .filter(Boolean)
     .join(" · ");
