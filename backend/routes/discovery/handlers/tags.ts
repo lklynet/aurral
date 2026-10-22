@@ -1,3 +1,4 @@
+import type { Router } from "express";
 import { dbOps } from "../../../db/helpers/index.ts";
 import {
   getMusicDataSourceName,
@@ -6,11 +7,12 @@ import {
 } from "../../../services/musicDataSource/index.ts";
 import { buildImageProxyUrl } from "../../../services/imageProxyService.ts";
 import { getUserDiscoveryNamespace } from "../../../services/discovery/index.ts";
+import type { DiscoveryRecommendation } from "../../../services/discovery/recommendationPipeline.ts";
 import { getUserDiscovery } from "../../../services/discovery/userDiscovery.ts";
 
-const rankTagSuggestions = (names, prefix) => {
+const rankTagSuggestions = (names: unknown[], prefix: string) => {
   const seen = new Set();
-  const groups = [[], [], []];
+  const groups: string[][] = [[], [], []];
   for (const rawName of names) {
     const name = String(rawName ?? "").trim();
     const key = name.toLowerCase();
@@ -23,11 +25,11 @@ const rankTagSuggestions = (names, prefix) => {
 
 export type TagSuggestionsResponse = { tags: string[] };
 
-export function registerTags(router) {
+export function registerTags(router: Router) {
   router.get("/tags", async (req, res) => {
     try {
       const { q = "", limit = 10 } = req.query;
-      const limitInt = Math.min(parseInt(limit) || 10, 20);
+      const limitInt = Math.min(parseInt(String(limit)) || 10, 20);
       const rawPrefix = String(q).trim();
       const prefix = rawPrefix.toLowerCase();
       const userGenres =
@@ -55,8 +57,8 @@ export function registerTags(router) {
         return res.status(400).json({ error: "Tag parameter is required" });
       }
 
-      const limitInt = Math.min(parseInt(limit) || 24, 50);
-      const offsetInt = parseInt(offset) || 0;
+      const limitInt = Math.min(parseInt(String(limit)) || 24, 50);
+      const offsetInt = parseInt(String(offset)) || 0;
       const includeLibraryFlag = includeLibrary === "true" || includeLibrary === "1";
       const scopeValue = scope === "all" || includeLibraryFlag ? "all" : "recommended";
 
@@ -85,7 +87,7 @@ export function registerTags(router) {
 
       const { body: discovery } = getUserDiscovery(req.user?.id ?? null, 0);
       const tagLower = String(tag).trim().toLowerCase();
-      const matches = discovery.recommendations.filter((artist) => {
+      const matches = discovery.recommendations.filter((artist: DiscoveryRecommendation) => {
         const tags = Array.isArray(artist.tags) ? artist.tags : [];
         return tags.some((t) => String(t).toLowerCase() === tagLower);
       });

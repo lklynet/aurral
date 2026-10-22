@@ -1,3 +1,4 @@
+import type { Router } from "express";
 import { dbOps } from "../../../db/helpers/index.ts";
 import { validateExternalUrl } from "../../../middleware/urlValidator.ts";
 import { logger } from "../../../services/logger.ts";
@@ -6,7 +7,7 @@ function getPlexConfig() {
   return dbOps.getSettings()?.integrations?.plex || {};
 }
 
-function describePlexError(error) {
+function describePlexError(error: unknown) {
   const status = error?.response?.status;
   const data = error?.response?.data;
   if (typeof data === "string" && data.trim() && !/^\s*<(!doctype|html)/i.test(data)) {
@@ -16,7 +17,9 @@ function describePlexError(error) {
   return error?.message || "Unknown error";
 }
 
-export function registerPlex(router) {
+type PlexSection = { key: string; title: string; type: string };
+
+export function registerPlex(router: Router) {
   router.post("/plex/auth/pin", async (req, res) => {
     try {
       const { PlexClient } = await import("../../../services/plex.ts");
@@ -184,10 +187,10 @@ export function registerPlex(router) {
       const client = new PlexClient(stored.url, stored.token, stored.clientId);
       const libraries = await client.getLibraries();
       const musicLibraries = libraries.filter(
-        (lib) => lib.type === MUSIC_SECTION_TYPE && lib.title !== "Aurral",
+        (lib: PlexSection) => lib.type === MUSIC_SECTION_TYPE && lib.title !== "Aurral",
       );
       res.json({
-        libraries: musicLibraries.map((lib) => ({ key: lib.key, title: lib.title })),
+        libraries: musicLibraries.map((lib: PlexSection) => ({ key: lib.key, title: lib.title })),
       });
     } catch (error) {
       logger.error("settings", "Plex library listing failed:", error.message);

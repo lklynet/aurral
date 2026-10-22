@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { Router } from "express";
 import { requireAuth } from "../../../middleware/requirePermission.ts";
 import { dbOps } from "../../../db/helpers/index.ts";
 import { getTicketmasterApiKey } from "../../../services/apiClients/index.ts";
@@ -7,7 +8,10 @@ import { getLocalDiscoveryPreferences } from "../../../services/discovery/index.
 import { getUserDiscovery } from "../../../services/discovery/userDiscovery.ts";
 import { getNearbyShows } from "../../../services/nearbyShowsService.ts";
 
-const fingerprintArtists = (artists) => {
+type NearbyShowsOptions = Parameters<typeof getNearbyShows>[0];
+type ArtistInput = NonNullable<NearbyShowsOptions["libraryArtists"]>[number];
+
+const fingerprintArtists = (artists: ArtistInput[]) => {
   const names = [
     ...new Set(
       (Array.isArray(artists) ? artists : [])
@@ -23,6 +27,11 @@ export const buildShowsResponseCacheKey = ({
   libraryArtists,
   recommendedArtists,
   trendingArtists,
+}: {
+  userId: number;
+  libraryArtists: ArtistInput[];
+  recommendedArtists: ArtistInput[];
+  trendingArtists: ArtistInput[];
 }) =>
   JSON.stringify([
     userId,
@@ -41,7 +50,7 @@ export type NearbyShowsResponse =
       shows: NearbyShowsResult["shows"];
     };
 
-export function registerShows(router) {
+export function registerShows(router: Router) {
   router.get("/nearby-shows", requireAuth, async (req, res) => {
     try {
       const apiKey = getTicketmasterApiKey();
@@ -62,7 +71,7 @@ export function registerShows(router) {
       const radiusMiles = Number.isFinite(configuredRadius)
         ? Math.max(5, Math.min(250, Math.floor(configuredRadius)))
         : undefined;
-      const { body: discovery } = await getUserDiscovery(req.user.id, 24);
+      const { body: discovery } = await getUserDiscovery(req.user!.id, 24);
       const recommendedArtists = localDiscoveryPreferences.includeRecommendations
         ? discovery.recommendations
         : [];
@@ -79,7 +88,7 @@ export function registerShows(router) {
         trendingArtists,
         radiusMiles,
         responseCacheKey: buildShowsResponseCacheKey({
-          userId: req.user.id,
+          userId: req.user!.id,
           libraryArtists,
           recommendedArtists,
           trendingArtists,

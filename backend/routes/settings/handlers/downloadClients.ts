@@ -1,9 +1,16 @@
+import type { Router } from "express";
 import { validateExternalUrl } from "../../../middleware/urlValidator.ts";
 import {
   getDownloadClient,
   getDownloadClientSettings,
   testDownloadClient,
 } from "../../../services/download/downloadClientSettings.ts";
+
+type ConnectionTestResult = Awaited<ReturnType<typeof testDownloadClient>>;
+
+type DownloadClientTester = {
+  testConnection: (options: { force: boolean }) => Promise<ConnectionTestResult>;
+};
 
 export type ConnectionTestResponse = {
   success: true;
@@ -14,9 +21,9 @@ export type ConnectionTestResponse = {
   soulseekConnected?: boolean;
 };
 
-function validateDownloadClientTestConfig(key, config) {
+function validateDownloadClientTestConfig(key: string, config: unknown) {
   const definition = getDownloadClientSettings()[key];
-  const nextConfig =
+  const nextConfig: Record<string, unknown> =
     config && typeof config === "object" && !Array.isArray(config) ? { ...config } : {};
 
   for (const field of definition?.fields || []) {
@@ -33,7 +40,13 @@ function validateDownloadClientTestConfig(key, config) {
   return nextConfig;
 }
 
-function registerClientTest(router, path, importClient, label, { warning } = {}) {
+function registerClientTest(
+  router: Router,
+  path: string,
+  importClient: () => Promise<DownloadClientTester>,
+  label: string,
+  { warning }: { warning?: boolean } = {},
+) {
   router.post(path, async (_req, res) => {
     try {
       const client = await importClient();
@@ -58,7 +71,7 @@ function registerClientTest(router, path, importClient, label, { warning } = {})
   });
 }
 
-export function registerDownloadClients(router) {
+export function registerDownloadClients(router: Router) {
   router.get("/download-clients", (_req, res) => {
     res.json({ clients: getDownloadClientSettings() });
   });

@@ -1,9 +1,10 @@
+import type { Router } from "express";
 import {
   getPlaybackDestinationSettings,
   testPlaybackDestination,
 } from "../../../services/playback/playbackDestinationSettings.ts";
 
-export function registerPlayback(router) {
+export function registerPlayback(router: Router) {
   router.get("/playback", (_req, res) => {
     res.json({ destinations: getPlaybackDestinationSettings() });
   });

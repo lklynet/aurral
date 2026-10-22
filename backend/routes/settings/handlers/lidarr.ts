@@ -1,3 +1,4 @@
+import type { Router } from "express";
 import { logger } from "../../../services/logger.ts";
 import { dbOps } from "../../../db/helpers/index.ts";
 import {
@@ -17,7 +18,7 @@ export type LidarrConnectionTestResponse = {
   apiPath: string;
 };
 
-export function registerLidarr(router) {
+export function registerLidarr(router: Router) {
   router.get("/lidarr/profiles", async (req, res) => {
     try {
       const { lidarrClient } = await import("../../../services/lidarrClient.ts");

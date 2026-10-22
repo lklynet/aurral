@@ -1,3 +1,4 @@
+import type { Router } from "express";
 import { noCache } from "../../../middleware/cache.ts";
 import { logger } from "../../../services/logger.ts";
 import {
@@ -5,7 +6,7 @@ import {
   queueUpgradeReadinessRecheck,
 } from "../../../services/upgradeReadiness.ts";
 
-export function registerUpgradeReadiness(router) {
+export function registerUpgradeReadiness(router: Router) {
   router.get("/upgrade-readiness", noCache, (_req, res) => {
     try {
       res.json(checkUpgradeReadiness());

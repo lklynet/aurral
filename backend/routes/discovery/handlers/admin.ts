@@ -1,3 +1,4 @@
+import type { Router } from "express";
 import { dbOps } from "../../../db/helpers/index.ts";
 import { clearImageProxyCache } from "../../../services/imageProxyService.ts";
 import { clearApiCaches } from "../../../services/apiClients/index.ts";
@@ -6,7 +7,7 @@ import { enqueueDiscoveryRefresh } from "../../../services/discovery/refreshSche
 
 export type DiscoveryRefreshResponse = { message: string; isUpdating: boolean };
 
-export function registerAdmin(router) {
+export function registerAdmin(router: Router) {
   router.post("/refresh", requireAuth, requireAdmin, (req, res) => {
     const result = enqueueDiscoveryRefresh({
       reason: "manual",

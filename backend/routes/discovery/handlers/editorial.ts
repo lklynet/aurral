@@ -1,3 +1,4 @@
+import type { Response, Router } from "express";
 import { requireAuth, requirePermission } from "../../../middleware/requirePermission.ts";
 import {
   addEditorialPlaylistToLibrary,
@@ -7,7 +8,7 @@ import {
 } from "../../../services/discovery/editorialPlaylists.ts";
 import { logger, safeLogDiagnostic } from "../../../services/logger.ts";
 
-const sendEditorialError = (res, error, fallback) => {
+const sendEditorialError = (res: Response, error: unknown, fallback: string) => {
   const statusCode = Number(error?.statusCode);
   const status =
     Number.isInteger(statusCode) && statusCode >= 400 && statusCode <= 599 ? statusCode : 500;
@@ -21,10 +22,10 @@ const sendEditorialError = (res, error, fallback) => {
   });
 };
 
-export function registerEditorial(router) {
+export function registerEditorial(router: Router) {
   router.get("/editorial", requireAuth, async (req, res) => {
     try {
-      res.json(await getEditorialShelf(req.user));
+      res.json(await getEditorialShelf(req.user!));
     } catch (error) {
       sendEditorialError(res, error, "Failed to load editorial playlists");
     }
@@ -47,7 +48,7 @@ export function registerEditorial(router) {
   router.get("/editorial/:playlistId", requireAuth, async (req, res) => {
     try {
       res.set("Cache-Control", "no-store");
-      res.json(await getEditorialPlaylist(req.user, req.params.playlistId));
+      res.json(await getEditorialPlaylist(req.user!, req.params.playlistId));
     } catch (error) {
       sendEditorialError(res, error, "Failed to load editorial playlist");
     }
@@ -59,7 +60,7 @@ export function registerEditorial(router) {
     requirePermission("accessFlow"),
     async (req, res) => {
       try {
-        res.json(await addEditorialPlaylistToLibrary(req.user, req.params.playlistId));
+        res.json(await addEditorialPlaylistToLibrary(req.user!, req.params.playlistId));
       } catch (error) {
         sendEditorialError(res, error, "Failed to add editorial playlist");
       }

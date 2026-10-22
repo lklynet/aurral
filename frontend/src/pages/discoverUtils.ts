@@ -1,4 +1,4 @@
-import type { DiscoveryCache } from "../../../backend/db/helpers/discovery.ts";
+import type { DiscoverResponse } from "../../../backend/routes/discovery/handlers/main.ts";
 
 export type DiscoverUserId = number | string | null | undefined;
 
@@ -210,12 +210,9 @@ export const writeStoredRecentReleases = (value: unknown, userId: DiscoverUserId
   }
 };
 
-export const normalizeDiscoveryData = (
-  value:
-    | (Partial<DiscoveryCache> & { configured?: unknown; discoveryMode?: unknown })
-    | null
-    | undefined,
-) => {
+type StoredDiscoveryData = { [K in keyof DiscoverResponse]?: DiscoverResponse[K] | null };
+
+export const normalizeDiscoveryData = (value: StoredDiscoveryData | null | undefined) => {
   if (!value || typeof value !== "object") return null;
   return {
     recommendations: Array.isArray(value.recommendations) ? value.recommendations : [],

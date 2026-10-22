@@ -1,7 +1,9 @@
+import type { Router } from "express";
 import { requireAuth } from "../../../middleware/requirePermission.ts";
+import type { DiscoveryRecommendation } from "../../../services/discovery/recommendationPipeline.ts";
 import { getDiscoveryStatus, getUserDiscovery } from "../../../services/discovery/userDiscovery.ts";
 
-const toDiscoveryArtist = (artist) => ({
+const toDiscoveryArtist = (artist: DiscoveryRecommendation) => ({
   id: artist.id ?? null,
   navigateTo: artist.navigateTo ?? null,
   name: artist.name,
@@ -33,19 +35,19 @@ export type DiscoverResponse = Omit<
   globalTop: DiscoverArtist[];
 };
 
-export function registerMain(router) {
+export function registerMain(router: Router) {
   router.get("/status", requireAuth, (req, res) => {
     res.set("Cache-Control", "no-store");
-    res.json(getDiscoveryStatus(req.user.id));
+    res.json(getDiscoveryStatus(req.user!.id));
   });
 
   router.get("/", requireAuth, async (req, res) => {
     const hasExplicitLimit = typeof req.query.limit === "string" && req.query.limit.trim() !== "";
     const limit = hasExplicitLimit
-      ? Math.max(1, Math.min(200, parseInt(req.query.limit, 10) || 0))
+      ? Math.max(1, Math.min(200, parseInt(String(req.query.limit), 10) || 0))
       : 0;
-    const offset = hasExplicitLimit ? Math.max(0, parseInt(req.query.offset, 10) || 0) : 0;
-    const { body } = await getUserDiscovery(req.user.id, limit, offset);
+    const offset = hasExplicitLimit ? Math.max(0, parseInt(String(req.query.offset), 10) || 0) : 0;
+    const { body } = await getUserDiscovery(req.user!.id, limit, offset);
 
     res.set("Cache-Control", "private, no-cache");
     res.json({

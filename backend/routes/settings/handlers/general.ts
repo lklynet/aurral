@@ -1,6 +1,8 @@
+import type { Router } from "express";
 import { isDeepStrictEqual } from "node:util";
 import { dbOps } from "../../../db/helpers/index.ts";
 import { MAX_REVIEW_TIMEOUT_HOURS } from "../../../db/helpers/settings.ts";
+import type { AppSettings, StoredIntegrations } from "../../../db/helpers/settings.ts";
 import {
   DATE_TIME_FORMATS,
   DEFAULT_METADATA_BASE_URL,
@@ -31,7 +33,13 @@ import {
 import { normalizeQualityProfile } from "../../../services/qualityProfileModel.ts";
 import { getMusicDataSourceName } from "../../../services/musicDataSource/index.ts";
 
-function mergeIntegrations(existing, input, keys) {
+type ProwlarrIndexers = NonNullable<NonNullable<StoredIntegrations["prowlarr"]>["indexers"]>;
+
+function mergeIntegrations(
+  existing: StoredIntegrations,
+  input: StoredIntegrations,
+  keys: string[],
+) {
   const merged = { ...existing, ...input };
   for (const key of keys) {
     merged[key] = input[key] ? { ...(existing[key] || {}), ...input[key] } : existing[key];
@@ -39,21 +47,21 @@ function mergeIntegrations(existing, input, keys) {
   return merged;
 }
 
-function resolveLibraryRootWarnings(settings) {
+function resolveLibraryRootWarnings(settings: AppSettings) {
   const aurralRoot = settings?.downloadFolderPath || resolveDownloadRoot();
   const lidarrRoots = getOverlapCheckedLidarrRoots(settings?.integrations?.lidarr);
   return computeLibraryRootOverlaps({ aurralRoot, lidarrRoots });
 }
 
-function didLidarrRootDiscoveryChange(previousSettings, nextSettings) {
+function didLidarrRootDiscoveryChange(previousSettings: AppSettings, nextSettings: AppSettings) {
   const previous = previousSettings?.integrations?.lidarr || {};
   const next = nextSettings?.integrations?.lidarr || {};
-  return ["url", "apiKey", "enabled", "insecure", "rootFolderPath", "rootFolderPaths"].some(
-    (key) => JSON.stringify(previous[key]) !== JSON.stringify(next[key]),
-  );
+  return (
+    ["url", "apiKey", "enabled", "insecure", "rootFolderPath", "rootFolderPaths"] as const
+  ).some((key) => JSON.stringify(previous[key]) !== JSON.stringify(next[key]));
 }
 
-function didLidarrConnectionChange(previousSettings, nextSettings) {
+function didLidarrConnectionChange(previousSettings: AppSettings, nextSettings: AppSettings) {
   const previous = previousSettings?.integrations?.lidarr || {};
   const next = nextSettings?.integrations?.lidarr || {};
   return (
@@ -62,7 +70,7 @@ function didLidarrConnectionChange(previousSettings, nextSettings) {
   );
 }
 
-export function registerGeneral(router) {
+export function registerGeneral(router: Router) {
   router.post("/navidrome/test", testNavidromeConnection);
 
   router.get("/", noCache, (req, res) => {
@@ -237,8 +245,8 @@ export function registerGeneral(router) {
           typeof nextProwlarr.apiKey === "string" ? nextProwlarr.apiKey.trim() : "";
         nextProwlarr.categories = Array.isArray(nextProwlarr.categories)
           ? nextProwlarr.categories
-              .map((entry) => Number.parseInt(entry, 10))
-              .filter((entry) => Number.isFinite(entry) && entry > 0)
+              .map((entry: unknown) => Number.parseInt(String(entry), 10))
+              .filter((entry: number) => Number.isFinite(entry) && entry > 0)
           : String(nextProwlarr.categories || "")
               .split(",")
               .map((entry) => Number.parseInt(entry.trim(), 10))
@@ -250,7 +258,7 @@ export function registerGeneral(router) {
         nextProwlarr.maxResults = Number.isFinite(maxResults)
           ? Math.min(200, Math.max(10, maxResults))
           : 60;
-        const indexers =
+        const indexers: ProwlarrIndexers =
           nextProwlarr.indexers && typeof nextProwlarr.indexers === "object"
             ? nextProwlarr.indexers
             : {};
@@ -259,7 +267,7 @@ export function registerGeneral(router) {
             .map(([id, entry]) => {
               const parsedId = Number.parseInt(id, 10);
               if (!Number.isFinite(parsedId)) return null;
-              const priority = Number.parseInt(entry?.priority, 10);
+              const priority = Number.parseInt(String(entry?.priority), 10);
               return [
                 String(parsedId),
                 {
@@ -471,7 +479,7 @@ export function registerGeneral(router) {
         ) {
           mergedIntegrations.plex = {
             ...mergedIntegrations.plex,
-            configuredByUserId: req.user.id,
+            configuredByUserId: req.user!.id,
           };
         }
         mergedIntegrations.webhooks =

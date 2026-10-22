@@ -1,6 +1,7 @@
+import type { Router } from "express";
 import { noCache } from "../../../middleware/cache.ts";
 
-export function registerTasks(router) {
+export function registerTasks(router: Router) {
   router.get("/tasks", noCache, async (_req, res) => {
     try {
       const { getHonkerTaskStatus } = await import("../../../services/honkerTaskStatus.ts");

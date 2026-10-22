@@ -1,3 +1,4 @@
+import type { Router } from "express";
 import { requireAuth } from "../../../middleware/requirePermission.ts";
 import { dbOps } from "../../../db/helpers/index.ts";
 import {
@@ -5,7 +6,7 @@ import {
   getLocalDiscoveryPreferences,
 } from "../../../services/discovery/index.ts";
 
-export function registerPreferences(router) {
+export function registerPreferences(router: Router) {
   router.get("/preferences", requireAuth, (req, res) => {
     const localDiscoveryPreferences = getLocalDiscoveryPreferences();
     res.json({

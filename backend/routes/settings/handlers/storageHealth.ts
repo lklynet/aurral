@@ -1,7 +1,8 @@
+import type { Router } from "express";
 import { noCache } from "../../../middleware/cache.ts";
 import { logger } from "../../../services/logger.ts";
 
-export function registerStorageHealth(router) {
+export function registerStorageHealth(router: Router) {
   router.get("/storage-health", noCache, async (_req, res) => {
     try {
       const { getStorageHealthSnapshot } =
