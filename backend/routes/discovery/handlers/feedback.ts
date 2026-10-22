@@ -7,6 +7,7 @@ import {
   restoreDiscoveryFeedback,
   resetDiscoveryFeedback,
 } from "../../../services/discovery/index.ts";
+import { asAppError } from "../../../../lib/errors.ts";
 
 type DiscoveryFeedbackList = ReturnType<typeof getDiscoveryFeedback>;
 
@@ -34,9 +35,10 @@ export function registerFeedback(router: Router) {
         feedbackList: getDiscoveryFeedback(req.user!.id),
       });
     } catch (error) {
+      const failure = asAppError(error);
       res.status(400).json({
         error: "Failed to save discovery feedback",
-        message: error.message,
+        message: failure?.message,
       });
     }
   });

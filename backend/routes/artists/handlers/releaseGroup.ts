@@ -18,6 +18,7 @@ import {
 } from "../../../services/providers/brainzmashMappers.ts";
 import { logger } from "../../../services/logger.ts";
 import { chooseLibraryRelease } from "../../../services/releaseResolver.ts";
+import { asAppError } from "../../../../lib/errors.ts";
 
 type MbidRequest = Request<{ mbid: string }>;
 
@@ -99,10 +100,11 @@ export function registerReleaseGroup(router: Router) {
       if (controller.signal.aborted) return;
       return res.json({ ratings });
     } catch (error) {
-      if (controller.signal.aborted || error?.name === "AbortError") return;
+      const failure = asAppError(error);
+      if (controller.signal.aborted || failure?.name === "AbortError") return;
       return res.status(502).json({
         error: "Failed to load release ratings",
-        message: error.message,
+        message: failure?.message,
       });
     }
   });
@@ -122,8 +124,9 @@ export function registerReleaseGroup(router: Router) {
       }
       return res.json({ covers });
     } catch (error) {
+      const failure = asAppError(error);
       logger.error("releaseGroup", "Error in release-groups covers batch route:", {
-        message: error.message,
+        message: failure?.message,
       });
       res.set("Cache-Control", "public, max-age=60");
       return res.json({ covers: {} });
@@ -150,12 +153,13 @@ export function registerReleaseGroup(router: Router) {
         coverUrl: coverImage,
       });
     } catch (error) {
+      const failure = asAppError(error);
       logger.error("releaseGroup", `Error in release-group details route for ${req.params.mbid}:`, {
-        message: error.message,
+        message: failure?.message,
       });
       res.status(404).json({
         error: "Release not found",
-        message: error.message,
+        message: failure?.message,
       });
     }
   });
@@ -204,8 +208,9 @@ export function registerReleaseGroup(router: Router) {
       );
       res.json({ images: [], notFound: false, transientError: true });
     } catch (error) {
+      const failure = asAppError(error);
       logger.error("releaseGroup", `Error in release-group cover route for ${req.params.mbid}:`, {
-        message: error.message,
+        message: failure?.message,
       });
       res.set("Cache-Control", bypassCache ? "no-store" : "public, max-age=60");
       res.json({ images: [], notFound: false, transientError: true });
@@ -245,7 +250,11 @@ export function registerReleaseGroup(router: Router) {
           deezerArtistId = getLinkedDeezerArtistId(metadataArtist?.links) || "";
         }
       }
-      const enrichedTracks = await enrichTracksWithDeezerPreviews(tracks, {
+      const enrichedTracks: ((typeof tracks)[number] & {
+        preview_url?: string | null;
+        previewProvider?: string;
+        previewTrackId?: string;
+      })[] = await enrichTracksWithDeezerPreviews(tracks, {
         artistName,
         deezerArtistId,
         deezerAlbumId,
@@ -272,12 +281,13 @@ export function registerReleaseGroup(router: Router) {
         })),
       );
     } catch (error) {
+      const failure = asAppError(error);
       logger.error("releaseGroup", "Error fetching release group tracks:", {
-        message: error.message,
+        message: failure?.message,
       });
       res.status(500).json({
         error: "Failed to fetch tracks",
-        message: error.message,
+        message: failure?.message,
       });
     }
   });

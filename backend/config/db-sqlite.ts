@@ -7,6 +7,7 @@ import { initializeLibraryGenreIndex } from "./library-genre-index.ts";
 import { ensureUniqueLidarrArtistIdIndex } from "./lidarr-artist-index.ts";
 import { syncDownloadFolderPath } from "../services/downloadFolderConfig.ts";
 import { ensureDataDir } from "./data-dir.ts";
+import { asAppError } from "../../lib/errors.ts";
 
 const DATA_DIR = ensureDataDir();
 
@@ -29,7 +30,8 @@ for (let attempt = 0; attempt < 5; attempt++) {
     }
     break;
   } catch (error) {
-    if (!String(error?.code || "").startsWith("SQLITE_BUSY") || attempt === 4) throw error;
+    const failure = asAppError(error);
+    if (!String(failure?.code || "").startsWith("SQLITE_BUSY") || attempt === 4) throw error;
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
   }
 }
@@ -46,8 +48,9 @@ function tryAddColumn(sql: string) {
   try {
     db.exec(sql);
   } catch (error) {
+    const failure = asAppError(error);
     if (
-      !String(error?.message || "")
+      !String(failure?.message || "")
         .toLowerCase()
         .includes("duplicate column name")
     ) {

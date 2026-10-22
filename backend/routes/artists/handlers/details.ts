@@ -18,6 +18,7 @@ import {
   withListenBrainzStats,
 } from "../shared/transform.ts";
 import { getLibraryArtistProjection } from "../../../services/libraryQueryService.ts";
+import { asAppError, errorResponseText } from "../../../../lib/errors.ts";
 
 type MbidRequest = Request<{ mbid: string }>;
 
@@ -189,9 +190,10 @@ export function registerDetails(router: Router) {
           res.setHeader("Content-Type", "application/json");
           return res.json(data);
         } catch (error) {
-          return res.status(error.response?.status || 500).json({
+          const failure = asAppError(error);
+          return res.status(failure?.response?.status || 500).json({
             error: "Failed to fetch artist details",
-            message: error.response?.data?.error || error.message,
+            message: errorResponseText(failure, "error") || failure?.message,
           });
         }
       }
@@ -317,11 +319,12 @@ export function registerDetails(router: Router) {
         pendingArtistRequests.delete(requestKey);
       }
     } catch (error) {
-      logger.error("api", "Unexpected error in artist details route", { error: error.message });
-      logger.error("api", "Error stack", { stack: error.stack });
+      const failure = asAppError(error);
+      logger.error("api", "Unexpected error in artist details route", { error: failure?.message });
+      logger.error("api", "Error stack", { stack: failure?.stack });
       res.status(500).json({
         error: "Failed to fetch artist details",
-        message: error.message,
+        message: failure?.message,
       });
     }
   });

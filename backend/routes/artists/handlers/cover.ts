@@ -3,6 +3,7 @@ import { UUID_REGEX } from "../../../../lib/uuid.ts";
 import { logger } from "../../../services/logger.ts";
 import { dbOps } from "../../../db/helpers/index.ts";
 import { getArtistImage } from "../../../services/imageService.ts";
+import { asAppError } from "../../../../lib/errors.ts";
 
 const NEGATIVE_COVER_CACHE_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -73,7 +74,8 @@ export function registerCover(router: Router) {
 
       res.json({ images });
     } catch (error) {
-      logger.error("api", "Error in cover route", { mbid, error: error.message });
+      const failure = asAppError(error);
+      logger.error("api", "Error in cover route", { mbid, error: failure?.message });
       res.set("Cache-Control", "public, max-age=60");
       res.json({ images: [] });
     }

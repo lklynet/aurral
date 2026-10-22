@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 import type { LibraryArtistsRow, LidarrArtistIdMapRow } from "../db/rows.ts";
 import type { StoredPlaylistWorker } from "../db/helpers/settings.ts";
 import type { dbHelpers as sqliteDbHelpers } from "./db-sqlite.ts";
+import { asAppError } from "../../lib/errors.ts";
 
 export interface TableColumnRow {
   name: string;
@@ -62,8 +63,9 @@ function tryAddColumn(db: Database.Database, sql: string) {
   try {
     db.exec(sql);
   } catch (error) {
+    const failure = asAppError(error);
     if (
-      !String(error?.message || "")
+      !String(failure?.message || "")
         .toLowerCase()
         .includes("duplicate column name")
     ) {

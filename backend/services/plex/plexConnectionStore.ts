@@ -149,7 +149,7 @@ export const plexConnectionStore = {
       lastError: null,
     };
     writeStore(store);
-    return this.getConnection(userId);
+    return this.getConnection(userId)!;
   },
 
   updateToken(userId: number, { token, clientId }: Pick<PlexLinkInput, "token" | "clientId"> = {}) {

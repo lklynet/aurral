@@ -1,5 +1,6 @@
 import type { Response } from "express";
 import { logger } from "../../services/logger.ts";
+import { asAppError } from "../../../lib/errors.ts";
 
 export const sendSSE = (res: Response & { flush?: () => void }, event: string, data: unknown) => {
   try {
@@ -9,7 +10,8 @@ export const sendSSE = (res: Response & { flush?: () => void }, event: string, d
       res.flush();
     }
   } catch (err) {
-    logger.error("sse", `Error sending event ${event}:`, { message: err.message });
+    const failure = asAppError(err);
+    logger.error("sse", `Error sending event ${event}:`, { message: failure?.message });
   }
 };
 

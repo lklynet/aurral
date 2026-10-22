@@ -38,28 +38,28 @@ const deleteProviderForUserStmt = db.prepare<[number, string]>(
   "DELETE FROM user_identities WHERE user_id = ? AND provider_type = ?",
 );
 
-const toIdentity = (row: UserIdentitiesRow | undefined): UserIdentity | null =>
-  row
-    ? {
-        id: row.id,
-        userId: row.user_id,
-        providerType: row.provider_type,
-        providerKey: row.provider_key,
-        subject: row.subject,
-        displayName: row.display_name,
-        linkedAt: row.linked_at,
-      }
-    : null;
+const toIdentity = (row: UserIdentitiesRow): UserIdentity => ({
+  id: row.id,
+  userId: row.user_id,
+  providerType: row.provider_type,
+  providerKey: row.provider_key,
+  subject: row.subject,
+  displayName: row.display_name,
+  linkedAt: row.linked_at,
+});
+
+const toOptionalIdentity = (row: UserIdentitiesRow | undefined): UserIdentity | null =>
+  row ? toIdentity(row) : null;
 
 export const userIdentityOps = {
   findByProvider(providerType: string, providerKey: string, subject: string) {
-    return toIdentity(findByProviderStmt.get(providerType, providerKey, subject));
+    return toOptionalIdentity(findByProviderStmt.get(providerType, providerKey, subject));
   },
   getForUser(userId: number) {
     return getForUserStmt.all(parseInt(String(userId), 10)).map(toIdentity);
   },
   getById(id: number) {
-    return toIdentity(getByIdStmt.get(parseInt(String(id), 10)));
+    return toOptionalIdentity(getByIdStmt.get(parseInt(String(id), 10)));
   },
   countForUser(userId: number) {
     return countForUserStmt.get(parseInt(String(userId), 10))!.count;

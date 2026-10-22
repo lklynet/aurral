@@ -27,7 +27,6 @@ import { removePlaylistTracksWithoutDownloads } from "./playlists/trackRemoval.t
 import { rebuildLibrarySearchIndex } from "./librarySearchIndex.ts";
 import { rebuildLibraryGenreStats } from "./libraryQueryService.ts";
 import type { LibraryScanRequest } from "./libraryScanRequest.ts";
-import type { LidarrClient } from "./lidarrClient.ts";
 import {
   musicbrainzGetArtistNameByMbid,
   musicbrainzResolveLibraryArtistMbid,
@@ -38,6 +37,7 @@ import {
   createLibraryScanExclusion,
   isLidarrLibraryActive,
   readOnlyFolderPaths,
+  type LidarrRootsSource,
 } from "./libraryFolders.ts";
 
 interface AurralJobMetadata {
@@ -311,7 +311,7 @@ export async function scanConfiguredLibrary({
   changedFiles = new Set(),
 }: LibraryScanRequest & {
   musicRoot?: string;
-  lidarrClient?: LidarrClient;
+  lidarrClient?: LidarrRootsSource;
   lidarrRoots?: string[] | null;
   changedFiles?: Set<string>;
 } = {}) {

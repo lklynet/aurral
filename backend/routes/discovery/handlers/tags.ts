@@ -9,6 +9,7 @@ import { buildImageProxyUrl } from "../../../services/imageProxyService.ts";
 import { getUserDiscoveryNamespace } from "../../../services/discovery/index.ts";
 import type { DiscoveryRecommendation } from "../../../services/discovery/recommendationPipeline.ts";
 import { getUserDiscovery } from "../../../services/discovery/userDiscovery.ts";
+import { asAppError } from "../../../../lib/errors.ts";
 
 const rankTagSuggestions = (names: unknown[], prefix: string) => {
   const seen = new Set();
@@ -42,9 +43,10 @@ export function registerTags(router: Router) {
       }
       res.json({ tags: suggestions.slice(0, limitInt) });
     } catch (error) {
+      const failure = asAppError(error);
       res.status(500).json({
         error: "Failed to fetch tag suggestions",
-        message: error.message,
+        message: failure?.message,
       });
     }
   });
@@ -98,9 +100,10 @@ export function registerTags(router: Router) {
         offset: offsetInt,
       });
     } catch (error) {
+      const failure = asAppError(error);
       res.status(500).json({
         error: "Failed to search by tag",
-        message: error.message,
+        message: failure?.message,
       });
     }
   });

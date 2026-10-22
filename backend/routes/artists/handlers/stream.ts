@@ -20,6 +20,11 @@ import {
   getSimilarArtistCards,
   withListenBrainzStats,
 } from "../shared/transform.ts";
+import { asAppError, errorResponseText } from "../../../../lib/errors.ts";
+
+type AppearsOnReleaseGroups = Awaited<
+  ReturnType<typeof musicbrainzGetArtistAppearsOnReleaseGroups>
+>;
 
 export function registerStream(router: Router) {
   router.get<"/:mbid/stream">("/:mbid/stream", noCache, async (req, res) => {
@@ -149,7 +154,7 @@ export function registerStream(router: Router) {
             limit: appearsOnLimit,
             signal: requestController.signal,
           })
-            .catch(() => [])
+            .catch((): AppearsOnReleaseGroups => [])
             .then((appearsOnReleaseGroups) => {
               if (!isClientConnected()) return;
               sendArtist({
@@ -238,18 +243,20 @@ export function registerStream(router: Router) {
             }, 100);
           });
       } catch (error) {
-        logger.error("stream", `Error for artist ${mbid}:`, { message: error.message });
+        const failure = asAppError(error);
+        logger.error("stream", `Error for artist ${mbid}:`, { message: failure?.message });
         sendSSE(res, "error", {
           error: "Failed to fetch artist details",
-          message: error.response?.data?.error || error.message,
+          message: errorResponseText(failure, "error") || failure?.message,
         });
         res.end();
       }
     } catch (error) {
-      logger.error("stream", `Unexpected error:`, { message: error.message });
+      const failure = asAppError(error);
+      logger.error("stream", `Unexpected error:`, { message: failure?.message });
       res.status(500).json({
         error: "Failed to stream artist details",
-        message: error.message,
+        message: failure?.message,
       });
     }
   });

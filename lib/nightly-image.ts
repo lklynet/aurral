@@ -1,3 +1,5 @@
+import { asAppError } from "./errors.ts";
+
 interface RegistryManifest {
   manifests?: { digest?: string; platform?: { os?: string; architecture?: string } }[];
   config?: { digest?: string };
@@ -43,7 +45,7 @@ export async function getPublishedNightlyImage(repository: string | undefined) {
   try {
     manifest = await request(`${base}/manifests/nightly`, headers);
   } catch (error) {
-    if (error.status === 404) return null;
+    if (asAppError(error)?.status === 404) return null;
     throw error;
   }
   if (Array.isArray(manifest.manifests)) {

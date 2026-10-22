@@ -272,6 +272,7 @@ async function axiosRequest(inputConfig: AxiosRequestConfig) {
     }
     return axiosResponse;
   } catch (error) {
+    const failure: AxiosError | undefined = error instanceof Error ? error : undefined;
     if (timeoutTriggered) {
       Object.defineProperty(error, "code", {
         configurable: true,
@@ -279,11 +280,11 @@ async function axiosRequest(inputConfig: AxiosRequestConfig) {
         value: "ECONNABORTED",
         writable: true,
       });
-    } else if (controller.signal.aborted && !error.code) {
-      error.code = "ECONNABORTED";
+    } else if (failure && controller.signal.aborted && !failure.code) {
+      failure.code = "ECONNABORTED";
     }
-    if (!error.response && !error.request) {
-      error.request = { method, url };
+    if (failure && !failure.response && !failure.request) {
+      failure.request = { method, url };
     }
     throw error;
   } finally {

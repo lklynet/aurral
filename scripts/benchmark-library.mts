@@ -714,7 +714,7 @@ async function main() {
       .prepare<[string], Pick<LibraryMediaFilesRow, "album_id">>(
         "SELECT album_id FROM library_media_files WHERE source = 'lidarr' AND path = ?",
       )
-      .get(target).album_id;
+      .get(target)!.album_id;
     const searchFixture = (query: string) =>
       queryService.getLibraryPage({
         kind: "tracks",

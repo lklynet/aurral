@@ -9,23 +9,22 @@ export const SHARE_ORIGIN = String(process.env.AURRAL_SHARE_ORIGIN || "https://a
 const INSTANCE_ID_KEY = "shareInstanceId";
 const INSTANCE_SECRET_KEY = "shareInstanceSecret";
 
-type ShareLink = NonNullable<ReturnType<typeof toShareLink>>;
+type ShareLink = ReturnType<typeof toShareLink>;
 
-const toShareLink = (row: ShareLinksRow | undefined) =>
-  row && {
-    id: row.id,
-    token: row.token,
-    userId: row.user_id,
-    kind: row.kind,
-    targetRef: row.target_ref,
-    albumRef: row.album_ref || null,
-    payload: row.payload,
-    title: row.title,
-    artistName: row.artist_name,
-    allowDownload: row.allow_download === 1,
-    expiresAt: row.expires_at ?? null,
-    createdAt: row.created_at,
-  };
+const toShareLink = (row: ShareLinksRow) => ({
+  id: row.id,
+  token: row.token,
+  userId: row.user_id,
+  kind: row.kind,
+  targetRef: row.target_ref,
+  albumRef: row.album_ref || null,
+  payload: row.payload,
+  title: row.title,
+  artistName: row.artist_name,
+  allowDownload: row.allow_download === 1,
+  expiresAt: row.expires_at ?? null,
+  createdAt: row.created_at,
+});
 
 const randomId = (bytes: number) => crypto.randomBytes(bytes).toString("base64url");
 
@@ -113,7 +112,7 @@ export function createShareLink({
       expiresAt ?? null,
       Date.now(),
     );
-  return toShareLink(row);
+  return toShareLink(row!);
 }
 
 export function listShareLinks(userId: number) {
@@ -129,9 +128,10 @@ export function listShareLinks(userId: number) {
 export function getLiveShareLink(token: string | undefined) {
   const value = String(token || "");
   if (!/^[A-Za-z0-9_-]{16,64}$/.test(value)) return null;
-  const link = toShareLink(
-    db.prepare<[string], ShareLinksRow>("SELECT * FROM share_links WHERE token = ?").get(value),
-  );
+  const row = db
+    .prepare<[string], ShareLinksRow>("SELECT * FROM share_links WHERE token = ?")
+    .get(value);
+  const link = row && toShareLink(row);
   if (!link || (link.expiresAt != null && link.expiresAt <= Date.now())) return null;
   return link;
 }

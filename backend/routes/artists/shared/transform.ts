@@ -13,7 +13,7 @@ type ReleaseGroupSummary = Awaited<ReturnType<typeof musicbrainzGetArtistRelease
 export function toLegacyRelations(metadataArtist: NormalizedArtist | null) {
   return Array.isArray(metadataArtist?.links)
     ? metadataArtist.links
-        .filter((link) => link?.target)
+        .filter((link): link is NonNullable<typeof link> => Boolean(link?.target))
         .map((link) => ({
           type: link.type || "external",
           url: { resource: link.target },
@@ -35,7 +35,9 @@ export async function getArtistTagPayload(
       genres: metadataGenres,
     };
   }
-  const [sourceTags] = await getArtistTagLists([{ mbid, name: artistName }]);
+  const [sourceTags]: { name: string; count: number }[][] = await getArtistTagLists([
+    { mbid, name: artistName },
+  ]);
   const tags = sourceTags.filter((tag) => isKnownGenre(tag.name));
   return {
     tags,
@@ -75,13 +77,13 @@ export async function getSimilarArtistCards(
 const LISTENBRAINZ_WAIT_MS = 2000;
 const LISTENBRAINZ_DATE_LOOKUP_LIMIT = 300;
 
-const settleWithin = <A, B>(waitMs: number, lookups: [Promise<A>, Promise<B>]) => {
+const settleWithin = <A, B>(waitMs: number, [first, second]: [Promise<A>, Promise<B>]) => {
   let timer: NodeJS.Timeout | undefined;
   const deadline = new Promise<Map<string, never>>((resolve) => {
     timer = setTimeout(resolve, waitMs, new Map<string, never>());
   });
-  return Promise.all(lookups.map((lookup) => Promise.race([lookup, deadline]))).finally(() =>
-    clearTimeout(timer),
+  return Promise.all([Promise.race([first, deadline]), Promise.race([second, deadline])]).finally(
+    () => clearTimeout(timer),
   );
 };
 
@@ -102,7 +104,11 @@ export async function withListenBrainzStats(releaseGroups: ReleaseGroupSummary[]
   }));
 }
 
-export function buildArtistBase(name, resolvedMbid, metadataArtist = null) {
+export function buildArtistBase(
+  name: string,
+  resolvedMbid: string,
+  metadataArtist: NormalizedArtist | null = null,
+) {
   return {
     id: resolvedMbid,
     name: metadataArtist?.name || name,

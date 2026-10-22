@@ -40,6 +40,7 @@ import { getImageProxyCacheSizeBytes } from "../services/imageProxyService.ts";
 import { getDownloadSourceStatus } from "../services/downloadSourceService.ts";
 import { getMatcherStatus } from "../services/trackMatching/index.ts";
 import { getMusicDataSourceName } from "../services/musicDataSource/index.ts";
+import { asAppError } from "../../lib/errors.ts";
 
 const router = express.Router();
 const STARTED_AT = Date.now();
@@ -122,12 +123,13 @@ async function getDiskSpaceEntry(location: string, role: string | null = null) {
       ),
     };
   } catch (error) {
+    const failure = asAppError(error);
     return {
       location: displayLocation,
       role,
       statTarget,
       available: false,
-      error: error?.message || "Disk stats unavailable",
+      error: failure?.message || "Disk stats unavailable",
     };
   }
 }
@@ -407,7 +409,8 @@ router.get("/bootstrap", noCache, (req, res) => {
   try {
     res.json(buildBootstrapPayload(req));
   } catch (error) {
-    logger.error("health", "Bootstrap check error:", { message: error.message });
+    const failure = asAppError(error);
+    logger.error("health", "Bootstrap check error:", { message: failure?.message });
     res.status(500).json({
       error: "Internal server error",
     });
@@ -456,7 +459,8 @@ router.get("/", noCache, async (req, res) => {
     }
     res.json(payload);
   } catch (error) {
-    logger.error("health", "Health check error:", { message: error.message });
+    const failure = asAppError(error);
+    logger.error("health", "Health check error:", { message: failure?.message });
     res.status(500).json({
       error: "Internal server error",
     });

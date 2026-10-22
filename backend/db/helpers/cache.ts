@@ -128,7 +128,7 @@ export default function register(dbOps: CacheOps) {
   dbOps.getImage = function (mbid) {
     const row = getImageStmt.get(mbid);
     if (!row) return null;
-    if (row.image_url === "NOT_FOUND" && Date.now() - row.cache_age > NOT_FOUND_TTL_MS) {
+    if (row.image_url === "NOT_FOUND" && Date.now() - (row.cache_age ?? 0) > NOT_FOUND_TTL_MS) {
       deleteImageStmt.run(mbid);
       return null;
     }
@@ -154,7 +154,7 @@ export default function register(dbOps: CacheOps) {
     const now = Date.now();
     const result: Record<string, Omit<CachedImage, "mbid">> = {};
     for (const row of rows) {
-      if (row.image_url === "NOT_FOUND" && now - row.cache_age > NOT_FOUND_TTL_MS) {
+      if (row.image_url === "NOT_FOUND" && now - (row.cache_age ?? 0) > NOT_FOUND_TTL_MS) {
         deleteImageStmt.run(row.mbid);
         continue;
       }

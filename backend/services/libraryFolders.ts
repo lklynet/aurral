@@ -4,8 +4,12 @@ import { dbOps } from "../db/helpers/index.ts";
 import { resolveDownloadRoot } from "./downloadPaths.ts";
 import { getPathMappings, resolveLocalPath } from "./pathMappings.ts";
 
+export type LidarrRootsSource = Partial<
+  Pick<LidarrClient, "isConfigured" | "getConfiguredRootFolderPaths">
+>;
+
 export function configuredLidarrRoots(
-  lidarrClient: LidarrClient | null | undefined,
+  lidarrClient: LidarrRootsSource | null | undefined,
   override: string[] | null = null,
 ) {
   if (Array.isArray(override)) return override;
@@ -18,12 +22,12 @@ export function configuredLidarrRoots(
   ].filter(Boolean);
 }
 
-export function isLidarrLibraryActive(lidarrClient: LidarrClient | null | undefined) {
+export function isLidarrLibraryActive(lidarrClient: LidarrRootsSource | null | undefined) {
   return lidarrClient?.isConfigured?.() === true;
 }
 
 export function configuredLidarrFolders(
-  lidarrClient: LidarrClient | null | undefined,
+  lidarrClient: LidarrRootsSource | null | undefined,
   override: string[] | null = null,
 ) {
   const mappings = getPathMappings("lidarr");
@@ -40,7 +44,7 @@ export function configuredLidarrFolders(
 // Lidarr's root folders belong to the Library only while Lidarr is enabled
 // and has an API key.
 export function activeLidarrRoots(
-  lidarrClient: LidarrClient | null | undefined,
+  lidarrClient: LidarrRootsSource | null | undefined,
   override: string[] | null = null,
 ) {
   return isLidarrLibraryActive(lidarrClient) ? configuredLidarrFolders(lidarrClient, override) : [];

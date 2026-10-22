@@ -8,7 +8,7 @@ import {
 } from "./library/handlers/downloads.ts";
 import type { LidarrRequestItem } from "../services/lidarrRequestBuilder.ts";
 import { buildLidarrRequests } from "../services/lidarrRequestBuilder.ts";
-import type { LidarrClient, LidarrQueueItem } from "../services/lidarrClient.ts";
+import type { LidarrClient, LidarrPage, LidarrQueueItem } from "../services/lidarrClient.ts";
 import type { RequestUser } from "../middleware/requestUser.ts";
 import { getAurralHistoryRequests } from "../services/aurralHistoryService.ts";
 import { downloadTracker } from "../services/downloadJobs/downloadTracker.ts";
@@ -103,7 +103,7 @@ const buildRequestsResponse = async (
   ]);
   const filteredAurral = filterRedundantAurralRequests(aurralRequests, lidarrRequests);
   return [...lidarrRequests, ...filteredAurral].sort(
-    (a, b) => new Date(b.requestedAt) - new Date(a.requestedAt),
+    (a, b) => new Date(b.requestedAt ?? 0).getTime() - new Date(a.requestedAt ?? 0).getTime(),
   );
 };
 
@@ -127,7 +127,9 @@ const removeMatchingQueueItems = async (
   lidarrClient: LidarrClient,
   matches: (item: LidarrQueueItem) => boolean,
 ) => {
-  const queue = await lidarrClient.getQueue().catch(() => []);
+  const queue = await lidarrClient
+    .getQueue()
+    .catch((): LidarrQueueItem[] | LidarrPage<LidarrQueueItem> => []);
   const queueItems = Array.isArray(queue) ? queue : queue?.records || [];
   for (const item of queueItems) {
     if (matches(item) && item?.id != null) {

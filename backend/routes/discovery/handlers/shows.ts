@@ -7,6 +7,7 @@ import { getLibraryArtistNames } from "../../../services/libraryQueryService.ts"
 import { getLocalDiscoveryPreferences } from "../../../services/discovery/index.ts";
 import { getUserDiscovery } from "../../../services/discovery/userDiscovery.ts";
 import { getNearbyShows } from "../../../services/nearbyShowsService.ts";
+import { asAppError } from "../../../../lib/errors.ts";
 
 type NearbyShowsOptions = Parameters<typeof getNearbyShows>[0];
 type ArtistInput = NonNullable<NearbyShowsOptions["libraryArtists"]>[number];
@@ -101,9 +102,10 @@ export function registerShows(router: Router) {
         ...nearbyShows,
       });
     } catch (error) {
+      const failure = asAppError(error);
       return res.status(500).json({
         error: "Failed to load nearby shows",
-        message: error.message,
+        message: failure?.message,
       });
     }
   });

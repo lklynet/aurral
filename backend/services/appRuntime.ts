@@ -22,6 +22,7 @@ import { configureDownloadOwnerClient } from "./downloadJobs/downloadOwnerClient
 import { getDatabaseRevision } from "../config/db-sqlite.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import type { WorkerMessage } from "./backgroundProcessSupervisor.ts";
+import type { RuntimeLogger } from "./logger.ts";
 
 let backgroundWorkersStarted = false;
 let workerSupervisorStarted = false;
@@ -267,7 +268,7 @@ export function hasQueuedBackgroundWork(group = supervisedGroup) {
   );
 }
 
-export function startBackgroundWorkers({ logger = console } = {}) {
+export function startBackgroundWorkers({ logger = console }: { logger?: RuntimeLogger } = {}) {
   if (backgroundWorkersStarted || process.env.AURRAL_TEST_SERVER === "1") {
     return false;
   }
@@ -442,7 +443,7 @@ export function startBackgroundWorkers({ logger = console } = {}) {
   return true;
 }
 
-export function initializeAppRuntime({ logger = console } = {}) {
+export function initializeAppRuntime({ logger = console }: { logger?: RuntimeLogger } = {}) {
   if (process.env.AURRAL_TEST_SERVER === "1") startHonkerScheduler();
   startBackgroundWorkers({ logger });
 }

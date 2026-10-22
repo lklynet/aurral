@@ -157,6 +157,8 @@ function log(level: LogLevel, category: string, message: string, data: NonNullab
   }
 }
 
+export type RuntimeLogger = Pick<Console, "info" | "warn" | "error">;
+
 export const logger = {
   debug: (category: string, message: string, data?: NonNullable<unknown>) =>
     log("debug", category, message, data),

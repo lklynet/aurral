@@ -15,6 +15,13 @@ type StoredConnection = {
 type StoredConnections = Partial<Record<ScrobbleProvider, StoredConnection>>;
 type StoredStore = Record<string, StoredConnections>;
 
+type PublicConnectionStatus = {
+  connected: boolean;
+  displayName: string | null;
+  connectedAt: number | null;
+  configured?: boolean;
+};
+
 const PROVIDERS = new Set<ScrobbleProvider>(["lastfm", "listenbrainz", "koito"]);
 const getSettingStmt = db.prepare<[string], Pick<SettingsRow, "value">>(
   "SELECT value FROM settings WHERE key = ?",
@@ -88,7 +95,7 @@ export const scrobbleConnectionStore = {
   getPublicStatus(userId: number) {
     const connections = this.getConnections(userId);
     return Object.fromEntries(
-      [...PROVIDERS].map((provider) => {
+      [...PROVIDERS].map((provider): [ScrobbleProvider, PublicConnectionStatus] => {
         const connection = connections[provider];
         return [
           provider,

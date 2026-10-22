@@ -4,6 +4,7 @@ import {
   getMusicbrainzAppearsOnScanState,
   musicbrainzGetArtistAppearsOnReleaseGroups,
 } from "../../../services/apiClients/index.ts";
+import { asAppError } from "../../../../lib/errors.ts";
 
 type MbidRequest = Request<{ mbid: string }>;
 
@@ -59,10 +60,11 @@ export function registerAppearsOn(router: Router) {
         hasMore: unseenItems.length > items.length || !scanState.complete,
       });
     } catch (error) {
-      if (controller.signal.aborted || error?.name === "AbortError") return;
+      const failure = asAppError(error);
+      if (controller.signal.aborted || failure?.name === "AbortError") return;
       return res.status(502).json({
         error: "Failed to load artist appearances",
-        message: error.message,
+        message: failure?.message,
       });
     }
   });

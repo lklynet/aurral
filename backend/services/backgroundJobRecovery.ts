@@ -1,13 +1,14 @@
 import { ISOLATED_QUEUE_GROUPS } from "./backgroundWorkerQueues.ts";
 import { getHonkerDb, getHonkerQueueByName } from "./honkerDb.ts";
 import type { HonkerLiveRow } from "../db/rows.ts";
+import type { RuntimeLogger } from "./logger.ts";
 
 type ClaimedJobRow = Pick<HonkerLiveRow, "id" | "queue" | "payload" | "worker_id">;
 
 async function releaseClaimedJob(
   database: ReturnType<typeof getHonkerDb>,
   row: ClaimedJobRow,
-  logger: Console,
+  logger: RuntimeLogger,
   reason: string,
 ) {
   try {
@@ -54,7 +55,7 @@ async function releaseClaimedJob(
 export async function recoverExitedWorkerJobs(
   group: string,
   pid: number | undefined,
-  logger: Console = console,
+  logger: RuntimeLogger = console,
   reason: string | null = null,
 ) {
   if (!Number.isInteger(pid) || pid! <= 0) return;
@@ -76,7 +77,7 @@ export async function recoverExitedWorkerJobs(
 // A job claimed before this process started belongs to a process that no
 // longer exists, so it runs again now instead of after its claim expires.
 // A claim stamps its expiry one visibility timeout ahead.
-export async function recoverJobsClaimedBeforeStart(logger: Console = console) {
+export async function recoverJobsClaimedBeforeStart(logger: RuntimeLogger = console) {
   const startedAt = Math.floor(Date.now() / 1000 - process.uptime());
   const database = getHonkerDb();
   const rows = database.query(

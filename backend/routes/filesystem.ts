@@ -4,6 +4,7 @@ import { dbOps } from "../db/helpers/index.ts";
 import { noCache } from "../middleware/cache.ts";
 import { resolveRequestUser } from "../middleware/auth.ts";
 import { ensureDownloadFolderPath, listBrowseDirectory } from "../services/downloadFolderConfig.ts";
+import { asAppError } from "../../lib/errors.ts";
 
 const router = express.Router();
 
@@ -27,9 +28,10 @@ router.get("/browse", noCache, (req, res) => {
     const result = listBrowseDirectory(req.query.path);
     return res.json(result);
   } catch (error) {
+    const failure = asAppError(error);
     return res.status(400).json({
       error: "browse_failed",
-      message: error?.message || "Failed to browse storage path.",
+      message: failure?.message || "Failed to browse storage path.",
     });
   }
 });
@@ -56,9 +58,10 @@ router.post("/ensure", noCache, (req, res) => {
       created: !!ensured.created,
     });
   } catch (error) {
+    const failure = asAppError(error);
     return res.status(400).json({
       error: "ensure_failed",
-      message: error?.message || "Failed to prepare folder path.",
+      message: failure?.message || "Failed to prepare folder path.",
     });
   }
 });

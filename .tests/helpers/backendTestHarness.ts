@@ -6,6 +6,7 @@ import { spawn, type ChildProcess } from "child_process";
 import http from "http";
 import net from "net";
 import type Database from "better-sqlite3";
+import { asAppError } from "../../lib/errors.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, "..", "..");
@@ -154,7 +155,8 @@ async function waitForServer(port: number, child: ChildProcess) {
       }
       lastError = "Unexpected health status";
     } catch (error) {
-      lastError = error?.message || String(error);
+      const failure = asAppError(error);
+      lastError = failure?.message || String(error);
     }
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
@@ -197,8 +199,9 @@ export async function startServerProcess({
   try {
     await waitForServer(chosenPort, child);
   } catch (error) {
+    const failure = asAppError(error);
     child.kill("SIGTERM");
-    throw new Error(`${error.message}\n${logs}`.trim());
+    throw new Error(`${failure?.message}\n${logs}`.trim());
   }
   return {
     child,

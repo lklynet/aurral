@@ -5,6 +5,7 @@ import {
   getDiscoveryMode,
   getLocalDiscoveryPreferences,
 } from "../../../services/discovery/index.ts";
+import { asAppError } from "../../../../lib/errors.ts";
 
 export function registerPreferences(router: Router) {
   router.get("/preferences", requireAuth, (req, res) => {
@@ -52,9 +53,10 @@ export function registerPreferences(router: Router) {
         },
       });
     } catch (error) {
+      const failure = asAppError(error);
       res.status(500).json({
         error: "Failed to update preferences",
-        message: error.message,
+        message: failure?.message,
       });
     }
   });

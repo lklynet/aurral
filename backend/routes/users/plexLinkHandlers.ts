@@ -11,6 +11,7 @@ import { plexConnectionStore } from "../../services/plex/plexConnectionStore.ts"
 import { playlistManager } from "../../services/playlists/playlistManager.ts";
 import { logger } from "../../services/logger.ts";
 import type { PlexClient, PlexHomeUser } from "../../services/plex.ts";
+import { asAppError } from "../../../lib/errors.ts";
 
 type PlexConnection = NonNullable<ReturnType<typeof plexConnectionStore.getConnection>>;
 type PlexLinkInput = NonNullable<Parameters<typeof plexConnectionStore.saveConnection>[1]>;
@@ -71,7 +72,8 @@ async function cleanupUserPlexPlaylistsSafely(
   try {
     await playlistManager.cleanupUserPlexPlaylists(userId, connection);
   } catch (cleanupError) {
-    logger.warn("users", `Plex playlist cleanup ${context} failed:`, cleanupError.message);
+    const failure = asAppError(cleanupError);
+    logger.warn("users", `Plex playlist cleanup ${context} failed:`, failure?.message);
   }
 }
 
@@ -149,11 +151,12 @@ async function resolveServerAccessToken(
     if (!match) return { error: mismatchErrorMessage };
     return { serverToken: match.accessToken || token };
   } catch (resourceError) {
+    const failure = asAppError(resourceError);
     if (!tolerateLookupFailure) throw resourceError;
     logger.warn(
       "users",
       `Plex resource lookup failed${warnContext ? ` for ${warnContext}` : ""}:`,
-      resourceError?.message,
+      failure?.message,
     );
     return { serverToken: token };
   }
@@ -198,7 +201,8 @@ export function registerPlexLink(router: Router) {
           Number(globalAccount.configuredByUserId) === Number(req.user!.id));
       res.json({ ...status, globalAccount, isGlobalAccountOwner });
     } catch (e) {
-      res.status(500).json({ error: "Failed to get Plex link status", message: e.message });
+      const failure = asAppError(e);
+      res.status(500).json({ error: "Failed to get Plex link status", message: failure?.message });
     }
   });
 
@@ -215,10 +219,11 @@ export function registerPlexLink(router: Router) {
         authUrl: PlexClient.buildAuthUrl(clientId, code, forwardUrl),
       });
     } catch (error) {
-      logger.error("users", "Plex self-link PIN generation failed:", error.message);
+      const failure = asAppError(error);
+      logger.error("users", "Plex self-link PIN generation failed:", failure?.message);
       res.status(500).json({
         error: "Failed to start Plex authentication",
-        message: error.message,
+        message: failure?.message,
       });
     }
   });
@@ -294,7 +299,8 @@ export function registerPlexLink(router: Router) {
             },
           );
         } catch (error) {
-          if (String(error?.code || "").startsWith("SQLITE_CONSTRAINT")) {
+          const failure = asAppError(error);
+          if (String(failure?.code || "").startsWith("SQLITE_CONSTRAINT")) {
             return res.status(409).json({
               error: "This Plex account is already linked to another Aurral account",
             });
@@ -316,10 +322,11 @@ export function registerPlexLink(router: Router) {
           connectedAt: saved.connectedAt,
         });
       } catch (error) {
-        logger.error("users", "Plex self-link completion failed:", error.message);
+        const failure = asAppError(error);
+        logger.error("users", "Plex self-link completion failed:", failure?.message);
         res.status(500).json({
           error: "Failed to complete Plex connection",
-          message: error.message,
+          message: failure?.message,
         });
       }
     },
@@ -333,7 +340,8 @@ export function registerPlexLink(router: Router) {
       }
       res.json({ connected: false });
     } catch (e) {
-      res.status(500).json({ error: "Failed to disconnect Plex", message: e.message });
+      const failure = asAppError(e);
+      res.status(500).json({ error: "Failed to disconnect Plex", message: failure?.message });
     }
   });
 
@@ -353,18 +361,19 @@ export function registerPlexLink(router: Router) {
         })),
       });
     } catch (error) {
-      const status = error.response?.status;
+      const failure = asAppError(error);
+      const status = failure?.response?.status;
       logger.error(
         "users",
         "Listing Plex Home users failed:",
-        status ? `${status} ${JSON.stringify(error.response?.data)}` : error.message,
+        status ? `${status} ${JSON.stringify(failure?.response?.data)}` : failure?.message,
       );
       res.status(status === 401 ? 401 : 500).json({
         error: "Failed to list Plex Home users",
         message:
           status === 401
             ? "Plex rejected the admin token (401). Reconnect Plex in Settings."
-            : error.message,
+            : failure?.message,
       });
     }
   });
@@ -439,15 +448,16 @@ export function registerPlexLink(router: Router) {
         connectedAt: saved.connectedAt,
       });
     } catch (error) {
-      const status = error.response?.status;
+      const failure = asAppError(error);
+      const status = failure?.response?.status;
       logger.error(
         "users",
         "Managed Plex user link failed:",
-        status ? `${status} ${JSON.stringify(error.response?.data)}` : error.message,
+        status ? `${status} ${JSON.stringify(failure?.response?.data)}` : failure?.message,
       );
       res.status(status === 401 ? 401 : 500).json({
         error: "Failed to link managed Plex user",
-        message: error.message,
+        message: failure?.message,
       });
     }
   });
@@ -487,7 +497,8 @@ export function registerPlexLink(router: Router) {
       }
       res.json({ connected: false, forced: result.forced });
     } catch (e) {
-      res.status(500).json({ error: "Failed to unlink Plex", message: e.message });
+      const failure = asAppError(e);
+      res.status(500).json({ error: "Failed to unlink Plex", message: failure?.message });
     }
   });
 }

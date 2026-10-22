@@ -7,9 +7,11 @@ import {
   resolveEditorialTrackLinks,
 } from "../../../services/discovery/editorialPlaylists.ts";
 import { logger, safeLogDiagnostic } from "../../../services/logger.ts";
+import { asAppError } from "../../../../lib/errors.ts";
 
 const sendEditorialError = (res: Response, error: unknown, fallback: string) => {
-  const statusCode = Number(error?.statusCode);
+  const failure = asAppError(error);
+  const statusCode = Number(failure?.statusCode);
   const status =
     Number.isInteger(statusCode) && statusCode >= 400 && statusCode <= 599 ? statusCode : 500;
   logger[status >= 500 ? "warn" : "debug"]("discovery", fallback, {
@@ -17,8 +19,8 @@ const sendEditorialError = (res: Response, error: unknown, fallback: string) => 
   });
   return res.status(status).json({
     error: fallback,
-    message: error?.message || "Unknown error",
-    ...(error?.code ? { code: error.code } : {}),
+    message: failure?.message || "Unknown error",
+    ...(failure?.code ? { code: failure.code } : {}),
   });
 };
 

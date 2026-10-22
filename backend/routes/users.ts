@@ -31,6 +31,7 @@ import { registerPlexLink, resolveGlobalPlexAccount } from "./users/plexLinkHand
 import { registerIdentityLink } from "./users/identityLinkHandlers.ts";
 import { plexConnectionStore } from "../services/plex/plexConnectionStore.ts";
 import type { lidarrClient } from "../services/lidarrClient.ts";
+import { asAppError, type AppError } from "../../lib/errors.ts";
 
 type ListenHistoryBody = {
   lastfmUsername?: unknown;
@@ -75,13 +76,13 @@ const buildListenHistoryUpdates = (body: ListenHistoryBody, existing: UserRecord
     const rawUrl = hasListenHistoryUrlUpdate ? body.listenHistoryUrl : existing.listenHistoryUrl;
     const trimmedUrl = normalizeListenHistoryUrl(rawUrl);
     if (!trimmedUrl) {
-      const error = new Error("Koito URL is required");
+      const error: AppError = new Error("Koito URL is required");
       error.statusCode = 400;
       throw error;
     }
     const urlValidation = validateExternalUrl(trimmedUrl);
     if (!urlValidation.valid) {
-      const error = new Error(urlValidation.error || "Invalid Koito URL");
+      const error: AppError = new Error(urlValidation.error || "Invalid Koito URL");
       error.statusCode = 400;
       throw error;
     }
@@ -184,7 +185,8 @@ router.get("/", requireAuth, requireAdmin, async (req, res) => {
       })),
     );
   } catch (e) {
-    res.status(500).json({ error: "Failed to list users", message: e.message });
+    const failure = asAppError(e);
+    res.status(500).json({ error: "Failed to list users", message: failure?.message });
   }
 });
 
@@ -218,7 +220,8 @@ router.post("/", requireAuth, requireAdmin, async (req, res) => {
       lidarrQualityProfileId: created.lidarrQualityProfileId,
     });
   } catch (e) {
-    res.status(500).json({ error: "Failed to create user", message: e.message });
+    const failure = asAppError(e);
+    res.status(500).json({ error: "Failed to create user", message: failure?.message });
   }
 });
 
@@ -244,8 +247,9 @@ router.patch("/:id", requireAuth, async (req, res) => {
     try {
       listenHistoryUpdates = buildListenHistoryUpdates(req.body, existing);
     } catch (error) {
-      return res.status(error.statusCode || 400).json({
-        error: error.message || "Invalid listening history settings",
+      const failure = asAppError(error);
+      return res.status(failure?.statusCode || 400).json({
+        error: failure?.message || "Invalid listening history settings",
       });
     }
     const requestedProfile = getListenHistoryProfile({
@@ -368,7 +372,8 @@ router.patch("/:id", requireAuth, async (req, res) => {
     reconcileLocalBypassAfterUserMutation();
     res.json(updated);
   } catch (e) {
-    res.status(500).json({ error: "Failed to update user", message: e.message });
+    const failure = asAppError(e);
+    res.status(500).json({ error: "Failed to update user", message: failure?.message });
   }
 });
 
@@ -378,12 +383,12 @@ const sendListenHistorySettings = (req: Request, res: Response) => {
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
-    const settings = dbOps.getSettings();
-    res.json(resolveListenHistorySettings(user, settings));
+    res.json(resolveListenHistorySettings(user));
   } catch (e) {
+    const failure = asAppError(e);
     res.status(500).json({
       error: "Failed to get listening history settings",
-      message: e.message,
+      message: failure?.message,
     });
   }
 };
@@ -400,9 +405,10 @@ router.get("/me/lidarr-preferences", requireAuth, async (req, res) => {
     const summary = await lidarrClient.getArtistAddPreferenceSummary(user);
     res.json(summary);
   } catch (e) {
+    const failure = asAppError(e);
     res.status(500).json({
       error: "Failed to get Lidarr preferences",
-      message: e.message,
+      message: failure?.message,
     });
   }
 });
@@ -418,7 +424,8 @@ router.get("/me/theme", requireAuth, requireUserAccount, (req, res) => {
     }
     res.json({ theme });
   } catch (e) {
-    res.status(500).json({ error: "Failed to get theme", message: e.message });
+    const failure = asAppError(e);
+    res.status(500).json({ error: "Failed to get theme", message: failure?.message });
   }
 });
 
@@ -428,10 +435,13 @@ router.put("/me/theme", requireAuth, requireUserAccount, (req, res) => {
     dbOps.setUserTheme(req.user!.id, theme);
     res.json({ theme });
   } catch (e) {
+    const failure = asAppError(e);
     if (e instanceof ThemeValidationError) {
-      return res.status(400).json({ error: "Invalid theme", message: e.message, field: "theme" });
+      return res
+        .status(400)
+        .json({ error: "Invalid theme", message: failure?.message, field: "theme" });
     }
-    res.status(500).json({ error: "Failed to save theme", message: e.message });
+    res.status(500).json({ error: "Failed to save theme", message: failure?.message });
   }
 });
 
@@ -446,9 +456,10 @@ router.get("/me/discover-layout", requireAuth, (req, res) => {
       layout: normalizeDiscoverLayout(storedLayout),
     });
   } catch (e) {
+    const failure = asAppError(e);
     res.status(500).json({
       error: "Failed to get discover layout",
-      message: e.message,
+      message: failure?.message,
     });
   }
 });
@@ -472,9 +483,10 @@ router.patch("/me/discover-layout", requireAuth, (req, res) => {
       layout: normalizeDiscoverLayout(dbOps.getUserDiscoverLayout(req.user!.id)),
     });
   } catch (e) {
+    const failure = asAppError(e);
     res.status(500).json({
       error: "Failed to save discover layout",
-      message: e.message,
+      message: failure?.message,
     });
   }
 });
@@ -582,9 +594,10 @@ router.patch("/me/lidarr-preferences", requireAuth, async (req, res) => {
     const refreshedSummary = await lidarrClient.getArtistAddPreferenceSummary(updated);
     res.json(refreshedSummary);
   } catch (e) {
+    const failure = asAppError(e);
     res.status(500).json({
       error: "Failed to save Lidarr preferences",
-      message: e.message,
+      message: failure?.message,
     });
   }
 });
@@ -615,7 +628,8 @@ router.post("/me/password", requireAuth, requireRecentAuth(), async (req, res) =
     deleteSessionsByUserId(req.user!.id);
     res.json({ success: true });
   } catch (e) {
-    res.status(500).json({ error: "Failed to change password", message: e.message });
+    const failure = asAppError(e);
+    res.status(500).json({ error: "Failed to change password", message: failure?.message });
   }
 });
 
@@ -636,7 +650,8 @@ router.delete("/:id", requireAuth, requireAdmin, (req, res) => {
     reconcileLocalBypassAfterUserMutation();
     res.json({ success: true });
   } catch (e) {
-    res.status(500).json({ error: "Failed to delete user", message: e.message });
+    const failure = asAppError(e);
+    res.status(500).json({ error: "Failed to delete user", message: failure?.message });
   }
 });
 

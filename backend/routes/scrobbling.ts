@@ -20,12 +20,13 @@ import {
   scrobbleConnectionStore,
 } from "../services/scrobbleConnectionStore.ts";
 import { logger } from "../services/logger.ts";
+import { asAppError } from "../../lib/errors.ts";
 
 const router = express.Router();
 const LASTFM_LINK_COOKIE = "aurral_lastfm_link";
 const LASTFM_LINK_TTL_MS = 10 * 60 * 1000;
 const providerErrorStatus = (error: unknown) => {
-  const status = Number(error?.response?.status);
+  const status = Number(asAppError(error)?.response?.status);
   return status >= 400 && status < 500 ? 400 : 502;
 };
 const encode = (value: string) => Buffer.from(value).toString("base64url");
@@ -185,8 +186,9 @@ router.get("/lastfm/link/callback", async (req, res) => {
   try {
     userId = verifyLinkToken(stateToken);
   } catch (error) {
+    const failure = asAppError(error);
     logger.error("scrobbling", "Last.fm link state verification failed", {
-      message: error?.message || String(error),
+      message: failure?.message || String(error),
     });
     clearCookie();
     return res.status(500).send("Last.fm connection failed");
@@ -203,9 +205,10 @@ router.get("/lastfm/link/callback", async (req, res) => {
   try {
     session = await lastfmGetSession(token);
   } catch (error) {
+    const failure = asAppError(error);
     logger.error("scrobbling", "Last.fm session exchange failed", {
-      message: error?.message || String(error),
-      status: error?.response?.status || null,
+      message: failure?.message || String(error),
+      status: failure?.response?.status || null,
     });
     clearCookie();
     const status = providerErrorStatus(error);
@@ -224,8 +227,9 @@ router.get("/lastfm/link/callback", async (req, res) => {
       displayName: session.session.name,
     });
   } catch (error) {
+    const failure = asAppError(error);
     logger.error("scrobbling", "Last.fm connection could not be saved", {
-      message: error?.message || String(error),
+      message: failure?.message || String(error),
     });
     clearCookie();
     return res.status(500).send("Last.fm connection could not be saved");
@@ -251,9 +255,10 @@ router.put("/listenbrainz/link", requireAuth, requireUserAccount, async (req, re
   try {
     validation = await listenbrainzValidateToken(token);
   } catch (error) {
+    const failure = asAppError(error);
     logger.warn("scrobbling", "ListenBrainz token validation failed", {
-      message: error?.message || String(error),
-      status: error?.response?.status || null,
+      message: failure?.message || String(error),
+      status: failure?.response?.status || null,
     });
     return res.status(providerErrorStatus(error)).json({
       error: providerErrorStatus(error) === 400 ? "Invalid token" : "ListenBrainz is unavailable",
@@ -267,8 +272,9 @@ router.put("/listenbrainz/link", requireAuth, requireUserAccount, async (req, re
     });
     return res.json({ connected: true, displayName: connection!.displayName });
   } catch (error) {
+    const failure = asAppError(error);
     logger.error("scrobbling", "ListenBrainz connection could not be saved", {
-      message: error?.message || String(error),
+      message: failure?.message || String(error),
     });
     return res.status(500).json({ error: "ListenBrainz connection could not be saved" });
   }
@@ -299,9 +305,10 @@ router.put(
       );
       if (!tokenValidation?.valid) return res.status(400).json({ error: "Invalid Koito API key" });
     } catch (error) {
+      const failure = asAppError(error);
       logger.warn("scrobbling", "Koito token validation failed", {
-        message: error?.message || String(error),
-        status: error?.response?.status || null,
+        message: failure?.message || String(error),
+        status: failure?.response?.status || null,
       });
       const status = providerErrorStatus(error);
       return res
@@ -316,8 +323,9 @@ router.put(
       });
       return res.json({ connected: true, displayName: connection!.displayName });
     } catch (error) {
+      const failure = asAppError(error);
       logger.error("scrobbling", "Koito connection could not be saved", {
-        message: error?.message || String(error),
+        message: failure?.message || String(error),
       });
       return res.status(500).json({ error: "Koito connection could not be saved" });
     }

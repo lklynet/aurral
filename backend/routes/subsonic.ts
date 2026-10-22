@@ -44,6 +44,7 @@ import {
 } from "../services/libraryScanWorker.ts";
 import { recordPlayEvent } from "../services/playEventService.ts";
 import { logger } from "../services/logger.ts";
+import { asAppError } from "../../lib/errors.ts";
 
 const SUBSONIC_VERSION = "1.16.1";
 const SUBSONIC_NAMESPACE = "http://subsonic.org/restapi";
@@ -131,7 +132,7 @@ function renderXmlElement(name: string, value: unknown): string {
     return `<${name}>${escapeXml(value)}</${name}>`;
   }
 
-  const text = Object.hasOwn(value, "value") ? value.value : null;
+  const text = Object.hasOwn(value, "value") ? Reflect.get(value, "value") : null;
   const attributes = [];
   const children = [];
   for (const [key, entry] of Object.entries(value)) {
@@ -192,17 +193,18 @@ function sendError(
   return sendResponse(res, format, "failed", { code, message, helpUrl });
 }
 
-const PLAYLIST_EDIT_ERROR_CODES = {
+const PLAYLIST_EDIT_ERROR_CODES: Partial<Record<string, number>> = {
   STATIC_PLAYLIST_NAME_CONFLICT: 50,
   SUBSONIC_PLAYLIST_READ_ONLY: 50,
   SUBSONIC_PLAYLIST_ENTRY_NOT_FOUND: 70,
 };
 
-function sendPlaylistEditError(res: Response, format: SubsonicFormat, error) {
-  const code = PLAYLIST_EDIT_ERROR_CODES[error?.code];
-  return code === undefined
+function sendPlaylistEditError(res: Response, format: SubsonicFormat, error: unknown) {
+  const failure = asAppError(error);
+  const code = failure?.code === undefined ? undefined : PLAYLIST_EDIT_ERROR_CODES[failure.code];
+  return failure === undefined || code === undefined
     ? sendError(res, format, 0, "Failed to update playlist")
-    : sendError(res, format, code, error.message);
+    : sendError(res, format, code, failure.message);
 }
 
 function requestedFormat(req: Request) {
@@ -525,7 +527,7 @@ async function handleSubsonicRequest(req: Request, res: Response) {
     const lyrics = song ? await getLyricsBySongId(song.id, user) : [];
     return sendResponse(res, format, "ok", null, {
       lyrics: {
-        ...(lyrics.length ? { artist: song.artist, title: song.title } : {}),
+        ...(song && lyrics.length ? { artist: song.artist, title: song.title } : {}),
         value: lyrics[0]?.line.map((line) => line.value).join("\n") || "",
       },
     });

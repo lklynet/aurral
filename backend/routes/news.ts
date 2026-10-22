@@ -1,6 +1,7 @@
 import express from "express";
 import { requireAdmin, requireAuth } from "../middleware/requirePermission.ts";
 import { disableNewsFeed, getNewsForUser } from "../services/newsService.ts";
+import { asAppError } from "../../lib/errors.ts";
 
 const router = express.Router();
 
@@ -23,9 +24,10 @@ router.get("/", requireAuth, async (req, res) => {
     res.set("Cache-Control", "private, no-cache, no-store, must-revalidate");
     return res.json(result);
   } catch (error) {
+    const failure = asAppError(error);
     return res
-      .status(error.statusCode || 500)
-      .json({ error: "Failed to load artist news", message: error.message });
+      .status(failure?.statusCode || 500)
+      .json({ error: "Failed to load artist news", message: failure?.message });
   }
 });
 

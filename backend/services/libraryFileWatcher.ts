@@ -7,6 +7,7 @@ import { scheduleLibraryScan } from "./libraryScanWorker.ts";
 import { getPathMappings, type PathMapping } from "./pathMappings.ts";
 import { readOnlyFolderPaths } from "./libraryFolders.ts";
 import { createIsolatedLibraryWatcher } from "./libraryWatchProcess.ts";
+import type { RuntimeLogger } from "./logger.ts";
 
 const DEFAULT_DEBOUNCE_MS = 2000;
 
@@ -170,7 +171,9 @@ export function resolveLibraryWatchRoots() {
 let watcherStarted = false;
 let activeWatcher: LibraryWatcher | null = null;
 
-export async function refreshLibraryFileWatcher({ logger = console } = {}) {
+export async function refreshLibraryFileWatcher({
+  logger = console,
+}: { logger?: RuntimeLogger } = {}) {
   if (!watcherStarted) return false;
   activeWatcher?.close();
   const playlistRoot = path.resolve(resolveDownloadRoot());
@@ -191,7 +194,9 @@ export async function refreshLibraryFileWatcher({ logger = console } = {}) {
   return true;
 }
 
-export async function startLibraryFileWatcher({ logger = console } = {}) {
+export async function startLibraryFileWatcher({
+  logger = console,
+}: { logger?: RuntimeLogger } = {}) {
   if (watcherStarted) return false;
   watcherStarted = true;
   try {

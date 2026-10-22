@@ -53,6 +53,7 @@ import scrobblingRouter from "./routes/scrobbling.ts";
 import playEventsRouter from "./routes/playEvents.ts";
 import shareLinksRouter from "./routes/shareLinks.ts";
 import { stopShareListener, syncShareListener } from "./services/shareLinks/shareListener.ts";
+import { asAppError, type AppError } from "../lib/errors.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -211,8 +212,9 @@ app.get("/sso/callback", async (req, res) => {
     const code = encodeURIComponent(result.code);
     res.redirect(302, `/sso/complete#code=${code}`);
   } catch (error) {
-    logger.error("auth", "OIDC callback failed:", { message: error.message });
-    const message = encodeURIComponent(error.message || "OIDC login failed");
+    const failure = asAppError(error);
+    logger.error("auth", "OIDC callback failed:", { message: failure?.message });
+    const message = encodeURIComponent(failure?.message || "OIDC login failed");
     res.redirect(302, `/sso/complete#error=${message}`);
   }
 });
@@ -223,8 +225,9 @@ app.get("/sso/google/callback", async (req, res) => {
     const code = encodeURIComponent(result.code);
     res.redirect(302, `/sso/complete#code=${code}&provider=google`);
   } catch (error) {
-    logger.error("auth", "Google callback failed:", { message: error.message });
-    const message = encodeURIComponent(error.message || "Google login failed");
+    const failure = asAppError(error);
+    logger.error("auth", "Google callback failed:", { message: failure?.message });
+    const message = encodeURIComponent(failure?.message || "Google login failed");
     res.redirect(302, `/sso/complete#error=${message}&provider=google`);
   }
 });
@@ -270,7 +273,8 @@ app.use((err: unknown, req: Request, res: Response, next: NextFunction) => {
   logger.error("system", "Express error:", err || "(no error object)");
   res.locals.failureLogged = true;
   if (res.headersSent) return next(err);
-  if (err?.type === "entity.too.large" || err?.status === 413) {
+  const failure: (AppError & { type?: string }) | undefined = asAppError(err);
+  if (failure?.type === "entity.too.large" || failure?.status === 413) {
     return res.status(413).json({
       error: "Payload too large",
       message: `Request body exceeds limit (${JSON_BODY_LIMIT})`,
@@ -309,7 +313,8 @@ const broadcastDownloadStatuses = async () => {
       websocketService.broadcast("downloads", message);
     }
   } catch (error) {
-    logger.warn("system", "Failed to broadcast download statuses:", { message: error.message });
+    const failure = asAppError(error);
+    logger.warn("system", "Failed to broadcast download statuses:", { message: failure?.message });
   } finally {
     downloadStatusBroadcastInFlight = false;
   }
