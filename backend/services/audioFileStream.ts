@@ -21,14 +21,20 @@ const AUDIO_CONTENT_TYPES = {
   mp3: "audio/mpeg",
 };
 
+const isKnownFormat = (format: string): format is keyof typeof AUDIO_CONTENT_TYPES =>
+  Object.hasOwn(AUDIO_CONTENT_TYPES, format);
+
+const knownContentType = (format: string) =>
+  isKnownFormat(format) ? AUDIO_CONTENT_TYPES[format] : undefined;
+
 export function audioContentType(format: string) {
   const normalized = String(format).toLowerCase();
-  return AUDIO_CONTENT_TYPES[normalized] || `audio/${normalized}`;
+  return knownContentType(normalized) || `audio/${normalized}`;
 }
 
 export function streamAudioFile(res: Response, filePath: string) {
   const absolutePath = path.resolve(String(filePath));
-  const contentType = AUDIO_CONTENT_TYPES[path.extname(absolutePath).slice(1).toLowerCase()];
+  const contentType = knownContentType(path.extname(absolutePath).slice(1).toLowerCase());
   return new Promise((resolve, reject) => {
     res.sendFile(
       path.basename(absolutePath),
