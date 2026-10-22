@@ -134,3 +134,38 @@ test("normal cover requests wait for active artist and release-group refreshes",
     assert.equal(requestCounts.get(key), 2);
   }
 });
+
+test("batch and single release-group cover requests each get their own response shape", async (t) => {
+  vi.resetModules();
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    const url = String(input instanceof Request ? input.url : input);
+    const body = url.includes("/release-groups/covers")
+      ? {
+          covers: {
+            "rg-batch-first": { image: "https://images.example/batch-1.jpg", notFound: false },
+            "rg-single-first": { image: "https://images.example/batch-2.jpg", notFound: false },
+          },
+        }
+      : { images: [{ image: "https://images.example/single.jpg", front: true }] };
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+  t.onTestFinished(async () => {
+    globalThis.fetch = previousFetch;
+  });
+
+  const { getReleaseGroupCover, getReleaseGroupCoversBatch } =
+    await import("../../frontend/src/utils/api/endpoints/artists.ts");
+  const names = { artistName: "Artist", albumTitle: "Album" };
+
+  await getReleaseGroupCoversBatch([{ mbid: "rg-batch-first", ...names }]);
+  const single = await getReleaseGroupCover("rg-batch-first", names);
+  assert.equal(single?.images?.[0]?.image, "https://images.example/single.jpg");
+
+  await getReleaseGroupCover("rg-single-first", names);
+  const batch = await getReleaseGroupCoversBatch([{ mbid: "rg-single-first", ...names }]);
+  assert.equal(batch["rg-single-first"]?.image, "https://images.example/batch-2.jpg");
+});

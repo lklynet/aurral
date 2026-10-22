@@ -143,6 +143,13 @@ const releaseGroupCoverCacheKey = (
   albumTitle: string | null | undefined = "",
 ) => `release-group:${mbid}:${normalizeCoverPart(artistName)}:${normalizeCoverPart(albumTitle)}`;
 
+const releaseGroupBatchCoverCacheKey = (
+  mbid: string,
+  artistName: string | null | undefined = "",
+  albumTitle: string | null | undefined = "",
+) =>
+  `release-group-batch:${mbid}:${normalizeCoverPart(artistName)}:${normalizeCoverPart(albumTitle)}`;
+
 export const getReleaseGroupTracks = async (
   mbid: string | undefined,
   context: {
@@ -214,7 +221,7 @@ export const getReleaseGroupCoversBatch = async (
   const uncachedItems: ReleaseGroupCoverItem[] = [];
   normalizedItems.forEach((item) => {
     const cached = getCoverCacheEntry<ReleaseGroupCoverEntry | ReleaseGroupCoverResponse>(
-      releaseGroupCoverCacheKey(item.mbid, item.artistName, item.albumTitle),
+      releaseGroupBatchCoverCacheKey(item.mbid, item.artistName, item.albumTitle),
     );
     if (cached) covers[item.mbid] = cached;
     else uncachedItems.push(item);
@@ -239,7 +246,7 @@ export const getReleaseGroupCoversBatch = async (
         const item = batch.find((candidate) => candidate.mbid === mbid);
         if (item && !cover?.transientError) {
           setCoverCacheEntry(
-            releaseGroupCoverCacheKey(mbid, item.artistName, item.albumTitle),
+            releaseGroupBatchCoverCacheKey(mbid, item.artistName, item.albumTitle),
             cover,
           );
         }

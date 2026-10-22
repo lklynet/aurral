@@ -191,5 +191,6 @@
   "frontend/src/pages/playlists/playlistTrackChanges.ts": 5,
   "frontend/src/pages/playlists/PlaylistTracks.tsx": 16,
   "frontend/src/pages/playlists/usePlaylistBulkActions.ts": 5,
-  "frontend/src/pages/SearchResultsPage.tsx": 79
+  "frontend/src/pages/SearchResultsPage.tsx": 82,
+  "frontend/src/utils/api/endpoints/artists.ts": 1
 }
