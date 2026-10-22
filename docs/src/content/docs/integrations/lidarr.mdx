@@ -71,6 +71,12 @@ Aurral saves the Lidarr root folders locally. It reads them again from the Lidar
 
 When a file changes in a Lidarr root folder, Aurral scans that file on local disk. The scan does not ask Lidarr for artist, album, track, or track file data. The file must be readable at the saved root folder path. The Library uses the MusicBrainz IDs from the file tags and the provider IDs from Lidarr.
 
+### Tag Lidarr's files
+
+By default, Lidarr does not write tags to its files. Without MusicBrainz tags, Aurral matches an artist by name. When MusicBrainz has several artists with that name, such as ABBA or 38 Special, the artist stays unmatched: it has no picture or **Open in Discover**, and its albums have no artwork unless the files contain it.
+
+To fix this, open **Lidarr > Settings > Metadata** and set **Tag Audio Files with Metadata** to the **All files** option. To tag the files Lidarr already has, select the artists in Lidarr's artist list and choose **Retag**. Aurral reads the new tags when Lidarr writes them. To fix one artist instead, select **Edit MusicBrainz ID** in its menu in **Library**.
+
 If a file does not appear in **Library**, select **Refresh** there. Refresh waits for the scan to finish. If the file still does not appear, run the storage checks and look for a path mismatch.
 
 If Lidarr fails during a refresh, Aurral retries the scan instead of reporting it complete, and writes the error to the server log. A timeout error names the request method, the endpoint, and the configured timeout.

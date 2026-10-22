@@ -164,7 +164,7 @@ Aurral stores static playlist membership in its own database. Deleting a static 
 
 ## How the Library finds new files
 
-Aurral keeps the Library in its own database. It scans the Downloads Folder and the saved Lidarr root folders on local disk. A scan reads the artist, album, and track tags, the MusicBrainz IDs, and the audio files. A scan does not ask Lidarr for artist, album, or track data.
+Aurral keeps the Library in its own database. It scans the Downloads Folder and the saved Lidarr root folders on local disk. A scan reads the artist, album, and track tags, the MusicBrainz IDs, and the audio files. A scan does not ask Lidarr for artist, album, or track data, so Lidarr's files need MusicBrainz tags to match reliably. See [Tag Lidarr's files](/integrations/lidarr/#tag-lidarrs-files).
 
 When a file changes in a watched folder, Aurral scans the changed file or folder. It skips files whose size and modification time did not change. It waits a moment for a move or rename to finish. It ignores `_playlists`, `_staging`, `_fallback`, `_flows`, `aurral-weekly-flow`, and hidden folders.
 
