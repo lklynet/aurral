@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test, beforeAll, afterAll, vi } from "vite-plus/test";
 import { execFile } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -485,6 +485,46 @@ test("playlist entries resolve a featured library track by its performer or albu
     idFor("song", libraryTrack.identityKey),
     idFor("song", libraryTrack.identityKey),
   ]);
+});
+
+test("keeping a favorited playlist song carries over its album track count and titles", async (t) => {
+  const { downloadTracker } =
+    await import("../../backend/services/downloadJobs/downloadTracker.ts");
+  const { flowPlaylistConfig } =
+    await import("../../backend/services/playlists/flowPlaylistConfig.ts");
+  const root = await mkdtemp(path.join(tmpdir(), "aurral-subsonic-favorite-album-"));
+  t.onTestFinished(() => rm(root, { recursive: true, force: true }));
+  const file = path.join(root, "song.flac");
+  await writeFile(file, "audio");
+  const user = db
+    .prepare(
+      "INSERT INTO users (username, password_hash, role, permissions) VALUES (?, '', 'admin', '{}') RETURNING id",
+    )
+    .get("subsonic-favorite-album");
+  const playlistId = "subsonic-favorite-album";
+  flowPlaylistConfig.createStaticPlaylist({
+    id: playlistId,
+    name: "Favorite Album",
+    ownerUserId: user.id,
+    tracks: [],
+  });
+  const albumTrackTitles = ["Album Opener", "Album Closer"];
+  const jobId = downloadTracker.addJob(
+    { artistName: "Album Artist", trackName: "Album Closer", albumTrackCount: 2, albumTrackTitles },
+    playlistId,
+  );
+  downloadTracker.setDone(jobId, file, "Album");
+
+  assert.equal(
+    starMany({ ...user, role: "admin" }, [idFor("shared-song", `${playlistId}:${jobId}`)]),
+    true,
+  );
+
+  const libraryJob = downloadTracker
+    .getAll()
+    .find((job) => job.playlistType === "library" && job.trackName === "Album Closer");
+  assert.equal(libraryJob?.albumTrackCount, 2);
+  assert.deepEqual(libraryJob?.albumTrackTitles, albumTrackTitles);
 });
 
 test("a Subsonic playlist reuses the album owner's Library job for a featured song", async (t) => {

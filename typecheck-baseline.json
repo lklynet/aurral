@@ -28,7 +28,6 @@
   "backend/services/releaseManifest.ts": 5,
   "backend/services/releaseMetadataSync.ts": 4,
   "backend/services/slskdOrchestrator.ts": 2,
-  "backend/services/subsonicLibraryService.ts": 1,
   "backend/services/ytdlpOrchestrator.ts": 3,
   "frontend/src/pages/ArtistDetails/hooks/useArtistDetailsLibrary.ts": 2,
   "frontend/src/pages/ArtistDetails/hooks/useArtistDetailsStream.ts": 2,

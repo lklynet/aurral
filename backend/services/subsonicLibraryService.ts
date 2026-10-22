@@ -953,8 +953,8 @@ const isSameTrack = (
   right: PlaylistTrackInput | null | undefined,
 ) => tracksShareMembership(left, right);
 
-const trackFromJob = (job: DownloadJob | null | undefined) =>
-  normalizePlaylistTrack({
+const trackFromJob = (job: DownloadJob | null | undefined) => {
+  const track = normalizePlaylistTrack({
     artistName: job?.artistName,
     trackName: job?.trackName,
     albumName: job?.albumName,
@@ -964,10 +964,16 @@ const trackFromJob = (job: DownloadJob | null | undefined) =>
     releaseYear: job?.releaseYear,
     durationMs: job?.durationMs,
     trackNumber: job?.trackNumber,
-    albumTrackCount: job?.albumTrackCount,
-    albumTrackTitles: job?.albumTrackTitles,
     artistAliases: job?.artistAliases,
   });
+  return (
+    track && {
+      ...track,
+      albumTrackCount: job?.albumTrackCount,
+      albumTrackTitles: job?.albumTrackTitles,
+    }
+  );
+};
 
 const trackFromLibrary = (library: IndexedLibrary, track: LibraryTrack | null | undefined) => {
   const album = findAlbumForTrack(library, track);
