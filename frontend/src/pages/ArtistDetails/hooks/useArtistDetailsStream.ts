@@ -347,14 +347,7 @@ export function useArtistDetailsStream(
         setLibraryArtist(fullArtist);
 
         if (lookup.canonical) {
-          setLibraryAlbums(
-            Array.isArray(lookup.albums)
-              ? lookup.albums.filter(
-                  (album): album is typeof album & { id: string | number } =>
-                    album.id !== undefined,
-                )
-              : [],
-          );
+          setLibraryAlbums(Array.isArray(lookup.albums) ? lookup.albums : []);
           return;
         }
 
@@ -435,7 +428,7 @@ export function useArtistDetailsStream(
 
     eventSource.addEventListener("artist", (event) => {
       try {
-        const artistData = JSON.parse(event.data);
+        const artistData: ArtistDetails = JSON.parse(event.data);
         if (!isCurrentRequest()) return;
         if (!artistData) {
           throw new Error("Invalid artist data received");
@@ -484,7 +477,7 @@ export function useArtistDetailsStream(
 
     eventSource.addEventListener("cover", (event) => {
       try {
-        const coverData = JSON.parse(event.data);
+        const coverData: { images?: ArtistCoverImage[] } = JSON.parse(event.data);
         if (!isCurrentRequest()) return;
         coverReceived = true;
         if (coverData.images && coverData.images.length > 0) {
@@ -501,7 +494,7 @@ export function useArtistDetailsStream(
 
     eventSource.addEventListener("similar", (event) => {
       try {
-        const similarData = JSON.parse(event.data);
+        const similarData: Partial<SimilarArtistsResponse> = JSON.parse(event.data);
         if (!isCurrentRequest()) return;
         similarReceived = true;
         setSimilarArtists(similarData.artists || []);
@@ -516,7 +509,7 @@ export function useArtistDetailsStream(
 
     eventSource.addEventListener("library", (event) => {
       try {
-        const data = JSON.parse(event.data);
+        const data: Awaited<ReturnType<typeof lookupArtistInLibrary>> = JSON.parse(event.data);
         if (!isCurrentRequest()) return;
         libraryReceived = true;
         queryClient.setQueryData(queryKeys.libraryLookupDetails(mbid), data);
@@ -559,7 +552,9 @@ export function useArtistDetailsStream(
 
     eventSource.addEventListener("error", (event) => {
       try {
-        const errorData = JSON.parse(event instanceof MessageEvent ? event.data : undefined);
+        const errorData: { message?: string; error?: string } = JSON.parse(
+          event instanceof MessageEvent ? event.data : undefined,
+        );
         if (!isCurrentRequest()) return;
         if (!artistReceived) {
           loadRestFallback().catch(() => {});

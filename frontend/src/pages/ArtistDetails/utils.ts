@@ -134,7 +134,7 @@ export const isVisibleLibraryAlbum = (
 };
 
 export const deduplicateAlbums = <T extends LibraryAlbum>(albums: T[]): T[] => {
-  const seen = new Map();
+  const seen = new Map<string | number, boolean>();
   return albums.filter((album) => {
     const key = album.id || `${album.mbid}-${album.artistId}`;
     if (seen.has(key)) return false;

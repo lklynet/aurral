@@ -7,7 +7,7 @@ import {
   getLibraryTrackPath,
   type LibraryTrackFile,
 } from "./libraryQueryService.ts";
-import { getManagedByMap } from "./libraryManagementStore.ts";
+import { getManagedByMap, type LibraryOwner } from "./libraryManagementStore.ts";
 import { selectCanonicalFile } from "./canonicalFileSelector.ts";
 
 type ManagementByEntityId = ReturnType<typeof getManagedByMap>;
@@ -53,7 +53,7 @@ type LibraryAlbumRecord = {
   albumArtist: string | null;
   releaseDate: string | null;
   metadata: LibraryMetadata | null;
-  managedBy?: string | null;
+  managedBy?: LibraryOwner | null;
   source?: string | null;
   trackIds: number[];
   sources: string[];

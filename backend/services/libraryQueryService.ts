@@ -15,6 +15,7 @@ import { isOwnKey } from "../../lib/ownKey.ts";
 import { getLibrarySearchMatch } from "./librarySearchIndex.ts";
 import {
   getManagedByMap,
+  type LibraryOwner,
   invalidateLibraryManagementCache,
   onLibraryManagementChange,
   refreshLibraryManagementCache,
@@ -273,7 +274,7 @@ export interface LibraryAlbum {
   sources: string[];
   source?: string | null;
   available: boolean;
-  managedBy?: string | null;
+  managedBy?: LibraryOwner | null;
   monitorMode?: string | null;
   trackCount?: number;
   availableTrackCount?: number;
@@ -296,7 +297,7 @@ export interface LibraryTrack {
   sources: string[];
   source?: string | null;
   available: boolean;
-  managedBy?: string | null;
+  managedBy?: LibraryOwner | null;
   monitorMode?: string | null;
 }
 
@@ -315,7 +316,7 @@ interface LibraryRowArtist {
   sources: string[];
   source?: string | null;
   available: boolean;
-  managedBy?: string | null;
+  managedBy?: LibraryOwner | null;
   monitorMode?: string | null;
 }
 
@@ -327,7 +328,7 @@ interface LibraryAlbumTrackArtist {
   sortName: string | null;
   metadata: Record<string, unknown> | null;
   albumIds: number[];
-  managedBy: string | null;
+  managedBy: LibraryOwner | null;
   monitorMode: string | null;
   sources: string[];
   available: boolean;

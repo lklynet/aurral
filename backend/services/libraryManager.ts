@@ -45,6 +45,7 @@ import {
   getLibraryManagementEntry,
   getManagedByMap,
   setLibraryManagement,
+  type LibraryOwner,
 } from "./libraryManagementStore.ts";
 import { cancelDownloadWorkForJobs } from "./downloadJobs/downloadCancellationService.ts";
 import { restoreDownloadJobCancellations } from "./downloadJobs/downloadCancellation.ts";
@@ -499,7 +500,7 @@ type AlbumConflictSource = {
   providerId?: string | number | null;
   foreignAlbumId?: string | null;
   mbid?: string | null;
-  managedBy?: string | null;
+  managedBy?: LibraryOwner | null;
   sources?: string[];
   available?: boolean;
   statistics?: Partial<MappedLibraryAlbum["statistics"]>;
@@ -806,7 +807,7 @@ async function removeLibraryDownloadJobs(
   const albumKeys = new Set([albumMbids].flat().map(normalize).filter(Boolean));
   const albumKey = albumKeys.size > 0;
   const jobs = downloadTracker.getAll();
-  const removedJobIds = new Set();
+  const removedJobIds = new Set<string | null | undefined>();
   for (const job of jobs) {
     if (job.playlistType !== "library") continue;
     const jobTrackMbid = normalize(job.trackMbid);
@@ -1446,7 +1447,7 @@ export class LibraryManager {
 
         let allowedPrimaryTypes = null;
         if (metadataProfile?.primaryAlbumTypes) {
-          const allowed = new Set();
+          const allowed = new Set<string>();
           for (const item of metadataProfile.primaryAlbumTypes) {
             const name = getMetadataProfileTypeName(item);
             if (!name) continue;
@@ -1855,7 +1856,7 @@ export class LibraryManager {
       mbid,
       foreignArtistId,
       artistName: lidarrArtist.artistName,
-      managedBy: "lidarr",
+      managedBy: "lidarr" as LibraryOwner,
       path: artistPath,
       addedAt: lidarrArtist.added || new Date().toISOString(),
       monitored: lidarrArtist.monitored || false,
@@ -2478,7 +2479,7 @@ export class LibraryManager {
       return;
     }
     const { findQueuedLibraryTrackJob } = await import("./libraryTrackRequests.ts");
-    const seen = new Set();
+    const seen = new Set<string>();
     for (const entry of (Array.isArray(entries) ? entries : []).slice(0, rules.topTracks)) {
       const title = String(entry?.name || "").trim();
       const key = getNormalizedText(title);
@@ -4567,7 +4568,7 @@ export class LibraryManager {
         }
       }
 
-      let trackFileById = new Map();
+      let trackFileById: ReturnType<typeof buildTrackFileIndex> = new Map();
       if (
         albumNeedsTrackFiles({
           albumSizeOnDisk,
@@ -4672,11 +4673,13 @@ export class LibraryManager {
 type KeysOfUnion<T> = T extends unknown ? keyof T : never;
 type WithAbsentKeys<Value, All = Exclude<Value, readonly unknown[]>> = 0 extends 1 & Value
   ? Value
-  : Value extends readonly (infer Element)[]
-    ? WithAbsentKeys<Element>[]
-    : Value extends object
-      ? Value & { [Key in Exclude<KeysOfUnion<All> | keyof NoError, keyof Value>]?: undefined }
-      : Value;
+  : Value extends readonly [unknown, ...unknown[]]
+    ? Value
+    : Value extends readonly (infer Element)[]
+      ? WithAbsentKeys<Element>[]
+      : Value extends object
+        ? Value & { [Key in Exclude<KeysOfUnion<All> | keyof NoError, keyof Value>]?: undefined }
+        : Value;
 type WithAbsentKeysOnResults<Method> = Method extends (...args: infer Args) => infer Result
   ? (
       ...args: Args

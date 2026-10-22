@@ -20,7 +20,7 @@ export type LibraryDestination = ReturnType<typeof useLibraryDestination>;
 export type AddActionButtonProps = ComponentPropsWithoutRef<"button"> & {
   label?: string | null;
   destination?: Partial<LibraryDestination> | null;
-  onAdd?: (managedBy: string, event: MouseEvent<HTMLButtonElement>) => void;
+  onAdd?: (managedBy: LibraryDestination["primary"], event: MouseEvent<HTMLButtonElement>) => void;
   items?: LibraryMenuItem[] | null;
   ownerConflict?: { message: string } | null;
   icon?: LucideIcon;

@@ -107,7 +107,7 @@ type AlbumLibraryState =
   | boolean
   | {
       inLibrary?: boolean;
-      managedBy?: string;
+      managedBy?: string | null;
       libraryAlbumId?: string | number | null;
       libraryArtistId?: string | number | null;
       status?: string;
@@ -583,7 +583,7 @@ function SearchResultsPage() {
       return undefined;
     }
 
-    const seenArtistIds = new Set();
+    const seenArtistIds = new Set<string | number>();
     const pendingArtists = artists.filter((artist) => {
       const artistId = getArtistRecordId(artist);
       if (!artistId || seenArtistIds.has(artistId)) return false;
@@ -1183,7 +1183,7 @@ function SearchResultsPage() {
         .filter(([, inLibrary]) => inLibrary)
         .map(([id]) => id),
     );
-    const albumIds = new Set();
+    const albumIds = new Set<string | number>();
     for (const [albumId, entry] of Object.entries(albumLibraryLookup)) {
       if (entry && (entry === true || entry.inLibrary)) {
         albumIds.add(albumId);

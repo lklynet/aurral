@@ -1,8 +1,9 @@
 import { db } from "../config/db-sqlite.ts";
 import type { LibraryManagementRow } from "../db/rows.ts";
 
+export type LibraryOwner = "aurral" | "lidarr";
 type ManagementEntry = {
-  managedBy: string;
+  managedBy: LibraryOwner;
   monitorMode: string | null;
   monitorRules: Record<string, unknown> | null;
   updatedAt: number | null;
@@ -50,6 +51,10 @@ let cache: ManagementCache | null = null;
 let cacheDataVersion: number | null | undefined = null;
 let changeListeners: (() => void)[] = [];
 
+function isLibraryOwner(value: string): value is LibraryOwner {
+  return value === "aurral" || value === "lidarr";
+}
+
 function parseRules(value: string | null): Record<string, unknown> | null {
   if (!value) return null;
   try {
@@ -75,7 +80,7 @@ function getCache(): ManagementCache {
     cache = { artist: new Map(), album: new Map() };
     for (const row of selectAllStmt.all()) {
       const map = cache[row.entity_kind];
-      if (map) {
+      if (map && isLibraryOwner(row.managed_by)) {
         map.set(row.entity_id, {
           managedBy: row.managed_by,
           monitorMode: row.monitor_mode || null,
@@ -135,7 +140,7 @@ export function getManagedByMaps() {
 }
 
 export function getManagedByMap(entityKind: string) {
-  if (!ENTITY_KINDS.has(entityKind)) return new Map();
+  if (!ENTITY_KINDS.has(entityKind)) return new Map<number, ManagementEntry>();
   return getCache()[entityKind];
 }
 

@@ -86,7 +86,7 @@ interface LidarrAlbumStatistics {
 export interface LidarrAlbum {
   id: number;
   title?: string | null;
-  foreignAlbumId?: string;
+  foreignAlbumId: string;
   artistId?: number;
   artist?: LidarrArtist;
   monitored?: boolean;

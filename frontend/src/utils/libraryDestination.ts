@@ -74,7 +74,7 @@ export const getManagedByLabel = (manager: string | null | undefined) => {
 
 export const resolveLibraryDestination = ({
   lidarrConfigured = false,
-}: { lidarrConfigured?: boolean } = {}) => ({
+}: { lidarrConfigured?: boolean } = {}): { primary: LibraryManager } => ({
   primary: lidarrConfigured ? "lidarr" : "aurral",
 });
 
