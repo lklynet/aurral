@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import fs from "fs/promises";
 import path from "path";
 import { dbOps } from "../db/helpers/index.ts";
+import { asAppError } from "../../lib/errors.ts";
 import type { StoredIntegrations } from "../db/helpers/settings.ts";
 import { getLibraryTrackCount, getLibraryTrackSample } from "./libraryQueryService.ts";
 import { lidarrClient } from "./lidarrClient.ts";
@@ -158,13 +159,15 @@ async function checkPathReadable(filePath: unknown, mappingSource: string | null
   return false;
 }
 
-function formatProbeError(error) {
-  const code = error?.code ? `${error.code}: ` : "";
-  return `${code}${error?.message || "Filesystem operation failed"}`;
+function formatProbeError(error: unknown) {
+  const failure = asAppError(error);
+  const code = failure?.code ? `${failure.code}: ` : "";
+  return `${code}${failure?.message || "Filesystem operation failed"}`;
 }
 
-function formatServiceError(error, fallback: string) {
-  const detail = error?.response?.data ?? error?.message;
+function formatServiceError(error: unknown, fallback: string) {
+  const failure = asAppError(error);
+  const detail = failure?.response?.data ?? failure?.message;
   if (typeof detail === "string" && detail.trim()) return detail;
   if (detail != null) {
     try {
@@ -272,7 +275,7 @@ async function runDownloadTransferProbe(sourceDir: string, targetRoot: string) {
       await fs.stat(sourcePath);
       throw new Error("Transferred probe remained in the download client folder");
     } catch (error) {
-      if (error?.code !== "ENOENT") throw error;
+      if (asAppError(error)?.code !== "ENOENT") throw error;
     }
     const transferMode =
       sourceStat.dev === targetStat.dev && sourceStat.ino === targetStat.ino
@@ -813,7 +816,7 @@ async function checkNavidromeSection() {
   } catch (error) {
     steps.push(
       healthStep("api", "fail", "Connected to Navidrome", {
-        detail: error?.message || "Connection failed",
+        detail: asAppError(error)?.message || "Connection failed",
         fix: "Check the Navidrome URL, username, and password in Settings → Playback.",
       }),
     );
@@ -833,7 +836,7 @@ async function checkNavidromeSection() {
     librariesListed = false;
     steps.push(
       healthStep("libraries", "warn", "Navidrome music libraries are readable", {
-        detail: error?.message || "Could not list libraries",
+        detail: asAppError(error)?.message || "Could not list libraries",
         fix: "Confirm the Navidrome account can manage libraries and that the API is reachable.",
       }),
     );

@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import { dbOps } from "../db/helpers/index.ts";
 import { withHonkerLock } from "./honkerDb.ts";
 import { logger } from "./logger.ts";
+import { asAppError } from "../../lib/errors.ts";
 import type { StoredIntegrations } from "../db/helpers/settings.ts";
 
 const NORMALIZED_SEARCH_RESULTS = Symbol("normalizedSearchResults");
@@ -22,10 +23,30 @@ type SlskdConfig = NonNullable<StoredIntegrations["slskd"]>;
 type SlskdArrayPayload = unknown[] | { $values?: unknown[] } | null | undefined;
 type SlskdServer = { state?: string; isConnected?: boolean; isLoggedIn?: boolean };
 type SlskdRequestOptions = { timeout?: number; signal?: AbortSignal };
+export type SlskdTransfer = {
+  id?: string;
+  Id?: string;
+  transferId?: string;
+  TransferId?: string;
+  username?: string;
+  Username?: string;
+  filename?: string;
+  Filename?: string;
+  file?: string;
+  File?: string;
+  state?: string;
+  State?: string;
+  exception?: string;
+  Exception?: string;
+  bytesTransferred?: number;
+  BytesTransferred?: number;
+  placeInQueue?: number;
+  PlaceInQueue?: number;
+};
 type SlskdOptionsBody = {
   directories?: { downloads?: string | string[]; download?: string | string[] };
 };
-type SlskdTransferRef = { username?: string; transferId?: string; id?: string };
+type SlskdTransferRef = { username?: string | null; transferId?: string; id?: string };
 type CodedError = Error & { code?: string };
 
 interface SlskdConnectionStatus {
@@ -266,7 +287,7 @@ function normalizeSearchFile(
   const responseSlots = readProperty(response, "hasFreeUploadSlot", "HasFreeUploadSlot");
   const locked =
     fromLockedList || readProperty(file, "isLocked", "IsLocked", "locked", "Locked") === true;
-  const bitRate = readProperty(file, "bitRate", "BitRate", "bitrate") ?? null;
+  const bitRate = readProperty<number>(file, "bitRate", "BitRate", "bitrate") ?? null;
   const advertisedLength = Number(readProperty(file, "length", "Length"));
   const length =
     Number.isFinite(advertisedLength) && advertisedLength > 0 ? advertisedLength : null;
@@ -286,7 +307,7 @@ function normalizeSearchFile(
     bitRate,
     bitrate: bitRate,
     length,
-    extension: readProperty(file, "extension", "Extension") ?? null,
+    extension: readProperty<string>(file, "extension", "Extension") ?? null,
     locked,
     isLocked: locked,
   };
@@ -301,7 +322,9 @@ function readBatchFailures(data: unknown) {
 }
 
 function readLegacyEnqueued(data: unknown) {
-  return normalizeArrayPayload(readProperty<SlskdArrayPayload>(data, "enqueued", "Enqueued"));
+  return normalizeArrayPayload(
+    readProperty<SlskdArrayPayload>(data, "enqueued", "Enqueued"),
+  ) as SlskdTransfer[];
 }
 
 function summarizeBatchFailures(failures: SlskdArrayPayload) {
@@ -327,7 +350,7 @@ function soulseekLoggedOutError(detail: string) {
 }
 
 export function isSoulseekLoggedOutError(error: unknown) {
-  return error?.code === SOULSEEK_LOGGED_OUT_CODE;
+  return asAppError(error)?.code === SOULSEEK_LOGGED_OUT_CODE;
 }
 
 function isSoulseekLoggedIn(server: SlskdServer | null | undefined) {
@@ -357,7 +380,7 @@ function createSearchCancellation(shouldCancel?: () => boolean, externalSignal?:
   return {
     signal: controller.signal,
     dispose: () => {
-      clearInterval(timer);
+      if (timer) clearInterval(timer);
       externalSignal?.removeEventListener("abort", abort);
     },
   };
@@ -411,7 +434,7 @@ async function withSearchLock<T>(
         { waitTimeoutMs: Math.min(250, remaining) },
       );
     } catch (error) {
-      if (error.message !== `Timed out waiting for Honker lock: ${name}`) throw error;
+      if (asAppError(error)?.message !== `Timed out waiting for Honker lock: ${name}`) throw error;
     }
   }
 }
@@ -487,7 +510,7 @@ class SearchMonitor {
     } catch (error) {
       logger.warn("slskd", "Could not stop owned search", {
         searchId: this.searchId,
-        reason: error?.message,
+        reason: asAppError(error)?.message,
       });
     }
   }
@@ -520,7 +543,7 @@ class SearchMonitor {
         if (this.queued) throw searchStillQueuedError();
         return this.finish(this.latest);
       }
-      let data: SlskdSearch | string | null;
+      let data: SlskdSearch;
       try {
         data = await this.client.getSearch(this.searchId, {
           timeout: Math.max(1, Math.min(60000, cutoff - Date.now())),
@@ -691,13 +714,14 @@ export class SlskdClient {
         cacheConnectionResult(settingsKey, result, this._config);
         return result;
       }
-      const server: SlskdServer =
-        (appRes.data as { server?: SlskdServer } | string | null)?.server || {};
+      const server = readProperty<SlskdServer>(appRes.data, "server") || {};
       const serverState = String(server.state || "");
       const soulseekConnected = isSoulseekLoggedIn(server);
-      const rawDownloadPath =
-        (optionsRes.data as SlskdOptionsBody | string | null)?.directories?.downloads ||
-        (optionsRes.data as SlskdOptionsBody | string | null)?.directories?.download;
+      const directories = readProperty<SlskdOptionsBody["directories"]>(
+        optionsRes.data,
+        "directories",
+      );
+      const rawDownloadPath = directories?.downloads || directories?.download;
       const downloadPath = Array.isArray(rawDownloadPath)
         ? String(rawDownloadPath[0] || "").trim() || null
         : String(rawDownloadPath || "").trim() || null;
@@ -722,7 +746,7 @@ export class SlskdClient {
         ok: false,
         configured: true,
         connected: false,
-        message: error?.message || "Failed to reach slskd",
+        message: asAppError(error)?.message || "Failed to reach slskd",
       };
       cacheConnectionResult(settingsKey, result, this._config);
       return result;
@@ -843,7 +867,7 @@ export class SlskdClient {
         } catch (cleanupError) {
           logger.warn("slskd", "Could not stop owned search after creation failed", {
             searchId: id,
-            reason: cleanupError?.message,
+            reason: asAppError(cleanupError)?.message,
           });
         }
       }
@@ -853,10 +877,7 @@ export class SlskdClient {
     }
   }
 
-  async getSearch(
-    searchId: string,
-    options: SlskdRequestOptions = {},
-  ): Promise<SlskdSearch | string | null> {
+  async getSearch(searchId: string, options: SlskdRequestOptions = {}): Promise<SlskdSearch> {
     const client = buildClient(this._config);
     const response = await client.get(`/api/v0/searches/${searchId}`, {
       params: { includeResponses: true },
@@ -865,7 +886,7 @@ export class SlskdClient {
     if (response.status !== 200) {
       throw new Error(`slskd search status failed: HTTP ${response.status}`);
     }
-    return response.data as SlskdSearch | string | null;
+    return typeof response.data === "object" && response.data !== null ? response.data : {};
   }
 
   async getSearchResponses(searchId: string, options: SlskdRequestOptions = {}) {
@@ -1002,7 +1023,7 @@ export class SlskdClient {
     files,
   }: {
     username: string;
-    files: { filename?: string; file?: string; size?: number }[];
+    files: { filename?: string | null; file?: string | null; size?: number }[];
   }) {
     return withHonkerLock("slskd-api", async () => {
       const client = buildClient(this._config);
@@ -1047,16 +1068,16 @@ export class SlskdClient {
     });
   }
 
-  async getTransfer(username: string, id: string) {
+  async getTransfer(username: string | null | undefined, id: string) {
     const client = buildClient(this._config);
     const response = await client.get(
-      `/api/v0/transfers/downloads/${encodeURIComponent(username)}/${id}`,
+      `/api/v0/transfers/downloads/${encodeURIComponent(String(username))}/${id}`,
     );
     if (response.status !== 200) return null;
     return response.data;
   }
 
-  async deleteTransfer(username: string, id: string, { remove = true } = {}) {
+  async deleteTransfer(username: string | null | undefined, id: string, { remove = true } = {}) {
     const normalizedUsername = String(username || "").trim();
     const normalizedId = String(id || "").trim();
     if (!normalizedUsername || !normalizedId) return false;
@@ -1140,7 +1161,7 @@ export class SlskdClient {
           markCleaned = markSlskdCleanupTargetsCleaned;
         } catch (error) {
           logger.warn("slskd", "Failed to read scoped slskd cleanup targets", {
-            error: error?.message || String(error),
+            error: asAppError(error)?.message || String(error),
           });
         }
       }
@@ -1150,7 +1171,8 @@ export class SlskdClient {
         searchIds = searches
           .filter((search) => !isSearchInProgress(search))
           .map((search) => readId(search))
-          .filter(Boolean);
+          .filter(Boolean)
+          .map(String);
       }
 
       for (const searchId of [...new Set(searchIds)]) {

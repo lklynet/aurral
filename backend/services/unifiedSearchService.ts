@@ -7,6 +7,7 @@ import { getCachedArtists } from "./libraryManager.ts";
 import { getLibrarySearchPage } from "./libraryQueryService.ts";
 import { compareSearchResults, getLocalMatchThreshold } from "./searchRanking.ts";
 import { parsePositiveInt } from "./searchService.ts";
+import { asAppError } from "../../lib/errors.ts";
 import type { RequestUser } from "../middleware/requestUser.ts";
 
 type BrainzmashArtistItem = Awaited<ReturnType<typeof searchArtists>>["items"][number];
@@ -581,8 +582,8 @@ function mapBrainzmashAlbum(item: BrainzmashAlbumItem): AlbumSearchResult {
   return {
     type: "album",
     source: "brainzmash",
-    id: item.id,
-    key: item.id,
+    id: item.id ?? null,
+    key: item.id ?? "",
     title: item.title || "Untitled Release",
     artistName: item.artistName || "Unknown Artist",
     artistMbid: item.artistId || null,
@@ -669,7 +670,7 @@ function getVisiblePlaylistsForUser(user: SearchUser) {
   try {
     return user ? flowPlaylistConfig.getStaticPlaylistsForUser(user) : [];
   } catch (error) {
-    console.warn("[UnifiedSearch] Failed to read playlists:", error.message);
+    console.warn("[UnifiedSearch] Failed to read playlists:", asAppError(error)?.message);
     return [];
   }
 }
@@ -825,12 +826,14 @@ function searchLocalLibrary(query: string, limit: number, context: SearchContext
     albumLimit: limit,
     songLimit: limit,
   });
-  const artists = dedupeSearchArtists([
-    ...context.artists,
-    ...(libraryResults.artists || []),
-    ...(libraryResults.albums?.artists || []),
-    ...(libraryResults.tracks?.artists || []),
-  ]);
+  const artists = dedupeSearchArtists(
+    [
+      ...context.artists,
+      ...(libraryResults.artists || []),
+      ...(libraryResults.albums?.artists || []),
+      ...(libraryResults.tracks?.artists || []),
+    ].filter((artist): artist is NonNullable<typeof artist> => Boolean(artist)),
+  );
   const artistsById = new Map(artists.map((artist) => [String(artist.id), artist]));
   const albumsById = new Map(
     [...(libraryResults.albums?.albums || []), ...(libraryResults.tracks?.albums || [])].map(
@@ -898,7 +901,7 @@ function getSearchContextOrFallback(user: SearchUser): SearchContext {
   try {
     return getSearchContext(user);
   } catch (error) {
-    console.warn("[UnifiedSearch] Local search context failed:", error.message);
+    console.warn("[UnifiedSearch] Local search context failed:", asAppError(error)?.message);
     const playlists = getVisiblePlaylistsForUser(user);
     return {
       playlists,

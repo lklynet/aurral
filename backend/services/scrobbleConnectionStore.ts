@@ -127,7 +127,7 @@ export const scrobbleConnectionStore = {
     const key = userKey(userId);
     store[key] = store[key] || {};
     store[key][provider] = {
-      token: encryptToken(safeToken),
+      token: encryptToken(safeToken)!,
       connectionRevision: crypto.randomUUID(),
       displayName: String(displayName || "").trim() || null,
       baseUrl: String(baseUrl || "").trim() || null,

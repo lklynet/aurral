@@ -1,4 +1,6 @@
 import type { Job } from "@russellthehippo/honker-node";
+import { asAppError } from "../../lib/errors.ts";
+import type { libraryManager } from "./libraryManager.ts";
 import { acquireReleaseMetadataLease } from "./releaseMetadataLease.ts";
 import createHonkerWorker from "./honkerWorkerFactory.ts";
 import {
@@ -17,6 +19,43 @@ import { resolveDownloadRoot } from "./downloadPaths.ts";
 type ReleaseMetadataLease = Awaited<ReturnType<typeof acquireReleaseMetadataLease>>;
 type SystemTaskJob = Job & { payload: HonkerPayload | null };
 type SystemTaskContext = { signal?: AbortSignal; lease?: ReleaseMetadataLease };
+type PayloadValue = HonkerPayload[string] | undefined;
+type MonitoringApply = NonNullable<Parameters<typeof libraryManager.acquireAurralReleases>[0]>;
+
+const stringOrNull = (value: PayloadValue) => (typeof value === "string" ? value : null);
+
+const stringList = (value: PayloadValue) =>
+  Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : null;
+
+const recordList = (value: PayloadValue) =>
+  Array.isArray(value)
+    ? value.filter(
+        (entry): entry is HonkerPayload =>
+          typeof entry === "object" && entry !== null && !Array.isArray(entry),
+      )
+    : [];
+
+function parseMonitoringApply(payload: HonkerPayload): MonitoringApply {
+  return {
+    artistMbid: stringOrNull(payload.artistMbid) ?? undefined,
+    token: stringOrNull(payload.token),
+    releaseGroups: recordList(payload.releaseGroups).flatMap(({ id, title }) =>
+      typeof id === "string" && typeof title === "string" ? [{ id, title }] : [],
+    ),
+    topTracks: recordList(payload.topTracks).flatMap(({ title, albumName, mbid, durationMs }) =>
+      typeof title === "string"
+        ? [
+            {
+              title,
+              albumName: stringOrNull(albumName),
+              mbid: stringOrNull(mbid),
+              durationMs: typeof durationMs === "number" ? durationMs : null,
+            },
+          ]
+        : [],
+    ),
+  };
+}
 
 async function refreshUpgradeReadiness() {
   const { checkUpgradeReadiness } = await import("./upgradeReadiness.ts");
@@ -37,7 +76,7 @@ export async function processSystemTask(
     }
     case "aurral-monitoring-apply": {
       const { libraryManager } = await import("./libraryManager.ts");
-      await libraryManager.acquireAurralReleases(payload);
+      await libraryManager.acquireAurralReleases(parseMonitoringApply(payload!));
       return;
     }
     case "aurral-monitoring-reconcile": {
@@ -67,8 +106,11 @@ export async function processSystemTask(
       const { runQualityUpgradeCheck } = await import("./qualityProfileService.ts");
       await runQualityUpgradeCheck({
         force: payload!.force === true,
-        playlistIds: payload!.playlistId ? [payload!.playlistId] : null,
-        limit: payload!.limit,
+        playlistIds:
+          typeof payload!.playlistId === "string" && payload!.playlistId
+            ? [payload!.playlistId]
+            : null,
+        limit: typeof payload!.limit === "number" ? payload!.limit : undefined,
       });
       return;
     }
@@ -97,13 +139,13 @@ export async function processSystemTask(
       const { playlistManager } = await import("./playlists/playlistManager.ts");
       playlistManager.updateConfig();
       const results = await playlistManager.scanLibrary(
-        payload!.folders ?? playlistManager.libraryRoots(),
-        payload!.destinations ?? null,
+        stringList(payload!.folders) ?? playlistManager.libraryRoots(),
+        stringList(payload!.destinations),
       );
       const failures = (results || []).filter((result) => !result.ok);
       if (failures.length) {
         throw new Error(
-          failures.map((result) => `${result.destination}: ${result.error.message}`).join("; "),
+          failures.map((result) => `${result.destination}: ${result.error!.message}`).join("; "),
         );
       }
       return;
@@ -111,7 +153,12 @@ export async function processSystemTask(
     case "playback-playlist-sync": {
       const { playlistManager } = await import("./playlists/playlistManager.ts");
       playlistManager.updateConfig();
-      await playlistManager.syncPlaylists(payload);
+      await playlistManager.syncPlaylists({
+        entityIds: stringList(payload!.entityIds),
+        destinations: stringList(payload!.destinations),
+        chain: stringOrNull(payload!.chain),
+        attempt: typeof payload!.attempt === "number" ? payload!.attempt : undefined,
+      });
       return;
     }
     case "library-index-refresh": {
@@ -162,13 +209,13 @@ export async function processSystemTask(
         await refreshInboxForUser(userId, {
           force: true,
           throwOnFailure: true,
-          jobId: job?.id || payload!.jobId || null,
-          zipCode: payload!.zipCode || "",
-          ipAddress: payload!.ipAddress || "",
+          jobId: job?.id || (typeof payload!.jobId === "number" ? payload!.jobId : null) || null,
+          zipCode: stringOrNull(payload!.zipCode) || "",
+          ipAddress: stringOrNull(payload!.ipAddress) || "",
         });
       } else {
         await enqueueInboxRefreshForAllUsers({
-          reason: payload!.reason || "scheduled",
+          reason: stringOrNull(payload!.reason) || "scheduled",
         });
       }
       return;
@@ -192,17 +239,18 @@ export async function processSystemTask(
       ]);
       const { migrateAurralDownloadFolder } = migrationModule;
       const layout = ensurePlaylistFilesystemLayout();
-      let result = {
-        migrated: 0,
-        flowMigrated: 0,
-        removed: 0,
-        retained: 0,
-        failed: 0,
-      };
+      let result;
       try {
-        result = await migrateAurralDownloadFolder();
+        result = {
+          flowMigrated: 0,
+          failed: 0,
+          repaired: 0,
+          ...(await migrateAurralDownloadFolder()),
+        };
       } catch (error) {
-        console.error(`[Playlists] Aurral download folder migration failed: ${error.message}`);
+        console.error(
+          `[Playlists] Aurral download folder migration failed: ${asAppError(error)?.message}`,
+        );
         throw error;
       }
       const flowMigrated = result.flowMigrated || 0;
@@ -274,12 +322,18 @@ export async function processSystemTask(
     }
     case "lidarr-files-release": {
       const { downloadWorker } = await import("./downloadJobs/downloadWorker.ts");
+      if (!("releaseLidarrFiles" in downloadWorker)) {
+        throw new TypeError("downloadWorker.releaseLidarrFiles is not a function");
+      }
       await downloadWorker.releaseLidarrFiles();
       return;
     }
     case "read-only-folder-release": {
       const { downloadWorker } = await import("./downloadJobs/downloadWorker.ts");
-      await downloadWorker.releaseReadOnlyFolderFiles(payload!.folders || []);
+      if (!("releaseReadOnlyFolderFiles" in downloadWorker)) {
+        throw new TypeError("downloadWorker.releaseReadOnlyFolderFiles is not a function");
+      }
+      await downloadWorker.releaseReadOnlyFolderFiles(stringList(payload!.folders) ?? []);
       return;
     }
     case "lidarr-retry": {

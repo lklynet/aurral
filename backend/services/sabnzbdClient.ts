@@ -3,6 +3,7 @@ import { dbOps } from "../db/helpers/index.ts";
 import { normalizeBaseUrl, normalizeInteger, sanitizeNzbName } from "./usenetClientCommon.ts";
 import axios from "../../lib/axiosFetch.ts";
 import { removeSabnzbdDownloadFolder } from "./sabnzbdCleanup.ts";
+import { asAppError } from "../../lib/errors.ts";
 
 export const sabnzbdSettings = Object.freeze({
   key: "sabnzbd",
@@ -86,6 +87,7 @@ type SabnzbdConnection = {
 };
 
 type SabnzbdSlot = { nzo_id: string };
+type NzbId = string | number | null | undefined;
 
 let connectionCache: {
   checkedAt: number;
@@ -244,7 +246,7 @@ export class SabnzbdClient {
     priority,
     addPaused,
   }: {
-    name: string;
+    name: string | undefined;
     content: Buffer | null | undefined;
     category?: string | null;
     priority?: number | string | null;
@@ -273,7 +275,7 @@ export class SabnzbdClient {
     };
   }
 
-  async getQueueItem(nzoId: string | null | undefined) {
+  async getQueueItem(nzoId: NzbId) {
     const id = String(nzoId || "").trim();
     if (!id) return null;
     const result = await this.api("queue", { nzo_ids: id });
@@ -281,7 +283,7 @@ export class SabnzbdClient {
     return slots.find((s: SabnzbdSlot) => String(s.nzo_id) === id) || null;
   }
 
-  async getHistoryItem(nzoId: string | null | undefined) {
+  async getHistoryItem(nzoId: NzbId) {
     const id = String(nzoId || "").trim();
     if (!id) return null;
     const result = await this.api("history", { nzo_ids: id });
@@ -290,7 +292,7 @@ export class SabnzbdClient {
   }
 
   async deleteHistoryItem(
-    nzoId: string | null | undefined,
+    nzoId: NzbId,
     {
       deleteFiles = false,
       historyItem = null,
@@ -319,7 +321,7 @@ export class SabnzbdClient {
     return cleanup;
   }
 
-  async deleteQueueItem(nzoId: string | null | undefined) {
+  async deleteQueueItem(nzoId: NzbId) {
     const id = String(nzoId || "").trim();
     if (!id) return false;
     const result = await this.api("queue", { name: "delete", value: id, del_files: 1 });
@@ -408,11 +410,12 @@ export class SabnzbdClient {
       connectionCache = { checkedAt: Date.now(), result, settingsKey };
       return result;
     } catch (error) {
+      const failure = asAppError(error);
       const result = {
         ok: false,
         configured: true,
         connected: false,
-        message: error?.message || "Failed to reach SABnzbd",
+        message: failure?.message || "Failed to reach SABnzbd",
       };
       connectionCache = { checkedAt: Date.now(), result, settingsKey };
       return result;

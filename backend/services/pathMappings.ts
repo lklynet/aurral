@@ -134,7 +134,7 @@ export function pathMatchesPrefix(candidate: string, prefix: string) {
 }
 
 export function resolveLocalPath(
-  externalPath: string,
+  externalPath: string | null | undefined,
   mappings: PathMapping[] = getPathMappings(),
 ) {
   const raw = String(externalPath || "").trim();

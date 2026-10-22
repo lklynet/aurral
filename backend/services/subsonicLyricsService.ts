@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { parseFile, type ILyricsTag } from "music-metadata";
 import type { RequestUser } from "../middleware/requestUser.ts";
+import { asAppError } from "../../lib/errors.ts";
 import { getSong, resolveStreamPath } from "./subsonicLibraryService.ts";
 
 function textLyrics(text: string | undefined) {
@@ -61,7 +62,8 @@ export async function getLyricsBySongId(id: string, user: RequestUser) {
     const lyrics = textLyrics(await readFile(sidecarPath, "utf8"));
     if (lyrics) return [{ ...display, lang: "und", ...lyrics }];
   } catch (error) {
-    if (error.code !== "ENOENT" && error.code !== "ENOTDIR") throw error;
+    const code = asAppError(error)?.code;
+    if (code !== "ENOENT" && code !== "ENOTDIR") throw error;
   }
   try {
     const metadata = await parseFile(filePath, { skipCovers: true });

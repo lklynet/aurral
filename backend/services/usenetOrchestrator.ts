@@ -1,4 +1,5 @@
 import path from "path";
+import { asAppError } from "../../lib/errors.ts";
 import fs from "fs/promises";
 import {
   downloadTracker,
@@ -60,7 +61,7 @@ interface UsenetHistoryItem {
   Status?: string | null;
   status?: string | null;
   FinalDir?: string | null;
-  DestDir?: string | null;
+  DestDir?: string;
   storage?: string | null;
   path?: string | null;
   folder?: string | null;
@@ -148,7 +149,7 @@ interface PendingUpgrade {
 }
 
 function getUsenetClient(preferredKey: string | null = null) {
-  if (["sabnzbd", "nzbget"].includes(preferredKey)) {
+  if (preferredKey === "sabnzbd" || preferredKey === "nzbget") {
     return getDownloadClient(preferredKey);
   }
   const sabnzbd = getDownloadClient("sabnzbd");
@@ -483,7 +484,7 @@ async function advanceUsenetSearch(
         releases = await runQuery(query);
         cacheSearchResults("usenet", query, releases);
       } catch (error) {
-        searchError = error?.message || String(error);
+        searchError = asAppError(error)?.message || String(error);
         logger.warn("usenet", "Prowlarr search failed", {
           jobId: payload.jobId,
           query,
@@ -714,8 +715,11 @@ async function handleUsenetDownload(payload: UsenetPayload, helpers: PipelineHel
       return appended;
     });
   } catch (error) {
-    if (error?.nzbGrabSpent) payload = withNzbGrab(payload);
-    const message = error?.message || String(error);
+    const failure = asAppError(error);
+    if (failure && "nzbGrabSpent" in failure && failure.nzbGrabSpent) {
+      payload = withNzbGrab(payload);
+    }
+    const message = failure?.message || String(error);
     logger.warn("usenet", "Usenet release could not be sent to the download client", {
       jobId: job.id,
       client: clientKey,
@@ -756,7 +760,7 @@ async function handleUsenetPoll(payload: UsenetPayload, helpers: PipelineHelpers
     logger.warn("usenet", "Could not read the Usenet download; waiting", {
       jobId: job.id,
       nzbId: payload.nzbId,
-      error: error?.message || String(error),
+      error: asAppError(error)?.message || String(error),
     });
     return {
       ...payload,
@@ -920,7 +924,7 @@ async function handleUsenetFinalize(payload: UsenetPayload, helpers: PipelineHel
 
 export async function processUsenetPipelinePayload(
   payload: UsenetPayload,
-  helpers: PipelineHelpers = {},
+  helpers: PipelineHelpers,
 ) {
   logger.debug("slskd", "usenet pipeline phase", {
     phase: payload.phase,

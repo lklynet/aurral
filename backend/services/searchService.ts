@@ -7,6 +7,7 @@ import {
   searchArtists as providerSearchArtists,
 } from "./providers/brainzmashProvider.ts";
 import { normalizePercentOfTracks } from "./lidarrAlbumStats.ts";
+import { asAppError } from "../../lib/errors.ts";
 import { logger } from "./logger.ts";
 import {
   PRIMARY_RELEASE_TYPES as PRIMARY_RELEASE_TYPE_LIST,
@@ -66,7 +67,8 @@ async function getAlbumLibraryLookup(albumMbids: string[]) {
       });
     }
   } catch (error) {
-    logger.warn("library", "Album search enrichment failed", { message: error.message });
+    const failure = asAppError(error);
+    logger.warn("library", "Album search enrichment failed", { message: failure?.message });
   }
 
   return lookup;
@@ -113,7 +115,7 @@ function normalizeArtistItem(item: ProviderArtist) {
     tags: Array.isArray(item.genres) ? item.genres : [],
     genres: Array.isArray(item.genres) ? item.genres : [],
     inLibrary: false,
-    score: item.score || 0,
+    score: 0,
   };
 }
 
@@ -170,7 +172,9 @@ export async function searchAlbums(
     releaseTypes: selectedReleaseTypes,
     sort: normalizedSort,
   });
-  const albumLookup = await getAlbumLibraryLookup(result.items.map((item) => item.id));
+  const albumLookup = await getAlbumLibraryLookup(
+    result.items.map((item) => item.id).filter((id): id is string => id !== undefined),
+  );
   return {
     scope: "album",
     query,
@@ -178,7 +182,9 @@ export async function searchAlbums(
     count: result.count,
     offset: result.offset,
     hasMore: result.offset + result.items.length < result.count,
-    items: result.items.map((item) => normalizeAlbumItem(item, albumLookup.get(item.id))),
+    items: result.items.map((item) =>
+      normalizeAlbumItem(item, item.id === undefined ? undefined : albumLookup.get(item.id)),
+    ),
   };
 }
 

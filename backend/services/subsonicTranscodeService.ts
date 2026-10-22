@@ -2,6 +2,7 @@ import { stat } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { parseFile } from "music-metadata";
 import type { Response } from "express";
+import { asAppError } from "../../lib/errors.ts";
 import { streamAudioFile } from "./audioFileStream.ts";
 
 const OUTPUT_FORMATS = {
@@ -30,13 +31,15 @@ export async function streamSubsonicAudio(
         return streamAudioFile(res, filePath);
       }
     } catch (error) {
-      if (error.code === "ENOENT" || error.code === "ENOTDIR") return false;
+      const code = asAppError(error)?.code;
+      if (code === "ENOENT" || code === "ENOTDIR") return false;
     }
   }
   try {
     if (!(await stat(filePath)).isFile()) return false;
   } catch (error) {
-    if (error.code === "ENOENT" || error.code === "ENOTDIR") return false;
+    const code = asAppError(error)?.code;
+    if (code === "ENOENT" || code === "ENOTDIR") return false;
     throw error;
   }
   const output = OUTPUT_FORMATS[format || "mp3"];

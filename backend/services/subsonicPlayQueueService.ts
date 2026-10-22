@@ -45,7 +45,7 @@ export function getPlayQueue(user: RequestUser) {
     };
   const entry = (JSON.parse(saved.song_ids) as string[])
     .map((id) => getSong(id, user))
-    .filter(Boolean);
+    .filter((song): song is NonNullable<typeof song> => Boolean(song));
   const hasCurrent = entry.some((song) => song.id === saved.current_song);
   return {
     username: user.username,

@@ -2001,7 +2001,13 @@ export function getLibraryArtistPage({
         ];
       }),
     );
-    return { artists: ids.map((id) => byId.get(id)).filter(Boolean), albums: [], tracks: [] };
+    return {
+      artists: ids
+        .map((id) => byId.get(id))
+        .filter((artist): artist is NonNullable<typeof artist> => Boolean(artist)),
+      albums: [],
+      tracks: [],
+    };
   }
 
   const aggregateParameters = [];
@@ -2070,7 +2076,13 @@ export function getLibraryArtistPage({
       ];
     }),
   );
-  return { artists: ids.map((id) => byId.get(id)).filter(Boolean), albums: [], tracks: [] };
+  return {
+    artists: ids
+      .map((id) => byId.get(id))
+      .filter((artist): artist is NonNullable<typeof artist> => Boolean(artist)),
+    albums: [],
+    tracks: [],
+  };
 }
 
 function albumGenrePredicate(genre: string) {

@@ -280,7 +280,7 @@ export class NzbgetClient {
     autoCategory = false,
     ppParameters = [],
   }: {
-    name: string;
+    name: string | undefined;
     content: Buffer | null | undefined;
     category?: string | null;
     priority?: number | string | null;

@@ -411,7 +411,7 @@ export function groupSoulseekSearchResults<Item extends SoulseekListing>(
 // Keeps candidate diversity: at most one attempt per user first, then
 // additional files as needed.
 export function selectRankedMatchAttempts<
-  T extends { raw?: { user?: string | null; file?: string | null } | null },
+  T extends { raw?: { user?: unknown; file?: unknown } | null },
 >(matches: T[] | null | undefined, limit = 5) {
   const ranked = Array.isArray(matches) ? matches : [];
   const max = Number.isFinite(Number(limit)) && Number(limit) > 0 ? Math.floor(Number(limit)) : 5;

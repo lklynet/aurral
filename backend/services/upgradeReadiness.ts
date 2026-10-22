@@ -106,7 +106,7 @@ export function checkUpgradeReadiness() {
   return { ready, checkedAt, blockers, warnings: getDeprecatedUsage() };
 }
 
-const TASKS_FOR_BLOCKERS = {
+const TASKS_FOR_BLOCKERS: Partial<Record<UpgradeBlockerKind, string>> = {
   "stored-data": "stored-data-migration",
   "identity-markers": "identity-marker-migration",
   "download-folder": "playlist-startup-migration",
@@ -117,7 +117,7 @@ export function queueUpgradeReadinessRecheck() {
   const kinds = new Set(
     listBlockers()
       .map((blocker) => TASKS_FOR_BLOCKERS[blocker.kind])
-      .filter(Boolean),
+      .filter((kind): kind is string => Boolean(kind)),
   );
   kinds.add("upgrade-readiness-check");
   for (const kind of kinds) {
