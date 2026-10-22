@@ -1,5 +1,4 @@
 {
-  "backend/middleware/auth.ts": 1,
   "backend/routes/artists/handlers/details.ts": 2,
   "backend/routes/artists/handlers/preview.ts": 1,
   "backend/routes/artists/handlers/stream.ts": 1,
