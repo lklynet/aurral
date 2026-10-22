@@ -221,6 +221,7 @@ export const normalizeSettings = (savedSettings: SavedSettings) => {
         enableNarrowFallbacks: true,
         ...metadata,
       },
+      ...(savedSettings.integrations?.google ? { google: savedSettings.integrations.google } : {}),
       general: {
         authUser: "",
         authPassword: "",
