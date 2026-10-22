@@ -1171,7 +1171,6 @@ async function handleSearch(payload: SlskdPayload, helpers: SlskdHelpers) {
         ? 0
         : 1,
       distance: Number.isFinite(entry.distance) ? entry.distance : Number.POSITIVE_INFINITY,
-      variantScore: Number(entry.variantScore || 0),
       queuePenalty: Number(searchOptions.getUserQueuePenalty?.(entry.candidate?.raw?.user) || 0),
     }))
     .sort(
@@ -1180,7 +1179,6 @@ async function handleSearch(payload: SlskdPayload, helpers: SlskdHelpers) {
         left.decisionRank - right.decisionRank ||
         left.releaseRank - right.releaseRank ||
         left.distance - right.distance ||
-        right.variantScore - left.variantScore ||
         left.queuePenalty - right.queuePenalty ||
         left.originalOrder - right.originalOrder,
     )

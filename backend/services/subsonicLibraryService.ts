@@ -118,7 +118,7 @@ type SubsonicSong = {
   parent: string;
   isDir: boolean;
   isVideo: boolean;
-  title: string;
+  title: string | null;
   album: string;
   artist: string;
   albumId?: string;
@@ -141,6 +141,7 @@ type SubsonicSong = {
   bitRate?: number;
   year?: number;
 } & SubsonicGenreFields;
+type LibrarySong = SubsonicSong & { title: string };
 type SubsonicAlbum = {
   id: string;
   name: string;
@@ -326,7 +327,7 @@ const toSong = (
   library: IndexedLibrary,
   track: LibraryTrack,
   album: LibraryAlbum | null = findAlbumForTrack(library, track),
-): SubsonicSong => {
+): LibrarySong => {
   const artist = findArtistForAlbum(library, album);
   const file = firstFile(track, album?.id, album?.managedBy);
   const genres = [
@@ -335,7 +336,7 @@ const toSong = (
   const relation = track.albums?.find((entry) => entry.albumId === album?.id);
   const artistValue = protocolArtist(artist, track.artistName || "Unknown Artist");
   const format = String(file?.format || "mp3").toLowerCase();
-  const song: SubsonicSong = {
+  const song: LibrarySong = {
     id: idFor("song", track.identityKey),
     parent: album ? idFor("album", album.identityKey) : idFor("album", "unknown"),
     isDir: false,
@@ -551,7 +552,7 @@ function toPlaylistSong(
       ?.toLowerCase() || "mp3";
   const songKind = kind === "flow" ? "flow-song" : "shared-song";
   const id = idFor(songKind, `${playlist.id}:${job.id}`);
-  const albumMbid = String(job.releaseGroupMbid || job.albumMbid || "").trim();
+  const albumMbid = String(job.albumMbid || "").trim();
   const song: SubsonicSong = {
     id,
     parent: idFor(kind, playlist.id),
@@ -572,7 +573,7 @@ function toPlaylistSong(
     track: job.trackNumber || 0,
     discNumber: job.discNumber || 1,
     duration: seconds(job.durationMs),
-    size: Number(job.size || 0),
+    size: 0,
     suffix: format,
     path: id,
     type: "music",
