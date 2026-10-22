@@ -340,7 +340,7 @@ async function moveOnFromFailedAlbumStep(failed: PipelinePayload, message: strin
       ),
     ],
   };
-  await DISCARD_SOURCE_WORK[payload.source]?.(payload);
+  await discardSourceWork(payload);
   if (payload.phase === "finalize") blockAlbumGrabSource(payload, albumGrabJobs(payload));
   const next = await nextAlbumSource(payload, message);
   if (next) return next;
@@ -386,7 +386,7 @@ async function failPipelineStep(failed: PipelinePayload, message: string) {
     if (payload.manualSelection !== true && payload.phase !== "finalize") {
       const next = await failOrTryNextSource(payload, job, message);
       if (next) {
-        await DISCARD_SOURCE_WORK[payload.source]?.(payload);
+        await discardSourceWork(payload);
         return next;
       }
     } else if (!(await parkHeldForReview(payload, job))) {
@@ -438,11 +438,11 @@ async function awaitAttemptRelease(payload: PipelinePayload) {
   return { ...payload, releaseWaits: waits + 1, delaySeconds: RELEASE_WAIT_SECONDS };
 }
 
-const DISCARD_SOURCE_WORK = {
-  slskd: discardSlskdWork,
-  usenet: discardUsenetWork,
-  deemix: discardDeemixWork,
-};
+async function discardSourceWork(payload: PipelinePayload) {
+  if (payload.source === "slskd") await discardSlskdWork(payload as SlskdStepPayload);
+  else if (payload.source === "usenet") await discardUsenetWork(payload as UsenetStepPayload);
+  else if (payload.source === "deemix") await discardDeemixWork(payload);
+}
 
 // An attempt that ends while it still holds tracks was dropped before its
 // source judged the release: its leading track stopped or was cancelled, the
@@ -462,7 +462,7 @@ export async function settleDroppedAlbumGrab(
   const payload = dropped as PipelinePayload;
   const held = heldAlbumGrabJobs(payload).filter((job) => job.id !== nextPayload?.jobId);
   if (held.length === 0) return;
-  if (isPipelinePayloadActive(payload)) await DISCARD_SOURCE_WORK[payload.source]?.(payload);
+  if (isPipelinePayloadActive(payload)) await discardSourceWork(payload);
   returnUntriedAlbumGrabJobs(payload, held, reason);
 }
 

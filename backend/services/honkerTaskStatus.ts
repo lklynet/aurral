@@ -2,6 +2,7 @@ import type { Statement } from "better-sqlite3";
 import type { Job, Queue } from "@russellthehippo/honker-node";
 import { db } from "../config/db-sqlite.ts";
 import { asAppError } from "../../lib/errors.ts";
+import { isOwnKey } from "../../lib/ownKey.ts";
 import { SCHEDULED_SYSTEM_TASKS } from "./honkerDb.ts";
 import { registerHonkerShutdownHandler } from "./honkerWorkerRuntime.ts";
 import type {
@@ -543,12 +544,12 @@ function formatPayloadLabel(value: unknown): string {
 }
 
 function systemTaskInfo(kind: string) {
-  return (
-    SYSTEM_TASK_LABELS[kind] || {
-      label: formatPayloadLabel(kind) || "System task",
-      description: queueDescription("system-task"),
-    }
-  );
+  return isOwnKey(SYSTEM_TASK_LABELS, kind)
+    ? SYSTEM_TASK_LABELS[kind]
+    : {
+        label: formatPayloadLabel(kind) || "System task",
+        description: queueDescription("system-task"),
+      };
 }
 
 function discoveryRefreshInfo(payload: Record<string, unknown> = {}) {
@@ -596,8 +597,8 @@ export function describeHonkerTask(queue: string, payloadValue: unknown): string
   const def = queueDefinitionByName.get(safeQueue);
   if (!def) return queueLabel(safeQueue);
 
+  if (!isOwnKey(PAYLOAD_LABEL_KEY, safeQueue)) return def.label;
   const extractor = PAYLOAD_LABEL_KEY[safeQueue];
-  if (!extractor) return def.label;
 
   let suffix;
   if (typeof extractor === "function") {
@@ -618,8 +619,9 @@ function describeHonkerTaskDetail(queue: string, payloadValue: unknown): string 
   if (safeQueue === "discovery-refresh") return discoveryRefreshInfo(payload).description;
 
   const desc = queueDescription(safeQueue);
-  const formatter = PAYLOAD_DETAIL_KEY[safeQueue];
-  return formatter ? formatter(payload, desc) : desc;
+  return isOwnKey(PAYLOAD_DETAIL_KEY, safeQueue)
+    ? PAYLOAD_DETAIL_KEY[safeQueue](payload, desc)
+    : desc;
 }
 
 function summarizePayload(queue: string, payloadValue: unknown): string {
@@ -692,7 +694,8 @@ function normalizeIntervalUnit(unit: string, value: number): string {
     d: "day",
     w: "week",
   };
-  const label = units[String(unit || "").toLowerCase()] || unit;
+  const unitKey = String(unit || "").toLowerCase();
+  const label = isOwnKey(units, unitKey) ? units[unitKey] : unit;
   return `${value} ${label}${Number(value) === 1 ? "" : "s"}`;
 }
 
@@ -1210,8 +1213,8 @@ function normalizeQueueRows(
   return [...normalizedLive, ...groupQueueRows(normalizedRuns), ...normalizedDead]
     .sort((a, b) => {
       const activeOrder = { running: 0, queued: 1, scheduled: 2 };
-      const aActive = activeOrder[a.status];
-      const bActive = activeOrder[b.status];
+      const aActive = isOwnKey(activeOrder, a.status) ? activeOrder[a.status] : null;
+      const bActive = isOwnKey(activeOrder, b.status) ? activeOrder[b.status] : null;
       if (aActive != null || bActive != null) {
         return (aActive ?? 10) - (bActive ?? 10);
       }

@@ -89,3 +89,11 @@ test("records old WebSocket channels once per process", async () => {
   assert.deepEqual(dbOps.getJSONSetting("deprecatedUsage"), recorded);
   assert.equal(client.subscriptions.has("weekly-flow"), true);
 });
+
+test("ignores recorded usage names that are not deprecations", () => {
+  dbOps.setJSONSetting("deprecatedUsage", { constructor: { lastSeenAt: 1 } });
+  withEnv(
+    { WEEKLY_FLOW_FOLDER: undefined, PLAYLIST_FOLDER: undefined, AUTH_PASSWORD: undefined },
+    () => assert.deepEqual(kinds(), []),
+  );
+});

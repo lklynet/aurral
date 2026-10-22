@@ -1,6 +1,7 @@
 import type { CachedArtistImage } from "../db/helpers/cache.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import { asAppError } from "../../lib/errors.ts";
+import { isOwnKey } from "../../lib/ownKey.ts";
 import type { ArtistOverride } from "../db/helpers/overrides.ts";
 import { buildStableImageProxyUrl } from "./imageProxyService.ts";
 import type { NormalizedArtist } from "./providers/brainzmashMappers.ts";
@@ -71,14 +72,14 @@ const getArtistImageKindRank = (image: ImageSource | null | undefined) => {
   const kind = String(image?.kind || image?.CoverType || "")
     .trim()
     .toLowerCase();
-  return ARTIST_IMAGE_KIND_RANK[kind] ?? 5;
+  return isOwnKey(ARTIST_IMAGE_KIND_RANK, kind) ? ARTIST_IMAGE_KIND_RANK[kind] : 5;
 };
 
 const getAlbumImageKindRank = (image: ImageSource | null | undefined) => {
   const kind = String(image?.kind || image?.CoverType || "")
     .trim()
     .toLowerCase();
-  return ALBUM_IMAGE_KIND_RANK[kind] ?? 3;
+  return isOwnKey(ALBUM_IMAGE_KIND_RANK, kind) ? ALBUM_IMAGE_KIND_RANK[kind] : 3;
 };
 
 const getImageUrl = (image: ImageSource | null | undefined) => image?.url || image?.Url || null;

@@ -2,6 +2,7 @@ import path from "path";
 import { resolveAurralDataDir } from "../config/data-dir.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import { asAppError } from "../../lib/errors.ts";
+import { isOwnKey } from "../../lib/ownKey.ts";
 import { logger } from "./logger.ts";
 
 export const DEPRECATED_USAGE_SETTING = "deprecatedUsage";
@@ -67,12 +68,10 @@ export function getDeprecatedUsage() {
       message: DEPRECATIONS[kind],
       lastSeenAt: null,
     })),
-    ...Object.entries(recorded)
-      .filter(([kind]) => DEPRECATIONS[kind])
-      .map(([kind, entry]) => ({
-        kind,
-        message: DEPRECATIONS[kind],
-        lastSeenAt: Number(entry?.lastSeenAt) || null,
-      })),
+    ...Object.entries(recorded).flatMap(([kind, entry]) =>
+      isOwnKey(DEPRECATIONS, kind)
+        ? [{ kind, message: DEPRECATIONS[kind], lastSeenAt: Number(entry?.lastSeenAt) || null }]
+        : [],
+    ),
   ];
 }

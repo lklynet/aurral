@@ -1,5 +1,6 @@
 import axios from "../../lib/axiosFetch.ts";
 import { asAppError } from "../../lib/errors.ts";
+import { isOwnKey } from "../../lib/ownKey.ts";
 import createRateLimiter from "./apiClients/rateLimiter.ts";
 import createCache from "./apiClients/simpleCache.ts";
 import { validateExternalUrl } from "../middleware/urlValidator.ts";
@@ -47,7 +48,9 @@ export function getKoitoListenBrainzBaseUrl(baseUrl: unknown) {
 
 export function getKoitoPeriod(discoveryPeriod: string | null | undefined) {
   if (!discoveryPeriod || discoveryPeriod === "none") return null;
-  return KOITO_PERIOD_BY_DISCOVERY_PERIOD[discoveryPeriod] || "month";
+  return isOwnKey(KOITO_PERIOD_BY_DISCOVERY_PERIOD, discoveryPeriod)
+    ? KOITO_PERIOD_BY_DISCOVERY_PERIOD[discoveryPeriod]
+    : "month";
 }
 
 const koitoRequest = koitoLimiter.wrap(

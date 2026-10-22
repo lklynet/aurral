@@ -1,3 +1,4 @@
+import { isOwnKey } from "../../lib/ownKey.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import { prowlarrClient } from "./prowlarrClient.ts";
 import { getDownloadClient } from "./download/downloadClientSettings.ts";
@@ -138,5 +139,6 @@ export function getDownloadSourceNotConfiguredMessage() {
 }
 
 export function getSourceLabel(sourceId: string | null | undefined) {
-  return SOURCE_LABELS[String(sourceId || "")] || String(sourceId || "download source");
+  const id = String(sourceId || "");
+  return (isOwnKey(SOURCE_LABELS, id) && SOURCE_LABELS[id]) || id || "download source";
 }

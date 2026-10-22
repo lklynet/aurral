@@ -12,6 +12,7 @@ import type {
 import type { HonkerLiveRow } from "../db/rows.ts";
 import { resolveAurralDataDir } from "../config/data-dir.ts";
 import { asAppError } from "../../lib/errors.ts";
+import { isOwnKey } from "../../lib/ownKey.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import { resolveDownloadRoot } from "./downloadPaths.ts";
 import { ISOLATED_QUEUE_GROUPS, shouldStartQueueHere } from "./backgroundWorkerQueues.ts";
@@ -186,7 +187,8 @@ const PIPELINE_PHASE_PRIORITY = {
 };
 
 function getPipelinePriorityForPhase(phase: JsonValue | undefined) {
-  return PIPELINE_PHASE_PRIORITY[String(phase || "").toLowerCase()] ?? 0;
+  const key = String(phase || "").toLowerCase();
+  return isOwnKey(PIPELINE_PHASE_PRIORITY, key) ? PIPELINE_PHASE_PRIORITY[key] : 0;
 }
 
 export function getHonkerDb() {
@@ -904,16 +906,16 @@ export function isHonkerScheduleDue(nowMs = Date.now()) {
 
 export function listBackgroundGroupsWithWork(nowMs = Date.now()) {
   const now = Math.floor(nowMs / 1000);
-  const groups = new Set(
+  const groups = new Set<string>(
     (
       getHonkerDb().query(
         `SELECT DISTINCT queue FROM _honker_live WHERE run_at <= ?
      AND (state = 'pending' OR (state = 'processing' AND claim_expires_at <= ?))`,
         [now, now],
       ) as Pick<HonkerLiveRow, "queue">[]
-    )
-      .map((row) => ISOLATED_QUEUE_GROUPS[row.queue])
-      .filter(Boolean),
+    ).flatMap((row) =>
+      isOwnKey(ISOLATED_QUEUE_GROUPS, row.queue) ? [ISOLATED_QUEUE_GROUPS[row.queue]] : [],
+    ),
   );
   if (isHonkerScheduleDue(nowMs)) groups.add("scheduler");
   return [...groups];
