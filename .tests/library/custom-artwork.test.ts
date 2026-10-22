@@ -92,3 +92,21 @@ test("a cached image without a content type is refused instead of saved", async 
   );
   assert.equal(getCustomArtwork("album", "8"), null);
 });
+
+test("artwork whose content type names an object property is rejected as unsupported", async () => {
+  await assert.rejects(
+    saveCustomArtworkUpload("track", "43", sourceImage, "constructor"),
+    /Unsupported image content type/,
+  );
+
+  vi.spyOn(globalThis, "fetch").mockImplementation(
+    async () => new Response(sourceImage, { headers: { "Content-Type": "constructor" } }),
+  );
+  await assert.rejects(
+    saveCustomArtworkUrl("album", "8", "https://artwork.example/constructor.png"),
+    /Upstream response is not a supported image/,
+  );
+
+  assert.equal(getCustomArtwork("track", "43"), null);
+  assert.equal(getCustomArtwork("album", "8"), null);
+});
