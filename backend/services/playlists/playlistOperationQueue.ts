@@ -1,4 +1,5 @@
 import { logger } from "../logger.ts";
+import { asAppError } from "../../../lib/errors.ts";
 import { enqueuePlaylistOperationJob, getHonkerQueueDepth } from "../honkerDb.ts";
 import type { HonkerEnqueueOptions, HonkerPayload } from "../honkerDb.ts";
 import type { JsonValue } from "@russellthehippo/honker-node";
@@ -26,7 +27,7 @@ async function enqueueBulkPayload(record: BulkOperationInput) {
   } catch (error) {
     logger.warn("playlists", "Accepted playlist operation could not wake its worker", {
       operationId: result.operationId,
-      reason: error.message,
+      reason: asAppError(error)?.message,
     });
   }
   return result;

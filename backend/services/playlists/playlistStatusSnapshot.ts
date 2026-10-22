@@ -37,7 +37,7 @@ let cachedDatabaseRevision: string | null = null;
 let cacheCleanupTimer: ReturnType<typeof setTimeout> | null = null;
 
 export function clearPlaylistStatusCache() {
-  clearTimeout(cacheCleanupTimer);
+  if (cacheCleanupTimer) clearTimeout(cacheCleanupTimer);
   cacheCleanupTimer = null;
   membershipCache.clear();
   cachedSettings = null;
@@ -220,7 +220,7 @@ function buildOwnerMap(
 
 export function getPlaylistStatusSnapshot({ user = null }: { user?: RequestUser | null } = {}) {
   refreshMembershipCache();
-  clearTimeout(cacheCleanupTimer);
+  if (cacheCleanupTimer) clearTimeout(cacheCleanupTimer);
   cacheCleanupTimer = setTimeout(clearPlaylistStatusCache, 60000);
   cacheCleanupTimer.unref?.();
   const workerStatus: ReturnType<typeof downloadWorker.getStatus> & {

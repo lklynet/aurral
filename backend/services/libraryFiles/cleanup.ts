@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { Stats } from "node:fs";
+import { asAppError } from "../../../lib/errors.ts";
 import { parseFile } from "music-metadata";
 import { db } from "../../config/db-sqlite.ts";
 import type { LibraryAlbumsRow, LibraryArtistsRow, LibraryMediaFilesRow } from "../../db/rows.ts";
@@ -128,20 +129,21 @@ async function planTags(
     context.albums,
   );
   if (!fill.tags) return { reason: fill.reason || null };
-  const hardlinked = (await fs.stat(file.path).catch(() => null))?.nlink > 1;
+  const fileStat = await fs.stat(file.path).catch(() => null);
+  const hardlinked = fileStat !== null && fileStat.nlink > 1;
   return { tags: fill.tags, tagFields: fill.fields, ...(hardlinked ? { hardlinked } : {}) };
 }
 
 // The album's numbering wins. A file the album has no number for keeps the
 // number its tags or name give it, so Clean up never drops a track number.
 async function trackPosition(file: AlbumFileRow, root: string) {
-  if (file.track_number > 0)
+  if (file.track_number !== null && file.track_number > 0)
     return { trackNumber: file.track_number, discNumber: file.disc_number };
   const record = await parseFile(file.path, { skipCovers: true, duration: false }).then(
     (metadata) => buildMetadataRecord(metadata, file.path, root),
     () => null,
   );
-  if (record?.trackNumber > 0)
+  if (record && record.trackNumber != null && record.trackNumber > 0)
     return { trackNumber: record.trackNumber, discNumber: record.discNumber };
   return { trackNumber: file.track_number, discNumber: file.disc_number };
 }
@@ -366,7 +368,14 @@ export async function planCleanup(operation: LibraryFileOperation, deadline: num
   return true;
 }
 
-const LINK_FALLBACK = new Set(["EPERM", "ENOTSUP", "EOPNOTSUPP", "ENOSYS", "EMLINK", "EXDEV"]);
+const LINK_FALLBACK = new Set<string | undefined>([
+  "EPERM",
+  "ENOTSUP",
+  "EOPNOTSUPP",
+  "ENOSYS",
+  "EMLINK",
+  "EXDEV",
+]);
 
 async function renameLibraryFile(from: string, to: string, context: CleanupApplyContext) {
   await fs.mkdir(path.dirname(to), { recursive: true });
@@ -375,13 +384,14 @@ async function renameLibraryFile(from: string, to: string, context: CleanupApply
     await fs.link(from, to);
     keptOld = true;
   } catch (error) {
-    if (error?.code === "EEXIST") {
+    const failure = asAppError(error);
+    if (failure?.code === "EEXIST") {
       const [a, b] = await Promise.all([fs.stat(from), fs.stat(to)]);
       if (a.ino !== b.ino || a.dev !== b.dev) {
         throw Object.assign(new Error(TAKEN_NAME_REASON), { code: "EEXIST" });
       }
       keptOld = true;
-    } else if (LINK_FALLBACK.has(error?.code)) {
+    } else if (LINK_FALLBACK.has(failure?.code)) {
       keptOld = !(await context.deletionGuard().canDelete(from));
       await placeFile(from, to, keptOld ? "copy" : "move");
       keptOld = false;
@@ -423,6 +433,12 @@ export function createCleanupContext() {
   };
 }
 
+function requireTargetPath(item: LibraryFileItem) {
+  if (item.targetPath === null)
+    throw new TypeError("Library file operation item has no target path");
+  return item.targetPath;
+}
+
 const COPY_CHANGED_REASON =
   "One of the copies changed since Clean up checked them, so this one stays. Run Clean up Library again.";
 
@@ -432,7 +448,7 @@ const COPY_CHANGED_REASON =
 async function removeDuplicate(item: LibraryFileItem, context: CleanupApplyContext) {
   const details = { ...item.details, removable: false };
   const extra = path.resolve(item.sourcePath);
-  const kept = path.resolve(item.targetPath);
+  const kept = path.resolve(requireTargetPath(item));
   const onDisk = await fs.lstat(extra).catch(() => null);
   if (!(await fs.stat(kept).catch(() => null))) {
     if (!onDisk)
@@ -507,15 +523,13 @@ export async function applyCleanupItem(
   const matchesExpected = (fileStat: Stats) =>
     Number(expected.size) === fileStat.size && Number(expected.mtimeMs) === fileStat.mtimeMs;
   let stat = await fs.stat(current).catch(() => null);
-  const placed =
-    !stat && actions.includes("rename") && item.targetPath
-      ? await fs.stat(item.targetPath).catch(() => null)
-      : null;
-  if (placed && matchesExpected(placed)) {
-    commitRename(current, item.targetPath);
-    await transferSidecars(current, item.targetPath, "move").catch(() => {});
+  const placedTarget = !stat && actions.includes("rename") ? item.targetPath : null;
+  const placed = placedTarget ? await fs.stat(placedTarget).catch(() => null) : null;
+  if (placedTarget && placed && matchesExpected(placed)) {
+    commitRename(current, placedTarget);
+    await transferSidecars(current, placedTarget, "move").catch(() => {});
     details.results.rename = "done";
-    current = item.targetPath;
+    current = placedTarget;
     stat = await fs.stat(current);
   }
   if (!stat) return { status: "failed", reason: "The file is gone.", details };
@@ -527,21 +541,27 @@ export async function applyCleanupItem(
     };
   }
   const renaming = actions.includes("rename") && details.results.rename !== "done";
-  if (renaming && (await passesThroughLinkedFolder(resolveDownloadRoot(), item.targetPath))) {
+  const renameTarget = renaming ? requireTargetPath(item) : null;
+  if (
+    renameTarget !== null &&
+    (await passesThroughLinkedFolder(resolveDownloadRoot(), renameTarget))
+  ) {
     return { status: "skipped", reason: LINKED_FOLDER_REASON, details };
   }
-  const rename = async () => {
+  const rename = async (target: string) => {
     try {
-      await renameLibraryFile(current, item.targetPath, context);
+      await renameLibraryFile(current, target, context);
       details.results.rename = "done";
-      current = item.targetPath;
+      current = target;
       save();
     } catch (error) {
-      if (error?.code === "EEXIST") return { status: "conflict", reason: error.message, details };
+      const failure = asAppError(error);
+      if (failure?.code === "EEXIST")
+        return { status: "conflict", reason: failure.message, details };
       details.results.rename = "failed";
       return {
         status: "failed",
-        reason: `Aurral could not rename the file: ${error?.code || error?.message}`,
+        reason: `Aurral could not rename the file: ${failure?.code || failure?.message}`,
         details,
       };
     }
@@ -549,8 +569,8 @@ export async function applyCleanupItem(
   };
   // Tags give the file a new inode, so a name that already links to it is
   // taken first, or it would no longer be the same file.
-  if (renaming && (await isSameFile(current, item.targetPath).catch(() => false))) {
-    const stopped = await rename();
+  if (renameTarget !== null && (await isSameFile(current, renameTarget).catch(() => false))) {
+    const stopped = await rename(renameTarget);
     if (stopped) return stopped;
   }
   if (actions.includes("tags") && details.results.tags !== "done") {
@@ -560,7 +580,7 @@ export async function applyCleanupItem(
       details.results.tags = "failed";
       return {
         status: "failed",
-        reason: `Aurral could not write the tags: ${error?.message || error}`,
+        reason: `Aurral could not write the tags: ${asAppError(error)?.message || error}`,
         details,
       };
     }
@@ -580,8 +600,8 @@ export async function applyCleanupItem(
       },
     );
   }
-  if (actions.includes("rename") && details.results.rename !== "done") {
-    const stopped = await rename();
+  if (renameTarget !== null && details.results.rename !== "done") {
+    const stopped = await rename(renameTarget);
     if (stopped) return stopped;
   }
   return { status: "done", details };

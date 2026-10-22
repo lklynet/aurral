@@ -14,10 +14,12 @@ export default function createRateLimiter(
     strict: Number(minTime) > 0,
   });
 
-  const schedule = <T>(
+  function schedule<T>(
     fn: (remainingMs: number) => T,
-    { signal, timeoutMs }: ScheduleOptions = {},
-  ) => {
+    options: ScheduleOptions & { timeoutMs: number },
+  ): Promise<Awaited<T>>;
+  function schedule<T>(fn: () => T, options?: ScheduleOptions): Promise<Awaited<T>>;
+  function schedule<T>(fn: (...args: number[]) => T, { signal, timeoutMs }: ScheduleOptions = {}) {
     if (typeof fn !== "function") {
       return Promise.reject(new TypeError("Rate limiter callback must be a function"));
     }
@@ -44,16 +46,16 @@ export default function createRateLimiter(
         { signal: AbortSignal.any(signals) },
       )
       .finally(() => clearTimeout(timer));
-  };
+  }
 
   let resumeAt = 0;
-  let resumeTimer: NodeJS.Timeout | null = null;
+  let resumeTimer: ReturnType<typeof setTimeout> | null = null;
   const pauseFor = (ms: number) => {
     const until = Date.now() + Math.max(0, Number(ms) || 0);
     if (until <= resumeAt) return;
     resumeAt = until;
     queue.pause();
-    clearTimeout(resumeTimer);
+    if (resumeTimer) clearTimeout(resumeTimer);
     resumeTimer = setTimeout(() => queue.start(), until - Date.now());
   };
 

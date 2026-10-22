@@ -870,7 +870,7 @@ const assertUniqueFlowName = (
 const assertUniqueStaticPlaylistName = (
   playlists: StaticPlaylist[],
   sameOwnerFlows: FlowConfig[],
-  nextName: string,
+  nextName: unknown,
   exceptPlaylistId: string | null = null,
 ) => {
   const key = normalizeNameKey(nextName);
@@ -1150,15 +1150,15 @@ export const flowPlaylistConfig = {
     recordHistory = true,
   }: {
     id?: string | null;
-    name: string;
-    sourceName?: string | null;
-    sourceFlowId?: string | null;
-    discoverPresetId?: string | null;
+    name: unknown;
+    sourceName?: unknown;
+    sourceFlowId?: unknown;
+    discoverPresetId?: unknown;
     type?: string | null;
     tracks?: PlaylistTrackInput[];
-    ownerUserId?: number | null;
-    importSource?: ReturnType<typeof normalizeImportSource>;
-    description?: string | null;
+    ownerUserId?: unknown;
+    importSource?: StoredImportSource | null;
+    description?: unknown;
     recordHistory?: boolean;
   }) {
     const playlists = getStoredStaticPlaylists();

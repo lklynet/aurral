@@ -50,7 +50,7 @@ export type BulkOperationInput = Pick<
   target: BulkOperationRecord["target"] | null;
 };
 
-export function getBulkOperation(operationId: string | number) {
+export function getBulkOperation(operationId: unknown) {
   const row = getStmt.get(`${PREFIX}${operationId}`);
   if (!row) return null;
   const record: BulkOperationRecord = JSON.parse(row.value);

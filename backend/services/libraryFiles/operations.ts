@@ -3,6 +3,7 @@ import { resolveDownloadRoot } from "../downloadPaths.ts";
 import { logger, safeLogDiagnostic } from "../logger.ts";
 import type { LibraryScanRequest } from "../libraryScanRequest.ts";
 import {
+  type FiledItem,
   IngestSourceError,
   applyIngestItem,
   finishIngest,
@@ -25,6 +26,7 @@ import {
 } from "./operationStore.ts";
 
 type LibraryFileOperation = NonNullable<ReturnType<typeof getLibraryFileOperation>>;
+type LibraryFileItem = ReturnType<typeof listLibraryFileOperationItems>[number];
 
 const BUDGET_MS = 20000;
 const BATCH = 50;
@@ -104,11 +106,18 @@ export async function resumeLibraryFileOperations() {
 }
 
 const handlers = {
-  ingest: { plan: planIngest, apply: applyIngestItem, finish: finishIngest },
-  cleanup: { plan: planCleanup, apply: applyCleanupItem, finish: finishCleanup },
+  ingest: { plan: planIngest, finish: finishIngest },
+  cleanup: { plan: planCleanup, finish: finishCleanup },
 };
 
 type Handler = (typeof handlers)[keyof typeof handlers];
+
+const handlerFor = (kind: string): Handler | undefined =>
+  kind === "ingest" || kind === "cleanup" ? handlers[kind] : undefined;
+
+function assertFiled(item: LibraryFileItem): asserts item is FiledItem {
+  if (item.targetPath === null) throw new TypeError("Ingest item has no target path");
+}
 
 async function requestScan(request: LibraryScanRequest) {
   const changedPaths = [...new Set((request?.changedPaths || []).filter(Boolean))];
@@ -127,7 +136,7 @@ async function finish(operation: LibraryFileOperation, handler: Handler, status:
   });
 }
 
-async function applyBatch(operation: LibraryFileOperation, handler: Handler, deadline: number) {
+async function applyBatch(operation: LibraryFileOperation, deadline: number) {
   const context = operation.kind === "cleanup" ? createCleanupContext() : null;
   await context?.prepare();
   const processed = [];
@@ -145,7 +154,12 @@ async function applyBatch(operation: LibraryFileOperation, handler: Handler, dea
       }
       let result;
       try {
-        result = await handler.apply(operation, item, context);
+        if (context) {
+          result = await applyCleanupItem(operation, item, context);
+        } else {
+          assertFiled(item);
+          result = await applyIngestItem(operation, item);
+        }
       } catch (error) {
         result = { status: "failed", reason: safeLogDiagnostic(error) };
       }
@@ -167,8 +181,9 @@ export async function runLibraryFileOperation(
   { budgetMs = BUDGET_MS }: { budgetMs?: number } = {},
 ) {
   const operation = getLibraryFileOperation(id);
-  const handler = handlers[operation?.kind];
-  if (!operation || !handler) return { done: true };
+  if (!operation) return { done: true };
+  const handler = handlerFor(operation.kind);
+  if (!handler) return { done: true };
   const deadline = Date.now() + budgetMs;
   try {
     if (operation.status === "planning") {
@@ -182,7 +197,7 @@ export async function runLibraryFileOperation(
       return { done: true };
     }
     if (operation.status !== "running") return { done: true };
-    const { cancelled } = await applyBatch(operation, handler, deadline);
+    const { cancelled } = await applyBatch(operation, deadline);
     if (cancelled) {
       await finish(operation, handler, "cancelled");
       return { done: true };

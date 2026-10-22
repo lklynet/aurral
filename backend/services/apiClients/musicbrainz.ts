@@ -15,6 +15,7 @@ import { getLinkedArtistProviderIds } from "../providers/brainzmashMappers.ts";
 import { getMusicBrainzContact } from "./config.ts";
 import { runSharedInflight } from "../sharedInflight.ts";
 import { logger } from "../logger.ts";
+import { asAppError } from "../../../lib/errors.ts";
 
 type ArtistAlbum = Awaited<ReturnType<typeof listMetadataArtistAlbums>>[number];
 
@@ -320,10 +321,11 @@ export async function musicbrainzGetArtistAppearsOnReleaseGroups(
       );
     }
   } catch (error) {
-    if (!signal?.aborted && error?.name !== "AbortError") {
+    const failure = asAppError(error);
+    if (!signal?.aborted && failure?.name !== "AbortError") {
       logger.warn("musicbrainz", "Artist appearances lookup failed", {
         mbid,
-        message: error.message,
+        message: failure?.message,
       });
     }
     throw error;

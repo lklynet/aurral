@@ -35,7 +35,7 @@ function persistMembership<T>(operation: () => T) {
   }
 }
 
-export async function processStaticPlaylistBulkOperation(operationId: string | number) {
+export async function processStaticPlaylistBulkOperation(operationId: unknown) {
   const record = getBulkOperation(operationId);
   if (!record || ["completed", "failed"].includes(record.state)) return record;
   let user = userOps.getUserById(record.ownerUserId);
@@ -115,7 +115,7 @@ export async function processStaticPlaylistBulkOperation(operationId: string | n
             const job = downloadTracker.getJob(selection.jobId);
             return job && { ...job, canonicalJobId: job.id };
           })
-          .filter(Boolean);
+          .filter((track): track is NonNullable<typeof track> => Boolean(track));
         target = persistMembership(() => {
           const result = creatingTarget
             ? flowPlaylistConfig.createStaticPlaylist({

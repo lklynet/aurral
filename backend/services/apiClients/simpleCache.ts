@@ -7,7 +7,7 @@ type CacheRegistration = {
 };
 
 const idleCaches = new Set<CacheRegistration>();
-let idleSweepTimer: NodeJS.Timeout | null = null;
+let idleSweepTimer: ReturnType<typeof setInterval> | null = null;
 
 function removeExpired(cache: Map<unknown, CacheEntry>, currentTime: number) {
   for (const [key, entry] of cache) {
@@ -25,7 +25,7 @@ function scheduleIdleSweep(registration: CacheRegistration) {
       if (!cache?.size) idleCaches.delete(entry);
     }
     if (idleCaches.size === 0) {
-      clearInterval(idleSweepTimer);
+      if (idleSweepTimer) clearInterval(idleSweepTimer);
       idleSweepTimer = null;
     }
   }, SWEEP_INTERVAL_MS);

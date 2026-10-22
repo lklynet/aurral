@@ -4,6 +4,7 @@ import {
   isRetryablePlaybackError,
   playbackOperationFailure,
   type PlaybackDestination,
+  type PlaybackOperationResult,
   type PlaybackResultOperation,
 } from "./playbackDestination.ts";
 
@@ -48,7 +49,7 @@ export class PlaybackDestinationRegistry {
             (DELETE_OPERATIONS.has(operation) || destination.isConfigured()),
         )
         .map(async (destination) => {
-          let result;
+          let result: PlaybackOperationResult;
           try {
             result = await destination[operation](...args);
           } catch (error) {

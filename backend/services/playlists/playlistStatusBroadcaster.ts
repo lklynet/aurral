@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { websocketService } from "../websocketService.ts";
 import { logger } from "../logger.ts";
+import { asAppError } from "../../../lib/errors.ts";
 import {
   clearPlaylistStatusCache,
   getPlaylistStatusSnapshot,
@@ -18,7 +19,7 @@ export function startPlaylistStatusBroadcasts({ websocket = websocketService, lo
     try {
       const channels = websocket.getStats().channels;
       if (!channels["weekly-flow"] && !channels.playlists && !channels["*"]) {
-        clearInterval(interval);
+        if (interval) clearInterval(interval);
         interval = null;
         lastVersion = null;
         clearPlaylistStatusCache();
@@ -56,14 +57,16 @@ export function startPlaylistStatusBroadcasts({ websocket = websocketService, lo
       websocket.broadcastPerClient("playlists", buildPayload("playlists"));
       lastVersion = version;
     } catch (error) {
-      log.warn("system", "Failed to broadcast playlist status:", { message: error.message });
+      log.warn("system", "Failed to broadcast playlist status:", {
+        message: asAppError(error)?.message,
+      });
     }
   };
   const subscriptionsChanged = () => broadcast(true);
   websocket.on("subscriptions-changed", subscriptionsChanged);
   broadcast();
   return () => {
-    clearInterval(interval);
+    if (interval) clearInterval(interval);
     websocket.off("subscriptions-changed", subscriptionsChanged);
     clearPlaylistStatusCache();
     for (const client of websocket.clients) delete client._lastPlaylistStatusHashByChannel;

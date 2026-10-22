@@ -5,6 +5,7 @@ import type { HonkerPayload } from "../honkerDb.ts";
 import { processPlaylistOperation } from "./playlistOperations.ts";
 import { setPlaylistOperationWorkerState } from "./playlistOperationQueue.ts";
 import { logger } from "../logger.ts";
+import { asAppError } from "../../../lib/errors.ts";
 import { getBulkOperation, saveBulkOperation } from "./bulkOperationStore.ts";
 
 const PERMANENT_ERROR_CODES = new Set([
@@ -18,8 +19,15 @@ let currentLabel: JsonValue = null;
 const isPlaylistImport = (payload: HonkerPayload) =>
   payload?.kind === "shared-playlist-create" && payload?.importSource != null;
 
+const importProvider = (payload: HonkerPayload) => {
+  const importSource = payload?.importSource;
+  if (typeof importSource !== "object" || importSource === null || Array.isArray(importSource))
+    return null;
+  return importSource.provider || null;
+};
+
 const importContext = (payload: HonkerPayload, job: Job) => ({
-  provider: payload?.importSource?.provider || null,
+  provider: importProvider(payload),
   playlistName: payload?.name || null,
   playlistId: payload?.playlistId || null,
   operationId: job?.id || null,
@@ -75,7 +83,7 @@ const worker = createHonkerWorker({
         saveBulkOperation({
           ...record,
           state: "queued",
-          message: error.message,
+          message: asAppError(error)?.message,
           updatedAt: Date.now(),
         });
       }
@@ -88,14 +96,15 @@ const worker = createHonkerWorker({
       saveBulkOperation({
         ...record,
         state: "failed",
-        message: error.message,
+        message: asAppError(error)?.message,
         updatedAt: Date.now(),
       });
     }
   },
   resolveRetry(error, job) {
-    const message = error?.message || String(error);
-    const permanent = PERMANENT_ERROR_CODES.has(String(error?.code || ""));
+    const failure = asAppError(error);
+    const message = failure?.message || String(error);
+    const permanent = PERMANENT_ERROR_CODES.has(String(failure?.code || ""));
     if (isPlaylistImport(job.payload)) {
       logger[permanent || job.attempts >= 3 ? "error" : "warn"](
         "playlist-import",

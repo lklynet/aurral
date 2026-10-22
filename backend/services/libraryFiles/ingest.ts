@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { asAppError } from "../../../lib/errors.ts";
 import { parseFile, type IAudioMetadata } from "music-metadata";
 import { db } from "../../config/db-sqlite.ts";
 import type {
@@ -57,7 +58,7 @@ const CHUNK = 200;
 
 type LibraryFileOperation = NonNullable<ReturnType<typeof getLibraryFileOperation>>;
 type LibraryFileItem = ReturnType<typeof listLibraryFileOperationItems>[number];
-type FiledItem = LibraryFileItem & { targetPath: string };
+export type FiledItem = LibraryFileItem & { targetPath: string };
 type LibraryFileRecord = ReturnType<typeof buildMetadataRecord>;
 type LibraryMatch = ReturnType<typeof matchLibraryRecord>;
 type TagFillAlbums = NonNullable<Parameters<typeof planTagFill>[1]>;
@@ -65,8 +66,10 @@ type TagFillTags = NonNullable<Awaited<ReturnType<typeof planTagFill>>["tags"]>;
 type TransferMode = Parameters<typeof placeFile>[2];
 type SettledItem = Pick<
   LibraryFileOperationItemsRow,
-  "position" | "source_path" | "details_json" | "target_path"
->;
+  "position" | "source_path" | "details_json"
+> & {
+  target_path: string;
+};
 type Placed = { item: SettledItem; media: LibraryMediaFilesRow };
 
 export class IngestSourceError extends Error {
@@ -248,12 +251,14 @@ async function compareWithLibrary(source: Recording, candidates: string[], title
   };
 }
 
+const tagText = (value: unknown) => (typeof value === "string" ? value : null);
+
 const plannedIdentity = (record: LibraryFileRecord, tags: TagFillTags = {}) => {
   const planned = {
     ...record,
-    trackMbid: record.trackMbid || tags.recordingMbid || null,
-    releaseGroupMbid: record.releaseGroupMbid || tags.releaseGroupMbid || null,
-    albumMbid: record.albumMbid || tags.releaseMbid || null,
+    trackMbid: record.trackMbid || tagText(tags.recordingMbid) || null,
+    releaseGroupMbid: record.releaseGroupMbid || tagText(tags.releaseGroupMbid) || null,
+    albumMbid: record.albumMbid || tagText(tags.releaseMbid) || null,
   };
   const changed = (["trackMbid", "releaseGroupMbid", "albumMbid"] as const).some(
     (field) => planned[field] !== record[field],
@@ -514,10 +519,11 @@ async function fileItem(operation: LibraryFileOperation, item: FiledItem) {
     try {
       await placeFile(source, target, mode);
     } catch (error) {
-      if (error?.code === "EEXIST") return fileItem(operation, item);
+      const failure = asAppError(error);
+      if (failure?.code === "EEXIST") return fileItem(operation, item);
       return {
         status: "failed",
-        reason: `Aurral could not ${mode} this file: ${error?.code || error?.message}`,
+        reason: `Aurral could not ${mode} this file: ${failure?.code || failure?.message}`,
       };
     }
   }
@@ -554,7 +560,7 @@ async function fillTags(item: FiledItem) {
   } catch (error) {
     return {
       status: "done",
-      reason: `Filed, but Aurral could not write the tags: ${error?.message || error}`,
+      reason: `Filed, but Aurral could not write the tags: ${asAppError(error)?.message || error}`,
     };
   }
   keepAlbumTogether(item.details.albumId, item.details.tags);
@@ -621,9 +627,9 @@ export function ingestScanRequest(
   operation: LibraryFileOperation,
   items: { status: string; sourcePath: string; targetPath?: string | null }[],
 ) {
-  const changedPaths = items
-    .filter((item) => ["done", "duplicate"].includes(item.status) && item.targetPath)
-    .map((item) => item.targetPath);
+  const changedPaths = items.flatMap((item) =>
+    ["done", "duplicate"].includes(item.status) && item.targetPath ? [item.targetPath] : [],
+  );
   if (operation.options.mode === "move") changedPaths.push(...items.map((item) => item.sourcePath));
   return { includeLidarr: operation.options.mode === "move", changedPaths };
 }
@@ -848,7 +854,7 @@ async function settleIngest(operation: LibraryFileOperation) {
   const items = db
     .prepare<[number], SettledItem>(
       `SELECT position, source_path, target_path, details_json FROM library_file_operation_items
-     WHERE operation_id = ? AND status = 'done' ORDER BY position`,
+     WHERE operation_id = ? AND status = 'done' AND target_path IS NOT NULL ORDER BY position`,
     )
     .all(operation.id);
   let placed: Placed[] = [];

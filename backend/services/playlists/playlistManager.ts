@@ -1,6 +1,7 @@
 import path from "path";
 import fs from "fs/promises";
 import { dbOps } from "../../db/helpers/index.ts";
+import { asAppError } from "../../../lib/errors.ts";
 import { flowPlaylistConfig, type FlowConfig, type StaticPlaylist } from "./flowPlaylistConfig.ts";
 import { downloadTracker } from "../downloadJobs/downloadTracker.ts";
 import { writePlaylistArtworkWebpFromBuffer } from "../playlistArtwork.ts";
@@ -68,6 +69,9 @@ function batchSystemTask(
     }) ?? enqueueSystemTaskJob(payload, { delaySeconds })
   );
 }
+
+const stringList = (value: unknown) =>
+  Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : null;
 
 function mergeEntityIds(left: string[] | null | undefined, right: string[] | null | undefined) {
   if (left == null || right == null) return null;
@@ -168,10 +172,13 @@ export class PlaylistManager {
       {
         delaySeconds,
         matches: (payload) =>
-          playlistSyncStage(payload.attempt) === playlistSyncStage(attempt) &&
+          playlistSyncStage(Number(payload.attempt)) === playlistSyncStage(attempt) &&
           (payload.chain ?? null) === (keys ? chain : null) &&
           JSON.stringify(payload.destinations ?? null) === JSON.stringify(keys),
-        merge: (payload) => ({ ...payload, entityIds: mergeEntityIds(payload.entityIds, ids) }),
+        merge: (payload) => ({
+          ...payload,
+          entityIds: mergeEntityIds(stringList(payload.entityIds), ids),
+        }),
       },
     );
   }
@@ -254,12 +261,12 @@ export class PlaylistManager {
     for (const { state, payload } of listHonkerJobs(getSystemTaskQueueName(PLAYBACK_SCAN_KIND))) {
       if (state !== "pending" || payload?.kind !== PLAYBACK_SCAN_KIND) continue;
       const keys =
-        payload.destinations ??
+        stringList(payload.destinations) ??
         this.destinationRegistry.destinations.map((destination) => destination.key);
       for (const key of keys) {
         foldersByKey.set(key, [
           ...(foldersByKey.get(key) ?? []),
-          ...(payload.folders ?? this.libraryRoots()),
+          ...(stringList(payload.folders) ?? this.libraryRoots()),
         ]);
       }
     }
@@ -329,7 +336,7 @@ export class PlaylistManager {
           kind: artworkContext?.kind || artworkKind,
         });
       } catch (error) {
-        console.warn(`[PlaylistManager] Artwork generation failed: ${error.message}`);
+        console.warn(`[PlaylistManager] Artwork generation failed: ${asAppError(error)?.message}`);
         if (!existing) {
           await writeGeneratedPlaylistArtwork({
             outputPath: artworkPath,
@@ -455,7 +462,7 @@ export class PlaylistManager {
           JSON.stringify(payload.destinations ?? null) === JSON.stringify(destinations),
         merge: (payload) => ({
           ...payload,
-          folders: scanFoldersForPaths([...payload.folders, ...folders], roots),
+          folders: scanFoldersForPaths([...(stringList(payload.folders) ?? []), ...folders], roots),
         }),
       },
     );
@@ -521,7 +528,7 @@ export class PlaylistManager {
       } catch (error) {
         console.warn(
           `[PlaylistManager] Failed to delete files for ${playlistType}:`,
-          error.message,
+          asAppError(error)?.message,
         );
       }
       downloadTracker.clearByPlaylistId(playlistType);

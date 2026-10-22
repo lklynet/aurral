@@ -77,8 +77,8 @@ export async function adoptLibraryFileIdentity(
         ? findLibraryAlbumByArtistTitle(artistId, record.albumName)
         : null;
     const albumKey = (releaseAlbum || namedAlbum)?.identity_key || record.albumKey;
-    if (media.album_id) rekeyLibraryAlbum(media.album_id, albumKey);
-    rekeyLibraryTrack(media.track_id, record.trackKey);
+    if (media.album_id && albumKey) rekeyLibraryAlbum(media.album_id, albumKey);
+    if (record.trackKey) rekeyLibraryTrack(media.track_id, record.trackKey);
   }
   const before = getLibraryMediaFile({ source: "aurral", path: current });
   await scanMusicRoot({

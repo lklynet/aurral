@@ -2,12 +2,19 @@ import { createReadStream, constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
+import { asAppError } from "../../../lib/errors.ts";
 
-export const TRANSFER_MODES = new Set(["move", "copy", "hardlink"]);
+export const TRANSFER_MODES = new Set<unknown>(["move", "copy", "hardlink"]);
 
 type TransferMode = "move" | "copy" | "hardlink";
 
-const LINK_UNSUPPORTED = new Set(["EPERM", "ENOTSUP", "EOPNOTSUPP", "ENOSYS", "EMLINK"]);
+const LINK_UNSUPPORTED = new Set<string | undefined>([
+  "EPERM",
+  "ENOTSUP",
+  "EOPNOTSUPP",
+  "ENOSYS",
+  "EMLINK",
+]);
 const SIDECAR_EXTENSIONS = [".lrc"];
 export const ALBUM_IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif"]);
 
@@ -55,7 +62,7 @@ async function linkOrRenameNew(from: string, target: string) {
     await fs.link(from, target);
     await fs.unlink(from);
   } catch (error) {
-    if (!LINK_UNSUPPORTED.has(error?.code)) throw error;
+    if (!LINK_UNSUPPORTED.has(asAppError(error)?.code)) throw error;
     if (await fs.lstat(target).catch(() => null)) {
       throw Object.assign(new Error(`File exists: ${target}`), { code: "EEXIST" });
     }
@@ -90,7 +97,7 @@ export async function placeFile(source: string, target: string, mode: TransferMo
   try {
     await linkOrRenameNew(source, target);
   } catch (error) {
-    if (error?.code !== "EXDEV") throw error;
+    if (asAppError(error)?.code !== "EXDEV") throw error;
     await copyNew(source, target);
     await fs.unlink(source);
   }
@@ -107,7 +114,7 @@ export async function transferSidecars(source: string, target: string, mode: Tra
       await placeFile(from, `${targetBase}${extension}`, mode);
       placed.push(extension);
     } catch (error) {
-      if (error?.code !== "EEXIST") throw error;
+      if (asAppError(error)?.code !== "EEXIST") throw error;
     }
   }
   return placed;
@@ -137,7 +144,7 @@ export async function removeEmptiedFolder(directory: string, stopAt: string) {
   await removeEmptyDirectories(folder, root);
 }
 
-const HARDLINK_REASONS = {
+const HARDLINK_REASONS: Partial<Record<string, string>> = {
   EXDEV:
     "The source folder and the Downloads Folder are on different filesystems or mounts. In Docker, mount one parent folder that holds both.",
 };
@@ -151,11 +158,12 @@ export async function probeHardlink(sourceFile: string, targetDirectory: string)
     return { available: true, reason: null };
   } catch (error) {
     await fs.rm(probe, { force: true }).catch(() => {});
+    const failure = asAppError(error);
     return {
       available: false,
       reason:
-        HARDLINK_REASONS[error?.code] ||
-        `This filesystem does not allow hardlinks here (${error?.code || error?.message || "unknown error"}).`,
+        (failure?.code === undefined ? undefined : HARDLINK_REASONS[failure.code]) ||
+        `This filesystem does not allow hardlinks here (${failure?.code || failure?.message || "unknown error"}).`,
     };
   }
 }

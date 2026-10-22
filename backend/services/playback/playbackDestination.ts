@@ -23,16 +23,17 @@ export type PlaybackOperationResult = {
   error?: { code: string; message: string; retryable: boolean };
 };
 
+type PlaybackOperationMethod = {
+  bivarianceHack(...args: unknown[]): PlaybackOperationResult | Promise<PlaybackOperationResult>;
+}["bivarianceHack"];
+
 export type PlaybackDestination = {
   key: string;
   name: string;
   isConfigured(): boolean;
   updateConfig(config: unknown): void;
-  getPointerEntityIds(): unknown;
-} & Record<
-  PlaybackResultOperation,
-  (...args: unknown[]) => PlaybackOperationResult | Promise<PlaybackOperationResult>
->;
+  getPointerEntityIds(): string[];
+} & Record<PlaybackResultOperation, PlaybackOperationMethod>;
 
 const REJECTED_HTTP_STATUSES = new Set([400, 401, 403]);
 const REJECTED_SUBSONIC_CODES = new Set([10, 40, 41, 50]);

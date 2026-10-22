@@ -2,6 +2,7 @@ import { withPlaylistMutation, withPlaylistMutationLock } from "../downloadJobs/
 import { db } from "../../config/db-sqlite.ts";
 import { dbOps } from "../../db/helpers/index.ts";
 import { listHonkerJobs } from "../honkerDb.ts";
+import { asAppError } from "../../../lib/errors.ts";
 import type { SettingsRow } from "../../db/rows.ts";
 import { downloadTracker, type DownloadJob } from "../downloadJobs/downloadTracker.ts";
 import {
@@ -42,15 +43,16 @@ export interface StaticPlaylistRemovalOutcome {
   message?: string;
 }
 
-interface RemovalPlan {
+type RemovalPlan = {
   selection: StaticPlaylistSelection;
-  job: DownloadJob;
-  owned: boolean;
   target: StaticPlaylist | undefined;
   peer: DownloadJob | null;
   upgrades: DownloadJob[];
   relocation: PreparedRetainedPlaylistFile | null | undefined;
-}
+} & ({ owned: true; job: DownloadJob } | { owned: false; job: DownloadJob | null });
+
+const payloadIds = (value: unknown) =>
+  Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : [];
 
 interface RemovedMediaIntent {
   playlistId: string;
@@ -147,10 +149,11 @@ export function getPlaylistRemovalLockIds(
       }
     }
     for (const row of pipelineRows) {
-      const groupIds = row.payload?.albumGroupJobIds || [];
-      if (row.payload?.jobId !== job.id && !groupIds.includes(job.id)) continue;
-      owners.push(row.payload.playlistId);
-      for (const id of [row.payload.jobId, ...groupIds]) {
+      const payload = row.payload;
+      const groupIds = payloadIds(payload?.albumGroupJobIds);
+      if (!payload || (payload.jobId !== job.id && !groupIds.includes(job.id))) continue;
+      owners.push(typeof payload.playlistId === "string" ? payload.playlistId : null);
+      for (const id of [...payloadIds([payload.jobId]), ...groupIds]) {
         const peer = downloadTracker.getJob(id);
         if (peer) related.set(id, peer);
       }
@@ -168,7 +171,10 @@ export async function withStaticPlaylistRemovalMutation(
   operation: () => unknown,
 ) {
   while (true) {
-    const readJobs = () => jobIds.map((id) => downloadTracker.getJob(id)).filter(Boolean);
+    const readJobs = () =>
+      jobIds
+        .map((id) => downloadTracker.getJob(id))
+        .filter((job): job is NonNullable<typeof job> => Boolean(job));
     const lockIds = getPlaylistRemovalLockIds(playlistId, readJobs(), extraPlaylistIds);
     const result = await withPlaylistMutationLock(lockIds, async () => {
       if (
@@ -214,11 +220,11 @@ function replacementPeer(job: DownloadJob, removingIds: Set<string>): DownloadJo
   );
   if (!row) return null;
   return (
-    (row.payload.albumGroupJobIds || [])
+    payloadIds(row.payload?.albumGroupJobIds)
       .map((id) => downloadTracker.getJob(id))
       .filter(
-        (peer) =>
-          peer &&
+        (peer): peer is NonNullable<typeof peer> =>
+          peer !== null &&
           !removingIds.has(peer.id) &&
           peer.requestGroupId === job.requestGroupId &&
           peer.albumMbid === job.albumMbid &&
@@ -321,7 +327,11 @@ export async function removeStaticPlaylistSelectionsLocked({
             affectedPlaylistIds.add(reference.id);
         }
       }
-      plans.push({ selection, job, owned, target, peer, upgrades, relocation });
+      plans.push(
+        owned
+          ? { selection, job, owned, target, peer, upgrades, relocation }
+          : { selection, job, owned, target, peer, upgrades, relocation },
+      );
       outcomes.push({ jobId: selection.jobId, status: job ? "removed" : "alreadyAbsent" });
     } catch (error) {
       if (job?.playlistType === playlistId && isDownloadJobCancelled(job.id)) {
@@ -340,7 +350,11 @@ export async function removeStaticPlaylistSelectionsLocked({
             );
         }
       }
-      outcomes.push({ jobId: selection.jobId, status: "failed", message: error.message });
+      outcomes.push({
+        jobId: selection.jobId,
+        status: "failed",
+        message: asAppError(error)?.message,
+      });
     }
   }
   const recoverCancelledPlans = () => {

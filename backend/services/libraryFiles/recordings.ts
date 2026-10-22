@@ -27,7 +27,11 @@ export async function readRecording(filePath: string, metadata: IAudioMetadata |
 // a run of silent tracks. Files whose tags number them differently are
 // different tracks, not copies, whatever the Library merged them into.
 export const differentTracks = (left: Recording, right: Recording) =>
-  left.trackNumber > 0 && right.trackNumber > 0 && left.trackNumber !== right.trackNumber;
+  left.trackNumber !== null &&
+  right.trackNumber !== null &&
+  left.trackNumber > 0 &&
+  right.trackNumber > 0 &&
+  left.trackNumber !== right.trackNumber;
 
 export const formatGap = (ms: number) => {
   const seconds = Math.round(Math.abs(ms) / 1000);

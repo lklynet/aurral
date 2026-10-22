@@ -2,6 +2,7 @@ import axios from "../../../lib/axiosFetch.ts";
 import createRateLimiter from "./rateLimiter.ts";
 import createCache from "./simpleCache.ts";
 import { logger } from "../logger.ts";
+import { asAppError } from "../../../lib/errors.ts";
 import { APP_NAME, APP_VERSION, LISTENBRAINZ_API } from "../../config/constants.ts";
 
 interface ListenbrainzSubmitEvent {
@@ -13,6 +14,14 @@ interface ListenbrainzSubmitEvent {
   trackMbid?: string | null;
   albumMbid?: string | null;
   artistMbid?: string | null;
+}
+
+interface ListenbrainzErrorDetails {
+  path: string;
+  status: number | null;
+  code: string | null;
+  message: string;
+  error: unknown;
 }
 
 const listenbrainzCache = createCache(300);
@@ -32,9 +41,10 @@ const LISTENBRAINZ_MAX_RATE_LIMIT_WAIT_SECONDS = 15;
 const listenbrainzInflightRequests = new Map();
 const listenbrainzErrorLogAt = new Map();
 
-const getRateLimitWaitMs = (error) => {
-  if (error.response?.status !== 429) return null;
-  const resetIn = Number(error.response.headers?.["x-ratelimit-reset-in"]);
+const getRateLimitWaitMs = (error: unknown) => {
+  const failure = asAppError(error);
+  if (failure?.response?.status !== 429) return null;
+  const resetIn = Number(failure.response.headers?.["x-ratelimit-reset-in"]);
   const seconds = Number.isFinite(resetIn) && resetIn >= 0 ? resetIn : 1;
   return Math.min(seconds, LISTENBRAINZ_MAX_RATE_LIMIT_WAIT_SECONDS) * 1000 + 250;
 };
@@ -153,21 +163,22 @@ export async function listenbrainzRequest(
   }
 
   const requestPromise = (async () => {
-    const isRetryable = (error) => {
-      const status = error.response?.status;
-      const code = error.code;
+    const isRetryable = (error: unknown) => {
+      const failure = asAppError(error);
+      const status = failure?.response?.status;
+      const code = failure?.code;
       return (
         code === "ECONNABORTED" ||
         code === "ETIMEDOUT" ||
         code === "ECONNRESET" ||
         code === "ENOTFOUND" ||
         code === "EAI_AGAIN" ||
-        [408, 425, 500, 502, 503, 504].includes(status)
+        (status !== undefined && [408, 425, 500, 502, 503, 504].includes(status))
       );
     };
-    const getLogKey = (details) =>
+    const getLogKey = (details: ListenbrainzErrorDetails) =>
       `${details.path}:${details.status || "none"}:${details.code || "none"}`;
-    const logError = (message, details) => {
+    const logError = (message: string, details: ListenbrainzErrorDetails) => {
       const key = getLogKey(details);
       const now = Date.now();
       const last = listenbrainzErrorLogAt.get(key) || 0;
@@ -176,7 +187,7 @@ export async function listenbrainzRequest(
       logger.error("api", message, details);
     };
 
-    let lastError = null;
+    let lastError: unknown = null;
     for (let retryCount = 0; retryCount <= LISTENBRAINZ_MAX_RETRIES; retryCount++) {
       try {
         const response = await listenbrainzLimiter.schedule(() => {
@@ -210,12 +221,18 @@ export async function listenbrainzRequest(
       }
     }
 
+    const failure = asAppError(lastError);
+    const responseData = failure?.response?.data;
     const details = {
       path,
-      status: lastError?.response?.status || null,
-      code: lastError?.code || null,
-      message: lastError?.message || "Unknown ListenBrainz error",
-      error: lastError?.response?.data?.error || lastError?.response?.data?.message || null,
+      status: failure?.response?.status || null,
+      code: failure?.code || null,
+      message: failure?.message || "Unknown ListenBrainz error",
+      error:
+        (typeof responseData === "object" &&
+          responseData !== null &&
+          (Reflect.get(responseData, "error") || Reflect.get(responseData, "message"))) ||
+        null,
     };
     logError("ListenBrainz API error:", details);
     throw lastError;

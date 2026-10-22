@@ -7,6 +7,7 @@ import { logger } from "../logger.ts";
 import { LASTFM_API } from "../../config/constants.ts";
 import { getLastfmApiKey, getLastfmApiSecret } from "./config.ts";
 import { runSharedInflight } from "../sharedInflight.ts";
+import { asAppError } from "../../../lib/errors.ts";
 
 interface LastfmScrobbleEvent {
   playedAt: number | string;
@@ -16,6 +17,14 @@ interface LastfmScrobbleEvent {
   durationMs?: number | null;
   trackMbid?: string | null;
   artistMbid?: string | null;
+}
+
+interface LastfmErrorDetails {
+  method: string;
+  status: number | null;
+  code: string | null;
+  message: string;
+  error: unknown;
 }
 
 const lastfmCache = createCache(300);
@@ -105,21 +114,22 @@ export async function lastfmRequest(
     lastfmInflightRequests,
     cacheKey,
     async (sharedSignal: AbortSignal) => {
-      const isRetryable = (error) => {
-        const status = error.response?.status;
-        const code = error.code;
+      const isRetryable = (error: unknown) => {
+        const failure = asAppError(error);
+        const status = failure?.response?.status;
+        const code = failure?.code;
         return (
           code === "ECONNABORTED" ||
           code === "ETIMEDOUT" ||
           code === "ECONNRESET" ||
           code === "ENOTFOUND" ||
           code === "EAI_AGAIN" ||
-          [408, 425, 500, 502, 503, 504].includes(status)
+          (status !== undefined && [408, 425, 500, 502, 503, 504].includes(status))
         );
       };
-      const getLogKey = (details) =>
+      const getLogKey = (details: LastfmErrorDetails) =>
         `${details.method}:${details.status || "none"}:${details.code || "none"}`;
-      const logError = (message, details) => {
+      const logError = (message: string, details: LastfmErrorDetails) => {
         const key = getLogKey(details);
         const now = Date.now();
         const last = lastfmErrorLogAt.get(key) || 0;
@@ -127,7 +137,7 @@ export async function lastfmRequest(
         lastfmErrorLogAt.set(key, now);
         logger.error("api", message, details);
       };
-      let lastError = null;
+      let lastError: unknown = null;
       for (let retryCount = 0; retryCount <= maxRetries; retryCount++) {
         sharedSignal.throwIfAborted?.();
         try {
@@ -157,14 +167,19 @@ export async function lastfmRequest(
           break;
         }
       }
-      const status = lastError?.response?.status || null;
+      const failure = asAppError(lastError);
+      const status = failure?.response?.status || null;
+      const responseData = failure?.response?.data;
       const payloadError =
-        lastError?.response?.data?.message || lastError?.response?.data?.error || null;
+        (typeof responseData === "object" &&
+          responseData !== null &&
+          (Reflect.get(responseData, "message") || Reflect.get(responseData, "error"))) ||
+        null;
       const details = {
         method,
         status,
-        code: lastError?.code || null,
-        message: lastError?.message || "Unknown Last.fm error",
+        code: failure?.code || null,
+        message: failure?.message || "Unknown Last.fm error",
         error: payloadError,
       };
       if (details.code === "ECONNABORTED") {

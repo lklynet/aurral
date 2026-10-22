@@ -166,7 +166,7 @@ export class PlexPlaybackDestination {
       const client = this._ownerClient(user.id, cache);
       if (client) clients.set(client.token, client);
     }
-    const paths = new Set();
+    const paths = new Set<string>();
     for (const client of clients.values()) {
       for (const file of await client.getPlaylistTrackPaths(excluded)) {
         const relative = this._relativeManagedPath(file);

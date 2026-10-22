@@ -68,7 +68,7 @@ const deezerInflightRequests = new Map();
 const deezerTrackListLimiter = createRateLimiter(110);
 
 const isDeezerOutage = (data: { error?: { code?: number } } | null | undefined) =>
-  Boolean(data?.error) && data.error.code !== 800;
+  Boolean(data?.error) && data?.error?.code !== 800;
 
 async function cachedOrInflight<T>(
   cache: ReturnType<typeof createCache>,
@@ -559,8 +559,8 @@ export function scoreDeezerTrackMatch(track: TrackLike, deezerTrack: TrackLike) 
   return score;
 }
 
-export function attachDeezerTrackPreviews(
-  tracks,
+export function attachDeezerTrackPreviews<T extends TrackLike>(
+  tracks: T[],
   deezerTracks: Awaited<ReturnType<typeof deezerGetAlbumTracks>>,
 ) {
   if (!Array.isArray(tracks) || tracks.length === 0) return tracks || [];
@@ -618,8 +618,8 @@ export async function deezerGetAlbumTracks(deezerAlbumId: string | number) {
   });
 }
 
-export async function enrichTracksWithDeezerPreviews(
-  tracks,
+export async function enrichTracksWithDeezerPreviews<T extends TrackLike>(
+  tracks: T[],
   {
     artistName = "",
     deezerArtistId = null,

@@ -53,14 +53,17 @@ const isEmpty = (value: unknown) => (Array.isArray(value) ? value.length === 0 :
 
 // Only an album the provider does not have is no match. Any other failure
 // reaches planTagFill, which says the provider could not be reached.
-const albumOrNone = (mbid: string | null) =>
+const albumOrNone = (mbid: string) =>
   getAlbumByMbid(mbid).catch((error) => {
     if (isMetadataNotFoundError(error)) return null;
     throw error;
   });
 
 async function resolveMusicBrainzAlbum(album: TagFillAlbum, artist: TagFillArtist) {
-  for (const mbid of [...new Set([album.releaseGroupMbid, album.releaseMbid].filter(Boolean))]) {
+  const mbids = [album.releaseGroupMbid, album.releaseMbid].filter((mbid): mbid is string =>
+    Boolean(mbid),
+  );
+  for (const mbid of new Set(mbids)) {
     const found = await albumOrNone(mbid);
     if (found?.id) return found;
   }

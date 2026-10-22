@@ -40,8 +40,8 @@ async function findVideo(artist: string, title: string) {
       if (
         comparison.contradictions.length ||
         comparison.titleSimilarity !== 1 ||
-        comparison.artistSimilarity < MATCH_POLICY.minArtistSimilarity ||
-        comparison.artistSimilarity == null
+        comparison.artistSimilarity == null ||
+        comparison.artistSimilarity < MATCH_POLICY.minArtistSimilarity
       )
         return [];
       return [{ result, preference: videoPreference(result, upload.channelArtist) }];
