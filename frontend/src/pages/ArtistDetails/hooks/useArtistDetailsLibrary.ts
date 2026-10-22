@@ -584,12 +584,16 @@ export function useArtistDetailsLibrary({
       }
       const addedAlbumId = addedAlbum.id;
 
-      setLibraryArtist((previous) => ({
-        ...previous,
-        ...addedArtist,
-        managedBy: addedArtist.managedBy || previous?.managedBy || null,
-        foreignArtistId: addedArtist.foreignArtistId || addedArtist.mbid || artistMbid,
-      }));
+      setLibraryArtist((previous) => {
+        const foreignArtistId = addedArtist.foreignArtistId || addedArtist.mbid || artistMbid;
+        if (addedArtist.managedBy) return { ...previous, ...addedArtist, foreignArtistId };
+        return {
+          ...previous,
+          ...addedArtist,
+          managedBy: previous?.managedBy || null,
+          foreignArtistId,
+        };
+      });
       setExistsInLibrary(true);
       setLibraryAlbums((previous) =>
         deduplicateAlbums([
