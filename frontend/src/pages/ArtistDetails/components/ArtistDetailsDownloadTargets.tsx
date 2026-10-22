@@ -43,7 +43,7 @@ type ArtistDetailsDownloadTargetsProps = {
   getAlbumStatus: ArtistDetailsLibrary["getAlbumStatus"];
   artist: ArtistDetails | null;
   albumCovers: Record<string, string>;
-  fulfilledCoverIds: Set<string>;
+  fulfilledCoverIds: ReadonlySet<unknown> | undefined;
   artistCoverImage: string | null | undefined;
   canAddAlbum: boolean;
   requestingAlbum: string | null;
@@ -115,7 +115,7 @@ export function ArtistDetailsDownloadTargets({
     releaseGroupId: string;
   } | null>(null);
   const requestedReleaseGroupId =
-    requestedPick?.artistId === artist?.id ? requestedPick.releaseGroupId : null;
+    requestedPick?.artistId === artist?.id ? requestedPick!.releaseGroupId : null;
   const missingReleasePick = useMemo(
     () => buildAurralPick({ releaseGroups, getAlbumStatus, requestedReleaseGroupId }),
     [releaseGroups, getAlbumStatus, requestedReleaseGroupId],
@@ -308,10 +308,7 @@ export function ArtistDetailsDownloadTargets({
                 />
                 {canAddAlbum && releaseGroupId ? (
                   <AddActionButton
-                    {...getAlbumAddAction(
-                      { ...albumStatus, managedBy: albumStatus?.albumInfo?.managedBy },
-                      libraryDestination,
-                    )}
+                    {...getAlbumAddAction({ ...albumStatus }, libraryDestination)}
                     ownerConflict={albumStatus?.ownerConflict}
                     onAdd={(managedBy) => {
                       setRequestedPick({ artistId: artist?.id, releaseGroupId });

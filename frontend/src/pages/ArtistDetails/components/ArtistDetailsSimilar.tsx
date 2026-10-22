@@ -28,7 +28,11 @@ export function ArtistDetailsSimilar({
   loadingSimilar: boolean;
   similarArtists: SimilarArtist[];
   similarArtistsScrollRef: RefObject<HTMLDivElement | null>;
-  onArtistFeedback: (artist: SimilarArtist, action: ArtistFeedbackAction) => void;
+  onArtistFeedback: (
+    artist: SimilarArtist,
+    action: ArtistFeedbackAction,
+    options: { isSelected: boolean },
+  ) => unknown;
   artistFeedbackLookup: Map<string, Set<string>> | null | undefined;
 }) {
   const [libraryLookup, setLibraryLookup] = useState<LookupArtistsInLibraryBatchResponse>({});
@@ -187,7 +191,9 @@ export function ArtistDetailsSimilar({
                       <ArtistContextMenu
                         artist={similar}
                         isInLibrary={!!libraryLookup[artistId]}
-                        onFeedback={onArtistFeedback}
+                        onFeedback={(_menuArtist, action, options) =>
+                          onArtistFeedback(similar, action, options)
+                        }
                         feedbackUsed={
                           artistFeedbackLookup
                             ? getArtistFeedbackFlags(artistFeedbackLookup, similar)

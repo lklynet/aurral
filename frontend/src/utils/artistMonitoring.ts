@@ -123,7 +123,7 @@ export const describeArtistAdd = ({
   name,
   monitorOption,
 }: {
-  name: string;
+  name: string | undefined;
   monitorOption?: string | null;
 }) =>
   monitorOption && monitorOption !== "none"

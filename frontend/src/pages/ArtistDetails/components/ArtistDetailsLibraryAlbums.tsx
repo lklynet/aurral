@@ -33,13 +33,19 @@ type ArtistDetailsLibraryAlbumsProps = {
   albumCovers: Record<string, string>;
   fulfilledCoverIds: Set<string>;
   artistCoverImage: string | null | undefined;
-  albumDropdownOpen: string | null;
-  setAlbumDropdownOpen: (rgId: string | null) => void;
+  albumDropdownOpen: string | null | undefined;
+  setAlbumDropdownOpen: (rgId: string | null | undefined) => void;
   canDeleteAlbum: boolean;
-  handleDeleteAlbumClick: (albumId: string, title: string) => void;
+  handleDeleteAlbumClick: (
+    albumId: string | null | undefined,
+    title: string | null | undefined,
+  ) => void;
   canReSearchAlbum: boolean;
   lidarrConnected?: boolean;
-  handleReSearchAlbum: (libraryAlbumId: LibraryAlbumId, title: string) => Promise<void>;
+  handleReSearchAlbum: (
+    libraryAlbumId: LibraryAlbumId,
+    title: string | null | undefined,
+  ) => Promise<void>;
   handleReSearchMissingDownloads: () => Promise<void>;
   onVisibleCoverIdsChange?: (ids: string[]) => void;
   artistName?: string;
@@ -81,7 +87,7 @@ export function ArtistDetailsLibraryAlbums({
   );
 
   const releaseGroups: ReleaseGroup[] = artist?.["release-groups"] || [];
-  const popularityById = new Map(
+  const popularityById = new Map<string | null | undefined, number>(
     releaseGroups.map((rg) => [rg.id, getReleaseMetric(rg).sortValue]),
   );
   const getAlbumPopularity = (album: LibraryAlbum) => {
@@ -181,9 +187,10 @@ export function ArtistDetailsLibraryAlbums({
   }, []);
 
   const libraryAlbumLink = (libraryAlbum: LibraryAlbum, coverUrl: string) => {
-    const hasFiles =
-      (libraryAlbum.statistics?.sizeOnDisk ?? 0) > 0 ||
-      (libraryAlbum.statistics?.trackFileCount ?? 0) > 0;
+    const statistics = libraryAlbum.statistics;
+    const trackFileCount =
+      statistics && "trackFileCount" in statistics ? statistics.trackFileCount : 0;
+    const hasFiles = (statistics?.sizeOnDisk ?? 0) > 0 || trackFileCount > 0;
     if (libraryAlbum.canonicalId && hasFiles) {
       return { to: `/library/album/${encodeURIComponent(libraryAlbum.canonicalId)}` };
     }
@@ -333,10 +340,9 @@ export function ArtistDetailsLibraryAlbums({
           const rgId = libraryAlbum.mbid || libraryAlbum.foreignAlbumId;
           const { downloadStatus, isComplete, canReSearch } = getAlbumState(libraryAlbum);
           const coverUrl =
-            albumCovers[rgId] ||
+            (rgId && albumCovers[rgId]) ||
             albumCovers[libraryAlbum.id] ||
-            libraryAlbum.coverUrl ||
-            (fulfilledCoverIds?.has(rgId) ? artistCoverImage : "") ||
+            (rgId && fulfilledCoverIds?.has(rgId) ? artistCoverImage : "") ||
             "";
           const hasDownloadedStatus =
             isComplete ||
@@ -350,7 +356,6 @@ export function ArtistDetailsLibraryAlbums({
           const releaseYear = String(libraryAlbum.releaseDate || "").slice(0, 4);
           const metaItems = [
             /^\d{4}$/.test(releaseYear) ? releaseYear : null,
-            libraryAlbum.albumType || null,
             showIncompleteStatus ? "Incomplete" : null,
           ].filter(Boolean);
 
@@ -365,7 +370,7 @@ export function ArtistDetailsLibraryAlbums({
                 {coverUrl ? (
                   <ArtworkImage
                     src={coverUrl}
-                    alt={libraryAlbum.albumName}
+                    alt={libraryAlbum.albumName ?? undefined}
                     loading="lazy"
                     decoding="async"
                   />
@@ -441,8 +446,8 @@ export function ArtistDetailsLibraryAlbums({
                         >
                           <a
                             href={`https://www.last.fm/music/${encodeURIComponent(
-                              artist.name,
-                            )}/${encodeURIComponent(libraryAlbum.albumName)}`}
+                              String(artist.name),
+                            )}/${encodeURIComponent(String(libraryAlbum.albumName))}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="artist-menu-item"

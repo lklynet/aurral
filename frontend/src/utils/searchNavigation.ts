@@ -1,4 +1,7 @@
 import { flowPath, playlistPath } from "../navigation/playlistPaths.ts";
+import type { toNormalizedAlbum } from "../../../backend/services/providers/brainzmashMappers.ts";
+
+type AlbumRating = NonNullable<ReturnType<typeof toNormalizedAlbum>["rating"]>;
 
 type SearchItem = {
   type?: string | null;
@@ -31,7 +34,7 @@ type SearchItem = {
   image?: string | null;
   deezerAlbumId?: string | number | null;
   _deezerAlbumId?: string | number | null;
-  rating?: number | null;
+  rating?: AlbumRating | null;
   streamPath?: string | null;
   sourceFlowId?: string | null;
   foreignArtistId?: string | null;
@@ -94,7 +97,7 @@ export function buildArtistFocusState<Overrides extends object = Record<never, n
   return state;
 }
 
-type ReleaseFocusState = {
+export type ReleaseFocusState = {
   focusReleaseGroupMbid: string | number;
   focusReleaseGroup: ReturnType<typeof buildReleaseFocusState>;
   focusTrackMbid?: string | number;
@@ -131,7 +134,7 @@ type ReleaseGroupInput = {
   _coverUrl?: string | null;
   coverUrl?: string | null;
   _deezerAlbumId?: string | number | null;
-  rating?: number | null;
+  rating?: AlbumRating | null;
 };
 
 type LibraryAlbumInput = {

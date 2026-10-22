@@ -14,6 +14,7 @@ import {
   requestAlbumFromSearch,
   setAurralAlbumMonitoring,
   settleLibraryOwnerConflict,
+  type AurralMonitoringResult,
 } from "../../../utils/api/endpoints/library.ts";
 import {
   buildAlbumRequestPayload,
@@ -25,14 +26,15 @@ import { describeArtistAdd } from "../../../utils/artistMonitoring.ts";
 import { describeAlbumRequestResult } from "../../../utils/albumAddAction.ts";
 import { buildAurralAlbumRetryPayload } from "../../../utils/aurralAlbumStatus.ts";
 import { getMyLidarrPreferences } from "../../../utils/api/endpoints/auth.ts";
-import { deduplicateAlbums } from "../utils";
+import { deduplicateAlbums, getApiErrorMessage, getApiErrorText } from "../utils";
 import { useWebSocketChannel } from "../../../hooks/useWebSocket";
+import { asApiError } from "../../../utils/api/core.ts";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
 import type { DownloadStatusEntry } from "../../../../../backend/services/websocketService.ts";
-import type { useArtistDetailsStream } from "./useArtistDetailsStream.ts";
+import type { LibraryArtistRecord, useArtistDetailsStream } from "./useArtistDetailsStream.ts";
 import type { useToast } from "../../../contexts/ToastContext.tsx";
 import type { useLibraryDestination } from "../../../hooks/useLibraryDestination.ts";
-import type { FetchLibraryArtistResponse } from "../../../../../backend/routes/library/handlers/artists.ts";
+import type { RequestAlbumFromSearchResponse } from "../../../../../backend/routes/library/handlers/albums.ts";
 import type { AddArtistToLibraryResponse } from "../../../../../backend/routes/library/handlers/artists.ts";
 import type { GetArtistMonitoringResponse } from "../../../../../backend/routes/library/handlers/artists.ts";
 
@@ -44,10 +46,18 @@ type ToastFn = ReturnType<typeof useToast>["showSuccess"];
 type OwnerConflict = NonNullable<ReturnType<typeof settleLibraryOwnerConflict>>;
 export type DownloadStatus = Partial<DownloadStatusEntry> & Pick<DownloadStatusEntry, "status">;
 export type DownloadStatuses = Record<string, DownloadStatus>;
-type DeleteAlbumTarget = { id: string; title: string; managedBy: string | null };
+type DeleteAlbumTarget = {
+  id: string | null | undefined;
+  title: string | null | undefined;
+  managedBy: string | null;
+};
 export type LibraryAlbumId = string | number;
 type LibraryAlbums = ArtistDetailsStream["libraryAlbums"];
 export type LibraryAlbum = LibraryAlbums[number];
+type AlbumSearchResult =
+  | RequestAlbumFromSearchResponse
+  | (AurralMonitoringResult & { status?: undefined; albumStatus?: undefined })
+  | null;
 type LidarrPreferences = Awaited<ReturnType<typeof getMyLidarrPreferences>>;
 type ArtistAddLidarrOptions = NonNullable<
   Parameters<typeof buildArtistAddPayload>[0]["lidarrOptions"]
@@ -123,8 +133,8 @@ export function useArtistDetailsLibrary({
 }: ArtistDetailsLibraryOptions) {
   const [ownerConflicts, setOwnerConflicts] = useState<Record<string, OwnerConflict>>({});
   const [requestingAlbum, setRequestingAlbum] = useState<string | null>(null);
-  const [removingAlbum, setRemovingAlbum] = useState<string | null>(null);
-  const [albumDropdownOpen, setAlbumDropdownOpen] = useState<string | null>(null);
+  const [removingAlbum, setRemovingAlbum] = useState<string | null | undefined>(null);
+  const [albumDropdownOpen, setAlbumDropdownOpen] = useState<string | null | undefined>(null);
   const [showDeleteAlbumModal, setShowDeleteAlbumModal] = useState<DeleteAlbumTarget | null>(null);
   const [deleteAlbumFiles, setDeleteAlbumFilesState] = useState(() => readDeleteFilesPreference());
   const [refreshingArtist, setRefreshingArtist] = useState(false);
@@ -211,7 +221,7 @@ export function useArtistDetailsLibrary({
     return next;
   }, [downloadStatusesQuery.data]);
   const libraryAlbumsQueryKey = queryKeys.libraryAlbums(libraryArtist?.id);
-  const libraryAlbumsQuery = useQuery({
+  const libraryAlbumsQuery = useQuery<LibraryAlbums>({
     queryKey: libraryAlbumsQueryKey,
     queryFn: ({ signal }) =>
       getLibraryAlbums(libraryArtist!.id!, {
@@ -330,10 +340,10 @@ export function useArtistDetailsLibrary({
   };
 
   const handleRefreshArtist = async () => {
-    if (!libraryArtist?.mbid && !libraryArtist?.foreignArtistId) return;
+    const mbid = libraryArtist?.mbid || libraryArtist?.foreignArtistId;
+    if (!mbid) return;
     setRefreshingArtist(true);
     try {
-      const mbid = libraryArtist.mbid || libraryArtist.foreignArtistId;
       await refreshArtistMutation.mutateAsync(mbid);
       setTimeout(async () => {
         try {
@@ -349,7 +359,7 @@ export function useArtistDetailsLibrary({
         }
       }, 2000);
     } catch (err) {
-      showError(`Failed to refresh artist: ${err.message}`);
+      showError(`Failed to refresh artist: ${asApiError(err)?.message}`);
       setRefreshingArtist(false);
     }
   };
@@ -369,18 +379,18 @@ export function useArtistDetailsLibrary({
   };
 
   const resolveLookupArtist = async (
-    lookupArtist: FetchLibraryArtistResponse | null,
+    lookupArtist: LibraryArtistRecord | null,
     { refresh = true, hydrateAlbums = true }: { refresh?: boolean; hydrateAlbums?: boolean } = {},
   ) => {
     if (!lookupArtist) return null;
     const lookupMbid = lookupArtist.mbid || lookupArtist.foreignArtistId;
-    let fullArtist;
+    let fullArtist: LibraryArtistRecord;
     try {
       fullArtist = await getLibraryArtist(lookupMbid, { bypassCache: true });
     } catch {
       fullArtist = {
         ...lookupArtist,
-        foreignArtistId: lookupArtist.foreignArtistId || lookupArtist.mbid,
+        foreignArtistId: lookupArtist.foreignArtistId || lookupArtist.mbid!,
       };
     }
     if (!fullArtist?.id) return null;
@@ -399,7 +409,7 @@ export function useArtistDetailsLibrary({
     return fullArtist;
   };
 
-  const hydrateLibraryArtist = async (lookupArtist: FetchLibraryArtistResponse) => {
+  const hydrateLibraryArtist = async (lookupArtist: LibraryArtistRecord) => {
     return await resolveLookupArtist(lookupArtist, {
       refresh: true,
       hydrateAlbums: true,
@@ -452,12 +462,7 @@ export function useArtistDetailsLibrary({
       applyCustomizeDefaults(preferences);
     } catch (err) {
       setShowAddCustomizeModal(false);
-      showError(
-        err.response?.data?.message ||
-          err.response?.data?.error ||
-          err.message ||
-          "Failed to load Lidarr preferences",
-      );
+      showError(getApiErrorMessage(err) || "Failed to load Lidarr preferences");
     }
   };
 
@@ -470,13 +475,15 @@ export function useArtistDetailsLibrary({
       showError("Artist information not available");
       return;
     }
+    const artistMbid = artist.id;
+    const artistName = artist.name;
     if (addArtistMutation.isPending) return false;
     setCustomizeAddError(null);
     try {
       const result = await addArtistMutation.mutateAsync(
         buildArtistAddPayload({
-          artistMbid: artist.id,
-          artistName: artist.name,
+          artistMbid,
+          artistName,
           quality: appSettings?.quality || "standard",
           managedBy,
           lidarrOptions,
@@ -488,7 +495,7 @@ export function useArtistDetailsLibrary({
         hydrateAlbums: true,
       });
       if (!fullArtist) {
-        const lookup = await lookupArtistInLibrary(artist.id, { bypassCache: true });
+        const lookup = await lookupArtistInLibrary(artistMbid, { bypassCache: true });
         if (lookup.exists && lookup.artist) {
           fullArtist = await hydrateLibraryArtist(lookup.artist);
         }
@@ -498,10 +505,8 @@ export function useArtistDetailsLibrary({
       }
       showSuccess(
         describeArtistAdd({
-          name: artist.name,
-          manager: managedBy,
+          name: artistName,
           monitorOption,
-          response: result,
         }),
       );
       return true;
@@ -509,7 +514,7 @@ export function useArtistDetailsLibrary({
       const conflict = settleLibraryOwnerConflict(err);
       if (conflict) {
         try {
-          const lookup = await lookupArtistInLibrary(artist.id, { bypassCache: true });
+          const lookup = await lookupArtistInLibrary(artistMbid, { bypassCache: true });
           if (lookup.exists && lookup.artist) {
             await resolveLookupArtist(lookup.artist, { refresh: false, hydrateAlbums: true });
           }
@@ -519,7 +524,7 @@ export function useArtistDetailsLibrary({
         return false;
       }
       const message = `Could not add ${artist.name}. Nothing was added. ${
-        err.response?.data?.message || err.response?.data?.error || err.message || "Try again."
+        getApiErrorMessage(err) || "Try again."
       }`;
       if (showAddCustomizeModal) setCustomizeAddError(message);
       else showError(message);
@@ -555,6 +560,7 @@ export function useArtistDetailsLibrary({
       if (!artist?.id || !artist?.name) {
         throw new Error("Artist information not available");
       }
+      const artistMbid = artist.id;
 
       const result = await requestAlbumMutation.mutateAsync(
         buildAlbumRequestPayload({
@@ -571,12 +577,13 @@ export function useArtistDetailsLibrary({
       if (!addedArtist?.id || !addedAlbum?.id) {
         throw new Error("The album request did not complete");
       }
+      const addedAlbumId = addedAlbum.id;
 
       setLibraryArtist((previous) => ({
         ...previous,
         ...addedArtist,
         managedBy: addedArtist.managedBy || previous?.managedBy,
-        foreignArtistId: addedArtist.foreignArtistId || addedArtist.mbid || artist.id,
+        foreignArtistId: addedArtist.foreignArtistId || addedArtist.mbid || artistMbid,
       }));
       setExistsInLibrary(true);
       setLibraryAlbums((previous) =>
@@ -589,6 +596,7 @@ export function useArtistDetailsLibrary({
           ),
           {
             ...addedAlbum,
+            id: addedAlbumId,
             managedBy: addedAlbum.managedBy || result?.managedBy || managedBy,
             mbid: addedAlbum.mbid || addedAlbum.foreignAlbumId || albumId,
             foreignAlbumId: addedAlbum.foreignAlbumId || addedAlbum.mbid || albumId,
@@ -597,18 +605,18 @@ export function useArtistDetailsLibrary({
         ]),
       );
       const nextDownloadStatusIds = [
-        ...new Set([...downloadStatusIds, String(addedAlbum.id)].filter(Boolean)),
+        ...new Set([...downloadStatusIds, String(addedAlbumId)].filter(Boolean)),
       ];
       queryClient.setQueryData(
         queryKeys.downloadStatus(nextDownloadStatusIds),
         (previous: DownloadStatuses = {}) => {
           const next = { ...previous };
           delete next[`pending-${albumId}`];
-          next[addedAlbum.id] = { status: result.status || "searching" };
+          next[addedAlbumId] = { status: result.status || "searching" };
           return next;
         },
       );
-      const outcome = describeAlbumRequestResult(result, title, managedBy);
+      const outcome = describeAlbumRequestResult(result, title);
       (outcome.kind === "info" ? showInfo : showSuccess)(outcome.message);
     } catch (err) {
       const conflict = settleLibraryOwnerConflict(err);
@@ -618,9 +626,7 @@ export function useArtistDetailsLibrary({
         return;
       }
       showError(
-        `Could not request ${title}. Nothing was added. ${
-          err.response?.data?.message || err.response?.data?.error || err.message || "Try again."
-        }`,
+        `Could not request ${title}. Nothing was added. ${getApiErrorMessage(err) || "Try again."}`,
       );
     } finally {
       setRequestingAlbum(null);
@@ -629,7 +635,7 @@ export function useArtistDetailsLibrary({
 
   const lidarrConnected = libraryDestination?.primary === "lidarr";
 
-  const searchLibraryAlbum = async (album: LibraryAlbum) => {
+  const searchLibraryAlbum = async (album: LibraryAlbum): Promise<AlbumSearchResult> => {
     if (resolveAlbumManager(album) === "aurral") {
       if (!album.monitored) return setAurralAlbumMonitoring(album.id, true);
       return requestAlbumFromSearch(
@@ -660,7 +666,10 @@ export function useArtistDetailsLibrary({
     queryClient.invalidateQueries({ queryKey: queryKeys.downloadStatus(downloadStatusIds) });
   };
 
-  const handleReSearchAlbum = async (libraryAlbumId: LibraryAlbumId, title: string) => {
+  const handleReSearchAlbum = async (
+    libraryAlbumId: LibraryAlbumId,
+    title: string | null | undefined,
+  ) => {
     if (!libraryAlbumId) return;
     setReSearchingAlbum(libraryAlbumId);
     try {
@@ -691,7 +700,9 @@ export function useArtistDetailsLibrary({
       }
       showSuccess(`Search triggered for ${title}`);
     } catch (err) {
-      showError(`Failed to re-search album: ${err.response?.data?.message || err.message}`);
+      showError(
+        `Failed to re-search album: ${getApiErrorText(err, "message") || asApiError(err)?.message}`,
+      );
     } finally {
       setReSearchingAlbum(null);
     }
@@ -759,14 +770,17 @@ export function useArtistDetailsLibrary({
       showSuccess(`Triggered search for ${searched} missing download${searched === 1 ? "" : "s"}`);
     } catch (err) {
       showError(
-        `Failed to re-search missing downloads: ${err.response?.data?.message || err.message}`,
+        `Failed to re-search missing downloads: ${getApiErrorText(err, "message") || asApiError(err)?.message}`,
       );
     } finally {
       setReSearchingMissingAlbums(false);
     }
   };
 
-  const handleDeleteAlbumClick = (albumId: string, title: string) => {
+  const handleDeleteAlbumClick = (
+    albumId: string | null | undefined,
+    title: string | null | undefined,
+  ) => {
     const managedBy = libraryAlbums.find((a) => a.foreignAlbumId === albumId)?.managedBy || null;
     setShowDeleteAlbumModal({ id: albumId, title, managedBy });
     setAlbumDropdownOpen(null);
@@ -828,7 +842,7 @@ export function useArtistDetailsLibrary({
             : "unmonitor";
       showError(
         `Could not ${action} ${title}. ${action === "unmonitor" ? "Nothing changed." : "Review the album before trying again."} ${
-          err.response?.data?.message || err.response?.data?.error || err.message || ""
+          getApiErrorMessage(err) || ""
         }`.trim(),
       );
     } finally {

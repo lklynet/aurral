@@ -20,7 +20,7 @@ import { useResponsiveReleaseLimit } from "../hooks/useResponsiveReleaseLimit";
 import Tooltip from "../../../components/Tooltip";
 import RouteLink, { OptionalLink } from "../../../components/RouteLink";
 
-const sortLatest = (items: ReleaseGroup[]) =>
+const sortLatest = <T extends ReleaseGroup>(items: T[]): T[] =>
   [...items].sort((a, b) =>
     String(b["first-release-date"] || "").localeCompare(String(a["first-release-date"] || "")),
   );
@@ -123,10 +123,7 @@ export function ArtistDetailsAppearsOn({
                   ) : canAddAlbum ? (
                     <div>
                       <AddActionButton
-                        {...getAlbumAddAction(
-                          { status: status?.status, managedBy: status?.albumInfo?.managedBy },
-                          libraryDestination,
-                        )}
+                        {...getAlbumAddAction({ status: status?.status }, libraryDestination)}
                         ownerConflict={status?.ownerConflict}
                         onAdd={(managedBy) =>
                           handleRequestAlbum(releaseGroup.id, releaseGroup.title, managedBy)

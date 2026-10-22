@@ -128,7 +128,7 @@ export const countReleaseTracks = <T extends ReleaseLibraryInfo>(
 
 export const describeAlbumRequestResult = (
   result: AlbumRequestResult | null | undefined,
-  title: string,
+  title: string | null | undefined,
 ) => {
   if (result?.status === "blocked" || result?.albumStatus?.status === "blocked") {
     return {

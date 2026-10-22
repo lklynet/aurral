@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import { MoreVertical, Plus } from "lucide-react";
 import { DotLoader, DownloadingIcon } from "../../../components/DotLoader";
 import SearchLibraryCheck from "../../../components/SearchLibraryCheck";
-import { TrackList } from "../../../components/TrackList";
+import { TrackList, type TrackListRow } from "../../../components/TrackList";
 import { TrackPlaylistSubmenu } from "./TrackPlaylistMenu";
 import { useAlbumTrackListToolbar } from "../../../hooks/useAlbumTrackListToolbar";
 import { useAudioQueue } from "../../../contexts/audioQueueContext";
@@ -13,7 +13,7 @@ import type { ReleaseGroupTrack } from "../../../../../backend/routes/artists/ha
 import type { useStaticPlaylists } from "../../../hooks/useStaticPlaylists";
 import type { PlaybackSource } from "../../../hooks/useAlbumTrackListToolbar";
 import type { ReleaseGroup } from "../utils";
-import type { PlaylistSelection } from "./TrackPlaylistMenu";
+import type { PlaylistSelection, PlaylistTrackIdentity } from "./TrackPlaylistMenu";
 
 const releaseTrackId = (
   track: Partial<ReleaseGroupTrack> | null | undefined,
@@ -67,7 +67,7 @@ export function useReleasePreviewQueue({
     () =>
       (tracks || [])
         .map((track, index) => (track?.preview_url ? normalizeTrack(track, index) : null))
-        .filter(Boolean),
+        .filter((track) => track !== null),
     [normalizeTrack, tracks],
   );
   const toolbar = useAlbumTrackListToolbar({ getQueueTracks, playbackSource });
@@ -110,7 +110,10 @@ export function ArtistDetailsReleaseTrackList({
   libraryTrackSavingKey: string;
   albumDownloading?: boolean;
   ownedTrackMbids?: readonly string[] | undefined;
-  resolveMembershipTrack?: (track: ReleaseGroupTrack, release: ReleaseGroup) => unknown;
+  resolveMembershipTrack?: (
+    track: ReleaseGroupTrack,
+    release: ReleaseGroup,
+  ) => PlaylistTrackIdentity;
   playlists: ReturnType<typeof useStaticPlaylists>["staticPlaylists"];
   playlistsLoading: boolean;
   playlistSavingKey: string;
@@ -154,11 +157,11 @@ export function ArtistDetailsReleaseTrackList({
     playTrack(normalized, { source: playbackSource, queue: preview.getQueueTracks() });
   };
 
-  const rows = tracks.map((track, index) => {
+  const rows: TrackListRow[] = tracks.map((track, index) => {
     const id = releaseTrackId(track, trackKey, index);
     const title = track.title || track.trackName || "Unknown Track";
     const isCurrent = currentTrack?.id === id;
-    const isOwned = [track.mbid, track.recordingId, track.id]
+    const isOwned = [track.mbid, track.id]
       .filter(Boolean)
       .some((identity) => ownedTrackSet.has(String(identity)));
     const canPlay = Boolean(track.preview_url);

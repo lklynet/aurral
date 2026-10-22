@@ -44,7 +44,7 @@ export function ArtistDetailsActionBar({
     | "handleRefreshArtist"
     | "refreshingArtist"
   >;
-  mbid: string | undefined;
+  mbid: string;
   artistName?: string;
   existsInLibrary: boolean;
   libraryLink?: ReactNode;

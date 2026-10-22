@@ -135,7 +135,7 @@ export const queryKeys = {
     libraryPageGeneration,
     options,
   ],
-  libraryAlbumLookup: (ids: string[]): QueryKey => ["library", "album-lookup", [...ids].sort()],
+  libraryAlbumLookup: (ids: MaybeText[]): QueryKey => ["library", "album-lookup", [...ids].sort()],
   libraryAlbumLookupPrefix: ["library", "album-lookup"],
   libraryAlbumTracksPrefix: LIBRARY_ALBUM_TRACKS_QUERY_KEY,
   libraryAlbumTracks: (albumId: string, releaseGroupMbid: MaybeText): QueryKey => [

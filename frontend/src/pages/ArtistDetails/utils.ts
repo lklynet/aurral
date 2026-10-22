@@ -3,6 +3,7 @@ import { TAG_COLORS } from "../discoverUtils.ts";
 import { shouldTriggerAlbumSearch } from "../../utils/albumAddAction.ts";
 import { formatDate } from "../../utils/dateTime.ts";
 import { formatCompactNumber } from "../../utils/numberFormat.ts";
+import { asApiError } from "../../utils/api/core.ts";
 import type {
   LegacyReleaseGroupSummary,
   toNormalizedAlbum,
@@ -20,7 +21,7 @@ export type ReleaseGroup = Partial<LegacyReleaseGroupSummary> & {
   listenerCount?: number | null;
   coverUrl?: string | null;
   _coverUrl?: string | null;
-  _deezerAlbumId?: string | null;
+  _deezerAlbumId?: string | number | null;
 };
 
 export interface ReleaseTrack {
@@ -80,6 +81,17 @@ interface LibraryAlbum extends Pick<ReleaseGroup, "mbid" | "foreignAlbumId"> {
   artistId?: string | number | null;
   monitored?: boolean;
 }
+
+export const getApiErrorText = (error: unknown, key: "message" | "error") => {
+  const data = asApiError(error)?.response?.data;
+  const value = typeof data === "object" && data ? data[key] : undefined;
+  return typeof value === "string" ? value : undefined;
+};
+
+export const getApiErrorMessage = (error: unknown) =>
+  getApiErrorText(error, "message") ||
+  getApiErrorText(error, "error") ||
+  asApiError(error)?.message;
 
 export const readReleaseListViewMode = (): ReleaseListViewMode => {
   if (typeof window === "undefined") return "grid";
@@ -162,6 +174,21 @@ export const reserveUniquePlaylistName = (
 const normalizeTrackDurationMs = (value: unknown) =>
   value != null && Number.isFinite(Number(value)) ? Number(value) : null;
 
+interface StaticPlaylistTrackInput {
+  artistName?: string;
+  trackName?: string;
+  albumName?: string;
+  artistMbid?: string;
+  albumMbid?: string;
+  releaseMbid?: string | null;
+  trackMbid?: string;
+  releaseYear?: string | null;
+  durationMs?: number | null;
+  trackNumber?: number | null;
+  discNumber?: number | null;
+  reason?: string | null;
+}
+
 export const buildStaticPlaylistTrackPayload = ({
   artistName = "",
   trackName = "",
@@ -175,7 +202,7 @@ export const buildStaticPlaylistTrackPayload = ({
   trackNumber = null,
   discNumber = null,
   reason = null,
-} = {}) => ({
+}: StaticPlaylistTrackInput = {}) => ({
   artistName,
   trackName,
   albumName,
@@ -208,7 +235,7 @@ export const formatLifeSpan = (
   return `${beginYear} - Present`;
 };
 
-export const getArtistType = (type: string | null) => {
+export const getArtistType = (type: string | null | undefined) => {
   const types = {
     Person: "Solo artist",
     Group: "Band",
@@ -335,17 +362,18 @@ export const mergeReleaseDetails = <T extends ReleaseGroup | undefined>(
   details: ReleaseGroup | null | undefined,
 ): T | ReleaseGroup => {
   if (!details) return baseRelease;
+  const base = baseRelease!;
   return {
-    ...baseRelease,
-    title: details.title || baseRelease.title,
-    "first-release-date": details["first-release-date"] || baseRelease["first-release-date"],
-    "primary-type": details["primary-type"] || baseRelease["primary-type"],
+    ...base,
+    title: details.title || base.title,
+    "first-release-date": details["first-release-date"] || base["first-release-date"],
+    "primary-type": details["primary-type"] || base["primary-type"],
     "secondary-types":
       Array.isArray(details["secondary-types"]) && details["secondary-types"].length
         ? details["secondary-types"]
-        : baseRelease["secondary-types"],
-    rating: details.rating || baseRelease.rating || null,
-    _coverUrl: details.coverUrl || baseRelease._coverUrl || "",
+        : base["secondary-types"],
+    rating: details.rating || base.rating || null,
+    _coverUrl: details.coverUrl || base._coverUrl || "",
   };
 };
 
@@ -494,7 +522,8 @@ const RELEASE_KIND_ORDER = ["Album", "EP", "Single"];
 
 const getReleaseKindRank = (releaseGroup: ReleaseGroup | null | undefined) => {
   if (releaseGroup?.["secondary-types"]?.length) return RELEASE_KIND_ORDER.length;
-  const rank = RELEASE_KIND_ORDER.indexOf(releaseGroup?.["primary-type"]);
+  const primaryType = releaseGroup?.["primary-type"];
+  const rank = primaryType ? RELEASE_KIND_ORDER.indexOf(primaryType) : -1;
   return rank === -1 ? RELEASE_KIND_ORDER.length : rank;
 };
 
@@ -519,19 +548,24 @@ const isUnrequestedReleaseGroup = (
   return !status || status === "unmonitored";
 };
 
-export const buildAurralPick = ({
+export const buildAurralPick = <T extends ReleaseGroup>({
   releaseGroups = [],
   getAlbumStatus,
   requestedReleaseGroupId = null,
 }: {
-  releaseGroups?: ReleaseGroup[];
+  releaseGroups?: T[];
   getAlbumStatus?: ReleaseGroupStatusLookup;
   requestedReleaseGroupId?: string | null;
 } = {}) => {
   const releaseGroup =
-    releaseGroups.find((item) => item?.id && item.id === requestedReleaseGroupId) ||
+    releaseGroups.find(
+      (item): item is T & { id: string } => !!item?.id && item.id === requestedReleaseGroupId,
+    ) ||
     releaseGroups
-      .filter((item) => item?.id && isUnrequestedReleaseGroup(getAlbumStatus, item.id))
+      .filter(
+        (item): item is T & { id: string } =>
+          !!item?.id && isUnrequestedReleaseGroup(getAlbumStatus, item.id),
+      )
       .sort(
         (a, b) =>
           getReleaseKindRank(a) - getReleaseKindRank(b) || compareReleaseGroupsByPopularity(a, b),

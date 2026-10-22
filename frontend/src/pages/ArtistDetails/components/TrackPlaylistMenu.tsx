@@ -12,10 +12,7 @@ import Tooltip from "../../../components/Tooltip";
 import type { StaticPlaylist } from "../../playlists/playlistStats.ts";
 
 type PlaylistTrackEntry = { id: string; identity: string };
-export type SharedPlaylist = StaticPlaylist & {
-  trackIdentities?: string[];
-  trackEntries?: PlaylistTrackEntry[];
-};
+export type SharedPlaylist = StaticPlaylist;
 
 export type PlaylistTrackIdentity = {
   artistName?: string | null;
@@ -345,7 +342,7 @@ export function TrackPlaylistRemoveSubmenu({
       );
       return entry ? { playlist, jobId: entry.id } : null;
     })
-    .filter(Boolean);
+    .filter((removable) => removable !== null);
 
   if (!removablePlaylists.length) return null;
 
@@ -401,7 +398,7 @@ type TrackPlaylistMenuProps = TrackPlaylistPickerProps & {
   triggerLabel?: string;
   triggerVariant?: "expand" | "kebab" | "compact" | "hidden";
   icon?: LucideIcon;
-  onAddToLibrary?: ((track: PlaylistTrackIdentity | null) => void | Promise<void>) | null;
+  onAddToLibrary?: ((track: PlaylistTrackIdentity | null) => unknown) | null;
   librarySaving?: boolean;
   queueItems?: QueueMenuItem[];
   onLoadPlaylists?: () => Promise<unknown>;
@@ -447,7 +444,8 @@ export const TrackPlaylistMenu = forwardRef<TrackPlaylistMenuHandle, TrackPlayli
     useEffect(() => {
       if (!open) return undefined;
       const handlePointerDown = (event: PointerEvent) => {
-        if (menuRef.current?.contains(event.target) || panelRef.current?.contains(event.target)) {
+        const target = event.target instanceof Node ? event.target : null;
+        if (menuRef.current?.contains(target) || panelRef.current?.contains(target)) {
           return;
         }
         setOpen(false);
@@ -455,7 +453,12 @@ export const TrackPlaylistMenu = forwardRef<TrackPlaylistMenuHandle, TrackPlayli
         onOpenChange?.(false);
       };
       const handleViewportChange = (event: Event) => {
-        if (event?.type === "scroll" && panelRef.current?.contains(event.target)) return;
+        if (
+          event?.type === "scroll" &&
+          event.target instanceof Node &&
+          panelRef.current?.contains(event.target)
+        )
+          return;
         setOpen(false);
         setOpenSubmenu(false);
         onOpenChange?.(false);

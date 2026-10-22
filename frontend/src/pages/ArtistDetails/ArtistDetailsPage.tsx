@@ -20,6 +20,7 @@ import {
 } from "../../utils/api/endpoints/playlists.ts";
 import {
   buildStaticPlaylistTrackPayload,
+  getApiErrorMessage,
   getArtistHeroImage,
   getCoverImage,
   reserveUniquePlaylistName,
@@ -61,6 +62,7 @@ import RouteLink from "../../components/RouteLink";
 import type { PlaylistSelection, PlaylistTrackIdentity } from "./components/TrackPlaylistMenu";
 import type { ArtistPreviewTrack } from "./hooks/usePreviewPlayer";
 import type { ReleaseGroup } from "./utils";
+import type { ArtistFeedbackSource } from "../../utils/artistTaste.ts";
 const MBID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function ArtistDetailsPage() {
@@ -190,7 +192,11 @@ function ArtistDetailsPage() {
   );
 
   const handleArtistTasteFeedback = useCallback(
-    async (targetArtist: typeof tasteArtist, action: TasteAction, { isSelected = false } = {}) => {
+    async (
+      targetArtist: ArtistFeedbackSource,
+      action: TasteAction,
+      { isSelected = false } = {},
+    ) => {
       setTasteActionPending(action);
       try {
         return await submitFeedback(targetArtist, action, {
@@ -237,7 +243,7 @@ function ArtistDetailsPage() {
 
   const libraryLookup = useQuery({
     queryKey: queryKeys.libraryLookupDetails(mbid),
-    queryFn: ({ signal }) => lookupArtistInLibrary(mbid!, { signal }),
+    queryFn: ({ signal }) => lookupArtistInLibrary(mbid, { signal }),
     enabled: false,
   });
   const libraryArtistRecordId = libraryLookup.data?.libraryArtistId || null;
@@ -268,12 +274,7 @@ function ArtistDetailsPage() {
         deezerArtistId: data?.deezerArtistId || "",
       });
     } catch (err) {
-      showError(
-        err.response?.data?.message ||
-          err.response?.data?.error ||
-          err.message ||
-          "Failed to load artist IDs",
-      );
+      showError(getApiErrorMessage(err) || "Failed to load artist IDs");
     }
   };
 
@@ -318,12 +319,7 @@ function ArtistDetailsPage() {
       setPreviewTracks(previewData?.tracks || []);
       setSimilarArtists(similar?.artists || []);
     } catch (err) {
-      showError(
-        err.response?.data?.message ||
-          err.response?.data?.error ||
-          err.message ||
-          "Failed to update artist IDs",
-      );
+      showError(getApiErrorMessage(err) || "Failed to update artist IDs");
     } finally {
       setLoadingCover(false);
       setLoadingPreview(false);
@@ -401,11 +397,11 @@ function ArtistDetailsPage() {
         const name =
           String(target?.name || "").trim() ||
           reserveUniquePlaylistName(staticPlaylists, `${trackPayload.artistName} Picks`);
-        const response = await createStaticPlaylist({
+        await createStaticPlaylist({
           name,
           tracks: [trackPayload],
         });
-        showSuccess(`Track saved to ${response?.playlist?.name || name}`);
+        showSuccess(`Track saved to ${name}`);
       } else {
         const targetPlaylist = staticPlaylists.find(
           (playlist) => playlist.id === target?.playlistId,
@@ -420,11 +416,7 @@ function ArtistDetailsPage() {
         setStaticPlaylists(nextPlaylists);
       }
     } catch (err) {
-      const message =
-        err.response?.data?.message ||
-        err.response?.data?.error ||
-        err.message ||
-        "Failed to save track to playlist";
+      const message = getApiErrorMessage(err) || "Failed to save track to playlist";
       setPlaylistModalError(message);
       showError(message);
     } finally {
@@ -473,12 +465,7 @@ function ArtistDetailsPage() {
             : `Added ${payload.trackName} to your library`,
       );
     } catch (err) {
-      showError(
-        err.response?.data?.message ||
-          err.response?.data?.error ||
-          err.message ||
-          "Failed to add track to library",
-      );
+      showError(getApiErrorMessage(err) || "Failed to add track to library");
     } finally {
       setLibraryTrackSavingKeys((current) => {
         const next = new Set(current);
@@ -512,7 +499,7 @@ function ArtistDetailsPage() {
   const artistCoverImage = getCoverImage(coverImages);
   const playbackSource = {
     type: "artist",
-    id: mbid,
+    id: mbid!,
     label: artistDisplayName,
   } as const;
 
@@ -536,7 +523,7 @@ function ArtistDetailsPage() {
 
       <ArtistDetailsActionBar
         library={library}
-        mbid={mbid}
+        mbid={mbid!}
         artistName={artist?.name || artistNameFromNav || ""}
         existsInLibrary={existsInLibrary}
         libraryLink={
@@ -561,7 +548,7 @@ function ArtistDetailsPage() {
       />
 
       <ArtistDetailsPreviewTracks
-        mbid={mbid}
+        mbid={mbid!}
         artistName={artist?.name || artistNameFromNav || ""}
         loadingPreview={loadingPreview}
         previewTracks={previewTracks}
@@ -701,7 +688,7 @@ function ArtistDetailsPage() {
         onDeleteFilesChange={library.setDeleteAlbumFiles}
         onCancel={library.handleDeleteAlbumCancel}
         onConfirm={library.handleDeleteAlbumConfirm}
-        removing={library.removingAlbum}
+        removing={Boolean(library.removingAlbum)}
       />
 
       <AddArtistCustomizeModal

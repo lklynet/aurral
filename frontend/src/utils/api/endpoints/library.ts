@@ -59,6 +59,7 @@ import type {
   DownloadAlbumResponse,
   DownloadTrackToLibraryResponse,
   GetActiveDownloadsResponse,
+  GetDownloadStatusResponse,
   ResearchLibraryTrackResponse,
   TriggerAlbumSearchResponse,
 } from "../../../../../backend/routes/library/handlers/downloads.ts";
@@ -452,13 +453,13 @@ const normalizeLibraryArtist = (artist: FetchLibraryArtistResponse) =>
   artist && !artist.foreignArtistId ? { ...artist, foreignArtistId: artist.mbid } : artist;
 
 const fetchLibraryArtist = async (
-  mbid: string,
+  mbid: string | null,
   { signal }: SignalOptions = {},
 ): Promise<FetchLibraryArtistResponse> =>
   normalizeLibraryArtist(await getData(`/library/artists/${mbid}`, { signal }));
 
 export const getLibraryArtist = (
-  mbid: string,
+  mbid: string | null,
   { signal, bypassCache = false }: SignalOptions & { bypassCache?: boolean } = {},
 ) => {
   if (signal && !bypassCache) return fetchLibraryArtist(mbid, { signal });
@@ -470,12 +471,12 @@ export const getLibraryArtist = (
 };
 
 const fetchLibraryArtistLookup = (
-  mbid: string,
+  mbid: string | null | undefined,
   { signal }: SignalOptions = {},
 ): Promise<GetLibraryArtistLookupResponse> => getData(`/library/lookup/${mbid}`, { signal });
 
 export const lookupArtistInLibrary = (
-  mbid: string,
+  mbid: string | null | undefined,
   { signal, bypassCache = false }: SignalOptions & { bypassCache?: boolean } = {},
 ) => {
   if (signal && !bypassCache) return fetchLibraryArtistLookup(mbid, { signal });
@@ -536,10 +537,12 @@ export const lookupArtistsInLibraryBatch = async (
 };
 
 export const lookupAlbumsInLibraryBatch = (
-  mbids: string[] | null | undefined,
+  mbids: (string | null | undefined)[] | null | undefined,
   { signal, bypassCache = false }: SignalOptions & { bypassCache?: boolean } = {},
 ): Promise<LookupAlbumsInLibraryBatchResponse> => {
-  const ids = [...new Set((Array.isArray(mbids) ? mbids : []).filter(Boolean))].sort();
+  const ids = [
+    ...new Set((Array.isArray(mbids) ? mbids : []).filter((mbid): mbid is string => Boolean(mbid))),
+  ].sort();
   if (!ids.length) return Promise.resolve({});
   if (bypassCache) {
     return postData("/library/albums/lookup/batch", { mbids: ids }, { signal });
@@ -863,12 +866,17 @@ export const getDownloadStatus = async (
   ].sort();
   if (!ids.length) return {};
   if (bypassCache) {
-    return getData(`/library/downloads/status?albumIds=${ids.join(",")}`, { signal });
+    return getData<GetDownloadStatusResponse>(
+      `/library/downloads/status?albumIds=${ids.join(",")}`,
+      {
+        signal,
+      },
+    );
   }
   return queryClient.fetchQuery({
     queryKey: queryKeys.downloadStatus(ids),
     queryFn: ({ signal: querySignal }) =>
-      getData(`/library/downloads/status?albumIds=${ids.join(",")}`, {
+      getData<GetDownloadStatusResponse>(`/library/downloads/status?albumIds=${ids.join(",")}`, {
         signal: querySignal,
       }),
     staleTime: 4_000,
@@ -912,8 +920,9 @@ export const setAurralTrackKeepFile = (
     putData(`/library/tracks/aurral/${encodeURIComponent(canonicalId)}`, { keepFile }),
   );
 
-export const refreshLibraryArtist = (mbid: string): Promise<RefreshLibraryArtistResponse> =>
-  postData(`/library/artists/${mbid}/refresh`);
+export const refreshLibraryArtist = (
+  mbid: string | null | undefined,
+): Promise<RefreshLibraryArtistResponse> => postData(`/library/artists/${mbid}/refresh`);
 
 export const getRequests = ({
   refresh = false,

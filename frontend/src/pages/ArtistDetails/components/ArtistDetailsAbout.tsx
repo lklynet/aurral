@@ -3,7 +3,7 @@ import { ExternalLink } from "lucide-react";
 import { getArtistHeroImage, getArtistType, type ArtistCoverImage } from "../utils";
 import type { ArtistDetailsResponse } from "../../../../../backend/routes/artists/handlers/details.ts";
 import type { AppSettingsResponse } from "../../../utils/api/endpoints/settings.ts";
-import type { LibraryArtist } from "../../../utils/libraryPageData.ts";
+import type { LibraryArtistRecord } from "../hooks/useArtistDetailsStream.ts";
 import lidarrLogo from "../../../../images/logos/lidarr-color.svg";
 import lastFmLogo from "../../../../images/logos/last-fm-color.svg";
 import musicBrainzLogo from "../../../../images/logos/musicbrainz-color.svg";
@@ -49,13 +49,15 @@ const buildTags = (artist: Partial<ArtistDetailsResponse>) => {
   return out;
 };
 
-const buildRelationLinks = (artist: Partial<ArtistDetailsResponse>) => {
+type RelationLink = { key: string; label: string; href: string; logo?: string };
+
+const buildRelationLinks = (artist: Partial<ArtistDetailsResponse>): RelationLink[] => {
   const direct = Array.isArray(artist?.links) ? artist.links : [];
   const relationSource =
     direct.length > 0
       ? direct.map((link, index) => ({
           key: `link-${index}`,
-          href: link?.target || link?.url,
+          href: link?.target,
           label: link?.type,
         }))
       : Array.isArray(artist?.relations)
@@ -76,7 +78,7 @@ const buildRelationLinks = (artist: Partial<ArtistDetailsResponse>) => {
         label: link.label || hostnameLabel(href),
       };
     })
-    .filter(Boolean);
+    .filter((link) => link !== null);
 };
 
 const tagSearchPath = (name: string) => `/search?q=${encodeURIComponent(`#${name}`)}&type=tag`;
@@ -90,7 +92,7 @@ export function ArtistDetailsAbout({
   coverImages,
 }: {
   artist: Partial<ArtistDetailsResponse>;
-  libraryArtist: LibraryArtist | null;
+  libraryArtist: LibraryArtistRecord | null;
   appSettings: AppSettingsResponse | null;
   lidarrConnected: boolean;
   existsInLibrary: boolean;
@@ -100,11 +102,7 @@ export function ArtistDetailsAbout({
   const visibleTags = tags.slice(0, 5);
   const artistTypeLabel = getArtistType(artist?.type);
   const links = useMemo(() => {
-    const lidarrArtistId =
-      artist?.id ||
-      libraryArtist?.foreignArtistId ||
-      libraryArtist?.mbid ||
-      artist?._lidarrData?.foreignArtistId;
+    const lidarrArtistId = artist?.id || libraryArtist?.foreignArtistId || libraryArtist?.mbid;
     const lidarrUrl =
       appSettings?.integrations?.lidarr?.externalUrl || appSettings?.integrations?.lidarr?.url;
     const lidarrHref =
@@ -115,7 +113,7 @@ export function ArtistDetailsAbout({
               : `add/search?term=lidarr:${encodeURIComponent(lidarrArtistId)}`
           }`
         : null;
-    const primary = [
+    const primary: (RelationLink | null)[] = [
       lidarrHref
         ? {
             key: "lidarr",
@@ -148,14 +146,15 @@ export function ArtistDetailsAbout({
             logo: listenBrainzLogo,
           }
         : null,
-    ].filter(Boolean);
-    const seen = new Set(primary.map((link) => link.href));
+    ];
+    const primaryLinks = primary.filter((link) => link !== null);
+    const seen = new Set(primaryLinks.map((link) => link.href));
     const secondary = buildRelationLinks(artist).filter((link) => {
       if (seen.has(link.href)) return false;
       seen.add(link.href);
       return true;
     });
-    return [...primary, ...secondary];
+    return [...primaryLinks, ...secondary];
   }, [appSettings, artist, existsInLibrary, libraryArtist, lidarrConnected]);
   const aboutImage = useMemo(() => {
     return getArtistHeroImage(coverImages);

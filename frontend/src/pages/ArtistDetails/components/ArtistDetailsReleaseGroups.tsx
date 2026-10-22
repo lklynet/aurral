@@ -37,13 +37,13 @@ const isCompilation = (releaseGroup: ReleaseGroup | null | undefined) =>
 const isSingleOrEp = (releaseGroup: ReleaseGroup | null | undefined) =>
   releaseGroup?.["primary-type"] === "Single" || releaseGroup?.["primary-type"] === "EP";
 
-const sortLatest = (items: ReleaseGroup[]) =>
+const sortLatest = <T extends ReleaseGroup>(items: T[]): T[] =>
   [...items].sort((a, b) =>
     String(b["first-release-date"] || "").localeCompare(String(a["first-release-date"] || "")),
   );
 
-const getVisibleReleases = (
-  releaseGroups: ReleaseGroup[],
+const getVisibleReleases = <T extends ReleaseGroup>(
+  releaseGroups: T[],
   viewMode: ReleaseViewMode,
   limit: number,
 ) => {
@@ -176,10 +176,7 @@ export function ArtistDetailsReleaseGroups({
                   ) : canAddAlbum ? (
                     <div>
                       <AddActionButton
-                        {...getAlbumAddAction(
-                          { status: status?.status, managedBy: status?.albumInfo?.managedBy },
-                          libraryDestination,
-                        )}
+                        {...getAlbumAddAction({ status: status?.status }, libraryDestination)}
                         ownerConflict={status?.ownerConflict}
                         onAdd={(managedBy) =>
                           handleRequestAlbum(releaseGroup.id, releaseGroup.title, managedBy)

@@ -16,7 +16,8 @@ export const matchesReleaseGroupTab = (
   if (tab === "compilations") return isCompilation;
   if (isCompilation) return false;
   if (tab === "singles") {
-    return ["EP", "Single"].includes(releaseGroup?.["primary-type"]);
+    const primaryType = releaseGroup?.["primary-type"];
+    return primaryType !== undefined && ["EP", "Single"].includes(primaryType);
   }
   return releaseGroup?.["primary-type"] === "Album";
 };

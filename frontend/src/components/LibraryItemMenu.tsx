@@ -10,13 +10,16 @@ import {
   type ForwardedRef,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
+  type ComponentType,
   type ReactNode,
 } from "react";
-import { Check, ChevronRight, MoreVertical, type LucideIcon } from "lucide-react";
+import { Check, ChevronRight, MoreVertical } from "lucide-react";
 import type { To } from "react-router";
 import TooltipButton from "./TooltipButton";
 import { DotLoader } from "./DotLoader";
 import RouteLink from "./RouteLink";
+
+type MenuIcon = ComponentType<{ className?: string }>;
 
 const MENU_ITEM_SELECTOR = "button:not(:disabled), a[role=menuitem]";
 const LONG_PRESS_MS = 500;
@@ -25,7 +28,7 @@ const LONG_PRESS_SLOP_PX = 10;
 export type LibraryMenuItem = {
   id: string;
   label: string;
-  icon?: LucideIcon;
+  icon?: MenuIcon;
   disabled?: boolean;
   danger?: boolean;
   selected?: boolean;
@@ -61,7 +64,7 @@ export function LibraryItemSubmenu({
   onClose,
 }: {
   label: string;
-  icon?: LucideIcon;
+  icon?: MenuIcon;
   items?: LibraryMenuItem[];
   isOpen?: boolean;
   onToggle?: () => void;

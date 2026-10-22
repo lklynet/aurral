@@ -44,16 +44,34 @@ import { releaseGroupDetailsQueryOptions } from "../../queryOptions.ts";
 import {
   buildReleaseHeaderMeta,
   buildStaticPlaylistTrackPayload,
+  getApiErrorMessage,
   getCoverImage,
   mergeReleaseDetails,
   reserveUniquePlaylistName,
   resolveReleaseLibraryDisplay,
+  type ReleaseGroup,
 } from "./utils";
 import Tooltip from "../../components/Tooltip";
 import TooltipButton from "../../components/TooltipButton";
 import { useShareAction } from "../../hooks/useShareAction";
 import CrossViewLink from "../../components/CrossViewLink";
-const buildReleaseFromState = (releaseMbid: string | undefined, locationState) => {
+import type { ReleaseGroupTrack } from "../../../../backend/routes/artists/handlers/releaseGroup.ts";
+import type { ReleaseFocusState } from "../../utils/searchNavigation.ts";
+import type { DownloadStatuses } from "./hooks/useArtistDetailsLibrary.ts";
+import type { PlaylistSelection } from "./components/TrackPlaylistMenu";
+
+type StaticPlaylistTrackPayload = ReturnType<typeof buildStaticPlaylistTrackPayload>;
+
+type ReleaseLocationState = {
+  artistName?: string;
+  focusTrackMbid?: string | null;
+  focusReleaseGroup?: Partial<ReleaseFocusState["focusReleaseGroup"]>;
+};
+
+const buildReleaseFromState = (
+  releaseMbid: string | undefined,
+  locationState: ReleaseLocationState | null | undefined,
+) => {
   const focusRelease = locationState?.focusReleaseGroup || {};
   const title = String(focusRelease.title || "").trim();
   return {
@@ -89,7 +107,9 @@ function ReleasePage() {
     conflict: NonNullable<ReturnType<typeof settleLibraryOwnerConflict>>;
   } | null>(null);
   const ownerConflict =
-    ownerConflictState?.releaseMbid === releaseMbid ? ownerConflictState.conflict : null;
+    ownerConflictState && ownerConflictState.releaseMbid === releaseMbid
+      ? ownerConflictState.conflict
+      : null;
   const { hasPermission } = useAuth();
   const share = useShareAction();
   const canAddAlbum = hasPermission("addAlbum");
@@ -162,7 +182,7 @@ function ReleasePage() {
     staleTime: 15_000,
   });
   const libraryInfo = useMemo(() => {
-    const entry = albumLookupQuery.data?.[releaseMbid];
+    const entry = releaseMbid ? albumLookupQuery.data?.[releaseMbid] : undefined;
     return entry?.inLibrary ? entry : null;
   }, [albumLookupQuery.data, releaseMbid]);
   const libraryAlbumId = libraryInfo?.libraryAlbumId ? String(libraryInfo.libraryAlbumId) : null;
@@ -202,11 +222,11 @@ function ReleasePage() {
     },
     refetchIntervalInBackground: false,
   });
-  const downloadStatus = downloadStatusQuery.data?.[libraryAlbumId] || null;
+  const downloadStatus = (libraryAlbumId && downloadStatusQuery.data?.[libraryAlbumId]) || null;
 
   const releaseTitle = release.title || "Release";
   const playbackSource = useMemo(
-    () => ({ type: "release", id: releaseMbid, label: releaseTitle }),
+    () => ({ type: "release", id: releaseMbid!, label: releaseTitle }),
     [releaseMbid, releaseTitle],
   );
   const preview = useReleasePreviewQueue({
@@ -238,8 +258,10 @@ function ReleasePage() {
     (isAlbumDownloading(releaseMbid) ||
       ACTIVE_DOWNLOAD_STATUSES.has(String(downloadStatus?.status)));
 
-  const libraryPath = libraryInfo?.canonicalAlbumId
-    ? `/library/album/${encodeURIComponent(libraryInfo.canonicalAlbumId)}`
+  const canonicalAlbumId =
+    libraryInfo && "canonicalAlbumId" in libraryInfo ? libraryInfo.canonicalAlbumId : undefined;
+  const libraryPath = canonicalAlbumId
+    ? `/library/album/${encodeURIComponent(canonicalAlbumId)}`
     : `/library/albums?query=${encodeURIComponent(releaseTitle)}`;
 
   useEffect(() => {
@@ -267,7 +289,9 @@ function ReleasePage() {
         albumTitle: release.title,
         bypassCache: true,
       });
-      const refreshedUrl = getCoverImage(response?.images);
+      const refreshedUrl = getCoverImage(
+        response && "images" in response ? response.images : undefined,
+      );
       if (refreshedUrl && refreshedUrl !== coverUrl) {
         setCoverUrl(refreshedUrl);
         setCoverLoadFailed(false);
@@ -297,7 +321,7 @@ function ReleasePage() {
           artistName,
           albumTitle: release.title,
         });
-        const image = response?.images?.[0]?.image;
+        const image = response && "images" in response ? response.images[0]?.image : undefined;
         if (!cancelled && image) {
           setCoverUrl(image);
         }
@@ -311,16 +335,12 @@ function ReleasePage() {
   }, [artistName, coverLoadFailed, coverUrl, release.title, releaseMbid]);
 
   const getDefaultTrackPlaylistName = useCallback(
-    (track) =>
-      reserveUniquePlaylistName(
-        staticPlaylists,
-        `${artistName || track?.artistName || "Artist"} Picks`,
-      ),
+    () => reserveUniquePlaylistName(staticPlaylists, `${artistName || "Artist"} Picks`),
     [artistName, staticPlaylists],
   );
 
   const buildReleaseTrackPayload = useCallback(
-    (track) => {
+    (track: ReleaseGroupTrack) => {
       const year = String(release["first-release-date"] || "").slice(0, 4);
       return buildStaticPlaylistTrackPayload({
         artistName: artistName || "",
@@ -341,7 +361,11 @@ function ReleasePage() {
   );
 
   const saveTrackToPlaylist = useCallback(
-    async (trackPayload, target, savingKey) => {
+    async (
+      trackPayload: StaticPlaylistTrackPayload,
+      target: PlaylistSelection,
+      savingKey: string,
+    ) => {
       if (!trackPayload?.artistName || !trackPayload?.trackName) {
         showError("Track details are incomplete");
         return;
@@ -353,11 +377,11 @@ function ReleasePage() {
           const name =
             String(target?.name || "").trim() ||
             reserveUniquePlaylistName(staticPlaylists, `${trackPayload.artistName} Picks`);
-          const response = await createStaticPlaylist({
+          await createStaticPlaylist({
             name,
             tracks: [trackPayload],
           });
-          showSuccess(`Track saved to ${response?.playlist?.name || name}`);
+          showSuccess(`Track saved to ${name}`);
         } else {
           const targetPlaylist = staticPlaylists.find(
             (playlist) => playlist.id === target?.playlistId,
@@ -372,11 +396,7 @@ function ReleasePage() {
           setStaticPlaylists(nextPlaylists);
         }
       } catch (err) {
-        const message =
-          err.response?.data?.message ||
-          err.response?.data?.error ||
-          err.message ||
-          "Failed to save track to playlist";
+        const message = getApiErrorMessage(err) || "Failed to save track to playlist";
         setPlaylistModalError(message);
         showError(message);
       } finally {
@@ -394,7 +414,7 @@ function ReleasePage() {
   );
 
   const handleReleaseTrackAdd = useCallback(
-    (track, _release, target) => {
+    (track: ReleaseGroupTrack, _release: ReleaseGroup, target: PlaylistSelection) => {
       const payload = buildReleaseTrackPayload(track);
       const savingKey = String(track?.id ?? track?.mbid ?? "");
       return saveTrackToPlaylist(payload, target, savingKey);
@@ -403,7 +423,7 @@ function ReleasePage() {
   );
 
   const handleReleaseTrackAddToLibrary = useCallback(
-    async (track) => {
+    async (track: ReleaseGroupTrack) => {
       const payload = buildReleaseTrackPayload(track);
       const savingKey = String(track?.id ?? track?.mbid ?? "");
       setLibraryTrackSavingKey(savingKey);
@@ -417,12 +437,7 @@ function ReleasePage() {
               : `Added ${payload.trackName} to your library`,
         );
       } catch (err) {
-        showError(
-          err.response?.data?.message ||
-            err.response?.data?.error ||
-            err.message ||
-            "Failed to add track to library",
-        );
+        showError(getApiErrorMessage(err) || "Failed to add track to library");
       } finally {
         setLibraryTrackSavingKey("");
       }
@@ -431,7 +446,7 @@ function ReleasePage() {
   );
 
   const handleAlbumAction = useCallback(
-    async (managedBy) => {
+    async (managedBy: string) => {
       if (!releaseMbid || requestingAlbum) return;
       setRequestingAlbum(true);
       try {
@@ -450,7 +465,8 @@ function ReleasePage() {
         if (addedAlbum?.id != null) {
           const statistics = addedAlbum.statistics || {};
           const sizeOnDisk = Number(statistics.sizeOnDisk || 0);
-          const trackFileCount = Number(statistics.trackFileCount || 0);
+          const trackFileCount =
+            "trackFileCount" in statistics ? Number(statistics.trackFileCount || 0) : 0;
           entry = {
             inLibrary: true,
             managedBy: addedAlbum.managedBy || result?.managedBy || managedBy,
@@ -481,13 +497,16 @@ function ReleasePage() {
           }));
           if (entry.libraryAlbumId) {
             const id = String(entry.libraryAlbumId);
-            queryClient.setQueryData(queryKeys.downloadStatus([id]), (current) => ({
-              ...(current || {}),
-              [id]: { ...(current?.[id] || {}), status: result?.status || "searching" },
-            }));
+            queryClient.setQueryData(
+              queryKeys.downloadStatus([id]),
+              (current: DownloadStatuses | undefined) => ({
+                ...(current || {}),
+                [id]: { ...(current?.[id] || {}), status: result?.status || "searching" },
+              }),
+            );
           }
         }
-        const outcome = describeAlbumRequestResult(result, release.title || "album", managedBy);
+        const outcome = describeAlbumRequestResult(result, release.title || "album");
         (outcome.kind === "info" ? showInfo : showSuccess)(outcome.message);
       } catch (err) {
         const conflict = settleLibraryOwnerConflict(err);
@@ -496,11 +515,7 @@ function ReleasePage() {
           showInfo(`${release.title || "Album"}: ${conflict.message}`);
           return;
         }
-        showError(
-          `Could not download the album: ${
-            err.response?.data?.message || err.response?.data?.error || err.message
-          }`,
-        );
+        showError(`Could not download the album: ${getApiErrorMessage(err)}`);
       } finally {
         setRequestingAlbum(false);
       }

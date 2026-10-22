@@ -58,6 +58,8 @@ type ArtistDetailsFallback = {
   "release-groups": never[];
   "appears-on-release-groups": never[];
   relations: never[];
+  rating?: undefined;
+  bio?: undefined;
   "release-group-count": number;
   "release-count": number;
 };

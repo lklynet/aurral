@@ -51,7 +51,8 @@ export interface StaticPlaylist {
     syncIntervalHours: number;
     keepRemovedTracks: boolean;
   } | null;
-  trackEntries: { id: string | null }[];
+  trackEntries: { id: string; identity: string }[];
+  trackIdentities: string[];
 }
 
 export type PlaylistStatus = Omit<PlaylistStatusSnapshot, "flows" | "sharedPlaylists"> & {

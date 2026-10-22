@@ -8,7 +8,7 @@ export interface PlaybackSource {
 }
 
 interface ToolbarTrack {
-  id: string | number;
+  id: string | number | null;
 }
 
 export function useAlbumTrackListToolbar({

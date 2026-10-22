@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import type { ArtistDetailsResponse } from "../../../../../backend/routes/artists/handlers/details.ts";
 import type { SimilarArtistsResponse } from "../../../../../backend/routes/artists/handlers/similar.ts";
-import type { ArtistCoverImage } from "../utils";
+import { getApiErrorMessage, type ArtistCoverImage } from "../utils";
+import type { RequestAlbumFromSearchResponse } from "../../../../../backend/routes/library/handlers/albums.ts";
 import type { FetchLibraryArtistResponse } from "../../../../../backend/routes/library/handlers/artists.ts";
 import {
   getArtistDetails,
@@ -24,7 +25,41 @@ import { allReleaseTypes, emptyArtistShape } from "../constants";
 export type ArtistDetails = Partial<ArtistDetailsResponse>;
 type ReleaseGroupList = NonNullable<ArtistDetails["appears-on-release-groups"]>;
 type ReleaseGroup = NonNullable<ArtistDetails["release-groups"]>[number];
-export type LibraryAlbums = Awaited<ReturnType<typeof getLibraryAlbums>>;
+type NamedKeys<Key> = Key extends unknown
+  ? string extends Key
+    ? never
+    : number extends Key
+      ? never
+      : symbol extends Key
+        ? never
+        : Key
+  : never;
+type KeysOfUnion<T> = T extends unknown ? NamedKeys<keyof T> : never;
+type WithAbsentKeys<T, All = T> = T extends unknown
+  ? T & { [Key in Exclude<KeysOfUnion<All>, keyof T>]?: undefined }
+  : never;
+type LookupAlbum = Awaited<ReturnType<typeof lookupArtistInLibrary>>["albums"][number];
+type DistributiveOmit<T, Key extends PropertyKey> = T extends unknown ? Omit<T, Key> : never;
+type RequestedAlbum = Extract<
+  NonNullable<RequestAlbumFromSearchResponse["album"]>,
+  { id: string | undefined }
+>;
+export type PendingLibraryAlbum = DistributiveOmit<
+  RequestedAlbum,
+  "id" | "managedBy" | "mbid" | "foreignAlbumId" | "monitored"
+> & {
+  id: string;
+  managedBy: string | null | undefined;
+  mbid: string;
+  foreignAlbumId: string;
+  monitored: boolean;
+};
+export type LibraryAlbums = WithAbsentKeys<
+  Awaited<ReturnType<typeof getLibraryAlbums>>[number] | LookupAlbum | PendingLibraryAlbum
+>[];
+export type LookupArtist = NonNullable<Awaited<ReturnType<typeof lookupArtistInLibrary>>["artist"]>;
+export type AddedLibraryArtist = NonNullable<RequestAlbumFromSearchResponse["artist"]>;
+export type LibraryArtistRecord = FetchLibraryArtistResponse | LookupArtist | AddedLibraryArtist;
 
 const buildReleaseGroupCoverRequest = (
   rgId: string,
@@ -92,7 +127,7 @@ type ArtistDetailsStreamOptions = {
   visibleCoverIds?: string[];
   initialLibraryHint?: {
     existsInLibrary?: boolean;
-    libraryArtist?: FetchLibraryArtistResponse | null;
+    libraryArtist?: LibraryArtistRecord | null;
   } | null;
   appearsOnLimit?: number | null;
   seedImage?: string | null;
@@ -124,7 +159,7 @@ export function useArtistDetailsStream(
     [initialLibraryExists, initialLibraryArtist],
   );
   const cachedLookupMap = mbid ? readLibraryLookupCache([mbid]) : {};
-  const cachedLookup = cachedLookupMap?.[mbid];
+  const cachedLookup = mbid ? cachedLookupMap?.[mbid] : undefined;
   const seededExistsInLibrary =
     stableInitialLibraryHint.existsInLibrary === true || cachedLookup === true ? true : undefined;
   const seededLibraryArtist =
@@ -141,7 +176,7 @@ export function useArtistDetailsStream(
   const seedCoverImagesRef = useRef(seedCoverImages);
   seedCoverImagesRef.current = seedCoverImages;
   const [coverImages, setCoverImages] = useState<ArtistCoverImage[]>(seedCoverImages);
-  const [libraryArtist, setLibraryArtist] = useState<FetchLibraryArtistResponse | null>(
+  const [libraryArtist, setLibraryArtist] = useState<LibraryArtistRecord | null>(
     seededLibraryArtist,
   );
   const [libraryAlbums, setLibraryAlbums] = useState<LibraryAlbums>([]);
@@ -371,7 +406,7 @@ export function useArtistDetailsStream(
         const artistData = await getArtistDetails(mbid, artistNameFromNav, {
           mode: detailsMode,
           releaseTypes: allReleaseTypes,
-          appearsOnLimit: normalizedAppearsOnLimit,
+          appearsOnLimit: normalizedAppearsOnLimit ?? undefined,
         });
         if (!artistData || !artistData.id) {
           throw new Error("Invalid artist data received");
@@ -391,12 +426,7 @@ export function useArtistDetailsStream(
       } catch (err) {
         console.error("Error fetching artist data:", err);
         if (!isCurrentRequest()) return;
-        setError(
-          err.response?.data?.message ||
-            err.response?.data?.error ||
-            err.message ||
-            "Failed to fetch artist details",
-        );
+        setError(getApiErrorMessage(err) || "Failed to fetch artist details");
         setLoading(false);
         setLoadingCover(false);
         setLoadingSimilar(false);
@@ -539,7 +569,7 @@ export function useArtistDetailsStream(
 
     eventSource.addEventListener("error", (event) => {
       try {
-        const errorData = JSON.parse(event.data);
+        const errorData = JSON.parse(event instanceof MessageEvent ? event.data : undefined);
         if (!isCurrentRequest()) return;
         if (!artistReceived) {
           loadRestFallback().catch(() => {});
@@ -714,7 +744,7 @@ export function useArtistDetailsStream(
     };
 
     const scheduleCoverBatch = () => {
-      clearTimeout(coverBatchTimerRef.current);
+      if (coverBatchTimerRef.current) clearTimeout(coverBatchTimerRef.current);
       coverBatchTimerRef.current = setTimeout(() => {
         if (scheduleCancelled) return;
 
@@ -736,7 +766,7 @@ export function useArtistDetailsStream(
 
     return () => {
       scheduleCancelled = true;
-      clearTimeout(coverBatchTimerRef.current);
+      if (coverBatchTimerRef.current) clearTimeout(coverBatchTimerRef.current);
     };
   }, [
     mbid,

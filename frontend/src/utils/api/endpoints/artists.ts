@@ -151,11 +151,11 @@ export const getReleaseGroupTracks = async (
     albumTitle?: string;
     releaseType?: string;
     releaseDate?: string;
-    deezerAlbumId?: string;
+    deezerAlbumId?: string | number;
     signal?: AbortSignal;
   } = {},
 ): Promise<ReleaseGroupTrack[]> => {
-  const params: Record<string, string> = {};
+  const params: Record<string, string | number> = {};
   if (context.artistMbid) params.artistMbid = context.artistMbid;
   if (context.artistName) params.artistName = context.artistName;
   if (context.albumTitle) params.albumTitle = context.albumTitle;

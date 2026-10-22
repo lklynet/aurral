@@ -28,7 +28,7 @@ export function ArtistDetailsPreviewTracks({
   getDefaultPlaylistName,
   onLoadPlaylists,
 }: {
-  mbid: string | undefined;
+  mbid: string;
   artistName: string;
   loadingPreview: boolean;
   previewTracks: ArtistPreviewTrack[];
@@ -44,7 +44,7 @@ export function ArtistDetailsPreviewTracks({
   playlistSavingKey: string;
   playlistError: string;
   getDefaultPlaylistName?: (track: ArtistPreviewTrack) => string;
-  onLoadPlaylists: () => void;
+  onLoadPlaylists: () => Promise<unknown>;
 }) {
   const popularTracks = useMemo(() => (previewTracks || []).slice(0, 6), [previewTracks]);
   const getQueueItems = useQueueTrackActions();

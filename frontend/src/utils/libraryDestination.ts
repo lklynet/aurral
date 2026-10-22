@@ -110,8 +110,8 @@ export const buildArtistAddPayload = ({
   lidarrOptions = {},
   ...rest
 }: {
-  artistMbid: string;
-  artistName: string;
+  artistMbid: string | undefined;
+  artistName: string | undefined;
   managedBy: string;
   lidarrOptions?: Record<string, unknown>;
   quality?: string;
@@ -133,7 +133,7 @@ export const buildAlbumRequestPayload = ({
   triggerSearch = false,
 }: {
   albumMbid: string;
-  albumName: string;
+  albumName: string | null | undefined;
   artistMbid?: string | null;
   artistName?: string | null;
   managedBy: string;

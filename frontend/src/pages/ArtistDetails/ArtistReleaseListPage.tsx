@@ -74,7 +74,11 @@ const getReleaseTypeLabel = (releaseGroup: ReleaseGroup | null | undefined) => {
   return types.length ? types.join(" · ") : "Release";
 };
 
-const sortReleaseGroups = (items: ReleaseGroup[], sortKey: SortKey, sortDirection: SortDirection) =>
+const sortReleaseGroups = <T extends ReleaseGroup>(
+  items: T[],
+  sortKey: SortKey,
+  sortDirection: SortDirection,
+): T[] =>
   [...items].sort((a, b) => {
     let diff;
     if (sortKey === "popularity") {
@@ -169,10 +173,11 @@ function ArtistReleaseListPage({ mode = "releases" }) {
     libraryDestination,
   });
 
-  const releaseGroups: ReleaseGroup[] = useMemo(
+  const releaseGroups = useMemo(
     () => artist?.[isAppearsOn ? "appears-on-release-groups" : "release-groups"] || [],
     [artist, isAppearsOn],
   );
+  type ListedReleaseGroup = (typeof releaseGroups)[number];
   const filteredReleaseGroups = useMemo(
     () =>
       sortReleaseGroups(
@@ -350,7 +355,8 @@ function ArtistReleaseListPage({ mode = "releases" }) {
   useEffect(() => {
     if (!sortMenuOpen) return undefined;
     const handlePointerDown = (event: PointerEvent) => {
-      if (toolbarRef.current?.contains(event.target)) return;
+      const target = event.target instanceof Node ? event.target : null;
+      if (toolbarRef.current?.contains(target)) return;
       setSortMenuOpen(false);
     };
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -380,7 +386,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
     setSortMenuOpen(false);
   };
 
-  const releaseLink = (releaseGroup, coverUrl) =>
+  const releaseLink = (releaseGroup: ListedReleaseGroup, coverUrl: string) =>
     getReleaseGroupLink(releaseGroup, {
       artistMbid: mbid,
       artistName: artistDisplayName,
@@ -395,7 +401,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
     );
   }
 
-  const renderReleaseCard = (releaseGroup) => {
+  const renderReleaseCard = (releaseGroup: ListedReleaseGroup) => {
     const status = library.getAlbumStatus(releaseGroup.id);
     const metric = getReleaseMetric(releaseGroup);
     const cover = getReleaseGroupCoverUrl(releaseGroup, albumCovers, {
@@ -440,10 +446,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
             ) : canAddAlbum ? (
               <div>
                 <AddActionButton
-                  {...getAlbumAddAction(
-                    { status: status?.status, managedBy: status?.albumInfo?.managedBy },
-                    libraryDestination,
-                  )}
+                  {...getAlbumAddAction({ status: status?.status }, libraryDestination)}
                   ownerConflict={status?.ownerConflict}
                   onAdd={(managedBy) =>
                     library.handleRequestAlbum(releaseGroup.id, releaseGroup.title, managedBy)
@@ -475,10 +478,7 @@ function ArtistReleaseListPage({ mode = "releases" }) {
             ) : canAddAlbum ? (
               <div>
                 <AddActionButton
-                  {...getAlbumAddAction(
-                    { status: status?.status, managedBy: status?.albumInfo?.managedBy },
-                    libraryDestination,
-                  )}
+                  {...getAlbumAddAction({ status: status?.status }, libraryDestination)}
                   ownerConflict={status?.ownerConflict}
                   onAdd={(managedBy) =>
                     library.handleRequestAlbum(releaseGroup.id, releaseGroup.title, managedBy)
