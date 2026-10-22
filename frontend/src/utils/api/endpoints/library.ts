@@ -221,7 +221,10 @@ const withAuthenticatedLibraryArtwork = (
 };
 
 type LibraryPageKind = FetchLibraryPageResponse["kind"];
-type LibraryPageOf<Kind extends LibraryPageKind> = Extract<FetchLibraryPageResponse, { kind: Kind }>;
+type LibraryPageOf<Kind extends LibraryPageKind> = Extract<
+  FetchLibraryPageResponse,
+  { kind: Kind }
+>;
 
 export function fetchLibraryPage<Kind extends LibraryPageKind>(
   options: LibraryPageOptions & { kind: Kind },
