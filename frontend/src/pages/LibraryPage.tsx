@@ -1,5 +1,5 @@
 import ArtworkImage from "../components/ArtworkImage";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Link,
@@ -102,7 +102,7 @@ import {
   type CustomArtworkResult,
 } from "../utils/api/endpoints/library.ts";
 import { addStaticPlaylistTracks, createStaticPlaylist } from "../utils/api/endpoints/playlists.ts";
-import { buildAuthenticatedApiUrl } from "../utils/api/core.ts";
+import { asApiError, buildAuthenticatedApiUrl } from "../utils/api/core.ts";
 import {
   type LibraryAlbum,
   type LibraryArtist,
@@ -144,6 +144,7 @@ import {
   libraryTabForSection,
   libraryViewQueryOptions,
   resolveLibrarySection,
+  type LibraryViewLibrary,
 } from "./libraryViewQuery.ts";
 import {
   TrackPlaylistRemoveSubmenu,
@@ -154,7 +155,12 @@ import { DeleteArtistModal } from "./ArtistDetails/components/DeleteArtistModal"
 import { DeleteTrackModal } from "./ArtistDetails/components/DeleteTrackModal";
 import LibraryInfoModal from "./LibraryInfoModal";
 import ArtistMbidModal from "./ArtistMbidModal";
-import { buildStaticPlaylistTrackPayload, reserveUniquePlaylistName } from "./ArtistDetails/utils";
+import {
+  buildStaticPlaylistTrackPayload,
+  getApiErrorMessage,
+  getApiErrorText,
+  reserveUniquePlaylistName,
+} from "./ArtistDetails/utils";
 import { useResponsiveReleaseLimit } from "./ArtistDetails/hooks/useResponsiveReleaseLimit";
 import { queryClient, queryKeys } from "../queryClient.ts";
 import Tooltip from "../components/Tooltip";
@@ -167,19 +173,23 @@ type LibraryPageTrack = LibraryTrack & {
   albumName?: string | null;
 };
 
-type LibraryData = typeof EMPTY_LIBRARY;
+type LibraryData = LibraryViewLibrary;
 
 type LibraryGenre = LibraryData["genres"][number];
 
-type LibraryRemoval = {
-  kind: "artist" | "album" | "track";
-  entity: LibraryArtist | LibraryAlbum | LibraryPageTrack;
-  manager?: string | null;
+type LibraryEntityByKind = {
+  artist: LibraryArtist;
+  album: LibraryAlbum;
+  track: LibraryPageTrack;
 };
 
-type LibraryInfoState = {
-  kind: "artist" | "album" | "track";
-  entity: LibraryArtist | LibraryAlbum | LibraryPageTrack;
+type LibraryTarget = {
+  [Kind in keyof LibraryEntityByKind]: { kind: Kind; entity: LibraryEntityByKind[Kind] };
+}[keyof LibraryEntityByKind];
+
+type LibraryRemoval = LibraryTarget & { manager?: string | null };
+
+type LibraryInfoState = LibraryTarget & {
   artist?: LibraryArtist | null;
   album?: LibraryAlbum | null;
   trackNumber?: number | null;
@@ -218,14 +228,12 @@ type SaveTracksOptions = {
 
 const pageSize = LIBRARY_PAGE_SIZE;
 
-type GenreMetadata = {
-  genres?: unknown;
-  genre?: unknown;
-  common?: { genre?: unknown } | null;
-  tags?: { genre?: unknown; releasetype?: unknown } | null;
-};
+type GenreSource = { metadata?: object | null };
 
 const text = (value: unknown) => String(value || "").trim();
+
+const nestedField = (value: unknown, key: string): unknown =>
+  value && typeof value === "object" ? Reflect.get(value, key) : undefined;
 
 const isAlbumArtistCredit = (track: LibraryTrack, artist: LibraryArtist | null | undefined) =>
   !text(track?.artistName) ||
@@ -234,9 +242,14 @@ const isAlbumArtistCredit = (track: LibraryTrack, artist: LibraryArtist | null |
 const trackArtistMbid = (track: LibraryTrack, artist: LibraryArtist | null | undefined) =>
   isAlbumArtistCredit(track, artist) ? artist?.mbid || null : null;
 
-const metadataGenres = (entity: { metadata?: GenreMetadata | null } | null | undefined) => {
-  const metadata = entity?.metadata || {};
-  return [metadata.genres, metadata.genre, metadata.common?.genre, metadata.tags?.genre]
+const metadataGenres = (entity: GenreSource | null | undefined) => {
+  const metadata = entity?.metadata;
+  return [
+    nestedField(metadata, "genres"),
+    nestedField(metadata, "genre"),
+    nestedField(nestedField(metadata, "common"), "genre"),
+    nestedField(nestedField(metadata, "tags"), "genre"),
+  ]
     .flatMap((value) => (Array.isArray(value) ? value : [value]))
     .flatMap((value) => String(value || "").split(";"))
     .map(text)
@@ -244,10 +257,7 @@ const metadataGenres = (entity: { metadata?: GenreMetadata | null } | null | und
     .filter((value, index, values) => values.indexOf(value) === index);
 };
 
-const hasGenre = (
-  genre: string,
-  ...entities: ({ metadata?: GenreMetadata | null } | null | undefined)[]
-) => {
+const hasGenre = (genre: string, ...entities: (GenreSource | null | undefined)[]) => {
   if (!genre) return true;
   const wanted = genre.toLocaleLowerCase();
   return entities.flatMap(metadataGenres).some((value) => value.toLocaleLowerCase() === wanted);
@@ -299,18 +309,20 @@ const TRACK_DOWNLOAD_ACTIVE_STATUSES = new Set([
   "completed",
 ]);
 
+const TRACK_DOWNLOAD_ACTION_LABELS: Partial<Record<string, string>> = {
+  submitting: "Adding to search queue…",
+  pending: "Queued for search",
+  processing: "Searching for track…",
+  searching: "Searching for track…",
+  downloading: "Downloading track…",
+  moving: "Adding to library…",
+  blocked: "Needs review",
+  completed: "Downloaded; waiting for library refresh",
+  failed: "Retry download track",
+};
+
 const trackDownloadActionLabel = (status: string | null | undefined) =>
-  ({
-    submitting: "Adding to search queue…",
-    pending: "Queued for search",
-    processing: "Searching for track…",
-    searching: "Searching for track…",
-    downloading: "Downloading track…",
-    moving: "Adding to library…",
-    blocked: "Needs review",
-    completed: "Downloaded; waiting for library refresh",
-    failed: "Retry download track",
-  })[status] || "Download track";
+  TRACK_DOWNLOAD_ACTION_LABELS[status ?? ""] || "Download track";
 
 const activityDownloadStatus = (
   request: { status?: string; statusLabel?: unknown } | null | undefined,
@@ -327,7 +339,7 @@ const activityDownloadStatus = (
 };
 
 const trackDownloadIdentity = (track: LibraryPageTrack, fallbackTitle = "") =>
-  String(track?.id || track?.mbid || track?.trackMbid || track?.title || fallbackTitle);
+  String(track?.id || track?.mbid || track?.title || fallbackTitle);
 
 const sameTrackText = (left: unknown, right: unknown) => {
   const first = text(left).toLocaleLowerCase();
@@ -342,9 +354,9 @@ const QUERY_DEBOUNCE_MS = 250;
 const wait = (durationMs: number) => new Promise((resolve) => setTimeout(resolve, durationMs));
 
 const trackRating = (track: LibraryPageTrack) => {
-  const value = track?.rating ?? track?.metadata?.rating ?? track?.metadata?.tags?.rating;
-  const rating = Array.isArray(value) ? value[0] : value;
-  const score = rating && typeof rating === "object" ? rating.rating : rating;
+  const value = track?.metadata?.rating ?? nestedField(track?.metadata?.tags, "rating");
+  const rating: unknown = Array.isArray(value) ? value[0] : value;
+  const score = rating && typeof rating === "object" ? nestedField(rating, "rating") : rating;
   return Number.isFinite(Number(score)) ? Number(score) : null;
 };
 
@@ -373,6 +385,13 @@ const topArtistTracks = (tracks: LibraryPageTrack[], albumsById: Map<string, Lib
     })
     .slice(0, TOP_ARTIST_TRACK_LIMIT);
 };
+
+const hasMbid = (
+  artist: LibraryArtist | null | undefined,
+): artist is LibraryArtist & { mbid: string } => Boolean(artist?.mbid);
+
+const artistAlbumTotal = (artist: LibraryArtist) =>
+  ("albumCount" in artist ? artist.albumCount : undefined) ?? artist.albumIds?.length ?? 0;
 
 const entityMatches = (
   entity:
@@ -573,8 +592,8 @@ function LibraryPage() {
         } catch (requestError) {
           if (refreshAttemptRef.current === attempt) {
             showError(
-              requestError.response?.data?.message ||
-                requestError.message ||
+              getApiErrorText(requestError, "message") ||
+                asApiError(requestError)?.message ||
                 "Library refresh failed",
             );
           }
@@ -608,8 +627,8 @@ function LibraryPage() {
       } catch (requestError) {
         if (refreshAttemptRef.current === attempt) {
           showError(
-            requestError.response?.data?.message ||
-              requestError.message ||
+            getApiErrorText(requestError, "message") ||
+              asApiError(requestError)?.message ||
               "Library refresh failed",
           );
         }
@@ -687,7 +706,7 @@ function LibraryPage() {
 
   const changeQuery = (value: string) => {
     setQuery(value);
-    window.clearTimeout(queryTimerRef.current);
+    if (queryTimerRef.current) window.clearTimeout(queryTimerRef.current);
     const nextQuery = value.trim();
     const writeQuery = () =>
       updateViewParamsRef.current({ q: nextQuery, page: null }, { replace: true });
@@ -695,11 +714,16 @@ function LibraryPage() {
     else queryTimerRef.current = window.setTimeout(writeQuery, QUERY_DEBOUNCE_MS);
   };
 
-  useEffect(() => () => window.clearTimeout(queryTimerRef.current), []);
+  useEffect(
+    () => () => {
+      if (queryTimerRef.current) window.clearTimeout(queryTimerRef.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     if (navigationType === "REPLACE") return;
-    window.clearTimeout(queryTimerRef.current);
+    if (queryTimerRef.current) window.clearTimeout(queryTimerRef.current);
     setQuery(urlQuery);
   }, [navigationType, urlQuery]);
 
@@ -764,24 +788,24 @@ function LibraryPage() {
     [isPreviewLibrary, queryData?.favoriteIds],
   );
   const loading = !forcePreview && libraryQuery.isPending;
-  const error = forcePreview
-    ? null
-    : libraryQuery.error?.response?.data?.message ||
-      libraryQuery.error?.response?.data?.error ||
-      libraryQuery.error?.message ||
-      null;
+  const error = forcePreview ? null : getApiErrorMessage(libraryQuery.error) || null;
   const pageData = useMemo(() => {
     if (!queryData || isPreviewLibrary || isDetail || section === "favorites") return null;
-    if (section === "home" && !Array.isArray(queryData.pageResults)) return null;
-    return section === "home"
-      ? {
-          kind: "home",
-          total: queryData.pageResults.reduce((count, page) => count + Number(page?.total || 0), 0),
-        }
-      : queryData.nextData;
+    if (section === "home") {
+      const { pageResults } = queryData;
+      if (!Array.isArray(pageResults)) return null;
+      return {
+        kind: "home",
+        total: pageResults.reduce((count, page) => count + Number(page?.total || 0), 0),
+      };
+    }
+    const { nextData } = queryData;
+    return nextData && "kind" in nextData ? nextData : null;
   }, [isDetail, isPreviewLibrary, queryData, section]);
   const totalPages =
-    pageData?.kind === tab && tab !== "genres" ? Math.ceil(pageData.total / pageData.pageSize) : 0;
+    pageData && "pageSize" in pageData && pageData.kind === tab && tab !== "genres"
+      ? Math.ceil(pageData.total / pageData.pageSize)
+      : 0;
   const lastPage = Math.max(totalPages, 1);
 
   useEffect(() => {
@@ -921,7 +945,7 @@ function LibraryPage() {
   const saveLibraryTracksToPlaylist = useCallback(
     async (
       tracks: LibraryPageTrack[],
-      target: PlaylistTarget | null | undefined,
+      target: PlaylistTarget,
       { key, label, defaultName, lookup = null }: SaveTracksOptions,
     ) => {
       const payloads = tracks
@@ -961,11 +985,7 @@ function LibraryPage() {
         const nextPlaylists = await loadStaticPlaylists();
         if (nextPlaylists) setStaticPlaylists(nextPlaylists);
       } catch (requestError) {
-        const message =
-          requestError.response?.data?.message ||
-          requestError.response?.data?.error ||
-          requestError.message ||
-          "Failed to save to playlist";
+        const message = getApiErrorMessage(requestError) || "Failed to save to playlist";
         setPlaylistsError(message);
         showError(message);
       } finally {
@@ -985,7 +1005,7 @@ function LibraryPage() {
   );
 
   const addLibraryTrackToPlaylist = useCallback(
-    (track: LibraryPageTrack, target: PlaylistTarget | null | undefined) =>
+    (track: LibraryPageTrack, target: PlaylistTarget) =>
       saveLibraryTracksToPlaylist([track], target, {
         key: String(track?.id || ""),
         label: "Track",
@@ -1043,7 +1063,7 @@ function LibraryPage() {
       setArtworkEditor({
         kind,
         id: entity.id,
-        title: kind === "album" ? entity.title : entity.title || entity.trackName,
+        title: entity.title,
         currentArtwork: currentArtwork || "",
         hasCustomArtwork: Boolean(entity.customArtworkUrl),
         fallbackArtwork,
@@ -1079,17 +1099,10 @@ function LibraryPage() {
     [artworkEditor, showSuccess, updateQueueArtwork],
   );
 
-  const openLibraryRemoval = useCallback(
-    (
-      kind: LibraryRemoval["kind"],
-      entity: LibraryRemoval["entity"],
-      manager: string | null = null,
-    ) => {
-      setDeleteFiles(false);
-      setLibraryRemoval({ kind, entity, manager });
-    },
-    [],
-  );
+  const openLibraryRemoval = useCallback((target: LibraryTarget, manager: string | null = null) => {
+    setDeleteFiles(false);
+    setLibraryRemoval({ ...target, manager });
+  }, []);
 
   const removeLocalLibraryEntity = useCallback(
     (removal: LibraryRemoval) => {
@@ -1108,8 +1121,6 @@ function LibraryPage() {
             albums: current.albums.filter((album) => !removedAlbumIds.has(String(album.id))),
             tracks: current.tracks.filter(
               (track) =>
-                String(track.artistId) !== entityId &&
-                !removedAlbumIds.has(String(track.albumId)) &&
                 !(track.albums || []).some((relation) =>
                   removedAlbumIds.has(String(relation.albumId)),
                 ),
@@ -1122,7 +1133,6 @@ function LibraryPage() {
             albums: current.albums.filter((album) => String(album.id) !== entityId),
             tracks: current.tracks.filter(
               (track) =>
-                String(track.albumId) !== entityId &&
                 !(track.albums || []).some((relation) => String(relation.albumId) === entityId),
             ),
           };
@@ -1146,21 +1156,23 @@ function LibraryPage() {
   const handleLibraryRemovalConfirm = useCallback(async () => {
     if (!libraryRemoval?.entity || deletingLibraryEntity) return;
     const removal = libraryRemoval;
-    const entity = removal.entity;
-    const trackHasFile = removal.kind === "track" && Boolean(firstAvailableFile(entity));
+    const trackHasFile = removal.kind === "track" && Boolean(firstAvailableFile(removal.entity));
     setDeletingLibraryEntity(true);
     try {
       if (!isPreviewLibrary) {
         if (removal.kind === "artist") {
-          await deleteArtistFromLibrary(entity.mbid || entity.id, deleteFiles);
-        } else if (removal.kind === "album" && resolveAlbumManager(entity) === "aurral") {
-          await deleteAurralAlbumFromLibrary(entity.canonicalId || entity.id, deleteFiles);
-        } else if (removal.kind === "album" && /^\d+$/.test(String(entity.providerId ?? ""))) {
-          await deleteAlbumFromLibrary(entity.providerId, deleteFiles);
+          await deleteArtistFromLibrary(removal.entity.mbid || removal.entity.id, deleteFiles);
         } else if (removal.kind === "album") {
-          await deleteLidarrAlbumFromLibrary(entity.releaseGroupMbid || entity.mbid, deleteFiles);
+          const { entity } = removal;
+          if (resolveAlbumManager(entity) === "aurral") {
+            await deleteAurralAlbumFromLibrary(entity.canonicalId || entity.id, deleteFiles);
+          } else if (entity.providerId != null && /^\d+$/.test(String(entity.providerId))) {
+            await deleteAlbumFromLibrary(entity.providerId, deleteFiles);
+          } else {
+            await deleteLidarrAlbumFromLibrary(entity.releaseGroupMbid || entity.mbid, deleteFiles);
+          }
         } else {
-          await deleteTrackFromLibrary(entity.id);
+          await deleteTrackFromLibrary(removal.entity.id);
         }
       }
       removeLocalLibraryEntity(removal);
@@ -1175,8 +1187,8 @@ function LibraryPage() {
               : "Track removed from library",
       );
       if (
-        (removal.kind === "artist" && String(routeArtistId) === String(entity.id)) ||
-        (removal.kind === "album" && String(routeAlbumId) === String(entity.id))
+        (removal.kind === "artist" && String(routeArtistId) === String(removal.entity.id)) ||
+        (removal.kind === "album" && String(routeAlbumId) === String(removal.entity.id))
       ) {
         navigate(
           removal.kind === "artist"
@@ -1185,12 +1197,7 @@ function LibraryPage() {
         );
       }
     } catch (requestError) {
-      showError(
-        requestError.response?.data?.message ||
-          requestError.response?.data?.error ||
-          requestError.message ||
-          "Failed to update library",
-      );
+      showError(getApiErrorMessage(requestError) || "Failed to update library");
     } finally {
       setDeletingLibraryEntity(false);
     }
@@ -1222,11 +1229,11 @@ function LibraryPage() {
       const relation = track?.albums?.find((entry) => String(entry.albumId) === String(album?.id));
       const payload = {
         artistName: artist?.name || track?.artistName || "",
-        trackName: track?.title || track?.trackName || "",
+        trackName: track?.title || "",
         albumName: album?.title || track?.albumName || "",
-        artistMbid: artist?.mbid || track?.artistMbid || "",
-        albumMbid: album?.releaseGroupMbid || album?.mbid || track?.albumMbid || "",
-        trackMbid: track?.mbid || track?.trackMbid || "",
+        artistMbid: artist?.mbid || "",
+        albumMbid: album?.releaseGroupMbid || album?.mbid || "",
+        trackMbid: track?.mbid || "",
         releaseYear: yearOf(album?.releaseDate),
         durationMs: trackDurationMs(track),
         trackNumber: relation?.trackNumber || null,
@@ -1265,12 +1272,7 @@ function LibraryPage() {
         return result;
       } catch (requestError) {
         setTrackDownloadStates(({ [key]: _, ...rest }) => rest);
-        showError(
-          requestError.response?.data?.message ||
-            requestError.response?.data?.error ||
-            requestError.message ||
-            "Failed to add track to library",
-        );
+        showError(getApiErrorMessage(requestError) || "Failed to add track to library");
         return null;
       }
     },
@@ -1286,12 +1288,7 @@ function LibraryPage() {
         await reSearchLibraryTrack(track.id, { albumId: album.id });
         showSuccess(`Queued a replacement search for ${track.title || "track"}`);
       } catch (requestError) {
-        showError(
-          requestError.response?.data?.message ||
-            requestError.response?.data?.error ||
-            requestError.message ||
-            "Failed to queue a replacement search",
-        );
+        showError(getApiErrorMessage(requestError) || "Failed to queue a replacement search");
       } finally {
         setTrackResearchStates((current) => {
           const { [key]: _, ...rest } = current;
@@ -1597,9 +1594,17 @@ function LibraryPage() {
       const mark = (track: LibraryTrack) =>
         String(track.id) === String(trackId) ? { ...track, ...patch } : track;
       setLibrary((current) => ({ ...current, tracks: current.tracks.map(mark) }));
-      queryClient.setQueriesData({ queryKey: queryKeys.libraryAlbumTracksPrefix }, (data) =>
-        Array.isArray(data?.tracks) ? { ...data, tracks: data.tracks.map(mark) } : data,
-      );
+      queryClient.setQueriesData({ queryKey: queryKeys.libraryAlbumTracksPrefix }, (data) => {
+        if (
+          !data ||
+          typeof data !== "object" ||
+          !("tracks" in data) ||
+          !Array.isArray(data.tracks)
+        ) {
+          return data;
+        }
+        return { ...data, tracks: data.tracks.map(mark) };
+      });
       clearLibraryPageCache();
       void queryClient.invalidateQueries({ queryKey: queryKeys.libraryViewPrefix });
       refreshLibraryActivity();
@@ -1676,7 +1681,7 @@ function LibraryPage() {
       const queued = result?.jobIds?.length || 0;
       showSuccess(
         activeManager === "lidarr"
-          ? describeAlbumRequestResult(result, title, "lidarr").message
+          ? describeAlbumRequestResult(result, title).message
           : queued > 0
             ? `Queued ${queued} ${queued === 1 ? "track" : "tracks"} from ${title}`
             : `Monitoring ${title}`,
@@ -1692,12 +1697,7 @@ function LibraryPage() {
       updateAlbumMonitoringState(libraryAlbum.id, { monitored: true });
       await reloadLibraryAlbumTracks();
     } catch (requestError) {
-      showError(
-        requestError.response?.data?.message ||
-          requestError.response?.data?.error ||
-          requestError.message ||
-          `Failed to download ${title}`,
-      );
+      showError(getApiErrorMessage(requestError) || `Failed to download ${title}`);
     } finally {
       setAlbumDownloadPending(false);
     }
@@ -1724,10 +1724,7 @@ function LibraryPage() {
       } catch (requestError) {
         showError(
           `Could not ${monitored ? "monitor" : "unmonitor"} ${title} in Lidarr. Nothing changed. ${
-            requestError.response?.data?.message ||
-            requestError.response?.data?.error ||
-            requestError.message ||
-            "Try again."
+            getApiErrorMessage(requestError) || "Try again."
           }`,
         );
       } finally {
@@ -1776,7 +1773,7 @@ function LibraryPage() {
         request?.playlistId === "library" &&
         ["pending", "processing", "blocked"].includes(request?.status),
     );
-    const nextStates = {};
+    const nextStates: Record<string, TrackDownloadState> = {};
     const requestsByJobId = new Map(
       requests
         .filter((request) => request?.jobId)
@@ -1840,7 +1837,9 @@ function LibraryPage() {
         artistName: getArtistForAlbum(album)?.name || album.albumArtist,
         albumTitle: album.title,
       }))
-      .filter((item) => item.mbid && !item.coverUrl);
+      .filter((item): item is typeof item & { mbid: string } =>
+        Boolean(item.mbid && !item.coverUrl),
+      );
     return items
       .filter(
         (item, index, values) =>
@@ -1855,9 +1854,10 @@ function LibraryPage() {
     getReleaseGroupCoversBatch(coverItems)
       .then((result) => {
         if (cancelled) return;
-        const next = {};
+        const next: Record<string, string> = {};
         coverItems.forEach((item) => {
-          if (result?.[item.mbid!]?.image) next[item.mbid!] = result[item.mbid!].image;
+          const image = result?.[item.mbid]?.image;
+          if (image) next[item.mbid] = image;
         });
         if (Object.keys(next).length) setCovers((current) => ({ ...current, ...next }));
       })
@@ -1869,7 +1869,8 @@ function LibraryPage() {
 
   const getAlbumCover = useCallback(
     (album: LibraryAlbum | null | undefined) => {
-      const url = album?.coverUrl || covers[getAlbumCoverId(album)] || "";
+      const coverId = getAlbumCoverId(album);
+      const url = album?.coverUrl || (coverId ? covers[coverId] : undefined) || "";
       return url.startsWith("/api/library/albums/")
         ? buildAuthenticatedApiUrl(url.replace(/^\/api/, ""))
         : url;
@@ -1891,7 +1892,7 @@ function LibraryPage() {
         id: track.id,
         title: track.title,
         artist: track.artistName || artist?.name || "Unknown Artist",
-        album: album?.title || track.albumName || track.album || "Unknown Album",
+        album: album?.title || track.albumName || "Unknown Album",
         src:
           file?.previewUrl ||
           (file && album
@@ -1903,7 +1904,7 @@ function LibraryPage() {
         quality: file?.quality || null,
         artistMbid: trackArtistMbid(track, artist),
         albumMbid: album?.releaseGroupMbid || album?.mbid || null,
-        trackMbid: track.mbid || track.trackMbid || null,
+        trackMbid: track.mbid || null,
         libraryTrackId: file && album ? track.id : null,
         libraryAlbumId: file && album ? album.id : null,
         durationMs: Number(track.durationMs || file?.durationMs || 0) || null,
@@ -2007,7 +2008,7 @@ function LibraryPage() {
       try {
         collection = await load();
       } catch (requestError) {
-        showError(requestError.response?.data?.message || "Failed to load tracks");
+        showError(getApiErrorText(requestError, "message") || "Failed to load tracks");
         return;
       }
       await action(collection);
@@ -2065,7 +2066,7 @@ function LibraryPage() {
         else next.delete(id);
         return next;
       });
-      const name = entity?.name || entity?.title || entity?.trackName;
+      const name = entity && ("name" in entity ? entity.name : entity.title);
       try {
         const result = await updateLibraryFavorites([id], nextStarred);
         const changedIds = Array.isArray(result?.changedIds) ? result.changedIds : [];
@@ -2093,7 +2094,7 @@ function LibraryPage() {
         setFavoriteIds(previous);
         showError(
           `Could not ${nextStarred ? "add" : "remove"} ${name || "this item"} ${nextStarred ? "to" : "from"} favorites. Nothing changed. ${
-            requestError.response?.data?.message || "Try again."
+            getApiErrorText(requestError, "message") || "Try again."
           }`,
         );
       } finally {
@@ -2124,12 +2125,18 @@ function LibraryPage() {
     ],
   );
 
-  const libraryArtistPath = (artist: LibraryArtist | null | undefined) =>
-    artist?.id ? "/library/artist/" + encodeURIComponent(artist.id) + previewQuery : null;
-  const libraryAlbumPath = (album: LibraryAlbum | null | undefined) =>
-    album?.id ? "/library/album/" + encodeURIComponent(album.id) + previewQuery : null;
+  function libraryArtistPath(artist: Pick<LibraryArtist, "id">): string;
+  function libraryArtistPath(artist: Pick<LibraryArtist, "id"> | null | undefined): string | null;
+  function libraryArtistPath(artist: Pick<LibraryArtist, "id"> | null | undefined) {
+    return artist?.id ? "/library/artist/" + encodeURIComponent(artist.id) + previewQuery : null;
+  }
+  function libraryAlbumPath(album: LibraryAlbum): string;
+  function libraryAlbumPath(album: LibraryAlbum | null | undefined): string | null;
+  function libraryAlbumPath(album: LibraryAlbum | null | undefined) {
+    return album?.id ? "/library/album/" + encodeURIComponent(album.id) + previewQuery : null;
+  }
 
-  const handleArtistOpen = (artist: LibraryArtist) => {
+  const handleArtistOpen = (artist: Pick<LibraryArtist, "id">) => {
     const path = libraryArtistPath(artist);
     if (path) navigate(path);
   };
@@ -2138,7 +2145,7 @@ function LibraryPage() {
     artist: LibraryArtist | null | undefined,
     { separatorBefore = false }: { separatorBefore?: boolean } = {},
   ) =>
-    canEditArtistMbid && artist?.providerId == null
+    canEditArtistMbid && (artist && "providerId" in artist ? artist.providerId : undefined) == null
       ? [
           {
             id: "mbid",
@@ -2150,7 +2157,7 @@ function LibraryPage() {
         ]
       : [];
 
-  const handleArtistMbidSaved = (result) => {
+  const handleArtistMbidSaved: ComponentProps<typeof ArtistMbidModal>["onSaved"] = (result) => {
     const previousId = mbidArtist?.id;
     setMbidArtist(null);
     const previousName = mbidArtist?.name || "Artist";
@@ -2171,59 +2178,65 @@ function LibraryPage() {
   };
 
   const shareLibraryItem = (
-    kind: "artist" | "album" | "track",
-    entity: LibraryArtist | LibraryAlbum | LibraryPageTrack,
+    target: LibraryTarget,
     {
       artist = null,
       album = null,
     }: { artist?: LibraryArtist | null; album?: LibraryAlbum | null } = {},
   ) => {
-    if (kind === "artist") {
+    if (target.kind === "artist") {
+      const { entity } = target;
       shareLibrary(
-        { kind, libraryArtistId: entity.id, artistMbid: entity.mbid, artistName: entity.name },
+        {
+          kind: target.kind,
+          libraryArtistId: entity.id,
+          artistMbid: entity.mbid,
+          artistName: entity.name,
+        },
         entity.name,
       );
       return;
     }
-    const artistName =
-      (kind === "track" && entity.artistName) ||
-      artist?.name ||
-      entity.artistName ||
-      entity.albumArtist ||
-      album?.albumArtist;
-    const item =
-      kind === "album"
-        ? {
-            kind,
-            libraryAlbumId: entity.id,
-            albumMbid: entity.releaseGroupMbid || entity.mbid,
-            artistMbid: artist?.mbid,
-            title: entity.title,
-            artistName,
-          }
-        : {
-            kind,
-            libraryTrackId: entity.id,
-            libraryAlbumId: album?.id,
-            trackMbid: entity.mbid || entity.trackMbid,
-            albumMbid: album?.releaseGroupMbid || album?.mbid,
-            artistMbid: trackArtistMbid(entity, artist),
-            title: entity.title,
-            artistName,
-            albumTitle: album?.title,
-          };
-    shareLibrary(item, entity.title);
+    if (target.kind === "album") {
+      const { entity } = target;
+      shareLibrary(
+        {
+          kind: target.kind,
+          libraryAlbumId: entity.id,
+          albumMbid: entity.releaseGroupMbid || entity.mbid,
+          artistMbid: artist?.mbid,
+          title: entity.title,
+          artistName: artist?.name || entity.albumArtist || album?.albumArtist,
+        },
+        entity.title,
+      );
+      return;
+    }
+    const { entity } = target;
+    shareLibrary(
+      {
+        kind: target.kind,
+        libraryTrackId: entity.id,
+        libraryAlbumId: album?.id,
+        trackMbid: entity.mbid,
+        albumMbid: album?.releaseGroupMbid || album?.mbid,
+        artistMbid: trackArtistMbid(entity, artist),
+        title: entity.title,
+        artistName: entity.artistName || artist?.name || album?.albumArtist,
+        albumTitle: album?.title,
+      },
+      entity.title,
+    );
   };
 
   const shareMenuItem = (
-    kind: "artist" | "album" | "track",
-    entity: LibraryArtist | LibraryAlbum | LibraryPageTrack,
+    target: LibraryTarget,
     context?: { artist?: LibraryArtist | null; album?: LibraryAlbum | null },
   ) => ({
     id: "share",
     label: "Share",
     icon: Share,
-    onSelect: () => shareLibraryItem(kind, entity, context),
+    onSelect: () => shareLibraryItem(target, context),
     disabled: isPreviewLibrary,
   });
 
@@ -2312,11 +2325,10 @@ function LibraryPage() {
     });
 
   const openLibraryInfo = (
-    kind: LibraryInfoState["kind"],
-    entity: LibraryInfoState["entity"],
+    target: LibraryTarget,
     context: Omit<LibraryInfoState, "kind" | "entity"> = {},
   ) => {
-    setLibraryInfo({ kind, entity, ...context });
+    setLibraryInfo({ ...target, ...context });
   };
 
   const discoverArtistState = (artist: LibraryArtist) => ({
@@ -2342,7 +2354,7 @@ function LibraryPage() {
       ? (pageData?.total ?? library.albums.length + ownedLibraryTracks.length)
       : section === "favorites"
         ? favoriteCount
-        : pageData?.kind === tab
+        : pageData && pageData.kind === tab
           ? pageData.total
           : tab === "artists"
             ? sortedArtists.length
@@ -2407,7 +2419,7 @@ function LibraryPage() {
         const active =
           String(currentTrack?.id) === String(track.id) && matchesSource(librarySource);
         const artistName = track.artistName || artist?.name || "Unknown Artist";
-        const albumName = album?.title || track.albumName || track.album || "Unknown Album";
+        const albumName = album?.title || track.albumName || "Unknown Album";
         const trackNumber = track.albums?.find(
           (entry) => String(entry.albumId) === String(album?.id),
         )?.trackNumber;
@@ -2440,12 +2452,13 @@ function LibraryPage() {
             disabled: !file,
           },
           ...queueItems,
-          shareMenuItem("track", track, { artist, album }),
+          shareMenuItem({ kind: "track", entity: track }, { artist, album }),
           {
             id: "info",
             label: "View info",
             icon: Info,
-            onSelect: () => openLibraryInfo("track", track, { artist, album, trackNumber }),
+            onSelect: () =>
+              openLibraryInfo({ kind: "track", entity: track }, { artist, album, trackNumber }),
           },
           ...(canEditArtwork
             ? [
@@ -2499,7 +2512,7 @@ function LibraryPage() {
                   icon: Trash2,
                   danger: true,
                   separatorBefore: true,
-                  onSelect: () => openLibraryRemoval("track", track),
+                  onSelect: () => openLibraryRemoval({ kind: "track", entity: track }),
                 },
               ]
             : []),
@@ -2629,12 +2642,12 @@ function LibraryPage() {
             {...artistMenuProps(artist)}
             items={[
               ...collectionPlayItems(() => loadArtistTracks(artist)),
-              shareMenuItem("artist", artist),
+              shareMenuItem({ kind: "artist", entity: artist }),
               {
                 id: "info",
                 label: "View info",
                 icon: Info,
-                onSelect: () => openLibraryInfo("artist", artist),
+                onSelect: () => openLibraryInfo({ kind: "artist", entity: artist }),
               },
               {
                 id: "discover",
@@ -2653,7 +2666,7 @@ function LibraryPage() {
                       icon: Trash2,
                       danger: true,
                       separatorBefore: true,
-                      onSelect: () => openLibraryRemoval("artist", artist),
+                      onSelect: () => openLibraryRemoval({ kind: "artist", entity: artist }),
                     },
                   ]
                 : []),
@@ -2675,8 +2688,8 @@ function LibraryPage() {
             />
           </div>
           <span className="native-library-card__meta">
-            {artist.albumCount ?? artist.albumIds?.length ?? 0} album
-            {(artist.albumCount ?? artist.albumIds?.length ?? 0) === 1 ? "" : "s"}
+            {artistAlbumTotal(artist)} album
+            {artistAlbumTotal(artist) === 1 ? "" : "s"}
           </span>
         </div>
       </article>
@@ -2734,12 +2747,12 @@ function LibraryPage() {
             {...albumMenuProps(album, () => loadAlbumCollection(album))}
             items={[
               ...collectionPlayItems(() => loadAlbumCollection(album), albumEmpty),
-              shareMenuItem("album", album, { artist }),
+              shareMenuItem({ kind: "album", entity: album }, { artist }),
               {
                 id: "info",
                 label: "View info",
                 icon: Info,
-                onSelect: () => openLibraryInfo("album", album, { artist }),
+                onSelect: () => openLibraryInfo({ kind: "album", entity: album }, { artist }),
               },
               ...(canEditArtwork
                 ? [
@@ -2776,7 +2789,7 @@ function LibraryPage() {
                       icon: Trash2,
                       danger: true,
                       separatorBefore: true,
-                      onSelect: () => openLibraryRemoval("album", album),
+                      onSelect: () => openLibraryRemoval({ kind: "album", entity: album }),
                     },
                   ]
                 : []),
@@ -2807,7 +2820,7 @@ function LibraryPage() {
             </RouteLink>
           ) : (
             <span className="native-library-card__artist">
-              {artist?.name || album.albumArtist || "Unknown Artist"}
+              {album.albumArtist || "Unknown Artist"}
             </span>
           )}
           <span className="native-library-card__meta">
@@ -2953,7 +2966,7 @@ function LibraryPage() {
     const artist = getArtistForAlbum(libraryAlbum);
     const albumTracks = getAlbumTracks(libraryAlbum);
     const availability = albumAvailability(libraryAlbum);
-    const discoverArtist = artist?.mbid ? artist : null;
+    const discoverArtist = hasMbid(artist) ? artist : null;
     const durationMs = albumTracks.reduce(
       (total, track) => total + Number(firstAvailableFile(track)?.durationMs || 0),
       0,
@@ -3076,12 +3089,13 @@ function LibraryPage() {
                 {...albumMenuProps(libraryAlbum, loadAlbumDetail)}
                 items={[
                   ...collectionQueueItems(loadAlbumDetail, !albumPlayable),
-                  shareMenuItem("album", libraryAlbum, { artist }),
+                  shareMenuItem({ kind: "album", entity: libraryAlbum }, { artist }),
                   {
                     id: "info",
                     label: "View info",
                     icon: Info,
-                    onSelect: () => openLibraryInfo("album", libraryAlbum, { artist }),
+                    onSelect: () =>
+                      openLibraryInfo({ kind: "album", entity: libraryAlbum }, { artist }),
                   },
                   ...(canEditArtwork
                     ? [
@@ -3111,7 +3125,8 @@ function LibraryPage() {
                           icon: Trash2,
                           danger: true,
                           separatorBefore: true,
-                          onSelect: () => openLibraryRemoval("album", libraryAlbum),
+                          onSelect: () =>
+                            openLibraryRemoval({ kind: "album", entity: libraryAlbum }),
                         },
                       ]
                     : []),
@@ -3139,7 +3154,7 @@ function LibraryPage() {
       (total, album) => total + Number(albumAvailability(album).total || 0),
       0,
     );
-    const discoverArtist = libraryArtist.mbid ? libraryArtist : null;
+    const discoverArtist = hasMbid(libraryArtist) ? libraryArtist : null;
     const artistPlayable = artistTracks.some((track) => firstAvailableFile(track));
     const artistIsCurrent =
       matchesSource(librarySource) &&
@@ -3210,12 +3225,12 @@ function LibraryPage() {
                 {...artistMenuProps(libraryArtist)}
                 items={[
                   ...collectionQueueItems(() => loadArtistTracks(libraryArtist), !artistPlayable),
-                  shareMenuItem("artist", libraryArtist),
+                  shareMenuItem({ kind: "artist", entity: libraryArtist }),
                   {
                     id: "info",
                     label: "View info",
                     icon: Info,
-                    onSelect: () => openLibraryInfo("artist", libraryArtist),
+                    onSelect: () => openLibraryInfo({ kind: "artist", entity: libraryArtist }),
                   },
                   ...artistMbidMenuItems(libraryArtist, { separatorBefore: true }),
                   ...libraryArtistMonitoringItems,
@@ -3227,7 +3242,8 @@ function LibraryPage() {
                           icon: Trash2,
                           danger: true,
                           separatorBefore: true,
-                          onSelect: () => openLibraryRemoval("artist", libraryArtist),
+                          onSelect: () =>
+                            openLibraryRemoval({ kind: "artist", entity: libraryArtist }),
                         },
                       ]
                     : []),
@@ -3269,8 +3285,7 @@ function LibraryPage() {
     <>
       <DeleteArtistModal
         show={libraryRemoval?.kind === "artist"}
-        artistName={libraryRemoval?.entity?.name}
-        libraryArtistName={libraryRemoval?.entity?.artistName}
+        artistName={libraryRemoval?.kind === "artist" ? libraryRemoval.entity.name : undefined}
         deleteFiles={deleteFiles}
         onDeleteFilesChange={setDeleteFiles}
         onCancel={() => setLibraryRemoval(null)}
@@ -3281,7 +3296,7 @@ function LibraryPage() {
       {libraryArtistMonitoring.dialog}
       <DeleteAlbumModal
         show={libraryRemoval?.kind === "album"}
-        title={libraryRemoval?.entity?.title || libraryRemoval?.entity?.albumName}
+        title={libraryRemoval?.kind === "album" ? libraryRemoval.entity.title : undefined}
         managedBy={resolveAlbumManager(libraryRemoval?.entity)}
         deleteFiles={deleteFiles}
         onDeleteFilesChange={setDeleteFiles}
@@ -3291,8 +3306,10 @@ function LibraryPage() {
       />
       <DeleteTrackModal
         show={libraryRemoval?.kind === "track"}
-        title={libraryRemoval?.entity?.title || libraryRemoval?.entity?.trackName}
-        hasFile={Boolean(firstAvailableFile(libraryRemoval?.entity))}
+        title={libraryRemoval?.kind === "track" ? libraryRemoval.entity.title : undefined}
+        hasFile={Boolean(
+          firstAvailableFile(libraryRemoval?.kind === "track" ? libraryRemoval.entity : null),
+        )}
         onCancel={() => setLibraryRemoval(null)}
         onConfirm={handleLibraryRemovalConfirm}
         deleting={deletingLibraryEntity}

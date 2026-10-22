@@ -88,14 +88,14 @@ import type { ActivityRequest } from "../../../pages/activity/activityListUtils.
 type SignalOptions = { signal?: AbortSignal };
 
 type LibraryPageOptions = {
-  kind?: "artists" | "albums" | "tracks" | "genres";
+  kind?: string;
   page?: number | string;
   pageSize?: number;
   query?: string;
   genre?: string;
   sort?: string;
   direction?: string;
-  artistId?: string;
+  artistId?: string | number;
   albumId?: string | number;
   source?: string;
   availableOnly?: boolean | null;
@@ -595,7 +595,7 @@ export const addArtistToLibrary = async (
 };
 
 export const deleteArtistFromLibrary = (
-  mbid: string,
+  mbid: string | number,
   deleteFiles = false,
   manager: "aurral" | "lidarr" | null = null,
 ): Promise<DeleteArtistFromLibraryResponse> =>

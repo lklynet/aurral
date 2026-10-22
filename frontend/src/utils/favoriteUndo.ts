@@ -13,7 +13,7 @@ export const showFavoriteRemoved = (
     onRestored,
   }: {
     name: string | null | undefined;
-    removed: FavoriteRemoval[] | undefined;
+    removed: FavoriteRemoval[] | false | undefined;
     restore: () => void;
     revert: () => void;
     onRestored?: () => void;

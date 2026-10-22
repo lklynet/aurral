@@ -2,6 +2,7 @@ import { useState, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getNearbyShows } from "../utils/api/endpoints/discovery.ts";
 import { queryKeys } from "../queryClient.ts";
+import { asApiError } from "../utils/api/core.ts";
 import { readStoredNearbyLocation, writeStoredNearbyLocation } from "../pages/discoverUtils";
 
 export function useNearbyShows({ enabled = true }: { enabled?: boolean } = {}) {
@@ -35,11 +36,14 @@ export function useNearbyShows({ enabled = true }: { enabled?: boolean } = {}) {
     staleTime: 5 * 60 * 1000,
   });
   const data = active ? query.data : null;
+  const errorData = asApiError(query.error)?.response?.data;
   const error = !active
     ? null
     : data?.location?.resolved === false
       ? "ZIP or postal code not found."
-      : query.error?.response?.data?.message || query.error?.message || null;
+      : (typeof errorData === "object" && errorData ? errorData.message : undefined) ||
+        query.error?.message ||
+        null;
 
   return {
     data,

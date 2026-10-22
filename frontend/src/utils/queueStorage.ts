@@ -1,9 +1,15 @@
+import type { QueueAction, QueueSource, RepeatMode } from "./audioQueue.ts";
+
 export const QUEUE_STORAGE_KEY = "aurral.player.queue.v1";
 
 const VERSION = 1;
 const MAX_STORED_TRACKS = 200;
 const HISTORY_KEPT = 20;
 const REPEAT_MODES = new Set<unknown>(["off", "all", "one"]);
+
+type RestoreQueueAction = Extract<QueueAction, { type: "RESTORE_QUEUE" }>;
+
+const isRepeatMode = (value: unknown): value is RepeatMode => REPEAT_MODES.has(value);
 
 type QueueTrack = { entryId?: unknown } & Record<string, unknown>;
 
@@ -111,7 +117,7 @@ function isPermutation(order: unknown, length: number): order is number[] {
 export function parseStoredQueue(
   raw: string | null,
   { owner, token }: { owner: string | null; token?: string | null },
-) {
+): (Omit<RestoreQueueAction, "type"> & { position: number }) | null {
   if (!raw || owner == null) return null;
   let stored: StoredQueue;
   try {
@@ -131,18 +137,20 @@ export function parseStoredQueue(
   }
   if (!isPermutation(playbackOrder, tracks.length)) return null;
   if (
+    typeof currentIndex !== "number" ||
     !Number.isInteger(currentIndex) ||
-    (currentIndex as number) < 0 ||
-    (currentIndex as number) >= tracks.length
+    currentIndex < 0 ||
+    currentIndex >= tracks.length
   )
     return null;
   return {
-    queue: tracks.map((track) => restoredTrack(track, token)),
+    queue: tracks.map((track) => restoredTrack(track, token)) as RestoreQueueAction["queue"],
     playbackOrder,
     currentIndex,
     isShuffleEnabled: stored.isShuffleEnabled === true,
-    repeatMode: REPEAT_MODES.has(stored.repeatMode) ? (stored.repeatMode as string) : "off",
-    source: stored.source && typeof stored.source === "object" ? stored.source : null,
+    repeatMode: isRepeatMode(stored.repeatMode) ? stored.repeatMode : "off",
+    source:
+      stored.source && typeof stored.source === "object" ? (stored.source as QueueSource) : null,
     position:
       Number.isFinite(stored.position) && (stored.position as number) > 0
         ? (stored.position as number)

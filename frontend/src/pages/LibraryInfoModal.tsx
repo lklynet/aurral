@@ -86,9 +86,9 @@ const durationMs = (
   track: LibraryInfoEntity,
   file: LibraryTrack["files"][number] | null | undefined,
 ) => {
-  if (Number(file?.durationMs) > 0) return Number(file.durationMs);
+  if (Number(file?.durationMs) > 0) return Number(file?.durationMs);
   if (Number(track?.durationMs) > 0) return Number(track.durationMs);
-  if (Number(track?.metadata?.durationMs) > 0) return Number(track.metadata.durationMs);
+  if (Number(track?.metadata?.durationMs) > 0) return Number(track.metadata?.durationMs);
   const seconds = Number(track?.metadata?.duration);
   return seconds > 0 ? Math.round(seconds * 1000) : 0;
 };
@@ -189,7 +189,9 @@ export default function LibraryInfoModal({
   const pathsQuery = useQuery({
     queryKey: ["track-files", item?.source || "library", trackId],
     queryFn: ({ signal }) =>
-      (item.source === "playlist" ? getJobFiles : getLibraryTrackFiles)(trackId, { signal }),
+      item?.source === "playlist"
+        ? getJobFiles(String(trackId), { signal })
+        : getLibraryTrackFiles(trackId!, { signal }),
     enabled: showPaths,
     staleTime: 30_000,
   });

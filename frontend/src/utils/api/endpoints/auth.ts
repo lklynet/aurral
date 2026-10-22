@@ -59,18 +59,7 @@ type ListeningHistoryUpdate = {
   listenHistoryUrl: string | null;
 };
 
-type PlayEventPayload = {
-  trackId: string;
-  title: string;
-  artist: string;
-  album?: string | null;
-  artistMbid?: string | null;
-  albumMbid?: string | null;
-  trackMbid?: string | null;
-  durationMs?: number | null;
-  playedAt?: number;
-  source?: string;
-};
+type PlayEventPayload = NonNullable<Parameters<typeof recordPlayEventService>[1]>;
 
 type LidarrPreferencesUpdate = {
   rootFolderPath: string | null;

@@ -1,3 +1,5 @@
+import type { LibraryTrack } from "./libraryPageData.ts";
+
 const FORMAT_BY_EXTENSION: Partial<Record<string, string[]>> = {
   mp3: ["mp3"],
   mpeg: ["mp3"],
@@ -41,7 +43,7 @@ export type QueueTrackInput = {
   streamUrl?: string | null;
   preview_url?: string | null;
   streamFormat?: string | null;
-  quality?: string | null;
+  quality?: string | NonNullable<LibraryTrack["files"][number]["quality"]> | null;
   finalPath?: string | null;
   durationMs?: number | null;
   recordHistory?: boolean;

@@ -129,7 +129,8 @@ async function resolveLibraryAlbum(params: URLSearchParams, signal: AbortSignal 
   let canonicalId = null;
   if (mbid) {
     const lookup = await lookupAlbumsInLibraryBatch([mbid], { signal }).catch(() => null);
-    canonicalId = lookup?.[mbid]?.canonicalAlbumId || null;
+    const found = lookup?.[mbid];
+    canonicalId = (found && "canonicalAlbumId" in found ? found.canonicalAlbumId : null) || null;
   }
   if (!canonicalId && name) {
     const page = await getLibraryPage(

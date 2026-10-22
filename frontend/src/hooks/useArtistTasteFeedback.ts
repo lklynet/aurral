@@ -24,6 +24,7 @@ import {
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { queryClient, queryKeys } from "../queryClient.ts";
+import { asApiError } from "../utils/api/core.ts";
 import type { DiscoveryFeedbackEntry } from "../utils/discoveryFeedback.ts";
 
 type FeedbackChange = ReturnType<typeof diffDiscoveryFeedback>;
@@ -58,6 +59,11 @@ const FAILED_ACTIONS: Record<ArtistFeedbackAction, (name: string, isSelected: bo
 
 const artistLabel = (artist: ArtistFeedbackSource | null | undefined) =>
   artist?.name || artist?.artistName || "this artist";
+
+const responseMessage = (error: unknown) => {
+  const data = asApiError(error)?.response?.data;
+  return typeof data === "object" && data ? data.message : undefined;
+};
 
 export function useArtistTasteFeedback() {
   const { user } = useAuth();
@@ -121,7 +127,9 @@ export function useArtistTasteFeedback() {
       onRevert?.();
       try {
         const response = await restoreDiscoveryFeedback({
-          removeIds: change.added.map((entry) => entry.id),
+          removeIds: change.added
+            .map((entry) => entry.id)
+            .filter((id): id is string => Boolean(id)),
           entries: change.removed,
         });
         queryClient.setQueryData(queryKey, normalizeDiscoveryFeedbackList(response?.feedbackList));
@@ -129,7 +137,7 @@ export function useArtistTasteFeedback() {
         queryClient.setQueryData(queryKey, before);
         showError(
           `Could not undo the change for ${name}. It is still saved. ${
-            err.response?.data?.message || "Try again from the artist menu."
+            responseMessage(err) || "Try again from the artist menu."
           }`,
         );
       }
@@ -164,7 +172,7 @@ export function useArtistTasteFeedback() {
         onRevert?.();
         showError(
           `Could not ${FAILED_ACTIONS[action]?.(name, isSelected) || "save your feedback"}. Nothing changed. ${
-            err.response?.data?.message || "Try again."
+            responseMessage(err) || "Try again."
           }`,
         );
         return false;

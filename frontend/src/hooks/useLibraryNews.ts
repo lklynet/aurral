@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { useInfiniteQuery, useMutation } from "@tanstack/react-query";
 import { disableNewsFeed, getLibraryNews } from "../utils/api/endpoints/news.ts";
 import { queryClient, queryKeys } from "../queryClient.ts";
+import { asApiError } from "../utils/api/core.ts";
 
 export function useLibraryNews({
   enabled = false,
@@ -37,6 +38,7 @@ export function useLibraryNews({
     () => (hasNextPage && !isFetchingNextPage ? fetchNextPage() : Promise.resolve(null)),
     [fetchNextPage, hasNextPage, isFetchingNextPage],
   );
+  const errorData = asApiError(query.error)?.response?.data;
   return {
     articles,
     refresh: pages[0]?.refresh || null,
@@ -44,7 +46,10 @@ export function useLibraryNews({
     loadingMore: query.isFetchingNextPage,
     hasMore: query.hasNextPage === true,
     loadMore,
-    error: query.error?.response?.data?.message || query.error?.message || "",
+    error:
+      (typeof errorData === "object" && errorData ? errorData.message : undefined) ||
+      query.error?.message ||
+      "",
     disableFeed: disableMutation.mutateAsync,
   };
 }

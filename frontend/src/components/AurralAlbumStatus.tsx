@@ -23,7 +23,7 @@ import {
 const POLL_INTERVAL_MS = 4000;
 
 interface AlbumArtistRef {
-  mbid?: string;
+  mbid?: string | null;
   name?: string;
 }
 

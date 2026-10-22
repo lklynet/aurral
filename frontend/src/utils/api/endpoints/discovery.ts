@@ -107,7 +107,7 @@ export const restoreDiscoveryFeedback = ({
   entries = [],
 }: {
   removeIds?: string[];
-  entries?: DiscoveryFeedbackEntry[];
+  entries?: Partial<DiscoveryFeedbackEntry>[];
 }): Promise<DiscoveryFeedbackListResponse> =>
   postData("/discover/feedback/restore", { removeIds, entries });
 

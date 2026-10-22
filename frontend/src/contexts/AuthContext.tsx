@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { clearAuthStorage, getStoredAuth, setStoredAuth } from "../utils/api/core.ts";
+import { asApiError, clearAuthStorage, getStoredAuth, setStoredAuth } from "../utils/api/core.ts";
 import {
   getBootstrapStatus,
   getMe,
@@ -153,7 +153,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       } catch {}
       return { ok: true };
     } catch (error) {
-      return { ok: false, status: error?.response?.status };
+      return { ok: false, status: asApiError(error)?.response?.status };
     }
   }, []);
 

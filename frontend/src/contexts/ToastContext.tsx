@@ -24,7 +24,7 @@ type ToastApi = {
   showInfo: (message: ToastMessage, duration?: number) => string;
 };
 
-const ToastContext = createContext<ToastApi | undefined>();
+const ToastContext = createContext<ToastApi | undefined>(undefined);
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastEntry[]>([]);

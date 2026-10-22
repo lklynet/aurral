@@ -52,6 +52,8 @@ const PASSIVE_ACTIONS = new Set([
   "RESTORE_QUEUE",
 ]);
 
+const SHARED_AUDIO_KEYS: (string | null)[] = [SHARED_VOLUME_KEY, SHARED_MUTED_KEY];
+
 type StoredAudio = { volume: number; muted: boolean };
 type LoadTrackOptions = { formatAttemptIndex?: number; autoplay?: boolean };
 
@@ -82,10 +84,7 @@ function useSharedVolume() {
 
   useEffect(() => {
     const handleVolumeChange = (event: Event) => {
-      if (
-        event.type === "storage" &&
-        ![SHARED_VOLUME_KEY, SHARED_MUTED_KEY].includes((event as StorageEvent).key)
-      ) {
+      if (event.type === "storage" && !SHARED_AUDIO_KEYS.includes((event as StorageEvent).key)) {
         return;
       }
       setAudio(readStoredAudio());
@@ -648,7 +647,9 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
       },
       nexttrack: playNext,
       previoustrack: playPrevious,
-      seekto: (details: MediaSessionActionDetails) => seek(details?.seekTime),
+      seekto: (details: MediaSessionActionDetails) => {
+        if (details?.seekTime !== undefined) seek(details.seekTime);
+      },
       seekforward: (details: MediaSessionActionDetails) =>
         seekBy(details?.seekOffset || MEDIA_SESSION_SEEK_SECONDS),
       seekbackward: (details: MediaSessionActionDetails) =>

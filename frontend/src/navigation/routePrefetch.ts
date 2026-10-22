@@ -1,5 +1,5 @@
 import { matchPath, type Params } from "react-router";
-import type { QueryKey } from "@tanstack/react-query";
+import type { FetchQueryOptions, QueryKey } from "@tanstack/react-query";
 import { queryClient } from "../queryClient.ts";
 import {
   editorialPlaylistQueryOptions,
@@ -16,6 +16,14 @@ const FAILURE_COOLDOWN_MS = 30_000;
 
 type RouteContext = { userId: number | null; search: URLSearchParams };
 
+const prefetchable = <TData, TKey extends QueryKey>(
+  options: FetchQueryOptions<TData, Error, TData, TKey> & { enabled?: unknown },
+) => ({
+  queryKey: options.queryKey,
+  enabled: options.enabled,
+  prefetch: () => queryClient.prefetchQuery(options),
+});
+
 const libraryView = async (
   view: { albumId?: string; artistId?: string; section?: string },
   search: URLSearchParams,
@@ -23,18 +31,21 @@ const libraryView = async (
   if (search.get("preview") === "1") return [];
   const { libraryListParams, libraryViewQueryOptions, resolveLibrarySection } =
     await import("../pages/libraryViewQuery.ts");
-  if (view.albumId || view.artistId) return [libraryViewQueryOptions(view)];
+  const { albumId, artistId } = view;
+  if (albumId || artistId) return [prefetchable(libraryViewQueryOptions({ albumId, artistId }))];
   const section = resolveLibrarySection(view.section);
   const { sort, direction, pageIndex } = libraryListParams(section, search);
   return [
-    libraryViewQueryOptions({
-      section,
-      pageIndex,
-      sort,
-      direction,
-      query: (search.get("q") || "").trim().toLocaleLowerCase(),
-      genre: search.get("genre") || "",
-    }),
+    prefetchable(
+      libraryViewQueryOptions({
+        section,
+        pageIndex,
+        sort,
+        direction,
+        query: (search.get("q") || "").trim().toLocaleLowerCase(),
+        genre: search.get("genre") || "",
+      }),
+    ),
   ];
 };
 
@@ -44,14 +55,14 @@ const ROUTES = [
     path: "/discover/playlists/deezer/:playlistId",
     module: routeModules.editorialPlaylist,
     queries: ({ playlistId }: Params<string>, { userId }: RouteContext) => [
-      editorialPlaylistQueryOptions(userId, playlistId!),
+      prefetchable(editorialPlaylistQueryOptions(userId, playlistId!)),
     ],
   },
   {
     path: "/discover/playlists",
     module: routeModules.discoverPlaylists,
     queries: (_params: Params<string>, { userId }: RouteContext) => [
-      editorialShelfQueryOptions(userId),
+      prefetchable(editorialShelfQueryOptions(userId)),
     ],
   },
   { path: "/discover/news", module: routeModules.news },
@@ -59,14 +70,14 @@ const ROUTES = [
     path: "/library/playlists/:playlistId",
     module: routeModules.playlist,
     queries: ({ playlistId }: Params<string>) => [
-      playlistStatusQueryOptions(),
-      playlistJobsQueryOptions(playlistId),
+      prefetchable(playlistStatusQueryOptions()),
+      prefetchable(playlistJobsQueryOptions(playlistId)),
     ],
   },
   {
     path: "/library/playlists",
     module: routeModules.playlists,
-    queries: () => [playlistStatusQueryOptions()],
+    queries: () => [prefetchable(playlistStatusQueryOptions())],
   },
   {
     path: "/library/album/:albumId",
@@ -90,15 +101,21 @@ const ROUTES = [
     path: "/flows/:flowId",
     module: routeModules.flow,
     queries: ({ flowId }: Params<string>) => [
-      playlistStatusQueryOptions(),
-      playlistJobsQueryOptions(flowId),
+      prefetchable(playlistStatusQueryOptions()),
+      prefetchable(playlistJobsQueryOptions(flowId)),
     ],
   },
-  { path: "/flows", module: routeModules.flows, queries: () => [playlistStatusQueryOptions()] },
+  {
+    path: "/flows",
+    module: routeModules.flows,
+    queries: () => [prefetchable(playlistStatusQueryOptions())],
+  },
   {
     path: "/artist/:mbid/release/:releaseMbid",
     module: routeModules.release,
-    queries: ({ releaseMbid }: Params<string>) => [releaseGroupDetailsQueryOptions(releaseMbid)],
+    queries: ({ releaseMbid }: Params<string>) => [
+      prefetchable(releaseGroupDetailsQueryOptions(releaseMbid)),
+    ],
   },
   { path: "/artist/:mbid/albums", module: routeModules.artistReleases },
   { path: "/artist/:mbid/appears-on", module: routeModules.artistReleases },
@@ -113,7 +130,7 @@ const ROUTES = [
     path: "/go/:kind",
     module: routeModules.resolveLink,
     queries: ({ kind }: Params<string>, { search }: RouteContext) => [
-      resolveLinkQueryOptions(kind!, search),
+      prefetchable(resolveLinkQueryOptions(kind!, search)),
     ],
   },
 ];
@@ -159,7 +176,7 @@ export async function prefetchRoute(
       ).catch(() => []);
       for (const option of options) {
         if (option.enabled === false || coolingDown(option.queryKey)) continue;
-        work.push(queryClient.prefetchQuery(option));
+        work.push(option.prefetch());
       }
     }
     await Promise.all(work);

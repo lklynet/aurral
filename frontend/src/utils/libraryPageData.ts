@@ -183,7 +183,13 @@ export const getCachedAlbumTracks = (
   const cached = queryClient.getQueryState(queryKey)?.isInvalidated
     ? null
     : queryClient.getQueryData<{ tracks: LibraryTrack[] }>(queryKey)?.tracks;
-  return cached || album?.trackIds?.map((id) => tracksById.get(String(id))).filter(Boolean) || [];
+  return (
+    cached ||
+    album?.trackIds
+      ?.map((id) => tracksById.get(String(id)))
+      .filter((track): track is LibraryTrack => Boolean(track)) ||
+    []
+  );
 };
 
 export const yearOf = (value: string | null | undefined) =>
