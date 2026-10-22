@@ -26,6 +26,7 @@ import {
   getScheduledLibraryScanJobId,
   scheduleLibraryScan,
 } from "../../../services/libraryScanWorker.ts";
+import { asAppError } from "../../../../lib/errors.ts";
 
 const isFilesystemPathKey = (key: string) => key.toLowerCase().endsWith("path");
 
@@ -80,7 +81,7 @@ const publicEntity = <T extends { identityKey: string }>(
     : { ...entity };
 
 const publicAlbum = (
-  album: LibraryCollections["albums"][number],
+  album: LibraryCollections["albums"][number] & { coverUrl?: string | null },
   favoriteKeys: Set<string> | null,
   customArtwork: number | undefined,
 ) => {
@@ -234,15 +235,16 @@ export function registerLibraryIndex(router: Router) {
         ),
       );
     } catch (error) {
+      const failure = asAppError(error);
       if (
-        error.message.startsWith("Unsupported library source:") ||
-        error.message.startsWith("Unsupported library page kind:")
+        failure?.message.startsWith("Unsupported library source:") ||
+        failure?.message.startsWith("Unsupported library page kind:")
       ) {
-        return res.status(400).json({ error: error.message });
+        return res.status(400).json({ error: failure?.message });
       }
       return res.status(500).json({
         error: "Failed to query library",
-        message: error.message,
+        message: failure?.message,
       });
     }
   });

@@ -44,7 +44,15 @@ export function findQueuedLibraryTrackJob({
 // leaves exclusions and tracks the Library already lists alone.
 export async function requestLibraryTrack(
   track,
-  { canonicalTrackId = null, user = null, automatic = false } = {},
+  {
+    canonicalTrackId = null,
+    user = null,
+    automatic = false,
+  }: {
+    canonicalTrackId?: null;
+    user?: Parameters<typeof recordTrackJobQueued>[1];
+    automatic?: boolean;
+  } = {},
 ) {
   if (!automatic) {
     clearTrackMonitoringExclusion({

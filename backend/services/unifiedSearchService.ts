@@ -868,8 +868,8 @@ function searchLocalLibrary(query: string, limit: number, context: SearchContext
 }
 
 export function searchLibrary(
-  query: string,
-  { limit, user = null }: { limit?: number; user?: SearchUser } = {},
+  query: unknown,
+  { limit, user = null }: { limit?: unknown; user?: SearchUser } = {},
 ) {
   const trimmed = String(query || "").trim();
   if (!trimmed) {
@@ -898,13 +898,13 @@ function getSearchContextOrFallback(user: SearchUser): SearchContext {
 }
 
 export async function searchUnified(
-  query: string,
+  query: unknown,
   {
     mode = "suggest",
     limit,
     user = null,
     signal,
-  }: { mode?: string; limit?: number; user?: SearchUser; signal?: AbortSignal } = {},
+  }: { mode?: unknown; limit?: unknown; user?: SearchUser; signal?: AbortSignal } = {},
 ): Promise<UnifiedSearchResponse> {
   const trimmed = String(query || "").trim();
   const normalizedMode = normalizeMode(mode);

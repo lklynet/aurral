@@ -26,6 +26,7 @@ import {
   getDownloadSourceNotConfiguredMessage,
   isAnyDownloadSourceConfigured,
 } from "../../../services/downloadSourceService.ts";
+import { asAppError } from "../../../../lib/errors.ts";
 
 type LidarrProviderSnapshot = {
   queue: LidarrQueueItem[] | LidarrPage<LidarrQueueItem>;
@@ -101,7 +102,7 @@ export const getDownloadStatusesForAlbumIds = async (
         if (h?.albumId == null) continue;
         const event = classifyLidarrDownloadEvent(h?.eventType);
         if (!event) continue;
-        const historyTime = new Date(h?.date || h?.eventDate || 0).getTime();
+        const historyTime = new Date(h?.date || 0).getTime();
         const existing = latestHistoryByAlbumId.get(h.albumId);
         if (!existing || historyTime > existing.historyTime) {
           latestHistoryByAlbumId.set(h.albumId, { event, historyTime });
@@ -172,7 +173,8 @@ export const getDownloadStatusesForAlbumIds = async (
         }
       }
     } catch (error) {
-      logger.warn("downloads", "Failed to fetch Lidarr status:", { message: error.message });
+      const failure = asAppError(error);
+      logger.warn("downloads", "Failed to fetch Lidarr status:", { message: failure?.message });
     }
   }
 
@@ -197,8 +199,8 @@ const computeLidarrStatusSnapshot = async () => {
       { forceRefresh: true },
     ),
   ]);
-  const provider = { queue, history, commands };
-  const queueItems = Array.isArray(queue) ? queue : queue.records || [];
+  const provider: LidarrProviderSnapshot = { queue, history, commands };
+  const queueItems = Array.isArray(provider.queue) ? provider.queue : provider.queue.records || [];
   const historyItems = Array.isArray(history) ? history : history.records || [];
   const oneHourAgo = Date.now() - 60 * 60 * 1000;
   const albumIds = new Set();
@@ -237,7 +239,7 @@ const staleSnapshot = (error: unknown): LidarrStatusSnapshot => ({
     active: false,
   }),
   stale: true,
-  error: error?.message || String(error),
+  error: asAppError(error)?.message || String(error),
 });
 
 export const getLidarrStatusSnapshot = async ({
@@ -294,7 +296,9 @@ export const getLidarrStatusSnapshot = async ({
         );
       allDownloadStatusesCache.nextRefreshAt =
         refreshRevision === allDownloadStatusesCache.revision ? retryAt : 0;
-      logger.warn("downloads", "Failed to refresh Lidarr status:", { message: error.message });
+      logger.warn("downloads", "Failed to refresh Lidarr status:", {
+        message: asAppError(error)?.message,
+      });
       const snapshot = staleSnapshot(error);
       allDownloadStatusesCache.snapshot = snapshot;
       return snapshot;
@@ -350,7 +354,10 @@ export const getActiveLibraryDownloads = async () => {
       if (album.artist?.foreignArtistId) artists.add(album.artist.foreignArtistId);
     }
   } catch (error) {
-    logger.warn("downloads", "Failed to read active Lidarr downloads", { message: error.message });
+    const failure = asAppError(error);
+    logger.warn("downloads", "Failed to read active Lidarr downloads", {
+      message: failure?.message,
+    });
   }
   return { albums: [...albums], artists: [...artists], tracks };
 };
@@ -390,10 +397,11 @@ export function registerDownloads(router: Router) {
           operationId: result.operationId,
         });
       } catch (error) {
-        logger.error("library", "Failed to queue track replacement search", error.message);
+        const failure = asAppError(error);
+        logger.error("library", "Failed to queue track replacement search", failure?.message);
         return res.status(500).json({
           error: "Failed to queue track replacement search",
-          message: error.message,
+          message: failure?.message,
         });
       }
     },
@@ -431,10 +439,11 @@ export function registerDownloads(router: Router) {
       if (!result.reused) await invalidateActivityRequestsCache();
       return res.status(202).json({ success: true, ...result });
     } catch (error) {
-      logger.error("library", "Failed to queue track acquisition", error.message);
+      const failure = asAppError(error);
+      logger.error("library", "Failed to queue track acquisition", failure?.message);
       return res.status(500).json({
         error: "Failed to queue track acquisition",
-        message: error.message,
+        message: failure?.message,
       });
     }
   });
@@ -495,10 +504,11 @@ export function registerDownloads(router: Router) {
         message: searchOnAdd ? "Album search triggered" : "Album added to library",
       });
     } catch (error) {
-      logger.error("library", "Error initiating album download:", error.message);
+      const failure = asAppError(error);
+      logger.error("library", "Error initiating album download:", failure?.message);
       res.status(500).json({
         error: "Failed to initiate album download",
-        message: error.message,
+        message: failure?.message,
       });
     }
   });
@@ -561,12 +571,13 @@ export function registerDownloads(router: Router) {
           message: "Album search triggered",
         });
       } catch (error) {
+        const failure = asAppError(error);
         logger.error("downloads", `Failed to trigger album search ${req.body?.albumId}:`, {
-          message: error.message,
+          message: failure?.message,
         });
         res.status(500).json({
           error: "Failed to trigger album search",
-          message: error.message,
+          message: failure?.message,
         });
       }
     },
@@ -593,9 +604,10 @@ export function registerDownloads(router: Router) {
         })),
       );
     } catch (error) {
+      const failure = asAppError(error);
       res.status(500).json({
         error: "Failed to fetch downloads",
-        message: error.message,
+        message: failure?.message,
       });
     }
   });
@@ -620,9 +632,10 @@ export function registerDownloads(router: Router) {
       });
       res.json(statuses);
     } catch (error) {
+      const failure = asAppError(error);
       res.status(500).json({
         error: "Failed to fetch download status",
-        message: error.message,
+        message: failure?.message,
       });
     }
   });
@@ -631,9 +644,10 @@ export function registerDownloads(router: Router) {
     try {
       res.json(await getActiveLibraryDownloads());
     } catch (error) {
+      const failure = asAppError(error);
       res.status(500).json({
         error: "Failed to fetch active downloads",
-        message: error.message,
+        message: failure?.message,
       });
     }
   });
@@ -643,9 +657,10 @@ export function registerDownloads(router: Router) {
       const statuses = await getAllDownloadStatuses();
       res.json(statuses);
     } catch (error) {
+      const failure = asAppError(error);
       res.status(500).json({
         error: "Failed to fetch download status",
-        message: error.message,
+        message: failure?.message,
       });
     }
   });

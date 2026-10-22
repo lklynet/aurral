@@ -10,6 +10,7 @@ import {
   saveCustomArtworkUpload,
   saveCustomArtworkUrl,
 } from "../../../services/customArtworkService.ts";
+import { asAppError } from "../../../../lib/errors.ts";
 
 const artworkUploadParser = express.raw({
   limit: "8mb",
@@ -99,9 +100,10 @@ export function registerArtwork(router: Router) {
         );
         return res.json({ ok: true, updatedAt: artwork.updatedAt });
       } catch (error) {
+        const failure = asAppError(error);
         return res.status(400).json({
           error: "Failed to save artwork",
-          message: error?.message || "The image could not be saved",
+          message: failure?.message || "The image could not be saved",
         });
       }
     },
@@ -117,9 +119,10 @@ export function registerArtwork(router: Router) {
         const artwork = await saveCustomArtworkUrl(req.params.kind, req.params.id, req.body?.url);
         return res.json({ ok: true, updatedAt: artwork.updatedAt });
       } catch (error) {
+        const failure = asAppError(error);
         return res.status(400).json({
           error: "Failed to save artwork",
-          message: error?.message || "The image could not be downloaded",
+          message: failure?.message || "The image could not be downloaded",
         });
       }
     },

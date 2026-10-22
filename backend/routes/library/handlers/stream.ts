@@ -3,6 +3,7 @@ import axios from "../../../../lib/axiosFetch.ts";
 import { noCache } from "../../../middleware/cache.ts";
 import { verifyTokenAuth } from "../../../middleware/auth.ts";
 import { dbOps } from "../../../db/helpers/index.ts";
+import { asAppError } from "../../../../lib/errors.ts";
 
 export function registerStream(router: Router) {
   router.get(
@@ -33,11 +34,12 @@ export function registerStream(router: Router) {
         if (contentLength) res.setHeader("Content-Length", contentLength);
         response.data.pipe(res);
       } catch (error) {
-        const status = error.response?.status || 500;
+        const failure = asAppError(error);
+        const status = failure?.response?.status || 500;
         if (!res.headersSent) {
           res.status(status).json({
             error: "Stream failed",
-            message: error.message,
+            message: failure?.message,
           });
         }
       }

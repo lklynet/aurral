@@ -9,6 +9,20 @@ import { requireAuth, requirePermission } from "../../../middleware/requirePermi
 import { logger } from "../../../services/logger.ts";
 import { invalidateAllDownloadStatusesCache } from "./downloads.ts";
 import { getLibraryReadModelForArtistReferences } from "../../../services/libraryReadModel.ts";
+import { asAppError, type AppError } from "../../../../lib/errors.ts";
+
+type AlbumAddFailure = Extract<
+  Awaited<ReturnType<typeof libraryManager.addAlbum>>,
+  { error: string }
+>;
+
+type AlbumRequestFailure = AppError &
+  Partial<
+    Pick<
+      AlbumAddFailure,
+      "managedBy" | "sources" | "canonicalId" | "providerId" | "availability" | "conflict"
+    >
+  >;
 
 export function registerAlbums(router: Router) {
   router.get("/albums", cacheMiddleware(5), async (req, res) => {
@@ -47,9 +61,10 @@ export function registerAlbums(router: Router) {
       }));
       res.json(formatted);
     } catch (error) {
+      const failure = asAppError(error);
       res.status(500).json({
         error: "Failed to fetch albums",
-        message: error.message,
+        message: failure?.message,
       });
     }
   });
@@ -68,9 +83,10 @@ export function registerAlbums(router: Router) {
       try {
         managedBy = await libraryManager.resolveManagedBy(requestedManagedBy);
       } catch (error) {
-        return res.status(error.statusCode || 400).json({
-          error: error.message,
-          code: error.code || null,
+        const failure = asAppError(error);
+        return res.status(failure?.statusCode || 400).json({
+          error: failure?.message,
+          code: failure?.code || null,
         });
       }
 
@@ -102,7 +118,11 @@ export function registerAlbums(router: Router) {
           message: album.error,
         });
         const statusCode =
-          Number.isInteger(album.statusCode) && album.statusCode >= 400 ? album.statusCode : 503;
+          typeof album.statusCode === "number" &&
+          Number.isInteger(album.statusCode) &&
+          album.statusCode >= 400
+            ? album.statusCode
+            : 503;
         return res.status(statusCode).json({
           error: "Failed to add album",
           message: album.error,
@@ -133,9 +153,10 @@ export function registerAlbums(router: Router) {
       });
       return res.status(201).json({ ...album, queued: false });
     } catch (error) {
+      const failure = asAppError(error);
       res.status(500).json({
         error: "Failed to add album",
-        message: error.message,
+        message: failure?.message,
       });
     }
   });
@@ -175,10 +196,10 @@ export function registerAlbums(router: Router) {
       const { recordAlbumRequested, recordAlbumSearchCompleted } =
         await import("../../../services/aurralHistoryService.ts");
       const historyAlbum = {
-        albumId: result?.album?.id || result?.id,
-        albumName: result?.album?.albumName || result?.albumName || albumName,
-        artistName: result?.artist?.artistName || result?.artistName || artistName,
-        artistMbid: result?.artist?.mbid || result?.mbid || artistMbid,
+        albumId: result?.album?.id,
+        albumName: result?.album?.albumName || albumName,
+        artistName: result?.artist?.artistName || artistName,
+        artistMbid: result?.artist?.mbid || artistMbid,
         managedBy: result?.managedBy || null,
         user: req.user,
       };
@@ -196,17 +217,22 @@ export function registerAlbums(router: Router) {
         queued: result?.managedBy === "aurral" ? (result?.jobIds?.length || 0) > 0 : false,
       });
     } catch (error) {
+      const failure: AlbumRequestFailure | undefined = asAppError(error);
       const statusCode =
-        Number.isInteger(error?.statusCode) && error.statusCode >= 400 ? error.statusCode : 500;
+        typeof failure?.statusCode === "number" &&
+        Number.isInteger(failure.statusCode) &&
+        failure.statusCode >= 400
+          ? failure.statusCode
+          : 500;
       res.status(statusCode).json({
-        error: error.message || "Failed to request album",
-        code: error.code || null,
-        managedBy: error.managedBy || null,
-        sources: error.sources || [],
-        canonicalId: error.canonicalId || null,
-        providerId: error.providerId || null,
-        availability: error.availability || null,
-        conflict: error.conflict || null,
+        error: failure?.message || "Failed to request album",
+        code: failure?.code || null,
+        managedBy: failure?.managedBy || null,
+        sources: failure?.sources || [],
+        canonicalId: failure?.canonicalId || null,
+        providerId: failure?.providerId || null,
+        availability: failure?.availability || null,
+        conflict: failure?.conflict || null,
       });
     }
   });
@@ -223,9 +249,10 @@ export function registerAlbums(router: Router) {
         }
         return res.json(result);
       } catch (error) {
+        const failure = asAppError(error);
         return res.status(500).json({
           error: "Failed to fetch album status",
-          message: error.message,
+          message: failure?.message,
         });
       }
     },
@@ -246,9 +273,10 @@ export function registerAlbums(router: Router) {
         }
         return res.json(result);
       } catch (error) {
+        const failure = asAppError(error);
         return res.status(500).json({
           error: "Failed to update album monitoring",
-          message: error.message,
+          message: failure?.message,
         });
       }
     },
@@ -270,9 +298,10 @@ export function registerAlbums(router: Router) {
         }
         return res.json(result);
       } catch (error) {
+        const failure = asAppError(error);
         return res.status(500).json({
           error: "Failed to remove album",
-          message: error.message,
+          message: failure?.message,
         });
       }
     },
@@ -291,9 +320,10 @@ export function registerAlbums(router: Router) {
         }
         return res.json(result);
       } catch (error) {
+        const failure = asAppError(error);
         return res.status(500).json({
           error: "Failed to cancel album",
-          message: error.message,
+          message: failure?.message,
         });
       }
     },
@@ -308,9 +338,10 @@ export function registerAlbums(router: Router) {
       }
       res.json(album);
     } catch (error) {
+      const failure = asAppError(error);
       res.status(500).json({
         error: "Failed to fetch album",
-        message: error.message,
+        message: failure?.message,
       });
     }
   });
@@ -336,9 +367,10 @@ export function registerAlbums(router: Router) {
         }
         res.json(album);
       } catch (error) {
+        const failure = asAppError(error);
         res.status(500).json({
           error: "Failed to update album",
-          message: error.message,
+          message: failure?.message,
         });
       }
     },
@@ -361,7 +393,8 @@ export function registerAlbums(router: Router) {
         }
         res.json({ success: true, message: "Album deleted successfully" });
       } catch (error) {
-        res.status(500).json({ error: "Failed to delete album", message: error.message });
+        const failure = asAppError(error);
+        res.status(500).json({ error: "Failed to delete album", message: failure?.message });
       }
     },
   );
@@ -380,9 +413,10 @@ export function registerAlbums(router: Router) {
         }
         res.json({ success: true, message: "Album deleted successfully" });
       } catch (error) {
+        const failure = asAppError(error);
         res.status(500).json({
           error: "Failed to delete album",
-          message: error.message,
+          message: failure?.message,
         });
       }
     },

@@ -12,6 +12,7 @@ import {
   fetchQualityProfiles,
   fetchMetadataProfiles,
 } from "../services/lidarrSettingsService.ts";
+import { asAppError } from "../../lib/errors.ts";
 
 const router = express.Router();
 
@@ -33,9 +34,10 @@ router.post("/lidarr/profiles", async (req, res) => {
     const profiles = await fetchQualityProfiles({ url, apiKey });
     res.json(profiles);
   } catch (error) {
-    res.status(error.statusCode || 400).json({
+    const failure = asAppError(error);
+    res.status(failure?.statusCode || 400).json({
       error: "Failed to fetch Lidarr quality profiles",
-      message: error.message,
+      message: failure?.message,
     });
   }
 });
@@ -47,9 +49,10 @@ router.post("/lidarr/metadata-profiles", async (req, res) => {
     const profiles = await fetchMetadataProfiles({ url, apiKey });
     res.json(profiles);
   } catch (error) {
-    res.status(error.statusCode || 400).json({
+    const failure = asAppError(error);
+    res.status(failure?.statusCode || 400).json({
       error: "Failed to fetch Lidarr metadata profiles",
-      message: error.message,
+      message: failure?.message,
     });
   }
 });
@@ -65,9 +68,10 @@ router.post("/lidarr/test", async (req, res) => {
       res.status(400).json({ error: result.error || "Connection failed" });
     }
   } catch (error) {
-    res.status(error.statusCode || 400).json({
+    const failure = asAppError(error);
+    res.status(failure?.statusCode || 400).json({
       error: "Connection failed",
-      message: error.message,
+      message: failure?.message,
     });
   }
 });
@@ -106,7 +110,10 @@ async function resolveLidarrProfiles(lidarr: LidarrProfilesInput) {
       metadataProfileId = parseInt(String(metadataProfiles[0].id), 10) || null;
     }
   } catch (error) {
-    logger.warn("onboarding", "Could not auto-pick Lidarr profiles:", { message: error.message });
+    const failure = asAppError(error);
+    logger.warn("onboarding", "Could not auto-pick Lidarr profiles:", {
+      message: failure?.message,
+    });
   }
   return { qualityProfileId, metadataProfileId };
 }
@@ -205,10 +212,11 @@ router.post("/complete", async (req, res) => {
 
     res.json({ success: true });
   } catch (error) {
-    logger.error("onboarding", "Complete error:", { message: error.message });
+    const failure = asAppError(error);
+    logger.error("onboarding", "Complete error:", { message: failure?.message });
     res.status(500).json({
       error: "Failed to save onboarding",
-      message: error.message,
+      message: failure?.message,
     });
   }
 });

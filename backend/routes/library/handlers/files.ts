@@ -19,7 +19,9 @@ import {
 import {
   getLatestLibraryFileOperation,
   getLibraryFileOperation,
+  OperationConflictError,
 } from "../../../services/libraryFiles/operationStore.ts";
+import { asAppError } from "../../../../lib/errors.ts";
 
 const ITEM_STATUSES = new Set([
   "new",
@@ -32,19 +34,20 @@ const ITEM_STATUSES = new Set([
 ]);
 
 function sendError(res: Response, error: unknown) {
-  if (error?.code === "LIBRARY_FILE_OPERATION_ACTIVE") {
+  if (error instanceof OperationConflictError) {
     return res.status(409).json({
       error: "operation_active",
       message: error.message,
       operation: describeLibraryFileOperation(error.operation),
     });
   }
-  if (error?.code === "INGEST_SOURCE_INVALID" || error?.code === "READ_ONLY_FOLDER_INVALID") {
-    return res.status(400).json({ error: "invalid_request", message: error.message });
+  const failure = asAppError(error);
+  if (failure?.code === "INGEST_SOURCE_INVALID" || failure?.code === "READ_ONLY_FOLDER_INVALID") {
+    return res.status(400).json({ error: "invalid_request", message: failure.message });
   }
   return res.status(500).json({
     error: "library_files_failed",
-    message: error?.message || "Library file operation failed",
+    message: failure?.message || "Library file operation failed",
   });
 }
 

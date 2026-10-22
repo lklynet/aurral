@@ -31,6 +31,7 @@ type LibraryTrackFileQuality = {
 
 export interface LibraryArtistImage {
   remoteUrl?: string | null;
+  imageUrl?: string | null;
   url?: string | null;
   Url?: string | null;
   coverType?: string | null;
@@ -180,7 +181,7 @@ const parseSources = (value: string | null): string[] =>
     .filter(Boolean)
     .sort();
 
-function normalizeSource(source: string | null | undefined): string | null {
+function normalizeSource(source: unknown): string | null {
   const value = String(source || "")
     .trim()
     .toLowerCase();
@@ -237,6 +238,7 @@ const CANONICAL_FROM = `FROM library_artists AS artist
     AND ${albumMediaCondition("media", "album_track")}`;
 
 export interface LibraryAlbumMetadata {
+  images?: LibraryArtistImage[] | null;
   albumType?: string | null;
   releaseType?: string | null;
   tags?: { releasetype?: string | string[] } | null;
@@ -485,7 +487,7 @@ function buildLibraryFromRows(rows: Iterable<LibraryCanonicalRow>) {
 
 type LibraryCollection = ReturnType<typeof buildLibraryFromRows>;
 type LibraryAvailability = boolean | typeof LIBRARY_VIEW;
-type LibraryScope = { source?: string | null; availableOnly?: LibraryAvailability };
+type LibraryScope = { source?: unknown; availableOnly?: LibraryAvailability };
 type PageSql = { sql: string; parameters: unknown[] };
 
 const normalizeLookupValues = (values: unknown) => [
@@ -662,7 +664,7 @@ type LibraryArtistProjectionOptions = {
   page?: number | string;
   pageSize?: number | string;
   offset?: number | string | null;
-  reference?: string | number | null;
+  reference?: unknown;
   artistIds?: number[] | null;
 };
 
@@ -1377,7 +1379,7 @@ export function getLibraryForArtists({
 function getLibraryForIds(
   kind: string,
   ids: unknown[],
-  source: string | null,
+  source: unknown,
   availableOnly: LibraryAvailability,
 ) {
   const values = [
@@ -1659,7 +1661,7 @@ export function getLibrary({
 
 const text = (value: unknown) => String(value || "").trim();
 
-const pageNumber = (value: string | number) => Math.max(1, Number.parseInt(String(value), 10) || 1);
+const pageNumber = (value: unknown) => Math.max(1, Number.parseInt(String(value), 10) || 1);
 
 const pageSize = (value: string | number, max = MAX_PAGE_SIZE) =>
   Math.min(max, Math.max(1, Number.parseInt(String(value), 10) || DEFAULT_PAGE_SIZE));
@@ -3104,13 +3106,13 @@ export function getLibraryPage({
   albumId = null,
 }: LibraryScope & {
   kind?: string;
-  page?: number | string;
+  page?: unknown;
   pageSize?: number | string;
   offset?: number | string | null;
-  query?: string;
-  genre?: string;
-  sort?: string | null;
-  direction?: string;
+  query?: unknown;
+  genre?: unknown;
+  sort?: unknown;
+  direction?: unknown;
   artistId?: string | number | null;
   albumId?: string | number | null;
 } = {}) {

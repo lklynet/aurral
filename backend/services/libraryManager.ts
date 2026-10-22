@@ -144,7 +144,7 @@ type AlbumMetadata = LibraryAlbumMetadata & {
   aurralHandoverAt?: number;
   secondaryTypes?: string[];
   genres?: string[];
-  images?: unknown[];
+  images?: unknown[] | null;
 };
 
 type TrackMetadata = Record<string, unknown> & {
@@ -623,7 +623,7 @@ function mapLibraryTrack(track: LibraryTrackRecord, album: LibraryAlbumRecord | 
   };
 }
 
-function libraryArtistFallback(reference: string | number | null | undefined) {
+function libraryArtistFallback(reference: unknown) {
   return getLibraryArtistProjection({ reference })[0] || null;
 }
 
@@ -702,7 +702,7 @@ function recordLidarrOwner(
 
 type LibraryArtistProjection = NonNullable<ReturnType<typeof libraryArtistFallback>>;
 
-function libraryForArtist(reference: string | number | null | undefined): LibraryCollection {
+function libraryForArtist(reference: unknown): LibraryCollection {
   return getLibraryForArtistReferences({
     source: "all",
     availableOnly: false,
@@ -718,7 +718,7 @@ function libraryForAlbum(reference: string | number | null | undefined): Library
   });
 }
 
-function libraryAlbumsForArtist(reference: string | number | null | undefined) {
+function libraryAlbumsForArtist(reference: unknown) {
   const library = libraryForArtist(reference);
   const artistId = library.albums[0]?.artistId;
   const artist = library.artists.find((entry) => entry.id === artistId);
@@ -4118,7 +4118,7 @@ export class LibraryManager {
   }
 
   async getAlbums(
-    artistId: string | number | null | undefined,
+    artistId: unknown,
     lidarrArtist: LidarrArtist | null = null,
     options: { managedBy?: string | null; includeAurral?: boolean; forceRefresh?: boolean } = {},
   ) {

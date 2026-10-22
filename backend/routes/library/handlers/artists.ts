@@ -11,6 +11,7 @@ import {
   getArtistByMbid,
   isMetadataNotFoundError,
 } from "../../../services/providers/brainzmashProvider.ts";
+import { asAppError, type AppError } from "../../../../lib/errors.ts";
 export function registerArtists(router: Router) {
   router.get("/artists", cacheMiddleware(120), async (req, res) => {
     try {
@@ -37,9 +38,10 @@ export function registerArtists(router: Router) {
       }));
       res.json(formatted);
     } catch (error) {
+      const failure = asAppError(error);
       res.status(500).json({
         error: "Failed to fetch artists",
-        message: error.message,
+        message: failure?.message,
       });
     }
   });
@@ -55,9 +57,10 @@ export function registerArtists(router: Router) {
         }
         res.json(await libraryManager.getArtistMonitoring(mbid));
       } catch (error) {
+        const failure = asAppError(error);
         res.status(500).json({
           error: "Failed to read artist monitoring",
-          message: error.message,
+          message: failure?.message,
         });
       }
     },
@@ -82,9 +85,10 @@ export function registerArtists(router: Router) {
       };
       res.json(formatted);
     } catch (error) {
+      const failure = asAppError(error);
       res.status(500).json({
         error: "Failed to fetch artist",
-        message: error.message,
+        message: failure?.message,
       });
     }
   });
@@ -118,9 +122,10 @@ export function registerArtists(router: Router) {
       try {
         managedBy = await libraryManager.resolveManagedBy(requestedManagedBy);
       } catch (error) {
-        return res.status(error.statusCode || 400).json({
-          error: error.message,
-          code: error.code || null,
+        const failure = asAppError(error);
+        return res.status(failure?.statusCode || 400).json({
+          error: failure?.message,
+          code: failure?.code || null,
         });
       }
 
@@ -153,16 +158,17 @@ export function registerArtists(router: Router) {
           albumMbid: releaseGroupMbid || null,
         });
       } catch (error) {
+        const failure: (AppError & { field?: string }) | undefined = asAppError(error);
         const statusCode =
-          error?.statusCode === 400 || error?.statusCode === 409 ? error.statusCode : 500;
+          failure?.statusCode === 400 || failure?.statusCode === 409 ? failure?.statusCode : 500;
         return res.status(statusCode).json({
           error:
             statusCode === 409
               ? "Saved Lidarr default is no longer valid"
               : "Failed to validate Lidarr add options",
-          message: error.message,
-          field: error.field || null,
-          code: error.code || null,
+          message: failure?.message,
+          field: failure?.field || null,
+          code: failure?.code || null,
         });
       }
 
@@ -175,7 +181,11 @@ export function registerArtists(router: Router) {
           message: artist.error,
         });
         const statusCode =
-          Number.isInteger(artist.statusCode) && artist.statusCode >= 400 ? artist.statusCode : 503;
+          typeof artist.statusCode === "number" &&
+          Number.isInteger(artist.statusCode) &&
+          artist.statusCode >= 400
+            ? artist.statusCode
+            : 503;
         return res.status(statusCode).json({
           error: "Failed to add artist",
           message: artist.error,
@@ -194,9 +204,10 @@ export function registerArtists(router: Router) {
         },
       });
     } catch (error) {
+      const failure = asAppError(error);
       res.status(500).json({
         error: "Failed to add artist",
-        message: error.message,
+        message: failure?.message,
       });
     }
   });
@@ -271,9 +282,10 @@ export function registerArtists(router: Router) {
         }
         res.json(artist);
       } catch (error) {
+        const failure = asAppError(error);
         res.status(500).json({
           error: "Failed to update artist",
-          message: error.message,
+          message: failure?.message,
         });
       }
     },
@@ -304,9 +316,10 @@ export function registerArtists(router: Router) {
         }
         res.json({ success: true, message: "Artist deleted successfully" });
       } catch (error) {
+        const failure = asAppError(error);
         res.status(500).json({
           error: "Failed to delete artist",
-          message: error.message,
+          message: failure?.message,
         });
       }
     },
@@ -345,9 +358,10 @@ export function registerArtists(router: Router) {
           albums: albums.length,
         });
       } catch (error) {
+        const failure = asAppError(error);
         res.status(500).json({
           error: "Failed to refresh artist",
-          message: error.message,
+          message: failure?.message,
         });
       }
     },

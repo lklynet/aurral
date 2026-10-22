@@ -280,7 +280,7 @@ export function getLibraryReadModelForArtistPage({
   availableOnly = true,
   limit = 10000,
   offset = 0,
-} = {}) {
+}: { source?: unknown; availableOnly?: boolean; limit?: number; offset?: number } = {}) {
   const library = getLibraryArtistPage({
     source,
     availableOnly,
@@ -301,7 +301,7 @@ export function getLibraryReadModelForArtists({
   source = "lidarr",
   availableOnly = true,
   mbids = [],
-} = {}) {
+}: { source?: unknown; availableOnly?: boolean; mbids?: string[] } = {}) {
   return buildLibraryReadModel(getLibraryForArtists({ source, availableOnly, mbids }));
 }
 
@@ -309,7 +309,7 @@ export function getLibraryReadModelForArtistReferences({
   source = "all",
   availableOnly = false,
   references = [],
-} = {}) {
+}: { source?: unknown; availableOnly?: boolean; references?: unknown[] } = {}) {
   return buildLibraryReadModel(
     getLibraryForArtistReferences({ source, availableOnly, references }),
   );
@@ -326,7 +326,7 @@ export function getLibraryReadModelForAlbumReferences({
   source = "lidarr",
   availableOnly = true,
   references = [],
-} = {}) {
+}: { source?: unknown; availableOnly?: boolean; references?: unknown[] } = {}) {
   return buildLibraryReadModel(getLibraryForAlbumReferences({ source, availableOnly, references }));
 }
 

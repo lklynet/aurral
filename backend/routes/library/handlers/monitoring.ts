@@ -8,6 +8,7 @@ import {
 } from "../../../middleware/requirePermission.ts";
 import { removeMonitoringExclusion } from "../../../services/aurralMonitoringStore.ts";
 import { libraryManager } from "../../../services/libraryManager.ts";
+import { asAppError } from "../../../../lib/errors.ts";
 
 type MonitoringResult = { error?: string; statusCode?: number };
 
@@ -20,7 +21,7 @@ const sendResult = (res: Response, result: MonitoringResult, successStatus = 200
 };
 
 const sendFailure = (res: Response, error: unknown, message: string) =>
-  res.status(500).json({ error: message, message: error?.message || message });
+  res.status(500).json({ error: message, message: asAppError(error)?.message || message });
 
 export type PreviewArtistMonitoringResponse = Extract<
   Awaited<ReturnType<typeof libraryManager.previewAurralArtistMonitoring>>,

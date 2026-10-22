@@ -72,16 +72,20 @@ async function getAlbumLibraryLookup(albumMbids: string[]) {
   return lookup;
 }
 
-export function normalizeAlbumReleaseTypesFilter(
-  releaseTypes: string | string[] | null | undefined,
-) {
-  const values = Array.isArray(releaseTypes)
+export function normalizeAlbumReleaseTypesFilter(releaseTypes: unknown) {
+  const values: unknown[] = Array.isArray(releaseTypes)
     ? releaseTypes
     : String(releaseTypes || "")
         .split(",")
         .map((value) => value.trim())
         .filter(Boolean);
-  return [...new Set(values.filter((value) => ALL_RELEASE_TYPES.has(value)))];
+  return [
+    ...new Set(
+      values.filter(
+        (value): value is string => typeof value === "string" && ALL_RELEASE_TYPES.has(value),
+      ),
+    ),
+  ];
 }
 
 export function normalizeAlbumSearchSort(value: unknown) {
@@ -153,7 +157,7 @@ export async function searchAlbums(
   query: unknown,
   limit: unknown = 24,
   offset: unknown = 0,
-  releaseTypes: string | string[] = [],
+  releaseTypes: unknown = [],
   sort: unknown = "relevance",
 ) {
   const limitInt = parsePositiveInt(limit, 24);

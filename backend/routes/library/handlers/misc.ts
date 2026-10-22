@@ -17,6 +17,7 @@ import {
   getLibraryArtistProjection,
   getRecentlyAddedLibraryArtists,
 } from "../../../services/libraryQueryService.ts";
+import { asAppError } from "../../../../lib/errors.ts";
 
 const ARTIST_LOOKUP_BATCH_MAX = 100;
 
@@ -64,18 +65,24 @@ const libraryAlbumResult = (album: ReadAlbum, ownedTrackMbids: string[] = []) =>
   releaseDate: String(album.releaseDate || "").trim(),
 });
 
-const ownedLidarrTrackMbids = (tracks: ManagedTrack[]) =>
+const ownedLidarrTrackMbids = (tracks: WithAbsentKeys<ManagedTrack, "foreignTrackId">[]) =>
   (Array.isArray(tracks) ? tracks : [])
-    .filter((track) => track?.hasFile === true || track?.path || track?.trackFile?.path)
-    .map((track) => track?.mbid || track?.foreignRecordingId || track?.foreignTrackId)
+    .filter((track) => track?.hasFile === true || track?.path)
+    .map((track) => track?.mbid || track?.foreignTrackId)
     .map((mbid) => String(mbid || "").trim())
     .filter(Boolean);
 
+type WithAbsentKeys<Value, Keys extends PropertyKey> = Value extends unknown
+  ? Value & { [Key in Exclude<Keys, keyof Value>]?: undefined }
+  : never;
+
 const toLibraryArtist = (
-  artist:
+  artist: WithAbsentKeys<
     | ReturnType<typeof getLibraryArtistProjection>[number]
     | ReadArtist
     | ReturnType<typeof libraryManager.mapLidarrArtist>,
+    "providerId" | "canonicalId"
+  >,
 ) => ({
   ...artist,
   id: artist.providerId ?? artist.id,
@@ -84,7 +91,12 @@ const toLibraryArtist = (
   added: artist.addedAt,
 });
 
-const toLibraryAlbum = (album: ReadAlbum | ReturnType<typeof libraryManager.mapLidarrAlbum>) => ({
+const toLibraryAlbum = (
+  album: WithAbsentKeys<
+    ReadAlbum | ReturnType<typeof libraryManager.mapLidarrAlbum>,
+    "providerId" | "canonicalId" | "providerArtistId"
+  >,
+) => ({
   ...album,
   id: album.providerId ?? album.id,
   artistId: album.providerArtistId ?? album.artistId,
@@ -181,9 +193,10 @@ export function registerMisc(router: Router) {
       const list = Array.isArray(rootFolders) ? rootFolders.map((r) => ({ path: r.path })) : [];
       res.json(list);
     } catch (error) {
+      const failure = asAppError(error);
       res.status(500).json({
         error: "Failed to fetch root folder",
-        message: error.message,
+        message: failure?.message,
       });
     }
   });
@@ -197,9 +210,10 @@ export function registerMisc(router: Router) {
 
       res.json(await getArtistLibraryLookup(mbid));
     } catch (error) {
+      const failure = asAppError(error);
       res.status(500).json({
         error: "Failed to lookup artist",
-        message: error.message,
+        message: failure?.message,
       });
     }
   });
@@ -230,9 +244,10 @@ export function registerMisc(router: Router) {
 
       res.json(results);
     } catch (error) {
+      const failure = asAppError(error);
       res.status(500).json({
         error: "Failed to batch lookup artists",
-        message: error.message,
+        message: failure?.message,
       });
     }
   });
@@ -344,9 +359,10 @@ export function registerMisc(router: Router) {
 
       res.json(results);
     } catch (error) {
+      const failure = asAppError(error);
       res.status(500).json({
         error: "Failed to batch lookup albums",
-        message: error.message,
+        message: failure?.message,
       });
     }
   });
@@ -363,9 +379,10 @@ export function registerMisc(router: Router) {
       }));
       res.json(recent);
     } catch (error) {
+      const failure = asAppError(error);
       res.status(500).json({
         error: "Failed to fetch recent artists",
-        message: error.message,
+        message: failure?.message,
       });
     }
   });
@@ -427,9 +444,10 @@ export function registerMisc(router: Router) {
       res.set("Cache-Control", "private, no-store");
       res.json(withCachedCovers);
     } catch (error) {
+      const failure = asAppError(error);
       res.status(500).json({
         error: "Failed to fetch recent releases",
-        message: error.message,
+        message: failure?.message,
       });
     }
   });
@@ -444,6 +462,7 @@ type LidarrAlbumLookupResult = {
   canonicalInLibrary: false;
   libraryAlbumId: string | null;
   libraryArtistId: string | null;
+  managedBy?: undefined;
   status: "available" | "monitored" | "unmonitored";
   monitored: boolean;
   trackListComplete: true;

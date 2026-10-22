@@ -10,6 +10,7 @@ import {
 } from "../../../middleware/requirePermission.ts";
 import { getAlbumTracksByAlbumMbid } from "../../../services/providers/brainzmashProvider.ts";
 import { chooseLibraryRelease } from "../../../services/releaseResolver.ts";
+import type { deezerGetAlbumTracks } from "../../../services/apiClients/index.ts";
 import { enrichTracksWithDeezerPreviews } from "../../../services/apiClients/index.ts";
 import fsp from "fs/promises";
 import path from "path";
@@ -22,6 +23,7 @@ import {
 import { getLibraryForTrackIds } from "../../../services/libraryQueryService.ts";
 import { stripFilesystemPaths } from "./libraryIndex.ts";
 import { streamAudioFile } from "../../../services/audioFileStream.ts";
+import { asAppError } from "../../../../lib/errors.ts";
 
 const canReadAudioFile = async (filePath: string | null | undefined) => {
   if (!filePath) return false;
@@ -32,6 +34,28 @@ const canReadAudioFile = async (filePath: string | null | undefined) => {
     return false;
   }
 };
+
+type PreviewOnlyTrack = {
+  path: null;
+  hasFile: false;
+  size: number;
+  quality: null;
+  addedAt: string;
+  albumId?: undefined;
+};
+
+type TrackListEntry =
+  | (Awaited<ReturnType<typeof libraryManager.getTracks>>[number] & { title?: string })
+  | (Awaited<ReturnType<typeof deezerGetAlbumTracks>>[number] & PreviewOnlyTrack)
+  | (PreviewOnlyTrack & {
+      id: string;
+      mbid: string;
+      trackName: string;
+      trackNumber: number;
+      discNumber: number;
+      releaseMbid: string | null;
+      title: string;
+    });
 
 const requireTrackDeletion = (req: Request, res: Response, next: NextFunction) => {
   if (hasPermission(req.user, "deleteTrack") || hasPermission(req.user, "deleteAlbum")) {
@@ -82,7 +106,8 @@ export function registerTracks(router: Router) {
         }
         return res.json({ success: true, message: "Track deleted successfully" });
       } catch (error) {
-        logger.error("library", `Track deletion threw: ${error.message}`);
+        const failure = asAppError(error);
+        logger.error("library", `Track deletion threw: ${failure?.message}`);
         return res.status(500).json({
           error: "Failed to delete track",
           message: "Failed to delete track",
@@ -111,9 +136,10 @@ export function registerTracks(router: Router) {
         }
         return res.json(result);
       } catch (error) {
+        const failure = asAppError(error);
         return res.status(500).json({
           error: "Failed to update track monitoring",
-          message: error.message,
+          message: failure?.message,
         });
       }
     },
@@ -127,9 +153,10 @@ export function registerTracks(router: Router) {
       });
       res.json(tracks);
     } catch (error) {
+      const failure = asAppError(error);
       res.status(500).json({
         error: "Failed to build playback queue",
-        message: error.message,
+        message: failure?.message,
       });
     }
   });
@@ -142,7 +169,9 @@ export function registerTracks(router: Router) {
 
   router.get("/tracks", cacheMiddleware(120), async (req, res) => {
     try {
-      const { albumId, releaseGroupMbid } = req.query;
+      const albumId = typeof req.query.albumId === "string" ? req.query.albumId : undefined;
+      const releaseGroupMbid =
+        typeof req.query.releaseGroupMbid === "string" ? req.query.releaseGroupMbid : undefined;
 
       if (req.query.readPath === "canonical") {
         let readModel = albumId
@@ -185,7 +214,7 @@ export function registerTracks(router: Router) {
         return res.json(libraryTracks);
       }
 
-      let tracks: Awaited<ReturnType<typeof libraryManager.getTracks>> = [];
+      let tracks: TrackListEntry[] = [];
 
       if (albumId) {
         tracks = await libraryManager.getTracks(albumId);
@@ -225,9 +254,10 @@ export function registerTracks(router: Router) {
               }));
             }
           } catch (mbError) {
+            const failure = asAppError(mbError);
             logger.warn(
               "library",
-              `Failed to fetch tracks from metadata provider: ${mbError.message}`,
+              `Failed to fetch tracks from metadata provider: ${failure?.message}`,
             );
           }
         }
@@ -251,7 +281,7 @@ export function registerTracks(router: Router) {
             ...track,
             streamPath: canStream
               ? `/library/file-stream/${encodeURIComponent(
-                  track.albumId || albumId,
+                  track.albumId || albumId!,
                 )}/${encodeURIComponent(track.id)}`
               : null,
             streamFormat,
@@ -276,7 +306,9 @@ export function registerTracks(router: Router) {
       const deezerAlbumId =
         typeof req.query.deezerAlbumId === "string" ? req.query.deezerAlbumId.trim() : "";
 
-      const enriched = await enrichTracksWithDeezerPreviews(tracksWithStreamState, {
+      const enriched: ((typeof tracksWithStreamState)[number] & {
+        preview_url?: string | null;
+      })[] = await enrichTracksWithDeezerPreviews(tracksWithStreamState, {
         artistName,
         albumTitle,
         releaseType,
@@ -292,9 +324,10 @@ export function registerTracks(router: Router) {
         })),
       );
     } catch (error) {
+      const failure = asAppError(error);
       res.status(500).json({
         error: "Failed to fetch tracks",
-        message: error.message,
+        message: failure?.message,
       });
     }
   });
@@ -314,8 +347,9 @@ export function registerTracks(router: Router) {
           return res.status(404).json({ error: "Track file missing" });
         }
       } catch (error) {
+        const failure = asAppError(error);
         if (!res.headersSent) {
-          return res.status(500).json({ error: "Stream failed", message: error.message });
+          return res.status(500).json({ error: "Stream failed", message: failure?.message });
         }
       }
       return undefined;
@@ -340,10 +374,11 @@ export function registerTracks(router: Router) {
           if (!res.headersSent) return res.status(404).json({ error: "Track file missing" });
         }
       } catch (error) {
+        const failure = asAppError(error);
         if (!res.headersSent) {
           res.status(500).json({
             error: "Stream failed",
-            message: error.message,
+            message: failure?.message,
           });
         }
       }

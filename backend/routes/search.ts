@@ -5,6 +5,7 @@ import { searchAlbums, searchArtists, searchTags } from "../services/searchServi
 import { resolveStreamingLink } from "../services/streamingLinks.ts";
 import { logger, safeLogDiagnostic } from "../services/logger.ts";
 import { searchLibrary, searchUnified } from "../services/unifiedSearchService.ts";
+import { asAppError } from "../../lib/errors.ts";
 
 const router = express.Router();
 
@@ -33,9 +34,10 @@ router.get("/", noCache, async (req, res) => {
 
     return res.json(await searchArtists(q, limit, offset));
   } catch (error) {
+    const failure = asAppError(error);
     res.status(500).json({
       error: "Failed to search",
-      message: error.message,
+      message: failure?.message,
     });
   }
 });
@@ -48,9 +50,10 @@ router.get("/library", noCache, (req, res) => {
     }
     return res.json(searchLibrary(q, { limit, user: req.user || null }));
   } catch (error) {
+    const failure = asAppError(error);
     res.status(500).json({
       error: "Failed to search library",
-      message: error.message,
+      message: failure?.message,
     });
   }
 });
@@ -59,14 +62,17 @@ router.get("/link", requireAuth, noCache, async (req, res) => {
   try {
     return res.json(await resolveStreamingLink(req.query.url));
   } catch (error) {
-    const status = Number.isInteger(error?.statusCode) ? error.statusCode : 500;
+    const failure = asAppError(error);
+    const statusCode = failure?.statusCode;
+    const status =
+      typeof statusCode === "number" && Number.isInteger(statusCode) ? statusCode : 500;
     if (status >= 500) {
       logger.warn("search", "Failed to resolve link", { reason: safeLogDiagnostic(error) });
     }
     return res.status(status).json({
       error: "Failed to resolve link",
-      message: error?.message || "Unknown error",
-      ...(error?.code ? { code: error.code } : {}),
+      message: failure?.message || "Unknown error",
+      ...(failure?.code ? { code: failure.code } : {}),
     });
   }
 });
@@ -90,10 +96,11 @@ router.get("/unified", noCache, async (req, res) => {
       }),
     );
   } catch (error) {
+    const failure = asAppError(error);
     if (controller.signal.aborted) return;
     res.status(500).json({
       error: "Failed to run unified search",
-      message: error.message,
+      message: failure?.message,
     });
   }
 });
