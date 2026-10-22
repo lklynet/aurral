@@ -2,5 +2,6 @@
   "backend/services/deemixOrchestrator.ts": 2,
   "backend/services/downloadPipeline.ts": 4,
   "backend/services/slskdOrchestrator.ts": 3,
-  "backend/services/ytdlpOrchestrator.ts": 3
+  "backend/services/ytdlpOrchestrator.ts": 3,
+  "frontend/src/pages/ArtistDetails/hooks/useArtistDetailsLibrary.ts": 1
 }
