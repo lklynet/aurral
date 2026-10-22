@@ -11,7 +11,7 @@ import {
 } from "./honkerDb.ts";
 import { recoverExitedWorkerJobs, recoverJobsClaimedBeforeStart } from "./backgroundJobRecovery.ts";
 import { createBackgroundProcessSupervisor } from "./backgroundProcessSupervisor.ts";
-import { ISOLATED_QUEUE_GROUPS, isQueueOwnedByGroup } from "./backgroundWorkerQueues.ts";
+import { getIsolatedQueueGroup, isQueueOwnedByGroup } from "./backgroundWorkerQueues.ts";
 import {
   getHonkerWorkerStatuses,
   isHonkerShuttingDown,
@@ -321,7 +321,7 @@ export function startBackgroundWorkers({ logger = console }: { logger?: RuntimeL
     findGroupsWithWork: (now) => (isHonkerShuttingDown() ? [] : listBackgroundGroupsWithWork(now)),
     onMessage(message, _group, child) {
       if (message?.type === "queue-wake") {
-        const owner = ISOLATED_QUEUE_GROUPS[message.queue];
+        const owner = getIsolatedQueueGroup(message.queue);
         if (owner) backgroundProcessSupervisor!.wake(owner);
         else if (isQueueOwnedByGroup(message.queue)) checkQueuedBackgroundWork();
         return;
@@ -436,7 +436,7 @@ export function startBackgroundWorkers({ logger = console }: { logger?: RuntimeL
   });
   configureHonkerQueueWake((queue: string) => {
     if (isHonkerShuttingDown()) return;
-    const owner = ISOLATED_QUEUE_GROUPS[queue];
+    const owner = getIsolatedQueueGroup(queue);
     if (owner) backgroundProcessSupervisor!.wake(owner);
     else checkQueuedBackgroundWork();
   });

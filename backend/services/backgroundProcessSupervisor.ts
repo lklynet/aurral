@@ -59,6 +59,10 @@ const JOB_TIMEOUT_MS = Object.freeze({
   "slskd-pipeline": 6 * 60 * 60 * 1000,
   "playlist-mbid-enrichment": 2 * 60 * 60 * 1000,
 });
+const hasJobTimeout = (
+  timeouts: typeof JOB_TIMEOUT_MS,
+  key: string,
+): key is keyof typeof JOB_TIMEOUT_MS => Object.hasOwn(timeouts, key);
 const MB = 1024 * 1024;
 const DEFAULT_HEAP_LIMIT_MB = 2048;
 
@@ -372,13 +376,17 @@ export function createBackgroundProcessSupervisor({
     }
   }
 
+  function jobTimeoutFor(key: string) {
+    return hasJobTimeout(jobTimeoutsMs, key) ? jobTimeoutsMs[key] : undefined;
+  }
+
   function startWatchdog() {
     if (watchdogInterval) return;
     watchdogInterval = setInterval(() => {
       for (const [group, child] of children) {
         const unresponsive = Date.now() - (lastSeen.get(group) || 0) > unresponsiveMs;
         const job = [...(activeJobs.get(group)?.values() || [])].find((entry) => {
-          const limit = jobTimeoutsMs[entry.queue] || jobTimeoutsMs[group];
+          const limit = jobTimeoutFor(entry.queue) || jobTimeoutFor(group);
           return limit && Date.now() - entry.startedAt > limit;
         });
         const jobTimedOut = Boolean(job);

@@ -1,4 +1,4 @@
-import { ISOLATED_QUEUE_GROUPS } from "./backgroundWorkerQueues.ts";
+import { getIsolatedQueueGroup } from "./backgroundWorkerQueues.ts";
 import { getHonkerDb, getHonkerQueueByName } from "./honkerDb.ts";
 import type { HonkerLiveRow } from "../db/rows.ts";
 import type { RuntimeLogger } from "./logger.ts";
@@ -69,7 +69,7 @@ export async function recoverExitedWorkerJobs(
     [`aurral-${pid}`],
   ) as ClaimedJobRow[];
   for (const row of rows) {
-    if (ISOLATED_QUEUE_GROUPS[row.queue] !== group) continue;
+    if (getIsolatedQueueGroup(row.queue) !== group) continue;
     await releaseClaimedJob(database, row, logger, reason || "Background worker process exited");
   }
   if (group === "downloads") {
