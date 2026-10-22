@@ -1,6 +1,7 @@
 import express from "express";
 import { playlistManager } from "../../../services/playlists/playlistManager.ts";
 import { canAccessPlaylistType } from "./utils.ts";
+import type { Router } from "express";
 
 const artworkUploadParser = express.raw({
   limit: "8mb",
@@ -12,30 +13,34 @@ const artworkUploadParser = express.raw({
 
 export type PlaylistArtworkOkResponse = { ok: true };
 
-export function registerArtworkManagement(router) {
-  router.put("/artwork/:playlistId", artworkUploadParser, async (req, res) => {
-    const { playlistId } = req.params;
-    if (!canAccessPlaylistType(req.user, playlistId)) {
-      return res.status(404).json({ error: "Playlist not found" });
-    }
-    if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
-      return res.status(400).json({
-        error: "Bad Request",
-        message: "Image body is required",
-      });
-    }
-    try {
-      await playlistManager.saveArtworkUpload(playlistId, req.body);
-      return res.json({ ok: true });
-    } catch (error) {
-      return res.status(400).json({
-        error: "Bad Request",
-        message: error?.message || "Failed to save artwork",
-      });
-    }
-  });
+export function registerArtworkManagement(router: Router) {
+  router.put<"/artwork/:playlistId">(
+    "/artwork/:playlistId",
+    artworkUploadParser,
+    async (req, res) => {
+      const { playlistId } = req.params;
+      if (!canAccessPlaylistType(req.user, playlistId)) {
+        return res.status(404).json({ error: "Playlist not found" });
+      }
+      if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+        return res.status(400).json({
+          error: "Bad Request",
+          message: "Image body is required",
+        });
+      }
+      try {
+        await playlistManager.saveArtworkUpload(playlistId, req.body);
+        return res.json({ ok: true });
+      } catch (error) {
+        return res.status(400).json({
+          error: "Bad Request",
+          message: error?.message || "Failed to save artwork",
+        });
+      }
+    },
+  );
 
-  router.delete("/artwork/:playlistId", async (req, res) => {
+  router.delete<"/artwork/:playlistId">("/artwork/:playlistId", async (req, res) => {
     const { playlistId } = req.params;
     if (!canAccessPlaylistType(req.user, playlistId)) {
       return res.status(404).json({ error: "Playlist not found" });
@@ -51,19 +56,22 @@ export function registerArtworkManagement(router) {
     }
   });
 
-  router.post("/artwork/:playlistId/generate", async (req, res) => {
-    const { playlistId } = req.params;
-    if (!canAccessPlaylistType(req.user, playlistId)) {
-      return res.status(404).json({ error: "Playlist not found" });
-    }
-    try {
-      await playlistManager.generateArtwork(playlistId);
-      return res.json({ ok: true });
-    } catch (error) {
-      return res.status(400).json({
-        error: "Bad Request",
-        message: error?.message || "Failed to generate artwork",
-      });
-    }
-  });
+  router.post<"/artwork/:playlistId/generate">(
+    "/artwork/:playlistId/generate",
+    async (req, res) => {
+      const { playlistId } = req.params;
+      if (!canAccessPlaylistType(req.user, playlistId)) {
+        return res.status(404).json({ error: "Playlist not found" });
+      }
+      try {
+        await playlistManager.generateArtwork(playlistId);
+        return res.json({ ok: true });
+      } catch (error) {
+        return res.status(400).json({
+          error: "Bad Request",
+          message: error?.message || "Failed to generate artwork",
+        });
+      }
+    },
+  );
 }

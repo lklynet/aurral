@@ -5,14 +5,17 @@ import {
 } from "../../../services/importLists/youtubeMusicPlaylists.ts";
 import { enqueueImportedPlaylist } from "../../../services/importLists/importPlaylist.ts";
 import { logger, safeLogDiagnostic } from "../../../services/logger.ts";
+import type { Response, Router } from "express";
 
-const getSkippedCount = (stats = {}) =>
-  ["unavailable", "podcast", "incomplete", "duplicate"].reduce(
+type PlaylistStats = Awaited<ReturnType<typeof youtubeMusicPlaylistClient.getPlaylist>>["stats"];
+
+const getSkippedCount = (stats: Partial<PlaylistStats> = {}) =>
+  (["unavailable", "podcast", "incomplete", "duplicate"] as const).reduce(
     (sum, key) => sum + Number(stats[key] || 0),
     0,
   );
 
-const sendProviderError = (res, error, fallback) => {
+const sendProviderError = (res: Response, error: unknown, fallback: string) => {
   const statusCode = Number(error?.statusCode);
   const status =
     Number.isInteger(statusCode) && statusCode >= 400 && statusCode <= 599 ? statusCode : 500;
@@ -30,7 +33,7 @@ export type PreviewYoutubeMusicPlaylistResponse = {
   previewTracks: Awaited<ReturnType<typeof youtubeMusicPlaylistClient.getPlaylist>>["tracks"];
 };
 
-export function registerYoutubeMusicImport(router) {
+export function registerYoutubeMusicImport(router: Router) {
   router.post("/import/youtube-music/preview", async (req, res) => {
     try {
       const playlistId = extractYoutubePlaylistId(req.body?.url);
@@ -67,7 +70,7 @@ export function registerYoutubeMusicImport(router) {
       const playlist = await youtubeMusicPlaylistClient.getPlaylist(playlistId);
       stage = "enqueue";
       const result = await enqueueImportedPlaylist({
-        ownerUserId: req.user.id,
+        ownerUserId: req.user!.id,
         name,
         sourceName: "YouTube Music",
         provider: "youtube-music-playlist",

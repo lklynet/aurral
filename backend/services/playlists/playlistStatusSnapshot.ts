@@ -16,6 +16,7 @@ import { getPlaylistOperationWorkerStatus } from "./playlistOperationWorker.ts";
 import { getDownloadClient } from "../download/downloadClientSettings.ts";
 import { dbOps, userOps } from "../../db/helpers/index.ts";
 import { db, getDatabaseRevision } from "../../config/db-sqlite.ts";
+import type { RequestUser } from "../../middleware/requestUser.ts";
 
 const playlistSettingsStmt = db.prepare(
   "SELECT key, value FROM settings WHERE key IN ('flows', 'sharedPlaylists') ORDER BY key",
@@ -203,7 +204,7 @@ function buildOwnerMap(flows, staticPlaylists) {
   return ownerMap;
 }
 
-export function getPlaylistStatusSnapshot({ user = null } = {}) {
+export function getPlaylistStatusSnapshot({ user = null }: { user?: RequestUser | null } = {}) {
   refreshMembershipCache();
   clearTimeout(cacheCleanupTimer);
   cacheCleanupTimer = setTimeout(clearPlaylistStatusCache, 60000);

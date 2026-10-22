@@ -179,7 +179,7 @@ export function buildCustomArtworkUrl(
   kind: string,
   id: string | number,
   updatedAt?: number,
-  query: Record<string, string> = {},
+  query: Record<string, string | null | undefined> = {},
 ) {
   const target = normalizeTarget(kind, id);
   const route =

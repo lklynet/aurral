@@ -27,6 +27,9 @@ import {
   restoreMarkedPlaylistDownloadWork,
 } from "../../../services/downloadJobs/downloadCancellationService.ts";
 import { buildFlowFromTemplate, listFlowTemplates } from "../../../services/flows/flowTemplates.ts";
+import type { Router } from "express";
+import type { DownloadJob } from "../../../services/downloadJobs/downloadTracker.ts";
+import type { FlowUpdates } from "../../../services/playlists/flowPlaylistConfig.ts";
 
 const RETIRED_FLOW_MESSAGE = "This flow's source was retired, so it no longer updates";
 
@@ -85,8 +88,8 @@ export type StartFlowResponse = {
   reserveTracks: number;
 };
 
-export function registerFlows(router) {
-  router.post("/start/:flowId", async (req, res) => {
+export function registerFlows(router: Router) {
+  router.post<"/start/:flowId">("/start/:flowId", async (req, res) => {
     try {
       const { flowId } = req.params;
       const { limit } = req.body;
@@ -130,7 +133,7 @@ export function registerFlows(router) {
 
   router.get("/flow-templates", async (req, res) => {
     try {
-      res.json({ templates: await listFlowTemplates(req.user) });
+      res.json({ templates: await listFlowTemplates(req.user!) });
     } catch (error) {
       res.status(500).json({ error: "Failed to load flow templates", message: error.message });
     }
@@ -149,7 +152,7 @@ export function registerFlows(router) {
       let payload = body;
       if (body.templateId) {
         try {
-          payload = await buildFlowFromTemplate(req.user, body.templateId);
+          payload = await buildFlowFromTemplate(req.user!, body.templateId);
         } catch (error) {
           if (!error?.statusCode) throw error;
           return res
@@ -208,7 +211,7 @@ export function registerFlows(router) {
     }
   });
 
-  router.put("/flows/:flowId", async (req, res) => {
+  router.put<"/flows/:flowId">("/flows/:flowId", async (req, res) => {
     try {
       const { flowId } = req.params;
       const existingFlow = getAccessibleFlow(req.user, flowId);
@@ -234,7 +237,7 @@ export function registerFlows(router) {
       if (validationError) {
         return res.status(400).json({ error: validationError, message: validationError });
       }
-      const updates = {
+      const updates: FlowUpdates = {
         name,
         mix,
         size,
@@ -277,7 +280,7 @@ export function registerFlows(router) {
     }
   });
 
-  router.delete("/flows/:flowId", async (req, res) => {
+  router.delete<"/flows/:flowId">("/flows/:flowId", async (req, res) => {
     try {
       const { flowId } = req.params;
       if (!getAccessibleFlow(req.user, flowId)) {
@@ -314,7 +317,7 @@ export function registerFlows(router) {
     }
   });
 
-  router.put("/flows/:flowId/enabled", async (req, res) => {
+  router.put<"/flows/:flowId/enabled">("/flows/:flowId/enabled", async (req, res) => {
     try {
       const { flowId } = req.params;
       const { enabled } = req.body;
@@ -389,130 +392,139 @@ export function registerFlows(router) {
     }
   });
 
-  router.post("/flows/:flowId/static-playlist", async (req, res) => {
-    let playlist = null;
-    try {
+  router.post<"/flows/:flowId/static-playlist">(
+    "/flows/:flowId/static-playlist",
+    async (req, res) => {
+      let playlist = null;
+      try {
+        const { flowId } = req.params;
+        const flow = getAccessibleFlow(req.user, flowId);
+        if (!flow) {
+          return res.status(404).json({ error: "Flow not found" });
+        }
+
+        const requestedName = String(req.body?.name || "").trim();
+        const flowJobs = downloadTracker.getByPlaylistType(flowId);
+        const completedJobs = flowJobs.filter(
+          (job) => job?.status === "done" && typeof job?.finalPath === "string",
+        );
+        if (completedJobs.length === 0) {
+          return res.status(400).json({
+            error: "No completed tracks available",
+            message: "Download at least one flow track before saving a playlist.",
+          });
+        }
+
+        const uniqueCompletedJobsByIdentity = new Map();
+        for (const job of completedJobs) {
+          const identity = buildPlaylistTrackIdentity(job);
+          if (uniqueCompletedJobsByIdentity.has(identity)) continue;
+          uniqueCompletedJobsByIdentity.set(identity, job);
+        }
+        const uniqueCompletedJobs = [...uniqueCompletedJobsByIdentity.values()];
+        const trackFromJob = (job: DownloadJob) => ({
+          artistName: job.artistName,
+          trackName: job.trackName,
+          albumName: job.albumName || null,
+          artistMbid: job.artistMbid || null,
+          albumMbid: job.albumMbid || null,
+          releaseMbid: job.releaseMbid || null,
+          trackMbid: job.trackMbid || null,
+          releaseYear: job.releaseYear || null,
+          durationMs: job.durationMs || null,
+          trackNumber: job.trackNumber || null,
+          discNumber: job.discNumber || null,
+          artistAliases: job.artistAliases || [],
+          reason: job.reason || null,
+        });
+        const tracks = uniqueCompletedJobs.map(trackFromJob);
+        playlist = flowPlaylistConfig.createStaticPlaylist({
+          name: requestedName || `${flow.name} Static`,
+          sourceName: flow.name,
+          sourceFlowId: flowId,
+          recordHistory: flow.recordHistory !== false,
+          tracks,
+          ownerUserId: flow.ownerUserId ?? req.user!.id,
+        });
+
+        for (const job of uniqueCompletedJobs) {
+          const safeSourcePath = remapLegacyPath(job.finalPath, downloadWorker.downloadRoot);
+          const stat = await fsp.stat(safeSourcePath);
+          if (!stat.isFile()) {
+            throw new Error(`Track file is missing: ${job.finalPath}`);
+          }
+
+          const jobId = downloadTracker.addJob(trackFromJob(job), playlist.id);
+          if (jobId) {
+            downloadTracker.setDone(jobId, safeSourcePath, job.albumName || null);
+          }
+        }
+
+        await playlistManager.ensurePlaylistArtwork(playlist.id);
+        playlistManager.requestPlaylistSync([playlist.id]);
+        await playlistManager.scheduleScanLibrary(true);
+        schedulePlaylistMbidEnrichment(playlist.id, {
+          reason: "flow-static-playlist",
+          priority: 5,
+        });
+
+        res.json({
+          success: true,
+          playlist,
+          trackCount: uniqueCompletedJobs.length,
+        });
+      } catch (error) {
+        if (playlist?.id) {
+          try {
+            await playlistManager.weeklyReset([playlist.id]);
+            flowPlaylistConfig.deleteStaticPlaylist(playlist.id);
+          } catch {}
+        }
+        if (error?.code === "STATIC_PLAYLIST_NAME_CONFLICT") {
+          return res.status(400).json({
+            error: "Playlist name already exists",
+            message: error.message,
+          });
+        }
+        res.status(500).json({
+          error: "Failed to create static playlist",
+          message: error.message,
+        });
+      }
+    },
+  );
+
+  router.post<"/flows/:flowId/tracks/:jobId/research">(
+    "/flows/:flowId/tracks/:jobId/research",
+    async (req, res) => {
+      try {
+        const { flowId, jobId } = req.params;
+        return await enqueueResearchTrack(req, res, flowId, jobId, "flow");
+      } catch (error) {
+        res.status(500).json({
+          error: "Failed to re-search flow track",
+          message: error.message,
+        });
+      }
+    },
+  );
+
+  router.get<"/flows/:flowId/lidarr-import-list">(
+    "/flows/:flowId/lidarr-import-list",
+    (req, res) => {
       const { flowId } = req.params;
       const flow = getAccessibleFlow(req.user, flowId);
       if (!flow) {
         return res.status(404).json({ error: "Flow not found" });
       }
-
-      const requestedName = String(req.body?.name || "").trim();
-      const flowJobs = downloadTracker.getByPlaylistType(flowId);
-      const completedJobs = flowJobs.filter(
-        (job) => job?.status === "done" && typeof job?.finalPath === "string",
-      );
-      if (completedJobs.length === 0) {
-        return res.status(400).json({
-          error: "No completed tracks available",
-          message: "Download at least one flow track before saving a playlist.",
-        });
+      const ensured = flowPlaylistConfig.ensureLidarrFeedToken(flowId);
+      if (!ensured?.lidarrFeedToken) {
+        return res.status(404).json({ error: "Flow not found" });
       }
-
-      const uniqueCompletedJobsByIdentity = new Map();
-      for (const job of completedJobs) {
-        const identity = buildPlaylistTrackIdentity(job);
-        if (uniqueCompletedJobsByIdentity.has(identity)) continue;
-        uniqueCompletedJobsByIdentity.set(identity, job);
-      }
-      const uniqueCompletedJobs = [...uniqueCompletedJobsByIdentity.values()];
-      const trackFromJob = (job) => ({
-        artistName: job.artistName,
-        trackName: job.trackName,
-        albumName: job.albumName || null,
-        artistMbid: job.artistMbid || null,
-        albumMbid: job.albumMbid || null,
-        releaseMbid: job.releaseMbid || null,
-        trackMbid: job.trackMbid || null,
-        releaseYear: job.releaseYear || null,
-        durationMs: job.durationMs || null,
-        trackNumber: job.trackNumber || null,
-        discNumber: job.discNumber || null,
-        artistAliases: job.artistAliases || [],
-        reason: job.reason || null,
-      });
-      const tracks = uniqueCompletedJobs.map(trackFromJob);
-      playlist = flowPlaylistConfig.createStaticPlaylist({
-        name: requestedName || `${flow.name} Static`,
-        sourceName: flow.name,
-        sourceFlowId: flowId,
-        recordHistory: flow.recordHistory !== false,
-        tracks,
-        ownerUserId: flow.ownerUserId ?? req.user.id,
-      });
-
-      for (const job of uniqueCompletedJobs) {
-        const safeSourcePath = remapLegacyPath(job.finalPath, downloadWorker.downloadRoot);
-        const stat = await fsp.stat(safeSourcePath);
-        if (!stat.isFile()) {
-          throw new Error(`Track file is missing: ${job.finalPath}`);
-        }
-
-        const jobId = downloadTracker.addJob(trackFromJob(job), playlist.id);
-        if (jobId) {
-          downloadTracker.setDone(jobId, safeSourcePath, job.albumName || null);
-        }
-      }
-
-      await playlistManager.ensurePlaylistArtwork(playlist.id);
-      playlistManager.requestPlaylistSync([playlist.id]);
-      await playlistManager.scheduleScanLibrary(true);
-      schedulePlaylistMbidEnrichment(playlist.id, {
-        reason: "flow-static-playlist",
-        priority: 5,
-      });
-
       res.json({
-        success: true,
-        playlist,
-        trackCount: uniqueCompletedJobs.length,
+        token: ensured.lidarrFeedToken,
+        itemCount: buildLidarrImportListItems(downloadTracker.getByPlaylistType(flowId)).length,
       });
-    } catch (error) {
-      if (playlist?.id) {
-        try {
-          await playlistManager.weeklyReset([playlist.id]);
-          flowPlaylistConfig.deleteStaticPlaylist(playlist.id);
-        } catch {}
-      }
-      if (error?.code === "STATIC_PLAYLIST_NAME_CONFLICT") {
-        return res.status(400).json({
-          error: "Playlist name already exists",
-          message: error.message,
-        });
-      }
-      res.status(500).json({
-        error: "Failed to create static playlist",
-        message: error.message,
-      });
-    }
-  });
-
-  router.post("/flows/:flowId/tracks/:jobId/research", async (req, res) => {
-    try {
-      const { flowId, jobId } = req.params;
-      return await enqueueResearchTrack(req, res, flowId, jobId, "flow");
-    } catch (error) {
-      res.status(500).json({
-        error: "Failed to re-search flow track",
-        message: error.message,
-      });
-    }
-  });
-
-  router.get("/flows/:flowId/lidarr-import-list", (req, res) => {
-    const { flowId } = req.params;
-    const flow = getAccessibleFlow(req.user, flowId);
-    if (!flow) {
-      return res.status(404).json({ error: "Flow not found" });
-    }
-    const ensured = flowPlaylistConfig.ensureLidarrFeedToken(flowId);
-    if (!ensured?.lidarrFeedToken) {
-      return res.status(404).json({ error: "Flow not found" });
-    }
-    res.json({
-      token: ensured.lidarrFeedToken,
-      itemCount: buildLidarrImportListItems(downloadTracker.getByPlaylistType(flowId)).length,
-    });
-  });
+    },
+  );
 }

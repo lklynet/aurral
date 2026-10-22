@@ -2,9 +2,10 @@ import path from "path";
 import { playlistManager } from "../../../services/playlists/playlistManager.ts";
 import { hasPermission, verifyTokenAuth } from "../../../middleware/auth.ts";
 import { canAccessPlaylistType } from "./utils.ts";
+import type { Router } from "express";
 
-export function registerArtworkServe(router) {
-  router.get("/artwork/:playlistId", async (req, res) => {
+export function registerArtworkServe(router: Router) {
+  router.get<"/artwork/:playlistId">("/artwork/:playlistId", async (req, res) => {
     if (!verifyTokenAuth(req)) {
       return res.status(401).json({ error: "Unauthorized", message: "Authentication required" });
     }

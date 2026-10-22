@@ -7,8 +7,11 @@ import { hasPermission, verifyTokenAuth } from "../../../middleware/auth.ts";
 import { resolveExistingTrackPath } from "../../../services/downloadPaths.ts";
 import { canAccessPlaylistType } from "./utils.ts";
 import { flowPlaylistConfig } from "../../../services/playlists/flowPlaylistConfig.ts";
+import type { DownloadJob } from "../../../services/downloadJobs/downloadTracker.ts";
+import type { RequestUser } from "../../../middleware/requestUser.ts";
+import type { Router } from "express";
 
-const canAccessJob = (user, job) =>
+const canAccessJob = (user: RequestUser | undefined, job: DownloadJob) =>
   canAccessPlaylistType(user, job.playlistType) ||
   flowPlaylistConfig
     .getStaticPlaylistsForUser(user)
@@ -18,8 +21,8 @@ const canAccessJob = (user, job) =>
       ),
     );
 
-export function registerStream(router) {
-  router.get("/stream/:jobId", noCache, async (req, res) => {
+export function registerStream(router: Router) {
+  router.get<"/stream/:jobId">("/stream/:jobId", noCache, async (req, res) => {
     if (!verifyTokenAuth(req)) {
       return res.status(401).json({ error: "Unauthorized", message: "Authentication required" });
     }
@@ -54,7 +57,7 @@ export function registerStream(router) {
     }
   });
 
-  router.get("/staging-stream/:jobId", noCache, async (req, res) => {
+  router.get<"/staging-stream/:jobId">("/staging-stream/:jobId", noCache, async (req, res) => {
     if (!verifyTokenAuth(req)) {
       return res.status(401).json({ error: "Unauthorized", message: "Authentication required" });
     }

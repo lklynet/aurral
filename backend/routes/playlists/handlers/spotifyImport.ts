@@ -12,8 +12,9 @@ import {
 import { syncStaticPlaylistImport } from "../../../services/importLists/importListSync.ts";
 import { flowPlaylistConfig } from "../../../services/playlists/flowPlaylistConfig.ts";
 import { getAccessibleStaticPlaylist } from "./utils.ts";
+import type { Response, Router } from "express";
 
-const parseExpiresAt = (value) => {
+const parseExpiresAt = (value: unknown) => {
   const expiresIn = Number(value);
   if (Number.isFinite(expiresIn) && expiresIn > 0) {
     return Date.now() + expiresIn * 1000;
@@ -25,7 +26,7 @@ const parseExpiresAt = (value) => {
   return Date.now() + 3600 * 1000;
 };
 
-function sendSpotifyError(res, error, fallback) {
+function sendSpotifyError(res: Response, error: unknown, fallback: string) {
   if (error?.code === SPOTIFY_AUTH_REQUIRED_CODE) {
     return res.status(401).json({
       error: "Spotify authentication required",
@@ -56,14 +57,14 @@ export type CompleteSpotifyOAuthResponse = {
 
 export type DisconnectSpotifyResponse = { connected: false };
 
-export function registerSpotifyImport(router) {
+export function registerSpotifyImport(router: Router) {
   router.get("/import/spotify/status", (req, res) => {
-    const status = spotifyConnectionStore.getPublicStatus(req.user.id);
+    const status = spotifyConnectionStore.getPublicStatus(req.user!.id);
     const hasSyncedPlaylists = flowPlaylistConfig
       .getStaticPlaylists()
       .some(
         (playlist) =>
-          Number(playlist?.ownerUserId) === Number(req.user.id) &&
+          Number(playlist?.ownerUserId) === Number(req.user!.id) &&
           playlist?.importSource?.provider === "spotify-playlist" &&
           playlist.importSource.syncEnabled,
       );
@@ -105,7 +106,7 @@ export function registerSpotifyImport(router) {
           `Spotify profile lookup failed after OAuth complete: ${error?.message || "Unknown error"}`,
         );
       }
-      const saved = spotifyConnectionStore.saveConnection(req.user.id, {
+      const saved = spotifyConnectionStore.saveConnection(req.user!.id, {
         accessToken,
         refreshToken,
         expiresAt,
@@ -125,14 +126,14 @@ export function registerSpotifyImport(router) {
   });
 
   router.delete("/import/spotify", (req, res) => {
-    spotifyConnectionStore.clearConnection(req.user.id);
-    spotifyClient.clearPlaylistTrackCache(req.user.id);
+    spotifyConnectionStore.clearConnection(req.user!.id);
+    spotifyClient.clearPlaylistTrackCache(req.user!.id);
     res.json({ connected: false });
   });
 
   router.get("/import/spotify/playlists", async (req, res) => {
     try {
-      const payload = await spotifyClient.listPlaylists(req.user.id);
+      const payload = await spotifyClient.listPlaylists(req.user!.id);
       res.json(payload);
     } catch (error) {
       logger.warn("playlist-import", "Spotify playlist listing failed", {
@@ -150,7 +151,7 @@ export function registerSpotifyImport(router) {
       }
       const { tracks, stats } = await fetchImportedPlaylistTracks({
         provider: "spotify-playlist",
-        userId: req.user.id,
+        userId: req.user!.id,
         externalId: playlistId,
       });
       const skipped = stats.unavailable + stats.podcast + stats.incomplete + stats.duplicate;
@@ -184,12 +185,12 @@ export function registerSpotifyImport(router) {
       }
       const { tracks, stats } = await fetchImportedPlaylistTracks({
         provider: "spotify-playlist",
-        userId: req.user.id,
+        userId: req.user!.id,
         externalId: playlistId,
       });
       stage = "enqueue";
       const result = await enqueueImportedPlaylist({
-        ownerUserId: req.user.id,
+        ownerUserId: req.user!.id,
         name,
         sourceName: "Spotify",
         provider: "spotify-playlist",
@@ -232,23 +233,26 @@ export function registerSpotifyImport(router) {
     }
   });
 
-  router.post("/shared-playlists/:playlistId/sync", async (req, res) => {
-    try {
-      const playlist = getAccessibleStaticPlaylist(req.user, req.params.playlistId);
-      if (!playlist) {
-        return res.status(404).json({ error: "Playlist not found" });
+  router.post<"/shared-playlists/:playlistId/sync">(
+    "/shared-playlists/:playlistId/sync",
+    async (req, res) => {
+      try {
+        const playlist = getAccessibleStaticPlaylist(req.user, req.params.playlistId);
+        if (!playlist) {
+          return res.status(404).json({ error: "Playlist not found" });
+        }
+        const result = await syncStaticPlaylistImport({
+          playlistId: playlist.id,
+          user: req.user,
+          force: true,
+        });
+        res.json({ success: true, ...result });
+      } catch (error) {
+        res.status(error?.statusCode || 500).json({
+          error: "Failed to sync playlist",
+          message: error?.message || "Unknown error",
+        });
       }
-      const result = await syncStaticPlaylistImport({
-        playlistId: playlist.id,
-        user: req.user,
-        force: true,
-      });
-      res.json({ success: true, ...result });
-    } catch (error) {
-      res.status(error?.statusCode || 500).json({
-        error: "Failed to sync playlist",
-        message: error?.message || "Unknown error",
-      });
-    }
-  });
+    },
+  );
 }

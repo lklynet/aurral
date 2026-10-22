@@ -4,22 +4,25 @@ import {
 } from "../../../services/importLists/importPlaylist.ts";
 import { lastfmStationClient } from "../../../services/importLists/lastfmStations.ts";
 import { logger, safeLogDiagnostic } from "../../../services/logger.ts";
+import type { Router } from "express";
 
-const getErrorStatus = (error) => error?.statusCode || error?.response?.status || 500;
+const getErrorStatus = (error: unknown) => error?.statusCode || error?.response?.status || 500;
 
-const getPlaylistImport = (body) => ({
+const getPlaylistImport = (
+  body: { playlistId?: unknown; username?: unknown } | null | undefined,
+) => ({
   provider: "lastfm-station",
   externalId: String(body?.playlistId || "").trim(),
   externalUsername: String(body?.username || "").trim(),
 });
 
-export function registerLastfmImport(router) {
+export function registerLastfmImport(router: Router) {
   router.get("/import/lastfm/playlists", async (req, res) => {
     try {
       const requestedUsername = Array.isArray(req.query?.username)
         ? req.query.username[0]
         : req.query?.username;
-      res.json(await lastfmStationClient.listPlaylists(req.user.id, requestedUsername));
+      res.json(await lastfmStationClient.listPlaylists(req.user!.id, requestedUsername));
     } catch (error) {
       logger.warn("playlist-import", "Last.fm station listing failed", {
         reason: safeLogDiagnostic(error),
@@ -35,7 +38,7 @@ export function registerLastfmImport(router) {
     try {
       const playlistImport = getPlaylistImport(req.body);
       const { tracks, stats } = await fetchImportedPlaylistTracks({
-        userId: req.user.id,
+        userId: req.user!.id,
         ...playlistImport,
       });
       res.json({
@@ -68,12 +71,12 @@ export function registerLastfmImport(router) {
       }
       if (!name) return res.status(400).json({ error: "name is required" });
       const { tracks, stats, user } = await fetchImportedPlaylistTracks({
-        userId: req.user.id,
+        userId: req.user!.id,
         ...playlistImport,
       });
       stage = "enqueue";
       const result = await enqueueImportedPlaylist({
-        ownerUserId: req.user.id,
+        ownerUserId: req.user!.id,
         name,
         sourceName: "Last.fm",
         ...playlistImport,

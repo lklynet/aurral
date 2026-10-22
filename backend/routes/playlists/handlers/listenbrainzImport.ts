@@ -4,10 +4,13 @@ import {
 } from "../../../services/importLists/importPlaylist.ts";
 import { listenbrainzPlaylistClient } from "../../../services/importLists/listenbrainzPlaylists.ts";
 import { logger, safeLogDiagnostic } from "../../../services/logger.ts";
+import type { Router } from "express";
 
-const getErrorStatus = (error) => error?.statusCode || error?.response?.status || 500;
+const getErrorStatus = (error: unknown) => error?.statusCode || error?.response?.status || 500;
 
-const getPlaylistImport = (body) => {
+const getPlaylistImport = (
+  body: { playlistType?: unknown; playlistId?: unknown } | null | undefined,
+) => {
   const playlistType = String(body?.playlistType || "").trim();
   return playlistType
     ? { provider: "listenbrainz-createdfor", externalId: playlistType }
@@ -17,10 +20,10 @@ const getPlaylistImport = (body) => {
       };
 };
 
-export function registerListenBrainzImport(router) {
+export function registerListenBrainzImport(router: Router) {
   router.get("/import/listenbrainz/playlists", async (req, res) => {
     try {
-      res.json(await listenbrainzPlaylistClient.listPlaylists(req.user.id));
+      res.json(await listenbrainzPlaylistClient.listPlaylists(req.user!.id));
     } catch (error) {
       logger.warn("playlist-import", "ListenBrainz playlist listing failed", {
         reason: safeLogDiagnostic(error),
@@ -39,7 +42,7 @@ export function registerListenBrainzImport(router) {
         return res.status(400).json({ error: "playlistId is required" });
       }
       const { tracks, stats } = await fetchImportedPlaylistTracks({
-        userId: req.user.id,
+        userId: req.user!.id,
         ...playlistImport,
       });
       res.json({
@@ -72,12 +75,12 @@ export function registerListenBrainzImport(router) {
       }
       if (!name) return res.status(400).json({ error: "name is required" });
       const { tracks, stats } = await fetchImportedPlaylistTracks({
-        userId: req.user.id,
+        userId: req.user!.id,
         ...playlistImport,
       });
       stage = "enqueue";
       const result = await enqueueImportedPlaylist({
-        ownerUserId: req.user.id,
+        ownerUserId: req.user!.id,
         name,
         sourceName: "ListenBrainz",
         ...playlistImport,

@@ -19,6 +19,10 @@ import { normalizeFlowMixForValidation } from "../../../services/flows/flowValid
 import { logger } from "../../../services/logger.ts";
 import { isDownloadJobCancelled } from "../../../services/downloadJobs/downloadCancellation.ts";
 import type { fetchImportedPlaylistTracks } from "../../../services/importLists/importPlaylist.ts";
+import type { StoredFlow } from "../../../services/playlists/flowPlaylistConfig.ts";
+import type { DownloadJob } from "../../../services/downloadJobs/downloadTracker.ts";
+import type { RequestUser } from "../../../middleware/requestUser.ts";
+import type { Request, Response } from "express";
 
 export type ImportedPlaylistPreviewResponse = {
   trackCount: number;
@@ -45,7 +49,18 @@ export type ResearchTrackResponse = {
 export const EXISTING_FILE_MODE_OPTIONS = ["download", "reuse"];
 export const DEFAULT_LIMIT = DEFAULT_SIZE;
 
-const getFlowEntryName = (value) => {
+type FlowEntryObject = {
+  name?: unknown;
+  artistName?: unknown;
+  artist?: unknown;
+  tag?: unknown;
+  label?: unknown;
+  value?: unknown;
+};
+
+type FlowEntry = FlowEntryObject | string | number | boolean | null | undefined;
+
+const getFlowEntryName = (value: FlowEntry) => {
   if (typeof value === "string" || typeof value === "number") {
     const text = String(value).trim();
     return text || null;
@@ -68,7 +83,7 @@ const getFlowEntryName = (value) => {
   return null;
 };
 
-export const normalizeFlowStringArray = (value) => {
+export const normalizeFlowStringArray = (value: unknown) => {
   if (Array.isArray(value)) {
     return [...new Set(value.map((entry) => getFlowEntryName(entry)).filter(Boolean))];
   }
@@ -81,9 +96,23 @@ export const normalizeFlowStringArray = (value) => {
       ),
     ];
   }
-  const single = getFlowEntryName(value);
+  const single = getFlowEntryName(value as FlowEntry);
   return single ? [single] : [];
 };
+
+type FlowPayload = Pick<
+  StoredFlow,
+  | "name"
+  | "mix"
+  | "size"
+  | "tags"
+  | "relatedArtists"
+  | "scheduleDays"
+  | "recordHistory"
+  | "showInLibrary"
+  | "yearFrom"
+  | "yearTo"
+>;
 
 export const validateFlowPayload = ({
   name,
@@ -96,7 +125,7 @@ export const validateFlowPayload = ({
   showInLibrary,
   yearFrom,
   yearTo,
-} = {}) => {
+}: FlowPayload = {}) => {
   if (!name || !String(name).trim()) {
     return "name is required";
   }
@@ -140,7 +169,7 @@ export const validateFlowPayload = ({
   return null;
 };
 
-export const markFlowMutationToken = (flowId) => {
+export const markFlowMutationToken = (flowId: string) => {
   const tokenScope = `flow:${flowId}:mutation`;
   const previousToken = getLatestPlaylistOperationToken(tokenScope);
   const token = createPlaylistOperationToken();
@@ -148,18 +177,20 @@ export const markFlowMutationToken = (flowId) => {
   return { token, tokenScope, previousToken };
 };
 
-export const isFlowMutationTokenCurrent = (mutation) =>
+type FlowMutation = ReturnType<typeof markFlowMutationToken>;
+
+export const isFlowMutationTokenCurrent = (mutation: FlowMutation) =>
   Boolean(mutation?.token) &&
   getLatestPlaylistOperationToken(mutation.tokenScope) === mutation.token;
 
-export const restoreFlowMutationToken = (mutation) =>
+export const restoreFlowMutationToken = (mutation: FlowMutation) =>
   restorePlaylistOperationToken({
     scope: mutation?.tokenScope,
     token: mutation?.token,
     previousToken: mutation?.previousToken,
   });
 
-export const pauseStaticPlaylistRetryCycle = async (playlistId) => {
+export const pauseStaticPlaylistRetryCycle = async (playlistId: string) => {
   await downloadWorker.setRetryCyclePaused(playlistId, true);
   let cancelledJobs = 0;
   await withPlaylistMutation(playlistId, async () => {
@@ -173,12 +204,16 @@ export const pauseStaticPlaylistRetryCycle = async (playlistId) => {
   return cancelledJobs;
 };
 
-export const getAccessibleFlow = (user, flowId) => flowPlaylistConfig.getFlowForUser(user, flowId);
+export const getAccessibleFlow = (user: RequestUser | undefined, flowId: string) =>
+  flowPlaylistConfig.getFlowForUser(user, flowId);
 
-export const getAccessibleStaticPlaylist = (user, playlistId) =>
+export const getAccessibleStaticPlaylist = (user: RequestUser | undefined, playlistId: string) =>
   flowPlaylistConfig.getStaticPlaylistForUser(user, playlistId);
 
-export const canAccessPlaylistType = (user, playlistType) => {
+export const canAccessPlaylistType = (
+  user: RequestUser | undefined,
+  playlistType: string | null | undefined,
+) => {
   const key = String(playlistType || "").trim();
   if (!key) return false;
   const flow = flowPlaylistConfig.getFlow(key);
@@ -194,15 +229,20 @@ export const canAccessPlaylistType = (user, playlistType) => {
 
 export const LIBRARY_JOB_TYPE = "library";
 
-export const canAccessJobType = (user, playlistType) =>
-  playlistType === LIBRARY_JOB_TYPE || canAccessPlaylistType(user, playlistType);
+export const canAccessJobType = (
+  user: RequestUser | undefined,
+  playlistType: string | null | undefined,
+) => playlistType === LIBRARY_JOB_TYPE || canAccessPlaylistType(user, playlistType);
 
-export const filterJobsForUser = (user, jobs) =>
+export const filterJobsForUser = <T extends Pick<DownloadJob, "playlistId" | "playlistType">>(
+  user: RequestUser | undefined,
+  jobs: T[] | null | undefined,
+) =>
   (Array.isArray(jobs) ? jobs : []).filter((job) =>
     canAccessJobType(user, job?.playlistId || job?.playlistType),
   );
 
-export const queueFlowSideEffect = (kind, labelPrefix, flowId) => {
+export const queueFlowSideEffect = (kind: string, labelPrefix: string, flowId: string) => {
   const mutation = markFlowMutationToken(flowId);
   const { token, tokenScope } = mutation;
   playlistOperationQueue
@@ -219,7 +259,13 @@ export const queueFlowSideEffect = (kind, labelPrefix, flowId) => {
     });
 };
 
-export const enqueueResearchTrack = async (req, res, playlistId, jobId, labelPrefix) => {
+export const enqueueResearchTrack = async (
+  req: Request,
+  res: Response,
+  playlistId: string,
+  jobId: string,
+  labelPrefix: string,
+) => {
   if (!canAccessJobType(req.user, playlistId)) {
     return res.status(404).json({ error: "Playlist not found" });
   }

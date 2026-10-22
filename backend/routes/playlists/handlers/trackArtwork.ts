@@ -9,6 +9,7 @@ import {
   saveCustomArtworkUrl,
 } from "../../../services/customArtworkService.ts";
 import { canAccessJobThroughPlaylist } from "./jobs.ts";
+import type { NextFunction, Request, Response, Router } from "express";
 
 const artworkUploadParser = express.raw({
   limit: "8mb",
@@ -18,12 +19,12 @@ const artworkUploadParser = express.raw({
       .startsWith("image/"),
 });
 
-function getAccessibleJob(req) {
+function getAccessibleJob(req: Request<{ jobId: string }>) {
   const job = downloadTracker.getJob(req.params.jobId);
   return job && canAccessJobThroughPlaylist(req.user, job, req.query?.playlistId) ? job : null;
 }
 
-function canEditArtwork(req, res, next) {
+function canEditArtwork(req: Request, res: Response, next: NextFunction) {
   if (
     req.user?.role === "admin" ||
     hasPermission(req.user, "addAlbum") ||
@@ -37,15 +38,15 @@ function canEditArtwork(req, res, next) {
   });
 }
 
-function requireAccessibleJob(req, res, next) {
+function requireAccessibleJob(req: Request<{ jobId: string }>, res: Response, next: NextFunction) {
   if (!getAccessibleJob(req)) return res.status(404).json({ error: "Track not found" });
   return next();
 }
 
 export type DeletePlaylistTrackArtworkResponse = { ok: true };
 
-export function registerTrackArtworkServe(router) {
-  router.get("/track-artwork/:jobId", (req, res) => {
+export function registerTrackArtworkServe(router: Router) {
+  router.get<"/track-artwork/:jobId">("/track-artwork/:jobId", (req, res) => {
     if (!verifyTokenAuth(req)) {
       return res.status(401).json({ error: "Unauthorized" });
     }
@@ -61,8 +62,8 @@ export function registerTrackArtworkServe(router) {
   });
 }
 
-export function registerTrackArtworkManagement(router) {
-  router.put(
+export function registerTrackArtworkManagement(router: Router) {
+  router.put<"/track-artwork/:jobId">(
     "/track-artwork/:jobId",
     canEditArtwork,
     requireAccessibleJob,
@@ -88,7 +89,7 @@ export function registerTrackArtworkManagement(router) {
     },
   );
 
-  router.put(
+  router.put<"/track-artwork/:jobId/url">(
     "/track-artwork/:jobId/url",
     canEditArtwork,
     requireAccessibleJob,
@@ -109,8 +110,13 @@ export function registerTrackArtworkManagement(router) {
     },
   );
 
-  router.delete("/track-artwork/:jobId", canEditArtwork, requireAccessibleJob, async (req, res) => {
-    await removeCustomArtwork("playlist-track", req.params.jobId);
-    return res.json({ ok: true });
-  });
+  router.delete<"/track-artwork/:jobId">(
+    "/track-artwork/:jobId",
+    canEditArtwork,
+    requireAccessibleJob,
+    async (req, res) => {
+      await removeCustomArtwork("playlist-track", req.params.jobId);
+      return res.json({ ok: true });
+    },
+  );
 }

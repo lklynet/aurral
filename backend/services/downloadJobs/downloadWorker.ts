@@ -928,8 +928,8 @@ export class DownloadWorker {
 
 function createRemoteDownloadWorker() {
   const reader = new DownloadWorker();
-  const call = (method: string, args: unknown[] = [], timeoutMs = 30000) =>
-    requestDownloadOwner(method, args, { timeoutMs });
+  const call = <T = unknown>(method: string, args: unknown[] = [], timeoutMs = 30000) =>
+    requestDownloadOwner<T>(method, args, { timeoutMs });
   const notify = (method: string, args: unknown[] = []) => {
     void call(method, args).catch((error) => {
       console.warn(
@@ -963,7 +963,8 @@ function createRemoteDownloadWorker() {
     stop: () => notify("stop"),
     stopAndDrain: () => call("stopAndDrain", [], 30 * 60 * 1000),
     wake: (delayMs = 0) => notify("wakeOrStart", [delayMs]),
-    researchMissingTracks: (id: string) => call("researchMissingTracks", [id], 10 * 60 * 1000),
+    researchMissingTracks: (id: string) =>
+      call<number>("researchMissingTracks", [id], 10 * 60 * 1000),
     setRetryCyclePaused: async (id: string, paused: boolean) => {
       const result = await call("setRetryCyclePaused", [id, paused]);
       dbOps.invalidateSettingsCache();
