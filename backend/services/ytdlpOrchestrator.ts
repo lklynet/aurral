@@ -1,3 +1,4 @@
+import type { PipelinePayload } from "./downloadPipeline.ts";
 import path from "path";
 import fs from "fs/promises";
 import { downloadTracker, type DownloadJob } from "./downloadJobs/downloadTracker.ts";
@@ -65,7 +66,7 @@ type YtdlpHelpers = {
     job: DownloadJob,
     message: string,
     logDetails?: Record<string, number>,
-  ) => Promise<unknown>;
+  ) => Promise<PipelinePayload | null>;
 };
 type YtdlpSearchOptions = NonNullable<Parameters<YtdlpClient["search"]>[1]>;
 

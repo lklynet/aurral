@@ -9,7 +9,7 @@
 // `hasUsableSearchCandidates` is the cheap early-exit used while queries are
 // still running. `buildSourceCandidates` evaluates the complete search pool.
 
-import { buildTrackRequest, type TrackRequest } from "./trackIdentity.ts";
+import { buildTrackRequest, type SearchTrackRequest } from "./trackIdentity.ts";
 import {
   prefilterCandidates,
   evaluateTrackCandidates,
@@ -30,7 +30,7 @@ export async function buildSourceCandidates({
   source?: string;
   results?: SearchResult[];
   candidates?: SearchResult[];
-  request?: TrackRequest;
+  request?: SearchTrackRequest;
   context?: Parameters<typeof buildTrackRequest>[0];
   options?: Parameters<typeof buildSoulseekCandidates>[2];
 } = {}) {
@@ -63,7 +63,7 @@ export function hasUsableSearchCandidates({
 }: {
   source?: string;
   results?: SearchResult[];
-  request?: TrackRequest;
+  request?: SearchTrackRequest;
   context?: Parameters<typeof buildTrackRequest>[0];
 } = {}) {
   const trackRequest = request || buildTrackRequest(context);

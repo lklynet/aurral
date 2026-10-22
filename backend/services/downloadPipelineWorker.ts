@@ -1,6 +1,6 @@
 import { asAppError } from "../../lib/errors.ts";
 import createHonkerWorker from "./honkerWorkerFactory.ts";
-import { getPipelineQueue, type HonkerPayload } from "./honkerDb.ts";
+import { getPipelineQueue } from "./honkerDb.ts";
 import {
   continuePipeline,
   processPipelinePayload,
@@ -22,10 +22,9 @@ interface PipelineDependencies {
 }
 
 async function processLockedPipelineJob(
-  current: HonkerPayload,
+  payload: PipelinePayload,
   dependencies: PipelineDependencies = {},
 ) {
-  const payload = current as PipelinePayload;
   const processPayload = dependencies.processPipelinePayload || processPipelinePayload;
   const continuePayload = dependencies.continuePipeline || continuePipeline;
   const failPayload = dependencies.failPipelineJob || failPipelineJob;
@@ -87,7 +86,7 @@ const {
     });
     const failed: PipelinePayload = job.payload;
     return withDownloadPayloadMutation(failed, async (current) =>
-      continuePipeline(await failPipelineJob(current as PipelinePayload, message)),
+      continuePipeline(await failPipelineJob(current, message)),
     );
   },
 });

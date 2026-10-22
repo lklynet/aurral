@@ -4,8 +4,7 @@ import { withHonkerLock } from "../honkerDb.ts";
 import { isDownloadOwnerProcess, requestDownloadOwner } from "./downloadOwnerClient.ts";
 import { logger } from "../logger.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { resolveTransferredDownloadPayload } from "./downloadOwnership.ts";
-import type { HonkerPayload } from "../honkerDb.ts";
+import { resolveTransferredDownloadPayload, type OwnedPayload } from "./downloadOwnership.ts";
 import { asAppError } from "../../../lib/errors.ts";
 
 type DownloadLease = {
@@ -169,7 +168,7 @@ export function withDownloadStepLock<T>(ownerIds: unknown, operation: () => T | 
   return withDownloadLocks(ownerIds, { steps: true }, operation);
 }
 
-function payloadOwners(payload: HonkerPayload | null) {
+function payloadOwners(payload: OwnedPayload | null) {
   const owners = [payload?.playlistId];
   const groupJobIds = payload?.albumGroupJobIds;
   const jobIds = [payload?.jobId, ...(Array.isArray(groupJobIds) ? groupJobIds : [])];
@@ -180,9 +179,9 @@ function payloadOwners(payload: HonkerPayload | null) {
   return normalizePlaylistTypes(owners);
 }
 
-export async function withDownloadPayloadMutation<T>(
-  payload: HonkerPayload,
-  operation: (current: HonkerPayload) => T | Promise<T>,
+export async function withDownloadPayloadMutation<Payload extends OwnedPayload, T>(
+  payload: Payload,
+  operation: (current: Payload) => T | Promise<T>,
 ) {
   while (true) {
     const owners = payloadOwners(resolveTransferredDownloadPayload(payload));

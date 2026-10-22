@@ -1,9 +1,11 @@
+import type { PipelinePayload } from "./downloadPipeline.ts";
 import path from "path";
 import { asAppError } from "../../lib/errors.ts";
 import fs from "fs/promises";
 import {
   downloadTracker,
   type DownloadJob,
+  type HeldForReviewDraft,
   type JobFields,
 } from "./downloadJobs/downloadTracker.ts";
 import { prowlarrClient } from "./prowlarrClient.ts";
@@ -128,7 +130,7 @@ interface UsenetPayload {
   missingPolls?: number;
   unreadPolls?: number;
   history?: UsenetHistoryItem | null;
-  heldForReview?: unknown;
+  heldForReview?: HeldForReviewDraft;
 }
 
 type UsenetRemovePayload = Pick<UsenetPayload, "downloadClient" | "manualDownloadClient" | "nzbId">;
@@ -139,7 +141,7 @@ interface PipelineHelpers {
     job: UsenetJob,
     message: string,
     logDetails?: Record<string, number>,
-  ) => Promise<unknown>;
+  ) => Promise<PipelinePayload | null>;
 }
 
 interface PendingUpgrade {
@@ -285,7 +287,11 @@ export async function discardUsenetWork(payload: UsenetPayload) {
 }
 
 // A song held for review keeps its release until it is approved, denied, or removed.
-export async function removeReviewedUsenetDownload(job: UsenetJob) {
+export async function removeReviewedUsenetDownload(
+  job: Pick<UsenetJob, "id" | "downloadSource" | "downloadClient"> & {
+    downloadClientId?: NzbId | null;
+  },
+) {
   if (job?.downloadSource !== "usenet" || !job.downloadClientId) return;
   return removeUsenetItem(
     { downloadClient: job.downloadClient, nzbId: job.downloadClientId },

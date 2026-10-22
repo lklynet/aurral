@@ -4,12 +4,12 @@ import { isPathInsideRoot, resolveDownloadRoot } from "../downloadPaths.ts";
 import { lidarrClient } from "../lidarrClient.ts";
 import { getPathMappings, resolveLocalPath } from "../pathMappings.ts";
 import { logger, safeLogDiagnostic } from "../logger.ts";
-import type { DownloadJob } from "./downloadTracker.ts";
+import type { DownloadJob, HeldForReviewDraft } from "./downloadTracker.ts";
 
 type ReviewFileJob = Pick<
   DownloadJob,
-  "id" | "stagingPath" | "downloadSource" | "downloadClient" | "downloadClientId" | "remoteUsername"
->;
+  "id" | "stagingPath" | "downloadSource" | "downloadClient" | "remoteUsername"
+> & { downloadClientId?: DownloadJob["downloadClientId"] | number };
 
 function isInLibraryFolder(filePath: string) {
   const lidarrRoots = lidarrClient.isEnabled()
@@ -63,7 +63,7 @@ export async function discardReviewFile(job: ReviewFileJob) {
 // gone was discarded or imported, so its download is left alone.
 export async function discardHeldFile(
   jobId: DownloadJob["id"],
-  held: DownloadJob["heldForReview"],
+  held: HeldForReviewDraft | null | undefined,
 ) {
   if (!held?.sourcePath || !(await fs.stat(held.sourcePath).catch(() => null))) return;
   await discardReviewFile({

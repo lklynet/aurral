@@ -9,6 +9,7 @@ import type {
   Queue,
   SchedulerUpdateOptions,
 } from "@russellthehippo/honker-node";
+import type { PipelinePayload } from "./downloadPipeline.ts";
 import type { HonkerLiveRow } from "../db/rows.ts";
 import { resolveAurralDataDir } from "../config/data-dir.ts";
 import { asAppError } from "../../lib/errors.ts";
@@ -259,17 +260,17 @@ export function listHonkerJobs(queueName: string) {
   ).map((row) => ({ ...row, payload: parseHonkerPayload(row.payload) }));
 }
 
-interface HonkerQueueConfig {
+interface HonkerQueueConfig<Payload extends object = HonkerPayload> {
   name: string;
   visibilityTimeoutS: number;
   maxAttempts: number;
   workerModule: string;
   workerStartFn: string;
-  defaultPriorityFn?: (payload: HonkerPayload, options: HonkerEnqueueOptions) => number;
+  defaultPriorityFn?: (payload: Payload, options: HonkerEnqueueOptions) => number;
   skipInTest?: boolean;
 }
 
-function createHonkerQueue({
+function createHonkerQueue<Payload extends object = HonkerPayload>({
   name,
   visibilityTimeoutS,
   maxAttempts,
@@ -277,7 +278,7 @@ function createHonkerQueue({
   workerStartFn,
   defaultPriorityFn = (payload, options) => Number(options.priority || 0),
   skipInTest = false,
-}: HonkerQueueConfig) {
+}: HonkerQueueConfig<Payload>) {
   let queue: Queue | null = null;
 
   function getQueue() {
@@ -287,11 +288,11 @@ function createHonkerQueue({
     return queue;
   }
 
-  function enqueueJob(payload: HonkerPayload, options: HonkerEnqueueOptions = {}) {
+  function enqueueJob(payload: Payload, options: HonkerEnqueueOptions = {}) {
     const q = getQueue();
     const runAt = resolveEnqueueRunAt(options);
     const priority = defaultPriorityFn(payload, options);
-    const jobId = q.enqueue(payload, { priority, runAt });
+    const jobId = q.enqueue(payload as JsonValue, { priority, runAt });
     if (shouldStartQueueHere(name) && !(skipInTest && process.env.NODE_ENV === "test")) {
       import(workerModule)
         .then((mod) => mod[workerStartFn]())
@@ -311,20 +312,17 @@ function createHonkerQueue({
   return { getQueue, enqueueJob, reset };
 }
 
-const queueByName = new Map<
-  string,
-  Pick<ReturnType<typeof createHonkerQueue>, "getQueue" | "enqueueJob">
->();
+const queueByName = new Map<string, Pick<ReturnType<typeof createHonkerQueue>, "getQueue">>();
 const allQueues: Array<() => void> = [];
 
-function registerQueue(config: HonkerQueueConfig) {
+function registerQueue<Payload extends object = HonkerPayload>(config: HonkerQueueConfig<Payload>) {
   const { getQueue, enqueueJob, reset } = createHonkerQueue(config);
-  queueByName.set(config.name, { getQueue, enqueueJob });
+  queueByName.set(config.name, { getQueue });
   allQueues.push(reset);
   return { getQueue, enqueueJob };
 }
 
-const pipeline = registerQueue({
+const pipeline = registerQueue<PipelinePayload>({
   name: "slskd-pipeline",
   visibilityTimeoutS: 1200,
   maxAttempts: 5,

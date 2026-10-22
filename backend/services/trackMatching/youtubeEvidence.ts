@@ -7,7 +7,7 @@ import {
   normalizeMatchText,
   titleSimilarity,
 } from "./nativeMatcher.ts";
-import type { TrackRequest } from "./trackIdentity.ts";
+import type { SearchTrackRequest } from "./trackIdentity.ts";
 import { coreAlbumTitle } from "./titleText.ts";
 
 const VIDEO_WORDS = /\b(?:video|mv|clip)\b/iu;
@@ -132,7 +132,10 @@ export function readYoutubeFile(
 
 // Whether a YouTube Music song's album is the requested one. A request that
 // names no album has no other album to rule out.
-export function isRequestedYoutubeAlbum(request: TrackRequest, album: string | null | undefined) {
+export function isRequestedYoutubeAlbum(
+  request: SearchTrackRequest,
+  album: string | null | undefined,
+) {
   return (
     !request.albumName || isSameAlbumTitle(coreAlbumTitle(request.albumName), coreAlbumTitle(album))
   );

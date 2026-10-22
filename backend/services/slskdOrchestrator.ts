@@ -5,7 +5,11 @@ import type { Dirent } from "fs";
 import { db } from "../config/db-sqlite.ts";
 import { getDownloadClient } from "./download/downloadClientSettings.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
-import { downloadTracker, type JobFields } from "./downloadJobs/downloadTracker.ts";
+import {
+  downloadTracker,
+  type HeldForReviewDraft,
+  type JobFields,
+} from "./downloadJobs/downloadTracker.ts";
 import {
   buildAlbumSearchTiers,
   buildTrackSearchTiers,
@@ -52,6 +56,7 @@ import {
   mergeSearchResults,
   holdForReview,
   finalizePipelineJobSuccess,
+  type PipelineSuccessJob,
   SEARCH_RESET,
 } from "./pipelineHelpers.ts";
 import {
@@ -65,7 +70,7 @@ import { cacheSearchResults, getCachedSearchResults } from "./downloadJobs/searc
 import createCache from "./apiClients/simpleCache.ts";
 import type { DownloadTrackFields } from "./downloadUtils.ts";
 import type { SoulseekSearchItem, TrackSearchContext } from "./downloadJobs/trackSearchQueries.ts";
-import type { TrackRequest } from "./trackMatching/trackIdentity.ts";
+import type { SearchTrackRequest } from "./trackMatching/trackIdentity.ts";
 import type { HistoryJob } from "./aurralHistoryService.ts";
 
 type SlskdValues = { $values?: SlskdTransfer[] };
@@ -115,7 +120,7 @@ type SlskdPayload = {
   batch?: SlskdBatch | null;
   batchId?: string | null;
   destination?: string | null;
-  heldForReview?: unknown;
+  heldForReview?: HeldForReviewDraft;
   upgradeForJobId?: string | null;
   upgrade?: boolean;
   manualSelection?: boolean;
@@ -124,7 +129,8 @@ type SlskdPayload = {
 type SlskdJob = HistoryJob &
   JobFields<
     "remoteUsername" | "slskdSearchId" | "slskdBatchId" | "deniedRemoteSources" | "qualityTier"
-  >;
+  > &
+  PipelineSuccessJob;
 
 type SlskdHelpers = {
   failOrTryNextSource: (
@@ -247,7 +253,7 @@ function selectAlbumFolders(aggregated: SoulseekSearchItem[], searchOptions: Sls
 
 export function hasSlskdSearchCandidates(
   aggregated: SoulseekSearchItem[],
-  resolvedTrack: TrackRequest,
+  resolvedTrack: SearchTrackRequest,
   searchOptions: SlskdSearchOptions | undefined,
 ) {
   if (searchOptions?.albumJobs) {
@@ -950,7 +956,7 @@ async function advanceSlskdSearch(
   payload: SlskdPayload,
   job: SlskdJob,
   queries: string[],
-  resolvedTrack: TrackRequest,
+  resolvedTrack: SearchTrackRequest,
   searchOptions: SlskdSearchOptions,
 ): Promise<SlskdSearchStep> {
   const aggregated: SoulseekSearchItem[] = [];
@@ -1828,14 +1834,14 @@ export async function discardSlskdDownload({
   username,
 }: {
   sourcePath: string;
-  transferId?: string | null;
+  transferId?: string | number | null;
   username?: string | null;
 }) {
   await cleanupRejectedDownload({
     sourcePath,
     slskdRoot: resolveLocalPath(await slskdClient.getDownloadDirectory(), getPathMappings("slskd")),
     playlistRoot: resolveDownloadRoot(),
-    transfer: transferId ? { id: transferId } : null,
+    transfer: transferId ? { id: String(transferId) } : null,
     username,
   });
 }

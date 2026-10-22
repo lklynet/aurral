@@ -25,7 +25,7 @@ export function beginDownloadAttempt(jobId: string) {
   return id;
 }
 
-export function setActiveDownloadAttemptId(jobId: string, id: string | null) {
+export function setActiveDownloadAttemptId(jobId: string, id: string | null | undefined) {
   saveAttemptStmt.run(`activeDownloadAttempt:${jobId}`, JSON.stringify(id));
 }
 

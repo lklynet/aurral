@@ -13,7 +13,7 @@ import {
   type CandidateTrack,
   type RawCandidate,
 } from "../candidateNormalizer.ts";
-import type { TrackRequest } from "../trackIdentity.ts";
+import type { SearchTrackRequest } from "../trackIdentity.ts";
 import { getNormalizedText } from "../../providers/brainzmashRanking.ts";
 import { groupSoulseekSearchResults } from "../../downloadJobs/trackSearchQueries.ts";
 
@@ -45,7 +45,7 @@ export function isSoulseekAudioFile(filePath: string) {
   return AUDIO_EXTENSIONS.has(getFileExtension(filePath));
 }
 
-function readComparableAlbumName(request: TrackRequest) {
+function readComparableAlbumName(request: SearchTrackRequest) {
   return String(request?.albumName || "")
     .replace(/\s+(?:-|–|—)\s+(?:single|ep|album)\s*$/i, "")
     .replace(/\s+[[(](?:single|ep|album)[)\]]\s*$/i, "")
@@ -56,7 +56,7 @@ function readComparableAlbumName(request: TrackRequest) {
 // A self-titled single ("Song - Single"): the folder proves nothing except
 // the artist, so a folder that does not name the requested artist is a
 // different artist's same-titled single.
-function isAmbiguousTitleAlbumContext(request: TrackRequest) {
+function isAmbiguousTitleAlbumContext(request: SearchTrackRequest) {
   const albumName = String(request?.albumName || "");
   const hasSingleSuffix =
     /\s+(?:-|–|—)\s+(?:single|ep)\s*$/i.test(albumName) ||
@@ -70,7 +70,7 @@ function extractYears(value: string | null | undefined) {
   return [...String(value || "").matchAll(/\b(19\d{2}|20\d{2})\b/g)].map((match) => match[1]);
 }
 
-function artistNames(request: TrackRequest) {
+function artistNames(request: SearchTrackRequest) {
   return [request?.artistName, ...(request?.artistAliases || [])]
     .map((entry) => String(entry || "").trim())
     .filter(Boolean);
@@ -87,14 +87,14 @@ function pathContainsLabel(text: string | null | undefined, target: string | nul
     });
 }
 
-function bestArtistScore(request: TrackRequest, text: string) {
+function bestArtistScore(request: SearchTrackRequest, text: string) {
   return artistNames(request).reduce(
     (best, entry) => Math.max(best, pathContainsLabel(text, entry) ? 100 : 0),
     0,
   );
 }
 
-function comparableTrackTitle(fileName: string, request: TrackRequest) {
+function comparableTrackTitle(fileName: string, request: SearchTrackRequest) {
   const parsed = parseFilenameArtistTitle(fileName, request);
   const title = parsed?.title || String(fileName || "");
   return getNormalizedText(
@@ -102,7 +102,7 @@ function comparableTrackTitle(fileName: string, request: TrackRequest) {
   );
 }
 
-function scoreTracklistMatch(audioFiles: SlskdFile[], request: TrackRequest) {
+function scoreTracklistMatch(audioFiles: SlskdFile[], request: SearchTrackRequest) {
   const titles = Array.isArray(request?.albumTrackTitles) ? request.albumTrackTitles : [];
   if (titles.length === 0) return { score: 0, matchedCount: 0, ratio: 0 };
   const fileNames = (audioFiles || []).map((item) =>
@@ -139,7 +139,7 @@ function scoreTracklistMatch(audioFiles: SlskdFile[], request: TrackRequest) {
 // identity is decided by the shared engine per file.
 export function isReleaseFolderPlausible(
   group: SoulseekGroup,
-  request: TrackRequest,
+  request: SearchTrackRequest,
   folder: ReturnType<typeof buildFolderEvidence>,
 ) {
   const albumName = readComparableAlbumName(request);
@@ -176,7 +176,7 @@ export function isReleaseFolderPlausible(
 
 function buildFolderEvidence(
   group: SoulseekGroup,
-  request: TrackRequest,
+  request: SearchTrackRequest,
   options: SoulseekOptions = {},
 ) {
   const directoryText = String(group.directoryPath || "");
@@ -219,7 +219,10 @@ function buildFolderEvidence(
 // number. A parsed artist that does not match the request is kept as
 // contradicted evidence (negative evidence, not missing evidence), while a
 // purely numeric leading segment is a track number, never an artist.
-function parseFilenameArtistTitle(baseName: string | null | undefined, request: TrackRequest) {
+function parseFilenameArtistTitle(
+  baseName: string | null | undefined,
+  request: SearchTrackRequest,
+) {
   const known = artistNames(request);
   const normalizedKnown = known.map((name) => getNormalizedText(name));
   const isKnownArtist = (name: string) =>
@@ -271,7 +274,7 @@ function readAdvertisedDurationMs(item: SlskdFile) {
 // gathers what Soulseek can (and cannot) prove about each file.
 export function buildSoulseekCandidates(
   results: SlskdFile[],
-  request: TrackRequest,
+  request: SearchTrackRequest,
   options: SoulseekOptions = {},
 ) {
   const groups = groupSoulseekSearchResults(results, { isAudioFile: isSoulseekAudioFile });

@@ -1,6 +1,7 @@
+import type { PipelinePayload } from "./downloadPipeline.ts";
 import path from "path";
 import fs from "fs/promises";
-import { downloadTracker } from "./downloadJobs/downloadTracker.ts";
+import { downloadTracker, type HeldForReviewDraft } from "./downloadJobs/downloadTracker.ts";
 import { getDownloadClient } from "./download/downloadClientSettings.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
 import {
@@ -97,7 +98,7 @@ type DeemixPayload = {
   albumGrab?: boolean;
   albumGroupJobIds?: string[];
   downloadAttemptId?: string | null;
-  heldForReview?: unknown;
+  heldForReview?: HeldForReviewDraft;
   track?: Parameters<typeof attemptTrackRequest>[2];
   upgradeForJobId?: string | null;
   manualReplacementSearch?: boolean;
@@ -121,7 +122,7 @@ type DeemixHelpers = {
     job: DeemixJob,
     message: string,
     logDetails?: Record<string, number>,
-  ) => Promise<unknown>;
+  ) => Promise<PipelinePayload | null>;
 };
 
 function getDeemixClient(): DeemixClient {

@@ -1,4 +1,4 @@
-import { buildTrackRequest, recordingRequest, type TrackRequest } from "./trackIdentity.ts";
+import { buildTrackRequest, recordingRequest, type SearchTrackRequest } from "./trackIdentity.ts";
 import {
   getCapabilities,
   normalizeCandidate,
@@ -44,7 +44,7 @@ function isNormalizedCandidate(entry: SearchResult): entry is NormalizedCandidat
 function normalizeSourceCandidates(
   source: string | undefined,
   candidates: SearchResult[],
-  request: TrackRequest,
+  request: SearchTrackRequest,
 ): NormalizedCandidate[] {
   const capabilities = getCapabilities(source);
   const knownArtistNames = [request.artistName, ...(request.artistAliases || [])].filter(
@@ -64,11 +64,11 @@ function normalizeSourceCandidates(
     .filter(Boolean) as NormalizedCandidate[];
 }
 
-function requestArtistNames(request: TrackRequest) {
+function requestArtistNames(request: SearchTrackRequest) {
   return [request.artistName, ...(request.artistAliases || [])].filter(Boolean);
 }
 
-function youtubeMatcherCandidate(candidate: NormalizedCandidate, request: TrackRequest) {
+function youtubeMatcherCandidate(candidate: NormalizedCandidate, request: SearchTrackRequest) {
   const names = requestArtistNames(request);
   const claim = parseYoutubeTitle(candidate.title, names, request.trackName);
   const upload = readYoutubeUpload(candidate.title, candidate.provider?.uploader, names);
@@ -84,7 +84,7 @@ function youtubeMatcherCandidate(candidate: NormalizedCandidate, request: TrackR
 
 function matcherCandidate(
   candidate: NormalizedCandidate,
-  request: TrackRequest,
+  request: SearchTrackRequest,
   evidence: ProviderEvidence | null,
 ) {
   if (candidate.source === "ytdlp" && !isYoutubeSong(candidate))
@@ -103,7 +103,7 @@ function matcherCandidate(
   };
 }
 
-function isOfficialYoutubeAudio(candidate: NormalizedCandidate, request: TrackRequest) {
+function isOfficialYoutubeAudio(candidate: NormalizedCandidate, request: SearchTrackRequest) {
   return (
     candidate.source === "ytdlp" &&
     readYoutubeUpload(candidate.title, candidate.provider?.uploader, requestArtistNames(request))
@@ -112,7 +112,7 @@ function isOfficialYoutubeAudio(candidate: NormalizedCandidate, request: TrackRe
 }
 
 function evaluate(
-  request: TrackRequest,
+  request: SearchTrackRequest,
   normalized: NormalizedCandidate[],
   providerEvidence: EvidenceSource,
 ) {
@@ -271,7 +271,7 @@ export function prefilterCandidates({
   source,
   candidates = [],
 }: {
-  request?: TrackRequest;
+  request?: SearchTrackRequest;
   source?: string;
   candidates?: SearchResult[];
 } = {}) {
@@ -308,7 +308,7 @@ export async function evaluateTrackCandidates({
   candidates = [],
   providerEvidence = null,
 }: {
-  request?: TrackRequest;
+  request?: SearchTrackRequest;
   context?: Parameters<typeof buildTrackRequest>[0];
   source?: string;
   candidates?: SearchResult[];

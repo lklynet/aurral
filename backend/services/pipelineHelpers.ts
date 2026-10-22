@@ -1,6 +1,7 @@
 import { logger } from "./logger.ts";
 import type { DownloadJob, DownloadTracker } from "./downloadJobs/downloadTracker.ts";
 import type { classifyAudioQuality } from "./qualityProfileModel.ts";
+import type { finalizeQualityUpgradeSuccess } from "./qualityProfileService.ts";
 import type { HistoryJob } from "./aurralHistoryService.ts";
 
 // Fields of a search in progress; a new search or a download clears them.
@@ -139,9 +140,12 @@ export async function finalizePipelineJobSuccess(options: PipelineJobSuccessOpti
   return null;
 }
 
+export type PipelineSuccessJob = Parameters<typeof finalizeQualityUpgradeSuccess>[0] &
+  Pick<DownloadJob, "albumName" | "managedBy">;
+
 type PipelineJobSuccessOptions = {
   downloadTracker: DownloadTracker;
-  job: DownloadJob;
+  job: PipelineSuccessJob;
   committedFinalPath: string;
   album?: string | null;
   quality?: ReturnType<typeof classifyAudioQuality> | null;

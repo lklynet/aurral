@@ -31,6 +31,14 @@ const pruneSettledTransfersStmt = db.prepare(`
     WHERE job.status IN ('pending', 'downloading', 'blocked'))
 `);
 
+export type OwnedPayload = {
+  jobId?: unknown;
+  playlistId?: unknown;
+  playlistGeneration?: unknown;
+  downloadAttemptId?: unknown;
+  albumGroupJobIds?: unknown;
+};
+
 type DownloadTransfer = {
   fromJobId: string;
   fromPlaylistId: string;
@@ -88,13 +96,13 @@ export function downloadDestinationForJob(
   );
 }
 
-function payloadJobId(payload: HonkerPayload) {
+function payloadJobId(payload: OwnedPayload) {
   const { jobId } = payload;
   if (typeof jobId !== "string") throw new TypeError("Download payload has no job id");
   return jobId;
 }
 
-export function resolveTransferredDownloadPayload(original: HonkerPayload): HonkerPayload {
+export function resolveTransferredDownloadPayload<Payload extends OwnedPayload>(original: Payload) {
   let payload = original;
   for (let index = 0; index < 64; index++) {
     const jobId = payloadJobId(payload);
@@ -123,7 +131,7 @@ export function resolveTransferredDownloadPayload(original: HonkerPayload): Honk
   return { ...payload, downloadAttemptId: "invalid-transfer-chain" };
 }
 
-function applyTransfer(payload: HonkerPayload, transfer: DownloadTransfer) {
+function applyTransfer<Payload extends OwnedPayload>(payload: Payload, transfer: DownloadTransfer) {
   return {
     ...payload,
     jobId: transfer.toJobId,

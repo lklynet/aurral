@@ -6,6 +6,7 @@ import {
 } from "./albumGrabActivity.ts";
 import {
   downloadTracker,
+  type HeldForReviewDraft,
   NO_RELEASE_REASON,
   type DownloadJob,
   type JobFields,
@@ -39,7 +40,7 @@ type AlbumGrabCandidate = { raw?: unknown; releaseVerified?: unknown };
 
 type AlbumGrabPayload = Parameters<typeof recordAlbumGrabPhase>[0] & {
   downloadAttemptId?: string | null;
-  heldForReview?: unknown;
+  heldForReview?: HeldForReviewDraft | null;
   candidate?: AlbumGrabCandidate | null;
   candidates?: AlbumGrabCandidate[];
   candidateIndex?: number;

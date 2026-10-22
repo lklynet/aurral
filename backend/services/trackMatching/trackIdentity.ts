@@ -53,6 +53,10 @@ function cleanYear(value: unknown) {
 
 export type TrackRequest = ReturnType<typeof buildTrackRequest>;
 
+export type SearchTrackRequest = {
+  [K in keyof Omit<TrackRequest, "releaseYear">]?: TrackRequest[K] | undefined;
+} & { releaseYear?: string | number | null };
+
 export function buildTrackRequest(context: TrackContext = {}) {
   const trackName = cleanText(context.trackName);
   return {
@@ -92,7 +96,7 @@ export function buildTrackRequest(context: TrackContext = {}) {
 // listing was. A file imported with the whole `importedRelease` may sit in a
 // folder that names a version the release's own tracks are.
 export function recordingRequest(
-  request: TrackRequest,
+  request: SearchTrackRequest,
   importedRelease: { tracks?: ReleaseTrack[] | null } | null = null,
 ) {
   return {

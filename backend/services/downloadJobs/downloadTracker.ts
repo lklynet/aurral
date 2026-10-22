@@ -73,11 +73,11 @@ type ManualSelection = {
   candidate?: ManualCandidate;
   downloadClient?: string | null;
 };
-type HeldForReview = {
+export type HeldForReview = {
   source: string;
   sourcePath: string;
   reason: string;
-  transferId?: string | null;
+  transferId?: string | number | null;
   username?: string | null;
   metadata?: DownloadMetadata;
 };
@@ -429,7 +429,7 @@ const upgradeAttemptOrder = new Map();
 const MAX_UPGRADE_ATTEMPTS_ORDERED = 1000;
 let upgradeAttemptsStarted = 0;
 
-function orderUpgradeAttempt(attemptId: string) {
+function orderUpgradeAttempt(attemptId: string | null | undefined) {
   upgradeAttemptOrder.set(attemptId, ++upgradeAttemptsStarted);
   if (upgradeAttemptOrder.size > MAX_UPGRADE_ATTEMPTS_ORDERED) {
     upgradeAttemptOrder.delete(upgradeAttemptOrder.keys().next().value);
@@ -484,18 +484,39 @@ function buildPipelinePayload(job: DownloadJob) {
   };
 }
 
-type PipelinePayload = Omit<ReturnType<typeof buildPipelinePayload>, "heldForReview"> & {
-  heldForReview?: HeldForReview | null;
-  quickSearch?: boolean;
-  albumGrab?: boolean;
-  releaseMbid?: string | null;
-  albumGroupJobIds?: string[] | null;
-  source?: string | null;
-  candidates?: ManualCandidate[];
-  candidateIndex?: number;
-  manualSelection?: boolean;
-  manualDownloadClient?: string | null;
+type BuiltPipelinePayload = ReturnType<typeof buildPipelinePayload>;
+
+export type HeldForReviewDraft = Omit<HeldForReview, "sourcePath"> & {
+  sourcePath?: string | null;
 };
+
+const hasSourcePath = (held: HeldForReviewDraft | null | undefined): held is HeldForReview =>
+  Boolean(held?.sourcePath);
+
+type PipelineCandidate = { raw?: unknown };
+
+export type PipelinePayload = Partial<{
+  [
+    K in Exclude<
+      keyof BuiltPipelinePayload,
+      "jobId" | "phase" | "track" | "heldForReview" | "downloadAttemptId"
+    >
+  ]: BuiltPipelinePayload[K] | null;
+}> &
+  Pick<BuiltPipelinePayload, "jobId" | "phase"> & {
+    downloadAttemptId?: string | null;
+    track?: DownloadTrackFields;
+    heldForReview?: HeldForReviewDraft | null;
+    quickSearch?: boolean;
+    albumGrab?: boolean;
+    releaseMbid?: string | null;
+    albumGroupJobIds?: string[] | null;
+    source?: string | null;
+    candidates?: PipelineCandidate[];
+    candidateIndex?: number;
+    manualSelection?: boolean;
+    manualDownloadClient?: string | null;
+  };
 
 // The files these jobs hold for review: a blocked job's file, unless only
 // the file a job keeps while it searches on is wanted.
@@ -630,9 +651,9 @@ export class DownloadTracker {
   // A file a source holds for review stays with the job until the job ends,
   // so a restart or an attempt that hands the job back does not lose it. The
   // job's next attempt carries it on.
-  keepHeldForReview(id: string, held: HeldForReview | null) {
+  keepHeldForReview(id: string, held: HeldForReviewDraft | null) {
     const job = this.jobs.get(id);
-    if (!job || ENDED_STATUSES.has(job.status) || !held?.sourcePath) return false;
+    if (!job || ENDED_STATUSES.has(job.status) || !hasSourcePath(held)) return false;
     if (job.heldForReview?.sourcePath === held.sourcePath) return true;
     this._setHeldForReview(job, held);
     return true;
