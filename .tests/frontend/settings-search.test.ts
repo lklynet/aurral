@@ -1,7 +1,11 @@
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 
-import { searchSettingsItems } from "../../frontend/src/pages/Settings/settingsTabsConfig.ts";
+import {
+  DEFAULT_SETTINGS_TAB,
+  normalizeSettingsTabId,
+  searchSettingsItems,
+} from "../../frontend/src/pages/Settings/settingsTabsConfig.ts";
 
 test("custom settings layouts expose their fields to search", () => {
   const expected = {
@@ -25,4 +29,13 @@ test("settings search handles punctuation and non-adjacent terms", () => {
   assert.ok(searchSettingsItems("yt dlp staging").some((item) => item.id === "download-clients"));
   assert.ok(searchSettingsItems("quality cutoff").some((item) => item.id === "download-clients"));
   assert.ok(searchSettingsItems("m4a 320").some((item) => item.id === "download-clients"));
+});
+
+test("settings tab ids map legacy names and fall back to the default for anything else", () => {
+  assert.equal(normalizeSettingsTabId("notifications"), "connect");
+  assert.equal(normalizeSettingsTabId("tasks"), "tasks");
+  assert.equal(normalizeSettingsTabId(null), DEFAULT_SETTINGS_TAB);
+  for (const inherited of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
+    assert.equal(normalizeSettingsTabId(inherited), DEFAULT_SETTINGS_TAB);
+  }
 });
