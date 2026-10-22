@@ -10,16 +10,7 @@ type LibrarySearchItem =
   | LibrarySearchResults["albums"][number]
   | LibrarySearchResults["tracks"][number];
 
-type SearchTrackFields = {
-  trackMbid?: string | null;
-  artistMbid?: string | null;
-  releaseYear?: number | null;
-  durationMs?: number | null;
-};
-
-type WithTrackFields<Item> = Item extends { type: "track" } ? Item & SearchTrackFields : Item;
-
-export type SearchSuggestion = WithTrackFields<UnifiedSearchItem | LibrarySearchItem>;
+export type SearchSuggestion = UnifiedSearchItem | LibrarySearchItem;
 export type SearchSuggestionTrack = Extract<SearchSuggestion, { type: "track" }>;
 
 type PlaylistSuggestion = {
@@ -100,7 +91,7 @@ export function buildTrackPlaylistPayload(track: SearchSuggestionTrack | null | 
     albumName: track?.albumTitle || "",
     artistMbid: track?.artistMbid || "",
     albumMbid: track?.albumMbid || "",
-    trackMbid: track?.id || track?.trackMbid || "",
+    trackMbid: track?.trackMbid || "",
     releaseYear: track?.releaseYear || null,
     durationMs:
       track?.durationMs != null && Number.isFinite(Number(track.durationMs))

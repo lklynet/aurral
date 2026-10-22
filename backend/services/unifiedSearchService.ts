@@ -86,6 +86,8 @@ export type TrackSearchResult = SearchContextAnnotations & {
   streamPath: string | null;
   trackMbid?: string | null;
   artistMbid?: string | null;
+  releaseYear?: string | null;
+  durationMs?: number | null;
   inLibrary: boolean;
   score: number;
 };
@@ -140,6 +142,8 @@ type SearchItemLike = {
   albumArtist?: string | null;
   releaseGroupMbid?: string | null;
   releaseDate?: string | null;
+  releaseYear?: string | null;
+  durationMs?: number | null;
   streamPath?: string | null;
 };
 
@@ -788,6 +792,10 @@ export function searchLocalFromData(
         albumTitle: albumTitle || null,
         albumMbid: track.albumMbid || null,
         albumCanonicalId: track.albumCanonicalId || null,
+        trackMbid: track.trackMbid || null,
+        artistMbid: track.artistMbid || null,
+        durationMs: track.durationMs ?? null,
+        releaseYear: track.releaseYear || null,
         streamPath: track.streamPath || null,
         inLibrary: true,
         score,
@@ -851,6 +859,10 @@ function searchLocalLibrary(query: string, limit: number, context: SearchContext
       albumTitle: albumDetails?.title || null,
       albumMbid: albumDetails?.releaseGroupMbid || null,
       albumCanonicalId: albumDetails?.canonicalId || null,
+      trackMbid: track.mbid || null,
+      artistMbid: albumDetails?.artistMbid || null,
+      durationMs: track.files?.find((file) => Number(file.durationMs) > 0)?.durationMs ?? null,
+      releaseYear: String(albumDetails?.releaseDate || "").match(/^\d{4}/)?.[0] || null,
       streamPath: album
         ? `/library/canonical-stream/${encodeURIComponent(album.id)}/${encodeURIComponent(track.id)}`
         : null,
