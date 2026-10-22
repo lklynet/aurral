@@ -77,7 +77,7 @@ async function handleDownloadOwnerCommand(
 ) {
   const { requestId, method, args = [] } = message;
   try {
-    if (group !== "downloads" || !isDownloadOwnerCommand(method) || !Array.isArray(args)) {
+    if (!downloadWorker || !isDownloadOwnerCommand(method) || !Array.isArray(args)) {
       throw new Error("Unsupported download worker command");
     }
     const [{ dbOps }, { invalidateFlowPlaylistConfigCache }] = await Promise.all([
@@ -103,8 +103,8 @@ async function handleDownloadOwnerCommand(
       const { downloadTracker } = await import("./downloadJobs/downloadTracker.ts");
       result = downloadTracker.clearPendingByPlaylistType(args[0]);
     } else if (method === "wakeOrStart") {
-      if (downloadWorker!.running) downloadWorker!.wake(args[0]);
-      else await downloadWorker!.start();
+      if (downloadWorker.running) downloadWorker.wake(args[0]);
+      else await downloadWorker.start();
       result = true;
     } else if (method === "runQualityUpgradeChecks") {
       const { runQualityUpgradeCheck } = await import("./qualityProfileService.ts");
@@ -132,7 +132,7 @@ async function handleDownloadOwnerCommand(
         };
       }
     } else {
-      result = await Reflect.apply(downloadWorker![method], downloadWorker, args);
+      result = await Reflect.apply(downloadWorker[method], downloadWorker, args);
     }
     if (process.connected) {
       process.send!({ type: "cache-invalidate", cache: "playlists" });
