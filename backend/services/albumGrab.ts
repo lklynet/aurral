@@ -35,15 +35,7 @@ import {
 import { downloadDestinationForJob } from "./downloadJobs/downloadOwnership.ts";
 import { attemptRelease } from "./releaseResolver.ts";
 
-type AlbumGrabCandidate = {
-  raw?: {
-    user?: string | null;
-    files?: { jobId?: string | null; file?: string | null }[];
-    release?: { guid?: string | null };
-    albumId?: string;
-  };
-  releaseVerified?: boolean;
-};
+type AlbumGrabCandidate = { raw?: unknown; releaseVerified?: unknown };
 
 type AlbumGrabPayload = Parameters<typeof recordAlbumGrabPhase>[0] & {
   downloadAttemptId?: string | null;
@@ -112,16 +104,22 @@ export function deniedAlbumSources(jobs: JobFields<"deniedRemoteSources">[], sou
 
 // Blocks the attempted release for every track it did not fill, so neither
 // the next album attempt nor a per-track search takes it again.
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
 export function blockAlbumGrabSource(payload: AlbumGrabPayload, jobs: DownloadJob[]) {
-  const raw = getPayloadCandidate(payload)?.raw;
+  const candidate = getPayloadCandidate(payload);
+  const raw = isRecord(candidate?.raw) ? candidate.raw : null;
+  const files = Array.isArray(raw?.files) ? raw.files.filter(isRecord) : [];
+  const guid = isRecord(raw?.release) ? raw.release.guid : null;
   for (const job of jobs) {
     if (payload.source === "slskd") {
-      const file = (raw?.files || []).find((entry) => entry.jobId === job.id);
+      const file = files.find((entry) => entry.jobId === job.id);
       if (file) {
         downloadTracker.recordDeniedSource(job.id, "slskd", `${raw?.user}\0${file.file}`);
       }
-    } else if (payload.source === "usenet" && raw?.release?.guid) {
-      downloadTracker.recordDeniedSource(job.id, "usenet", raw.release.guid);
+    } else if (payload.source === "usenet" && typeof guid === "string" && guid) {
+      downloadTracker.recordDeniedSource(job.id, "usenet", guid);
     } else if (payload.source === "deemix" && raw?.albumId) {
       downloadTracker.recordDeniedSource(job.id, "deemix", `album:${raw.albumId}`);
     }
