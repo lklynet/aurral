@@ -114,6 +114,12 @@ export function registerSpotifyImport(router: Router) {
         expiresAt,
         displayName,
       });
+      if (!saved) {
+        return res.status(500).json({
+          error: "Failed to complete Spotify connection",
+          message: "The saved Spotify connection could not be read back",
+        });
+      }
       res.json({
         connected: true,
         displayName: saved.displayName,
