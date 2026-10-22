@@ -8,6 +8,7 @@ import { getAlbumAddAction, isAlbumCompleteInLibrary } from "../utils/albumAddAc
 import { getReleaseNavigationTarget } from "../utils/searchNavigation";
 import { OptionalLink } from "./RouteLink";
 import Tooltip from "./Tooltip";
+import type { SearchImageMap } from "./SearchMixedResultList";
 
 export type SearchAlbum = {
   id: string;
@@ -24,7 +25,7 @@ export type SearchAlbum = {
 
 type SearchAlbumResultsProps = {
   albums: SearchAlbum[];
-  albumCovers: Record<string, string | undefined>;
+  albumCovers: SearchImageMap;
   canAddAlbum: boolean;
   pendingAlbumIds: Record<string, boolean | undefined>;
   onAlbumAction: (album: SearchAlbum, managedBy: string) => void;

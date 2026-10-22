@@ -1,4 +1,3 @@
-import type { ComponentProps } from "react";
 import ArtistImage from "./ArtistImage";
 import SearchLibraryCheck from "./SearchLibraryCheck";
 import { ArtistContextMenu } from "./ArtistContextMenu";
@@ -8,6 +7,7 @@ import Tooltip from "./Tooltip";
 import RecommendationMeta from "./RecommendationMeta";
 import RouteLink from "./RouteLink";
 import type { SearchImageMap } from "./SearchMixedResultList";
+import type { ArtistFeedbackAction } from "../utils/artistTaste";
 
 type SearchArtistLifeSpan = {
   begin?: string | null;
@@ -41,9 +41,13 @@ interface SearchArtistResultsProps {
   type: string;
   artistImages: SearchImageMap;
   libraryLookup: Record<string, boolean | undefined>;
-  onArtistFeedback?: ComponentProps<typeof ArtistContextMenu>["onFeedback"];
+  onArtistFeedback?: (
+    artist: SearchArtist,
+    action: ArtistFeedbackAction,
+    options: { isSelected: boolean },
+  ) => unknown;
   artistFeedbackLookup?: Parameters<typeof getArtistFeedbackFlags>[0];
-  variant?: "grid" | "list" | "round" | "square";
+  variant?: string;
   gridColumns?: number;
 }
 

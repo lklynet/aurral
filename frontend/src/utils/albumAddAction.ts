@@ -19,7 +19,7 @@ export const shouldTriggerAlbumSearch = ({
   sizeOnDisk = 0,
   trackFileCount = 0,
 }: {
-  inLibrary?: boolean;
+  inLibrary?: boolean | null;
   monitored?: boolean;
   status?: string | null;
   hasFiles?: boolean;

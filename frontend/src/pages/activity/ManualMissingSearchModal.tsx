@@ -9,11 +9,9 @@ import {
   searchMissingTrackManually,
 } from "../../utils/api/endpoints/playlists.ts";
 import { queryKeys } from "../../queryClient.ts";
+import { getApiErrorMessage } from "../onboardingUtils.tsx";
 
 export type ManualSearchJob = { id: string; trackName?: string | null; artistName?: string | null };
-
-const errorMessage = (error, fallback: string) =>
-  error?.response?.data?.message || error?.response?.data?.error || error?.message || fallback;
 
 export default function ManualMissingSearchModal({
   job,
@@ -50,7 +48,9 @@ export default function ManualMissingSearchModal({
     : sources[0]?.id || "";
   const error =
     actionError ||
-    (sourcesQuery.error ? errorMessage(sourcesQuery.error, "Could not load download clients") : "");
+    (sourcesQuery.error
+      ? getApiErrorMessage(sourcesQuery.error, "Could not load download clients")
+      : "");
 
   useEffect(() => {
     searchRequestRef.current += 1;
@@ -80,7 +80,7 @@ export default function ManualMissingSearchModal({
     } catch (requestError) {
       if (searchRequestRef.current === requestId) {
         setActionError(
-          errorMessage(requestError, "The selected download client could not be searched"),
+          getApiErrorMessage(requestError, "The selected download client could not be searched"),
         );
       }
     } finally {
@@ -97,7 +97,7 @@ export default function ManualMissingSearchModal({
       onQueued?.(job);
       onClose?.();
     } catch (requestError) {
-      setActionError(errorMessage(requestError, "The selected result could not be queued"));
+      setActionError(getApiErrorMessage(requestError, "The selected result could not be queued"));
     } finally {
       setSubmitting(false);
     }

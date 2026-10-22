@@ -1,45 +1,70 @@
 import type { LidarrRequestItem } from "../../../../backend/services/lidarrRequestBuilder.ts";
-import type { AurralRequestItem } from "../../../../backend/services/aurralHistoryService.ts";
+import type {
+  AurralAlbumGrab,
+  AurralRequestItem,
+} from "../../../../backend/services/aurralHistoryService.ts";
 import { formatDate, formatTime } from "../../utils/dateTime.ts";
 
-const SOURCE_NAMES = { slskd: "Soulseek", usenet: "Usenet", deemix: "deemix", ytdlp: "yt-dlp" };
-
-type Missing<Present, Other> = { [K in Exclude<keyof Other, keyof Present>]?: undefined };
-
-export type ActivityRequest = (
-  | (LidarrRequestItem & Missing<LidarrRequestItem, AurralRequestItem>)
-  | (AurralRequestItem & Missing<AurralRequestItem, LidarrRequestItem>)
-) & {
-  children?: ActivityRequest[];
-  createdAt?: number | null;
-  error?: string | null;
-  qualityLabel?: string | null;
-  qualityState?: string | null;
-  playlistType?: string | null;
-  downloadSource?: string | null;
-  downloadClient?: string | null;
-  progressLabel?: string | null;
-  sourceSummary?: string | null;
-  activeStatusLabel?: string | null;
-  downloadMethodLabel?: string | null;
+const SOURCE_NAMES: Partial<Record<string, string>> = {
+  slskd: "Soulseek",
+  usenet: "Usenet",
+  deemix: "deemix",
+  ytdlp: "yt-dlp",
 };
+
+const ALBUM_PHASE_LABELS: Partial<Record<string, string>> = {
+  search: "Searching for album",
+  download: "Downloading album",
+  poll: "Downloading album",
+  finalize: "Processing",
+};
+
+type SharedKeys = keyof LidarrRequestItem & keyof AurralRequestItem;
+
+export type ActivityRequest = {
+  [K in SharedKeys]: LidarrRequestItem[K] | AurralRequestItem[K];
+} & Partial<Omit<LidarrRequestItem, SharedKeys>> &
+  Partial<Omit<AurralRequestItem, SharedKeys>> & {
+    children?: ActivityRequest[];
+    createdAt?: number | null;
+    error?: string | null;
+    qualityLabel?: string | null;
+    qualityState?: string | null;
+    playlistType?: string | null;
+    downloadSource?: string | null;
+    downloadClient?: string | null;
+    progressLabel?: string | null;
+    sourceSummary?: string | null;
+    activeStatusLabel?: string | null;
+    downloadMethodLabel?: string | null;
+  };
+
+export type AlbumActivityRequest = ActivityRequest & {
+  children: ActivityRequest[];
+  albumGrab: AurralAlbumGrab;
+};
+
+export const isAlbumActivityRequest = (request: ActivityRequest): request is AlbumActivityRequest =>
+  request.kind === "album_download" && Boolean(request.children && request.albumGrab);
 
 export function groupAlbumGrabRequests(requests: ActivityRequest[]) {
   const rows: ActivityRequest[] = [];
-  const groups = new Map();
+  const groups = new Map<string, Map<string, ActivityRequest>>();
   for (const request of requests) {
     const grab = request.albumGrab;
     if (
       request.kind !== "track_download" ||
       request.playlistId !== "library" ||
       !grab?.id ||
+      request.jobId == null ||
       !grab.memberJobIds?.includes(request.jobId)
     ) {
       rows.push(request);
       continue;
     }
-    if (!groups.has(grab.id)) groups.set(grab.id, new Map());
-    groups.get(grab.id).set(request.jobId, request);
+    const members = groups.get(grab.id) ?? new Map<string, ActivityRequest>();
+    groups.set(grab.id, members);
+    members.set(request.jobId, request);
   }
   for (const [id, members] of groups) {
     const children = [...members.values()].sort(
@@ -49,7 +74,7 @@ export function groupAlbumGrabRequests(requests: ActivityRequest[]) {
         String(left.jobId).localeCompare(String(right.jobId)),
     );
     const first = children[0];
-    const grab = first.albumGrab;
+    const grab = first.albumGrab!;
     const total = grab.memberJobIds.length;
     const ready = children.filter(
       (child) => child.status === "completed" || child.status === "available",
@@ -66,12 +91,7 @@ export function groupAlbumGrabRequests(requests: ActivityRequest[]) {
       ? processing
         ? "Downloading tracks"
         : "Searching for tracks"
-      : {
-          search: "Searching for album",
-          download: "Downloading album",
-          poll: "Downloading album",
-          finalize: "Processing",
-        }[grab.phase] || "Queued";
+      : ALBUM_PHASE_LABELS[grab.phase] || "Queued";
     const allCancelled = children.every((child) => child.status === "cancelled");
     const status = blocked
       ? "blocked"
@@ -94,11 +114,15 @@ export function groupAlbumGrabRequests(requests: ActivityRequest[]) {
               ? "Cancelled"
               : "Failed";
     const times = [grab.completedAt, ...children.map((child) => child.completedAt)]
-      .map(Date.parse)
+      .map((value) => Date.parse(String(value)))
       .filter(Number.isFinite);
     const completedAt = !active && times.length ? new Date(Math.max(...times)).toISOString() : null;
     const sources = [
-      ...new Set(children.map((child) => child.actualDownloadSource).filter(Boolean)),
+      ...new Set(
+        children
+          .map((child) => child.actualDownloadSource)
+          .filter((source): source is string => Boolean(source)),
+      ),
     ];
     const sourceSummary = sources.length
       ? sources.map((source) => SOURCE_NAMES[source] || source).join(", ")

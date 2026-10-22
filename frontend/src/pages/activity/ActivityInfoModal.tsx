@@ -21,7 +21,7 @@ const formatTimestamp = (value: string | number | null | undefined) => {
   });
 };
 
-const formatSource = (item: ActivityRequest) => {
+const formatSource = (item: Partial<ActivityRequest>) => {
   if (item.sourceSummary) return item.sourceSummary;
   if (item.albumGrab) return text(item.actualDownloadSource) || "Unknown";
   const source = text(item.downloadSource || item.downloadClient || item.source);
@@ -30,7 +30,7 @@ const formatSource = (item: ActivityRequest) => {
 };
 
 const formatKind = (kind: string | null | undefined) => {
-  const labels = {
+  const labels: Partial<Record<string, string>> = {
     album_requested: "Album request",
     album_download: "Album download",
     track_download: "Track download",
@@ -38,20 +38,20 @@ const formatKind = (kind: string | null | undefined) => {
     track_reused_aurral: "Reused track",
     track_reused_lidarr: "Reused track",
   };
-  return labels[kind] || text(kind).replace(/[_-]+/g, " ");
+  return labels[kind ?? ""] || text(kind).replace(/[_-]+/g, " ");
 };
 
 const formatQualityState = (state: string | null | undefined) => {
-  const labels = {
+  const labels: Partial<Record<string, string>> = {
     "below-floor": "Below floor",
     upgrade: "Upgrade available",
     preferred: "Preferred",
     external: "External file",
   };
-  return labels[state] || text(state);
+  return labels[state ?? ""] || text(state);
 };
 
-function getRows(item: ActivityRequest) {
+function getRows(item: Partial<ActivityRequest>) {
   const requester = item.requestedBy?.username || item.requestedBy?.id;
   const operation = item.playlistName || item.playlistId || item.playlistType;
   const details = item.error || item.subtitle;
@@ -91,7 +91,7 @@ export default function ActivityInfoModal({
   item,
   onClose,
 }: {
-  item: ActivityRequest | null | undefined;
+  item: Partial<ActivityRequest> | null | undefined;
   onClose: () => void;
 }) {
   const titleId = useId();

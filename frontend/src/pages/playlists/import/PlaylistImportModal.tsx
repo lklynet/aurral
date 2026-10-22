@@ -27,7 +27,8 @@ import { getAppBasePath, normalizeBasePathWithTrailingSlash } from "../../../uti
 import { useAuth } from "../../../contexts/AuthContext";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
 import { parseTracklistImportFile, reserveUniqueName, normalizeNameKey } from "../flowPageUtils";
-import type { ApiError } from "../../../utils/api/core.ts";
+import { asApiError, type ApiError } from "../../../utils/api/core.ts";
+import { getApiErrorBody, getApiErrorMessage } from "../../onboardingUtils.tsx";
 import type { ImportedPlaylistPreviewResponse } from "../../../../../backend/routes/playlists/handlers/utils.ts";
 import type { PreviewYoutubeMusicPlaylistResponse } from "../../../../../backend/routes/playlists/handlers/youtubeMusicImport.ts";
 
@@ -47,9 +48,6 @@ type ImportPlaylist = {
 type ImportPreviewTrack = ImportedPlaylistPreviewResponse["previewTracks"][number];
 type ImportedFlow = ReturnType<typeof parseTracklistImportFile>[number] & { importName: string };
 type JsonReview = { fileName: string; flows: ImportedFlow[] };
-type ExternalImportPayload = Parameters<typeof importListenBrainzPlaylist>[0] & {
-  username?: string;
-};
 type SpotifyTokens = {
   accessToken: string;
   refreshToken: string;
@@ -294,14 +292,8 @@ function openSpotifyOAuthPopup(oauthUrl: string) {
 
 const EMPTY_PLAYLISTS: ImportPlaylist[] = [];
 
-function errorMessage(error: ApiError | null | undefined, fallback: string) {
-  return (
-    error?.response?.data?.message || error?.response?.data?.error || error?.message || fallback
-  );
-}
-
 function isSpotifyAuthRequired(error: ApiError | null | undefined) {
-  return error?.response?.data?.code === SPOTIFY_AUTH_REQUIRED_CODE;
+  return getApiErrorBody(error)?.code === SPOTIFY_AUTH_REQUIRED_CODE;
 }
 
 function validYoutubePreview(payload: PreviewYoutubeMusicPlaylistResponse) {
@@ -328,7 +320,10 @@ async function importTracklists(flows: ImportedFlow[], reservedNameKeys: Iterabl
       });
       importedCount += 1;
     } catch (error) {
-      failed.push({ name: finalName, message: errorMessage(error, "Failed to import tracklist") });
+      failed.push({
+        name: finalName,
+        message: getApiErrorMessage(error, "Failed to import tracklist"),
+      });
     }
   }
   return { importedCount, failed };
@@ -345,7 +340,7 @@ function useErrorToast(
     if (!error || handledRef.current === error) return;
     handledRef.current = error;
     onError?.(error);
-    showError?.(errorMessage(error, fallback));
+    showError?.(getApiErrorMessage(error, fallback));
   }, [error, fallback, onError, showError]);
 }
 
@@ -521,7 +516,7 @@ export function PlaylistImportModal({
     },
     onError: (error) => {
       handleSpotifyError(error);
-      showError?.(errorMessage(error, "Failed to connect Spotify"));
+      showError?.(getApiErrorMessage(error, "Failed to connect Spotify"));
     },
   });
 
@@ -541,13 +536,7 @@ export function PlaylistImportModal({
   });
 
   const externalImport = useMutation({
-    mutationFn: ({
-      importPlaylist,
-      payload,
-    }: {
-      importPlaylist: (payload: ExternalImportPayload) => ReturnType<typeof importSpotifyPlaylist>;
-      payload: ExternalImportPayload;
-    }) => importPlaylist(payload),
+    mutationFn: (runImport: () => ReturnType<typeof importSpotifyPlaylist>) => runImport(),
   });
   const jsonImport = useMutation({
     mutationFn: (flows: ImportedFlow[]) => importTracklists(flows, reservedNameKeys),
@@ -567,7 +556,7 @@ export function PlaylistImportModal({
       }
     : null;
   const youtubeError = youtubePreview.error
-    ? errorMessage(youtubePreview.error, "Failed to preview YouTube Music playlist")
+    ? getApiErrorMessage(youtubePreview.error, "Failed to preview YouTube Music playlist")
     : "";
   const selectedPlaylist: ImportPlaylist | null =
     source === "youtube" ? youtubePlaylist : pickedPlaylist;
@@ -636,7 +625,7 @@ export function PlaylistImportModal({
     setPlaylistNameDraft(null);
     youtubePreview.mutate(url, {
       onError: (error) => {
-        showError?.(errorMessage(error, "Failed to preview YouTube Music playlist"));
+        showError?.(getApiErrorMessage(error, "Failed to preview YouTube Music playlist"));
       },
     });
   };
@@ -658,7 +647,7 @@ export function PlaylistImportModal({
       }));
       setJsonReview({ fileName: file.name, flows });
     } catch (error) {
-      showError?.(error?.message || "Failed to read tracklist file");
+      showError?.(asApiError(error)?.message || "Failed to read tracklist file");
     } finally {
       event.target.value = "";
     }
@@ -682,41 +671,37 @@ export function PlaylistImportModal({
         : isYoutube
           ? "YouTube Music"
           : "Spotify";
-    const importPlaylist = isListenBrainz
-      ? importListenBrainzPlaylist
-      : isLastfm
-        ? importLastfmPlaylist
-        : isYoutube
-          ? importYoutubeMusicPlaylist
-          : importSpotifyPlaylist;
-    externalImport.mutate(
-      {
-        importPlaylist,
-        payload: {
-          playlistId: selectedPlaylist.id,
-          ...(isListenBrainz && selectedPlaylist.sourceType
-            ? { playlistType: selectedPlaylist.sourceType }
-            : {}),
-          ...(isLastfm ? { username: lastfmUsername } : {}),
-          ...(!isYoutube ? { externalName: selectedPlaylist.name } : {}),
-          name: finalName,
-          syncEnabled: syncIntervalHours > 0,
-          syncIntervalHours,
-          keepRemovedTracks,
-        },
+    const payload = {
+      playlistId: selectedPlaylist.id,
+      name: finalName,
+      syncEnabled: syncIntervalHours > 0,
+      syncIntervalHours,
+      keepRemovedTracks,
+    };
+    const externalName = selectedPlaylist.name;
+    const runImport = () =>
+      isListenBrainz
+        ? importListenBrainzPlaylist({
+            ...payload,
+            externalName,
+            ...(selectedPlaylist.sourceType ? { playlistType: selectedPlaylist.sourceType } : {}),
+          })
+        : isLastfm
+          ? importLastfmPlaylist({ ...payload, externalName, username: lastfmUsername })
+          : isYoutube
+            ? importYoutubeMusicPlaylist(payload)
+            : importSpotifyPlaylist({ ...payload, externalName });
+    externalImport.mutate(runImport, {
+      onSuccess: () => {
+        showSuccess?.(`Queued import of ${finalName} from ${providerLabel}`);
+        onImported?.();
+        onClose?.();
       },
-      {
-        onSuccess: () => {
-          showSuccess?.(`Queued import of ${finalName} from ${providerLabel}`);
-          onImported?.();
-          onClose?.();
-        },
-        onError: (error) => {
-          handleSpotifyError(error);
-          showError?.(errorMessage(error, `Failed to import ${providerLabel} playlist`));
-        },
+      onError: (error) => {
+        handleSpotifyError(error);
+        showError?.(getApiErrorMessage(error, `Failed to import ${providerLabel} playlist`));
       },
-    );
+    });
   };
 
   const handleImportJson = () => {
@@ -1075,7 +1060,7 @@ export function PlaylistImportModal({
                             key={playlist.id}
                             type="button"
                             role="option"
-                            aria-selected={selectedPlaylist?.id === playlist.id}
+                            aria-selected={false}
                             className="playlist-import__playlist-option"
                             onClick={() => handleSelectPlaylist(playlist)}
                             disabled={importing}

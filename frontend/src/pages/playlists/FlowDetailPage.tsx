@@ -60,6 +60,7 @@ import {
 import { usePlaylistStatus } from "./usePlaylistStatus";
 import type { Flow } from "./playlistStats.ts";
 import type { FlowDraft } from "./flowPageUtils.ts";
+import { asApiError } from "../../utils/api/core.ts";
 
 const FlowFormFields = lazy(() =>
   import("./components/flowFormComponents.tsx").then((m) => ({ default: m.FlowFormFields })),
@@ -259,7 +260,7 @@ function FlowDetail({ flow }: { flow: Flow }) {
       exportPlaylistTracklist(flow, tracks, { sourceFlowId: flow.id });
       showSuccess(`Exported ${flow.name} tracklist`);
     } catch (err) {
-      showError(err?.message || "Failed to export tracklist");
+      showError(asApiError(err)?.message || "Failed to export tracklist");
     }
   };
 
@@ -276,7 +277,7 @@ function FlowDetail({ flow }: { flow: Flow }) {
       await navigator.clipboard.writeText(url.toString());
       showSuccess("Copied Lidarr import URL");
     } catch (err) {
-      showError(err?.message || "Failed to copy Lidarr import URL");
+      showError(asApiError(err)?.message || "Failed to copy Lidarr import URL");
     }
   };
 

@@ -41,10 +41,12 @@ import { getTrackSearchAction } from "./trackAvailability.ts";
 import { normalizeNameKey, normalizePlaylistTrackEntry, reserveUniqueName } from "./flowPageUtils";
 import type { Flow, StaticPlaylist } from "./playlistStats.ts";
 import type { PlaylistTrackRow } from "./playlistPageUtils.ts";
-import type { ApiError } from "../../utils/api/core.ts";
+import type { FetchLibraryFavoritesResponse } from "../../../../backend/routes/library/handlers/libraryIndex.ts";
+import { getApiErrorMessage } from "../onboardingUtils.tsx";
 
-const errorMessage = (err: ApiError | null, fallback: string) =>
-  err?.response?.data?.message || err?.response?.data?.error || err?.message || fallback;
+type FavoriteSongs = {
+  song?: Pick<FetchLibraryFavoritesResponse["song"][number], "id">[];
+};
 
 type ArtworkEditorState = {
   id: string;
@@ -172,13 +174,9 @@ export function PlaylistTracks({
       id: track.id,
       title: track.trackName || "Track",
       currentArtwork:
-        track.artworkUrl ||
-        track.coverUrl ||
-        trackArtworkByAlbumMbid[String(track.albumMbid || "")] ||
-        "",
+        track.artworkUrl || trackArtworkByAlbumMbid[String(track.albumMbid || "")] || "",
       hasCustomArtwork: Boolean(track.customArtworkUrl),
-      fallbackArtwork:
-        track.coverUrl || trackArtworkByAlbumMbid[String(track.albumMbid || "")] || "",
+      fallbackArtwork: trackArtworkByAlbumMbid[String(track.albumMbid || "")] || "",
     });
   };
 
@@ -219,7 +217,7 @@ export function PlaylistTracks({
       showSuccess(`Added ${payload.trackName} to ${targetName}`);
       void refreshAll();
     } catch (err) {
-      const message = `Could not add ${payload.trackName} to ${targetName}. Nothing was added. ${errorMessage(err, "Try again.")}`;
+      const message = `Could not add ${payload.trackName} to ${targetName}. Nothing was added. ${getApiErrorMessage(err, "Try again.")}`;
       setPlaylistMenuError(message);
       showError(message);
     } finally {
@@ -228,7 +226,9 @@ export function PlaylistTracks({
   };
 
   const copyTracks = async (selected: PlaylistTrackRow[], target: PlaylistTrackTarget) => {
-    const payloads = selected.map((track) => normalizePlaylistTrackEntry(track)).filter(Boolean);
+    const payloads = selected
+      .map((track) => normalizePlaylistTrackEntry(track))
+      .filter((payload) => payload !== null);
     if (payloads.length === 0) {
       showError("No valid tracks to add");
       return;
@@ -250,7 +250,7 @@ export function PlaylistTracks({
       void refreshAll();
     } catch (err) {
       showError(
-        `Could not add ${trackCountLabel(payloads.length)} to ${targetName}. Nothing was added. ${errorMessage(err, "Try again.")}`,
+        `Could not add ${trackCountLabel(payloads.length)} to ${targetName}. Nothing was added. ${getApiErrorMessage(err, "Try again.")}`,
       );
     } finally {
       setBulkActionLoading(false);
@@ -297,7 +297,7 @@ export function PlaylistTracks({
       }
       await refreshAll();
     } catch (err) {
-      showError(errorMessage(err, "Failed to re-search track"));
+      showError(getApiErrorMessage(err, "Failed to re-search track"));
       await refresh();
     } finally {
       setReSearchingTrackIds(({ [jobId]: _, ...prev }) => prev);
@@ -377,7 +377,7 @@ export function PlaylistTracks({
             : `Added ${payload.trackName} to your library`,
       );
     } catch (err) {
-      showError(errorMessage(err, "Failed to add track to library"));
+      showError(getApiErrorMessage(err, "Failed to add track to library"));
     } finally {
       setLibraryTrackSavingKey("");
     }
@@ -396,13 +396,13 @@ export function PlaylistTracks({
     setFavoriteTrackSavingKey(id);
     const name = track.trackName || "track";
     const setStarred = (starred: boolean) =>
-      queryClient.setQueryData(favoriteQueryKey, (current = {}) => {
+      queryClient.setQueryData<FavoriteSongs>(favoriteQueryKey, (current = {}) => {
         const songs = Array.isArray(current.song) ? current.song : [];
         const withoutTrack = songs.filter((song) => String(song?.id || "") !== id);
         return { ...current, song: starred ? [...withoutTrack, { id }] : withoutTrack };
       });
-    let previous;
-    let optimistic;
+    let previous: FavoriteSongs | undefined;
+    let optimistic: FavoriteSongs | undefined;
     try {
       await queryClient.cancelQueries({ queryKey: favoriteQueryKey });
       previous = queryClient.getQueryData(favoriteQueryKey);
@@ -423,7 +423,7 @@ export function PlaylistTracks({
         queryClient.setQueryData(favoriteQueryKey, previous);
       }
       showError(
-        `Could not ${nextStarred ? "add" : "remove"} ${name} ${nextStarred ? "to" : "from"} favorites. Nothing changed. ${errorMessage(err, "Try again.")}`,
+        `Could not ${nextStarred ? "add" : "remove"} ${name} ${nextStarred ? "to" : "from"} favorites. Nothing changed. ${getApiErrorMessage(err, "Try again.")}`,
       );
     } finally {
       void queryClient.invalidateQueries({ queryKey: favoriteQueryKey }).catch(() => {});

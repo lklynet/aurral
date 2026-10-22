@@ -25,6 +25,8 @@ import { usePlaylistStatus } from "./usePlaylistStatus";
 import { flowPath } from "../../navigation/playlistPaths";
 import type { GetFlowTemplatesResponse } from "../../../../backend/routes/playlists/handlers/flows.ts";
 import type { Flow } from "./playlistStats.ts";
+import { asApiError } from "../../utils/api/core.ts";
+import { getApiErrorText } from "../onboardingUtils.tsx";
 
 type FlowTemplate = GetFlowTemplatesResponse["templates"][number];
 
@@ -64,7 +66,9 @@ export default function FlowsPage() {
         navigate(flowPath(response.flow.id), template ? undefined : { state: { tab: "recipe" } });
       }
     } catch (err) {
-      showError(err.response?.data?.message || err.message || "Failed to create flow");
+      showError(
+        getApiErrorText(err, "message") || asApiError(err)?.message || "Failed to create flow",
+      );
     } finally {
       setCreating(false);
     }

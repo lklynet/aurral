@@ -27,6 +27,7 @@ import {
   compareActivityRequests,
   mergeActivityRequests,
   groupAlbumGrabRequests,
+  isAlbumActivityRequest,
   matchesActivitySearch,
   type ActivityListEntry,
 } from "./activity/activityListUtils";
@@ -35,6 +36,7 @@ import ActivityAlbumRow from "./activity/ActivityAlbumRow";
 import ActivityToolbar from "./activity/ActivityToolbar";
 import ActivityMissingPage from "./activity/ActivityMissingPage";
 import ActivityInfoModal from "./activity/ActivityInfoModal";
+import { getApiErrorText } from "./onboardingUtils.tsx";
 
 import { Navigate, useLocation, useParams } from "react-router";
 import RouteLink from "../components/RouteLink";
@@ -130,7 +132,7 @@ function ActivityPage() {
   );
   const loading = activityQuery.isPending;
   const error =
-    localError || activityQuery.error?.response?.data?.message || activityQuery.error?.message;
+    localError || getApiErrorText(activityQuery.error, "message") || activityQuery.error?.message;
 
   const filteredRequests = useMemo(() => {
     const query = filterValue.trim().toLocaleLowerCase();
@@ -180,7 +182,7 @@ function ActivityPage() {
         return result;
       } catch (requestError) {
         if (!silent) {
-          setLocalError(requestError?.response?.data?.message || "Failed to load activity.");
+          setLocalError(getApiErrorText(requestError, "message") || "Failed to load activity.");
         }
         return null;
       }
@@ -344,8 +346,8 @@ function ActivityPage() {
       setJobErrors((prev) => ({
         ...prev,
         [jobId]:
-          jobError?.response?.data?.message ||
-          jobError?.response?.data?.error ||
+          getApiErrorText(jobError, "message") ||
+          getApiErrorText(jobError, "error") ||
           (action === "cancel" ? "Failed to cancel" : "Failed to retry"),
       }));
     } finally {
@@ -362,7 +364,7 @@ function ActivityPage() {
       }
       playTrack({
         id: trackId,
-        src: getStagingStreamUrl(jobId),
+        src: getStagingStreamUrl(trackId),
         title: trackName || "Track",
         artist: artistName || "Artist",
         album: albumName || "",
@@ -484,33 +486,31 @@ function ActivityPage() {
                   </div>
                 );
               }
-              const RowComponent =
-                entry.request.kind === "album_download" ? ActivityAlbumRow : ActivityRequestRow;
-              const row = (
-                <RowComponent
+              const rowProps = {
+                reSearchingAlbumIds,
+                reviewingJobs,
+                controllingJobs,
+                jobErrors,
+                currentTrack,
+                isPlaying,
+                onReSearch: lidarrConnected ? handleReSearchAlbum : undefined,
+                onApprove: (jobId: string | null | undefined) => reviewBlockedJob(jobId, "approve"),
+                onDeny: (jobId: string | null | undefined) => reviewBlockedJob(jobId, "deny"),
+                onCancel: (jobId: string | null | undefined) => controlDownloadJob(jobId, "cancel"),
+                onRetry: (jobId: string | null | undefined) => controlDownloadJob(jobId, "retry"),
+                onPreview: handleReviewPreview,
+                onInfo: setInfoRequest,
+              };
+              return isAlbumActivityRequest(entry.request) ? (
+                <ActivityAlbumRow
                   key={entry.key}
                   request={entry.request}
-                  reSearchingAlbumIds={reSearchingAlbumIds}
-                  reviewingJobs={reviewingJobs}
-                  controllingJobs={controllingJobs}
-                  jobErrors={jobErrors}
-                  currentTrack={currentTrack}
-                  isPlaying={isPlaying}
-                  onReSearch={lidarrConnected ? handleReSearchAlbum : undefined}
-                  onApprove={(jobId: string | null | undefined) =>
-                    reviewBlockedJob(jobId, "approve")
-                  }
-                  onDeny={(jobId: string | null | undefined) => reviewBlockedJob(jobId, "deny")}
-                  onCancel={(jobId: string | null | undefined) =>
-                    controlDownloadJob(jobId, "cancel")
-                  }
-                  onRetry={(jobId: string | null | undefined) => controlDownloadJob(jobId, "retry")}
-                  onPreview={handleReviewPreview}
-                  onInfo={setInfoRequest}
                   filterValue={filterValue}
+                  {...rowProps}
                 />
+              ) : (
+                <ActivityRequestRow key={entry.key} request={entry.request} {...rowProps} />
               );
-              return row;
             });
           })()}
           {hasMoreItems && (

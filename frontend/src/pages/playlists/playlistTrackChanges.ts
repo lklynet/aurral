@@ -1,4 +1,7 @@
 import { queryClient, queryKeys } from "../../queryClient.ts";
+import type { useToast } from "../../contexts/ToastContext";
+import { asApiError } from "../../utils/api/core.ts";
+import { getApiErrorText } from "../onboardingUtils.tsx";
 import {
   getStaticPlaylistOperation,
   moveStaticPlaylistTracks,
@@ -38,7 +41,7 @@ export const trackCountLabel = (count: number) => `${count} track${count === 1 ?
 const stayLabel = (count: number) => (count === 1 ? "It stays" : "They stay");
 
 const errorReason = (error: unknown) => {
-  const reason = error?.response?.data?.message || error?.response?.data?.error || "";
+  const reason = getApiErrorText(error, "message") || getApiErrorText(error, "error") || "";
   return reason && !/[.!?]$/.test(reason) ? `${reason}.` : reason;
 };
 
@@ -55,7 +58,7 @@ const playlistName = (playlistId: string | null | undefined) =>
     .getQueryData<PlaylistStatus>(queryKeys.playlistStatus)
     ?.sharedPlaylists?.find((playlist) => playlist.id === playlistId)?.name || "the playlist";
 
-export function createPlaylistTrackChanges(toast) {
+export function createPlaylistTrackChanges(toast: ReturnType<typeof useToast>) {
   let changes: TrackChange[] = [];
   let hidden = new Map<string | undefined, Set<string>>();
   let nextKey = 0;
@@ -128,7 +131,7 @@ export function createPlaylistTrackChanges(toast) {
         });
         errors = 0;
       } catch (error) {
-        if (error?.response?.status === 404 || ++errors >= MAX_POLL_ERRORS) {
+        if (asApiError(error)?.response?.status === 404 || ++errors >= MAX_POLL_ERRORS) {
           return settle(change, {
             error: `Could not confirm the change to ${change.sourceName}. Review the playlist before trying again.`,
           });
@@ -148,7 +151,7 @@ export function createPlaylistTrackChanges(toast) {
       const where =
         change.action === "move" ? `to ${change.targetName}` : `from ${change.sourceName}`;
       return settle(change, {
-        error: error?.response
+        error: asApiError(error)?.response
           ? `Could not ${action} ${change.label} ${where}. Nothing changed. ${errorReason(error) || "Try again."}`
           : `Could not confirm the change to ${change.sourceName}. Check the playlist before trying again.`,
       });

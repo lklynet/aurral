@@ -27,6 +27,7 @@ import { normalizePlaylistQueueTrack } from "../../../utils/audioQueue";
 import {
   TrackPlaylistMenu,
   TrackPlaylistSubmenu,
+  type TrackPlaylistMenuHandle,
 } from "../../ArtistDetails/components/TrackPlaylistMenu";
 import { LibraryItemMenu } from "../../../components/LibraryItemMenu";
 import { TrackList } from "../../../components/TrackList";
@@ -65,8 +66,8 @@ interface PlaylistTrackMenuProps<T extends PlaylistPanelTrack> {
   defaultNewPlaylistName: string;
   excludedPlaylistIds: string[];
   onLoadPlaylists?: () => void;
-  onAddTrackToPlaylist: ((target: PlaylistTrackTarget) => unknown) | null;
-  onMoveTrackToPlaylist: ((target: PlaylistTrackTarget) => unknown) | null;
+  onAddTrackToPlaylist: ((target: PlaylistTrackTarget) => void | Promise<void>) | null;
+  onMoveTrackToPlaylist: ((target: PlaylistTrackTarget) => void | Promise<void>) | null;
 }
 
 type PlaylistTrackLink = { to: string | null; state?: unknown };
@@ -124,7 +125,7 @@ function BulkPlaylistAction<T extends PlaylistPanelTrack>({
   onSelect,
 }: BulkPlaylistActionProps<T>) {
   const buttonRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<{ open: (anchor: HTMLElement | null) => void } | null>(null);
+  const menuRef = useRef<TrackPlaylistMenuHandle>(null);
   const handleOpen = useCallback((e: MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
     menuRef.current?.open(buttonRef.current);
@@ -287,7 +288,7 @@ function PlaylistTrackKebabMenu<T extends PlaylistPanelTrack>({
           onSelect: () => onDelete?.(track),
         }
       : null,
-  ].filter(Boolean);
+  ].filter((item): item is LibraryMenuItem => Boolean(item));
   const additionalItemsAfter = canAddToLibrary
     ? "add-library"
     : canReSearch
@@ -412,8 +413,8 @@ export interface PlaylistTracksPanelProps<T extends PlaylistPanelTrack> {
   getDefaultPlaylistName?: (track: T | undefined) => string;
   onLoadPlaylists?: () => void;
   onDeleteTrack?: (track: T) => unknown;
-  onAddTrackToPlaylist?: (track: T, target: PlaylistTrackTarget) => unknown;
-  onMoveTrackToPlaylist?: (track: T, target: PlaylistTrackTarget) => unknown;
+  onAddTrackToPlaylist?: (track: T, target: PlaylistTrackTarget) => void | Promise<void>;
+  onMoveTrackToPlaylist?: (track: T, target: PlaylistTrackTarget) => void | Promise<void>;
   onAddTrackToLibrary?: (track: T) => unknown;
   onViewTrackInfo?: (track: T) => void;
   onEditTrackArtwork?: (track: T) => void;
@@ -557,7 +558,7 @@ export function PlaylistTracksPanel<T extends PlaylistPanelTrack>({
   };
 
   const trackCover = (track: T) =>
-    track.artworkUrl || track.coverUrl || artworkByAlbumMbid[String(track.albumMbid || "")] || "";
+    track.artworkUrl || artworkByAlbumMbid[String(track.albumMbid || "")] || "";
   const toQueueTrack = (track: T) =>
     normalizePlaylistQueueTrack({ ...track, artworkUrl: trackCover(track) }, { recordHistory });
 

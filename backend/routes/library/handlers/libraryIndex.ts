@@ -322,7 +322,7 @@ export type FetchLibraryFavoritesResponse = ReturnType<typeof getStarredWithLibr
 
 export type UpdateLibraryFavoritesResponse = {
   changedIds: string[];
-  removed?: NonNullable<ReturnType<typeof unstarMany>>;
+  removed?: Exclude<ReturnType<typeof unstarMany>, false>;
 };
 
 export type RestoreLibraryFavoritesResponse = { restoredIds: string[] };

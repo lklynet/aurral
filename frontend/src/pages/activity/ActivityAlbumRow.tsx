@@ -1,13 +1,12 @@
 import { useEffect, useId, useState } from "react";
 import ActivityRequestRow, { type ActivityRequestRowProps } from "./ActivityRequestRow";
-import { matchesActivitySearch, type ActivityRequest } from "./activityListUtils";
-import type { AurralAlbumGrab } from "../../../../backend/services/aurralHistoryService.ts";
+import { matchesActivitySearch, type AlbumActivityRequest } from "./activityListUtils";
 
 type ActivityAlbumRowProps = Omit<
   ActivityRequestRowProps,
   "request" | "onToggle" | "expanded" | "tracksId"
 > & {
-  request: ActivityRequest & { children: ActivityRequest[]; albumGrab: AurralAlbumGrab };
+  request: AlbumActivityRequest;
   filterValue: string;
 };
 

@@ -33,8 +33,16 @@ export function PlaylistBulkActionsProvider({ children }: { children: ReactNode 
   return createElement(BulkActionsContext.Provider, { value: changes }, children);
 }
 
-export function usePlaylistBulkActions() {
+function usePlaylistTrackChanges() {
   const changes = useContext(BulkActionsContext);
+  if (!changes) {
+    throw new Error("Playlist bulk actions must be used within PlaylistBulkActionsProvider");
+  }
+  return changes;
+}
+
+export function usePlaylistBulkActions() {
+  const changes = usePlaylistTrackChanges();
   return {
     removeTracks: changes.remove,
     moveTracks: changes.move,
@@ -42,6 +50,6 @@ export function usePlaylistBulkActions() {
 }
 
 export function useHiddenPlaylistTracks() {
-  const changes = useContext(BulkActionsContext);
+  const changes = usePlaylistTrackChanges();
   return useSyncExternalStore(changes.subscribe, changes.getHidden, changes.getHidden);
 }

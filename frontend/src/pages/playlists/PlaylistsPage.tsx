@@ -22,6 +22,7 @@ import {
 import { usePlaylistStatus } from "./usePlaylistStatus";
 import { useHiddenPlaylistTracks } from "./usePlaylistBulkActions.ts";
 import { playlistPath } from "../../navigation/playlistPaths";
+import { getApiErrorMessage } from "../onboardingUtils.tsx";
 
 const PlaylistImportModal = lazy(() =>
   import("./import/PlaylistImportModal.tsx").then((m) => ({ default: m.PlaylistImportModal })),
@@ -79,11 +80,7 @@ export default function PlaylistsPage() {
         navigate(playlistPath(response.playlistId), { state: { created: true } });
       }
     } catch (err) {
-      const message =
-        err.response?.data?.message ||
-        err.response?.data?.error ||
-        err.message ||
-        "Failed to create playlist";
+      const message = getApiErrorMessage(err, "Failed to create playlist");
       setCreateError(message);
       showError(message);
     } finally {

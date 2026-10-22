@@ -47,6 +47,8 @@ import { countAvailableTracks } from "./trackAvailability.ts";
 import { usePlaylistStatus } from "./usePlaylistStatus";
 import { useHiddenPlaylistTracks } from "./usePlaylistBulkActions.ts";
 import type { PlaylistStats, PlaylistStatus, StaticPlaylist } from "./playlistStats.ts";
+import { asApiError } from "../../utils/api/core.ts";
+import { getApiErrorText } from "../onboardingUtils.tsx";
 
 interface PlaylistDetailProps {
   playlist: StaticPlaylist;
@@ -185,7 +187,8 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
       await fetchStatus();
       setEditOpen(false);
     } catch (err) {
-      const message = err.response?.data?.message || err.message || "Failed to rename playlist";
+      const message =
+        getApiErrorText(err, "message") || asApiError(err)?.message || "Failed to rename playlist";
       setRenameError(message);
       showError(message);
     } finally {
@@ -203,7 +206,9 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
       await fetchStatus();
       navigate("/library/playlists", { replace: true });
     } catch (err) {
-      showError(err.response?.data?.message || err.message || "Failed to delete playlist");
+      showError(
+        getApiErrorText(err, "message") || asApiError(err)?.message || "Failed to delete playlist",
+      );
       setDeleting(false);
       setConfirmDelete(false);
     }
@@ -238,7 +243,7 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
       exportPlaylistTracklist(playlist, tracks);
       showSuccess(`Exported ${playlist.name} tracklist`);
     } catch (err) {
-      showError(err?.message || "Failed to export tracklist");
+      showError(asApiError(err)?.message || "Failed to export tracklist");
     }
   };
 

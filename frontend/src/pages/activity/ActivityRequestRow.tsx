@@ -143,9 +143,10 @@ export default function ActivityRequestRow({
     request.albumId &&
     !reSearchingAlbumIds[request.albumId];
   const isReSearching = Boolean(request.albumId && reSearchingAlbumIds[request.albumId]);
-  const isApproving = reviewingJobs[request.jobId] === "approve";
-  const isDenying = reviewingJobs[request.jobId] === "deny";
-  const activeControl = controllingJobs[request.jobId];
+  const reviewingJob = request.jobId ? reviewingJobs[request.jobId] : undefined;
+  const isApproving = reviewingJob === "approve";
+  const isDenying = reviewingJob === "deny";
+  const activeControl = request.jobId ? controllingJobs[request.jobId] : undefined;
   const canCancel =
     request.kind === "track_download" &&
     !!request.jobId &&
@@ -157,7 +158,7 @@ export default function ActivityRequestRow({
     ["pending", "processing", "failed", "cancelled"].includes(request.status) &&
     !isBlockedTrack;
   const isThisPlaying = currentTrack?.id === String(request.jobId) && isPlaying;
-  const jobError = jobErrors[request.jobId];
+  const jobError = request.jobId ? jobErrors[request.jobId] : undefined;
   const reviewReasonSummary = isBlockedTrack ? formatReviewReasonSummary(request.subtitle) : null;
   const rowLabel = `${displayTitle}${displayMeta ? `, ${displayMeta}` : ""}`;
 

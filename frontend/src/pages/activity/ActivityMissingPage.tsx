@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { ApiError } from "../../utils/api/core.ts";
+import { getApiErrorMessage, getApiErrorText } from "../onboardingUtils.tsx";
 import {
   AlertCircle,
   ArrowUpCircle,
@@ -245,8 +246,8 @@ export default function ActivityMissingPage() {
   }, [allJobs]);
   const loading = jobsQuery.isPending || statusQuery.isPending;
   const error =
-    jobsQuery.error?.response?.data?.message ||
-    statusQuery.error?.response?.data?.message ||
+    getApiErrorText(jobsQuery.error, "message") ||
+    getApiErrorText(statusQuery.error, "message") ||
     jobsQuery.error?.message ||
     statusQuery.error?.message ||
     "";
@@ -342,10 +343,10 @@ export default function ActivityMissingPage() {
         return next;
       });
       showError(
-        requestError.response?.data?.message ||
-          requestError.response?.data?.error ||
-          requestError.message ||
-          (isMissing ? "Failed to re-search track" : "Failed to search for an upgrade"),
+        getApiErrorMessage(
+          requestError,
+          isMissing ? "Failed to re-search track" : "Failed to search for an upgrade",
+        ),
       );
     }
   };
@@ -397,10 +398,10 @@ export default function ActivityMissingPage() {
         return next;
       });
       showError(
-        requestError.response?.data?.message ||
-          requestError.response?.data?.error ||
-          requestError.message ||
-          (showingCutoff ? "Failed to search for upgrades" : "Failed to re-search missing tracks"),
+        getApiErrorMessage(
+          requestError,
+          showingCutoff ? "Failed to search for upgrades" : "Failed to re-search missing tracks",
+        ),
       );
     } finally {
       setSearchingAll(false);

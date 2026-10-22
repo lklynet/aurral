@@ -7,6 +7,8 @@ import {
   uploadPlaylistArtwork,
 } from "../../utils/api/endpoints/playlists.ts";
 import { usePlaylistArtwork } from "./playlistPageUtils";
+import { asApiError } from "../../utils/api/core.ts";
+import { getApiErrorText } from "../onboardingUtils.tsx";
 
 type PlaylistEditModalProps = {
   entry: { id: string; name: string };
@@ -44,7 +46,8 @@ export function PlaylistEditModal({
       bumpArtwork(entry.id);
       showSuccess(successMessage);
     } catch (err) {
-      const message = err.response?.data?.message || err.message || fallbackMessage;
+      const message =
+        getApiErrorText(err, "message") || asApiError(err)?.message || fallbackMessage;
       setCoverError(message);
       showError(message);
     } finally {

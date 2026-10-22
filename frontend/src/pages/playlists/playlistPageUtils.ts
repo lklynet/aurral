@@ -12,7 +12,6 @@ import {
   slugifyFilePart,
 } from "./flowPageUtils";
 import { getPlaylistRunActivity } from "./playlistRunActivity";
-import type { ApiError } from "../../utils/api/core.ts";
 import lastfmLogo from "../../../images/logos/last-fm-color.svg";
 import listenbrainzLogo from "../../../images/logos/listenbrainz-color.svg";
 import spotifyLogo from "../../../images/logos/spotify-color.svg";
@@ -26,6 +25,7 @@ import {
   type PlaylistStatus,
   type StaticPlaylist,
 } from "./playlistStats";
+import { getApiErrorText } from "../onboardingUtils.tsx";
 
 export const SYNCABLE_IMPORT_PROVIDERS = new Set<string | null | undefined>([
   "spotify-playlist",
@@ -131,7 +131,7 @@ export function usePlaylistTracks(
   return {
     tracks,
     loading: query.isPending,
-    error: (query.error as ApiError | null)?.response?.data?.message || query.error?.message || "",
+    error: getApiErrorText(query.error, "message") || query.error?.message || "",
     refresh,
   };
 }

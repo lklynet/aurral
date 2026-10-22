@@ -21,13 +21,13 @@ export const UNIFIED_FILTER_OPTIONS = [
 ];
 
 interface SearchAlbum {
-  id?: string | null;
+  id?: string | number | null;
   primaryType?: string | null;
   secondaryTypes?: string[] | null;
 }
 
 interface SearchArtist {
-  id?: string | null;
+  id?: string | number | null;
   mbid?: string | null;
   foreignArtistId?: string | null;
 }

@@ -606,7 +606,7 @@ export const parseTracklistImportFile = (content: string) => {
 
   const toPlaylistPayload = (entry: TracklistInput, index: number) => {
     if (Array.isArray(entry)) {
-      const tracks = entry.map(normalizePlaylistTrackEntry).filter(Boolean);
+      const tracks = entry.map(normalizePlaylistTrackEntry).filter((track) => track !== null);
       if (tracks.length === 0) {
         throw new Error(`Tracklist ${index + 1}: no valid tracks found`);
       }
@@ -629,7 +629,7 @@ export const parseTracklistImportFile = (content: string) => {
     if (!rawTracks?.length) {
       throw new Error(`Tracklist ${index + 1}: no tracks found`);
     }
-    const tracks = rawTracks.map(normalizePlaylistTrackEntry).filter(Boolean);
+    const tracks = rawTracks.map(normalizePlaylistTrackEntry).filter((track) => track !== null);
     if (tracks.length === 0) {
       throw new Error(`Tracklist ${index + 1}: no valid tracks found`);
     }
@@ -677,7 +677,7 @@ export const parseTracklistImportFile = (content: string) => {
         return null;
       }
     })
-    .filter(Boolean);
+    .filter((playlist) => playlist !== null);
 
   if (!playlists.length) {
     throw new Error("Import file does not contain any valid tracks");

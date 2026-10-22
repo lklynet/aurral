@@ -4,6 +4,8 @@ import { useToast } from "../../contexts/ToastContext";
 import { setFlowEnabled } from "../../utils/api/endpoints/playlists.ts";
 import { ConfirmModal } from "../../components/ConfirmModal.tsx";
 import type { Flow } from "./playlistStats.ts";
+import { asApiError } from "../../utils/api/core.ts";
+import { getApiErrorText } from "../onboardingUtils.tsx";
 
 export function FlowEnabledSwitch({ flow, onChanged }: { flow: Flow; onChanged?: () => unknown }) {
   const { showSuccess, showError } = useToast();
@@ -18,7 +20,9 @@ export function FlowEnabledSwitch({ flow, onChanged }: { flow: Flow; onChanged?:
       showSuccess(nextEnabled ? `${flow.name} turned on` : `${flow.name} turned off`);
       await onChanged?.();
     } catch (err) {
-      showError(err.response?.data?.message || err.message || "Failed to update flow");
+      showError(
+        getApiErrorText(err, "message") || asApiError(err)?.message || "Failed to update flow",
+      );
     } finally {
       setPendingEnabled(null);
       setConfirmDisable(false);

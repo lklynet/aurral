@@ -11,7 +11,7 @@ import Tooltip from "./Tooltip";
 export type SearchItem = NonNullable<Parameters<typeof getSearchResultKey>[0]> & {
   status?: string;
 };
-export type SearchImageMap = Record<string, string | undefined>;
+export type SearchImageMap = Record<string, string | null | undefined>;
 
 interface SearchMixedResultListProps {
   items: SearchItem[];
