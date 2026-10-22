@@ -617,20 +617,23 @@ export function registerDownloads(router: Router) {
   router.get("/downloads/status", noCache, async (req, res) => {
     try {
       const { albumIds } = req.query;
-      if (!albumIds) {
+      if (!albumIds || (typeof albumIds !== "string" && !Array.isArray(albumIds))) {
         return res.status(400).json({ error: "albumIds query parameter is required" });
       }
-      const albumIdArray = Array.isArray(albumIds) ? albumIds : albumIds.split(",");
+      const albumIdArray = Array.isArray(albumIds)
+        ? albumIds.filter((id): id is string => typeof id === "string")
+        : albumIds.split(",");
       const aurralPrefix = "aurral:";
       const aurralIds = albumIdArray.filter((id) => String(id).startsWith(aurralPrefix));
-      const statuses = await getDownloadStatusesForAlbumIds(
+      const statuses: GetDownloadStatusResponse = await getDownloadStatusesForAlbumIds(
         albumIdArray.filter((id) => !String(id).startsWith(aurralPrefix)),
       );
       const aurralStatuses = libraryManager.getAurralAlbumStatuses(
         aurralIds.map((key) => key.slice(aurralPrefix.length)),
       );
       aurralIds.forEach((key, index) => {
-        if (!aurralStatuses[index]?.error) statuses[key] = aurralStatuses[index];
+        const status = aurralStatuses[index];
+        if (status?.error === undefined) statuses[key] = status;
       });
       res.json(statuses);
     } catch (error) {
@@ -684,4 +687,8 @@ export type TriggerAlbumSearchResponse = { success: true; message: string };
 
 export type GetActiveDownloadsResponse = Awaited<ReturnType<typeof getActiveLibraryDownloads>>;
 
-export type GetDownloadStatusResponse = Awaited<ReturnType<typeof getDownloadStatusesForAlbumIds>>;
+export type GetDownloadStatusResponse = Record<
+  string,
+  | AlbumDownloadStatus
+  | Extract<ReturnType<typeof libraryManager.getAurralAlbumStatuses>[number], { error?: undefined }>
+>;
