@@ -6,6 +6,7 @@ import {
 import { fetchImportedPlaylistTracks } from "./importPlaylist.ts";
 import { updateStaticPlaylist } from "../playlists/playlistOperations.ts";
 import { buildPlaylistTrackIdentity } from "../playlists/flowPlaylistConfig.ts";
+import { asAppError } from "../../../lib/errors.ts";
 import { logger, safeLogDiagnostic } from "../logger.ts";
 import { dbOps } from "../../db/helpers/index.ts";
 import {
@@ -50,7 +51,7 @@ type SyncStaticPlaylistImportResponse =
   | { ok: true; result: SyncStaticPlaylistImportResult }
   | { ok: false; error: { message: string; code: string | null; statusCode: number | null } };
 
-export async function syncStaticPlaylistImport(options: SyncStaticPlaylistImportOptions = {}) {
+export async function syncStaticPlaylistImport(options: SyncStaticPlaylistImportOptions) {
   if (isDownloadOwnerProcess()) return syncStaticPlaylistImportHere(options);
   const { playlistId, user, force = false } = options;
   try {
@@ -83,7 +84,7 @@ async function syncStaticPlaylistImportHere({
   playlistId,
   user,
   force = false,
-}: SyncStaticPlaylistImportOptions = {}) {
+}: SyncStaticPlaylistImportOptions) {
   const playlist = flowPlaylistConfig.getStaticPlaylist(playlistId);
   if (!playlist?.importSource) {
     return { skipped: true, reason: "no-import-source" };
@@ -101,7 +102,7 @@ async function syncStaticPlaylistImportHere({
     const externalPlaylistId = String(playlist.importSource?.externalId || "").trim();
     const {
       tracks,
-      stats = {},
+      stats,
       excluded = [],
     } = await fetchImportedPlaylistTracks({
       provider: playlist.importSource.provider,
@@ -191,7 +192,7 @@ async function syncStaticPlaylistImportHere({
       playlistId: playlist.id,
       reason: safeLogDiagnostic(error),
     });
-    const lastSyncError = String(error?.message || "").trim() || "Playlist sync failed";
+    const lastSyncError = String(asAppError(error)?.message || "").trim() || "Playlist sync failed";
     const latestPlaylist = flowPlaylistConfig.getStaticPlaylist(playlist.id);
     if (latestPlaylist?.importSource?.lastSyncError !== lastSyncError) {
       flowPlaylistConfig.updateStaticPlaylist(playlist.id, {
@@ -235,7 +236,7 @@ export async function runDueImportSourceSyncs() {
     } catch (error) {
       results.push({
         playlistId: playlist.id,
-        error: String(error?.message || "Playlist sync failed"),
+        error: String(asAppError(error)?.message || "Playlist sync failed"),
       });
     }
   }

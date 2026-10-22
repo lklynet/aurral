@@ -33,13 +33,20 @@ export interface SoulseekSearchItem {
   isLocked?: boolean;
 }
 
-export interface SoulseekFolder {
+interface SoulseekListing {
+  user?: unknown;
+  file?: unknown;
+  locked?: unknown;
+  isLocked?: unknown;
+}
+
+export interface SoulseekFolder<Item extends SoulseekListing = SoulseekSearchItem> {
   key: string;
   user: string;
   directoryPath: string;
   parts: string[];
-  files: SoulseekSearchItem[];
-  audioFiles?: SoulseekSearchItem[];
+  files: Item[];
+  audioFiles?: Item[];
 }
 
 interface SearchTier {
@@ -341,7 +348,7 @@ export function buildTrackSearchTiers(context: TrackSearchContext) {
   ]);
 }
 
-function getDirectoryKey(item: SoulseekSearchItem) {
+function getDirectoryKey(item: SoulseekListing) {
   const parts = getPathParts(item?.file);
   if (parts.length === 0) return null;
   const directory = parts.slice(0, -1).join("/");
@@ -349,7 +356,7 @@ function getDirectoryKey(item: SoulseekSearchItem) {
   return `${user}\0${directory}`;
 }
 
-export function isLockedSearchResult(item: SoulseekSearchItem) {
+export function isLockedSearchResult(item: SoulseekListing) {
   return item?.locked === true || item?.isLocked === true;
 }
 
@@ -363,11 +370,19 @@ export function countAudioFiles(
 // Groups raw slskd search results into per-user release folders, attaching
 // the audio files each folder holds. Folder grouping is Soulseek-specific
 // acquisition context that the shared engine never sees.
+export function groupSoulseekSearchResults<Item extends SoulseekListing>(
+  results: Item[] | null | undefined,
+  options?: { isAudioFile?: (filePath: string) => boolean },
+): Array<SoulseekFolder<Item> & { audioFiles: Item[] }>;
 export function groupSoulseekSearchResults(
   results: SoulseekSearchItem[] | null | undefined,
+  options?: { isAudioFile?: (filePath: string) => boolean },
+): Array<SoulseekFolder & { audioFiles: SoulseekSearchItem[] }>;
+export function groupSoulseekSearchResults<Item extends SoulseekListing>(
+  results: Item[] | null | undefined,
   { isAudioFile }: { isAudioFile?: (filePath: string) => boolean } = {},
 ) {
-  const groups = new Map<string, SoulseekFolder>();
+  const groups = new Map<string, SoulseekFolder<Item>>();
   for (const item of Array.isArray(results) ? results : []) {
     const key = getDirectoryKey(item);
     if (!key) continue;
@@ -381,14 +396,14 @@ export function groupSoulseekSearchResults(
     existing.files.push(item);
     groups.set(key, existing);
   }
-  const grouped: Array<SoulseekFolder & { audioFiles: SoulseekSearchItem[] }> = [];
+  const grouped: Array<SoulseekFolder<Item> & { audioFiles: Item[] }> = [];
   for (const group of groups.values()) {
     group.audioFiles = group.files.filter(
       (item) =>
         !isLockedSearchResult(item) && (isAudioFile ? isAudioFile(String(item?.file || "")) : true),
     );
     if (group.audioFiles.length === 0) continue;
-    grouped.push(group as SoulseekFolder & { audioFiles: SoulseekSearchItem[] });
+    grouped.push(group as SoulseekFolder<Item> & { audioFiles: Item[] });
   }
   return grouped;
 }

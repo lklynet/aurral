@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { asAppError } from "../../../lib/errors.ts";
 import type { Innertube, Types, YTNodes } from "youtubei.js";
 import createRateLimiter from "../apiClients/rateLimiter.ts";
 import {
@@ -15,6 +16,12 @@ const YOUTUBE_HOSTS = new Set([
   "m.youtube.com",
   "music.youtube.com",
 ]);
+
+const NON_MUSIC_ITEM_TYPES: (string | undefined)[] = [
+  "podcast_show",
+  "podcast_episode",
+  "non_music_track",
+];
 
 type CodedError = Error & { code?: string; statusCode?: number };
 
@@ -91,8 +98,19 @@ const getText = (value: unknown): string => {
 const getNamedValue = (value: YoutubeNamedValue | null | undefined) =>
   getText(value?.name ?? value?.title ?? value);
 
+const readField = (source: unknown, key: string): unknown =>
+  (typeof source === "object" && source !== null) || typeof source === "function"
+    ? key in source
+      ? Reflect.get(source, key)
+      : undefined
+    : undefined;
+
 const getPlaylistName = (playlist: YoutubeMusicPlaylist | undefined) => {
-  const candidates = [playlist?.header?.title, playlist?.metadata?.title, playlist?.title];
+  const candidates = [
+    readField(playlist?.header, "title"),
+    readField(readField(playlist, "metadata"), "title"),
+    readField(playlist, "title"),
+  ];
   for (const candidate of candidates) {
     const name = getText(candidate);
     if (name) return name;
@@ -101,15 +119,16 @@ const getPlaylistName = (playlist: YoutubeMusicPlaylist | undefined) => {
 };
 
 const isContinuation = (entry: YoutubePlaylistContent): entry is YTNodes.ContinuationItem =>
-  entry?.type === "ContinuationItem" || entry?.constructor?.type === "ContinuationItem";
+  entry?.type === "ContinuationItem" ||
+  readField(entry?.constructor, "type") === "ContinuationItem";
 
 const getContinuationKey = (entry: YTNodes.ContinuationItem) => {
   const payload = entry?.endpoint?.payload;
   const key =
     payload?.continuation ??
     payload?.continuationCommand?.token ??
-    entry?.continuation ??
-    entry?.token;
+    readField(entry, "continuation") ??
+    readField(entry, "token");
   if (typeof key === "string" && key) return key;
   if (!payload || typeof payload !== "object") return "";
   try {
@@ -142,7 +161,7 @@ const normalizeRows = (rows: YTNodes.MusicResponsiveListItem[]) => {
       excluded.push({ position, reason: "unavailable" });
       continue;
     }
-    if (["podcast_show", "podcast_episode", "non_music_track"].includes(row.item_type)) {
+    if (NON_MUSIC_ITEM_TYPES.includes(row.item_type)) {
       stats.podcast += 1;
       excluded.push({ position, reason: "podcast", trackName: getText(row.title) || null });
       continue;
@@ -244,7 +263,9 @@ export class YoutubeMusicPlaylistClient {
 
   async fetch(input: RequestInfo | URL, init: RequestInit = {}) {
     if (Date.now() < this.rateLimitedUntil) throw rateLimited();
-    const signals = [init.signal, this.operationContext.getStore()?.signal].filter(Boolean);
+    const signals = [init.signal, this.operationContext.getStore()?.signal].filter(
+      (signal) => signal != null,
+    );
     signals.push(AbortSignal.timeout(this.requestTimeoutMs));
     const response = await this.fetchImpl(input, { ...init, signal: AbortSignal.any(signals) });
     if (response?.status === 429) {
@@ -329,13 +350,14 @@ export class YoutubeMusicPlaylistClient {
         this.getCompletePlaylist(id),
       );
     } catch (error) {
-      if (operationController.signal.aborted || error?.name === "TimeoutError") {
+      const failure = asAppError(error);
+      if (operationController.signal.aborted || failure?.name === "TimeoutError") {
         throw providerError("YouTube Music took too long to respond", {
           code: "YOUTUBE_PLAYLIST_TIMEOUT",
           statusCode: 504,
         });
       }
-      if (error?.statusCode && error?.code) throw error;
+      if (failure?.statusCode && failure?.code) throw error;
       throw providerError("The YouTube Music playlist could not be loaded", {
         code: "YOUTUBE_PLAYLIST_UNAVAILABLE",
         statusCode: 502,

@@ -1,3 +1,4 @@
+import { asAppError } from "../../../lib/errors.ts";
 import express from "express";
 import type { NextFunction, Request, Response } from "express";
 import { createServer, type Server } from "node:http";
@@ -185,7 +186,7 @@ export function createShareApp() {
   app.use((req, res) => notFound(res));
 
   app.use((error: unknown, req: Request, res: Response, next: NextFunction) => {
-    logger.error("share", "Share request failed:", { message: error?.message });
+    logger.error("share", "Share request failed:", { message: asAppError(error)?.message });
     if (res.headersSent) return next(error);
     return res.status(500).json({ error: "internal_error" });
   });

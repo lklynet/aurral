@@ -76,6 +76,10 @@ function readTagText(value: unknown) {
   return String(value || "").trim() || null;
 }
 
+function rawString(value: unknown) {
+  return typeof value === "string" ? value : undefined;
+}
+
 function normalizeValidationRequest(
   request: ValidationRequest | undefined,
   context: ValidationRequest | undefined,
@@ -147,7 +151,7 @@ export function buildActualFileCandidate(
     ...new Set(
       [common.artist, ...(Array.isArray(common.artists) ? common.artists : []), common.albumartist]
         .map((entry) => readTagText(entry))
-        .filter(Boolean),
+        .filter((entry) => entry !== null),
     ),
   ];
   const fileName = getFileName(filePath);
@@ -185,8 +189,7 @@ export function buildActualFileCandidate(
     filename: fileName,
     path: filePath,
     quality: {
-      format:
-        readTagText(common.format) || String(parsed?.format?.container || "").toLowerCase() || null,
+      format: String(parsed?.format?.container || "").toLowerCase() || null,
       bitrate:
         Number(parsed?.format?.bitrate) > 0 ? Math.round(Number(parsed.format.bitrate)) : null,
       bitDepth:
@@ -226,7 +229,7 @@ function describeReviewReason({
 }: {
   verification: VerificationResult;
   titleAgrees: boolean;
-  artists: string[];
+  artists: unknown[];
   actualDurationMs: number | null;
   requestedDurationMs: number | null;
   maxDurationGapMs: number;
@@ -238,7 +241,7 @@ function describeReviewReason({
   } else if (gap > maxDurationGapMs) {
     const seconds = (Math.ceil(gap / 100) / 10).toFixed(1);
     issues.push(
-      `is ${seconds}s ${actualDurationMs > requestedDurationMs ? "longer" : "shorter"} than the requested track`,
+      `is ${seconds}s ${(actualDurationMs ?? 0) > (requestedDurationMs ?? 0) ? "longer" : "shorter"} than the requested track`,
     );
   }
   if (!verification.evidence.includes("title") || !titleAgrees) {
@@ -268,7 +271,7 @@ export async function validateDownloadedTrackFile({
   filePath: string;
   source?: string;
   options?: ValidationOptions;
-} = {}) {
+}) {
   const trackRequest = normalizeValidationRequest(request, context);
   const strict = options.strict === true;
   const parseFn = options.parseFile || parseFile;
@@ -368,7 +371,7 @@ export async function validateDownloadedTrackFile({
   const hasYtdlpIdFilename =
     source === "ytdlp" && getFileBaseName(actual.filename) === readTagText(actual.provider.id);
   const requestedArtists = [trackRequest.artistName, ...(trackRequest.artistAliases || [])].filter(
-    Boolean,
+    (name): name is string => Boolean(name),
   );
   // A YouTube Music song is tagged with its own track, artists, and album, so
   // its tags are read as any other file's.
@@ -378,8 +381,8 @@ export async function validateDownloadedTrackFile({
           {
             tagTitle: actual.title,
             tagArtists: actual.artists,
-            videoTitle: actual.raw?.title,
-            channel: actual.provider.uploader,
+            videoTitle: rawString(actual.raw?.title),
+            channel: rawString(actual.provider.uploader),
           },
           requestedArtists,
           trackRequest.trackName,
@@ -454,7 +457,7 @@ export async function validateDownloadedTrackFile({
   const releaseAudio = youtube
     ? youtube.officialAudio
     : source !== "ytdlp" ||
-      isRequestedYoutubeAlbum(trackRequest, actual.album || actual.raw?.album);
+      isRequestedYoutubeAlbum(trackRequest, actual.album || rawString(actual.raw?.album));
   const exactIdentity = tagsConfirmIdentity && verification.titleSimilarity === 1 && releaseAudio;
   const maxDurationGapMs = options.release
     ? MATCH_POLICY.selectedDurationGapMs
@@ -650,12 +653,9 @@ export async function selectVerifiedDownloadedFile({
       validation.decision !== POST_DOWNLOAD_DECISIONS.VERIFIED &&
       validation.decision !== POST_DOWNLOAD_DECISIONS.AMBIGUOUS
     ) {
-      const hasError = Boolean(validation.error);
       const hasStrongerEvidence =
         !strongestRejected ||
-        (hasError && !strongestRejected.error) ||
-        (hasError === Boolean(strongestRejected.error) &&
-          (validation.distance ?? Infinity) < (strongestRejected.distance ?? Infinity));
+        (validation.distance ?? Infinity) < (strongestRejected.distance ?? Infinity);
       if (hasStrongerEvidence) strongestRejected = validation;
       continue;
     }

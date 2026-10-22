@@ -416,7 +416,7 @@ export function withPressingDurations(releases: Release[], release: Release) {
     tracks: release.tracks.map((track) => ({
       ...track,
       durationMs:
-        track.durationMs > 0
+        track.durationMs != null && track.durationMs > 0
           ? track.durationMs
           : (median(lengths[ordered.indexOf(track)]) ?? track.durationMs),
     })),

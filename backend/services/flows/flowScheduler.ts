@@ -1,3 +1,4 @@
+import { asAppError } from "../../../lib/errors.ts";
 import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.ts";
 import type { FlowConfig } from "../playlists/flowPlaylistConfig.ts";
 import { isAnyDownloadSourceConfigured } from "../downloadSourceService.ts";
@@ -35,7 +36,7 @@ export async function runScheduledFlowRefresh() {
         token,
       });
     } catch (error) {
-      console.error(`[FlowScheduler] Failed to refresh ${flow.id}:`, error.message);
+      console.error(`[FlowScheduler] Failed to refresh ${flow.id}:`, asAppError(error)?.message);
     }
   }
 }

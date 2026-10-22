@@ -167,8 +167,12 @@ export function getLinkedDeezerArtistId(links: (RawLink | null | undefined)[] = 
 }
 
 export function toNormalizedArtist(raw: RawArtist | null | undefined) {
-  const images = normalizeArray(raw?.images).map(toNormalizedArtistImage).filter(Boolean);
-  const links = normalizeArray(raw?.links).map(toNormalizedArtistLink).filter(Boolean);
+  const images = normalizeArray(raw?.images)
+    .map(toNormalizedArtistImage)
+    .filter((entry) => entry !== null);
+  const links = normalizeArray(raw?.links)
+    .map(toNormalizedArtistLink)
+    .filter((entry) => entry !== null);
   return {
     id: normalizeString(raw?.id),
     name: normalizeString(raw?.artistname || raw?.name),
@@ -262,8 +266,12 @@ export function toNormalizedAlbum(raw: RawAlbum | null | undefined) {
   const artists = normalizeArray(raw?.artists)
     .map(toNormalizedArtist)
     .filter((artist) => artist?.id);
-  const images = normalizeArray(raw?.images).map(toNormalizedArtistImage).filter(Boolean);
-  const links = normalizeArray(raw?.links).map(toNormalizedArtistLink).filter(Boolean);
+  const images = normalizeArray(raw?.images)
+    .map(toNormalizedArtistImage)
+    .filter((entry) => entry !== null);
+  const links = normalizeArray(raw?.links)
+    .map(toNormalizedArtistLink)
+    .filter((entry) => entry !== null);
   const releases = normalizeArray(raw?.releases)
     .map(toNormalizedRelease)
     .filter((release) => release?.id);
@@ -319,7 +327,9 @@ export function toNormalizedArtistAlbum(raw: RawArtistAlbum | null | undefined) 
           raw?.releaseDate ||
           raw?.releasedate,
       ) || null,
-    coverImages: normalizeArray(raw?.images).map(toNormalizedArtistImage).filter(Boolean),
+    coverImages: normalizeArray(raw?.images)
+      .map(toNormalizedArtistImage)
+      .filter((entry) => entry !== null),
     rating: null,
   };
 }
@@ -343,7 +353,11 @@ export function toLegacyArtist(normalizedArtist: NormalizedArtist) {
 }
 
 export function toLegacyReleaseGroupSummary(
-  album: NormalizedAlbum & { artistName?: unknown; firstReleaseDate?: string | null },
+  album: Pick<NormalizedAlbum, "id" | "title" | "type" | "secondaryTypes" | "rating"> &
+    Partial<Pick<NormalizedAlbum, "releaseDate" | "releases" | "artistId">> & {
+      artistName?: unknown;
+      firstReleaseDate?: string | null;
+    },
   artist: { id?: unknown; name?: unknown } | null = null,
   { score = 0 }: { score?: number } = {},
 ) {

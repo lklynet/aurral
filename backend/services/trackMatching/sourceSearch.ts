@@ -42,7 +42,6 @@ export async function buildSourceCandidates({
       request: trackRequest,
       source,
       candidates: built.candidates,
-      options,
       providerEvidence: built.providerEvidence,
     });
   }
@@ -50,7 +49,6 @@ export async function buildSourceCandidates({
     request: trackRequest,
     source,
     candidates: rawResults,
-    options,
   });
 }
 
@@ -87,7 +85,7 @@ export function toPipelineCandidate(evaluation: CandidateEvaluation) {
       recommendation: evaluation.recommendation || null,
       gap: null,
       reasons: evaluation.reasons || [],
-      penalties: evaluation.penalties || {},
+      penalties: {},
       aurralEvidence: evaluation.aurralEvidence || null,
       contradictions: evaluation.contradictions || [],
     },

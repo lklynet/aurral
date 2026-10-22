@@ -1034,7 +1034,7 @@ const applyRecommendationPoolMetadata = (
     metadata?: RecommendationPoolMetadata | null;
     runStartedAt: string;
     runStartedMs: number;
-  } = {},
+  },
 ) => {
   const firstDiscoveredAt =
     metadata?.firstDiscoveredAt ||

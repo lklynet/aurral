@@ -34,6 +34,20 @@ export function getDownloadClientSettings() {
   return structuredClone(definitions);
 }
 
+type BuiltInDownloadClients = {
+  slskd: SlskdClient;
+  ytdlp: YtdlpClient;
+  nzbget: NzbgetClient;
+  sabnzbd: SabnzbdClient;
+  deemix: DeemixClient;
+};
+
+export function getDownloadClient<Key extends keyof BuiltInDownloadClients>(
+  key: Key,
+): BuiltInDownloadClients[Key];
+export function getDownloadClient(
+  key: string | null,
+): BuiltInDownloadClients[keyof BuiltInDownloadClients] | null;
 export function getDownloadClient(key: string | null) {
   downloadClientRegistry.updateConfig(dbOps.getSettings()?.integrations || {});
   return downloadClientRegistry.get(key);

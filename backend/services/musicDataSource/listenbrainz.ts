@@ -188,7 +188,7 @@ export const listenbrainzSource = {
   async getTagTracks(tag: string, { limit = 50 }: { limit?: number } = {}) {
     const { artists } = await getTagArtists(tag, { limit });
     const tracks = await mapWithConcurrency(artists, TAG_TRACK_CONCURRENCY, getTopTrack);
-    return tracks.filter(Boolean);
+    return tracks.filter((track) => track !== null);
   },
 
   async getTrendingArtists({ limit = 100 } = {}) {
@@ -214,7 +214,7 @@ export const listenbrainzSource = {
           popularityRank: index + 1,
         };
       })
-      .filter(Boolean);
+      .filter((artist): artist is MusicTrendingArtist => artist !== null);
   },
 
   async getTrendingTracks() {

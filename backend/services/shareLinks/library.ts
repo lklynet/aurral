@@ -85,7 +85,7 @@ export function resolveShareTarget(target: ShareTarget) {
           file,
         };
       })
-      .filter(Boolean)
+      .filter((track) => track !== null)
       .sort(
         (left, right) => left.discNumber - right.discNumber || left.trackNumber - right.trackNumber,
       );

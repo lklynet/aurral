@@ -6,7 +6,10 @@ import { parseListenBrainzPlaylist } from "./listenbrainzTracks.ts";
 const PLAYLIST_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PLAYLIST_EXTENSION = "https://musicbrainz.org/doc/jspf#playlist";
-const GENERATED_PLAYLIST_TYPES = ["weekly-jams", "weekly-exploration"];
+const GENERATED_PLAYLIST_TYPES = ["weekly-jams", "weekly-exploration"] as const;
+type GeneratedPlaylistType = (typeof GENERATED_PLAYLIST_TYPES)[number];
+const isGeneratedPlaylistType = (value: string): value is GeneratedPlaylistType =>
+  GENERATED_PLAYLIST_TYPES.some((type) => type === value);
 const GENERATED_PLAYLIST_NAMES = {
   "weekly-jams": "Weekly Jams",
   "weekly-exploration": "Weekly Exploration",
@@ -53,7 +56,7 @@ const getGeneratedPlaylistType = (playlist: ListenBrainzPlaylist | undefined) =>
   )
     .trim()
     .toLowerCase();
-  return GENERATED_PLAYLIST_TYPES.includes(sourcePatch) ? sourcePatch : null;
+  return isGeneratedPlaylistType(sourcePatch) ? sourcePatch : null;
 };
 
 const getPlaylistTimestamp = (playlist: ListenBrainzPlaylist | undefined) => {
@@ -146,7 +149,7 @@ const getGeneratedPlaylistTypeOrThrow = (value: unknown) => {
   const sourceType = String(value || "")
     .trim()
     .toLowerCase();
-  if (GENERATED_PLAYLIST_TYPES.includes(sourceType)) return sourceType;
+  if (isGeneratedPlaylistType(sourceType)) return sourceType;
   const error: CodedError = new Error("A valid ListenBrainz generated playlist type is required");
   error.statusCode = 400;
   throw error;

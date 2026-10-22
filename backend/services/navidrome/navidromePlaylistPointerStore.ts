@@ -9,16 +9,18 @@ const upsertSettingStmt = db.prepare<[string, string | null]>(
   "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
 );
 
-const readStore = () => {
+type StoredPointer = { playlistId?: unknown; title?: unknown; updatedAt?: unknown };
+
+type PointerStore = Record<string, Record<string, StoredPointer>>;
+
+const readStore = (): PointerStore => {
   const parsed = dbHelpers.parseJSON(getSettingStmt.get(SETTINGS_KEY)?.value);
   return parsed && typeof parsed === "object" ? parsed : {};
 };
 
-const writeStore = (store: unknown) => {
+const writeStore = (store: PointerStore) => {
   upsertSettingStmt.run(SETTINGS_KEY, dbHelpers.stringifyJSON(store));
 };
-
-type StoredPointer = { playlistId?: unknown; title?: unknown; updatedAt?: unknown };
 
 const normalizePointer = (raw: StoredPointer | null | undefined) => {
   if (!raw || typeof raw !== "object") return null;
@@ -45,7 +47,7 @@ export const navidromePlaylistPointerStore = {
         const pointer = normalizePointer(raw);
         return pointer ? { targetKey, ...pointer } : null;
       })
-      .filter(Boolean);
+      .filter((pointer) => pointer !== null);
   },
 
   getPointer(entityId: string, targetKey: string) {

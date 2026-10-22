@@ -5,6 +5,7 @@ import {
   musicbrainzGetCachedArtistMbidByName,
   musicbrainzResolveArtistMbidByName,
 } from "../apiClients/index.ts";
+import { asAppError } from "../../../lib/errors.ts";
 import { logger } from "../logger.ts";
 import { getListenHistoryProfile, hasListenHistoryProfile } from "../listeningHistory.ts";
 import {
@@ -135,10 +136,12 @@ const enqueueAllUserDiscoveryRefreshes = (reason: string) => {
   return queued;
 };
 
+type ListenHistoryArtist = { mbid: string | null; artistName: string; playcount: number };
+
 const fetchListenHistoryArtists = async (
   listenHistoryProfile: Parameters<typeof getListenHistoryProfile>[0],
   discoveryPeriod: string,
-) => {
+): Promise<ListenHistoryArtist[]> => {
   const profile = getListenHistoryProfile(listenHistoryProfile);
   if (!hasListenHistoryProfile(profile) || discoveryPeriod === "none") {
     return [];
@@ -202,7 +205,7 @@ const fetchListenHistoryArtists = async (
         playcount: parseInt(artist.playcount || 0, 10) || 0,
       };
     })
-    .filter(Boolean);
+    .filter((artist) => artist !== null);
 };
 
 export const rerankCachedRecommendations = ({
@@ -334,7 +337,8 @@ export const updateDiscoveryCache = async (
       );
       logger.info("discovery", `Found ${globalTop.length} trending artists.`);
     } catch (error) {
-      logger.error("discovery", `Failed to fetch global trending artists: ${error.message}`);
+      const failure = asAppError(error);
+      logger.error("discovery", `Failed to fetch global trending artists: ${failure?.message}`);
     }
 
     try {
@@ -344,7 +348,12 @@ export const updateDiscoveryCache = async (
         `Queued ${queuedUserRefreshes} personal recommendation refresh${queuedUserRefreshes === 1 ? "" : "es"}.`,
       );
     } catch (error) {
-      logger.warn("discovery", "Failed to queue personal recommendation refreshes:", error.message);
+      const failure = asAppError(error);
+      logger.warn(
+        "discovery",
+        "Failed to queue personal recommendation refreshes:",
+        failure?.message,
+      );
     }
 
     publishGlobalDiscovery({
@@ -365,7 +374,7 @@ export const updateDiscoveryCache = async (
 
     const { notifyDiscoveryUpdated } = await import("../notificationService.ts");
     notifyDiscoveryUpdated().catch((err) =>
-      logger.warn("discovery", "[Discovery] Notification failed:", err.message),
+      logger.warn("discovery", "[Discovery] Notification failed:", asAppError(err)?.message),
     );
     void recordHistory("recordDiscoveryUpdated", { recommendationCount: 0, genreCount: 0 });
 
@@ -376,21 +385,26 @@ export const updateDiscoveryCache = async (
       }
       dbOps.cleanOldMusicbrainzArtistMbidCache(90);
     } catch (e) {
-      logger.warn("discovery", "[Discovery] Failed to clean old image cache:", e.message);
+      logger.warn(
+        "discovery",
+        "[Discovery] Failed to clean old image cache:",
+        asAppError(e)?.message,
+      );
     }
   } catch (error) {
-    logger.error("discovery", "Failed to update discovery cache:", error.message);
-    logger.error("discovery", "Stack trace:", error.stack);
-    markDiscoveryRefreshFinished(null, { error: error.message });
+    const failure = asAppError(error);
+    logger.error("discovery", "Failed to update discovery cache:", failure?.message);
+    logger.error("discovery", "Stack trace:", failure?.stack);
+    markDiscoveryRefreshFinished(null, { error: failure?.message });
     websocketService.emitDiscoveryUpdate({
       isUpdating: false,
       configured: true,
       phase: "error",
       progress: 100,
       progressMessage: "Discovery refresh failed",
-      error: error.message,
+      error: failure?.message,
     });
-    void recordHistory("recordDiscoveryRefreshFailed", error.message);
+    void recordHistory("recordDiscoveryRefreshFailed", failure?.message);
   }
 };
 
@@ -400,8 +414,10 @@ const feedbackArtists = (feedback: DiscoveryFeedbackEntry[], action: string) =>
     .map((entry) => ({ mbid: entry.artistId, artistName: entry.artistName }));
 
 const collectUserSeeds = async (user: DiscoveryUser, feedback: DiscoveryFeedbackEntry[]) => {
-  let externalHistory = [];
   const profile = getListenHistoryProfile(user);
+  let externalHistory: (ListenHistoryArtist & {
+    source: typeof profile.listenHistoryProvider;
+  })[] = [];
   try {
     externalHistory = (await fetchListenHistoryArtists(profile, getLastfmDiscoveryPeriod())).map(
       (artist) => ({ ...artist, source: profile.listenHistoryProvider }),
@@ -409,7 +425,7 @@ const collectUserSeeds = async (user: DiscoveryUser, feedback: DiscoveryFeedback
   } catch (error) {
     logger.error(
       "discovery",
-      `[Discovery] Failed to fetch ${profile.listenHistoryProvider} artists for user ${user.id}: ${error.message}`,
+      `[Discovery] Failed to fetch ${profile.listenHistoryProvider} artists for user ${user.id}: ${asAppError(error)?.message}`,
     );
   }
   const localHistory = getTopPlayedArtists(user.id, { limit: 50 }).map((artist) => ({
@@ -581,17 +597,18 @@ export const updateUserDiscoveryCache = async (
     });
     return { refreshed: true, recommendationCount: recommendations.length };
   } catch (error) {
+    const failure = asAppError(error);
     logger.error(
       "discovery",
-      `[Discovery] Failed to build recommendations for user ${userId}: ${error.message}`,
+      `[Discovery] Failed to build recommendations for user ${userId}: ${failure?.message}`,
     );
-    markDiscoveryRefreshFinished(namespace, { error: error.message });
+    markDiscoveryRefreshFinished(namespace, { error: failure?.message });
     emitUserDiscoveryUpdate(userId, {
       isUpdating: false,
       phase: "error",
       progress: 100,
       progressMessage: "Discovery refresh failed",
-      error: error.message,
+      error: failure?.message,
     });
     throw error;
   }

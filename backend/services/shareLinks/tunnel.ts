@@ -1,3 +1,4 @@
+import { asAppError } from "../../../lib/errors.ts";
 import { spawn, type ChildProcess } from "node:child_process";
 import readline from "node:readline";
 import { logger } from "../logger.ts";
@@ -62,11 +63,12 @@ async function register(current: ShareTunnel, url: string) {
       return;
     } catch (error) {
       if (tunnel !== current) return;
-      const stillPropagating = error.status === 422 && Date.now() - foundAt < VERIFY_GRACE_MS;
+      const failure = asAppError(error);
+      const stillPropagating = failure?.status === 422 && Date.now() - foundAt < VERIFY_GRACE_MS;
       state = stillPropagating ? "starting" : "unreachable";
       if (!stillPropagating) {
         logger.warn("share", "Could not register the share tunnel with aurral.org:", {
-          message: error.message,
+          message: failure?.message,
         });
       }
       await new Promise((resolve) => {
@@ -143,7 +145,7 @@ export async function stopShareTunnel() {
     await callLookup("DELETE", {});
   } catch (error) {
     logger.warn("share", "Could not tell aurral.org the share tunnel stopped:", {
-      message: error.message,
+      message: asAppError(error)?.message,
     });
   }
 }

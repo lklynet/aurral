@@ -41,7 +41,7 @@ export async function fetchImportedPlaylistTracks({
   externalId: string;
   externalUsername?: string | null;
   forceRefresh?: boolean;
-} = {}): Promise<ImportedPlaylistTracks> {
+}): Promise<ImportedPlaylistTracks> {
   if (provider === "spotify-playlist") {
     const items = await spotifyClient.listPlaylistTracks(userId, externalId, { forceRefresh });
     const parsed = parseSpotifyPlaylistItems(items);
@@ -101,7 +101,7 @@ export async function enqueueImportedPlaylist({
   syncEnabled: boolean;
   syncIntervalHours: number;
   keepRemovedTracks: boolean;
-} = {}) {
+}) {
   const safePlaylistId = randomUUID();
   const importSource = normalizeImportSource({
     provider,

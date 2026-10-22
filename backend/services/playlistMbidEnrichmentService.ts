@@ -297,7 +297,7 @@ export async function enrichStaticPlaylistMbids(
   const rawResolutions = await mapWithConcurrency(snapshotTracks, 4, (track: PlaylistTrack) =>
     buildResolution(track, snapshotJobs, resolver, reconcileArtistMbids === true),
   );
-  const resolutions = rawResolutions.filter(Boolean);
+  const resolutions = rawResolutions.filter((resolution) => resolution !== null);
   for (const resolution of resolutions) {
     if (!isMissingMbid(resolution.resolvedTrack)) {
       tracksResolved += 1;

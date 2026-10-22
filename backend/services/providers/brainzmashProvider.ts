@@ -1,4 +1,5 @@
 import axios from "../../../lib/axiosFetch.ts";
+import { asAppError } from "../../../lib/errors.ts";
 import createCache from "../apiClients/simpleCache.ts";
 import { dbOps } from "../../db/helpers/index.ts";
 import {
@@ -49,6 +50,13 @@ type ArtistDetailAlbum = Omit<ReturnType<typeof toNormalizedArtistAlbum>, "ratin
   rating: NormalizedAlbum["rating"];
 };
 
+type SearchImage = ImageResponse & {
+  Url?: string | null;
+  url?: string | null;
+  CoverType?: string | null;
+  kind?: string | null;
+};
+
 interface AlbumSearchEntry {
   id?: string;
   title?: string;
@@ -57,7 +65,7 @@ interface AlbumSearchEntry {
   type?: string;
   secondarytypes?: string[];
   releasedate?: string;
-  images?: ImageResponse[];
+  images?: SearchImage[];
 }
 
 interface AlbumSearchItem {
@@ -185,7 +193,8 @@ function isEntityMetadataPath(path: string) {
 }
 
 export function isMetadataNotFoundError(error: unknown) {
-  return error?.code === "ERR_METADATA_NOT_FOUND" || error?.response?.status === 404;
+  const failure = asAppError(error);
+  return failure?.code === "ERR_METADATA_NOT_FOUND" || failure?.response?.status === 404;
 }
 
 function createMetadataNotFoundError() {
@@ -208,12 +217,15 @@ function createMetadataCircuitError(code: string, status: number, remainingMs: n
 }
 
 function isMetadataCircuitError(error: unknown) {
-  return error?.code === "ERR_METADATA_FORBIDDEN" || error?.code === "ERR_METADATA_RATE_LIMITED";
+  const failure = asAppError(error);
+  return (
+    failure?.code === "ERR_METADATA_FORBIDDEN" || failure?.code === "ERR_METADATA_RATE_LIMITED"
+  );
 }
 
 function getRetryAfterMs(error: unknown) {
-  const retryAfter =
-    error?.response?.headers?.["retry-after"] ?? error?.response?.headers?.["Retry-After"];
+  const headers = asAppError(error)?.response?.headers;
+  const retryAfter = headers?.["retry-after"] ?? headers?.["Retry-After"];
   const seconds = Number(retryAfter);
   if (Number.isFinite(seconds) && seconds >= 0) {
     return Math.min(
@@ -234,15 +246,13 @@ function getRetryAfterMs(error: unknown) {
 function getMetadataCircuitError(baseUrl: string) {
   const now = Date.now();
   const budget = getMetadataProviderBudget(baseUrl);
-  if (budget.forbidden_until > now) {
-    return createMetadataCircuitError("ERR_METADATA_FORBIDDEN", 403, budget.forbidden_until - now);
+  const forbiddenUntil = budget.forbidden_until ?? 0;
+  const rateLimitedUntil = budget.rate_limited_until ?? 0;
+  if (forbiddenUntil > now) {
+    return createMetadataCircuitError("ERR_METADATA_FORBIDDEN", 403, forbiddenUntil - now);
   }
-  if (budget.rate_limited_until > now) {
-    return createMetadataCircuitError(
-      "ERR_METADATA_RATE_LIMITED",
-      429,
-      budget.rate_limited_until - now,
-    );
+  if (rateLimitedUntil > now) {
+    return createMetadataCircuitError("ERR_METADATA_RATE_LIMITED", 429, rateLimitedUntil - now);
   }
   return null;
 }
@@ -252,10 +262,20 @@ function openMetadataCircuit(baseUrl: string, status: number, error: unknown) {
   setMetadataProviderCooldown(baseUrl, status, Date.now() + cooldownMs);
 }
 
+const RETRYABLE_ERROR_CODES: (string | undefined)[] = [
+  "ECONNABORTED",
+  "ETIMEDOUT",
+  "ECONNRESET",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+];
+const RETRYABLE_STATUSES: (number | undefined)[] = [408, 425, 429, 500, 502, 503, 504];
+
 function isRetryable(error: unknown) {
+  const failure = asAppError(error);
   return (
-    ["ECONNABORTED", "ETIMEDOUT", "ECONNRESET", "ENOTFOUND", "EAI_AGAIN"].includes(error?.code) ||
-    [408, 425, 429, 500, 502, 503, 504].includes(error?.response?.status)
+    RETRYABLE_ERROR_CODES.includes(failure?.code) ||
+    RETRYABLE_STATUSES.includes(failure?.response?.status)
   );
 }
 
@@ -385,18 +405,20 @@ function refreshMetadata<T>(
           return response.data;
         } catch (error) {
           if (sharedSignal.aborted) throw sharedSignal.reason || error;
+          const failure = asAppError(error);
+          const status = failure?.response?.status;
           healthState.lastFailureAt = healthState.lastCheckedAt;
           healthState.lastFailureReason =
-            error?.response?.status != null
-              ? `HTTP ${error.response.status}`
-              : error?.code || error?.message || "Unknown error";
-          if ([403, 429].includes(error?.response?.status)) {
+            status != null
+              ? `HTTP ${status}`
+              : failure?.code || failure?.message || "Unknown error";
+          if (status === 403 || status === 429) {
             if (!isMetadataCircuitError(error)) {
-              openMetadataCircuit(baseUrl, error.response.status, error);
+              openMetadataCircuit(baseUrl, status, error);
             }
             throw error;
           }
-          if (error?.response?.status === 404 && isEntityMetadataPath(path)) {
+          if (status === 404 && isEntityMetadataPath(path)) {
             forgetMetadata(cacheKey);
             metadataNotFoundCache.set(cacheKey, true);
           }
@@ -961,7 +983,7 @@ export async function legacyMusicbrainzRequest(
     return {
       count: result.count,
       offset: result.offset,
-      artists: result.items.map((item) => toLegacySearchArtistResult(item, item.score)),
+      artists: result.items.map((item) => toLegacySearchArtistResult(item)),
     };
   }
 

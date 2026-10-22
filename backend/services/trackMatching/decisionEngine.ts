@@ -37,6 +37,10 @@ function isYoutubeSong(candidate: NormalizedCandidate) {
   return candidate.source === "ytdlp" && candidate.raw?.song === true;
 }
 
+function isNormalizedCandidate(entry: SearchResult): entry is NormalizedCandidate {
+  return Boolean(entry?.source);
+}
+
 function normalizeSourceCandidates(
   source: string | undefined,
   candidates: SearchResult[],
@@ -48,9 +52,9 @@ function normalizeSourceCandidates(
   ) as string[];
   return candidates
     .map((entry) =>
-      entry?.source
+      isNormalizedCandidate(entry)
         ? entry
-        : normalizeCandidate(source, entry, {
+        : normalizeCandidate<RawSearchResult>(source, entry, {
             capabilities:
               entry?.song === true ? { ...capabilities, structuredArtist: true } : capabilities,
             parseFilename: Boolean(capabilities.filename && !entry?.title),
@@ -91,7 +95,7 @@ function matcherCandidate(
     title: candidate.filenameTitle || parsed?.title || candidate.cleanedTitle || candidate.title,
     artists: candidate.artists?.length
       ? candidate.artists
-      : evidence?.folder?.artistScore >= 92
+      : (evidence?.folder?.artistScore ?? 0) >= 92
         ? [request.artistName].filter(Boolean)
         : [],
     durationMs: candidate.durationMs,
@@ -153,8 +157,8 @@ function evaluate(
         evidence?.folder?.ambiguousTitleAlbumArtist === true ||
         siblingConflict;
       const strongFolder =
-        evidence?.folder?.artistScore >= 92 &&
-        evidence?.folder?.albumScore >= 92 &&
+        (evidence?.folder?.artistScore ?? 0) >= 92 &&
+        (evidence?.folder?.albumScore ?? 0) >= 92 &&
         match.titleSimilarity === 1;
       // A song with the requested artist, title, and length is the recording.
       // On the requested album it leaves nothing to choose between, even
@@ -167,7 +171,7 @@ function evaluate(
         song &&
         match.contradictions.length === 0 &&
         match.titleSimilarity === 1 &&
-        match.artistSimilarity >= MATCH_POLICY.minArtistSimilarity &&
+        (match.artistSimilarity ?? 0) >= MATCH_POLICY.minArtistSimilarity &&
         match.durationGapMs != null &&
         match.durationGapMs <= MATCH_POLICY.selectedDurationGapMs;
       const songOffAlbum = song && !songOnRequestedAlbum;

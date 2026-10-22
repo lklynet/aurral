@@ -143,5 +143,5 @@ export async function fetchKoitoTopArtists(
         playcount: parseInt(artist.listen_count || 0, 10) || 0,
       };
     })
-    .filter(Boolean);
+    .filter((artist) => artist !== null);
 }

@@ -9,21 +9,23 @@ const upsertSettingStmt = db.prepare<[string, string | null]>(
   "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
 );
 
-const readStore = () => {
-  const parsed = dbHelpers.parseJSON(getSettingStmt.get(SETTINGS_KEY)?.value);
-  return parsed && typeof parsed === "object" ? parsed : {};
-};
-
-const writeStore = (store: unknown) => {
-  upsertSettingStmt.run(SETTINGS_KEY, dbHelpers.stringifyJSON(store));
-};
-
 type StoredPointer = {
   location?: unknown;
   ratingKey?: unknown;
   title?: unknown;
   description?: unknown;
   updatedAt?: unknown;
+};
+
+type PointerStore = Record<string, Record<string, StoredPointer>>;
+
+const readStore = (): PointerStore => {
+  const parsed = dbHelpers.parseJSON(getSettingStmt.get(SETTINGS_KEY)?.value);
+  return parsed && typeof parsed === "object" ? parsed : {};
+};
+
+const writeStore = (store: PointerStore) => {
+  upsertSettingStmt.run(SETTINGS_KEY, dbHelpers.stringifyJSON(store));
 };
 
 const normalizePointer = (raw: StoredPointer | null | undefined) => {
@@ -100,6 +102,6 @@ export const plexPlaylistPointerStore = {
         const pointer = normalizePointer(raw);
         return pointer ? { targetKey, ...pointer } : null;
       })
-      .filter(Boolean);
+      .filter((pointer) => pointer !== null);
   },
 };

@@ -230,6 +230,14 @@ const MERGEABLE_VARIANT_KEYS: (keyof VariantProfile)[] = [
   "contentRating",
 ];
 
+function setVariant<Key extends keyof VariantProfile>(
+  profile: VariantProfile,
+  key: Key,
+  value: VariantProfile[Key],
+) {
+  profile[key] = value;
+}
+
 export function mergeVariantProfiles(
   primary: VariantProfile,
   secondary: Partial<VariantProfile> | null,
@@ -237,7 +245,7 @@ export function mergeVariantProfiles(
   if (!secondary) return primary;
   const merged = { ...primary };
   for (const key of MERGEABLE_VARIANT_KEYS) {
-    if (secondary[key]) merged[key] = secondary[key];
+    if (secondary[key]) setVariant(merged, key, secondary[key]);
   }
   return merged;
 }
@@ -289,7 +297,7 @@ export function buildRequestVariantProfile(request: VariantRequest | null) {
   if (!requested || typeof requested !== "object") return fromTitle;
   const merged = { ...fromTitle };
   for (const key of MERGEABLE_VARIANT_KEYS) {
-    if (requested[key] != null) merged[key] = requested[key];
+    if (requested[key] != null) setVariant(merged, key, requested[key]);
   }
   return merged;
 }

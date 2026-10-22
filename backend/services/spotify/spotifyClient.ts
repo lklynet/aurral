@@ -1,3 +1,4 @@
+import { asAppError } from "../../../lib/errors.ts";
 import { SPOTIFY_API_BASE, SPOTIFY_RENEW_URI } from "./spotifyConfig.ts";
 import { spotifyConnectionStore, type SpotifyConnection } from "./spotifyConnectionStore.ts";
 import createCache from "../apiClients/simpleCache.ts";
@@ -159,8 +160,8 @@ const refreshConnection = (
 ): Promise<SpotifyConnection> =>
   runSharedInflight(tokenRefreshInflight, String(userId), async (signal: AbortSignal) => {
     const latest = spotifyConnectionStore.getConnection(userId);
-    if (!force && latest?.expiresAt - TOKEN_REFRESH_BUFFER_MS > Date.now()) {
-      return latest!;
+    if (!force && latest && latest.expiresAt - TOKEN_REFRESH_BUFFER_MS > Date.now()) {
+      return latest;
     }
     const renewed = await renewAccessToken(latest?.refreshToken || refreshToken, signal);
     const current = spotifyConnectionStore.getConnection(userId);
@@ -185,7 +186,7 @@ async function getValidConnection(userId: number) {
   try {
     return await refreshConnection(userId, connection.refreshToken);
   } catch (error) {
-    if (error?.statusCode === 401) throw invalidateConnection(userId, connection);
+    if (asAppError(error)?.statusCode === 401) throw invalidateConnection(userId, connection);
     throw error;
   }
 }
@@ -218,7 +219,7 @@ async function spotifyRequest(
           ? latest
           : await refreshConnection(userId, connection.refreshToken, { force: true });
     } catch (error) {
-      if (error?.statusCode === 401) throw invalidateConnection(userId, connection);
+      if (asAppError(error)?.statusCode === 401) throw invalidateConnection(userId, connection);
       throw error;
     }
     response = await fetch(url, {

@@ -1,3 +1,4 @@
+import { asAppError } from "../../../lib/errors.ts";
 import { userOps } from "../../db/helpers/index.ts";
 import { parseLastfmStation } from "./lastfmTracks.ts";
 
@@ -64,7 +65,7 @@ async function requestStation(username: string, stationId: string) {
     }
     return parseLastfmStation(await response.json());
   } catch (error) {
-    if (error?.name === "AbortError") {
+    if (asAppError(error)?.name === "AbortError") {
       const timeoutError: CodedError = new Error("Last.fm station request timed out");
       timeoutError.statusCode = 504;
       throw timeoutError;

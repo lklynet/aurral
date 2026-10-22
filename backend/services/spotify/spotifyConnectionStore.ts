@@ -46,7 +46,7 @@ const encryptToken = (value: string) => {
 
 const decryptToken = (value: unknown) => {
   const key = getSettingsEncryptionKey();
-  return decryptWithKey(value, key);
+  return decryptWithKey(typeof value === "string" ? value : null, key);
 };
 
 const normalizeConnection = (raw: StoredSpotifyConnection | null) => {

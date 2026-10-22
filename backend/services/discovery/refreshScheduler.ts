@@ -1,3 +1,4 @@
+import { asAppError } from "../../../lib/errors.ts";
 import { dbOps } from "../../db/helpers/index.ts";
 import { getMusicDataSourceName } from "../musicDataSource/index.ts";
 import {
@@ -30,7 +31,7 @@ function isWorkerAlive(workerId: string | null) {
     process.kill(Number(match[1]), 0);
     return true;
   } catch (error) {
-    return error?.code === "EPERM";
+    return asAppError(error)?.code === "EPERM";
   }
 }
 

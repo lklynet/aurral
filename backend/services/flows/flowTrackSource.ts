@@ -2,6 +2,7 @@ import { lastfmRequest } from "../apiClients/index.ts";
 import * as musicData from "../musicDataSource/index.ts";
 import { getUserDiscovery } from "../discovery/userDiscovery.ts";
 import { userOps } from "../../db/helpers/index.ts";
+import { asAppError } from "../../../lib/errors.ts";
 import { logger } from "../logger.ts";
 import { normalizeWeightMap, type FlowConfig } from "../playlists/flowPlaylistConfig.ts";
 import { getBlockedArtistKeys } from "../discovery/feedback.ts";
@@ -153,8 +154,21 @@ type FocusArtistCandidate = {
 
 type ArtistRef = string | ArtistMatchFields;
 
+type HarvestArtist = ArtistMatchFields & {
+  sampleTrack?: { trackName?: string | null; albumName?: string | null } | null;
+};
+
 type AlbumTrackRow = Partial<
-  NormalizedTrack & ArtistTopTrack & { releaseMbid: string | null; "@attr": { rank: string } }
+  NormalizedTrack &
+    ArtistTopTrack & {
+      releaseMbid: string | null;
+      "@attr": { rank: string };
+      attr: { rank: string };
+      trackName: string;
+      position: number | string;
+      track_number: number | string;
+      recordingMbid: string;
+    }
 >;
 
 type SourceBucket = { key: string; count: number; tracks: FlowTrackEntry[] };
@@ -285,7 +299,7 @@ export class FlowTrackSource {
   }
 
   async _harvestTopTracksFromArtists(
-    artists: ArtistMatchFields[],
+    artists: HarvestArtist[],
     limit: number,
     options: FlowStageOptions = {},
   ) {
@@ -1172,7 +1186,7 @@ export class FlowTrackSource {
     );
     const missing = keys
       .map((key, index) => ({ key, index }))
-      .filter(({ key }) => key && !(this.artistTopTagsCache.get(key)?.expiresAt > now));
+      .filter(({ key }) => key && !((this.artistTopTagsCache.get(key)?.expiresAt ?? 0) > now));
     if (missing.length > 0) {
       const lists: { name: string }[][] = await musicData.getArtistTagLists(
         missing.map(({ index }) => ({
@@ -1216,7 +1230,7 @@ export class FlowTrackSource {
         }
         const similarArtists = await this._getSimilarArtists(seed, 75).catch(() => []);
         for (const artist of similarArtists) {
-          const artistName = String(artist?.name || artist?.artistName || "").trim();
+          const artistName = String(artist?.name || "").trim();
           const key = this._artistKey(artistName);
           if (!key) continue;
           const current = matchMap.get(key) || {
@@ -1467,18 +1481,14 @@ export class FlowTrackSource {
       const seedKey = this._artistKey(group.seed);
       for (let index = 0; index < group.artists.length; index += 1) {
         const artist = group.artists[index];
-        const artistName = String(artist?.name || artist?.artistName || "").trim();
-        const entry = ensureEntry(
-          artistName,
-          artist?.mbid || artist?.id || artist?.foreignArtistId || null,
-        );
+        const artistName = String(artist?.name || "").trim();
+        const entry = ensureEntry(artistName, artist?.mbid || null);
         if (!entry) continue;
         entry.relatedSeeds.add(seedKey);
         entry.relatedRankSum += index + 1;
         entry.popularityHint = Math.max(
           entry.popularityHint,
-          Math.log10(1 + Math.max(0, Number(artist?.listeners || 0))) +
-            Math.max(0, Number(artist?.match || 0)),
+          Math.log10(1) + Math.max(0, Number(artist?.match || 0)),
         );
       }
     }
@@ -1656,7 +1666,7 @@ export class FlowTrackSource {
     const skipSource = (sourceName: string) => (error: unknown) => {
       logger.warn(
         "flows",
-        `Skipped the ${sourceName} source for flow ${flow?.id || "preview"}: ${error.message}`,
+        `Skipped the ${sourceName} source for flow ${flow?.id || "preview"}: ${asAppError(error)?.message}`,
       );
       return [];
     };
@@ -2194,7 +2204,7 @@ export class FlowTrackSource {
           } catch (error) {
             console.warn(
               `[FlowTrackSource] Failed to get Mix tracks for ${artistName}:`,
-              error.message,
+              asAppError(error)?.message,
             );
             return null;
           }
@@ -2398,7 +2408,7 @@ export class FlowTrackSource {
       },
     );
 
-    return resolved.filter(Boolean).slice(0, limit);
+    return resolved.filter((track) => track !== null).slice(0, limit);
   }
 }
 

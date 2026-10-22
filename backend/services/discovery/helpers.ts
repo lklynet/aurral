@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import pMap from "p-map";
+import pMap, { pMapSkip } from "p-map";
 import { dbOps } from "../../db/helpers/index.ts";
 import type { ArtistMatchFields } from "./artistKeys.ts";
 
@@ -178,10 +178,10 @@ export const interleaveLists = <T>(...lists: T[][]): T[] => {
 };
 export { getDiscoveryCandidateLimit };
 
-export const mapWithConcurrency = async (
-  items,
+export const mapWithConcurrency = async <T, R>(
+  items: readonly T[] | null | undefined,
   concurrency: number,
-  worker,
+  worker: (item: T, index: number) => R | Promise<R>,
   { stopOnError = false } = {},
 ) => {
   const list = Array.isArray(items) ? items : [];
@@ -191,12 +191,12 @@ export const mapWithConcurrency = async (
   const results = await pMap(
     list,
     async (item, index) => {
-      if (firstError) return undefined;
+      if (firstError) return pMapSkip;
       try {
         return await worker(item, index);
       } catch (error) {
         firstError ??= error;
-        return undefined;
+        return pMapSkip;
       }
     },
     options,

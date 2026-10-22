@@ -460,7 +460,9 @@ export class DeemixClient {
       timeout: 45000,
     });
     if (data?.error) throw new Error(`deemix search failed: ${data.error}`);
-    return (Array.isArray(data?.data) ? data.data : []).map(normalizeTrack).filter(Boolean);
+    return (Array.isArray(data?.data) ? data.data : [])
+      .map(normalizeTrack)
+      .filter((entry) => entry !== null);
   }
 
   async searchAlbums(query: string, { limit = 10 }: { limit?: number } = {}) {
@@ -473,7 +475,9 @@ export class DeemixClient {
       timeout: 45000,
     });
     if (data?.error) throw new Error(`deemix album search failed: ${data.error}`);
-    return (Array.isArray(data?.data) ? data.data : []).map(normalizeAlbum).filter(Boolean);
+    return (Array.isArray(data?.data) ? data.data : [])
+      .map(normalizeAlbum)
+      .filter((entry) => entry !== null);
   }
 
   async getAlbumTracks(albumId: string) {
@@ -488,7 +492,7 @@ export class DeemixClient {
     return (Array.isArray(data?.tracks) ? data.tracks : [])
       .filter((entry) => entry?.type !== "disc_separator")
       .map(normalizeAlbumTrack)
-      .filter(Boolean);
+      .filter((entry) => entry !== null);
   }
 
   async addToQueue(trackUrl: string, trackId: string) {

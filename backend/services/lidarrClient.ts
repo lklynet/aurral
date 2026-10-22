@@ -1900,7 +1900,7 @@ export class LidarrClient {
     return mapWithConcurrency(
       albumMbids,
       LIDARR_ALBUM_LOOKUP_CONCURRENCY,
-      async (albumMbid: string) => {
+      async (albumMbid: string): Promise<PromiseSettledResult<LidarrAlbum | undefined>> => {
         try {
           return { status: "fulfilled", value: await this.getAlbumByMbid(albumMbid, options) };
         } catch (reason) {

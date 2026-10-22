@@ -56,7 +56,7 @@ type EditorialGenres = Awaited<ReturnType<typeof loadShelf>>["genres"];
 
 let shelfCache: { genres: EditorialGenres; expiresAt: number } | null = null;
 let shelfRequest: Promise<EditorialGenres> | null = null;
-const tagSearchCache = new Map();
+const tagSearchCache = new Map<string, { playlists: PlaylistSummary[]; expiresAt: number }>();
 
 const providerError = (message: string, statusCode: number, code: string) => {
   const error: Error & { statusCode?: number; code?: string } = new Error(message);
@@ -129,6 +129,8 @@ const normalizePlaylistSummary = (playlist: DeezerPlaylistPayload | null | undef
     curator: String(playlist?.user?.name || playlist?.creator?.name || "").trim() || null,
   };
 };
+
+type PlaylistSummary = NonNullable<ReturnType<typeof normalizePlaylistSummary>>;
 
 const normalizeTracks = (rows: DeezerTrackPayload[]) => {
   const stats = {
@@ -274,7 +276,7 @@ export async function searchEditorialPlaylists(tag: unknown) {
   const playlists = (Array.isArray(body.data) ? body.data : [])
     .filter(isEditorPlaylist)
     .map(normalizePlaylistSummary)
-    .filter(Boolean);
+    .filter((playlist): playlist is PlaylistSummary => playlist !== null);
   tagSearchCache.set(key, { playlists, expiresAt: Date.now() + SHELF_TTL_MS });
   return playlists;
 }

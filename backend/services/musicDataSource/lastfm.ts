@@ -220,7 +220,7 @@ export const lastfmSource = {
             parseInt(String(artist?.["@attr"]?.rank || artist?.rank || 0), 10) || null,
         };
       })
-      .filter(Boolean);
+      .filter((artist): artist is MusicTrendingArtist => artist !== null);
   },
 
   async getTrendingTracks({ limit = 50 } = {}) {

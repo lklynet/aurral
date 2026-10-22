@@ -22,7 +22,7 @@ type StoredPlexConnection = {
   plexUsername?: unknown;
   linkedByAdminId?: unknown;
   connectedAt?: unknown;
-  lastError?: unknown;
+  lastError?: { message?: unknown; at?: unknown } | null;
 };
 
 type PlexLinkInput = {
@@ -51,9 +51,9 @@ const encryptToken = (value: string | null | undefined) => {
   return encryptWithKey(String(value || ""), key);
 };
 
-const decryptToken = (value: string | null | undefined) => {
+const decryptToken = (value: unknown) => {
   const key = getSettingsEncryptionKey();
-  return decryptWithKey(value, key);
+  return decryptWithKey(typeof value === "string" ? value : null, key);
 };
 
 const normalizeConnection = (raw: StoredPlexConnection | null) => {

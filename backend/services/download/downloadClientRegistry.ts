@@ -1,14 +1,17 @@
-import { assertDownloadClient } from "./downloadClient.ts";
+import { assertDownloadClient, type DownloadClient } from "./downloadClient.ts";
 
-export class DownloadClientRegistry {
-  constructor(clients = []) {
+export class DownloadClientRegistry<Client extends DownloadClient> {
+  clients: Client[];
+  byKey: Map<string, Client>;
+
+  constructor(clients: Client[] = []) {
     if (!Array.isArray(clients)) {
       throw new TypeError("DownloadClientRegistry requires an array");
     }
-    const keys = new Set();
+    const keys = new Set<string>();
     this.clients = clients.map((client) => {
       assertDownloadClient(client);
-      for (const property of ["key", "name"]) {
+      for (const property of ["key", "name"] as const) {
         if (typeof client[property] !== "string" || !client[property].trim()) {
           throw new TypeError(`DownloadClient.${property} must be a non-empty string`);
         }
@@ -22,13 +25,13 @@ export class DownloadClientRegistry {
     this.byKey = new Map(this.clients.map((client) => [client.key, client]));
   }
 
-  updateConfig(integrations = {}) {
+  updateConfig(integrations: Record<string, unknown> = {}) {
     for (const client of this.clients) {
       client.updateConfig(integrations[client.key] || {});
     }
   }
 
-  get(key) {
+  get(key: unknown) {
     return this.byKey.get(String(key || "")) || null;
   }
 
