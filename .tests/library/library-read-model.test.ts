@@ -119,6 +119,10 @@ test("library read model preserves non-MBID provider artist identity", () => {
   assert.equal(result.artists[0].providerId, 42);
   assert.equal(result.artists[0].mbid, null);
   assert.equal(result.artists[0].foreignArtistId, "705@deezer");
+  assert.equal(
+    findLibraryArtist(result.artists, "lidarr-artist:705@deezer")?.name,
+    "Provider Artist",
+  );
 });
 
 test("library file reads prefer the album manager before Lidarr", () => {

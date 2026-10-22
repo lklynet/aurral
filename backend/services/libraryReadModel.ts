@@ -114,6 +114,7 @@ const buildArtist = (
   return {
     id: artist.id,
     canonicalId: artist.id,
+    identityKey: artist.identityKey,
     providerId,
     lidarrManaged: artist.metadata?.librarySource === "lidarr",
     source: artist.source || (artist.sources?.length === 1 ? artist.sources[0] : null),
