@@ -9,7 +9,7 @@ import {
 import { dbOps } from "../../../db/helpers/index.ts";
 import { cacheMiddleware } from "../../../middleware/cache.ts";
 import { requireAuth } from "../../../middleware/requirePermission.ts";
-import { buildArtistRequestKey, pendingArtistRequests } from "../utils.ts";
+import { buildArtistRequestKey, pendingArtistRequests, queryText } from "../utils.ts";
 import { getArtistByMbid } from "../../../services/providers/brainzmashProvider.ts";
 import { invalidateArtistImage } from "../../../services/imageService.ts";
 import {
@@ -259,7 +259,7 @@ export function registerDetails(router: Router) {
           ? null
           : await getArtistByMbid(resolvedMbid).catch(() => null);
         const name =
-          (req.query.artistName || "").trim() ||
+          queryText(req.query.artistName) ||
           metadataArtist?.name ||
           (await musicbrainzGetArtistNameByMbid(resolvedMbid)) ||
           "Unknown Artist";
@@ -294,7 +294,7 @@ export function registerDetails(router: Router) {
         res.setHeader("Content-Type", "application/json");
         res.json(data);
       } catch (error) {
-        const artistNameParam = (req.query.artistName || "").trim();
+        const artistNameParam = queryText(req.query.artistName);
         const fallback = {
           id: resolvedMbid,
           name: artistNameParam || "Unknown Artist",

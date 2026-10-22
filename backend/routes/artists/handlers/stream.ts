@@ -8,7 +8,7 @@ import {
 import { dbOps } from "../../../db/helpers/index.ts";
 import { noCache } from "../../../middleware/cache.ts";
 import { verifyTokenAuth } from "../../../middleware/auth.ts";
-import { sendSSE } from "../utils.ts";
+import { queryText, sendSSE } from "../utils.ts";
 import { logger } from "../../../services/logger.ts";
 import { getArtistImage } from "../../../services/imageService.ts";
 import { attachCachedCoverUrls } from "../../../services/releaseGroupCoverService.ts";
@@ -30,7 +30,7 @@ export function registerStream(router: Router) {
   router.get<"/:mbid/stream">("/:mbid/stream", noCache, async (req, res) => {
     try {
       const { mbid } = req.params;
-      const streamArtistName = (req.query.artistName || "").trim();
+      const streamArtistName = queryText(req.query.artistName);
       const selectedReleaseTypes =
         typeof req.query.releaseTypes === "string" && req.query.releaseTypes.trim()
           ? req.query.releaseTypes

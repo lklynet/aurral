@@ -8,6 +8,7 @@ import { UUID_REGEX } from "../../../../lib/uuid.ts";
 import { cacheMiddleware } from "../../../middleware/cache.ts";
 import { getArtistByMbid } from "../../../services/providers/brainzmashProvider.ts";
 import { getLinkedDeezerArtistId } from "../../../services/providers/brainzmashMappers.ts";
+import { queryText } from "../utils.ts";
 
 type MbidRequest = Request<{ mbid: string }>;
 
@@ -22,7 +23,7 @@ export function registerPreview(router: Router) {
       });
     }
 
-    const artistNameParam = (req.query.artistName || "").trim();
+    const artistNameParam = queryText(req.query.artistName);
     const override = dbOps.getArtistOverride(mbid);
     let deezerArtistId = override?.deezerArtistId || null;
     if (!deezerArtistId) {

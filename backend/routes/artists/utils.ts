@@ -15,6 +15,8 @@ export const sendSSE = (res: Response & { flush?: () => void }, event: string, d
   }
 };
 
+export const queryText = (value: unknown) => (typeof value === "string" ? value.trim() : "");
+
 export const pendingArtistRequests = new Map();
 
 export const buildArtistRequestKey = ({
