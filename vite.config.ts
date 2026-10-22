@@ -13,6 +13,7 @@ const [tokenSource, sharedControlExceptions] = await Promise.all([
 const tokenNames = tokenSource.declarations.map(({ name }) => name);
 
 const testSetup = {
+  globalSetup: ".tests/global-setup.ts",
   setupFiles: [".tests/setup-env.ts", ".tests/setup-vitest.ts"],
   restoreMocks: true,
   testTimeout: 60_000,
