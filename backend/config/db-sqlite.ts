@@ -444,6 +444,8 @@ db.exec(`
     ON library_albums (title COLLATE NOCASE);
   CREATE INDEX IF NOT EXISTS idx_library_albums_release_date
     ON library_albums (release_date DESC);
+  CREATE INDEX IF NOT EXISTS idx_library_albums_provider_id
+    ON library_albums (CAST(CASE WHEN json_valid(metadata_json) THEN json_extract(metadata_json, '$.id') END AS TEXT));
   CREATE INDEX IF NOT EXISTS idx_library_release_calendar_artist
     ON library_release_calendar (artist_id);
   CREATE INDEX IF NOT EXISTS idx_library_release_calendar_date
@@ -464,6 +466,8 @@ db.exec(`
     ON library_tracks (title COLLATE NOCASE);
   CREATE INDEX IF NOT EXISTS idx_library_tracks_mbid
     ON library_tracks (mbid);
+  CREATE INDEX IF NOT EXISTS idx_library_tracks_provider_id
+    ON library_tracks (CAST(CASE WHEN json_valid(metadata_json) THEN json_extract(metadata_json, '$.id') END AS TEXT));
   CREATE INDEX IF NOT EXISTS idx_library_media_files_track_id
     ON library_media_files (track_id);
   CREATE INDEX IF NOT EXISTS idx_library_media_files_track_source_available
