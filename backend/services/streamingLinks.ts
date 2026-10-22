@@ -425,7 +425,8 @@ async function matchTrackMbid(
   trackTitle: string | null | undefined,
 ) {
   if (!albumMbid || !trackTitle) return null;
-  const tracks = await getAlbumTracksByAlbumMbid(albumMbid).catch(() => []);
+  const tracks: Awaited<ReturnType<typeof getAlbumTracksByAlbumMbid>> =
+    await getAlbumTracksByAlbumMbid(albumMbid).catch(() => []);
   return matchTrackByTitle(tracks, trackTitle)?.recordingId || null;
 }
 

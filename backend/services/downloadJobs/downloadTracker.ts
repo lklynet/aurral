@@ -505,7 +505,7 @@ function discardReviewFiles(
     : jobs.filter((job) => job?.status === "blocked" && job.stagingPath).map((job) => ({ ...job }));
   const held = jobs
     .filter((job) => job?.heldForReview && job.heldForReview.sourcePath !== job.stagingPath)
-    .map((job) => [job.id, job.heldForReview]);
+    .map((job): [string, DownloadJob["heldForReview"]] => [job.id, job.heldForReview]);
   if (reviewed.length === 0 && held.length === 0) return;
   import("./reviewFiles.ts")
     .then(async ({ discardReviewFile, discardHeldFile }) => {

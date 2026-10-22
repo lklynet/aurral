@@ -1,5 +1,7 @@
 import { db } from "../../config/db-sqlite.ts";
-import { downloadTracker } from "./downloadTracker.ts";
+import { downloadTracker, type DownloadJob, type JobFields } from "./downloadTracker.ts";
+import type { HonkerPayload } from "../honkerDb.ts";
+import type { HonkerLiveRow, PlaylistDownloadJobsRow, SettingsRow } from "../../db/rows.ts";
 import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.ts";
 import {
   beginDownloadAttempt,
@@ -10,9 +12,16 @@ import {
 import { buildAurralTrackDestination } from "../downloadPaths.ts";
 import { sanitizePathPart } from "../downloadUtils.ts";
 
-const settingStmt = db.prepare("SELECT value FROM settings WHERE key = ?");
-const saveSettingStmt = db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)");
-const ownerStmt = db.prepare(
+const settingStmt = db.prepare<[string], Pick<SettingsRow, "value">>(
+  "SELECT value FROM settings WHERE key = ?",
+);
+const saveSettingStmt = db.prepare<[string, string]>(
+  "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+);
+const ownerStmt = db.prepare<
+  [string],
+  Pick<PlaylistDownloadJobsRow, "playlist_id" | "playlist_type" | "playlist_generation">
+>(
   "SELECT playlist_id, playlist_type, playlist_generation FROM playlist_download_jobs WHERE id = ?",
 );
 const pruneSettledTransfersStmt = db.prepare(`
@@ -22,12 +31,40 @@ const pruneSettledTransfersStmt = db.prepare(`
     WHERE job.status IN ('pending', 'downloading', 'blocked'))
 `);
 
-function readTransfers(jobId) {
+type DownloadTransfer = {
+  fromJobId: string;
+  fromPlaylistId: string;
+  fromGeneration: number;
+  fromAttemptId: string | null;
+  toJobId: string;
+  toPlaylistId: string;
+  toGeneration: number;
+  toAttemptId: string | null;
+  destination: string;
+  track: Pick<
+    DownloadJob,
+    | "artistName"
+    | "trackName"
+    | "albumName"
+    | "artistMbid"
+    | "albumMbid"
+    | "trackMbid"
+    | "releaseYear"
+    | "durationMs"
+    | "trackNumber"
+    | "discNumber"
+    | "albumTrackCount"
+    | "albumTrackTitles"
+    | "artistAliases"
+  >;
+};
+
+function readTransfers(jobId: string): DownloadTransfer[] {
   const row = settingStmt.get(`downloadJobTransfers:${jobId}`);
   return row ? JSON.parse(row.value) : [];
 }
 
-function currentJob(jobId) {
+function currentJob(jobId: string) {
   const job = downloadTracker.getJob(jobId);
   const row = ownerStmt.get(jobId);
   return job && row
@@ -40,7 +77,9 @@ function currentJob(jobId) {
     : null;
 }
 
-export function downloadDestinationForJob(job) {
+export function downloadDestinationForJob(
+  job: Pick<DownloadJob, "artistName" | "albumName"> & JobFields<"playlistId" | "playlistType">,
+) {
   return buildAurralTrackDestination(
     job.playlistId || job.playlistType,
     sanitizePathPart(job.artistName, "Unknown Artist"),
@@ -49,7 +88,7 @@ export function downloadDestinationForJob(job) {
   );
 }
 
-export function resolveTransferredDownloadPayload(original) {
+export function resolveTransferredDownloadPayload(original: HonkerPayload) {
   let payload = original;
   for (let index = 0; index < 64; index++) {
     const job = currentJob(payload.jobId);
@@ -77,7 +116,7 @@ export function resolveTransferredDownloadPayload(original) {
   return { ...payload, downloadAttemptId: "invalid-transfer-chain" };
 }
 
-function applyTransfer(payload, transfer) {
+function applyTransfer(payload: HonkerPayload, transfer: DownloadTransfer) {
   return {
     ...payload,
     jobId: transfer.toJobId,
@@ -87,12 +126,23 @@ function applyTransfer(payload, transfer) {
     destination: transfer.destination,
     track: transfer.track,
     ...(payload.albumGroupJobIds && transfer.fromJobId !== transfer.toJobId
-      ? { albumGroupJobIds: payload.albumGroupJobIds.filter((id) => id !== transfer.fromJobId) }
+      ? {
+          albumGroupJobIds: payload.albumGroupJobIds.filter(
+            (id: string) => id !== transfer.fromJobId,
+          ),
+        }
       : {}),
   };
 }
 
-function recordTransfer(from, to, fromAttemptId, toAttemptId) {
+type OwnedJob = NonNullable<ReturnType<typeof currentJob>>;
+
+function recordTransfer(
+  from: OwnedJob,
+  to: OwnedJob,
+  fromAttemptId: string | null,
+  toAttemptId: string | null,
+) {
   pruneSettledTransfersStmt.run();
   const transfers = readTransfers(from.id);
   const transfer = {
@@ -124,9 +174,11 @@ function recordTransfer(from, to, fromAttemptId, toAttemptId) {
   transfers.push(transfer);
   saveSettingStmt.run(`downloadJobTransfers:${from.id}`, JSON.stringify(transfers));
   for (const row of db
-    .prepare("SELECT id, payload FROM _honker_live WHERE queue = 'slskd-pipeline'")
+    .prepare<[], Pick<HonkerLiveRow, "id" | "payload">>(
+      "SELECT id, payload FROM _honker_live WHERE queue = 'slskd-pipeline'",
+    )
     .all()) {
-    const payload = JSON.parse(row.payload);
+    const payload: HonkerPayload = JSON.parse(row.payload);
     if (payload.jobId !== from.id) continue;
     if (
       payload.playlistId !== from.playlistId ||
@@ -145,7 +197,7 @@ function recordTransfer(from, to, fromAttemptId, toAttemptId) {
   ).run(to.id, to.playlistId, from.id);
 }
 
-export function transferDownloadOwnershipInTransaction(jobId, targetPlaylistId) {
+export function transferDownloadOwnershipInTransaction(jobId: string, targetPlaylistId: string) {
   if (!db.inTransaction)
     throw new Error("Download ownership must change inside the membership transaction");
   const from = currentJob(jobId);
@@ -168,9 +220,9 @@ export function transferDownloadOwnershipInTransaction(jobId, targetPlaylistId) 
 }
 
 export function replaceAlbumDownloadLeaderInTransaction(
-  jobId,
-  peerId,
-  { retainCancelled = false } = {},
+  jobId: string,
+  peerId: string,
+  { retainCancelled = false }: { retainCancelled?: boolean } = {},
 ) {
   if (!db.inTransaction)
     throw new Error("Album leadership must change inside the membership transaction");
@@ -189,7 +241,7 @@ export function replaceAlbumDownloadLeaderInTransaction(
   const previousAttempt = getActiveDownloadAttemptId(jobId);
   const attempt = previousAttempt || beginDownloadAttempt(jobId);
   saveSettingStmt.run(`activeDownloadAttempt:${peerId}`, JSON.stringify(attempt));
-  const columns = [
+  const columns: (keyof PlaylistDownloadJobsRow)[] = [
     "download_source",
     "download_client",
     "download_client_id",
@@ -202,7 +254,9 @@ export function replaceAlbumDownloadLeaderInTransaction(
     "remote_username",
     "remote_filename",
   ];
-  const row = db.prepare("SELECT * FROM playlist_download_jobs WHERE id = ?").get(jobId);
+  const row = db
+    .prepare<[string], PlaylistDownloadJobsRow>("SELECT * FROM playlist_download_jobs WHERE id = ?")
+    .get(jobId)!;
   db.prepare(
     `UPDATE playlist_download_jobs SET ${columns.map((column) => `${column} = ?`).join(", ")} WHERE id = ?`,
   ).run(...columns.map((column) => row[column]), peerId);

@@ -4,8 +4,14 @@ import { isPathInsideRoot, resolveDownloadRoot } from "../downloadPaths.ts";
 import { lidarrClient } from "../lidarrClient.ts";
 import { getPathMappings, resolveLocalPath } from "../pathMappings.ts";
 import { logger, safeLogDiagnostic } from "../logger.ts";
+import type { DownloadJob } from "./downloadTracker.ts";
 
-function isInLibraryFolder(filePath) {
+type ReviewFileJob = Pick<
+  DownloadJob,
+  "id" | "stagingPath" | "downloadSource" | "downloadClient" | "downloadClientId" | "remoteUsername"
+>;
+
+function isInLibraryFolder(filePath: string) {
   const lidarrRoots = lidarrClient.isEnabled()
     ? lidarrClient
         .getConfiguredRootFolderPaths()
@@ -18,7 +24,7 @@ function isInLibraryFolder(filePath) {
 
 // A review file is a source's copy that Aurral has not imported. Discarding
 // it never touches a file in the Downloads Folder or a Lidarr root folder.
-export async function discardReviewFile(job) {
+export async function discardReviewFile(job: ReviewFileJob) {
   const stagingPath = String(job?.stagingPath || "").trim();
   if (!stagingPath) return;
   const filePath = path.resolve(stagingPath);
@@ -55,7 +61,10 @@ export async function discardReviewFile(job) {
 
 // A file a source held for review while the job searched on. One already
 // gone was discarded or imported, so its download is left alone.
-export async function discardHeldFile(jobId, held) {
+export async function discardHeldFile(
+  jobId: DownloadJob["id"],
+  held: DownloadJob["heldForReview"],
+) {
   if (!held?.sourcePath || !(await fs.stat(held.sourcePath).catch(() => null))) return;
   await discardReviewFile({
     id: jobId,

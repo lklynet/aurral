@@ -16,6 +16,49 @@ import {
 import createCache from "../apiClients/simpleCache.ts";
 import { sameVersion, trackRequestFor } from "../releaseManifest.ts";
 import { resolveReleaseManifest } from "../releaseResolver.ts";
+import type { DownloadTrackFields } from "../downloadUtils.ts";
+import type { NormalizedAlbum, NormalizedRelease } from "../providers/brainzmashMappers.ts";
+
+type ResolvedTrack = DownloadTrackFields & {
+  artistName: string;
+  trackName: string;
+  albumName: string | null;
+  artistMbid: string | null;
+  albumMbid: string | null;
+  trackMbid: string | null;
+  releaseMbid: string | null;
+  recordingMbidAliases: string[];
+  releaseYear: string | null;
+  durationMs: number | null;
+  artistAliases: string[];
+  metadataUnreachable?: boolean;
+};
+
+type ReleaseContextTrack = ReturnType<typeof mapReleaseContextTracks>[number];
+type ReleaseContextMatch = ReturnType<typeof matchTrackByTitle<ReleaseContextTrack>>;
+type ReleaseContext = {
+  albumName: string | null;
+  artists: NormalizedAlbum["artists"];
+  releaseYear: string | null;
+  albumTrackCount: number | null;
+  albumTrackTitles: string[];
+  tracks: ReleaseContextTrack[];
+  identityTracks?: ReleaseContextTrack[];
+  releaseIds: string[];
+  unknown?: undefined;
+};
+type UnknownAlbum = { unknown: true } & {
+  [Key in Exclude<keyof ReleaseContext, "unknown">]?: undefined;
+};
+
+type RankableRelease = Awaited<ReturnType<typeof listArtistAlbums>>[number];
+
+type MatchableTrack = {
+  title?: string | null;
+  trackNumber?: number | null;
+  discNumber?: number | null;
+  recordingId?: string | null;
+};
 
 const CONTEXT_CACHE_TTL_SECONDS = 15 * 60;
 const MAX_CACHE_ENTRIES = 500;
@@ -24,7 +67,11 @@ const releaseGroupSearchCache = createCache(CONTEXT_CACHE_TTL_SECONDS, MAX_CACHE
 const releaseContextCache = createCache(CONTEXT_CACHE_TTL_SECONDS, MAX_CACHE_ENTRIES);
 const MATCHER_OPTIONS = { extended: true };
 
-function rankCandidates(candidates, expectedTitle, expectedYear = null) {
+function rankCandidates<T extends RankableRelease>(
+  candidates: T[],
+  expectedTitle: string,
+  expectedYear: string | number | null = null,
+) {
   const list = Array.isArray(candidates) ? candidates : [];
   const targetYear = getYear(expectedYear);
   return [...list]
@@ -47,7 +94,10 @@ function rankCandidates(candidates, expectedTitle, expectedYear = null) {
     .map(({ candidate }) => candidate);
 }
 
-function matchesAlbumTitle(actualTitle, expectedTitle) {
+function matchesAlbumTitle(
+  actualTitle: string | null | undefined,
+  expectedTitle: string | null | undefined,
+) {
   return (
     !actualTitle ||
     !expectedTitle ||
@@ -55,7 +105,7 @@ function matchesAlbumTitle(actualTitle, expectedTitle) {
   );
 }
 
-async function fetchArtistAliases(artistMbid) {
+async function fetchArtistAliases(artistMbid: string | null | undefined) {
   const key = String(artistMbid || "").trim();
   if (!key) return [];
   const cachedAliases = artistAliasCache.get(key);
@@ -80,7 +130,7 @@ async function fetchArtistAliases(artistMbid) {
 // A release group is a track's when one of its releases lists the track. One
 // the provider has no tracklist for, as for many singles, is the track's when
 // it has the track's title. Null means metadata could not be read.
-async function holdsTrack(albumMbid, track) {
+async function holdsTrack(albumMbid: string, track: DownloadTrackFields) {
   const context = await fetchReleaseContext(albumMbid);
   if (!context) return null;
   if (context.unknown) return false;
@@ -97,7 +147,7 @@ const UNREACHABLE = Object.freeze({ unreachable: true });
 // A guessed release group must list the track, so a search that finds an
 // album of the same name, such as another of an artist's self-titled albums,
 // is not the track's. A search metadata could not answer is not remembered.
-async function resolveReleaseGroup(track) {
+async function resolveReleaseGroup(track: DownloadTrackFields) {
   const safeAlbum = String(track.albumName || "").trim();
   if (!safeAlbum) return null;
   const safeArtist = String(track.artistName || "").trim();
@@ -106,12 +156,12 @@ async function resolveReleaseGroup(track) {
   const cachedReleaseGroup = releaseGroupSearchCache.get(cacheKey);
   if (cachedReleaseGroup !== undefined) return cachedReleaseGroup;
   let unreachable = false;
-  const holds = async (albumMbid) => {
+  const holds = async (albumMbid: string) => {
     const held = await holdsTrack(albumMbid, track);
     if (held === null) unreachable = true;
     return held === true;
   };
-  const noteFailure = (error) => {
+  const noteFailure = (error: unknown) => {
     if (!isMetadataNotFoundError(error)) unreachable = true;
   };
   const promise = (async () => {
@@ -158,7 +208,22 @@ async function resolveReleaseGroup(track) {
   return resolved;
 }
 
-function _flattenReleaseTracks(releaseData) {
+type RawReleaseData =
+  | {
+      media?: {
+        tracks?: {
+          title?: string;
+          name?: string;
+          position?: number;
+          length?: number;
+          recording?: { id?: string; title?: string; length?: number };
+        }[];
+      }[];
+    }
+  | null
+  | undefined;
+
+function _flattenReleaseTracks(releaseData: RawReleaseData) {
   const media = Array.isArray(releaseData?.media) ? releaseData.media : [];
   const tracks = [];
   for (const medium of media) {
@@ -186,12 +251,17 @@ function _flattenReleaseTracks(releaseData) {
   return tracks;
 }
 
-export function matchTrackByTitle(tracks, trackName, trackNumber = null, discNumber = null) {
+export function matchTrackByTitle<T extends MatchableTrack>(
+  tracks: T[] | null | undefined,
+  trackName: string | null | undefined,
+  trackNumber: number | null = null,
+  discNumber: number | null = null,
+) {
   const safeTrackName = String(trackName || "").trim();
   if (!safeTrackName) return null;
   const expectedTrackNumber = Number(trackNumber);
   const expectedDiscNumber = Number(discNumber) > 0 ? Number(discNumber) : 1;
-  const positionMatch = (track) =>
+  const positionMatch = (track: T) =>
     (Number(track.trackNumber) === expectedTrackNumber ? 2 : 0) +
     (Number(track.discNumber || 1) === expectedDiscNumber ? 1 : 0);
   const best =
@@ -211,7 +281,7 @@ export function matchTrackByTitle(tracks, trackName, trackNumber = null, discNum
   return best;
 }
 
-function applyReleaseContext(base, releaseContext) {
+function applyReleaseContext(base: ResolvedTrack, releaseContext: ReleaseContext | null) {
   const existingArtistMbid = String(base.artistMbid || "")
     .trim()
     .toLowerCase();
@@ -228,7 +298,10 @@ function applyReleaseContext(base, releaseContext) {
   if (releaseContext?.releaseYear && !base.releaseYear) {
     base.releaseYear = releaseContext.releaseYear;
   }
-  const titleMatchedTrack = [releaseContext?.tracks, releaseContext?.identityTracks].reduce(
+  const titleMatchedTrack = [
+    releaseContext?.tracks,
+    releaseContext?.identityTracks,
+  ].reduce<ReleaseContextMatch>(
     (found, tracks) =>
       found || matchTrackByTitle(tracks, base.trackName, base.trackNumber, base.discNumber),
     null,
@@ -295,7 +368,7 @@ function applyReleaseContext(base, releaseContext) {
 
 // Files tagged before MusicBrainz merged a recording carry the old ID, on
 // whichever release of the group listed it.
-function mergedRecordingIds(releaseContext, recordingMbid) {
+function mergedRecordingIds(releaseContext: ReleaseContext | null, recordingMbid: string | null) {
   const current = String(recordingMbid || "")
     .trim()
     .toLowerCase();
@@ -321,7 +394,7 @@ function mergedRecordingIds(releaseContext, recordingMbid) {
   ];
 }
 
-function mapReleaseContextTracks(release) {
+function mapReleaseContextTracks(release: Pick<NormalizedRelease, "tracks"> | null | undefined) {
   const source = Array.isArray(release?.tracks) ? release.tracks : [];
   const releaseTrackTitles = source.map((track) => track.title).filter(Boolean);
   return source.map((track) => ({
@@ -339,7 +412,9 @@ function mapReleaseContextTracks(release) {
 
 const UNKNOWN_ALBUM = Object.freeze({ unknown: true });
 
-async function fetchReleaseContext(albumMbid) {
+async function fetchReleaseContext(
+  albumMbid: string | null | undefined,
+): Promise<ReleaseContext | UnknownAlbum | null> {
   const key = String(albumMbid || "").trim();
   if (!key) return null;
   const cachedContext = releaseContextCache.get(key);
@@ -387,7 +462,7 @@ async function fetchReleaseContext(albumMbid) {
   return resolved;
 }
 
-async function fetchLastfmTrackInfo(track) {
+async function fetchLastfmTrackInfo(track: DownloadTrackFields) {
   const artistName = String(track?.artistName || "").trim();
   const trackName = String(track?.trackName || "").trim();
   if (!artistName || !trackName) return null;
@@ -404,13 +479,16 @@ async function fetchLastfmTrackInfo(track) {
 
 // The edition the job asks for decides its place, length, and the album's
 // whole tracklist, so they all describe one release.
-async function applyReleaseManifest(base, { guessedRecording = false } = {}) {
+async function applyReleaseManifest(
+  base: ResolvedTrack,
+  { guessedRecording = false }: { guessedRecording?: boolean } = {},
+) {
   // A recording matched only by title may come from another edition, and
   // would keep the job off the edition it asks for.
   const job = guessedRecording ? { ...base, trackMbid: null, recordingMbidAliases: [] } : base;
   const manifest = await resolveReleaseManifest(job);
   if (!manifest) return null;
-  const request = trackRequestFor(job, manifest);
+  const request = trackRequestFor(job, manifest)!;
   base.releaseMbid = manifest.releaseMbid;
   base.trackMbid = request.trackMbid;
   base.recordingMbidAliases = request.recordingMbidAliases;
@@ -424,7 +502,7 @@ async function applyReleaseManifest(base, { guessedRecording = false } = {}) {
 // A complete release identity can skip Last.fm and release discovery. Its
 // recording ID is still checked against the cached BrainzMash tracklist so
 // jobs created before that rule can be repaired safely.
-function hasReleaseIdentity(track) {
+function hasReleaseIdentity(track: ResolvedTrack) {
   return (
     Boolean(track.trackMbid && track.albumMbid) &&
     track.durationMs > 0 &&
@@ -436,8 +514,10 @@ function hasReleaseIdentity(track) {
 
 // `metadataUnreachable` says the album named by the track could not be read
 // because metadata was unreachable, so the result is not the album's.
-export async function resolveTrackSearchContext(track) {
-  const base = {
+export async function resolveTrackSearchContext(
+  track: DownloadTrackFields,
+): Promise<ResolvedTrack> {
+  const base: ResolvedTrack = {
     ...track,
     artistName: String(track?.artistName || "").trim(),
     trackName: String(track?.trackName || "").trim(),
@@ -462,7 +542,7 @@ export async function resolveTrackSearchContext(track) {
   const namesAlbum = Boolean(base.albumMbid || base.albumName || base.releaseMbid);
   let unreachable = false;
 
-  let releaseContext = null;
+  let releaseContext: ReleaseContext | UnknownAlbum | null = null;
   if (base.albumMbid) {
     releaseContext = await fetchReleaseContext(base.albumMbid);
     unreachable = !releaseContext;

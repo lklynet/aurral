@@ -5,10 +5,18 @@ import { isDownloadOwnerProcess, requestDownloadOwner } from "./downloadOwnerCli
 import { logger } from "../logger.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { resolveTransferredDownloadPayload } from "./downloadOwnership.ts";
+import type { HonkerPayload } from "../honkerDb.ts";
 
-const downloadLeases = new AsyncLocalStorage();
+type DownloadLease = {
+  active: boolean;
+  owners: Set<string>;
+  steps: boolean;
+  imports: boolean;
+};
 
-const normalizePlaylistTypes = (playlistTypes) => [
+const downloadLeases = new AsyncLocalStorage<DownloadLease>();
+
+const normalizePlaylistTypes = (playlistTypes: unknown) => [
   ...new Set(
     (Array.isArray(playlistTypes) ? playlistTypes : [playlistTypes])
       .map((playlistType) => String(playlistType || "").trim())
@@ -16,7 +24,11 @@ const normalizePlaylistTypes = (playlistTypes) => [
   ),
 ];
 
-async function withOwnerLocks<T>(lockKind, ownerIds, operation: () => T | Promise<T>): Promise<T> {
+async function withOwnerLocks<T>(
+  lockKind: string,
+  ownerIds: Iterable<string>,
+  operation: () => T | Promise<T>,
+): Promise<T> {
   const sortedIds = [...ownerIds].sort();
   const runAtIndex = async (index: number): Promise<T> => {
     if (index >= sortedIds.length) {
@@ -31,7 +43,7 @@ async function withOwnerLocks<T>(lockKind, ownerIds, operation: () => T | Promis
   return runAtIndex(0);
 }
 
-function runWithLease(lease, operation) {
+function runWithLease(lease: DownloadLease, operation) {
   return downloadLeases.run(lease, async () => {
     try {
       return await operation();
@@ -41,12 +53,18 @@ function runWithLease(lease, operation) {
   });
 }
 
-async function withDownloadLocks(ownerIds, { steps = false, imports = false }, operation) {
+async function withDownloadLocks(
+  ownerIds: unknown,
+  { steps = false, imports = false }: { steps?: boolean; imports?: boolean },
+  operation,
+) {
   const owners = normalizePlaylistTypes(ownerIds);
   const current = downloadLeases.getStore();
   if (current?.active) {
     if (!owners.every((owner) => current.owners.has(owner))) {
-      const error = new Error("The download owner changed while holding download locks");
+      const error: NodeJS.ErrnoException = new Error(
+        "The download owner changed while holding download locks",
+      );
       error.code = "DOWNLOAD_LOCK_SET_CHANGED";
       throw error;
     }
@@ -63,9 +81,12 @@ async function withDownloadLocks(ownerIds, { steps = false, imports = false }, o
   return steps ? withOwnerLocks("download-step", owners, lockImports) : lockImports();
 }
 
-export async function beginPlaylistMutation(playlistTypes, { clearPending = true } = {}) {
+export async function beginPlaylistMutation(
+  playlistTypes: unknown,
+  { clearPending = true }: { clearPending?: boolean } = {},
+): Promise<() => Promise<void>> {
   const types = normalizePlaylistTypes(playlistTypes);
-  const blocked = [];
+  const blocked: string[] = [];
   try {
     for (const playlistType of types) {
       await downloadWorker.blockPlaylist(playlistType);
@@ -109,7 +130,11 @@ export async function beginPlaylistMutation(playlistTypes, { clearPending = true
   };
 }
 
-export async function withPlaylistMutation(playlistTypes, operation, options = {}) {
+export async function withPlaylistMutation(
+  playlistTypes: unknown,
+  operation,
+  options: { clearPending?: boolean; beforeMutation?: () => unknown } = {},
+) {
   const types = normalizePlaylistTypes(playlistTypes);
   return withPlaylistMutationLock(types, async () => {
     if (typeof options.beforeMutation === "function") {
@@ -125,19 +150,19 @@ export async function withPlaylistMutation(playlistTypes, operation, options = {
   });
 }
 
-export function withPlaylistMutationLock(playlistTypes, operation) {
+export function withPlaylistMutationLock(playlistTypes: unknown, operation) {
   return withDownloadLocks(playlistTypes, { steps: true, imports: true }, operation);
 }
 
-export function withDownloadImportLock(ownerIds, operation) {
+export function withDownloadImportLock(ownerIds: unknown, operation) {
   return withDownloadLocks(ownerIds, { imports: true }, operation);
 }
 
-export function withDownloadStepLock(ownerIds, operation) {
+export function withDownloadStepLock(ownerIds: unknown, operation) {
   return withDownloadLocks(ownerIds, { steps: true }, operation);
 }
 
-function payloadOwners(payload) {
+function payloadOwners(payload: HonkerPayload | null) {
   const owners = [payload?.playlistId];
   for (const id of [payload?.jobId, ...(payload?.albumGroupJobIds || [])]) {
     const job = downloadTracker.getJob(id);
@@ -146,7 +171,7 @@ function payloadOwners(payload) {
   return normalizePlaylistTypes(owners);
 }
 
-export async function withDownloadPayloadMutation(payload, operation) {
+export async function withDownloadPayloadMutation(payload: HonkerPayload, operation) {
   while (true) {
     const owners = payloadOwners(resolveTransferredDownloadPayload(payload));
     const result = await withDownloadStepLock(owners, async () => {
@@ -159,14 +184,14 @@ export async function withDownloadPayloadMutation(payload, operation) {
   }
 }
 
-export async function restartWorkerIfPending() {
+export async function restartWorkerIfPending(): Promise<void> {
   const stillPending = downloadTracker.getNextPending();
   if (stillPending && !downloadWorker.running) {
     await downloadWorker.start();
   }
 }
 
-export async function wakeDownloadWorker() {
+export async function wakeDownloadWorker(): Promise<void> {
   if (!downloadWorker.running) {
     await downloadWorker.start();
   } else {

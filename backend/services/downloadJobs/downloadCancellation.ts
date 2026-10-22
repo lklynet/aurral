@@ -1,86 +1,97 @@
 import { db } from "../../config/db-sqlite.ts";
 import { randomUUID } from "node:crypto";
+import type {
+  PlaylistDownloadJobsRow,
+  SettingsRow,
+  WeeklyFlowDownloadCancellationsRow,
+  WeeklyFlowDownloadProviderWorkRow,
+} from "../../db/rows.ts";
 
-const attemptStmt = db.prepare("SELECT value FROM settings WHERE key = ?");
-const saveAttemptStmt = db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)");
+const attemptStmt = db.prepare<[string], Pick<SettingsRow, "value">>(
+  "SELECT value FROM settings WHERE key = ?",
+);
+const saveAttemptStmt = db.prepare<[string, string]>(
+  "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+);
 
-export function getActiveDownloadAttemptId(jobId) {
+export function getActiveDownloadAttemptId(jobId: string): string | null {
   const row = attemptStmt.get(`activeDownloadAttempt:${jobId}`);
   return row ? JSON.parse(row.value) : null;
 }
 
-export function beginDownloadAttempt(jobId) {
+export function beginDownloadAttempt(jobId: string) {
   const id = randomUUID();
   setActiveDownloadAttemptId(jobId, id);
   return id;
 }
 
-export function setActiveDownloadAttemptId(jobId, id) {
+export function setActiveDownloadAttemptId(jobId: string, id: string | null) {
   saveAttemptStmt.run(`activeDownloadAttempt:${jobId}`, JSON.stringify(id));
 }
 
-const playlistCancellationStmt = db.prepare(
-  `SELECT generation, state FROM weekly_flow_download_cancellations WHERE playlist_id = ?`,
-);
-const insertActivePlaylistStmt = db.prepare(
+const playlistCancellationStmt = db.prepare<
+  [string],
+  Pick<WeeklyFlowDownloadCancellationsRow, "generation" | "state">
+>(`SELECT generation, state FROM weekly_flow_download_cancellations WHERE playlist_id = ?`);
+const insertActivePlaylistStmt = db.prepare<[string, number]>(
   `INSERT INTO weekly_flow_download_cancellations (playlist_id, generation, state, changed_at)
    VALUES (?, 0, 'active', ?)`,
 );
-const activateExistingPlaylistStmt = db.prepare(
+const activateExistingPlaylistStmt = db.prepare<[number, string]>(
   `UPDATE weekly_flow_download_cancellations
    SET generation = generation + 1, state = 'active', changed_at = ?
    WHERE playlist_id = ?`,
 );
-const touchActivePlaylistStmt = db.prepare(
+const touchActivePlaylistStmt = db.prepare<[number, string]>(
   `UPDATE weekly_flow_download_cancellations
    SET state = 'active', changed_at = ?
    WHERE playlist_id = ?`,
 );
-const cancelNewPlaylistStmt = db.prepare(
+const cancelNewPlaylistStmt = db.prepare<[string, number]>(
   `INSERT INTO weekly_flow_download_cancellations (playlist_id, generation, state, changed_at)
    VALUES (?, 0, 'cancelled', ?)`,
 );
-const cancelExistingPlaylistStmt = db.prepare(
+const cancelExistingPlaylistStmt = db.prepare<[number, string]>(
   `UPDATE weekly_flow_download_cancellations
    SET state = 'cancelled', changed_at = ?
    WHERE playlist_id = ?`,
 );
-const jobCancellationStmt = db.prepare(
+const jobCancellationStmt = db.prepare<[string], { 1: number }>(
   `SELECT 1 FROM weekly_flow_download_job_cancellations WHERE job_id = ?`,
 );
-const cancelJobStmt = db.prepare(
+const cancelJobStmt = db.prepare<[string, number]>(
   `INSERT OR IGNORE INTO weekly_flow_download_job_cancellations (job_id, cancelled_at)
    VALUES (?, ?)`,
 );
-const restoreJobStmt = db.prepare(
+const restoreJobStmt = db.prepare<[string]>(
   `DELETE FROM weekly_flow_download_job_cancellations WHERE job_id = ?`,
 );
 
-const providerWorkInsertStmt = db.prepare(
+const providerWorkInsertStmt = db.prepare<[string, string, string, string, string, number]>(
   `INSERT OR IGNORE INTO weekly_flow_download_provider_work
    (job_id, playlist_id, provider, work_id, username, created_at)
    VALUES (?, ?, ?, ?, ?, ?)`,
 );
-const providerWorkDeleteStmt = db.prepare(
+const providerWorkDeleteStmt = db.prepare<[string, string]>(
   `DELETE FROM weekly_flow_download_provider_work
    WHERE provider = ? AND work_id = ?`,
 );
 
-function normalizeId(value) {
+function normalizeId(value: unknown) {
   return String(value || "").trim();
 }
 
-function readPlaylistCancellation(playlistId) {
+function readPlaylistCancellation(playlistId: unknown) {
   const safePlaylistId = normalizeId(playlistId);
   if (!safePlaylistId) return null;
   return playlistCancellationStmt.get(safePlaylistId) || null;
 }
 
-export function getPlaylistDownloadGeneration(playlistId) {
+export function getPlaylistDownloadGeneration(playlistId: unknown) {
   return Number(readPlaylistCancellation(playlistId)?.generation || 0);
 }
 
-export function activatePlaylistDownloadGeneration(playlistId) {
+export function activatePlaylistDownloadGeneration(playlistId: unknown) {
   const safePlaylistId = normalizeId(playlistId);
   if (!safePlaylistId) return 0;
   const now = Date.now();
@@ -100,7 +111,7 @@ export function activatePlaylistDownloadGeneration(playlistId) {
   return activate();
 }
 
-export function cancelPlaylistDownloadGeneration(playlistId) {
+export function cancelPlaylistDownloadGeneration(playlistId: unknown) {
   const safePlaylistId = normalizeId(playlistId);
   if (!safePlaylistId) return 0;
   const now = Date.now();
@@ -118,7 +129,7 @@ export function cancelPlaylistDownloadGeneration(playlistId) {
   return cancel();
 }
 
-export function cancelDownloadJob(jobId) {
+export function cancelDownloadJob(jobId: unknown) {
   const safeJobId = normalizeId(jobId);
   if (!safeJobId) return false;
   return cancelDownloadJobs([safeJobId]) > 0;
@@ -140,7 +151,7 @@ export function cancelDownloadJobs(jobIds: string[] = []) {
   return cancel();
 }
 
-export function restorePlaylistDownloadWork(playlistId, jobIds: string[] = []) {
+export function restorePlaylistDownloadWork(playlistId: unknown, jobIds: string[] = []) {
   const safePlaylistId = normalizeId(playlistId);
   if (!safePlaylistId) return false;
   const safeJobIds = [...new Set(jobIds.map(normalizeId).filter(Boolean))];
@@ -156,7 +167,7 @@ export function restorePlaylistDownloadWork(playlistId, jobIds: string[] = []) {
   return true;
 }
 
-export function restoreDownloadJobCancellations(jobIds = []) {
+export function restoreDownloadJobCancellations(jobIds: string[] = []) {
   const safeJobIds = [
     ...new Set((Array.isArray(jobIds) ? jobIds : []).map(normalizeId).filter(Boolean)),
   ];
@@ -175,6 +186,12 @@ export function registerDownloadProviderWork({
   provider,
   workId,
   username = "",
+}: {
+  jobId?: string | null;
+  playlistId?: string | null;
+  provider?: string;
+  workId?: string;
+  username?: string;
 } = {}) {
   const safeJobId = normalizeId(jobId);
   const safePlaylistId = normalizeId(playlistId);
@@ -193,7 +210,11 @@ export function registerDownloadProviderWork({
   return true;
 }
 
-export function listDownloadProviderWork({ jobIds = [], playlistId = null, provider = null } = {}) {
+export function listDownloadProviderWork({
+  jobIds = [],
+  playlistId = null,
+  provider = null,
+}: { jobIds?: string[]; playlistId?: string | null; provider?: string | null } = {}) {
   const safeJobIds = [
     ...new Set((Array.isArray(jobIds) ? jobIds : []).map(normalizeId).filter(Boolean)),
   ];
@@ -217,7 +238,7 @@ export function listDownloadProviderWork({ jobIds = [], playlistId = null, provi
   if (scope.length === 0) return [];
   clauses.push(`(${scope.join(" OR ")})`);
   return db
-    .prepare(
+    .prepare<string[], WeeklyFlowDownloadProviderWorkRow>(
       `SELECT job_id, playlist_id, provider, work_id, username, created_at
      FROM weekly_flow_download_provider_work
      WHERE ${clauses.join(" AND ")}
@@ -226,30 +247,40 @@ export function listDownloadProviderWork({ jobIds = [], playlistId = null, provi
     .all(...params);
 }
 
-const orphanedProviderWorkStmt = db.prepare(
+const orphanedProviderWorkStmt = db.prepare<[string], WeeklyFlowDownloadProviderWorkRow>(
   `SELECT job_id, playlist_id, provider, work_id, username, created_at
    FROM weekly_flow_download_provider_work AS work
    WHERE provider = ? AND NOT EXISTS (SELECT 1 FROM playlist_download_jobs AS job WHERE job.id = work.job_id)
    ORDER BY created_at, work_id`,
 );
 
-export function listOrphanedDownloadProviderWork(provider) {
+export function listOrphanedDownloadProviderWork(provider: unknown) {
   return orphanedProviderWorkStmt.all(normalizeId(provider));
 }
 
-export function clearDownloadProviderWork({ provider, workId } = {}) {
+export function clearDownloadProviderWork({
+  provider,
+  workId,
+}: { provider?: string; workId?: string } = {}) {
   const safeProvider = normalizeId(provider);
   const safeWorkId = normalizeId(workId);
   if (!safeProvider || !safeWorkId) return 0;
   return providerWorkDeleteStmt.run(safeProvider, safeWorkId).changes;
 }
 
-export function isDownloadJobCancelled(jobId) {
+export function isDownloadJobCancelled(jobId: unknown) {
   const safeJobId = normalizeId(jobId);
   return Boolean(safeJobId && jobCancellationStmt.get(safeJobId));
 }
 
-export function isPipelinePayloadActive(payload = {}) {
+type PipelinePayloadFields = {
+  jobId?: unknown;
+  playlistId?: unknown;
+  playlistGeneration?: unknown;
+  downloadAttemptId?: unknown;
+};
+
+export function isPipelinePayloadActive(payload: PipelinePayloadFields = {}) {
   const jobId = normalizeId(payload.jobId);
   if (jobId && isDownloadJobCancelled(jobId)) return false;
   if (
@@ -259,7 +290,10 @@ export function isPipelinePayloadActive(payload = {}) {
     return false;
   if (jobId) {
     const owner = db
-      .prepare(
+      .prepare<
+        [string],
+        Pick<PlaylistDownloadJobsRow, "playlist_id" | "playlist_type" | "playlist_generation">
+      >(
         "SELECT playlist_id, playlist_type, playlist_generation FROM playlist_download_jobs WHERE id = ?",
       )
       .get(jobId);
@@ -282,7 +316,10 @@ export function isPipelinePayloadActive(payload = {}) {
   return Number(payload.playlistGeneration || 0) === Number(current.generation || 0);
 }
 
-export async function withPipelineCommitLock(payload, operation) {
+export async function withPipelineCommitLock<T>(
+  payload: PipelinePayloadFields,
+  operation: () => T | Promise<T>,
+): Promise<{ cancelled: true; result: null } | { cancelled: false; result: Awaited<T> }> {
   if (!isPipelinePayloadActive(payload)) return { cancelled: true, result: null };
   const playlistId = normalizeId(payload.playlistId);
   if (!playlistId) {
