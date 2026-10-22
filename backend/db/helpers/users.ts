@@ -132,7 +132,7 @@ export const userOps = {
       ...history,
     };
   },
-  getUserById(id: number | string | undefined) {
+  getUserById(id: number | string | null | undefined) {
     const row = getUserByIdStmt.get(parseInt(String(id), 10));
     if (!row) return null;
     const history = getListenHistoryProfile(row);

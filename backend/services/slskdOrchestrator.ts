@@ -107,7 +107,7 @@ type SlskdCandidate = {
 type SlskdPayload = {
   jobId: string;
   playlistId?: string | null;
-  phase: "search" | "download" | "poll" | "finalize";
+  phase: string;
   track?: DownloadTrackFields;
   albumGrab?: boolean;
   albumTransfers?: SlskdTransfer[] | null;

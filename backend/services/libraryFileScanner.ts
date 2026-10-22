@@ -2,6 +2,7 @@ import fs from "fs/promises";
 import path from "path";
 import { parseFile, type ICommonTagsResult, type IFormat, type IOptions } from "music-metadata";
 import { db } from "../config/db-sqlite.ts";
+import { asAppError } from "../../lib/errors.ts";
 import type { LibraryAlbumsRow } from "../db/rows.ts";
 import {
   buildFallbackIdentityKey,
@@ -292,7 +293,7 @@ async function resolveChangedFiles(
       stat = await fs.lstat(changedPath);
       if (stat.isSymbolicLink()) continue;
     } catch (error) {
-      missing = error?.code === "ENOENT";
+      missing = asAppError(error)?.code === "ENOENT";
       if (!missing && !AUDIO_EXTENSIONS.has(path.extname(changedPath).toLowerCase())) {
         continue;
       }
@@ -305,7 +306,7 @@ async function resolveChangedFiles(
         for await (const filePath of walkAudioFiles(changedPath, isExcluded))
           filePaths.add(filePath);
       } catch (error) {
-        if (error?.code !== "ENOENT") reconcilePaths.delete(changedPath);
+        if (asAppError(error)?.code !== "ENOENT") reconcilePaths.delete(changedPath);
       }
       continue;
     }
@@ -474,7 +475,8 @@ export async function scanMusicRoot({
             !record.releaseGroupMbid && !record.albumMbid
               ? findLibraryAlbumByArtistTitle(artist.id, record.albumName, record.title)
               : null;
-          const namedAlbum = legacyKeyed.albumIds.has(titledAlbum?.id) ? null : titledAlbum;
+          const namedAlbum =
+            titledAlbum && legacyKeyed.albumIds.has(titledAlbum.id) ? null : titledAlbum;
           const releaseAlbum = findLibraryAlbumByReleaseMbid(record.releaseGroupMbid) || namedAlbum;
           const albumKey = releaseAlbum?.identity_key || record.albumKey;
           const listedTrack =
@@ -557,7 +559,7 @@ export async function scanMusicRoot({
           result.filesIndexed += 1;
         } catch (error) {
           result.filesFailed += 1;
-          if (error?.code === "ENOENT") missingFilePaths.add(filePath);
+          if (asAppError(error)?.code === "ENOENT") missingFilePaths.add(filePath);
           else {
             failedPaths.add(filePath);
             firstFailure ||= { filePath, reason: safeLogDiagnostic(error) };
@@ -664,7 +666,7 @@ export async function scanMusicRoots({
     try {
       rootStat = await fs.stat(rootPath);
     } catch (error) {
-      if (error?.code === "ENOENT") continue;
+      if (asAppError(error)?.code === "ENOENT") continue;
       result.filesFailed += 1;
       continue;
     }

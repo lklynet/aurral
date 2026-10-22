@@ -21,6 +21,8 @@ export type AuthRequest = Pick<
   "headers" | "query" | "path" | "method" | "ip" | "ips" | "socket" | "connection" | "user"
 >;
 
+type ProxyRequest = Pick<AuthRequest, "headers"> & ClientRequest;
+
 type ResolvableUser = Pick<
   UserRecord,
   "id" | "username" | "role" | "permissions" | "status" | "isProtected" | "roleSource"
@@ -136,7 +138,7 @@ function getProxyHeaderName() {
   return String(header).trim().toLowerCase();
 }
 
-function getHeaderValue(req: AuthRequest, headerName: string) {
+function getHeaderValue(req: ProxyRequest, headerName: string) {
   const value = req.headers[headerName];
   if (Array.isArray(value)) return value[0];
   return value;
@@ -440,7 +442,7 @@ export function ensureExternalUser(username: string, role: string) {
   return createSystemProvisionedUser(username, role);
 }
 
-function isProxyAdmin(req: AuthRequest, username: string) {
+function isProxyAdmin(req: ProxyRequest, username: string) {
   const adminUsers = parseCsv(process.env.AUTH_PROXY_ADMIN_USERS).map((u) => u.toLowerCase());
   if (adminUsers.includes(username.toLowerCase())) return true;
 
@@ -458,7 +460,7 @@ function isProxyAdmin(req: AuthRequest, username: string) {
   return groups.some((g) => adminGroups.includes(g));
 }
 
-function resolveProxyRole(req: AuthRequest, username: string) {
+function resolveProxyRole(req: ProxyRequest, username: string) {
   const defaultRole =
     (process.env.AUTH_PROXY_DEFAULT_ROLE || "user").trim().toLowerCase() === "admin"
       ? "admin"
@@ -466,7 +468,7 @@ function resolveProxyRole(req: AuthRequest, username: string) {
   return isProxyAdmin(req, username) ? "admin" : defaultRole;
 }
 
-export function resolveProxyUser(req: AuthRequest) {
+export function resolveProxyUser(req: ProxyRequest) {
   if (!isProxyAuthEnabled()) return null;
   if (!isTrustedProxy(req)) return null;
   const headerName = getProxyHeaderName();

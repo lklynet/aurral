@@ -1,5 +1,6 @@
 import path from "node:path";
 import { db } from "../config/db-sqlite.ts";
+import { asAppError } from "../../lib/errors.ts";
 import type { LibraryArtistsRow, PlaylistDownloadJobsRow } from "../db/rows.ts";
 import { resolveDownloadRoot } from "./downloadPaths.ts";
 import { createPathScopeMatcher, scanMusicRoot, scanMusicRoots } from "./libraryFileScanner.ts";
@@ -193,8 +194,9 @@ async function resolveUnmatchedLibraryArtists() {
     try {
       mbid = await musicbrainzResolveLibraryArtistMbid(artist.name);
     } catch (error) {
+      const failure = asAppError(error);
       logger.warn("library", "Stopped matching unmatched artists; metadata provider unavailable", {
-        message: error?.message || String(error),
+        message: failure?.message || String(error),
       });
       break;
     }
@@ -216,7 +218,7 @@ async function completeLibraryTrackLists() {
     try {
       metadata = await getAlbumByMbid(album.releaseGroupMbid);
     } catch (error) {
-      if (error?.response?.status !== 404) {
+      if (asAppError(error)?.response?.status !== 404) {
         unavailable ??= error;
         return;
       }
@@ -225,7 +227,9 @@ async function completeLibraryTrackLists() {
       metadata && isLibraryAlbumReleaseGroup(album, metadata)
         ? chooseLibraryAlbumRelease(album, metadata.releases, selectAlbumRelease(metadata))
         : null;
-    const artists = new Map((metadata?.artists || []).map((artist) => [artist.id, artist.name]));
+    const artists = new Map<string | null | undefined, string>(
+      (metadata?.artists || []).map((artist) => [artist.id, artist.name]),
+    );
     const compilation = isVariousArtistsCredit(artists.get(metadata?.artistId), metadata?.artistId);
     if (
       storeLibraryAlbumTrackList(album.id, {
@@ -238,7 +242,7 @@ async function completeLibraryTrackLists() {
   });
   if (unavailable) {
     logger.warn("library", "Stopped listing album tracks; metadata provider unavailable", {
-      message: unavailable?.message || String(unavailable),
+      message: asAppError(unavailable)?.message || String(unavailable),
     });
   }
   return changed;
@@ -378,12 +382,13 @@ export async function scanConfiguredLibrary({
         }
       } catch (error) {
         scanFailed = true;
+        const failure = asAppError(error);
         logger.error("library", "Lidarr root scan failed", {
-          message: error?.message || String(error),
+          message: failure?.message || String(error),
         });
         lidarr = {
           skipped: false,
-          error: error?.message || String(error),
+          error: failure?.message || String(error),
           filesSeen: 0,
           filesIndexed: 0,
           filesFailed: 0,
@@ -400,10 +405,11 @@ export async function scanConfiguredLibrary({
         });
       } catch (error) {
         scanFailed = true;
+        const failure = asAppError(error);
         logger.error("library", "Read-only folder scan failed", {
-          message: error?.message || String(error),
+          message: failure?.message || String(error),
         });
-        readOnly = { ...skippedScan(), skipped: false, error: error?.message || String(error) };
+        readOnly = { ...skippedScan(), skipped: false, error: failure?.message || String(error) };
       }
     }
     if (lidarrActive) assignLidarrAlbumOwners();
@@ -435,7 +441,12 @@ export async function scanConfiguredLibrary({
       readOnly?.changed ||
       flow?.changed
     ) {
-      if (!targeted || scanFailed || artistsResolved || flow?.removed > 0)
+      if (
+        !targeted ||
+        scanFailed ||
+        artistsResolved ||
+        (flow?.removed !== undefined && flow.removed > 0)
+      )
         rebuildLibrarySearchIndex();
       if (!targeted) rebuildLibraryGenreStats();
     }

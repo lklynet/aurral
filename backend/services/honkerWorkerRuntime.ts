@@ -1,4 +1,5 @@
 import type { Job, Queue } from "@russellthehippo/honker-node";
+import { asAppError } from "../../lib/errors.ts";
 
 interface HonkerWorker {
   start: () => unknown;
@@ -37,7 +38,7 @@ export function isHonkerShuttingDown() {
 }
 
 export function isHonkerDatabaseClosedError(error: unknown) {
-  return String(error?.message || "")
+  return String(asAppError(error)?.message || "")
     .toLowerCase()
     .includes("database is closed");
 }
@@ -74,11 +75,12 @@ export async function withJobHeartbeat(
     }
     return result;
   } catch (error) {
+    const failure = asAppError(error);
     if (recordFinished) {
       recordFinished(
         runId,
-        error?.code === "HONKER_JOB_INTERRUPTED" ? "interrupted" : "failed",
-        error?.message || String(error),
+        failure?.code === "HONKER_JOB_INTERRUPTED" ? "interrupted" : "failed",
+        failure?.message || String(error),
       );
     }
     throw error;

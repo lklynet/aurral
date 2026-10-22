@@ -1,6 +1,7 @@
 import path from "path";
 import { resolveAurralDataDir } from "../config/data-dir.ts";
 import { dbOps } from "../db/helpers/index.ts";
+import { asAppError } from "../../lib/errors.ts";
 import { logger } from "./logger.ts";
 
 export const DEPRECATED_USAGE_SETTING = "deprecatedUsage";
@@ -52,7 +53,8 @@ export function noteDeprecatedUsage(kind: DeprecationKind) {
       [kind]: { lastSeenAt: Date.now() },
     });
   } catch (error) {
-    logger.warn("system", "Could not record deprecated usage", { kind, reason: error.message });
+    const failure = asAppError(error);
+    logger.warn("system", "Could not record deprecated usage", { kind, reason: failure?.message });
   }
 }
 

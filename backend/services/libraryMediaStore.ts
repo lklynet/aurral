@@ -917,7 +917,7 @@ export function moveLibraryMediaFilePath(source: string, fromPath: string, toPat
 
 // An upgrade can bring a file with new identity tags. The track keeps its
 // row, favorites, and monitoring, or folds into the track that already has them.
-export function rekeyLibraryTrack(trackId: number, identityKey: string) {
+export function rekeyLibraryTrack(trackId: number, identityKey: string | null) {
   const key = normalizeText(identityKey);
   const id = Number(trackId);
   if (!key || !Number.isSafeInteger(id)) return null;
@@ -967,7 +967,7 @@ export function rekeyLibraryTrack(trackId: number, identityKey: string) {
   return result?.id ?? null;
 }
 
-export function rekeyLibraryAlbum(albumId: number, identityKey: string) {
+export function rekeyLibraryAlbum(albumId: number, identityKey: string | null) {
   const key = normalizeText(identityKey);
   const id = Number(albumId);
   if (!key || !Number.isSafeInteger(id)) return null;
@@ -1148,7 +1148,13 @@ export function followLibraryFileIdentity(
     albumTitle,
     trackKey,
     title,
-  }: { artistId: number; albumKey: string; albumTitle: string; trackKey: string; title: string },
+  }: {
+    artistId: number;
+    albumKey: string | null;
+    albumTitle: string;
+    trackKey: string | null;
+    title: string;
+  },
 ) {
   const album = media.album_id
     ? db
@@ -1277,7 +1283,7 @@ function matchLibraryAlbumTrack<T extends MatchableTrack>(
 }
 
 export function findLibraryAlbumTrack(
-  albumKey: string,
+  albumKey: string | null,
   { title, discNumber, trackNumber }: { title: string; discNumber: number; trackNumber: number },
 ) {
   const album = db

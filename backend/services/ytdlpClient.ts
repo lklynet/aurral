@@ -3,6 +3,7 @@ import fs from "fs";
 import fsPromises from "fs/promises";
 import path from "path";
 import { dbOps } from "../db/helpers/index.ts";
+import { asAppError } from "../../lib/errors.ts";
 import type { StoredIntegrations } from "../db/helpers/settings.ts";
 import { resolveYtdlpStagingRoot } from "./downloadFolderConfig.ts";
 import { logger } from "./logger.ts";
@@ -237,7 +238,8 @@ async function testConnectionFor(
         .split(/\s+/)[0] || "ok";
     return { configured: true, ok: true, version, message: `yt-dlp ${version}` };
   } catch (error) {
-    return { configured: true, ok: false, message: error?.message || String(error) };
+    const failure = asAppError(error);
+    return { configured: true, ok: false, message: failure?.message || String(error) };
   }
 }
 
@@ -343,9 +345,13 @@ async function searchSongs(
           ),
         ),
       );
-      if (stop.signal.aborted || (await decided(songs.filter(Boolean)))) break;
+      if (
+        stop.signal.aborted ||
+        (await decided(songs.filter((song): song is NonNullable<typeof song> => Boolean(song))))
+      )
+        break;
     }
-    return songs.filter(Boolean);
+    return songs.filter((song): song is NonNullable<typeof song> => Boolean(song));
   } finally {
     clearTimeout(deadline);
     stop.abort();
@@ -459,7 +465,7 @@ async function downloadAudioFor(
     } catch (error) {
       // YouTube often refuses one signed media URL with 403; a new run
       // extracts fresh URLs and usually succeeds.
-      if (!/HTTP Error 403/u.test(error?.message || "")) throw error;
+      if (!/HTTP Error 403/u.test(asAppError(error)?.message || "")) throw error;
       await runYtdlp(args, { timeoutMs: DOWNLOAD_TIMEOUT_MS, cwd: stagingDir, shouldCancel });
     }
   } catch (error) {

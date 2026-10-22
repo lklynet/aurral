@@ -2,6 +2,7 @@ import { WebSocketServer, type RawData, type WebSocket } from "ws";
 import type { IncomingMessage, Server } from "node:http";
 import { EventEmitter } from "node:events";
 import { dbOps, userOps } from "../db/helpers/index.ts";
+import { asAppError } from "../../lib/errors.ts";
 import { logger } from "./logger.ts";
 import { noteDeprecatedUsage } from "./deprecatedUsage.ts";
 import {
@@ -192,7 +193,9 @@ class WebSocketService extends EventEmitter {
           logger.warn("system", "Unknown WebSocket message type", { messageType: message.type });
       }
     } catch (error) {
-      logger.error("system", "Failed to parse WebSocket message", { error: error.message });
+      logger.error("system", "Failed to parse WebSocket message", {
+        error: asAppError(error)?.message,
+      });
     }
   }
 

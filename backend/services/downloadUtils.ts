@@ -2,6 +2,7 @@ import path from "path";
 import fs from "fs/promises";
 import { parseFile, type ICommonTagsResult, type IAudioMetadata } from "music-metadata";
 import { isVariousArtistsCredit } from "./trackMatching/titleText.ts";
+import { asAppError } from "../../lib/errors.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
 import { AURRAL_IDENTITY_TAG, writeAudioTags } from "./audioTags.ts";
 
@@ -54,7 +55,9 @@ export function buildTrackFileName(job: DownloadTrackFields, ext: string) {
   const title = sanitizePathPart(job?.trackName, "Unknown Track");
   const track = normalizePositiveInteger(job?.trackNumber);
   const disc = normalizePositiveInteger(job?.discNumber);
-  const position = track ? `${disc > 1 ? `${disc}-` : ""}${String(track).padStart(2, "0")} - ` : "";
+  const position = track
+    ? `${disc !== null && disc > 1 ? `${disc}-` : ""}${String(track).padStart(2, "0")} - `
+    : "";
   return `${position}${title}${ext}`;
 }
 
@@ -261,7 +264,8 @@ export async function commitDownloadedFile(
   try {
     await fs.rename(sourcePath, resolvedTarget);
   } catch (error) {
-    if (error?.code !== "EXDEV") throw error;
+    const failure = asAppError(error);
+    if (failure?.code !== "EXDEV") throw error;
     const tempTarget = path.join(
       path.dirname(resolvedTarget),
       `.aurral-import-${process.pid}-${Date.now()}-${path.basename(resolvedTarget)}.tmp`,

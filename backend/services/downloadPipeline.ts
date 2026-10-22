@@ -1,7 +1,8 @@
 import fs from "fs/promises";
+import { asAppError } from "../../lib/errors.ts";
 import { getDownloadClient } from "./download/downloadClientSettings.ts";
 import { logger } from "./logger.ts";
-import { enqueuePipelineJob, listHonkerJobs } from "./honkerDb.ts";
+import { enqueuePipelineJob, listHonkerJobs, type HonkerPayload } from "./honkerDb.ts";
 import { downloadTracker, type DownloadJob } from "./downloadJobs/downloadTracker.ts";
 import {
   discardSlskdSearch,
@@ -45,6 +46,33 @@ import { discardHeldFile } from "./downloadJobs/reviewFiles.ts";
 // shares the Honker queue still named slskd-pipeline.
 const slskdClient = getDownloadClient("slskd");
 
+type TrackerPayload = Parameters<typeof downloadTracker.upgradeAttemptAhead>[0];
+type SlskdStepPayload = Parameters<typeof processSlskdPipelinePayload>[0];
+type SlskdStepHelpers = Parameters<typeof processSlskdPipelinePayload>[1];
+type UsenetStepPayload = Parameters<typeof processUsenetPipelinePayload>[0];
+type YtdlpStepPayload = Parameters<typeof processYtdlpPipelinePayload>[0];
+type SourceError = { source: string; message: string };
+
+export type PipelinePayload = TrackerPayload & {
+  exhaustedSources?: string[];
+  sourceErrors?: SourceError[];
+  releaseWaits?: number | null;
+  upgradeWaits?: number;
+  delaySeconds?: number;
+};
+
+type SourceFields = Partial<
+  Pick<
+    PipelinePayload,
+    | "manualSelection"
+    | "allowedSources"
+    | "albumGrab"
+    | "triedSources"
+    | "sourceErrors"
+    | "exhaustedSources"
+  >
+>;
+
 export function enqueuePendingJobsWithoutBatch() {
   if (!isAnyDownloadSourceConfigured()) return 0;
   const activePipelineJobIds = new Set(
@@ -87,9 +115,10 @@ async function failJob(job: DownloadJob, message: string) {
     downloadWorker.wake(0);
     await downloadWorker.checkPlaylistComplete(job.playlistId || job.playlistType);
   } catch (error) {
+    const failure = asAppError(error);
     logger.warn("downloads", "Failed to run post-failure playlist checks", {
       jobId: job.id,
-      error: error?.message || String(error),
+      error: failure?.message || String(error),
     });
   }
 }
@@ -97,7 +126,7 @@ async function failJob(job: DownloadJob, message: string) {
 // A held file goes to review only when no source verifies a file. It is
 // removed when another file is imported or the job ends another way. A
 // track denied in review can try its release again.
-async function parkHeldForReview(payload, job) {
+async function parkHeldForReview(payload: PipelinePayload, job: DownloadJob | null | undefined) {
   const held = payload?.heldForReview;
   if (!job || !held?.sourcePath) return false;
   if (!(await fs.stat(held.sourcePath).catch(() => null))?.isFile()) return false;
@@ -112,14 +141,14 @@ async function parkHeldForReview(payload, job) {
   return parked;
 }
 
-const keepHeldForReview = (payload) =>
+const keepHeldForReview = (payload: PipelinePayload | null | undefined) =>
   payload?.heldForReview &&
   isPipelinePayloadActive(payload) &&
   downloadTracker.keepHeldForReview(payload.jobId, payload.heldForReview);
 
 // A step that ends leaves a file the job still keeps, as when the job went
 // back to wait for its next attempt.
-async function discardHeldForReview(payload) {
+async function discardHeldForReview(payload: PipelinePayload) {
   const held = payload?.heldForReview;
   if (!held?.sourcePath) return;
   const job = downloadTracker.getJob(payload.jobId);
@@ -132,8 +161,8 @@ function isSourceConfigured(sourceId: string) {
   return getEnabledDownloadSources().some((source) => source.id === sourceId);
 }
 
-export function buildNextSourcePayload(
-  payload,
+export function buildNextSourcePayload<Payload extends SourceFields>(
+  payload: Payload,
   failedSource: string | null = null,
   reason: string | null = null,
 ) {
@@ -197,13 +226,23 @@ const sourceSearchReset = () => ({
 // the step waits with that file and then looks again, as an album download
 // does, without taking a search slot. After the last wait it searches for
 // the track.
-async function searchByReleaseAfterQuickSearch(payload, job, message) {
+async function searchByReleaseAfterQuickSearch(
+  payload: PipelinePayload,
+  job: DownloadJob,
+  message: string | null,
+) {
   const failed = payload.source;
   const searched = {
     ...payload,
     ...sourceSearchReset(),
     source: null,
-    triedSources: [...new Set([...(payload.triedSources || []), failed].filter(Boolean))],
+    triedSources: [
+      ...new Set(
+        [...(payload.triedSources || []), failed].filter((value): value is string =>
+          Boolean(value),
+        ),
+      ),
+    ],
     sourceErrors: [
       ...(payload.sourceErrors || []),
       ...(failed && message ? [{ source: failed, message: String(message).trim() }] : []),
@@ -234,7 +273,10 @@ async function searchByReleaseAfterQuickSearch(payload, job, message) {
   return downloadTracker.searchByReleaseAfterQuickSearch(next, manifest) || next;
 }
 
-function summarizeSourceErrors(payload, message) {
+function summarizeSourceErrors(
+  payload: Pick<PipelinePayload, "sourceErrors" | "source"> | null | undefined,
+  message: string,
+) {
   const errors = Array.isArray(payload?.sourceErrors) ? [...payload.sourceErrors] : [];
   const source = String(payload?.source || "").trim();
   if (source && message) {
@@ -251,7 +293,14 @@ function summarizeSourceErrors(payload, message) {
   return summary || message;
 }
 
-async function failOrTryNextSource(payload, job, message, logDetails = {}) {
+async function failOrTryNextSource(
+  sourcePayload: { jobId: string },
+  sourceJob: { id: string },
+  message: string,
+  logDetails: object = {},
+) {
+  const payload = sourcePayload as PipelinePayload;
+  const job = sourceJob as DownloadJob;
   if (payload?.quickSearch === true && payload.source)
     downloadTracker.recordQuickSearched(job.id, payload.source);
   const nextPayload = buildNextSourcePayload(payload, payload?.source || "slskd", message);
@@ -280,11 +329,15 @@ async function failOrTryNextSource(payload, job, message, logDetails = {}) {
 // none is left, its tracks start again untried after any fresh work, since
 // most such failures are a passing outage. After the last of those
 // attempts, each searches for its track, trying the failed sources last.
-async function moveOnFromFailedAlbumStep(failed, message) {
+async function moveOnFromFailedAlbumStep(failed: PipelinePayload, message: string) {
   const payload = {
     ...failed,
     exhaustedSources: [
-      ...new Set([...(failed.exhaustedSources || []), failed.source].filter(Boolean)),
+      ...new Set(
+        [...(failed.exhaustedSources || []), failed.source].filter((value): value is string =>
+          Boolean(value),
+        ),
+      ),
     ],
   };
   await DISCARD_SOURCE_WORK[payload.source]?.(payload);
@@ -305,7 +358,7 @@ async function moveOnFromFailedAlbumStep(failed, message) {
   return null;
 }
 
-export async function failPipelineJob(failed, message) {
+export async function failPipelineJob(failed: PipelinePayload, message: string) {
   const jobId = failed?.jobId;
   if (!jobId) return null;
   keepHeldForReview(failed);
@@ -314,7 +367,7 @@ export async function failPipelineJob(failed, message) {
   return next;
 }
 
-async function failPipelineStep(failed, message) {
+async function failPipelineStep(failed: PipelinePayload, message: string) {
   const jobId = failed.jobId;
   const payload = failed.source
     ? failed
@@ -352,7 +405,7 @@ const UPGRADE_WAIT_SECONDS = 60;
 
 // Pins an attempt past its search, and the tracks it holds, to the release
 // its leading track resolves to now, or to none.
-async function repinAlbumAttempt(payload) {
+async function repinAlbumAttempt(payload: PipelinePayload) {
   const jobs = albumGrabJobs(payload);
   const leader = jobs.find((job) => job.id === payload.jobId);
   if (!leader) return null;
@@ -369,7 +422,7 @@ async function repinAlbumAttempt(payload) {
 // longer lists, as after a merge, is chosen again; otherwise the download
 // waits. An attempt queued before attempts named their release is adopted
 // the same way. After the last wait it finishes without a release.
-async function awaitAttemptRelease(payload) {
+async function awaitAttemptRelease(payload: PipelinePayload) {
   const waits = Number(payload.releaseWaits) || 0;
   if (waits >= MAX_RELEASE_WAITS)
     return { ...payload, releaseMbid: null, releaseWaits: null, delaySeconds: 0 };
@@ -397,22 +450,23 @@ const DISCARD_SOURCE_WORK = {
 // tracks start again untried, and the source removes the work it started
 // unless a cancellation already did.
 export async function settleDroppedAlbumGrab(
-  payload,
-  nextPayload = null,
+  dropped: HonkerPayload | PipelinePayload | null,
+  nextPayload: PipelinePayload | null = null,
   reason = ALBUM_GRAB_ENDED_REASON,
 ) {
   if (
-    payload?.albumGrab !== true ||
+    dropped?.albumGrab !== true ||
     (nextPayload?.albumGrab === true && isPipelinePayloadActive(nextPayload))
   )
     return;
+  const payload = dropped as PipelinePayload;
   const held = heldAlbumGrabJobs(payload).filter((job) => job.id !== nextPayload?.jobId);
   if (held.length === 0) return;
   if (isPipelinePayloadActive(payload)) await DISCARD_SOURCE_WORK[payload.source]?.(payload);
   returnUntriedAlbumGrabJobs(payload, held, reason);
 }
 
-export async function processPipelinePayload(payload) {
+export async function processPipelinePayload(payload: PipelinePayload) {
   if (!payload || !payload.phase || !payload.jobId) {
     throw new Error("Invalid pipeline payload");
   }
@@ -424,9 +478,9 @@ export async function processPipelinePayload(payload) {
   return nextPayload;
 }
 
-async function processSourcePayload(payload) {
+async function processSourcePayload(payload: PipelinePayload): Promise<PipelinePayload | null> {
   if (!isPipelinePayloadActive(payload)) {
-    await discardSlskdSearch(payload);
+    await discardSlskdSearch(payload as SlskdStepPayload);
     return null;
   }
   const currentJob = downloadTracker.getJob(payload.jobId);
@@ -474,6 +528,7 @@ async function processSourcePayload(payload) {
     }
     return processSourcePayload(nextPayload);
   }
+  const { source } = payload;
   if (payload.albumGrab === true && ["search", "finalize"].includes(payload.phase) && currentJob) {
     if (await attemptRelease(payload, currentJob)) {
       if (payload.releaseWaits) payload = { ...payload, releaseWaits: null, delaySeconds: 0 };
@@ -483,7 +538,7 @@ async function processSourcePayload(payload) {
       return awaitAttemptRelease(payload);
     }
   }
-  if (payload.albumGrab === true && !ALBUM_GRAB_SOURCE_IDS.includes(payload.source)) {
+  if (payload.albumGrab === true && !ALBUM_GRAB_SOURCE_IDS.includes(source)) {
     const job = downloadTracker.getJob(payload.jobId);
     return job
       ? failOrTryNextSource(
@@ -498,7 +553,7 @@ async function processSourcePayload(payload) {
       const job = downloadTracker.getJob(payload.jobId);
       return job ? failOrTryNextSource(payload, job, "Usenet is not configured") : null;
     }
-    return processUsenetPipelinePayload(payload, { failOrTryNextSource });
+    return processUsenetPipelinePayload(payload as UsenetStepPayload, { failOrTryNextSource });
   }
   if (payload.source === "deemix") {
     if (!isSourceConfigured("deemix")) {
@@ -512,7 +567,7 @@ async function processSourcePayload(payload) {
       const job = downloadTracker.getJob(payload.jobId);
       return job ? failOrTryNextSource(payload, job, "yt-dlp is not configured") : null;
     }
-    return processYtdlpPipelinePayload(payload, { failOrTryNextSource });
+    return processYtdlpPipelinePayload(payload as YtdlpStepPayload, { failOrTryNextSource });
   }
   if (payload.source !== "slskd") {
     const job = downloadTracker.getJob(payload.jobId);
@@ -524,10 +579,12 @@ async function processSourcePayload(payload) {
     const job = downloadTracker.getJob(payload.jobId);
     return job ? failOrTryNextSource(payload, job, SLSKD_NOT_CONFIGURED_MESSAGE) : null;
   }
-  return processSlskdPipelinePayload(payload, { failOrTryNextSource });
+  return processSlskdPipelinePayload(payload as SlskdStepPayload, {
+    failOrTryNextSource: failOrTryNextSource as SlskdStepHelpers["failOrTryNextSource"],
+  });
 }
 
-export async function continuePipeline(payload) {
+export async function continuePipeline(payload: PipelinePayload | null | undefined) {
   if (!payload) return;
   if (!isPipelinePayloadActive(payload)) return;
   if (payload.delaySeconds) {

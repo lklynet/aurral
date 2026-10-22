@@ -1,4 +1,5 @@
 import axios from "../../lib/axiosFetch.ts";
+import { asAppError } from "../../lib/errors.ts";
 import { readPlaylistPages, requirePlaylistPath } from "./playback/playlistUsage.ts";
 
 const CLIENT_NAME = "Aurral";
@@ -70,7 +71,7 @@ export class JellyfinClient {
   }
 
   async getUser() {
-    return this.request("GET", `/Users/${encodeURIComponent(this.userId)}`);
+    return this.request("GET", `/Users/${encodeURIComponent(String(this.userId))}`);
   }
   async getUsers(): Promise<JellyfinUser[]> {
     return this.request("GET", "/Users");
@@ -258,11 +259,12 @@ export class JellyfinClient {
         params: { userId },
       });
     } catch (error) {
+      const failure = asAppError(error);
       // Before Jellyfin 10.9, the user ID was part of this route's path.
-      if (error?.response?.status !== 405) throw error;
+      if (failure?.response?.status !== 405) throw error;
       return this.request(
         "GET",
-        `/Users/${encodeURIComponent(userId)}/Items/${encodeURIComponent(playlistId)}`,
+        `/Users/${encodeURIComponent(String(userId))}/Items/${encodeURIComponent(playlistId)}`,
       );
     }
   }

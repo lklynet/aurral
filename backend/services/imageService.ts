@@ -1,5 +1,6 @@
 import type { CachedArtistImage } from "../db/helpers/cache.ts";
 import { dbOps } from "../db/helpers/index.ts";
+import { asAppError } from "../../lib/errors.ts";
 import type { ArtistOverride } from "../db/helpers/overrides.ts";
 import { buildStableImageProxyUrl } from "./imageProxyService.ts";
 import type { NormalizedArtist } from "./providers/brainzmashMappers.ts";
@@ -469,7 +470,7 @@ export const getArtistImage = async (
         dbOps.setDeezerMbidCache(rgCacheKey, "NOT_FOUND");
       }
     } catch (e) {
-      console.warn(`Failed to fetch image for ${mbid}:`, e.message);
+      console.warn(`Failed to fetch image for ${mbid}:`, asAppError(e)?.message);
       return { url: null, images: [], transientError: true };
     }
 

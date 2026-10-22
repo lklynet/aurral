@@ -1,6 +1,7 @@
 import path from "path";
 import fs from "fs/promises";
-import { downloadTracker } from "./downloadJobs/downloadTracker.ts";
+import { downloadTracker, type DownloadJob } from "./downloadJobs/downloadTracker.ts";
+import { asAppError } from "../../lib/errors.ts";
 import { getDownloadClient } from "./download/downloadClientSettings.ts";
 import { logger } from "./logger.ts";
 import type { YtdlpClient } from "./ytdlpClient.ts";
@@ -40,6 +41,32 @@ const SONG_READS = 6;
 const LIVE_STATUSES = new Set(["is_live", "was_live", "post_live", "is_upcoming"]);
 
 type YtdlpResult = Awaited<ReturnType<YtdlpClient["search"]>>[number];
+type YtdlpCandidate = Omit<ReturnType<typeof toPipelineCandidate>, "raw"> & { raw: YtdlpResult };
+
+type YtdlpPayload = {
+  jobId: string;
+  phase: string;
+  source?: string | null;
+  playlistId?: string | null;
+  track?: Parameters<typeof buildResolvedTrack>[1];
+  destination?: string | null;
+  upgradeForJobId?: string | null;
+  manualSelection?: boolean;
+  candidates?: YtdlpCandidate[];
+  candidate?: YtdlpCandidate | null;
+  candidateIndex?: number;
+  downloadedPath?: string | null;
+  heldForReview?: ReturnType<typeof holdForReview> | null;
+};
+
+type YtdlpHelpers = {
+  failOrTryNextSource: (
+    payload: YtdlpPayload,
+    job: DownloadJob,
+    message: string,
+    logDetails?: Record<string, number>,
+  ) => Promise<unknown>;
+};
 type YtdlpSearchOptions = NonNullable<Parameters<YtdlpClient["search"]>[1]>;
 
 export function isYtdlpLiveResult(result: YtdlpResult) {
@@ -71,7 +98,7 @@ export function hasEnoughCandidates(
   );
 }
 
-async function handleYtdlpSearch(payload, helpers) {
+async function handleYtdlpSearch(payload: YtdlpPayload, helpers: YtdlpHelpers) {
   const job = downloadTracker.getJob(payload.jobId);
   if (!job) return null;
   if (job.status === "failed" || job.status === "done") return null;
@@ -120,7 +147,7 @@ async function handleYtdlpSearch(payload, helpers) {
         resultKey,
       );
     } catch (error) {
-      lastError = error?.message || String(error);
+      lastError = asAppError(error)?.message || String(error);
       logger.warn("ytdlp", "yt-dlp search failed", {
         jobId: job.id,
         query,
@@ -166,7 +193,9 @@ async function handleYtdlpSearch(payload, helpers) {
   }
   let evaluation = await evaluateResults(searchedResults());
   if (!holdsTrack(evaluation)) {
-    for (const query of [...queries, fallbackQuery].filter(Boolean)) {
+    for (const query of [...queries, fallbackQuery].filter((value): value is string =>
+      Boolean(value),
+    )) {
       if (hasEnoughCandidates(found.videos, resolvedTrack)) break;
       if (query === fallbackQuery && found.videos.length > 0) break;
       await searchOnce("videos", query, { limit: 5 });
@@ -197,7 +226,7 @@ async function handleYtdlpSearch(payload, helpers) {
   };
 }
 
-async function handleYtdlpDownload(payload, helpers) {
+async function handleYtdlpDownload(payload: YtdlpPayload, helpers: YtdlpHelpers) {
   const job = downloadTracker.getJob(payload.jobId);
   if (!job) return null;
   if (job.status === "failed" || job.status === "done") return null;
@@ -225,7 +254,7 @@ async function handleYtdlpDownload(payload, helpers) {
       await ytdlpClient.cleanupStaging(job.id);
       return null;
     }
-    const message = error?.message || String(error);
+    const message = asAppError(error)?.message || String(error);
     logger.warn("ytdlp", "yt-dlp download failed", {
       jobId: job.id,
       url,
@@ -261,7 +290,7 @@ async function handleYtdlpDownload(payload, helpers) {
   };
 }
 
-async function handleYtdlpFinalize(payload, helpers) {
+async function handleYtdlpFinalize(payload: YtdlpPayload, helpers: YtdlpHelpers) {
   const job = downloadTracker.getJob(payload.jobId);
   if (!job) return null;
   if (job.status === "failed" || job.status === "done") return null;
@@ -356,7 +385,7 @@ async function handleYtdlpFinalize(payload, helpers) {
   return committed.result;
 }
 
-export async function processYtdlpPipelinePayload(payload, helpers = {}) {
+export async function processYtdlpPipelinePayload(payload: YtdlpPayload, helpers: YtdlpHelpers) {
   logger.debug("ytdlp", "ytdlp pipeline phase", {
     phase: payload.phase,
     jobId: payload.jobId,

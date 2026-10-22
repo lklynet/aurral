@@ -489,8 +489,8 @@ type PipelinePayload = Omit<ReturnType<typeof buildPipelinePayload>, "heldForRev
   quickSearch?: boolean;
   albumGrab?: boolean;
   releaseMbid?: string | null;
-  albumGroupJobIds?: string[];
-  source?: string;
+  albumGroupJobIds?: string[] | null;
+  source?: string | null;
   candidates?: ManualCandidate[];
   candidateIndex?: number;
   manualSelection?: boolean;
@@ -732,8 +732,9 @@ export class DownloadTracker {
   recordAlbumGrabFailure(id: string) {
     const job = this.jobs.get(id);
     if (!job) return 0;
-    this._setAlbumGrabFailures(job, (job.albumGrabFailures || 0) + 1);
-    return job.albumGrabFailures;
+    const failures = (job.albumGrabFailures || 0) + 1;
+    this._setAlbumGrabFailures(job, failures);
+    return failures;
   }
 
   _setAlbumGrabFailures(job: DownloadJob, count: number) {

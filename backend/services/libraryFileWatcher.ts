@@ -1,5 +1,6 @@
 import path from "node:path";
 
+import { asAppError } from "../../lib/errors.ts";
 import { resolveDownloadRoot } from "./downloadPaths.ts";
 import { isLibraryScanExcludedDirectory } from "./libraryFileScanner.ts";
 import { lidarrClient } from "./lidarrClient.ts";
@@ -41,7 +42,7 @@ type LibraryFileWatcherOptions = {
     onChange: WatchChange,
   ) => LibraryWatcher;
   onChange?: (roots: string[], changedPaths: string[]) => void;
-  onError?: (error: Error, root: string) => void;
+  onError?: (error: unknown, root: string) => void;
 };
 
 export function createLibraryFileWatcher({
@@ -59,11 +60,14 @@ export function createLibraryFileWatcher({
   const changedPaths = new Set<string>();
   const watchRoots = new Map<string, { root: string; pathMappings: PathMapping[] }>();
   for (const entry of roots) {
-    const root = String(entry?.path ?? entry ?? "");
+    const root = String(typeof entry === "string" ? entry : (entry?.path ?? entry ?? ""));
     if (!root) continue;
     const key = path.resolve(root);
     if (!watchRoots.has(key))
-      watchRoots.set(key, { root, pathMappings: entry?.pathMappings || [] });
+      watchRoots.set(key, {
+        root,
+        pathMappings: typeof entry === "string" ? [] : entry?.pathMappings || [],
+      });
   }
 
   const scheduleChange = (root: string, filename: string | null) => {
@@ -187,7 +191,7 @@ export async function refreshLibraryFileWatcher({
     onError: (error, root) => {
       logger.warn?.(
         `[Library] Automatic file watching disabled for ${root}; manual library refresh is still available:`,
-        error?.message || error,
+        asAppError(error)?.message || error,
       );
     },
   });

@@ -1,6 +1,7 @@
 import type { Statement } from "better-sqlite3";
 import type { Job, Queue } from "@russellthehippo/honker-node";
 import { db } from "../config/db-sqlite.ts";
+import { asAppError } from "../../lib/errors.ts";
 import { SCHEDULED_SYSTEM_TASKS } from "./honkerDb.ts";
 import { registerHonkerShutdownHandler } from "./honkerWorkerRuntime.ts";
 import type {
@@ -447,7 +448,7 @@ export function startHonkerTaskCleanup() {
 }
 
 export async function stopHonkerTaskCleanup() {
-  clearInterval(cleanupTimer);
+  if (cleanupTimer) clearInterval(cleanupTimer);
   cleanupTimer = null;
   await cleanupPromise;
 }
@@ -498,7 +499,7 @@ function stableValue(value: unknown): unknown {
     .sort()
     .reduce<Record<string, unknown>>((acc, key) => {
       if (key === "requestedAt") return acc;
-      acc[key] = stableValue(value[key]);
+      acc[key] = stableValue(Reflect.get(value, key));
       return acc;
     }, {});
 }
@@ -1077,7 +1078,7 @@ function readQueueStats(
 
   for (const entry of stats.values()) {
     entry.scheduledCount = entry.scheduledKeys.size;
-    delete entry.scheduledKeys;
+    Reflect.deleteProperty(entry, "scheduledKeys");
   }
 
   return stats;
@@ -1190,6 +1191,7 @@ function normalizeQueueRows(
     .map((row): TaskQueueRowSource => {
       runJobKeys.add(`${row.queue}:${row.job_id}`);
       const run = normalizeRunRow(row);
+      const ranAt = run.endedAt || run.startedAt || run.queuedAt;
       return {
         ...run,
         source: "run",
@@ -1197,7 +1199,7 @@ function normalizeQueueRows(
         maxAttempts: null,
         priority: null,
         state: run.status,
-        sortAt: Date.parse(run.endedAt || run.startedAt || run.queuedAt || 0) / 1000,
+        sortAt: (ranAt ? Date.parse(ranAt) : 0) / 1000,
         duplicateCount: 1,
       };
     });
@@ -1369,10 +1371,11 @@ export async function clearStaleHonkerJobs() {
       }
       cleared += 1;
     } catch (error) {
+      const failure = asAppError(error);
       errors.push({
         jobId: row.id,
         queue: row.queue,
-        message: error?.message || String(error),
+        message: failure?.message || String(error),
       });
     }
   }
@@ -1396,10 +1399,11 @@ export async function clearStaleHonkerJobs() {
       recordHonkerTaskRunFinished(Number(run.id), "failed", clearedReason);
       cleared += 1;
     } catch (error) {
+      const failure = asAppError(error);
       errors.push({
         jobId: null,
         queue: null,
-        message: error?.message || String(error),
+        message: failure?.message || String(error),
       });
     }
   }

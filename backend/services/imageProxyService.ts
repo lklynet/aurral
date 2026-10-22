@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import dns from "node:dns";
+import type { LookupFunction } from "node:net";
 import fs from "fs";
 import path from "path";
 import { Agent, fetch as undiciFetch, type Response as UndiciResponse } from "undici";
@@ -7,6 +8,7 @@ import PQueue from "p-queue";
 import getSharp from "./sharpConfig.ts";
 import BoundedMap from "./boundedMap.ts";
 import { resolveAurralDataDir } from "../config/data-dir.ts";
+import { asAppError } from "../../lib/errors.ts";
 import { isPrivateAddress, isPrivateHostname } from "../../lib/publicUrl.ts";
 import type { Request, Response as ExpressResponse } from "express";
 
@@ -113,7 +115,7 @@ const imageProxyDispatcher = new Agent({
   keepAliveTimeout: 30_000,
   keepAliveMaxTimeout: 60_000,
   maxResponseSize: MAX_SOURCE_IMAGE_BYTES,
-  connect: { lookup: safeLookup },
+  connect: { lookup: safeLookup as LookupFunction },
 });
 const usesNativeFetch = () =>
   Function.prototype.toString.call(globalThis.fetch).includes("internal/deps/undici");
@@ -296,7 +298,7 @@ const migrateObsoleteImageCache = () => {
     fs.writeFileSync(IMAGE_CACHE_MIGRATION_MARKER, "1\n", { flag: "wx" });
     obsoleteImageCacheMigrationComplete = true;
   } catch (error) {
-    if (error?.code === "EEXIST") obsoleteImageCacheMigrationComplete = true;
+    if (asAppError(error)?.code === "EEXIST") obsoleteImageCacheMigrationComplete = true;
   }
 };
 

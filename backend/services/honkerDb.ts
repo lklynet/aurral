@@ -11,6 +11,7 @@ import type {
 } from "@russellthehippo/honker-node";
 import type { HonkerLiveRow } from "../db/rows.ts";
 import { resolveAurralDataDir } from "../config/data-dir.ts";
+import { asAppError } from "../../lib/errors.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import { resolveDownloadRoot } from "./downloadPaths.ts";
 import { ISOLATED_QUEUE_GROUPS, shouldStartQueueHere } from "./backgroundWorkerQueues.ts";
@@ -69,7 +70,8 @@ function wakeQueueOwner(name: string) {
       queueWakeHandler?.(name);
     }
   } catch (error) {
-    console.warn("[Honker] Could not wake queued work:", error?.message || error);
+    const failure = asAppError(error);
+    console.warn("[Honker] Could not wake queued work:", failure?.message || error);
   }
 }
 
@@ -482,7 +484,9 @@ export function getNotificationOutbox() {
         const { deliverQueuedNotification } = await import("./notificationService.ts");
         const { withJobHeartbeat } = await import("./honkerWorkerRuntime.ts");
         const outbox = getNotificationOutbox();
-        await withJobHeartbeat(job, outbox.queue, () => deliverQueuedNotification(payload));
+        await withJobHeartbeat(job, outbox.queue, () =>
+          deliverQueuedNotification(payload as Parameters<typeof deliverQueuedNotification>[0]),
+        );
       },
       {
         visibilityTimeoutS: 120,
@@ -516,7 +520,9 @@ export function getPlayEventOutbox() {
         const { deliverPlayEvent } = await import("./playEventService.ts");
         const { withJobHeartbeat } = await import("./honkerWorkerRuntime.ts");
         const outbox = getPlayEventOutbox();
-        await withJobHeartbeat(job, outbox.queue, () => deliverPlayEvent(payload));
+        await withJobHeartbeat(job, outbox.queue, () =>
+          deliverPlayEvent(payload as Parameters<typeof deliverPlayEvent>[0]),
+        );
       },
       { visibilityTimeoutS: 120, maxAttempts: 5, baseBackoffS: 30 },
     );
@@ -899,12 +905,13 @@ export function isHonkerScheduleDue(nowMs = Date.now()) {
 export function listBackgroundGroupsWithWork(nowMs = Date.now()) {
   const now = Math.floor(nowMs / 1000);
   const groups = new Set(
-    getHonkerDb()
-      .query(
+    (
+      getHonkerDb().query(
         `SELECT DISTINCT queue FROM _honker_live WHERE run_at <= ?
      AND (state = 'pending' OR (state = 'processing' AND claim_expires_at <= ?))`,
         [now, now],
-      )
+      ) as Pick<HonkerLiveRow, "queue">[]
+    )
       .map((row) => ISOLATED_QUEUE_GROUPS[row.queue])
       .filter(Boolean),
   );

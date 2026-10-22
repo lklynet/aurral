@@ -105,7 +105,7 @@ type UsenetRemoveOptions = { deleteFiles?: boolean; historyItem?: UsenetHistoryI
 
 interface UsenetPayload {
   jobId: string;
-  phase: "search" | "download" | "poll" | "finalize";
+  phase: string;
   source?: string;
   albumGrab?: boolean;
   releaseMbid?: string | null;

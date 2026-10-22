@@ -1,10 +1,12 @@
+import { asAppError } from "../../lib/errors.ts";
 import createHonkerWorker from "./honkerWorkerFactory.ts";
-import { getPipelineQueue } from "./honkerDb.ts";
+import { getPipelineQueue, type HonkerPayload } from "./honkerDb.ts";
 import {
   continuePipeline,
   processPipelinePayload,
   enqueuePendingJobsWithoutBatch,
   failPipelineJob,
+  type PipelinePayload,
 } from "./downloadPipeline.ts";
 import { isPipelinePayloadActive } from "./downloadJobs/downloadCancellation.ts";
 import { isAnyDownloadSourceConfigured } from "./downloadSourceService.ts";
@@ -19,7 +21,11 @@ interface PipelineDependencies {
   failPipelineJob?: typeof failPipelineJob;
 }
 
-async function processLockedPipelineJob(payload, dependencies: PipelineDependencies = {}) {
+async function processLockedPipelineJob(
+  current: HonkerPayload,
+  dependencies: PipelineDependencies = {},
+) {
+  const payload = current as PipelinePayload;
   const processPayload = dependencies.processPipelinePayload || processPipelinePayload;
   const continuePayload = dependencies.continuePipeline || continuePipeline;
   const failPayload = dependencies.failPipelineJob || failPipelineJob;
@@ -43,7 +49,10 @@ async function processLockedPipelineJob(payload, dependencies: PipelineDependenc
   }
 }
 
-export function processPipelineJob(payload, dependencies: PipelineDependencies = {}) {
+export function processPipelineJob(
+  payload: PipelinePayload,
+  dependencies: PipelineDependencies = {},
+) {
   return withDownloadPayloadMutation(payload, (current) =>
     processLockedPipelineJob(current, dependencies),
   );
@@ -53,7 +62,7 @@ const {
   start: startDownloadPipelineWorker,
   stop: stopDownloadPipelineWorker,
   isRunning: isDownloadPipelineWorkerRunning,
-} = createHonkerWorker({
+} = createHonkerWorker<PipelinePayload>({
   name: "slskd-pipeline",
   getQueue: getPipelineQueue,
   idlePollS: 2,
@@ -65,18 +74,20 @@ const {
     enqueuePendingJobsWithoutBatch();
     return true;
   },
-  processJob: processPipelineJob,
+  processJob: (payload) => processPipelineJob(payload),
   onFinalFailure(job, error) {
-    const message = error?.message || String(error);
+    const failure = asAppError(error);
+    const message = failure?.message || String(error);
     console.error("[downloadPipelineWorker] pipeline job failed:", {
       jobId: job.payload?.jobId || null,
       phase: job.payload?.phase || null,
       candidateIndex: job.payload?.candidateIndex ?? null,
       message,
-      stack: error?.stack || null,
+      stack: failure?.stack || null,
     });
-    return withDownloadPayloadMutation(job.payload, async (payload) =>
-      continuePipeline(await failPipelineJob(payload, message)),
+    const failed: PipelinePayload = job.payload;
+    return withDownloadPayloadMutation(failed, async (current) =>
+      continuePipeline(await failPipelineJob(current as PipelinePayload, message)),
     );
   },
 });

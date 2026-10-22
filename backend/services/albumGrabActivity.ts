@@ -24,7 +24,7 @@ type AlbumGrabJob = Pick<DownloadJob, "id" | "createdAt"> & { status: string } &
 type AlbumGrabPayload = {
   jobId: string;
   albumGrab?: boolean;
-  albumGroupJobIds?: string[];
+  albumGroupJobIds?: string[] | null;
   phase?: string;
   source?: string | null;
 };

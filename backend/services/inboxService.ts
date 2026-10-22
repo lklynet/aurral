@@ -26,7 +26,7 @@ const refreshInflight = new Map<number, Promise<boolean>>();
 const encode = (value: string) => encodeURIComponent(String(value || ""));
 
 const toTime = (value: string | null | undefined) => {
-  const time = new Date(value).getTime();
+  const time = new Date(value ?? NaN).getTime();
   return Number.isFinite(time) ? time : null;
 };
 
@@ -190,12 +190,12 @@ async function buildReleaseItems(userId: number, now: number) {
           artistMbid,
           artistName,
           releaseDate,
-          releaseType: album?.albumType?.name || album?.albumType || album?.releaseType || null,
+          releaseType: album?.albumType || null,
         },
         expiresAt: releaseTime + CONTENT_TTL_MS,
       };
     })
-    .filter(Boolean);
+    .filter((item): item is NonNullable<typeof item> => Boolean(item));
 }
 
 async function buildDiscoveryItems(userId: number, now: number) {
@@ -229,7 +229,7 @@ async function buildDiscoveryItems(userId: number, now: number) {
         expiresAt: now + CONTENT_TTL_MS,
       };
     })
-    .filter(Boolean);
+    .filter((item): item is NonNullable<typeof item> => Boolean(item));
 }
 
 type NearbyShow = {
@@ -373,7 +373,7 @@ export async function refreshInboxForUser(
     const enabledNewsKinds = new Set(
       getEnabledKinds(preferences).filter((kind) => ["news", "recommendedNews"].includes(kind)),
     );
-    const results = await Promise.allSettled([
+    const results: PromiseSettledResult<InboxItemInput[]>[] = await Promise.allSettled([
       preferences.releases ? buildReleaseItems(normalizedUserId, now) : [],
       preferences.discoveries ? buildDiscoveryItems(normalizedUserId, now) : [],
       preferences.shows
@@ -384,7 +384,10 @@ export async function refreshInboxForUser(
     const sourceNames = ["releases", "discoveries", "shows", "news"];
     const failures = results
       .map((result, index) => ({ result, source: sourceNames[index] }))
-      .filter(({ result }) => result.status === "rejected");
+      .filter(
+        (entry): entry is typeof entry & { result: PromiseRejectedResult } =>
+          entry.result.status === "rejected",
+      );
     for (const { result, source } of failures) {
       logger.warn("inbox", "Inbox source refresh failed", {
         source,

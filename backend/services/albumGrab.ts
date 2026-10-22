@@ -119,7 +119,10 @@ export function blockAlbumGrabSource(payload: AlbumGrabPayload, jobs: DownloadJo
 
 // When the leading track was filled, another unfilled track leads, with the
 // file it holds for review instead of the filled track's.
-function regroupAlbumGrab(payload: AlbumGrabPayload, remaining: DownloadJob[]) {
+function regroupAlbumGrab<Payload extends AlbumGrabPayload>(
+  payload: Payload,
+  remaining: DownloadJob[],
+) {
   const leaderId = remaining.some((job) => job.id === payload.jobId)
     ? payload.jobId
     : remaining[0].id;
@@ -145,8 +148,8 @@ export function continueAlbumGrab(payload: AlbumGrabPayload, resetFields = {}) {
 
 // After the last release of a source, the next album source in configured
 // order searches for the tracks still unfilled before any track search.
-export async function nextAlbumSource(
-  payload: AlbumGrabPayload,
+export async function nextAlbumSource<Payload extends AlbumGrabPayload>(
+  payload: Payload,
   reason = NO_RELEASE_FILLED_REASON,
 ) {
   const remaining = albumGrabJobs(payload);
@@ -205,8 +208,8 @@ export function returnUntriedAlbumGrabJobs(
   giveBack(payload, jobs, reason, new Map(), { asRetryCycle: retry });
 }
 
-export function fallbackAlbumGrabToTracks(
-  payload: AlbumGrabPayload,
+export function fallbackAlbumGrabToTracks<Payload extends AlbumGrabPayload>(
+  payload: Payload,
   reason: string | null = null,
   reasons = new Map<string, string>(),
 ) {
