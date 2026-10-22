@@ -1,4 +1,5 @@
 import { db } from "../config/db-sqlite.ts";
+import type { LibraryTracksRow } from "../db/rows.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import { ACTIVE_JOB_STATUSES, indexAurralAlbumJobs, jobMatchesTrack } from "./aurralAlbumJobs.ts";
 import { recordMissingTrackSearch } from "./aurralHistoryService.ts";
@@ -45,7 +46,7 @@ const candidateAlbumsStmt = db.prepare(`
     )
 `);
 
-const missingTracksStmt = db.prepare(`
+const missingTracksStmt = db.prepare<[number], Pick<LibraryTracksRow, "mbid" | "title">>(`
   SELECT track.mbid, track.title
   FROM library_album_tracks AS link
   JOIN library_tracks AS track ON track.id = link.track_id

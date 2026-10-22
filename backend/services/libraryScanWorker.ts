@@ -6,13 +6,26 @@ import { dbOps } from "../db/helpers/index.ts";
 import { enqueueLibraryScanJob, getLibraryScanQueue } from "./honkerDb.ts";
 import { isHonkerDatabaseClosedError } from "./honkerWorkerRuntime.ts";
 import { resolveLibraryScanChangedPaths, type LibraryScanRequest } from "./libraryScanRequest.ts";
+import type { HonkerTaskRunsRow, SettingsRow } from "../db/rows.ts";
 import { scheduleReleaseMetadataRefresh } from "./releaseMetadataSync.ts";
 import { websocketService } from "./websocketService.ts";
 
 const WORKER_NAME = "library-scan";
 const LIBRARY_SCAN_REGISTRY_KEY = "pendingLibraryScanJob";
 const MAX_CHANGED_PATHS = 4096;
-const scanRegistryValueStmt = db.prepare("SELECT value FROM settings WHERE key = ?");
+const scanRegistryValueStmt = db.prepare<[string], Pick<SettingsRow, "value">>(
+  "SELECT value FROM settings WHERE key = ?",
+);
+
+type ScanRegistry = {
+  jobId?: number | null;
+  includeLidarr?: boolean;
+  force?: boolean;
+  changedPaths?: string[] | null;
+  inFlightActive?: boolean;
+  inFlightPaths?: string[] | null;
+  fullRescanPending?: boolean;
+};
 const insertScanRegistryStmt = db.prepare(
   "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO NOTHING",
 );
@@ -20,9 +33,9 @@ const updateScanRegistryStmt = db.prepare(
   "UPDATE settings SET value = ? WHERE key = ? AND value = ?",
 );
 
-function getScanRegistrySnapshot() {
+function getScanRegistrySnapshot(): { value: string | null; registry: ScanRegistry } {
   const value = scanRegistryValueStmt.get(LIBRARY_SCAN_REGISTRY_KEY)?.value ?? null;
-  const raw = dbHelpers.parseJSON(value);
+  const raw: ScanRegistry | null = dbHelpers.parseJSON(value);
   return {
     value,
     registry: raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {},
@@ -33,19 +46,22 @@ function getScanRegistry() {
   return getScanRegistrySnapshot().registry;
 }
 
-function setScanRegistry(registry) {
+function setScanRegistry(registry: ScanRegistry) {
   dbOps.setJSONSetting(LIBRARY_SCAN_REGISTRY_KEY, registry);
 }
 
-function setScanRegistryIfUnchanged(snapshot, registry) {
+function setScanRegistryIfUnchanged(
+  snapshot: ReturnType<typeof getScanRegistrySnapshot>,
+  registry: ScanRegistry,
+) {
   const value = dbHelpers.stringifyJSON(registry);
   return snapshot.value === null
     ? insertScanRegistryStmt.run(LIBRARY_SCAN_REGISTRY_KEY, value).changes === 1
     : updateScanRegistryStmt.run(value, LIBRARY_SCAN_REGISTRY_KEY, snapshot.value).changes === 1;
 }
 
-function withoutScheduledScan(registry) {
-  const nextRegistry = { ...registry };
+function withoutScheduledScan(registry: ScanRegistry) {
+  const nextRegistry: ScanRegistry = { ...registry };
   for (const key of [
     "jobId",
     "includeLidarr",
@@ -54,18 +70,18 @@ function withoutScheduledScan(registry) {
     "inFlightActive",
     "inFlightPaths",
     "fullRescanPending",
-  ]) {
+  ] as const) {
     delete nextRegistry[key];
   }
   return nextRegistry;
 }
 
-function normalizeJobId(value) {
+function normalizeJobId(value: unknown) {
   const jobId = Number(value);
   return Number.isSafeInteger(jobId) && jobId > 0 ? jobId : null;
 }
 
-function normalizeChangedPaths(paths) {
+function normalizeChangedPaths(paths: unknown) {
   if (!Array.isArray(paths)) return null;
   const normalized = [
     ...new Set(
@@ -78,14 +94,14 @@ function normalizeChangedPaths(paths) {
   return normalized.length > MAX_CHANGED_PATHS ? null : normalized;
 }
 
-function mergeChangedPaths(left, right) {
+function mergeChangedPaths(left: unknown, right: unknown) {
   return normalizeChangedPaths([
     ...(Array.isArray(left) ? left : []),
     ...(Array.isArray(right) ? right : []),
   ]);
 }
 
-function hasLiveScanJob(jobId) {
+function hasLiveScanJob(jobId: number) {
   const queue = getLibraryScanQueue();
   const job = queue.getJob(jobId);
   if (!job) return false;
@@ -108,7 +124,7 @@ export function hasCompletedLibraryScan() {
   );
 }
 
-export function clearScheduledLibraryScan(jobId = null) {
+export function clearScheduledLibraryScan(jobId: number | null = null) {
   while (true) {
     const snapshot = getScanRegistrySnapshot();
     const registry = snapshot.registry;
@@ -199,7 +215,7 @@ function registerLibraryScan({
     includeLidarr: effectiveIncludeLidarr,
     changedPaths: fullScan ? null : effectivePaths,
   });
-  const nextRegistry = { jobId, includeLidarr: effectiveIncludeLidarr };
+  const nextRegistry: ScanRegistry = { jobId, includeLidarr: effectiveIncludeLidarr };
   if (effectiveForce) nextRegistry.force = true;
   if (!fullScan) nextRegistry.changedPaths = effectivePaths;
   if (!setScanRegistryIfUnchanged(snapshot, nextRegistry)) {
@@ -212,7 +228,7 @@ function registerLibraryScan({
   return jobId;
 }
 
-export function claimScheduledLibraryScanJob(jobId, jobPayload: JsonValue = null) {
+export function claimScheduledLibraryScanJob(jobId: unknown, jobPayload: JsonValue = null) {
   const normalizedJobId = normalizeJobId(jobId);
   if (normalizedJobId == null) return false;
   const rawPayload = jobPayload ?? getLibraryScanQueue().getJob(normalizedJobId)?.payload;
@@ -234,7 +250,7 @@ export function claimScheduledLibraryScanJob(jobId, jobPayload: JsonValue = null
       const currentJobId = normalizeJobId(registry.jobId);
       if (currentJobId !== scheduledJobId && currentJobId !== normalizedJobId) return false;
       const isCurrentJob = currentJobId === normalizedJobId;
-      const nextRegistry = { jobId: normalizedJobId, includeLidarr: false };
+      const nextRegistry: ScanRegistry = { jobId: normalizedJobId, includeLidarr: false };
       if (isCurrentJob) {
         nextRegistry.includeLidarr = registry.includeLidarr === true;
         for (const key of [
@@ -243,7 +259,7 @@ export function claimScheduledLibraryScanJob(jobId, jobPayload: JsonValue = null
           "inFlightActive",
           "inFlightPaths",
           "fullRescanPending",
-        ]) {
+        ] as const) {
           if (key in registry) nextRegistry[key] = registry[key];
         }
       } else {
@@ -279,7 +295,7 @@ export function claimScheduledLibraryScanJob(jobId, jobPayload: JsonValue = null
     .immediate();
 }
 
-export function onLibraryScanSuccess(_payload, job) {
+export function onLibraryScanSuccess(_payload: unknown, job: { id: number }) {
   const pending = db
     .transaction(() => {
       const registry = getScanRegistry();
@@ -304,7 +320,7 @@ export function onLibraryScanSuccess(_payload, job) {
   scheduleReleaseMetadataRefresh({ delaySeconds: 5 });
 }
 
-export function beginLibraryScanJob(jobId, payload) {
+export function beginLibraryScanJob(jobId: number, payload: LibraryScanRequest | null) {
   return db
     .transaction(() => {
       const registry = getScanRegistry();
@@ -333,11 +349,11 @@ export function beginLibraryScanJob(jobId, payload) {
     .immediate();
 }
 
-export function onLibraryScanFinalFailure(job) {
+export function onLibraryScanFinalFailure(job: { id: number }) {
   clearScheduledLibraryScan(job.id);
 }
 
-export function restoreLibraryScanAfterWorkerExit(jobId) {
+export function restoreLibraryScanAfterWorkerExit(jobId: number) {
   db.transaction(() => {
     const registry = getScanRegistry();
     if (Number(registry.jobId) !== Number(jobId)) return;
@@ -346,7 +362,7 @@ export function restoreLibraryScanAfterWorkerExit(jobId) {
       registry.fullRescanPending === true ||
       (active && !Array.isArray(registry.inFlightPaths)) ||
       (!active && !("changedPaths" in registry));
-    const nextRegistry = {
+    const nextRegistry: ScanRegistry = {
       jobId,
       includeLidarr: registry.includeLidarr === true,
     };
@@ -358,7 +374,7 @@ export function restoreLibraryScanAfterWorkerExit(jobId) {
   }).immediate();
 }
 
-export function getLibraryScanStatus(jobId) {
+export function getLibraryScanStatus(jobId: string | number) {
   const normalizedJobId = Number(jobId);
   if (!Number.isSafeInteger(normalizedJobId) || normalizedJobId <= 0) return null;
 
@@ -372,7 +388,7 @@ export function getLibraryScanStatus(jobId) {
   }
 
   const run = db
-    .prepare(
+    .prepare<[number], Pick<HonkerTaskRunsRow, "status" | "error">>(
       `SELECT status, error
        FROM honker_task_runs
        WHERE queue = 'library-scan' AND job_id = ?

@@ -2,7 +2,7 @@ import fs from "fs/promises";
 import { getDownloadClient } from "./download/downloadClientSettings.ts";
 import { logger } from "./logger.ts";
 import { enqueuePipelineJob, listHonkerJobs } from "./honkerDb.ts";
-import { downloadTracker } from "./downloadJobs/downloadTracker.ts";
+import { downloadTracker, type DownloadJob } from "./downloadJobs/downloadTracker.ts";
 import {
   discardSlskdSearch,
   discardSlskdWork,
@@ -71,7 +71,7 @@ export function enqueuePendingJobsWithoutBatch() {
   return count;
 }
 
-async function failJob(job, message) {
+async function failJob(job: DownloadJob, message: string) {
   if (job.upgradeForJobId) {
     const { finalizeQualityUpgradeFailure } = await import("./qualityProfileService.ts");
     await finalizeQualityUpgradeFailure(job, message);
@@ -128,11 +128,15 @@ async function discardHeldForReview(payload) {
   await discardHeldFile(payload.jobId, held);
 }
 
-function isSourceConfigured(sourceId) {
+function isSourceConfigured(sourceId: string) {
   return getEnabledDownloadSources().some((source) => source.id === sourceId);
 }
 
-export function buildNextSourcePayload(payload, failedSource = null, reason = null) {
+export function buildNextSourcePayload(
+  payload,
+  failedSource: string | null = null,
+  reason: string | null = null,
+) {
   if (payload?.manualSelection === true) return null;
   const allowedSources = Array.isArray(payload?.allowedSources)
     ? new Set(payload.allowedSources)

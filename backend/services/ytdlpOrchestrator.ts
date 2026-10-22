@@ -3,6 +3,7 @@ import fs from "fs/promises";
 import { downloadTracker } from "./downloadJobs/downloadTracker.ts";
 import { getDownloadClient } from "./download/downloadClientSettings.ts";
 import { logger } from "./logger.ts";
+import type { YtdlpClient } from "./ytdlpClient.ts";
 import {
   buildSourceCandidates,
   prefilterCandidates,
@@ -38,7 +39,10 @@ const ytdlpClient = getDownloadClient("ytdlp");
 const SONG_READS = 6;
 const LIVE_STATUSES = new Set(["is_live", "was_live", "post_live", "is_upcoming"]);
 
-export function isYtdlpLiveResult(result) {
+type YtdlpResult = Awaited<ReturnType<YtdlpClient["search"]>>[number];
+type YtdlpSearchOptions = NonNullable<Parameters<YtdlpClient["search"]>[1]>;
+
+export function isYtdlpLiveResult(result: YtdlpResult) {
   return LIVE_STATUSES.has(
     String(result?.liveStatus || "")
       .trim()
@@ -48,7 +52,10 @@ export function isYtdlpLiveResult(result) {
 
 // The release audio on the artist's channel is the copy to download, so the
 // next query runs until a usable one turns up.
-export function hasEnoughCandidates(aggregated, resolvedTrack) {
+export function hasEnoughCandidates(
+  aggregated: YtdlpResult[],
+  resolvedTrack: ReturnType<typeof buildResolvedTrack>,
+) {
   const artistNames = [resolvedTrack.artistName, ...(resolvedTrack.artistAliases || [])].filter(
     Boolean,
   );
@@ -89,16 +96,23 @@ async function handleYtdlpSearch(payload, helpers) {
       .filter((entry) => Array.isArray(entry) && entry[0] === "ytdlp")
       .map((entry) => String(entry[1] || "").trim()),
   );
-  const found = { songs: [], videos: [] };
-  const seen = { songs: new Set(), videos: new Set() };
-  const resultKey = (entry) =>
+  const found: Record<"songs" | "videos", YtdlpResult[]> = { songs: [], videos: [] };
+  const seen: Record<"songs" | "videos", Set<string>> = {
+    songs: new Set(),
+    videos: new Set(),
+  };
+  const resultKey = (entry: YtdlpResult) =>
     String(entry.id || entry.url || "")
       .trim()
       .toLowerCase();
   let lastError = "";
-  const searchOnce = async (kind, query, options) => {
+  const searchOnce = async (
+    kind: "songs" | "videos",
+    query: string,
+    options: YtdlpSearchOptions,
+  ) => {
     try {
-      const results = await ytdlpClient.search(query, options);
+      const results: YtdlpResult[] = await ytdlpClient.search(query, options);
       mergeSearchResults(
         found[kind],
         seen[kind],
@@ -121,14 +135,14 @@ async function handleYtdlpSearch(payload, helpers) {
     const videoKeys = new Set(found.videos.map(resultKey));
     return [...found.songs.filter((song) => !videoKeys.has(resultKey(song))), ...found.videos];
   };
-  const evaluateResults = (results) =>
+  const evaluateResults = (results: YtdlpResult[]) =>
     buildSourceCandidates({
       source: "ytdlp",
       // Live streams are not recordings of the requested track.
       results: results.filter((result) => !isYtdlpLiveResult(result)),
       request: resolvedTrack,
     });
-  const holdsTrack = (evaluation) =>
+  const holdsTrack = (evaluation: Awaited<ReturnType<typeof buildSourceCandidates>>) =>
     evaluation.evaluations.some(
       (entry) => entry.decision === "accept" || entry.decision === "verify",
     );
