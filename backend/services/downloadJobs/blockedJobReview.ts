@@ -1,6 +1,6 @@
 import path from "path";
 import fs from "fs/promises";
-import { downloadTracker } from "./downloadTracker.ts";
+import { downloadTracker, type DownloadJob } from "./downloadTracker.ts";
 import { startWorkerIfPending } from "./downloadWorker.ts";
 import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.ts";
 import { getActiveDownloadAttemptId, withPipelineCommitLock } from "./downloadCancellation.ts";
@@ -18,9 +18,9 @@ import { discardReviewFile } from "./reviewFiles.ts";
 import { logger } from "../logger.ts";
 import { dbOps } from "../../db/helpers/index.ts";
 
-const approvalFollowUps = new Set();
+const approvalFollowUps = new Set<Promise<void>>();
 
-async function removeReviewedDownload(job) {
+async function removeReviewedDownload(job: DownloadJob) {
   if (job.downloadSource !== "usenet") return;
   const { removeReviewedUsenetDownload } = await import("../usenetOrchestrator.ts");
   await removeReviewedUsenetDownload(job);
@@ -28,12 +28,12 @@ async function removeReviewedDownload(job) {
 
 export const hasApprovalFollowUps = () => approvalFollowUps.size > 0;
 
-const getBlockedJob = (jobId) => {
+const getBlockedJob = (jobId: string) => {
   const job = downloadTracker.getJob(jobId);
   return job?.status === "blocked" ? job : null;
 };
 
-const logFollowUpFailure = (job, playlistId, error) => {
+const logFollowUpFailure = (job: DownloadJob, playlistId: string, error: unknown) => {
   logger.warn("downloads", "Approved track was imported but playlist follow-up failed", {
     jobId: job.id,
     playlistId,
@@ -41,14 +41,14 @@ const logFollowUpFailure = (job, playlistId, error) => {
   });
 };
 
-const publishApprovedImport = (job, playlistId) => {
+const publishApprovedImport = (job: DownloadJob, playlistId: string) => {
   const followUp = withDownloadStepLock(playlistId, () => refreshCompletedPipelinePlaylist(job))
     .catch((error) => logFollowUpFailure(job, playlistId, error))
     .finally(() => approvalFollowUps.delete(followUp));
   approvalFollowUps.add(followUp);
 };
 
-export async function approveBlockedJob(jobId) {
+export async function approveBlockedJob(jobId: string) {
   const job = getBlockedJob(jobId);
   if (!job) return { status: 404, error: "Blocked job not found" };
   const downloadAttemptId = getActiveDownloadAttemptId(job.id);
@@ -106,7 +106,10 @@ export async function approveBlockedJob(jobId) {
   return { status: 200, path: committedPath };
 }
 
-export async function denyBlockedJob(jobId, { reason = "Denied by user" } = {}) {
+export async function denyBlockedJob(
+  jobId: string,
+  { reason = "Denied by user" }: { reason?: string } = {},
+) {
   const job = getBlockedJob(jobId);
   if (!job) return { status: 404, error: "Blocked job not found" };
   // Approval imports under this lock. Re-check inside it, so a denial cannot

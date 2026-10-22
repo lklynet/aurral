@@ -1,4 +1,5 @@
 import { db } from "../config/db-sqlite.ts";
+import type { SettingsRow } from "../db/rows.ts";
 import { DEFAULT_METADATA_BASE_URL } from "../config/constants.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import { migrateLegacyAdmin } from "../middleware/auth.ts";
@@ -13,7 +14,7 @@ const RENAMED_SETTING_KEYS = [
 ];
 const RETIRED_METADATA_BASE_URL = "https://brainzmash.kell.ly";
 
-const parseJson = (value) => {
+const parseJson = (value: string | null | undefined) => {
   try {
     return value == null ? null : JSON.parse(value);
   } catch {
@@ -22,9 +23,13 @@ const parseJson = (value) => {
 };
 
 function moveRenamedSettingKeys() {
-  const read = db.prepare("SELECT value FROM settings WHERE key = ?");
-  const write = db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)");
-  const remove = db.prepare("DELETE FROM settings WHERE key = ?");
+  const read = db.prepare<[string], Pick<SettingsRow, "value">>(
+    "SELECT value FROM settings WHERE key = ?",
+  );
+  const write = db.prepare<[string, string]>(
+    "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+  );
+  const remove = db.prepare<[string]>("DELETE FROM settings WHERE key = ?");
   db.transaction(() => {
     for (const [oldKey, key] of RENAMED_SETTING_KEYS) {
       const old = read.get(oldKey);
@@ -40,7 +45,11 @@ function moveRenamedSettingKeys() {
 
 function storeExistingFileMode() {
   const stored = parseJson(
-    db.prepare("SELECT value FROM settings WHERE key = 'playlistWorker'").get()?.value,
+    db
+      .prepare<[], Pick<SettingsRow, "value">>(
+        "SELECT value FROM settings WHERE key = 'playlistWorker'",
+      )
+      .get()?.value,
   );
   const mode = stored?.existingFileMode;
   if (mode == null || mode === normalizeExistingFileMode(mode)) return;

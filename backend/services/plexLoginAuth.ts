@@ -1,11 +1,19 @@
 import crypto from "crypto";
+import type { Request, Response } from "express";
 import { createSession } from "../config/session-helpers.ts";
 import { userOps, userIdentityOps } from "../db/helpers/index.ts";
 import { isPlexLoginEnabled } from "../routes/users/plexLinkHandlers.ts";
 
 const STATE_TTL_MS = 10 * 60 * 1000;
 const TRANSACTION_COOKIE = "aurral_plex_login_transaction";
-const pendingLogins = new Map();
+type PendingPlexLogin = {
+  pinId: string | number;
+  code: string;
+  clientId: string;
+  expiresAt: number;
+};
+
+const pendingLogins = new Map<string, PendingPlexLogin>();
 
 function prunePendingLogins(now = Date.now()) {
   for (const [transactionId, entry] of pendingLogins) {
@@ -13,7 +21,7 @@ function prunePendingLogins(now = Date.now()) {
   }
 }
 
-function getTransactionCookie(req) {
+function getTransactionCookie(req: Request) {
   const cookies = String(req.headers?.cookie || "").split(";");
   for (const cookie of cookies) {
     const [name, ...parts] = cookie.trim().split("=");
@@ -27,7 +35,7 @@ function getTransactionCookie(req) {
   return "";
 }
 
-function setTransactionCookie(req, res, value, maxAge) {
+function setTransactionCookie(req: Request, res: Response, value: string, maxAge: number) {
   const secure = req.secure || req.protocol === "https";
   const attributes = [
     `${TRANSACTION_COOKIE}=${encodeURIComponent(value)}`,
@@ -40,11 +48,11 @@ function setTransactionCookie(req, res, value, maxAge) {
   res.append("Set-Cookie", attributes.join("; "));
 }
 
-function clearTransactionCookie(req, res) {
+function clearTransactionCookie(req: Request, res: Response) {
   setTransactionCookie(req, res, "", 0);
 }
 
-function isSafeForwardUrl(forwardUrl) {
+function isSafeForwardUrl(forwardUrl: unknown) {
   const value = String(forwardUrl || "");
   if (!value.startsWith("/")) return false;
   if (value.startsWith("//")) return false;
@@ -57,7 +65,7 @@ function isSafeForwardUrl(forwardUrl) {
   }
 }
 
-export async function startPlexLogin(req, res) {
+export async function startPlexLogin(req: Request, res: Response) {
   if (!isPlexLoginEnabled()) {
     res.status(404).json({ error: "Plex login is not enabled" });
     return;
@@ -85,7 +93,7 @@ export async function startPlexLogin(req, res) {
   res.json({ authUrl: PlexClient.buildAuthUrl(clientId, code, forwardUrl) });
 }
 
-export async function completePlexLogin(req, res) {
+export async function completePlexLogin(req: Request, res: Response) {
   if (!isPlexLoginEnabled()) {
     res.status(404).json({ error: "Plex login is not enabled" });
     return;

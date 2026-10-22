@@ -5,7 +5,15 @@ import {
   schedulePlaylistMbidEnrichmentForMissingPlaylists,
 } from "./playlistMbidEnrichmentService.ts";
 
-async function processPlaylistMbidEnrichment(payload = {}) {
+type PlaylistMbidEnrichmentPayload = {
+  kind?: string;
+  type?: string;
+  playlistId?: string;
+  reason?: string;
+  reconcileArtistMbids?: boolean;
+};
+
+async function processPlaylistMbidEnrichment(payload: PlaylistMbidEnrichmentPayload = {}) {
   const kind = String(payload?.kind || payload?.type || "").trim();
   switch (kind) {
     case "playlist-mbid-enrichment": {

@@ -48,7 +48,7 @@ export async function resolveDeezerAlbumToMbid(
 
 interface ArtistAlbumLookup {
   artistName?: string | null;
-  albumName?: string | null;
+  albumName?: unknown;
   deezerAlbumId?: string | number | null;
 }
 

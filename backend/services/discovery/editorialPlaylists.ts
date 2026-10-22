@@ -8,15 +8,16 @@ import {
 } from "../importLists/deezerPlaylists.ts";
 import { resolveArtistAndAlbumMbids } from "../apiClients/index.ts";
 import { getUserDiscovery } from "./userDiscovery.ts";
+import type { RequestUser } from "../../middleware/requestUser.ts";
 
 const PROVIDER = "deezer-playlist";
 const SYNC_INTERVAL_HOURS = 24;
 const FOR_YOU_TERMS = 6;
 const FOR_YOU_PER_TERM = 2;
 const FOR_YOU_LIMIT = 12;
-const pendingAdds = new Map();
+const pendingAdds = new Map<string, Promise<EditorialLibraryAddResponse>>();
 
-const findLibraryPlaylist = (userId, deezerPlaylistId) =>
+const findLibraryPlaylist = (userId: number, deezerPlaylistId: string) =>
   flowPlaylistConfig
     .getStaticPlaylistsOwnedByUser(userId)
     .find(
@@ -25,7 +26,7 @@ const findLibraryPlaylist = (userId, deezerPlaylistId) =>
         playlist.importSource.externalId === deezerPlaylistId,
     ) || null;
 
-const pickAvailableName = (userId, name) => {
+const pickAvailableName = (userId: number, name: string) => {
   const taken = new Set(
     [
       ...flowPlaylistConfig.getStaticPlaylistsOwnedByUser(userId),
@@ -43,7 +44,7 @@ const pickAvailableName = (userId, name) => {
   }
 };
 
-const uniqueTerms = (values) => {
+const uniqueTerms = (values: Iterable<unknown>) => {
   const seen = new Set();
   const terms = [];
   for (const value of values) {
@@ -56,7 +57,7 @@ const uniqueTerms = (values) => {
   return terms;
 };
 
-async function getForYouPlaylists(userId) {
+async function getForYouPlaylists(userId: number) {
   const { body } = await getUserDiscovery(userId, 0, 0);
   const terms = uniqueTerms([...(body.topGenres || []), ...(body.topTags || [])]);
   const results = await Promise.allSettled(terms.map(searchEditorialPlaylists));
@@ -74,7 +75,7 @@ async function getForYouPlaylists(userId) {
   return playlists.slice(0, FOR_YOU_LIMIT);
 }
 
-export async function getEditorialShelf(user) {
+export async function getEditorialShelf(user: RequestUser) {
   const [genres, forYou] = await Promise.all([
     getGenreShelf(),
     getForYouPlaylists(user.id).catch(() => []),
@@ -82,7 +83,15 @@ export async function getEditorialShelf(user) {
   return { forYou, genres };
 }
 
-export async function resolveEditorialTrackLinks({ artistName, albumName, deezerAlbumId }) {
+export async function resolveEditorialTrackLinks({
+  artistName,
+  albumName,
+  deezerAlbumId,
+}: {
+  artistName: unknown;
+  albumName: unknown;
+  deezerAlbumId: unknown;
+}) {
   const artist = String(artistName || "").trim();
   if (!artist) {
     throw Object.assign(new Error("artistName is required"), { statusCode: 400 });
@@ -95,7 +104,7 @@ export async function resolveEditorialTrackLinks({ artistName, albumName, deezer
   });
 }
 
-export async function getEditorialPlaylist(user, value) {
+export async function getEditorialPlaylist(user: RequestUser, value: string) {
   const id = validateDeezerPlaylistId(value);
   const playlist = await getDeezerPlaylist(id);
   return {
@@ -113,7 +122,7 @@ export type EditorialLibraryAddResponse =
   | { playlistId: string; name: string; alreadyAdded: true }
   | { playlistId: string; name: string; alreadyAdded: false; tracksQueued: number };
 
-export async function addEditorialPlaylistToLibrary(user, value) {
+export async function addEditorialPlaylistToLibrary(user: RequestUser, value: string) {
   const id = validateDeezerPlaylistId(value);
   const key = `${user.id}:${id}`;
   if (!pendingAdds.has(key)) {
@@ -122,10 +131,10 @@ export async function addEditorialPlaylistToLibrary(user, value) {
       addToLibrary(user, id).finally(() => pendingAdds.delete(key)),
     );
   }
-  return pendingAdds.get(key);
+  return pendingAdds.get(key)!;
 }
 
-async function addToLibrary(user, id) {
+async function addToLibrary(user: RequestUser, id: string): Promise<EditorialLibraryAddResponse> {
   const existing = findLibraryPlaylist(user.id, id);
   if (existing) {
     return { playlistId: existing.id, name: existing.name, alreadyAdded: true };

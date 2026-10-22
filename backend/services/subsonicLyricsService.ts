@@ -1,9 +1,10 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { parseFile } from "music-metadata";
+import { parseFile, type ILyricsTag } from "music-metadata";
+import type { RequestUser } from "../middleware/requestUser.ts";
 import { getSong, resolveStreamPath } from "./subsonicLibraryService.ts";
 
-function textLyrics(text) {
+function textLyrics(text: string | undefined) {
   const lines = String(text || "")
     .replace(/^\uFEFF/, "")
     .split(/\r?\n/);
@@ -30,27 +31,27 @@ function textLyrics(text) {
     .filter((value) => !/^\s*\[[a-z]+:.*\]\s*$/i.test(value))
     .map((value) => ({ value: value.trim() }));
   while (line.length && !line[0].value) line.shift();
-  while (line.length && !line.at(-1).value) line.pop();
+  while (line.length && !line.at(-1)!.value) line.pop();
   return line.length ? { synced: false, line } : null;
 }
 
-function embeddedLyrics(tag) {
+function embeddedLyrics(tag: ILyricsTag) {
   const synchronized = Array.isArray(tag.syncText) ? tag.syncText : [];
   if (synchronized.length) {
     const synced =
       tag.timeStampFormat === 2 &&
-      synchronized.every((entry) => Number.isFinite(entry.timestamp) && entry.timestamp >= 0);
+      synchronized.every((entry) => Number.isFinite(entry.timestamp) && entry.timestamp! >= 0);
     const line = synchronized.map((entry) => ({
       ...(synced ? { start: entry.timestamp } : {}),
       value: entry.text,
     }));
-    if (synced) line.sort((a, b) => a.start - b.start);
+    if (synced) line.sort((a, b) => a.start! - b.start!);
     return { synced, line };
   }
   return textLyrics(tag.text);
 }
 
-export async function getLyricsBySongId(id, user) {
+export async function getLyricsBySongId(id: string, user: RequestUser) {
   const song = getSong(id, user);
   const filePath = song && resolveStreamPath(id, user);
   if (!filePath) return [];

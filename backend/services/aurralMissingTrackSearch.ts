@@ -1,5 +1,6 @@
 import { db } from "../config/db-sqlite.ts";
-import type { LibraryTracksRow } from "../db/rows.ts";
+import type { LibraryAlbumsRow, LibraryTracksRow } from "../db/rows.ts";
+import type { DownloadJob } from "./downloadJobs/downloadTracker.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import { ACTIVE_JOB_STATUSES, indexAurralAlbumJobs, jobMatchesTrack } from "./aurralAlbumJobs.ts";
 import { recordMissingTrackSearch } from "./aurralHistoryService.ts";
@@ -13,6 +14,14 @@ import { logger } from "./logger.ts";
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 
+type CandidateAlbum = Pick<LibraryAlbumsRow, "id" | "title"> & {
+  mbid: string;
+  releaseGroupMbid: string | null;
+  artistName: string;
+  artistMbid: string | null;
+  lastSearchedAt: number | null;
+};
+
 const MISSING_TRACK_CONDITION = `
   ${monitoredTrackCondition("track")}
   AND NOT EXISTS (
@@ -23,7 +32,7 @@ const MISSING_TRACK_CONDITION = `
   )
 `;
 
-const candidateAlbumsStmt = db.prepare(`
+const candidateAlbumsStmt = db.prepare<[number], CandidateAlbum>(`
   SELECT
     album.id,
     album.title,
@@ -59,20 +68,20 @@ const markSearchedStmt = db.prepare(`
   WHERE entity_kind = 'album' AND entity_id = ?
 `);
 
-const jobActivityAt = (job) =>
+const jobActivityAt = (job: DownloadJob) =>
   Math.max(Number(job.createdAt) || 0, Number(job.startedAt) || 0, Number(job.completedAt) || 0);
 
-const isActiveOrCancelled = (job) =>
+const isActiveOrCancelled = (job: DownloadJob) =>
   ACTIVE_JOB_STATUSES.has(job.status) || job.status === "cancelled";
 
-function hasSearchableMissingTrack(album, jobs) {
+function hasSearchableMissingTrack(album: CandidateAlbum, jobs: DownloadJob[]) {
   return missingTracksStmt.all(album.id).some((track) => {
     const latestJob = jobs.filter((job) => jobMatchesTrack(job, track)).at(-1);
     return latestJob?.status !== "blocked";
   });
 }
 
-function selectDueAlbums(intervalDays) {
+function selectDueAlbums(intervalDays: number) {
   const dueBefore = Date.now() - intervalDays * DAY_MS + HOUR_MS;
   const albums = candidateAlbumsStmt.all(dueBefore);
   const jobsForAlbum = indexAurralAlbumJobs(
@@ -98,7 +107,7 @@ function selectDueAlbums(intervalDays) {
     .map(({ album }) => album);
 }
 
-async function searchAlbumMissingTracks(album) {
+async function searchAlbumMissingTracks(album: CandidateAlbum) {
   try {
     const result = await libraryManager.searchAurralAlbumMissingTracks(album.id);
     if (result?.error) {

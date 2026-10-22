@@ -2,7 +2,9 @@ import createHonkerWorker from "./honkerWorkerFactory.ts";
 import { getDiscoveryUserRefreshQueue } from "./honkerDb.ts";
 import { updateUserDiscoveryCache } from "./discovery/index.ts";
 
-async function processDiscoveryUserRefresh(payload = {}) {
+async function processDiscoveryUserRefresh(
+  payload: { userId?: unknown; requestedAt?: unknown } = {},
+) {
   const userId = Number(payload?.userId);
   if (!Number.isInteger(userId) || userId <= 0) {
     return { skipped: true, reason: "invalid_payload" };

@@ -18,15 +18,17 @@ import {
 } from "../libraryScanWorker.ts";
 
 export class ReadOnlyFolderError extends Error {
-  constructor(message) {
+  declare code: "READ_ONLY_FOLDER_INVALID";
+
+  constructor(message: string) {
     super(message);
     this.code = "READ_ONLY_FOLDER_INVALID";
   }
 }
 
-const realPath = (value) => fs.realpath(value).catch(() => path.resolve(value));
+const realPath = (value: string) => fs.realpath(value).catch(() => path.resolve(value));
 
-async function resolveNewFolder(requested) {
+async function resolveNewFolder(requested: unknown) {
   const value = String(requested || "").trim();
   if (!value || !path.isAbsolute(value)) {
     throw new ReadOnlyFolderError("Enter the full path of the folder.");
@@ -63,14 +65,14 @@ async function resolveNewFolder(requested) {
 }
 
 const countTracksStmt = db
-  .prepare(
+  .prepare<[string, number, string], number>(
     `SELECT COUNT(DISTINCT track_id) FROM library_media_files
    WHERE source = 'readonly' AND available = 1
      AND (path = ? OR substr(path, 1, ?) = ?)`,
   )
   .pluck();
 
-async function describeFolder(folder, lidarrRoots) {
+async function describeFolder(folder: string, lidarrRoots: string[]) {
   const prefix = folder.endsWith(path.sep) ? folder : `${folder}${path.sep}`;
   const readable = await fs.access(folder, fsConstants.R_OK | fsConstants.X_OK).then(
     () => true,
@@ -100,20 +102,20 @@ export async function describeReadOnlyFolders() {
   };
 }
 
-async function applyFolderChange(folders) {
+async function applyFolderChange(folders: string[]) {
   saveReadOnlyFolderPaths(folders);
   scheduleLibraryScan({ includeLidarr: true });
   const { refreshLibraryFileWatcher } = await import("../libraryFileWatcher.ts");
   await refreshLibraryFileWatcher();
 }
 
-export async function addReadOnlyFolder(requested) {
+export async function addReadOnlyFolder(requested: unknown) {
   const folder = await resolveNewFolder(requested);
   await applyFolderChange([...readOnlyFolderPaths(), folder]);
   return describeReadOnlyFolders();
 }
 
-export async function removeReadOnlyFolder(requested) {
+export async function removeReadOnlyFolder(requested: unknown) {
   const folder = path.resolve(String(requested || "").trim() || "/");
   const folders = readOnlyFolderPaths();
   if (!folders.includes(folder)) {

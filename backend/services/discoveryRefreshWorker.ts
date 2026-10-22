@@ -11,7 +11,7 @@ import {
   scheduleNextDiscoveryRefresh,
 } from "./discovery/refreshScheduler.ts";
 
-function skipDiscoveryRefresh(progressMessage) {
+function skipDiscoveryRefresh(progressMessage: string) {
   markDiscoveryRefreshStarted();
   markDiscoveryRefreshFinished();
   websocketService.emitDiscoveryUpdate({
@@ -22,7 +22,7 @@ function skipDiscoveryRefresh(progressMessage) {
   });
 }
 
-async function runDiscoveryRefresh(payload) {
+async function runDiscoveryRefresh(payload: { scheduleOnly?: boolean } | null) {
   if (payload?.scheduleOnly === true && !discoveryNeedsRefresh()) {
     skipDiscoveryRefresh("Discovery cache is already current");
     return;

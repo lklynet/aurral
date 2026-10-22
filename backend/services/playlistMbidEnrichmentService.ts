@@ -272,7 +272,7 @@ export function schedulePlaylistMbidEnrichmentForMissingPlaylists({
 }
 
 export async function enrichStaticPlaylistMbids(
-  playlistId: string,
+  playlistId: string | null | undefined,
   {
     resolveTrackContext = resolveTrackSearchContext,
     reconcileArtistMbids = false,
