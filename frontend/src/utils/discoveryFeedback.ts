@@ -1,6 +1,8 @@
 import type { DiscoveryFeedbackEntry as BackendDiscoveryFeedbackEntry } from "../../../backend/services/discovery/feedback.ts";
 
-export type DiscoveryFeedbackEntry = Partial<BackendDiscoveryFeedbackEntry>;
+export type DiscoveryFeedbackEntry = Partial<Omit<BackendDiscoveryFeedbackEntry, "artistId">> & {
+  artistId?: string | number | null;
+};
 
 interface DiscoveryFeedbackGetResponse {
   feedback: DiscoveryFeedbackEntry[];

@@ -10,7 +10,11 @@ type LibrarySearchItem =
   | LibrarySearchResults["albums"][number]
   | LibrarySearchResults["tracks"][number];
 
-export type SearchSuggestion = UnifiedSearchItem | LibrarySearchItem;
+type WithMutableAlbumStatus<Item> = Item extends { type: "album" }
+  ? Omit<Item, "status"> & { status?: string }
+  : Item;
+
+export type SearchSuggestion = WithMutableAlbumStatus<UnifiedSearchItem | LibrarySearchItem>;
 export type SearchSuggestionTrack = Extract<SearchSuggestion, { type: "track" }>;
 
 type PlaylistSuggestion = {

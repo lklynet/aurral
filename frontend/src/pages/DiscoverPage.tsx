@@ -446,7 +446,7 @@ function DiscoverPage() {
                 <div key={artist.id} className="artist-discover-shelf-card">
                   <ArtistCard
                     artist={artist}
-                    isInLibrary={!!libraryLookup[getArtistId(artist)]}
+                    isInLibrary={!!libraryLookup[String(getArtistId(artist))]}
                     getLibraryLink={getArtistLibraryLink}
                     onFeedback={handleDiscoveryFeedback}
                     feedbackUsed={getArtistFeedbackFlags(artistFeedbackLookup, artist)}
@@ -612,7 +612,7 @@ function DiscoverPage() {
                     ...artist,
                     metaText: "",
                   }}
-                  isInLibrary={!!libraryLookup[getArtistId(artist)]}
+                  isInLibrary={!!libraryLookup[String(getArtistId(artist))]}
                   getLibraryLink={getArtistLibraryLink}
                   onFeedback={handleDiscoveryFeedback}
                   feedbackUsed={getArtistFeedbackFlags(artistFeedbackLookup, artist)}
@@ -648,7 +648,7 @@ function DiscoverPage() {
                     >
                       <ArtistCard
                         artist={artist}
-                        isInLibrary={!!libraryLookup[getArtistId(artist)]}
+                        isInLibrary={!!libraryLookup[String(getArtistId(artist))]}
                         getLibraryLink={getArtistLibraryLink}
                         onFeedback={handleDiscoveryFeedback}
                         feedbackUsed={getArtistFeedbackFlags(artistFeedbackLookup, artist)}

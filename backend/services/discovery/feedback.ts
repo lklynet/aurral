@@ -94,7 +94,7 @@ export const filterBlockedArtistsForUser = <T extends ArtistMatchFields>(
 export type DiscoveryFeedbackInput = {
   id?: string | null;
   action: string | null;
-  artistId?: string | null;
+  artistId?: string | number | null;
   artistName?: string | null;
   sourceContext?: string | null;
   tagContext?: string[];
