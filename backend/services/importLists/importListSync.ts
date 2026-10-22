@@ -1,3 +1,4 @@
+import { isOwnKey } from "../../../lib/ownKey.ts";
 import {
   flowPlaylistConfig,
   invalidateFlowPlaylistConfigCache,
@@ -215,7 +216,10 @@ export async function runDueImportSourceSyncs() {
     if (!isImportSourceDue(playlist.importSource)) continue;
     const ownerUserId = playlist.ownerUserId;
     if (ownerUserId == null) continue;
-    const connection = PROVIDER_CONNECTIONS[playlist.importSource.provider];
+    const provider = playlist.importSource.provider;
+    const connection = isOwnKey(PROVIDER_CONNECTIONS, provider)
+      ? PROVIDER_CONNECTIONS[provider]
+      : undefined;
     if (connection && !connection.isConnected(ownerUserId)) {
       const connectionKey = `${connection.name}:${ownerUserId}`;
       const pending = disconnected.get(connectionKey);

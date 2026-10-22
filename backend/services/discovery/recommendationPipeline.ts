@@ -1,3 +1,4 @@
+import { isOwnKey } from "../../../lib/ownKey.ts";
 import { UUID_REGEX } from "../../../lib/uuid.ts";
 
 export interface ArtistIdentity {
@@ -205,9 +206,9 @@ const buildSeedIdentityKeys = (mbid: string | null, artistName: string) => {
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
-const normalizeDiscoveryMode = (value: unknown) => {
+const normalizeDiscoveryMode = (value: unknown): keyof typeof DISCOVERY_MODE_MULTIPLIERS => {
   const mode = normalizeText(value);
-  return DISCOVERY_MODE_MULTIPLIERS[mode] ? mode : "balanced";
+  return isOwnKey(DISCOVERY_MODE_MULTIPLIERS, mode) ? mode : "balanced";
 };
 
 const sortByValueThenName = (entries: Iterable<[string, number]>) =>
@@ -324,7 +325,7 @@ const calculateSeedWeight = (
   index: number,
 ) => {
   const source = normalizeText(seed?.source) || "library";
-  const baseWeight = SOURCE_BASE_WEIGHTS[source] || 1;
+  const baseWeight = (isOwnKey(SOURCE_BASE_WEIGHTS, source) ? SOURCE_BASE_WEIGHTS[source] : 0) || 1;
 
   if (source === "library") {
     const recencyBoost = Math.max(0, 0.5 - Math.max(index, 0) * 0.02);

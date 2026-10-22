@@ -1,4 +1,6 @@
+import { isOwnKey } from "../../../lib/ownKey.ts";
 import { dbOps } from "../../db/helpers/index.ts";
+import type { DownloadClient } from "./downloadClient.ts";
 import { DownloadClientRegistry } from "./downloadClientRegistry.ts";
 import { SlskdClient, slskdClient, slskdSettings } from "../slskdClient.ts";
 import { NzbgetClient, nzbgetClient, nzbgetSettings } from "../nzbgetClient.ts";
@@ -54,8 +56,9 @@ export function getDownloadClient(key: string | null) {
 }
 
 export async function testDownloadClient(key: string, config: Record<string, unknown> = {}) {
-  const client = factories[key]?.();
-  if (!client) throw new Error(`Unknown download client: ${key}`);
-  client.updateConfig(config);
+  if (!isOwnKey(factories, key)) throw new Error(`Unknown download client: ${key}`);
+  const client = factories[key]();
+  const configurable: DownloadClient = client;
+  configurable.updateConfig(config);
   return client.testConnection({ force: true });
 }

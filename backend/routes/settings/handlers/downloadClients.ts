@@ -73,7 +73,7 @@ function registerClientTest(
       }
       return res.json(
         warning
-          ? { success: true, warning: result.warning === true, ...result }
+          ? { success: true, warning: "warning" in result && result.warning === true, ...result }
           : { success: true, ...result },
       );
     } catch (error) {
@@ -100,7 +100,11 @@ export function registerDownloadClients(router: Router) {
       if (!result.ok) {
         return res.status(502).json(result);
       }
-      return res.json({ success: true, warning: result.warning === true, ...result });
+      return res.json({
+        success: true,
+        warning: "warning" in result && result.warning === true,
+        ...result,
+      });
     } catch (error) {
       return res.status(400).json({
         error: "Connection failed",

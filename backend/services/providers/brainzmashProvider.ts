@@ -1,3 +1,4 @@
+import { isOwnKey } from "../../../lib/ownKey.ts";
 import axios from "../../../lib/axiosFetch.ts";
 import { asAppError } from "../../../lib/errors.ts";
 import createCache from "../apiClients/simpleCache.ts";
@@ -902,8 +903,8 @@ export async function listArtistAlbums(
     const rightBootleg = (right.releaseStatuses || []).includes("Bootleg") ? 1 : 0;
     if (leftBootleg !== rightBootleg) return leftBootleg - rightBootleg;
     const typeOrder = { Album: 0, EP: 1, Single: 2 };
-    const leftType = typeOrder[left.type] ?? 9;
-    const rightType = typeOrder[right.type] ?? 9;
+    const leftType = (isOwnKey(typeOrder, left.type) ? typeOrder[left.type] : undefined) ?? 9;
+    const rightType = (isOwnKey(typeOrder, right.type) ? typeOrder[right.type] : undefined) ?? 9;
     if (leftType !== rightType) return leftType - rightType;
     return String(left.title || "").localeCompare(String(right.title || ""));
   });

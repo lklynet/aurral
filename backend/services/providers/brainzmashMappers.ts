@@ -1,3 +1,4 @@
+import { isOwnKey } from "../../../lib/ownKey.ts";
 interface RawImage {
   Url?: unknown;
   url?: unknown;
@@ -151,7 +152,10 @@ export function getLinkedArtistProviderIds(links: (RawLink | null | undefined)[]
   for (const link of normalizeArray(links)) {
     try {
       const url = new URL(normalizeString(link?.target || link?.url?.resource));
-      const provider = LINKED_ARTIST_PROVIDERS[url.hostname.toLowerCase().replace(/^www\./, "")];
+      const host = url.hostname.toLowerCase().replace(/^www\./, "");
+      const provider = isOwnKey(LINKED_ARTIST_PROVIDERS, host)
+        ? LINKED_ARTIST_PROVIDERS[host]
+        : undefined;
       const segments = url.pathname.split("/").filter(Boolean);
       const artistIndex = segments.findIndex((segment) => segment.toLowerCase() === "artist");
       const id = String(segments[artistIndex + 1] || "").match(/^\d+/)?.[0];

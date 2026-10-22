@@ -1,3 +1,4 @@
+import { isOwnKey } from "../../../lib/ownKey.ts";
 // Canonical candidate-track model and provider result normalization.
 //
 // Different download sources expose very different evidence. The normalizer
@@ -73,7 +74,11 @@ const DEFAULT_CAPABILITIES: SourceCapabilities = Object.freeze({
 
 export function getCapabilities(source?: string): SourceCapabilities {
   const key = String(source || "").toLowerCase();
-  return SOURCE_CAPABILITIES[key] || { ...DEFAULT_CAPABILITIES };
+  return (
+    (isOwnKey(SOURCE_CAPABILITIES, key) ? SOURCE_CAPABILITIES[key] : undefined) || {
+      ...DEFAULT_CAPABILITIES,
+    }
+  );
 }
 
 function cleanText(value: unknown) {

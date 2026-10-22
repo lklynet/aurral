@@ -1,3 +1,4 @@
+import { isOwnKey } from "../../../lib/ownKey.ts";
 import { randomUUID } from "crypto";
 import pMap, { pMapSkip } from "p-map";
 import { dbOps } from "../../db/helpers/index.ts";
@@ -65,7 +66,10 @@ export const getLocalDiscoveryPreferences = () => {
 
 export const getListenbrainzRange = (discoveryPeriod: string) => {
   if (discoveryPeriod === "none") return null;
-  return LISTENBRAINZ_RANGE_BY_PERIOD[discoveryPeriod] || "month";
+  const range = isOwnKey(LISTENBRAINZ_RANGE_BY_PERIOD, discoveryPeriod)
+    ? LISTENBRAINZ_RANGE_BY_PERIOD[discoveryPeriod]
+    : undefined;
+  return range || "month";
 };
 
 export const getDiscoveryUserRefreshDelaySeconds = () => {

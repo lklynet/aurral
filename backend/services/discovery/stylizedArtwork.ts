@@ -1,3 +1,4 @@
+import { isOwnKey } from "../../../lib/ownKey.ts";
 import axios from "../../../lib/axiosFetch.ts";
 import getSharp from "../sharpConfig.ts";
 import { FIXED_DISCOVER_PLAYLIST_ARTWORK_COLORS } from "../../config/discoverPlaylistPresets.ts";
@@ -66,7 +67,9 @@ export const pickRandomPhotoArtworkPalette = () => {
 
 export const pickSeededPhotoArtworkPalette = (seed: string) => {
   const presetId = String(seed || "").trim();
-  const fixedHex = FIXED_DISCOVER_PLAYLIST_ARTWORK_COLORS[presetId];
+  const fixedHex = isOwnKey(FIXED_DISCOVER_PLAYLIST_ARTWORK_COLORS, presetId)
+    ? FIXED_DISCOVER_PLAYLIST_ARTWORK_COLORS[presetId]
+    : undefined;
   if (fixedHex) return buildPaletteFromHex(fixedHex);
   const index = hashString(presetId) % PHOTO_ARTWORK_COLORS.length;
   return buildPaletteFromHex(PHOTO_ARTWORK_COLORS[index]);
