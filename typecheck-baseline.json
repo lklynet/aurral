@@ -127,7 +127,7 @@
   "frontend/src/hooks/useStaticPlaylists.ts": 4,
   "frontend/src/navigation/resolveLinks.ts": 1,
   "frontend/src/navigation/routePrefetch.ts": 1,
-  "frontend/src/pages/activity/activityListUtils.ts": 6,
+  "frontend/src/pages/activity/activityListUtils.ts": 5,
   "frontend/src/pages/ArtistDetails/hooks/useArtistDetailsLibrary.ts": 2,
   "frontend/src/pages/ArtistDetails/hooks/useArtistDetailsStream.ts": 2,
   "frontend/src/pages/LibraryInfoModal.tsx": 6,

@@ -253,6 +253,7 @@ export const mergeActivityRequests = (
 };
 
 export const formatTimelineTime = (value: string | number | null | undefined) => {
+  if (value == null) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
   return formatTime(date, {
