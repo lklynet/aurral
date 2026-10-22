@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 
 import {
+  getFormatLoadAttempts,
+  getHowlerFormat,
   getUpcomingTracks,
   initialQueueState,
   normalizePlaylistQueueTrack,
@@ -366,4 +368,14 @@ test("clearing up next keeps the current track and undo brings the cleared track
     clearedLoop.queue.map((track) => track.id),
     ["t3"],
   );
+});
+
+test("file names and stream formats that match built-in object keys are not treated as known formats", () => {
+  assert.equal(
+    getFormatLoadAttempts({ finalPath: "/music/Artist/Album/01.constructor", quality: "FLAC" })[0],
+    "flac",
+  );
+  assert.deepEqual(getHowlerFormat("toString"), ["toString"]);
+  assert.deepEqual(getHowlerFormat("constructor"), ["constructor"]);
+  assert.deepEqual(getHowlerFormat("mp4"), ["m4a"]);
 });

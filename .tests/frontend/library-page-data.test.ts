@@ -8,6 +8,7 @@ const {
   favoriteLibraryFromResponse,
   getCachedAlbumTracks,
   mergeAlbumTrackPageIntoLibrary,
+  releaseTypeOf,
 } = await import("../../frontend/src/utils/libraryPageData.ts");
 const { queryClient, queryKeys } = await import("../../frontend/src/queryClient.ts");
 
@@ -112,4 +113,12 @@ test("album cards tell an artist's same-titled releases apart", () => {
     count: "0 tracks",
     partial: false,
   });
+});
+
+test("release types come from known labels, not built-in object keys", () => {
+  assert.equal(releaseTypeOf({ metadata: { albumType: "EP" } }), "EP");
+  assert.equal(releaseTypeOf({ metadata: { releaseType: " Single " } }), "Single");
+  assert.equal(releaseTypeOf({ metadata: { albumType: "constructor" } }), null);
+  assert.equal(releaseTypeOf({ metadata: { albumType: "toString" } }), null);
+  assert.equal(releaseTypeOf({ metadata: { albumType: "Album" } }), null);
 });

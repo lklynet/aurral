@@ -29,6 +29,9 @@ test("lock-screen artwork names its size and type when the cover URL shows them"
   assert.deepEqual(mediaSessionArtwork("/api/image-proxy/abc.png", page), [
     { src: "https://aurral.example/api/image-proxy/abc.png", type: "image/png" },
   ]);
+  assert.deepEqual(mediaSessionArtwork("/api/image-proxy/abc.constructor", page), [
+    { src: "https://aurral.example/api/image-proxy/abc.constructor" },
+  ]);
   assert.deepEqual(mediaSessionArtwork(null, page), []);
 });
 

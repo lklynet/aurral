@@ -75,7 +75,7 @@ export function resolveTrackStreamFormat(track: QueueTrackInput | null | undefin
     extensionFromPath(track?.src) ||
     extensionFromPath(track?.streamUrl) ||
     extensionFromPath(track?.preview_url);
-  if (direct && FORMAT_BY_EXTENSION[direct]) return direct;
+  if (direct && Object.hasOwn(FORMAT_BY_EXTENSION, direct)) return direct;
   return qualityToFormat(track?.quality);
 }
 
@@ -89,7 +89,10 @@ export function getFormatLoadAttempts(track: QueueTrackInput | null | undefined)
 }
 
 export function getHowlerFormat(formatKey: string) {
-  return FORMAT_BY_EXTENSION[formatKey] || [formatKey];
+  const known = Object.hasOwn(FORMAT_BY_EXTENSION, formatKey)
+    ? FORMAT_BY_EXTENSION[formatKey]
+    : undefined;
+  return known || [formatKey];
 }
 
 function usesTrackArtwork(track: QueueTrackInput) {

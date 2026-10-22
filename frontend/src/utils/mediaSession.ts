@@ -20,7 +20,7 @@ export function mediaSessionArtwork(src: string | null | undefined, baseUrl: str
   }
   const path = url.pathname.toLowerCase();
   const extension = path.match(/\.([a-z0-9]+)$/)?.[1];
-  const type = extension ? IMAGE_TYPES[extension] : undefined;
+  const type = extension && Object.hasOwn(IMAGE_TYPES, extension) ? IMAGE_TYPES[extension] : null;
   const dimensions = path.match(/(\d{2,4})x(\d{2,4})/);
   const coverArtSize = path.match(/\/front-(\d{2,4})$/)?.[1];
   const sizes = dimensions

@@ -198,13 +198,10 @@ const RELEASE_TYPES: Partial<Record<string, string>> = {
 export const releaseTypeOf = (album: LibraryAlbum | null | undefined) => {
   const metadata = album?.metadata || {};
   const type = metadata.albumType || metadata.releaseType || [metadata.tags?.releasetype].flat()[0];
-  return (
-    RELEASE_TYPES[
-      String(type || "")
-        .trim()
-        .toLowerCase()
-    ] || null
-  );
+  const key = String(type || "")
+    .trim()
+    .toLowerCase();
+  return (Object.hasOwn(RELEASE_TYPES, key) && RELEASE_TYPES[key]) || null;
 };
 
 export const albumCardMeta = (
