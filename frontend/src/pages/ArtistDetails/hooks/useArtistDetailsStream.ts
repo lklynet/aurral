@@ -26,7 +26,7 @@ export type ArtistDetails = Partial<ArtistDetailsResponse>;
 type ReleaseGroupList = NonNullable<ArtistDetails["appears-on-release-groups"]>;
 type ReleaseGroup = NonNullable<ArtistDetails["release-groups"]>[number];
 export type LibraryAlbumEntry = {
-  id: string;
+  id: string | number;
   canonicalId?: string;
   mbid?: string | null;
   foreignAlbumId?: string | null;
@@ -347,7 +347,14 @@ export function useArtistDetailsStream(
         setLibraryArtist(fullArtist);
 
         if (lookup.canonical) {
-          setLibraryAlbums(Array.isArray(lookup.albums) ? lookup.albums : []);
+          setLibraryAlbums(
+            Array.isArray(lookup.albums)
+              ? lookup.albums.filter(
+                  (album): album is typeof album & { id: string | number } =>
+                    album.id !== undefined,
+                )
+              : [],
+          );
           return;
         }
 

@@ -220,7 +220,7 @@ export const getReleaseGroupCoversBatch = async (
   const covers: Record<string, ReleaseGroupCoverEntry> = {};
   const uncachedItems: ReleaseGroupCoverItem[] = [];
   normalizedItems.forEach((item) => {
-    const cached = getCoverCacheEntry<ReleaseGroupCoverEntry | ReleaseGroupCoverResponse>(
+    const cached = getCoverCacheEntry<ReleaseGroupCoverEntry>(
       releaseGroupBatchCoverCacheKey(item.mbid, item.artistName, item.albumTitle),
     );
     if (cached) covers[item.mbid] = cached;

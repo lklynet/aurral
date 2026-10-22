@@ -749,7 +749,7 @@ export const deleteTrackFromLibrary = (id: string | number): Promise<DeleteLibra
   deleteData(`/library/tracks/${encodeURIComponent(id)}`);
 
 const fetchLibraryAlbums = async (
-  artistId: string,
+  artistId: string | number,
   { signal, managedBy = null }: SignalOptions & { managedBy?: "aurral" | "lidarr" | null } = {},
 ): Promise<GetLibraryAlbumsResponse> => {
   const data: GetLibraryAlbumsResponse = await getData("/library/albums", {
@@ -763,7 +763,7 @@ const fetchLibraryAlbums = async (
 };
 
 export const getLibraryAlbums = (
-  artistId: string,
+  artistId: string | number,
   {
     signal,
     bypassCache = false,
