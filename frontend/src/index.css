@@ -5228,7 +5228,7 @@ textarea {
 }
 
 .file-browser-modal__row--selected {
-  background: var(--aurral-surface-selected);
+  background: var(--aurral-surface-hover);
 }
 
 .file-browser-modal__row td {
