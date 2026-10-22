@@ -27,8 +27,8 @@ export function findQueuedLibraryTrackJob({
           playlistType: string;
           status: string;
           trackMbid: string | null;
-          artistName: string;
-          trackName: string;
+          artistName: string | null;
+          trackName: string | null;
         }) => {
           if (job.playlistType !== "library" || ["failed", "done"].includes(job.status))
             return false;

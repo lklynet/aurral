@@ -254,7 +254,8 @@ type RowOnlyJobKey =
   | "qualityUpgradeCheckedAt"
   | "upgradeForJobId"
   | "manualReplacementSearch";
-export type DownloadJob = Omit<RowJob, RowOnlyJobKey> & Partial<Pick<RowJob, RowOnlyJobKey>>;
+export type DownloadJob = Omit<RowJob, RowOnlyJobKey | "artistName" | "trackName"> &
+  Partial<Pick<RowJob, RowOnlyJobKey>> & { artistName: string | null; trackName: string | null };
 export type JobFields<Key extends keyof DownloadJob> = { [K in Key]?: DownloadJob[K] | null };
 
 const insertStmt = db.prepare(`

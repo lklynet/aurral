@@ -1,5 +1,6 @@
 import { logger } from "./logger.ts";
-import type { DownloadTracker } from "./downloadJobs/downloadTracker.ts";
+import type { DownloadJob, DownloadTracker } from "./downloadJobs/downloadTracker.ts";
+import type { classifyAudioQuality } from "./qualityProfileModel.ts";
 import type { HistoryJob } from "./aurralHistoryService.ts";
 
 // Fields of a search in progress; a new search or a download clears them.
@@ -112,6 +113,13 @@ export async function recordPipelineJobSuccess({
   album,
   quality,
   onSuccess,
+}: {
+  downloadTracker: DownloadTracker;
+  job: DownloadJob;
+  committedFinalPath: string;
+  album?: string | null;
+  quality?: ReturnType<typeof classifyAudioQuality> | null;
+  onSuccess?: () => unknown;
 }) {
   if (job.upgradeForJobId) {
     const { finalizeQualityUpgradeSuccess } = await import("./qualityProfileService.ts");
