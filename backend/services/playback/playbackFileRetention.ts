@@ -14,22 +14,27 @@ interface RetainedFileRecord {
   checkedAt?: number;
 }
 
-function readRetainedFiles() {
+function readRetainedFiles(): Record<string, RetainedFileRecord> {
   const value = dbOps.getJSONSetting<Record<string, RetainedFileRecord>>(SETTINGS_KEY);
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 
-export function isPlaybackRetainedFile(file) {
+export function isPlaybackRetainedFile(file: string) {
   return Boolean(readRetainedFiles()[localFileKey(file)]);
 }
 
-function recordRetention(file, reason, excludeEntityIds, playlistRoot) {
+function recordRetention(
+  file: string,
+  reason: string,
+  excludeEntityIds: string[],
+  playlistRoot: string,
+) {
   const retained = readRetainedFiles();
   retained[localFileKey(file)] = { reason, excludeEntityIds, playlistRoot, checkedAt: Date.now() };
   dbOps.setJSONSetting(SETTINGS_KEY, retained);
 }
 
-export function forgetPlaybackRetainedFile(file) {
+export function forgetPlaybackRetainedFile(file: string) {
   const retained = readRetainedFiles();
   const key = localFileKey(file);
   if (!(key in retained)) return;
@@ -58,7 +63,7 @@ export function createPlaybackDeletionGuard({
       dbOps.getJSONSetting("plexConnections"),
     ]);
   };
-  let checkedConfig;
+  let checkedConfig: string | undefined;
   const load = async () => {
     checkedConfig = configKey();
     let currentRegistry = registry;
@@ -78,7 +83,7 @@ export function createPlaybackDeletionGuard({
     return paths;
   };
   return {
-    async canDelete(file, { retain = true } = {}) {
+    async canDelete(file: string, { retain = true }: { retain?: boolean } = {}) {
       snapshot ??= load()
         .then((paths) => ({ paths }))
         .catch((error) => {
@@ -100,10 +105,10 @@ export function createPlaybackDeletionGuard({
 
 export async function retryPlaybackRetainedFiles() {
   const files = Object.entries(readRetainedFiles());
-  const removed = [];
+  const removed: string[] = [];
   if (!files.length) return removed;
   const { downloadTracker } = await import("../downloadJobs/downloadTracker.ts");
-  const stillOwned = (file) =>
+  const stillOwned = (file: string) =>
     downloadTracker.getAll().some((job) => job.finalPath && localFileKey(job.finalPath) === file);
   const guards = new Map();
   for (const [file, metadata] of files) {
@@ -157,9 +162,9 @@ export async function retryPlaybackRetainedFiles() {
 // Never recursively remove a directory containing a protected track. Keep its
 // original path so a server's track ID and external playlist entries survive.
 export async function removeUnusedPlaybackFiles(
-  directory,
+  directory: string,
   guard = createPlaybackDeletionGuard(),
-  { protectPlayback = true } = {},
+  { protectPlayback = true }: { protectPlayback?: boolean } = {},
 ) {
   let stat;
   try {

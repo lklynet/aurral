@@ -4,7 +4,7 @@ import { flowPlaylistConfig, orderJobsByPlaylistTracks } from "../playlists/flow
 import { downloadTracker } from "../downloadJobs/downloadTracker.ts";
 import { resolveExistingTrackPath, resolveDownloadRoot } from "../downloadPaths.ts";
 
-async function isFile(filePath) {
+async function isFile(filePath: string) {
   try {
     return (await fs.stat(filePath)).isFile();
   } catch {
@@ -12,7 +12,10 @@ async function isFile(filePath) {
   }
 }
 
-export async function collectPlaybackPlaylistTracks(entityId, options = {}) {
+export async function collectPlaybackPlaylistTracks(
+  entityId: string,
+  options: { downloadRoot?: string | null } = {},
+) {
   const downloadRoot = path.resolve(options.downloadRoot || resolveDownloadRoot());
   const playlist = flowPlaylistConfig.getStaticPlaylist(entityId);
   const referencedJobs = (playlist?.tracks || [])

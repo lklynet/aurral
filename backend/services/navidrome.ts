@@ -48,6 +48,8 @@ type NavidromePlaylistEntry = { id: string; path: string };
 
 type NavidromePlaylist = {
   id: string;
+  name: string;
+  comment?: string;
   songCount?: number;
   entry?: NavidromePlaylistEntry | NavidromePlaylistEntry[];
 };

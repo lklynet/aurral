@@ -20,7 +20,7 @@
 
 import path from "node:path";
 import { stat } from "node:fs/promises";
-import { parseFile } from "music-metadata";
+import { parseFile, type IAudioMetadata } from "music-metadata";
 import { buildTrackRequest, recordingRequest } from "./trackIdentity.ts";
 import {
   claimedTitle,
@@ -50,18 +50,37 @@ export const POST_DOWNLOAD_DECISIONS = {
   FAILED: "FAILED",
 };
 
+type ValidationRequest = NonNullable<Parameters<typeof buildTrackRequest>[0]> & {
+  upgradeForJobId?: string | null;
+  manualReplacementSearch?: boolean;
+};
+
+type ValidationOptions = {
+  parseFile?: typeof parseFile;
+  strict?: boolean;
+  manualSelection?: boolean;
+  albumImport?: boolean;
+  release?: ReleaseManifest | null;
+};
+
+type ParsedFile = { filePath: string; parsed: IAudioMetadata };
+type VerificationResult = ReturnType<typeof verifyDownloadedRecording>;
+
 const MANUAL_RELEASE_FILE_TITLE_THRESHOLD = 70;
 const STRICT_DURATION_GAP_MS = 1000;
 // Beyond this, a file with the requested title is a different edit, a
 // hidden-track rip, or a different song, never something worth a review.
 const REVIEW_MAX_DURATION_GAP_MS = 30000;
 
-function readTagText(value) {
+function readTagText(value: unknown) {
   return String(value || "").trim() || null;
 }
 
-function normalizeValidationRequest(request, context) {
-  const source = request || context || {};
+function normalizeValidationRequest(
+  request: ValidationRequest | undefined,
+  context: ValidationRequest | undefined,
+) {
+  const source: ValidationRequest = request || context || {};
   return {
     ...buildTrackRequest(source),
     upgradeForJobId: source.upgradeForJobId || null,
@@ -72,7 +91,7 @@ function normalizeValidationRequest(request, context) {
 // "01 Correct Track" -> "Correct Track"; "07. Song" -> "Song". A bare space
 // separator only counts when the remainder keeps more than one word, so
 // numeric titles such as "99 Problems" survive.
-function stripLeadingTrackNumber(baseName) {
+function stripLeadingTrackNumber(baseName: string) {
   const raw = String(baseName || "").trim();
   const punctuated = /^\s*\d{1,3}\s*[-._)\]]\s*(.+)$/.exec(raw);
   if (punctuated && punctuated[1].trim()) return punctuated[1].trim();
@@ -84,13 +103,17 @@ function stripLeadingTrackNumber(baseName) {
   return raw || null;
 }
 
-export function readDurationMsFromParsed(parsed) {
+export function readDurationMsFromParsed(parsed: IAudioMetadata) {
   const seconds = Number(parsed?.format?.duration || 0);
   return seconds > 0 ? Math.round(seconds * 1000) : null;
 }
 
 // A downloaded file as the release judge reads a listing entry.
-export function downloadedFileEvidence(filePath, parsed, { album = null } = {}) {
+export function downloadedFileEvidence(
+  filePath: string,
+  parsed: IAudioMetadata,
+  { album = null }: { album?: string | null } = {},
+) {
   const listing = parseListingTitle(filePath, { album });
   return {
     title: String(parsed?.common?.title || listing.title || "").trim(),
@@ -114,9 +137,9 @@ type PreDownloadCandidate = {
 };
 
 export function buildActualFileCandidate(
-  parsed,
-  filePath,
-  source,
+  parsed: IAudioMetadata,
+  filePath: string,
+  source: string | undefined,
   preDownloadCandidate: PreDownloadCandidate | null = null,
 ) {
   const common = parsed?.common || {};
@@ -187,7 +210,7 @@ export function buildActualFileCandidate(
   };
 }
 
-function joinPhrases(phrases) {
+function joinPhrases(phrases: string[]) {
   return phrases.length > 1
     ? `${phrases.slice(0, -1).join(", ")} and ${phrases.at(-1)}`
     : phrases[0];
@@ -200,6 +223,13 @@ function describeReviewReason({
   actualDurationMs,
   requestedDurationMs,
   maxDurationGapMs,
+}: {
+  verification: VerificationResult;
+  titleAgrees: boolean;
+  artists: string[];
+  actualDurationMs: number | null;
+  requestedDurationMs: number | null;
+  maxDurationGapMs: number;
 }) {
   const issues = [];
   const gap = verification.durationGapMs;
@@ -231,6 +261,13 @@ export async function validateDownloadedTrackFile({
   filePath,
   source,
   options = {},
+}: {
+  request?: ValidationRequest;
+  context?: ValidationRequest;
+  candidate?: PreDownloadCandidate | null;
+  filePath: string;
+  source?: string;
+  options?: ValidationOptions;
 } = {}) {
   const trackRequest = normalizeValidationRequest(request, context);
   const strict = options.strict === true;
@@ -402,7 +439,7 @@ export async function validateDownloadedTrackFile({
     hasOriginalIdentityTags &&
     verification.contradictions.length === 1 &&
     verification.contradictions[0] === "duration" &&
-    verification.durationGapMs <= REVIEW_MAX_DURATION_GAP_MS &&
+    verification.durationGapMs! <= REVIEW_MAX_DURATION_GAP_MS &&
     verification.evidence.includes("title") &&
     verification.evidence.includes("artist");
   const tagsConfirmIdentity =
@@ -515,12 +552,7 @@ export async function selectVerifiedDownloadedFile({
   filePaths?: string[];
   candidate?: PreDownloadCandidate | null;
   source?: string;
-  options?: {
-    parseFile?: typeof parseFile;
-    manualSelection?: boolean;
-    strict?: boolean;
-    release?: ReleaseManifest | null;
-  };
+  options?: ValidationOptions;
 } = {}) {
   const trackRequest = normalizeValidationRequest(request, context);
   const parseFn = options.parseFile || parseFile;
@@ -528,7 +560,7 @@ export async function selectVerifiedDownloadedFile({
     return { filePath: null, validation: null };
   }
 
-  const parsedFiles = [];
+  const parsedFiles: ParsedFile[] = [];
   for (const filePath of filePaths) {
     try {
       parsedFiles.push({
@@ -546,9 +578,9 @@ export async function selectVerifiedDownloadedFile({
   let pool = parsedFiles;
   let poolOptions = fileOptions;
   if (releaseIndex != null && parsedFiles.length > 0) {
-    const verdict = judgeRelease(release, {
+    const verdict = judgeRelease(release!, {
       files: parsedFiles.map(({ filePath, parsed }) =>
-        downloadedFileEvidence(filePath, parsed, { album: release.title }),
+        downloadedFileEvidence(filePath, parsed, { album: release!.title }),
       ),
     });
     const copies = verdict.copiesForTrack[releaseIndex];
