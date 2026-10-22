@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 
 import { useToast } from "../contexts/ToastContext";
+import { getApiErrorMessage } from "../pages/onboardingUtils.tsx";
 import { queryClient, queryKeys } from "../queryClient.ts";
 import {
   getAurralAlbumStatus,
@@ -23,14 +24,6 @@ export interface AurralAlbumRef extends AurralAlbumMonitoredRef {
   id: AurralAlbumId;
   title?: string;
 }
-
-interface RequestErrorLike {
-  message?: string;
-  response?: { data?: { message?: string; error?: string } };
-}
-
-const errorMessage = (error: RequestErrorLike | null | undefined) =>
-  error?.response?.data?.message || error?.response?.data?.error || error?.message || "Try again.";
 
 interface AurralAlbumMonitoringOptions {
   album: AurralAlbumRef | null;
@@ -56,13 +49,14 @@ export function useAurralAlbumMonitoring({
   const savedMonitored = enabled ? getAlbumMonitoredState(album) : null;
   const monitored =
     savedMonitored !== null && override?.albumId === album?.id
-      ? override.monitored
+      ? override!.monitored
       : savedMonitored;
 
   if (monitored === null) return { monitored: null, menuItem: null, dialog: null };
   if (!canChange) return { monitored, menuItem: null, dialog: null };
 
-  const albumId = album.id;
+  const currentAlbum = album!;
+  const albumId = currentAlbum.id;
   const apply = async (nextMonitored: boolean) => {
     if (pending) return;
     setPending(true);
@@ -76,7 +70,7 @@ export function useAurralAlbumMonitoring({
       await queryClient.invalidateQueries({ queryKey: queryKeys.aurralAlbumStatus(albumId) });
     } catch (error) {
       showError(
-        `Could not ${nextMonitored ? "monitor" : "stop monitoring"} ${album.title || "this album"}. Nothing changed. ${errorMessage(error)}`,
+        `Could not ${nextMonitored ? "monitor" : "stop monitoring"} ${currentAlbum.title || "this album"}. Nothing changed. ${getApiErrorMessage(error, "Try again.")}`,
       );
     } finally {
       setOverride(null);

@@ -35,8 +35,9 @@ interface UseArtistMonitoringOptions {
 
 const isUnchanged = (state: MonitoringData | null, request: MonitoringRequest) => {
   if (request.monitorOption) return request.monitorOption === getArtistMonitorOption(state);
-  if (!state || state.added === false) return request.monitoring.monitored === false;
-  const { monitored, useDefault, rules } = request.monitoring;
+  const monitoring = request.monitoring!;
+  if (!state || state.added === false) return monitoring.monitored === false;
+  const { monitored, useDefault, rules } = monitoring;
   if (monitored !== isArtistMonitored(state)) return false;
   return useDefault === undefined && rules === undefined;
 };
@@ -45,7 +46,8 @@ const optimisticState = (existing: MonitoringData | undefined, request: Monitori
   if (!existing) return existing;
   if (request.monitorOption)
     return { ...existing, added: true, monitorOption: request.monitorOption };
-  const { monitored, useDefault } = request.monitoring;
+  if (existing.manager !== "aurral") return existing;
+  const { monitored, useDefault } = request.monitoring!;
   return {
     ...existing,
     added: true,
@@ -145,7 +147,7 @@ export function useArtistMonitoring({
           open={rulesOpen}
           mbid={mbid}
           artistName={name}
-          state={state}
+          state={state?.manager === "aurral" ? state : null}
           saving={pending}
           onClose={() => setRulesOpen(false)}
           onError={showError}

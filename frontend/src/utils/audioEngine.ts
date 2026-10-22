@@ -1,5 +1,11 @@
 import { Howl } from "howler";
 
+declare module "howler" {
+  interface Howl {
+    _sounds?: { _node?: HTMLAudioElement | null }[];
+  }
+}
+
 type AudioSnapshot = {
   isLoading: boolean;
   isPlaying: boolean;

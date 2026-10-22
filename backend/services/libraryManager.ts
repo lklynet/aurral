@@ -434,6 +434,21 @@ const describeAurralMonitoring = (
   defaultRules: defaults.rules,
 });
 
+type AurralArtistMonitoringState = {
+  manager: "aurral";
+  added: boolean;
+  inAurral: boolean;
+  error: null;
+} & ReturnType<typeof describeAurralMonitoring>;
+
+type LidarrArtistMonitoringState = {
+  manager: "lidarr";
+  added: boolean;
+  monitorOption: string | null;
+  inAurral: boolean;
+  error: string | null;
+};
+
 const summarizeMonitoringPlan = (plan: MonitoringPlan, queued: boolean) => ({
   queued,
   releaseGroupIds: plan.releases.map((release) => release.id),
@@ -2510,7 +2525,9 @@ export class LibraryManager {
     return true;
   }
 
-  async getArtistMonitoring(mbid: string) {
+  async getArtistMonitoring(
+    mbid: string,
+  ): Promise<AurralArtistMonitoringState | LidarrArtistMonitoringState> {
     const artist = libraryArtistFallback(mbid);
     const manager = artist?.managedBy === "aurral" ? "aurral" : await getActiveLibraryManager();
     const inAurral = aurralHoldsArtist(artist);
@@ -2528,13 +2545,13 @@ export class LibraryManager {
         ...describeAurralMonitoring(effective, defaults),
       };
     }
-    const state: {
-      manager: string;
-      added: boolean;
-      monitorOption: string | null;
-      inAurral: boolean;
-      error: string | null;
-    } = { manager, added: false, monitorOption: "none", inAurral, error: null };
+    const state: LidarrArtistMonitoringState = {
+      manager,
+      added: false,
+      monitorOption: "none",
+      inAurral,
+      error: null,
+    };
     try {
       const lidarr = (await getLidarrClient())!;
       const lidarrArtist = await lidarr.getArtistByMbid(mbid, { forceRefresh: true });

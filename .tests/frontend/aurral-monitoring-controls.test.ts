@@ -89,31 +89,29 @@ test("summary lists skipped releases by reason with counts and keeps unknown rea
   assert.match(summary.message, /^Queued 1 release for download\. 2 already in your library\./);
 });
 
+const requestError = (status: number, data: Record<string, string>) =>
+  Object.assign(new Error("Request failed"), { response: { status, data } });
+
 test("metadata_unavailable explains that monitoring did not change", () => {
-  const message = describeAurralMonitoringError({
-    response: {
-      status: 503,
-      data: {
-        code: "metadata_unavailable",
-        error: "Artist releases are unavailable; monitoring was not changed",
-      },
-    },
-  });
+  const message = describeAurralMonitoringError(
+    requestError(503, {
+      code: "metadata_unavailable",
+      error: "Artist releases are unavailable; monitoring was not changed",
+    }),
+  );
   assert.match(message, /monitoring was not changed/i);
   assert.match(message, /try again/i);
 });
 
 test("other monitoring errors keep the server message", () => {
   assert.equal(
-    describeAurralMonitoringError({
-      response: { status: 503, data: { message: "Service is busy" } },
-    }),
+    describeAurralMonitoringError(requestError(503, { message: "Service is busy" })),
     "Service is busy",
   );
   assert.equal(
-    describeAurralMonitoringError({
-      response: { status: 400, data: { code: "unsupported_monitor_mode", error: "Bad mode" } },
-    }),
+    describeAurralMonitoringError(
+      requestError(400, { code: "unsupported_monitor_mode", error: "Bad mode" }),
+    ),
     "Bad mode",
   );
   assert.equal(describeAurralMonitoringError(new Error("Network Error")), "Network Error");

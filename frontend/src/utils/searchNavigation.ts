@@ -5,7 +5,7 @@ type AlbumRating = NonNullable<ReturnType<typeof toNormalizedAlbum>["rating"]>;
 
 type SearchItem = {
   type?: string | null;
-  key?: string | null;
+  key?: string | number | null;
   id?: string | number | null;
   name?: string | null;
   title?: string | null;
@@ -22,6 +22,8 @@ type SearchItem = {
   score?: number | null;
   sortName?: string | null;
   hasMbid?: boolean | null;
+  trackCount?: number | null;
+  disambiguation?: string | null;
   releaseDate?: string | null;
   firstReleaseDate?: string | null;
   releaseYear?: number | string | null;
@@ -42,17 +44,17 @@ type SearchItem = {
   artistId?: string | null;
 };
 
-type SearchBuckets = {
-  artists?: SearchItem[] | null;
-  albums?: SearchItem[] | null;
-  tracks?: SearchItem[] | null;
+type SearchBuckets<Item extends SearchItem = SearchItem> = {
+  artists?: Item[] | null;
+  albums?: Item[] | null;
+  tracks?: Item[] | null;
 };
 
-type SearchResponse = {
+type SearchResponse<Item extends SearchItem = SearchItem> = {
   query?: string | null;
-  top?: SearchItem | null;
-  catalog?: SearchBuckets | null;
-  library?: SearchBuckets | null;
+  top?: Item | null;
+  catalog?: SearchBuckets<Item> | null;
+  library?: SearchBuckets<Item> | null;
 };
 
 type LibraryFlags = {
@@ -340,12 +342,12 @@ function getResultIdentity(item: SearchItem | null | undefined) {
   return null;
 }
 
-function dedupeItems(
-  items: SearchItem[],
+function dedupeItems<Item extends SearchItem>(
+  items: Item[],
   seen: Set<string>,
   seenArtistNames: Set<string> | null = null,
 ) {
-  const unique: SearchItem[] = [];
+  const unique: Item[] = [];
   for (const item of items) {
     if (item.type === "artist" && seenArtistNames) {
       const nameKey = normalizeSearchText(item.name);
@@ -577,12 +579,14 @@ export function buildMixedSearchPageItems(
   return dedupeItems(candidates, seen, seenArtistNames).slice(0, limit);
 }
 
-export function buildUnifiedSuggestionSections(data: SearchResponse | null | undefined) {
+export function buildUnifiedSuggestionSections<Item extends SearchItem>(
+  data: SearchResponse<Item> | null | undefined,
+) {
   if (!data) return [];
 
   const seen = new Set<string>();
   const seenArtistNames = new Set<string>();
-  const sections: { key: string; label: string; items: SearchItem[] }[] = [];
+  const sections: { key: string; label: string; items: Item[] }[] = [];
 
   const libraryArtists = dedupeItems(data.library?.artists || [], seen, seenArtistNames);
   const libraryAlbums = dedupeItems(data.library?.albums || [], seen, seenArtistNames);
@@ -636,10 +640,13 @@ export function buildUnifiedSuggestionSections(data: SearchResponse | null | und
   return sections;
 }
 
-export function flattenSuggestionSections(
-  sections: { key: string; label: string; items: SearchItem[] }[],
+export function flattenSuggestionSections<Item extends SearchItem>(
+  sections: { key: string; label: string; items: Item[] }[],
 ) {
-  const rows = [];
+  const rows: (
+    | { kind: "header"; key: string; label: string }
+    | { kind: "item"; key: string; item: Item }
+  )[] = [];
   for (const section of sections) {
     rows.push({
       kind: "header",

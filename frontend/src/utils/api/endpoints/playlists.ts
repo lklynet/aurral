@@ -511,7 +511,7 @@ export interface StaticPlaylistOperationStatus {
 export const getStaticPlaylistOperation = (
   playlistId: string,
   operationId: string,
-  options?: { bypassCache?: boolean },
+  options?: { bypassCache?: boolean } & NonNullable<Parameters<typeof getData>[1]>,
 ): Promise<StaticPlaylistOperationStatus> =>
   getData(
     `/playlists/shared-playlists/${encodeURIComponent(playlistId)}/operations/${encodeURIComponent(operationId)}`,

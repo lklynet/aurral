@@ -1,4 +1,4 @@
-const STATUS_SORT_ORDER = {
+const STATUS_SORT_ORDER: Partial<Record<string, number>> = {
   pending: 0,
   downloading: 1,
   done: 2,

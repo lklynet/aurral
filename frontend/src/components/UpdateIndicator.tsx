@@ -6,7 +6,7 @@ import {
   selectNightlyUpdate,
 } from "../../../lib/release-version";
 import TooltipButton from "./TooltipButton";
-import api from "../utils/api/core";
+import { getData } from "../utils/api/core";
 
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const NIGHTLY_CHECK_INTERVAL_MS = 2 * 60 * 60 * 1000;
@@ -108,8 +108,7 @@ const UpdateIndicator = ({ currentVersion, visible = true }: UpdateIndicatorProp
     setUpdateInfo(cached?.sourceVersion === resolvedVersion ? cached.update : null);
 
     const resolveNightlyUpdate = async () => {
-      const { data: published }: { data: NightlyPublished | null } =
-        await api.get("/updates/nightly");
+      const published = await getData<NightlyPublished | null>("/updates/nightly");
       const update = selectNightlyUpdate(resolvedVersion, published?.sha);
       if (!update) return null;
 

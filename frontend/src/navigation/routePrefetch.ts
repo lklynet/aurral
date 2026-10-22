@@ -118,7 +118,7 @@ const ROUTES = [
   },
 ];
 
-const parseTarget = (to: string) => {
+const parseTarget = (to: unknown) => {
   if (typeof to !== "string" || !to.startsWith("/") || to.startsWith("//")) return null;
   const url = new URL(to, "http://aurral.local");
   return { pathname: url.pathname, search: url.searchParams };
@@ -144,7 +144,7 @@ export function isRouteModuleLoaded(to: string) {
 }
 
 export async function prefetchRoute(
-  to: string,
+  to: unknown,
   { userId = null }: { userId?: number | null } = {},
 ) {
   const target = parseTarget(to);

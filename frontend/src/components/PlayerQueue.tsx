@@ -21,21 +21,11 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import { GripVertical, Music, X } from "lucide-react";
-import { useAudioQueue } from "../contexts/audioQueueContext";
+import { useAudioQueue, type AudioQueueValue } from "../contexts/audioQueueContext";
 import { useToast } from "../contexts/ToastContext";
 import TooltipButton from "./TooltipButton";
 
-interface QueueTrack {
-  entryId: UniqueIdentifier;
-  title?: string | null;
-  artist?: string | null;
-  artwork?: string | null;
-}
-
-interface QueueEntry {
-  track: QueueTrack;
-  index: number;
-}
+type QueueEntry = AudioQueueValue["upcoming"][number];
 
 function QueueArt({ src }: { src?: string | null }) {
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
@@ -60,7 +50,7 @@ function QueueArt({ src }: { src?: string | null }) {
 interface QueueRowProps {
   entry: QueueEntry;
   onPlay: (index: number) => void;
-  onRemove: (entryId: UniqueIdentifier) => void;
+  onRemove: (entryId: string) => void;
 }
 
 function QueueRow({ entry, onPlay, onRemove }: QueueRowProps) {
@@ -120,10 +110,11 @@ export function UpNextQueue({ className = "" }: { className?: string }) {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
   const entryIds = upcoming.map(({ track }) => track.entryId);
+  const sortableIds: UniqueIdentifier[] = entryIds;
   const titleOf = (id: UniqueIdentifier) =>
     upcoming.find(({ track }) => track.entryId === id)?.track.title || "Track";
   const positionOf = (id: UniqueIdentifier) =>
-    `position ${entryIds.indexOf(id) + 1} of ${entryIds.length}`;
+    `position ${sortableIds.indexOf(id) + 1} of ${sortableIds.length}`;
   const announcements: Announcements = {
     onDragStart: ({ active }) => `Picked up ${titleOf(active.id)} at ${positionOf(active.id)}.`,
     onDragOver: ({ active, over }) =>
@@ -136,8 +127,8 @@ export function UpNextQueue({ className = "" }: { className?: string }) {
 
   const handleDragEnd = ({ active, over }: DragEndEvent) => {
     if (!over || active.id === over.id) return;
-    const from = entryIds.indexOf(active.id);
-    const to = entryIds.indexOf(over.id);
+    const from = sortableIds.indexOf(active.id);
+    const to = sortableIds.indexOf(over.id);
     if (from < 0 || to < 0) return;
     reorderUpcoming(arrayMove(entryIds, from, to));
   };

@@ -1,3 +1,6 @@
+import { getApiErrorBody } from "../pages/onboardingUtils.tsx";
+import { asApiError } from "./api/core.ts";
+
 const MANAGER_NAMES = {
   aurral: "Aurral",
   lidarr: "Lidarr",
@@ -56,8 +59,10 @@ export const canSearchLibraryAlbum = (
   return manager === "aurral" || (manager === "lidarr" && lidarrConnected);
 };
 
-export const getManagerName = (manager: string | null | undefined) =>
-  MANAGER_NAMES[normalizeLibraryManager(manager)] || MANAGER_NAMES.aurral;
+export const getManagerName = (manager: string | null | undefined) => {
+  const normalized = normalizeLibraryManager(manager);
+  return (normalized && MANAGER_NAMES[normalized]) || MANAGER_NAMES.aurral;
+};
 
 export const getAddToManagerLabel = (manager: string | null | undefined) =>
   normalizeLibraryManager(manager) === "lidarr" ? "Add to Lidarr" : "Add to library";
@@ -73,12 +78,13 @@ export const resolveLibraryDestination = ({
   primary: lidarrConfigured ? "lidarr" : "aurral",
 });
 
-const describeAvailability = (
-  availability:
-    | { available?: boolean; trackCount?: number | null; availableTrackCount?: number | null }
-    | null
-    | undefined,
-) => {
+export interface LibraryAvailability {
+  available?: boolean;
+  trackCount?: number | null;
+  availableTrackCount?: number | null;
+}
+
+const describeAvailability = (availability: LibraryAvailability | null | undefined) => {
   if (!availability) return null;
   if (availability.available) return "Available";
   const trackCount = Number(availability.trackCount || 0);
@@ -87,15 +93,17 @@ const describeAvailability = (
 };
 
 export const getLibraryOwnerConflict = (error: unknown) => {
-  const response = error?.response;
-  const data = response?.data || {};
-  if (response?.status !== 409 || !String(data.code || "").endsWith("_owner_conflict")) {
+  const data = getApiErrorBody(error);
+  if (
+    asApiError(error)?.response?.status !== 409 ||
+    !String(data?.code || "").endsWith("_owner_conflict")
+  ) {
     return null;
   }
-  const managedBy = normalizeLibraryManager(data.managedBy ?? data.conflict?.managedBy);
+  const managedBy = normalizeLibraryManager(data?.managedBy ?? data?.conflict?.managedBy);
   if (!managedBy) return null;
   const label = getManagedByLabel(managedBy)!;
-  const availability = describeAvailability(data.availability ?? data.conflict?.availability);
+  const availability = describeAvailability(data?.availability ?? data?.conflict?.availability);
   return {
     managedBy,
     label,

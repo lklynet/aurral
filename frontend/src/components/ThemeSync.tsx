@@ -13,8 +13,8 @@ export default function ThemeSync() {
   const { showError } = useToast();
   const { matchArtwork } = useThemeDocument();
   const userId =
-    isAuthenticated && Number.isSafeInteger(Number(user?.id)) && Number(user.id) > 0
-      ? Number(user.id)
+    isAuthenticated && Number.isSafeInteger(Number(user?.id)) && Number(user!.id) > 0
+      ? Number(user!.id)
       : null;
   const artwork = matchArtwork ? currentTrack?.artwork || null : null;
 

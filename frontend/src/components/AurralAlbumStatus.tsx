@@ -6,6 +6,7 @@ import { RotateCcw, X } from "lucide-react";
 import { DotLoader } from "./DotLoader";
 import type { AurralAlbumRef } from "./AurralAlbumMonitoring";
 import { useToast } from "../contexts/ToastContext";
+import { getApiErrorMessage } from "../pages/onboardingUtils.tsx";
 import { queryKeys } from "../queryClient.ts";
 import {
   cancelAurralAlbum,
@@ -25,14 +26,6 @@ interface AlbumArtistRef {
   mbid?: string;
   name?: string;
 }
-
-interface RequestErrorLike {
-  message?: string;
-  response?: { data?: { message?: string; error?: string } };
-}
-
-const errorMessage = (error: RequestErrorLike | null | undefined, fallback: string) =>
-  error?.response?.data?.message || error?.response?.data?.error || error?.message || fallback;
 
 type AlbumStatusState = NonNullable<ReturnType<typeof describeAurralAlbumStatus>>;
 type AlbumStatusAction = AlbumStatusState["actions"][number];
@@ -93,7 +86,7 @@ export function AurralAlbumStatus({
       onChanged?.();
     } catch (error) {
       showError(
-        errorMessage(
+        getApiErrorMessage(
           error,
           action.id === "cancel" ? "Could not cancel album downloads" : "Could not retry the album",
         ),

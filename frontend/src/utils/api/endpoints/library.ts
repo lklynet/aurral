@@ -259,9 +259,10 @@ export const updateLibraryArtistMbid = async (
   artistId: number,
   mbid: string | null,
 ): Promise<UpdateLibraryArtistMbidResponse> => {
-  const result = await putData(`/library/canonical/artists/${encodeURIComponent(artistId)}/mbid`, {
-    mbid,
-  });
+  const result = await putData<UpdateLibraryArtistMbidResponse>(
+    `/library/canonical/artists/${encodeURIComponent(artistId)}/mbid`,
+    { mbid },
+  );
   clearLibraryPageCache();
   void queryClient.invalidateQueries({ queryKey: queryKeys.libraryPrefix });
   return result;
@@ -274,10 +275,10 @@ export const getReadOnlyFolders = (): Promise<
   Awaited<ReturnType<typeof describeReadOnlyFolders>>
 > => getData("/library/files/read-only-folders");
 
-export const addReadOnlyFolder = (folderPath) =>
+export const addReadOnlyFolder = (folderPath: string) =>
   postData("/library/files/read-only-folders", { path: folderPath });
 
-export const removeReadOnlyFolder = (folderPath) =>
+export const removeReadOnlyFolder = (folderPath: string | null) =>
   deleteData("/library/files/read-only-folders", { data: { path: folderPath } });
 
 export const checkLibraryIngestSource = (
@@ -825,7 +826,7 @@ export const downloadAlbum = (
 export const downloadTrackToLibrary = async (
   track: Parameters<typeof requestLibraryTrack>[0],
 ): Promise<DownloadTrackToLibraryResponse> => {
-  const result = await postData("/library/downloads/track", track);
+  const result = await postData<DownloadTrackToLibraryResponse>("/library/downloads/track", track);
   if (result?.queued) {
     markDownloadStarted({
       track: {

@@ -12,7 +12,7 @@ interface ArtistPreviewResponse {
 }
 
 interface ArtistPreviewPlaybackOptions {
-  mbid?: string | null;
+  mbid?: string | number | null;
   artistName?: string | null;
   enabled?: boolean;
   isInLibrary?: boolean;

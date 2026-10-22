@@ -61,7 +61,7 @@ const formatShowLocation = (show: NearbyShow) =>
     .filter(Boolean)
     .join(" - ");
 
-const formatDistance = (distance: number | null) => {
+const formatDistance = (distance: number | string | null) => {
   if (distance == null || distance === "") return null;
   const numericDistance = Number(distance);
   return Number.isFinite(numericDistance) ? `${Math.round(numericDistance)} mi` : null;

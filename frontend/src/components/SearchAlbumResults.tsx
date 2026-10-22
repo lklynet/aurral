@@ -32,9 +32,15 @@ type SearchAlbumResultsProps = {
   viewMode?: "grid" | "list";
 };
 
+const ACTIVE_ALBUM_STATUSES: (string | null | undefined)[] = [
+  "searching",
+  "downloading",
+  "processing",
+];
+
 function isAlbumActionDisabled(album: SearchAlbum, isPending: boolean, canAddAlbum: boolean) {
   if (!canAddAlbum) return true;
-  return isPending || ["searching", "downloading", "processing"].includes(album.status);
+  return isPending || ACTIVE_ALBUM_STATUSES.includes(album.status);
 }
 
 function getReleaseYear(releaseDate: string | null | undefined) {

@@ -1,4 +1,4 @@
-const IMAGE_TYPES = {
+const IMAGE_TYPES: Partial<Record<string, string>> = {
   avif: "image/avif",
   gif: "image/gif",
   jpeg: "image/jpeg",
@@ -19,7 +19,8 @@ export function mediaSessionArtwork(src: string | null | undefined, baseUrl: str
     return [];
   }
   const path = url.pathname.toLowerCase();
-  const type = IMAGE_TYPES[path.match(/\.([a-z0-9]+)$/)?.[1]];
+  const extension = path.match(/\.([a-z0-9]+)$/)?.[1];
+  const type = extension ? IMAGE_TYPES[extension] : undefined;
   const dimensions = path.match(/(\d{2,4})x(\d{2,4})/);
   const coverArtSize = path.match(/\/front-(\d{2,4})$/)?.[1];
   const sizes = dimensions

@@ -1,4 +1,4 @@
-const FORMAT_BY_EXTENSION = {
+const FORMAT_BY_EXTENSION: Partial<Record<string, string[]>> = {
   mp3: ["mp3"],
   mpeg: ["mp3"],
   m4a: ["m4a"],
@@ -194,9 +194,9 @@ export function isDownloadedLibraryAlbum(
   if (String(album?.id ?? "").startsWith("pending-")) return false;
   return (
     album?.monitored ||
-    album?.statistics?.percentOfTracks > 0 ||
-    album?.statistics?.sizeOnDisk > 0 ||
-    !!downloadStatuses[album?.id]
+    (album?.statistics?.percentOfTracks ?? 0) > 0 ||
+    (album?.statistics?.sizeOnDisk ?? 0) > 0 ||
+    !!downloadStatuses[String(album?.id)]
   );
 }
 

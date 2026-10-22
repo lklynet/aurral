@@ -56,16 +56,23 @@ export const firstAvailableFile = (
 
 export const EMPTY_LIBRARY: LibraryData = { artists: [], albums: [], tracks: [], genres: [] };
 
+const appendMissing = <Entity extends { id: string | number }>(
+  target: Entity[],
+  incoming: Entity[] | undefined,
+) => {
+  (Array.isArray(incoming) ? incoming : []).forEach((entity) => {
+    if (!target.some((candidate) => String(candidate.id) === String(entity.id))) {
+      target.push(entity);
+    }
+  });
+};
+
 export const normalizeLibraryPages = (pages: Partial<LibraryData>[]) =>
   pages.reduce<LibraryData>(
     (result, page) => {
-      (["artists", "albums", "tracks"] as const).forEach((kind) => {
-        (Array.isArray(page?.[kind]) ? page[kind] : []).forEach((entity) => {
-          if (!result[kind].some((candidate) => String(candidate.id) === String(entity.id))) {
-            result[kind].push(entity);
-          }
-        });
-      });
+      appendMissing(result.artists, page?.artists);
+      appendMissing(result.albums, page?.albums);
+      appendMissing(result.tracks, page?.tracks);
       if (Array.isArray(page?.genres) && page.genres.length > result.genres.length) {
         result.genres = page.genres;
       }
@@ -182,7 +189,11 @@ export const getCachedAlbumTracks = (
 export const yearOf = (value: string | null | undefined) =>
   /^(\d{4})/.exec(String(value || "").trim())?.[1] || "";
 
-const RELEASE_TYPES = { single: "Single", ep: "EP", broadcast: "Broadcast" };
+const RELEASE_TYPES: Partial<Record<string, string>> = {
+  single: "Single",
+  ep: "EP",
+  broadcast: "Broadcast",
+};
 
 export const releaseTypeOf = (album: LibraryAlbum | null | undefined) => {
   const metadata = album?.metadata || {};

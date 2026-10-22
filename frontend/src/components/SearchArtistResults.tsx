@@ -9,6 +9,12 @@ import RecommendationMeta from "./RecommendationMeta";
 import RouteLink from "./RouteLink";
 import type { SearchImageMap } from "./SearchMixedResultList";
 
+type SearchArtistLifeSpan = {
+  begin?: string | null;
+  end?: string | null;
+  ended?: boolean | null;
+};
+
 type SearchArtist = {
   id?: string | number | null;
   mbid?: string | null;
@@ -25,6 +31,9 @@ type SearchArtist = {
   matchPercent?: number | null;
   begin?: string | null;
   end?: string | null;
+  ended?: boolean | null;
+  "life-span"?: SearchArtistLifeSpan | null;
+  lifeSpan?: SearchArtistLifeSpan | null;
 };
 
 interface SearchArtistResultsProps {
@@ -64,7 +73,7 @@ function SearchArtistResults({
   const normalizeArtistType = (artist: SearchArtist) => {
     const raw = artist?.artistType || artist?.type || null;
     if (!raw) return null;
-    const types = {
+    const types: Partial<Record<string, string>> = {
       Person: "Solo artist",
       Group: "Band",
       Orchestra: "Orchestra",
@@ -76,15 +85,17 @@ function SearchArtistResults({
   };
 
   const normalizeArea = (artist: SearchArtist) => {
-    const value = artist?.area || artist?.area?.name || null;
+    const value = artist?.area || null;
     if (!value) return null;
     return String(value).trim() || null;
   };
 
-  const artistLinkState = (artist: SearchArtist, artistId: string | undefined) => ({
+  const artistLinkState = (artist: SearchArtist, artistKey: string) => ({
     artistName: artist.name,
-    artistImage: artistImages[artistId] || artist.image || artist.imageUrl || undefined,
-    ...(typeof libraryLookup[artistId] === "boolean" ? { inLibrary: libraryLookup[artistId] } : {}),
+    artistImage: artistImages[artistKey] || artist.image || artist.imageUrl || undefined,
+    ...(typeof libraryLookup[artistKey] === "boolean"
+      ? { inLibrary: libraryLookup[artistKey] }
+      : {}),
   });
 
   const isList = variant === "list";
@@ -102,6 +113,7 @@ function SearchArtistResults({
     <div className={gridClassName} style={gridStyle}>
       {artists.map((artist, index) => {
         const artistId = getArtistRecordId(artist);
+        const artistKey = String(artistId);
         const artistTypeLabel = normalizeArtistType(artist);
         const displayArtistTypeLabel =
           type === "recommended" && artistTypeLabel?.toLowerCase() === "artist"
@@ -131,7 +143,7 @@ function SearchArtistResults({
             data-artwork
           >
             <ArtistImage
-              src={artistImages[artistId] || artist.image || artist.imageUrl}
+              src={artistImages[artistKey] || artist.image || artist.imageUrl}
               mbid={artistId}
               artistName={artist.name}
               alt={artist.name}
@@ -139,18 +151,18 @@ function SearchArtistResults({
               showLoading={false}
               enableBackendFallback={false}
               enablePreviewPlayback
-              isInLibrary={!!libraryLookup[artistId]}
+              isInLibrary={!!libraryLookup[artistKey]}
             />
           </div>
         );
 
         const artistPath = `/artist/${artistId}`;
-        const linkState = artistLinkState(artist, artistId);
+        const linkState = artistLinkState(artist, artistKey);
         const contextMenu = (
           <div className="artist-discover-card__menu">
             <ArtistContextMenu
               artist={artist}
-              isInLibrary={!!libraryLookup[artistId]}
+              isInLibrary={!!libraryLookup[artistKey]}
               onFeedback={onArtistFeedback}
               menuLayout={isList ? "inline" : "text"}
               feedbackUsed={
@@ -217,7 +229,7 @@ function SearchArtistResults({
                   <Tooltip content={artist.name}>
                     <h3 className="artist-card-title--discover">{artist.name}</h3>
                   </Tooltip>
-                  {libraryLookup[artistId] && <SearchLibraryCheck />}
+                  {libraryLookup[artistKey] && <SearchLibraryCheck />}
                 </div>
                 <RecommendationMeta
                   artist={artist}

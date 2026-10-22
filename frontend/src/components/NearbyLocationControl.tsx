@@ -182,10 +182,10 @@ function NearbyLocationControl({
                   type="button"
                   onClick={saveZip}
                   className="btn btn-primary btn-sm"
-                  disabled={
+                  disabled={Boolean(
                     !zipDraft.trim() ||
-                    (countryDraft.trim() && !/^[A-Za-z]{2}$/.test(countryDraft.trim()))
-                  }
+                    (countryDraft.trim() && !/^[A-Za-z]{2}$/.test(countryDraft.trim())),
+                  )}
                 >
                   Save
                 </button>

@@ -74,7 +74,7 @@ function ResultThumbnail({
     return (
       <span className="search-mixed-results__thumb search-mixed-results__thumb--round">
         <ArtistImage
-          src={artistImages[artistId] || item.image || item.imageUrl}
+          src={artistImages[String(artistId)] || item.image || item.imageUrl}
           mbid={artistId}
           artistName={item.name}
           alt={item.name}
@@ -92,9 +92,9 @@ function ResultThumbnail({
     item.type === "playlist"
       ? getSearchPlaylistArtworkUrl(item)
       : item.type === "album"
-        ? albumCovers[item.id] || item.coverUrl
+        ? albumCovers[String(item.id)] || item.coverUrl
         : item.type === "track"
-          ? albumCovers[item.albumMbid] || item.coverUrl
+          ? albumCovers[String(item.albumMbid)] || item.coverUrl
           : null;
 
   return (

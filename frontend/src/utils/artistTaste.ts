@@ -16,7 +16,15 @@ export type ArtistFeedbackSource = Omit<ArtistIdentity, "id"> & {
 
 export type ArtistFeedbackAction = "more_like_this" | "less_like_this" | "block_artist";
 
-export const getArtistRecordId = (artist) => artist?.id || artist?.mbid || artist?.foreignArtistId;
+export const getArtistRecordId = <
+  Artist extends {
+    id?: string | number | null;
+    mbid?: string | null;
+    foreignArtistId?: string | null;
+  },
+>(
+  artist: Artist | null | undefined,
+) => artist?.id || artist?.mbid || artist?.foreignArtistId;
 
 const uniqueTextList = (values: (string | null | undefined)[]) => {
   const seen = new Set();

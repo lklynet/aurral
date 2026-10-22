@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Eye, EyeOff, Lock, LockOpen } from "lucide-react";
 
 import { useToast } from "../contexts/ToastContext";
+import { getApiErrorMessage } from "../pages/onboardingUtils.tsx";
 import {
   setAurralTrackKeepFile,
   setAurralTrackMonitoring,
@@ -33,14 +34,6 @@ interface TrackMenuOptions {
   hasFile?: boolean;
   downloadPending?: boolean;
 }
-
-interface RequestErrorLike {
-  message?: string;
-  response?: { data?: { message?: string; error?: string } };
-}
-
-const errorMessage = (error: RequestErrorLike | null | undefined) =>
-  error?.response?.data?.message || error?.response?.data?.error || error?.message || "Try again.";
 
 const trackTitle = (track: AurralTrackRef | null | undefined) =>
   track?.title || track?.trackName || "this track";
@@ -78,7 +71,7 @@ export function useAurralTrackMonitoring({
       await onKeepFileChanged?.(track.id, result);
     } catch (error) {
       showError(
-        `Could not ${keepFile ? "keep" : "allow upgrades for"} ${trackTitle(track)}. Nothing changed. ${errorMessage(error)}`,
+        `Could not ${keepFile ? "keep" : "allow upgrades for"} ${trackTitle(track)}. Nothing changed. ${getApiErrorMessage(error, "Try again.")}`,
       );
     } finally {
       setKeepPending(null);
@@ -101,7 +94,7 @@ export function useAurralTrackMonitoring({
       await onChanged?.(track.id, result);
     } catch (error) {
       showError(
-        `Could not ${nextMonitored ? "monitor" : "stop monitoring"} ${trackTitle(track)}. Nothing changed. ${errorMessage(error)}`,
+        `Could not ${nextMonitored ? "monitor" : "stop monitoring"} ${trackTitle(track)}. Nothing changed. ${getApiErrorMessage(error, "Try again.")}`,
       );
     } finally {
       setPending(null);

@@ -48,9 +48,9 @@ const scheduleFetch = <T,>(fn: () => Promise<T>, signal?: AbortSignal) => {
 };
 
 type ArtistImageProps = {
-  mbid?: string | null;
+  mbid?: string | number | null;
   src?: string | null;
-  alt?: string;
+  alt?: string | null;
   artistName?: string | null;
   className?: string;
   showLoading?: boolean;
@@ -89,7 +89,7 @@ const ArtistImage = ({
   const fetchingRef = useRef(false);
   const triedBackendFallbackRef = useRef(false);
   const failedSourceRef = useRef<string | null | undefined>(null);
-  const visibleMbidRef = useRef<string | null | undefined>(fallbackVisible ? mbid : null);
+  const visibleMbidRef = useRef<string | number | null | undefined>(fallbackVisible ? mbid : null);
   const imgRef = useRef<HTMLImageElement>(null);
   const fallbackTargetRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -103,7 +103,7 @@ const ArtistImage = ({
 
   const fetchBackendCover = useCallback(
     async (
-      mbidToFetch: string,
+      mbidToFetch: string | number,
       nameForCover: string | null | undefined,
       signal: AbortSignal | undefined,
       refresh = false,
@@ -153,7 +153,7 @@ const ArtistImage = ({
           setIsLoading(false);
         }
       } catch (err) {
-        if (err?.name === "AbortError" || signal?.aborted) return;
+        if ((err instanceof Error && err.name === "AbortError") || signal?.aborted) return;
         setHasError(true);
         setIsLoading(false);
       } finally {

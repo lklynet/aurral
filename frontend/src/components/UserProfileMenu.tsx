@@ -21,7 +21,10 @@ function UserProfileMenu() {
   useEffect(() => {
     if (!menuOpen) return undefined;
     const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target)) {
+      if (
+        menuRef.current &&
+        !menuRef.current.contains(event.target instanceof Node ? event.target : null)
+      ) {
         setMenuOpen(false);
       }
     };

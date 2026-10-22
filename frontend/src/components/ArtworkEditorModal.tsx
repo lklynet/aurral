@@ -4,6 +4,8 @@ import { useModalDialog } from "../hooks/useModalDialog.ts";
 import ArtworkImage from "./ArtworkImage.tsx";
 import Tooltip from "./Tooltip.tsx";
 import TooltipButton from "./TooltipButton.tsx";
+import { getApiErrorMessage, getApiErrorText } from "../pages/onboardingUtils.tsx";
+import { asApiError } from "../utils/api/core.ts";
 import { cacheImageLocally } from "../utils/api/endpoints/images.ts";
 import type { CustomArtworkResult } from "../utils/api/endpoints/library.ts";
 
@@ -127,12 +129,7 @@ export default function ArtworkEditorModal({
       await onSaved?.(result);
       onClose();
     } catch (requestError) {
-      setError(
-        requestError?.response?.data?.message ||
-          requestError?.response?.data?.error ||
-          requestError?.message ||
-          "Artwork could not be saved.",
-      );
+      setError(getApiErrorMessage(requestError, "Artwork could not be saved."));
     } finally {
       setBusy(false);
     }
@@ -147,8 +144,8 @@ export default function ArtworkEditorModal({
       onClose();
     } catch (requestError) {
       setError(
-        requestError?.response?.data?.message ||
-          requestError?.message ||
+        getApiErrorText(requestError, "message") ||
+          asApiError(requestError)?.message ||
           "Artwork could not be removed.",
       );
     } finally {

@@ -37,7 +37,8 @@ test("Aurral albums can always be searched, Lidarr albums only while Lidarr is c
   assert.equal(canSearchLibraryAlbum({ sources: ["flow"] }, { lidarrConnected: true }), false);
 });
 
-const conflictError = (data, status = 409) => ({ response: { status, data } });
+const conflictError = (data, status = 409) =>
+  Object.assign(new Error("Request failed"), { response: { status, data } });
 
 test("getLibraryOwnerConflict maps album and artist owner conflicts to the current manager", () => {
   assert.deepEqual(

@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight } from "lucide-react";
 import { DotLoader } from "./DotLoader";
+import { getApiErrorText } from "../pages/onboardingUtils.tsx";
+import { asApiError } from "../utils/api/core.ts";
 import {
   cancelLibraryFileOperation,
   getLibraryFileOperationItems,
@@ -172,7 +174,9 @@ function StopButton({
       await onChanged?.();
     } catch (error) {
       showError?.(
-        error?.response?.data?.message || error?.message || "Aurral could not stop it. Try again.",
+        getApiErrorText(error, "message") ||
+          asApiError(error)?.message ||
+          "Aurral could not stop it. Try again.",
       );
     } finally {
       setStopping(false);
@@ -205,7 +209,7 @@ function RemoveSourcesOffer({
       await removeLibraryFileOperationSources(operation.id);
       await onChanged?.();
     } catch (error) {
-      showError?.(error?.response?.data?.message || error?.message || copy.failed);
+      showError?.(getApiErrorText(error, "message") || asApiError(error)?.message || copy.failed);
     } finally {
       setRemoving(false);
     }

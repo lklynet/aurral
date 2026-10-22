@@ -8,7 +8,6 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
-import type { UnifiedSearchItem } from "../../../backend/services/unifiedSearchService.ts";
 import {
   requestAlbumFromSearch,
   settleLibraryOwnerConflict,
@@ -36,6 +35,7 @@ import {
   getTrackSavingKey,
   isSuggestionInLibrary,
   buildTrackPlaylistPayload,
+  type SearchSuggestion,
 } from "../utils/globalSearchUtils";
 import {
   describeAlbumRequestResult,
@@ -58,10 +58,12 @@ import {
 } from "../pages/ArtistDetails/components/TrackPlaylistMenu";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
+import { getApiErrorMessage, getApiErrorText } from "../pages/onboardingUtils";
+import { asApiError } from "../utils/api/core.ts";
 import { searchSettingsItems } from "../pages/Settings/settingsTabsConfig";
 
 type SuggestionMode = "tag" | "unified";
-type SuggestionItem = UnifiedSearchItem & {
+type SuggestionItem = SearchSuggestion & {
   ownerConflict?: NonNullable<Awaited<ReturnType<typeof settleLibraryOwnerConflict>>>;
 };
 type SuggestionAlbum = Extract<SuggestionItem, { type: "album" }>;
@@ -152,11 +154,8 @@ function GlobalSearch({ settingsMode = false }) {
     [recentSearches, showRecentSearches],
   );
 
-  const keyboardRows = settingsMode
-    ? settingsSearchResults
-    : showRecentSearches
-      ? recentSelectableRows
-      : selectableRows;
+  const suggestionKeyboardRows = showRecentSearches ? recentSelectableRows : selectableRows;
+  const keyboardRows = settingsMode ? settingsSearchResults : suggestionKeyboardRows;
 
   const rememberSearch = useCallback((rawQuery: string) => {
     const next = addRecentSearch(rawQuery);
@@ -175,7 +174,10 @@ function GlobalSearch({ settingsMode = false }) {
       suggestionResultsRef.current = results;
       setSuggestionRows(
         flattenSuggestionSections(
-          buildUnifiedSuggestionSections({ ...results.catalog, library: results.library }),
+          buildUnifiedSuggestionSections<SearchSuggestion>({
+            ...results.catalog,
+            library: results.library,
+          }),
         ),
       );
       setSuggestionMode("unified");
@@ -245,7 +247,7 @@ function GlobalSearch({ settingsMode = false }) {
             return true;
           });
           setSuggestionRows(
-            tags.map((tagName) => ({
+            tags.map((tagName): SuggestionRow => ({
               kind: "tag",
               key: `tag:${tagName}`,
               tagName,
@@ -405,8 +407,8 @@ function GlobalSearch({ settingsMode = false }) {
 
   const updateSuggestionItem = useCallback(
     (
-      targetItem: SuggestionItem,
-      updates: Partial<SuggestionItem> | ((item: SuggestionItem) => Partial<SuggestionItem>),
+      targetItem: SuggestionAlbum,
+      updates: Partial<SuggestionAlbum> | ((item: SuggestionAlbum) => Partial<SuggestionAlbum>),
     ) => {
       if (!targetItem) return;
       const targetType = targetItem.type;
@@ -436,7 +438,6 @@ function GlobalSearch({ settingsMode = false }) {
       const shouldTriggerSearch = shouldTriggerAlbumSearch({
         status: album.status,
         inLibrary: album.inLibrary,
-        monitored: album.monitored,
       });
       setPendingAlbumIds((prev) => ({ ...prev, [album.id!]: true }));
       try {
@@ -458,7 +459,7 @@ function GlobalSearch({ settingsMode = false }) {
           status: result?.queued ? "processing" : result.status,
         };
         updateSuggestionItem(album, nextAlbum);
-        const outcome = describeAlbumRequestResult(result, album.title, managedBy);
+        const outcome = describeAlbumRequestResult(result, album.title);
         (outcome.kind === "info" ? showInfo : showSuccess)(outcome.message);
       } catch (err) {
         const conflict = settleLibraryOwnerConflict(err);
@@ -469,7 +470,9 @@ function GlobalSearch({ settingsMode = false }) {
         }
         showError(
           `Could not download the album: ${
-            err.response?.data?.message || err.response?.data?.error || err.message
+            getApiErrorText(err, "message") ||
+            getApiErrorText(err, "error") ||
+            asApiError(err)?.message
           }`,
         );
       } finally {
@@ -493,11 +496,11 @@ function GlobalSearch({ settingsMode = false }) {
       try {
         if (target?.mode === "new") {
           const name = String(target?.name || "").trim() || "Playlist";
-          const response = await createStaticPlaylist({
+          await createStaticPlaylist({
             name,
             tracks: [payload],
           });
-          showSuccess(`Track saved to ${response?.playlist?.name || name}`);
+          showSuccess(`Track saved to ${name}`);
         } else {
           const targetPlaylist = staticPlaylists.find(
             (playlist) => playlist.id === target?.playlistId,
@@ -513,11 +516,7 @@ function GlobalSearch({ settingsMode = false }) {
           setStaticPlaylists(nextPlaylists);
         }
       } catch (err) {
-        const message =
-          err.response?.data?.message ||
-          err.response?.data?.error ||
-          err.message ||
-          "Failed to save track to playlist";
+        const message = getApiErrorMessage(err, "Failed to save track to playlist");
         setPlaylistModalError(message);
         showError(message);
       } finally {
@@ -606,9 +605,9 @@ function GlobalSearch({ settingsMode = false }) {
     } else if (event.key === "Enter" && suggestionIndex >= 0) {
       event.preventDefault();
       if (settingsMode) {
-        navigateToSettings(keyboardRows[suggestionIndex]);
+        navigateToSettings(settingsSearchResults[suggestionIndex]);
       } else {
-        handleSuggestionSelect(keyboardRows[suggestionIndex]);
+        handleSuggestionSelect(suggestionKeyboardRows[suggestionIndex]);
       }
     }
   };
@@ -733,18 +732,20 @@ function GlobalSearch({ settingsMode = false }) {
       {!settingsMode && suggestionRows.length > 0 && (
         <div className="global-search__suggestions global-search__suggestions--grouped">
           {suggestionMode === "tag"
-            ? suggestionRows.map((row, index) => (
-                <button
-                  key={row.key}
-                  type="button"
-                  onClick={() => handleSuggestionSelect(row)}
-                  className={`global-search__suggestion${
-                    index === suggestionIndex ? " is-highlighted" : ""
-                  }`}
-                >
-                  #{row.tagName}
-                </button>
-              ))
+            ? suggestionRows.map((row, index) =>
+                row.kind === "tag" ? (
+                  <button
+                    key={row.key}
+                    type="button"
+                    onClick={() => handleSuggestionSelect(row)}
+                    className={`global-search__suggestion${
+                      index === suggestionIndex ? " is-highlighted" : ""
+                    }`}
+                  >
+                    #{row.tagName}
+                  </button>
+                ) : null,
+              )
             : suggestionRows.map((row) => {
                 if (row.kind === "header") {
                   return (
@@ -753,6 +754,7 @@ function GlobalSearch({ settingsMode = false }) {
                     </div>
                   );
                 }
+                if (row.kind !== "item") return null;
                 selectableCursor += 1;
                 const highlighted = selectableCursor === suggestionIndex;
                 const item = row.item;

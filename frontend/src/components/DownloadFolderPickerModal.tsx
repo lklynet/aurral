@@ -3,6 +3,8 @@ import { browseFilesystem, ensureFilesystemPath } from "../utils/api/endpoints/a
 
 import { createPortal } from "react-dom";
 import { ArrowUp, Folder, X } from "lucide-react";
+import { getApiErrorText } from "../pages/onboardingUtils.tsx";
+import { asApiError } from "../utils/api/core.ts";
 import { useModalDialog } from "../hooks/useModalDialog.ts";
 import { DotLoader } from "./DotLoader";
 interface FilesystemEntry {
@@ -73,7 +75,11 @@ export default function DownloadFolderPickerModal({
         if (requestId !== requestIdRef.current) {
           return false;
         }
-        setError(err?.response?.data?.message || err?.message || "Failed to browse folders.");
+        setError(
+          getApiErrorText(err, "message") ||
+            asApiError(err)?.message ||
+            "Failed to browse folders.",
+        );
         return false;
       } finally {
         if (requestId === requestIdRef.current) {
@@ -100,7 +106,11 @@ export default function DownloadFolderPickerModal({
         if (requestId !== requestIdRef.current) {
           return null;
         }
-        setError(err?.response?.data?.message || err?.message || "Failed to prepare folder path.");
+        setError(
+          getApiErrorText(err, "message") ||
+            asApiError(err)?.message ||
+            "Failed to prepare folder path.",
+        );
         return null;
       } finally {
         if (requestId === requestIdRef.current) {

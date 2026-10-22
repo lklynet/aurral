@@ -1,4 +1,6 @@
 import type { MonitoringRules } from "../components/MonitoringRulesFields.tsx";
+import { getApiErrorBody, getApiErrorMessage } from "../pages/onboardingUtils.tsx";
+import { asApiError } from "./api/core.ts";
 import { shouldPollAlbumStatus, type AlbumStatus } from "./aurralAlbumStatus.ts";
 import { normalizeLibraryManager } from "./libraryDestination.ts";
 import { describeDownloadCount, plural } from "./monitoringRules.ts";
@@ -112,11 +114,13 @@ export const describeAurralMonitoringError = (
   error: unknown,
   fallback = "Failed to update artist monitoring",
 ) => {
-  const data = error?.response?.data || {};
-  if (error?.response?.status === 503 && data.code === "metadata_unavailable") {
+  if (
+    asApiError(error)?.response?.status === 503 &&
+    getApiErrorBody(error)?.code === "metadata_unavailable"
+  ) {
     return METADATA_UNAVAILABLE_MESSAGE;
   }
-  return data.message || data.error || error?.message || fallback;
+  return getApiErrorMessage(error, fallback);
 };
 
 export const getAlbumMonitoredState = (album: AurralAlbumMonitoredRef | null) => {

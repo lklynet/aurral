@@ -5,7 +5,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { queryKeys } from "../queryClient";
 import { createShareLink, getShareAvailability } from "../utils/api/endpoints/shareLinks";
-import type { ApiError } from "../utils/api/core";
+import { getApiErrorText } from "../pages/onboardingUtils";
 import type {
   ShareAvailabilityResponse,
   ShareLinkResponse,
@@ -33,8 +33,8 @@ const KIND_LABELS = { artist: "artist", album: "album", track: "track" };
 
 type ShareRequest = { item: ShareItem; label?: string };
 
-const errorMessage = (error: ApiError | null, fallback: string) =>
-  error?.response?.data?.message || error?.response?.data?.error || fallback;
+const errorMessage = (error: unknown, fallback: string) =>
+  getApiErrorText(error, "message") || getApiErrorText(error, "error") || fallback;
 
 function libraryRefs(item: ShareItem | undefined) {
   return Object.fromEntries(
@@ -200,7 +200,7 @@ export function ShareModal({
         <button
           type="button"
           className="btn btn-primary btn-sm"
-          onClick={() => sendLink(plainUrl, "Link copied")}
+          onClick={() => sendLink(plainUrl!, "Link copied")}
           disabled={!plainUrl}
         >
           Share link

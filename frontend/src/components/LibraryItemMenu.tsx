@@ -295,7 +295,7 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
     let press: { id: number; x: number; y: number } | null = null;
     let pressOpened = false;
     const cancelPress = () => {
-      window.clearTimeout(pressTimer);
+      if (pressTimer) window.clearTimeout(pressTimer);
       pressTimer = null;
       press = null;
     };
@@ -354,7 +354,8 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
   useEffect(() => {
     if (!open) return undefined;
     const handlePointerDown = (event: PointerEvent) => {
-      if (menuRootRef.current?.contains(event.target) || menuRef.current?.contains(event.target)) {
+      const target = event.target instanceof Node ? event.target : null;
+      if (menuRootRef.current?.contains(target) || menuRef.current?.contains(target)) {
         return;
       }
       closeMenu(false);
@@ -364,7 +365,7 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
     };
     const closeOnViewportChange = () => closeMenu(false);
     const handleScroll = (event: Event) => {
-      if (menuRef.current?.contains(event.target)) return;
+      if (menuRef.current?.contains(event.target instanceof Node ? event.target : null)) return;
       if (anchor?.kind !== "trigger") {
         closeMenu(false);
         return;
@@ -470,14 +471,15 @@ export const LibraryItemMenu = forwardRef(function LibraryItemMenu(
     if (!buttons.length) return;
     event.preventDefault();
     event.stopPropagation();
-    const current = buttons.indexOf(document.activeElement);
+    const active = document.activeElement;
+    const current = active instanceof HTMLElement ? buttons.indexOf(active) : -1;
     const next = {
       ArrowDown: (current + 1) % buttons.length,
       ArrowUp: (current - 1 + buttons.length) % buttons.length,
       Home: 0,
       End: buttons.length - 1,
     }[event.key];
-    buttons[next].focus({ preventScroll: true });
+    buttons[next!]!.focus({ preventScroll: true });
   };
 
   const renderItems = () => (

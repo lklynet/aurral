@@ -384,7 +384,7 @@ function writeStorage(key: string, value: string | null) {
 
 function parseJson(value: string | null) {
   try {
-    return JSON.parse(value);
+    return JSON.parse(String(value));
   } catch {
     return null;
   }

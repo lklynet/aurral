@@ -1,7 +1,9 @@
+import { getApiErrorBody } from "../pages/onboardingUtils.tsx";
+import { asApiError } from "./api/core.ts";
 import { reauthApi } from "./api/endpoints/auth.ts";
 
-export const isReauthRequiredError = (err) =>
-  err?.response?.status === 401 && err?.response?.data?.error === "reauth_required";
+export const isReauthRequiredError = (err: unknown) =>
+  asApiError(err)?.response?.status === 401 && getApiErrorBody(err)?.error === "reauth_required";
 
 export async function promptReauth() {
   const password = window.prompt("Enter your password to continue:");
@@ -10,10 +12,10 @@ export async function promptReauth() {
     await reauthApi(password);
     return true;
   } catch (err) {
+    const body = getApiErrorBody(err);
     window.alert(
-      err?.response?.data?.error === "no_local_password"
-        ? err.response.data.message ||
-            "This account has no local password. Sign out and back in to continue."
+      body?.error === "no_local_password"
+        ? body.message || "This account has no local password. Sign out and back in to continue."
         : "That password wasn't correct.",
     );
     return false;

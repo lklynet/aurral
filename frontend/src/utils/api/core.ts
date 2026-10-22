@@ -1,4 +1,5 @@
 import { getAppBasePath } from "../basePath.ts";
+import type { LibraryAvailability } from "../libraryDestination.ts";
 
 const getDefaultApiBaseUrl = () => {
   if (import.meta.env.DEV) return "/api";
@@ -13,6 +14,9 @@ export interface ApiErrorBody {
   message?: string;
   error?: string | Record<string, unknown>;
   code?: string;
+  managedBy?: string | null;
+  availability?: LibraryAvailability | null;
+  conflict?: { managedBy?: string | null; availability?: LibraryAvailability | null } | null;
 }
 
 export interface ApiErrorResponse {
@@ -133,17 +137,25 @@ async function request(config: RequestConfig) {
     const response = { status: res.status, statusText: res.statusText, headers: res.headers, data };
     if (!res.ok) {
       const error: ApiError = new Error(`Request failed with status code ${res.status}`);
-      error.response = response;
+      const errorData: ApiErrorResponse["data"] =
+        typeof data === "string" || typeof data === "object" ? data : null;
+      error.response = {
+        status: res.status,
+        statusText: res.statusText,
+        headers: res.headers,
+        data: errorData,
+      };
       if (res.status === 401 && !isAuthEndpoint) {
+        const body = typeof errorData === "object" && errorData ? errorData : undefined;
         const isAurralAuthError =
-          data?.error === "Unauthorized" ||
-          data?.code === "AUTH_REQUIRED" ||
-          data?.code === "SESSION_INVALID";
+          body?.error === "Unauthorized" ||
+          body?.code === "AUTH_REQUIRED" ||
+          body?.code === "SESSION_INVALID";
         if (isAurralAuthError) {
           clearAuthStorage();
-        } else if (data?.error && typeof data.error === "object") {
+        } else if (body?.error && typeof body.error === "object") {
           reauthenticateThroughProxy();
-        } else if (!data?.error) {
+        } else if (!body?.error) {
           reauthenticateThroughProxy();
         }
       }

@@ -35,7 +35,7 @@ const RouteLink = forwardRef<HTMLAnchorElement, LinkProps>(function RouteLink(
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const cancel = () => {
-    clearTimeout(timerRef.current);
+    if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = null;
   };
   const prefetch = () => {
@@ -47,7 +47,12 @@ const RouteLink = forwardRef<HTMLAnchorElement, LinkProps>(function RouteLink(
     timerRef.current = setTimeout(prefetch, HOVER_INTENT_MS);
   };
 
-  useEffect(() => () => clearTimeout(timerRef.current), []);
+  useEffect(
+    () => () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    },
+    [],
+  );
 
   return (
     <Link

@@ -63,7 +63,7 @@ function TopResultArtwork({
     const artistId = getArtistRecordId(item);
     return (
       <ArtistImage
-        src={artistImages[artistId] || item.image || item.imageUrl}
+        src={artistImages[String(artistId)] || item.image || item.imageUrl}
         mbid={artistId}
         artistName={item.name}
         alt={item.name}
@@ -78,9 +78,9 @@ function TopResultArtwork({
 
   const coverSrc =
     item.type === "album"
-      ? albumCovers[item.id] || item.coverUrl
+      ? albumCovers[String(item.id)] || item.coverUrl
       : item.type === "track"
-        ? albumCovers[item.albumMbid] || item.coverUrl
+        ? albumCovers[String(item.albumMbid)] || item.coverUrl
         : null;
 
   if (coverSrc) {
@@ -109,13 +109,13 @@ function getBackdropSrc(
 ) {
   if (item.type === "artist") {
     const artistId = getArtistRecordId(item);
-    return artistImages[artistId] || item.image || item.imageUrl || "";
+    return artistImages[String(artistId)] || item.image || item.imageUrl || "";
   }
   if (item.type === "album") {
-    return albumCovers[item.id] || item.coverUrl || "";
+    return albumCovers[String(item.id)] || item.coverUrl || "";
   }
   if (item.type === "track") {
-    return albumCovers[item.albumMbid] || item.coverUrl || "";
+    return albumCovers[String(item.albumMbid)] || item.coverUrl || "";
   }
   return "";
 }

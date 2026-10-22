@@ -191,7 +191,7 @@ function GlobalPlayerBar() {
         artistName: artistLabel,
         albumTitle: albumLabel,
       },
-      currentTrack.title,
+      currentTrack.title!,
     );
   const metaLink = (label: string, path: string) =>
     label ? (
@@ -211,8 +211,9 @@ function GlobalPlayerBar() {
 
   const handleSheetPointerDown = (event: PointerEvent<HTMLDivElement>) => {
     if (event.pointerType === "mouse" && event.button !== 0) return;
-    if (event.target.closest("button, a, input")) return;
-    if (!event.target.closest(".now-playing__header, .now-playing__art")) return;
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest("button, a, input")) return;
+    if (!target?.closest(".now-playing__header, .now-playing__art")) return;
     dragRef.current = { pointerId: event.pointerId, startY: event.clientY };
     setIsDragging(true);
     event.currentTarget.setPointerCapture?.(event.pointerId);

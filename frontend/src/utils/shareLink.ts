@@ -43,8 +43,9 @@ const toBase64Url = (bytes: Uint8Array) => {
 export type ShareKind = "artist" | "album" | "track";
 export type ShareItem = { kind: ShareKind } & Record<string, unknown>;
 
-export function buildSharePayload(item: ShareItem) {
-  const kind = KINDS[item?.kind];
+export function buildSharePayload(item: ShareItem | undefined) {
+  if (!item) return null;
+  const kind = KINDS[item.kind];
   if (!kind) return null;
   const names = kind.names.map((field: string) => nameBytes(item[field]));
   const requiredNames = [names[0], names[kind.names.indexOf("artistName")]];
@@ -101,7 +102,7 @@ export async function shareLink(url: string, title: string) {
       await nav.share({ title, url });
       return "shared";
     } catch (error) {
-      if (error?.name === "AbortError") return "cancelled";
+      if (error instanceof Error && error.name === "AbortError") return "cancelled";
     }
   }
   if (typeof nav?.clipboard?.writeText === "function") {

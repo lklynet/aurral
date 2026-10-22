@@ -54,7 +54,7 @@ export const shouldPollAlbumStatuses = (
 ) => Object.values(statuses || {}).some((entry) => shouldPollAlbumStatus(entry?.status));
 
 export const describeAurralAlbumStatus = ({ status, recovery }: AlbumStatusEntry = {}) => {
-  const display = STATUS_DISPLAY[status];
+  const display = status ? STATUS_DISPLAY[status] : undefined;
   if (!display) return null;
   const code = recovery?.code || null;
   return {

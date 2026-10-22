@@ -169,7 +169,7 @@ export const getReleaseGroupTracks = async (
 };
 
 export const getArtistCover = async (
-  mbid: string,
+  mbid: string | number,
   artistName?: string | null,
   refresh = false,
 ): Promise<ArtistCoverResponse> => {
@@ -329,7 +329,7 @@ export const getSimilarArtistsForArtist = (
   });
 
 export const getArtistPreview = (
-  mbid: string | null | undefined,
+  mbid: string | number | null | undefined,
   artistName?: string | null,
   options: { signal?: AbortSignal } = {},
 ): Promise<{ tracks: Awaited<ReturnType<typeof deezerGetArtistTopTracksById>> }> =>

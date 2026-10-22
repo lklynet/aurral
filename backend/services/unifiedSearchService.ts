@@ -733,7 +733,7 @@ export function searchLocalFromData(
         score,
       };
     })
-    .filter(Boolean)
+    .filter((result) => result !== null)
     .sort(compareSearchResults)
     .slice(0, limit);
 
@@ -762,7 +762,7 @@ export function searchLocalFromData(
         score,
       };
     })
-    .filter(Boolean)
+    .filter((result) => result !== null)
     .sort(compareSearchResults)
     .slice(0, limit);
 
@@ -793,7 +793,7 @@ export function searchLocalFromData(
         score,
       };
     })
-    .filter(Boolean)
+    .filter((result) => result !== null)
     .sort(compareSearchResults)
     .slice(0, limit);
 

@@ -119,7 +119,7 @@ export const loginApi = async (
   username: string | undefined,
   password: string,
 ): Promise<LoginResponse> => {
-  const result = await postData("/auth/login", { username, password });
+  const result = await postData<LoginResponse>("/auth/login", { username, password });
   invalidateBootstrapCache();
   return result;
 };
@@ -144,7 +144,7 @@ export const completePlexLogin = (): Promise<PlexLoginCompleteResponse> =>
   postData("/auth/plex/login/complete");
 
 export const logoutApi = async (): Promise<SuccessResponse> => {
-  const result = await postData("/auth/logout");
+  const result = await postData<SuccessResponse>("/auth/logout");
   invalidateBootstrapCache();
   return result;
 };
@@ -159,7 +159,7 @@ export const rotateApiKey = (): Promise<ApiKeyResponse> => postData("/auth/api-k
 export const completeOnboarding = async (
   payload: ReturnType<typeof buildOnboardingPayload>,
 ): Promise<OnboardingCompleteResponse> => {
-  const result = await postData("/onboarding/complete", payload);
+  const result = await postData<OnboardingCompleteResponse>("/onboarding/complete", payload);
   invalidateBootstrapCache();
   return result;
 };
