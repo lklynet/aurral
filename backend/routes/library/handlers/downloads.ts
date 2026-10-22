@@ -1,3 +1,4 @@
+import type { Router } from "express";
 import { libraryManager } from "../../../services/libraryManager.ts";
 import { dbOps } from "../../../db/helpers/index.ts";
 import { noCache } from "../../../middleware/cache.ts";
@@ -9,7 +10,12 @@ import {
   readLidarrQueueItemStatus,
   resolveAlbumSearchOutcome,
 } from "../../../services/albumSearchState.ts";
-import type { LidarrCommand, LidarrPage } from "../../../services/lidarrClient.ts";
+import type {
+  LidarrCommand,
+  LidarrHistoryItem,
+  LidarrPage,
+  LidarrQueueItem,
+} from "../../../services/lidarrClient.ts";
 import { UUID_REGEX } from "../../../../lib/uuid.ts";
 import { logger } from "../../../services/logger.ts";
 import { requestLibraryTrack } from "../../../services/libraryTrackRequests.ts";
@@ -21,11 +27,37 @@ import {
   isAnyDownloadSourceConfigured,
 } from "../../../services/downloadSourceService.ts";
 
+type LidarrProviderSnapshot = {
+  queue: LidarrQueueItem[] | LidarrPage<LidarrQueueItem>;
+  history: LidarrHistoryItem[] | LidarrPage<LidarrHistoryItem>;
+  commands: LidarrCommand[] | LidarrPage<LidarrCommand>;
+};
+
+type AlbumDownloadStatus = { status: string; updatedAt: string };
+
+type LidarrStatusSnapshot = {
+  provider: LidarrProviderSnapshot;
+  statuses: Record<string, AlbumDownloadStatus>;
+  updatedAt: string | null;
+  active: boolean;
+  stale: boolean;
+  error: string | null;
+};
+
+type LidarrStatusCache = {
+  snapshot: LidarrStatusSnapshot | null;
+  pending: Promise<LidarrStatusSnapshot> | null;
+  failures: number;
+  checkedAt: number;
+  nextRefreshAt: number;
+  revision: number;
+};
+
 const STALE_GRABBED_MS = 15 * 60 * 1000;
 const ACTIVE_STATUS_CACHE_MS = 10 * 1000;
 const IDLE_STATUS_CACHE_MS = 60 * 1000;
 const MAX_STATUS_RETRY_MS = 2 * 60 * 1000;
-let allDownloadStatusesCache = {
+let allDownloadStatusesCache: LidarrStatusCache = {
   snapshot: null,
   pending: null,
   failures: 0,
@@ -36,7 +68,7 @@ let allDownloadStatusesCache = {
 
 const activeDownloadStatuses = new Set(["searching", "downloading", "processing"]);
 
-const snapshotHasActiveWork = (statuses) =>
+const snapshotHasActiveWork = (statuses: Record<string, AlbumDownloadStatus>) =>
   Object.values(statuses || {}).some((status) => activeDownloadStatuses.has(status?.status));
 
 const invalidateActivityRequestsCache = () =>
@@ -44,9 +76,12 @@ const invalidateActivityRequestsCache = () =>
     .then(({ invalidateRequestsCache }) => invalidateRequestsCache())
     .catch(() => {});
 
-export const getDownloadStatusesForAlbumIds = async (albumIdArrayInput, snapshot = null) => {
+export const getDownloadStatusesForAlbumIds = async (
+  albumIdArrayInput: unknown,
+  snapshot: LidarrProviderSnapshot | null = null,
+) => {
   const albumIdArray = Array.isArray(albumIdArrayInput) ? albumIdArrayInput : [];
-  const statuses = {};
+  const statuses: Record<string, AlbumDownloadStatus> = {};
   const { lidarrClient } = await import("../../../services/lidarrClient.ts");
 
   if (lidarrClient.isConfigured()) {
@@ -194,7 +229,7 @@ export const invalidateAllDownloadStatusesCache = () => {
 export const hasActiveLidarrStatusSnapshot = () =>
   allDownloadStatusesCache.snapshot?.active === true;
 
-const staleSnapshot = (error) => ({
+const staleSnapshot = (error: unknown): LidarrStatusSnapshot => ({
   ...(allDownloadStatusesCache.snapshot || {
     provider: { queue: [], history: { records: [] }, commands: [] },
     statuses: {},
@@ -205,7 +240,9 @@ const staleSnapshot = (error) => ({
   error: error?.message || String(error),
 });
 
-export const getLidarrStatusSnapshot = async ({ refresh = false } = {}) => {
+export const getLidarrStatusSnapshot = async ({
+  refresh = false,
+}: { refresh?: boolean } = {}): Promise<LidarrStatusSnapshot> => {
   const { lidarrClient } = await import("../../../services/lidarrClient.ts");
   if (lidarrClient.isCircuitOpen()) {
     return staleSnapshot("Lidarr circuit is open");
@@ -318,8 +355,8 @@ export const getActiveLibraryDownloads = async () => {
   return { albums: [...albums], artists: [...artists], tracks };
 };
 
-export function registerDownloads(router) {
-  router.post(
+export function registerDownloads(router: Router) {
+  router.post<"/downloads/tracks/:trackId/research">(
     "/downloads/tracks/:trackId/research",
     requireAuth,
     requirePermission("addAlbum"),

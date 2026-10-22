@@ -1,3 +1,4 @@
+import type { Router } from "express";
 import { libraryManager } from "../../../services/libraryManager.ts";
 import type { MappedLibraryAlbum } from "../../../services/libraryManager.ts";
 import { playlistManager } from "../../../services/playlists/playlistManager.ts";
@@ -9,7 +10,7 @@ import { logger } from "../../../services/logger.ts";
 import { invalidateAllDownloadStatusesCache } from "./downloads.ts";
 import { getLibraryReadModelForArtistReferences } from "../../../services/libraryReadModel.ts";
 
-export function registerAlbums(router) {
+export function registerAlbums(router: Router) {
   router.get("/albums", cacheMiddleware(5), async (req, res) => {
     try {
       const { artistId } = req.query;
@@ -210,23 +211,27 @@ export function registerAlbums(router) {
     }
   });
 
-  router.get("/albums/aurral/:canonicalId/status", noCache, (req, res) => {
-    try {
-      const result = libraryManager.getAurralAlbumStatus(req.params.canonicalId);
-      if (result?.error) {
-        const { error, statusCode, ...details } = result;
-        return res.status(statusCode || 500).json({ ...details, error });
+  router.get<"/albums/aurral/:canonicalId/status">(
+    "/albums/aurral/:canonicalId/status",
+    noCache,
+    (req, res) => {
+      try {
+        const result = libraryManager.getAurralAlbumStatus(req.params.canonicalId);
+        if (result?.error) {
+          const { error, statusCode, ...details } = result;
+          return res.status(statusCode || 500).json({ ...details, error });
+        }
+        return res.json(result);
+      } catch (error) {
+        return res.status(500).json({
+          error: "Failed to fetch album status",
+          message: error.message,
+        });
       }
-      return res.json(result);
-    } catch (error) {
-      return res.status(500).json({
-        error: "Failed to fetch album status",
-        message: error.message,
-      });
-    }
-  });
+    },
+  );
 
-  router.put(
+  router.put<"/albums/aurral/:canonicalId">(
     "/albums/aurral/:canonicalId",
     requireAuth,
     requirePermission("changeMonitoring"),
@@ -249,7 +254,7 @@ export function registerAlbums(router) {
     },
   );
 
-  router.delete(
+  router.delete<"/albums/aurral/:canonicalId">(
     "/albums/aurral/:canonicalId",
     requireAuth,
     requirePermission("deleteAlbum"),
@@ -273,7 +278,7 @@ export function registerAlbums(router) {
     },
   );
 
-  router.post(
+  router.post<"/albums/aurral/:canonicalId/cancel">(
     "/albums/aurral/:canonicalId/cancel",
     requireAuth,
     requirePermission("addAlbum"),
@@ -294,7 +299,7 @@ export function registerAlbums(router) {
     },
   );
 
-  router.get("/albums/:id", cacheMiddleware(120), async (req, res) => {
+  router.get<"/albums/:id">("/albums/:id", cacheMiddleware(120), async (req, res) => {
     try {
       const { id } = req.params;
       const album = await libraryManager.getAlbumById(id);
@@ -310,7 +315,7 @@ export function registerAlbums(router) {
     }
   });
 
-  router.put(
+  router.put<"/albums/:id">(
     "/albums/:id",
     requireAuth,
     (req, res, next) => {
@@ -339,7 +344,7 @@ export function registerAlbums(router) {
     },
   );
 
-  router.delete(
+  router.delete<"/albums/lidarr/:mbid">(
     "/albums/lidarr/:mbid",
     requireAuth,
     requirePermission("deleteAlbum"),
@@ -361,22 +366,27 @@ export function registerAlbums(router) {
     },
   );
 
-  router.delete("/albums/:id", requireAuth, requirePermission("deleteAlbum"), async (req, res) => {
-    try {
-      const { id } = req.params;
-      const { deleteFiles = false } = req.query;
-      const result = await libraryManager.deleteAlbum(id, deleteFiles === "true");
-      if (!result?.success) {
-        return res.status(503).json({ error: result?.error || "Failed to delete album" });
+  router.delete<"/albums/:id">(
+    "/albums/:id",
+    requireAuth,
+    requirePermission("deleteAlbum"),
+    async (req, res) => {
+      try {
+        const { id } = req.params;
+        const { deleteFiles = false } = req.query;
+        const result = await libraryManager.deleteAlbum(id, deleteFiles === "true");
+        if (!result?.success) {
+          return res.status(503).json({ error: result?.error || "Failed to delete album" });
+        }
+        res.json({ success: true, message: "Album deleted successfully" });
+      } catch (error) {
+        res.status(500).json({
+          error: "Failed to delete album",
+          message: error.message,
+        });
       }
-      res.json({ success: true, message: "Album deleted successfully" });
-    } catch (error) {
-      res.status(500).json({
-        error: "Failed to delete album",
-        message: error.message,
-      });
-    }
-  });
+    },
+  );
 }
 
 type LibraryAlbumRecord = Awaited<ReturnType<typeof libraryManager.getAlbums>>[number];

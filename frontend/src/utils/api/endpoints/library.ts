@@ -100,10 +100,10 @@ type LibraryPageOptions = {
 };
 
 type ArtworkEntity = {
-  coverUrl?: string;
-  defaultCoverUrl?: string;
-  artworkUrl?: string;
-  customArtworkUrl?: string;
+  coverUrl?: string | null;
+  defaultCoverUrl?: string | null;
+  artworkUrl?: string | null;
+  customArtworkUrl?: string | null;
 };
 
 type MonitoringRulesInput = Parameters<typeof libraryManager.previewMonitoringDefaults>[0];
@@ -180,12 +180,7 @@ const libraryPageParams = (options: LibraryPageOptions = {}) =>
     }).filter(([, value]) => value !== undefined && value !== null && value !== ""),
   );
 
-type WithAuthenticatedArtwork<T extends ArtworkEntity> = Omit<T, keyof ArtworkEntity> &
-  Partial<Record<keyof ArtworkEntity, string>>;
-
-const withAuthenticatedArtwork = <T extends ArtworkEntity>(
-  entity: T,
-): WithAuthenticatedArtwork<T> =>
+const withAuthenticatedArtwork = <T extends object>(entity: T & ArtworkEntity): T =>
   entity && typeof entity === "object"
     ? {
         ...entity,
@@ -220,9 +215,10 @@ export const fetchLibraryPage = (
   options: LibraryPageOptions = {},
   { signal }: SignalOptions = {},
 ): Promise<FetchLibraryPageResponse> =>
-  getData("/library/canonical", { params: libraryPageParams(options), signal }).then(
-    withAuthenticatedLibraryArtwork,
-  );
+  getData<FetchLibraryPageResponse>("/library/canonical", {
+    params: libraryPageParams(options),
+    signal,
+  }).then(withAuthenticatedLibraryArtwork);
 
 export const getLibraryPage = (
   options: LibraryPageOptions = {},

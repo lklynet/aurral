@@ -18,7 +18,7 @@ interface LibraryArtworkFields {
 
 export type LibraryArtist = BackendLibraryArtist & LibraryArtworkFields;
 export type LibraryAlbum = BackendLibraryAlbum & LibraryArtworkFields;
-type LibraryTrackFile = BackendLibraryTrackFile & { previewUrl?: string };
+type LibraryTrackFile = Omit<BackendLibraryTrackFile, "path"> & { previewUrl?: string };
 export type LibraryTrack = Omit<BackendLibraryTrack, "files"> &
   LibraryArtworkFields & { files: LibraryTrackFile[] };
 

@@ -1,3 +1,4 @@
+import type { Router } from "express";
 import { UUID_REGEX } from "../../../../lib/uuid.ts";
 import { libraryManager } from "../../../services/libraryManager.ts";
 import { cacheMiddleware, noCache } from "../../../middleware/cache.ts";
@@ -10,11 +11,11 @@ import {
   getArtistByMbid,
   isMetadataNotFoundError,
 } from "../../../services/providers/brainzmashProvider.ts";
-export function registerArtists(router) {
+export function registerArtists(router: Router) {
   router.get("/artists", cacheMiddleware(120), async (req, res) => {
     try {
-      const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10000, 1), 10000);
-      const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
+      const limit = Math.min(Math.max(parseInt(String(req.query.limit), 10) || 10000, 1), 10000);
+      const offset = Math.max(parseInt(String(req.query.offset), 10) || 0, 0);
       if (req.query.readPath === "canonical") {
         const { artists } = getLibraryReadModelForArtistPage({
           source: req.query.source || "all",
@@ -43,22 +44,26 @@ export function registerArtists(router) {
     }
   });
 
-  router.get("/artists/:mbid/monitoring", noCache, async (req, res) => {
-    try {
-      const { mbid } = req.params;
-      if (!UUID_REGEX.test(mbid)) {
-        return res.status(400).json({ error: "Invalid MBID format" });
+  router.get<"/artists/:mbid/monitoring">(
+    "/artists/:mbid/monitoring",
+    noCache,
+    async (req, res) => {
+      try {
+        const { mbid } = req.params;
+        if (!UUID_REGEX.test(mbid)) {
+          return res.status(400).json({ error: "Invalid MBID format" });
+        }
+        res.json(await libraryManager.getArtistMonitoring(mbid));
+      } catch (error) {
+        res.status(500).json({
+          error: "Failed to read artist monitoring",
+          message: error.message,
+        });
       }
-      res.json(await libraryManager.getArtistMonitoring(mbid));
-    } catch (error) {
-      res.status(500).json({
-        error: "Failed to read artist monitoring",
-        message: error.message,
-      });
-    }
-  });
+    },
+  );
 
-  router.get("/artists/:mbid", cacheMiddleware(120), async (req, res) => {
+  router.get<"/artists/:mbid">("/artists/:mbid", cacheMiddleware(120), async (req, res) => {
     try {
       const { mbid } = req.params;
       if (!UUID_REGEX.test(mbid)) {
@@ -196,7 +201,7 @@ export function registerArtists(router) {
     }
   });
 
-  router.put(
+  router.put<"/canonical/artists/:id/mbid">(
     "/canonical/artists/:id/mbid",
     requireAuth,
     requirePermission("addArtist"),
@@ -231,16 +236,16 @@ export function registerArtists(router) {
           .json({ error: "Lidarr manages this artist. Change its MusicBrainz ID in Lidarr." });
       }
       res.json({
-        id: result.artist.id,
-        mbid: result.artist.mbid,
-        name: result.artist.name,
+        id: result.artist!.id,
+        mbid: result.artist!.mbid,
+        name: result.artist!.name,
         musicbrainzName,
         merged: Boolean(result.mergedArtistId),
       });
     },
   );
 
-  router.put(
+  router.put<"/artists/:mbid">(
     "/artists/:mbid",
     requireAuth,
     requirePermission("changeMonitoring"),
@@ -274,7 +279,7 @@ export function registerArtists(router) {
     },
   );
 
-  router.delete(
+  router.delete<"/artists/:mbid">(
     "/artists/:mbid",
     requireAuth,
     requirePermission("deleteArtist"),
@@ -307,7 +312,7 @@ export function registerArtists(router) {
     },
   );
 
-  router.post(
+  router.post<"/artists/:mbid/refresh">(
     "/artists/:mbid/refresh",
     requireAuth,
     requirePermission("changeMonitoring"),

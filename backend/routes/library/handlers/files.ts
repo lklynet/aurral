@@ -1,3 +1,4 @@
+import type { Request, Response, Router } from "express";
 import { noCache } from "../../../middleware/cache.ts";
 import { requireAdmin, requireAuth } from "../../../middleware/requirePermission.ts";
 import { lidarrClient } from "../../../services/lidarrClient.ts";
@@ -30,7 +31,7 @@ const ITEM_STATUSES = new Set([
   "failed",
 ]);
 
-function sendError(res, error) {
+function sendError(res: Response, error: unknown) {
   if (error?.code === "LIBRARY_FILE_OPERATION_ACTIVE") {
     return res.status(409).json({
       error: "operation_active",
@@ -47,14 +48,14 @@ function sendError(res, error) {
   });
 }
 
-function findOperation(req, res) {
+function findOperation(req: Request<{ id: string }>, res: Response) {
   const operation = getLibraryFileOperation(req.params.id);
   if (!operation)
     res.status(404).json({ error: "not_found", message: "Library file operation not found" });
   return operation;
 }
 
-export function registerFiles(router) {
+export function registerFiles(router: Router) {
   router.get("/files", requireAuth, requireAdmin, noCache, (_req, res) => {
     res.json({ operation: describeLibraryFileOperation(getLatestLibraryFileOperation()) });
   });
@@ -114,35 +115,52 @@ export function registerFiles(router) {
     }
   });
 
-  router.get("/files/operations/:id", requireAuth, requireAdmin, noCache, (req, res) => {
-    const operation = findOperation(req, res);
-    if (operation) res.json({ operation: describeLibraryFileOperation(operation) });
-  });
+  router.get<"/files/operations/:id">(
+    "/files/operations/:id",
+    requireAuth,
+    requireAdmin,
+    noCache,
+    (req, res) => {
+      const operation = findOperation(req, res);
+      if (operation) res.json({ operation: describeLibraryFileOperation(operation) });
+    },
+  );
 
-  router.get("/files/operations/:id/items", requireAuth, requireAdmin, noCache, (req, res) => {
-    const operation = findOperation(req, res);
-    if (!operation) return;
-    const statuses = String(req.query.status || "")
-      .split(",")
-      .map((status) => status.trim())
-      .filter((status) => ITEM_STATUSES.has(status));
-    const limit = Math.min(200, Math.max(1, Number.parseInt(req.query.limit, 10) || 50));
-    const offset = Math.max(0, Number.parseInt(req.query.offset, 10) || 0);
-    res.json({
-      items: describeLibraryFileOperationItems(operation, { statuses, offset, limit }),
-      offset,
-      limit,
-    });
-  });
+  router.get<"/files/operations/:id/items">(
+    "/files/operations/:id/items",
+    requireAuth,
+    requireAdmin,
+    noCache,
+    (req, res) => {
+      const operation = findOperation(req, res);
+      if (!operation) return;
+      const statuses = String(req.query.status || "")
+        .split(",")
+        .map((status) => status.trim())
+        .filter((status) => ITEM_STATUSES.has(status));
+      const limit = Math.min(200, Math.max(1, Number.parseInt(String(req.query.limit), 10) || 50));
+      const offset = Math.max(0, Number.parseInt(String(req.query.offset), 10) || 0);
+      res.json({
+        items: describeLibraryFileOperationItems(operation, { statuses, offset, limit }),
+        offset,
+        limit,
+      });
+    },
+  );
 
-  router.post("/files/operations/:id/cancel", requireAuth, requireAdmin, (req, res) => {
-    const operation = findOperation(req, res);
-    if (!operation) return;
-    cancelLibraryFileOperation(operation.id);
-    res.json({ operation: describeLibraryFileOperation(getLibraryFileOperation(operation.id)) });
-  });
+  router.post<"/files/operations/:id/cancel">(
+    "/files/operations/:id/cancel",
+    requireAuth,
+    requireAdmin,
+    (req, res) => {
+      const operation = findOperation(req, res);
+      if (!operation) return;
+      cancelLibraryFileOperation(operation.id);
+      res.json({ operation: describeLibraryFileOperation(getLibraryFileOperation(operation.id)) });
+    },
+  );
 
-  router.post(
+  router.post<"/files/operations/:id/remove-sources">(
     "/files/operations/:id/remove-sources",
     requireAuth,
     requireAdmin,

@@ -1,3 +1,4 @@
+import type { Router } from "express";
 import { noCache } from "../../../middleware/cache.ts";
 import { verifyTokenAuth } from "../../../middleware/auth.ts";
 import { getLibraryAlbumArtwork } from "../../../services/libraryAlbumArtwork.ts";
@@ -8,6 +9,7 @@ import {
   getCustomArtworkMap,
 } from "../../../services/customArtworkService.ts";
 import {
+  type getLibrary,
   getLibraryFavoriteTargetKeys,
   getLibraryPage,
   LIBRARY_VIEW,
@@ -25,9 +27,20 @@ import {
   scheduleLibraryScan,
 } from "../../../services/libraryScanWorker.ts";
 
-const isFilesystemPathKey = (key) => key.toLowerCase().endsWith("path");
+const isFilesystemPathKey = (key: string) => key.toLowerCase().endsWith("path");
 
-export function stripFilesystemPaths(value) {
+type FilesystemPathless<T> = T extends readonly (infer U)[]
+  ? FilesystemPathless<U>[]
+  : T extends object
+    ? {
+        [
+          K in keyof T as K extends string ? (Lowercase<K> extends `${string}path` ? never : K) : K
+        ]: FilesystemPathless<T[K]>;
+      }
+    : T;
+
+export function stripFilesystemPaths<T>(value: T): FilesystemPathless<T>;
+export function stripFilesystemPaths(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(stripFilesystemPaths);
   if (!value || typeof value !== "object") return value;
   return Object.fromEntries(
@@ -37,13 +50,13 @@ export function stripFilesystemPaths(value) {
   );
 }
 
-export function resolveAvailableOnly(queryValue) {
+export function resolveAvailableOnly(queryValue: unknown) {
   if (queryValue === "true") return true;
   if (queryValue === "false") return false;
   return LIBRARY_VIEW;
 }
 
-function getAlbumCoverUrl(album) {
+function getAlbumCoverUrl(album: LibraryCollections["albums"][number]) {
   const image = (Array.isArray(album?.metadata?.images) ? album.metadata.images : []).find(
     (entry) => /^https?:\/\//i.test(entry?.remoteUrl || entry?.imageUrl || entry?.url || ""),
   );
@@ -54,15 +67,23 @@ function getAlbumCoverUrl(album) {
     : null;
 }
 
-export const publicLibraryJsonReplacer = (key, value) =>
+export const publicLibraryJsonReplacer = (key: string, value: unknown) =>
   isFilesystemPathKey(key) ? undefined : value;
 
-const publicEntity = (kind, entity, favoriteKeys) =>
+const publicEntity = <T extends { identityKey: string }>(
+  kind: string,
+  entity: T,
+  favoriteKeys: Set<string> | null,
+) =>
   favoriteKeys
     ? { ...entity, userFavorite: favoriteKeys.has(`${kind}:${entity.identityKey}`) }
     : { ...entity };
 
-const publicAlbum = (album, favoriteKeys, customArtwork) => {
+const publicAlbum = (
+  album: LibraryCollections["albums"][number],
+  favoriteKeys: Set<string> | null,
+  customArtwork: number | undefined,
+) => {
   const defaultCoverUrl = album.coverUrl || getAlbumCoverUrl(album);
   return {
     ...album,
@@ -77,7 +98,10 @@ const publicAlbum = (album, favoriteKeys, customArtwork) => {
   };
 };
 
-export function buildPublicLibrary(library, favoriteKeys = null) {
+export function buildPublicLibrary(
+  library: LibraryCollections,
+  favoriteKeys: Set<string> | null = null,
+) {
   const albumArtwork = getCustomArtworkMap(
     "album",
     library.albums.map((album) => album.id),
@@ -105,11 +129,11 @@ export function buildPublicLibrary(library, favoriteKeys = null) {
   };
 }
 
-function toPublicLibrary(library, favoriteKeys = null) {
+function toPublicLibrary(library: LibraryCollections, favoriteKeys: Set<string> | null = null) {
   return stripFilesystemPaths(buildPublicLibrary(library, favoriteKeys));
 }
 
-export function toPublicLibraryPage(page, favoriteKeys = null) {
+export function toPublicLibraryPage(page: LibraryPage, favoriteKeys: Set<string> | null = null) {
   const collections = toPublicLibrary(page, favoriteKeys);
   const items =
     page.kind === "artists"
@@ -128,8 +152,11 @@ export function toPublicLibraryPage(page, favoriteKeys = null) {
 
 const LIBRARY_REFRESH_MODES = new Set(["quick", "full"]);
 
-export function registerLibraryIndex(router) {
-  router.get("/albums/:albumId/cover", async (req, res) => {
+type LibraryCollections = ReturnType<typeof getLibrary>;
+type LibraryPage = ReturnType<typeof getLibraryPage>;
+
+export function registerLibraryIndex(router: Router) {
+  router.get<"/albums/:albumId/cover">("/albums/:albumId/cover", async (req, res) => {
     if (!verifyTokenAuth(req)) {
       return res.status(401).json({ error: "Unauthorized" });
     }
@@ -164,7 +191,7 @@ export function registerLibraryIndex(router) {
     });
   });
 
-  router.get("/refresh/:jobId", requireAuth, noCache, (req, res) => {
+  router.get<"/refresh/:jobId">("/refresh/:jobId", requireAuth, noCache, (req, res) => {
     const status = getLibraryScanStatus(req.params.jobId);
     if (!status || status.status === "unknown") {
       return res.status(404).json({ error: "Library scan not found" });
@@ -226,8 +253,8 @@ export function registerLibraryIndex(router) {
   });
 
   router.post("/favorites", requireAuth, requireUserAccount, noCache, (req, res) => {
-    const ids = Array.isArray(req.body?.ids)
-      ? req.body.ids.map((id) => String(id || "").trim()).filter(Boolean)
+    const ids: string[] = Array.isArray(req.body?.ids)
+      ? req.body.ids.map((id: unknown) => String(id || "").trim()).filter(Boolean)
       : [];
     if (ids.length === 0 || ids.length > 100 || typeof req.body?.starred !== "boolean") {
       return res.status(400).json({

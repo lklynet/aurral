@@ -1,3 +1,4 @@
+import type { Router } from "express";
 import { UUID_REGEX } from "../../../../lib/uuid.ts";
 import type { getRecentMissingReleases } from "../../../services/discovery/recentReleases.ts";
 import { dbOps } from "../../../db/helpers/index.ts";
@@ -19,7 +20,13 @@ import {
 
 const ARTIST_LOOKUP_BATCH_MAX = 100;
 
-const libraryAlbumLookup = (albums, reference) => {
+type ReadAlbum = ReturnType<typeof getLibraryReadModelForAlbumReferences>["albums"][number];
+type ReadTrack = ReturnType<typeof getLibraryReadModelForAlbumReferences>["tracks"][number];
+type ReadArtist = ReturnType<typeof getLibraryReadModelForArtists>["artists"][number];
+type ManagedTrack = Awaited<ReturnType<typeof libraryManager.getTracks>>[number];
+type LidarrArtist = Parameters<typeof libraryManager.mapLidarrArtist>[0];
+
+const libraryAlbumLookup = (albums: ReadAlbum[], reference: string) => {
   const value = String(reference || "").trim();
   if (!value) return undefined;
   return albums.find((album) =>
@@ -29,7 +36,7 @@ const libraryAlbumLookup = (albums, reference) => {
   );
 };
 
-const libraryAlbumResult = (album, ownedTrackMbids = []) => ({
+const libraryAlbumResult = (album: ReadAlbum, ownedTrackMbids: string[] = []) => ({
   inLibrary: true,
   canonicalInLibrary: true,
   canonicalAlbumId: String(album.canonicalId ?? album.id),
@@ -57,14 +64,19 @@ const libraryAlbumResult = (album, ownedTrackMbids = []) => ({
   releaseDate: String(album.releaseDate || "").trim(),
 });
 
-const ownedLidarrTrackMbids = (tracks) =>
+const ownedLidarrTrackMbids = (tracks: ManagedTrack[]) =>
   (Array.isArray(tracks) ? tracks : [])
     .filter((track) => track?.hasFile === true || track?.path || track?.trackFile?.path)
     .map((track) => track?.mbid || track?.foreignRecordingId || track?.foreignTrackId)
     .map((mbid) => String(mbid || "").trim())
     .filter(Boolean);
 
-const toLibraryArtist = (artist) => ({
+const toLibraryArtist = (
+  artist:
+    | ReturnType<typeof getLibraryArtistProjection>[number]
+    | ReadArtist
+    | ReturnType<typeof libraryManager.mapLidarrArtist>,
+) => ({
   ...artist,
   id: artist.providerId ?? artist.id,
   canonicalId: String(artist.canonicalId ?? artist.id),
@@ -72,7 +84,7 @@ const toLibraryArtist = (artist) => ({
   added: artist.addedAt,
 });
 
-const toLibraryAlbum = (album) => ({
+const toLibraryAlbum = (album: ReadAlbum | ReturnType<typeof libraryManager.mapLidarrAlbum>) => ({
   ...album,
   id: album.providerId ?? album.id,
   artistId: album.providerArtistId ?? album.artistId,
@@ -82,7 +94,7 @@ const toLibraryAlbum = (album) => ({
   albumType: "Album",
 });
 
-export async function getArtistLibraryLookup(mbid) {
+export async function getArtistLibraryLookup(mbid: string) {
   const { artists, albums } = getLibraryReadModelForArtists({
     source: "all",
     availableOnly: false,
@@ -104,7 +116,7 @@ export async function getArtistLibraryLookup(mbid) {
   }
   const { lidarrClient } = await import("../../../services/lidarrClient.ts");
   const lidarrConfigured = lidarrClient.isConfigured();
-  let lidarrArtist;
+  let lidarrArtist: LidarrArtist | null | undefined;
   let lidarrAlbums;
   if (lidarrConfigured) {
     try {
@@ -119,7 +131,7 @@ export async function getArtistLibraryLookup(mbid) {
         );
         if (!Array.isArray(albums)) throw new Error("Invalid Lidarr album response");
         lidarrAlbums = albums.map((album) =>
-          toLibraryAlbum(libraryManager.mapLidarrAlbum(album, lidarrArtist)),
+          toLibraryAlbum(libraryManager.mapLidarrAlbum(album, lidarrArtist!)),
         );
       }
     } catch {
@@ -154,7 +166,7 @@ export async function getArtistLibraryLookup(mbid) {
   };
 }
 
-export function registerMisc(router) {
+export function registerMisc(router: Router) {
   router.get("/rootfolder", async (req, res) => {
     try {
       const { lidarrClient } = await import("../../../services/lidarrClient.ts");
@@ -176,7 +188,7 @@ export function registerMisc(router) {
     }
   });
 
-  router.get("/lookup/:mbid", async (req, res) => {
+  router.get<"/lookup/:mbid">("/lookup/:mbid", async (req, res) => {
     try {
       const { mbid } = req.params;
       if (!UUID_REGEX.test(mbid)) {
@@ -211,7 +223,7 @@ export function registerMisc(router) {
         availableOnly: false,
         mbids: wanted,
       });
-      const results = {};
+      const results: LookupArtistsInLibraryBatchResponse = {};
       for (const mbid of wanted) {
         results[mbid] = existingArtistIds.has(mbid);
       }
@@ -248,13 +260,13 @@ export function registerMisc(router) {
           availableOnly: false,
           references: wanted,
         });
-      const tracksByAlbumId = new Map();
+      const tracksByAlbumId = new Map<string, ReadTrack[]>();
       for (const track of libraryTracks) {
         const albumTracks = tracksByAlbumId.get(String(track.albumId)) || [];
         albumTracks.push(track);
         tracksByAlbumId.set(String(track.albumId), albumTracks);
       }
-      const results = {};
+      const results: LookupAlbumsInLibraryBatchResponse = {};
       for (const foreignAlbumId of wanted) {
         const album = libraryAlbumLookup(libraryAlbums, foreignAlbumId);
         if (album) {

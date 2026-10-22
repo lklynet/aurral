@@ -1,3 +1,4 @@
+import type { Response, Router } from "express";
 import { UUID_REGEX } from "../../../../lib/uuid.ts";
 import { noCache } from "../../../middleware/cache.ts";
 import {
@@ -8,7 +9,9 @@ import {
 import { removeMonitoringExclusion } from "../../../services/aurralMonitoringStore.ts";
 import { libraryManager } from "../../../services/libraryManager.ts";
 
-const sendResult = (res, result, successStatus = 200) => {
+type MonitoringResult = { error?: string; statusCode?: number };
+
+const sendResult = (res: Response, result: MonitoringResult, successStatus = 200) => {
   if (result?.error) {
     const { error, statusCode, ...details } = result;
     return res.status(statusCode || 500).json({ ...details, error, message: error });
@@ -16,7 +19,7 @@ const sendResult = (res, result, successStatus = 200) => {
   return res.status(successStatus).json(result);
 };
 
-const sendFailure = (res, error, message) =>
+const sendFailure = (res: Response, error: unknown, message: string) =>
   res.status(500).json({ error: message, message: error?.message || message });
 
 export type PreviewArtistMonitoringResponse = Extract<
@@ -42,8 +45,8 @@ export type GetMonitoringExclusionsResponse = ReturnType<
 
 export type RemoveMonitoringExclusionResponse = { success: true };
 
-export function registerMonitoring(router) {
-  router.post(
+export function registerMonitoring(router: Router) {
+  router.post<"/artists/:mbid/monitoring/preview">(
     "/artists/:mbid/monitoring/preview",
     requireAuth,
     requirePermission("changeMonitoring"),
@@ -101,7 +104,7 @@ export function registerMonitoring(router) {
     }
   });
 
-  router.delete(
+  router.delete<"/monitoring/exclusions/:id">(
     "/monitoring/exclusions/:id",
     requireAuth,
     requirePermission("changeMonitoring"),

@@ -893,13 +893,13 @@ function LibraryPage() {
 
   const lookupWithPages = useCallback(
     (pages: LibraryPageResult[]) => ({
-      albumsById: new Map([
+      albumsById: new Map<string, LibraryAlbum>([
         ...albumsById,
         ...pages
           .flatMap((page) => page?.albums || [])
           .map((album) => [String(album.id), album] as const),
       ]),
-      artistsById: new Map([
+      artistsById: new Map<string, LibraryArtist>([
         ...artistsById,
         ...pages
           .flatMap((page) => page?.artists || [])
