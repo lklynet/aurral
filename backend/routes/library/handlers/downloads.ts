@@ -601,7 +601,10 @@ export function registerDownloads(router: Router) {
           title: item.title,
           artistName: item.artist?.artistName,
           albumTitle: item.album?.title,
-          progress: item.size ? Math.round((1 - item.sizeleft / item.size) * 100) : 0,
+          progress:
+            item.size && item.sizeleft !== undefined
+              ? Math.round((1 - item.sizeleft / item.size) * 100)
+              : 0,
           source: "lidarr",
         })),
       );
