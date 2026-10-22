@@ -1855,7 +1855,7 @@ export class DownloadTracker {
     );
   }
 
-  getByStatus(status: JobStatus) {
+  getByStatus(status: string) {
     const jobs = [];
     for (const job of this.jobs.values()) {
       if (job.status === status) {

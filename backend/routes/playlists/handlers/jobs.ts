@@ -246,6 +246,9 @@ export function registerJobs(router: Router) {
 
   router.get("/jobs", noCache, (req, res) => {
     const { status } = req.query;
+    if (status !== undefined && typeof status !== "string") {
+      return res.status(400).json({ error: "status must be a single value" });
+    }
     const jobs = filterJobsForUser(
       req.user,
       status ? downloadTracker.getByStatus(status) : downloadTracker.getAll(),

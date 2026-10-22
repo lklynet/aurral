@@ -1,5 +1,4 @@
 {
-  "backend/routes/playlists/handlers/jobs.ts": 1,
   "backend/routes/playlists/handlers/spotifyImport.ts": 2,
   "backend/services/albumGrab.ts": 6,
   "backend/services/albumGrabActivity.ts": 2,
