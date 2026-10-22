@@ -169,3 +169,6 @@ export const logger = {
   error: (category: string, message: string, data?: NonNullable<unknown>) =>
     log("error", category, message, data),
 };
+
+export const logUnhandledRejection = (reason: unknown) =>
+  logger.error("system", "Unhandled Rejection:", reason ?? undefined);

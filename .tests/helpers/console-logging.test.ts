@@ -179,3 +179,19 @@ test("regular server console suppresses raw routine output", () => {
   assert.match(output, /Server running on port 3001/);
   assert.match(output, /important warning/);
 });
+
+test("an unhandled rejection with a null reason is logged without throwing", async () => {
+  const output = [];
+  const originalError = console.error;
+  console.error = (...args) => output.push(args);
+  try {
+    vi.resetModules();
+    const { logUnhandledRejection } = await import("../../backend/services/logger.ts");
+    assert.doesNotThrow(() => logUnhandledRejection(null));
+    assert.doesNotThrow(() => logUnhandledRejection(undefined));
+    assert.equal(output.length, 2);
+    assert.match(String(output[0]), /Unhandled Rejection:/);
+  } finally {
+    console.error = originalError;
+  }
+});

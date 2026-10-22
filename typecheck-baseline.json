@@ -34,7 +34,6 @@
   "backend/routes/settings/handlers/storageHealth.ts": 4,
   "backend/routes/settings/handlers/tasks.ts": 2,
   "backend/routes/settings/handlers/upgradeReadiness.ts": 2,
-  "backend/server.ts": 1,
   "backend/services/albumGrab.ts": 6,
   "backend/services/albumGrabActivity.ts": 2,
   "backend/services/albumReleaseAssignment.ts": 1,

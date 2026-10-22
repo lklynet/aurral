@@ -15,7 +15,7 @@ import { authMiddleware, isProxyAuthEnabled } from "./middleware/auth.ts";
 import { createRequestFailureLogger } from "./middleware/requestFailureLogger.ts";
 import { handleOidcCallback, isOidcEnabled } from "./services/oidcAuth.ts";
 import { handleGoogleCallback } from "./services/googleAuth.ts";
-import { logger } from "./services/logger.ts";
+import { logger, logUnhandledRejection } from "./services/logger.ts";
 import { websocketService, type WebSocketChannelPayload } from "./services/websocketService.ts";
 import {
   getLidarrStatusSnapshot,
@@ -63,9 +63,7 @@ process.on("uncaughtException", (error) => {
   process.exit(1);
 });
 
-process.on("unhandledRejection", (reason) => {
-  logger.error("system", "Unhandled Rejection:", reason);
-});
+process.on("unhandledRejection", logUnhandledRejection);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
