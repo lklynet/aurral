@@ -19,6 +19,7 @@ const {
   getAurralHistoryRequests,
   recordTrackJobBlocked,
   recordTrackJobQueued,
+  toHistoryRequestItem,
 } = historyModule;
 const { downloadTracker } = await importFromRepo(
   "backend/services/downloadJobs/downloadTracker.ts",
@@ -633,4 +634,20 @@ test("Aurral album requests are not checked against Lidarr by library album ID",
   assert.doesNotMatch(aurralEntry?.title || "", /Lidarr/);
   assert.equal(aurralEntry?.source, "aurral");
   assert.equal(entries.find((item) => item.albumName === "Lidarr Album")?.source, "lidarr");
+});
+
+test("a history entry kind named like an Object method falls back to the Aurral source", () => {
+  const entry = {
+    id: "aurral-constructor-1",
+    kind: "constructor",
+    title: "Entry",
+    subtitle: null,
+    status: "completed",
+    statusLabel: null,
+    href: null,
+    metadata: null,
+    createdAt: Date.now(),
+  };
+  assert.equal(toHistoryRequestItem(entry).source, "aurral");
+  assert.equal(toHistoryRequestItem({ ...entry, kind: "album_requested" }).source, "lidarr");
 });
