@@ -1,4 +1,5 @@
 import { decode } from "html-entities";
+import { isOwnKey } from "../../lib/ownKey.ts";
 import createCache from "./apiClients/simpleCache.ts";
 import { resolveArtistAndAlbumMbids } from "./apiClients/index.ts";
 import { getAlbumTracksByAlbumMbid } from "./providers/brainzmashProvider.ts";
@@ -331,7 +332,7 @@ async function lookupSonglinkPage(source: Source, pageUrl: string) {
   const data = readNextData(await fetchHtml(source, pageUrl));
   const pageData = data?.props?.pageProps?.pageData;
   const entity = pageData?.entityData;
-  const kind = KINDS[entity?.type];
+  const kind = entity?.type && isOwnKey(KINDS, entity.type) ? KINDS[entity.type] : undefined;
   if (!kind || kind === "artist") {
     if (data?.props?.pageProps?.error || (data && !entity?.type)) throw notFound(source);
     throw unavailable(source, "returned an unreadable response");
