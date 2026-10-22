@@ -128,7 +128,8 @@ export function Toast({ toast, onDismiss, index = 0 }: ToastProps) {
   };
 
   const handleInteractionEnd = (event: FocusEvent<HTMLDivElement> | MouseEvent<HTMLDivElement>) => {
-    if (event?.currentTarget?.contains(event.relatedTarget)) return;
+    const next = event?.relatedTarget instanceof Node ? event.relatedTarget : null;
+    if (event?.currentTarget?.contains(next)) return;
     interactionRef.current = false;
     syncTimer();
   };
