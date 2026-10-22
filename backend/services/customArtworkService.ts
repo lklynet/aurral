@@ -129,7 +129,9 @@ export async function saveCustomArtworkUrl(kind: string, id: string | number, so
     if (!url) throw new Error("Image URL is required");
     const cached = await warmImageProxy(url);
     const buffer = await fs.promises.readFile(cached.imagePath);
-    return writeArtwork(target, buffer, cached.meta.contentType, url);
+    const { contentType } = cached.meta;
+    if (!contentType) throw new Error("The image has no known content type");
+    return writeArtwork(target, buffer, contentType, url);
   });
 }
 

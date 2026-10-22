@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import path from "node:path";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import sharp from "sharp";
 import {
   cleanupIsolatedState,
+  importFromRepo,
   resetDatabase,
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.ts";
@@ -72,4 +74,21 @@ test("a removal requested during a save cannot delete the replacement file after
 
   assert.equal(getCustomArtwork("track", "99"), null);
   assert.equal(getCustomArtworkMap("track", ["99"]).has("99"), false);
+});
+
+test("a cached image without a content type is refused instead of saved", async () => {
+  const { resolveAurralDataDir } = await importFromRepo("backend/config/data-dir.ts");
+  const cacheKey = "a".repeat(64);
+  const cacheDir = path.join(resolveAurralDataDir(), "image-proxy");
+  fs.mkdirSync(cacheDir, { recursive: true });
+  fs.writeFileSync(path.join(cacheDir, `${cacheKey}.png`), sourceImage);
+  fs.writeFileSync(
+    path.join(cacheDir, `${cacheKey}.json`),
+    JSON.stringify({ extension: "png", fetchedAt: Date.now(), profile: "library" }),
+  );
+  await assert.rejects(
+    saveCustomArtworkUrl("album", "8", `/api/image-proxy/${cacheKey}.png`),
+    /no known content type/,
+  );
+  assert.equal(getCustomArtwork("album", "8"), null);
 });
