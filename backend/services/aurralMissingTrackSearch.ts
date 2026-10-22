@@ -10,6 +10,7 @@ import { libraryManager } from "./libraryManager.ts";
 import { ALBUM_IS_OWNED } from "./libraryMediaStore.ts";
 import { albumMediaCondition } from "./libraryQueryService.ts";
 import { logger } from "./logger.ts";
+import { asAppError } from "../../lib/errors.ts";
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -127,7 +128,7 @@ async function searchAlbumMissingTracks(album: CandidateAlbum) {
   } catch (error) {
     logger.warn("library", "Missing-track search could not search an album", {
       albumId: album.id,
-      message: error?.message || String(error),
+      message: asAppError(error)?.message || String(error),
     });
   }
   markSearchedStmt.run(Date.now(), album.id);

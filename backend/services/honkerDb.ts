@@ -37,7 +37,7 @@ export const HONKER_QUEUE_NAMES = [
   "discovery-user-refresh",
   "_outbox:notifications",
   "_outbox:play-events",
-];
+] as const;
 
 function resolveHonkerDbPath() {
   return process.env.AURRAL_DB_PATH
@@ -206,7 +206,7 @@ export function getHonkerDb() {
 declare module "@russellthehippo/honker-node" {
   interface Queue {
     _nextClaimAt?(): number | null;
-    _retry(jobId: number, workerId: string, delayS: number, error: string): boolean;
+    _retry(jobId: number, workerId: string | null, delayS: number, error: string): boolean;
     cancel(jobId: number): boolean;
     getJob(jobId: number): HonkerLiveRow | null;
   }

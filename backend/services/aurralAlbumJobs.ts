@@ -12,12 +12,19 @@ import {
 import { cancelDownloadWorkForJobs } from "./downloadJobs/downloadCancellationService.ts";
 import { logger } from "./logger.ts";
 import type { LibraryTrack } from "./libraryQueryService.ts";
+import type { HonkerPayload } from "./honkerDb.ts";
+import { asAppError } from "../../lib/errors.ts";
 
 export const ACTIVE_JOB_STATUSES = new Set(["pending", "downloading", "cancel_requested"]);
 export const RETRYABLE_JOB_STATUSES = new Set([...ACTIVE_JOB_STATUSES, "failed", "cancelled"]);
 
 type AlbumMbids = (string | null | undefined)[];
 type AlbumTrackRef = Pick<LibraryTrack, "mbid" | "title">;
+
+const payloadGroupJobIds = (payload: HonkerPayload | null) => {
+  const ids = payload?.albumGroupJobIds;
+  return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === "string") : [];
+};
 
 const normalizeKey = (value: unknown) =>
   String(value || "")
@@ -215,7 +222,7 @@ async function cancelActiveAurralJobs(
     logger.warn("library", "Aurral album cancellation is waiting on download provider cleanup", {
       albumMbid,
       jobCount: jobIds.length,
-      message: error?.message || String(error),
+      message: asAppError(error)?.message || String(error),
     });
     return { cancelledJobIds: jobIds, cleanupFailed: true };
   }
@@ -248,17 +255,21 @@ export async function cancelTrackDownload(jobId: string) {
       };
     }
     const { listHonkerJobs } = await import("./honkerDb.ts");
-    const grab = listHonkerJobs("slskd-pipeline").find(
-      ({ payload }) => payload?.albumGrab === true && payload.albumGroupJobIds?.includes(jobId),
-    );
-    const peers = (grab?.payload.albumGroupJobIds || [])
+    const grab = listHonkerJobs("slskd-pipeline")
+      .map(({ payload }) => payload)
+      .find(
+        (payload): payload is HonkerPayload =>
+          payload?.albumGrab === true && payloadGroupJobIds(payload).includes(jobId),
+      );
+    const peers = payloadGroupJobIds(grab ?? null)
       .filter((id) => id !== jobId)
       .map((id) => downloadTracker.getJob(id))
       .filter(
-        (peer) => peer?.status === "downloading" && !downloadTracker.isSlskdDispatched(peer.id),
+        (peer): peer is DownloadJob =>
+          peer?.status === "downloading" && !downloadTracker.isSlskdDispatched(peer.id),
       );
     if (grab && peers.length > 0) {
-      if (grab.payload.jobId === jobId) {
+      if (grab.jobId === jobId) {
         const { db } = await import("../config/db-sqlite.ts");
         const { replaceAlbumDownloadLeaderInTransaction } =
           await import("./downloadJobs/downloadOwnership.ts");
@@ -359,7 +370,7 @@ export async function cancelLibraryTrackJobs(
   );
 }
 
-export async function cancelFileUpgradeJobs(filePaths: (string | null | undefined)[]) {
+export async function cancelFileUpgradeJobs(filePaths: string[]) {
   const paths = new Set(filePaths.map((filePath) => path.resolve(filePath)));
   const upgradedPath = (job: DownloadJob) => downloadTracker.getJob(job.upgradeForJobId)?.finalPath;
   return cancelActiveAurralJobs(

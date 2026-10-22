@@ -2,6 +2,7 @@ import { ISOLATED_QUEUE_GROUPS } from "./backgroundWorkerQueues.ts";
 import { getHonkerDb, getHonkerQueueByName } from "./honkerDb.ts";
 import type { HonkerLiveRow } from "../db/rows.ts";
 import type { RuntimeLogger } from "./logger.ts";
+import { asAppError } from "../../lib/errors.ts";
 
 type ClaimedJobRow = Pick<HonkerLiveRow, "id" | "queue" | "payload" | "worker_id">;
 
@@ -24,7 +25,10 @@ async function releaseClaimedJob(
           markInterruptedUserDiscoveryRefresh(userId, reason);
         }
       } catch (error) {
-        logger.warn?.("[AppRuntime] Could not update discovery status:", error?.message || error);
+        logger.warn?.(
+          "[AppRuntime] Could not update discovery status:",
+          asAppError(error)?.message || error,
+        );
       }
     }
     try {
@@ -39,15 +43,15 @@ async function releaseClaimedJob(
     } catch (error) {
       logger.warn?.(
         `[AppRuntime] Could not update ${row.queue} task history:`,
-        error?.message || error,
+        asAppError(error)?.message || error,
       );
     }
     // Honker registers retry on its queue connection, not on the raw query connection.
-    getHonkerQueueByName(row.queue)._retry(row.id, row.worker_id, 1, reason);
+    getHonkerQueueByName(row.queue)!._retry(row.id, row.worker_id, 1, reason);
   } catch (error) {
     logger.warn?.(
       `[AppRuntime] Could not requeue ${row.queue} job ${row.id}:`,
-      error?.message || error,
+      asAppError(error)?.message || error,
     );
   }
 }

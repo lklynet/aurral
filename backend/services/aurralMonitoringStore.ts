@@ -50,7 +50,7 @@ export function getAurralArtistMonitoring(
 
 export function setAurralArtistMonitoringState(
   artistId: string | number,
-  stored: unknown,
+  stored: Parameters<typeof resolveArtistMonitoring>[0],
   defaults = getMonitoringDefaults(),
 ) {
   return setLibraryManagement({

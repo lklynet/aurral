@@ -1,15 +1,57 @@
 import { db, dbHelpers } from "../../config/db-sqlite.ts";
 import type { AurralHistoryRow } from "../rows.ts";
 
+export type AurralHistoryMetadata = {
+  userId?: number;
+  username?: string;
+  jobId?: string;
+  trackName?: string | null;
+  artistName?: string | null;
+  albumName?: string | null;
+  albumId?: string | number | null;
+  albumMbid?: string | null;
+  artistMbid?: string | null;
+  canonicalAlbumId?: string | null;
+  managedBy?: string | null;
+  requestGroupId?: string | null;
+  playlistId?: string | null;
+  playlistType?: string | null;
+  playlistName?: string | null;
+  ownerUserId?: number | null;
+  operationId?: number;
+  trackCount?: number;
+  downloadSource?: string | null;
+  downloadClient?: string | null;
+  sourceFilename?: string | null;
+  releaseTitle?: string | null;
+  sourceType?: string;
+  albumGrabId?: string;
+  requestedAt?: string | null;
+  completedAt?: string | null;
+  actualDownloadSource?: string | null;
+  downloadMethod?: string | null;
+  previousErrors?: string[];
+  trackNumber?: number | null;
+  discNumber?: number | null;
+  queuedTrackCount?: number;
+  searchedAt?: number;
+  recommendationCount?: number;
+  genreCount?: number;
+  flowId?: string;
+  tracksQueued?: number;
+  tracksReused?: number;
+  reserveTracks?: number;
+};
+
 export interface AurralHistoryEntry {
-  id: string | null;
+  id: string;
   kind: string;
   title: string;
   subtitle: string | null;
   status: string;
   statusLabel: string | null;
   href: string | null;
-  metadata: Record<string, unknown> | null;
+  metadata: AurralHistoryMetadata | null;
   createdAt: number;
 }
 
@@ -50,7 +92,10 @@ const insertAurralHistoryStmt = db.prepare<
     id, kind, title, subtitle, status, status_label, href, metadata, created_at
   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
-const getAurralHistoryStmt = db.prepare<[number, number], AurralHistoryRow>(`
+const getAurralHistoryStmt = db.prepare<
+  [number, number],
+  Omit<AurralHistoryRow, "id"> & { id: string }
+>(`
   SELECT id, kind, title, subtitle, status, status_label, href, metadata, created_at
   FROM aurral_history
   WHERE created_at >= ?

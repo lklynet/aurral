@@ -27,7 +27,7 @@ import {
 import { deferForInactiveOwner } from "./downloadJobs/playlistOwnerStatus.ts";
 import { getQualityProfile } from "./qualityProfileService.ts";
 import { isQualityUpgrade } from "./qualityProfileModel.ts";
-import { deemixQueueIds, readDeemixAlbumQueue } from "./deemixClient.ts";
+import { deemixQueueIds, readDeemixAlbumQueue, type DeemixClient } from "./deemixClient.ts";
 import {
   albumGrabJobs,
   continueAlbumGrab,
@@ -60,20 +60,84 @@ const ALBUM_QUEUE_RESET = Object.freeze({
 const POLL_DELAY_SECONDS = 3;
 const MAX_POLL_ATTEMPTS = 200;
 
-function getDeemixClient() {
+type DeemixClientInstance = DeemixClient;
+type DeemixAlbum = Awaited<ReturnType<DeemixClientInstance["searchAlbums"]>>[number];
+type DeemixAlbumTrack = Awaited<ReturnType<DeemixClientInstance["getAlbumTracks"]>>[number];
+type DeemixSearchResult = Awaited<ReturnType<DeemixClientInstance["search"]>>[number];
+type DeemixQueueEntry = Awaited<ReturnType<DeemixClientInstance["getQueueItem"]>>;
+type ReleaseManifestOrNull = Awaited<ReturnType<typeof attemptRelease>>;
+type ReleaseVerdict = ReturnType<typeof judgeRelease>;
+type WantedJobs = ReturnType<typeof mapRequest>["wanted"];
+
+type DeemixListedTrack = { id: string; url: string; jobId: string };
+
+type DeemixCandidate = {
+  kind?: string;
+  raw: {
+    id?: string;
+    url?: string;
+    title?: string;
+    file?: string;
+    album?: string;
+    artist?: string;
+    albumId?: string;
+    albumUrl?: string;
+    tracks?: DeemixListedTrack[];
+  };
+  resolvedAlbumName?: string | null;
+  releaseVerified?: boolean;
+  evaluation?: { decision?: string };
+  candidate?: unknown;
+};
+
+type DeemixPayload = {
+  jobId: string;
+  phase: "search" | "download" | "poll" | "finalize";
+  source?: string;
+  albumGrab?: boolean;
+  albumGroupJobIds?: string[];
+  downloadAttemptId?: string | null;
+  heldForReview?: unknown;
+  track?: Parameters<typeof attemptTrackRequest>[2];
+  upgradeForJobId?: string | null;
+  manualReplacementSearch?: boolean;
+  manualSelection?: boolean;
+  destination?: string | null;
+  candidates?: DeemixCandidate[];
+  candidate?: DeemixCandidate | null;
+  candidateIndex?: number;
+  queueUuid?: string | null;
+  queueUuids?: string[] | null;
+  pollAttempts?: number;
+  downloadedPath?: string | null;
+  downloadedPaths?: string[] | null;
+};
+
+type DeemixJob = NonNullable<ReturnType<typeof downloadTracker.getJob>>;
+
+type DeemixHelpers = {
+  failOrTryNextSource: (
+    payload: DeemixPayload,
+    job: DeemixJob,
+    message: string,
+    logDetails?: Record<string, number>,
+  ) => Promise<unknown>;
+};
+
+function getDeemixClient(): DeemixClient {
   return getDownloadClient("deemix");
 }
 
 // A release candidate queues the whole album only when every track of the
 // release is wanted, and otherwise each wanted track by its own URL.
-const queuesAlbum = (payload, candidate) =>
+const queuesAlbum = (payload: DeemixPayload, candidate: DeemixCandidate | null | undefined) =>
   payload.albumGrab === true && candidate?.kind !== "tracks";
-const queuesTracks = (payload, candidate) =>
+const queuesTracks = (payload: DeemixPayload, candidate: DeemixCandidate | null | undefined) =>
   payload.albumGrab === true && candidate?.kind === "tracks";
 
 // A later candidate of an attempt wants only the tracks no earlier one
 // imported, so it may no longer want every track of the release.
-function stillWanted(payload, candidate) {
+function stillWanted(payload: DeemixPayload, candidate: DeemixCandidate) {
   const listed = Array.isArray(candidate?.raw?.tracks) ? candidate.raw.tracks : [];
   const wanted = new Set(albumGrabJobs(payload).map((job) => job.id));
   const tracks = listed.filter((track) => wanted.has(track.jobId));
@@ -81,7 +145,10 @@ function stillWanted(payload, candidate) {
     ? candidate
     : { ...candidate, kind: "tracks", raw: { ...candidate.raw, tracks } };
 }
-async function removeQueued(payload, message) {
+async function removeQueued(
+  payload: Parameters<typeof deemixQueueIds>[0] & { jobId: string },
+  message: string,
+) {
   for (const uuid of deemixQueueIds(payload)) {
     await getDeemixClient()
       .removeFromQueue(uuid)
@@ -91,11 +158,14 @@ async function removeQueued(payload, message) {
   }
 }
 
-export async function discardDeemixWork(payload) {
+export async function discardDeemixWork(payload: DeemixPayload) {
   await removeQueued(payload, "Could not remove a dropped queue item");
 }
 
-function hasEnoughCandidates(aggregated, resolvedTrack) {
+function hasEnoughCandidates(
+  aggregated: DeemixSearchResult[],
+  resolvedTrack: NonNullable<Parameters<typeof hasUsableSearchCandidates>[0]>["request"],
+) {
   // Availability is provider-specific evidence the shared engine never sees.
   const availableResults = aggregated.filter((result) => result?.readable !== false);
   // Node-only pre-filter: no matcher process is spawned during searches.
@@ -108,7 +178,10 @@ function hasEnoughCandidates(aggregated, resolvedTrack) {
 
 // The configured bitrate fixes the tier, so an upgrade that deemix cannot
 // improve on is refused before the download rather than after validation.
-function readUnusableUpgradeTier(upgradeForJobId, manualReplacementSearch = false) {
+function readUnusableUpgradeTier(
+  upgradeForJobId: string | null | undefined,
+  manualReplacementSearch = false,
+) {
   if (!upgradeForJobId || manualReplacementSearch) return null;
   const tier = getDeemixClient().getQualityTierId();
   const currentTier = downloadTracker.getJob(upgradeForJobId)?.qualityTier || null;
@@ -118,26 +191,28 @@ function readUnusableUpgradeTier(upgradeForJobId, manualReplacementSearch = fals
   }`;
 }
 
-function readQueuedRemotePath(queueItem) {
+function readQueuedRemotePath(queueItem: DeemixQueueEntry) {
   const files = Array.isArray(queueItem?.files) ? queueItem.files : [];
   return files.map((file) => String(file?.path || "").trim()).find(Boolean) || "";
 }
 
-function readQueuedFilePath(queueItem) {
+function readQueuedFilePath(queueItem: DeemixQueueEntry) {
   const remotePath = readQueuedRemotePath(queueItem);
   return remotePath ? resolveLocalPath(remotePath, getPathMappings("deemix")) : "";
 }
 
-function readQueueError(queueItem) {
+function readQueueError(queueItem: DeemixQueueEntry) {
   const errors = Array.isArray(queueItem?.errors) ? queueItem.errors : [];
   for (const error of errors) {
-    const message = String(error?.error || error?.message || error || "").trim();
+    const detail =
+      typeof error === "object" && error !== null ? error.error || error.message : undefined;
+    const message = String(detail || error || "").trim();
     if (message) return message;
   }
   return "";
 }
 
-function deemixListing(album, tracks) {
+function deemixListing(album: DeemixAlbum, tracks: DeemixAlbumTrack[]) {
   return {
     artistLabel: album.artist || null,
     albumLabel: album.title,
@@ -153,7 +228,11 @@ function deemixListing(album, tracks) {
 
 // The Deezer track to download for each wanted place: a copy Deezer can
 // stream. A place with none makes the album unusable.
-function wantedTracks(verdict, tracks, wanted) {
+function wantedTracks(
+  verdict: Extract<ReleaseVerdict, { kind: "exact" }>,
+  tracks: DeemixAlbumTrack[],
+  wanted: WantedJobs,
+) {
   const picked = [];
   for (const [trackIndex, jobId] of wanted) {
     const track = verdict.copiesForTrack[trackIndex]
@@ -168,7 +247,13 @@ function wantedTracks(verdict, tracks, wanted) {
 // Album searches until one finds a same-titled album whose whole tracklist
 // is the requested release; nothing is queued before that check. Unreadable
 // tracks still count toward the tracklist.
-async function searchDeemixAlbum(payload, helpers, job, client, manifest) {
+async function searchDeemixAlbum(
+  payload: DeemixPayload,
+  helpers: DeemixHelpers,
+  job: DeemixJob,
+  client: DeemixClientInstance,
+  manifest: ReleaseManifestOrNull,
+) {
   const jobs = albumGrabJobs(payload);
   const { wanted } = mapRequest(manifest, jobs);
   if (wanted.size === 0)
@@ -184,7 +269,7 @@ async function searchDeemixAlbum(payload, helpers, job, client, manifest) {
     compilation: manifest.compilation,
   });
   for (const query of queries) {
-    let albums = [];
+    let albums: DeemixAlbum[] = [];
     try {
       albums = await client.searchAlbums(query, { limit: SEARCH_LIMIT });
     } catch (error) {
@@ -231,7 +316,7 @@ async function searchDeemixAlbum(payload, helpers, job, client, manifest) {
         : "No exact deemix album release",
     );
   }
-  const albumRaw = (album) => ({
+  const albumRaw = (album: DeemixAlbum) => ({
     albumId: album.id,
     albumUrl: album.url,
     album: album.title,
@@ -255,7 +340,7 @@ async function searchDeemixAlbum(payload, helpers, job, client, manifest) {
   };
 }
 
-async function handleDeemixSearch(payload, helpers) {
+async function handleDeemixSearch(payload: DeemixPayload, helpers: DeemixHelpers) {
   const job = downloadTracker.getJob(payload.jobId);
   if (!job) return null;
   if (job.status === "failed" || job.status === "done") return null;
@@ -293,8 +378,8 @@ async function handleDeemixSearch(payload, helpers) {
       .filter((entry) => Array.isArray(entry) && entry[0] === "deemix")
       .map((entry) => String(entry[1] || "").trim()),
   );
-  const aggregated = [];
-  const seen = new Set();
+  const aggregated: DeemixSearchResult[] = [];
+  const seen = new Set<string>();
   let lastError = "";
   for (const query of queries) {
     if (hasEnoughCandidates(aggregated, resolvedTrack)) break;
@@ -353,9 +438,14 @@ async function handleDeemixSearch(payload, helpers) {
 
 // The wanted tracks of an exact release, each queued by its own URL, so no
 // track the request does not want is downloaded.
-async function queueReleaseTracks(payload, helpers, job, candidate) {
+async function queueReleaseTracks(
+  payload: DeemixPayload,
+  helpers: DeemixHelpers,
+  job: DeemixJob,
+  candidate: DeemixCandidate,
+) {
   const tracks = Array.isArray(candidate.raw?.tracks) ? candidate.raw.tracks : [];
-  const queued = [];
+  const queued: string[] = [];
   let submission;
   try {
     submission = await withPipelineCommitLock(payload, async () => {
@@ -403,7 +493,12 @@ async function queueReleaseTracks(payload, helpers, job, candidate) {
   };
 }
 
-async function pollReleaseTracks(payload, helpers, job, pollAttempts) {
+async function pollReleaseTracks(
+  payload: DeemixPayload,
+  helpers: DeemixHelpers,
+  job: DeemixJob,
+  pollAttempts: number,
+) {
   const items = [];
   for (const uuid of payload.queueUuids || []) {
     try {
@@ -435,7 +530,7 @@ async function pollReleaseTracks(payload, helpers, job, pollAttempts) {
   );
 }
 
-async function handleDeemixDownload(payload, helpers) {
+async function handleDeemixDownload(payload: DeemixPayload, helpers: DeemixHelpers) {
   const job = downloadTracker.getJob(payload.jobId);
   if (!job) return null;
   if (job.status === "failed" || job.status === "done") return null;
@@ -505,7 +600,7 @@ async function handleDeemixDownload(payload, helpers) {
   };
 }
 
-async function handleDeemixPoll(payload, helpers) {
+async function handleDeemixPoll(payload: DeemixPayload, helpers: DeemixHelpers) {
   const job = downloadTracker.getJob(payload.jobId);
   if (!job) return null;
   if (job.status === "failed" || job.status === "done") return null;
@@ -583,7 +678,7 @@ async function handleDeemixPoll(payload, helpers) {
   return { ...payload, phase: "finalize", downloadedPath, pollAttempts };
 }
 
-async function handleDeemixFinalize(payload, helpers) {
+async function handleDeemixFinalize(payload: DeemixPayload, helpers: DeemixHelpers) {
   if (payload.albumGrab === true) {
     const filePaths = (payload.downloadedPaths || []).map((remote) =>
       resolveLocalPath(remote, getPathMappings("deemix")),
@@ -698,7 +793,7 @@ async function handleDeemixFinalize(payload, helpers) {
   return committed.result;
 }
 
-export async function processDeemixPipelinePayload(payload, helpers = {}) {
+export async function processDeemixPipelinePayload(payload: DeemixPayload, helpers: DeemixHelpers) {
   logger.debug("deemix", "deemix pipeline phase", {
     phase: payload.phase,
     jobId: payload.jobId,

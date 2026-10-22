@@ -34,7 +34,7 @@ type AlbumGrabManifest = {
   requestGroupId: string;
   albumMbid: string;
   memberJobIds: string[];
-  requestedAt: string | null;
+  requestedAt: string;
   phase: string;
   source: string | null;
   fallbackReason: string | null;
@@ -43,7 +43,7 @@ type AlbumGrabManifest = {
 
 type TrackMetadata = {
   albumGrabId?: string;
-  previousErrors?: (string | null)[];
+  previousErrors?: string[];
   actualDownloadSource?: string | null;
   downloadMethod?: string | null;
   completedAt?: string | null;
@@ -187,7 +187,11 @@ export function recordAlbumTrackState(job: AlbumGrabJob, importedSource: string 
           ? "processing"
           : job.status;
     const previousErrors = [
-      ...new Set([...(existing.metadata.previousErrors || []), job.error].filter(Boolean)),
+      ...new Set(
+        [...(existing.metadata.previousErrors || []), job.error].filter((error): error is string =>
+          Boolean(error),
+        ),
+      ),
     ].slice(-10);
     const statusLabel = {
       completed: "Downloaded",
@@ -236,8 +240,8 @@ export function recordAlbumTrackState(job: AlbumGrabJob, importedSource: string 
         completedAt: terminal
           ? new Date(
               Math.max(
-                ...(members as NonNullable<(typeof members)[number]>[]).map(
-                  (entry) => Date.parse(entry.metadata.completedAt) || entry.createdAt,
+                ...(members as HistoryEntryOf<TrackMetadata>[]).map(
+                  (entry) => Date.parse(entry.metadata.completedAt ?? "") || entry.createdAt,
                 ),
               ),
             ).toISOString()

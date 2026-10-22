@@ -497,7 +497,7 @@ export function judgeRelease(
   const markers = [...new Set([...(label?.markers || []), ...variantMarkers(unplaced)])];
   if (!label && !implausible && missing.length === 0 && extras.length === 0) {
     return {
-      kind: "exact",
+      kind: "exact" as const,
       fileForTrack,
       copiesForTrack,
       fit,
@@ -510,7 +510,7 @@ export function judgeRelease(
     (implausible ? "implausible-file" : null) ||
     (markers.length ? "unrequested-variant" : extras.length ? "extra-tracks" : "missing-tracks");
   return {
-    kind: "rejected",
+    kind: "rejected" as const,
     reason,
     missing,
     extras,

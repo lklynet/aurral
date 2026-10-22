@@ -3,6 +3,7 @@ import { closeSync, fstatSync, openSync, readSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type * as TagLib from "node-taglib-sharp";
+import { asAppError } from "../../lib/errors.ts";
 
 let File: typeof TagLib.File;
 let Id3v2FrameClassType: typeof TagLib.Id3v2FrameClassType;
@@ -137,7 +138,13 @@ const FIELDS = {
   },
 } satisfies Record<string, TagFieldSpec>;
 
-export const AUDIO_TAG_FIELDS = Object.keys(FIELDS);
+type AudioTagField = keyof typeof FIELDS;
+const FIELD_SPECS: Record<AudioTagField, TagFieldSpec> = FIELDS;
+
+export const AUDIO_TAG_FIELDS = Object.keys(FIELDS) as AudioTagField[];
+
+const isAudioTagField = (field: string): field is AudioTagField =>
+  AUDIO_TAG_FIELDS.some((candidate) => candidate === field);
 
 export class UnsupportedTagFormatError extends Error {
   declare code: string;
@@ -178,16 +185,17 @@ async function openFile(filePath: string) {
   try {
     return File.createFromPath(filePath, undefined, readStyle);
   } catch (error) {
-    if (/unsupported format/i.test(String(error?.message)))
+    if (/unsupported format/i.test(String(asAppError(error)?.message)))
       throw new UnsupportedTagFormatError(filePath);
     throw error;
   }
 }
 
-const emptyValue = (field: string) =>
-  field === "genres" ? [] : FIELDS[field].normalize === positive ? 0 : undefined;
+const emptyValue = (field: AudioTagField) =>
+  field === "genres" ? [] : FIELD_SPECS[field].normalize === positive ? 0 : undefined;
 const isEmpty = (value: unknown) => (Array.isArray(value) ? value.length === 0 : !value);
-const normalize = (field: string, value: unknown) => (FIELDS[field].normalize || text)(value);
+const normalize = (field: AudioTagField, value: unknown) =>
+  (FIELD_SPECS[field].normalize || text)(value);
 const same = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right);
 
 type AudioTagValues = { [K in keyof typeof FIELDS]: ReturnType<(typeof FIELDS)[K]["read"]> };
@@ -257,8 +265,9 @@ const legacyDescription = (file: TagLib.File) =>
   ).some(isLegacyMarker);
 
 function clearLegacyIdentity(file: TagLib.File) {
-  if (isLegacyMarker(file.tag.grouping)) file.tag.grouping = undefined;
-  if (isLegacyMarker(file.tag.comment)) file.tag.comment = undefined;
+  const tag: { grouping?: string; comment?: string } = file.tag;
+  if (isLegacyMarker(tag.grouping)) tag.grouping = undefined;
+  if (isLegacyMarker(tag.comment)) tag.comment = undefined;
   if (legacyDescription(file)) {
     const xiph = file.getTag(TagTypes.Xiph, false) as TagLib.XiphComment;
     xiph.setFieldAsStrings(
@@ -347,7 +356,7 @@ export async function writeAudioTags(
   } finally {
     preview.dispose();
   }
-  const changed = Object.keys(changes);
+  const changed = Object.keys(changes).filter(isAudioTagField);
   if (!changed.length && !identityChanged && !legacyIdentity) return [];
 
   const extension = path.extname(source);
@@ -363,7 +372,7 @@ export async function writeAudioTags(
       const id3 = file.getTag(TagTypes.Id3v2, false) as TagLib.Id3v2Tag | undefined;
       if (id3 && !(file.tagTypesOnDisk & TagTypes.Id3v2)) id3.version = 4;
       for (const field of changed) {
-        FIELDS[field].write(
+        FIELD_SPECS[field].write(
           file.tag,
           changes[field] === null ? emptyValue(field) : changes[field],
           file,

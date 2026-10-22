@@ -144,6 +144,7 @@ export interface LidarrHistoryItem {
   sourceTitle?: string;
   date?: string;
   eventType?: string;
+  eventDate?: string;
   data?: Record<string, string | null>;
   downloadId?: string;
   album?: LidarrAlbum;
@@ -204,7 +205,10 @@ export interface LidarrCommand {
   message?: string;
   status?: string;
   body?: { albumIds?: number[] | null } | null;
+  albumIds?: number[] | null;
   ended?: string | null;
+  completedAt?: string | null;
+  endTime?: string | null;
 }
 
 type LidarrError = Error & {

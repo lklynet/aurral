@@ -2,6 +2,7 @@ import { dbOps } from "../db/helpers/index.ts";
 import type { StoredIntegrations } from "../db/helpers/settings.ts";
 import { normalizeBaseUrl, normalizeInteger } from "./usenetClientCommon.ts";
 import axios from "../../lib/axiosFetch.ts";
+import { asAppError } from "../../lib/errors.ts";
 
 type DeemixConfig = NonNullable<StoredIntegrations["deemix"]>;
 
@@ -66,6 +67,7 @@ interface DeemixQueueItem {
   status?: string;
   type?: string;
   files?: DeemixQueueFile[];
+  errors?: (string | { error?: unknown; message?: unknown } | null)[];
   failed?: number;
   downloaded?: number;
 }
@@ -160,7 +162,7 @@ function getSettings(config: DeemixConfig | null = null) {
 
 type DeemixSettings = ReturnType<typeof getSettings>;
 
-export function buildQueueUuid(trackId: string, bitrate: number) {
+export function buildQueueUuid(trackId: string | null | undefined, bitrate: number) {
   return `track_${String(trackId || "").trim()}_${normalizeInteger(bitrate, FLAC_BITRATE)}`;
 }
 
@@ -443,7 +445,7 @@ export class DeemixClient {
         ok: false,
         configured: true,
         connected: false,
-        message: error?.message || "Failed to reach deemix",
+        message: asAppError(error)?.message || "Failed to reach deemix",
       };
     }
     connectionCache = { checkedAt: Date.now(), result, url: settings.url };
@@ -495,14 +497,14 @@ export class DeemixClient {
       .filter((entry) => entry !== null);
   }
 
-  async addToQueue(trackUrl: string, trackId: string) {
+  async addToQueue(trackUrl: string, trackId: string | null | undefined) {
     const url = String(trackUrl || "").trim();
     if (!url) throw new Error("deemix download requires a Deezer track URL");
     const settings = this._getSettings();
     return this._addQueueItem(url, buildQueueUuid(trackId, settings.bitrate));
   }
 
-  async addAlbumToQueue(albumUrl: string, albumId: string) {
+  async addAlbumToQueue(albumUrl: string, albumId: string | null | undefined) {
     const url = String(albumUrl || "").trim();
     if (!url) throw new Error("deemix album download requires a Deezer album URL");
     const settings = this._getSettings();
@@ -527,7 +529,7 @@ export class DeemixClient {
     return String(queued?.uuid || "").trim() || fallbackUuid;
   }
 
-  async getQueueItem(uuid: string) {
+  async getQueueItem(uuid: string | null | undefined) {
     const id = String(uuid || "").trim();
     if (!id) return null;
     const settings = this._getSettings();
@@ -535,7 +537,7 @@ export class DeemixClient {
     return data?.queue?.[id] || null;
   }
 
-  async removeFromQueue(uuid: string) {
+  async removeFromQueue(uuid: string | null | undefined) {
     const id = String(uuid || "").trim();
     if (!id) return false;
     const settings = this._getSettings();

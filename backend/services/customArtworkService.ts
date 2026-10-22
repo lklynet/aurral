@@ -4,6 +4,7 @@ import path from "node:path";
 import { db } from "../config/db-sqlite.ts";
 import { resolveAurralDataDir } from "../config/data-dir.ts";
 import type { CustomArtworkRow } from "../db/rows.ts";
+import { asAppError } from "../../lib/errors.ts";
 import { inspectImageBuffer, optimizeImageBuffer, warmImageProxy } from "./imageProxyService.ts";
 
 const ARTWORK_DIR = path.join(resolveAurralDataDir(), "custom-artwork");
@@ -90,7 +91,8 @@ async function writeArtwork(
   try {
     await fs.promises.rename(temporary, destination);
   } catch (error) {
-    if (!["EEXIST", "EPERM"].includes(error?.code)) throw error;
+    const code = asAppError(error)?.code;
+    if (!code || !["EEXIST", "EPERM"].includes(code)) throw error;
     await fs.promises.unlink(destination).catch(() => {});
     await fs.promises.rename(temporary, destination);
   } finally {

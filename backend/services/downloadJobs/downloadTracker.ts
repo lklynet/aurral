@@ -908,7 +908,7 @@ export class DownloadTracker {
 
   // An upgrade attempt that searches for its track no longer downloads its
   // release, so no later attempt waits for it.
-  endUpgradeReleaseDownload(attemptId: string) {
+  endUpgradeReleaseDownload(attemptId: string | null | undefined) {
     upgradeAttemptOrder.delete(attemptId);
   }
 

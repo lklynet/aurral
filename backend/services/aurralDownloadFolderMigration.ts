@@ -17,6 +17,7 @@ import {
   resolveDownloadRoot,
 } from "./downloadPaths.ts";
 import { sanitizePathPart } from "./downloadUtils.ts";
+import { asAppError } from "../../lib/errors.ts";
 import type { createPlaybackDeletionGuard } from "./playback/playbackFileRetention.ts";
 
 export const AURRAL_DOWNLOAD_FOLDER_MIGRATION_VERSION = 1;
@@ -38,7 +39,7 @@ type MetadataReader = NonNullable<
 type DeletionGuard = ReturnType<typeof createPlaybackDeletionGuard>;
 type MigrationLogger = Pick<Console, "info" | "warn" | "error">;
 type MigrationIdentity = NonNullable<Awaited<ReturnType<typeof resolveIdentity>>>;
-type MigrationFailure = { sourcePath: string; reason: string };
+type MigrationFailure = { sourcePath: string; reason: string | undefined };
 type MigrationRun = {
   status: string;
   rootPath: string;
@@ -147,14 +148,15 @@ function pathsOverlap(left: string, right: string) {
 }
 
 function configuredLidarrRoots(options: MigrationOptions) {
-  if (Array.isArray(options.lidarrRoots)) return options.lidarrRoots.filter(Boolean);
+  if (Array.isArray(options.lidarrRoots))
+    return options.lidarrRoots.filter((root): root is string => Boolean(root));
   const settings = dbOps.getSettings();
   const users = typeof userOps.getAllUsers === "function" ? userOps.getAllUsers() : [];
   return [
     settings.rootFolderPath,
     settings.integrations?.lidarr?.rootFolderPath,
     ...users.map((user) => user.lidarrRootFolderPath),
-  ].filter(Boolean);
+  ].filter((root): root is string => Boolean(root));
 }
 
 function isPartialFile(filePath: string, stat: Stats) {
@@ -401,9 +403,10 @@ async function repairCompletedMigrationState(
       updateJobPaths(staleJobs, destination);
       result.repaired += staleJobs.length;
     } catch (error) {
-      retainItem(state, sourcePath, error.message, logger);
+      const failure = asAppError(error);
+      retainItem(state, sourcePath, failure?.message, logger);
       result.failed += 1;
-      result.failures.push({ sourcePath, reason: error.message });
+      result.failures.push({ sourcePath, reason: failure?.message });
     }
   }
   return result;
@@ -501,7 +504,7 @@ function itemState(state: MigrationState, sourcePath: string) {
 function retainItem(
   state: MigrationState,
   sourcePath: string,
-  reason: string,
+  reason: string | undefined,
   logger: MigrationLogger,
 ) {
   state.items[sourcePath] = {
@@ -572,7 +575,9 @@ function resolveOwnership(
 ) {
   const pathPlaylistId = legacyPlaylistId(sourcePath, rootPath, knownIds);
   const candidates = jobs.map((job) => jobPlaylistId(job)).filter(Boolean);
-  const playlistIds = [...new Set([...candidates, pathPlaylistId].filter(Boolean))];
+  const playlistIds = [
+    ...new Set([...candidates, pathPlaylistId].filter((id): id is string => Boolean(id))),
+  ];
   const sharedId = playlistIds.find((id) => flowPlaylistConfig.getStaticPlaylist(id)) || null;
   const flowId = playlistIds.find((id) => flowPlaylistConfig.getFlow(id)) || null;
   const playlistId = sharedId || flowId || pathPlaylistId;
@@ -713,14 +718,15 @@ export async function migrateAurralDownloadFolder(options: MigrationOptions = {}
         saveMigrationState(state);
         result.removed += 1;
       } catch (error) {
+        const failure = asAppError(error);
         retainItem(
           state,
           sourcePath,
-          `could not remove unkept flow media: ${error.message}`,
+          `could not remove unkept flow media: ${failure?.message}`,
           logger,
         );
         result.failed += 1;
-        result.failures.push({ sourcePath, reason: error.message });
+        result.failures.push({ sourcePath, reason: failure?.message });
       }
       continue;
     }
@@ -735,7 +741,12 @@ export async function migrateAurralDownloadFolder(options: MigrationOptions = {}
         metadataReader,
       );
     } catch (error) {
-      retainItem(state, sourcePath, `could not resolve media identity: ${error.message}`, logger);
+      retainItem(
+        state,
+        sourcePath,
+        `could not resolve media identity: ${asAppError(error)?.message}`,
+        logger,
+      );
       result.retained += 1;
       continue;
     }
@@ -837,9 +848,10 @@ export async function migrateAurralDownloadFolder(options: MigrationOptions = {}
         result.retained += 1;
       }
     } catch (error) {
-      retainItem(state, sourcePath, `migration verification failed: ${error.message}`, logger);
+      const failure = asAppError(error);
+      retainItem(state, sourcePath, `migration verification failed: ${failure?.message}`, logger);
       result.failed += 1;
-      result.failures.push({ sourcePath, reason: error.message });
+      result.failures.push({ sourcePath, reason: failure?.message });
     }
   }
 
@@ -874,14 +886,15 @@ export async function migrateAurralDownloadFolder(options: MigrationOptions = {}
         if (completed) result.migrated += 1;
         else result.retained += 1;
       } catch (error) {
+        const failure = asAppError(error);
         retainItem(
           state,
           entry.sourcePath,
-          `migration verification failed: ${error.message}`,
+          `migration verification failed: ${failure?.message}`,
           logger,
         );
         result.failed += 1;
-        result.failures.push({ sourcePath: entry.sourcePath, reason: error.message });
+        result.failures.push({ sourcePath: entry.sourcePath, reason: failure?.message });
       }
     }
   }

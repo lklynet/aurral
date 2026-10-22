@@ -51,9 +51,8 @@ export async function assignDownloadedAlbumFiles({
     unreadableCount,
   });
   const verdict = judgeRelease(manifest, { files: readable.map((entry) => entry.evidence) });
-  if (!verified && (unreadableCount || verdict.kind !== "exact")) {
-    return failedRelease(unreadableCount ? "The album contains unreadable audio" : verdict.reason);
-  }
+  if (!verified && unreadableCount) return failedRelease("The album contains unreadable audio");
+  if (!verified && verdict.kind !== "exact") return failedRelease(verdict.reason);
   const { wanted } = mapRequest(manifest, jobs);
   const accepted = [];
   const rejected = [];

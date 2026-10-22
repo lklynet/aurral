@@ -4,7 +4,7 @@ import { dbOps } from "../db/helpers/index.ts";
 import { resolveBlockedJobReleaseTitle, resolveBlockedJobSourceFilename } from "./downloadUtils.ts";
 import { flowPlaylistConfig } from "./playlists/flowPlaylistConfig.ts";
 import { getLibraryForAlbumReferences } from "./libraryQueryService.ts";
-import type { AurralHistoryEntry } from "../db/helpers/history.ts";
+import type { AurralHistoryEntry, AurralHistoryMetadata } from "../db/helpers/history.ts";
 import type { HonkerLiveRow } from "../db/rows.ts";
 import type { RequestUser } from "../middleware/requestUser.ts";
 import type { DownloadJob, JobFields } from "./downloadJobs/downloadTracker.ts";
@@ -13,32 +13,7 @@ import type { LidarrAlbum, LidarrClient, LidarrCommand, LidarrPage } from "./lid
 type HistoryRequester = { userId: number; username?: string };
 type RequesterUser = Pick<RequestUser, "id" | "username" | "role">;
 
-type HistoryMetadata = Partial<HistoryRequester> & {
-  jobId?: string;
-  trackName?: string;
-  artistName?: string;
-  albumName?: string | null;
-  albumId?: string | number | null;
-  albumMbid?: string | null;
-  artistMbid?: string | null;
-  canonicalAlbumId?: string;
-  managedBy?: string | null;
-  requestGroupId?: string | null;
-  playlistId?: string | null;
-  downloadSource?: string | null;
-  downloadClient?: string | null;
-  sourceFilename?: string;
-  releaseTitle?: string;
-  sourceType?: string;
-  queuedTrackCount?: number;
-  searchedAt?: number;
-  recommendationCount?: number;
-  genreCount?: number;
-  flowId?: string;
-  tracksQueued?: number;
-  tracksReused?: number;
-  reserveTracks?: number;
-};
+type HistoryMetadata = AurralHistoryMetadata;
 
 type HistoryEntryInput = Partial<Omit<AurralHistoryEntry, "id" | "metadata">> & {
   referenceId?: string | number | null;
@@ -325,7 +300,7 @@ const requesterFromUser = (user: RequesterUser | null | undefined): HistoryReque
 };
 
 const requesterFromMetadata = (
-  metadata: Record<string, unknown> | null | undefined,
+  metadata: HistoryMetadata | null | undefined,
 ): HistoryRequester | null => {
   if (metadata?.userId == null) return null;
   const username = String(metadata.username || "").trim();
@@ -589,7 +564,9 @@ const normalizeAlbumMatchText = (value: unknown) =>
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
 
-const parseHonkerPayload = (value: unknown): Record<string, unknown> | null => {
+const parseHonkerPayload = (
+  value: string | Record<string, unknown> | null | undefined,
+): Record<string, unknown> | null => {
   if (value && typeof value === "object") return value;
   if (typeof value !== "string" || !value.trim()) return null;
   try {
@@ -686,7 +663,7 @@ const loadPendingPlaylistImportHistory = async (user: RequesterUser | null | und
             operationId: row.id,
             playlistId,
             playlistName,
-            ownerUserId: payload.ownerUserId ?? null,
+            ownerUserId: typeof payload.ownerUserId === "number" ? payload.ownerUserId : null,
             trackCount,
           },
           createdAt:
@@ -708,7 +685,9 @@ const loadPendingPlaylistImportHistory = async (user: RequesterUser | null | und
 const isPipelineActiveForJob = async (jobId: string) =>
   isHonkerQueueActive(
     "slskd-pipeline",
-    (payload) => payload?.jobId === jobId || payload?.albumGroupJobIds?.includes(jobId) === true,
+    (payload) =>
+      payload?.jobId === jobId ||
+      (Array.isArray(payload?.albumGroupJobIds) && payload.albumGroupJobIds.includes(jobId)),
   );
 
 const buildHistoryJobFromEntry = (entry: AurralHistoryEntry): HistoryJob => ({
@@ -1473,7 +1452,8 @@ export const getAurralHistoryRequests = async (
     .map((entry) => {
       const jobId = String(entry.metadata?.jobId || "").trim();
       const job = jobId ? jobsById.get(jobId) : null;
-      const manifest = expanded.manifests.get(entry.metadata?.albumGrabId);
+      const albumGrabId = entry.metadata?.albumGrabId;
+      const manifest = albumGrabId ? expanded.manifests.get(albumGrabId) : undefined;
       const canonicalAlbumId =
         entry.metadata?.canonicalAlbumId ||
         resolveCanonicalAlbumId(job?.albumMbid || entry.metadata?.albumMbid || manifest?.albumMbid);

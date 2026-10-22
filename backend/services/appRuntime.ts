@@ -23,6 +23,7 @@ import { getDatabaseRevision } from "../config/db-sqlite.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import type { WorkerMessage } from "./backgroundProcessSupervisor.ts";
 import type { RuntimeLogger } from "./logger.ts";
+import { asAppError } from "../../lib/errors.ts";
 
 let backgroundWorkersStarted = false;
 let workerSupervisorStarted = false;
@@ -49,7 +50,7 @@ const WORKER_SUPERVISOR_POLL_MS = Math.max(
   ),
 );
 
-const WORKER_STARTS = {
+const WORKER_STARTS: Record<(typeof HONKER_QUEUE_NAMES)[number], [string, string]> = {
   "release-metadata-refresh": ["./releaseMetadataWorker.ts", "startReleaseMetadataWorker"],
   "system-task": ["./systemTaskWorker.ts", "startSystemTaskWorker"],
   "system-task-maintenance": ["./systemTaskWorker.ts", "startMaintenanceTaskWorker"],
@@ -130,7 +131,10 @@ function sweepExpiredWorkerQueues(group: string | null) {
       swept += Number(getHonkerQueueByName(worker.queue)?.sweepExpired()) || 0;
       if (hasExpiredHonkerClaims(worker.queue)) swept++;
     } catch (error) {
-      console.warn(`[AppRuntime] Failed to recover ${worker.queue}:`, error?.message || error);
+      console.warn(
+        `[AppRuntime] Failed to recover ${worker.queue}:`,
+        asAppError(error)?.message || error,
+      );
     }
   }
   return swept;
@@ -174,7 +178,7 @@ function checkQueuedBackgroundWork(group: string | null = null) {
       inspected = false;
       console.warn(
         `[AppRuntime] Failed to inspect ${worker.queue} queue:`,
-        error?.message || error,
+        asAppError(error)?.message || error,
       );
     }
   }
@@ -186,7 +190,10 @@ function checkWorkerDatabaseChanges(group: string | null) {
   try {
     if (getDatabaseRevision() !== lastWorkerDatabaseRevision) checkQueuedBackgroundWork(group);
   } catch (error) {
-    console.warn("[AppRuntime] Failed to check database changes:", error?.message || error);
+    console.warn(
+      "[AppRuntime] Failed to check database changes:",
+      asAppError(error)?.message || error,
+    );
   }
 }
 
@@ -215,7 +222,7 @@ function stopWorkerSupervisor() {
   supervisedGroup = null;
   lastWorkerDatabaseRevision = null;
   clearSupervisorWakeTimer();
-  clearInterval(workerSweepInterval);
+  if (workerSweepInterval) clearInterval(workerSweepInterval);
   workerSweepInterval = null;
   if (workerSupervisorInterval) {
     clearInterval(workerSupervisorInterval);
@@ -244,7 +251,10 @@ export async function forwardWorkerBroadcast(message: WorkerMessage) {
       const { synchronizeDiscoveryCacheFromWorker } = await import("./discovery/persistence.ts");
       synchronizeDiscoveryCacheFromWorker(message.data);
     } catch (error) {
-      console.warn("[AppRuntime] Could not refresh discovery state:", error?.message || error);
+      console.warn(
+        "[AppRuntime] Could not refresh discovery state:",
+        asAppError(error)?.message || error,
+      );
     }
   }
   if (message.channel === "library" && message.data?.type === "library_scan_completed") {

@@ -56,12 +56,13 @@ export function albumGrabJobs(payload: AlbumGrabPayload): DownloadJob[] {
   if (!leader || payload.albumGrab !== true) return [];
   return albumGroupJobIds(payload)
     .map((id) => downloadTracker.getJob(id))
-    .filter(
-      (job) =>
+    .filter((job): job is DownloadJob =>
+      Boolean(
         job &&
         sameRequest(job, leader) &&
         job.albumMbid === leader.albumMbid &&
         ["pending", "downloading"].includes(job.status),
+      ),
     );
 }
 
@@ -70,12 +71,13 @@ export function albumGrabJobs(payload: AlbumGrabPayload): DownloadJob[] {
 export function heldAlbumGrabJobs(payload: AlbumGrabPayload): DownloadJob[] {
   return albumGroupJobIds(payload)
     .map((id) => downloadTracker.getJob(id))
-    .filter(
-      (job) =>
+    .filter((job): job is DownloadJob =>
+      Boolean(
         job &&
         ["pending", "downloading"].includes(job.status) &&
         !isDownloadJobCancelled(job.id) &&
         getActiveDownloadAttemptId(job.id) === payload.downloadAttemptId,
+      ),
     );
 }
 
@@ -101,7 +103,9 @@ export function blockAlbumGrabSource(payload: AlbumGrabPayload, jobs: DownloadJo
   const candidate = getPayloadCandidate(payload);
   for (const job of jobs) {
     if (payload.source === "slskd") {
-      const file = (candidate?.raw?.files || []).find((entry) => entry.jobId === job.id);
+      const file = (candidate?.raw?.files || []).find(
+        (entry: { jobId?: string }) => entry.jobId === job.id,
+      );
       if (file) {
         downloadTracker.recordDeniedSource(job.id, "slskd", `${candidate.raw.user}\0${file.file}`);
       }
@@ -245,10 +249,10 @@ export async function finishAlbumGrab(
     resetFields = {},
   }: {
     filePaths?: string[];
-    source?: "deemix" | "soulseek" | "usenet";
+    source: "deemix" | "soulseek" | "usenet";
     album?: string | null;
     resetFields?: Record<string, unknown>;
-  } = {},
+  },
 ) {
   const jobs = albumGrabJobs(payload);
   if (jobs.length === 0) return null;
