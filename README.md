@@ -75,6 +75,10 @@ To get the latest merged changes, use `ghcr.io/lklynet/aurral:nightly`. Nightly 
 
 For a stack with Lidarr, slskd, and Navidrome, see [`docker-compose.example.yml`](docker-compose.example.yml). For Plex, see the [Plex setup guide](https://docs.aurral.org/integrations/plex/).
 
+## One-click deploy
+
+[![Deploy on RepoCloud](https://d16t0pc4846x52.cloudfront.net/deploylobe.svg)](https://repocloud.io/details/Aurral/)
+
 ## Documentation
 
 Full setup and usage guides live at [docs.aurral.org](https://docs.aurral.org/).
