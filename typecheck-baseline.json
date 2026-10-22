@@ -1,5 +1,4 @@
 {
-  "backend/routes/library/handlers/artists.ts": 3,
   "backend/routes/library/handlers/libraryIndex.ts": 2,
   "backend/routes/playlists/handlers/artworkManagement.ts": 3,
   "backend/routes/playlists/handlers/flows.ts": 18,

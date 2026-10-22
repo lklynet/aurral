@@ -345,10 +345,10 @@ export function registerArtists(router: Router) {
 
         const albums = await libraryManager.getAlbums(artist.id);
 
-        if (lidarrClient && lidarrClient.isConfigured()) {
+        if (artist.id && lidarrClient && lidarrClient.isConfigured()) {
           const lidarrArtist = await lidarrClient.getArtist(artist.id);
-          if (lidarrArtist && lidarrArtist.monitor !== "none" && lidarrArtist.monitored) {
-            await lidarrClient.triggerArtistSearch(artist.id);
+          if (lidarrArtist?.monitored) {
+            await lidarrClient.triggerArtistSearch(lidarrArtist.id);
           }
         }
 
