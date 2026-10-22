@@ -587,7 +587,7 @@ export function useArtistDetailsLibrary({
       setLibraryArtist((previous) => ({
         ...previous,
         ...addedArtist,
-        managedBy: addedArtist.managedBy || previous?.managedBy,
+        managedBy: addedArtist.managedBy || previous?.managedBy || null,
         foreignArtistId: addedArtist.foreignArtistId || addedArtist.mbid || artistMbid,
       }));
       setExistsInLibrary(true);
