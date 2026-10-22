@@ -337,7 +337,7 @@ class WebSocketService extends EventEmitter {
   }
 
   getStats() {
-    const channelStats = {};
+    const channelStats: Record<string, number> = {};
     for (const client of this.clients) {
       for (const channel of client.subscriptions) {
         channelStats[channel] = (channelStats[channel] || 0) + 1;

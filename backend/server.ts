@@ -1,5 +1,6 @@
 import cors from "cors";
 import express from "express";
+import type { NextFunction, Request, Response } from "express";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import path from "path";
@@ -74,8 +75,8 @@ const allowedCorsOrigins = String(process.env.CORS_ORIGIN || "")
   .map((v) => v.trim())
   .filter(Boolean);
 
-const isSubsonicRequest = (req) => req.path === "/rest" || req.path.startsWith("/rest/");
-const isImageProxyRequest = (req) =>
+const isSubsonicRequest = (req: Request) => req.path === "/rest" || req.path.startsWith("/rest/");
+const isImageProxyRequest = (req: Request) =>
   (req.method === "GET" || req.method === "HEAD") && req.path.startsWith("/api/image-proxy/");
 
 const corsDefaults = {
@@ -85,7 +86,7 @@ const corsDefaults = {
 const publicCors = cors(corsDefaults);
 const apiCors = cors({ ...corsDefaults, origin: allowedCorsOrigins });
 
-function corsMiddleware(req, res, next) {
+function corsMiddleware(req: Request, res: Response, next: NextFunction) {
   if (isSubsonicRequest(req) || isImageProxyRequest(req)) return publicCors(req, res, next);
   if (allowedCorsOrigins.length > 0) return apiCors(req, res, next);
   return next();
@@ -265,7 +266,7 @@ if (fs.existsSync(frontendDist)) {
   });
 }
 
-app.use((err, req, res, next) => {
+app.use((err: unknown, req: Request, res: Response, next: NextFunction) => {
   logger.error("system", "Express error:", err || "(no error object)");
   res.locals.failureLogged = true;
   if (res.headersSent) return next(err);
@@ -282,9 +283,9 @@ const httpServer = createServer(app);
 websocketService.initialize(httpServer);
 
 const DOWNLOAD_STATUS_INTERVAL_MS = 10000;
-let lastDownloadStatusesPayload = null;
+let lastDownloadStatusesPayload: string | null = null;
 let downloadStatusBroadcastInFlight = false;
-const hasWsSubscribers = (channel) => {
+const hasWsSubscribers = (channel: string) => {
   const stats = websocketService.getStats();
   const total = Number(stats?.channels?.[channel] || 0);
   return total > 0;
@@ -314,9 +315,9 @@ const broadcastDownloadStatuses = async () => {
   }
 };
 
-const broadcastIntervals = [];
+const broadcastIntervals: NodeJS.Timeout[] = [];
 
-const scheduleBroadcast = (fn, intervalMs) => {
+const scheduleBroadcast = (fn: () => void, intervalMs: number) => {
   fn();
   broadcastIntervals.push(setInterval(fn, intervalMs));
 };
@@ -326,7 +327,7 @@ const stopPlaylistStatusBroadcasts = startPlaylistStatusBroadcasts();
 
 let shuttingDown = false;
 
-const gracefulShutdown = async (signal) => {
+const gracefulShutdown = async (signal: NodeJS.Signals) => {
   if (shuttingDown) return;
   shuttingDown = true;
   logger.info("system", `Received ${signal}, shutting down...`);
@@ -336,7 +337,7 @@ const gracefulShutdown = async (signal) => {
   stopPlaylistStatusBroadcasts();
   await shutdownHonkerInfrastructure({ timeoutMs: 5000 });
   await stopShareListener();
-  await new Promise((resolve) => {
+  await new Promise<void>((resolve) => {
     httpServer.close(() => resolve());
   });
   process.exit(0);
@@ -361,7 +362,7 @@ httpServer.listen(PORT, async () => {
   void syncShareListener();
 });
 
-httpServer.on("error", (error) => {
+httpServer.on("error", (error: NodeJS.ErrnoException) => {
   if (error.code === "EADDRINUSE") {
     logger.error(
       "system",
