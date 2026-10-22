@@ -186,7 +186,7 @@ export function scheduleHonkerComponentRestart(
 
   const timer = setTimeout(() => {
     restartTimers.delete(safeName);
-    if (shuttingDown || !shouldRestart()) return;
+    if (shuttingDown || !startFn || !shouldRestart()) return;
     try {
       startFn();
       restartAttempts.set(safeName, 0);

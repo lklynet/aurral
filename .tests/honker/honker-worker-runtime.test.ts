@@ -464,3 +464,17 @@ test(
     assert.equal(outboxWorker.isNotificationOutboxWorkerRunning(), false);
   },
 );
+
+test("restart timer for a component without a start function does not log failures", async (t) => {
+  vi.useFakeTimers();
+  vi.stubEnv("NODE_ENV", "development");
+  const error = vi.spyOn(console, "error").mockImplementation(() => {});
+  t.onTestFinished(() => {
+    vi.useRealTimers();
+    vi.unstubAllEnvs();
+    error.mockRestore();
+  });
+  runtime.scheduleHonkerComponentRestart("missing-start", null);
+  await vi.advanceTimersByTimeAsync(1500);
+  assert.equal(error.mock.calls.length, 0);
+});
