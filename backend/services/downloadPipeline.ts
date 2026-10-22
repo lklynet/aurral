@@ -51,6 +51,7 @@ type SlskdStepPayload = Parameters<typeof processSlskdPipelinePayload>[0];
 type SlskdStepHelpers = Parameters<typeof processSlskdPipelinePayload>[1];
 type UsenetStepPayload = Parameters<typeof processUsenetPipelinePayload>[0];
 type YtdlpStepPayload = Parameters<typeof processYtdlpPipelinePayload>[0];
+type DeemixStepPayload = Parameters<typeof processDeemixPipelinePayload>[0];
 type SourceError = { source: string; message: string };
 
 export type PipelinePayload = TrackerPayload & {
@@ -441,7 +442,7 @@ async function awaitAttemptRelease(payload: PipelinePayload) {
 async function discardSourceWork(payload: PipelinePayload) {
   if (payload.source === "slskd") await discardSlskdWork(payload as SlskdStepPayload);
   else if (payload.source === "usenet") await discardUsenetWork(payload as UsenetStepPayload);
-  else if (payload.source === "deemix") await discardDeemixWork(payload);
+  else if (payload.source === "deemix") await discardDeemixWork(payload as DeemixStepPayload);
 }
 
 // An attempt that ends while it still holds tracks was dropped before its
@@ -560,7 +561,7 @@ async function processSourcePayload(payload: PipelinePayload): Promise<PipelineP
       const job = downloadTracker.getJob(payload.jobId);
       return job ? failOrTryNextSource(payload, job, "deemix is not configured") : null;
     }
-    return processDeemixPipelinePayload(payload, { failOrTryNextSource });
+    return processDeemixPipelinePayload(payload as DeemixStepPayload, { failOrTryNextSource });
   }
   if (payload.source === "ytdlp") {
     if (!isSourceConfigured("ytdlp")) {
