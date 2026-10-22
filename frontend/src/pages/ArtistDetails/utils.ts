@@ -235,17 +235,33 @@ export const formatLifeSpan = (
   return `${beginYear} - Present`;
 };
 
-export const getArtistType = (type: string | null | undefined) => {
-  const types = {
-    Person: "Solo artist",
-    Group: "Band",
-    Orchestra: "Orchestra",
-    Choir: "Choir",
-    Character: "Character",
-    Other: "Other",
-  };
-  return types[type] || type;
+const ownText = (table: Partial<Record<string, string>>, key: string) =>
+  Object.hasOwn(table, key) ? table[key] : undefined;
+
+const ARTIST_TYPE_LABELS = {
+  Person: "Solo artist",
+  Group: "Band",
+  Orchestra: "Orchestra",
+  Choir: "Choir",
+  Character: "Character",
+  Other: "Other",
 };
+
+const DOWNLOAD_STATUS_LABELS = {
+  adding: "Adding...",
+  searching: "Searching...",
+  downloading: "Downloading...",
+  moving: "Moving files...",
+  added: "Added",
+  processing: "Searching...",
+  failed: "Failed",
+};
+
+export const getArtistType = (type: string | null | undefined) =>
+  (type && ownText(ARTIST_TYPE_LABELS, type)) || type;
+
+export const getDownloadStatusLabel = (status: string) =>
+  ownText(DOWNLOAD_STATUS_LABELS, status) || status;
 
 export const getCoverImage = (coverImages: readonly ArtistCoverImage[] | null | undefined) => {
   if (!coverImages?.length) return null;
@@ -441,18 +457,9 @@ export const resolveReleaseLibraryDisplay = (
 
   const activeStatus = String(downloadStatus?.status || "").trim();
   if (activeStatus && activeStatus !== "partial") {
-    const labels = {
-      adding: "Adding...",
-      searching: "Searching...",
-      downloading: "Downloading...",
-      moving: "Moving files...",
-      added: "Added",
-      processing: "Searching...",
-      failed: "Failed",
-    };
     return withAction({
       kind: activeStatus === "failed" ? "failed" : "active",
-      label: labels[activeStatus] || activeStatus,
+      label: getDownloadStatusLabel(activeStatus),
       isComplete: false,
       isInLibrary: true,
     });

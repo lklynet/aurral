@@ -26,7 +26,12 @@ import { describeArtistAdd } from "../../../utils/artistMonitoring.ts";
 import { describeAlbumRequestResult } from "../../../utils/albumAddAction.ts";
 import { buildAurralAlbumRetryPayload } from "../../../utils/aurralAlbumStatus.ts";
 import { getMyLidarrPreferences } from "../../../utils/api/endpoints/auth.ts";
-import { deduplicateAlbums, getApiErrorMessage, getApiErrorText } from "../utils";
+import {
+  deduplicateAlbums,
+  getApiErrorMessage,
+  getApiErrorText,
+  getDownloadStatusLabel,
+} from "../utils";
 import { useWebSocketChannel } from "../../../hooks/useWebSocket";
 import { asApiError } from "../../../utils/api/core.ts";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
@@ -881,18 +886,9 @@ export function useArtistDetailsLibrary({
         ? { ...downloadStatus, status: "searching" }
         : downloadStatus;
     if (effectiveStatus) {
-      const statusLabels = {
-        adding: "Adding...",
-        searching: "Searching...",
-        downloading: "Downloading...",
-        moving: "Moving files...",
-        added: "Added",
-        processing: "Searching...",
-        failed: "Failed",
-      };
       return {
         status: effectiveStatus.status,
-        label: statusLabels[effectiveStatus.status] || effectiveStatus.status,
+        label: getDownloadStatusLabel(effectiveStatus.status),
         libraryId: album.id,
         albumInfo: album,
         downloadStatus: effectiveStatus,
