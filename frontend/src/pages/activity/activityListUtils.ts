@@ -294,7 +294,8 @@ export const formatReviewReasonSummary = (subtitle: string | null | undefined) =
   return parts.join(" · ");
 };
 
-const formatDateGroupLabel = (value: string) => {
+const formatDateGroupLabel = (value: string | null | undefined) => {
+  if (value == null) return "Unknown date";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Unknown date";
   const now = new Date();
@@ -338,7 +339,8 @@ export const compareActivityRequests = (a: ActivityRequest, b: ActivityRequest) 
     return bReSearchable - aReSearchable;
   }
   return (
-    new Date(b.completedAt || b.requestedAt) - new Date(a.completedAt || a.requestedAt) ||
+    new Date((b.completedAt || b.requestedAt) ?? 0).getTime() -
+      new Date((a.completedAt || a.requestedAt) ?? 0).getTime() ||
     String(b.id || "").localeCompare(String(a.id || ""))
   );
 };
