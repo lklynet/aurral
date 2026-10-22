@@ -124,7 +124,7 @@ export function downloadedFileEvidence(
     artists: [parsed?.common?.artist].filter(Boolean),
     durationMs: readDurationMsFromParsed(parsed),
     trackNumber: parsed?.common?.track?.no || listing.trackNumber || null,
-    discNumber: parsed?.common?.disc?.no || listing.discNumber || null,
+    discNumber: parsed?.common?.disk?.no || listing.discNumber || null,
     recordingMbid: readRecordingMbid(parsed?.common?.musicbrainz_recordingid),
     album: String(parsed?.common?.album || "").trim() || null,
     filename: path.basename(filePath),
@@ -161,8 +161,8 @@ export function buildActualFileCandidate(
       ? Math.round(Number(common.track.no))
       : null;
   const discNumber =
-    common.disc?.no != null && Number.isFinite(Number(common.disc.no))
-      ? Math.round(Number(common.disc.no))
+    common.disk?.no != null && Number.isFinite(Number(common.disk.no))
+      ? Math.round(Number(common.disk.no))
       : null;
   const taggedTitle = readTagText(common.title);
   const filenameTitle = taggedTitle ? null : stripLeadingTrackNumber(baseName);

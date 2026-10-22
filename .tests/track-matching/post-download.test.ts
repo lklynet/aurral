@@ -45,7 +45,7 @@ function stubParsed(tags = {}, durationSec = 248, format = {}) {
       album: tags.album ?? null,
       year: tags.year,
       track: { no: tags.track },
-      disc: { no: tags.disc },
+      disk: { no: tags.disc },
       musicbrainz_recordingid: tags.mbid,
       format: tags.format,
     },
