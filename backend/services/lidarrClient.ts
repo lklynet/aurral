@@ -1876,13 +1876,11 @@ export class LidarrClient {
     if (!normalizedMbid) return undefined;
     const normalizedMbidKey = normalizedMbid.toLowerCase();
 
-    const albums = await this.request<LidarrAlbum[] | LidarrPage<LidarrAlbum>>(
-      `/album?foreignAlbumId=${encodeURIComponent(normalizedMbid)}`,
-      "GET",
-      null,
-      false,
-      options,
-    );
+    const albums = await this.request<
+      | LidarrAlbum[]
+      | (LidarrPage<LidarrAlbum> & { foreignAlbumId?: undefined })
+      | (LidarrAlbum & { records?: undefined })
+    >(`/album?foreignAlbumId=${encodeURIComponent(normalizedMbid)}`, "GET", null, false, options);
     const candidates = Array.isArray(albums)
       ? albums
       : Array.isArray(albums?.records)

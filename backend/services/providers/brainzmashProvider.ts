@@ -476,7 +476,7 @@ function tally<T, K>(releases: T[], key: (release: T) => K) {
 // out box sets.
 export function selectAlbumRelease(
   album: { releases?: NormalizedRelease[] } | null | undefined,
-  { edition = "standard" }: { edition?: string } = {},
+  { edition = "standard" }: { edition?: string | null } = {},
 ) {
   const releases = Array.isArray(album?.releases) ? album.releases : [];
   const withTracks = releases.filter(

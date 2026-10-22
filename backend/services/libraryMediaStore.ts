@@ -555,7 +555,7 @@ function clearLidarrMetadata(
   return true;
 }
 
-export function clearLibraryLidarrArtist(reference: string) {
+export function clearLibraryLidarrArtist(reference: unknown) {
   const value = normalizeText(reference);
   if (!value) return false;
   return clearLidarrMetadata(
@@ -568,7 +568,7 @@ export function clearLibraryLidarrArtist(reference: string) {
   );
 }
 
-export function clearLibraryLidarrAlbum(reference: string) {
+export function clearLibraryLidarrAlbum(reference: unknown) {
   const value = normalizeText(reference);
   if (!value) return false;
   return clearLidarrMetadata(
@@ -595,7 +595,7 @@ export function upsertLibraryAlbum({
   identityKey: string | null;
   mbid?: string | null;
   releaseGroupMbid?: string | null;
-  artistId: number;
+  artistId: number | string;
   title: string;
   albumArtist?: string | null;
   releaseDate?: string | null;
@@ -2267,7 +2267,7 @@ export function splitLegacyKeyedLibraryRows(moves: LegacyKeyedMove[]) {
   invalidateLibraryCache();
 }
 
-export function removeLibraryTrackIfNoAvailableMedia(trackId: number) {
+export function removeLibraryTrackIfNoAvailableMedia(trackId: number | string) {
   const normalizedTrackId = Number(trackId);
   if (!Number.isSafeInteger(normalizedTrackId)) return false;
   const removed = db.transaction(() => {
@@ -2334,7 +2334,7 @@ export function removeLibraryTrackIfNoAvailableMedia(trackId: number) {
   return removed;
 }
 
-export function removeLibraryArtistIfEmpty(artistId: number) {
+export function removeLibraryArtistIfEmpty(artistId: number | string) {
   const normalizedArtistId = Number(artistId);
   if (!Number.isSafeInteger(normalizedArtistId)) return false;
   const removed =

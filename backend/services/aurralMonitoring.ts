@@ -16,7 +16,10 @@ const EDITIONS = new Set(["standard", "expanded"]);
 export const MAX_LATEST_RELEASES = 10;
 export const MAX_TOP_TRACKS = 50;
 
-type MonitoredRelease = ReturnType<typeof toNormalizedArtistAlbum>;
+type MonitoredRelease = Pick<
+  ReturnType<typeof toNormalizedArtistAlbum>,
+  "id" | "type" | "secondaryTypes" | "releaseStatuses" | "firstReleaseDate"
+>;
 
 export type MonitorRules = {
   catalog: "none" | "all" | "since" | "latest";
@@ -164,8 +167,8 @@ const isoDay = (timestamp: number) => new Date(Number(timestamp) || 0).toISOStri
 // The back catalogue is what was out when the rules were saved, so "Latest 3"
 // stays three releases. New releases are those dated after monitoring of new
 // releases began.
-export function selectMonitoredReleases(
-  releases: MonitoredRelease[],
+export function selectMonitoredReleases<Release extends MonitoredRelease>(
+  releases: Release[],
   rules: MonitorRules,
   { catalogAt, newSince }: { catalogAt: number; newSince: number },
 ) {

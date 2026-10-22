@@ -15,7 +15,7 @@ export interface LidarrArtistIdMapping {
 
 export interface LidarrArtistIdMapOps {
   getLidarrArtistIdMap: (musicbrainzId: string) => string | null;
-  getLidarrArtistMbid: (lidarrForeignArtistId: string) => string | null;
+  getLidarrArtistMbid: (lidarrForeignArtistId: string | null) => string | null;
   setLidarrArtistIdMap: (
     musicbrainzId: string,
     lidarrForeignArtistId: string,
