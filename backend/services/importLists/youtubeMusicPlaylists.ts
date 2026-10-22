@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import type { Innertube, Types, YTNodes } from "youtubei.js";
 import createRateLimiter from "../apiClients/rateLimiter.ts";
 import {
   buildPlaylistTrackIdentity,
@@ -15,8 +16,21 @@ const YOUTUBE_HOSTS = new Set([
   "music.youtube.com",
 ]);
 
-const providerError = (message, { code, statusCode }) => {
-  const error = new Error(message);
+type CodedError = Error & { code?: string; statusCode?: number };
+
+interface YoutubeNamedValue {
+  name?: unknown;
+  title?: unknown;
+}
+
+type YoutubeMusicPlaylist = Awaited<ReturnType<Innertube["music"]["getPlaylist"]>>;
+type YoutubePlaylistContent = YTNodes.ContinuationItem | YTNodes.MusicResponsiveListItem;
+
+const providerError = (
+  message: string,
+  { code, statusCode }: { code: string; statusCode: number },
+) => {
+  const error: CodedError = new Error(message);
   error.code = code;
   error.statusCode = statusCode;
   return error;
@@ -34,7 +48,7 @@ const rateLimited = () =>
     statusCode: 429,
   });
 
-const getRateLimitDelayMs = (value, now = Date.now()) => {
+const getRateLimitDelayMs = (value: string | null | undefined, now = Date.now()) => {
   const retryAfter = String(value || "").trim();
   const seconds = Number(retryAfter);
   if (retryAfter && Number.isFinite(seconds) && seconds >= 0) {
@@ -47,13 +61,13 @@ const getRateLimitDelayMs = (value, now = Date.now()) => {
   return RATE_LIMIT_FALLBACK_MS;
 };
 
-export function validateYoutubePlaylistId(value) {
+export function validateYoutubePlaylistId(value: unknown) {
   const id = String(value || "").trim();
   if (PLAYLIST_ID_PATTERN.test(id)) return id;
   throw invalidReference();
 }
 
-export function extractYoutubePlaylistId(value) {
+export function extractYoutubePlaylistId(value: unknown) {
   let url;
   try {
     url = new URL(String(value || "").trim());
@@ -67,16 +81,17 @@ export function extractYoutubePlaylistId(value) {
   return validateYoutubePlaylistId(listValues[0]);
 }
 
-const getText = (value) => {
+const getText = (value: unknown): string => {
   if (typeof value === "string") return value.trim();
   if (value == null) return "";
   const rendered = value?.toString?.();
   return typeof rendered === "string" && rendered !== "[object Object]" ? rendered.trim() : "";
 };
 
-const getNamedValue = (value) => getText(value?.name ?? value?.title ?? value);
+const getNamedValue = (value: YoutubeNamedValue | null | undefined) =>
+  getText(value?.name ?? value?.title ?? value);
 
-const getPlaylistName = (playlist) => {
+const getPlaylistName = (playlist: YoutubeMusicPlaylist | undefined) => {
   const candidates = [playlist?.header?.title, playlist?.metadata?.title, playlist?.title];
   for (const candidate of candidates) {
     const name = getText(candidate);
@@ -85,10 +100,10 @@ const getPlaylistName = (playlist) => {
   return "";
 };
 
-const isContinuation = (entry) =>
+const isContinuation = (entry: YoutubePlaylistContent): entry is YTNodes.ContinuationItem =>
   entry?.type === "ContinuationItem" || entry?.constructor?.type === "ContinuationItem";
 
-const getContinuationKey = (entry) => {
+const getContinuationKey = (entry: YTNodes.ContinuationItem) => {
   const payload = entry?.endpoint?.payload;
   const key =
     payload?.continuation ??
@@ -104,12 +119,12 @@ const getContinuationKey = (entry) => {
   }
 };
 
-const normalizeDuration = (duration) => {
+const normalizeDuration = (duration: { seconds?: number } | undefined) => {
   const seconds = Number(duration?.seconds ?? duration);
   return Number.isFinite(seconds) && seconds >= 0 ? Math.round(seconds * 1000) : null;
 };
 
-const normalizeRows = (rows) => {
+const normalizeRows = (rows: YTNodes.MusicResponsiveListItem[]) => {
   const stats = {
     sourceItems: rows.length,
     unavailable: 0,
@@ -178,9 +193,25 @@ const normalizeRows = (rows) => {
   return { tracks, stats, excluded };
 };
 
+type YoutubePlaylist = Awaited<ReturnType<YoutubeMusicPlaylistClient["getCompletePlaylist"]>>;
+
 export class YoutubeMusicPlaylistClient {
+  declare createInnertube: (options: Types.InnerTubeConfig) => Promise<Innertube>;
+  declare fetchImpl: typeof fetch;
+  declare requestTimeoutMs: number;
+  declare operationTimeoutMs: number;
+  declare maxPages: number;
+  declare maxItems: number;
+  declare playlistCacheTtlMs: number;
+  declare maxCachedPlaylists: number;
+  declare playlistRequestLimiter: ReturnType<typeof createRateLimiter>;
+  declare operationContext: AsyncLocalStorage<{ signal?: AbortSignal }>;
+  declare sessionPromise: Promise<Innertube> | null;
+  declare playlistCache: Map<string, { promise: Promise<YoutubePlaylist>; expiresAt: number }>;
+  declare rateLimitedUntil: number;
+
   constructor({
-    createInnertube = async (options) => {
+    createInnertube = async (options: Types.InnerTubeConfig) => {
       const { Innertube } = await import("youtubei.js");
       return Innertube.create(options);
     },
@@ -211,7 +242,7 @@ export class YoutubeMusicPlaylistClient {
     this.rateLimitedUntil = 0;
   }
 
-  async fetch(input, init = {}) {
+  async fetch(input: RequestInfo | URL, init: RequestInit = {}) {
     if (Date.now() < this.rateLimitedUntil) throw rateLimited();
     const signals = [init.signal, this.operationContext.getStore()?.signal].filter(Boolean);
     signals.push(AbortSignal.timeout(this.requestTimeoutMs));
@@ -239,8 +270,8 @@ export class YoutubeMusicPlaylistClient {
     const signal = this.operationContext.getStore()?.signal;
     if (!signal) return this.sessionPromise;
     const sessionPromise = this.sessionPromise;
-    let handleAbort;
-    const aborted = new Promise((_, reject) => {
+    let handleAbort: () => void;
+    const aborted = new Promise<never>((_, reject) => {
       handleAbort = () => {
         if (this.sessionPromise === sessionPromise) this.sessionPromise = null;
         reject(signal.reason);
@@ -253,7 +284,7 @@ export class YoutubeMusicPlaylistClient {
     });
   }
 
-  trimPlaylistCache(maxSize) {
+  trimPlaylistCache(maxSize: number) {
     while (this.playlistCache.size > maxSize) {
       const evictable = [...this.playlistCache].find(
         ([, entry]) => entry.expiresAt !== Number.POSITIVE_INFINITY,
@@ -263,7 +294,7 @@ export class YoutubeMusicPlaylistClient {
     }
   }
 
-  async getPlaylist(value, { forceRefresh = false } = {}) {
+  async getPlaylist(value: unknown, { forceRefresh = false }: { forceRefresh?: boolean } = {}) {
     const id = validateYoutubePlaylistId(value);
     const now = Date.now();
     const cached = this.playlistCache.get(id);
@@ -289,7 +320,7 @@ export class YoutubeMusicPlaylistClient {
     }
   }
 
-  async loadPlaylist(id) {
+  async loadPlaylist(id: string) {
     const operationController = new AbortController();
     const timeout = setTimeout(() => operationController.abort(), this.operationTimeoutMs);
     timeout.unref?.();
@@ -314,7 +345,7 @@ export class YoutubeMusicPlaylistClient {
     }
   }
 
-  async getCompletePlaylist(id) {
+  async getCompletePlaylist(id: string) {
     const session = await this.getSession();
     const signal = this.operationContext.getStore()?.signal;
     let page = await this.playlistRequestLimiter.schedule(
@@ -329,8 +360,8 @@ export class YoutubeMusicPlaylistClient {
       });
     }
 
-    const rows = [];
-    const continuations = new Set();
+    const rows: YTNodes.MusicResponsiveListItem[] = [];
+    const continuations = new Set<string>();
     let pageCount = 0;
     while (page) {
       pageCount += 1;
@@ -347,7 +378,11 @@ export class YoutubeMusicPlaylistClient {
         });
       }
       const continuation = page.contents.find(isContinuation);
-      rows.push(...page.contents.filter((entry) => !isContinuation(entry)));
+      rows.push(
+        ...page.contents.filter(
+          (entry): entry is YTNodes.MusicResponsiveListItem => !isContinuation(entry),
+        ),
+      );
       if (rows.length > this.maxItems) {
         throw providerError("The YouTube Music playlist is too large to import", {
           code: "YOUTUBE_PLAYLIST_LIMIT",

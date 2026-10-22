@@ -3,7 +3,19 @@ import {
   dedupePlaylistTracks,
 } from "../playlists/flowPlaylistConfig.ts";
 
-export function parseSpotifyPlaylistItems(items = []) {
+interface SpotifyPlaylistTrack {
+  type?: string;
+  name?: string;
+  artists?: { name?: string }[];
+  album?: { name?: string };
+}
+
+interface SpotifyPlaylistItem {
+  item?: SpotifyPlaylistTrack | null;
+  track?: SpotifyPlaylistTrack | null;
+}
+
+export function parseSpotifyPlaylistItems(items: (SpotifyPlaylistItem | null)[] = []) {
   const stats = {
     sourceItems: items.length,
     itemOnly: 0,

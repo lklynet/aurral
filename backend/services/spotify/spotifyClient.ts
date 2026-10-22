@@ -296,7 +296,7 @@ export const spotifyClient = {
     userId: number,
     playlistId: string,
     { forceRefresh = false }: { forceRefresh?: boolean } = {},
-  ) {
+  ): Promise<(SpotifyPlaylistItem | null)[]> {
     await getValidConnection(userId);
     const generation = getPlaylistTrackGeneration(userId);
     const cacheKey = playlistTrackCacheKey(userId, playlistId);

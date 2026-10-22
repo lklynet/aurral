@@ -1,6 +1,7 @@
 import {
   flowPlaylistConfig,
   invalidateFlowPlaylistConfigCache,
+  type StaticPlaylist,
 } from "../playlists/flowPlaylistConfig.ts";
 import { fetchImportedPlaylistTracks } from "./importPlaylist.ts";
 import { updateStaticPlaylist } from "../playlists/playlistOperations.ts";
@@ -14,21 +15,27 @@ import {
 import { spotifyConnectionStore } from "../spotify/spotifyConnectionStore.ts";
 import { scrobbleConnectionStore } from "../scrobbleConnectionStore.ts";
 
+type CodedError = Error & { statusCode?: number; code?: string };
+type ImportSource = NonNullable<StaticPlaylist["importSource"]>;
+type SyncUser = NonNullable<Parameters<typeof flowPlaylistConfig.canUserAccessStaticPlaylist>[0]>;
+type SyncStaticPlaylistImportOptions = { playlistId: string; user?: SyncUser; force?: boolean };
+
 const HOUR_MS = 60 * 60 * 1000;
 const listenbrainzConnection = {
   name: "ListenBrainz",
-  isConnected: (userId) => Boolean(scrobbleConnectionStore.getConnection(userId, "listenbrainz")),
+  isConnected: (userId: number) =>
+    Boolean(scrobbleConnectionStore.getConnection(userId, "listenbrainz")),
 };
 const PROVIDER_CONNECTIONS = {
   "spotify-playlist": {
     name: "Spotify",
-    isConnected: (userId) => Boolean(spotifyConnectionStore.getConnection(userId)),
+    isConnected: (userId: number) => Boolean(spotifyConnectionStore.getConnection(userId)),
   },
   "listenbrainz-playlist": listenbrainzConnection,
   "listenbrainz-createdfor": listenbrainzConnection,
 };
 
-export function isImportSourceDue(importSource, now = Date.now()) {
+export function isImportSourceDue(importSource: ImportSource | null | undefined, now = Date.now()) {
   if (!importSource?.syncEnabled) return false;
   const intervalHours = Number(importSource.syncIntervalHours);
   const intervalMs =
@@ -43,7 +50,7 @@ type SyncStaticPlaylistImportResponse =
   | { ok: true; result: SyncStaticPlaylistImportResult }
   | { ok: false; error: { message: string; code: string | null; statusCode: number | null } };
 
-export async function syncStaticPlaylistImport(options = {}) {
+export async function syncStaticPlaylistImport(options: SyncStaticPlaylistImportOptions = {}) {
   if (isDownloadOwnerProcess()) return syncStaticPlaylistImportHere(options);
   const { playlistId, user, force = false } = options;
   try {
@@ -59,7 +66,7 @@ export async function syncStaticPlaylistImport(options = {}) {
       { timeoutMs: 5 * 60 * 1000 },
     );
     if (response?.ok === false) {
-      const error = new Error(response.error?.message || "Playlist sync failed");
+      const error: CodedError = new Error(response.error?.message || "Playlist sync failed");
       if (response.error?.code) error.code = response.error.code;
       if (response.error?.statusCode) error.statusCode = response.error.statusCode;
       throw error;
@@ -72,7 +79,11 @@ export async function syncStaticPlaylistImport(options = {}) {
   }
 }
 
-async function syncStaticPlaylistImportHere({ playlistId, user, force = false } = {}) {
+async function syncStaticPlaylistImportHere({
+  playlistId,
+  user,
+  force = false,
+}: SyncStaticPlaylistImportOptions = {}) {
   const playlist = flowPlaylistConfig.getStaticPlaylist(playlistId);
   if (!playlist?.importSource) {
     return { skipped: true, reason: "no-import-source" };
@@ -81,7 +92,7 @@ async function syncStaticPlaylistImportHere({ playlistId, user, force = false } 
     return { skipped: true, reason: "not-due" };
   }
   if (!flowPlaylistConfig.canUserAccessStaticPlaylist(user, playlist)) {
-    const error = new Error("Playlist not found");
+    const error: CodedError = new Error("Playlist not found");
     error.statusCode = 404;
     throw error;
   }

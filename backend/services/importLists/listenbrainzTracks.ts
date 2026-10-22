@@ -5,15 +5,34 @@ const TRACK_URI_PREFIX = "https://musicbrainz.org/recording/";
 const ARTIST_URI_PREFIX = "https://musicbrainz.org/artist/";
 const RELEASE_URI_PREFIX = "https://musicbrainz.org/release/";
 
-const getExtension = (track) => track?.extension?.[PLAYLIST_TRACK_EXTENSION] || {};
+interface ListenBrainzTrackExtension {
+  artist_identifiers?: string[];
+  release_identifier?: string;
+}
 
-const getIdentifier = (value, prefix) => {
+interface ListenBrainzPlaylistTrack {
+  identifier?: string | string[];
+  title?: string;
+  creator?: string;
+  album?: string;
+  duration?: number;
+  extension?: { [PLAYLIST_TRACK_EXTENSION]?: ListenBrainzTrackExtension };
+}
+
+interface ListenBrainzPlaylistPayload {
+  playlist?: { track?: ListenBrainzPlaylistTrack[] };
+}
+
+const getExtension = (track: ListenBrainzPlaylistTrack) =>
+  track?.extension?.[PLAYLIST_TRACK_EXTENSION] || {};
+
+const getIdentifier = (value: string | string[] | undefined, prefix: string) => {
   const candidate = Array.isArray(value) ? value[0] : value;
   const text = String(candidate || "").trim();
   return text.startsWith(prefix) ? text.slice(prefix.length) : text || null;
 };
 
-export function parseListenBrainzPlaylist(payload) {
+export function parseListenBrainzPlaylist(payload: ListenBrainzPlaylistPayload) {
   const stats = { incomplete: 0, duplicate: 0 };
   const raw = [];
   const tracks = Array.isArray(payload?.playlist?.track) ? payload.playlist.track : [];

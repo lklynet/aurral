@@ -5,9 +5,29 @@ import { listenbrainzPlaylistClient } from "./listenbrainzPlaylists.ts";
 import { lastfmStationClient } from "./lastfmStations.ts";
 import { youtubeMusicPlaylistClient } from "./youtubeMusicPlaylists.ts";
 import { getDeezerPlaylist } from "./deezerPlaylists.ts";
-import { normalizeImportSource } from "../playlists/flowPlaylistConfig.ts";
+import { normalizeImportSource, type PlaylistTrack } from "../playlists/flowPlaylistConfig.ts";
 import { playlistOperationQueue } from "../playlists/playlistOperationQueue.ts";
 import { logger } from "../logger.ts";
+
+type CodedError = Error & { statusCode?: number };
+
+type ImportStats = {
+  sourceItems?: number;
+  itemOnly?: number;
+  unavailable?: number;
+  podcast?: number;
+  incomplete: number;
+  duplicate: number;
+};
+
+type ImportExcluded = ReturnType<typeof parseSpotifyPlaylistItems>["excluded"];
+
+export type ImportedPlaylistTracks = {
+  tracks: PlaylistTrack[];
+  stats: ImportStats;
+  excluded?: ImportExcluded;
+  user?: string;
+};
 
 export async function fetchImportedPlaylistTracks({
   provider,
@@ -15,7 +35,13 @@ export async function fetchImportedPlaylistTracks({
   externalId,
   externalUsername,
   forceRefresh = false,
-} = {}) {
+}: {
+  provider: string;
+  userId: number;
+  externalId: string;
+  externalUsername?: string | null;
+  forceRefresh?: boolean;
+} = {}): Promise<ImportedPlaylistTracks> {
   if (provider === "spotify-playlist") {
     const items = await spotifyClient.listPlaylistTracks(userId, externalId, { forceRefresh });
     const parsed = parseSpotifyPlaylistItems(items);
@@ -40,7 +66,9 @@ export async function fetchImportedPlaylistTracks({
     const { tracks, stats, excluded } = await getDeezerPlaylist(externalId);
     return { tracks, stats, excluded };
   }
-  const error = new Error(`Unsupported playlist import provider: ${provider || "unknown"}`);
+  const error: CodedError = new Error(
+    `Unsupported playlist import provider: ${provider || "unknown"}`,
+  );
   error.statusCode = 400;
   throw error;
 }
@@ -59,6 +87,20 @@ export async function enqueueImportedPlaylist({
   syncEnabled,
   syncIntervalHours,
   keepRemovedTracks,
+}: {
+  ownerUserId: number;
+  name: string;
+  sourceName: string;
+  description?: string | null;
+  provider: string;
+  externalId: string;
+  externalUsername?: string | null;
+  externalName: string;
+  tracks: PlaylistTrack[];
+  sourceStats?: ImportStats | null;
+  syncEnabled: boolean;
+  syncIntervalHours: number;
+  keepRemovedTracks: boolean;
 } = {}) {
   const safePlaylistId = randomUUID();
   const importSource = normalizeImportSource({

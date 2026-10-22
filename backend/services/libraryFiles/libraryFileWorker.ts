@@ -2,7 +2,7 @@ import createHonkerWorker from "../honkerWorkerFactory.ts";
 import { getLibraryFileQueue } from "../honkerDb.ts";
 import { processLibraryFileJob } from "./operations.ts";
 
-const worker = createHonkerWorker({
+const worker = createHonkerWorker<{ operationId: number }>({
   name: "library-files",
   getQueue: getLibraryFileQueue,
   processJob: (payload) => processLibraryFileJob(payload),

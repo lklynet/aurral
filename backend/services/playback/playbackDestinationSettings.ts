@@ -18,7 +18,7 @@ export function getPlaybackDestinationSettings() {
   return structuredClone(definitions);
 }
 
-export async function testPlaybackDestination(key, config) {
+export async function testPlaybackDestination(key: string, config: unknown) {
   const destination = factories[key]?.();
   if (!destination) throw new Error(`Unknown playback destination: ${key}`);
   destination.updateConfig(config);

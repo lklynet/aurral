@@ -28,24 +28,53 @@ export const EDITORIAL_GENRES = [
   { id: 464, name: "Metal" },
 ];
 
-let shelfCache = null;
-let shelfRequest = null;
+interface DeezerPlaylistPayload {
+  id?: number | string;
+  title?: string;
+  description?: string | null;
+  nb_tracks?: number;
+  picture_xl?: string | null;
+  picture_big?: string | null;
+  user?: { name?: string };
+  creator?: { name?: string };
+}
+
+interface DeezerTrackPayload {
+  title?: string;
+  duration?: number;
+  preview?: string | null;
+  artist?: { name?: string };
+  album?: { id?: number | string; title?: string; cover_medium?: string | null };
+}
+
+interface DeezerPage<T> {
+  data?: T[];
+  next?: string;
+}
+
+type EditorialGenres = Awaited<ReturnType<typeof loadShelf>>["genres"];
+
+let shelfCache: { genres: EditorialGenres; expiresAt: number } | null = null;
+let shelfRequest: Promise<EditorialGenres> | null = null;
 const tagSearchCache = new Map();
 
-const providerError = (message, statusCode, code) => {
-  const error = new Error(message);
+const providerError = (message: string, statusCode: number, code: string) => {
+  const error: Error & { statusCode?: number; code?: string } = new Error(message);
   error.statusCode = statusCode;
   error.code = code;
   return error;
 };
 
-export function validateDeezerPlaylistId(value) {
+export function validateDeezerPlaylistId(value: unknown) {
   const id = String(value ?? "").trim();
   if (PLAYLIST_ID_PATTERN.test(id)) return id;
   throw providerError("Enter a valid Deezer playlist", 400, "DEEZER_PLAYLIST_INVALID");
 }
 
-async function deezerRequest(path, params = {}) {
+async function deezerRequest<T = unknown>(
+  path: string,
+  params: Record<string, string | number> = {},
+): Promise<T & { error?: { code?: number } }> {
   const url = new URL(`${DEEZER_API_URL}${path}`);
   for (const [key, value] of Object.entries(params)) url.searchParams.set(key, String(value));
   let response;
@@ -67,7 +96,7 @@ async function deezerRequest(path, params = {}) {
   if (!response.ok) {
     throw providerError(`Deezer request failed (${response.status})`, 502, "DEEZER_UNAVAILABLE");
   }
-  const body = await response.json().catch(() => null);
+  const body: (T & { error?: { code?: number } }) | null = await response.json().catch(() => null);
   if (!body || typeof body !== "object") {
     throw providerError("Deezer returned an unreadable response", 502, "DEEZER_UNAVAILABLE");
   }
@@ -87,7 +116,7 @@ async function deezerRequest(path, params = {}) {
   return body;
 }
 
-const normalizePlaylistSummary = (playlist) => {
+const normalizePlaylistSummary = (playlist: DeezerPlaylistPayload | null | undefined) => {
   const id = String(playlist?.id ?? "").trim();
   const name = String(playlist?.title || "").trim();
   if (!PLAYLIST_ID_PATTERN.test(id) || !name) return null;
@@ -101,7 +130,7 @@ const normalizePlaylistSummary = (playlist) => {
   };
 };
 
-const normalizeTracks = (rows) => {
+const normalizeTracks = (rows: DeezerTrackPayload[]) => {
   const stats = {
     sourceItems: rows.length,
     unavailable: 0,
@@ -161,15 +190,17 @@ const normalizeTracks = (rows) => {
   return { tracks, stats, excluded };
 };
 
-export async function getDeezerPlaylist(value) {
+export async function getDeezerPlaylist(value: unknown) {
   const id = validateDeezerPlaylistId(value);
-  const summary = normalizePlaylistSummary(await deezerRequest(`/playlist/${id}`));
+  const summary = normalizePlaylistSummary(
+    await deezerRequest<DeezerPlaylistPayload>(`/playlist/${id}`),
+  );
   if (!summary) {
     throw providerError("The Deezer playlist is unavailable", 404, "DEEZER_PLAYLIST_NOT_FOUND");
   }
-  const rows = [];
+  const rows: DeezerTrackPayload[] = [];
   while (rows.length < MAX_TRACKS) {
-    const page = await deezerRequest(`/playlist/${id}/tracks`, {
+    const page = await deezerRequest<DeezerPage<DeezerTrackPayload>>(`/playlist/${id}/tracks`, {
       index: rows.length,
       limit: TRACK_PAGE_SIZE,
     });
@@ -183,7 +214,9 @@ export async function getDeezerPlaylist(value) {
 async function loadShelf() {
   const results = await Promise.allSettled(
     EDITORIAL_GENRES.map((genre) =>
-      deezerRequest(`/chart/${genre.id}/playlists`, { limit: SHELF_PLAYLISTS_PER_GENRE * 2 }),
+      deezerRequest<DeezerPage<DeezerPlaylistPayload>>(`/chart/${genre.id}/playlists`, {
+        limit: SHELF_PLAYLISTS_PER_GENRE * 2,
+      }),
     ),
   );
   if (results.every((result) => result.status === "rejected")) throw results[0].reason;
@@ -224,17 +257,20 @@ export async function getEditorialShelf() {
   return shelfRequest;
 }
 
-const isEditorPlaylist = (playlist) =>
+const isEditorPlaylist = (playlist: DeezerPlaylistPayload | null | undefined) =>
   /deezer/i.test(String(playlist?.user?.name || playlist?.creator?.name || ""));
 
-export async function searchEditorialPlaylists(tag) {
+export async function searchEditorialPlaylists(tag: unknown) {
   const key = String(tag || "")
     .trim()
     .toLowerCase();
   if (!key) return [];
   const cached = tagSearchCache.get(key);
   if (cached && cached.expiresAt > Date.now()) return cached.playlists;
-  const body = await deezerRequest("/search/playlist", { q: key, limit: SEARCH_RESULTS_PER_TAG });
+  const body = await deezerRequest<DeezerPage<DeezerPlaylistPayload>>("/search/playlist", {
+    q: key,
+    limit: SEARCH_RESULTS_PER_TAG,
+  });
   const playlists = (Array.isArray(body.data) ? body.data : [])
     .filter(isEditorPlaylist)
     .map(normalizePlaylistSummary)

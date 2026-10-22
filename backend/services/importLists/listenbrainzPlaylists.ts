@@ -12,24 +12,41 @@ const GENERATED_PLAYLIST_NAMES = {
   "weekly-exploration": "Weekly Exploration",
 };
 
-const getConnection = (userId) => {
+type CodedError = Error & { statusCode?: number };
+
+interface ListenBrainzPlaylistExtension {
+  last_modified_at?: string;
+  additional_metadata?: { algorithm_metadata?: { source_patch?: string } };
+}
+
+interface ListenBrainzPlaylist {
+  identifier?: string;
+  title?: string;
+  date?: string;
+  track?: unknown[];
+  extension?: { [PLAYLIST_EXTENSION]?: ListenBrainzPlaylistExtension };
+}
+
+type ListenBrainzPlaylistEntry = ListenBrainzPlaylist & { playlist?: ListenBrainzPlaylist };
+
+const getConnection = (userId: number) => {
   const connection = scrobbleConnectionStore.getConnection(userId, "listenbrainz");
   if (connection) return connection;
-  const error = new Error("ListenBrainz is not connected");
+  const error: CodedError = new Error("ListenBrainz is not connected");
   error.statusCode = 401;
   throw error;
 };
 
-const unwrapPlaylist = (entry) =>
+const unwrapPlaylist = (entry: ListenBrainzPlaylistEntry) =>
   entry?.playlist && typeof entry.playlist === "object" ? entry.playlist : entry;
 
-const getPlaylistId = (playlist) => {
+const getPlaylistId = (playlist: ListenBrainzPlaylist | undefined) => {
   const identifier = String(playlist?.identifier || "").trim();
   const match = identifier.match(/\/playlist\/([^/]+)\/?$/i);
   return match?.[1] || "";
 };
 
-const getGeneratedPlaylistType = (playlist) => {
+const getGeneratedPlaylistType = (playlist: ListenBrainzPlaylist | undefined) => {
   const sourcePatch = String(
     playlist?.extension?.[PLAYLIST_EXTENSION]?.additional_metadata?.algorithm_metadata
       ?.source_patch || "",
@@ -39,21 +56,29 @@ const getGeneratedPlaylistType = (playlist) => {
   return GENERATED_PLAYLIST_TYPES.includes(sourcePatch) ? sourcePatch : null;
 };
 
-const getPlaylistTimestamp = (playlist) => {
+const getPlaylistTimestamp = (playlist: ListenBrainzPlaylist | undefined) => {
   const value = playlist?.date || playlist?.extension?.[PLAYLIST_EXTENSION]?.last_modified_at || "";
   const timestamp = Date.parse(value);
   return Number.isFinite(timestamp) ? timestamp : 0;
 };
 
-const validatePlaylistId = (playlistId) => {
+const validatePlaylistId = (playlistId: unknown) => {
   const id = String(playlistId || "").trim();
   if (PLAYLIST_ID_PATTERN.test(id)) return id;
-  const error = new Error("A valid ListenBrainz playlist ID is required");
+  const error: CodedError = new Error("A valid ListenBrainz playlist ID is required");
   error.statusCode = 400;
   throw error;
 };
 
-const fetchPlaylistPages = async ({ username, token, path }) => {
+const fetchPlaylistPages = async ({
+  username,
+  token,
+  path,
+}: {
+  username: string;
+  token: string;
+  path: string;
+}) => {
   const count = 100;
   const playlists = [];
   let offset = 0;
@@ -76,7 +101,13 @@ const fetchPlaylistPages = async ({ username, token, path }) => {
   return playlists;
 };
 
-const fetchPlaylistTrackCount = async ({ playlistId, token }) => {
+const fetchPlaylistTrackCount = async ({
+  playlistId,
+  token,
+}: {
+  playlistId: string;
+  token: string;
+}) => {
   const payload = await listenbrainzRequest(
     `/1/playlist/${encodeURIComponent(playlistId)}`,
     { fetch_metadata: false },
@@ -86,7 +117,7 @@ const fetchPlaylistTrackCount = async ({ playlistId, token }) => {
   return Array.isArray(playlist?.track) ? playlist.track.length : null;
 };
 
-const getLatestGeneratedPlaylists = (entries) => {
+const getLatestGeneratedPlaylists = (entries: ListenBrainzPlaylistEntry[]) => {
   const latest = new Map();
   for (const entry of entries) {
     const playlist = unwrapPlaylist(entry);
@@ -111,22 +142,22 @@ const getLatestGeneratedPlaylists = (entries) => {
     .map(({ timestamp: _timestamp, ...playlist }) => playlist);
 };
 
-const getGeneratedPlaylistTypeOrThrow = (value) => {
+const getGeneratedPlaylistTypeOrThrow = (value: unknown) => {
   const sourceType = String(value || "")
     .trim()
     .toLowerCase();
   if (GENERATED_PLAYLIST_TYPES.includes(sourceType)) return sourceType;
-  const error = new Error("A valid ListenBrainz generated playlist type is required");
+  const error: CodedError = new Error("A valid ListenBrainz generated playlist type is required");
   error.statusCode = 400;
   throw error;
 };
 
 export const listenbrainzPlaylistClient = {
-  async listPlaylists(userId) {
+  async listPlaylists(userId: number) {
     const connection = getConnection(userId);
     const username = String(connection.displayName || "").trim();
     if (!username) {
-      const error = new Error("ListenBrainz connection has no username");
+      const error: CodedError = new Error("ListenBrainz connection has no username");
       error.statusCode = 502;
       throw error;
     }
@@ -178,11 +209,11 @@ export const listenbrainzPlaylistClient = {
     };
   },
 
-  async getGeneratedPlaylistTracks(userId, sourceType) {
+  async getGeneratedPlaylistTracks(userId: number, sourceType: string) {
     const connection = getConnection(userId);
     const username = String(connection.displayName || "").trim();
     if (!username) {
-      const error = new Error("ListenBrainz connection has no username");
+      const error: CodedError = new Error("ListenBrainz connection has no username");
       error.statusCode = 502;
       throw error;
     }
@@ -196,14 +227,14 @@ export const listenbrainzPlaylistClient = {
       (candidate) => candidate.sourceType === type,
     );
     if (!playlist) {
-      const error = new Error(`No current ListenBrainz ${type} playlist was found`);
+      const error: CodedError = new Error(`No current ListenBrainz ${type} playlist was found`);
       error.statusCode = 404;
       throw error;
     }
     return this.getPlaylistTracks(userId, playlist.id);
   },
 
-  async getPlaylistTracks(userId, playlistId) {
+  async getPlaylistTracks(userId: number, playlistId: string) {
     const connection = getConnection(userId);
     const id = validatePlaylistId(playlistId);
     const payload = await listenbrainzRequest(

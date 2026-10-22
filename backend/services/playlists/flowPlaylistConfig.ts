@@ -5,7 +5,7 @@ import { getDiscoverPlaylistPreset } from "../../config/discoverPlaylistPresets.
 import { UUID_REGEX } from "../../../lib/uuid.ts";
 import type { RequestUser } from "../../middleware/requestUser.ts";
 
-type AccessUser = Pick<RequestUser, "id" | "role"> | null | undefined;
+type AccessUser = (Pick<RequestUser, "id"> & Partial<Pick<RequestUser, "role">>) | null | undefined;
 type OwnedEntity = { ownerUserId?: number | null };
 
 export interface FlowMixInput {

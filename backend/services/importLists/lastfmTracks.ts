@@ -1,6 +1,26 @@
 import { dedupePlaylistTracks } from "../playlists/flowPlaylistConfig.ts";
 
-const getArtistName = (track) =>
+interface LastfmNamedEntity {
+  name?: string;
+  _name?: string;
+  mbid?: string;
+}
+
+interface LastfmStationTrack {
+  name?: string;
+  _name?: string;
+  duration?: number;
+  artist?: LastfmNamedEntity;
+  artists?: LastfmNamedEntity[];
+  album?: LastfmNamedEntity;
+  primary_album?: LastfmNamedEntity;
+}
+
+interface LastfmStationPayload {
+  playlist?: LastfmStationTrack[];
+}
+
+const getArtistName = (track: LastfmStationTrack) =>
   String(
     track?.artists?.[0]?.name ||
       track?.artists?.[0]?._name ||
@@ -9,12 +29,12 @@ const getArtistName = (track) =>
       "",
   ).trim();
 
-const getAlbumName = (track) => {
+const getAlbumName = (track: LastfmStationTrack) => {
   const album = track?.primary_album ?? track?.album;
   return String(album?.name || album?._name || album || "").trim() || null;
 };
 
-export function parseLastfmStation(payload) {
+export function parseLastfmStation(payload: LastfmStationPayload) {
   const stats = { incomplete: 0, duplicate: 0 };
   const raw = [];
   const tracks = Array.isArray(payload?.playlist) ? payload.playlist : [];
