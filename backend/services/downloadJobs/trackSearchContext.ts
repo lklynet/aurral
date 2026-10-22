@@ -77,11 +77,7 @@ function rankCandidates<T extends RankableRelease>(
   return [...list]
     .map((candidate) => {
       const title = candidate?.title || "";
-      const year =
-        candidate?.["first-release-date"] ||
-        candidate?.date ||
-        candidate?.["release-group"]?.["first-release-date"] ||
-        null;
+      const year = candidate?.firstReleaseDate || null;
       const titleScore = scoreTextMatchBase(title, expectedTitle, MATCHER_OPTIONS);
       const yearScore =
         targetYear && getYear(year) === targetYear ? 10 : targetYear && getYear(year) ? -5 : 0;

@@ -67,7 +67,6 @@
   "backend/services/download/downloadClientSettings.ts": 6,
   "backend/services/downloadJobs/blockedJobReview.ts": 1,
   "backend/services/downloadJobs/downloadTracker.ts": 1,
-  "backend/services/downloadJobs/trackSearchContext.ts": 3,
   "backend/services/downloadPipeline.ts": 33,
   "backend/services/downloadPipelineWorker.ts": 5,
   "backend/services/downloadSourceService.ts": 1,

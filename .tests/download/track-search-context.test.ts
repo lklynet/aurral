@@ -738,6 +738,36 @@ test("a download takes the album of its title that lists the song, over the albu
   assert.equal(single.albumMbid, "records");
 });
 
+test("a download takes the album of its title from the year it names, when the artist has two of that title", async (t) => {
+  const band = artistEntry("hits-band", "Hits Band");
+  const albums = {
+    "old-hits": albumEntry("old-hits", "Greatest Hits", band, ["Africa"]),
+    "new-hits": albumEntry("new-hits", "Greatest Hits", band, ["Africa"]),
+  };
+  stubMetadata(t, (path) => {
+    if (path === "/search/album") return [];
+    if (path === "/artist/hits-band") {
+      return {
+        ...band,
+        Albums: [
+          { Id: "old-hits", Title: "Greatest Hits", Type: "Album", FirstReleaseDate: "1999-05-01" },
+          { Id: "new-hits", Title: "Greatest Hits", Type: "Album", FirstReleaseDate: "2005-05-01" },
+        ],
+      };
+    }
+    return albums[path.replace("/album/", "")] || null;
+  });
+
+  const resolved = await resolveTrackSearchContext({
+    artistName: "Hits Band",
+    artistMbid: "hits-band",
+    trackName: "Africa",
+    albumName: "Greatest Hits",
+    releaseYear: "2005",
+  });
+  assert.equal(resolved.albumMbid, "new-hits");
+});
+
 const editionAlbum = () => {
   const band = artistEntry("edition-band", "Edition Band");
   const song = (trackname, recordingid, trackposition, durationms, extra = {}) => ({
