@@ -1,7 +1,6 @@
 import type { Router } from "express";
 import { libraryManager } from "../../../services/libraryManager.ts";
 import type { MappedLibraryAlbum } from "../../../services/libraryManager.ts";
-import { playlistManager } from "../../../services/playlists/playlistManager.ts";
 import { dbOps } from "../../../db/helpers/index.ts";
 import { hasPermission } from "../../../middleware/auth.ts";
 import { cacheMiddleware, noCache } from "../../../middleware/cache.ts";
@@ -134,11 +133,6 @@ export function registerAlbums(router: Router) {
           availability: album.availability || null,
           conflict: album.conflict || null,
         });
-      }
-      if (album.artistName && album.albumName) {
-        playlistManager
-          .removeDiscoverSymlinksForAlbum(album.artistName, album.albumName)
-          .catch(() => {});
       }
       const { recordAlbumRequested } = await import("../../../services/aurralHistoryService.ts");
       recordAlbumRequested({

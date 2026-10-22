@@ -1,5 +1,4 @@
 {
-  "backend/routes/library/handlers/albums.ts": 1,
   "backend/routes/library/handlers/artists.ts": 3,
   "backend/routes/library/handlers/downloads.ts": 13,
   "backend/routes/library/handlers/libraryIndex.ts": 2,
