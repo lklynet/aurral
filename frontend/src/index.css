@@ -5227,6 +5227,10 @@ textarea {
   }
 }
 
+.file-browser-modal__row--selected {
+  background: var(--aurral-surface-selected);
+}
+
 .file-browser-modal__row td {
   padding: 0.55rem 1.25rem;
   border-bottom: 1px solid var(--aurral-border);

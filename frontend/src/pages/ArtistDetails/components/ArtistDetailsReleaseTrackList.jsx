@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { MoreVertical, Plus } from "lucide-react";
+import { FileMusic, MoreVertical, Plus } from "lucide-react";
 import { DotLoader, DownloadingIcon } from "../../../components/DotLoader";
 import SearchLibraryCheck from "../../../components/SearchLibraryCheck";
 import { TrackList } from "../../../components/TrackList";
@@ -67,6 +67,7 @@ export function ArtistDetailsReleaseTrackList({
   playbackSource = null,
   onAddTrackToPlaylist,
   onAddTrackToLibrary,
+  onLinkTrackFile,
   libraryTrackSavingKey,
   albumDownloading = false,
   ownedTrackMbids = [],
@@ -140,6 +141,17 @@ export function ArtistDetailsReleaseTrackList({
               separatorBefore: queueItems.length > 0,
               disabled: downloading || libraryTrackSavingKey === id,
               onSelect: () => onAddTrackToLibrary(track, release),
+            },
+          ]
+        : []),
+      ...(onLinkTrackFile && !isOwned
+        ? [
+            {
+              id: "link-file",
+              label: "Use a file I have",
+              icon: FileMusic,
+              disabled: downloading || libraryTrackSavingKey === id,
+              onSelect: () => onLinkTrackFile(track, release),
             },
           ]
         : []),

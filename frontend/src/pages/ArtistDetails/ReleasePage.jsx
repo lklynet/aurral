@@ -7,6 +7,7 @@ import {
 import {
   getDownloadStatus,
   downloadTrackToLibrary,
+  linkTrackFile,
   lookupAlbumsInLibraryBatch,
   requestAlbumFromSearch,
   settleLibraryOwnerConflict,
@@ -18,6 +19,7 @@ import { useWebSocketChannel } from "../../hooks/useWebSocket";
 import { Link, useLocation, useParams } from "react-router";
 import { Share } from "lucide-react";
 import AddActionButton from "../../components/AddActionButton";
+import DownloadFolderPickerModal from "../../components/DownloadFolderPickerModal";
 import { useLibraryDestination } from "../../hooks/useLibraryDestination";
 import { useActiveDownloads } from "../../hooks/useActiveDownloads";
 import {
@@ -87,7 +89,7 @@ function ReleasePage() {
   const [ownerConflictState, setOwnerConflictState] = useState(null);
   const ownerConflict =
     ownerConflictState?.releaseMbid === releaseMbid ? ownerConflictState.conflict : null;
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
   const share = useShareAction();
   const canAddAlbum = hasPermission("addAlbum");
 
@@ -124,6 +126,7 @@ function ReleasePage() {
   } = useStaticPlaylists();
   const [playlistMenuSavingKey, setPlaylistMenuSavingKey] = useState("");
   const [libraryTrackSavingKey, setLibraryTrackSavingKey] = useState("");
+  const [linkingTrack, setLinkingTrack] = useState(null);
   const downloadTrackMutation = useMutation({ mutationFn: downloadTrackToLibrary });
   const requestAlbumMutation = useMutation({ mutationFn: requestAlbumFromSearch });
   const { mutateAsync: downloadTrack } = downloadTrackMutation;
@@ -427,6 +430,26 @@ function ReleasePage() {
     [buildReleaseTrackPayload, downloadTrack, showError, showSuccess],
   );
 
+  const handleLinkTrackFile = useCallback(
+    async (sourcePath) => {
+      const track = linkingTrack;
+      setLinkingTrack(null);
+      if (!track || !sourcePath) return;
+      const payload = buildReleaseTrackPayload(track);
+      setLibraryTrackSavingKey(String(track?.id ?? track?.mbid ?? ""));
+      try {
+        await linkTrackFile(sourcePath, payload);
+        showSuccess(`Added ${payload.trackName} to your library`);
+        queryClient.invalidateQueries({ queryKey: queryKeys.libraryAlbumLookup([releaseMbid]) });
+      } catch (err) {
+        showError(err.response?.data?.message || err.message || "Failed to use this file");
+      } finally {
+        setLibraryTrackSavingKey("");
+      }
+    },
+    [buildReleaseTrackPayload, linkingTrack, releaseMbid, showError, showSuccess],
+  );
+
   const handleAlbumAction = useCallback(
     async (managedBy) => {
       if (!releaseMbid || requestingAlbum) return;
@@ -616,6 +639,7 @@ function ReleasePage() {
         playbackSource={playbackSource}
         onAddTrackToPlaylist={handleReleaseTrackAdd}
         onAddTrackToLibrary={handleReleaseTrackAddToLibrary}
+        onLinkTrackFile={user?.role === "admin" ? (track) => setLinkingTrack(track) : undefined}
         libraryTrackSavingKey={libraryTrackSavingKey}
         albumDownloading={albumDownloading}
         ownedTrackMbids={libraryInfo?.ownedTrackMbids}
@@ -628,6 +652,13 @@ function ReleasePage() {
         onLoadPlaylists={loadStaticPlaylists}
         highlightTrackId={focusTrackMbid}
       />
+      {linkingTrack ? (
+        <DownloadFolderPickerModal
+          fileTypes="audio"
+          onConfirm={handleLinkTrackFile}
+          onCancel={() => setLinkingTrack(null)}
+        />
+      ) : null}
     </CollectionPage>
   );
 }

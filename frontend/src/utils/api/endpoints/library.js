@@ -135,6 +135,9 @@ export const startLibraryIngest = (sourcePath, mode, { monitor, fillTags }) =>
 
 export const startLibraryCleanup = () => postData("/library/files/cleanup");
 
+export const linkTrackFile = (sourcePath, track) =>
+  postData("/library/files/link-track", { sourcePath, track });
+
 export const getLibraryFileOperation = (id) =>
   getData(`/library/files/operations/${encodeURIComponent(id)}`);
 

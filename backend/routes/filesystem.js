@@ -3,6 +3,7 @@ import { dbOps } from "../db/helpers/index.js";
 import { noCache } from "../middleware/cache.js";
 import { resolveRequestUser } from "../middleware/auth.js";
 import { ensureDownloadFolderPath, listBrowseDirectory } from "../services/downloadFolderConfig.js";
+import { AUDIO_EXTENSIONS } from "../services/libraryFileScanner.js";
 
 const router = express.Router();
 
@@ -23,7 +24,9 @@ router.get("/browse", noCache, (req, res) => {
         message: "Admin access is required to browse storage paths.",
       });
     }
-    const result = listBrowseDirectory(req.query.path);
+    const result = listBrowseDirectory(req.query.path, undefined, {
+      fileExtensions: req.query.files === "audio" ? AUDIO_EXTENSIONS : null,
+    });
     return res.json(result);
   } catch (error) {
     return res.status(400).json({

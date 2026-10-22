@@ -291,7 +291,13 @@ export function resolveExistingBrowsePath(requestedPath, _roots = getFilesystemB
   return null;
 }
 
-export function listBrowseDirectory(requestedPath, _roots = getFilesystemBrowseRoots()) {
+// Folders come first. Files are listed only when fileExtensions names their
+// types, such as when choosing a music file.
+export function listBrowseDirectory(
+  requestedPath,
+  _roots = getFilesystemBrowseRoots(),
+  { fileExtensions = null } = {},
+) {
   const allowedRoots = getFilesystemBrowseRoots();
   if (!allowedRoots.length) {
     throw new Error(
@@ -309,12 +315,22 @@ export function listBrowseDirectory(requestedPath, _roots = getFilesystemBrowseR
 
   const entries = fs
     .readdirSync(pathValue, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
+    .filter((entry) => !entry.name.startsWith("."))
+    .filter(
+      (entry) =>
+        entry.isDirectory() ||
+        (entry.isFile() && fileExtensions?.has(path.extname(entry.name).toLowerCase())),
+    )
     .map((entry) => ({
       name: entry.name,
       path: path.resolve(pathValue, entry.name),
+      ...(entry.isFile() ? { file: true } : {}),
     }))
-    .sort((left, right) => left.name.localeCompare(right.name));
+    .sort(
+      (left, right) =>
+        Number(Boolean(left.file)) - Number(Boolean(right.file)) ||
+        left.name.localeCompare(right.name),
+    );
 
   const suggestedDownloadFolder = getSuggestedDownloadFolderPath();
   return {

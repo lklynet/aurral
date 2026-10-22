@@ -326,7 +326,7 @@ export async function planCleanup(operation, deadline) {
 
 const LINK_FALLBACK = new Set(["EPERM", "ENOTSUP", "EOPNOTSUPP", "ENOSYS", "EMLINK", "EXDEV"]);
 
-async function renameLibraryFile(from, to, context) {
+export async function renameLibraryFile(from, to, context) {
   await fs.mkdir(path.dirname(to), { recursive: true });
   let keptOld = false;
   try {

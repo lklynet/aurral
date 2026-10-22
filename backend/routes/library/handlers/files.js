@@ -2,6 +2,7 @@ import { noCache } from "../../../middleware/cache.js";
 import { requireAdmin, requireAuth } from "../../../middleware/requirePermission.js";
 import { lidarrClient } from "../../../services/lidarrClient.js";
 import { checkIngestSource } from "../../../services/libraryFiles/ingest.js";
+import { linkTrackFile } from "../../../services/libraryFiles/linkTrackFile.js";
 import {
   cancelLibraryFileOperation,
   describeLibraryFileOperation,
@@ -100,6 +101,14 @@ export function registerFiles(router) {
         fillTags: req.body?.fillTags === true,
       });
       res.status(202).json({ operation: describeLibraryFileOperation(operation) });
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  router.post("/files/link-track", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      res.json(await linkTrackFile({ sourcePath: req.body?.sourcePath, track: req.body?.track }));
     } catch (error) {
       sendError(res, error);
     }

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { browseFilesystem, ensureFilesystemPath } from "../utils/api/endpoints/auth.js";
 
 import { createPortal } from "react-dom";
-import { ArrowUp, Folder, X } from "lucide-react";
+import { ArrowUp, FileMusic, Folder, X } from "lucide-react";
 import { useModalDialog } from "../hooks/useModalDialog.js";
 import { DotLoader } from "./DotLoader";
 function normalizeConfirmedPath(pathValue, browsePath) {
@@ -11,9 +11,12 @@ function normalizeConfirmedPath(pathValue, browsePath) {
   return raw.replace(/\/+$/, "");
 }
 
+// With fileTypes, such as "audio", the browser lists those files too and
+// confirms the file chosen instead of the folder.
 export default function DownloadFolderPickerModal({
   initialPath = "",
   createOnConfirm = true,
+  fileTypes = null,
   onConfirm,
   onCancel,
 }) {
@@ -21,6 +24,7 @@ export default function DownloadFolderPickerModal({
   const [pathInput, setPathInput] = useState("");
   const [entries, setEntries] = useState([]);
   const [parentPath, setParentPath] = useState(null);
+  const [selectedFile, setSelectedFile] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const requestIdRef = useRef(0);
@@ -36,6 +40,7 @@ export default function DownloadFolderPickerModal({
     setPathInput(result.displayPath ?? "");
     setEntries(Array.isArray(result.entries) ? result.entries : []);
     setParentPath(result.parent || null);
+    setSelectedFile("");
   }, []);
 
   const loadDirectory = useCallback(
@@ -44,7 +49,7 @@ export default function DownloadFolderPickerModal({
       setLoading(true);
       setError("");
       try {
-        const result = await browseFilesystem(pathValue || undefined);
+        const result = await browseFilesystem(pathValue || undefined, { files: fileTypes });
         if (requestId !== requestIdRef.current) {
           return false;
         }
@@ -62,7 +67,7 @@ export default function DownloadFolderPickerModal({
         }
       }
     },
-    [applyBrowseResult],
+    [applyBrowseResult, fileTypes],
   );
 
   const ensureDirectory = useCallback(
@@ -125,6 +130,10 @@ export default function DownloadFolderPickerModal({
   };
 
   const handleConfirm = async () => {
+    if (fileTypes) {
+      onConfirm?.(selectedFile);
+      return;
+    }
     const target = normalizeConfirmedPath(pathInput, browsePath);
     if (!createOnConfirm) {
       onConfirm?.(target);
@@ -151,7 +160,7 @@ export default function DownloadFolderPickerModal({
       >
         <div className="file-browser-modal__header">
           <h3 id="file-browser-title" className="file-browser-modal__title">
-            File browser
+            {fileTypes ? "Choose a file" : "File browser"}
           </h3>
           <button
             type="button"
@@ -199,11 +208,19 @@ export default function DownloadFolderPickerModal({
               {entries.map((entry) => (
                 <tr
                   key={entry.path}
-                  className="file-browser-modal__row"
-                  onClick={() => handleNavigate(entry.path)}
+                  className={`file-browser-modal__row${
+                    entry.path === selectedFile ? " file-browser-modal__row--selected" : ""
+                  }`}
+                  onClick={() =>
+                    entry.file ? setSelectedFile(entry.path) : handleNavigate(entry.path)
+                  }
                 >
                   <td>
-                    <Folder className="file-browser-modal__type-icon file-browser-modal__type-icon--folder" />
+                    {entry.file ? (
+                      <FileMusic className="file-browser-modal__type-icon" />
+                    ) : (
+                      <Folder className="file-browser-modal__type-icon file-browser-modal__type-icon--folder" />
+                    )}
                   </td>
                   <td>{entry.name}</td>
                 </tr>
@@ -216,7 +233,9 @@ export default function DownloadFolderPickerModal({
             </p>
           ) : null}
           {!loading && !parentPath && entries.length === 0 ? (
-            <p className="file-browser-modal__status">No subfolders here.</p>
+            <p className="file-browser-modal__status">
+              {fileTypes ? "No folders or music files here." : "No subfolders here."}
+            </p>
           ) : null}
         </div>
 
@@ -230,7 +249,7 @@ export default function DownloadFolderPickerModal({
             type="button"
             className="btn btn-primary"
             onClick={handleConfirm}
-            disabled={loading}
+            disabled={loading || (fileTypes && !selectedFile)}
           >
             Ok
           </button>

@@ -23,9 +23,9 @@ export const getBootstrapStatus = () =>
     staleTime: 25_000,
   });
 
-export const browseFilesystem = (pathValue) =>
+export const browseFilesystem = (pathValue, { files } = {}) =>
   getData("/filesystem/browse", {
-    params: pathValue ? { path: pathValue } : undefined,
+    params: pathValue || files ? { path: pathValue || undefined, files } : undefined,
   });
 
 export const ensureFilesystemPath = (pathValue) =>

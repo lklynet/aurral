@@ -48,7 +48,10 @@ function jobMetadata(filePath) {
 // An upgraded file with new identity tags keeps the Library's track and
 // album rows, with their favorites, play counts, and monitoring, under the
 // identity the scan now reads.
-export async function adoptLibraryFileIdentity(filePath, { previousPath = filePath } = {}) {
+export async function adoptLibraryFileIdentity(
+  filePath,
+  { previousPath = filePath, rekeyAlbum = true } = {},
+) {
   const root = path.resolve(resolveDownloadRoot());
   const current = path.resolve(filePath);
   const previous = path.resolve(previousPath);
@@ -71,7 +74,7 @@ export async function adoptLibraryFileIdentity(filePath, { previousPath = filePa
         ? findLibraryAlbumByArtistTitle(artistId, record.albumName)
         : null;
     const albumKey = (releaseAlbum || namedAlbum)?.identity_key || record.albumKey;
-    if (media.album_id) rekeyLibraryAlbum(media.album_id, albumKey);
+    if (media.album_id && rekeyAlbum) rekeyLibraryAlbum(media.album_id, albumKey);
     rekeyLibraryTrack(media.track_id, record.trackKey);
   }
   const before = getLibraryMediaFile({ source: "aurral", path: current });
