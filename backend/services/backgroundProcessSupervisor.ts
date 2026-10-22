@@ -5,6 +5,7 @@ import { ISOLATED_WORKER_GROUPS } from "./backgroundWorkerQueues.ts";
 import type { getHonkerWorkerStatuses } from "./honkerWorkerRuntime.ts";
 import type { WebSocketChannelPayload } from "./websocketService.ts";
 import { asAppError } from "../../lib/errors.ts";
+import { isOwnKey } from "../../lib/ownKey.ts";
 
 type HonkerWorkerStatus = ReturnType<typeof getHonkerWorkerStatuses>[number];
 
@@ -59,10 +60,6 @@ const JOB_TIMEOUT_MS = Object.freeze({
   "slskd-pipeline": 6 * 60 * 60 * 1000,
   "playlist-mbid-enrichment": 2 * 60 * 60 * 1000,
 });
-const hasJobTimeout = (
-  timeouts: typeof JOB_TIMEOUT_MS,
-  key: string,
-): key is keyof typeof JOB_TIMEOUT_MS => Object.hasOwn(timeouts, key);
 const MB = 1024 * 1024;
 const DEFAULT_HEAP_LIMIT_MB = 2048;
 
@@ -377,7 +374,7 @@ export function createBackgroundProcessSupervisor({
   }
 
   function jobTimeoutFor(key: string) {
-    return hasJobTimeout(jobTimeoutsMs, key) ? jobTimeoutsMs[key] : undefined;
+    return isOwnKey(jobTimeoutsMs, key) ? jobTimeoutsMs[key] : undefined;
   }
 
   function startWatchdog() {

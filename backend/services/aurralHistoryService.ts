@@ -9,6 +9,7 @@ import type { HonkerLiveRow } from "../db/rows.ts";
 import type { RequestUser } from "../middleware/requestUser.ts";
 import type { DownloadJob, JobFields } from "./downloadJobs/downloadTracker.ts";
 import type { LidarrAlbum, LidarrClient, LidarrCommand, LidarrPage } from "./lidarrClient.ts";
+import { isOwnKey } from "../../lib/ownKey.ts";
 
 type HistoryRequester = { userId: number; username?: string };
 type RequesterUser = Pick<RequestUser, "id" | "username" | "role">;
@@ -54,9 +55,6 @@ const KIND_SOURCE_MAP = {
   flow_generating: "aurral",
   playlist_tracks_added: "aurral",
 };
-
-const isKnownHistoryKind = (kind: string | null): kind is keyof typeof KIND_SOURCE_MAP =>
-  kind !== null && Object.hasOwn(KIND_SOURCE_MAP, kind);
 
 const ACTIVITY_HIDDEN_KINDS = new Set([
   "album_grab",
@@ -149,7 +147,7 @@ const resolveHistorySource = (
     return resolveTrackDownloadHistorySource(metadata?.downloadSource, metadata?.downloadClient);
   }
   if (metadata?.managedBy === "aurral") return "aurral";
-  return isKnownHistoryKind(kind) ? KIND_SOURCE_MAP[kind] : "aurral";
+  return kind !== null && isOwnKey(KIND_SOURCE_MAP, kind) ? KIND_SOURCE_MAP[kind] : "aurral";
 };
 
 const serializeHistoryMetadata = (value: unknown) => {

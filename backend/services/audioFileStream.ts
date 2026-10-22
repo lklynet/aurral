@@ -1,5 +1,6 @@
 import path from "node:path";
 import type { Response } from "express";
+import { isOwnKey } from "../../lib/ownKey.ts";
 
 type SendFileError = Error & { status?: number; headers?: Record<string, string>; code?: string };
 
@@ -21,11 +22,8 @@ const AUDIO_CONTENT_TYPES = {
   mp3: "audio/mpeg",
 };
 
-const isKnownFormat = (format: string): format is keyof typeof AUDIO_CONTENT_TYPES =>
-  Object.hasOwn(AUDIO_CONTENT_TYPES, format);
-
 const knownContentType = (format: string) =>
-  isKnownFormat(format) ? AUDIO_CONTENT_TYPES[format] : undefined;
+  isOwnKey(AUDIO_CONTENT_TYPES, format) ? AUDIO_CONTENT_TYPES[format] : undefined;
 
 export function audioContentType(format: string) {
   const normalized = String(format).toLowerCase();
