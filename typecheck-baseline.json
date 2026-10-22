@@ -1,5 +1,4 @@
 {
-  "backend/routes/discovery/handlers/tags.ts": 1,
   "backend/routes/inbox.ts": 12,
   "backend/routes/library/handlers/albums.ts": 32,
   "backend/routes/library/handlers/artists.ts": 21,

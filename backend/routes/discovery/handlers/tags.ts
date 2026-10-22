@@ -55,7 +55,7 @@ export function registerTags(router: Router) {
     try {
       const { tag, limit = 24, offset = 0, includeLibrary, scope } = req.query;
 
-      if (!tag) {
+      if (typeof tag !== "string" || !tag) {
         return res.status(400).json({ error: "Tag parameter is required" });
       }
 
