@@ -49,7 +49,7 @@ const worker = createHonkerWorker({
     saveBulkOperation({ ...record, state: "running", updatedAt: Date.now() });
     await processPlaylistOperation({ ...payload, operationId: job.id });
     const applied = getBulkOperation(job.id);
-    saveBulkOperation({ ...applied, state: "completed", updatedAt: Date.now() });
+    if (applied) saveBulkOperation({ ...applied, state: "completed", updatedAt: Date.now() });
   },
   idlePollS: 5,
   retryDelayS: 60,

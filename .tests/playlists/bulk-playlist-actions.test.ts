@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import {
   setupIsolatedBackend,
   cleanupIsolatedState,
+  importFromRepo,
   resetDatabase,
 } from "../helpers/backendTestHarness.ts";
 
@@ -585,4 +586,36 @@ test("a new-target move with only stale selections creates no empty playlist", a
   assert.equal(missing.outcomes[0].status, "alreadyAbsent");
   assert.equal(config.flowPlaylistConfig.getStaticPlaylist(targetId), null);
   assert.equal(config.flowPlaylistConfig.getStaticPlaylist(f.source.id).tracks.length, 1);
+});
+
+test("a bulk job whose record vanished mid-run does not write a record without an id", async (t) => {
+  const f = fixture(t, 1);
+  const { operationId } = store.enqueueBulkOperation({
+    ownerUserId: f.user.id,
+    sourcePlaylistId: f.source.id,
+    action: "move",
+    target: { playlistId: "vanishing-target", name: "Vanishing", create: true },
+    selections: f.selections,
+  });
+  db.exec(
+    `CREATE TRIGGER vanish_bulk_result AFTER INSERT ON settings
+     WHEN NEW.key = 'playlistBulkOperation:${operationId}' AND json_extract(NEW.value, '$.state') = 'completed'
+     BEGIN DELETE FROM settings WHERE key = NEW.key; END`,
+  );
+  const { startPlaylistOperationWorker, stopPlaylistOperationWorker } = await importFromRepo(
+    "backend/services/playlists/playlistOperationWorker.ts",
+  );
+  void startPlaylistOperationWorker();
+  try {
+    await vi.waitFor(() =>
+      assert.equal(db.prepare("SELECT COUNT(*) AS count FROM _honker_live").get().count, 0),
+    );
+  } finally {
+    await stopPlaylistOperationWorker();
+    db.exec("DROP TRIGGER vanish_bulk_result");
+  }
+  assert.deepEqual(
+    db.prepare("SELECT key FROM settings WHERE key LIKE 'playlistBulkOperation:%'").all(),
+    [],
+  );
 });
