@@ -24,6 +24,7 @@ import {
   isDownloadJobCancelled,
   restoreDownloadJobCancellations,
 } from "../../../services/downloadJobs/downloadCancellation.ts";
+import { asAppError } from "../../../../lib/errors.ts";
 import type { Request, Response, Router } from "express";
 
 async function createOrImportStaticPlaylist(
@@ -164,7 +165,7 @@ export function registerStaticPlaylists(router: Router) {
       } catch (error) {
         return res
           .status(500)
-          .json({ error: "Failed to queue playlist action", message: error.message });
+          .json({ error: "Failed to queue playlist action", message: asAppError(error)?.message });
       }
     });
   }
@@ -191,9 +192,10 @@ export function registerStaticPlaylists(router: Router) {
           message: record.message || null,
         });
       } catch (error) {
-        return res
-          .status(500)
-          .json({ error: "Failed to read playlist operation", message: error.message });
+        return res.status(500).json({
+          error: "Failed to read playlist operation",
+          message: asAppError(error)?.message,
+        });
       }
     },
   );
@@ -204,15 +206,16 @@ export function registerStaticPlaylists(router: Router) {
         label: "shared-playlist:create",
       });
     } catch (error) {
-      if (error?.code === "STATIC_PLAYLIST_NAME_CONFLICT") {
+      const failure = asAppError(error);
+      if (failure?.code === "STATIC_PLAYLIST_NAME_CONFLICT") {
         return res.status(400).json({
           error: "Playlist name already exists",
-          message: error.message,
+          message: failure?.message,
         });
       }
       res.status(500).json({
         error: "Failed to create playlist",
-        message: error.message,
+        message: failure?.message,
       });
     }
   });
@@ -224,15 +227,16 @@ export function registerStaticPlaylists(router: Router) {
         label: "shared-playlist:import",
       });
     } catch (error) {
-      if (error?.code === "STATIC_PLAYLIST_NAME_CONFLICT") {
+      const failure = asAppError(error);
+      if (failure?.code === "STATIC_PLAYLIST_NAME_CONFLICT") {
         return res.status(400).json({
           error: "Playlist name already exists",
-          message: error.message,
+          message: failure?.message,
         });
       }
       res.status(500).json({
         error: "Failed to import playlist",
-        message: error.message,
+        message: failure?.message,
       });
     }
   });
@@ -277,7 +281,7 @@ export function registerStaticPlaylists(router: Router) {
       } catch (error) {
         res.status(500).json({
           error: "Failed to add playlist tracks",
-          message: error.message,
+          message: asAppError(error)?.message,
         });
       }
     },
@@ -392,15 +396,16 @@ export function registerStaticPlaylists(router: Router) {
         operationId: result.operationId,
       });
     } catch (error) {
-      if (error?.code === "STATIC_PLAYLIST_NAME_CONFLICT") {
+      const failure = asAppError(error);
+      if (failure?.code === "STATIC_PLAYLIST_NAME_CONFLICT") {
         return res.status(400).json({
           error: "Playlist name already exists",
-          message: error.message,
+          message: failure?.message,
         });
       }
       res.status(500).json({
         error: "Failed to update playlist",
-        message: error.message,
+        message: failure?.message,
       });
     }
   });
@@ -452,7 +457,7 @@ export function registerStaticPlaylists(router: Router) {
       } catch (error) {
         res.status(500).json({
           error: "Failed to remove playlist track",
-          message: error.message,
+          message: asAppError(error)?.message,
         });
       }
     },
@@ -467,7 +472,7 @@ export function registerStaticPlaylists(router: Router) {
       } catch (error) {
         res.status(500).json({
           error: "Failed to re-search playlist track",
-          message: error.message,
+          message: asAppError(error)?.message,
         });
       }
     },
@@ -510,7 +515,7 @@ export function registerStaticPlaylists(router: Router) {
       } catch (error) {
         res.status(500).json({
           error: "Failed to delete playlist",
-          message: error.message,
+          message: asAppError(error)?.message,
         });
       }
     },

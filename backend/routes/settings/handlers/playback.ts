@@ -3,6 +3,7 @@ import {
   getPlaybackDestinationSettings,
   testPlaybackDestination,
 } from "../../../services/playback/playbackDestinationSettings.ts";
+import { asAppError } from "../../../../lib/errors.ts";
 
 export function registerPlayback(router: Router) {
   router.get("/playback", (_req, res) => {
@@ -17,7 +18,9 @@ export function registerPlayback(router: Router) {
       }
       return res.json({ success: true });
     } catch (error) {
-      return res.status(400).json({ error: "Connection failed", message: error.message });
+      return res
+        .status(400)
+        .json({ error: "Connection failed", message: asAppError(error)?.message });
     }
   });
 }

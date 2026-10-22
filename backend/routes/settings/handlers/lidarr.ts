@@ -9,6 +9,7 @@ import {
   testLidarrLibraryAccess as testLibraryAccess,
   applyCommunityGuide,
 } from "../../../services/lidarrSettingsService.ts";
+import { asAppError } from "../../../../lib/errors.ts";
 
 export type LidarrConnectionTestResponse = {
   success: true;
@@ -28,11 +29,12 @@ export function registerLidarr(router: Router) {
       const profiles = await fetchQualityProfiles({ url, apiKey });
       res.json(profiles);
     } catch (error) {
-      logger.error("settings", "Failed to fetch Lidarr profiles:", error);
-      res.status(error.statusCode || 500).json({
+      const failure = asAppError(error);
+      logger.error("settings", "Failed to fetch Lidarr profiles:", error ?? undefined);
+      res.status(failure?.statusCode || 500).json({
         error: "Failed to fetch Lidarr quality profiles",
-        message: error.message,
-        details: error.response?.data,
+        message: failure?.message,
+        details: failure?.response?.data,
       });
     }
   });
@@ -46,11 +48,12 @@ export function registerLidarr(router: Router) {
       const profiles = await fetchMetadataProfiles({ url, apiKey });
       res.json(profiles);
     } catch (error) {
-      logger.error("settings", "Failed to fetch Lidarr metadata profiles:", error);
-      res.status(error.statusCode || 500).json({
+      const failure = asAppError(error);
+      logger.error("settings", "Failed to fetch Lidarr metadata profiles:", error ?? undefined);
+      res.status(failure?.statusCode || 500).json({
         error: "Failed to fetch Lidarr metadata profiles",
-        message: error.message,
-        details: error.response?.data,
+        message: failure?.message,
+        details: failure?.response?.data,
       });
     }
   });
@@ -65,11 +68,12 @@ export function registerLidarr(router: Router) {
       const rootFolders = await fetchRootFolders({ url, apiKey });
       res.json(rootFolders);
     } catch (error) {
-      logger.error("settings", "Failed to fetch Lidarr root folders:", error);
-      res.status(error.statusCode || 500).json({
+      const failure = asAppError(error);
+      logger.error("settings", "Failed to fetch Lidarr root folders:", error ?? undefined);
+      res.status(failure?.statusCode || 500).json({
         error: "Failed to fetch Lidarr root folders",
-        message: error.message,
-        details: error.response?.data,
+        message: failure?.message,
+        details: failure?.response?.data,
       });
     }
   });
@@ -83,11 +87,12 @@ export function registerLidarr(router: Router) {
       const tags = await fetchTags({ url, apiKey });
       res.json(tags);
     } catch (error) {
-      logger.error("settings", "Failed to fetch Lidarr tags:", error);
-      res.status(error.statusCode || 500).json({
+      const failure = asAppError(error);
+      logger.error("settings", "Failed to fetch Lidarr tags:", error ?? undefined);
+      res.status(failure?.statusCode || 500).json({
         error: "Failed to fetch Lidarr tags",
-        message: error.message,
-        details: error.response?.data,
+        message: failure?.message,
+        details: failure?.response?.data,
       });
     }
   });
@@ -107,10 +112,11 @@ export function registerLidarr(router: Router) {
         sample: result.sample,
       });
     } catch (error) {
-      logger.error("settings", "Lidarr library access test error:", error);
-      res.status(error.statusCode || 500).json({
+      const failure = asAppError(error);
+      logger.error("settings", "Lidarr library access test error:", error ?? undefined);
+      res.status(failure?.statusCode || 500).json({
         error: "Library access check failed",
-        message: error.message,
+        message: failure?.message,
       });
     }
   });
@@ -148,11 +154,12 @@ export function registerLidarr(router: Router) {
         });
       }
     } catch (error) {
-      logger.error("settings", "Lidarr test error:", error);
-      res.status(error.statusCode || 500).json({
+      const failure = asAppError(error);
+      logger.error("settings", "Lidarr test error:", error ?? undefined);
+      res.status(failure?.statusCode || 500).json({
         error: "Connection failed",
-        message: error.message,
-        stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
+        message: failure?.message,
+        stack: process.env.NODE_ENV === "development" ? failure?.stack : undefined,
       });
     }
   });
@@ -188,19 +195,19 @@ export function registerLidarr(router: Router) {
           results,
         });
       } catch (error) {
-        logger.error("settings", "Failed to apply community guide:", error);
+        const failure = asAppError(error);
+        logger.error("settings", "Failed to apply community guide:", error ?? undefined);
         res.status(500).json({
           error: "Failed to apply community guide settings",
-          message: error.message,
-          details: error.response?.data,
-          partialResults: error.partialResults,
+          message: failure?.message,
+          details: failure?.response?.data,
         });
       }
     } catch (error) {
-      logger.error("settings", "Error applying community guide:", error);
+      logger.error("settings", "Error applying community guide:", error ?? undefined);
       res.status(500).json({
         error: "Failed to apply community guide settings",
-        message: error.message,
+        message: asAppError(error)?.message,
       });
     }
   });

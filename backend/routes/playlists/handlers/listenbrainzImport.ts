@@ -4,9 +4,13 @@ import {
 } from "../../../services/importLists/importPlaylist.ts";
 import { listenbrainzPlaylistClient } from "../../../services/importLists/listenbrainzPlaylists.ts";
 import { logger, safeLogDiagnostic } from "../../../services/logger.ts";
+import { asAppError } from "../../../../lib/errors.ts";
 import type { Router } from "express";
 
-const getErrorStatus = (error: unknown) => error?.statusCode || error?.response?.status || 500;
+const getErrorStatus = (error: unknown) => {
+  const failure = asAppError(error);
+  return failure?.statusCode || failure?.response?.status || 500;
+};
 
 const getPlaylistImport = (
   body: { playlistType?: unknown; playlistId?: unknown } | null | undefined,
@@ -30,7 +34,7 @@ export function registerListenBrainzImport(router: Router) {
       });
       res.status(getErrorStatus(error)).json({
         error: "Failed to fetch ListenBrainz playlists",
-        message: error?.message || "Unknown error",
+        message: asAppError(error)?.message || "Unknown error",
       });
     }
   });
@@ -56,7 +60,7 @@ export function registerListenBrainzImport(router: Router) {
       });
       res.status(getErrorStatus(error)).json({
         error: "Failed to preview ListenBrainz playlist",
-        message: error?.message || "Unknown error",
+        message: asAppError(error)?.message || "Unknown error",
       });
     }
   });
@@ -93,19 +97,20 @@ export function registerListenBrainzImport(router: Router) {
       });
       res.json({
         success: true,
-        playlist: result?.playlist || null,
+        playlist: null,
         tracksQueued: Number(result?.tracksQueued || 0),
-        tracksReused: Number(result?.tracksReused || 0),
+        tracksReused: 0,
         queued: result?.queued === true,
       });
     } catch (error) {
-      if (error?.code === "STATIC_PLAYLIST_NAME_CONFLICT") {
+      const failure = asAppError(error);
+      if (failure?.code === "STATIC_PLAYLIST_NAME_CONFLICT") {
         logger.debug("playlist-import", "ListenBrainz playlist import name already exists", {
           playlistName: String(req.body?.name || "").trim() || null,
         });
         return res.status(409).json({
           error: "Playlist name already exists",
-          message: error.message,
+          message: failure?.message,
         });
       }
       const status = getErrorStatus(error);
@@ -120,7 +125,7 @@ export function registerListenBrainzImport(router: Router) {
       );
       res.status(status).json({
         error: "Failed to import ListenBrainz playlist",
-        message: error?.message || "Unknown error",
+        message: failure?.message || "Unknown error",
       });
     }
   });

@@ -2,19 +2,21 @@ import type { Router } from "express";
 import { dbOps } from "../../../db/helpers/index.ts";
 import { validateExternalUrl } from "../../../middleware/urlValidator.ts";
 import { logger } from "../../../services/logger.ts";
+import { asAppError } from "../../../../lib/errors.ts";
 
 function getPlexConfig() {
   return dbOps.getSettings()?.integrations?.plex || {};
 }
 
 function describePlexError(error: unknown) {
-  const status = error?.response?.status;
-  const data = error?.response?.data;
+  const failure = asAppError(error);
+  const status = failure?.response?.status;
+  const data = failure?.response?.data;
   if (typeof data === "string" && data.trim() && !/^\s*<(!doctype|html)/i.test(data)) {
     return data.length > 300 ? `${data.slice(0, 300)}…` : data;
   }
   if (status) return `Plex returned an error (HTTP ${status}).`;
-  return error?.message || "Unknown error";
+  return failure?.message || "Unknown error";
 }
 
 type PlexSection = { key: string; title: string; type: string };
@@ -45,10 +47,11 @@ export function registerPlex(router: Router) {
         authUrl: PlexClient.buildAuthUrl(clientId, code, forwardUrl),
       });
     } catch (error) {
-      logger.error("settings", "Plex PIN generation failed:", error.message);
+      const failure = asAppError(error);
+      logger.error("settings", "Plex PIN generation failed:", failure?.message);
       res.status(500).json({
         error: "Failed to start Plex authentication",
-        message: error.message,
+        message: failure?.message,
       });
     }
   });
@@ -73,10 +76,11 @@ export function registerPlex(router: Router) {
       } catch {}
       res.json({ token, plexUsername });
     } catch (error) {
-      logger.error("settings", "Plex PIN check failed:", error.message);
+      const failure = asAppError(error);
+      logger.error("settings", "Plex PIN check failed:", failure?.message);
       res.status(500).json({
         error: "Failed to check Plex authentication",
-        message: error.message,
+        message: failure?.message,
       });
     }
   });
@@ -93,18 +97,19 @@ export function registerPlex(router: Router) {
       const { servers, total } = await PlexClient.getResources(token, clientId);
       res.json({ servers, total });
     } catch (error) {
-      const status = error.response?.status;
+      const failure = asAppError(error);
+      const status = failure?.response?.status;
       logger.error(
         "settings",
         "Plex resources failed:",
-        status ? `${status} ${JSON.stringify(error.response?.data)}` : error.message,
+        status ? `${status} ${JSON.stringify(failure?.response?.data)}` : failure?.message,
       );
       res.status(status === 401 ? 401 : 500).json({
         error: "Failed to list Plex servers",
         message:
           status === 401
             ? "Plex rejected the token (401). Reconnect your Plex account."
-            : error.message,
+            : failure?.message,
       });
     }
   });
@@ -169,7 +174,7 @@ export function registerPlex(router: Router) {
         reportedPath,
       });
     } catch (error) {
-      logger.error("settings", "Plex library access check failed:", error.message);
+      logger.error("settings", "Plex library access check failed:", asAppError(error)?.message);
       res.status(500).json({
         error: "Failed to check library access",
         message: describePlexError(error),
@@ -193,7 +198,7 @@ export function registerPlex(router: Router) {
         libraries: musicLibraries.map((lib: PlexSection) => ({ key: lib.key, title: lib.title })),
       });
     } catch (error) {
-      logger.error("settings", "Plex library listing failed:", error.message);
+      logger.error("settings", "Plex library listing failed:", asAppError(error)?.message);
       res.status(500).json({
         error: "Failed to list Plex libraries",
         message: describePlexError(error),
@@ -215,7 +220,7 @@ export function registerPlex(router: Router) {
       const result = await playlistManager.syncPlexNow();
       res.json({ success: true, ...result });
     } catch (error) {
-      logger.error("settings", "Plex sync failed:", error.message);
+      logger.error("settings", "Plex sync failed:", asAppError(error)?.message);
       res.status(500).json({
         error: "Plex sync failed",
         message: describePlexError(error),

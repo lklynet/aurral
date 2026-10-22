@@ -5,6 +5,7 @@ import {
   getDownloadClientSettings,
   testDownloadClient,
 } from "../../../services/download/downloadClientSettings.ts";
+import { asAppError, type AppError } from "../../../../lib/errors.ts";
 
 type ConnectionTestResult = Awaited<ReturnType<typeof testDownloadClient>>;
 
@@ -22,11 +23,14 @@ export type ConnectionTestResponse = {
 };
 
 function validateDownloadClientTestConfig(key: string, config: unknown) {
-  const definition = getDownloadClientSettings()[key];
+  const definition = Object.entries(getDownloadClientSettings()).find(
+    ([name]) => name === key,
+  )?.[1];
   const nextConfig: Record<string, unknown> =
     config && typeof config === "object" && !Array.isArray(config) ? { ...config } : {};
 
-  for (const field of definition?.fields || []) {
+  const fields: readonly { key: string; type: string; label?: string }[] = definition?.fields || [];
+  for (const field of fields) {
     if (field.type !== "url") continue;
     const value = nextConfig[field.key];
     if (value == null || String(value).trim() === "") continue;
@@ -38,6 +42,16 @@ function validateDownloadClientTestConfig(key: string, config: unknown) {
   }
 
   return nextConfig;
+}
+
+function notificationFailureMessage(failure: AppError | undefined) {
+  const data = failure?.response?.data;
+  const body = typeof data === "object" && data !== null ? data : undefined;
+  return (
+    (body && Reflect.get(body, "description")) ||
+    (body && Reflect.get(body, "error")) ||
+    failure?.message
+  );
 }
 
 function registerClientTest(
@@ -65,7 +79,7 @@ function registerClientTest(
     } catch (error) {
       return res.status(500).json({
         error: `${label} test failed`,
-        message: error.message,
+        message: asAppError(error)?.message,
       });
     }
   });
@@ -90,7 +104,7 @@ export function registerDownloadClients(router: Router) {
     } catch (error) {
       return res.status(400).json({
         error: "Connection failed",
-        message: error.message,
+        message: asAppError(error)?.message,
       });
     }
   });
@@ -114,7 +128,7 @@ export function registerDownloadClients(router: Router) {
     } catch (error) {
       return res.status(500).json({
         error: "Failed to load Prowlarr indexers",
-        message: error.message,
+        message: asAppError(error)?.message,
       });
     }
   });
@@ -143,14 +157,15 @@ export function registerDownloadClients(router: Router) {
       await sendGotifyTest(urlValidation.url, token);
       res.json({ success: true, message: "Test notification sent" });
     } catch (error) {
-      if (error.code === "MISSING_CONFIG") {
+      const failure = asAppError(error);
+      if (failure?.code === "MISSING_CONFIG") {
         return res.status(400).json({
           error: "Invalid configuration",
-          message: error.message,
+          message: failure?.message,
         });
       }
-      const status = error.response?.status;
-      const msg = error.response?.data?.description || error.response?.data?.error || error.message;
+      const status = failure?.response?.status;
+      const msg = notificationFailureMessage(failure);
       res
         .status(status && status >= 400 ? status : 500)
         .json({ error: "Gotify test failed", message: msg });
@@ -170,8 +185,9 @@ export function registerDownloadClients(router: Router) {
       await sendWebhookTest({ ...webhook, url: urlValidation.url });
       return res.json({ success: true, message: "Test webhook sent" });
     } catch (error) {
-      const status = error.response?.status;
-      const msg = error.response?.data?.description || error.response?.data?.error || error.message;
+      const failure = asAppError(error);
+      const status = failure?.response?.status;
+      const msg = notificationFailureMessage(failure);
       return res
         .status(status && status >= 400 ? status : 500)
         .json({ error: "Webhook test failed", message: msg });

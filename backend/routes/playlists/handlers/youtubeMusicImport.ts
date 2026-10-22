@@ -5,6 +5,7 @@ import {
 } from "../../../services/importLists/youtubeMusicPlaylists.ts";
 import { enqueueImportedPlaylist } from "../../../services/importLists/importPlaylist.ts";
 import { logger, safeLogDiagnostic } from "../../../services/logger.ts";
+import { asAppError } from "../../../../lib/errors.ts";
 import type { Response, Router } from "express";
 
 type PlaylistStats = Awaited<ReturnType<typeof youtubeMusicPlaylistClient.getPlaylist>>["stats"];
@@ -16,13 +17,14 @@ const getSkippedCount = (stats: Partial<PlaylistStats> = {}) =>
   );
 
 const sendProviderError = (res: Response, error: unknown, fallback: string) => {
-  const statusCode = Number(error?.statusCode);
+  const failure = asAppError(error);
+  const statusCode = Number(failure?.statusCode);
   const status =
     Number.isInteger(statusCode) && statusCode >= 400 && statusCode <= 599 ? statusCode : 500;
   return res.status(status).json({
     error: fallback,
-    message: error?.message || "Unknown error",
-    ...(error?.code ? { code: error.code } : {}),
+    message: failure?.message || "Unknown error",
+    ...(failure?.code ? { code: failure.code } : {}),
   });
 };
 
@@ -45,7 +47,7 @@ export function registerYoutubeMusicImport(router: Router) {
         previewTracks: playlist.tracks.slice(0, 3),
       });
     } catch (error) {
-      const status = Number(error?.statusCode) || 500;
+      const status = Number(asAppError(error)?.statusCode) || 500;
       logger[status >= 500 ? "error" : "warn"](
         "playlist-import",
         "YouTube Music playlist preview failed",
@@ -84,22 +86,23 @@ export function registerYoutubeMusicImport(router: Router) {
       });
       res.json({
         success: true,
-        playlist: result?.playlist || null,
+        playlist: null,
         tracksQueued: Number(result?.tracksQueued || 0),
-        tracksReused: Number(result?.tracksReused || 0),
+        tracksReused: 0,
         queued: result?.queued === true,
       });
     } catch (error) {
-      if (error?.code === "STATIC_PLAYLIST_NAME_CONFLICT") {
+      const failure = asAppError(error);
+      if (failure?.code === "STATIC_PLAYLIST_NAME_CONFLICT") {
         logger.debug("playlist-import", "YouTube Music playlist import name already exists", {
           playlistName: String(req.body?.name || "").trim() || null,
         });
         return res.status(409).json({
           error: "Playlist name already exists",
-          message: error.message,
+          message: failure?.message,
         });
       }
-      const status = Number(error?.statusCode) || 500;
+      const status = Number(failure?.statusCode) || 500;
       logger[status >= 500 ? "error" : "warn"](
         "playlist-import",
         "YouTube Music playlist import request failed",

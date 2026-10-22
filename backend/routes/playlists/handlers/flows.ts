@@ -27,6 +27,7 @@ import {
   restoreMarkedPlaylistDownloadWork,
 } from "../../../services/downloadJobs/downloadCancellationService.ts";
 import { buildFlowFromTemplate, listFlowTemplates } from "../../../services/flows/flowTemplates.ts";
+import { asAppError } from "../../../../lib/errors.ts";
 import type { Router } from "express";
 import type { DownloadJob } from "../../../services/downloadJobs/downloadTracker.ts";
 import type { FlowUpdates } from "../../../services/playlists/flowPlaylistConfig.ts";
@@ -126,7 +127,7 @@ export function registerFlows(router: Router) {
     } catch (error) {
       res.status(500).json({
         error: "Failed to start flow",
-        message: error.message,
+        message: asAppError(error)?.message,
       });
     }
   });
@@ -135,7 +136,9 @@ export function registerFlows(router: Router) {
     try {
       res.json({ templates: await listFlowTemplates(req.user!) });
     } catch (error) {
-      res.status(500).json({ error: "Failed to load flow templates", message: error.message });
+      res
+        .status(500)
+        .json({ error: "Failed to load flow templates", message: asAppError(error)?.message });
     }
   });
 
@@ -154,10 +157,11 @@ export function registerFlows(router: Router) {
         try {
           payload = await buildFlowFromTemplate(req.user!, body.templateId);
         } catch (error) {
-          if (!error?.statusCode) throw error;
+          const failure = asAppError(error);
+          if (!failure?.statusCode) throw error;
           return res
-            .status(error.statusCode)
-            .json({ error: error.message, message: error.message });
+            .status(failure?.statusCode)
+            .json({ error: failure?.message, message: failure?.message });
         }
         if (String(body.name || "").trim()) payload.name = String(body.name).trim();
       }
@@ -198,15 +202,16 @@ export function registerFlows(router: Router) {
       playlistManager.requestPlaylistSync([flow.id]);
       res.json({ success: true, flow });
     } catch (error) {
-      if (error?.code === "FLOW_NAME_CONFLICT") {
+      const failure = asAppError(error);
+      if (failure?.code === "FLOW_NAME_CONFLICT") {
         return res.status(400).json({
           error: "Flow name already exists",
-          message: error.message,
+          message: failure?.message,
         });
       }
       res.status(500).json({
         error: "Failed to create flow",
-        message: error.message,
+        message: failure?.message,
       });
     }
   });
@@ -267,15 +272,16 @@ export function registerFlows(router: Router) {
       playlistManager.requestPlaylistSync([flowId]);
       res.json({ success: true, flow: updated });
     } catch (error) {
-      if (error?.code === "FLOW_NAME_CONFLICT") {
+      const failure = asAppError(error);
+      if (failure?.code === "FLOW_NAME_CONFLICT") {
         return res.status(400).json({
           error: "Flow name already exists",
-          message: error.message,
+          message: failure?.message,
         });
       }
       res.status(500).json({
         error: "Failed to update flow",
-        message: error.message,
+        message: failure?.message,
       });
     }
   });
@@ -312,7 +318,7 @@ export function registerFlows(router: Router) {
     } catch (error) {
       res.status(500).json({
         error: "Failed to delete flow",
-        message: error.message,
+        message: asAppError(error)?.message,
       });
     }
   });
@@ -387,7 +393,7 @@ export function registerFlows(router: Router) {
     } catch (error) {
       res.status(500).json({
         error: "Failed to update flow",
-        message: error.message,
+        message: asAppError(error)?.message,
       });
     }
   });
@@ -474,21 +480,22 @@ export function registerFlows(router: Router) {
           trackCount: uniqueCompletedJobs.length,
         });
       } catch (error) {
+        const failure = asAppError(error);
         if (playlist?.id) {
           try {
             await playlistManager.weeklyReset([playlist.id]);
             flowPlaylistConfig.deleteStaticPlaylist(playlist.id);
           } catch {}
         }
-        if (error?.code === "STATIC_PLAYLIST_NAME_CONFLICT") {
+        if (failure?.code === "STATIC_PLAYLIST_NAME_CONFLICT") {
           return res.status(400).json({
             error: "Playlist name already exists",
-            message: error.message,
+            message: failure?.message,
           });
         }
         res.status(500).json({
           error: "Failed to create static playlist",
-          message: error.message,
+          message: failure?.message,
         });
       }
     },
@@ -503,7 +510,7 @@ export function registerFlows(router: Router) {
       } catch (error) {
         res.status(500).json({
           error: "Failed to re-search flow track",
-          message: error.message,
+          message: asAppError(error)?.message,
         });
       }
     },

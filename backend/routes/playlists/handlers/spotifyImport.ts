@@ -12,6 +12,7 @@ import {
 import { syncStaticPlaylistImport } from "../../../services/importLists/importListSync.ts";
 import { flowPlaylistConfig } from "../../../services/playlists/flowPlaylistConfig.ts";
 import { getAccessibleStaticPlaylist } from "./utils.ts";
+import { asAppError } from "../../../../lib/errors.ts";
 import type { Response, Router } from "express";
 
 const parseExpiresAt = (value: unknown) => {
@@ -27,16 +28,17 @@ const parseExpiresAt = (value: unknown) => {
 };
 
 function sendSpotifyError(res: Response, error: unknown, fallback: string) {
-  if (error?.code === SPOTIFY_AUTH_REQUIRED_CODE) {
+  const failure = asAppError(error);
+  if (failure?.code === SPOTIFY_AUTH_REQUIRED_CODE) {
     return res.status(401).json({
       error: "Spotify authentication required",
       code: SPOTIFY_AUTH_REQUIRED_CODE,
       message: "Your Spotify connection expired. Connect Spotify again.",
     });
   }
-  return res.status(error?.statusCode || 500).json({
+  return res.status(failure?.statusCode || 500).json({
     error: fallback,
-    message: error?.message || "Unknown error",
+    message: failure?.message || "Unknown error",
   });
 }
 
@@ -103,7 +105,7 @@ export function registerSpotifyImport(router: Router) {
       } catch (error) {
         logger.warn(
           "spotify",
-          `Spotify profile lookup failed after OAuth complete: ${error?.message || "Unknown error"}`,
+          `Spotify profile lookup failed after OAuth complete: ${asAppError(error)?.message || "Unknown error"}`,
         );
       }
       const saved = spotifyConnectionStore.saveConnection(req.user!.id, {
@@ -120,7 +122,7 @@ export function registerSpotifyImport(router: Router) {
     } catch (error) {
       res.status(500).json({
         error: "Failed to complete Spotify connection",
-        message: error?.message || "Unknown error",
+        message: asAppError(error)?.message || "Unknown error",
       });
     }
   });
@@ -154,7 +156,8 @@ export function registerSpotifyImport(router: Router) {
         userId: req.user!.id,
         externalId: playlistId,
       });
-      const skipped = stats.unavailable + stats.podcast + stats.incomplete + stats.duplicate;
+      const skipped =
+        (stats.unavailable ?? 0) + (stats.podcast ?? 0) + stats.incomplete + stats.duplicate;
       res.json({
         trackCount: tracks.length,
         skipped,
@@ -204,22 +207,24 @@ export function registerSpotifyImport(router: Router) {
       });
       res.json({
         success: true,
-        playlist: result?.playlist || null,
+        playlist: null,
         tracksQueued: Number(result?.tracksQueued || 0),
-        tracksReused: Number(result?.tracksReused || 0),
+        tracksReused: 0,
         queued: result?.queued === true,
       });
     } catch (error) {
-      if (error?.code === "STATIC_PLAYLIST_NAME_CONFLICT") {
+      const failure = asAppError(error);
+      if (failure?.code === "STATIC_PLAYLIST_NAME_CONFLICT") {
         logger.debug("playlist-import", "Spotify playlist import name already exists", {
           playlistName: String(req.body?.name || "").trim() || null,
         });
         return res.status(409).json({
           error: "Playlist name already exists",
-          message: error.message,
+          message: failure?.message,
         });
       }
-      const status = error?.code === SPOTIFY_AUTH_REQUIRED_CODE ? 401 : error?.statusCode || 500;
+      const status =
+        failure?.code === SPOTIFY_AUTH_REQUIRED_CODE ? 401 : failure?.statusCode || 500;
       logger[status >= 500 ? "error" : "warn"](
         "playlist-import",
         "Spotify playlist import request failed",
@@ -248,9 +253,10 @@ export function registerSpotifyImport(router: Router) {
         });
         res.json({ success: true, ...result });
       } catch (error) {
-        res.status(error?.statusCode || 500).json({
+        const failure = asAppError(error);
+        res.status(failure?.statusCode || 500).json({
           error: "Failed to sync playlist",
-          message: error?.message || "Unknown error",
+          message: failure?.message || "Unknown error",
         });
       }
     },

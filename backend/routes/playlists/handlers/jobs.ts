@@ -59,6 +59,7 @@ import {
   buildCustomArtworkUrl,
   getCustomArtworkMap,
 } from "../../../services/customArtworkService.ts";
+import { asAppError } from "../../../../lib/errors.ts";
 import type { Request, Response, Router } from "express";
 import type { RequestUser } from "../../../middleware/requestUser.ts";
 import type { DownloadJob } from "../../../services/downloadJobs/downloadTracker.ts";
@@ -198,7 +199,7 @@ export function registerJobs(router: Router) {
       );
       const referencedJobs = [...referencedJobIds]
         .map((jobId) => downloadTracker.getJob(jobId))
-        .filter(Boolean);
+        .filter((job): job is DownloadJob => Boolean(job));
       jobs = [...referencedJobs, ...jobs].filter(
         (job, index, values) => values.findIndex((candidate) => candidate.id === job.id) === index,
       );
@@ -380,7 +381,7 @@ export function registerJobs(router: Router) {
     } catch (error) {
       return res.status(500).json({
         error: "Failed to re-search missing tracks",
-        message: error.message,
+        message: asAppError(error)?.message,
       });
     }
   });
@@ -464,7 +465,7 @@ export function registerJobs(router: Router) {
       } catch (error) {
         return res.status(500).json({
           error: "Failed to update retry cycle",
-          message: error.message,
+          message: asAppError(error)?.message,
         });
       }
     },
@@ -509,7 +510,7 @@ export function registerJobs(router: Router) {
     } catch (error) {
       res.status(500).json({
         error: "Failed to start worker",
-        message: error.message,
+        message: asAppError(error)?.message,
       });
     }
   });
@@ -521,7 +522,7 @@ export function registerJobs(router: Router) {
     } catch (error) {
       res.status(500).json({
         error: "Failed to stop worker",
-        message: error.message,
+        message: asAppError(error)?.message,
       });
     }
   });
@@ -546,11 +547,14 @@ export function registerJobs(router: Router) {
         return res.status(outcome.status).json({ error: outcome.error });
       }
       invalidateRequestsCache();
-      return res.json({ success: true, ...(outcome.path ? { path: outcome.path } : {}) });
+      return res.json({
+        success: true,
+        ...("path" in outcome && outcome.path ? { path: outcome.path } : {}),
+      });
     } catch (error) {
       return res.status(500).json({
         error: method === "approveBlockedJob" ? "Import failed" : "Deny failed",
-        message: error.message,
+        message: asAppError(error)?.message,
       });
     }
   };
@@ -569,7 +573,7 @@ export function registerJobs(router: Router) {
       return res.json({ success: true, cleared: count });
     } catch (error) {
       logger.error("downloads", "Could not safely clear download jobs", {
-        reason: error?.message || String(error),
+        reason: asAppError(error)?.message || String(error),
       });
       return res.status(500).json({
         error:
@@ -596,7 +600,7 @@ export function registerJobs(router: Router) {
     } catch (error) {
       res.status(500).json({
         error: "Failed to perform weekly reset",
-        message: error.message,
+        message: asAppError(error)?.message,
       });
     }
   });
@@ -615,7 +619,7 @@ export function registerJobs(router: Router) {
       } catch (error) {
         res.status(500).json({
           error: "Failed to ensure playlists or trigger scan",
-          message: error.message,
+          message: asAppError(error)?.message,
         });
       }
     },
@@ -658,7 +662,10 @@ export function registerJobCancellation(router: Router) {
     try {
       const result = isDownloadOwnerProcess()
         ? await cancelTrackDownload(job.id)
-        : await requestDownloadOwner("cancelTrackDownload", [job.id]);
+        : await requestDownloadOwner<Awaited<ReturnType<typeof cancelTrackDownload>>>(
+            "cancelTrackDownload",
+            [job.id],
+          );
       if (result.statusCode) {
         const { statusCode, ...body } = result;
         return res.status(statusCode).json(body);
@@ -668,7 +675,7 @@ export function registerJobCancellation(router: Router) {
     } catch (error) {
       return res
         .status(500)
-        .json({ error: "Failed to cancel track download", message: error.message });
+        .json({ error: "Failed to cancel track download", message: asAppError(error)?.message });
     }
   });
 
@@ -683,7 +690,10 @@ export function registerJobCancellation(router: Router) {
     try {
       const result = isDownloadOwnerProcess()
         ? await retryTrackDownload(job.id)
-        : await requestDownloadOwner("retryTrackDownload", [job.id]);
+        : await requestDownloadOwner<Awaited<ReturnType<typeof retryTrackDownload>>>(
+            "retryTrackDownload",
+            [job.id],
+          );
       if (result.statusCode) {
         const { statusCode, ...body } = result;
         return res.status(statusCode).json(body);
@@ -693,7 +703,7 @@ export function registerJobCancellation(router: Router) {
     } catch (error) {
       return res
         .status(500)
-        .json({ error: "Failed to retry track download", message: error.message });
+        .json({ error: "Failed to retry track download", message: asAppError(error)?.message });
     }
   });
 }

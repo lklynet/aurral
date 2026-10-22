@@ -9,6 +9,7 @@ import {
   saveCustomArtworkUrl,
 } from "../../../services/customArtworkService.ts";
 import { canAccessJobThroughPlaylist } from "./jobs.ts";
+import { asAppError } from "../../../../lib/errors.ts";
 import type { NextFunction, Request, Response, Router } from "express";
 
 const artworkUploadParser = express.raw({
@@ -83,7 +84,7 @@ export function registerTrackArtworkManagement(router: Router) {
       } catch (error) {
         return res.status(400).json({
           error: "Failed to save artwork",
-          message: error?.message || "The image could not be saved",
+          message: asAppError(error)?.message || "The image could not be saved",
         });
       }
     },
@@ -104,7 +105,7 @@ export function registerTrackArtworkManagement(router: Router) {
       } catch (error) {
         return res.status(400).json({
           error: "Failed to save artwork",
-          message: error?.message || "The image could not be downloaded",
+          message: asAppError(error)?.message || "The image could not be downloaded",
         });
       }
     },

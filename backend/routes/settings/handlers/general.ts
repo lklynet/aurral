@@ -32,6 +32,7 @@ import {
 } from "../../../services/apiClients/config.ts";
 import { normalizeQualityProfile } from "../../../services/qualityProfileModel.ts";
 import { getMusicDataSourceName } from "../../../services/musicDataSource/index.ts";
+import { asAppError } from "../../../../lib/errors.ts";
 
 type ProwlarrIndexers = NonNullable<NonNullable<StoredIntegrations["prowlarr"]>["indexers"]>;
 
@@ -128,8 +129,10 @@ export function registerGeneral(router: Router) {
         },
       });
     } catch (error) {
-      logger.error("settings", "Settings GET error:", error);
-      res.status(500).json({ error: "Failed to fetch settings", message: error.message });
+      logger.error("settings", "Settings GET error:", error ?? undefined);
+      res
+        .status(500)
+        .json({ error: "Failed to fetch settings", message: asAppError(error)?.message });
     }
   });
 
@@ -264,7 +267,7 @@ export function registerGeneral(router: Router) {
             : {};
         nextProwlarr.indexers = Object.fromEntries(
           Object.entries(indexers)
-            .map(([id, entry]) => {
+            .map(([id, entry]): [string, { enabled: boolean; priority: number }] | null => {
               const parsedId = Number.parseInt(id, 10);
               if (!Number.isFinite(parsedId)) return null;
               const priority = Number.parseInt(String(entry?.priority), 10);
@@ -276,7 +279,7 @@ export function registerGeneral(router: Router) {
                 },
               ];
             })
-            .filter(Boolean),
+            .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry)),
         );
         integrations.prowlarr = nextProwlarr;
       }
@@ -616,7 +619,7 @@ export function registerGeneral(router: Router) {
           await lidarrClient.getRootFolders({ forceRefresh: true });
         } catch (error) {
           logger.warn("settings", "Failed to refresh Lidarr root folders:", {
-            message: error.message,
+            message: asAppError(error)?.message,
           });
         }
       }
@@ -640,7 +643,7 @@ export function registerGeneral(router: Router) {
         await refreshLibraryFileWatcher();
       } catch (error) {
         logger.warn("settings", "Failed to refresh library file watcher:", {
-          message: error.message,
+          message: asAppError(error)?.message,
         });
       }
       if (
@@ -671,14 +674,14 @@ export function registerGeneral(router: Router) {
           playlistManager.scheduleScanLibrary(true);
         } catch (error) {
           logger.warn("settings", "Failed to queue Library scan:", {
-            message: error.message,
+            message: asAppError(error)?.message,
           });
         }
         try {
           playlistManager.requestPlaylistSync();
         } catch (error) {
           logger.warn("settings", "Failed to queue playback playlist sync:", {
-            message: error.message,
+            message: asAppError(error)?.message,
           });
         }
       }
@@ -691,8 +694,10 @@ export function registerGeneral(router: Router) {
         rootWarnings: resolveLibraryRootWarnings(updatedSettings),
       });
     } catch (error) {
-      logger.error("settings", "Settings POST error:", error);
-      res.status(500).json({ error: "Failed to save settings", message: error.message });
+      logger.error("settings", "Settings POST error:", error ?? undefined);
+      res
+        .status(500)
+        .json({ error: "Failed to save settings", message: asAppError(error)?.message });
     }
   });
 }

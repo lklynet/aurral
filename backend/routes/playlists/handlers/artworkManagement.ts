@@ -1,6 +1,7 @@
 import express from "express";
 import { playlistManager } from "../../../services/playlists/playlistManager.ts";
 import { canAccessPlaylistType } from "./utils.ts";
+import { asAppError } from "../../../../lib/errors.ts";
 import type { Router } from "express";
 
 const artworkUploadParser = express.raw({
@@ -34,7 +35,7 @@ export function registerArtworkManagement(router: Router) {
       } catch (error) {
         return res.status(400).json({
           error: "Bad Request",
-          message: error?.message || "Failed to save artwork",
+          message: asAppError(error)?.message || "Failed to save artwork",
         });
       }
     },
@@ -51,7 +52,7 @@ export function registerArtworkManagement(router: Router) {
     } catch (error) {
       return res.status(400).json({
         error: "Bad Request",
-        message: error?.message || "Failed to remove artwork",
+        message: asAppError(error)?.message || "Failed to remove artwork",
       });
     }
   });
@@ -69,7 +70,7 @@ export function registerArtworkManagement(router: Router) {
       } catch (error) {
         return res.status(400).json({
           error: "Bad Request",
-          message: error?.message || "Failed to generate artwork",
+          message: asAppError(error)?.message || "Failed to generate artwork",
         });
       }
     },
