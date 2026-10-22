@@ -1,3 +1,4 @@
+import { asAppError } from "../../lib/errors.ts";
 import type {
   LidarrAlbumTypeOption,
   LidarrCustomFormat,
@@ -5,7 +6,7 @@ import type {
   LidarrNamingConfig,
 } from "./lidarrClient.ts";
 
-type LidarrQualityDefinition = {
+export type LidarrQualityDefinition = {
   id: number;
   title?: string;
   quality?: { id?: number; name?: string };
@@ -15,7 +16,7 @@ type LidarrCustomFormatInput = {
   includeCustomFormatWhenRenaming: boolean;
   specifications: unknown[];
 };
-type LidarrReleaseProfile = { id: number; name: string; ignored?: string[] };
+export type LidarrReleaseProfile = { id: number; name: string; ignored?: string[] };
 type LidarrQualityItem = {
   id?: number;
   name?: string;
@@ -23,7 +24,7 @@ type LidarrQualityItem = {
   allowed?: boolean;
   items?: LidarrQualityItem[];
 };
-type LidarrQualityProfile = {
+export type LidarrQualityProfile = {
   id: number;
   name: string;
   cutoff?: number;
@@ -205,7 +206,9 @@ export async function applyLidarrCommunityGuide(lidarrClient: LidarrCommunityGui
         const created = await lidarrClient.createCustomFormat(format);
         results.customFormats.push(created);
       } catch (err) {
-        results.errors.push(`Failed to create custom format "${format.name}": ${err.message}`);
+        results.errors.push(
+          `Failed to create custom format "${format.name}": ${asAppError(err)?.message}`,
+        );
       }
     } else {
       results.customFormats.push(existing);

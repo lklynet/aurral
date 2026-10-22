@@ -1,5 +1,6 @@
 import { FACTORY_MONITOR_RULES, releaseMatchesRules } from "./aurralMonitoring.ts";
 import { UUID_REGEX } from "../../lib/uuid.ts";
+import { asAppError } from "../../lib/errors.ts";
 import {
   enqueueSystemTaskJob,
   findActiveHonkerJob,
@@ -96,13 +97,13 @@ export function scheduleReleaseMetadataRefresh({ delaySeconds = 0 } = {}) {
   const [pending, ...duplicates] = active
     .filter((job) => job.state === "pending")
     .sort((a, b) => Number(a.run_at || 0) - Number(b.run_at || 0));
-  for (const job of duplicates) getHonkerQueueByName(job.queue).cancel(job.id);
+  for (const job of duplicates) getHonkerQueueByName(job.queue)!.cancel(job.id);
   if (pending?.id) {
     const existingRunAt = Number(pending.run_at || 0);
     if (existingRunAt === 0 || existingRunAt <= requestedRunAt) {
       return pending.id;
     }
-    if (!getHonkerQueueByName(pending.queue).cancel(pending.id)) return pending.id;
+    if (!getHonkerQueueByName(pending.queue)!.cancel(pending.id)) return pending.id;
   }
   return enqueueSystemTaskJob({ kind: TASK_KIND }, { delaySeconds: normalizedDelay, priority: -5 });
 }
@@ -163,7 +164,7 @@ export async function refreshReleaseMetadata({
       lease.write(() => markReleaseCalendarArtistFailed(artist.id, nowMs));
       logger.warn("library", "BrainzMash release metadata refresh failed for artist", {
         artistMbid: artist.mbid,
-        message: error?.message || String(error),
+        message: asAppError(error)?.message || String(error),
       });
       continue;
     }
@@ -193,7 +194,7 @@ export async function refreshReleaseMetadata({
           releasesFailed += 1;
           logger.warn("library", "BrainzMash release date refresh failed", {
             releaseGroupMbid,
-            message: error?.message || String(error),
+            message: asAppError(error)?.message || String(error),
           });
           continue;
         }

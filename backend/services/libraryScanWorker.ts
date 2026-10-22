@@ -1,5 +1,6 @@
 import path from "node:path";
 import type { JsonValue } from "@russellthehippo/honker-node";
+import { asAppError } from "../../lib/errors.ts";
 import createHonkerWorker from "./honkerWorkerFactory.ts";
 import { db, dbHelpers } from "../config/db-sqlite.ts";
 import { dbOps } from "../db/helpers/index.ts";
@@ -94,6 +95,26 @@ function normalizeChangedPaths(paths: unknown) {
   return normalized.length > MAX_CHANGED_PATHS ? null : normalized;
 }
 
+function readScanRequest(payload: unknown) {
+  if (typeof payload !== "object" || payload === null) {
+    return { includeLidarr: false, force: false, changedPaths: undefined };
+  }
+  const changedPaths: unknown = Reflect.get(payload, "changedPaths");
+  return {
+    includeLidarr: Reflect.get(payload, "includeLidarr") === true,
+    force: Reflect.get(payload, "force") === true,
+    changedPaths: Array.isArray(changedPaths) ? changedPaths : undefined,
+  };
+}
+
+function copyRegistryKey<K extends keyof ScanRegistry>(
+  from: ScanRegistry,
+  to: ScanRegistry,
+  key: K,
+) {
+  if (key in from) to[key] = from[key];
+}
+
 function mergeChangedPaths(left: unknown, right: unknown) {
   return normalizeChangedPaths([
     ...(Array.isArray(left) ? left : []),
@@ -106,7 +127,7 @@ function hasLiveScanJob(jobId: number) {
   const job = queue.getJob(jobId);
   if (!job) return false;
   if (job.state !== "processing") return true;
-  const claimExpiresAt = Number(job.claim_expires_at ?? job.claimExpiresAt);
+  const claimExpiresAt = job.claim_expires_at == null ? Number.NaN : Number(job.claim_expires_at);
   if (!Number.isFinite(claimExpiresAt) || claimExpiresAt > Math.floor(Date.now() / 1000)) {
     return true;
   }
@@ -232,7 +253,7 @@ export function claimScheduledLibraryScanJob(jobId: unknown, jobPayload: JsonVal
   const normalizedJobId = normalizeJobId(jobId);
   if (normalizedJobId == null) return false;
   const rawPayload = jobPayload ?? getLibraryScanQueue().getJob(normalizedJobId)?.payload;
-  let payload = rawPayload;
+  let payload: unknown = rawPayload;
   if (typeof rawPayload === "string") {
     try {
       payload = JSON.parse(rawPayload);
@@ -240,6 +261,7 @@ export function claimScheduledLibraryScanJob(jobId: unknown, jobPayload: JsonVal
       payload = {};
     }
   }
+  const request = readScanRequest(payload);
   const scheduledJobId = normalizeJobId(getScanRegistry().jobId);
   if (scheduledJobId != null && scheduledJobId !== normalizedJobId) {
     if (hasLiveScanJob(scheduledJobId)) return false;
@@ -260,7 +282,7 @@ export function claimScheduledLibraryScanJob(jobId: unknown, jobPayload: JsonVal
           "inFlightPaths",
           "fullRescanPending",
         ] as const) {
-          if (key in registry) nextRegistry[key] = registry[key];
+          copyRegistryKey(registry, nextRegistry, key);
         }
       } else {
         const hasRecoveryState =
@@ -270,8 +292,8 @@ export function claimScheduledLibraryScanJob(jobId: unknown, jobPayload: JsonVal
           registry.fullRescanPending === true ||
           registry.force === true;
         nextRegistry.includeLidarr =
-          payload?.includeLidarr === true || (hasRecoveryState && registry.includeLidarr === true);
-        if (payload?.force === true || (hasRecoveryState && registry.force === true)) {
+          request.includeLidarr || (hasRecoveryState && registry.includeLidarr === true);
+        if (request.force || (hasRecoveryState && registry.force === true)) {
           nextRegistry.force = true;
         }
         const oldFullScan =
@@ -281,11 +303,11 @@ export function claimScheduledLibraryScanJob(jobId: unknown, jobPayload: JsonVal
             (currentJobId != null &&
               registry.inFlightActive !== true &&
               !Array.isArray(registry.changedPaths)));
-        if (!oldFullScan && Array.isArray(payload?.changedPaths)) {
+        if (!oldFullScan && request.changedPaths) {
           nextRegistry.changedPaths = normalizeChangedPaths([
             ...(Array.isArray(registry.inFlightPaths) ? registry.inFlightPaths : []),
             ...(Array.isArray(registry.changedPaths) ? registry.changedPaths : []),
-            ...payload.changedPaths,
+            ...request.changedPaths,
           ]);
         }
       }
@@ -320,14 +342,15 @@ export function onLibraryScanSuccess(_payload: unknown, job: { id: number }) {
   scheduleReleaseMetadataRefresh({ delaySeconds: 5 });
 }
 
-export function beginLibraryScanJob(jobId: number, payload: LibraryScanRequest | null) {
+export function beginLibraryScanJob(jobId: number, payload: unknown) {
+  const request = readScanRequest(payload);
   return db
     .transaction(() => {
       const registry = getScanRegistry();
       const isCurrentJob = Number(registry.jobId) === Number(jobId);
       const includeLidarr =
-        payload?.includeLidarr === true || (isCurrentJob && registry.includeLidarr === true);
-      const force = payload?.force === true || (isCurrentJob && registry.force === true);
+        request.includeLidarr || (isCurrentJob && registry.includeLidarr === true);
+      const force = request.force || (isCurrentJob && registry.force === true);
       const interrupted = isCurrentJob && registry.inFlightActive === true;
       const changedPaths =
         interrupted && !force
@@ -455,7 +478,7 @@ const {
     websocketService.broadcast("library", { type: "library_scan_completed" });
   },
   resolveRetry(error, job) {
-    const message = error?.message || String(error);
+    const message = asAppError(error)?.message || String(error);
     if (job.attempts >= 3) {
       return { action: "fail", message };
     }

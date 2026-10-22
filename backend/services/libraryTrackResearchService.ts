@@ -74,6 +74,8 @@ export function resolveAurralOwnedTrackJob({
         )
     : [];
 
+  const metadataDurationMs = track?.metadata?.durationMs;
+
   return downloadTracker.ensureLibraryTrackJob(
     {
       artistName: artist?.name || album?.albumArtist || track?.artistName || "Unknown Artist",
@@ -83,7 +85,9 @@ export function resolveAurralOwnedTrackJob({
       albumMbid: album?.releaseGroupMbid || album?.mbid || null,
       trackMbid: track?.mbid || null,
       releaseYear,
-      durationMs: sourceFile.durationMs ?? track?.metadata?.durationMs ?? null,
+      durationMs:
+        sourceFile.durationMs ??
+        (typeof metadataDurationMs === "number" ? metadataDurationMs : null),
       trackNumber: albumTrack?.trackNumber || 0,
       discNumber: albumTrack?.discNumber || null,
       albumTrackCount: albumTracks.length || null,

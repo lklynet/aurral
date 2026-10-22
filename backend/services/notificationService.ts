@@ -1,7 +1,8 @@
 import axios from "../../lib/axiosFetch.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import { logger } from "./logger.ts";
-import { enqueueNotification } from "./honkerDb.ts";
+import { enqueueNotification, type HonkerPayload } from "./honkerDb.ts";
+import { asAppError } from "../../lib/errors.ts";
 import type { StoredIntegrations } from "../db/helpers/settings.ts";
 
 type WebhookTarget = NonNullable<StoredIntegrations["webhooks"]>[number];
@@ -64,14 +65,15 @@ function logDeliveryFailure(
   kind: string,
   event: WebhookEvent | null | undefined,
   url: string,
-  error,
+  error: unknown,
 ) {
+  const failure = asAppError(error);
   logger.error("notifications", "Notification delivery failed", {
     kind,
     event: event || null,
     receiver: redactUrl(url),
-    status: error?.response?.status ?? null,
-    message: error?.message || String(error),
+    status: failure?.response?.status ?? null,
+    message: failure?.message || String(error),
   });
 }
 
@@ -172,10 +174,10 @@ function formatRequestSubject(albumName?: string, artistName?: string) {
 
 async function sendWebhooksDirect(
   { webhooks, webhookEvents = {} }: WebhookDelivery,
-  event: WebhookEvent,
+  event: WebhookEvent | undefined,
   vars: Partial<WebhookVars> = {},
 ) {
-  if (!webhookEvents[event]) return;
+  if (!event || !webhookEvents[event]) return;
   if (!Array.isArray(webhooks) || webhooks.length === 0) return;
 
   const resolved = normalizeWebhookVars({ ...vars, event });
@@ -251,7 +253,7 @@ function queueWebhooks(
   const resolved = normalizeWebhookVars({ ...vars, event });
   return enqueueNotification({
     kind: "webhooks",
-    integrations,
+    integrations: integrations as HonkerPayload,
     event,
     vars: resolved,
     flowPath: resolved.flowPath,

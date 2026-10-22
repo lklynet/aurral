@@ -39,14 +39,14 @@ const releaseGroupRefreshRequests = new Map<
   ReturnType<typeof fetchReleaseGroupCoverUncached>
 >();
 
-const getImageUrl = (image: NormalizedAlbum["images"][number]) => image?.url || image?.Url || null;
+const getImageUrl = (image: NormalizedAlbum["images"][number]) => image?.url || null;
 
 const pickAlbumCoverUrl = (images: NormalizedAlbum["images"] = []) => {
   if (!Array.isArray(images) || images.length === 0) return null;
   const ranked = images
     .map((image) => ({
       url: getImageUrl(image),
-      kind: String(image?.kind || image?.CoverType || "")
+      kind: String(image?.kind || "")
         .trim()
         .toLowerCase(),
     }))

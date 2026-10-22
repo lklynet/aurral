@@ -1,4 +1,5 @@
 import { setTimeout as wait } from "node:timers/promises";
+import { asAppError } from "../../lib/errors.ts";
 
 type MonitoredEntity = { monitored?: boolean } | null;
 type MonitoringRepairResult = { artist?: MonitoredEntity; album?: MonitoredEntity } | null;
@@ -30,7 +31,7 @@ export const runMonitoringRepairSequence = async ({
         return { complete: true, result: lastResult };
       }
     } catch (error) {
-      lastError = error;
+      lastError = asAppError(error) ?? null;
     }
   }
 

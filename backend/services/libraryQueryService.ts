@@ -150,7 +150,9 @@ function getPageTotal(sql: string, parameters: unknown[]) {
 onLibraryManagementChange(() => {
   libraryCache.clear();
 });
-const PAGE_KINDS = new Set(["artists", "albums", "tracks", "genres"]);
+const PAGE_KINDS = ["artists", "albums", "tracks", "genres"] as const;
+const isPageKind = (kind: string): kind is (typeof PAGE_KINDS)[number] =>
+  PAGE_KINDS.some((pageKind) => pageKind === kind);
 const DEFAULT_PAGE_SIZE = 100;
 const MAX_PAGE_SIZE = 100;
 const MAX_ARTIST_PROJECTION_PAGE_SIZE = 10000;
@@ -1320,12 +1322,15 @@ const CANONICAL_FAVORITE_TABLES = {
   song: "library_tracks",
 };
 
+const isFavoriteKind = (kind: string): kind is keyof typeof CANONICAL_FAVORITE_TABLES =>
+  Object.hasOwn(CANONICAL_FAVORITE_TABLES, kind);
+
 function parseLibraryFavoriteId(value: unknown) {
   const input = String(value || "").trim();
   const separator = input.indexOf(":");
   if (separator <= 0) return null;
   const kind = input.slice(0, separator);
-  if (!CANONICAL_FAVORITE_TABLES[kind]) return null;
+  if (!isFavoriteKind(kind)) return null;
   const rawKey = input.slice(separator + 1);
   if (!rawKey) return null;
   try {
@@ -1511,6 +1516,11 @@ export function getLibraryForTrackMatches({
       chunk,
     })),
   ];
+  const addMissingById = <T extends { id: number }>(target: Map<number, T>, entities: T[]) => {
+    for (const entity of entities) {
+      if (!target.has(entity.id)) target.set(entity.id, entity);
+    }
+  };
   // Any-size input resolves in ceil(n / chunk) statements; a track matched by more than one
   // clause is only kept once.
   const merged = {
@@ -1526,11 +1536,9 @@ export function getLibraryForTrackMatches({
       conditions: [`(${group.map((clause) => clause.sql).join(" OR ")})`],
       parameters: group.flatMap((clause) => clause.chunk),
     });
-    for (const key of Object.keys(merged)) {
-      for (const entity of library[key]) {
-        if (!merged[key].has(entity.id)) merged[key].set(entity.id, entity);
-      }
-    }
+    addMissingById(merged.artists, library.artists);
+    addMissingById(merged.albums, library.albums);
+    addMissingById(merged.tracks, library.tracks);
   }
   return {
     artists: [...merged.artists.values()],
@@ -2224,7 +2232,7 @@ export function getLibraryAlbumPage({
     .map((row) => row.id);
   const library = getLibraryForAlbumIds({ source: sourceFilter, availableOnly, ids });
   const albumsById = new Map(library.albums.map((album) => [album.id, album]));
-  library.albums = ids.map((id) => albumsById.get(id)).filter(Boolean);
+  library.albums = ids.map((id) => albumsById.get(id)).filter((album) => album !== undefined);
   return library;
 }
 
@@ -2379,7 +2387,7 @@ export function getLibraryTrackPage({
       .map((row) => row.id);
     const library = getLibraryForTrackIds({ source: sourceFilter, availableOnly, ids, albumId });
     const tracksById = new Map(library.tracks.map((track) => [track.id, track]));
-    library.tracks = ids.map((id) => tracksById.get(id)).filter(Boolean);
+    library.tracks = ids.map((id) => tracksById.get(id)).filter((track) => track !== undefined);
     return library;
   }
   if (
@@ -2400,7 +2408,7 @@ export function getLibraryTrackPage({
     });
     const library = getLibraryForTrackIds({ source: sourceFilter, availableOnly, ids, albumId });
     const tracksById = new Map(library.tracks.map((track) => [track.id, track]));
-    library.tracks = ids.map((id) => tracksById.get(id)).filter(Boolean);
+    library.tracks = ids.map((id) => tracksById.get(id)).filter((track) => track !== undefined);
     return library;
   }
   const orderBy = random
@@ -2422,7 +2430,7 @@ export function getLibraryTrackPage({
     .map((row) => row.id);
   const library = getLibraryForTrackIds({ source: sourceFilter, availableOnly, ids, albumId });
   const tracksById = new Map(library.tracks.map((track) => [track.id, track]));
-  library.tracks = ids.map((id) => tracksById.get(id)).filter(Boolean);
+  library.tracks = ids.map((id) => tracksById.get(id)).filter((track) => track !== undefined);
   return library;
 }
 
@@ -3035,7 +3043,7 @@ function getAlbumTrackPage(
     .map((row) => row.page_id);
   const library = getAlbumTrackPageLibrary(albumId, sourceFilter, pageIds);
   const tracksById = new Map(library.tracks.map((track) => [track.id, track]));
-  const pageItems = pageIds.map((id) => tracksById.get(id)).filter(Boolean);
+  const pageItems = pageIds.map((id) => tracksById.get(id)).filter((track) => track !== undefined);
   const summary = getAlbumTrackSummary(albumId, sourceFilter);
   const stats = getAlbumStats([Number(albumId)], sourceFilter).get(String(albumId));
   const album = summary.album;
@@ -3129,7 +3137,7 @@ export function getLibraryPage({
   albumId?: string | number | null;
 } = {}) {
   const normalizedKind = text(kind).toLocaleLowerCase();
-  if (!PAGE_KINDS.has(normalizedKind)) {
+  if (!isPageKind(normalizedKind)) {
     throw new Error(`Unsupported library page kind: ${normalizedKind}`);
   }
   const sourceFilter = normalizeSource(source);
@@ -3239,7 +3247,9 @@ export function getLibraryPage({
       includeStats: true,
     });
     const artistsById = new Map(library.artists.map((artist) => [String(artist.id), artist]));
-    const items = ids.map((id) => artistsById.get(String(id))).filter(Boolean);
+    const items = ids
+      .map((id) => artistsById.get(String(id)))
+      .filter((artist) => artist !== undefined);
     return {
       kind: normalizedKind,
       page: currentPage,
@@ -3260,10 +3270,7 @@ export function getLibraryPage({
     library.albums.map((album) => album.id),
     sourceFilter,
   );
-  const collection = ids
-    .map((id) => library[normalizedKind].find((entity) => String(entity.id) === String(id)))
-    .filter(Boolean);
-  const withAlbumStats = (album) => {
+  const withAlbumStats = (album: LibraryAlbum) => {
     const stats = albumStats.get(String(album.id));
     return {
       ...album,
@@ -3271,29 +3278,39 @@ export function getLibraryPage({
       availableTrackCount: stats?.availableTrackCount ?? 0,
     };
   };
-  const items = collection.map((entity) =>
-    normalizedKind === "albums" ? withAlbumStats(entity) : entity,
-  );
+  const albumItems =
+    normalizedKind === "albums"
+      ? ids
+          .map((id) => library.albums.find((entity) => String(entity.id) === String(id)))
+          .filter((entity) => entity !== undefined)
+          .map(withAlbumStats)
+      : [];
+  const trackItems =
+    normalizedKind === "tracks"
+      ? ids
+          .map((id) => library.tracks.find((entity) => String(entity.id) === String(id)))
+          .filter((entity) => entity !== undefined)
+      : [];
+  const items = normalizedKind === "albums" ? albumItems : trackItems;
 
   const relatedAlbums =
     normalizedKind === "tracks"
-      ? [...new Set(items.flatMap((track) => track.albums.map((entry) => String(entry.albumId))))]
+      ? [
+          ...new Set(
+            trackItems.flatMap((track) => track.albums.map((entry) => String(entry.albumId))),
+          ),
+        ]
           .map((id) => albumsById.get(id))
-          .filter(Boolean)
+          .filter((album) => album !== undefined)
           .map(withAlbumStats)
-      : normalizedKind === "albums"
-        ? items
-        : [];
-  const relatedArtists =
-    normalizedKind === "artists"
-      ? items
-      : relatedAlbums
-          .map((album) => artistsById.get(String(album.artistId)))
-          .filter(Boolean)
-          .filter(
-            (artist, index, values) =>
-              values.findIndex((candidate) => candidate.id === artist.id) === index,
-          );
+      : albumItems;
+  const relatedArtists: LibraryArtist[] = relatedAlbums
+    .map((album) => artistsById.get(String(album.artistId)))
+    .filter((artist) => artist !== undefined)
+    .filter(
+      (artist, index, values) =>
+        values.findIndex((candidate) => candidate.id === artist.id) === index,
+    );
   if (artistId && !relatedArtists.some((artist) => String(artist.id) === String(artistId))) {
     relatedArtists.push(
       ...getLibraryArtistPage({

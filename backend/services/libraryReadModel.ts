@@ -5,6 +5,7 @@ import {
   getLibraryForArtistReferences,
   getLibraryForArtists,
   getLibraryTrackPath,
+  type LibraryTrackFile,
 } from "./libraryQueryService.ts";
 import { getManagedByMap } from "./libraryManagementStore.ts";
 import { selectCanonicalFile } from "./canonicalFileSelector.ts";
@@ -25,16 +26,6 @@ type LibraryMetadata = {
   foreignTrackId?: string | null;
   trackListComplete?: boolean;
   trackList?: { release?: unknown };
-};
-
-type LibraryFileRecord = {
-  albumId: number | null;
-  available: boolean;
-  size: number;
-  path: string;
-  quality: unknown;
-  format: string | null;
-  source: string;
 };
 
 type LibraryArtistRecord = {
@@ -79,7 +70,7 @@ type LibraryTrackRecord = {
   monitored: boolean;
   keepFile: boolean;
   albums: { albumId: number; discNumber: number; trackNumber: number }[];
-  files: LibraryFileRecord[];
+  files: LibraryTrackFile[];
   sources: string[];
   available: boolean;
 };
@@ -208,11 +199,7 @@ const buildAlbum = (
 };
 
 const buildTrack = (track: LibraryTrackRecord, album: ReadAlbum) => {
-  const file: LibraryFileRecord | null = selectCanonicalFile(
-    track.files,
-    album.id,
-    album.managedBy,
-  );
+  const file: LibraryTrackFile | null = selectCanonicalFile(track.files, album.id, album.managedBy);
   const relation = track.albums.find((entry) => entry.albumId === album.id);
   return {
     id: track.id,

@@ -2,6 +2,7 @@ import { dbOps } from "../db/helpers/index.ts";
 import { normalizeBaseUrl, normalizeInteger, sanitizeNzbName } from "./usenetClientCommon.ts";
 import axios from "../../lib/axiosFetch.ts";
 import { removeNzbgetDownloadFolder } from "./nzbgetCleanup.ts";
+import { asAppError } from "../../lib/errors.ts";
 import type { StoredIntegrations } from "../db/helpers/settings.ts";
 
 export const nzbgetSettings = Object.freeze({
@@ -454,7 +455,7 @@ export class NzbgetClient {
         ok: false,
         configured: true,
         connected: false,
-        message: error?.message || "Failed to reach NZBGet",
+        message: asAppError(error)?.message || "Failed to reach NZBGet",
       };
       connectionCache = { checkedAt: Date.now(), result, settingsKey };
       return result;

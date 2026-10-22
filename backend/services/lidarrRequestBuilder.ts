@@ -100,17 +100,17 @@ export const buildLidarrRequests = async (
     });
   }
 
-  const historyRecords = Array.isArray(history?.records)
-    ? history.records
-    : Array.isArray(history)
-      ? history
+  const historyRecords = Array.isArray(history)
+    ? history
+    : Array.isArray(history?.records)
+      ? history.records
       : [];
 
   const latestHistoryByAlbum = new Map<string, { record: LidarrHistoryItem; recordTime: number }>();
   for (const record of historyRecords) {
     const albumId = record?.albumId;
     if (albumId == null) continue;
-    const recordTime = new Date(record?.date || record?.eventDate || 0).getTime();
+    const recordTime = new Date(record?.date || 0).getTime();
     const existing = latestHistoryByAlbum.get(String(albumId));
     if (!existing || recordTime > existing.recordTime) {
       latestHistoryByAlbum.set(String(albumId), { record, recordTime });
@@ -186,7 +186,7 @@ export const buildLidarrRequests = async (
       artistName,
       status: "failed",
       statusLabel: "Failed",
-      requestedAt: toIso(record?.date || record?.eventDate),
+      requestedAt: toIso(record?.date),
       mbid: artistMbid,
       name: albumName,
       image: null,

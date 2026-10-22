@@ -92,7 +92,7 @@ function groupArtists(group: ManifestGroupInput) {
     }))
     .filter((artist) => artist.name);
   const lead = id(group?.artistId);
-  return artists.toSorted((left, right) => (right.id === lead) - (left.id === lead));
+  return artists.toSorted((left, right) => Number(right.id === lead) - Number(left.id === lead));
 }
 
 function parseTrack(track: ManifestTrackInput, index: number) {
@@ -113,7 +113,8 @@ type ParsedTrack = ReturnType<typeof parseTrack>;
 
 function inRunningOrder(tracks: ParsedTrack[]) {
   return tracks.toSorted(
-    (left, right) => left.discNumber - right.discNumber || left.trackNumber - right.trackNumber,
+    (left, right) =>
+      left.discNumber - right.discNumber || (left.trackNumber ?? 0) - (right.trackNumber ?? 0),
   );
 }
 
@@ -188,7 +189,7 @@ export function toReleaseManifest(
   if (!listed) return null;
   // A release keeps the lengths it lists, since a rip of it matches those.
   // A length it lacks is the median of its pressings' lengths.
-  const lengths = pressingLengths(group?.releases || [], release, aliases);
+  const lengths = pressingLengths(group?.releases || [], release!, aliases);
   const tracks = listed.map((track, index) => ({
     ...track,
     durationMs: track.durationMs ?? median(lengths[index]),

@@ -118,7 +118,7 @@ export function validateParsedQuality(
 ) {
   const profile = getQualityProfile();
   const quality = classifyAudioQuality(parsed, filePath);
-  const enabled = profile.enabled.includes(quality.tier);
+  const enabled = quality.tier !== null && profile.enabled.includes(quality.tier);
   if (!quality.tier || (!enabled && !manualSelection)) {
     return {
       valid: false,

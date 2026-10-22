@@ -158,7 +158,10 @@ const findArticleArtists = (
       (name) => !matchedNames.some((other) => other !== name && ` ${other} `.includes(` ${name} `)),
     )
     .flatMap((name) => names.get(name)!)
-    .sort((left, right) => (left.newsType === "recommended") - (right.newsType === "recommended"));
+    .sort(
+      (left, right) =>
+        Number(left.newsType === "recommended") - Number(right.newsType === "recommended"),
+    );
 };
 
 async function getArticleMatches(userId: number | null | undefined) {

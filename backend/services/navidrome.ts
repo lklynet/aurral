@@ -1,6 +1,7 @@
 import { setTimeout as wait } from "node:timers/promises";
 import axios from "../../lib/axiosFetch.ts";
 import crypto from "crypto";
+import { asAppError, errorResponseText } from "../../lib/errors.ts";
 import { logger } from "./logger.ts";
 import { requirePlaylistPath, isAbsoluteMediaPath } from "./playback/playlistUsage.ts";
 
@@ -174,7 +175,8 @@ export class NavidromeClient {
 
           return response.data["subsonic-response"];
         } catch (error) {
-          const isNetworkFailure = error instanceof TypeError && !error?.response;
+          const failure = asAppError(error);
+          const isNetworkFailure = error instanceof TypeError && !failure?.response;
           if (isNetworkFailure) {
             if (
               !NAVIDROME_RETRYABLE_READ_ENDPOINTS.has(endpoint) ||
@@ -185,9 +187,10 @@ export class NavidromeClient {
             await wait(NAVIDROME_RATE_LIMIT_DELAY_MS);
             continue;
           }
-          if (!error?.response) throw error;
-          if (error.response.status !== 429 || attempt >= NAVIDROME_RATE_LIMIT_RETRIES) throw error;
-          const retryAfterHeader = error.response.headers?.["retry-after"]?.trim();
+          if (!failure?.response) throw error;
+          if (failure.response.status !== 429 || attempt >= NAVIDROME_RATE_LIMIT_RETRIES)
+            throw error;
+          const retryAfterHeader = failure.response.headers?.["retry-after"]?.trim();
           const retryAfter = Number(retryAfterHeader);
           const delay =
             retryAfterHeader && Number.isFinite(retryAfter) && retryAfter >= 0
@@ -197,7 +200,7 @@ export class NavidromeClient {
         }
       }
     } catch (error) {
-      console.error(`Navidrome Error [${endpoint}]:`, error.message);
+      console.error(`Navidrome Error [${endpoint}]:`, asAppError(error)?.message);
       throw error;
     }
   }
@@ -213,7 +216,7 @@ export class NavidromeClient {
   ) {
     const trackFile = normalizeLibraryPath(track.path).toLowerCase();
     const cached = this._songsByFile.get(trackFile);
-    if (cached?.expiresAt > Date.now()) return cached.song;
+    if (cached && cached.expiresAt > Date.now()) return cached.song;
     const song = await this._lookUpSong(title, artist, track);
     if (song && songFilePath(song) === trackFile) this._rememberSong(trackFile, song);
     return song;
@@ -292,7 +295,7 @@ export class NavidromeClient {
 
   _canFilterSongsByPath() {
     const now = Date.now();
-    if (!(this._songPathFilter?.expiresAt > now)) {
+    if (!(this._songPathFilter && this._songPathFilter.expiresAt > now)) {
       const supported: Promise<boolean> = this.ping()
         .then((response) => supportsSongPathFilter(response?.serverVersion))
         .catch((error) => {
@@ -495,7 +498,7 @@ export class NavidromeClient {
 
       return { success: true };
     } catch (error) {
-      throw new Error(`Failed to remove song from playlist: ${error.message}`);
+      throw new Error(`Failed to remove song from playlist: ${asAppError(error)?.message}`);
     }
   }
 
@@ -557,14 +560,15 @@ export class NavidromeClient {
         if (newToken) this._nativeTokenPromise = Promise.resolve(newToken);
         return response.data;
       } catch (error) {
-        const status = error?.response?.status;
+        const failure = asAppError(error);
+        const status = failure?.response?.status;
         if (status === 401 && tokenRefreshes === 0) {
           tokenRefreshes += 1;
           if (this._nativeTokenPromise === tokenPromise) this._nativeTokenPromise = null;
           continue;
         }
         if (status === 429 && rateLimitRetries < NAVIDROME_RATE_LIMIT_RETRIES) {
-          const retryAfterHeader = error.response.headers?.["retry-after"]?.trim();
+          const retryAfterHeader = failure?.response?.headers?.["retry-after"]?.trim();
           const retryAfter = Number(retryAfterHeader);
           const delay =
             retryAfterHeader && Number.isFinite(retryAfter) && retryAfter >= 0
@@ -579,13 +583,7 @@ export class NavidromeClient {
     }
   }
 
-  async _requestPlaylistArtwork(
-    method: string,
-    playlistId: string,
-    data?: Uint8Array,
-    filename?: string,
-    contentType?: string,
-  ) {
+  async _requestPlaylistArtwork(method: string, playlistId: string, form?: FormData) {
     const url = `${this.url}/api/playlist/${encodeURIComponent(playlistId)}/image`;
     for (let attempt = 0; attempt < 2; attempt += 1) {
       let tokenPromise = this._nativeTokenPromise;
@@ -598,11 +596,7 @@ export class NavidromeClient {
         method,
         headers: { "X-ND-Authorization": `Bearer ${token}` },
       };
-      if (method === "POST") {
-        const form = new FormData();
-        form.append("image", new Blob([data], { type: contentType }), filename);
-        options.body = form;
-      }
+      if (form) options.body = form;
       const response = await fetch(url, options);
       if (response.status === 401 && attempt === 0) {
         if (this._nativeTokenPromise === tokenPromise) this._nativeTokenPromise = null;
@@ -618,11 +612,13 @@ export class NavidromeClient {
 
   async uploadPlaylistArtwork(
     playlistId: string,
-    data: Uint8Array,
+    data: Uint8Array<ArrayBuffer>,
     filename = "cover.webp",
     contentType = "image/webp",
   ) {
-    return this._requestPlaylistArtwork("POST", playlistId, data, filename, contentType);
+    const form = new FormData();
+    form.append("image", new Blob([data], { type: contentType }), filename);
+    return this._requestPlaylistArtwork("POST", playlistId, form);
   }
 
   async deletePlaylistArtwork(playlistId: string) {
@@ -724,8 +720,9 @@ export class NavidromeClient {
       const created = await this.createLibrary(name, normalizedPath);
       return verifyLibrary(created?.id);
     } catch (err) {
-      const message = err?.response?.data?.error || err.message;
-      if (err?.response?.status === 429) {
+      const failure = asAppError(err);
+      const message = errorResponseText(failure, "error") || failure?.message;
+      if (failure?.response?.status === 429) {
         logger.debug("navidrome", "Navidrome library setup was rate limited", { message });
       } else {
         logger.warn("navidrome", "Navidrome library setup failed", { message });

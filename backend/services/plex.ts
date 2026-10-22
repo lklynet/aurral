@@ -1,4 +1,5 @@
 import axios from "../../lib/axiosFetch.ts";
+import { asAppError } from "../../lib/errors.ts";
 import crypto from "crypto";
 import { XMLParser } from "fast-xml-parser";
 import { AURRAL_FLOWS_DIR } from "./downloadPaths.ts";
@@ -119,10 +120,10 @@ export class PlexClient {
     clientId: string | null | undefined,
     { token }: { token?: string | null } = {},
   ) {
-    const headers: Record<string, string | null | undefined> = {
+    const headers: Record<string, string> = {
       Accept: "application/json",
       "X-Plex-Product": PLEX_PRODUCT,
-      "X-Plex-Client-Identifier": clientId,
+      "X-Plex-Client-Identifier": String(clientId),
       "X-Plex-Version": "1.0",
       "X-Plex-Platform": "Node.js",
       "X-Plex-Platform-Version": process.version,
@@ -174,7 +175,7 @@ export class PlexClient {
       });
       return data || null;
     } catch (error) {
-      const status = Number(error?.response?.status) || null;
+      const status = Number(asAppError(error)?.response?.status) || null;
       if (throwOnTransient && (!status || status === 429 || status >= 500)) throw error;
       return null;
     }
@@ -278,7 +279,7 @@ export class PlexClient {
         return null;
       } catch (error) {
         lastError = error;
-        if (error.response?.status !== 404) throw error;
+        if (asAppError(error)?.response?.status !== 404) throw error;
       }
     }
     throw lastError || new Error("Plex switch-user request failed");
@@ -300,18 +301,19 @@ export class PlexClient {
       });
       return response.data;
     } catch (error) {
-      const detail = error.response?.data || error.message;
+      const failure = asAppError(error);
+      const detail = failure?.response?.data || failure?.message;
       console.error(
         `Plex Error [${method} ${path}]:`,
-        typeof detail === "string" ? detail.slice(0, 200) : error.message,
+        typeof detail === "string" ? detail.slice(0, 200) : failure?.message,
         "| status:",
-        error.response?.status,
+        failure?.response?.status,
         "| clientId:",
         this.clientId,
         "| headers:",
         JSON.stringify(
           Object.fromEntries(
-            Object.entries(error.response?.headers || {}).filter(
+            Object.entries(failure?.response?.headers || {}).filter(
               ([key]) => !/^(set-cookie|authorization|x-plex-token)$/i.test(key),
             ),
           ),
@@ -351,7 +353,9 @@ export class PlexClient {
         (lib) =>
           lib.title === name ||
           lib.title === "Aurral Flow" ||
-          (lib.Location || []).some((loc) => locations.includes(loc.path)),
+          (lib.Location || []).some(
+            (loc) => loc.path !== undefined && locations.includes(loc.path),
+          ),
       );
 
     const existing = findExisting(await this.getLibraries());
@@ -368,9 +372,10 @@ export class PlexClient {
           await this.editLibrary(existing.key, { name, locations });
           return findExisting(await this.getLibraries()) || existing;
         } catch (err) {
+          const failure = asAppError(err);
           console.warn(
             "[Plex] Could not update Aurral library:",
-            err?.response?.data || err.message,
+            failure?.response?.data || failure?.message,
           );
         }
       }
@@ -391,15 +396,16 @@ export class PlexClient {
       for (const location of locations) params.append("location", location);
       await this.request(`/library/sections?${params.toString()}`, { method: "POST" });
     } catch (err) {
-      const detail = err?.response?.data || err.message;
-      const status = err?.response?.status;
+      const failure = asAppError(err);
+      const detail = failure?.response?.data || failure?.message;
+      const status = failure?.response?.status;
       throw Object.assign(
         new Error(
           `Plex rejected library creation (${status || "no status"}) for path "${libraryPath}": ${
             typeof detail === "string" ? detail : JSON.stringify(detail)
           }`,
         ),
-        { response: err?.response },
+        { response: failure?.response },
       );
     }
 
@@ -539,7 +545,7 @@ export class PlexClient {
       .filter((i) => i.ratingKey && i.playlistItemID != null);
   }
 
-  _metadataUri(machineId: string, ratingKeys: (string | number) | (string | number)[]) {
+  _metadataUri(machineId: string | null, ratingKeys: (string | number) | (string | number)[]) {
     const keys = (Array.isArray(ratingKeys) ? ratingKeys : [ratingKeys]).join(",");
     return `server://${machineId}/com.plexapp.plugins.library/library/metadata/${keys}`;
   }
@@ -617,7 +623,7 @@ export class PlexClient {
         items = await this.getPlaylistItems(targetRatingKey);
         needsDetailsUpdate = previousTitle !== title || previousDescription !== description;
       } catch (error) {
-        if (error?.response?.status !== 404) throw error;
+        if (asAppError(error)?.response?.status !== 404) throw error;
         targetRatingKey = null;
       }
     }
@@ -648,7 +654,7 @@ export class PlexClient {
       } catch (err) {
         console.warn(
           `[Plex] Failed to remove item ${item.playlistItemID} from playlist ${targetRatingKey}:`,
-          err?.message,
+          asAppError(err)?.message,
         );
       }
     }

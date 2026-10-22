@@ -1,4 +1,5 @@
 import fs from "fs/promises";
+import { asAppError } from "../../lib/errors.ts";
 import type { StorageHealthStep } from "./storageHealthService.ts";
 import type { LidarrAlbum, LidarrClient } from "./lidarrClient.ts";
 import { buildTrackFileIndex, enrichLidarrTrackWithFiles } from "./libraryManager.ts";
@@ -167,7 +168,7 @@ export async function runLidarrLibraryAccessTest(lidarrClient: LidarrClient) {
   } catch (error) {
     steps.push(
       step("root", "fail", "Root folder in Lidarr", {
-        detail: error.message,
+        detail: asAppError(error)?.message,
         fix: "Confirm Lidarr is running and your API key can read library settings.",
       }),
     );

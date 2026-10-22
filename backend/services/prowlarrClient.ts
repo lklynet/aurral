@@ -1,5 +1,6 @@
 import axios from "../../lib/axiosFetch.ts";
 import { dbOps } from "../db/helpers/index.ts";
+import { asAppError } from "../../lib/errors.ts";
 import { normalizeBaseUrl, normalizeInteger } from "./usenetClientCommon.ts";
 
 const DEFAULT_MUSIC_CATEGORIES = [3000];
@@ -121,7 +122,7 @@ function normalizeCategoryList(value: unknown) {
         .map((entry) => entry.trim());
   const categories = raw
     .map((entry) => normalizeInteger(entry, null))
-    .filter((entry) => entry != null && entry > 0);
+    .filter((entry): entry is number => entry != null && entry > 0);
   return categories.length > 0 ? [...new Set(categories)] : DEFAULT_MUSIC_CATEGORIES;
 }
 
@@ -287,12 +288,12 @@ function formatHttpErrorBody(data: unknown): string {
   }
   if (typeof data === "object") {
     const message =
-      data.message ||
-      data.errorMessage ||
-      data.error ||
-      data.title ||
-      data.detail ||
-      data.description;
+      Reflect.get(data, "message") ||
+      Reflect.get(data, "errorMessage") ||
+      Reflect.get(data, "error") ||
+      Reflect.get(data, "title") ||
+      Reflect.get(data, "detail") ||
+      Reflect.get(data, "description");
     if (message) return String(message).trim().slice(0, 500);
     try {
       return JSON.stringify(data).slice(0, 500);
@@ -418,7 +419,7 @@ export class ProwlarrClient {
         ok: false,
         configured: true,
         connected: false,
-        message: error?.message || "Failed to reach Prowlarr",
+        message: asAppError(error)?.message || "Failed to reach Prowlarr",
       };
       connectionCache = { checkedAt: Date.now(), result };
       return result;

@@ -1,7 +1,8 @@
 import { db } from "../config/db-sqlite.ts";
 import { recordTrackJobQueued } from "./aurralHistoryService.ts";
 import { clearTrackMonitoringExclusion } from "./aurralMonitoringStore.ts";
-import { downloadTracker } from "./downloadJobs/downloadTracker.ts";
+import { downloadTracker, type DownloadTrackInput } from "./downloadJobs/downloadTracker.ts";
+import { asAppError } from "../../lib/errors.ts";
 import { getLibraryTrackOwnership } from "./libraryQueryService.ts";
 import { logger } from "./logger.ts";
 
@@ -14,11 +15,7 @@ export function findQueuedLibraryTrackJob({
   artistName,
   trackName,
   trackMbid = null,
-}: {
-  artistName: string;
-  trackName: string;
-  trackMbid?: string | null;
-}) {
+}: Pick<DownloadTrackInput, "artistName" | "trackName" | "trackMbid">) {
   return (
     downloadTracker
       .getAll()
@@ -43,13 +40,13 @@ export function findQueuedLibraryTrackJob({
 // exclusion left by deleting it. An automatic request from artist monitoring
 // leaves exclusions and tracks the Library already lists alone.
 export async function requestLibraryTrack(
-  track,
+  track: DownloadTrackInput,
   {
     canonicalTrackId = null,
     user = null,
     automatic = false,
   }: {
-    canonicalTrackId?: null;
+    canonicalTrackId?: unknown;
     user?: Parameters<typeof recordTrackJobQueued>[1];
     automatic?: boolean;
   } = {},
@@ -117,7 +114,7 @@ export async function requestLibraryTrack(
     if (reuse.reused) return { queued: false, reused: true, jobId };
   } catch (error) {
     logger.warn("library", "Track reuse failed; leaving acquisition queued", {
-      error: error.message,
+      error: asAppError(error)?.message,
     });
   }
 

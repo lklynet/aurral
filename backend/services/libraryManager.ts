@@ -3235,7 +3235,15 @@ export class LibraryManager {
 
   // A track asked for from an album's page goes to that album when the
   // Library holds it there.
-  async monitorAurralTrack({ canonicalTrackId = null, trackMbid = null, albumMbid = null } = {}) {
+  async monitorAurralTrack({
+    canonicalTrackId = null,
+    trackMbid = null,
+    albumMbid = null,
+  }: {
+    canonicalTrackId?: unknown;
+    trackMbid?: string | null;
+    albumMbid?: string | null;
+  } = {}) {
     const mbid = String(trackMbid || "").trim();
     const group = String(albumMbid || "")
       .trim()

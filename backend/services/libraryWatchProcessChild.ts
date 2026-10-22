@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import type { FSWatcher } from "node:fs";
 import type { WatchMessage } from "./libraryWatchProcess.ts";
+import { asAppError, type AppError } from "../../lib/errors.ts";
 import { resolveLocalPath } from "./pathMappings.ts";
 
 let watcher: FSWatcher | undefined;
@@ -17,7 +18,7 @@ function send(message: WatchMessage) {
   });
 }
 
-function fail(error: Error & { code?: string }) {
+function fail(error: AppError) {
   send({ type: "error", message: error.message, code: error.code });
   stop();
 }
@@ -34,5 +35,7 @@ try {
   watcher.on("error", fail);
   send({ type: "ready", root });
 } catch (error) {
-  fail(error);
+  const failure = asAppError(error);
+  if (!failure) throw error;
+  fail(failure);
 }

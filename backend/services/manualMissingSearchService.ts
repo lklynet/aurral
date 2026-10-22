@@ -130,7 +130,9 @@ function resultView(source: string, raw: RawSearchResult) {
       formatBytes(raw.size),
       raw.files ? `${raw.files} files` : "",
       raw.grabs ? `${raw.grabs} grabs` : "",
-      raw.publishDate ? new Date(raw.publishDate).toLocaleDateString("en-GB") : "",
+      typeof raw.publishDate === "string" && raw.publishDate
+        ? new Date(raw.publishDate).toLocaleDateString("en-GB")
+        : "",
     ].filter(Boolean),
   };
 }
@@ -150,11 +152,12 @@ async function searchSlskd(query: string, workContext: ManualWorkContext) {
     emptyTimeoutMs: 120000,
     gracePeriodMs: 0,
     cleanupTimeoutMs: 20000,
-    onSearchCreated: (id) =>
+    onSearchCreated: (id: string) =>
       registerDownloadProviderWork({ ...workContext, provider: "slskd-search", workId: id }),
-    onSearchSettled: (id) => clearDownloadProviderWork({ provider: "slskd-search", workId: id }),
+    onSearchSettled: (id: string) =>
+      clearDownloadProviderWork({ provider: "slskd-search", workId: id }),
   });
-  return results.filter((entry) => {
+  return results.filter((entry: RawSearchResult) => {
     if (entry?.locked === true) return false;
     return AUDIO_EXTENSIONS.has(path.extname(text(entry?.file)).toLowerCase());
   });
@@ -164,12 +167,12 @@ async function searchSource(source: string, query: string, workContext: ManualWo
   if (source === "slskd") return searchSlskd(query, workContext);
   if (source === "deemix") {
     return (await getDownloadClient("deemix").search(query, { limit: 50 })).filter(
-      (entry) => entry?.readable !== false,
+      (entry: RawSearchResult) => entry?.readable !== false,
     );
   }
   if (source === "ytdlp") {
     return (await getDownloadClient("ytdlp").search(query, { limit: 10 })).filter(
-      (entry) => !isYtdlpLiveResult(entry),
+      (entry: RawSearchResult) => !isYtdlpLiveResult(entry),
     );
   }
   if (source === "usenet") return prowlarrClient.search(query, { limit: MAX_RESULTS });

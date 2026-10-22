@@ -120,7 +120,7 @@ function readAudioFamily(parsed: ParsedAudio, filePath: string) {
 }
 
 function classifyLossyTier(family: "mp3" | "m4a", bitrateKbps: number | null) {
-  if (!Number.isFinite(bitrateKbps) || bitrateKbps < 128) return null;
+  if (bitrateKbps === null || !Number.isFinite(bitrateKbps) || bitrateKbps < 128) return null;
   if (bitrateKbps >= 320) return `${family}-320`;
   if (bitrateKbps >= 256) return `${family}-256`;
   if (bitrateKbps >= 192) return `${family}-192`;
@@ -226,7 +226,8 @@ export function isAdvertisedQualityEligible(
 
 export function getAdvertisedQualityRank(fileName: unknown, bitrate: unknown, profile: unknown) {
   const normalized = normalizeQualityProfile(profile);
-  const index = normalized.order.indexOf(classifyAdvertisedQuality(fileName, bitrate));
+  const tier = classifyAdvertisedQuality(fileName, bitrate);
+  const index = tier === null ? -1 : normalized.order.indexOf(tier);
   return index === -1 ? Number.MAX_SAFE_INTEGER : index;
 }
 

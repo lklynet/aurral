@@ -46,15 +46,17 @@ export async function removeNzbgetDownloadFolder(
 
   const roots = [directories.completedPath, directories.categoryDestDir, directories.destDir]
     .map(toLocal)
-    .filter(Boolean);
+    .filter((root): root is string => Boolean(root));
   // NZBGet nests a category such as "music/aurral", but ".." must not widen
   // the folders that cleanup accepts.
   const categoryParts = String(category || "").split(/[\\/]/);
   const categoryDirs = categoryParts.every((part) => part && part !== "." && part !== "..")
-    ? roots.map((root) => path.join(root!, ...categoryParts))
+    ? roots.map((root) => path.join(root, ...categoryParts))
     : [];
   const parents = await Promise.all(
-    [...roots, ...categoryDirs, toLocal(directories.interDir)].filter(Boolean).map(realpathOr),
+    [...roots, ...categoryDirs, toLocal(directories.interDir)]
+      .filter((dir): dir is string => Boolean(dir))
+      .map(realpathOr),
   );
   const realTarget = path.join(await fs.realpath(path.dirname(target)), path.basename(target));
   if (!parents.includes(path.dirname(realTarget)) || parents.includes(realTarget)) {

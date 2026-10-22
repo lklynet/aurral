@@ -4,6 +4,12 @@ import https from "https";
 import { dbOps } from "../db/helpers/index.ts";
 import type { AppSettings } from "../db/helpers/settings.ts";
 import type { UserRecord } from "../db/helpers/users.ts";
+import { asAppError } from "../../lib/errors.ts";
+import type {
+  LidarrQualityDefinition,
+  LidarrQualityProfile,
+  LidarrReleaseProfile,
+} from "./lidarrCommunityGuide.ts";
 import { logger } from "./logger.ts";
 import BoundedMap from "./boundedMap.ts";
 import { mapWithConcurrency } from "./discovery/helpers.ts";
@@ -340,8 +346,12 @@ function normalizeLidarrTrackFileIds(values: unknown) {
   ];
 }
 
+function readResponseField(data: unknown, key: string): unknown {
+  return typeof data === "object" && data !== null ? Reflect.get(data, key) : undefined;
+}
+
 function isMetadataProviderIdError(error: unknown) {
-  const message = String(error?.message || "").toLowerCase();
+  const message = String(asAppError(error)?.message || "").toLowerCase();
   return message.includes("input string") && message.includes("correct format");
 }
 
@@ -466,7 +476,6 @@ export class LidarrClient {
 
   constructor({ persistRootFolderPaths = true }: { persistRootFolderPaths?: boolean } = {}) {
     this._persistRootFolderPaths = persistRootFolderPaths;
-    this.config = null;
     this.apiPath = "/api/v1";
     this._circuitOpen = false;
     this._circuitOpenedAt = 0;
@@ -942,7 +951,7 @@ export class LidarrClient {
             });
           }
 
-          let errorMsg = statusText || "Unknown error";
+          let errorMsg: unknown = statusText || "Unknown error";
           let errorDetails = "";
 
           if (typeof responseData === "string") {
@@ -950,10 +959,10 @@ export class LidarrClient {
             errorDetails = responseData;
           } else if (responseData) {
             errorMsg =
-              responseData.message ||
-              responseData.error ||
-              responseData.title ||
-              responseData.detail ||
+              readResponseField(responseData, "message") ||
+              readResponseField(responseData, "error") ||
+              readResponseField(responseData, "title") ||
+              readResponseField(responseData, "detail") ||
               (typeof responseData === "object"
                 ? JSON.stringify(responseData)
                 : String(responseData));
@@ -961,8 +970,10 @@ export class LidarrClient {
           }
 
           const responseText = typeof responseData === "string" ? responseData : errorMsg;
-          const responseTextLower = responseText?.toLowerCase?.();
+          const responseTextLower =
+            typeof responseText === "string" ? responseText.toLowerCase() : undefined;
           const isLidarrSkyhookRefused =
+            status !== undefined &&
             status >= 500 &&
             responseTextLower &&
             responseTextLower.includes("api.lidarr.audio") &&
@@ -973,7 +984,7 @@ export class LidarrClient {
             const userError: LidarrError = new Error(
               "Lidarr cannot reach api.lidarr.audio from its container. Check Lidarr outbound internet/DNS or proxy settings.",
             );
-            userError.response = raw.response;
+            userError.response = error.response;
             throw userError;
           }
           if (status === 400) {
@@ -982,14 +993,14 @@ export class LidarrClient {
                 errorDetails ? `\n\nFull Response: ${errorDetails}` : ""
               }`,
             );
-            userError.response = raw.response;
+            userError.response = error.response;
             throw userError;
           }
           if (status === 401) {
             const userError: LidarrError = new Error(
               `Lidarr API authentication failed. Check your API key.`,
             );
-            userError.response = raw.response;
+            userError.response = error.response;
             throw userError;
           }
           if (status === 404) {
@@ -999,15 +1010,18 @@ export class LidarrClient {
             const userError: LidarrError = new Error(
               `Lidarr endpoint not found: ${endpoint}. Check if Lidarr is running and the API version is correct.`,
             );
-            userError.response = raw.response;
+            userError.response = error.response;
             throw userError;
           }
           const userError: LidarrError = new Error(
             `Lidarr API error: ${status} - ${
-              responseData?.message || responseData?.error || statusText || "Unknown error"
+              readResponseField(responseData, "message") ||
+              readResponseField(responseData, "error") ||
+              statusText ||
+              "Unknown error"
             }`,
           );
-          userError.response = raw.response;
+          userError.response = error.response;
           throw userError;
         } else if (error.request) {
           logger.error("library", "Lidarr API request failed with no response", {
@@ -1056,11 +1070,12 @@ export class LidarrClient {
         apiPath: this.apiPath,
       };
     } catch (error) {
-      const errorMessage = error.message || "Unknown error";
-      const errorDetails = error.response?.data
-        ? typeof error.response.data === "string"
-          ? error.response.data
-          : JSON.stringify(error.response.data, null, 2)
+      const failure = asAppError(error);
+      const errorMessage = failure?.message || "Unknown error";
+      const errorDetails = failure?.response?.data
+        ? typeof failure.response.data === "string"
+          ? failure.response.data
+          : JSON.stringify(failure.response.data, null, 2)
         : "";
 
       return {
@@ -1069,9 +1084,9 @@ export class LidarrClient {
         details: errorDetails,
         url: this.config.url,
         fullUrl: `${this.config.url}${this.apiPath}/system/status`,
-        statusCode: error.response?.status,
+        statusCode: failure?.response?.status,
         apiPath: this.apiPath,
-        responseHeaders: error.response?.headers,
+        responseHeaders: failure?.response?.headers,
       };
     }
   }
@@ -1487,13 +1502,14 @@ export class LidarrClient {
           try {
             dbOps.setLidarrArtistIdMap(mbid, providerArtistId);
           } catch (mappingError) {
-            if (mappingError?.code !== "LIDARR_ARTIST_ID_CONFLICT") {
+            const mappingFailure = asAppError(mappingError);
+            if (mappingFailure?.code !== "LIDARR_ARTIST_ID_CONFLICT") {
               throw mappingError;
             }
             logger.warn("library", "Failed to persist Lidarr artist ID mapping", {
               mbid,
               providerArtistId,
-              error: mappingError.message,
+              error: mappingFailure.message,
             });
           }
           break;
@@ -1661,10 +1677,7 @@ export class LidarrClient {
     const effectiveArtist =
       artist.monitored === true
         ? artist
-        : await this.updateArtistMonitoring(
-            artistId,
-            artist.monitor || artist.addOptions?.monitor || "none",
-          );
+        : await this.updateArtistMonitoring(artistId, artist.addOptions?.monitor || "none");
 
     const lidarrAlbum = {
       title: albumName,
@@ -2033,7 +2046,7 @@ export class LidarrClient {
   }
 
   async getQualityProfiles(skipConfigUpdate = false) {
-    return this.request<LidarrNamedProfile[]>("/qualityprofile", "GET", null, skipConfigUpdate);
+    return this.request<LidarrQualityProfile[]>("/qualityprofile", "GET", null, skipConfigUpdate);
   }
 
   async getMetadataProfiles(skipConfigUpdate = false) {
@@ -2059,7 +2072,7 @@ export class LidarrClient {
   }
 
   async getQualityProfile(profileId: number, skipConfigUpdate = false) {
-    return this.request<LidarrNamedProfile>(
+    return this.request<LidarrQualityProfile>(
       `/qualityprofile/${profileId}`,
       "GET",
       null,
@@ -2068,7 +2081,7 @@ export class LidarrClient {
   }
 
   async createQualityProfile(profileData: unknown, skipConfigUpdate = false) {
-    return this.request<LidarrNamedProfile>(
+    return this.request<LidarrQualityProfile>(
       "/qualityprofile",
       "POST",
       profileData,
@@ -2077,7 +2090,7 @@ export class LidarrClient {
   }
 
   async updateQualityProfile(profileId: number, profileData: unknown, skipConfigUpdate = false) {
-    return this.request<LidarrNamedProfile>(
+    return this.request<LidarrQualityProfile>(
       `/qualityprofile/${profileId}`,
       "PUT",
       profileData,
@@ -2102,19 +2115,34 @@ export class LidarrClient {
   }
 
   async getReleaseProfiles(skipConfigUpdate = false) {
-    return this.request("/releaseprofile", "GET", null, skipConfigUpdate);
+    return this.request<LidarrReleaseProfile[]>("/releaseprofile", "GET", null, skipConfigUpdate);
   }
 
   async createReleaseProfile(profileData: unknown, skipConfigUpdate = false) {
-    return this.request("/releaseprofile", "POST", profileData, skipConfigUpdate);
+    return this.request<LidarrReleaseProfile>(
+      "/releaseprofile",
+      "POST",
+      profileData,
+      skipConfigUpdate,
+    );
   }
 
   async updateReleaseProfile(profileId: number, profileData: unknown, skipConfigUpdate = false) {
-    return this.request(`/releaseprofile/${profileId}`, "PUT", profileData, skipConfigUpdate);
+    return this.request<LidarrReleaseProfile>(
+      `/releaseprofile/${profileId}`,
+      "PUT",
+      profileData,
+      skipConfigUpdate,
+    );
   }
 
   async getQualityDefinitions(skipConfigUpdate = false) {
-    return this.request("/qualitydefinition", "GET", null, skipConfigUpdate);
+    return this.request<LidarrQualityDefinition[]>(
+      "/qualitydefinition",
+      "GET",
+      null,
+      skipConfigUpdate,
+    );
   }
 
   async updateQualityDefinition(id: number, data: unknown, skipConfigUpdate = false) {

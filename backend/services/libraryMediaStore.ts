@@ -11,6 +11,7 @@ import { isVariousArtistsCredit, withoutRemasterLabel } from "./trackMatching/ti
 import { isSameSongAtPlace } from "./trackMatching/nativeMatcher.ts";
 import { clearLibraryManagement } from "./libraryManagementStore.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
+import { asAppError } from "../../lib/errors.ts";
 import {
   removeLibrarySearchDocument,
   syncLibrarySearchAlbum,
@@ -195,9 +196,9 @@ export function finishLibraryScan(
   );
 }
 
-const copyLibraryStars = (entityKind: string, fromKey: string, toKey: string) =>
+const copyLibraryStars = (entityKind: string, fromKey: string, toKey: string | null) =>
   db
-    .prepare<[string, string, string]>(
+    .prepare<[string | null, string, string]>(
       `INSERT OR IGNORE INTO subsonic_stars (user_id, entity_kind, entity_key, created_at)
    SELECT user_id, entity_kind, ?, created_at
    FROM subsonic_stars
@@ -205,7 +206,7 @@ const copyLibraryStars = (entityKind: string, fromKey: string, toKey: string) =>
     )
     .run(toKey, entityKind, fromKey).changes > 0;
 
-function moveLibraryStars(entityKind: string, fromKey: string, toKey: string) {
+function moveLibraryStars(entityKind: string, fromKey: string, toKey: string | null) {
   const copied = copyLibraryStars(entityKind, fromKey, toKey);
   const deleted =
     db
@@ -216,7 +217,7 @@ function moveLibraryStars(entityKind: string, fromKey: string, toKey: string) {
   return copied || deleted;
 }
 
-const moveLibraryArtistStars = (fromKey: string, toKey: string) =>
+const moveLibraryArtistStars = (fromKey: string, toKey: string | null) =>
   moveLibraryStars("artist", fromKey, toKey);
 
 export const subsonicId = (kind: string, key: unknown) =>
@@ -394,7 +395,7 @@ export function setLibraryArtistMbid(artistId: number, mbid: string | null) {
       };
     }
     moveLibraryArtistStars(artist.identity_key, key);
-    db.prepare<[string, string | null, string | null, number, number]>(
+    db.prepare<[string | null, string | null, string | null, number, number]>(
       `UPDATE library_artists
        SET identity_key = ?, mbid = ?, metadata_json = ?, updated_at = ?
        WHERE id = ?`,
@@ -2618,7 +2619,8 @@ export async function withLibraryScan<T extends LibraryScanCounts>(
       finishLibraryScan(scanId, { ...result, status: "complete" });
       return { scanId, ...result, changed: scan.changed, status: "complete" };
     } catch (error) {
-      if (scanId) finishLibraryScan(scanId, { status: "failed", error: error.message });
+      const failure = asAppError(error);
+      if (scanId) finishLibraryScan(scanId, { status: "failed", error: failure?.message });
       throw error;
     } finally {
       if (scan.changed && parentScan) parentScan.changed = true;
