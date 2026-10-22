@@ -1,3 +1,4 @@
+import type { Job } from "@russellthehippo/honker-node";
 import { acquireReleaseMetadataLease } from "./releaseMetadataLease.ts";
 import createHonkerWorker from "./honkerWorkerFactory.ts";
 import {
@@ -7,17 +8,26 @@ import {
   getSystemTaskQueue,
   PLAYLIST_STARTUP_MIGRATION_SETTING,
   PLAYLIST_STARTUP_MIGRATION_VERSION,
+  type HonkerPayload,
 } from "./honkerDb.ts";
 import { cleanExpiredSessions } from "../config/session-helpers.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import { resolveDownloadRoot } from "./downloadPaths.ts";
+
+type ReleaseMetadataLease = Awaited<ReturnType<typeof acquireReleaseMetadataLease>>;
+type SystemTaskJob = Job & { payload: HonkerPayload | null };
+type SystemTaskContext = { signal?: AbortSignal; lease?: ReleaseMetadataLease };
 
 async function refreshUpgradeReadiness() {
   const { checkUpgradeReadiness } = await import("./upgradeReadiness.ts");
   checkUpgradeReadiness();
 }
 
-export async function processSystemTask(payload = {}, job = null, context = {}) {
+export async function processSystemTask(
+  payload: HonkerPayload | null = {},
+  job: SystemTaskJob | null = null,
+  context: SystemTaskContext = {},
+) {
   const kind = String(payload?.kind || "").trim();
   switch (kind) {
     case "weekly-flow-refresh": {
@@ -56,9 +66,9 @@ export async function processSystemTask(payload = {}, job = null, context = {}) 
     case "quality-upgrade-check": {
       const { runQualityUpgradeCheck } = await import("./qualityProfileService.ts");
       await runQualityUpgradeCheck({
-        force: payload.force === true,
-        playlistIds: payload.playlistId ? [payload.playlistId] : null,
-        limit: payload.limit,
+        force: payload!.force === true,
+        playlistIds: payload!.playlistId ? [payload!.playlistId] : null,
+        limit: payload!.limit,
       });
       return;
     }
@@ -87,8 +97,8 @@ export async function processSystemTask(payload = {}, job = null, context = {}) 
       const { playlistManager } = await import("./playlists/playlistManager.ts");
       playlistManager.updateConfig();
       const results = await playlistManager.scanLibrary(
-        payload.folders ?? playlistManager.libraryRoots(),
-        payload.destinations ?? null,
+        payload!.folders ?? playlistManager.libraryRoots(),
+        payload!.destinations ?? null,
       );
       const failures = (results || []).filter((result) => !result.ok);
       if (failures.length) {
@@ -147,18 +157,18 @@ export async function processSystemTask(payload = {}, job = null, context = {}) 
     case "inbox-refresh": {
       const { enqueueInboxRefreshForAllUsers, refreshInboxForUser } =
         await import("./inboxService.ts");
-      const userId = Number(payload.userId);
+      const userId = Number(payload!.userId);
       if (Number.isInteger(userId) && userId > 0) {
         await refreshInboxForUser(userId, {
           force: true,
           throwOnFailure: true,
-          jobId: job?.id || payload.jobId || null,
-          zipCode: payload.zipCode || "",
-          ipAddress: payload.ipAddress || "",
+          jobId: job?.id || payload!.jobId || null,
+          zipCode: payload!.zipCode || "",
+          ipAddress: payload!.ipAddress || "",
         });
       } else {
         await enqueueInboxRefreshForAllUsers({
-          reason: payload.reason || "scheduled",
+          reason: payload!.reason || "scheduled",
         });
       }
       return;
@@ -269,7 +279,7 @@ export async function processSystemTask(payload = {}, job = null, context = {}) 
     }
     case "read-only-folder-release": {
       const { downloadWorker } = await import("./downloadJobs/downloadWorker.ts");
-      await downloadWorker.releaseReadOnlyFolderFiles(payload.folders || []);
+      await downloadWorker.releaseReadOnlyFolderFiles(payload!.folders || []);
       return;
     }
     case "lidarr-retry": {
@@ -332,7 +342,11 @@ const { start: startPlaybackTaskWorker } = createHonkerWorker({
 
 export { startMaintenanceTaskWorker, startInboxTaskWorker, startPlaybackTaskWorker };
 
-export async function prepareSystemTask(payload, job, { signal }) {
+export async function prepareSystemTask(
+  payload: HonkerPayload | null,
+  job: SystemTaskJob,
+  { signal }: { signal: AbortSignal },
+) {
   if (payload?.kind !== "release-metadata-refresh") return null;
   const lease = await acquireReleaseMetadataLease({ signal });
   return { lease, release: () => lease.release() };

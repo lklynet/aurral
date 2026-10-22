@@ -1,7 +1,23 @@
 import fs from "fs/promises";
 import type { StorageHealthStep } from "./storageHealthService.ts";
+import type { LidarrAlbum, LidarrClient } from "./lidarrClient.ts";
 import { buildTrackFileIndex, enrichLidarrTrackWithFiles } from "./libraryManager.ts";
 import { getPathMappings, looksLikeExternalOnlyPath, resolveLocalPath } from "./pathMappings.ts";
+
+type LidarrTrackFileEntry = Awaited<ReturnType<LidarrClient["getTrackFilesByAlbumId"]>>[number];
+type LidarrTrackEntry = Awaited<ReturnType<LidarrClient["getTracksByAlbumId"]>>[number] & {
+  trackTitle?: string | null;
+  path?: string | null;
+  trackFile?: LidarrTrackFileEntry | null;
+};
+type LidarrAlbumEntry = LidarrAlbum & { albumTitle?: string | null };
+interface LidarrArtistEntry {
+  id?: number;
+  artistName?: string;
+  name?: string;
+  path?: string | null;
+}
+
 function step(
   id: StorageHealthStep["id"],
   status: StorageHealthStep["status"],
@@ -11,7 +27,10 @@ function step(
   return { id, status, label, ...extra };
 }
 
-export async function pathIsReadable(filePath, mappings = getPathMappings("lidarr")) {
+export async function pathIsReadable(
+  filePath: string | null | undefined,
+  mappings = getPathMappings("lidarr"),
+) {
   if (!filePath) return false;
   const candidates = [filePath, resolveLocalPath(filePath, mappings)];
   const uniqueCandidates = [
@@ -26,14 +45,14 @@ export async function pathIsReadable(filePath, mappings = getPathMappings("lidar
   return false;
 }
 
-function normalizeForDisplayCompare(filePath) {
+function normalizeForDisplayCompare(filePath: string) {
   return String(filePath || "")
     .trim()
     .replace(/\\/g, "/")
     .replace(/\/+$/, "");
 }
 
-function formatPathAccessDetail(reportedPath, readablePath) {
+function formatPathAccessDetail(reportedPath: string, readablePath: string | false) {
   const reported = String(reportedPath || "").trim();
   const readable = String(readablePath || "").trim();
   if (!reported || !readable) return reported || readable;
@@ -43,7 +62,7 @@ function formatPathAccessDetail(reportedPath, readablePath) {
   return `${reported} -> ${readable}`;
 }
 
-function pathHasPrefix(candidate, prefix) {
+function pathHasPrefix(candidate: string, prefix: string) {
   const normalizedCandidate = normalizeForDisplayCompare(candidate);
   const normalizedPrefix = normalizeForDisplayCompare(prefix);
   if (!normalizedCandidate || !normalizedPrefix) return false;
@@ -53,13 +72,13 @@ function pathHasPrefix(candidate, prefix) {
   );
 }
 
-function artistIsOutsideRoots(artist, rootPaths) {
+function artistIsOutsideRoots(artist: LidarrArtistEntry, rootPaths: string[]) {
   const artistPath = String(artist?.path || "").trim();
   if (!artistPath || rootPaths.length === 0) return false;
   return !rootPaths.some((rootPath) => pathHasPrefix(artistPath, rootPath));
 }
 
-function unreadableSampleFix(samplePath, rootPaths) {
+function unreadableSampleFix(samplePath: string, rootPaths: string[]) {
   if (rootPaths.length > 0 && !rootPaths.some((rootPath) => pathHasPrefix(samplePath, rootPath))) {
     return `Lidarr reports this track outside its root folders (${rootPaths.join(", ")}), which usually means the artist folder was left behind by a root folder change. In Lidarr, open the artist, choose Edit, and move the files into the current root folder, or add the old location as a Lidarr root folder and mount it into Aurral.`;
   }
@@ -68,10 +87,10 @@ function unreadableSampleFix(samplePath, rootPaths) {
     : "Lidarr reports this file path, but Aurral cannot read it. Check Docker mounts and folder permissions (PUID/PGID). If Lidarr and Aurral intentionally use different container paths, add a manual Lidarr path mapping.";
 }
 
-export async function findSampleTrackFile(lidarrClient, rootPaths = []) {
-  let artists = [];
+export async function findSampleTrackFile(lidarrClient: LidarrClient, rootPaths: string[] = []) {
+  let artists: LidarrArtistEntry[] = [];
   try {
-    artists = await lidarrClient.request("/artist");
+    artists = await lidarrClient.request<LidarrArtistEntry[]>("/artist");
   } catch {
     return null;
   }
@@ -84,9 +103,9 @@ export async function findSampleTrackFile(lidarrClient, rootPaths = []) {
 
   for (const artist of orderedArtists) {
     if (!artist?.id) continue;
-    let albums = [];
+    let albums: LidarrAlbumEntry[] = [];
     try {
-      albums = await lidarrClient.request(`/album?artistId=${artist.id}`);
+      albums = await lidarrClient.request<LidarrAlbumEntry[]>(`/album?artistId=${artist.id}`);
     } catch {
       continue;
     }
@@ -95,7 +114,7 @@ export async function findSampleTrackFile(lidarrClient, rootPaths = []) {
     const album = albums.find((entry) => (entry?.statistics?.sizeOnDisk ?? 0) > 0);
     if (!album?.id) continue;
 
-    const [tracks, trackFiles] = await Promise.all([
+    const [tracks, trackFiles]: [LidarrTrackEntry[], LidarrTrackFileEntry[]] = await Promise.all([
       lidarrClient.getTracksByAlbumId(album.id),
       lidarrClient.getTrackFilesByAlbumId(album.id),
     ]);
@@ -120,7 +139,7 @@ export async function findSampleTrackFile(lidarrClient, rootPaths = []) {
   return null;
 }
 
-export async function runLidarrLibraryAccessTest(lidarrClient) {
+export async function runLidarrLibraryAccessTest(lidarrClient: LidarrClient) {
   const steps = [];
 
   const connection = await lidarrClient.testConnection(true);

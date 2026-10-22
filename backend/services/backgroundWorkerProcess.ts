@@ -82,8 +82,8 @@ async function handleDownloadOwnerCommand(message) {
       const { downloadTracker } = await import("./downloadJobs/downloadTracker.ts");
       result = downloadTracker.clearPendingByPlaylistType(args[0]);
     } else if (method === "wakeOrStart") {
-      if (downloadWorker.running) downloadWorker.wake(args[0]);
-      else await downloadWorker.start();
+      if (downloadWorker!.running) downloadWorker!.wake(args[0]);
+      else await downloadWorker!.start();
       result = true;
     } else if (method === "runQualityUpgradeChecks") {
       const { runQualityUpgradeCheck } = await import("./qualityProfileService.ts");
@@ -113,8 +113,8 @@ async function handleDownloadOwnerCommand(message) {
       result = await downloadWorker[method](...args);
     }
     if (process.connected) {
-      process.send({ type: "cache-invalidate", cache: "playlists" });
-      process.send({ type: "download-owner-response", requestId, result });
+      process.send!({ type: "cache-invalidate", cache: "playlists" });
+      process.send!({ type: "download-owner-response", requestId, result });
     }
   } catch (error) {
     logger.error("workers", "Download worker command failed", {
@@ -124,7 +124,7 @@ async function handleDownloadOwnerCommand(message) {
       reason: error?.message || String(error),
     });
     if (process.connected) {
-      process.send({
+      process.send!({
         type: "download-owner-response",
         requestId,
         error: error?.message || String(error),
@@ -165,7 +165,7 @@ process.on("message", (message) => {
   if (message?.type === "queue-wake") wakeQueuedBackgroundWork(group);
   if (message?.type === "retire") {
     if (isIdle()) void stop();
-    else if (process.connected) process.send({ type: "busy" });
+    else if (process.connected) process.send!({ type: "busy" });
   }
 });
 process.once("SIGTERM", () => {
@@ -190,10 +190,10 @@ process.send({ type: "ready", group });
 const heartbeat = setInterval(() => {
   if (process.connected) {
     const downloadOwnerStatus = downloadWorker
-      ? { ...downloadWorker.getStatus(), operationWorker: playlistOperationStatus() }
+      ? { ...downloadWorker.getStatus(), operationWorker: playlistOperationStatus!() }
       : null;
     const { rss, heapUsed } = process.memoryUsage();
-    process.send({
+    process.send!({
       type: "heartbeat",
       group,
       memory: { rss, heapUsed },
@@ -206,6 +206,6 @@ const heartbeat = setInterval(() => {
 }, 5000);
 heartbeat.unref?.();
 const idleCheck = setInterval(() => {
-  if (process.connected && isIdle()) process.send({ type: "idle" });
+  if (process.connected && isIdle()) process.send!({ type: "idle" });
 }, 1000);
 idleCheck.unref?.();

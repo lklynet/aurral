@@ -7,11 +7,13 @@ import { randomUUID } from "node:crypto";
 import { getDownloadClient } from "./download/downloadClientSettings.ts";
 import { getDownloadSourceStatus } from "./downloadSourceService.ts";
 import { prowlarrClient } from "./prowlarrClient.ts";
+import type { DownloadJob } from "./downloadJobs/downloadTracker.ts";
+import type { HonkerPayload } from "./honkerDb.ts";
 
 const SESSION_TTL_MS = 10 * 60 * 1000;
 const MAX_RESULTS = 100;
 const MAX_SESSIONS = 250;
-const sessions = new Map();
+const sessions = new Map<string, ManualSearchSession>();
 const YTDLP_LIVE_STATUSES = new Set(["is_live", "was_live", "post_live", "is_upcoming"]);
 const AUDIO_EXTENSIONS = new Set([
   ".aac",
@@ -27,11 +29,30 @@ const AUDIO_EXTENSIONS = new Set([
   ".wma",
 ]);
 
-function text(value) {
+type ManualSearchMode = "missing" | "replacement";
+type ManualSource = { id: string; label: string; source: string; downloadClient?: string };
+type ManualSearchJob = Pick<DownloadJob, "id"> &
+  Partial<Pick<DownloadJob, "artistName" | "trackName" | "albumName">>;
+type ManualWorkContext = { jobId: string; playlistId: string | null };
+type RawSearchResult = HonkerPayload;
+type StoredCandidate = ReturnType<typeof toStoredCandidate>;
+type ManualSearchSession = {
+  actorId: string;
+  jobId: string;
+  mode: ManualSearchMode;
+  playlistId: string;
+  source: string;
+  sourceId: string | undefined;
+  downloadClient: string | null;
+  results: Map<string, StoredCandidate>;
+  expiresAt: number;
+};
+
+function text(value: unknown) {
   return String(value ?? "").trim();
 }
 
-function buildQuery(job) {
+function buildQuery(job: ManualSearchJob) {
   return [job?.artistName, job?.trackName, job?.albumName].map(text).filter(Boolean).join(" ");
 }
 
@@ -41,7 +62,7 @@ function pruneSessions(now = Date.now()) {
   }
 }
 
-function formatBytes(value) {
+function formatBytes(value: unknown) {
   const bytes = Number(value || 0);
   if (!Number.isFinite(bytes) || bytes <= 0) return "";
   const units = ["B", "KB", "MB", "GB"];
@@ -54,22 +75,22 @@ function formatBytes(value) {
   return `${amount >= 10 || unit === 0 ? Math.round(amount) : amount.toFixed(1)} ${units[unit]}`;
 }
 
-function formatDuration(value) {
+function formatDuration(value: unknown) {
   const seconds = Number(value || 0);
   if (!Number.isFinite(seconds) || seconds <= 0) return "";
   const whole = Math.round(seconds);
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
 }
 
-function fileFormat(filename) {
+function fileFormat(filename: unknown) {
   return path.extname(text(filename)).replace(/^\./, "").toUpperCase();
 }
 
-function isYtdlpLiveResult(result) {
+function isYtdlpLiveResult(result: RawSearchResult | null | undefined) {
   return YTDLP_LIVE_STATUSES.has(text(result?.liveStatus).toLowerCase());
 }
 
-function resultView(source, raw) {
+function resultView(source: string, raw: RawSearchResult) {
   if (source === "slskd") {
     const normalizedFile = text(raw.file).replace(/\\/g, "/");
     const parent = normalizedFile.includes("/")
@@ -114,14 +135,14 @@ function resultView(source, raw) {
   };
 }
 
-function toStoredCandidate(source, raw) {
+function toStoredCandidate(source: string, raw: RawSearchResult) {
   if (source === "usenet") {
     return { raw: { release: raw }, score: 0 };
   }
   return { raw };
 }
 
-async function searchSlskd(query, workContext) {
+async function searchSlskd(query: string, workContext: ManualWorkContext) {
   const results = await getDownloadClient("slskd").searchQuery(query, {
     fileLimit: 5000,
     responseLimit: 250,
@@ -139,7 +160,7 @@ async function searchSlskd(query, workContext) {
   });
 }
 
-async function searchSource(source, query, workContext) {
+async function searchSource(source: string, query: string, workContext: ManualWorkContext) {
   if (source === "slskd") return searchSlskd(query, workContext);
   if (source === "deemix") {
     return (await getDownloadClient("deemix").search(query, { limit: 50 })).filter(
@@ -157,7 +178,7 @@ async function searchSource(source, query, workContext) {
 
 export function getManualDownloadSources() {
   const status = getDownloadSourceStatus();
-  const sources = [];
+  const sources: ManualSource[] = [];
   if (status.slskd.configured) sources.push({ id: "slskd", label: "Soulseek", source: "slskd" });
   if (status.deemix.configured) sources.push({ id: "deemix", label: "deemix", source: "deemix" });
   if (status.ytdlp.configured) sources.push({ id: "ytdlp", label: "yt-dlp", source: "ytdlp" });
@@ -186,6 +207,12 @@ export async function createManualMissingSearch({
   actorId,
   mode = "missing",
   playlistId = null,
+}: {
+  job: ManualSearchJob;
+  sourceId: string;
+  actorId: string | number;
+  mode?: ManualSearchMode;
+  playlistId?: string | null;
 }) {
   pruneSessions();
   const sourceOption = getManualDownloadSources().find((entry) => entry.id === text(sourceId));
@@ -214,12 +241,20 @@ export function storeManualMissingSearch({
   sourceOption,
   query,
   rawResults,
+}: {
+  jobId: string;
+  actorId: string | number;
+  mode?: ManualSearchMode;
+  playlistId?: string | null;
+  sourceOption: ManualSource;
+  query: string;
+  rawResults: RawSearchResult[];
 }) {
   pruneSessions();
   while (sessions.size >= MAX_SESSIONS) {
-    sessions.delete(sessions.keys().next().value);
+    sessions.delete(sessions.keys().next().value!);
   }
-  const storedResults = new Map();
+  const storedResults = new Map<string, StoredCandidate>();
   const source = text(sourceOption?.source);
   const results = (Array.isArray(rawResults) ? rawResults : []).slice(0, MAX_RESULTS).map((raw) => {
     const resultId = randomUUID();
@@ -241,7 +276,17 @@ export function storeManualMissingSearch({
   return { sessionId, source: sourceOption, query, results, expiresInMs: SESSION_TTL_MS };
 }
 
-export function getManualMissingSelection({ sessionId, resultId, jobId, actorId }) {
+export function getManualMissingSelection({
+  sessionId,
+  resultId,
+  jobId,
+  actorId,
+}: {
+  sessionId: string;
+  resultId: string;
+  jobId: string;
+  actorId: string | number;
+}) {
   pruneSessions();
   const session = sessions.get(text(sessionId));
   if (!session || session.jobId !== text(jobId) || session.actorId !== text(actorId)) {
@@ -259,7 +304,7 @@ export function getManualMissingSelection({ sessionId, resultId, jobId, actorId 
   };
 }
 
-export function consumeManualMissingSelection(sessionId) {
+export function consumeManualMissingSelection(sessionId: string) {
   return sessions.delete(text(sessionId));
 }
 

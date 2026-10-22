@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import fs from "fs/promises";
 import path from "path";
 import { dbOps } from "../db/helpers/index.ts";
+import type { StoredIntegrations } from "../db/helpers/settings.ts";
 import { getLibraryTrackCount, getLibraryTrackSample } from "./libraryQueryService.ts";
 import { lidarrClient } from "./lidarrClient.ts";
 import { getDownloadClient } from "./download/downloadClientSettings.ts";
@@ -37,10 +38,11 @@ const MEDIA_HEALTH_SAMPLE_LIMIT = Math.max(
   50,
   Math.floor(Number(process.env.AURRAL_MEDIA_HEALTH_SAMPLE_LIMIT) || 500),
 );
-let storageHealthCache = null;
+type StorageHealthResult = Awaited<ReturnType<typeof buildStorageHealthCheck>>;
+let storageHealthCache: StorageHealthResult | null = null;
 let storageHealthCacheExpiresAt = 0;
 let storageHealthCacheKey = "";
-let storageHealthInflight = null;
+let storageHealthInflight: Promise<StorageHealthResult> | null = null;
 let storageHealthInflightKey = "";
 
 export type StorageHealthStep = {
@@ -62,7 +64,7 @@ function healthStep(
   return step;
 }
 
-function formatBytes(bytes) {
+function formatBytes(bytes: number) {
   const value = Number(bytes);
   if (!Number.isFinite(value) || value < 0) return "unknown";
   const units = ["B", "KiB", "MiB", "GiB", "TiB"];
@@ -76,7 +78,7 @@ function formatBytes(bytes) {
   return `${size.toFixed(decimals)} ${units[unitIndex]}`;
 }
 
-function formatLimitedList(items, limit = DETAIL_LIST_LIMIT) {
+function formatLimitedList(items: string[], limit = DETAIL_LIST_LIMIT) {
   const values = (Array.isArray(items) ? items : [])
     .map((entry) => String(entry || "").trim())
     .filter(Boolean);
@@ -84,7 +86,7 @@ function formatLimitedList(items, limit = DETAIL_LIST_LIMIT) {
   return `${values.slice(0, limit).join(", ")} (+${values.length - limit} more)`;
 }
 
-function normalizePathCompare(value) {
+function normalizePathCompare(value: string) {
   let normalized = String(value || "")
     .trim()
     .replace(/\\/g, "/");
@@ -96,7 +98,7 @@ function normalizePathCompare(value) {
     : normalized;
 }
 
-function pathCoversPrefix(parentPath, childPath) {
+function pathCoversPrefix(parentPath: string, childPath: string) {
   const parent = normalizePathCompare(parentPath);
   const child = normalizePathCompare(childPath);
   if (!parent || !child) return false;
@@ -105,7 +107,7 @@ function pathCoversPrefix(parentPath, childPath) {
   return child.startsWith(`${parent}/`);
 }
 
-function isAbsolutePathReference(value) {
+function isAbsolutePathReference(value: string) {
   const trimmed = String(value || "").trim();
   return (
     path.isAbsolute(trimmed) ||
@@ -115,7 +117,7 @@ function isAbsolutePathReference(value) {
   );
 }
 
-function getLikelySharedBrowseRoots(browseRoots) {
+function getLikelySharedBrowseRoots(browseRoots: string[]) {
   const dedicatedRoots = (Array.isArray(browseRoots) ? browseRoots : []).filter(
     (root) => !isFilesystemRootPath(root),
   );
@@ -161,7 +163,7 @@ function formatProbeError(error) {
   return `${code}${error?.message || "Filesystem operation failed"}`;
 }
 
-function formatServiceError(error, fallback) {
+function formatServiceError(error, fallback: string) {
   const detail = error?.response?.data ?? error?.message;
   if (typeof detail === "string" && detail.trim()) return detail;
   if (detail != null) {
@@ -172,7 +174,7 @@ function formatServiceError(error, fallback) {
   return fallback;
 }
 
-async function runDirectoryWriteProbe(dirPath) {
+async function runDirectoryWriteProbe(dirPath: string) {
   const root = String(dirPath || "").trim();
   if (!root) {
     return { ok: false, detail: "No directory configured" };
@@ -220,7 +222,7 @@ async function runDirectoryWriteProbe(dirPath) {
   }
 }
 
-async function getFilesystemSpace(dirPath) {
+async function getFilesystemSpace(dirPath: string) {
   if (typeof fs.statfs !== "function") return null;
   try {
     const stats = await fs.statfs(dirPath);
@@ -237,7 +239,7 @@ async function getFilesystemSpace(dirPath) {
   }
 }
 
-function formatPathAccessDetail(reportedPath, readablePath) {
+function formatPathAccessDetail(reportedPath: string, readablePath: string | false) {
   const reported = String(reportedPath || "").trim();
   const readable = String(readablePath || "").trim();
   if (!reported || !readable) return reported || readable;
@@ -247,7 +249,7 @@ function formatPathAccessDetail(reportedPath, readablePath) {
   return `${reported} -> ${readable}`;
 }
 
-async function runDownloadTransferProbe(sourceDir, targetRoot) {
+async function runDownloadTransferProbe(sourceDir: string, targetRoot: string) {
   const probeId = `${process.pid}-${Date.now()}-${randomUUID().slice(0, 8)}`;
   const sourcePath = path.join(sourceDir, `.aurral-transfer-${probeId}.tmp`);
   const targetDir = path.join(targetRoot, `.aurral-health-${probeId}`);
@@ -295,8 +297,8 @@ async function runDownloadTransferProbe(sourceDir, targetRoot) {
 }
 
 function buildSection(
-  id,
-  title,
+  id: string,
+  title: string,
   steps: StorageHealthStep[],
   { skipped = false, skipReason = null }: { skipped?: boolean; skipReason?: string | null } = {},
 ) {
@@ -316,7 +318,9 @@ function buildSection(
   };
 }
 
-function summarizeResult(sections) {
+type StorageHealthSection = ReturnType<typeof buildSection>;
+
+function summarizeResult(sections: StorageHealthSection[]) {
   const active = sections.filter((entry) => entry.status !== "skip");
   const hasFail = active.some((entry) => entry.status === "fail");
   const hasWarn = active.some((entry) => entry.status === "warn");
@@ -343,7 +347,7 @@ function getStorageHealthCacheKey() {
   });
 }
 
-function isFilesystemRootPath(value) {
+function isFilesystemRootPath(value: string) {
   const normalized = normalizePathCompare(value);
   return normalized === "/" || normalized === "";
 }
@@ -581,6 +585,35 @@ async function checkLidarrSection() {
   };
 }
 
+type DownloadClientKey = "slskd" | "nzbget" | "sabnzbd";
+type DownloadClientConfig = { enabled?: boolean; completedPath?: string };
+type DownloadClientConnection = {
+  ok: boolean;
+  message?: string;
+  soulseekConnected?: boolean;
+  serverState?: string;
+  downloadPath?: string | null;
+  directories?: { completedPath?: string | null; destDir?: string | null };
+};
+type DownloadClientSectionOptions = {
+  client: {
+    isConfigured(): boolean;
+    testConnection(options: { force: boolean }): Promise<DownloadClientConnection>;
+  };
+  key: DownloadClientKey;
+  title: string;
+  isEnabled: (config: DownloadClientConfig) => boolean;
+  skipReason: string;
+  resolveCompletedPath: (
+    config: DownloadClientConfig,
+    connection: DownloadClientConnection,
+  ) => string;
+  missingPathFix: string;
+  pathFix: (downloadPath: string) => string;
+  connectionLabel?: string;
+  extraSteps?: ((connection: DownloadClientConnection) => StorageHealthStep[]) | null;
+};
+
 async function checkDownloadClientSection({
   client,
   key,
@@ -592,9 +625,9 @@ async function checkDownloadClientSection({
   pathFix,
   connectionLabel = `Connected to ${title}`,
   extraSteps = null,
-}) {
-  const integrations = dbOps.getSettings()?.integrations || {};
-  const config = integrations[key] || {};
+}: DownloadClientSectionOptions) {
+  const integrations: StoredIntegrations = dbOps.getSettings()?.integrations || {};
+  const config: DownloadClientConfig = integrations[key] || {};
 
   if (!isEnabled(config) || !client.isConfigured()) {
     return buildSection(key, title, [], {
@@ -751,7 +784,7 @@ async function checkSabnzbdSection() {
   });
 }
 
-function libraryCoversAnyPath(libraryList, candidates) {
+function libraryCoversAnyPath(libraryList: NavidromeLibrary[], candidates: string[]) {
   return (Array.isArray(libraryList) ? libraryList : []).find((library) =>
     candidates.some((candidate) => pathCoversPrefix(library?.path, candidate)),
   );
@@ -928,7 +961,10 @@ async function checkNativePlaybackSection() {
   ]);
 }
 
-function getPlexLibraryLocations(libraries) {
+type PlexLocation = { path?: string };
+type PlexLibraryEntry = { Location?: PlexLocation | PlexLocation[] };
+
+function getPlexLibraryLocations(libraries: PlexLibraryEntry[]) {
   return (Array.isArray(libraries) ? libraries : []).flatMap((library) => {
     const locations = Array.isArray(library?.Location)
       ? library.Location

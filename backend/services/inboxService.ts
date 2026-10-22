@@ -5,6 +5,7 @@ import { getLibraryAlbumsByReleaseDate, getLibraryArtistNames } from "./libraryQ
 import { getNearbyShows } from "./nearbyShowsService.ts";
 import { getUserDiscovery } from "./discovery/userDiscovery.ts";
 import { logger } from "./logger.ts";
+import type { InboxItemInput, InboxItemUpdates } from "../db/helpers/inbox.ts";
 import { getNewsForUser } from "./newsService.ts";
 import {
   enqueueSystemTaskJob,
@@ -19,12 +20,12 @@ const RELEASE_FUTURE_DAYS = 90;
 const CONTENT_TTL_MS = 30 * DAY_MS;
 const REFRESH_COOLDOWN_MS = 5 * 60 * 1000;
 const INBOX_REFRESH_STATUS_PREFIX = "inboxRefresh:";
-const refreshState = new Map();
-const refreshInflight = new Map();
+const refreshState = new Map<number, { at: number; hadLocationRequest: boolean }>();
+const refreshInflight = new Map<number, Promise<boolean>>();
 
-const encode = (value) => encodeURIComponent(String(value || ""));
+const encode = (value: string) => encodeURIComponent(String(value || ""));
 
-const toTime = (value) => {
+const toTime = (value: string | null | undefined) => {
   const time = new Date(value).getTime();
   return Number.isFinite(time) ? time : null;
 };
@@ -40,7 +41,7 @@ const getInboxPreferences = () => {
   };
 };
 
-const getEnabledKinds = (preferences) =>
+const getEnabledKinds = (preferences: ReturnType<typeof getInboxPreferences>) =>
   Object.entries({
     release: preferences.releases,
     show: preferences.shows,
@@ -51,12 +52,12 @@ const getEnabledKinds = (preferences) =>
     .filter(([, enabled]) => enabled)
     .map(([kind]) => kind);
 
-const normalizeUserId = (userId) => {
+const normalizeUserId = (userId: number) => {
   const normalized = Number(userId);
   return Number.isInteger(normalized) && normalized > 0 ? normalized : null;
 };
 
-const getInboxRefreshStatusKey = (userId) =>
+const getInboxRefreshStatusKey = (userId: number) =>
   `${INBOX_REFRESH_STATUS_PREFIX}${normalizeUserId(userId)}`;
 
 interface InboxRefreshStatus {
@@ -69,7 +70,7 @@ interface InboxRefreshStatus {
   reason?: string;
 }
 
-const getStoredRefreshStatus = (userId) =>
+const getStoredRefreshStatus = (userId: number) =>
   dbOps.getJSONSetting<InboxRefreshStatus>(getInboxRefreshStatusKey(userId)) || {
     status: "idle",
     stale: false,
@@ -79,7 +80,7 @@ const getStoredRefreshStatus = (userId) =>
     jobId: null,
   };
 
-const findActiveInboxRefreshJob = (userId, options = {}) =>
+const findActiveInboxRefreshJob = (userId: number, options: { recoverExpired?: boolean } = {}) =>
   findActiveHonkerJob(
     getSystemTaskQueueName("inbox-refresh"),
     (payload) => payload?.kind === "inbox-refresh" && Number(payload.userId) === userId,
@@ -91,7 +92,7 @@ const findActiveInboxRefreshJob = (userId, options = {}) =>
     options,
   );
 
-const setStoredRefreshStatus = (userId, status) => {
+const setStoredRefreshStatus = (userId: number, status: Partial<InboxRefreshStatus>) => {
   db.transaction(() => {
     dbOps.setJSONSetting(getInboxRefreshStatusKey(userId), {
       ...getStoredRefreshStatus(userId),
@@ -101,7 +102,7 @@ const setStoredRefreshStatus = (userId, status) => {
   })();
 };
 
-export function getInboxRefreshStatus(userId) {
+export function getInboxRefreshStatus(userId: number) {
   const normalizedUserId = normalizeUserId(userId);
   if (!normalizedUserId) {
     return {
@@ -141,11 +142,11 @@ export function getInboxRefreshStatus(userId) {
   return stored;
 }
 
-const upsertAll = (items) => {
+const upsertAll = (items: InboxItemInput[]) => {
   for (const item of items) dbOps.upsertInboxItem(item);
 };
 
-async function buildReleaseItems(userId, now) {
+async function buildReleaseItems(userId: number, now: number) {
   const cutoff = now - RELEASE_PAST_DAYS * DAY_MS;
   const horizon = now + RELEASE_FUTURE_DAYS * DAY_MS;
   const rawAlbums = getLibraryAlbumsByReleaseDate({
@@ -197,7 +198,7 @@ async function buildReleaseItems(userId, now) {
     .filter(Boolean);
 }
 
-async function buildDiscoveryItems(userId, now) {
+async function buildDiscoveryItems(userId: number, now: number) {
   const result = await getUserDiscovery(userId, 50, 0);
   const recommendations = Array.isArray(result?.body?.recommendations)
     ? result.body.recommendations
@@ -231,7 +232,26 @@ async function buildDiscoveryItems(userId, now) {
     .filter(Boolean);
 }
 
-async function buildShowItems(userId, now, req, ipAddress, zipCode, libraryArtists) {
+type NearbyShow = {
+  id: string;
+  eventName?: string | null;
+  dateTime?: string | null;
+  date?: string | null;
+  artistNames: string[];
+  venueName?: string | null;
+  city?: string | null;
+  url?: string | null;
+  image?: string | null;
+};
+
+async function buildShowItems(
+  userId: number,
+  now: number,
+  req: { ip?: string } | null,
+  ipAddress: string,
+  zipCode: string,
+  libraryArtists: ReturnType<typeof getLibraryArtistNames>,
+) {
   const apiKey = getTicketmasterApiKey();
   if (
     !apiKey ||
@@ -241,7 +261,7 @@ async function buildShowItems(userId, now, req, ipAddress, zipCode, libraryArtis
   ) {
     return [];
   }
-  const { shows } = await getNearbyShows({
+  const { shows }: { shows: NearbyShow[] } = await getNearbyShows({
     req: req || { ip: ipAddress },
     zipCode,
     libraryArtists,
@@ -264,9 +284,14 @@ async function buildShowItems(userId, now, req, ipAddress, zipCode, libraryArtis
   });
 }
 
-async function buildNewsItems(userId, now, enabledKinds) {
+type NewsArticle = Awaited<ReturnType<typeof getNewsForUser>>["articles"][number];
+
+async function buildNewsItems(userId: number, now: number, enabledKinds: Set<string>) {
   const { articles } = await getNewsForUser({ userId, limit: 100 });
-  const grouped = new Map();
+  const grouped = new Map<
+    string,
+    { kind: string; artist: NewsArticle["artists"][number]; articles: NewsArticle[] }
+  >();
   for (const article of articles) {
     for (const artist of article.artists) {
       const kind = artist.newsType === "recommended" ? "recommendedNews" : "news";
@@ -301,8 +326,17 @@ async function buildNewsItems(userId, now, enabledKinds) {
   });
 }
 
+interface RefreshInboxOptions {
+  req?: { ip?: string } | null;
+  ipAddress?: string;
+  zipCode?: string;
+  force?: boolean;
+  throwOnFailure?: boolean;
+  jobId?: number | null;
+}
+
 export async function refreshInboxForUser(
-  userId,
+  userId: number,
   {
     req = null,
     ipAddress = "",
@@ -310,7 +344,7 @@ export async function refreshInboxForUser(
     force = false,
     throwOnFailure = false,
     jobId = null,
-  } = {},
+  }: RefreshInboxOptions = {},
 ) {
   const normalizedUserId = normalizeUserId(userId);
   if (!normalizedUserId) return false;
@@ -380,7 +414,7 @@ export async function refreshInboxForUser(
       ...(failures.length === 0 ? { lastSuccessAt: now } : {}),
     });
     if (failures.length > 0 && throwOnFailure) {
-      const error = new Error(errorMessage);
+      const error: Error & { inboxStatusWritten?: boolean } = new Error(errorMessage!);
       error.inboxStatusWritten = true;
       throw error;
     }
@@ -415,8 +449,12 @@ export async function refreshInboxForUser(
 }
 
 export async function enqueueInboxRefreshForUser(
-  userId,
-  { reason = "manual", zipCode = "", ipAddress = "" } = {},
+  userId: number,
+  {
+    reason = "manual",
+    zipCode = "",
+    ipAddress = "",
+  }: { reason?: string; zipCode?: string; ipAddress?: string } = {},
 ) {
   const normalizedUserId = normalizeUserId(userId);
   if (!normalizedUserId) throw new Error("A valid user is required");
@@ -451,7 +489,9 @@ export async function enqueueInboxRefreshForUser(
   });
 }
 
-export async function enqueueInboxRefreshForAllUsers(options = {}) {
+export async function enqueueInboxRefreshForAllUsers(
+  options: Parameters<typeof enqueueInboxRefreshForUser>[1] = {},
+) {
   const jobs = [];
   for (const user of userOps.getAllUsers()) {
     if (user.status !== "active") continue;
@@ -460,7 +500,7 @@ export async function enqueueInboxRefreshForAllUsers(options = {}) {
   return jobs;
 }
 
-export function getInboxForUser(userId, options = {}) {
+export function getInboxForUser(userId: number, options: { limit?: number } = {}) {
   const kinds = getEnabledKinds(getInboxPreferences());
   const refreshStatus = getInboxRefreshStatus(userId);
   if (kinds.length === 0) {
@@ -479,10 +519,10 @@ export function getInboxForUser(userId, options = {}) {
   };
 }
 
-export const updateInboxItem = (userId, itemId, updates) =>
+export const updateInboxItem = (userId: number, itemId: string, updates?: InboxItemUpdates) =>
   dbOps.updateInboxItem(userId, itemId, updates);
 
-export const markAllInboxItemsRead = (userId) => {
+export const markAllInboxItemsRead = (userId: number) => {
   dbOps.markAllInboxItemsRead(userId);
   return dbOps.getInboxUnreadCount(userId);
 };
