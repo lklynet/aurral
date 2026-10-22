@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
-import { getPlaybackDestinationSettings } from "../../backend/services/playback/playbackDestinationSettings.ts";
+import {
+  getPlaybackDestinationSettings,
+  testPlaybackDestination,
+} from "../../backend/services/playback/playbackDestinationSettings.ts";
 
 test("playback adapters expose declarative connection settings without credentials", () => {
   const settings = getPlaybackDestinationSettings();
@@ -19,4 +22,11 @@ test("playback adapters expose declarative connection settings without credentia
       );
     }
   }
+});
+
+test("testing a destination named after an object property reports it as unknown", async () => {
+  await assert.rejects(
+    testPlaybackDestination("constructor", {}),
+    /Unknown playback destination: constructor/,
+  );
 });

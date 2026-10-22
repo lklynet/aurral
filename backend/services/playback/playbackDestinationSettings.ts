@@ -18,9 +18,16 @@ export function getPlaybackDestinationSettings() {
   return structuredClone(definitions);
 }
 
-export async function testPlaybackDestination(key: string, config: unknown) {
-  const destination = factories[key]?.();
-  if (!destination) throw new Error(`Unknown playback destination: ${key}`);
+const isDestinationKey = (key: string): key is keyof typeof factories =>
+  Object.hasOwn(factories, key);
+
+type DestinationConfig = Parameters<NavidromePlaybackDestination["updateConfig"]>[0] &
+  Parameters<PlexPlaybackDestination["updateConfig"]>[0] &
+  Parameters<JellyfinPlaybackDestination["updateConfig"]>[0];
+
+export async function testPlaybackDestination(key: string, config: DestinationConfig) {
+  if (!isDestinationKey(key)) throw new Error(`Unknown playback destination: ${key}`);
+  const destination = factories[key]();
   destination.updateConfig(config);
   return destination.testConnection();
 }

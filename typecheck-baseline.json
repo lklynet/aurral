@@ -122,7 +122,6 @@
   "backend/services/nzbgetClient.ts": 1,
   "backend/services/oidcAuth.ts": 1,
   "backend/services/pipelineHelpers.ts": 15,
-  "backend/services/playback/playbackDestinationSettings.ts": 1,
   "backend/services/playlists/bulkOperations.ts": 3,
   "backend/services/playlists/bulkOperationStore.ts": 7,
   "backend/services/playlists/playlistManager.ts": 12,
