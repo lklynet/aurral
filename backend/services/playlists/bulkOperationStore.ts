@@ -110,7 +110,7 @@ export function cleanupBulkOperations() {
   const now = Date.now();
   for (const row of listStmt.all()) {
     const record = getBulkOperation(row.key.slice(PREFIX.length));
-    if (!["completed", "failed"].includes(record.state)) continue;
+    if (!record || !["completed", "failed"].includes(record.state)) continue;
     if (now - Number(record.updatedAt || record.createdAt) > RETENTION_MS) {
       deleteStmt.run(row.key);
       continue;

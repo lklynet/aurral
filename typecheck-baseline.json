@@ -76,7 +76,6 @@
   "backend/services/nzbgetClient.ts": 1,
   "backend/services/oidcAuth.ts": 1,
   "backend/services/pipelineHelpers.ts": 9,
-  "backend/services/playlists/bulkOperationStore.ts": 7,
   "backend/services/playlists/playlistOperationWorker.ts": 1,
   "backend/services/plex.ts": 24,
   "backend/services/plex/plexConnectionStore.ts": 5,

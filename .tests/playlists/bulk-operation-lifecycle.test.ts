@@ -85,3 +85,20 @@ test("cleanup bounds terminal results per owner and preserves live work", () => 
     102,
   );
 });
+
+test("cleanup skips a listed result that is gone when it is read", () => {
+  db.prepare("INSERT INTO settings (key, value) VALUES (?, ?)").run(
+    "PLAYLISTBULKOPERATION:30001",
+    "{}",
+  );
+  assert.equal(store.getBulkOperation(30001), null);
+  store.saveBulkOperation({
+    operationId: 30002,
+    ownerUserId: 4,
+    sourcePlaylistId: "source",
+    state: "completed",
+    updatedAt: Date.now() - 8 * 86400000,
+  });
+  store.cleanupBulkOperations();
+  assert.equal(store.getBulkOperation(30002), null);
+});
