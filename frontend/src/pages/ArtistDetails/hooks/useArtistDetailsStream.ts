@@ -25,38 +25,21 @@ import { allReleaseTypes, emptyArtistShape } from "../constants";
 export type ArtistDetails = Partial<ArtistDetailsResponse>;
 type ReleaseGroupList = NonNullable<ArtistDetails["appears-on-release-groups"]>;
 type ReleaseGroup = NonNullable<ArtistDetails["release-groups"]>[number];
-type NamedKeys<Key> = Key extends unknown
-  ? string extends Key
-    ? never
-    : number extends Key
-      ? never
-      : symbol extends Key
-        ? never
-        : Key
-  : never;
-type KeysOfUnion<T> = T extends unknown ? NamedKeys<keyof T> : never;
-type WithAbsentKeys<T, All = T> = T extends unknown
-  ? T & { [Key in Exclude<KeysOfUnion<All>, keyof T>]?: undefined }
-  : never;
-type LookupAlbum = Awaited<ReturnType<typeof lookupArtistInLibrary>>["albums"][number];
-type DistributiveOmit<T, Key extends PropertyKey> = T extends unknown ? Omit<T, Key> : never;
-type RequestedAlbum = Extract<
-  NonNullable<RequestAlbumFromSearchResponse["album"]>,
-  { id: string | undefined }
->;
-export type PendingLibraryAlbum = DistributiveOmit<
-  RequestedAlbum,
-  "id" | "managedBy" | "mbid" | "foreignAlbumId" | "monitored"
-> & {
+export type LibraryAlbumEntry = {
   id: string;
-  managedBy: string | null | undefined;
-  mbid: string;
-  foreignAlbumId: string;
+  canonicalId?: string;
+  mbid?: string | null;
+  foreignAlbumId?: string | null;
+  albumName?: string | null;
+  albumType?: string;
+  releaseDate?: string | null;
   monitored: boolean;
+  managedBy?: string | null;
+  artistMbid?: string | null;
+  artistName?: string | null;
+  statistics: { trackFileCount?: number; sizeOnDisk: number; percentOfTracks: number };
 };
-export type LibraryAlbums = WithAbsentKeys<
-  Awaited<ReturnType<typeof getLibraryAlbums>>[number] | LookupAlbum | PendingLibraryAlbum
->[];
+export type LibraryAlbums = LibraryAlbumEntry[];
 export type LookupArtist = NonNullable<Awaited<ReturnType<typeof lookupArtistInLibrary>>["artist"]>;
 export type AddedLibraryArtist = NonNullable<RequestAlbumFromSearchResponse["artist"]>;
 export type LibraryArtistRecord = FetchLibraryArtistResponse | LookupArtist | AddedLibraryArtist;

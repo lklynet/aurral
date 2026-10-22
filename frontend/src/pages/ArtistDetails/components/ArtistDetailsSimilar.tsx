@@ -191,9 +191,7 @@ export function ArtistDetailsSimilar({
                       <ArtistContextMenu
                         artist={similar}
                         isInLibrary={!!libraryLookup[artistId]}
-                        onFeedback={(_menuArtist, action, options) =>
-                          onArtistFeedback(similar, action, options)
-                        }
+                        onFeedback={onArtistFeedback}
                         feedbackUsed={
                           artistFeedbackLookup
                             ? getArtistFeedbackFlags(artistFeedbackLookup, similar)

@@ -187,10 +187,9 @@ export function ArtistDetailsLibraryAlbums({
   }, []);
 
   const libraryAlbumLink = (libraryAlbum: LibraryAlbum, coverUrl: string) => {
-    const statistics = libraryAlbum.statistics;
-    const trackFileCount =
-      statistics && "trackFileCount" in statistics ? statistics.trackFileCount : 0;
-    const hasFiles = (statistics?.sizeOnDisk ?? 0) > 0 || trackFileCount > 0;
+    const hasFiles =
+      (libraryAlbum.statistics?.sizeOnDisk ?? 0) > 0 ||
+      (libraryAlbum.statistics?.trackFileCount ?? 0) > 0;
     if (libraryAlbum.canonicalId && hasFiles) {
       return { to: `/library/album/${encodeURIComponent(libraryAlbum.canonicalId)}` };
     }
@@ -356,6 +355,7 @@ export function ArtistDetailsLibraryAlbums({
           const releaseYear = String(libraryAlbum.releaseDate || "").slice(0, 4);
           const metaItems = [
             /^\d{4}$/.test(releaseYear) ? releaseYear : null,
+            libraryAlbum.albumType || null,
             showIncompleteStatus ? "Incomplete" : null,
           ].filter(Boolean);
 
