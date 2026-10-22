@@ -3,13 +3,18 @@ import assert from "node:assert/strict";
 
 import { applyLidarrCommunityGuide } from "../../backend/services/lidarrCommunityGuide.ts";
 
-function createClient({ failCustomFormats = false } = {}) {
+function createClient({ failCustomFormats = false, extraFormatNames = [] as string[] } = {}) {
   const unrelatedFormat = {
     id: 99,
     name: "Existing Unrelated",
     specifications: [],
   };
   const createdFormats = [];
+  const extraFormats = extraFormatNames.map((name, index) => ({
+    id: 100 + index,
+    name,
+    specifications: [],
+  }));
   const state = {
     customFormatPayloads: [],
     qualityProfilePayload: null,
@@ -23,7 +28,7 @@ function createClient({ failCustomFormats = false } = {}) {
       { id: 2, title: "FLAC", quality: { id: 2, name: "FLAC" } },
     ],
     updateQualityDefinition: async (_id, payload) => payload,
-    getCustomFormats: async () => [unrelatedFormat, ...createdFormats],
+    getCustomFormats: async () => [unrelatedFormat, ...extraFormats, ...createdFormats],
     createCustomFormat: async (payload) => {
       state.customFormatPayloads.push(payload);
       if (failCustomFormats) {
@@ -100,4 +105,19 @@ test("does not submit a quality profile when a guide format fails", async () => 
 
   await assert.rejects(() => applyLidarrCommunityGuide(client), /Failed to apply custom formats/);
   assert.equal(client.state.qualityProfileCalls, 0);
+});
+
+test("scores a custom format named like an object property as unscored", async () => {
+  const client = createClient({ extraFormatNames: ["constructor", "toString"] });
+  await applyLidarrCommunityGuide(client);
+
+  assert.deepEqual(
+    client.state.qualityProfilePayload.formatItems
+      .filter(({ name }) => name === "constructor" || name === "toString")
+      .map(({ name, score }) => ({ name, score })),
+    [
+      { name: "constructor", score: 0 },
+      { name: "toString", score: 0 },
+    ],
+  );
 });

@@ -58,6 +58,14 @@ type LidarrCommunityGuideResult = {
   errors: string[];
 };
 
+const FORMAT_SCORES = new Map([
+  ["Preferred Groups", 10],
+  ["CD", 2],
+  ["WEB", 1],
+  ["Lossless", 1],
+  ["Vinyl", -5],
+]);
+
 const normalizeTypeName = (value: unknown) =>
   String(value || "")
     .toLowerCase()
@@ -409,17 +417,10 @@ export async function applyLidarrCommunityGuide(lidarrClient: LidarrCommunityGui
 
   const allCustomFormats = await lidarrClient.getCustomFormats();
   const formatItems = allCustomFormats.map((cf) => {
-    const scores = {
-      "Preferred Groups": 10,
-      CD: 2,
-      WEB: 1,
-      Lossless: 1,
-      Vinyl: -5,
-    };
     return {
       format: cf.id,
       name: cf.name,
-      score: scores[cf.name] || 0,
+      score: FORMAT_SCORES.get(cf.name) || 0,
     };
   });
 
