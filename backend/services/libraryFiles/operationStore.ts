@@ -264,6 +264,7 @@ export function reopenToRemoveDuplicates(id: string | number, unfinishedReason: 
       const operation = getLibraryFileOperation(id);
       const active = getActiveLibraryFileOperation();
       if (active) throw new OperationConflictError(active);
+      if (!operation) return false;
       if (operation.status === "cancelled" && !operation.summary.finished) {
         throw Object.assign(new OperationConflictError(operation), {
           message: "It is still stopping. Try again in a moment.",

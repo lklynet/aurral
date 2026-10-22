@@ -50,7 +50,6 @@
   "backend/services/inboxService.ts": 7,
   "backend/services/jellyfin.ts": 3,
   "backend/services/koitoClient.ts": 3,
-  "backend/services/libraryFiles/operationStore.ts": 6,
   "backend/services/libraryFileScanner.ts": 8,
   "backend/services/libraryFileWatcher.ts": 3,
   "backend/services/libraryIndexService.ts": 10,
