@@ -284,7 +284,9 @@ export async function cancelTrackDownload(jobId: string) {
       return { jobId, status: "cancelled", cleanupFailed: false };
     }
     const { cleanupFailed } = await cancelActiveAurralJobs([current], null, { lock: false });
-    return { jobId, status: downloadTracker.getJob(jobId).status, cleanupFailed };
+    const cancelled = downloadTracker.getJob(jobId);
+    if (!cancelled) return { statusCode: 404, error: "Track not found" };
+    return { jobId, status: cancelled.status, cleanupFailed };
   });
 }
 
