@@ -34,7 +34,7 @@ for (const viewport of [
   }) => {
     await page.setViewportSize(viewport);
     let previewMode: "error" | "loading" | "zero" | "success" = "error";
-    let releasePreview: ((value?: unknown) => void) | undefined;
+    const previewGate = Promise.withResolvers<void>();
     let importPayload: unknown;
 
     await page.route("**/api/playlists/import/spotify/status", (route) =>
@@ -52,9 +52,7 @@ for (const viewport of [
         return;
       }
       if (previewMode === "loading") {
-        await new Promise((resolve) => {
-          releasePreview = resolve;
-        });
+        await previewGate.promise;
       }
       const zero = previewMode === "zero";
       await route.fulfill({
@@ -105,7 +103,7 @@ for (const viewport of [
     await page.getByRole("button", { name: "YouTube Music", exact: true }).click();
     await expect(urlInput).toBeEnabled();
     await expect(urlInput).toHaveValue("");
-    releasePreview();
+    previewGate.resolve();
 
     await urlInput.fill(testUrl);
     previewMode = "success";

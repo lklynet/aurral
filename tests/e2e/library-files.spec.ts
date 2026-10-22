@@ -64,18 +64,20 @@ test("ingest a folder as monitored tracks, then clean up the Library", async ({ 
     await page.screenshot({ path: test.info().outputPath("ingest-finished.png"), fullPage: true });
     expect(fs.readdirSync(path.join(source, "old rip")).sort()).toEqual(["a.flac", "b.flac"]);
 
-    let artist: LibraryArtist | null = null;
+    const found: { artist: LibraryArtist | null } = { artist: null };
     await expect
       .poll(
         async () => {
           const artists = await apiRequest(page, "/api/library/artists");
-          artist =
+          found.artist =
             (artists.body || []).find((entry: LibraryArtist) => entry.name === artistName) || null;
-          return artist?.monitored;
+          return found.artist?.monitored;
         },
         { timeout: 60_000 },
       )
       .toBe(false);
+    const { artist } = found;
+    if (!artist) throw new Error("The imported artist was not found");
     await expect
       .poll(
         async () => {

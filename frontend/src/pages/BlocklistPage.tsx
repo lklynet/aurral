@@ -1,18 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { Ban, Search, X } from "lucide-react";
-import type { ArtistIdentity } from "../../../backend/services/discovery/recommendationPipeline.ts";
 import { DotLoader } from "../components/DotLoader";
 import { useArtistTasteFeedback } from "../hooks/useArtistTasteFeedback";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { searchLibrary, searchUnified } from "../utils/api/endpoints/search.ts";
 import { buildBlocklistArtistSuggestions } from "../utils/blocklistSearch.ts";
+import type { ArtistFeedbackSource } from "../utils/artistTaste.ts";
 import type { DiscoveryFeedbackEntry } from "../utils/discoveryFeedback.ts";
 import TooltipButton from "../components/TooltipButton";
 
 type BlocklistSuggestion = ReturnType<typeof buildBlocklistArtistSuggestions>[number];
 
-const normalizeArtist = (artist: ArtistIdentity | null | undefined) => ({
+const normalizeArtist = (artist: ArtistFeedbackSource | null | undefined) => ({
   id: artist?.id || artist?.mbid || artist?.foreignArtistId || null,
   name: String(artist?.name || artist?.artistName || "").trim(),
 });
@@ -23,7 +23,7 @@ export default function BlocklistPage() {
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<BlocklistSuggestion[]>([]);
   const [searching, setSearching] = useState(false);
-  const [pendingKey, setPendingKey] = useState<string | null | undefined>("");
+  const [pendingKey, setPendingKey] = useState<string | number | null | undefined>("");
 
   const blockedArtists = useMemo(
     () => feedbackList.filter((entry) => entry?.action === "block_artist"),
@@ -67,7 +67,7 @@ export default function BlocklistPage() {
     };
   }, [query]);
 
-  const blockArtist = async (artist: ArtistIdentity) => {
+  const blockArtist = async (artist: ArtistFeedbackSource) => {
     const normalized = normalizeArtist(artist);
     if (!normalized.name && !normalized.id) return;
     const key = normalized.id || normalized.name.toLowerCase();

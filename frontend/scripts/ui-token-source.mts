@@ -2,6 +2,8 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import postcss from "postcss";
 
+import { asAppError } from "../../lib/errors.ts";
+
 const defaultTokenSource = fileURLToPath(new URL("../src/index.css", import.meta.url));
 
 type AurralTokenDeclaration = { name: string; selector: string; value: string };
@@ -19,9 +21,12 @@ export function parseAurralTokens(css: string, source = "<input>") {
   try {
     root = postcss.parse(css, { from: source });
   } catch (error) {
-    throw new Error(`Unable to parse Aurral token source at "${source}": ${error.message}`, {
-      cause: error,
-    });
+    throw new Error(
+      `Unable to parse Aurral token source at "${source}": ${asAppError(error)?.message}`,
+      {
+        cause: error,
+      },
+    );
   }
 
   const declarations: AurralTokenDeclaration[] = [];
@@ -56,9 +61,12 @@ export async function readAurralTokens(source = defaultTokenSource) {
   try {
     css = await readFile(source, "utf8");
   } catch (error) {
-    throw new Error(`Unable to read Aurral token source at "${source}": ${error.message}`, {
-      cause: error,
-    });
+    throw new Error(
+      `Unable to read Aurral token source at "${source}": ${asAppError(error)?.message}`,
+      {
+        cause: error,
+      },
+    );
   }
 
   return parseAurralTokens(css, source);

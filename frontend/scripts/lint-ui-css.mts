@@ -4,6 +4,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import postcss from "postcss";
 import type { AtRule, Container, Declaration, Document, Rule } from "postcss";
 
+import { asAppError } from "../../lib/errors.ts";
 import { readAurralTokens } from "./ui-token-source.mts";
 
 const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
@@ -222,13 +223,15 @@ export function lintCss(
   try {
     root = postcss.parse(css, { from: filePath });
   } catch (error) {
-    const line = error.line ?? 1;
+    const syntaxError = error instanceof postcss.CssSyntaxError ? error : undefined;
+    const failure = asAppError(error);
+    const line = syntaxError?.line ?? 1;
     return [
       createFinding(
         filePath,
         line,
         "aurral/css-parse-error",
-        `could not parse stylesheet: ${error.reason || error.message}`,
+        `could not parse stylesheet: ${syntaxError?.reason || failure?.message}`,
       ),
     ];
   }
@@ -387,7 +390,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
       process.exitCode = 1;
     }
   } catch (error) {
-    console.error(error.message);
+    console.error(asAppError(error)?.message);
     process.exitCode = 1;
   }
 }

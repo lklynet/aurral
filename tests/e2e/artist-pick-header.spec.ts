@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { recordViewTransitions } from "./helpers.ts";
+import { boundingBoxOf, recordViewTransitions } from "./helpers.ts";
 
 test.use({ serviceWorkers: "block", storageState: { cookies: [], origins: [] } });
 
@@ -176,7 +176,9 @@ test("the artist pick keeps its actions in one row on a tablet", async ({ page }
   const centers = await actions.evaluate(
     (row, labels) =>
       labels.map((label) => {
-        const box = row.querySelector(`button[aria-label="${label}"]`).getBoundingClientRect();
+        const button = row.querySelector(`button[aria-label="${label}"]`);
+        if (!button) throw new Error(`Missing button ${label}`);
+        const box = button.getBoundingClientRect();
         return box.top + box.height / 2;
       }),
     names,
@@ -270,7 +272,7 @@ test("the artist pick stays on the album the user downloads", async ({ page }) =
 });
 
 async function panelCornerColors(panel: Locator) {
-  const box = await panel.boundingBox();
+  const box = await boundingBoxOf(panel);
   const png = (await panel.screenshot()).toString("base64");
   return panel.page().evaluate(
     async ({ png, width, height }) => {
@@ -339,6 +341,7 @@ test("Popular stays three rows tall and native videos adapt to the available mat
   await page.setViewportSize({ width: 1440, height: 1100 });
   let matches = [1, 3, 6];
   const findVideo = (title: string | null) => {
+    if (title === null) throw new Error("Missing track title");
     const rank = Number(title.split(" ").at(-1));
     return matches.includes(rank)
       ? {
@@ -375,8 +378,9 @@ test("Popular stays three rows tall and native videos adapt to the available mat
     tracks[5].title,
   ]);
   await expect(videos.getByRole("button")).toHaveCount(0);
-  const rowBottom = (await rows.last().boundingBox()).y + (await rows.last().boundingBox()).height;
-  expect((await videos.boundingBox()).y).toBeGreaterThan(rowBottom);
+  const rowBottom =
+    (await boundingBoxOf(rows.last())).y + (await boundingBoxOf(rows.last())).height;
+  expect((await boundingBoxOf(videos)).y).toBeGreaterThan(rowBottom);
   const videoBoxes = await videos.locator("iframe").evaluateAll((nodes) =>
     nodes.map((node) => {
       const { x, y } = node.getBoundingClientRect();

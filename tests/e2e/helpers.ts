@@ -1,5 +1,5 @@
 import { isIP } from "node:net";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 type RouteTransitionName = string | { name: string; inScope: boolean };
 
@@ -34,6 +34,18 @@ export function assertSafeCredentialTransport(address: string) {
   if (url.protocol !== "https:" && !isLoopback) {
     throw new Error("Refusing to submit test credentials over insecure transport");
   }
+}
+
+export async function boundingBoxOf(locator: Locator) {
+  const box = await locator.boundingBox();
+  if (!box) throw new Error("Expected the element to have a bounding box");
+  return box;
+}
+
+export async function attributeOf(locator: Locator, name: string) {
+  const value = await locator.getAttribute(name);
+  if (value === null) throw new Error(`Expected the element to have a ${name} attribute`);
+  return value;
 }
 
 export async function openApp(page: Page, navigation = "Primary navigation") {

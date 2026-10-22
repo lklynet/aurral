@@ -11,6 +11,7 @@ import {
   DEFAULT_SHOWS_FILTER,
   normalizeShowsFilter,
   SHOWS_FILTERS,
+  type ShowsFilterId,
 } from "../navigation/showsNavConfig";
 
 const SHOWS_PAGE_LIMIT = 60;
@@ -18,7 +19,9 @@ const SHOWS_PAGE_LIMIT = 60;
 type ShowSourceType = "library" | "recommended" | "trending";
 type NearbyShow = { sourceTypes?: ShowSourceType[] };
 
-const SHOW_FILTER_MATCHERS = {
+const SHOW_FILTER_MATCHERS: Partial<
+  Record<ShowsFilterId, (show: NearbyShow) => boolean | undefined>
+> = {
   library: (show: NearbyShow) => show.sourceTypes?.includes("library"),
   discover: (show: NearbyShow) => show.sourceTypes?.some((sourceType) => sourceType !== "library"),
 };

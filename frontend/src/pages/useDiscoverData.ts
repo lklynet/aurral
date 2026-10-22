@@ -12,6 +12,7 @@ import { useLibraryDestination } from "../hooks/useLibraryDestination";
 import { getDiscovery } from "../utils/api/endpoints/discovery.ts";
 import { useArtistTasteFeedback } from "../hooks/useArtistTasteFeedback";
 import { artistsShareDiscoveryIdentity } from "../utils/discoveryFeedback";
+import type { ArtistFeedbackSource } from "../utils/artistTaste.ts";
 import { useNearbyShows } from "../hooks/useNearbyShows";
 import {
   readStoredRecentlyAdded,
@@ -205,7 +206,6 @@ export function useDiscoverData() {
         const outcome = describeAlbumRequestResult(
           result,
           album.albumName || album.title || "album",
-          managedBy,
         );
         (outcome.kind === "info" ? showInfo : showSuccess)(outcome.message);
       } catch (err) {
@@ -230,7 +230,7 @@ export function useDiscoverData() {
 
   const handleDiscoveryFeedback = useCallback(
     async (
-      artist: DiscoverArtist,
+      artist: ArtistFeedbackSource,
       action: Parameters<ReturnType<typeof useArtistTasteFeedback>["submitFeedback"]>[1],
       options: Parameters<ReturnType<typeof useArtistTasteFeedback>["submitFeedback"]>[2] = {},
     ) => {
@@ -256,7 +256,9 @@ export function useDiscoverData() {
         setData((current) => {
           if (!current) return current;
           const next = { ...current };
-          for (const [key, entries] of Object.entries(hidden)) {
+          for (const key of ["recommendations", "globalTop"] as const) {
+            const entries = hidden[key];
+            if (!entries) continue;
             const list = [...(current[key] || [])];
             for (const { candidate, index } of entries) {
               if (!list.some((existing) => artistsShareDiscoveryIdentity(existing, candidate))) {

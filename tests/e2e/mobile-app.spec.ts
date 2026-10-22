@@ -1,5 +1,5 @@
 import { devices, expect, test, type Page } from "@playwright/test";
-import { openApp, requireCredentials } from "./helpers.ts";
+import { attributeOf, boundingBoxOf, openApp, requireCredentials } from "./helpers.ts";
 
 const { defaultBrowserType: _defaultBrowserType, ...iPhone } = devices["iPhone 13"];
 test.use(iPhone);
@@ -157,7 +157,7 @@ test("library playback moves between the mini player and the now playing sheet",
   await titles.first().tap();
   const openNowPlaying = page.getByRole("button", { name: /^Open now playing: / });
   await expect(openNowPlaying).toBeVisible();
-  const firstTitle = (await openNowPlaying.getAttribute("aria-label")).replace(
+  const firstTitle = (await attributeOf(openNowPlaying, "aria-label")).replace(
     "Open now playing: ",
     "",
   );
@@ -193,7 +193,7 @@ test("item menus open as bottom sheets and a tap outside only closes them", asyn
   const viewport = page.viewportSize()!;
   await expect
     .poll(async () => {
-      const box = await menu.boundingBox();
+      const box = await boundingBoxOf(menu);
       return [Math.round(box.y + box.height), Math.round(box.width)];
     })
     .toEqual([viewport.height, viewport.width]);

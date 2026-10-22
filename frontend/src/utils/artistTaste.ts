@@ -3,8 +3,9 @@ import type {
   DiscoveryRecommendation,
 } from "../../../backend/services/discovery/recommendationPipeline.ts";
 
-export type ArtistFeedbackSource = ArtistIdentity &
-  Pick<
+export type ArtistFeedbackSource = Omit<ArtistIdentity, "id"> & {
+  id?: string | number | null;
+} & Pick<
     DiscoveryRecommendation,
     "tags" | "matchedTags" | "supportingSeeds" | "sourceArtist" | "sourceArtists"
   > & {

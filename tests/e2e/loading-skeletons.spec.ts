@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { boundingBoxOf } from "./helpers.ts";
 
 test.use({ serviceWorkers: "block", storageState: { cookies: [], origins: [] } });
 
@@ -54,7 +55,7 @@ test("Discover keeps its heading and reserves section space while loading", asyn
   await expect(
     page.getByRole("status").filter({ hasText: "Loading recommendations" }),
   ).toBeVisible();
-  const reserved = await busy.boundingBox();
+  const reserved = await boundingBoxOf(busy);
   expect(reserved.height).toBeGreaterThan(800);
   const animations = await busy.evaluate((node) =>
     [...node.querySelectorAll(":scope > div[aria-hidden=true] *")].flatMap((child) => [

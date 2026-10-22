@@ -1,4 +1,5 @@
 import { expect, test, type BrowserContext, type Locator, type Page } from "@playwright/test";
+import { attributeOf, boundingBoxOf } from "./helpers.ts";
 
 type MediaActionHandlers = Partial<Record<MediaSessionAction, MediaSessionActionHandler | null>>;
 
@@ -10,6 +11,12 @@ declare global {
     __titles: string[];
   }
 }
+
+const seekSeconds = (valueText: string) => {
+  const match = /^0:(\d\d)/.exec(valueText);
+  if (!match) throw new Error(`Unexpected seek time: ${valueText}`);
+  return Number(match[1]);
+};
 
 const PLAYLIST_ID = "e2e-player-queue";
 const PLAYLIST_NAME = "E2E queue";
@@ -136,7 +143,9 @@ test("shuffle plays the chosen track first, plays every other track once, and ke
   for (let step = 1; step < TRACK_NAMES.length; step += 1) {
     await player.next.click();
     await expect(player.title).not.toHaveText(played.at(-1)!);
-    played.push(await player.title.textContent());
+    const title = await player.title.textContent();
+    if (title === null) throw new Error("The player title is empty");
+    played.push(title);
   }
   expect([...played].sort()).toEqual([...TRACK_NAMES].sort());
 
@@ -207,21 +216,20 @@ test("dragging the seek slider holds the dragged time and seeks once on release"
   await page.getByRole("button", { name: `Play ${PLAYLIST_NAME} previews` }).click();
   await waitUntilPlaying(player);
 
-  const box = await player.seek.boundingBox();
+  const box = await boundingBoxOf(player.seek);
   const y = box.y + box.height / 2;
   await page.mouse.move(box.x + box.width * 0.25, y);
   await page.mouse.down();
   await page.mouse.move(box.x + box.width * 0.75, y, { steps: 5 });
-  const dragged = await player.seek.getAttribute("aria-valuetext");
-  const draggedSeconds = Number(/^0:(\d\d)/.exec(dragged)[1]);
+  const dragged = await attributeOf(player.seek, "aria-valuetext");
+  const draggedSeconds = seekSeconds(dragged);
   expect(draggedSeconds).toBeGreaterThan(35);
 
   await page.waitForTimeout(1500);
   await expect(player.seek).toHaveAttribute("aria-valuetext", dragged);
 
   await page.mouse.up();
-  const elapsedSeconds = async () =>
-    Number(/^0:(\d\d)/.exec(await player.seek.getAttribute("aria-valuetext"))[1]);
+  const elapsedSeconds = async () => seekSeconds(await attributeOf(player.seek, "aria-valuetext"));
   await expect.poll(elapsedSeconds).toBeGreaterThan(draggedSeconds);
   expect(await elapsedSeconds()).toBeLessThanOrEqual(draggedSeconds + 2);
 });
@@ -244,14 +252,12 @@ test("releasing a drag after the track changes leaves the new track where it is"
   await waitUntilPlaying(player);
   const firstTitle = await player.title.innerText();
 
-  const box = await player.seek.boundingBox();
+  const box = await boundingBoxOf(player.seek);
   const y = box.y + box.height / 2;
   await page.mouse.move(box.x + box.width * 0.25, y);
   await page.mouse.down();
   await page.mouse.move(box.x + box.width * 0.75, y, { steps: 5 });
-  expect(
-    Number(/^0:(\d\d)/.exec(await player.seek.getAttribute("aria-valuetext"))[1]),
-  ).toBeGreaterThan(35);
+  expect(seekSeconds(await attributeOf(player.seek, "aria-valuetext"))).toBeGreaterThan(35);
 
   await page.evaluate(() => window.__mediaHandlers.nexttrack?.({ action: "nexttrack" }));
   await expect(player.title).not.toHaveText(firstTitle);
@@ -269,14 +275,14 @@ test("hovering the seek bar previews the time and clicking there seeks to it", a
   const wrap = page.locator(".global-player__progress-wrap");
   const preview = wrap.locator(".global-player__progress-preview");
   const thumbOpacity = () =>
-    page.evaluate(
-      () =>
-        getComputedStyle(document.querySelector(".global-player__progress-thumb"), "::after")
-          .opacity,
-    );
+    page.evaluate(() => {
+      const thumb = document.querySelector(".global-player__progress-thumb");
+      if (!thumb) throw new Error("Missing progress thumb");
+      return getComputedStyle(thumb, "::after").opacity;
+    });
   await expect.poll(thumbOpacity).toBe("0");
 
-  const box = await player.seek.boundingBox();
+  const box = await boundingBoxOf(player.seek);
   await page.mouse.move(box.x + box.width * 0.25, box.y + box.height / 2);
   await expect(preview).toHaveText("0:15");
   await expect.poll(thumbOpacity).toBe("1");
@@ -462,10 +468,10 @@ test("lock-screen controls seek, follow play and pause, and clear with the queue
   await expect(player.seek).toHaveAttribute("aria-valuetext", "0:20 of 1:00");
   await runAction("seekforward");
   await expect(player.seek).toHaveAttribute("aria-valuetext", "0:30 of 1:00");
-  expect((await lastPosition()).position).toBe(30);
+  expect((await lastPosition())?.position).toBe(30);
   await runAction("seekbackward", { seekOffset: 5 });
   await expect(player.seek).toHaveAttribute("aria-valuetext", "0:25 of 1:00");
-  expect((await lastPosition()).position).toBe(25);
+  expect((await lastPosition())?.position).toBe(25);
 
   await runAction("play");
   await waitUntilPlaying(player);
@@ -560,12 +566,12 @@ test("with the queue open, player tooltips leave the volume controls uncovered",
   type Box = { x: number; y: number; width: number; height: number };
   const overlaps = (a: Box, b: Box) =>
     a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
-  const tip = await tooltip.boundingBox();
+  const tip = await boundingBoxOf(tooltip);
   for (const control of [
     player.bar.getByRole("button", { name: /^(Mute|Unmute)$/ }),
     player.bar.getByRole("slider", { name: "Volume" }),
   ]) {
-    expect(overlaps(tip, await control.boundingBox())).toBe(false);
+    expect(overlaps(tip, await boundingBoxOf(control))).toBe(false);
   }
 });
 
@@ -592,7 +598,7 @@ test("a reload brings the queue back paused where it was, and closing the player
   await expect(player.seek).toHaveAttribute("aria-valuetext", /^0:3\d of 1:00$/);
   await player.playPause.click();
   await expect(player.playPause).toHaveAccessibleName("Play");
-  const savedAt = await player.seek.getAttribute("aria-valuetext");
+  const savedAt = await attributeOf(player.seek, "aria-valuetext");
 
   await page.reload();
   await expect(player.title).toHaveText("Bravo");
@@ -606,8 +612,8 @@ test("a reload brings the queue back paused where it was, and closing the player
 
   await player.playPause.click();
   await waitUntilPlaying(player);
-  const elapsed = Number(/^0:(\d\d)/.exec(await player.seek.getAttribute("aria-valuetext"))[1]);
-  expect(elapsed).toBeGreaterThanOrEqual(Number(/^0:(\d\d)/.exec(savedAt)[1]));
+  const elapsed = seekSeconds(await attributeOf(player.seek, "aria-valuetext"));
+  expect(elapsed).toBeGreaterThanOrEqual(seekSeconds(savedAt));
 
   await page.getByRole("button", { name: "Close player" }).click();
   await expect(player.bar).toHaveCount(0);
@@ -691,10 +697,13 @@ test("the tab title shows the playing track and goes back to the page title on p
 
   await page.evaluate(() => {
     window.__titles = [];
-    new MutationObserver(() => window.__titles.push(document.title)).observe(
-      document.querySelector("title"),
-      { childList: true, characterData: true, subtree: true },
-    );
+    const title = document.querySelector("title");
+    if (!title) throw new Error("Missing title element");
+    new MutationObserver(() => window.__titles.push(document.title)).observe(title, {
+      childList: true,
+      characterData: true,
+      subtree: true,
+    });
   });
   await player.next.click();
   await expect(page).toHaveTitle("Bravo · E2E Artist");
@@ -724,13 +733,11 @@ test("the playing row shows moving bars, still bars when paused, and can be paus
   const tracks = page.getByRole("list", { name: /tracks/i }).first();
   const current = tracks.locator('[role="listitem"][aria-current="true"]');
   const barsMoving = () =>
-    current
-      .first()
-      .evaluate(
-        (row) =>
-          row.querySelector(".native-library-track__number").getAnimations({ subtree: true })
-            .length > 0,
-      );
+    current.first().evaluate((row) => {
+      const number = row.querySelector(".native-library-track__number");
+      if (!number) throw new Error("Missing track number");
+      return number.getAnimations({ subtree: true }).length > 0;
+    });
 
   await page.getByRole("button", { name: "Play Bravo", exact: true }).click();
   await expect(current).toHaveCount(1);
@@ -789,7 +796,9 @@ function firstColor(
 ) {
   return page.evaluate<number[], [string, "backgroundColor" | "backgroundImage", string | null]>(
     ([target, name, element]) => {
-      const value = getComputedStyle(document.querySelector(target), element)[name];
+      const styled = document.querySelector(target);
+      if (!styled) throw new Error(`Missing element ${target}`);
+      const value = getComputedStyle(styled, element)[name];
       const color = /(?:rgba?|color)\([^)]*\)/.exec(value)?.[0] ?? "transparent";
       const context = Object.assign(document.createElement("canvas"), {
         width: 1,

@@ -73,10 +73,22 @@ export const buildAlbumAddAction = (_search: boolean, destination: AlbumDestinat
   destination,
 });
 
-export const getAlbumAddAction = (
-  input: Parameters<typeof shouldTriggerAlbumSearch>[0] = {},
+type AlbumSearchInput = Parameters<typeof shouldTriggerAlbumSearch>[0];
+
+export function getAlbumAddAction<T extends object>(
+  input: T & AlbumSearchInput,
+  destination?: AlbumDestination,
+): ReturnType<typeof buildAlbumAddAction>;
+export function getAlbumAddAction(
+  input?: AlbumSearchInput,
+  destination?: AlbumDestination,
+): ReturnType<typeof buildAlbumAddAction>;
+export function getAlbumAddAction(
+  input: AlbumSearchInput = {},
   destination: AlbumDestination = {},
-) => buildAlbumAddAction(shouldTriggerAlbumSearch(input), destination);
+) {
+  return buildAlbumAddAction(shouldTriggerAlbumSearch(input), destination);
+}
 
 export const isAlbumCompleteInLibrary = ({
   status = "",

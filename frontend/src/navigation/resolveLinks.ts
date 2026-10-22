@@ -70,6 +70,12 @@ const releaseTarget = (
   },
 });
 
+type ResolvedLink = {
+  to: string;
+  state?: ReturnType<typeof releaseTarget>["state"] | { artistName: string };
+  notice?: string | null;
+};
+
 const notFound = (message: string) => Object.assign(new Error(message), { resolveNotFound: true });
 
 async function resolveCatalog(
@@ -142,7 +148,7 @@ export function resolveLinkTarget(
   kind: string,
   params: URLSearchParams,
   { signal }: { signal?: AbortSignal } = {},
-) {
+): Promise<ResolvedLink> {
   if (kind === "artist" || kind === "album") return resolveCatalog(kind, params, signal);
   if (kind === "library-artist") return resolveLibraryArtist(params, signal);
   if (kind === "library-album") return resolveLibraryAlbum(params, signal);

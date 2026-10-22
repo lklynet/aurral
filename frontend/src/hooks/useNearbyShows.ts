@@ -14,7 +14,7 @@ export function useNearbyShows({ enabled = true }: { enabled?: boolean } = {}) {
   }, []);
 
   const setAppliedZip = useCallback((zip: string, country = "") => {
-    const next = {
+    const next: typeof storedLocation = {
       mode: "zip",
       zip: String(zip || "").trim(),
       country: String(country || "")

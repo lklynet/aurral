@@ -7,6 +7,7 @@ import { addEditorialPlaylistToLibrary } from "../utils/api/endpoints/discovery.
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
+import { asApiError } from "../utils/api/core.ts";
 import { queryClient } from "../queryClient.ts";
 import { editorialPlaylistQueryOptions } from "../queryOptions.ts";
 import {
@@ -65,13 +66,13 @@ const mapPreviewTracks = (
 type PreviewTrack = ReturnType<typeof mapPreviewTracks>[number];
 
 export default function EditorialPlaylistDetailPage() {
-  const { playlistId } = useParams();
+  const playlistId = useParams().playlistId!;
   const { user, hasPermission } = useAuth();
   const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
   const [adding, setAdding] = useState(false);
   const [failedArtwork, setFailedArtwork] = useState(false);
-  const playlistQueryOptions = editorialPlaylistQueryOptions(user?.id, playlistId!);
+  const playlistQueryOptions = editorialPlaylistQueryOptions(user?.id, playlistId);
   const { queryKey } = playlistQueryOptions;
 
   const { data: playlist, error, isPending, refetch } = useQuery(playlistQueryOptions);
@@ -114,7 +115,7 @@ export default function EditorialPlaylistDetailPage() {
   const handleAdd = async () => {
     setAdding(true);
     try {
-      const result = await addEditorialPlaylistToLibrary(playlistId!);
+      const result = await addEditorialPlaylistToLibrary(playlistId);
       queryClient.setQueryData(queryKey, (current) =>
         current ? { ...current, libraryPlaylistId: result.playlistId } : current,
       );
@@ -154,7 +155,7 @@ export default function EditorialPlaylistDetailPage() {
   }
 
   if (!shown) {
-    const notFound = error?.response?.status === 404;
+    const notFound = asApiError(error)?.response?.status === 404;
     return renderState(
       <>
         <strong>{notFound ? "Playlist not found" : "Playlist unavailable"}</strong>
@@ -182,7 +183,9 @@ export default function EditorialPlaylistDetailPage() {
   const canAdd = hasPermission("accessFlow");
   const addLabel = inLibrary ? "Open synced playlist" : "Add synced playlist";
   const showArtwork = Boolean(shown.artworkUrl) && !failedArtwork;
-  const trackTotal = ready ? tracks.length : Number(shown.trackCount);
+  const trackTotal = ready
+    ? tracks.length
+    : Number("trackCount" in shown ? shown.trackCount : undefined);
 
   return (
     <CollectionPage tintSrc={showArtwork ? shown.artworkUrl : null}>
@@ -190,7 +193,7 @@ export default function EditorialPlaylistDetailPage() {
         cover={
           showArtwork ? (
             <img
-              src={shown.artworkUrl}
+              src={shown.artworkUrl ?? undefined}
               alt=""
               loading="eager"
               onError={() => setFailedArtwork(true)}
@@ -202,7 +205,7 @@ export default function EditorialPlaylistDetailPage() {
           )
         }
         title={shown.name}
-        subtitle={shown.description || null}
+        subtitle={("description" in shown ? shown.description : undefined) || null}
         meta={Number.isFinite(trackTotal) ? formatTrackTotal(trackTotal) : null}
         actions={
           <>

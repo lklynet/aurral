@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Ban, Library, MoreVertical, ThumbsDown, ThumbsUp, type LucideIcon } from "lucide-react";
 import { getDiscoveryFeedbackLabel } from "../utils/discoveryFeedback";
 import { LibraryItemMenu } from "./LibraryItemMenu";
@@ -28,6 +28,14 @@ interface ArtistContextMenuProps {
   menuLayout?: "text" | "inline";
 }
 
+export function ArtistContextMenu<A extends ArtistMenuArtist>(
+  props: Omit<ArtistContextMenuProps, "artist" | "getLibraryLink" | "onFeedback"> & {
+    artist: A;
+    getLibraryLink?: (artist: A) => LibraryLink | null;
+    onFeedback?: (artist: A, action: FeedbackAction, options: { isSelected: boolean }) => unknown;
+  },
+): ReactNode;
+export function ArtistContextMenu(props: ArtistContextMenuProps): ReactNode;
 export function ArtistContextMenu({
   artist,
   artistName,

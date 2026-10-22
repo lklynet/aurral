@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { recordViewTransitions } from "./helpers.ts";
+import { boundingBoxOf, recordViewTransitions } from "./helpers.ts";
 
 test.use({ serviceWorkers: "block", storageState: { cookies: [], origins: [] } });
 
@@ -265,7 +265,7 @@ test.describe("on a touch screen", () => {
       .getByRole("link", { name: `Open ${artist.name}`, exact: true })
       .first();
     await settleScroll(page, artistLink);
-    const box = await artistLink.boundingBox();
+    const box = await boundingBoxOf(artistLink);
     return { x: Math.round(box.x + box.width / 2), y: Math.round(box.y + box.height / 2) };
   }
 

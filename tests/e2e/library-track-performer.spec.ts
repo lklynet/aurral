@@ -16,7 +16,9 @@ type DownloadWriteBody = {
   albumMbid: string;
   canonicalTrackId: string;
 };
-type WriteRecord = { path: string; body: PlaylistWriteBody | DownloadWriteBody };
+type WriteRecord =
+  | { path: "/playlists/shared-playlists"; body: PlaylistWriteBody }
+  | { path: "/library/downloads/track"; body: DownloadWriteBody };
 
 test.use({ serviceWorkers: "block", storageState: { cookies: [], origins: [] } });
 
@@ -256,8 +258,9 @@ test("playlist payloads keep the album owner's acquisition identity", async ({ p
     await page.getByRole("button", { name: "New playlist", exact: true }).click();
     await expect.poll(() => writes.length).toBe(entry === guest ? 1 : 2);
   }
-  expect(writes[0].body.name).toBe("Guest & Owner Picks");
-  expect(writes[0].body.tracks[0]).toMatchObject({
+  const playlistWrites = writes.filter((write) => write.path === "/playlists/shared-playlists");
+  expect(playlistWrites[0].body.name).toBe("Guest & Owner Picks");
+  expect(playlistWrites[0].body.tracks[0]).toMatchObject({
     artistName: "Owner",
     artistMbid: ownerMbid,
     trackName: "A guest song",
@@ -265,7 +268,10 @@ test("playlist payloads keep the album owner's acquisition identity", async ({ p
     albumMbid,
     trackMbid,
   });
-  expect(writes[1].body.tracks[0]).toMatchObject({ artistName: "Owner", artistMbid: ownerMbid });
+  expect(playlistWrites[1].body.tracks[0]).toMatchObject({
+    artistName: "Owner",
+    artistMbid: ownerMbid,
+  });
 });
 
 test("a shared track carries the performer credit without the owner's artist identity", async ({

@@ -148,10 +148,10 @@ export const ArtistCard = memo(
             src={artist.image || artist.imageUrl}
             mbid={artist.id}
             artistName={artist.name}
-            alt={artist.name}
+            alt={artist.name ?? undefined}
             className="artist-discover-card__image"
             showLoading={false}
-            enablePreviewPlayback={hasValidMbid}
+            enablePreviewPlayback={Boolean(hasValidMbid)}
             isInLibrary={isInLibrary}
           />
         </div>
@@ -246,7 +246,7 @@ export const AlbumCard = memo(
               artistName: album.artistName || "",
               albumTitle: album.albumName || "",
             });
-            if (data?.images?.length > 0) {
+            if ("images" in data && data.images.length > 0) {
               const front = data.images.find((img) => img.front) || data.images[0];
               if (front?.image) {
                 setFetchedCover(front.image);
@@ -371,7 +371,6 @@ export const AlbumCard = memo(
       prevProps.album.statistics?.percentOfTracks === nextProps.album.statistics?.percentOfTracks &&
       prevProps.canAddAlbum === nextProps.canAddAlbum &&
       prevProps.isPending === nextProps.isPending &&
-      prevProps.album.managedBy === nextProps.album.managedBy &&
       prevProps.libraryDestination === nextProps.libraryDestination &&
       prevProps.onAlbumAction === nextProps.onAlbumAction
     );

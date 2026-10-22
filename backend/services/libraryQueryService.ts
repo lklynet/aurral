@@ -29,6 +29,15 @@ type LibraryTrackFileQuality = {
   quality?: { name?: string | null } | null;
 };
 
+export interface LibraryArtistImage {
+  remoteUrl?: string | null;
+  url?: string | null;
+  Url?: string | null;
+  coverType?: string | null;
+  kind?: string | null;
+  CoverType?: string | null;
+}
+
 type StoredLibraryMetadata = {
   id?: string | number | null;
   monitored?: boolean | null;
@@ -37,7 +46,7 @@ type StoredLibraryMetadata = {
   foreignArtistId?: string | null;
   foreignAlbumId?: string | null;
   librarySource?: string | null;
-  images?: unknown[] | null;
+  images?: LibraryArtistImage[] | null;
   path?: string | null;
   added?: string | null;
   monitorNewItems?: string | null;
@@ -819,7 +828,7 @@ export function getRecentlyAddedLibraryArtists({
   );
   return rows
     .map((row) => artistsById.get(String(row.id)))
-    .filter(Boolean)
+    .filter((artist) => artist !== undefined)
     .map((artist) => ({ ...artist, addedAt: addedAtById.get(artist.id) }));
 }
 

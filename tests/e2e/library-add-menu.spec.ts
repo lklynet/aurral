@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
+import { boundingBoxOf } from "./helpers.ts";
 
 test.use({ serviceWorkers: "block", storageState: { cookies: [], origins: [] } });
 
@@ -399,18 +400,18 @@ test.describe("touch controls", () => {
     const writes = await fixture(page);
     await page.goto(`/artist/${artist.id}`);
     const trigger = monitorButton(page);
-    const target = await trigger.boundingBox();
+    const target = await boundingBoxOf(trigger);
     expect(target.height).toBeGreaterThanOrEqual(44);
     await trigger.tap();
     const menu = page.getByRole("menu", { name: "Monitoring" });
     await expect(menu).toBeVisible();
     await expect
       .poll(async () => {
-        const box = await menu.boundingBox();
+        const box = await boundingBoxOf(menu);
         return box.y + box.height;
       })
       .toBeLessThanOrEqual(844);
-    const bounds = await menu.boundingBox();
+    const bounds = await boundingBoxOf(menu);
     expect(bounds.x).toBeGreaterThanOrEqual(0);
     expect(bounds.x + bounds.width).toBeLessThanOrEqual(390);
     expect(bounds.y + bounds.height).toBeLessThanOrEqual(844);

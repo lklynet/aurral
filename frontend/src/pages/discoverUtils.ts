@@ -1,4 +1,5 @@
 import type { DiscoverResponse } from "../../../backend/routes/discovery/handlers/main.ts";
+import type { LibraryArtistImage } from "../../../backend/services/libraryQueryService.ts";
 
 export type DiscoverUserId = number | string | null | undefined;
 
@@ -24,15 +25,6 @@ export const TAG_COLORS = [
   "#718062",
   "#bc9d66",
 ];
-
-interface LibraryArtistImage {
-  remoteUrl?: string | null;
-  url?: string | null;
-  Url?: string | null;
-  coverType?: string | null;
-  kind?: string | null;
-  CoverType?: string | null;
-}
 
 export const getTagColor = (name: string | null | undefined) => {
   if (!name) return "#211f27";
@@ -152,7 +144,13 @@ export const getStoredRecentlyAddedAt = (userId: DiscoverUserId) =>
 export const getStoredRecentReleasesAt = (userId: DiscoverUserId) =>
   readStoredArrayAt(getDiscoverRecentReleasesStorageKey(userId), DISCOVER_RECENT_RELEASES_KEY);
 
-export const readStoredNearbyLocation = () => {
+export type NearbyLocationMode = "ip" | "zip";
+
+export const readStoredNearbyLocation = (): {
+  mode: NearbyLocationMode;
+  zip: string;
+  country: string;
+} => {
   try {
     const storedMode = localStorage.getItem(DISCOVER_NEARBY_MODE_KEY);
     const storedZip = localStorage.getItem(DISCOVER_NEARBY_ZIP_KEY) || "";

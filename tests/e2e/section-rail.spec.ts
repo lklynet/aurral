@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { attributeOf } from "./helpers.ts";
 
 test("the profile section rail previews, jumps to, and tracks sections", async ({
   page,
@@ -33,6 +34,7 @@ test("the profile section rail previews, jumps to, and tracks sections", async (
 
   await page.evaluate(() => {
     const first = document.querySelector(".profile-settings__section");
+    if (!first) throw new Error("Missing profile section");
     const inserted = first.cloneNode(false) as HTMLElement;
     inserted.innerHTML = '<h3 class="settings-page__section-title">Inserted section</h3>';
     first.before(inserted);
@@ -42,7 +44,7 @@ test("the profile section rail previews, jumps to, and tracks sections", async (
   await expect(tick("Connected accounts")).toHaveAttribute("aria-current", "location");
 
   const secondToLast = rail.getByRole("button").nth(-2);
-  const secondToLastName = await secondToLast.getAttribute("aria-label");
+  const secondToLastName = await attributeOf(secondToLast, "aria-label");
   await secondToLast.click();
   await expect(page.getByRole("heading", { name: secondToLastName, exact: true })).toBeInViewport();
   await nextFrames();
