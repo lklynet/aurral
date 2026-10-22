@@ -10,6 +10,7 @@ import {
 } from "../../../services/customArtworkService.ts";
 import {
   type getLibrary,
+  type LibraryArtist,
   getLibraryFavoriteTargetKeys,
   getLibraryPage,
   LIBRARY_VIEW,
@@ -136,24 +137,24 @@ function toPublicLibrary(library: LibraryCollections, favoriteKeys: Set<string> 
 
 export function toPublicLibraryPage(page: LibraryPage, favoriteKeys: Set<string> | null = null) {
   const collections = toPublicLibrary(page, favoriteKeys);
-  const items =
-    page.kind === "artists"
-      ? collections.artists
-      : page.kind === "albums"
-        ? collections.albums
-        : page.kind === "tracks"
-          ? collections.tracks
-          : stripFilesystemPaths(page.items);
-  return {
-    ...stripFilesystemPaths(page),
-    ...collections,
-    items,
-  };
+  const stripped = stripFilesystemPaths(page);
+  switch (stripped.kind) {
+    case "artists":
+      return { ...stripped, ...collections, items: collections.artists };
+    case "albums":
+      return { ...stripped, ...collections, items: collections.albums };
+    case "tracks":
+      return { ...stripped, ...collections, items: collections.tracks };
+    case "genres":
+      return { ...stripped, ...collections, items: stripped.items };
+  }
 }
 
 const LIBRARY_REFRESH_MODES = new Set(["quick", "full"]);
 
-type LibraryCollections = ReturnType<typeof getLibrary>;
+type LibraryCollections = Pick<ReturnType<typeof getLibrary>, "albums" | "tracks"> & {
+  artists: LibraryArtist[];
+};
 type LibraryPage = ReturnType<typeof getLibraryPage>;
 
 export function registerLibraryIndex(router: Router) {

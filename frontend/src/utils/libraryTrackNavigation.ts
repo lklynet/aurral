@@ -1,4 +1,4 @@
-type LibraryEntry = { id?: string | null; canonicalId?: string | null };
+type LibraryEntry = { id?: string | number | null; canonicalId?: string | null };
 
 type LibraryArtistEntry = LibraryEntry & {
   name?: string | null;

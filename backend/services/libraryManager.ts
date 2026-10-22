@@ -1079,7 +1079,7 @@ export function buildPlaybackQueueFromLibrary({
   albums = [],
   tracks = [],
 }: {
-  artists?: LibraryArtistRecord[];
+  artists?: Pick<LibraryArtistRecord, "id" | "name">[];
   albums?: LibraryAlbumRecord[];
   tracks?: LibraryTrackRecord[];
 } = {}) {

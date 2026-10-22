@@ -2238,8 +2238,8 @@ export class FlowTrackSource {
           page,
           pageSize: 100,
         });
-        for (const album of result.items) {
-          const mbid = String(album?.foreignAlbumId || album?.mbid || "")
+        for (const album of result.albums) {
+          const mbid = String(album.mbid || "")
             .trim()
             .toLowerCase();
           if (mbid) set.add(mbid);

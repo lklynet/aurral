@@ -129,7 +129,7 @@ type LibraryTrackContext = {
 type ActiveDownloadStart = {
   albumMbid?: string | null;
   artistMbid?: string | null;
-  track?: { mbid: string | null; artistName?: string; trackName?: string };
+  track?: { mbid: string | null; artistName?: string | null; trackName?: string | null };
 };
 
 export type { PreviewArtistMonitoringResponse };
@@ -199,33 +199,60 @@ const withAuthenticatedArtwork = <T extends object>(entity: T & ArtworkEntity): 
       }
     : entity;
 
-const withAuthenticatedLibraryArtwork = (library: FetchLibraryPageResponse) => {
+const withAuthenticatedArtworkList = <T extends object>(entities: T[]) =>
+  entities.map(withAuthenticatedArtwork);
+
+const withAuthenticatedLibraryArtwork = (
+  library: FetchLibraryPageResponse,
+): FetchLibraryPageResponse => {
   if (!library || typeof library !== "object") return library;
-  return {
-    ...library,
-    ...(Array.isArray(library.albums)
-      ? { albums: library.albums.map(withAuthenticatedArtwork) }
-      : {}),
-    ...(Array.isArray(library.tracks)
-      ? { tracks: library.tracks.map(withAuthenticatedArtwork) }
-      : {}),
-    ...(Array.isArray(library.items) ? { items: library.items.map(withAuthenticatedArtwork) } : {}),
-  };
+  const albums = withAuthenticatedArtworkList(library.albums);
+  const tracks = withAuthenticatedArtworkList(library.tracks);
+  switch (library.kind) {
+    case "artists":
+      return { ...library, albums, tracks, items: withAuthenticatedArtworkList(library.items) };
+    case "albums":
+      return { ...library, albums, tracks, items: withAuthenticatedArtworkList(library.items) };
+    case "tracks":
+      return { ...library, albums, tracks, items: withAuthenticatedArtworkList(library.items) };
+    case "genres":
+      return { ...library, albums, tracks, items: withAuthenticatedArtworkList(library.items) };
+  }
 };
 
-export const fetchLibraryPage = (
+type LibraryPageKind = FetchLibraryPageResponse["kind"];
+type LibraryPageOf<Kind extends LibraryPageKind> = Extract<FetchLibraryPageResponse, { kind: Kind }>;
+
+export function fetchLibraryPage<Kind extends LibraryPageKind>(
+  options: LibraryPageOptions & { kind: Kind },
+  io?: SignalOptions,
+): Promise<LibraryPageOf<Kind>>;
+export function fetchLibraryPage(
+  options?: LibraryPageOptions,
+  io?: SignalOptions,
+): Promise<FetchLibraryPageResponse>;
+export function fetchLibraryPage(
   options: LibraryPageOptions = {},
   { signal }: SignalOptions = {},
-): Promise<FetchLibraryPageResponse> =>
-  getData<FetchLibraryPageResponse>("/library/canonical", {
+): Promise<FetchLibraryPageResponse> {
+  return getData<FetchLibraryPageResponse>("/library/canonical", {
     params: libraryPageParams(options),
     signal,
   }).then(withAuthenticatedLibraryArtwork);
+}
 
-export const getLibraryPage = (
+export function getLibraryPage<Kind extends LibraryPageKind>(
+  options: LibraryPageOptions & { kind: Kind },
+  io?: SignalOptions,
+): Promise<LibraryPageOf<Kind>>;
+export function getLibraryPage(
+  options?: LibraryPageOptions,
+  io?: SignalOptions,
+): Promise<FetchLibraryPageResponse>;
+export function getLibraryPage(
   options: LibraryPageOptions = {},
   { signal }: SignalOptions = {},
-) => {
+): Promise<FetchLibraryPageResponse> {
   const params = libraryPageParams(options);
   return queryClient.fetchQuery({
     queryKey: queryKeys.libraryPage(params),
@@ -233,7 +260,7 @@ export const getLibraryPage = (
       fetchLibraryPage(options, { signal: mergeSignals(signal, querySignal) }),
     staleTime: 15_000,
   });
-};
+}
 
 export const clearLibraryPageCache = () => {
   bumpLibraryPageGeneration();

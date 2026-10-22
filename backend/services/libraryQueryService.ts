@@ -3056,7 +3056,7 @@ function getAlbumTrackPage(
       ]
     : [];
   return {
-    kind: "tracks",
+    kind: "tracks" as const,
     page,
     pageSize: currentPageSize,
     total,
@@ -3289,7 +3289,6 @@ export function getLibraryPage({
           .map((id) => library.tracks.find((entity) => String(entity.id) === String(id)))
           .filter((entity) => entity !== undefined)
       : [];
-  const items = normalizedKind === "albums" ? albumItems : trackItems;
 
   const relatedAlbums =
     normalizedKind === "tracks"
@@ -3318,17 +3317,32 @@ export function getLibraryPage({
     );
   }
 
+  const genres = getLibraryGenreStats({ sourceFilter, availableOnly });
+  if (normalizedKind === "albums") {
+    return {
+      kind: normalizedKind,
+      page: currentPage,
+      pageSize: currentPageSize,
+      total,
+      hasMore: currentPage * currentPageSize < total,
+      items: albumItems,
+      artists: relatedArtists,
+      albums: relatedAlbums,
+      tracks: [],
+      genres,
+    };
+  }
   return {
     kind: normalizedKind,
     page: currentPage,
     pageSize: currentPageSize,
     total,
     hasMore: currentPage * currentPageSize < total,
-    items,
+    items: trackItems,
     artists: relatedArtists,
     albums: relatedAlbums,
-    tracks: normalizedKind === "tracks" ? items : [],
-    genres: getLibraryGenreStats({ sourceFilter, availableOnly }),
+    tracks: trackItems,
+    genres,
   };
 }
 
