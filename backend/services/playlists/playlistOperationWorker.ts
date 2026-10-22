@@ -1,5 +1,7 @@
+import type { Job, JsonValue } from "@russellthehippo/honker-node";
 import createHonkerWorker from "../honkerWorkerFactory.ts";
 import { getPlaylistOperationQueue } from "../honkerDb.ts";
+import type { HonkerPayload } from "../honkerDb.ts";
 import { processPlaylistOperation } from "./playlistOperations.ts";
 import { setPlaylistOperationWorkerState } from "./playlistOperationQueue.ts";
 import { logger } from "../logger.ts";
@@ -11,12 +13,12 @@ const PERMANENT_ERROR_CODES = new Set([
   "NO_DOWNLOAD_SOURCE",
 ]);
 
-let currentLabel = null;
+let currentLabel: JsonValue = null;
 
-const isPlaylistImport = (payload) =>
+const isPlaylistImport = (payload: HonkerPayload) =>
   payload?.kind === "shared-playlist-create" && payload?.importSource != null;
 
-const importContext = (payload, job) => ({
+const importContext = (payload: HonkerPayload, job: Job) => ({
   provider: payload?.importSource?.provider || null,
   playlistName: payload?.name || null,
   playlistId: payload?.playlistId || null,
@@ -32,7 +34,7 @@ function syncWorkerState() {
 const worker = createHonkerWorker({
   name: "weekly-flow-operation",
   getQueue: getPlaylistOperationQueue,
-  async processJob(payload: Record<string, unknown>, job) {
+  async processJob(payload: HonkerPayload, job) {
     if (payload.kind !== "shared-playlist-bulk") return processPlaylistOperation(payload);
     const record = getBulkOperation(job.id);
     if (!record || ["completed", "failed"].includes(record.state)) return;

@@ -1,19 +1,59 @@
 import { db } from "../../config/db-sqlite.ts";
+import type { SettingsRow } from "../../db/rows.ts";
 import { getHonkerDb, getPlaylistOperationQueue } from "../honkerDb.ts";
+import type { StaticPlaylistRemovalOutcome, StaticPlaylistSelection } from "./trackRemoval.ts";
 
 const PREFIX = "playlistBulkOperation:";
 const RETENTION_MS = 7 * 86400000;
-const getStmt = db.prepare("SELECT value FROM settings WHERE key = ?");
+const getStmt = db.prepare<[string], Pick<SettingsRow, "value">>(
+  "SELECT value FROM settings WHERE key = ?",
+);
 const saveStmt = db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)");
 const deleteStmt = db.prepare("DELETE FROM settings WHERE key = ?");
-const listStmt = db.prepare(
+const listStmt = db.prepare<[], Pick<SettingsRow, "value"> & { key: string }>(
   "SELECT key, value FROM settings WHERE key LIKE 'playlistBulkOperation:%'",
 );
 
-export function getBulkOperation(operationId) {
+export interface BulkOperationTarget {
+  playlistId: string;
+  name?: string;
+  create?: boolean;
+}
+
+export interface BulkOperationOutcome extends Omit<StaticPlaylistRemovalOutcome, "status"> {
+  status: StaticPlaylistRemovalOutcome["status"] | "moved";
+  targetPlaylistId?: string;
+}
+
+interface BulkOperationBase {
+  operationId: number;
+  ownerUserId: number;
+  sourcePlaylistId: string;
+  selections: StaticPlaylistSelection[];
+  state: "queued" | "running" | "completed" | "failed";
+  outcomes: BulkOperationOutcome[];
+  synchronization: Record<string, boolean>;
+  createdAt: number;
+  updatedAt: number;
+  message?: string;
+  scanScheduled?: boolean;
+}
+
+export type BulkOperationRecord = BulkOperationBase &
+  ({ action: "move"; target: BulkOperationTarget } | { action: "remove"; target: null });
+
+export type BulkOperationInput = Pick<
+  BulkOperationBase,
+  "ownerUserId" | "sourcePlaylistId" | "selections"
+> & {
+  action: BulkOperationRecord["action"];
+  target: BulkOperationRecord["target"] | null;
+};
+
+export function getBulkOperation(operationId: string | number) {
   const row = getStmt.get(`${PREFIX}${operationId}`);
   if (!row) return null;
-  const record = JSON.parse(row.value);
+  const record: BulkOperationRecord = JSON.parse(row.value);
   if (
     !["completed", "failed"].includes(record.state) &&
     !getHonkerDb().query(
@@ -30,12 +70,12 @@ export function getBulkOperation(operationId) {
   return record;
 }
 
-export function saveBulkOperation(record) {
+export function saveBulkOperation(record: BulkOperationRecord) {
   saveStmt.run(`${PREFIX}${record.operationId}`, JSON.stringify(record));
   return record;
 }
 
-export function enqueueBulkOperation(record) {
+export function enqueueBulkOperation(record: BulkOperationInput) {
   const queue = getPlaylistOperationQueue();
   const tx = getHonkerDb().transaction();
   try {
@@ -66,7 +106,7 @@ export function enqueueBulkOperation(record) {
 }
 
 export function cleanupBulkOperations() {
-  const owners = new Map();
+  const owners = new Map<number, { key: string; updatedAt: number }[]>();
   const now = Date.now();
   for (const row of listStmt.all()) {
     const record = getBulkOperation(row.key.slice(PREFIX.length));

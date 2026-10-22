@@ -1,32 +1,40 @@
 import { createHash } from "node:crypto";
 import { downloadTracker } from "../downloadJobs/downloadTracker.ts";
+import type { DownloadJob } from "../downloadJobs/downloadTracker.ts";
 import { downloadWorker } from "../downloadJobs/downloadWorker.ts";
 import {
   getDownloadOwnerStatus,
   isDownloadOwnerProcess,
 } from "../downloadJobs/downloadOwnerClient.ts";
+import type { DownloadOwnerStatus } from "../downloadJobs/downloadOwnerClient.ts";
 import { slskdClient } from "../slskdClient.ts";
 import {
   buildPlaylistTrackIdentity,
   flowPlaylistConfig,
   invalidateFlowPlaylistConfigCache,
 } from "./flowPlaylistConfig.ts";
+import type { FlowConfig, StaticPlaylist } from "./flowPlaylistConfig.ts";
 import { playlistOperationQueue } from "./playlistOperationQueue.ts";
 import { getPlaylistOperationWorkerStatus } from "./playlistOperationWorker.ts";
 import { getDownloadClient } from "../download/downloadClientSettings.ts";
 import { dbOps, userOps } from "../../db/helpers/index.ts";
 import { db, getDatabaseRevision } from "../../config/db-sqlite.ts";
 import type { RequestUser } from "../../middleware/requestUser.ts";
+import type { SettingsRow } from "../../db/rows.ts";
 
-const playlistSettingsStmt = db.prepare(
+const playlistSettingsStmt = db.prepare<[], Pick<SettingsRow, "value"> & { key: string }>(
   "SELECT key, value FROM settings WHERE key IN ('flows', 'sharedPlaylists') ORDER BY key",
 );
-const membershipCache = new Map();
+type MembershipSummary = {
+  trackIdentities: ReturnType<typeof collectPlaylistTrackIdentities>;
+  trackEntries: ReturnType<typeof collectPlaylistTrackEntries>;
+};
+const membershipCache = new Map<string, MembershipSummary>();
 const MEMBERSHIP_CACHE_LIMIT = 128;
-let cachedSettings = null;
-let cachedJobRevision = null;
-let cachedDatabaseRevision = null;
-let cacheCleanupTimer = null;
+let cachedSettings: string | null = null;
+let cachedJobRevision: ReturnType<typeof downloadTracker.getRevision> | null = null;
+let cachedDatabaseRevision: string | null = null;
+let cacheCleanupTimer: ReturnType<typeof setTimeout> | null = null;
 
 export function clearPlaylistStatusCache() {
   clearTimeout(cacheCleanupTimer);
@@ -62,7 +70,7 @@ function refreshMembershipCache() {
   cachedDatabaseRevision = databaseRevision;
 }
 
-function getMembershipSummary(playlist) {
+function getMembershipSummary(playlist: StaticPlaylist) {
   let summary = membershipCache.get(playlist.id);
   if (!summary) {
     const jobs = downloadTracker.getByPlaylistType(playlist.id);
@@ -74,7 +82,7 @@ function getMembershipSummary(playlist) {
   membershipCache.delete(playlist.id);
   membershipCache.set(playlist.id, summary);
   if (membershipCache.size > MEMBERSHIP_CACHE_LIMIT) {
-    membershipCache.delete(membershipCache.keys().next().value);
+    membershipCache.delete(membershipCache.keys().next().value!);
   }
   return {
     trackIdentities: [...summary.trackIdentities],
@@ -82,7 +90,7 @@ function getMembershipSummary(playlist) {
   };
 }
 
-function getCountdown(nextRunAt) {
+function getCountdown(nextRunAt: unknown): ["soon" | "minute" | "hour" | "day", number] | null {
   const timestamp = Number(nextRunAt);
   if (!Number.isFinite(timestamp) || timestamp <= 0) return null;
   const diff = timestamp - Date.now();
@@ -95,7 +103,7 @@ function getCountdown(nextRunAt) {
   return ["day", Math.ceil(diff / dayMs)];
 }
 
-function formatNextRunMessage(flows) {
+function formatNextRunMessage(flows: FlowConfig[]) {
   const nextRunAt = (Array.isArray(flows) ? flows : [])
     .filter((flow) => flow?.enabled === true)
     .map((flow) => Number(flow?.nextRunAt))
@@ -122,7 +130,10 @@ export function getPlaylistStatusVersion() {
   ]);
 }
 
-function aggregateStats(statsByType, ids) {
+function aggregateStats(
+  statsByType: ReturnType<typeof downloadTracker.getStatsByPlaylistType>,
+  ids: string[],
+) {
   const base = {
     total: 0,
     pending: 0,
@@ -144,12 +155,12 @@ function aggregateStats(statsByType, ids) {
   return base;
 }
 
-function collectPlaylistTrackIdentities(playlist, jobs) {
+function collectPlaylistTrackIdentities(playlist: StaticPlaylist, jobs: DownloadJob[]) {
   const playlistId = String(playlist?.id || "");
   if (!playlistId) return [];
-  const seen = new Set();
-  const identities = [];
-  const addIdentity = (track) => {
+  const seen = new Set<string>();
+  const identities: string[] = [];
+  const addIdentity = (track: Parameters<typeof buildPlaylistTrackIdentity>[0]) => {
     const identity = buildPlaylistTrackIdentity(track);
     if (!identity || seen.has(identity)) return;
     seen.add(identity);
@@ -164,7 +175,7 @@ function collectPlaylistTrackIdentities(playlist, jobs) {
   return identities;
 }
 
-function collectPlaylistTrackEntries(jobs) {
+function collectPlaylistTrackEntries(jobs: DownloadJob[]) {
   return jobs
     .filter((job) =>
       [
@@ -183,7 +194,10 @@ function collectPlaylistTrackEntries(jobs) {
     }));
 }
 
-function buildOwnerMap(flows, staticPlaylists) {
+function buildOwnerMap(
+  flows: Pick<FlowConfig, "ownerUserId">[],
+  staticPlaylists: Pick<StaticPlaylist, "ownerUserId">[],
+) {
   const ownerIds = new Set<number>();
   for (const item of [
     ...(Array.isArray(flows) ? flows : []),
@@ -209,7 +223,9 @@ export function getPlaylistStatusSnapshot({ user = null }: { user?: RequestUser 
   clearTimeout(cacheCleanupTimer);
   cacheCleanupTimer = setTimeout(clearPlaylistStatusCache, 60000);
   cacheCleanupTimer.unref?.();
-  const workerStatus = downloadWorker.getStatus();
+  const workerStatus: ReturnType<typeof downloadWorker.getStatus> & {
+    operationWorker?: DownloadOwnerStatus["operationWorker"];
+  } = downloadWorker.getStatus();
   const flows = user ? flowPlaylistConfig.getFlowsForUser(user) : flowPlaylistConfig.getFlows();
   const rawStaticPlaylists = user
     ? flowPlaylistConfig.getStaticPlaylistsForUser(user)

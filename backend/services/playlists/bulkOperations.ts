@@ -3,26 +3,29 @@ import { downloadWorker } from "../downloadJobs/downloadWorker.ts";
 import { db } from "../../config/db-sqlite.ts";
 import { dbOps, userOps } from "../../db/helpers/index.ts";
 import { getBulkOperation, saveBulkOperation } from "./bulkOperationStore.ts";
+import type { BulkOperationOutcome, BulkOperationRecord } from "./bulkOperationStore.ts";
 import { downloadTracker } from "../downloadJobs/downloadTracker.ts";
 import {
   flowPlaylistConfig,
   invalidateFlowPlaylistConfigCache,
   tracksShareMembership,
 } from "./flowPlaylistConfig.ts";
+import type { StaticPlaylist } from "./flowPlaylistConfig.ts";
 import {
   withStaticPlaylistRemovalMutation,
   isStaticPlaylistSelectionCurrent,
   removeStaticPlaylistSelectionsLocked,
 } from "./trackRemoval.ts";
 import { playlistManager } from "./playlistManager.ts";
+import type { StaticPlaylistSelection } from "./trackRemoval.ts";
 import { isArtistBlockedForUser } from "../discovery/feedback.ts";
 
-function persist(record) {
+function persist(record: BulkOperationRecord) {
   record.updatedAt = Date.now();
   saveBulkOperation(record);
 }
 
-function persistMembership(operation) {
+function persistMembership<T>(operation: () => T) {
   try {
     return db.transaction(operation)();
   } catch (error) {
@@ -32,12 +35,12 @@ function persistMembership(operation) {
   }
 }
 
-export async function processStaticPlaylistBulkOperation(operationId) {
+export async function processStaticPlaylistBulkOperation(operationId: string | number) {
   const record = getBulkOperation(operationId);
   if (!record || ["completed", "failed"].includes(record.state)) return record;
   let user = userOps.getUserById(record.ownerUserId);
   const source = user && flowPlaylistConfig.getStaticPlaylistForUser(user, record.sourcePlaylistId);
-  if (!source || user.status !== "active")
+  if (!source || user!.status !== "active")
     throw new Error("Source playlist access is no longer available");
   await withStaticPlaylistRemovalMutation(
     {
@@ -53,7 +56,7 @@ export async function processStaticPlaylistBulkOperation(operationId) {
       if (!lockedSource) throw new Error("Source playlist access is no longer available");
       record.state = "running";
       persist(record);
-      let target = null;
+      let target: Pick<StaticPlaylist, "id" | "name" | "ownerUserId" | "tracks"> | null = null;
       let creatingTarget = false;
       if (record.action === "move") {
         target = flowPlaylistConfig.getStaticPlaylist(record.target.playlistId);
@@ -61,7 +64,7 @@ export async function processStaticPlaylistBulkOperation(operationId) {
           creatingTarget = true;
           target = {
             id: record.target.playlistId,
-            name: record.target.name,
+            name: record.target.name!,
             ownerUserId: user.id,
             tracks: [],
           };
@@ -76,8 +79,8 @@ export async function processStaticPlaylistBulkOperation(operationId) {
       }
       const finished = new Set(record.outcomes.map((outcome) => outcome.jobId));
       const remaining = record.selections.filter((selection) => !finished.has(selection.jobId));
-      const eligible = [];
-      const rejected = [];
+      const eligible: StaticPlaylistSelection[] = [];
+      const rejected: BulkOperationOutcome[] = [];
       for (const selection of remaining) {
         const job = downloadTracker.getJob(selection.jobId);
         if (target && (!job || !isStaticPlaylistSelectionCurrent(selection, lockedSource, job))) {
@@ -116,12 +119,12 @@ export async function processStaticPlaylistBulkOperation(operationId) {
         target = persistMembership(() => {
           const result = creatingTarget
             ? flowPlaylistConfig.createStaticPlaylist({
-                id: target.id,
-                name: target.name,
-                ownerUserId: user.id,
+                id: target!.id,
+                name: target!.name,
+                ownerUserId: user!.id,
                 tracks,
               })
-            : flowPlaylistConfig.appendStaticPlaylistTracks(target.id, tracks);
+            : flowPlaylistConfig.appendStaticPlaylistTracks(target!.id, tracks);
           if (
             !result ||
             !tracks.every((track) =>
@@ -134,7 +137,7 @@ export async function processStaticPlaylistBulkOperation(operationId) {
           ) {
             throw new Error("Could not persist destination membership");
           }
-          record.synchronization[target.id] = false;
+          record.synchronization[target!.id] = false;
           persist(record);
           return result;
         });
@@ -146,7 +149,7 @@ export async function processStaticPlaylistBulkOperation(operationId) {
         onCommitted(outcomes, affectedPlaylistIds) {
           record.outcomes.push(
             ...rejected,
-            ...outcomes.map((outcome) => ({
+            ...outcomes.map((outcome): BulkOperationOutcome => ({
               ...outcome,
               ...(target && outcome.status === "removed"
                 ? { status: "moved", targetPlaylistId: target.id }

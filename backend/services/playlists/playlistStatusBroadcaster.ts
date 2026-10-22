@@ -7,9 +7,13 @@ import {
   getPlaylistStatusVersion,
 } from "./playlistStatusSnapshot.ts";
 
+type PlaylistStatusClient = Parameters<
+  Parameters<typeof websocketService.broadcastPerClient>[1]
+>[0];
+
 export function startPlaylistStatusBroadcasts({ websocket = websocketService, log = logger } = {}) {
-  let interval = null;
-  let lastVersion = null;
+  let interval: ReturnType<typeof setInterval> | null = null;
+  let lastVersion: string | null = null;
   const broadcast = (force = false) => {
     try {
       const channels = websocket.getStats().channels;
@@ -27,7 +31,7 @@ export function startPlaylistStatusBroadcasts({ websocket = websocketService, lo
       const version = getPlaylistStatusVersion();
       if (!force && version === lastVersion) return;
       const payloadByAudience = new Map();
-      const buildPayload = (channel) => (client) => {
+      const buildPayload = (channel: string) => (client: PlaylistStatusClient) => {
         const cacheKey =
           client?.user?.role === "admin"
             ? "admin"
