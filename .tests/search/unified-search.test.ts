@@ -1,0 +1,292 @@
+import { test } from "vite-plus/test";
+import assert from "node:assert/strict";
+
+import {
+  applyCatalogSearchContext,
+  buildSearchContextIndex,
+  searchLocalFromData,
+} from "../../backend/services/unifiedSearchService.ts";
+import {
+  compareSearchResults,
+  catalogPopularityToUnit,
+  getSearchRankScore,
+  normalizeRelevanceScore,
+} from "../../backend/services/searchRanking.ts";
+
+test("searchLocalFromData returns library artist and track matches", () => {
+  const result = searchLocalFromData(
+    "radiohead",
+    {
+      artists: [
+        {
+          mbid: "a1b2c3",
+          artistName: "Radiohead",
+        },
+      ],
+      tracks: [
+        {
+          id: "lib-track-1",
+          title: "Creep",
+          artist: "Radiohead",
+          album: "Pablo Honey",
+          streamPath: "/library/file-stream/1/2",
+        },
+      ],
+    },
+    5,
+  );
+
+  assert.equal(result.artists.length, 1);
+  assert.equal(result.artists[0].name, "Radiohead");
+  assert.equal(result.tracks.length, 1);
+  assert.equal(result.tracks[0].title, "Creep");
+  assert.equal(result.artists[0].inLibrary, true);
+  assert.equal(result.tracks[0].inLibrary, true);
+});
+
+test("searchLocalFromData does not let duplicate artist projections consume result slots", () => {
+  const result = searchLocalFromData(
+    "artist",
+    {
+      artists: [
+        { canonicalId: "1", id: "provider-1", artistName: "Artist One" },
+        { canonicalId: "1", id: "provider-1", artistName: "Artist One" },
+        { canonicalId: "2", id: "provider-2", artistName: "Artist Two" },
+      ],
+    },
+    2,
+  );
+
+  assert.deepEqual(
+    result.artists.map((artist) => artist.name),
+    ["Artist One", "Artist Two"],
+  );
+});
+
+test("searchLocalFromData ignores library artists that only share article words", () => {
+  const result = searchLocalFromData(
+    "the used",
+    {
+      artists: [
+        { mbid: "used-mbid", artistName: "The Used" },
+        { mbid: "1975-mbid", artistName: "The 1975" },
+        { mbid: "almost-mbid", artistName: "The Almost" },
+      ],
+    },
+    5,
+  );
+
+  assert.equal(result.artists.length, 1);
+  assert.equal(result.artists[0].name, "The Used");
+});
+
+test("normalizeRelevanceScore preserves catalog popularity score ordering", () => {
+  const popular = normalizeRelevanceScore({
+    type: "track",
+    source: "aurral-search",
+    score: 185420,
+  });
+  const obscure = normalizeRelevanceScore({
+    type: "track",
+    source: "aurral-search",
+    score: 4200,
+  });
+
+  assert.ok(popular > obscure);
+  assert.ok(popular < 1);
+  assert.ok(obscure < popular);
+  assert.ok(catalogPopularityToUnit(185420) > 0.8);
+});
+
+test("catalog popularity scores outrank weak library partial matches", () => {
+  const weakLibraryArtist = {
+    type: "artist",
+    score: 67,
+    inLibrary: true,
+    source: "library",
+  };
+  const catalogTrack = {
+    type: "track",
+    score: 185420,
+    source: "aurral-search",
+    inLibrary: false,
+  };
+
+  assert.ok(getSearchRankScore(catalogTrack) > getSearchRankScore(weakLibraryArtist));
+  assert.ok(compareSearchResults(catalogTrack, weakLibraryArtist) < 0);
+});
+
+test("search ranking prioritizes strong playlist matches over catalog tracks", () => {
+  const playlist = {
+    type: "playlist",
+    score: 90,
+    inLibrary: true,
+    source: "library",
+  };
+  const libraryTrack = {
+    type: "track",
+    score: 100,
+    inLibrary: true,
+    source: "library",
+  };
+  const catalogTrack = {
+    type: "track",
+    score: 0.94,
+    inLibrary: false,
+  };
+
+  assert.ok(getSearchRankScore(playlist) > getSearchRankScore(catalogTrack));
+  assert.ok(getSearchRankScore(libraryTrack) > getSearchRankScore(catalogTrack));
+});
+
+test("catalog ranking uses library artists and playlist tracks as context", () => {
+  const context = {
+    artists: [{ mbid: "radiohead", artistName: "Radiohead" }],
+    tracks: [
+      {
+        title: "No Surprises",
+        artist: "Radiohead",
+        album: "OK Computer",
+      },
+    ],
+    playlists: [
+      {
+        id: "pl-1",
+        name: "Late Night",
+        tracks: [
+          {
+            artistName: "Radiohead",
+            trackName: "Paranoid Android",
+            albumName: "OK Computer",
+            artistMbid: "radiohead",
+            albumMbid: "ok-computer",
+            trackMbid: "paranoid-android",
+          },
+        ],
+      },
+    ],
+  };
+  const catalog = applyCatalogSearchContext(
+    {
+      artists: [
+        {
+          type: "artist",
+          id: "paranoid-android-artist",
+          name: "Paranoid Android",
+          score: 0.91,
+        },
+      ],
+      albums: [],
+      tracks: [
+        {
+          type: "track",
+          id: "paranoid-android",
+          title: "Paranoid Android",
+          artistName: "Radiohead",
+          artistMbid: "radiohead",
+          albumTitle: "OK Computer",
+          albumMbid: "ok-computer",
+          score: 0.88,
+        },
+      ],
+    },
+    "paranoid android",
+    {
+      ...context,
+      index: buildSearchContextIndex(context),
+    },
+    5,
+  );
+
+  assert.equal(catalog.tracks[0].inPlaylist, true);
+  assert.equal(catalog.tracks[0].artistInLibrary, true);
+  assert.ok(catalog.tracks[0].contextBoost > 0);
+  assert.equal(catalog.artists[0].id, "paranoid-android-artist");
+  assert.equal(catalog.artists[0].name, "Paranoid Android");
+});
+
+test("catalog context marks full-mode library track matches", () => {
+  const context = {
+    artists: [],
+    tracks: [
+      {
+        title: "No Surprises",
+        artist: "Radiohead",
+        album: "OK Computer",
+      },
+    ],
+    playlists: [],
+  };
+  const catalog = applyCatalogSearchContext(
+    {
+      artists: [],
+      albums: [],
+      tracks: [
+        {
+          type: "track",
+          id: "no-surprises",
+          title: "No Surprises",
+          artistName: "Radiohead",
+          albumTitle: "OK Computer",
+          score: 0.88,
+        },
+      ],
+    },
+    "no surprises",
+    {
+      ...context,
+      index: buildSearchContextIndex(context),
+    },
+    5,
+  );
+
+  assert.equal(catalog.tracks[0].inLibrary, true);
+  assert.ok(getSearchRankScore(catalog.tracks[0]) > 1);
+});
+
+test("applyCatalogSearchContext preserves artist bucket order", () => {
+  const context = {
+    artists: [
+      {
+        mbid: "say-anything",
+        artistName: "Say Anything",
+      },
+    ],
+    tracks: [],
+    playlists: [],
+  };
+  const catalog = applyCatalogSearchContext(
+    {
+      artists: [
+        {
+          type: "artist",
+          id: "the-used",
+          name: "The Used",
+          score: 0.94,
+        },
+      ],
+      albums: [],
+      tracks: [
+        {
+          type: "track",
+          id: "the-band-the-used",
+          title: "The Band the Used",
+          artistName: "Say Anything",
+          artistMbid: "say-anything",
+          albumTitle: "The Noise Of Say Anything's Room Without...",
+          score: 0.82,
+        },
+      ],
+    },
+    "the used",
+    {
+      ...context,
+      index: buildSearchContextIndex(context),
+    },
+    5,
+  );
+
+  assert.equal(catalog.artists.length, 1);
+  assert.equal(catalog.artists[0].name, "The Used");
+  assert.equal(catalog.tracks[0].title, "The Band the Used");
+});

@@ -1,0 +1,78 @@
+import createHonkerWorker from "./honkerWorkerFactory.ts";
+import { getPipelineQueue } from "./honkerDb.ts";
+import {
+  continuePipeline,
+  processPipelinePayload,
+  enqueuePendingJobsWithoutBatch,
+  failPipelineJob,
+} from "./downloadPipeline.ts";
+import { isPipelinePayloadActive } from "./downloadJobs/downloadCancellation.ts";
+import { isAnyDownloadSourceConfigured } from "./downloadSourceService.ts";
+import { logger, safeLogDiagnostic } from "./logger.ts";
+import { recordAlbumGrabQueued, recordAlbumGrabPhase } from "./albumGrabActivity.ts";
+import { downloadTracker } from "./downloadJobs/downloadTracker.ts";
+import { withDownloadPayloadMutation } from "./downloadJobs/mutationGuards.ts";
+
+async function processLockedPipelineJob(payload, dependencies = {}) {
+  const processPayload = dependencies.processPipelinePayload || processPipelinePayload;
+  const continuePayload = dependencies.continuePipeline || continuePipeline;
+  const failPayload = dependencies.failPipelineJob || failPipelineJob;
+  try {
+    if (payload?.albumGrab === true && isPipelinePayloadActive(payload)) {
+      recordAlbumGrabQueued(payload, downloadTracker.getAll());
+      recordAlbumGrabPhase(payload);
+    }
+    const nextPayload = await processPayload(payload);
+    if (nextPayload?.albumGrab === true) recordAlbumGrabPhase(nextPayload);
+    await continuePayload(nextPayload);
+  } catch (error) {
+    if (payload?.manualSelection !== true) throw error;
+    const message = safeLogDiagnostic(error) || "Manual download failed";
+    logger.error("manual-search", "Selected manual download failed", {
+      jobId: payload?.jobId || null,
+      source: payload?.source || null,
+      reason: message,
+    });
+    await failPayload(payload, message);
+  }
+}
+
+export function processPipelineJob(payload, dependencies = {}) {
+  return withDownloadPayloadMutation(payload, (current) =>
+    processLockedPipelineJob(current, dependencies),
+  );
+}
+
+const {
+  start: startDownloadPipelineWorker,
+  stop: stopDownloadPipelineWorker,
+  isRunning: isDownloadPipelineWorkerRunning,
+} = createHonkerWorker({
+  name: "slskd-pipeline",
+  getQueue: getPipelineQueue,
+  idlePollS: 2,
+  retryDelayS: 30,
+  shouldRestart: () => isAnyDownloadSourceConfigured(),
+  onStart() {
+    if (!isAnyDownloadSourceConfigured()) return false;
+    console.log("[pipeline] worker starting");
+    enqueuePendingJobsWithoutBatch();
+    return true;
+  },
+  processJob: processPipelineJob,
+  onFinalFailure(job, error) {
+    const message = error?.message || String(error);
+    console.error("[downloadPipelineWorker] pipeline job failed:", {
+      jobId: job.payload?.jobId || null,
+      phase: job.payload?.phase || null,
+      candidateIndex: job.payload?.candidateIndex ?? null,
+      message,
+      stack: error?.stack || null,
+    });
+    return withDownloadPayloadMutation(job.payload, async (payload) =>
+      continuePipeline(await failPipelineJob(payload, message)),
+    );
+  },
+});
+
+export { startDownloadPipelineWorker, stopDownloadPipelineWorker, isDownloadPipelineWorkerRunning };

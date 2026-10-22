@@ -1,0 +1,255 @@
+import { lazy, Suspense, useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router";
+import RouteLink from "../../components/RouteLink";
+import { ListMusic, MoreVertical, Plus, Upload } from "lucide-react";
+import { SkeletonLibraryGrid, SkeletonStatus } from "../../components/Skeletons";
+import Tooltip from "../../components/Tooltip";
+import { LibraryItemMenu } from "../../components/LibraryItemMenu";
+import { CreatePlaylistModal } from "../../components/PlaylistModals";
+import { useAuth } from "../../contexts/AuthContext";
+import { useToast } from "../../contexts/ToastContext";
+import { useDocumentTitle } from "../../hooks/useDocumentTitle";
+import { createStaticPlaylist } from "../../utils/api/endpoints/playlists.ts";
+import { PlaylistArtworkThumb } from "./components/PlaylistArtworkThumb.tsx";
+import { getStaticPlaylistTrackCount } from "./playlistStats";
+import { normalizeNameKey, reserveUniqueName } from "./flowPageUtils";
+import {
+  formatTrackTotal,
+  getImportedProviderLabel,
+  getImportedProviderLogo,
+  usePlaylistArtwork,
+} from "./playlistPageUtils";
+import { usePlaylistStatus } from "./usePlaylistStatus";
+import { useHiddenPlaylistTracks } from "./usePlaylistBulkActions.ts";
+import { playlistPath } from "../../navigation/playlistPaths";
+
+const PlaylistImportModal = lazy(() =>
+  import("./import/PlaylistImportModal.tsx").then((m) => ({ default: m.PlaylistImportModal })),
+);
+
+function SyncedBadge({ importSource }) {
+  const logo =
+    importSource?.syncEnabled === true ? getImportedProviderLogo(importSource.provider) : null;
+  if (!logo) return null;
+  const label = `Synced from ${getImportedProviderLabel(importSource.provider)}`;
+  return (
+    <Tooltip content={label}>
+      <span className="playlists-page__synced" role="img" aria-label={label} tabIndex={0}>
+        <img className="playlists-page__synced-logo" src={logo} alt="" aria-hidden="true" />
+      </span>
+    </Tooltip>
+  );
+}
+
+export default function PlaylistsPage() {
+  useDocumentTitle("Playlists");
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { user } = useAuth();
+  const { showSuccess, showError } = useToast();
+  const { status, loading, error, fetchStatus, getPlaylistStats, staticPlaylists } =
+    usePlaylistStatus();
+  const hiddenTracks = useHiddenPlaylistTracks();
+  const { artworkUrlFor } = usePlaylistArtwork();
+  const [importOpen, setImportOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState("");
+
+  useEffect(() => {
+    if (!location.state?.openImport) return;
+    setImportOpen(true);
+    navigate(location.pathname, { replace: true, state: {} });
+  }, [location.pathname, location.state?.openImport, navigate]);
+
+  const openCreate = () => {
+    setCreateError("");
+    setCreateOpen(true);
+  };
+
+  const handleCreate = async (name) => {
+    setCreating(true);
+    setCreateError("");
+    try {
+      const response = await createStaticPlaylist({ name });
+      showSuccess(`Created ${name}`);
+      setCreateOpen(false);
+      await fetchStatus();
+      if (response?.playlistId) {
+        navigate(playlistPath(response.playlistId), { state: { created: true } });
+      }
+    } catch (err) {
+      const message =
+        err.response?.data?.message ||
+        err.response?.data?.error ||
+        err.message ||
+        "Failed to create playlist";
+      setCreateError(message);
+      showError(message);
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const describePlaylist = (playlist) => {
+    const hiddenCount = hiddenTracks.get(playlist.id)?.size || 0;
+    const parts = [
+      formatTrackTotal(
+        Math.max(
+          0,
+          getStaticPlaylistTrackCount(playlist, getPlaylistStats(playlist.id)) - hiddenCount,
+        ),
+      ),
+    ];
+    if (
+      playlist.ownerUsername &&
+      (user?.role === "admin" || playlist.ownerUsername !== user?.username)
+    ) {
+      parts.unshift(playlist.ownerUsername);
+    }
+    return parts.join(" · ");
+  };
+
+  const renderContent = () => {
+    if (loading && !status) {
+      return (
+        <SkeletonStatus label="Loading playlists">
+          <SkeletonLibraryGrid kind="playlist" count={8} />
+        </SkeletonStatus>
+      );
+    }
+    if (error && !status) {
+      return (
+        <div className="native-library-state" role="alert">
+          <strong>Could not load playlists.</strong>
+          <button type="button" className="native-library-state__action" onClick={fetchStatus}>
+            Retry
+          </button>
+        </div>
+      );
+    }
+    if (staticPlaylists.length === 0) {
+      return (
+        <div className="native-library-state">
+          <strong>No playlists yet</strong>
+          <span>Create or import a playlist.</span>
+          <div className="playlists-page__empty-actions">
+            <button type="button" className="native-library-state__action" onClick={openCreate}>
+              <ListMusic aria-hidden="true" />
+              New playlist
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => setImportOpen(true)}
+            >
+              <Upload aria-hidden="true" />
+              Import playlist
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div className="native-library-grid" role="list" aria-label="Playlists">
+        {staticPlaylists.map((playlist) => (
+          <article
+            className="native-library-card"
+            role="listitem"
+            data-artwork-scope
+            key={playlist.id}
+          >
+            <div className="native-library-card__cover-wrap">
+              <RouteLink
+                to={playlistPath(playlist.id)}
+                className="native-library-card__cover playlists-page__cover"
+                data-artwork
+                aria-label={`Open ${playlist.name}`}
+              >
+                <PlaylistArtworkThumb
+                  artworkUrl={artworkUrlFor(playlist.id)}
+                  name={playlist.name}
+                />
+              </RouteLink>
+              <SyncedBadge importSource={playlist.importSource} />
+            </div>
+            <div className="native-library-card__body">
+              <RouteLink
+                to={playlistPath(playlist.id)}
+                className="native-library-card__title playlists-page__title"
+              >
+                {playlist.name}
+              </RouteLink>
+              <span className="native-library-card__meta">{describePlaylist(playlist)}</span>
+            </div>
+          </article>
+        ))}
+      </div>
+    );
+  };
+
+  return (
+    <div className="library-page native-library-page playlist-page">
+      <header className="native-library-header">
+        <div className="native-library-title-row">
+          <div className="native-library-title">
+            <h1 className="page-title">Playlists</h1>
+          </div>
+          <div className="native-library-header-actions">
+            <LibraryItemMenu
+              label="Playlist"
+              triggerLabel="Create playlist"
+              contextMenu={false}
+              triggerIcon={
+                <>
+                  <Plus aria-hidden="true" />
+                  <MoreVertical aria-hidden="true" />
+                </>
+              }
+              menuLabel="Create playlist"
+              items={[
+                { id: "new", label: "New playlist", icon: ListMusic, onSelect: openCreate },
+                {
+                  id: "import",
+                  label: "Import playlist",
+                  icon: Upload,
+                  onSelect: () => setImportOpen(true),
+                },
+              ]}
+            />
+          </div>
+        </div>
+      </header>
+      <div className="native-library-content">{renderContent()}</div>
+      <CreatePlaylistModal
+        open={createOpen}
+        defaultName={reserveUniqueName(
+          new Set(
+            staticPlaylists.map((playlist) => normalizeNameKey(playlist?.name)).filter(Boolean),
+          ),
+          "Playlist",
+        )}
+        saving={creating}
+        error={createError}
+        onClose={() => {
+          if (creating) return;
+          setCreateError("");
+          setCreateOpen(false);
+        }}
+        onSubmit={handleCreate}
+      />
+      {importOpen ? (
+        <Suspense fallback={null}>
+          <PlaylistImportModal
+            open={importOpen}
+            onClose={() => setImportOpen(false)}
+            onImported={fetchStatus}
+            showError={showError}
+            showSuccess={showSuccess}
+            existingPlaylistNames={staticPlaylists.map((playlist) => playlist?.name)}
+          />
+        </Suspense>
+      ) : null}
+    </div>
+  );
+}

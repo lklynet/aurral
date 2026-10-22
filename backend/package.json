@@ -11,12 +11,12 @@
   "license": "MIT",
   "author": "",
   "type": "module",
-  "main": "server.js",
+  "main": "server.ts",
   "scripts": {
-    "start": "node --env-file=.env server.js",
-    "dev": "node --watch --env-file=.env server.js",
+    "start": "node --env-file=.env server.ts",
+    "dev": "node --watch --env-file=.env server.ts",
     "test": "cd .. && npm test",
-    "auth:reset-admin-password": "node --env-file=.env scripts/resetAdminPassword.js"
+    "auth:reset-admin-password": "node --env-file=.env scripts/resetAdminPassword.ts"
   },
   "dependencies": {
     "@rowanmanning/feed-parser": "^2.1.5",

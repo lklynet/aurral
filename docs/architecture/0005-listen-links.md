@@ -20,7 +20,7 @@ Use Cloudflare quick tunnels, started by Aurral, with a lookup on aurral.org.
 
 ## Alternatives
 
-A relay on aurral.org (an outbound WebSocket from Aurral to a Durable Object) gives stable links without a binary or lookup, but every byte runs on the project's account. On the free plan the daily duration allowance covers roughly a day of transfer across all users, and original-file downloads would exhaust it and stop sharing for everyone. Keep tunnel code in `backend/services/shareLinks/tunnel.js` so a relay or a user's own named tunnel can replace it later without changing tokens, routes, or the share page.
+A relay on aurral.org (an outbound WebSocket from Aurral to a Durable Object) gives stable links without a binary or lookup, but every byte runs on the project's account. On the free plan the daily duration allowance covers roughly a day of transfer across all users, and original-file downloads would exhaust it and stop sharing for everyone. Keep tunnel code in `backend/services/shareLinks/tunnel.ts` so a relay or a user's own named tunnel can replace it later without changing tokens, routes, or the share page.
 
 ## Risks
 

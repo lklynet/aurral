@@ -50,7 +50,7 @@ Clients check for a feature before using its routes. An absent name means the
 server does not promise that capability. Features implemented in later releases
 receive their own names. Aurral adds each name only when its routes are available.
 
-The registry is `backend/config/apiContract.js`. A capability change updates that
+The registry is `backend/config/apiContract.ts`. A capability change updates that
 registry and this reference. The response checks in `.tests/api/` pin the fields
 below through HTTP requests.
 

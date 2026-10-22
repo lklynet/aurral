@@ -1,0 +1,225 @@
+import { randomUUID } from "crypto";
+import pMap from "p-map";
+import { dbOps } from "../../db/helpers/index.ts";
+
+export const LASTFM_PERIODS = ["none", "7day", "1month", "3month", "6month", "12month", "overall"];
+export const LISTENBRAINZ_RANGE_BY_PERIOD = {
+  "7day": "week",
+  "1month": "month",
+  "3month": "quarter",
+  "6month": "half_yearly",
+  "12month": "year",
+  overall: "all_time",
+};
+
+export const DISCOVERY_QUALITY_INITIAL = "initial";
+export const DISCOVERY_QUALITY_ENRICHING = "enriching";
+export const DISCOVERY_QUALITY_ENRICHED = "enriched";
+
+const DISCOVERY_NETWORK_CONCURRENCY = 6;
+const DISCOVERY_CANDIDATE_MULTIPLIER = 2.5;
+const DISCOVERY_RECOMMENDATIONS_MAX = 500;
+const DISCOVERY_RECOMMENDATIONS_DEFAULT = 200;
+
+export const getDiscoveryRecommendationPoolLimit = () => DISCOVERY_RECOMMENDATIONS_MAX;
+
+export const getDiscoveryRecommendationsPerRefresh = () => {
+  const settings = dbOps.getSettings();
+  const parsed = parseInt(settings.integrations?.lastfm?.discoveryRecommendationsPerRefresh, 10);
+  if (!Number.isFinite(parsed)) return DISCOVERY_RECOMMENDATIONS_DEFAULT;
+  return Math.min(DISCOVERY_RECOMMENDATIONS_MAX, Math.max(50, parsed));
+};
+
+export const getDiscoveryAutoRefreshHours = () => {
+  const settings = dbOps.getSettings();
+  const parsed = parseInt(settings.integrations?.lastfm?.discoveryAutoRefreshHours, 10);
+  return [24, 168, 720].includes(parsed) ? parsed : 168;
+};
+
+export const getLastfmDiscoveryPeriod = () => {
+  const settings = dbOps.getSettings();
+  const p = settings.integrations?.lastfm?.discoveryPeriod;
+  return p && LASTFM_PERIODS.includes(p) ? p : "1month";
+};
+
+export const getDiscoveryMode = () => {
+  const settings = dbOps.getSettings();
+  const value = String(settings.integrations?.lastfm?.discoveryMode || "balanced")
+    .trim()
+    .toLowerCase();
+  return value === "safer" || value === "deeper" ? value : "balanced";
+};
+
+export const getLocalDiscoveryPreferences = () => {
+  const settings = dbOps.getSettings();
+  return {
+    includeRecommendations:
+      settings.integrations?.ticketmaster?.localDiscoveryIncludeRecommendations !== false,
+    includeTrending: settings.integrations?.ticketmaster?.localDiscoveryIncludeTrending !== false,
+  };
+};
+
+export const getListenbrainzRange = (discoveryPeriod) => {
+  if (discoveryPeriod === "none") return null;
+  return LISTENBRAINZ_RANGE_BY_PERIOD[discoveryPeriod] || "month";
+};
+
+export const getDiscoveryUserRefreshDelaySeconds = () => {
+  const parsed = Number(process.env.AURRAL_DISCOVERY_USER_REFRESH_DELAY_SECONDS);
+  if (!Number.isFinite(parsed)) return 10;
+  return Math.max(5, Math.min(3600, Math.floor(parsed)));
+};
+
+export const normalizeTextList = (value) => {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const entry of value) {
+    const normalized = String(entry || "")
+      .trim()
+      .toLowerCase();
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(normalized);
+  }
+  return out;
+};
+
+export const buildWeightedTopList = (map, limit) =>
+  Array.from(map.entries())
+    .sort((left, right) => {
+      if (right[1] !== left[1]) return right[1] - left[1];
+      return String(left[0] || "").localeCompare(String(right[0] || ""));
+    })
+    .slice(0, limit)
+    .map(([name]) => name);
+
+export const getSourceFailureRatio = (health) => {
+  const total = health.success + health.failure;
+  if (total === 0) return 0;
+  return health.failure / total;
+};
+
+export const getDiscoveryRecommendationSeedLimit = () =>
+  Math.max(32, Math.min(56, Math.ceil(getDiscoveryRecommendationsPerRefresh() / 4)));
+
+export const getSimilarArtistSampling = (failureRatio) => {
+  if (failureRatio >= 0.5) {
+    return { similarLimit: 12, maxPerSeed: 10 };
+  }
+  if (failureRatio >= 0.3) {
+    return { similarLimit: 20, maxPerSeed: 14 };
+  }
+  const target = getDiscoveryRecommendationsPerRefresh();
+  const maxPerSeed = Math.min(24, Math.max(16, Math.ceil(target / 9)));
+  return {
+    similarLimit: Math.min(40, Math.max(25, maxPerSeed + 12)),
+    maxPerSeed,
+  };
+};
+
+export const getSecondHopArtistSampling = (failureRatio) => {
+  if (failureRatio >= 0.5) {
+    return { seedLimit: 0, similarLimit: 0, maxPerSeed: 0 };
+  }
+  if (failureRatio >= 0.3) {
+    return { seedLimit: 16, similarLimit: 10, maxPerSeed: 5 };
+  }
+  const target = getDiscoveryRecommendationsPerRefresh();
+  return {
+    seedLimit: Math.min(40, Math.max(25, Math.ceil(target / 6))),
+    similarLimit: 15,
+    maxPerSeed: 8,
+  };
+};
+
+export const getSecondHopRecommendationLimit = () =>
+  Math.ceil(getDiscoveryRecommendationsPerRefresh() * 0.35);
+
+export const getCandidateTagHydrationLimit = (count, failureRatio, depth = 1) => {
+  if (count <= 0) return 0;
+  const target = getDiscoveryRecommendationsPerRefresh();
+  if (failureRatio >= 0.5) return Math.min(count, depth >= 2 ? 0 : 40);
+  if (failureRatio >= 0.3) {
+    return Math.min(count, depth >= 2 ? 24 : Math.max(80, Math.ceil(target * 0.75)));
+  }
+  return Math.min(
+    count,
+    depth >= 2 ? getSecondHopRecommendationLimit() : Math.max(target, Math.ceil(target * 1.5)),
+  );
+};
+
+const getDiscoveryCandidateLimit = () =>
+  Math.min(
+    getDiscoveryRecommendationPoolLimit(),
+    Math.max(
+      160,
+      Math.ceil(getDiscoveryRecommendationsPerRefresh() * DISCOVERY_CANDIDATE_MULTIPLIER),
+    ),
+  );
+
+export const createDiscoveryRunId = () => randomUUID();
+
+export const getDiscoveryNetworkConcurrency = () => DISCOVERY_NETWORK_CONCURRENCY;
+
+export const interleaveLists = (...lists) => {
+  const result = [];
+  const longest = Math.max(0, ...lists.map((list) => list.length));
+  for (let index = 0; index < longest; index += 1) {
+    for (const list of lists) {
+      if (index < list.length) result.push(list[index]);
+    }
+  }
+  return result;
+};
+export { getDiscoveryCandidateLimit };
+
+export const mapWithConcurrency = async (
+  items,
+  concurrency,
+  worker,
+  { stopOnError = false } = {},
+) => {
+  const list = Array.isArray(items) ? items : [];
+  const options = { concurrency: Math.max(1, Number(concurrency) || 1) };
+  if (!stopOnError) return pMap(list, worker, options);
+  let firstError;
+  const results = await pMap(
+    list,
+    async (item, index) => {
+      if (firstError) return undefined;
+      try {
+        return await worker(item, index);
+      } catch (error) {
+        firstError ??= error;
+        return undefined;
+      }
+    },
+    options,
+  );
+  if (firstError) throw firstError;
+  return results;
+};
+
+export const getSeedTagMapKey = (seed) =>
+  String(seed?.mbid || seed?.id || seed?.artistName || seed?.name || "")
+    .trim()
+    .toLowerCase();
+
+export const normalizeSeedTagList = (tags) =>
+  (Array.isArray(tags) ? tags : [])
+    .slice(0, 15)
+    .map((tag) =>
+      String(tag || "")
+        .trim()
+        .replace(/-/g, " "),
+    )
+    .filter(Boolean);
+
+export const INHERITED_TAG_MINIMUM = 3;
+
+export const canInheritTagsFromSeeds = (item) => {
+  if (item.candidateTagsHydrated && item.tagSource === "lastfm_artist") return false;
+  const seedTagCount = Array.isArray(item.tags) ? item.tags.length : 0;
+  return seedTagCount >= INHERITED_TAG_MINIMUM;
+};

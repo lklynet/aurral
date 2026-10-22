@@ -1,0 +1,156 @@
+import path from "path";
+import fs from "fs/promises";
+import { downloadTracker } from "./downloadTracker.ts";
+import { startWorkerIfPending } from "./downloadWorker.ts";
+import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.ts";
+import { getActiveDownloadAttemptId, withPipelineCommitLock } from "./downloadCancellation.ts";
+import { buildAurralTrackDestination, resolveDownloadRoot } from "../downloadPaths.ts";
+import {
+  commitDownloadedFile,
+  joinUnderRoot,
+  buildTrackFileName,
+  sanitizePathPart,
+} from "../downloadUtils.ts";
+import { recordPipelineJobSuccess, refreshCompletedPipelinePlaylist } from "../pipelineHelpers.ts";
+import { classifyQualityJob } from "../qualityProfileService.ts";
+import { withDownloadStepLock } from "./mutationGuards.ts";
+import { discardReviewFile } from "./reviewFiles.ts";
+import { logger } from "../logger.ts";
+import { dbOps } from "../../db/helpers/index.ts";
+
+const approvalFollowUps = new Set();
+
+async function removeReviewedDownload(job) {
+  if (job.downloadSource !== "usenet") return;
+  const { removeReviewedUsenetDownload } = await import("../usenetOrchestrator.ts");
+  await removeReviewedUsenetDownload(job);
+}
+
+export const hasApprovalFollowUps = () => approvalFollowUps.size > 0;
+
+const getBlockedJob = (jobId) => {
+  const job = downloadTracker.getJob(jobId);
+  return job?.status === "blocked" ? job : null;
+};
+
+const logFollowUpFailure = (job, playlistId, error) => {
+  logger.warn("downloads", "Approved track was imported but playlist follow-up failed", {
+    jobId: job.id,
+    playlistId,
+    reason: error?.message || String(error),
+  });
+};
+
+const publishApprovedImport = (job, playlistId) => {
+  const followUp = withDownloadStepLock(playlistId, () => refreshCompletedPipelinePlaylist(job))
+    .catch((error) => logFollowUpFailure(job, playlistId, error))
+    .finally(() => approvalFollowUps.delete(followUp));
+  approvalFollowUps.add(followUp);
+};
+
+export async function approveBlockedJob(jobId) {
+  const job = getBlockedJob(jobId);
+  if (!job) return { status: 404, error: "Blocked job not found" };
+  const downloadAttemptId = getActiveDownloadAttemptId(job.id);
+  const sourcePath = String(job.stagingPath || "").trim();
+  if (!sourcePath) return { status: 400, error: "Staging file path missing" };
+  try {
+    await fs.access(sourcePath);
+  } catch {
+    return { status: 404, error: "Staging file no longer exists" };
+  }
+  const ext = path.extname(sourcePath).toLowerCase();
+  const albumDir = sanitizePathPart(job.albumName, "Unknown Album");
+  const artistDir = sanitizePathPart(job.artistName, "Unknown Artist");
+  const playlistId = job.playlistId || job.playlistType;
+  const destination = buildAurralTrackDestination(playlistId, artistDir, albumDir, {
+    ephemeral: Boolean(flowPlaylistConfig.getFlow(playlistId)),
+  });
+  const finalDir = joinUnderRoot(resolveDownloadRoot(), destination);
+  const finalName = buildTrackFileName(job, ext || ".mp3");
+  const committed = await withPipelineCommitLock(
+    {
+      jobId: job.id,
+      playlistId,
+      playlistGeneration: job.playlistGeneration,
+      downloadAttemptId,
+    },
+    async () => {
+      if (!getBlockedJob(job.id)) return null;
+      let preserveSource = false;
+      if (job.downloadSource === "usenet") {
+        const { shouldPreserveReviewedUsenetSource } = await import("../usenetOrchestrator.ts");
+        preserveSource = shouldPreserveReviewedUsenetSource(job);
+      }
+      const committedPath = await commitDownloadedFile(sourcePath, path.join(finalDir, finalName), {
+        preserveSource,
+      });
+      const recorded = await recordPipelineJobSuccess({
+        downloadTracker,
+        job,
+        committedFinalPath: committedPath,
+      });
+      return { committedPath, recorded };
+    },
+  );
+  if (committed.cancelled) return { status: 409, error: "Download job was removed" };
+  if (!committed.result) return { status: 404, error: "Blocked job not found" };
+  const { committedPath, recorded } = committed.result;
+  await removeReviewedDownload(job);
+  try {
+    await classifyQualityJob(downloadTracker.getJob(job.id));
+  } catch (error) {
+    logFollowUpFailure(job, playlistId, error);
+  }
+  if (recorded) publishApprovedImport(job, playlistId);
+  return { status: 200, path: committedPath };
+}
+
+export async function denyBlockedJob(jobId, { reason = "Denied by user" } = {}) {
+  const job = getBlockedJob(jobId);
+  if (!job) return { status: 404, error: "Blocked job not found" };
+  // Approval imports under this lock. Re-check inside it, so a denial cannot
+  // delete the file of an approval in progress or reopen an approved song.
+  const committed = await withPipelineCommitLock(
+    {
+      jobId: job.id,
+      playlistId: job.playlistId || job.playlistType,
+      playlistGeneration: job.playlistGeneration,
+      downloadAttemptId: getActiveDownloadAttemptId(job.id),
+    },
+    async () => {
+      if (!getBlockedJob(job.id)) return false;
+      await discardReviewFile(job);
+      const deniedSourceKey = ["usenet", "ytdlp", "deemix"].includes(job.downloadSource)
+        ? String(job.releaseGuid || "").trim()
+        : `${String(job.remoteUsername || "").trim()}\0${String(job.remoteFilename || "").trim()}`;
+      if (job.downloadSource && deniedSourceKey) {
+        downloadTracker.recordDeniedSource(job.id, job.downloadSource, deniedSourceKey);
+      }
+      downloadTracker.setPending(job.id, reason, { asRetryCycle: false });
+      return true;
+    },
+  );
+  if (committed.cancelled) return { status: 409, error: "Download job was removed" };
+  if (!committed.result) return { status: 404, error: "Blocked job not found" };
+  import("../aurralHistoryService.ts")
+    .then(({ recordTrackJobFailed }) => recordTrackJobFailed(job, `${reason} — will retry`))
+    .catch(() => {});
+  await startWorkerIfPending();
+  return { status: 200 };
+}
+
+// A song held for review longer than the configured wait is denied, so Aurral
+// searches for it again instead of waiting for a decision indefinitely.
+export async function denyExpiredReviews(now = Date.now()) {
+  const hours = dbOps.getSettings().reviewTimeoutHours;
+  if (!hours) return 0;
+  const cutoff = now - hours * 60 * 60 * 1000;
+  let denied = 0;
+  for (const job of downloadTracker.getByStatus("blocked")) {
+    if (!job.completedAt || job.completedAt > cutoff) continue;
+    const outcome = await denyBlockedJob(job.id, { reason: "Review timed out" });
+    if (outcome.status === 200) denied += 1;
+  }
+  return denied;
+}

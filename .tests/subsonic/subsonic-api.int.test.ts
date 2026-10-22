@@ -1,0 +1,1991 @@
+import assert from "node:assert/strict";
+import { test, beforeAll, afterAll } from "vite-plus/test";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { parseBuffer } from "music-metadata";
+import sharp from "sharp";
+import { mkdir, mkdtemp, rm, stat, writeFile, readFile, symlink } from "node:fs/promises";
+import path from "node:path";
+
+import {
+  cleanupIsolatedState,
+  resetDatabase,
+  setupIsolatedBackend,
+  startServerProcess,
+} from "../helpers/backendTestHarness.ts";
+
+const [
+  isolatedState,
+  { db },
+  { dbOps, userOps },
+  { hashPassword },
+  { scanMusicRoot },
+  { flowPlaylistConfig },
+  { downloadTracker },
+  { downloadWorker },
+  { updateStaticPlaylist },
+  { resolveArtworkUrl, createSubsonicPlaylist, star },
+  { warmImageProxy },
+  { playlistManager },
+  { getArtistImage, invalidateArtistImage },
+  { removeCustomArtwork, saveCustomArtworkUpload },
+] = await setupIsolatedBackend(
+  "subsonic-canonical",
+  "backend/config/db-sqlite.ts",
+  "backend/db/helpers/index.ts",
+  "backend/middleware/passwordHash.ts",
+  "backend/services/libraryFileScanner.ts",
+  "backend/services/playlists/flowPlaylistConfig.ts",
+  "backend/services/downloadJobs/downloadTracker.ts",
+  "backend/services/downloadJobs/downloadWorker.ts",
+  "backend/services/playlists/playlistOperations.ts",
+  "backend/services/subsonicLibraryService.ts",
+  "backend/services/imageProxyService.ts",
+  "backend/services/playlists/playlistManager.ts",
+  "backend/services/imageService.ts",
+  "backend/services/customArtworkService.ts",
+);
+
+let aurral;
+let authToken;
+let heldJobId;
+let fixtureRoot;
+let fixturePath;
+let staticPlaylist;
+let syncedFavoritePlaylist;
+let syncedFavoriteSourcePath;
+let syncedFavoriteSourceJobId;
+let libraryFavoritePlaylist;
+let libraryFavoriteJobId;
+let editablePlaylist;
+let editableKeptPath;
+let editableRemovedPath;
+let editableLeftoverPath;
+let doubledPlaylist;
+let doubledPaths;
+
+function subsonicUrl(method, params = {}) {
+  const query = new URLSearchParams({
+    u: "alice",
+    p: "password123",
+    v: "1.16.1",
+    c: "canonical-test",
+    f: "json",
+    ...params,
+  });
+  for (const [key, value] of Object.entries(params)) {
+    if (!Array.isArray(value)) continue;
+    query.delete(key);
+    for (const entry of value) query.append(key, entry);
+  }
+  return `http://127.0.0.1:${aurral.port}/rest/${method}.view?${query}`;
+}
+
+async function request(method, params = {}, options = {}) {
+  const response = await fetch(subsonicUrl(method, params), options);
+  const contentType = response.headers.get("content-type") || "";
+  return {
+    response,
+    contentType,
+    body: await response.text(),
+  };
+}
+
+async function apiFetch(pathname, options = {}) {
+  return fetch(`http://127.0.0.1:${aurral.port}${pathname}`, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${authToken}`,
+      ...(options.body ? { "Content-Type": "application/json" } : {}),
+      ...(options.headers || {}),
+    },
+  });
+}
+
+function responseJson(result) {
+  return JSON.parse(result.body)["subsonic-response"];
+}
+
+async function waitFor(check, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const value = await check();
+    if (value) return value;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error("Timed out waiting for Subsonic mutation");
+}
+
+function canonicalTags(title, trackNumber, recordingMbid) {
+  return {
+    common: {
+      albumartist: "Canonical Artist",
+      artist: "Canonical Artist",
+      album: "Canonical Album",
+      title,
+      track: { no: trackNumber },
+      genre: ["Rock"],
+      musicbrainz_albumartistid: "11111111-1111-4111-8111-111111111111",
+      musicbrainz_albumid: "22222222-2222-4222-8222-222222222222",
+      musicbrainz_releasegroupid: "22222222-2222-4222-8222-222222222222",
+      musicbrainz_recordingid: recordingMbid,
+    },
+    format: { duration: 10, codec: "FLAC" },
+  };
+}
+
+beforeAll(async () => {
+  resetDatabase(db);
+  dbOps.updateSettings({
+    integrations: { general: { authUser: "alice", authPassword: "password123" } },
+    security: { localNetworkBypass: { enabled: false } },
+    onboardingComplete: true,
+  });
+  const alice = userOps.createUser("alice", hashPassword("password123"), "admin");
+
+  fixtureRoot = await mkdtemp(path.join(isolatedState.baseDir, ".media-"));
+  fixturePath = path.join(
+    fixtureRoot,
+    "Canonical Artist",
+    "Canonical Album",
+    "01 Canonical Song.flac",
+  );
+  await mkdir(path.dirname(fixturePath), { recursive: true });
+  await writeFile(fixturePath, "0123456789");
+  const unavailablePath = path.join(
+    path.dirname(fixturePath),
+    "02 Unavailable Canonical Song.flac",
+  );
+  await writeFile(unavailablePath, "0123456789");
+  const tagsByPath = new Map([
+    [fixturePath, canonicalTags("Canonical Song", 1, "33333333-3333-4333-8333-333333333333")],
+    [
+      unavailablePath,
+      canonicalTags("Unavailable Canonical Song", 2, "66666666-6666-4666-8666-666666666666"),
+    ],
+  ]);
+  const scanLidarrRoot = () =>
+    scanMusicRoot({
+      rootPath: fixtureRoot,
+      source: "lidarr",
+      metadataReader: async (filePath) => tagsByPath.get(filePath),
+    });
+  await scanLidarrRoot();
+  await rm(unavailablePath);
+  await scanLidarrRoot();
+
+  const flow = flowPlaylistConfig.createFlow({ name: "Canonical Flow", size: 1 });
+  const jobId = downloadTracker.addJob(
+    {
+      artistName: "Flow Artist",
+      albumName: "Flow Album",
+      albumMbid: "flow-album-mbid",
+      trackName: "Flow Song",
+      durationMs: 1000,
+    },
+    flow.id,
+  );
+  downloadTracker.setDone(jobId, fixturePath);
+  staticPlaylist = flowPlaylistConfig.createStaticPlaylist({
+    name: "Canonical Shared",
+    ownerUserId: alice.id,
+    tracks: [
+      {
+        artistName: "Flow Artist",
+        trackName: "Flow Song",
+        albumName: "Flow Album",
+        durationMs: 1000,
+      },
+    ],
+  });
+  const sharedJobId = downloadTracker.addJob(
+    {
+      artistName: "Flow Artist",
+      albumName: "Flow Album",
+      albumMbid: "shared-album-mbid",
+      trackName: "Flow Song",
+      durationMs: 1000,
+    },
+    staticPlaylist.id,
+  );
+  downloadTracker.setDone(sharedJobId, fixturePath);
+  libraryFavoritePlaylist = flowPlaylistConfig.createStaticPlaylist({
+    name: "Canonical Favorite Playlist",
+    ownerUserId: alice.id,
+    tracks: [
+      {
+        artistName: "Canonical Artist",
+        albumName: "Canonical Album",
+        trackName: "Canonical Song",
+        durationMs: 10_000,
+      },
+    ],
+  });
+  libraryFavoriteJobId = downloadTracker.addJob(
+    {
+      artistName: "Canonical Artist",
+      artistMbid: "11111111-1111-4111-8111-111111111111",
+      albumName: "Canonical Album",
+      albumMbid: "22222222-2222-4222-8222-222222222222",
+      trackName: "Canonical Song",
+      trackMbid: "55555555-5555-4555-8555-555555555555",
+      durationMs: 10_000,
+    },
+    libraryFavoritePlaylist.id,
+  );
+  downloadTracker.setDone(libraryFavoriteJobId, fixturePath, "Canonical Album");
+  const syncedFavoriteTrack = {
+    artistName: "Synced Favorite Artist",
+    albumName: "Synced Favorite Album",
+    trackName: "Synced Favorite Song",
+    durationMs: 1000,
+  };
+  syncedFavoritePlaylist = flowPlaylistConfig.createStaticPlaylist({
+    name: "Synced Favorite Playlist",
+    ownerUserId: alice.id,
+    tracks: [syncedFavoriteTrack],
+    importSource: {
+      provider: "lastfm-station",
+      externalId: "synced-favorite",
+      syncEnabled: true,
+      syncIntervalHours: 24,
+      keepRemovedTracks: false,
+    },
+  });
+  syncedFavoriteSourcePath = path.join(
+    process.env.WEEKLY_FLOW_FOLDER,
+    "aurral-weekly-flow",
+    syncedFavoritePlaylist.id,
+    syncedFavoriteTrack.artistName,
+    syncedFavoriteTrack.albumName,
+    `${syncedFavoriteTrack.trackName}.flac`,
+  );
+  await mkdir(path.dirname(syncedFavoriteSourcePath), { recursive: true });
+  await writeFile(syncedFavoriteSourcePath, "synced favorite");
+  syncedFavoriteSourceJobId = downloadTracker.addJob(
+    syncedFavoriteTrack,
+    syncedFavoritePlaylist.id,
+  );
+  downloadTracker.setDone(
+    syncedFavoriteSourceJobId,
+    syncedFavoriteSourcePath,
+    syncedFavoriteTrack.albumName,
+  );
+  const favoriteFlow = flowPlaylistConfig.createFlow({ name: "Favorite Toggle Flow", size: 1 });
+  const favoritePath = path.join(
+    fixtureRoot,
+    "Favorite Artist",
+    "Favorite Album",
+    "Favorite Song.flac",
+  );
+  await mkdir(path.dirname(favoritePath), { recursive: true });
+  await writeFile(favoritePath, "favorite");
+  const favoriteJobId = downloadTracker.addJob(
+    {
+      artistName: "Favorite Artist",
+      albumName: "Favorite Album",
+      trackName: "Favorite Song",
+      durationMs: 1000,
+    },
+    favoriteFlow.id,
+  );
+  downloadTracker.setDone(favoriteJobId, favoritePath);
+  await mkdir(playlistManager.libraryRoot, { recursive: true });
+  await writeFile(
+    path.join(playlistManager.libraryRoot, `${playlistManager.getPlaylistName(flow.id)}.webp`),
+    "flow-artwork",
+  );
+  await writeFile(
+    path.join(
+      playlistManager.libraryRoot,
+      `${playlistManager.getPlaylistName(staticPlaylist.id)}.webp`,
+    ),
+    "shared-artwork",
+  );
+  const heldFlow = flowPlaylistConfig.createFlow({ name: "Held FLAC", size: 1 });
+  heldJobId = downloadTracker.addJob(
+    { artistName: "Held Artist", trackName: "Held Song" },
+    heldFlow.id,
+  );
+  downloadTracker.setBlocked(heldJobId, "Review required", fixturePath);
+  const editableTrack = (trackName) => ({
+    artistName: "Editable Artist",
+    albumName: "Editable Album",
+    trackName,
+    durationMs: 1000,
+  });
+  const editableTracks = [
+    editableTrack("Still Downloading"),
+    {
+      artistName: "Canonical Artist",
+      albumName: "Canonical Album",
+      trackName: "Canonical Song",
+      durationMs: 10_000,
+    },
+    editableTrack("Kept Song"),
+    editableTrack("Removed Song"),
+  ];
+  editablePlaylist = flowPlaylistConfig.createStaticPlaylist({
+    name: "Editable Playlist",
+    ownerUserId: alice.id,
+    tracks: editableTracks,
+  });
+  editableKeptPath = path.join(fixtureRoot, "Editable Artist", "Editable Album", "Kept Song.flac");
+  editableRemovedPath = path.join(
+    process.env.WEEKLY_FLOW_FOLDER,
+    "Editable Artist",
+    "Editable Album",
+    "Removed Song.flac",
+  );
+  editableLeftoverPath = path.join(
+    process.env.WEEKLY_FLOW_FOLDER,
+    "Editable Artist",
+    "Editable Album",
+    "Leftover Song.flac",
+  );
+  for (const filePath of [editableKeptPath, editableRemovedPath, editableLeftoverPath]) {
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(filePath, path.basename(filePath));
+  }
+  const [, canonicalTrack, keptTrack, removedTrack] = editableTracks;
+  downloadTracker.addJob(editableTracks[0], editablePlaylist.id);
+  const leftoverTrack = editableTrack("Leftover Song");
+  for (const [track, filePath] of [
+    [canonicalTrack, fixturePath],
+    [keptTrack, editableKeptPath],
+    [removedTrack, editableRemovedPath],
+    [leftoverTrack, editableLeftoverPath],
+  ]) {
+    downloadTracker.setDone(
+      downloadTracker.addJob(track, editablePlaylist.id),
+      filePath,
+      track.albumName,
+    );
+  }
+  doubledPlaylist = flowPlaylistConfig.createStaticPlaylist({
+    name: "Doubled Playlist",
+    ownerUserId: alice.id,
+    tracks: [],
+  });
+  const doubledTracks = ["Doubled One", "Doubled Two"].map((trackName) => ({
+    artistName: "Doubled Artist",
+    albumName: "Doubled Album",
+    trackName,
+    durationMs: 1000,
+  }));
+  doubledPaths = doubledTracks.map((track) =>
+    path.join(
+      process.env.WEEKLY_FLOW_FOLDER,
+      "Doubled Artist",
+      "Doubled Album",
+      `${track.trackName}.flac`,
+    ),
+  );
+  for (const [index, track] of doubledTracks.entries()) {
+    await mkdir(path.dirname(doubledPaths[index]), { recursive: true });
+    await writeFile(doubledPaths[index], track.trackName);
+    downloadTracker.setDone(
+      downloadTracker.addJob(track, doubledPlaylist.id),
+      doubledPaths[index],
+      track.albumName,
+    );
+  }
+  flowPlaylistConfig.updateStaticPlaylist(doubledPlaylist.id, {
+    tracks: doubledTracks.map((track, index) => {
+      const libraryJobId = downloadTracker.addJob(track, "library");
+      downloadTracker.setDone(libraryJobId, doubledPaths[index], track.albumName);
+      return { ...track, canonicalJobId: libraryJobId };
+    }),
+  });
+
+  aurral = await startServerProcess();
+  const login = await fetch(`http://127.0.0.1:${aurral.port}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: "alice", password: "password123" }),
+  });
+  authToken = (await login.json()).token;
+  assert.equal(login.status, 200);
+});
+
+afterAll(async () => {
+  await aurral?.stop();
+  if (syncedFavoritePlaylist) {
+    downloadTracker.clearByPlaylistType(syncedFavoritePlaylist.id);
+    flowPlaylistConfig.deleteStaticPlaylist(syncedFavoritePlaylist.id);
+  }
+  await rm(syncedFavoriteSourcePath, { force: true }).catch(() => {});
+  await rm(fixtureRoot, { recursive: true, force: true });
+  await cleanupIsolatedState(isolatedState);
+});
+
+test("saves a personal play queue through form POST, filters missing songs, and clears it", async () => {
+  const song = responseJson(await request("getRandomSongs", { size: 1 })).randomSongs.song[0];
+  const playlists = responseJson(await request("getPlaylists")).playlists.playlist;
+  const entries = [];
+  for (const playlist of playlists) {
+    entries.push(...responseJson(await request("getPlaylist", { id: playlist.id })).playlist.entry);
+  }
+  const sharedSong = entries.find((entry) => entry.id.startsWith("shared-song:"));
+  const flowSong = entries.find((entry) => entry.id.startsWith("flow-song:"));
+  assert.ok(sharedSong);
+  assert.ok(flowSong);
+  const ids = [sharedSong.id, song.id, flowSong.id, song.id, "song:missing"];
+  const body = new URLSearchParams({ current: song.id, position: "4321" });
+  ids.forEach((id) => body.append("id", id));
+  const saved = responseJson(await request("savePlayQueue", {}, { method: "POST", body }));
+  assert.equal(saved.status, "ok");
+  await aurral.stop();
+  aurral = await startServerProcess();
+  const queue = responseJson(await request("getPlayQueue")).playQueue;
+  assert.deepEqual(
+    queue.entry.map((entry) => entry.id),
+    ids.slice(0, -1),
+  );
+  assert.equal(queue.entry[1].title, song.title);
+  assert.equal(queue.current, song.id);
+  assert.equal(queue.position, 4321);
+  assert.equal(queue.username, "alice");
+  assert.equal(queue.changedBy, "canonical-test");
+  assert.ok(Date.parse(queue.changed) > 0);
+  const bob = userOps.createUser("queue-bob", hashPassword("password123"), "user");
+  try {
+    assert.deepEqual(
+      responseJson(await request("getPlayQueue", { u: "queue-bob" })).playQueue.entry,
+      [],
+    );
+    assert.equal(
+      responseJson(await request("savePlayQueue", { u: "queue-bob", id: song.id })).status,
+      "ok",
+    );
+    assert.equal(
+      responseJson(await request("getPlayQueue", { u: "queue-bob" })).playQueue.entry[0].id,
+      song.id,
+    );
+    const removed = db
+      .prepare("SELECT id FROM library_media_files WHERE path = ?")
+      .get(fixturePath);
+    db.prepare("UPDATE library_media_files SET available = 0 WHERE id = ?").run(removed.id);
+    try {
+      const filtered = responseJson(await request("getPlayQueue")).playQueue;
+      assert.deepEqual(
+        filtered.entry.map((entry) => entry.id),
+        [sharedSong.id, flowSong.id],
+      );
+      assert.equal(filtered.current, undefined);
+      assert.equal(filtered.position, undefined);
+    } finally {
+      db.prepare("UPDATE library_media_files SET available = 1 WHERE id = ?").run(removed.id);
+    }
+    assert.equal(responseJson(await request("savePlayQueue")).status, "ok");
+    assert.deepEqual(responseJson(await request("getPlayQueue")).playQueue.entry, []);
+  } finally {
+    db.prepare("DELETE FROM users WHERE id = ?").run(bob.id);
+    assert.equal(
+      db.prepare("SELECT user_id FROM subsonic_play_queues WHERE user_id = ?").get(bob.id),
+      undefined,
+    );
+  }
+});
+
+test("transcodes requested formats and bitrate limits while preserving raw streams and downloads", async () => {
+  const song = responseJson(await request("getRandomSongs", { size: 1 })).randomSongs.song[0];
+  const original = await readFile(fixturePath);
+  try {
+    await promisify(execFile)("ffmpeg", [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-nostdin",
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "anoisesrc=sample_rate=44100:duration=4:seed=1",
+      "-c:a",
+      "flac",
+      fixturePath,
+    ]);
+    const flac = await readFile(fixturePath);
+    const raw = await fetch(subsonicUrl("stream", { id: song.id, format: "raw", maxBitRate: 128 }));
+    assert.equal(raw.status, 200);
+    assert.deepEqual(Buffer.from(await raw.arrayBuffer()), flac);
+    const originalType = raw.headers.get("content-type");
+    const unlimited = await fetch(subsonicUrl("stream", { id: song.id, maxBitRate: 0 }));
+    assert.deepEqual(Buffer.from(await unlimited.arrayBuffer()), flac);
+    const above = await fetch(subsonicUrl("stream", { id: song.id, maxBitRate: 10000 }));
+    assert.equal(above.headers.get("content-type"), originalType);
+    assert.deepEqual(Buffer.from(await above.arrayBuffer()), flac);
+    const converted = await fetch(subsonicUrl("stream", { id: song.id, maxBitRate: 128 }));
+    assert.equal(converted.status, 200);
+    assert.match(converted.headers.get("content-type"), /^audio\/mpeg/);
+    assert.equal(converted.headers.get("content-length"), null);
+    const mp3 = Buffer.from(await converted.arrayBuffer());
+    assert.notDeepEqual(mp3, flac);
+    const metadata = await parseBuffer(mp3, { mimeType: "audio/mpeg" }, { duration: true });
+    assert.match(metadata.format.codec, /MPEG/);
+    assert.ok(metadata.format.bitrate <= 129000);
+    for (const [format, mime, codec] of [
+      ["mp3", "audio/mpeg", /MPEG/],
+      ["opus", "audio/ogg", /Opus/],
+      ["aac", "audio/aac", /AAC/],
+    ]) {
+      const encoded = await fetch(
+        subsonicUrl("stream", { id: song.id, format, maxBitRate: 128, timeOffset: 2 }),
+      );
+      assert.equal(encoded.status, 200);
+      assert.match(encoded.headers.get("content-type"), new RegExp(`^${mime}`));
+      const result = await parseBuffer(
+        Buffer.from(await encoded.arrayBuffer()),
+        { mimeType: mime },
+        { duration: true },
+      );
+      assert.match(result.format.codec, codec);
+      assert.ok(
+        result.format.duration > 1.8 && result.format.duration < 2.3,
+        `${format} seek duration ${result.format.duration}`,
+      );
+    }
+    const download = await fetch(
+      subsonicUrl("download", { id: song.id, format: "mp3", maxBitRate: 128 }),
+    );
+    assert.equal(download.headers.get("content-type"), originalType);
+    assert.deepEqual(Buffer.from(await download.arrayBuffer()), flac);
+    assert.equal(
+      responseJson(await request("stream", { id: song.id, format: "unsupported" })).error.code,
+      0,
+    );
+    assert.equal(
+      responseJson(await request("stream", { id: song.id, maxBitRate: "-1" })).error.code,
+      0,
+    );
+    assert.equal(
+      responseJson(await request("stream", { id: song.id, format: "mp3", timeOffset: "-2" })).error
+        .code,
+      0,
+    );
+    await writeFile(fixturePath, "invalid audio");
+    const failed = await request("stream", { id: song.id, format: "mp3" });
+    assert.equal(failed.response.status, 500);
+    assert.equal(failed.body, "Audio transcoding unavailable");
+    assert.equal((await request("ping")).response.status, 200);
+    const executableDir = path.join(isolatedState.baseDir, "node-only-bin");
+    await mkdir(executableDir, { recursive: true });
+    await symlink(process.execPath, path.join(executableDir, "node"));
+    const withoutFfmpeg = await startServerProcess({ extraEnv: { PATH: executableDir } });
+    try {
+      const unavailable = await fetch(
+        subsonicUrl("stream", { id: song.id, format: "mp3" }).replace(
+          `:${aurral.port}/`,
+          `:${withoutFfmpeg.port}/`,
+        ),
+      );
+      assert.equal(unavailable.status, 503);
+      assert.equal(await unavailable.text(), "Audio transcoding unavailable");
+      const rawWithoutFfmpeg = await fetch(
+        subsonicUrl("stream", { id: song.id, format: "raw" }).replace(
+          `:${aurral.port}/`,
+          `:${withoutFfmpeg.port}/`,
+        ),
+      );
+      assert.equal(rawWithoutFfmpeg.status, 200);
+      assert.equal(await rawWithoutFfmpeg.text(), "invalid audio");
+    } finally {
+      await withoutFfmpeg.stop();
+    }
+  } finally {
+    await writeFile(fixturePath, original);
+  }
+});
+
+test("stops ffmpeg when a client closes a transcoded stream early", async () => {
+  const song = responseJson(await request("getRandomSongs", { size: 1 })).randomSongs.song[0];
+  const original = await readFile(fixturePath);
+  const runningFfmpeg = async () => {
+    const { stdout } = await promisify(execFile)("ps", [
+      "-o",
+      "pid=,comm=",
+      "--ppid",
+      String(aurral.child.pid),
+    ]).catch((error) => (error.code === 1 ? { stdout: "" } : Promise.reject(error)));
+    return stdout.split("\n").filter((line) => /\bffmpeg$/.test(line.trim()));
+  };
+  try {
+    await promisify(execFile)("ffmpeg", [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-nostdin",
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "anoisesrc=sample_rate=44100:duration=120:seed=1",
+      "-c:a",
+      "flac",
+      fixturePath,
+    ]);
+    const controller = new AbortController();
+    const response = await fetch(
+      subsonicUrl("stream", { id: song.id, format: "mp3", maxBitRate: 128 }),
+      { signal: controller.signal },
+    );
+    assert.equal(response.status, 200);
+    const reader = response.body.getReader();
+    let received = 0;
+    while (received < 20_000) received += (await reader.read()).value.length;
+    assert.equal((await runningFfmpeg()).length, 1);
+    controller.abort();
+    await reader.read().catch(() => {});
+    const deadline = Date.now() + 10_000;
+    while ((await runningFfmpeg()).length && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    assert.deepEqual(await runningFfmpeg(), []);
+    assert.equal((await request("ping")).response.status, 200);
+  } finally {
+    await writeFile(fixturePath, original);
+  }
+});
+
+test("returns sidecar and embedded lyrics through both Subsonic lyrics endpoints", async () => {
+  const song = responseJson(await request("getRandomSongs", { size: 1 })).randomSongs.song[0];
+  const sidecar = fixturePath.replace(/\.[^.]+$/, ".lrc");
+  const original = await readFile(fixturePath);
+  const mp3Path = fixturePath.replace(/\.[^.]+$/, ".mp3");
+  try {
+    assert.deepEqual(responseJson(await request("getLyricsBySongId", { id: song.id })).lyricsList, {
+      structuredLyrics: [],
+    });
+    await writeFile(
+      sidecar,
+      "[ar:Canonical Artist]\n[offset:125]\n[00:03.50]Later [echo]\n[00:01.234][00:02.00]Earlier\n",
+    );
+    const structured = responseJson(await request("getLyricsBySongId", { id: song.id })).lyricsList
+      .structuredLyrics;
+    assert.deepEqual(structured, [
+      {
+        displayArtist: song.artist,
+        displayTitle: song.title,
+        lang: "und",
+        synced: true,
+        offset: 125,
+        line: [
+          { start: 1234, value: "Earlier" },
+          { start: 2000, value: "Earlier" },
+          { start: 3500, value: "Later [echo]" },
+        ],
+      },
+    ]);
+    const legacy = responseJson(
+      await request("getLyrics", { artist: song.artist, title: song.title }),
+    ).lyrics;
+    assert.equal(legacy.value, "Earlier\nEarlier\nLater [echo]");
+    const xml = await request("getLyricsBySongId", { id: song.id, f: "xml" });
+    assert.match(xml.body, /<line start="1234">Earlier<\/line>/);
+    await rm(sidecar);
+    const payload = Buffer.from("\x03eng\x00First line\nSecond line");
+    const frame = Buffer.alloc(10);
+    frame.write("USLT");
+    frame.writeUInt32BE(payload.length, 4);
+    const tag = Buffer.concat([frame, payload]);
+    const header = Buffer.from([73, 68, 51, 3, 0, 0, 0, 0, 0, tag.length]);
+    const audio = Buffer.alloc(417);
+    Buffer.from([255, 251, 144, 100]).copy(audio);
+    await writeFile(mp3Path, Buffer.concat([header, tag, audio, audio, audio]));
+    db.prepare("UPDATE library_media_files SET path = ? WHERE path = ?").run(mp3Path, fixturePath);
+    const embedded = responseJson(await request("getLyricsBySongId", { id: song.id })).lyricsList
+      .structuredLyrics;
+    assert.equal(embedded[0].lang, "eng");
+    assert.equal(embedded[0].synced, false);
+    assert.deepEqual(embedded[0].line, [{ value: "First line" }, { value: "Second line" }]);
+    assert.equal(
+      responseJson(await request("getLyrics", { artist: song.artist, title: song.title })).lyrics
+        .value,
+      "First line\nSecond line",
+    );
+    const syncPayload = Buffer.concat([
+      Buffer.from([3]),
+      Buffer.from("eng"),
+      Buffer.from([2, 1, 0]),
+      Buffer.from("Later\x00"),
+      Buffer.from([0, 0, 7, 208]),
+      Buffer.from("Earlier\x00"),
+      Buffer.from([0, 0, 3, 232]),
+    ]);
+    const syncFrame = Buffer.alloc(10);
+    syncFrame.write("SYLT");
+    syncFrame.writeUInt32BE(syncPayload.length, 4);
+    const syncTag = Buffer.concat([syncFrame, syncPayload]);
+    header[9] = syncTag.length;
+    await writeFile(mp3Path, Buffer.concat([header, syncTag, audio, audio, audio]));
+    const synchronized = responseJson(await request("getLyricsBySongId", { id: song.id }))
+      .lyricsList.structuredLyrics[0];
+    assert.equal(synchronized.synced, true);
+    assert.deepEqual(synchronized.line, [
+      { start: 1000, value: "Earlier" },
+      { start: 2000, value: "Later" },
+    ]);
+    const littleEndian = (value) => {
+      const bytes = Buffer.alloc(4);
+      bytes.writeUInt32LE(value);
+      return bytes;
+    };
+    db.prepare("UPDATE library_media_files SET path = ? WHERE path = ?").run(fixturePath, mp3Path);
+    for (const tagName of ["LYRICS", "UNSYNCEDLYRICS"]) {
+      const comment = Buffer.from(`${tagName}=Vorbis first\nVorbis second`);
+      const comments = Buffer.concat([
+        littleEndian(0),
+        littleEndian(1),
+        littleEndian(comment.length),
+        comment,
+      ]);
+      await writeFile(
+        fixturePath,
+        Buffer.concat([
+          Buffer.from("fLaC"),
+          Buffer.from([0, 0, 0, 34]),
+          Buffer.alloc(34),
+          Buffer.from([132, 0, 0, comments.length]),
+          comments,
+        ]),
+      );
+      const vorbis = responseJson(await request("getLyricsBySongId", { id: song.id })).lyricsList
+        .structuredLyrics[0];
+      assert.equal(vorbis.synced, false);
+      assert.deepEqual(vorbis.line, [{ value: "Vorbis first" }, { value: "Vorbis second" }]);
+    }
+    await writeFile(sidecar, "Preferred sidecar\n");
+    assert.equal(
+      responseJson(await request("getLyricsBySongId", { id: song.id })).lyricsList
+        .structuredLyrics[0].line[0].value,
+      "Preferred sidecar",
+    );
+    assert.deepEqual(
+      responseJson(await request("getLyricsBySongId", { id: "song:missing" })).lyricsList,
+      { structuredLyrics: [] },
+    );
+    assert.equal(responseJson(await request("getLyricsBySongId")).error.code, 10);
+    assert.equal(
+      responseJson(await request("getLyrics", { artist: "Other artist", title: song.title })).lyrics
+        .value,
+      "",
+    );
+  } finally {
+    await rm(sidecar, { force: true });
+    await rm(mp3Path, { force: true });
+    db.prepare("UPDATE library_media_files SET path = ? WHERE path = ?").run(fixturePath, mp3Path);
+    await writeFile(fixturePath, original);
+  }
+});
+
+test("browses library artists, albums, and songs with stable protocol IDs", async () => {
+  const user = responseJson(await request("getUser")).user;
+  assert.equal(user.username, "alice");
+  assert.equal(user.adminRole, true);
+  assert.equal(user.streamRole, true);
+
+  const artistsResult = responseJson(await request("getArtists"));
+  const artist = artistsResult.artists.index[0].artist[0];
+  assert.match(artist.id, /^artist:/);
+  assert.equal(artist.genre, "Rock");
+  assert.equal(artistsResult.artists.ignoredArticles, "The El La Los Las Le Les");
+  const artistsXml = await request("getArtists", { f: "xml" });
+  assert.match(artistsXml.body, /<artists[^>]*><index name="C"><artist id="artist:/);
+
+  const license = responseJson(await request("getLicense"));
+  assert.equal(license.license.valid, true);
+  const indexes = responseJson(await request("getIndexes"));
+  assert.equal(typeof indexes.indexes.lastModified, "number");
+  assert.ok(indexes.indexes.lastModified > 0);
+  assert.equal(
+    responseJson(await request("getIndexes")).indexes.lastModified,
+    indexes.indexes.lastModified,
+  );
+  const unchanged = responseJson(
+    await request("getIndexes", { ifModifiedSince: indexes.indexes.lastModified }),
+  );
+  assert.equal(unchanged.indexes.index, undefined);
+  assert.ok(Array.isArray(indexes.indexes.index));
+  const albumList = responseJson(await request("getAlbumList2", { type: "newest", size: 10 }));
+  assert.equal(albumList.albumList2.album[0].title, "Canonical Album");
+  assert.deepEqual(
+    responseJson(
+      await request("getAlbumList2", {
+        type: "newest",
+        size: 10,
+        musicFolderId: 2,
+      }),
+    ).albumList2.album,
+    [],
+  );
+  assert.deepEqual(responseJson(await request("getGenres")).genres.genre, [
+    { albumCount: 1, songCount: 1, value: "Rock" },
+  ]);
+  const songsByGenre = responseJson(
+    await request("getSongsByGenre", {
+      genre: "Rock",
+      count: 10,
+      offset: 0,
+    }),
+  );
+  assert.equal(songsByGenre.songsByGenre.song[0].title, "Canonical Song");
+  assert.deepEqual(
+    responseJson(
+      await request("getSongsByGenre", {
+        genre: "Rock",
+        musicFolderId: 2,
+      }),
+    ).songsByGenre.song,
+    [],
+  );
+  assert.deepEqual(
+    responseJson(
+      await request("getRandomSongs", {
+        size: 10,
+        musicFolderId: 2,
+      }),
+    ).randomSongs.song,
+    [],
+  );
+  assert.deepEqual(responseJson(await request("getStarred")).starred, {
+    album: [],
+    artist: [],
+    song: [],
+  });
+
+  const albumResult = responseJson(await request("getArtist", { id: artist.id }));
+  const album = albumResult.artist.album[0];
+  assert.match(album.id, /^album:/);
+  assert.equal(album.genre, "Rock");
+  assert.deepEqual(
+    responseJson(await request("getArtistInfo", { id: artist.id })).artistInfo.similarArtist,
+    [],
+  );
+  assert.deepEqual(
+    responseJson(await request("getArtistInfo2", { id: artist.id })).artistInfo2.similarArtist,
+    [],
+  );
+  assert.equal(
+    responseJson(await request("getArtistInfo2", { id: "artist:missing" })).error.code,
+    70,
+  );
+  assert.deepEqual(responseJson(await request("getAlbumInfo2", { id: album.id })).albumInfo, {});
+  assert.equal(
+    responseJson(await request("getAlbumInfo2", { id: "album:missing" })).error.code,
+    70,
+  );
+  assert.deepEqual(
+    responseJson(await request("getSimilarSongs2", { id: "song:missing" })).similarSongs2,
+    { song: [] },
+  );
+  assert.deepEqual(
+    responseJson(
+      await request("getLyrics", { artist: "Canonical Artist", title: "Canonical Song" }),
+    ).lyrics,
+    { value: "" },
+  );
+  assert.match(
+    (await request("getLyrics", { artist: "Canonical Artist", title: "Canonical Song", f: "xml" }))
+      .body,
+    /<lyrics\/>/,
+  );
+  assert.deepEqual(responseJson(await request("getInternetRadioStations")).internetRadioStations, {
+    internetRadioStation: [],
+  });
+  assert.deepEqual(responseJson(await request("getPodcasts")).podcasts, { channel: [] });
+  assert.equal(
+    responseJson(await request("getTopSongs", { artist: "Canonical Artist" })).topSongs.song[0]
+      .title,
+    "Canonical Song",
+  );
+  assert.equal(
+    responseJson(await request("getTopSongs", { id: artist.id })).topSongs.song[0].title,
+    "Canonical Song",
+  );
+  assert.equal(responseJson(await request("getTopSongs", { id: "artist:missing" })).error.code, 70);
+
+  const songResult = responseJson(await request("getAlbum", { id: album.id }));
+  const song = songResult.album.song[0];
+  assert.match(song.id, /^song:/);
+  assert.equal(
+    responseJson(await request("getSong", { id: song.id })).song.title,
+    "Canonical Song",
+  );
+  assert.equal(song.contentType, "audio/flac");
+  assert.match(song.created, /^\d{4}-\d{2}-\d{2}T/);
+  assert.notEqual(song.created.slice(0, 4), "1970");
+  assert.match(album.created, /^\d{4}-\d{2}-\d{2}T/);
+  assert.notEqual(album.created.slice(0, 4), "1970");
+  assert.equal(song.genre, "Rock");
+  assert.equal(song.musicBrainzId, "33333333-3333-4333-8333-333333333333");
+  assert.equal(song.mediaType, "song");
+  assert.equal(album.mediaType, "album");
+  assert.equal(artist.musicBrainzId, "11111111-1111-4111-8111-111111111111");
+  assert.equal(artist.mediaType, "artist");
+  assert.equal(album.musicBrainzId, "22222222-2222-4222-8222-222222222222");
+  assert.match(
+    (await request("getSong", { id: song.id, f: "xml" })).body,
+    /musicBrainzId="33333333-/,
+  );
+  assert.equal(song.path, song.id);
+  assert.deepEqual(song.artists, [
+    {
+      id: artist.id,
+      name: "Canonical Artist",
+      musicBrainzId: "11111111-1111-4111-8111-111111111111",
+    },
+  ]);
+
+  assert.equal(
+    responseJson(await request("star", { id: [song.id, album.id], artistId: artist.id })).status,
+    "ok",
+  );
+  const starred = responseJson(await request("getStarred")).starred;
+  assert.equal(starred.song[0].id, song.id);
+  assert.equal(starred.album[0].id, album.id);
+  assert.equal(starred.artist[0].id, artist.id);
+  assert.equal(responseJson(await request("getStarred2")).starred2.song[0].id, song.id);
+  assert.match(starred.song[0].starred, /^\d{4}-\d{2}-\d{2}T/);
+  assert.match(responseJson(await request("getSong", { id: song.id })).song.starred, /^\d{4}-/);
+  assert.match(responseJson(await request("getAlbum", { id: album.id })).album.starred, /^\d{4}-/);
+  assert.match(
+    responseJson(await request("getArtist", { id: artist.id })).artist.starred,
+    /^\d{4}-/,
+  );
+  assert.match(
+    responseJson(await request("search3", { query: "Canonical" })).searchResult3.song[0].starred,
+    /^\d{4}-/,
+  );
+  userOps.createUser("bob", hashPassword("bob-password"), "user");
+  assert.deepEqual(
+    responseJson(await request("getStarred", { u: "bob", p: "bob-password" })).starred,
+    { album: [], artist: [], song: [] },
+  );
+  assert.equal(
+    responseJson(await request("getSong", { id: song.id, u: "bob", p: "bob-password" })).song
+      .starred,
+    undefined,
+  );
+  assert.equal(
+    responseJson(await request("unstar", { id: [song.id, album.id], artistId: artist.id })).status,
+    "ok",
+  );
+  assert.deepEqual(responseJson(await request("getStarred")).starred, {
+    album: [],
+    artist: [],
+    song: [],
+  });
+  assert.equal(responseJson(await request("getSong", { id: song.id })).song.starred, undefined);
+  assert.equal(
+    responseJson(await request("star", { id: [song.id, "song:missing"] })).error.code,
+    70,
+  );
+  assert.deepEqual(responseJson(await request("getStarred")).starred, {
+    album: [],
+    artist: [],
+    song: [],
+  });
+
+  const missingArtist = await request("getTopSongs", { artist: "   " });
+  assert.equal(responseJson(missingArtist).error.code, 10);
+});
+
+test("serves custom library artwork through the advertised versioned cover ID", async () => {
+  const albumRow = db
+    .prepare("SELECT id FROM library_albums WHERE title = ?")
+    .get("Canonical Album");
+  const image = await sharp({
+    create: { width: 24, height: 24, channels: 3, background: { r: 10, g: 120, b: 240 } },
+  })
+    .png()
+    .toBuffer();
+  const before = responseJson(await request("getIndexes")).indexes.lastModified;
+  let changedAfterSave = before;
+
+  try {
+    await saveCustomArtworkUpload("album", albumRow.id, image, "image/png");
+    const album = responseJson(await request("getAlbumList2", { type: "newest", size: 1 }))
+      .albumList2.album[0];
+    assert.match(album.coverArt, /^art-album:/);
+
+    const artwork = await fetch(subsonicUrl("getCoverArt", { id: album.coverArt }));
+    assert.equal(artwork.status, 200);
+    assert.equal(artwork.headers.get("content-type"), "image/webp");
+    assert.ok((await artwork.arrayBuffer()).byteLength > 0);
+
+    changedAfterSave = responseJson(await request("getIndexes")).indexes.lastModified;
+    assert.ok(changedAfterSave > before);
+  } finally {
+    await removeCustomArtwork("album", albumRow.id);
+  }
+
+  const resetAlbum = responseJson(await request("getAlbumList2", { type: "newest", size: 1 }))
+    .albumList2.album[0];
+  assert.doesNotMatch(resetAlbum.coverArt, /^art-album:/);
+  assert.ok(responseJson(await request("getIndexes")).indexes.lastModified > changedAfterSave);
+});
+
+test("getIndexes reports star changes through lastModified", async () => {
+  const artistId = responseJson(await request("getArtists")).artists.index[0].artist[0].id;
+  const indexesSince = async (ifModifiedSince) =>
+    responseJson(await request("getIndexes", { ifModifiedSince })).indexes;
+  const firstArtist = (indexes) => indexes.index[0].artist[0];
+
+  const beforeStar = responseJson(await request("getIndexes")).indexes.lastModified;
+  assert.equal(responseJson(await request("star", { artistId })).status, "ok");
+  const starred = await indexesSince(beforeStar);
+  assert.ok(starred.lastModified > beforeStar);
+  assert.match(firstArtist(starred).starred, /^\d{4}-\d{2}-\d{2}T/);
+
+  // Unstarring deletes the row, so the timestamp must still move forward, never back.
+  assert.equal(responseJson(await request("unstar", { artistId })).status, "ok");
+  const unstarred = await indexesSince(starred.lastModified);
+  assert.ok(unstarred.lastModified > starred.lastModified);
+  assert.equal(firstArtist(unstarred).starred, undefined);
+
+  assert.equal((await indexesSince(unstarred.lastModified)).index, undefined);
+});
+
+test("emits OpenSubsonic XML envelopes and elements", async () => {
+  const userXml = await request("getUser", { f: "xml" });
+  assert.match(
+    userXml.body,
+    /<subsonic-response xmlns="http:\/\/subsonic\.org\/restapi" status="ok" version="1\.16\.1" type="Aurral" serverVersion="[^"]+" openSubsonic="true">/,
+  );
+  assert.match(userXml.body, /videoConversionRole="false"/);
+  assert.match(userXml.body, /<folder>1<\/folder>/);
+
+  const foldersXml = await request("getMusicFolders", { f: "xml" });
+  assert.match(foldersXml.body, /<musicFolder id="1" name="Aurral"\/>/);
+
+  const artistsXml = await request("getArtists", { f: "xml" });
+  assert.doesNotMatch(artistsXml.body, /<(?:albumArtists|genres)(?:\s|>)/);
+
+  const artist = responseJson(await request("getArtists", { f: "json" })).artists.index[0]
+    .artist[0];
+  const artistDetailXml = await request("getArtist", { f: "xml", id: artist.id });
+  assert.doesNotMatch(artistDetailXml.body, /<(?:artists|albumArtists|genres)(?:\s|>)/);
+
+  const album = responseJson(await request("getArtist", { f: "json", id: artist.id })).artist
+    .album[0];
+  const albumXml = await request("getAlbum", { f: "xml", id: album.id });
+  assert.doesNotMatch(albumXml.body, /<(?:artists|albumArtists|genres)(?:\s|>)/);
+
+  const genresXml = await request("getGenres", { f: "xml" });
+  assert.match(genresXml.body, /<genre albumCount="1" songCount="1">Rock<\/genre>/);
+
+  const directoryXml = await request("getMusicDirectory", { f: "xml", id: "1" });
+  assert.match(directoryXml.body, /<directory[^>]*id="1"[^>]*name="Aurral"/);
+  assert.match(directoryXml.body, /parent="1"/);
+});
+
+test("searches library records and exposes flow entries as playlist items", async () => {
+  const search = responseJson(await request("search3", { query: "Canonical" }));
+  assert.equal(search.searchResult3.artist[0].name, "Canonical Artist");
+  assert.equal(search.searchResult3.song[0].title, "Canonical Song");
+
+  const playlists = responseJson(await request("getPlaylists"));
+  const flow = playlists.playlists.playlist.find((entry) => entry.name === "Canonical Flow");
+  assert.ok(flow);
+  assert.equal(flow.coverArt, flow.id);
+  const playlist = responseJson(await request("getPlaylist", { id: flow.id }));
+  assert.equal(playlist.playlist.entry[0].title, "Flow Song");
+  assert.equal(playlist.playlist.public, false);
+  assert.equal(playlist.playlist.coverArt, flow.coverArt);
+  const artwork = await request("getCoverArt", { id: flow.coverArt });
+  assert.equal(artwork.response.status, 200);
+  assert.equal(artwork.body, "flow-artwork");
+});
+
+test("accepts empty library searches from OpenSubsonic clients", async () => {
+  const search = responseJson(
+    await request("search3", {
+      query: "",
+      artistCount: 20,
+      albumCount: 20,
+      songCount: 20,
+    }),
+  );
+  assert.equal(search.searchResult3.song[0].title, "Canonical Song");
+  assert.equal(
+    search.searchResult3.song.some((song) => song.title === "Unavailable Canonical Song"),
+    false,
+  );
+
+  const quotedSearch = responseJson(
+    await request("search3", {
+      query: '""',
+      artistOffset: 0,
+      artistCount: 500,
+      albumOffset: 0,
+      albumCount: 0,
+      songOffset: 0,
+      songCount: 0,
+    }),
+  );
+  assert.equal(quotedSearch.searchResult3.artist[0].name, "Canonical Artist");
+  assert.deepEqual(quotedSearch.searchResult3.album, []);
+  assert.deepEqual(quotedSearch.searchResult3.song, []);
+});
+
+test("exposes owned static playlists and keeps their entries playable", async () => {
+  const playlists = responseJson(await request("getPlaylists")).playlists.playlist;
+  const shared = playlists.find((entry) => entry.name === "Canonical Shared");
+  assert.ok(shared);
+  assert.equal(shared.songCount, 1);
+  assert.equal(shared.coverArt, shared.id);
+
+  const playlist = responseJson(await request("getPlaylist", { id: shared.id })).playlist;
+  assert.match(playlist.created, /^\d{4}-\d{2}-\d{2}T/);
+  assert.match(playlist.changed, /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(playlist.entry[0].title, "Flow Song");
+  assert.match(playlist.entry[0].id, /^shared-song:/);
+  const artwork = await request("getCoverArt", { id: shared.coverArt });
+  assert.equal(artwork.response.status, 200);
+  assert.equal(artwork.body, "shared-artwork");
+
+  const pendingJobId = downloadTracker.addJob(
+    {
+      artistName: "Pending Artist",
+      albumName: "Pending Album",
+      trackName: "Pending Song",
+      durationMs: 1000,
+    },
+    staticPlaylist.id,
+  );
+  try {
+    const refreshed = responseJson(await request("getPlaylist", { id: shared.id })).playlist;
+    assert.equal(
+      refreshed.entry.some((entry) => entry.title === "Pending Song"),
+      false,
+    );
+  } finally {
+    downloadTracker.removeJob(pendingJobId);
+  }
+
+  const song = responseJson(await request("getSong", { id: playlist.entry[0].id })).song;
+  assert.equal(song.title, "Flow Song");
+  const stream = await request("stream", { id: song.id });
+  assert.equal(stream.response.status, 200);
+  assert.equal(stream.body, "0123456789");
+});
+
+test("returns library song ids for playlist entries that exist in the library", async () => {
+  const playlist = responseJson(
+    await request("getPlaylist", {
+      id: `shared:${encodeURIComponent(libraryFavoritePlaylist.id)}`,
+    }),
+  ).playlist;
+  assert.equal(playlist.entry.length, 1);
+  assert.match(playlist.entry[0].id, /^song:/);
+  assert.equal(playlist.entry[0].parent, playlist.id);
+  assert.equal(playlist.entry[0].title, "Canonical Song");
+  assert.equal(playlist.entry[0].musicBrainzId, "33333333-3333-4333-8333-333333333333");
+  const artistId = responseJson(await request("getArtists")).artists.index[0].artist[0].id;
+  const album = responseJson(await request("getArtist", { id: artistId })).artist.album[0];
+  const librarySong = responseJson(await request("getAlbum", { id: album.id })).album.song[0];
+  assert.equal(playlist.entry[0].id, librarySong.id);
+  const stream = await request("stream", { id: playlist.entry[0].id });
+  assert.equal(stream.response.status, 200);
+});
+
+test("does not expose another user's static playlist", async () => {
+  userOps.createUser("bob", hashPassword("bob-password"), "user");
+  const result = responseJson(
+    await request("getPlaylist", {
+      id: `shared:${encodeURIComponent(staticPlaylist.id)}`,
+      u: "bob",
+      p: "bob-password",
+    }),
+  );
+  assert.deepEqual(result.error, { code: 70, message: "Requested data was not found" });
+});
+
+test("creates durable Subsonic playlists around one promoted library job", async () => {
+  const flow = responseJson(await request("getPlaylists")).playlists.playlist.find(
+    (entry) => entry.name === "Canonical Flow",
+  );
+  const flowPlaylist = responseJson(await request("getPlaylist", { id: flow.id })).playlist;
+  const flowSong = flowPlaylist.entry[0];
+
+  const firstCreate = responseJson(
+    await request("createPlaylist", {
+      name: "Subsonic Keep One",
+      songId: flowSong.id,
+    }),
+  );
+  const firstId = firstCreate.playlist.id;
+  const first = await waitFor(async () => {
+    const playlist = responseJson(await request("getPlaylist", { id: firstId })).playlist;
+    return playlist.entry?.[0] ? playlist : null;
+  });
+  assert.equal(first.name, "Subsonic Keep One");
+  const jobIdFromSong = (songId) =>
+    decodeURIComponent(songId.slice("shared-song:".length)).split(":").at(-1);
+  const canonicalJobId = jobIdFromSong(first.entry[0].id);
+
+  const secondCreate = responseJson(
+    await request("createPlaylist", {
+      name: "Subsonic Keep Two",
+      songId: flowSong.id,
+    }),
+  );
+  const second = await waitFor(async () => {
+    const playlist = responseJson(
+      await request("getPlaylist", { id: secondCreate.playlist.id }),
+    ).playlist;
+    return playlist.entry?.[0] ? playlist : null;
+  });
+  const secondAurralPlaylistId = decodeURIComponent(
+    secondCreate.playlist.id.slice("shared:".length),
+  );
+  assert.equal(jobIdFromSong(second.entry[0].id), canonicalJobId);
+
+  await waitFor(
+    () =>
+      db.prepare("SELECT status FROM playlist_download_jobs WHERE id = ?").get(canonicalJobId)
+        ?.status === "done",
+  );
+  const firstReady = await waitFor(async () => {
+    const result = responseJson(await request("getPlaylist", { id: first.id }));
+    return result.playlist?.entry?.[0];
+  });
+  assert.equal(
+    firstReady.id,
+    responseJson(await request("getPlaylist", { id: first.id })).playlist.entry[0].id,
+  );
+  const stream = await request("stream", { id: firstReady.id });
+  assert.equal(stream.response.status, 200);
+  assert.equal(stream.body, "0123456789");
+
+  const libraryJobs = db
+    .prepare(
+      "SELECT id, final_path AS finalPath FROM playlist_download_jobs WHERE playlist_type = ? AND track_name = ?",
+    )
+    .all("library", "Flow Song");
+  assert.equal(libraryJobs.length, 1);
+
+  const aurralPlaylistId = decodeURIComponent(firstId.slice("shared:".length));
+  const aurralJobsResponse = await apiFetch(
+    `/api/playlists/jobs/${encodeURIComponent(aurralPlaylistId)}`,
+  );
+  assert.equal(aurralJobsResponse.status, 200);
+  const aurralJobs = await aurralJobsResponse.json();
+  assert.equal(aurralJobs.length, 1);
+  assert.equal(aurralJobs[0].id, canonicalJobId);
+  assert.equal(aurralJobs[0].playlistType, aurralPlaylistId);
+  assert.equal(
+    (await apiFetch(`/api/playlists/stream/${encodeURIComponent(canonicalJobId)}`)).status,
+    200,
+  );
+
+  const removed = responseJson(
+    await request("updatePlaylist", {
+      playlistId: first.id,
+      songIndexToRemove: "0",
+    }),
+  );
+  assert.equal(removed.status, "ok");
+  const secondEntry = responseJson(await request("getPlaylist", { id: second.id })).playlist
+    .entry[0];
+  assert.equal((await request("stream", { id: secondEntry.id })).response.status, 200);
+  const removeLibraryTrackResponse = await apiFetch(
+    `/api/playlists/shared-playlists/${encodeURIComponent(secondAurralPlaylistId)}/tracks/${encodeURIComponent(canonicalJobId)}`,
+    { method: "DELETE" },
+  );
+  assert.equal(removeLibraryTrackResponse.status, 200);
+  await waitFor(async () => {
+    const response = await apiFetch(
+      `/api/playlists/jobs/${encodeURIComponent(secondAurralPlaylistId)}`,
+    );
+    const jobs = await response.json();
+    return jobs.length === 0 ? true : null;
+  });
+  await stat(libraryJobs[0].finalPath);
+
+  assert.equal(responseJson(await request("deletePlaylist", { id: second.id })).status, "ok");
+  await stat(libraryJobs[0].finalPath);
+});
+
+test("failed Subsonic playlist creation rolls back its playlist and jobs", async () => {
+  const librarySong = responseJson(await request("search3", { query: "Canonical Song" }))
+    .searchResult3.song[0];
+  const user = userOps.getUserByUsername("alice");
+  const originalUpdate = flowPlaylistConfig.updateStaticPlaylist;
+  flowPlaylistConfig.updateStaticPlaylist = () => null;
+  try {
+    assert.equal(
+      await createSubsonicPlaylist(user, {
+        name: "Failed Subsonic Playlist",
+        songIds: [librarySong.id],
+      }),
+      null,
+    );
+    assert.equal(
+      flowPlaylistConfig
+        .getStaticPlaylistsForUser(user)
+        .some((playlist) => playlist.name === "Failed Subsonic Playlist"),
+      false,
+    );
+    assert.equal(
+      db
+        .prepare(
+          "SELECT id FROM playlist_download_jobs WHERE playlist_type = ? AND track_name = ? LIMIT 1",
+        )
+        .get("library", "Canonical Song"),
+      undefined,
+    );
+  } finally {
+    flowPlaylistConfig.updateStaticPlaylist = originalUpdate;
+  }
+});
+
+test("playlist detail and list report its owner's saved description", async () => {
+  userOps.createUser("playlist-owner", hashPassword("owner-password"), "user", {
+    accessFlow: true,
+  });
+  const credentials = { u: "playlist-owner", p: "owner-password" };
+  const created = responseJson(
+    await request("createPlaylist", { ...credentials, name: "Owner Description" }),
+  ).playlist;
+  assert.ok(created);
+  assert.equal(
+    responseJson(
+      await request("updatePlaylist", {
+        ...credentials,
+        playlistId: created.id,
+        comment: "Saved description",
+      }),
+    ).status,
+    "ok",
+  );
+  const detail = responseJson(await request("getPlaylist", { id: created.id })).playlist;
+  assert.equal(detail.owner, "playlist-owner");
+  assert.equal(detail.comment, "Saved description");
+  const listed = responseJson(await request("getPlaylists")).playlists.playlist.find(
+    (playlist) => playlist.id === created.id,
+  );
+  assert.equal(listed.owner, "playlist-owner");
+  assert.equal(listed.comment, "Saved description");
+  assert.equal(
+    responseJson(await request("deletePlaylist", { ...credentials, id: created.id })).status,
+    "ok",
+  );
+});
+
+test("createPlaylist replaces songs in order and supports an empty replacement", async () => {
+  const flow = responseJson(await request("getPlaylists")).playlists.playlist.find(
+    (playlist) => playlist.name === "Canonical Flow",
+  );
+  const flowSong = responseJson(await request("getPlaylist", { id: flow.id })).playlist.entry[0];
+  const librarySong = responseJson(await request("search3", { query: "Canonical Song" }))
+    .searchResult3.song[0];
+  const created = responseJson(
+    await request("createPlaylist", { name: "Replace Songs", songId: librarySong.id }),
+  ).playlist;
+  const replaced = responseJson(
+    await request("createPlaylist", {
+      playlistId: created.id,
+      name: "Reordered Songs",
+      songId: [flowSong.id, librarySong.id],
+    }),
+  ).playlist;
+  assert.equal(replaced.name, "Reordered Songs");
+  assert.deepEqual(
+    replaced.entry.map((song) => song.title),
+    ["Flow Song", "Canonical Song"],
+  );
+  const invalid = responseJson(
+    await request("createPlaylist", { playlistId: created.id, songId: "song:missing" }),
+  );
+  assert.equal(invalid.error.code, 70);
+  assert.deepEqual(
+    responseJson(await request("getPlaylist", { id: created.id })).playlist.entry.map(
+      (song) => song.title,
+    ),
+    ["Flow Song", "Canonical Song"],
+  );
+  const empty = responseJson(await request("createPlaylist", { playlistId: created.id })).playlist;
+  assert.deepEqual(empty.entry, []);
+  assert.equal(responseJson(await request("deletePlaylist", { id: created.id })).status, "ok");
+});
+
+test("malformed Subsonic settings do not crash the settings update", async () => {
+  const initialFavoriteAutoKeep = dbOps.getSettings().subsonic.favoriteAutoKeep;
+  try {
+    const disable = await apiFetch("/api/settings", {
+      method: "POST",
+      body: JSON.stringify({ subsonic: { favoriteAutoKeep: false } }),
+    });
+    assert.equal(disable.status, 200);
+    assert.equal((await (await apiFetch("/api/settings")).json()).subsonic.favoriteAutoKeep, false);
+    const response = await apiFetch("/api/settings", {
+      method: "POST",
+      body: JSON.stringify({ subsonic: null }),
+    });
+    assert.equal(response.status, 200);
+    assert.equal((await (await apiFetch("/api/settings")).json()).subsonic.favoriteAutoKeep, false);
+    const partial = await apiFetch("/api/settings", {
+      method: "POST",
+      body: JSON.stringify({ subsonic: {} }),
+    });
+    assert.equal(partial.status, 200);
+    assert.equal((await (await apiFetch("/api/settings")).json()).subsonic.favoriteAutoKeep, false);
+  } finally {
+    await apiFetch("/api/settings", {
+      method: "POST",
+      body: JSON.stringify({ subsonic: { favoriteAutoKeep: initialFavoriteAutoKeep } }),
+    });
+  }
+});
+
+test("favorites can keep Flow tracks and respect the auto-keep setting", async () => {
+  const flow = responseJson(await request("getPlaylists")).playlists.playlist.find(
+    (entry) => entry.name === "Favorite Toggle Flow",
+  );
+  const entry = responseJson(await request("getPlaylist", { id: flow.id })).playlist.entry[0];
+
+  const saveSettings = (subsonic) =>
+    apiFetch("/api/settings", {
+      method: "POST",
+      body: JSON.stringify({ subsonic }),
+    });
+  assert.equal((await saveSettings({ favoriteAutoKeep: false })).status, 200);
+  assert.equal(responseJson(await request("star", { id: entry.id })).status, "ok");
+  assert.equal(
+    Boolean(
+      db
+        .prepare(
+          "SELECT 1 FROM playlist_download_jobs WHERE playlist_type = ? AND track_name = ? LIMIT 1",
+        )
+        .get("library", "Favorite Song"),
+    ),
+    false,
+  );
+  const starredEntry = responseJson(await request("getStarred")).starred.song[0];
+  assert.equal(starredEntry.id, entry.id);
+  assert.match(starredEntry.starred, /^\d{4}-\d{2}-\d{2}T/);
+  assert.match(
+    responseJson(await request("getPlaylist", { id: flow.id })).playlist.entry[0].starred,
+    /^\d{4}-\d{2}-\d{2}T/,
+  );
+  assert.equal((await saveSettings({ favoriteAutoKeep: true })).status, 200);
+  assert.equal(responseJson(await request("unstar", { id: entry.id })).status, "ok");
+  assert.equal(responseJson(await request("star", { id: entry.id })).status, "ok");
+  const autoKeepJob = db
+    .prepare(
+      "SELECT id FROM playlist_download_jobs WHERE playlist_type = ? AND track_name = ? LIMIT 1",
+    )
+    .get("library", "Favorite Song");
+  assert.ok(autoKeepJob);
+  downloadTracker.removeJob(autoKeepJob.id);
+  assert.equal(responseJson(await request("unstar", { id: entry.id })).status, "ok");
+  assert.equal(
+    responseJson(await request("getPlaylist", { id: flow.id })).playlist.entry[0].starred,
+    undefined,
+  );
+});
+
+test("favoriting a synced playlist track keeps it when the source removes it", async () => {
+  const playlist = syncedFavoritePlaylist;
+  const track = playlist.tracks[0];
+  const sourcePath = syncedFavoriteSourcePath;
+  const downloadRoot = process.env.WEEKLY_FLOW_FOLDER;
+  const originalStart = downloadWorker.start;
+  let libraryJobId;
+  try {
+    downloadWorker.start = async () => false;
+    const songId = `shared-song:${encodeURIComponent(`${playlist.id}:${syncedFavoriteSourceJobId}`)}`;
+    assert.equal(star(userOps.getUserByUsername("alice"), songId), true);
+
+    const libraryJob = db
+      .prepare(
+        "SELECT id, status, final_path AS finalPath FROM playlist_download_jobs WHERE playlist_type = ? AND track_name = ? LIMIT 1",
+      )
+      .get("library", track.trackName);
+    assert.ok(libraryJob);
+    assert.equal(libraryJob.status, "done");
+    libraryJobId = libraryJob.id;
+
+    await updateStaticPlaylist({
+      playlistId: playlist.id,
+      tracks: [],
+      hasTracksUpdate: true,
+      hasImportSourceUpdate: true,
+      importSource: {
+        ...playlist.importSource,
+        lastSyncAt: Date.now(),
+        lastSyncTrackCount: 0,
+      },
+      mergeImportSource: true,
+    });
+
+    const updatedLibraryJob = db
+      .prepare("SELECT final_path AS finalPath FROM playlist_download_jobs WHERE id = ?")
+      .get(libraryJobId);
+    await stat(updatedLibraryJob.finalPath);
+    await assert.rejects(stat(sourcePath));
+  } finally {
+    downloadWorker.start = originalStart;
+    downloadTracker.clearByPlaylistType(playlist.id);
+    if (libraryJobId) downloadTracker.removeJob(libraryJobId);
+    await rm(path.join(downloadRoot, track.artistName), { recursive: true, force: true });
+    flowPlaylistConfig.deleteStaticPlaylist(playlist.id);
+  }
+});
+
+test("playlist favorites resolve to the owned library track", async () => {
+  const playlistSongId = `shared-song:${encodeURIComponent(`${libraryFavoritePlaylist.id}:${libraryFavoriteJobId}`)}`;
+  let librarySongId;
+  try {
+    assert.equal(responseJson(await request("star", { id: playlistSongId })).status, "ok");
+
+    const favorites = await (await apiFetch("/api/library/favorites")).json();
+    assert.deepEqual(
+      favorites.library.tracks.map((track) => track.title),
+      ["Canonical Song"],
+    );
+    assert.equal(
+      favorites.song.some((song) => /^song:/.test(song.id)),
+      true,
+    );
+
+    const album = responseJson(
+      await request("getArtist", {
+        id: responseJson(await request("getArtists")).artists.index[0].artist[0].id,
+      }),
+    ).artist.album[0];
+    librarySongId = responseJson(await request("getAlbum", { id: album.id })).album.song[0].id;
+    const page = await (
+      await apiFetch("/api/library/canonical?kind=tracks&page=1&pageSize=100&availableOnly=true")
+    ).json();
+    assert.equal(page.items.find((track) => track.title === "Canonical Song").userFavorite, true);
+
+    assert.equal(responseJson(await request("unstar", { id: librarySongId })).status, "ok");
+    assert.equal(
+      responseJson(await request("getStarred")).starred.song.some(
+        (song) => song.id === librarySongId,
+      ),
+      false,
+    );
+  } finally {
+    await request("unstar", { id: [playlistSongId, librarySongId].filter(Boolean) });
+  }
+});
+
+test("library song responses agree on the earliest star date", async () => {
+  const user = userOps.getUserByUsername("alice");
+  const playlistSongKey = `${libraryFavoritePlaylist.id}:${libraryFavoriteJobId}`;
+  const song = responseJson(await request("search3", { query: "Canonical Song" })).searchResult3
+    .song[0];
+  const songKey = decodeURIComponent(song.id.slice("song:".length));
+  const insertStar = db.prepare(
+    "INSERT INTO subsonic_stars (user_id, entity_kind, entity_key, created_at) VALUES (?, ?, ?, ?)",
+  );
+  try {
+    insertStar.run(user.id, "song", songKey, 1000);
+    insertStar.run(user.id, "shared-song", playlistSongKey, 2000);
+    const starred = responseJson(await request("getStarred")).starred.song[0];
+    const direct = responseJson(await request("getSong", { id: song.id })).song;
+    assert.equal(starred.starred, new Date(1000).toISOString());
+    assert.equal(direct.starred, starred.starred);
+  } finally {
+    db.prepare(
+      "DELETE FROM subsonic_stars WHERE user_id = ? AND entity_kind = ? AND entity_key = ?",
+    ).run(user.id, "song", songKey);
+    db.prepare(
+      "DELETE FROM subsonic_stars WHERE user_id = ? AND entity_kind = ? AND entity_key = ?",
+    ).run(user.id, "shared-song", playlistSongKey);
+  }
+});
+
+test("streams library files with full and range responses", async () => {
+  const artist = responseJson(await request("getArtists")).artists.index[0].artist[0];
+  const album = responseJson(await request("getArtist", { id: artist.id })).artist.album[0];
+  const song = responseJson(await request("getAlbum", { id: album.id })).album.song[0];
+
+  const full = await request("stream", { id: song.id });
+  assert.equal(full.response.status, 200);
+  assert.equal(full.contentType, "audio/flac");
+  assert.equal(full.body, "0123456789");
+  assert.equal(full.response.headers.get("accept-ranges"), "bytes");
+
+  const range = await request("stream", { id: song.id }, { headers: { Range: "bytes=3-5" } });
+  assert.equal(range.response.status, 206);
+  assert.equal(range.body, "345");
+  assert.equal(range.response.headers.get("content-range"), "bytes 3-5/10");
+
+  const suffix = await request("stream", { id: song.id }, { headers: { Range: "bytes=-3" } });
+  assert.equal(suffix.response.status, 206);
+  assert.equal(suffix.body, "789");
+
+  const invalid = await request("stream", { id: song.id }, { headers: { Range: "not-a-range" } });
+  assert.equal(invalid.response.status, 200);
+  assert.equal(invalid.body, "0123456789");
+
+  const unsatisfiable = await request(
+    "stream",
+    { id: song.id },
+    { headers: { Range: "bytes=99-" } },
+  );
+  assert.equal(unsatisfiable.response.status, 416);
+});
+
+test("streams library files through the authenticated native route", async () => {
+  const login = await fetch(`http://127.0.0.1:${aurral.port}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: "alice", password: "password123" }),
+  });
+  const { token } = await login.json();
+  const headers = { Authorization: `Bearer ${token}` };
+  const canonical = await fetch(
+    `http://127.0.0.1:${aurral.port}/api/library/canonical?source=lidarr&availableOnly=true&kind=tracks&page=1&pageSize=100`,
+    { headers },
+  );
+  const library = await canonical.json();
+  const albumId = library.tracks[0].albums[0].albumId;
+  const tracks = await fetch(
+    `http://127.0.0.1:${aurral.port}/api/library/tracks?readPath=canonical&source=lidarr&albumId=${albumId}`,
+    { headers },
+  );
+  const track = (await tracks.json())[0];
+  const stream = await fetch(`http://127.0.0.1:${aurral.port}/api${track.streamPath}`, { headers });
+  assert.equal(stream.status, 200);
+  assert.equal(stream.headers.get("content-type"), "audio/flac");
+  assert.equal(await stream.text(), "0123456789");
+
+  const unauthorized = await fetch(`http://127.0.0.1:${aurral.port}/api${track.streamPath}`);
+  assert.equal(unauthorized.status, 401);
+});
+
+test("streams held FLAC previews with the registered audio type", async () => {
+  const response = await apiFetch(`/api/playlists/staging-stream/${heldJobId}`);
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("content-type"), "audio/flac");
+  assert.equal(await response.text(), "0123456789");
+});
+
+test("updatePlaylist reports flows as read-only and leaves them unchanged", async () => {
+  const flow = responseJson(await request("getPlaylists")).playlists.playlist.find(
+    (playlist) => playlist.name === "Canonical Flow",
+  );
+  const entryIds = async () =>
+    responseJson(await request("getPlaylist", { id: flow.id })).playlist.entry.map(
+      (song) => song.id,
+    );
+  const before = await entryIds();
+  assert.ok(before.length > 0);
+
+  const result = responseJson(
+    await request("updatePlaylist", { playlistId: flow.id, songIndexToRemove: "0" }),
+  );
+
+  assert.equal(result.status, "failed");
+  assert.equal(result.error.code, 50);
+  assert.deepEqual(await entryIds(), before);
+});
+
+test("updatePlaylist rejects song indexes the playlist does not have and changes nothing", async () => {
+  const id = `shared:${encodeURIComponent(editablePlaylist.id)}`;
+  const titles = async () =>
+    responseJson(await request("getPlaylist", { id })).playlist.entry.map((song) => song.title);
+  assert.deepEqual(await titles(), [
+    "Canonical Song",
+    "Kept Song",
+    "Removed Song",
+    "Leftover Song",
+  ]);
+
+  for (const songIndexToRemove of [["0", "4"], "first"]) {
+    const result = responseJson(
+      await request("updatePlaylist", { playlistId: id, songIndexToRemove }),
+    );
+    assert.equal(result.error?.code, 70);
+  }
+
+  assert.deepEqual(await titles(), [
+    "Canonical Song",
+    "Kept Song",
+    "Removed Song",
+    "Leftover Song",
+  ]);
+});
+
+test("updatePlaylist removes the songs at the positions getPlaylist returned and keeps their files", async () => {
+  const id = `shared:${encodeURIComponent(editablePlaylist.id)}`;
+  const entries = async () => responseJson(await request("getPlaylist", { id })).playlist.entry;
+  const before = await entries();
+  assert.deepEqual(
+    before.map((song) => song.title),
+    ["Canonical Song", "Kept Song", "Removed Song", "Leftover Song"],
+  );
+
+  const removed = responseJson(
+    await request("updatePlaylist", {
+      playlistId: id,
+      name: "Editable Playlist",
+      songIndexToRemove: ["0", "2", "3"],
+    }),
+  );
+  assert.equal(removed.status, "ok");
+  const afterRemoval = await entries();
+  assert.deepEqual(
+    afterRemoval.map((song) => song.title),
+    ["Kept Song"],
+  );
+  const jobsResponse = await apiFetch(
+    `/api/playlists/jobs/${encodeURIComponent(editablePlaylist.id)}`,
+  );
+  assert.deepEqual(
+    (await jobsResponse.json()).map((job) => job.trackName),
+    ["Still Downloading", "Kept Song"],
+  );
+  for (const filePath of [fixturePath, editableRemovedPath, editableLeftoverPath])
+    await stat(filePath);
+
+  const replaced = responseJson(
+    await request("updatePlaylist", {
+      playlistId: id,
+      songIndexToRemove: "0",
+      songIdToAdd: [before[0].id, afterRemoval[0].id],
+    }),
+  );
+  assert.equal(replaced.status, "ok");
+  const after = await entries();
+  assert.deepEqual(
+    after.map((song) => song.title),
+    ["Canonical Song", "Kept Song"],
+  );
+  for (const song of after) {
+    assert.equal((await request("stream", { id: song.id })).response.status, 200);
+  }
+  const cleared = responseJson(
+    await request("updatePlaylist", { playlistId: id, songIndexToRemove: ["0", "1"] }),
+  );
+  assert.equal(cleared.status, "ok");
+  assert.deepEqual(await entries(), []);
+  const readded = responseJson(
+    await request("updatePlaylist", { playlistId: id, songIdToAdd: after.map((song) => song.id) }),
+  );
+  assert.equal(readded.status, "ok");
+  const restored = await entries();
+  assert.deepEqual(
+    restored.map((song) => song.title),
+    ["Canonical Song", "Kept Song"],
+  );
+  for (const song of after) {
+    assert.equal((await request("stream", { id: song.id })).response.status, 200);
+  }
+  await stat(editableKeptPath);
+});
+
+test("updatePlaylist lets a client drop duplicate copies and then replace the playlist", async () => {
+  const id = `shared:${encodeURIComponent(doubledPlaylist.id)}`;
+  const entries = async () => responseJson(await request("getPlaylist", { id })).playlist.entry;
+  const doubled = await entries();
+  assert.deepEqual(doubled.map((song) => song.title).sort(), [
+    "Doubled One",
+    "Doubled One",
+    "Doubled Two",
+    "Doubled Two",
+  ]);
+
+  const deduplicated = responseJson(
+    await request("updatePlaylist", { playlistId: id, songIndexToRemove: ["0", "1"] }),
+  );
+  assert.equal(deduplicated.status, "ok");
+  const remaining = await entries();
+  assert.deepEqual(
+    remaining.map((song) => song.id),
+    doubled.slice(2).map((song) => song.id),
+  );
+
+  const cleared = responseJson(
+    await request("updatePlaylist", { playlistId: id, songIndexToRemove: ["0", "1"] }),
+  );
+  assert.equal(cleared.status, "ok");
+  assert.deepEqual(await entries(), []);
+
+  const refilled = responseJson(
+    await request("updatePlaylist", {
+      playlistId: id,
+      songIdToAdd: [remaining[1].id, remaining[0].id],
+    }),
+  );
+  assert.equal(refilled.status, "ok");
+  const after = await entries();
+  assert.deepEqual(
+    after.map((song) => song.title),
+    [remaining[1].title, remaining[0].title],
+  );
+  for (const song of after) {
+    assert.equal((await request("stream", { id: song.id })).response.status, 200);
+  }
+  for (const filePath of doubledPaths) await stat(filePath);
+});
+
+test("returns missing files and stale IDs without exposing filesystem paths", async () => {
+  const artist = responseJson(await request("getArtists")).artists.index[0].artist[0];
+  const album = responseJson(await request("getArtist", { id: artist.id })).artist.album[0];
+  const song = responseJson(await request("getAlbum", { id: album.id })).album.song[0];
+  await rm(fixturePath);
+
+  const missing = await request("stream", { id: song.id });
+  assert.equal(missing.response.status, 404);
+  assert.match(missing.contentType, /^text\/plain/);
+
+  const stale = await request("getSong", { id: "song:missing-identity" });
+  assert.equal(responseJson(stale).error.code, 70);
+  assert.equal(stale.body.includes(fixturePath), false);
+});
+
+test("keeps library protocol IDs and flow entries after restart", async () => {
+  const before = responseJson(await request("getArtists")).artists.index[0].artist[0].id;
+  await aurral.stop();
+  aurral = await startServerProcess();
+  const after = responseJson(await request("getArtists")).artists.index[0].artist[0].id;
+  assert.equal(after, before);
+  assert.equal(
+    responseJson(await request("getPlaylists")).playlists.playlist[0].name,
+    "Canonical Flow",
+  );
+});
+
+test("returns the library artwork redirect contract", async () => {
+  const artist = responseJson(await request("getArtists")).artists.index[0].artist[0];
+  const source = "https://example.com/cover.jpg";
+  dbOps.setImage("11111111-1111-4111-8111-111111111111", source);
+  const result = await request("getCoverArt", { id: artist.id }, { redirect: "manual" });
+  assert.equal(result.response.status, 302);
+  assert.equal(result.response.headers.get("location"), source);
+  assert.equal(result.response.headers.get("cache-control"), "public, max-age=31536000, immutable");
+});
+
+test("resolves playlist release-group artwork without a library album row", async () => {
+  const originalFetch = global.fetch;
+  global.fetch = async () =>
+    new Response(
+      Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+        "base64",
+      ),
+      { headers: { "content-type": "image/png" } },
+    );
+  try {
+    const cached = await warmImageProxy("https://images.example/playlist.webp");
+    const releaseGroupId = "44444444-4444-4444-8444-444444444444";
+    dbOps.setImage(`rg:${releaseGroupId}`, cached.localUrl);
+
+    const artwork = await resolveArtworkUrl(
+      `album:${encodeURIComponent(`release-group:${releaseGroupId}`)}`,
+    );
+    const libraryArtwork = await warmImageProxy(cached.localUrl, "library");
+    assert.equal(artwork, libraryArtwork.localUrl);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("uses cached album artwork for artist artwork", async () => {
+  const originalFetch = global.fetch;
+  global.fetch = async () =>
+    new Response(
+      Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+        "base64",
+      ),
+      { headers: { "content-type": "image/png" } },
+    );
+  try {
+    const artist = db.prepare("SELECT mbid, identity_key FROM library_artists LIMIT 1").get();
+    const album = db.prepare("SELECT mbid, release_group_mbid FROM library_albums LIMIT 1").get();
+    const cacheId = album.release_group_mbid || album.mbid;
+    const cached = await warmImageProxy(`https://images.example/artist-album-${cacheId}.png`);
+    dbOps.deleteImage(artist.mbid);
+    dbOps.setImage(`rg:${cacheId}`, cached.localUrl);
+
+    const artwork = await resolveArtworkUrl(`artist:${encodeURIComponent(artist.identity_key)}`);
+    const libraryArtwork = await warmImageProxy(cached.localUrl, "library");
+    assert.equal(artwork, libraryArtwork.localUrl);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+for (const source of ["an artist image lookup", "album artwork"]) {
+  test(`artist artwork from ${source} that started before an override cannot replace its image`, async () => {
+    const artist = db
+      .prepare("SELECT id, mbid, identity_key FROM library_artists WHERE mbid IS NOT NULL LIMIT 1")
+      .get();
+    const albums = db
+      .prepare("SELECT mbid, release_group_mbid FROM library_albums WHERE artist_id = ?")
+      .all(artist.id);
+    const replacement = "77777777-7777-4777-8777-777777777777";
+    const oldImage = `https://images.example/old-${source.replaceAll(" ", "-")}.png`;
+    const newImage = "https://images.example/override-artist.png";
+    const oldGate = Promise.withResolvers();
+    const oldStarted = Promise.withResolvers();
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "base64",
+    );
+    const metadataArtist = (id, images) => ({
+      id,
+      artistname: "Canonical Artist",
+      sortname: "Canonical Artist",
+      images: images.map((Url) => ({ CoverType: "Artist", Url })),
+      Albums: [],
+      links: [],
+      genres: [],
+      artistaliases: [],
+    });
+    const originalFetch = global.fetch;
+    global.fetch = async (input, init) => {
+      const url = new URL(String(input));
+      if (url.hostname === "127.0.0.1") return originalFetch(input, init);
+      const oldRequest =
+        source === "album artwork"
+          ? url.href === oldImage
+          : url.pathname === `/artist/${artist.mbid}`;
+      if (oldRequest) {
+        oldStarted.resolve();
+        await oldGate.promise;
+      }
+      if (url.pathname === `/artist/${artist.mbid}`)
+        return Response.json(metadataArtist(artist.mbid, [oldImage]));
+      if (url.pathname === `/artist/${replacement}`)
+        return Response.json(metadataArtist(replacement, [newImage]));
+      return new Response(png, { headers: { "content-type": "image/png" } });
+    };
+    dbOps.deleteImage(artist.mbid);
+    dbOps.deleteArtistOverride(artist.mbid);
+    for (const album of albums) {
+      const releaseGroupKey = `rg:${album.release_group_mbid || album.mbid}`;
+      if (source === "album artwork") dbOps.setImage(releaseGroupKey, oldImage);
+      else dbOps.deleteImage(releaseGroupKey);
+    }
+    let oldArtwork;
+    try {
+      oldArtwork = resolveArtworkUrl(`artist:${encodeURIComponent(artist.identity_key)}`);
+      await Promise.race([
+        oldStarted.promise,
+        oldArtwork.then(() => assert.fail(`artwork resolved without requesting the ${source}`)),
+      ]);
+      dbOps.setArtistOverride(artist.mbid, { musicbrainzId: replacement, deezerArtistId: null });
+      invalidateArtistImage(artist.mbid);
+      assert.equal((await getArtistImage(artist.mbid)).url, newImage);
+      oldGate.resolve();
+
+      assert.equal(await oldArtwork, (await warmImageProxy(oldImage, "library")).localUrl);
+      assert.equal(dbOps.getImage(artist.mbid)?.imageUrl, newImage);
+    } finally {
+      oldGate.resolve();
+      await Promise.allSettled([oldArtwork]);
+      global.fetch = originalFetch;
+      dbOps.deleteArtistOverride(artist.mbid);
+      dbOps.deleteImage(artist.mbid);
+    }
+  });
+}

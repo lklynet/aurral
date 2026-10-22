@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { defineConfig } from "vite-plus";
 import { playwright } from "vite-plus/test/browser-playwright";
-import { readAurralTokens } from "./frontend/scripts/ui-token-source.mjs";
+import { readAurralTokens } from "./frontend/scripts/ui-token-source.mts";
 
 const [tokenSource, sharedControlExceptions] = await Promise.all([
   readAurralTokens(),
@@ -13,7 +13,7 @@ const [tokenSource, sharedControlExceptions] = await Promise.all([
 const tokenNames = tokenSource.declarations.map(({ name }) => name);
 
 const testSetup = {
-  setupFiles: [".tests/setup-env.js", ".tests/setup-vitest.js"],
+  setupFiles: [".tests/setup-env.ts", ".tests/setup-vitest.ts"],
   restoreMocks: true,
   testTimeout: 60_000,
 };
@@ -54,6 +54,7 @@ export default defineConfig({
       "typescript/no-base-to-string": "off",
       "typescript/no-implied-eval": "off",
       "typescript/no-misused-spread": "off",
+      "typescript/no-this-alias": "off",
       "typescript/no-useless-default-assignment": "off",
       "typescript/require-array-sort-compare": "off",
       "typescript/restrict-template-expressions": "off",
@@ -66,11 +67,11 @@ export default defineConfig({
     },
     overrides: [
       {
-        files: ["frontend/public/**/*.js", "tests/e2e/**/*.js", ".tests/browser/**"],
+        files: ["frontend/public/**/*.js", "tests/e2e/**/*.ts", ".tests/browser/**"],
         env: { browser: true },
       },
       {
-        files: ["frontend/src/**/*.js", "frontend/src/**/*.jsx"],
+        files: ["frontend/src/**/*.ts", "frontend/src/**/*.tsx"],
         env: { browser: true, node: false },
         rules: {
           "typescript/no-floating-promises": "off",
@@ -101,22 +102,22 @@ export default defineConfig({
         },
       },
       {
-        files: ["frontend/src/**/*.jsx"],
+        files: ["frontend/src/**/*.tsx"],
         rules: { "aurral/single-main": "error" },
       },
       {
         files: [
-          "frontend/src/components/Layout.jsx",
-          "frontend/src/pages/Login.jsx",
-          "frontend/src/pages/SsoComplete.jsx",
+          "frontend/src/components/Layout.tsx",
+          "frontend/src/pages/Login.tsx",
+          "frontend/src/pages/SsoComplete.tsx",
         ],
         rules: { "aurral/single-main": "off" },
       },
       {
         files: [
-          "backend/services/logger.js",
-          "backend/services/importLists/lastfmStations.js",
-          "backend/services/plexLoginAuth.js",
+          "backend/services/logger.ts",
+          "backend/services/importLists/lastfmStations.ts",
+          "backend/services/plexLoginAuth.ts",
         ],
         rules: { "eslint/no-control-regex": "off" },
       },
@@ -128,21 +129,21 @@ export default defineConfig({
         test: {
           ...testSetup,
           name: "unit",
-          include: [".tests/**/*.test.js"],
-          exclude: [".tests/**/*.int.test.js"],
+          include: [".tests/**/*.test.ts"],
+          exclude: [".tests/**/*.int.test.ts"],
         },
       },
       {
         test: {
           ...testSetup,
           name: "integration",
-          include: [".tests/**/*.int.test.js"],
+          include: [".tests/**/*.int.test.ts"],
         },
       },
       {
         test: {
           name: "browser",
-          include: [".tests/browser/**/*.test.jsx"],
+          include: [".tests/browser/**/*.test.tsx"],
           browser: {
             enabled: true,
             headless: true,

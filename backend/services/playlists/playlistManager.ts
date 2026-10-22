@@ -1,0 +1,638 @@
+import path from "path";
+import fs from "fs/promises";
+import { dbOps } from "../../db/helpers/index.ts";
+import { flowPlaylistConfig } from "./flowPlaylistConfig.ts";
+import { downloadTracker } from "../downloadJobs/downloadTracker.ts";
+import { writePlaylistArtworkWebpFromBuffer } from "../playlistArtwork.ts";
+import {
+  getArtworkExtensionForStyle,
+  getPlaylistArtworkStyle,
+  isGeneratedPlaylistArtworkFallback,
+  writeGeneratedPlaylistArtwork,
+} from "../playlistArtworkGenerator.ts";
+import { AURRAL_FLOWS_DIR, PLAYLIST_FILES_DIR, resolveDownloadRoot } from "../downloadPaths.ts";
+import { scheduleLibraryScan } from "../libraryScanWorker.ts";
+import {
+  enqueueSystemTaskJob,
+  getSystemTaskQueueName,
+  listHonkerJobs,
+  mergeIntoPendingHonkerJob,
+} from "../honkerDb.ts";
+import { activeLidarrRoots } from "../libraryFolders.ts";
+import { lidarrClient } from "../lidarrClient.ts";
+import { getDownloadClient } from "../download/downloadClientSettings.ts";
+import {
+  assertPlaybackDestination,
+  createPlaybackPlaylistIdentity,
+  createPlaybackPlaylistSnapshot,
+  createPlaybackScanRequest,
+} from "../playback/playbackDestination.ts";
+import { scanFoldersForPaths } from "../playback/playbackScanFolders.ts";
+import { PlaybackDestinationRegistry } from "../playback/playbackDestinationRegistry.ts";
+import { collectPlaybackPlaylistTracks } from "../playback/playbackPlaylistTracks.ts";
+import { NavidromePlaybackDestination } from "../playback/navidromePlaybackDestination.ts";
+import { PlexPlaybackDestination } from "../playback/plexPlaybackDestination.ts";
+import { JellyfinPlaybackDestination } from "../playback/jellyfinPlaybackDestination.ts";
+import {
+  createPlaybackDeletionGuard,
+  removeUnusedPlaybackFiles,
+} from "../playback/playbackFileRetention.ts";
+
+const ARTWORK_FILE_EXTENSIONS = [".webp", ".jpg", ".png"];
+const ARTWORK_SUPPRESS_SUFFIX = ".no-artwork";
+const PLAYBACK_SCAN_BATCH_SECONDS = 15;
+const PLAYLIST_SYNC_KIND = "playback-playlist-sync";
+const PLAYBACK_SCAN_KIND = "playback-library-scan";
+const PLAYLIST_SYNC_RETRY_DELAYS_SECONDS = [30, 90, 180, 600];
+const LIBRARY_DOWNLOADS_ID = "library";
+
+function batchSystemTask(payload, { delaySeconds, matches, merge }) {
+  return (
+    mergeIntoPendingHonkerJob(getSystemTaskQueueName(payload.kind), {
+      payloadKind: payload.kind,
+      matches,
+      merge,
+    }) ?? enqueueSystemTaskJob(payload, { delaySeconds })
+  );
+}
+
+function mergeEntityIds(left, right) {
+  if (left == null || right == null) return null;
+  return [...new Set([...left, ...right])];
+}
+
+function playlistSyncStage(attempt) {
+  return Math.min(attempt, PLAYLIST_SYNC_RETRY_DELAYS_SECONDS.length);
+}
+
+function playlistSyncDelaySeconds(attempt) {
+  return attempt ? PLAYLIST_SYNC_RETRY_DELAYS_SECONDS[playlistSyncStage(attempt) - 1] : 2;
+}
+
+export class PlaylistManager {
+  constructor(downloadRoot = resolveDownloadRoot()) {
+    this.downloadRoot = resolveDownloadRoot(downloadRoot);
+    this.playlistFilesRoot = path.join(this.downloadRoot, PLAYLIST_FILES_DIR);
+    this.libraryRoot = path.join(this.playlistFilesRoot, "_playlists");
+    this.navidromeDestination = assertPlaybackDestination(
+      new NavidromePlaybackDestination(this.downloadRoot),
+    );
+    this.plexDestination = assertPlaybackDestination(
+      new PlexPlaybackDestination(this.downloadRoot),
+    );
+    this.jellyfinDestination = assertPlaybackDestination(
+      new JellyfinPlaybackDestination(this.downloadRoot),
+    );
+    this.destinationRegistry = new PlaybackDestinationRegistry([
+      this.navidromeDestination,
+      this.plexDestination,
+      this.jellyfinDestination,
+    ]);
+    this._verifiedArtworkFiles = new Set();
+    this.updateConfig();
+  }
+
+  updateConfig() {
+    this.destinationRegistry.updateConfig(dbOps.getSettings().integrations);
+  }
+
+  _sanitize(str) {
+    return String(str || "")
+      .replace(/[<>:"/\\|?*]/g, "_")
+      .trim();
+  }
+
+  _getPlaylistLibraryHostPath() {
+    return this.playlistFilesRoot.replace(/\\/g, "/").replace(/\/+$/, "");
+  }
+
+  _getPlaylistBaseName(playlistName) {
+    return this._sanitize(playlistName);
+  }
+
+  requestPlaylistSync(
+    entityIds = null,
+    {
+      destinations = null,
+      chain = null,
+      attempt = 0,
+      delaySeconds = playlistSyncDelaySeconds(attempt),
+    } = {},
+  ) {
+    const ids =
+      entityIds == null
+        ? null
+        : [
+            ...new Set(
+              entityIds
+                .map((id) => String(id ?? "").trim())
+                .filter((id) => id && id !== LIBRARY_DOWNLOADS_ID),
+            ),
+          ];
+    if (ids?.length === 0) return null;
+    const keys = destinations ? [...destinations].sort() : null;
+    return batchSystemTask(
+      {
+        kind: PLAYLIST_SYNC_KIND,
+        entityIds: ids,
+        attempt,
+        ...(keys ? { destinations: keys, chain } : {}),
+      },
+      {
+        delaySeconds,
+        matches: (payload) =>
+          playlistSyncStage(payload.attempt) === playlistSyncStage(attempt) &&
+          (payload.chain ?? null) === (keys ? chain : null) &&
+          JSON.stringify(payload.destinations ?? null) === JSON.stringify(keys),
+        merge: (payload) => ({ ...payload, entityIds: mergeEntityIds(payload.entityIds, ids) }),
+      },
+    );
+  }
+
+  async syncPlaylists({ entityIds = null, destinations = null, chain = null, attempt = 0 } = {}) {
+    const scope = this.destinationRegistry.destinations.filter(
+      (destination) => !destinations || destinations.includes(destination.key),
+    );
+    const pointerIds = new Set(scope.flatMap((destination) => destination.getPointerEntityIds()));
+    const ids = entityIds
+      ? entityIds.filter(
+          (id) =>
+            pointerIds.has(id) ||
+            flowPlaylistConfig.getFlow(id) ||
+            flowPlaylistConfig.getStaticPlaylist(id),
+        )
+      : [
+          ...new Set([
+            ...flowPlaylistConfig.getFlows().map((flow) => flow.id),
+            ...flowPlaylistConfig.getStaticPlaylists().map((playlist) => playlist.id),
+            ...pointerIds,
+          ]),
+        ];
+    if (entityIds && !ids.length) return;
+    const setupFailures = (
+      await this.destinationRegistry.runOn(
+        scope.map((destination) => destination.key),
+        "ensureLibrary",
+      )
+    ).filter((result) => !result.ok);
+    const failedKeys = new Set(setupFailures.map((result) => result.key));
+    const keys = scope.map((destination) => destination.key).filter((key) => !failedKeys.has(key));
+    const missed = { outage: new Map(), indexing: new Map() };
+    const context = { pendingScanFolders: this._pendingScanFolders() };
+    for (const result of setupFailures) {
+      if (result.error?.retryable) missed.outage.set(result.key, entityIds ? ids : null);
+    }
+    for (const id of ids) {
+      for (const result of await this._syncEntity(id, keys, context)) {
+        const resultChain = result.ok
+          ? result.pending && "indexing"
+          : result.error?.retryable && "outage";
+        if (resultChain)
+          missed[resultChain].set(result.key, [...(missed[resultChain].get(result.key) ?? []), id]);
+      }
+    }
+    for (const [nextChain, idsByKey] of Object.entries(missed)) {
+      const nextAttempt = nextChain === chain ? attempt + 1 : 1;
+      if (nextChain === "indexing" && nextAttempt > PLAYLIST_SYNC_RETRY_DELAYS_SECONDS.length)
+        continue;
+      const followUps = new Map();
+      for (const [key, missedIds] of idsByKey) {
+        const groupKey = JSON.stringify(missedIds);
+        const followUp = followUps.get(groupKey) ?? { ids: missedIds, keys: [] };
+        followUp.keys.push(key);
+        followUps.set(groupKey, followUp);
+      }
+      for (const followUp of followUps.values()) {
+        this.requestPlaylistSync(followUp.ids, {
+          destinations: followUp.keys,
+          chain: nextChain,
+          attempt: nextAttempt,
+        });
+      }
+    }
+  }
+
+  _pendingScanFolders() {
+    const foldersByKey = new Map();
+    for (const { state, payload } of listHonkerJobs(getSystemTaskQueueName(PLAYBACK_SCAN_KIND))) {
+      if (state !== "pending" || payload?.kind !== PLAYBACK_SCAN_KIND) continue;
+      const keys =
+        payload.destinations ??
+        this.destinationRegistry.destinations.map((destination) => destination.key);
+      for (const key of keys) {
+        foldersByKey.set(key, [
+          ...(foldersByKey.get(key) ?? []),
+          ...(payload.folders ?? this.libraryRoots()),
+        ]);
+      }
+    }
+    return foldersByKey;
+  }
+
+  async _syncEntity(id, keys, context) {
+    const flow = flowPlaylistConfig.getFlow(id);
+    if (flow?.enabled) return this._publishPlaylist(flow, "Flow", keys, context);
+    if (flow) return this._unpublishDisabledFlow(flow, keys);
+    const playlist = flowPlaylistConfig.getStaticPlaylist(id);
+    if (playlist) return this._publishPlaylist(playlist, "Playlist", keys, context);
+    return this.destinationRegistry.runOn(keys, "deleteEntityPlaylists", id);
+  }
+
+  async _unpublishDisabledFlow(flow, keys) {
+    const results = await this.destinationRegistry.runOn(
+      keys,
+      "deletePlaylist",
+      createPlaybackPlaylistIdentity({ entityId: flow.id, ownerUserId: flow.ownerUserId ?? null }),
+    );
+    if (
+      results.some((result) => result.destination === this.navidromeDestination.name && result.ok)
+    ) {
+      const playlistName = this.navidromeDestination.getPlaylistName({
+        entityId: flow.id,
+        ownerUserId: flow.ownerUserId ?? null,
+        displayName: flow.name,
+      });
+      await this._ensureFlowArtwork(flow.id, playlistName, "Flow");
+    }
+    return results;
+  }
+
+  scheduleScanLibrary(force = false) {
+    return scheduleLibraryScan({ force, includeLidarr: false });
+  }
+
+  async _ensureFlowArtwork(playlistType, playlistName, artworkKind) {
+    await fs.mkdir(this.libraryRoot, { recursive: true });
+    const baseName = this._getPlaylistBaseName(playlistName);
+    const style = getPlaylistArtworkStyle();
+    const artworkExtension = getArtworkExtensionForStyle(style);
+    const artworkPath = path.join(this.libraryRoot, `${baseName}${artworkExtension}`);
+    const safeRoot = path.resolve(this.libraryRoot);
+    const suppressed = await this._isArtworkGenerationSuppressed(safeRoot, baseName);
+    if (suppressed) return;
+    const artworkContext = this.getArtworkContextForPlaylistId(playlistType);
+    const existing = await this.resolveArtworkFile(playlistType);
+    let shouldGenerate = !existing;
+    const existingStat = existing ? await fs.stat(existing.safePath).catch(() => null) : null;
+    const existingIdentity = existingStat
+      ? `${existing.safePath}:${existingStat.size}:${existingStat.mtimeMs}`
+      : existing?.safePath;
+    if (style === "photo" && existing && !this._verifiedArtworkFiles.has(existingIdentity)) {
+      shouldGenerate = await isGeneratedPlaylistArtworkFallback(existing.safePath, {
+        title: artworkContext?.title || playlistName,
+        kind: artworkContext?.kind || artworkKind,
+      });
+      if (!shouldGenerate) this._verifiedArtworkFiles.add(existingIdentity);
+    }
+    if (shouldGenerate) {
+      try {
+        await writeGeneratedPlaylistArtwork({
+          outputPath: artworkPath,
+          title: artworkContext?.title || playlistName,
+          kind: artworkContext?.kind || artworkKind,
+        });
+      } catch (error) {
+        console.warn(`[PlaylistManager] Artwork generation failed: ${error.message}`);
+        if (!existing) {
+          await writeGeneratedPlaylistArtwork({
+            outputPath: artworkPath,
+            title: artworkContext?.title || playlistName,
+            kind: artworkContext?.kind || artworkKind,
+            style: "aurral",
+          }).catch((fallbackError) =>
+            console.warn(`[PlaylistManager] Fallback artwork failed: ${fallbackError.message}`),
+          );
+        }
+      }
+    }
+  }
+
+  async ensurePlaylistArtwork(entityId) {
+    const context = this.getArtworkContextForPlaylistId(entityId);
+    if (!context) return;
+    await this._ensureFlowArtwork(entityId, this.getPlaylistName(entityId), context.kind).catch(
+      (error) => {
+        console.warn(`[PlaylistManager] Artwork generation failed: ${error.message}`);
+      },
+    );
+  }
+
+  async _syncNavidromeArtwork(playlistId, clear = false) {
+    const entity =
+      flowPlaylistConfig.getFlow(playlistId) || flowPlaylistConfig.getStaticPlaylist(playlistId);
+    if (!entity) return;
+    const operation = clear ? "clearPlaylistArtwork" : "syncPlaylistArtwork";
+    if (typeof this.navidromeDestination[operation] !== "function") return;
+    const result = await this.navidromeDestination[operation]({
+      entityId: entity.id,
+      ownerUserId: entity.ownerUserId ?? null,
+    });
+    if (!result.ok) {
+      console.warn(
+        `[PlaylistManager] Navidrome artwork ${clear ? "clear" : "sync"} failed:`,
+        result.error?.message,
+      );
+    }
+  }
+
+  async _createPlaybackSnapshot(entity) {
+    const tracks = await collectPlaybackPlaylistTracks(entity.id, {
+      downloadRoot: this.downloadRoot,
+    });
+    return createPlaybackPlaylistSnapshot({
+      entityId: entity.id,
+      ownerUserId: entity.ownerUserId ?? null,
+      displayName: entity.name,
+      description: entity.description || null,
+      tracks,
+    });
+  }
+
+  async _publishPlaylist(entity, artworkKind, keys, context) {
+    const snapshot = await this._createPlaybackSnapshot(entity);
+    const playlistName = this.navidromeDestination.getPlaylistName(snapshot);
+    await this._ensureFlowArtwork(entity.id, playlistName, artworkKind);
+    return this.destinationRegistry.runOn(keys, "publishPlaylist", snapshot, context);
+  }
+
+  async _activePlaybackSnapshots() {
+    const entities = [
+      ...flowPlaylistConfig.getFlows().filter((flow) => flow.enabled),
+      ...flowPlaylistConfig.getStaticPlaylists(),
+    ];
+    const snapshots = [];
+    for (const entity of entities) snapshots.push(await this._createPlaybackSnapshot(entity));
+    return snapshots;
+  }
+
+  async cleanupUserPlexPlaylists(userId, connection = null) {
+    return this.plexDestination.deleteOwnerPlaylists(userId, connection);
+  }
+
+  async syncPlexNow() {
+    for (const flow of flowPlaylistConfig.getFlows()) {
+      if (flow.enabled) continue;
+      const result = await this.plexDestination.deletePlaylist(
+        createPlaybackPlaylistIdentity({
+          entityId: flow.id,
+          ownerUserId: flow.ownerUserId ?? null,
+        }),
+      );
+      if (!result.ok) throw new Error(result.error.message);
+    }
+    const { pendingEntityIds, ...summary } = await this.plexDestination.syncNow(
+      await this._activePlaybackSnapshots(),
+    );
+    this.requestPlaylistSync(pendingEntityIds ?? [], {
+      destinations: [this.plexDestination.key],
+      chain: "indexing",
+      attempt: 1,
+    });
+    return summary;
+  }
+
+  schedulePlaybackScan(paths, { destinations = null } = {}) {
+    this.updateConfig();
+    if (!this.destinationRegistry.destinations.some((destination) => destination.isConfigured()))
+      return null;
+    const roots = this.libraryRoots();
+    const folders = scanFoldersForPaths(paths, roots);
+    if (!folders.length) return null;
+    return batchSystemTask(
+      { kind: PLAYBACK_SCAN_KIND, folders, ...(destinations ? { destinations } : {}) },
+      {
+        delaySeconds: PLAYBACK_SCAN_BATCH_SECONDS,
+        matches: (payload) =>
+          Array.isArray(payload.folders) &&
+          JSON.stringify(payload.destinations ?? null) === JSON.stringify(destinations),
+        merge: (payload) => ({
+          ...payload,
+          folders: scanFoldersForPaths([...payload.folders, ...folders], roots),
+        }),
+      },
+    );
+  }
+
+  libraryRoots() {
+    return [this.downloadRoot, ...activeLidarrRoots(lidarrClient)];
+  }
+
+  async scanLibrary(folders, destinations = null) {
+    const request = createPlaybackScanRequest({ folders, roots: this.libraryRoots() });
+    const results = await this.destinationRegistry.runOn(destinations, "requestScan", request);
+    const deferred = results
+      .filter((result) => result.deferred)
+      .map((result) => result.key)
+      .sort();
+    if (deferred.length) this.schedulePlaybackScan(request.folders, { destinations: deferred });
+    return results.length ? results : null;
+  }
+
+  async weeklyReset(playlistTypes = null, { protectPlayback = true } = {}) {
+    const targets =
+      playlistTypes && playlistTypes.length
+        ? playlistTypes
+        : flowPlaylistConfig.getFlows().map((flow) => flow.id);
+    const fallbackDir = path.join(this.downloadRoot, "_fallback");
+    const deletionGuard = protectPlayback
+      ? createPlaybackDeletionGuard({ excludeEntityIds: targets, playlistRoot: this.downloadRoot })
+      : { canDelete: async () => true };
+    try {
+      await removeUnusedPlaybackFiles(fallbackDir, deletionGuard, { protectPlayback });
+    } catch {}
+
+    const flowsRoot = path.join(this.downloadRoot, AURRAL_FLOWS_DIR);
+    let flowFolderTouched = false;
+    for (const playlistType of targets) {
+      const flowDir = path.join(flowsRoot, playlistType);
+      flowFolderTouched ||= await fs.stat(flowDir).then(
+        () => true,
+        () => false,
+      );
+      const jobs = downloadTracker.getByPlaylistId(playlistType);
+      for (const job of jobs) {
+        if (job.downloadClient === "ytdlp") {
+          await getDownloadClient("ytdlp").cleanupStaging(job.id);
+        }
+      }
+      const playlistDir = path.join(this.playlistFilesRoot, playlistType);
+      try {
+        const { relocateSharedFilesBeforePlaylistRemoval } =
+          await import("../downloadJobs/fileReuse.ts");
+        await relocateSharedFilesBeforePlaylistRemoval(playlistType, {
+          downloadRoot: this.downloadRoot,
+          deletionGuard,
+          protectPlayback,
+        });
+        await removeUnusedPlaybackFiles(playlistDir, deletionGuard, { protectPlayback });
+        await removeUnusedPlaybackFiles(flowDir, deletionGuard, { protectPlayback });
+        console.log(`[PlaylistManager] Cleaned unused files for ${playlistType}`);
+      } catch (error) {
+        console.warn(
+          `[PlaylistManager] Failed to delete files for ${playlistType}:`,
+          error.message,
+        );
+      }
+      downloadTracker.clearByPlaylistId(playlistType);
+      const { repairJobsUnderRemovedPlaylistDir } = await import("../downloadJobs/fileReuse.ts");
+      const { downloadWorker } = await import("../downloadJobs/downloadWorker.ts");
+      const { existingFileMode } = downloadWorker.getWorkerSettings();
+      await repairJobsUnderRemovedPlaylistDir(playlistType, {
+        existingFileMode,
+        downloadRoot: this.downloadRoot,
+      });
+    }
+    if (flowFolderTouched) this.schedulePlaybackScan([flowsRoot]);
+  }
+
+  getPlaylistName(playlistType) {
+    const entity =
+      flowPlaylistConfig.getFlow(playlistType) ||
+      flowPlaylistConfig.getStaticPlaylist(playlistType);
+    if (!entity) return playlistType;
+    return this.navidromeDestination.getPlaylistName({
+      entityId: entity.id,
+      ownerUserId: entity.ownerUserId ?? null,
+      displayName: entity.name,
+    });
+  }
+
+  getArtworkKindForPlaylistId(playlistId) {
+    if (flowPlaylistConfig.getFlow(playlistId)) return "Flow";
+    return "Playlist";
+  }
+
+  getArtworkContextForPlaylistId(playlistId) {
+    const flow = flowPlaylistConfig.getFlow(playlistId);
+    if (flow) return { kind: "Flow", title: flow.name };
+    const playlist = flowPlaylistConfig.getStaticPlaylist(playlistId);
+    if (playlist) return { kind: "Playlist", title: playlist.name };
+    return null;
+  }
+
+  _resolveArtworkBase(playlistId) {
+    const playlistName = this.getPlaylistName(playlistId);
+    if (!playlistName) return null;
+    const baseName = this._getPlaylistBaseName(playlistName);
+    const safeRoot = path.resolve(this.libraryRoot);
+    return { safeRoot, baseName, playlistName };
+  }
+
+  _artworkSuppressPath(safeRoot, baseName) {
+    const safePath = path.resolve(safeRoot, `${baseName}${ARTWORK_SUPPRESS_SUFFIX}`);
+    if (path.dirname(safePath) !== safeRoot) return null;
+    return safePath;
+  }
+
+  async _isArtworkGenerationSuppressed(safeRoot, baseName) {
+    const suppressPath = this._artworkSuppressPath(safeRoot, baseName);
+    if (!suppressPath) return false;
+    try {
+      const stat = await fs.stat(suppressPath);
+      return stat.isFile();
+    } catch {
+      return false;
+    }
+  }
+
+  async _setArtworkGenerationSuppressed(safeRoot, baseName, suppressed) {
+    const suppressPath = this._artworkSuppressPath(safeRoot, baseName);
+    if (!suppressPath) return;
+    if (suppressed) {
+      await fs.writeFile(suppressPath, "", "utf8");
+      return;
+    }
+    try {
+      await fs.unlink(suppressPath);
+    } catch {}
+  }
+
+  async resolveArtworkFile(playlistId) {
+    const resolved = this._resolveArtworkBase(playlistId);
+    if (!resolved) return null;
+    for (const extension of ARTWORK_FILE_EXTENSIONS) {
+      const safePath = path.resolve(resolved.safeRoot, `${resolved.baseName}${extension}`);
+      if (path.dirname(safePath) !== resolved.safeRoot) continue;
+      try {
+        const stat = await fs.stat(safePath);
+        if (stat.isFile()) {
+          return { ...resolved, safePath, extension };
+        }
+      } catch {}
+    }
+    return null;
+  }
+
+  async saveArtworkUpload(playlistId, buffer) {
+    const resolved = this._resolveArtworkBase(playlistId);
+    if (!resolved) {
+      throw new Error("Playlist not found");
+    }
+    await fs.mkdir(resolved.safeRoot, { recursive: true });
+    const webpPath = path.join(resolved.safeRoot, `${resolved.baseName}.webp`);
+    if (path.dirname(webpPath) !== resolved.safeRoot) {
+      throw new Error("Invalid artwork path");
+    }
+    await writePlaylistArtworkWebpFromBuffer(buffer, webpPath);
+    const legacyPng = path.join(resolved.safeRoot, `${resolved.baseName}.png`);
+    try {
+      await fs.unlink(legacyPng);
+    } catch {}
+    await this._setArtworkGenerationSuppressed(resolved.safeRoot, resolved.baseName, false);
+    await this._syncNavidromeArtwork(playlistId);
+    return webpPath;
+  }
+
+  async removeArtwork(playlistId) {
+    const resolved = this._resolveArtworkBase(playlistId);
+    if (!resolved) {
+      throw new Error("Playlist not found");
+    }
+    let removed = false;
+    for (const extension of ARTWORK_FILE_EXTENSIONS) {
+      const safePath = path.join(resolved.safeRoot, `${resolved.baseName}${extension}`);
+      if (path.dirname(safePath) !== resolved.safeRoot) continue;
+      try {
+        await fs.unlink(safePath);
+        removed = true;
+      } catch {}
+    }
+    await this._setArtworkGenerationSuppressed(resolved.safeRoot, resolved.baseName, true);
+    await this._syncNavidromeArtwork(playlistId, true);
+    return removed;
+  }
+
+  async generateArtwork(playlistId) {
+    const resolved = this._resolveArtworkBase(playlistId);
+    if (!resolved) {
+      throw new Error("Playlist not found");
+    }
+    await fs.mkdir(resolved.safeRoot, { recursive: true });
+    const style = getPlaylistArtworkStyle();
+    const artworkExtension = getArtworkExtensionForStyle(style);
+    const artworkPath = path.join(resolved.safeRoot, `${resolved.baseName}${artworkExtension}`);
+    if (path.dirname(artworkPath) !== resolved.safeRoot) {
+      throw new Error("Invalid artwork path");
+    }
+    const artworkContext = this.getArtworkContextForPlaylistId(playlistId);
+    const title = artworkContext?.title || resolved.playlistName;
+    const kind = artworkContext?.kind || this.getArtworkKindForPlaylistId(playlistId);
+    let outputPath;
+    try {
+      outputPath = await writeGeneratedPlaylistArtwork({ outputPath: artworkPath, title, kind });
+    } catch (error) {
+      if (style !== "photo") throw error;
+      outputPath = await writeGeneratedPlaylistArtwork({
+        outputPath: artworkPath,
+        title,
+        kind,
+        style: "aurral",
+      });
+    }
+    await this._setArtworkGenerationSuppressed(resolved.safeRoot, resolved.baseName, false);
+    await this._syncNavidromeArtwork(playlistId);
+    return outputPath;
+  }
+}
+
+export const playlistManager = new PlaylistManager();

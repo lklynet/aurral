@@ -1,0 +1,686 @@
+import { test } from "vite-plus/test";
+import assert from "node:assert/strict";
+
+import { createMockHttpServer } from "../helpers/backendTestHarness.ts";
+import { dbOps } from "../../backend/db/helpers/index.ts";
+import { clearMetadataProviderCaches } from "../../backend/services/providers/brainzmashProvider.ts";
+import {
+  normalizeAlbumReleaseTypesFilter,
+  searchAlbums,
+  searchArtists,
+} from "../../backend/services/searchService.ts";
+import { libraryManager } from "../../backend/services/libraryManager.ts";
+import { lidarrClient } from "../../backend/services/lidarrClient.ts";
+
+test("searchArtists normalizes BrainzMash artists", async () => {
+  let requests = 0;
+  const server = await createMockHttpServer((request, response) => {
+    if (!request.url?.startsWith("/search/artist")) {
+      response.writeHead(404);
+      response.end();
+      return;
+    }
+    requests += 1;
+    if (requests === 1) {
+      response.writeHead(503);
+      response.end();
+      return;
+    }
+    response.setHeader("content-type", "application/json");
+    response.end(
+      JSON.stringify([
+        {
+          id: "artist-mbid",
+          artistname: "Adele",
+          sortname: "Adele",
+          type: "Person",
+          genres: ["pop"],
+          images: [{ Url: "https://images.example/adele.jpg", CoverType: "poster" }],
+        },
+      ]),
+    );
+  });
+  const originalSettings = dbOps.getSettings();
+  dbOps.updateSettings({
+    ...originalSettings,
+    integrations: {
+      ...originalSettings.integrations,
+      metadata: {
+        ...originalSettings.integrations.metadata,
+        baseUrl: server.url,
+        enableNarrowFallbacks: false,
+      },
+    },
+  });
+  clearMetadataProviderCaches();
+
+  try {
+    const result = await searchArtists("Adele", 5, 0);
+    assert.equal(result.items[0].id, "artist-mbid");
+    assert.equal(result.items[0].name, "Adele");
+    assert.equal(result.items[0].artistType, "Person");
+    assert.deepEqual(result.items[0].genres, ["pop"]);
+    assert.equal(result.items[0].imageUrl, "https://images.example/adele.jpg");
+    assert.equal(requests, 2);
+  } finally {
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(originalSettings);
+    await server.close();
+  }
+});
+
+test("searchAlbums names the album's credited artist, not the first one listed", async () => {
+  const server = await createMockHttpServer((request, response) => {
+    response.setHeader("content-type", "application/json");
+    response.end(
+      JSON.stringify(
+        request.url?.startsWith("/search/album")
+          ? [
+              {
+                id: "agaetis",
+                title: "Ágætis byrjun",
+                artistid: "sigur-ros",
+                artists: [
+                  { id: "amiina", artistname: "amiina" },
+                  { id: "sigur-ros", artistname: "Sigur Rós" },
+                ],
+              },
+            ]
+          : [],
+      ),
+    );
+  });
+  const originalSettings = dbOps.getSettings();
+  dbOps.updateSettings({
+    ...originalSettings,
+    integrations: {
+      ...originalSettings.integrations,
+      metadata: {
+        ...originalSettings.integrations.metadata,
+        baseUrl: server.url,
+        enableNarrowFallbacks: false,
+      },
+    },
+  });
+  clearMetadataProviderCaches();
+  try {
+    const [album] = (await searchAlbums("Agaetis byrjun", 5, 0)).items;
+    assert.deepEqual([album.artistName, album.artistMbid], ["Sigur Rós", "sigur-ros"]);
+  } finally {
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(originalSettings);
+    await server.close();
+  }
+});
+
+test("searchAlbums puts the album an artist and title search names first", async () => {
+  const album = (id, artistname, title, secondarytypes = []) => ({
+    id,
+    title,
+    secondarytypes,
+    artistid: artistname,
+    artists: [{ id: artistname, artistname }],
+  });
+  const server = await createMockHttpServer((request, response) => {
+    const url = new URL(request.url, "http://127.0.0.1");
+    response.setHeader("content-type", "application/json");
+    response.end(
+      JSON.stringify(
+        url.pathname !== "/search/album"
+          ? []
+          : [
+              album("tribute", "Royal Philharmonic Orchestra", "Plays Fleetwood Mac's Rumours", [
+                "Compilation",
+              ]),
+              album("bundle", "Fleetwood Mac", "Fleetwood Mac / Rumours", ["Compilation"]),
+              album("self-titled", "Fleetwood Mac", "Fleetwood Mac"),
+              album("cello", "Trevor Exter", "Fleetwood Mac Rumours: Solo Cello"),
+              album("rumours", "Fleetwood Mac", "Rumours"),
+            ].slice(0, Number(url.searchParams.get("limit")) || undefined),
+      ),
+    );
+  });
+  const originalSettings = dbOps.getSettings();
+  dbOps.updateSettings({
+    ...originalSettings,
+    integrations: {
+      ...originalSettings.integrations,
+      metadata: {
+        ...originalSettings.integrations.metadata,
+        baseUrl: server.url,
+        enableNarrowFallbacks: false,
+      },
+    },
+  });
+  clearMetadataProviderCaches();
+  try {
+    const [first] = (await searchAlbums("Fleetwood Mac Rumours", 2, 0)).items;
+    assert.deepEqual([first.artistName, first.title], ["Fleetwood Mac", "Rumours"]);
+  } finally {
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(originalSettings);
+    await server.close();
+  }
+});
+
+test("searchAlbums reports a further page while more results exist", async () => {
+  const server = await createMockHttpServer((request, response) => {
+    const url = new URL(request.url, "http://127.0.0.1");
+    response.setHeader("content-type", "application/json");
+    response.end(
+      JSON.stringify(
+        url.pathname !== "/search/album"
+          ? []
+          : Array.from({ length: 45 }, (_, index) => ({
+              id: `album-${index}`,
+              title: `Paged Album ${index}`,
+              artistid: "paged",
+              artists: [{ id: "paged", artistname: "Paged Artist" }],
+            })).slice(0, Number(url.searchParams.get("limit")) || undefined),
+      ),
+    );
+  });
+  const originalSettings = dbOps.getSettings();
+  dbOps.updateSettings({
+    ...originalSettings,
+    integrations: {
+      ...originalSettings.integrations,
+      metadata: {
+        ...originalSettings.integrations.metadata,
+        baseUrl: server.url,
+        enableNarrowFallbacks: false,
+      },
+    },
+  });
+  clearMetadataProviderCaches();
+  try {
+    assert.equal((await searchAlbums("Paged Album", 20, 20)).hasMore, true);
+  } finally {
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(originalSettings);
+    await server.close();
+  }
+});
+
+test("normalizeAlbumReleaseTypesFilter removes invalid and duplicate release types", () => {
+  assert.deepEqual(normalizeAlbumReleaseTypesFilter("Album,Live,Album,Invalid"), ["Album", "Live"]);
+});
+
+test("requestAlbumFromSearch queues a new artist album search with the artist add", async () => {
+  const originalIsConfigured = lidarrClient.isConfigured;
+  const originalGetAlbumByMbid = lidarrClient.getAlbumByMbid;
+  const originalGetArtist = libraryManager.getArtist;
+  const originalResolveArtistAddOptions = libraryManager.resolveArtistAddOptions;
+  const originalAddArtistWithResolvedOptions = libraryManager.addArtistWithResolvedOptions;
+  const originalWaitForAlbumByMbidForArtist = libraryManager.waitForAlbumByMbidForArtist;
+  const originalAddAlbum = libraryManager.addAlbum;
+
+  let waitCalls = 0;
+  let artistAddOptions;
+
+  lidarrClient.isConfigured = () => true;
+  lidarrClient.getAlbumByMbid = async () => null;
+  libraryManager.getArtist = async () => null;
+  libraryManager.resolveArtistAddOptions = async () => ({
+    quality: "standard",
+    monitorOption: "none",
+    rootFolderPath: "/music/main",
+    qualityProfileId: 7,
+  });
+  libraryManager.addArtistWithResolvedOptions = async (_mbid, _name, options) => {
+    artistAddOptions = options;
+    return {
+      id: "7",
+      mbid: "artist-mbid",
+      foreignArtistId: "artist-mbid",
+      artistName: "Boards of Canada",
+      monitorOption: "none",
+    };
+  };
+  libraryManager.waitForAlbumByMbidForArtist = async () => {
+    waitCalls += 1;
+    return null;
+  };
+  libraryManager.addAlbum = async (artistId, albumMbid, albumName, options) => {
+    assert.equal(waitCalls, 0);
+    assert.equal(artistId, "7");
+    assert.equal(albumMbid, "album-mbid");
+    assert.equal(albumName, "Geogaddi");
+    assert.equal(options.triggerSearch, true);
+    return {
+      id: "42",
+      artistId: "7",
+      mbid: "album-mbid",
+      foreignAlbumId: "album-mbid",
+      albumName: "Geogaddi",
+      monitored: true,
+      statistics: {
+        percentOfTracks: 0,
+        sizeOnDisk: 0,
+      },
+    };
+  };
+
+  try {
+    const result = await libraryManager.requestAlbumFromSearch({
+      albumMbid: "album-mbid",
+      albumName: "Geogaddi",
+      artistMbid: "artist-mbid",
+      artistName: "Boards of Canada",
+      triggerSearch: true,
+      user: {
+        role: "user",
+        permissions: { addAlbum: true, addArtist: true },
+      },
+    });
+
+    assert.equal(result.success, true);
+    assert.equal(result.createdArtist, true);
+    assert.equal(result.createdAlbum, true);
+    assert.equal(result.triggeredSearch, true);
+    assert.equal(result.album.id, "42");
+    assert.equal(artistAddOptions.triggerSearch, true);
+  } finally {
+    lidarrClient.isConfigured = originalIsConfigured;
+    lidarrClient.getAlbumByMbid = originalGetAlbumByMbid;
+    libraryManager.getArtist = originalGetArtist;
+    libraryManager.resolveArtistAddOptions = originalResolveArtistAddOptions;
+    libraryManager.addArtistWithResolvedOptions = originalAddArtistWithResolvedOptions;
+    libraryManager.waitForAlbumByMbidForArtist = originalWaitForAlbumByMbidForArtist;
+    libraryManager.addAlbum = originalAddAlbum;
+  }
+});
+
+test("requestAlbumFromSearch preserves an addAlbum conflict status", async () => {
+  const originalIsConfigured = lidarrClient.isConfigured;
+  const originalGetAlbumByMbid = lidarrClient.getAlbumByMbid;
+  const originalGetArtist = libraryManager.getArtist;
+  const originalEnsureArtistMonitored = libraryManager.ensureArtistMonitored;
+  const originalAddAlbum = libraryManager.addAlbum;
+
+  lidarrClient.isConfigured = () => true;
+  lidarrClient.getAlbumByMbid = async () => null;
+  libraryManager.getArtist = async () => ({
+    id: "7",
+    artistName: "Boards of Canada",
+    foreignArtistId: "artist-mbid",
+  });
+  libraryManager.ensureArtistMonitored = async (artist) => artist;
+  libraryManager.addAlbum = async () => ({
+    error: "Album already exists in Lidarr under a different artist",
+    statusCode: 409,
+  });
+
+  try {
+    await assert.rejects(
+      () =>
+        libraryManager.requestAlbumFromSearch({
+          albumMbid: "album-mbid",
+          albumName: "Geogaddi",
+          artistMbid: "artist-mbid",
+          artistName: "Boards of Canada",
+        }),
+      (error) => {
+        assert.equal(error.statusCode, 409);
+        assert.equal(error.message, "Album already exists in Lidarr under a different artist");
+        return true;
+      },
+    );
+  } finally {
+    lidarrClient.isConfigured = originalIsConfigured;
+    lidarrClient.getAlbumByMbid = originalGetAlbumByMbid;
+    libraryManager.getArtist = originalGetArtist;
+    libraryManager.ensureArtistMonitored = originalEnsureArtistMonitored;
+    libraryManager.addAlbum = originalAddAlbum;
+  }
+});
+
+test("requestAlbumFromSearch rejects when artist must be created without addArtist permission", async () => {
+  const originalIsConfigured = lidarrClient.isConfigured;
+  const originalGetArtist = libraryManager.getArtist;
+
+  lidarrClient.isConfigured = () => true;
+  libraryManager.getArtist = async () => null;
+
+  try {
+    await assert.rejects(
+      () =>
+        libraryManager.requestAlbumFromSearch({
+          albumMbid: "album-mbid",
+          albumName: "Chrono Trigger",
+          artistMbid: "artist-mbid",
+          artistName: "Various Artists",
+          user: {
+            role: "user",
+            permissions: { addAlbum: true, addArtist: false },
+          },
+        }),
+      (error) => {
+        assert.equal(error.statusCode, 403);
+        assert.match(error.message, /Permission required: addArtist/);
+        return true;
+      },
+    );
+  } finally {
+    lidarrClient.isConfigured = originalIsConfigured;
+    libraryManager.getArtist = originalGetArtist;
+  }
+});
+
+test("addAlbum checks artist monitoring while monitoring only the requested album", async () => {
+  const originalIsConfigured = lidarrClient.isConfigured;
+  const originalGetArtist = lidarrClient.getArtist;
+  const originalGetAlbumByMbid = lidarrClient.getAlbumByMbid;
+  const originalAddAlbum = lidarrClient.addAlbum;
+  const originalUpdateArtistMonitoring = lidarrClient.updateArtistMonitoring;
+
+  let updateArtistMonitoringCalls = 0;
+
+  lidarrClient.isConfigured = () => true;
+  lidarrClient.getArtist = async () => ({
+    id: 7,
+    artistName: "Boards of Canada",
+    foreignArtistId: "artist-mbid",
+    monitored: false,
+    monitor: "none",
+  });
+  lidarrClient.getAlbumByMbid = async () => null;
+  lidarrClient.addAlbum = async () => ({
+    id: 42,
+    artistId: 7,
+    foreignAlbumId: "album-mbid",
+    title: "Geogaddi",
+    monitored: true,
+    statistics: {
+      percentOfTracks: 0,
+      sizeOnDisk: 0,
+    },
+  });
+  lidarrClient.updateArtistMonitoring = async (_artistId, monitorOption) => {
+    updateArtistMonitoringCalls += 1;
+    assert.equal(monitorOption, "none");
+    return {
+      id: 7,
+      artistName: "Boards of Canada",
+      foreignArtistId: "artist-mbid",
+      monitored: true,
+      monitor: "none",
+      monitorNewItems: "none",
+      addOptions: {
+        monitor: "none",
+      },
+    };
+  };
+
+  try {
+    const album = await libraryManager.addAlbum(7, "album-mbid", "Geogaddi");
+    assert.equal(album.id, "42");
+    assert.equal(updateArtistMonitoringCalls, 1);
+  } finally {
+    lidarrClient.isConfigured = originalIsConfigured;
+    lidarrClient.getArtist = originalGetArtist;
+    lidarrClient.getAlbumByMbid = originalGetAlbumByMbid;
+    lidarrClient.addAlbum = originalAddAlbum;
+    lidarrClient.updateArtistMonitoring = originalUpdateArtistMonitoring;
+  }
+});
+
+test("addAlbum force-refreshes and searches an existing album", async () => {
+  const originalIsConfigured = lidarrClient.isConfigured;
+  const originalGetArtist = lidarrClient.getArtist;
+  const originalGetAlbumByMbid = lidarrClient.getAlbumByMbid;
+  const originalGetAlbum = lidarrClient.getAlbum;
+  const originalAddAlbum = lidarrClient.addAlbum;
+  const originalTriggerAlbumSearch = lidarrClient.triggerAlbumSearch;
+  const originalEnsureRequestedAlbumMonitoring = libraryManager.ensureRequestedAlbumMonitoring;
+  const originalScheduleRequestedAlbumMonitoringRepair =
+    libraryManager.scheduleRequestedAlbumMonitoringRepair;
+
+  const existingAlbum = {
+    id: 42,
+    artistId: 7,
+    foreignAlbumId: "fresh-album-mbid",
+    title: "Geogaddi",
+    monitored: true,
+    statistics: {
+      percentOfTracks: 0,
+      sizeOnDisk: 0,
+    },
+  };
+  let preflightOptions = null;
+  let addCalls = 0;
+  let searchCalls = 0;
+
+  lidarrClient.isConfigured = () => true;
+  lidarrClient.getArtist = async () => ({
+    id: 7,
+    artistName: "Boards of Canada",
+    foreignArtistId: "artist-mbid",
+    monitored: true,
+    monitor: "none",
+  });
+  lidarrClient.getAlbumByMbid = async (_mbid, options) => {
+    preflightOptions = options;
+    return existingAlbum;
+  };
+  lidarrClient.getAlbum = async () => existingAlbum;
+  lidarrClient.addAlbum = async () => {
+    addCalls += 1;
+    return existingAlbum;
+  };
+  lidarrClient.triggerAlbumSearch = async (albumId) => {
+    searchCalls += 1;
+    assert.equal(albumId, 42);
+  };
+  libraryManager.ensureRequestedAlbumMonitoring = async () => ({});
+  libraryManager.scheduleRequestedAlbumMonitoringRepair = () => {};
+
+  try {
+    const album = await libraryManager.addAlbum(7, "fresh-album-mbid", "Geogaddi", {
+      triggerSearch: true,
+    });
+
+    assert.equal(album.id, "42");
+    assert.equal(preflightOptions?.forceRefresh, true);
+    assert.equal(addCalls, 0);
+    assert.equal(searchCalls, 1);
+  } finally {
+    lidarrClient.isConfigured = originalIsConfigured;
+    lidarrClient.getArtist = originalGetArtist;
+    lidarrClient.getAlbumByMbid = originalGetAlbumByMbid;
+    lidarrClient.getAlbum = originalGetAlbum;
+    lidarrClient.addAlbum = originalAddAlbum;
+    lidarrClient.triggerAlbumSearch = originalTriggerAlbumSearch;
+    libraryManager.ensureRequestedAlbumMonitoring = originalEnsureRequestedAlbumMonitoring;
+    libraryManager.scheduleRequestedAlbumMonitoringRepair =
+      originalScheduleRequestedAlbumMonitoringRepair;
+  }
+});
+
+test("addAlbum coalesces concurrent requests for the same album", async () => {
+  const originalIsConfigured = lidarrClient.isConfigured;
+  const originalGetArtist = lidarrClient.getArtist;
+  const originalGetAlbumByMbid = lidarrClient.getAlbumByMbid;
+  const originalAddAlbum = lidarrClient.addAlbum;
+
+  let addCalls = 0;
+  let releaseAdd;
+  const addGate = new Promise((resolve) => {
+    releaseAdd = resolve;
+  });
+
+  lidarrClient.isConfigured = () => true;
+  lidarrClient.getArtist = async () => ({
+    id: 7,
+    artistName: "Boards of Canada",
+    foreignArtistId: "artist-mbid",
+    monitored: true,
+    monitor: "none",
+  });
+  lidarrClient.getAlbumByMbid = async () => null;
+  lidarrClient.addAlbum = async () => {
+    addCalls += 1;
+    await addGate;
+    return {
+      id: 42,
+      artistId: 7,
+      foreignAlbumId: "concurrent-album-mbid",
+      title: "Geogaddi",
+      monitored: true,
+      statistics: {
+        percentOfTracks: 0,
+        sizeOnDisk: 0,
+      },
+    };
+  };
+
+  try {
+    const firstRequest = libraryManager.addAlbum(7, "concurrent-album-mbid", "Geogaddi");
+    const secondRequest = libraryManager.addAlbum(7, "concurrent-album-mbid", "Geogaddi");
+    releaseAdd();
+
+    const [first, second] = await Promise.all([firstRequest, secondRequest]);
+    assert.equal(addCalls, 1);
+    assert.equal(first.id, "42");
+    assert.equal(second.id, "42");
+  } finally {
+    lidarrClient.isConfigured = originalIsConfigured;
+    lidarrClient.getArtist = originalGetArtist;
+    lidarrClient.getAlbumByMbid = originalGetAlbumByMbid;
+    lidarrClient.addAlbum = originalAddAlbum;
+  }
+});
+
+test("addAlbum reports when Lidarr already owns an album under another artist", async () => {
+  const originalIsConfigured = lidarrClient.isConfigured;
+  const originalGetArtist = lidarrClient.getArtist;
+  const originalGetAlbumByMbid = lidarrClient.getAlbumByMbid;
+  const originalAddAlbum = lidarrClient.addAlbum;
+
+  let addCalls = 0;
+  lidarrClient.isConfigured = () => true;
+  lidarrClient.getArtist = async () => ({
+    id: 7,
+    artistName: "Boards of Canada",
+    foreignArtistId: "artist-mbid",
+    monitored: true,
+    monitor: "none",
+  });
+  lidarrClient.getAlbumByMbid = async () => ({
+    id: 99,
+    artistId: 8,
+    foreignAlbumId: "owned-by-another-artist",
+    title: "Geogaddi",
+    monitored: true,
+  });
+  lidarrClient.addAlbum = async () => {
+    addCalls += 1;
+    throw new Error("AlbumExistsValidator: This album has already been added");
+  };
+
+  try {
+    const result = await libraryManager.addAlbum(7, "owned-by-another-artist", "Geogaddi");
+
+    assert.equal(result.statusCode, 409);
+    assert.equal(result.error, "Album already exists in Lidarr under a different artist");
+    assert.equal(addCalls, 0);
+  } finally {
+    lidarrClient.isConfigured = originalIsConfigured;
+    lidarrClient.getArtist = originalGetArtist;
+    lidarrClient.getAlbumByMbid = originalGetAlbumByMbid;
+    lidarrClient.addAlbum = originalAddAlbum;
+  }
+});
+
+test("addAlbum monitors and searches the requested album after Lidarr conflict lag", async () => {
+  const originalIsConfigured = lidarrClient.isConfigured;
+  const originalGetArtist = lidarrClient.getArtist;
+  const originalGetAlbumByMbid = lidarrClient.getAlbumByMbid;
+  const originalAddAlbum = lidarrClient.addAlbum;
+  const originalGetAlbum = lidarrClient.getAlbum;
+  const originalMonitorAlbum = lidarrClient.monitorAlbum;
+  const originalTriggerAlbumSearch = lidarrClient.triggerAlbumSearch;
+  const originalUpdateArtistMonitoring = lidarrClient.updateArtistMonitoring;
+  const originalWaitForAlbumByMbidForArtist = libraryManager.waitForAlbumByMbidForArtist;
+
+  let monitorCalls = 0;
+  let searchCalls = 0;
+  let updateArtistMonitoringCalls = 0;
+
+  lidarrClient.isConfigured = () => true;
+  lidarrClient.getArtist = async () => ({
+    id: 7,
+    artistName: "Boards of Canada",
+    foreignArtistId: "artist-mbid",
+    monitored: false,
+    monitor: "none",
+  });
+  lidarrClient.getAlbumByMbid = async () => null;
+  lidarrClient.updateArtistMonitoring = async (_artistId, monitorOption) => {
+    updateArtistMonitoringCalls += 1;
+    assert.equal(monitorOption, "none");
+    return {
+      id: 7,
+      artistName: "Boards of Canada",
+      foreignArtistId: "artist-mbid",
+      monitored: true,
+      monitor: "none",
+    };
+  };
+  lidarrClient.addAlbum = async () => {
+    throw new Error("AlbumExistsValidator: This album has already been added");
+  };
+  libraryManager.waitForAlbumByMbidForArtist = async () => ({
+    id: 42,
+    artistId: "7",
+    foreignAlbumId: "album-mbid",
+    title: "Geogaddi",
+    monitored: false,
+    statistics: {
+      percentOfTracks: 0,
+      sizeOnDisk: 0,
+    },
+  });
+  lidarrClient.monitorAlbum = async (albumId, monitored) => {
+    monitorCalls += 1;
+    assert.equal(albumId, 42);
+    assert.equal(monitored, true);
+  };
+  lidarrClient.triggerAlbumSearch = async (albumId) => {
+    searchCalls += 1;
+    assert.equal(albumId, 42);
+  };
+  lidarrClient.getAlbum = async () => ({
+    id: 42,
+    artistId: 7,
+    foreignAlbumId: "album-mbid",
+    title: "Geogaddi",
+    monitored: true,
+    statistics: {
+      percentOfTracks: 0,
+      sizeOnDisk: 0,
+    },
+  });
+
+  try {
+    const album = await libraryManager.addAlbum(7, "album-mbid", "Geogaddi", {
+      triggerSearch: true,
+    });
+
+    assert.equal(album.id, "42");
+    assert.equal(album.monitored, true);
+    assert.equal(updateArtistMonitoringCalls, 1);
+    assert.equal(monitorCalls, 1);
+    assert.equal(searchCalls, 1);
+  } finally {
+    lidarrClient.isConfigured = originalIsConfigured;
+    lidarrClient.getArtist = originalGetArtist;
+    lidarrClient.getAlbumByMbid = originalGetAlbumByMbid;
+    lidarrClient.addAlbum = originalAddAlbum;
+    lidarrClient.getAlbum = originalGetAlbum;
+    lidarrClient.monitorAlbum = originalMonitorAlbum;
+    lidarrClient.triggerAlbumSearch = originalTriggerAlbumSearch;
+    lidarrClient.updateArtistMonitoring = originalUpdateArtistMonitoring;
+    libraryManager.waitForAlbumByMbidForArtist = originalWaitForAlbumByMbidForArtist;
+  }
+});

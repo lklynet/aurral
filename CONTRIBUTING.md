@@ -90,6 +90,6 @@ The command installs Chromium before running Playwright. Non-loopback URLs must 
 
 Playwright also reads `backend/.env` when it exists, so `AURRAL_TEST_USERNAME`, `AURRAL_TEST_PASSWORD`, and `AURRAL_BASE_URL` can live there instead. Without `AURRAL_BASE_URL`, the suite targets `npm run dev` on `AURRAL_DEV_WEB_PORT`, or port 3017 when that is unset. `npm run dev` reads `AURRAL_DEV_API_PORT` and `AURRAL_DEV_WEB_PORT` from `backend/.env` and defaults to 3001 and 3009.
 
-`activity-album-grabs.spec.js` starts its own server from the built frontend, so run `npm run build` first.
+`activity-album-grabs.spec.ts` starts its own server from the built frontend, so run `npm run build` first.
 
 CI runs only the specs that fake every API response, against the production build and without credentials. A spec belongs in that CI step only when it needs no live service or sign-in.

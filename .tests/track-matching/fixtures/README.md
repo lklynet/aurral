@@ -15,7 +15,7 @@ assigned the whole group to one split. Do not tune matching rules against
 `acceptance.jsonl`.
 
 `source-releases.jsonl` provides release tracklists for the session cases.
-The loader and report functions live in `../fixture-corpus.js`.
+The loader and report functions live in `../fixture-corpus.ts`.
 `correctIds` records adjudicated ground truth. `contradictedIds` records only
 explicit recording-ID conflicts visible in candidate metadata or downloaded
 file tags. A wrong match with no visible conflict still counts under `wrong`.

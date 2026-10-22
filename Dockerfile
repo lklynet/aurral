@@ -85,4 +85,4 @@ ENV GITHUB_REPO=$GITHUB_REPO
 EXPOSE 3001
 
 ENTRYPOINT ["docker-entrypoint.sh"]
-CMD ["node", "backend/server.js"]
+CMD ["node", "backend/server.ts"]

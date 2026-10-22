@@ -1,0 +1,754 @@
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import {
+  requestAlbumFromSearch,
+  settleLibraryOwnerConflict,
+} from "../utils/api/endpoints/library.ts";
+import { addStaticPlaylistTracks, createStaticPlaylist } from "../utils/api/endpoints/playlists.ts";
+import { getTagSuggestions } from "../utils/api/endpoints/discovery.ts";
+import { searchLibrary, searchUnified } from "../utils/api/endpoints/search.ts";
+import {
+  buildUnifiedSuggestionSections,
+  flattenSuggestionSections,
+  navigateFromSearchResult,
+} from "../utils/searchNavigation";
+import { addRecentSearch, clearRecentSearches, readRecentSearches } from "../utils/recentSearches";
+
+import {
+  AUTOCOMPLETE_DEBOUNCE_MS,
+  LIBRARY_AUTOCOMPLETE_DEBOUNCE_MS,
+  SUGGEST_LIMIT,
+  TAG_SUGGESTIONS_LIMIT,
+  ALBUM_PENDING_STATUSES,
+  isEditableTarget,
+  getSuggestionTitle,
+  getSuggestionMeta,
+  getSuggestionItemId,
+  getTrackSavingKey,
+  isSuggestionInLibrary,
+  buildTrackPlaylistPayload,
+} from "../utils/globalSearchUtils";
+import {
+  describeAlbumRequestResult,
+  getAlbumAddAction,
+  shouldTriggerAlbumSearch,
+} from "../utils/albumAddAction";
+import { buildAlbumRequestPayload } from "../utils/libraryDestination";
+import { useLibraryDestination } from "../hooks/useLibraryDestination";
+import { useActiveDownloads } from "../hooks/useActiveDownloads";
+import { useDebouncedTask } from "../hooks/useDebouncedTask";
+import { useStaticPlaylists } from "../hooks/useStaticPlaylists";
+import { useNavigate, useLocation } from "react-router";
+import { Clock, Search } from "lucide-react";
+import { DotLoader } from "./DotLoader";
+import AddActionButton from "./AddActionButton";
+import SearchLibraryCheck from "./SearchLibraryCheck";
+import { TrackPlaylistMenu } from "../pages/ArtistDetails/components/TrackPlaylistMenu";
+import { useAuth } from "../contexts/AuthContext";
+import { useToast } from "../contexts/ToastContext";
+import { searchSettingsItems } from "../pages/Settings/settingsTabsConfig";
+
+const EMPTY_SUGGESTION_RESULTS = { library: null, catalog: null };
+
+function GlobalSearch({ settingsMode = false }) {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [localSearchConfigured, setLocalSearchConfigured] = useState(true);
+  const [suggestionRows, setSuggestionRows] = useState([]);
+  const [suggestionMode, setSuggestionMode] = useState(null);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [suggestionIndex, setSuggestionIndex] = useState(-1);
+  const [inputFocused, setInputFocused] = useState(false);
+  const [recentSearches, setRecentSearches] = useState(() => readRecentSearches());
+  const searchContainerRef = useRef(null);
+  const inputRef = useRef(null);
+  const suggestionResultsRef = useRef(EMPTY_SUGGESTION_RESULTS);
+  const { schedule: scheduleSuggest, cancel: cancelSuggest } = useDebouncedTask();
+  const { schedule: scheduleLibrarySuggest, cancel: cancelLibrarySuggest } = useDebouncedTask();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { hasPermission } = useAuth();
+  const { showSuccess, showError, showInfo } = useToast();
+  const libraryDestination = useLibraryDestination();
+  const { isAlbumDownloading } = useActiveDownloads();
+  const {
+    staticPlaylists,
+    setStaticPlaylists,
+    playlistsLoading: playlistModalLoading,
+    playlistsError: playlistModalError,
+    setPlaylistsError: setPlaylistModalError,
+    loadStaticPlaylists,
+  } = useStaticPlaylists();
+  const canAddAlbum = hasPermission("addAlbum");
+  const [pendingAlbumIds, setPendingAlbumIds] = useState({});
+  const [playlistMenuSavingKey, setPlaylistMenuSavingKey] = useState("");
+
+  const selectableRows = useMemo(() => {
+    if (suggestionMode === "tag") return suggestionRows;
+    return suggestionRows.filter((row) => row.kind === "item");
+  }, [suggestionRows, suggestionMode]);
+
+  const settingsSearchResults = useMemo(() => {
+    if (!settingsMode) return [];
+    return searchSettingsItems(searchQuery);
+  }, [searchQuery, settingsMode]);
+
+  const showRecentSearches = useMemo(
+    () =>
+      inputFocused &&
+      !settingsMode &&
+      searchQuery.trim().length < 2 &&
+      recentSearches.length > 0 &&
+      !loadingSuggestions &&
+      suggestionRows.length === 0,
+    [
+      inputFocused,
+      loadingSuggestions,
+      recentSearches.length,
+      searchQuery,
+      settingsMode,
+      suggestionRows.length,
+    ],
+  );
+
+  const recentSelectableRows = useMemo(
+    () =>
+      showRecentSearches
+        ? recentSearches.map((query, index) => ({
+            kind: "recent",
+            key: `recent:${query}:${index}`,
+            query,
+          }))
+        : [],
+    [recentSearches, showRecentSearches],
+  );
+
+  const keyboardRows = settingsMode
+    ? settingsSearchResults
+    : showRecentSearches
+      ? recentSelectableRows
+      : selectableRows;
+
+  const rememberSearch = useCallback((rawQuery) => {
+    const next = addRecentSearch(rawQuery);
+    setRecentSearches(next);
+  }, []);
+
+  const closeAutocomplete = useCallback(() => {
+    suggestionResultsRef.current = EMPTY_SUGGESTION_RESULTS;
+    setSuggestionRows([]);
+    setSuggestionMode(null);
+    setSuggestionIndex(-1);
+  }, []);
+
+  const showUnifiedSuggestions = useCallback((results, { resetIndex = false } = {}) => {
+    suggestionResultsRef.current = results;
+    setSuggestionRows(
+      flattenSuggestionSections(
+        buildUnifiedSuggestionSections({ ...results.catalog, library: results.library }),
+      ),
+    );
+    setSuggestionMode("unified");
+    if (resetIndex) setSuggestionIndex(-1);
+  }, []);
+
+  useEffect(() => {
+    setSearchQuery("");
+    closeAutocomplete();
+  }, [location.pathname, location.search, closeAutocomplete]);
+
+  useEffect(() => {
+    const handleGlobalKeyDown = (event) => {
+      if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) {
+        return;
+      }
+      if (isEditableTarget(event.target)) return;
+      event.preventDefault();
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    };
+
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, []);
+
+  useEffect(() => {
+    const trimmed = searchQuery.trim();
+    const cancelAll = () => {
+      cancelSuggest();
+      cancelLibrarySuggest();
+    };
+    if (settingsMode) {
+      cancelAll();
+      setLoadingSuggestions(false);
+      closeAutocomplete();
+      return cancelAll;
+    }
+    const isTagShortcut = trimmed.startsWith("#");
+    const tagPart = isTagShortcut ? trimmed.slice(1).trim() : trimmed;
+
+    if (isTagShortcut) {
+      cancelLibrarySuggest();
+      suggestionResultsRef.current = EMPTY_SUGGESTION_RESULTS;
+      if (tagPart.length < 2) {
+        cancelSuggest();
+        setLoadingSuggestions(false);
+        closeAutocomplete();
+        return;
+      }
+
+      scheduleSuggest(async (isCurrent) => {
+        setLoadingSuggestions(true);
+        try {
+          const data = await getTagSuggestions(tagPart, TAG_SUGGESTIONS_LIMIT);
+          if (!isCurrent()) return;
+          const raw = data.tags || [];
+          const seen = new Set();
+          const tags = raw.filter((tag) => {
+            const key = String(tag || "")
+              .trim()
+              .toLowerCase();
+            if (!key || seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+          setSuggestionRows(
+            tags.map((tagName) => ({
+              kind: "tag",
+              key: `tag:${tagName}`,
+              tagName,
+            })),
+          );
+          setSuggestionMode("tag");
+          setSuggestionIndex(-1);
+        } catch {
+          if (isCurrent()) {
+            closeAutocomplete();
+          }
+        } finally {
+          if (isCurrent()) {
+            setLoadingSuggestions(false);
+          }
+        }
+      }, AUTOCOMPLETE_DEBOUNCE_MS);
+
+      return cancelSuggest;
+    }
+
+    if (trimmed.length < 2) {
+      cancelAll();
+      setLoadingSuggestions(false);
+      closeAutocomplete();
+      return;
+    }
+
+    scheduleLibrarySuggest(async (isCurrent, signal) => {
+      const library = await searchLibrary(trimmed, { limit: SUGGEST_LIMIT, signal }).catch(
+        () => null,
+      );
+      if (!isCurrent()) return;
+      showUnifiedSuggestions({ ...suggestionResultsRef.current, library }, { resetIndex: true });
+    }, LIBRARY_AUTOCOMPLETE_DEBOUNCE_MS);
+
+    scheduleSuggest(async (isCurrent, signal) => {
+      setLoadingSuggestions(true);
+      try {
+        const catalog = await searchUnified(trimmed, {
+          mode: "suggest",
+          limit: SUGGEST_LIMIT,
+          signal,
+        });
+        if (!isCurrent()) return;
+        setLocalSearchConfigured(!!catalog?.localSearchConfigured);
+        showUnifiedSuggestions({ ...suggestionResultsRef.current, catalog });
+      } catch {
+        if (isCurrent()) {
+          showUnifiedSuggestions({ ...suggestionResultsRef.current, catalog: null });
+        }
+      } finally {
+        if (isCurrent()) {
+          setLoadingSuggestions(false);
+        }
+      }
+    }, AUTOCOMPLETE_DEBOUNCE_MS);
+
+    return cancelAll;
+  }, [
+    searchQuery,
+    closeAutocomplete,
+    scheduleSuggest,
+    cancelSuggest,
+    scheduleLibrarySuggest,
+    cancelLibrarySuggest,
+    showUnifiedSuggestions,
+    settingsMode,
+  ]);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(event.target)) {
+        closeAutocomplete();
+      }
+    };
+    document.addEventListener("click", handleClickOutside);
+    return () => document.removeEventListener("click", handleClickOutside);
+  }, [closeAutocomplete]);
+
+  const navigateToSearch = useCallback(
+    (rawQuery) => {
+      const trimmed = String(rawQuery || "").trim();
+      if (!trimmed || settingsMode) return;
+      rememberSearch(trimmed);
+      if (trimmed.startsWith("#")) {
+        navigate(`/search?q=${encodeURIComponent(trimmed.slice(1))}&type=tag`);
+      } else {
+        navigate(`/search?q=${encodeURIComponent(trimmed)}`);
+      }
+      setSearchQuery("");
+      closeAutocomplete();
+      setInputFocused(false);
+    },
+    [navigate, closeAutocomplete, rememberSearch, settingsMode],
+  );
+
+  const navigateToSettings = useCallback(
+    (tab) => {
+      if (!tab) return;
+      navigate(`/settings/${tab.id}`);
+      setSearchQuery("");
+      closeAutocomplete();
+      setInputFocused(false);
+    },
+    [navigate, closeAutocomplete],
+  );
+
+  const handleSubmit = (event) => {
+    event.preventDefault();
+    if (settingsMode) {
+      navigateToSettings(settingsSearchResults[0]);
+      return;
+    }
+    navigateToSearch(searchQuery);
+  };
+
+  const handleSuggestionSelect = useCallback(
+    (selection) => {
+      if (!selection) return;
+
+      if (selection.kind === "recent") {
+        navigateToSearch(selection.query);
+        return;
+      }
+
+      if (selection.kind === "tag") {
+        rememberSearch(`#${selection.tagName}`);
+        navigate(`/search?q=${encodeURIComponent(selection.tagName)}&type=tag`);
+        setSearchQuery("");
+        closeAutocomplete();
+        setInputFocused(false);
+        return;
+      }
+
+      if (selection.kind === "item") {
+        const query = searchQuery.trim();
+        if (query) rememberSearch(query);
+        navigateFromSearchResult(navigate, selection.item, { query });
+        setSearchQuery("");
+        closeAutocomplete();
+        setInputFocused(false);
+      }
+    },
+    [navigate, navigateToSearch, rememberSearch, searchQuery, closeAutocomplete],
+  );
+
+  const handleClearRecentSearches = useCallback((event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setRecentSearches(clearRecentSearches());
+    setSuggestionIndex(-1);
+  }, []);
+
+  const updateSuggestionItem = useCallback((targetItem, updates) => {
+    if (!targetItem) return;
+    const targetType = targetItem.type;
+    const targetId = getSuggestionItemId(targetItem);
+    setSuggestionRows((rows) =>
+      rows.map((row) => {
+        if (row.kind !== "item" || row.item?.type !== targetType) return row;
+        const currentId = getSuggestionItemId(row.item);
+        if (!targetId || currentId !== targetId) return row;
+        const patch = typeof updates === "function" ? updates(row.item) : updates || {};
+        return {
+          ...row,
+          item: {
+            ...row.item,
+            ...patch,
+          },
+        };
+      }),
+    );
+  }, []);
+
+  const handleAlbumAction = useCallback(
+    async (album, managedBy = libraryDestination.primary) => {
+      if (!album?.id) return;
+      const shouldTriggerSearch = shouldTriggerAlbumSearch({
+        status: album.status,
+        inLibrary: album.inLibrary,
+        monitored: album.monitored,
+      });
+      setPendingAlbumIds((prev) => ({ ...prev, [album.id]: true }));
+      try {
+        const result = await requestAlbumFromSearch(
+          buildAlbumRequestPayload({
+            albumMbid: album.id,
+            albumName: album.title,
+            artistMbid: album.artistMbid,
+            artistName: album.artistName,
+            managedBy,
+            triggerSearch: shouldTriggerSearch,
+          }),
+        );
+        const nextAlbum = {
+          inLibrary: true,
+          managedBy: result?.album?.managedBy || result?.managedBy || managedBy,
+          libraryAlbumId: result.album?.id,
+          libraryArtistId: result.artist?.id,
+          status: result?.queued ? "processing" : result.status,
+        };
+        updateSuggestionItem(album, nextAlbum);
+        const outcome = describeAlbumRequestResult(result, album.title, managedBy);
+        (outcome.kind === "info" ? showInfo : showSuccess)(outcome.message);
+      } catch (err) {
+        const conflict = settleLibraryOwnerConflict(err);
+        if (conflict) {
+          updateSuggestionItem(album, { ownerConflict: conflict });
+          showInfo(`${album.title}: ${conflict.message}`);
+          return;
+        }
+        showError(
+          `Could not download the album: ${
+            err.response?.data?.message || err.response?.data?.error || err.message
+          }`,
+        );
+      } finally {
+        setPendingAlbumIds(({ [album.id]: _, ...prev }) => prev);
+      }
+    },
+    [libraryDestination.primary, showError, showInfo, showSuccess, updateSuggestionItem],
+  );
+
+  const handleSearchTrackAdd = useCallback(
+    async (track, target) => {
+      const payload = buildTrackPlaylistPayload(track);
+      if (!payload) {
+        showError("Track details are incomplete");
+        return;
+      }
+
+      const savingKey = getTrackSavingKey(track);
+      setPlaylistModalError("");
+      setPlaylistMenuSavingKey(savingKey);
+      try {
+        if (target?.mode === "new") {
+          const name = String(target?.name || "").trim() || "Playlist";
+          const response = await createStaticPlaylist({
+            name,
+            tracks: [payload],
+          });
+          showSuccess(`Track saved to ${response?.playlist?.name || name}`);
+        } else {
+          const targetPlaylist = staticPlaylists.find(
+            (playlist) => playlist.id === target?.playlistId,
+          );
+          await addStaticPlaylistTracks(target.playlistId, {
+            tracks: [payload],
+          });
+          showSuccess(`Track added to ${targetPlaylist?.name || "playlist"}`);
+        }
+
+        const nextPlaylists = await loadStaticPlaylists();
+        if (nextPlaylists) {
+          setStaticPlaylists(nextPlaylists);
+        }
+      } catch (err) {
+        const message =
+          err.response?.data?.message ||
+          err.response?.data?.error ||
+          err.message ||
+          "Failed to save track to playlist";
+        setPlaylistModalError(message);
+        showError(message);
+      } finally {
+        setPlaylistMenuSavingKey("");
+      }
+    },
+    [
+      loadStaticPlaylists,
+      setPlaylistModalError,
+      setStaticPlaylists,
+      staticPlaylists,
+      showError,
+      showSuccess,
+    ],
+  );
+
+  const renderSuggestionAction = useCallback(
+    (item) => {
+      if (!item) return null;
+      if (isSuggestionInLibrary(item) && item.type !== "track") {
+        return <SearchLibraryCheck />;
+      }
+
+      if (item.type === "album") {
+        if (!canAddAlbum || !item.id) return null;
+        const pending = !!pendingAlbumIds[item.id] || isAlbumDownloading(item.id);
+        return (
+          <AddActionButton
+            {...getAlbumAddAction(item, libraryDestination)}
+            ownerConflict={item.ownerConflict}
+            onAdd={(managedBy) => handleAlbumAction(item, managedBy)}
+            isLoading={pending}
+            loadingLabel="Downloading"
+            disabled={pending || ALBUM_PENDING_STATUSES.has(item.status)}
+          />
+        );
+      }
+
+      if (item.type === "track") {
+        const savingKey = getTrackSavingKey(item);
+        return (
+          <TrackPlaylistMenu
+            track={item}
+            triggerLabel="Add to playlist"
+            playlists={staticPlaylists}
+            loading={playlistModalLoading}
+            saving={playlistMenuSavingKey === savingKey}
+            error={playlistModalError}
+            defaultNewPlaylistName={`${item.artistName || "Artist"} Picks`}
+            menuVariant="search-suggestion"
+            onLoadPlaylists={loadStaticPlaylists}
+            onSelect={(target) => handleSearchTrackAdd(item, target)}
+          />
+        );
+      }
+
+      return null;
+    },
+    [
+      canAddAlbum,
+      handleAlbumAction,
+      isAlbumDownloading,
+      libraryDestination,
+      handleSearchTrackAdd,
+      loadStaticPlaylists,
+      pendingAlbumIds,
+      playlistMenuSavingKey,
+      playlistModalError,
+      playlistModalLoading,
+      staticPlaylists,
+    ],
+  );
+
+  const handleKeyDown = (event) => {
+    if (event.key === "Escape") {
+      closeAutocomplete();
+      return;
+    }
+    if (keyboardRows.length === 0) return;
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setSuggestionIndex((current) => (current < keyboardRows.length - 1 ? current + 1 : current));
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setSuggestionIndex((current) => (current > 0 ? current - 1 : -1));
+    } else if (event.key === "Enter" && suggestionIndex >= 0) {
+      event.preventDefault();
+      if (settingsMode) {
+        navigateToSettings(keyboardRows[suggestionIndex]);
+      } else {
+        handleSuggestionSelect(keyboardRows[suggestionIndex]);
+      }
+    }
+  };
+
+  let selectableCursor = -1;
+  const emptySearchPlaceholder = settingsMode ? (
+    <>
+      <span className="global-search__scope-label--short">Search settings</span>
+      <span className="global-search__scope-label--full">Type</span>
+      <span className="global-search__key">/</span>
+      <span className="global-search__scope-label--full">to search</span>
+    </>
+  ) : inputFocused ? (
+    <span className="global-search__scope-label--full">Search music, artists, or #rock</span>
+  ) : (
+    <>
+      <span className="global-search__scope-label--short">Search...</span>
+      <span className="global-search__scope-label--full">Type</span>
+      <span className="global-search__key">/</span>
+      <span className="global-search__scope-label--full">to search</span>
+    </>
+  );
+
+  return (
+    <form ref={searchContainerRef} onSubmit={handleSubmit} className="global-search">
+      <div className="global-search__box global-search__box--unified">
+        <div className="global-search__input-wrap global-search__input-wrap--unified">
+          <Search className="global-search__icon" />
+          <input
+            ref={inputRef}
+            type="text"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            onFocus={() => {
+              setInputFocused(true);
+              setSuggestionIndex(-1);
+            }}
+            onBlur={() => {
+              window.setTimeout(() => setInputFocused(false), 120);
+            }}
+            onKeyDown={handleKeyDown}
+            placeholder=""
+            aria-label={settingsMode ? "Search settings" : "Search music, artists, or tags"}
+            className="global-search__input"
+            autoComplete="off"
+          />
+          {!searchQuery && (
+            <div className="global-search__placeholder">{emptySearchPlaceholder}</div>
+          )}
+          {loadingSuggestions && (
+            <div className="global-search__loader">
+              <DotLoader size="md" label={null} />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {!loadingSuggestions && settingsMode && settingsSearchResults.length > 0 && (
+        <div className="global-search__suggestions global-search__suggestions--grouped">
+          {settingsSearchResults.map((item, index) => (
+            <button
+              key={item.key}
+              type="button"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => navigateToSettings(item)}
+              className={`global-search__suggestion${
+                index === suggestionIndex ? " is-highlighted" : ""
+              }`}
+            >
+              <span className="global-search__settings-result-label">{item.label}</span>
+              <span className="global-search__settings-result-meta">
+                {item.kind === "page" ? "Settings" : `${item.kind} · ${item.tabLabel}`}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {!loadingSuggestions &&
+        !settingsMode &&
+        suggestionMode === "unified" &&
+        !localSearchConfigured &&
+        searchQuery.trim().length >= 2 && (
+          <div className="global-search__suggestions global-search__suggestions--grouped">
+            <div className="global-search__suggestion-group">Search not configured</div>
+            <div className="global-search__suggestion global-search__suggestion--message">
+              Set up the metadata server in Settings → Metadata to search music.
+            </div>
+          </div>
+        )}
+
+      {!settingsMode && showRecentSearches && (
+        <div className="global-search__suggestions global-search__suggestions--grouped global-search__suggestions--recent">
+          <div className="global-search__recent-header">
+            <span className="global-search__recent-label">Recent searches</span>
+            <button
+              type="button"
+              className="global-search__recent-clear"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={handleClearRecentSearches}
+            >
+              Clear
+            </button>
+          </div>
+          {recentSelectableRows.map((row, index) => (
+            <button
+              key={row.key}
+              type="button"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => handleSuggestionSelect(row)}
+              className={`global-search__suggestion global-search__suggestion--recent${
+                index === suggestionIndex ? " is-highlighted" : ""
+              }`}
+            >
+              <Clock className="global-search__recent-icon" aria-hidden="true" />
+              <span className="global-search__recent-query">{row.query}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {!settingsMode && suggestionRows.length > 0 && (
+        <div className="global-search__suggestions global-search__suggestions--grouped">
+          {suggestionMode === "tag"
+            ? suggestionRows.map((row, index) => (
+                <button
+                  key={row.key}
+                  type="button"
+                  onClick={() => handleSuggestionSelect(row)}
+                  className={`global-search__suggestion${
+                    index === suggestionIndex ? " is-highlighted" : ""
+                  }`}
+                >
+                  #{row.tagName}
+                </button>
+              ))
+            : suggestionRows.map((row) => {
+                if (row.kind === "header") {
+                  return (
+                    <div key={row.key} className="global-search__suggestion-group">
+                      {row.label}
+                    </div>
+                  );
+                }
+                selectableCursor += 1;
+                const highlighted = selectableCursor === suggestionIndex;
+                const item = row.item;
+                const label = getSuggestionTitle(item);
+                const meta = getSuggestionMeta(item);
+                const action = renderSuggestionAction(item);
+
+                return (
+                  <div
+                    key={row.key}
+                    className={`global-search__suggestion global-search__suggestion--rich${
+                      highlighted ? " is-highlighted" : ""
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => handleSuggestionSelect(row)}
+                      className="global-search__suggestion-main"
+                    >
+                      <span className="global-search__suggestion-copy">
+                        <span className="global-search__suggestion-title">{label}</span>
+                        {meta && <span className="global-search__suggestion-meta">{meta}</span>}
+                      </span>
+                    </button>
+                    {action && (
+                      <span
+                        className="global-search__suggestion-actions"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        {action}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+        </div>
+      )}
+    </form>
+  );
+}
+
+export default GlobalSearch;

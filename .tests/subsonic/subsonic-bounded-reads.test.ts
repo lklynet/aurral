@@ -1,0 +1,141 @@
+import assert from "node:assert/strict";
+import { test, beforeAll, afterAll, vi } from "vite-plus/test";
+import {
+  cleanupIsolatedState,
+  resetDatabase,
+  setupIsolatedBackend,
+} from "../helpers/backendTestHarness.ts";
+
+const [
+  isolatedState,
+  { db },
+  subsonic,
+  libraryStore,
+  { rebuildLibraryGenreStats },
+  { forwardWorkerBroadcast },
+] = await setupIsolatedBackend(
+  "subsonic-bounded-reads",
+  "backend/config/db-sqlite.ts",
+  "backend/services/subsonicLibraryService.ts",
+  "backend/services/libraryMediaStore.ts",
+  "backend/services/libraryQueryService.ts",
+  "backend/services/appRuntime.ts",
+);
+
+let album;
+let track;
+
+beforeAll(() => {
+  resetDatabase(db);
+  const artist = libraryStore.upsertLibraryArtist({
+    identityKey: "bounded:artist",
+    mbid: "bounded-artist-mbid",
+    name: "Bounded Artist",
+    metadata: { genres: ["Rock"] },
+  });
+  album = libraryStore.upsertLibraryAlbum({
+    identityKey: "bounded:album",
+    mbid: "bounded-album-mbid",
+    releaseGroupMbid: "bounded-release-group",
+    artistId: artist.id,
+    title: "Bounded Album",
+    metadata: { genres: ["Rock"] },
+  });
+  track = libraryStore.upsertLibraryTrack({
+    identityKey: "bounded:track",
+    title: "Bounded Track",
+    artistName: artist.name,
+    metadata: { genres: ["Rock"] },
+  });
+  libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
+  libraryStore.upsertLibraryMediaFile({
+    trackId: track.id,
+    albumId: album.id,
+    source: "lidarr",
+    path: "/tmp/bounded-track.flac",
+  });
+});
+
+afterAll(async () => {
+  await cleanupIsolatedState(isolatedState);
+});
+
+test("focused Subsonic requests never execute an unfiltered complete-library query", () => {
+  const prepared = [];
+  const prepare = db.prepare.bind(db);
+  vi.spyOn(db, "prepare").mockImplementation((sql) => {
+    prepared.push(String(sql));
+    return prepare(sql);
+  });
+  db.prepare("UPDATE library_tracks SET metadata_json = '{' WHERE identity_key = ?").run(
+    "bounded:track",
+  );
+
+  assert.ok(subsonic.listArtists().length);
+  assert.ok(subsonic.getArtist(`artist:${encodeURIComponent("bounded:artist")}`));
+  assert.ok(subsonic.getAlbum(`album:${encodeURIComponent("bounded:album")}`));
+  assert.ok(subsonic.searchLibrary("Bounded", { songCount: 1 }).song.length);
+  assert.ok(subsonic.getAlbumList({ size: 1 }).length);
+  assert.ok(subsonic.getSongsByGenre("Rock", { count: 1 }).length);
+  assert.deepEqual(subsonic.getGenres(), [{ albumCount: 1, songCount: 1, value: "Rock" }]);
+
+  const completeQueries = prepared.filter(
+    (sql) =>
+      sql.includes("FROM library_tracks AS track") &&
+      sql.includes("LEFT JOIN library_media_files AS media") &&
+      !/\bWHERE\b/.test(sql),
+  );
+  assert.deepEqual(completeQueries, []);
+  const hydration = prepared.filter(
+    (sql) => sql.includes("track.id AS track_id") && sql.includes("FROM library_tracks AS track"),
+  );
+  assert.ok(hydration.length > 0);
+  assert.equal(
+    hydration.every((sql) => /WHERE (artist|album|track)\.id IN/.test(sql)),
+    true,
+  );
+  const artistIndexQuery = prepared.find(
+    (sql) =>
+      sql.includes("COUNT(DISTINCT album.id) AS album_count") &&
+      sql.includes("FROM library_artists AS artist"),
+  );
+  assert.ok(artistIndexQuery);
+  assert.match(artistIndexQuery, /media\.available = 1/);
+});
+
+test("Subsonic genres come from the last library scan until the library changes", async () => {
+  const completeScan = async () => {
+    rebuildLibraryGenreStats();
+    await forwardWorkerBroadcast({
+      type: "websocket-broadcast",
+      channel: "library",
+      data: { type: "library_scan_completed" },
+    });
+  };
+  const setGenre = (genre) => {
+    const metadata = JSON.stringify({ genres: [genre] });
+    for (const table of ["library_artists", "library_albums", "library_tracks"]) {
+      db.prepare(`UPDATE ${table} SET metadata_json = ? WHERE identity_key LIKE 'bounded:%'`).run(
+        metadata,
+      );
+    }
+  };
+
+  await completeScan();
+  assert.deepEqual(subsonic.getGenres(), [{ albumCount: 1, songCount: 1, value: "Rock" }]);
+
+  setGenre("Jazz");
+  assert.deepEqual(subsonic.getGenres(), [{ albumCount: 1, songCount: 1, value: "Rock" }]);
+
+  await completeScan();
+  assert.deepEqual(subsonic.getGenres(), [{ albumCount: 1, songCount: 1, value: "Jazz" }]);
+
+  libraryStore.upsertLibraryMediaFile({
+    trackId: track.id,
+    albumId: album.id,
+    source: "lidarr",
+    path: "/tmp/bounded-track.flac",
+    available: false,
+  });
+  assert.deepEqual(subsonic.getGenres(), []);
+});

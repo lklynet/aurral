@@ -7,13 +7,13 @@ Aurral matches tracks with native JavaScript rules. The matcher needs no Python 
 
 ## Decision path
 
-1. `trackIdentity.js` builds the requested recording.
-2. `candidateNormalizer.js` and the source adapters turn search results into comparable candidates.
-3. `nativeMatcher.js` applies one versioned policy. It checks contradictions and ranks candidates.
-4. `releaseJudge.js` decides with the same policy whether a folder, album, or download is exactly the requested release, and pairs each release track with one file.
-5. `decisionEngine.js` adds provider evidence and returns `accept`, `verify`, `review`, or `reject` for each result.
+1. `trackIdentity.ts` builds the requested recording.
+2. `candidateNormalizer.ts` and the source adapters turn search results into comparable candidates.
+3. `nativeMatcher.ts` applies one versioned policy. It checks contradictions and ranks candidates.
+4. `releaseJudge.ts` decides with the same policy whether a folder, album, or download is exactly the requested release, and pairs each release track with one file.
+5. `decisionEngine.ts` adds provider evidence and returns `accept`, `verify`, `review`, or `reject` for each result.
 
-After a download, `postDownloadValidator.js` runs the same matcher on the original file tags. Aurral writes its own tags only after this check passes.
+After a download, `postDownloadValidator.ts` runs the same matcher on the original file tags. Aurral writes its own tags only after this check passes.
 
 - A strong title score cannot override a known conflict in the recording ID, version, artist, or duration.
 - A recording ID tag counts only when it holds a MusicBrainz ID. Some rip tools write Spotify IDs there. An ID that MusicBrainz merged into the requested recording, which files tagged before the merge still carry, counts as the same recording.
@@ -68,13 +68,13 @@ When a user chooses a result in a manual search, the choice decides the identity
 
 ## Policy version
 
-`MATCH_POLICY.version` in `nativeMatcher.js` is stored with each matcher decision and returned by the health response. Change the policy in one place. Then run the fixture evaluation and the cross-source regression tests.
+`MATCH_POLICY.version` in `nativeMatcher.ts` is stored with each matcher decision and returned by the health response. Change the policy in one place. Then run the fixture evaluation and the cross-source regression tests.
 
 ## Release-first downloads
 
 Every track job whose release group is known pins one exact MusicBrainz release before any album source searches. This covers Library, static playlist, flow, and upgrade jobs, single tracks included. An upgrade's attempt holds only upgrades: every pending one of the release, whatever request or playlist its track came from. The upgrade check starts an album's upgrades together, so their release downloads once and is judged whole. The check adds no upgrade for a playlist whose owner is not active, and such an upgrade never leads or joins an attempt. An upgrade attempt that starts while an earlier one still downloads a release of the same album waits at its search, without taking a search slot, until that attempt ends or falls back to a track search, and for at most 30 minutes. It then downloads its release whole. NZBGet puts two downloads of one NZB in one folder, and a Usenet title does not name the pressing, so two releases of one album can pick the same NZB. Manual replacements skip it. A track request, which is any job except one a whole-album request created (`request_kind`), first runs a plain track search on the track-only sources that rank above every album source, and pins its release only after they import nothing. The job records each of those sources when its search ends (`quick_searched_sources`), and its later track search skips them even if the priority order changes. A job that ended and is asked for again starts with none recorded. A file one of them holds for review is kept on the job (`held_for_review`) until the job ends. Each later attempt of the job carries it, including after a restart or a release attempt that gives the track back. It goes to review only when the last search verifies nothing. A track whose held file goes to review may try its release again if the file is denied.
 
-`releaseResolver.js` chooses the release, and `releaseManifest.js` reads it as a full ordered tracklist with lengths. A release keeps the lengths it lists, in the manifest, on the album page, and in a job's requested length. A length missing from the release takes the median of its other pressings with the same running order that list the same recording at that place. Without one, the length stays unknown. A Library album stores the edition it asked for as `metadata.requestedRelease`, apart from `trackList.release`, which names the release its files came from. Its jobs ask for that release. Other jobs try the Library album's release when there is one, then the standard edition, and keep the first one that lists their track. Failing both, they take the commonest tracklist among the releases that hold the track, by recording or by its place and title. The job stores the release ID in `release_mbid`, so a restart asks for the same edition. A pinned release that MusicBrainz no longer lists, as after a merge, is chosen again. The job saves the new pin, and a Library album that asked for the old release asks for the new one.
+`releaseResolver.ts` chooses the release, and `releaseManifest.ts` reads it as a full ordered tracklist with lengths. A release keeps the lengths it lists, in the manifest, on the album page, and in a job's requested length. A length missing from the release takes the median of its other pressings with the same running order that list the same recording at that place. Without one, the length stays unknown. A Library album stores the edition it asked for as `metadata.requestedRelease`, apart from `trackList.release`, which names the release its files came from. Its jobs ask for that release. Other jobs try the Library album's release when there is one, then the standard edition, and keep the first one that lists their track. Failing both, they take the commonest tracklist among the releases that hold the track, by recording or by its place and title. The job stores the release ID in `release_mbid`, so a restart asks for the same edition. A pinned release that MusicBrainz no longer lists, as after a merge, is chosen again. The job saves the new pin, and a Library album that asked for the old release asks for the new one.
 
 Aurral refuses a tracklist that it cannot prove complete. That is one whose track count differs from the count it declares, one with a track that has no position, or one with a disc whose places skip a number. A pinned release that is refused or does not list the track leaves the job without a release. The job then goes to track search, and its reason says why. A metadata outage is different: a track that searches by release waits while its release cannot be read, with the reason "Waiting for metadata to read the album release". So does a track known only by its album's name, or by a release and an album name as ListenBrainz gives it, while metadata cannot find its album. It keeps the release it names while it waits. It tries again every 60 seconds, up to 30 times, and goes to track search only after the last try. A track request that can start its quick search now does not wait, because the quick search needs no release. A track whose album is not known yet still waits. When its quick search ends while the release cannot be read, the step waits the same way, keeping any file held for review, and does not count as a search while it waits. Once the release reads, every waiting track of that album starts one attempt together.
 
@@ -118,7 +118,7 @@ A finished album download needs its release to place the files. When the step ca
 
 ## Add a source
 
-1. Declare the evidence that the source provides in `candidateNormalizer.js`.
+1. Declare the evidence that the source provides in `candidateNormalizer.ts`.
 2. Map provider results through `buildSourceCandidates()`. Keep provider-specific availability checks in the adapter.
 3. Run the shared post-download validator before you write tags or import files.
 4. For release downloads, build a listing of every audio file that the provider shows and judge it with `judgeRelease()`. Mark a candidate `releaseVerified` only when the listing was judged before download. Pass the finished file paths and the payload fields to clear for the next candidate to `finishAlbumGrab()`, and test partial and failed downloads.
@@ -129,7 +129,7 @@ A finished album download needs its release to place the files. When the step ca
 `.tests/track-matching/fixtures/` holds development and acceptance cases built from CC0 MusicBrainz data. The two sets share no identities. To get correct, wrong, abstained, contradicted, and yield counts for each flow, run:
 
 ```bash
-node .tests/track-matching/native-evaluation.mjs
+node .tests/track-matching/native-evaluation.mts
 ```
 
 The held-out acceptance run is a release gate. Tune rules against the development set only. The cross-source and download tests cover provider mapping, real audio tags, album imports, partial failures, cancellation, and fallback.

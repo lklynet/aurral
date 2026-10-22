@@ -83,10 +83,10 @@ jobs:
           AURRAL_BASE_URL: http://127.0.0.1:3001
         run: >-
           vp exec playwright test --workers=4 --fully-parallel
-          tests/e2e/library-track-performer.spec.js
-          tests/e2e/library-add-menu.spec.js
-          tests/e2e/playlist-bulk-actions.spec.js
-          tests/e2e/local-album-artwork.spec.js
+          tests/e2e/library-track-performer.spec.ts
+          tests/e2e/library-add-menu.spec.ts
+          tests/e2e/playlist-bulk-actions.spec.ts
+          tests/e2e/local-album-artwork.spec.ts
 
       - name: Print app log on failure
         if: failure()

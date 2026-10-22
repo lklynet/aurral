@@ -1,7 +1,7 @@
 # OpenSubsonic OpenAPI snapshot
 
 `opensubsonic-openapi.json` is a bundled copy of the OpenSubsonic API specification, used by
-`.tests/subsonic/subsonic-openapi.int.test.js` to validate `/rest` JSON responses.
+`.tests/subsonic/subsonic-openapi.int.test.ts` to validate `/rest` JSON responses.
 
 - Source: https://github.com/opensubsonic/open-subsonic-api (`openapi/openapi.json`), commit `bed1688`
   (2026-08-03). License: Apache-2.0.

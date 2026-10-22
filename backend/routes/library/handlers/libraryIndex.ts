@@ -1,0 +1,264 @@
+import { noCache } from "../../../middleware/cache.ts";
+import { verifyTokenAuth } from "../../../middleware/auth.ts";
+import { getLibraryAlbumArtwork } from "../../../services/libraryAlbumArtwork.ts";
+import { requireAuth, requireUserAccount } from "../../../middleware/requirePermission.ts";
+import { buildImageProxyUrl } from "../../../services/imageProxyService.ts";
+import {
+  buildCustomArtworkUrl,
+  getCustomArtworkMap,
+} from "../../../services/customArtworkService.ts";
+import {
+  getLibraryFavoriteTargetKeys,
+  getLibraryPage,
+  LIBRARY_VIEW,
+} from "../../../services/libraryQueryService.ts";
+import {
+  getStarredIdentityKeys,
+  getStarredWithLibrary,
+  restoreStars,
+  starMany,
+  unstarMany,
+} from "../../../services/subsonicLibraryService.ts";
+import {
+  getLibraryScanStatus,
+  getScheduledLibraryScanJobId,
+  scheduleLibraryScan,
+} from "../../../services/libraryScanWorker.ts";
+
+const isFilesystemPathKey = (key) => key.toLowerCase().endsWith("path");
+
+export function stripFilesystemPaths(value) {
+  if (Array.isArray(value)) return value.map(stripFilesystemPaths);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => !isFilesystemPathKey(key))
+      .map(([key, entry]) => [key, stripFilesystemPaths(entry)]),
+  );
+}
+
+export function resolveAvailableOnly(queryValue) {
+  if (queryValue === "true") return true;
+  if (queryValue === "false") return false;
+  return LIBRARY_VIEW;
+}
+
+function getAlbumCoverUrl(album) {
+  const image = (Array.isArray(album?.metadata?.images) ? album.metadata.images : []).find(
+    (entry) => /^https?:\/\//i.test(entry?.remoteUrl || entry?.imageUrl || entry?.url || ""),
+  );
+  const source = image?.remoteUrl || image?.imageUrl || image?.url;
+  if (/^https?:\/\//i.test(source || "")) return buildImageProxyUrl(source);
+  return album.available && !album.mbid && !album.releaseGroupMbid
+    ? `/api/library/albums/${encodeURIComponent(album.id)}/cover`
+    : null;
+}
+
+export const publicLibraryJsonReplacer = (key, value) =>
+  isFilesystemPathKey(key) ? undefined : value;
+
+const publicEntity = (kind, entity, favoriteKeys) =>
+  favoriteKeys
+    ? { ...entity, userFavorite: favoriteKeys.has(`${kind}:${entity.identityKey}`) }
+    : { ...entity };
+
+const publicAlbum = (album, favoriteKeys, customArtwork) => {
+  const defaultCoverUrl = album.coverUrl || getAlbumCoverUrl(album);
+  return {
+    ...album,
+    coverUrl: customArtwork
+      ? buildCustomArtworkUrl("album", album.id, customArtwork)
+      : defaultCoverUrl,
+    ...(customArtwork && defaultCoverUrl ? { defaultCoverUrl } : {}),
+    ...(customArtwork
+      ? { customArtworkUrl: buildCustomArtworkUrl("album", album.id, customArtwork) }
+      : {}),
+    ...(favoriteKeys ? { userFavorite: favoriteKeys.has(`album:${album.identityKey}`) } : {}),
+  };
+};
+
+export function buildPublicLibrary(library, favoriteKeys = null) {
+  const albumArtwork = getCustomArtworkMap(
+    "album",
+    library.albums.map((album) => album.id),
+  );
+  const trackArtwork = getCustomArtworkMap(
+    "track",
+    library.tracks.map((track) => track.id),
+  );
+  return {
+    artists: library.artists.map((artist) => publicEntity("artist", artist, favoriteKeys)),
+    albums: library.albums.map((album) =>
+      publicAlbum(album, favoriteKeys, albumArtwork.get(String(album.id))),
+    ),
+    tracks: library.tracks.map((track) => {
+      const item = publicEntity("song", track, favoriteKeys);
+      const customArtwork = trackArtwork.get(String(track.id));
+      return customArtwork
+        ? {
+            ...item,
+            artworkUrl: buildCustomArtworkUrl("track", track.id, customArtwork),
+            customArtworkUrl: buildCustomArtworkUrl("track", track.id, customArtwork),
+          }
+        : item;
+    }),
+  };
+}
+
+function toPublicLibrary(library, favoriteKeys = null) {
+  return stripFilesystemPaths(buildPublicLibrary(library, favoriteKeys));
+}
+
+export function toPublicLibraryPage(page, favoriteKeys = null) {
+  const collections = toPublicLibrary(page, favoriteKeys);
+  const items =
+    page.kind === "artists"
+      ? collections.artists
+      : page.kind === "albums"
+        ? collections.albums
+        : page.kind === "tracks"
+          ? collections.tracks
+          : stripFilesystemPaths(page.items);
+  return {
+    ...stripFilesystemPaths(page),
+    ...collections,
+    items,
+  };
+}
+
+const LIBRARY_REFRESH_MODES = new Set(["quick", "full"]);
+
+export function registerLibraryIndex(router) {
+  router.get("/albums/:albumId/cover", async (req, res) => {
+    if (!verifyTokenAuth(req)) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    try {
+      const artwork = await getLibraryAlbumArtwork(req.params.albumId);
+      if (!artwork) return res.status(404).json({ error: "Album cover not found" });
+      res.set("Cache-Control", "private, max-age=3600");
+      return res.type(artwork.contentType).send(artwork.buffer);
+    } catch {
+      return res.status(500).json({ error: "Failed to read album cover" });
+    }
+  });
+
+  router.post("/refresh", requireAuth, (req, res) => {
+    const mode = req.body?.mode ?? "quick";
+    if (!LIBRARY_REFRESH_MODES.has(mode)) {
+      return res.status(400).json({ error: "Invalid library refresh mode" });
+    }
+    const jobId = scheduleLibraryScan({ force: mode === "full" });
+    res.status(202).json({
+      queued: true,
+      jobId,
+      status: getLibraryScanStatus(jobId),
+    });
+  });
+
+  router.get("/refresh", requireAuth, noCache, (_req, res) => {
+    const jobId = getScheduledLibraryScanJobId();
+    return res.json({
+      jobId,
+      status: jobId == null ? null : getLibraryScanStatus(jobId),
+    });
+  });
+
+  router.get("/refresh/:jobId", requireAuth, noCache, (req, res) => {
+    const status = getLibraryScanStatus(req.params.jobId);
+    if (!status || status.status === "unknown") {
+      return res.status(404).json({ error: "Library scan not found" });
+    }
+    return res.json(status);
+  });
+
+  router.get("/canonical", noCache, (req, res) => {
+    try {
+      const favoriteKeys = req.user ? getStarredIdentityKeys(req.user) : null;
+      const kind = typeof req.query.kind === "string" ? req.query.kind.trim() : "";
+      const requestedPageSize =
+        typeof req.query.pageSize === "string" ? Number(req.query.pageSize) : NaN;
+      if (
+        !kind ||
+        !Number.isSafeInteger(requestedPageSize) ||
+        requestedPageSize < 1 ||
+        requestedPageSize > 100
+      ) {
+        return res.status(400).json({
+          error: "kind and pageSize (1-100) are required",
+        });
+      }
+      return res.json(
+        toPublicLibraryPage(
+          getLibraryPage({
+            source: req.query.source,
+            availableOnly: resolveAvailableOnly(req.query.availableOnly),
+            kind,
+            page: req.query.page,
+            pageSize: requestedPageSize,
+            query: req.query.query,
+            genre: req.query.genre,
+            sort: req.query.sort,
+            direction: req.query.direction,
+            artistId: req.query.artistId,
+            albumId: req.query.albumId,
+          }),
+          favoriteKeys,
+        ),
+      );
+    } catch (error) {
+      if (
+        error.message.startsWith("Unsupported library source:") ||
+        error.message.startsWith("Unsupported library page kind:")
+      ) {
+        return res.status(400).json({ error: error.message });
+      }
+      return res.status(500).json({
+        error: "Failed to query library",
+        message: error.message,
+      });
+    }
+  });
+
+  router.get("/favorites", requireAuth, noCache, (req, res) => {
+    const { starred, library } = getStarredWithLibrary(req.user);
+    res.json({ ...starred, library: toPublicLibrary(library) });
+  });
+
+  router.post("/favorites", requireAuth, requireUserAccount, noCache, (req, res) => {
+    const ids = Array.isArray(req.body?.ids)
+      ? req.body.ids.map((id) => String(id || "").trim()).filter(Boolean)
+      : [];
+    if (ids.length === 0 || ids.length > 100 || typeof req.body?.starred !== "boolean") {
+      return res.status(400).json({
+        error: "ids and starred are required",
+      });
+    }
+
+    if (req.body.starred) {
+      const libraryIds = ids.filter((id) => /^(artist|album|song):.+/.test(id));
+      const validTargets = getLibraryFavoriteTargetKeys(libraryIds);
+      if (libraryIds.some((id) => !validTargets.has(id))) {
+        return res.status(400).json({ error: "Invalid favorite target" });
+      }
+    }
+
+    const changed = req.body.starred
+      ? starMany(req.user, ids, { skipLibraryValidation: true })
+      : unstarMany(req.user, ids);
+    if (!changed) {
+      return res.status(400).json({ error: "Invalid favorite target" });
+    }
+    return res.json({ changedIds: ids, ...(req.body.starred ? {} : { removed: changed }) });
+  });
+
+  router.post("/favorites/restore", requireAuth, requireUserAccount, noCache, (req, res) => {
+    const favorites = req.body?.favorites;
+    if (!Array.isArray(favorites) || favorites.length > 500 || !restoreStars(req.user, favorites)) {
+      return res.status(400).json({ error: "favorites must list removed favorites to restore" });
+    }
+    return res.json({ restoredIds: favorites.map((entry) => entry.id) });
+  });
+}
+
+export { toPublicLibrary };

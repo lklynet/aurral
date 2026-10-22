@@ -1,0 +1,1054 @@
+import axios from "../../lib/axiosFetch.ts";
+import { randomUUID } from "crypto";
+import { dbOps } from "../db/helpers/index.ts";
+import { withHonkerLock } from "./honkerDb.ts";
+import { logger } from "./logger.ts";
+
+const NORMALIZED_SEARCH_RESULTS = Symbol("normalizedSearchResults");
+const DEFAULT_SEARCH_TIMEOUT_MS = 60000;
+const DEFAULT_EMPTY_SEARCH_TIMEOUT_MS = 10000;
+const DEFAULT_SEARCH_GRACE_PERIOD_MS = 20000;
+const DEFAULT_FILE_LIMIT = 1000;
+const DEFAULT_RESPONSE_LIMIT = 150;
+const DEFAULT_MAX_PEER_QUEUE = 150;
+const DEFAULT_MIN_PEER_SPEED = 51200;
+const SEARCH_START_GAP_MS = 5000;
+const SEARCH_STARTED_AT_SETTING = "slskdSearchStartedAt";
+const SOULSEEK_LOGGED_OUT_CODE = "SLSKD_SOULSEEK_LOGGED_OUT";
+export const SOULSEEK_LOGGED_OUT_MESSAGE = "slskd is not logged in to Soulseek";
+
+export const slskdSettings = Object.freeze({
+  key: "slskd",
+  label: "slskd",
+  subtitle: "Soulseek",
+  enabledDefault: false,
+  testRequiresEnabled: false,
+  fields: Object.freeze([
+    Object.freeze({ key: "enabled", label: "Enable slskd", type: "toggle" }),
+    Object.freeze({
+      key: "url",
+      label: "Server URL",
+      type: "url",
+      required: true,
+      section: "Connection",
+      placeholder: "http://localhost:5030",
+    }),
+    Object.freeze({
+      key: "apiKey",
+      label: "API key",
+      type: "password",
+      secret: true,
+      section: "Connection",
+      hint: "Leave blank if slskd authentication is disabled.",
+    }),
+    Object.freeze({
+      key: "priority",
+      label: "Source priority",
+      type: "number",
+      min: 1,
+      max: 1000,
+      section: "Behavior",
+    }),
+    Object.freeze({
+      key: "cleanupAfterRuns",
+      label: "Clean up after runs",
+      type: "toggle",
+      section: "Behavior",
+    }),
+  ]),
+  defaults: Object.freeze({
+    enabled: false,
+    url: "",
+    apiKey: "",
+    priority: 10,
+    cleanupAfterRuns: false,
+  }),
+  validation: Object.freeze({ required: ["url"], url: ["url"] }),
+  testConnection: true,
+});
+
+let connectionCache = { checkedAt: 0, result: null, settingsKey: null };
+
+function getSettingsKey({ url, apiKey }) {
+  return `${url}\u0000${apiKey}`;
+}
+
+function cacheConnectionResult(settingsKey, result, config = null) {
+  const activeSettings = getSettings(config);
+  if (getSettingsKey(activeSettings) !== settingsKey) return;
+  connectionCache = { checkedAt: Date.now(), result, settingsKey };
+}
+
+function getSettings(config = null) {
+  const integrations = config ? { slskd: config } : dbOps.getSettings()?.integrations || {};
+  const slskd = integrations.slskd || {};
+  const url = String(slskd.url || "")
+    .trim()
+    .replace(/\/+$/, "");
+  const apiKey = String(slskd.apiKey || "").trim();
+  return { url, apiKey, slskd };
+}
+
+export function getSlskdSearchFormatOptions(config = null) {
+  const slskd = getSettings(config).slskd || {};
+  const preferredFormat =
+    String(slskd.preferredFormat || "").toLowerCase() === "mp3" ? "mp3" : "flac";
+  return {
+    preferredFormat,
+    strictFormat: slskd.preferredFormatStrict === true,
+  };
+}
+
+export function isSlskdCleanupAfterRunsEnabled(config = null) {
+  const slskd = getSettings(config).slskd || {};
+  return slskd.cleanupAfterRuns === true;
+}
+
+function buildClientFromCredentials(url, apiKey) {
+  const trimmedUrl = String(url || "")
+    .trim()
+    .replace(/\/+$/, "");
+  const trimmedKey = String(apiKey || "").trim();
+  if (!trimmedUrl) {
+    throw new Error("slskd not configured");
+  }
+  const headers = { Accept: "application/json" };
+  if (trimmedKey) {
+    headers["X-API-KEY"] = trimmedKey;
+  }
+  return axios.create({
+    baseURL: trimmedUrl,
+    timeout: 60000,
+    headers,
+    validateStatus: () => true,
+  });
+}
+
+function buildClient(config = null) {
+  const { url, apiKey } = getSettings(config);
+  return buildClientFromCredentials(url, apiKey);
+}
+
+function calculateQuadraticDelay(progress) {
+  const delay = 16 * progress ** 2 - 16 * progress + 5;
+  return Math.min(5, Math.max(0.5, delay));
+}
+
+function readProperty(object, ...keys) {
+  for (const key of keys) {
+    const value = object?.[key];
+    if (value != null && value !== "") return value;
+  }
+  return null;
+}
+
+function normalizeArrayPayload(value) {
+  if (Array.isArray(value)) return value;
+  if (Array.isArray(value?.$values)) return value.$values;
+  if (value && typeof value === "object") {
+    const values = Object.values(value);
+    if (values.every((entry) => entry && typeof entry === "object")) {
+      return values;
+    }
+  }
+  return [];
+}
+
+export function isSearchComplete(data) {
+  if (data?.isComplete === true || data?.IsComplete === true) return true;
+  const state = String(data?.state || data?.State || "");
+  return state.includes("Completed");
+}
+
+function isSearchQueued(data) {
+  const state = String(data?.state || data?.State || "").trim();
+  return state === "Requested" || state === "Queued";
+}
+
+export function isSearchInProgress(data) {
+  if (isSearchComplete(data)) return false;
+  const state = String(data?.state || data?.State || "").trim();
+  if (!state || state === "None") return true;
+  if (state.includes("InProgress")) return true;
+  return state === "Requested" || state === "Queued";
+}
+
+function readSearchResponses(searchData) {
+  if (Array.isArray(searchData)) return searchData;
+  const responses = readProperty(searchData, "responses", "Responses");
+  return normalizeArrayPayload(responses);
+}
+
+function normalizeSearchFile(file, user, response = null, fromLockedList = false) {
+  const filename = String(readProperty(file, "filename", "Filename", "file", "File") || "").trim();
+  const size = Number(readProperty(file, "size", "Size") || 0);
+  const responseUser = readProperty(response, "username", "Username");
+  const resolvedUser = String(
+    user || responseUser || readProperty(file, "user", "User") || "",
+  ).trim();
+  const responseSlots = readProperty(response, "hasFreeUploadSlot", "HasFreeUploadSlot");
+  const locked =
+    fromLockedList || readProperty(file, "isLocked", "IsLocked", "locked", "Locked") === true;
+  const bitRate = readProperty(file, "bitRate", "BitRate", "bitrate") ?? null;
+  const advertisedLength = Number(readProperty(file, "length", "Length"));
+  const length =
+    Number.isFinite(advertisedLength) && advertisedLength > 0 ? advertisedLength : null;
+  return {
+    user: resolvedUser,
+    file: filename,
+    size,
+    slots: Number(
+      readProperty(file, "slots", "Slots", "freeUploadSlots") ?? (responseSlots === true ? 1 : 0),
+    ),
+    speed: Number(
+      readProperty(file, "uploadSpeed", "UploadSpeed", "speed", "Speed") ??
+        readProperty(response, "uploadSpeed", "UploadSpeed") ??
+        0,
+    ),
+    queueLength: Number(readProperty(response, "queueLength", "QueueLength") ?? 0) || 0,
+    bitRate,
+    bitrate: bitRate,
+    length,
+    extension: readProperty(file, "extension", "Extension") ?? null,
+    locked,
+    isLocked: locked,
+  };
+}
+
+function readBatchFailures(data) {
+  return normalizeArrayPayload(readProperty(data, "failed", "Failed", "failures", "Failures"));
+}
+
+function readLegacyEnqueued(data) {
+  return normalizeArrayPayload(readProperty(data, "enqueued", "Enqueued"));
+}
+
+function summarizeBatchFailures(failures) {
+  const messages = normalizeArrayPayload(failures)
+    .map((failure) => {
+      if (typeof failure === "string") return failure.trim();
+      const filename = String(readProperty(failure, "filename", "Filename") || "").trim();
+      const message = String(readProperty(failure, "message", "Message") || "").trim();
+      return [filename, message].filter(Boolean).join(": ");
+    })
+    .filter(Boolean);
+  return messages.length > 0 ? messages.join("; ") : "all files failed";
+}
+
+function searchStillQueuedError() {
+  return new Error("slskd is busy: the search is still waiting in its queue");
+}
+
+function soulseekLoggedOutError(detail) {
+  const error = new Error(`${SOULSEEK_LOGGED_OUT_MESSAGE}: ${detail}`);
+  error.code = SOULSEEK_LOGGED_OUT_CODE;
+  return error;
+}
+
+export function isSoulseekLoggedOutError(error) {
+  return error?.code === SOULSEEK_LOGGED_OUT_CODE;
+}
+
+function isSoulseekLoggedIn(server) {
+  if (typeof server?.isLoggedIn === "boolean") return server.isLoggedIn;
+  return String(server?.state || "")
+    .split(",")
+    .map((flag) => flag.trim())
+    .includes("LoggedIn");
+}
+
+function readId(value) {
+  return readProperty(value, "id", "Id");
+}
+
+function createSearchCancellation(shouldCancel, externalSignal) {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  if (externalSignal?.aborted || shouldCancel?.()) abort();
+  externalSignal?.addEventListener("abort", abort, { once: true });
+  const timer =
+    typeof shouldCancel === "function"
+      ? setInterval(() => {
+          if (shouldCancel()) abort();
+        }, 100)
+      : null;
+  timer?.unref();
+  return {
+    signal: controller.signal,
+    dispose: () => {
+      clearInterval(timer);
+      externalSignal?.removeEventListener("abort", abort);
+    },
+  };
+}
+
+function waitSearchDelay(ms, signal) {
+  return new Promise((resolve) => {
+    let timer;
+    const finish = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", finish);
+      resolve();
+    };
+    if (signal?.aborted) return resolve();
+    timer = setTimeout(() => {
+      signal?.removeEventListener("abort", finish);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", finish, { once: true });
+  });
+}
+
+async function waitForSearchStartSlot(signal) {
+  const lastStartedAt = Number(dbOps.getJSONSetting(SEARCH_STARTED_AT_SETTING));
+  const waitMs =
+    lastStartedAt > 0
+      ? Math.min(SEARCH_START_GAP_MS, lastStartedAt + SEARCH_START_GAP_MS - Date.now())
+      : 0;
+  if (waitMs > 0) await waitSearchDelay(waitMs, signal);
+  if (signal.aborted) throw new Error("slskd search cancelled");
+}
+
+async function withSearchLock(name, operation, { deadline, signal }) {
+  const lockDeadline = Number(deadline) || Date.now() + 300000;
+  while (true) {
+    if (signal.aborted) throw new Error("slskd search cancelled");
+    const remaining = lockDeadline - Date.now();
+    if (remaining <= 0) throw new Error("slskd search deadline expired");
+    try {
+      return await withHonkerLock(
+        name,
+        () => {
+          if (signal.aborted) throw new Error("slskd search cancelled");
+          if (Date.now() >= lockDeadline) throw new Error("slskd search deadline expired");
+          return operation();
+        },
+        { waitTimeoutMs: Math.min(250, remaining) },
+      );
+    } catch (error) {
+      if (error.message !== `Timed out waiting for Honker lock: ${name}`) throw error;
+    }
+  }
+}
+
+// Follows one slskd search a poll at a time. waitForSearch loops over it;
+// the download pipeline polls it once per step so a search never holds the
+// pipeline while Soulseek peers answer.
+class SearchMonitor {
+  constructor(client, searchId, options = {}) {
+    this.client = client;
+    this.searchId = searchId;
+    this.onSearchSettled = options.onSearchSettled;
+    this.cleanupTimeoutMs = options.cleanupTimeoutMs;
+    this.emptyTimeoutMs = Math.max(
+      0,
+      Number(options.emptyTimeoutMs ?? DEFAULT_EMPTY_SEARCH_TIMEOUT_MS),
+    );
+    this.activeTimeoutMs =
+      Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : DEFAULT_SEARCH_TIMEOUT_MS;
+    this.gracePeriodMs = Math.max(
+      0,
+      Number(options.gracePeriodMs ?? DEFAULT_SEARCH_GRACE_PERIOD_MS),
+    );
+    this.hardDeadline = Number(options.deadline) || Infinity;
+    this.startWindows(Number(options.startedAt) || Date.now());
+    this.queued = options.queued !== false;
+    this.totalFiles = 0;
+    this.hasSeenFiles = false;
+    this.latest = null;
+    this.collected = new Map();
+    this.eligibilityAssessed = false;
+    this.lastEligibility = false;
+  }
+
+  startWindows(startedAt) {
+    this.startedAt = startedAt;
+    this.graceStartsAt = startedAt + this.activeTimeoutMs;
+    this.deadline = Math.min(this.hardDeadline, this.graceStartsAt + this.gracePeriodMs);
+  }
+
+  cutoff() {
+    return this.hasSeenFiles
+      ? this.deadline
+      : Math.min(this.deadline, this.startedAt + this.emptyTimeoutMs);
+  }
+
+  async stop() {
+    try {
+      const deleted = await this.client.deleteSearch(this.searchId, {
+        timeout: Math.max(1, Number(this.cleanupTimeoutMs) || 20000),
+      });
+      if (deleted) this.onSearchSettled?.(this.searchId);
+      else logger.warn("slskd", "Could not stop owned search", { searchId: this.searchId });
+    } catch (error) {
+      logger.warn("slskd", "Could not stop owned search", {
+        searchId: this.searchId,
+        reason: error?.message,
+      });
+    }
+  }
+
+  async finish(data) {
+    if (isSearchComplete(data) && !this.client.isCleanupAfterRunsEnabled()) {
+      this.onSearchSettled?.(this.searchId);
+    } else {
+      await this.stop();
+    }
+    return { done: true, data };
+  }
+
+  async poll({ earlyExitWhen, shouldCancel, signal } = {}) {
+    const cancelled = () => signal?.aborted || shouldCancel?.();
+    try {
+      if (cancelled()) {
+        await this.stop();
+        return { done: true, data: null };
+      }
+      const cutoff = this.queued || !this.latest ? this.hardDeadline : this.cutoff();
+      if (Date.now() >= cutoff) {
+        if (this.queued) throw searchStillQueuedError();
+        return this.finish(this.latest);
+      }
+      let data;
+      try {
+        data = await this.client.getSearch(this.searchId, {
+          timeout: Math.max(1, Math.min(60000, cutoff - Date.now())),
+          signal,
+        });
+      } catch (error) {
+        if (cancelled()) {
+          await this.stop();
+          return { done: true, data: null };
+        }
+        if (Date.now() >= cutoff) {
+          if (this.queued) throw searchStillQueuedError();
+          return this.finish(this.latest);
+        }
+        throw error;
+      }
+      if (cancelled()) {
+        await this.stop();
+        return { done: true, data: null };
+      }
+      // slskd runs a few searches at once and queues the rest. A queued search
+      // has not asked anyone yet, so its windows start once it runs.
+      const wasQueued = this.queued;
+      this.queued = isSearchQueued(data);
+      if (this.queued) {
+        if (Date.now() >= this.hardDeadline) throw searchStillQueuedError();
+        return {
+          done: false,
+          data,
+          waitMs: Math.min(2000, Math.max(1, this.hardDeadline - Date.now())),
+        };
+      }
+      if (wasQueued) this.startWindows(Date.now());
+      const files = this.client.flattenSearchResults(data);
+      let eligibilityChanged = false;
+      for (const file of files) {
+        const key = `${file.user}\0${file.file}`;
+        const previous = this.collected.get(key);
+        if (
+          !previous ||
+          Object.keys(file).some((field) => !Object.is(file[field], previous[field]))
+        ) {
+          this.collected.set(key, file);
+          eligibilityChanged = true;
+        }
+      }
+      if (this.collected.size > files.length) {
+        const responses = new Map();
+        for (const file of this.collected.values()) {
+          const response = responses.get(file.user) || { username: file.user, files: [] };
+          response.files.push(file);
+          responses.set(file.user, response);
+        }
+        data = { ...data, responses: [...responses.values()] };
+      }
+      data = { ...data };
+      Object.defineProperty(data, NORMALIZED_SEARCH_RESULTS, {
+        value: [...this.collected.values()],
+      });
+      this.latest = data;
+      const fileCount = Number(data?.fileCount || data?.FileCount || 0);
+      this.totalFiles = Math.max(this.totalFiles, fileCount, files.length);
+      this.hasSeenFiles ||= this.totalFiles > 0;
+      if (earlyExitWhen && (!this.eligibilityAssessed || eligibilityChanged)) {
+        this.lastEligibility = earlyExitWhen(data);
+        this.eligibilityAssessed = true;
+      }
+      if (this.lastEligibility || !isSearchInProgress(data)) {
+        let hydrated = isSearchComplete(data)
+          ? await this.client.hydrateCompletedSearch(this.searchId, data, {
+              deadline: this.deadline,
+              shouldCancel,
+              signal,
+            })
+          : data;
+        if (cancelled()) {
+          await this.stop();
+          return { done: true, data: null };
+        }
+        if (hydrated !== data) {
+          for (const file of this.client.flattenSearchResults(hydrated)) {
+            this.collected.set(`${file.user}\0${file.file}`, file);
+          }
+          hydrated = { ...hydrated };
+          Object.defineProperty(hydrated, NORMALIZED_SEARCH_RESULTS, {
+            value: [...this.collected.values()],
+          });
+        }
+        return this.finish(hydrated);
+      }
+      const nextCutoff = this.cutoff();
+      if (Date.now() >= nextCutoff) return this.finish(this.latest);
+      const progress = Math.min(1, this.totalFiles / DEFAULT_FILE_LIMIT);
+      const grace = Date.now() >= this.graceStartsAt;
+      return {
+        done: false,
+        data,
+        waitMs: Math.min(
+          (grace ? 1 : calculateQuadraticDelay(progress)) * 1000,
+          nextCutoff - Date.now(),
+        ),
+      };
+    } catch (error) {
+      await this.stop();
+      throw error;
+    }
+  }
+}
+
+export class SlskdClient {
+  constructor(config = null) {
+    this.key = "slskd";
+    this.name = "slskd";
+    this._config = config;
+  }
+
+  updateConfig(config = null) {
+    this._config = config;
+  }
+
+  isCleanupAfterRunsEnabled() {
+    return isSlskdCleanupAfterRunsEnabled(this._config);
+  }
+
+  isConfigured() {
+    const { url, slskd } = getSettings(this._config);
+    return slskd.enabled !== false && !!url;
+  }
+
+  async testConnection({ force = false } = {}) {
+    const { url, apiKey } = getSettings(this._config);
+    if (!url) {
+      return {
+        ok: false,
+        configured: false,
+        connected: false,
+        message: "slskd URL is required",
+      };
+    }
+    const settingsKey = getSettingsKey({ url, apiKey });
+    if (
+      !force &&
+      connectionCache.settingsKey === settingsKey &&
+      connectionCache.result &&
+      Date.now() - connectionCache.checkedAt < 30000
+    ) {
+      return connectionCache.result;
+    }
+    const client = buildClient(this._config);
+    try {
+      const [appRes, optionsRes] = await Promise.all([
+        client.get("/api/v0/application"),
+        client.get("/api/v0/options"),
+      ]);
+      if (appRes.status !== 200) {
+        const result = {
+          ok: false,
+          configured: true,
+          connected: false,
+          message: `slskd returned HTTP ${appRes.status}`,
+        };
+        cacheConnectionResult(settingsKey, result, this._config);
+        return result;
+      }
+      const server = appRes.data?.server || {};
+      const serverState = String(server.state || "");
+      const soulseekConnected = isSoulseekLoggedIn(server);
+      const rawDownloadPath =
+        optionsRes.data?.directories?.downloads || optionsRes.data?.directories?.download;
+      const downloadPath = Array.isArray(rawDownloadPath)
+        ? String(rawDownloadPath[0] || "").trim() || null
+        : String(rawDownloadPath || "").trim() || null;
+      const result = {
+        ok: true,
+        configured: true,
+        connected: soulseekConnected,
+        soulseekConnected,
+        warning: !soulseekConnected,
+        serverState,
+        downloadPath,
+        message: soulseekConnected
+          ? "slskd is connected"
+          : server.isConnected === true
+            ? "slskd is connected to Soulseek but not logged in. Soulseek downloads wait until it logs in."
+            : "slskd is reachable, but it is not connected to Soulseek. Open slskd and connect to the Soulseek server.",
+      };
+      cacheConnectionResult(settingsKey, result, this._config);
+      return result;
+    } catch (error) {
+      const result = {
+        ok: false,
+        configured: true,
+        connected: false,
+        message: error?.message || "Failed to reach slskd",
+      };
+      cacheConnectionResult(settingsKey, result, this._config);
+      return result;
+    }
+  }
+
+  getStatus() {
+    const { url, apiKey } = getSettings(this._config);
+    const configured = !!url;
+    const cached =
+      connectionCache.settingsKey === getSettingsKey({ url, apiKey })
+        ? connectionCache.result
+        : null;
+    return {
+      configured,
+      connected: configured && cached?.connected === true,
+      downloadPath: cached?.downloadPath || null,
+      serverState: cached?.serverState || null,
+    };
+  }
+
+  async getDownloadDirectory({ force = false } = {}) {
+    const status = await this.testConnection({ force });
+    const downloadPath = String(status?.downloadPath || "").trim();
+    return downloadPath || null;
+  }
+
+  async createSearch(searchText, options = {}) {
+    const control = createSearchCancellation(options.shouldCancel, options.signal);
+    const id = String(options.id || randomUUID());
+    const client = buildClient(this._config);
+    const searchTimeoutMs = Math.max(
+      5000,
+      Math.floor(Number(options.searchTimeoutMs || DEFAULT_SEARCH_TIMEOUT_MS)),
+    );
+    const body = {
+      id,
+      searchText: String(searchText || "").trim(),
+      fileLimit: Number(options.fileLimit || DEFAULT_FILE_LIMIT),
+      filterResponses: options.filterResponses !== false,
+      maximumPeerQueueLength: Number(options.maximumPeerQueueLength || DEFAULT_MAX_PEER_QUEUE),
+      minimumPeerUploadSpeed: Number(options.minimumPeerUploadSpeed || DEFAULT_MIN_PEER_SPEED),
+      minimumResponseFileCount: Number(options.minimumResponseFileCount || 1),
+      responseLimit: Number(options.responseLimit || DEFAULT_RESPONSE_LIMIT),
+    };
+    const lockOptions = { deadline: options.deadline, signal: control.signal };
+    let creationUncertain = false;
+    try {
+      return await withSearchLock(
+        "slskd-search-create",
+        async () => {
+          for (let attempt = 0; attempt <= 3; attempt++) {
+            await waitForSearchStartSlot(control.signal);
+            const response = await withSearchLock(
+              "slskd-api",
+              async () => {
+                const remaining = Number(options.deadline)
+                  ? options.deadline - Date.now()
+                  : Infinity;
+                if (remaining < 5000) throw new Error("slskd search deadline expired");
+                dbOps.setJSONSetting(SEARCH_STARTED_AT_SETTING, Date.now());
+                options.onSearchCreated?.(id);
+                creationUncertain = true;
+                let result;
+                try {
+                  result = await client.post(
+                    "/api/v0/searches",
+                    {
+                      ...body,
+                      searchTimeout: Math.min(searchTimeoutMs, remaining),
+                    },
+                    { timeout: Math.min(60000, remaining), signal: control.signal },
+                  );
+                } catch (error) {
+                  options.onSearchCreated?.(id);
+                  throw error;
+                }
+                if ([200, 201].includes(result.status)) options.onSearchCreated?.(id);
+                else if ([409, 429].includes(result.status)) {
+                  creationUncertain = false;
+                  options.onSearchSettled?.(id);
+                }
+                return result;
+              },
+              lockOptions,
+            );
+            if ([200, 201].includes(response.status)) return { id, searchText: body.searchText };
+            if (response.status === 429 && attempt < 3) {
+              const remaining = Number(options.deadline) ? options.deadline - Date.now() : Infinity;
+              await waitSearchDelay(Math.min(30000 * 2 ** attempt, remaining), control.signal);
+              continue;
+            }
+            if (response.status === 409)
+              throw soulseekLoggedOutError(
+                `search refused (409) ${String(response.data || "")}`.trim(),
+              );
+            throw new Error(
+              `slskd search failed: HTTP ${response.status} ${String(response.data || "")}`,
+            );
+          }
+          throw new Error("slskd search busy after retries");
+        },
+        lockOptions,
+      );
+    } catch (error) {
+      if (creationUncertain) {
+        options.onSearchCreated?.(id);
+        try {
+          if (
+            await this.deleteSearch(id, {
+              timeout: Math.max(1, Number(options.cleanupTimeoutMs) || 20000),
+            })
+          ) {
+            options.onSearchSettled?.(id);
+          }
+        } catch (cleanupError) {
+          logger.warn("slskd", "Could not stop owned search after creation failed", {
+            searchId: id,
+            reason: cleanupError?.message,
+          });
+        }
+      }
+      throw error;
+    } finally {
+      control.dispose();
+    }
+  }
+
+  async getSearch(searchId, options = {}) {
+    const client = buildClient(this._config);
+    const response = await client.get(`/api/v0/searches/${searchId}`, {
+      params: { includeResponses: true },
+      ...options,
+    });
+    if (response.status !== 200) {
+      throw new Error(`slskd search status failed: HTTP ${response.status}`);
+    }
+    return response.data;
+  }
+
+  async getSearchResponses(searchId, options = {}) {
+    const client = buildClient(this._config);
+    const response = await client.get(`/api/v0/searches/${searchId}/responses`, options);
+    if (response.status !== 200) return [];
+    return readSearchResponses(response.data);
+  }
+
+  async hydrateCompletedSearch(
+    searchId,
+    data,
+    { deadline = Date.now() + 15000, shouldCancel, signal } = {},
+  ) {
+    const responseCount = Number(data?.responseCount || data?.ResponseCount || 0);
+    const fileCount = Number(data?.fileCount || data?.FileCount || 0);
+    if (responseCount <= 0 && fileCount <= 0) return data;
+    const collectedCount = this.flattenSearchResults(data).length;
+    if (collectedCount > 0 && (fileCount <= 0 || collectedCount >= fileCount)) return data;
+    const collected = new Map(
+      this.flattenSearchResults(data).map((file) => [`${file.user}\0${file.file}`, file]),
+    );
+    const hydrationDeadline = Math.min(deadline, Date.now() + 15000);
+    while (Date.now() < hydrationDeadline && !signal?.aborted && !shouldCancel?.()) {
+      const timeout = Math.max(1, Math.min(60000, hydrationDeadline - Date.now()));
+      const [status, payload] = await Promise.allSettled([
+        this.getSearch(searchId, { timeout, signal }),
+        this.getSearchResponses(searchId, { timeout, signal }),
+      ]);
+      const refreshed = status.status === "fulfilled" ? status.value : data;
+      for (const file of this.flattenSearchResults(refreshed))
+        collected.set(`${file.user}\0${file.file}`, file);
+      if (payload.status === "fulfilled") {
+        for (const file of this.flattenSearchResults(payload.value))
+          collected.set(`${file.user}\0${file.file}`, file);
+      }
+      data = { ...refreshed };
+      Object.defineProperty(data, NORMALIZED_SEARCH_RESULTS, { value: [...collected.values()] });
+      if (fileCount > 0 ? collected.size >= fileCount : collected.size > collectedCount)
+        return data;
+      if (Date.now() >= hydrationDeadline || signal?.aborted || shouldCancel?.()) break;
+      const failed = [status, payload].find((result) => result.status === "rejected");
+      if (failed) throw failed.reason;
+      await waitSearchDelay(Math.min(500, hydrationDeadline - Date.now()), signal);
+    }
+    if (signal?.aborted || shouldCancel?.()) return data;
+    logger.warn("slskd", "slskd search completed with counts but no file payloads", {
+      searchId,
+      responseCount,
+      fileCount,
+    });
+    return data;
+  }
+
+  monitorSearch(searchId, options = {}) {
+    return new SearchMonitor(this, searchId, options);
+  }
+
+  async waitForSearch(searchId, timeoutMs = DEFAULT_SEARCH_TIMEOUT_MS, options = {}) {
+    const { earlyExitWhen, shouldCancel, signal: externalSignal } = options;
+    const control = createSearchCancellation(shouldCancel, externalSignal);
+    const monitor = this.monitorSearch(searchId, { ...options, timeoutMs });
+    try {
+      while (true) {
+        const result = await monitor.poll({ earlyExitWhen, shouldCancel, signal: control.signal });
+        if (result.done) return result.data;
+        await waitSearchDelay(result.waitMs, control.signal);
+      }
+    } finally {
+      control.dispose();
+    }
+  }
+
+  flattenSearchResults(searchData) {
+    if (searchData?.[NORMALIZED_SEARCH_RESULTS]) return searchData[NORMALIZED_SEARCH_RESULTS];
+    const results = [];
+    const seen = new Set();
+    for (const response of readSearchResponses(searchData)) {
+      const user = String(readProperty(response, "username", "Username") || "").trim();
+      const fileLists = [
+        {
+          files: readProperty(response, "files", "Files"),
+          locked: false,
+        },
+        {
+          files: readProperty(response, "lockedFiles", "LockedFiles"),
+          locked: true,
+        },
+      ];
+      for (const fileList of fileLists) {
+        const files = normalizeArrayPayload(fileList.files);
+        for (const file of files) {
+          const normalized = normalizeSearchFile(file, user, response, fileList.locked);
+          if (!normalized.user || !normalized.file) continue;
+          const key = `${normalized.user}\0${normalized.file}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          results.push(normalized);
+        }
+      }
+    }
+    return results;
+  }
+
+  async searchQuery(searchText, options = {}) {
+    const timeoutMs =
+      Number(options.timeoutMs) > 0
+        ? Number(options.timeoutMs)
+        : DEFAULT_SEARCH_TIMEOUT_MS + DEFAULT_SEARCH_GRACE_PERIOD_MS;
+    const deadline = Number(options.deadline) || Date.now() + timeoutMs;
+    const created = await this.createSearch(searchText, {
+      ...options,
+      deadline,
+      searchTimeoutMs: Math.min(
+        Number(options.searchTimeoutMs) || timeoutMs,
+        deadline - Date.now(),
+      ),
+    });
+    const completed = await this.waitForSearch(created.id, timeoutMs, { ...options, deadline });
+    return this.flattenSearchResults(completed);
+  }
+
+  async enqueueBatch({ username, files }) {
+    return withHonkerLock("slskd-api", async () => {
+      const client = buildClient(this._config);
+      const normalizedUsername = String(username || "").trim();
+      const requests = (Array.isArray(files) ? files : []).map((file) => ({
+        filename: String(file.filename || file.file || "").trim(),
+        size: Number(file.size || 0),
+      }));
+      let retryCount = 0;
+      let delaySeconds = 30;
+      while (retryCount <= 3) {
+        const response = await client.post(
+          `/api/v0/transfers/downloads/${encodeURIComponent(normalizedUsername)}`,
+          requests,
+        );
+        if ([200, 201, 207].includes(response.status)) {
+          const failures = readBatchFailures(response.data);
+          const transfers = readLegacyEnqueued(response.data);
+          if (requests.length > 0 && failures.length >= requests.length && transfers.length === 0) {
+            throw new Error(`slskd enqueue failed: ${summarizeBatchFailures(failures)}`);
+          }
+          const firstTransfer = transfers[0] || null;
+          return {
+            transferId: readId(firstTransfer) || null,
+            username: normalizedUsername,
+            transfers,
+            response: response.data,
+          };
+        }
+        if (response.status === 429 && retryCount < 3) {
+          await new Promise((resolve) => setTimeout(resolve, delaySeconds * 1000));
+          retryCount += 1;
+          delaySeconds *= 2;
+          continue;
+        }
+        const detail = `HTTP ${response.status} ${String(response.data || "")}`;
+        if (/must be connected and logged in/i.test(detail))
+          throw soulseekLoggedOutError(`enqueue refused (${detail})`);
+        throw new Error(`slskd enqueue failed: ${detail}`);
+      }
+      throw new Error("slskd enqueue busy after retries");
+    });
+  }
+
+  async getTransfer(username, id) {
+    const client = buildClient(this._config);
+    const response = await client.get(
+      `/api/v0/transfers/downloads/${encodeURIComponent(username)}/${id}`,
+    );
+    if (response.status !== 200) return null;
+    return response.data;
+  }
+
+  async deleteTransfer(username, id, { remove = true } = {}) {
+    const normalizedUsername = String(username || "").trim();
+    const normalizedId = String(id || "").trim();
+    if (!normalizedUsername || !normalizedId) return false;
+    const client = buildClient(this._config);
+    const response = await client.delete(
+      `/api/v0/transfers/downloads/${encodeURIComponent(normalizedUsername)}/${encodeURIComponent(normalizedId)}`,
+      {
+        params: remove ? { remove: true } : undefined,
+      },
+    );
+    return [200, 202, 204, 404].includes(response.status);
+  }
+
+  async listDownloads() {
+    const client = buildClient(this._config);
+    const response = await client.get("/api/v0/transfers/downloads");
+    if (response.status !== 200) return [];
+    return Array.isArray(response.data) ? response.data : [];
+  }
+
+  async getEvents(offset = 0, limit = 50) {
+    const client = buildClient(this._config);
+    const response = await client.get("/api/v0/events", {
+      params: { offset, limit },
+    });
+    if (response.status !== 200) {
+      return { events: [], totalCount: 0 };
+    }
+    const totalCount = Number(response.headers["x-total-count"] || 0);
+    return {
+      events: Array.isArray(response.data) ? response.data : [],
+      totalCount,
+    };
+  }
+
+  async listSearches() {
+    const client = buildClient(this._config);
+    const response = await client.get("/api/v0/searches");
+    if (response.status !== 200) return [];
+    return normalizeArrayPayload(response.data);
+  }
+
+  async deleteSearch(searchId, options = {}) {
+    const id = String(searchId || "").trim();
+    if (!id) return false;
+    const client = buildClient(this._config);
+    const response = await client.delete(`/api/v0/searches/${encodeURIComponent(id)}`, options);
+    return [200, 204, 404].includes(response.status);
+  }
+
+  async removeCompletedDownloads() {
+    const client = buildClient(this._config);
+    const response = await client.delete("/api/v0/transfers/downloads/all/completed");
+    return [200, 204, 404].includes(response.status);
+  }
+
+  async cleanupAfterRun(options = {}) {
+    if (!this.isConfigured()) {
+      return { skipped: true, reason: "not configured" };
+    }
+    return withHonkerLock("slskd-api", async () => {
+      let searchesRemoved = 0;
+      let transfersRemoved = 0;
+      const cleanedSearchIds = [];
+      const ownedOnly = options.ownedOnly !== false;
+      const explicitSearchIds = Array.isArray(options.searchIds) ? options.searchIds : [];
+      const explicitTransfers = Array.isArray(options.transfers) ? options.transfers : [];
+      let searchIds = explicitSearchIds.map((entry) => String(entry || "").trim()).filter(Boolean);
+      let transfers = explicitTransfers;
+      let markCleaned = null;
+
+      if (ownedOnly && searchIds.length === 0 && transfers.length === 0) {
+        try {
+          const { getSlskdCleanupTargets, markSlskdCleanupTargetsCleaned } =
+            await import("./slskdTransferHistory.ts");
+          const targets = getSlskdCleanupTargets();
+          searchIds = targets.searchIds;
+          transfers = targets.transfers;
+          markCleaned = markSlskdCleanupTargetsCleaned;
+        } catch (error) {
+          logger.warn("slskd", "Failed to read scoped slskd cleanup targets", {
+            error: error?.message || String(error),
+          });
+        }
+      }
+
+      if (!ownedOnly) {
+        const searches = await this.listSearches();
+        searchIds = searches
+          .filter((search) => !isSearchInProgress(search))
+          .map((search) => readId(search))
+          .filter(Boolean);
+      }
+
+      for (const searchId of [...new Set(searchIds)]) {
+        if (await this.deleteSearch(searchId)) {
+          searchesRemoved += 1;
+          cleanedSearchIds.push(searchId);
+        }
+      }
+
+      for (const transfer of transfers) {
+        const username = String(transfer?.username || "").trim();
+        const transferId = String(transfer?.transferId || transfer?.id || "").trim();
+        if (!username || !transferId) continue;
+        if (await this.deleteTransfer(username, transferId, { remove: true })) {
+          transfersRemoved += 1;
+        }
+      }
+
+      const downloadsRemoved = ownedOnly
+        ? transfersRemoved > 0
+        : await this.removeCompletedDownloads();
+
+      if (typeof markCleaned === "function") {
+        markCleaned();
+      }
+      logger.info("slskd", "Cleaned up slskd after run", {
+        ownedOnly,
+        searchesRemoved,
+        transfersRemoved,
+        downloadsRemoved,
+      });
+      return {
+        searchesRemoved,
+        transfersRemoved,
+        downloadsRemoved,
+        cleanedSearchIds,
+      };
+    });
+  }
+}
+
+export const slskdClient = new SlskdClient();

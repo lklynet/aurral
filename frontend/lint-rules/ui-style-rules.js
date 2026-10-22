@@ -4,7 +4,7 @@ import {
   hasStaticColor,
   isColorBearingProperty,
   runtimeAurralGeometryProperties,
-} from "../scripts/lint-ui-css.mjs";
+} from "../scripts/lint-ui-css.mts";
 
 const artworkColorNames = new Set([
   "artworkColor",

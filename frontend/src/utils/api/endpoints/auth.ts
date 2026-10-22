@@ -1,0 +1,163 @@
+import { getData, postData, putData, patchData, deleteData } from "../core.ts";
+import { queryClient, queryKeys } from "../../../queryClient.ts";
+
+export const fetchHealth = ({ signal } = {}) => getData("/health", { signal });
+
+export const checkHealth = ({ force = false } = {}) =>
+  queryClient.fetchQuery({
+    queryKey: queryKeys.appHealth,
+    queryFn: ({ signal: querySignal }) => fetchHealth({ signal: querySignal }),
+    staleTime: force ? 0 : 5_000,
+  });
+
+export const checkHealthLive = () => getData("/health/live", { timeout: 5000 });
+
+export const invalidateBootstrapCache = () => {
+  queryClient.removeQueries({ queryKey: queryKeys.authBootstrap });
+};
+
+export const getBootstrapStatus = () =>
+  queryClient.fetchQuery({
+    queryKey: queryKeys.authBootstrap,
+    queryFn: ({ signal: querySignal }) => getData("/health/bootstrap", { signal: querySignal }),
+    staleTime: 25_000,
+  });
+
+export const browseFilesystem = (pathValue) =>
+  getData("/filesystem/browse", {
+    params: pathValue ? { path: pathValue } : undefined,
+  });
+
+export const ensureFilesystemPath = (pathValue) =>
+  postData("/filesystem/ensure", {
+    path: pathValue,
+  });
+
+export const loginApi = async (username, password) => {
+  const result = await postData("/auth/login", { username, password });
+  invalidateBootstrapCache();
+  return result;
+};
+
+export const exchangeOidcCode = (code) => postData("/auth/oidc/exchange", { code });
+
+export const exchangeGoogleCode = (code) => postData("/auth/google/exchange", { code });
+
+export const startGoogleLink = () => postData("/auth/google/link/start");
+
+export const startOidcLink = () => postData("/auth/oidc/link/start");
+
+export const reauthApi = (currentPassword) => postData("/auth/reauth", { currentPassword });
+
+export const startPlexLoginPin = (forwardUrl) => postData("/auth/plex/login/pin", { forwardUrl });
+
+export const completePlexLogin = () => postData("/auth/plex/login/complete");
+
+export const logoutApi = async () => {
+  const result = await postData("/auth/logout");
+  invalidateBootstrapCache();
+  return result;
+};
+
+export const getMe = () => getData("/auth/me");
+
+export const getApiKey = ({ signal } = {}) => getData("/auth/api-key", { signal });
+
+export const rotateApiKey = () => postData("/auth/api-key/rotate");
+
+export const completeOnboarding = async (payload) => {
+  const result = await postData("/onboarding/complete", payload);
+  invalidateBootstrapCache();
+  return result;
+};
+
+export const testLidarrOnboarding = (url, apiKey) =>
+  postData("/onboarding/lidarr/test", { url, apiKey });
+
+export const getLidarrProfilesOnboarding = (url, apiKey) =>
+  postData("/onboarding/lidarr/profiles", { url, apiKey });
+
+export const getLidarrMetadataProfilesOnboarding = (url, apiKey) =>
+  postData("/onboarding/lidarr/metadata-profiles", { url, apiKey });
+
+export const getUsers = () => getData("/users");
+
+export const createUser = (username, password, role, permissions) =>
+  postData("/users", {
+    username,
+    password,
+    role,
+    permissions,
+  });
+
+export const updateUser = (id, data) => patchData(`/users/${id}`, data);
+
+export const deleteUser = async (id) => {
+  await deleteData(`/users/${id}`);
+};
+
+export const changeMyPassword = async (currentPassword, newPassword) => {
+  await postData("/users/me/password", { currentPassword, newPassword });
+};
+
+export const getMyListeningHistory = ({ signal } = {}) =>
+  getData("/users/me/listening-history", { signal });
+
+export const recordPlayEvent = (payload) => postData("/play-events", payload);
+
+export const getScrobbleStatus = ({ signal } = {}) => getData("/scrobbling/status", { signal });
+export const getLastfmScrobbleLink = () => getData("/scrobbling/lastfm/link");
+export const linkListenBrainz = (token) => putData("/scrobbling/listenbrainz/link", { token });
+export const unlinkScrobbleProvider = (provider) => deleteData(`/scrobbling/${provider}/link`);
+export const linkKoito = (token, url) => putData("/scrobbling/koito/link", { token, url });
+
+export const getMyLidarrPreferences = ({ signal } = {}) =>
+  getData("/users/me/lidarr-preferences", { signal });
+
+export const getMyDiscoverLayout = () => getData("/users/me/discover-layout");
+
+export const getMyTheme = () => getData("/users/me/theme");
+
+export const saveMyTheme = (theme) => putData("/users/me/theme", { theme });
+
+export const updateMyListeningHistory = (userId, payload) => patchData(`/users/${userId}`, payload);
+
+export const updateMyLidarrPreferences = (payload) =>
+  patchData("/users/me/lidarr-preferences", payload);
+
+export const updateMyDiscoverLayout = (layout) =>
+  patchData("/users/me/discover-layout", { layout });
+
+export const getMyPlexLinkStatus = ({ signal } = {}) =>
+  getData("/users/me/plex-link/status", { signal });
+
+export const startMyPlexLinkPin = (forwardUrl) =>
+  postData("/users/me/plex-link/oauth/pin", { forwardUrl });
+
+export const completeMyPlexLink = (pinId, code, clientId) =>
+  postData("/users/me/plex-link/oauth/complete", { pinId, code, clientId });
+
+export const disconnectMyPlex = async () => {
+  await deleteData("/users/me/plex-link");
+};
+
+export const getPlexHomeUsersForAdmin = ({ signal } = {}) =>
+  getData("/users/plex-link/home-users", { signal });
+
+export const linkManagedPlexUser = (userId, plexUserId, { plexUsername, plexUuid, pin } = {}) =>
+  postData(`/users/${userId}/plex-link/managed`, {
+    plexUserId,
+    plexUsername,
+    plexUuid,
+    pin,
+  });
+
+export const adminUnlinkPlex = async (userId, { force = false } = {}) => {
+  await deleteData(`/users/${userId}/plex-link`, force ? { params: { force: true } } : undefined);
+};
+
+export const getMyIdentities = () => getData("/users/me/identities");
+
+export const unlinkMyIdentity = async (identityId) => {
+  await deleteData(`/users/me/identities/${identityId}`);
+};

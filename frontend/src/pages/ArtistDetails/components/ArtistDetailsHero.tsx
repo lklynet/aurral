@@ -1,0 +1,91 @@
+import { useEffect, useMemo, useState } from "react";
+import { getArtistHeroImage } from "../utils";
+import { withImageCacheBust } from "../../../utils/normalizeMediaUrl";
+import Tooltip from "../../../components/Tooltip";
+import RouteLink from "../../../components/RouteLink";
+import { useSharedArtworkStyle } from "../../../navigation/viewTransitions.ts";
+
+const normalizeTagName = (value) => String(value || "").trim();
+
+const buildTags = (artist) => {
+  const seen = new Set();
+  const tags = [];
+  const source = [
+    ...(Array.isArray(artist?.genres) ? artist.genres : []),
+    ...(Array.isArray(artist?.tags) ? artist.tags : []),
+  ];
+  for (const item of source) {
+    const name = normalizeTagName(typeof item === "string" ? item : item?.name);
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    tags.push({ key, name });
+  }
+  return tags;
+};
+
+export function ArtistDetailsHero({ artist, coverImages, onCoverError }) {
+  const heroImage = getArtistHeroImage(coverImages);
+  const [imageFailed, setImageFailed] = useState(false);
+  const [retryImage, setRetryImage] = useState("");
+  const displayedImage = retryImage || heroImage;
+  const tags = useMemo(() => buildTags(artist), [artist]);
+  const visibleTags = tags.slice(0, 8);
+  const showImage = displayedImage && !imageFailed;
+  const artworkStyle = useSharedArtworkStyle();
+
+  useEffect(() => {
+    setImageFailed(false);
+    setRetryImage("");
+  }, [heroImage]);
+
+  return (
+    <section className="artist-hero">
+      <div className="artist-hero__inner" style={artworkStyle}>
+        {showImage ? (
+          <>
+            <img
+              src={displayedImage}
+              alt=""
+              className="artist-hero__image"
+              loading="eager"
+              decoding="async"
+              onError={() => {
+                if (!retryImage && heroImage) {
+                  setRetryImage(withImageCacheBust(heroImage));
+                  return;
+                } else {
+                  setImageFailed(true);
+                }
+                onCoverError?.();
+              }}
+            />
+            <div className="artist-hero__wash" />
+          </>
+        ) : (
+          <div className="artist-hero__fallback" />
+        )}
+
+        <div className={`artist-hero__content${showImage ? " artist-hero__content--overlay" : ""}`}>
+          <h1 className="artist-hero__title">{artist.name}</h1>
+
+          {visibleTags.length > 0 && (
+            <div className="artist-tag-list">
+              {visibleTags.map((tag) => (
+                <Tooltip key={tag.key} content={`View artists with tag: ${tag.name}`}>
+                  <RouteLink
+                    to={`/search?q=${encodeURIComponent(`#${tag.name}`)}&type=tag`}
+                    className="artist-tag"
+                  >
+                    #{tag.name}
+                  </RouteLink>
+                </Tooltip>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}

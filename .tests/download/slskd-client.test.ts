@@ -1,0 +1,799 @@
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
+import assert from "node:assert/strict";
+
+import {
+  setupIsolatedBackend,
+  cleanupIsolatedState,
+  createMockHttpServer,
+  resetDatabase,
+} from "../helpers/backendTestHarness.ts";
+
+const [
+  isolatedState,
+  { isSearchComplete, isSearchInProgress, slskdClient },
+  { recordSlskdTransferOutcome },
+  { dbOps },
+  { db },
+] = await setupIsolatedBackend(
+  "slskd-client",
+  "backend/services/slskdClient.ts",
+  "backend/services/slskdTransferHistory.ts",
+  "backend/db/helpers/index.ts",
+  "backend/config/db-sqlite.ts",
+);
+
+beforeEach(() => {
+  resetDatabase(db);
+});
+
+afterAll(async () => {
+  await cleanupIsolatedState(isolatedState);
+});
+
+test("ambiguous creation failure cleans only its owned search and retains failed cleanup", async () => {
+  const { SlskdClient } = await import("../../backend/services/slskdClient.ts");
+  const deleted = [];
+  const owned = new Set();
+  const mock = await createMockHttpServer((request, response) => {
+    request.resume();
+    if (request.method === "DELETE") deleted.push(request.url);
+    response.writeHead(502);
+    response.end();
+  });
+  try {
+    const client = new SlskdClient({ url: mock.url });
+    await assert.rejects(
+      client.createSearch("Artist First", {
+        id: "uncertain-owned",
+        onSearchCreated: (id) => owned.add(id),
+        onSearchSettled: (id) => owned.delete(id),
+      }),
+      /502/,
+    );
+    assert.deepEqual(deleted, ["/api/v0/searches/uncertain-owned"]);
+    assert.deepEqual([...owned], ["uncertain-owned"]);
+  } finally {
+    await mock.close();
+  }
+});
+
+test("cancellation during creation stops a search accepted before its response", async () => {
+  const { SlskdClient } = await import("../../backend/services/slskdClient.ts");
+  const controller = new AbortController();
+  const owned = new Set();
+  const deleted = [];
+  const mock = await createMockHttpServer((request, response) => {
+    request.resume();
+    if (request.method === "POST") {
+      controller.abort();
+      return;
+    }
+    deleted.push(request.url);
+    response.writeHead(204);
+    response.end();
+  });
+  try {
+    const client = new SlskdClient({ url: mock.url });
+    await assert.rejects(
+      client.createSearch("Artist First", {
+        id: "cancelled-create",
+        signal: controller.signal,
+        onSearchCreated: (id) => owned.add(id),
+        onSearchSettled: (id) => owned.delete(id),
+      }),
+    );
+    assert.deepEqual(deleted, ["/api/v0/searches/cancelled-create"]);
+    assert.equal(owned.size, 0);
+  } finally {
+    await mock.close();
+  }
+});
+
+test("slskd search state helpers recognize active and completed searches", () => {
+  assert.equal(isSearchInProgress({ state: "Requested" }), true);
+  assert.equal(isSearchInProgress({ state: "InProgress" }), true);
+  assert.equal(isSearchInProgress({ state: "Queued" }), true);
+  assert.equal(isSearchInProgress({ state: "InProgress, Completed" }), false);
+  assert.equal(isSearchInProgress({ isComplete: true }), false);
+  assert.equal(isSearchComplete({ state: "Completed" }), true);
+  assert.equal(isSearchComplete({ state: "InProgress, Completed" }), true);
+  assert.equal(isSearchComplete({ isComplete: true }), true);
+  assert.equal(isSearchComplete({ state: "InProgress" }), false);
+  assert.equal(isSearchComplete({ state: "Requested" }), false);
+});
+
+test("testConnection explains an unavailable Soulseek connection without leaking its enum state", async () => {
+  const originalSettings = dbOps.getSettings();
+  const mock = await createMockHttpServer((request, response) => {
+    request.resume();
+    if (request.method === "GET" && request.url === "/api/v0/application") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ server: { state: "None", isConnected: false } }));
+      return;
+    }
+    if (request.method === "GET" && request.url === "/api/v0/options") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ directories: { downloads: "/mock-slskd-downloads" } }));
+      return;
+    }
+    response.writeHead(404);
+    response.end();
+  });
+
+  dbOps.updateSettings({
+    ...originalSettings,
+    integrations: {
+      ...(originalSettings.integrations || {}),
+      slskd: { url: mock.url, apiKey: "test-key" },
+    },
+  });
+
+  try {
+    const result = await slskdClient.testConnection({ force: true });
+    assert.equal(
+      result.message,
+      "slskd is reachable, but it is not connected to Soulseek. Open slskd and connect to the Soulseek server.",
+    );
+  } finally {
+    dbOps.updateSettings(originalSettings);
+    await mock.close();
+    assert.equal(slskdClient.getStatus().downloadPath, null);
+  }
+});
+
+test("testConnection reports slskd as not connected while Soulseek is still logging in", async () => {
+  const originalSettings = dbOps.getSettings();
+  const mock = await createMockHttpServer((request, response) => {
+    request.resume();
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(
+      JSON.stringify(
+        request.url === "/api/v0/application"
+          ? {
+              server: {
+                state: "Connected, LoggingIn",
+                isConnected: true,
+                isLoggedIn: false,
+                isLoggingIn: true,
+              },
+            }
+          : { directories: { downloads: "/mock-slskd-downloads" } },
+      ),
+    );
+  });
+  dbOps.updateSettings({
+    ...originalSettings,
+    integrations: { ...(originalSettings.integrations || {}), slskd: { url: mock.url } },
+  });
+
+  try {
+    const result = await slskdClient.testConnection({ force: true });
+    assert.equal(result.connected, false);
+    assert.equal(result.warning, true);
+    assert.equal(slskdClient.getStatus().connected, false);
+  } finally {
+    dbOps.updateSettings(originalSettings);
+    await mock.close();
+  }
+});
+
+test("testConnection does not let an older request replace the active cache", async () => {
+  const originalSettings = dbOps.getSettings();
+  let oldRequestCount = 0;
+  let resolveOldRequests;
+  let releaseOldRequests;
+  const oldRequestsReady = new Promise((resolve) => {
+    resolveOldRequests = resolve;
+  });
+  const oldRequestsReleased = new Promise((resolve) => {
+    releaseOldRequests = resolve;
+  });
+  let oldResultPromise = null;
+  const mock = await createMockHttpServer(async (request, response) => {
+    request.resume();
+    const isOldRequest = request.headers["x-api-key"] === "old-key";
+    if (isOldRequest) {
+      oldRequestCount += 1;
+      if (oldRequestCount === 2) resolveOldRequests();
+      await oldRequestsReleased;
+    }
+
+    response.writeHead(200, { "content-type": "application/json" });
+    if (request.url === "/api/v0/application") {
+      response.end(
+        JSON.stringify({
+          server: isOldRequest
+            ? { state: "None", isConnected: false }
+            : { state: "Connected, LoggedIn", isConnected: true, isLoggedIn: true },
+        }),
+      );
+      return;
+    }
+    if (request.url === "/api/v0/options") {
+      response.end(
+        JSON.stringify({
+          directories: {
+            downloads: isOldRequest ? "/old-downloads" : "/new-downloads",
+          },
+        }),
+      );
+      return;
+    }
+    response.writeHead(404);
+    response.end();
+  });
+
+  try {
+    dbOps.updateSettings({
+      ...originalSettings,
+      integrations: {
+        ...(originalSettings.integrations || {}),
+        slskd: { url: mock.url, apiKey: "old-key" },
+      },
+    });
+    oldResultPromise = slskdClient.testConnection({ force: true });
+    await oldRequestsReady;
+
+    dbOps.updateSettings({
+      ...originalSettings,
+      integrations: {
+        ...(originalSettings.integrations || {}),
+        slskd: { url: mock.url, apiKey: "new-key" },
+      },
+    });
+    const newResult = await slskdClient.testConnection({ force: true });
+    assert.equal(newResult.connected, true);
+    assert.equal(newResult.downloadPath, "/new-downloads");
+
+    releaseOldRequests();
+    await oldResultPromise;
+    assert.deepEqual(slskdClient.getStatus(), {
+      configured: true,
+      connected: true,
+      downloadPath: "/new-downloads",
+      serverState: "Connected, LoggedIn",
+    });
+  } finally {
+    releaseOldRequests();
+    if (oldResultPromise) await oldResultPromise.catch(() => {});
+    dbOps.updateSettings(originalSettings);
+    await mock.close();
+  }
+});
+
+test("flattenSearchResults reads files and lockedFiles payloads", () => {
+  const results = slskdClient.flattenSearchResults({
+    responses: [
+      {
+        username: "peerOne",
+        files: [
+          {
+            filename: "Artist\\Album\\01 - Track.flac",
+            size: 123,
+          },
+        ],
+        lockedFiles: [
+          {
+            filename: "Artist\\Album\\02 - Bonus.flac",
+            size: 456,
+          },
+        ],
+        hasFreeUploadSlot: true,
+        uploadSpeed: 250000,
+      },
+    ],
+  });
+
+  assert.equal(results.length, 2);
+  assert.equal(results[0].user, "peerOne");
+  assert.equal(results[0].file, "Artist\\Album\\01 - Track.flac");
+  assert.equal(results[1].file, "Artist\\Album\\02 - Bonus.flac");
+  assert.equal(results[0].slots, 1);
+  assert.equal(results[0].speed, 250000);
+  assert.equal(results[0].locked, false);
+  assert.equal(results[1].locked, true);
+});
+
+test("flattenSearchResults reads slskd collection wrapper payloads", () => {
+  const results = slskdClient.flattenSearchResults({
+    responses: {
+      $values: [
+        {
+          username: "peerTwo",
+          files: {
+            $values: [
+              {
+                filename: "Artist/Album/03 - Wrapped.flac",
+                size: 789,
+                bitRate: 1411,
+              },
+            ],
+          },
+        },
+      ],
+    },
+  });
+
+  assert.equal(results.length, 1);
+  assert.equal(results[0].user, "peerTwo");
+  assert.equal(results[0].file, "Artist/Album/03 - Wrapped.flac");
+  assert.equal(results[0].bitrate, 1411);
+});
+
+test("waitForSearch treats a polling failure during cancellation as a cancelled search", async () => {
+  const originalGetSearch = slskdClient.getSearch.bind(slskdClient);
+  const originalDeleteSearch = slskdClient.deleteSearch.bind(slskdClient);
+  let cancellationRequested = false;
+  let rejectSearchRequest;
+  let deletedId = null;
+  let notifySearchRequestStarted;
+  const searchRequestStarted = new Promise((resolve) => {
+    notifySearchRequestStarted = resolve;
+  });
+
+  try {
+    slskdClient.getSearch = async () => {
+      notifySearchRequestStarted();
+      return new Promise((resolve, reject) => {
+        rejectSearchRequest = reject;
+      });
+    };
+    slskdClient.deleteSearch = async (searchId) => {
+      deletedId = searchId;
+      return true;
+    };
+
+    const waiting = slskdClient.waitForSearch("search-cancel-in-flight", undefined, {
+      shouldCancel: () => cancellationRequested,
+    });
+    await searchRequestStarted;
+    cancellationRequested = true;
+    rejectSearchRequest(new Error("slskd search status failed: HTTP 404"));
+
+    assert.equal(await waiting, null);
+    assert.equal(deletedId, "search-cancel-in-flight");
+  } finally {
+    slskdClient.getSearch = originalGetSearch;
+    slskdClient.deleteSearch = originalDeleteSearch;
+  }
+});
+
+test("waitForSearch cancels before polling when cancellation is already requested", async () => {
+  const originalGetSearch = slskdClient.getSearch.bind(slskdClient);
+  const originalDeleteSearch = slskdClient.deleteSearch.bind(slskdClient);
+  let getSearchCalls = 0;
+  let deletedId = null;
+
+  try {
+    slskdClient.getSearch = async () => {
+      getSearchCalls += 1;
+      return {};
+    };
+    slskdClient.deleteSearch = async (searchId) => {
+      deletedId = searchId;
+      return true;
+    };
+
+    assert.equal(
+      await slskdClient.waitForSearch("search-already-cancelled", undefined, {
+        shouldCancel: () => true,
+      }),
+      null,
+    );
+    assert.equal(getSearchCalls, 0);
+    assert.equal(deletedId, "search-already-cancelled");
+  } finally {
+    slskdClient.getSearch = originalGetSearch;
+    slskdClient.deleteSearch = originalDeleteSearch;
+  }
+});
+
+test("waitForSearch preserves polling errors while stopping its owned search", async () => {
+  const originalGetSearch = slskdClient.getSearch.bind(slskdClient);
+  const originalDeleteSearch = slskdClient.deleteSearch.bind(slskdClient);
+  const pollingError = new Error("slskd unavailable");
+  let deleted = false;
+
+  try {
+    slskdClient.getSearch = async () => {
+      throw pollingError;
+    };
+    slskdClient.deleteSearch = async () => {
+      deleted = true;
+      return true;
+    };
+
+    await assert.rejects(
+      slskdClient.waitForSearch("search-failed", undefined, {
+        shouldCancel: () => false,
+      }),
+      (error) => error === pollingError,
+    );
+    assert.equal(deleted, true);
+  } finally {
+    slskdClient.getSearch = originalGetSearch;
+    slskdClient.deleteSearch = originalDeleteSearch;
+  }
+});
+
+test("createSearch sends slskd search timeout in milliseconds", async () => {
+  const originalSettings = dbOps.getSettings();
+  let requestBody = null;
+  const mock = await createMockHttpServer(async (request, response) => {
+    let body = "";
+    request.on("data", (chunk) => {
+      body += chunk.toString();
+    });
+    request.on("end", () => {
+      if (request.method === "POST" && request.url === "/api/v0/searches") {
+        requestBody = JSON.parse(body);
+        response.writeHead(201, { "content-type": "application/json" });
+        response.end(JSON.stringify({ id: requestBody.id }));
+        return;
+      }
+      response.writeHead(404);
+      response.end();
+    });
+  });
+
+  dbOps.updateSettings({
+    ...originalSettings,
+    integrations: {
+      ...(originalSettings.integrations || {}),
+      slskd: {
+        url: mock.url,
+        apiKey: "test-key",
+      },
+    },
+  });
+
+  try {
+    await slskdClient.createSearch("Equipment Wet Mulch", {
+      id: "00000000-0000-4000-8000-000000000003",
+      searchTimeoutMs: 120000,
+    });
+    assert.equal(requestBody.searchTimeout, 120000);
+  } finally {
+    dbOps.updateSettings(originalSettings);
+    await mock.close();
+  }
+});
+
+test("enqueueBatch rejects slskd all-failed enqueue responses", async () => {
+  const originalSettings = dbOps.getSettings();
+  const mock = await createMockHttpServer(async (request, response) => {
+    request.resume();
+    if (request.method === "POST" && request.url === "/api/v0/transfers/downloads/peer") {
+      response.writeHead(201, { "content-type": "application/json" });
+      response.end(
+        JSON.stringify({
+          enqueued: [],
+          failed: ["Artist/Album/Locked.flac"],
+        }),
+      );
+      return;
+    }
+    response.writeHead(404);
+    response.end();
+  });
+
+  dbOps.updateSettings({
+    ...originalSettings,
+    integrations: {
+      ...(originalSettings.integrations || {}),
+      slskd: {
+        url: mock.url,
+        apiKey: "test-key",
+      },
+    },
+  });
+
+  try {
+    await assert.rejects(
+      () =>
+        slskdClient.enqueueBatch({
+          username: "peer",
+          files: [{ filename: "Artist/Album/Locked.flac", size: 123 }],
+        }),
+      /Artist\/Album\/Locked\.flac/,
+    );
+  } finally {
+    dbOps.updateSettings(originalSettings);
+    await mock.close();
+  }
+});
+
+test("enqueueBatch uses current slskd download endpoint", async () => {
+  const originalSettings = dbOps.getSettings();
+  const transferId = "00000000-0000-4000-8000-000000000002";
+  const calls = [];
+  const mock = await createMockHttpServer(async (request, response) => {
+    let body = "";
+    request.on("data", (chunk) => {
+      body += chunk.toString();
+    });
+    request.on("end", () => {
+      calls.push({ method: request.method, url: request.url, body });
+      if (request.method === "POST" && request.url === "/api/v0/transfers/downloads/peer") {
+        response.writeHead(201, { "content-type": "application/json" });
+        response.end(
+          JSON.stringify({
+            enqueued: [
+              {
+                id: transferId,
+                username: "peer",
+                filename: "Artist/Album/Open.flac",
+                state: "Queued, Locally",
+              },
+            ],
+            failed: [],
+          }),
+        );
+        return;
+      }
+      response.writeHead(404);
+      response.end();
+    });
+  });
+
+  dbOps.updateSettings({
+    ...originalSettings,
+    integrations: {
+      ...(originalSettings.integrations || {}),
+      slskd: {
+        url: mock.url,
+        apiKey: "test-key",
+      },
+    },
+  });
+
+  try {
+    const result = await slskdClient.enqueueBatch({
+      username: "peer",
+      files: [{ filename: "Artist/Album/Open.flac", size: 123 }],
+    });
+    assert.equal(result.transferId, transferId);
+    assert.deepEqual(
+      calls.map((call) => call.url),
+      ["/api/v0/transfers/downloads/peer"],
+    );
+    assert.deepEqual(JSON.parse(calls[0].body), [
+      { filename: "Artist/Album/Open.flac", size: 123 },
+    ]);
+  } finally {
+    dbOps.updateSettings(originalSettings);
+    await mock.close();
+  }
+});
+
+test("cleanupAfterRun removes Aurral-owned searches and transfers", async () => {
+  const originalSettings = dbOps.getSettings();
+  const calls = [];
+  const mock = await createMockHttpServer((request, response) => {
+    calls.push({ method: request.method, url: request.url });
+    if (request.method === "DELETE" && request.url === "/api/v0/searches/search-owned") {
+      response.writeHead(204);
+      response.end();
+      return;
+    }
+    if (
+      request.method === "DELETE" &&
+      request.url === "/api/v0/transfers/downloads/peer/transfer-owned?remove=true"
+    ) {
+      response.writeHead(204);
+      response.end();
+      return;
+    }
+    response.writeHead(404);
+    response.end();
+  });
+
+  dbOps.updateSettings({
+    ...originalSettings,
+    integrations: {
+      ...(originalSettings.integrations || {}),
+      slskd: {
+        url: mock.url,
+        apiKey: "test-key",
+      },
+    },
+  });
+
+  try {
+    recordSlskdTransferOutcome({
+      job: {
+        id: "job-owned",
+        artistName: "Artist",
+        trackName: "Track",
+        albumName: "Album",
+      },
+      candidate: {
+        raw: {
+          user: "peer",
+          file: "Artist/Album/Track.flac",
+        },
+      },
+      status: "success",
+      searchIds: ["search-owned"],
+      transferId: "transfer-owned",
+    });
+    const result = await slskdClient.cleanupAfterRun();
+    assert.equal(result.searchesRemoved, 1);
+    assert.equal(result.transfersRemoved, 1);
+    assert.equal(result.downloadsRemoved, true);
+    assert.deepEqual(result.cleanedSearchIds, ["search-owned"]);
+    assert.deepEqual(
+      calls.map((call) => `${call.method} ${call.url}`),
+      [
+        "DELETE /api/v0/searches/search-owned",
+        "DELETE /api/v0/transfers/downloads/peer/transfer-owned?remove=true",
+      ],
+    );
+  } finally {
+    dbOps.updateSettings(originalSettings);
+    await mock.close();
+  }
+});
+
+test("flattenSearchResults preserves the slskd-advertised length in seconds", () => {
+  const results = slskdClient.flattenSearchResults({
+    responses: [
+      {
+        username: "peerOne",
+        files: [
+          { filename: "Artist/Album/01 - Track.mp3", size: 8000000, length: 226 },
+          { filename: "Artist/Album/02 - NoLength.mp3", size: 7000000 },
+        ],
+      },
+    ],
+  });
+
+  assert.equal(results.length, 2);
+  assert.equal(results[0].length, 226);
+  assert.equal(results[1].length, null);
+});
+
+test("flattenSearchResults does not fall back to length when size is absent", () => {
+  const results = slskdClient.flattenSearchResults({
+    responses: [
+      {
+        username: "peerOne",
+        files: [{ filename: "Artist/Album/03 - Sizeless.mp3", length: 226 }],
+      },
+    ],
+  });
+
+  assert.equal(results.length, 1);
+  assert.equal(results[0].size, 0);
+  assert.equal(results[0].length, 226);
+});
+
+test("waitForSearch stops its owned active search when collection is sufficient", async () => {
+  const snapshot = {
+    state: "InProgress",
+    responses: [{ username: "peer", files: [{ filename: "Artist/Album/First.flac" }] }],
+  };
+  const deleted = [];
+  vi.spyOn(slskdClient, "getSearch").mockImplementation(async () => snapshot);
+  vi.spyOn(slskdClient, "deleteSearch").mockImplementation(async (id) => {
+    deleted.push(id);
+    return true;
+  });
+  const result = await slskdClient.waitForSearch("owned-early-search", 1000, {
+    earlyExitWhen: () => true,
+  });
+  assert.deepEqual(result, snapshot);
+  assert.deepEqual(deleted, ["owned-early-search"]);
+});
+
+test("failed search deletion retains ownership and collected files", async () => {
+  const snapshot = {
+    state: "InProgress",
+    responses: [{ username: "peer", files: [{ filename: "First.flac" }] }],
+  };
+  const settled = [];
+  vi.spyOn(slskdClient, "getSearch").mockImplementation(async () => snapshot);
+  vi.spyOn(slskdClient, "deleteSearch").mockImplementation(async () => false);
+  const result = await slskdClient.waitForSearch("failed-delete", 1000, {
+    earlyExitWhen: () => true,
+    onSearchSettled: (id) => settled.push(id),
+  });
+  assert.equal(slskdClient.flattenSearchResults(result).length, 1);
+  assert.deepEqual(settled, []);
+});
+
+test("searchQuery passes its operation deadline through creation and collection", async () => {
+  vi.useFakeTimers({ toFake: ["Date"], now: 1000 });
+  let postedBody;
+  let searchId;
+  const server = await createMockHttpServer((req, res) => {
+    if (req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk) => {
+        body += chunk;
+      });
+      req.on("end", () => {
+        postedBody = JSON.parse(body);
+        searchId = postedBody.id;
+        res.writeHead(201, { "Content-Type": "application/json" });
+        res.end("{}");
+      });
+    } else {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          state: "Completed",
+          responses: [{ username: "peer", files: [{ filename: "First.flac" }] }],
+        }),
+      );
+    }
+  });
+  const { SlskdClient } = await import("../../backend/services/slskdClient.ts");
+  const client = new SlskdClient({ enabled: true, url: server.url });
+  const registered = [];
+  const settled = [];
+  try {
+    const result = await client.searchQuery("First", {
+      timeoutMs: 120000,
+      onSearchCreated: (id) => registered.push(id),
+      onSearchSettled: (id) => settled.push(id),
+    });
+    assert.equal(result.length, 1);
+    assert.equal(postedBody.searchTimeout, 120000);
+    assert.ok(registered.includes(searchId));
+    assert.deepEqual(settled, [searchId]);
+  } finally {
+    await server.close();
+  }
+});
+
+test("completed search cleanup failure retains ownership", async () => {
+  const { SlskdClient } = await import("../../backend/services/slskdClient.ts");
+  const client = new SlskdClient({
+    enabled: true,
+    url: "http://service.invalid",
+    cleanupAfterRuns: true,
+  });
+  vi.spyOn(client, "getSearch").mockImplementation(async () => ({
+    state: "Completed",
+    responses: [],
+  }));
+  vi.spyOn(client, "deleteSearch").mockImplementation(async () => false);
+  let settled = false;
+  await client.waitForSearch("completed-retained", 1000, {
+    onSearchSettled: () => {
+      settled = true;
+    },
+  });
+  assert.equal(settled, false);
+});
+
+test("cancellation interrupts an in-flight Soulseek HTTP request", { timeout: 3000 }, async () => {
+  vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"], now: Date.now() });
+  let cancelled = false;
+  let notifyPoll;
+  const pollStarted = new Promise((resolve) => {
+    notifyPoll = resolve;
+  });
+  const deleted = [];
+  const server = await createMockHttpServer((req, res) => {
+    if (req.method === "GET") notifyPoll();
+    else {
+      deleted.push(req.url);
+      res.writeHead(204);
+      res.end();
+    }
+  });
+  const { SlskdClient } = await import("../../backend/services/slskdClient.ts");
+  const client = new SlskdClient({ enabled: true, url: server.url });
+  try {
+    const pending = client.waitForSearch("cancel-http", 60000, { shouldCancel: () => cancelled });
+    await pollStarted;
+    cancelled = true;
+    vi.advanceTimersByTime(100);
+    assert.equal(await pending, null);
+    assert.deepEqual(deleted, ["/api/v0/searches/cancel-http"]);
+  } finally {
+    await server.close();
+  }
+});

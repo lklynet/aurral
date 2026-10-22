@@ -1,0 +1,134 @@
+import { test } from "vite-plus/test";
+import assert from "node:assert/strict";
+
+import {
+  buildAlbumRequestPayload,
+  buildArtistAddPayload,
+  canRemoveLibraryAlbum,
+  canSearchLibraryAlbum,
+  getLibraryOwnerConflict,
+  resolveAlbumManager,
+  resolveLibraryDestination,
+} from "../../frontend/src/utils/libraryDestination.ts";
+
+test("Lidarr manages artists and albums when it is connected, otherwise Aurral does", () => {
+  assert.deepEqual(resolveLibraryDestination({ lidarrConfigured: true }), { primary: "lidarr" });
+  assert.deepEqual(resolveLibraryDestination({ lidarrConfigured: false }), { primary: "aurral" });
+});
+
+test("Aurral albums can always be removed, Lidarr albums only while Lidarr is connected", () => {
+  const aurralAlbum = { managedBy: "aurral", mbid: "rg1" };
+  const lidarrAlbum = { managedBy: null, sources: ["lidarr"], mbid: "rg2" };
+  assert.equal(canRemoveLibraryAlbum(aurralAlbum, { lidarrConnected: true }), true);
+  assert.equal(canRemoveLibraryAlbum(aurralAlbum, { lidarrConnected: false }), true);
+  assert.equal(canRemoveLibraryAlbum(lidarrAlbum, { lidarrConnected: true }), true);
+  assert.equal(canRemoveLibraryAlbum(lidarrAlbum, { lidarrConnected: false }), false);
+  assert.equal(canRemoveLibraryAlbum({ sources: ["lidarr"] }, { lidarrConnected: true }), false);
+  assert.equal(canRemoveLibraryAlbum({ sources: ["flow"] }, { lidarrConnected: true }), false);
+});
+
+test("Aurral albums can always be searched, Lidarr albums only while Lidarr is connected", () => {
+  const aurralAlbum = { managedBy: "aurral", sources: ["aurral"] };
+  const lidarrAlbum = { managedBy: null, sources: ["lidarr"] };
+  assert.equal(canSearchLibraryAlbum(aurralAlbum, { lidarrConnected: true }), true);
+  assert.equal(canSearchLibraryAlbum(aurralAlbum, { lidarrConnected: false }), true);
+  assert.equal(canSearchLibraryAlbum(lidarrAlbum, { lidarrConnected: true }), true);
+  assert.equal(canSearchLibraryAlbum(lidarrAlbum, { lidarrConnected: false }), false);
+  assert.equal(canSearchLibraryAlbum({ sources: ["flow"] }, { lidarrConnected: true }), false);
+});
+
+const conflictError = (data, status = 409) => ({ response: { status, data } });
+
+test("getLibraryOwnerConflict maps album and artist owner conflicts to the current manager", () => {
+  assert.deepEqual(
+    getLibraryOwnerConflict(
+      conflictError({
+        code: "album_owner_conflict",
+        managedBy: "lidarr",
+        availability: { available: false, trackCount: 12, availableTrackCount: 8 },
+      }),
+    ),
+    {
+      managedBy: "lidarr",
+      label: "Managed by Lidarr",
+      message: "Managed by Lidarr · 8 of 12 tracks",
+    },
+  );
+  assert.deepEqual(
+    getLibraryOwnerConflict(conflictError({ code: "artist_owner_conflict", managedBy: "aurral" })),
+    { managedBy: "aurral", label: "Managed by Aurral", message: "Managed by Aurral" },
+  );
+  assert.equal(
+    getLibraryOwnerConflict(
+      conflictError({
+        code: "album_owner_conflict",
+        conflict: { managedBy: "aurral", availability: { available: true } },
+      }),
+    )?.message,
+    "Managed by Aurral · Available",
+  );
+});
+
+test("getLibraryOwnerConflict leaves other failures as errors", () => {
+  assert.equal(
+    getLibraryOwnerConflict(
+      conflictError({ code: "album_owner_conflict", managedBy: "lidarr" }, 500),
+    ),
+    null,
+  );
+  assert.equal(getLibraryOwnerConflict(conflictError({ code: "invalid_library_manager" })), null);
+  assert.equal(
+    getLibraryOwnerConflict(conflictError({ code: "album_owner_conflict", managedBy: null })),
+    null,
+  );
+  assert.equal(getLibraryOwnerConflict(new Error("Network Error")), null);
+});
+
+test("buildArtistAddPayload sends the chosen manager and keeps Lidarr options away from Aurral", () => {
+  const lidarrOptions = { rootFolderPath: "/music", qualityProfileId: 2, tagId: 5 };
+  assert.deepEqual(
+    buildArtistAddPayload({
+      artistMbid: "a1",
+      artistName: "Artist",
+      managedBy: "aurral",
+      lidarrOptions,
+    }),
+    { foreignArtistId: "a1", artistName: "Artist", managedBy: "aurral" },
+  );
+  assert.deepEqual(
+    buildArtistAddPayload({
+      artistMbid: "a1",
+      artistName: "Artist",
+      managedBy: "lidarr",
+      lidarrOptions,
+    }),
+    { foreignArtistId: "a1", artistName: "Artist", managedBy: "lidarr", ...lidarrOptions },
+  );
+});
+
+test("buildAlbumRequestPayload sends the chosen manager", () => {
+  assert.deepEqual(
+    buildAlbumRequestPayload({
+      albumMbid: "rg1",
+      albumName: "Album",
+      artistMbid: "a1",
+      artistName: "Artist",
+      managedBy: "aurral",
+    }),
+    {
+      albumMbid: "rg1",
+      albumName: "Album",
+      artistMbid: "a1",
+      artistName: "Artist",
+      managedBy: "aurral",
+      triggerSearch: false,
+    },
+  );
+});
+
+test("an album without a recorded manager belongs to Lidarr when Lidarr has its files", () => {
+  assert.equal(resolveAlbumManager({ managedBy: "aurral", sources: ["lidarr"] }), "aurral");
+  assert.equal(resolveAlbumManager({ managedBy: null, sources: ["lidarr", "aurral"] }), "lidarr");
+  assert.equal(resolveAlbumManager({ managedBy: null, sources: ["flow"] }), null);
+  assert.equal(resolveAlbumManager(null), null);
+});

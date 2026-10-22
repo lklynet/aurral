@@ -77,7 +77,7 @@ jobs:
         id: candidate
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node scripts/check-nightly-image.js
+        run: node scripts/check-nightly-image.ts
 
       - name: Resolve build version
         if: steps.candidate.outputs.publish == 'true'
