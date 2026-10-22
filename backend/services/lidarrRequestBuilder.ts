@@ -64,9 +64,10 @@ export const buildLidarrRequests = async (
     const downloadState = String(item.trackedDownloadState || "").toLowerCase();
     const downloadStatus = String(item.trackedDownloadStatus || "").toLowerCase();
     const errMsg = String(item.errorMessage || "").toLowerCase();
-    const msgs = Array.isArray(item.statusMessages)
-      ? item.statusMessages.map((m: unknown) => String(m || "").toLowerCase()).join(" ")
-      : "";
+    const msgs = (item.statusMessages ?? [])
+      .flatMap((m) => [m.title, ...(m.messages ?? [])])
+      .join(" ")
+      .toLowerCase();
 
     const isFailed =
       downloadState === "importfailed" ||

@@ -59,3 +59,27 @@ test("activity rows use the embedded album and artist names", async () => {
   assert.equal(requests[0].albumName, "Good Girl Gone Bad");
   assert.equal(requests[0].artistName, "Rihanna");
 });
+
+test("a queue item whose status messages report a failure shows as Failed", async () => {
+  const requests = await buildLidarrRequests(
+    { getAlbum: async () => null },
+    {
+      queue: [
+        {
+          id: 1,
+          albumId: 48,
+          title: "Rihanna - Good Girl Gone Bad",
+          status: "downloading",
+          trackedDownloadStatus: "ok",
+          statusMessages: [
+            { title: "Rihanna - Good Girl Gone Bad", messages: ["Download failed"] },
+          ],
+          album: { title: "Good Girl Gone Bad", foreignAlbumId: "rg" },
+          artist: { id: 7, artistName: "Rihanna", foreignArtistId: "ar" },
+        },
+      ],
+      history: { records: [] },
+    },
+  );
+  assert.equal(requests[0].statusLabel, "Failed");
+});
