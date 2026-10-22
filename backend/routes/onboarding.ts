@@ -74,11 +74,20 @@ router.post("/lidarr/test", async (req, res) => {
 
 router.post("/navidrome/test", testNavidromeConnection);
 
-async function resolveLidarrProfiles(lidarr) {
+type LidarrProfilesInput = {
+  url?: unknown;
+  apiKey?: unknown;
+  qualityProfileId?: string | number | null;
+  metadataProfileId?: string | number | null;
+};
+
+async function resolveLidarrProfiles(lidarr: LidarrProfilesInput) {
   let qualityProfileId =
-    lidarr.qualityProfileId != null ? parseInt(lidarr.qualityProfileId, 10) || null : null;
+    lidarr.qualityProfileId != null ? parseInt(String(lidarr.qualityProfileId), 10) || null : null;
   let metadataProfileId =
-    lidarr.metadataProfileId != null ? parseInt(lidarr.metadataProfileId, 10) || null : null;
+    lidarr.metadataProfileId != null
+      ? parseInt(String(lidarr.metadataProfileId), 10) || null
+      : null;
   if (qualityProfileId && metadataProfileId) {
     return { qualityProfileId, metadataProfileId };
   }

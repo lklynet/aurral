@@ -1,3 +1,4 @@
+import type { Router } from "express";
 import { UUID_REGEX } from "../../../../lib/uuid.ts";
 import {
   musicbrainzGetArtistAppearsOnReleaseGroups,
@@ -20,8 +21,8 @@ import {
   withListenBrainzStats,
 } from "../shared/transform.ts";
 
-export function registerStream(router) {
-  router.get("/:mbid/stream", noCache, async (req, res) => {
+export function registerStream(router: Router) {
+  router.get<"/:mbid/stream">("/:mbid/stream", noCache, async (req, res) => {
     try {
       const { mbid } = req.params;
       const streamArtistName = (req.query.artistName || "").trim();
@@ -32,7 +33,7 @@ export function registerStream(router) {
               .map((value) => value.trim())
               .filter(Boolean)
           : null;
-      const parsedAppearsOnLimit = Number.parseInt(req.query.appearsOnLimit, 10);
+      const parsedAppearsOnLimit = Number.parseInt(String(req.query.appearsOnLimit), 10);
       const appearsOnLimit =
         Number.isFinite(parsedAppearsOnLimit) && parsedAppearsOnLimit > 0
           ? parsedAppearsOnLimit
@@ -71,7 +72,7 @@ export function registerStream(router) {
       const override = dbOps.getArtistOverride(mbid);
       const resolvedMbid = override?.musicbrainzId || mbid;
       const initialName = streamArtistName || "Unknown Artist";
-      const sendArtist = (payload) => {
+      const sendArtist = (payload: unknown) => {
         if (!isClientConnected()) return;
         sendSSE(res, "artist", payload);
       };

@@ -1,8 +1,8 @@
-import express from "express";
+import express, { type Request, type Response } from "express";
 import { requireAuth } from "../middleware/requirePermission.ts";
 import { recordAlbumImportCompleted } from "../services/aurralHistoryService.ts";
 
-export const handleLidarrWebhook = (req, res) => {
+export const handleLidarrWebhook = (req: Request, res: Response) => {
   const eventType = String(req.body?.eventType || req.body?.EventType || "")
     .trim()
     .toLowerCase();

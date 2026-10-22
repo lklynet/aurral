@@ -1,4 +1,4 @@
-import express from "express";
+import express, { type Request } from "express";
 import { userOps } from "../db/helpers/index.ts";
 import {
   createSession,
@@ -25,7 +25,7 @@ import type { RequestUser } from "../middleware/requestUser.ts";
 
 const router = express.Router();
 
-const getBearerToken = (req) => {
+const getBearerToken = (req: Request) => {
   const authHeader = String(req.headers.authorization || "");
   if (!authHeader.startsWith("Bearer ")) return null;
   return authHeader.slice(7).trim();
@@ -47,7 +47,7 @@ router.post("/login", async (req, res) => {
     if (user.status !== "active") {
       return res.status(403).json({ error: "This account has been suspended or disabled" });
     }
-    const updates = { subsonicPassword: password };
+    const updates: Parameters<typeof userOps.updateUser>[1] = { subsonicPassword: password };
     if (needsRehash(user.passwordHash)) {
       updates.passwordHash = hashPassword(password);
     }
@@ -105,7 +105,7 @@ router.post("/reauth", requireAuth, (req, res) => {
   if (!token) {
     return res.status(400).json({ error: "Reauthentication requires an active session" });
   }
-  const user = userOps.getUserById(req.user.id);
+  const user = userOps.getUserById(req.user!.id);
   if (!user) {
     return res.status(400).json({ error: "Current password is incorrect" });
   }
@@ -145,7 +145,7 @@ router.get("/oidc/login", async (req, res) => {
 
 router.post("/oidc/link/start", requireAuth, requireRecentAuth(), async (req, res) => {
   try {
-    await startOidcLogin(req, res, { mode: "link", linkUserId: req.user.id, returnUrl: true });
+    await startOidcLogin(req, res, { mode: "link", linkUserId: req.user!.id, returnUrl: true });
   } catch (error) {
     logger.error("auth", "OIDC link start failed:", { message: error.message });
     if (!res.headersSent) {
@@ -177,7 +177,7 @@ router.get("/google/login", async (req, res) => {
 
 router.get("/google/link", requireAuth, requireRecentAuth(), async (req, res) => {
   try {
-    await startGoogleAuth(req, res, { mode: "link", linkUserId: req.user.id });
+    await startGoogleAuth(req, res, { mode: "link", linkUserId: req.user!.id });
   } catch (error) {
     logger.error("auth", "Google link start failed:", { message: error.message });
     if (!res.headersSent) {
@@ -190,7 +190,7 @@ router.post("/google/link/start", requireAuth, requireRecentAuth(), async (req, 
   try {
     await startGoogleAuth(req, res, {
       mode: "link",
-      linkUserId: req.user.id,
+      linkUserId: req.user!.id,
       returnUrl: true,
     });
   } catch (error) {

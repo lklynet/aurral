@@ -6,7 +6,10 @@ import {
   getLidarrStatusSnapshot,
   invalidateAllDownloadStatusesCache,
 } from "./library/handlers/downloads.ts";
+import type { LidarrRequestItem } from "../services/lidarrRequestBuilder.ts";
 import { buildLidarrRequests } from "../services/lidarrRequestBuilder.ts";
+import type { LidarrClient, LidarrQueueItem } from "../services/lidarrClient.ts";
+import type { RequestUser } from "../middleware/requestUser.ts";
 import { getAurralHistoryRequests } from "../services/aurralHistoryService.ts";
 import { downloadTracker } from "../services/downloadJobs/downloadTracker.ts";
 
@@ -14,10 +17,15 @@ const router = express.Router();
 const dismissedAlbumIds = new Map();
 const DISMISSED_ALBUM_TTL_MS = 24 * 60 * 60 * 1000;
 const REQUESTS_CACHE_MS = 15000;
-const requestsCache = new Map();
+type AurralRequest = Awaited<ReturnType<typeof getAurralHistoryRequests>>[number];
+type RequestsResponse = Awaited<ReturnType<typeof buildRequestsResponse>>;
+type RequestsCacheEntry = { response: RequestsResponse; at: number; jobsRevision: number };
+
+const requestsCache = new Map<string | null, RequestsCacheEntry>();
 const pendingRequestsRefreshes = new Map();
 
-const getRequestsUserId = (user) => (user?.id == null ? null : String(user.id));
+const getRequestsUserId = (user: RequestUser | null | undefined) =>
+  user?.id == null ? null : String(user.id);
 
 const pruneDismissedAlbumIds = () => {
   const now = Date.now();
@@ -28,18 +36,22 @@ const pruneDismissedAlbumIds = () => {
   }
 };
 
-const filterDismissedRequests = (requests) =>
+const filterDismissedRequests = <T extends { albumId?: unknown }>(requests: T[]) =>
   Array.isArray(requests)
     ? requests.filter((r) => !r.albumId || !dismissedAlbumIds.has(String(r.albumId)))
     : [];
 
-const updateRequestsCache = (requests, user, jobsRevision) => {
+const updateRequestsCache = (
+  requests: RequestsResponse,
+  user: RequestUser | null | undefined,
+  jobsRevision: number,
+) => {
   const response = filterDismissedRequests(requests);
   requestsCache.set(getRequestsUserId(user), { response, at: Date.now(), jobsRevision });
   return response;
 };
 
-const removeAlbumFromRequestsCache = (albumId) => {
+const removeAlbumFromRequestsCache = (albumId: string) => {
   const normalizedAlbumId = String(albumId);
   for (const cache of requestsCache.values()) {
     if (!cache?.response) continue;
@@ -50,7 +62,10 @@ const removeAlbumFromRequestsCache = (albumId) => {
   }
 };
 
-const filterRedundantAurralRequests = (aurralRequests, lidarrRequests) => {
+const filterRedundantAurralRequests = (
+  aurralRequests: AurralRequest[],
+  lidarrRequests: (LidarrRequestItem & Partial<Pick<AurralRequest, "requestedBy">>)[],
+): AurralRequest[] => {
   const lidarrAlbumIds = new Set(
     lidarrRequests
       .map((request) => request.albumId)
@@ -77,7 +92,10 @@ const filterRedundantAurralRequests = (aurralRequests, lidarrRequests) => {
   });
 };
 
-const buildRequestsResponse = async (lidarrClient, { refresh = false, user = null } = {}) => {
+const buildRequestsResponse = async (
+  lidarrClient: LidarrClient,
+  { refresh = false, user = null }: { refresh?: boolean; user?: RequestUser | null } = {},
+) => {
   const snapshot = lidarrClient?.isConfigured() ? await getLidarrStatusSnapshot({ refresh }) : null;
   const [lidarrRequests, aurralRequests] = await Promise.all([
     snapshot ? buildLidarrRequests(lidarrClient, snapshot.provider) : Promise.resolve([]),
@@ -89,7 +107,10 @@ const buildRequestsResponse = async (lidarrClient, { refresh = false, user = nul
   );
 };
 
-const refreshRequestsCache = async (lidarrClient, options) => {
+const refreshRequestsCache = async (
+  lidarrClient: LidarrClient,
+  options: Parameters<typeof buildRequestsResponse>[1],
+) => {
   const userId = getRequestsUserId(options?.user);
   if (pendingRequestsRefreshes.has(userId)) return pendingRequestsRefreshes.get(userId);
   const jobsRevision = downloadTracker.getRevision();
@@ -102,7 +123,10 @@ const refreshRequestsCache = async (lidarrClient, options) => {
   return refresh;
 };
 
-const removeMatchingQueueItems = async (lidarrClient, matches) => {
+const removeMatchingQueueItems = async (
+  lidarrClient: LidarrClient,
+  matches: (item: LidarrQueueItem) => boolean,
+) => {
   const queue = await lidarrClient.getQueue().catch(() => []);
   const queueItems = Array.isArray(queue) ? queue : queue?.records || [];
   for (const item of queueItems) {

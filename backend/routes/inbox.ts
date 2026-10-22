@@ -1,6 +1,8 @@
-import express from "express";
+import express, { type Request } from "express";
 import { dbOps } from "../db/helpers/index.ts";
 import { hasPermission } from "../middleware/auth.ts";
+import type { InboxItem } from "../db/helpers/inbox.ts";
+import type { RequestUser } from "../middleware/requestUser.ts";
 import { requireAuth } from "../middleware/requirePermission.ts";
 import { libraryManager } from "../services/libraryManager.ts";
 import {
@@ -16,9 +18,9 @@ const router = express.Router();
 const lastManualRefresh = new Map();
 const DISCOVERY_DISMISSAL_MS = 90 * 24 * 60 * 60 * 1000;
 
-const getUserId = (req) => Number(req.user?.id);
+const getUserId = (req: Request) => Number(req.user?.id);
 
-async function addInboxItem(item, user) {
+async function addInboxItem(item: InboxItem, user: RequestUser) {
   const metadata = item.metadata || {};
   if (item.kind === "release") {
     if (!hasPermission(user, "addAlbum")) {
@@ -54,7 +56,7 @@ async function addInboxItem(item, user) {
 
 router.get("/", requireAuth, async (req, res) => {
   try {
-    const limit = Math.max(1, Math.min(50, Number.parseInt(req.query.limit, 10) || 50));
+    const limit = Math.max(1, Math.min(50, Number.parseInt(String(req.query.limit), 10) || 50));
     const result = await getInboxForUser(getUserId(req), {
       limit,
     });
@@ -122,7 +124,7 @@ router.patch("/:id", requireAuth, async (req, res) => {
   try {
     if (action === "add") {
       if (item.isAdded) return res.json({ item });
-      const result = await addInboxItem(item, req.user);
+      const result = await addInboxItem(item, req.user!);
       if (result?.error) {
         return res.status(503).json({ error: result.error });
       }

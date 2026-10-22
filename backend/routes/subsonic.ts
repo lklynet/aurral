@@ -1,5 +1,5 @@
 import path from "path";
-import express from "express";
+import express, { type Request, type Response } from "express";
 
 import { APP_NAME, APP_VERSION } from "../config/constants.ts";
 import { hasPermission, resolveSubsonicTokenUser, resolveUser } from "../middleware/auth.ts";
@@ -56,20 +56,30 @@ const SUPPORTED_EXTENSIONS = [
   { name: "songLyrics", versions: [1] },
   { name: "transcodeOffset", versions: [1] },
 ];
+type SubsonicFormat = "xml" | "json";
+type SubsonicError = { code: number; message: string; helpUrl?: string };
+type SubsonicValidation = {
+  format: SubsonicFormat;
+  error?: [number, string];
+  password?: string;
+  token?: string;
+  salt?: string;
+};
+
 const router = express.Router();
 
 // OpenSubsonic formPost: parameters may arrive in a urlencoded body; query wins on conflicts.
-const requestParameters = (req) => ({
+const requestParameters = (req: Request) => ({
   ...(req.body && typeof req.body === "object" ? req.body : {}),
   ...(req.query || {}),
 });
 
-const getParameter = (req, name) => {
+const getParameter = (req: Request, name: string) => {
   const value = requestParameters(req)[name];
   return String(Array.isArray(value) ? value[0] || "" : value || "");
 };
 
-const getParameters = (req, names) =>
+const getParameters = (req: Request, names: string[]) =>
   names.flatMap((name) => {
     const value = requestParameters(req)[name];
     return (Array.isArray(value) ? value : [value])
@@ -77,12 +87,12 @@ const getParameters = (req, names) =>
       .filter(Boolean);
   });
 
-const normalizeSearchQuery = (value) => {
+const normalizeSearchQuery = (value: string) => {
   const query = String(value || "").trim();
   return query === '""' ? "" : query;
 };
 
-const escapeXml = (value) =>
+const escapeXml = (value: unknown) =>
   String(value)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
@@ -90,19 +100,19 @@ const escapeXml = (value) =>
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&apos;");
 
-function parseVersion(value) {
+function parseVersion(value: string) {
   const match = /^(\d+)\.(\d+)(?:\.\d+)?$/.exec(value);
   return match ? { major: Number(match[1]), minor: Number(match[2]) } : null;
 }
 
-function decodePassword(value) {
+function decodePassword(value: string) {
   if (!value.startsWith("enc:")) return value;
   const encoded = value.slice(4);
   if (!/^(?:[a-f\d]{2})+$/i.test(encoded)) return null;
   return Buffer.from(encoded, "hex").toString("utf8");
 }
 
-function responseAttributes(status) {
+function responseAttributes(status: "ok" | "failed") {
   return {
     status,
     version: SUBSONIC_VERSION,
@@ -114,7 +124,7 @@ function responseAttributes(status) {
 
 const XML_OMIT_FIELDS = new Set(["albumArtists", "artists", "genres"]);
 
-function renderXmlElement(name, value) {
+function renderXmlElement(name: string, value: unknown): string {
   if (Array.isArray(value)) return value.map((entry) => renderXmlElement(name, entry)).join("");
   if (value == null) return "";
   if (typeof value !== "object") {
@@ -135,7 +145,15 @@ function renderXmlElement(name, value) {
   return body ? `${opening}${body}</${name}>` : opening.slice(0, -1) + "/>";
 }
 
-function renderXml({ status, data = {}, error }) {
+function renderXml({
+  status,
+  data = {},
+  error,
+}: {
+  status: "ok" | "failed";
+  data?: Record<string, unknown>;
+  error?: SubsonicError | null;
+}) {
   const attributes = Object.entries(responseAttributes(status))
     .map(([key, value]) => `${key}="${escapeXml(value)}"`)
     .join(" ");
@@ -147,7 +165,13 @@ function renderXml({ status, data = {}, error }) {
   return `<?xml version="1.0" encoding="UTF-8"?>\n<subsonic-response xmlns="${SUBSONIC_NAMESPACE}" ${attributes}>${body}</subsonic-response>`;
 }
 
-function sendResponse(res, format, status = "ok", error = null, data = {}) {
+function sendResponse(
+  res: Response,
+  format: SubsonicFormat,
+  status: "ok" | "failed" = "ok",
+  error: SubsonicError | null = null,
+  data: Record<string, unknown> = {},
+) {
   const payload = {
     "subsonic-response": {
       ...responseAttributes(status),
@@ -158,7 +182,13 @@ function sendResponse(res, format, status = "ok", error = null, data = {}) {
   return res.send(format === "json" ? JSON.stringify(payload) : renderXml({ status, data, error }));
 }
 
-function sendError(res, format, code, message, helpUrl = undefined) {
+function sendError(
+  res: Response,
+  format: SubsonicFormat,
+  code: number,
+  message: string,
+  helpUrl: string | undefined = undefined,
+) {
   return sendResponse(res, format, "failed", { code, message, helpUrl });
 }
 
@@ -168,19 +198,19 @@ const PLAYLIST_EDIT_ERROR_CODES = {
   SUBSONIC_PLAYLIST_ENTRY_NOT_FOUND: 70,
 };
 
-function sendPlaylistEditError(res, format, error) {
+function sendPlaylistEditError(res: Response, format: SubsonicFormat, error) {
   const code = PLAYLIST_EDIT_ERROR_CODES[error?.code];
   return code === undefined
     ? sendError(res, format, 0, "Failed to update playlist")
     : sendError(res, format, code, error.message);
 }
 
-function requestedFormat(req) {
+function requestedFormat(req: Request) {
   const format = getParameter(req, "f").toLowerCase() || "xml";
   return format === "xml" || format === "json" ? format : null;
 }
 
-function validateRequest(req, format) {
+function validateRequest(req: Request, format: SubsonicFormat | null): SubsonicValidation {
   if (!format)
     return { format: "xml", error: [0, "Unsupported response format. Use xml or json."] };
 
@@ -232,7 +262,7 @@ function validateRequest(req, format) {
   return { format, password, token, salt };
 }
 
-const artistSortKey = (name) => {
+const artistSortKey = (name: string) => {
   const value = String(name || "");
   const space = value.indexOf(" ");
   return space > 0 &&
@@ -243,14 +273,14 @@ const artistSortKey = (name) => {
     : value;
 };
 
-const groupArtists = (artists) => {
-  const groups = new Map();
+const groupArtists = <T extends { name: string }>(artists: T[]) => {
+  const groups = new Map<string, T[]>();
   for (const artist of artists) {
     const name = artistSortKey(artist.name);
     const first = [...name][0] || "#";
     const key = /^\p{L}$/u.test(first) ? first.toUpperCase() : "#";
     if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(artist);
+    groups.get(key)!.push(artist);
   }
   return [...groups.entries()]
     .sort(([a], [b]) => (a === b ? 0 : a === "#" ? 1 : b === "#" ? -1 : a < b ? -1 : 1))
@@ -260,11 +290,11 @@ const groupArtists = (artists) => {
     }));
 };
 
-function handleBinaryError(res, message = "Requested media was not found") {
+function handleBinaryError(res: Response, message = "Requested media was not found") {
   return res.status(404).set("Content-Type", "text/plain; charset=utf-8").send(message);
 }
 
-async function handleSubsonicRequest(req, res) {
+async function handleSubsonicRequest(req: Request, res: Response) {
   const method = String(req.params.method || "")
     .replace(/\.view$/i, "")
     .toLowerCase();

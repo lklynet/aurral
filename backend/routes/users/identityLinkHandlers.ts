@@ -1,3 +1,4 @@
+import type { Router } from "express";
 import { userOps, userIdentityOps } from "../../db/helpers/index.ts";
 import { requireAuth, requireRecentAuth } from "../../middleware/requirePermission.ts";
 import { disconnectUserPlex } from "./plexLinkHandlers.ts";
@@ -13,15 +14,15 @@ export type UserIdentitiesResponse = {
   }[];
 };
 
-export function registerIdentityLink(router) {
+export function registerIdentityLink(router: Router) {
   router.get("/me/identities", requireAuth, (req, res) => {
-    const user = userOps.getUserById(req.user.id);
+    const user = userOps.getUserById(req.user!.id);
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
     res.json({
       hasLocalPassword: user.hasLocalPassword,
-      identities: userIdentityOps.getForUser(req.user.id).map((identity) => ({
+      identities: userIdentityOps.getForUser(req.user!.id).map((identity) => ({
         id: identity.id,
         providerType: identity.providerType,
         providerKey: identity.providerKey,
@@ -34,12 +35,12 @@ export function registerIdentityLink(router) {
   router.delete("/me/identities/:id", requireAuth, requireRecentAuth(), async (req, res) => {
     const identityId = parseInt(req.params.id, 10);
     const identity = userIdentityOps.getById(identityId);
-    if (!identity || identity.userId !== req.user.id) {
+    if (!identity || identity.userId !== req.user!.id) {
       return res.status(404).json({ error: "Identity not found" });
     }
 
-    const user = userOps.getUserById(req.user.id);
-    const remaining = userIdentityOps.countForUser(req.user.id) - 1;
+    const user = userOps.getUserById(req.user!.id);
+    const remaining = userIdentityOps.countForUser(req.user!.id) - 1;
     if (remaining <= 0 && !user?.hasLocalPassword) {
       return res.status(400).json({
         error: "last_auth_method",
@@ -49,7 +50,7 @@ export function registerIdentityLink(router) {
     }
 
     if (identity.providerType === "plex") {
-      const result = await disconnectUserPlex(req.user.id, {
+      const result = await disconnectUserPlex(req.user!.id, {
         context: "from connected accounts",
       });
       if (!result.disconnected) {

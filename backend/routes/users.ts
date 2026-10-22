@@ -1,4 +1,4 @@
-import express from "express";
+import express, { type Request, type Response } from "express";
 import { userOps, dbOps } from "../db/helpers/index.ts";
 import { hashPassword, verifyPassword } from "../middleware/passwordHash.ts";
 import {
@@ -32,7 +32,16 @@ import { registerIdentityLink } from "./users/identityLinkHandlers.ts";
 import { plexConnectionStore } from "../services/plex/plexConnectionStore.ts";
 import type { lidarrClient } from "../services/lidarrClient.ts";
 
-const buildListenHistoryUpdates = (body, existing) => {
+type ListenHistoryBody = {
+  lastfmUsername?: unknown;
+  listenHistoryProvider?: unknown;
+  listenHistoryUsername?: unknown;
+  listenHistoryUrl?: unknown;
+};
+
+type UserUpdate = Parameters<typeof userOps.updateUser>[1];
+
+const buildListenHistoryUpdates = (body: ListenHistoryBody, existing: UserRecord) => {
   const hasLegacyLastfmUpdate = Object.hasOwn(body, "lastfmUsername");
   const hasListenHistoryProviderUpdate = Object.hasOwn(body, "listenHistoryProvider");
   const hasListenHistoryUsernameUpdate = Object.hasOwn(body, "listenHistoryUsername");
@@ -107,12 +116,12 @@ const reconcileLocalBypassAfterUserMutation = () => {
   return result;
 };
 
-const normalizeRootFolderPath = (value) => {
+const normalizeRootFolderPath = (value: unknown) => {
   const normalized = String(value || "").trim();
   return normalized || null;
 };
 
-const normalizeQualityProfileId = (value) => {
+const normalizeQualityProfileId = (value: unknown) => {
   if (value === null || value === undefined || value === "") {
     return null;
   }
@@ -134,7 +143,7 @@ const DEFAULT_DISCOVER_LAYOUT = [
   { id: "genreSections", enabled: true },
 ];
 
-const normalizeDiscoverLayout = (value) => {
+const normalizeDiscoverLayout = (value: unknown) => {
   if (!Array.isArray(value)) return null;
   const defaultsById = new Map(DEFAULT_DISCOVER_LAYOUT.map((item) => [item.id, item]));
   const normalized = [];
@@ -144,7 +153,7 @@ const normalizeDiscoverLayout = (value) => {
     if (!defaultsById.has(id)) continue;
     normalized.push({
       id,
-      enabled: typeof item?.enabled === "boolean" ? item.enabled : defaultsById.get(id).enabled,
+      enabled: typeof item?.enabled === "boolean" ? item.enabled : defaultsById.get(id)!.enabled,
     });
     defaultsById.delete(id);
   }
@@ -154,7 +163,11 @@ const normalizeDiscoverLayout = (value) => {
   return normalized;
 };
 
-const refreshDiscoveryForListenHistoryChange = (userId, existingProfile, nextProfile) => {
+const refreshDiscoveryForListenHistoryChange = (
+  userId: number,
+  existingProfile: ReturnType<typeof getListenHistoryProfile>,
+  nextProfile: ReturnType<typeof getListenHistoryProfile>,
+) => {
   if (listenHistoryProfilesEqual(existingProfile, nextProfile)) return;
   requestUserDiscoveryRefresh(userId, { reason: "listening_history" });
 };
@@ -212,8 +225,8 @@ router.post("/", requireAuth, requireAdmin, async (req, res) => {
 router.patch("/:id", requireAuth, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
-    const isAdmin = req.user.role === "admin";
-    const isSelf = req.user.id === id;
+    const isAdmin = req.user!.role === "admin";
+    const isSelf = req.user!.id === id;
     if (!isAdmin && !isSelf) {
       return res.status(403).json({ error: "Forbidden" });
     }
@@ -249,7 +262,7 @@ router.patch("/:id", requireAuth, async (req, res) => {
       ) {
         return res.status(403).json({ error: "Forbidden" });
       }
-      const updates = {};
+      const updates: UserUpdate = {};
       if (listenHistoryUpdates) {
         Object.assign(updates, listenHistoryUpdates);
       }
@@ -288,7 +301,7 @@ router.patch("/:id", requireAuth, async (req, res) => {
       }
       return res.json(updated);
     }
-    const updates = {};
+    const updates: UserUpdate = {};
     if (password) {
       if (!isSelf && !isRecentlyAuthenticated(req)) {
         return res.status(401).json({
@@ -359,9 +372,9 @@ router.patch("/:id", requireAuth, async (req, res) => {
   }
 });
 
-const sendListenHistorySettings = (req, res) => {
+const sendListenHistorySettings = (req: Request, res: Response) => {
   try {
-    const user = userOps.getUserById(req.user.id);
+    const user = userOps.getUserById(req.user!.id);
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
@@ -379,7 +392,7 @@ router.get("/me/listening-history", requireAuth, sendListenHistorySettings);
 
 router.get("/me/lidarr-preferences", requireAuth, async (req, res) => {
   try {
-    const user = userOps.getUserById(req.user.id);
+    const user = userOps.getUserById(req.user!.id);
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
@@ -396,7 +409,7 @@ router.get("/me/lidarr-preferences", requireAuth, async (req, res) => {
 
 router.get("/me/theme", requireAuth, requireUserAccount, (req, res) => {
   try {
-    const stored = dbOps.getUserTheme(req.user.id);
+    const stored = dbOps.getUserTheme(req.user!.id);
     let theme = null;
     try {
       theme = stored ? normalizeUserThemeDocument(stored) : null;
@@ -412,7 +425,7 @@ router.get("/me/theme", requireAuth, requireUserAccount, (req, res) => {
 router.put("/me/theme", requireAuth, requireUserAccount, (req, res) => {
   try {
     const theme = normalizeUserThemeDocument(req.body?.theme);
-    dbOps.setUserTheme(req.user.id, theme);
+    dbOps.setUserTheme(req.user!.id, theme);
     res.json({ theme });
   } catch (e) {
     if (e instanceof ThemeValidationError) {
@@ -424,11 +437,11 @@ router.put("/me/theme", requireAuth, requireUserAccount, (req, res) => {
 
 router.get("/me/discover-layout", requireAuth, (req, res) => {
   try {
-    const user = userOps.getUserById(req.user.id);
+    const user = userOps.getUserById(req.user!.id);
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
-    const storedLayout = dbOps.getUserDiscoverLayout(req.user.id);
+    const storedLayout = dbOps.getUserDiscoverLayout(req.user!.id);
     res.json({
       layout: normalizeDiscoverLayout(storedLayout),
     });
@@ -442,7 +455,7 @@ router.get("/me/discover-layout", requireAuth, (req, res) => {
 
 router.patch("/me/discover-layout", requireAuth, (req, res) => {
   try {
-    const user = userOps.getUserById(req.user.id);
+    const user = userOps.getUserById(req.user!.id);
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
@@ -454,9 +467,9 @@ router.patch("/me/discover-layout", requireAuth, (req, res) => {
         field: "layout",
       });
     }
-    dbOps.setUserDiscoverLayout(req.user.id, normalized);
+    dbOps.setUserDiscoverLayout(req.user!.id, normalized);
     res.json({
-      layout: normalizeDiscoverLayout(dbOps.getUserDiscoverLayout(req.user.id)),
+      layout: normalizeDiscoverLayout(dbOps.getUserDiscoverLayout(req.user!.id)),
     });
   } catch (e) {
     res.status(500).json({
@@ -468,7 +481,7 @@ router.patch("/me/discover-layout", requireAuth, (req, res) => {
 
 router.patch("/me/lidarr-preferences", requireAuth, async (req, res) => {
   try {
-    const user = userOps.getUserById(req.user.id);
+    const user = userOps.getUserById(req.user!.id);
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
@@ -515,7 +528,7 @@ router.patch("/me/lidarr-preferences", requireAuth, async (req, res) => {
           message: "Configure Lidarr before saving library defaults.",
         });
       }
-      const updated = userOps.updateUser(req.user.id, {
+      const updated = userOps.updateUser(req.user!.id, {
         lidarrRootFolderPath: null,
         lidarrQualityProfileId: null,
       });
@@ -556,7 +569,7 @@ router.patch("/me/lidarr-preferences", requireAuth, async (req, res) => {
       });
     }
 
-    const updated = userOps.updateUser(req.user.id, {
+    const updated = userOps.updateUser(req.user!.id, {
       lidarrRootFolderPath: nextRootFolderPath,
       lidarrQualityProfileId: nextQualityProfileId,
     });
@@ -586,7 +599,7 @@ router.post("/me/password", requireAuth, requireRecentAuth(), async (req, res) =
     if (!passwordValidation.valid) {
       return res.status(400).json({ error: passwordValidation.error });
     }
-    const u = userOps.getUserById(req.user.id);
+    const u = userOps.getUserById(req.user!.id);
     if (!u) {
       return res.status(400).json({ error: "Current password is incorrect" });
     }
@@ -594,12 +607,12 @@ router.post("/me/password", requireAuth, requireRecentAuth(), async (req, res) =
       return res.status(400).json({ error: "Current password is incorrect" });
     }
     const hash = hashPassword(newPassword);
-    userOps.updateUser(req.user.id, {
+    userOps.updateUser(req.user!.id, {
       passwordHash: hash,
       hasLocalPassword: true,
       subsonicPassword: newPassword,
     });
-    deleteSessionsByUserId(req.user.id);
+    deleteSessionsByUserId(req.user!.id);
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: "Failed to change password", message: e.message });
@@ -609,7 +622,7 @@ router.post("/me/password", requireAuth, requireRecentAuth(), async (req, res) =
 router.delete("/:id", requireAuth, requireAdmin, (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
-    if (req.user.id === id) {
+    if (req.user!.id === id) {
       return res.status(400).json({ error: "Cannot delete your own account" });
     }
     const existing = userOps.getUserById(id);

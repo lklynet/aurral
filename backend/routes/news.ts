@@ -15,7 +15,7 @@ router.post("/feeds/disable", requireAuth, requireAdmin, (req, res) => {
 router.get("/", requireAuth, async (req, res) => {
   try {
     const result = await getNewsForUser({
-      userId: req.user.id,
+      userId: req.user!.id,
       mode: req.query.mode === "top" ? "top" : "matched",
       limit: req.query.limit,
       offset: req.query.offset,

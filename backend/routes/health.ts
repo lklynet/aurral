@@ -1,5 +1,6 @@
-import express from "express";
+import express, { type Request } from "express";
 import type { RequestUser } from "../middleware/requestUser.ts";
+import type { AppSettings } from "../db/helpers/settings.ts";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
@@ -67,7 +68,7 @@ function resolveDatabasePath() {
     : path.join(dataDir, "aurral.db");
 }
 
-async function resolveExistingFilesystemPath(targetPath) {
+async function resolveExistingFilesystemPath(targetPath: string) {
   let current = path.resolve(String(targetPath || ""));
   while (current && current !== path.dirname(current)) {
     try {
@@ -85,7 +86,7 @@ async function resolveExistingFilesystemPath(targetPath) {
   }
 }
 
-async function getDiskSpaceEntry(location, role = null) {
+async function getDiskSpaceEntry(location: string, role: string | null = null) {
   const displayLocation = String(location || "").trim();
   if (!displayLocation) return null;
   const statTarget = await resolveExistingFilesystemPath(displayLocation);
@@ -132,9 +133,10 @@ async function getDiskSpaceEntry(location, role = null) {
 }
 
 const DISK_SNAPSHOT_TTL_MS = 60_000;
-let diskSnapshotCache = { at: 0, payload: null };
+type DiskSpacePayload = Awaited<ReturnType<typeof computeDiskSpacePayload>>;
+let diskSnapshotCache: { at: number; payload: DiskSpacePayload | null } = { at: 0, payload: null };
 
-async function buildDiskSpacePayload(settings) {
+async function buildDiskSpacePayload(settings: AppSettings) {
   if (diskSnapshotCache.payload && Date.now() - diskSnapshotCache.at < DISK_SNAPSHOT_TTL_MS) {
     return diskSnapshotCache.payload;
   }
@@ -143,7 +145,7 @@ async function buildDiskSpacePayload(settings) {
   return payload;
 }
 
-async function computeDiskSpacePayload(settings) {
+async function computeDiskSpacePayload(settings: AppSettings) {
   const dataDir = resolveAurralDataDir();
   const dbPath = resolveDatabasePath();
   const downloadRoot = resolveDownloadRoot();
@@ -186,13 +188,16 @@ async function computeDiskSpacePayload(settings) {
 
 function readSqliteVersion() {
   try {
-    return db.prepare("SELECT sqlite_version() AS version").get()?.version || null;
+    return (
+      db.prepare<[], { version: string }>("SELECT sqlite_version() AS version").get()?.version ||
+      null
+    );
   } catch {
     return null;
   }
 }
 
-async function buildSystemPayload(settings) {
+async function buildSystemPayload(settings: AppSettings) {
   const dataDir = resolveAurralDataDir();
   const dbPath = resolveDatabasePath();
   const sqliteVersion = readSqliteVersion();
@@ -310,7 +315,10 @@ export type BootstrapPayload = {
   };
 };
 
-function serializeBootstrapMatcherStatus(status, authenticated) {
+function serializeBootstrapMatcherStatus(
+  status: BootstrapPayload["matcher"],
+  authenticated: boolean,
+) {
   if (authenticated) return status;
   return {
     available: Boolean(status.available),
@@ -320,7 +328,7 @@ function serializeBootstrapMatcherStatus(status, authenticated) {
   };
 }
 
-function buildBootstrapPayload(req) {
+function buildBootstrapPayload(req: Request) {
   lidarrClient.updateConfig();
   const settings = dbOps.getSettings();
   const onboardingDone = settings.onboardingComplete;
