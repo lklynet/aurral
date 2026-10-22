@@ -684,11 +684,16 @@ async function updateStaticPlaylistLocked({
       currentPlaylist.ownerUserId,
       normalizeTrackList(tracks),
     );
+    let deletedWhileWaiting = false;
     await withPlaylistMutation(
       getPlaylistRemovalLockIds(safePlaylistId, downloadTracker.getByPlaylistId(safePlaylistId)),
       async () => {
         const lockedPlaylist = flowPlaylistConfig.getStaticPlaylist(safePlaylistId);
-        const lockedImportSource = lockedPlaylist?.importSource || currentPlaylist.importSource;
+        if (!lockedPlaylist) {
+          deletedWhileWaiting = true;
+          return;
+        }
+        const lockedImportSource = lockedPlaylist.importSource || currentPlaylist.importSource;
         const shouldDeleteUnsharedFiles =
           deleteUnsharedFiles ||
           (mergeImportSource && lockedImportSource?.keepRemovedTracks === false);
@@ -753,6 +758,7 @@ async function updateStaticPlaylistLocked({
       },
       { clearPending: false },
     );
+    if (deletedWhileWaiting) return { missing: true };
   }
 
   playlistManager.requestPlaylistSync([safePlaylistId, ...affectedPlaylistIds]);
