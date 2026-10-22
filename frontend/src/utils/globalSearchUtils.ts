@@ -8,7 +8,11 @@ export const AUTOCOMPLETE_DEBOUNCE_MS = 250;
 export const LIBRARY_AUTOCOMPLETE_DEBOUNCE_MS = 80;
 export const SUGGEST_LIMIT = 5;
 export const TAG_SUGGESTIONS_LIMIT = 8;
-export const ALBUM_PENDING_STATUSES = new Set(["searching", "downloading", "processing"]);
+export const ALBUM_PENDING_STATUSES = new Set<string | undefined>([
+  "searching",
+  "downloading",
+  "processing",
+]);
 
 export function isEditableTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;

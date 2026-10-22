@@ -9,7 +9,7 @@ import {
   useParams,
 } from "react-router";
 import { RouterProvider } from "react-router/dom";
-import { useState, useEffect, Suspense, lazy, useRef } from "react";
+import { useState, useEffect, Suspense, lazy, useRef, type ReactNode } from "react";
 import Layout from "./components/Layout";
 import { checkHealthLive, getBootstrapStatus } from "./utils/api/endpoints/auth.ts";
 import { getAppBasePath } from "./utils/basePath.ts";
@@ -32,6 +32,7 @@ import { useDiscoveryStatus } from "./hooks/useDiscoveryStatus";
 import { buildActivityPath, DEFAULT_ACTIVITY_VIEW } from "./navigation/activityNavConfig";
 import { routeModules } from "./navigation/routeModules.ts";
 import { getBootstrapPollIntervalMs } from "./utils/requestScheduling.ts";
+import type { BootstrapPayload } from "../../backend/routes/health.ts";
 
 function LegacyHistoryRedirect() {
   return <Navigate to="/activity/history" replace />;
@@ -78,7 +79,7 @@ const ScreenLoader = () => (
   </div>
 );
 
-const ProtectedRoute = ({ children }) => {
+const ProtectedRoute = ({ children }: { children: ReactNode }) => {
   const { isAuthenticated, isLoading, authRequired, onboardingRequired } = useAuth();
 
   if (isLoading) {
@@ -104,7 +105,7 @@ const ProtectedRoute = ({ children }) => {
   return children;
 };
 
-const PermissionRoute = ({ children, permission }) => {
+const PermissionRoute = ({ children, permission }: { children: ReactNode; permission: string }) => {
   const { hasPermission } = useAuth();
   if (permission && !hasPermission(permission)) {
     return <Navigate to="/" replace />;
@@ -112,11 +113,20 @@ const PermissionRoute = ({ children, permission }) => {
   return children;
 };
 
+type HealthIssue = "lidarr" | "degraded" | "backend";
+
+type AppOutletContext = {
+  appVersion: string | null;
+  healthIssue: HealthIssue | null;
+  isHealthy: boolean | null;
+  rootFolderConfigured: boolean;
+};
+
 function AppContent() {
-  const [isHealthy, setIsHealthy] = useState(null);
-  const [healthIssue, setHealthIssue] = useState(null);
+  const [isHealthy, setIsHealthy] = useState<boolean | null>(null);
+  const [healthIssue, setHealthIssue] = useState<HealthIssue | null>(null);
   const [rootFolderConfigured, setRootFolderConfigured] = useState(false);
-  const [appVersion, setAppVersion] = useState(null);
+  const [appVersion, setAppVersion] = useState<string | null>(null);
   const healthCheckInFlightRef = useRef(false);
   const { isAuthenticated, bootstrap, refreshAuth } = useAuth();
   const { showSuccess, showError } = useToast();
@@ -136,7 +146,7 @@ function AppContent() {
     }
   }, [discoveryStatus, showError, showSuccess]);
 
-  const applyBootstrapHealth = (payload) => {
+  const applyBootstrapHealth = (payload: BootstrapPayload) => {
     setIsHealthy(payload.status === "ok");
     setRootFolderConfigured(payload.rootFolderConfigured || false);
     setAppVersion(payload.appVersion || null);
@@ -200,7 +210,8 @@ function AppContent() {
 }
 
 function ProtectedLayout() {
-  const { appVersion, healthIssue, isHealthy, rootFolderConfigured } = useOutletContext();
+  const { appVersion, healthIssue, isHealthy, rootFolderConfigured } =
+    useOutletContext<AppOutletContext>();
   const { user, bootstrap } = useAuth();
 
   return (

@@ -1,4 +1,14 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useMemo,
+  type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
+import type { UnifiedSearchItem } from "../../../backend/services/unifiedSearchService.ts";
 import {
   requestAlbumFromSearch,
   settleLibraryOwnerConflict,
@@ -42,25 +52,46 @@ import { Clock, Search } from "lucide-react";
 import { DotLoader } from "./DotLoader";
 import AddActionButton from "./AddActionButton";
 import SearchLibraryCheck from "./SearchLibraryCheck";
-import { TrackPlaylistMenu } from "../pages/ArtistDetails/components/TrackPlaylistMenu";
+import {
+  TrackPlaylistMenu,
+  type PlaylistSelection,
+} from "../pages/ArtistDetails/components/TrackPlaylistMenu";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { searchSettingsItems } from "../pages/Settings/settingsTabsConfig";
+
+type SuggestionMode = "tag" | "unified";
+type SuggestionItem = UnifiedSearchItem & {
+  ownerConflict?: NonNullable<Awaited<ReturnType<typeof settleLibraryOwnerConflict>>>;
+};
+type SuggestionAlbum = Extract<SuggestionItem, { type: "album" }>;
+type SuggestionTrack = Extract<SuggestionItem, { type: "track" }>;
+type SuggestionRow =
+  | { kind: "header"; key: string; label: string }
+  | { kind: "item"; key: string; item: SuggestionItem }
+  | { kind: "tag"; key: string; tagName: string }
+  | { kind: "recent"; key: string; query: string };
+type RecentSuggestionRow = Extract<SuggestionRow, { kind: "recent" }>;
+type SuggestionResults = {
+  library: Awaited<ReturnType<typeof searchLibrary>> | null;
+  catalog: Awaited<ReturnType<typeof searchUnified>> | null;
+};
+type SettingsSearchItem = ReturnType<typeof searchSettingsItems>[number];
 
 const EMPTY_SUGGESTION_RESULTS = { library: null, catalog: null };
 
 function GlobalSearch({ settingsMode = false }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [localSearchConfigured, setLocalSearchConfigured] = useState(true);
-  const [suggestionRows, setSuggestionRows] = useState([]);
-  const [suggestionMode, setSuggestionMode] = useState(null);
+  const [suggestionRows, setSuggestionRows] = useState<SuggestionRow[]>([]);
+  const [suggestionMode, setSuggestionMode] = useState<SuggestionMode | null>(null);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [suggestionIndex, setSuggestionIndex] = useState(-1);
   const [inputFocused, setInputFocused] = useState(false);
   const [recentSearches, setRecentSearches] = useState(() => readRecentSearches());
-  const searchContainerRef = useRef(null);
-  const inputRef = useRef(null);
-  const suggestionResultsRef = useRef(EMPTY_SUGGESTION_RESULTS);
+  const searchContainerRef = useRef<HTMLFormElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const suggestionResultsRef = useRef<SuggestionResults>(EMPTY_SUGGESTION_RESULTS);
   const { schedule: scheduleSuggest, cancel: cancelSuggest } = useDebouncedTask();
   const { schedule: scheduleLibrarySuggest, cancel: cancelLibrarySuggest } = useDebouncedTask();
   const navigate = useNavigate();
@@ -78,7 +109,7 @@ function GlobalSearch({ settingsMode = false }) {
     loadStaticPlaylists,
   } = useStaticPlaylists();
   const canAddAlbum = hasPermission("addAlbum");
-  const [pendingAlbumIds, setPendingAlbumIds] = useState({});
+  const [pendingAlbumIds, setPendingAlbumIds] = useState<Record<string, boolean>>({});
   const [playlistMenuSavingKey, setPlaylistMenuSavingKey] = useState("");
 
   const selectableRows = useMemo(() => {
@@ -109,7 +140,7 @@ function GlobalSearch({ settingsMode = false }) {
     ],
   );
 
-  const recentSelectableRows = useMemo(
+  const recentSelectableRows = useMemo<RecentSuggestionRow[]>(
     () =>
       showRecentSearches
         ? recentSearches.map((query, index) => ({
@@ -127,7 +158,7 @@ function GlobalSearch({ settingsMode = false }) {
       ? recentSelectableRows
       : selectableRows;
 
-  const rememberSearch = useCallback((rawQuery) => {
+  const rememberSearch = useCallback((rawQuery: string) => {
     const next = addRecentSearch(rawQuery);
     setRecentSearches(next);
   }, []);
@@ -139,16 +170,19 @@ function GlobalSearch({ settingsMode = false }) {
     setSuggestionIndex(-1);
   }, []);
 
-  const showUnifiedSuggestions = useCallback((results, { resetIndex = false } = {}) => {
-    suggestionResultsRef.current = results;
-    setSuggestionRows(
-      flattenSuggestionSections(
-        buildUnifiedSuggestionSections({ ...results.catalog, library: results.library }),
-      ),
-    );
-    setSuggestionMode("unified");
-    if (resetIndex) setSuggestionIndex(-1);
-  }, []);
+  const showUnifiedSuggestions = useCallback(
+    (results: SuggestionResults, { resetIndex = false } = {}) => {
+      suggestionResultsRef.current = results;
+      setSuggestionRows(
+        flattenSuggestionSections(
+          buildUnifiedSuggestionSections({ ...results.catalog, library: results.library }),
+        ),
+      );
+      setSuggestionMode("unified");
+      if (resetIndex) setSuggestionIndex(-1);
+    },
+    [],
+  );
 
   useEffect(() => {
     setSearchQuery("");
@@ -156,7 +190,7 @@ function GlobalSearch({ settingsMode = false }) {
   }, [location.pathname, location.search, closeAutocomplete]);
 
   useEffect(() => {
-    const handleGlobalKeyDown = (event) => {
+    const handleGlobalKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) {
         return;
       }
@@ -283,8 +317,11 @@ function GlobalSearch({ settingsMode = false }) {
   ]);
 
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (searchContainerRef.current && !searchContainerRef.current.contains(event.target)) {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        searchContainerRef.current &&
+        !searchContainerRef.current.contains(event.target as Node | null)
+      ) {
         closeAutocomplete();
       }
     };
@@ -293,7 +330,7 @@ function GlobalSearch({ settingsMode = false }) {
   }, [closeAutocomplete]);
 
   const navigateToSearch = useCallback(
-    (rawQuery) => {
+    (rawQuery: string) => {
       const trimmed = String(rawQuery || "").trim();
       if (!trimmed || settingsMode) return;
       rememberSearch(trimmed);
@@ -310,7 +347,7 @@ function GlobalSearch({ settingsMode = false }) {
   );
 
   const navigateToSettings = useCallback(
-    (tab) => {
+    (tab: SettingsSearchItem) => {
       if (!tab) return;
       navigate(`/settings/${tab.id}`);
       setSearchQuery("");
@@ -320,7 +357,7 @@ function GlobalSearch({ settingsMode = false }) {
     [navigate, closeAutocomplete],
   );
 
-  const handleSubmit = (event) => {
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (settingsMode) {
       navigateToSettings(settingsSearchResults[0]);
@@ -330,7 +367,7 @@ function GlobalSearch({ settingsMode = false }) {
   };
 
   const handleSuggestionSelect = useCallback(
-    (selection) => {
+    (selection: SuggestionRow) => {
       if (!selection) return;
 
       if (selection.kind === "recent") {
@@ -359,43 +396,49 @@ function GlobalSearch({ settingsMode = false }) {
     [navigate, navigateToSearch, rememberSearch, searchQuery, closeAutocomplete],
   );
 
-  const handleClearRecentSearches = useCallback((event) => {
+  const handleClearRecentSearches = useCallback((event: ReactMouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
     setRecentSearches(clearRecentSearches());
     setSuggestionIndex(-1);
   }, []);
 
-  const updateSuggestionItem = useCallback((targetItem, updates) => {
-    if (!targetItem) return;
-    const targetType = targetItem.type;
-    const targetId = getSuggestionItemId(targetItem);
-    setSuggestionRows((rows) =>
-      rows.map((row) => {
-        if (row.kind !== "item" || row.item?.type !== targetType) return row;
-        const currentId = getSuggestionItemId(row.item);
-        if (!targetId || currentId !== targetId) return row;
-        const patch = typeof updates === "function" ? updates(row.item) : updates || {};
-        return {
-          ...row,
-          item: {
-            ...row.item,
-            ...patch,
-          },
-        };
-      }),
-    );
-  }, []);
+  const updateSuggestionItem = useCallback(
+    (
+      targetItem: SuggestionItem,
+      updates: Partial<SuggestionItem> | ((item: SuggestionItem) => Partial<SuggestionItem>),
+    ) => {
+      if (!targetItem) return;
+      const targetType = targetItem.type;
+      const targetId = getSuggestionItemId(targetItem);
+      setSuggestionRows((rows) =>
+        rows.map((row) => {
+          if (row.kind !== "item" || row.item?.type !== targetType) return row;
+          const currentId = getSuggestionItemId(row.item);
+          if (!targetId || currentId !== targetId) return row;
+          const patch = typeof updates === "function" ? updates(row.item) : updates || {};
+          return {
+            ...row,
+            item: {
+              ...row.item,
+              ...patch,
+            },
+          };
+        }),
+      );
+    },
+    [],
+  );
 
   const handleAlbumAction = useCallback(
-    async (album, managedBy = libraryDestination.primary) => {
+    async (album: SuggestionAlbum, managedBy = libraryDestination.primary) => {
       if (!album?.id) return;
       const shouldTriggerSearch = shouldTriggerAlbumSearch({
         status: album.status,
         inLibrary: album.inLibrary,
         monitored: album.monitored,
       });
-      setPendingAlbumIds((prev) => ({ ...prev, [album.id]: true }));
+      setPendingAlbumIds((prev) => ({ ...prev, [album.id!]: true }));
       try {
         const result = await requestAlbumFromSearch(
           buildAlbumRequestPayload({
@@ -430,14 +473,14 @@ function GlobalSearch({ settingsMode = false }) {
           }`,
         );
       } finally {
-        setPendingAlbumIds(({ [album.id]: _, ...prev }) => prev);
+        setPendingAlbumIds(({ [album.id!]: _, ...prev }) => prev);
       }
     },
     [libraryDestination.primary, showError, showInfo, showSuccess, updateSuggestionItem],
   );
 
   const handleSearchTrackAdd = useCallback(
-    async (track, target) => {
+    async (track: SuggestionTrack, target: PlaylistSelection) => {
       const payload = buildTrackPlaylistPayload(track);
       if (!payload) {
         showError("Track details are incomplete");
@@ -492,7 +535,7 @@ function GlobalSearch({ settingsMode = false }) {
   );
 
   const renderSuggestionAction = useCallback(
-    (item) => {
+    (item: SuggestionItem) => {
       if (!item) return null;
       if (isSuggestionInLibrary(item) && item.type !== "track") {
         return <SearchLibraryCheck />;
@@ -548,7 +591,7 @@ function GlobalSearch({ settingsMode = false }) {
     ],
   );
 
-  const handleKeyDown = (event) => {
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Escape") {
       closeAutocomplete();
       return;

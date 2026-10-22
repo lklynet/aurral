@@ -41,7 +41,7 @@ interface GithubRelease {
 }
 
 interface UpdateIndicatorProps {
-  currentVersion?: string;
+  currentVersion?: string | null;
   visible?: boolean;
 }
 

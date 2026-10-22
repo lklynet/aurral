@@ -94,7 +94,7 @@ export const getLibraryOwnerConflict = (error: unknown) => {
   }
   const managedBy = normalizeLibraryManager(data.managedBy ?? data.conflict?.managedBy);
   if (!managedBy) return null;
-  const label = getManagedByLabel(managedBy);
+  const label = getManagedByLabel(managedBy)!;
   const availability = describeAvailability(data.availability ?? data.conflict?.availability);
   return {
     managedBy,

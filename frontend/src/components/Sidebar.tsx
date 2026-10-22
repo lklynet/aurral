@@ -1,6 +1,6 @@
 import { useLocation } from "react-router";
 import RouteLink from "./RouteLink";
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, type SyntheticEvent } from "react";
 import {
   ArrowLeft,
   Activity,
@@ -12,6 +12,7 @@ import {
   Settings,
   Sparkles,
   Ticket,
+  type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { useDownloadWorkerActivity } from "../pages/playlists/useDownloadWorkerActivity";
@@ -33,7 +34,25 @@ import SidebarStageBackdrop, {
   SIDEBAR_STAGE_BACKDROP_EVENT,
 } from "./SidebarStageBackdrop";
 
-function Sidebar({ mode, width = 208, settingsMode = false }) {
+type SidebarProps = {
+  mode: "hidden" | "icons" | "full";
+  width?: number;
+  settingsMode?: boolean;
+};
+
+type SidebarNavView = { id: string; label: string; path?: string };
+
+type SidebarNavItem = {
+  path: string;
+  basePath?: string;
+  label: string;
+  icon: LucideIcon;
+  section?: string;
+  permission?: string;
+  subnav?: SidebarNavView[];
+};
+
+function Sidebar({ mode, width = 208, settingsMode = false }: SidebarProps) {
   const location = useLocation();
   const { user, bootstrap } = useAuth();
   const [showStageBackdrop, setShowStageBackdrop] = useState(() =>
@@ -57,8 +76,8 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
 
   useEffect(() => {
     setShowStageBackdrop(getSidebarStageBackdropEnabled(user?.id));
-    const onPreferenceChange = (event) => {
-      if (event.detail?.userId === user?.id) {
+    const onPreferenceChange = (event: Event) => {
+      if ((event as CustomEvent<{ userId?: number | null }>).detail?.userId === user?.id) {
         setShowStageBackdrop(getSidebarStageBackdropEnabled(user?.id));
       }
     };
@@ -121,7 +140,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
     return new URLSearchParams(location.search).get("tab") === "cutoff" ? "cutoff" : "missing";
   }, [isOnWanted, location.search]);
 
-  const positionSidebarTooltip = useCallback((event) => {
+  const positionSidebarTooltip = useCallback((event: SyntheticEvent<HTMLElement>) => {
     const link = event.currentTarget;
     const rect = link.getBoundingClientRect();
     link.style.setProperty("--sidebar-tooltip-top", `${rect.top + rect.height / 2}px`);
@@ -131,7 +150,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
     const mediaQuery = window.matchMedia("(min-width: 768px)");
-    const onChange = (event) => setIsDesktop(event.matches);
+    const onChange = (event: MediaQueryListEvent) => setIsDesktop(event.matches);
     setIsDesktop(mediaQuery.matches);
     if (mediaQuery.addEventListener) {
       mediaQuery.addEventListener("change", onChange);
@@ -149,7 +168,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
   }, [bootstrap]);
 
   const isNavItemActive = useCallback(
-    (item) => {
+    (item: SidebarNavItem) => {
       if (item.section === "discover") {
         return isDiscoverSectionActive;
       }
@@ -177,7 +196,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
       (view) =>
         !view.permission || user?.role === "admin" || !!user?.permissions?.[view.permission],
     );
-    const items = [
+    const items: SidebarNavItem[] = [
       {
         path: "/discover",
         label: "Discover",
@@ -245,7 +264,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
 
   const translateClass = mode === "hidden" ? "-translate-x-full" : "translate-x-0";
 
-  const renderSubnav = (item, activeId) => {
+  const renderSubnav = (item: SidebarNavItem, activeId: string | null) => {
     if (isIcons || !isNavItemActive(item)) {
       return null;
     }
@@ -287,7 +306,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
 
     return (
       <nav className="sidebar-subnav" aria-label={`${item.label} views`}>
-        {item.subnav.map((entry) => {
+        {item.subnav!.map((entry) => {
           const active = activeId === entry.id;
           const targetPath =
             entry.path ||
@@ -317,7 +336,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }) {
     );
   };
 
-  const getNavGroupClassName = (item, active) => {
+  const getNavGroupClassName = (item: SidebarNavItem, active: boolean) => {
     const classes = ["sidebar-nav-group"];
     if (item.section === "discover") {
       classes.push("sidebar-nav-group--discover");

@@ -1,4 +1,14 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useMemo,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
 import RouteLink from "./RouteLink";
 import { useLocation, useNavigate, useNavigationType } from "react-router";
 import {
@@ -34,7 +44,15 @@ const SIDEBAR_MAX = 400;
 const SIDEBAR_DEFAULT = 208;
 const MOBILE_SHEET_EXIT_MS = 180;
 
-function Layout({ children, headerActions }) {
+type ScrollbarDrag = { pointerId: number; grabOffset: number };
+type SidebarResizeSession = { pointerId: number; left: number; grabOffset: number };
+
+type LayoutProps = {
+  children: ReactNode;
+  headerActions: ReactNode;
+};
+
+function Layout({ children, headerActions }: LayoutProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [scrollbar, setScrollbar] = useState({
     visible: false,
@@ -42,16 +60,16 @@ function Layout({ children, headerActions }) {
     top: 0,
     height: 0,
   });
-  const mainScrollRef = useRef(null);
-  const scrollbarTrackRef = useRef(null);
-  const scrollbarDragRef = useRef(null);
-  const scrollbarFadeTimeoutRef = useRef(null);
-  const sidebarResizeSessionRef = useRef(null);
-  const mobileMenuInitialFocusRef = useRef(null);
+  const mainScrollRef = useRef<HTMLElement>(null);
+  const scrollbarTrackRef = useRef<HTMLDivElement>(null);
+  const scrollbarDragRef = useRef<ScrollbarDrag | null>(null);
+  const scrollbarFadeTimeoutRef = useRef<number | null>(null);
+  const sidebarResizeSessionRef = useRef<SidebarResizeSession | null>(null);
+  const mobileMenuInitialFocusRef = useRef<HTMLAnchorElement>(null);
   const [mobileMenuPresence, setMobileMenuPresence] = useState("closed");
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     try {
-      const w = parseInt(localStorage.getItem("sidebarWidth"), 10);
+      const w = parseInt(String(localStorage.getItem("sidebarWidth")), 10);
       return w >= SIDEBAR_MIN && w <= SIDEBAR_MAX ? w : SIDEBAR_DEFAULT;
     } catch {
       return SIDEBAR_DEFAULT;
@@ -61,7 +79,7 @@ function Layout({ children, headerActions }) {
   sidebarWidthRef.current = sidebarWidth;
   const [lastFullWidth, setLastFullWidth] = useState(() => {
     try {
-      const w = parseInt(localStorage.getItem("sidebarFullWidth"), 10);
+      const w = parseInt(String(localStorage.getItem("sidebarFullWidth")), 10);
       return w >= SIDEBAR_THRESHOLD && w <= SIDEBAR_MAX ? w : SIDEBAR_DEFAULT;
     } catch {
       return SIDEBAR_DEFAULT;
@@ -71,11 +89,11 @@ function Layout({ children, headerActions }) {
   const location = useLocation();
   const navigate = useNavigate();
   const navigationType = useNavigationType();
-  const scrollPositionsRef = useRef(new Map());
-  const scrolledPathnameRef = useRef(null);
+  const scrollPositionsRef = useRef(new Map<string, number>());
+  const scrolledPathnameRef = useRef<string | null>(null);
   const sectionNav = useSectionNav();
   const { isDiscoverSectionActive } = useDiscoverRecent();
-  const sectionBarRef = useRef(null);
+  const sectionBarRef = useRef<HTMLElement>(null);
   const { authRequired, canLogOut, logout, user, bootstrap } = useAuth();
   const { isActive: isPlayerActive } = useAudioQueue();
   const isArtistDetailsRoute = /^\/artist\/[^/]+(\/(albums|appears-on))?$/.test(location.pathname);
@@ -124,7 +142,7 @@ function Layout({ children, headerActions }) {
   }, []);
 
   const isActive = useCallback(
-    (path) => {
+    (path: string) => {
       if (path === "/") return isDiscoverSectionActive;
       if (path.startsWith("/settings")) {
         return location.pathname.startsWith("/settings");
@@ -186,7 +204,7 @@ function Layout({ children, headerActions }) {
     navigate("/");
   }, [navigate]);
 
-  const persistSidebarWidth = useCallback((width) => {
+  const persistSidebarWidth = useCallback((width: number) => {
     const nextWidth = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, Math.round(width)));
     sidebarWidthRef.current = nextWidth;
     setSidebarWidth(nextWidth);
@@ -202,7 +220,7 @@ function Layout({ children, headerActions }) {
     return nextWidth;
   }, []);
 
-  const handleResizeStart = useCallback((event) => {
+  const handleResizeStart = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.pointerType === "mouse" && event.button !== 0) return;
     event.preventDefault();
     const sidebar = document.querySelector(".sidebar-shell");
@@ -216,7 +234,7 @@ function Layout({ children, headerActions }) {
     setIsResizing(true);
   }, []);
 
-  const handleResizeMove = useCallback((event) => {
+  const handleResizeMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     const session = sidebarResizeSessionRef.current;
     if (!session || session.pointerId !== event.pointerId) return;
     const nextWidth = Math.max(
@@ -228,7 +246,7 @@ function Layout({ children, headerActions }) {
   }, []);
 
   const handleResizeEnd = useCallback(
-    (event) => {
+    (event: ReactPointerEvent<HTMLDivElement>) => {
       const session = sidebarResizeSessionRef.current;
       if (!session || session.pointerId !== event.pointerId) return;
       sidebarResizeSessionRef.current = null;
@@ -242,7 +260,7 @@ function Layout({ children, headerActions }) {
   );
 
   const handleResizeKeyDown = useCallback(
-    (event) => {
+    (event: ReactKeyboardEvent<HTMLDivElement>) => {
       const step = event.shiftKey ? 24 : 8;
       let nextWidth = sidebarWidth;
       if (event.key === "ArrowLeft") nextWidth -= step;
@@ -257,7 +275,7 @@ function Layout({ children, headerActions }) {
   );
 
   const handleResizeReset = useCallback(
-    (event) => {
+    (event: ReactMouseEvent<HTMLDivElement>) => {
       event.preventDefault();
       persistSidebarWidth(SIDEBAR_DEFAULT);
     },
@@ -265,7 +283,7 @@ function Layout({ children, headerActions }) {
   );
 
   const updateScrollFromPointer = useCallback(
-    (clientY) => {
+    (clientY: number) => {
       const node = mainScrollRef.current;
       const track = scrollbarTrackRef.current;
       const session = scrollbarDragRef.current;
@@ -279,7 +297,7 @@ function Layout({ children, headerActions }) {
     [scrollbar.height],
   );
 
-  const handleScrollbarPointerDown = useCallback((event) => {
+  const handleScrollbarPointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.pointerType === "mouse" && event.button !== 0) return;
     event.preventDefault();
     if (scrollbarFadeTimeoutRef.current) clearTimeout(scrollbarFadeTimeoutRef.current);
@@ -293,7 +311,7 @@ function Layout({ children, headerActions }) {
   }, []);
 
   const handleScrollbarPointerMove = useCallback(
-    (event) => {
+    (event: ReactPointerEvent<HTMLDivElement>) => {
       if (scrollbarDragRef.current?.pointerId !== event.pointerId) return;
       updateScrollFromPointer(event.clientY);
     },
@@ -301,7 +319,7 @@ function Layout({ children, headerActions }) {
   );
 
   const handleScrollbarPointerEnd = useCallback(
-    (event) => {
+    (event: ReactPointerEvent<HTMLDivElement>) => {
       if (scrollbarDragRef.current?.pointerId !== event.pointerId) return;
       scrollbarDragRef.current = null;
       if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
@@ -341,8 +359,8 @@ function Layout({ children, headerActions }) {
   }, [location.pathname, location.search, sectionNav?.id]);
 
   useEffect(() => {
-    let frameId;
-    let timeoutId;
+    let frameId: number | undefined;
+    let timeoutId: number | undefined;
     if (isMobileMenuOpen) {
       setMobileMenuPresence("opening");
       frameId = window.requestAnimationFrame(() => setMobileMenuPresence("open"));
@@ -367,7 +385,7 @@ function Layout({ children, headerActions }) {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     const savedTop =
       navigationType === "POP" ? scrollPositionsRef.current.get(location.key) || 0 : 0;
-    let frameId;
+    let frameId: number | undefined;
     const startedAt = performance.now();
     const restore = () => {
       if (!node) return;
