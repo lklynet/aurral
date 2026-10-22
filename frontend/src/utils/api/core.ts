@@ -24,6 +24,10 @@ export interface ApiErrorResponse {
 
 export type ApiError = Error & { response?: ApiErrorResponse };
 
+export function asApiError(error: unknown): ApiError | undefined {
+  return error instanceof Error ? error : undefined;
+}
+
 interface RequestConfig {
   method?: string;
   url?: string;

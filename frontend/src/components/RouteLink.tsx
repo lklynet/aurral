@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useRef, type MouseEvent, type ReactNode } from "react";
 import { Link, useLocation, useNavigate, type LinkProps, type To } from "react-router";
-import { useAuth } from "../contexts/AuthContext";
+import { useOptionalAuth } from "../contexts/AuthContext";
 import { isRouteModuleLoaded, prefetchRoute } from "../navigation/routePrefetch.ts";
 import { markSharedArtwork, routeTransitionsEnabled } from "../navigation/viewTransitions.ts";
 
@@ -29,7 +29,7 @@ const RouteLink = forwardRef<HTMLAnchorElement, LinkProps>(function RouteLink(
   },
   ref,
 ) {
-  const userId = useAuth()?.user?.id ?? null;
+  const userId = useOptionalAuth()?.user?.id ?? null;
   const navigate = useNavigate();
   const location = useLocation();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
