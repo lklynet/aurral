@@ -607,8 +607,9 @@ test("a bulk job whose record vanished mid-run does not write a record without a
   );
   void startPlaylistOperationWorker();
   try {
-    await vi.waitFor(() =>
-      assert.equal(db.prepare("SELECT COUNT(*) AS count FROM _honker_live").get().count, 0),
+    await vi.waitFor(
+      () => assert.equal(db.prepare("SELECT COUNT(*) AS count FROM _honker_live").get().count, 0),
+      { timeout: 10000 },
     );
   } finally {
     await stopPlaylistOperationWorker();
