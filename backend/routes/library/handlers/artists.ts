@@ -372,8 +372,11 @@ type LibraryArtistRecord =
   | ReturnType<typeof libraryManager.mapLidarrArtist>
   | ReturnType<typeof getLibraryArtistProjection>[number];
 
-export type FetchLibraryArtistResponse = LibraryArtistRecord & {
-  foreignArtistId: string;
+type WithNullableForeignArtistId<Artist> = Artist extends unknown
+  ? Omit<Artist, "foreignArtistId"> & { foreignArtistId: string | null }
+  : never;
+
+export type FetchLibraryArtistResponse = WithNullableForeignArtistId<LibraryArtistRecord> & {
   added: LibraryArtistRecord["addedAt"];
 };
 

@@ -419,9 +419,12 @@ export function registerAlbums(router: Router) {
 
 type LibraryAlbumRecord = Awaited<ReturnType<typeof libraryManager.getAlbums>>[number];
 
-export type GetLibraryAlbumsResponse = (LibraryAlbumRecord &
-  Partial<MappedLibraryAlbum> & {
-    foreignAlbumId: string;
+type WithNullableForeignAlbumId<Album> = Album extends unknown
+  ? Omit<Album, "foreignAlbumId"> & { foreignAlbumId: string | null }
+  : never;
+
+export type GetLibraryAlbumsResponse = (WithNullableForeignAlbumId<LibraryAlbumRecord> &
+  Partial<Omit<MappedLibraryAlbum, "foreignAlbumId">> & {
     title: string;
     statistics: NonNullable<LibraryAlbumRecord["statistics"]>;
   })[];
