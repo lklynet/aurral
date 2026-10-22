@@ -76,7 +76,7 @@ function rankCandidates<T extends RankableRelease>(
   const targetYear = getYear(expectedYear);
   return [...list]
     .map((candidate) => {
-      const title = candidate?.title || candidate?.["release-group"]?.title || "";
+      const title = candidate?.title || "";
       const year =
         candidate?.["first-release-date"] ||
         candidate?.date ||
@@ -187,13 +187,13 @@ async function resolveReleaseGroup(track: DownloadTrackFields) {
     try {
       const candidates = safeMbid ? await listArtistAlbums(safeMbid) : [];
       for (const best of rankCandidates(candidates, safeAlbum, track.releaseYear)) {
-        const id = best?.Id || best?.id;
-        if (!id || !matchesAlbumTitle(best?.Title || best?.title, safeAlbum)) continue;
+        const id = best?.id;
+        if (!id || !matchesAlbumTitle(best?.title, safeAlbum)) continue;
         if (!(await holds(id))) continue;
         return {
           id: String(id),
-          title: String(best?.Title || best?.title || safeAlbum).trim() || safeAlbum,
-          releaseYear: getYear(best?.FirstReleaseDate || best?.firstReleaseDate),
+          title: String(best?.title || safeAlbum).trim() || safeAlbum,
+          releaseYear: getYear(best?.firstReleaseDate),
         };
       }
     } catch (error) {
@@ -423,7 +423,7 @@ async function fetchReleaseContext(
     try {
       const album = await getAlbumByMbid(key);
       const artists = (Array.isArray(album?.artists) ? album.artists : []).toSorted(
-        (left, right) => (right.id === album.artistId) - (left.id === album.artistId),
+        (left, right) => Number(right.id === album.artistId) - Number(left.id === album.artistId),
       );
       const pickedRelease = selectAlbumRelease(album);
       if (!pickedRelease) {
@@ -505,7 +505,7 @@ async function applyReleaseManifest(
 function hasReleaseIdentity(track: ResolvedTrack) {
   return (
     Boolean(track.trackMbid && track.albumMbid) &&
-    track.durationMs > 0 &&
+    (track.durationMs ?? 0) > 0 &&
     Number(track.trackNumber) > 0 &&
     Array.isArray(track.albumTrackTitles) &&
     track.albumTrackTitles.length > 0

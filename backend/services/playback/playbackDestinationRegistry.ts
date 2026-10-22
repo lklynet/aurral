@@ -1,3 +1,4 @@
+import { asAppError } from "../../../lib/errors.ts";
 import {
   assertPlaybackDestination,
   isRetryablePlaybackError,
@@ -53,7 +54,7 @@ export class PlaybackDestinationRegistry {
           } catch (error) {
             result = playbackOperationFailure({
               code: "DESTINATION_OPERATION_FAILED",
-              message: error?.message || `${destination.name} ${operation} failed`,
+              message: asAppError(error)?.message || `${destination.name} ${operation} failed`,
               retryable: isRetryablePlaybackError(error),
             });
           }

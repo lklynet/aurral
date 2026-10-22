@@ -1,8 +1,8 @@
 import type { DownloadWorker } from "./downloadWorker.ts";
-import type { getPlaylistOperationWorkerStatus } from "../playlists/playlistOperationWorker.ts";
+import type { JsonValue } from "@russellthehippo/honker-node";
 
 export type DownloadOwnerStatus = ReturnType<DownloadWorker["getStatus"]> & {
-  operationWorker: ReturnType<typeof getPlaylistOperationWorkerStatus>;
+  operationWorker: { running: boolean; currentLabel: JsonValue };
 };
 
 type DownloadOwnerRequester = (
@@ -15,6 +15,21 @@ interface PendingRequest {
   resolve: (result: unknown) => void;
   reject: (error: unknown) => void;
   timer: ReturnType<typeof setTimeout>;
+}
+
+interface OwnerClientResponse {
+  type: "download-owner-client-response";
+  requestId: number;
+  result?: unknown;
+  error?: string;
+}
+
+function isOwnerClientResponse(message: unknown): message is OwnerClientResponse {
+  return (
+    typeof message === "object" &&
+    message !== null &&
+    Reflect.get(message, "type") === "download-owner-client-response"
+  );
 }
 
 let requester: DownloadOwnerRequester | null = null;
@@ -58,7 +73,7 @@ export function requestDownloadOwner<T = unknown>(
   if (!listening) {
     listening = true;
     process.on("message", (message) => {
-      if (message?.type !== "download-owner-client-response") return;
+      if (!isOwnerClientResponse(message)) return;
       const entry = pending.get(message.requestId);
       if (!entry) return;
       pending.delete(message.requestId);

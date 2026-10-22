@@ -1,3 +1,4 @@
+import { asAppError } from "../../../lib/errors.ts";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as wait } from "node:timers/promises";
@@ -158,7 +159,10 @@ export class NavidromePlaybackDestination {
   ) {
     const excluded = new Set(
       excludeEntityIds.flatMap((id) =>
-        navidromePlaylistPointerStore.getPointersForEntity(id).map((pointer) => pointer.playlistId),
+        navidromePlaylistPointerStore
+          .getPointersForEntity(id)
+          .map((pointer) => pointer.playlistId)
+          .filter((playlistId): playlistId is string => playlistId !== null),
       ),
     );
     const paths = await this.client.getPlaylistTrackPaths(excluded);
@@ -174,7 +178,7 @@ export class NavidromePlaybackDestination {
       .trim();
   }
 
-  getPlaylistNames({ entityId, ownerUserId = null, displayName }: PlaylistNamesInput = {}) {
+  getPlaylistNames({ entityId, ownerUserId = null, displayName }: PlaylistNamesInput) {
     const name = String(displayName || "").trim();
     const owner = ownerUserId == null ? null : userOps.getUserById(ownerUserId);
     const prefixed = owner?.username ? `${owner.username} - ${name}` : name;
@@ -237,12 +241,15 @@ export class NavidromePlaybackDestination {
     if (!this.isConfigured()) return [];
     if (!force && this._playlists) return this._playlists;
     try {
-      await this._fetchPlaylists();
+      return await this._fetchPlaylists();
     } catch (error) {
-      console.warn("[NavidromePlaybackDestination] getPlaylists failed:", error?.message);
+      console.warn(
+        "[NavidromePlaybackDestination] getPlaylists failed:",
+        asAppError(error)?.message,
+      );
       this._playlists = [];
+      return this._playlists;
     }
-    return this._playlists;
   }
 
   async _fetchPlaylists(this: ConfiguredNavidrome) {
@@ -252,17 +259,18 @@ export class NavidromePlaybackDestination {
   }
 
   async _deleteNativePlaylists(names: (string | null | undefined)[]) {
+    if (!this.isConfigured()) return;
     const playlists = await this._loadPlaylists();
     for (const name of [...new Set((names || []).filter(Boolean))]) {
       const playlist = playlists.find((candidate) => candidate.name === name);
       if (!playlist || navidromePlaylistPointerStore.hasPlaylistId(playlist.id)) continue;
       try {
         await this.client.deletePlaylist(playlist.id);
-        this._playlists = this._playlists.filter((candidate) => candidate.id !== playlist.id);
+        this._playlists = this._playlists!.filter((candidate) => candidate.id !== playlist.id);
       } catch (error) {
         console.warn(
           `[NavidromePlaybackDestination] Failed to delete playlist "${name}":`,
-          error?.message,
+          asAppError(error)?.message,
         );
       }
     }
@@ -305,14 +313,14 @@ export class NavidromePlaybackDestination {
         );
       } catch (error) {
         logger.debug("playback", "Failed to upload optional Navidrome playlist artwork", {
-          message: error?.message || String(error),
+          message: asAppError(error)?.message || String(error),
         });
       }
       return;
     }
   }
 
-  async syncPlaylistArtwork({ entityId, ownerUserId = null }: PlaylistRef = {}) {
+  async syncPlaylistArtwork({ entityId, ownerUserId = null }: PlaylistRef) {
     try {
       if (!this.isConfigured()) return playbackOperationSuccess();
       const entity = this._getEntity(entityId);
@@ -331,13 +339,13 @@ export class NavidromePlaybackDestination {
     } catch (error) {
       return playbackOperationFailure({
         code: "PLAYLIST_ARTWORK_SYNC_FAILED",
-        message: error?.message || "Could not sync Navidrome playlist artwork",
+        message: asAppError(error)?.message || "Could not sync Navidrome playlist artwork",
         retryable: isRetryablePlaybackError(error),
       });
     }
   }
 
-  async clearPlaylistArtwork({ entityId, ownerUserId = null }: PlaylistRef = {}) {
+  async clearPlaylistArtwork({ entityId, ownerUserId = null }: PlaylistRef) {
     try {
       if (!this.isConfigured() || typeof this.client?.deletePlaylistArtwork !== "function") {
         return playbackOperationSuccess();
@@ -351,7 +359,7 @@ export class NavidromePlaybackDestination {
     } catch (error) {
       return playbackOperationFailure({
         code: "PLAYLIST_ARTWORK_CLEAR_FAILED",
-        message: error?.message || "Could not clear Navidrome playlist artwork",
+        message: asAppError(error)?.message || "Could not clear Navidrome playlist artwork",
         retryable: isRetryablePlaybackError(error),
       });
     }
@@ -440,7 +448,7 @@ export class NavidromePlaybackDestination {
     } catch (error) {
       return playbackOperationFailure({
         code: "DESTINATION_UNAVAILABLE",
-        message: error?.message || "Navidrome did not respond",
+        message: asAppError(error)?.message || "Navidrome did not respond",
         retryable: isRetryablePlaybackError(error),
       });
     }
@@ -461,7 +469,7 @@ export class NavidromePlaybackDestination {
     } catch (error) {
       return playbackOperationFailure({
         code: "LIBRARY_SETUP_FAILED",
-        message: error?.message || "Could not prepare the Navidrome playlist library",
+        message: asAppError(error)?.message || "Could not prepare the Navidrome playlist library",
         retryable: isRetryablePlaybackError(error),
       });
     }
@@ -488,7 +496,7 @@ export class NavidromePlaybackDestination {
       try {
         nativePlaylist = await this.client.getPlaylist(pointer.playlistId!);
       } catch (error) {
-        if (Number(error?.code) !== 70) throw error;
+        if (Number(asAppError(error)?.code) !== 70) throw error;
         pointerIsStale = true;
       }
       if (pointerIsStale) {
@@ -588,7 +596,7 @@ export class NavidromePlaybackDestination {
       );
     }
     const hasUnresolvedSongs = songs.some((song) => !song?.id);
-    const songIds = songs.filter((song) => song?.id).map((song) => song.id);
+    const songIds = songs.flatMap((song) => (song?.id ? [song.id] : []));
     if (snapshot.tracks.length && !songIds.length && !pointer) {
       navidromePlaylistPointerStore.setPointer(snapshot.entityId, targetKey, {
         playlistId: null,
@@ -620,7 +628,7 @@ export class NavidromePlaybackDestination {
           playlist = { id: pointer.playlistId };
           break;
         } catch (error) {
-          if (Number(error?.code) !== 70) throw error;
+          if (Number(asAppError(error)?.code) !== 70) throw error;
         }
       }
       if (!playlist) {
@@ -683,7 +691,7 @@ export class NavidromePlaybackDestination {
     } catch (error) {
       return playbackOperationFailure({
         code: "PLAYLIST_PUBLISH_FAILED",
-        message: error?.message || "Could not publish the Navidrome playlist",
+        message: asAppError(error)?.message || "Could not publish the Navidrome playlist",
         retryable: isRetryablePlaybackError(error),
       });
     }
@@ -709,7 +717,7 @@ export class NavidromePlaybackDestination {
           else if (fileOnlyName) await this._deleteImportedPlaylists(fileOnlyName);
           pointerResolved = true;
         } catch (error) {
-          if (Number(error?.code) === 70) pointerResolved = true;
+          if (Number(asAppError(error)?.code) === 70) pointerResolved = true;
           else pointerError = error;
         }
       }
@@ -743,7 +751,7 @@ export class NavidromePlaybackDestination {
     } catch (error) {
       return playbackOperationFailure({
         code: "PLAYLIST_DELETE_FAILED",
-        message: error?.message || "Could not delete the Navidrome playlist",
+        message: asAppError(error)?.message || "Could not delete the Navidrome playlist",
         retryable: isRetryablePlaybackError(error),
       });
     }
@@ -765,7 +773,7 @@ export class NavidromePlaybackDestination {
     } catch (error) {
       return playbackOperationFailure({
         code: "PLAYLIST_DELETE_FAILED",
-        message: error?.message || "Could not delete the Navidrome playlist",
+        message: asAppError(error)?.message || "Could not delete the Navidrome playlist",
         retryable: isRetryablePlaybackError(error),
       });
     }
@@ -781,7 +789,7 @@ export class NavidromePlaybackDestination {
       libraries = await this.client.getLibraries({ timeout: 30_000 });
     } catch (error) {
       logger.warn("navidrome", "Could not read Navidrome libraries for a targeted scan", {
-        message: error?.message || String(error),
+        message: asAppError(error)?.message || String(error),
       });
       return null;
     }
@@ -828,7 +836,7 @@ export class NavidromePlaybackDestination {
     } catch (error) {
       return playbackOperationFailure({
         code: "SCAN_FAILED",
-        message: error?.message || "Could not scan the Navidrome library",
+        message: asAppError(error)?.message || "Could not scan the Navidrome library",
         retryable: isRetryablePlaybackError(error),
       });
     }

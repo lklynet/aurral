@@ -17,6 +17,7 @@ import { withDownloadStepLock } from "./mutationGuards.ts";
 import { discardReviewFile } from "./reviewFiles.ts";
 import { logger } from "../logger.ts";
 import { dbOps } from "../../db/helpers/index.ts";
+import { asAppError } from "../../../lib/errors.ts";
 
 const approvalFollowUps = new Set<Promise<void>>();
 
@@ -34,10 +35,11 @@ const getBlockedJob = (jobId: string) => {
 };
 
 const logFollowUpFailure = (job: DownloadJob, playlistId: string, error: unknown) => {
+  const failure = asAppError(error);
   logger.warn("downloads", "Approved track was imported but playlist follow-up failed", {
     jobId: job.id,
     playlistId,
-    reason: error?.message || String(error),
+    reason: failure?.message || String(error),
   });
 };
 
@@ -124,9 +126,10 @@ export async function denyBlockedJob(
     async () => {
       if (!getBlockedJob(job.id)) return false;
       await discardReviewFile(job);
-      const deniedSourceKey = ["usenet", "ytdlp", "deemix"].includes(job.downloadSource)
-        ? String(job.releaseGuid || "").trim()
-        : `${String(job.remoteUsername || "").trim()}\0${String(job.remoteFilename || "").trim()}`;
+      const deniedSourceKey =
+        job.downloadSource && ["usenet", "ytdlp", "deemix"].includes(job.downloadSource)
+          ? String(job.releaseGuid || "").trim()
+          : `${String(job.remoteUsername || "").trim()}\0${String(job.remoteFilename || "").trim()}`;
       if (job.downloadSource && deniedSourceKey) {
         downloadTracker.recordDeniedSource(job.id, job.downloadSource, deniedSourceKey);
       }

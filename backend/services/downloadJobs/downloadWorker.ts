@@ -43,6 +43,7 @@ import {
   isAnyDownloadSourceConfigured,
 } from "../downloadSourceService.ts";
 import { isPipelinePayloadActive } from "./downloadCancellation.ts";
+import { asAppError } from "../../../lib/errors.ts";
 
 const DEFAULT_CONCURRENCY = 3;
 const SEARCH_SLOT_RECHECK_MS = 2000;
@@ -289,7 +290,7 @@ export class DownloadWorker {
     return downloadTracker.getNextPendingMatching(
       (job) =>
         !this.activeJobs.has(job.id) &&
-        !(this.releaseWaits.get(job.id)?.readyAt > now) &&
+        !((this.releaseWaits.get(job.id)?.readyAt ?? 0) > now) &&
         isPlaylistOwnerActive(job?.playlistId || job?.playlistType),
       lastPlaylistType,
     );
@@ -782,7 +783,7 @@ export class DownloadWorker {
         jobId: job.id,
         finishedAt: Date.now(),
         failed: true,
-        error: error.message,
+        error: asAppError(error)?.message,
         elapsedMs: Math.round(elapsedMs),
         cpuUserMs: Math.round(cpuDelta.user / 1000),
         cpuSystemMs: Math.round(cpuDelta.system / 1000),
@@ -843,7 +844,7 @@ export class DownloadWorker {
             } catch (error) {
               console.error(
                 `[DownloadWorker] Failed to queue media server playlist sync for ${playlistType}:`,
-                error.message,
+                asAppError(error)?.message,
               );
             }
 

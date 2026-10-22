@@ -1,3 +1,4 @@
+import { asAppError } from "../../../lib/errors.ts";
 import fs from "node:fs";
 import path from "node:path";
 import { userOps } from "../../db/helpers/index.ts";
@@ -20,6 +21,7 @@ import {
   isRetryablePlaybackError,
   playbackOperationFailure,
   playbackOperationSuccess,
+  type PlaybackOperationResult,
 } from "./playbackDestination.ts";
 
 const MAX_JELLYFIN_FOLDER_UPDATES = 20;
@@ -93,7 +95,9 @@ const isWithinAny = (folders: readonly string[], candidate: string) =>
   folders.some((folder) => isPathWithin(folder, candidate));
 const isServerPathWithinAny = (folders: readonly string[], candidate: string) =>
   folders.some((folder) => candidate === folder || candidate.startsWith(`${folder}/`));
-const isNotFound = (error: unknown) => Number(error?.response?.status) === 404;
+const isNotFound = (error: unknown) => Number(asAppError(error)?.response?.status) === 404;
+
+type ConfiguredJellyfin = JellyfinPlaybackDestination & { client: JellyfinClient };
 
 export class JellyfinPlaybackDestination {
   declare key: string;
@@ -146,7 +150,7 @@ export class JellyfinPlaybackDestination {
     this._warnedUnmatchedRoots.clear();
   }
 
-  isConfigured(): boolean {
+  isConfigured(): this is ConfiguredJellyfin {
     return Boolean(this.client?.isConfigured());
   }
 
@@ -198,7 +202,7 @@ export class JellyfinPlaybackDestination {
     } catch (error) {
       return playbackOperationFailure({
         code: "DESTINATION_UNAVAILABLE",
-        message: error?.message || "Jellyfin did not respond",
+        message: asAppError(error)?.message || "Jellyfin did not respond",
         retryable: isRetryablePlaybackError(error),
       });
     }
@@ -209,7 +213,7 @@ export class JellyfinPlaybackDestination {
     return this._loadLibrary(this.client!.userId);
   }
 
-  async _loadLibrary(userId: string | null) {
+  async _loadLibrary(this: ConfiguredJellyfin, userId: string | null) {
     const libraryKey = String(userId || "").trim();
     if (!libraryKey) {
       return playbackOperationFailure({
@@ -228,13 +232,13 @@ export class JellyfinPlaybackDestination {
     } catch (error) {
       return playbackOperationFailure({
         code: "LIBRARY_SETUP_FAILED",
-        message: error?.message || "Could not read the Jellyfin music library",
+        message: asAppError(error)?.message || "Could not read the Jellyfin music library",
         retryable: isRetryablePlaybackError(error),
       });
     }
   }
 
-  async _readIndex(libraryKey: string) {
+  async _readIndex(this: ConfiguredJellyfin, libraryKey: string) {
     this._fullReadAt.set(libraryKey, Date.now());
     try {
       const [items, locations] = await Promise.all([
@@ -314,7 +318,7 @@ export class JellyfinPlaybackDestination {
     libraryKey: string,
     untrustedFolders: readonly string[],
   ) {
-    const { byPath, byMbid, paths } = this._indexes.get(libraryKey);
+    const { byPath, byMbid, paths } = this._indexes.get(libraryKey)!;
     const mappings = getPathMappings("jellyfin");
     const untrustedServerFolders = untrustedFolders.map((folder) =>
       normalizePath(resolveRemotePath(folder, mappings)),
@@ -346,7 +350,7 @@ export class JellyfinPlaybackDestination {
   }
 
   _canHold(libraryKey: string, { remotePath, mbid }: { remotePath: string; mbid?: string }) {
-    const { locations } = this._indexes.get(libraryKey);
+    const { locations } = this._indexes.get(libraryKey)!;
     return (
       Boolean(mbid) ||
       locations == null ||
@@ -355,6 +359,7 @@ export class JellyfinPlaybackDestination {
   }
 
   async _resolveWithReread(
+    this: ConfiguredJellyfin,
     snapshot: PlaybackSnapshot,
     libraryKey: string,
     untrustedFolders: readonly string[],
@@ -372,7 +377,7 @@ export class JellyfinPlaybackDestination {
         await this._readIndex(libraryKey);
       } catch (error) {
         logger.warn("jellyfin", "Could not re-read the Jellyfin music library", {
-          error: error?.message,
+          error: asAppError(error)?.message,
         });
       }
       result = this._resolveItemIds(snapshot, libraryKey, untrustedFolders);
@@ -400,7 +405,7 @@ export class JellyfinPlaybackDestination {
     }
   }
 
-  async _deleteTarget(entityId: string, targetKey: string) {
+  async _deleteTarget(this: ConfiguredJellyfin, entityId: string, targetKey: string) {
     const pointer = jellyfinPlaylistPointerStore.getPointer(entityId, targetKey);
     if (!pointer) return;
     if (!pointer.serverUrl || pointer.serverUrl === this.client?.url) {
@@ -417,24 +422,27 @@ export class JellyfinPlaybackDestination {
     this._syncHashes.delete(`${entityId}:${targetKey}`);
   }
 
-  async _deleteLegacyPointer(entityId: string, currentTargetKey: string) {
+  async _deleteLegacyPointer(this: ConfiguredJellyfin, entityId: string, currentTargetKey: string) {
     const legacyTargetKey = String(this.client?.userId || "global");
     if (legacyTargetKey !== currentTargetKey) await this._deleteTarget(entityId, legacyTargetKey);
   }
 
-  async _deleteCurrent(identity: PlaybackIdentity) {
+  async _deleteCurrent(this: ConfiguredJellyfin, identity: PlaybackIdentity) {
     const targetKey = this._targetKey(identity.ownerUserId);
     await this._deleteLegacyPointer(identity.entityId, targetKey);
     await this._deleteTarget(identity.entityId, targetKey);
   }
 
-  async _publishPlaylist(snapshot: PlaybackSnapshot, untrustedFolders: readonly string[]) {
+  async _publishPlaylist(
+    snapshot: PlaybackSnapshot,
+    untrustedFolders: readonly string[],
+  ): Promise<PlaybackOperationResult> {
     if (!this.isConfigured()) return playbackOperationSuccess();
     const jellyfinUser = await this._resolveOwnerJellyfinUser(snapshot.ownerUserId);
     const jellyfinUserId = itemId(jellyfinUser);
 
     if (!jellyfinUserId) {
-      const owner = userOps.getUserById(snapshot.ownerUserId);
+      const owner = snapshot.ownerUserId == null ? null : userOps.getUserById(snapshot.ownerUserId);
       return playbackOperationFailure({
         code: "JELLYFIN_USER_NOT_FOUND",
         message: `No Jellyfin user matches Aurral username "${owner?.username || "unknown"}"`,
@@ -475,17 +483,18 @@ export class JellyfinPlaybackDestination {
 
     let playlistId = reusable?.playlistId || null;
     let managedItemIds = reusable?.managedItemIds || [];
-    const saveManagedItems = (ids: string[]) => {
-      managedItemIds = ids;
-      jellyfinPlaylistPointerStore.setPointer(snapshot.entityId, targetKey, {
-        playlistId,
-        title: snapshot.displayName,
-        serverUrl: this.client.url,
-        jellyfinUserId,
-        managedItemIds,
-      });
-    };
     if (playlistId) {
+      const updatingPlaylistId = playlistId;
+      const saveManagedItems = (ids: string[]) => {
+        managedItemIds = ids;
+        jellyfinPlaylistPointerStore.setPointer(snapshot.entityId, targetKey, {
+          playlistId: updatingPlaylistId,
+          title: snapshot.displayName,
+          serverUrl: this.client.url,
+          jellyfinUserId,
+          managedItemIds,
+        });
+      };
       try {
         const updated = await this.client.updatePlaylist(playlistId, {
           name: snapshot.displayName,
@@ -543,7 +552,7 @@ export class JellyfinPlaybackDestination {
     } catch (error) {
       return playbackOperationFailure({
         code: "PLAYLIST_PUBLISH_FAILED",
-        message: error?.message || "Could not publish the Jellyfin playlist",
+        message: asAppError(error)?.message || "Could not publish the Jellyfin playlist",
         retryable: isRetryablePlaybackError(error),
       });
     }
@@ -560,7 +569,7 @@ export class JellyfinPlaybackDestination {
     } catch (error) {
       return playbackOperationFailure({
         code: "PLAYLIST_DELETE_FAILED",
-        message: error?.message || "Could not delete the Jellyfin playlist",
+        message: asAppError(error)?.message || "Could not delete the Jellyfin playlist",
         retryable: isRetryablePlaybackError(error),
       });
     }
@@ -582,7 +591,7 @@ export class JellyfinPlaybackDestination {
     } catch (error) {
       return playbackOperationFailure({
         code: "PLAYLIST_DELETE_FAILED",
-        message: error?.message || "Could not delete the Jellyfin playlist",
+        message: asAppError(error)?.message || "Could not delete the Jellyfin playlist",
         retryable: isRetryablePlaybackError(error),
       });
     }
@@ -633,7 +642,7 @@ export class JellyfinPlaybackDestination {
     } catch (error) {
       return playbackOperationFailure({
         code: "SCAN_FAILED",
-        message: error?.message || "Could not scan the Jellyfin library",
+        message: asAppError(error)?.message || "Could not scan the Jellyfin library",
         retryable: isRetryablePlaybackError(error),
       });
     }

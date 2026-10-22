@@ -1,3 +1,4 @@
+import { asAppError } from "../../../lib/errors.ts";
 import crypto from "node:crypto";
 import type { Stats } from "node:fs";
 import fs from "node:fs/promises";
@@ -197,7 +198,7 @@ export class PlexPlaybackDestination {
     } catch (error) {
       return playbackOperationFailure({
         code: "DESTINATION_UNAVAILABLE",
-        message: error?.message || "Plex did not respond",
+        message: asAppError(error)?.message || "Plex did not respond",
         retryable: isRetryablePlaybackError(error),
       });
     }
@@ -230,7 +231,7 @@ export class PlexPlaybackDestination {
     } catch (error) {
       return playbackOperationFailure({
         code: "LIBRARY_SETUP_FAILED",
-        message: error?.message || "Could not prepare the Plex library",
+        message: asAppError(error)?.message || "Could not prepare the Plex library",
         retryable: isRetryablePlaybackError(error),
       });
     }
@@ -240,7 +241,7 @@ export class PlexPlaybackDestination {
       } catch (error) {
         console.warn(
           "[PlexPlaybackDestination] Failed to read configured main Plex library section:",
-          error?.message,
+          asAppError(error)?.message,
         );
       }
     }
@@ -394,10 +395,12 @@ export class PlexPlaybackDestination {
     }
     const used = new Set(tracks.map((track) => track.ratingKey));
     const ratingKeys = [
-      ...tracks.map((track) => track.ratingKey).filter(Boolean),
+      ...tracks
+        .map((track) => track.ratingKey)
+        .filter((ratingKey): ratingKey is string => Boolean(ratingKey)),
       ...links
         .map((link) => link.ratingKey)
-        .filter((ratingKey) => ratingKey && !used.has(ratingKey)),
+        .filter((ratingKey): ratingKey is string => Boolean(ratingKey && !used.has(ratingKey))),
     ];
     return {
       tracks,
@@ -427,12 +430,14 @@ export class PlexPlaybackDestination {
       } catch (error) {
         console.warn(
           `[PlexPlaybackDestination] Failed to re-read the ${role} Plex library section:`,
-          error?.message,
+          asAppError(error)?.message,
         );
       }
     }
     const result = reread ? await this._resolveTracks(snapshot, pendingFolders) : resolved;
-    const blocked = result.tracks.map((track) => this._readErrors.get(track.role)).find(Boolean);
+    const blocked = result.tracks
+      .map((track) => (track.role ? this._readErrors.get(track.role) : undefined))
+      .find(Boolean);
     if (blocked) throw blocked.error;
     return result;
   }
@@ -487,7 +492,10 @@ export class PlexPlaybackDestination {
       client._machineIdentifier = this.client._machineIdentifier || null;
       return client;
     } catch (error) {
-      plexConnectionStore.setLastError(ownerUserId, error?.message || "Plex reconnect failed");
+      plexConnectionStore.setLastError(
+        ownerUserId,
+        asAppError(error)?.message || "Plex reconnect failed",
+      );
       return null;
     }
   }
@@ -501,7 +509,11 @@ export class PlexPlaybackDestination {
     try {
       return await run(client);
     } catch (error) {
-      if (error?.response?.status !== 401 || client === this.client || ownerUserId == null) {
+      if (
+        asAppError(error)?.response?.status !== 401 ||
+        client === this.client ||
+        ownerUserId == null
+      ) {
         throw error;
       }
       const recovered = await this._recoverManagedUserToken(ownerUserId);
@@ -512,7 +524,7 @@ export class PlexPlaybackDestination {
         } catch (retryError) {
           plexConnectionStore.setLastError(
             ownerUserId,
-            retryError?.message || "Plex sync failed after reconnect",
+            asAppError(retryError)?.message || "Plex sync failed after reconnect",
           );
           console.warn(
             `[PlexPlaybackDestination] Plex sync skipped for owner ${ownerUserId}: still failing after reconnect`,
@@ -520,7 +532,10 @@ export class PlexPlaybackDestination {
           return SYNC_SKIPPED;
         }
       }
-      plexConnectionStore.setLastError(ownerUserId, error?.message || "Plex sync failed (401)");
+      plexConnectionStore.setLastError(
+        ownerUserId,
+        asAppError(error)?.message || "Plex sync failed (401)",
+      );
       console.warn(
         `[PlexPlaybackDestination] Plex sync skipped for owner ${ownerUserId}: reconnect needed`,
       );
@@ -614,10 +629,10 @@ export class PlexPlaybackDestination {
     try {
       await this.client.deletePlaylist(pointer.ratingKey);
     } catch (error) {
-      if (error?.response?.status !== 404) {
+      if (asAppError(error)?.response?.status !== 404) {
         console.warn(
           "[PlexPlaybackDestination] Failed to clean up relocated playlist:",
-          error?.message,
+          asAppError(error)?.message,
         );
       }
     }
@@ -639,7 +654,7 @@ export class PlexPlaybackDestination {
     try {
       await client?.deletePlaylist(pointer.ratingKey);
     } catch (error) {
-      if (error?.response?.status !== 404) throw error;
+      if (asAppError(error)?.response?.status !== 404) throw error;
     }
     plexPlaylistPointerStore.deletePointer(entityId, targetKey);
     this._syncHashes.delete(`${entityId}:${targetKey}`);
@@ -656,7 +671,7 @@ export class PlexPlaybackDestination {
         try {
           await client.deletePlaylist(pointer.ratingKey);
         } catch (error) {
-          if (error?.response?.status !== 404) throw error;
+          if (asAppError(error)?.response?.status !== 404) throw error;
         }
       });
     } else {
@@ -737,7 +752,7 @@ export class PlexPlaybackDestination {
     } catch (error) {
       return playbackOperationFailure({
         code: "PLAYLIST_PUBLISH_FAILED",
-        message: error?.message || "Could not publish the Plex playlist",
+        message: asAppError(error)?.message || "Could not publish the Plex playlist",
         retryable: isRetryablePlaybackError(error),
       });
     }
@@ -750,7 +765,7 @@ export class PlexPlaybackDestination {
     } catch (error) {
       return playbackOperationFailure({
         code: "PLAYLIST_DELETE_FAILED",
-        message: error?.message || "Could not delete the Plex playlist",
+        message: asAppError(error)?.message || "Could not delete the Plex playlist",
         retryable: isRetryablePlaybackError(error),
       });
     }
@@ -771,7 +786,10 @@ export class PlexPlaybackDestination {
       try {
         await this._deletePointer(pointer.entityId, ownerUserId, pointer, clientCache);
       } catch (error) {
-        console.warn("[PlexPlaybackDestination] Failed to delete playlist:", error?.message);
+        console.warn(
+          "[PlexPlaybackDestination] Failed to delete playlist:",
+          asAppError(error)?.message,
+        );
         plexPlaylistPointerStore.deletePointer(pointer.entityId, targetKey);
       }
     }
@@ -792,7 +810,7 @@ export class PlexPlaybackDestination {
     } catch (error) {
       return playbackOperationFailure({
         code: "PLAYLIST_DELETE_FAILED",
-        message: error?.message || "Could not delete the Plex playlist",
+        message: asAppError(error)?.message || "Could not delete the Plex playlist",
         retryable: isRetryablePlaybackError(error),
       });
     }
@@ -828,7 +846,7 @@ export class PlexPlaybackDestination {
     } catch (error) {
       return playbackOperationFailure({
         code: "SCAN_FAILED",
-        message: error?.message || "Could not scan the Plex library",
+        message: asAppError(error)?.message || "Could not scan the Plex library",
         retryable: isRetryablePlaybackError(error),
       });
     }

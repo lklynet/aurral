@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { asAppError } from "../../../lib/errors.ts";
 import { dbOps } from "../../db/helpers/index.ts";
 import { localFileKey } from "./playlistUsage.ts";
 import type { PlaybackDestinationRegistry } from "./playbackDestinationRegistry.ts";
@@ -148,11 +149,12 @@ export async function retryPlaybackRetainedFiles() {
       forgetPlaybackRetainedFile(file);
       removed.push(file);
     } catch (error) {
-      if (error.code === "ENOENT") forgetPlaybackRetainedFile(file);
+      const failure = asAppError(error);
+      if (failure?.code === "ENOENT") forgetPlaybackRetainedFile(file);
       else
         console.warn(
           "[PlaybackFileRetention] Could not retry retained file cleanup:",
-          error.message,
+          failure?.message,
         );
     }
   }
@@ -170,7 +172,7 @@ export async function removeUnusedPlaybackFiles(
   try {
     stat = await fs.lstat(directory);
   } catch (error) {
-    if (error.code === "ENOENT") return;
+    if (asAppError(error)?.code === "ENOENT") return;
     throw error;
   }
   if (stat.isSymbolicLink()) {
@@ -193,6 +195,7 @@ export async function removeUnusedPlaybackFiles(
   try {
     await fs.rmdir(directory);
   } catch (error) {
-    if (!["ENOTEMPTY", "EEXIST", "ENOENT"].includes(error.code)) throw error;
+    const code = asAppError(error)?.code;
+    if (!code || !["ENOTEMPTY", "EEXIST", "ENOENT"].includes(code)) throw error;
   }
 }

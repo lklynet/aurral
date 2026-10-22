@@ -914,7 +914,7 @@ export const flowPlaylistConfig = {
     return getStoredFlows().filter((flow) => isOwnedByUser(flow, userId));
   },
 
-  getFlow(flowId: string) {
+  getFlow(flowId: string | null | undefined) {
     return getStoredFlows().find((flow) => flow.id === flowId) || null;
   },
 

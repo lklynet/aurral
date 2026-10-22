@@ -6,6 +6,7 @@ import { logger } from "../logger.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { resolveTransferredDownloadPayload } from "./downloadOwnership.ts";
 import type { HonkerPayload } from "../honkerDb.ts";
+import { asAppError } from "../../../lib/errors.ts";
 
 type DownloadLease = {
   active: boolean;
@@ -43,7 +44,7 @@ async function withOwnerLocks<T>(
   return runAtIndex(0);
 }
 
-function runWithLease(lease: DownloadLease, operation) {
+function runWithLease<T>(lease: DownloadLease, operation: () => T | Promise<T>) {
   return downloadLeases.run(lease, async () => {
     try {
       return await operation();
@@ -53,11 +54,11 @@ function runWithLease(lease: DownloadLease, operation) {
   });
 }
 
-async function withDownloadLocks(
+async function withDownloadLocks<T>(
   ownerIds: unknown,
   { steps = false, imports = false }: { steps?: boolean; imports?: boolean },
-  operation,
-) {
+  operation: () => T | Promise<T>,
+): Promise<T> {
   const owners = normalizePlaylistTypes(ownerIds);
   const current = downloadLeases.getStore();
   if (current?.active) {
@@ -106,7 +107,7 @@ export async function beginPlaylistMutation(
       } catch (unblockError) {
         logger.warn("playlists", "Could not unblock playlist after mutation setup failed", {
           playlistId: playlistType,
-          reason: unblockError?.message || String(unblockError),
+          reason: asAppError(unblockError)?.message || String(unblockError),
         });
       }
     }
@@ -130,11 +131,14 @@ export async function beginPlaylistMutation(
   };
 }
 
-export async function withPlaylistMutation(
+export async function withPlaylistMutation<T, Preflight = never>(
   playlistTypes: unknown,
-  operation,
-  options: { clearPending?: boolean; beforeMutation?: () => unknown } = {},
-) {
+  operation: () => T | Promise<T>,
+  options: {
+    clearPending?: boolean;
+    beforeMutation?: () => Preflight | undefined | Promise<Preflight | undefined>;
+  } = {},
+): Promise<T | Preflight> {
   const types = normalizePlaylistTypes(playlistTypes);
   return withPlaylistMutationLock(types, async () => {
     if (typeof options.beforeMutation === "function") {
@@ -150,28 +154,36 @@ export async function withPlaylistMutation(
   });
 }
 
-export function withPlaylistMutationLock(playlistTypes: unknown, operation) {
+export function withPlaylistMutationLock<T>(
+  playlistTypes: unknown,
+  operation: () => T | Promise<T>,
+) {
   return withDownloadLocks(playlistTypes, { steps: true, imports: true }, operation);
 }
 
-export function withDownloadImportLock(ownerIds: unknown, operation) {
+export function withDownloadImportLock<T>(ownerIds: unknown, operation: () => T | Promise<T>) {
   return withDownloadLocks(ownerIds, { imports: true }, operation);
 }
 
-export function withDownloadStepLock(ownerIds: unknown, operation) {
+export function withDownloadStepLock<T>(ownerIds: unknown, operation: () => T | Promise<T>) {
   return withDownloadLocks(ownerIds, { steps: true }, operation);
 }
 
 function payloadOwners(payload: HonkerPayload | null) {
   const owners = [payload?.playlistId];
-  for (const id of [payload?.jobId, ...(payload?.albumGroupJobIds || [])]) {
+  const groupJobIds = payload?.albumGroupJobIds;
+  const jobIds = [payload?.jobId, ...(Array.isArray(groupJobIds) ? groupJobIds : [])];
+  for (const id of jobIds.filter((value): value is string => typeof value === "string")) {
     const job = downloadTracker.getJob(id);
     if (job) owners.push(job.playlistId || job.playlistType);
   }
   return normalizePlaylistTypes(owners);
 }
 
-export async function withDownloadPayloadMutation(payload: HonkerPayload, operation) {
+export async function withDownloadPayloadMutation<T>(
+  payload: HonkerPayload,
+  operation: (current: HonkerPayload) => T | Promise<T>,
+) {
   while (true) {
     const owners = payloadOwners(resolveTransferredDownloadPayload(payload));
     const result = await withDownloadStepLock(owners, async () => {

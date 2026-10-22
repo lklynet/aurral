@@ -67,7 +67,7 @@ export const jellyfinPlaylistPointerStore = {
         const pointer = normalizePointer(raw);
         return pointer ? { targetKey, ...pointer } : null;
       })
-      .filter(Boolean);
+      .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
   },
 
   getPointer(entityId: string, targetKey: string) {
@@ -86,7 +86,7 @@ export const jellyfinPlaylistPointerStore = {
     }: {
       playlistId: string;
       title: string;
-      serverUrl: string;
+      serverUrl: string | null;
       jellyfinUserId?: string | null;
       managedItemIds?: string[];
     },

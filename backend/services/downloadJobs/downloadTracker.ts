@@ -441,6 +441,7 @@ const triesRelease = (job: DownloadJob) => !job.manualReplacementSearch && !job.
 const searchesByRelease = (job: DownloadJob) => Boolean(job?.albumMbid) && triesRelease(job);
 
 function buildPipelinePayload(job: DownloadJob) {
+  const recordingMbidAliases: string[] = [];
   const playlistId = job.playlistId || job.playlistType;
   const artistDir = sanitizePathPart(job.artistName, "Unknown Artist");
   const albumDir = sanitizePathPart(job.albumName, "Unknown Album");
@@ -468,7 +469,7 @@ function buildPipelinePayload(job: DownloadJob) {
       albumTrackCount: job.albumTrackCount,
       albumTrackTitles: job.albumTrackTitles || [],
       artistAliases: job.artistAliases || [],
-      recordingMbidAliases: job.recordingMbidAliases || [],
+      recordingMbidAliases,
     },
     attempt: 0,
     destination: buildAurralTrackDestination(playlistId, artistDir, albumDir, { ephemeral }),
@@ -482,7 +483,8 @@ function buildPipelinePayload(job: DownloadJob) {
   };
 }
 
-type PipelinePayload = ReturnType<typeof buildPipelinePayload> & {
+type PipelinePayload = Omit<ReturnType<typeof buildPipelinePayload>, "heldForReview"> & {
+  heldForReview?: HeldForReview | null;
   quickSearch?: boolean;
   albumGrab?: boolean;
   releaseMbid?: string | null;
@@ -822,7 +824,9 @@ export class DownloadTracker {
       const { albumGroupJobIds, downloadAttemptId } = activeGrab.payload;
       recordAlbumGrabQueued(
         activeGrab.payload,
-        albumGroupJobIds.map((id) => this.jobs.get(id)).filter(Boolean),
+        albumGroupJobIds
+          .map((id) => this.jobs.get(id))
+          .filter((member): member is DownloadJob => Boolean(member)),
       );
       for (const memberId of albumGroupJobIds) {
         if (
@@ -1352,7 +1356,7 @@ export class DownloadTracker {
       playlistId,
       playlistGeneration: sourceJob.playlistGeneration,
     });
-    const job = this.jobs.get(id);
+    const job = this.jobs.get(id!)!;
     job.upgradeForJobId = sourceJob.id;
     this._update(job);
     return id;
@@ -1371,12 +1375,12 @@ export class DownloadTracker {
       playlistId,
       playlistGeneration: getPlaylistDownloadGeneration(playlistId),
     });
-    const job = this.jobs.get(id);
+    const job = this.jobs.get(id!)!;
     job.upgradeForJobId = sourceJob.id;
     job.manualReplacementSearch = true;
-    this.pendingSet.delete(id);
-    this.pendingRetrySet.delete(id);
-    this._removeFromPendingQueues(id);
+    this.pendingSet.delete(job.id);
+    this.pendingRetrySet.delete(job.id);
+    this._removeFromPendingQueues(job.id);
     this._update(job);
     return id;
   }
@@ -2109,6 +2113,12 @@ const emptyLiveStats = () => ({
   failed: 0,
 });
 
+const isAlbumMatcher = (value: unknown): value is (albumMbid: string) => boolean =>
+  typeof value === "function";
+
+const isLiveStatus = (status: string): status is keyof ReturnType<typeof emptyLiveStats> =>
+  status in emptyLiveStats();
+
 function readTrackerFromDatabase(name: string, args: unknown[]) {
   const [first, second] = args;
   if (name === "getJob") {
@@ -2148,22 +2158,23 @@ function readTrackerFromDatabase(name: string, args: unknown[]) {
   if (name === "getActiveByPlaylistType")
     return liveJobs(liveActivePlaylistJobsStmt.all(first ?? null));
   if (name === "getByAlbumMbid") {
-    const jobs = [];
+    const jobs: ReturnType<typeof rowToJob>[] = [];
     for (const row of liveAlbumJobsStmt.iterate()) {
+      if (!isAlbumMatcher(first)) throw new TypeError("first is not a function");
       if (first(row.album_mbid)) jobs.push(rowToJob(row));
     }
     return sortByCreatedAt(jobs);
   }
   if (name === "getRevision") return persistedRevisionStmt.get()?.revision || 0;
   if (name === "getStats" || name === "getStatsByPlaylistType" || name === "getPlaylistTypeStats") {
-    const byPlaylist = {};
+    const byPlaylist: Partial<Record<string, ReturnType<typeof emptyLiveStats>>> = {};
     const totals = emptyLiveStats();
     for (const row of liveStatsStmt.all()) {
       const count = Number(row.count) || 0;
-      if (!byPlaylist[row.playlist_type]) byPlaylist[row.playlist_type] = emptyLiveStats();
-      if (row.status in totals) {
-        byPlaylist[row.playlist_type][row.status] += count;
-        byPlaylist[row.playlist_type].total += count;
+      const playlistStats = (byPlaylist[row.playlist_type] ||= emptyLiveStats());
+      if (isLiveStatus(row.status)) {
+        playlistStats[row.status] += count;
+        playlistStats.total += count;
         totals[row.status] += count;
         totals.total += count;
       }
@@ -2196,20 +2207,24 @@ const LIVE_READ_METHODS = new Set([
 
 for (const name of Object.getOwnPropertyNames(DownloadTracker.prototype)) {
   if (name === "constructor" || name.startsWith("_")) continue;
-  const original = DownloadTracker.prototype[name];
+  const original: unknown = Reflect.get(DownloadTracker.prototype, name);
   if (typeof original !== "function") continue;
-  DownloadTracker.prototype[name] = function (...args: unknown[]) {
-    if (
-      process.env.NODE_ENV !== "test" &&
-      process.env.AURRAL_TEST_SERVER !== "1" &&
-      process.env.AURRAL_BACKGROUND_WORKER_GROUP !== "downloads" &&
-      LIVE_READ_METHODS.has(name)
-    ) {
-      return readTrackerFromDatabase(name, args);
-    }
-    this._refreshExternalChanges();
-    return original.apply(this, args);
-  };
+  Reflect.set(
+    DownloadTracker.prototype,
+    name,
+    function (this: DownloadTracker, ...args: unknown[]) {
+      if (
+        process.env.NODE_ENV !== "test" &&
+        process.env.AURRAL_TEST_SERVER !== "1" &&
+        process.env.AURRAL_BACKGROUND_WORKER_GROUP !== "downloads" &&
+        LIVE_READ_METHODS.has(name)
+      ) {
+        return readTrackerFromDatabase(name, args);
+      }
+      this._refreshExternalChanges();
+      return original.apply(this, args);
+    },
+  );
 }
 
 export const downloadTracker = new DownloadTracker();

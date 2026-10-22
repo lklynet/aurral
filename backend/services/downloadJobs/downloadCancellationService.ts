@@ -8,6 +8,7 @@ import { logger } from "../logger.ts";
 import { downloadTracker, type DownloadJob, type DownloadTracker } from "./downloadTracker.ts";
 import { dbOps } from "../../db/helpers/index.ts";
 import { db } from "../../config/db-sqlite.ts";
+import { asAppError } from "../../../lib/errors.ts";
 import {
   cancelDownloadJobs,
   cancelPlaylistDownloadGeneration,
@@ -46,7 +47,9 @@ function captureCancellationWork(
 function readCancellationWork(jobs: DownloadJob[], playlistId: string | null = null) {
   const keys = jobs.map((job) => `downloadCancellationWork:${job.id}`);
   if (playlistId) keys.push(`playlistCancellationWork:${playlistId}`);
-  return keys.map((key) => dbOps.getJSONSetting<CancellationWork>(key)).filter(Boolean);
+  return keys
+    .map((key) => dbOps.getJSONSetting<CancellationWork>(key))
+    .filter((work): work is CancellationWork => Boolean(work));
 }
 
 function clearCancellationWork(jobs: DownloadJob[], playlistId: string | null = null) {
@@ -68,18 +71,24 @@ function payloadBelongsToPlaylist(
   return normalizeId(payload?.playlistId) === playlistId || (safeJobId && jobIds.has(safeJobId));
 }
 
+function jsonObject(value: JsonValue | undefined): HonkerPayload | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? value : undefined;
+}
+
 function readTransferEntries(payload: HonkerPayload | null) {
   const entries: JsonValue[] = [];
   if (payload?.legacyTransfer) entries.push(payload.legacyTransfer);
   if (Array.isArray(payload?.albumTransfers)) entries.push(...payload.albumTransfers);
-  const batchTransfers = payload?.batch?.transfers || payload?.batch?.Transfers;
+  const batch = jsonObject(payload?.batch);
+  const batchTransfers = batch?.transfers || batch?.Transfers;
   if (Array.isArray(batchTransfers)) entries.push(...batchTransfers);
   if (payload?.transfer) entries.push(payload.transfer);
   return entries;
 }
 
 function readTransferId(transfer: JsonValue) {
-  return normalizeId(transfer?.id || transfer?.Id || transfer?.transferId || transfer?.TransferId);
+  const entry = jsonObject(transfer);
+  return normalizeId(entry?.id || entry?.Id || entry?.transferId || entry?.TransferId);
 }
 
 function readTransferUsername(
@@ -87,11 +96,16 @@ function readTransferUsername(
   payload: HonkerPayload | null,
   job: DownloadJob | null,
 ) {
+  const entry = jsonObject(transfer);
+  const candidates = payload?.candidates;
+  const indexedCandidate = Array.isArray(candidates)
+    ? candidates[Number(payload?.candidateIndex || 0)]
+    : undefined;
   return normalizeId(
-    transfer?.username ||
-      transfer?.Username ||
-      payload?.candidate?.raw?.user ||
-      payload?.candidates?.[Number(payload?.candidateIndex || 0)]?.raw?.user ||
+    entry?.username ||
+      entry?.Username ||
+      jsonObject(jsonObject(payload?.candidate)?.raw)?.user ||
+      jsonObject(jsonObject(indexedCandidate)?.raw)?.user ||
       job?.remoteUsername,
   );
 }
@@ -123,7 +137,7 @@ async function attemptProviderCleanup<T>(
   } catch (error) {
     logger.warn(provider, message, {
       ...details,
-      reason: error?.message || String(error),
+      reason: asAppError(error)?.message || String(error),
     });
     failures.push(error);
     return null;
@@ -324,6 +338,11 @@ async function cancelYtdlpWork(payloads: (HonkerPayload | null)[], jobs: Downloa
   return { stagingJobs: ids.size };
 }
 
+function fulfilledValue<T>(result: PromiseSettledResult<T>) {
+  if (result.status === "rejected") throw result.reason;
+  return result.value;
+}
+
 async function cancelProviderWork(
   payloads: (HonkerPayload | null)[],
   jobs: DownloadJob[],
@@ -342,8 +361,14 @@ async function cancelProviderWork(
   if (failures.length > 0) {
     throw new AggregateError(failures, "Could not cancel download provider work");
   }
-  const [slskd, deemix, sabnzbd, nzbget, ytdlp] = results.map((result) => result.value);
-  return { slskd, deemix, sabnzbd, nzbget, ytdlp };
+  const [slskd, deemix, sabnzbd, nzbget, ytdlp] = results;
+  return {
+    slskd: fulfilledValue(slskd),
+    deemix: fulfilledValue(deemix),
+    sabnzbd: fulfilledValue(sabnzbd),
+    nzbget: fulfilledValue(nzbget),
+    ytdlp: fulfilledValue(ytdlp),
+  };
 }
 
 function cancelPipelineRows(playlistId: string, jobs: DownloadJob[]) {
@@ -361,7 +386,7 @@ function cancelPipelineRows(playlistId: string, jobs: DownloadJob[]) {
     } catch (error) {
       logger.warn("playlists", "Could not cancel a removed playlist pipeline job", {
         queueJobId: row.id,
-        reason: error?.message || String(error),
+        reason: asAppError(error)?.message || String(error),
       });
     }
   }
@@ -383,7 +408,7 @@ function cancelPipelineRowsForJobs(jobs: DownloadJob[]) {
     } catch (error) {
       logger.warn("playlists", "Could not cancel a removed track pipeline job", {
         queueJobId: row.id,
-        reason: error?.message || String(error),
+        reason: asAppError(error)?.message || String(error),
       });
     }
   }
@@ -523,7 +548,7 @@ export async function clearAllDownloadJobs(downloadTracker: DownloadTracker) {
       for (const job of jobs) {
         downloadTracker.setFailed(
           job.id,
-          `Provider cancellation pending: ${error?.message || String(error)}`,
+          `Provider cancellation pending: ${asAppError(error)?.message || String(error)}`,
         );
       }
     });

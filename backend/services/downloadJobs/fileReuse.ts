@@ -1,6 +1,7 @@
 import fs from "fs/promises";
 import path from "path";
 import { db } from "../../config/db-sqlite.ts";
+import { asAppError } from "../../../lib/errors.ts";
 import { downloadTracker, type DownloadJob, type DownloadTrackInput } from "./downloadTracker.ts";
 import { flowPlaylistConfig, tracksShareMembership } from "../playlists/flowPlaylistConfig.ts";
 import {
@@ -291,9 +292,10 @@ async function findLocalExistingSource(
         }
       }
     } catch (error) {
-      if (error?.code !== "ENOENT") {
+      const failure = asAppError(error);
+      if (failure?.code !== "ENOENT") {
         console.warn(
-          `[FileReuse] Failed to check local existing source at ${destinationDir}: ${error.message}`,
+          `[FileReuse] Failed to check local existing source at ${destinationDir}: ${failure?.message}`,
         );
       }
     }
@@ -629,7 +631,6 @@ function findMatchingTrack(tracks: ReadTrack[], track: DownloadTrackInput, stric
     const match = tracks.find(
       (entry) =>
         String(entry?.mbid || "").trim() === trackMbid ||
-        String(entry?.foreignRecordingId || "").trim() === trackMbid ||
         String(entry?.foreignTrackId || "").trim() === trackMbid,
     );
     if (match) return match;
@@ -674,7 +675,7 @@ async function findLibraryFolderSource(
     );
     return null;
   }
-  const artistId = artist.id || artist.artistId;
+  const artistId = artist.id;
   if (!artistId) return null;
 
   const artistAlbums = albums.filter((album) => String(album.artistId) === String(artist.id));
@@ -1063,7 +1064,7 @@ export async function repairReusableTrackLinks(
     } catch (error) {
       failures += 1;
       console.warn(
-        `[FileReuse] Failed to repair ${job?.id || "unknown"}: ${error?.message || error}`,
+        `[FileReuse] Failed to repair ${job?.id || "unknown"}: ${asAppError(error)?.message || error}`,
       );
     }
   }

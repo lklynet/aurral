@@ -88,10 +88,17 @@ export function downloadDestinationForJob(
   );
 }
 
-export function resolveTransferredDownloadPayload(original: HonkerPayload) {
+function payloadJobId(payload: HonkerPayload) {
+  const { jobId } = payload;
+  if (typeof jobId !== "string") throw new TypeError("Download payload has no job id");
+  return jobId;
+}
+
+export function resolveTransferredDownloadPayload(original: HonkerPayload): HonkerPayload {
   let payload = original;
   for (let index = 0; index < 64; index++) {
-    const job = currentJob(payload.jobId);
+    const jobId = payloadJobId(payload);
+    const job = currentJob(jobId);
     const attempt = job ? getActiveDownloadAttemptId(job.id) : null;
     if (
       job &&
@@ -101,7 +108,7 @@ export function resolveTransferredDownloadPayload(original: HonkerPayload) {
       (payload.downloadAttemptId || null) === attempt
     )
       return payload;
-    const transfer = readTransfers(payload.jobId).findLast(
+    const transfer = readTransfers(jobId).findLast(
       (entry) =>
         entry.fromPlaylistId === payload.playlistId &&
         entry.fromGeneration === Number(payload.playlistGeneration || 0) &&
@@ -125,11 +132,9 @@ function applyTransfer(payload: HonkerPayload, transfer: DownloadTransfer) {
     downloadAttemptId: transfer.toAttemptId,
     destination: transfer.destination,
     track: transfer.track,
-    ...(payload.albumGroupJobIds && transfer.fromJobId !== transfer.toJobId
+    ...(Array.isArray(payload.albumGroupJobIds) && transfer.fromJobId !== transfer.toJobId
       ? {
-          albumGroupJobIds: payload.albumGroupJobIds.filter(
-            (id: string) => id !== transfer.fromJobId,
-          ),
+          albumGroupJobIds: payload.albumGroupJobIds.filter((id) => id !== transfer.fromJobId),
         }
       : {}),
   };
