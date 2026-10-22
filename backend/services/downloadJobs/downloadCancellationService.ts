@@ -260,7 +260,7 @@ async function cancelDeemixWork(payloads: (HonkerPayload | null)[], jobs: Downlo
 }
 
 async function cancelUsenetWork(
-  clientKey: string,
+  clientKey: "nzbget" | "sabnzbd",
   label: string,
   payloads: (HonkerPayload | null)[],
   jobs: DownloadJob[],

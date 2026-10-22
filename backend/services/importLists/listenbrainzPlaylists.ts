@@ -32,7 +32,7 @@ interface ListenBrainzPlaylist {
 
 type ListenBrainzPlaylistEntry = ListenBrainzPlaylist & { playlist?: ListenBrainzPlaylist };
 
-const getConnection = (userId: number) => {
+const getConnection = (userId: number | undefined) => {
   const connection = scrobbleConnectionStore.getConnection(userId, "listenbrainz");
   if (connection) return connection;
   const error: CodedError = new Error("ListenBrainz is not connected");
@@ -156,7 +156,7 @@ const getGeneratedPlaylistTypeOrThrow = (value: unknown) => {
 };
 
 export const listenbrainzPlaylistClient = {
-  async listPlaylists(userId: number) {
+  async listPlaylists(userId: number | undefined) {
     const connection = getConnection(userId);
     const username = String(connection.displayName || "").trim();
     if (!username) {
@@ -212,7 +212,7 @@ export const listenbrainzPlaylistClient = {
     };
   },
 
-  async getGeneratedPlaylistTracks(userId: number, sourceType: string) {
+  async getGeneratedPlaylistTracks(userId: number | undefined, sourceType: string) {
     const connection = getConnection(userId);
     const username = String(connection.displayName || "").trim();
     if (!username) {
@@ -237,7 +237,7 @@ export const listenbrainzPlaylistClient = {
     return this.getPlaylistTracks(userId, playlist.id);
   },
 
-  async getPlaylistTracks(userId: number, playlistId: string) {
+  async getPlaylistTracks(userId: number | undefined, playlistId: string) {
     const connection = getConnection(userId);
     const id = validatePlaylistId(playlistId);
     const payload = await listenbrainzRequest(

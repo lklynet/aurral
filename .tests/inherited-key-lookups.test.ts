@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 import { getListenbrainzRange } from "../backend/services/discovery/helpers.ts";
-import { rerankRecommendations } from "../backend/services/discovery/recommendationPipeline.ts";
+import {
+  buildDiscoverySeedList,
+  rerankRecommendations,
+} from "../backend/services/discovery/recommendationPipeline.ts";
 import { testDownloadClient } from "../backend/services/download/downloadClientSettings.ts";
 import { getLinkedArtistProviderIds } from "../backend/services/providers/brainzmashMappers.ts";
 import { getCapabilities } from "../backend/services/trackMatching/candidateNormalizer.ts";
@@ -38,4 +41,15 @@ test("a link host named like an object member yields no provider id", () => {
 
 test("capabilities for a source named like an object member are the defaults", () => {
   assert.deepEqual(getCapabilities("constructor"), getCapabilities(""));
+});
+
+test("a seed source named like an object member weighs the same as any unknown source", () => {
+  const [odd] = buildDiscoverySeedList({
+    historyArtists: [{ artistName: "A", source: "constructor", playcount: 10 }],
+  });
+  const [unknown] = buildDiscoverySeedList({
+    historyArtists: [{ artistName: "A", source: "unlisted", playcount: 10 }],
+  });
+  assert.ok(Number.isFinite(odd.weight));
+  assert.equal(odd.weight, unknown.weight);
 });

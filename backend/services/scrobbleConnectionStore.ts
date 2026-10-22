@@ -54,7 +54,7 @@ const readStore = (): StoredStore => {
 
 const writeStore = (store: StoredStore) =>
   upsertSettingStmt.run(SETTINGS_KEY, dbHelpers.stringifyJSON(store));
-const userKey = (userId: number) => String(Math.trunc(Number(userId)));
+const userKey = (userId: number | undefined) => String(Math.trunc(Number(userId)));
 const encryptToken = (token: string) => encryptWithKey(String(token || ""), getEncryptionKey());
 const decryptToken = (token: string) => decryptWithKey(token, getEncryptionKey());
 
@@ -75,7 +75,7 @@ const normalize = (provider: ScrobbleProvider, raw: StoredConnection | undefined
 };
 
 export const scrobbleConnectionStore = {
-  getConnection(userId: number, provider: ScrobbleProvider) {
+  getConnection(userId: number | undefined, provider: ScrobbleProvider) {
     const connection = normalize(provider, readStore()[userKey(userId)]?.[provider]);
     return connection;
   },

@@ -37,7 +37,7 @@ const writeStore = (store: StoredSpotifyConnections) => {
   upsertSettingStmt.run(SETTINGS_KEY, dbHelpers.stringifyJSON(store));
 };
 
-const userKey = (userId: number) => String(Math.trunc(Number(userId)));
+const userKey = (userId: number | undefined) => String(Math.trunc(Number(userId)));
 
 const encryptToken = (value: string) => {
   const key = getSettingsEncryptionKey();
@@ -70,7 +70,7 @@ const normalizeConnection = (raw: StoredSpotifyConnection | null) => {
 export type SpotifyConnection = NonNullable<ReturnType<typeof normalizeConnection>>;
 
 export const spotifyConnectionStore = {
-  getConnection(userId: number) {
+  getConnection(userId: number | undefined) {
     const store = readStore();
     return normalizeConnection(store[userKey(userId)] || null);
   },
@@ -88,7 +88,7 @@ export const spotifyConnectionStore = {
   },
 
   saveConnection(
-    userId: number,
+    userId: number | undefined,
     { accessToken, refreshToken, expiresAt, displayName = null }: SpotifyConnectionInput = {},
   ) {
     const safeAccessToken = String(accessToken || "").trim();
@@ -114,7 +114,7 @@ export const spotifyConnectionStore = {
   },
 
   updateTokens(
-    userId: number,
+    userId: number | undefined,
     { accessToken, refreshToken, expiresAt }: SpotifyConnectionInput = {},
   ) {
     const current = this.getConnection(userId);
@@ -137,7 +137,7 @@ export const spotifyConnectionStore = {
   },
 
   clearConnectionIfMatches(
-    userId: number,
+    userId: number | undefined,
     expected: Partial<Pick<SpotifyConnection, "accessToken" | "refreshToken">> = {},
   ) {
     const store = readStore();

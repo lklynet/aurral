@@ -662,7 +662,7 @@ async function updateStaticPlaylistLocked({
   const safeName = hasNameUpdate
     ? String(name || "").trim()
     : String(currentPlaylist.name || "").trim();
-  let playlist = null;
+  let playlist = null as ReturnType<typeof flowPlaylistConfig.updateStaticPlaylist> | null;
   let tracksQueued = 0;
   let tracksReused = 0;
   let affectedPlaylistIds: string[] = [];

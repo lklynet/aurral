@@ -37,7 +37,7 @@ export async function fetchImportedPlaylistTracks({
   forceRefresh = false,
 }: {
   provider: string;
-  userId: number;
+  userId: number | undefined;
   externalId: string;
   externalUsername?: string | null;
   forceRefresh?: boolean;

@@ -37,7 +37,7 @@ export function normalizeLastfmStation(value: unknown) {
   return station;
 }
 
-function resolveUsername(userId: number, requestedUsername: unknown) {
+function resolveUsername(userId: number | undefined, requestedUsername: unknown) {
   const requested = String(requestedUsername || "").trim();
   if (requested) return normalizeLastfmUsername(requested);
   const user = userOps.getUserById(userId);
@@ -77,7 +77,7 @@ async function requestStation(username: string, stationId: string) {
 }
 
 export const lastfmStationClient = {
-  async listPlaylists(userId: number, requestedUsername: unknown) {
+  async listPlaylists(userId: number | undefined, requestedUsername: unknown) {
     const username = resolveUsername(userId, requestedUsername);
     const playlists = await Promise.all(
       LASTFM_STATIONS.map(async (station) => {
@@ -93,7 +93,11 @@ export const lastfmStationClient = {
     return { user: username, playlists };
   },
 
-  async getStationTracks(userId: number, stationId: unknown, requestedUsername: unknown) {
+  async getStationTracks(
+    userId: number | undefined,
+    stationId: unknown,
+    requestedUsername: unknown,
+  ) {
     const username = resolveUsername(userId, requestedUsername);
     return {
       ...(await requestStation(username, normalizeLastfmStation(stationId))),

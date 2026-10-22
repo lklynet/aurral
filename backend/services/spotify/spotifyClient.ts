@@ -80,17 +80,17 @@ const playlistTrackInflight = new Map();
 const playlistTrackGeneration = new Map();
 const tokenRefreshInflight = new Map();
 
-const getPlaylistTrackGeneration = (userId: number | string) =>
+const getPlaylistTrackGeneration = (userId: number | string | undefined) =>
   playlistTrackGeneration.get(String(userId)) || 0;
 
-const bumpPlaylistTrackGeneration = (userId: number) => {
+const bumpPlaylistTrackGeneration = (userId: number | undefined) => {
   const key = String(userId);
   const generation = getPlaylistTrackGeneration(key) + 1;
   playlistTrackGeneration.set(key, generation);
   return generation;
 };
 
-const playlistTrackCacheKey = (userId: number, playlistId: string) =>
+const playlistTrackCacheKey = (userId: number | undefined, playlistId: string) =>
   `${String(userId)}:${getPlaylistTrackGeneration(userId)}:${String(playlistId)}`;
 
 const createAuthRequiredError = (message: string) => {
@@ -118,7 +118,10 @@ const createIncompletePlaylistError = (
   return error;
 };
 
-const invalidateConnection = (userId: number, expectedConnection: SpotifyConnection) => {
+const invalidateConnection = (
+  userId: number | undefined,
+  expectedConnection: SpotifyConnection,
+) => {
   if (spotifyConnectionStore.clearConnectionIfMatches(userId, expectedConnection)) {
     bumpPlaylistTrackGeneration(userId);
   }
@@ -154,7 +157,7 @@ async function renewAccessToken(refreshToken: string, signal: AbortSignal) {
 }
 
 const refreshConnection = (
-  userId: number,
+  userId: number | undefined,
   refreshToken: string,
   { force = false }: { force?: boolean } = {},
 ): Promise<SpotifyConnection> =>
@@ -175,7 +178,7 @@ const refreshConnection = (
     return spotifyConnectionStore.updateTokens(userId, renewed)!;
   });
 
-async function getValidConnection(userId: number) {
+async function getValidConnection(userId: number | undefined) {
   let connection = spotifyConnectionStore.getConnection(userId);
   if (!connection) {
     throw createAuthRequiredError("Spotify is not connected");
@@ -192,7 +195,7 @@ async function getValidConnection(userId: number) {
 }
 
 async function spotifyRequest(
-  userId: number,
+  userId: number | undefined,
   path: string | null,
   { searchParams, url: absoluteUrl }: SpotifyRequestOptions = {},
 ) {
@@ -241,7 +244,7 @@ async function spotifyRequest(
 }
 
 async function fetchAllPages<T>(
-  userId: number,
+  userId: number | undefined,
   path: string,
   { searchParams, itemsKey = "items", onPage }: FetchAllPagesOptions = {},
 ): Promise<T[]> {
@@ -294,7 +297,7 @@ export const spotifyClient = {
   },
 
   async listPlaylistTracks(
-    userId: number,
+    userId: number | undefined,
     playlistId: string,
     { forceRefresh = false }: { forceRefresh?: boolean } = {},
   ): Promise<(SpotifyPlaylistItem | null)[]> {

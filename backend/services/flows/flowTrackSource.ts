@@ -1488,7 +1488,7 @@ export class FlowTrackSource {
         entry.relatedRankSum += index + 1;
         entry.popularityHint = Math.max(
           entry.popularityHint,
-          Math.log10(1) + Math.max(0, Number(artist?.match || 0)),
+          Math.max(0, Number(artist?.match || 0)),
         );
       }
     }
