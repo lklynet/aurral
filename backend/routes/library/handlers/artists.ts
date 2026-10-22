@@ -345,9 +345,10 @@ export function registerArtists(router: Router) {
 
         const albums = await libraryManager.getAlbums(artist.id);
 
-        if (artist.id && lidarrClient && lidarrClient.isConfigured()) {
-          const lidarrArtist = await lidarrClient.getArtist(artist.id);
-          if (lidarrArtist?.monitored) {
+        if (lidarrClient && lidarrClient.isConfigured()) {
+          const lidarrArtist = await lidarrClient.getArtistByMbid(mbid, { forceRefresh: true });
+          const monitoring = lidarrArtist ? libraryManager.mapLidarrArtist(lidarrArtist) : null;
+          if (lidarrArtist && monitoring?.monitored && monitoring.monitorOption !== "none") {
             await lidarrClient.triggerArtistSearch(lidarrArtist.id);
           }
         }
