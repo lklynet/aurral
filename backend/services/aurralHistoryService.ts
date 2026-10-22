@@ -741,10 +741,7 @@ export const syncTrackDownloadHistory = async (
     }
 
     if (job.status === "done") {
-      const isReused =
-        entry.statusLabel === "Queued" ||
-        job.sourceType === "aurral" ||
-        job.sourceType === "lidarr";
+      const isReused = entry.statusLabel === "Queued";
       recordTrackJobCompleted(job, isReused ? "Reused" : "Downloaded");
       continue;
     }
@@ -1481,10 +1478,7 @@ export const getAurralHistoryRequests = async (
         job?.status === "done" &&
         (entry.status === "pending" || entry.status === "processing")
       ) {
-        const isReused =
-          entry.statusLabel === "Queued" ||
-          job.sourceType === "aurral" ||
-          job.sourceType === "lidarr";
+        const isReused = entry.statusLabel === "Queued";
         entry.status = "completed";
         entry.statusLabel = isReused ? "Reused" : "Downloaded";
       }
