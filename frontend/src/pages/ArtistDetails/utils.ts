@@ -4,6 +4,7 @@ import { shouldTriggerAlbumSearch } from "../../utils/albumAddAction.ts";
 import { formatDate } from "../../utils/dateTime.ts";
 import { formatCompactNumber } from "../../utils/numberFormat.ts";
 import { asApiError } from "../../utils/api/core.ts";
+import type { ArtistDetailsResponse } from "../../../../backend/routes/artists/handlers/details.ts";
 import type {
   LegacyReleaseGroupSummary,
   toNormalizedAlbum,
@@ -259,6 +260,23 @@ const DOWNLOAD_STATUS_LABELS = {
 
 export const getArtistType = (type: string | null | undefined) =>
   (type && ownText(ARTIST_TYPE_LABELS, type)) || type;
+
+export const buildTasteArtist = ({
+  id,
+  name,
+  tags,
+  genres,
+}: {
+  id: string | undefined;
+  name: string;
+  tags: ArtistDetailsResponse["tags"] | undefined;
+  genres: ArtistDetailsResponse["genres"] | undefined;
+}) => ({
+  id,
+  name,
+  tags: (tags || []).map((tag) => tag.name),
+  genres: genres || [],
+});
 
 export const getDownloadStatusLabel = (status: string) =>
   ownText(DOWNLOAD_STATUS_LABELS, status) || status;

@@ -20,6 +20,7 @@ import {
 } from "../../utils/api/endpoints/playlists.ts";
 import {
   buildStaticPlaylistTrackPayload,
+  buildTasteArtist,
   getApiErrorMessage,
   getArtistHeroImage,
   getCoverImage,
@@ -177,12 +178,13 @@ function ArtistDetailsPage() {
   useDocumentTitle(artistDisplayName);
 
   const tasteArtist = useMemo(
-    () => ({
-      id: artist?.id || mbid,
-      name: artistDisplayName,
-      tags: artist?.tags || [],
-      genres: artist?.genres || [],
-    }),
+    () =>
+      buildTasteArtist({
+        id: artist?.id || mbid,
+        name: artistDisplayName,
+        tags: artist?.tags,
+        genres: artist?.genres,
+      }),
     [artist?.genres, artist?.id, artist?.tags, artistDisplayName, mbid],
   );
 
