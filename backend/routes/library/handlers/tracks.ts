@@ -169,9 +169,15 @@ export function registerTracks(router: Router) {
 
   router.get("/tracks", cacheMiddleware(120), async (req, res) => {
     try {
-      const albumId = typeof req.query.albumId === "string" ? req.query.albumId : undefined;
-      const releaseGroupMbid =
-        typeof req.query.releaseGroupMbid === "string" ? req.query.releaseGroupMbid : undefined;
+      const { albumId, releaseGroupMbid } = req.query;
+      if (
+        (albumId !== undefined && typeof albumId !== "string") ||
+        (releaseGroupMbid !== undefined && typeof releaseGroupMbid !== "string")
+      ) {
+        return res.status(400).json({
+          error: "albumId and releaseGroupMbid must each be a single value",
+        });
+      }
 
       if (req.query.readPath === "canonical") {
         let readModel = albumId
