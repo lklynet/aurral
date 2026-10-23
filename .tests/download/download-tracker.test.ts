@@ -946,6 +946,8 @@ test("persists enriched album context for slskd matching", () => {
   assert.ok(jobId != null);
 
   tracker.updateMetadata(jobId, {
+    artistName: "Other Artist",
+    trackName: "Other Song",
     trackNumber: 3,
     albumTrackCount: 10,
     albumTrackTitles: ["Intro", "Other Song", "Song"],
@@ -956,6 +958,9 @@ test("persists enriched album context for slskd matching", () => {
   const job = reloaded.getJob(jobId);
   assert.ok(job != null);
 
+  for (const { artistName, trackName } of [tracker.getJob(jobId)!, job]) {
+    assert.deepEqual([artistName, trackName], ["Artist", "Song"]);
+  }
   assert.equal(job.trackNumber, 3);
   assert.equal(job.albumTrackCount, 10);
   assert.deepEqual(job.albumTrackTitles, ["Intro", "Other Song", "Song"]);

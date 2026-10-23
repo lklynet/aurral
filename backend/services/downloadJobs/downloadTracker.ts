@@ -89,8 +89,6 @@ type DownloadMetadata = {
     | (Key extends "downloadClientId" | "indexerId" ? number : never);
 };
 type TextMetadataKey =
-  | "artistName"
-  | "trackName"
   | "albumName"
   | "reason"
   | "artistMbid"
@@ -259,8 +257,7 @@ type RowOnlyJobKey =
   | "qualityUpgradeCheckedAt"
   | "upgradeForJobId"
   | "manualReplacementSearch";
-export type DownloadJob = Omit<RowJob, RowOnlyJobKey | "artistName" | "trackName"> &
-  Partial<Pick<RowJob, RowOnlyJobKey>> & { artistName: string | null; trackName: string | null };
+export type DownloadJob = Omit<RowJob, RowOnlyJobKey> & Partial<Pick<RowJob, RowOnlyJobKey>>;
 export type JobFields<Key extends keyof DownloadJob> = { [K in Key]?: DownloadJob[K] | null };
 
 const insertStmt = db.prepare(`
@@ -1480,8 +1477,6 @@ export class DownloadTracker {
         changed = true;
       }
     };
-    assignString("artistName");
-    assignString("trackName");
     assignString("albumName");
     assignString("reason");
     assignString("artistMbid");

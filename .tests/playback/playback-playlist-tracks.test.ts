@@ -98,7 +98,10 @@ test("normalizes empty migrated names", async () => {
   const jobId = downloadTracker.addJob(playlist.tracks[0], playlist.id);
   assert.ok(jobId != null);
   downloadTracker.setDone(jobId, trackPath);
-  downloadTracker.updateMetadata(jobId, { artistName: "", trackName: " " });
+  db.prepare(
+    "UPDATE playlist_download_jobs SET artist_name = '', track_name = ' ' WHERE id = ?",
+  ).run(jobId);
+  downloadTracker._load();
 
   const tracks = await collectPlaybackPlaylistTracks(playlist.id, { downloadRoot });
   assert.equal(tracks[0].artist, "Unknown Artist");
