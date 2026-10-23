@@ -16,6 +16,11 @@ const jsonResponse = (value: unknown, status: number = 200) =>
     headers: { "content-type": "application/json" },
   });
 
+const listResponse = (items: unknown[]) =>
+  new Response(JSON.stringify(items), {
+    headers: { "content-type": "application/json", "x-total-count": String(items.length) },
+  });
+
 const subsonicResponse = (value: Record<string, unknown> = {}) =>
   jsonResponse({
     "subsonic-response": { status: "ok", ...value },
@@ -99,6 +104,25 @@ export function createFakeNavidrome({
         ? jsonResponse({ error: "forbidden" }, 403)
         : jsonResponse(state.libraries);
     }
+    if (url.pathname === "/api/playlist" && method === "GET") {
+      return listResponse(
+        state.playlists.map(({ id, name, songIds }) => ({ id, name, songCount: songIds.length })),
+      );
+    }
+    const playlistTracks = /^\/api\/playlist\/([^/]+)\/tracks$/.exec(url.pathname);
+    if (playlistTracks && method === "GET") {
+      const playlist = state.playlists.find(
+        (candidate) => candidate.id === decodeURIComponent(playlistTracks[1]),
+      );
+      if (!playlist) return jsonResponse({ error: "not found" }, 404);
+      return listResponse(
+        playlist.songIds.map((songId, index) => ({
+          ...state.songs.find((song) => song.id === songId),
+          id: String(index + 1),
+          mediaFileId: songId,
+        })),
+      );
+    }
     if (url.pathname === "/api/song") {
       state.songRequests.push(url.searchParams);
       if (failSongRequest(url.searchParams)) return jsonResponse({ error: "unavailable" }, 500);
@@ -116,6 +140,8 @@ export function createFakeNavidrome({
           serverVersion: state.serverVersion,
           openSubsonic: true,
         });
+      case "/rest/getUser":
+        return subsonicResponse({ user: { username: params.get("username"), adminRole: true } });
       case "/rest/getPlaylists":
         return subsonicResponse({
           playlists: { playlist: state.playlists.map(({ id, name }) => ({ id, name })) },

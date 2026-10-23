@@ -47,6 +47,8 @@ type NavidromeTrackRef = {
 
 type NavidromePlaylistEntry = { id: string; path: string };
 
+type NavidromePlaylistTrack = { path?: string | null; libraryPath?: string | null };
+
 type NavidromePlaylist = {
   id: string;
   name: string;
@@ -359,44 +361,31 @@ export class NavidromeClient {
         "Navidrome playlist protection requires an admin account to see private playlists",
       );
     }
-    const data = await this.request("getPlaylists", {}, { timeout: 30_000 });
-    if (!data?.playlists || typeof data.playlists !== "object" || Array.isArray(data.playlists)) {
-      throw new Error("Invalid Navidrome playlist list");
-    }
-    const rawPlaylists = data.playlists.playlist ?? [];
-    const playlists = Array.isArray(rawPlaylists) ? rawPlaylists : [rawPlaylists];
+    const playlists: { id?: string }[] = await this._nativeList("/api/playlist");
     const paths = new Set<string>();
-    let libraries: NavidromeLibrary[] | undefined;
     for (const playlist of playlists) {
       if (!playlist?.id) throw new Error("Navidrome playlist is missing its ID");
       if (excludedIds.has(String(playlist.id))) continue;
-      const detail = (await this.request("getPlaylist", { id: playlist.id }, { timeout: 30_000 }))
-        ?.playlist;
-      const rawEntries = detail?.entry ?? [];
-      const entries = Array.isArray(rawEntries) ? rawEntries : [rawEntries];
-      if (
-        !detail ||
-        !Number.isSafeInteger(detail.songCount) ||
-        entries.length !== detail.songCount
-      ) {
-        throw new Error("Incomplete Navidrome playlist contents");
-      }
-      for (const entry of entries) {
-        const file = requirePlaylistPath(entry.path);
-        if (isAbsoluteMediaPath(file)) {
-          paths.add(file);
-          continue;
-        }
-        libraries ??= await this.getLibraries({ timeout: 30_000 });
-        if (!Array.isArray(libraries) || !libraries.length) {
-          throw new Error("Cannot resolve Navidrome playlist track paths");
-        }
-        // Subsonic paths may be relative and omit the library ID. Protect all
-        // possible library roots rather than guess which copy is referenced.
-        for (const library of libraries) paths.add(`${requirePlaylistPath(library.path)}/${file}`);
+      // Subsonic reports made-up paths unless the player has Report Real Path on.
+      const tracks: NavidromePlaylistTrack[] = await this._nativeList(
+        `/api/playlist/${encodeURIComponent(playlist.id)}/tracks`,
+      );
+      for (const track of tracks) {
+        const file = requirePlaylistPath(track?.path);
+        paths.add(
+          isAbsoluteMediaPath(file) ? file : `${requirePlaylistPath(track.libraryPath)}/${file}`,
+        );
       }
     }
     return [...paths];
+  }
+
+  async _nativeList(path: string) {
+    const { data, headers } = await this._nativeResponse("GET", path, null, { timeout: 30_000 });
+    if (!Array.isArray(data) || data.length !== Number(headers["x-total-count"])) {
+      throw new Error("Incomplete Navidrome playlist contents");
+    }
+    return data;
   }
 
   async getPlaylist(id: string) {
@@ -528,6 +517,15 @@ export class NavidromeClient {
     method: string,
     path: string,
     body: unknown = null,
+    options: { timeout?: number } = {},
+  ) {
+    return (await this._nativeResponse(method, path, body, options)).data;
+  }
+
+  async _nativeResponse(
+    method: string,
+    path: string,
+    body: unknown = null,
     { timeout = 0 }: { timeout?: number } = {},
   ) {
     const base = this.url;
@@ -558,7 +556,7 @@ export class NavidromeClient {
         }
         const newToken = response.headers["x-nd-authorization"];
         if (newToken) this._nativeTokenPromise = Promise.resolve(newToken);
-        return response.data;
+        return response;
       } catch (error) {
         const failure = asAppError(error);
         const status = failure?.response?.status;

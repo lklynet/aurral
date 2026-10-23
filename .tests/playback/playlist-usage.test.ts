@@ -4,15 +4,21 @@ import { JellyfinClient } from "../../backend/services/jellyfin.ts";
 import { NavidromeClient } from "../../backend/services/navidrome.ts";
 import { PlexClient } from "../../backend/services/plex.ts";
 import { readPlaylistPages } from "../../backend/services/playback/playlistUsage.ts";
+import { createFakeNavidrome } from "../helpers/fakeNavidrome.ts";
 
 type JellyfinParams = NonNullable<Parameters<JellyfinClient["request"]>[2]>["params"];
-type NavidromeReply = Awaited<ReturnType<NavidromeClient["request"]>>;
-type NavidromeRequestParams = Parameters<NavidromeClient["request"]>[1];
 
-function navidromeServer(
-  respond: (endpoint: string, params: NavidromeRequestParams) => unknown,
-): NavidromeClient["request"] {
-  return async (endpoint, params) => respond(endpoint, params) as NavidromeReply;
+async function withNavidrome<Result>(
+  navidrome: ReturnType<typeof createFakeNavidrome>,
+  run: (client: NavidromeClient) => Promise<Result>,
+) {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (input, init) => navidrome.fetch(input, init);
+  try {
+    return await run(new NavidromeClient("http://navidrome.local", "admin", "password"));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 }
 
 test("Jellyfin checks private playlists for every user and paginates their tracks", async () => {
@@ -75,79 +81,46 @@ test("Jellyfin refuses incomplete listings and tracks without paths", async () =
   await assert.rejects(client.getPlaylistTrackPaths(), /no file path/);
 });
 
-test("Navidrome protects relative playlist paths across library roots", async () => {
-  const client = new NavidromeClient("http://navidrome.local", "admin", "password");
-  client.request = navidromeServer((endpoint, params) => {
-    if (endpoint === "getUser") return { user: { adminRole: true } };
-    if (endpoint === "getPlaylists")
-      return { playlists: { playlist: [{ id: "flow" }, { id: "saved" }] } };
-    assert.equal(params?.id, "saved");
-    return {
-      playlist: {
-        songCount: 2,
-        entry: [{ path: "Artist/Track.flac" }, { path: "/other/Track.mp3" }],
-      },
-    };
+test("Navidrome protects the real file behind each playlist track", async () => {
+  const navidrome = createFakeNavidrome({
+    songs: [
+      { id: "kept", libraryPath: "/music", path: "_flows/flow-1/Nebula/Charged/03 - Giant.mp3" },
+      { id: "rotated", libraryPath: "/music", path: "_flows/flow-1/Nebula/Charged/04 - Gone.mp3" },
+      { id: "archived", libraryPath: "/archive", path: "Old/Track.flac" },
+    ],
+    playlists: [
+      { id: "flow", name: "Flow", songIds: ["kept", "rotated"] },
+      { id: "keepers", name: "Keepers", songIds: ["kept", "archived"] },
+    ],
   });
-  client.getLibraries = async () => [
-    { id: 1, name: "music", path: "/music" },
-    { id: 2, name: "archive", path: "/archive" },
-  ];
-  assert.deepEqual(await client.getPlaylistTrackPaths(new Set(["flow"])), [
-    "/music/Artist/Track.flac",
-    "/archive/Artist/Track.flac",
-    "/other/Track.mp3",
-  ]);
+  assert.deepEqual(
+    await withNavidrome(navidrome, (client) => client.getPlaylistTrackPaths(new Set(["flow"]))),
+    ["/music/_flows/flow-1/Nebula/Charged/03 - Giant.mp3", "/archive/Old/Track.flac"],
+  );
 });
 
-for (const singletonPlaylist of [false, true]) {
-  for (const singletonEntry of [false, true]) {
-    test(`Navidrome accepts ${singletonPlaylist ? "singleton" : "array"} playlists with ${singletonEntry ? "singleton" : "array"} entries`, async () => {
-      const client = new NavidromeClient("http://navidrome.local", "admin", "password");
-      const playlist = { id: "saved" };
-      const entry = { path: "Artist/Track.flac" };
-      let detailReads = 0;
-      client.request = navidromeServer((endpoint, params) => {
-        if (endpoint === "getUser") return { user: { adminRole: true } };
-        if (endpoint === "getPlaylists")
-          return {
-            playlists: {
-              playlist: singletonPlaylist ? playlist : [playlist],
-            },
-          };
-        assert.equal(endpoint, "getPlaylist");
-        assert.equal(params?.id, "saved");
-        detailReads += 1;
-        return { playlist: { songCount: 1, entry: singletonEntry ? entry : [entry] } };
-      });
-      client.getLibraries = async () => [{ id: 1, name: "music", path: "/music" }];
-      assert.deepEqual(await client.getPlaylistTrackPaths(), ["/music/Artist/Track.flac"]);
-      assert.deepEqual(await client.getPlaylistTrackPaths(new Set(["saved"])), []);
-      assert.equal(detailReads, 1);
-    });
-  }
-}
-
-test("Navidrome accepts empty collections but still rejects malformed and truncated singleton responses", async () => {
-  const client = new NavidromeClient("http://navidrome.local", "admin", "password");
-  let playlists: unknown = {};
-  let detail: unknown = { songCount: 0 };
-  client.request = navidromeServer((endpoint) => {
-    if (endpoint === "getUser") return { user: { adminRole: true } };
-    if (endpoint === "getPlaylists") return { playlists };
-    return { playlist: detail };
+test("Navidrome refuses playlist contents it cannot verify", async () => {
+  const navidrome = createFakeNavidrome({
+    songs: [{ id: "track", libraryPath: "/music", path: "Artist/Track.flac" }],
+    playlists: [{ id: "saved", name: "Saved", songIds: ["track"] }],
   });
-  assert.deepEqual(await client.getPlaylistTrackPaths(), []);
-  playlists = { playlist: { id: "saved" } };
-  assert.deepEqual(await client.getPlaylistTrackPaths(), []);
-  detail = { songCount: 2, entry: { path: "/music/Track.flac" } };
-  await assert.rejects(client.getPlaylistTrackPaths(), /Incomplete/);
-  detail = { songCount: 1, entry: "invalid" };
-  await assert.rejects(client.getPlaylistTrackPaths(), /no file path/);
-  playlists = { playlist: "invalid" };
-  await assert.rejects(client.getPlaylistTrackPaths(), /missing its ID/);
-  playlists = null;
-  await assert.rejects(client.getPlaylistTrackPaths(), /Invalid/);
+  const serve = navidrome.fetch;
+  const respondWithTracks = (tracks: unknown[], total = tracks.length) => {
+    navidrome.fetch = async (input, init) =>
+      String(input).endsWith("/tracks")
+        ? new Response(JSON.stringify(tracks), {
+            headers: { "content-type": "application/json", "x-total-count": String(total) },
+          })
+        : serve(input, init);
+  };
+  await withNavidrome(navidrome, async (client) => {
+    respondWithTracks([{ libraryPath: "/music", path: "Artist/Track.flac" }], 2);
+    await assert.rejects(client.getPlaylistTrackPaths(), /Incomplete/);
+    respondWithTracks([{ libraryPath: "/music" }]);
+    await assert.rejects(client.getPlaylistTrackPaths(), /no file path/);
+    respondWithTracks([{ path: "Artist/Track.flac" }]);
+    await assert.rejects(client.getPlaylistTrackPaths(), /no file path/);
+  });
 });
 
 test("Navidrome refuses limited playlist visibility", async () => {
