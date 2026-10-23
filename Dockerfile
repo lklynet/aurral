@@ -10,11 +10,12 @@ FROM vite-plus AS builder
 
 WORKDIR /app
 
-COPY --chown=vp:vp package*.json .npmrc .nvmrc ./
-COPY --chown=vp:vp backend/package*.json ./backend/
-COPY --chown=vp:vp frontend/package*.json ./frontend/
-RUN --mount=type=cache,target=/home/vp/.npm,uid=1000,gid=1000,sharing=locked \
-    vp install --frozen-lockfile --filter frontend
+COPY --chown=vp:vp package.json pnpm-lock.yaml pnpm-workspace.yaml .nvmrc ./
+COPY --chown=vp:vp backend/package.json ./backend/
+COPY --chown=vp:vp frontend/package.json ./frontend/
+COPY --chown=vp:vp docs/package.json ./docs/
+RUN --mount=type=cache,target=/home/vp/.local/share/pnpm/store,uid=1000,gid=1000 \
+    vp install --frozen-lockfile --filter aurral-frontend
 
 COPY --chown=vp:vp frontend/ ./frontend/
 COPY --chown=vp:vp lib/ ./lib/
@@ -24,17 +25,19 @@ ARG RELEASE_CHANNEL=stable
 ENV VITE_APP_VERSION=$APP_VERSION
 ENV VITE_GITHUB_REPO=$GITHUB_REPO
 ENV VITE_RELEASE_CHANNEL=$RELEASE_CHANNEL
-RUN vp run build
+RUN pnpm --filter aurral-frontend run build
 
 FROM vite-plus AS backend-deps
 
 WORKDIR /app
 
-COPY --chown=vp:vp package*.json .npmrc .nvmrc ./
-COPY --chown=vp:vp backend/package*.json ./backend/
-COPY --chown=vp:vp frontend/package*.json ./frontend/
-RUN --mount=type=cache,target=/home/vp/.npm,uid=1000,gid=1000,sharing=locked \
-    vp install --frozen-lockfile --prod --filter backend && \
+COPY --chown=vp:vp package.json pnpm-lock.yaml pnpm-workspace.yaml .nvmrc ./
+COPY --chown=vp:vp backend/package.json ./backend/
+COPY --chown=vp:vp frontend/package.json ./frontend/
+COPY --chown=vp:vp docs/package.json ./docs/
+RUN --mount=type=cache,target=/home/vp/.local/share/pnpm/store,uid=1000,gid=1000 \
+    vp install --frozen-lockfile --prod --filter aurral --filter aurral-backend && \
+    cd backend && \
     node -e "require('sharp')" && \
     node --input-type=module -e "import honker from '@russellthehippo/honker-node'; honker.open('/tmp/honker-smoke.db'); console.log('honker ok')"
 
@@ -67,10 +70,11 @@ ADD --chmod=755 --checksum=sha256:1fa6733c37ea6fb51c99ad8fe785e7b7e5f3246c9b9802
     /usr/local/bin/yt-dlp
 RUN yt-dlp --version && ffmpeg -version && ffprobe -version && cloudflared --version
 
-COPY package*.json ./
-COPY backend/package*.json ./backend/
-COPY frontend/package*.json ./frontend/
+COPY package.json ./
+COPY backend/package.json ./backend/
+COPY frontend/package.json ./frontend/
 COPY --from=backend-deps /app/node_modules ./node_modules
+COPY --from=backend-deps /app/backend/node_modules ./backend/node_modules
 
 COPY backend/ ./backend/
 COPY lib/ ./lib/

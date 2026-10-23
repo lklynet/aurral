@@ -9,9 +9,9 @@ Run three sequential passes with the same options and no other CPU-heavy
 checks running:
 
 ```sh
-npm run perf:library -- --check --tracks 350000 --repeats 5 --output /tmp/aurral-library-run-1.json
-npm run perf:library -- --check --tracks 350000 --repeats 5 --output /tmp/aurral-library-run-2.json
-npm run perf:library -- --check --tracks 350000 --repeats 5 --output /tmp/aurral-library-run-3.json
+pnpm run perf:library --check --tracks 350000 --repeats 5 --output /tmp/aurral-library-run-1.json
+pnpm run perf:library --check --tracks 350000 --repeats 5 --output /tmp/aurral-library-run-2.json
+pnpm run perf:library --check --tracks 350000 --repeats 5 --output /tmp/aurral-library-run-3.json
 ```
 
 Each pass creates and removes its own synthetic database. Each bounded read

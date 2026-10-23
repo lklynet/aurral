@@ -58,8 +58,8 @@ function printUsage() {
   console.log("Reset/update admin password from terminal");
   console.log("");
   console.log("Usage:");
-  console.log('  npm run auth:reset-admin-password -- --password "new-password"');
-  console.log("  npm run auth:reset-admin-password -- --username admin --generate");
+  console.log('  pnpm run auth:reset-admin-password --password "new-password"');
+  console.log("  pnpm run auth:reset-admin-password --username admin --generate");
   console.log("");
   console.log("Flags:");
   console.log("  -u, --username   Admin username (default: configured auth user)");

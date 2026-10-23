@@ -27,18 +27,13 @@ jobs:
           run-install: |
             - args: ["--frozen-lockfile"]
 
-      - name: Install docs dependencies
-        run: npm ci --include=optional
-        working-directory: docs
-
       - run: vp run check
 
       - name: Build app
         run: vp run build
 
       - name: Build docs
-        run: npm run build
-        working-directory: docs
+        run: vp run docs:build
 
       - name: Read Playwright version
         id: playwright
@@ -59,7 +54,7 @@ jobs:
       - name: Start app
         run: |
           touch backend/.env
-          npm start > /tmp/aurral.log 2>&1 &
+          pnpm start > /tmp/aurral.log 2>&1 &
           echo $! > /tmp/aurral.pid
 
       - name: Wait for health endpoint

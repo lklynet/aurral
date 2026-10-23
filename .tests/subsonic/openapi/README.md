@@ -8,7 +8,7 @@
 - Refresh: from a checkout of that repository run the same bundle step as its `build:openapi` script,
   writing here:
 
-      npx @apidevtools/swagger-cli bundle openapi/openapi.json \
+      pnpm dlx @apidevtools/swagger-cli bundle openapi/openapi.json \
         -o <aurral>/.tests/subsonic/openapi/opensubsonic-openapi.json --type json
 
 The schema only models `f=json` responses; XML is not covered.

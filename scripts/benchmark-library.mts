@@ -46,7 +46,7 @@ function positiveInteger(value: string | number, name: string) {
 
 function parseOptions(args: string[]) {
   if (args.includes("--help")) {
-    console.log(`Usage: npm run perf:library -- [options]
+    console.log(`Usage: pnpm run perf:library [options]
 
 Options:
   --tracks N                  Synthetic tracks, default 350000

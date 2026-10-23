@@ -15,7 +15,7 @@
   "scripts": {
     "start": "node --env-file=.env server.ts",
     "dev": "node --watch --env-file=.env server.ts",
-    "test": "cd .. && npm test",
+    "test": "pnpm --workspace-root test",
     "auth:reset-admin-password": "node --env-file=.env scripts/resetAdminPassword.ts"
   },
   "dependencies": {

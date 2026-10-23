@@ -60,6 +60,6 @@ const allowed = Object.values(baseline).reduce((sum, count) => sum + count, 0);
 console.log(`${total} type errors, baseline allows ${allowed}.`);
 if (better.length > 0) {
   console.log(
-    `${better.length} files improved. Run \`npm run typecheck -- --update\` to lock it in.`,
+    `${better.length} files improved. Run \`pnpm run typecheck --update\` to lock it in.`,
   );
 }

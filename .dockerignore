@@ -1,4 +1,4 @@
-node_modules
+**/node_modules
 npm-debug.log
 .git
 .gitignore
@@ -7,10 +7,9 @@ README.md
 !**/.env.example
 *.md
 .github
-frontend/node_modules
-frontend/dist
+**/dist
+**/.astro
 /backend/data*/
-backend/node_modules
 /config/
 /data/
 *.log

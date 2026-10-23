@@ -263,7 +263,7 @@ if (fs.existsSync(frontendDist)) {
     if (req.path.startsWith("/api")) {
       return res.status(404).json({ error: "Not found" });
     }
-    res.status(503).send("Frontend not built. Run 'npm run build' first.");
+    res.status(503).send("Frontend not built. Run 'pnpm run build' first.");
   });
 }
 

@@ -53,13 +53,12 @@ start(process.execPath, ["--watch", "--env-file=backend/.env", "backend/server.t
   PORT: apiPort,
 });
 start(
-  "npm",
+  "pnpm",
   [
+    "--filter",
+    "aurral-frontend",
     "run",
     "dev",
-    "--workspace",
-    "frontend",
-    "--",
     "--host",
     "0.0.0.0",
     "--port",
