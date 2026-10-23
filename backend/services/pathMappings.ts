@@ -8,6 +8,7 @@ const PATH_MAPPING_SOURCES = new Set([
   "slskd",
   "nzbget",
   "sabnzbd",
+  "tidarr",
   "deemix",
   "plex",
   "jellyfin",

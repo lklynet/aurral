@@ -94,6 +94,12 @@ export const defaultData = {
         priority: 20,
         addPaused: false,
       },
+      tidarr: {
+        enabled: false,
+        url: "",
+        apiKey: "",
+        priority: 20,
+      },
       ytdlp: {
         enabled: true,
         priority: 50,

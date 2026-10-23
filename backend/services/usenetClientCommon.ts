@@ -1,3 +1,10 @@
+export const USENET_CLIENT_KEYS = ["sabnzbd", "nzbget", "tidarr"] as const;
+
+export type UsenetClientKey = (typeof USENET_CLIENT_KEYS)[number];
+
+export const isUsenetClientKey = (key: unknown): key is UsenetClientKey =>
+  USENET_CLIENT_KEYS.some((entry) => entry === key);
+
 export function normalizeBaseUrl(value: unknown) {
   return String(value || "")
     .trim()

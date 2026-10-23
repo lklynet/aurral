@@ -5,6 +5,7 @@ import {
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { getDownloadClient } from "./download/downloadClientSettings.ts";
+import { USENET_CLIENT_KEYS } from "./usenetClientCommon.ts";
 import { getDownloadSourceStatus } from "./downloadSourceService.ts";
 import { prowlarrClient } from "./prowlarrClient.ts";
 import type { DownloadJob } from "./downloadJobs/downloadTracker.ts";
@@ -185,21 +186,16 @@ export function getManualDownloadSources() {
   if (status.slskd.configured) sources.push({ id: "slskd", label: "Soulseek", source: "slskd" });
   if (status.deemix.configured) sources.push({ id: "deemix", label: "deemix", source: "deemix" });
   if (status.ytdlp.configured) sources.push({ id: "ytdlp", label: "yt-dlp", source: "ytdlp" });
-  if (status.usenet.prowlarrConfigured && status.usenet.sabnzbdConfigured) {
-    sources.push({
-      id: "usenet:sabnzbd",
-      label: "Usenet · SABnzbd",
-      source: "usenet",
-      downloadClient: "sabnzbd",
-    });
-  }
-  if (status.usenet.prowlarrConfigured && status.usenet.nzbgetConfigured) {
-    sources.push({
-      id: "usenet:nzbget",
-      label: "Usenet · NZBGet",
-      source: "usenet",
-      downloadClient: "nzbget",
-    });
+  if (status.usenet.prowlarrConfigured) {
+    for (const client of USENET_CLIENT_KEYS.map((key) => getDownloadClient(key))) {
+      if (!client.isConfigured()) continue;
+      sources.push({
+        id: `usenet:${client.key}`,
+        label: `Usenet · ${client.name}`,
+        source: "usenet",
+        downloadClient: client.key,
+      });
+    }
   }
   return sources;
 }

@@ -10,10 +10,11 @@ import type { AppSettings } from "../../../../../backend/db/helpers/settings.ts"
 import type { SettingsState } from "../utils";
 import { readApiError } from "../utils/apiError.ts";
 import type { prowlarrClient } from "../../../../../backend/services/prowlarrClient.ts";
+import type { UsenetClientKey } from "../../../../../backend/services/usenetClientCommon.ts";
 
 import { RefreshCw } from "lucide-react";
 import { DotLoader } from "../../../components/DotLoader";
-import { SettingsInput } from "./SettingsField";
+import { SettingsInput, SettingsSelect } from "./SettingsField";
 import { IntegrationCard, SettingsIntegrationModal } from "./SettingsIntegrationCards";
 import {
   SettingsModalActions,
@@ -27,6 +28,12 @@ type ProwlarrDraft = NonNullable<AppSettings["integrations"]["prowlarr"]>;
 type ProwlarrIndexerOverride = NonNullable<ProwlarrDraft["indexers"]>[string];
 type ProwlarrIndexer = Awaited<ReturnType<typeof prowlarrClient.listUsenetIndexers>>[number];
 type TestStatus = { tone: "success" | "error"; message: string };
+
+const DOWNLOAD_CLIENT_OPTIONS: { value: UsenetClientKey; label: string }[] = [
+  { value: "sabnzbd", label: "SABnzbd" },
+  { value: "nzbget", label: "NZBGet" },
+  { value: "tidarr", label: "Tidarr" },
+];
 
 type SettingsIndexersSectionProps = {
   settings: SettingsState;
@@ -135,6 +142,7 @@ export function SettingsIndexersSection({
       aurralEnabled,
       effectiveEnabled,
       priority: override.priority ?? indexer.priority ?? 25,
+      downloadClient: override.downloadClient,
     };
   };
 
@@ -329,7 +337,7 @@ export function SettingsIndexersSection({
                     })
                   }
                 />
-                <SettingsModalSection title="Priority">
+                <SettingsModalSection title="Downloads">
                   <SettingsModalField label="Priority">
                     <SettingsInput
                       type="number"
@@ -343,6 +351,27 @@ export function SettingsIndexersSection({
                         })
                       }
                     />
+                  </SettingsModalField>
+                  <SettingsModalField label="Download client">
+                    <SettingsSelect
+                      value={state.downloadClient ?? ""}
+                      onChange={(event) =>
+                        updateProwlarrIndexer(activeIndexer.id, {
+                          enabled: state.aurralEnabled,
+                          priority: state.priority,
+                          downloadClient: DOWNLOAD_CLIENT_OPTIONS.find(
+                            (option) => option.value === event.target.value,
+                          )?.value,
+                        })
+                      }
+                    >
+                      <option value="">Automatic</option>
+                      {DOWNLOAD_CLIENT_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </SettingsSelect>
                   </SettingsModalField>
                 </SettingsModalSection>
                 <SettingsModalSection title="Details">

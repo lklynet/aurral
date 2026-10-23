@@ -1,6 +1,6 @@
 ---
-title: Usenet (Prowlarr and SABnzbd or NZBGet)
-description: Download tracks and albums from Usenet through Prowlarr and SABnzbd or NZBGet.
+title: Usenet (Prowlarr and SABnzbd, NZBGet, or Tidarr)
+description: Download tracks and albums from Usenet through Prowlarr and SABnzbd or NZBGet, or from Tidal through Tidarr.
 ---
 
 Usenet downloads need two parts:
@@ -37,6 +37,8 @@ The **Prowlarr** card in **Settings > Indexers** has these fields:
 
 After the connection test, Aurral lists the Usenet indexers from Prowlarr. Open each indexer and set its **Priority**. A lower number has a higher priority.
 
+Each indexer also has a **Download client**. **Automatic** sends its releases to SABnzbd, or to NZBGet when SABnzbd is not connected, or to Tidarr when neither is. Choose a client to send every release from that indexer to it, even from a manual search with another client.
+
 ## SABnzbd
 
 The **SABnzbd** card in **Settings > Download clients** has these fields:
@@ -63,6 +65,18 @@ The **NZBGet** card in **Settings > Download clients** has these fields:
 Aurral skips NZBGet's duplicate check for the releases it sends. Upgrading tracks one at a time can grab the same album release more than once, and NZBGet would otherwise delete the repeat as a duplicate.
 
 If NZBGet runs on Windows and reports host paths, mount the parent folder in Aurral. Then add a mapping in **Settings > Download clients > Remote path mappings**, with **Applies to** set to **NZBGet**.
+
+## Tidarr
+
+[Tidarr](https://github.com/cstaelen/tidarr) downloads albums from Tidal. It works like a Usenet indexer and a SABnzbd client, so Aurral reaches it through Prowlarr.
+
+1. In Prowlarr, add a **Generic Newznab** indexer. Set **URL** to the Tidarr URL, for example `http://tidarr:8484`, **API Path** to `/api/lidarr`, and **API Key** to Tidarr's API key from **Settings > Security** in Tidarr.
+2. In Aurral, open **Settings > Download clients** and add **Tidarr** with the same URL and API key.
+3. If you also use SABnzbd or NZBGet, open the Tidarr indexer in **Settings > Indexers** and set its **Download client** to **Tidarr**.
+
+Tidarr saves each album under `/shared/nzb_downloads` and reports it to Aurral under `/downloads`. Mount Tidarr's `/shared/nzb_downloads` folder in Aurral at `/downloads`. To mount it elsewhere, add a mapping in **Settings > Download clients > Remote path mappings** from `/downloads`, with **Applies to** set to **Tidarr**.
+
+Tidarr lists each album in four qualities, from FLAC 24-bit to 96 kbps M4A, and Aurral picks one with your quality profile. Tidarr removes an album's files when Aurral removes the download.
 
 ## Behavior
 
@@ -98,12 +112,12 @@ Usenet can supply missing tracks and upgrades. See [Track upgrades](/using/playl
 
 Aurral can use slskd, Usenet, deemix, and yt-dlp together. Each source has a **Source priority**, and Aurral tries lower numbers first. The defaults are:
 
-| Source            | Default priority |
-| ----------------- | ---------------- |
-| slskd             | `10`             |
-| deemix            | `15`             |
-| SABnzbd or NZBGet | `20`             |
-| yt-dlp            | `50`             |
+| Source                     | Default priority |
+| -------------------------- | ---------------- |
+| slskd                      | `10`             |
+| deemix                     | `15`             |
+| SABnzbd, NZBGet, or Tidarr | `20`             |
+| yt-dlp                     | `50`             |
 
 If a source fails, Aurral tries the next source for the same track. To try another source first, give it a lower number.
 
