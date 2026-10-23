@@ -3145,12 +3145,19 @@ function LibraryPage() {
 
   const renderLibraryArtistDetail = () => {
     if (!libraryArtist) return null;
-    const artistAlbums = library.albums.filter(
+    const { mbid } = libraryArtist;
+    const ownedAlbums = library.albums.filter(
       (album) => String(album.artistId) === String(libraryArtist.id),
     );
-    const artistTracks = artistAlbums.flatMap(getAlbumTracks);
+    const sharedAlbums = mbid
+      ? library.albums.filter(
+          (album) => !ownedAlbums.includes(album) && album.creditedArtistMbids?.includes(mbid),
+        )
+      : [];
+    const artistAlbums = [...ownedAlbums, ...sharedAlbums];
+    const artistTracks = ownedAlbums.flatMap(getAlbumTracks);
     const artistTopTracks = topArtistTracks(artistTracks, albumsById);
-    const artistTrackTotal = artistAlbums.reduce(
+    const artistTrackTotal = ownedAlbums.reduce(
       (total, album) => total + Number(albumAvailability(album).total || 0),
       0,
     );

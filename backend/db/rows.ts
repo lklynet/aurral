@@ -173,6 +173,11 @@ export interface LastfmLinkStatesRow {
   created_at: number;
 }
 
+export interface LibraryAlbumCreditsRow {
+  album_id: number;
+  artist_mbid: string;
+}
+
 export interface LibraryAlbumTracksRow {
   album_id: number;
   track_id: number;

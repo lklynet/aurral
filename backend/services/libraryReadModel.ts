@@ -289,17 +289,31 @@ export function getLibraryReadModelForArtists({
   source = "lidarr",
   availableOnly = true,
   mbids = [],
-}: { source?: unknown; availableOnly?: boolean; mbids?: string[] } = {}) {
-  return buildLibraryReadModel(getLibraryForArtists({ source, availableOnly, mbids }));
+  includeSharedAlbums = false,
+}: {
+  source?: unknown;
+  availableOnly?: boolean;
+  mbids?: string[];
+  includeSharedAlbums?: boolean;
+} = {}) {
+  return buildLibraryReadModel(
+    getLibraryForArtists({ source, availableOnly, mbids, includeSharedAlbums }),
+  );
 }
 
 export function getLibraryReadModelForArtistReferences({
   source = "all",
   availableOnly = false,
   references = [],
-}: { source?: unknown; availableOnly?: boolean; references?: unknown[] } = {}) {
+  includeSharedAlbums = false,
+}: {
+  source?: unknown;
+  availableOnly?: boolean;
+  references?: unknown[];
+  includeSharedAlbums?: boolean;
+} = {}) {
   return buildLibraryReadModel(
-    getLibraryForArtistReferences({ source, availableOnly, references }),
+    getLibraryForArtistReferences({ source, availableOnly, references, includeSharedAlbums }),
   );
 }
 

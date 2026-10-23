@@ -19,6 +19,7 @@ import {
   syncLibrarySearchTrack,
 } from "./librarySearchIndex.ts";
 import type {
+  LibraryAlbumCreditsRow,
   LibraryAlbumsRow,
   LibraryAlbumTracksRow,
   LibraryArtistsRow,
@@ -586,6 +587,28 @@ export function clearLibraryLidarrAlbum(reference: unknown) {
     )`,
     [value, value, value, value],
   );
+}
+
+const albumCreditsStmt = db.prepare<[number], Pick<LibraryAlbumCreditsRow, "artist_mbid">>(
+  "SELECT artist_mbid FROM library_album_credits WHERE album_id = ? ORDER BY artist_mbid",
+);
+const deleteAlbumCreditsStmt = db.prepare<[number]>(
+  "DELETE FROM library_album_credits WHERE album_id = ?",
+);
+const insertAlbumCreditStmt = db.prepare<[number, string]>(
+  "INSERT INTO library_album_credits (album_id, artist_mbid) VALUES (?, ?)",
+);
+
+export function setLibraryAlbumCredits(albumId: number, artistMbids: string[]) {
+  const unique = [...new Set(artistMbids)].sort();
+  const credits = unique.length > 1 ? unique : [];
+  const stored = albumCreditsStmt.all(albumId).map((row) => row.artist_mbid);
+  if (stored.join() === credits.join()) return;
+  db.transaction(() => {
+    deleteAlbumCreditsStmt.run(albumId);
+    for (const mbid of credits) insertAlbumCreditStmt.run(albumId, mbid);
+  })();
+  invalidateLibraryCache();
 }
 
 export function upsertLibraryAlbum({

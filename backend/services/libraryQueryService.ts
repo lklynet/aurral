@@ -1,5 +1,6 @@
 import { db, dbHelpers } from "../config/db-sqlite.ts";
 import type {
+  LibraryAlbumCreditsRow,
   LibraryAlbumsRow,
   LibraryAlbumTracksRow,
   LibraryArtistsRow,
@@ -168,6 +169,9 @@ const albumMetadataStmt = db.prepare<[number], Pick<LibraryAlbumsRow, "metadata_
 const trackMetadataStmt = db.prepare<[number], Pick<LibraryTracksRow, "metadata_json">>(
   "SELECT metadata_json FROM library_tracks WHERE id = ?",
 );
+const albumCreditsStmt = db.prepare<[number], Pick<LibraryAlbumCreditsRow, "artist_mbid">>(
+  "SELECT artist_mbid FROM library_album_credits WHERE album_id = ?",
+);
 
 const parseJson = <T = unknown>(value: string | null | undefined): T | null => {
   if (!value) return null;
@@ -278,6 +282,7 @@ export interface LibraryAlbum {
   monitorMode?: string | null;
   trackCount?: number;
   availableTrackCount?: number;
+  creditedArtistMbids?: string[];
 }
 
 export interface LibraryTrack {
@@ -396,6 +401,8 @@ function buildLibraryFromRows(rows: Iterable<LibraryCanonicalRow>) {
         sources: [],
         available: false,
       };
+      const credits = albumCreditsStmt.all(row.album_id).map((credit) => credit.artist_mbid);
+      if (credits.length) album.creditedArtistMbids = credits;
       albums.set(row.album_id, album);
     }
     album.managedBy = albumManagement.get(row.album_id)?.managedBy ?? null;
@@ -1365,42 +1372,41 @@ export function getLibraryFavoriteTargetKeys(values: unknown[] = []) {
   return found;
 }
 
-export function getLibraryForArtists({
-  source = null,
-  availableOnly = false,
-  mbids = [],
-}: LibraryScope & { mbids?: unknown[] } = {}) {
-  const references = normalizeLookupValues(mbids);
-  if (!references.length) return { artists: [], albums: [], tracks: [] };
+const artistAlbumIdsSql = (column: "id" | "mbid", placeholders: string) => `
+  SELECT owned.id FROM library_albums AS owned
+  JOIN library_artists AS owner ON owner.id = owned.artist_id
+  WHERE owner.${column} IN (${placeholders})
+  UNION
+  SELECT credit.album_id FROM library_album_credits AS credit
+  JOIN library_artists AS credited ON credited.mbid = credit.artist_mbid
+  WHERE credited.${column} IN (${placeholders})`;
+
+type ArtistLibraryScope = LibraryScope & { includeSharedAlbums?: boolean };
+
+function getLibraryForArtistColumn(
+  column: "id" | "mbid",
+  values: unknown[],
+  { source, availableOnly, includeSharedAlbums = false }: ArtistLibraryScope,
+) {
+  if (!values.length) return { artists: [], albums: [], tracks: [] };
+  const placeholders = values.map(() => "?").join(",");
   return getScopedLibrary({
     source,
     availableOnly,
-    conditions: [`artist.mbid IN (${references.map(() => "?").join(",")})`],
-    parameters: references,
+    conditions: [
+      includeSharedAlbums
+        ? `album.id IN (${artistAlbumIdsSql(column, placeholders)})`
+        : `artist.${column} IN (${placeholders})`,
+    ],
+    parameters: includeSharedAlbums ? [...values, ...values] : values,
   });
 }
 
-function getLibraryForIds(
-  kind: string,
-  ids: unknown[],
-  source: unknown,
-  availableOnly: LibraryAvailability,
-) {
-  const values = [
-    ...new Set(
-      (Array.isArray(ids) ? ids : [])
-        .map((value) => Number(value))
-        .filter((value) => Number.isSafeInteger(value) && value > 0),
-    ),
-  ];
-  if (!values.length) return { artists: [], albums: [], tracks: [] };
-  const alias = kind === "artists" ? "artist" : kind === "albums" ? "album" : "track";
-  return getScopedLibrary({
-    source,
-    availableOnly,
-    conditions: [`${alias}.id IN (${values.map(() => "?").join(",")})`],
-    parameters: values,
-  });
+export function getLibraryForArtists({
+  mbids = [],
+  ...scope
+}: ArtistLibraryScope & { mbids?: unknown[] } = {}) {
+  return getLibraryForArtistColumn("mbid", normalizeLookupValues(mbids), scope);
 }
 
 function resolveLibraryReferenceIds(table: string, references: string[], columns: string[]) {
@@ -1438,10 +1444,9 @@ function resolveLibraryReferenceIds(table: string, references: string[], columns
 }
 
 export function getLibraryForArtistReferences({
-  source = null,
-  availableOnly = false,
   references: requestedReferences = [],
-}: LibraryScope & { references?: unknown[] } = {}) {
+  ...scope
+}: ArtistLibraryScope & { references?: unknown[] } = {}) {
   const references = normalizeLookupValues(requestedReferences);
   if (!references.length) return { artists: [], albums: [], tracks: [] };
   const ids = resolveLibraryReferenceIds("library_artists", references, [
@@ -1451,7 +1456,7 @@ export function getLibraryForArtistReferences({
     "CAST(CASE WHEN json_valid(metadata_json) THEN json_extract(metadata_json, '$.foreignArtistId') END AS TEXT)",
     "name COLLATE NOCASE",
   ]);
-  return getLibraryForIds("artists", ids, source, availableOnly);
+  return getLibraryForArtistColumn("id", ids, scope);
 }
 
 export function getLibraryForAlbumIds({
@@ -1459,7 +1464,20 @@ export function getLibraryForAlbumIds({
   availableOnly = false,
   ids = [],
 }: LibraryScope & { ids?: unknown[] } = {}) {
-  return getLibraryForIds("albums", ids, source, availableOnly);
+  const values = [
+    ...new Set(
+      (Array.isArray(ids) ? ids : [])
+        .map((value) => Number(value))
+        .filter((value) => Number.isSafeInteger(value) && value > 0),
+    ),
+  ];
+  if (!values.length) return { artists: [], albums: [], tracks: [] };
+  return getScopedLibrary({
+    source,
+    availableOnly,
+    conditions: [`album.id IN (${values.map(() => "?").join(",")})`],
+    parameters: values,
+  });
 }
 
 export function getLibraryForTrackIds({
@@ -2636,8 +2654,8 @@ function buildPageQuery({
     searchableFields = ["album.title", "album.album_artist", "artist.name"];
     genreAliases = ["artist", "album"];
     if (artistId) {
-      where.push("album.artist_id = ?");
-      parameters.push(Number(artistId));
+      where.push(`album.id IN (${artistAlbumIdsSql("id", "?")})`);
+      parameters.push(Number(artistId), Number(artistId));
     }
     if (albumId) {
       where.push("album.id = ?");
