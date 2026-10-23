@@ -211,6 +211,7 @@ export async function runDueImportSourceSyncs() {
   const playlists = flowPlaylistConfig.getStaticPlaylists();
   const results = [];
   const disconnected = new Map();
+  const rejected = new Set<string>();
   for (const playlist of playlists) {
     if (!playlist?.importSource?.syncEnabled) continue;
     if (!isImportSourceDue(playlist.importSource)) continue;
@@ -220,8 +221,8 @@ export async function runDueImportSourceSyncs() {
     const connection = isOwnKey(PROVIDER_CONNECTIONS, provider)
       ? PROVIDER_CONNECTIONS[provider]
       : undefined;
-    if (connection && !connection.isConnected(ownerUserId)) {
-      const connectionKey = `${connection.name}:${ownerUserId}`;
+    const connectionKey = `${connection?.name ?? provider}:${ownerUserId}`;
+    if (connection && (rejected.has(connectionKey) || !connection.isConnected(ownerUserId))) {
       const pending = disconnected.get(connectionKey);
       disconnected.set(connectionKey, {
         provider: connection.name,
@@ -238,6 +239,7 @@ export async function runDueImportSourceSyncs() {
       });
       results.push({ playlistId: playlist.id, ...result });
     } catch (error) {
+      if (asAppError(error)?.statusCode === 401) rejected.add(connectionKey);
       results.push({
         playlistId: playlist.id,
         error: String(asAppError(error)?.message || "Playlist sync failed"),

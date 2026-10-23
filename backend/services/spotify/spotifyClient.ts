@@ -3,7 +3,7 @@ import { SPOTIFY_API_BASE, SPOTIFY_RENEW_URI } from "./spotifyConfig.ts";
 import { spotifyConnectionStore, type SpotifyConnection } from "./spotifyConnectionStore.ts";
 import createCache from "../apiClients/simpleCache.ts";
 import { runSharedInflight } from "../sharedInflight.ts";
-import { logger } from "../logger.ts";
+import { logger, safeLogDiagnostic } from "../logger.ts";
 
 interface SpotifyError extends Error {
   code?: string;
@@ -75,6 +75,7 @@ interface FetchAllPagesOptions {
 
 const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;
 export const SPOTIFY_AUTH_REQUIRED_CODE = "SPOTIFY_AUTH_REQUIRED";
+const INVALID_GRANT = "invalid_grant";
 const playlistTrackCache = createCache(2 * 60, 200);
 const playlistTrackInflight = new Map();
 const playlistTrackGeneration = new Map();
@@ -118,14 +119,40 @@ const createIncompletePlaylistError = (
   return error;
 };
 
-const invalidateConnection = (
-  userId: number | undefined,
-  expectedConnection: SpotifyConnection,
-) => {
-  if (spotifyConnectionStore.clearConnectionIfMatches(userId, expectedConnection)) {
+const disconnect = (userId: number | undefined, connection: SpotifyConnection, reason: unknown) => {
+  if (spotifyConnectionStore.clearConnectionIfMatches(userId, connection)) {
     bumpPlaylistTrackGeneration(userId);
+    logger.warn("spotify", "Spotify ended the connection; the user must connect again", {
+      userId,
+      reason: safeLogDiagnostic(reason),
+    });
   }
   return createAuthRequiredError("Spotify connection expired");
+};
+
+const requireReconnect = (
+  userId: number | undefined,
+  connection: SpotifyConnection,
+  reason: unknown,
+) => {
+  if (spotifyConnectionStore.setReconnectRequired(userId, connection, true)) {
+    logger.warn("spotify", "Spotify rejected the connection; asking the user to reconnect", {
+      userId,
+      reason: safeLogDiagnostic(reason),
+    });
+  }
+  return createAuthRequiredError("Spotify connection expired");
+};
+
+const refreshFailure = (
+  userId: number | undefined,
+  connection: SpotifyConnection,
+  error: unknown,
+) => {
+  const failure = asAppError(error);
+  if (failure?.code === INVALID_GRANT) return disconnect(userId, connection, error);
+  if (failure?.statusCode === 401) return requireReconnect(userId, connection, error);
+  return error;
 };
 
 async function renewAccessToken(refreshToken: string, signal: AbortSignal) {
@@ -138,6 +165,9 @@ async function renewAccessToken(refreshToken: string, signal: AbortSignal) {
       body || `Spotify token refresh failed (${response.status})`,
     );
     error.statusCode = response.status;
+    if (response.status === 400 && /"error"\s*:\s*"invalid_grant"/.test(body)) {
+      error.code = INVALID_GRANT;
+    }
     throw error;
   }
   const payload: SpotifyTokenPayload = await response.json();
@@ -189,8 +219,7 @@ async function getValidConnection(userId: number | undefined) {
   try {
     return await refreshConnection(userId, connection.refreshToken);
   } catch (error) {
-    if (asAppError(error)?.statusCode === 401) throw invalidateConnection(userId, connection);
-    throw error;
+    throw refreshFailure(userId, connection, error);
   }
 }
 
@@ -222,8 +251,7 @@ async function spotifyRequest(
           ? latest
           : await refreshConnection(userId, connection.refreshToken, { force: true });
     } catch (error) {
-      if (asAppError(error)?.statusCode === 401) throw invalidateConnection(userId, connection);
-      throw error;
+      throw refreshFailure(userId, connection, error);
     }
     response = await fetch(url, {
       headers: {
@@ -234,10 +262,16 @@ async function spotifyRequest(
   }
   if (!response.ok) {
     const body = await response.text().catch(() => "");
-    if (response.status === 401) throw invalidateConnection(userId, nextConnection);
     const error: SpotifyError = new Error(body || `Spotify request failed (${response.status})`);
     error.statusCode = response.status;
+    if (response.status === 401) throw requireReconnect(userId, nextConnection, error);
     throw error;
+  }
+  if (
+    nextConnection.reconnectRequired &&
+    spotifyConnectionStore.setReconnectRequired(userId, nextConnection, false)
+  ) {
+    logger.info("spotify", "Spotify accepted the connection again", { userId });
   }
   if (response.status === 204) return null;
   return response.json();

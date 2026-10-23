@@ -17,6 +17,7 @@ interface StoredSpotifyConnection {
   expiresAt?: unknown;
   displayName?: unknown;
   connectedAt?: unknown;
+  reconnectRequired?: unknown;
 }
 
 type StoredSpotifyConnections = Record<string, StoredSpotifyConnection>;
@@ -26,6 +27,7 @@ interface SpotifyConnectionInput {
   refreshToken?: string;
   expiresAt?: number;
   displayName?: string | null;
+  reconnectRequired?: boolean;
 }
 
 const readStore = (): StoredSpotifyConnections => {
@@ -64,10 +66,21 @@ const normalizeConnection = (raw: StoredSpotifyConnection | null) => {
       raw.connectedAt != null && Number.isFinite(Number(raw.connectedAt))
         ? Number(raw.connectedAt)
         : Date.now(),
+    reconnectRequired: raw.reconnectRequired === true,
   };
 };
 
 export type SpotifyConnection = NonNullable<ReturnType<typeof normalizeConnection>>;
+
+type SpotifyTokens = Partial<Pick<SpotifyConnection, "accessToken" | "refreshToken">>;
+
+const matchesTokens = (
+  connection: SpotifyConnection | null,
+  expected: SpotifyTokens,
+): connection is SpotifyConnection =>
+  connection != null &&
+  connection.accessToken === expected.accessToken &&
+  connection.refreshToken === expected.refreshToken;
 
 export const spotifyConnectionStore = {
   getConnection(userId: number | undefined) {
@@ -77,7 +90,7 @@ export const spotifyConnectionStore = {
 
   getPublicStatus(userId: number) {
     const connection = this.getConnection(userId);
-    if (!connection) {
+    if (!connection || connection.reconnectRequired) {
       return { connected: false, displayName: null, connectedAt: null };
     }
     return {
@@ -89,7 +102,13 @@ export const spotifyConnectionStore = {
 
   saveConnection(
     userId: number | undefined,
-    { accessToken, refreshToken, expiresAt, displayName = null }: SpotifyConnectionInput = {},
+    {
+      accessToken,
+      refreshToken,
+      expiresAt,
+      displayName = null,
+      reconnectRequired = false,
+    }: SpotifyConnectionInput = {},
   ) {
     const safeAccessToken = String(accessToken || "").trim();
     const safeRefreshToken = String(refreshToken || "").trim();
@@ -108,6 +127,7 @@ export const spotifyConnectionStore = {
           : now + 3600 * 1000,
       displayName: String(displayName || "").trim() || null,
       connectedAt: now,
+      reconnectRequired,
     };
     writeStore(store);
     return this.getConnection(userId);
@@ -124,6 +144,7 @@ export const spotifyConnectionStore = {
       refreshToken: refreshToken || current.refreshToken,
       expiresAt: expiresAt ?? current.expiresAt,
       displayName: current.displayName,
+      reconnectRequired: current.reconnectRequired,
     });
   },
 
@@ -136,21 +157,27 @@ export const spotifyConnectionStore = {
     return true;
   },
 
-  clearConnectionIfMatches(
+  clearConnectionIfMatches(userId: number | undefined, expected: SpotifyTokens) {
+    const store = readStore();
+    const key = userKey(userId);
+    if (!matchesTokens(normalizeConnection(store[key] || null), expected)) return false;
+    delete store[key];
+    writeStore(store);
+    return true;
+  },
+
+  setReconnectRequired(
     userId: number | undefined,
-    expected: Partial<Pick<SpotifyConnection, "accessToken" | "refreshToken">> = {},
+    expected: SpotifyTokens,
+    reconnectRequired: boolean,
   ) {
     const store = readStore();
     const key = userKey(userId);
     const current = normalizeConnection(store[key] || null);
-    if (
-      !current ||
-      current.accessToken !== expected.accessToken ||
-      current.refreshToken !== expected.refreshToken
-    ) {
+    if (!matchesTokens(current, expected) || current.reconnectRequired === reconnectRequired) {
       return false;
     }
-    delete store[key];
+    store[key] = { ...store[key], reconnectRequired };
     writeStore(store);
     return true;
   },

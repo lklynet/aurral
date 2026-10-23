@@ -220,14 +220,17 @@ test("disconnected providers pause synced playlists without touching them until 
   );
 });
 
-test("a Spotify connection revoked mid-run pauses that owner's remaining playlists only", async () => {
+test("a Spotify rejection pauses that owner's remaining playlists until Spotify accepts them again", async () => {
   const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
   const error = vi.spyOn(logger, "error").mockImplementation(() => {});
   vi.spyOn(logger, "info").mockImplementation(() => {});
   connectSpotify(7, "revoked-token");
   connectSpotify(8, "working-token");
+  let spotifyAcceptsEveryToken = false;
   const requests = stubSpotify(({ url, token }) => {
-    if (token === "working-token") return jsonResponse(playlistPage(playlistItemsId(url)));
+    if (token === "working-token" || spotifyAcceptsEveryToken) {
+      return jsonResponse(playlistPage(playlistItemsId(url)));
+    }
     return jsonResponse({ error: { status: 401, message: "Invalid access token" } }, 401);
   });
   const revoked = [
@@ -261,6 +264,17 @@ test("a Spotify connection revoked mid-run pauses that owner's remaining playlis
     synced.tracks.map((track) => track.trackName),
     ["Song from other-owner"],
   );
+
+  spotifyAcceptsEveryToken = true;
+  await runScheduledSync();
+
+  assert.equal(spotifyConnectionStore.getPublicStatus(7).connected, true);
+  for (const playlist of revoked) {
+    assert.deepEqual(
+      flowPlaylistConfig.getStaticPlaylist(playlist.id)!.tracks.map((track) => track.trackName),
+      [`Song from ${requireFixture(playlist.importSource).externalId}`],
+    );
+  }
 });
 
 test("a sync that keeps failing the same way does not rewrite the playlist each run", async () => {
