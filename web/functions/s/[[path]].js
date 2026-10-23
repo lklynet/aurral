@@ -131,7 +131,7 @@ const DEEZER_SEARCHES = {
       link: result.link,
       art: result.album?.cover_xl || result.album?.cover_big,
       artMatches: matchScore(item.albumTitle, result.album?.title) === 2,
-      preview: result.preview,
+      previewId: result.preview ? String(result.id) : null,
     }),
   },
 };
@@ -171,7 +171,7 @@ async function findOnDeezer(item) {
       link: httpsUrl(match.link),
       art: httpsUrl(match.art),
       artMatches: match.artMatches,
-      preview: httpsUrl(match.preview),
+      preview: /^\d{1,20}$/.test(match.previewId) ? `/api/deezer/preview/${match.previewId}` : null,
     };
   } catch {
     return {};

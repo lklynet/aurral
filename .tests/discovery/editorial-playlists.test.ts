@@ -197,11 +197,13 @@ test("adding the same Deezer playlist twice at once queues it only once", async 
 test("duplicate Deezer tracks keep the preview and artwork of the first entry", async (t: import("vite-plus/test").TestContext) => {
   const first = {
     ...deezerTrack("Paranoid", "Black Sabbath"),
+    id: 101,
     preview: "https://p/first.mp3",
     album: { id: 1, title: "Paranoid", cover_medium: "https://c/first.jpg" },
   };
   const later = {
     ...deezerTrack("Paranoid", "Black Sabbath"),
+    id: 102,
     preview: "https://p/later.mp3",
     album: { id: 2, title: "Paranoid", cover_medium: "https://c/later.jpg" },
   };
@@ -210,7 +212,7 @@ test("duplicate Deezer tracks keep the preview and artwork of the first entry", 
   const { tracks } = await getEditorialPlaylist(OWNER, "1306931615");
 
   assert.equal(tracks.length, 1);
-  assert.equal(tracks[0].preview_url, "https://p/first.mp3");
+  assert.equal(tracks[0].preview_url, "/api/deezer/preview/101.mp3");
   assert.equal(tracks[0].artworkUrl, "https://c/first.jpg");
   assert.equal(tracks[0].deezerAlbumId, "1");
 });

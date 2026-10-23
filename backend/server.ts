@@ -44,6 +44,7 @@ import {
 } from "./services/honkerWorkerRuntime.ts";
 import authRouter from "./routes/auth.ts";
 import imageProxyRouter from "./routes/imageProxy.ts";
+import deezerRouter from "./routes/deezer.ts";
 import lidarrFeedRouter from "./routes/lidarrFeed.ts";
 import lidarrWebhookRouter from "./routes/lidarrWebhook.ts";
 import inboxRouter from "./routes/inbox.ts";
@@ -202,6 +203,7 @@ app.use("/api/scrobbling", scrobblingRouter);
 app.use("/api/play-events", playEventsRouter);
 app.use("/api/share-links", shareLinksRouter);
 app.use("/api/image-proxy", imageProxyRouter);
+app.use("/api/deezer", deezerRouter);
 app.use("/rest", express.urlencoded({ extended: false }), subsonicRouter);
 
 app.get("/sso/callback", async (req, res) => {

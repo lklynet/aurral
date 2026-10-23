@@ -44,7 +44,7 @@ The Google and Plex sign-in routes return `404` when that sign-in method is off.
 
 The liveness, bootstrap, and health routes do not require authentication.
 Aurral returns detailed health fields only for a request with a valid
-credential. The image proxy is also public.
+credential. The image proxy and Deezer preview links are also public.
 
 Before setup is complete, the onboarding routes are public. Lidarr feeds use a
 token for each flow. Media and filesystem routes do their own authorization
@@ -234,6 +234,7 @@ album, and responds with `monitored: true`.
 | `GET`  | `/api/artists/:mbid/video`                | Find a video for a named artist and track                         |
 | `GET`  | `/api/artists/:mbid/cover`                | Artist image metadata; `refresh=true` retries a stale link        |
 | `GET`  | `/api/artists/:mbid/preview`              | Deezer top tracks and preview URLs                                |
+| `GET`  | `/api/deezer/preview/:trackId.mp3`        | Redirect to a current Deezer preview for a track                  |
 | `GET`  | `/api/artists/:mbid/stream`               | Stream progressive artist metadata with SSE                       |
 | `POST` | `/api/artists/:mbid/appears-on`           | Find releases that include an artist                              |
 | `POST` | `/api/artists/release-groups/ratings`     | Batch release ratings                                             |

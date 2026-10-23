@@ -64,6 +64,7 @@ const deezerAlbumCache = createCache(3600);
 const deezerAlbumTrackCache = createCache(3600);
 const deezerPreviewMatchCache = createCache(6 * 3600);
 const deezerTopTrackCache = createCache(3600);
+const deezerPreviewLinkCache = createCache(5 * 60);
 const deezerInflightRequests = new Map();
 const deezerTrackListLimiter = createRateLimiter(110);
 
@@ -88,6 +89,20 @@ async function cachedOrInflight<T>(
   } finally {
     inflight.delete(key);
   }
+}
+
+export const deezerPreviewPath = (trackId: string | number) => `/api/deezer/preview/${trackId}.mp3`;
+
+export async function getDeezerPreviewLink(trackId: string): Promise<string | null> {
+  const cacheKey = `dz-preview:${trackId}`;
+  return cachedOrInflight(deezerPreviewLinkCache, cacheKey, deezerInflightRequests, async () => {
+    const res = await axios.get(`https://api.deezer.com/track/${trackId}`, { timeout: 3000 });
+    if (isDeezerOutage(res.data)) throw new Error("Deezer track unavailable");
+    const track: DeezerTrack | null | undefined = res.data;
+    const link = track?.preview || null;
+    deezerPreviewLinkCache.set(cacheKey, link);
+    return link;
+  });
 }
 
 export async function getDeezerArtist(
@@ -204,7 +219,7 @@ async function getDeezerArtistTopTracksById(artistId: DeezerArtistId) {
         title: track.title,
         album: track.album?.title ?? null,
         artworkUrl: track.album?.cover_medium ?? null,
-        preview_url: track.preview,
+        preview_url: deezerPreviewPath(track.id),
         duration_ms: (track.duration || 0) * 1000,
       }));
     deezerTopTrackCache.set(cacheKey, tracks);
@@ -338,7 +353,7 @@ export async function deezerGetTrackPreview({
     const track = selectDeezerTrackPreview(response.data?.data, { artistName, trackName });
     if (!track) return null;
     return {
-      preview_url: track.preview,
+      preview_url: deezerPreviewPath(track.id),
       previewProvider: "deezer",
       previewTrackId: String(track.id),
       durationMs: track.duration ? track.duration * 1000 : null,
@@ -608,7 +623,7 @@ export async function deezerGetAlbumTracks(deezerAlbumId: string | number) {
         mediumNumber: t.disk_number || null,
         length: t.duration ? t.duration * 1000 : null,
         duration_ms: t.duration ? t.duration * 1000 : null,
-        preview_url: t.preview || null,
+        preview_url: t.preview ? deezerPreviewPath(t.id) : null,
       }));
       deezerAlbumTrackCache.set(cacheKey, tracks);
       return tracks;

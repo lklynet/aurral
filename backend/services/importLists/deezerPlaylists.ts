@@ -2,6 +2,7 @@ import {
   buildPlaylistTrackIdentity,
   dedupePlaylistTracks,
 } from "../playlists/flowPlaylistConfig.ts";
+import { deezerPreviewPath } from "../apiClients/deezer.ts";
 
 const DEEZER_API_URL = "https://api.deezer.com";
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -40,6 +41,7 @@ interface DeezerPlaylistPayload {
 }
 
 interface DeezerTrackPayload {
+  id?: number | string;
   title?: string;
   duration?: number;
   preview?: string | null;
@@ -157,7 +159,7 @@ const normalizeTracks = (rows: DeezerTrackPayload[]) => {
       trackName,
       albumName: String(row?.album?.title || "").trim() || null,
       durationMs: Number(row?.duration) > 0 ? Number(row.duration) * 1000 : null,
-      preview_url: row?.preview || null,
+      preview_url: row?.preview && row.id ? deezerPreviewPath(row.id) : null,
       artworkUrl: row?.album?.cover_medium || null,
       deezerAlbumId: row?.album?.id ? String(row.album.id) : null,
     });
