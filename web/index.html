@@ -462,6 +462,17 @@
         transition: background-color 150ms ease;
       }
 
+      .rest a,
+      .features li {
+        align-content: start;
+      }
+
+      @media (min-width: 960px) {
+        .rest ul {
+          grid-template-columns: repeat(4, 1fr);
+        }
+      }
+
       .rest .icon {
         margin-bottom: 8px;
       }
@@ -724,6 +735,57 @@
   </head>
   <body>
     <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <symbol id="i-inbox" viewBox="0 0 24 24">
+        <path d="M22 12h-6l-2 3h-4l-2-3H2" />
+        <path
+          d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"
+        />
+      </symbol>
+      <symbol id="i-news" viewBox="0 0 24 24">
+        <path
+          d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"
+        />
+        <path d="M18 14h-8" />
+        <path d="M15 18h-5" />
+        <path d="M10 6h8v4h-8V6Z" />
+      </symbol>
+      <symbol id="i-palette" viewBox="0 0 24 24">
+        <path
+          d="M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z"
+        />
+        <path d="M13.5 6.5h.01" />
+        <path d="M17.5 10.5h.01" />
+        <path d="M6.5 12.5h.01" />
+        <path d="M8.5 7.5h.01" />
+      </symbol>
+      <symbol id="i-sparkles" viewBox="0 0 24 24">
+        <path
+          d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"
+        />
+      </symbol>
+      <symbol id="i-folder" viewBox="0 0 24 24">
+        <path
+          d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"
+        />
+      </symbol>
+      <symbol id="i-upgrade" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="10" />
+        <path d="m16 12-4-4-4 4" />
+        <path d="M12 16V8" />
+      </symbol>
+      <symbol id="i-server" viewBox="0 0 24 24">
+        <rect width="20" height="8" x="2" y="2" rx="2" />
+        <rect width="20" height="8" x="2" y="14" rx="2" />
+        <path d="M6 6h.01" />
+        <path d="M6 18h.01" />
+      </symbol>
+      <symbol id="i-share" viewBox="0 0 24 24">
+        <circle cx="18" cy="5" r="3" />
+        <circle cx="6" cy="12" r="3" />
+        <circle cx="18" cy="19" r="3" />
+        <path d="m8.59 13.51 6.83 3.98" />
+        <path d="m15.41 6.51-6.82 3.98" />
+      </symbol>
       <symbol id="i-arrow" viewBox="0 0 24 24">
         <path d="M5 12h14" />
         <path d="m12 5 7 7-7 7" />
@@ -911,7 +973,7 @@
               width="3840"
               height="2160"
               loading="lazy"
-              alt="An Aurral artist page for Radiohead with popular tracks, videos, and the player"
+              alt="An Aurral artist page for Daft Punk with popular tracks, videos, and the player"
             />
           </figure>
           <a class="link" href="https://docs.aurral.org/using/discover/"
@@ -964,6 +1026,92 @@
           ></a>
         </div>
       </section>
+      <section class="chapter" aria-labelledby="inbox-title">
+        <div class="wrap">
+          <h2 id="inbox-title">
+            Hears it first.
+            <span class="quiet">New releases, shows, and news for your artists, in one Inbox.</span>
+          </h2>
+          <ul class="features">
+            <li>
+              <svg class="icon" aria-hidden="true"><use href="#i-inbox" /></svg>
+              <h3>One Inbox</h3>
+              <p>Releases, shows, news, and discoveries. Read, save, or dismiss each one.</p>
+            </li>
+            <li>
+              <svg class="icon" aria-hidden="true"><use href="#i-calendar" /></svg>
+              <h3>Out now, out soon</h3>
+              <p>Albums from your artists from the last 30 days and the next 90.</p>
+            </li>
+            <li>
+              <svg class="icon" aria-hidden="true"><use href="#i-news" /></svg>
+              <h3>Artist news</h3>
+              <p>Stories from your feeds that mention the artists you love.</p>
+            </li>
+            <li>
+              <svg class="icon" aria-hidden="true"><use href="#i-pin" /></svg>
+              <h3>Shows nearby</h3>
+              <p>Concerts for your library, recommended, and trending artists.</p>
+            </li>
+          </ul>
+          <figure class="shot">
+            <img
+              src="screenshots/news.webp"
+              width="3840"
+              height="2160"
+              loading="lazy"
+              alt="The Aurral artist news page with stories about the listener's artists"
+            />
+          </figure>
+          <a class="link" href="https://docs.aurral.org/using/inbox/"
+            >Inbox and news <svg class="icon" aria-hidden="true"><use href="#i-arrow" /></svg
+          ></a>
+        </div>
+      </section>
+      <section class="chapter" aria-labelledby="themes-title">
+        <div class="wrap">
+          <h2 id="themes-title">
+            Make it yours.
+            <span class="quiet"
+              >Built-in themes, your own themes, and colors that follow the music.</span
+            >
+          </h2>
+          <ul class="features">
+            <li>
+              <svg class="icon" aria-hidden="true"><use href="#i-palette" /></svg>
+              <h3>Themes</h3>
+              <p>Catppuccin, Rosé Pine, Nord, Gruvbox, and more, light or dark.</p>
+            </li>
+            <li>
+              <svg class="icon" aria-hidden="true"><use href="#i-import" /></svg>
+              <h3>Bring a scheme</h3>
+              <p>Create a theme, or import any base16 or base24 scheme.</p>
+            </li>
+            <li>
+              <svg class="icon" aria-hidden="true"><use href="#i-sparkles" /></svg>
+              <h3>Immersive mode</h3>
+              <p>Accents and backgrounds take their color from the cover art.</p>
+            </li>
+            <li>
+              <svg class="icon" aria-hidden="true"><use href="#i-users" /></svg>
+              <h3>Follows you</h3>
+              <p>Your theme is saved to your account, on every device.</p>
+            </li>
+          </ul>
+          <figure class="shot">
+            <img
+              src="screenshots/themes.webp"
+              width="3840"
+              height="2160"
+              loading="lazy"
+              alt="Aurral in the Catppuccin light theme, with the theme picker"
+            />
+          </figure>
+          <a class="link" href="https://docs.aurral.org/using/overview/#profile"
+            >Appearance settings <svg class="icon" aria-hidden="true"><use href="#i-arrow" /></svg
+          ></a>
+        </div>
+      </section>
 
       <section class="chapter rest" aria-labelledby="rest-title">
         <div class="wrap">
@@ -987,10 +1135,38 @@
               </a>
             </li>
             <li>
+              <a href="https://docs.aurral.org/using/library/#add-music-aurral-only-reads">
+                <svg class="icon" aria-hidden="true"><use href="#i-folder" /></svg>
+                <h3>Your folders</h3>
+                <p>Add music Aurral only reads, or import a folder.</p>
+              </a>
+            </li>
+            <li>
               <a href="https://docs.aurral.org/using/activity/">
                 <svg class="icon" aria-hidden="true"><use href="#i-activity" /></svg>
                 <h3>Activity</h3>
                 <p>Every request and download, with cancel and retry.</p>
+              </a>
+            </li>
+            <li>
+              <a href="https://docs.aurral.org/using/activity/">
+                <svg class="icon" aria-hidden="true"><use href="#i-upgrade" /></svg>
+                <h3>Upgrades</h3>
+                <p>Wanted tracks and quality upgrades, searched for you.</p>
+              </a>
+            </li>
+            <li>
+              <a href="https://docs.aurral.org/integrations/navidrome/">
+                <svg class="icon" aria-hidden="true"><use href="#i-server" /></svg>
+                <h3>Subsonic server</h3>
+                <p>Play your library in Feishin, Music Assistant, and other Subsonic apps.</p>
+              </a>
+            </li>
+            <li>
+              <a href="https://docs.aurral.org/using/sharing/">
+                <svg class="icon" aria-hidden="true"><use href="#i-share" /></svg>
+                <h3>Sharing</h3>
+                <p>Send a link. Let friends play or download from your Library.</p>
               </a>
             </li>
             <li>

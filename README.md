@@ -25,11 +25,14 @@ Aurral is self-hosted music discovery with its own music library. Best-in-class 
 
 - **Discover**: Personal recommendations, trends, tags, recent and upcoming releases, discover playlists, artist news, and nearby shows.
 - **Search**: Find artists and albums, preview tracks, and add them to Aurral or Lidarr with your defaults.
-- **Library**: Browse, play, and search your artists, albums, and tracks. Monitor artists for new albums, with or without Lidarr.
+- **Inbox and news**: New releases, nearby shows, and artist news for the artists you love, in one feed for each user.
+- **Library**: Browse, play, and search your artists, albums, and tracks. Add folders Aurral only reads, or import existing music. Monitor artists for new albums, with or without Lidarr.
 - **Playlists**: Run scheduled flows, adopt discover playlists such as Release Radar, import Spotify, YouTube Music, Last.fm, or ListenBrainz playlists, and convert flows to fixed tracklists.
 - **Activity**: Queue, history, and Wanted views for album requests and yt-dlp, slskd, Usenet, and deemix downloads. Cancel, retry, upgrade, or choose a download yourself.
 - **Integrations**: Lidarr, Last.fm, ListenBrainz, Koito, yt-dlp, slskd, Prowlarr, SABnzbd, NZBGet, deemix, Navidrome, Plex, Jellyfin, Ticketmaster, Gotify, and webhooks.
 - **Playback**: Play the Library in the browser, connect Subsonic and OpenSubsonic players such as Feishin and Music Assistant, or publish playlists to Navidrome, Plex, Plexamp, and Jellyfin.
+- **Sharing**: Send an artist, album, or track as a link anyone can open. Optionally let friends play or download it from your Library.
+- **Make it yours**: Themes for light and dark mode, your own or imported base16 themes, and an immersive mode that takes its colors from the artwork.
 - **Multi-user**: Profiles, discovery layouts, permissions, and account status for each user. Sign in with a local password, LAN auto-login, reverse-proxy SSO, native OIDC, Google, or Plex.
 
 ## Screenshots
@@ -39,9 +42,13 @@ Aurral is self-hosted music discovery with its own music library. Best-in-class 
 </p>
 
 <p align="center">
-  <img src="docs/src/assets/screenshots/playback.webp" width="205" alt="Aurral artist details and playback" />
-  <img src="docs/src/assets/screenshots/search.webp" width="205" alt="Aurral search results" />
-  <img src="docs/src/assets/screenshots/playlists.webp" width="205" alt="Aurral playlists" />
+  <img src="docs/src/assets/screenshots/playback.webp" width="445" alt="Aurral artist page and player" />
+  <img src="docs/src/assets/screenshots/flow-editor.webp" width="445" alt="Aurral flow editor" />
+</p>
+
+<p align="center">
+  <img src="docs/src/assets/screenshots/news.webp" width="445" alt="Aurral artist news" />
+  <img src="docs/src/assets/screenshots/themes.webp" width="445" alt="Aurral themes" />
 </p>
 
 ## Quick start
