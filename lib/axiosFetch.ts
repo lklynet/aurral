@@ -143,7 +143,14 @@ function buildAuthHeader(auth: AxiosBasicAuth | undefined) {
   return `Basic ${encoded}`;
 }
 
-const SENSITIVE_REDIRECT_HEADERS = new Set(["authorization", "proxy-authorization", "cookie"]);
+const MAX_REDIRECTS = 5;
+const SENSITIVE_REDIRECT_HEADERS = new Set([
+  "authorization",
+  "proxy-authorization",
+  "cookie",
+  "x-api-key",
+  "x-plex-token",
+]);
 const BODY_HEADERS = new Set(["content-length", "content-type", "transfer-encoding"]);
 
 function removeHeaders(headers: Record<string, string>, names: Set<string>) {
@@ -223,11 +230,16 @@ async function axiosRequest(inputConfig: AxiosRequestConfig) {
     }
     let response!: FetchResponse;
     let requestMethod = method;
-    for (let redirectCount = 0; redirectCount <= 5; redirectCount += 1) {
+    for (let redirectCount = 0; ; redirectCount += 1) {
       const requestFetch = (usesNativeFetch() ? undiciFetch : globalThis.fetch) as NodeFetch;
       response = await requestFetch(url, { ...init, redirect: "manual" });
       const location = response.headers.get("location");
       if (![301, 302, 303, 307, 308].includes(response.status) || !location) break;
+      if (redirectCount === MAX_REDIRECTS) {
+        const error: AxiosError = new Error("Maximum number of redirects exceeded");
+        error.code = "ERR_FR_TOO_MANY_REDIRECTS";
+        throw error;
+      }
       const nextUrl = new URL(location, url).href;
       const crossesOrigin = new URL(url).origin !== new URL(nextUrl).origin;
       if (crossesOrigin) {
