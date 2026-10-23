@@ -1,4 +1,9 @@
-import { albumHasTrackFiles, getLidarrAlbumsById, type LidarrRecords } from "./albumSearchState.ts";
+import {
+  albumHasTrackFiles,
+  classifyLidarrDownloadEvent,
+  getLidarrAlbumsById,
+  type LidarrRecords,
+} from "./albumSearchState.ts";
 import type { LidarrClient, LidarrHistoryItem, LidarrQueueItem } from "./lidarrClient.ts";
 
 const STALE_GRABBED_MS = 15 * 60 * 1000;
@@ -45,13 +50,6 @@ export const buildLidarrRequests = async (
 
   const requestsByAlbumId = new Map<string, LidarrRequestItem>();
   const queueItems = Array.isArray(queue) ? queue : queue?.records || [];
-  const queueByAlbumId = new Map<string, LidarrQueueItem>();
-  for (const item of queueItems) {
-    const albumId = item?.albumId ?? item?.album?.id;
-    if (albumId == null) continue;
-    queueByAlbumId.set(String(albumId), item);
-  }
-
   for (const item of queueItems) {
     const albumId = item?.albumId ?? item?.album?.id;
     if (albumId == null) continue;
@@ -109,85 +107,44 @@ export const buildLidarrRequests = async (
 
   const latestHistoryByAlbum = new Map<string, { record: LidarrHistoryItem; recordTime: number }>();
   for (const record of historyRecords) {
-    const albumId = record?.albumId;
-    if (albumId == null) continue;
-    const recordTime = new Date(record?.date || record?.eventDate || 0).getTime();
-    const existing = latestHistoryByAlbum.get(String(albumId));
+    if (record?.albumId == null || !classifyLidarrDownloadEvent(record.eventType)) continue;
+    const albumId = String(record.albumId);
+    const recordTime = new Date(record.date || record.eventDate || 0).getTime();
+    const existing = latestHistoryByAlbum.get(albumId);
     if (!existing || recordTime > existing.recordTime) {
-      latestHistoryByAlbum.set(String(albumId), { record, recordTime });
+      latestHistoryByAlbum.set(albumId, { record, recordTime });
     }
   }
 
-  const failedHistory = [];
-  for (const [albumId, { record, recordTime }] of latestHistoryByAlbum) {
-    if (requestsByAlbumId.has(String(albumId))) continue;
-
-    const albumName = record?.album?.title || record?.sourceTitle || "Album";
-    const artistName = record?.artist?.artistName || "Artist";
-    const artistMbid = record?.artist?.foreignArtistId || null;
-    const eventType = String(record?.eventType || "").toLowerCase();
-    const data: NonNullable<LidarrHistoryItem["data"]> = record?.data || {};
-    const msgs = Array.isArray(data?.statusMessages)
-      ? data.statusMessages.map((m) => String(m || "").toLowerCase()).join(" ")
-      : String(data?.statusMessages?.[0] || "").toLowerCase();
-    const errMsg = String(data?.errorMessage || "").toLowerCase();
-    const sourceTitle = String(record?.sourceTitle || "").toLowerCase();
-    const dataString = JSON.stringify(data).toLowerCase();
-    const hasQueue = queueByAlbumId.has(String(albumId));
-
-    const isGrabbed =
-      eventType.includes("grabbed") ||
-      sourceTitle.includes("grabbed") ||
-      dataString.includes("grabbed");
-    const isFailedDownload =
-      eventType.includes("fail") ||
-      msgs.includes("fail") ||
-      msgs.includes("error") ||
-      errMsg.includes("fail") ||
-      errMsg.includes("error") ||
-      sourceTitle.includes("fail") ||
-      dataString.includes("fail");
-    const isFailedImport =
-      eventType === "albumimportincomplete" ||
-      eventType.includes("incomplete") ||
-      msgs.includes("fail") ||
-      msgs.includes("error") ||
-      msgs.includes("import fail") ||
-      msgs.includes("incomplete") ||
-      errMsg.includes("fail") ||
-      errMsg.includes("error") ||
-      sourceTitle.includes("import fail") ||
-      dataString.includes("import fail");
-    const isSuccessfulImport =
-      eventType.includes("import") && !isFailedImport && eventType !== "albumimportincomplete";
-    const isStaleGrabbed = isGrabbed && !hasQueue && Date.now() - recordTime > STALE_GRABBED_MS;
-    const isActive = hasQueue || (isGrabbed && !isStaleGrabbed);
-
-    if (isActive || isSuccessfulImport) continue;
-    if (!(isFailedImport || isFailedDownload || isStaleGrabbed)) continue;
-    failedHistory.push({ albumId, record, albumName, artistName, artistMbid });
-  }
+  const now = Date.now();
+  const failedHistory = [...latestHistoryByAlbum].filter(([albumId, { record, recordTime }]) => {
+    if (requestsByAlbumId.has(albumId)) return false;
+    const event = classifyLidarrDownloadEvent(record.eventType);
+    return event === "failed" || (event === "grabbed" && now - recordTime > STALE_GRABBED_MS);
+  });
 
   const albums = await getLidarrAlbumsById(
     lidarrClient,
-    failedHistory.map(({ albumId }) => albumId),
+    failedHistory.map(([albumId]) => albumId),
   );
-  for (const { albumId, record, albumName, artistName, artistMbid } of failedHistory) {
-    if (albumHasTrackFiles(albums.get(String(albumId)))) continue;
+  for (const [albumId, { record }] of failedHistory) {
+    if (albumHasTrackFiles(albums.get(albumId))) continue;
 
-    requestsByAlbumId.set(String(albumId), {
+    const albumName = record.album?.title || record.sourceTitle || "Album";
+    const artistMbid = record.artist?.foreignArtistId || null;
+    requestsByAlbumId.set(albumId, {
       id: `lidarr-history-${record.id || albumId}`,
       source: "lidarr",
       type: "album",
-      albumId: String(albumId),
-      albumMbid: record?.album?.foreignAlbumId || null,
+      albumId,
+      albumMbid: record.album?.foreignAlbumId || null,
       albumName,
-      artistId: record?.artist?.id != null ? String(record.artist.id) : null,
+      artistId: record.artist?.id != null ? String(record.artist.id) : null,
       artistMbid,
-      artistName,
+      artistName: record.artist?.artistName || "Artist",
       status: "failed",
       statusLabel: "Failed",
-      requestedAt: toIso(record?.date || record?.eventDate),
+      requestedAt: toIso(record.date || record.eventDate),
       mbid: artistMbid,
       name: albumName,
       image: null,
