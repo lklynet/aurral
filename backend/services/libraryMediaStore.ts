@@ -416,6 +416,7 @@ export function setLibraryArtistMbid(artistId: number, mbid: string | null) {
 export function upsertLibraryArtist({
   identityKey,
   mbid = null,
+  creditedMbids = [],
   name,
   sortName = null,
   metadata = null,
@@ -423,6 +424,7 @@ export function upsertLibraryArtist({
 }: {
   identityKey: string | null;
   mbid?: string | null;
+  creditedMbids?: string[];
   name: string;
   sortName?: string | null;
   metadata?: Record<string, unknown> | null;
@@ -446,19 +448,23 @@ export function upsertLibraryArtist({
         .get(fallbackKey);
     };
     const findResolvedArtist = () => {
+      const credited = JSON.stringify(creditedMbids);
       const exact = db
-        .prepare<[string], LibraryArtistsRow>(
+        .prepare<[string, string], LibraryArtistsRow>(
           `SELECT * FROM library_artists
            WHERE mbid IS NOT NULL AND name = ? COLLATE NOCASE
+             AND mbid NOT IN (SELECT value FROM json_each(?))
            ORDER BY id
            LIMIT 2`,
         )
-        .all(artistName);
+        .all(artistName, credited);
       if (exact.length === 1) return exact[0];
       // ponytail: normalized duplicate repair scans artist rows; add a persisted normalized name if this becomes hot.
       const matches = db
-        .prepare<[], LibraryArtistsRow>("SELECT * FROM library_artists WHERE mbid IS NOT NULL")
-        .all()
+        .prepare<[string], LibraryArtistsRow>(
+          "SELECT * FROM library_artists WHERE mbid IS NOT NULL AND mbid NOT IN (SELECT value FROM json_each(?))",
+        )
+        .all(credited)
         .filter((row) => buildFallbackIdentityKey("artist", row.name) === fallbackKey);
       return matches.length === 1 ? matches[0] : null;
     };
