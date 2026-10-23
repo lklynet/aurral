@@ -426,6 +426,7 @@ test("SABnzbd client uploads the NZB file", async () => {
     assert.equal(request.method, "POST");
     assert.equal(request.url.searchParams.get("mode"), "addfile");
     assert.equal(request.url.searchParams.get("nzbname"), "Artist - Album.nzb");
+    assert.equal(request.url.searchParams.get("priority"), "-100");
     assert.match(request.body, /filename="Artist - Album\.nzb"/);
     assert.match(request.body, /<nzb>release<\/nzb>/);
   } finally {

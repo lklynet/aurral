@@ -143,11 +143,6 @@ function buildNzbUpload(fileName: string, content: Buffer) {
   };
 }
 
-function mapPriority(addPaused: boolean) {
-  if (addPaused) return -2;
-  return 0;
-}
-
 function readConfigValue(entries: unknown, name: string) {
   const key = String(name || "").toLowerCase();
   if (Array.isArray(entries)) {
@@ -244,25 +239,22 @@ export class SabnzbdClient {
     name,
     content,
     category,
-    priority,
     addPaused,
   }: {
     name: string | undefined;
     content: Buffer | null | undefined;
     category?: string | null;
-    priority?: number | string | null;
     addPaused?: boolean | null;
   }) {
     const settings = this._getSettings();
     if (!content?.length) throw new Error("SABnzbd append requires an NZB file");
     const nzbName = `${sanitizeNzbName(name)}.nzb`;
-    const pp = mapPriority(addPaused ?? settings.addPaused);
     const result = await this.api(
       "addfile",
       {
         nzbname: nzbName,
         cat: category ?? settings.category,
-        priority: normalizeInteger(priority, pp),
+        priority: (addPaused ?? settings.addPaused) ? -2 : -100,
         pp: 3,
       },
       { file: buildNzbUpload(nzbName, content) },
