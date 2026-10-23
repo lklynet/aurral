@@ -111,6 +111,7 @@ export async function getArtistLibraryLookup(mbid: string) {
     source: "all",
     availableOnly: false,
     mbids: [mbid],
+    includeSharedAlbums: true,
   });
   const artist = artists.find((candidate) => candidate.mbid === mbid);
   const libraryArtistId = artist ? String(artist.canonicalId ?? artist.id) : null;
@@ -121,7 +122,7 @@ export async function getArtistLibraryLookup(mbid: string) {
     return {
       exists: true,
       artist: toLibraryArtist(aurralArtist),
-      albums: albums.filter((album) => album.artistMbid === mbid).map(toLibraryAlbum),
+      albums: albums.map(toLibraryAlbum),
       canonical: true,
       libraryArtistId,
     };
@@ -164,7 +165,7 @@ export async function getArtistLibraryLookup(mbid: string) {
     return {
       exists: true,
       artist: toLibraryArtist(artist),
-      albums: albums.filter((album) => album.artistMbid === mbid).map(toLibraryAlbum),
+      albums: albums.map(toLibraryAlbum),
       canonical: true,
       libraryArtistId,
     };

@@ -400,6 +400,13 @@ db.exec(`
     FOREIGN KEY (track_id) REFERENCES library_tracks(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS library_album_credits (
+    album_id INTEGER NOT NULL,
+    artist_mbid TEXT NOT NULL,
+    PRIMARY KEY (album_id, artist_mbid),
+    FOREIGN KEY (album_id) REFERENCES library_albums(id) ON DELETE CASCADE
+  );
+
   CREATE TABLE IF NOT EXISTS library_media_files (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     track_id INTEGER NOT NULL,
@@ -436,6 +443,8 @@ db.exec(`
     ON lidarr_artist_id_map (lidarr_foreign_artist_id);
   CREATE INDEX IF NOT EXISTS idx_library_albums_artist_id
     ON library_albums (artist_id);
+  CREATE INDEX IF NOT EXISTS idx_library_album_credits_artist_mbid
+    ON library_album_credits (artist_mbid);
   CREATE INDEX IF NOT EXISTS idx_library_albums_mbid
     ON library_albums (mbid);
   CREATE INDEX IF NOT EXISTS idx_library_albums_release_group_mbid
@@ -757,6 +766,29 @@ db.transaction(() => {
   db.prepare(
     "DELETE FROM deezer_mbid_cache WHERE cache_key LIKE 'dz:%' OR cache_key LIKE 'aa:%'",
   ).run();
+}).immediate();
+
+const albumCreditsMigrationKey = "migration:album-credits-v1";
+db.transaction(() => {
+  const claimed = db
+    .prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)")
+    .run(albumCreditsMigrationKey, "1");
+  if (claimed.changes === 0) return;
+  const hex = (length: number) => "[0-9a-f]".repeat(length);
+  db.prepare(
+    `WITH credit AS (
+       SELECT DISTINCT album.id AS album_id, lower(trim(tag.value)) AS artist_mbid
+       FROM library_albums AS album,
+         json_each(
+           CASE WHEN json_valid(album.metadata_json) THEN album.metadata_json END,
+           '$.tags.musicbrainz_albumartistid'
+         ) AS tag
+       WHERE lower(trim(tag.value)) GLOB ?
+     )
+     INSERT OR IGNORE INTO library_album_credits (album_id, artist_mbid)
+     SELECT album_id, artist_mbid FROM credit
+     WHERE album_id IN (SELECT album_id FROM credit GROUP BY album_id HAVING count(*) > 1)`,
+  ).run([8, 4, 4, 4, 12].map(hex).join("-"));
 }).immediate();
 
 const releaseCalendarPrimaryKey = db

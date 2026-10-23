@@ -36,6 +36,7 @@ export function registerAlbums(router: Router) {
           source: req.query.source || "all",
           availableOnly: true,
           references: [artistId],
+          includeSharedAlbums: true,
         });
         return res.json(albums);
       }

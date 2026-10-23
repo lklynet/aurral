@@ -287,10 +287,18 @@ const albumTracks = (library: IndexedLibrary, album: LibraryAlbum) =>
     .map((trackId) => library.tracksById.get(trackId))
     .filter((track): track is NonNullable<typeof track> => Boolean(track));
 
-const artistAlbums = (library: IndexedLibrary, artist: LibraryArtist) =>
-  (artist?.albumIds || [])
+const artistAlbums = (library: IndexedLibrary, artist: LibraryArtist) => {
+  const owned = (artist?.albumIds || [])
     .map((albumId) => library.albumsById.get(albumId))
     .filter((album): album is NonNullable<typeof album> => Boolean(album));
+  const { mbid } = artist;
+  const shared = mbid
+    ? library.albums.filter(
+        (album) => album.artistId !== artist.id && album.creditedArtistMbids?.includes(mbid),
+      )
+    : [];
+  return [...owned, ...shared];
+};
 
 const customArtworkId = (
   kind: string,
@@ -670,6 +678,7 @@ export function getArtist(value: string, user?: SubsonicUser) {
       source: "all",
       availableOnly: true,
       references: [parsed.key],
+      includeSharedAlbums: true,
     }),
     starredAtFor(user),
   );

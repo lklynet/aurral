@@ -718,11 +718,15 @@ function recordLidarrOwner(
 
 type LibraryArtistProjection = NonNullable<ReturnType<typeof libraryArtistFallback>>;
 
-function libraryForArtist(reference: unknown): LibraryCollection {
+function libraryForArtist(
+  reference: unknown,
+  { includeSharedAlbums = false } = {},
+): LibraryCollection {
   return getLibraryForArtistReferences({
     source: "all",
     availableOnly: false,
     references: [reference],
+    includeSharedAlbums,
   });
 }
 
@@ -734,11 +738,15 @@ function libraryForAlbum(reference: string | number | null | undefined): Library
   });
 }
 
-function libraryAlbumsForArtist(reference: unknown) {
-  const library = libraryForArtist(reference);
-  const artistId = library.albums[0]?.artistId;
-  const artist = library.artists.find((entry) => entry.id === artistId);
-  return library.albums.map((album) => mapLibraryAlbum(album, artist, library.tracks));
+function libraryAlbumsForArtist(
+  reference: unknown,
+  options: { includeSharedAlbums?: boolean } = {},
+) {
+  const library = libraryForArtist(reference, options);
+  const artistsById = new Map(library.artists.map((artist) => [artist.id, artist]));
+  return library.albums.map((album) =>
+    mapLibraryAlbum(album, artistsById.get(album.artistId), library.tracks),
+  );
 }
 
 function aurralHoldsArtist(artist: LibraryArtistProjection | null | undefined) {
@@ -4153,11 +4161,11 @@ export class LibraryManager {
       manager === "aurral" ||
       (manager == null && libraryArtistFallback(artistId)?.managedBy === "aurral")
     ) {
-      return libraryAlbumsForArtist(artistId);
+      return libraryAlbumsForArtist(artistId, { includeSharedAlbums: true });
     }
     const lidarr = await getLidarrClient();
     if (!lidarr || !lidarr.isConfigured()) {
-      return libraryAlbumsForArtist(artistId);
+      return libraryAlbumsForArtist(artistId, { includeSharedAlbums: true });
     }
     try {
       const resolvedArtist = lidarrArtist || (await lidarr.getArtist(String(artistId)));
@@ -4179,9 +4187,9 @@ export class LibraryManager {
       const lidarrMbids = new Set<string | null>(
         lidarrAlbums.map((album) => album.mbid).filter((mbid): mbid is string => Boolean(mbid)),
       );
-      const aurralAlbums = libraryAlbumsForArtist(resolvedArtist.foreignArtistId).filter(
-        (album) => album.managedBy === "aurral" && !lidarrMbids.has(album.mbid),
-      );
+      const aurralAlbums = libraryAlbumsForArtist(resolvedArtist.foreignArtistId, {
+        includeSharedAlbums: true,
+      }).filter((album) => album.managedBy === "aurral" && !lidarrMbids.has(album.mbid));
       return [...lidarrAlbums, ...aurralAlbums];
     } catch (error) {
       const failure = asAppError(error);
@@ -4190,7 +4198,7 @@ export class LibraryManager {
         "library",
         `[LibraryManager] Failed to fetch albums from Lidarr: ${failure?.message}`,
       );
-      return manager ? [] : libraryAlbumsForArtist(artistId);
+      return manager ? [] : libraryAlbumsForArtist(artistId, { includeSharedAlbums: true });
     }
   }
 
