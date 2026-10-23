@@ -4,6 +4,7 @@ import { execFileSync } from "node:child_process";
 import { access, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import type { ICommonTagsResult } from "music-metadata";
 import { fileURLToPath } from "node:url";
 import { db } from "../../backend/config/db-sqlite.ts";
 import { getArtistLibraryLookup } from "../../backend/routes/library/handlers/misc.ts";
@@ -61,11 +62,21 @@ async function createLibrary(t: TestContext, seed: number) {
       musicbrainz_recordingid: id("e"),
     },
   };
-  for (const { path: filePath } of [solo, danger, soundtrack, untagged]) {
+  const guest = ["Leather Teeth", "Hairspray Hurricane"].map((title, index) => ({
+    path: path.join(root, "Carpenter Brut", "Leather Teeth", `0${index + 1}.flac`),
+    common: {
+      albumartist: "Carpenter Brut",
+      album: "Leather Teeth",
+      title,
+      musicbrainz_artistid: index ? [lead, id("6")] : [lead],
+      musicbrainz_releasegroupid: id("f"),
+    },
+  }));
+  for (const { path: filePath } of [solo, danger, soundtrack, untagged, ...guest]) {
     await mkdir(path.dirname(filePath), { recursive: true });
     await writeFile(filePath, "audio");
   }
-  const scan = (files: (typeof solo)[]) =>
+  const scan = (files: { path: string; common: Partial<ICommonTagsResult> }[]) =>
     scanMusicRoot({
       rootPath: root,
       filePaths: files.map((file) => file.path),
@@ -77,14 +88,18 @@ async function createLibrary(t: TestContext, seed: number) {
     });
   const albumOwners = () =>
     db
-      .prepare<[string, string], { title: string; name: string; mbid: string | null }>(
+      .prepare<[string, string, string], { title: string; name: string; mbid: string | null }>(
         `SELECT album.title, artist.name, artist.mbid FROM library_albums AS album
          JOIN library_artists AS artist ON artist.id = album.artist_id
-         WHERE album.release_group_mbid IN (?, ?)
+         WHERE album.release_group_mbid IN (?, ?, ?)
          ORDER BY album.title`,
       )
-      .all(solo.common.musicbrainz_releasegroupid, soundtrack.common.musicbrainz_releasegroupid);
-  return { lead, solo, danger, soundtrack, untagged, scan, albumOwners };
+      .all(
+        solo.common.musicbrainz_releasegroupid,
+        soundtrack.common.musicbrainz_releasegroupid,
+        id("f"),
+      );
+  return { lead, solo, danger, soundtrack, untagged, guest, scan, albumOwners };
 }
 
 const titles = (albums: { title?: string | null; name?: string | null }[]) =>
@@ -162,6 +177,14 @@ test("a track without artist IDs keeps the credits of its release", async (t) =>
   assert.deepEqual(titles((await getArtistLibraryLookup(lead)).albums), ["Furi", "Trilogy"]);
 });
 
+test("a guest on one track keeps an album without album artist IDs under its artist", async (t) => {
+  const { lead, guest, scan, albumOwners } = await createLibrary(t, 6);
+
+  await scan(guest);
+
+  assert.deepEqual(albumOwners(), [{ title: "Leather Teeth", name: "Carpenter Brut", mbid: lead }]);
+});
+
 test("deleting a credited artist keeps a release credited to several artists", async (t) => {
   const { lead, solo, soundtrack, scan, albumOwners } = await createLibrary(t, 4);
   await scan([solo, soundtrack]);
@@ -212,7 +235,5 @@ test("credits come from album tags stored before an upgrade", (t) => {
   assert.deepEqual(credits, [
     { title: "Shared", artist_mbid: "aaaaaaaa-0000-4000-8000-000000000001" },
     { title: "Shared", artist_mbid: "bbbbbbbb-0000-4000-8000-000000000002" },
-    { title: "Tracks", artist_mbid: "dddddddd-0000-4000-8000-000000000004" },
-    { title: "Tracks", artist_mbid: "eeeeeeee-0000-4000-8000-000000000005" },
   ]);
 });

@@ -171,14 +171,16 @@ function buildMetadataRecord(metadata: ScannedMetadata, filePath: string, rootPa
   const title = text(common.title) || fallback.title;
   const trackNumber = numberPart(common.track, fallback.trackNumber);
   const discNumber = numberPart(common.disk, fallback.discNumber) || 1;
-  const artistMbids = [
-    ...new Set(
-      [common.musicbrainz_albumartistid || common.musicbrainz_artistid]
-        .flat()
-        .map(normalizeMbid)
-        .filter((mbid) => mbid !== null),
-    ),
-  ];
+  const artistMbids = common.musicbrainz_albumartistid
+    ? [
+        ...new Set(
+          [common.musicbrainz_albumartistid]
+            .flat()
+            .map(normalizeMbid)
+            .filter((mbid) => mbid !== null),
+        ),
+      ]
+    : [normalizeMbid(common.musicbrainz_artistid)].filter((mbid) => mbid !== null);
   const artistMbid = artistMbids.length === 1 ? artistMbids[0] : null;
   const albumMbid = normalizeMbid(common.musicbrainz_albumid);
   const releaseGroupMbid = normalizeMbid(common.musicbrainz_releasegroupid);
