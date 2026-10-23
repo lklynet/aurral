@@ -781,7 +781,12 @@ db.transaction(() => {
        FROM library_albums AS album,
          json_each(
            CASE WHEN json_valid(album.metadata_json) THEN album.metadata_json END,
-           '$.tags.musicbrainz_albumartistid'
+           CASE
+             WHEN NOT json_valid(album.metadata_json) THEN '$'
+             WHEN json_type(album.metadata_json, '$.tags.musicbrainz_albumartistid') IS NULL
+             THEN '$.tags.musicbrainz_artistid'
+             ELSE '$.tags.musicbrainz_albumartistid'
+           END
          ) AS tag
        WHERE lower(trim(tag.value)) GLOB ?
      )

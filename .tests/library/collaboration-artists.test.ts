@@ -52,7 +52,16 @@ async function createLibrary(t: TestContext, seed: number) {
       musicbrainz_recordingid: id("5"),
     },
   };
-  for (const { path: filePath } of [solo, danger, soundtrack]) {
+  const untagged = {
+    path: path.join(root, credit, "Furi", "02.flac"),
+    common: {
+      ...soundtrack.common,
+      title: "Danger",
+      musicbrainz_albumartistid: [],
+      musicbrainz_recordingid: id("e"),
+    },
+  };
+  for (const { path: filePath } of [solo, danger, soundtrack, untagged]) {
     await mkdir(path.dirname(filePath), { recursive: true });
     await writeFile(filePath, "audio");
   }
@@ -75,7 +84,7 @@ async function createLibrary(t: TestContext, seed: number) {
          ORDER BY album.title`,
       )
       .all(solo.common.musicbrainz_releasegroupid, soundtrack.common.musicbrainz_releasegroupid);
-  return { lead, solo, danger, soundtrack, scan, albumOwners };
+  return { lead, solo, danger, soundtrack, untagged, scan, albumOwners };
 }
 
 const titles = (albums: { title?: string | null; name?: string | null }[]) =>
@@ -145,6 +154,14 @@ test("a release credited to several artists shows under each credited artist in 
   );
 });
 
+test("a track without artist IDs keeps the credits of its release", async (t) => {
+  const { lead, solo, soundtrack, untagged, scan } = await createLibrary(t, 5);
+
+  await scan([solo, soundtrack, untagged]);
+
+  assert.deepEqual(titles((await getArtistLibraryLookup(lead)).albums), ["Furi", "Trilogy"]);
+});
+
 test("deleting a credited artist keeps a release credited to several artists", async (t) => {
   const { lead, solo, soundtrack, scan, albumOwners } = await createLibrary(t, 4);
   await scan([solo, soundtrack]);
@@ -170,13 +187,15 @@ test("credits come from album tags stored before an upgrade", (t) => {
       },
       encoding: "utf8",
     });
-  const seeded = (ids: unknown) => JSON.stringify({ tags: { musicbrainz_albumartistid: ids } });
+  const seeded = (ids: unknown, tag = "musicbrainz_albumartistid") =>
+    JSON.stringify({ tags: { [tag]: ids } });
   run(`
     const { db } = await import("./backend/config/db-sqlite.ts");
     db.prepare("INSERT INTO library_artists (identity_key, name, created_at, updated_at) VALUES ('name:artist:credit', 'Credit', 1, 1)").run();
     const album = db.prepare("INSERT INTO library_albums (identity_key, artist_id, title, metadata_json, created_at, updated_at) VALUES (?, 1, ?, ?, 1, 1)");
     album.run("album:shared", "Shared", ${JSON.stringify(seeded(["AAAAAAAA-0000-4000-8000-000000000001", "not-an-id", "bbbbbbbb-0000-4000-8000-000000000002"]))});
     album.run("album:solo", "Solo", ${JSON.stringify(seeded(["cccccccc-0000-4000-8000-000000000003", "not-an-id"]))});
+    album.run("album:tracks", "Tracks", ${JSON.stringify(seeded(["dddddddd-0000-4000-8000-000000000004", "eeeeeeee-0000-4000-8000-000000000005"], "musicbrainz_artistid"))});
     album.run("album:broken", "Broken", "{");
     db.prepare("DELETE FROM settings WHERE key = 'migration:album-credits-v1'").run();
   `);
@@ -193,5 +212,7 @@ test("credits come from album tags stored before an upgrade", (t) => {
   assert.deepEqual(credits, [
     { title: "Shared", artist_mbid: "aaaaaaaa-0000-4000-8000-000000000001" },
     { title: "Shared", artist_mbid: "bbbbbbbb-0000-4000-8000-000000000002" },
+    { title: "Tracks", artist_mbid: "dddddddd-0000-4000-8000-000000000004" },
+    { title: "Tracks", artist_mbid: "eeeeeeee-0000-4000-8000-000000000005" },
   ]);
 });

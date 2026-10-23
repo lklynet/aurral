@@ -516,7 +516,7 @@ export async function scanMusicRoot({
             metadata: record.albumMetadata,
             syncSearch,
           });
-          setLibraryAlbumCredits(album.id, record.artistMbids);
+          if (record.artistMbids.length) setLibraryAlbumCredits(album.id, record.artistMbids);
           if (source === "aurral" || source === "readonly") claimUnownedAlbum(album);
           let listedMetadata = null;
           try {
