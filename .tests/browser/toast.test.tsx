@@ -1,4 +1,3 @@
-import assert from "node:assert/strict";
 import { afterEach, expect, test, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser/context";
 import { createRoot } from "react-dom/client";
@@ -25,7 +24,7 @@ test("a toast still dismisses after the pointer leaves it for outside the app", 
   const toast = page.getByRole("status");
   await userEvent.hover(toast);
   const element = container.querySelector(".app-toast");
-  assert.ok(element != null);
+  if (!element) throw new Error("Toast did not render");
   element.dispatchEvent(
     new MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body }),
   );
