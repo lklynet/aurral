@@ -366,7 +366,7 @@ export async function deezerGetTrackPreview({
 const EDITION_GROUP =
   /[([](?:deluxe|remaster|anniversary|expanded|bonus|edition|live|mono|stereo|\d{4})/;
 const EDITION_SUFFIX =
-  /\s-\s+(?:deluxe|remaster|anniversary|expanded|bonus|edition|live|mono|stereo|\d{4})[\s\S]*$/;
+  /\s-\s+(?:deluxe|remaster|anniversary|expanded|bonus|edition|live|mono|stereo|\d{4})[\s\S]*/;
 
 function withoutEditionGroups(title: string) {
   const start = title.search(EDITION_GROUP);

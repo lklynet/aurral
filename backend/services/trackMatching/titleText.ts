@@ -37,7 +37,7 @@ export function isVariousArtistsCredit(
   );
 }
 
-const FEATURED_ARTISTS = /\s(?:feat\.?|ft\.?|featuring)\s[\s\S]+$/iu;
+const FEATURED_ARTISTS = /\s(?:feat\.?|ft\.?|featuring)\s[\s\S]+/iu;
 
 export function withoutFeaturedArtists(value: string | null | undefined) {
   return String(value || "")
