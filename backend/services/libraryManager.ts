@@ -92,6 +92,7 @@ import {
   clearArtistMonitoringExclusions,
   getAurralArtistMonitoring,
   getMonitoringDefaults,
+  getStoredArtistMonitoring,
   indexArtistExclusions,
   isAlbumMonitoringExcluded,
   listMonitoringExclusions,
@@ -2722,6 +2723,7 @@ export class LibraryManager {
           .get(artistId)!;
         const metadata = readRawLibraryMetadata(storedArtist.metadata_json);
         const { addOptions } = metadata;
+        const startsMonitoring = Boolean(stored) && !getStoredArtistMonitoring(artistId);
         setAurralArtistMonitoringState(artistId, stored, defaults);
         upsertLibraryArtist({
           identityKey: storedArtist.identity_key,
@@ -2729,6 +2731,7 @@ export class LibraryManager {
           name: currentArtist.name,
           metadata: {
             ...metadata,
+            ...(startsMonitoring && { added: new Date().toISOString() }),
             monitored: Boolean(stored),
             monitor: legacyMode,
             monitorOption: legacyMode,
