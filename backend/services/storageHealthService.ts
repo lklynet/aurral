@@ -609,7 +609,7 @@ async function checkLidarrSection() {
   };
 }
 
-type DownloadClientKey = "slskd" | "nzbget" | "sabnzbd";
+type DownloadClientKey = "slskd" | "nzbget" | "sabnzbd" | "tidarr";
 type DownloadClientConfig = { enabled?: boolean; completedPath?: string };
 type DownloadClientConnection = {
   ok: boolean;
@@ -809,6 +809,21 @@ async function checkSabnzbdSection() {
       "Configure SABnzbd's Completed Download Folder, then make that reported path readable and writable by Aurral through a shared mount or a SABnzbd remote path mapping.",
     pathFix: () =>
       "Mount the same host folder into Aurral and SABnzbd, or add a SABnzbd mapping under Settings → Downloads → Remote path mappings.",
+  });
+}
+
+async function checkTidarrSection() {
+  return checkDownloadClientSection({
+    client: getDownloadClient("tidarr"),
+    key: "tidarr",
+    title: "Tidarr downloads",
+    isEnabled: (config) => config.enabled === true,
+    skipReason: "Tidarr is not enabled.",
+    resolveCompletedPath: (_config, connection) =>
+      String(connection.downloadPath || connection.directories?.destDir || "").trim(),
+    missingPathFix: "Check that Tidarr reports its download folder.",
+    pathFix: () =>
+      "Mount Tidarr's /shared/nzb_downloads folder into Aurral, and add a Tidarr mapping from /downloads under Settings → Download Clients → Remote Path Mappings.",
   });
 }
 
@@ -1123,6 +1138,7 @@ async function buildStorageHealthCheck(): Promise<StorageHealthResult> {
     await checkSlskdSection(),
     await checkNzbgetSection(),
     await checkSabnzbdSection(),
+    await checkTidarrSection(),
     await checkNavidromeSection(),
     await checkPlexSection(),
     await checkJellyfinSection(),

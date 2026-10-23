@@ -37,11 +37,12 @@ export async function removeSabnzbdDownloadFolder(
   historyItem: { storage?: string | null } | null | undefined,
   directories: SabnzbdDirectories,
   category: unknown,
+  client: { key: string; name: string },
 ) {
   const storage = String(historyItem?.storage || "").trim();
   if (!storage) return;
 
-  const mappings = getPathMappings("sabnzbd");
+  const mappings = getPathMappings(client.key);
   const toLocal = (value: unknown) => {
     const raw = String(value || "").trim();
     if (!raw) return null;
@@ -49,14 +50,14 @@ export async function removeSabnzbdDownloadFolder(
     return path.isAbsolute(raw) || local !== path.resolve(raw) ? local : null;
   };
   const target = toLocal(storage);
-  if (!target) throw new Error("SABnzbd download folder is missing or unmapped");
+  if (!target) throw new Error(`${client.name} download folder is missing or unmapped`);
 
   const stat = await fs.lstat(target).catch((error) => {
     if (asAppError(error)?.code === "ENOENT") return null;
     throw error;
   });
   if (!stat) return;
-  if (!stat.isDirectory()) throw new Error("SABnzbd download folder is not a directory");
+  if (!stat.isDirectory()) throw new Error(`${client.name} download folder is not a directory`);
 
   const rootPaths = [directories.completedPath, directories.destDir]
     .map((root) => String(root || "").trim())
@@ -80,7 +81,9 @@ export async function removeSabnzbdDownloadFolder(
   );
   const realTarget = path.join(await fs.realpath(path.dirname(target)), path.basename(target));
   if (!parents.includes(path.dirname(realTarget)) || parents.includes(realTarget)) {
-    throw new Error("SABnzbd download folder is not inside SABnzbd's completed folders");
+    throw new Error(
+      `${client.name} download folder is not inside ${client.name}'s completed folders`,
+    );
   }
 
   const libraries = [
@@ -97,7 +100,7 @@ export async function removeSabnzbdDownloadFolder(
       isPathInsideRoot(library, realTarget) ||
       isPathInsideRoot(realTarget, library)
     ) {
-      throw new Error("SABnzbd download folder overlaps a music library");
+      throw new Error(`${client.name} download folder overlaps a music library`);
     }
   }
 

@@ -3,7 +3,12 @@ import axios from "../../lib/axiosFetch.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { readMany, readOne } from "./integrationData.ts";
-import { normalizeBaseUrl, normalizeInteger } from "./usenetClientCommon.ts";
+import {
+  isUsenetClientKey,
+  normalizeBaseUrl,
+  normalizeInteger,
+  type UsenetClientKey,
+} from "./usenetClientCommon.ts";
 
 const DEFAULT_MUSIC_CATEGORIES = [3000];
 const DEFAULT_MAX_RESULTS = 60;
@@ -48,7 +53,23 @@ type ProwlarrIndexer = v.InferOutput<typeof indexerSchema>;
 
 type ProwlarrRelease = v.InferOutput<typeof releaseSchema>;
 
-type ProwlarrIndexerOverride = { enabled: boolean; priority: number | null };
+type ProwlarrIndexerOverride = {
+  enabled: boolean;
+  priority: number | null;
+  downloadClient: UsenetClientKey | null;
+};
+
+type ProwlarrIndexerOverrideInput = {
+  enabled?: unknown;
+  priority?: unknown;
+  downloadClient?: unknown;
+};
+
+const normalizeIndexerOverride = (entry: ProwlarrIndexerOverrideInput | null | undefined) => ({
+  enabled: entry?.enabled !== false,
+  priority: normalizePositiveInteger(entry?.priority, null),
+  downloadClient: isUsenetClientKey(entry?.downloadClient) ? entry.downloadClient : null,
+});
 
 type ProwlarrSettings = ReturnType<typeof getSettings>;
 
@@ -135,13 +156,7 @@ function normalizeIndexerOverrides(value: unknown): Record<string, ProwlarrIndex
         .map((entry): [string, ProwlarrIndexerOverride] | null => {
           const id = normalizeInteger(entry?.id, null);
           if (id == null) return null;
-          return [
-            String(id),
-            {
-              enabled: entry?.enabled !== false,
-              priority: normalizePositiveInteger(entry?.priority, null),
-            },
-          ];
+          return [String(id), normalizeIndexerOverride(entry)];
         })
         .filter(Boolean) as [string, ProwlarrIndexerOverride][],
     );
@@ -151,10 +166,7 @@ function normalizeIndexerOverrides(value: unknown): Record<string, ProwlarrIndex
   for (const [key, entry] of Object.entries(value)) {
     const id = normalizeInteger(key, null);
     if (id == null) continue;
-    out[String(id)] = {
-      enabled: entry?.enabled !== false,
-      priority: normalizePositiveInteger(entry?.priority, null),
-    };
+    out[String(id)] = normalizeIndexerOverride(entry);
   }
   return out;
 }
@@ -309,6 +321,10 @@ export class ProwlarrClient {
   isConfigured() {
     const { enabled, url, apiKey } = getSettings();
     return enabled && !!(url && apiKey);
+  }
+
+  getIndexerDownloadClient(indexerId: unknown) {
+    return getSettings().indexers[String(indexerId ?? "")]?.downloadClient ?? null;
   }
 
   getStatus() {

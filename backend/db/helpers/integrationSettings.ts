@@ -1,5 +1,6 @@
 import * as v from "valibot";
 import { logger } from "../../services/logger.ts";
+import { USENET_CLIENT_KEYS } from "../../services/usenetClientCommon.ts";
 import { lenient, listOf, recordOf } from "./storedSchemas.ts";
 
 const number = v.pipe(
@@ -72,7 +73,15 @@ export const integrationSettingsSchema = v.looseObject({
     enabled: flag,
     url: text,
     apiKey: text,
-    indexers: lenient(recordOf(v.looseObject({ enabled: flag, priority: count }))),
+    indexers: lenient(
+      recordOf(
+        v.looseObject({
+          enabled: flag,
+          priority: count,
+          downloadClient: lenient(v.picklist(USENET_CLIENT_KEYS)),
+        }),
+      ),
+    ),
     categories: lenient(listOf(number)),
     maxResults: count,
   }),
@@ -97,6 +106,7 @@ export const integrationSettingsSchema = v.looseObject({
     priority: count,
     addPaused: flag,
   }),
+  tidarr: service({ enabled: flag, url: text, apiKey: text, priority: count }),
   ytdlp: service({ enabled: flag, priority: count, stagingPath: text }),
   deemix: service({ enabled: flag, url: text, bitrate: count, priority: count }),
   ticketmaster: service({

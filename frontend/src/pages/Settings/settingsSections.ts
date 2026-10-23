@@ -160,8 +160,9 @@ const SETTINGS_SEARCH_METADATA: Partial<Record<SettingsSectionId, SettingsSearch
       "yt-dlp": "YouTube web download client staging",
       NZBGet: "Usenet download client",
       SABnzbd: "Usenet download client",
+      Tidarr: "Tidal download client",
       deemix: "Deezer download client bitrate",
-      Prowlarr: "indexer manager search usenet categories",
+      Prowlarr: "indexer manager search usenet categories download client SABnzbd NZBGet Tidarr",
     },
     fields: {
       "Quality profile":

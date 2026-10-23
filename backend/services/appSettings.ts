@@ -16,6 +16,7 @@ import {
   getOverlapCheckedLidarrRoots,
 } from "./downloadFolderConfig.ts";
 import { normalizePathMappings } from "./pathMappings.ts";
+import { isUsenetClientKey, type UsenetClientKey } from "./usenetClientCommon.ts";
 import { readOnlyFolderOverlapping } from "./libraryFolders.ts";
 import { logger } from "./logger.ts";
 import { normalizeLidarrApiKey, normalizeLidarrUrl } from "./lidarrClient.ts";
@@ -51,6 +52,7 @@ const INTEGRATION_KEYS = [
   "prowlarr",
   "nzbget",
   "sabnzbd",
+  "tidarr",
   "ytdlp",
   "deemix",
   "lastfm",
@@ -244,18 +246,24 @@ function normalizeIntegrationPatch(
     const indexers = asObject(nextProwlarr.indexers) ?? {};
     nextProwlarr.indexers = Object.fromEntries(
       Object.entries(indexers)
-        .map(([id, value]): [string, { enabled: boolean; priority: number }] | null => {
-          const parsedId = Number.parseInt(id, 10);
-          if (!Number.isFinite(parsedId)) return null;
-          const entry = asObject(value);
-          return [
-            String(parsedId),
-            {
-              enabled: entry?.enabled !== false,
-              priority: clampedInteger(entry?.priority, 1, 1000, 25),
-            },
-          ];
-        })
+        .map(
+          ([id, value]):
+            | [string, { enabled: boolean; priority: number; downloadClient?: UsenetClientKey }]
+            | null => {
+            const parsedId = Number.parseInt(id, 10);
+            if (!Number.isFinite(parsedId)) return null;
+            const entry = asObject(value);
+            const downloadClient = entry?.downloadClient;
+            return [
+              String(parsedId),
+              {
+                enabled: entry?.enabled !== false,
+                priority: clampedInteger(entry?.priority, 1, 1000, 25),
+                ...(isUsenetClientKey(downloadClient) ? { downloadClient } : {}),
+              },
+            ];
+          },
+        )
         .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry)),
     );
     integrations.prowlarr = nextProwlarr;
@@ -330,6 +338,26 @@ function normalizeIntegrationPatch(
     nextSabnzbd.priority = clampedInteger(nextSabnzbd.priority, 1, 1000, 20);
     nextSabnzbd.addPaused = nextSabnzbd.addPaused === true;
     integrations.sabnzbd = nextSabnzbd;
+  }
+
+  const tidarr = asObject(integrations.tidarr);
+  if (tidarr) {
+    const nextTidarr = {
+      ...(currentSettings.integrations?.tidarr || {}),
+      ...tidarr,
+    };
+    const trimmedUrl = String(nextTidarr.url || "").trim();
+    if (trimmedUrl) {
+      const urlValidation = validateExternalUrl(trimmedUrl);
+      if (!urlValidation.valid) return `Invalid Tidarr URL: ${urlValidation.error}`;
+      nextTidarr.url = urlValidation.url.replace(/\/+$/, "");
+    } else {
+      nextTidarr.url = "";
+    }
+    nextTidarr.apiKey = typeof nextTidarr.apiKey === "string" ? nextTidarr.apiKey.trim() : "";
+    nextTidarr.enabled = nextTidarr.enabled === true;
+    nextTidarr.priority = clampedInteger(nextTidarr.priority, 1, 1000, 20);
+    integrations.tidarr = nextTidarr;
   }
 
   const deemix = asObject(integrations.deemix);

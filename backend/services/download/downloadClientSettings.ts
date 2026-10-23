@@ -1,10 +1,17 @@
 import { isOwnKey } from "../../../lib/ownKey.ts";
+import { USENET_CLIENT_KEYS, isUsenetClientKey } from "../usenetClientCommon.ts";
 import { dbOps } from "../../db/helpers/index.ts";
 import type { DownloadClient } from "./downloadClient.ts";
 import { DownloadClientRegistry } from "./downloadClientRegistry.ts";
 import { SlskdClient, slskdClient, slskdSettings } from "../slskdClient.ts";
 import { NzbgetClient, nzbgetClient, nzbgetSettings } from "../nzbgetClient.ts";
-import { SabnzbdClient, sabnzbdClient, sabnzbdSettings } from "../sabnzbdClient.ts";
+import {
+  SabnzbdClient,
+  sabnzbdClient,
+  sabnzbdSettings,
+  tidarrClient,
+  tidarrSettings,
+} from "../sabnzbdClient.ts";
 import { YtdlpClient, ytdlpClient, ytdlpSettings } from "../ytdlpClient.ts";
 import { DeemixClient, deemixClient, deemixSettings } from "../deemixClient.ts";
 
@@ -13,6 +20,7 @@ const definitions = Object.freeze({
   ytdlp: ytdlpSettings,
   nzbget: nzbgetSettings,
   sabnzbd: sabnzbdSettings,
+  tidarr: tidarrSettings,
   deemix: deemixSettings,
 });
 
@@ -21,6 +29,7 @@ const factories = {
   ytdlp: () => new YtdlpClient(),
   nzbget: () => new NzbgetClient(),
   sabnzbd: () => new SabnzbdClient(),
+  tidarr: () => new SabnzbdClient(null, "tidarr"),
   deemix: () => new DeemixClient(),
 };
 
@@ -29,6 +38,7 @@ export const downloadClientRegistry = new DownloadClientRegistry([
   ytdlpClient,
   nzbgetClient,
   sabnzbdClient,
+  tidarrClient,
   deemixClient,
 ]);
 
@@ -41,6 +51,7 @@ type BuiltInDownloadClients = {
   ytdlp: YtdlpClient;
   nzbget: NzbgetClient;
   sabnzbd: SabnzbdClient;
+  tidarr: SabnzbdClient;
   deemix: DeemixClient;
 };
 
@@ -61,4 +72,10 @@ export async function testDownloadClient(key: string, config: Record<string, unk
   const configurable: DownloadClient = client;
   configurable.updateConfig(config);
   return client.testConnection({ force: true });
+}
+
+export function getUsenetClient(key: string | null = null) {
+  if (isUsenetClientKey(key)) return getDownloadClient(key);
+  const clients = USENET_CLIENT_KEYS.map((entry) => getDownloadClient(entry));
+  return clients.find((client) => client.isConfigured()) ?? getDownloadClient("nzbget");
 }

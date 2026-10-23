@@ -5,10 +5,11 @@ import { downloadClientSettingsClient } from "../../../../utils/api/clients/down
 import { queryClient, queryKeys } from "../../../../queryClient.ts";
 import { DotLoader } from "../../../../components/DotLoader";
 import PillToggle from "../../../../components/PillToggle";
-import { SettingsInput } from "../../components/SettingsField";
+import { SettingsInput, SettingsSelect } from "../../components/SettingsField";
 import { readApiError } from "../../utils/apiError.ts";
 import { providerStatus } from "../../utils/serviceStatus";
 import { useServerSettings } from "../../SettingsProviders";
+import type { UsenetClientKey } from "../../../../../../backend/services/usenetClientCommon.ts";
 import { SettingsActions, SettingsGroup, SettingsPage, SettingsRow } from "../../SettingsLayout";
 
 type ServerSettings = ReturnType<typeof useServerSettings>;
@@ -19,6 +20,12 @@ type ProwlarrIndexer = InferResponseType<
   200
 >["indexers"][number];
 type TestStatus = { tone: "success" | "error"; message: string };
+
+const DOWNLOAD_CLIENT_OPTIONS: { value: UsenetClientKey; label: string }[] = [
+  { value: "sabnzbd", label: "SABnzbd" },
+  { value: "nzbget", label: "NZBGet" },
+  { value: "tidarr", label: "Tidarr" },
+];
 
 function toNumber(value: string, fallback: number) {
   const next = parseInt(value, 10);
@@ -65,12 +72,12 @@ export function ProwlarrDetail() {
     });
   };
 
-  const updateIndexer = (id: number, patch: ProwlarrIndexerOverride) => {
+  const updateIndexer = (id: number, entry: ProwlarrIndexerOverride) => {
     const key = String(id);
     update({
       indexers: {
         ...(prowlarr.indexers || {}),
-        [key]: { ...(prowlarr.indexers?.[key] || {}), ...patch },
+        [key]: entry,
       },
     });
   };
@@ -81,6 +88,7 @@ export function ProwlarrDetail() {
     return {
       enabled: override.enabled !== false,
       priority: override.priority ?? indexer.priority ?? 25,
+      ...(override.downloadClient ? { downloadClient: override.downloadClient } : {}),
     };
   };
 
@@ -229,6 +237,7 @@ export function ProwlarrDetail() {
                 <tr>
                   <th scope="col">Indexer</th>
                   <th scope="col">Priority</th>
+                  <th scope="col">Download client</th>
                   <th scope="col" className="settings-table__actions">
                     Use
                   </th>
@@ -255,11 +264,34 @@ export function ProwlarrDetail() {
                           value={state.priority}
                           onChange={(event) =>
                             updateIndexer(indexer.id, {
-                              enabled: state.enabled,
+                              ...state,
                               priority: toNumber(event.target.value, indexer.priority || 25),
                             })
                           }
                         />
+                      </td>
+                      <td>
+                        <SettingsSelect
+                          aria-label={`${indexer.name} download client`}
+                          value={state.downloadClient ?? ""}
+                          onChange={(event) => {
+                            const client = DOWNLOAD_CLIENT_OPTIONS.find(
+                              (option) => option.value === event.target.value,
+                            );
+                            updateIndexer(indexer.id, {
+                              enabled: state.enabled,
+                              priority: state.priority,
+                              ...(client ? { downloadClient: client.value } : {}),
+                            });
+                          }}
+                        >
+                          <option value="">Automatic</option>
+                          {DOWNLOAD_CLIENT_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </SettingsSelect>
                       </td>
                       <td className="settings-table__actions">
                         <PillToggle
@@ -267,8 +299,8 @@ export function ProwlarrDetail() {
                           aria-label={`Use ${indexer.name} in Aurral`}
                           onChange={(event) =>
                             updateIndexer(indexer.id, {
+                              ...state,
                               enabled: event.target.checked,
-                              priority: state.priority,
                             })
                           }
                         />

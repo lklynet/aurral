@@ -46,6 +46,7 @@ const SENSITIVE_PATHS = [
   ["slskd", "apiKey"],
   ["prowlarr", "apiKey"],
   ["nzbget", "password"],
+  ["tidarr", "apiKey"],
   ["gotify", "token"],
   ["lastfm", "apiKey"],
   ["google", "clientSecret"],

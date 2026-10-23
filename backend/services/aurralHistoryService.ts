@@ -125,8 +125,7 @@ const resolveTrackDownloadHistorySource = (downloadSource: unknown, downloadClie
     const client = String(downloadClient || "")
       .trim()
       .toLowerCase();
-    if (client === "sabnzbd") return "sabnzbd";
-    return "nzbget";
+    return client === "sabnzbd" || client === "tidarr" ? client : "nzbget";
   }
   if (normalized === "ytdlp") return "ytdlp";
   if (normalized === "deemix") return "deemix";
@@ -136,6 +135,7 @@ const resolveTrackDownloadHistorySource = (downloadSource: unknown, downloadClie
 const CLIENT_LABELS = {
   sabnzbd: "SABnzbd",
   nzbget: "NZBGet",
+  tidarr: "Tidarr",
   slskd: "slskd",
   ytdlp: "yt-dlp",
   deemix: "deemix",

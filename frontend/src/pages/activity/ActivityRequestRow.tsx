@@ -108,7 +108,8 @@ export default function ActivityRequestRow({
   tracksId,
 }: ActivityRequestRowProps) {
   const isSlskd = request.source === "slskd";
-  const isUsenet = request.source === "nzbget" || request.source === "sabnzbd";
+  const isUsenet =
+    request.source === "nzbget" || request.source === "sabnzbd" || request.source === "tidarr";
   const isYtdlp = request.source === "ytdlp";
   const isDeemix = request.source === "deemix";
   const isTrackDownload =

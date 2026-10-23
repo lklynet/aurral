@@ -155,6 +155,31 @@ test("SABnzbd leftover deletion defaults on and keeps an opt-out across partial 
   assert.equal(requireFixture(dbOps.getSettings()!.integrations.sabnzbd).deleteLeftovers, false);
 });
 
+test("Tidarr and an indexer's known download client survive a save", async () => {
+  const { postSettings } = captureSettingsRoutes();
+  const saved = await postSettings({
+    integrations: {
+      tidarr: { enabled: true, url: "http://tidarr.local:8484/", apiKey: " tidarr-key " },
+      prowlarr: {
+        indexers: {
+          "1": { enabled: true, priority: 5, downloadClient: "tidarr" },
+          "2": { enabled: true, priority: 5, downloadClient: "qbittorrent" },
+        },
+      },
+    },
+  });
+  assert.equal(saved.statusCode, 200);
+  const { tidarr, prowlarr } = dbOps.getSettings()!.integrations;
+  assert.deepEqual(tidarr, {
+    enabled: true,
+    url: "http://tidarr.local:8484",
+    apiKey: "tidarr-key",
+    priority: 20,
+  });
+  assert.equal(prowlarr?.indexers?.["1"]?.downloadClient, "tidarr");
+  assert.equal(prowlarr?.indexers?.["2"]?.downloadClient, undefined);
+});
+
 test("the maximum review wait is validated and kept across partial saves", async () => {
   const { postSettings } = captureSettingsRoutes();
   for (const invalid of [-1, 1.5, 721, "24"]) {

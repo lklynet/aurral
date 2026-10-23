@@ -1,7 +1,7 @@
 import { isOwnKey } from "../../lib/ownKey.ts";
 import { dbOps } from "../db/helpers/index.ts";
 import { prowlarrClient } from "./prowlarrClient.ts";
-import { getDownloadClient } from "./download/downloadClientSettings.ts";
+import { getDownloadClient, getUsenetClient } from "./download/downloadClientSettings.ts";
 
 const SOURCE_LABELS = {
   slskd: "Soulseek",
@@ -32,11 +32,8 @@ function getSlskdPriority() {
 }
 
 function getUsenetPriority() {
-  const integrations = getIntegrations();
-  if (getDownloadClient("sabnzbd")?.isConfigured()) {
-    return normalizePriority(integrations.sabnzbd?.priority, 20);
-  }
-  return normalizePriority(integrations.nzbget?.priority, 20);
+  const { key } = getUsenetClient();
+  return normalizePriority(dbOps.getSettings()?.integrations?.[key]?.priority, 20);
 }
 
 function getDeemixPriority() {
@@ -53,13 +50,16 @@ export function getDownloadSourceStatus() {
   const slskdClient = getDownloadClient("slskd");
   const nzbgetClient = getDownloadClient("nzbget");
   const sabnzbdClient = getDownloadClient("sabnzbd");
+  const tidarrClient = getDownloadClient("tidarr");
   const ytdlpClient = getDownloadClient("ytdlp");
   const deemixClient = getDownloadClient("deemix");
   const slskdConfigured = isSlskdEnabled() && slskdClient.isConfigured();
   const prowlarrConfigured = prowlarrClient.isConfigured();
   const nzbgetConfigured = nzbgetClient.isConfigured();
   const sabnzbdConfigured = sabnzbdClient.isConfigured();
-  const usenetConfigured = prowlarrConfigured && (nzbgetConfigured || sabnzbdConfigured);
+  const tidarrConfigured = tidarrClient.isConfigured();
+  const usenetConfigured =
+    prowlarrConfigured && (nzbgetConfigured || sabnzbdConfigured || tidarrConfigured);
   const ytdlpConfigured = ytdlpClient.isConfigured();
   const deemixConfigured = deemixClient.isConfigured();
   return {
@@ -79,6 +79,7 @@ export function getDownloadSourceStatus() {
       prowlarrConfigured,
       nzbgetConfigured,
       sabnzbdConfigured,
+      tidarrConfigured,
     },
     deemix: {
       id: "deemix",
@@ -133,7 +134,7 @@ export function getDownloadSourceNotConfiguredMessage() {
   const status = getDownloadSourceStatus();
   const pieces = [];
   if (!status.slskd.configured) pieces.push("slskd");
-  if (!status.usenet.configured) pieces.push("Prowlarr + NZBGet or SABnzbd");
+  if (!status.usenet.configured) pieces.push("Prowlarr + SABnzbd/NZBGet/Tidarr");
   if (!status.deemix.configured) pieces.push("deemix");
   if (!status.ytdlp.configured) pieces.push("yt-dlp");
   return `No download source is configured. Configure ${pieces.join(" or ")} in Settings → Downloads to enable downloads for flows and playlists.`;

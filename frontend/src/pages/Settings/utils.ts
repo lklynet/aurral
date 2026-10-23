@@ -181,6 +181,13 @@ export const normalizeSettings = (savedSettings: SavedSettings) => {
         addPaused: false,
         ...(savedSettings.integrations?.sabnzbd || {}),
       },
+      tidarr: {
+        enabled: false,
+        url: "",
+        apiKey: "",
+        priority: 20,
+        ...(savedSettings.integrations?.tidarr || {}),
+      },
       ytdlp: {
         enabled: true,
         priority: 50,

@@ -1,7 +1,7 @@
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import type { ServerResponse } from "node:http";
-import { createTrackedJob, trackedJob } from "./fixtures.ts";
+import { createTrackedJob, trackedJob, usenetCandidate } from "./fixtures.ts";
 
 import {
   setupIsolatedBackend,
@@ -18,7 +18,7 @@ const [
   { downloadTracker },
   { processUsenetPipelinePayload },
   { nzbgetClient },
-  { SabnzbdClient },
+  { SabnzbdClient, sabnzbdClient, tidarrClient },
   { getEnabledDownloadSources },
   { rankUsenetReleases, selectRankedUsenetCandidates },
   { dbOps },
@@ -534,6 +534,115 @@ test("SABnzbd client does not claim a failed queue or history deletion succeeded
 
   assert.equal(await client.deleteQueueItem("SABnzbd_nzo_queue"), false);
   assert.equal(await client.deleteHistoryItem("SABnzbd_nzo_history"), false);
+});
+
+test("Tidarr takes NZBs through the SABnzbd calls it answers", async () => {
+  const modes: (string | null)[] = [];
+  const server = await createMockHttpServer((req, res) => {
+    const url = new URL(req.url || "/", "http://mock");
+    const mode = url.searchParams.get("mode");
+    modes.push(mode);
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("end", () => {
+      if (url.pathname !== "/api/sabnzbd/api") return sendJson(res, 404, {});
+      if (mode === "version") return sendJson(res, 200, { version: "3.0.0" });
+      if (mode === "get_config") {
+        return sendJson(res, 200, {
+          config: {
+            categories: [{ name: "music", dir: "/downloads" }],
+            misc: { complete_dir: "/downloads", download_dir: "/downloads", api_key: "" },
+          },
+        });
+      }
+      if (mode === "addfile") {
+        const album = /Tidarr Album (\d+)\|/.exec(Buffer.concat(chunks).toString())?.[1];
+        return sendJson(res, 200, { status: true, nzo_ids: [`tidarr_nzo_${album}`] });
+      }
+      sendJson(res, 400, { error: "Invalid mode" });
+    });
+  });
+  try {
+    const client = new SabnzbdClient(
+      { enabled: true, url: server.url, apiKey: "tidarr-key" },
+      "tidarr",
+    );
+    const status = await client.testConnection({ force: true });
+    assert.equal(status.ok, true, status.message);
+    assert.equal(status.downloadPath, "/downloads");
+    const appended = await client.appendNzb({
+      name: "Daft Punk - Discovery (2001) FLAC [WEB]-Tidarr (14 tracks)",
+      content: Buffer.from(
+        '<nzb><head><meta type="title">Tidarr Album 123|lossless</meta></head></nzb>',
+      ),
+    });
+    assert.equal(appended.nzbId, "tidarr_nzo_123");
+    assert.ok(modes.every((mode) => ["version", "get_config", "addfile"].includes(mode || "")));
+  } finally {
+    await server.close();
+  }
+});
+
+test("an indexer's download client takes its releases, and other indexers keep the automatic one", async () => {
+  const configure = (tidarrEnabled: boolean) =>
+    dbOps.updateSettings({
+      integrations: {
+        prowlarr: {
+          enabled: true,
+          url: "http://prowlarr.local",
+          apiKey: "prowlarr-key",
+          indexers: { "2": { enabled: true, priority: 25, downloadClient: "tidarr" } },
+        },
+        sabnzbd: { enabled: true, url: "http://sabnzbd.local", apiKey: "sab-key" },
+        tidarr: { enabled: tidarrEnabled, url: "http://tidarr.local", apiKey: "tidarr-key" },
+      },
+    });
+  configure(true);
+  const nzbRequests = vi
+    .spyOn(prowlarrClient, "downloadNzb")
+    .mockImplementation(async () => Buffer.from("<nzb/>"));
+  vi.spyOn(sabnzbdClient, "appendNzb").mockImplementation(async () => ({
+    nzbId: "SABnzbd_nzo_1",
+    nzbName: "release.nzb",
+  }));
+  vi.spyOn(tidarrClient, "appendNzb").mockImplementation(async () => ({
+    nzbId: "tidarr_nzo_123",
+    nzbName: "release.nzb",
+  }));
+  const download = (indexerId: number, manualDownloadClient: string | null = null) =>
+    runPipeline({
+      phase: "download",
+      source: "usenet",
+      manualDownloadClient,
+      jobId: createTrackedJob(
+        downloadTracker,
+        { artistName: "Daft Punk", trackName: "One More Time" },
+        `indexer-client-${indexerId}-${manualDownloadClient}`,
+      ),
+      candidateIndex: 0,
+      candidates: [
+        usenetCandidate({
+          raw: {
+            release: releaseFixture({
+              guid: `release-${indexerId}-${manualDownloadClient}`,
+              title: "Daft Punk - Discovery FLAC",
+              protocol: "usenet",
+              downloadUrl: `http://prowlarr.local/${indexerId}/download`,
+              indexerId,
+            }),
+          },
+        }),
+      ],
+    });
+
+  assert.equal((await download(1)).downloadClient, "sabnzbd");
+  assert.equal((await download(2)).downloadClient, "tidarr");
+  assert.equal((await download(2, "sabnzbd")).downloadClient, "tidarr");
+
+  configure(false);
+  const nzbsFetched = nzbRequests.mock.calls.length;
+  assert.equal((await download(2)).error, "Tidarr is not set up");
+  assert.equal(nzbRequests.mock.calls.length, nzbsFetched);
 });
 
 test("download source selection orders enabled sources by priority", () => {
