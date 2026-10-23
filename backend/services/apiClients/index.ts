@@ -12,7 +12,6 @@ export {
   getMetadataProviderHealthSnapshot,
 } from "./config.ts";
 
-export { musicbrainzRequest } from "./musicbrainz.ts";
 export {
   musicbrainzGetArtistReleaseGroups,
   musicbrainzGetArtistAppearsOnReleaseGroups,

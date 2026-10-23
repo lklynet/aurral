@@ -91,9 +91,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }: SidebarProps) {
   const isOnShows = location.pathname.startsWith("/shows");
   const isOnNews = location.pathname.startsWith("/discover/news");
   const isOnWanted = location.pathname.startsWith("/activity/missing");
-  const isOnActivity =
-    !isOnWanted &&
-    (location.pathname.startsWith("/activity") || location.pathname.startsWith("/history"));
+  const isOnActivity = !isOnWanted && location.pathname.startsWith("/activity");
 
   const settingsTabs = useMemo(() => {
     if (!canAccessSettings) return [];
@@ -124,13 +122,6 @@ function Sidebar({ mode, width = 208, settingsMode = false }: SidebarProps) {
 
   const activeActivityView = useMemo(() => {
     if (!isOnActivity) return null;
-    if (location.pathname.startsWith("/history")) {
-      const legacySegment = location.pathname.replace(/^\/history\/?/, "").split("/")[0];
-      if (legacySegment === "queue" || legacySegment === "history") {
-        return legacySegment;
-      }
-      return "history";
-    }
     const segment = location.pathname.replace(/^\/activity\/?/, "").split("/")[0];
     return segment || DEFAULT_ACTIVITY_VIEW;
   }, [isOnActivity, location.pathname]);
@@ -177,7 +168,6 @@ function Sidebar({ mode, width = 208, settingsMode = false }: SidebarProps) {
       if (item.section === "news") return isOnNews;
       if (item.section === "activity") return isOnActivity;
       if (item.section === "wanted") return isOnWanted;
-      if (item.path === "/discover" && location.pathname === "/") return true;
       return location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
     },
     [
@@ -198,7 +188,7 @@ function Sidebar({ mode, width = 208, settingsMode = false }: SidebarProps) {
     );
     const items: SidebarNavItem[] = [
       {
-        path: "/discover",
+        path: "/",
         label: "Discover",
         icon: Sparkles,
         section: "discover",

@@ -239,7 +239,7 @@ export const recordDiscoveryRefreshStarted = () =>
     subtitle: "Gathering recommendations from your library and listening history",
     status: "processing",
     statusLabel: "Refreshing",
-    href: "/discover",
+    href: "/",
   });
 
 export const recordDiscoveryUpdated = ({ recommendationCount = 0, genreCount = 0 } = {}) => {
@@ -257,7 +257,7 @@ export const recordDiscoveryUpdated = ({ recommendationCount = 0, genreCount = 0
     subtitle: parts.length > 0 ? parts.join(", ") : "Recommendations refreshed",
     status: "completed",
     statusLabel: "Updated",
-    href: "/discover",
+    href: "/",
     metadata: { recommendationCount, genreCount },
   });
 };
@@ -270,7 +270,7 @@ export const recordDiscoveryRefreshFailed = (message = "Discovery refresh failed
     subtitle: String(message || "").trim() || null,
     status: "failed",
     statusLabel: "Failed",
-    href: "/discover",
+    href: "/",
   });
 
 export const recordArtistAdded = ({

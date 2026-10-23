@@ -6,7 +6,6 @@ import {
   Outlet,
   Route,
   useOutletContext,
-  useParams,
 } from "react-router";
 import { RouterProvider } from "react-router/dom";
 import { useState, useEffect, Suspense, lazy, useRef, type ReactNode } from "react";
@@ -33,15 +32,6 @@ import { buildActivityPath, DEFAULT_ACTIVITY_VIEW } from "./navigation/activityN
 import { routeModules } from "./navigation/routeModules.ts";
 import { getBootstrapPollIntervalMs } from "./utils/requestScheduling.ts";
 import type { BootstrapPayload } from "../../backend/routes/health.ts";
-
-function LegacyHistoryRedirect() {
-  return <Navigate to="/activity/history" replace />;
-}
-
-function ActivitySourceRedirect() {
-  const { view } = useParams();
-  return <Navigate to={buildActivityPath(view)} replace />;
-}
 
 function ActivityRootRedirect() {
   return <Navigate to={buildActivityPath(DEFAULT_ACTIVITY_VIEW)} replace />;
@@ -290,7 +280,6 @@ const appRoutes = createRoutesFromElements(
       <Route path="/shows" element={<Navigate to="/shows/all" replace />} />
       <Route path="/shows/:filter" element={<ShowsPage />} />
       <Route path="/search" element={<SearchResultsPage />} />
-      <Route path="/discover" element={<Navigate to="/" replace />} />
       <Route
         path="/discover/playlists/deezer/:playlistId"
         element={<EditorialPlaylistDetailPage />}
@@ -340,14 +329,8 @@ const appRoutes = createRoutesFromElements(
           </PermissionRoute>
         }
       />
-      <Route path="/flow" element={<Navigate to="/flows" replace />} />
-      <Route path="/downloads" element={<Navigate to="/activity/queue" replace />} />
-      <Route path="/requests" element={<Navigate to="/activity/queue" replace />} />
-      <Route path="/history" element={<Navigate to="/activity/history" replace />} />
-      <Route path="/history/:legacyTab" element={<LegacyHistoryRedirect />} />
       <Route path="/activity" element={<ActivityRootRedirect />} />
       <Route path="/activity/:view" element={<ActivityPage />} />
-      <Route path="/activity/:view/:source" element={<ActivitySourceRedirect />} />
       <Route path="/artist/:mbid/albums" element={<ArtistReleaseListPage mode="releases" />} />
       <Route path="/artist/:mbid/release/:releaseMbid" element={<ReleasePage />} />
       <Route path="/artist/:mbid/appears-on" element={<ArtistReleaseListPage mode="appearsOn" />} />
@@ -363,7 +346,7 @@ const appRoutes = createRoutesFromElements(
       <Route path="/profile" element={<ProfilePage />} />
       <Route path="/blocklist" element={<BlocklistPage />} />
       <Route path="/go/:kind" element={<ResolveLinkPage />} />
-      <Route path="*" element={null} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Route>
   </Route>,
 );

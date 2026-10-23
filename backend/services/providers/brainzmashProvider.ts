@@ -18,11 +18,6 @@ import {
   withPressingDurations,
 } from "./brainzmashRanking.ts";
 import {
-  toLegacyArtist,
-  toLegacyRelease,
-  toLegacyReleaseGroupSummary,
-  toLegacySearchAlbumResult,
-  toLegacySearchArtistResult,
   toNormalizedAlbum,
   toNormalizedArtist,
   toNormalizedArtistAlbum,
@@ -122,7 +117,6 @@ const metadataNotFoundCache = createCache(
   METADATA_NOT_FOUND_CACHE_TTL_SECONDS,
   METADATA_CACHE_MAX_ENTRIES,
 );
-const releaseCache = createCache(300);
 const providerInflightRequests = new Map();
 const providerRequestLimiter = createRateLimiter(METADATA_REQUEST_MIN_INTERVAL_MS, {
   maxQueue: METADATA_MAX_QUEUED_REQUESTS,
@@ -133,7 +127,6 @@ export function clearMetadataProviderCaches() {
   metadataHotCache.flushAll();
   dbOps.clearMetadataResponses();
   metadataNotFoundCache.flushAll();
-  releaseCache.flushAll();
   providerInflightRequests.clear();
 }
 
@@ -551,12 +544,6 @@ function chooseTracklist(pool: NormalizedRelease[], trackCount: number) {
   return withPressingDurations(sameCount, chosen);
 }
 
-function storeAlbumReleaseMappings(album: NormalizedAlbum) {
-  for (const release of album?.releases || []) {
-    releaseCache.set(release.id, structuredClone({ albumId: album.id, release }));
-  }
-}
-
 export async function getArtistByMbid(mbid: string, { signal }: MetadataRequestOptions = {}) {
   const data = await request<ArtistResponse>(`/artist/${mbid}`, {}, { signal });
   return toNormalizedArtist(data);
@@ -567,9 +554,7 @@ export async function getAlbumByMbid(
   { signal, forceRefresh = false }: MetadataRequestOptions = {},
 ) {
   const data = await request<AlbumResponse>(`/album/${albumMbid}`, {}, { signal, forceRefresh });
-  const normalized = toNormalizedAlbum(data);
-  storeAlbumReleaseMappings(normalized);
-  return normalized;
+  return toNormalizedAlbum(data);
 }
 
 export async function getAlbumTracksByAlbumMbid(
@@ -963,76 +948,4 @@ export function getMetadataProviderHealthSnapshot() {
       lastFailureReason: healthState.lastFailureReason,
     },
   };
-}
-
-export async function legacyMusicbrainzRequest(
-  endpoint: string,
-  params: { query?: string; artist?: string; limit?: number; offset?: number } = {},
-) {
-  const normalizedEndpoint = String(endpoint || "").trim();
-  if (normalizedEndpoint.startsWith("/artist/")) {
-    const mbid = normalizedEndpoint.replace(/^\/artist\//, "").trim();
-    const artist = await getArtistByMbid(mbid);
-    return toLegacyArtist(artist);
-  }
-
-  if (normalizedEndpoint === "/artist") {
-    const result = await searchArtists(String(params.query || "").trim(), {
-      limit: params.limit || 24,
-      offset: params.offset || 0,
-    });
-    return {
-      count: result.count,
-      offset: result.offset,
-      artists: result.items.map((item) => toLegacySearchArtistResult(item)),
-    };
-  }
-
-  if (normalizedEndpoint.startsWith("/release-group/")) {
-    const mbid = normalizedEndpoint.replace(/^\/release-group\//, "").trim();
-    const album = await getAlbumByMbid(mbid);
-    return toLegacyReleaseGroupSummary(album, album.artists[0], { score: 100 });
-  }
-
-  if (normalizedEndpoint === "/release-group") {
-    if (params.artist) {
-      const items = await listArtistAlbums(String(params.artist).trim(), {
-        releaseTypes: [],
-      });
-      const offset = Number.parseInt(String(params.offset), 10) || 0;
-      const limit = Number.parseInt(String(params.limit), 10) || items.length;
-      const paged = items.slice(offset, offset + limit);
-      return {
-        "release-group-count": items.length,
-        "release-groups": paged.map((item) =>
-          toLegacyReleaseGroupSummary(item, {
-            id: item.artistId,
-            name: item.artistName,
-          }),
-        ),
-      };
-    }
-    const result = await searchAlbums(String(params.query || "").trim(), {
-      artistName: "",
-      limit: params.limit || 24,
-      offset: params.offset || 0,
-      releaseTypes: [],
-    });
-    return {
-      count: result.count,
-      "release-group-count": result.count,
-      "release-groups": result.items.map((item) => toLegacySearchAlbumResult(item)),
-    };
-  }
-
-  if (normalizedEndpoint.startsWith("/release/")) {
-    const releaseId = normalizedEndpoint.replace(/^\/release\//, "").trim();
-    const cached = releaseCache.get(releaseId);
-    if (!cached?.release) {
-      throw new Error(`Release ${releaseId} not found in BrainzMash cache`);
-    }
-    return toLegacyRelease(cached.release);
-  }
-
-  throw new Error(`Unsupported legacy metadata endpoint: ${normalizedEndpoint}`);
 }

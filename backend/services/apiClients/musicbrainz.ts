@@ -6,7 +6,6 @@ import { MUSICBRAINZ_API, APP_NAME, APP_VERSION } from "../../config/constants.t
 import {
   getArtistByMbid as getMetadataArtistByMbid,
   getArtistNameByMbid as getMetadataArtistNameByMbid,
-  legacyMusicbrainzRequest,
   listArtistAlbums as listMetadataArtistAlbums,
   resolveArtistByName as resolveMetadataArtistByName,
   resolveLibraryArtistByName as resolveMetadataLibraryArtistByName,
@@ -79,9 +78,6 @@ interface AppearsOnScanState {
   nextOffset: number;
   complete: boolean;
 }
-
-export const musicbrainzRequest = async (endpoint: string, params = {}) =>
-  legacyMusicbrainzRequest(endpoint, params);
 
 export async function musicbrainzGetArtistReleaseGroups(
   mbid: string,

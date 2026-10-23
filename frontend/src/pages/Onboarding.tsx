@@ -9,7 +9,6 @@ import {
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
-import { SettingsInput } from "./Settings/components/SettingsField";
 import { OnboardingStep, OnboardingStepHeader, OnboardingHint } from "./onboardingUtils.tsx";
 import PillToggle from "../components/PillToggle";
 import DownloadFolderField from "../components/DownloadFolderField";
@@ -269,9 +268,9 @@ function Onboarding() {
                   <div className="onboarding-fields">
                     <div className="onboarding-field">
                       <label htmlFor="onboarding-username">Username</label>
-                      <SettingsInput
+                      <input
+                        className="artist-input"
                         id="onboarding-username"
-                        legacyStyle
                         type="text"
                         autoComplete="off"
                         placeholder="Username"
@@ -281,9 +280,9 @@ function Onboarding() {
                     </div>
                     <div className="onboarding-field">
                       <label htmlFor="onboarding-password">Password</label>
-                      <SettingsInput
+                      <input
+                        className="artist-input"
                         id="onboarding-password"
-                        legacyStyle
                         type="password"
                         autoComplete="new-password"
                         placeholder="Password"
@@ -299,9 +298,9 @@ function Onboarding() {
                     </div>
                     <div className="onboarding-field">
                       <label htmlFor="onboarding-password-confirm">Confirm password</label>
-                      <SettingsInput
+                      <input
+                        className="artist-input"
                         id="onboarding-password-confirm"
-                        legacyStyle
                         type="password"
                         autoComplete="new-password"
                         placeholder="Confirm password"
@@ -363,9 +362,9 @@ function Onboarding() {
                   <div className="onboarding-fields">
                     <div className="onboarding-field">
                       <label htmlFor="onboarding-lidarr-url">Lidarr URL</label>
-                      <SettingsInput
+                      <input
+                        className="artist-input"
                         id="onboarding-lidarr-url"
-                        legacyStyle
                         type="url"
                         autoComplete="off"
                         placeholder="http://localhost:8686"
@@ -382,9 +381,9 @@ function Onboarding() {
                     </div>
                     <div className="onboarding-field">
                       <label htmlFor="onboarding-lidarr-api-key">API key</label>
-                      <SettingsInput
+                      <input
+                        className="artist-input"
                         id="onboarding-lidarr-api-key"
-                        legacyStyle
                         type="password"
                         autoComplete="off"
                         placeholder="Paste your Lidarr API key"

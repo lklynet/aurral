@@ -122,7 +122,6 @@ function getBackdropSrc(
 
 interface SearchTopArtistCardProps {
   item?: SearchItem | null;
-  artist?: SearchItem | null;
   artistImages: SearchImageMap;
   albumCovers?: SearchImageMap;
   libraryLookup: Record<string, boolean | undefined>;
@@ -131,8 +130,7 @@ interface SearchTopArtistCardProps {
 }
 
 function SearchTopArtistCard({
-  item,
-  artist: legacyArtist,
+  item: result,
   artistImages,
   albumCovers = {},
   libraryLookup,
@@ -140,7 +138,6 @@ function SearchTopArtistCard({
   previewTracks = [],
 }: SearchTopArtistCardProps) {
   const { matchArtwork: immersiveMode } = useThemeDocument();
-  const result = item || legacyArtist;
   const label = getPrimaryLabel(result);
   const backdropSrc =
     immersiveMode && result ? getBackdropSrc(result, artistImages, albumCovers) : "";

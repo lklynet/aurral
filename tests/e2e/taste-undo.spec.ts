@@ -67,7 +67,7 @@ test("blocking an artist hides its card at once and Undo brings it back in place
       .getByText(/^Taste Undo [ABC]$/)
       .filter({ visible: true })
       .allInnerTexts();
-  await page.goto("/discover");
+  await page.goto("/");
   await expect.poll(names).toEqual(["Taste Undo A", "Taste Undo B", "Taste Undo C"]);
 
   await page.getByRole("button", { name: "Artist options for Taste Undo B", exact: true }).click();
