@@ -103,7 +103,6 @@ test("startup only queues due bootstrap work and a pending migration", () => {
     "identity-marker-migration",
     "weekly-flow-startup-check",
     "playlist-startup-publish",
-    "upgrade-readiness-check",
     "discovery-bootstrap",
     "library-index-bootstrap",
     "release-metadata-refresh",
@@ -125,7 +124,6 @@ test("startup only queues due bootstrap work and a pending migration", () => {
   assert.deepEqual(queuedKinds(), [
     "weekly-flow-startup-check",
     "playlist-startup-publish",
-    "upgrade-readiness-check",
     "discovery-bootstrap",
     "library-index-bootstrap",
     "release-metadata-refresh",

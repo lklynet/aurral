@@ -6,7 +6,6 @@ import { registerDownloadClients } from "./handlers/downloadClients.ts";
 import { registerTasks } from "./handlers/tasks.ts";
 import { registerStorageHealth } from "./handlers/storageHealth.ts";
 import { registerPlayback } from "./handlers/playback.ts";
-import { registerUpgradeReadiness } from "./handlers/upgradeReadiness.ts";
 import mountRoutes from "../shared/mountRoutes.ts";
 
 export default mountRoutes(
@@ -18,7 +17,6 @@ export default mountRoutes(
     registerTasks,
     registerStorageHealth,
     registerPlayback,
-    registerUpgradeReadiness,
   ],
   [requireAuth, requireAdmin],
 );

@@ -254,7 +254,6 @@ export const queryKeys = {
   apiKey: ["auth", "api-key"],
   myPlexLinkStatus: (userId: MaybeId): QueryKey => ["auth", "plex-link", userId || null],
   plexHomeUsers: ["auth", "plex-home-users"],
-  upgradeReadiness: ["settings", "upgrade-readiness"],
   manualMissingSearchSources: (jobId: MaybeId, mode: string, playlistId: MaybeId): QueryKey => [
     "playlists",
     "manual-search-sources",

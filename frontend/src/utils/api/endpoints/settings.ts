@@ -12,10 +12,6 @@ import type {
   clearStaleHonkerJobs,
   getHonkerTaskStatus,
 } from "../../../../../backend/services/honkerTaskStatus.ts";
-import type {
-  checkUpgradeReadiness,
-  queueUpgradeReadinessRecheck,
-} from "../../../../../backend/services/upgradeReadiness.ts";
 import type { getStorageHealthSnapshot } from "../../../../../backend/services/storageHealthService.ts";
 import type {
   applyCommunityGuide,
@@ -264,11 +260,3 @@ export const testWebhookConnection = (webhook: unknown): Promise<SuccessMessage>
 export const applyLidarrCommunityGuide = (): Promise<
   SuccessMessage & { results: Awaited<ReturnType<typeof applyCommunityGuide>> }
 > => postData("/settings/lidarr/apply-community-guide");
-
-export const getUpgradeReadiness = ({ signal }: { signal?: AbortSignal } = {}): Promise<
-  ReturnType<typeof checkUpgradeReadiness>
-> => getData("/settings/upgrade-readiness", { signal });
-
-export const recheckUpgradeReadiness = (): Promise<{
-  queued: ReturnType<typeof queueUpgradeReadinessRecheck>;
-}> => postData("/settings/upgrade-readiness/recheck");

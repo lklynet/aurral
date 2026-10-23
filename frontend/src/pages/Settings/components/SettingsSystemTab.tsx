@@ -4,7 +4,6 @@ import { AlertCircle, Check, Copy, RotateCcw } from "lucide-react";
 import { DotLoader } from "../../../components/DotLoader";
 import { getApiKey, rotateApiKey } from "../../../utils/api/endpoints/auth";
 import { SettingsSystemSection } from "./SettingsStorageSection";
-import { SettingsUpgradeReadiness } from "./SettingsUpgradeReadiness";
 import { SettingsSelect } from "./SettingsField";
 import PillToggle from "../../../components/PillToggle";
 import { setDateTimeFormat } from "../../../utils/dateTime.ts";
@@ -70,8 +69,6 @@ export function SettingsSystemTab({
   return (
     <div className="arr-page settings-system">
       <SettingsSystemSection health={health} />
-
-      <SettingsUpgradeReadiness showSuccess={showSuccess} showError={showError} />
 
       <section className="settings-system__section">
         <div className="settings-system__section-header">

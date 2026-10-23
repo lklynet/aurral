@@ -57,11 +57,6 @@ function parseMonitoringApply(payload: HonkerPayload): MonitoringApply {
   };
 }
 
-async function refreshUpgradeReadiness() {
-  const { checkUpgradeReadiness } = await import("./upgradeReadiness.ts");
-  checkUpgradeReadiness();
-}
-
 export async function processSystemTask(
   payload: HonkerPayload | null = {},
   job: SystemTaskJob | null = null,
@@ -296,17 +291,14 @@ export async function processSystemTask(
           completedAt: Date.now(),
         });
       }
-      await refreshUpgradeReadiness();
       return;
     }
     case "stored-data-migration": {
       const { migrateStoredData } = await import("./storedDataMigration.ts");
       migrateStoredData();
-      await refreshUpgradeReadiness();
       return;
     }
     case "upgrade-readiness-check": {
-      await refreshUpgradeReadiness();
       return;
     }
     case "identity-marker-migration": {
@@ -317,7 +309,6 @@ export async function processSystemTask(
           `[Library] Moved the identity marker to its own tag in ${result.moved} file(s); ${result.failed} file(s) failed`,
         );
       }
-      await refreshUpgradeReadiness();
       return;
     }
     case "lidarr-files-release": {
