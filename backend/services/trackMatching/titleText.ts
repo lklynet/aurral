@@ -37,6 +37,14 @@ export function isVariousArtistsCredit(
   );
 }
 
+const FEATURED_ARTISTS = /\s(?:feat\.?|ft\.?|featuring)\s[\s\S]+$/iu;
+
+export function withoutFeaturedArtists(value: string | null | undefined) {
+  return String(value || "")
+    .replace(FEATURED_ARTISTS, "")
+    .trim();
+}
+
 // The title that release names keep: "Album (Deluxe Edition)", "Album -
 // Single", and "Film: Awesome Mix, Vol. 1: Original Motion Picture
 // Soundtrack" lose the edition and soundtrack wording; "Album (Part 2)" does

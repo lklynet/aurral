@@ -8,7 +8,7 @@ import {
   stripPromoDescriptors,
 } from "./semanticPolicy.ts";
 import { foldDiacritics } from "../providers/brainzmashRanking.ts";
-import { discFolderNumber, isVariousArtistsCredit } from "./titleText.ts";
+import { discFolderNumber, isVariousArtistsCredit, withoutFeaturedArtists } from "./titleText.ts";
 import { implausibleBitrateKbps } from "./candidateNormalizer.ts";
 import type { NameList, ReleaseTrack } from "./semanticPolicy.ts";
 import { UUID_REGEX } from "../../../lib/uuid.ts";
@@ -172,25 +172,24 @@ function variants(title: string | null | undefined) {
 }
 
 function coreMatchTitle(title: string | null | undefined) {
-  return (stripPromoDescriptors(title) || String(title || ""))
-    .replace(
-      /\s*[[(][^\])]*\b(?:live|remix|acoustic|instrumental|demo|edit|karaoke|cover|nightcore|mix|mono|stereo|remaster(?:ed)?|feat\.?|ft\.?|featuring|official audio|official video|visualizer|lyrics|album version|original version|bonus|hidden track)\b[^\])]*[\])]/giu,
-      "",
-    )
-    .replace(
-      /\s+[-–—]\s+(?:(?:radio|extended|club|dance|single|album)\s+)?(?:edit|mix|live|remix|acoustic|instrumental|demo|karaoke|remaster(?:ed)?)\b.*$/iu,
-      "",
-    )
-    .replace(/\s+[-–—]\s+(?:mono|stereo)(?:\s+(?:version|mix))?\s*$/iu, "")
-    .replace(/\s+\b(?:feat\.?|ft\.?|featuring)\s+.+$/iu, "")
-    .trim();
+  return withoutFeaturedArtists(
+    (stripPromoDescriptors(title) || String(title || ""))
+      .replace(
+        /\s*[[(][^\])]*\b(?:live|remix|acoustic|instrumental|demo|edit|karaoke|cover|nightcore|mix|mono|stereo|remaster(?:ed)?|feat\.?|ft\.?|featuring|official audio|official video|visualizer|lyrics|album version|original version|bonus|hidden track)\b[^\])]*[\])]/giu,
+        "",
+      )
+      .replace(
+        /\s+[-–—]\s+(?:(?:radio|extended|club|dance|single|album)\s+)?(?:edit|mix|live|remix|acoustic|instrumental|demo|karaoke|remaster(?:ed)?)\b.*$/iu,
+        "",
+      )
+      .replace(/\s+[-–—]\s+(?:mono|stereo)(?:\s+(?:version|mix))?\s*$/iu, ""),
+  );
 }
 
 function coreArtist(name: string | null | undefined) {
-  return String(name || "")
-    .replace(/\s*[([]\s*(?:feat\.?|ft\.?|featuring|with)\s+[^)\]]*[)\]]/giu, "")
-    .replace(/\s+\b(?:feat\.?|ft\.?|featuring)\s+.+$/iu, "")
-    .trim();
+  return withoutFeaturedArtists(
+    String(name || "").replace(/\s*[([]\s*(?:feat\.?|ft\.?|featuring|with)\s+[^)\]]*[)\]]/giu, ""),
+  );
 }
 
 // "Kendrick Lamar, Drake" and "Blue Swede & Björn Skifs" credit each of

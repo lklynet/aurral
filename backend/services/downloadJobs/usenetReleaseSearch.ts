@@ -17,6 +17,7 @@ import {
   coreAlbumTitle,
   isVariousArtistsCredit,
   otherProductMarker,
+  withoutFeaturedArtists,
 } from "../trackMatching/titleText.ts";
 import {
   checkVariantCompatibility,
@@ -187,10 +188,7 @@ function containsAlbumApartFromArtist(words: string[], album: string, artists: s
 }
 
 function withoutCredits(title: string) {
-  return String(title || "")
-    .replace(/\s*[[(][^\])]*[\])]/gu, " ")
-    .replace(/\s+(?:feat\.?|ft\.?|featuring)\s+.+$/iu, "")
-    .trim();
+  return withoutFeaturedArtists(String(title || "").replace(/\s*[[(][^\])]*[\])]/gu, " "));
 }
 
 function readReleaseRequest(context: UsenetSearchContext) {

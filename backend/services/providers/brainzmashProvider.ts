@@ -27,6 +27,7 @@ import {
   type NormalizedRelease,
 } from "./brainzmashMappers.ts";
 import { selectBestAlbumImage } from "../imageService.ts";
+import { withoutFeaturedArtists } from "../trackMatching/titleText.ts";
 import createRateLimiter from "../apiClients/rateLimiter.ts";
 import { runSharedInflight } from "../sharedInflight.ts";
 import { logger, safeLogDiagnostic } from "../logger.ts";
@@ -757,11 +758,6 @@ function artistNameForms(name: unknown) {
   return variants.map((variant) => getNormalizedText(variant).replace(/^the /, "")).filter(Boolean);
 }
 
-const leadArtistName = (credit: unknown) =>
-  String(credit || "")
-    .replace(/\s+(?:feat\.?|ft\.?|featuring)\s+.+$/iu, "")
-    .trim();
-
 const hasArtistName = (name: unknown, artist: ArtistLike) => {
   const forms = new Set(artistNameForms(name));
   return [artist?.name, ...(artist?.aliases || [])].some((candidate) =>
@@ -771,8 +767,8 @@ const hasArtistName = (name: unknown, artist: ArtistLike) => {
 
 // An artist is the one a credit names when the credit, or its lead artist as
 // in "Koyo feat. DRAIN", is the artist's name or one of its aliases.
-export function isCreditedArtist(credit: unknown, artist: ArtistLike) {
-  return hasArtistName(credit, artist) || hasArtistName(leadArtistName(credit), artist);
+export function isCreditedArtist(credit: string | null | undefined, artist: ArtistLike) {
+  return hasArtistName(credit, artist) || hasArtistName(withoutFeaturedArtists(credit), artist);
 }
 
 // Search also finds artists that share only a word with the name, such as
@@ -783,7 +779,7 @@ export async function resolveArtistByName(name: string): Promise<string | null> 
   const ranked = rankArtistCandidates(name, result.items);
   const named = ranked.find((artist) => hasArtistName(name, artist));
   if (named) return named.id || null;
-  const lead = leadArtistName(name);
+  const lead = withoutFeaturedArtists(name);
   return lead && lead !== String(name || "").trim() ? resolveArtistByName(lead) : null;
 }
 

@@ -363,17 +363,20 @@ export async function deezerGetTrackPreview({
   }
 }
 
+const EDITION_GROUP =
+  /[([](?:deluxe|remaster|anniversary|expanded|bonus|edition|live|mono|stereo|\d{4})/;
+const EDITION_SUFFIX =
+  /\s-\s+(?:deluxe|remaster|anniversary|expanded|bonus|edition|live|mono|stereo|\d{4})[\s\S]*$/;
+
+function withoutEditionGroups(title: string) {
+  const start = title.search(EDITION_GROUP);
+  const end = Math.max(title.lastIndexOf(")"), title.lastIndexOf("]"));
+  return start >= 0 && end > start ? title.slice(0, start).trimEnd() + title.slice(end + 1) : title;
+}
+
 export function normalizeTitle(title: unknown) {
-  return String(title || "")
-    .toLowerCase()
-    .replace(
-      /\s*[([](deluxe|remaster|anniversary|expanded|bonus|edition|live|mono|stereo|\d{4}).*[)\]]/gi,
-      "",
-    )
-    .replace(
-      /\s+-\s+(deluxe|remaster|anniversary|expanded|bonus|edition|live|mono|stereo|\d{4}).*$/gi,
-      "",
-    )
+  return withoutEditionGroups(String(title || "").toLowerCase())
+    .replace(EDITION_SUFFIX, "")
     .replace(/[’']/g, "")
     .replace(/&/g, "and")
     .replace(/[^a-z0-9]+/g, " ")
