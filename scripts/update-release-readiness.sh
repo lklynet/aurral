@@ -8,24 +8,6 @@ run_id="${GITHUB_RUN_ID:-unknown}"
 readiness_marker='<!-- aurral-release-readiness -->'
 status_marker='<!-- aurral-release-readiness-status -->'
 
-ensure_labels() {
-  gh label create release-readiness \
-    --repo "${repository}" \
-    --color FBCA04 \
-    --description "Tracks testing and approval for the next stable release." \
-    --force >/dev/null
-  gh label create release-ready \
-    --repo "${repository}" \
-    --color 0E8A16 \
-    --description "Release readiness checks are complete for the current main commit." \
-    --force >/dev/null
-  gh label create released \
-    --repo "${repository}" \
-    --color 5319E7 \
-    --description "Included in a stable release." \
-    --force >/dev/null
-}
-
 find_open_record() {
   gh api --paginate \
     "repos/${repository}/issues?state=open&labels=release-readiness&per_page=100" \
@@ -213,7 +195,6 @@ if [ "${mode}" = "nightly" ]; then
 fi
 
 if [ "${mode}" = "nightly" ]; then
-  ensure_labels
   readiness_issue="$(find_open_record)"
   if [ -z "${readiness_issue}" ]; then
     readiness_body="$(cat <<EOF
@@ -288,7 +269,6 @@ EOF
   exit 0
 fi
 
-ensure_labels
 readiness_issue="$(find_open_record)"
 if [ -z "${readiness_issue}" ]; then
   echo "No open release-readiness issue found after stable release; nothing to close."

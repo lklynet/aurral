@@ -15,20 +15,10 @@ if [ -z "${commit_type}" ]; then
 fi
 
 desired_label=""
-desired_color=""
 case "${commit_type}" in
-  feat)
-    desired_label=enhancement
-    desired_color=a2eeef
-    ;;
-  fix)
-    desired_label=bug
-    desired_color=d73a4a
-    ;;
-  docs)
-    desired_label=documentation
-    desired_color=0075ca
-    ;;
+  feat) desired_label=enhancement ;;
+  fix) desired_label=bug ;;
+  docs) desired_label=documentation ;;
 esac
 
 remove_issue_label() {
@@ -54,10 +44,6 @@ remove_issue_label() {
 }
 
 if [ -n "${desired_label}" ]; then
-  gh label create "${desired_label}" \
-    --repo "${repository}" \
-    --color "${desired_color}" \
-    --force >/dev/null
   gh api \
     --method POST \
     "repos/${repository}/issues/${pr_number}/labels" \

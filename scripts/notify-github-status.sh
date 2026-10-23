@@ -32,17 +32,6 @@ if ! grep -q '^pull'$'\t' <<< "${changes}"; then
   exit 0
 fi
 
-gh label create nightly \
-  --repo "${repository}" \
-  --color 0E8A16 \
-  --description "Available in the nightly image but not yet in a stable release." \
-  --force >/dev/null
-gh label create released \
-  --repo "${repository}" \
-  --color 5319E7 \
-  --description "Included in a stable release." \
-  --force >/dev/null
-
 remove_issue_label() {
   local target_number="$1"
   local label="$2"
@@ -110,7 +99,7 @@ while IFS=$'\t' read -r -u 3 _kind target_number labels _url _title; do
 <!-- aurral-release-status -->
 ### Available on nightly
 
-A linked pull request was merged into \`main\` and is now included in the latest nightly build. Linked issues stay open until this change ships in a stable release.
+A linked pull request was merged into \`main\` and is now included in the latest nightly build.
 
 \`\`\`bash
 docker pull ghcr.io/${repository}:nightly
@@ -149,18 +138,3 @@ EOF
   fi
   set_status_label "${target_number}" "${done_label}" "${other_label}"
 done 3<<< "${changes}"
-
-if [ "${status}" = "stable" ]; then
-  for issue_number in $(awk -F '\t' '$1 == "issue" { print $2 }' <<< "${changes}"); do
-    issue_state="$(gh api \
-      "repos/${repository}/issues/${issue_number}" \
-      --jq 'if .pull_request then "pull" else .state end')"
-    if [ "${issue_state}" != "open" ]; then
-      continue
-    fi
-    gh issue close "${issue_number}" \
-      --repo "${repository}" \
-      --reason completed >/dev/null
-    echo "Closed linked issue #${issue_number} for stable release ${release_version}."
-  done
-fi

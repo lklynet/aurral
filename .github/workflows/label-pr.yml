@@ -1,9 +1,9 @@
 name: Label pull request
 
 on:
-  pull_request:
+  pull_request_target:
     branches: ["main"]
-    types: [opened, edited, reopened]
+    types: [opened, edited, reopened, synchronize]
 
 permissions:
   contents: read
@@ -19,6 +19,9 @@ jobs:
       contents: read
       issues: write
       pull-requests: write
+    concurrency:
+      group: label-pr-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -30,3 +33,46 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: bash scripts/label-pr-from-title.sh
+
+      - name: Label pull request size
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          changed_lines="$(gh api "repos/${REPOSITORY}/pulls/${PR_NUMBER}" --jq '.additions + .deletions')"
+          if [ "${changed_lines}" -lt 10 ]; then
+            size_label=size:XS
+          elif [ "${changed_lines}" -lt 30 ]; then
+            size_label=size:S
+          elif [ "${changed_lines}" -lt 100 ]; then
+            size_label=size:M
+          elif [ "${changed_lines}" -lt 500 ]; then
+            size_label=size:L
+          elif [ "${changed_lines}" -lt 1000 ]; then
+            size_label=size:XL
+          else
+            size_label=size:XXL
+          fi
+
+          current_labels="$(gh api "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels" --paginate --jq '.[].name')"
+          while IFS= read -r label; do
+            [ -z "${label}" ] && continue
+            [ "${label}" = "${size_label}" ] && continue
+            gh api \
+              --method DELETE \
+              "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels/${label}" \
+              >/dev/null
+          done < <(printf '%s\n' "${current_labels}" | grep -E '^size:(XS|S|M|L|XL|XXL)$' || true)
+
+          if ! printf '%s\n' "${current_labels}" | grep -Fxq "${size_label}"; then
+            gh api \
+              --method POST \
+              "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels" \
+              -f "labels[]=${size_label}" \
+              >/dev/null
+          fi
+
+          echo "PR #${PR_NUMBER}: ${changed_lines} changed lines -> ${size_label}"

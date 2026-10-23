@@ -9,7 +9,6 @@ on:
       - ".github/ISSUE_TEMPLATE/**"
       - ".github/release.yml"
       - ".github/workflows/issue-labels.yml"
-      - ".github/workflows/pr-size.yml"
   workflow_dispatch:
 
 permissions:

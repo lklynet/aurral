@@ -14,7 +14,9 @@ concurrency:
 
 jobs:
   delete-image:
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -31,9 +33,9 @@ jobs:
           OWNER="${GITHUB_REPOSITORY%/*}"
           PACKAGE="${GITHUB_REPOSITORY#*/}"
           for scope in users orgs; do
-            VERSION_ID="$(gh api --paginate "/${scope}/${OWNER}/packages/container/${PACKAGE}/versions" \
-              -q ".[] | select(.metadata.container.tags[]? == \"${IMAGE_TAG}\") | .id" 2>/dev/null | head -n1)"
-            if [ -n "${VERSION_ID}" ]; then
+            VERSION_ID="$(gh api --paginate "/${scope}/${OWNER}/packages/container/${PACKAGE}/versions?per_page=100" \
+              -q ".[] | select(.metadata.container.tags[]? == \"${IMAGE_TAG}\") | .id" 2>/dev/null | head -n1 || true)"
+            if [[ "${VERSION_ID}" =~ ^[0-9]+$ ]]; then
               gh api -X DELETE "/${scope}/${OWNER}/packages/container/${PACKAGE}/versions/${VERSION_ID}"
               echo "Deleted ${IMAGE_TAG}."
               exit 0
@@ -56,7 +58,7 @@ jobs:
           <!-- ${ISSUE_MARKER} -->
           ## Aurral preview image retired
 
-          [Pull request #${PR_NUMBER}](https://github.com/${REPOSITORY}/pull/${PR_NUMBER}) was merged into \`main\`. The preview image was retired. The change will appear on \`nightly\` after that build succeeds, and linked issues stay open until a stable release includes it.
+          [Pull request #${PR_NUMBER}](https://github.com/${REPOSITORY}/pull/${PR_NUMBER}) was merged into \`main\`. The preview image was retired. The change will appear on \`nightly\` after that build succeeds.
           EOF
             )"
           else

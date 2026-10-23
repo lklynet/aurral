@@ -24,7 +24,7 @@ Large or bundled pull requests may be closed or returned for splitting.
 
 ## Linked issue
 
-<!-- Link the related issue when one exists. Use Fixes #123 or Closes #123 when this pull request should close it. Merging puts the change on nightly first; linked issues stay open until a stable release includes it. -->
+<!-- Link the related issue when one exists. Use Fixes #123 or Closes #123 when this pull request should close it. -->
 
 ## UI changes
 

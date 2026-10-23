@@ -62,14 +62,6 @@ CLOSING_ISSUES="$(gh api graphql \
   -F "number=${PR_NUMBER}" \
   --jq '.data.repository.pullRequest.closingIssuesReferences.nodes[]?.number')"
 
-if [ -n "${CLOSING_ISSUES}" ]; then
-  gh label create in-progress \
-    --repo "${REPOSITORY}" \
-    --color FBCA04 \
-    --description "Linked pull request is open and being worked on." \
-    --force >/dev/null
-fi
-
 while IFS= read -r issue_number; do
   [ -z "${issue_number}" ] && continue
 
@@ -77,7 +69,7 @@ while IFS= read -r issue_number; do
 <!-- ${ISSUE_MARKER} -->
 ## Aurral preview image ready
 
-[Pull request #${PR_NUMBER}](https://github.com/${REPOSITORY}/pull/${PR_NUMBER}), which is linked to this issue, has a preview image ready to test before it is merged into \`nightly\`. It will be replaced when the pull request changes.
+[Pull request #${PR_NUMBER}](https://github.com/${REPOSITORY}/pull/${PR_NUMBER}), which is linked to this issue, has a preview image ready to test before it is merged. It will be replaced when the pull request changes.
 
 \`\`\`bash
 docker pull ghcr.io/${REPOSITORY}:${IMAGE_TAG}
@@ -91,7 +83,7 @@ To test it with your existing Docker Compose setup:
 4. Exercise the behavior changed by the pull request.
 5. Restore the image reference that was configured before testing.
 
-Please report your results and approval on the pull request before it is merged into nightly.
+Please report your results and approval on the pull request before it is merged.
 
 [View the CI run](https://github.com/${REPOSITORY}/actions/runs/${RUN_ID})
 EOF

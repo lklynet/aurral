@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: nightly
+  cancel-in-progress: true
+
 jobs:
   check-validation:
     runs-on: ubuntu-latest
@@ -45,10 +49,6 @@ jobs:
       !cancelled() &&
       needs.check-validation.result == 'success' &&
       (needs.validate.result == 'success' || needs.validate.result == 'skipped')
-    concurrency:
-      group: nightly-publication
-      queue: max
-      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
