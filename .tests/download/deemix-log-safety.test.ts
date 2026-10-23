@@ -1,3 +1,4 @@
+import { createTrackedJob } from "./fixtures.ts";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 
@@ -16,23 +17,27 @@ const [
   { logger },
 ] = await setupIsolatedBackend(
   "deemix-log-safety",
-  "backend/config/db-sqlite.ts",
-  "backend/services/downloadJobs/downloadTracker.ts",
-  "backend/services/deemixOrchestrator.ts",
-  "backend/services/download/downloadClientSettings.ts",
-  "backend/services/logger.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
+  () => import("../../backend/services/deemixOrchestrator.ts"),
+  () => import("../../backend/services/download/downloadClientSettings.ts"),
+  () => import("../../backend/services/logger.ts"),
 );
 
 beforeEach(() => resetDatabase(db));
 afterAll(async () => cleanupIsolatedState(isolatedState));
 
 test("deemix queue cleanup logs a safe diagnostic when removal fails", async () => {
-  const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Song" }, "playlist-id");
+  const jobId = createTrackedJob(
+    downloadTracker,
+    { artistName: "Artist", trackName: "Song" },
+    "playlist-id",
+  );
   const client = getDownloadClient("deemix");
   vi.spyOn(client, "removeFromQueue").mockImplementation(async () => {
     throw new Error("Failed at https://user:pass@example.test/api?token=secret-value");
   });
-  const warnings = [];
+  const warnings: Parameters<typeof logger.warn>[] = [];
   vi.spyOn(logger, "warn").mockImplementation((...args) => warnings.push(args));
   const failOrTryNextSource = vi.fn(async () => null);
 
@@ -46,7 +51,8 @@ test("deemix queue cleanup logs a safe diagnostic when removal fails", async () 
     ([, message]) => message === "Could not remove timed-out queue item",
   );
   assert.ok(warning);
-  assert.equal(warning[2].jobId, jobId);
-  assert.match(warning[2].reason, /\[redacted URL\]/);
-  assert.doesNotMatch(warning[2].reason, /secret-value|user:pass/);
+  const details = warning[2] as { jobId: string; reason: string };
+  assert.equal(details.jobId, jobId);
+  assert.match(details.reason, /\[redacted URL\]/);
+  assert.doesNotMatch(details.reason, /secret-value|user:pass/);
 });

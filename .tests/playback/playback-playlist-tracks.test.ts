@@ -17,13 +17,14 @@ const [
   { collectPlaybackPlaylistTracks },
 ] = await setupIsolatedBackend(
   "playback-playlist-tracks",
-  "backend/config/db-sqlite.ts",
-  "backend/services/downloadJobs/downloadTracker.ts",
-  "backend/services/playlists/flowPlaylistConfig.ts",
-  "backend/services/playback/playbackPlaylistTracks.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
+  () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
+  () => import("../../backend/services/playback/playbackPlaylistTracks.ts"),
 );
 
 const downloadRoot = process.env.WEEKLY_FLOW_FOLDER;
+assert.ok(downloadRoot != null);
 
 beforeEach(async () => {
   await resetDatabase(db);
@@ -50,7 +51,9 @@ test("preserves static playlist track order", async () => {
   await fs.writeFile(firstPath, "one");
 
   const secondJobId = downloadTracker.addJob(playlist.tracks[0], playlist.id);
+  assert.ok(secondJobId != null);
   const firstJobId = downloadTracker.addJob(playlist.tracks[1], playlist.id);
+  assert.ok(firstJobId != null);
   downloadTracker.setDone(secondJobId, secondPath, "Album");
   downloadTracker.setDone(firstJobId, firstPath, "Album");
 
@@ -70,6 +73,7 @@ test("keeps completed tracks after metadata correction", async () => {
   await fs.mkdir(path.dirname(trackPath), { recursive: true });
   await fs.writeFile(trackPath, "audio");
   const jobId = downloadTracker.addJob(playlist.tracks[0], playlist.id);
+  assert.ok(jobId != null);
   downloadTracker.updateMetadata(jobId, {
     artistName: "Resolved artist",
     trackName: "Resolved track",
@@ -92,6 +96,7 @@ test("normalizes empty migrated names", async () => {
   await fs.mkdir(path.dirname(trackPath), { recursive: true });
   await fs.writeFile(trackPath, "audio");
   const jobId = downloadTracker.addJob(playlist.tracks[0], playlist.id);
+  assert.ok(jobId != null);
   downloadTracker.setDone(jobId, trackPath);
   downloadTracker.updateMetadata(jobId, { artistName: "", trackName: " " });
 

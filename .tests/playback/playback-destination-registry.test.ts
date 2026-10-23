@@ -2,30 +2,40 @@ import assert from "node:assert/strict";
 import { test, vi } from "vite-plus/test";
 import { PlaybackDestinationRegistry } from "../../backend/services/playback/playbackDestinationRegistry.ts";
 
-function destination(name, configured, result = { ok: true }) {
-  const calls = [];
+function destination(
+  name: string,
+  configured: boolean,
+  result:
+    | import("../../backend/services/playback/playbackDestination.ts").PlaybackOperationResult
+    | Error = { ok: true },
+) {
+  const calls: [string, unknown][] = [];
+  const operation = async () => {
+    if (result instanceof Error) throw result;
+    return result;
+  };
   return {
     key: name.toLowerCase(),
     name,
     calls,
     isConfigured: () => configured,
-    updateConfig(config) {
+    updateConfig(config: unknown) {
       calls.push(["updateConfig", config]);
     },
-    async testConnection() {},
-    async ensureLibrary() {},
-    async publishPlaylist(snapshot) {
+    testConnection: operation,
+    ensureLibrary: operation,
+    async publishPlaylist(snapshot: unknown) {
       calls.push(["publishPlaylist", snapshot]);
-      if (result instanceof Error) throw result;
-      return result;
+      return operation();
     },
-    async deletePlaylist(identity) {
+    async deletePlaylist(identity: unknown) {
       calls.push(["deletePlaylist", identity]);
-      return result;
+      return operation();
     },
-    async deleteEntityPlaylists() {},
+    deleteEntityPlaylists: operation,
     getPointerEntityIds: () => [],
-    async requestScan() {},
+    requestScan: operation,
+    getReferencedPaths: operation,
   };
 }
 

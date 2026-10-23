@@ -1,6 +1,7 @@
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { buildSourceCandidates } from "../../backend/services/trackMatching/sourceSearch.ts";
+import { buildSoulseekCandidates } from "../../backend/services/trackMatching/providers/soulseekProvider.ts";
 import { evaluateTrackCandidates } from "../../backend/services/trackMatching/decisionEngine.ts";
 import { validateDownloadedTrackFile } from "../../backend/services/trackMatching/postDownloadValidator.ts";
 
@@ -24,21 +25,16 @@ test("source search can accept a matching track without a Python runtime", async
 });
 
 test("a Soulseek filename naming another artist stays rejected despite matching title", async () => {
+  const request = { trackName: "First Song", artistName: "The Band", durationMs: 180000 };
+  const built = buildSoulseekCandidates(
+    [{ user: "peer", file: "Other Band/Other Band - First Song.flac", durationMs: 180000 }],
+    request,
+  );
   const result = await evaluateTrackCandidates({
     source: "soulseek",
-    request: { trackName: "First Song", artistName: "The Band", durationMs: 180000 },
-    candidates: [
-      {
-        source: "soulseek",
-        title: "Other Band - First Song",
-        filenameTitle: "First Song",
-        artists: [],
-        durationMs: 180000,
-        provider: {},
-        raw: {},
-      },
-    ],
-    providerEvidence: [{ folder: { artistContradicted: true, artistScore: 0 } }],
+    request,
+    candidates: built.candidates,
+    providerEvidence: built.providerEvidence,
   });
   assert.equal(result.evaluations[0].decision, "reject");
 });
@@ -86,13 +82,22 @@ test("a matching video channel and official-audio title remain a plausible track
 test("a provider artist claim cannot fill a missing original file tag", async () => {
   const result = await validateDownloadedTrackFile({
     request: { trackName: "First Song", artistName: "The Band", durationMs: 180000 },
-    candidate: { artists: ["The Band"] },
+    candidate: { raw: { artists: ["The Band"] } },
     source: "soulseek",
     filePath: "/tmp/First Song.flac",
     options: {
       parseFile: async () => ({
-        common: { title: "First Song" },
+        native: {},
+        quality: { warnings: [] },
+        common: {
+          track: { no: null, of: null },
+          disk: { no: null, of: null },
+          movementIndex: { no: null, of: null },
+          title: "First Song",
+        },
         format: {
+          trackInfo: [],
+          tagTypes: [],
           duration: 180,
           container: "FLAC",
           lossless: true,
@@ -112,8 +117,18 @@ test("a live file name cannot be laundered by plain original tags", async () => 
     filePath: "/tmp/First Song (Live).flac",
     options: {
       parseFile: async () => ({
-        common: { title: "First Song", artist: "The Band" },
+        native: {},
+        quality: { warnings: [] },
+        common: {
+          track: { no: null, of: null },
+          disk: { no: null, of: null },
+          movementIndex: { no: null, of: null },
+          title: "First Song",
+          artist: "The Band",
+        },
         format: {
+          trackInfo: [],
+          tagTypes: [],
           duration: 180,
           container: "FLAC",
           lossless: true,

@@ -1,3 +1,4 @@
+import { createRouteHarness, createResponse } from "./routeHarness.ts";
 import assert from "node:assert/strict";
 import { test, afterAll } from "vite-plus/test";
 
@@ -5,33 +6,23 @@ import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTe
 
 const [state, { registerLibraryIndex }] = await setupIsolatedBackend(
   "library-page-query",
-  "backend/routes/library/handlers/libraryIndex.ts",
+  () => import("../../backend/routes/library/handlers/libraryIndex.ts"),
 );
 
-const routes = new Map();
-registerLibraryIndex({
-  get: (path, ...handlers) => routes.set(`GET ${path}`, handlers.at(-1)),
-  post: () => {},
-  put: () => {},
-  delete: () => {},
-});
+const routes = createRouteHarness(registerLibraryIndex);
 
 afterAll(() => cleanupIsolatedState(state));
 
-async function requestPage(query) {
-  const response = { statusCode: 200, body: null };
+async function requestPage(
+  query:
+    | { artistId: string[]; albumId?: undefined }
+    | { albumId: string[]; artistId?: undefined }
+    | { artistId: string; albumId: string },
+) {
+  const response = createResponse<{ kind: string }>();
   await routes.get("GET /canonical")(
     { query: { kind: "albums", pageSize: "10", ...query }, user: null },
-    {
-      status(code) {
-        response.statusCode = code;
-        return this;
-      },
-      json(value) {
-        response.body = value;
-        return this;
-      },
-    },
+    response,
   );
   return response;
 }

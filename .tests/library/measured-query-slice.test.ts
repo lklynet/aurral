@@ -1,3 +1,4 @@
+import { requireFixture } from "../playlists/fixtures.ts";
 import assert from "node:assert/strict";
 import { test, beforeAll, afterAll, vi } from "vite-plus/test";
 import {
@@ -8,14 +9,14 @@ import {
 
 const [isolatedState, { db }, queryService, libraryStore] = await setupIsolatedBackend(
   "measured-query-slice",
-  "backend/config/db-sqlite.ts",
-  "backend/services/libraryQueryService.ts",
-  "backend/services/libraryMediaStore.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/services/libraryQueryService.ts"),
+  () => import("../../backend/services/libraryMediaStore.ts"),
 );
 
-let artist;
-let album;
-let track;
+let artist: import("../../backend/db/rows.ts").LibraryArtistsRow;
+let album: import("../../backend/db/rows.ts").LibraryAlbumsRow;
+let track: import("../../backend/db/rows.ts").LibraryTracksRow;
 
 beforeAll(() => {
   resetDatabase(db);
@@ -48,8 +49,8 @@ afterAll(async () => {
 });
 
 test("substring search uses the trigram index with stable pagination", () => {
-  const prepared = [];
-  const prepare = db.prepare.bind(db);
+  const prepared: string[] = [];
+  const prepare = db.prepare.bind(db) as typeof db.prepare;
   vi.spyOn(db, "prepare").mockImplementation((sql) => {
     prepared.push(String(sql));
     return prepare(sql);
@@ -72,7 +73,7 @@ test("substring search uses the trigram index with stable pagination", () => {
   assert.ok(searchSql);
   assert.match(searchSql, /MATCH \?/);
   assert.match(searchSql, /ORDER BY track\.id/);
-  const plan = prepare(`EXPLAIN QUERY PLAN ${searchSql}`).all(
+  const plan = prepare<unknown[], { detail: string }>(`EXPLAIN QUERY PLAN ${searchSql}`).all(
     '"nee" AND "eed" AND "edl" AND "dle"',
     "%needle%",
     "%needle%",
@@ -124,8 +125,8 @@ test("search keeps category matches and literal wildcards distinct after interle
       assert.ok(result.albums.albums.some((entry) => entry.id === laterAlbum.id));
     }
     const songs = queryService.getLibrarySearchPage({ query: "literal %_ song" });
-    assert.deepEqual(songs.artists, []);
-    assert.deepEqual(songs.albums.albums, []);
+    assert.deepEqual([...songs.artists], []);
+    assert.deepEqual([...songs.albums.albums], []);
     assert.deepEqual(
       songs.tracks.tracks.map((entry) => entry.id),
       [first.id],
@@ -137,12 +138,12 @@ test("search keeps category matches and literal wildcards distinct after interle
       albumOffset: 1,
       songLimit: 0,
     });
-    assert.deepEqual(albums.artists, []);
+    assert.deepEqual([...albums.artists], []);
     assert.deepEqual(
       albums.albums.albums.map((entry) => entry.id),
       [searchAlbum.id],
     );
-    assert.deepEqual(albums.tracks.tracks, []);
+    assert.deepEqual([...albums.tracks.tracks], []);
   } finally {
     db.prepare("DELETE FROM library_album_tracks WHERE album_id IN (?, ?)").run(
       searchAlbum.id,
@@ -192,7 +193,12 @@ test("unchanged library upserts do not rewrite search documents", () => {
       title: "Needle Song",
       artistName: artist.name,
     });
-    assert.equal(db.prepare("SELECT count FROM search_update_probe").get().count, 0);
+    assert.equal(
+      requireFixture(db)
+        .prepare<unknown[], { count: unknown }>("SELECT count FROM search_update_probe")
+        .get()!.count,
+      0,
+    );
   } finally {
     db.exec(`
       DROP TRIGGER search_update_probe_trigger;
@@ -205,10 +211,12 @@ test("library page search uses FTS and genre reads use the stored scan snapshot"
   queryService.rebuildLibraryGenreStats();
   queryService.invalidateLibraryQueryCache({ persistedGenres: false });
   const storedBefore = db
-    .prepare("SELECT key, value FROM settings WHERE key LIKE 'libraryGenreStats:%' ORDER BY key")
+    .prepare<unknown[], { key: string | null; value: string }>(
+      "SELECT key, value FROM settings WHERE key LIKE 'libraryGenreStats:%' ORDER BY key",
+    )
     .all();
-  const prepared = [];
-  const prepare = db.prepare.bind(db);
+  const prepared: string[] = [];
+  const prepare = db.prepare.bind(db) as typeof db.prepare;
   vi.spyOn(db, "prepare").mockImplementation((sql) => {
     prepared.push(String(sql));
     return prepare(sql);
@@ -229,7 +237,7 @@ test("library page search uses FTS and genre reads use the stored scan snapshot"
     (sql) => sql.includes("COUNT(DISTINCT track.id)") && sql.includes("library_search_fts MATCH ?"),
   );
   assert.ok(pageSearchSql);
-  const plan = prepare(`EXPLAIN QUERY PLAN ${pageSearchSql}`).all(
+  const plan = prepare<unknown[], { detail: string }>(`EXPLAIN QUERY PLAN ${pageSearchSql}`).all(
     '"nee" AND "eed" AND "edl" AND "dle"',
     "lidarr",
     "%needle%",
@@ -260,8 +268,8 @@ test("search documents update transactionally and random reads use rowid samplin
     "Renamed Needle Song",
   );
 
-  const prepared = [];
-  const prepare = db.prepare.bind(db);
+  const prepared: string[] = [];
+  const prepare = db.prepare.bind(db) as typeof db.prepare;
   vi.spyOn(db, "prepare").mockImplementation((sql) => {
     prepared.push(String(sql));
     return prepare(sql);
@@ -280,7 +288,7 @@ test("search documents update transactionally and random reads use rowid samplin
   assert.ok(randomSql);
   assert.match(randomSql, /ORDER BY track\.id/);
   assert.doesNotMatch(randomSql, /random\(\)/i);
-  const plan = prepare(`EXPLAIN QUERY PLAN ${randomSql}`).all(2, 1);
+  const plan = prepare<unknown[], { detail: string }>(`EXPLAIN QUERY PLAN ${randomSql}`).all(2, 1);
   assert.ok(plan.some((row) => row.detail.includes("SEARCH track USING INTEGER PRIMARY KEY")));
   assert.equal(
     plan.some((row) => row.detail.includes("USE TEMP B-TREE")),
@@ -315,8 +323,8 @@ test("artist pages project a large discography without library row hydration", (
     });
   }
 
-  const prepared = [];
-  const prepare = db.prepare.bind(db);
+  const prepared: string[] = [];
+  const prepare = db.prepare.bind(db) as typeof db.prepare;
   const spy = vi.spyOn(db, "prepare").mockImplementation((sql) => {
     prepared.push(String(sql));
     return prepare(sql);
@@ -330,7 +338,7 @@ test("artist pages project a large discography without library row hydration", (
     });
     assert.equal(page.total, 1);
     assert.equal(page.items[0].albumCount, albumCount);
-    assert.deepEqual(page.items[0].albumIds, []);
+    assert.deepEqual([...page.items[0].albumIds], []);
     assert.equal(
       prepared.filter(
         (sql) => sql.includes("track.id AS track_id") && sql.includes("media.id AS media_id"),
@@ -385,8 +393,8 @@ test("album track pages count and hydrate only the requested track slice", () =>
     }
   }
 
-  const prepared = [];
-  const prepare = db.prepare.bind(db);
+  const prepared: string[] = [];
+  const prepare = db.prepare.bind(db) as typeof db.prepare;
   const spy = vi.spyOn(db, "prepare").mockImplementation((sql) => {
     prepared.push(String(sql));
     return prepare(sql);

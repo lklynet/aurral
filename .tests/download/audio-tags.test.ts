@@ -21,7 +21,7 @@ const job = {
   trackNumber: 1,
 };
 
-function makeAudio(name, codec) {
+function makeAudio(name: string, codec: string[]) {
   const filePath = path.join(tempDir, name);
   const result = spawnSync(
     "ffmpeg",
@@ -46,7 +46,10 @@ function makeAudio(name, codec) {
   return filePath;
 }
 
-function tagAsUploader(filePath, build) {
+function tagAsUploader(
+  filePath: string,
+  build: (file: ReturnType<typeof taglib.File.createFromPath>) => void,
+) {
   const file = taglib.File.createFromPath(filePath);
   build(file);
   file.save();
@@ -68,6 +71,7 @@ test("tagging a download keeps the uploader's release ID, ratings, lyrics, Repla
   const filePath = makeAudio("uploaded.mp3", ["-c:a", "libmp3lame"]);
   tagAsUploader(filePath, (file) => {
     const id3 = file.getTag(taglib.TagTypes.Id3v2, true);
+    assert.ok(id3 instanceof taglib.Id3v2Tag);
     file.tag.title = "one more time (album version)";
     file.tag.grouping = "Live set";
     file.tag.musicBrainzTrackId = "99999999-9999-4999-8999-999999999999";
@@ -110,6 +114,7 @@ test("tagging an M4A keeps its freeform tags and the tags the job has no value f
   const filePath = makeAudio("uploaded.m4a", ["-c:a", "aac"]);
   tagAsUploader(filePath, (file) => {
     const apple = file.getTag(taglib.TagTypes.Apple, true);
+    assert.ok(apple instanceof taglib.Mpeg4AppleTag);
     apple.setItunesStrings("com.apple.iTunes", "replaygain_track_gain", "-4.20 dB");
     file.tag.musicBrainzReleaseGroupId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
     file.tag.musicBrainzReleaseId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";

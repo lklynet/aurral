@@ -15,15 +15,15 @@ const [
   { forwardWorkerBroadcast },
 ] = await setupIsolatedBackend(
   "subsonic-bounded-reads",
-  "backend/config/db-sqlite.ts",
-  "backend/services/subsonicLibraryService.ts",
-  "backend/services/libraryMediaStore.ts",
-  "backend/services/libraryQueryService.ts",
-  "backend/services/appRuntime.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/services/subsonicLibraryService.ts"),
+  () => import("../../backend/services/libraryMediaStore.ts"),
+  () => import("../../backend/services/libraryQueryService.ts"),
+  () => import("../../backend/services/appRuntime.ts"),
 );
 
-let album;
-let track;
+let album: import("../../backend/db/rows.ts").LibraryAlbumsRow;
+let track: import("../../backend/db/rows.ts").LibraryTracksRow;
 
 beforeAll(() => {
   resetDatabase(db);
@@ -61,7 +61,7 @@ afterAll(async () => {
 });
 
 test("focused Subsonic requests never execute an unfiltered complete-library query", () => {
-  const prepared = [];
+  const prepared: string[] = [];
   const prepare = db.prepare.bind(db);
   vi.spyOn(db, "prepare").mockImplementation((sql) => {
     prepared.push(String(sql));
@@ -71,12 +71,12 @@ test("focused Subsonic requests never execute an unfiltered complete-library que
     "bounded:track",
   );
 
-  assert.ok(subsonic.listArtists().length);
+  assert.ok(subsonic.listArtists(undefined).length);
   assert.ok(subsonic.getArtist(`artist:${encodeURIComponent("bounded:artist")}`));
   assert.ok(subsonic.getAlbum(`album:${encodeURIComponent("bounded:album")}`));
-  assert.ok(subsonic.searchLibrary("Bounded", { songCount: 1 }).song.length);
-  assert.ok(subsonic.getAlbumList({ size: 1 }).length);
-  assert.ok(subsonic.getSongsByGenre("Rock", { count: 1 }).length);
+  assert.ok(subsonic.searchLibrary("Bounded", { songCount: "1" }).song.length);
+  assert.ok(subsonic.getAlbumList({ size: "1" }).length);
+  assert.ok(subsonic.getSongsByGenre("Rock", { count: "1" }).length);
   assert.deepEqual(subsonic.getGenres(), [{ albumCount: 1, songCount: 1, value: "Rock" }]);
 
   const completeQueries = prepared.filter(
@@ -85,7 +85,7 @@ test("focused Subsonic requests never execute an unfiltered complete-library que
       sql.includes("LEFT JOIN library_media_files AS media") &&
       !/\bWHERE\b/.test(sql),
   );
-  assert.deepEqual(completeQueries, []);
+  assert.deepEqual([...completeQueries], []);
   const hydration = prepared.filter(
     (sql) => sql.includes("track.id AS track_id") && sql.includes("FROM library_tracks AS track"),
   );
@@ -112,7 +112,7 @@ test("Subsonic genres come from the last library scan until the library changes"
       data: { type: "library_scan_completed" },
     });
   };
-  const setGenre = (genre) => {
+  const setGenre = (genre: string) => {
     const metadata = JSON.stringify({ genres: [genre] });
     for (const table of ["library_artists", "library_albums", "library_tracks"]) {
       db.prepare(`UPDATE ${table} SET metadata_json = ? WHERE identity_key LIKE 'bounded:%'`).run(

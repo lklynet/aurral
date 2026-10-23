@@ -1,7 +1,9 @@
-import { test } from "vite-plus/test";
+import { asAppError } from "../../lib/errors.ts";
+import { test, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import { createMockHttpServer } from "../helpers/backendTestHarness.ts";
+import { testUser } from "../helpers/userFixtures.ts";
 import { dbOps } from "../../backend/db/helpers/index.ts";
 import { clearMetadataProviderCaches } from "../../backend/services/providers/brainzmashProvider.ts";
 import {
@@ -114,7 +116,7 @@ test("searchAlbums names the album's credited artist, not the first one listed",
 });
 
 test("searchAlbums puts the album an artist and title search names first", async () => {
-  const album = (id, artistname, title, secondarytypes = []) => ({
+  const album = (id: string, artistname: string, title: string, secondarytypes: string[] = []) => ({
     id,
     title,
     secondarytypes,
@@ -122,7 +124,7 @@ test("searchAlbums puts the album an artist and title search names first", async
     artists: [{ id: artistname, artistname }],
   });
   const server = await createMockHttpServer((request, response) => {
-    const url = new URL(request.url, "http://127.0.0.1");
+    const url = new URL(request.url!, "http://127.0.0.1");
     response.setHeader("content-type", "application/json");
     response.end(
       JSON.stringify(
@@ -165,7 +167,7 @@ test("searchAlbums puts the album an artist and title search names first", async
 
 test("searchAlbums reports a further page while more results exist", async () => {
   const server = await createMockHttpServer((request, response) => {
-    const url = new URL(request.url, "http://127.0.0.1");
+    const url = new URL(request.url!, "http://127.0.0.1");
     response.setHeader("content-type", "application/json");
     response.end(
       JSON.stringify(
@@ -206,481 +208,263 @@ test("normalizeAlbumReleaseTypesFilter removes invalid and duplicate release typ
   assert.deepEqual(normalizeAlbumReleaseTypesFilter("Album,Live,Album,Invalid"), ["Album", "Live"]);
 });
 
+const boardsOfCanada = {
+  id: 7,
+  artistName: "Boards of Canada",
+  foreignArtistId: "artist-mbid",
+  monitor: "none",
+};
+
+const geogaddi = {
+  id: 42,
+  artistId: 7,
+  foreignAlbumId: "album-mbid",
+  title: "Geogaddi",
+  monitored: true,
+  statistics: { percentOfTracks: 0, sizeOnDisk: 0 },
+};
+
 test("requestAlbumFromSearch queues a new artist album search with the artist add", async () => {
-  const originalIsConfigured = lidarrClient.isConfigured;
-  const originalGetAlbumByMbid = lidarrClient.getAlbumByMbid;
-  const originalGetArtist = libraryManager.getArtist;
-  const originalResolveArtistAddOptions = libraryManager.resolveArtistAddOptions;
-  const originalAddArtistWithResolvedOptions = libraryManager.addArtistWithResolvedOptions;
-  const originalWaitForAlbumByMbidForArtist = libraryManager.waitForAlbumByMbidForArtist;
-  const originalAddAlbum = libraryManager.addAlbum;
-
   let waitCalls = 0;
-  let artistAddOptions;
+  let artistAddOptions: Parameters<typeof libraryManager.addArtistWithResolvedOptions>[2];
 
-  lidarrClient.isConfigured = () => true;
-  lidarrClient.getAlbumByMbid = async () => null;
-  libraryManager.getArtist = async () => null;
-  libraryManager.resolveArtistAddOptions = async () => ({
-    quality: "standard",
-    monitorOption: "none",
-    rootFolderPath: "/music/main",
-    qualityProfileId: 7,
-  });
-  libraryManager.addArtistWithResolvedOptions = async (_mbid, _name, options) => {
-    artistAddOptions = options;
-    return {
-      id: "7",
-      mbid: "artist-mbid",
-      foreignArtistId: "artist-mbid",
-      artistName: "Boards of Canada",
-      monitorOption: "none",
-    };
-  };
-  libraryManager.waitForAlbumByMbidForArtist = async () => {
+  vi.spyOn(lidarrClient, "isConfigured").mockReturnValue(true);
+  vi.spyOn(lidarrClient, "getAlbumByMbid").mockResolvedValue(undefined);
+  vi.spyOn(libraryManager, "getArtist").mockResolvedValue(null);
+  vi.spyOn(libraryManager, "resolveArtistAddOptions").mockImplementation(
+    async () =>
+      ({
+        quality: "standard",
+        monitorOption: "none",
+        rootFolderPath: "/music/main",
+        qualityProfileId: 7,
+      }) as Awaited<ReturnType<typeof libraryManager.resolveArtistAddOptions>>,
+  );
+  vi.spyOn(libraryManager, "addArtistWithResolvedOptions").mockImplementation(
+    async (_mbid, _name, options) => {
+      artistAddOptions = options;
+      return {
+        id: "7",
+        mbid: "artist-mbid",
+        foreignArtistId: "artist-mbid",
+        artistName: "Boards of Canada",
+        monitorOption: "none",
+      } as Awaited<ReturnType<typeof libraryManager.addArtistWithResolvedOptions>>;
+    },
+  );
+  vi.spyOn(libraryManager, "waitForAlbumByMbidForArtist").mockImplementation(async () => {
     waitCalls += 1;
     return null;
-  };
-  libraryManager.addAlbum = async (artistId, albumMbid, albumName, options) => {
-    assert.equal(waitCalls, 0);
-    assert.equal(artistId, "7");
-    assert.equal(albumMbid, "album-mbid");
-    assert.equal(albumName, "Geogaddi");
-    assert.equal(options.triggerSearch, true);
-    return {
-      id: "42",
-      artistId: "7",
-      mbid: "album-mbid",
-      foreignAlbumId: "album-mbid",
-      albumName: "Geogaddi",
-      monitored: true,
-      statistics: {
-        percentOfTracks: 0,
-        sizeOnDisk: 0,
-      },
-    };
-  };
+  });
+  vi.spyOn(libraryManager, "addAlbum").mockImplementation(
+    async (artistId, albumMbid, albumName, options) => {
+      assert.equal(waitCalls, 0);
+      assert.equal(artistId, "7");
+      assert.equal(albumMbid, "album-mbid");
+      assert.equal(albumName, "Geogaddi");
+      assert.equal(options?.triggerSearch, true);
+      return {
+        id: "42",
+        artistId: "7",
+        mbid: "album-mbid",
+        foreignAlbumId: "album-mbid",
+        albumName: "Geogaddi",
+        monitored: true,
+        statistics: { percentOfTracks: 0, sizeOnDisk: 0 },
+      } as Awaited<ReturnType<typeof libraryManager.addAlbum>>;
+    },
+  );
 
-  try {
-    const result = await libraryManager.requestAlbumFromSearch({
-      albumMbid: "album-mbid",
-      albumName: "Geogaddi",
-      artistMbid: "artist-mbid",
-      artistName: "Boards of Canada",
-      triggerSearch: true,
-      user: {
-        role: "user",
-        permissions: { addAlbum: true, addArtist: true },
-      },
-    });
+  const result = await libraryManager.requestAlbumFromSearch({
+    albumMbid: "album-mbid",
+    albumName: "Geogaddi",
+    artistMbid: "artist-mbid",
+    artistName: "Boards of Canada",
+    triggerSearch: true,
+    user: testUser(1, { permissions: { addAlbum: true, addArtist: true } }),
+  });
 
-    assert.equal(result.success, true);
-    assert.equal(result.createdArtist, true);
-    assert.equal(result.createdAlbum, true);
-    assert.equal(result.triggeredSearch, true);
-    assert.equal(result.album.id, "42");
-    assert.equal(artistAddOptions.triggerSearch, true);
-  } finally {
-    lidarrClient.isConfigured = originalIsConfigured;
-    lidarrClient.getAlbumByMbid = originalGetAlbumByMbid;
-    libraryManager.getArtist = originalGetArtist;
-    libraryManager.resolveArtistAddOptions = originalResolveArtistAddOptions;
-    libraryManager.addArtistWithResolvedOptions = originalAddArtistWithResolvedOptions;
-    libraryManager.waitForAlbumByMbidForArtist = originalWaitForAlbumByMbidForArtist;
-    libraryManager.addAlbum = originalAddAlbum;
-  }
+  assert.equal(result.success, true);
+  assert.equal(result.createdArtist, true);
+  assert.equal(result.createdAlbum, true);
+  assert.equal(result.triggeredSearch, true);
+  assert.equal(result.album.id, "42");
+  assert.equal(artistAddOptions?.triggerSearch, true);
 });
 
 test("requestAlbumFromSearch preserves an addAlbum conflict status", async () => {
-  const originalIsConfigured = lidarrClient.isConfigured;
-  const originalGetAlbumByMbid = lidarrClient.getAlbumByMbid;
-  const originalGetArtist = libraryManager.getArtist;
-  const originalEnsureArtistMonitored = libraryManager.ensureArtistMonitored;
-  const originalAddAlbum = libraryManager.addAlbum;
-
-  lidarrClient.isConfigured = () => true;
-  lidarrClient.getAlbumByMbid = async () => null;
-  libraryManager.getArtist = async () => ({
+  vi.spyOn(lidarrClient, "isConfigured").mockReturnValue(true);
+  vi.spyOn(lidarrClient, "getAlbumByMbid").mockResolvedValue(undefined);
+  vi.spyOn(libraryManager, "getArtist").mockResolvedValue({
     id: "7",
     artistName: "Boards of Canada",
     foreignArtistId: "artist-mbid",
-  });
-  libraryManager.ensureArtistMonitored = async (artist) => artist;
-  libraryManager.addAlbum = async () => ({
-    error: "Album already exists in Lidarr under a different artist",
-    statusCode: 409,
-  });
+  } as Awaited<ReturnType<typeof libraryManager.getArtist>>);
+  vi.spyOn(libraryManager, "ensureArtistMonitored").mockImplementation(async (artist) => artist);
+  vi.spyOn(libraryManager, "addAlbum").mockImplementation(
+    async () =>
+      ({
+        error: "Album already exists in Lidarr under a different artist",
+        statusCode: 409,
+      }) as Awaited<ReturnType<typeof libraryManager.addAlbum>>,
+  );
 
-  try {
-    await assert.rejects(
-      () =>
-        libraryManager.requestAlbumFromSearch({
-          albumMbid: "album-mbid",
-          albumName: "Geogaddi",
-          artistMbid: "artist-mbid",
-          artistName: "Boards of Canada",
-        }),
-      (error) => {
-        assert.equal(error.statusCode, 409);
-        assert.equal(error.message, "Album already exists in Lidarr under a different artist");
-        return true;
-      },
-    );
-  } finally {
-    lidarrClient.isConfigured = originalIsConfigured;
-    lidarrClient.getAlbumByMbid = originalGetAlbumByMbid;
-    libraryManager.getArtist = originalGetArtist;
-    libraryManager.ensureArtistMonitored = originalEnsureArtistMonitored;
-    libraryManager.addAlbum = originalAddAlbum;
-  }
+  await assert.rejects(
+    () =>
+      libraryManager.requestAlbumFromSearch({
+        albumMbid: "album-mbid",
+        albumName: "Geogaddi",
+        artistMbid: "artist-mbid",
+        artistName: "Boards of Canada",
+      }),
+    (error) => {
+      assert.equal(asAppError(error)?.statusCode, 409);
+      assert.equal(
+        asAppError(error)?.message ?? "",
+        "Album already exists in Lidarr under a different artist",
+      );
+      return true;
+    },
+  );
 });
 
 test("requestAlbumFromSearch rejects when artist must be created without addArtist permission", async () => {
-  const originalIsConfigured = lidarrClient.isConfigured;
-  const originalGetArtist = libraryManager.getArtist;
+  vi.spyOn(lidarrClient, "isConfigured").mockReturnValue(true);
+  vi.spyOn(libraryManager, "getArtist").mockResolvedValue(null);
 
-  lidarrClient.isConfigured = () => true;
-  libraryManager.getArtist = async () => null;
-
-  try {
-    await assert.rejects(
-      () =>
-        libraryManager.requestAlbumFromSearch({
-          albumMbid: "album-mbid",
-          albumName: "Chrono Trigger",
-          artistMbid: "artist-mbid",
-          artistName: "Various Artists",
-          user: {
-            role: "user",
-            permissions: { addAlbum: true, addArtist: false },
-          },
-        }),
-      (error) => {
-        assert.equal(error.statusCode, 403);
-        assert.match(error.message, /Permission required: addArtist/);
-        return true;
-      },
-    );
-  } finally {
-    lidarrClient.isConfigured = originalIsConfigured;
-    libraryManager.getArtist = originalGetArtist;
-  }
+  await assert.rejects(
+    () =>
+      libraryManager.requestAlbumFromSearch({
+        albumMbid: "album-mbid",
+        albumName: "Chrono Trigger",
+        artistMbid: "artist-mbid",
+        artistName: "Various Artists",
+        user: testUser(1, { permissions: { addAlbum: true, addArtist: false } }),
+      }),
+    (error) => {
+      assert.equal(asAppError(error)?.statusCode, 403);
+      assert.match(asAppError(error)?.message ?? "", /Permission required: addArtist/);
+      return true;
+    },
+  );
 });
 
 test("addAlbum checks artist monitoring while monitoring only the requested album", async () => {
-  const originalIsConfigured = lidarrClient.isConfigured;
-  const originalGetArtist = lidarrClient.getArtist;
-  const originalGetAlbumByMbid = lidarrClient.getAlbumByMbid;
-  const originalAddAlbum = lidarrClient.addAlbum;
-  const originalUpdateArtistMonitoring = lidarrClient.updateArtistMonitoring;
-
-  let updateArtistMonitoringCalls = 0;
-
-  lidarrClient.isConfigured = () => true;
-  lidarrClient.getArtist = async () => ({
-    id: 7,
-    artistName: "Boards of Canada",
-    foreignArtistId: "artist-mbid",
-    monitored: false,
-    monitor: "none",
-  });
-  lidarrClient.getAlbumByMbid = async () => null;
-  lidarrClient.addAlbum = async () => ({
-    id: 42,
-    artistId: 7,
-    foreignAlbumId: "album-mbid",
-    title: "Geogaddi",
-    monitored: true,
-    statistics: {
-      percentOfTracks: 0,
-      sizeOnDisk: 0,
-    },
-  });
-  lidarrClient.updateArtistMonitoring = async (_artistId, monitorOption) => {
-    updateArtistMonitoringCalls += 1;
-    assert.equal(monitorOption, "none");
-    return {
-      id: 7,
-      artistName: "Boards of Canada",
-      foreignArtistId: "artist-mbid",
+  vi.spyOn(lidarrClient, "isConfigured").mockReturnValue(true);
+  vi.spyOn(lidarrClient, "getArtist").mockResolvedValue({ ...boardsOfCanada, monitored: false });
+  vi.spyOn(lidarrClient, "getAlbumByMbid").mockResolvedValue(undefined);
+  vi.spyOn(lidarrClient, "addAlbum").mockResolvedValue(geogaddi);
+  const updateArtistMonitoring = vi
+    .spyOn(lidarrClient, "updateArtistMonitoring")
+    .mockResolvedValue({
+      ...boardsOfCanada,
       monitored: true,
-      monitor: "none",
       monitorNewItems: "none",
-      addOptions: {
-        monitor: "none",
-      },
-    };
-  };
+      addOptions: { monitor: "none" },
+    });
 
-  try {
-    const album = await libraryManager.addAlbum(7, "album-mbid", "Geogaddi");
-    assert.equal(album.id, "42");
-    assert.equal(updateArtistMonitoringCalls, 1);
-  } finally {
-    lidarrClient.isConfigured = originalIsConfigured;
-    lidarrClient.getArtist = originalGetArtist;
-    lidarrClient.getAlbumByMbid = originalGetAlbumByMbid;
-    lidarrClient.addAlbum = originalAddAlbum;
-    lidarrClient.updateArtistMonitoring = originalUpdateArtistMonitoring;
-  }
+  const album = await libraryManager.addAlbum(7, "album-mbid", "Geogaddi");
+
+  assert.equal(album.id, "42");
+  assert.deepEqual(updateArtistMonitoring.mock.calls, [[7, "none"]]);
 });
 
 test("addAlbum force-refreshes and searches an existing album", async () => {
-  const originalIsConfigured = lidarrClient.isConfigured;
-  const originalGetArtist = lidarrClient.getArtist;
-  const originalGetAlbumByMbid = lidarrClient.getAlbumByMbid;
-  const originalGetAlbum = lidarrClient.getAlbum;
-  const originalAddAlbum = lidarrClient.addAlbum;
-  const originalTriggerAlbumSearch = lidarrClient.triggerAlbumSearch;
-  const originalEnsureRequestedAlbumMonitoring = libraryManager.ensureRequestedAlbumMonitoring;
-  const originalScheduleRequestedAlbumMonitoringRepair =
-    libraryManager.scheduleRequestedAlbumMonitoringRepair;
+  const existingAlbum = { ...geogaddi, foreignAlbumId: "fresh-album-mbid" };
 
-  const existingAlbum = {
-    id: 42,
-    artistId: 7,
-    foreignAlbumId: "fresh-album-mbid",
-    title: "Geogaddi",
-    monitored: true,
-    statistics: {
-      percentOfTracks: 0,
-      sizeOnDisk: 0,
-    },
-  };
-  let preflightOptions = null;
-  let addCalls = 0;
-  let searchCalls = 0;
+  vi.spyOn(lidarrClient, "isConfigured").mockReturnValue(true);
+  vi.spyOn(lidarrClient, "getArtist").mockResolvedValue({ ...boardsOfCanada, monitored: true });
+  const getAlbumByMbid = vi.spyOn(lidarrClient, "getAlbumByMbid").mockResolvedValue(existingAlbum);
+  vi.spyOn(lidarrClient, "getAlbum").mockResolvedValue(existingAlbum);
+  const addAlbum = vi.spyOn(lidarrClient, "addAlbum").mockResolvedValue(existingAlbum);
+  const triggerAlbumSearch = vi.spyOn(lidarrClient, "triggerAlbumSearch").mockResolvedValue({});
+  vi.spyOn(libraryManager, "ensureRequestedAlbumMonitoring").mockImplementation(
+    async () => ({}) as Awaited<ReturnType<typeof libraryManager.ensureRequestedAlbumMonitoring>>,
+  );
+  vi.spyOn(libraryManager, "scheduleRequestedAlbumMonitoringRepair").mockImplementation(() => {});
 
-  lidarrClient.isConfigured = () => true;
-  lidarrClient.getArtist = async () => ({
-    id: 7,
-    artistName: "Boards of Canada",
-    foreignArtistId: "artist-mbid",
-    monitored: true,
-    monitor: "none",
+  const album = await libraryManager.addAlbum(7, "fresh-album-mbid", "Geogaddi", {
+    triggerSearch: true,
   });
-  lidarrClient.getAlbumByMbid = async (_mbid, options) => {
-    preflightOptions = options;
-    return existingAlbum;
-  };
-  lidarrClient.getAlbum = async () => existingAlbum;
-  lidarrClient.addAlbum = async () => {
-    addCalls += 1;
-    return existingAlbum;
-  };
-  lidarrClient.triggerAlbumSearch = async (albumId) => {
-    searchCalls += 1;
-    assert.equal(albumId, 42);
-  };
-  libraryManager.ensureRequestedAlbumMonitoring = async () => ({});
-  libraryManager.scheduleRequestedAlbumMonitoringRepair = () => {};
 
-  try {
-    const album = await libraryManager.addAlbum(7, "fresh-album-mbid", "Geogaddi", {
-      triggerSearch: true,
-    });
-
-    assert.equal(album.id, "42");
-    assert.equal(preflightOptions?.forceRefresh, true);
-    assert.equal(addCalls, 0);
-    assert.equal(searchCalls, 1);
-  } finally {
-    lidarrClient.isConfigured = originalIsConfigured;
-    lidarrClient.getArtist = originalGetArtist;
-    lidarrClient.getAlbumByMbid = originalGetAlbumByMbid;
-    lidarrClient.getAlbum = originalGetAlbum;
-    lidarrClient.addAlbum = originalAddAlbum;
-    lidarrClient.triggerAlbumSearch = originalTriggerAlbumSearch;
-    libraryManager.ensureRequestedAlbumMonitoring = originalEnsureRequestedAlbumMonitoring;
-    libraryManager.scheduleRequestedAlbumMonitoringRepair =
-      originalScheduleRequestedAlbumMonitoringRepair;
-  }
+  assert.equal(album.id, "42");
+  assert.equal(getAlbumByMbid.mock.calls[0][1]?.forceRefresh, true);
+  assert.equal(addAlbum.mock.calls.length, 0);
+  assert.deepEqual(triggerAlbumSearch.mock.calls, [[42]]);
 });
 
 test("addAlbum coalesces concurrent requests for the same album", async () => {
-  const originalIsConfigured = lidarrClient.isConfigured;
-  const originalGetArtist = lidarrClient.getArtist;
-  const originalGetAlbumByMbid = lidarrClient.getAlbumByMbid;
-  const originalAddAlbum = lidarrClient.addAlbum;
-
-  let addCalls = 0;
-  let releaseAdd;
-  const addGate = new Promise((resolve) => {
+  let releaseAdd!: () => void;
+  const addGate = new Promise<void>((resolve) => {
     releaseAdd = resolve;
   });
 
-  lidarrClient.isConfigured = () => true;
-  lidarrClient.getArtist = async () => ({
-    id: 7,
-    artistName: "Boards of Canada",
-    foreignArtistId: "artist-mbid",
-    monitored: true,
-    monitor: "none",
-  });
-  lidarrClient.getAlbumByMbid = async () => null;
-  lidarrClient.addAlbum = async () => {
-    addCalls += 1;
+  vi.spyOn(lidarrClient, "isConfigured").mockReturnValue(true);
+  vi.spyOn(lidarrClient, "getArtist").mockResolvedValue({ ...boardsOfCanada, monitored: true });
+  vi.spyOn(lidarrClient, "getAlbumByMbid").mockResolvedValue(undefined);
+  const addAlbum = vi.spyOn(lidarrClient, "addAlbum").mockImplementation(async () => {
     await addGate;
-    return {
-      id: 42,
-      artistId: 7,
-      foreignAlbumId: "concurrent-album-mbid",
-      title: "Geogaddi",
-      monitored: true,
-      statistics: {
-        percentOfTracks: 0,
-        sizeOnDisk: 0,
-      },
-    };
-  };
+    return { ...geogaddi, foreignAlbumId: "concurrent-album-mbid" };
+  });
 
-  try {
-    const firstRequest = libraryManager.addAlbum(7, "concurrent-album-mbid", "Geogaddi");
-    const secondRequest = libraryManager.addAlbum(7, "concurrent-album-mbid", "Geogaddi");
-    releaseAdd();
+  const firstRequest = libraryManager.addAlbum(7, "concurrent-album-mbid", "Geogaddi");
+  const secondRequest = libraryManager.addAlbum(7, "concurrent-album-mbid", "Geogaddi");
+  releaseAdd();
 
-    const [first, second] = await Promise.all([firstRequest, secondRequest]);
-    assert.equal(addCalls, 1);
-    assert.equal(first.id, "42");
-    assert.equal(second.id, "42");
-  } finally {
-    lidarrClient.isConfigured = originalIsConfigured;
-    lidarrClient.getArtist = originalGetArtist;
-    lidarrClient.getAlbumByMbid = originalGetAlbumByMbid;
-    lidarrClient.addAlbum = originalAddAlbum;
-  }
+  const [first, second] = await Promise.all([firstRequest, secondRequest]);
+  assert.equal(addAlbum.mock.calls.length, 1);
+  assert.equal(first.id, "42");
+  assert.equal(second.id, "42");
 });
 
 test("addAlbum reports when Lidarr already owns an album under another artist", async () => {
-  const originalIsConfigured = lidarrClient.isConfigured;
-  const originalGetArtist = lidarrClient.getArtist;
-  const originalGetAlbumByMbid = lidarrClient.getAlbumByMbid;
-  const originalAddAlbum = lidarrClient.addAlbum;
-
-  let addCalls = 0;
-  lidarrClient.isConfigured = () => true;
-  lidarrClient.getArtist = async () => ({
-    id: 7,
-    artistName: "Boards of Canada",
-    foreignArtistId: "artist-mbid",
-    monitored: true,
-    monitor: "none",
-  });
-  lidarrClient.getAlbumByMbid = async () => ({
+  vi.spyOn(lidarrClient, "isConfigured").mockReturnValue(true);
+  vi.spyOn(lidarrClient, "getArtist").mockResolvedValue({ ...boardsOfCanada, monitored: true });
+  vi.spyOn(lidarrClient, "getAlbumByMbid").mockResolvedValue({
     id: 99,
     artistId: 8,
     foreignAlbumId: "owned-by-another-artist",
     title: "Geogaddi",
     monitored: true,
   });
-  lidarrClient.addAlbum = async () => {
-    addCalls += 1;
-    throw new Error("AlbumExistsValidator: This album has already been added");
-  };
+  const addAlbum = vi
+    .spyOn(lidarrClient, "addAlbum")
+    .mockRejectedValue(new Error("AlbumExistsValidator: This album has already been added"));
 
-  try {
-    const result = await libraryManager.addAlbum(7, "owned-by-another-artist", "Geogaddi");
+  const result = await libraryManager.addAlbum(7, "owned-by-another-artist", "Geogaddi");
 
-    assert.equal(result.statusCode, 409);
-    assert.equal(result.error, "Album already exists in Lidarr under a different artist");
-    assert.equal(addCalls, 0);
-  } finally {
-    lidarrClient.isConfigured = originalIsConfigured;
-    lidarrClient.getArtist = originalGetArtist;
-    lidarrClient.getAlbumByMbid = originalGetAlbumByMbid;
-    lidarrClient.addAlbum = originalAddAlbum;
-  }
+  assert.equal(result.statusCode, 409);
+  assert.equal(result.error, "Album already exists in Lidarr under a different artist");
+  assert.equal(addAlbum.mock.calls.length, 0);
 });
 
 test("addAlbum monitors and searches the requested album after Lidarr conflict lag", async () => {
-  const originalIsConfigured = lidarrClient.isConfigured;
-  const originalGetArtist = lidarrClient.getArtist;
-  const originalGetAlbumByMbid = lidarrClient.getAlbumByMbid;
-  const originalAddAlbum = lidarrClient.addAlbum;
-  const originalGetAlbum = lidarrClient.getAlbum;
-  const originalMonitorAlbum = lidarrClient.monitorAlbum;
-  const originalTriggerAlbumSearch = lidarrClient.triggerAlbumSearch;
-  const originalUpdateArtistMonitoring = lidarrClient.updateArtistMonitoring;
-  const originalWaitForAlbumByMbidForArtist = libraryManager.waitForAlbumByMbidForArtist;
+  vi.spyOn(lidarrClient, "isConfigured").mockReturnValue(true);
+  vi.spyOn(lidarrClient, "getArtist").mockResolvedValue({ ...boardsOfCanada, monitored: false });
+  vi.spyOn(lidarrClient, "getAlbumByMbid").mockResolvedValue(undefined);
+  const updateArtistMonitoring = vi
+    .spyOn(lidarrClient, "updateArtistMonitoring")
+    .mockResolvedValue({ ...boardsOfCanada, monitored: true });
+  vi.spyOn(lidarrClient, "addAlbum").mockRejectedValue(
+    new Error("AlbumExistsValidator: This album has already been added"),
+  );
+  vi.spyOn(libraryManager, "waitForAlbumByMbidForArtist").mockImplementation(
+    async () =>
+      ({ ...geogaddi, monitored: false }) as Awaited<
+        ReturnType<typeof libraryManager.waitForAlbumByMbidForArtist>
+      >,
+  );
+  const monitorAlbum = vi.spyOn(lidarrClient, "monitorAlbum").mockResolvedValue(geogaddi);
+  const triggerAlbumSearch = vi.spyOn(lidarrClient, "triggerAlbumSearch").mockResolvedValue({});
+  vi.spyOn(lidarrClient, "getAlbum").mockResolvedValue(geogaddi);
 
-  let monitorCalls = 0;
-  let searchCalls = 0;
-  let updateArtistMonitoringCalls = 0;
-
-  lidarrClient.isConfigured = () => true;
-  lidarrClient.getArtist = async () => ({
-    id: 7,
-    artistName: "Boards of Canada",
-    foreignArtistId: "artist-mbid",
-    monitored: false,
-    monitor: "none",
-  });
-  lidarrClient.getAlbumByMbid = async () => null;
-  lidarrClient.updateArtistMonitoring = async (_artistId, monitorOption) => {
-    updateArtistMonitoringCalls += 1;
-    assert.equal(monitorOption, "none");
-    return {
-      id: 7,
-      artistName: "Boards of Canada",
-      foreignArtistId: "artist-mbid",
-      monitored: true,
-      monitor: "none",
-    };
-  };
-  lidarrClient.addAlbum = async () => {
-    throw new Error("AlbumExistsValidator: This album has already been added");
-  };
-  libraryManager.waitForAlbumByMbidForArtist = async () => ({
-    id: 42,
-    artistId: "7",
-    foreignAlbumId: "album-mbid",
-    title: "Geogaddi",
-    monitored: false,
-    statistics: {
-      percentOfTracks: 0,
-      sizeOnDisk: 0,
-    },
-  });
-  lidarrClient.monitorAlbum = async (albumId, monitored) => {
-    monitorCalls += 1;
-    assert.equal(albumId, 42);
-    assert.equal(monitored, true);
-  };
-  lidarrClient.triggerAlbumSearch = async (albumId) => {
-    searchCalls += 1;
-    assert.equal(albumId, 42);
-  };
-  lidarrClient.getAlbum = async () => ({
-    id: 42,
-    artistId: 7,
-    foreignAlbumId: "album-mbid",
-    title: "Geogaddi",
-    monitored: true,
-    statistics: {
-      percentOfTracks: 0,
-      sizeOnDisk: 0,
-    },
+  const album = await libraryManager.addAlbum(7, "album-mbid", "Geogaddi", {
+    triggerSearch: true,
   });
 
-  try {
-    const album = await libraryManager.addAlbum(7, "album-mbid", "Geogaddi", {
-      triggerSearch: true,
-    });
-
-    assert.equal(album.id, "42");
-    assert.equal(album.monitored, true);
-    assert.equal(updateArtistMonitoringCalls, 1);
-    assert.equal(monitorCalls, 1);
-    assert.equal(searchCalls, 1);
-  } finally {
-    lidarrClient.isConfigured = originalIsConfigured;
-    lidarrClient.getArtist = originalGetArtist;
-    lidarrClient.getAlbumByMbid = originalGetAlbumByMbid;
-    lidarrClient.addAlbum = originalAddAlbum;
-    lidarrClient.getAlbum = originalGetAlbum;
-    lidarrClient.monitorAlbum = originalMonitorAlbum;
-    lidarrClient.triggerAlbumSearch = originalTriggerAlbumSearch;
-    lidarrClient.updateArtistMonitoring = originalUpdateArtistMonitoring;
-    libraryManager.waitForAlbumByMbidForArtist = originalWaitForAlbumByMbidForArtist;
-  }
+  assert.equal(album.id, "42");
+  assert.equal(album.monitored, true);
+  assert.deepEqual(updateArtistMonitoring.mock.calls, [[7, "none"]]);
+  assert.deepEqual(monitorAlbum.mock.calls, [[42, true]]);
+  assert.deepEqual(triggerAlbumSearch.mock.calls, [[42]]);
 });

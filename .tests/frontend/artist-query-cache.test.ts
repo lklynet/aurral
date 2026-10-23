@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test, vi } from "vite-plus/test";
 
-test("artist REST details coalesce identical requests through Query", async (t) => {
+test("artist REST details coalesce identical requests through Query", async (t: import("vite-plus/test").TestContext) => {
   vi.resetModules();
   const previousFetch = globalThis.fetch;
   let requestCount = 0;
@@ -28,12 +28,12 @@ test("artist REST details coalesce identical requests through Query", async (t) 
   assert.equal(first.id, "artist-1");
 });
 
-test("artist cover refreshes do not reuse or get overwritten by normal requests", async (t) => {
+test("artist cover refreshes do not reuse or get overwritten by normal requests", async (t: import("vite-plus/test").TestContext) => {
   vi.resetModules();
   const previousFetch = globalThis.fetch;
   let requestCount = 0;
-  let resolveNormal;
-  const response = (image) =>
+  let resolveNormal: (() => void) | undefined;
+  const response = (image: string) =>
     new Response(JSON.stringify({ images: [{ image, front: true }] }), {
       status: 200,
       headers: { "content-type": "application/json" },
@@ -41,7 +41,7 @@ test("artist cover refreshes do not reuse or get overwritten by normal requests"
   globalThis.fetch = async () => {
     requestCount += 1;
     if (requestCount === 1) {
-      return new Promise((resolve) => {
+      return new Promise<Response>((resolve) => {
         resolveNormal = () => resolve(response("https://images.example/normal.jpg"));
       });
     }
@@ -53,9 +53,9 @@ test("artist cover refreshes do not reuse or get overwritten by normal requests"
 
   const { getArtistCover } = await import("../../frontend/src/utils/api/endpoints/artists.ts");
   const normal = getArtistCover("artist-1", "Artist");
-  while (!resolveNormal) await new Promise((resolve) => setImmediate(resolve));
+  while (!resolveNormal) await new Promise<void>((resolve) => setImmediate(resolve));
   const refresh = getArtistCover("artist-1", "Artist", true);
-  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise<void>((resolve) => setImmediate(resolve));
   assert.equal(requestCount, 1);
 
   resolveNormal();
@@ -67,12 +67,12 @@ test("artist cover refreshes do not reuse or get overwritten by normal requests"
   assert.equal(cached.images[0].image, "https://images.example/refreshed.jpg");
 });
 
-test("normal cover requests wait for active artist and release-group refreshes", async (t) => {
+test("normal cover requests wait for active artist and release-group refreshes", async (t: import("vite-plus/test").TestContext) => {
   vi.resetModules();
   const previousFetch = globalThis.fetch;
   const requestCounts = new Map();
   const releaseRefreshes = new Map();
-  const response = (key, image) =>
+  const response = (key: string, image: string) =>
     new Response(
       JSON.stringify(
         key === "artist"
@@ -91,7 +91,7 @@ test("normal cover requests wait for active artist and release-group refreshes",
     if (requestCount === 1) {
       return response(key, `https://images.example/${key}-stale.jpg`);
     }
-    return new Promise((resolve) => {
+    return new Promise<Response>((resolve) => {
       releaseRefreshes.set(key, () =>
         resolve(response(key, `https://images.example/${key}-fresh.jpg`)),
       );
@@ -106,14 +106,22 @@ test("normal cover requests wait for active artist and release-group refreshes",
   const cases = [
     {
       key: "artist",
-      getCover: (refresh = false) => getArtistCover("artist-priority", "Artist", refresh),
-      getImage: (result) => result.images[0].image,
+      getCover: (refresh: boolean = false) => getArtistCover("artist-priority", "Artist", refresh),
+      getImage: (
+        result:
+          | import("../../backend/routes/artists/handlers/cover.ts").ArtistCoverResponse
+          | import("../../backend/routes/artists/handlers/releaseGroup.ts").ReleaseGroupCoverResponse,
+      ) => result.images[0].image,
     },
     {
       key: "release-group",
       getCover: (refresh = false) =>
         getReleaseGroupCover("release-priority", { bypassCache: refresh }),
-      getImage: (result) => result.imageUrl,
+      getImage: (
+        result:
+          | import("../../backend/routes/artists/handlers/cover.ts").ArtistCoverResponse
+          | import("../../backend/routes/artists/handlers/releaseGroup.ts").ReleaseGroupCoverResponse,
+      ) => ("imageUrl" in result ? result.imageUrl : result.images[0].image),
     },
   ];
 
@@ -123,7 +131,7 @@ test("normal cover requests wait for active artist and release-group refreshes",
 
     const refresh = getCover(true);
     while (!releaseRefreshes.has(key)) {
-      await new Promise((resolve) => setImmediate(resolve));
+      await new Promise<void>((resolve) => setImmediate(resolve));
     }
     const normal = getCover();
     releaseRefreshes.get(key)();
@@ -135,7 +143,7 @@ test("normal cover requests wait for active artist and release-group refreshes",
   }
 });
 
-test("batch and single release-group cover requests each get their own response shape", async (t) => {
+test("batch and single release-group cover requests each get their own response shape", async (t: import("vite-plus/test").TestContext) => {
   vi.resetModules();
   const previousFetch = globalThis.fetch;
   globalThis.fetch = async (input) => {

@@ -5,9 +5,9 @@ import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTe
 const [paths, { default: createWorker }, { getSystemTaskQueue }, { db }] =
   await setupIsolatedBackend(
     "metadata-interruption",
-    "backend/services/honkerWorkerFactory.ts",
-    "backend/services/honkerDb.ts",
-    "backend/config/db-sqlite.ts",
+    () => import("../../backend/services/honkerWorkerFactory.ts"),
+    () => import("../../backend/services/honkerDb.ts"),
+    () => import("../../backend/config/db-sqlite.ts"),
   );
 afterAll(() => cleanupIsolatedState(paths));
 
@@ -15,8 +15,8 @@ test("shutdown preserves unfinished metadata at its final retry attempt", async 
   const queue = getSystemTaskQueue();
   const id = queue.enqueue({ kind: "release-metadata-refresh" });
   db.prepare("UPDATE _honker_live SET attempts = 2 WHERE id = ?").run(id);
-  let reached;
-  const started = new Promise((resolve) => {
+  let reached!: () => void;
+  const started = new Promise<void>((resolve) => {
     reached = resolve;
   });
   const worker = createWorker({
@@ -24,10 +24,11 @@ test("shutdown preserves unfinished metadata at its final retry attempt", async 
     getQueue: () => queue,
     idlePollS: 1,
     interruptible: true,
-    async processJob(payload, job, { signal } = {}) {
+    async processJob(payload, job, { signal }) {
       reached();
-      await new Promise((resolve, reject) => {
-        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+      await new Promise<never>((resolve, reject) => {
+        assert.ok(signal);
+        signal.addEventListener("abort", () => reject(signal?.reason), { once: true });
       });
     },
   });
@@ -54,8 +55,8 @@ test("shutdown interrupts a contending metadata claim without executing it", asy
   const lease = await acquireReleaseMetadataLease();
   const queue = getSystemTaskQueue();
   const id = queue.enqueue({ kind: "release-metadata-refresh" });
-  let dequeued;
-  const claimed = new Promise((resolve) => {
+  let dequeued!: () => void;
+  const claimed = new Promise<void>((resolve) => {
     dequeued = resolve;
   });
   let executed = false;
@@ -90,15 +91,16 @@ test("an interrupted stale claim cannot overwrite its replacement owner", async 
   const queue = getSystemTaskQueue();
   const id = queue.enqueue({ kind: "release-metadata-refresh" });
   const claim = queue.claimOne(getWorkerId());
+  assert.ok(claim != null);
   db.prepare("UPDATE _honker_live SET worker_id = ?, attempts = 2 WHERE id = ?").run(
     "replacement-owner",
     id,
   );
   try {
     requeueInterruptedHonkerJob(claim, queue);
-    assert.equal(queue.getJob(id).state, "processing");
-    assert.equal(queue.getJob(id).worker_id, "replacement-owner");
-    assert.equal(queue.getJob(id).attempts, 2);
+    assert.equal(queue.getJob(id)!.state, "processing");
+    assert.equal(queue.getJob(id)!.worker_id, "replacement-owner");
+    assert.equal(queue.getJob(id)!.attempts, 2);
   } finally {
     queue.cancel(id);
   }
@@ -111,14 +113,15 @@ test("lease renewal failure aborts a blocked provider request", async () => {
   const { default: axios } = await import("../../lib/axiosFetch.ts");
   vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"], now: 0 });
   const lease = await acquireReleaseMetadataLease();
-  let requested;
-  const started = new Promise((resolve) => {
+  let requested!: () => void;
+  const started = new Promise<void>((resolve) => {
     requested = resolve;
   });
   vi.spyOn(axios, "get").mockImplementation(
-    (_url, { signal }) =>
-      new Promise((_resolve, reject) => {
-        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+    (_url, config) =>
+      new Promise<never>((_resolve, reject) => {
+        const signal = config?.signal;
+        signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
         requested();
       }),
   );

@@ -1,3 +1,4 @@
+import { requireFixture } from "./playlists/fixtures.ts";
 import assert from "node:assert/strict";
 import { test, afterAll } from "vite-plus/test";
 import express from "express";
@@ -7,6 +8,7 @@ import {
   setupIsolatedBackend,
 } from "./helpers/backendTestHarness.ts";
 import { useFakeClock } from "./helpers/fakeClock.ts";
+import type { CachedArtistImage } from "../backend/db/helpers/cache.ts";
 
 const [
   state,
@@ -18,12 +20,12 @@ const [
   { issueStreamToken },
 ] = await setupIsolatedBackend(
   "artist-image-race",
-  "backend/db/helpers/index.ts",
-  "backend/services/imageService.ts",
-  "backend/routes/artists/handlers/details.ts",
-  "backend/routes/artists/handlers/cover.ts",
-  "backend/routes/artists/handlers/stream.ts",
-  "backend/middleware/auth.ts",
+  () => import("../backend/db/helpers/index.ts"),
+  () => import("../backend/services/imageService.ts"),
+  () => import("../backend/routes/artists/handlers/details.ts"),
+  () => import("../backend/routes/artists/handlers/cover.ts"),
+  () => import("../backend/routes/artists/handlers/stream.ts"),
+  () => import("../backend/middleware/auth.ts"),
 );
 
 useFakeClock();
@@ -53,7 +55,7 @@ globalThis.fetch = async (input, init) => {
 const app = express();
 app.use(express.json());
 app.use((req, _res, next) => {
-  req.user = { id: 1, username: "test", role: "admin" };
+  req.user = { id: 1, username: "test", role: "admin", permissions: {} };
   next();
 });
 registerDetails(app);
@@ -69,14 +71,14 @@ afterAll(async () => {
   await cleanupIsolatedState(state);
 });
 
-const artistId = (number) => `11111111-1111-4111-8111-${String(number).padStart(12, "0")}`;
+const artistId = (number: number) => `11111111-1111-4111-8111-${String(number).padStart(12, "0")}`;
 const oldImage = "https://images.example/old-artist.jpg";
 const newImage = "https://images.example/current-artist.jpg";
-const image = (url) => ({ CoverType: "Artist", Url: url });
+const image = (url: string) => ({ CoverType: "Artist", Url: url });
 
 function gate() {
-  const started = Promise.withResolvers();
-  const released = Promise.withResolvers();
+  const started = Promise.withResolvers<void>();
+  const released = Promise.withResolvers<void>();
   return {
     started: started.promise,
     release: released.resolve,
@@ -87,7 +89,18 @@ function gate() {
   };
 }
 
-function artist(mbid, { images = [], albums = [], before = async () => {} } = {}) {
+function artist(
+  mbid: string,
+  {
+    images = [],
+    albums = [],
+    before = async () => {},
+  }: {
+    images?: { CoverType: string; Url: string }[];
+    albums?: { id: string; title: string; type: string; firstreleasedate?: string }[];
+    before?: () => Promise<void>;
+  } = {},
+) {
   fixtures.set(`metadata.invalid/artist/${mbid}`, async () => {
     await before();
     return {
@@ -106,7 +119,7 @@ function artist(mbid, { images = [], albums = [], before = async () => {} } = {}
   });
 }
 
-async function putOverride(mbid, body) {
+async function putOverride(mbid: string, body: { musicbrainzId?: string }) {
   const response = await fetch(`${server.url}/${mbid}/overrides`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
@@ -116,18 +129,18 @@ async function putOverride(mbid, body) {
   return response.json();
 }
 
-async function cover(mbid) {
+async function cover(mbid: string) {
   const response = await fetch(`${server.url}/${mbid}/cover`);
   assert.equal(response.status, 200);
   return response.json();
 }
 
-async function whileOldIsBlocked(promise) {
-  let timer;
+async function whileOldIsBlocked<T>(promise: Promise<T>) {
+  let timer: NodeJS.Timeout | undefined;
   try {
     return await Promise.race([
       promise,
-      new Promise((_resolve, reject) => {
+      new Promise<never>((_resolve, reject) => {
         timer = setTimeout(
           () =>
             reject(
@@ -151,7 +164,7 @@ for (const [index, source, lookup] of [
   [4, "not-found result", getArtistImage],
   [5, "direct image", cover],
   [6, "not-found result", cover],
-]) {
+] as const) {
   const endpoint = lookup === cover ? "cover endpoint" : "image service";
   test(`${endpoint} keeps the override when an old ${source} finishes last`, async () => {
     const mbid = artistId(index);
@@ -187,7 +200,7 @@ for (const [index, source, lookup] of [
 
     const oldLookup = lookup(mbid);
     await oldGate.started;
-    let latest;
+    let latest: ReturnType<typeof lookup> | undefined;
     try {
       const saved = await putOverride(mbid, { musicbrainzId: replacement });
       assert.equal(saved.musicbrainzId, replacement);
@@ -225,7 +238,14 @@ test("cached album recovery cannot overwrite an image selected after an override
   dbOps.setImage(`rg:${albumId}`, oldImage);
   const oldLookup = getArtistImage(mbid);
   await oldGate.started;
-  let latest;
+  let latest:
+    | Promise<{
+        url: string | null;
+        images: CachedArtistImage[];
+        notFound?: boolean;
+        transientError?: boolean;
+      }>
+    | undefined;
   try {
     await putOverride(mbid, { musicbrainzId: replacement });
     latest = getArtistImage(mbid);
@@ -260,7 +280,14 @@ test("clearing an override starts a fresh lookup without changing the override r
   dbOps.setArtistOverride(mbid, { musicbrainzId: previous, deezerArtistId: "9876" });
   const oldLookup = getArtistImage(mbid);
   await oldGate.started;
-  let latest;
+  let latest:
+    | Promise<{
+        url: string | null;
+        images: CachedArtistImage[];
+        notFound?: boolean;
+        transientError?: boolean;
+      }>
+    | undefined;
   try {
     assert.deepEqual(await putOverride(mbid, {}), {
       mbid,
@@ -285,14 +312,24 @@ test("an old sibling search cannot replace a newer explicit override", async () 
   artist(mbid);
   artist(replacement, { images: [image(newImage)] });
   artist(sibling, { images: [image(oldImage)] });
-  fixtures.set("metadata.invalid/search/artist", async (url) => {
-    if (url.searchParams.get("query") !== `Artist ${mbid}`) return [];
-    await searchGate.wait();
-    return [{ id: sibling, artistname: `Artist ${mbid}`, images: [image(oldImage)] }];
-  });
+  fixtures.set(
+    "metadata.invalid/search/artist",
+    async (url: { searchParams: { get: (arg0: string) => string } }) => {
+      if (url.searchParams.get("query") !== `Artist ${mbid}`) return [];
+      await searchGate.wait();
+      return [{ id: sibling, artistname: `Artist ${mbid}`, images: [image(oldImage)] }];
+    },
+  );
   const oldLookup = getArtistImage(mbid);
   await searchGate.started;
-  let latest;
+  let latest:
+    | Promise<{
+        url: string | null;
+        images: CachedArtistImage[];
+        notFound?: boolean;
+        transientError?: boolean;
+      }>
+    | undefined;
   try {
     await putOverride(mbid, { musicbrainzId: replacement });
     latest = getArtistImage(mbid);
@@ -342,13 +379,20 @@ test("an old stream not-found result cannot overwrite the current image", async 
       picture_big: null,
     };
   });
-  const token = issueStreamToken({ id: 1, username: "test", role: "admin" });
+  const token = issueStreamToken({ id: 1, username: "test", role: "admin", permissions: {} });
   const oldStream = fetch(`${server.url}/${mbid}/stream?st=${token}`).then(async (response) => {
     assert.equal(response.status, 200);
     return response.text();
   });
   await oldGate.started;
-  let latest;
+  let latest:
+    | Promise<{
+        url: string | null;
+        images: CachedArtistImage[];
+        notFound?: boolean;
+        transientError?: boolean;
+      }>
+    | undefined;
   try {
     await putOverride(mbid, { musicbrainzId: replacement });
     latest = getArtistImage(mbid);
@@ -370,7 +414,14 @@ test("finishing an old lookup leaves the replacement lookup registered", async (
   artist(replacement, { images: [image(newImage)], before: () => newGate.wait() });
   const oldLookup = getArtistImage(mbid);
   await oldGate.started;
-  let latest;
+  let latest:
+    | Promise<{
+        url: string | null;
+        images: CachedArtistImage[];
+        notFound?: boolean;
+        transientError?: boolean;
+      }>
+    | undefined;
   try {
     await putOverride(mbid, { musicbrainzId: replacement });
     latest = getArtistImage(mbid);
@@ -392,13 +443,13 @@ for (const [index, recoveredUrl, finishRecoveryFirst] of [
   [15, null, false],
   [16, oldImage, true],
   [17, null, true],
-]) {
+] as const) {
   const recoveryResult = recoveredUrl ? "a cached cover" : "no cached cover";
   const order = finishRecoveryFirst ? "first" : "last";
   test(`forced refresh supersedes negative-cache recovery returning ${recoveryResult} ${order}`, async () => {
     const mbid = artistId(index);
-    const albumId = artistId(index + 200);
-    const deezerArtistId = String(6000 + index);
+    const albumId = artistId(requireFixture(index) + 200);
+    const deezerArtistId = String(6000 + requireFixture(index));
     const recoveryGate = gate();
     const providerGate = gate();
     let providerRequests = 0;
@@ -426,8 +477,22 @@ for (const [index, recoveredUrl, finishRecoveryFirst] of [
     await recoveryGate.started;
     const refreshed = getArtistImage(mbid, { forceRefresh: true });
     const repeatedRefresh = getArtistImage(mbid, true);
-    let laterRefresh;
-    let normalLookup;
+    let laterRefresh:
+      | Promise<{
+          url: string | null;
+          images: CachedArtistImage[];
+          notFound?: boolean;
+          transientError?: boolean;
+        }>
+      | undefined;
+    let normalLookup:
+      | Promise<{
+          url: string | null;
+          images: CachedArtistImage[];
+          notFound?: boolean;
+          transientError?: boolean;
+        }>
+      | undefined;
     try {
       await whileOldIsBlocked(providerGate.started);
       if (finishRecoveryFirst) {

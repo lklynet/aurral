@@ -6,13 +6,13 @@ import {
   listenbrainzGetReleaseGroupListens,
 } from "../../backend/services/apiClients/listenbrainz.ts";
 
-test("a ListenBrainz failure is asked again after five minutes instead of the hour a good answer is kept", async (t) => {
+test("a ListenBrainz failure is asked again after five minutes instead of the hour a good answer is kept", async (t: import("vite-plus/test").TestContext) => {
   const originalFetch = globalThis.fetch;
   t.onTestFinished(() => {
     globalThis.fetch = originalFetch;
   });
   const releaseGroupMbids = ["99999999-0000-4000-8000-000000000001"];
-  const requests = [];
+  const requests: string[] = [];
   globalThis.fetch = async (url) => {
     requests.push(new URL(String(url)).pathname);
     return new Response(

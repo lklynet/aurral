@@ -1,3 +1,5 @@
+import { usenetCandidate } from "./fixtures.ts";
+import { createTrackedJob, trackedJob } from "./fixtures.ts";
 import assert from "node:assert/strict";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 
@@ -22,29 +24,29 @@ const [
   { prowlarrClient },
 ] = await setupIsolatedBackend(
   "provider-enqueue-cancellation",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/downloadJobs/downloadTracker.ts",
-  "backend/services/downloadJobs/downloadCancellationService.ts",
-  "backend/services/usenetOrchestrator.ts",
-  "backend/services/deemixOrchestrator.ts",
-  "backend/services/downloadPipeline.ts",
-  "backend/services/sabnzbdClient.ts",
-  "backend/services/deemixClient.ts",
-  "backend/services/slskdClient.ts",
-  "backend/services/prowlarrClient.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
+  () => import("../../backend/services/downloadJobs/downloadCancellationService.ts"),
+  () => import("../../backend/services/usenetOrchestrator.ts"),
+  () => import("../../backend/services/deemixOrchestrator.ts"),
+  () => import("../../backend/services/downloadPipeline.ts"),
+  () => import("../../backend/services/sabnzbdClient.ts"),
+  () => import("../../backend/services/deemixClient.ts"),
+  () => import("../../backend/services/slskdClient.ts"),
+  () => import("../../backend/services/prowlarrClient.ts"),
 );
 
 beforeEach(() => resetDatabase(db));
 afterAll(async () => cleanupIsolatedState(isolatedState));
 
 function createGate() {
-  let signalStarted;
-  let release;
-  const started = new Promise((resolve) => {
+  let signalStarted!: () => void;
+  let release!: () => void;
+  const started = new Promise<void>((resolve) => {
     signalStarted = resolve;
   });
-  const blocked = new Promise((resolve) => {
+  const blocked = new Promise<void>((resolve) => {
     release = resolve;
   });
   return {
@@ -57,9 +59,14 @@ function createGate() {
   };
 }
 
-function createJob(playlistId, trackName) {
-  const jobId = downloadTracker.addJob({ artistName: "Race Artist", trackName }, playlistId);
+function createJob(playlistId: string, trackName: string) {
+  const jobId = createTrackedJob(
+    downloadTracker,
+    { artistName: "Race Artist", trackName },
+    playlistId,
+  );
   const job = downloadTracker.getJob(jobId);
+  assert.ok(job != null);
   return {
     job,
     payload: {
@@ -72,6 +79,14 @@ function createJob(playlistId, trackName) {
   };
 }
 
+type Outcome = { status: "fulfilled"; value: unknown } | { status: "rejected"; error: Error };
+
+const failTheSource = {
+  failOrTryNextSource: async (_payload: unknown, _job: unknown, reason: string): Promise<never> => {
+    throw new Error(reason);
+  },
+};
+
 async function assertCancellationWaitsForAdmission({
   gate,
   job,
@@ -79,27 +94,37 @@ async function assertCancellationWaitsForAdmission({
   runPipeline,
   retryCancellation,
   cancelWork = () => cancellationService.cancelDownloadWorkForJobs([job]),
+}: {
+  gate: ReturnType<typeof createGate>;
+  job: ReturnType<typeof createJob>["job"];
+  payload: { jobId: string };
+  runPipeline: () => Promise<unknown>;
+  retryCancellation: () => Promise<unknown>;
+  cancelWork?: () => Promise<unknown>;
 }) {
   const pipeline = runPipeline();
-  let outcome = null;
-  let cancellation;
+  const result: { outcome: Outcome | null } = { outcome: null };
+  let cancellation: Promise<void> | undefined;
   try {
     await gate.started;
     cancellation = cancelWork().then(
       (value) => {
-        outcome = { status: "fulfilled", value };
+        result.outcome = { status: "fulfilled", value };
       },
       (error) => {
-        outcome = { status: "rejected", error };
+        result.outcome = { status: "rejected", error };
       },
     );
-    await new Promise((resolve) => setImmediate(resolve));
-    const waitedForAdmission = outcome === null;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const waitedForAdmission = result.outcome === null;
     gate.release();
     await cancellation;
     assert.equal(await pipeline, null);
     assert.equal(waitedForAdmission, true);
+    const { outcome } = result;
+    assert.ok(outcome != null);
     assert.equal(outcome.status, "rejected");
+    assert.ok(outcome.status === "rejected");
     assert.match(outcome.error.message, /Could not cancel download provider work/);
     assert.ok(downloadTracker.getJob(payload.jobId)?.downloadClientId);
     await retryCancellation();
@@ -125,7 +150,7 @@ test("SABnzbd cancellation waits for an in-flight append and can retry cleanup",
   );
   vi.spyOn(sabnzbdClient, "appendNzb").mockImplementation(async () => {
     await gate.wait();
-    return { nzbId: "sabnzbd-race-item" };
+    return { nzbId: "sabnzbd-race-item", nzbName: "Race Artist - SABnzbd Song" };
   });
   vi.spyOn(sabnzbdClient, "deleteQueueItem").mockImplementation(async () => ++deleteAttempts > 1);
   vi.spyOn(sabnzbdClient, "getQueueItem").mockImplementation(async () =>
@@ -139,7 +164,7 @@ test("SABnzbd cancellation waits for an in-flight append and can retry cleanup",
     phase: "download",
     source: "usenet",
     candidates: [
-      {
+      usenetCandidate({
         raw: {
           release: {
             downloadUrl: "https://release.test/song.nzb",
@@ -149,7 +174,7 @@ test("SABnzbd cancellation waits for an in-flight append and can retry cleanup",
             indexer: "Test Indexer",
           },
         },
-      },
+      }),
     ],
   };
 
@@ -158,13 +183,13 @@ test("SABnzbd cancellation waits for an in-flight append and can retry cleanup",
       gate,
       job,
       payload: pipelinePayload,
-      runPipeline: () => processUsenetPipelinePayload(pipelinePayload),
+      runPipeline: () => processUsenetPipelinePayload(pipelinePayload, failTheSource),
       cancelWork: () =>
         cancellationService.cancelPlaylistDownloadWork(playlistId, [
-          downloadTracker.getJob(job.id),
+          trackedJob(downloadTracker, job.id),
         ]),
       retryCancellation: () =>
-        cancellationService.cancelDownloadWorkForJobs([downloadTracker.getJob(job.id)]),
+        cancellationService.cancelDownloadWorkForJobs([trackedJob(downloadTracker, job.id)]),
     });
   } finally {
     dbOps.updateSettings(originalSettings);
@@ -194,7 +219,7 @@ test("deemix cancellation waits for an in-flight enqueue and can retry cleanup",
   });
   const pipelinePayload = {
     ...payload,
-    phase: "download",
+    phase: "download" as const,
     source: "deemix",
     candidates: [
       {
@@ -214,9 +239,9 @@ test("deemix cancellation waits for an in-flight enqueue and can retry cleanup",
       gate,
       job,
       payload: pipelinePayload,
-      runPipeline: () => processDeemixPipelinePayload(pipelinePayload),
+      runPipeline: () => processDeemixPipelinePayload(pipelinePayload, failTheSource),
       retryCancellation: () =>
-        cancellationService.cancelDownloadWorkForJobs([downloadTracker.getJob(job.id)]),
+        cancellationService.cancelDownloadWorkForJobs([trackedJob(downloadTracker, job.id)]),
     });
   } finally {
     dbOps.updateSettings(originalSettings);
@@ -241,6 +266,7 @@ test("slskd cancellation waits for an in-flight enqueue and can retry cleanup", 
       transferId: "slskd-race-transfer",
       username: "race-peer",
       transfers: [{ id: "slskd-race-transfer" }],
+      response: {},
     };
   });
   vi.spyOn(slskdClient, "deleteTransfer").mockImplementation(async () => {
@@ -271,7 +297,7 @@ test("slskd cancellation waits for an in-flight enqueue and can retry cleanup", 
       payload: pipelinePayload,
       runPipeline: () => processPipelinePayload(pipelinePayload),
       retryCancellation: () =>
-        cancellationService.cancelDownloadWorkForJobs([downloadTracker.getJob(job.id)]),
+        cancellationService.cancelDownloadWorkForJobs([trackedJob(downloadTracker, job.id)]),
     });
   } finally {
     dbOps.updateSettings(originalSettings);

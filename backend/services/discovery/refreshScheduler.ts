@@ -157,7 +157,9 @@ function hasQueuedDiscoveryRefresh() {
   });
 }
 
-export function discoveryNeedsRefresh(cache = dbOps.getDiscoveryCache()) {
+export function discoveryNeedsRefresh(
+  cache: Partial<ReturnType<typeof dbOps.getDiscoveryCache>> = dbOps.getDiscoveryCache(),
+) {
   if (cache?.provider && cache.provider !== getMusicDataSourceName()) return true;
   const refreshHours = getDiscoveryAutoRefreshHours();
   const staleCutoff = Date.now() - refreshHours * 60 * 60 * 1000;

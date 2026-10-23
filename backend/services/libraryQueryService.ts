@@ -3110,6 +3110,48 @@ function getAlbumStats(
   );
 }
 
+type LibraryPageOptions = LibraryScope & {
+  kind?: string;
+  page?: unknown;
+  pageSize?: number | string;
+  offset?: number | string | null;
+  query?: unknown;
+  genre?: unknown;
+  sort?: unknown;
+  direction?: unknown;
+  artistId?: string | number | null;
+  albumId?: string | number | null;
+};
+
+type LibraryPageItems = {
+  artists: ReturnType<typeof getLibraryArtistPage>["artists"][number][];
+  albums: (LibraryAlbum & { trackCount: number; availableTrackCount: number })[];
+  tracks: LibraryTrack[];
+  genres: LibraryGenre[];
+};
+
+type LibraryPage<Kind extends keyof LibraryPageItems = keyof LibraryPageItems> = {
+  [PageKind in Kind]: {
+    kind: PageKind;
+    page: number;
+    pageSize: number;
+    total: number;
+    hasMore: boolean;
+    items: LibraryPageItems[PageKind];
+    artists: LibraryArtist[];
+    albums: LibraryAlbum[];
+    tracks: LibraryTrack[];
+    genres: LibraryGenre[];
+  };
+}[Kind];
+
+export function getLibraryPage<Kind extends keyof LibraryPageItems>(
+  options: LibraryPageOptions & { kind: Kind },
+): LibraryPage<Kind>;
+export function getLibraryPage(
+  options?: LibraryPageOptions & { kind?: undefined },
+): LibraryPage<"albums">;
+export function getLibraryPage(options?: LibraryPageOptions): LibraryPage;
 export function getLibraryPage({
   source = null,
   availableOnly = false,
@@ -3123,18 +3165,7 @@ export function getLibraryPage({
   direction = "asc",
   artistId = null,
   albumId = null,
-}: LibraryScope & {
-  kind?: string;
-  page?: unknown;
-  pageSize?: number | string;
-  offset?: number | string | null;
-  query?: unknown;
-  genre?: unknown;
-  sort?: unknown;
-  direction?: unknown;
-  artistId?: string | number | null;
-  albumId?: string | number | null;
-} = {}) {
+}: LibraryPageOptions = {}): LibraryPage {
   const normalizedKind = text(kind).toLocaleLowerCase();
   if (!isPageKind(normalizedKind)) {
     throw new Error(`Unsupported library page kind: ${normalizedKind}`);

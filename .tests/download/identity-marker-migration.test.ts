@@ -1,3 +1,4 @@
+import { createTrackedJob } from "./fixtures.ts";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, stat } from "node:fs/promises";
@@ -17,10 +18,10 @@ const [
   { processSystemTask },
 ] = await setupIsolatedBackend(
   "identity-marker-migration",
-  "backend/db/helpers/index.ts",
-  "backend/services/downloadJobs/downloadTracker.ts",
-  "backend/services/downloadPaths.ts",
-  "backend/services/systemTaskWorker.ts",
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
+  () => import("../../backend/services/downloadPaths.ts"),
+  () => import("../../backend/services/systemTaskWorker.ts"),
 );
 
 const outsideRoot = await mkdtemp(path.join(os.tmpdir(), "aurral-identity-outside-"));
@@ -29,9 +30,14 @@ const ids = {
   albumMbid: "22222222-2222-4222-8222-222222222222",
   trackMbid: "33333333-3333-4333-8333-333333333333",
 };
-const marker = (identity) => `AURRAL_IDS=${JSON.stringify(identity)}`;
+const marker = (identity: { artistMbid: string; albumMbid: string } | { trackMbid: string }) =>
+  `AURRAL_IDS=${JSON.stringify(identity)}`;
 
-async function createTaggedFile(filePath, codec, tags) {
+async function createTaggedFile(
+  filePath: string,
+  codec: string,
+  tags: { comment: string } | { grouping: string },
+) {
   await mkdir(path.dirname(filePath), { recursive: true });
   const result = spawnSync(
     "ffmpeg",
@@ -58,18 +64,21 @@ async function createTaggedFile(filePath, codec, tags) {
   return filePath;
 }
 
-function addFinishedJob(finalPath, downloadClient) {
-  const id = downloadTracker.addJob(
+function addFinishedJob(finalPath: string, downloadClient: string | null) {
+  const id = createTrackedJob(
+    downloadTracker,
     { artistName: "Artist", trackName: path.basename(finalPath) },
     "library",
   );
+  assert.ok(id != null);
   downloadTracker.setDone(id, finalPath);
   if (downloadClient) downloadTracker.updateDownloadMetadata(id, { downloadClient });
   return id;
 }
 
-const readTags = async (filePath) => (await parseFile(filePath, { skipCovers: true })).common;
-const legacyMarkerTagIds = async (filePath) =>
+const readTags = async (filePath: string) =>
+  (await parseFile(filePath, { skipCovers: true })).common;
+const legacyMarkerTagIds = async (filePath: string) =>
   Object.values((await parseFile(filePath, { skipCovers: true })).native)
     .flat()
     .filter((tag) => JSON.stringify(tag.value).includes("AURRAL_IDS="))
@@ -141,7 +150,7 @@ test("moves the identity marker from the comment or grouping tag to its own tag 
   addFinishedJob(notDownloaded, null);
   addFinishedJob(path.join(root, "Artist", "Album", "06 Missing.flac"), "usenet");
   const untouched = await Promise.all(
-    [ownComment, outside, notDownloaded].map(async (filePath) => [
+    [ownComment, outside, notDownloaded].map(async (filePath: string) => [
       filePath,
       await readFile(filePath),
     ]),
@@ -164,7 +173,7 @@ test("moves the identity marker from the comment or grouping tag to its own tag 
     assert.deepEqual(
       await readFile(filePath),
       bytes,
-      `${path.basename(filePath)} should be untouched`,
+      `${path.basename(String(filePath))} should be untouched`,
     );
     assert.equal((await stat(filePath)).mtimeMs, untouchedTimes[index].mtimeMs);
   }
@@ -176,5 +185,5 @@ test("moves the identity marker from the comment or grouping tag to its own tag 
   );
 
   await processSystemTask({ kind: "identity-marker-migration" });
-  assert.equal(dbOps.getJSONSetting("identityMarkerMigration").moved, 0);
+  assert.equal(dbOps.getJSONSetting<{ moved: number }>("identityMarkerMigration")!.moved, 0);
 });

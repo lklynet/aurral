@@ -50,7 +50,7 @@ export function configureDownloadOwnerClient({
   request,
   getStatus,
 }: {
-  request: DownloadOwnerRequester;
+  request: DownloadOwnerRequester | null;
   getStatus: () => DownloadOwnerStatus | null;
 }) {
   requester = request;

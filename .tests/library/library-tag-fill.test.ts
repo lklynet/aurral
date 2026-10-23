@@ -1,3 +1,5 @@
+import { requireFixture } from "../playlists/fixtures.ts";
+import type * as Rows from "../../backend/db/rows.ts";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { copyFile, link, mkdir, readFile, rm, stat } from "node:fs/promises";
@@ -13,11 +15,15 @@ import {
 import { writeFlacFixture as makeTrack } from "../helpers/flacFixture.ts";
 
 vi.mock("../../backend/services/apiClients/rateLimiter.ts", async (importOriginal) => {
-  const { default: createRateLimiter } = await importOriginal();
-  return { default: (_minTime, options) => createRateLimiter(0, options) };
+  const { default: createRateLimiter } =
+    await importOriginal<typeof import("../../backend/services/apiClients/rateLimiter.ts")>();
+  return {
+    default: (_minTime: number, options: Parameters<typeof createRateLimiter>[1]) =>
+      createRateLimiter(0, options),
+  };
 });
 vi.mock("../../backend/services/metadataProviderBudget.ts", async (importOriginal) => ({
-  ...(await importOriginal()),
+  ...(await importOriginal<typeof import("../../backend/services/metadataProviderBudget.ts")>()),
   reserveMetadataProviderRequest: () => 0,
 }));
 
@@ -33,14 +39,14 @@ const [
   { writeAudioTags },
 ] = await setupIsolatedBackend(
   "library-tag-fill",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/libraryFileScanner.ts",
-  "backend/services/libraryFiles/operations.ts",
-  "backend/services/libraryFiles/operationStore.ts",
-  "backend/services/downloadPaths.ts",
-  "backend/services/providers/brainzmashProvider.ts",
-  "backend/services/audioTags.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/libraryFileScanner.ts"),
+  () => import("../../backend/services/libraryFiles/operations.ts"),
+  () => import("../../backend/services/libraryFiles/operationStore.ts"),
+  () => import("../../backend/services/downloadPaths.ts"),
+  () => import("../../backend/services/providers/brainzmashProvider.ts"),
+  () => import("../../backend/services/audioTags.ts"),
 );
 
 const root = resolveDownloadRoot();
@@ -52,13 +58,23 @@ const reissue = "4f4f4f4f-0000-4000-8000-0000000000e2";
 const deluxe = "4f4f4f4f-0000-4000-8000-0000000000e3";
 const radioEdit = "4f4f4f4f-0000-4000-8000-0000000000e5";
 const guestMbid = "4f4f4f4f-0000-4000-8000-0000000000bb";
-const recording = (position) => `4f4f4f4f-0000-4000-8000-00000000000${position}`;
-const edition = (id, titles, { lengths = {}, artists = {} } = {}) => ({
+const recording = (position: number) => `4f4f4f4f-0000-4000-8000-00000000000${position}`;
+const edition = (
+  id: string,
+  titles: string[],
+  {
+    lengths = {},
+    artists = {},
+  }: { lengths?: Record<string, number>; artists?: Record<string, string> } = {},
+) => ({
   id,
   status: "Official",
   tracks: titles.map((trackname, index) => ({
     id: `${id}-track-${index + 1}`,
-    recordingid: recording({ "Song One": 1, "Song Two": 2, "Bonus Intro": 9 }[trackname]),
+    recordingid: recording(
+      ({ "Song One": 1, "Song Two": 2, "Bonus Intro": 9 } as Record<string, number>)[trackname] ??
+        0,
+    ),
     trackname,
     artistid: artists[trackname] || artistMbid,
     durationms: lengths[trackname] || 200,
@@ -179,25 +195,28 @@ const metadataServer = await createMockHttpServer((request, response) => {
   response.end(JSON.stringify({ error: "not found" }));
 });
 
-async function runUntilSettled(id) {
+async function runUntilSettled(id: number) {
   for (let slice = 0; slice < 100; slice += 1) {
     if ((await operations.runLibraryFileOperation(id)).done) return getLibraryFileOperation(id);
   }
   throw new Error("operation did not settle");
 }
 
-async function runUntilChecked(id) {
+async function runUntilChecked(id: number) {
   for (let slice = 0; slice < 100; slice += 1) {
-    if (getLibraryFileOperation(id).status !== "planning") return getLibraryFileOperation(id);
+    if (requireValue(getLibraryFileOperation(id)).status !== "planning")
+      return getLibraryFileOperation(id);
     await operations.runLibraryFileOperation(id);
   }
   throw new Error("operation did not finish checking files");
 }
 
-async function checkAndRun(operation) {
-  const checked = await runUntilChecked(operation.id);
+async function checkAndRun(operation: Awaited<ReturnType<typeof operations.startCleanup>>) {
+  const checked = await runUntilChecked(requireValue(operation).id);
+  assert.ok(checked != null);
   const preview = operations.describeLibraryFileOperationItems(checked, {});
-  const finished = await runUntilSettled(operation.id);
+  const finished = await runUntilSettled(requireValue(operation).id);
+  assert.ok(finished != null);
   assert.equal(finished.status, "complete");
   return { preview, items: operations.describeLibraryFileOperationItems(finished, {}) };
 }
@@ -268,12 +287,16 @@ test("ingest fills in only the tags a file is missing and keeps it with the albu
   assert.deepEqual(await readFile(sourceFile), sourceBytes);
 
   await scanMusicRoot({ rootPath: root, source: "aurral" });
-  const albums = db.prepare("SELECT * FROM library_albums WHERE title = 'Fill Album'").all();
+  const albums = db
+    .prepare<unknown[], Rows.LibraryAlbumsRow>(
+      "SELECT * FROM library_albums WHERE title = 'Fill Album'",
+    )
+    .all();
   assert.equal(albums.length, 1);
   assert.equal(albums[0].identity_key, `release-group:${releaseGroup}`);
   assert.equal(
     db
-      .prepare("SELECT COUNT(*) FROM library_album_tracks WHERE album_id = ?")
+      .prepare<unknown[], number>("SELECT COUNT(*) FROM library_album_tracks WHERE album_id = ?")
       .pluck()
       .get(albums[0].id),
     2,
@@ -308,7 +331,7 @@ test("ingest tells apart albums that share a title by their year", async () => {
     items.map((item) => item.status),
     ["done", "done"],
   );
-  const tagsOf = async (name) =>
+  const tagsOf = async (name: string) =>
     (await parseFile(path.join(root, "Fill Artist", "Fill Album", name))).common;
   assert.equal((await tagsOf("02 - Song Two.flac")).musicbrainz_releasegroupid, releaseGroup);
   assert.equal(
@@ -380,17 +403,20 @@ test("an ingest a restart stopped after filling in tags finishes on resume", asy
     mode: "copy",
     fillTags: true,
   });
+  assert.ok(operation != null);
   await runUntilChecked(operation.id);
   const [planned] = listLibraryFileOperationItems(operation.id, { statuses: ["pending"] });
-  await mkdir(path.dirname(planned.targetPath), { recursive: true });
-  await copyFile(sourceFile, planned.targetPath);
-  await writeAudioTags(planned.targetPath, planned.details.tags, { fillOnly: true });
-  const filledBytes = await readFile(planned.targetPath);
+  await mkdir(path.dirname(requireValue(requireValue(planned).targetPath)), { recursive: true });
+  await copyFile(sourceFile, requireValue(requireValue(planned).targetPath));
+  await writeAudioTags(requireValue(requireValue(planned).targetPath), planned.details.tags, {
+    fillOnly: true,
+  });
+  const filledBytes = await readFile(requireValue(requireValue(planned).targetPath));
 
   const { items } = await checkAndRun(operation);
 
   assert.equal(items[0].status, "done");
-  assert.deepEqual(await readFile(planned.targetPath), filledBytes);
+  assert.deepEqual(await readFile(requireValue(requireValue(planned).targetPath)), filledBytes);
   assert.deepEqual(await readFile(sourceFile), sourceBytes);
 });
 
@@ -414,11 +440,15 @@ test("clean up fills in missing tags, keeps favorites, and leaves unmatched file
     },
   );
   await scanMusicRoot({ rootPath: root, source: "aurral" });
-  const track = db.prepare("SELECT * FROM library_tracks WHERE title = 'Song One'").get();
+  const track = db
+    .prepare<unknown[], Rows.LibraryTracksRow>(
+      "SELECT * FROM library_tracks WHERE title = 'Song One'",
+    )
+    .get();
   db.prepare("INSERT INTO users (id, username, password_hash) VALUES (9, 'fan', 'x')").run();
   db.prepare(
     "INSERT INTO subsonic_stars (user_id, entity_kind, entity_key, created_at) VALUES (9, 'song', ?, 1)",
-  ).run(track.identity_key);
+  ).run(requireValue(track).identity_key);
   const seedBytes = await readFile(seed);
   const unmatchedBytes = await readFile(unmatched);
 
@@ -426,6 +456,7 @@ test("clean up fills in missing tags, keeps favorites, and leaves unmatched file
   const { preview, items } = await checkAndRun(operation);
 
   const planned = preview.find((item) => item.source.endsWith("01 - Song One.flac"));
+  assert.ok(planned != null);
   assert.equal(planned.hardlinked, true);
   assert.deepEqual(items.map((item) => item.status).sort(), ["done", "skipped"]);
   const { common } = await parseFile(matched);
@@ -435,7 +466,9 @@ test("clean up fills in missing tags, keeps favorites, and leaves unmatched file
   assert.notEqual((await stat(seed)).ino, (await stat(matched)).ino);
   assert.deepEqual(await readFile(unmatched), unmatchedBytes);
   const starred = db
-    .prepare("SELECT entity_key FROM subsonic_stars WHERE user_id = 9")
+    .prepare<unknown[], Rows.SubsonicStarsRow["entity_key"]>(
+      "SELECT entity_key FROM subsonic_stars WHERE user_id = 9",
+    )
     .pluck()
     .get();
   assert.equal(starred, `recording:${recording(1)}`);
@@ -468,7 +501,10 @@ test("clean up fills in a file's tags and gives it Aurral's name in one pass, an
   assert.equal((await parseFile(named)).common.musicbrainz_recordingid, recording(1));
   assert.deepEqual(
     db
-      .prepare(
+      .prepare<
+        unknown[],
+        { path: Rows.LibraryMediaFilesRow["path"]; mbid: Rows.LibraryTracksRow["mbid"] }
+      >(
         `SELECT media.path, track.mbid FROM library_media_files AS media
        JOIN library_tracks AS track ON track.id = media.track_id WHERE media.available = 1`,
       )
@@ -502,7 +538,12 @@ test("clean up fills in tags for a file whose Aurral name already links to it", 
   );
   assert.equal((await parseFile(named)).common.musicbrainz_recordingid, recording(1));
   assert.deepEqual(
-    db.prepare("SELECT path FROM library_media_files WHERE available = 1").pluck().all(),
+    db
+      .prepare<unknown[], Rows.LibraryMediaFilesRow["path"]>(
+        "SELECT path FROM library_media_files WHERE available = 1",
+      )
+      .pluck()
+      .all(),
     [named],
   );
 });
@@ -562,8 +603,8 @@ test("a file's track number picks the edition that fills its tags, and a positio
   const operation = await operations.startCleanup();
   const { items } = await checkAndRun(operation);
 
-  const statusOf = (filePath) =>
-    items.find((item) => path.resolve(root, item.source) === filePath).status;
+  const statusOf = (filePath: string) =>
+    requireValue(items.find((item) => path.resolve(root, item.source) === filePath)).status;
   assert.equal(statusOf(deluxeTrack), "done");
   const { common } = await parseFile(deluxeTrack);
   assert.equal(common.musicbrainz_albumid, deluxe);
@@ -640,20 +681,34 @@ test("clean up says the metadata provider was unreachable instead of calling an 
 
   const { items } = await checkAndRun(await operations.startCleanup());
 
-  const itemFor = (filePath) => items.find((item) => path.resolve(root, item.source) === filePath);
+  const itemFor = (filePath: string) =>
+    items.find((item) => path.resolve(root, item.source) === filePath);
   for (const filePath of [tagged, untagged]) {
-    assert.equal(itemFor(filePath).status, "skipped");
-    assert.match(itemFor(filePath).reason, /Metadata provider unavailable/);
+    assert.equal(requireValue(itemFor(filePath)).status, "skipped");
+    assert.match(
+      requireValue(requireValue(itemFor(filePath)).reason),
+      /Metadata provider unavailable/,
+    );
   }
-  assert.match(itemFor(missing).reason, /No confident album match in MusicBrainz/);
+  assert.match(
+    requireValue(requireValue(itemFor(missing)).reason),
+    /No confident album match in MusicBrainz/,
+  );
   assert.deepEqual(await readFile(tagged), taggedBytes);
 
   providerDown = false;
   const retried = await checkAndRun(await operations.startCleanup());
 
   assert.equal(
-    retried.items.find((item) => path.resolve(root, item.source) === tagged).status,
+    requireFixture(requireValue(retried)!).items.find(
+      (item) => path.resolve(root, item.source) === tagged,
+    )!.status,
     "done",
   );
   assert.equal((await parseFile(tagged)).common.musicbrainz_releasegroupid, outageReleaseGroup);
 });
+
+function requireValue<T>(value: T | null | undefined): T {
+  assert.ok(value != null);
+  return value;
+}

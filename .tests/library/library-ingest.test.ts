@@ -1,3 +1,4 @@
+import type * as Rows from "../../backend/db/rows.ts";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
@@ -24,11 +25,15 @@ import {
 import { writeFlacFixture } from "../helpers/flacFixture.ts";
 
 vi.mock("../../backend/services/apiClients/rateLimiter.ts", async (importOriginal) => {
-  const { default: createRateLimiter } = await importOriginal();
-  return { default: (_minTime, options) => createRateLimiter(0, options) };
+  const { default: createRateLimiter } =
+    await importOriginal<typeof import("../../backend/services/apiClients/rateLimiter.ts")>();
+  return {
+    default: (_minTime: number, options: Parameters<typeof createRateLimiter>[1]) =>
+      createRateLimiter(0, options),
+  };
 });
 vi.mock("../../backend/services/metadataProviderBudget.ts", async (importOriginal) => ({
-  ...(await importOriginal()),
+  ...(await importOriginal<typeof import("../../backend/services/metadataProviderBudget.ts")>()),
   reserveMetadataProviderRequest: () => 0,
 }));
 
@@ -46,21 +51,25 @@ const [
   { clearScheduledLibraryScan },
 ] = await setupIsolatedBackend(
   "library-ingest",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/libraryFileScanner.ts",
-  "backend/services/libraryFiles/operations.ts",
-  "backend/services/libraryFiles/operationStore.ts",
-  "backend/services/libraryFiles/ingest.ts",
-  "backend/services/downloadPaths.ts",
-  "backend/services/libraryScanWorker.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/libraryFileScanner.ts"),
+  () => import("../../backend/services/libraryFiles/operations.ts"),
+  () => import("../../backend/services/libraryFiles/operationStore.ts"),
+  () => import("../../backend/services/libraryFiles/ingest.ts"),
+  () => import("../../backend/services/downloadPaths.ts"),
+  () => import("../../backend/services/libraryScanWorker.ts"),
 );
 
 const root = resolveDownloadRoot();
 let sourceCount = 0;
 let tone = 200;
 
-async function makeTrack(filePath, tags = {}, { seconds = 0.2 } = {}) {
+async function makeTrack(
+  filePath: string,
+  tags: {} | undefined = {},
+  { seconds = 0.2 }: { seconds?: number | undefined } = {},
+) {
   if (filePath.endsWith(".flac")) return writeFlacFixture(filePath, tags, { seconds });
   await mkdir(path.dirname(filePath), { recursive: true });
   const args = [
@@ -81,39 +90,43 @@ async function makeTrack(filePath, tags = {}, { seconds = 0.2 } = {}) {
 
 const newSource = () => path.join(isolatedState.baseDir, `source-${(sourceCount += 1)}`);
 
-async function runUntilSettled(id) {
+async function runUntilSettled(id: number) {
   for (let slice = 0; slice < 100; slice += 1) {
     if ((await operations.runLibraryFileOperation(id)).done) return getLibraryFileOperation(id);
   }
   throw new Error("operation did not settle");
 }
 
-async function runUntilChecked(id) {
+async function runUntilChecked(id: number) {
   for (let slice = 0; slice < 100; slice += 1) {
-    if (getLibraryFileOperation(id).status !== "planning") return getLibraryFileOperation(id);
+    if (requireValue(getLibraryFileOperation(id)).status !== "planning")
+      return getLibraryFileOperation(id);
     await operations.runLibraryFileOperation(id);
   }
   throw new Error("operation did not finish checking files");
 }
 
-async function ingest(sourcePath, mode, monitor) {
+async function ingest(sourcePath: string, mode: string, monitor?: string) {
   const operation = await operations.startIngest({ sourcePath, mode, monitor });
-  assert.match((await runUntilChecked(operation.id)).status, /^(running|complete)$/);
+  assert.ok(operation != null);
+  assert.match(requireValue(await runUntilChecked(operation.id)).status, /^(running|complete)$/);
   return operation.id;
 }
 
-async function apply(id) {
+async function apply(id: number) {
   const finished = await runUntilSettled(id);
+  assert.ok(finished != null);
   assert.equal(finished.status, "complete");
   return operations.describeLibraryFileOperationItems(finished, {});
 }
 
-const exists = (filePath) =>
+const exists = (filePath: string) =>
   stat(filePath).then(
     () => true,
     () => false,
   );
-const libraryAlbums = () => db.prepare("SELECT * FROM library_albums ORDER BY id").all();
+const libraryAlbums = () =>
+  db.prepare<unknown[], Rows.LibraryAlbumsRow>("SELECT * FROM library_albums ORDER BY id").all();
 
 beforeEach(async () => {
   await rm(root, { recursive: true, force: true });
@@ -167,20 +180,33 @@ test("copy files music under Aurral's names, keeps the source, and starts unmoni
   await settleIngestedMusic();
   const [album] = libraryAlbums();
   assert.equal(album.title, "Copy Album");
-  assert.equal(JSON.parse(album.metadata_json).monitored, false);
-  assert.deepEqual(db.prepare("SELECT monitored FROM library_tracks").pluck().all(), [0, 0]);
+  assert.equal(JSON.parse(requireValue(requireValue(album).metadata_json)).monitored, false);
+  assert.deepEqual(
+    db
+      .prepare<unknown[], Rows.LibraryTracksRow["monitored"]>(
+        "SELECT monitored FROM library_tracks",
+      )
+      .pluck()
+      .all(),
+    [0, 0],
+  );
   assert.equal(
-    db.prepare("SELECT monitor_mode FROM library_management WHERE entity_kind = 'artist'").get(),
+    db
+      .prepare<unknown[], { monitor_mode: Rows.LibraryManagementRow["monitor_mode"] }>(
+        "SELECT monitor_mode FROM library_management WHERE entity_kind = 'artist'",
+      )
+      .get(),
     undefined,
   );
 });
 
 test("a title on both discs of an album files twice, with the second disc in its name", async () => {
   const source = newSource();
-  for (const [disc, folder] of [
+  const discs: [number, string][] = [
     [1, "CD 01"],
     [2, "CD 02"],
-  ]) {
+  ];
+  for (const [disc, folder] of discs) {
     await makeTrack(path.join(source, folder, "03 Bomb.flac"), {
       artist: "Bush",
       album: "Sixteen Stone",
@@ -202,7 +228,14 @@ test("a title on both discs of an album files twice, with the second disc in its
   await scanMusicRoot({ rootPath: root, source: "aurral" });
   assert.deepEqual(
     db
-      .prepare(
+      .prepare<
+        unknown[],
+        {
+          disc_number: Rows.LibraryAlbumTracksRow["disc_number"];
+          track_number: Rows.LibraryAlbumTracksRow["track_number"];
+          path: Rows.LibraryMediaFilesRow["path"];
+        }
+      >(
         `SELECT link.disc_number, link.track_number, media.path FROM library_album_tracks AS link
      JOIN library_media_files AS media ON media.track_id = link.track_id ORDER BY link.disc_number`,
       )
@@ -215,7 +248,7 @@ test("a title on both discs of an album files twice, with the second disc in its
   );
 });
 
-async function ingestBesideExistingTrack(monitor) {
+async function ingestBesideExistingTrack(monitor: string) {
   await makeTrack(path.join(root, "Watch", "Album", "01 - Kept.flac"), {
     artist: "Watch",
     album: "Album",
@@ -235,7 +268,10 @@ async function ingestBesideExistingTrack(monitor) {
   const monitored = () =>
     Object.fromEntries(
       db
-        .prepare("SELECT title, monitored FROM library_tracks ORDER BY title")
+        .prepare<
+          unknown[],
+          { title: Rows.LibraryTracksRow["title"]; monitored: Rows.LibraryTracksRow["monitored"] }
+        >("SELECT title, monitored FROM library_tracks ORDER BY title")
         .all()
         .map((row) => [row.title, row.monitored]),
     );
@@ -245,7 +281,9 @@ async function ingestBesideExistingTrack(monitor) {
   return {
     tracks: monitored(),
     album: db
-      .prepare("SELECT monitor_mode FROM library_management WHERE entity_kind = 'album'")
+      .prepare<unknown[], Rows.LibraryManagementRow["monitor_mode"]>(
+        "SELECT monitor_mode FROM library_management WHERE entity_kind = 'album'",
+      )
       .pluck()
       .get(),
   };
@@ -276,6 +314,7 @@ test("an ingest that files nothing has nothing to monitor", async () => {
   const id = await ingest(source, "copy", "tracks");
   await rm(gone);
   const finished = operations.describeLibraryFileOperation(await runUntilSettled(id));
+  assert.ok(finished != null);
   assert.deepEqual([finished.status, finished.counts.failed], ["complete", 1]);
   assert.equal(finished.summary.monitor, undefined);
 });
@@ -303,7 +342,10 @@ test("never overwrites: a different file in the way stays, and the source is ski
   const before = await readFile(occupant);
 
   const id = await ingest(source, "move");
-  const [planned] = operations.describeLibraryFileOperationItems(getLibraryFileOperation(id), {});
+  const [planned] = operations.describeLibraryFileOperationItems(
+    requireValue(getLibraryFileOperation(id)),
+    {},
+  );
   assert.equal(planned.status, "skipped");
   const items = await apply(id);
 
@@ -338,9 +380,14 @@ test("an identical file already in the Library is kept once", async () => {
   assert.equal(await exists(path.join(moveSource, "Twin")), false);
 });
 
-const describe = (id) => operations.describeLibraryFileOperation(getLibraryFileOperation(id));
+const describe = (id: number) =>
+  operations.describeLibraryFileOperation(getLibraryFileOperation(id));
 
-async function libraryTrack(relativePath, tags, options) {
+async function libraryTrack(
+  relativePath: string,
+  tags: Parameters<typeof makeTrack>[1],
+  options: Parameters<typeof makeTrack>[2] = {},
+) {
   const filePath = await makeTrack(path.join(root, relativePath), tags, options);
   await scanMusicRoot({ rootPath: root, source: "aurral" });
   return filePath;
@@ -370,12 +417,13 @@ test("a track the Library has in a different file is skipped as already in the L
   const [copiedItem] = await apply(copyId);
   const moveId = await ingest(moveSource, "move");
   const keptItem = (await apply(moveId)).find((item) => item.source.endsWith("song.mp3"));
+  assert.ok(keptItem != null);
 
   assert.deepEqual([copiedItem.status, keptItem.status], ["duplicate", "duplicate"]);
   assert.equal(keptItem.target, path.relative(root, library));
-  assert.equal(describe(copyId).sources, null);
+  assert.equal(requireValue(describe(copyId)).sources, null);
   await assert.rejects(operations.removeDuplicateFiles(copyId), /Only a Move ingest/);
-  assert.deepEqual(describe(moveId).sources, { removable: 1, removed: 0 });
+  assert.deepEqual(requireValue(describe(moveId)).sources, { removable: 1, removed: 0 });
   assert.equal(await exists(copied), true);
   assert.equal(await exists(kept), true);
   assert.equal(await exists(path.join(moveSource, "Held", "Album", "cover.jpg")), true);
@@ -458,11 +506,16 @@ test("an untagged source of a song on one of an artist's same-titled releases is
 // A download can finish while an ingest runs, so the Library's own copy of a
 // track arrives after the ingest checked its source, and the scan files the
 // ingested copy with it.
-async function sourceTheScanJoinsToALibraryTrack({
+async function sourceTheScanJoinsToALibraryTrack<Prepared extends object = object>({
   keptFolder = "Album",
   mode = "copy",
   monitor,
   prepare,
+}: {
+  keptFolder?: string;
+  mode?: string;
+  monitor?: string;
+  prepare?: (source: string, file: string) => Promise<Prepared>;
 } = {}) {
   const source = newSource();
   const file = await makeTrack(path.join(source, "Twice", "Album", "song.mp3"), {
@@ -471,7 +524,7 @@ async function sourceTheScanJoinsToALibraryTrack({
     title: "Song",
     track: "1",
   });
-  const prepared = (await prepare?.(source, file)) || {};
+  const prepared = prepare ? await prepare(source, file) : ({} as Prepared);
   const id = await ingest(source, mode, monitor);
   const kept = await libraryTrack(path.join("Twice", keptFolder, "01 - Song.flac"), {
     artist: "Twice",
@@ -490,9 +543,9 @@ async function sourceTheScanJoinsToALibraryTrack({
   };
 }
 
-const filesOfTrack = (title) =>
+const filesOfTrack = (title: string) =>
   db
-    .prepare(
+    .prepare<unknown[], Rows.LibraryMediaFilesRow["path"]>(
       `SELECT media.path FROM library_media_files AS media JOIN library_tracks AS track ON track.id = media.track_id
    WHERE track.title = ? AND media.available = 1 ORDER BY media.path`,
     )
@@ -510,17 +563,25 @@ test("a copy the Library scan files with a track the Library already had is take
 
   await settleIngestedMusic();
 
-  const [item] = operations.describeLibraryFileOperationItems(getLibraryFileOperation(id), {});
+  const [item] = operations.describeLibraryFileOperationItems(
+    requireValue(getLibraryFileOperation(id)),
+    {},
+  );
   assert.deepEqual([item.status, item.target], ["duplicate", path.relative(root, kept)]);
   assert.equal(await exists(filed), false);
   assert.equal(await exists(file), true);
   assert.equal(await exists(kept), true);
   assert.equal(await readFile(keptLyrics, "utf8"), "[00:00.00]kept");
-  assert.deepEqual(describe(id).counts, { duplicate: 1 });
+  assert.deepEqual(requireValue(describe(id)).counts, { duplicate: 1 });
   await scanMusicRoot({ rootPath: root, source: "aurral" });
   assert.deepEqual(filesOfTrack("Song"), [kept]);
   assert.equal(
-    db.prepare("SELECT monitored FROM library_tracks WHERE title = 'Song'").pluck().get(),
+    db
+      .prepare<unknown[], Rows.LibraryTracksRow["monitored"]>(
+        "SELECT monitored FROM library_tracks WHERE title = 'Song'",
+      )
+      .pluck()
+      .get(),
     0,
   );
 });
@@ -541,20 +602,23 @@ test("a filed track that shares its recording with another track of the album st
   const id = await ingest(source, "copy", "tracks");
   const [placed] = await apply(id);
   assert.equal(placed.status, "done");
-  const filed = path.resolve(root, placed.target);
+  const filed = path.resolve(root, requireValue(requireValue(placed).target));
   await scanMusicRoot({ rootPath: root, source: "aurral" });
   assert.deepEqual(filesOfTrack("[silence]"), [first, filed]);
 
   await settleIngestedMusic();
 
   assert.equal(await exists(filed), true);
-  assert.deepEqual(describe(id).counts, { done: 1 });
+  assert.deepEqual(requireValue(describe(id)).counts, { done: 1 });
 });
 
 test("a copy taken back out is recorded and rescanned even when its lyrics cannot be removed", async () => {
   const { id, filed } = await sourceTheScanJoinsToALibraryTrack({
     monitor: "tracks",
-    prepare: (_source, song) => writeFile(song.replace(/\.mp3$/, ".lrc"), "[00:00.00]la"),
+    prepare: async (_source, song: string) => {
+      await writeFile(song.replace(/\.mp3$/, ".lrc"), "[00:00.00]la");
+      return {};
+    },
   });
   await apply(id);
   const filedLyrics = filed.replace(/\.mp3$/, ".lrc");
@@ -566,8 +630,15 @@ test("a copy taken back out is recorded and rescanned even when its lyrics canno
   await settleIngestedMusic();
 
   assert.equal(await exists(filed), false);
-  assert.deepEqual(describe(id).counts, { duplicate: 1 });
-  assert.equal(dbOps.getJSONSetting("pendingLibraryScanJob").changedPaths.includes(filed), true);
+  assert.deepEqual(requireValue(describe(id)).counts, { duplicate: 1 });
+  assert.equal(
+    requireValue(
+      dbOps.getJSONSetting<{ jobId?: number; includeLidarr?: boolean; changedPaths: string[] }>(
+        "pendingLibraryScanJob",
+      ),
+    ).changedPaths.includes(filed),
+    true,
+  );
 });
 
 test("a moved file the Library scan files with a track the Library already had goes back to its source with its art and lyrics, offered for removal, and the Library keeps its own, even when two source folders filed into one album", async () => {
@@ -611,12 +682,16 @@ test("a moved file the Library scan files with a track the Library already had g
   assert.equal(await exists(otherFile), true);
   assert.equal(await readFile(otherArt, "utf8"), "back");
   assert.deepEqual(await readdir(path.dirname(filed)), ["folder.jpg"]);
-  const queued = dbOps.getJSONSetting("pendingLibraryScanJob");
-  assert.equal(queued.includeLidarr, true);
-  assert.equal(queued.changedPaths.includes(file), true);
-  assert.deepEqual(describe(id).sources, { removable: 2, removed: 0 });
+  const queued = dbOps.getJSONSetting<{
+    jobId?: number;
+    includeLidarr?: boolean;
+    changedPaths: string[];
+  }>("pendingLibraryScanJob");
+  assert.equal(requireValue(queued).includeLidarr, true);
+  assert.equal(requireValue(queued).changedPaths.includes(file), true);
+  assert.deepEqual(requireValue(describe(id)).sources, { removable: 2, removed: 0 });
   await operations.removeDuplicateFiles(id);
-  assert.equal((await runUntilSettled(id)).status, "complete");
+  assert.equal(requireValue(await runUntilSettled(id)).status, "complete");
   assert.equal(await exists(file), false);
   assert.equal(await exists(otherFile), false);
   assert.equal(await exists(kept), true);
@@ -685,8 +760,9 @@ test("a Library file at the track's name is not the same track when its artist, 
       ["shared.flac", "skipped"],
     ],
   );
-  for (const item of items) assert.match(item.reason, /different file already has this name/);
-  assert.deepEqual(describe(id).sources, { removable: 0, removed: 0 });
+  for (const item of items)
+    assert.match(requireValue(requireValue(item).reason), /different file already has this name/);
+  assert.deepEqual(requireValue(describe(id)).sources, { removable: 0, removed: 0 });
 });
 
 test("removing sources after a stopped Move ingest never files the music it stopped before", async () => {
@@ -712,17 +788,23 @@ test("removing sources after a stopped Move ingest never files the music it stop
   const id = await ingest(source, "move");
   assert.equal(operations.cancelLibraryFileOperation(id), true);
   await assert.rejects(operations.removeDuplicateFiles(id), /still stopping/);
-  assert.equal((await runUntilSettled(id)).status, "cancelled");
+  assert.equal(requireValue(await runUntilSettled(id)).status, "cancelled");
 
   await operations.removeDuplicateFiles(id);
-  assert.equal((await runUntilSettled(id)).status, "complete");
+  assert.equal(requireValue(await runUntilSettled(id)).status, "complete");
 
   assert.equal(await exists(kept), false);
   assert.equal(await exists(waiting), true);
   assert.equal(await exists(path.join(root, "Halt", "Album", "02 - Waiting.flac")), false);
-  const items = operations.describeLibraryFileOperationItems(getLibraryFileOperation(id), {});
-  assert.equal(items.find((item) => item.source.endsWith("waiting.flac")).status, "skipped");
-  assert.deepEqual(describe(id).counts, { duplicate: 1, skipped: 1 });
+  const items = operations.describeLibraryFileOperationItems(
+    requireValue(getLibraryFileOperation(id)),
+    {},
+  );
+  assert.equal(
+    requireValue(items.find((item) => item.source.endsWith("waiting.flac"))).status,
+    "skipped",
+  );
+  assert.deepEqual(requireValue(describe(id)).counts, { duplicate: 1, skipped: 1 });
 });
 
 test("a source much longer or shorter than the Library's track is a different recording, held back and never offered for removal", async () => {
@@ -752,11 +834,11 @@ test("a source much longer or shorter than the Library's track is a different re
   const [item] = await apply(id);
 
   assert.equal(item.status, "skipped");
-  assert.match(item.reason, /Wasted & Ready.*differs by 0:0[45]/);
-  assert.equal(describe(id).counts.duplicate, undefined);
-  assert.deepEqual(describe(id).sources, { removable: 0, removed: 0 });
+  assert.match(requireValue(requireValue(item).reason), /Wasted & Ready.*differs by 0:0[45]/);
+  assert.equal(requireValue(describe(id)).counts.duplicate, undefined);
+  assert.deepEqual(requireValue(describe(id)).sources, { removable: 0, removed: 0 });
   await operations.removeDuplicateFiles(id);
-  assert.equal((await runUntilSettled(id)).status, "complete");
+  assert.equal(requireValue(await runUntilSettled(id)).status, "complete");
   assert.equal(await exists(demo), true);
 });
 
@@ -779,13 +861,18 @@ test("a lossless source of a track the Library has only in a lossy format is lis
   const [item] = await apply(id);
 
   assert.equal(item.status, "skipped");
-  assert.match(item.reason, /lossless/);
-  assert.deepEqual(describe(id).sources, { removable: 0, removed: 0 });
+  assert.match(requireValue(requireValue(item).reason), /lossless/);
+  assert.deepEqual(requireValue(describe(id)).sources, { removable: 0, removed: 0 });
   assert.equal(await exists(flac), true);
 });
 
 test("removing kept sources checks each against the Library again, removes emptied folders, and is safe to repeat", async () => {
-  const tags = (title, track) => ({ artist: "Tidy", album: "Album", title, track: String(track) });
+  const tags = (title: string, track: number) => ({
+    artist: "Tidy",
+    album: "Album",
+    title,
+    track: String(track),
+  });
   await libraryTrack(path.join("Tidy", "Album", "01 - One.flac"), tags("One", 1));
   const second = await libraryTrack(path.join("Tidy", "Album", "02 - Two.flac"), tags("Two", 2));
   await libraryTrack(path.join("Tidy", "Album", "03 - Three.flac"), tags("Three", 3), {
@@ -803,7 +890,7 @@ test("removing kept sources checks each against the Library again, removes empti
   await makeTrack(path.join(source, "third", "four.flac"), tags("Four", 4));
   const id = await ingest(source, "move", "tracks");
   await apply(id);
-  assert.deepEqual(describe(id).sources, { removable: 2, removed: 0 });
+  assert.deepEqual(requireValue(describe(id)).sources, { removable: 2, removed: 0 });
   await scanMusicRoot({ rootPath: root, source: "aurral" });
   await settleIngestedMusic();
   const unmonitorFour = db.prepare("UPDATE library_tracks SET monitored = 0 WHERE title = 'Four'");
@@ -811,13 +898,13 @@ test("removing kept sources checks each against the Library again, removes empti
 
   await operations.removeDuplicateFiles(id);
   assert.equal(operations.cancelLibraryFileOperation(id), true);
-  assert.equal((await runUntilSettled(id)).status, "cancelled");
-  assert.deepEqual(describe(id).sources, { removable: 2, removed: 0 });
+  assert.equal(requireValue(await runUntilSettled(id)).status, "cancelled");
+  assert.deepEqual(requireValue(describe(id)).sources, { removable: 2, removed: 0 });
   assert.equal(await exists(one), true);
 
   await rm(second);
   await operations.removeDuplicateFiles(id);
-  assert.equal((await runUntilSettled(id)).status, "complete");
+  assert.equal(requireValue(await runUntilSettled(id)).status, "complete");
 
   assert.equal(await exists(one), false);
   assert.equal(await exists(path.join(source, "first")), false);
@@ -829,18 +916,28 @@ test("removing kept sources checks each against the Library again, removes empti
   assert.equal(await exists(three), true);
   assert.equal(await exists(path.join(root, "Tidy", "Album", "01 - One.flac")), true);
   const after = describe(id);
+  assert.ok(after != null);
   assert.deepEqual(after.sources, { removable: 0, removed: 1 });
-  const items = operations.describeLibraryFileOperationItems(getLibraryFileOperation(id), {});
+  const items = operations.describeLibraryFileOperationItems(
+    requireValue(getLibraryFileOperation(id)),
+    {},
+  );
   const twoItem = items.find((item) => item.source.endsWith("two.mp3"));
+  assert.ok(twoItem != null);
   assert.equal(twoItem.status, "skipped");
-  assert.match(twoItem.reason, /Library copy is missing/);
+  assert.match(requireValue(requireValue(twoItem).reason), /Library copy is missing/);
 
   await operations.removeDuplicateFiles(id);
   assert.deepEqual(describe(id), after);
   await scanMusicRoot({ rootPath: root, source: "aurral" });
   await settleIngestedMusic();
   assert.equal(
-    db.prepare("SELECT monitored FROM library_tracks WHERE title = 'Four'").pluck().get(),
+    db
+      .prepare<unknown[], Rows.LibraryTracksRow["monitored"]>(
+        "SELECT monitored FROM library_tracks WHERE title = 'Four'",
+      )
+      .pluck()
+      .get(),
     0,
   );
 });
@@ -866,7 +963,7 @@ test("two files that claim the same track are not both filed, and the second say
     items.map((item) => item.status),
     ["done", "skipped"],
   );
-  assert.match(items[1].reason, /track 5, In Other Words/);
+  assert.match(requireValue(requireValue(items[1]).reason), /track 5, In Other Words/);
   assert.equal(await exists(demo), true);
 });
 
@@ -1035,9 +1132,9 @@ test("untagged music joins the album and artist the Library already has, however
     "冬 2024",
     "春 2024",
   ]);
-  const trackCount = (title) =>
+  const trackCount = (title: string) =>
     db
-      .prepare(
+      .prepare<unknown[], number>(
         "SELECT COUNT(*) FROM library_album_tracks JOIN library_albums ON library_albums.id = album_id WHERE title = ?",
       )
       .pluck()
@@ -1050,11 +1147,13 @@ test("files Aurral cannot place are skipped with a reason and left alone", async
   const source = newSource();
   const loose = await makeTrack(path.join(source, "loose.flac"), { title: "No Album" });
   const operation = await operations.startIngest({ sourcePath: source, mode: "move" });
+  assert.ok(operation != null);
   const finished = await runUntilSettled(operation.id);
+  assert.ok(finished != null);
   assert.equal(finished.status, "complete");
   const [item] = operations.describeLibraryFileOperationItems(finished, {});
   assert.equal(item.status, "skipped");
-  assert.match(item.reason, /artist and album/i);
+  assert.match(requireValue(requireValue(item).reason), /artist and album/i);
   assert.equal(await exists(loose), true);
 });
 
@@ -1112,9 +1211,10 @@ test("only one file operation runs at a time", async () => {
     title: "A",
   });
   const first = await operations.startIngest({ sourcePath: source, mode: "copy" });
+  assert.ok(first != null);
   await assert.rejects(operations.startIngest({ sourcePath: source, mode: "copy" }), /in progress/);
   assert.equal(operations.cancelLibraryFileOperation(first.id), true);
-  assert.equal(getLibraryFileOperation(first.id).status, "cancelled");
+  assert.equal(requireValue(getLibraryFileOperation(first.id)).status, "cancelled");
 });
 
 test("a restart while listing files lists each file once", async () => {
@@ -1126,12 +1226,14 @@ test("a restart while listing files lists each file once", async () => {
     track: "1",
   });
   const operation = await operations.startIngest({ sourcePath: source, mode: "copy" });
+  assert.ok(operation != null);
   db.prepare(
     `INSERT INTO library_file_operation_items (operation_id, position, source_path, status, updated_at)
      VALUES (?, 0, ?, 'new', 1)`,
   ).run(operation.id, track);
 
   const checked = await runUntilChecked(operation.id);
+  assert.ok(checked != null);
 
   assert.deepEqual(
     operations.describeLibraryFileOperationItems(checked, {}).map((item) => item.status),
@@ -1181,8 +1283,11 @@ test("cancelling between slices still tidies what was already filed", async () =
     track: "1",
   });
   const id = await ingest(source, "move");
-  const [first] = operations.describeLibraryFileOperationItems(getLibraryFileOperation(id), {});
-  const target = path.join(root, first.target);
+  const [first] = operations.describeLibraryFileOperationItems(
+    requireValue(getLibraryFileOperation(id)),
+    {},
+  );
+  const target = path.join(root, requireValue(requireValue(first).target));
   await mkdir(path.dirname(target), { recursive: true });
   await link(filed, target);
   await rm(filed);
@@ -1191,9 +1296,14 @@ test("cancelling between slices still tidies what was already filed", async () =
   ).run(id, first.position);
   assert.equal(operations.cancelLibraryFileOperation(id), true);
 
-  assert.equal((await runUntilSettled(id)).status, "cancelled");
+  assert.equal(requireValue(await runUntilSettled(id)).status, "cancelled");
 
   assert.equal(await readFile(path.join(path.dirname(target), "cover.jpg"), "utf8"), "art");
   assert.equal(await exists(path.join(source, "Stop", "First")), false);
   assert.equal(await exists(waiting), true);
 });
+
+function requireValue<T>(value: T | null | undefined): T {
+  assert.ok(value != null);
+  return value;
+}

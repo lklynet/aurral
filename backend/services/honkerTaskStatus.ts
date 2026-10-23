@@ -1275,7 +1275,7 @@ function groupQueueRows(rows: TaskQueueRowSource[]): TaskQueueRowSource[] {
   return grouped;
 }
 
-export function recordHonkerTaskRunStarted(job: Job, queue: Queue) {
+export function recordHonkerTaskRunStarted(job: Job, queue: Pick<Queue, "name">) {
   try {
     ensureRunSchema();
     const queueName = String(job?.queue || queue?.name || "").trim();

@@ -5,7 +5,6 @@ import {
   applyIsolatedBackendEnv,
   cleanupIsolatedState,
   createIsolatedStateDir,
-  importFromRepo,
 } from "../helpers/backendTestHarness.ts";
 
 test("startup removes the old stored news state and publisher blocks but keeps other user settings", async () => {
@@ -19,10 +18,12 @@ test("startup removes the old stored news state and publisher blocks but keeps o
   insert.run("user:1:discoverLayout", JSON.stringify({ sections: [] }));
   legacy.close();
 
-  const { db } = await importFromRepo("backend/config/db-sqlite.ts");
+  const { db } = await import("../../backend/config/db-sqlite.ts");
   try {
     const keys = db
-      .prepare("SELECT key FROM settings WHERE key LIKE 'user:%' OR key LIKE 'news:%'")
+      .prepare<unknown[], { key: import("../../backend/db/rows.ts").SettingsRow["key"] }>(
+        "SELECT key FROM settings WHERE key LIKE 'user:%' OR key LIKE 'news:%'",
+      )
       .all()
       .map(({ key }) => key);
     assert.deepEqual(keys, ["user:1:discoverLayout"]);

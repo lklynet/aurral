@@ -120,7 +120,7 @@ test("buildTrackSearchTiers asks each query once", () => {
   }).flatMap((tier) => tier.queries);
 
   assert.ok(queries.includes("Massive Attack Teardrop"));
-  assert.equal(new Set(queries.map((query) => query.toLowerCase())).size, queries.length);
+  assert.equal(new Set(queries.map((query: string) => query.toLowerCase())).size, queries.length);
 });
 
 test("selectRankedMatchAttempts spreads early attempts across users before reusing one", () => {
@@ -152,7 +152,8 @@ test("an album grab searches for the album and never for a track title", () => {
   assert.ok(queries.every((query) => !query.includes("Paranoid Android")));
 });
 
-const allQueries = (tiers) => tiers.flatMap((tier) => tier.queries);
+const allQueries = (tiers: { queries: string[]; name: string; tier: number }[]) =>
+  tiers.flatMap((tier) => tier.queries);
 
 test("Soulseek queries split words at punctuation and leave out Various Artists", () => {
   const soundtrack = allQueries(

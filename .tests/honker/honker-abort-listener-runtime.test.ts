@@ -13,7 +13,7 @@ test("Honker scheduler removes abort listeners after each timed wait", async () 
   const controller = new AbortController();
   setMaxListeners(0, controller.signal);
 
-  const ticked = Promise.withResolvers();
+  const ticked = Promise.withResolvers<void>();
   let ticks = 0;
   scheduler.tick = () => {
     ticks += 1;
@@ -22,7 +22,7 @@ test("Honker scheduler removes abort listeners after each timed wait", async () 
   };
   scheduler.soonest = () => Date.now() / 1000 + 0.001;
   const running = scheduler.run("test-worker", controller.signal);
-  let listenerCount;
+  let listenerCount: number;
 
   try {
     await ticked.promise;

@@ -1,22 +1,38 @@
 import assert from "node:assert/strict";
-import { EventEmitter } from "node:events";
+import { ServerResponse } from "node:http";
+import type { Response } from "express";
+import { createAuthRequest } from "../auth/authFixtures.ts";
+import type { logger } from "../../backend/services/logger.ts";
 import { test } from "vite-plus/test";
 
 import { createRequestFailureLogger } from "../../backend/middleware/requestFailureLogger.ts";
 
-function sendRequest({ status, body, route = "/sync", alreadyLogged = false }) {
-  const events = [];
-  const res = new EventEmitter();
-  res.statusCode = status;
-  res.locals = { failureLogged: alreadyLogged };
-  res.json = (value) => value;
-  const req = {
+function sendRequest({
+  status,
+  body,
+  route = "/sync",
+  alreadyLogged = false,
+}: {
+  status: number;
+  body: unknown;
+  route?: string;
+  alreadyLogged?: boolean;
+}) {
+  const events: Parameters<typeof logger.error>[] = [];
+  const req = createAuthRequest({
     method: "POST",
     baseUrl: "/api/playlists",
     route: { path: route },
     path: "/api/playlists/sync",
     originalUrl: "/api/playlists/sync?token=secret",
-  };
+  });
+  const res = Object.assign(new ServerResponse(req), {
+    locals: { failureLogged: alreadyLogged },
+    json(_value: unknown) {
+      return this;
+    },
+  }) as unknown as Response;
+  res.statusCode = status;
   createRequestFailureLogger({ error: (...args) => events.push(args) })(req, res, () => {});
   res.json(body);
   res.emit("finish");
@@ -52,7 +68,10 @@ test("failed API response reasons redact credentials and file paths before loggi
         "while reading /config/private/provider.json",
     },
   });
-  const reason = events[0][2].reason;
+  const data = events[0][2];
+  assert.ok(data && typeof data === "object" && "reason" in data);
+  const reason = data.reason;
+  assert.ok(typeof reason === "string");
   assert.match(reason, /Provider failed/);
   assert.match(reason, /\[redacted URL\]/);
   assert.doesNotMatch(reason, /url-secret|bearer-secret|client-secret|\/config\/private|user:pass/);

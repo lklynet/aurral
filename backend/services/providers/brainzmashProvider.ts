@@ -275,7 +275,7 @@ const RETRYABLE_STATUSES: (number | undefined)[] = [408, 425, 429, 500, 502, 503
 function isRetryable(error: unknown) {
   const failure = asAppError(error);
   return (
-    RETRYABLE_ERROR_CODES.includes(failure?.code) ||
+    (typeof failure?.code === "string" && RETRYABLE_ERROR_CODES.includes(failure.code)) ||
     RETRYABLE_STATUSES.includes(failure?.response?.status)
   );
 }
@@ -412,7 +412,7 @@ function refreshMetadata<T>(
           healthState.lastFailureReason =
             status != null
               ? `HTTP ${status}`
-              : failure?.code || failure?.message || "Unknown error";
+              : String(failure?.code || failure?.message || "Unknown error");
           if (status === 403 || status === 429) {
             if (!isMetadataCircuitError(error)) {
               openMetadataCircuit(baseUrl, status, error);

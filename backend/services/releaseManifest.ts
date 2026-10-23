@@ -10,9 +10,9 @@ import { normalizeMatchText } from "./trackMatching/nativeMatcher.ts";
 import { extractVariants } from "./trackMatching/semanticPolicy.ts";
 import { isVariousArtistsCredit } from "./trackMatching/titleText.ts";
 
-type ManifestArtistInput = NormalizedArtist & { artistname?: string };
+type ManifestArtistInput = Partial<NormalizedArtist> & { artistname?: string };
 
-type ManifestTrackInput = NormalizedTrack & {
+type ManifestTrackInput = Partial<NormalizedTrack> & {
   discNumber?: number;
   recordingMbid?: string;
   recordingMbidAliases?: string[];
@@ -20,15 +20,17 @@ type ManifestTrackInput = NormalizedTrack & {
   artistName?: string;
 };
 
-type ManifestReleaseInput = NormalizedRelease & {
+type ManifestReleaseInput = Partial<Omit<NormalizedRelease, "tracks">> & {
+  tracks?: ManifestTrackInput[];
   releaseMbid?: string;
   releaseGroupMbid?: string;
   albumName?: string;
   artistName?: string;
 };
 
-type ManifestGroupInput = Omit<NormalizedAlbum, "artists"> & {
-  artists: ManifestArtistInput[];
+type ManifestGroupInput = Partial<Omit<NormalizedAlbum, "artists" | "releases">> & {
+  artists?: ManifestArtistInput[];
+  releases?: ManifestReleaseInput[];
   artistName?: string;
 };
 
@@ -167,7 +169,10 @@ function tracklist(
 
 // The releases of a group that hold the job's track, placed as a manifest
 // places it. Lengths play no part, so they are not read.
-export function releasesHolding(group: ManifestGroupInput, job: ManifestJobInput) {
+export function releasesHolding<Release extends ManifestReleaseInput>(
+  group: Omit<ManifestGroupInput, "releases"> & { releases?: Release[] },
+  job: ManifestJobInput,
+) {
   const aliases = recordingAliases(group);
   return (group?.releases || []).filter((release) => {
     const tracks = tracklist(release, aliases);

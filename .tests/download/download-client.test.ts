@@ -1,3 +1,5 @@
+import { captureRouteHandlers, createResponse } from "../library/routeHarness.ts";
+import { listeningAddress } from "../helpers/backendTestHarness.ts";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { test } from "vite-plus/test";
@@ -12,8 +14,8 @@ import {
 import { registerDownloadClients } from "../../backend/routes/settings/handlers/downloadClients.ts";
 import { QUALITY_TIERS } from "../../backend/services/qualityProfileModel.ts";
 
-function client(key, configured) {
-  const updates = [];
+function client(key: string, configured: boolean) {
+  const updates: unknown[] = [];
   return {
     key,
     name: key,
@@ -21,7 +23,7 @@ function client(key, configured) {
     isConfigured: () => configured,
     testConnection: async () => ({ ok: true, configured: true }),
     getStatus: () => ({ configured }),
-    updateConfig: (config) => updates.push(config),
+    updateConfig: (config: unknown) => updates.push(config),
   };
 }
 
@@ -50,7 +52,7 @@ test("deemix needs an enabled adapter with a server URL", () => {
   client.updateConfig({ enabled: true, url: "http://deemix.local" });
   assert.equal(client.isConfigured(), true);
   assert.equal(client.getBitrate(), 9);
-  client.updateConfig({ enabled: true, url: "http://deemix.local", bitrate: "3" });
+  client.updateConfig({ enabled: true, url: "http://deemix.local", bitrate: 3 });
   assert.equal(client.getBitrate(), 3);
   client.updateConfig({ enabled: true, url: "http://deemix.local", bitrate: 7 });
   assert.equal(client.getBitrate(), 9);
@@ -65,7 +67,7 @@ test("deemix maps each bitrate to a real quality tier", () => {
     [9, "flac-standard"],
     [3, "mp3-320"],
     [1, "mp3-128"],
-  ]) {
+  ] as const) {
     client.updateConfig({ enabled: true, url: "http://deemix.local", bitrate });
     assert.equal(client.getQualityTierId(), expected);
     assert.equal(tierIds.has(expected), true);
@@ -76,8 +78,8 @@ test("deemix reports a bitrate the Deezer plan cannot stream", () => {
   const free = { can_stream_lossless: false, can_stream_hq: false };
   const hifi = { can_stream_lossless: true, can_stream_hq: true };
 
-  assert.match(describeBitrateSupport(free, 9), /cannot stream FLAC/);
-  assert.match(describeBitrateSupport(free, 3), /cannot stream MP3 320/);
+  assert.match(describeBitrateSupport(free, 9) ?? "", /cannot stream FLAC/);
+  assert.match(describeBitrateSupport(free, 3) ?? "", /cannot stream MP3 320/);
   assert.equal(describeBitrateSupport(free, 1), null);
   assert.equal(describeBitrateSupport(hifi, 9), null);
   assert.equal(describeBitrateSupport(undefined, 9), null);
@@ -108,7 +110,7 @@ test("slskd test connection requires a URL but not an API key", async () => {
 });
 
 test("slskd omits the X-API-KEY header when no API key is set", async () => {
-  const headers = [];
+  const headers: (string | string[] | undefined)[] = [];
   const server = createServer((req, res) => {
     headers.push(req.headers["x-api-key"]);
     res.writeHead(200, { "content-type": "application/json" });
@@ -121,11 +123,11 @@ test("slskd omits the X-API-KEY header when no API key is set", async () => {
   });
 
   try {
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       server.once("error", reject);
       server.listen(0, "127.0.0.1", resolve);
     });
-    const { port } = server.address();
+    const { port } = listeningAddress(server);
     const url = `http://127.0.0.1:${port}`;
 
     const urlOnly = new SlskdClient({ enabled: true, url });
@@ -137,40 +139,18 @@ test("slskd omits the X-API-KEY header when no API key is set", async () => {
     assert.deepEqual(headers.slice(0, 2), [undefined, undefined]);
     assert.deepEqual(headers.slice(2, 4), ["secret-key", "secret-key"]);
   } finally {
-    await new Promise((resolve, reject) =>
+    await new Promise<void>((resolve, reject) =>
       server.close((error) => (error ? reject(error) : resolve())),
     );
   }
 });
 
 test("download client test routes validate transient URLs", async () => {
-  const routes = [];
-  const router = {
-    get(path, handler) {
-      routes.push({ method: "GET", path, handler });
-    },
-    post(path, handler) {
-      routes.push({ method: "POST", path, handler });
-    },
-  };
-  registerDownloadClients(router);
-  const route = routes.find(
-    ({ method, path }) => method === "POST" && path === "/download-clients/:key/test",
-  );
-  const response = {
-    statusCode: 200,
-    payload: null,
-    status(code) {
-      this.statusCode = code;
-      return this;
-    },
-    json(payload) {
-      this.payload = payload;
-      return this;
-    },
-  };
+  const routes = captureRouteHandlers(registerDownloadClients, "post");
+  const handler = routes.get("/download-clients/:key/test");
+  const response = createResponse<{ error: string; message: string }>();
 
-  await route.handler(
+  await handler(
     {
       params: { key: "nzbget" },
       body: { url: "http://169.254.169.254" },
@@ -179,7 +159,7 @@ test("download client test routes validate transient URLs", async () => {
   );
 
   assert.equal(response.statusCode, 400);
-  assert.deepEqual(response.payload, {
+  assert.deepEqual(response.body, {
     error: "Connection failed",
     message: "Server URL: Target host is blocked",
   });

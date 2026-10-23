@@ -12,11 +12,11 @@ const [
   { processSystemTask },
 ] = await setupIsolatedBackend(
   "honker-db-config",
-  "backend/services/honkerDb.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/playlists/flowPlaylistConfig.ts",
-  "backend/services/playback/navidromePlaybackDestination.ts",
-  "backend/services/systemTaskWorker.ts",
+  () => import("../../backend/services/honkerDb.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
+  () => import("../../backend/services/playback/navidromePlaybackDestination.ts"),
+  () => import("../../backend/services/systemTaskWorker.ts"),
 );
 
 afterAll(async () => {
@@ -40,6 +40,7 @@ test("schedule bootstrap skips stale runs without postponing recently due work",
 
   const rows = scheduler.list();
   const flowRefresh = rows.find((row) => row.name === "weekly-flow-refresh");
+  assert.ok(flowRefresh != null);
   const enrichment = rows.find((row) => row.name === "playlist-mbid-enrichment-sweep");
 
   assert.ok(flowRefresh?.next_fire_at > now);
@@ -76,7 +77,7 @@ test("independent system tasks use isolated queues", () => {
   assert.equal(honkerDb.getSystemTaskQueueName("import-list-sync"), "system-task");
   for (const task of honkerDb.SCHEDULED_SYSTEM_TASKS) {
     if (task.queue.startsWith("system-task")) {
-      assert.equal(task.queue, honkerDb.getSystemTaskQueueName(task.payload.kind));
+      assert.equal(task.queue, honkerDb.getSystemTaskQueueName(String(task.payload.kind)));
     }
   }
 });
@@ -144,14 +145,15 @@ test("playlists publish from the startup task, not when a process loads the play
   const flow = flowPlaylistConfig.createFlow({ name: "Startup Flow", size: 10 });
   flowPlaylistConfig.setEnabled(flow.id, true);
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Startup Playlist" });
-  const calls = [];
+  const calls: string[] = [];
   vi.spyOn(NavidromePlaybackDestination.prototype, "ensureLibrary").mockImplementation(async () => {
     calls.push("ensure library");
     return { ok: true };
   });
   vi.spyOn(NavidromePlaybackDestination.prototype, "publishPlaylist").mockImplementation(
     async (snapshot) => {
-      calls.push(snapshot.entityId);
+      assert.ok(snapshot != null);
+      calls.push(String(snapshot.entityId));
       return { ok: true };
     },
   );
@@ -165,13 +167,13 @@ test("playlists publish from the startup task, not when a process loads the play
   } finally {
     process.env.NODE_ENV = nodeEnv;
   }
-  assert.deepEqual(calls, []);
+  assert.deepEqual([...calls], []);
 
   await processSystemTask({ kind: "playlist-startup-publish" });
-  assert.deepEqual(calls, []);
+  assert.deepEqual([...calls], []);
   const [sync] = honkerDb
     .listHonkerJobs("playback")
-    .filter((job) => job.payload.kind === "playback-playlist-sync");
+    .filter((job) => job.payload?.kind === "playback-playlist-sync");
   assert.deepEqual(sync.payload, { kind: "playback-playlist-sync", entityIds: null, attempt: 0 });
   honkerDb.getPlaybackTaskQueue().cancel(sync.id);
   await processSystemTask(sync.payload);

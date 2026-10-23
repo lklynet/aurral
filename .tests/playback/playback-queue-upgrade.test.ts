@@ -18,13 +18,13 @@ const [
   { shutdownHonkerInfrastructure },
 ] = await setupIsolatedBackend(
   "playback-queue-upgrade",
-  "backend/db/helpers/index.ts",
-  "backend/services/honkerDb.ts",
-  "backend/services/playlists/playlistManager.ts",
-  "backend/services/playlists/flowPlaylistConfig.ts",
-  "backend/services/downloadJobs/downloadTracker.ts",
-  "backend/services/systemTaskWorker.ts",
-  "backend/services/honkerWorkerRuntime.ts",
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/honkerDb.ts"),
+  () => import("../../backend/services/playlists/playlistManager.ts"),
+  () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
+  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
+  () => import("../../backend/services/systemTaskWorker.ts"),
+  () => import("../../backend/services/honkerWorkerRuntime.ts"),
 );
 const originalFetch = globalThis.fetch;
 
@@ -66,11 +66,12 @@ test("media server jobs an older version left in the system task queue, includin
     { artistName: "Artist", trackName: "Upgrade Song", albumName: "Album" },
     playlist.id,
   );
+  assert.ok(jobId != null);
   downloadTracker.setDone(jobId, file, "Album");
 
   const legacy = honker.getSystemTaskQueue();
   const interruptedId = legacy.enqueue({ kind: "playback-library-scan" });
-  assert.equal(legacy.claimOne("older-version-worker").id, interruptedId);
+  assert.equal(legacy.claimOne("older-version-worker")!.id, interruptedId);
   const syncId = legacy.enqueue({
     kind: "playback-playlist-sync",
     entityIds: [playlist.id],
@@ -102,7 +103,7 @@ test("media server jobs an older version left in the system task queue, includin
 
   const events = honker.getHonkerDb().updateEvents();
   try {
-    systemTaskWorker.startPlaybackTaskWorker();
+    void systemTaskWorker.startPlaybackTaskWorker();
     while (honker.listHonkerJobs("playback").length) await events.next();
   } finally {
     events.close();

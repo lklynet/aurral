@@ -1,3 +1,5 @@
+import { requireFixture } from "./playlists/fixtures.ts";
+import { listeningAddress } from "./helpers/backendTestHarness.ts";
 import assert from "node:assert/strict";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import express from "express";
@@ -19,13 +21,13 @@ const [
   inboxService,
 ] = await setupIsolatedBackend(
   "rss-news-service",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/rssNews.ts",
-  "backend/services/newsService.ts",
-  "backend/services/apiClients/config.ts",
-  "backend/routes/news.ts",
-  "backend/services/inboxService.ts",
+  () => import("../backend/config/db-sqlite.ts"),
+  () => import("../backend/db/helpers/index.ts"),
+  () => import("../backend/services/rssNews.ts"),
+  () => import("../backend/services/newsService.ts"),
+  () => import("../backend/services/apiClients/config.ts"),
+  () => import("../backend/routes/news.ts"),
+  () => import("../backend/services/inboxService.ts"),
 );
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -41,25 +43,40 @@ afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-const configureFeeds = (urls) =>
+const configureFeeds = (urls: string[]) =>
   dbOps.updateSettings({
     integrations: {
       news: {
         enabled: true,
         groups: Object.fromEntries(config.DEFAULT_NEWS_GROUPS.map((group) => [group.id, false])),
-        feeds: urls.map((url) => ({ name: url, url, group: "custom", enabled: true })),
+        feeds: urls.map((url) => ({
+          id: url,
+          name: url,
+          url,
+          group: "custom",
+          enabled: true,
+          builtIn: false,
+        })),
       },
     },
   });
 
-const addLibraryArtists = (names) => {
+const addLibraryArtists = (names: string[]) => {
   const insert = db.prepare(
     "INSERT INTO library_artists (identity_key, name, created_at, updated_at) VALUES (?, ?, '', '')",
   );
   for (const name of names) insert.run(`name:${name}`, name);
 };
 
-const rss = (items) =>
+const rss = (
+  items: {
+    title: string;
+    url: string;
+    categories?: string[];
+    publishedAt?: number;
+    imageUrl?: string;
+  }[],
+) =>
   `<rss xmlns:media="http://search.yahoo.com/mrss/"><channel><title>Test Feed</title>${items
     .map(
       ({ title, url, categories = [], publishedAt = Date.now(), imageUrl }) => `<item>
@@ -72,21 +89,21 @@ const rss = (items) =>
     )
     .join("")}</channel></rss>`;
 
-const serveFeeds = (t, responses) =>
+const serveFeeds = (t: import("vite-plus/test").TestContext, responses: Record<string, string>) =>
   vi.spyOn(axios, "get").mockImplementation(async (url) => {
     const response = responses[url];
     if (response === undefined) throw new Error(`Unexpected request: ${url}`);
-    return { data: response };
+    return { data: response, status: 200, statusText: "OK", headers: {} };
   });
 
-const story = (title, extra = {}) => ({
+const story = (title: string, extra: { categories?: string[]; publishedAt?: number } = {}) => ({
   title,
   url: `https://news.test/${encodeURIComponent(title)}`,
   imageUrl: "https://news.test/image.jpg",
   ...extra,
 });
 
-const getTitles = async (options) =>
+const getTitles = async (options: { mode?: "matched" | "top" } = {}) =>
   (await newsService.getNewsForUser({ userId: null, limit: 100, ...options })).articles.map(
     ({ title }) => title,
   );
@@ -118,6 +135,9 @@ test("parses RSS items, Atom entries, entities, categories, and images", () => {
 
 test("fetches RSS feed articles under the feed's configured name", async () => {
   vi.spyOn(axios, "get").mockImplementation(async () => ({
+    status: 200,
+    statusText: "OK",
+    headers: {},
     data: '<feed><title>Feed Name</title><entry><title>Artist One news</title><link href="https://example.test/story"/><summary>News</summary></entry></feed>',
   }));
 
@@ -249,7 +269,7 @@ test("pages through matched stories", async (t) => {
 
 test("keeps cached stories and warns when every feed fails", async (t) => {
   configureFeeds([UNTAGGED_FEED]);
-  const responses = { [UNTAGGED_FEED]: rss([story("Cached story")]) };
+  const responses: Record<string, string> = { [UNTAGGED_FEED]: rss([story("Cached story")]) };
   serveFeeds(t, responses);
   await newsService.refreshNewsFeeds();
   assert.equal(
@@ -265,19 +285,31 @@ test("keeps cached stories and warns when every feed fails", async (t) => {
     result.articles.map(({ title }) => title),
     ["Cached story"],
   );
-  assert.match(result.refresh.warning, /could not be refreshed/);
+  assert.match(requireFixture(result.refresh.warning), /could not be refreshed/);
 });
 
 test("looks up a missing story image once", async () => {
   configureFeeds([UNTAGGED_FEED]);
   const storyUrl = "https://93.184.216.34/story";
-  const storyRequests = [];
-  vi.spyOn(axios, "get").mockImplementation(async (url) => {
-    if (url === UNTAGGED_FEED)
-      return { data: rss([{ title: "Story without image", url: storyUrl }]) };
-    storyRequests.push(url);
-    return { data: '<meta property="og:image" content="https://93.184.216.34/cover.jpg">' };
-  });
+  const storyRequests: string[] = [];
+  vi.spyOn(axios, "get").mockImplementation(
+    requireFixture(async (url) => {
+      if (url === UNTAGGED_FEED)
+        return {
+          status: 200,
+          statusText: "OK",
+          headers: {},
+          data: rss([{ title: "Story without image", url: storyUrl }]),
+        };
+      storyRequests.push(url);
+      return {
+        status: 200,
+        statusText: "OK",
+        headers: {},
+        data: '<meta property="og:image" content="https://93.184.216.34/cover.jpg">',
+      };
+    }),
+  );
 
   await newsService.refreshNewsFeeds();
   await newsService.refreshNewsFeeds();
@@ -287,14 +319,14 @@ test("looks up a missing story image once", async () => {
   assert.ok(article.imageUrl);
 });
 
-test("only admins can disable a feed, and its stories leave the news list", async (t) => {
+test("only admins can disable a feed, and its stories leave the news list", async (t: import("vite-plus/test").TestContext) => {
   configureFeeds([TAGGED_FEED, UNTAGGED_FEED]);
   serveFeeds(t, {
     [TAGGED_FEED]: rss([story("Tagged feed story")]),
     [UNTAGGED_FEED]: rss([story("Untagged feed story")]),
   });
   await newsService.refreshNewsFeeds();
-  let currentUser = null;
+  let currentUser: import("../backend/middleware/requestUser.ts").RequestUser | undefined;
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
@@ -302,22 +334,29 @@ test("only admins can disable a feed, and its stories leave the news list", asyn
     next();
   });
   app.use("/api/news", newsRouter);
-  const server = await new Promise((resolve) => {
+  const server = await new Promise<
+    import("node:http").Server<
+      typeof import("node:http").IncomingMessage,
+      typeof import("node:http").ServerResponse
+    >
+  >((resolve) => {
     const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
   });
-  t.onTestFinished(() => server.close());
+  t.onTestFinished(() => {
+    server.close();
+  });
   const disable = () =>
-    fetch(`http://127.0.0.1:${server.address().port}/api/news/feeds/disable`, {
+    fetch(`http://127.0.0.1:${listeningAddress(server).port}/api/news/feeds/disable`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ sourceUrl: UNTAGGED_FEED }),
     });
 
-  currentUser = { id: 2, role: "user" };
+  currentUser = { id: 2, username: "test", role: "user", permissions: {} };
   assert.equal((await disable()).status, 403);
   assert.equal((await getTitles({ mode: "top" })).length, 2);
 
-  currentUser = { id: 1, role: "admin" };
+  currentUser = { id: 1, username: "test", role: "admin", permissions: {} };
   assert.equal((await disable()).status, 200);
   assert.deepEqual(await getTitles({ mode: "top" }), ["Tagged feed story"]);
 });
@@ -330,14 +369,21 @@ test("the inbox lists a story under each library artist it mentions", async (t) 
   dbOps.updateSettings({
     inbox: { releases: false, shows: false, discoveries: false, news: true },
   });
-  const userId = userOps.createUser("news-inbox-user", "password-hash").id;
+  const userId = userOps.createUser("news-inbox-user", "password-hash")!.id;
 
   await inboxService.refreshInboxForUser(userId, { force: true });
 
   const items = dbOps.getInboxItems(userId, { kinds: ["news"] });
-  assert.deepEqual(items.map((item) => item.metadata.artistName).sort(), ["Big Thief", "Wet Leg"]);
+  assert.deepEqual(items.map((item) => requireFixture(item).metadata.artistName).sort(), [
+    "Big Thief",
+    "Wet Leg",
+  ]);
   assert.deepEqual(
-    items.map((item) => item.metadata.articles.map(({ title }) => title)),
+    items.map((item) => {
+      const articles = requireFixture(item).metadata.articles;
+      assert.ok(Array.isArray(articles));
+      return articles.map(({ title }: { title: string }) => title);
+    }),
     [["Wet Leg and Big Thief share split single"], ["Wet Leg and Big Thief share split single"]],
   );
 });

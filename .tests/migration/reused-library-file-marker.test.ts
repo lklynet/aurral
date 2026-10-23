@@ -8,7 +8,6 @@ import {
   applyIsolatedBackendEnv,
   cleanupIsolatedState,
   createIsolatedStateDir,
-  importFromRepo,
 } from "../helpers/backendTestHarness.ts";
 
 const isolatedState = await createIsolatedStateDir("reused-library-file-marker");
@@ -83,22 +82,19 @@ insertMedia.run(2, files.downloaded, 2500, 2500);
 seed.close();
 applyIsolatedBackendEnv(isolatedState);
 
-const { flowPlaylistConfig } = await importFromRepo(
-  "backend/services/playlists/flowPlaylistConfig.ts",
-);
-const { playlistManager } = await importFromRepo("backend/services/playlists/playlistManager.ts");
-const { processPlaylistOperation } = await importFromRepo(
-  "backend/services/playlists/playlistOperations.ts",
-);
+const { flowPlaylistConfig } =
+  await import("../../backend/services/playlists/flowPlaylistConfig.ts");
+const { playlistManager } = await import("../../backend/services/playlists/playlistManager.ts");
+const { processPlaylistOperation } =
+  await import("../../backend/services/playlists/playlistOperations.ts");
 
 afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
 test("deleting a playlist saved by an older version keeps the Library files it reused", async () => {
-  for (const name of ["requestPlaylistSync", "scheduleScanLibrary"]) {
-    vi.spyOn(playlistManager, name).mockImplementation(async () => {});
-  }
+  vi.spyOn(playlistManager, "requestPlaylistSync").mockReturnValue(null);
+  vi.spyOn(playlistManager, "scheduleScanLibrary").mockReturnValue(0);
   flowPlaylistConfig.createStaticPlaylist({
     id: playlistId,
     name: "Saved before the marker",

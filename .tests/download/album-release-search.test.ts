@@ -27,12 +27,17 @@ const manifest = {
   title: "Album",
   artistNames: ["The Band"],
   compilation: false,
+  secondaryTypes: [],
   tracks: jobs.map((job) => ({
     title: job.trackName,
     artists: [job.artistName],
     durationMs: job.durationMs,
     trackNumber: job.trackNumber,
     discNumber: 1,
+    artistAliases: [],
+    recordingMbidAliases: [],
+    recordingMbid: null,
+    pressingDurationsMs: [],
   })),
 };
 
@@ -40,6 +45,7 @@ test("a single requested track validates the whole edition and downloads only it
   const results = copy("peer");
   const selection = selectSoulseekAlbumFolder(results, [jobs[1]], { manifest });
   assert.equal(selection.decision, "selectable");
+  assert.ok(selection.selected != null);
   assert.deepEqual(
     selection.selected.files.map(({ jobId, file }) => [jobId, file]),
     [["two", results[1].file]],
@@ -90,6 +96,7 @@ test("duplicate encodings satisfy one release position and the profile chooses t
     { manifest, profile: flacFirst },
   );
   assert.equal(selected.decision, "selectable");
+  assert.ok(selected.selected != null);
   assert.deepEqual(
     selected.selected.files.map(({ jobId, file }) => [jobId, file]),
     [["two", "The Band/Album/02 - Second.flac"]],
@@ -104,13 +111,18 @@ test("Soulseek album selection chooses one folder with distinct track files", ()
   ];
   const selected = selectSoulseekAlbumFolder(results, jobs, { manifest });
   assert.equal(selected.decision, "selectable");
+  assert.ok(selected.selected != null);
   assert.deepEqual(
     selected.selected.files.map((entry) => entry.file),
     ["The Band/Album/01 - First.flac", "The Band/Album/02 - Second.flac"],
   );
 });
 
-const copy = (user, overrides = {}, extension = "flac") => [
+const copy = (
+  user: string,
+  overrides: { bitrate?: number; slots?: number; queueLength?: number } = {},
+  extension: string = "flac",
+) => [
   {
     user,
     file: `The Band/Album/01 - First.${extension}`,
@@ -140,11 +152,13 @@ test("Soulseek album selection takes one of several identical copies by upload s
     { manifest },
   );
   assert.equal(selected.decision, "selectable");
+  assert.ok(selected.selected != null);
   assert.equal(selected.selected.group.user, "free");
   assert.deepEqual(
     selected.candidates.map((candidate) => candidate.group.user),
     ["free", "busy"],
   );
+  assert.ok(selected.selected != null);
   assert.deepEqual(
     selected.selected.files.map((file) => file.jobId),
     ["one", "two"],
@@ -157,7 +171,7 @@ test("Soulseek album selection follows the quality profile", () => {
     ...copy("flac", { slots: 0 }),
   ];
   assert.equal(
-    selectSoulseekAlbumFolder(results, jobs, { manifest, profile: flacFirst }).selected.group.user,
+    selectSoulseekAlbumFolder(results, jobs, { manifest, profile: flacFirst }).selected?.group.user,
     "flac",
   );
   const flacOnly = { ...flacFirst, enabled: ["flac-standard"] };
@@ -188,10 +202,20 @@ test("Soulseek album selection uses the requested edition rather than choosing a
       { title: "Intro", trackNumber: 1 },
       { title: "First", trackNumber: 2 },
       { title: "Second", trackNumber: 3 },
-    ].map((track) => ({ ...track, artists: ["The Band"], discNumber: 1 })),
+    ].map((track) => ({
+      ...track,
+      artists: ["The Band"],
+      discNumber: 1,
+      artistAliases: [],
+      recordingMbidAliases: [],
+      recordingMbid: null,
+      pressingDurationsMs: [],
+      durationMs: null,
+    })),
   };
   const selected = selectSoulseekAlbumFolder(results, editionJobs, { manifest: edition });
   assert.equal(selected.decision, "selectable");
+  assert.ok(selected.selected != null);
   assert.deepEqual(
     selected.selected.files.map((file) => file.file),
     ["The Band/Album/02 - First.flac", "The Band/Album/03 - Second.flac"],
@@ -214,11 +238,12 @@ test("Soulseek album selection combines disc directories into one batch", () => 
   };
   const selected = selectSoulseekAlbumFolder(results, discJobs, { manifest: discManifest });
   assert.equal(selected.decision, "selectable");
+  assert.ok(selected.selected != null);
   assert.equal(selected.selected.files.length, 2);
 });
 
 test("Soulseek album selection accepts artist-album folder labels and an album titled for its version, not a Various Artists, live, or bootleg copy", () => {
-  const folderDecision = (folder) =>
+  const folderDecision = (folder: string) =>
     selectSoulseekAlbumFolder(
       [
         { user: "u", file: `${folder}/01 - First.flac`, length: 200, size: 30000000 },
@@ -276,7 +301,7 @@ test("Soulseek album selection fits a compilation folder by its album title", ()
       size: 30000000,
     },
   ];
-  const tracks = [
+  const tracks: [string, string, number][] = [
     ["Blue Swede", "Hooked on a Feeling", 173000],
     ["Raspberries", "Go All the Way", 203000],
   ];
@@ -300,12 +325,17 @@ test("Soulseek album selection fits a compilation folder by its album title", ()
         durationMs,
         trackNumber: index + 1,
         discNumber: 1,
+        artistAliases: [],
+        recordingMbidAliases: [],
+        recordingMbid: null,
+        pressingDurationsMs: [],
       })),
     };
     const selected = selectSoulseekAlbumFolder(results, compilationJobs, {
       manifest: compilationManifest,
     });
     assert.equal(selected.decision, "selectable", credit);
+    assert.ok(selected.selected != null);
     assert.deepEqual(
       selected.selected.files.map((file) => file.jobId),
       ["job-0", "job-1"],

@@ -1,17 +1,17 @@
+import { requireFixture } from "../playlists/fixtures.ts";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import {
   setupIsolatedBackend,
   cleanupIsolatedState,
-  importFromRepo,
   resetDatabase,
 } from "../helpers/backendTestHarness.ts";
 
 const [isolatedState, { db }, historyModule] = await setupIsolatedBackend(
   "aurral-history",
-  "backend/config/db-sqlite.ts",
-  "backend/services/aurralHistoryService.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/services/aurralHistoryService.ts"),
 );
 
 const {
@@ -21,13 +21,11 @@ const {
   recordTrackJobQueued,
   toHistoryRequestItem,
 } = historyModule;
-const { downloadTracker } = await importFromRepo(
-  "backend/services/downloadJobs/downloadTracker.ts",
-);
+const { downloadTracker } = await import("../../backend/services/downloadJobs/downloadTracker.ts");
 const { upsertLibraryArtist, upsertLibraryAlbum, upsertLibraryTrack, linkLibraryAlbumTrack } =
-  await importFromRepo("backend/services/libraryMediaStore.ts");
-const { getHonkerDb } = await importFromRepo("backend/services/honkerDb.ts");
-const { lidarrClient } = await importFromRepo("backend/services/lidarrClient.ts");
+  await import("../../backend/services/libraryMediaStore.ts");
+const { getHonkerDb } = await import("../../backend/services/honkerDb.ts");
+const { lidarrClient } = await import("../../backend/services/lidarrClient.ts");
 
 beforeEach(() => {
   resetDatabase(db);
@@ -168,6 +166,7 @@ test("getAurralHistoryRequests reconciles completed download jobs", async () => 
     },
     "playlist-1",
   );
+  assert.ok(jobId != null);
   upsertAurralHistory({
     referenceId: jobId,
     kind: "track_download",
@@ -202,6 +201,7 @@ test("getAurralHistoryRequests reconciles pending queued jobs as reused when tra
     },
     "playlist-1",
   );
+  assert.ok(jobId != null);
   upsertAurralHistory({
     referenceId: jobId,
     kind: "track_download",
@@ -289,11 +289,14 @@ test("queued album track jobs open their album, and other library jobs open the 
     "/playlists?selected=library",
   );
 
-  const { finalizeQualityUpgradeFailure } = await importFromRepo(
-    "backend/services/qualityProfileService.ts",
-  );
+  const { finalizeQualityUpgradeFailure } =
+    await import("../../backend/services/qualityProfileService.ts");
   await finalizeQualityUpgradeFailure(
-    { id: "upgrade-of-one", upgradeForJobId: withAlbum },
+    {
+      ...requireFixture(downloadTracker.getJob(withAlbum)),
+      id: "upgrade-of-one",
+      upgradeForJobId: withAlbum,
+    },
     "No better file",
   );
   const upgrade = (await getAurralHistoryRequests()).find(
@@ -341,8 +344,9 @@ test("pending playlist imports appear in activity before the worker starts", asy
 });
 
 test("getAurralHistoryRequests fails stale active download history, but not a track its album's release attempt still downloads", async () => {
-  const staleDownload = (trackName) => {
+  const staleDownload = (trackName: string) => {
     const jobId = downloadTracker.addJob({ artistName: "Artist", trackName }, "playlist-1");
+    assert.ok(jobId != null);
     upsertAurralHistory({
       referenceId: jobId,
       kind: "track_download",
@@ -361,6 +365,7 @@ test("getAurralHistoryRequests fails stale active download history, but not a tr
     });
     downloadTracker.setDownloading(jobId);
     const job = downloadTracker.getJob(jobId);
+    assert.ok(job != null);
     job.createdAt = Date.now() - 20 * 60 * 1000;
     job.startedAt = job.createdAt;
     return jobId;
@@ -419,11 +424,12 @@ test("blocked track download history exposes source filename", async () => {
     },
     "playlist-1",
   );
+  assert.ok(jobId != null);
   downloadTracker.updateDownloadMetadata(jobId, {
     remoteFilename: "Artist - Song (2024).flac",
   });
   downloadTracker.setBlocked(jobId, "blocked-duration-mismatch", "/tmp/staging/other-name.mp3");
-  recordTrackJobBlocked(downloadTracker.getJob(jobId), "blocked-duration-mismatch");
+  recordTrackJobBlocked(downloadTracker.getJob(jobId)!, "blocked-duration-mismatch");
 
   const entries = await getAurralHistoryRequests();
   const entry = entries.find((item) => item.jobId === jobId);
@@ -441,6 +447,7 @@ test("blocked track download history falls back to staging basename", async () =
     },
     "playlist-1",
   );
+  assert.ok(jobId != null);
   downloadTracker.setBlocked(
     jobId,
     "blocked-duration-mismatch",
@@ -474,6 +481,7 @@ test("blocked Usenet download history names the held track file and its release"
     { artistName: "Artist", trackName: "Song", albumName: "Album" },
     "playlist-1",
   );
+  assert.ok(jobId != null);
   downloadTracker.updateDownloadMetadata(jobId, {
     downloadSource: "usenet",
     releaseTitle: release,
@@ -509,9 +517,8 @@ test("blocked Usenet download history names the held track file and its release"
 });
 
 test("cancelled album track downloads show as cancelled, never as failed", async () => {
-  const { cancelDownloadJobs } = await importFromRepo(
-    "backend/services/downloadJobs/downloadCancellation.ts",
-  );
+  const { cancelDownloadJobs } =
+    await import("../../backend/services/downloadJobs/downloadCancellation.ts");
   const jobId = downloadTracker.addJob(
     {
       artistName: "Artist",
@@ -522,6 +529,7 @@ test("cancelled album track downloads show as cancelled, never as failed", async
     },
     "library",
   );
+  assert.ok(jobId != null);
   upsertAurralHistory({
     referenceId: jobId,
     kind: "track_download",
@@ -542,6 +550,7 @@ test("cancelled album track downloads show as cancelled, never as failed", async
   cancelDownloadJobs([jobId]);
   downloadTracker.setCancelled(jobId);
   const job = downloadTracker.getJob(jobId);
+  assert.ok(job != null);
   job.createdAt = Date.now() - 20 * 60 * 1000;
   job.startedAt = job.createdAt;
 
@@ -553,16 +562,19 @@ test("cancelled album track downloads show as cancelled, never as failed", async
   assert.equal(downloadTracker.getJob(jobId)?.status, "cancelled");
 });
 
-const lidarrWithAlbum = (getAlbum) => ({
-  isConfigured: () => true,
-  getQueue: async () => [],
-  getHistory: async () => ({ records: [] }),
-  request: async () => [],
-  getAlbum,
-});
+const lidarrWithAlbum = (getAlbum: typeof lidarrClient.getAlbum) => {
+  vi.spyOn(lidarrClient, "isConfigured").mockReturnValue(true);
+  vi.spyOn(lidarrClient, "getQueue").mockResolvedValue([]);
+  vi.spyOn(lidarrClient, "getHistory").mockResolvedValue({ records: [] });
+  vi.spyOn(lidarrClient, "request").mockResolvedValue([]);
+  vi.spyOn(lidarrClient, "getAlbum").mockImplementation(getAlbum);
+  return lidarrClient;
+};
 
-test("a request for an album since deleted from Lidarr leaves the activity feed", async (t) => {
-  t.onTestFinished(() => db.prepare("DELETE FROM aurral_history").run());
+test("a request for an album since deleted from Lidarr leaves the activity feed", async (t: import("vite-plus/test").TestContext) => {
+  t.onTestFinished(() => {
+    db.prepare("DELETE FROM aurral_history").run();
+  });
   historyModule.recordAlbumRequested({
     albumId: "5151",
     albumName: "Deleted Album",
@@ -579,8 +591,10 @@ test("a request for an album since deleted from Lidarr leaves the activity feed"
   );
 });
 
-test("a request survives Lidarr being unreachable", async (t) => {
-  t.onTestFinished(() => db.prepare("DELETE FROM aurral_history").run());
+test("a request survives Lidarr being unreachable", async (t: import("vite-plus/test").TestContext) => {
+  t.onTestFinished(() => {
+    db.prepare("DELETE FROM aurral_history").run();
+  });
   historyModule.recordAlbumRequested({
     albumId: "5252",
     albumName: "Kept Album",
@@ -601,17 +615,11 @@ test("a request survives Lidarr being unreachable", async (t) => {
 });
 
 test("Aurral album requests are not checked against Lidarr by library album ID", async () => {
-  const lidarrAlbumLookups = [];
-  const lidarrStub = {
-    isConfigured: () => true,
-    getQueue: async () => [],
-    getHistory: async () => ({ records: [] }),
-    request: async () => [],
-    getAlbum: async (id) => {
-      lidarrAlbumLookups.push(String(id));
-      return { id: Number(id), statistics: { trackFileCount: 0 } };
-    },
-  };
+  const lidarrAlbumLookups: string[] = [];
+  const lidarrStub = lidarrWithAlbum(async (id) => {
+    lidarrAlbumLookups.push(String(id));
+    return { id: Number(id), foreignAlbumId: String(id), statistics: { trackFileCount: 0 } };
+  });
   historyModule.recordAlbumRequested({
     albumId: "4242",
     albumName: "Aurral Owned Album",

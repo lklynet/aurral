@@ -1,3 +1,4 @@
+import { requireFixture } from "../playlists/fixtures.ts";
 import { beforeEach, test, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -31,7 +32,7 @@ beforeEach(() => {
   vi.setTimerTickMode("nextTimerAsync");
 });
 
-function createCalendarArtist(name) {
+function createCalendarArtist(name: string) {
   const mbid = randomUUID();
   const artist = upsertLibraryArtist({
     identityKey: `mbid:${mbid}`,
@@ -42,7 +43,7 @@ function createCalendarArtist(name) {
   return { ...artist, mbid };
 }
 
-function addCalendarRelease(artistId, title, releaseDate) {
+function addCalendarRelease(artistId: number, title: string, releaseDate: string) {
   const releaseGroupMbid = randomUUID();
   upsertReleaseCalendarEntry({
     releaseGroupMbid,
@@ -55,7 +56,7 @@ function addCalendarRelease(artistId, title, releaseDate) {
   return releaseGroupMbid;
 }
 
-const catalogueRelease = (id, title, type = "Album") => ({
+const catalogueRelease = (id: string, title: string, type: string = "Album") => ({
   Id: id,
   Title: title,
   Type: type,
@@ -63,20 +64,47 @@ const catalogueRelease = (id, title, type = "Album") => ({
   ReleaseStatuses: ["Official"],
 });
 
-function stubBrainzMash(t, { catalogues = {}, albumDates = {}, onArtist } = {}) {
-  const albumRequests = [];
+function stubBrainzMash(
+  t: import("vite-plus/test").TestContext,
+  {
+    catalogues = {},
+    albumDates = {},
+    onArtist,
+  }: {
+    catalogues?: {
+      [x: string]: {
+        Id: string;
+        Title: string;
+        Type: string;
+        SecondaryTypes: never[];
+        ReleaseStatuses: string[];
+      }[];
+    };
+    albumDates?: { [x: string]: string };
+    onArtist?: () => void;
+  } = {},
+) {
+  const albumRequests: string[] = [];
   let requests = 0;
   vi.spyOn(axios, "get").mockImplementation(async (url) => {
     requests += 1;
-    const [, kind, mbid] = new URL(url).pathname.match(/^\/(artist|album)\/([^/]+)$/) || [];
+    const [, kind, mbid] = new URL(String(url)).pathname.match(/^\/(artist|album)\/([^/]+)$/) || [];
     if (kind === "artist" && catalogues[mbid]) {
       onArtist?.();
-      return { data: { id: mbid, artistname: "Calendar Artist", Albums: catalogues[mbid] } };
+      return {
+        status: 200,
+        statusText: "OK",
+        headers: {},
+        data: { id: mbid, artistname: "Calendar Artist", Albums: catalogues[mbid] },
+      };
     }
     if (kind === "album") {
       albumRequests.push(mbid);
       if (mbid in albumDates) {
         return {
+          status: 200,
+          statusText: "OK",
+          headers: {},
           data: {
             id: mbid,
             title: "Album",
@@ -92,7 +120,7 @@ function stubBrainzMash(t, { catalogues = {}, albumDates = {}, onArtist } = {}) 
   return { albumRequests, requestCount: () => requests };
 }
 
-function removeCalendarArtist(artistId) {
+function removeCalendarArtist(artistId: number) {
   db.prepare(
     "DELETE FROM library_search_documents WHERE entity_kind = 'artist' AND entity_id = ?",
   ).run(artistId);
@@ -106,7 +134,7 @@ test("recent missing releases can exclude future releases for Release Radar", as
 
   try {
     const releases = await getRecentMissingReleases(10, {
-      artists: [{ canonicalId: artist.id }],
+      artists: [{ canonicalId: String(artist.id) }],
       includeFuture: false,
       now: "2026-06-15T12:00:00Z",
     });
@@ -127,7 +155,7 @@ test("recent missing releases keep upcoming albums by default for the Discover r
 
   try {
     const releases = await getRecentMissingReleases(10, {
-      artists: [{ id: artist.id }],
+      artists: [{ id: String(artist.id) }],
       now: "2026-06-15T12:00:00Z",
     });
 
@@ -148,7 +176,7 @@ test("recent missing releases can be scoped to library artists", async () => {
 
   try {
     const releases = await getRecentMissingReleases(10, {
-      artists: [{ canonicalId: includedArtist.id }],
+      artists: [{ canonicalId: String(includedArtist.id) }],
       now: "2026-06-15T12:00:00Z",
     });
 
@@ -163,7 +191,7 @@ test("recent missing releases can be scoped to library artists", async () => {
   }
 });
 
-test("BrainzMash refresh dates releases from album lookups and only rechecks dates that can move", async (t) => {
+test("BrainzMash refresh dates releases from album lookups and only rechecks dates that can move", async (t: import("vite-plus/test").TestContext) => {
   const artist = createCalendarArtist("BrainzMash Refresh Artist");
   const recentMbid = randomUUID();
   const oldMbid = randomUUID();
@@ -185,16 +213,18 @@ test("BrainzMash refresh dates releases from album lookups and only rechecks dat
     [singleMbid]: "2026-09-12",
   };
   const { albumRequests } = stubBrainzMash(t, { catalogues, albumDates });
-  const refresh = (now) => {
+  const refresh = (now: string) => {
     albumRequests.length = 0;
-    return refreshReleaseMetadata({ artists: [artist], now });
+    return refreshReleaseMetadata({ artists: [artist], now: Date.parse(now) });
   };
-  const visible = async (now) =>
+  const visible = async (now: string) =>
     Object.fromEntries(
-      (await getRecentMissingReleases(100, { artists: [artist], now })).map((album) => [
-        album.title,
-        album.releaseDate,
-      ]),
+      (
+        await getRecentMissingReleases(100, {
+          artists: [{ canonicalId: String(artist.id) }],
+          now,
+        })
+      ).map((album) => [album.title, album.releaseDate]),
     );
 
   try {
@@ -206,7 +236,7 @@ test("BrainzMash refresh dates releases from album lookups and only rechecks dat
     });
 
     await refresh("2026-09-27T18:00:00Z");
-    assert.deepEqual(albumRequests, []);
+    assert.deepEqual([...albumRequests], []);
 
     albumDates[upcomingMbid] = "2026-11-06";
     albumDates[newMbid] = "2026-09-28";
@@ -230,7 +260,7 @@ test("BrainzMash refresh dates releases from album lookups and only rechecks dat
   }
 });
 
-test("repeat refreshes skip artists refreshed in the last day and only queue for artists that are due", async (t) => {
+test("repeat refreshes skip artists refreshed in the last day and only queue for artists that are due", async (t: import("vite-plus/test").TestContext) => {
   getHonkerDb();
   const artist = createCalendarArtist("Recently Refreshed Artist");
   const releaseMbid = randomUUID();
@@ -241,8 +271,8 @@ test("repeat refreshes skip artists refreshed in the last day and only queue for
   });
   const hour = 60 * 60 * 1000;
   const now = Date.now();
-  let newArtist = null;
-  let queuedJob = null;
+  let newArtist: ReturnType<typeof createCalendarArtist> | null = null;
+  let queuedJob: number | null = null;
 
   try {
     const first = await refreshReleaseMetadata({ now });
@@ -263,13 +293,13 @@ test("repeat refreshes skip artists refreshed in the last day and only queue for
     assert.equal(daily.artistsRefreshed, 1);
     assert.ok(requestCount() > requestsAfterFirst);
   } finally {
-    if (queuedJob) getHonkerQueueByName("release-metadata-refresh").cancel(queuedJob);
+    if (queuedJob) getHonkerQueueByName("release-metadata-refresh")!.cancel(queuedJob);
     if (newArtist) removeCalendarArtist(newArtist.id);
     removeCalendarArtist(artist.id);
   }
 });
 
-test("an artist whose catalogue failed is retried after an hour, not on every refresh", async (t) => {
+test("an artist whose catalogue failed is retried after an hour, not on every refresh", async (t: import("vite-plus/test").TestContext) => {
   const artist = createCalendarArtist("Missing Catalogue Artist");
   const { requestCount } = stubBrainzMash(t);
   const hour = 60 * 60 * 1000;
@@ -297,23 +327,28 @@ test("an artist whose catalogue failed is retried after an hour, not on every re
   }
 });
 
-test("a malformed BrainzMash catalogue does not remove the last good calendar", async (t) => {
+test("a malformed BrainzMash catalogue does not remove the last good calendar", async (t: import("vite-plus/test").TestContext) => {
   const artist = createCalendarArtist("Malformed Catalogue Artist");
   const releaseMbid = randomUUID();
   const catalogues = { [artist.mbid]: [catalogueRelease(releaseMbid, "Last Good Release")] };
   stubBrainzMash(t, { catalogues, albumDates: { [releaseMbid]: "2026-09-20" } });
 
   try {
-    await refreshReleaseMetadata({ artists: [artist], now: "2026-09-27T12:00:00Z" });
+    await refreshReleaseMetadata({ artists: [artist], now: Date.parse("2026-09-27T12:00:00Z") });
 
-    catalogues[artist.mbid] = [{ Id: "", Title: "", Type: null }];
+    catalogues[artist.mbid] = [
+      { Id: "", Title: "", Type: "", SecondaryTypes: [], ReleaseStatuses: [] },
+    ];
     await assert.rejects(
-      refreshReleaseMetadata({ artists: [artist], now: "2026-09-28T12:00:00Z" }),
+      refreshReleaseMetadata({ artists: [artist], now: Date.parse("2026-09-28T12:00:00Z") }),
       /failed for every library artist/,
     );
 
     const stored = db
-      .prepare("SELECT present FROM library_release_calendar WHERE release_group_mbid = ?")
+      .prepare<
+        unknown[],
+        { present: import("../../backend/db/rows.ts").LibraryReleaseCalendarRow["present"] }
+      >("SELECT present FROM library_release_calendar WHERE release_group_mbid = ?")
       .get(releaseMbid);
     assert.deepEqual(stored, { present: 1 });
   } finally {
@@ -321,7 +356,7 @@ test("a malformed BrainzMash catalogue does not remove the last good calendar", 
   }
 });
 
-test("a failed album lookup keeps the last known release date", async (t) => {
+test("a failed album lookup keeps the last known release date", async (t: import("vite-plus/test").TestContext) => {
   const artist = createCalendarArtist("Failed Album Lookup Artist");
   const releaseMbid = randomUUID();
   const albumDates = { [releaseMbid]: "2026-09-20" };
@@ -331,14 +366,23 @@ test("a failed album lookup keeps the last known release date", async (t) => {
   });
 
   try {
-    await refreshReleaseMetadata({ artists: [artist], now: "2026-09-27T12:00:00Z" });
+    await refreshReleaseMetadata({ artists: [artist], now: Date.parse("2026-09-27T12:00:00Z") });
     delete albumDates[releaseMbid];
-    const result = await refreshReleaseMetadata({ artists: [artist], now: "2026-09-29T12:00:00Z" });
+    const result = await refreshReleaseMetadata({
+      artists: [artist],
+      now: Date.parse("2026-09-29T12:00:00Z"),
+    });
 
     assert.equal(result.releasesFailed, 1);
     assert.equal(result.releasesStale, 0);
     const stored = db
-      .prepare(
+      .prepare<
+        unknown[],
+        {
+          release_date: import("../../backend/db/rows.ts").LibraryReleaseCalendarRow["release_date"];
+          present: import("../../backend/db/rows.ts").LibraryReleaseCalendarRow["present"];
+        }
+      >(
         "SELECT release_date, present FROM library_release_calendar WHERE release_group_mbid = ? AND artist_id = ?",
       )
       .get(releaseMbid, artist.id);
@@ -366,7 +410,13 @@ test("collaboration releases retain an independent calendar row for each artist"
     }
 
     const rows = db
-      .prepare(
+      .prepare<
+        unknown[],
+        {
+          artist_id: import("../../backend/db/rows.ts").LibraryReleaseCalendarRow["artist_id"];
+          present: import("../../backend/db/rows.ts").LibraryReleaseCalendarRow["present"];
+        }
+      >(
         "SELECT artist_id, present FROM library_release_calendar WHERE release_group_mbid = ? ORDER BY artist_id",
       )
       .all(releaseGroupMbid);
@@ -377,7 +427,13 @@ test("collaboration releases retain an independent calendar row for each artist"
 
     markUnseenReleaseCalendarEntries(firstArtist.id, new Set());
     const afterStale = db
-      .prepare(
+      .prepare<
+        unknown[],
+        {
+          artist_id: import("../../backend/db/rows.ts").LibraryReleaseCalendarRow["artist_id"];
+          present: import("../../backend/db/rows.ts").LibraryReleaseCalendarRow["present"];
+        }
+      >(
         "SELECT artist_id, present FROM library_release_calendar WHERE release_group_mbid = ? ORDER BY artist_id",
       )
       .all(releaseGroupMbid);
@@ -387,7 +443,7 @@ test("collaboration releases retain an independent calendar row for each artist"
     ]);
 
     const secondArtistReleases = await getRecentMissingReleases(10, {
-      artists: [{ id: secondArtist.id }],
+      artists: [{ id: String(secondArtist.id) }],
       now: "2026-09-27T12:00:00Z",
     });
     assert.deepEqual(
@@ -400,7 +456,7 @@ test("collaboration releases retain an independent calendar row for each artist"
   }
 });
 
-test("BrainzMash refresh skips owned albums and leaves their library metadata alone", async (t) => {
+test("BrainzMash refresh skips owned albums and leaves their library metadata alone", async (t: import("vite-plus/test").TestContext) => {
   const artistMbid = randomUUID();
   const releaseMbid = randomUUID();
   const libraryArtist = upsertLibraryArtist({
@@ -448,16 +504,27 @@ test("BrainzMash refresh skips owned albums and leaves their library metadata al
 
   try {
     await refreshReleaseMetadata({
-      artists: [{ id: libraryArtist.id, mbid: artistMbid, name: "Owned Metadata Artist" }],
-      now: "2026-09-27T12:00:00Z",
+      artists: [{ id: libraryArtist.id, mbid: artistMbid }],
+      now: Date.parse("2026-09-27T12:00:00Z"),
     });
     const stored = db
-      .prepare("SELECT release_date, metadata_json FROM library_albums WHERE id = ?")
+      .prepare<
+        unknown[],
+        {
+          release_date: import("../../backend/db/rows.ts").LibraryAlbumsRow["release_date"];
+          metadata_json: import("../../backend/db/rows.ts").LibraryAlbumsRow["metadata_json"];
+        }
+      >("SELECT release_date, metadata_json FROM library_albums WHERE id = ?")
       .get(libraryAlbum.id);
-    assert.deepEqual(albumRequests, []);
+    assert.deepEqual([...albumRequests], []);
+    assert.ok(stored != null);
     assert.equal(stored.release_date, null);
+    assert.ok(stored != null);
+    assert.ok(stored.metadata_json != null);
     assert.deepEqual(JSON.parse(stored.metadata_json), ownedMetadata);
-    const visible = await getRecentMissingReleases(100, { now: "2026-09-27T12:00:00Z" });
+    const visible = await getRecentMissingReleases(100, {
+      now: Date.parse("2026-09-27T12:00:00Z"),
+    });
     assert.ok(!visible.some((album) => album.mbid === releaseMbid));
   } finally {
     db.prepare("DELETE FROM library_media_files WHERE path = ?").run(mediaPath);
@@ -480,8 +547,18 @@ test("library release-date reads return dated albums without loading old albums"
     name: "Canonical Release Artist",
     metadata: { id: 4545 },
   });
-  const trackIds = [];
-  const addAlbum = ({ suffix, title, releaseDate, available = false }) => {
+  const trackIds: number[] = [];
+  const addAlbum = ({
+    suffix,
+    title,
+    releaseDate,
+    available = false,
+  }: {
+    suffix: number;
+    title: string;
+    releaseDate: string;
+    available?: boolean;
+  }) => {
     const album = upsertLibraryAlbum({
       identityKey: `${key}:album:${suffix}`,
       releaseGroupMbid: `56565656-5656-4565-8565-${String(suffix).padStart(12, "0")}`,
@@ -557,7 +634,7 @@ test("library release-date reads return dated albums without loading old albums"
   }
 });
 
-test("lease loss during a catalogue request leaves the last good calendar untouched", async (t) => {
+test("lease loss during a catalogue request leaves the last good calendar untouched", async (t: import("vite-plus/test").TestContext) => {
   getHonkerDb();
   const artist = createCalendarArtist("Lease Loss Artist");
   const releaseMbid = addCalendarRelease(artist.id, "Last Good Release", "2026-09-20");
@@ -574,14 +651,19 @@ test("lease loss during a catalogue request leaves the last good calendar untouc
     await assert.rejects(
       refreshReleaseMetadata({
         artists: [artist],
-        now: "2026-09-27T12:00:00Z",
+        now: Date.parse("2026-09-27T12:00:00Z"),
       }),
       { code: "HONKER_JOB_INTERRUPTED" },
     );
     assert.equal(
-      db
-        .prepare("SELECT present FROM library_release_calendar WHERE release_group_mbid = ?")
-        .get(releaseMbid).present,
+      requireFixture(
+        db
+          .prepare<
+            unknown[],
+            { present: import("../../backend/db/rows.ts").LibraryReleaseCalendarRow["present"] }
+          >("SELECT present FROM library_release_calendar WHERE release_group_mbid = ?")
+          .get(releaseMbid),
+      ).present,
       1,
     );
   } finally {
@@ -590,7 +672,7 @@ test("lease loss during a catalogue request leaves the last good calendar untouc
   }
 });
 
-test("an aborted metadata refresh never calls the provider or changes the calendar", async (t) => {
+test("an aborted metadata refresh never calls the provider or changes the calendar", async (t: import("vite-plus/test").TestContext) => {
   const controller = new AbortController();
   controller.abort();
   const artist = createCalendarArtist("Aborted Refresh Artist");

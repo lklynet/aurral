@@ -14,15 +14,15 @@ const [
   { scanConfiguredLibrary },
 ] = await setupIsolatedBackend(
   "library-scan-playlist-repair",
-  "backend/db/helpers/index.ts",
-  "backend/services/playlists/flowPlaylistConfig.ts",
-  "backend/services/downloadJobs/downloadTracker.ts",
-  "backend/services/playlists/playlistManager.ts",
-  "backend/services/libraryIndexService.ts",
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
+  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
+  () => import("../../backend/services/playlists/playlistManager.ts"),
+  () => import("../../backend/services/libraryIndexService.ts"),
 );
 afterAll(() => cleanupIsolatedState(state));
 
-test("a library refresh removes playlist tracks whose downloads no longer exist", async (t) => {
+test("a library refresh removes playlist tracks whose downloads no longer exist", async (t: import("vite-plus/test").TestContext) => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-scan-playlist-repair-"));
   t.onTestFinished(() => rm(root, { recursive: true, force: true }));
   dbOps.updateSettings({ integrations: {}, flows: [], sharedPlaylists: [] });
@@ -30,6 +30,7 @@ test("a library refresh removes playlist tracks whose downloads no longer exist"
     { artistName: "Artist", trackName: "Deleted" },
     "library",
   );
+  assert.ok(deletedJobId != null);
   const keptJobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Kept" }, "library");
   const repaired = flowPlaylistConfig.createStaticPlaylist({
     name: "Repaired",
@@ -54,11 +55,11 @@ test("a library refresh removes playlist tracks whose downloads no longer exist"
   await scanConfiguredLibrary({ musicRoot: root, includeLidarr: false });
 
   assert.deepEqual(
-    flowPlaylistConfig.getStaticPlaylist(repaired.id).tracks,
+    flowPlaylistConfig.getStaticPlaylist(repaired.id)!.tracks,
     repaired.tracks.slice(1),
   );
-  assert.deepEqual(flowPlaylistConfig.getStaticPlaylist(untouched.id).tracks, untouched.tracks);
-  assert.deepEqual(flowPlaylistConfig.getStaticPlaylist(alsoRepaired.id).tracks, []);
+  assert.deepEqual(flowPlaylistConfig.getStaticPlaylist(untouched.id)!.tracks, untouched.tracks);
+  assert.deepEqual([...flowPlaylistConfig.getStaticPlaylist(alsoRepaired.id)!.tracks], []);
   assert.deepEqual(
     playlistSync.mock.calls.map((call) => call[0]),
     [[repaired.id, alsoRepaired.id]],

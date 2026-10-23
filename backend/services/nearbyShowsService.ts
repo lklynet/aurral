@@ -134,7 +134,7 @@ const selectImage = (images: TicketmasterImage[] = []) => {
   return images.find((image) => image?.url)?.url || null;
 };
 
-const toEventRecord = (event: TicketmasterEvent) => {
+const toEventRecord = (event: TicketmasterEvent & { id: string }) => {
   const attractions = Array.isArray(event?._embedded?.attractions)
     ? event._embedded.attractions
     : [];
@@ -154,7 +154,8 @@ const toEventRecord = (event: TicketmasterEvent) => {
     venueName: venue.name || null,
     city: venue.city?.name || null,
     region: venue.state?.stateCode || venue.state?.name || venue.country?.countryCode || null,
-    distance: Number.isFinite(event?.distance) ? event.distance : null,
+    distance:
+      typeof event.distance === "number" && Number.isFinite(event.distance) ? event.distance : null,
     performerKeys: [
       ...new Set(attractions.map((attraction) => toArtistKey(attraction?.name)).filter(Boolean)),
     ],
@@ -351,8 +352,9 @@ const fetchTicketmasterEvents = async ({
       timeout: 10000,
       signal,
     });
-    const events = (response.data?._embedded?.events || [])
-      .filter((event: TicketmasterEvent) => event?.id)
+    const listedEvents: TicketmasterEvent[] = response.data?._embedded?.events || [];
+    const events = listedEvents
+      .filter((event): event is TicketmasterEvent & { id: string } => Boolean(event?.id))
       .map(toEventRecord)
       .filter((event: ReturnType<typeof toEventRecord>) => event.performerKeys.length > 0);
     ticketmasterEventCache.set(cacheKey, events);
@@ -373,12 +375,12 @@ const buildArtistMap = (artistsBySource: [ArtistSource, ArtistInput[] | undefine
 };
 
 const matchShows = (
-  events: Awaited<ReturnType<typeof fetchTicketmasterEvents>>,
+  events: ReturnType<typeof toEventRecord>[],
   artistMap: ReturnType<typeof buildArtistMap>,
 ) => {
   const shows = [];
   for (const { performerKeys, ...event } of events) {
-    const matches = new Map();
+    const matches = new Map<string, ArtistSource>();
     for (const key of performerKeys) {
       const match = artistMap.get(key);
       if (match) matches.set(match.name, match.sourceType);
@@ -423,7 +425,7 @@ export const getNearbyShows = async ({
   trendingArtists?: ArtistInput[];
   radiusMiles?: number;
   responseCacheKey?: string | null;
-}) => {
+}): Promise<{ location: NearbyLocation; shows: ReturnType<typeof matchShows> }> => {
   const sanitizedZipCode = sanitizeZipCode(zipCode);
   const sanitizedCountryCode = sanitizeCountryCode(countryCode);
   const publicIp = sanitizedZipCode ? "" : getPublicRequestIp(req);

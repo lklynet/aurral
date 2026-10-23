@@ -12,11 +12,11 @@ const FFMPEG_VORBIS_NAMES = {
   disc: "DISCNUMBER",
   comment: "DESCRIPTION",
 };
-const encodedTones = new Map();
+const encodedTones = new Map<number, Promise<ReturnType<typeof readFlacBlocks>>>();
 let fixturesWritten = 0;
 
-function readFlacBlocks(data) {
-  const blocks = [];
+function readFlacBlocks(data: NonSharedBuffer) {
+  const blocks: { type: number; body: Buffer<ArrayBuffer> }[] = [];
   let offset = 4;
   for (let last = false; !last;) {
     last = (data[offset] & 0x80) !== 0;
@@ -30,7 +30,7 @@ function readFlacBlocks(data) {
   return { blocks, frames: data.subarray(offset) };
 }
 
-function encodeTone(seconds) {
+function encodeTone(seconds: number) {
   if (!encodedTones.has(seconds)) {
     encodedTones.set(
       seconds,
@@ -56,11 +56,11 @@ function encodeTone(seconds) {
       })(),
     );
   }
-  return encodedTones.get(seconds);
+  return encodedTones.get(seconds)!;
 }
 
-function vorbisComment(vendor, comments) {
-  const field = (text) => {
+function vorbisComment(vendor: string, comments: string[]) {
+  const field = (text: string) => {
     const bytes = Buffer.from(text, "utf8");
     const length = Buffer.alloc(4);
     length.writeUInt32LE(bytes.length);
@@ -71,11 +71,18 @@ function vorbisComment(vendor, comments) {
   return Buffer.concat([...field(vendor), count, ...comments.flatMap(field)]);
 }
 
-export async function writeFlacFixture(filePath, tags = {}, { seconds = 0.2 } = {}) {
+export async function writeFlacFixture(
+  filePath: string,
+  tags: Record<string, string | number> = {},
+  { seconds = 0.2 }: { seconds?: number } = {},
+) {
   const { blocks, frames } = await encodeTone(seconds);
   const comments = Object.entries(tags)
     .filter(([, value]) => `${value}` !== "")
-    .map(([key, value]) => `${FFMPEG_VORBIS_NAMES[key] ?? key}=${value}`);
+    .map(
+      ([key, value]) =>
+        `${Object.hasOwn(FFMPEG_VORBIS_NAMES, key) ? FFMPEG_VORBIS_NAMES[key as keyof typeof FFMPEG_VORBIS_NAMES] : key}=${value}`,
+    );
   const uniqueVendor = `Aurral test fixture ${(fixturesWritten += 1)}`;
   const tagged = blocks.map((block) =>
     block.type === VORBIS_COMMENT

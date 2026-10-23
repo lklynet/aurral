@@ -1,3 +1,4 @@
+import { requireFixture } from "../playlists/fixtures.ts";
 import { test, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
@@ -18,13 +19,13 @@ const [
   { clearMetadataProviderCaches },
 ] = await setupIsolatedBackend(
   "aurral-album-added-date",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/libraryManager.ts",
-  "backend/services/downloadJobs/downloadTracker.ts",
-  "backend/services/downloadJobs/downloadWorker.ts",
-  "backend/services/lidarrClient.ts",
-  "backend/services/providers/brainzmashProvider.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/libraryManager.ts"),
+  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
+  () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
+  () => import("../../backend/services/lidarrClient.ts"),
+  () => import("../../backend/services/providers/brainzmashProvider.ts"),
 );
 
 const artistMbid = "11111111-1111-4111-8111-111111111111";
@@ -97,23 +98,33 @@ test("re-adding an Aurral album keeps the date it was first added", async () => 
 
   try {
     const artist = await libraryManager.addArtist(artistMbid, "Aurral Artist");
-    await libraryManager.addAlbum(artist.id, albumMbid, "Aurral Album", { managedBy: "aurral" });
+    await libraryManager.addAlbum(requireFixture(artist.id), albumMbid, "Aurral Album", {
+      managedBy: "aurral",
+    });
 
     const firstAdded = "2020-01-02T03:04:05.000Z";
     const row = db
-      .prepare("SELECT id, metadata_json FROM library_albums WHERE mbid = ?")
+      .prepare<unknown[], { id: number; metadata_json: string | null }>(
+        "SELECT id, metadata_json FROM library_albums WHERE mbid = ?",
+      )
       .get(albumMbid);
-    const metadata = JSON.parse(row.metadata_json);
+    const metadata = JSON.parse(requireFixture(requireFixture(row).metadata_json));
     db.prepare("UPDATE library_albums SET metadata_json = ? WHERE id = ?").run(
       JSON.stringify({ ...metadata, added: firstAdded, trackListComplete: false }),
-      row.id,
+      requireFixture(row).id,
     );
 
     downloadTracker.clearAll();
-    await libraryManager.addAlbum(artist.id, albumMbid, "Aurral Album", { managedBy: "aurral" });
+    await libraryManager.addAlbum(requireFixture(artist.id), albumMbid, "Aurral Album", {
+      managedBy: "aurral",
+    });
 
-    const after = db.prepare("SELECT metadata_json FROM library_albums WHERE id = ?").get(row.id);
-    assert.equal(JSON.parse(after.metadata_json).added, firstAdded);
+    const after = db
+      .prepare<unknown[], { metadata_json: string | null }>(
+        "SELECT metadata_json FROM library_albums WHERE id = ?",
+      )
+      .get(requireFixture(row).id);
+    assert.equal(JSON.parse(requireFixture(requireFixture(after).metadata_json)).added, firstAdded);
   } finally {
     downloadWorker.start = originalWorkerStart;
     lidarrClient.isConfigured = originalIsConfigured;

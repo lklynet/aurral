@@ -62,7 +62,7 @@ async function linkOrRenameNew(from: string, target: string) {
     await fs.link(from, target);
     await fs.unlink(from);
   } catch (error) {
-    if (!LINK_UNSUPPORTED.has(asAppError(error)?.code)) throw error;
+    if (!LINK_UNSUPPORTED.has(String(asAppError(error)?.code))) throw error;
     if (await fs.lstat(target).catch(() => null)) {
       throw Object.assign(new Error(`File exists: ${target}`), { code: "EEXIST" });
     }

@@ -1,3 +1,5 @@
+import { createRouteHarness, createResponse } from "./routeHarness.ts";
+import { requireFixture } from "../playlists/fixtures.ts";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm, stat } from "node:fs/promises";
@@ -12,11 +14,15 @@ import {
 import { writeFlacFixture } from "../helpers/flacFixture.ts";
 
 vi.mock("../../backend/services/apiClients/rateLimiter.ts", async (importOriginal) => {
-  const { default: createRateLimiter } = await importOriginal();
-  return { default: (_minTime, options) => createRateLimiter(0, options) };
+  const { default: createRateLimiter } =
+    await importOriginal<typeof import("../../backend/services/apiClients/rateLimiter.ts")>();
+  return {
+    default: (_minTime: number, options: Parameters<typeof createRateLimiter>[1]) =>
+      createRateLimiter(0, options),
+  };
 });
 vi.mock("../../backend/services/metadataProviderBudget.ts", async (importOriginal) => ({
-  ...(await importOriginal()),
+  ...(await importOriginal<typeof import("../../backend/services/metadataProviderBudget.ts")>()),
   reserveMetadataProviderRequest: () => 0,
 }));
 
@@ -30,27 +36,27 @@ const [
   { resolveDownloadRoot },
   { reuseTrackForPlaylist },
   { downloadTracker },
-  { downloadWorker },
+  { downloadWorker, DownloadWorker },
   { processSystemTask },
   { clearScheduledLibraryScan },
 ] = await setupIsolatedBackend(
   "read-only-folders",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/routes/library/handlers/files.ts",
-  "backend/routes/library/handlers/tracks.ts",
-  "backend/services/libraryIndexService.ts",
-  "backend/services/downloadPaths.ts",
-  "backend/services/downloadJobs/fileReuse.ts",
-  "backend/services/downloadJobs/downloadTracker.ts",
-  "backend/services/downloadJobs/downloadWorker.ts",
-  "backend/services/systemTaskWorker.ts",
-  "backend/services/libraryScanWorker.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/routes/library/handlers/files.ts"),
+  () => import("../../backend/routes/library/handlers/tracks.ts"),
+  () => import("../../backend/services/libraryIndexService.ts"),
+  () => import("../../backend/services/downloadPaths.ts"),
+  () => import("../../backend/services/downloadJobs/fileReuse.ts"),
+  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
+  () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
+  () => import("../../backend/services/systemTaskWorker.ts"),
+  () => import("../../backend/services/libraryScanWorker.ts"),
 );
 
 const lidarrOn = { isConfigured: () => true };
 const lidarrOff = { isConfigured: () => false };
-const temporaryFolders = [];
+const temporaryFolders: string[] = [];
 
 beforeEach(async () => {
   resetDatabase(db);
@@ -74,13 +80,19 @@ afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-async function makeFolder(name) {
+async function makeFolder(name: string) {
   const folder = await mkdtemp(path.join(tmpdir(), `aurral-read-only-${name}-`));
   temporaryFolders.push(folder);
   return folder;
 }
 
-async function makeTrack(root, artist, album, title, trackNumber = 1) {
+async function makeTrack(
+  root: string,
+  artist: string,
+  album: string,
+  title: string,
+  trackNumber = 1,
+) {
   const filePath = path.join(root, artist, album, `0${trackNumber} ${title}.flac`);
   await mkdir(path.dirname(filePath), { recursive: true });
   await writeFlacFixture(filePath, {
@@ -93,34 +105,21 @@ async function makeTrack(root, artist, album, title, trackNumber = 1) {
   return filePath;
 }
 
-function captureRoutes(register) {
-  const routes = {};
-  const capture =
-    (method) =>
-    (routePath, ...handlers) => {
-      routes[`${method} ${routePath}`] = handlers.at(-1);
-    };
-  register({
-    get: capture("GET"),
-    post: capture("POST"),
-    put: capture("PUT"),
-    patch: capture("PATCH"),
-    delete: capture("DELETE"),
-  });
-  return async (method, routePath, { body, params } = {}) => {
-    const response = {
-      statusCode: 200,
-      body: null,
-      status(code) {
-        this.statusCode = code;
-        return this;
-      },
-      json(value) {
-        this.body = value;
-        return this;
-      },
-    };
-    await routes[`${method} ${routePath}`]({ body, params, user: { id: 1 } }, response);
+function captureRoutes(
+  register: typeof import("../../backend/routes/library/handlers/tracks.ts").registerTracks,
+) {
+  const routes = createRouteHarness(register);
+  return async (
+    method: string,
+    routePath: string,
+    { body, params }: { body?: { path: string }; params?: { id: string } } = {},
+  ) => {
+    const response = createResponse<{
+      folders: { path: string; tracks?: number; readable?: boolean }[];
+      message?: string;
+      error?: string;
+    }>();
+    await routes.get(`${method} ${routePath}`)({ body, params, user: { id: 1 } }, response);
     return response;
   };
 }
@@ -128,9 +127,12 @@ function captureRoutes(register) {
 const callFiles = captureRoutes(registerFiles);
 const callTracks = captureRoutes(registerTracks);
 
-const fileRow = (filePath) =>
+const fileRow = (filePath: string) =>
   db
-    .prepare(
+    .prepare<
+      unknown[],
+      { source: string; track_id: number; monitored: number; managed_by: string }
+    >(
       `SELECT media.source, media.track_id, track.monitored, management.managed_by
        FROM library_media_files AS media
        JOIN library_tracks AS track ON track.id = media.track_id
@@ -140,7 +142,7 @@ const fileRow = (filePath) =>
     )
     .all(filePath);
 
-const fingerprint = async (filePath) => {
+const fingerprint = async (filePath: string) => {
   const [info, bytes] = await Promise.all([stat(filePath), readFile(filePath)]);
   return { mtimeMs: info.mtimeMs, size: info.size, bytes: bytes.toString("base64") };
 };
@@ -153,7 +155,7 @@ test("a read-only folder joins the Library and Aurral leaves its files alone", a
   const added = await callFiles("POST", "/files/read-only-folders", { body: { path: folder } });
   assert.equal(added.statusCode, 201);
   assert.deepEqual(
-    added.body.folders.map((entry) => entry.path),
+    requireFixture(added.body).folders.map((entry) => entry.path),
     [folder],
   );
 
@@ -168,8 +170,8 @@ test("a read-only folder joins the Library and Aurral leaves its files alone", a
     },
   ]);
   const listed = await callFiles("GET", "/files/read-only-folders");
-  assert.equal(listed.body.folders[0].tracks, 1);
-  assert.equal(listed.body.folders[0].readable, true);
+  assert.equal(requireFixture(listed.body).folders[0].tracks, 1);
+  assert.equal(requireFixture(listed.body).folders[0].readable, true);
 
   const deleted = await callTracks("DELETE", "/tracks/:id", {
     params: { id: String(fileRow(filePath)[0].track_id) },
@@ -201,7 +203,7 @@ test("a read-only folder cannot overlap the Downloads Folder or another read-onl
       body: { path: rejected },
     });
     assert.equal(response.statusCode, 400, rejected);
-    assert.ok(response.body.message, rejected);
+    assert.ok(requireFixture(response.body).message, rejected);
   }
   assert.deepEqual(dbOps.getJSONSetting("readOnlyFolders"), [folder]);
 });
@@ -215,7 +217,7 @@ test("removing a read-only folder takes its music out of the Library and keeps t
 
   const removed = await callFiles("DELETE", "/files/read-only-folders", { body: { path: folder } });
   assert.equal(removed.statusCode, 200);
-  assert.deepEqual(removed.body.folders, []);
+  assert.deepEqual([...requireFixture(removed.body).folders], []);
   await scanConfiguredLibrary({ lidarrClient: lidarrOff });
 
   assert.deepEqual(fileRow(filePath), []);
@@ -262,15 +264,17 @@ test("playlists use a read-only file in place and download their own copy once t
   assert.equal(reuse.reused, true);
   assert.equal(reuse.finalPath, filePath);
   const job = downloadTracker.getJob(reuse.jobId);
+  assert.ok(job != null);
   assert.equal(job.status, "done");
   assert.equal(job.externalPath, filePath);
 
+  assert.ok(downloadWorker instanceof DownloadWorker);
   await downloadWorker.releaseLidarrFiles();
-  assert.equal(downloadTracker.getJob(reuse.jobId).status, "done");
+  assert.equal(downloadTracker.getJob(reuse.jobId)!.status, "done");
 
   await callFiles("DELETE", "/files/read-only-folders", { body: { path: folder } });
   vi.spyOn(downloadWorker, "start").mockResolvedValue(undefined);
   await processSystemTask({ kind: "read-only-folder-release", folders: [folder] });
-  assert.equal(downloadTracker.getJob(reuse.jobId).status, "pending");
+  assert.equal(downloadTracker.getJob(reuse.jobId)!.status, "pending");
   assert.deepEqual(await fingerprint(filePath), before);
 });

@@ -1,14 +1,6 @@
 import assert from "node:assert/strict";
 import { test, vi } from "vite-plus/test";
 
-const waitForRequestSignal = async (getSignal) => {
-  const deadline = Date.now() + 1000;
-  while (!getSignal() && Date.now() < deadline) {
-    await new Promise((resolve) => setImmediate(resolve));
-  }
-  assert.ok(getSignal(), "fetch was not called before the request signal timeout");
-};
-
 test("library cache invalidation does not abort an active request", async () => {
   vi.resetModules();
 
@@ -17,14 +9,16 @@ test("library cache invalidation does not abort an active request", async () => 
   const { queryClient, queryKeys } = await import("../../frontend/src/queryClient.ts");
   const options = { kind: "artists", page: 1, pageSize: 100 };
   const queryKey = queryKeys.libraryPage(options);
-  let resolveRequest;
+  const { promise: requestReady, resolve: markRequestReady } = Promise.withResolvers<void>();
+  const pending = Promise.withResolvers<unknown>();
   let aborted = false;
   const request = queryClient.fetchQuery({
     queryKey,
     staleTime: 0,
     queryFn: ({ signal }) =>
-      new Promise((resolve, reject) => {
-        resolveRequest = resolve;
+      new Promise<unknown>((resolve, reject) => {
+        pending.promise.then(resolve, reject);
+        markRequestReady();
         signal.addEventListener(
           "abort",
           () => {
@@ -36,10 +30,10 @@ test("library cache invalidation does not abort an active request", async () => 
       }),
   });
 
-  while (!resolveRequest) await new Promise((resolve) => setImmediate(resolve));
+  await requestReady;
   await clearLibraryPageCache();
   assert.equal(aborted, false);
-  resolveRequest({ artists: [] });
+  pending.resolve({ artists: [] });
   await request;
 
   assert.notDeepEqual(queryKeys.libraryPage(options), queryKey);
@@ -53,18 +47,22 @@ test("library requests forward caller cancellation", async () => {
     await import("../../frontend/src/utils/api/endpoints/library.ts");
   const { queryClient, queryKeys } = await import("../../frontend/src/queryClient.ts");
 
-  const assertForwardedCancellation = async (load) => {
+  const assertForwardedCancellation = async (load: (signal: AbortSignal) => Promise<unknown>) => {
     const originalFetch = globalThis.fetch;
-    let requestSignal;
+    let requestSignal: AbortSignal | null | undefined;
+    const { promise: started, resolve: markStarted } = Promise.withResolvers<void>();
     const controller = new AbortController();
     globalThis.fetch = (_url, init) =>
-      new Promise((_resolve, reject) => {
+      new Promise<Response>((_resolve, reject) => {
+        assert.ok(init?.signal);
         requestSignal = init.signal;
-        init.signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+        markStarted();
+        init.signal!.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
       });
     try {
       const request = load(controller.signal);
-      await waitForRequestSignal(() => requestSignal);
+      await started;
+      assert.ok(requestSignal);
       controller.abort();
       await assert.rejects(request, /aborted/);
       assert.equal(requestSignal.aborted, true);
@@ -78,17 +76,24 @@ test("library requests forward caller cancellation", async () => {
   );
   await assertForwardedCancellation((signal) => getLibraryFavorites({ signal }));
 
-  const assertQueryCancellation = async (load, queryKey) => {
+  const assertQueryCancellation = async (
+    load: () => Promise<unknown>,
+    queryKey: readonly unknown[],
+  ) => {
     const originalFetch = globalThis.fetch;
-    let requestSignal;
+    let requestSignal: AbortSignal | null | undefined;
+    const { promise: started, resolve: markStarted } = Promise.withResolvers<void>();
     globalThis.fetch = (_url, init) =>
-      new Promise((_resolve, reject) => {
+      new Promise<Response>((_resolve, reject) => {
+        assert.ok(init?.signal);
         requestSignal = init.signal;
-        init.signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+        markStarted();
+        init.signal!.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
       });
     try {
       const request = load();
-      await waitForRequestSignal(() => requestSignal);
+      await started;
+      assert.ok(requestSignal);
       await queryClient.cancelQueries({ queryKey, exact: true });
       await assert.rejects(request);
       assert.equal(requestSignal.aborted, true);
@@ -117,9 +122,9 @@ test("artist batch lookup stays within the API batch limit", async () => {
     await import("../../frontend/src/utils/api/endpoints/library.ts");
   const { queryClient } = await import("../../frontend/src/queryClient.ts");
   const originalFetch = globalThis.fetch;
-  const requestSizes = [];
+  const requestSizes: number[] = [];
   globalThis.fetch = async (_url, init) => {
-    const { mbids } = JSON.parse(init.body);
+    const { mbids }: { mbids: string[] } = JSON.parse(String(init?.body));
     requestSizes.push(mbids.length);
     return new Response(JSON.stringify(Object.fromEntries(mbids.map((id) => [id, true]))), {
       status: mbids.length <= 100 ? 200 : 400,
@@ -157,7 +162,11 @@ test("artist adds publish an immediate shared library lookup", async () => {
     );
 
   try {
-    await addArtistToLibrary({ foreignArtistId: "artist-1", artistName: "Artist" });
+    await addArtistToLibrary({
+      foreignArtistId: "artist-1",
+      artistName: "Artist",
+      managedBy: "aurral",
+    });
     assert.equal(queryClient.getQueryData(queryKeys.libraryLookup("artist-1")), true);
   } finally {
     globalThis.fetch = originalFetch;
@@ -173,13 +182,16 @@ test("library refresh starts a new lookup after cancelling an active request", a
   const { queryClient, queryKeys } = await import("../../frontend/src/queryClient.ts");
   const originalFetch = globalThis.fetch;
   let requestCount = 0;
-  let firstRequestSignal;
+  let firstRequestSignal: AbortSignal | null | undefined;
+  const { promise: started, resolve: markStarted } = Promise.withResolvers<void>();
   globalThis.fetch = (_url, init) => {
     requestCount += 1;
     if (requestCount === 1) {
+      assert.ok(init?.signal);
       firstRequestSignal = init.signal;
-      return new Promise((_resolve, reject) => {
-        init.signal.addEventListener("abort", () => reject(new Error("aborted")), {
+      markStarted();
+      return new Promise<Response>((_resolve, reject) => {
+        init.signal!.addEventListener("abort", () => reject(new Error("aborted")), {
           once: true,
         });
       });
@@ -194,7 +206,8 @@ test("library refresh starts a new lookup after cancelling an active request", a
 
   try {
     const initialRequest = lookupArtistInLibrary("artist-1", { bypassCache: true });
-    await waitForRequestSignal(() => firstRequestSignal);
+    await started;
+    assert.ok(firstRequestSignal);
     await queryClient.cancelQueries({
       queryKey: queryKeys.libraryLookupDetails("artist-1"),
       exact: true,

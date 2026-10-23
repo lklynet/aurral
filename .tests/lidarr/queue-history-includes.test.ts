@@ -3,8 +3,9 @@ import assert from "node:assert/strict";
 import { LidarrClient } from "../../backend/services/lidarrClient.ts";
 import { buildLidarrRequests } from "../../backend/services/lidarrRequestBuilder.ts";
 
-function createClient(t) {
+function createClient(t: import("vite-plus/test").TestContext) {
   const client = new LidarrClient();
+  vi.spyOn(client, "getAlbum").mockResolvedValue(null);
   t.onTestFinished(() => {
     client._httpAgent.destroy();
     client._httpsAgent.destroy();
@@ -16,9 +17,9 @@ function createClient(t) {
 // Lidarr omits album/artist from queue and history records unless asked, so
 // Activity showed raw release titles ("Rihanna - ... [FLAC 16bit] [👤 user]")
 // under the placeholder artist "Artist".
-test("queue and history requests ask Lidarr to embed album and artist", async (t) => {
+test("queue and history requests ask Lidarr to embed album and artist", async (t: import("vite-plus/test").TestContext) => {
   const client = createClient(t);
-  const endpoints = [];
+  const endpoints: string[] = [];
   vi.spyOn(client, "request").mockImplementation(async (endpoint) => {
     endpoints.push(endpoint);
     return { records: [] };
@@ -39,47 +40,39 @@ test("queue and history requests ask Lidarr to embed album and artist", async (t
   );
 });
 
-test("activity rows use the embedded album and artist names", async () => {
-  const requests = await buildLidarrRequests(
-    { getAlbum: async () => null },
-    {
-      queue: [
-        {
-          id: 1,
-          albumId: 48,
-          title: "Rihanna - Good Girl Gone Bad (2007) [FLAC 16bit] [👤 jellyrobin ]",
-          status: "downloading",
-          album: { title: "Good Girl Gone Bad", foreignAlbumId: "rg" },
-          artist: { id: 7, artistName: "Rihanna", foreignArtistId: "ar" },
-        },
-      ],
-      history: { records: [] },
-    },
-  );
+test("activity rows use the embedded album and artist names", async (t) => {
+  const requests = await buildLidarrRequests(createClient(t), {
+    queue: [
+      {
+        id: 1,
+        albumId: 48,
+        title: "Rihanna - Good Girl Gone Bad (2007) [FLAC 16bit] [👤 jellyrobin ]",
+        status: "downloading",
+        album: { id: 48, title: "Good Girl Gone Bad", foreignAlbumId: "rg" },
+        artist: { id: 7, artistName: "Rihanna", foreignArtistId: "ar" },
+      },
+    ],
+    history: { records: [] },
+  });
   assert.equal(requests[0].albumName, "Good Girl Gone Bad");
   assert.equal(requests[0].artistName, "Rihanna");
 });
 
-test("a queue item whose status messages report a failure shows as Failed", async () => {
-  const requests = await buildLidarrRequests(
-    { getAlbum: async () => null },
-    {
-      queue: [
-        {
-          id: 1,
-          albumId: 48,
-          title: "Rihanna - Good Girl Gone Bad",
-          status: "downloading",
-          trackedDownloadStatus: "ok",
-          statusMessages: [
-            { title: "Rihanna - Good Girl Gone Bad", messages: ["Download failed"] },
-          ],
-          album: { title: "Good Girl Gone Bad", foreignAlbumId: "rg" },
-          artist: { id: 7, artistName: "Rihanna", foreignArtistId: "ar" },
-        },
-      ],
-      history: { records: [] },
-    },
-  );
+test("a queue item whose status messages report a failure shows as Failed", async (t) => {
+  const requests = await buildLidarrRequests(createClient(t), {
+    queue: [
+      {
+        id: 1,
+        albumId: 48,
+        title: "Rihanna - Good Girl Gone Bad",
+        status: "downloading",
+        trackedDownloadStatus: "ok",
+        statusMessages: [{ title: "Rihanna - Good Girl Gone Bad", messages: ["Download failed"] }],
+        album: { id: 48, title: "Good Girl Gone Bad", foreignAlbumId: "rg" },
+        artist: { id: 7, artistName: "Rihanna", foreignArtistId: "ar" },
+      },
+    ],
+    history: { records: [] },
+  });
   assert.equal(requests[0].statusLabel, "Failed");
 });

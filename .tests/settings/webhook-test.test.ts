@@ -1,3 +1,11 @@
+import { captureRouteHandlers } from "../library/routeHarness.ts";
+type CapturedRequest = {
+  method?: string;
+  url?: string;
+  headers: import("node:http").IncomingHttpHeaders;
+  body: unknown;
+};
+import { listeningAddress } from "../helpers/backendTestHarness.ts";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { test, beforeEach, afterAll } from "vite-plus/test";
@@ -11,51 +19,44 @@ import {
 const [isolatedState, { db }, { dbOps }, notifications, { registerDownloadClients }] =
   await setupIsolatedBackend(
     "webhook-test",
-    "backend/config/db-sqlite.ts",
-    "backend/db/helpers/index.ts",
-    "backend/services/notificationService.ts",
-    "backend/routes/settings/handlers/downloadClients.ts",
+    () => import("../../backend/config/db-sqlite.ts"),
+    () => import("../../backend/db/helpers/index.ts"),
+    () => import("../../backend/services/notificationService.ts"),
+    () => import("../../backend/routes/settings/handlers/downloadClients.ts"),
   );
 
 const { sendWebhookTest } = notifications;
 
 function getWebhookTestRoute() {
-  const routes = [];
-  const router = {
-    get(path, handler) {
-      routes.push({ method: "GET", path, handler });
-    },
-    post(path, handler) {
-      routes.push({ method: "POST", path, handler });
-    },
-  };
-  registerDownloadClients(router);
-  return routes.find(({ method, path }) => method === "POST" && path === "/webhook/test");
+  return { handler: captureRouteHandlers(registerDownloadClients, "post").get("/webhook/test") };
 }
 
 function makeResponse() {
   return {
     statusCode: 200,
-    payload: null,
-    status(code) {
+    payload: undefined as unknown,
+    status(code: number) {
       this.statusCode = code;
       return this;
     },
-    json(payload) {
+    json(payload: unknown) {
       this.payload = payload;
       return this;
     },
   };
 }
 
-async function withReceiver(statusCode, callback) {
-  const requests = [];
+async function withReceiver(
+  statusCode: number,
+  callback: (receiver: { url: string; requests: CapturedRequest[] }) => Promise<void>,
+) {
+  const requests: CapturedRequest[] = [];
   const server = createServer((req, res) => {
-    const chunks = [];
+    const chunks: Buffer[] = [];
     req.on("data", (chunk) => chunks.push(chunk));
     req.on("end", () => {
       const rawBody = Buffer.concat(chunks).toString("utf8");
-      let body = rawBody;
+      let body: unknown = rawBody;
       try {
         body = rawBody ? JSON.parse(rawBody) : null;
       } catch {}
@@ -71,14 +72,14 @@ async function withReceiver(statusCode, callback) {
   });
 
   try {
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       server.once("error", reject);
       server.listen(0, "127.0.0.1", resolve);
     });
-    const { port } = server.address();
+    const { port } = listeningAddress(server);
     await callback({ url: `http://127.0.0.1:${port}/hook`, requests });
   } finally {
-    await new Promise((resolve, reject) =>
+    await new Promise<void>((resolve, reject) =>
       server.close((error) => (error ? reject(error) : resolve())),
     );
   }
@@ -149,7 +150,6 @@ test("direct webhook test sends POST headers and fixed placeholder values withou
         id: "$userId",
       }),
       headers: [{ key: "X-Test-Webhook", value: "post" }],
-      webhookEvents: { notifyRequestMade: false },
     });
 
     assert.equal(requests.length, 1);
@@ -182,7 +182,7 @@ test("webhook test route rejects missing, invalid, and blocked URLs", async () =
     const response = makeResponse();
     await route.handler({ body }, response);
     assert.equal(response.statusCode, 400);
-    assert.equal(response.payload.error, error);
+    assert.deepEqual(response.payload, { error });
   }
 });
 

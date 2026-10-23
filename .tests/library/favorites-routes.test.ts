@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import { test, beforeAll, afterAll } from "vite-plus/test";
-import { Writable } from "node:stream";
+import { createRouteHarness, createResponse as responseFor } from "./routeHarness.ts";
+import type {
+  FetchLibraryPageResponse,
+  FetchLibraryFavoritesResponse,
+  UpdateLibraryFavoritesResponse,
+} from "../../backend/routes/library/handlers/libraryIndex.ts";
+type Page<Kind extends FetchLibraryPageResponse["kind"]> = Extract<
+  FetchLibraryPageResponse,
+  { kind: Kind }
+>;
 
 import {
   cleanupIsolatedState,
@@ -11,10 +20,10 @@ import {
 const [isolatedState, { db }, { userOps }, libraryService, libraryStore] =
   await setupIsolatedBackend(
     "canonical-favorites-route",
-    "backend/config/db-sqlite.ts",
-    "backend/db/helpers/index.ts",
-    "backend/services/subsonicLibraryService.ts",
-    "backend/services/libraryMediaStore.ts",
+    () => import("../../backend/config/db-sqlite.ts"),
+    () => import("../../backend/db/helpers/index.ts"),
+    () => import("../../backend/services/subsonicLibraryService.ts"),
+    () => import("../../backend/services/libraryMediaStore.ts"),
   );
 
 const { registerLibraryIndex } =
@@ -27,12 +36,14 @@ const {
   upsertLibraryTrack,
 } = libraryStore;
 
-let user;
-let artist;
+let user: NonNullable<ReturnType<typeof userOps.getUserById>>;
+let artist: import("../../backend/db/rows.ts").LibraryArtistsRow;
 
 beforeAll(() => {
   resetDatabase(db);
-  user = userOps.getUserById(userOps.createUser("native", "hash").id);
+  const created = userOps.getUserById(userOps.createUser("native", "hash")!.id);
+  assert.ok(created);
+  user = created;
   artist = upsertLibraryArtist({
     identityKey: "favorite-artist",
     mbid: "11111111-1111-4111-8111-111111111111",
@@ -104,64 +115,19 @@ afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-function getRoute(path) {
-  const routes = new Map();
-  registerLibraryIndex({
-    get(routePath, ...handlers) {
-      routes.set(`GET ${routePath}`, handlers.at(-1));
-    },
-    post(routePath, ...handlers) {
-      routes.set(`POST ${routePath}`, handlers.at(-1));
-    },
-  });
-  return routes.get(path);
-}
-
-function responseFor() {
-  const response = new Writable({
-    write(chunk, _encoding, callback) {
-      this.chunks.push(chunk.toString());
-      callback();
-    },
-  });
-  response.chunks = [];
-  response.on("finish", () => {
-    if (response.chunks.length > 0) response.body = JSON.parse(response.chunks.join(""));
-  });
-  Object.assign(response, {
-    body: null,
-    statusCode: 200,
-    contentType: null,
-    status(code) {
-      this.statusCode = code;
-      return this;
-    },
-    type(value) {
-      this.contentType = value;
-      return this;
-    },
-    json(value) {
-      this.body = value;
-      return this;
-    },
-    send(value) {
-      this.body = JSON.parse(value);
-      return this;
-    },
-  });
-  return response;
-}
+const routes = createRouteHarness(registerLibraryIndex);
+const getRoute = routes.get;
 
 test("native favorites return changed identities and reuse Subsonic star identity", () => {
   const target = `artist:${encodeURIComponent(artist.identity_key)}`;
-  const postResponse = responseFor();
+  const postResponse = responseFor<UpdateLibraryFavoritesResponse>();
   getRoute("POST /favorites")({ user, body: { ids: [target], starred: true } }, postResponse);
 
   assert.equal(postResponse.statusCode, 200);
   assert.deepEqual(postResponse.body.changedIds, [target]);
-  assert.equal(postResponse.body.library, undefined);
+  assert.equal("library" in postResponse.body, false);
 
-  const getResponse = responseFor();
+  const getResponse = responseFor<FetchLibraryFavoritesResponse>();
   getRoute("GET /favorites")({ user }, getResponse);
   assert.deepEqual(
     getResponse.body.artist.map((entry) => entry.id),
@@ -170,7 +136,7 @@ test("native favorites return changed identities and reuse Subsonic star identit
 });
 
 test("native favorites include the library favorite subset", () => {
-  const response = responseFor();
+  const response = responseFor<FetchLibraryFavoritesResponse>();
   getRoute("GET /favorites")({ user }, response);
 
   assert.deepEqual(
@@ -185,11 +151,11 @@ test("native favorites include the library favorite subset", () => {
     response.body.library.tracks.map((entry) => entry.title),
     ["Favorite Track", "Favorite Track Two"],
   );
-  assert.equal(response.body.library.tracks[0].files[0].path, undefined);
+  assert.equal("path" in response.body.library.tracks[0].files[0], false);
 });
 
 test("library pages return bounded collection responses", () => {
-  const response = responseFor();
+  const response = responseFor<Page<"tracks">>();
   getRoute("GET /canonical")(
     { user, query: { kind: "tracks", page: "1", pageSize: "1", availableOnly: "false" } },
     response,
@@ -211,9 +177,9 @@ test("library pages return bounded collection responses", () => {
   assert.equal(response.body.albums[0].trackCount, 2);
   assert.equal(response.body.albums[0].availableTrackCount, 1);
   assert.equal(response.body.hasMore, true);
-  assert.equal(response.body.items[0].files[0].path, undefined);
+  assert.equal("path" in response.body.items[0].files[0], false);
 
-  const availableResponse = responseFor();
+  const availableResponse = responseFor<Page<"albums">>();
   getRoute("GET /canonical")(
     { user, query: { kind: "albums", page: "1", pageSize: "1", availableOnly: "true" } },
     availableResponse,
@@ -227,7 +193,7 @@ test("library pages return bounded collection responses", () => {
   assert.equal(availableResponse.body.items[0].source, "aurral");
   assert.equal(availableResponse.body.items[0].available, true);
 
-  const artistResponse = responseFor();
+  const artistResponse = responseFor<Page<"artists">>();
   getRoute("GET /canonical")(
     { user, query: { kind: "artists", page: "1", pageSize: "1" } },
     artistResponse,
@@ -236,7 +202,7 @@ test("library pages return bounded collection responses", () => {
 });
 
 test("library rejects unbounded requests", () => {
-  const response = responseFor();
+  const response = responseFor<{ error: string }>();
   getRoute("GET /canonical")({ user, query: { kind: "tracks" } }, response);
 
   assert.equal(response.statusCode, 400);
@@ -244,7 +210,7 @@ test("library rejects unbounded requests", () => {
 });
 
 test("native favorites rejects unknown targets without changing stars", () => {
-  const response = responseFor();
+  const response = responseFor<{ error: string }>();
   getRoute("POST /favorites")({ user, body: { ids: ["album:missing"], starred: true } }, response);
 
   assert.equal(response.statusCode, 400);
@@ -253,7 +219,7 @@ test("native favorites rejects unknown targets without changing stars", () => {
 });
 
 test("library pages filter, count, and paginate in the read query", () => {
-  const response = responseFor();
+  const response = responseFor<Page<"albums">>();
   getRoute("GET /canonical")(
     {
       query: {
@@ -290,12 +256,12 @@ test("unfavoriting returns the removed stars so restoring keeps their original t
   ).run(user.id, "favorite-track-two");
   const storedSongs = () =>
     db
-      .prepare(
+      .prepare<unknown[], { entity_key: string; created_at: number }>(
         "SELECT entity_key, created_at FROM subsonic_stars WHERE user_id = ? AND entity_kind = 'song' ORDER BY created_at",
       )
       .all(user.id);
 
-  const unstarResponse = responseFor();
+  const unstarResponse = responseFor<UpdateLibraryFavoritesResponse>();
   getRoute("POST /favorites")({ user, body: { ids: [first], starred: false } }, unstarResponse);
   assert.equal(unstarResponse.statusCode, 200);
   assert.deepEqual(unstarResponse.body.removed, [{ id: first, starredAt: 1000 }]);

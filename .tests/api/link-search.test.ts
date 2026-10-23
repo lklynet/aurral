@@ -1,3 +1,4 @@
+import { listeningAddress } from "../helpers/backendTestHarness.ts";
 import assert from "node:assert/strict";
 import { test, beforeAll, beforeEach, afterAll, vi } from "vite-plus/test";
 import express from "express";
@@ -20,16 +21,16 @@ const [
   provider,
 ] = await setupIsolatedBackend(
   "link-search",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/middleware/passwordHash.ts",
-  "backend/middleware/auth.ts",
-  "backend/routes/auth.ts",
-  "backend/routes/search.ts",
-  "backend/services/providers/brainzmashProvider.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/middleware/passwordHash.ts"),
+  () => import("../../backend/middleware/auth.ts"),
+  () => import("../../backend/routes/auth.ts"),
+  () => import("../../backend/routes/search.ts"),
+  () => import("../../backend/services/providers/brainzmashProvider.ts"),
 );
 
-const fixture = (name) =>
+const fixture = (name: string) =>
   readFile(new URL(`../fixtures/streaming-links/${name}`, import.meta.url), "utf8");
 const spotifyAlbumPage = await fixture("spotify-album-songlink.html");
 const appleTrackLookup = await fixture("apple-music-track-lookup.json");
@@ -40,8 +41,12 @@ const daftPunk = "056e4f3e-d505-4dad-8ec1-d04f521cbb56";
 const discovery = "48117b90-a16e-34ca-a514-19c702df1158";
 const oneMoreTime = "4b7a5d7b-9a12-4a2c-8f3e-7f0d3d4b3c11";
 
-const artist = (id, artistname) => ({ id, artistname, genres: [], images: [] });
-const albumSearchResult = (id, title, artistEntry) => ({
+const artist = (id: string, artistname: string) => ({ id, artistname, genres: [], images: [] });
+const albumSearchResult = (
+  id: string,
+  title: string,
+  artistEntry: { id: string; artistname: string; genres: never[]; images: never[] },
+) => ({
   id,
   title,
   type: "Album",
@@ -52,14 +57,20 @@ const albumSearchResult = (id, title, artistEntry) => ({
 });
 
 const realFetch = globalThis.fetch;
-let metadataServer;
-let metadataRoutes = {};
-let server;
-let baseUrl;
-let token;
+let metadataServer: { url: string; close: () => Promise<void> };
+let metadataRoutes: Record<string, unknown> = {};
+let server: import("node:http").Server<
+  typeof import("node:http").IncomingMessage,
+  typeof import("node:http").ServerResponse
+>;
+let baseUrl: string;
+let token: string;
 
-function stubServices(t, routes) {
-  const requests = [];
+function stubServices(
+  t: import("vite-plus/test").TestContext,
+  routes: Record<string, { body: BodyInit; type: string; status?: number } | (() => Response)>,
+) {
+  const requests: string[] = [];
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     const url = new URL(String(input));
     if (url.hostname === "127.0.0.1") return realFetch(input, init);
@@ -75,7 +86,10 @@ function stubServices(t, routes) {
   return requests;
 }
 
-async function resolveLink(url, { authenticated = true } = {}) {
+async function resolveLink(
+  url: string | undefined,
+  { authenticated = true }: { authenticated?: boolean } = {},
+) {
   const query = url === undefined ? "" : `?url=${encodeURIComponent(url)}`;
   const response = await realFetch(`${baseUrl}/api/search/link${query}`, {
     headers: authenticated ? { Authorization: `Bearer ${token}` } : {},
@@ -85,7 +99,7 @@ async function resolveLink(url, { authenticated = true } = {}) {
 
 beforeAll(async () => {
   metadataServer = await createMockHttpServer((request, response) => {
-    const { pathname } = new URL(request.url, "http://metadata.invalid");
+    const { pathname } = new URL(request.url || "/", "http://metadata.invalid");
     const body = metadataRoutes[pathname];
     response.setHeader("Content-Type", "application/json");
     if (body === undefined)
@@ -97,10 +111,15 @@ beforeAll(async () => {
   app.use(authMiddleware);
   app.use("/api/auth", authRouter);
   app.use("/api/search", searchRouter);
-  server = await new Promise((resolve) => {
+  server = await new Promise<
+    import("node:http").Server<
+      typeof import("node:http").IncomingMessage,
+      typeof import("node:http").ServerResponse
+    >
+  >((resolve) => {
     const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
   });
-  baseUrl = `http://127.0.0.1:${server.address().port}`;
+  baseUrl = `http://127.0.0.1:${listeningAddress(server).port}`;
 });
 
 beforeEach(async () => {
@@ -125,7 +144,7 @@ beforeEach(async () => {
 });
 
 afterAll(async () => {
-  await new Promise((resolve) => server?.close(resolve));
+  await new Promise<void>((resolve) => server?.close(() => resolve()));
   await metadataServer?.close();
   await cleanupIsolatedState(state);
 });
@@ -287,7 +306,7 @@ test("unsupported links return 400 without contacting any service", async (t) =>
     assert.equal(body.code, "LINK_UNSUPPORTED");
     assert.equal(typeof body.error, "string");
   }
-  assert.deepEqual(requests, []);
+  assert.deepEqual([...requests], []);
 });
 
 test("an unreachable service returns 502 and is retried on the next request", async (t) => {
@@ -339,5 +358,5 @@ test("signed-out requests return 401 without contacting any service", async (t) 
   );
   assert.equal(status, 401);
   assert.equal(typeof body.error, "string");
-  assert.deepEqual(requests, []);
+  assert.deepEqual([...requests], []);
 });

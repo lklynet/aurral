@@ -8,7 +8,6 @@ import {
   applyIsolatedBackendEnv,
   cleanupIsolatedState,
   createIsolatedStateDir,
-  importFromRepo,
 } from "../helpers/backendTestHarness.ts";
 
 const isolatedState = await createIsolatedStateDir("playlist-artwork-serve", {
@@ -16,9 +15,9 @@ const isolatedState = await createIsolatedStateDir("playlist-artwork-serve", {
 });
 applyIsolatedBackendEnv(isolatedState);
 
-const { db } = await importFromRepo("backend/config/db-sqlite.ts");
-const { dbOps, userOps } = await importFromRepo("backend/db/helpers/index.ts");
-const { hashPassword } = await importFromRepo("backend/middleware/passwordHash.ts");
+const { db } = await import("../../backend/config/db-sqlite.ts");
+const { dbOps, userOps } = await import("../../backend/db/helpers/index.ts");
+const { hashPassword } = await import("../../backend/middleware/passwordHash.ts");
 dbOps.updateSettings({ downloadFolderPath: path.join(isolatedState.dataDir, "downloads") });
 const [
   { flowPlaylistConfig },
@@ -28,17 +27,15 @@ const [
   { authMiddleware },
   { playlistOperationQueue },
   { processPlaylistOperation },
-] = await Promise.all(
-  [
-    "backend/services/playlists/flowPlaylistConfig.ts",
-    "backend/services/playlists/playlistManager.ts",
-    "backend/routes/playlists/handlers/artworkServe.ts",
-    "backend/routes/playlists/index.ts",
-    "backend/middleware/auth.ts",
-    "backend/services/playlists/playlistOperationQueue.ts",
-    "backend/services/playlists/playlistOperations.ts",
-  ].map(importFromRepo),
-);
+] = await Promise.all([
+  import("../../backend/services/playlists/flowPlaylistConfig.ts"),
+  import("../../backend/services/playlists/playlistManager.ts"),
+  import("../../backend/routes/playlists/handlers/artworkServe.ts"),
+  import("../../backend/routes/playlists/index.ts"),
+  import("../../backend/middleware/auth.ts"),
+  import("../../backend/services/playlists/playlistOperationQueue.ts"),
+  import("../../backend/services/playlists/playlistOperations.ts"),
+]);
 
 afterAll(async () => {
   db.close();
@@ -49,24 +46,26 @@ test("serves playlist artwork from a hidden data directory", async () => {
   const owner = userOps.createUser("listener", hashPassword("listener-password"), "user", {
     accessFlow: true,
   });
+  assert.ok(owner != null);
   const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Sunday Morning",
     ownerUserId: owner.id,
   });
   await playlistManager.generateArtwork(playlist.id);
   const artwork = await playlistManager.resolveArtworkFile(playlist.id);
-  assert.ok(artwork.safePath.split(path.sep).some((segment) => segment.startsWith(".")));
+  assert.ok(artwork != null);
+  assert.ok(artwork.safePath.split(path.sep).some((segment: string) => segment.startsWith(".")));
 
   const app = express();
   const router = express.Router();
   registerArtworkServe(router);
   app.use("/api/playlists", router);
-  const server = await new Promise((resolve) => {
+  const server = await new Promise<import("node:http").Server>((resolve) => {
     const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
   });
   try {
     const response = await fetch(
-      `http://127.0.0.1:${server.address().port}/api/playlists/artwork/${playlist.id}`,
+      `http://127.0.0.1:${(server.address() as import("node:net").AddressInfo).port}/api/playlists/artwork/${playlist.id}`,
       {
         headers: {
           authorization: `Basic ${Buffer.from("listener:listener-password").toString("base64")}`,
@@ -79,7 +78,7 @@ test("serves playlist artwork from a hidden data directory", async () => {
       await fs.readFile(artwork.safePath),
     );
   } finally {
-    await new Promise((resolve) => server.close(resolve));
+    await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });
 
@@ -91,20 +90,23 @@ test("a new flow or static playlist has its cover as soon as it is created, with
   });
   userOps.createUser("curator", hashPassword("curator-password"), "admin");
   const authorization = `Basic ${Buffer.from("curator:curator-password").toString("base64")}`;
-  const queuedOperations = [];
+  const queuedOperations: (
+    | import("../../backend/services/honkerDb.ts").HonkerPayload
+    | undefined
+  )[] = [];
   vi.spyOn(playlistOperationQueue, "enqueuePayload").mockImplementation(async (payload) => {
     queuedOperations.push(payload);
-    return { queued: true, operationId: `operation-${queuedOperations.length}` };
+    return { queued: true, operationId: queuedOperations.length };
   });
   const app = express();
   app.use(express.json());
   app.use(authMiddleware);
   app.use("/api/playlists", playlistsRouter);
-  const server = await new Promise((resolve) => {
+  const server = await new Promise<import("node:http").Server>((resolve) => {
     const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
   });
-  const baseUrl = `http://127.0.0.1:${server.address().port}`;
-  const request = async (route, body) => {
+  const baseUrl = `http://127.0.0.1:${(server.address() as import("node:net").AddressInfo).port}`;
+  const request = async (route: string, body?: Record<string, unknown>) => {
     const response = await fetch(`${baseUrl}/api/playlists${route}`, {
       method: body ? "POST" : "GET",
       headers: { authorization, ...(body ? { "content-type": "application/json" } : {}) },
@@ -134,6 +136,6 @@ test("a new flow or static playlist has its cover as soon as it is created, with
     assert.equal(playlistCover.status, 200);
     assert.equal(playlistCover.type, "image/webp");
   } finally {
-    await new Promise((resolve) => server.close(resolve));
+    await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });

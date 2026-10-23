@@ -25,7 +25,7 @@ test("distinct non-Latin titles cannot be selected or verified", () => {
     ["कि", "की"],
     ["時", "shi"],
     ["shi", "時"],
-  ]) {
+  ] satisfies [unknown, unknown][]) {
     const wanted = {
       title: expected,
       artists: ["X"],
@@ -68,7 +68,7 @@ test("script-safe identity preserves canonical equivalents and allowed title suf
     ["時", "時 - Remastered 2011"],
     ["がみ - Radio Edit", "がみ (Radio Edit)"],
     ["कि", "कि"],
-  ]) {
+  ] satisfies [unknown, unknown][]) {
     const wanted = { title: expected, artists: ["X"], durationMs: 200000 };
     const candidate = { ...wanted, title: offered };
     assert.equal(
@@ -129,7 +129,7 @@ test("listing titles parse common album file layouts without changing song subti
     ["Track07.mp3", 7],
     ["Audio Track 12.flac", 12],
     ["Track Star.flac", null],
-  ]) {
+  ] satisfies [unknown, unknown][]) {
     assert.equal(parseListingTitle(path).trackNumber, trackNumber, path);
   }
   for (const [path, discNumber] of [
@@ -148,7 +148,7 @@ test("listing titles parse common album file layouts without changing song subti
     ["Album (2LP)/LP 2/01 Song.flac", 2],
     ["Album (3LP)/LP2/D6. Song.mp3", 2],
     ["Album (2LP)/LP 2 - Side C/01 Song.flac", 2],
-  ])
+  ] satisfies [unknown, unknown][])
     assert.equal(parseListingTitle(path).discNumber, discNumber, path);
   for (const [path, album, discNumber] of [
     ["Ratatat/LP4 [FLAC]/01 Bilar.flac", "LP4", undefined],
@@ -157,7 +157,7 @@ test("listing titles parse common album file layouts without changing song subti
     ["Album (2LP)/LP 2/01 Song.flac", "Album", 2],
     ["Album/CD2/01 Song.flac", "Album", 2],
     ["Ratatat/LP4 - Other Album/01 Bilar.flac", "LP4", 4],
-  ])
+  ] satisfies [unknown, unknown, unknown][])
     assert.equal(parseListingTitle(path, { album }).discNumber, discNumber, `${path} on ${album}`);
 });
 
@@ -310,7 +310,7 @@ test("post-download verification reads versions from the title, file name, album
   for (const [observed, variant] of [
     [{ ...offered, path: "/staging/The Band/Album (Acoustic)/15 Apology.flac" }, "acoustic"],
     [{ ...offered, filename: "15 Apology (Live).flac", fileNameTitle: "Apology (Live)" }, "live"],
-  ]) {
+  ] satisfies [unknown, unknown][]) {
     const result = verifyDownloadedRecording(plain, observed);
     assert.equal(result.decision, "no_match", JSON.stringify(observed));
     assert.ok(result.contradictions.includes(variant), JSON.stringify(result.contradictions));

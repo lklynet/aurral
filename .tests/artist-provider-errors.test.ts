@@ -1,5 +1,6 @@
+import { requireFixture } from "./playlists/fixtures.ts";
 import assert from "node:assert/strict";
-import { test, beforeEach, afterAll, vi } from "vite-plus/test";
+import { test, beforeEach, afterAll, vi, type TestContext } from "vite-plus/test";
 import {
   cleanupIsolatedState,
   createMockHttpServer,
@@ -15,7 +16,7 @@ const provider = await createMockHttpServer((req, res) => {
   res.setHeader("content-type", "application/json");
   res.end(
     JSON.stringify(
-      req.url.startsWith("/artist/")
+      requireFixture(req.url).startsWith("/artist/")
         ? {
             id: mbid,
             artistname: "Provider Artist",
@@ -41,13 +42,13 @@ const [
   { listenbrainzSource },
 ] = await setupIsolatedBackend(
   "artist-provider-errors",
-  "lib/axiosFetch.ts",
-  "backend/services/apiClients/deezer.ts",
-  "backend/services/imageService.ts",
-  "backend/db/helpers/index.ts",
-  "backend/config/db-sqlite.ts",
-  "backend/services/providers/brainzmashProvider.ts",
-  "backend/services/musicDataSource/listenbrainz.ts",
+  () => import("../lib/axiosFetch.ts"),
+  () => import("../backend/services/apiClients/deezer.ts"),
+  () => import("../backend/services/imageService.ts"),
+  () => import("../backend/db/helpers/index.ts"),
+  () => import("../backend/config/db-sqlite.ts"),
+  () => import("../backend/services/providers/brainzmashProvider.ts"),
+  () => import("../backend/services/musicDataSource/listenbrainz.ts"),
 );
 
 beforeEach(() => {
@@ -67,13 +68,23 @@ afterAll(async () => {
   delete process.env.BRAINZMASH_BASE_URL;
 });
 
-function responses(t, respond) {
+function responses(
+  t: TestContext,
+  respond: (url: string, options?: Parameters<typeof axios.get>[1]) => unknown,
+) {
   const realGet = axios.get.bind(axios);
-  vi.spyOn(axios, "get").mockImplementation(async (url, options) => {
-    if (String(url).startsWith(provider.url)) return realGet(url, options);
-    assert.equal(new URL(url).hostname, "api.deezer.com");
-    return { data: await respond(String(url), options) };
-  });
+  vi.spyOn(axios, "get").mockImplementation(
+    requireFixture(async (url, options) => {
+      if (String(url).startsWith(provider.url)) return realGet(url, options);
+      assert.equal(new URL(url).hostname, "api.deezer.com");
+      return {
+        status: 200,
+        statusText: "OK",
+        headers: {},
+        data: await respond(String(url), options),
+      };
+    }),
+  );
 }
 
 test("a failed artist ID lookup can recover without clearing its cache", async (t) => {
@@ -90,7 +101,7 @@ test("a failed artist ID lookup can recover without clearing its cache", async (
 for (const [mode, options] of [
   ["default", undefined],
   ["strict", { throwOnError: true }],
-]) {
+] as const) {
   test("a missing artist ID is cached as absence for " + mode + " callers", async (t) => {
     let requests = 0;
     responses(t, () => {
@@ -103,10 +114,10 @@ for (const [mode, options] of [
   });
 }
 
-test("strict and default callers share a missing artist ID without treating it as an outage", async (t) => {
-  let release;
+test("strict and default callers share a missing artist ID without treating it as an outage", async (t: import("vite-plus/test").TestContext) => {
+  let release!: () => void;
   let requests = 0;
-  const gate = new Promise((resolve) => {
+  const gate = new Promise<void>((resolve) => {
     release = resolve;
   });
   t.onTestFinished(() => release());
@@ -153,9 +164,9 @@ test("a name-search error in HTTP 200 is not cached as an absent artist", async 
   assert.equal((await deezer.getDeezerArtist("Provider Artist"))?.id, 101);
 });
 
-test("strict and fallback callers sharing an artist lookup retain their error contracts", async (t) => {
-  let release;
-  const gate = new Promise((resolve) => {
+test("strict and fallback callers sharing an artist lookup retain their error contracts", async (t: import("vite-plus/test").TestContext) => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
     release = resolve;
   });
   t.onTestFinished(() => release());
@@ -205,6 +216,9 @@ test("a top-track error in HTTP 200 does not cache an empty track list", async (
 
 test("an artist's Popular list keeps the first six playable tracks in provider order", async (t) => {
   responses(t, () => ({
+    status: 200,
+    statusText: "OK",
+    headers: {},
     data: Array.from({ length: 8 }, (_, index) => ({
       id: index + 1,
       title: `Track ${index + 1}`,
@@ -215,23 +229,23 @@ test("an artist's Popular list keeps the first six playable tracks in provider o
   }));
   const tracks = await deezer.deezerGetArtistTopTracksById(101);
   assert.deepEqual(
-    tracks.map((track) => track.title),
+    tracks.map((track: { title: string }) => track.title),
     ["Track 1", "Track 3", "Track 4", "Track 5", "Track 6", "Track 7"],
   );
 });
 
 const artistTopTracks = async () =>
   (await listenbrainzSource.getArtistTopTracks({ name: "Provider Artist" })).map(
-    (track) => track.name,
+    (track: { name: string }) => track.name,
   );
 
 for (const [endpoint, path] of [
   ["an artist search", "/search/artist"],
   ["a top-track", "/artist/101/top"],
-]) {
+] as const) {
   test(endpoint + " error 4 in HTTP 200 leaves artist top tracks retryable", async (t) => {
     let failed = true;
-    responses(t, (url) => {
+    responses(t, (url: string) => {
       if (failed && url.endsWith(path))
         return { error: { code: 4, message: "Provider unavailable" } };
       return url.endsWith("/search/artist")
@@ -248,10 +262,10 @@ for (const [absence, path, body] of [
   ["an artist search with no results", "/search/artist", { data: [], total: 0 }],
   ["an artist with no top tracks", "/artist/101/top", { data: [], total: 0 }],
   ["an unknown artist ID", "/artist/101/top", missingArtist],
-]) {
+] as const) {
   test(absence + " is cached as having no top tracks", async (t) => {
-    const requests = [];
-    responses(t, (url) => {
+    const requests: string[] = [];
+    responses(t, (url: string) => {
       requests.push(new URL(url).pathname);
       return url.endsWith(path) ? body : { data: [{ id: 101, name: "Provider Artist" }] };
     });
@@ -277,21 +291,26 @@ test("a catalog error in HTTP 200 remains retryable instead of caching an empty 
   assert.equal((await deezer.getDeezerAlbumsForArtist({ id: 101 }))[0]?.title, "Recovered Album");
 });
 
-for (const origin of ["relationship", "override", "name search"]) {
+for (const origin of ["relationship", "override", "name search"] as const) {
   test("a failed " + origin + " artist image remains transient until recovery", async (t) => {
     artistLinked = origin === "relationship";
     if (origin === "override") dbOps.setArtistOverride(mbid, { deezerArtistId: "101" });
     let failed = true;
-    responses(t, (url) => {
+    responses(t, (url: string) => {
       if (url.endsWith("/search/artist")) {
         if (failed) throw new Error("Provider unavailable");
-        return { data: [{ id: 101, name: "Provider Artist", picture_big: photo }] };
+        return {
+          status: 200,
+          statusText: "OK",
+          headers: {},
+          data: [{ id: 101, name: "Provider Artist", picture_big: photo }],
+        };
       }
       if (url.endsWith("/artist/101")) {
         if (failed) throw new Error("Provider unavailable");
         return { id: 101, name: "Provider Artist", picture_big: photo };
       }
-      return { data: [] };
+      return { status: 200, statusText: "OK", headers: {}, data: [] };
     });
     const first = await getArtistImage(mbid, { forceRefresh: true });
     assert.equal(first.transientError, true);
@@ -301,12 +320,12 @@ for (const origin of ["relationship", "override", "name search"]) {
   });
 }
 
-for (const origin of ["relationship", "override"]) {
+for (const origin of ["relationship", "override"] as const) {
   test("a missing " + origin + " artist ID allows the image absence to be cached", async (t) => {
     artistLinked = origin === "relationship";
     if (origin === "override") dbOps.setArtistOverride(mbid, { deezerArtistId: "101" });
     let requests = 0;
-    responses(t, (url) => {
+    responses(t, (url: unknown) => {
       assert.equal(url, "https://api.deezer.com/artist/101");
       requests++;
       return missingArtist;

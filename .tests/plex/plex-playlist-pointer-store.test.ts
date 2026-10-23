@@ -9,9 +9,9 @@ import {
 
 const [isolatedState, { db }, , { plexPlaylistPointerStore }] = await setupIsolatedBackend(
   "plex-playlist-pointer-store",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/plex/plexPlaylistPointerStore.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/plex/plexPlaylistPointerStore.ts"),
 );
 
 beforeEach(() => {
@@ -30,6 +30,7 @@ test("setPointer/getPointer round-trip, including description", () => {
     description: "Fresh picks from your recommendation profile",
   });
   const pointer = plexPlaylistPointerStore.getPointer("flow-1", "global");
+  assert.ok(pointer != null);
   assert.equal(pointer.location, "global");
   assert.equal(pointer.ratingKey, "501", "ratingKey is normalized to a string");
   assert.equal(pointer.title, "Discover Weekly");
@@ -43,7 +44,7 @@ test("setPointer defaults description to null when omitted", () => {
     ratingKey: 502,
     title: "Trending Mix",
   });
-  assert.equal(plexPlaylistPointerStore.getPointer("flow-2", "global").description, null);
+  assert.equal(plexPlaylistPointerStore.getPointer("flow-2", "global")!.description, null);
 });
 
 test("setPointer overwrites an existing pointer for the same entity+target", () => {
@@ -58,6 +59,7 @@ test("setPointer overwrites an existing pointer for the same entity+target", () 
     title: "New",
   });
   const pointer = plexPlaylistPointerStore.getPointer("flow-3", "5");
+  assert.ok(pointer != null);
   assert.equal(pointer.ratingKey, "2");
   assert.equal(pointer.title, "New");
 });
@@ -73,8 +75,8 @@ test("different target keys for the same entity are tracked independently", () =
     ratingKey: 11,
     title: "Metal Mayhem",
   });
-  assert.equal(plexPlaylistPointerStore.getPointer("flow-4", "global").ratingKey, "10");
-  assert.equal(plexPlaylistPointerStore.getPointer("flow-4", "5").ratingKey, "11");
+  assert.equal(plexPlaylistPointerStore.getPointer("flow-4", "global")!.ratingKey, "10");
+  assert.equal(plexPlaylistPointerStore.getPointer("flow-4", "5")!.ratingKey, "11");
 });
 
 test("deletePointer removes the entry and reports whether one existed", () => {
@@ -101,7 +103,7 @@ test("deletePointer only removes the given target, leaving sibling targets for t
   });
   plexPlaylistPointerStore.deletePointer("flow-6", "global");
   assert.equal(plexPlaylistPointerStore.getPointer("flow-6", "global"), null);
-  assert.equal(plexPlaylistPointerStore.getPointer("flow-6", "5").ratingKey, "31");
+  assert.equal(plexPlaylistPointerStore.getPointer("flow-6", "5")!.ratingKey, "31");
 });
 
 test("getPointersForTarget finds every entity tracked under one sync target, across different entities", () => {

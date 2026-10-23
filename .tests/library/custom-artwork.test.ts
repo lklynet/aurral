@@ -5,15 +5,14 @@ import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import sharp from "sharp";
 import {
   cleanupIsolatedState,
-  importFromRepo,
   resetDatabase,
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.ts";
 
 const [state, { db }, artworkService] = await setupIsolatedBackend(
   "custom-artwork",
-  "backend/config/db-sqlite.ts",
-  "backend/services/customArtworkService.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/services/customArtworkService.ts"),
 );
 
 const {
@@ -77,7 +76,7 @@ test("a removal requested during a save cannot delete the replacement file after
 });
 
 test("a cached image without a content type is refused instead of saved", async () => {
-  const { resolveAurralDataDir } = await importFromRepo("backend/config/data-dir.ts");
+  const { resolveAurralDataDir } = await import("../../backend/config/data-dir.ts");
   const cacheKey = "a".repeat(64);
   const cacheDir = path.join(resolveAurralDataDir(), "image-proxy");
   fs.mkdirSync(cacheDir, { recursive: true });

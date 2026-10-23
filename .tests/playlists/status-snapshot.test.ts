@@ -4,7 +4,6 @@ import assert from "node:assert/strict";
 import {
   setupIsolatedBackend,
   cleanupIsolatedState,
-  importFromRepo,
   resetDatabase,
 } from "../helpers/backendTestHarness.ts";
 import {
@@ -15,10 +14,10 @@ import {
 const [isolatedState, { db }, { dbOps }, { flowPlaylistConfig }, snapshotModule] =
   await setupIsolatedBackend(
     "status-snapshot",
-    "backend/config/db-sqlite.ts",
-    "backend/db/helpers/index.ts",
-    "backend/services/playlists/flowPlaylistConfig.ts",
-    "backend/services/playlists/playlistStatusSnapshot.ts",
+    () => import("../../backend/config/db-sqlite.ts"),
+    () => import("../../backend/db/helpers/index.ts"),
+    () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
+    () => import("../../backend/services/playlists/playlistStatusSnapshot.ts"),
   );
 
 const { getPlaylistStatusSnapshot } = snapshotModule;
@@ -48,9 +47,8 @@ test("status snapshot includes static playlist summaries without embedding track
     sourceName: "Exported JSON",
     tracks,
   });
-  const { downloadTracker } = await importFromRepo(
-    "backend/services/downloadJobs/downloadTracker.ts",
-  );
+  const { downloadTracker } =
+    await import("../../backend/services/downloadJobs/downloadTracker.ts");
   downloadTracker.addJob(tracks[0], playlist.id);
 
   const status = getPlaylistStatusSnapshot();
@@ -80,13 +78,12 @@ test("status snapshot includes empty manual playlists", () => {
   assert.ok(shared);
   assert.equal(shared.name, "Manual Empty");
   assert.equal(shared.trackCount, 0);
-  assert.deepEqual(shared.trackIdentities, []);
+  assert.deepEqual([...shared.trackIdentities], []);
 });
 
 test("status snapshot trackIdentities includes pending download jobs", async () => {
-  const { downloadTracker } = await importFromRepo(
-    "backend/services/downloadJobs/downloadTracker.ts",
-  );
+  const { downloadTracker } =
+    await import("../../backend/services/downloadJobs/downloadTracker.ts");
   const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Pending Mix",
   });
@@ -114,27 +111,27 @@ test("status snapshot trackIdentities includes pending download jobs", async () 
 });
 
 test("status snapshot trackCount includes failed download jobs", async () => {
-  const { downloadTracker } = await importFromRepo(
-    "backend/services/downloadJobs/downloadTracker.ts",
-  );
+  const { downloadTracker } =
+    await import("../../backend/services/downloadJobs/downloadTracker.ts");
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Failed Mix" });
   const jobId = downloadTracker.addJob(
     { artistName: "Radiohead", trackName: "Karma Police" },
     playlist.id,
   );
+  assert.ok(jobId != null);
   downloadTracker.setFailed(jobId, "Not found");
 
   const status = getPlaylistStatusSnapshot();
   const shared = status.sharedPlaylists.find((entry) => entry.id === playlist.id);
+  assert.ok(shared != null);
 
   assert.equal(shared.trackCount, 1);
   assert.equal(getStaticPlaylistTrackCount(shared, status.sharedPlaylistStats[playlist.id]), 1);
 });
 
 test("review count includes Library jobs and respects playlist ownership", async () => {
-  const { downloadTracker } = await importFromRepo(
-    "backend/services/downloadJobs/downloadTracker.ts",
-  );
+  const { downloadTracker } =
+    await import("../../backend/services/downloadJobs/downloadTracker.ts");
   const ownFlow = flowPlaylistConfig.createFlow({ name: "Mine", ownerUserId: 1 });
   const otherFlow = flowPlaylistConfig.createFlow({ name: "Someone else's", ownerUserId: 2 });
   const staticPlaylist = flowPlaylistConfig.createStaticPlaylist({
@@ -146,13 +143,19 @@ test("review count includes Library jobs and respects playlist ownership", async
       { artistName: "Artist", trackName: `Held ${index}` },
       playlistId,
     );
+    assert.ok(id != null);
     downloadTracker.setBlocked(id, "Needs review");
     return id;
   });
+  assert.ok(held.every((value) => value != null));
   downloadTracker.addJob({ artistName: "Artist", trackName: "Pending" }, "library");
-  const user = { id: 1, role: "user" };
+  const user = { id: 1, role: "user", username: "test", permissions: {} };
   assert.equal(getPlaylistStatusSnapshot({ user }).reviewCount, 3);
-  assert.equal(getPlaylistStatusSnapshot({ user: { id: 1, role: "admin" } }).reviewCount, 4);
+  assert.equal(
+    getPlaylistStatusSnapshot({ user: { id: 1, role: "admin", username: "test", permissions: {} } })
+      .reviewCount,
+    4,
+  );
   assert.equal(hasReviewActivity(getPlaylistStatusSnapshot({ user })), true);
   for (const id of [held[1], held[3]]) downloadTracker.setFailed(id, "Dismissed");
   const libraryOnly = getPlaylistStatusSnapshot({ user });

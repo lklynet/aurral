@@ -39,6 +39,7 @@ test("normalizeCandidate preserves only evidence a source provides", () => {
     durationSec: 248,
     url: "https://deezer.com/track/3135553",
   });
+  assert.ok(candidate != null);
   assert.equal(candidate.source, "deemix");
   assert.equal(candidate.title, "Get Lucky (feat. Pharrell Williams)");
   assert.deepEqual(candidate.artists, ["Daft Punk"]);
@@ -58,7 +59,8 @@ test("normalizeCandidate keeps yt-dlp channel evidence out of structured artists
     uploader: "Daft Punk",
     durationSec: 248,
   });
-  assert.deepEqual(candidate.artists, []);
+  assert.ok(candidate != null);
+  assert.deepEqual([...candidate.artists], []);
   assert.equal(candidate.provider.uploader, "Daft Punk");
 });
 
@@ -78,6 +80,7 @@ test("normalizeCandidate parses filename evidence for filename-based sources", (
       knownArtistNames: ["Daft Punk"],
     },
   );
+  assert.ok(candidate != null);
   assert.equal(candidate.source, "soulseek");
   assert.equal(candidate.filename, "08. Daft Punk - Get Lucky.flac");
   assert.equal(getFileBaseName(candidate.filename), "08. Daft Punk - Get Lucky");
@@ -106,6 +109,7 @@ test("filename parsing preserves title subtitles after an anchored artist", () =
     },
     { parseFilename: true, knownArtistNames: ["50 Cent"] },
   );
+  assert.ok(candidate != null);
   assert.equal(candidate.filenameTitle, "In Da Club - Remastered 2011");
   assert.deepEqual(candidate.artists, ["50 Cent"]);
   const accentedArtist = normalizeCandidate(
@@ -115,6 +119,7 @@ test("filename parsing preserves title subtitles after an anchored artist", () =
     },
     { parseFilename: true, knownArtistNames: ["Beyonce"] },
   );
+  assert.ok(accentedArtist != null);
   assert.equal(accentedArtist.filenameTitle, "Halo - Remastered 2011");
 });
 

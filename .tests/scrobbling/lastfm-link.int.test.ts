@@ -1,3 +1,4 @@
+import { requireFixture } from "../playlists/fixtures.ts";
 import { test, beforeAll, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
@@ -11,16 +12,25 @@ import {
 const [isolatedState, { db }, { userOps, dbOps }, { getApiKey }, { createSession }] =
   await setupIsolatedBackend(
     "lastfm-link-api-key",
-    "backend/config/db-sqlite.ts",
-    "backend/db/helpers/index.ts",
-    "backend/middleware/auth.ts",
-    "backend/config/session-helpers.ts",
+    () => import("../../backend/config/db-sqlite.ts"),
+    () => import("../../backend/db/helpers/index.ts"),
+    () => import("../../backend/middleware/auth.ts"),
+    () => import("../../backend/config/session-helpers.ts"),
   );
 
-let server = null;
+let server: {
+  child: import("node:child_process").ChildProcessByStdio<
+    null,
+    import("node:stream").Readable,
+    import("node:stream").Readable
+  >;
+  port: number;
+  logs: () => string;
+  stop(): Promise<void>;
+};
 let apiKey = "";
 let sessionToken = "";
-let userId = null;
+let userId: number | null = null;
 
 beforeAll(async () => {
   resetDatabase(db);
@@ -31,6 +41,7 @@ beforeAll(async () => {
     onboardingComplete: true,
   });
   const user = userOps.createUser("lastfm-user", "test-password-hash", "user");
+  assert.ok(user != null);
   userId = Number(user.id);
   apiKey = getApiKey();
   sessionToken = createSession(userId).token;
@@ -53,14 +64,21 @@ test("user-owned mutations require a real user identity", async () => {
     error: "User account required",
     message: "Authenticate as a user account before using this endpoint.",
   });
-  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM lastfm_link_states").get().count, 0);
+  assert.equal(
+    requireFixture(
+      db
+        .prepare<unknown[], { count: number }>("SELECT COUNT(*) AS count FROM lastfm_link_states")
+        .get(),
+    ).count,
+    0,
+  );
 
   for (const [method, path, body] of [
     ["POST", "/api/play-events", { trackId: "track-1", title: "Track", artist: "Artist" }],
     ["POST", "/api/library/favorites", { ids: ["artist:missing"], starred: true }],
     ["PUT", "/api/scrobbling/listenbrainz/link", {}],
     ["PUT", "/api/scrobbling/koito/link", {}],
-  ]) {
+  ] satisfies [method: string, path: string, body: object][]) {
     const response = await fetch(`http://127.0.0.1:${server.port}${path}`, {
       method,
       headers: {
@@ -87,5 +105,15 @@ test("user-owned mutations require a real user identity", async () => {
   assert.equal(sessionPayload.configured, true);
   assert.equal(sessionPayload.connected, false);
   assert.match(sessionPayload.authorizeUrl, /^https:\/\/www\.last\.fm\/api\/auth\//);
-  assert.equal(db.prepare("SELECT user_id FROM lastfm_link_states").get().user_id, userId);
+  assert.equal(
+    requireFixture(
+      db
+        .prepare<
+          unknown[],
+          { user_id: import("../../backend/db/rows.ts").LastfmLinkStatesRow["user_id"] }
+        >("SELECT user_id FROM lastfm_link_states")
+        .get(),
+    ).user_id,
+    userId,
+  );
 });

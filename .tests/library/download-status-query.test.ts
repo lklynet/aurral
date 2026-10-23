@@ -1,3 +1,4 @@
+import { createRouteHarness, createResponse } from "./routeHarness.ts";
 import assert from "node:assert/strict";
 import { test, afterAll } from "vite-plus/test";
 
@@ -5,32 +6,16 @@ import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTe
 
 const [state, { registerDownloads }] = await setupIsolatedBackend(
   "download-status-query",
-  "backend/routes/library/handlers/downloads.ts",
+  () => import("../../backend/routes/library/handlers/downloads.ts"),
 );
 
-const routes = new Map();
-registerDownloads({
-  post: () => {},
-  get: (path, ...handlers) => routes.set(`GET ${path}`, handlers.at(-1)),
-});
+const routes = createRouteHarness(registerDownloads);
 
 afterAll(() => cleanupIsolatedState(state));
 
-async function requestStatus(query) {
-  const response = { statusCode: 200, body: null };
-  await routes.get("GET /downloads/status")(
-    { query },
-    {
-      status(code) {
-        response.statusCode = code;
-        return this;
-      },
-      json(value) {
-        response.body = value;
-        return this;
-      },
-    },
-  );
+async function requestStatus(query: { albumIds: { first: string } }) {
+  const response = createResponse<{ error: string }>();
+  await routes.get("GET /downloads/status")({ query }, response);
   return response;
 }
 

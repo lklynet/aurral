@@ -3,6 +3,7 @@ import { fork } from "node:child_process";
 import { test, afterAll } from "vite-plus/test";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
+import type { WorkerMessage } from "../../backend/services/backgroundProcessSupervisor.ts";
 import {
   setupIsolatedBackend,
   cleanupIsolatedState,
@@ -11,10 +12,10 @@ import {
 
 const [paths, honker, { dbOps }, { upsertLibraryArtist }, { db }] = await setupIsolatedBackend(
   "metadata-process-isolation",
-  "backend/services/honkerDb.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/libraryMediaStore.ts",
-  "backend/config/db-sqlite.ts",
+  () => import("../../backend/services/honkerDb.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/libraryMediaStore.ts"),
+  () => import("../../backend/config/db-sqlite.ts"),
 );
 afterAll(() => cleanupIsolatedState(paths));
 
@@ -22,11 +23,11 @@ test(
   "an isolated metadata request does not delay unrelated system tasks",
   { timeout: 10000 },
   async () => {
-    let requested, release;
-    const requestStarted = new Promise((resolve) => {
+    let requested!: () => void, release!: () => void;
+    const requestStarted = new Promise<void>((resolve) => {
       requested = resolve;
     });
-    const responseReleased = new Promise((resolve) => {
+    const responseReleased = new Promise<void>((resolve) => {
       release = resolve;
     });
     const server = await createMockHttpServer(async (_request, response) => {
@@ -52,14 +53,14 @@ test(
       mbid: randomUUID(),
       name: "Process Isolation Artist",
     });
-    const children = [];
+    const children: import("node:child_process").ChildProcess[] = [];
     const ready = new Map();
     const finished = new Map();
-    const broadcasts = [];
+    const broadcasts: Extract<WorkerMessage, { type: "websocket-broadcast" }>[] = [];
     const startedJobs = new Set();
-    function launch(group) {
-      let resolveReady;
-      const started = new Promise((resolve) => {
+    function launch(group: string) {
+      let resolveReady!: () => void;
+      const started = new Promise<void>((resolve) => {
         resolveReady = resolve;
       });
       ready.set(group, started);
@@ -72,7 +73,8 @@ test(
         },
       );
       children.push(child);
-      child.on("message", (message) => {
+      child.on("message", (rawMessage) => {
+        const message = rawMessage as WorkerMessage;
         if (message.type === "ready") resolveReady();
         if (message.type === "job-started") startedJobs.add(message.jobId);
         if (message.type === "job-finished") finished.get(message.jobId)?.();
@@ -82,8 +84,8 @@ test(
     }
     const metadata = launch("release-metadata");
     const downloads = launch("downloads");
-    const waitFinished = (id) =>
-      new Promise((resolve) => {
+    const waitFinished = (id: number) =>
+      new Promise<void>((resolve) => {
         finished.set(id, resolve);
       });
     try {
@@ -130,7 +132,10 @@ test(
       );
       assert.equal(
         db
-          .prepare("SELECT status FROM honker_task_runs WHERE job_id = ? ORDER BY id DESC LIMIT 1")
+          .prepare<
+            unknown[],
+            { status: import("../../backend/db/rows.ts").HonkerTaskRunsRow["status"] }
+          >("SELECT status FROM honker_task_runs WHERE job_id = ? ORDER BY id DESC LIMIT 1")
           .get(metadataId)?.status,
         "completed",
       );
@@ -139,7 +144,7 @@ test(
       await Promise.all(
         children.map(
           (child) =>
-            new Promise((resolve) => {
+            new Promise<void>((resolve) => {
               child.once("exit", resolve);
               child.send({ type: "shutdown" });
             }),

@@ -1,3 +1,4 @@
+import { libraryTrack, libraryFile } from "./fixtures.ts";
 import assert from "node:assert/strict";
 import { test, vi } from "vite-plus/test";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -20,17 +21,17 @@ test("track info shows the bit depth the library scanner stores", async () => {
         onClose: () => {},
         item: {
           kind: "track",
-          entity: {
+          entity: libraryTrack({
             id: 7,
             title: "Opening Scene",
             files: [
-              {
+              libraryFile({
                 available: true,
                 format: "flac",
                 quality: { bitrate: 1411, bitsPerSample: 24 },
-              },
+              }),
             ],
-          },
+          }),
         },
       }),
     ),

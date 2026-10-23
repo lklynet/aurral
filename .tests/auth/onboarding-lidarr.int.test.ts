@@ -11,17 +11,29 @@ import {
 
 const [isolatedState, { db }, { dbOps }] = await setupIsolatedBackend(
   "onboarding-lidarr-api",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
 );
 
-function json(res, statusCode, payload) {
+function json(
+  res: http.ServerResponse<http.IncomingMessage> & { req: http.IncomingMessage },
+  statusCode: number,
+  payload:
+    | { message: string }
+    | { path: string }[]
+    | { version: string; instanceName: string }
+    | { id: number; name: string }[],
+) {
   res.writeHead(statusCode, { "Content-Type": "application/json" });
   res.end(JSON.stringify(payload));
 }
 
 async function startFakeLidarr() {
-  const requests = [];
+  const requests: {
+    method: string | undefined;
+    pathname: string;
+    apiKey: string | string[] | null;
+  }[] = [];
   const server = http.createServer((req, res) => {
     const url = new URL(req.url || "/", "http://127.0.0.1");
     requests.push({
@@ -67,7 +79,7 @@ async function startFakeLidarr() {
     return json(res, 404, { message: "Not found" });
   });
 
-  await new Promise((resolve) => {
+  await new Promise<void>((resolve) => {
     server.listen(0, "127.0.0.1", resolve);
   });
 
@@ -78,13 +90,13 @@ async function startFakeLidarr() {
     requests,
     url: `http://127.0.0.1:${port}`,
     async stop() {
-      await new Promise((resolve) => server.close(resolve));
+      await new Promise<void>((resolve) => server.close(() => resolve()));
     },
   };
 }
 
-let server = null;
-let fakeLidarr = null;
+let server: Awaited<ReturnType<typeof startServerProcess>>;
+let fakeLidarr: Awaited<ReturnType<typeof startFakeLidarr>>;
 
 beforeAll(async () => {
   resetDatabase(db);

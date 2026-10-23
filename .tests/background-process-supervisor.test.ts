@@ -1,6 +1,6 @@
+import { requireFixture } from "./playlists/fixtures.ts";
 import assert from "node:assert/strict";
-import { execFileSync, fork } from "node:child_process";
-import { EventEmitter } from "node:events";
+import { execFileSync, fork, ChildProcess, type ForkOptions } from "node:child_process";
 import { test, vi } from "vite-plus/test";
 import { fileURLToPath } from "node:url";
 import v8 from "node:v8";
@@ -69,7 +69,7 @@ const heapFixture = fileURLToPath(
   new URL("./fixtures/heap-limit-background-child.mts", import.meta.url),
 );
 
-function withEnv(t, name, value) {
+function withEnv(t: import("vite-plus/test").TestContext, name: string, value: string | undefined) {
   const previous = process.env[name];
   if (value === undefined) delete process.env[name];
   else process.env[name] = value;
@@ -79,8 +79,8 @@ function withEnv(t, name, value) {
   });
 }
 
-function forkHeapFixture(onReady) {
-  return (_entry, _args, options) => {
+function forkHeapFixture(onReady: (child: ChildProcess) => void) {
+  return (_entry: string, _args: readonly string[], options: ForkOptions) => {
     const child = fork(heapFixture, [], {
       ...options,
       stdio: ["ignore", "ignore", "ignore", "ipc"],
@@ -89,45 +89,57 @@ function forkHeapFixture(onReady) {
     return child;
   };
 }
-const flush = () => new Promise((resolve) => setImmediate(resolve));
+const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+function fakeChild(group: string | undefined = "") {
+  const child = Object.assign(new ChildProcess(), {
+    group,
+    connected: true,
+    exitCode: null as number | null,
+    signalCode: null as NodeJS.Signals | null,
+    sent: [] as Record<string, unknown>[],
+  });
+  child.send = (message) => {
+    assert.ok(message && typeof message === "object" && !Array.isArray(message));
+    child.sent.push({ ...message });
+    if ("type" in message && message.type === "shutdown") {
+      child.exitCode = 0;
+      queueMicrotask(() => child.emit("exit", 0, null));
+    }
+    return true;
+  };
+  child.kill = () => true;
+  return child;
+}
 
 function createFakeFork() {
-  const launches = [];
-  const forkProcess = (_entry, _args, options) => {
-    const child = new EventEmitter();
-    child.group = options.env.AURRAL_BACKGROUND_WORKER_GROUP;
-    child.exitCode = null;
-    child.signalCode = null;
-    child.connected = true;
-    child.sent = [];
-    child.send = (message) => {
-      child.sent.push(message);
-      if (message.type === "shutdown") {
-        child.exitCode = 0;
-        queueMicrotask(() => child.emit("exit", 0, null));
-      }
-    };
-    child.kill = () => {};
+  const launches: ReturnType<typeof fakeChild>[] = [];
+  const forkProcess = (_entry: string, _args: readonly string[], options: ForkOptions) => {
+    const child = fakeChild(options.env?.AURRAL_BACKGROUND_WORKER_GROUP);
     launches.push(child);
     return child;
   };
   return { launches, forkProcess };
 }
 
-function exitIdle(child) {
+function exitIdle(child: ReturnType<typeof fakeChild>) {
   child.exitCode = 0;
   child.emit("exit", 0, null);
 }
 
-function reply(child, result) {
+function reply(child: ReturnType<typeof fakeChild>, result: string | boolean) {
   const command = child.sent.findLast((message) => message.type === "download-owner-command");
+  assert.ok(command);
   child.emit("message", { type: "download-owner-response", requestId: command.requestId, result });
   return command.method;
 }
 
 test("supervisor launches only groups with work, forwards messages, and stops without respawning", async () => {
   const { launches, forkProcess } = createFakeFork();
-  const messages = [];
+  const messages: {
+    message: import("../backend/services/backgroundProcessSupervisor.ts").WorkerMessage;
+    group: string;
+  }[] = [];
   let withWork = ["library"];
   const supervisor = createBackgroundProcessSupervisor({
     groups: ["library", "discovery"],
@@ -179,8 +191,8 @@ test("an idle worker exits without a restart and returns when work arrives", asy
     now: 0,
   });
   const { launches, forkProcess } = createFakeFork();
-  const exits = [];
-  const warnings = [];
+  const exits: { group: string; retired: boolean }[] = [];
+  const warnings: unknown[] = [];
   let withWork = ["library"];
   const supervisor = createBackgroundProcessSupervisor({
     groups: ["library"],
@@ -204,7 +216,7 @@ test("an idle worker exits without a restart and returns when work arrives", asy
     assert.equal(launches.length, 1);
     assert.deepEqual(supervisor.getGroups(), []);
     assert.deepEqual(exits, [{ group: "library", retired: true }]);
-    assert.deepEqual(warnings, []);
+    assert.deepEqual([...warnings], []);
 
     withWork = ["library"];
     vi.advanceTimersByTime(2000);
@@ -222,7 +234,7 @@ test("a flow request starts its worker and holds off retirement until answered",
     assert.equal(launches.length, 0);
     const pending = supervisor.request("downloads", "waitForIdle");
     assert.equal(launches.length, 1);
-    assert.deepEqual(launches[0].sent, []);
+    assert.deepEqual([...launches[0].sent], []);
     launches[0].emit("message", { type: "ready" });
     launches[0].emit("message", { type: "idle" });
     assert.equal(
@@ -286,17 +298,20 @@ test("supervisor restarts an unexpectedly exited worker", async () => {
     toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
     now: 0,
   });
-  const children = [];
+  const children: ReturnType<typeof fakeChild>[] = [];
   const supervisor = createBackgroundProcessSupervisor({
     groups: ["library"],
     findGroupsWithWork: () => ["library"],
     logger: quietLogger,
     forkProcess: () => {
-      const child = new EventEmitter();
+      const child = fakeChild();
       child.exitCode = null;
       child.signalCode = null;
-      child.send = () => queueMicrotask(() => child.emit("exit", 0, null));
-      child.kill = () => {};
+      child.send = () => {
+        queueMicrotask(() => child.emit("exit", 0, null));
+        return true;
+      };
+      child.kill = () => true;
       children.push(child);
       return child;
     },
@@ -328,8 +343,8 @@ test("flow requests return replies and reject when their owner exits", async () 
     const first = supervisor.request("downloads", "start");
     launches[0].emit("message", { type: "ready" });
     const request = launches[0].sent.at(-1);
-    assert.equal(request.type, "download-owner-command");
-    assert.equal(request.method, "start");
+    assert.equal(requireFixture(request).type, "download-owner-command");
+    assert.equal(requireFixture(request).method, "start");
     reply(launches[0], true);
     assert.equal(await first, true);
 
@@ -353,9 +368,9 @@ test("flow restart waits for job recovery", async () => {
     toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
     now: 0,
   });
-  const children = [];
-  let finishRecovery;
-  const recovery = new Promise((resolve) => {
+  const children: ReturnType<typeof fakeChild>[] = [];
+  let finishRecovery!: () => void;
+  const recovery = new Promise<void>((resolve) => {
     finishRecovery = resolve;
   });
   const supervisor = createBackgroundProcessSupervisor({
@@ -364,16 +379,22 @@ test("flow restart waits for job recovery", async () => {
     logger: quietLogger,
     onExit: () => recovery,
     forkProcess: () => {
-      const child = new EventEmitter();
+      const child = fakeChild();
       child.exitCode = null;
       child.signalCode = null;
       child.send = (message) => {
-        if (message.type === "shutdown") {
+        if (
+          message &&
+          typeof message === "object" &&
+          "type" in message &&
+          message.type === "shutdown"
+        ) {
           child.exitCode = 0;
           queueMicrotask(() => child.emit("exit", 0, null));
         }
+        return true;
       };
-      child.kill = () => {};
+      child.kill = () => true;
       children.push(child);
       return child;
     },
@@ -400,8 +421,8 @@ test("only the worker with an overdue job is terminated", async () => {
     now: 0,
   });
   const children = new Map();
-  const killed = [];
-  const errors = [];
+  const killed: (string | undefined)[] = [];
+  const errors: unknown[] = [];
   const supervisor = createBackgroundProcessSupervisor({
     groups: ["inbox", "maintenance"],
     findGroupsWithWork: () => ["inbox", "maintenance"],
@@ -410,18 +431,25 @@ test("only the worker with an overdue job is terminated", async () => {
     watchdogIntervalMs: 10,
     logger: { warn() {}, error: (line) => errors.push(line) },
     forkProcess: (_entry, _args, options) => {
-      const group = options.env.AURRAL_BACKGROUND_WORKER_GROUP;
-      const child = new EventEmitter();
+      const group = options.env?.AURRAL_BACKGROUND_WORKER_GROUP;
+      const child = fakeChild();
       child.exitCode = null;
       child.signalCode = null;
       child.send = (message) => {
-        if (message.type === "shutdown") {
+        if (
+          message &&
+          typeof message === "object" &&
+          "type" in message &&
+          message.type === "shutdown"
+        ) {
           child.exitCode = 0;
           queueMicrotask(() => child.emit("exit", 0, null));
         }
+        return true;
       };
       child.kill = () => {
         killed.push(group);
+        return true;
       };
       children.set(group, child);
       return child;
@@ -441,7 +469,7 @@ test("only the worker with an overdue job is terminated", async () => {
       payload: '{"kind":"disposable"}',
     });
     vi.advanceTimersByTime(20);
-    assert.deepEqual(killed, []);
+    assert.deepEqual([...killed], []);
     vi.advanceTimersByTime(45);
     assert.deepEqual(killed, ["inbox"]);
     assert.deepEqual(supervisor.getGroups(), ["inbox", "maintenance"]);
@@ -453,10 +481,10 @@ test("only the worker with an overdue job is terminated", async () => {
   }
 });
 
-test("a worker that runs out of heap stops at the configured limit and the log names its job", async (t) => {
+test("a worker that runs out of heap stops at the configured limit and the log names its job", async (t: import("vite-plus/test").TestContext) => {
   withEnv(t, "NODE_OPTIONS", undefined);
   withEnv(t, "AURRAL_WORKER_MAX_HEAP_MB", "64");
-  const warned = Promise.withResolvers();
+  const warned = Promise.withResolvers<string>();
   const supervisor = createBackgroundProcessSupervisor({
     groups: ["notifications"],
     findGroupsWithWork: () => ["notifications"],
@@ -479,20 +507,20 @@ test("a worker that runs out of heap stops at the configured limit and the log n
   );
 });
 
-test("a heap limit set in NODE_OPTIONS reaches background workers unchanged", async (t) => {
+test("a heap limit set in NODE_OPTIONS reaches background workers unchanged", async (t: import("vite-plus/test").TestContext) => {
   withEnv(t, "NODE_OPTIONS", "--max-old-space-size=123");
   withEnv(t, "AURRAL_WORKER_MAX_HEAP_MB", undefined);
   const expected = Number(
     execFileSync(process.execPath, ["-p", "v8.getHeapStatistics().heap_size_limit"]),
   );
-  const reported = Promise.withResolvers();
+  const reported = Promise.withResolvers<number>();
   const supervisor = createBackgroundProcessSupervisor({
     groups: ["library"],
     findGroupsWithWork: () => ["library"],
     logger: quietLogger,
     forkProcess: forkHeapFixture((child) => child.send({ type: "report-heap-limit" })),
     onMessage: (message) => {
-      if (message.type === "heap-limit") reported.resolve(message.bytes);
+      if ("bytes" in message && typeof message.bytes === "number") reported.resolve(message.bytes);
     },
   });
   t.onTestFinished(() => supervisor.stop());
@@ -525,7 +553,7 @@ test("a failed deadline inspection retries without requiring another commit", as
   try {
     supervisor.start();
     vi.advanceTimersByTime(1000);
-    assert.deepEqual(launches, []);
+    assert.deepEqual([...launches], []);
     vi.advanceTimersByTime(1000);
     assert.deepEqual(supervisor.getGroups(), ["library"]);
   } finally {
@@ -536,11 +564,11 @@ test("a failed deadline inspection retries without requiring another commit", as
 test("idle demand checks skip queue scans and discover unannounced commits", async () => {
   const [state, { db }, honker] = await setupIsolatedBackend(
     "idle-demand",
-    "backend/config/db-sqlite.ts",
-    "backend/services/honkerDb.ts",
+    () => import("../backend/config/db-sqlite.ts"),
+    () => import("../backend/services/honkerDb.ts"),
   );
   const queue = honker.getMaintenanceTaskQueue();
-  const revision = db.prepare(
+  const revision = db.prepare<unknown[], { data_version: unknown; changes: unknown }>(
     "SELECT data_version, total_changes() AS changes FROM pragma_data_version",
   );
   const { launches, forkProcess } = createFakeFork();
@@ -569,13 +597,13 @@ test("idle demand checks skip queue scans and discover unannounced commits", asy
     supervisor.start();
     vi.advanceTimersByTime(60000);
     assert.equal(inspections, 1, "an unchanged database must not be repeatedly scanned");
-    assert.deepEqual(launches, []);
+    assert.deepEqual([...launches], []);
     const delayedId = queue.enqueue(
       { kind: "session-cleanup" },
       { runAt: Math.floor(Date.now() / 1000) + 5 },
     );
     vi.advanceTimersByTime(2000);
-    assert.deepEqual(launches, [], "a future job must stay pending");
+    assert.deepEqual([...launches], [], "a future job must stay pending");
     vi.advanceTimersByTime(3000);
     assert.deepEqual(
       supervisor.getGroups(),
@@ -600,7 +628,7 @@ test("idle demand checks skip queue scans and discover unannounced commits", asy
     vi.advanceTimersByTime(2000);
     for (const kind of ["pending", "processing", "schedule"]) {
       const dueAt = Math.floor(Date.now() / 1000) + 1;
-      let crossingId;
+      let crossingId: number | undefined;
       let scheduler;
       const name = "disposable-crossing-schedule";
       if (kind === "schedule") {
@@ -642,8 +670,12 @@ test("idle demand checks skip queue scans and discover unannounced commits", asy
         `${kind} work crossed during inspection must still launch its owner`,
       );
       if (scheduler) scheduler.remove(name);
-      else queue.cancel(crossingId);
+      else {
+        assert.ok(crossingId != null);
+        queue.cancel(crossingId);
+      }
       const child = launches.at(-1);
+      assert.ok(child);
       child.emit("message", { type: "ready" });
       child.emit("message", { type: "idle" });
       exitIdle(child);

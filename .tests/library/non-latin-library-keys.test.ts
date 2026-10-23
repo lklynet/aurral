@@ -19,15 +19,19 @@ const [
   subsonic,
 ] = await setupIsolatedBackend(
   "non-latin-library-keys",
-  "backend/config/db-sqlite.ts",
-  "backend/services/libraryFileScanner.ts",
-  "backend/services/libraryMediaStore.ts",
-  "backend/services/libraryManagementStore.ts",
-  "backend/services/libraryQueryService.ts",
-  "backend/services/subsonicLibraryService.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/services/libraryFileScanner.ts"),
+  () => import("../../backend/services/libraryMediaStore.ts"),
+  () => import("../../backend/services/libraryManagementStore.ts"),
+  () => import("../../backend/services/libraryQueryService.ts"),
+  () => import("../../backend/services/subsonicLibraryService.ts"),
 );
 
 const root = path.join(isolatedState.baseDir, "music");
+
+type ScanOptions = NonNullable<Parameters<typeof scanMusicRoot>[0]>;
+type Tags = NonNullable<Awaited<ReturnType<NonNullable<ScanOptions["metadataReader"]>>>["common"]>;
+type Listener = Parameters<typeof subsonic.getStarred>[0];
 
 beforeEach(async () => {
   resetDatabase(db);
@@ -36,16 +40,19 @@ beforeEach(async () => {
 });
 afterAll(() => cleanupIsolatedState(isolatedState));
 
-async function writeLibrary(files) {
-  const tagsByPath = new Map();
+async function writeLibrary(files: Record<string, Tags>) {
+  const tagsByPath = new Map<string, Tags>();
   for (const [relativePath, tags] of Object.entries(files)) {
     const filePath = path.join(root, relativePath);
     await mkdir(path.dirname(filePath), { recursive: true });
     await writeFile(filePath, "fixture");
     tagsByPath.set(filePath, tags);
   }
-  const reads = [];
-  const scan = ({ unreadable = [], ...options } = {}) =>
+  const reads: string[] = [];
+  const scan = ({
+    unreadable = [],
+    ...options
+  }: { unreadable?: string[] } & Omit<ScanOptions, "rootPath"> = {}) =>
     scanMusicRoot({
       rootPath: root,
       metadataReader: async (filePath) => {
@@ -60,7 +67,7 @@ async function writeLibrary(files) {
 
 const indexedFiles = () =>
   db
-    .prepare(
+    .prepare<unknown[], { artist: string; album: string; track: string }>(
       `SELECT artist.name AS artist, album.title AS album, track.title AS track
    FROM library_media_files AS media
    JOIN library_tracks AS track ON track.id = media.track_id
@@ -83,27 +90,27 @@ test("untagged artists named in other scripts stay apart, each with their own al
       artist: "宇多田ヒカル",
       album: "初恋",
       title: "初恋",
-      track: { no: 1 },
-      musicbrainz_artistid: "7f7f7f7f-0000-4000-8000-000000000001",
+      track: { no: 1, of: null },
+      musicbrainz_artistid: ["7f7f7f7f-0000-4000-8000-000000000001"],
     },
     "宇多田ヒカル/ファントーム/01 道.flac": {
       artist: "宇多田ヒカル",
       album: "ファントーム",
       title: "道",
-      track: { no: 1 },
-      musicbrainz_artistid: "7f7f7f7f-0000-4000-8000-000000000001",
+      track: { no: 1, of: null },
+      musicbrainz_artistid: ["7f7f7f7f-0000-4000-8000-000000000001"],
     },
     "椎名林檎/無罪モラトリアム/01 正しい街.flac": {
       artist: "椎名林檎",
       album: "無罪モラトリアム",
       title: "正しい街",
-      track: { no: 1 },
+      track: { no: 1, of: null },
     },
     "Кино/Группа крови/01 Группа крови.flac": {
       artist: "Кино",
       album: "Группа крови",
       title: "Группа крови",
-      track: { no: 1 },
+      track: { no: 1, of: null },
     },
   });
 
@@ -124,13 +131,13 @@ test("Latin names keep the keys earlier scans stored and are not read again", as
       artist: "Beyoncé",
       album: "Lemonade",
       title: "Formation",
-      track: { no: 1 },
+      track: { no: 1, of: null },
     },
     "Sigur Rós/Ágætis byrjun/01 Svefn-g-englar.flac": {
       artist: "Sigur Rós",
       album: "Ágætis byrjun",
       title: "Svefn-g-englar",
-      track: { no: 1 },
+      track: { no: 1, of: null },
     },
   });
 
@@ -139,41 +146,60 @@ test("Latin names keep the keys earlier scans stored and are not read again", as
   await scan();
 
   assert.deepEqual(
-    db.prepare("SELECT identity_key FROM library_artists ORDER BY identity_key").pluck().all(),
+    db
+      .prepare<unknown[], { identity_key: string }>(
+        "SELECT identity_key FROM library_artists ORDER BY identity_key",
+      )
+      .pluck()
+      .all(),
     ["name:artist:beyonce", "name:artist:sigur ros"],
   );
   assert.deepEqual(
-    db.prepare("SELECT identity_key FROM library_albums ORDER BY identity_key").pluck().all(),
+    db
+      .prepare<unknown[], { identity_key: string }>(
+        "SELECT identity_key FROM library_albums ORDER BY identity_key",
+      )
+      .pluck()
+      .all(),
     ["name:album:name artist beyonce:lemonade", "name:album:name artist sigur ros:ag tis byrjun"],
   );
   assert.deepEqual(
-    db.prepare("SELECT identity_key FROM library_tracks ORDER BY identity_key").pluck().all(),
+    db
+      .prepare<unknown[], { identity_key: string }>(
+        "SELECT identity_key FROM library_tracks ORDER BY identity_key",
+      )
+      .pluck()
+      .all(),
     [
       "name:track:name album name artist beyonce lemonade:1:1:formation",
       "name:track:name album name artist sigur ros ag tis byrjun:1:1:svefn g englar",
     ],
   );
-  assert.deepEqual(reads, []);
+  assert.deepEqual([...reads], []);
 });
 
-const MERGED_FILES = {
+const MERGED_FILES: Record<string, Tags> = {
   "宇多田ヒカル/初恋/01 初恋.flac": {
     artist: "宇多田ヒカル",
     album: "初恋",
     title: "初恋",
-    track: { no: 1 },
+    track: { no: 1, of: null },
   },
   "椎名林檎/無罪モラトリアム/01 正しい街.flac": {
     artist: "椎名林檎",
     album: "無罪モラトリアム",
     title: "正しい街",
-    track: { no: 1 },
+    track: { no: 1, of: null },
   },
 };
 
 // Earlier scans dropped every letter of these names from their keys, so both
 // files share one artist, album, and track, named for the file read last.
-async function seedMergedLibrary(paths, artistKey = "name:artist", artistMbid = null) {
+async function seedMergedLibrary(
+  paths: string[],
+  artistKey: string = "name:artist",
+  artistMbid: string | null = null,
+) {
   const artist = store.upsertLibraryArtist({
     identityKey: artistKey,
     mbid: artistMbid,
@@ -217,9 +243,14 @@ async function seedMergedLibrary(paths, artistKey = "name:artist", artistMbid = 
   }
   store.finishLibraryScan(scanId);
 
-  const user = db
-    .prepare("INSERT INTO users (username, password_hash) VALUES ('listener', 'hash') RETURNING id")
+  const userId = db
+    .prepare<unknown[], number>(
+      "INSERT INTO users (username, password_hash) VALUES ('listener', 'hash') RETURNING id",
+    )
+    .pluck()
     .get();
+  assert.ok(userId);
+  const user = { id: userId, username: "listener", role: "user", permissions: {} };
   assert.equal(
     subsonic.starMany(user, [
       subsonic.idFor("artist", artist.identity_key),
@@ -250,7 +281,7 @@ async function seedMergedLibrary(paths, artistKey = "name:artist", artistMbid = 
 const playCounts = () =>
   Object.fromEntries(
     db
-      .prepare(
+      .prepare<unknown[], { title: string; play_count: number }>(
         `SELECT album.title, stats.play_count FROM play_album_stats AS stats
    JOIN library_albums AS album ON album.identity_key = stats.album_key`,
       )
@@ -287,13 +318,15 @@ test("a rescan splits an artist that earlier scans merged, with favorites, plays
 
   reads.length = 0;
   await scan();
-  assert.deepEqual(reads, []);
+  assert.deepEqual([...reads], []);
 });
 
 test("a rescan leaves no merged album behind when a track there has a recording ID", async () => {
   const recording = "7f7f7f7f-0000-4000-8000-000000000003";
   const files = structuredClone(MERGED_FILES);
-  files["椎名林檎/無罪モラトリアム/01 正しい街.flac"].musicbrainz_recordingid = recording;
+  Object.assign(files["椎名林檎/無罪モラトリアム/01 正しい街.flac"]!, {
+    musicbrainz_recordingid: recording,
+  });
   const { scan, paths } = await writeLibrary(files);
   const artist = store.upsertLibraryArtist({
     identityKey: "name:artist",
@@ -354,7 +387,11 @@ test("a rescan keeps a merged artist that MusicBrainz matched for its own albums
   ]);
   assert.deepEqual(rowCounts(), { artists: 2, albums: 2, tracks: 2 });
   assert.deepEqual(
-    db.prepare("SELECT id, mbid FROM library_artists WHERE name = '椎名林檎'").get(),
+    db
+      .prepare<unknown[], { id: number; mbid: string | null }>(
+        "SELECT id, mbid FROM library_artists WHERE name = '椎名林檎'",
+      )
+      .get(),
     { id: artist.id, mbid },
   );
   assert.equal(
@@ -367,10 +404,10 @@ test("a rescan keeps a merged artist that MusicBrainz matched for its own albums
 
   reads.length = 0;
   await scan();
-  assert.deepEqual(reads, []);
+  assert.deepEqual([...reads], []);
 });
 
-const libraryState = (user) => {
+const libraryState = (user: Listener) => {
   const starred = subsonic.getStarred(user);
   return {
     starredArtists: starred.artist.map((entry) => entry.name).sort(),

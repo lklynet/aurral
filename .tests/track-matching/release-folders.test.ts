@@ -6,7 +6,14 @@ import {
 } from "../../backend/services/albumReleaseSearch.ts";
 import { SAME_VERSION_LABELS } from "./version-labels.ts";
 
-function manifestFor(title, artist, tracks, extra = {}) {
+type Manifest = NonNullable<Parameters<typeof selectSoulseekAlbumFolder>[2]>["manifest"];
+
+function manifestFor(
+  title: string,
+  artist: string,
+  tracks: [number, number, string, string[]?][],
+  extra: Partial<Manifest> = {},
+): NonNullable<Manifest> {
   return {
     releaseMbid: "8f6bd1e4-fbe1-4f50-aa9b-94c450ec0f11",
     releaseGroupMbid: "1e0eee38-a9f6-49bf-84d0-45d0b2a5a4d1",
@@ -23,12 +30,13 @@ function manifestFor(title, artist, tracks, extra = {}) {
       discNumber: disc,
       recordingMbid: null,
       recordingMbidAliases: [],
+      pressingDurationsMs: [],
     })),
     ...extra,
   };
 }
 
-const jobsFor = (manifest) =>
+const jobsFor = (manifest: NonNullable<Manifest>) =>
   manifest.tracks.map((track, index) => ({
     id: `job-${index}`,
     trackName: track.title,
@@ -36,18 +44,23 @@ const jobsFor = (manifest) =>
     discNumber: track.discNumber,
   }));
 
-const results = (user, folder, names, manifest) =>
+const results = (
+  user: string,
+  folder: string,
+  names: string[],
+  manifest: Pick<NonNullable<Manifest>, "tracks">,
+) =>
   names.map((name, index) => ({
     user,
     file: `Music\\${folder}\\${name}.flac`,
-    length: manifest.tracks[index] ? manifest.tracks[index].durationMs / 1000 : 190,
+    length: manifest.tracks[index] ? (manifest.tracks[index].durationMs ?? 190000) / 1000 : 190,
     size: 3e7,
     bitRate: 1000,
     slots: 1,
   }));
 
-const picked = (selection) =>
-  selection.selected?.files.map(({ jobId, file }) => [jobId, file.split("\\").at(-1)]) ?? null;
+const picked = (selection: ReturnType<typeof selectSoulseekAlbumFolder>) =>
+  selection.selected?.files.map(({ jobId, file }) => [jobId, file?.split("\\").at(-1)]) ?? null;
 
 const mellon = manifestFor("Mellon Collie", "Smashing Pumpkins", [
   [1, 1, "Tonight"],
@@ -61,7 +74,7 @@ test("disc folders named by word, format, or subtitle join one release folder", 
     ["Disc One", "Disc Two"],
     ["CD1 [FLAC]", "CD2 [FLAC]"],
     ["Disc 1 - Dawn to Dusk", "Disc 2 - Twilight to Starlight"],
-  ]) {
+  ] satisfies [unknown, unknown][]) {
     const offered = [
       ...results(
         "peer",
@@ -135,7 +148,7 @@ test("an album named like a disc keeps its own folder, and a vinyl side folder s
       folder,
     );
     assert.deepEqual(
-      picked(selection).map(([job]) => job),
+      picked(selection)?.map(([job]) => job),
       ["job-0", "job-1", "job-2"],
       folder,
     );
@@ -170,7 +183,7 @@ test("an album named like a disc keeps its own folder, and a vinyl side folder s
     ["LP 1", "LP 2"],
     ["LP1", "LP2"],
     ["LP 1 - Dawn to Dusk", "LP 2 - Twilight to Starlight"],
-  ]) {
+  ] satisfies [unknown, unknown][]) {
     const vinyl = [
       ...results(
         "peer",
@@ -186,7 +199,7 @@ test("an album named like a disc keeps its own folder, and a vinyl side folder s
       ),
     ];
     assert.deepEqual(
-      picked(selectSoulseekAlbumFolder(vinyl, jobsFor(mellon), { manifest: mellon })).map(
+      picked(selectSoulseekAlbumFolder(vinyl, jobsFor(mellon), { manifest: mellon }))?.map(
         ([job]) => job,
       ),
       ["job-0", "job-1", "job-2", "job-3"],
@@ -464,7 +477,7 @@ test("a folder of generated silence at the release's lengths is not that release
     ...base,
     tracks: base.tracks.map((track, index) => ({ ...track, durationMs: lengths[index] })),
   };
-  const number = (index) => String(index + 1).padStart(2, "0");
+  const number = (index: number) => String(index + 1).padStart(2, "0");
   const poisoned = results(
     "driftwoodcassette7",
     "The Used\\In Love and Death (2004)",
@@ -533,8 +546,8 @@ test("a release's own silent track does not condemn a real rip, and one damaged 
     ...base,
     tracks: base.tracks.map((track, index) => ({ ...track, durationMs: lengths[index] })),
   };
-  const number = (index) => String(index + 1).padStart(2, "0");
-  const rip = (user, damaged, speed) =>
+  const number = (index: number) => String(index + 1).padStart(2, "0");
+  const rip = (user: string, damaged: number[], speed: number) =>
     results(
       user,
       "The Used\\In Love and Death (2004)",

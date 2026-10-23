@@ -5,26 +5,46 @@ import http from "node:http";
 import { libraryManager } from "../../backend/services/libraryManager.ts";
 import { lidarrClient } from "../../backend/services/lidarrClient.ts";
 
-async function readJsonBody(req) {
-  const chunks = [];
+async function readJsonBody(req: http.IncomingMessage): Promise<Record<string, unknown>> {
+  const chunks: Buffer[] = [];
   for await (const chunk of req) chunks.push(chunk);
   if (chunks.length === 0) return {};
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
 
-function json(res, statusCode, payload) {
+function json(
+  res: http.ServerResponse<http.IncomingMessage> & { req: http.IncomingMessage },
+  statusCode: number,
+  payload: unknown,
+) {
   res.writeHead(statusCode, { "Content-Type": "application/json" });
   res.end(JSON.stringify(payload));
 }
 
-async function withFakeLidarr(buildState, run) {
-  const state = {
-    artist: null,
-    albums: [],
-    commands: [],
-    albumPostConflicts: 0,
-    ...buildState(),
+type FakeLidarrState = {
+  artist: {
+    id: number;
+    artistName: string;
+    foreignArtistId: string;
+    monitored: boolean;
+    monitor: string;
   };
+  albums: {
+    id: number;
+    title: string;
+    foreignAlbumId: string;
+    artistId: number;
+    monitored: boolean;
+    statistics: { percentOfTracks: number; sizeOnDisk: number };
+  }[];
+  commands: Record<string, unknown>[];
+  albumPostConflicts: number;
+};
+async function withFakeLidarr(
+  buildState: () => Pick<FakeLidarrState, "artist" | "albums">,
+  run: (state: FakeLidarrState) => Promise<void>,
+) {
+  const state: FakeLidarrState = { commands: [], albumPostConflicts: 0, ...buildState() };
 
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url || "/", "http://127.0.0.1");
@@ -89,8 +109,8 @@ async function withFakeLidarr(buildState, run) {
       }
       const album = {
         id: 42,
-        title: payload.title,
-        foreignAlbumId: payload.foreignAlbumId,
+        title: String(payload.title),
+        foreignAlbumId: String(payload.foreignAlbumId),
         artistId: 7,
         monitored: payload.monitored !== false,
         statistics: { percentOfTracks: 0, sizeOnDisk: 0 },
@@ -106,8 +126,10 @@ async function withFakeLidarr(buildState, run) {
     return json(res, 404, { message: `unexpected ${req.method} ${pathname}` });
   });
 
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const port = server.address().port;
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const port = address.port;
 
   const previousHold = lidarrClient._holdConfig;
   const previousConfig = lidarrClient.config;
@@ -115,6 +137,9 @@ async function withFakeLidarr(buildState, run) {
   lidarrClient.config = {
     url: `http://127.0.0.1:${port}`,
     apiKey: "test",
+    rootFolderPath: "/music",
+    rootFolderPaths: ["/music"],
+    insecure: false,
     timeoutMs: 2000,
     circuitDisabled: true,
   };
@@ -126,7 +151,7 @@ async function withFakeLidarr(buildState, run) {
     lidarrClient._holdConfig = previousHold;
     lidarrClient.config = previousConfig;
     server.closeAllConnections();
-    await new Promise((resolve) => server.close(resolve));
+    await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 }
 
@@ -160,20 +185,22 @@ test("new-artist album request queues AlbumSearch even when Lidarr already creat
     }),
     async (state) => {
       libraryManager.getArtist = async () => null;
-      libraryManager.resolveArtistAddOptions = async () => ({
-        quality: "standard",
-        monitorOption: "none",
-        rootFolderPath: "/music",
-        qualityProfileId: 1,
-      });
-      libraryManager.addArtistWithResolvedOptions = async () => ({
-        id: "7",
-        mbid: "artist-mbid",
-        foreignArtistId: "artist-mbid",
-        artistName: "Alela Diane",
-        monitored: true,
-        monitorOption: "none",
-      });
+      libraryManager.resolveArtistAddOptions = async () =>
+        ({
+          quality: "standard",
+          monitorOption: "none",
+          rootFolderPath: "/music",
+          qualityProfileId: 1,
+        }) as unknown as Awaited<ReturnType<typeof libraryManager.resolveArtistAddOptions>>;
+      libraryManager.addArtistWithResolvedOptions = async () =>
+        ({
+          id: "7",
+          mbid: "artist-mbid",
+          foreignArtistId: "artist-mbid",
+          artistName: "Alela Diane",
+          monitored: true,
+          monitorOption: "none",
+        }) as unknown as Awaited<ReturnType<typeof libraryManager.addArtistWithResolvedOptions>>;
       libraryManager.ensureArtistMonitored = async (artist) => artist;
       libraryManager.scheduleRequestedAlbumMonitoringRepair = () => {};
 
@@ -185,6 +212,8 @@ test("new-artist album request queues AlbumSearch even when Lidarr already creat
           artistName: "Alela Diane",
           triggerSearch: true,
           user: {
+            id: 1,
+            username: "test",
             role: "user",
             permissions: { addAlbum: true, addArtist: true },
           },
@@ -238,12 +267,13 @@ test("new-artist album request recovers from AlbumExistsValidator and still sear
       let foreignLookups = 0;
 
       libraryManager.getArtist = async () => null;
-      libraryManager.resolveArtistAddOptions = async () => ({
-        quality: "standard",
-        monitorOption: "none",
-        rootFolderPath: "/music",
-        qualityProfileId: 1,
-      });
+      libraryManager.resolveArtistAddOptions = async () =>
+        ({
+          quality: "standard",
+          monitorOption: "none",
+          rootFolderPath: "/music",
+          qualityProfileId: 1,
+        }) as unknown as Awaited<ReturnType<typeof libraryManager.resolveArtistAddOptions>>;
       libraryManager.addArtistWithResolvedOptions = async () => {
         state.albums.push({
           id: 42,
@@ -260,7 +290,7 @@ test("new-artist album request recovers from AlbumExistsValidator and still sear
           artistName: "Alela Diane",
           monitored: true,
           monitorOption: "none",
-        };
+        } as unknown as Awaited<ReturnType<typeof libraryManager.addArtistWithResolvedOptions>>;
       };
       libraryManager.ensureArtistMonitored = async (artist) => artist;
       libraryManager.scheduleRequestedAlbumMonitoringRepair = () => {};
@@ -280,6 +310,8 @@ test("new-artist album request recovers from AlbumExistsValidator and still sear
           artistName: "Alela Diane",
           triggerSearch: true,
           user: {
+            id: 1,
+            username: "test",
             role: "user",
             permissions: { addAlbum: true, addArtist: true },
           },

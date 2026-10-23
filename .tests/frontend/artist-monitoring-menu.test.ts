@@ -1,3 +1,4 @@
+import { FACTORY_MONITOR_RULES } from "../../backend/services/aurralMonitoring.ts";
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 
@@ -9,11 +10,42 @@ import {
   isArtistMonitored,
 } from "../../frontend/src/utils/artistMonitoring.ts";
 
-const labels = (items) => items.map((item) => item.label);
+const labels = (
+  items: (
+    | {
+        id: string;
+        label: string;
+        radio: boolean;
+        selected: boolean;
+        onSelect: () => unknown;
+        separatorBefore?: undefined;
+        closeBeforeSelect?: undefined;
+      }
+    | {
+        id: string;
+        label: string;
+        separatorBefore: boolean;
+        closeBeforeSelect: boolean;
+        onSelect: () => void;
+        radio?: undefined;
+        selected?: undefined;
+      }
+  )[],
+) => items.map((item) => item.label);
 
 test("Aurral artists are monitored or not and open their rules, while Lidarr keeps its monitor options", () => {
-  const selected = [];
-  const edits = [];
+  const selected: (
+    | {
+        monitoring: {
+          monitored: boolean;
+          useDefault?: boolean;
+          rules?: import("../../backend/services/aurralMonitoring.ts").MonitorRules | null;
+        };
+        monitorOption?: undefined;
+      }
+    | { monitoring?: undefined; monitorOption: string }
+  )[] = [];
+  const edits: string[] = [];
   const aurral = buildArtistMonitoringItems({
     manager: "aurral",
     state: { manager: "aurral", added: true, monitored: true, useDefault: false },
@@ -100,7 +132,7 @@ test("results never name a manager", () => {
       response: {
         monitored: true,
         useDefault: false,
-        rules: { newReleases: true },
+        rules: { ...FACTORY_MONITOR_RULES, newReleases: true },
         monitoring: {
           releaseGroupIds: ["a", "b"],
           topTracks: [{ title: "Roygbiv" }],

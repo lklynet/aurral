@@ -1,3 +1,4 @@
+import { createRouteHarness, createResponse } from "./routeHarness.ts";
 import assert from "node:assert/strict";
 import { test, vi } from "vite-plus/test";
 
@@ -57,7 +58,7 @@ test("stable artist and discovery reads do not call Lidarr", async () => {
     const projectedArtist = artists.find((candidate) => candidate.providerId === "9911");
     assert.equal(projectedArtist?.id, String(artist.id));
     assert.equal(projectedArtist?.canonicalId, String(artist.id));
-    assert.deepEqual(releases, []);
+    assert.deepEqual([...releases], []);
     assert.equal(request.mock.calls.length, 0);
   } finally {
     lidarrClient.isConfigured = originalConfigured;
@@ -104,27 +105,30 @@ test("optional Lidarr reads use indexed Aurral media without provider calls", as
     "getAlbum",
     "getTracksByAlbumId",
     "getTrackFilesByAlbumId",
-  ]) {
-    vi.spyOn(lidarrClient, method).mockImplementation(async () => {
-      throw new Error("optional reads must not call Lidarr");
-    });
+  ] as const) {
+    vi.spyOn(lidarrClient, method).mockImplementation(
+      requireValue(async () => {
+        throw new Error("optional reads must not call Lidarr");
+      }),
+    );
   }
 
   try {
     const [byMbid, byId, albums, byAlbumId, tracks, queue] = await Promise.all([
-      libraryManager.getArtist(artist.mbid),
+      libraryManager.getArtist(requireValue(requireValue(artist).mbid)),
       libraryManager.getArtistById(9911),
       libraryManager.getAlbums(9911),
       libraryManager.getAlbumById(9922),
       libraryManager.getTracks(9922),
       libraryManager.getPlaybackQueue({ pageSize: 10 }),
     ]);
-    assert.equal(byMbid.canonicalId, String(artist.id));
-    assert.equal(byId.canonicalId, String(artist.id));
+    assert.equal(requireValue(byMbid).canonicalId, String(artist.id));
+    assert.equal(requireValue(byId).canonicalId, String(artist.id));
     assert.equal(albums[0].canonicalId, String(album.id));
     assert.equal(albums[0].providerId, 9922);
-    assert.equal(byAlbumId.canonicalId, String(album.id));
-    assert.equal(byAlbumId.providerId, 9922);
+    assert.equal(requireValue(byAlbumId).canonicalId, String(album.id));
+    assert.equal(requireValue(byAlbumId).providerId, 9922);
+    assert.ok("canonicalId" in tracks[0]);
     assert.equal(tracks[0].canonicalId, String(track.id));
     assert.equal(tracks[0].providerId, 9933);
     assert.equal(
@@ -185,7 +189,7 @@ test("configured Lidarr read failures fall back to the library index", async () 
 
   try {
     const [byMbid, byId, albums, byAlbumId, tracks] = await Promise.all([
-      libraryManager.getArtist(artist.mbid),
+      libraryManager.getArtist(requireValue(requireValue(artist).mbid)),
       libraryManager.getArtistById(9941),
       libraryManager.getAlbums(9941),
       libraryManager.getAlbumById(9942),
@@ -195,7 +199,8 @@ test("configured Lidarr read failures fall back to the library index", async () 
     assert.equal(byId?.canonicalId, String(artist.id));
     assert.equal(albums[0]?.canonicalId, String(album.id));
     assert.equal(byAlbumId?.canonicalId, String(album.id));
-    assert.equal(tracks[0]?.canonicalId, String(track.id));
+    assert.ok(tracks[0] && "canonicalId" in tracks[0]);
+    assert.equal(tracks[0].canonicalId, String(track.id));
   } finally {
     db.prepare("DELETE FROM library_media_files WHERE path = ?").run(filePath);
     db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(album.id);
@@ -213,7 +218,7 @@ test("artist key reads use identity columns and preserve metadata foreign IDs", 
     name: "Artist Key Read",
     metadata: { foreignArtistId },
   });
-  const prepared = [];
+  const prepared: string[] = [];
   const prepare = db.prepare.bind(db);
   vi.spyOn(db, "prepare").mockImplementation((sql) => {
     prepared.push(String(sql));
@@ -249,7 +254,11 @@ test("artist monitoring mutations dedupe library reconciliation scans", async ()
     foreignArtistId: "33333333-3333-4333-8333-333333333333",
     monitored: false,
   }));
-  vi.spyOn(lidarrClient, "updateArtistMonitoring").mockImplementation(async () => ({}));
+  vi.spyOn(lidarrClient, "updateArtistMonitoring").mockImplementation(async () => ({
+    id: 9922,
+    artistName: "Monitoring Artist",
+    foreignArtistId: "33333333-3333-4333-8333-333333333333",
+  }));
   vi.spyOn(lidarrClient, "getArtist").mockImplementation(async () => ({
     id: 9922,
     artistName: "Monitoring Artist",
@@ -258,14 +267,14 @@ test("artist monitoring mutations dedupe library reconciliation scans", async ()
     monitor: "all",
   }));
 
-  let jobId;
+  let jobId: number | null = null;
   try {
     await libraryManager.updateArtist("33333333-3333-4333-8333-333333333333", {
       monitorOption: "all",
     });
     jobId = getScheduledLibraryScanJobId();
     assert.ok(jobId);
-    assert.deepEqual(JSON.parse(getLibraryScanQueue().getJob(jobId).payload), {
+    assert.deepEqual(JSON.parse(requireValue(getLibraryScanQueue().getJob(jobId)).payload), {
       force: false,
       includeLidarr: true,
       changedPaths: null,
@@ -332,10 +341,10 @@ test("deleting a Lidarr artist clears library provider state for both IDs", asyn
 
 test("library artist compatibility reads apply SQL pagination", async () => {
   const key = `canonical-artist-route:${process.pid}:${Date.now()}`;
-  const artists = [];
-  const albums = [];
-  const tracks = [];
-  const paths = [];
+  const artists: import("../../backend/db/rows.ts").LibraryArtistsRow[] = [];
+  const albums: import("../../backend/db/rows.ts").LibraryAlbumsRow[] = [];
+  const tracks: import("../../backend/db/rows.ts").LibraryTracksRow[] = [];
+  const paths: string[] = [];
   for (const name of ["A", "B"]) {
     const artist = upsertLibraryArtist({
       identityKey: `${key}:artist:${name}`,
@@ -367,40 +376,23 @@ test("library artist compatibility reads apply SQL pagination", async () => {
     paths.push(filePath);
   }
 
-  const routes = new Map();
-  registerArtists({
-    get(path, ...handlers) {
-      routes.set(`GET ${path}`, handlers.at(-1));
-    },
-    post() {
-      return this;
-    },
-    put() {
-      return this;
-    },
-    delete() {
-      return this;
-    },
-  });
+  const routes = createRouteHarness(registerArtists);
 
-  let body;
+  const response =
+    createResponse<
+      (ReturnType<
+        typeof import("../../backend/services/libraryReadModel.ts").getLibraryReadModelForArtistPage
+      >["artists"][number] & { added: string | null })[]
+    >();
   try {
     await routes.get("GET /artists")(
       { query: { readPath: "canonical", source: "lidarr", limit: "1", offset: "1" } },
-      {
-        json(value) {
-          body = value;
-          return this;
-        },
-      },
+      response,
     );
-    assert.deepEqual(
-      body.map((artist) => artist.name),
-      [`${key} B`],
-    );
-    assert.equal(body[0].canonicalId, artists[1].id);
-    assert.equal(body[0].statistics.trackCount, 1);
-    assert.equal(body[0].added, body[0].addedAt);
+    assert.deepEqual(requireValue(response.body.map((artist) => artist.name)), [`${key} B`]);
+    assert.equal(requireValue(response.body[0]).canonicalId, artists[1].id);
+    assert.equal(requireValue(response.body[0]).statistics.trackCount, 1);
+    assert.equal(requireValue(response.body[0]).added, requireValue(response.body[0]).addedAt);
   } finally {
     db.prepare("DELETE FROM library_media_files WHERE path IN (?, ?)").run(...paths);
     db.prepare(
@@ -423,11 +415,11 @@ test("library paginated reads keep tied rows stable", () => {
   const artistName = `${key} Artist`;
   const albumTitle = `${key} Album`;
   const trackTitle = `${key} Track`;
-  const artists = [];
-  const albums = [];
-  const tracks = [];
-  const paths = [];
-  let nullSortArtist;
+  const artists: import("../../backend/db/rows.ts").LibraryArtistsRow[] = [];
+  const albums: import("../../backend/db/rows.ts").LibraryAlbumsRow[] = [];
+  const tracks: import("../../backend/db/rows.ts").LibraryTracksRow[] = [];
+  const paths: string[] = [];
+  let nullSortArtist: import("../../backend/db/rows.ts").LibraryArtistsRow | undefined;
 
   try {
     nullSortArtist = upsertLibraryArtist({
@@ -468,9 +460,10 @@ test("library paginated reads keep tied rows stable", () => {
 
     const expectedProjectionIds = artists.map((artist) => String(artist.id));
     const expectedIds = artists.map((artist) => artist.id);
-    const projectionOffset = db
-      .prepare(
-        `SELECT COUNT(*) AS count
+    const projectionOffset = requireValue(
+      db
+        .prepare<unknown[], { count: number }>(
+          `SELECT COUNT(*) AS count
        FROM library_artists
        WHERE sort_name IS NULL
           OR sort_name COLLATE NOCASE < ?
@@ -478,8 +471,9 @@ test("library paginated reads keep tied rows stable", () => {
             name COLLATE NOCASE < ?
             OR (name COLLATE NOCASE = ? AND id < ?)
           ))`,
-      )
-      .get(artistName, artistName, artistName, artistName, artists[0].id).count;
+        )
+        .get(artistName, artistName, artistName, artistName, artists[0].id),
+    ).count;
     assert.deepEqual(
       getLibraryArtistProjection({ pageSize: 2, offset: projectionOffset }).map(
         (artist) => artist.id,
@@ -523,7 +517,7 @@ test("library paginated reads keep tied rows stable", () => {
       ),
       albums.map((album) => album.id),
     );
-    for (const sort of ["name", "artist", "newest"]) {
+    for (const sort of ["name", "artist", "newest"] as const) {
       const expectedTrackIds = getLibraryPage({
         source: "lidarr",
         availableOnly: true,
@@ -605,7 +599,7 @@ test("library paginated reads keep tied rows stable", () => {
       ["artist", artists.map((artist) => artist.id)],
       ["album", albums.map((album) => album.id)],
       ["track", tracks.map((track) => track.id)],
-    ]) {
+    ] as const) {
       if (!ids.length) continue;
       db.prepare(
         `DELETE FROM library_search_documents
@@ -651,45 +645,20 @@ test("legacy artist list bounds the projection before materialization", async ()
     throw new Error("legacy artist list must not materialize all projection pages");
   });
 
-  const routes = new Map();
-  registerArtists({
-    get(path, ...handlers) {
-      routes.set(`GET ${path}`, handlers.at(-1));
-    },
-    post(path, ...handlers) {
-      routes.set(`POST ${path}`, handlers.at(-1));
-    },
-    put(path, ...handlers) {
-      routes.set(`PUT ${path}`, handlers.at(-1));
-    },
-    delete(path, ...handlers) {
-      routes.set(`DELETE ${path}`, handlers.at(-1));
-    },
-  });
+  const routes = createRouteHarness(registerArtists);
 
-  let statusCode = 200;
-  let body;
+  const response =
+    createResponse<
+      (ReturnType<typeof getLibraryArtistProjection>[number] & { added: string | null })[]
+    >();
   try {
-    await routes.get("GET /artists")(
-      { query: { limit: "1", offset: "100" } },
-      {
-        status(code) {
-          statusCode = code;
-          return this;
-        },
-        json(value) {
-          body = value;
-          return this;
-        },
-      },
-    );
+    await routes.get("GET /artists")({ query: { limit: "1", offset: "100" } }, response);
 
-    assert.equal(statusCode, 200);
-    assert.deepEqual(
-      body.map((artist) => artist.id),
-      [String(artists[100].id)],
-    );
-    assert.equal(body[0].added, body[0].addedAt);
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(requireValue(response.body.map((artist) => artist.id)), [
+      String(artists[100].id),
+    ]);
+    assert.equal(requireValue(response.body[0]).added, requireValue(response.body[0]).addedAt);
   } finally {
     db.prepare(`DELETE FROM library_artists WHERE id IN (${artists.map(() => "?").join(",")})`).run(
       ...artists.map((artist) => artist.id),
@@ -815,3 +784,8 @@ test("a failed provider scan keeps the library artist and marks it stale", () =>
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
   }
 });
+
+function requireValue<T>(value: T | null | undefined): T {
+  assert.ok(value != null);
+  return value;
+}

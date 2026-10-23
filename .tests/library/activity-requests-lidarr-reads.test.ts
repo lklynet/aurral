@@ -1,3 +1,4 @@
+import { listeningAddress } from "../helpers/backendTestHarness.ts";
 import assert from "node:assert/strict";
 import { test, beforeAll, afterAll, vi } from "vite-plus/test";
 import express from "express";
@@ -16,14 +17,20 @@ const [
   { invalidateAllDownloadStatusesCache },
 ] = await setupIsolatedBackend(
   "activity-requests-lidarr-reads",
-  "backend/config/db-sqlite.ts",
-  "backend/services/lidarrClient.ts",
-  "backend/routes/requests.ts",
-  "backend/services/aurralHistoryService.ts",
-  "backend/routes/library/handlers/downloads.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/services/lidarrClient.ts"),
+  () => import("../../backend/routes/requests.ts"),
+  () => import("../../backend/services/aurralHistoryService.ts"),
+  () => import("../../backend/routes/library/handlers/downloads.ts"),
 );
 
-let app;
+let app: {
+  url: string;
+  server: import("node:http").Server<
+    typeof import("node:http").IncomingMessage,
+    typeof import("node:http").ServerResponse
+  >;
+};
 
 beforeAll(async () => {
   resetDatabase(db);
@@ -33,23 +40,23 @@ beforeAll(async () => {
     next();
   });
   expressApp.use("/api/requests", requestsRouter);
-  await new Promise((resolve) => {
+  await new Promise<void>((resolve) => {
     const server = expressApp.listen(0, "127.0.0.1", () => {
-      app = { url: `http://127.0.0.1:${server.address().port}`, server };
+      app = { url: `http://127.0.0.1:${listeningAddress(server)!.port}`, server };
       resolve();
     });
   });
 });
 
 afterAll(async () => {
-  await new Promise((resolve) => app.server.close(resolve));
+  await new Promise<void>((resolve) => app.server.close(() => resolve()));
   await cleanupIsolatedState(isolatedState);
 });
 
 test("Activity refreshes reuse recent Lidarr status and album reads", async () => {
   vi.useFakeTimers({ toFake: ["Date"], now: Date.parse("2026-10-01T12:00:00Z") });
-  const statusReads = [];
-  const albumReads = [];
+  const statusReads: string[] = [];
+  const albumReads: string[] = [];
   const failedAt = new Date().toISOString();
   vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
   vi.spyOn(lidarrClient, "isCircuitOpen").mockImplementation(() => false);
@@ -65,7 +72,7 @@ test("Activity refreshes reuse recent Lidarr status and album reads", async () =
         albumId,
         eventType: "downloadFailed",
         date: failedAt,
-        album: { title: `Album ${albumId}` },
+        album: { id: albumId, foreignAlbumId: `album-${albumId}`, title: `Album ${albumId}` },
       })),
     };
   });
@@ -81,6 +88,7 @@ test("Activity refreshes reuse recent Lidarr status and album reads", async () =
     if (String(albumId) === "203") throw new Error("Lidarr album not found");
     return {
       id: Number(albumId),
+      foreignAlbumId: `album-${albumId}`,
       statistics: { trackFileCount: String(albumId) === "201" ? 2 : 0 },
     };
   });
@@ -90,7 +98,8 @@ test("Activity refreshes reuse recent Lidarr status and album reads", async () =
   const refresh = async () => {
     const response = await fetch(`${app.url}/api/requests?refresh=1`);
     assert.equal(response.status, 200);
-    return (await response.json())
+    const requests: { status: string; albumId: string }[] = await response.json();
+    return requests
       .filter((request) => request.status === "failed")
       .map((request) => request.albumId)
       .sort();

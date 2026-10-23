@@ -1,3 +1,4 @@
+import { requireFixture } from "../playlists/fixtures.ts";
 import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
@@ -9,9 +10,9 @@ import {
 
 const [isolatedState, { db }, , { plexConnectionStore }] = await setupIsolatedBackend(
   "plex-connection-store",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/plex/plexConnectionStore.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/plex/plexConnectionStore.ts"),
 );
 
 beforeEach(() => {
@@ -48,11 +49,16 @@ test("saveConnection round-trips and encrypts the token at rest", () => {
   assert.equal(saved.plexAccountId, 42);
   assert.equal(saved.linkedByAdminId, null);
 
-  const raw = db.prepare("SELECT value FROM settings WHERE key = ?").get("plexConnections");
+  const raw = db
+    .prepare<unknown[], { value: import("../../backend/db/rows.ts").SettingsRow["value"] }>(
+      "SELECT value FROM settings WHERE key = ?",
+    )
+    .get("plexConnections");
   assert.ok(raw?.value);
   assert.ok(!raw.value.includes("plex-token-abc"), "raw token must not be stored in plaintext");
 
   const fetched = plexConnectionStore.getConnection(1);
+  assert.ok(fetched != null);
   assert.equal(fetched.token, "plex-token-abc");
 });
 
@@ -74,7 +80,11 @@ test("getPublicStatus never leaks the token", () => {
 
 test("saveConnection rejects invalid linkType or missing token/clientId", () => {
   assert.throws(() =>
-    plexConnectionStore.saveConnection(3, { linkType: "admin", token: "t", clientId: "c" }),
+    plexConnectionStore.saveConnection(3, {
+      linkType: "admin" as "self",
+      token: "t",
+      clientId: "c",
+    }),
   );
   assert.throws(() =>
     plexConnectionStore.saveConnection(3, { linkType: "self", token: "", clientId: "c" }),
@@ -94,9 +104,13 @@ test("updateToken refreshes the token, keeps identity, and clears lastError", ()
     linkedByAdminId: 1,
   });
   plexConnectionStore.setLastError(4, "401 stale token");
-  assert.equal(plexConnectionStore.getConnection(4).lastError.message, "401 stale token");
+  assert.equal(
+    requireFixture(plexConnectionStore.getConnection(4)!.lastError).message,
+    "401 stale token",
+  );
 
   const updated = plexConnectionStore.updateToken(4, { token: "new-token" });
+  assert.ok(updated != null);
   assert.equal(updated.token, "new-token");
   assert.equal(updated.plexUsername, "teen");
   assert.equal(updated.lastError, null);

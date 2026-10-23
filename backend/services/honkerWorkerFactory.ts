@@ -19,9 +19,13 @@ type RetryDecision = { action?: "fail" | "retry"; message?: string; delayS?: num
 
 type TypedJob<Payload> = Job & { payload: Payload };
 
+type WorkerQueue = Pick<Queue, "name" | "claim" | "maxAttempts" | "visibilityTimeoutS"> & {
+  getJob(jobId: number): { max_attempts: number } | null;
+};
+
 type HonkerWorkerOptions<Payload> = {
   name: string;
-  getQueue: () => Queue;
+  getQueue: () => WorkerQueue;
   processJob: (
     payload: Payload,
     job: TypedJob<Payload>,
@@ -79,7 +83,7 @@ export default function createHonkerWorker<Payload = JsonValue>({
   let jobController: AbortController | null = null;
   let activeInterruptible = false;
 
-  async function handleJobFailure(error: unknown, job: TypedJob<Payload>, queue: Queue) {
+  async function handleJobFailure(error: unknown, job: TypedJob<Payload>, queue: WorkerQueue) {
     const failure = asAppError(error);
     const message = failure?.message || String(error);
     const kind: unknown =

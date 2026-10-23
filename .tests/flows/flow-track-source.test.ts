@@ -2,6 +2,27 @@ import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { FlowTrackSource } from "../../backend/services/flows/flowTrackSource.ts";
 
+const candidate = (
+  entry: Parameters<FlowTrackSource["_buildTrackEntry"]>[0],
+  origin: Parameters<FlowTrackSource["_buildBaseCandidate"]>[1],
+) => {
+  const source = new FlowTrackSource();
+  const track = source._buildTrackEntry(entry);
+  assert.ok(track);
+  return source._buildBaseCandidate(track, origin);
+};
+
+const topTrack = (
+  name: string,
+  albumName: string,
+): Awaited<ReturnType<FlowTrackSource["_getArtistTopTrackList"]>>[number] => ({
+  name,
+  albumName,
+  mbid: null,
+  durationMs: null,
+  popularity: 0,
+});
+
 test("year range matching accepts bounds and rejects unknown years when set", () => {
   const source = new FlowTrackSource();
   assert.equal(source._matchesYearRange("1985", null, null), true);
@@ -18,12 +39,12 @@ test("year range matching accepts bounds and rejects unknown years when set", ()
 test("candidate selection skips tracks outside the year range", async () => {
   const source = new FlowTrackSource();
   source._resolveTrackReleaseYear = async (track) => track.releaseYear || null;
-  const used = new Set();
+  const used = new Set<string>();
   const picked = await source._selectFromCandidates(
     [
-      { artistName: "A", trackName: "Old", releaseYear: "1975", source: "focus" },
-      { artistName: "B", trackName: "Fit", releaseYear: "1984", source: "focus" },
-      { artistName: "C", trackName: "New", releaseYear: "2001", source: "focus" },
+      candidate({ artistName: "A", trackName: "Old", releaseYear: "1975" }, "focus"),
+      candidate({ artistName: "B", trackName: "Fit", releaseYear: "1984" }, "focus"),
+      candidate({ artistName: "C", trackName: "New", releaseYear: "2001" }, "focus"),
     ],
     2,
     used,
@@ -40,30 +61,10 @@ test("assemble applies year range only to focus candidates", async () => {
   const plan = await source._assembleFlowPlan({
     candidateMap: {
       focus: [
-        {
-          artistName: "Focus Old",
-          trackName: "Old",
-          releaseYear: "1970",
-          source: "focus",
-          trackKey: "focus old::old",
-        },
-        {
-          artistName: "Focus Fit",
-          trackName: "Fit",
-          releaseYear: "1985",
-          source: "focus",
-          trackKey: "focus fit::fit",
-        },
+        candidate({ artistName: "Focus Old", trackName: "Old", releaseYear: "1970" }, "focus"),
+        candidate({ artistName: "Focus Fit", trackName: "Fit", releaseYear: "1985" }, "focus"),
       ],
-      mix: [
-        {
-          artistName: "Mix Old",
-          trackName: "Keep",
-          releaseYear: "1960",
-          source: "mix",
-          trackKey: "mix old::keep",
-        },
-      ],
+      mix: [candidate({ artistName: "Mix Old", trackName: "Keep", releaseYear: "1960" }, "mix")],
       discover: [],
       trending: [],
     },
@@ -88,30 +89,13 @@ test("shortfall backfill does not reintroduce out-of-range focus tracks", async 
   const plan = await source._assembleFlowPlan({
     candidateMap: {
       focus: [
-        {
-          artistName: "Focus Old",
-          trackName: "Old",
-          releaseYear: "1970",
-          source: "focus",
-          trackKey: "focus old::old",
-        },
-        {
-          artistName: "Focus Also Old",
-          trackName: "Older",
-          releaseYear: "1965",
-          source: "focus",
-          trackKey: "focus also old::older",
-        },
+        candidate({ artistName: "Focus Old", trackName: "Old", releaseYear: "1970" }, "focus"),
+        candidate(
+          { artistName: "Focus Also Old", trackName: "Older", releaseYear: "1965" },
+          "focus",
+        ),
       ],
-      mix: [
-        {
-          artistName: "Mix Keep",
-          trackName: "Filler",
-          releaseYear: "1950",
-          source: "mix",
-          trackKey: "mix keep::filler",
-        },
-      ],
+      mix: [candidate({ artistName: "Mix Keep", trackName: "Filler", releaseYear: "1950" }, "mix")],
       discover: [],
       trending: [],
     },
@@ -134,10 +118,7 @@ test("mix album pick prefers top track list metadata before track.getInfo", () =
   const source = new FlowTrackSource();
   const ownedTitles = new Set(["owned track"]);
   const ownedAlbums = new Set(["owned album"]);
-  const trackList = [
-    { name: "Owned Track", albumName: "Owned Album" },
-    { name: "Fresh Track", albumName: "New Album" },
-  ];
+  const trackList = [topTrack("Owned Track", "Owned Album"), topTrack("Fresh Track", "New Album")];
   const picked = source._pickTrackFromRangesWithOwnedAlbumsUsingListMetadata(
     trackList,
     ownedTitles,
@@ -169,10 +150,16 @@ test("release radar picks a release track from metadata before Last.fm fallbacks
   const source = new FlowTrackSource();
   source._getMetadataAlbumTrackList = async () => [
     {
+      id: "track-id",
       title: "Opening Track",
       trackNumber: 1,
+      trackPosition: 1,
+      mediumNumber: 1,
       recordingId: "recording-mbid",
+      oldRecordingIds: [],
       durationMs: 185000,
+      artistId: null,
+      releaseMbid: null,
     },
   ];
   source._getLastfmAlbumInfo = async () => {
@@ -198,7 +185,7 @@ test("release radar does not substitute an unrelated artist top track", async ()
   source._getMetadataAlbumTrackList = async () => [];
   source._getLastfmAlbumInfo = async () => null;
   source._getArtistTopTrackList = async () => [
-    { name: "Sober to Death", albumName: "Twin Fantasy (Face to Face)" },
+    topTrack("Sober to Death", "Twin Fantasy (Face to Face)"),
   ];
 
   const track = await source._pickTrackFromRelease({
@@ -217,8 +204,8 @@ test("release radar accepts artist top track fallback only when the album matche
   source._getMetadataAlbumTrackList = async () => [];
   source._getLastfmAlbumInfo = async () => null;
   source._getArtistTopTrackList = async () => [
-    { name: "Sober to Death", albumName: "Twin Fantasy (Face to Face)" },
-    { name: "Joe Gets Kicked", albumName: "Teen of Denial (Joe's Story)" },
+    topTrack("Sober to Death", "Twin Fantasy (Face to Face)"),
+    topTrack("Joe Gets Kicked", "Teen of Denial (Joe's Story)"),
   ];
 
   const track = await source._pickTrackFromRelease({

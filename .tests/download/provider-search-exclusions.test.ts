@@ -1,3 +1,4 @@
+import { createTrackedJob, trackedJob } from "./fixtures.ts";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -11,28 +12,48 @@ import {
 const [state, { db }, { dbOps }, { downloadTracker }, { getDownloadClient }, deemix, ytdlp, slskd] =
   await setupIsolatedBackend(
     "provider-search-exclusions",
-    "backend/config/db-sqlite.ts",
-    "backend/db/helpers/index.ts",
-    "backend/services/downloadJobs/downloadTracker.ts",
-    "backend/services/download/downloadClientSettings.ts",
-    "backend/services/deemixOrchestrator.ts",
-    "backend/services/ytdlpOrchestrator.ts",
-    "backend/services/downloadPipeline.ts",
+    () => import("../../backend/config/db-sqlite.ts"),
+    () => import("../../backend/db/helpers/index.ts"),
+    () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
+    () => import("../../backend/services/download/downloadClientSettings.ts"),
+    () => import("../../backend/services/deemixOrchestrator.ts"),
+    () => import("../../backend/services/ytdlpOrchestrator.ts"),
+    () => import("../../backend/services/downloadPipeline.ts"),
   );
 beforeEach(() => resetDatabase(db));
 afterAll(() => cleanupIsolatedState(state));
 
-for (const [source, processPayload] of [
-  ["deemix", deemix.processDeemixPipelinePayload],
-  ["ytdlp", ytdlp.processYtdlpPipelinePayload],
-]) {
+type SearchStep = (
+  payload: {
+    phase: "search" | "finalize";
+    source: string;
+    jobId: string;
+    queueUuid?: string;
+    downloadedPath?: string;
+    candidateIndex?: number;
+    candidates?: { raw: { id: string; url: string } }[];
+  },
+  helpers: { failOrTryNextSource: (payload: unknown, job: unknown, reason: string) => unknown },
+) => Promise<{ phase: string; candidates?: { raw: { id: string } }[] | null } | null>;
+
+type SearchingClient = { search: (query: string) => Promise<unknown[]> };
+
+const searchSteps: [source: "deemix" | "ytdlp", step: SearchStep][] = [
+  ["deemix", deemix.processDeemixPipelinePayload as SearchStep],
+  ["ytdlp", ytdlp.processYtdlpPipelinePayload as SearchStep],
+];
+
+for (const [source, processPayload] of searchSteps) {
   test(`${source} searches beyond denied results without altering denial history`, async () => {
-    const jobId = downloadTracker.addJob(
+    const jobId = createTrackedJob(
+      downloadTracker,
       { artistName: "The Band", trackName: "First", durationMs: 180000 },
       "search-exclusions",
     );
+    assert.ok(jobId != null);
     downloadTracker.recordDeniedSource(jobId, source, "denied");
-    const client = getDownloadClient(source);
+    const client: SearchingClient =
+      source === "deemix" ? getDownloadClient("deemix") : getDownloadClient("ytdlp");
     const original = client.search;
     let searches = 0;
     client.search = async () => [
@@ -49,27 +70,30 @@ for (const [source, processPayload] of [
       const result = await processPayload(
         { phase: "search", source, jobId },
         {
-          failOrTryNextSource: (_payload, _job, reason) => ({ error: reason }),
+          failOrTryNextSource: async (_payload, _job, reason) => {
+            throw new Error(reason);
+          },
         },
       );
+      assert.ok(result);
       assert.equal(result.phase, "download");
       assert.deepEqual(
-        result.candidates.map((entry) => entry.raw.id),
+        result.candidates?.map((entry) => entry.raw.id),
         ["allowed"],
       );
-      assert.deepEqual(downloadTracker.getJob(jobId).deniedRemoteSources, [[source, "denied"]]);
+      assert.deepEqual(trackedJob(downloadTracker, jobId).deniedRemoteSources, [
+        [source, "denied"],
+      ]);
     } finally {
       client.search = original;
     }
   });
 }
 
-for (const [source, processPayload] of [
-  ["deemix", deemix.processDeemixPipelinePayload],
-  ["ytdlp", ytdlp.processYtdlpPipelinePayload],
-]) {
+for (const [source, processPayload] of searchSteps) {
   test(`${source} blocks a track that fails validation from the next search`, async () => {
-    const jobId = downloadTracker.addJob(
+    const jobId = createTrackedJob(
+      downloadTracker,
       { artistName: "The Band", trackName: "First", durationMs: 180000 },
       "search-exclusions",
     );
@@ -77,11 +101,12 @@ for (const [source, processPayload] of [
     await mkdir(staging, { recursive: true });
     const filePath = join(staging, "First.flac");
     await writeFile(filePath, "not audio");
-    const client = getDownloadClient(source);
+    const client: SearchingClient =
+      source === "deemix" ? getDownloadClient("deemix") : getDownloadClient("ytdlp");
     if (source === "deemix")
-      vi.spyOn(client, "removeFromQueue").mockImplementation(async () => true);
-    else vi.spyOn(client, "cleanupStaging").mockImplementation(async () => {});
-    const helpers = { failOrTryNextSource: (_payload, _job, reason) => ({ error: reason }) };
+      vi.spyOn(getDownloadClient("deemix"), "removeFromQueue").mockImplementation(async () => true);
+    else vi.spyOn(getDownloadClient("ytdlp"), "cleanupStaging").mockImplementation(async () => {});
+    const helpers = { failOrTryNextSource: async () => null };
     await processPayload(
       {
         phase: "finalize",
@@ -94,7 +119,9 @@ for (const [source, processPayload] of [
       },
       helpers,
     );
-    assert.deepEqual(downloadTracker.getJob(jobId).deniedRemoteSources, [[source, "rejected"]]);
+    assert.deepEqual(trackedJob(downloadTracker, jobId).deniedRemoteSources, [
+      [source, "rejected"],
+    ]);
     vi.spyOn(client, "search").mockImplementation(async () =>
       ["rejected", "allowed"].map((id) => ({
         id,
@@ -107,7 +134,7 @@ for (const [source, processPayload] of [
     );
     const result = await processPayload({ phase: "search", source, jobId }, helpers);
     assert.deepEqual(
-      result.candidates.map((entry) => entry.raw.id),
+      result!.candidates!.map((entry) => entry.raw.id),
       ["allowed"],
     );
   });
@@ -120,7 +147,8 @@ test("slskd blocks a file that fails validation", async () => {
       slskd: { enabled: true, url: "http://127.0.0.1:9" },
     },
   });
-  const jobId = downloadTracker.addJob(
+  const jobId = createTrackedJob(
+    downloadTracker,
     { artistName: "The Band", trackName: "First", durationMs: 180000 },
     "search-exclusions",
   );
@@ -138,7 +166,7 @@ test("slskd blocks a file that fails validation", async () => {
     candidateIndex: 0,
     candidates: [{ raw: { user: "peer", file: remoteFile, size: 0 } }],
   });
-  assert.deepEqual(downloadTracker.getJob(jobId).deniedRemoteSources, [
+  assert.deepEqual(trackedJob(downloadTracker, jobId).deniedRemoteSources, [
     ["slskd", `peer\0${remoteFile}`],
   ]);
 });

@@ -18,21 +18,30 @@ const [
   { createSession },
 ] = await setupIsolatedBackend(
   "plex-link-routes",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/plex/plexConnectionStore.ts",
-  "backend/config/session-helpers.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/plex/plexConnectionStore.ts"),
+  () => import("../../backend/config/session-helpers.ts"),
 );
 
-let server = null;
-let adminId = null;
-let userAId = null;
-let userBId = null;
+let server: {
+  child: import("node:child_process").ChildProcessByStdio<
+    null,
+    import("node:stream").Readable,
+    import("node:stream").Readable
+  >;
+  port: number;
+  logs: () => string;
+  stop(): Promise<void>;
+};
+let adminId: number | null = null;
+let userAId: number | null = null;
+let userBId: number | null = null;
 let adminToken = "";
 let userAToken = "";
 let userBToken = "";
 
-async function login(username, password) {
+async function login(username: string, password: string) {
   const response = await fetch(`http://127.0.0.1:${server.port}/api/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -43,11 +52,11 @@ async function login(username, password) {
   return payload.token;
 }
 
-async function apiFetch(token, path, options = {}) {
+async function apiFetch(token: string | null, path: string, options: RequestInit = {}) {
   const headers = {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(options.body ? { "Content-Type": "application/json" } : {}),
-    ...(options.headers || {}),
+    ...Object.fromEntries(new Headers(options.headers)),
   };
   const response = await fetch(`http://127.0.0.1:${server.port}${path}`, {
     ...options,
@@ -62,8 +71,11 @@ beforeAll(async () => {
   resetDatabase(db);
   dbOps.updateSettings({ integrations: {}, onboardingComplete: true });
   const admin = userOps.createUser("plex-admin", bcrypt.hashSync("password123", 4), "admin");
+  assert.ok(admin != null);
   const userA = userOps.createUser("plex-user-a", bcrypt.hashSync("password123", 4), "user");
+  assert.ok(userA != null);
   const userB = userOps.createUser("plex-user-b", bcrypt.hashSync("password123", 4), "user");
+  assert.ok(userB != null);
   adminId = admin.id;
   userAId = userA.id;
   userBId = userB.id;
@@ -85,6 +97,7 @@ test("GET /me/plex-link/status requires authentication", async () => {
 });
 
 test("GET /me/plex-link/status reflects only the caller's own connection", async () => {
+  assert.ok(userAId != null);
   plexConnectionStore.saveConnection(userAId, {
     linkType: "self",
     token: "user-a-token",
@@ -110,6 +123,7 @@ test("GET /me/plex-link/status reflects only the caller's own connection", async
 });
 
 test("DELETE /me/plex-link only ever clears the caller's own connection, never another user's", async () => {
+  assert.ok(userAId != null);
   plexConnectionStore.saveConnection(userAId, {
     linkType: "self",
     token: "user-a-token",
@@ -123,12 +137,14 @@ test("DELETE /me/plex-link only ever clears the caller's own connection, never a
   });
   assert.equal(response.status, 200);
 
+  assert.ok(userAId != null);
   assert.equal(plexConnectionStore.getConnection(userAId)?.plexUsername, "friendA");
 
   const { response: responseA } = await apiFetch(userAToken, "/api/users/me/plex-link", {
     method: "DELETE",
   });
   assert.equal(responseA.status, 200);
+  assert.ok(userAId != null);
   assert.equal(plexConnectionStore.getConnection(userAId), null);
 });
 
@@ -143,7 +159,9 @@ test("POST /me/plex-link/oauth/complete validates required fields before touchin
   );
   assert.equal(response.status, 400);
   assert.match(payload.error, /pinId, code and clientId are required/);
+  assert.ok(userAId != null);
   assert.equal(plexConnectionStore.getConnection(userAId), null);
+  assert.ok(userBId != null);
   assert.equal(plexConnectionStore.getConnection(userBId), null);
 });
 
@@ -191,6 +209,7 @@ test("POST /:id/plex-link/managed requires the global Plex connection to be conf
 });
 
 test("admin DELETE /:id/plex-link unlinks a managed user", async () => {
+  assert.ok(userBId != null);
   plexConnectionStore.saveConnection(userBId, {
     linkType: "managed",
     token: "managed-token",
@@ -202,11 +221,13 @@ test("admin DELETE /:id/plex-link unlinks a managed user", async () => {
     method: "DELETE",
   });
   assert.equal(response.status, 200);
+  assert.ok(userBId != null);
   assert.equal(plexConnectionStore.getConnection(userBId), null);
 });
 
 test("admin DELETE /:id/plex-link also removes the user's Plex login identity", async () => {
   const target = userOps.createUser("plex-login-target", bcrypt.hashSync("password123", 4), "user");
+  assert.ok(target != null);
   plexConnectionStore.saveConnection(target.id, {
     linkType: "self",
     token: "target-token",
@@ -241,6 +262,7 @@ test("admin Plex unlink requires an explicit, recently authenticated force to re
     null,
     false,
   );
+  assert.ok(target != null);
   plexConnectionStore.saveConnection(target.id, {
     linkType: "self",
     token: "force-target-token",
@@ -363,6 +385,7 @@ test("disconnecting Plex is blocked when it is the account's only usable auth me
     null,
     false,
   );
+  assert.ok(oidcOnlyUser != null);
   plexConnectionStore.saveConnection(oidcOnlyUser.id, {
     linkType: "self",
     token: "plex-only-token",
@@ -389,6 +412,7 @@ test("disconnecting Plex is blocked when it is the account's only usable auth me
 
 test("admin can suspend a user, which immediately invalidates their existing session", async () => {
   const target = userOps.createUser("suspendable-user", bcrypt.hashSync("password123", 4), "user");
+  assert.ok(target != null);
   const targetToken = await login("suspendable-user", "password123");
   assert.equal((await apiFetch(targetToken, "/api/auth/me")).response.status, 200);
 
@@ -414,6 +438,7 @@ test("a protected admin cannot suspend or disable their own account", async () =
     bcrypt.hashSync("password123", 4),
     "admin",
   );
+  assert.ok(protectedAdmin != null);
   userOps.setProtected(protectedAdmin.id, true);
   const protectedAdminToken = await login("protected-admin", "password123");
 
@@ -431,6 +456,7 @@ test("a different admin also cannot suspend or disable a protected recovery acco
     bcrypt.hashSync("password123", 4),
     "admin",
   );
+  assert.ok(protectedAdmin != null);
   userOps.setProtected(protectedAdmin.id, true);
 
   const { response } = await apiFetch(adminToken, `/api/users/${protectedAdmin.id}`, {
@@ -442,6 +468,7 @@ test("a different admin also cannot suspend or disable a protected recovery acco
 });
 
 test("disconnecting Plex succeeds and removes the login identity when a fallback method exists", async () => {
+  assert.ok(userAId != null);
   plexConnectionStore.saveConnection(userAId, {
     linkType: "self",
     token: "user-a-token-2",
@@ -449,6 +476,7 @@ test("disconnecting Plex succeeds and removes the login identity when a fallback
     plexAccountId: 444,
     plexUsername: "friendA2",
   });
+  assert.ok(userAId != null);
   const identity = userIdentityOps.link(userAId, {
     providerType: "plex",
     providerKey: "plex",
@@ -460,6 +488,7 @@ test("disconnecting Plex succeeds and removes the login identity when a fallback
     method: "DELETE",
   });
   assert.equal(response.status, 200);
+  assert.ok(userAId != null);
   assert.equal(plexConnectionStore.getConnection(userAId), null);
   assert.equal(userIdentityOps.getById(identity.id), null);
 });
@@ -472,6 +501,7 @@ test("only an admin can approve a legacy account for SSO adoption, and only an e
     null,
     false,
   );
+  assert.ok(legacy != null);
   userOps.updateUser(legacy.id, { needsIdentityMigration: true });
 
   const legacyToken = await login("adoption-candidate", "password123");
@@ -480,22 +510,23 @@ test("only an admin can approve a legacy account for SSO adoption, and only an e
     body: JSON.stringify({ allowIdentityAdoption: true }),
   });
   assert.equal(selfResponse.status, 403, "a user must not be able to approve their own adoption");
-  assert.equal(userOps.getUserById(legacy.id).allowIdentityAdoption, false);
+  assert.equal(userOps.getUserById(legacy.id)!.allowIdentityAdoption, false);
 
   const { response: adminResponse } = await apiFetch(adminToken, `/api/users/${legacy.id}`, {
     method: "PATCH",
     body: JSON.stringify({ allowIdentityAdoption: true }),
   });
   assert.equal(adminResponse.status, 200);
-  assert.equal(userOps.getUserById(legacy.id).allowIdentityAdoption, true);
+  assert.equal(userOps.getUserById(legacy.id)!.allowIdentityAdoption, true);
 
   const modern = userOps.createUser("modern-user", bcrypt.hashSync("password123", 4), "user");
+  assert.ok(modern != null);
   const { response: modernResponse } = await apiFetch(adminToken, `/api/users/${modern.id}`, {
     method: "PATCH",
     body: JSON.stringify({ allowIdentityAdoption: true }),
   });
   assert.equal(modernResponse.status, 400);
-  assert.equal(userOps.getUserById(modern.id).allowIdentityAdoption, false);
+  assert.equal(userOps.getUserById(modern.id)!.allowIdentityAdoption, false);
 });
 
 test("the protected recovery account can never be approved for SSO adoption", async () => {
@@ -506,6 +537,7 @@ test("the protected recovery account can never be approved for SSO adoption", as
     null,
     false,
   );
+  assert.ok(protectedLegacy != null);
   userOps.updateUser(protectedLegacy.id, { needsIdentityMigration: true });
   userOps.setProtected(protectedLegacy.id, true);
 
@@ -514,11 +546,12 @@ test("the protected recovery account can never be approved for SSO adoption", as
     body: JSON.stringify({ allowIdentityAdoption: true }),
   });
   assert.equal(response.status, 400);
-  assert.equal(userOps.getUserById(protectedLegacy.id).allowIdentityAdoption, false);
+  assert.equal(userOps.getUserById(protectedLegacy.id)!.allowIdentityAdoption, false);
 });
 
 test("disconnecting Plex requires a recent reauth, same as the generic identity-unlink route", async () => {
   const target = userOps.createUser("plex-reauth-user", bcrypt.hashSync("password123", 4), "user");
+  assert.ok(target != null);
   plexConnectionStore.saveConnection(target.id, {
     linkType: "self",
     token: "reauth-token",

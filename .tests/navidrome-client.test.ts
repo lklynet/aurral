@@ -1,3 +1,4 @@
+import { asAppError } from "../lib/errors.ts";
 import { test, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 
@@ -6,25 +7,40 @@ import { createFakeNavidrome } from "./helpers/fakeNavidrome.ts";
 
 vi.mock("node:timers/promises", async (importOriginal) => ({
   ...(await importOriginal()),
-  setTimeout: (delay, value) => new Promise((resolve) => setTimeout(resolve, delay, value)),
+  setTimeout: (delay: number, value: unknown) =>
+    new Promise<void>((resolve) => setTimeout(resolve, delay, value)),
 }));
 
-const jsonResponse = (value) =>
+function captureRequest(url: Parameters<typeof fetch>[0], init: RequestInit) {
+  assert.ok(init.body == null || init.body instanceof URLSearchParams);
+  return {
+    url: new URL(url instanceof Request ? url.url : url),
+    init: { ...init, body: init.body ?? new URLSearchParams() },
+  };
+}
+
+const jsonResponse = (value: unknown) =>
   new Response(JSON.stringify(value), {
     headers: { "content-type": "application/json" },
   });
 
 test("creates a distinct playlist without looking up matching display names", async () => {
   const originalFetch = globalThis.fetch;
-  const urls = [];
+  const urls: URL[] = [];
   globalThis.fetch = async (url) => {
-    urls.push(new URL(url));
+    urls.push(new URL(url instanceof Request ? url.url : url));
     return jsonResponse({
       "subsonic-response": { status: "ok", playlist: { id: "new-id", name: "Same Name" } },
     });
   };
 
-  let playlist;
+  let playlist: {
+    id: string;
+    name: string;
+    comment?: string;
+    songCount?: number;
+    entry?: { id: string; path: string } | { id: string; path: string }[];
+  } | null;
   try {
     playlist = await new NavidromeClient(
       "http://navidrome.test",
@@ -35,6 +51,7 @@ test("creates a distinct playlist without looking up matching display names", as
     globalThis.fetch = originalFetch;
   }
 
+  assert.ok(playlist);
   assert.equal(playlist.id, "new-id");
   assert.equal(urls.length, 2);
   assert.equal(urls[0].pathname, "/rest/createPlaylist");
@@ -43,9 +60,9 @@ test("creates a distinct playlist without looking up matching display names", as
 
 test("makes newly created playlists public", async () => {
   const originalFetch = globalThis.fetch;
-  const requests = [];
+  const requests: ReturnType<typeof captureRequest>[] = [];
   globalThis.fetch = async (url, init = {}) => {
-    requests.push({ url: new URL(url), init });
+    requests.push(captureRequest(url, init));
     return jsonResponse({
       "subsonic-response": {
         status: "ok",
@@ -65,8 +82,8 @@ test("makes newly created playlists public", async () => {
 
   assert.equal(requests.length, 2);
   assert.equal(requests[1].url.pathname, "/rest/updatePlaylist");
-  assert.equal(requests[1].init.body.get("playlistId"), "new-id");
-  assert.equal(requests[1].init.body.get("public"), "true");
+  assert.equal(requests[1].init.body.get("playlistId")!, "new-id");
+  assert.equal(requests[1].init.body.get("public")!, "true");
 });
 
 test("retries Navidrome rate limits", async () => {
@@ -90,8 +107,8 @@ test("retries Navidrome rate limits", async () => {
 test("retries transient Navidrome connection failures", async () => {
   const originalFetch = globalThis.fetch;
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-  let firstAttempt;
-  const attempted = new Promise((resolve) => {
+  let firstAttempt!: () => void;
+  const attempted = new Promise<void>((resolve) => {
     firstAttempt = resolve;
   });
   let attempts = 0;
@@ -140,9 +157,9 @@ test("does not retry transient failures for playlist mutations", async () => {
 
 test("batches large playlist creation requests", async () => {
   const originalFetch = globalThis.fetch;
-  const requests = [];
+  const requests: ReturnType<typeof captureRequest>[] = [];
   globalThis.fetch = async (url, init = {}) => {
-    requests.push({ url: new URL(url), init });
+    requests.push(captureRequest(url, init));
     return jsonResponse({
       "subsonic-response": {
         status: "ok",
@@ -164,8 +181,8 @@ test("batches large playlist creation requests", async () => {
   assert.equal(requests[0].url.pathname, "/rest/createPlaylist");
   assert.equal(requests[0].url.searchParams.getAll("songId").length, 50);
   assert.equal(requests[1].url.pathname, "/rest/updatePlaylist");
-  assert.equal(requests[1].init.body.get("public"), "true");
-  assert.equal(requests[2].init.body.getAll("songIdToAdd").length, 50);
+  assert.equal(requests[1].init.body.get("public")!, "true");
+  assert.equal(requests[2].init.body.getAll("songIdToAdd")!.length, 50);
   assert.ok(requests.every(({ url }) => url.toString().length < 8192));
 });
 
@@ -182,7 +199,7 @@ test("preserves Subsonic error codes for missing native IDs", async () => {
   try {
     await assert.rejects(
       new NavidromeClient("http://navidrome.test", "user", "password").getPlaylist("missing"),
-      (error) => error.code === 70,
+      (error) => String(asAppError(error)?.code) === "70",
     );
   } finally {
     globalThis.fetch = originalFetch;
@@ -191,9 +208,9 @@ test("preserves Subsonic error codes for missing native IDs", async () => {
 
 test("replaces playlist entries without changing visibility", async () => {
   const originalFetch = globalThis.fetch;
-  const requests = [];
+  const requests: ReturnType<typeof captureRequest>[] = [];
   globalThis.fetch = async (url, init = {}) => {
-    requests.push({ url: new URL(url), init });
+    requests.push(captureRequest(url, init));
     if (requests.length === 1) {
       return jsonResponse({
         "subsonic-response": {
@@ -214,17 +231,17 @@ test("replaces playlist entries without changing visibility", async () => {
     globalThis.fetch = originalFetch;
   }
 
-  assert.deepEqual(requests[1].init.body.getAll("songIndexToRemove"), ["0", "1"]);
-  assert.deepEqual(requests[1].init.body.getAll("songIdToAdd"), ["song-1", "song-2"]);
-  assert.equal(requests[1].init.body.get("name"), "Renamed");
-  assert.equal(requests[1].init.body.has("public"), false);
+  assert.deepEqual(requests[1].init.body.getAll("songIndexToRemove")!, ["0", "1"]);
+  assert.deepEqual(requests[1].init.body.getAll("songIdToAdd")!, ["song-1", "song-2"]);
+  assert.equal(requests[1].init.body.get("name")!, "Renamed");
+  assert.equal(requests[1].init.body.has("public")!, false);
 });
 
 test("batches large playlist replacement requests", async () => {
   const originalFetch = globalThis.fetch;
-  const requests = [];
+  const requests: ReturnType<typeof captureRequest>[] = [];
   globalThis.fetch = async (url, init = {}) => {
-    requests.push({ url: new URL(url), init });
+    requests.push(captureRequest(url, init));
     if (requests.length === 1) {
       return jsonResponse({
         "subsonic-response": {
@@ -249,18 +266,18 @@ test("batches large playlist replacement requests", async () => {
   }
 
   assert.equal(requests.length, 4);
-  assert.equal(requests[1].init.body.getAll("songIdToAdd").length, 50);
-  assert.equal(requests[2].init.body.getAll("songIdToAdd").length, 50);
-  assert.equal(requests[3].init.body.getAll("songIdToAdd").length, 1);
+  assert.equal(requests[1].init.body.getAll("songIdToAdd")!.length, 50);
+  assert.equal(requests[2].init.body.getAll("songIdToAdd")!.length, 50);
+  assert.equal(requests[3].init.body.getAll("songIdToAdd")!.length, 1);
   assert.ok(requests.every(({ url }) => url.toString().length < 8192));
 });
 
 test("posts large playlist replacements without exceeding request URL limits", async () => {
   const originalFetch = globalThis.fetch;
-  const requests = [];
+  const requests: ReturnType<typeof captureRequest>[] = [];
   globalThis.fetch = async (url, init = {}) => {
     if (String(url).length >= 8192) throw new TypeError("fetch failed");
-    requests.push({ url: new URL(url), init });
+    requests.push(captureRequest(url, init));
     if (requests.length === 1) {
       return jsonResponse({
         "subsonic-response": {
@@ -286,14 +303,14 @@ test("posts large playlist replacements without exceeding request URL limits", a
   assert.equal(requests[1].url.pathname, "/rest/updatePlaylist");
   assert.equal(requests[1].init.method, "POST");
   assert.equal(requests[1].url.search, "");
-  assert.equal(requests[1].init.body.getAll("songIndexToRemove").length, 1_000);
+  assert.equal(requests[1].init.body.getAll("songIndexToRemove")!.length, 1_000);
 });
 
 test("preserves playlist update parameters across same-origin redirects", async () => {
   const originalFetch = globalThis.fetch;
-  const requests = [];
+  const requests: ReturnType<typeof captureRequest>[] = [];
   globalThis.fetch = async (url, init = {}) => {
-    requests.push({ url: new URL(url), init });
+    requests.push(captureRequest(url, init));
     if (requests.length === 1) {
       return new Response(null, {
         status: 302,
@@ -314,8 +331,8 @@ test("preserves playlist update parameters across same-origin redirects", async 
 
   assert.equal(requests[1].url.pathname, "/canonical/updatePlaylist");
   assert.equal(requests[1].init.method, "POST");
-  assert.equal(requests[1].init.body.get("playlistId"), "playlist-1");
-  assert.deepEqual(requests[1].init.body.getAll("songIdToAdd"), ["song-1"]);
+  assert.equal(requests[1].init.body.get("playlistId")!, "playlist-1");
+  assert.deepEqual(requests[1].init.body.getAll("songIdToAdd")!, ["song-1"]);
 });
 
 test("rejects playlist update redirects across origins", async () => {
@@ -343,7 +360,10 @@ test("rejects playlist update redirects across origins", async () => {
   assert.equal(requests, 1);
 });
 
-async function withNavidrome(navidrome, run) {
+async function withNavidrome<Result>(
+  navidrome: ReturnType<typeof createFakeNavidrome>,
+  run: () => Promise<Result>,
+): Promise<Result> {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = navidrome.fetch;
   try {
@@ -353,10 +373,10 @@ async function withNavidrome(navidrome, run) {
   }
 }
 
-async function connectToLibraries(libraries) {
+async function connectToLibraries(libraries: { id: number; name: string; path: string }[]) {
   const client = new NavidromeClient("http://navidrome.test", "user", "password");
   await client.ensureAurralLibrary(
-    libraries.find((library) => library.name === "Aurral Playlists").path,
+    libraries.find((library) => library.name === "Aurral Playlists")!.path,
   );
   return client;
 }
@@ -391,7 +411,9 @@ test("prefers the exact indexed path when duplicate songs match", async () => {
       path: "/music/Artist/Album/Song.flac",
     }),
   );
+  assert.ok(song != null);
 
+  assert.ok(song);
   assert.equal(song.id, "match");
 });
 
@@ -410,10 +432,11 @@ test("does not match a metadata variant of an unindexed track", async () => {
       },
     ],
   });
-  const searches = [];
+  const searches: (string | URL | Request)[] = [];
   const fetchSongs = navidrome.fetch;
   navidrome.fetch = async (input, init) => {
-    if (new URL(input).pathname.startsWith("/rest/search")) searches.push(input);
+    if (new URL(input instanceof Request ? input.url : input).pathname.startsWith("/rest/search"))
+      searches.push(input);
     return fetchSongs(input, init);
   };
 
@@ -425,7 +448,7 @@ test("does not match a metadata variant of an unindexed track", async () => {
   );
 
   assert.equal(song, null);
-  assert.deepEqual(searches, []);
+  assert.deepEqual([...searches], []);
 });
 
 test("uses an indexed path without metadata matching", async () => {
@@ -448,7 +471,9 @@ test("uses an indexed path without metadata matching", async () => {
       path: "/data/music/Artist/Album/track.flac",
     }),
   );
+  assert.ok(song != null);
 
+  assert.ok(song);
   assert.equal(song.id, "path-match");
 });
 
@@ -479,7 +504,9 @@ test("looks up songs by path again after Navidrome comes back", async () => {
     down = false;
     return client.findSong("Wanted title", "Wanted artist", track);
   });
+  assert.ok(song != null);
 
+  assert.ok(song);
   assert.equal(song.id, "path-match");
 });
 
@@ -498,7 +525,9 @@ test("picks up a song Navidrome indexed again under a new ID", async () => {
     return [song, await client.findSong("Track", "Artist", track)];
   });
 
+  assert.ok(first);
   assert.equal(first.id, "first-id");
+  assert.ok(later);
   assert.equal(later.id, "second-id");
 });
 
@@ -566,7 +595,9 @@ test("matches Navidrome-relative paths under the configured library root", async
     ];
   });
 
+  assert.ok(song);
   assert.equal(song.id, "relative-match");
+  assert.ok(musicSong);
   assert.equal(musicSong.id, "music-relative-match");
 });
 
@@ -576,7 +607,7 @@ test("matches the copy in the library that holds the track", async () => {
     { id: 2, name: "Aurral Playlists", path: "/data/downloads/aurral" },
   ];
   const file = "Main Artist/A_B Album/01 Rock & Roll #1.flac";
-  const song = (id, libraryPath, songPath = file) => ({
+  const song = (id: string, libraryPath: string, songPath: string = file) => ({
     id,
     libraryPath,
     path: songPath,
@@ -609,20 +640,29 @@ test("matches the copy in the library that holds the track", async () => {
     ]);
   });
 
+  assert.ok(byRecording);
   assert.equal(byRecording.id, "aurral-copy");
+  assert.ok(byPath);
   assert.equal(byPath.id, "lidarr-copy");
 });
 
 test("waits for and verifies a Navidrome library update", async () => {
   const client = new NavidromeClient("http://navidrome.test", "user", "password");
   let libraryPath = "/data/downloads/aurral-weekly-flow";
-  const calls = [];
+  const calls: { method: string; requestPath: string; body: unknown }[] = [];
   client._nativeRequest = async (method, requestPath, body) => {
     calls.push({ method, requestPath, body });
     if (method === "GET") {
       return [{ id: "aurral-library", name: "Aurral Weekly Flow", path: libraryPath }];
     }
     if (method === "PUT") {
+      assert.ok(
+        body &&
+          typeof body === "object" &&
+          "path" in body &&
+          typeof body.path === "string" &&
+          "name" in body,
+      );
       libraryPath = body.path;
       return { id: "aurral-library", name: body.name, path: body.path };
     }
@@ -630,6 +670,7 @@ test("waits for and verifies a Navidrome library update", async () => {
   };
 
   const library = await client.ensureAurralLibrary("/data/downloads");
+  assert.ok(library != null);
 
   assert.equal(library.id, "aurral-library");
   assert.equal(library.path, "/data/downloads");
@@ -707,7 +748,9 @@ test("uses an exact indexed recording MBID when the path differs", async () => {
       path: "/data/music/Other/track.flac",
     }),
   );
+  assert.ok(song != null);
 
+  assert.ok(song);
   assert.equal(song.id, "mbid-match");
 
   navidrome.songs[1].missing = true;
@@ -746,6 +789,7 @@ test("falls back to one title and artist match when the path is not indexed", as
   });
 
   assert.equal(ambiguous, null);
+  assert.ok(byAlbum);
   assert.equal(byAlbum.id, "Live Album");
 
   navidrome.songs[1].missing = true;
@@ -754,6 +798,7 @@ test("falls back to one title and artist match when the path is not indexed", as
       path: "/downloads/Song.flac",
     }),
   );
+  assert.ok(playable != null);
   assert.equal(playable.id, "Album");
 });
 
@@ -773,9 +818,13 @@ test("reuses one native login across concurrent song lookups", async () => {
       Array.from({ length: 5 }, (_, index) => client.findSong("", "", { mbid: `mbid-${index}` })),
     );
   });
+  assert.ok(songs != null);
 
   assert.deepEqual(
-    songs.map((song) => song.id),
+    songs.map((song) => {
+      assert.ok(song);
+      return song.id;
+    }),
     ["song-0", "song-1", "song-2", "song-3", "song-4"],
   );
   assert.equal(navidrome.logins, 1);
@@ -786,14 +835,14 @@ test("refreshes a cached native token after a 401", async () => {
   let loginCount = 0;
   let requestCount = 0;
   globalThis.fetch = async (url, options = {}) => {
-    const request = new URL(url);
+    const request = new URL(url instanceof Request ? url.url : url);
     if (request.pathname === "/auth/login") {
       loginCount += 1;
       return jsonResponse({ token: loginCount === 1 ? "stale-token" : "fresh-token" });
     }
     requestCount += 1;
     if (requestCount === 1) return new Response(null, { status: 401 });
-    assert.equal(options.headers["X-ND-Authorization"], "Bearer fresh-token");
+    assert.equal(new Headers(options.headers).get("X-ND-Authorization"), "Bearer fresh-token");
     return jsonResponse({ ok: true });
   };
 
@@ -812,7 +861,7 @@ test("retries native Navidrome requests after a 429", async () => {
   const originalFetch = globalThis.fetch;
   let requestCount = 0;
   globalThis.fetch = async (url) => {
-    const request = new URL(url);
+    const request = new URL(url instanceof Request ? url.url : url);
     if (request.pathname === "/auth/login") return jsonResponse({ token: "native-token" });
     requestCount += 1;
     if (requestCount === 1)
@@ -838,14 +887,14 @@ test("refreshes a cached native token after a 401 during artwork upload", async 
   let loginCount = 0;
   let artworkAttempts = 0;
   globalThis.fetch = async (url, options = {}) => {
-    const request = new URL(url);
+    const request = new URL(url instanceof Request ? url.url : url);
     if (request.pathname === "/auth/login") {
       loginCount += 1;
       return jsonResponse({ token: loginCount === 1 ? "stale-token" : "fresh-token" });
     }
     artworkAttempts += 1;
     if (artworkAttempts === 1) return new Response(null, { status: 401 });
-    assert.equal(options.headers["X-ND-Authorization"], "Bearer fresh-token");
+    assert.equal(new Headers(options.headers).get("X-ND-Authorization"), "Bearer fresh-token");
     return new Response(null, { status: 204 });
   };
 
@@ -864,7 +913,7 @@ test("refreshes a cached native token after a 401 during artwork upload", async 
 
 test("uploads playlist artwork through the native API", async () => {
   const originalFetch = globalThis.fetch;
-  const requests = [];
+  const requests: { url: URL | RequestInfo; options: RequestInit | undefined }[] = [];
   globalThis.fetch = async (url, options) => {
     requests.push({ url, options });
     return new Response(null, { status: 204 });
@@ -884,14 +933,21 @@ test("uploads playlist artwork through the native API", async () => {
   }
 
   assert.equal(requests.length, 1);
-  assert.equal(new URL(requests[0].url).pathname, "/api/playlist/playlist-1/image");
-  assert.equal(requests[0].options.headers["X-ND-Authorization"], "Bearer token");
-  assert.equal(requests[0].options.body.get("image").name, "cover.webp");
+  assert.equal(
+    new URL(requests[0].url instanceof Request ? requests[0].url.url : requests[0].url).pathname,
+    "/api/playlist/playlist-1/image",
+  );
+  assert.equal(new Headers(requests[0].options?.headers).get("X-ND-Authorization"), "Bearer token");
+  const body = requests[0].options?.body;
+  assert.ok(body instanceof FormData);
+  const image = body.get("image");
+  assert.ok(image instanceof File);
+  assert.equal(image.name, "cover.webp");
 });
 
 test("deletes playlist artwork through the native API", async () => {
   const originalFetch = globalThis.fetch;
-  const requests = [];
+  const requests: { url: URL | RequestInfo; options: RequestInit | undefined }[] = [];
   globalThis.fetch = async (url, options) => {
     requests.push({ url, options });
     return new Response(null, { status: 204 });
@@ -905,7 +961,10 @@ test("deletes playlist artwork through the native API", async () => {
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(new URL(requests[0].url).pathname, "/api/playlist/playlist-1/image");
-  assert.equal(requests[0].options.method, "DELETE");
-  assert.equal(requests[0].options.headers["X-ND-Authorization"], "Bearer token");
+  assert.equal(
+    new URL(requests[0].url instanceof Request ? requests[0].url.url : requests[0].url).pathname,
+    "/api/playlist/playlist-1/image",
+  );
+  assert.equal(requests[0].options?.method, "DELETE");
+  assert.equal(new Headers(requests[0].options?.headers).get("X-ND-Authorization"), "Bearer token");
 });

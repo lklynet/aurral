@@ -1,3 +1,5 @@
+import { audioMetadata } from "./fixtures.ts";
+import { createTrackedJob, trackedJob } from "./fixtures.ts";
 import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
@@ -19,14 +21,14 @@ const [
   postDownloadValidator,
 ] = await setupIsolatedBackend(
   "manual-missing-search",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/downloadJobs/downloadTracker.ts",
-  "backend/services/manualMissingSearchService.ts",
-  "backend/services/downloadPipeline.ts",
-  "backend/services/qualityProfileService.ts",
-  "backend/services/downloadPipelineWorker.ts",
-  "backend/services/trackMatching/postDownloadValidator.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
+  () => import("../../backend/services/manualMissingSearchService.ts"),
+  () => import("../../backend/services/downloadPipeline.ts"),
+  () => import("../../backend/services/qualityProfileService.ts"),
+  () => import("../../backend/services/downloadPipelineWorker.ts"),
+  () => import("../../backend/services/trackMatching/postDownloadValidator.ts"),
 );
 
 const { DownloadTracker } = trackerModule;
@@ -105,18 +107,29 @@ test("manual search exposes opaque result ids and binds the selection to its use
 
 test("manual selection queues only the exact selected candidate", async () => {
   const tracker = new DownloadTracker();
-  const jobId = tracker.addJob({ artistName: "An Artist", trackName: "A Song" }, "manual-test");
+  const jobId = createTrackedJob(
+    tracker,
+    { artistName: "An Artist", trackName: "A Song" },
+    "manual-test",
+  );
+  assert.ok(jobId != null);
   tracker.setFailed(jobId, "Automatic search found nothing");
   const candidate = { raw: { id: "chosen", url: "https://provider.invalid/chosen" } };
 
   assert.equal(tracker.enqueueManualSelection(jobId, { source: "deemix", candidate }), true);
   const { listHonkerJobs } = await import("../../backend/services/honkerDb.ts");
   const queued = listHonkerJobs("slskd-pipeline").find((entry) => entry.payload?.jobId === jobId);
+  assert.ok(queued != null);
   assert.ok(queued);
+  assert.ok(queued.payload != null);
   assert.equal(queued.payload.phase, "download");
+  assert.ok(queued.payload != null);
   assert.equal(queued.payload.source, "deemix");
+  assert.ok(queued.payload != null);
   assert.equal(queued.payload.manualSelection, true);
+  assert.ok(queued.payload != null);
   assert.deepEqual(queued.payload.allowedSources, ["deemix"]);
+  assert.ok(queued.payload != null);
   assert.deepEqual(queued.payload.candidates, [candidate]);
 });
 
@@ -126,7 +139,12 @@ test("failed manual queue handoff keeps the job failed and available to retry", 
       throw new Error("queue unavailable");
     },
   });
-  const jobId = tracker.addJob({ artistName: "An Artist", trackName: "A Song" }, "manual-test");
+  const jobId = createTrackedJob(
+    tracker,
+    { artistName: "An Artist", trackName: "A Song" },
+    "manual-test",
+  );
+  assert.ok(jobId != null);
   tracker.setFailed(jobId, "Automatic search found nothing");
 
   const queued = tracker.enqueueManualSelection(jobId, {
@@ -135,14 +153,15 @@ test("failed manual queue handoff keeps the job failed and available to retry", 
   });
 
   assert.equal(queued, false);
-  assert.equal(tracker.getJob(jobId).status, "failed");
-  assert.equal(tracker.getJob(jobId).error, "Manual download could not be queued");
+  assert.equal(trackedJob(tracker, jobId).status, "failed");
+  assert.equal(trackedJob(tracker, jobId).error, "Manual download could not be queued");
   assert.equal(tracker.isSlskdDispatched(jobId), false);
 });
 
 test("manual replacement queues the exact candidate without changing the current track first", async () => {
   const tracker = new DownloadTracker();
-  const sourceJobId = tracker.addJob(
+  const sourceJobId = createTrackedJob(
+    tracker,
     {
       artistName: "An Artist",
       trackName: "Current Song",
@@ -150,6 +169,7 @@ test("manual replacement queues the exact candidate without changing the current
     },
     "replacement-test",
   );
+  assert.ok(sourceJobId != null);
   tracker.setDone(sourceJobId, "C:/aurral/current-song.flac", "Current Album");
   const candidate = { raw: { id: "chosen-replacement" } };
 
@@ -160,19 +180,23 @@ test("manual replacement queues the exact candidate without changing the current
     }),
     true,
   );
-  assert.equal(tracker.getJob(sourceJobId).status, "done");
-  assert.equal(tracker.getJob(sourceJobId).finalPath, "C:/aurral/current-song.flac");
+  assert.equal(trackedJob(tracker, sourceJobId).status, "done");
+  assert.equal(trackedJob(tracker, sourceJobId).finalPath, "C:/aurral/current-song.flac");
 
-  const replacement = tracker.findActiveUpgradeJob(tracker.getJob(sourceJobId));
+  const replacement = tracker.findActiveUpgradeJob(trackedJob(tracker, sourceJobId));
   assert.ok(replacement);
   assert.equal(replacement.manualReplacementSearch, true);
   const { listHonkerJobs } = await import("../../backend/services/honkerDb.ts");
   const queued = listHonkerJobs("slskd-pipeline").find(
     (entry) => entry.payload?.jobId === replacement.id,
   );
+  assert.ok(queued != null);
   assert.ok(queued);
+  assert.ok(queued.payload != null);
   assert.equal(queued.payload.manualSelection, true);
+  assert.ok(queued.payload != null);
   assert.deepEqual(queued.payload.allowedSources, ["deemix"]);
+  assert.ok(queued.payload != null);
   assert.deepEqual(queued.payload.candidates, [candidate]);
 });
 
@@ -182,7 +206,8 @@ test("failed manual replacement handoff leaves the current track intact", () => 
       throw new Error("queue unavailable");
     },
   });
-  const sourceJobId = tracker.addJob(
+  const sourceJobId = createTrackedJob(
+    tracker,
     {
       artistName: "An Artist",
       trackName: "Current Song",
@@ -190,6 +215,7 @@ test("failed manual replacement handoff leaves the current track intact", () => 
     },
     "replacement-test",
   );
+  assert.ok(sourceJobId != null);
   tracker.setDone(sourceJobId, "C:/aurral/current-song.flac", "Current Album");
 
   assert.equal(
@@ -200,6 +226,7 @@ test("failed manual replacement handoff leaves the current track intact", () => 
     false,
   );
   const sourceJob = tracker.getJob(sourceJobId);
+  assert.ok(sourceJob != null);
   assert.equal(sourceJob.status, "done");
   assert.equal(sourceJob.finalPath, "C:/aurral/current-song.flac");
   assert.equal(tracker.findActiveUpgradeJob(sourceJob), null);
@@ -219,8 +246,11 @@ test("manual pipeline failures cannot fall back to another source", () => {
 });
 
 test("unexpected manual download errors fail once instead of entering worker retry", async () => {
-  const failures = [];
-  const payload = { jobId: "job-1", source: "ytdlp", manualSelection: true };
+  const failures: {
+    failedPayload: import("../../backend/services/downloadPipeline.ts").PipelinePayload;
+    message: string;
+  }[] = [];
+  const payload = { phase: "search", jobId: "job-1", source: "ytdlp", manualSelection: true };
   await orchestratorWorker.processPipelineJob(payload, {
     processPipelinePayload: async () => {
       throw new Error("selected result failed");
@@ -228,7 +258,10 @@ test("unexpected manual download errors fail once instead of entering worker ret
     continuePipeline: async () => {
       throw new Error("must not continue");
     },
-    failPipelineJob: async (failedPayload, message) => failures.push({ failedPayload, message }),
+    failPipelineJob: async (failedPayload, message) => {
+      failures.push({ failedPayload, message });
+      return null;
+    },
   });
   assert.equal(failures.length, 1);
   assert.equal(failures[0].failedPayload, payload);
@@ -236,7 +269,7 @@ test("unexpected manual download errors fail once instead of entering worker ret
 
   await assert.rejects(
     orchestratorWorker.processPipelineJob(
-      { jobId: "job-2", source: "ytdlp" },
+      { phase: "search", jobId: "job-2", source: "ytdlp" },
       {
         processPipelinePayload: async () => {
           throw new Error("automatic retry");
@@ -270,10 +303,10 @@ test("manual selection overrides the automatic quality floor but still requires 
 });
 
 test("manual selection trusts the chosen track identity after technical audio checks", async () => {
-  const parsed = {
+  const parsed = audioMetadata({
     common: { title: "Completely Different Title", artist: "Different Artist" },
     format: { container: "MPEG", lossless: false, bitrate: 128000, duration: 180 },
-  };
+  });
   const validation = await postDownloadValidator.validateDownloadedTrackFile({
     request: { artistName: "Expected Artist", trackName: "Expected Song", durationMs: 240000 },
     candidate: { raw: { id: "manually-selected" } },
@@ -299,21 +332,29 @@ test("manual selection trusts the chosen track identity after technical audio ch
   assert.equal(unreadable.valid, false);
 });
 
+function parseFrom(parsedByPath: Map<string, ReturnType<typeof audioMetadata>>) {
+  return async (filePath: string) => {
+    const parsed = parsedByPath.get(filePath);
+    assert.ok(parsed, `Unexpected file ${filePath}`);
+    return parsed;
+  };
+}
+
 test("manual Usenet releases choose the requested file without rejecting the selected release", async () => {
   const parsedByPath = new Map([
     [
       "01 Other Song.mp3",
-      {
-        common: { title: "Other Song", track: { no: 1 } },
+      audioMetadata({
+        common: { title: "Other Song", track: { no: 1, of: null } },
         format: { container: "MPEG", lossless: false, bitrate: 128000, duration: 180 },
-      },
+      }),
     ],
     [
       "02 Expected Song.mp3",
-      {
-        common: { title: "Expected Song", track: { no: 2 } },
+      audioMetadata({
+        common: { title: "Expected Song", track: { no: 2, of: null } },
         format: { container: "MPEG", lossless: false, bitrate: 128000, duration: 200 },
-      },
+      }),
     ],
   ]);
   const selected = await postDownloadValidator.selectVerifiedDownloadedFile({
@@ -323,7 +364,7 @@ test("manual Usenet releases choose the requested file without rejecting the sel
     source: "usenet",
     options: {
       manualSelection: true,
-      parseFile: async (filePath) => parsedByPath.get(filePath),
+      parseFile: parseFrom(parsedByPath),
     },
   });
   assert.equal(selected.filePath, "02 Expected Song.mp3");
@@ -334,17 +375,17 @@ test("manual Usenet file selection prefers title evidence over a coincidental tr
   const parsedByPath = new Map([
     [
       "02 Unrelated Song.mp3",
-      {
-        common: { title: "Unrelated Song", track: { no: 2 } },
+      audioMetadata({
+        common: { title: "Unrelated Song", track: { no: 2, of: null } },
         format: { container: "MPEG", lossless: false, bitrate: 128000, duration: 180 },
-      },
+      }),
     ],
     [
       "Expected Song.mp3",
-      {
-        common: { title: "Expected Song", track: { no: 7 } },
+      audioMetadata({
+        common: { title: "Expected Song", track: { no: 7, of: null } },
         format: { container: "MPEG", lossless: false, bitrate: 128000, duration: 200 },
-      },
+      }),
     ],
   ]);
   const selected = await postDownloadValidator.selectVerifiedDownloadedFile({
@@ -354,7 +395,7 @@ test("manual Usenet file selection prefers title evidence over a coincidental tr
     source: "usenet",
     options: {
       manualSelection: true,
-      parseFile: async (filePath) => parsedByPath.get(filePath),
+      parseFile: parseFrom(parsedByPath),
     },
   });
 
@@ -366,17 +407,17 @@ test("manual Usenet release fails when none of its files match the requested tit
   const parsedByPath = new Map([
     [
       "02 Unrelated Song.mp3",
-      {
-        common: { title: "Unrelated Song", track: { no: 2 } },
+      audioMetadata({
+        common: { title: "Unrelated Song", track: { no: 2, of: null } },
         format: { container: "MPEG", lossless: false, bitrate: 128000, duration: 180 },
-      },
+      }),
     ],
     [
       "07 Another Track.mp3",
-      {
-        common: { title: "Another Track", track: { no: 7 } },
+      audioMetadata({
+        common: { title: "Another Track", track: { no: 7, of: null } },
         format: { container: "MPEG", lossless: false, bitrate: 128000, duration: 200 },
-      },
+      }),
     ],
   ]);
   const selected = await postDownloadValidator.selectVerifiedDownloadedFile({
@@ -386,13 +427,15 @@ test("manual Usenet release fails when none of its files match the requested tit
     source: "usenet",
     options: {
       manualSelection: true,
-      parseFile: async (filePath) => parsedByPath.get(filePath),
+      parseFile: parseFrom(parsedByPath),
     },
   });
 
   assert.equal(selected.filePath, null);
+  assert.ok(selected.validation != null);
   assert.equal(selected.validation.valid, false);
-  assert.match(selected.validation.reason, /does not contain a file matching/i);
+  assert.ok(selected.validation != null);
+  assert.match(selected.validation.reason!, /does not contain a file matching/i);
 });
 
 test("manual Soulseek search retains ownership after an uncertain creation response", async () => {

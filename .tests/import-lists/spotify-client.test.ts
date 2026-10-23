@@ -1,3 +1,5 @@
+import { requireFixture } from "../playlists/fixtures.ts";
+import { asAppError } from "../../lib/errors.ts";
 import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
@@ -10,10 +12,10 @@ import {
 const [isolatedState, { db }, , { spotifyConnectionStore }, { spotifyClient }] =
   await setupIsolatedBackend(
     "spotify-client",
-    "backend/config/db-sqlite.ts",
-    "backend/db/helpers/index.ts",
-    "backend/services/spotify/spotifyConnectionStore.ts",
-    "backend/services/spotify/spotifyClient.ts",
+    () => import("../../backend/config/db-sqlite.ts"),
+    () => import("../../backend/db/helpers/index.ts"),
+    () => import("../../backend/services/spotify/spotifyConnectionStore.ts"),
+    () => import("../../backend/services/spotify/spotifyClient.ts"),
   );
 
 const originalFetch = globalThis.fetch;
@@ -64,7 +66,8 @@ test("invalid Spotify credentials clear the connection after refresh cannot reco
 
   await assert.rejects(
     spotifyClient.listPlaylists(7),
-    (error) => error?.code === "SPOTIFY_AUTH_REQUIRED" && error?.statusCode === 401,
+    (error) =>
+      asAppError(error)?.code === "SPOTIFY_AUTH_REQUIRED" && asAppError(error)?.statusCode === 401,
   );
   assert.equal(requestCount, 3);
   assert.equal(spotifyConnectionStore.getPublicStatus(7).connected, false);
@@ -77,12 +80,12 @@ test("pending track requests cannot repopulate cache after invalidation", async 
     expiresAt: Date.now() + 60 * 60 * 1000,
   });
 
-  let resolveTracks;
-  let resolveTracksStarted;
-  const tracksStarted = new Promise((resolve) => {
+  let resolveTracks!: (value: Response) => void;
+  let resolveTracksStarted!: () => void;
+  const tracksStarted = new Promise<void>((resolve) => {
     resolveTracksStarted = resolve;
   });
-  const pendingTracks = new Promise((resolve) => {
+  const pendingTracks = new Promise<Response>((resolve) => {
     resolveTracks = resolve;
   });
   let requestCount = 0;
@@ -107,7 +110,8 @@ test("pending track requests cannot repopulate cache after invalidation", async 
   await tracksStarted;
   await assert.rejects(
     spotifyClient.listPlaylists(7),
-    (error) => error?.code === "SPOTIFY_AUTH_REQUIRED" && error?.statusCode === 401,
+    (error) =>
+      asAppError(error)?.code === "SPOTIFY_AUTH_REQUIRED" && asAppError(error)?.statusCode === 401,
   );
   resolveTracks(
     new Response(JSON.stringify({ items: [], next: null }), {
@@ -117,11 +121,13 @@ test("pending track requests cannot repopulate cache after invalidation", async 
   );
   await assert.rejects(
     pendingRequest,
-    (error) => error?.code === "SPOTIFY_AUTH_REQUIRED" && error?.statusCode === 401,
+    (error) =>
+      asAppError(error)?.code === "SPOTIFY_AUTH_REQUIRED" && asAppError(error)?.statusCode === 401,
   );
   await assert.rejects(
     spotifyClient.listPlaylistTracks(7, "playlist"),
-    (error) => error?.code === "SPOTIFY_AUTH_REQUIRED" && error?.statusCode === 401,
+    (error) =>
+      asAppError(error)?.code === "SPOTIFY_AUTH_REQUIRED" && asAppError(error)?.statusCode === 401,
   );
   assert.equal(requestCount, 3);
 });
@@ -132,10 +138,10 @@ test("playlist fetch follows every current Spotify page without a client-side si
     refreshToken: "valid-refresh-token",
     expiresAt: Date.now() + 60 * 60 * 1000,
   });
-  const urls = [];
+  const urls: string[] = [];
   globalThis.fetch = async (url) => {
     urls.push(String(url));
-    const offset = Number(new URL(url).searchParams.get("offset") || 0);
+    const offset = Number(new URL(String(url)).searchParams.get("offset") || 0);
     const total = 1001;
     const pageSize = Math.min(50, total - offset);
     return new Response(
@@ -159,14 +165,14 @@ test("playlist fetch follows every current Spotify page without a client-side si
 
   const items = await spotifyClient.listPlaylistTracks(7, "playlist", { forceRefresh: true });
   assert.equal(items.length, 1001);
-  assert.equal(items.at(-1).item.name, "Song 1000");
+  assert.equal(requireFixture(items.at(-1)!.item).name, "Song 1000");
   assert.equal(urls.length, 21);
   assert.equal(new URL(urls[0]).pathname, "/v1/playlists/playlist/items");
   assert.equal(new URL(urls[0]).searchParams.get("limit"), "50");
-  assert.match(new URL(urls[0]).searchParams.get("fields"), /items\(item\(/);
+  assert.match(new URL(urls[0]).searchParams.get("fields")!, /items\(item\(/);
   assert.equal(new URL(urls[0]).searchParams.get("additional_types"), "episode");
-  assert.match(new URL(urls[0]).searchParams.get("fields"), /\btotal\b/);
-  assert.match(new URL(urls[0]).searchParams.get("fields"), /\boffset\b/);
+  assert.match(new URL(urls[0]).searchParams.get("fields")!, /\btotal\b/);
+  assert.match(new URL(urls[0]).searchParams.get("fields")!, /\boffset\b/);
 });
 
 test("playlist fetch rejects a response that stops before Spotify's declared total", async () => {
@@ -191,9 +197,9 @@ test("playlist fetch rejects a response that stops before Spotify's declared tot
 
   await assert.rejects(
     spotifyClient.listPlaylistTracks(7, "playlist", { forceRefresh: true }),
-    (error) =>
-      error?.code === "SPOTIFY_INCOMPLETE_PLAYLIST" &&
-      error?.statusCode === 502 &&
+    (error: Error) =>
+      asAppError(error)?.code === "SPOTIFY_INCOMPLETE_PLAYLIST" &&
+      asAppError(error)?.statusCode === 502 &&
       /1 of 1001/.test(error.message),
   );
 });
@@ -229,12 +235,12 @@ test("stale refresh failures cannot clear a newly connected account", async () =
     expiresAt: Date.now() + 60 * 60 * 1000,
   });
 
-  let resolveRefresh;
-  let resolveRefreshStarted;
-  const refreshStarted = new Promise((resolve) => {
+  let resolveRefresh!: (value: Response) => void;
+  let resolveRefreshStarted!: () => void;
+  const refreshStarted = new Promise<void>((resolve) => {
     resolveRefreshStarted = resolve;
   });
-  const pendingRefresh = new Promise((resolve) => {
+  const pendingRefresh = new Promise<Response>((resolve) => {
     resolveRefresh = resolve;
   });
   let requestCount = 0;
@@ -276,8 +282,9 @@ test("stale refresh failures cannot clear a newly connected account", async () =
 
   await assert.rejects(
     request,
-    (error) => error?.code === "SPOTIFY_AUTH_REQUIRED" && error?.statusCode === 401,
+    (error) =>
+      asAppError(error)?.code === "SPOTIFY_AUTH_REQUIRED" && asAppError(error)?.statusCode === 401,
   );
-  assert.equal(spotifyConnectionStore.getConnection(7).refreshToken, "new-refresh-token");
+  assert.equal(spotifyConnectionStore.getConnection(7)!.refreshToken, "new-refresh-token");
   assert.equal(requestCount, 2);
 });

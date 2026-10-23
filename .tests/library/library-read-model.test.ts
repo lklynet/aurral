@@ -1,3 +1,4 @@
+import { readArtist, readAlbum, readTrack, readFile } from "./fixtures.ts";
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 
@@ -10,19 +11,19 @@ import { selectCanonicalFile } from "../../backend/services/canonicalFileSelecto
 
 const library = {
   artists: [
-    {
+    readArtist({
       id: 1,
       identityKey: "mbid:artist-1",
       mbid: "artist-1",
       name: "Root Artist",
       sortName: "Root Artist",
-      albumIds: [2],
+
       sources: ["lidarr"],
       available: true,
-    },
+    }),
   ],
   albums: [
-    {
+    readAlbum({
       id: 2,
       identityKey: "release-group:album-1",
       mbid: "release-1",
@@ -34,27 +35,27 @@ const library = {
       trackIds: [3],
       sources: ["lidarr"],
       available: true,
-    },
+    }),
   ],
   tracks: [
-    {
+    readTrack({
       id: 3,
       mbid: "track-1",
       title: "Root Track",
-      albums: [{ albumId: 2, trackNumber: 1 }],
+      albums: [{ albumId: 2, discNumber: 1, trackNumber: 1 }],
       files: [
-        {
+        readFile({
           id: 4,
           source: "lidarr",
           path: "/music/Root Artist/Root Album/01 Root Track.flac",
           size: 123,
           quality: { format: "FLAC" },
           available: true,
-        },
+        }),
       ],
       sources: ["lidarr"],
       available: true,
-    },
+    }),
   ],
 };
 
@@ -77,15 +78,15 @@ test("library read model maps the existing root to Library-shaped records", () =
 
 test("library album statistics exclude unavailable file sizes", () => {
   const result = buildLibraryReadModel({
-    artists: [{ id: 11, name: "Unavailable Artist", albumIds: [12] }],
-    albums: [{ id: 12, artistId: 11, title: "Unavailable Album", trackIds: [13] }],
+    artists: [readArtist({ id: 11, name: "Unavailable Artist" })],
+    albums: [readAlbum({ id: 12, artistId: 11, title: "Unavailable Album", trackIds: [13] })],
     tracks: [
-      {
+      readTrack({
         id: 13,
         title: "Unavailable Track",
-        albums: [{ albumId: 12 }],
-        files: [{ path: "/music/unavailable.flac", size: 456, available: false }],
-      },
+        albums: [{ albumId: 12, discNumber: 1, trackNumber: 1 }],
+        files: [readFile({ path: "/music/unavailable.flac", size: 456, available: false })],
+      }),
     ],
   });
 
@@ -96,7 +97,7 @@ test("library album statistics exclude unavailable file sizes", () => {
 test("library read model preserves non-MBID provider artist identity", () => {
   const result = buildLibraryReadModel({
     artists: [
-      {
+      readArtist({
         id: 4,
         identityKey: "lidarr-artist:705@deezer",
         mbid: null,
@@ -107,10 +108,10 @@ test("library read model preserves non-MBID provider artist identity", () => {
           foreignArtistId: "705@deezer",
           librarySource: "lidarr",
         },
-        albumIds: [],
+
         sources: ["lidarr"],
         available: false,
-      },
+      }),
     ],
     albums: [],
     tracks: [],

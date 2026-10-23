@@ -1,3 +1,4 @@
+import { requireFixture } from "./playlists/fixtures.ts";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -18,7 +19,7 @@ test("image cache migration removes obsolete web image bytes but keeps native by
       ["d".repeat(64), "library"],
     ];
     for (const [cacheKey, profile] of entries) {
-      await fs.writeFile(path.join(cacheDir, `${cacheKey}.webp`), cacheKey);
+      await fs.writeFile(path.join(cacheDir, `${cacheKey}.webp`), requireFixture(cacheKey));
       await fs.writeFile(
         path.join(cacheDir, `${cacheKey}.json`),
         JSON.stringify({
@@ -33,7 +34,7 @@ test("image cache migration removes obsolete web image bytes but keeps native by
 
     const { getImageProxyCacheSizeBytes } =
       await import("../backend/services/imageProxyService.ts");
-    assert.equal(await getImageProxyCacheSizeBytes(), entries[3][0].length);
+    assert.equal(await getImageProxyCacheSizeBytes(), requireFixture(entries)[3][0]!.length);
 
     for (const [cacheKey, profile] of entries) {
       if (profile === "library") {

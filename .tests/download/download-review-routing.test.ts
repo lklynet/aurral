@@ -1,3 +1,5 @@
+import { usenetCandidate } from "./fixtures.ts";
+import { createTrackedJob, trackedJob, ytdlpResult } from "./fixtures.ts";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import path from "node:path";
@@ -13,9 +15,15 @@ import {
   resetDatabase,
 } from "../helpers/backendTestHarness.ts";
 
+type UsenetPayload = Parameters<typeof processUsenetPipelinePayload>[0];
+type YtdlpPayload = Parameters<typeof processYtdlpPipelinePayload>[0];
+type PipelinePayload = import("../../backend/services/downloadPipeline.ts").PipelinePayload;
+type DeemixPayload = Parameters<typeof processDeemixPipelinePayload>[0];
+
 const [
   isolatedState,
   { downloadTracker },
+  { buildResolvedJobTrack },
   { processYtdlpPipelinePayload, isYtdlpLiveResult, hasEnoughCandidates },
   { processUsenetPipelinePayload, collectDownloadedAudioFiles },
   { processDeemixPipelinePayload },
@@ -31,25 +39,25 @@ const [
   { getLibraryScanQueue },
 ] = await setupIsolatedBackend(
   "download-review-routing",
-  "backend/services/downloadJobs/downloadTracker.ts",
-  "backend/services/ytdlpOrchestrator.ts",
-  "backend/services/usenetOrchestrator.ts",
-  "backend/services/deemixOrchestrator.ts",
-  "backend/db/helpers/index.ts",
-  "backend/config/db-sqlite.ts",
-  "backend/services/pipelineHelpers.ts",
-  "backend/services/playlists/playlistManager.ts",
-  "backend/services/downloadJobs/downloadWorker.ts",
-  "backend/services/downloadJobs/downloadCancellation.ts",
-  "backend/services/downloadPipeline.ts",
-  "backend/services/download/downloadClientSettings.ts",
-  "backend/services/libraryScanWorker.ts",
-  "backend/services/honkerDb.ts",
+  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
+  () => import("../../backend/services/downloadUtils.ts"),
+  () => import("../../backend/services/ytdlpOrchestrator.ts"),
+  () => import("../../backend/services/usenetOrchestrator.ts"),
+  () => import("../../backend/services/deemixOrchestrator.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/services/pipelineHelpers.ts"),
+  () => import("../../backend/services/playlists/playlistManager.ts"),
+  () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
+  () => import("../../backend/services/downloadJobs/downloadCancellation.ts"),
+  () => import("../../backend/services/downloadPipeline.ts"),
+  () => import("../../backend/services/download/downloadClientSettings.ts"),
+  () => import("../../backend/services/libraryScanWorker.ts"),
+  () => import("../../backend/services/honkerDb.ts"),
 );
 
 const { blockPipelineJobForReview, finalizePipelineJobSuccess } = pipelineHelpersModule;
 
-const btest = test;
 const { downloadWorker } = downloadWorkerModule;
 const { cancelDownloadJob } = cancellationModule;
 
@@ -62,21 +70,19 @@ test("yt-dlp keeps ordinary not-live results and excludes live statuses", () => 
 });
 
 test("yt-dlp live results cannot satisfy the search early-exit check", () => {
-  const request = {
+  const request = buildResolvedJobTrack({
     artistName: "Artist Name",
     trackName: "Correct Track",
     durationMs: 1000,
-  };
+  });
   assert.equal(
     hasEnoughCandidates(
       [
-        {
+        ytdlpResult({
           id: "live-video",
           title: "Artist Name - Correct Track",
-          channel: "Artist Name",
-          durationSec: 1,
           liveStatus: "is_live",
-        },
+        }),
       ],
       request,
     ),
@@ -86,22 +92,19 @@ test("yt-dlp live results cannot satisfy the search early-exit check", () => {
 
 test("yt-dlp searches a compilation track by its own artist and reverses an empty search", async () => {
   const client = getDownloadClient("ytdlp");
-  const queries = [];
-  vi.spyOn(client, "search").mockImplementation(async (query, options = {}) => {
-    queries.push(options.songs ? `songs: ${query}` : query);
-    return query.startsWith("Go All the Way")
-      ? [
-          {
-            id: "song",
-            title: "Go All the Way",
-            channel: "Raspberries - Topic",
-            durationSec: 203,
-            url: "https://example.test/song",
-          },
-        ]
-      : [];
+  const queries: string[] = [];
+  const song = ytdlpResult({
+    id: "song",
+    title: "Go All the Way",
+    channel: "Raspberries - Topic",
+    durationSec: 203,
   });
-  const jobId = downloadTracker.addJob(
+  vi.spyOn(client, "search").mockImplementation(async (query: string, options = {}) => {
+    queries.push(options.songs ? `songs: ${query}` : query);
+    return query.startsWith("Go All the Way") ? [song] : [];
+  });
+  const jobId = createTrackedJob(
+    downloadTracker,
     {
       artistName: "Various Artists",
       artistAliases: ["Raspberries"],
@@ -113,8 +116,9 @@ test("yt-dlp searches a compilation track by its own artist and reverses an empt
   );
   const next = await processYtdlpPipelinePayload(
     { phase: "search", source: "ytdlp", jobId },
-    { failOrTryNextSource: (_payload, _job, reason) => ({ failed: reason }) },
+    { failOrTryNextSource: async (_payload, _job, reason) => assert.fail(reason) },
   );
+  assert.ok(next != null);
   assert.deepEqual(queries, [
     "songs: Raspberries Go All the Way",
     "Raspberries Go All the Way",
@@ -122,11 +126,12 @@ test("yt-dlp searches a compilation track by its own artist and reverses an empt
     "Go All the Way Raspberries",
   ]);
   assert.equal(next.phase, "download");
-  assert.equal(next.candidates[0].raw.id, "song");
+  assert.ok(next.candidates != null);
+  assert.deepEqual(next.candidates[0].raw, song);
 });
 
 test("Usenet file collection only scans the current history directory", async () => {
-  const sharedRoot = path.join(process.env.DOWNLOAD_FOLDER, "usenet-shared-root");
+  const sharedRoot = path.join(process.env.DOWNLOAD_FOLDER!, "usenet-shared-root");
   const currentRoot = path.join(sharedRoot, "current-release");
   const unrelatedPath = path.join(sharedRoot, "unrelated.mp3");
   const currentPath = path.join(currentRoot, "current.mp3");
@@ -144,12 +149,14 @@ test("Usenet file collection only scans the current history directory", async ()
 });
 
 test("cancelling deemix finalization leaves a provider-reported library file untouched", async () => {
-  const filePath = path.join(process.env.DOWNLOAD_FOLDER, "existing-library-song.mp3");
+  const filePath = path.join(process.env.DOWNLOAD_FOLDER!, "existing-library-song.mp3");
   await writeOneSecondMp3(filePath);
-  const jobId = downloadTracker.addJob(
+  const jobId = createTrackedJob(
+    downloadTracker,
     { artistName: "Artist Name", trackName: "Correct Track", albumName: "Album Name" },
     "deemix-source-safety",
   );
+  assert.ok(jobId != null);
   downloadTracker.setDownloading(jobId);
   const server = await createMockHttpServer((req, res) => {
     req.resume();
@@ -162,14 +169,17 @@ test("cancelling deemix finalization leaves a provider-reported library file unt
     dbOps.updateSettings({
       integrations: { deemix: { enabled: true, url: server.url, bitrate: 1 } },
     });
-    const result = await processDeemixPipelinePayload({
-      phase: "finalize",
-      source: "deemix",
-      jobId,
-      queueUuid: "track_1_1",
-      downloadedPath: filePath,
-      candidate: { raw: { title: "Correct Track", artist: "Artist Name" } },
-    });
+    const result = await processDeemixPipelinePayload(
+      {
+        phase: "finalize",
+        source: "deemix",
+        jobId,
+        queueUuid: "track_1_1",
+        downloadedPath: filePath,
+        candidate: { raw: { title: "Correct Track", artist: "Artist Name" } },
+      },
+      { failOrTryNextSource: failIfPipelineFallsThrough },
+    );
 
     assert.equal(result, null);
     await access(filePath);
@@ -188,34 +198,45 @@ afterAll(async () => {
 
 test("pipeline completion queues only committed files and settling does not expand the scan", async () => {
   dbOps.updateSettings({ integrations: {}, flows: [], sharedPlaylists: [] });
-  const committedPaths = [];
+  const committedPaths: string[] = [];
   for (const playlistType of ["library", "flow-playlist", "static-playlist"]) {
-    const jobId = downloadTracker.addJob(
+    const jobId = createTrackedJob(
+      downloadTracker,
       { artistName: "Artist", trackName: playlistType },
       playlistType,
     );
-    const filePath = path.join(process.env.DOWNLOAD_FOLDER, "Artist", `${playlistType}.flac`);
+    const filePath = path.join(process.env.DOWNLOAD_FOLDER!, "Artist", `${playlistType}.flac`);
     committedPaths.push(filePath);
     await finalizePipelineJobSuccess({
       downloadTracker,
-      job: downloadTracker.getJob(jobId),
+      job: trackedJob(downloadTracker, jobId),
       committedFinalPath: filePath,
     });
-    assert.equal(downloadTracker.getJob(jobId).status, "done");
-    assert.equal(downloadTracker.getJob(jobId).finalPath, filePath);
+    assert.equal(trackedJob(downloadTracker, jobId).status, "done");
+    assert.equal(trackedJob(downloadTracker, jobId).finalPath, filePath);
   }
 
   const scanId = getScheduledLibraryScanJobId();
+  assert.ok(scanId != null);
   assert.ok(getLibraryScanQueue().getJob(scanId));
-  const registry = dbOps.getJSONSetting("pendingLibraryScanJob");
+  const registry = dbOps.getJSONSetting<{
+    changedPaths: string[];
+    force?: boolean;
+    includeLidarr: boolean;
+  }>("pendingLibraryScanJob");
+  assert.ok(registry != null);
   assert.deepEqual(registry.changedPaths, committedPaths);
   assert.notEqual(registry.force, true);
   assert.equal(registry.includeLidarr, false);
 });
 
 async function writeOneSecondMp3(
-  filePath,
-  { title = "Correct Track", artist = "Artist Name", seconds = 1 } = {},
+  filePath: string,
+  {
+    title = "Correct Track",
+    artist = "Artist Name",
+    seconds = 1,
+  }: { title?: string; artist?: string; seconds?: number } = {},
 ) {
   await mkdir(path.dirname(filePath), { recursive: true });
   const generated = spawnSync(
@@ -245,8 +266,9 @@ async function writeOneSecondMp3(
   assert.equal(generated.status, 0, generated.stderr);
 }
 
-function addDurationMismatchJob(playlistId) {
-  const jobId = downloadTracker.addJob(
+function addDurationMismatchJob(playlistId: string) {
+  const jobId = createTrackedJob(
+    downloadTracker,
     {
       artistName: "Artist Name",
       trackName: "Correct Track",
@@ -256,34 +278,42 @@ function addDurationMismatchJob(playlistId) {
     },
     playlistId,
   );
+  assert.ok(jobId != null);
   downloadTracker.setDownloading(jobId);
   return jobId;
 }
 
-function failIfPipelineFallsThrough() {
+async function failIfPipelineFallsThrough(): Promise<never> {
   assert.fail("blocked download fell through to source retry");
 }
 
-async function assertReviewable(jobId, source) {
-  const job = downloadTracker.getJob(jobId);
+async function assertReviewable(jobId: string, source: string) {
+  const job = trackedJob(downloadTracker, jobId);
   assert.equal(job.status, "blocked");
   assert.equal(job.downloadSource, source);
   assert.equal(job.error, "downloaded file is 14.0s shorter than the requested track");
-  await access(job.stagingPath);
+  await access(job.stagingPath!);
   return job.stagingPath;
 }
 
-function useOnlySources(t, ...sources) {
-  for (const id of ["slskd", "deemix", "ytdlp", "nzbget", "sabnzbd"]) {
-    vi.spyOn(getDownloadClient(id), "isConfigured").mockImplementation(() => sources.includes(id));
+const downloadSourceIds = ["slskd", "deemix", "ytdlp", "nzbget", "sabnzbd"] as const;
+
+function useOnlySources(
+  t: import("vite-plus/test").TestContext,
+  ...sources: (typeof downloadSourceIds)[number][]
+) {
+  for (const id of downloadSourceIds) {
+    const client: { isConfigured(): boolean } = getDownloadClient(id);
+    vi.spyOn(client, "isConfigured").mockImplementation(() => sources.includes(id));
   }
 }
 
-btest("yt-dlp sends plausible duration mismatches to review", async (t) => {
+test("yt-dlp sends plausible duration mismatches to review", async (t) => {
   useOnlySources(t, "ytdlp");
   const jobId = addDurationMismatchJob("ytdlp-review");
+  assert.ok(jobId != null);
   const filePath = path.join(
-    process.env.DOWNLOAD_FOLDER,
+    process.env.DOWNLOAD_FOLDER!,
     ".ytdlp-staging",
     jobId,
     "Artist Name - Correct Track.mp3",
@@ -312,8 +342,9 @@ btest("yt-dlp sends plausible duration mismatches to review", async (t) => {
   await assertReviewable(jobId, "ytdlp");
 });
 
-btest("yt-dlp auto-rejects weak title matches instead of reviewing them", async () => {
-  const jobId = downloadTracker.addJob(
+test("yt-dlp auto-rejects weak title matches instead of reviewing them", async () => {
+  const jobId = createTrackedJob(
+    downloadTracker,
     {
       artistName: "Artist Name",
       trackName: "Correct Track",
@@ -322,9 +353,10 @@ btest("yt-dlp auto-rejects weak title matches instead of reviewing them", async 
     },
     "ytdlp-weak-title-review",
   );
+  assert.ok(jobId != null);
   downloadTracker.setDownloading(jobId);
   const filePath = path.join(
-    process.env.DOWNLOAD_FOLDER,
+    process.env.DOWNLOAD_FOLDER!,
     ".ytdlp-staging",
     jobId,
     "Artist Name - Wrong Track.mp3",
@@ -337,7 +369,7 @@ btest("yt-dlp auto-rejects weak title matches instead of reviewing them", async 
     remoteFilename: "Artist Name - Wrong Track",
   });
 
-  const sourceFailures = [];
+  const sourceFailures: string[] = [];
   const result = await processYtdlpPipelinePayload(
     {
       phase: "finalize",
@@ -346,15 +378,15 @@ btest("yt-dlp auto-rejects weak title matches instead of reviewing them", async 
       downloadedPath: filePath,
       destination: "ytdlp-weak-title-review/Artist Name/Album Name",
       candidate: {
-        raw: {
+        raw: ytdlpResult({
           id: "video-weak-title",
           title: "Artist Name - Wrong Track",
-        },
-      },
+        }),
+      } as NonNullable<YtdlpPayload["candidate"]>,
       candidateIndex: 0,
     },
     {
-      failOrTryNextSource: (payload, job, reason) => {
+      failOrTryNextSource: async (payload, job, reason) => {
         sourceFailures.push(reason);
         return null;
       },
@@ -362,14 +394,15 @@ btest("yt-dlp auto-rejects weak title matches instead of reviewing them", async 
   );
 
   assert.equal(result, null);
-  await assert.rejects(() => access(filePath), undefined, "the wrong-track file must be removed");
+  await assert.rejects(() => access(filePath), undefined!, "the wrong-track file must be removed");
   assert.equal(sourceFailures.length, 1);
   assert.match(sourceFailures[0], /filename-title/);
 });
 
-btest("yt-dlp holds partially-matching identity for review", async (t) => {
+test("yt-dlp holds partially-matching identity for review", async (t) => {
   useOnlySources(t, "ytdlp");
-  const jobId = downloadTracker.addJob(
+  const jobId = createTrackedJob(
+    downloadTracker,
     {
       artistName: "Artist Name",
       trackName: "Correct Track",
@@ -378,8 +411,9 @@ btest("yt-dlp holds partially-matching identity for review", async (t) => {
     },
     "ytdlp-weak-artist-review",
   );
+  assert.ok(jobId != null);
   downloadTracker.setDownloading(jobId);
-  const filePath = path.join(process.env.DOWNLOAD_FOLDER, ".ytdlp-staging", jobId, "Correct.mp3");
+  const filePath = path.join(process.env.DOWNLOAD_FOLDER!, ".ytdlp-staging", jobId, "Correct.mp3");
   await writeOneSecondMp3(filePath, { title: "Correct Tracks" });
 
   const result = await processPipelinePayload({
@@ -399,15 +433,16 @@ btest("yt-dlp holds partially-matching identity for review", async (t) => {
 
   assert.equal(result, null);
   const job = downloadTracker.getJob(jobId);
+  assert.ok(job != null);
   assert.equal(job.status, "blocked");
   assert.equal(
     job.error,
     "downloaded file has a title that only partly matches the requested track",
   );
-  await access(job.stagingPath);
+  await access(job.stagingPath!);
 });
 
-btest("Usenet tries its other releases before sending a file to review", async () => {
+test("Usenet tries its other releases before sending a file to review", async () => {
   const server = await createMockHttpServer((req, res) => {
     req.resume();
     res.writeHead(200, { "Content-Type": "application/json" });
@@ -415,8 +450,8 @@ btest("Usenet tries its other releases before sending a file to review", async (
   });
 
   try {
-    const completedDir = path.join(process.env.DOWNLOAD_FOLDER, "usenet-complete");
-    const releaseDir = (name) => path.join(completedDir, name);
+    const completedDir = path.join(process.env.DOWNLOAD_FOLDER!, "usenet-complete");
+    const releaseDir = (name: string) => path.join(completedDir, name);
     const heldPath = path.join(releaseDir("first"), "01 Correct Track.mp3");
     await writeOneSecondMp3(heldPath);
     await writeOneSecondMp3(path.join(releaseDir("second"), "01 Correct Track.mp3"));
@@ -430,6 +465,7 @@ btest("Usenet tries its other releases before sending a file to review", async (
       },
     });
     const jobId = addDurationMismatchJob("usenet-review");
+    assert.ok(jobId != null);
     downloadTracker.updateDownloadMetadata(jobId, {
       downloadSource: "usenet",
       downloadClient: "nzbget",
@@ -437,15 +473,20 @@ btest("Usenet tries its other releases before sending a file to review", async (
       releaseGuid: "release-1",
       remoteFilename: "Artist Name - Album Name",
     });
-    const candidate = (guid) => ({
-      raw: {
-        guid,
-        release: { guid, title: "Artist Name - Album Name", downloadUrl: `http://indexer/${guid}` },
-      },
-    });
-    const sourceFailures = [];
-    const helpers = {
-      failOrTryNextSource: (payload, job, reason) => {
+    const candidate = (guid: string) =>
+      usenetCandidate({
+        raw: {
+          guid,
+          release: {
+            guid,
+            title: "Artist Name - Album Name",
+            downloadUrl: `http://indexer/${guid}`,
+          },
+        },
+      });
+    const sourceFailures: { payload: UsenetPayload; reason: string }[] = [];
+    const helpers: Parameters<typeof processUsenetPipelinePayload>[1] = {
+      failOrTryNextSource: async (payload, job, reason) => {
         sourceFailures.push({ payload, reason });
         return null;
       },
@@ -464,18 +505,25 @@ btest("Usenet tries its other releases before sending a file to review", async (
       },
       helpers,
     );
+    assert.ok(next != null);
 
     assert.equal(next.candidateIndex, 1);
+    assert.ok(next.heldForReview != null);
     assert.equal(next.heldForReview.sourcePath, heldPath);
-    assert.notEqual(downloadTracker.getJob(jobId).status, "blocked");
+    assert.notEqual(trackedJob(downloadTracker, jobId).status, "blocked");
     await access(heldPath);
 
     await processUsenetPipelinePayload(
-      { ...next, phase: "finalize", nzbId: 2, history: { FinalDir: releaseDir("second") } },
+      {
+        ...next,
+        phase: "finalize",
+        nzbId: 2,
+        history: { FinalDir: releaseDir("second") },
+      } as UsenetPayload,
       helpers,
     );
     assert.equal(sourceFailures.length, 1);
-    assert.equal(sourceFailures[0].payload.heldForReview.sourcePath, heldPath);
+    assert.equal(sourceFailures[0].payload.heldForReview?.sourcePath, heldPath);
     assert.equal(
       sourceFailures[0].reason,
       "downloaded file is 14.0s shorter than the requested track",
@@ -486,93 +534,93 @@ btest("Usenet tries its other releases before sending a file to review", async (
   }
 });
 
-btest(
-  "an automatic Usenet upgrade drops a file it cannot verify and keeps the Library copy",
-  async () => {
-    const server = await createMockHttpServer((req, res) => {
-      req.resume();
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ jsonrpc: "2.0", id: 1, result: [] }));
+test("an automatic Usenet upgrade drops a file it cannot verify and keeps the Library copy", async () => {
+  const server = await createMockHttpServer((req, res) => {
+    req.resume();
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ jsonrpc: "2.0", id: 1, result: [] }));
+  });
+  try {
+    const completedDir = path.join(process.env.DOWNLOAD_FOLDER!, "usenet-upgrade-complete");
+    const candidatePath = path.join(completedDir, "release", "01 Correct Track.flac");
+    await mkdir(path.dirname(candidatePath), { recursive: true });
+    const generated = spawnSync("ffmpeg", [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "anullsrc=r=44100:cl=stereo",
+      "-t",
+      "1",
+      "-c:a",
+      "flac",
+      "-metadata",
+      "title=Correct Track",
+      "-metadata",
+      "artist=Artist Name",
+      candidatePath,
+    ]);
+    assert.equal(generated.status, 0);
+    const originalPath = path.join(process.env.DOWNLOAD_FOLDER!, "upgrade-original.mp3");
+    await writeOneSecondMp3(originalPath);
+    dbOps.updateSettings({
+      integrations: { nzbget: { enabled: true, url: server.url, completedPath: completedDir } },
     });
-    try {
-      const completedDir = path.join(process.env.DOWNLOAD_FOLDER, "usenet-upgrade-complete");
-      const candidatePath = path.join(completedDir, "release", "01 Correct Track.flac");
-      await mkdir(path.dirname(candidatePath), { recursive: true });
-      const generated = spawnSync("ffmpeg", [
-        "-hide_banner",
-        "-loglevel",
-        "error",
-        "-f",
-        "lavfi",
-        "-i",
-        "anullsrc=r=44100:cl=stereo",
-        "-t",
-        "1",
-        "-c:a",
-        "flac",
-        "-metadata",
-        "title=Correct Track",
-        "-metadata",
-        "artist=Artist Name",
-        candidatePath,
-      ]);
-      assert.equal(generated.status, 0);
-      const originalPath = path.join(process.env.DOWNLOAD_FOLDER, "upgrade-original.mp3");
-      await writeOneSecondMp3(originalPath);
-      dbOps.updateSettings({
-        integrations: { nzbget: { enabled: true, url: server.url, completedPath: completedDir } },
-      });
-      const sourceJobId = addDurationMismatchJob("usenet-upgrade");
-      downloadTracker.setDone(sourceJobId, originalPath, "Album Name");
-      downloadTracker.updateQuality(sourceJobId, { tier: "mp3-128" });
-      const upgradeJobId = downloadTracker.addUpgradeJob(downloadTracker.getJob(sourceJobId));
-      downloadTracker.setDownloading(upgradeJobId);
-      const failures = [];
+    const sourceJobId = addDurationMismatchJob("usenet-upgrade");
+    assert.ok(sourceJobId != null);
+    downloadTracker.setDone(sourceJobId, originalPath, "Album Name");
+    downloadTracker.updateQuality(sourceJobId, { tier: "mp3-128" });
+    const upgradeJobId = downloadTracker.addUpgradeJob(trackedJob(downloadTracker, sourceJobId));
+    assert.ok(upgradeJobId != null);
+    downloadTracker.setDownloading(upgradeJobId);
+    const failures: { payload: UsenetPayload; reason: string }[] = [];
 
-      await processUsenetPipelinePayload(
-        {
-          phase: "finalize",
-          source: "usenet",
-          jobId: upgradeJobId,
-          upgradeForJobId: sourceJobId,
-          nzbId: 1,
-          history: { FinalDir: path.dirname(candidatePath) },
-          candidates: [
-            {
-              raw: {
-                guid: "upgrade-1",
-                release: { guid: "upgrade-1", title: "Artist Name - Album Name" },
-              },
+    await processUsenetPipelinePayload(
+      {
+        phase: "finalize",
+        source: "usenet",
+        jobId: upgradeJobId,
+        upgradeForJobId: sourceJobId,
+        nzbId: 1,
+        history: { FinalDir: path.dirname(candidatePath) },
+        candidates: [
+          usenetCandidate({
+            raw: {
+              guid: "upgrade-1",
+              release: { guid: "upgrade-1", title: "Artist Name - Album Name" },
             },
-          ],
-          candidateIndex: 0,
+          }),
+        ],
+        candidateIndex: 0,
+      },
+      {
+        failOrTryNextSource: (payload, job, reason) => {
+          failures.push({ payload, reason });
+          return null;
         },
-        {
-          failOrTryNextSource: (payload, job, reason) => {
-            failures.push({ payload, reason });
-            return null;
-          },
-        },
-      );
+      },
+    );
 
-      assert.notEqual(downloadTracker.getJob(upgradeJobId)?.status, "blocked");
-      assert.equal(failures.length, 1);
-      assert.equal(failures[0].payload.heldForReview, undefined);
-      assert.equal(downloadTracker.getJob(sourceJobId).finalPath, originalPath);
-      await access(originalPath);
-    } finally {
-      await server.close();
-    }
-  },
-);
+    assert.notEqual(downloadTracker.getJob(upgradeJobId)?.status, "blocked");
+    assert.equal(failures.length, 1);
+    assert.equal(failures[0].payload.heldForReview, undefined);
+    assert.equal(trackedJob(downloadTracker, sourceJobId).finalPath, originalPath);
+    await access(originalPath);
+  } finally {
+    await server.close();
+  }
+});
 
 test("upgrade duration mismatches remain available for review", async () => {
-  const originalPath = path.join(process.env.DOWNLOAD_FOLDER, "original.mp3");
-  const candidatePath = path.join(process.env.DOWNLOAD_FOLDER, "candidate.mp3");
+  const originalPath = path.join(process.env.DOWNLOAD_FOLDER!, "original.mp3");
+  const candidatePath = path.join(process.env.DOWNLOAD_FOLDER!, "candidate.mp3");
   await writeOneSecondMp3(originalPath);
   await writeOneSecondMp3(candidatePath);
 
-  const sourceJobId = downloadTracker.addJob(
+  const sourceJobId = createTrackedJob(
+    downloadTracker,
     {
       artistName: "Artist Name",
       trackName: "Correct Track",
@@ -581,13 +629,15 @@ test("upgrade duration mismatches remain available for review", async () => {
     },
     "upgrade-review",
   );
+  assert.ok(sourceJobId != null);
   downloadTracker.setDone(sourceJobId, originalPath, "Album Name");
-  const upgradeJobId = downloadTracker.addUpgradeJob(downloadTracker.getJob(sourceJobId));
+  const upgradeJobId = downloadTracker.addUpgradeJob(trackedJob(downloadTracker, sourceJobId));
+  assert.ok(upgradeJobId != null);
   downloadTracker.setDownloading(upgradeJobId);
 
   const result = blockPipelineJobForReview({
     downloadTracker,
-    job: downloadTracker.getJob(upgradeJobId),
+    job: trackedJob(downloadTracker, upgradeJobId),
     validation: {
       blocked: true,
       reason: "blocked-duration-mismatch: candidate duration differs",
@@ -601,17 +651,17 @@ test("upgrade duration mismatches remain available for review", async () => {
   await access(candidatePath);
 });
 
-btest("deemix drops its queue entry before a track goes to review", async () => {
-  const removed = [];
+test("deemix drops its queue entry before a track goes to review", async () => {
+  const removed: (string | null)[] = [];
   const filePath = path.join(
-    process.env.DOWNLOAD_FOLDER,
+    process.env.DOWNLOAD_FOLDER!,
     "deemix-complete",
     "Artist Name - Correct Track.mp3",
   );
   await writeOneSecondMp3(filePath);
   const server = await createMockHttpServer((req, res) => {
     req.resume();
-    const url = new URL(req.url, "http://deemix.test");
+    const url = new URL(req.url!, "http://deemix.test");
     if (url.pathname === "/api/removeFromQueue") removed.push(url.searchParams.get("uuid"));
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(
@@ -628,6 +678,7 @@ btest("deemix drops its queue entry before a track goes to review", async () => 
       integrations: { deemix: { enabled: true, url: server.url, bitrate: 1 } },
     });
     const jobId = addDurationMismatchJob("deemix-review");
+    assert.ok(jobId != null);
     downloadTracker.updateDownloadMetadata(jobId, {
       downloadSource: "deemix",
       downloadClient: "deemix",
@@ -656,11 +707,12 @@ btest("deemix drops its queue entry before a track goes to review", async () => 
       },
       { failOrTryNextSource: failIfPipelineFallsThrough },
     );
+    assert.ok(polled != null);
 
     assert.equal(polled.phase, "finalize");
-    assert.deepEqual(removed, []);
+    assert.deepEqual([...removed], []);
 
-    const result = await processDeemixPipelinePayload(polled, {
+    const result = await processDeemixPipelinePayload(polled as DeemixPayload, {
       failOrTryNextSource: failIfPipelineFallsThrough,
     });
 
@@ -672,20 +724,20 @@ btest("deemix drops its queue entry before a track goes to review", async () => 
   }
 });
 
-btest("deemix reuses an existing final path instead of creating a duplicate", async () => {
+test("deemix reuses an existing final path instead of creating a duplicate", async () => {
   const sourcePath = path.join(
-    process.env.DOWNLOAD_FOLDER,
+    process.env.DOWNLOAD_FOLDER!,
     "deemix-duplicate-source",
     "Artist Name - Correct Track.mp3",
   );
   const destination = "deemix-duplicate/Artist Name/Album Name";
-  const targetPath = path.join(process.env.WEEKLY_FLOW_FOLDER, destination, "Correct Track.mp3");
+  const targetPath = path.join(process.env.WEEKLY_FLOW_FOLDER!, destination, "Correct Track.mp3");
   await writeOneSecondMp3(sourcePath);
   await mkdir(path.dirname(targetPath), { recursive: true });
   await writeFile(targetPath, "existing-audio", "utf8");
   const server = await createMockHttpServer((req, res) => {
     req.resume();
-    const url = new URL(req.url, "http://deemix.test");
+    const url = new URL(req.url!, "http://deemix.test");
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(
       JSON.stringify(
@@ -696,12 +748,13 @@ btest("deemix reuses an existing final path instead of creating a duplicate", as
     );
   });
 
-  let jobId;
+  let jobId: string | null = null;
   try {
     dbOps.updateSettings({
       integrations: { deemix: { enabled: true, url: server.url, bitrate: 1 } },
     });
-    jobId = downloadTracker.addJob(
+    jobId = createTrackedJob(
+      downloadTracker,
       {
         artistName: "Artist Name",
         trackName: "Correct Track",
@@ -733,8 +786,9 @@ btest("deemix reuses an existing final path instead of creating a duplicate", as
       },
       { failOrTryNextSource: failIfPipelineFallsThrough },
     );
+    assert.ok(polled != null);
 
-    const result = await processDeemixPipelinePayload(polled, {
+    const result = await processDeemixPipelinePayload(polled as DeemixPayload, {
       failOrTryNextSource: failIfPipelineFallsThrough,
     });
 
@@ -755,7 +809,7 @@ btest("deemix reuses an existing final path instead of creating a duplicate", as
   }
 });
 
-btest("Soulseek tries the other candidates before sending a file to review", async (t) => {
+test("Soulseek tries the other candidates before sending a file to review", async (t) => {
   dbOps.updateSettings({
     ...dbOps.getSettings(),
     integrations: {
@@ -768,10 +822,10 @@ btest("Soulseek tries the other candidates before sending a file to review", asy
   const client = getDownloadClient("slskd");
   vi.spyOn(client, "getDownloadDirectory").mockImplementation(async () => root);
   vi.spyOn(client, "isCleanupAfterRunsEnabled").mockImplementation(() => false);
-  const candidate = (name) => ({
+  const candidate = (name: string) => ({
     raw: { user: name, file: `Music\\Artist Name\\${name}.mp3`, size: 0 },
   });
-  const finalize = (payload) =>
+  const finalize = (payload: Partial<PipelinePayload> & Pick<PipelinePayload, "jobId">) =>
     processPipelinePayload({ ...payload, phase: "finalize", source: "slskd" });
 
   const jobId = addDurationMismatchJob("slskd-held");
@@ -784,15 +838,17 @@ btest("Soulseek tries the other candidates before sending a file to review", asy
     candidateIndex: 0,
     candidates: [candidate("held"), candidate("other")],
   });
+  assert.ok(next != null);
   assert.equal(next.candidateIndex, 1);
-  assert.notEqual(downloadTracker.getJob(jobId).status, "blocked");
+  assert.notEqual(trackedJob(downloadTracker, jobId).status, "blocked");
   await finalize(next);
-  assert.equal(downloadTracker.getJob(jobId).status, "blocked");
-  assert.equal(downloadTracker.getJob(jobId).stagingPath, held);
+  assert.equal(trackedJob(downloadTracker, jobId).status, "blocked");
+  assert.equal(trackedJob(downloadTracker, jobId).stagingPath, held);
   await access(held);
   await assert.rejects(access(other));
 
-  const verifiedJobId = downloadTracker.addJob(
+  const verifiedJobId = createTrackedJob(
+    downloadTracker,
     {
       artistName: "Artist Name",
       trackName: "Correct Track",
@@ -801,6 +857,7 @@ btest("Soulseek tries the other candidates before sending a file to review", asy
     },
     "slskd-held",
   );
+  assert.ok(verifiedJobId != null);
   downloadTracker.setDownloading(verifiedJobId);
   const longer = path.join(root, "Artist Name", "longer.mp3");
   await writeOneSecondMp3(longer, { seconds: 30 });
@@ -810,12 +867,13 @@ btest("Soulseek tries the other candidates before sending a file to review", asy
     candidateIndex: 0,
     candidates: [candidate("longer"), candidate("other")],
   });
+  assert.ok(retry != null);
   await finalize(retry);
-  assert.equal(downloadTracker.getJob(verifiedJobId).status, "done");
+  assert.equal(trackedJob(downloadTracker, verifiedJobId).status, "done");
   await assert.rejects(access(longer));
 });
 
-btest("a yt-dlp file waits for review while the next source is tried", async (t) => {
+test("a yt-dlp file waits for review while the next source is tried", async (t) => {
   dbOps.updateSettings({
     ...dbOps.getSettings(),
     integrations: {
@@ -829,10 +887,10 @@ btest("a yt-dlp file waits for review while the next source is tried", async (t)
   const client = getDownloadClient("slskd");
   vi.spyOn(client, "getDownloadDirectory").mockImplementation(async () => root);
   vi.spyOn(client, "isCleanupAfterRunsEnabled").mockImplementation(() => false);
-  const peer = (name) => ({
+  const peer = (name: string) => ({
     raw: { user: "peer", file: `Music\\Artist Name\\${name}.mp3`, size: 0 },
   });
-  const fromYtdlp = async (jobId, seconds) => {
+  const fromYtdlp = async (jobId: string, seconds: number) => {
     const video = path.join(isolatedState.baseDir, "ytdlp-held", "ytdlp", jobId, "video.mp3");
     await writeOneSecondMp3(video, { seconds });
     downloadTracker.updateDownloadMetadata(jobId, {
@@ -849,8 +907,9 @@ btest("a yt-dlp file waits for review while the next source is tried", async (t)
       candidate: { raw: { id: "video-held", title: "Artist Name - Correct Track" } },
       candidateIndex: 0,
     });
+    assert.ok(next != null);
     assert.equal(next.source, "slskd");
-    assert.equal(downloadTracker.getJob(jobId).status, "downloading");
+    assert.equal(trackedJob(downloadTracker, jobId).status, "downloading");
     downloadTracker.updateDownloadMetadata(jobId, {
       downloadSource: "slskd",
       downloadClient: "slskd",
@@ -861,21 +920,24 @@ btest("a yt-dlp file waits for review while the next source is tried", async (t)
   };
 
   const jobId = addDurationMismatchJob("ytdlp-held");
+  assert.ok(jobId != null);
   const next = await fromYtdlp(jobId, 1);
   await writeOneSecondMp3(path.join(root, "Artist Name", "other.mp3"));
   await processPipelinePayload({ ...next, phase: "finalize", candidates: [peer("other")] });
   const parked = await assertReviewable(jobId, "ytdlp");
+  assert.ok(parked != null);
   await assert.rejects(access(path.join(root, "Artist Name", "other.mp3")));
   const { denyBlockedJob } =
     await import("../../backend/services/downloadJobs/blockedJobReview.ts");
   await denyBlockedJob(jobId);
-  assert.deepEqual(downloadTracker.getJob(jobId).deniedRemoteSources.at(-1), [
+  assert.deepEqual(trackedJob(downloadTracker, jobId)!.deniedRemoteSources!.at(-1), [
     "ytdlp",
     "video-held",
   ]);
   await assert.rejects(access(parked));
 
-  const verifiedJobId = downloadTracker.addJob(
+  const verifiedJobId = createTrackedJob(
+    downloadTracker,
     {
       artistName: "Artist Name",
       trackName: "Correct Track",
@@ -884,17 +946,21 @@ btest("a yt-dlp file waits for review while the next source is tried", async (t)
     },
     "ytdlp-held",
   );
+  assert.ok(verifiedJobId != null);
   downloadTracker.setDownloading(verifiedJobId);
   const retry = await fromYtdlp(verifiedJobId, 30);
+  assert.ok(retry != null);
   await writeOneSecondMp3(path.join(root, "Artist Name", "other.mp3"));
   await processPipelinePayload({ ...retry, phase: "finalize", candidates: [peer("other")] });
-  assert.equal(downloadTracker.getJob(verifiedJobId).status, "done");
-  await assert.rejects(access(retry.heldForReview.sourcePath));
+  assert.equal(trackedJob(downloadTracker, verifiedJobId).status, "done");
+  assert.ok(retry.heldForReview != null);
+  await assert.rejects(access(retry.heldForReview.sourcePath!));
 });
 
-btest("denying a held file starts a stopped worker to search again", async () => {
+test("denying a held file starts a stopped worker to search again", async () => {
   const start = vi.spyOn(downloadWorker, "start").mockImplementation(async () => {});
   const jobId = addDurationMismatchJob("deny-restart");
+  assert.ok(jobId != null);
   const staged = path.join(isolatedState.baseDir, "deny-restart", "held.mp3");
   await writeOneSecondMp3(staged);
   downloadTracker.setBlocked(
@@ -905,14 +971,14 @@ btest("denying a held file starts a stopped worker to search again", async () =>
   const { denyBlockedJob } =
     await import("../../backend/services/downloadJobs/blockedJobReview.ts");
   assert.equal((await denyBlockedJob(jobId)).status, 200);
-  assert.equal(downloadTracker.getJob(jobId).status, "pending");
+  assert.equal(trackedJob(downloadTracker, jobId).status, "pending");
   assert.equal(start.mock.calls.length, 1);
 });
 
-async function waitUntilGone(filePath) {
+async function waitUntilGone(filePath: string) {
   const watcher = watch(path.dirname(filePath));
   try {
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       const check = () =>
         access(filePath).then(
           () => {},
@@ -927,7 +993,7 @@ async function waitUntilGone(filePath) {
   }
 }
 
-btest("removing a job in review discards its file but leaves a Library file", async () => {
+test("removing a job in review discards its file but leaves a Library file", async () => {
   const { resolveDownloadRoot } = await import("../../backend/services/downloadPaths.ts");
   const inLibrary = path.join(
     resolveDownloadRoot(),
@@ -938,6 +1004,7 @@ btest("removing a job in review discards its file but leaves a Library file", as
   for (const filePath of [inLibrary, staged]) {
     await writeOneSecondMp3(filePath);
     const jobId = addDurationMismatchJob("review-removal");
+    assert.ok(jobId != null);
     downloadTracker.setBlocked(
       jobId,
       "downloaded file is 14.0s shorter than the requested track",
@@ -950,7 +1017,7 @@ btest("removing a job in review discards its file but leaves a Library file", as
   await access(inLibrary);
 });
 
-btest("denying a review removes its file and yt-dlp folder but leaves a Library file", async () => {
+test("denying a review removes its file and yt-dlp folder but leaves a Library file", async () => {
   vi.spyOn(downloadWorker, "start").mockImplementation(async () => {});
   const stagingRoot = path.join(isolatedState.baseDir, "deny-cleanup");
   dbOps.updateSettings({
@@ -962,9 +1029,11 @@ btest("denying a review removes its file and yt-dlp folder but leaves a Library 
   });
   const { denyBlockedJob } =
     await import("../../backend/services/downloadJobs/blockedJobReview.ts");
-  const review = async (filePath, source) => {
+  const review = async (filePath: string | ((jobId: string) => string), source: string) => {
     const jobId = addDurationMismatchJob("deny-cleanup");
-    await writeOneSecondMp3(typeof filePath === "function" ? filePath(jobId) : filePath);
+    assert.ok(jobId != null);
+    const stagedPath = typeof filePath === "function" ? filePath(jobId) : filePath;
+    await writeOneSecondMp3(stagedPath);
     downloadTracker.updateDownloadMetadata(jobId, {
       downloadSource: source,
       releaseGuid: `${source}-1`,
@@ -972,7 +1041,7 @@ btest("denying a review removes its file and yt-dlp folder but leaves a Library 
     downloadTracker.setBlocked(
       jobId,
       "downloaded file is 14.0s shorter than the requested track",
-      typeof filePath === "function" ? filePath(jobId) : filePath,
+      stagedPath,
     );
     assert.equal((await denyBlockedJob(jobId)).status, 200);
     return jobId;
@@ -982,6 +1051,7 @@ btest("denying a review removes its file and yt-dlp folder but leaves a Library 
     (jobId) => path.join(stagingRoot, "ytdlp", jobId, "video-1.mp3"),
     "ytdlp",
   );
+  assert.ok(ytdlpJobId != null);
   await assert.rejects(access(path.join(stagingRoot, "ytdlp", ytdlpJobId)));
 
   vi.spyOn(getDownloadClient("slskd"), "getDownloadDirectory").mockImplementation(async () => {
@@ -1003,7 +1073,7 @@ btest("denying a review removes its file and yt-dlp folder but leaves a Library 
 
 // Stands in for a download folder on a slow network mount: ffmpeg fails, as it
 // times out there, on any file in that folder and works everywhere else.
-async function failFfmpegIn(t, folder) {
+async function failFfmpegIn(t: import("vite-plus/test").TestContext, folder: string) {
   const bin = path.join(isolatedState.baseDir, "slow-mount-bin");
   const ffmpeg = spawnSync("sh", ["-c", "command -v ffmpeg"], { encoding: "utf8" }).stdout.trim();
   await mkdir(bin, { recursive: true });
@@ -1024,100 +1094,102 @@ exec "${ffmpeg}" "$@"
   });
 }
 
-btest(
-  "a download is tagged after it reaches the Library, so a slow download folder cannot fail it",
-  async (t) => {
-    const slowFolder = path.join(isolatedState.baseDir, "slow-mount");
-    const usenetFile = path.join(
-      slowFolder,
-      "usenet",
-      "Artist Name",
-      "Album Name",
-      "01 Correct Track.mp3",
-    );
-    const slskdRoot = path.join(slowFolder, "slskd");
-    const slskdFile = path.join(slskdRoot, "Artist Name", "02 Other Track.mp3");
-    await writeOneSecondMp3(usenetFile);
-    await writeOneSecondMp3(slskdFile, { title: "Other Track" });
-    const server = await createMockHttpServer((req, res) => {
-      req.resume();
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ jsonrpc: "2.0", id: 1, result: [] }));
-    });
-    t.onTestFinished(() => server.close());
-    dbOps.updateSettings({
-      ...dbOps.getSettings(),
-      integrations: {
-        ...dbOps.getSettings().integrations,
-        nzbget: { enabled: true, url: server.url, completedPath: path.join(slowFolder, "usenet") },
-        slskd: { enabled: true, url: "http://127.0.0.1:9" },
-      },
-    });
-    const slskd = getDownloadClient("slskd");
-    vi.spyOn(slskd, "getDownloadDirectory").mockImplementation(async () => slskdRoot);
-    vi.spyOn(slskd, "isCleanupAfterRunsEnabled").mockImplementation(() => false);
-    await failFfmpegIn(t, slowFolder);
-    const addJob = (trackName, trackNumber) => {
-      const jobId = downloadTracker.addJob(
-        {
-          artistName: "Artist Name",
-          trackName,
-          albumName: "Album Name",
-          durationMs: 1000,
-          trackNumber,
-        },
-        "slow-mount",
-      );
-      downloadTracker.setDownloading(jobId);
-      return jobId;
-    };
-
-    const usenetJobId = addJob("Correct Track", 1);
-    await processUsenetPipelinePayload(
+test("a download is tagged after it reaches the Library, so a slow download folder cannot fail it", async (t: import("vite-plus/test").TestContext) => {
+  const slowFolder = path.join(isolatedState.baseDir, "slow-mount");
+  const usenetFile = path.join(
+    slowFolder,
+    "usenet",
+    "Artist Name",
+    "Album Name",
+    "01 Correct Track.mp3",
+  );
+  const slskdRoot = path.join(slowFolder, "slskd");
+  const slskdFile = path.join(slskdRoot, "Artist Name", "02 Other Track.mp3");
+  await writeOneSecondMp3(usenetFile);
+  await writeOneSecondMp3(slskdFile, { title: "Other Track" });
+  const server = await createMockHttpServer((req, res) => {
+    req.resume();
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ jsonrpc: "2.0", id: 1, result: [] }));
+  });
+  t.onTestFinished(() => server.close());
+  dbOps.updateSettings({
+    ...dbOps.getSettings(),
+    integrations: {
+      ...dbOps.getSettings().integrations,
+      nzbget: { enabled: true, url: server.url, completedPath: path.join(slowFolder, "usenet") },
+      slskd: { enabled: true, url: "http://127.0.0.1:9" },
+    },
+  });
+  const slskd = getDownloadClient("slskd");
+  vi.spyOn(slskd, "getDownloadDirectory").mockImplementation(async () => slskdRoot);
+  vi.spyOn(slskd, "isCleanupAfterRunsEnabled").mockImplementation(() => false);
+  await failFfmpegIn(t, slowFolder);
+  const addJob = (trackName: string, trackNumber: number) => {
+    const jobId = createTrackedJob(
+      downloadTracker,
       {
-        phase: "finalize",
-        source: "usenet",
-        jobId: usenetJobId,
-        nzbId: 1,
-        destination: "slow-mount/Artist Name/Album Name",
-        history: { FinalDir: path.join(slowFolder, "usenet") },
-        candidate: {
+        artistName: "Artist Name",
+        trackName,
+        albumName: "Album Name",
+        durationMs: 1000,
+        trackNumber,
+      },
+      "slow-mount",
+    );
+    assert.ok(jobId != null);
+    downloadTracker.setDownloading(jobId);
+    return jobId;
+  };
+
+  const usenetJobId = addJob("Correct Track", 1);
+  await processUsenetPipelinePayload(
+    {
+      phase: "finalize",
+      source: "usenet",
+      jobId: usenetJobId,
+      nzbId: 1,
+      destination: "slow-mount/Artist Name/Album Name",
+      history: { FinalDir: path.join(slowFolder, "usenet") },
+      candidates: [
+        usenetCandidate({
           raw: {
             guid: "release-1",
             release: { guid: "release-1", title: "Artist Name - Album Name" },
           },
           resolvedAlbumName: "Other Release",
-        },
-        candidateIndex: 0,
-      },
-      { failOrTryNextSource: failIfPipelineFallsThrough },
-    );
-    const slskdJobId = addJob("Other Track", 2);
-    await processPipelinePayload({
-      phase: "finalize",
-      source: "slskd",
-      jobId: slskdJobId,
-      candidateIndex: 0,
-      destination: "slow-mount/Artist Name/Album Name",
-      candidates: [
-        {
-          raw: { user: "peer", file: "Music\\Artist Name\\02 Other Track.mp3", size: 0 },
-          resolvedAlbumName: "Other Release",
-        },
+        }),
       ],
-    });
+      candidateIndex: 0,
+    },
+    { failOrTryNextSource: failIfPipelineFallsThrough },
+  );
+  const slskdJobId = addJob("Other Track", 2);
+  await processPipelinePayload({
+    phase: "finalize",
+    source: "slskd",
+    jobId: slskdJobId,
+    candidateIndex: 0,
+    destination: "slow-mount/Artist Name/Album Name",
+    candidates: [
+      {
+        raw: { user: "peer", file: "Music\\Artist Name\\02 Other Track.mp3", size: 0 },
+        resolvedAlbumName: "Other Release",
+      },
+    ],
+  });
 
-    for (const [jobId, trackNumber] of [
-      [usenetJobId, 1],
-      [slskdJobId, 2],
-    ]) {
-      const job = downloadTracker.getJob(jobId);
-      assert.equal(job.status, "done", job.error);
-      const { common } = await parseFile(job.finalPath);
-      assert.deepEqual(
-        [job.albumName, common.album, common.track.no],
-        ["Album Name", "Album Name", trackNumber],
-      );
-    }
-  },
-);
+  const expectedTracks: [string, number][] = [
+    [usenetJobId, 1],
+    [slskdJobId, 2],
+  ];
+  for (const [jobId, trackNumber] of expectedTracks) {
+    const job = trackedJob(downloadTracker, jobId);
+    assert.equal(job.status, "done", job.error ?? "no error");
+    const { common } = await parseFile(job.finalPath!);
+    assert.deepEqual(
+      [job.albumName, common.album, common.track.no],
+      ["Album Name", "Album Name", trackNumber],
+    );
+  }
+});

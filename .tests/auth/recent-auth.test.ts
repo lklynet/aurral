@@ -1,3 +1,4 @@
+import { createAuthRequest } from "./authFixtures.ts";
 import { test, beforeAll, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
@@ -25,43 +26,45 @@ const [
   { default: subsonicRouter },
 ] = await setupIsolatedBackend(
   "recent-auth",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/config/session-helpers.ts",
-  "backend/middleware/auth.ts",
-  "backend/middleware/requirePermission.ts",
-  "backend/middleware/passwordHash.ts",
-  "backend/config/encryption.ts",
-  "backend/routes/subsonic.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/config/session-helpers.ts"),
+  () => import("../../backend/middleware/auth.ts"),
+  () => import("../../backend/middleware/requirePermission.ts"),
+  () => import("../../backend/middleware/passwordHash.ts"),
+  () => import("../../backend/config/encryption.ts"),
+  () => import("../../backend/routes/subsonic.ts"),
 );
 
-let subsonicServer;
+let subsonicServer: import("node:http").Server;
 
 beforeAll(async () => {
   const app = express();
   app.use("/rest", express.urlencoded({ extended: false }), subsonicRouter);
-  subsonicServer = await new Promise((resolve) => {
+  subsonicServer = await new Promise<import("node:http").Server>((resolve) => {
     const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
   });
 });
 beforeEach(() => resetDatabase(db));
 afterAll(async () => {
-  await new Promise((resolve) => subsonicServer.close(resolve));
+  await new Promise<void>((resolve) => subsonicServer.close(() => resolve()));
   await cleanupIsolatedState(isolatedState);
 });
 
-async function subsonicPing(params) {
+async function subsonicPing(
+  params: { u: string; t: string; s: string } | { u: string; p: string },
+) {
   const query = new URLSearchParams({ v: "1.16.1", c: "auth-test", f: "json", ...params });
   const response = await fetch(
-    `http://127.0.0.1:${subsonicServer.address().port}/rest/ping.view?${query}`,
+    `http://127.0.0.1:${(subsonicServer.address() as import("node:net").AddressInfo).port}/rest/ping.view?${query}`,
   );
   return (await response.json())["subsonic-response"];
 }
 
-const subsonicToken = (password, salt) =>
+const subsonicToken = (password: string | null | undefined, salt: string) =>
   crypto.createHash("md5").update(`${password}${salt}`).digest("hex");
 
-function watchPasswordHashing(t) {
+function watchPasswordHashing(t: import("vite-plus/test").TestContext) {
   const scrypt = vi.spyOn(crypto, "scryptSync");
   syncBuiltinESMExports();
   t.onTestFinished(() => {
@@ -73,32 +76,38 @@ function watchPasswordHashing(t) {
 
 test("recent authentication requires a valid bearer session", () => {
   const user = userOps.createUser("recent-user", bcrypt.hashSync("password123", 4));
+  assert.ok(user != null);
   const session = createSession(user.id);
 
-  assert.equal(permissions.isRecentlyAuthenticated({ headers: {} }), false);
+  assert.equal(permissions.isRecentlyAuthenticated(createAuthRequest({ headers: {} })), false);
   assert.equal(
-    permissions.isRecentlyAuthenticated({
-      headers: { authorization: `Bearer ${session.token}` },
-    }),
+    permissions.isRecentlyAuthenticated(
+      createAuthRequest({
+        headers: { authorization: `Bearer ${session.token}` },
+      }),
+    ),
     true,
   );
 });
 
 test("stream requests need sign-in once an account exists, even without a stored single password", () => {
-  const anonymous = {
+  const anonymous = createAuthRequest({
     headers: {},
     query: {},
     ip: "203.0.113.9",
-    socket: { remoteAddress: "203.0.113.9" },
-  };
-  assert.equal(auth.verifyTokenAuth({ ...anonymous }), true);
+  });
+  assert.equal(auth.verifyTokenAuth(createAuthRequest({ ...anonymous })), true);
 
   dbOps.updateSettings({ onboardingComplete: true });
   const user = userOps.createUser("stream-owner", bcrypt.hashSync("password123", 4), "admin");
-  assert.equal(auth.verifyTokenAuth({ ...anonymous }), false);
+  assert.ok(user != null);
+  assert.equal(auth.verifyTokenAuth(createAuthRequest({ ...anonymous })), false);
 
   const session = createSession(user.id);
-  assert.equal(auth.verifyTokenAuth({ ...anonymous, query: { token: session.token } }), true);
+  assert.equal(
+    auth.verifyTokenAuth(createAuthRequest({ ...anonymous, query: { token: session.token } })),
+    true,
+  );
 });
 
 test("password and Subsonic authentication reject inactive users", () => {
@@ -112,6 +121,7 @@ test("password and Subsonic authentication reject inactive users", () => {
     false,
     password,
   );
+  assert.ok(user != null);
   userOps.updateUser(user.id, { status: "suspended" });
 
   assert.equal(auth.resolveUser("inactive-user", password), null);
@@ -122,6 +132,7 @@ test("password and Subsonic authentication reject inactive users", () => {
 
 test("Subsonic requests reuse the stored password instead of hashing it on every call", async (t) => {
   const user = userOps.createUser("listener", hashPassword("listener-password"));
+  assert.ok(user != null);
   const salt = "listener-salt";
   const scrypt = watchPasswordHashing(t);
 
@@ -171,6 +182,7 @@ test("Subsonic stops accepting a password once the account password hash changes
     false,
     "old-password",
   );
+  assert.ok(user != null);
   const salt = "rotator-salt";
   assert.equal(
     (await subsonicPing({ u: "rotator", t: subsonicToken("old-password", salt), s: salt })).status,
@@ -193,7 +205,7 @@ test("Subsonic stops accepting a password once the account password hash changes
 });
 
 test("Subsonic token auth checks a configured legacy password against the account password", async () => {
-  const configureLegacyPassword = (authPassword) =>
+  const configureLegacyPassword = (authPassword: string) =>
     dbOps.updateSettings({
       onboardingComplete: true,
       integrations: { general: { authUser: "owner", authPassword } },
@@ -218,7 +230,9 @@ test("Subsonic token auth checks a configured legacy password against the accoun
 
 test("Subsonic never accepts a stored password it cannot decrypt", async () => {
   const user = userOps.createUser("restored", hashPassword("restored-password"));
+  assert.ok(user != null);
   const unreadable = encryptWithKey("restored-password", crypto.randomBytes(32));
+  assert.ok(unreadable);
   db.prepare("UPDATE users SET subsonic_password = ? WHERE id = ?").run(unreadable, user.id);
   const salt = "restored-salt";
 
@@ -244,14 +258,19 @@ test("Basic authentication cannot restore legacy admin access for an inactive da
     },
   });
   const user = userOps.createUser("configured-admin", bcrypt.hashSync(password, 4), "admin");
+  assert.ok(user != null);
   userOps.updateUser(user.id, { status: "suspended" });
   const basic = Buffer.from(`configured-admin:${password}`).toString("base64");
 
-  assert.equal(auth.resolveRequestUser({ headers: { authorization: `Basic ${basic}` } }), null);
+  assert.equal(
+    auth.resolveRequestUser(createAuthRequest({ headers: { authorization: `Basic ${basic}` } })),
+    null,
+  );
 });
 
 test("trusted-local bypass rejects an inactive sole administrator", () => {
   const user = userOps.createUser("local-admin", bcrypt.hashSync("password123", 4), "admin");
+  assert.ok(user != null);
   userOps.updateUser(user.id, { status: "disabled" });
   dbOps.updateSettings({
     onboardingComplete: true,
@@ -280,6 +299,7 @@ test("trusted-local bypass accepts only addresses on the server's private subnet
         address: "127.0.0.1",
         netmask: "255.0.0.0",
         family: "IPv4",
+        mac: "00:00:00:00:00:00",
         internal: true,
         cidr: "127.0.0.1/8",
       },
@@ -289,6 +309,7 @@ test("trusted-local bypass accepts only addresses on the server's private subnet
         address: "192.168.4.115",
         netmask: "255.255.255.0",
         family: "IPv4",
+        mac: "00:00:00:00:00:00",
         internal: false,
         cidr: "192.168.4.115/24",
       },
@@ -298,12 +319,13 @@ test("trusted-local bypass accepts only addresses on the server's private subnet
         address: "192.168.4.116",
         netmask: "255.255.255.0",
         family: "IPv4",
+        mac: "00:00:00:00:00:00",
         internal: false,
         cidr: "192.168.4.116/24",
       },
     ],
   }));
-  const from = (address) => ({
+  const from = (address: string) => ({
     ip: address,
     ips: [],
     headers: {},

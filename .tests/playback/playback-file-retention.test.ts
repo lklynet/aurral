@@ -1,3 +1,6 @@
+import { JellyfinClient } from "../../backend/services/jellyfin.ts";
+import type { PlaybackDestination } from "../../backend/services/playback/playbackDestination.ts";
+import { audioMetadata } from "../download/fixtures.ts";
 import assert from "node:assert/strict";
 import { test, beforeEach, afterAll, afterEach, vi } from "vite-plus/test";
 import fs from "node:fs/promises";
@@ -21,13 +24,13 @@ const [
   { flowPlaylistConfig },
 ] = await setupIsolatedBackend(
   "playback-file-retention",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/playback/playbackFileRetention.ts",
-  "backend/services/playlists/playlistManager.ts",
-  "backend/services/downloadJobs/downloadTracker.ts",
-  "backend/services/downloadJobs/fileReuse.ts",
-  "backend/services/playlists/flowPlaylistConfig.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/playback/playbackFileRetention.ts"),
+  () => import("../../backend/services/playlists/playlistManager.ts"),
+  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
+  () => import("../../backend/services/downloadJobs/fileReuse.ts"),
+  () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
 );
 const {
   createPlaybackDeletionGuard,
@@ -36,6 +39,7 @@ const {
   retryPlaybackRetainedFiles,
 } = retention;
 const root = process.env.WEEKLY_FLOW_FOLDER;
+assert.ok(root != null);
 
 beforeEach(async () => {
   resetDatabase(db);
@@ -59,34 +63,51 @@ afterEach(async () => {
   syncPathMappings([]);
 });
 
-async function makeFile(relative) {
+async function makeFile(relative: string) {
+  assert.ok(root);
   const file = path.join(root, relative);
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, "audio");
   return file;
 }
 
-function destination(key, active, read) {
+function destination(
+  key: string,
+  active: boolean,
+  read: (options: { excludeEntityIds: string[] }) => Promise<unknown>,
+): PlaybackDestination {
   return {
     key,
     name: key,
     updateConfig() {},
     isConfigured: () => active,
-    async testConnection() {},
-    async ensureLibrary() {},
-    async publishPlaylist() {},
-    async deletePlaylist() {},
-    async deleteEntityPlaylists() {},
+    async testConnection() {
+      return { ok: true };
+    },
+    async ensureLibrary() {
+      return { ok: true };
+    },
+    async publishPlaylist() {
+      return { ok: true };
+    },
+    async deletePlaylist() {
+      return { ok: true };
+    },
+    async deleteEntityPlaylists() {
+      return { ok: true };
+    },
     getPointerEntityIds: () => [],
-    async requestScan() {},
-    getReferencedPaths: read,
+    async requestScan() {
+      return { ok: true };
+    },
+    getReferencedPaths: read as PlaybackDestination["getReferencedPaths"],
   };
 }
 
 test("checks every active destination once per cleanup batch and skips inactive ones", async () => {
   const saved = await makeFile("_flows/flow/saved.flac");
   const unused = await makeFile("_flows/flow/unused.flac");
-  const calls = [];
+  const calls: string[] = [];
   const registry = new PlaybackDestinationRegistry([
     destination("jellyfin", true, async ({ excludeEntityIds }) => {
       calls.push("jellyfin");
@@ -134,7 +155,7 @@ test("no active playback services preserves the existing cleanup behaviour", asy
 
 test("a later cleanup reads fresh references rather than reusing an unused result", async () => {
   const file = await makeFile("_flows/flow/track.flac");
-  let paths = [];
+  let paths: string[] = [];
   const registry = new PlaybackDestinationRegistry([
     destination("jellyfin", true, async () => ({ ok: true, paths })),
   ]);
@@ -156,14 +177,24 @@ test("flow reset retains external files at the same path and clears outgoing job
   const unused = await makeFile("_flows/flow/unused.flac");
   const legacy = await makeFile("aurral-weekly-flow/flow/legacy.flac");
   const id = downloadTracker.addJob({ artistName: "Artist", trackName: "Saved" }, "flow");
+  assert.ok(id != null);
   downloadTracker.setDone(id, saved);
   let calls = 0;
   vi.spyOn(playlistManager.destinationRegistry, "run").mockImplementation(
-    async (operation, options) => {
+    async (operation, ...args) => {
+      const options = referenceOptions(args[0]);
       assert.equal(operation, "getReferencedPaths");
       assert.deepEqual(options.excludeEntityIds, ["flow"]);
       calls += 1;
-      return [{ destination: "Jellyfin", ok: true, paths: [saved, legacy] }];
+      return [
+        {
+          key: "test",
+          operation: "getReferencedPaths" as const,
+          destination: "Jellyfin",
+          ok: true,
+          paths: [saved, legacy],
+        },
+      ];
     },
   );
   await playlistManager.weeklyReset(["flow"]);
@@ -187,7 +218,13 @@ test("individual automatic cleanup retains a track while explicit deletion bypas
   const flow = flowPlaylistConfig.createFlow({ name: "Flow", size: 5 });
   const file = await makeFile(`_flows/${flow.id}/track.flac`);
   vi.spyOn(playlistManager.destinationRegistry, "run").mockImplementation(async () => [
-    { destination: "Plex", ok: true, paths: [file] },
+    {
+      key: "test",
+      operation: "getReferencedPaths" as const,
+      destination: "Plex",
+      ok: true,
+      paths: [file],
+    },
   ]);
   assert.deepEqual(await reuse.removePlaylistFileIfUnshared(file, flow.id), { action: "retained" });
   assert.deepEqual(
@@ -202,12 +239,19 @@ test("a later scan retries retained files but never removes a file still owned b
   const owned = await makeFile("_flows/flow/owned.flac");
   let paths = [saved, owned];
   vi.spyOn(playlistManager.destinationRegistry, "run").mockImplementation(async () => [
-    { destination: "Jellyfin", ok: true, paths },
+    {
+      key: "test",
+      operation: "getReferencedPaths" as const,
+      destination: "Jellyfin",
+      ok: true,
+      paths,
+    },
   ]);
   const guard = createPlaybackDeletionGuard();
   assert.equal(await guard.canDelete(saved), false);
   assert.equal(await guard.canDelete(owned), false);
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Owned" }, "another");
+  assert.ok(jobId != null);
   downloadTracker.setDone(jobId, owned);
   paths = [];
   await retryPlaybackRetainedFiles();
@@ -234,12 +278,14 @@ for (const service of ["jellyfin", "navidrome"]) {
     const destination = new Destination(root, {
       client: {
         url: "http://server",
-        async getPlaylistTrackPaths(excluded) {
+        isConfigured: () => true,
+        async getPlaylistTrackPaths(excluded: Set<string>) {
           assert.deepEqual([...excluded], ["outgoing"]);
           return ["/server-music/_flows/flow/saved.flac"];
         },
       },
     });
+    assert.ok(destination.isConfigured());
     assert.deepEqual(await destination.getReferencedPaths({ excludeEntityIds: ["flow"] }), {
       ok: true,
       paths: [path.join(root, "_flows/flow/saved.flac")],
@@ -257,6 +303,7 @@ test("Plex checks global and linked accounts and maps its downloads path", async
   const { plexPlaylistPointerStore } =
     await import("../../backend/services/plex/plexPlaylistPointerStore.ts");
   const user = userOps.createUser("listener", "hash", "user");
+  assert.ok(user != null);
   plexConnectionStore.saveConnection(user.id, {
     linkType: "self",
     token: "listener-token",
@@ -266,6 +313,7 @@ test("Plex checks global and linked accounts and maps its downloads path", async
   plexPlaylistPointerStore.setPointer("flow", "global", {
     location: "global",
     ratingKey: "outgoing",
+    title: "Flow",
   });
   const destination = new PlexPlaybackDestination(root);
   destination.updateConfig({
@@ -273,14 +321,16 @@ test("Plex checks global and linked accounts and maps its downloads path", async
     token: "admin-token",
     downloadsPath: "/server-music",
   });
-  const seen = [];
-  vi.spyOn(PlexClient.prototype, "getPlaylistTrackPaths").mockImplementation(
-    async function (excluded) {
-      seen.push(this.token);
-      assert.deepEqual([...excluded], ["outgoing"]);
-      return this.token === "listener-token" ? ["/server-music/_flows/flow/saved.flac"] : [];
-    },
-  );
+  const seen: (string | null)[] = [];
+  vi.spyOn(PlexClient.prototype, "getPlaylistTrackPaths").mockImplementation(async function (
+    this: import("../../backend/services/plex.ts").PlexClient,
+    excluded = new Set<string>(),
+  ) {
+    seen.push(this.token);
+    assert.deepEqual([...excluded], ["outgoing"]);
+    return this.token === "listener-token" ? ["/server-music/_flows/flow/saved.flac"] : [];
+  });
+  assert.ok(destination.isConfigured());
   assert.deepEqual(await destination.getReferencedPaths({ excludeEntityIds: ["flow"] }), {
     ok: true,
     paths: [path.join(root, "_flows/flow/saved.flac")],
@@ -303,17 +353,27 @@ test("Plex does not add retained files back to a refreshed flow", async () => {
     key: "7",
   }));
   vi.spyOn(PlexClient.prototype, "getTracks").mockImplementation(async () => [
-    { ratingKey: "saved", files: [file] },
+    {
+      ratingKey: "saved",
+      files: [file],
+      title: "Saved",
+      artist: "Artist",
+      addedAt: Math.floor(Date.now() / 1000),
+    },
   ]);
-  const published = [];
+  const published: ((string | number)[] | null | undefined)[] = [];
   vi.spyOn(PlexClient.prototype, "syncPlaylist").mockImplementation(async ({ ratingKeys }) => {
     published.push(ratingKeys);
     return { ratingKey: "playlist" };
   });
-  const flow = (tracks) => ({ entityId: "flow", displayName: "Flow", tracks });
+  const flow = (tracks: { path: string; title: string; artist: string }[]) => ({
+    entityId: "flow",
+    displayName: "Flow",
+    tracks,
+  });
 
   assert.deepEqual(await playback.publishPlaylist(flow([])), { ok: true });
-  assert.deepEqual(published, []);
+  assert.deepEqual([...published], []);
   assert.deepEqual(
     await playback.publishPlaylist(flow([{ path: file, title: "Saved", artist: "Artist" }])),
     { ok: true },
@@ -326,15 +386,23 @@ test("automatic cleanup keeps a shared file in place; explicit deletion preserve
   const other = flowPlaylistConfig.createFlow({ name: "Other", size: 5 });
   const file = await makeFile(`_flows/${flow.id}/saved.flac`);
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Saved" }, other.id);
+  assert.ok(jobId != null);
   downloadTracker.setDone(jobId, file);
   vi.spyOn(playlistManager.destinationRegistry, "run").mockImplementation(async () => [
-    { destination: "Jellyfin", ok: true, paths: [file] },
+    {
+      key: "test",
+      operation: "getReferencedPaths" as const,
+      destination: "Jellyfin",
+      ok: true,
+      paths: [file],
+    },
   ]);
   await playlistManager.weeklyReset([flow.id]);
-  assert.equal(downloadTracker.getAll().find((job) => job.id === jobId).finalPath, file);
+  assert.equal(downloadTracker.getAll().find((job) => job.id === jobId)!.finalPath, file);
   await fs.access(file);
   await playlistManager.weeklyReset([flow.id], { protectPlayback: false });
-  const moved = downloadTracker.getAll().find((job) => job.id === jobId).finalPath;
+  const moved = downloadTracker.getAll().find((job) => job.id === jobId)!.finalPath;
+  assert.ok(moved != null);
   assert.notEqual(moved, file);
   await fs.access(moved);
   await assert.rejects(fs.access(file), { code: "ENOENT" });
@@ -349,16 +417,31 @@ test("quality upgrades preserve the old file when another playback playlist uses
     { artistName: "Artist", trackName: "Upgrade" },
     "upgrade",
   );
+  assert.ok(originalId != null);
   downloadTracker.setDone(originalId, oldFile);
   vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
-  vi.spyOn(playlistManager, "scheduleScanLibrary").mockImplementation(() => {});
+  vi.spyOn(playlistManager, "scheduleScanLibrary").mockImplementation(() => 0);
   vi.spyOn(playlistManager.destinationRegistry, "run").mockImplementation(async () => [
-    { destination: "Navidrome", ok: true, paths: [oldFile] },
+    {
+      key: "test",
+      operation: "getReferencedPaths" as const,
+      destination: "Navidrome",
+      ok: true,
+      paths: [oldFile],
+    },
   ]);
-  await finalizeQualityUpgradeSuccess({ id: "upgrade-job", upgradeForJobId: originalId }, newFile, {
-    tier: "lossless",
-  });
-  assert.equal(downloadTracker.getJob(originalId).finalPath, newFile);
+  await finalizeQualityUpgradeSuccess(
+    { ...downloadTracker.getJob(originalId)!, id: "upgrade-job", upgradeForJobId: originalId },
+    newFile,
+    {
+      tier: "lossless",
+      format: null,
+      bitrateKbps: null,
+      sampleRate: null,
+      bitDepth: null,
+    },
+  );
+  assert.equal(downloadTracker.getJob(originalId)!.finalPath, newFile);
   await fs.access(oldFile);
   assert.equal(isPlaybackRetainedFile(oldFile), true);
 });
@@ -369,7 +452,13 @@ test("startup migration leaves an externally referenced orphan at its original p
   const flow = flowPlaylistConfig.createFlow({ name: "Migration source", enabled: true });
   const file = await makeFile(`aurral-weekly-flow/${flow.id}/Artist/Album/Saved.flac`);
   vi.spyOn(playlistManager.destinationRegistry, "run").mockImplementation(async () => [
-    { destination: "Jellyfin", ok: true, paths: [file] },
+    {
+      key: "test",
+      operation: "getReferencedPaths" as const,
+      destination: "Jellyfin",
+      ok: true,
+      paths: [file],
+    },
   ]);
   const options = {
     root,
@@ -402,36 +491,54 @@ for (const mode of [
       const destinationPath = isFlow
         ? path.join(root, "_flows", playlist.id, "Artist/Album/Saved.flac")
         : path.join(root, "Artist/Album/Saved.flac");
-      let jobId;
+      let jobId: string | null = null;
       if (mode !== "shared-batch-without-job") {
         jobId = downloadTracker.addJob(
           { artistName: "Artist", albumName: "Album", trackName: "Saved" },
           playlist.id,
         );
+        assert.ok(jobId);
         downloadTracker.setDone(jobId, source);
       }
       let currentUsage = usage;
       const checks = vi
         .spyOn(playlistManager.destinationRegistry, "run")
-        .mockImplementation(async (_operation, { excludeEntityIds }) => {
+        .mockImplementation(async (_operation, ...args) => {
+          const { excludeEntityIds } = referenceOptions(args[0]);
           assert.deepEqual(excludeEntityIds, [playlist.id]);
           return currentUsage === "unavailable"
-            ? [{ ok: false }]
-            : [{ ok: true, paths: currentUsage === "referenced" ? [source] : [] }];
+            ? [
+                {
+                  destination: "Test",
+                  key: "test",
+                  operation: "getReferencedPaths" as const,
+                  ok: false,
+                },
+              ]
+            : [
+                {
+                  destination: "Test",
+                  key: "test",
+                  operation: "getReferencedPaths" as const,
+                  ok: true,
+                  paths: currentUsage === "referenced" ? [source] : [],
+                },
+              ];
         });
       const options = {
         root,
-        logger: { warn() {} },
-        metadataReader: async () => ({
-          common: { albumartist: "Artist", album: "Album", title: "Saved" },
-        }),
+        logger: { warn() {}, info() {}, error() {} },
+        metadataReader: async () =>
+          audioMetadata({
+            common: { albumartist: "Artist", album: "Album", title: "Saved" },
+          }),
         ...(mode === "shared-direct" ? { indexDestination: async () => {} } : {}),
       };
       const first = await migrateAurralDownloadFolder(options);
       assert.equal(first.failed, 0);
       assert.equal(checks.mock.calls.length, 1);
       assert.equal(await fs.readFile(destinationPath, "utf8"), "audio");
-      if (jobId) assert.equal(downloadTracker.getJob(jobId).finalPath, destinationPath);
+      if (jobId) assert.equal(downloadTracker.getJob(jobId)!.finalPath, destinationPath);
       if (usage === "unused") {
         assert.equal(first.migrated, 1);
         await assert.rejects(fs.access(source), { code: "ENOENT" });
@@ -459,18 +566,30 @@ test("Jellyfin excludes legacy outgoing pointers but keeps pointers from other s
     await import("../../backend/services/playback/jellyfinPlaybackDestination.ts");
   const { jellyfinPlaylistPointerStore: pointers } =
     await import("../../backend/services/jellyfin/jellyfinPlaylistPointerStore.ts");
-  pointers.setPointer("flow", "legacy", { playlistId: "legacy" });
-  pointers.setPointer("flow", "current", { playlistId: "current", serverUrl: "http://current" });
-  pointers.setPointer("flow", "other-server", { playlistId: "other", serverUrl: "http://other" });
-  pointers.setPointer("another-flow", "legacy", { playlistId: "keep" });
+  pointers.setPointer("flow", "legacy", { playlistId: "legacy", title: "Flow", serverUrl: null });
+  pointers.setPointer("flow", "current", {
+    playlistId: "current",
+    title: "Flow",
+    serverUrl: "http://current",
+  });
+  pointers.setPointer("flow", "other-server", {
+    playlistId: "other",
+    title: "Flow",
+    serverUrl: "http://other",
+  });
+  pointers.setPointer("another-flow", "legacy", {
+    playlistId: "keep",
+    title: "Flow",
+    serverUrl: null,
+  });
   const playback = new JellyfinPlaybackDestination(root, {
-    client: {
+    client: Object.assign(new JellyfinClient("http://current", "key", "user"), {
       url: "http://current",
-      async getPlaylistTrackPaths(excluded) {
+      async getPlaylistTrackPaths(excluded = new Set<string>()) {
         assert.deepEqual([...excluded].sort(), ["current", "legacy"]);
         return [];
       },
-    },
+    }),
   });
   await playback.getReferencedPaths({ excludeEntityIds: ["flow"] });
 });
@@ -491,15 +610,19 @@ test("retained retries preserve exclusions and share a snapshot only within matc
     [second, ["old-a", "a", "a"]],
     [third, ["b"]],
     [external, ["a", "old-a"]],
-  ]) {
+  ] as [string, string[]][]) {
     await createPlaybackDeletionGuard({ registry, excludeEntityIds }).canDelete(file);
   }
-  const calls = [];
+  const calls: string[][] = [];
   vi.spyOn(playlistManager.destinationRegistry, "run").mockImplementation(
-    async (_operation, { excludeEntityIds }) => {
+    async (_operation, ...args) => {
+      const { excludeEntityIds } = referenceOptions(args[0]);
       calls.push(excludeEntityIds);
       return [
         {
+          destination: "Test",
+          key: "test",
+          operation: "getReferencedPaths" as const,
           ok: true,
           paths: excludeEntityIds.includes("a") ? [third, external] : [first, second, external],
         },
@@ -512,7 +635,9 @@ test("retained retries preserve exclusions and share a snapshot only within matc
   await fs.access(external);
   assert.deepEqual(calls, [["a", "old-a"], ["b"]]);
   assert.deepEqual(
-    dbOps.getJSONSetting("playbackRetainedFiles")[localFileKey(external)].excludeEntityIds,
+    dbOps.getJSONSetting<Record<string, { excludeEntityIds: string[]; playlistRoot: string }>>(
+      "playbackRetainedFiles",
+    )![localFileKey(external)].excludeEntityIds,
     ["a", "old-a"],
   );
 });
@@ -526,7 +651,24 @@ for (const changeBeforeReset of [false, true]) {
     await fs.writeFile(unrelated, "unrelated");
     let unavailable = true;
     vi.spyOn(playlistManager.destinationRegistry, "run").mockImplementation(async () =>
-      unavailable ? [{ ok: false }] : [{ ok: true, paths: [] }],
+      unavailable
+        ? [
+            {
+              destination: "Test",
+              key: "test",
+              operation: "getReferencedPaths" as const,
+              ok: false,
+            },
+          ]
+        : [
+            {
+              destination: "Test",
+              key: "test",
+              operation: "getReferencedPaths" as const,
+              ok: true,
+              paths: [],
+            },
+          ],
     );
     if (changeBeforeReset) dbOps.updateSettings({ downloadFolderPath: newRoot });
     await playlistManager.weeklyReset(["old-root"]);
@@ -534,7 +676,9 @@ for (const changeBeforeReset of [false, true]) {
     await retryPlaybackRetainedFiles();
     await fs.access(file);
     assert.equal(
-      dbOps.getJSONSetting("playbackRetainedFiles")[localFileKey(file)].playlistRoot,
+      dbOps.getJSONSetting<Record<string, { excludeEntityIds: string[]; playlistRoot: string }>>(
+        "playbackRetainedFiles",
+      )![localFileKey(file)].playlistRoot,
       path.resolve(root),
     );
     unavailable = false;
@@ -553,9 +697,18 @@ test("retry accepts legacy records only inside the current root and rejects mism
     [localFileKey(mismatch)]: { playlistRoot: path.join(state.baseDir, "different-root") },
   });
   vi.spyOn(playlistManager.destinationRegistry, "run").mockImplementation(
-    async (_operation, { excludeEntityIds }) => {
+    async (_operation, ...args) => {
+      const { excludeEntityIds } = referenceOptions(args[0]);
       assert.deepEqual(excludeEntityIds, ["legacy"]);
-      return [{ ok: true, paths: [] }];
+      return [
+        {
+          destination: "Test",
+          key: "test",
+          operation: "getReferencedPaths" as const,
+          ok: true,
+          paths: [],
+        },
+      ];
     },
   );
   await retryPlaybackRetainedFiles();
@@ -585,3 +738,10 @@ test("explicit reset removes symbolic links without touching their targets; auto
     await assert.rejects(fs.lstat(path.dirname(path.join(root, relative))), { code: "ENOENT" });
   assert.equal(await fs.readFile(targetFile, "utf8"), "external audio");
 });
+
+function referenceOptions(value: unknown) {
+  assert.ok(value && typeof value === "object" && "excludeEntityIds" in value);
+  const ids = value.excludeEntityIds;
+  assert.ok(Array.isArray(ids) && ids.every((id: unknown) => typeof id === "string"));
+  return { excludeEntityIds: ids.map(String) };
+}

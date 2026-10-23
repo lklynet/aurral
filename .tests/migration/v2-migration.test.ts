@@ -30,7 +30,7 @@ function createPreMigrationDb() {
 }
 
 const dbHelpers = {
-  parseJSON: (text) => {
+  parseJSON: (text: string | null | undefined) => {
     if (!text) return null;
     try {
       return JSON.parse(text);
@@ -38,7 +38,7 @@ const dbHelpers = {
       return null;
     }
   },
-  stringifyJSON: (obj) => (obj === undefined ? null : JSON.stringify(obj)),
+  stringifyJSON: (obj: unknown) => (obj === undefined ? null : JSON.stringify(obj)),
 };
 
 test("startup migration from v1 creates playlist_download_jobs table and stores schema version", async () => {
@@ -50,7 +50,7 @@ test("startup migration from v1 creates playlist_download_jobs table and stores 
   assert.equal(result.schemaVersion, 4);
 
   const tables = db
-    .prepare(
+    .prepare<unknown[], { name: unknown }>(
       "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('weekly_flow_jobs', 'playlist_download_jobs')",
     )
     .all()
@@ -58,13 +58,17 @@ test("startup migration from v1 creates playlist_download_jobs table and stores 
   assert.ok(tables.includes("playlist_download_jobs"));
   assert.ok(
     db
-      .prepare(
+      .prepare<unknown[], { name: unknown }>(
         "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_slskd_transfer_history_created_at'",
       )
       .get(),
   );
 
-  const version = db.prepare("SELECT value FROM settings WHERE key = 'schemaVersion'").get()?.value;
+  const version = db
+    .prepare<unknown[], { value: import("../../backend/db/rows.ts").SettingsRow["value"] }>(
+      "SELECT value FROM settings WHERE key = 'schemaVersion'",
+    )
+    .get()?.value;
   assert.equal(version, "4");
 
   db.close();
@@ -77,10 +81,18 @@ test("startup migration from v1 renames settings keys", async () => {
 
   initializeSchemaOnStartup(db, dbHelpers);
 
-  const flows = db.prepare("SELECT value FROM settings WHERE key = 'flows'").get()?.value;
+  const flows = db
+    .prepare<unknown[], { value: import("../../backend/db/rows.ts").SettingsRow["value"] }>(
+      "SELECT value FROM settings WHERE key = 'flows'",
+    )
+    .get()?.value;
   assert.equal(flows, "[]");
   assert.equal(
-    db.prepare("SELECT value FROM settings WHERE key = 'weeklyFlows'").get()?.value,
+    db
+      .prepare<unknown[], { value: import("../../backend/db/rows.ts").SettingsRow["value"] }>(
+        "SELECT value FROM settings WHERE key = 'weeklyFlows'",
+      )
+      .get()?.value,
     "[]",
   );
 
@@ -95,14 +107,22 @@ test("startup migration from v1 splits weeklyFlowWorker settings into playlistWo
   initializeSchemaOnStartup(db, dbHelpers);
 
   const playlistWorker = JSON.parse(
-    db.prepare("SELECT value FROM settings WHERE key = 'playlistWorker'").get()?.value || "{}",
+    db
+      .prepare<unknown[], { value: import("../../backend/db/rows.ts").SettingsRow["value"] }>(
+        "SELECT value FROM settings WHERE key = 'playlistWorker'",
+      )
+      .get()?.value || "{}",
   );
   assert.equal(playlistWorker.concurrency, 2);
   assert.equal(playlistWorker.existingFileMode, "reuse");
   assert.equal(playlistWorker.preferredFormat, undefined);
 
   const weeklyFlowWorker = JSON.parse(
-    db.prepare("SELECT value FROM settings WHERE key = 'weeklyFlowWorker'").get()?.value || "{}",
+    db
+      .prepare<unknown[], { value: import("../../backend/db/rows.ts").SettingsRow["value"] }>(
+        "SELECT value FROM settings WHERE key = 'weeklyFlowWorker'",
+      )
+      .get()?.value || "{}",
   );
   assert.equal(weeklyFlowWorker.concurrency, 2);
   assert.equal(weeklyFlowWorker.existingFileMode, "reuse");
@@ -118,8 +138,14 @@ test("startup migration from v1 copies existing jobs from weekly_flow_jobs to pl
 
   initializeSchemaOnStartup(db, dbHelpers);
 
-  const copiedJob = db.prepare("SELECT * FROM playlist_download_jobs WHERE id = 'job-1'").get();
+  const copiedJob = db
+    .prepare<unknown[], import("../../backend/db/rows.ts").PlaylistDownloadJobsRow>(
+      "SELECT * FROM playlist_download_jobs WHERE id = 'job-1'",
+    )
+    .get();
+  assert.ok(copiedJob != null);
   assert.equal(copiedJob.artist_name, "Artist");
+  assert.ok(copiedJob != null);
   assert.equal(copiedJob.playlist_id, "discover");
 
   db.close();
@@ -176,11 +202,19 @@ test("startup migration from v1 survives legacy playlist_download_jobs sync trig
   assert.doesNotThrow(() => initializeSchemaOnStartup(reopened, dbHelpers));
   assert.equal(
     reopened
-      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'weekly_flow_jobs'")
+      .prepare<unknown[], { name: unknown }>(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'weekly_flow_jobs'",
+      )
       .get(),
     undefined,
   );
-  assert.ok(reopened.prepare("SELECT id FROM playlist_download_jobs WHERE id = 'job-1'").get());
+  assert.ok(
+    reopened
+      .prepare<unknown[], { id: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["id"] }>(
+        "SELECT id FROM playlist_download_jobs WHERE id = 'job-1'",
+      )
+      .get(),
+  );
   reopened.close();
 });
 
@@ -196,7 +230,9 @@ test("startup applies the consolidated migration once", async () => {
   assert.equal(result.schemaVersion, TARGET_SCHEMA_VERSION);
   assert.equal(
     db
-      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'weekly_flow_jobs'")
+      .prepare<unknown[], { name: unknown }>(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'weekly_flow_jobs'",
+      )
       .get(),
     undefined,
   );
@@ -207,7 +243,9 @@ test("startup applies the consolidated migration once", async () => {
   assert.equal(secondResult.schemaVersion, TARGET_SCHEMA_VERSION);
   assert.ok(
     db
-      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'weekly_flow_jobs'")
+      .prepare<unknown[], { name: unknown }>(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'weekly_flow_jobs'",
+      )
       .get(),
   );
 

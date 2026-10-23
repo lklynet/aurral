@@ -625,7 +625,7 @@ export async function scanMusicRoots({
   changedPaths = null,
   changedFiles = new Set(),
   ...options
-}: Omit<ScanOptions, "rootPath"> & { rootPaths?: string[] } = {}) {
+}: Omit<ScanOptions, "rootPath"> & { rootPaths?: (string | null | undefined)[] } = {}) {
   const roots = [
     ...new Set(
       (Array.isArray(rootPaths) ? rootPaths : [])

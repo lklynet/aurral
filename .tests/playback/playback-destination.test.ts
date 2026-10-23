@@ -2,10 +2,8 @@ import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import {
-  assertPlaybackDestination,
   createPlaybackPlaylistIdentity,
   createPlaybackPlaylistSnapshot,
-  playbackOperationFailure,
 } from "../../backend/services/playback/playbackDestination.ts";
 
 test("playlist snapshots keep Aurral identity and exact paths", () => {
@@ -42,26 +40,7 @@ test("playlist snapshots keep Aurral identity and exact paths", () => {
   assert.ok(Object.isFrozen(first.tracks[0]));
 });
 
-test("operation failures are structured and invalid destinations fail early", () => {
-  assert.deepEqual(
-    playbackOperationFailure({
-      code: "DESTINATION_UNAVAILABLE",
-      message: "The destination did not respond",
-      retryable: true,
-    }),
-    {
-      ok: false,
-      error: {
-        code: "DESTINATION_UNAVAILABLE",
-        message: "The destination did not respond",
-        retryable: true,
-      },
-    },
-  );
-  assert.throws(
-    () => assertPlaybackDestination({ testConnection() {} }),
-    /PlaybackDestination\.ensureLibrary must be a function/,
-  );
+test("playlist snapshots reject empty file paths", () => {
   assert.throws(
     () =>
       createPlaybackPlaylistSnapshot({

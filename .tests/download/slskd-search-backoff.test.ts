@@ -10,14 +10,14 @@ import {
 } from "../helpers/backendTestHarness.ts";
 const [state, { SlskdClient }, { db }] = await setupIsolatedBackend(
   "slskd-backoff",
-  "backend/services/slskdClient.ts",
-  "backend/config/db-sqlite.ts",
+  () => import("../../backend/services/slskdClient.ts"),
+  () => import("../../backend/config/db-sqlite.ts"),
 );
 afterAll(() => cleanupIsolatedState(state));
 beforeEach(() => resetDatabase(db));
 
 test("searches from different processes start at least five seconds apart", async () => {
-  const started = [];
+  const started: number[] = [];
   let mainStartedAt;
   const server = await createMockHttpServer((req, res) => {
     req.resume();
@@ -44,6 +44,7 @@ test("searches from different processes start at least five seconds apart", asyn
     await vi.advanceTimersByTimeAsync(5000);
     await search;
     assert.equal(started.length, 2);
+    assert.ok(mainStartedAt != null);
     assert.ok(
       mainStartedAt - started[0] >= 4500,
       `searches started ${mainStartedAt - started[0]}ms apart`,
@@ -56,11 +57,11 @@ test("searches from different processes start at least five seconds apart", asyn
 });
 
 test("downloads enqueue during cross-process search backoff without bypassing search throttling", async () => {
-  let notifyFirstSearch;
-  const firstSearch = new Promise((resolve) => {
+  let notifyFirstSearch!: () => void;
+  const firstSearch = new Promise<void>((resolve) => {
     notifyFirstSearch = resolve;
   });
-  const searches = [];
+  const searches: { id: string; searchTimeout: number }[] = [];
   const server = await createMockHttpServer((req, res) => {
     let body = "";
     req.on("data", (chunk) => {
@@ -88,7 +89,7 @@ test("downloads enqueue during cross-process search backoff without bypassing se
   const workerExited = once(worker, "exit");
   const cancelOtherSearch = new AbortController();
   let enqueue;
-  let otherSearch;
+  let otherSearch: Promise<{ id: string; searchText: string }> | undefined;
   try {
     await firstSearch;
     const client = new SlskdClient({ enabled: true, url: server.url });

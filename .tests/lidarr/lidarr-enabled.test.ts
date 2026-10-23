@@ -1,3 +1,4 @@
+import { captureRouteHandlers } from "../library/routeHarness.ts";
 import { test, beforeAll, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 
@@ -9,8 +10,8 @@ import {
 
 const [isolatedState, { db }, { dbOps }] = await setupIsolatedBackend(
   "lidarr-enabled",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
 );
 
 const { lidarrClient } = await import("../../backend/services/lidarrClient.ts");
@@ -18,7 +19,9 @@ const { registerMisc } = await import("../../backend/routes/library/handlers/mis
 const { resolveLidarrTestCredentials, withTemporaryLidarrClient } =
   await import("../../backend/services/lidarrTestSession.ts");
 
-function setLidarrSettings(lidarr) {
+function setLidarrSettings(
+  lidarr: NonNullable<NonNullable<ReturnType<typeof dbOps.getSettings>>["integrations"]["lidarr"]>,
+) {
   const settings = dbOps.getSettings();
   dbOps.updateSettings({
     ...settings,
@@ -74,20 +77,13 @@ test("root folder reads retain saved paths while lidarr is disabled", async () =
   const request = vi.spyOn(lidarrClient, "request").mockImplementation(async () => {
     throw new Error("disabled root-folder reads must stay local");
   });
-  const routes = new Map();
-  registerMisc({
-    get(routePath, ...handlers) {
-      routes.set(routePath, handlers.at(-1));
-    },
-    post() {},
-    put() {},
-    delete() {},
-  });
-  let body;
+  const routes = captureRouteHandlers(registerMisc, "get");
+
+  let body: unknown;
   await routes.get("/rootfolder")(
     {},
     {
-      json(value) {
+      json(value: unknown) {
         body = value;
         return this;
       },
@@ -160,7 +156,7 @@ test("library root reads survive a temporary Lidarr settings call", async () => 
     "http://settings-lidarr:8686",
     "temporary-key",
     async (temporaryClient) => {
-      delete temporaryClient.config.rootFolderPaths;
+      Reflect.deleteProperty(temporaryClient.config, "rootFolderPaths");
       assert.deepEqual(temporaryClient.getConfiguredRootFolderPaths(), []);
       assert.deepEqual(lidarrClient.getConfiguredRootFolderPaths(), ["/saved/music"]);
     },

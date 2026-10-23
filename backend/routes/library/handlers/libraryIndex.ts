@@ -76,7 +76,7 @@ const publicEntity = <T extends { identityKey: string }>(
   kind: string,
   entity: T,
   favoriteKeys: Set<string> | null,
-) =>
+): T & { userFavorite?: boolean } =>
   favoriteKeys
     ? { ...entity, userFavorite: favoriteKeys.has(`${kind}:${entity.identityKey}`) }
     : { ...entity };

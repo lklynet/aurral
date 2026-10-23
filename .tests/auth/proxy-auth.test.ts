@@ -1,3 +1,4 @@
+import { createAuthRequest } from "./authFixtures.ts";
 import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
@@ -9,10 +10,10 @@ import {
 
 const [isolatedState, { db }, dbHelpers, authModule, sessionModule] = await setupIsolatedBackend(
   "proxy-auth",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/middleware/auth.ts",
-  "backend/config/session-helpers.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/middleware/auth.ts"),
+  () => import("../../backend/config/session-helpers.ts"),
 );
 
 const { dbOps, userOps } = dbHelpers;
@@ -21,14 +22,15 @@ const { getSessionByToken } = sessionModule;
 
 const completeOnboarding = () => dbOps.updateSettings({ onboardingComplete: true });
 
-function proxyRequest(headers = {}, remoteAddress = "127.0.0.1") {
-  return {
+function proxyRequest(
+  headers: Parameters<typeof resolveProxyUser>[0]["headers"] = {},
+  remoteAddress: string = "127.0.0.1",
+) {
+  return createAuthRequest({
     headers,
-    socket: { remoteAddress },
-    connection: { remoteAddress },
     ip: remoteAddress,
     ips: [remoteAddress],
-  };
+  });
 }
 
 function resetProxyEnv() {
@@ -173,15 +175,18 @@ test("proxy auth issues no session while onboarding leaves authentication off", 
 
 test("proxy auth re-syncs role on every request instead of only at creation", () => {
   const created = resolveProxyUser(proxyRequest({ "x-forwarded-user": "dave" }));
+  assert.ok(created != null);
   assert.equal(created.role, "user");
 
   process.env.AUTH_PROXY_ADMIN_USERS = "dave";
   const promoted = resolveProxyUser(proxyRequest({ "x-forwarded-user": "dave" }));
+  assert.ok(promoted != null);
   assert.equal(promoted.role, "admin");
   assert.equal(userOps.getUserByUsername("dave")?.role, "admin");
 
   delete process.env.AUTH_PROXY_ADMIN_USERS;
   const demoted = resolveProxyUser(proxyRequest({ "x-forwarded-user": "dave" }));
+  assert.ok(demoted != null);
   assert.equal(demoted.role, "user");
   assert.equal(userOps.getUserByUsername("dave")?.role, "user");
 });
@@ -204,6 +209,7 @@ test("an existing session is invalidated once its user is suspended", () => {
   assert.equal(getSessionByToken(issued.token)?.user?.username, "hank");
 
   const user = userOps.getUserByUsername("hank");
+  assert.ok(user != null);
   userOps.updateUser(user.id, { status: "suspended" });
 
   assert.equal(getSessionByToken(issued.token), null);
@@ -211,11 +217,13 @@ test("an existing session is invalidated once its user is suspended", () => {
 
 test("proxy auth never overwrites a protected account's role", () => {
   const created = resolveProxyUser(proxyRequest({ "x-forwarded-user": "admin" }));
+  assert.ok(created != null);
   assert.equal(created.role, "user");
   userOps.setProtected(created.id, true);
 
   process.env.AUTH_PROXY_ADMIN_USERS = "admin";
   const resolved = resolveProxyUser(proxyRequest({ "x-forwarded-user": "admin" }));
+  assert.ok(resolved != null);
   assert.equal(resolved.role, "user", "protected account role must not change via proxy auth");
   assert.equal(userOps.getUserByUsername("admin")?.role, "user");
 });

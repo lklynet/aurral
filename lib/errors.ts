@@ -6,7 +6,7 @@ export interface ErrorResponse {
 }
 
 export interface AppError extends Error {
-  code?: string;
+  code?: string | number;
   statusCode?: number;
   status?: number;
   response?: ErrorResponse;

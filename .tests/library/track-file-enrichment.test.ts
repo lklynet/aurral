@@ -1,3 +1,4 @@
+import { readArtist, readAlbum, readTrack, readFile } from "./fixtures.ts";
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import {
@@ -9,16 +10,16 @@ import {
 
 test("buildPlaybackQueueFromLibrary keeps the performer credit and uses indexed files without Lidarr reads", () => {
   const queue = buildPlaybackQueueFromLibrary({
-    artists: [{ id: 1, name: "Artist" }],
-    albums: [{ id: 603, artistId: 1, title: "Album", trackIds: [7] }],
+    artists: [readArtist({ id: 1, name: "Artist" })],
+    albums: [readAlbum({ id: 603, artistId: 1, title: "Album", trackIds: [7] })],
     tracks: [
-      {
+      readTrack({
         id: 7,
         title: "Track",
         artistName: "Guest & Artist",
-        albums: [{ albumId: 603, trackNumber: 4 }],
-        files: [{ albumId: 603, source: "lidarr", available: true, format: "flac" }],
-      },
+        albums: [{ albumId: 603, discNumber: 1, trackNumber: 4 }],
+        files: [readFile({ albumId: 603, source: "lidarr", available: true, format: "flac" })],
+      }),
     ],
   });
 
@@ -57,6 +58,7 @@ test("enrichLidarrTrackWithFiles attaches trackFile from trackFileId", () => {
     index,
   );
 
+  assert.ok(enriched.trackFile);
   assert.equal(enriched.trackFile.path, "/data/music/Actual Water/Call 4 Fun/track.mp3");
 });
 
@@ -73,7 +75,7 @@ test("albumNeedsTrackFiles returns true when album has files on disk", () => {
     albumNeedsTrackFiles({
       albumSizeOnDisk: 0,
       isAlbumComplete: false,
-      tracks: [{ hasFile: true, trackFileId: 1 }],
+      tracks: [{ id: 1, title: "Track", hasFile: true, trackFileId: 1 }],
     }),
     true,
   );
@@ -81,7 +83,7 @@ test("albumNeedsTrackFiles returns true when album has files on disk", () => {
     albumNeedsTrackFiles({
       albumSizeOnDisk: 0,
       isAlbumComplete: false,
-      tracks: [{ hasFile: false }],
+      tracks: [{ id: 1, title: "Track", hasFile: false }],
     }),
     false,
   );

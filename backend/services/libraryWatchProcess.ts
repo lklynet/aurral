@@ -6,7 +6,7 @@ import type { PathMapping } from "./pathMappings.ts";
 export type WatchMessage =
   | { type: "ready"; root: string }
   | { type: "change"; root: string; eventType: string; filename: string | null }
-  | { type: "error"; message: string; code?: string };
+  | { type: "error"; message: string; code?: string | number };
 
 // Recursive fs.watch setup can synchronously traverse a whole library. Keep all
 // filesystem access in a child so even a stalled mount cannot block the API.

@@ -1,3 +1,4 @@
+import { requireFixture } from "../playlists/fixtures.ts";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { rm } from "node:fs/promises";
@@ -40,7 +41,12 @@ test("upgrading restores the monitored flag that file scans removed from Aurral 
       )
       .run(now, now).lastInsertRowid;
     const scannedMetadata = JSON.stringify({ tags: { album: "Scanned" } });
-    const addAlbum = (key, metadataJson, managedBy, monitorMode) => {
+    const addAlbum = (
+      key: string,
+      metadataJson: string | null,
+      managedBy: string,
+      monitorMode: string | null,
+    ) => {
       const albumId = db
         .prepare(
           `INSERT INTO library_albums (identity_key, artist_id, title, metadata_json, created_at, updated_at)
@@ -61,10 +67,18 @@ test("upgrading restores the monitored flag that file scans removed from Aurral 
 
     start();
 
-    const metadata = (albumId) =>
+    const metadata = (albumId: number | bigint) =>
       JSON.parse(
-        db.prepare("SELECT metadata_json FROM library_albums WHERE id = ?").get(albumId)
-          .metadata_json || "null",
+        requireFixture(
+          db
+            .prepare<
+              unknown[],
+              {
+                metadata_json: import("../../backend/db/rows.ts").LibraryAlbumsRow["metadata_json"];
+              }
+            >("SELECT metadata_json FROM library_albums WHERE id = ?")
+            .get(albumId),
+        ).metadata_json || "null",
       );
     assert.deepEqual(metadata(scanned), { tags: { album: "Scanned" }, monitored: true });
     assert.deepEqual(metadata(withoutMetadata), { monitored: true });

@@ -1,3 +1,4 @@
+import { listeningAddress } from "../helpers/backendTestHarness.ts";
 import assert from "node:assert/strict";
 import { test, beforeEach, afterAll } from "vite-plus/test";
 import { writeFile } from "node:fs/promises";
@@ -13,18 +14,20 @@ import {
 const [isolatedState, { db }, { dbOps, userOps }, { default: onboardingRouter }] =
   await setupIsolatedBackend(
     "onboarding-complete",
-    "backend/config/db-sqlite.ts",
-    "backend/db/helpers/index.ts",
-    "backend/routes/onboarding.ts",
+    () => import("../../backend/config/db-sqlite.ts"),
+    () => import("../../backend/db/helpers/index.ts"),
+    () => import("../../backend/routes/onboarding.ts"),
   );
 
-const lidarrRequests = [];
+const lidarrRequests: (string | undefined)[] = [];
 const lidarr = await createMockHttpServer((req, res) => {
   lidarrRequests.push(req.url);
   res.setHeader("content-type", "application/json");
+  assert.ok(req.url != null);
   if (req.url.startsWith("/api/v1/qualityprofile")) {
     return res.end(JSON.stringify([{ id: 7, name: "Lossless" }]));
   }
+  assert.ok(req.url != null);
   if (req.url.startsWith("/api/v1/metadataprofile")) {
     return res.end(JSON.stringify([{ id: 3, name: "Standard" }]));
   }
@@ -34,14 +37,19 @@ const lidarr = await createMockHttpServer((req, res) => {
 const app = express();
 app.use(express.json());
 app.use("/api/onboarding", onboardingRouter);
-const server = await new Promise((resolve) => {
+const server = await new Promise<
+  import("node:http").Server<
+    typeof import("node:http").IncomingMessage,
+    typeof import("node:http").ServerResponse
+  >
+>((resolve) => {
   const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
 });
-const baseUrl = `http://127.0.0.1:${server.address().port}`;
+const baseUrl = `http://127.0.0.1:${listeningAddress(server).port}`;
 
 const admin = { authUser: "owner", authPassword: "Correct-Horse-42!" };
 
-async function complete(body) {
+async function complete(body: unknown) {
   const response = await fetch(`${baseUrl}/api/onboarding/complete`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -57,7 +65,7 @@ beforeEach(() => {
 });
 
 afterAll(async () => {
-  await new Promise((resolve) => server.close(resolve));
+  await new Promise<void>((resolve) => server.close(() => resolve()));
   await lidarr.close();
   db.close();
   await cleanupIsolatedState(isolatedState);
@@ -76,7 +84,7 @@ test("completes onboarding without Lidarr and stores no Lidarr settings", async 
     userOps.getAllUsers().map((user) => [user.username, user.role]),
     [["owner", "admin"]],
   );
-  assert.deepEqual(lidarrRequests, []);
+  assert.deepEqual([...lidarrRequests], []);
 });
 
 test("stores the Aurral download folder when onboarding without Lidarr", async () => {
@@ -122,6 +130,7 @@ test("connected onboarding stores Lidarr and picks its first profiles", async ()
 
   assert.equal(result.status, 200);
   const stored = dbOps.getSettings().integrations.lidarr;
+  assert.ok(stored != null);
   assert.equal(stored.url, lidarr.url);
   assert.equal(stored.apiKey, "key");
   assert.equal(stored.qualityProfileId, 7);

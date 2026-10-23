@@ -3,18 +3,18 @@ import { test, vi } from "vite-plus/test";
 
 import { listenbrainzRequest } from "../../backend/services/apiClients/listenbrainz.ts";
 
-test("a ListenBrainz rate limit holds every request until the window resets, then retries", async (t) => {
+test("a ListenBrainz rate limit holds every request until the window resets, then retries", async (t: import("vite-plus/test").TestContext) => {
   const originalFetch = globalThis.fetch;
   t.onTestFinished(() => {
     globalThis.fetch = originalFetch;
   });
-  const json = (body, status, headers = {}) =>
+  const json = (body: unknown, status: number, headers: Record<string, string> = {}) =>
     new Response(JSON.stringify(body), {
       status,
       headers: { "content-type": "application/json", ...headers },
     });
-  const calls = [];
-  let rateLimitedAt = null;
+  const calls: { count: string | null; at: number }[] = [];
+  let rateLimitedAt: number | null = null;
   globalThis.fetch = async (input) => {
     const url = new URL(String(input));
     calls.push({ count: url.searchParams.get("count"), at: Date.now() });
@@ -44,5 +44,7 @@ test("a ListenBrainz rate limit holds every request until the window resets, the
     calls.map((call) => call.count),
     ["1", "2", "1"],
   );
-  assert.ok(calls.slice(1).every((call) => call.at - rateLimitedAt >= 1000));
+  assert.ok(rateLimitedAt !== null);
+  const limitedAt = rateLimitedAt;
+  assert.ok(calls.slice(1).every((call) => call.at - limitedAt >= 1000));
 });

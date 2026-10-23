@@ -1,5 +1,7 @@
+import { requireFixture } from "./playlists/fixtures.ts";
+import { asAppError } from "../lib/errors.ts";
 import { test, afterAll, vi } from "vite-plus/test";
-import { execFile, fork } from "node:child_process";
+import { execFile, fork, type ChildProcess } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
@@ -19,11 +21,11 @@ const [
   { db },
 ] = await setupIsolatedBackend(
   "metadata-providers",
-  "backend/db/helpers/index.ts",
-  "backend/services/apiClients/index.ts",
-  "backend/services/providers/brainzmashProvider.ts",
-  "backend/services/metadataProviderBudget.ts",
-  "backend/config/db-sqlite.ts",
+  () => import("../backend/db/helpers/index.ts"),
+  () => import("../backend/services/apiClients/index.ts"),
+  () => import("../backend/services/providers/brainzmashProvider.ts"),
+  () => import("../backend/services/metadataProviderBudget.ts"),
+  () => import("../backend/config/db-sqlite.ts"),
 );
 
 const { getMusicbrainzApiBaseUrl } = apiClients;
@@ -65,12 +67,12 @@ test("default settings and unset backend config use BrainzMash metadata", () => 
 test("stale album metadata is served while one refresh runs in the background", async () => {
   const previousSettings = dbOps.getSettings();
   let requests = 0;
-  let refreshArrived;
-  const refreshRequested = new Promise((resolve) => {
+  let refreshArrived!: () => void;
+  const refreshRequested = new Promise<void>((resolve) => {
     refreshArrived = resolve;
   });
-  let releaseRefresh;
-  const refreshReleased = new Promise((resolve) => {
+  let releaseRefresh!: () => void;
+  const refreshReleased = new Promise<void>((resolve) => {
     releaseRefresh = resolve;
   });
   const server = await createMockHttpServer((_request, response) => {
@@ -169,7 +171,10 @@ test("entity metadata is shared with other processes until the cache is cleared"
       ],
       { cwd: process.cwd(), env: { ...process.env }, timeout: 10000 },
     );
-    assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)).title, "Persisted Album");
+    assert.equal(
+      JSON.parse(requireFixture(stdout.trim().split("\n").at(-1))).title,
+      "Persisted Album",
+    );
     assert.equal(requests, 1);
 
     clearMetadataProviderCaches();
@@ -186,7 +191,9 @@ test("metadata past its stale window is removed from storage", async () => {
   const previousSettings = dbOps.getSettings();
   const server = await createMockHttpServer((request, response) => {
     response.setHeader("content-type", "application/json");
-    response.end(JSON.stringify({ id: request.url.split("/").at(-1), title: "Album" }));
+    response.end(
+      JSON.stringify({ id: requireFixture(request.url).split("/").at(-1), title: "Album" }),
+    );
   });
 
   try {
@@ -227,11 +234,14 @@ test("metadata past its stale window is removed from storage", async () => {
     );
 
     const keys = db
-      .prepare("SELECT cache_key FROM metadata_response_cache")
+      .prepare<
+        unknown[],
+        { cache_key: import("../backend/db/rows.ts").MetadataResponseCacheRow["cache_key"] }
+      >("SELECT cache_key FROM metadata_response_cache")
       .all()
       .map((row) => row.cache_key);
     assert.equal(keys.length, 1);
-    assert.match(keys[0], /\/album\/current-album:/);
+    assert.match(requireFixture(keys[0]), /\/album\/current-album:/);
   } finally {
     clearMetadataProviderCaches();
     dbOps.updateSettings(previousSettings);
@@ -324,11 +334,11 @@ test("missing entity metadata is negatively cached for repeated lookups", async 
 
     await assert.rejects(
       () => getAlbumByMbid("missing-album"),
-      (error) => error.response?.status === 404,
+      (error) => asAppError(error)?.response?.status === 404,
     );
     await assert.rejects(
       () => getAlbumByMbid("missing-album"),
-      (error) => error.response?.status === 404,
+      (error) => asAppError(error)?.response?.status === 404,
     );
     assert.equal(requests, 1);
   } finally {
@@ -370,11 +380,11 @@ test("a metadata 429 opens a shared cooldown for subsequent requests", async () 
 
     await assert.rejects(
       () => getArtistByMbid("rate-limited-artist"),
-      (error) => error.response?.status === 429,
+      (error) => asAppError(error)?.response?.status === 429,
     );
     await assert.rejects(
       () => getArtistByMbid("another-artist"),
-      (error) => error.code === "ERR_METADATA_RATE_LIMITED",
+      (error) => asAppError(error)?.code === "ERR_METADATA_RATE_LIMITED",
     );
     assert.equal(requests, 1);
     const providerUrl = new URL(
@@ -393,7 +403,10 @@ test("a metadata 429 opens a shared cooldown for subsequent requests", async () 
         timeout: 10000,
       },
     );
-    assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)).code, "ERR_METADATA_RATE_LIMITED");
+    assert.equal(
+      JSON.parse(requireFixture(stdout.trim().split("\n").at(-1))).code,
+      "ERR_METADATA_RATE_LIMITED",
+    );
     assert.equal(requests, 1);
   } finally {
     clearMetadataProviderCaches();
@@ -440,7 +453,7 @@ test("a metadata 403 opens a shared blocked cooldown for subsequent requests", a
     clearMetadataProviderCaches();
     await assert.rejects(
       () => getArtistByMbid("another-artist"),
-      (error) => error.code === "ERR_METADATA_FORBIDDEN",
+      (error) => asAppError(error)?.code === "ERR_METADATA_FORBIDDEN",
     );
     const { stdout } = await promisify(execFile)(
       process.execPath,
@@ -457,7 +470,10 @@ test("a metadata 403 opens a shared blocked cooldown for subsequent requests", a
       ],
       { cwd: process.cwd(), env: { ...process.env }, timeout: 10000 },
     );
-    assert.equal(JSON.parse(stdout.trim().split("\n").at(-1)).code, "ERR_METADATA_FORBIDDEN");
+    assert.equal(
+      JSON.parse(requireFixture(stdout.trim().split("\n").at(-1))).code,
+      "ERR_METADATA_FORBIDDEN",
+    );
     assert.equal(requests, 1);
   } finally {
     clearMetadataProviderCaches();
@@ -469,12 +485,12 @@ test("a metadata 403 opens a shared blocked cooldown for subsequent requests", a
 test("search metadata coalesces concurrent misses and shares fresh cache entries", async () => {
   const previousSettings = dbOps.getSettings();
   let requests = 0;
-  let resolveRequestStarted;
-  let releaseResponse;
-  const requestStarted = new Promise((resolve) => {
+  let resolveRequestStarted!: () => void;
+  let releaseResponse!: () => void;
+  const requestStarted = new Promise<void>((resolve) => {
     resolveRequestStarted = resolve;
   });
-  const responseReleased = new Promise((resolve) => {
+  const responseReleased = new Promise<void>((resolve) => {
     releaseResponse = resolve;
   });
   const server = await createMockHttpServer((_request, response) => {
@@ -522,7 +538,7 @@ test("BrainzMash rejects the saturation boundary before its deadline", async () 
     response.end(JSON.stringify({ Name: "Saturation" }));
   });
   const controller = new AbortController();
-  let requests = [];
+  let requests: ReturnType<typeof getArtistByMbid>[] = [];
 
   try {
     dbOps.updateSettings({
@@ -561,13 +577,13 @@ test("BrainzMash rejects the saturation boundary before its deadline", async () 
 
 test("independent provider processes share request admission", async () => {
   const previous = dbOps.getSettings();
-  const arrivals = [];
+  const arrivals: number[] = [];
   const server = await createMockHttpServer((_request, response) => {
     arrivals.push(performance.now());
     response.setHeader("content-type", "application/json");
     response.end(JSON.stringify({ id: "artist", name: "Artist" }));
   });
-  let children = [];
+  let children: ChildProcess[] = [];
   try {
     dbOps.updateSettings({
       ...previous,
@@ -589,13 +605,13 @@ test("independent provider processes share request admission", async () => {
       }),
     );
     await Promise.all(
-      children.map((child) => new Promise((resolve) => child.once("message", resolve))),
+      children.map((child) => new Promise<void>((resolve) => child.once("message", resolve))),
     );
     const startAtPerf = performance.now();
     await Promise.all(
       children.map(async (child, childIndex) => {
         for (let index = 0; index < 3; index++) {
-          const done = new Promise((resolve) => child.once("message", resolve));
+          const done = new Promise<{ ok: boolean }>((resolve) => child.once("message", resolve));
           child.send({ type: "request", mbid: `child-${childIndex}-${index}` });
           assert.equal((await done).ok, true);
         }
@@ -603,14 +619,14 @@ test("independent provider processes share request admission", async () => {
     );
     assert.equal(arrivals.length, 6);
     assert.ok(
-      arrivals.at(-1) - startAtPerf >= 450,
+      arrivals.at(-1)! - startAtPerf >= 450,
       "independent processes admitted a request burst",
     );
   } finally {
     await Promise.all(
       children.map(
         (child) =>
-          new Promise((resolve) => {
+          new Promise<void>((resolve) => {
             child.once("exit", resolve);
             child.send({ type: "shutdown" });
           }),
@@ -624,13 +640,13 @@ test("independent provider processes share request admission", async () => {
 
 test("clearing caches preserves provider spacing for another process", async () => {
   const previous = dbOps.getSettings();
-  const arrivals = [];
+  const arrivals: number[] = [];
   const server = await createMockHttpServer((_request, response) => {
     arrivals.push(performance.now());
     response.setHeader("content-type", "application/json");
     response.end(JSON.stringify({ id: "artist", name: "Artist" }));
   });
-  let child;
+  let child: ChildProcess | undefined;
   try {
     dbOps.updateSettings({
       ...previous,
@@ -653,12 +669,13 @@ test("clearing caches preserves provider spacing for another process", async () 
         stdio: ["ignore", "ignore", "ignore", "ipc"],
       },
     );
-    await new Promise((resolve) => child.once("message", resolve));
+    const spawned = child;
+    await new Promise<void>((resolve) => spawned.once("message", resolve));
     const beforeFirstRequest = performance.now();
     await getArtistByMbid("before-cache-clear");
     clearMetadataProviderCaches();
-    const done = new Promise((resolve) => child.once("message", resolve));
-    child.send({ type: "request", mbid: "after-cache-clear" });
+    const done = new Promise<{ ok: boolean }>((resolve) => spawned.once("message", resolve));
+    spawned.send({ type: "request", mbid: "after-cache-clear" });
     assert.equal((await done).ok, true);
     assert.equal(arrivals.length, 2);
     assert.ok(
@@ -666,10 +683,11 @@ test("clearing caches preserves provider spacing for another process", async () 
       "cache clearing allowed an aggregate request burst",
     );
   } finally {
-    if (child)
-      await new Promise((resolve) => {
-        child.once("exit", resolve);
-        child.send({ type: "shutdown" });
+    const running = child;
+    if (running)
+      await new Promise<void>((resolve) => {
+        running.once("exit", resolve);
+        running.send({ type: "shutdown" });
       });
     clearMetadataProviderCaches();
     dbOps.updateSettings(previous);

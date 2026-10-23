@@ -1,3 +1,4 @@
+import { requireFixture } from "./playlists/fixtures.ts";
 import assert from "node:assert/strict";
 import { test, beforeAll, afterAll } from "vite-plus/test";
 import {
@@ -8,15 +9,15 @@ import {
 
 const [isolatedState, { db }, { dbOps, userOps }] = await setupIsolatedBackend(
   "inbox-helper",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
+  () => import("../backend/config/db-sqlite.ts"),
+  () => import("../backend/db/helpers/index.ts"),
 );
 
-let userId;
+let userId: number;
 
 beforeAll(() => {
   resetDatabase(db);
-  userId = userOps.createUser("inbox-user", "password-hash").id;
+  userId = userOps.createUser("inbox-user", "password-hash")!.id;
 });
 
 afterAll(async () => {
@@ -32,10 +33,12 @@ test("inbox items preserve read state while source metadata updates", () => {
     subtitle: "Artist",
     metadata: { releaseDate: "2026-08-05" },
   });
+  assert.ok(first != null);
   assert.equal(first.isRead, false);
   assert.equal(dbOps.getInboxUnreadCount(userId), 1);
 
-  const read = dbOps.updateInboxItem(userId, first.id, { isRead: true });
+  const read = dbOps.updateInboxItem(userId, requireFixture(first.id), { isRead: true });
+  assert.ok(read != null);
   assert.equal(read.isRead, true);
   assert.equal(dbOps.getInboxUnreadCount(userId), 0);
 
@@ -46,6 +49,7 @@ test("inbox items preserve read state while source metadata updates", () => {
     title: "New record (updated)",
     metadata: { releaseDate: "2026-08-06" },
   });
+  assert.ok(refreshed != null);
   assert.equal(refreshed.title, "New record (updated)");
   assert.equal(refreshed.isRead, true);
 });

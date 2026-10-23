@@ -9,9 +9,18 @@ import {
 
 const [isolatedState, { dbOps }] = await setupIsolatedBackend(
   "deprecated-usage-server",
-  "backend/db/helpers/index.ts",
+  () => import("../backend/db/helpers/index.ts"),
 );
-let server;
+let server: {
+  child: import("node:child_process").ChildProcessByStdio<
+    null,
+    import("node:stream").Readable,
+    import("node:stream").Readable
+  >;
+  port: number;
+  logs: () => string;
+  stop(): Promise<void>;
+};
 
 beforeAll(async () => {
   server = await startServerProcess();
@@ -29,5 +38,9 @@ test("the old /api/weekly-flow prefix still redirects and records its use", asyn
   assert.equal(response.status, 308);
   assert.equal(response.headers.get("location"), "/api/playlists/status?limit=1");
   dbOps.invalidateSettingsCache();
-  assert.ok(dbOps.getJSONSetting("deprecatedUsage")?.["weekly-flow-api"]?.lastSeenAt > 0);
+  const lastSeenAt =
+    dbOps.getJSONSetting<Record<string, { lastSeenAt: number }>>("deprecatedUsage")?.[
+      "weekly-flow-api"
+    ]?.lastSeenAt;
+  assert.ok(lastSeenAt != null && lastSeenAt > 0);
 });

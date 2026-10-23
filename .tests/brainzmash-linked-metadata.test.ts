@@ -1,3 +1,4 @@
+import { captureRoutes, mockResponse, requireFixture } from "./playlists/fixtures.ts";
 import assert from "node:assert/strict";
 import { test, afterAll, vi } from "vite-plus/test";
 import {
@@ -71,13 +72,13 @@ const [
   { fetchReleaseGroupCoverUrl },
 ] = await setupIsolatedBackend(
   "brainzmash-linked-metadata",
-  "lib/axiosFetch.ts",
-  "backend/services/providers/brainzmashProvider.ts",
-  "backend/services/apiClients/musicbrainz.ts",
-  "backend/routes/artists/shared/transform.ts",
-  "backend/routes/artists/handlers/preview.ts",
-  "backend/services/imageService.ts",
-  "backend/services/releaseGroupCoverService.ts",
+  () => import("../lib/axiosFetch.ts"),
+  () => import("../backend/services/providers/brainzmashProvider.ts"),
+  () => import("../backend/services/apiClients/musicbrainz.ts"),
+  () => import("../backend/routes/artists/shared/transform.ts"),
+  () => import("../backend/routes/artists/handlers/preview.ts"),
+  () => import("../backend/services/imageService.ts"),
+  () => import("../backend/services/releaseGroupCoverService.ts"),
 );
 
 afterAll(async () => {
@@ -86,17 +87,23 @@ afterAll(async () => {
   delete process.env.BRAINZMASH_BASE_URL;
 });
 
-const externalResponse = (url, options) => {
+const externalResponse = (url: string, options: Parameters<typeof axios.get>[1]) => {
   if (url === "https://api.deezer.com/artist/412") {
     return { id: 412, name: "Queen", picture_big: "https://cdn.deezer.test/queen.jpg" };
   }
   if (url === "https://api.deezer.com/artist/412/top") {
     return {
+      status: 200,
+      statusText: "OK",
+      headers: {},
       data: [{ id: 7, title: "Mustapha", preview: "https://cdn.deezer.test/7.mp3", duration: 180 }],
     };
   }
   if (url === "https://api.deezer.com/artist/412/albums") {
     return {
+      status: 200,
+      statusText: "OK",
+      headers: {},
       data: [
         {
           id: 9,
@@ -110,6 +117,9 @@ const externalResponse = (url, options) => {
   }
   if (url.startsWith("https://api.deezer.com/search")) {
     return {
+      status: 200,
+      statusText: "OK",
+      headers: {},
       data: [
         { id: 999, name: "Queen Tribute Band", picture_big: "https://cdn.deezer.test/wrong.jpg" },
       ],
@@ -130,13 +140,15 @@ const externalResponse = (url, options) => {
 };
 
 function recordExternalRequests() {
-  const requests = [];
+  const requests: string[] = [];
   const providerGet = axios.get.bind(axios);
-  vi.spyOn(axios, "get").mockImplementation(async (url, options) => {
-    if (String(url).startsWith(providerServer.url)) return providerGet(url, options);
-    requests.push(options?.params?.method ? `${url}?method=${options.params.method}` : url);
-    return { data: externalResponse(url, options) };
-  });
+  vi.spyOn(axios, "get").mockImplementation(
+    requireFixture(async (url, options) => {
+      if (String(url).startsWith(providerServer.url)) return providerGet(url, options);
+      requests.push(options?.params?.method ? `${url}?method=${options.params.method}` : url);
+      return { status: 200, statusText: "OK", headers: {}, data: externalResponse(url, options) };
+    }),
+  );
   return requests;
 }
 
@@ -153,12 +165,14 @@ test("artist identity comes from BrainzMash names, aliases, and linked provider 
     await musicbrainzGetArtistIdentityByMbid("56565656-5656-4565-8565-565656565656"),
     null,
   );
-  assert.deepEqual(requests, []);
+  assert.deepEqual([...requests], []);
 });
 
-test("artist genres come from BrainzMash and Last.fm only fills artists without genres with real genres", async (t) => {
+test("artist genres come from BrainzMash and Last.fm only fills artists without genres with real genres", async (t: import("vite-plus/test").TestContext) => {
   process.env.LASTFM_API_KEY = "test-key";
-  t.onTestFinished(() => delete process.env.LASTFM_API_KEY);
+  t.onTestFinished(() => {
+    delete process.env.LASTFM_API_KEY;
+  });
   const requests = recordExternalRequests();
 
   const linked = await getArtistTagPayload(
@@ -167,7 +181,7 @@ test("artist genres come from BrainzMash and Last.fm only fills artists without 
     await getArtistByMbid(linkedArtistMbid),
   );
   assert.deepEqual(linked.genres, ["Rock", "Glam Rock"]);
-  assert.deepEqual(requests, []);
+  assert.deepEqual([...requests], []);
 
   const unlinked = await getArtistTagPayload(
     unlinkedArtistMbid,
@@ -181,21 +195,16 @@ test("artist genres come from BrainzMash and Last.fm only fills artists without 
 
 test("artist previews use the BrainzMash Deezer link instead of a name search", async () => {
   const requests = recordExternalRequests();
-  let handler;
-  registerPreview({
-    get: (_path, ...handlers) => {
-      handler = handlers.at(-1);
-    },
-  });
-
-  let body;
-  await handler(
+  const { router, handlers } = captureRoutes();
+  registerPreview(router);
+  const response = mockResponse<{ tracks: { title: string }[] }>();
+  await requireFixture(handlers.get("/:mbid/preview"))(
     { params: { mbid: linkedArtistMbid }, query: { artistName: "Queen" } },
-    { json: (value) => (body = value) },
+    response,
   );
 
   assert.deepEqual(
-    body.tracks.map((track) => track.title),
+    response.body.tracks.map((track) => track.title),
     ["Mustapha"],
   );
   assert.deepEqual(requests, ["https://api.deezer.com/artist/412/top"]);
@@ -220,6 +229,6 @@ test("album covers fall back to the Deezer artist linked on the BrainzMash album
   });
 
   assert.ok(result.imageUrl);
-  assert.ok(!requests.some((url) => url.startsWith("https://api.deezer.com/search")));
+  assert.ok(!requests.some((url: string) => url.startsWith("https://api.deezer.com/search")));
   assert.ok(requests.includes("https://api.deezer.com/artist/412/albums"));
 });

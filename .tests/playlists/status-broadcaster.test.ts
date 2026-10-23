@@ -1,3 +1,5 @@
+import { testWebSocketClient } from "../helpers/userFixtures.ts";
+import { requireFixture } from "./fixtures.ts";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { spawnSync } from "node:child_process";
@@ -19,38 +21,54 @@ const [
   { startPlaylistStatusBroadcasts },
 ] = await setupIsolatedBackend(
   "status-broadcaster",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/playlists/flowPlaylistConfig.ts",
-  "backend/services/downloadJobs/downloadTracker.ts",
-  "backend/services/playlists/playlistStatusBroadcaster.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
+  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
+  () => import("../../backend/services/playlists/playlistStatusBroadcaster.ts"),
 );
 
+type StatusMessage = {
+  type: string;
+  status: ReturnType<
+    typeof import("../../backend/services/playlists/playlistStatusSnapshot.ts").getPlaylistStatusSnapshot
+  >;
+};
+type Client = ReturnType<typeof testWebSocketClient> & {
+  messages: ({ channel: string } & StatusMessage)[];
+};
 class SocketTransport extends EventEmitter {
-  clients = new Set();
+  clients = new Set<Client>();
   inspections = 0;
 
-  connect(id, user, channels = ["playlists"]) {
-    const client = { id, user, subscriptions: new Set(channels), messages: [] };
+  connect(id: string, user: { id: number; role: string }, channels: string[] = ["playlists"]) {
+    const client: Client = Object.assign(
+      testWebSocketClient(user.id, channels, () => {}),
+      {
+        id,
+        messages: [],
+      },
+    );
+    client.user!.role = user.role;
     this.clients.add(client);
     this.emit("subscriptions-changed");
     return client;
   }
 
-  disconnect(client) {
+  disconnect(client: Client) {
     this.clients.delete(client);
     this.emit("subscriptions-changed");
   }
 
   getStats() {
-    const channels = {};
+    const channels: Record<string, number> = {};
     for (const client of this.clients) {
       for (const channel of client.subscriptions) channels[channel] = (channels[channel] || 0) + 1;
     }
     return { channels };
   }
 
-  broadcastPerClient(channel, buildData) {
+  broadcastPerClient(channel: string, buildData: (client: Client) => StatusMessage | null) {
     this.inspections++;
     for (const client of this.clients) {
       if (!client.subscriptions.has(channel) && !client.subscriptions.has("*")) continue;
@@ -67,12 +85,16 @@ beforeEach(() => {
 });
 afterAll(() => cleanupIsolatedState(state));
 
-function start(t, websocket) {
+function start(t: import("vite-plus/test").TestContext, websocket: SocketTransport) {
   vi.useFakeTimers({
     toFake: ["Date", "setInterval", "clearInterval", "setTimeout", "clearTimeout"],
     now: Date.now(),
   });
-  const stop = startPlaylistStatusBroadcasts({ websocket });
+  const stop = startPlaylistStatusBroadcasts({
+    websocket: websocket as unknown as NonNullable<
+      Parameters<typeof startPlaylistStatusBroadcasts>[0]
+    >["websocket"],
+  });
   t.onTestFinished(stop);
   return stop;
 }
@@ -115,7 +137,7 @@ test("new and wildcard subscribers receive current status immediately with owner
   assert.equal(user.messages.length, 1);
 });
 
-test("local and external commits refresh status and reconnects receive an unchanged snapshot", (t) => {
+test("local and external commits refresh status and reconnects receive an unchanged snapshot", (t: import("vite-plus/test").TestContext) => {
   const previousMode = process.env.NODE_ENV;
   process.env.NODE_ENV = "development";
   t.onTestFinished(() => {
@@ -127,12 +149,20 @@ test("local and external commits refresh status and reconnects receive an unchan
   start(t, socket);
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Waiting" }, playlist.id);
   vi.advanceTimersByTime(4000);
-  assert.equal(client.messages.at(-1).status.sharedPlaylistStats[playlist.id].pending, 1);
+  assert.equal(
+    requireFixture(requireFixture(client).messages.at(-1)).status.sharedPlaylistStats[playlist.id]
+      .pending,
+    1,
+  );
   const external = new Database(state.dbPath);
   try {
     external.prepare("UPDATE playlist_download_jobs SET status = 'failed' WHERE id = ?").run(jobId);
     vi.advanceTimersByTime(4000);
-    assert.equal(client.messages.at(-1).status.sharedPlaylistStats[playlist.id].failed, 1);
+    assert.equal(
+      requireFixture(requireFixture(client).messages.at(-1)).status.sharedPlaylistStats[playlist.id]
+        .failed,
+      1,
+    );
   } finally {
     external.close();
   }
@@ -149,15 +179,25 @@ test("completed flow countdowns advance without a database write", (t) => {
   dbOps.updateSettings({ flows: [{ ...flow, enabled: true, nextRunAt: Date.now() + 120000 }] });
   invalidateFlowPlaylistConfigCache();
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Finished" }, flow.id);
+  assert.ok(jobId != null);
   downloadTracker.setFailed(jobId, "No match");
   const socket = new SocketTransport();
   const client = socket.connect("first", { id: 1, role: "admin" });
   start(t, socket);
-  assert.equal(client.messages.at(-1).status.hint.message, "Next update in 2 minutes");
+  assert.equal(
+    requireFixture(requireFixture(client).messages.at(-1)).status.hint.message,
+    "Next update in 2 minutes",
+  );
   vi.advanceTimersByTime(60000);
-  assert.equal(client.messages.at(-1).status.hint.message, "Next update in 1 minute");
+  assert.equal(
+    requireFixture(requireFixture(client).messages.at(-1)).status.hint.message,
+    "Next update in 1 minute",
+  );
   vi.advanceTimersByTime(60000);
-  assert.equal(client.messages.at(-1).status.hint.message, "Next update soon");
+  assert.equal(
+    requireFixture(requireFixture(client).messages.at(-1)).status.hint.message,
+    "Next update soon",
+  );
 });
 
 test("download owner heartbeats and retirement refresh transient status without database writes", () => {
@@ -180,6 +220,7 @@ test("each user's countdown advances while the globally earliest countdown stays
   invalidateFlowPlaylistConfigCache();
   for (const flow of [first, second]) {
     const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Finished" }, flow.id);
+    assert.ok(jobId != null);
     downloadTracker.setFailed(jobId, "No match");
   }
   const socket = new SocketTransport();
@@ -187,9 +228,21 @@ test("each user's countdown advances while the globally earliest countdown stays
   const laterUser = socket.connect("later", { id: 2, role: "user" });
   start(t, socket);
   vi.advanceTimersByTime(4000);
-  assert.equal(earlierUser.messages.at(-1).status.hint.message, "Next update in 1 minute");
-  assert.equal(laterUser.messages.at(-1).status.hint.message, "Next update in 2 minutes");
+  assert.equal(
+    requireFixture(requireFixture(earlierUser).messages.at(-1)).status.hint.message,
+    "Next update in 1 minute",
+  );
+  assert.equal(
+    requireFixture(requireFixture(laterUser).messages.at(-1)).status.hint.message,
+    "Next update in 2 minutes",
+  );
   vi.advanceTimersByTime(4000);
-  assert.equal(earlierUser.messages.at(-1).status.hint.message, "Next update in 1 minute");
-  assert.equal(laterUser.messages.at(-1).status.hint.message, "Next update in 1 minute");
+  assert.equal(
+    requireFixture(requireFixture(earlierUser).messages.at(-1)).status.hint.message,
+    "Next update in 1 minute",
+  );
+  assert.equal(
+    requireFixture(requireFixture(laterUser).messages.at(-1)).status.hint.message,
+    "Next update in 1 minute",
+  );
 });

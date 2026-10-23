@@ -1,3 +1,4 @@
+import { listeningAddress } from "../helpers/backendTestHarness.ts";
 import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import http from "node:http";
@@ -19,12 +20,12 @@ const [
   { playlistManager },
 ] = await setupIsolatedBackend(
   "flow-webhook-vars",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/playlists/flowPlaylistConfig.ts",
-  "backend/services/downloadJobs/downloadTracker.ts",
-  "backend/services/downloadJobs/downloadWorker.ts",
-  "backend/services/playlists/playlistManager.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
+  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
+  () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
+  () => import("../../backend/services/playlists/playlistManager.ts"),
 );
 
 beforeEach(() => {
@@ -48,15 +49,16 @@ test("flow completion sends display name and track library path", async () => {
     tracks: [{ artistName: "Artist", trackName: "Track" }],
   });
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Track" }, playlist.id);
-  downloadTracker.setDone(jobId, path.join(process.env.WEEKLY_FLOW_FOLDER, "track.mp3"));
+  assert.ok(jobId != null);
+  downloadTracker.setDone(jobId, path.join(process.env.WEEKLY_FLOW_FOLDER!, "track.mp3"));
 
-  const requests = [];
-  let received;
-  const firstRequest = new Promise((resolve) => {
+  const requests: { name: string; path: string }[] = [];
+  let received!: () => void;
+  const firstRequest = new Promise<void>((resolve) => {
     received = resolve;
   });
   const server = http.createServer((req, res) => {
-    const chunks = [];
+    const chunks: Buffer[] = [];
     req.on("data", (chunk) => chunks.push(chunk));
     req.on("end", () => {
       requests.push(JSON.parse(Buffer.concat(chunks).toString("utf8")));
@@ -65,8 +67,8 @@ test("flow completion sends display name and track library path", async () => {
       res.end("{}");
     });
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const { port } = server.address();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = listeningAddress(server);
   const settings = dbOps.getSettings();
   dbOps.updateSettings({
     ...settings,
@@ -90,7 +92,7 @@ test("flow completion sends display name and track library path", async () => {
   };
   playlistManager.updateConfig = () => {};
   playlistManager.requestPlaylistSync = () => null;
-  playlistManager.scheduleScanLibrary = async () => {};
+  playlistManager.scheduleScanLibrary = () => 0;
 
   try {
     await downloadWorker.checkPlaylistComplete(playlist.id);
@@ -106,6 +108,6 @@ test("flow completion sends display name and track library path", async () => {
     playlistManager.updateConfig = original.updateConfig;
     playlistManager.requestPlaylistSync = original.requestPlaylistSync;
     playlistManager.scheduleScanLibrary = original.scheduleScanLibrary;
-    await new Promise((resolve) => server.close(resolve));
+    await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });

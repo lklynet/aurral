@@ -4,10 +4,10 @@ import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTe
 
 const [state, { db }, store, query, { initializeLibraryGenreIndex }] = await setupIsolatedBackend(
   "library-genre-index",
-  "backend/config/db-sqlite.ts",
-  "backend/services/libraryMediaStore.ts",
-  "backend/services/libraryQueryService.ts",
-  "backend/config/library-genre-index.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/services/libraryMediaStore.ts"),
+  () => import("../../backend/services/libraryQueryService.ts"),
+  () => import("../../backend/config/library-genre-index.ts"),
 );
 afterAll(() => cleanupIsolatedState(state));
 
@@ -41,7 +41,7 @@ test("genre reads retain inheritance, metadata shapes, availability, and updates
     path: "/genre/track.flac",
   };
   store.upsertLibraryMediaFile(file);
-  const read = (genre) => query.getLibraryPage({ kind: "tracks", genre, pageSize: 100 });
+  const read = (genre: string) => query.getLibraryPage({ kind: "tracks", genre, pageSize: 100 });
   for (const genre of ["rock", "jazz", "soul", "ambient"]) {
     assert.deepEqual(
       read(genre).items.map((item) => item.id),
@@ -118,17 +118,29 @@ test("startup backfills existing genres, repairs missed updates, and leaves libr
     path: "/genre/legacy.flac",
   });
   for (const { name } of db
-    .prepare(
+    .prepare<unknown[], { name: unknown }>(
       "SELECT name FROM sqlite_master WHERE type = 'trigger' AND name GLOB 'library_genres_*'",
     )
     .all()) {
     db.exec(`DROP TRIGGER ${name}`);
   }
   db.exec("DROP TABLE library_entity_genres");
-  const before = db.prepare("SELECT * FROM library_tracks WHERE id = ?").get(track.id);
+  const before = db
+    .prepare<unknown[], import("../../backend/db/rows.ts").LibraryTracksRow>(
+      "SELECT * FROM library_tracks WHERE id = ?",
+    )
+    .get(track.id);
   initializeLibraryGenreIndex(db);
-  assert.deepEqual(db.prepare("SELECT * FROM library_tracks WHERE id = ?").get(track.id), before);
-  const read = (genre) => query.getLibraryPage({ kind: "tracks", genre, pageSize: 100 }).total;
+  assert.deepEqual(
+    db
+      .prepare<unknown[], import("../../backend/db/rows.ts").LibraryTracksRow>(
+        "SELECT * FROM library_tracks WHERE id = ?",
+      )
+      .get(track.id),
+    before,
+  );
+  const read = (genre: string) =>
+    query.getLibraryPage({ kind: "tracks", genre, pageSize: 100 }).total;
   assert.equal(read("pop"), 1);
   query.rebuildLibraryGenreStats();
   db.exec("DROP TRIGGER library_genres_tracks_update");
@@ -172,9 +184,10 @@ test("startup backfills existing genres, repairs missed updates, and leaves libr
     query.getLibraryPage({ kind: "genres" }).items.map((genre) => genre.name),
     ["Blues", "Soul"],
   );
-  const changes = db.prepare("SELECT total_changes() AS total").get().total;
+  const totalChanges = () => db.prepare<unknown[], number>("SELECT total_changes()").pluck().get();
+  const changes = totalChanges();
   initializeLibraryGenreIndex(db);
-  assert.equal(db.prepare("SELECT total_changes() AS total").get().total, changes);
+  assert.equal(totalChanges(), changes);
 });
 
 test("genre filters split semicolon tags and keep other separators intact", () => {
@@ -202,7 +215,7 @@ test("genre filters split semicolon tags and keep other separators intact", () =
     source: "aurral",
     path: "/genre/split.flac",
   });
-  const albums = (genre) =>
+  const albums = (genre: string) =>
     query.getLibraryPage({ kind: "albums", genre, pageSize: 100 }).items.map((item) => item.id);
   const expected = [
     "Alt/Indie",

@@ -1,3 +1,10 @@
+type CapturedRequest = {
+  method?: string;
+  url?: string;
+  headers: import("node:http").IncomingHttpHeaders;
+  body: Record<string, string | number>;
+};
+import { listeningAddress } from "../helpers/backendTestHarness.ts";
 import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import http from "node:http";
@@ -10,9 +17,9 @@ import {
 
 const [isolatedState, { db }, { dbOps }, notifications] = await setupIsolatedBackend(
   "notifications",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/notificationService.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/notificationService.ts"),
 );
 
 const {
@@ -23,15 +30,22 @@ const {
   notifyFlowDone,
 } = notifications;
 
-async function withCaptureServer(handler) {
-  const requests = [];
-  let waiters = [];
+async function withCaptureServer(
+  handler: (server: {
+    port: number;
+    baseUrl: string;
+    requests: CapturedRequest[];
+    waitFor: (count: number) => Promise<CapturedRequest[]>;
+  }) => Promise<void>,
+) {
+  const requests: CapturedRequest[] = [];
+  let waiters: (() => boolean)[] = [];
   const server = http.createServer((req, res) => {
-    const chunks = [];
+    const chunks: Buffer[] = [];
     req.on("data", (chunk) => chunks.push(chunk));
     req.on("end", () => {
       const raw = Buffer.concat(chunks).toString("utf8");
-      let body = raw;
+      let body: Record<string, string | number> = {};
       try {
         body = raw ? JSON.parse(raw) : null;
       } catch {}
@@ -46,21 +60,21 @@ async function withCaptureServer(handler) {
       res.end("{}");
     });
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const { port } = server.address();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = listeningAddress(server);
   try {
     await handler({
       port,
       baseUrl: `http://127.0.0.1:${port}`,
       requests,
-      waitFor: (count) =>
-        new Promise((resolve) => {
+      waitFor: (count: number) =>
+        new Promise<CapturedRequest[]>((resolve) => {
           const settle = () => requests.length >= count && (resolve(requests), true);
           if (!settle()) waiters.push(settle);
         }),
     });
   } finally {
-    await new Promise((resolve) => server.close(resolve));
+    await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 }
 
@@ -166,11 +180,12 @@ test("notifyRequestMade queues Gotify with actor and webhook payload", async () 
     });
 
     const requests = await waitFor(2);
-    const gotify = requests.find((entry) => entry.url.startsWith("/message"));
+    const gotify = requests.find((entry) => entry.url?.startsWith("/message"));
     const webhook = requests.find((entry) => entry.url === "/hook");
     assert.ok(gotify);
     assert.equal(gotify.body.title, "Aurral – Request");
     assert.equal(gotify.body.message, "Album requested: Blue Train by John Coltrane (alice)");
+    assert.ok(webhook != null);
     assert.deepEqual(webhook.body, {
       album: "Blue Train",
       user: "alice",
@@ -253,18 +268,18 @@ test("notifyRequestMade does not queue Gotify when the event toggle is off", asy
 });
 
 test("failed notification delivery is logged without an unhandled rejection", async () => {
-  const failedLogs = [];
+  const failedLogs: Record<string, unknown>[][] = [];
   let logged = () => {};
-  const unhandled = [];
+  const unhandled: unknown[] = [];
   const originalError = console.error;
-  const onUnhandledRejection = (reason) => unhandled.push(reason);
+  const onUnhandledRejection = (reason: unknown) => unhandled.push(reason);
   console.error = (...args) => {
     if (!args.map(String).join(" ").includes("Notification delivery failed")) return;
-    failedLogs.push(args);
+    failedLogs.push(args as Record<string, unknown>[]);
     logged();
   };
   const nextFailedLog = () =>
-    new Promise((resolve) => {
+    new Promise<Record<string, unknown>[]>((resolve) => {
       const seen = failedLogs.length;
       logged = () => failedLogs.length > seen && resolve(failedLogs[seen]);
     });
@@ -274,8 +289,8 @@ test("failed notification delivery is logged without an unhandled rejection", as
     res.writeHead(500, { "Content-Type": "text/plain" });
     res.end("receiver-secret");
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const { port } = server.address();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = listeningAddress(server);
   const webhookUrl = `http://127.0.0.1:${port}/hook?token=receiver-secret`;
 
   try {
@@ -311,7 +326,7 @@ test("failed notification delivery is logged without an unhandled rejection", as
     });
     assert.doesNotMatch(JSON.stringify(failedLog), /receiver-secret/);
 
-    await new Promise((resolve) => server.close(resolve));
+    await new Promise<void>((resolve) => server.close(() => resolve()));
     const secondFailure = nextFailedLog();
     await notifyRequestAvailable({ albumName: "Blue Train", artistName: "John Coltrane" });
     const secondArgs = await secondFailure;
@@ -326,7 +341,7 @@ test("failed notification delivery is logged without an unhandled rejection", as
     );
     assert.equal(unhandled.length, 0);
   } finally {
-    if (server.listening) await new Promise((resolve) => server.close(resolve));
+    if (server.listening) await new Promise<void>((resolve) => server.close(() => resolve()));
     process.off("unhandledRejection", onUnhandledRejection);
     console.error = originalError;
   }
@@ -361,15 +376,17 @@ test("notifyFlowDone uses display name and track library path placeholders", asy
     await notifyFlowDone(playlistId, { completed: 3, failed: 1 }, flowPath, "Late Night");
 
     const requests = await waitFor(2);
-    const gotify = requests.find((entry) => entry.url.startsWith("/message"));
+    const gotify = requests.find((entry) => entry.url?.startsWith("/message"));
     const webhook = requests.find((entry) => entry.url === "/hook");
     assert.ok(gotify);
-    assert.match(gotify.body.message, /Flow "Late Night"/);
-    assert.doesNotMatch(gotify.body.message, /c0c01bc3-72ca-4110-8ab6-681f132a6e63/);
+    assert.match(String(gotify.body.message), /Flow "Late Night"/);
+    assert.doesNotMatch(String(gotify.body.message), /c0c01bc3-72ca-4110-8ab6-681f132a6e63/);
+    assert.ok(webhook != null);
     assert.deepEqual(webhook.body, {
       name: "Late Night",
       path: flowPath,
     });
+    assert.ok(webhook != null);
     assert.doesNotMatch(webhook.body.path, /_playlists/);
   });
 });

@@ -7,7 +7,13 @@ import {
   getReleaseMetric,
 } from "../../frontend/src/pages/ArtistDetails/utils.ts";
 
-const release = (title, primaryType, extra = {}) => ({
+const release = (
+  title: string,
+  primaryType: string,
+  extra: Partial<NonNullable<Parameters<typeof getPopularReleaseGroups>[0]>[number]> & {
+    listenCount?: number;
+  } = {},
+) => ({
   id: `rg-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
   title,
   "primary-type": primaryType,
@@ -17,7 +23,7 @@ const release = (title, primaryType, extra = {}) => ({
   ...extra,
 });
 
-const listened = (listenerCount, listenCount, date) => ({
+const listened = (listenerCount: number, listenCount: number, date: string) => ({
   listenerCount,
   listenCount,
   "first-release-date": date,
@@ -46,9 +52,10 @@ const plaidDiscography = () => [
   release("Undoneson", "Single", { "first-release-date": "1997-09-15" }),
 ];
 
-const titles = (releaseGroups) => releaseGroups.map((releaseGroup) => releaseGroup.title);
+const titles = (releaseGroups: NonNullable<Parameters<typeof getPopularReleaseGroups>[0]>) =>
+  releaseGroups.map((releaseGroup) => releaseGroup.title);
 
-const statusLookup = (statuses) => (id) => {
+const statusLookup = (statuses: Record<string, string>) => (id: string) => {
   const status = statuses[id];
   return status ? { status } : null;
 };
@@ -110,6 +117,7 @@ test("the Aurral pick is the most listened studio album the user has not got or 
   });
 
   const pick = buildAurralPick({ releaseGroups, getAlbumStatus });
+  assert.ok(pick != null);
 
   assert.equal(pick.title, "Rest Proof Clockwork");
   assert.equal(pick.releaseGroupId, "rg-rest-proof-clockwork");
@@ -126,12 +134,12 @@ test("the Aurral pick prefers a studio album over a more listened single, mix, o
     release("Quiet Album", "Album", { listenerCount: 12, listenCount: 50 }),
   ];
 
-  assert.equal(buildAurralPick({ releaseGroups }).title, "Quiet Album");
+  assert.equal(buildAurralPick({ releaseGroups })?.title, "Quiet Album");
   assert.equal(
     buildAurralPick({
       releaseGroups,
       getAlbumStatus: statusLookup({ "rg-quiet-album": "available" }),
-    }).title,
+    })?.title,
     "Hit Single",
   );
 });
@@ -143,7 +151,7 @@ test("the Aurral pick still offers an album that is in Lidarr but unmonitored", 
     buildAurralPick({
       releaseGroups,
       getAlbumStatus: statusLookup({ "rg-shelved": "unmonitored" }),
-    }).title,
+    })?.title,
     "Shelved",
   );
   assert.equal(

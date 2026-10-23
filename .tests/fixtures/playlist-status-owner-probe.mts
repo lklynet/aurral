@@ -13,26 +13,36 @@ const [{ dbOps }, owner, { getDatabaseRevision }, { websocketService }, { startP
   import("../../backend/services/playlists/playlistStatusBroadcaster.ts"),
 ]);
 dbOps.updateSettings({ integrations: {}, flows: [], sharedPlaylists: [] });
-let status = null;
-owner.configureDownloadOwnerClient({ getStatus: () => status });
-const messages = [];
-const client = { id: "owner-probe", user: { id: 1, role: "admin" }, subscriptions: new Set(["playlists"]), ws: { readyState: 1, send: (message) => messages.push(JSON.parse(message)) } };
+type OwnerStatus = NonNullable<ReturnType<Parameters<typeof owner.configureDownloadOwnerClient>[0]["getStatus"]>>;
+type Client = Parameters<typeof websocketService.clients.add>[0];
+type StatusMessage = { status: { hint: { phase: string }; worker: { currentJob: { id: string } | null } } };
+let status: OwnerStatus | null = null;
+owner.configureDownloadOwnerClient({ request: () => Promise.reject(new Error("unused")), getStatus: () => status });
+const messages: StatusMessage[] = [];
+const client: Client = {
+  id: "owner-probe",
+  user: { id: 1, role: "admin" } as NonNullable<Client["user"]>,
+  authSource: "session",
+  connectedAt: Date.now(),
+  subscriptions: new Set(["playlists"]),
+  ws: { readyState: 1, send: (message: string) => messages.push(JSON.parse(message)) } as unknown as Client["ws"],
+};
 websocketService.clients.add(client);
 mock.timers.enable({ apis: ["Date", "setTimeout", "setInterval"], now: Date.now() });
 const stop = startPlaylistStatusBroadcasts();
 try {
   const revision = getDatabaseRevision();
-  status = { running: true, processing: true, activeCount: 1, currentJob: { id: "disposable-progress" } };
+  status = { running: true, processing: true, activeCount: 1, currentJob: { id: "disposable-progress" } } as OwnerStatus;
   mock.timers.tick(4000);
-  assert.equal(messages.at(-1).status.hint.phase, "downloading");
-  assert.equal(messages.at(-1).status.worker.currentJob.id, "disposable-progress");
+  assert.equal(messages.at(-1)?.status.hint.phase, "downloading");
+  assert.equal(messages.at(-1)?.status.worker.currentJob?.id, "disposable-progress");
   status = { ...status, processing: false, operationWorker: { running: true, currentLabel: "scheduled:mix" } };
   mock.timers.tick(4000);
-  assert.equal(messages.at(-1).status.hint.phase, "preparing");
+  assert.equal(messages.at(-1)?.status.hint.phase, "preparing");
   status = null;
   mock.timers.tick(4000);
-  assert.equal(messages.at(-1).status.hint.phase, "idle");
-  assert.equal(messages.at(-1).status.worker.currentJob, null);
+  assert.equal(messages.at(-1)?.status.hint.phase, "idle");
+  assert.equal(messages.at(-1)?.status.worker.currentJob, null);
   assert.equal(getDatabaseRevision(), revision, "transient updates must not require database changes");
 } finally {
   stop();

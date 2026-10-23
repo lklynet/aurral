@@ -1,28 +1,36 @@
+import type { LidarrClient } from "../../backend/services/lidarrClient.ts";
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import { applyLidarrCommunityGuide } from "../../backend/services/lidarrCommunityGuide.ts";
 
-function createClient({ failCustomFormats = false, extraFormatNames = [] as string[] } = {}) {
+function createClient({
+  failCustomFormats = false,
+  extraFormatNames = [] as string[],
+}: { failCustomFormats?: boolean; extraFormatNames?: string[] } = {}) {
   const unrelatedFormat = {
     id: 99,
     name: "Existing Unrelated",
     specifications: [],
   };
-  const createdFormats = [];
+  const createdFormats: Awaited<ReturnType<LidarrClient["getCustomFormats"]>> = [];
   const extraFormats = extraFormatNames.map((name, index) => ({
     id: 100 + index,
     name,
     specifications: [],
   }));
   const state = {
-    customFormatPayloads: [],
-    qualityProfilePayload: null,
+    customFormatPayloads: [] as Parameters<
+      Parameters<typeof applyLidarrCommunityGuide>[0]["createCustomFormat"]
+    >[0][],
+    qualityProfilePayload: null as {
+      name: string;
+      formatItems: { name: string; score: number }[];
+    } | null,
     qualityProfileCalls: 0,
   };
 
-  return {
-    state,
+  const client = {
     getQualityDefinitions: async () => [
       { id: 1, title: "MP3-320", quality: { id: 1, name: "MP3-320" } },
       { id: 2, title: "FLAC", quality: { id: 2, name: "FLAC" } },
@@ -39,8 +47,8 @@ function createClient({ failCustomFormats = false, extraFormatNames = [] as stri
       return created;
     },
     getReleaseProfiles: async () => [],
-    createReleaseProfile: async (payload) => ({ id: 1, ...payload }),
-    updateReleaseProfile: async (_id, payload) => ({ id: 1, ...payload }),
+    createReleaseProfile: async (payload) => ({ id: 1, ...(payload as { name: string }) }),
+    updateReleaseProfile: async (_id, payload) => ({ id: 1, ...(payload as { name: string }) }),
     getMetadataProfiles: async () => [
       {
         id: 1,
@@ -49,9 +57,16 @@ function createClient({ failCustomFormats = false, extraFormatNames = [] as stri
         secondaryAlbumTypes: ["Studio"],
       },
     ],
-    createMetadataProfile: async (payload) => ({ id: 1, ...payload }),
-    updateMetadataProfile: async (_id, payload) => ({ id: 1, ...payload }),
-    getNamingConfig: async () => ({ renameTracks: false }),
+    createMetadataProfile: async (payload) => ({ id: 1, ...(payload as { name: string }) }),
+    updateMetadataProfile: async (_id, payload) => ({ id: 1, ...(payload as { name: string }) }),
+    getNamingConfig: async () => ({
+      id: 1,
+      renameTracks: false,
+      standardTrackFormat: "",
+      multiDiscTrackFormat: "",
+      artistFolderFormat: "",
+      albumFolderFormat: "",
+    }),
     updateNamingConfig: async (payload) => payload,
     getQualityProfiles: async () => [
       {
@@ -64,29 +79,41 @@ function createClient({ failCustomFormats = false, extraFormatNames = [] as stri
       },
     ],
     createQualityProfile: async (payload) => {
+      assert.ok(payload && typeof payload === "object" && "name" in payload);
+      const profile = payload as { name: string; formatItems: { name: string; score: number }[] };
       state.qualityProfileCalls += 1;
-      state.qualityProfilePayload = payload;
-      return { id: 2, name: payload.name };
+      state.qualityProfilePayload = profile;
+      return { id: 2, name: profile.name };
     },
     updateQualityProfile: async (_id, payload) => {
+      assert.ok(payload && typeof payload === "object" && "name" in payload);
+      const profile = payload as { name: string; formatItems: { name: string; score: number }[] };
       state.qualityProfileCalls += 1;
-      state.qualityProfilePayload = payload;
-      return { id: 1, name: payload.name };
+      state.qualityProfilePayload = profile;
+      return { id: 1, name: profile.name };
     },
-  };
+  } satisfies Parameters<typeof applyLidarrCommunityGuide>[0];
+  return { ...client, state };
 }
 
 test("applies the guide with Lidarr custom-format and profile contracts", async () => {
   const client = createClient();
   const result = await applyLidarrCommunityGuide(client);
 
-  assert.deepEqual(result.errors, []);
+  assert.deepEqual([...result.errors], []);
   assert.equal(client.state.customFormatPayloads.length, 5);
   assert.ok(
     client.state.customFormatPayloads.every((format) =>
-      format.specifications.every((specification) => Array.isArray(specification.fields)),
+      format.specifications.every(
+        (specification) =>
+          specification != null &&
+          typeof specification === "object" &&
+          "fields" in specification &&
+          Array.isArray(specification.fields),
+      ),
     ),
   );
+  assert.ok(client.state.qualityProfilePayload != null);
   assert.deepEqual(
     client.state.qualityProfilePayload.formatItems.map(({ name, score }) => ({ name, score })),
     [
@@ -111,6 +138,7 @@ test("scores a custom format named like an object property as unscored", async (
   const client = createClient({ extraFormatNames: ["constructor", "toString"] });
   await applyLidarrCommunityGuide(client);
 
+  assert.ok(client.state.qualityProfilePayload != null);
   assert.deepEqual(
     client.state.qualityProfilePayload.formatItems
       .filter(({ name }) => name === "constructor" || name === "toString")

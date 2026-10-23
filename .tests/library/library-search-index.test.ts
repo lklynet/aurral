@@ -1,14 +1,10 @@
 import assert from "node:assert/strict";
 import { test, afterAll } from "vite-plus/test";
-import {
-  cleanupIsolatedState,
-  importFromRepo,
-  setupIsolatedBackend,
-} from "../helpers/backendTestHarness.ts";
+import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTestHarness.ts";
 
 const [isolatedState, { db }] = await setupIsolatedBackend(
   "library-search-index",
-  "backend/config/db-sqlite.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
 );
 
 afterAll(async () => {
@@ -16,9 +12,8 @@ afterAll(async () => {
 });
 
 test("startup restores a missing search index trigger and rebuilds documents", async () => {
-  const { initializeLibrarySearchIndex } = await importFromRepo(
-    "backend/config/library-search-index.ts",
-  );
+  const { initializeLibrarySearchIndex } =
+    await import("../../backend/config/library-search-index.ts");
   db.exec("DROP TRIGGER library_search_documents_ai");
   db.prepare(
     "INSERT INTO library_search_documents (entity_kind, entity_id, title) VALUES ('artist', 998, 'Unindexed Artist')",
@@ -27,21 +22,24 @@ test("startup restores a missing search index trigger and rebuilds documents", a
   assert.equal(initializeLibrarySearchIndex(db), true);
   assert.ok(
     db
-      .prepare(
+      .prepare<unknown[], { "1": unknown }>(
         "SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name = 'library_search_documents_ai'",
       )
       .get(),
   );
   assert.equal(
-    db.prepare("SELECT 1 FROM library_search_documents WHERE entity_id = 998").get(),
+    db
+      .prepare<unknown[], { "1": unknown }>(
+        "SELECT 1 FROM library_search_documents WHERE entity_id = 998",
+      )
+      .get(),
     undefined,
   );
 });
 
 test("startup rebuilds search documents when their version is outdated", async () => {
-  const { initializeLibrarySearchIndex } = await importFromRepo(
-    "backend/config/library-search-index.ts",
-  );
+  const { initializeLibrarySearchIndex } =
+    await import("../../backend/config/library-search-index.ts");
   db.prepare(
     "INSERT INTO library_search_documents (entity_kind, entity_id, title) VALUES ('artist', 999, 'Stale Artist')",
   ).run();
@@ -49,7 +47,11 @@ test("startup rebuilds search documents when their version is outdated", async (
 
   assert.equal(initializeLibrarySearchIndex(db), true);
   assert.equal(
-    db.prepare("SELECT 1 FROM library_search_documents WHERE entity_id = 999").get(),
+    db
+      .prepare<unknown[], { "1": unknown }>(
+        "SELECT 1 FROM library_search_documents WHERE entity_id = 999",
+      )
+      .get(),
     undefined,
   );
 
@@ -57,7 +59,13 @@ test("startup rebuilds search documents when their version is outdated", async (
     "INSERT INTO library_search_documents (entity_kind, entity_id, title) VALUES ('artist', 1000, 'Current Artist')",
   ).run();
   assert.equal(initializeLibrarySearchIndex(db), true);
-  assert.ok(db.prepare("SELECT 1 FROM library_search_documents WHERE entity_id = 1000").get());
+  assert.ok(
+    db
+      .prepare<unknown[], { "1": unknown }>(
+        "SELECT 1 FROM library_search_documents WHERE entity_id = 1000",
+      )
+      .get(),
+  );
 });
 
 test("search index service remains usable when the FTS schema is unavailable", async () => {
@@ -69,7 +77,7 @@ test("search index service remains usable when the FTS schema is unavailable", a
     DROP TABLE IF EXISTS library_search_documents;
   `);
 
-  const searchIndex = await importFromRepo("backend/services/librarySearchIndex.ts");
+  const searchIndex = await import("../../backend/services/librarySearchIndex.ts");
 
   assert.equal(searchIndex.getLibrarySearchMatch("artist"), null);
   assert.equal(searchIndex.syncLibrarySearchArtist(1), false);

@@ -7,27 +7,31 @@ import {
   revertDiscoveryFeedback,
 } from "../../frontend/src/utils/discoveryFeedback.ts";
 
-const json = (value, status = 200) =>
+const json = (value: unknown, status: number = 200) =>
   new Response(JSON.stringify(value), {
     status,
     headers: { "content-type": "application/json" },
   });
 
-const openHarness = async (t) => {
+const openHarness = async (t: import("vite-plus/test").TestContext) => {
   vi.resetModules();
   const originalFetch = globalThis.fetch;
-  const requests = [];
+  const requests: { url: string; body: unknown; resolve: (response: Response) => void }[] = [];
   globalThis.fetch = (url, init = {}) =>
-    new Promise((resolve) => {
-      requests.push({ url: String(url), body: init.body ? JSON.parse(init.body) : null, resolve });
+    new Promise<Response>((resolve) => {
+      requests.push({
+        url: String(url),
+        body: init.body ? JSON.parse(String(init.body)) : null,
+        resolve,
+      });
     });
   const { queryClient, queryKeys } = await import("../../frontend/src/queryClient.ts");
   t.onTestFinished(() => {
     globalThis.fetch = originalFetch;
     queryClient.clear();
   });
-  const waitForRequests = async (count) => {
-    while (requests.length < count) await new Promise((resolve) => setImmediate(resolve));
+  const waitForRequests = async (count: number) => {
+    while (requests.length < count) await new Promise<void>((resolve) => setImmediate(resolve));
   };
   return { queryClient, queryKeys, requests, waitForRequests };
 };
@@ -36,9 +40,17 @@ test("an album request shows as downloading at once and stops if the server refu
   const { queryClient, queryKeys, requests, waitForRequests } = await openHarness(t);
   const { requestAlbumFromSearch } =
     await import("../../frontend/src/utils/api/endpoints/library.ts");
-  const activeAlbums = () => queryClient.getQueryData(queryKeys.activeDownloads)?.albums || [];
+  const activeAlbums = () =>
+    queryClient.getQueryData<{ albums: string[] }>(queryKeys.activeDownloads)?.albums || [];
 
-  const request = requestAlbumFromSearch({ albumMbid: "album-1", artistMbid: "artist-1" });
+  const request = requestAlbumFromSearch({
+    albumMbid: "album-1",
+    artistMbid: "artist-1",
+    albumName: "Album",
+    artistName: "Artist",
+    managedBy: "aurral",
+    triggerSearch: true,
+  });
   await waitForRequests(1);
   assert.deepEqual(activeAlbums(), ["album-1"]);
 
@@ -50,11 +62,27 @@ test("an album request shows as downloading at once and stops if the server refu
 test("undoing an unfavorite sends the removed stars back and reverts if the restore fails", async (t) => {
   const { requests, waitForRequests } = await openHarness(t);
   const { showFavoriteRemoved } = await import("../../frontend/src/utils/favoriteUndo.ts");
-  const toasts = [];
-  const toast = {
-    addToast: (content) => toasts.push(content),
-    showSuccess: (message) => toasts.push({ message }),
-    showError: (message) => toasts.push({ message, error: true }),
+  type ToastApi = Parameters<typeof showFavoriteRemoved>[0];
+  type ToastMessage = Parameters<ToastApi["addToast"]>[0];
+  type CapturedToast = {
+    message?: import("react").ReactNode;
+    action?: { label: string; onClick: () => void };
+    error?: boolean;
+  };
+  const toasts: CapturedToast[] = [];
+  const capture = (message: ToastMessage, error: boolean = false) => {
+    toasts.push({
+      ...(typeof message === "string" ? { message } : message),
+      ...(error ? { error: true } : {}),
+    });
+    return String(toasts.length);
+  };
+  const toast: ToastApi = {
+    addToast: (content) => capture(content),
+    showSuccess: (message) => capture(message),
+    showError: (message) => capture(message, true),
+    showInfo: (message) => capture(message),
+    removeToast: () => {},
   };
   let starred = false;
   const removed = [{ id: "song:favorite-track", starredAt: 1000 }];
@@ -71,6 +99,7 @@ test("undoing an unfavorite sends the removed stars back and reverts if the rest
   });
   assert.equal(toasts[0].message, "Removed Favorite Track from favorites");
 
+  assert.ok(toasts[0].action);
   const undone = toasts[0].action.onClick();
   assert.equal(starred, true);
   await waitForRequests(1);

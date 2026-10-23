@@ -29,7 +29,7 @@ test("formats dates in the selected international order", () => {
 
 test("describes recent moments relative to now", () => {
   const now = new Date(2026, 9, 9, 15, 0);
-  const ago = (ms) => new Date(now.getTime() - ms);
+  const ago = (ms: number) => new Date(now.getTime() - ms);
   const minute = 60_000;
   const hour = 60 * minute;
   const day = 24 * hour;

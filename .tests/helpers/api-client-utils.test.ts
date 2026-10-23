@@ -1,3 +1,5 @@
+import { listeningAddress } from "./backendTestHarness.ts";
+import { asAppError } from "../../lib/errors.ts";
 import assert from "node:assert/strict";
 import http from "node:http";
 import { spawnSync } from "node:child_process";
@@ -8,7 +10,9 @@ import createCache from "../../backend/services/apiClients/simpleCache.ts";
 import createRateLimiter from "../../backend/services/apiClients/rateLimiter.ts";
 import axios from "../../lib/axiosFetch.ts";
 
-const settleWithFakeTimers = async (promise) => {
+const settleWithFakeTimers = async (
+  promise: Promise<void> | Promise<[void, void, void]> | Promise<[void, void]>,
+) => {
   await vi.runAllTimersAsync();
   return promise;
 };
@@ -16,11 +20,11 @@ const settleWithFakeTimers = async (promise) => {
 test("rate limiter spaces concurrent and sequential request starts", async () => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
   const limiter = createRateLimiter(30);
-  const starts = [];
+  const starts: number[] = [];
   const request = () =>
     limiter.schedule(async () => {
       starts.push(Date.now());
-      await new Promise((resolve) => setTimeout(resolve, 5));
+      await new Promise<void>((resolve) => setTimeout(resolve, 5));
     });
   await settleWithFakeTimers(Promise.all([request(), request(), request()]));
   await settleWithFakeTimers(request());
@@ -39,7 +43,7 @@ test("rate limiter rejects excess queued reservations from a burst", async () =>
 
   const overflow = assert.rejects(
     limiter.schedule(() => {}),
-    (error) => error.code === "EQUEUEFULL",
+    (error) => asAppError(error)?.code === "EQUEUEFULL",
   );
   await settleWithFakeTimers(Promise.all([overflow, first, queued]));
 });
@@ -57,7 +61,7 @@ test("rate limiter expires queued work before invoking its callback", async () =
       },
       { timeoutMs: 5 },
     ),
-    (error) => error.code === "ETIMEDOUT",
+    (error) => asAppError(error)?.code === "ETIMEDOUT",
   );
   await settleWithFakeTimers(expired);
   await first;
@@ -141,7 +145,7 @@ test("idle TTL caches release expired payloads while keeping stale and live valu
   const { default: createIdleCache } =
     await import("../../backend/services/apiClients/simpleCache.ts");
   const cache = createIdleCache();
-  let payload = { id: "expired payload" };
+  let payload: { id: string } | null = { id: "expired payload" };
   const retained = new WeakRef(payload);
   cache.set("expired", payload, 1);
   cache.set("stale", "offline fallback", 1, 600);
@@ -166,7 +170,7 @@ test("fetch transport failures expose axios-compatible request metadata", async 
   try {
     await assert.rejects(
       axios.get("http://lidarr.invalid/api/v1/status"),
-      (error) =>
+      (error: { request?: { url?: string; method?: string } }) =>
         error.request?.url === "http://lidarr.invalid/api/v1/status" &&
         error.request?.method === "GET",
     );
@@ -177,17 +181,17 @@ test("fetch transport failures expose axios-compatible request metadata", async 
 
 test("fetch timeouts expose an axios-compatible timeout code", async () => {
   const server = http.createServer(() => {});
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const { port } = server.address();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = listeningAddress(server);
 
   try {
     await assert.rejects(
       axios.get(`http://127.0.0.1:${port}`, { timeout: 10 }),
-      (error) => error.code === "ECONNABORTED",
+      (error) => asAppError(error)?.code === "ECONNABORTED",
     );
   } finally {
     server.closeAllConnections();
-    await new Promise((resolve) => server.close(resolve));
+    await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });
 
@@ -203,8 +207,8 @@ test("uses environment proxy settings when NODE_USE_ENV_PROXY is enabled", async
     response.end("proxied");
   });
   await Promise.all([
-    new Promise((resolve) => target.listen(0, "127.0.0.1", resolve)),
-    new Promise((resolve) => proxy.listen(0, "127.0.0.1", resolve)),
+    new Promise<void>((resolve) => target.listen(0, "127.0.0.1", resolve)),
+    new Promise<void>((resolve) => proxy.listen(0, "127.0.0.1", resolve)),
   ]);
 
   const saved = Object.fromEntries(
@@ -226,7 +230,7 @@ test("uses environment proxy settings when NODE_USE_ENV_PROXY is enabled", async
   };
 
   try {
-    const proxyUrl = `http://127.0.0.1:${proxy.address().port}`;
+    const proxyUrl = `http://127.0.0.1:${listeningAddress(proxy)!.port}`;
     process.env.NODE_USE_ENV_PROXY = "1";
     process.env.HTTP_PROXY = proxyUrl;
     process.env.HTTPS_PROXY = proxyUrl;
@@ -235,14 +239,14 @@ test("uses environment proxy settings when NODE_USE_ENV_PROXY is enabled", async
     process.env.NO_PROXY = "";
     process.env.no_proxy = "";
 
-    const response = await axios.get(`http://127.0.0.1:${target.address().port}`);
+    const response = await axios.get(`http://127.0.0.1:${listeningAddress(target)!.port}`);
     assert.equal(response.data, "proxied");
     assert.equal(proxyHits, 1);
     assert.equal(targetHits, 0);
 
     process.env.NO_PROXY = "127.0.0.1";
     process.env.no_proxy = "127.0.0.1";
-    const noProxyResponse = await axios.get(`http://127.0.0.1:${target.address().port}`);
+    const noProxyResponse = await axios.get(`http://127.0.0.1:${listeningAddress(target)!.port}`);
     assert.equal(noProxyResponse.data, "direct");
     assert.equal(proxyHits, 1);
     assert.equal(targetHits, 1);
@@ -250,15 +254,15 @@ test("uses environment proxy settings when NODE_USE_ENV_PROXY is enabled", async
     delete process.env.NODE_USE_ENV_PROXY;
     process.env.NO_PROXY = "";
     process.env.no_proxy = "";
-    const disabledResponse = await axios.get(`http://127.0.0.1:${target.address().port}`);
+    const disabledResponse = await axios.get(`http://127.0.0.1:${listeningAddress(target)!.port}`);
     assert.equal(disabledResponse.data, "direct");
     assert.equal(proxyHits, 1);
     assert.equal(targetHits, 2);
   } finally {
     restoreEnvironment();
     await Promise.all([
-      new Promise((resolve) => target.close(resolve)),
-      new Promise((resolve) => proxy.close(resolve)),
+      new Promise<void>((resolve) => target.close(() => resolve())),
+      new Promise<void>((resolve) => proxy.close(() => resolve())),
     ]);
   }
 });

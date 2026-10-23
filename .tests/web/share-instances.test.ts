@@ -1,9 +1,10 @@
+import type BetterSqlite3 from "better-sqlite3";
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 import { createRequire } from "node:module";
 
 const backendRequire = createRequire(new URL("../../backend/package.json", import.meta.url));
-const Database = backendRequire("better-sqlite3");
+const Database: typeof BetterSqlite3 = backendRequire("better-sqlite3");
 const { onRequestDelete, onRequestPut } = await import("../../web/functions/api/instances/[id].js");
 const { onRequest: sharePage } = await import("../../web/functions/s/[[path]].js");
 
@@ -17,9 +18,9 @@ function fakeD1() {
   const sqlite = new Database(":memory:");
   return {
     sqlite,
-    prepare(sql) {
-      const bound = (values) => ({
-        bind: (...next) => bound(next),
+    prepare(sql: string) {
+      const bound = (values: unknown[]) => ({
+        bind: (...next: unknown[]) => bound(next),
         first: async () => sqlite.prepare(sql).get(...values) ?? null,
         run: async () => ({ meta: { changes: sqlite.prepare(sql).run(...values).changes } }),
       });
@@ -28,7 +29,7 @@ function fakeD1() {
   };
 }
 
-function tunnelAnswering(routes) {
+function tunnelAnswering(routes: Record<string, () => Response | Promise<Response>>) {
   const realFetch = globalThis.fetch;
   globalThis.fetch = async (url) => {
     const handler = routes[String(url)];
@@ -40,10 +41,14 @@ function tunnelAnswering(routes) {
   };
 }
 
-const json = (body, status = 200) =>
+const json = (body: unknown, status: number = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
-const put = (db, body, id = INSTANCE_ID) =>
+const put = (
+  db: ReturnType<typeof fakeD1>,
+  body: { secret: string; url: string },
+  id = INSTANCE_ID,
+) =>
   onRequestPut({
     env: { SHARE_DB: db },
     params: { id },
@@ -53,11 +58,12 @@ const put = (db, body, id = INSTANCE_ID) =>
     }),
   });
 
-const storedUrl = (db) =>
-  db.sqlite.prepare("SELECT tunnel_url FROM instances WHERE id = ?").get(INSTANCE_ID)?.tunnel_url ??
-  null;
+const storedUrl = (db: ReturnType<typeof fakeD1>) =>
+  db.sqlite
+    .prepare<unknown[], { tunnel_url: string }>("SELECT tunnel_url FROM instances WHERE id = ?")
+    .get(INSTANCE_ID)?.tunnel_url ?? null;
 
-test("an instance registers a tunnel only when the tunnel proves it is that instance", async (t) => {
+test("an instance registers a tunnel only when the tunnel proves it is that instance", async (t: import("vite-plus/test").TestContext) => {
   const db = fakeD1();
   const restore = tunnelAnswering({
     [`${TUNNEL}/share/.well-known/aurral`]: () => json({ instanceId: "someone-else-id1" }),
@@ -71,7 +77,7 @@ test("an instance registers a tunnel only when the tunnel proves it is that inst
   assert.equal(storedUrl(db), null);
 });
 
-test("the first secret owns the instance and other secrets cannot move or clear it", async (t) => {
+test("the first secret owns the instance and other secrets cannot move or clear it", async (t: import("vite-plus/test").TestContext) => {
   const db = fakeD1();
   const restore = tunnelAnswering({
     [`${TUNNEL}/share/.well-known/aurral`]: () => json({ instanceId: INSTANCE_ID }),
@@ -97,14 +103,18 @@ test("the first secret owns the instance and other secrets cannot move or clear 
   });
   assert.equal(clear.status, 403);
   assert.equal(storedUrl(db), TUNNEL);
-  assert.notEqual(db.sqlite.prepare("SELECT secret_hash FROM instances").get().secret_hash, SECRET);
+  assert.notEqual(
+    db.sqlite.prepare<unknown[], { secret_hash: string }>("SELECT secret_hash FROM instances").get()
+      ?.secret_hash,
+    SECRET,
+  );
 });
 
-test("a claim racing the first owner cannot take over the instance", async (t) => {
+test("a claim racing the first owner cannot take over the instance", async (t: import("vite-plus/test").TestContext) => {
   const db = fakeD1();
   const RIVAL = "https://rival-tunnel-name.trycloudflare.com";
-  let releaseRival;
-  const rivalVerified = new Promise((resolve) => {
+  let releaseRival!: () => void;
+  const rivalVerified = new Promise<void>((resolve) => {
     releaseRival = resolve;
   });
   const restore = tunnelAnswering({
@@ -121,7 +131,7 @@ test("a claim racing the first owner cannot take over the instance", async (t) =
   assert.equal(storedUrl(db), TUNNEL);
 });
 
-test("a listen link plays from the registered tunnel, and says so when the tunnel is gone", async (t) => {
+test("a listen link plays from the registered tunnel, and says so when the tunnel is gone", async (t: import("vite-plus/test").TestContext) => {
   const db = fakeD1();
   let tunnelUp = true;
   const restore = tunnelAnswering({
@@ -139,7 +149,7 @@ test("a listen link plays from the registered tunnel, and says so when the tunne
   t.onTestFinished(restore);
   assert.equal((await put(db, { secret: SECRET, url: TUNNEL })).status, 204);
 
-  const open = (segment) =>
+  const open = (segment: string) =>
     sharePage({
       env: { SHARE_DB: db },
       params: { path: [segment] },

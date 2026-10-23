@@ -15,11 +15,11 @@ const [
   { updateStaticPlaylist },
 ] = await setupIsolatedBackend(
   "static-playlist-update-race",
-  "backend/config/db-sqlite.ts",
-  "backend/services/downloadJobs/downloadTracker.ts",
-  "backend/services/playlists/flowPlaylistConfig.ts",
-  "backend/services/downloadJobs/downloadWorker.ts",
-  "backend/services/playlists/playlistOperations.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
+  () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
+  () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
+  () => import("../../backend/services/playlists/playlistOperations.ts"),
 );
 
 beforeEach(async () => {

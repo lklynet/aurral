@@ -7,7 +7,7 @@ function logValue(value: unknown) {
   return typeof value === "string" ? safeLogDiagnostic(value).slice(0, MAX_LOG_VALUE_LENGTH) : null;
 }
 
-export function createRequestFailureLogger(log = logger) {
+export function createRequestFailureLogger(log: Pick<typeof logger, "error"> = logger) {
   return (req: Request, res: Response, next: NextFunction) => {
     let responseReason: string | null = null;
     const sendJson = res.json;

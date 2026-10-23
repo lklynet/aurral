@@ -1,3 +1,4 @@
+import { requireFixture } from "./fixtures.ts";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import path from "node:path";
@@ -20,10 +21,10 @@ const [
   { PlaylistManager },
 ] = await setupIsolatedBackend(
   "playlist-artwork",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/playlists/flowPlaylistConfig.ts",
-  "backend/services/playlists/playlistManager.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
+  () => import("../../backend/services/playlists/playlistManager.ts"),
 );
 
 beforeEach(() => {
@@ -43,9 +44,10 @@ afterAll(async () => {
 });
 
 function makeManager() {
-  const manager = new PlaylistManager(process.env.WEEKLY_FLOW_FOLDER);
-  manager.__artworkUploads = [];
-  manager.navidromeDestination.client = {
+  const manager = Object.assign(new PlaylistManager(process.env.WEEKLY_FLOW_FOLDER), {
+    __artworkUploads: [] as { id: string; size?: number; filename?: string; deleted?: boolean }[],
+  });
+  const client = {
     isConfigured: () => true,
     async ensureAurralLibrary() {},
     async getPlaylists() {
@@ -54,19 +56,22 @@ function makeManager() {
     async findSong() {
       return null;
     },
-    async createPlaylist(name) {
+    async createPlaylist(name: string) {
       return { id: name, name };
     },
     async updatePlaylist() {},
     async deletePlaylist() {},
-    async uploadPlaylistArtwork(id, data, filename) {
+    async uploadPlaylistArtwork(id: string, data: Buffer, filename: string) {
       manager.__artworkUploads.push({ id, size: data.length, filename });
     },
-    async deletePlaylistArtwork(id) {
+    async deletePlaylistArtwork(id: string) {
       manager.__artworkUploads.push({ id, deleted: true });
     },
     async scanLibrary() {},
   };
+  manager.navidromeDestination.client = client as unknown as NonNullable<
+    typeof manager.navidromeDestination.client
+  >;
   return manager;
 }
 
@@ -122,10 +127,12 @@ test("serves temporary artwork and replaces it when the photo source recovers", 
     .jpeg()
     .toBuffer();
   let sourceAvailable = false;
-  vi.spyOn(axios, "get").mockImplementation(async () => {
-    if (!sourceAvailable) throw new Error("Request failed with status code 503");
-    return { data: source };
-  });
+  vi.spyOn(axios, "get").mockImplementation(
+    requireFixture(async () => {
+      if (!sourceAvailable) throw new Error("Request failed with status code 503");
+      return { status: 200, statusText: "OK", headers: {}, data: source };
+    }),
+  );
   const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Offline Photos",
     tracks: [{ artistName: "A", trackName: "One" }],
@@ -154,7 +161,12 @@ test("replaces the old generated JPEG fallback with photo artwork", async () => 
   })
     .jpeg()
     .toBuffer();
-  vi.spyOn(axios, "get").mockImplementation(async () => ({ data: source }));
+  vi.spyOn(axios, "get").mockImplementation(async () => ({
+    status: 200,
+    statusText: "OK",
+    headers: {},
+    data: source,
+  }));
   const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Legacy Fallback",
     tracks: [{ artistName: "A", trackName: "One" }],
@@ -196,7 +208,7 @@ test("does not replace uploaded artwork in photo mode", async () => {
     .png()
     .toBuffer();
   await manager.saveArtworkUpload(playlist.id, uploaded);
-  const artworkPath = (await manager.resolveArtworkFile(playlist.id)).safePath;
+  const artworkPath = (await manager.resolveArtworkFile(playlist.id))!.safePath;
   const before = await fs.readFile(artworkPath);
   dbOps.updateSettings({ playlistArtwork: { style: "photo" } });
   let photoRequests = 0;

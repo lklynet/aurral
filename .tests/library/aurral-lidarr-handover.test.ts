@@ -7,11 +7,11 @@ import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTe
 const [isolatedState, { db }, libraryStore, managementStore, { lidarrClient }, { libraryManager }] =
   await setupIsolatedBackend(
     "aurral-lidarr-handover",
-    "backend/config/db-sqlite.ts",
-    "backend/services/libraryMediaStore.ts",
-    "backend/services/libraryManagementStore.ts",
-    "backend/services/lidarrClient.ts",
-    "backend/services/libraryManager.ts",
+    () => import("../../backend/config/db-sqlite.ts"),
+    () => import("../../backend/services/libraryMediaStore.ts"),
+    () => import("../../backend/services/libraryManagementStore.ts"),
+    () => import("../../backend/services/lidarrClient.ts"),
+    () => import("../../backend/services/libraryManager.ts"),
   );
 
 const artistMbid = "e1111111-1111-4111-8111-111111111111";
@@ -39,7 +39,7 @@ beforeAll(() => {
   };
   lidarrClient.getArtistByMbid = async () => lidarrArtist;
   lidarrClient.getArtist = async () => lidarrArtist;
-  lidarrClient.getAlbumByMbid = async () => null;
+  lidarrClient.getAlbumByMbid = async () => undefined;
   lidarrClient.addAlbum = async () => lidarrAlbum;
   lidarrClient.getAlbum = async () => lidarrAlbum;
 });
@@ -59,7 +59,15 @@ afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-function seedAlbum({ monitored, monitorMode }) {
+function seedAlbum({
+  monitored,
+  monitorMode,
+}: {
+  monitored: boolean;
+  monitorMode: NonNullable<
+    Parameters<typeof managementStore.setLibraryManagement>[0]
+  >["monitorMode"];
+}) {
   const artist = libraryStore.upsertLibraryArtist({
     identityKey: `mbid:${artistMbid}`,
     mbid: artistMbid,
@@ -87,6 +95,7 @@ function seedAlbum({ monitored, monitorMode }) {
   });
   libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
   libraryStore.upsertLibraryMediaFile({
+    scanId: undefined,
     trackId: track.id,
     albumId: album.id,
     source: "aurral",
@@ -102,7 +111,7 @@ const requestFromLidarr = () =>
     artistMbid,
     artistName: "Handover Artist",
     managedBy: "lidarr",
-    user: { role: "admin" },
+    user: { id: 1, username: "test", role: "admin", permissions: {} },
   });
 
 test("downloading a single's album with Lidarr hands the album to Lidarr and stops Aurral's track monitoring", async () => {
@@ -112,11 +121,21 @@ test("downloading a single's album with Lidarr hands the album to Lidarr and sto
 
   assert.equal(managementStore.getManagedBy("album", album.id), "lidarr");
   assert.equal(
-    db.prepare("SELECT monitored FROM library_tracks WHERE id = ?").get(track.id).monitored,
+    db
+      .prepare<
+        unknown[],
+        { monitored: import("../../backend/db/rows.ts").LibraryTracksRow["monitored"] }
+      >("SELECT monitored FROM library_tracks WHERE id = ?")
+      .get(track.id)!.monitored,
     0,
   );
   const metadata = JSON.parse(
-    db.prepare("SELECT metadata_json FROM library_albums WHERE id = ?").get(album.id).metadata_json,
+    db
+      .prepare<
+        unknown[],
+        { metadata_json: import("../../backend/db/rows.ts").LibraryAlbumsRow["metadata_json"] }
+      >("SELECT metadata_json FROM library_albums WHERE id = ?")
+      .get(album.id)!.metadata_json!,
   );
   assert.equal(typeof metadata.aurralHandoverAt, "number");
 });
@@ -130,7 +149,7 @@ test("adding an Aurral album to Lidarr directly hands it to Lidarr too", async (
     "Handover Album",
     {
       managedBy: "lidarr",
-      user: { role: "admin" },
+      user: { id: 1, username: "test", role: "admin", permissions: {} },
     },
   );
 
@@ -139,8 +158,8 @@ test("adding an Aurral album to Lidarr directly hands it to Lidarr too", async (
 });
 
 test("a Lidarr album in the Library is removed from Lidarr by its MusicBrainz ID", async () => {
-  const deleted = [];
-  lidarrClient.getAlbumByMbid = async (mbid) => (mbid === albumMbid ? lidarrAlbum : null);
+  const deleted: (string | number | boolean | undefined)[][] = [];
+  lidarrClient.getAlbumByMbid = async (mbid) => (mbid === albumMbid ? lidarrAlbum : undefined);
   lidarrClient.deleteAlbum = async (id, deleteFiles) => {
     deleted.push([id, deleteFiles]);
   };

@@ -6,7 +6,9 @@ import { getPathMappings, resolveLocalPath } from "./pathMappings.ts";
 import type { NzbgetClient } from "./nzbgetClient.ts";
 
 type NzbgetHistoryItem = { DestDir?: string | null; FinalDir?: string | null };
-type NzbgetDownloadDirectories = Awaited<ReturnType<NzbgetClient["getDownloadDirectories"]>>;
+type NzbgetDownloadDirectories = Partial<
+  Awaited<ReturnType<NzbgetClient["getDownloadDirectories"]>>
+>;
 
 const realpathOr = (dir: string) => fs.realpath(dir).catch(() => dir);
 

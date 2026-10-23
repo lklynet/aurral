@@ -9,9 +9,9 @@ import {
 
 const [isolatedState, { db }, { dbOps }, { runStorageHealthCheck }] = await setupIsolatedBackend(
   "storage-health-playlist-path",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/storageHealthService.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/storageHealthService.ts"),
 );
 
 beforeEach(async () => {

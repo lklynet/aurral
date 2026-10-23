@@ -1,25 +1,31 @@
 import assert from "node:assert/strict";
-import { EventEmitter } from "node:events";
+import { ChildProcess, type Serializable } from "node:child_process";
 import { test, vi } from "vite-plus/test";
 import { createFlowPlanRunner } from "../../backend/services/flows/flowPlanRunner.ts";
 
 function fakePlanner() {
-  const child = new EventEmitter();
-  child.exitCode = null;
-  child.signalCode = null;
-  child.killed = false;
-  child.send = (message, callback) => {
+  const child = Object.assign(new ChildProcess(), {
+    exitCode: null as number | null,
+    signalCode: null as NodeJS.Signals | null,
+    killed: false,
+    acknowledged: false,
+    request: undefined as Serializable | undefined,
+  });
+  child.send = (message, callback?: unknown) => {
+    assert.ok(message && typeof message === "object" && "type" in message);
     if (message.type === "flow-plan-ack") {
       child.acknowledged = true;
       child.exitCode = 0;
-      callback?.(null);
+      if (typeof callback === "function") callback(null);
       queueMicrotask(() => child.emit("exit", 0, null));
     } else {
       child.request = message;
     }
+    return true;
   };
   child.kill = () => {
     child.killed = true;
+    return true;
   };
   return child;
 }
@@ -87,9 +93,11 @@ test("planner acknowledgement failures are handled while the child is exiting", 
   const prior = process.env.NODE_ENV;
   process.env.NODE_ENV = "production";
   const child = fakePlanner();
-  let ackCallback;
-  child.send = (message, callback) => {
+  let ackCallback: unknown;
+  child.send = (message, callback?: unknown) => {
+    assert.ok(message && typeof message === "object" && "type" in message);
     if (message.type === "flow-plan-ack") ackCallback = callback;
+    return true;
   };
   try {
     const run = createFlowPlanRunner({ forkProcess: () => child, timeoutMs: 500 });
@@ -97,6 +105,7 @@ test("planner acknowledgement failures are handled while the child is exiting", 
     child.emit("message", { type: "flow-plan-result", plan: { primaryTracks: [] } });
     await pending;
     assert.doesNotThrow(() => child.emit("error", new Error("child exited")));
+    assert.ok(typeof ackCallback === "function");
     ackCallback(new Error("IPC closed"));
     assert.equal(child.killed, true);
     child.emit("exit", 1, null);

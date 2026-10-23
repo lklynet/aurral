@@ -1,3 +1,4 @@
+import { createRouteHarness, createResponse } from "./routeHarness.ts";
 import assert from "node:assert/strict";
 import { test, afterAll } from "vite-plus/test";
 
@@ -5,34 +6,21 @@ import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTe
 
 const [state, { registerTracks }] = await setupIsolatedBackend(
   "tracks-query",
-  "backend/routes/library/handlers/tracks.ts",
+  () => import("../../backend/routes/library/handlers/tracks.ts"),
 );
 
-const routes = new Map();
-registerTracks({
-  get: (path, ...handlers) => routes.set(`GET ${path}`, handlers.at(-1)),
-  post: () => {},
-  put: () => {},
-  delete: () => {},
-});
+const routes = createRouteHarness(registerTracks);
 
 afterAll(() => cleanupIsolatedState(state));
 
-async function requestTracks(query) {
-  const response = { statusCode: 200, body: null };
-  await routes.get("GET /tracks")(
-    { query },
-    {
-      status(code) {
-        response.statusCode = code;
-        return this;
-      },
-      json(value) {
-        response.body = value;
-        return this;
-      },
-    },
-  );
+async function requestTracks(
+  query:
+    | { albumId: string[]; releaseGroupMbid?: undefined }
+    | { releaseGroupMbid: string[]; albumId?: undefined }
+    | { albumId: string },
+) {
+  const response = createResponse<unknown>();
+  await routes.get("GET /tracks")({ query }, response);
   return response;
 }
 

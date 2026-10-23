@@ -11,10 +11,12 @@ import {
   usableEvaluationEntries,
 } from "../../backend/services/trackMatching/index.ts";
 
-const btest = test;
+type SearchInput = NonNullable<Parameters<typeof buildSourceCandidates>[0]>;
 import { orderAdvertisedQualityCandidates } from "../../backend/services/qualityProfileModel.ts";
 
-const result = (overrides) => ({
+type SoulseekResult = NonNullable<SearchInput["results"]>[number] & { size?: number };
+
+const result = (overrides: SoulseekResult) => ({
   size: 30000000,
   slots: true,
   bitrate: 900,
@@ -22,70 +24,65 @@ const result = (overrides) => ({
   ...overrides,
 });
 
-const flacProfile = {
-  order: ["flac-hires", "flac-standard", "mp3-320"],
-  enabled: ["flac-hires", "flac-standard", "mp3-320"],
-  cutoff: "flac-standard",
-};
-
-async function evaluate(results, track, options = {}) {
+async function evaluate(
+  results: SoulseekResult[],
+  track: SearchInput["request"],
+  options: SearchInput["options"] = {},
+) {
   return buildSourceCandidates({
     source: "soulseek",
     results,
     request: track,
-    options: { qualityProfile: flacProfile, ...options },
+    options,
   });
 }
 
-function usableFileNames(evaluation) {
-  return usableEvaluationEntries(evaluation).map((entry) => entry.candidate.raw.file);
+function usableFileNames(evaluation: Awaited<ReturnType<typeof evaluate>>) {
+  return usableEvaluationEntries(evaluation).map((entry) => String(entry.candidate.raw.file));
 }
 
-btest(
-  "dash-separated remasters and requested edits retain the complete recording title",
-  async () => {
-    for (const [artistName, trackName, filename, length, decision] of [
+test("dash-separated remasters and requested edits retain the complete recording title", async () => {
+  for (const [artistName, trackName, filename, length, decision] of [
+    [
+      "Queen",
+      "Bohemian Rhapsody",
+      "Queen - Bohemian Rhapsody - Remastered 2011.mp3",
+      355,
+      "accept",
+    ],
+    ["Queen", "Bohemian Rhapsody", "Queen - Bohemian Rhapsody.mp3", 355, "accept"],
+    [
+      "Artist Name",
+      "Wide Awake Tonight - Radio Edit",
+      "11 - Artist Name - Wide Awake Tonight - Radio Edit.mp3",
+      200,
+      "accept",
+    ],
+    [
+      "Artist Name",
+      "Wide Awake Tonight - Radio Edit",
+      "11 - Artist Name - Wide Awake Tonight (Radio Edit).mp3",
+      200,
+      "accept",
+    ],
+    ["Darude", "Sandstorm", "Darude - Sandstorm - Extended Mix.mp3", 200, "reject"],
+    ["Darude", "Sandstorm", "Darude - Sandstorm - Live.mp3", 200, "reject"],
+  ] satisfies [unknown, unknown, unknown, unknown, unknown][]) {
+    const evaluation = await evaluate(
       [
-        "Queen",
-        "Bohemian Rhapsody",
-        "Queen - Bohemian Rhapsody - Remastered 2011.mp3",
-        355,
-        "accept",
+        result({
+          user: "u",
+          file: `Music\\${artistName}\\Album\\${filename}`,
+          length,
+        }),
       ],
-      ["Queen", "Bohemian Rhapsody", "Queen - Bohemian Rhapsody.mp3", 355, "accept"],
-      [
-        "Artist Name",
-        "Wide Awake Tonight - Radio Edit",
-        "11 - Artist Name - Wide Awake Tonight - Radio Edit.mp3",
-        200,
-        "accept",
-      ],
-      [
-        "Artist Name",
-        "Wide Awake Tonight - Radio Edit",
-        "11 - Artist Name - Wide Awake Tonight (Radio Edit).mp3",
-        200,
-        "accept",
-      ],
-      ["Darude", "Sandstorm", "Darude - Sandstorm - Extended Mix.mp3", 200, "reject"],
-      ["Darude", "Sandstorm", "Darude - Sandstorm - Live.mp3", 200, "reject"],
-    ]) {
-      const evaluation = await evaluate(
-        [
-          result({
-            user: "u",
-            file: `Music\\${artistName}\\Album\\${filename}`,
-            length,
-          }),
-        ],
-        { artistName, trackName, durationMs: length * 1000 },
-      );
-      assert.equal(evaluation.evaluations[0].decision, decision, filename);
-    }
-  },
-);
+      { artistName, trackName, durationMs: length * 1000 },
+    );
+    assert.equal(evaluation.evaluations[0].decision, decision, filename);
+  }
+});
 
-btest("Soulseek filenames preserve non-Latin title identity", async () => {
+test("Soulseek filenames preserve non-Latin title identity", async () => {
   for (const [trackName, offered, decision] of [
     ["Мой", "Мои", "reject"],
     ["かみ", "がみ", "reject"],
@@ -94,7 +91,7 @@ btest("Soulseek filenames preserve non-Latin title identity", async () => {
     ["Мой любимый город", "Мои любимый город", "reject"],
     ["がみ", "か\u3099み", "accept"],
     ["Мой", "Мой", "accept"],
-  ]) {
+  ] satisfies [unknown, unknown, unknown][]) {
     const evaluation = await evaluate(
       [
         result({
@@ -109,7 +106,7 @@ btest("Soulseek filenames preserve non-Latin title identity", async () => {
   }
 });
 
-btest("same-title single from the wrong artist is not offered as a candidate", async () => {
+test("same-title single from the wrong artist is not offered as a candidate", async () => {
   const evaluation = await evaluate(
     [
       result({
@@ -129,7 +126,7 @@ btest("same-title single from the wrong artist is not offered as a candidate", a
   assert.deepEqual(usableFileNames(evaluation), []);
 });
 
-btest("same-title single from the right artist is offered", async () => {
+test("same-title single from the right artist is offered", async () => {
   const evaluation = await evaluate(
     [
       result({
@@ -147,79 +144,73 @@ btest("same-title single from the right artist is offered", async () => {
     },
   );
   assert.equal(usableFileNames(evaluation).length, 1);
-  assert.match(usableFileNames(evaluation)[0], /Object Permanence\.flac$/);
+  assert.match(String(usableFileNames(evaluation)[0]), /Object Permanence\.flac$/);
 });
 
-btest(
-  "folder with a matching tracklist fingerprint wins over a same-title file in a misc folder",
-  async () => {
-    const evaluation = await evaluate(
-      [
-        result({
-          user: "weakUser",
-          file: "Franz Ferdinand\\Misc\\01 - Take Me Out.flac",
-          speed: 900000,
-        }),
-        result({
-          user: "albumUser",
-          file: "Franz Ferdinand\\Franz Ferdinand (2004)\\01 - Jacqueline.flac",
-        }),
-        result({
-          user: "albumUser",
-          file: "Franz Ferdinand\\Franz Ferdinand (2004)\\02 - Tell Her Tonight.flac",
-        }),
-        result({
-          user: "albumUser",
-          file: "Franz Ferdinand\\Franz Ferdinand (2004)\\03 - Take Me Out.flac",
-        }),
-      ],
-      {
-        artistName: "Franz Ferdinand",
-        trackName: "Take Me Out",
-        albumName: "Franz Ferdinand",
-        releaseYear: "2004",
-        artistAliases: [],
-        albumTrackCount: 3,
-        albumTrackTitles: ["Jacqueline", "Tell Her Tonight", "Take Me Out"],
-        trackNumber: 3,
-      },
-    );
-    const usable = usableEvaluationEntries(evaluation);
-    assert.ok(usable.length > 0);
-    // The misc-folder sibling ("01 - Take Me Out" parsed with no artist) must
-    // not beat the release folder whose tracklist matches the request.
-    assert.match(usable[0].candidate.raw.file, /03 - Take Me Out\.flac$/);
-    assert.ok(usable[0].distance <= usable[usable.length - 1].distance);
-  },
-);
+test("folder with a matching tracklist fingerprint wins over a same-title file in a misc folder", async () => {
+  const evaluation = await evaluate(
+    [
+      result({
+        user: "weakUser",
+        file: "Franz Ferdinand\\Misc\\01 - Take Me Out.flac",
+        speed: 900000,
+      }),
+      result({
+        user: "albumUser",
+        file: "Franz Ferdinand\\Franz Ferdinand (2004)\\01 - Jacqueline.flac",
+      }),
+      result({
+        user: "albumUser",
+        file: "Franz Ferdinand\\Franz Ferdinand (2004)\\02 - Tell Her Tonight.flac",
+      }),
+      result({
+        user: "albumUser",
+        file: "Franz Ferdinand\\Franz Ferdinand (2004)\\03 - Take Me Out.flac",
+      }),
+    ],
+    {
+      artistName: "Franz Ferdinand",
+      trackName: "Take Me Out",
+      albumName: "Franz Ferdinand",
+      releaseYear: "2004",
+      artistAliases: [],
+      albumTrackCount: 3,
+      albumTrackTitles: ["Jacqueline", "Tell Her Tonight", "Take Me Out"],
+      trackNumber: 3,
+    },
+  );
+  const usable = usableEvaluationEntries(evaluation);
+  assert.ok(usable.length > 0);
+  // The misc-folder sibling ("01 - Take Me Out" parsed with no artist) must
+  // not beat the release folder whose tracklist matches the request.
+  assert.match(String(usable[0].candidate.raw.file), /03 - Take Me Out\.flac$/);
+  assert.ok(usable[0].distance <= usable[usable.length - 1].distance);
+});
 
-btest(
-  "self-titled folder with a conflicting year is downgraded from accept to verify",
-  async () => {
-    const evaluation = await evaluate(
-      [
-        result({
-          user: "oldAlbumUser",
-          file: "Weezer\\Weezer (1994)\\01 - My Name Is Jonas.flac",
-          speed: 900000,
-        }),
-      ],
-      {
-        artistName: "Weezer",
-        trackName: "My Name Is Jonas",
-        albumName: "Weezer",
-        releaseYear: "2026",
-        artistAliases: [],
-      },
-    );
-    const usable = usableEvaluationEntries(evaluation);
-    assert.equal(usable.length, 1);
-    assert.equal(usable[0].decision, "verify");
-    assert.equal(usable[0].aurralEvidence.year.conflicting, true);
-  },
-);
+test("self-titled folder with a conflicting year is downgraded from accept to verify", async () => {
+  const evaluation = await evaluate(
+    [
+      result({
+        user: "oldAlbumUser",
+        file: "Weezer\\Weezer (1994)\\01 - My Name Is Jonas.flac",
+        speed: 900000,
+      }),
+    ],
+    {
+      artistName: "Weezer",
+      trackName: "My Name Is Jonas",
+      albumName: "Weezer",
+      releaseYear: "2026",
+      artistAliases: [],
+    },
+  );
+  const usable = usableEvaluationEntries(evaluation);
+  assert.equal(usable.length, 1);
+  assert.equal(usable[0].decision, "verify");
+  assert.equal(usable[0].aurralEvidence?.year?.conflicting, true);
+});
 
-btest("a fitting album folder beats a same-title file from a wrong-artist album", async () => {
+test("a fitting album folder beats a same-title file from a wrong-artist album", async () => {
   const evaluation = await evaluate(
     [
       result({
@@ -249,49 +240,46 @@ btest("a fitting album folder beats a same-title file from a wrong-artist album"
   );
   const usable = usableEvaluationEntries(evaluation);
   assert.ok(usable.length > 0);
-  assert.match(usable[0].candidate.raw.file, /Brilliant Boy\.flac$/);
-  assert.match(usable[0].candidate.raw.file, /Return Of The Rentals/);
+  assert.match(String(usable[0].candidate.raw.file), /Brilliant Boy\.flac$/);
+  assert.match(String(usable[0].candidate.raw.file), /Return Of The Rentals/);
 });
 
-btest(
-  "falls back to a valid track outside the album folder when the album folder lacks it",
-  async () => {
-    const evaluation = await evaluate(
-      [
-        result({
-          user: "albumUser",
-          file: "Artist Name\\Album Name (1999)\\02 - Other Song.flac",
-          speed: 900000,
-        }),
-        result({
-          user: "singleUser",
-          file: "Artist Name\\Misc Folder\\Correct Track.mp3",
-          bitrate: 320,
-          speed: 600000,
-        }),
-      ],
-      {
-        artistName: "Artist Name",
-        trackName: "Correct Track",
-        albumName: "Album Name",
-        releaseYear: "1999",
-        artistAliases: [],
-        albumTrackCount: 2,
-        albumTrackTitles: ["Correct Track", "Other Song"],
-        trackNumber: 1,
-      },
-    );
-    const usable = usableEvaluationEntries(evaluation);
-    assert.ok(usable.length > 0);
-    assert.match(usable[0].candidate.raw.file, /Correct Track\.mp3$/);
-    assert.equal(
-      usable.some((entry) => /Other Song/.test(entry.candidate.raw.file)),
-      false,
-    );
-  },
-);
+test("falls back to a valid track outside the album folder when the album folder lacks it", async () => {
+  const evaluation = await evaluate(
+    [
+      result({
+        user: "albumUser",
+        file: "Artist Name\\Album Name (1999)\\02 - Other Song.flac",
+        speed: 900000,
+      }),
+      result({
+        user: "singleUser",
+        file: "Artist Name\\Misc Folder\\Correct Track.mp3",
+        bitrate: 320,
+        speed: 600000,
+      }),
+    ],
+    {
+      artistName: "Artist Name",
+      trackName: "Correct Track",
+      albumName: "Album Name",
+      releaseYear: "1999",
+      artistAliases: [],
+      albumTrackCount: 2,
+      albumTrackTitles: ["Correct Track", "Other Song"],
+      trackNumber: 1,
+    },
+  );
+  const usable = usableEvaluationEntries(evaluation);
+  assert.ok(usable.length > 0);
+  assert.match(String(usable[0].candidate.raw.file), /Correct Track\.mp3$/);
+  assert.equal(
+    usable.some((entry) => /Other Song/.test(String(entry.candidate.raw.file))),
+    false,
+  );
+});
 
-btest("live variant is rejected by contradiction when the requested track is plain", async () => {
+test("live variant is rejected by contradiction when the requested track is plain", async () => {
   const evaluation = await evaluate(
     [
       result({
@@ -313,45 +301,45 @@ btest("live variant is rejected by contradiction when the requested track is pla
       artistAliases: [],
     },
   );
-  assert.match(usableFileNames(evaluation)[0], /Correct Track\.mp3$/);
-  const live = evaluation.evaluations.find((entry) => /Live/.test(entry.candidate.raw.file));
+  assert.match(String(usableFileNames(evaluation)[0]), /Correct Track\.mp3$/);
+  const live = evaluation.evaluations.find((entry) =>
+    /Live/.test(String(entry.candidate.raw.file)),
+  );
+  assert.ok(live != null);
   assert.equal(live.decision, "reject");
   assert.ok(live.contradictions.includes("live"));
 });
 
-btest(
-  "strong title and album match is usable without the artist anywhere in the path",
-  async () => {
-    const evaluation = await evaluate(
-      [
-        result({
-          user: "albumUser",
-          file: "Misc\\Demon Days\\03 - Feel Good Inc..flac",
-          speed: 900000,
-        }),
-      ],
-      {
-        artistName: "Gorillaz",
-        trackName: "Feel Good Inc.",
-        albumName: "Demon Days",
-        releaseYear: "2005",
-        artistAliases: [],
-        albumTrackCount: 15,
-      },
-    );
-    const usable = usableEvaluationEntries(evaluation);
-    // Nobody in the path names Gorillaz: retain this only for strict
-    // post-download review, never as a straight accept.
-    assert.equal(usable.length, 1);
-    assert.equal(usable[0].decision, "review");
-    assert.equal(
-      usable[0].reasons.some((reason) => reason.includes("requested artist")),
-      true,
-    );
-  },
-);
+test("strong title and album match is usable without the artist anywhere in the path", async () => {
+  const evaluation = await evaluate(
+    [
+      result({
+        user: "albumUser",
+        file: "Misc\\Demon Days\\03 - Feel Good Inc..flac",
+        speed: 900000,
+      }),
+    ],
+    {
+      artistName: "Gorillaz",
+      trackName: "Feel Good Inc.",
+      albumName: "Demon Days",
+      releaseYear: "2005",
+      artistAliases: [],
+      albumTrackCount: 15,
+    },
+  );
+  const usable = usableEvaluationEntries(evaluation);
+  // Nobody in the path names Gorillaz: retain this only for strict
+  // post-download review, never as a straight accept.
+  assert.equal(usable.length, 1);
+  assert.equal(usable[0].decision, "review");
+  assert.equal(
+    usable[0].reasons.some((reason) => reason.includes("requested artist")),
+    true,
+  );
+});
 
-btest("locked slskd files are ignored", async () => {
+test("locked slskd files are ignored", async () => {
   const evaluation = await evaluate(
     [
       result({
@@ -381,47 +369,43 @@ btest("locked slskd files are ignored", async () => {
   assert.equal(evaluation.evaluations.length, 1);
 });
 
-btest(
-  "blacklisted users are excluded; queued users only lose ordering, not eligibility",
-  async () => {
-    const evaluation = await evaluate(
-      [
-        result({
-          user: "deadUser",
-          file: "Artist Name\\Album Name\\01 - Correct Track.flac",
-          speed: 900000,
-        }),
-        result({
-          user: "queuedUser",
-          file: "Artist Name\\Album Name\\01 - Correct Track.flac",
-          speed: 900000,
-        }),
-        result({
-          user: "healthyUser",
-          file: "Artist Name\\Album Name\\01 - Correct Track.mp3",
-          bitrate: 320,
-          speed: 700000,
-        }),
-      ],
-      {
-        artistName: "Artist Name",
-        trackName: "Correct Track",
-        albumName: "Album Name",
-        artistAliases: [],
-      },
-      {
-        isUserBlacklisted: (user) => user === "deadUser",
-        getUserQueuePenalty: (user) => (user === "queuedUser" ? 200 : 0),
-      },
-    );
-    const users = usableEvaluationEntries(evaluation).map((entry) => entry.candidate.raw.user);
-    assert.equal(users.includes("deadUser"), false);
-    assert.ok(users.includes("healthyUser"));
-    assert.ok(users.includes("queuedUser"));
-  },
-);
+test("blacklisted users are excluded; queued users only lose ordering, not eligibility", async () => {
+  const evaluation = await evaluate(
+    [
+      result({
+        user: "deadUser",
+        file: "Artist Name\\Album Name\\01 - Correct Track.flac",
+        speed: 900000,
+      }),
+      result({
+        user: "queuedUser",
+        file: "Artist Name\\Album Name\\01 - Correct Track.flac",
+        speed: 900000,
+      }),
+      result({
+        user: "healthyUser",
+        file: "Artist Name\\Album Name\\01 - Correct Track.mp3",
+        bitrate: 320,
+        speed: 700000,
+      }),
+    ],
+    {
+      artistName: "Artist Name",
+      trackName: "Correct Track",
+      albumName: "Album Name",
+      artistAliases: [],
+    },
+    {
+      isUserBlacklisted: (user) => user === "deadUser",
+    },
+  );
+  const users = usableEvaluationEntries(evaluation).map((entry) => entry.candidate.raw.user);
+  assert.equal(users.includes("deadUser"), false);
+  assert.ok(users.includes("healthyUser"));
+  assert.ok(users.includes("queuedUser"));
+});
 
-btest("soulseek backslash paths for albums are usable", async () => {
+test("soulseek backslash paths for albums are usable", async () => {
   const evaluation = await evaluate(
     [
       result({
@@ -442,10 +426,10 @@ btest("soulseek backslash paths for albums are usable", async () => {
   );
   const usable = usableEvaluationEntries(evaluation);
   assert.ok(usable.length > 0);
-  assert.match(usable[0].candidate.raw.file, /After Dinner Payback\.flac$/);
+  assert.match(String(usable[0].candidate.raw.file), /After Dinner Payback\.flac$/);
 });
 
-btest("requested mix variant accepts an undeclared file and rejects a different mix", async () => {
+test("requested mix variant accepts an undeclared file and rejects a different mix", async () => {
   const track = {
     artistName: "Artist Name",
     trackName: "Wide Awake Tonight - Radio Edit",
@@ -496,7 +480,7 @@ btest("requested mix variant accepts an undeclared file and rejects a different 
   assert.ok(rejected.contradictions.includes("extended-mix"));
 });
 
-btest("plain request rejects candidates declaring a mix variant", async () => {
+test("plain request rejects candidates declaring a mix variant", async () => {
   const evaluation = await evaluate(
     [
       result({
@@ -518,7 +502,7 @@ btest("plain request rejects candidates declaring a mix variant", async () => {
   assert.deepEqual(usableFileNames(evaluation), []);
 });
 
-btest("filename artist parsing: exact, shared-word, and numeric artists", async () => {
+test("filename artist parsing: exact, shared-word, and numeric artists", async () => {
   const exact = await evaluate(
     [
       result({
@@ -592,7 +576,7 @@ btest("filename artist parsing: exact, shared-word, and numeric artists", async 
   assert.equal(usableFileNames(numeric).length, 1);
 });
 
-btest("title - artist filenames do not credit the trailing segment as the artist", async () => {
+test("title - artist filenames do not credit the trailing segment as the artist", async () => {
   const evaluation = await evaluate(
     [
       result({
@@ -612,30 +596,27 @@ btest("title - artist filenames do not credit the trailing segment as the artist
   assert.deepEqual(usableFileNames(evaluation), []);
 });
 
-btest(
-  "a filename naming a different artist is rejected even in an album-matching folder",
-  async () => {
-    const evaluation = await evaluate(
-      [
-        result({
-          user: "albumUser",
-          file: "Some Person\\Album Name (2004)\\05. Other Artist - Wide Awake Tonight.mp3",
-          bitrate: 320,
-        }),
-      ],
-      {
-        artistName: "Marlow Vance",
-        trackName: "Wide Awake Tonight",
-        albumName: "Album Name",
-        releaseYear: "2004",
-        artistAliases: [],
-      },
-    );
-    assert.deepEqual(usableFileNames(evaluation), []);
-  },
-);
+test("a filename naming a different artist is rejected even in an album-matching folder", async () => {
+  const evaluation = await evaluate(
+    [
+      result({
+        user: "albumUser",
+        file: "Some Person\\Album Name (2004)\\05. Other Artist - Wide Awake Tonight.mp3",
+        bitrate: 320,
+      }),
+    ],
+    {
+      artistName: "Marlow Vance",
+      trackName: "Wide Awake Tonight",
+      albumName: "Album Name",
+      releaseYear: "2004",
+      artistAliases: [],
+    },
+  );
+  assert.deepEqual(usableFileNames(evaluation), []);
+});
 
-btest("the folder artist score survives a guest-artist filename", async () => {
+test("the folder artist score survives a guest-artist filename", async () => {
   const evaluation = await evaluate(
     [
       result({
@@ -657,7 +638,7 @@ btest("the folder artist score survives a guest-artist filename", async () => {
   assert.equal(usable[0].decision, "verify");
 });
 
-btest("'live' inside ordinary title words is not a variant", async () => {
+test("'live' inside ordinary title words is not a variant", async () => {
   const evaluation = await evaluate(
     [
       result({
@@ -680,109 +661,103 @@ btest("'live' inside ordinary title words is not a variant", async () => {
   assert.equal((usable[0].contradictions ?? []).length, 0);
 });
 
-btest(
-  "quality profile orders identity-passing candidates without excluding the folder file",
-  async () => {
-    const folder = "Shared\\El Canto Del Loco\\Por Mi y por Todos Mis Companeros (2009)";
-    const track = {
-      artistName: "El Canto Del Loco",
-      trackName: "Aunque Tu No Lo Sepas",
-      albumName: "Por Mi y por Todos Mis Companeros",
-      releaseYear: "2009",
-      artistAliases: [],
-    };
-    const results = [
-      result({
-        user: "peer",
-        file: `${folder}\\04 - El Canto Del Loco - Aunque Tu No Lo Sepas.flac`,
-        bitrate: null,
-        size: 30000000,
-      }),
-      result({
-        user: "peer",
-        file: `${folder}\\04 - El Canto Del Loco - Aunque Tu No Lo Sepas.mp3`,
-        bitrate: 320,
-        size: 9000000,
-      }),
-    ];
-    const evaluation = await evaluate(results, track);
-    const usable = usableEvaluationEntries(evaluation);
-    assert.equal(usable.length, 2);
-    const mp3Profile = {
-      order: ["mp3-320", "flac-standard"],
-      enabled: ["mp3-320"],
-      cutoff: "mp3-320",
-    };
-    const ordered = orderAdvertisedQualityCandidates(usable, {
-      profile: mp3Profile,
-      readName: (entry) => entry.candidate?.raw?.file,
-      readBitrate: (entry) => entry.candidate?.raw?.bitrate,
-    });
-    assert.ok(ordered[0].candidate.raw.file.endsWith(".mp3"));
-  },
-);
+test("quality profile orders identity-passing candidates without excluding the folder file", async () => {
+  const folder = "Shared\\El Canto Del Loco\\Por Mi y por Todos Mis Companeros (2009)";
+  const track = {
+    artistName: "El Canto Del Loco",
+    trackName: "Aunque Tu No Lo Sepas",
+    albumName: "Por Mi y por Todos Mis Companeros",
+    releaseYear: "2009",
+    artistAliases: [],
+  };
+  const results = [
+    result({
+      user: "peer",
+      file: `${folder}\\04 - El Canto Del Loco - Aunque Tu No Lo Sepas.flac`,
+      bitrate: null,
+      size: 30000000,
+    }),
+    result({
+      user: "peer",
+      file: `${folder}\\04 - El Canto Del Loco - Aunque Tu No Lo Sepas.mp3`,
+      bitrate: 320,
+      size: 9000000,
+    }),
+  ];
+  const evaluation = await evaluate(results, track);
+  const usable = usableEvaluationEntries(evaluation);
+  assert.equal(usable.length, 2);
+  const mp3Profile = {
+    order: ["mp3-320", "flac-standard"],
+    enabled: ["mp3-320"],
+    cutoff: "mp3-320",
+  };
+  const ordered = orderAdvertisedQualityCandidates(usable, {
+    profile: mp3Profile,
+    readName: (entry) => String(entry.candidate.raw.file),
+    readBitrate: (entry) => entry.candidate?.raw?.bitrate,
+  });
+  assert.ok(String(ordered[0].candidate.raw.file).endsWith(".mp3"));
+});
 
-btest(
-  "single-file folders outside the fitting set stay reachable when identity is strong",
-  async () => {
-    const album = "Por Mi y por Todos Mis Companeros";
-    const titles = [
-      "Aunque Tu No Lo Sepas",
-      "Zapatillas",
-      "La Madre de Jose",
-      "Puede Ser",
-      "Peter Pan",
-      "Besos",
-      "Volveras",
-      "Son Suenos",
-      "El Chico",
-      "Contigo",
-      "Insoportable",
-      "A Ti",
-    ];
-    const track = {
-      artistName: "El Canto Del Loco",
-      trackName: "Aunque Tu No Lo Sepas",
-      albumName: album,
-      releaseYear: "2009",
-      artistAliases: [],
-      albumTrackCount: 12,
-      albumTrackTitles: titles,
-      trackNumber: 1,
-    };
-    const albumFolder = titles.map((title, index) =>
-      result({
-        user: "albumPeer",
-        file: `Peer1\\El Canto Del Loco\\${album} (2009)\\${String(index + 1).padStart(2, "0")} - ${title}.mp3`,
-        bitrate: 320,
-        size: 9000000,
-      }),
-    );
-    const loose = [
-      result({
-        user: "loosePeerA",
-        file: `PeerA\\${album}\\01 - Aunque Tu No Lo Sepas.mp3`,
-        bitrate: 320,
-        size: 9100000,
-      }),
-      result({
-        user: "loosePeerB",
-        file: `PeerB\\${album}\\Aunque Tu No Lo Sepas.mp3`,
-        bitrate: 320,
-        size: 9200000,
-      }),
-    ];
-    const evaluation = await evaluate([...albumFolder, ...loose], track);
-    const usable = usableEvaluationEntries(evaluation);
-    const users = [...new Set(usable.map((entry) => entry.candidate.raw.user))];
-    assert.ok(users.includes("albumPeer"));
-    assert.ok(users.includes("loosePeerA"));
-    assert.ok(users.includes("loosePeerB"));
-    assert.equal(usable[0].candidate.raw.user, "albumPeer");
-  },
-);
+test("single-file folders outside the fitting set stay reachable when identity is strong", async () => {
+  const album = "Por Mi y por Todos Mis Companeros";
+  const titles = [
+    "Aunque Tu No Lo Sepas",
+    "Zapatillas",
+    "La Madre de Jose",
+    "Puede Ser",
+    "Peter Pan",
+    "Besos",
+    "Volveras",
+    "Son Suenos",
+    "El Chico",
+    "Contigo",
+    "Insoportable",
+    "A Ti",
+  ];
+  const track = {
+    artistName: "El Canto Del Loco",
+    trackName: "Aunque Tu No Lo Sepas",
+    albumName: album,
+    releaseYear: "2009",
+    artistAliases: [],
+    albumTrackCount: 12,
+    albumTrackTitles: titles,
+    trackNumber: 1,
+  };
+  const albumFolder = titles.map((title, index) =>
+    result({
+      user: "albumPeer",
+      file: `Peer1\\El Canto Del Loco\\${album} (2009)\\${String(index + 1).padStart(2, "0")} - ${title}.mp3`,
+      bitrate: 320,
+      size: 9000000,
+    }),
+  );
+  const loose = [
+    result({
+      user: "loosePeerA",
+      file: `PeerA\\${album}\\01 - Aunque Tu No Lo Sepas.mp3`,
+      bitrate: 320,
+      size: 9100000,
+    }),
+    result({
+      user: "loosePeerB",
+      file: `PeerB\\${album}\\Aunque Tu No Lo Sepas.mp3`,
+      bitrate: 320,
+      size: 9200000,
+    }),
+  ];
+  const evaluation = await evaluate([...albumFolder, ...loose], track);
+  const usable = usableEvaluationEntries(evaluation);
+  const users = [...new Set(usable.map((entry) => entry.candidate.raw.user))];
+  assert.ok(users.includes("albumPeer"));
+  assert.ok(users.includes("loosePeerA"));
+  assert.ok(users.includes("loosePeerB"));
+  assert.equal(usable[0].candidate.raw.user, "albumPeer");
+});
 
-btest("sibling-track conflict rejects a same-title different-track candidate", async () => {
+test("sibling-track conflict rejects a same-title different-track candidate", async () => {
   const evaluation = await evaluate(
     [
       result({
@@ -806,46 +781,43 @@ btest("sibling-track conflict rejects a same-title different-track candidate", a
   assert.ok(evaluation.evaluations[0].contradictions.includes("sibling-track-index"));
 });
 
-btest(
-  "wrong track number with imperfect metadata is rejected; exact identity rescues it",
-  async () => {
-    const track = {
-      artistName: "Artist Name",
-      trackName: "Track Number Three",
-      albumName: "Album Name",
-      releaseYear: "2019",
-      trackNumber: 2,
-      artistAliases: [],
-    };
-    const wrongSong = await evaluate(
-      [
-        result({
-          user: "albumUser",
-          file: "Artist Name\\Album Name (2019)\\03 - A Different Song Entirely.mp3",
-          bitrate: 320,
-        }),
-      ],
-      track,
-    );
-    assert.deepEqual(usableFileNames(wrongSong), []);
+test("wrong track number with imperfect metadata is rejected; exact identity rescues it", async () => {
+  const track = {
+    artistName: "Artist Name",
+    trackName: "Track Number Three",
+    albumName: "Album Name",
+    releaseYear: "2019",
+    trackNumber: 2,
+    artistAliases: [],
+  };
+  const wrongSong = await evaluate(
+    [
+      result({
+        user: "albumUser",
+        file: "Artist Name\\Album Name (2019)\\03 - A Different Song Entirely.mp3",
+        bitrate: 320,
+      }),
+    ],
+    track,
+  );
+  assert.deepEqual(usableFileNames(wrongSong), []);
 
-    // The old matcher's rule, preserved: a near-exact title rescue is allowed
-    // (the file is probably the right recording at the wrong position).
-    const exactTitle = await evaluate(
-      [
-        result({
-          user: "albumUser",
-          file: "Artist Name\\Album Name (2019)\\03 - Track Number Three.mp3",
-          bitrate: 320,
-        }),
-      ],
-      track,
-    );
-    assert.equal(usableFileNames(exactTitle).length, 1);
-  },
-);
+  // The old matcher's rule, preserved: a near-exact title rescue is allowed
+  // (the file is probably the right recording at the wrong position).
+  const exactTitle = await evaluate(
+    [
+      result({
+        user: "albumUser",
+        file: "Artist Name\\Album Name (2019)\\03 - Track Number Three.mp3",
+        bitrate: 320,
+      }),
+    ],
+    track,
+  );
+  assert.equal(usableFileNames(exactTitle).length, 1);
+});
 
-btest("track number parsed from the filename satisfies the expected position", async () => {
+test("track number parsed from the filename satisfies the expected position", async () => {
   const evaluation = await evaluate(
     [
       result({
@@ -868,7 +840,7 @@ btest("track number parsed from the filename satisfies the expected position", a
   assert.equal(usable[0].aurralEvidence.trackNumber.mismatch, false);
 });
 
-btest("advertised duration: near matches are usable, far matches are not offered", async () => {
+test("advertised duration: near matches are usable, far matches are not offered", async () => {
   const track = {
     artistName: "Massive Attack",
     trackName: "Teardrop",
@@ -906,85 +878,79 @@ btest("advertised duration: near matches are usable, far matches are not offered
   assert.equal(usableFileNames(withinWindow).length, 0);
 });
 
-btest(
-  "the correct-duration file wins over a longer off-duration copy in the same folder",
-  async () => {
-    const evaluation = await evaluate(
-      [
-        result({
-          user: "peer",
-          file: "Massive Attack/Mezzanine/Teardrop.flac",
-          length: 420,
-          speed: 9000000,
-        }),
-        result({
-          user: "peer",
-          file: "Massive Attack/Mezzanine/Teardrop.mp3",
-          length: 226,
-          speed: 700000,
-        }),
-      ],
-      {
-        artistName: "Massive Attack",
-        trackName: "Teardrop",
-        albumName: "Mezzanine",
-        durationMs: 226000,
-      },
-    );
-    const usable = usableEvaluationEntries(evaluation);
-    assert.equal(usable.length, 1);
-    assert.match(usable[0].candidate.raw.file, /\/Teardrop\.mp3$/);
-  },
-);
+test("the correct-duration file wins over a longer off-duration copy in the same folder", async () => {
+  const evaluation = await evaluate(
+    [
+      result({
+        user: "peer",
+        file: "Massive Attack/Mezzanine/Teardrop.flac",
+        length: 420,
+        speed: 9000000,
+      }),
+      result({
+        user: "peer",
+        file: "Massive Attack/Mezzanine/Teardrop.mp3",
+        length: 226,
+        speed: 700000,
+      }),
+    ],
+    {
+      artistName: "Massive Attack",
+      trackName: "Teardrop",
+      albumName: "Mezzanine",
+      durationMs: 226000,
+    },
+  );
+  const usable = usableEvaluationEntries(evaluation);
+  assert.equal(usable.length, 1);
+  assert.match(String(usable[0].candidate.raw.file), /\/Teardrop\.mp3$/);
+});
 
-btest(
-  "a copy whose listed size cannot hold its length is not offered, even at the exact length",
-  async () => {
-    const track = {
-      artistName: "The Used",
-      trackName: "Let It Bleed",
-      albumName: "In Love and Death",
-      durationMs: 190693,
-    };
-    const silent = result({
-      user: "fast",
-      file: "Music/The Used/In Love and Death/03 - Let It Bleed.flac",
-      length: 190.693,
-      size: 39336,
-      speed: 9000000,
-    });
-    const real = result({
-      user: "slow",
-      file: "Music/The Used/In Love and Death/03 - Let It Bleed.flac",
-      length: 191,
-      size: 23300000,
-      speed: 100000,
-    });
-    assert.deepEqual(
-      usableEvaluationEntries(await evaluate([silent, real], track)).map((entry) => [
-        entry.candidate.raw.user,
-        entry.decision,
-      ]),
-      [["slow", "accept"]],
-    );
+test("a copy whose listed size cannot hold its length is not offered, even at the exact length", async () => {
+  const track = {
+    artistName: "The Used",
+    trackName: "Let It Bleed",
+    albumName: "In Love and Death",
+    durationMs: 190693,
+  };
+  const silent = result({
+    user: "fast",
+    file: "Music/The Used/In Love and Death/03 - Let It Bleed.flac",
+    length: 190.693,
+    size: 39336,
+    speed: 9000000,
+  });
+  const real = result({
+    user: "slow",
+    file: "Music/The Used/In Love and Death/03 - Let It Bleed.flac",
+    length: 191,
+    size: 23300000,
+    speed: 100000,
+  });
+  assert.deepEqual(
+    usableEvaluationEntries(await evaluate([silent, real], track)).map((entry) => [
+      entry.candidate.raw.user,
+      entry.decision,
+    ]),
+    [["slow", "accept"]],
+  );
 
-    const pregap = result({
-      user: "fast",
-      file: "Music/The Used/In Love and Death/07 - [silence].flac",
-      length: 4,
-      size: 10755,
-      speed: 9000000,
-    });
-    assert.deepEqual(
-      usableEvaluationEntries(
-        await evaluate([pregap], { ...track, trackName: "[Silence]", durationMs: 4000 }),
-      ).map((entry) => entry.candidate.raw.user),
-      ["fast"],
-    );
-  },
-);
+  const pregap = result({
+    user: "fast",
+    file: "Music/The Used/In Love and Death/07 - [silence].flac",
+    length: 4,
+    size: 10755,
+    speed: 9000000,
+  });
+  assert.deepEqual(
+    usableEvaluationEntries(
+      await evaluate([pregap], { ...track, trackName: "[Silence]", durationMs: 4000 }),
+    ).map((entry) => entry.candidate.raw.user),
+    ["fast"],
+  );
+});
 
-btest("a single's own track number does not reject it for an album track request", async () => {
+test("a single's own track number does not reject it for an album track request", async () => {
   const request = {
     artistName: "Radiohead",
     trackName: "Paranoid Android",

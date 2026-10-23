@@ -1,3 +1,8 @@
+import { testUser } from "../helpers/userFixtures.ts";
+import type { Router } from "express";
+import type { DiscoveryRecommendation } from "../../backend/services/discovery/recommendationPipeline.ts";
+import type { ArtistMatchFields } from "../../backend/services/discovery/artistKeys.ts";
+import { listeningAddress } from "../helpers/backendTestHarness.ts";
 import { test, beforeAll, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import express from "express";
@@ -20,18 +25,18 @@ const [
   { FlowTrackSource },
 ] = await setupIsolatedBackend(
   "personal-recommendations",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/discovery/index.ts",
-  "backend/services/discovery/userDiscovery.ts",
-  "backend/services/playEventService.ts",
-  "backend/services/libraryQueryService.ts",
-  "backend/routes/discovery/index.ts",
-  "backend/routes/search.ts",
-  "backend/services/flows/flowTrackSource.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/discovery/index.ts"),
+  () => import("../../backend/services/discovery/userDiscovery.ts"),
+  () => import("../../backend/services/playEventService.ts"),
+  () => import("../../backend/services/libraryQueryService.ts"),
+  () => import("../../backend/routes/discovery/index.ts"),
+  () => import("../../backend/routes/search.ts"),
+  () => import("../../backend/services/flows/flowTrackSource.ts"),
 );
 
-const mbid = (index) => `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`;
+const mbid = (index: number) => `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`;
 const LIKED = { name: "Liked Artist", mbid: mbid(1) };
 const BLOCKED = { name: "Blocked Artist", mbid: mbid(2) };
 const LIBRARY = { name: "Library One", mbid: mbid(3) };
@@ -54,11 +59,11 @@ const similarBySeed = new Map([
 
 const originalFetch = globalThis.fetch;
 const originalLastfmApiKey = process.env.LASTFM_API_KEY;
-let alice;
-let bob;
+let alice: NonNullable<ReturnType<typeof userOps.createUser>>;
+let bob: NonNullable<ReturnType<typeof userOps.createUser>>;
 
-const lastfmResponse = (url) => {
-  const params = new URL(url).searchParams;
+const lastfmResponse = (url: string) => {
+  const params = new URL(String(url)).searchParams;
   const seed = params.get("mbid") || params.get("artist");
   if (params.get("method") === "artist.getTopTags") {
     return {
@@ -81,14 +86,17 @@ const lastfmResponse = (url) => {
   if (params.get("method") === "artist.getSimilar") {
     return {
       similarartists: {
-        artist: (similarBySeed.get(seed) || []).map((artist) => ({ ...artist, match: "0.9" })),
+        artist: (similarBySeed.get(seed ?? "") || []).map((artist) => ({
+          ...artist,
+          match: "0.9",
+        })),
       },
     };
   }
   return {};
 };
 
-const play = (userId, artist, index) =>
+const play = (userId: number, artist: string, index: number) =>
   playEvents.recordPlayEvent(userId, {
     trackId: `track:${artist}:${index}`,
     title: `Song ${index}`,
@@ -110,8 +118,12 @@ beforeAll(() => {
     `INSERT INTO library_artists (identity_key, mbid, name, created_at, updated_at)
      VALUES ('library-one', ?, ?, 1, 1)`,
   ).run(LIBRARY.mbid, LIBRARY.name);
-  alice = userOps.createUser("alice", "hash");
-  bob = userOps.createUser("bob", "hash");
+  const createdalice = userOps.createUser("alice", "hash");
+  assert.ok(createdalice);
+  alice = createdalice;
+  const createdbob = userOps.createUser("bob", "hash");
+  assert.ok(createdbob);
+  bob = createdbob;
   discovery.addDiscoveryFeedback(alice.id, {
     artistId: LIKED.mbid,
     artistName: LIKED.name,
@@ -144,29 +156,34 @@ afterAll(async () => {
 
 test("personal refresh seeds from liked artists, local plays and the library, never disliked or blocked artists", async () => {
   const result = await discovery.updateUserDiscoveryCache(alice.id);
-  assert.equal(result.refreshed, true);
+  assert.equal("refreshed" in result && result.refreshed, true);
 
   const { body } = await getUserDiscovery(alice.id, 0);
   assert.deepEqual(
     body.basedOn.map((artist) => artist.name).sort(),
     [LIBRARY.name, LIKED.name, "Played Artist"].sort(),
   );
-  assert.equal(body.basedOn.find((artist) => artist.name === LIKED.name).source, "feedback");
+  assert.equal(body.basedOn.find((artist) => artist.name === LIKED.name)!.source, "feedback");
   assert.deepEqual(
     body.recommendations.map((artist) => artist.name).sort(),
     [FROM_LIBRARY.name, FROM_LIKED.name, FROM_PLAYED.name].sort(),
   );
   assert.deepEqual([...body.topGenres].sort(), ["dream pop", "indie", "shoegaze"]);
   for (const artist of body.recommendations) {
+    assert.ok(artist.tags != null);
     assert.equal(artist.tags.includes("female vocalists"), false);
+    assert.ok(artist.tags != null);
     assert.equal(artist.tags.includes("seen live"), false);
   }
   assert.equal(getDiscoveryStatus(alice.id).isUpdating, false);
 });
 
 test("new feedback softens and hides served picks before the next refresh", async () => {
-  const scoreOf = (recommendations) =>
-    recommendations.find((artist) => artist.name === FROM_PLAYED.name).scoreTotal;
+  const scoreOf = (recommendations: DiscoveryRecommendation[]) => {
+    const artist = recommendations.find((artist) => artist.name === FROM_PLAYED.name);
+    assert.ok(artist?.scoreTotal != null);
+    return artist.scoreTotal;
+  };
   const before = (await getUserDiscovery(alice.id, 0)).body.recommendations;
   const lessLike = discovery.addDiscoveryFeedback(alice.id, {
     artistId: FROM_PLAYED.mbid,
@@ -189,33 +206,53 @@ test("new feedback softens and hides served picks before the next refresh", asyn
   discovery.removeDiscoveryFeedback(alice.id, lessLike.id);
 });
 
-const requestApi = async (userId, mountPath, router, path, init = {}) => {
+const requestApi = async (
+  userId: number,
+  mountPath: string,
+  router: Router,
+  path: string,
+  init: RequestInit = {},
+) => {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
-    req.user = { id: userId, role: "user" };
+    req.user = testUser(userId);
     next();
   });
   app.use(mountPath, router);
-  const server = await new Promise((resolve) => {
+  const server = await new Promise<
+    import("node:http").Server<
+      typeof import("node:http").IncomingMessage,
+      typeof import("node:http").ServerResponse
+    >
+  >((resolve) => {
     const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
   });
   try {
     const response = await originalFetch(
-      `http://127.0.0.1:${server.address().port}${mountPath}${path}`,
+      `http://127.0.0.1:${listeningAddress(server).port}${mountPath}${path}`,
       { ...init, headers: { "content-type": "application/json" } },
     );
     return {
       status: response.status,
       cacheControl: response.headers.get("cache-control") || "",
-      body: await response.json(),
+      body: (await response.json()) as {
+        recommendations: DiscoveryRecommendation[];
+        items: ArtistMatchFields[];
+        hasMore: boolean;
+        isUpdating: boolean;
+        updatePhase: string | null;
+        lastUpdated: string | null;
+        error?: string;
+        globalTop: DiscoveryRecommendation[];
+      },
     };
   } finally {
-    await new Promise((resolve) => server.close(resolve));
+    await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 };
 
-const requestDiscoveryApi = (userId, path, init) =>
+const requestDiscoveryApi = (userId: number, path: string, init: RequestInit = {}) =>
   requestApi(userId, "/api/discover", discoveryRouter, path, init);
 
 test("tag search and flow plans read the user's own pool", async () => {
@@ -224,9 +261,10 @@ test("tag search and flow plans read the user's own pool", async () => {
   assert.ok(tagged.body.recommendations.some((artist) => artist.name === FROM_LIKED.name));
 
   const source = new FlowTrackSource();
-  let basedOn = [];
+  let basedOn: ArtistMatchFields[] = [];
   source.getReleaseRadarTracks = async (_limit, options) => {
-    basedOn = options.basedOn;
+    assert.ok(options != null);
+    basedOn = options.basedOn ?? [];
     return [];
   };
   await source.buildFlowRunPlan({
@@ -241,7 +279,7 @@ test("flows without an owner read the first admin's pool", async () => {
   userOps.updateUser(alice.id, { role: "admin" });
   try {
     const source = new FlowTrackSource();
-    let harvested = [];
+    let harvested: (string | null | undefined)[] = [];
     source._harvestTopTracksFromArtists = async (artists) => {
       harvested = artists.map((artist) => artist.name);
       return [];
@@ -284,7 +322,7 @@ test("discover API shows a match percent that follows the user's ranking, not on
     assert.equal(percents[0], 99);
     assert.equal(percents.at(-1), 55);
     assert.deepEqual(
-      [...percents].sort((left, right) => right - left),
+      [...percents].sort((left, right) => right! - left!),
       percents,
     );
     assert.equal(body.globalTop[0].name, "Trending Artist");
@@ -302,7 +340,9 @@ test("feedback through the API waits for the next scheduled rebuild", async () =
   assert.equal(response.status, 200);
 
   const queuedForAlice = db
-    .prepare("SELECT payload FROM _honker_live WHERE queue = 'discovery-user-refresh'")
+    .prepare<unknown[], { payload: import("../../backend/db/rows.ts").HonkerLiveRow["payload"] }>(
+      "SELECT payload FROM _honker_live WHERE queue = 'discovery-user-refresh'",
+    )
     .all()
     .filter((row) => JSON.parse(row.payload).userId === alice.id);
   assert.equal(queuedForAlice.length, 0);
@@ -327,7 +367,9 @@ test("each user gets their own pool and a missing pool queues one refresh", asyn
     reason: "queued",
   });
   const queued = db
-    .prepare("SELECT payload FROM _honker_live WHERE queue = 'discovery-user-refresh'")
+    .prepare<unknown[], { payload: import("../../backend/db/rows.ts").HonkerLiveRow["payload"] }>(
+      "SELECT payload FROM _honker_live WHERE queue = 'discovery-user-refresh'",
+    )
     .all()
     .map((row) => JSON.parse(row.payload));
   assert.deepEqual(
@@ -347,12 +389,13 @@ test("a global refresh keeps each user updating until their own recommendations 
   assert.equal(afterGlobal.body.updatePhase, "queued");
   assert.equal(afterGlobal.body.lastUpdated, before.lastUpdated);
 
-  assert.equal((await discovery.updateUserDiscoveryCache(alice.id)).refreshed, true);
+  assert.equal("refreshed" in (await discovery.updateUserDiscoveryCache(alice.id)), true);
 
   const done = await requestDiscoveryApi(alice.id, "/status");
   assert.equal(done.body.isUpdating, false);
   assert.equal(done.body.error, null);
-  assert.ok(Date.parse(done.body.lastUpdated) > Date.parse(before.lastUpdated));
+  assert.ok(before.lastUpdated != null);
+  assert.ok(Date.parse(done.body.lastUpdated!) > Date.parse(before.lastUpdated));
   assert.equal(getDiscoveryStatus(bob.id).isUpdating, true);
 });
 
@@ -375,7 +418,9 @@ test("library seeds sample recent additions and the whole library, not the alpha
 
   const alphabeticalHead = new Set(
     db
-      .prepare("SELECT name FROM library_artists ORDER BY sort_name COLLATE NOCASE LIMIT 40")
+      .prepare<unknown[], { name: import("../../backend/db/rows.ts").LibraryArtistsRow["name"] }>(
+        "SELECT name FROM library_artists ORDER BY sort_name COLLATE NOCASE LIMIT 40",
+      )
       .all()
       .map((row) => row.name),
   );

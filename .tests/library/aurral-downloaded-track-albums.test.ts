@@ -1,3 +1,5 @@
+import { requireFixture } from "../playlists/fixtures.ts";
+import { createRouteHarness, createResponse } from "./routeHarness.ts";
 import { test, beforeAll, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
@@ -26,50 +28,28 @@ const [
   { registerDownloads },
 ] = await setupIsolatedBackend(
   "aurral-downloaded-track-albums",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/libraryMediaStore.ts",
-  "backend/services/libraryManagementStore.ts",
-  "backend/services/downloadJobs/downloadTracker.ts",
-  "backend/services/downloadJobs/downloadWorker.ts",
-  "backend/services/lidarrClient.ts",
-  "backend/services/libraryManager.ts",
-  "backend/services/libraryQueryService.ts",
-  "backend/services/libraryFileScanner.ts",
-  "backend/services/providers/brainzmashProvider.ts",
-  "backend/routes/library/handlers/albums.ts",
-  "backend/routes/library/handlers/downloads.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/libraryMediaStore.ts"),
+  () => import("../../backend/services/libraryManagementStore.ts"),
+  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
+  () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
+  () => import("../../backend/services/lidarrClient.ts"),
+  () => import("../../backend/services/libraryManager.ts"),
+  () => import("../../backend/services/libraryQueryService.ts"),
+  () => import("../../backend/services/libraryFileScanner.ts"),
+  () => import("../../backend/services/providers/brainzmashProvider.ts"),
+  () => import("../../backend/routes/library/handlers/albums.ts"),
+  () => import("../../backend/routes/library/handlers/downloads.ts"),
 );
 
-const routes = new Map();
-const route =
-  (method) =>
-  (routePath, ...handlers) => {
-    routes.set(`${method} ${routePath}`, handlers.at(-1));
-  };
-const router = {
-  get: route("GET"),
-  post: route("POST"),
-  put: route("PUT"),
-  delete: route("DELETE"),
-};
-registerAlbums(router);
-registerDownloads(router);
+const routes = createRouteHarness(registerAlbums, registerDownloads);
 
-async function callRoute(key, body = {}) {
-  const response = { statusCode: 200, body: null };
+async function callRoute(key: string, body: Record<string, unknown> = {}) {
+  const response = createResponse<{ jobId: string; monitored: boolean }>();
   await routes.get(key)(
     { params: {}, body, query: {}, user: { role: "admin", permissions: {} } },
-    {
-      status(code) {
-        response.statusCode = code;
-        return this;
-      },
-      json(value) {
-        response.body = value;
-        return this;
-      },
-    },
+    response,
   );
   return response;
 }
@@ -115,8 +95,12 @@ const metadataServer = await createMockHttpServer((request, response) => {
 });
 
 async function scanFile(
-  index,
-  { downloadedByAurral, albumTitle = "Playlist Album", releaseGroupMbid = albumMbid },
+  index: number,
+  {
+    downloadedByAurral,
+    albumTitle = "Playlist Album",
+    releaseGroupMbid = albumMbid,
+  }: { downloadedByAurral: boolean; albumTitle?: string; releaseGroupMbid?: string },
 ) {
   const filePath = path.join(musicRoot, "Playlist Artist", albumTitle, `0${index + 1}.flac`);
   await fs.mkdir(path.dirname(filePath), { recursive: true });
@@ -131,8 +115,8 @@ async function scanFile(
         artist: "Playlist Artist",
         album: albumTitle,
         title: `Track ${index + 1}`,
-        track: { no: index + 1 },
-        musicbrainz_albumartistid: artistMbid,
+        track: { no: index + 1, of: null },
+        musicbrainz_albumartistid: [artistMbid],
         musicbrainz_releasegroupid: releaseGroupMbid,
         musicbrainz_recordingid: trackMbids[index],
       },
@@ -143,9 +127,11 @@ async function scanFile(
 }
 
 const albumState = () => {
-  const albumId = db
-    .prepare("SELECT id FROM library_albums WHERE release_group_mbid = ?")
-    .get(albumMbid).id;
+  const albumId = requireFixture(db)
+    .prepare<unknown[], { id: number }>(
+      "SELECT id FROM library_albums WHERE release_group_mbid = ?",
+    )!
+    .get(albumMbid)!.id;
   const library = getLibraryForAlbumIds({ ids: [albumId] });
   const monitoredByMbid = Object.fromEntries(
     library.tracks.map((track) => [track.mbid, track.monitored]),
@@ -241,7 +227,8 @@ test("downloading a missing track of an unmonitored Aurral album monitors and qu
     .album.trackIds.map((id) =>
       getLibraryForAlbumIds({ ids: [albumId] }).tracks.find((track) => track.id === id),
     )
-    .find((track) => track.mbid === trackMbids[2]);
+    .find((track) => requireFixture(track).mbid === trackMbids[2]);
+  assert.ok(missing != null);
 
   const response = await callRoute("POST /downloads/track", {
     artistName: "Playlist Artist",
@@ -252,7 +239,7 @@ test("downloading a missing track of an unmonitored Aurral album monitors and qu
 
   assert.equal(response.statusCode, 202);
   assert.equal(response.body.monitored, true);
-  assert.equal(downloadTracker.getJob(response.body.jobId).albumMbid, albumMbid);
+  assert.equal(downloadTracker.getJob(response.body.jobId)!.albumMbid, albumMbid);
   assert.deepEqual(queuedTrackMbids(), [trackMbids[2]]);
   assert.deepEqual(albumState().monitored, [false, false, true]);
   assert.equal(albumState().album.monitored, false);
@@ -260,12 +247,14 @@ test("downloading a missing track of an unmonitored Aurral album monitors and qu
 
 test("a file scanned into a Lidarr album stays Lidarr's", async () => {
   const lidarrAlbumMbid = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
-  const artist = db.prepare("SELECT id FROM library_artists WHERE mbid = ?").get(artistMbid);
+  const artist = db
+    .prepare<unknown[], { id: number }>("SELECT id FROM library_artists WHERE mbid = ?")
+    .get(artistMbid);
   const album = libraryStore.upsertLibraryAlbum({
     identityKey: `release-group:${lidarrAlbumMbid}`,
     mbid: lidarrAlbumMbid,
     releaseGroupMbid: lidarrAlbumMbid,
-    artistId: artist.id,
+    artistId: requireFixture(artist).id,
     title: "Lidarr Album",
   });
   managementStore.setLibraryManagement({

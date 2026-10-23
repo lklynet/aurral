@@ -11,9 +11,9 @@ import {
 const [isolatedState, { db }, { scrobbleConnectionStore }, { listenbrainzPlaylistClient }] =
   await setupIsolatedBackend(
     "listenbrainz-playlists",
-    "backend/config/db-sqlite.ts",
-    "backend/services/scrobbleConnectionStore.ts",
-    "backend/services/importLists/listenbrainzPlaylists.ts",
+    () => import("../../backend/config/db-sqlite.ts"),
+    () => import("../../backend/services/scrobbleConnectionStore.ts"),
+    () => import("../../backend/services/importLists/listenbrainzPlaylists.ts"),
   );
 
 beforeEach(() => resetDatabase(db));
@@ -26,7 +26,17 @@ test("lists owned and created-for ListenBrainz playlists without duplicates", as
   const explorationId = "00000000-0000-4000-8000-000000000003";
   const jamsId = "00000000-0000-4000-8000-000000000004";
   const noiseId = "00000000-0000-4000-8000-000000000005";
-  const makeEntry = ({ id, title, date, sourcePatch }) => ({
+  const makeEntry = ({
+    id,
+    title,
+    date,
+    sourcePatch,
+  }: {
+    id: string;
+    title: string;
+    date?: string;
+    sourcePatch?: string;
+  }) => ({
     playlist: {
       identifier: `https://listenbrainz.org/playlist/${id}`,
       title,
@@ -48,17 +58,24 @@ test("lists owned and created-for ListenBrainz playlists without duplicates", as
     token: "test-token",
     displayName: "playlist-user",
   });
-  const calls = [];
-  vi.spyOn(axios, "get").mockImplementation(async (url, options) => {
+  const calls: {
+    url: string;
+    options: NonNullable<Parameters<typeof axios.get>[1]> | undefined;
+  }[] = [];
+  vi.spyOn(axios, "get").mockImplementation(async (url: string, options) => {
     calls.push({ url, options });
     if (url.includes("/1/playlist/")) {
-      const id = new URL(url).pathname.split("/").pop();
+      const id = new URL(String(url)).pathname.split("/").pop();
+      assert.ok(id != null);
       const trackCount = new Map([
         [ownedId, 3],
         [explorationId, 7],
         [jamsId, 8],
       ]).get(id);
       return {
+        status: 200,
+        statusText: "OK",
+        headers: {},
         data: {
           playlist: {
             track: Array.from({ length: trackCount || 0 }, () => ({})),
@@ -68,6 +85,9 @@ test("lists owned and created-for ListenBrainz playlists without duplicates", as
     }
     if (url.endsWith("/playlists/createdfor")) {
       return {
+        status: 200,
+        statusText: "OK",
+        headers: {},
         data: {
           playlist_count: 4,
           playlists: [
@@ -99,6 +119,9 @@ test("lists owned and created-for ListenBrainz playlists without duplicates", as
       };
     }
     return {
+      status: 200,
+      statusText: "OK",
+      headers: {},
       data: {
         playlist_count: 1,
         playlists: [makeEntry({ id: ownedId, title: "Mine" })],
@@ -128,9 +151,11 @@ test("lists owned and created-for ListenBrainz playlists without duplicates", as
     },
   ]);
   assert.deepEqual(
-    calls.filter(({ url }) => url.includes("/1/user/")).map(({ url }) => new URL(url).pathname),
+    calls
+      .filter(({ url }) => url.includes("/1/user/"))
+      .map(({ url }) => new URL(String(url)).pathname),
     ["/1/user/playlist-user/playlists", "/1/user/playlist-user/playlists/createdfor"],
   );
   assert.equal(calls.filter(({ url }) => url.includes("/1/playlist/")).length, 3);
-  assert.equal(calls[0].options.headers.Authorization, "Token test-token");
+  assert.equal(calls[0].options!.headers!.Authorization, "Token test-token");
 });

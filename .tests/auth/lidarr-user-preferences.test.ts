@@ -9,8 +9,8 @@ import {
 
 const [isolatedState, { db }, { userOps }] = await setupIsolatedBackend(
   "lidarr-user-preferences",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
 );
 
 const bcryptModule = await import("bcrypt");

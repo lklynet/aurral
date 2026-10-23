@@ -1,11 +1,12 @@
 import { mkdir, mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { dirname, join } from "path";
-import { fileURLToPath, pathToFileURL } from "url";
+import { fileURLToPath } from "url";
 import { spawn, type ChildProcess } from "child_process";
 import http from "http";
 import net from "net";
 import type Database from "better-sqlite3";
+import assert from "node:assert/strict";
 import { asAppError } from "../../lib/errors.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -49,7 +50,10 @@ const RESET_TABLES = [
   "settings",
 ];
 
-export async function createIsolatedStateDir(name = "test", { dataDirRelativePath = "data" } = {}) {
+export async function createIsolatedStateDir(
+  name: string = "test",
+  { dataDirRelativePath = "data" }: { dataDirRelativePath?: string } = {},
+) {
   const baseDir = await mkdtemp(join(tmpdir(), `aurral-${String(name || "test")}-`));
   const dataDir = join(baseDir, dataDirRelativePath);
   const dbPath = join(dataDir, "aurral.test.db");
@@ -75,30 +79,28 @@ export function applyIsolatedBackendEnv(paths: IsolatedStatePaths) {
 export async function cleanupIsolatedState(paths: IsolatedStatePaths) {
   if (!paths?.baseDir) return;
   try {
-    const honkerRuntime = await importFromRepo("backend/services/honkerWorkerRuntime.ts");
+    const honkerRuntime = await import("../../backend/services/honkerWorkerRuntime.ts");
     await honkerRuntime.shutdownHonkerInfrastructure({ timeoutMs: 5000 });
   } catch {}
   try {
-    const honkerDb = await importFromRepo("backend/services/honkerDb.ts");
+    const honkerDb = await import("../../backend/services/honkerDb.ts");
     honkerDb.closeHonkerDb();
   } catch {}
   try {
-    const { db } = await importFromRepo("backend/config/db-sqlite.ts");
+    const { db } = await import("../../backend/config/db-sqlite.ts");
     if (db.open) db.close();
   } catch {}
   await rm(paths.baseDir, { recursive: true, force: true });
 }
 
-export async function importFromRepo(relativePath: string) {
-  const moduleUrl = pathToFileURL(join(repoRoot, relativePath)).href;
-  return import(moduleUrl);
-}
-
-export async function setupIsolatedBackend(name: string, ...modulePaths: string[]) {
+export async function setupIsolatedBackend<Modules extends unknown[]>(
+  name: string,
+  ...loadModules: { [Index in keyof Modules]: () => Promise<Modules[Index]> }
+) {
   const paths = await createIsolatedStateDir(name);
   applyIsolatedBackendEnv(paths);
-  const modules = await Promise.all(modulePaths.map(importFromRepo));
-  return [paths, ...modules];
+  const modules = (await Promise.all(loadModules.map((load) => load()))) as Modules;
+  return [paths, ...modules] as const;
 }
 
 export function resetDatabase(db: Database.Database) {
@@ -107,17 +109,23 @@ export function resetDatabase(db: Database.Database) {
   }
 }
 
-export function createMockHttpServer(handler: http.RequestListener) {
+export function listeningAddress(server: Pick<net.Server, "address">) {
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  return address;
+}
+
+export async function createMockHttpServer(handler: http.RequestListener) {
   const server = http.createServer(handler);
-  return new Promise((resolve) => {
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address() as net.AddressInfo;
-      resolve({
-        url: `http://127.0.0.1:${address.port}`,
-        close: () => new Promise((done) => server.close(done)),
-      });
-    });
-  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = listeningAddress(server);
+  return {
+    url: `http://127.0.0.1:${address.port}`,
+    close: () =>
+      new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      }),
+  };
 }
 
 async function probeServerHealth(port: number) {
@@ -158,7 +166,7 @@ async function waitForServer(port: number, child: ChildProcess) {
       const failure = asAppError(error);
       lastError = failure?.message || String(error);
     }
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await new Promise<void>((resolve) => setTimeout(resolve, 20));
   }
   throw new Error(`Timed out waiting for server on port ${port}: ${lastError}`);
 }

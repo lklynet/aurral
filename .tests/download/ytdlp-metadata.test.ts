@@ -14,7 +14,7 @@ import {
 
 const tempDir = await mkdtemp(path.join(os.tmpdir(), "aurral-ytdlp-metadata-"));
 
-function createUntaggedM4a(name) {
+function createUntaggedM4a(name: string) {
   const filePath = path.join(tempDir, name);
   const generated = spawnSync(
     "ffmpeg",
@@ -38,7 +38,17 @@ function createUntaggedM4a(name) {
   return filePath;
 }
 
-async function writeM4aTags(filePath, tags) {
+async function writeM4aTags(
+  filePath: string,
+  tags: {
+    title: string;
+    artist: string;
+    album_artist: string;
+    album: string;
+    grouping: string;
+    comment: string;
+  },
+) {
   const taggedPath = `${filePath}.tagged.m4a`;
   const tagged = spawnSync(
     "ffmpeg",

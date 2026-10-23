@@ -66,7 +66,7 @@ test(
         ["Shawn Mendes - Stitches (Karaoke Version)", false],
         ["Shawn Mendes - Life of the Party (Audio)", false],
         ["Another Artist - Stitches (Audio)", false],
-      ]) {
+      ] as const) {
         const { filePath } = await client.downloadAudio(
           `https://example.test/video?title=${encodeURIComponent(title)}`,
           { jobId: "source-metadata" },
@@ -78,6 +78,7 @@ test(
           source: "ytdlp",
         });
         assert.equal(validation.valid, valid, `${title}: ${validation.reason}`);
+        assert.ok(validation.parsedTags != null);
         assert.equal(validation.parsedTags.title, title.replace(/^.+?\s+[-–—]\s+/, ""));
         await client.cleanupStaging("source-metadata");
         assert.equal(existsSync(filePath), false);
@@ -146,14 +147,14 @@ test(
     process.env.AURRAL_YTDLP_TEST_PID = pidPath;
     process.env.AURRAL_YTDLP_TEST_GRANDCHILD_PID = grandchildPidPath;
 
-    let pid;
-    let grandchildPid;
+    let pid: number | undefined;
+    let grandchildPid: number | undefined;
     let childExited = false;
     let grandchildStopped = false;
-    const until = async (condition) => {
-      while (!condition()) await new Promise((resolve) => setImmediate(resolve));
+    const until = async (condition: () => boolean) => {
+      while (!condition()) await new Promise<void>((resolve) => setImmediate(resolve));
     };
-    const running = (target) => {
+    const running = (target: number) => {
       try {
         return !execFileSync("ps", ["-o", "stat=", "-p", String(target)], { encoding: "utf8" })
           .trim()
@@ -163,7 +164,7 @@ test(
       }
     };
     const stagingDir = path.join(tempDir, "ytdlp", "stubborn-child");
-    const removals = [];
+    const removals: { target: import("node:fs").PathLike; childRunning: boolean }[] = [];
     const removeFiles = fsPromises.rm;
     try {
       vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
@@ -177,14 +178,14 @@ test(
       pid = Number(await readFile(pidPath, "utf8"));
       grandchildPid = Number(await readFile(grandchildPidPath, "utf8"));
       vi.spyOn(fsPromises, "rm").mockImplementation((target, options) => {
-        removals.push({ target, childRunning: running(pid) });
+        removals.push({ target, childRunning: running(pid!) });
         return removeFiles(target, options);
       });
       const cleanup = client.cleanupStaging("stubborn-child");
       await vi.advanceTimersByTimeAsync(1250);
       await cancelled;
       await cleanup;
-      assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
+      assert.throws(() => process.kill(pid!, 0), { code: "ESRCH" });
       childExited = true;
       const stagingRemovals = removals.filter((removal) => removal.target === stagingDir);
       assert.ok(stagingRemovals.length > 0);
@@ -193,9 +194,9 @@ test(
         "staging was cleared while yt-dlp was still running",
       );
       const giveUp = Date.now() + 5000;
-      await until(() => !running(grandchildPid) || Date.now() > giveUp);
+      await until(() => !running(grandchildPid!) || Date.now() > giveUp);
       assert.equal(
-        running(grandchildPid),
+        running(grandchildPid!),
         false,
         `yt-dlp grandchild ${grandchildPid} kept running`,
       );

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "vite-plus/test";
+import { test, vi } from "vite-plus/test";
 import {
   getStoredRecentlyAddedAt,
   getLibraryArtistImage,
@@ -35,12 +35,11 @@ test("recent library artwork accepts both providers and prefers portraits over f
 });
 
 test("discover cache timestamps follow fallback data", () => {
-  const originalStorage = globalThis.localStorage;
-  const values = new Map();
-  globalThis.localStorage = {
-    getItem: (key) => values.get(key) ?? null,
-    setItem: (key, value) => values.set(key, String(value)),
-  };
+  const values = new Map<string, string>();
+  vi.stubGlobal("localStorage", {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => values.set(key, String(value)),
+  });
 
   try {
     localStorage.setItem("discoverRecentlyAdded", JSON.stringify([{ id: 1 }]));
@@ -48,7 +47,6 @@ test("discover cache timestamps follow fallback data", () => {
     assert.deepEqual(readStoredRecentlyAdded(7), [{ id: 1 }]);
     assert.equal(getStoredRecentlyAddedAt(7), 999000);
   } finally {
-    if (originalStorage === undefined) delete globalThis.localStorage;
-    else globalThis.localStorage = originalStorage;
+    vi.unstubAllGlobals();
   }
 });

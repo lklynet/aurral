@@ -6,7 +6,7 @@ import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTe
 
 const [isolatedState, downloadPaths] = await setupIsolatedBackend(
   "download-paths",
-  "backend/services/downloadPaths.ts",
+  () => import("../../backend/services/downloadPaths.ts"),
 );
 
 const { resolveDownloadRoot, remapLegacyPath, resolveExistingTrackPath } = downloadPaths;
@@ -60,7 +60,7 @@ test("remapLegacyPath rewrites legacy roots and library dir names", () => {
 
 test("resolveExistingTrackPath prefers a migrated legacy path when the file exists", async () => {
   const fs = await import("fs/promises");
-  const root = path.join(process.env.WEEKLY_FLOW_FOLDER, "legacy-path-check");
+  const root = path.join(process.env.WEEKLY_FLOW_FOLDER!, "legacy-path-check");
   const playlistPath = path.join(root, "aurral-weekly-flow", "playlist-id", "Artist", "Track.flac");
   await fs.mkdir(path.dirname(playlistPath), { recursive: true });
   await fs.writeFile(playlistPath, "audio");
@@ -79,7 +79,7 @@ test("resolveExistingTrackPath prefers a migrated legacy path when the file exis
 
 test("resolveExistingTrackPath resolves absolute paths outside playlist root", async () => {
   const fs = await import("fs/promises");
-  const root = path.join(process.env.WEEKLY_FLOW_FOLDER, "external-path-check");
+  const root = path.join(process.env.WEEKLY_FLOW_FOLDER!, "external-path-check");
   const lidarrPath = path.join(root, "lidarr", "Artist", "Track.flac");
   await fs.mkdir(path.dirname(lidarrPath), { recursive: true });
   await fs.writeFile(lidarrPath, "audio");

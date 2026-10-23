@@ -1,3 +1,4 @@
+import { requireFixture } from "../playlists/fixtures.ts";
 import { test, beforeAll, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
@@ -6,11 +7,11 @@ import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTe
 const [isolatedState, { db }, libraryStore, managementStore, { lidarrClient }, { libraryManager }] =
   await setupIsolatedBackend(
     "lidarr-add-ownership",
-    "backend/config/db-sqlite.ts",
-    "backend/services/libraryMediaStore.ts",
-    "backend/services/libraryManagementStore.ts",
-    "backend/services/lidarrClient.ts",
-    "backend/services/libraryManager.ts",
+    () => import("../../backend/config/db-sqlite.ts"),
+    () => import("../../backend/services/libraryMediaStore.ts"),
+    () => import("../../backend/services/libraryManagementStore.ts"),
+    () => import("../../backend/services/lidarrClient.ts"),
+    () => import("../../backend/services/libraryManager.ts"),
   );
 
 const artistMbid = "b1111111-1111-4111-8111-111111111111";
@@ -39,7 +40,7 @@ beforeAll(() => {
   };
   lidarrClient.addArtist = async () => lidarrArtist;
   lidarrClient.getArtist = async () => lidarrArtist;
-  lidarrClient.getAlbumByMbid = async () => null;
+  lidarrClient.getAlbumByMbid = async () => undefined;
   lidarrClient.addAlbum = async () => lidarrAlbum;
   lidarrClient.getAlbum = async () => lidarrAlbum;
 });
@@ -56,8 +57,8 @@ afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-const ownerOf = (table, kind) => {
-  const row = db.prepare(`SELECT id FROM ${table}`).get();
+const ownerOf = (table: string, kind: string) => {
+  const row = db.prepare<unknown[], { id: unknown }>(`SELECT id FROM ${table}`).get();
   return row
     ? (managementStore.getLibraryManagementEntry(kind, row.id)?.managedBy ?? null)
     : undefined;
@@ -92,17 +93,25 @@ test("a Lidarr add leaves an artist Aurral already owns untouched", async () => 
   });
 
   await libraryManager.addArtist(artistMbid, "Owned Artist", { managedBy: "lidarr" });
-  assert.equal(managementStore.getLibraryManagementEntry("artist", seeded.id).managedBy, "aurral");
-  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM library_artists").get().n, 1);
+  assert.equal(managementStore.getLibraryManagementEntry("artist", seeded.id)!.managedBy, "aurral");
+  assert.equal(
+    db.prepare<unknown[], { n: number }>("SELECT COUNT(*) AS n FROM library_artists").get()!.n,
+    1,
+  );
 });
 
 test("an Aurral album add does not take over an album Lidarr just added", async () => {
   await libraryManager.addAlbum("41", albumMbid, "Owned Album", { managedBy: "lidarr" });
-  const artist = db.prepare("SELECT id FROM library_artists").get();
+  const artist = db.prepare<unknown[], { id: number }>("SELECT id FROM library_artists").get();
 
-  const result = await libraryManager.addAlbum(artist.id, albumMbid, "Owned Album", {
-    managedBy: "aurral",
-  });
+  const result = await libraryManager.addAlbum(
+    requireFixture(artist).id,
+    albumMbid,
+    "Owned Album",
+    {
+      managedBy: "aurral",
+    },
+  );
   assert.equal(result.statusCode, 409);
   assert.equal(ownerOf("library_albums", "album"), "lidarr");
 });

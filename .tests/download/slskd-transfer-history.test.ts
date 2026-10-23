@@ -10,8 +10,8 @@ import {
 const [isolatedState, { buildSlskdRankingHistoryOptions, recordSlskdTransferOutcome }, { db }] =
   await setupIsolatedBackend(
     "slskd-transfer-history",
-    "backend/services/slskdTransferHistory.ts",
-    "backend/config/db-sqlite.ts",
+    () => import("../../backend/services/slskdTransferHistory.ts"),
+    () => import("../../backend/config/db-sqlite.ts"),
   );
 
 beforeEach(() => {
@@ -22,7 +22,7 @@ afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-function recordOutcome(username, status, reason = null) {
+function recordOutcome(username: string, status: string, reason: string | null = null) {
   recordSlskdTransferOutcome({
     reason,
     job: {

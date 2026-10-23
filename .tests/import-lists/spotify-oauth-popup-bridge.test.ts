@@ -9,28 +9,27 @@ const callbackPath = path.join(
   "../../frontend/public/spotify-oauth-callback.js",
 );
 
-function runCallback(env) {
-  const previousWindow = globalThis.window;
-  const previousLocation = globalThis.location;
-  const previousBroadcastChannel = globalThis.BroadcastChannel;
-  const previousSetTimeout = globalThis.setTimeout;
-  globalThis.window = env;
-  globalThis.location = env.location;
-  globalThis.BroadcastChannel = env.BroadcastChannel;
-  globalThis.setTimeout =
-    env.setTimeout ||
-    ((fn) => {
-      fn();
-      return 0;
-    });
-  try {
-    new Function(readFileSync(callbackPath, "utf8"))();
-  } finally {
-    globalThis.window = previousWindow;
-    globalThis.location = previousLocation;
-    globalThis.BroadcastChannel = previousBroadcastChannel;
-    globalThis.setTimeout = previousSetTimeout;
-  }
+type CallbackMessage = { type: string; payload: { access_token: string } };
+type CallbackEnvironment = {
+  location: { search: string; hash: string };
+  opener: { onCompleteOauth(query: string, onComplete: () => void): void } | null;
+  close(): void;
+  BroadcastChannel?: new (name: string) => {
+    postMessage(message: CallbackMessage): void;
+    close(): void;
+  };
+  setTimeout?: (callback: () => void) => unknown;
+};
+
+function runCallback(env: CallbackEnvironment) {
+  const execute = new Function(
+    "window",
+    "location",
+    "BroadcastChannel",
+    "setTimeout",
+    readFileSync(callbackPath, "utf8"),
+  );
+  execute(env, env.location, env.BroadcastChannel, env.setTimeout ?? ((fn: () => void) => fn()));
 }
 
 test("spotify oauth callback forwards search to opener", () => {
@@ -53,13 +52,13 @@ test("spotify oauth callback forwards search to opener", () => {
 });
 
 test("spotify oauth callback broadcasts tokens when opener is missing", () => {
-  const messages = [];
+  const messages: CallbackMessage[] = [];
   runCallback({
     location: { search: "?access_token=a&refresh_token=b&expires_in=3600", hash: "" },
     opener: null,
     close() {},
     BroadcastChannel: class {
-      postMessage(message) {
+      postMessage(message: CallbackMessage) {
         messages.push(message);
       }
       close() {}

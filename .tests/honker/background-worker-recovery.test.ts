@@ -1,3 +1,4 @@
+import { requireFixture } from "../playlists/fixtures.ts";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { test } from "vite-plus/test";
@@ -13,12 +14,14 @@ import {
 } from "../../backend/services/libraryScanWorker.ts";
 import { dbOps } from "../../backend/db/helpers/index.ts";
 
-test("an exited scan process releases its claimed job for retry", async (t) => {
+test("an exited scan process releases its claimed job for retry", async (t: import("vite-plus/test").TestContext) => {
   const queue = getLibraryScanQueue();
   const pid = 900000001;
   const workerId = `aurral-${pid}`;
   const jobId = queue.enqueue({ force: true });
-  t.onTestFinished(() => queue.cancel(jobId));
+  t.onTestFinished(() => {
+    queue.cancel(jobId);
+  });
   const claim = queue.claimOne(workerId);
   assert.equal(claim?.id, jobId);
   assert.equal(queue.getJob(jobId)?.state, "processing");
@@ -32,20 +35,29 @@ test("an exited scan process releases its claimed job for retry", async (t) => {
     inFlightPaths: [changedPath],
   });
 
-  await recoverExitedWorkerJobs("library", pid, { warn() {} });
+  await recoverExitedWorkerJobs("library", pid, { warn() {}, error() {}, info() {} });
   const recovered = queue.getJob(jobId);
   assert.equal(recovered?.state, "pending");
   assert.equal(recovered?.worker_id, null);
-  const registry = dbOps.getJSONSetting("pendingLibraryScanJob");
+  const registry = dbOps.getJSONSetting<{
+    jobId: number;
+    includeLidarr: boolean;
+    force?: boolean;
+    changedPaths?: string[];
+    inFlightActive?: boolean;
+    inFlightPaths?: string[];
+  }>("pendingLibraryScanJob");
   assert.deepEqual(registry?.changedPaths, [pendingPath, changedPath]);
   assert.equal(registry?.inFlightActive, undefined);
 });
 
-test("a worker exit preserves a full rescan requested during the active scan", async (t) => {
+test("a worker exit preserves a full rescan requested during the active scan", async (t: import("vite-plus/test").TestContext) => {
   const queue = getLibraryScanQueue();
   const pid = 900000002;
   const jobId = queue.enqueue({ force: false });
-  t.onTestFinished(() => queue.cancel(jobId));
+  t.onTestFinished(() => {
+    queue.cancel(jobId);
+  });
   assert.equal(queue.claimOne(`aurral-${pid}`)?.id, jobId);
   dbOps.setJSONSetting("pendingLibraryScanJob", {
     jobId,
@@ -57,16 +69,27 @@ test("a worker exit preserves a full rescan requested during the active scan", a
     fullRescanPending: true,
   });
 
-  await recoverExitedWorkerJobs("library", pid, { warn() {} });
-  const registry = dbOps.getJSONSetting("pendingLibraryScanJob");
+  await recoverExitedWorkerJobs("library", pid, { warn() {}, error() {}, info() {} });
+  const registry = dbOps.getJSONSetting<{
+    jobId: number;
+    includeLidarr: boolean;
+    force?: boolean;
+    changedPaths?: string[];
+    inFlightActive?: boolean;
+    inFlightPaths?: string[];
+  }>("pendingLibraryScanJob");
+  assert.ok(registry != null);
   assert.equal(registry.jobId, jobId);
+  assert.ok(registry != null);
   assert.equal(registry.includeLidarr, true);
+  assert.ok(registry != null);
   assert.equal(registry.force, true);
+  assert.ok(registry != null);
   assert.equal("changedPaths" in registry, false);
   assert.equal(queue.getJob(jobId)?.state, "pending");
 });
 
-test("a scan claimed before Aurral restarted runs again at startup with the files it was scanning", async (t) => {
+test("a scan claimed before Aurral restarted runs again at startup with the files it was scanning", async (t: import("vite-plus/test").TestContext) => {
   const queue = getLibraryScanQueue();
   const earlier = queue.enqueue({ force: false });
   const current = queue.enqueue({ force: false });
@@ -90,7 +113,7 @@ test("a scan claimed before Aurral restarted runs again at startup with the file
     inFlightPaths: [inFlightPath],
   });
 
-  await recoverJobsClaimedBeforeStart({ warn() {} });
+  await recoverJobsClaimedBeforeStart({ warn() {}, error() {}, info() {} });
 
   assert.equal(queue.getJob(earlier)?.state, "pending");
   assert.equal(queue.getJob(current)?.state, "processing");
@@ -134,14 +157,36 @@ test("scan start and completion preserve requests received while a scan is activ
   try {
     const scan = beginLibraryScanJob(jobId, { force: false, includeLidarr: false });
     assert.deepEqual(scan.changedPaths, [inFlightPath]);
-    assert.deepEqual(dbOps.getJSONSetting("pendingLibraryScanJob").inFlightPaths, [inFlightPath]);
+    assert.deepEqual(
+      requireFixture(
+        dbOps.getJSONSetting<{
+          jobId: number;
+          includeLidarr: boolean;
+          force?: boolean;
+          changedPaths?: string[];
+          inFlightActive?: boolean;
+          inFlightPaths?: string[];
+        }>("pendingLibraryScanJob"),
+      ).inFlightPaths,
+      [inFlightPath],
+    );
     assert.equal(scheduleLibraryScan({ includeLidarr: true, changedPaths: [pendingPath] }), jobId);
 
     onLibraryScanSuccess({}, { id: jobId });
-    const registry = dbOps.getJSONSetting("pendingLibraryScanJob");
+    const registry = dbOps.getJSONSetting<{
+      jobId: number;
+      includeLidarr: boolean;
+      force?: boolean;
+      changedPaths?: string[];
+      inFlightActive?: boolean;
+      inFlightPaths?: string[];
+    }>("pendingLibraryScanJob");
+    assert.ok(registry != null);
     nextJobId = registry.jobId;
     assert.notEqual(nextJobId, jobId);
+    assert.ok(registry != null);
     assert.deepEqual(registry.changedPaths, [pendingPath]);
+    assert.ok(registry != null);
     assert.equal(registry.includeLidarr, true);
   } finally {
     queue.cancel(jobId);
@@ -162,11 +207,22 @@ test("scan completion schedules a full rescan requested while the scan was activ
     beginLibraryScanJob(jobId, { force: false, includeLidarr: false });
     assert.equal(scheduleLibraryScan({ force: true, includeLidarr: true }), jobId);
     onLibraryScanSuccess({}, { id: jobId });
-    const registry = dbOps.getJSONSetting("pendingLibraryScanJob");
+    const registry = dbOps.getJSONSetting<{
+      jobId: number;
+      includeLidarr: boolean;
+      force?: boolean;
+      changedPaths?: string[];
+      inFlightActive?: boolean;
+      inFlightPaths?: string[];
+    }>("pendingLibraryScanJob");
+    assert.ok(registry != null);
     nextJobId = registry.jobId;
     assert.notEqual(nextJobId, jobId);
+    assert.ok(registry != null);
     assert.equal(registry.force, true);
+    assert.ok(registry != null);
     assert.equal(registry.includeLidarr, true);
+    assert.ok(registry != null);
     assert.equal("changedPaths" in registry, false);
   } finally {
     queue.cancel(jobId);
@@ -174,7 +230,7 @@ test("scan completion schedules a full rescan requested while the scan was activ
   }
 });
 
-test("an exited personal discovery process stops reporting that user's refresh as running", async (t) => {
+test("an exited personal discovery process stops reporting that user's refresh as running", async (t: import("vite-plus/test").TestContext) => {
   const { getDiscoveryUserRefreshQueue } = await import("../../backend/services/honkerDb.ts");
   const persistence = await import("../../backend/services/discovery/persistence.ts");
   const { getDiscoveryStatus } = await import("../../backend/services/discovery/userDiscovery.ts");
@@ -187,12 +243,19 @@ test("an exited personal discovery process stops reporting that user's refresh a
   const queue = getDiscoveryUserRefreshQueue();
   const pid = 900000003;
   const jobId = queue.enqueue({ userId: 41, requestedAt: Date.now() });
-  t.onTestFinished(() => queue.cancel(jobId));
+  t.onTestFinished(() => {
+    queue.cancel(jobId);
+  });
   assert.equal(queue.claimOne(`aurral-${pid}`)?.id, jobId);
   persistence.markDiscoveryRefreshStarted("user:41");
   assert.equal(getDiscoveryStatus(41).isUpdating, true);
 
-  await recoverExitedWorkerJobs("discovery-user-refresh", pid, { warn() {} }, "Worker crashed");
+  await recoverExitedWorkerJobs(
+    "discovery-user-refresh",
+    pid,
+    { warn() {}, error() {}, info() {} },
+    "Worker crashed",
+  );
 
   const status = getDiscoveryStatus(41);
   assert.equal(status.isUpdating, false);

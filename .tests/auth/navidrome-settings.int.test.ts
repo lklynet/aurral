@@ -1,3 +1,4 @@
+import { requireFixture } from "../playlists/fixtures.ts";
 import assert from "node:assert/strict";
 import { EventEmitter, on } from "node:events";
 import http from "node:http";
@@ -15,18 +16,32 @@ import {
 
 const [isolatedState, { db }, { dbOps, userOps }] = await setupIsolatedBackend(
   "navidrome-settings-api",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
 );
 
-let aurral;
-let authToken;
-let navidrome;
-let navidromeUrl;
-const navidromeRequests = [];
+let aurral: {
+  child: import("node:child_process").ChildProcessByStdio<
+    null,
+    import("node:stream").Readable,
+    import("node:stream").Readable
+  >;
+  port: number;
+  logs: () => string;
+  stop(): Promise<void>;
+};
+let authToken: string;
+let navidrome: http.Server<typeof http.IncomingMessage, typeof http.ServerResponse>;
+let navidromeUrl: string;
+type NavidromeRequest = {
+  method: string | undefined;
+  url: URL;
+  body: Record<string, unknown> | null;
+};
+const navidromeRequests: NavidromeRequest[] = [];
 const navidromeEvents = new EventEmitter();
 
-async function apiFetch(path, options = {}) {
+async function apiFetch(path: string, options: RequestInit = {}) {
   const response = await fetch(`http://127.0.0.1:${aurral.port}${path}`, {
     ...options,
     headers: {
@@ -36,7 +51,7 @@ async function apiFetch(path, options = {}) {
     },
   });
   const text = await response.text();
-  let payload = null;
+  let payload: ReturnType<typeof dbOps.getSettings> | string | null = null;
   try {
     payload = text ? JSON.parse(text) : null;
   } catch {
@@ -45,8 +60,9 @@ async function apiFetch(path, options = {}) {
   return { response, payload };
 }
 
-async function waitForNavidromeRequest(startIndex, method, pathname) {
-  const matches = (request) => request.method === method && request.url.pathname === pathname;
+async function waitForNavidromeRequest(startIndex: number, method: string, pathname: string) {
+  const matches = (request: NavidromeRequest) =>
+    request.method === method && request.url.pathname === pathname;
   const seen = navidromeRequests.slice(startIndex).find(matches);
   if (seen) return seen;
   const signal = AbortSignal.timeout(5000);
@@ -60,7 +76,7 @@ beforeAll(async () => {
   dbOps.updateSettings({ integrations: {}, onboardingComplete: true });
   userOps.createUser("admin", bcrypt.hashSync("password123", 4), "admin");
 
-  const libraries = [];
+  const libraries: { id: string; name?: string; path?: string }[] = [];
   navidrome = http.createServer((req, res) => {
     const url = new URL(req.url || "/", "http://127.0.0.1");
     let requestBody = "";
@@ -68,7 +84,7 @@ beforeAll(async () => {
       requestBody += chunk;
     });
     req.on("end", () => {
-      let body = null;
+      let body: Record<string, unknown> | null = null;
       try {
         body = requestBody ? JSON.parse(requestBody) : null;
       } catch {}
@@ -93,8 +109,10 @@ beforeAll(async () => {
       res.end(JSON.stringify({ "subsonic-response": { status: "ok", version: "1.16.1" } }));
     });
   });
-  await new Promise((resolve) => navidrome.listen(0, "127.0.0.1", resolve));
-  navidromeUrl = `http://127.0.0.1:${navidrome.address().port}`;
+  await new Promise<void>((resolve) => navidrome.listen(0, "127.0.0.1", resolve));
+  const address = navidrome.address();
+  assert.ok(address && typeof address === "object");
+  navidromeUrl = `http://127.0.0.1:${address.port}`;
 
   aurral = await startServerProcess();
   const login = await fetch(`http://127.0.0.1:${aurral.port}/api/auth/login`, {
@@ -108,7 +126,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await aurral?.stop();
-  await new Promise((resolve) => navidrome?.close(resolve));
+  await new Promise<void>((resolve) => navidrome?.close(() => resolve()));
   await cleanupIsolatedState(isolatedState);
 });
 
@@ -141,10 +159,17 @@ test("admin can update and test Navidrome after onboarding", async () => {
     }),
   });
   assert.equal(saved.response.status, 200, JSON.stringify(saved.payload));
-  assert.equal(saved.payload.integrations.navidrome.url, navidromeUrl);
-  assert.equal(saved.payload.integrations.navidrome.username, "local-user");
-  assert.equal(Object.hasOwn(saved.payload.integrations.navidrome, "m3uPathMode"), false);
-  assert.equal(Object.hasOwn(saved.payload.integrations.navidrome, "pathMappings"), false);
+  assert.ok(saved.payload && typeof saved.payload === "object");
+  assert.equal(requireFixture(saved.payload.integrations.navidrome).url, navidromeUrl);
+  assert.equal(requireFixture(saved.payload.integrations.navidrome).username, "local-user");
+  assert.equal(
+    Object.hasOwn(requireFixture(saved.payload.integrations.navidrome), "m3uPathMode"),
+    false,
+  );
+  assert.equal(
+    Object.hasOwn(requireFixture(saved.payload.integrations.navidrome), "pathMappings"),
+    false,
+  );
   assert.ok(
     saved.payload.pathMappings.some(
       (mapping) =>
@@ -177,8 +202,9 @@ test("admin can update and test Navidrome after onboarding", async () => {
 test("admin can configure persistent yt-dlp staging outside the download folder", async () => {
   const current = await apiFetch("/api/settings");
   assert.equal(current.response.status, 200, JSON.stringify(current.payload));
+  assert.ok(current.payload && typeof current.payload === "object");
   assert.equal(
-    current.payload.integrations.ytdlp.stagingPath,
+    requireFixture(current.payload.integrations.ytdlp).stagingPath,
     path.join(isolatedState.dataDir, "_staging"),
   );
 
@@ -188,5 +214,6 @@ test("admin can configure persistent yt-dlp staging outside the download folder"
     body: JSON.stringify({ integrations: { ytdlp: { stagingPath } } }),
   });
   assert.equal(saved.response.status, 200, JSON.stringify(saved.payload));
-  assert.equal(saved.payload.integrations.ytdlp.stagingPath, stagingPath);
+  assert.ok(saved.payload && typeof saved.payload === "object");
+  assert.equal(requireFixture(saved.payload.integrations.ytdlp).stagingPath, stagingPath);
 });

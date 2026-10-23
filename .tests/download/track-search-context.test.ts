@@ -10,8 +10,8 @@ import { toNormalizedTrack } from "../../backend/services/providers/brainzmashMa
 
 const [isolatedState, { dbOps }, { resolveTrackSearchContext }] = await setupIsolatedBackend(
   "track-search-context",
-  "backend/db/helpers/index.ts",
-  "backend/services/downloadJobs/trackSearchContext.ts",
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/downloadJobs/trackSearchContext.ts"),
 );
 
 // Metadata's rate limit runs on fake time that moves to each next timer. The
@@ -65,14 +65,13 @@ test("pickResolvedDurationMs replaces a stale playlist duration with the matched
   assert.equal(
     pickResolvedDurationMs({
       playlistDurationMs: 524773,
-      albumName: "Jet Set Radio Future SEGA Original Tracks",
       matchedTrackDurationMs: 222813,
     }),
     222813,
   );
 });
 
-test("resolveTrackSearchContext replaces a stale album MBID before resolving duration", async (t) => {
+test("resolveTrackSearchContext replaces a stale album MBID before resolving duration", async (t: import("vite-plus/test").TestContext) => {
   const originalSettings = dbOps.getSettings();
   dbOps.updateSettings({
     ...originalSettings,
@@ -95,6 +94,9 @@ test("resolveTrackSearchContext replaces a stale album MBID before resolving dur
     const path = new URL(url).pathname;
     if (path === "/search/album") {
       return {
+        status: 200,
+        statusText: "OK",
+        headers: {},
         data: options?.params?.artist
           ? [
               {
@@ -117,6 +119,9 @@ test("resolveTrackSearchContext replaces a stale album MBID before resolving dur
     }
     if (path === "/album/wrong-album") {
       return {
+        status: 200,
+        statusText: "OK",
+        headers: {},
         data: {
           id: "wrong-album",
           title: "Jet Set Radio",
@@ -141,6 +146,9 @@ test("resolveTrackSearchContext replaces a stale album MBID before resolving dur
     }
     if (path === "/album/correct-album") {
       return {
+        status: 200,
+        statusText: "OK",
+        headers: {},
         data: {
           id: "correct-album",
           title: "Jet Set Radio Future Original Sound Tracks",
@@ -167,7 +175,7 @@ test("resolveTrackSearchContext replaces a stale album MBID before resolving dur
         },
       };
     }
-    return { data: {} };
+    return { status: 200, statusText: "OK", headers: {}, data: {} };
   });
 
   const resolved = await resolveTrackSearchContext({
@@ -187,7 +195,7 @@ test("resolveTrackSearchContext replaces a stale album MBID before resolving dur
   assert.deepEqual(resolved.albumTrackTitles, ["The Concept of Love"]);
 });
 
-test("resolveTrackSearchContext preserves a recording from a non-representative edition", async (t) => {
+test("resolveTrackSearchContext preserves a recording from a non-representative edition", async (t: import("vite-plus/test").TestContext) => {
   const originalSettings = dbOps.getSettings();
   dbOps.updateSettings({
     ...originalSettings,
@@ -207,6 +215,9 @@ test("resolveTrackSearchContext preserves a recording from a non-representative 
   const get = vi.spyOn(axios, "get").mockImplementation(async (url) => {
     assert.equal(new URL(url).pathname, "/album/b1392450-e666-3926-a536-22c65f834433");
     return {
+      status: 200,
+      statusText: "OK",
+      headers: {},
       data: {
         id: "b1392450-e666-3926-a536-22c65f834433",
         title: "OK Computer",
@@ -284,7 +295,7 @@ test("resolveTrackSearchContext preserves a recording from a non-representative 
   assert.deepEqual(resolved.albumTrackTitles, job.albumTrackTitles);
 });
 
-test("resolveTrackSearchContext learns a track's disc and keeps a known disc for a recording on two discs", async (t) => {
+test("resolveTrackSearchContext learns a track's disc and keeps a known disc for a recording on two discs", async (t: import("vite-plus/test").TestContext) => {
   const originalSettings = dbOps.getSettings();
   dbOps.updateSettings({
     ...originalSettings,
@@ -301,7 +312,12 @@ test("resolveTrackSearchContext learns a track's disc and keeps a known disc for
     clearMetadataProviderCaches();
     dbOps.updateSettings(originalSettings);
   });
-  const track = (mediumnumber, trackposition, trackname, recordingid) => ({
+  const track = (
+    mediumnumber: number,
+    trackposition: number,
+    trackname: string,
+    recordingid: string,
+  ) => ({
     id: `${recordingid}-${mediumnumber}`,
     recordingid,
     trackname,
@@ -310,6 +326,9 @@ test("resolveTrackSearchContext learns a track's disc and keeps a known disc for
     durationms: 200000,
   });
   vi.spyOn(axios, "get").mockImplementation(async () => ({
+    status: 200,
+    statusText: "OK",
+    headers: {},
     data: {
       id: "sixteen-stone",
       title: "Sixteen Stone",
@@ -329,7 +348,7 @@ test("resolveTrackSearchContext learns a track's disc and keeps a known disc for
       ],
     },
   }));
-  const resolve = (trackMbid, trackNumber, discNumber) =>
+  const resolve = (trackMbid: string, trackNumber: number, discNumber: number | null) =>
     resolveTrackSearchContext({
       artistName: "Bush",
       trackName: trackNumber === 1 ? "Swim" : "Bomb",
@@ -359,7 +378,7 @@ test("resolveTrackSearchContext learns a track's disc and keeps a known disc for
   );
 });
 
-test("resolveTrackSearchContext repairs a stored Last.fm release-track ID", async (t) => {
+test("resolveTrackSearchContext repairs a stored Last.fm release-track ID", async (t: import("vite-plus/test").TestContext) => {
   const originalSettings = dbOps.getSettings();
   dbOps.updateSettings({
     ...originalSettings,
@@ -379,6 +398,9 @@ test("resolveTrackSearchContext repairs a stored Last.fm release-track ID", asyn
   vi.spyOn(axios, "get").mockImplementation(async (url) => {
     assert.equal(new URL(url).pathname, "/album/legacy-album");
     return {
+      status: 200,
+      statusText: "OK",
+      headers: {},
       data: {
         id: "legacy-album",
         title: "ROCKISDEAD",
@@ -420,12 +442,12 @@ test("resolveTrackSearchContext repairs a stored Last.fm release-track ID", asyn
   assert.equal(resolved.trackMbid, "befc26a0-5403-4d73-b0f8-3f6a6fb0c292");
 });
 
-test("resolveTrackSearchContext drops an unverified stored recording ID", async (t) => {
+test("resolveTrackSearchContext drops an unverified stored recording ID", async (t: import("vite-plus/test").TestContext) => {
   clearMetadataProviderCaches();
   t.onTestFinished(() => clearMetadataProviderCaches());
   vi.spyOn(axios, "get").mockImplementation(async () => {
-    const error = new Error("metadata unavailable");
-    error.response = { status: 503 };
+    const error = Object.assign(new Error("metadata unavailable"), { response: { status: 503 } });
+
     throw error;
   });
 
@@ -446,7 +468,7 @@ test("resolveTrackSearchContext drops an unverified stored recording ID", async 
   assert.equal(resolved.trackMbid, null);
 });
 
-test("resolveTrackSearchContext takes neither a recording ID nor a length from Last.fm", async (t) => {
+test("resolveTrackSearchContext takes neither a recording ID nor a length from Last.fm", async (t: import("vite-plus/test").TestContext) => {
   const originalSettings = dbOps.getSettings();
   dbOps.updateSettings({
     ...originalSettings,
@@ -467,6 +489,9 @@ test("resolveTrackSearchContext takes neither a recording ID nor a length from L
   vi.spyOn(axios, "get").mockImplementation(async (url, options) => {
     if (options?.params?.method === "track.getInfo") {
       return {
+        status: 200,
+        statusText: "OK",
+        headers: {},
         data: {
           track: {
             mbid: "stale-lastfm-recording",
@@ -479,6 +504,9 @@ test("resolveTrackSearchContext takes neither a recording ID nor a length from L
     }
     if (new URL(url).pathname === "/album/lastfm-album") {
       return {
+        status: 200,
+        statusText: "OK",
+        headers: {},
         data: {
           id: "lastfm-album",
           title: "Lastfm Album",
@@ -501,7 +529,7 @@ test("resolveTrackSearchContext takes neither a recording ID nor a length from L
         },
       };
     }
-    return { data: {} };
+    return { status: 200, statusText: "OK", headers: {}, data: {} };
   });
   const request = {
     artistName: "Lastfm Artist",
@@ -518,7 +546,13 @@ test("resolveTrackSearchContext takes neither a recording ID nor a length from L
   assert.equal(fromRelease.durationMs, 369626);
 });
 
-function stubMetadata(t, respond) {
+function stubMetadata(
+  t: import("vite-plus/test").TestContext,
+  respond: (
+    path: string,
+    params: NonNullable<NonNullable<Parameters<typeof axios.get>[1]>["params"]>,
+  ) => unknown,
+) {
   const originalSettings = dbOps.getSettings();
   dbOps.updateSettings({
     ...originalSettings,
@@ -539,12 +573,25 @@ function stubMetadata(t, respond) {
     dbOps.updateSettings(originalSettings);
   });
   vi.spyOn(axios, "get").mockImplementation(async (url, options) => ({
+    status: 200,
+    statusText: "OK",
+    headers: {},
     data: respond(new URL(url).pathname, options?.params || {}) ?? {},
   }));
 }
 
-const artistEntry = (id, name, extra = {}) => ({ id, artistname: name, type: "Group", ...extra });
-const albumEntry = (id, title, artist, tracks = null) => ({
+const artistEntry = (id: string, name: string, extra: { disambiguation?: string } = {}) => ({
+  id,
+  artistname: name,
+  type: "Group",
+  ...extra,
+});
+const albumEntry = (
+  id: string,
+  title: string,
+  artist: ReturnType<typeof artistEntry>,
+  tracks: string[] | null = null,
+) => ({
   id,
   title,
   type: "Album",
@@ -615,7 +662,7 @@ test("a download credited to an artist and a guest takes the lead artist, and no
     assert.equal(existing.albumMbid, null);
     assert.equal(existing.trackMbid, null);
     assert.equal(existing.trackNumber, null);
-    assert.deepEqual(existing.albumTrackTitles, []);
+    assert.deepEqual([...(existing.albumTrackTitles ?? [])], []);
   }
 });
 
@@ -644,8 +691,10 @@ test("a download takes the album of its title that lists the song, over the albu
     "Everybody Wants to Rule the World",
     "Billie Jean",
   ]);
+  assert.ok(albums.teal.releases != null);
+  assert.ok(deluxe.releases != null);
   albums.teal.releases.push({ ...albums.teal.releases[0], id: "teal-vinyl" }, deluxe.releases[0]);
-  stubMetadata(t, (path, params) => {
+  stubMetadata(t, (path: string, params) => {
     if (path === "/search/album") {
       return Object.values(albums)
         .filter((album) => album.title === params.query)
@@ -660,7 +709,7 @@ test("a download takes the album of its title that lists the song, over the albu
         ],
       };
     }
-    return albums[path.replace("/album/", "")] || null;
+    return Object.values(albums).find((album) => album.id === path.replace("/album/", "")) || null;
   });
 
   const resolved = await resolveTrackSearchContext({
@@ -744,7 +793,7 @@ test("a download takes the album of its title from the year it names, when the a
     "old-hits": albumEntry("old-hits", "Greatest Hits", band, ["Africa"]),
     "new-hits": albumEntry("new-hits", "Greatest Hits", band, ["Africa"]),
   };
-  stubMetadata(t, (path) => {
+  stubMetadata(t, (path: string) => {
     if (path === "/search/album") return [];
     if (path === "/artist/hits-band") {
       return {
@@ -755,7 +804,7 @@ test("a download takes the album of its title from the year it names, when the a
         ],
       };
     }
-    return albums[path.replace("/album/", "")] || null;
+    return Object.values(albums).find((album) => album.id === path.replace("/album/", "")) || null;
   });
 
   const resolved = await resolveTrackSearchContext({
@@ -770,7 +819,13 @@ test("a download takes the album of its title from the year it names, when the a
 
 const editionAlbum = () => {
   const band = artistEntry("edition-band", "Edition Band");
-  const song = (trackname, recordingid, trackposition, durationms, extra = {}) => ({
+  const song = (
+    trackname: string,
+    recordingid: string,
+    trackposition: number,
+    durationms: number,
+    extra: { oldrecordingids?: string[] } = {},
+  ) => ({
     id: `${recordingid}-${trackposition}`,
     trackname,
     recordingid,
@@ -910,7 +965,7 @@ test("an album ID the metadata provider does not know is replaced by the album i
 test("an album ID is kept while the metadata provider is down, and its release is read once it is back", async (t) => {
   const album = { ...editionAlbum(), id: "outage-album" };
   let down = true;
-  stubMetadata(t, (path) => {
+  stubMetadata(t, (path: string) => {
     if (down && path.startsWith("/album/"))
       throw Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" });
     return path === "/album/outage-album" ? album : null;

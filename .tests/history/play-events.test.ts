@@ -9,9 +9,9 @@ import {
 
 const [isolatedState, playEvents, scrobbleStore, honkerDbModule] = await setupIsolatedBackend(
   "play-events",
-  "backend/services/playEventService.ts",
-  "backend/services/scrobbleConnectionStore.ts",
-  "backend/services/honkerDb.ts",
+  () => import("../../backend/services/playEventService.ts"),
+  () => import("../../backend/services/scrobbleConnectionStore.ts"),
+  () => import("../../backend/services/honkerDb.ts"),
 );
 const { db } = await import("../../backend/config/db-sqlite.ts");
 
@@ -33,6 +33,7 @@ test("records local plays and aggregates artists without provider access", () =>
     playedAt: 1700000000,
     source: "subsonic",
   });
+  assert.ok(first != null);
   playEvents.recordPlayEvent(1, {
     trackId: "song:two",
     title: "Two",
@@ -50,22 +51,36 @@ test("records local plays and aggregates artists without provider access", () =>
     lastPlayedAt: 1700000001000,
   });
   assert.deepEqual(
-    db.prepare("SELECT album_key, play_count FROM play_album_stats WHERE user_id = ?").all(1),
+    db
+      .prepare<
+        unknown[],
+        {
+          album_key: import("../../backend/db/rows.ts").PlayAlbumStatsRow["album_key"];
+          play_count: import("../../backend/db/rows.ts").PlayAlbumStatsRow["play_count"];
+        }
+      >("SELECT album_key, play_count FROM play_album_stats WHERE user_id = ?")
+      .all(1),
     [{ album_key: "history-album", play_count: 1 }],
   );
 });
 
 test("pins each scrobble delivery to the connection active when the play was recorded", () => {
-  const userId = db.prepare("SELECT id FROM users WHERE username = ?").get("listener").id;
+  const userId = db
+    .prepare<unknown[], { id: import("../../backend/db/rows.ts").UsersRow["id"] }>(
+      "SELECT id FROM users WHERE username = ?",
+    )
+    .get("listener")!.id;
   const connection = scrobbleStore.scrobbleConnectionStore.saveConnection(userId, "lastfm", {
     token: "session-token",
     displayName: "listener",
   });
+  assert.ok(connection != null);
   const event = playEvents.recordPlayEvent(userId, {
     trackId: "song:one",
     title: "One",
     artist: "Artist A",
   });
+  assert.ok(event != null);
   const row = honkerDbModule
     .getHonkerDb()
     .query("SELECT payload FROM _honker_live WHERE queue = ?", ["_outbox:play-events"])[0];

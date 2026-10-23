@@ -1,3 +1,21 @@
+import { requireFixture } from "../playlists/fixtures.ts";
+type AlbumLookup = {
+  inLibrary?: boolean;
+  status?: string;
+  ownedTrackMbids?: string[];
+  trackListComplete?: boolean;
+  trackCount?: number;
+  trackFileCount?: number;
+  percentOfTracks?: number;
+  managedBy?: string;
+};
+type ArtistLookup = {
+  error?: string;
+  exists?: boolean;
+  albums?: unknown[];
+  artist?: { managedBy?: string; foreignArtistId?: string };
+};
+import { captureRouteHandlers } from "../library/routeHarness.ts";
 import assert from "node:assert/strict";
 import { test, vi } from "vite-plus/test";
 
@@ -22,21 +40,16 @@ import {
 } from "../../backend/services/libraryMediaStore.ts";
 
 test("artist batch lookup rejects oversized batches", async () => {
-  const routes = new Map();
-  registerMisc({
-    get() {},
-    post(routePath, handler) {
-      routes.set(routePath, handler);
-    },
-  });
+  const routes = captureRouteHandlers(registerMisc, "post");
+
   let statusCode = 200;
-  let body;
+  let body: ArtistLookup = {};
   const response = {
-    status(code) {
+    status(code: number) {
       statusCode = code;
       return this;
     },
-    json(value) {
+    json(value: ArtistLookup) {
       body = value;
       return this;
     },
@@ -72,13 +85,8 @@ test("artist lookup follows fresh Lidarr artist and album membership while the l
   });
   linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
   invalidateLibraryQueryCache();
-  const routes = new Map();
-  registerMisc({
-    get(path, handler) {
-      routes.set(path, handler);
-    },
-    post() {},
-  });
+  const routes = captureRouteHandlers(registerMisc, "get");
+
   vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
   let artistRemoved = false;
   vi.spyOn(lidarrClient, "getArtistByMbid").mockImplementation(async (_mbid, options) => {
@@ -95,13 +103,13 @@ test("artist lookup follows fresh Lidarr artist and album membership while the l
       return [];
     },
   );
-  let body;
+  let body: ArtistLookup = {};
 
   try {
     await routes.get("/lookup/:mbid")(
       { params: { mbid } },
       {
-        json(value) {
+        json(value: ArtistLookup) {
           body = value;
           return this;
         },
@@ -114,7 +122,7 @@ test("artist lookup follows fresh Lidarr artist and album membership while the l
     await routes.get("/lookup/:mbid")(
       { params: { mbid } },
       {
-        json(value) {
+        json(value: ArtistLookup) {
           body = value;
           return this;
         },
@@ -122,14 +130,10 @@ test("artist lookup follows fresh Lidarr artist and album membership while the l
     );
     assert.equal(body?.exists, false);
 
-    const streamRoutes = new Map();
-    registerArtistStream({
-      get(path, ...handlers) {
-        streamRoutes.set(path, handlers.at(-1));
-      },
-    });
-    const writes = [];
-    const libraryEvent = Promise.withResolvers();
+    const streamRoutes = captureRouteHandlers(registerArtistStream, "get");
+
+    const writes: string[] = [];
+    const libraryEvent = Promise.withResolvers<{ exists: boolean }>();
     let closeStream = () => {};
     await streamRoutes.get("/:mbid/stream")(
       {
@@ -137,7 +141,7 @@ test("artist lookup follows fresh Lidarr artist and album membership while the l
         query: { artistName: "Stale Artist" },
         headers: {},
         socket: { destroyed: false },
-        on(event, handler) {
+        on(event: string, handler: () => void) {
           if (event === "close") closeStream = handler;
         },
       },
@@ -149,7 +153,7 @@ test("artist lookup follows fresh Lidarr artist and album membership while the l
         json() {
           return this;
         },
-        write(value) {
+        write(value: string) {
           writes.push(value);
           if (writes.at(-2) === "event: library\n")
             libraryEvent.resolve(JSON.parse(value.slice(6)));
@@ -189,13 +193,8 @@ test("artist lookup does not restore an Aurral-only artist after a Lidarr error"
   linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
   invalidateLibraryQueryCache();
 
-  const routes = new Map();
-  registerMisc({
-    get(path, handler) {
-      routes.set(path, handler);
-    },
-    post() {},
-  });
+  const routes = captureRouteHandlers(registerMisc, "get");
+
   let lookupCount = 0;
   vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
   vi.spyOn(lidarrClient, "getArtistByMbid").mockImplementation(async () => {
@@ -204,9 +203,9 @@ test("artist lookup does not restore an Aurral-only artist after a Lidarr error"
     throw new Error("Lidarr connection refused");
   });
 
-  let body;
+  let body: ArtistLookup = {};
   const response = {
-    json(value) {
+    json(value: ArtistLookup) {
       body = value;
       return this;
     },
@@ -242,13 +241,8 @@ test("artist lookup reports an Aurral-owned artist even when Lidarr does not hav
   });
   invalidateLibraryQueryCache();
 
-  const routes = new Map();
-  registerMisc({
-    get(path, handler) {
-      routes.set(path, handler);
-    },
-    post() {},
-  });
+  const routes = captureRouteHandlers(registerMisc, "get");
+
   let lidarrLookups = 0;
   vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
   vi.spyOn(lidarrClient, "getArtistByMbid").mockImplementation(async () => {
@@ -256,9 +250,9 @@ test("artist lookup reports an Aurral-owned artist even when Lidarr does not hav
     return null;
   });
 
-  let body;
+  let body: ArtistLookup = {};
   const response = {
-    json(value) {
+    json(value: ArtistLookup) {
       body = value;
       return this;
     },
@@ -278,13 +272,8 @@ test("artist lookup reports an Aurral-owned artist even when Lidarr does not hav
 
 test("artist lookup sees a fresh Lidarr add before the library index catches up", async () => {
   const mbid = "66666666-6666-4666-8666-666666666666";
-  const routes = new Map();
-  registerMisc({
-    get(path, handler) {
-      routes.set(path, handler);
-    },
-    post() {},
-  });
+  const routes = captureRouteHandlers(registerMisc, "get");
+
   vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
   vi.spyOn(lidarrClient, "getArtistByMbid").mockImplementation(async (_mbid, options) => {
     assert.equal(_mbid, mbid);
@@ -297,12 +286,12 @@ test("artist lookup sees a fresh Lidarr add before the library index catches up"
     };
   });
   vi.spyOn(lidarrClient, "request").mockImplementation(async () => []);
-  let body;
+  let body: ArtistLookup = {};
 
   await routes.get("/lookup/:mbid")(
     { params: { mbid } },
     {
-      json(value) {
+      json(value: ArtistLookup) {
         body = value;
         return this;
       },
@@ -313,21 +302,15 @@ test("artist lookup sees a fresh Lidarr add before the library index catches up"
 });
 
 test("album batch lookup bypasses stale cache and unrelated broken albums", async () => {
-  const routes = new Map();
-  registerMisc({
-    get() {},
-    post(path, handler) {
-      routes.set(path, handler);
-    },
-  });
+  const routes = captureRouteHandlers(registerMisc, "post");
 
   const originalIsConfigured = lidarrClient.isConfigured;
   const originalGetAlbumMbidIndex = lidarrClient.getAlbumMbidIndex;
   const originalGetAlbumByMbid = lidarrClient.getAlbumByMbid;
   const originalGetTracks = libraryManager.getTracks;
   const originalWarn = logger.warn;
-  let lookupOptions;
-  let warning;
+  let lookupOptions: Parameters<typeof lidarrClient.getAlbumByMbid>[1];
+  let warning: { category: string; message: string; data: unknown } | undefined;
   lidarrClient.isConfigured = () => true;
   lidarrClient.getAlbumMbidIndex = async () => {
     throw new Error("Sequence contains more than one element");
@@ -353,19 +336,24 @@ test("album batch lookup bypasses stale cache and unrelated broken albums", asyn
         }
       : undefined;
   };
-  libraryManager.getTracks = async () => [{ mbid: "owned-track", hasFile: true }];
+  libraryManager.getTracks = async () => [
+    libraryManager.mapLidarrTrack(
+      { id: 1, foreignRecordingId: "owned-track", path: "/music/owned-track.flac" },
+      { id: 42, foreignAlbumId: "target-album" },
+    ),
+  ];
   logger.warn = (category, message, data) => {
     warning = { category, message, data };
   };
 
   let statusCode = 200;
-  let body;
+  let body: Record<string, AlbumLookup> = {};
   const response = {
-    status(code) {
+    status(code: number) {
       statusCode = code;
       return this;
     },
-    json(value) {
+    json(value: Record<string, AlbumLookup>) {
       body = value;
       return this;
     },
@@ -392,7 +380,7 @@ test("album batch lookup bypasses stale cache and unrelated broken albums", asyn
     });
 
     statusCode = 200;
-    body = undefined;
+    body = {};
     await routes.get("/albums/lookup/batch")(
       { body: { mbids: Array.from({ length: 101 }, (_, index) => `album-${index}`) } },
       response,
@@ -421,6 +409,7 @@ test("library album lookup counts the tracks of the release a scanned album list
     artistId: artist.id,
     title: "Listed Lookup Album",
   });
+  const albumMbid = requireFixture(album.mbid);
   const recordings = [
     "66666666-6666-4666-8666-666666666661",
     "66666666-6666-4666-8666-666666666662",
@@ -440,8 +429,14 @@ test("library album lookup counts the tracks of the release a scanned album list
   });
   storeLibraryAlbumTrackList(album.id, {
     release: {
-      id: album.mbid,
+      id: albumMbid,
       tracks: recordings.map((recordingId, index) => ({
+        id: recordingId,
+        oldRecordingIds: [],
+        durationMs: null,
+        mediumNumber: 1,
+        artistId: null,
+        trackNumber: index + 1,
         recordingId,
         title: ["Owned", "Missing"][index],
         trackPosition: index + 1,
@@ -449,29 +444,25 @@ test("library album lookup counts the tracks of the release a scanned album list
     },
   });
   invalidateLibraryQueryCache();
-  const routes = new Map();
-  registerMisc({
-    get() {},
-    post(path, handler) {
-      routes.set(path, handler);
-    },
-  });
-  let body;
+  const routes = captureRouteHandlers(registerMisc, "post");
+
+  let body: Record<string, AlbumLookup> = {};
   try {
     await routes.get("/albums/lookup/batch")(
-      { body: { mbids: [album.mbid] } },
+      { body: { mbids: [albumMbid] } },
       {
         status() {
           return this;
         },
-        json(value) {
+        json(value: Record<string, AlbumLookup>) {
           body = value;
           return this;
         },
       },
     );
+    assert.ok(body != null);
     const { status, trackListComplete, trackCount, trackFileCount, percentOfTracks } =
-      body[album.mbid];
+      body[albumMbid];
     assert.deepEqual(
       { status, trackListComplete, trackCount, trackFileCount, percentOfTracks },
       {
@@ -507,6 +498,7 @@ test("library album lookup reports partial ownership, its manager, and the compl
     artistId: artist.id,
     title: "Partial Lookup Album",
   });
+  const albumMbid = requireFixture(album.mbid);
   const ownedTrack = upsertLibraryTrack({
     identityKey: `${key}:owned-track`,
     mbid: "33333333-3333-4333-8333-333333333333",
@@ -529,43 +521,38 @@ test("library album lookup reports partial ownership, its manager, and the compl
     path: ownedPath,
   });
 
-  const routes = new Map();
-  registerMisc({
-    get() {},
-    post(path, handler) {
-      routes.set(path, handler);
-    },
-  });
+  const routes = captureRouteHandlers(registerMisc, "post");
+
   let statusCode = 200;
-  let body;
+  let body: Record<string, AlbumLookup> = {};
   const response = {
-    status(code) {
+    status(code: number) {
       statusCode = code;
       return this;
     },
-    json(value) {
+    json(value: Record<string, AlbumLookup>) {
       body = value;
       return this;
     },
   };
 
   try {
-    await routes.get("/albums/lookup/batch")({ body: { mbids: [album.mbid] } }, response);
-    assert.equal(body?.[album.mbid]?.status, "partial");
-    assert.equal(body?.[album.mbid]?.trackListComplete, false);
-    assert.equal("percentOfTracks" in body[album.mbid], false);
-    assert.equal(body[album.mbid].trackCount, 1);
+    await routes.get("/albums/lookup/batch")({ body: { mbids: [albumMbid] } }, response);
+    assert.equal(body?.[albumMbid]?.status, "partial");
+    assert.equal(body?.[albumMbid]?.trackListComplete, false);
+    assert.equal("percentOfTracks" in body[albumMbid], false);
+    assert.equal(body[albumMbid].trackCount, 1);
     linkLibraryAlbumTrack({ albumId: album.id, trackId: missingTrack.id, trackNumber: 2 });
     upsertLibraryAlbum({
       identityKey: `${key}:album`,
-      mbid: album.mbid,
+      mbid: albumMbid,
       artistId: artist.id,
       title: "Partial Lookup Album",
       metadata: { trackListComplete: true },
     });
     invalidateLibraryQueryCache();
-    await routes.get("/albums/lookup/batch")({ body: { mbids: [album.mbid] } }, response);
-    const result = body?.[album.mbid];
+    await routes.get("/albums/lookup/batch")({ body: { mbids: [albumMbid] } }, response);
+    const result = body?.[albumMbid];
     assert.equal(statusCode, 200);
     assert.equal(result?.status, "partial");
     assert.equal(result?.trackCount, 2);
@@ -581,10 +568,10 @@ test("library album lookup reports partial ownership, its manager, and the compl
       path: `/tmp/${key}/missing.flac`,
     });
     invalidateLibraryQueryCache();
-    await routes.get("/albums/lookup/batch")({ body: { mbids: [album.mbid] } }, response);
-    assert.equal(body[album.mbid].status, "available");
-    assert.equal(body[album.mbid].percentOfTracks, 100);
-    assert.equal(body[album.mbid].trackListComplete, true);
+    await routes.get("/albums/lookup/batch")({ body: { mbids: [albumMbid] } }, response);
+    assert.equal(body[albumMbid].status, "available");
+    assert.equal(body[albumMbid].percentOfTracks, 100);
+    assert.equal(body[albumMbid].trackListComplete, true);
   } finally {
     db.prepare("DELETE FROM library_management WHERE entity_kind = 'album' AND entity_id = ?").run(
       album.id,
@@ -611,32 +598,28 @@ test("album lookup follows fresh Lidarr removal but keeps Aurral's albums", asyn
     title: "Stale Album",
     metadata: { id: 52, artistId: 51, monitored: true },
   });
+  const albumMbid = requireFixture(album.mbid);
   const track = upsertLibraryTrack({
     identityKey: `${key}:track`,
     title: "Stale Album Track",
   });
   linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
   invalidateLibraryQueryCache();
-  const routes = new Map();
-  registerMisc({
-    get() {},
-    post(path, handler) {
-      routes.set(path, handler);
-    },
-  });
+  const routes = captureRouteHandlers(registerMisc, "post");
+
   vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
   vi.spyOn(lidarrClient, "getAlbumsByMbidsSettled").mockImplementation(async (mbids, options) => {
-    assert.deepEqual(mbids, [album.mbid]);
+    assert.deepEqual(mbids, [albumMbid]);
     assert.deepEqual(options, { forceRefresh: true });
     return [{ status: "fulfilled", value: undefined }];
   });
-  let body;
+  let body: Record<string, AlbumLookup> = {};
 
   try {
     await routes.get("/albums/lookup/batch")(
-      { body: { mbids: [album.mbid] } },
+      { body: { mbids: [albumMbid] } },
       {
-        json(value) {
+        json(value: Record<string, AlbumLookup>) {
           body = value;
           return this;
         },
@@ -647,15 +630,15 @@ test("album lookup follows fresh Lidarr removal but keeps Aurral's albums", asyn
     setLibraryManagement({ entityKind: "album", entityId: album.id, managedBy: "aurral" });
     invalidateLibraryQueryCache();
     await routes.get("/albums/lookup/batch")(
-      { body: { mbids: [album.mbid] } },
+      { body: { mbids: [albumMbid] } },
       {
-        json(value) {
+        json(value: Record<string, AlbumLookup>) {
           body = value;
           return this;
         },
       },
     );
-    assert.equal(body[album.mbid]?.managedBy, "aurral");
+    assert.equal(body[albumMbid]?.managedBy, "aurral");
   } finally {
     clearLibraryManagement("album", album.id);
     db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(album.id);
@@ -678,7 +661,8 @@ test("library album lookup includes owned tracks after the first track page", as
     artistId: artist.id,
     title: "Paginated Lookup Album",
   });
-  const trackIds = [];
+  const albumMbid = requireFixture(album.mbid);
+  const trackIds: number[] = [];
   const ownedTrack = upsertLibraryTrack({
     identityKey: `${key}:owned-track`,
     mbid: `${key}-owned`,
@@ -705,27 +689,22 @@ test("library album lookup includes owned tracks after the first track page", as
     path: ownedPath,
   });
 
-  const routes = new Map();
-  registerMisc({
-    get() {},
-    post(path, handler) {
-      routes.set(path, handler);
-    },
-  });
-  let body;
+  const routes = captureRouteHandlers(registerMisc, "post");
+
+  let body: Record<string, AlbumLookup> = {};
   const response = {
     status() {
       return this;
     },
-    json(value) {
+    json(value: Record<string, AlbumLookup>) {
       body = value;
       return this;
     },
   };
 
   try {
-    await routes.get("/albums/lookup/batch")({ body: { mbids: [album.mbid] } }, response);
-    const result = body?.[album.mbid];
+    await routes.get("/albums/lookup/batch")({ body: { mbids: [albumMbid] } }, response);
+    const result = body?.[albumMbid];
     assert.equal(result?.trackCount, 101);
     assert.equal(result?.trackFileCount, 1);
     assert.deepEqual(result?.ownedTrackMbids, [ownedTrack.mbid]);

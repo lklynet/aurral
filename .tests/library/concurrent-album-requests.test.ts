@@ -1,3 +1,4 @@
+import { requireFixture } from "../playlists/fixtures.ts";
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 
@@ -6,7 +7,7 @@ process.env.NODE_ENV = "test";
 import { libraryManager } from "../../backend/services/libraryManager.ts";
 import { lidarrClient } from "../../backend/services/lidarrClient.ts";
 
-const flushImmediate = () => new Promise((resolve) => setImmediate(resolve));
+const flushImmediate = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 test("concurrent new-artist album requests search every requested album", async () => {
   const originalIsConfigured = lidarrClient.isConfigured;
@@ -24,12 +25,16 @@ test("concurrent new-artist album requests search every requested album", async 
     monitored: true,
     monitor: "none",
   };
-  let releaseArtistAdds;
-  const artistAddGate = new Promise((resolve) => {
+  let releaseArtistAdds!: () => void;
+  const artistAddGate = new Promise<void>((resolve) => {
     releaseArtistAdds = resolve;
   });
   let artistAddCalls = 0;
-  const albumSearches = [];
+  const albumSearches: {
+    albumMbid: string;
+    albumName: string;
+    triggerSearch: boolean | undefined;
+  }[] = [];
 
   lidarrClient.isConfigured = () => true;
   lidarrClient.getArtistByMbid = async (_mbid, { forceRefresh = false } = {}) =>
@@ -43,24 +48,29 @@ test("concurrent new-artist album requests search every requested album", async 
     }
     throw new Error("ArtistExistsValidator: artist already exists");
   };
-  lidarrClient.getAlbumByMbid = async () => null;
-  libraryManager.resolveArtistAddOptions = async () => ({
-    quality: "standard",
-    monitorOption: "none",
-    rootFolderPath: "/music",
-    qualityProfileId: 1,
-  });
+  lidarrClient.getAlbumByMbid = async () => undefined;
+  libraryManager.resolveArtistAddOptions = async () =>
+    ({
+      quality: "standard",
+      monitorOption: "none",
+      rootFolderPath: "/music",
+      qualityProfileId: 1,
+    }) as Awaited<ReturnType<typeof libraryManager.resolveArtistAddOptions>>;
   libraryManager.addAlbum = async (_artistId, albumMbid, albumName, options) => {
-    albumSearches.push({ albumMbid, albumName, triggerSearch: options.triggerSearch });
+    albumSearches.push({
+      albumMbid,
+      albumName,
+      triggerSearch: requireFixture(options).triggerSearch,
+    });
     return {
       id: albumMbid,
-      artistId: 7,
+      artistId: "7",
       mbid: albumMbid,
       foreignAlbumId: albumMbid,
       albumName,
       monitored: true,
       statistics: { percentOfTracks: 0, sizeOnDisk: 0 },
-    };
+    } as Awaited<ReturnType<typeof libraryManager.addAlbum>>;
   };
 
   try {
@@ -72,6 +82,8 @@ test("concurrent new-artist album requests search every requested album", async 
         artistName: artist.artistName,
         triggerSearch: true,
         user: {
+          id: 1,
+          username: "test",
           role: "user",
           permissions: { addAlbum: true, addArtist: true },
         },

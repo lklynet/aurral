@@ -1,19 +1,14 @@
 import path from "node:path";
 import { asAppError } from "../../../lib/errors.ts";
 
-const REQUIRED_METHODS = [
-  "testConnection",
-  "ensureLibrary",
-  "publishPlaylist",
-  "deletePlaylist",
-  "deleteEntityPlaylists",
-  "getPointerEntityIds",
-  "requestScan",
-] as const;
-
-type PlaybackOperation = (typeof REQUIRED_METHODS)[number] | "getReferencedPaths";
-
-export type PlaybackResultOperation = Exclude<PlaybackOperation, "getPointerEntityIds">;
+export type PlaybackResultOperation =
+  | "testConnection"
+  | "ensureLibrary"
+  | "publishPlaylist"
+  | "deletePlaylist"
+  | "deleteEntityPlaylists"
+  | "requestScan"
+  | "getReferencedPaths";
 
 export type PlaybackOperationResult = {
   ok: boolean;
@@ -176,18 +171,4 @@ export function playbackOperationFailure({
       retryable: retryable === true,
     }),
   });
-}
-
-export function assertPlaybackDestination<T extends Partial<Record<PlaybackOperation, unknown>>>(
-  destination: T,
-): T {
-  if (!destination || (typeof destination !== "object" && typeof destination !== "function")) {
-    throw new TypeError("PlaybackDestination must be an object");
-  }
-  for (const method of REQUIRED_METHODS) {
-    if (typeof destination[method] !== "function") {
-      throw new TypeError(`PlaybackDestination.${method} must be a function`);
-    }
-  }
-  return destination;
 }

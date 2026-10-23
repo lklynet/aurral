@@ -1,4 +1,4 @@
-export const OTHER_VERSION_LABELS = [
+export const OTHER_VERSION_LABELS: [string, string[]][] = [
   ["The Band - Album (Instrumentals & Bonus)", ["instrumental"]],
   ["The Band - Album (Instrumentals and Bonus Tracks)", ["instrumental"]],
   ["The Band - Album (Instrumentals, Bonus Tracks)", ["instrumental"]],

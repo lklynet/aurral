@@ -5,31 +5,37 @@ import { contrastRatio, hexToOklch } from "../../frontend/src/utils/themeColor.t
 const APP_ORIGIN = "https://aurral.example";
 const CORS_HOSTS = new Set(["https://assets.fanart.tv"]);
 const RED = [200, 40, 40, 255];
-const fill = (color) => () => color;
+const fill = (color: number[]) => () => color;
 
-function isRed(color) {
+function isRed(color: string | null) {
+  assert.ok(color);
   return Number.parseInt(color.slice(1, 3), 16) > Number.parseInt(color.slice(5, 7), 16);
 }
 
-async function loadImageColors(t, { cacheImage, apiBase = "/api", paint = fill(RED) }) {
+async function loadImageColors(
+  t: import("vite-plus/test").TestContext,
+  {
+    cacheImage,
+    apiBase = "/api",
+    paint = fill(RED),
+  }: {
+    cacheImage: (src: string) => Promise<{ status: number; body: unknown }>;
+    apiBase?: string;
+    paint?: (x: number, y: number, width: number, height: number) => number[];
+  },
+) {
   const previousApiUrl = process.env.VITE_API_URL;
   if (apiBase === "/api") delete process.env.VITE_API_URL;
   else process.env.VITE_API_URL = apiBase;
   vi.resetModules();
-  const previous = {
-    document: globalThis.document,
-    Image: globalThis.Image,
-    window: globalThis.window,
-    fetch: globalThis.fetch,
-  };
-  const cacheRequests = [];
-  let loadedImage;
+  const cacheRequests: string[] = [];
+  let loadedImage: FakeImage;
 
-  globalThis.window = { location: { href: `${APP_ORIGIN}/library`, origin: APP_ORIGIN } };
+  vi.stubGlobal("window", { location: { href: `${APP_ORIGIN}/library`, origin: APP_ORIGIN } });
   globalThis.fetch = async (url, init) => {
     assert.equal(url, `${apiBase}/image-proxy`);
-    assert.equal(init.method, "POST");
-    const { src } = JSON.parse(init.body);
+    assert.equal(init?.method, "POST");
+    const { src } = JSON.parse(String(init?.body));
     cacheRequests.push(src);
     const result = await cacheImage(src);
     return new Response(JSON.stringify(result.body), {
@@ -37,18 +43,22 @@ async function loadImageColors(t, { cacheImage, apiBase = "/api", paint = fill(R
       headers: { "content-type": "application/json" },
     });
   };
-  globalThis.Image = class {
-    set src(value) {
+  class FakeImage {
+    currentSrc = "";
+    crossOrigin: string | null = null;
+    onload: (() => void) | null = null;
+    set src(value: string) {
       this.currentSrc = value;
       loadedImage = this;
       queueMicrotask(() => this.onload?.());
     }
-  };
-  globalThis.document = {
+  }
+  vi.stubGlobal("Image", FakeImage);
+  vi.stubGlobal("document", {
     createElement: () => ({
       getContext: () => ({
         drawImage() {},
-        getImageData(_x, _y, width, height) {
+        getImageData(_x: number, _y: number, width: number, height: number) {
           const source = new URL(loadedImage.currentSrc, `${APP_ORIGIN}/`);
           const readable =
             source.origin === APP_ORIGIN ||
@@ -63,9 +73,9 @@ async function loadImageColors(t, { cacheImage, apiBase = "/api", paint = fill(R
         },
       }),
     }),
-  };
+  });
   t.onTestFinished(async () => {
-    Object.assign(globalThis, previous);
+    vi.unstubAllGlobals();
     if (previousApiUrl === undefined) delete process.env.VITE_API_URL;
     else process.env.VITE_API_URL = previousApiUrl;
   });
@@ -82,7 +92,9 @@ test("covers from hosts without CORS are read through Aurral's same-origin copy"
   });
 
   const accent = await colors.extractArtworkAccent(source);
+  assert.ok(accent != null);
   const wash = await colors.extractArtworkWash(source);
+  assert.ok(wash != null);
 
   assert.match(accent, /^#[\da-f]{6}$/);
   assert.ok(isRed(accent), `${accent} is red`);
@@ -127,12 +139,13 @@ test("same-origin covers are read without asking the server for a copy", async (
   const accent = await colors.extractArtworkAccent(source);
 
   assert.ok(isRed(accent), `${accent} is red`);
-  assert.deepEqual(colors.cacheRequests, []);
+  assert.deepEqual([...colors.cacheRequests], []);
 });
 
 const source = `/api/image-proxy/${"d".repeat(64)}.webp`;
 const noCopy = async () => assert.fail("same-origin covers need no copy");
-const isRedHue = ({ h }) => h < 40 || h > 340;
+const isRedHue = (color: ReturnType<typeof hexToOklch>) =>
+  color !== null && (color.h < 40 || color.h > 340);
 
 test("a mostly gray cover with a strong red region washes red instead of gray-pink", async (t) => {
   const colors = await loadImageColors(t, {
@@ -141,6 +154,7 @@ test("a mostly gray cover with a strong red region washes red instead of gray-pi
   });
 
   const wash = await colors.extractArtworkWash(source);
+  assert.ok(wash != null);
 
   for (const tone of [wash.dark, wash.light]) {
     const color = hexToOklch(tone);
@@ -159,6 +173,7 @@ test("a grayscale cover washes neutral", async (t) => {
   });
 
   const wash = await colors.extractArtworkWash(source);
+  assert.ok(wash != null);
 
   for (const tone of [wash.dark, wash.light]) {
     assert.ok(hexToOklch(tone).c < 0.02, `${tone} is neutral`);
@@ -172,6 +187,7 @@ test("washes keep theme text readable even over pale or deep artwork", async (t)
   const deepWash = await deep.extractArtworkWash(source);
 
   for (const wash of [paleWash, deepWash]) {
+    assert.ok(wash);
     assert.ok(contrastRatio(wash.dark, "#ffffff") >= 4.5, `white text reads over ${wash.dark}`);
     assert.ok(contrastRatio(wash.light, "#171717") >= 4.5, `dark text reads over ${wash.light}`);
   }

@@ -12,15 +12,24 @@ import {
 const [isolatedState, { db }, { dbOps, userOps }, { hashPassword }, libraryStore] =
   await setupIsolatedBackend(
     "subsonic-contract",
-    "backend/config/db-sqlite.ts",
-    "backend/db/helpers/index.ts",
-    "backend/middleware/passwordHash.ts",
-    "backend/services/libraryMediaStore.ts",
+    () => import("../../backend/config/db-sqlite.ts"),
+    () => import("../../backend/db/helpers/index.ts"),
+    () => import("../../backend/middleware/passwordHash.ts"),
+    () => import("../../backend/services/libraryMediaStore.ts"),
   );
 
-let aurral;
+let aurral: {
+  child: import("node:child_process").ChildProcessByStdio<
+    null,
+    import("node:stream").Readable,
+    import("node:stream").Readable
+  >;
+  port: number;
+  logs: () => string;
+  stop(): Promise<void>;
+};
 
-function subsonicUrl(method, params = {}) {
+function subsonicUrl(method: string, params: Record<string, string> = {}) {
   const query = new URLSearchParams({
     u: "alice",
     p: "password123",
@@ -31,7 +40,7 @@ function subsonicUrl(method, params = {}) {
   return `http://127.0.0.1:${aurral.port}/rest/${method}.view?${query}`;
 }
 
-async function request(method, params) {
+async function request(method: string, params: Record<string, string> = {}) {
   const response = await fetch(subsonicUrl(method, params));
   const contentType = response.headers.get("content-type") || "";
   const body = await response.text();
@@ -123,13 +132,21 @@ test("supports token auth for every local user and syncs password changes", asyn
   assert.equal(typeof login.token, "string");
 
   const storedSecret = db
-    .prepare("SELECT subsonic_password FROM users WHERE username = ?")
+    .prepare<
+      unknown[],
+      { subsonic_password: import("../../backend/db/rows.ts").UsersRow["subsonic_password"] }
+    >("SELECT subsonic_password FROM users WHERE username = ?")
     .get("bob");
+  assert.ok(storedSecret != null);
+  assert.ok(storedSecret.subsonic_password != null);
   assert.match(storedSecret.subsonic_password, /^AURRAL_ENC:/);
+  assert.ok(storedSecret != null);
+  assert.ok(storedSecret.subsonic_password != null);
   assert.equal(storedSecret.subsonic_password.includes("bob-password"), false);
 
   const salt = "bob-salt";
-  const token = (password) => crypto.createHash("md5").update(`${password}${salt}`).digest("hex");
+  const token = (password: string) =>
+    crypto.createHash("md5").update(`${password}${salt}`).digest("hex");
   const initialToken = await request("ping", {
     u: "bob",
     p: "",
@@ -289,19 +306,23 @@ test("sorts both artist indexes using their advertised ignored articles", async 
     const result = await request(method, { f: "json" });
     const sections = result.json[payload].index;
     assert.deepEqual(
-      sections.map((section) => section.name),
+      sections.map((section: { name: string; artist: { name: string }[] }) => section.name),
       ["A", "B", "C", "L", "T", "É", "#"],
     );
     assert.deepEqual(
-      sections.find((section) => section.name === "C").artist.map((artist) => artist.name),
+      sections
+        .find((section: { name: string; artist: { name: string }[] }) => section.name === "C")
+        .artist.map((artist: { name: string }) => artist.name),
       ["The Cure", "Cure Tribute"],
     );
     assert.deepEqual(
-      sections.find((section) => section.name === "L").artist.map((artist) => artist.name),
+      sections
+        .find((section: { name: string; artist: { name: string }[] }) => section.name === "L")
+        .artist.map((artist: { name: string }) => artist.name),
       ["Los Lobos"],
     );
     assert.deepEqual(
-      sections.at(-1).artist.map((artist) => artist.name),
+      sections.at(-1).artist.map((artist: { name: string }) => artist.name),
       ["!Bang", "2Pac"],
     );
   }

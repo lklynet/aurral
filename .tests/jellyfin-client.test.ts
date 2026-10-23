@@ -4,7 +4,12 @@ import { createMockHttpServer } from "./helpers/backendTestHarness.ts";
 import { JellyfinClient } from "../backend/services/jellyfin.ts";
 
 test("creates private playlists and deletes them with API-key authentication", async () => {
-  const requests = [];
+  const requests: {
+    method: string | undefined;
+    url: URL;
+    headers: import("node:http").IncomingHttpHeaders;
+    body: Record<string, unknown>;
+  }[] = [];
   const server = await createMockHttpServer(async (req, res) => {
     const body = [];
     for await (const chunk of req) body.push(chunk);
@@ -65,9 +70,30 @@ test("finds Jellyfin users by exact case-insensitive username", async () => {
   }
 });
 
-function mockPlaylistClient(initialIds, { beforeRequest } = {}) {
+type PlaylistMetadata = {
+  Id: string;
+  Type: string;
+  Name: string;
+  Overview: string;
+  Genres: string[];
+  LockData: boolean;
+};
+type PlaylistRequest = { method: string; endpoint: string } & NonNullable<
+  Parameters<JellyfinClient["request"]>[2]
+>;
+type PlaylistState = {
+  metadata: PlaylistMetadata;
+  entries: { Id: string; PlaylistItemId: string }[];
+  requests: PlaylistRequest[];
+};
+type BeforeRequest = (request: PlaylistRequest & { state: PlaylistState }) => void | Promise<void>;
+
+function mockPlaylistClient(
+  initialIds: string[],
+  { beforeRequest }: { beforeRequest?: BeforeRequest } = {},
+) {
   const client = new JellyfinClient("http://jellyfin.test", "api-key", "configured-user");
-  const state = {
+  const state: PlaylistState = {
     metadata: {
       Id: "playlist-1",
       Type: "Playlist",
@@ -81,14 +107,15 @@ function mockPlaylistClient(initialIds, { beforeRequest } = {}) {
     requests: [],
   };
   client.request = async (method, endpoint, options = {}) => {
-    const { params, data } = options;
+    const { params = {}, data } = options;
     state.requests.push({ method, endpoint, ...options });
     await beforeRequest?.({ method, endpoint, params, data, state });
     if (method === "GET") assert.equal(params.userId, "matched-owner");
     if (endpoint === "/Items/playlist-1") {
       if (method === "GET") return structuredClone(state.metadata);
       if (method === "POST") {
-        state.metadata = structuredClone(data);
+        assert.ok(data && typeof data === "object" && "Id" in data);
+        state.metadata = structuredClone(data) as PlaylistMetadata;
         return;
       }
     }
@@ -96,20 +123,23 @@ function mockPlaylistClient(initialIds, { beforeRequest } = {}) {
       if (method === "GET") {
         return {
           Items: structuredClone(
-            state.entries.slice(params.startIndex, params.startIndex + params.limit),
+            state.entries.slice(
+              Number(params.startIndex),
+              Number(params.startIndex) + Number(params.limit),
+            ),
           ),
           TotalRecordCount: state.entries.length,
         };
       }
       if (method === "DELETE") {
-        const entryIds = params.entryIds.split(",");
+        const entryIds = String(params.entryIds).split(",");
         assert.ok(entryIds.length <= 50);
         state.entries = state.entries.filter((entry) => !entryIds.includes(entry.PlaylistItemId));
         return;
       }
       if (method === "POST") {
         assert.equal(params.userId, "matched-owner");
-        const requestedIds = params.ids.split(",");
+        const requestedIds = String(params.ids).split(",");
         assert.ok(requestedIds.length <= 50);
         // Model servers that discard repeated IDs within a single request.
         const ids = [...new Set(requestedIds)];
@@ -146,13 +176,13 @@ test("updates playlists through API-key-compatible endpoints with pagination and
   assert.deepEqual(
     state.requests
       .filter((request) => request.method === "DELETE")
-      .map((request) => request.params.entryIds.split(",").length),
+      .map((request) => String(request.params?.entryIds).split(",").length),
     [50, 50, 50, 50, 5],
   );
   assert.deepEqual(
     state.requests
       .filter((request) => request.method === "POST" && request.params?.ids)
-      .map((request) => request.params.ids.split(",").length),
+      .map((request) => String(request.params?.ids).split(",").length),
     [50, 50, 21],
   );
   assert.ok(state.requests.some((request) => request.params?.startIndex === 200));
@@ -169,7 +199,7 @@ test("splits repeated IDs into ordered, duplicate-free add batches", async () =>
 
   await client.addPlaylistItems("playlist-1", itemIds, "matched-owner");
 
-  const batches = state.requests.map((request) => request.params.ids.split(","));
+  const batches = state.requests.map((request) => String(request.params?.ids).split(","));
   assert.deepEqual(batches, [firstBatch, ["track-49"], ["track-49", "track-1"], ["track-49"]]);
   assert.deepEqual(batches.flat(), itemIds);
   assert.ok(batches.every((batch) => new Set(batch).size === batch.length));
@@ -197,7 +227,7 @@ test("sync preserves Jellyfin-only tracks and removes only previously managed tr
   assert.deepEqual(
     state.requests
       .filter((request) => request.method === "DELETE")
-      .map((request) => request.params.entryIds),
+      .map((request) => request.params?.entryIds),
     ["entry-remove"],
   );
 
@@ -280,7 +310,7 @@ test("sync checkpoints successful batches and retries a partial add without dupl
   const options = () => ({
     userId: "matched-owner",
     managedItemIds: saved,
-    onManagedItemsChange: (ids) => {
+    onManagedItemsChange: (ids: string[]) => {
       saved = structuredClone(ids);
     },
   });
@@ -304,7 +334,7 @@ test("sync checkpoints successful batches and retries a partial add without dupl
 
 test("a lost add response leaves an uncertain entry protected and retry does not duplicate it", async () => {
   let fail = true;
-  let saved = [];
+  let saved: string[] = [];
   const { client, state } = mockPlaylistClient(["custom"], {
     beforeRequest: ({ method, params, state: current }) => {
       if (method === "POST" && params?.ids && fail) {
@@ -317,7 +347,7 @@ test("a lost add response leaves an uncertain entry protected and retry does not
   const options = () => ({
     userId: "matched-owner",
     managedItemIds: saved,
-    onManagedItemsChange: (ids) => {
+    onManagedItemsChange: (ids: string[]) => {
       saved = structuredClone(ids);
     },
   });
@@ -327,7 +357,7 @@ test("a lost add response leaves an uncertain entry protected and retry does not
     state.entries.map((entry) => entry.Id),
     ["custom", "new"],
   );
-  assert.deepEqual(saved, []);
+  assert.deepEqual([...saved], []);
 });
 
 test("sync preserves ambiguous repeated copies instead of removing a Jellyfin user's copy", async () => {
@@ -340,7 +370,7 @@ test("sync preserves ambiguous repeated copies instead of removing a Jellyfin us
     state.entries.map((entry) => entry.Id),
     ["same", "same", "custom"],
   );
-  assert.deepEqual(managedItemIds, []);
+  assert.deepEqual([...managedItemIds], []);
   assert.ok(state.requests.every((request) => request.method === "GET"));
 });
 
@@ -361,7 +391,7 @@ test("sync can remove owned repeated tracks when the whole group is no longer wa
     userId: "matched-owner",
     managedItemIds: ["same", "same"],
   });
-  assert.deepEqual(managedItemIds, []);
+  assert.deepEqual([...managedItemIds], []);
   assert.deepEqual(
     state.entries.map((entry) => entry.Id),
     ["custom"],
@@ -370,7 +400,7 @@ test("sync can remove owned repeated tracks when the whole group is no longer wa
 
 test("sync fails safely on incomplete reads and invalid IDs", async () => {
   const client = new JellyfinClient("http://jellyfin.test", "api-key", "user-id");
-  client.request = async (method, _endpoint, { params }) => {
+  client.request = async (method, _endpoint, { params = {} } = {}) => {
     assert.equal(method, "GET");
     return {
       Items: params.startIndex === 0 ? [{ Id: "old", PlaylistItemId: "entry-old" }] : [],
@@ -399,7 +429,7 @@ test("sync verifies deletions and retries without deleting unrelated entries", a
   const options = () => ({
     userId: "matched-owner",
     managedItemIds: saved,
-    onManagedItemsChange: (ids) => {
+    onManagedItemsChange: (ids: string[]) => {
       saved = structuredClone(ids);
     },
   });
@@ -410,7 +440,7 @@ test("sync verifies deletions and retries without deleting unrelated entries", a
     ["owned", "custom"],
   );
   await client.syncPlaylistItems("playlist-1", [], options());
-  assert.deepEqual(saved, []);
+  assert.deepEqual([...saved], []);
   assert.deepEqual(
     state.entries.map((entry) => entry.Id),
     ["custom"],
@@ -425,7 +455,7 @@ test("sync detects a server that acknowledges a deletion without applying it", a
     client.syncPlaylistItems("playlist-1", [], {
       userId: "matched-owner",
       managedItemIds: saved,
-      onManagedItemsChange: (ids) => {
+      onManagedItemsChange: (ids: string[]) => {
         saved = structuredClone(ids);
       },
     }),
@@ -450,7 +480,7 @@ test("sync handles partial deletion batches on retry without clearing the playli
   const options = () => ({
     userId: "matched-owner",
     managedItemIds: saved,
-    onManagedItemsChange: (ids) => {
+    onManagedItemsChange: (ids: string[]) => {
       saved = structuredClone(ids);
     },
   });
@@ -467,7 +497,7 @@ test("sync handles partial deletion batches on retry without clearing the playli
     state.entries.map((entry) => entry.Id),
     ["custom"],
   );
-  assert.deepEqual(saved, []);
+  assert.deepEqual([...saved], []);
 });
 
 test("sync preserves a retained track if another track unexpectedly shares its entry ID", async () => {
@@ -479,7 +509,7 @@ test("sync preserves a retained track if another track unexpectedly shares its e
     userId: "matched-owner",
     managedItemIds: ["owned"],
   });
-  assert.deepEqual(managedItemIds, []);
+  assert.deepEqual([...managedItemIds], []);
   assert.deepEqual(
     state.entries.map((entry) => entry.Id),
     ["owned", "custom"],
@@ -488,14 +518,18 @@ test("sync preserves a retained track if another track unexpectedly shares its e
 });
 
 test("falls back to legacy metadata reads on 405, including rename verification", async () => {
-  const requests = [];
+  const requests: {
+    method: string | undefined;
+    url: URL;
+    headers: import("node:http").IncomingHttpHeaders;
+  }[] = [];
   const userId = "owner/name";
   const playlistId = "playlist/id";
   const modernPath = "/Items/playlist%2Fid";
   const legacyPath = "/Users/owner%2Fname/Items/playlist%2Fid";
   let metadata = { Id: playlistId, Type: "Playlist", Name: "Original", Overview: "Keep me" };
   const server = await createMockHttpServer(async (req, res) => {
-    const url = new URL(req.url, "http://127.0.0.1");
+    const url = new URL(req.url || "/", "http://127.0.0.1");
     const body = [];
     for await (const chunk of req) body.push(chunk);
     requests.push({ method: req.method, url, headers: req.headers });
@@ -541,7 +575,7 @@ test("falls back to legacy metadata reads on 405, including rename verification"
       ],
     );
     for (const request of requests) {
-      assert.match(request.headers.authorization, /Token="api-key"/);
+      assert.match(request.headers.authorization || "", /Token="api-key"/);
       if (request.method === "GET" && request.url.pathname !== legacyPath) {
         assert.equal(request.url.searchParams.get("userId"), userId);
       }
@@ -558,9 +592,11 @@ test.each(
   })),
 )("does not fall back or mutate playlists on metadata error $label", async ({ status }) => {
   const client = new JellyfinClient("http://jellyfin.test", "api-key", "configured-user");
-  const failure = new Error("Metadata read failed");
-  if (status !== undefined) failure.response = { status };
-  const requests = [];
+  const failure = Object.assign(
+    new Error("Metadata read failed"),
+    status === undefined ? {} : { response: { status } },
+  );
+  const requests: { method: string; endpoint: string }[] = [];
   client.request = async (method, endpoint) => {
     requests.push({ method, endpoint });
     throw failure;

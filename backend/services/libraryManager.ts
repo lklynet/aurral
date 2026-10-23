@@ -325,7 +325,7 @@ type MethodResult<Name extends keyof LibraryManager> = LibraryManager[Name] exte
   : never;
 type AlbumMonitoringView = MethodResult<"getAlbums">[number];
 type MappedLidarrAlbum = ReturnType<LibraryManager["mapLidarrAlbum"]>;
-type Failure = { error: string | undefined; statusCode?: number; code?: string | null };
+type Failure = { error: string | undefined; statusCode?: number; code?: string | number | null };
 type AlbumConflict = ReturnType<typeof buildAlbumConflict>;
 type AlbumAddResult = WithAbsentKeys<
   Awaited<ReturnType<LibraryManager["_addAurralAlbum"] | LibraryManager["_addAlbum"]>>

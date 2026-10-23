@@ -1,3 +1,5 @@
+import { requireFixture } from "../playlists/fixtures.ts";
+import { listeningAddress } from "../helpers/backendTestHarness.ts";
 import assert from "node:assert/strict";
 import { test, beforeAll, afterAll } from "vite-plus/test";
 import express from "express";
@@ -32,24 +34,24 @@ const [
   { downloadWorker },
 ] = await setupIsolatedBackend(
   "json-contract",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/middleware/passwordHash.ts",
-  "backend/middleware/auth.ts",
-  "backend/routes/auth.ts",
-  "backend/routes/health.ts",
-  "backend/routes/discovery/index.ts",
-  "backend/routes/search.ts",
-  "backend/routes/artists/index.ts",
-  "backend/routes/library/index.ts",
-  "backend/routes/playlists/index.ts",
-  "backend/routes/requests.ts",
-  "backend/services/libraryMediaStore.ts",
-  "backend/services/libraryManagementStore.ts",
-  "backend/services/discovery/persistence.ts",
-  "backend/services/discovery/provider.ts",
-  "backend/services/downloadJobs/downloadTracker.ts",
-  "backend/services/downloadJobs/downloadWorker.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/middleware/passwordHash.ts"),
+  () => import("../../backend/middleware/auth.ts"),
+  () => import("../../backend/routes/auth.ts"),
+  () => import("../../backend/routes/health.ts"),
+  () => import("../../backend/routes/discovery/index.ts"),
+  () => import("../../backend/routes/search.ts"),
+  () => import("../../backend/routes/artists/index.ts"),
+  () => import("../../backend/routes/library/index.ts"),
+  () => import("../../backend/routes/playlists/index.ts"),
+  () => import("../../backend/routes/requests.ts"),
+  () => import("../../backend/services/libraryMediaStore.ts"),
+  () => import("../../backend/services/libraryManagementStore.ts"),
+  () => import("../../backend/services/discovery/persistence.ts"),
+  () => import("../../backend/services/discovery/provider.ts"),
+  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
+  () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
 );
 
 const artistMbid = "b471a869-025e-4e54-8429-566704380e36";
@@ -72,15 +74,18 @@ const albumData = {
   images: [],
   releases: [],
 };
-let metadataServer;
-let server;
-let baseUrl;
-let token;
+let metadataServer: { url: string; close: () => Promise<void> };
+let server: import("node:http").Server<
+  typeof import("node:http").IncomingMessage,
+  typeof import("node:http").ServerResponse
+>;
+let baseUrl: string;
+let token: string;
 let user;
-let artist;
-let album;
+let artist: import("../../backend/db/rows.ts").LibraryArtistsRow;
+let album: import("../../backend/db/rows.ts").LibraryAlbumsRow;
 
-function fields(value, contract) {
+function fields(value: Record<string, unknown>, contract: Record<string, string>) {
   assert.ok(value && typeof value === "object");
   for (const [name, type] of Object.entries(contract)) {
     assert.ok(Object.hasOwn(value, name), `missing ${name}`);
@@ -93,7 +98,20 @@ function fields(value, contract) {
   }
 }
 
-async function call(route, { method = "GET", body, authenticated = true, status = 200 } = {}) {
+async function call(
+  route: string,
+  {
+    method = "GET",
+    body,
+    authenticated = true,
+    status = 200,
+  }: {
+    method?: string;
+    body?: Record<string, unknown>;
+    authenticated?: boolean;
+    status?: number;
+  } = {},
+) {
   const response = await fetch(`${baseUrl}${route}`, {
     method,
     headers: {
@@ -107,13 +125,14 @@ async function call(route, { method = "GET", body, authenticated = true, status 
   return payload;
 }
 
-async function hold(trackName) {
+async function hold(trackName: string) {
   const stagingPath = path.join(state.baseDir, `${trackName}.flac`);
   await writeFile(stagingPath, "local review audio");
   const jobId = downloadTracker.addJob(
     { artistName: "Review Artist", trackName, albumName: "Review Album" },
     "library",
   );
+  assert.ok(jobId != null);
   downloadTracker.setDownloading(jobId);
   downloadTracker.setBlocked(jobId, "Review required", stagingPath);
   return { jobId, stagingPath };
@@ -123,8 +142,10 @@ beforeAll(async () => {
   resetDatabase(db);
   metadataServer = await createMockHttpServer((request, response) => {
     response.setHeader("Content-Type", "application/json");
-    if (request.url.startsWith("/search/artist")) return response.end(JSON.stringify([artistData]));
-    if (request.url.startsWith("/search/album")) return response.end(JSON.stringify([albumData]));
+    if (requireFixture(request.url).startsWith("/search/artist"))
+      return response.end(JSON.stringify([artistData]));
+    if (requireFixture(request.url).startsWith("/search/album"))
+      return response.end(JSON.stringify([albumData]));
     if (request.url === `/artist/${artistMbid}`) return response.end(JSON.stringify(artistData));
     if (request.url === `/album/${albumMbid}`) return response.end(JSON.stringify(albumData));
     response.writeHead(404).end(JSON.stringify({ error: "Unknown fixture" }));
@@ -149,7 +170,7 @@ beforeAll(async () => {
       recommendations: [{ id: "discovery-fixture", name: "Discovery Artist", scoreTotal: 1 }],
       lastUpdated: new Date().toISOString(),
     },
-    getUserDiscoveryNamespace(user.id),
+    getUserDiscoveryNamespace(requireFixture(user).id),
   );
   reloadDiscoveryPersistedCache();
   artist = libraryStore.upsertLibraryArtist({
@@ -203,12 +224,17 @@ beforeAll(async () => {
     ["library", libraryRouter],
     ["playlists", playlistRouter],
     ["requests", requestsRouter],
-  ])
+  ] as const)
     app.use(`/api/${route}`, router);
-  server = await new Promise((resolve) => {
+  server = await new Promise<
+    import("node:http").Server<
+      typeof import("node:http").IncomingMessage,
+      typeof import("node:http").ServerResponse
+    >
+  >((resolve) => {
     const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
   });
-  baseUrl = `http://127.0.0.1:${server.address().port}`;
+  baseUrl = `http://127.0.0.1:${listeningAddress(server).port}`;
   const login = await call("/api/auth/login", {
     method: "POST",
     body: { username: "test", password: "password" },
@@ -221,7 +247,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await downloadWorker.stopAndDrain();
-  await new Promise((resolve) => server?.close(resolve));
+  await new Promise<void>((resolve) => server?.close(() => resolve()));
   await metadataServer?.close();
   await cleanupIsolatedState(state);
 });
@@ -534,11 +560,11 @@ test("flows, activity, and review preserve their public response fields and stor
     worker: "object",
     hint: "object",
   });
-  assert.ok(status.flows.some((flow) => flow.id === created.flow.id));
+  assert.ok(status.flows.some((flow: { id: string }) => flow.id === created.flow.id));
   const denied = await hold("Denied Song");
   const approved = await hold("Approved Song");
   const jobs = await call("/api/playlists/jobs?status=blocked");
-  assert.ok(jobs.some((job) => job.id === denied.jobId));
+  assert.ok(jobs.some((job: { id: string }) => job.id === denied.jobId));
   fields(jobs[0], {
     id: "string",
     status: "string",
@@ -561,12 +587,12 @@ test("flows, activity, and review preserve their public response fields and stor
     (await call(`/api/playlists/jobs/${denied.jobId}/deny`, { method: "POST" })).success,
     true,
   );
-  assert.equal(downloadTracker.getJob(denied.jobId).status, "pending");
+  assert.equal(downloadTracker.getJob(denied.jobId)!.status, "pending");
   assert.equal(await stat(denied.stagingPath).catch(() => null), null);
   await downloadWorker.stopAndDrain();
   const approval = await call(`/api/playlists/jobs/${approved.jobId}/approve`, { method: "POST" });
   fields(approval, { success: "boolean", path: "string" });
-  assert.equal(downloadTracker.getJob(approved.jobId).status, "done");
+  assert.equal(downloadTracker.getJob(approved.jobId)!.status, "done");
   assert.ok((await stat(approval.path)).isFile());
   fields(await call("/api/playlists/jobs/missing/approve", { method: "POST", status: 404 }), {
     error: "string",

@@ -1,3 +1,5 @@
+import { requireFixture } from "../playlists/fixtures.ts";
+import { createRouteHarness, createResponse } from "../library/routeHarness.ts";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { test, beforeEach, afterAll } from "vite-plus/test";
@@ -14,36 +16,27 @@ const [
   { noteDeprecatedUsage },
 ] = await setupIsolatedBackend(
   "upgrade-readiness",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/routes/settings/handlers/upgradeReadiness.ts",
-  "backend/services/honkerDb.ts",
-  "backend/services/downloadPaths.ts",
-  "backend/services/deprecatedUsage.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/routes/settings/handlers/upgradeReadiness.ts"),
+  () => import("../../backend/services/honkerDb.ts"),
+  () => import("../../backend/services/downloadPaths.ts"),
+  () => import("../../backend/services/deprecatedUsage.ts"),
 );
 
-const routes = new Map();
-registerUpgradeReadiness({
-  get: (routePath, ...handlers) => routes.set(`GET ${routePath}`, handlers.at(-1)),
-  post: (routePath, ...handlers) => routes.set(`POST ${routePath}`, handlers.at(-1)),
-});
+type Readiness = ReturnType<
+  typeof import("../../backend/services/upgradeReadiness.ts").checkUpgradeReadiness
+>;
+const routes = createRouteHarness(registerUpgradeReadiness);
 
-async function call(route) {
-  const response = { statusCode: 200, body: null };
-  response.status = (code) => {
-    response.statusCode = code;
-    return response;
-  };
-  response.json = (body) => {
-    response.body = body;
-    return response;
-  };
+async function call(route: string) {
+  const response = createResponse<Readiness & { queued?: boolean }>();
   await routes.get(route)({}, response);
   return response;
 }
 
 const root = () => path.resolve(resolveDownloadRoot());
-const blockerKinds = (body) => body.blockers.map((blocker) => blocker.kind);
+const blockerKinds = (body: Readiness) => body.blockers.map((blocker) => blocker.kind);
 
 function finishMigrations() {
   dbOps.setJSONSetting(honkerDb.STORED_DATA_MIGRATION_SETTING, {
@@ -93,15 +86,20 @@ afterAll(async () => {
 test("an install that has not finished the 2.x updates is not ready", async () => {
   const response = await call("GET /upgrade-readiness");
 
+  assert.ok(response.body != null);
   assert.equal(response.body.ready, false);
   assert.deepEqual(blockerKinds(response.body), [
     "stored-data",
     "identity-markers",
     "download-folder",
   ]);
+  assert.ok(response.body != null);
   assert.ok(response.body.blockers.every((blocker) => blocker.message));
-  assert.deepEqual(dbOps.getJSONSetting("aurral3Readiness").blockers, blockerKinds(response.body));
-  assert.equal(dbOps.getJSONSetting("aurral3Readiness").ready, false);
+  assert.deepEqual(
+    requireFixture(dbOps.getJSONSetting<Readiness>("aurral3Readiness")).blockers,
+    blockerKinds(response.body),
+  );
+  assert.equal(requireFixture(dbOps.getJSONSetting<Readiness>("aurral3Readiness")).ready, false);
 });
 
 test("files waiting for review block readiness and are listed relative to the Downloads Folder", async () => {
@@ -126,13 +124,16 @@ test("files waiting for review block readiness and are listed relative to the Do
   const response = await call("GET /upgrade-readiness");
 
   assert.deepEqual(blockerKinds(response.body), ["download-folder-review"]);
-  assert.deepEqual(response.body.blockers[0].items, [
+  assert.ok(response.body != null);
+  const [blocker] = response.body.blockers;
+  assert.ok(blocker.kind === "download-folder-review");
+  assert.deepEqual(blocker.items, [
     {
       path: path.join("aurral-weekly-flow", "playlist", "Artist", "Album", "Partial.flac.part"),
       reason: "partial file",
     },
   ]);
-  assert.equal(response.body.blockers[0].totalItems, 1);
+  assert.equal(blocker.totalItems, 1);
 });
 
 test("an old single password without accounts blocks readiness", async () => {
@@ -154,10 +155,13 @@ test("a finished install is stamped ready and still lists what it uses that 3.0 
 
   const response = await call("GET /upgrade-readiness");
 
+  assert.ok(response.body != null);
   assert.equal(response.body.ready, true);
-  assert.deepEqual(response.body.blockers, []);
+  assert.ok(response.body != null);
+  assert.deepEqual([...response.body.blockers], []);
+  assert.ok(response.body != null);
   assert.ok(response.body.warnings.some((warning) => warning.kind === "weekly-flow-channel"));
-  assert.equal(dbOps.getJSONSetting("aurral3Readiness").ready, true);
+  assert.equal(requireFixture(dbOps.getJSONSetting<Readiness>("aurral3Readiness")).ready, true);
 });
 
 test("checking again queues the tasks for the remaining blockers once", async () => {

@@ -1,3 +1,4 @@
+import { requireFixture } from "./playlists/fixtures.ts";
 import assert from "node:assert/strict";
 import { test, beforeAll, beforeEach, afterAll } from "vite-plus/test";
 
@@ -14,13 +15,13 @@ const [
   axios,
 ] = await setupIsolatedBackend(
   "inbox-refresh-queue",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/inboxService.ts",
-  "backend/services/honkerDb.ts",
-  "backend/services/systemTaskWorker.ts",
-  "backend/services/libraryMediaStore.ts",
-  "lib/axiosFetch.ts",
+  () => import("../backend/config/db-sqlite.ts"),
+  () => import("../backend/db/helpers/index.ts"),
+  () => import("../backend/services/inboxService.ts"),
+  () => import("../backend/services/honkerDb.ts"),
+  () => import("../backend/services/systemTaskWorker.ts"),
+  () => import("../backend/services/libraryMediaStore.ts"),
+  () => import("../lib/axiosFetch.ts"),
 );
 
 const { enqueueInboxRefreshForUser, getInboxForUser, getInboxRefreshStatus, refreshInboxForUser } =
@@ -28,7 +29,7 @@ const { enqueueInboxRefreshForUser, getInboxForUser, getInboxRefreshStatus, refr
 const { enqueueHonkerStartupTasks, getHonkerDb, getInboxTaskQueue } = honkerDb;
 const { processSystemTask } = systemTaskWorker;
 
-let userId;
+let userId: number;
 
 function clearRefreshState() {
   const transaction = getHonkerDb().transaction();
@@ -40,7 +41,7 @@ function clearRefreshState() {
 
 beforeAll(() => {
   getInboxTaskQueue();
-  userId = userOps.createUser("inbox-refresh-user", "password-hash").id;
+  userId = userOps.createUser("inbox-refresh-user", "password-hash")!.id;
   upsertLibraryArtist({
     identityKey: "artist:inbox-refresh",
     mbid: "artist-mbid",
@@ -75,8 +76,8 @@ test("manual refreshes deduplicate per user and survive a Honker reopen", async 
     });
   };
 
-  let first;
-  let second;
+  let first: { queued: boolean; jobId: number; status: string };
+  let second: { queued: boolean; jobId: number; status: string };
   try {
     first = await enqueueInboxRefreshForUser(userId, { reason: "manual" });
     second = await enqueueInboxRefreshForUser(userId, { reason: "manual" });
@@ -109,7 +110,7 @@ test("a removed queued refresh is reported stale", async () => {
       runAt: Math.floor(Date.now() / 1000) + 120,
     });
   };
-  let refresh;
+  let refresh: { queued: boolean; jobId: number; status: string };
   try {
     refresh = await enqueueInboxRefreshForUser(userId, { reason: "manual" });
   } finally {
@@ -122,7 +123,7 @@ test("a removed queued refresh is reported stale", async () => {
   const status = getInboxRefreshStatus(userId);
   assert.equal(status.status, "stale");
   assert.equal(status.stale, true);
-  assert.match(status.error, /no longer active/i);
+  assert.match(requireFixture(status.error), /no longer active/i);
 });
 
 test("expired inbox leases are reported stale and recovered without overlap", async () => {
@@ -141,7 +142,7 @@ test("expired inbox leases are reported stale and recovered without overlap", as
   const staleStatus = getInboxRefreshStatus(userId);
   assert.equal(staleStatus.status, "stale");
   assert.equal(staleStatus.stale, true);
-  assert.match(staleStatus.error, /no longer active/i);
+  assert.match(requireFixture(staleStatus.error), /no longer active/i);
   assert.equal(
     getHonkerDb().query("SELECT state FROM _honker_live WHERE id = ?", [jobId])[0]?.state,
     "processing",
@@ -168,12 +169,16 @@ test("provider failure preserves rows and marks the inbox stale", async () => {
     sourceKey: "prior:release",
     title: "Previously cached release",
   });
+  assert.ok(previous != null);
   const originalAxiosGet = axios.default.get;
   const originalTicketmasterKey = process.env.TICKETMASTER_API_KEY;
   process.env.TICKETMASTER_API_KEY = "test-ticketmaster-key";
   axios.default.get = (url, options) => {
     if (String(url).includes("zippopotam.us")) {
       return Promise.resolve({
+        status: 200,
+        statusText: "OK",
+        headers: {},
         data: {
           places: [
             {
@@ -203,8 +208,11 @@ test("provider failure preserves rows and marks the inbox stale", async () => {
     const status = getInboxRefreshStatus(userId);
     assert.equal(status.status, "stale");
     assert.equal(status.stale, true);
-    assert.match(status.error, /shows: Ticketmaster unavailable/);
-    assert.equal(dbOps.getInboxItem(userId, previous.id)?.title, "Previously cached release");
+    assert.match(requireFixture(status.error), /shows: Ticketmaster unavailable/);
+    assert.equal(
+      dbOps.getInboxItem(userId, requireFixture(previous.id))?.title,
+      "Previously cached release",
+    );
   } finally {
     axios.default.get = originalAxiosGet;
     if (originalTicketmasterKey === undefined) delete process.env.TICKETMASTER_API_KEY;
@@ -216,7 +224,7 @@ test("refresh adds nearby shows for library artists only", async () => {
   const originalAxiosGet = axios.default.get;
   const originalTicketmasterKey = process.env.TICKETMASTER_API_KEY;
   process.env.TICKETMASTER_API_KEY = "test-ticketmaster-key";
-  const event = (id, performer) => ({
+  const event = (id: string, performer: string) => ({
     id,
     name: `${performer} live`,
     url: `https://www.ticketmaster.com/event/${id}`,
@@ -229,6 +237,9 @@ test("refresh adds nearby shows for library artists only", async () => {
   axios.default.get = (url, options) => {
     if (String(url).includes("zippopotam.us")) {
       return Promise.resolve({
+        status: 200,
+        statusText: "OK",
+        headers: {},
         data: {
           places: [{ "place name": "New York", latitude: "40.73", longitude: "-73.99" }],
         },
@@ -236,6 +247,9 @@ test("refresh adds nearby shows for library artists only", async () => {
     }
     if (String(url).includes("ticketmaster.com")) {
       return Promise.resolve({
+        status: 200,
+        statusText: "OK",
+        headers: {},
         data: {
           _embedded: {
             events: [
@@ -257,7 +271,9 @@ test("refresh adds nearby shows for library artists only", async () => {
     });
     const shows = dbOps.getInboxItems(userId, { kinds: ["show"] });
     assert.deepEqual(
-      shows.map(({ sourceKey, title, subtitle }) => ({ sourceKey, title, subtitle })),
+      shows
+        .filter((item) => item != null)
+        .map(({ sourceKey, title, subtitle }) => ({ sourceKey, title, subtitle })),
       [
         {
           sourceKey: "library-show",
@@ -280,6 +296,7 @@ test("failed refreshes are explicit and a worker retry can complete", async () =
     sourceKey: "failed:release",
     title: "Retained while refresh fails",
   });
+  assert.ok(previous != null);
   const originalGetSettings = dbOps.getSettings;
   dbOps.getSettings = () => {
     throw new Error("Inbox provider unavailable");
@@ -287,23 +304,30 @@ test("failed refreshes are explicit and a worker retry can complete", async () =
 
   try {
     await assert.rejects(
-      processSystemTask({ kind: "inbox-refresh", userId }, { id: 9001 }),
+      processSystemTask({ kind: "inbox-refresh", userId }, { id: 9001 } as Parameters<
+        typeof processSystemTask
+      >[1]),
       /Inbox provider unavailable/,
     );
     const failed = getInboxRefreshStatus(userId);
     assert.equal(failed.status, "failed");
     assert.equal(failed.stale, true);
-    assert.match(failed.error, /Inbox provider unavailable/);
-    assert.equal(dbOps.getInboxItem(userId, previous.id)?.title, "Retained while refresh fails");
+    assert.match(requireFixture(failed.error), /Inbox provider unavailable/);
+    assert.equal(
+      dbOps.getInboxItem(userId, requireFixture(previous.id))?.title,
+      "Retained while refresh fails",
+    );
   } finally {
     dbOps.getSettings = originalGetSettings;
   }
 
-  await processSystemTask({ kind: "inbox-refresh", userId }, { id: 9002 });
+  await processSystemTask({ kind: "inbox-refresh", userId }, { id: 9002 } as Parameters<
+    typeof processSystemTask
+  >[1]);
   const recovered = getInboxRefreshStatus(userId);
   assert.equal(recovered.status, "complete");
   assert.equal(recovered.stale, false);
-  assert.equal(recovered.lastSuccessAt > 0, true);
+  assert.equal(requireFixture(recovered.lastSuccessAt) > 0, true);
 });
 
 test("startup markers prevent duplicate bootstrap jobs on restart", () => {

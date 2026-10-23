@@ -1,3 +1,4 @@
+import { captureRouteHandlers, createResponse } from "../library/routeHarness.ts";
 import assert from "node:assert/strict";
 import { test, afterAll, vi } from "vite-plus/test";
 
@@ -5,18 +6,11 @@ import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTe
 
 const [state, { registerSpotifyImport }, { spotifyConnectionStore }] = await setupIsolatedBackend(
   "spotify-oauth-complete",
-  "backend/routes/playlists/handlers/spotifyImport.ts",
-  "backend/services/spotify/spotifyConnectionStore.ts",
+  () => import("../../backend/routes/playlists/handlers/spotifyImport.ts"),
+  () => import("../../backend/services/spotify/spotifyConnectionStore.ts"),
 );
 
-const routes = new Map();
-registerSpotifyImport({
-  get: () => {},
-  post: (path, ...handlers) => routes.set(`POST ${path}`, handlers.at(-1)),
-  put: () => {},
-  patch: () => {},
-  delete: () => {},
-});
+const routes = captureRouteHandlers(registerSpotifyImport, "post");
 
 afterAll(async () => {
   vi.unstubAllGlobals();
@@ -24,19 +18,10 @@ afterAll(async () => {
 });
 
 async function completeOAuth() {
-  const response = { statusCode: 200, body: null };
-  await routes.get("POST /import/spotify/oauth/complete")(
+  const response = createResponse<{ message: string; connected: boolean }>();
+  await routes.get("/import/spotify/oauth/complete")(
     { body: { accessToken: "access", refreshToken: "refresh", expiresIn: 3600 }, user: { id: 1 } },
-    {
-      status(code) {
-        response.statusCode = code;
-        return this;
-      },
-      json(value) {
-        response.body = value;
-        return this;
-      },
-    },
+    response,
   );
   return response;
 }
@@ -46,6 +31,7 @@ test("an unreadable saved connection is reported instead of crashing the respons
   vi.spyOn(spotifyConnectionStore, "saveConnection").mockReturnValue(null);
   const response = await completeOAuth();
   assert.equal(response.statusCode, 500);
+  assert.ok(response.body != null);
   assert.equal(response.body.message, "The saved Spotify connection could not be read back");
 });
 
@@ -54,5 +40,6 @@ test("a saved connection is returned to the client", async () => {
   vi.restoreAllMocks();
   const response = await completeOAuth();
   assert.equal(response.statusCode, 200);
+  assert.ok(response.body != null);
   assert.equal(response.body.connected, true);
 });

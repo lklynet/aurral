@@ -4,7 +4,7 @@ import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTe
 
 const [state, { reopenToRemoveDuplicates }] = await setupIsolatedBackend(
   "library-file-operation-store",
-  "backend/services/libraryFiles/operationStore.ts",
+  () => import("../../backend/services/libraryFiles/operationStore.ts"),
 );
 afterAll(() => cleanupIsolatedState(state));
 

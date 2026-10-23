@@ -1,3 +1,4 @@
+import { requireFixture } from "../playlists/fixtures.ts";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { rm } from "node:fs/promises";
@@ -34,7 +35,7 @@ test("upgrading moves Aurral artists from missing to all and leaves Lidarr artis
   const db = new Database(state.dbPath);
   try {
     const now = Date.now();
-    const addArtist = (key, managedBy) => {
+    const addArtist = (key: string, managedBy: string) => {
       const metadata = {
         monitored: true,
         monitor: "missing",
@@ -60,16 +61,28 @@ test("upgrading moves Aurral artists from missing to all and leaves Lidarr artis
 
     start();
 
-    const read = (artistId) => {
-      const { metadata_json: metadataJson } = db
-        .prepare("SELECT metadata_json FROM library_artists WHERE id = ?")
-        .get(artistId);
-      const metadata = JSON.parse(metadataJson);
-      const { monitor_mode: mode } = db
-        .prepare(
-          "SELECT monitor_mode FROM library_management WHERE entity_kind = 'artist' AND entity_id = ?",
-        )
-        .get(artistId);
+    const read = (artistId: number | bigint) => {
+      const { metadata_json: metadataJson } = requireFixture(
+        db
+          .prepare<
+            unknown[],
+            { metadata_json: import("../../backend/db/rows.ts").LibraryArtistsRow["metadata_json"] }
+          >("SELECT metadata_json FROM library_artists WHERE id = ?")
+          .get(artistId),
+      );
+      const metadata = JSON.parse(requireFixture(metadataJson));
+      const { monitor_mode: mode } = requireFixture(
+        db
+          .prepare<
+            unknown[],
+            {
+              monitor_mode: import("../../backend/db/rows.ts").LibraryManagementRow["monitor_mode"];
+            }
+          >(
+            "SELECT monitor_mode FROM library_management WHERE entity_kind = 'artist' AND entity_id = ?",
+          )
+          .get(artistId),
+      );
       return [mode, metadata.monitor, metadata.monitorOption, metadata.addOptions.monitor];
     };
     assert.deepEqual(read(aurralArtist), ["all", "all", "all", "all"]);

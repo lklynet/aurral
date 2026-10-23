@@ -1,3 +1,5 @@
+import { requireFixture } from "../playlists/fixtures.ts";
+import { readArtist, readAlbum, readTrack } from "./fixtures.ts";
 import { test, beforeAll, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
@@ -9,8 +11,8 @@ import {
 
 const [isolatedState, { db }] = await setupIsolatedBackend(
   "library-management-state",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
 );
 
 const store = await import("../../backend/services/libraryManagementStore.ts");
@@ -38,12 +40,14 @@ test("manager state uses library ids and round-trips through the store", () => {
   });
   assert.equal(store.getManagedBy("album", 7), "aurral");
   assert.equal(store.getManagedBy("album", "7"), "aurral");
-  const { updatedAt, ...entry } = store.getLibraryManagementEntry("album", 7);
+  const { updatedAt, ...entry } = requireFixture(store.getLibraryManagementEntry("album", 7));
   assert.deepEqual(entry, { managedBy: "aurral", monitorMode: "all", monitorRules: null });
-  assert.ok(Number.isSafeInteger(updatedAt) && updatedAt > 0);
+  assert.ok(updatedAt != null && Number.isSafeInteger(updatedAt) && updatedAt > 0);
 
   store.setLibraryManagement({ entityKind: "album", entityId: 7, managedBy: "lidarr" });
-  const { updatedAt: _updatedAt, ...changedEntry } = store.getLibraryManagementEntry("album", 7);
+  const { updatedAt: _updatedAt, ...changedEntry } = requireFixture(
+    store.getLibraryManagementEntry("album", 7),
+  );
   assert.deepEqual(changedEntry, { managedBy: "lidarr", monitorMode: null, monitorRules: null });
 
   assert.equal(store.clearLibraryManagement("album", 7), true);
@@ -52,23 +56,24 @@ test("manager state uses library ids and round-trips through the store", () => {
 
 test("artist monitoring rules survive same-mode writes and clear when the manager or mode changes", () => {
   const rules = { default: true, catalogAt: 1, newSince: 1 };
-  const write = (fields) =>
-    store.setLibraryManagement({ entityKind: "artist", entityId: 9, ...fields });
+  const write = (
+    fields: Omit<Parameters<typeof store.setLibraryManagement>[0], "entityKind" | "entityId">,
+  ) => store.setLibraryManagement({ entityKind: "artist", entityId: 9, ...fields });
 
   write({ managedBy: "aurral", monitorMode: "all", monitorRules: rules });
   write({ managedBy: "aurral", monitorMode: "all" });
-  assert.deepEqual(store.getLibraryManagementEntry("artist", 9).monitorRules, rules);
+  assert.deepEqual(store.getLibraryManagementEntry("artist", 9)!.monitorRules, rules);
 
   write({ managedBy: "aurral", monitorMode: "none" });
-  assert.equal(store.getLibraryManagementEntry("artist", 9).monitorRules, null);
+  assert.equal(store.getLibraryManagementEntry("artist", 9)!.monitorRules, null);
 
   write({ managedBy: "aurral", monitorMode: "all", monitorRules: rules });
   write({ managedBy: "lidarr", monitorMode: "all" });
-  assert.equal(store.getLibraryManagementEntry("artist", 9).monitorRules, null);
+  assert.equal(store.getLibraryManagementEntry("artist", 9)!.monitorRules, null);
 
   write({ managedBy: "aurral", monitorMode: "none", monitorRules: rules });
   write({ managedBy: "aurral", monitorMode: "none", monitorRules: null });
-  assert.equal(store.getLibraryManagementEntry("artist", 9).monitorRules, null);
+  assert.equal(store.getLibraryManagementEntry("artist", 9)!.monitorRules, null);
   store.clearLibraryManagement("artist", 9);
 });
 
@@ -94,12 +99,12 @@ test("manager state written by another process is visible without a restart", as
         "UPDATE library_management SET monitor_mode = 'unmonitored', updated_at = ? WHERE entity_id = 12",
       )
       .run(now + 1);
-    assert.equal(store.getLibraryManagementEntry("album", 12).monitorMode, "unmonitored");
+    assert.equal(store.getLibraryManagementEntry("album", 12)!.monitorMode, "unmonitored");
 
     otherProcess
       .prepare("UPDATE library_management SET monitor_mode = 'monitored' WHERE entity_id = 12")
       .run();
-    assert.equal(store.getLibraryManagementEntry("album", 12).monitorMode, "monitored");
+    assert.equal(store.getLibraryManagementEntry("album", 12)!.monitorMode, "monitored");
 
     otherProcess.prepare("DELETE FROM library_management WHERE entity_id = 11").run();
     assert.equal(store.getManagedBy("album", 11), null);
@@ -127,29 +132,29 @@ test("manager state rejects invalid owners, kinds, and ids", () => {
 test("read model exposes managedBy and monitorMode without inventing values", () => {
   const library = {
     artists: [
-      {
+      readArtist({
         id: 11,
         identityKey: "mbid:artist-managed",
         mbid: "artist-managed",
         name: "Managed Artist",
-        albumIds: [21],
+
         sources: ["lidarr"],
         available: true,
         metadata: { monitored: true },
-      },
-      {
+      }),
+      readArtist({
         id: 12,
         identityKey: "mbid:artist-open",
         mbid: "artist-open",
         name: "Open Artist",
-        albumIds: [22],
+
         sources: ["aurral"],
         available: true,
         metadata: {},
-      },
+      }),
     ],
     albums: [
-      {
+      readAlbum({
         id: 21,
         identityKey: "rg:managed",
         artistId: 11,
@@ -158,8 +163,8 @@ test("read model exposes managedBy and monitorMode without inventing values", ()
         sources: ["lidarr"],
         available: true,
         metadata: {},
-      },
-      {
+      }),
+      readAlbum({
         id: 22,
         identityKey: "rg:open",
         artistId: 12,
@@ -168,27 +173,27 @@ test("read model exposes managedBy and monitorMode without inventing values", ()
         sources: ["aurral"],
         available: true,
         metadata: {},
-      },
+      }),
     ],
     tracks: [
-      {
+      readTrack({
         id: 31,
         mbid: "t31",
         title: "One",
-        albums: [{ albumId: 21, trackNumber: 1 }],
+        albums: [{ albumId: 21, discNumber: 1, trackNumber: 1 }],
         files: [],
         sources: ["lidarr"],
         available: true,
-      },
-      {
+      }),
+      readTrack({
         id: 32,
         mbid: "t32",
         title: "Two",
-        albums: [{ albumId: 22, trackNumber: 1 }],
+        albums: [{ albumId: 22, discNumber: 1, trackNumber: 1 }],
         files: [],
         sources: ["aurral"],
         available: true,
-      },
+      }),
     ],
   };
 
@@ -201,12 +206,14 @@ test("read model exposes managedBy and monitorMode without inventing values", ()
 
   const model = buildLibraryReadModel(library);
   const managed = model.artists.find((a) => a.id === 11);
+  assert.ok(managed != null);
   const open = model.artists.find((a) => a.id === 12);
+  assert.ok(open != null);
   assert.equal(managed.managedBy, "lidarr");
   assert.equal(managed.monitorMode, "all");
   assert.equal(open.managedBy, null);
   assert.equal(open.monitorMode, null);
-  assert.equal(model.albums.find((a) => a.id === 21).managedBy, null);
+  assert.equal(model.albums.find((a) => a.id === 21)!.managedBy, null);
 });
 
 test("library page cache reflects ownership changes without manual invalidation", () => {
@@ -281,7 +288,10 @@ test("library cache reflects ownership changed by another connection", async () 
     managedBy: "aurral",
     monitorMode: "all",
   });
-  assert.equal(getLibrary().artists.find((entry) => entry.id === artist.id).monitorMode, "all");
+  assert.equal(
+    requireFixture(getLibrary()!).artists.find((entry) => entry.id === artist.id)!.monitorMode,
+    "all",
+  );
 
   const otherConnection = new Database(db.name);
   try {
@@ -290,7 +300,10 @@ test("library cache reflects ownership changed by another connection", async () 
         "UPDATE library_management SET monitor_mode = 'none' WHERE entity_kind = 'artist' AND entity_id = ?",
       )
       .run(artist.id);
-    assert.equal(getLibrary().artists.find((entry) => entry.id === artist.id).monitorMode, "none");
+    assert.equal(
+      requireFixture(getLibrary()!).artists.find((entry) => entry.id === artist.id)!.monitorMode,
+      "none",
+    );
   } finally {
     otherConnection.close();
   }

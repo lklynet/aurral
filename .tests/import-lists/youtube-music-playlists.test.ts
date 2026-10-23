@@ -1,3 +1,10 @@
+type ClientOptions = NonNullable<ConstructorParameters<typeof YoutubeMusicPlaylistClient>[0]>;
+type SessionFactory = NonNullable<ClientOptions["createInnertube"]>;
+type PlaylistPage = {
+  header?: { title: ReturnType<typeof text> };
+  contents: unknown[];
+  getContinuation?: () => Promise<PlaylistPage>;
+};
 import { afterEach, test, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import {
@@ -6,15 +13,29 @@ import {
   validateYoutubePlaylistId,
 } from "../../backend/services/importLists/youtubeMusicPlaylists.ts";
 
-const text = (value) => ({ toString: () => value });
+const text = (value: string) => ({ toString: () => value });
 
 const useFakeClock = () =>
   vi.useFakeTimers({
     toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
   });
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.useRealTimers();
+});
 
-const song = ({ id, title, artist, album = null, seconds = null }) => ({
+const song = ({
+  id,
+  title,
+  artist,
+  album = null,
+  seconds = null,
+}: {
+  id: string;
+  title: string;
+  artist?: string;
+  album?: string | null;
+  seconds?: number | null;
+}) => ({
   item_type: "song",
   id,
   title: text(title),
@@ -23,7 +44,17 @@ const song = ({ id, title, artist, album = null, seconds = null }) => ({
   duration: seconds == null ? null : { seconds },
 });
 
-const video = ({ id, title, author, seconds = null }) => ({
+const video = ({
+  id,
+  title,
+  author,
+  seconds = null,
+}: {
+  id: string;
+  title: string;
+  author: string;
+  seconds?: number | null;
+}) => ({
   item_type: "video",
   id,
   title: text(title),
@@ -31,19 +62,22 @@ const video = ({ id, title, author, seconds = null }) => ({
   duration: seconds == null ? null : { seconds },
 });
 
-const continuation = (token) => ({
+const continuation = (token: string) => ({
   type: "ContinuationItem",
   endpoint: { payload: { continuation: token } },
 });
 
-function makeClient(pages, options = {}) {
+function makeClient(
+  pages: PlaylistPage[],
+  options: Pick<ClientOptions, "maxPages" | "maxItems"> = {},
+) {
   let createCalls = 0;
-  const ids = [];
+  const ids: string[] = [];
   const factory = async () => {
     createCalls += 1;
     return {
       music: {
-        async getPlaylist(id) {
+        async getPlaylist(id: string) {
           ids.push(id);
           return pages[0];
         },
@@ -51,7 +85,7 @@ function makeClient(pages, options = {}) {
     };
   };
   const client = new YoutubeMusicPlaylistClient({
-    createInnertube: factory,
+    createInnertube: factory as unknown as SessionFactory,
     requestTimeoutMs: 100,
     operationTimeoutMs: 1_000,
     playlistRequestIntervalMs: 0,
@@ -179,14 +213,14 @@ test("client reuses a recently loaded playlist instead of refetching every conti
   };
   const client = new YoutubeMusicPlaylistClient({
     playlistRequestIntervalMs: 0,
-    createInnertube: async () => ({
+    createInnertube: (async () => ({
       music: {
         async getPlaylist() {
           playlistRequests += 1;
           return first;
         },
       },
-    }),
+    })) as unknown as SessionFactory,
   });
 
   const [firstResult, concurrentResult] = await Promise.all([
@@ -205,7 +239,7 @@ test("client bypasses a cached playlist when a fresh provider read is required",
   let playlistRequests = 0;
   const client = new YoutubeMusicPlaylistClient({
     playlistRequestIntervalMs: 0,
-    createInnertube: async () => ({
+    createInnertube: (async () => ({
       music: {
         async getPlaylist() {
           playlistRequests += 1;
@@ -215,7 +249,7 @@ test("client bypasses a cached playlist when a fresh provider read is required",
           };
         },
       },
-    }),
+    })) as unknown as SessionFactory,
   });
 
   const first = await client.getPlaylist("PLabcdefghij_123");
@@ -229,24 +263,24 @@ test("client bypasses a cached playlist when a fresh provider read is required",
 });
 
 test("client force refresh bypasses an in-flight playlist load", async () => {
-  const resolvers = [];
+  const resolvers: ((value: PlaylistPage | PromiseLike<PlaylistPage>) => void)[] = [];
   let playlistRequests = 0;
   const client = new YoutubeMusicPlaylistClient({
     playlistRequestIntervalMs: 0,
-    createInnertube: async () => ({
+    createInnertube: (async () => ({
       music: {
         async getPlaylist() {
           playlistRequests += 1;
-          return new Promise((resolve) => resolvers.push(resolve));
+          return new Promise<PlaylistPage>((resolve) => resolvers.push(resolve));
         },
       },
-    }),
+    })) as unknown as SessionFactory,
   });
 
   const preview = client.getPlaylist("PLabcdefghij_123");
-  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise<void>((resolve) => setImmediate(resolve));
   const refreshed = client.getPlaylist("PLabcdefghij_123", { forceRefresh: true });
-  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise<void>((resolve) => setImmediate(resolve));
 
   assert.equal(playlistRequests, 2);
   resolvers[0]({ header: { title: text("Preview") }, contents: [] });
@@ -257,12 +291,12 @@ test("client force refresh bypasses an in-flight playlist load", async () => {
 
 test("client spaces provider requests shared by concurrent playlist loads", async () => {
   useFakeClock();
-  const starts = [];
+  const starts: { id: string; at: number }[] = [];
   const client = new YoutubeMusicPlaylistClient({
     playlistRequestIntervalMs: 30,
-    createInnertube: async () => ({
+    createInnertube: (async () => ({
       music: {
-        async getPlaylist(id) {
+        async getPlaylist(id: string) {
           starts.push({ id, at: Date.now() });
           return {
             header: { title: text(id) },
@@ -270,7 +304,7 @@ test("client spaces provider requests shared by concurrent playlist loads", asyn
           };
         },
       },
-    }),
+    })) as unknown as SessionFactory,
   });
 
   const loads = Promise.all([
@@ -291,22 +325,25 @@ test(
     const client = new YoutubeMusicPlaylistClient({
       operationTimeoutMs: 200,
       playlistRequestIntervalMs: 50,
-      createInnertube: async ({ fetch }) => ({
+      createInnertube: (async ({ fetch }: Parameters<SessionFactory>[0]) => ({
         music: {
-          async getPlaylist(id) {
+          async getPlaylist(id: string) {
             if (id === "PLabcdefghij_000") {
               return {
                 header: { title: text("Warmup") },
                 contents: [song({ id: "warmup", title: "Warmup", artist: "Artist" })],
               };
             }
+            assert.ok(fetch);
             await fetch(`https://music.youtube.com/youtubei/v1/browse?id=${id}`);
           },
         },
-      }),
+      })) as unknown as SessionFactory,
       fetchImpl: async (_url, options) =>
-        new Promise((resolve, reject) => {
-          options.signal.addEventListener("abort", () => reject(options.signal.reason), {
+        new Promise<Response>((resolve, reject) => {
+          assert.ok(options != null);
+          assert.ok(options.signal != null);
+          options.signal.addEventListener("abort", () => reject(options?.signal?.reason), {
             once: true,
           });
         }),
@@ -329,17 +366,17 @@ test(
 );
 
 test("cache keeps pending playlist loads available for request coalescing", async () => {
-  let releaseRequests;
-  const released = new Promise((resolve) => {
+  let releaseRequests!: () => void;
+  const released = new Promise<void>((resolve) => {
     releaseRequests = resolve;
   });
   const requests = new Map();
   const client = new YoutubeMusicPlaylistClient({
     maxCachedPlaylists: 1,
     playlistRequestIntervalMs: 0,
-    createInnertube: async () => ({
+    createInnertube: (async () => ({
       music: {
-        async getPlaylist(id) {
+        async getPlaylist(id: string) {
           requests.set(id, (requests.get(id) || 0) + 1);
           await released;
           return {
@@ -348,13 +385,13 @@ test("cache keeps pending playlist loads available for request coalescing", asyn
           };
         },
       },
-    }),
+    })) as unknown as SessionFactory,
   });
 
   const first = client.getPlaylist("PLabcdefghij_123");
   const second = client.getPlaylist("PLabcdefghij_456");
   const repeatedFirst = client.getPlaylist("PLabcdefghij_123");
-  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise<void>((resolve) => setImmediate(resolve));
   releaseRequests();
   await Promise.all([first, second, repeatedFirst]);
 
@@ -366,13 +403,13 @@ test("client opens a local cooldown when YouTube Music returns a rate limit", as
   let requests = 0;
   const client = new YoutubeMusicPlaylistClient({
     playlistRequestIntervalMs: 0,
-    createInnertube: async ({ fetch }) => ({
+    createInnertube: (async ({ fetch }: Parameters<SessionFactory>[0]) => ({
       music: {
         async getPlaylist() {
-          await fetch("https://music.youtube.com/youtubei/v1/browse");
+          await fetch?.("https://music.youtube.com/youtubei/v1/browse");
         },
       },
-    }),
+    })) as unknown as SessionFactory,
     fetchImpl: async () => {
       requests += 1;
       return new Response(null, {
@@ -394,13 +431,13 @@ test("client opens a local cooldown when YouTube Music returns a rate limit", as
 });
 
 test("client keeps the longest cooldown from overlapping rate limits", async () => {
-  const responses = [];
+  const responses: ((value: Response | PromiseLike<Response>) => void)[] = [];
   let requests = 0;
   const client = new YoutubeMusicPlaylistClient({
     fetchImpl: async () => {
       requests += 1;
       if (requests > 2) return new Response(null, { status: 200 });
-      return new Promise((resolve) => responses.push(resolve));
+      return new Promise<Response>((resolve) => responses.push(resolve));
     },
   });
 
@@ -418,7 +455,7 @@ test("client keeps the longest cooldown from overlapping rate limits", async () 
 });
 
 test("client rejects repeated continuations instead of returning a partial playlist", async () => {
-  const page = {
+  const page: PlaylistPage = {
     header: { title: text("Loop") },
     contents: [song({ id: "song", title: "Song", artist: "Artist" }), continuation("same")],
   };
@@ -462,21 +499,24 @@ test("client rejects page and row limits without returning partial results", asy
 
 test("client aborts and maps operation timeouts to a safe provider error", async () => {
   useFakeClock();
-  let observedSignal;
+  let observedSignal: AbortSignal | null | undefined;
   const client = new YoutubeMusicPlaylistClient({
     operationTimeoutMs: 20,
     requestTimeoutMs: 100,
-    createInnertube: async ({ fetch }) => ({
+    createInnertube: (async ({ fetch }: Parameters<SessionFactory>[0]) => ({
       music: {
         async getPlaylist() {
-          await fetch("https://music.youtube.com/youtubei/v1/browse");
+          await fetch?.("https://music.youtube.com/youtubei/v1/browse");
         },
       },
-    }),
+    })) as unknown as SessionFactory,
     fetchImpl: async (_url, options) => {
+      assert.ok(options != null);
       observedSignal = options.signal;
-      await new Promise((resolve, reject) => {
-        options.signal.addEventListener("abort", () => reject(options.signal.reason), {
+      return new Promise<Response>((resolve, reject) => {
+        assert.ok(options != null);
+        assert.ok(options.signal != null);
+        options.signal.addEventListener("abort", () => reject(options.signal!.reason), {
           once: true,
         });
       });
@@ -488,6 +528,7 @@ test("client aborts and maps operation timeouts to a safe provider error", async
   });
   await vi.advanceTimersByTimeAsync(20);
   await timedOut;
+  assert.ok(observedSignal != null);
   assert.equal(observedSignal.aborted, true);
 });
 
@@ -499,7 +540,7 @@ test(
     let createCalls = 0;
     const client = new YoutubeMusicPlaylistClient({
       operationTimeoutMs: 20,
-      createInnertube: async () => {
+      createInnertube: (async () => {
         createCalls += 1;
         if (createCalls === 1) return new Promise(() => {});
         return {
@@ -512,7 +553,7 @@ test(
             },
           },
         };
-      },
+      }) as unknown as SessionFactory,
     });
 
     const timedOut = assert.rejects(client.getPlaylist("PLabcdefghij_123"), {

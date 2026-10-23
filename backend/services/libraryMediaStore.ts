@@ -2445,7 +2445,7 @@ export function upsertLibraryMediaFile({
   quality?: unknown;
   artistTag?: string | null;
   available?: boolean;
-  scanId: number;
+  scanId?: number;
 }) {
   const filePath = normalizeText(path);
   const fileSource = normalizeText(source);

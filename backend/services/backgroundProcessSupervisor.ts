@@ -1,4 +1,4 @@
-import { fork, type ChildProcess } from "node:child_process";
+import { fork, type ChildProcess, type ForkOptions } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import v8 from "node:v8";
 import { ISOLATED_WORKER_GROUPS } from "./backgroundWorkerQueues.ts";
@@ -102,7 +102,7 @@ export function createBackgroundProcessSupervisor({
   findGroupsWithWork?: (now: number) => string[];
   getWorkRevision?: (() => unknown) | null;
   getNextWorkAt?: (now: number) => unknown;
-  forkProcess?: typeof fork;
+  forkProcess?: (entry: string, args: readonly string[], options: ForkOptions) => ChildProcess;
   onMessage?: (message: WorkerMessage, group: string, child: ChildProcess) => void;
   onExit?: (
     group: string,
@@ -113,7 +113,7 @@ export function createBackgroundProcessSupervisor({
     retired: boolean,
   ) => void | Promise<void>;
   logger?: Pick<Console, "error" | "warn">;
-  jobTimeoutsMs?: typeof JOB_TIMEOUT_MS;
+  jobTimeoutsMs?: Readonly<Record<string, number | undefined>>;
   unresponsiveMs?: number;
   watchdogIntervalMs?: number;
   demandPollMs?: number;

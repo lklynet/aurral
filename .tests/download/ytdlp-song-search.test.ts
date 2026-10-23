@@ -14,12 +14,32 @@ import {
 const [state, { db }, { downloadTracker }, { processYtdlpPipelinePayload }] =
   await setupIsolatedBackend(
     "ytdlp-song-search",
-    "backend/config/db-sqlite.ts",
-    "backend/services/downloadJobs/downloadTracker.ts",
-    "backend/services/ytdlpOrchestrator.ts",
+    () => import("../../backend/config/db-sqlite.ts"),
+    () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
+    () => import("../../backend/services/ytdlpOrchestrator.ts"),
   );
 
-const recorded = JSON.parse(
+type YtdlpPayload = Parameters<typeof processYtdlpPipelinePayload>[0];
+type YtdlpHelpers = Parameters<typeof processYtdlpPipelinePayload>[1];
+type SongFixture = {
+  track: string;
+  artists: string[];
+  album: string;
+  duration: number;
+  channel?: string;
+  delay?: number;
+  held?: boolean;
+  after?: string;
+  fileDuration?: number;
+  fileAlbum?: string;
+};
+type Fixtures = {
+  songLists: Record<string, { id: string; title: string }[]>;
+  songs: Record<string, SongFixture>;
+  videos: Record<string, { id: string; title: string; channel: string; duration: number }[]>;
+};
+
+const recorded: Fixtures = JSON.parse(
   await readFile(new URL("./ytdlp-song-search.fixtures.json", import.meta.url), "utf8"),
 );
 const binDir = path.join(state.baseDir, "bin");
@@ -105,6 +125,7 @@ process.env.PATH = `${binDir}${path.delimiter}${previousPath || ""}`;
 
 beforeEach(async () => {
   resetDatabase(db);
+  failureReason = "";
   await writeFile(fixturePath, JSON.stringify(recorded));
   await writeFile(logPath, "");
   await writeFile(pidPath, "");
@@ -115,7 +136,7 @@ afterAll(async () => {
   await cleanupIsolatedState(state);
 });
 
-async function useFixtures(change) {
+async function useFixtures(change: (fixtures: Fixtures) => void) {
   const fixtures = structuredClone(recorded);
   change(fixtures);
   await writeFile(fixturePath, JSON.stringify(fixtures));
@@ -127,7 +148,7 @@ async function calls() {
     .split("\n")
     .filter(Boolean)
     .map((line) => {
-      const target = JSON.parse(line);
+      const target: string = JSON.parse(line);
       if (target.startsWith("ytsearch"))
         return `video search ${target.slice(target.indexOf(":") + 1)}`;
       const url = new URL(target);
@@ -135,26 +156,40 @@ async function calls() {
         ? `song search ${url.searchParams.get("q")}`
         : `read ${url.searchParams.get("v")}`;
     });
-  const reads = lines.filter((line) => line.startsWith("read ")).sort();
-  return lines.map((line) => (line.startsWith("read ") ? reads.shift() : line));
+  const reads = lines.filter((line: string) => line.startsWith("read ")).sort();
+  return lines.map((line: string) => (line.startsWith("read ") ? reads.shift()! : line));
 }
 
-const failSource = { failOrTryNextSource: (_payload, _job, reason) => ({ failed: reason }) };
+let failureReason = "";
+const failSource: YtdlpHelpers = {
+  failOrTryNextSource: async (_payload, _job, reason) => {
+    failureReason = reason;
+    return null;
+  },
+};
 
-async function search(track) {
+async function runPipeline(payload: YtdlpPayload) {
+  const result = await processYtdlpPipelinePayload(payload, failSource);
+  if (result === null) return null;
+  assert.equal(result.jobId, payload.jobId);
+  assert.equal(result.source, "ytdlp");
+  return result as YtdlpPayload;
+}
+
+async function search(track: Parameters<typeof downloadTracker.addJob>[0]) {
   const jobId = downloadTracker.addJob(track, "ytdlp-song-search");
-  return {
-    jobId,
-    next: await processYtdlpPipelinePayload(
-      { phase: "search", source: "ytdlp", jobId },
-      failSource,
-    ),
-  };
+  assert.ok(jobId);
+  const next = await runPipeline({ phase: "search", source: "ytdlp", jobId });
+  assert.ok(next, failureReason);
+  assert.equal(next.phase, "download");
+  assert.ok(next.candidates);
+  return { jobId, next: { ...next, candidates: next.candidates } };
 }
 
-const choices = (next) => next.candidates.map((entry) => [entry.raw.id, entry.evaluation.decision]);
+const choices = (next: Awaited<ReturnType<typeof search>>["next"]) =>
+  next.candidates.map((entry) => [entry.raw.id, entry.evaluation.decision]);
 
-function assertNoYtdlpLeft(pids) {
+function assertNoYtdlpLeft(pids: number[]) {
   for (const pid of pids)
     assert.throws(() => process.kill(pid, 0), { code: "ESRCH" }, `yt-dlp ${pid} is still running`);
 }
@@ -163,25 +198,25 @@ async function ytdlpPids() {
   return (await readFile(pidPath, "utf8"))
     .split("\n")
     .filter(Boolean)
-    .map((line) => Number(line.split(" ")[0]));
+    .map((line: string) => Number(line.split(" ")[0]));
 }
 
-async function readPid(id) {
+async function readPid(id: string) {
   const line = (await readFile(pidPath, "utf8"))
     .split("\n")
-    .find((entry) => entry.endsWith(`v=${id}`));
+    .find((entry: string) => entry.endsWith(`v=${id}`));
   return line ? Number(line.split(" ")[0]) : null;
 }
 
-async function waitFor(condition) {
-  let value;
-  while (!(value = await condition())) await new Promise((resolve) => setImmediate(resolve));
+async function waitFor(condition: () => Promise<number | null>) {
+  let value: number | null;
+  while (!(value = await condition())) await new Promise<void>((resolve) => setImmediate(resolve));
   return value;
 }
 
-const startedPid = (id) => waitFor(() => readPid(id));
+const startedPid = (id: string) => waitFor(() => readPid(id));
 
-function hasExited(pid) {
+function hasExited(pid: number) {
   try {
     return execFileSync("ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8" })
       .trim()
@@ -192,17 +227,17 @@ function hasExited(pid) {
 }
 
 // Waits without yielding, so the search has not yet handled the exits.
-function waitForExit(pids) {
+function waitForExit(pids: number[]) {
   const giveUp = Date.now() + 10000;
   while (!pids.every(hasExited)) assert.ok(Date.now() < giveUp, `yt-dlp ${pids} did not exit`);
 }
 
 function warnings() {
-  const warned = [];
+  const warned: string[] = [];
   vi.spyOn(console, "warn").mockImplementation((...args) => {
     warned.push(JSON.stringify(args));
   });
-  return (text) => warned.some((line) => line.includes(text));
+  return (text: string) => warned.some((line) => line.includes(text));
 }
 
 for (const { name, track, unreadable = [], after = {}, chosen } of [
@@ -264,10 +299,10 @@ for (const { name, track, unreadable = [], after = {}, chosen } of [
       );
     });
     const { next } = await search(track);
-    assert.equal(next.phase, "download", next.failed);
+    assert.equal(next.phase, "download");
     assert.deepEqual(choices(next), chosen);
     assert.deepEqual(
-      (await calls()).filter((call) => !call.startsWith("read ")),
+      (await calls()).filter((call: string) => !call.startsWith("read ")),
       [`song search ${track.artistName} ${track.trackName}`],
     );
     for (const id of unreadable) assert.ok(warned(id), `no warning names unreadable song ${id}`);
@@ -292,7 +327,7 @@ test(
     vi.advanceTimersByTime(10000);
     process.kill(read, "SIGUSR2");
     const { next } = await searching;
-    assert.equal(next.phase, "download", next.failed);
+    assert.equal(next.phase, "download");
     assert.deepEqual(choices(next), [["4D7u5KF7SP8", "accept"]]);
   },
 );
@@ -392,7 +427,7 @@ test("yt-dlp searches the artist's own upload when YouTube Music lists it on ano
     durationMs: 200000,
   });
   assert.equal(next.candidates[0].raw.id, "OFFICIALAUD");
-  assert.equal(next.candidates[0].raw.song, undefined);
+  assert.equal("song" in next.candidates[0].raw, false);
   assert.deepEqual(await calls(), [
     "song search Stub Artist Stub Title",
     "read OFFICIALAUD",
@@ -429,7 +464,7 @@ test("yt-dlp reads the songs around an untitled entry in the YouTube Music list"
     durationMs: 257000,
   });
   assert.deepEqual(
-    (await calls()).filter((call) => !call.startsWith("read ")),
+    (await calls()).filter((call: string) => !call.startsWith("read ")),
     ["song search Fleetwood Mac Dreams"],
   );
   assert.deepEqual(choices(next)[0], ["swJOIjjW69U", "accept"]);
@@ -443,12 +478,13 @@ test("yt-dlp does not read a song the user denied", async () => {
     durationMs: 204760,
   };
   const jobId = downloadTracker.addJob(track, "ytdlp-song-search");
+  assert.ok(jobId != null);
   downloadTracker.recordDeniedSource(jobId, "ytdlp", "FfaeB0jZAso");
   await processYtdlpPipelinePayload({ phase: "search", source: "ytdlp", jobId }, failSource);
   const log = await calls();
   assert.equal(log[0], "song search The Used I Caught Fire");
   assert.deepEqual(
-    log.filter((call) => call.startsWith("read ")),
+    log.filter((call: string) => call.startsWith("read ")),
     [],
   );
 });
@@ -466,7 +502,10 @@ const help = {
   HELPCOVER02: { track: "Help!", album: "Help!", duration: 152, artists: ["Sound-Alike Studio"] },
 };
 
-async function useHelpSongs(ids, change = () => {}) {
+async function useHelpSongs(
+  ids: (keyof typeof help)[],
+  change: (fixtures: Fixtures) => void = () => {},
+) {
   await useFixtures((fixtures) => {
     fixtures.songLists["The Beatles Help!"] = ids.map((id) => ({ id, title: help[id].track }));
     for (const id of ids) fixtures.songs[id] = { artists: ["The Beatles"], ...help[id] };
@@ -490,7 +529,7 @@ test("yt-dlp accepts only the requested album's copy of a song outright and reje
 
 test("yt-dlp imports the requested album's song that YouTube Music labels mono", async () => {
   const satisfaction = "(I Can't Get No) Satisfaction";
-  const songs = [
+  const songs: [string, string, string, string, number][] = [
     ["eUpb-ALfUzc", `${satisfaction} (Mono)`, "Out Of Our Heads", "The Rolling Stones", 223],
     [
       "MSSxnv1_J2g",
@@ -522,18 +561,17 @@ test("yt-dlp imports the requested album's song that YouTube Music labels mono",
     albumName: "Out of Our Heads",
     durationMs: 222000,
   });
-  assert.equal(download.phase, "download", download.failed);
+  assert.equal(download.phase, "download");
   assert.deepEqual(choices(download), [
     ["eUpb-ALfUzc", "accept"],
     ["MSSxnv1_J2g", "verify"],
   ]);
-  const finalize = await processYtdlpPipelinePayload(
-    { ...download, destination: "ytdlp-song-search" },
-    failSource,
-  );
-  await processYtdlpPipelinePayload(finalize, failSource);
+  const finalize = await runPipeline({ ...download, destination: "ytdlp-song-search" });
+  assert.ok(finalize != null);
+  await runPipeline(finalize);
   const job = downloadTracker.getJob(jobId);
-  assert.equal(job.status, "done", job.error);
+  assert.ok(job != null);
+  assert.equal(job.status, "done", job.error || "");
   assert.equal(job.releaseGuid, "eUpb-ALfUzc");
 });
 
@@ -580,14 +618,14 @@ for (const { name, albumName = "1", fileAlbum, imported } of [
       albumName,
       durationMs: 138000,
     });
-    assert.equal(download.phase, "download", download.failed);
-    const finalize = await processYtdlpPipelinePayload(
-      { ...download, destination: "ytdlp-song-search" },
-      failSource,
-    );
-    assert.equal(finalize.phase, "finalize", finalize.failed);
-    await processYtdlpPipelinePayload(finalize, failSource);
-    assert.equal(downloadTracker.getJob(jobId).status === "done", imported);
+    assert.equal(download.phase, "download");
+    const finalize = await runPipeline({ ...download, destination: "ytdlp-song-search" });
+    assert.ok(finalize != null);
+    assert.equal(finalize.phase, "finalize");
+    await runPipeline(finalize);
+    const job = downloadTracker.getJob(jobId);
+    assert.ok(job);
+    assert.equal(job.status === "done", imported);
   });
 }
 
@@ -609,7 +647,7 @@ test("yt-dlp searches videos when no YouTube Music song is the requested recordi
   ]);
   assert.equal(next.candidates[0].raw.id, "o1sUaVJUeB0");
   assert.equal(
-    next.candidates.some((entry) => entry.raw.song),
+    next.candidates.some((entry) => "song" in entry.raw && entry.raw.song),
     false,
   );
 });
@@ -625,7 +663,7 @@ test("yt-dlp searches videos when the YouTube Music search fails", async () => {
     "song search Nirvana Come as You Are",
     "video search Nirvana Come as You Are",
   ]);
-  assert.equal(next.phase, "download", next.failed);
+  assert.equal(next.phase, "download");
 });
 
 for (const track of [
@@ -645,20 +683,21 @@ for (const track of [
 ]) {
   test(`yt-dlp imports the YouTube Music song "${track.trackName}" by its own tags`, async () => {
     const { jobId, next: download } = await search(track);
-    assert.equal(download.phase, "download", download.failed);
-    const finalize = await processYtdlpPipelinePayload(
-      { ...download, destination: "ytdlp-song-search" },
-      failSource,
-    );
-    assert.equal(finalize.phase, "finalize", finalize.failed);
-    const result = await processYtdlpPipelinePayload(finalize, failSource);
-    assert.equal(result?.failed, undefined);
+    assert.equal(download.phase, "download");
+    const finalize = await runPipeline({ ...download, destination: "ytdlp-song-search" });
+    assert.ok(finalize != null);
+    assert.equal(finalize.phase, "finalize");
+    const result = await runPipeline(finalize);
+    assert.equal(result, null);
     const job = downloadTracker.getJob(jobId);
-    assert.equal(job.status, "done", job.error);
+    assert.ok(job != null);
+    assert.equal(job.status, "done", job.error || "");
     assert.equal(job.releaseGuid, download.candidates[0].raw.id);
+    assert.ok(job.finalPath);
     await access(job.finalPath);
     const { common } = await parseFile(job.finalPath);
     assert.equal(common.title, track.trackName);
+    assert.ok(finalize.downloadedPath);
     await assert.rejects(access(path.dirname(finalize.downloadedPath)));
   });
 }

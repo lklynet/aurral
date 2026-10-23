@@ -9,9 +9,9 @@ import {
 
 const [isolatedState, { db }, libraryStore, managementStore] = await setupIsolatedBackend(
   "artist-management-merge",
-  "backend/config/db-sqlite.ts",
-  "backend/services/libraryMediaStore.ts",
-  "backend/services/libraryManagementStore.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/services/libraryMediaStore.ts"),
+  () => import("../../backend/services/libraryManagementStore.ts"),
 );
 
 afterAll(() => cleanupIsolatedState(isolatedState));
@@ -44,7 +44,11 @@ test("merging an artist into its MBID identity retains management settings", () 
     syncSearch: false,
   });
 
-  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM library_artists").get().count, 1);
+  assert.equal(
+    db.prepare<unknown[], { count: number }>("SELECT COUNT(*) AS count FROM library_artists").get()!
+      .count,
+    1,
+  );
   const management = managementStore.getLibraryManagementEntry("artist", resolved.id);
   assert.equal(management?.managedBy, "aurral");
   assert.equal(management?.monitorMode, "all");

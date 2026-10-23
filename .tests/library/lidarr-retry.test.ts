@@ -6,17 +6,17 @@ import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTe
 const [isolatedState, { db }, honkerDb, libraryManagerModule, systemTaskWorker] =
   await setupIsolatedBackend(
     "lidarr-retry",
-    "backend/config/db-sqlite.ts",
-    "backend/services/honkerDb.ts",
-    "backend/services/libraryManager.ts",
-    "backend/services/systemTaskWorker.ts",
+    () => import("../../backend/config/db-sqlite.ts"),
+    () => import("../../backend/services/honkerDb.ts"),
+    () => import("../../backend/services/libraryManager.ts"),
+    () => import("../../backend/services/systemTaskWorker.ts"),
   );
 const { lidarrClient } = await import("../../backend/services/lidarrClient.ts");
 const { libraryManager } = libraryManagerModule;
 
 function getPendingRetryJobs() {
   return db
-    .prepare(
+    .prepare<unknown[], { id: number; payload: string }>(
       `
         SELECT id, payload
         FROM _honker_live
@@ -28,8 +28,8 @@ function getPendingRetryJobs() {
 }
 
 async function settleRetryEnqueues() {
-  await new Promise((resolve) => setImmediate(resolve));
-  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  await new Promise<void>((resolve) => setImmediate(resolve));
 }
 
 afterAll(async () => {
@@ -64,9 +64,13 @@ test("unavailable Lidarr keeps one retry job and continues its retry chain", asy
     firstRetryJob.id,
   );
   const claimedRetry = queue.claimOne(honkerDb.getWorkerId());
+  assert.ok(claimedRetry != null);
   assert.equal(claimedRetry?.id, firstRetryJob.id);
 
-  await systemTaskWorker.processSystemTask({ kind: "lidarr-retry" }, claimedRetry);
+  await systemTaskWorker.processSystemTask(
+    { kind: "lidarr-retry" },
+    claimedRetry as Parameters<typeof systemTaskWorker.processSystemTask>[1],
+  );
   await settleRetryEnqueues();
 
   const successorJobs = getPendingRetryJobs();

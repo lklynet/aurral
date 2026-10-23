@@ -20,16 +20,17 @@ const [
   { PlaylistManager },
 ] = await setupIsolatedBackend(
   "plex-playback-destination",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/plex/plexConnectionStore.ts",
-  "backend/services/plex/plexPlaylistPointerStore.ts",
-  "backend/services/playlists/flowPlaylistConfig.ts",
-  "backend/services/playback/plexPlaybackDestination.ts",
-  "backend/services/playlists/playlistManager.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/plex/plexConnectionStore.ts"),
+  () => import("../../backend/services/plex/plexPlaylistPointerStore.ts"),
+  () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
+  () => import("../../backend/services/playback/plexPlaybackDestination.ts"),
+  () => import("../../backend/services/playlists/playlistManager.ts"),
 );
 
 const downloadRoot = process.env.WEEKLY_FLOW_FOLDER;
+assert.ok(downloadRoot != null);
 
 beforeEach(async () => {
   resetDatabase(db);
@@ -46,7 +47,11 @@ beforeEach(async () => {
 afterEach(() => vi.restoreAllMocks());
 afterAll(() => cleanupIsolatedState(isolatedState));
 
-function makeDestination(config = {}) {
+function makeDestination(
+  config: NonNullable<
+    Parameters<InstanceType<typeof PlexPlaybackDestination>["updateConfig"]>[0]
+  > = {},
+) {
   const destination = new PlexPlaybackDestination(downloadRoot);
   destination.updateConfig({
     url: "http://plex.local:32400",
@@ -54,17 +59,30 @@ function makeDestination(config = {}) {
     clientId: "admin-client",
     ...config,
   });
+  assert.ok(destination.isConfigured());
   return destination;
 }
 
-function servePlex(sections) {
+function servePlex(sections: Record<string, { ratingKey: string; files: string[] }[]>) {
   vi.spyOn(PlexClient.prototype, "ensureAurralLibrary").mockImplementation(async () => ({
     key: "7",
   }));
-  vi.spyOn(PlexClient.prototype, "getTracks").mockImplementation(
-    async (sectionId) => sections[sectionId] ?? [],
+  vi.spyOn(PlexClient.prototype, "getTracks").mockImplementation(async (sectionId) =>
+    (sections[sectionId] ?? []).map((track) => ({
+      title: "Track",
+      artist: "Artist",
+      addedAt: Math.floor(Date.now() / 1000),
+      ...track,
+    })),
   );
-  const published = [];
+  const published: {
+    ratingKey?: string | number | null;
+    previousTitle?: string | null;
+    previousDescription?: string | null;
+    title: string;
+    description?: string | null;
+    ratingKeys: (string | number)[] | null | undefined;
+  }[] = [];
   vi.spyOn(PlexClient.prototype, "syncPlaylist").mockImplementation(async (value) => {
     published.push(value);
     return { ratingKey: "88" };
@@ -72,7 +90,7 @@ function servePlex(sections) {
   return published;
 }
 
-function snapshot(overrides = {}) {
+function snapshot(overrides: { tracks?: { path: string; title: string; artist: string }[] } = {}) {
   return {
     entityId: "flow-1",
     ownerUserId: null,
@@ -84,6 +102,7 @@ function snapshot(overrides = {}) {
 
 test("selects the global client for its owner and a linked client for another owner", () => {
   const owner = userOps.createUser("linked", "hash", "user");
+  assert.ok(owner != null);
   plexConnectionStore.saveConnection(owner.id, {
     linkType: "self",
     token: "owner-token",
@@ -96,6 +115,7 @@ test("selects the global client for its owner and a linked client for another ow
 
   assert.equal(destination._ownerClient(null, cache), destination.client);
   const selected = destination._ownerClient(owner.id, cache);
+  assert.ok(selected != null);
   assert.notEqual(selected, destination.client);
   assert.equal(selected.token, "owner-token");
   assert.equal(selected.clientId, "owner-client");
@@ -104,7 +124,9 @@ test("selects the global client for its owner and a linked client for another ow
 
 test("allows only the configured global owner unless another owner has a Plex link", () => {
   const configured = userOps.createUser("configured", "hash", "admin");
+  assert.ok(configured != null);
   const other = userOps.createUser("other", "hash", "admin");
+  assert.ok(other != null);
   const destination = makeDestination({ configuredByUserId: configured.id });
 
   assert.equal(destination._isOwnerBlocked(configured.id, new Map()), false);
@@ -121,6 +143,7 @@ test("allows only the configured global owner unless another owner has a Plex li
 
 test("recovers a managed-user token and retries with the stored client identifier", async () => {
   const owner = userOps.createUser("managed", "hash", "user");
+  assert.ok(owner != null);
   plexConnectionStore.saveConnection(owner.id, {
     linkType: "managed",
     token: "stale-token",
@@ -133,16 +156,16 @@ test("recovers a managed-user token and retries with the stored client identifie
       return "fresh-token";
     },
   );
-  vi.spyOn(PlexClient, "getResources").mockImplementation(async () => ({ servers: [] }));
+  vi.spyOn(PlexClient, "getResources").mockImplementation(async () => ({ servers: [], total: 0 }));
   const destination = makeDestination();
   destination.client._machineIdentifier = "server-id";
-  const seen = [];
+  const seen: (string | null)[] = [];
 
   const result = await destination._withOwnerClient(owner.id, new Map(), async (client) => {
-    seen.push(client.token);
-    if (client.token === "stale-token") {
-      const error = new Error("expired");
-      error.response = { status: 401 };
+    seen.push(client!.token);
+    if (client!.token === "stale-token") {
+      const error = Object.assign(new Error("expired"), { response: { status: 401 } });
+
       throw error;
     }
     return "published";
@@ -150,7 +173,7 @@ test("recovers a managed-user token and retries with the stored client identifie
 
   assert.equal(result, "published");
   assert.deepEqual(seen, ["stale-token", "fresh-token"]);
-  assert.equal(plexConnectionStore.getConnection(owner.id).token, "fresh-token");
+  assert.equal(plexConnectionStore.getConnection(owner.id)!.token, "fresh-token");
 });
 
 test("resolves managed and reused Lidarr paths to private Plex rating keys", async () => {
@@ -261,6 +284,7 @@ test("upserts from the entity-owner pointer and stores the returned pointer priv
   assert.equal(published[0].ratingKey, "88");
   assert.deepEqual(published[0].ratingKeys, ["101"]);
   const stored = plexPlaylistPointerStore.getPointer("flow-1", "global");
+  assert.ok(stored != null);
   assert.equal(stored.ratingKey, "88");
   assert.equal(stored.title, "Discover Weekly");
 
@@ -274,7 +298,7 @@ test("upserts from the entity-owner pointer and stores the returned pointer priv
     "an unchanged playlist is published again once its pointer is gone",
   );
   assert.equal(published[1].ratingKey, null);
-  assert.equal(plexPlaylistPointerStore.getPointer("flow-1", "global").ratingKey, "88");
+  assert.equal(plexPlaylistPointerStore.getPointer("flow-1", "global")!.ratingKey, "88");
 });
 
 test("deletes the pointed playlist and forgets only that entity-owner state", async () => {
@@ -289,7 +313,7 @@ test("deletes the pointed playlist and forgets only that entity-owner state", as
     ratingKey: "99",
     title: "Keep",
   });
-  const deleted = [];
+  const deleted: (string | number)[] = [];
   vi.spyOn(PlexClient.prototype, "deletePlaylist").mockImplementation(async (ratingKey) => {
     deleted.push(ratingKey);
   });
@@ -297,7 +321,7 @@ test("deletes the pointed playlist and forgets only that entity-owner state", as
   assert.deepEqual(await destination.deletePlaylist(snapshot()), { ok: true });
   assert.deepEqual(deleted, ["88"]);
   assert.equal(plexPlaylistPointerStore.getPointer("flow-1", "global"), null);
-  assert.equal(plexPlaylistPointerStore.getPointer("flow-2", "global").ratingKey, "99");
+  assert.equal(plexPlaylistPointerStore.getPointer("flow-2", "global")!.ratingKey, "99");
 });
 
 test("an entity delete that Plex rejects keeps the pointer so the sync job can retry it", async () => {
@@ -308,7 +332,7 @@ test("an entity delete that Plex rejects keeps the pointer so the sync job can r
     title: "Removed from Aurral",
   });
   let available = false;
-  const deleted = [];
+  const deleted: (string | number)[] = [];
   vi.spyOn(PlexClient.prototype, "deletePlaylist").mockImplementation(async (ratingKey) => {
     if (!available)
       throw Object.assign(new Error("Plex unavailable"), { response: { status: 503 } });
@@ -318,7 +342,7 @@ test("an entity delete that Plex rejects keeps the pointer so the sync job can r
   const failed = await destination.deleteEntityPlaylists("gone");
   assert.equal(failed.ok, false);
   assert.equal(failed.error.retryable, true);
-  assert.equal(plexPlaylistPointerStore.getPointer("gone", "global").ratingKey, "77");
+  assert.equal(plexPlaylistPointerStore.getPointer("gone", "global")!.ratingKey, "77");
 
   available = true;
   assert.deepEqual(await destination.deleteEntityPlaylists("gone"), { ok: true });
@@ -340,8 +364,12 @@ test("forgets an unreachable pointer after Plex configuration is cleared", async
 
 test("refreshes only changed folders inside the Aurral section", async () => {
   const destination = makeDestination({ downloadsPath: "/downloads" });
-  const calls = [];
-  let reportedLocations = [];
+  const calls: (
+    | string
+    | { [x: string]: string | number | boolean | null | undefined }
+    | undefined
+  )[][] = [];
+  let reportedLocations: string[] = [];
   vi.spyOn(PlexClient.prototype, "ensureAurralLibrary").mockImplementation(async (libraryPath) => {
     calls.push(["ensure", libraryPath]);
     return { key: "7", Location: reportedLocations.map((location) => ({ path: location })) };
@@ -357,7 +385,7 @@ test("refreshes only changed folders inside the Aurral section", async () => {
   assert.deepEqual(await destination.requestScan({ folders: ["/lidarr/music/Artist"] }), {
     ok: true,
   });
-  assert.deepEqual(calls, []);
+  assert.deepEqual([...calls], []);
   assert.deepEqual(await destination.requestScan({ folders: [album, "/lidarr/music/Artist"] }), {
     ok: true,
   });
@@ -405,7 +433,7 @@ test("refreshes only changed folders inside the Aurral section", async () => {
       "/downloads/Artist/Album (2001)",
     ],
     ["D:\\Aurral", [], "D:/Aurral", "D:/Aurral/Artist/Album (2001)"],
-  ]) {
+  ] satisfies [string, string[], string, string][]) {
     calls.length = 0;
     reportedLocations = reported;
     assert.deepEqual(await makeDestination({ downloadsPath }).requestScan({ folders: [album] }), {
@@ -421,7 +449,17 @@ test("refreshes only changed folders inside the Aurral section", async () => {
 test("configures Plex with the download root and explicit flow location", async () => {
   const client = new PlexClient("http://plex.local:32400", "admin-token", "admin-client");
   const root = "/downloads/aurral";
-  const calls = [];
+  const calls: {
+    requestPath: string;
+    options:
+      | {
+          params?: { [x: string]: string | number | boolean | null | undefined };
+          method?: "GET" | "POST" | "PUT" | "DELETE";
+          data?: unknown;
+          timeout?: number;
+        }
+      | undefined;
+  }[] = [];
   let reads = 0;
   vi.spyOn(client, "getLibraries").mockImplementation(async () => {
     reads += 1;
@@ -440,30 +478,39 @@ test("configures Plex with the download root and explicit flow location", async 
     return {};
   });
 
-  assert.equal((await client.ensureAurralLibrary(root)).key, "7");
+  assert.equal((await client.ensureAurralLibrary(root))!.key, "7");
   assert.equal(calls.length, 1);
   assert.equal(
     calls[0].requestPath,
     `/library/sections?name=Aurral&type=artist&agent=tv.plex.agents.music&scanner=Plex+Music&language=en-US&location=${encodeURIComponent(root)}&location=${encodeURIComponent(`${root}/_flows`)}`,
   );
-  assert.equal(calls[0].options.method, "POST");
+  assert.equal(calls[0].options!.method, "POST");
 });
 
 test("keeps Navidrome and Plex failures isolated when both destinations are configured", async () => {
   vi.spyOn(console, "warn").mockImplementation(() => {});
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Isolation" });
   const manager = new PlaylistManager(downloadRoot);
-  const calls = [];
-  manager.navidromeDestination.isConfigured = () => true;
+  const calls: string[] = [];
+  manager.navidromeDestination.updateConfig({
+    url: "http://navidrome.local",
+    username: "admin",
+    password: "password",
+  });
   manager.navidromeDestination.ensureLibrary = async () => ({ ok: true });
   manager.navidromeDestination.publishPlaylist = async () => ({
     ok: false,
-    error: { message: "Navidrome unavailable" },
+    error: { code: "unavailable", retryable: true, message: "Navidrome unavailable" },
   });
-  manager.plexDestination.isConfigured = () => true;
+  manager.plexDestination.updateConfig({
+    url: "http://plex.local",
+    token: "token",
+    clientId: "client",
+  });
   manager.plexDestination.ensureLibrary = async () => ({ ok: true });
   manager.plexDestination.publishPlaylist = async (value) => {
-    calls.push(value.entityId);
+    assert.ok(value);
+    calls.push(String(value.entityId));
     return { ok: true };
   };
 
@@ -473,7 +520,7 @@ test("keeps Navidrome and Plex failures isolated when both destinations are conf
   manager.navidromeDestination.publishPlaylist = async () => ({ ok: true });
   manager.plexDestination.publishPlaylist = async () => ({
     ok: false,
-    error: { message: "Plex unavailable" },
+    error: { code: "unavailable", retryable: true, message: "Plex unavailable" },
   });
   await assert.doesNotReject(manager.syncPlaylists());
 });
@@ -482,19 +529,32 @@ test("a destination whose library cannot be verified gets no publishes while the
   vi.spyOn(console, "warn").mockImplementation(() => {});
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Blocked setup" });
   const manager = new PlaylistManager(downloadRoot);
-  const published = [];
-  manager.navidromeDestination.isConfigured = () => true;
+  const published: unknown[][] = [];
+  manager.navidromeDestination.updateConfig({
+    url: "http://navidrome.local",
+    username: "admin",
+    password: "password",
+  });
   manager.navidromeDestination.ensureLibrary = async () => ({
     ok: false,
-    error: { message: "Navidrome library path verification failed" },
+    error: {
+      code: "unavailable",
+      retryable: true,
+      message: "Navidrome library path verification failed",
+    },
   });
   manager.navidromeDestination.publishPlaylist = async () => {
     published.push(["Navidrome", playlist.id]);
     return { ok: true };
   };
-  manager.plexDestination.isConfigured = () => true;
+  manager.plexDestination.updateConfig({
+    url: "http://plex.local",
+    token: "token",
+    clientId: "client",
+  });
   manager.plexDestination.ensureLibrary = async () => ({ ok: true });
   manager.plexDestination.publishPlaylist = async (value) => {
+    assert.ok(value);
     published.push(["Plex", value.entityId]);
     return { ok: true };
   };

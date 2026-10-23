@@ -983,7 +983,7 @@ export function getHonkerQueueNextClaimAt(queueName: string) {
 
 export function requeueInterruptedHonkerJob(
   job: Job,
-  queue: Queue,
+  queue: Pick<Queue, "name">,
   { refundAttempt = true }: { refundAttempt?: boolean } = {},
 ) {
   const tx = getHonkerDb().transaction();
@@ -1039,7 +1039,7 @@ export function mergeIntoPendingHonkerJob(
   }
 }
 
-export function adjustHonkerClaimAttempts(job: Job, queue: Queue, delta: number) {
+export function adjustHonkerClaimAttempts(job: Job, queue: Pick<Queue, "name">, delta: number) {
   const tx = getHonkerDb().transaction();
   try {
     const changed = tx.execute(

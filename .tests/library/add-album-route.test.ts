@@ -1,3 +1,4 @@
+import { createRouteHarness, createResponse } from "./routeHarness.ts";
 import assert from "node:assert/strict";
 import { test, afterAll, vi } from "vite-plus/test";
 
@@ -5,17 +6,11 @@ import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTe
 
 const [state, { registerAlbums }, { libraryManager }] = await setupIsolatedBackend(
   "add-album-route",
-  "backend/routes/library/handlers/albums.ts",
-  "backend/services/libraryManager.ts",
+  () => import("../../backend/routes/library/handlers/albums.ts"),
+  () => import("../../backend/services/libraryManager.ts"),
 );
 
-const routes = new Map();
-registerAlbums({
-  post: (path, ...handlers) => routes.set(`POST ${path}`, handlers.at(-1)),
-  get: () => {},
-  put: () => {},
-  delete: () => {},
-});
+const routes = createRouteHarness(registerAlbums);
 
 afterAll(() => cleanupIsolatedState(state));
 
@@ -28,8 +23,8 @@ test("adding an album answers 201 once the album is in the library", async () =>
     mbid: "72222222-2222-4222-8222-222222222222",
     foreignAlbumId: "72222222-2222-4222-8222-222222222222",
     statistics: { trackCount: 0, sizeOnDisk: 0, percentOfTracks: 0 },
-  });
-  const response = { statusCode: 200, body: null };
+  } as Awaited<ReturnType<typeof libraryManager.addAlbum>>);
+  const response = createResponse<{ queued: boolean }>();
   await routes.get("POST /albums")(
     {
       body: {
@@ -40,16 +35,7 @@ test("adding an album answers 201 once the album is in the library", async () =>
       },
       user: { id: 1, role: "admin", permissions: {} },
     },
-    {
-      status(code) {
-        response.statusCode = code;
-        return this;
-      },
-      json(value) {
-        response.body = value;
-        return this;
-      },
-    },
+    response,
   );
   assert.equal(response.statusCode, 201);
   assert.equal(response.body.queued, false);

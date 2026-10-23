@@ -1,10 +1,6 @@
 import { test, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
-import {
-  importFromRepo,
-  setupIsolatedBackend,
-  cleanupIsolatedState,
-} from "../helpers/backendTestHarness.ts";
+import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.ts";
 
 const [isolatedState] = await setupIsolatedBackend("single-pass-refresh");
 
@@ -13,9 +9,8 @@ afterAll(async () => {
 });
 
 test("single-pass refresh: applyHydratedCandidateTags recalculates score when candidate tags replace seed tags", async () => {
-  const { applyHydratedCandidateTags } = await importFromRepo(
-    "backend/services/discovery/recommendationPipeline.ts",
-  );
+  const { applyHydratedCandidateTags } =
+    await import("../../backend/services/discovery/recommendationPipeline.ts");
 
   const recommendation = {
     id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
@@ -48,5 +43,6 @@ test("single-pass refresh: applyHydratedCandidateTags recalculates score when ca
   assert.equal(hydrated.scoreTagAffinity, 45);
   assert.equal(hydrated.candidateTagsHydrated, true);
   assert.equal(hydrated.tagSource, "lastfm_artist");
+  assert.ok(hydrated.scoreTotal != null);
   assert.ok(hydrated.scoreTotal > 120);
 });

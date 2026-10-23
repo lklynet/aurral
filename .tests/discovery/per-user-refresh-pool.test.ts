@@ -1,10 +1,9 @@
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
-import { importFromRepo } from "../helpers/backendTestHarness.ts";
 
 test("per-user refresh: user-specific feedback is isolated from global feedback", async () => {
   const { addDiscoveryFeedback, getDiscoveryFeedback, resetDiscoveryFeedback } =
-    await importFromRepo("backend/services/discovery/index.ts");
+    await import("../../backend/services/discovery/index.ts");
 
   resetDiscoveryFeedback("global");
   resetDiscoveryFeedback("user-abc");
@@ -38,9 +37,8 @@ test("per-user refresh: user-specific feedback is isolated from global feedback"
 });
 
 test("per-user refresh: addDiscoveryFeedback deduplicates feedback per user", async () => {
-  const { addDiscoveryFeedback, getDiscoveryFeedback } = await importFromRepo(
-    "backend/services/discovery/index.ts",
-  );
+  const { addDiscoveryFeedback, getDiscoveryFeedback } =
+    await import("../../backend/services/discovery/index.ts");
 
   addDiscoveryFeedback("user-dedup", {
     id: "dedup-1",
@@ -65,9 +63,8 @@ test("per-user refresh: addDiscoveryFeedback deduplicates feedback per user", as
 });
 
 test("per-user refresh: feedback boost affects reranking for per-user pool", async () => {
-  const { rerankRecommendations } = await importFromRepo(
-    "backend/services/discovery/recommendationPipeline.ts",
-  );
+  const { rerankRecommendations } =
+    await import("../../backend/services/discovery/recommendationPipeline.ts");
 
   const recPool = [
     {
@@ -104,7 +101,6 @@ test("per-user refresh: feedback boost affects reranking for per-user pool", asy
     discoveryMode: "balanced",
     feedback: [
       {
-        id: "fb-mlr",
         artistId: "11111111-1111-1111-1111-111111111111",
         action: "more_like_this",
       },

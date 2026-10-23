@@ -30,7 +30,7 @@ test("allows canonical token definitions and valid Aurral token references", () 
     { filePath: "tokens.css", tokenNames },
   );
 
-  assert.deepEqual(findings, []);
+  assert.deepEqual([...findings], []);
 });
 
 test("does not treat color words inside Aurral token names as hard-coded colors", () => {
@@ -45,7 +45,7 @@ test("does not treat color words inside Aurral token names as hard-coded colors"
     { filePath: "card.css", tokenNames },
   );
 
-  assert.deepEqual(findings, []);
+  assert.deepEqual([...findings], []);
 });
 
 test("reports hard-coded theme colors with property-matched token suggestions", () => {
@@ -112,7 +112,7 @@ test("allows runtime artwork colors and geometry variables", () => {
     { filePath: "artwork.css", tokenNames },
   );
 
-  assert.deepEqual(findings, []);
+  assert.deepEqual([...findings], []);
 });
 
 test("allows the DotLoader runtime geometry properties", () => {
@@ -126,7 +126,7 @@ test("allows the DotLoader runtime geometry properties", () => {
     { filePath: "loader.css", tokenNames },
   );
 
-  assert.deepEqual(findings, []);
+  assert.deepEqual([...findings], []);
 });
 
 test("catches hard-coded colors hidden behind local custom properties", () => {
@@ -156,8 +156,16 @@ test("reports malformed stylesheets as source-located findings", () => {
   assert.match(findings[0].message, /broken\.css:1/);
 });
 
-const ruleFindings = (findings, ruleId) =>
-  findings.filter((finding) => finding.ruleId === ruleId).map(({ line }) => line);
+const ruleFindings = (
+  findings: {
+    filePath: string;
+    line: number;
+    ruleId: string;
+    suggestion: string | null;
+    message: string;
+  }[],
+  ruleId: string,
+) => findings.filter((finding) => finding.ruleId === ruleId).map(({ line }) => line);
 
 test("reports raw motion durations and easings outside the motion tokens", () => {
   const findings = lintCss(

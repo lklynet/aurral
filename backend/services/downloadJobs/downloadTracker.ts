@@ -82,7 +82,12 @@ export type HeldForReview = {
   metadata?: DownloadMetadata;
 };
 type DownloadMetadataKey = (typeof DOWNLOAD_METADATA_KEYS)[number];
-type DownloadMetadata = Partial<Record<DownloadMetadataKey, string | null>>;
+type DownloadMetadata = {
+  [Key in DownloadMetadataKey]?:
+    | string
+    | null
+    | (Key extends "downloadClientId" | "indexerId" ? number : never);
+};
 type TextMetadataKey =
   | "artistName"
   | "trackName"
@@ -493,7 +498,7 @@ export type HeldForReviewDraft = Omit<HeldForReview, "sourcePath"> & {
 const hasSourcePath = (held: HeldForReviewDraft | null | undefined): held is HeldForReview =>
   Boolean(held?.sourcePath);
 
-type PipelineCandidate = { raw?: unknown };
+type PipelineCandidate = { raw?: unknown; [field: string]: unknown };
 
 export type PipelinePayload = Partial<{
   [

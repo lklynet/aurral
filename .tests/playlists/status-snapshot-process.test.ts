@@ -1,3 +1,4 @@
+import { requireFixture } from "./fixtures.ts";
 import { test, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -12,16 +13,16 @@ const [
   { getPlaylistStatusSnapshot },
 ] = await setupIsolatedBackend(
   "status-snapshot-process",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/playlists/flowPlaylistConfig.ts",
-  "backend/services/downloadJobs/downloadTracker.ts",
-  "backend/services/playlists/playlistStatusSnapshot.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
+  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
+  () => import("../../backend/services/playlists/playlistStatusSnapshot.ts"),
 );
 
 afterAll(() => cleanupIsolatedState(state));
 
-function writeFromAnotherProcess(sql, parameters) {
+function writeFromAnotherProcess(sql: string, parameters: (string | null)[]) {
   const script = `
     import { createRequire } from 'node:module';
     const require = createRequire(new URL('./backend/config/db-sqlite.ts', 'file://' + process.cwd() + '/'));
@@ -50,8 +51,12 @@ test("production snapshots refresh persisted membership and access changes witho
   const previousMode = process.env.NODE_ENV;
   process.env.NODE_ENV = "development";
   try {
-    const read = () => getPlaylistStatusSnapshot({ user: { id: 1, role: "user" } });
+    const read = () =>
+      getPlaylistStatusSnapshot({
+        user: { id: 1, role: "user", username: "test", permissions: {} },
+      });
     const first = read().sharedPlaylists.find((entry) => entry.id === playlist.id);
+    assert.ok(first != null);
     assert.equal(first.name, "Original");
     assert.equal(first.trackEntries.length, 1);
     assert.deepEqual(read().sharedPlaylists, read().sharedPlaylists);
@@ -69,7 +74,13 @@ test("production snapshots refresh persisted membership and access changes witho
     assert.equal(updated.sharedPlaylistStats[playlist.id].failed, 1);
 
     const stored = JSON.parse(
-      db.prepare("SELECT value FROM settings WHERE key = 'sharedPlaylists'").get().value,
+      requireFixture(
+        db
+          .prepare<unknown[], { value: import("../../backend/db/rows.ts").SettingsRow["value"] }>(
+            "SELECT value FROM settings WHERE key = 'sharedPlaylists'",
+          )
+          .get(),
+      ).value,
     );
     stored[0].name = "Renamed elsewhere";
     stored[0].tracks = [{ artistName: "Manual artist", trackName: "Manual track" }];
@@ -83,20 +94,20 @@ test("production snapshots refresh persisted membership and access changes witho
 
     writeFromAnotherProcess("DELETE FROM playlist_download_jobs WHERE id = ?", [jobId]);
     assert.equal(read().sharedPlaylists[0].trackIdentities.length, 1);
-    assert.deepEqual(read().sharedPlaylists[0].trackEntries, []);
+    assert.deepEqual([...read().sharedPlaylists[0].trackEntries], []);
 
     stored[0].ownerUserId = 2;
     writeFromAnotherProcess("UPDATE settings SET value = ? WHERE key = ?", [
       JSON.stringify(stored),
       "sharedPlaylists",
     ]);
-    assert.deepEqual(read().sharedPlaylists, []);
+    assert.deepEqual([...read().sharedPlaylists], []);
 
     writeFromAnotherProcess("UPDATE settings SET value = ? WHERE key = ?", [
       "[]",
       "sharedPlaylists",
     ]);
-    assert.deepEqual(getPlaylistStatusSnapshot().sharedPlaylists, []);
+    assert.deepEqual([...getPlaylistStatusSnapshot().sharedPlaylists], []);
   } finally {
     process.env.NODE_ENV = previousMode;
   }

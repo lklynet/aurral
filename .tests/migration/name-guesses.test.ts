@@ -51,12 +51,27 @@ test("upgrading forgets artists and albums guessed from a name and keeps the Lib
     start();
 
     assert.deepEqual(
-      db.prepare("SELECT artist_name_key FROM musicbrainz_artist_mbid_cache").pluck().all(),
+      db
+        .prepare<
+          unknown[],
+          {
+            artist_name_key: import("../../backend/db/rows.ts").MusicbrainzArtistMbidCacheRow["artist_name_key"];
+          }
+        >("SELECT artist_name_key FROM musicbrainz_artist_mbid_cache")
+        .pluck()
+        .all(),
       ["library:koyo"],
     );
-    assert.deepEqual(db.prepare("SELECT cache_key FROM deezer_mbid_cache").pluck().all(), [
-      "artist_rg:022589ac-f6ec-4b39-9b8f-2e0b5c66c2ff",
-    ]);
+    assert.deepEqual(
+      db
+        .prepare<
+          unknown[],
+          { cache_key: import("../../backend/db/rows.ts").DeezerMbidCacheRow["cache_key"] }
+        >("SELECT cache_key FROM deezer_mbid_cache")
+        .pluck()
+        .all(),
+      ["artist_rg:022589ac-f6ec-4b39-9b8f-2e0b5c66c2ff"],
+    );
   } finally {
     db.close();
     await rm(state.baseDir, { recursive: true, force: true });

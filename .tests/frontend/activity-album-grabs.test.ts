@@ -6,17 +6,29 @@ import {
 } from "../../frontend/src/pages/activity/activityListUtils.ts";
 import { matchesActivityView } from "../../frontend/src/navigation/activityNavConfig.ts";
 
+type ActivityRequest = Parameters<typeof groupAlbumGrabRequests>[0][number];
+
 function albumTracks({
   id = "grab-one",
   statuses = ["completed", "processing", "pending"],
   phase = "poll",
-} = {}) {
+}: {
+  id?: string;
+  statuses?: ActivityRequest["status"][];
+  phase?: NonNullable<ActivityRequest["albumGrab"]>["phase"];
+} = {}): ActivityRequest[] {
   const memberJobIds = statuses.map((_, index) => `${id}-${index}`);
-  return statuses.map((status, index) => ({
+  return statuses.map((status, index): ActivityRequest => ({
     id: `history-${memberJobIds[index]}`,
     jobId: memberJobIds[index],
     kind: "track_download",
     playlistId: "library",
+    albumId: null,
+    albumMbid: null,
+    canReSearch: false,
+    inQueue: false,
+    source: "aurral",
+    type: "track",
     albumName: "Everything Now",
     artistName: "Arcade Fire",
     trackName: `Song ${index + 1}`,
@@ -30,8 +42,7 @@ function albumTracks({
     albumGrab: {
       id,
       memberJobIds,
-      requestGroupId: id,
-      albumMbid: "release-one",
+      fallbackReason: null,
       phase,
       source: "slskd",
       requestedAt: "2026-09-29T15:06:00Z",
@@ -46,7 +57,7 @@ test("an album grab keeps completed tracks inside its queue row until every trac
   assert.equal(row.statusLabel, "Downloading album");
   assert.equal(row.progressLabel, "1 of 3 tracks ready");
   assert.deepEqual(
-    row.children.map((child) => child.trackName),
+    row.children?.map((child) => child.trackName),
     ["Song 1", "Song 2", "Song 3"],
   );
   assert.equal(matchesActivityView(row, "queue"), true);
@@ -76,7 +87,7 @@ test("track-only requests and distinct album grabs are never combined by album t
   assert.ok(rows.includes(trackOnly));
   assert.ok(rows.includes(playlist));
   assert.deepEqual(
-    rows.filter((row) => row.children).map((row) => row.children.length),
+    rows.filter((row) => row.children).map((row) => row.children?.length),
     [3, 3],
   );
 });
@@ -101,7 +112,7 @@ test("search finds child tracks without discarding siblings or their album conte
   assert.equal(matchesActivitySearch(row, "song 2"), true);
   assert.equal(matchesActivitySearch(row, "arcade fire"), true);
   assert.equal(matchesActivitySearch(row, "missing artist"), false);
-  assert.equal(row.children.length, 3);
+  assert.equal(row.children?.length, 3);
 });
 
 test("album rows follow disc order and distinguish failed and cancelled terminal requests", () => {
@@ -114,7 +125,7 @@ test("album rows follow disc order and distinguish failed and cancelled terminal
     })),
   );
   assert.deepEqual(
-    cancelled.children.map((child) => child.trackName),
+    cancelled.children?.map((child) => child.trackName),
     ["Song 3", "Song 2", "Song 1"],
   );
   assert.equal(cancelled.statusLabel, "Cancelled");

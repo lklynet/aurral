@@ -8,7 +8,16 @@ import {
 } from "./helpers/backendTestHarness.ts";
 
 const [isolatedState] = await setupIsolatedBackend("security-headers");
-let server;
+let server: {
+  child: import("node:child_process").ChildProcessByStdio<
+    null,
+    import("node:stream").Readable,
+    import("node:stream").Readable
+  >;
+  port: number;
+  logs: () => string;
+  stop(): Promise<void>;
+};
 
 beforeAll(async () => {
   server = await startServerProcess({ extraEnv: { CORS_ORIGIN: "https://allowed.example" } });
@@ -22,8 +31,8 @@ afterAll(async () => {
 test("CSP permits direct HTTPS artwork and preview audio", async () => {
   const response = await fetch(`http://127.0.0.1:${server.port}/api/health/live`);
   const policy = response.headers.get("content-security-policy") || "";
-  const sources = (name) =>
-    (policy.split(";").find((directive) => directive.trim().startsWith(`${name} `)) || "")
+  const sources = (name: string) =>
+    (policy.split(";").find((directive: string) => directive.trim().startsWith(`${name} `)) || "")
       .trim()
       .split(/\s+/);
 

@@ -24,16 +24,16 @@ const [
   { setMetadataProviderCooldown },
 ] = await setupIsolatedBackend(
   "aurral-wanted-monitoring",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/libraryMediaStore.ts",
-  "backend/services/libraryManagementStore.ts",
-  "backend/services/downloadJobs/downloadTracker.ts",
-  "backend/services/downloadJobs/downloadWorker.ts",
-  "backend/routes/playlists/handlers/jobs.ts",
-  "backend/routes/library/handlers/tracks.ts",
-  "backend/services/providers/brainzmashProvider.ts",
-  "backend/services/metadataProviderBudget.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/libraryMediaStore.ts"),
+  () => import("../../backend/services/libraryManagementStore.ts"),
+  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
+  () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
+  () => import("../../backend/routes/playlists/handlers/jobs.ts"),
+  () => import("../../backend/routes/library/handlers/tracks.ts"),
+  () => import("../../backend/services/providers/brainzmashProvider.ts"),
+  () => import("../../backend/services/metadataProviderBudget.ts"),
 );
 // Unit tests are offline, so the default metadata provider refuses lookups up front
 // instead of making each one wait its turn in the provider's rate limit.
@@ -42,17 +42,19 @@ setMetadataProviderCooldown(getMetadataBaseUrl(), 403, Number.MAX_SAFE_INTEGER);
 const app = express();
 app.use(express.json());
 app.use((req, _res, next) => {
-  req.user = { role: "admin" };
+  req.user = { id: 1, username: "test", role: "admin", permissions: {} };
   next();
 });
 const router = express.Router();
 registerJobs(router);
 registerTracks(router);
 app.use(router);
-const server = await new Promise((resolve) => {
+const server = await new Promise<import("node:http").Server>((resolve) => {
   const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
 });
-const baseUrl = `http://127.0.0.1:${server.address().port}`;
+const address = server.address();
+assert.ok(address && typeof address !== "string");
+const baseUrl = `http://127.0.0.1:${address.port}`;
 
 const managedRoot = path.join(isolatedState.baseDir, "managed");
 let sequence = 0;
@@ -64,6 +66,13 @@ async function createLibraryJob({
   inLibrary = true,
   jobHasAlbum = true,
   fileHasAlbum = true,
+}: {
+  state?: string;
+  albumMonitored?: boolean;
+  trackMonitored?: boolean;
+  inLibrary?: boolean;
+  jobHasAlbum?: boolean;
+  fileHasAlbum?: boolean;
 } = {}) {
   sequence += 1;
   const suffix = String(sequence).padStart(12, "0");
@@ -109,6 +118,7 @@ async function createLibraryJob({
     },
     "library",
   );
+  assert.ok(jobId != null);
   if (state === "failed") {
     downloadTracker.setFailed(jobId, "No matching source result");
     return jobId;
@@ -118,6 +128,7 @@ async function createLibraryJob({
   await fs.writeFile(filePath, "audio");
   if (inLibrary) {
     libraryStore.upsertLibraryMediaFile({
+      scanId: undefined,
       trackId: track.id,
       albumId: fileHasAlbum ? album.id : null,
       source: "aurral",
@@ -129,25 +140,27 @@ async function createLibraryJob({
   return jobId;
 }
 
-async function request(route, options) {
+async function request<Body = never>(route: string, options: RequestInit = {}) {
   const response = await fetch(`${baseUrl}${route}`, options);
-  const body = await response.json();
+  const body: Body = await response.json();
   assert.equal(response.status, 200, JSON.stringify(body));
   return body;
 }
 
-const keepFile = (jobId) => {
+const keepFile = (jobId: string | null) => {
   const { id } = db
-    .prepare("SELECT id FROM library_tracks WHERE mbid = ?")
-    .get(downloadTracker.getJob(jobId).trackMbid);
-  return request(`/tracks/aurral/${id}`, {
+    .prepare<unknown[], { id: import("../../backend/db/rows.ts").LibraryTracksRow["id"] }>(
+      "SELECT id FROM library_tracks WHERE mbid = ?",
+    )
+    .get(getJob(jobId).trackMbid)!;
+  return request<{ keepFile: boolean; cancelledJobIds: string[] }>(`/tracks/aurral/${id}`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ keepFile: true }),
   });
 };
 
-const upgradeJobsOf = (jobId) =>
+const upgradeJobsOf = (jobId: string | null) =>
   downloadTracker.getAll().filter((job) => job.upgradeForJobId === jobId);
 
 const upgradedJobIds = () =>
@@ -183,7 +196,7 @@ beforeEach(() => {
 afterAll(async () => {
   downloadWorker.start = originalWorkerStart;
   dbOps.updateSettings(originalSettings);
-  await new Promise((resolve) => server.close(resolve));
+  await new Promise<void>((resolve) => server.close(() => resolve()));
   await cleanupIsolatedState(isolatedState);
 });
 
@@ -209,7 +222,12 @@ test("Wanted reports jobs by their track's monitoring, whatever the album's", as
     trackMonitored: true,
   });
 
-  const monitoredById = new Map((await request("/jobs")).map((job) => [job.id, job.monitored]));
+  const monitoredById = new Map(
+    (await request<{ id: string; monitored: boolean }[]>("/jobs")).map((job) => [
+      job.id,
+      job.monitored,
+    ]),
+  );
 
   assert.deepEqual(
     [
@@ -253,13 +271,13 @@ test("Search all in Wanted skips unmonitored tracks and keeps monitored tracks o
     trackMonitored: true,
   });
 
-  const missing = await request("/research-missing", { method: "POST" });
-  const upgrades = await request("/quality-upgrades", { method: "POST" });
+  const missing = await request<{ requeued: number }>("/research-missing", { method: "POST" });
+  const upgrades = await request<{ queued: number }>("/quality-upgrades", { method: "POST" });
 
   assert.equal(missing.requeued, 1);
   assert.deepEqual(
     [monitoredMissing, missingInUnmonitoredAlbum, missingUnmonitoredTrack].map(
-      (jobId) => downloadTracker.getJob(jobId).status,
+      (jobId) => getJob(jobId).status,
     ),
     ["pending", "failed", "failed"],
   );
@@ -284,12 +302,13 @@ test("Keep this file stops upgrades of that file and cancels the upgrade already
   const other = await createLibraryJob();
   const keptBeforeCheck = await createLibraryJob();
   const keptLibraryFile = await createLibraryJob();
-  const keptLibraryFileMbid = downloadTracker.getJob(keptLibraryFile).trackMbid;
+  assert.ok(keptLibraryFile != null);
+  const keptLibraryFileMbid = getJob(keptLibraryFile).trackMbid;
   await keepFile(keptBeforeCheck);
   await keepFile(keptLibraryFile);
   downloadTracker.removeJob(keptLibraryFile);
 
-  const first = await request("/quality-upgrades", { method: "POST" });
+  const first = await request<{ queued: number }>("/quality-upgrades", { method: "POST" });
   assert.equal(first.queued, 2);
   assert.deepEqual(
     [kept, other, keptBeforeCheck].map((jobId) => upgradeJobsOf(jobId).length),
@@ -308,9 +327,9 @@ test("Keep this file stops upgrades of that file and cancels the upgrade already
     upgradeJobsOf(kept)[0].status,
   );
   assert.notEqual(upgradeJobsOf(other)[0].status, "cancelled");
-  assert.equal(downloadTracker.getJob(kept).status, "done");
+  assert.equal(getJob(kept).status, "done");
 
-  const second = await request("/quality-upgrades", { method: "POST" });
+  const second = await request<{ queued: number }>("/quality-upgrades", { method: "POST" });
   assert.equal(second.queued, 0);
   assert.equal(upgradeJobsOf(kept).length, 1);
 
@@ -319,3 +338,9 @@ test("Keep this file stops upgrades of that file and cancels the upgrade already
   assert.equal((await direct.json()).code, "kept_file");
   assert.equal(upgradeJobsOf(kept).length, 1);
 });
+
+function getJob(id: Parameters<typeof downloadTracker.getJob>[0]) {
+  const job = downloadTracker.getJob(id);
+  assert.ok(job, `Expected download job ${id}`);
+  return job;
+}

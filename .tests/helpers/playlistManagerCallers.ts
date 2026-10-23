@@ -2,11 +2,25 @@ import { fork } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
+import type { ChildProcess } from "node:child_process";
+import type { TestContext } from "vite-plus/test";
+import type * as HonkerDb from "../../backend/services/honkerDb.ts";
+import type { playlistManager } from "../../backend/services/playlists/playlistManager.ts";
+
+type CallableMethod = "schedulePlaybackScan" | "requestPlaylistSync";
+
+export type PlaylistManagerCall = {
+  [Method in CallableMethod]: {
+    method: Method;
+    args: Parameters<(typeof playlistManager)[Method]>;
+  };
+}[CallableMethod];
+
 const fixture = fileURLToPath(new URL("../fixtures/playlist-manager-caller.mts", import.meta.url));
 
-function nextMessage(caller, type) {
-  return new Promise((resolve) => {
-    const listener = (message) => {
+function nextMessage(caller: ChildProcess, type: string) {
+  return new Promise<{ type?: string; jobId?: unknown }>((resolve) => {
+    const listener = (message: { type?: string; jobId?: unknown }) => {
       if (message?.type !== type) return;
       caller.off("message", listener);
       resolve(message);
@@ -15,7 +29,12 @@ function nextMessage(caller, type) {
   });
 }
 
-export async function callFromProcessesWhileHonkerLocked(t, honker, method, argsPerProcess) {
+export async function callFromProcessesWhileHonkerLocked<Method extends CallableMethod>(
+  t: TestContext,
+  honker: typeof HonkerDb,
+  method: Method,
+  argsPerProcess: Parameters<(typeof playlistManager)[Method]>[],
+) {
   const callers = argsPerProcess.map(() =>
     fork(fixture, { stdio: ["ignore", "ignore", "inherit", "ipc"] }),
   );

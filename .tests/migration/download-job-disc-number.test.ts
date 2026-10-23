@@ -6,7 +6,6 @@ import {
   applyIsolatedBackendEnv,
   cleanupIsolatedState,
   createIsolatedStateDir,
-  importFromRepo,
 } from "../helpers/backendTestHarness.ts";
 
 const isolatedState = await createIsolatedStateDir("download-job-disc-number");
@@ -35,10 +34,9 @@ seed.exec(`
 seed.close();
 applyIsolatedBackendEnv(isolatedState);
 
-const { downloadTracker, DownloadTracker } = await importFromRepo(
-  "backend/services/downloadJobs/downloadTracker.ts",
-);
-const { buildTrackFileName } = await importFromRepo("backend/services/downloadUtils.ts");
+const { downloadTracker, DownloadTracker } =
+  await import("../../backend/services/downloadJobs/downloadTracker.ts");
+const { buildTrackFileName } = await import("../../backend/services/downloadUtils.ts");
 
 afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
@@ -46,10 +44,12 @@ afterAll(async () => {
 
 test("a job saved before disc numbers keeps its name and can learn its disc", () => {
   const job = downloadTracker.getJob("before-discs");
+  assert.ok(job != null);
   assert.equal(job.discNumber, null);
   assert.equal(buildTrackFileName(job, ".flac"), "03 - Bomb.flac");
 
   assert.equal(downloadTracker.updateMetadata("before-discs", { discNumber: 2 }), true);
   const restarted = new DownloadTracker().getJob("before-discs");
+  assert.ok(restarted != null);
   assert.equal(buildTrackFileName(restarted, ".flac"), "2-03 - Bomb.flac");
 });

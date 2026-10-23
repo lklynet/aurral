@@ -1,3 +1,4 @@
+import { listeningAddress } from "../helpers/backendTestHarness.ts";
 import assert from "node:assert/strict";
 import { test, beforeAll, beforeEach, afterAll, vi } from "vite-plus/test";
 import express from "express";
@@ -18,12 +19,12 @@ const [
   { default: imageProxyRouter },
 ] = await setupIsolatedBackend(
   "image-cache",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/middleware/passwordHash.ts",
-  "backend/middleware/auth.ts",
-  "backend/routes/auth.ts",
-  "backend/routes/imageProxy.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/middleware/passwordHash.ts"),
+  () => import("../../backend/middleware/auth.ts"),
+  () => import("../../backend/routes/auth.ts"),
+  () => import("../../backend/routes/imageProxy.ts"),
 );
 
 const realFetch = globalThis.fetch;
@@ -32,12 +33,18 @@ const cover = await sharp({
 })
   .png()
   .toBuffer();
-let server;
-let baseUrl;
-let token;
+let server: import("node:http").Server<
+  typeof import("node:http").IncomingMessage,
+  typeof import("node:http").ServerResponse
+>;
+let baseUrl: string;
+let token: string;
 
-function stubCoverHost(t, routes) {
-  const requests = [];
+function stubCoverHost(
+  t: import("vite-plus/test").TestContext,
+  routes: Record<string, { body: BodyInit; type: string }>,
+) {
+  const requests: string[] = [];
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     const url = new URL(String(input));
     if (url.hostname === "127.0.0.1") return realFetch(input, init);
@@ -49,7 +56,7 @@ function stubCoverHost(t, routes) {
   return requests;
 }
 
-function cacheImage(src, { authenticated = true } = {}) {
+function cacheImage(src: string, { authenticated = true }: { authenticated?: boolean } = {}) {
   return realFetch(`${baseUrl}/api/image-proxy`, {
     method: "POST",
     headers: {
@@ -66,10 +73,15 @@ beforeAll(async () => {
   app.use(authMiddleware);
   app.use("/api/auth", authRouter);
   app.use("/api/image-proxy", imageProxyRouter);
-  server = await new Promise((resolve) => {
+  server = await new Promise<
+    import("node:http").Server<
+      typeof import("node:http").IncomingMessage,
+      typeof import("node:http").ServerResponse
+    >
+  >((resolve) => {
     const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
   });
-  baseUrl = `http://127.0.0.1:${server.address().port}`;
+  baseUrl = `http://127.0.0.1:${listeningAddress(server).port}`;
 });
 
 beforeEach(async () => {
@@ -89,7 +101,7 @@ beforeEach(async () => {
 });
 
 afterAll(async () => {
-  await new Promise((resolve) => server?.close(resolve));
+  await new Promise<void>((resolve) => server?.close(() => resolve()));
   await cleanupIsolatedState(state);
 });
 

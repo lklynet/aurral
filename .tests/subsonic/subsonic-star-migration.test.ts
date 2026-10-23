@@ -46,7 +46,13 @@ test("upgrading refreshes cached indexes for existing users and stars once", asy
 
     start();
     const stamps = db
-      .prepare("SELECT user_id, changed_at FROM subsonic_star_changes ORDER BY user_id")
+      .prepare<
+        unknown[],
+        {
+          user_id: import("../../backend/db/rows.ts").SubsonicStarChangesRow["user_id"];
+          changed_at: import("../../backend/db/rows.ts").SubsonicStarChangesRow["changed_at"];
+        }
+      >("SELECT user_id, changed_at FROM subsonic_star_changes ORDER BY user_id")
       .all();
     assert.deepEqual(
       stamps.map((row) => row.user_id),
@@ -56,7 +62,15 @@ test("upgrading refreshes cached indexes for existing users and stars once", asy
 
     start();
     assert.deepEqual(
-      db.prepare("SELECT user_id, changed_at FROM subsonic_star_changes ORDER BY user_id").all(),
+      db
+        .prepare<
+          unknown[],
+          {
+            user_id: import("../../backend/db/rows.ts").SubsonicStarChangesRow["user_id"];
+            changed_at: import("../../backend/db/rows.ts").SubsonicStarChangesRow["changed_at"];
+          }
+        >("SELECT user_id, changed_at FROM subsonic_star_changes ORDER BY user_id")
+        .all(),
       stamps,
     );
   } finally {

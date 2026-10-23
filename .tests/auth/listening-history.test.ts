@@ -7,12 +7,13 @@ import {
   resetDatabase,
 } from "../helpers/backendTestHarness.ts";
 
-const [isolatedState, { db }, { userOps }, listeningHistoryModule] = await setupIsolatedBackend(
-  "listening-history",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/listeningHistory.ts",
-);
+const [isolatedState, { db }, { userOps, dbOps }, listeningHistoryModule] =
+  await setupIsolatedBackend(
+    "listening-history",
+    () => import("../../backend/config/db-sqlite.ts"),
+    () => import("../../backend/db/helpers/index.ts"),
+    () => import("../../backend/services/listeningHistory.ts"),
+  );
 
 const bcryptModule = await import("bcrypt");
 
@@ -53,6 +54,7 @@ test("normalizes legacy and explicit listening history profiles", () => {
 test("user updates persist listenbrainz separately from legacy lastfm field", () => {
   const hash = bcrypt.hashSync("secret", 4);
   const user = userOps.createUser("alice", hash, "user");
+  assert.ok(user != null);
 
   const updated = userOps.updateUser(user.id, {
     listenHistoryProvider: "listenbrainz",
@@ -72,6 +74,7 @@ test("user updates persist listenbrainz separately from legacy lastfm field", ()
 test("legacy lastfm_username still resolves as a lastfm profile", () => {
   const hash = bcrypt.hashSync("secret", 4);
   const user = userOps.createUser("bob", hash, "user");
+  assert.ok(user != null);
 
   db.prepare(
     "UPDATE users SET lastfm_username = ?, listen_history_provider = NULL, listen_history_username = NULL WHERE id = ?",
@@ -92,7 +95,8 @@ test("resolveListenHistorySettings does not use a global username", () => {
       },
     },
   };
-  assert.deepEqual(resolveListenHistorySettings({}, settings), {
+  dbOps.updateSettings(settings);
+  assert.deepEqual(resolveListenHistorySettings({}), {
     listenHistoryProvider: "lastfm",
     listenHistoryUsername: null,
     listenHistoryUrl: null,
@@ -112,17 +116,15 @@ test("local history is a valid profile without an external identity", () => {
 test("resolveListenHistorySettings keeps explicit user profile over default", () => {
   const settings = {
     integrations: {
-      lastfm: { username: "leefamous" },
+      lastfm: { username: "leefamous", apiKey: "test" },
     },
   };
+  dbOps.updateSettings(settings);
   assert.deepEqual(
-    resolveListenHistorySettings(
-      {
-        listenHistoryProvider: "lastfm",
-        listenHistoryUsername: "otheruser",
-      },
-      settings,
-    ),
+    resolveListenHistorySettings({
+      listenHistoryProvider: "lastfm",
+      listenHistoryUsername: "otheruser",
+    }),
     {
       listenHistoryProvider: "lastfm",
       listenHistoryUsername: "otheruser",
@@ -158,6 +160,7 @@ test("koito profile uses instance url instead of username", () => {
 test("user updates persist koito url on profile", () => {
   const hash = bcrypt.hashSync("secret", 4);
   const user = userOps.createUser("alice", hash, "user");
+  assert.ok(user != null);
 
   const updated = userOps.updateUser(user.id, {
     listenHistoryProvider: "koito",

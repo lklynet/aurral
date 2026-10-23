@@ -1,4 +1,8 @@
-import { test, afterAll } from "vite-plus/test";
+import { audioMetadata } from "./fixtures.ts";
+import type { IAudioMetadata } from "music-metadata";
+import type { DownloadTrackInput } from "../../backend/services/downloadJobs/downloadTracker.ts";
+import type { ReleaseManifest } from "../../backend/services/releaseManifest.ts";
+import { test, afterAll, type TestContext } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -7,14 +11,14 @@ import { dirname, join } from "node:path";
 import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.ts";
 import { serveGroups } from "../helpers/releaseFixture.ts";
 
-const audioFixture = async (filePath) => {
+const audioFixture = async (filePath: string) => {
   await writeFile(filePath, "");
   await truncate(filePath, 40000000);
 };
 
 const [
   isolatedState,
-  { toReleaseManifest, mapRequest, trackRequestFor },
+  { toReleaseManifest, mapRequest, trackRequestFor: findTrackRequest },
   { resolveReleaseManifest },
   libraryStore,
   { buildTrackRequest },
@@ -24,14 +28,14 @@ const [
   { assignDownloadedAlbumFiles },
 ] = await setupIsolatedBackend(
   "release-manifest",
-  "backend/services/releaseManifest.ts",
-  "backend/services/releaseResolver.ts",
-  "backend/services/libraryMediaStore.ts",
-  "backend/services/trackMatching/trackIdentity.ts",
-  "backend/services/trackMatching/sourceSearch.ts",
-  "backend/services/trackMatching/postDownloadValidator.ts",
-  "backend/services/trackMatching/releaseJudge.ts",
-  "backend/services/albumReleaseAssignment.ts",
+  () => import("../../backend/services/releaseManifest.ts"),
+  () => import("../../backend/services/releaseResolver.ts"),
+  () => import("../../backend/services/libraryMediaStore.ts"),
+  () => import("../../backend/services/trackMatching/trackIdentity.ts"),
+  () => import("../../backend/services/trackMatching/sourceSearch.ts"),
+  () => import("../../backend/services/trackMatching/postDownloadValidator.ts"),
+  () => import("../../backend/services/trackMatching/releaseJudge.ts"),
+  () => import("../../backend/services/albumReleaseAssignment.ts"),
 );
 
 afterAll(async () => {
@@ -39,7 +43,13 @@ afterAll(async () => {
 });
 
 const GROUP = "a1a1a1a1-0000-4000-8000-000000000001";
-const track = (trackname, recordingid, trackposition, durationms, extra = {}) => ({
+const track = (
+  trackname: string,
+  recordingid: string,
+  trackposition: number,
+  durationms: number,
+  extra: { oldrecordingids?: string[]; artistid?: string; mediumnumber?: number } = {},
+) => ({
   id: `${recordingid}-track`,
   trackname,
   recordingid,
@@ -47,6 +57,7 @@ const track = (trackname, recordingid, trackposition, durationms, extra = {}) =>
   mediumnumber: 1,
   durationms,
   artistid: "band",
+  oldrecordingids: [],
   ...extra,
 });
 const releases = {
@@ -94,10 +105,15 @@ const group = {
   ],
 };
 
-const stubMetadata = (t, groups = [group]) => serveGroups(t, groups);
+const stubMetadata = (t: TestContext, groups: Parameters<typeof serveGroups>[1] = [group]) =>
+  serveGroups(t, groups);
 
 let albumCount = 0;
-function libraryAlbum(metadata) {
+function libraryAlbum(metadata: {
+  requestedRelease: string | null;
+  edition: string;
+  trackList?: { release: string };
+}) {
   albumCount += 1;
   const artist = libraryStore.upsertLibraryArtist({
     identityKey: `mbid:band-${albumCount}`,
@@ -114,7 +130,11 @@ function libraryAlbum(metadata) {
   });
 }
 
-const job = (trackName, trackMbid, extra = {}) => ({
+const job = (
+  trackName: string,
+  trackMbid: string,
+  extra: Partial<DownloadTrackInput & { playlistId: string; playlistType: string }> = {},
+) => ({
   id: trackName,
   artistName: "The Band",
   trackName,
@@ -123,38 +143,72 @@ const job = (trackName, trackMbid, extra = {}) => ({
   trackMbid,
   ...extra,
 });
-const titles = (manifest) => manifest?.tracks.map((entry) => entry.title);
+function trackRequestFor(...args: Parameters<typeof findTrackRequest>) {
+  const request = findTrackRequest(...args);
+  assert.ok(request, "Expected the track to be on the release");
+  return request;
+}
+
+const titles = (manifest: ReleaseManifest | null) => manifest?.tracks.map((entry) => entry.title);
 
 // A downloaded album on disk: each file at its path under the folder, read
 // with its title, place, and length.
-async function downloadedAlbum(t, folder, files) {
+async function downloadedAlbum(
+  t: import("vite-plus/test").TestContext,
+  folder: string,
+  files: {
+    title: string;
+    trackNumber: number | null;
+    discNumber: number;
+    durationMs: number | null;
+    path: string;
+  }[],
+) {
   const root = await mkdtemp(join(tmpdir(), "aurral-release-manifest-"));
   t.onTestFinished(() => rm(root, { recursive: true, force: true }));
-  const parsed = new Map();
+  const parsed = new Map<string, IAudioMetadata>();
   for (const file of files) {
     const filePath = join(root, folder, file.path);
     await mkdir(dirname(filePath), { recursive: true });
     await audioFixture(filePath);
-    parsed.set(filePath, {
-      common: {
-        title: file.title,
-        artist: "The Band",
-        track: { no: file.trackNumber },
-        disc: { no: file.discNumber || 1 },
-      },
-      format: {
-        duration: file.durationMs / 1000,
-        container: "FLAC",
-        lossless: true,
-        sampleRate: 44100,
-        bitsPerSample: 16,
-      },
-    });
+    assert.ok(file.durationMs != null);
+    parsed.set(
+      filePath,
+      audioMetadata({
+        common: {
+          title: file.title,
+          artist: "The Band",
+          track: { no: file.trackNumber, of: null },
+          disk: { no: file.discNumber || 1, of: null },
+        },
+        format: {
+          duration: file.durationMs / 1000,
+          container: "FLAC",
+          lossless: true,
+          sampleRate: 44100,
+          bitsPerSample: 16,
+        },
+      }),
+    );
   }
-  return { filePaths: [...parsed.keys()], parseAudio: async (filePath) => parsed.get(filePath) };
+  return {
+    filePaths: [...parsed.keys()],
+    parseAudio: async (filePath: string) => {
+      const tags = parsed.get(filePath);
+      assert.ok(tags);
+      return tags;
+    },
+  };
 }
 
-const imported = async (t, manifest, jobs, folder, files) => {
+const imported = async (
+  t: TestContext,
+  manifest: ReleaseManifest | null,
+  jobs: Parameters<typeof assignDownloadedAlbumFiles>[0]["jobs"],
+  folder: string,
+  files: Parameters<typeof downloadedAlbum>[2],
+) => {
+  assert.ok(manifest != null);
   const album = await downloadedAlbum(t, folder, files);
   const result = await assignDownloadedAlbumFiles({ jobs, source: "usenet", manifest, ...album });
   return result.accepted.map((entry) => entry.jobId);
@@ -163,6 +217,7 @@ const imported = async (t, manifest, jobs, folder, files) => {
 test("a request takes the commonest edition's whole tracklist, with the lengths that release lists", async (t) => {
   await stubMetadata(t);
   const manifest = await resolveReleaseManifest(job("Middle", "rec-2"));
+  assert.ok(manifest != null);
   assert.equal(manifest.releaseMbid, "std-a");
   assert.equal(manifest.releaseGroupMbid, GROUP);
   assert.deepEqual(titles(manifest), ["Opener", "Middle", "Closer"]);
@@ -179,7 +234,7 @@ test("a request takes the commonest edition's whole tracklist, with the lengths 
 test("a pressing without a length takes the midpoint of its pressings' lengths", async (t) => {
   const pressed = "a1a1a1a1-0000-4000-8000-000000000002";
   const names = ["Alpha", "Beta", "Gamma"];
-  const pressing = (id, lengths) => ({
+  const pressing = (id: string, lengths: number[]) => ({
     id,
     title: "Pressed",
     status: "Official",
@@ -206,6 +261,7 @@ test("a pressing without a length takes the midpoint of its pressings' lengths",
     albumName: "Pressed",
     releaseMbid: "vinyl",
   });
+  assert.ok(vinyl != null);
   assert.deepEqual(
     vinyl.tracks.map((entry) => entry.durationMs),
     [203000, 212000, 223000],
@@ -216,9 +272,14 @@ test("a rip of another official pressing of the same recordings in the same runn
   const pressed = "a1a1a1a1-0000-4000-8000-000000000003";
   const names = ["First Song", "Second Song", "Third Song"];
   const pressing = (
-    id,
-    lengths,
-    { status = "Official", order = names, recording = "old", merged = false } = {},
+    id: string,
+    lengths: number[],
+    {
+      status = "Official",
+      order = names,
+      recording = "old",
+      merged = false,
+    }: { status?: string; order?: string[]; recording?: string; merged?: boolean } = {},
   ) => ({
     id,
     title: "Old Album",
@@ -256,14 +317,14 @@ test("a rip of another official pressing of the same recordings in the same runn
       ],
     },
   ]);
-  const pinned = (releaseMbid, recording = "old-1") =>
+  const pinned = (releaseMbid: string, recording: string = "old-1") =>
     resolveReleaseManifest({
       ...job("First Song", recording),
       albumMbid: pressed,
       albumName: "Old Album",
       releaseMbid,
     });
-  const rip = (lengths) => ({
+  const rip = (lengths: number[]) => ({
     artistLabel: "The Band",
     albumLabel: "The Band - Old Album",
     files: names.map((title, index) => ({
@@ -277,21 +338,22 @@ test("a rip of another official pressing of the same recordings in the same runn
   });
 
   const vinyl = await pinned("vinyl");
+  assert.ok(vinyl != null);
   assert.deepEqual(
     vinyl.tracks.map((entry) => entry.durationMs),
     sleeve,
   );
   assert.deepEqual(
-    (await pinned("unlisted")).tracks.map((entry) => entry.durationMs),
+    (await pinned("unlisted"))!.tracks.map((entry) => entry.durationMs),
     [200100, 210200, 220300],
   );
   assert.deepEqual(
-    (await pinned("lone", "lone-1")).tracks.map((entry) => entry.durationMs),
+    (await pinned("lone", "lone-1"))!.tracks.map((entry) => entry.durationMs),
     [null, null, null],
   );
   assert.equal(judgeRelease(vinyl, rip(cd)).kind, "exact");
   assert.equal(judgeRelease(vinyl, rip(sleeve)).kind, "exact");
-  assert.equal(judgeRelease(await pinned("cd"), rip(sleeve)).kind, "exact");
+  assert.equal(judgeRelease((await pinned("cd"))!, rip(sleeve)).kind, "exact");
   assert.equal(judgeRelease(vinyl, rip(remastered)).kind, "exact");
   for (const lengths of [
     [230000, 240000, 250000],
@@ -320,7 +382,7 @@ test("a rip of another official pressing of the same recordings in the same runn
     jobs.map((entry) => entry.id),
   );
 
-  const offered = async (durationMs) =>
+  const offered = async (durationMs: number) =>
     (
       await buildSourceCandidates({
         source: "soulseek",
@@ -343,7 +405,7 @@ test("a pinned edition with a live disc imports from a folder naming that disc, 
   const expanded = "a1a1a1a1-0000-4000-8000-000000000004";
   const studio = ["First Song", "Second Song"];
   const live = studio.map((name) => `${name} (Live at the Paramount)`);
-  const disc = (names, mediumnumber, from) =>
+  const disc = (names: string[], mediumnumber: number, from: number) =>
     names.map((name, index) =>
       track(name, `big-${from + index}`, index + 1, 200000 + (from + index) * 10000, {
         mediumnumber,
@@ -366,7 +428,7 @@ test("a pinned edition with a live disc imports from a folder naming that disc, 
       ],
     },
   ]);
-  const jobsFor = (releaseMbid) =>
+  const jobsFor = (releaseMbid: string) =>
     studio.map((name, index) => ({
       ...job(name, `big-${index + 1}`),
       id: `${releaseMbid}-${index + 1}`,
@@ -374,7 +436,7 @@ test("a pinned edition with a live disc imports from a folder naming that disc, 
       albumName: "Big Album",
       releaseMbid,
     }));
-  const files = (manifest) =>
+  const files = (manifest: ReleaseManifest) =>
     manifest.tracks.map((entry) => ({
       title: entry.title,
       trackNumber: entry.trackNumber,
@@ -385,12 +447,14 @@ test("a pinned edition with a live disc imports from a folder naming that disc, 
   const folder = "The Band - Big Album (Deluxe Edition) (Bonus Live Disc)";
 
   const deluxe = await resolveReleaseManifest(jobsFor("deluxe")[0]);
+  assert.ok(deluxe != null);
   assert.equal(deluxe.releaseMbid, "deluxe");
   assert.deepEqual(await imported(t, deluxe, jobsFor("deluxe"), folder, files(deluxe)), [
     "deluxe-1",
     "deluxe-2",
   ]);
   const standard = await resolveReleaseManifest(jobsFor("standard")[0]);
+  assert.ok(standard);
   assert.deepEqual(await imported(t, standard, jobsFor("standard"), folder, files(standard)), []);
   assert.deepEqual(
     await imported(
@@ -436,7 +500,7 @@ test("a pinned edition without the track, or with a cut-short tracklist, leaves 
     null,
   );
   assert.equal(
-    (await resolveReleaseManifest(job("Middle", "rec-2", { releaseMbid: "deluxe" }))).releaseMbid,
+    (await resolveReleaseManifest(job("Middle", "rec-2", { releaseMbid: "deluxe" })))!.releaseMbid,
     "deluxe",
   );
 });
@@ -444,14 +508,14 @@ test("a pinned edition without the track, or with a cut-short tracklist, leaves 
 test("a pinned edition MusicBrainz no longer lists is chosen again", async (t) => {
   await stubMetadata(t);
   assert.equal(
-    (await resolveReleaseManifest(job("Opener", "rec-1", { releaseMbid: "merged-away" })))
+    (await resolveReleaseManifest(job("Opener", "rec-1", { releaseMbid: "merged-away" })))!
       .releaseMbid,
     "std-a",
   );
   libraryAlbum({ requestedRelease: "merged-away", edition: "standard" });
   const library = { playlistId: "library", playlistType: "library" };
   assert.equal(
-    (await resolveReleaseManifest(job("Bonus", "rec-b", library))).releaseMbid,
+    (await resolveReleaseManifest(job("Bonus", "rec-b", library)))!.releaseMbid,
     "deluxe",
   );
 });
@@ -465,20 +529,21 @@ test("a Library album's requested edition is its jobs' edition even after its fi
   });
   const library = { playlistId: "library", playlistType: "library" };
   assert.equal(
-    (await resolveReleaseManifest(job("Middle", "rec-2", library))).releaseMbid,
+    (await resolveReleaseManifest(job("Middle", "rec-2", library)))!.releaseMbid,
     "deluxe",
   );
 
   libraryAlbum({ requestedRelease: "std-b", edition: "standard" });
   assert.equal(await resolveReleaseManifest(job("Bonus", "rec-b", library)), null);
-  assert.equal((await resolveReleaseManifest(job("Bonus", "rec-b"))).releaseMbid, "deluxe");
-  assert.equal((await resolveReleaseManifest(job("Opener", "rec-1"))).releaseMbid, "std-b");
+  assert.equal((await resolveReleaseManifest(job("Bonus", "rec-b")))!.releaseMbid, "deluxe");
+  assert.equal((await resolveReleaseManifest(job("Opener", "rec-1")))!.releaseMbid, "std-b");
 });
 
 test("a Library album that wants the expanded edition asks for it without a stored release", async (t) => {
   await stubMetadata(t);
   libraryAlbum({ requestedRelease: null, edition: "expanded", trackList: { release: "std-b" } });
   const manifest = await resolveReleaseManifest(job("Opener", "rec-1", { playlistId: "library" }));
+  assert.ok(manifest != null);
   assert.equal(manifest.releaseMbid, "deluxe");
 });
 
@@ -512,7 +577,7 @@ test("jobs map onto the edition by recording, then place and title, then a title
         },
         { title: "Bomb", recordingId: "bomb", trackPosition: 1, mediumNumber: 2 },
         { title: "Live Song (Live)", recordingId: "live", trackPosition: 2, mediumNumber: 2 },
-        { title: "Untagged", recordingId: null, trackPosition: 3, mediumNumber: 2 },
+        { title: "Untagged", trackPosition: 3, mediumNumber: 2 },
       ],
     },
   );
@@ -543,7 +608,7 @@ test("jobs map onto the edition by recording, then place and title, then a title
   assert.deepEqual(mapRequest(twoDiscs, [{ id: "which-bomb", trackName: "Bomb" }]).offManifest, [
     "which-bomb",
   ]);
-  const placed = (trackName) => [
+  const placed = (trackName: string) => [
     ...mapRequest(twoDiscs, [{ id: trackName, trackName, trackNumber: 1, discNumber: 1 }]).wanted,
   ];
   assert.deepEqual(placed("Bomb"), [[0, "Bomb"]]);
@@ -554,6 +619,7 @@ test("jobs map onto the edition by recording, then place and title, then a title
 test("a track request names the whole edition and the track's place on it, whatever else is still wanted", async (t) => {
   await stubMetadata(t);
   const manifest = await resolveReleaseManifest(job("Bonus", "rec-b"));
+  assert.ok(manifest != null);
   const request = trackRequestFor(
     job("Opener", "rec-1-old", {
       trackNumber: 7,
@@ -563,6 +629,7 @@ test("a track request names the whole edition and the track's place on it, whate
     }),
     manifest,
   );
+  assert.ok(request != null);
   assert.equal(request.releaseMbid, "deluxe");
   assert.equal(request.albumMbid, GROUP);
   assert.equal(request.trackMbid, "rec-1");
@@ -579,16 +646,18 @@ test("a track request names the whole edition and the track's place on it, whate
     "Bonus",
   ]);
   assert.equal(buildTrackRequest(request).releaseMbid, "deluxe");
-  assert.equal(trackRequestFor(job("Not On It", "rec-x"), manifest), null);
-  const bonus = trackRequestFor(job("Bonus", "rec-b"), manifest);
+  assert.equal(findTrackRequest(job("Not On It", "rec-x"), manifest), null);
+  const bonus = findTrackRequest(job("Bonus", "rec-b"), manifest);
+  assert.ok(bonus != null);
   assert.deepEqual(bonus.artistAliases, ["Guest Singer"]);
 });
 
 test("a track search on a live release group takes the track's live copy and still refuses another version", async (t) => {
   await stubMetadata(t);
   const live = await resolveReleaseManifest(job("Closer", "rec-3"));
+  assert.ok(live != null);
   const studio = { ...live, secondaryTypes: [] };
-  const offered = async (manifest, name) => {
+  const offered = async (manifest: ReleaseManifest, name: string) => {
     const result = await buildSourceCandidates({
       source: "soulseek",
       request: trackRequestFor(job("Closer", "rec-3"), manifest),
@@ -602,23 +671,24 @@ test("a track search on a live release group takes the track's live copy and sti
     });
     return result.evaluations[0].decision;
   };
-  const downloaded = async (manifest, name) =>
+  const downloaded = async (manifest: ReleaseManifest, name: string) =>
     (
       await validateDownloadedTrackFile({
         request: trackRequestFor(job("Closer", "rec-3"), manifest),
         source: "soulseek",
         filePath: `/tmp/${name}.flac`,
         options: {
-          parseFile: async () => ({
-            common: { title: name, artist: "The Band", album: "The Album" },
-            format: {
-              duration: 220,
-              container: "FLAC",
-              lossless: true,
-              sampleRate: 44100,
-              bitsPerSample: 16,
-            },
-          }),
+          parseFile: async () =>
+            audioMetadata({
+              common: { title: name, artist: "The Band", album: "The Album" },
+              format: {
+                duration: 220,
+                container: "FLAC",
+                lossless: true,
+                sampleRate: 44100,
+                bitsPerSample: 16,
+              },
+            }),
         },
       })
     ).decision;
@@ -649,6 +719,7 @@ test("a compilation keeps its Various Artists credit and names only the artists 
       ],
     },
   );
+  assert.ok(manifest != null);
   assert.equal(manifest.compilation, true);
   assert.deepEqual(manifest.artistNames, ["Various Artists", "A Singer"]);
   assert.deepEqual(
@@ -656,11 +727,11 @@ test("a compilation keeps its Various Artists credit and names only the artists 
     [["A Singer"], [], []],
   );
   assert.deepEqual(manifest.tracks[0].artistAliases, ["Singer"]);
-  assert.deepEqual(manifest.secondaryTypes, []);
+  assert.deepEqual([...manifest.secondaryTypes], []);
 });
 
 test("an edition is refused unless each disc lists every place from the first, every title, and the whole declared tracklist", () => {
-  const edition = (tracks, extra = {}) =>
+  const edition = (tracks: number[][], extra: { trackCount?: number } = {}) =>
     toReleaseManifest(
       { id: "g" },
       {

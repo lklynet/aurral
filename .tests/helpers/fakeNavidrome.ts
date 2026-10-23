@@ -1,15 +1,27 @@
-const jsonResponse = (value, status = 200) =>
+type SongFixture = {
+  id: string;
+  path: string;
+  title?: string;
+  artist?: string;
+  album?: string;
+  missing?: boolean;
+  libraryPath?: string;
+  mbzRecordingID?: string;
+  [key: string]: unknown;
+};
+
+const jsonResponse = (value: unknown, status: number = 200) =>
   new Response(JSON.stringify(value), {
     status,
     headers: { "content-type": "application/json" },
   });
 
-const subsonicResponse = (value = {}) =>
+const subsonicResponse = (value: Record<string, unknown> = {}) =>
   jsonResponse({
     "subsonic-response": { status: "ok", ...value },
   });
 
-function startsWithLike(value) {
+function startsWithLike(value: string) {
   const pattern = String(value)
     .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
     .replace(/%/g, ".*")
@@ -17,7 +29,7 @@ function startsWithLike(value) {
   return new RegExp(`^${pattern}`, "i");
 }
 
-function matchesSongFilters(song, params) {
+function matchesSongFilters(song: SongFixture, params: URLSearchParams) {
   for (const [key, value] of params) {
     if (key === "missing" && Boolean(song.missing) !== (value === "true")) return false;
     if (key === "path" && !startsWithLike(value).test(song.path)) return false;
@@ -25,7 +37,7 @@ function matchesSongFilters(song, params) {
     if (key === "title") {
       const text = `${song.title} ${song.artist} ${song.album}`.toLowerCase();
       const words = value.toLowerCase().split(/\s+/).filter(Boolean);
-      if (words.some((word) => word.replace(/\*$/, "").includes("*"))) return false;
+      if (words.some((word: string) => word.replace(/\*$/, "").includes("*"))) return false;
       if (!words.every((word) => text.includes(word))) return false;
     }
   }
@@ -39,27 +51,44 @@ export function createFakeNavidrome({
   serverVersion = "0.64.2 (e7c6c4d9)",
   failSongRequest = () => false,
   failLibraryRequest = false,
+}: {
+  libraries?: { id: number; path: string; name?: string }[];
+  songs?: SongFixture[];
+  playlists?: { id: string; name: string | null; songIds?: string[]; comment?: string }[];
+  serverVersion?: string;
+  failSongRequest?: (params: URLSearchParams) => boolean;
+  failLibraryRequest?: boolean;
 } = {}) {
   const state = {
     libraries,
     songs,
     serverVersion,
     playlists: playlists.map((playlist) => ({ songIds: [], ...playlist })),
-    songRequests: [],
-    scans: [],
+    songRequests: [] as URLSearchParams[],
+    scans: [] as string[][],
     logins: 0,
+    fetch: fetchResponse,
   };
   let nextPlaylistId = 1;
 
-  const playlistDetail = (playlist) => ({
+  const playlistDetail = (playlist: {
+    id: string;
+    name: string | null;
+    songIds: string[];
+    comment?: string;
+  }) => ({
     id: playlist.id,
     name: playlist.name,
+    ...(playlist.comment === undefined ? {} : { comment: playlist.comment }),
     songCount: playlist.songIds.length,
     entry: playlist.songIds.map((id) => ({ id })),
   });
 
-  state.fetch = async (input, init = {}) => {
-    const url = new URL(input);
+  async function fetchResponse(
+    input: Parameters<typeof fetch>[0],
+    init: RequestInit = {},
+  ): Promise<Response> {
+    const url = new URL(input instanceof Request ? input.url : String(input));
     const method = String(init.method || "GET").toUpperCase();
     if (url.pathname === "/auth/login") {
       state.logins += 1;
@@ -140,7 +169,7 @@ export function createFakeNavidrome({
       default:
         return subsonicResponse();
     }
-  };
+  }
 
   return state;
 }

@@ -10,6 +10,9 @@ afterEach(() => {
 
 test("getHomeUsers normalizes a JSON { users: [...] } response", async () => {
   vi.spyOn(axios, "get").mockImplementation(async () => ({
+    status: 200,
+    statusText: "OK",
+    headers: {},
     data: {
       users: [
         { id: 1, uuid: "u1", title: "Kid", restricted: "1", admin: "0", guest: "0" },
@@ -35,6 +38,9 @@ test("getHomeUsers normalizes a JSON { users: [...] } response", async () => {
 
 test("getHomeUsers normalizes a legacy MediaContainer.User JSON response", async () => {
   vi.spyOn(axios, "get").mockImplementation(async () => ({
+    status: 200,
+    statusText: "OK",
+    headers: {},
     data: { MediaContainer: { User: [{ id: 3, uuid: "u3", title: "Solo", restricted: "1" }] } },
   }));
   const users = await PlexClient.getHomeUsers("admin-token", "admin-client");
@@ -44,6 +50,9 @@ test("getHomeUsers normalizes a legacy MediaContainer.User JSON response", async
 
 test("getHomeUsers tolerates a raw XML string response", async () => {
   vi.spyOn(axios, "get").mockImplementation(async () => ({
+    status: 200,
+    statusText: "OK",
+    headers: {},
     data:
       '<MediaContainer size="2">' +
       '<User id="10" uuid="uuid-10" title="Kiddo" restricted="1" admin="0" guest="0"/>' +
@@ -61,16 +70,21 @@ test("getHomeUsers tolerates a raw XML string response", async () => {
 });
 
 test("getHomeUsers returns an empty list rather than throwing on an unrecognized shape", async () => {
-  vi.spyOn(axios, "get").mockImplementation(async () => ({ data: { unexpected: true } }));
+  vi.spyOn(axios, "get").mockImplementation(async () => ({
+    status: 200,
+    statusText: "OK",
+    headers: {},
+    data: { unexpected: true },
+  }));
   const users = await PlexClient.getHomeUsers("admin-token", "admin-client");
-  assert.deepEqual(users, []);
+  assert.deepEqual([...users], []);
 });
 
 test("switchHomeUser succeeds on the v2 path with a JSON authToken", async () => {
-  let requestedUrl = null;
+  let requestedUrl = "";
   vi.spyOn(axios, "post").mockImplementation(async (url) => {
     requestedUrl = url;
-    return { data: { authToken: "fresh-token" } };
+    return { status: 200, statusText: "OK", headers: {}, data: { authToken: "fresh-token" } };
   });
   const token = await PlexClient.switchHomeUser(42, "admin-token", "admin-client", "target-client");
   assert.equal(token, "fresh-token");
@@ -83,12 +97,17 @@ test("switchHomeUser falls back to the legacy path when v2 404s", async () => {
     call += 1;
     if (call === 1) {
       assert.match(url, /\/api\/v2\//);
-      const error = new Error("Not found");
-      error.response = { status: 404 };
+      const error = Object.assign(new Error("Not found"), { response: { status: 404 } });
+
       throw error;
     }
     assert.doesNotMatch(url, /\/api\/v2\//);
-    return { data: { authenticationToken: "legacy-token" } };
+    return {
+      status: 200,
+      statusText: "OK",
+      headers: {},
+      data: { authenticationToken: "legacy-token" },
+    };
   });
   const token = await PlexClient.switchHomeUser(42, "admin-token", "admin-client", "target-client");
   assert.equal(token, "legacy-token");
@@ -97,6 +116,9 @@ test("switchHomeUser falls back to the legacy path when v2 404s", async () => {
 
 test("switchHomeUser tolerates a raw XML response", async () => {
   vi.spyOn(axios, "post").mockImplementation(async () => ({
+    status: 200,
+    statusText: "OK",
+    headers: {},
     data: '<user id="42" authenticationToken="xml-token"/>',
   }));
   const token = await PlexClient.switchHomeUser(42, "admin-token", "admin-client", "target-client");
@@ -107,8 +129,8 @@ test("switchHomeUser propagates a non-404 error without trying the fallback path
   let calls = 0;
   vi.spyOn(axios, "post").mockImplementation(async () => {
     calls += 1;
-    const error = new Error("Forbidden");
-    error.response = { status: 403 };
+    const error = Object.assign(new Error("Forbidden"), { response: { status: 403 } });
+
     throw error;
   });
   await assert.rejects(
@@ -119,15 +141,20 @@ test("switchHomeUser propagates a non-404 error without trying the fallback path
 });
 
 test("switchHomeUser sends the pin and the target user's own clientId", async () => {
-  let sentParams = null;
-  let sentHeaders = null;
+  let sentParams: Record<string, string | number | boolean | null | undefined> | undefined;
+  let sentHeaders: Record<string, string> | undefined | null = null;
   vi.spyOn(axios, "post").mockImplementation(async (_url, _data, config) => {
+    assert.ok(config != null);
     sentParams = config.params;
+    assert.ok(config != null);
     sentHeaders = config.headers;
-    return { data: { authToken: "token-with-pin" } };
+    return { status: 200, statusText: "OK", headers: {}, data: { authToken: "token-with-pin" } };
   });
   await PlexClient.switchHomeUser(42, "admin-token", "admin-client", "target-client", "1234");
+  assert.ok(sentParams != null);
   assert.equal(sentParams.pin, "1234");
+  assert.ok(sentHeaders != null);
   assert.equal(sentHeaders["X-Plex-Client-Identifier"], "target-client");
+  assert.ok(sentHeaders != null);
   assert.equal(sentHeaders["X-Plex-Token"], "admin-token");
 });

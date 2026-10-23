@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.ts";
 const [state, { slskdClient }] = await setupIsolatedBackend(
   "slskd-search-polling",
-  "backend/services/slskdClient.ts",
+  () => import("../../backend/services/slskdClient.ts"),
 );
 afterAll(() => cleanupIsolatedState(state));
 
@@ -11,6 +11,7 @@ test("searchQuery returns before a second settlement window begins", async () =>
   vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"], now: 1000 });
   vi.spyOn(slskdClient, "createSearch").mockImplementation(async () => ({
     id: "owned-empty-search",
+    searchText: "test query",
   }));
   vi.spyOn(slskdClient, "deleteSearch").mockImplementation(async () => true);
   let polls = 0;
@@ -22,7 +23,7 @@ test("searchQuery returns before a second settlement window begins", async () =>
   await new Promise(setImmediate);
   vi.advanceTimersByTime(10000);
   const result = await pending;
-  assert.deepEqual(result, []);
+  assert.deepEqual([...result], []);
   assert.ok(Date.now() <= 11000, "empty cutoff must not add a settlement window");
 });
 
@@ -34,7 +35,7 @@ test("completed-search hydration stays inside the collection deadline", async ()
     responses: [],
   }));
   vi.spyOn(slskdClient, "getSearchResponses").mockImplementation(async () => []);
-  let finishedAt;
+  let finishedAt = 0;
   const pending = slskdClient
     .waitForSearch("owned-hydrating-search", 1000, { gracePeriodMs: 0 })
     .then((result) => {
@@ -71,7 +72,7 @@ test("partial Soulseek snapshots retain earlier files and updated lock metadata"
   vi.advanceTimersByTime(5000);
   const result = slskdClient.flattenSearchResults(await pending);
   assert.equal(result.length, 2);
-  assert.equal(result.find((file) => file.file === "Second.flac").locked, true);
+  assert.equal(result.find((file) => file.file === "Second.flac")?.locked, true);
 });
 
 test(
@@ -154,7 +155,7 @@ test("completed counts hydrate files missing from earlier snapshots", async () =
 test("cancellation during final hydration stops only the owned search", async () => {
   const controller = new AbortController();
   let polls = 0;
-  const deleted = [];
+  const deleted: string[] = [];
   vi.spyOn(slskdClient, "getSearch").mockImplementation(async () => {
     if (++polls === 1) return { state: "Completed", fileCount: 1, responses: [] };
     controller.abort();
@@ -225,7 +226,10 @@ test("a search waiting in slskd's queue gets its full windows once it runs", asy
 
 test("a search still queued in slskd at the caller's deadline reports slskd as busy, not as no results", async () => {
   vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"], now: 1000 });
-  vi.spyOn(slskdClient, "createSearch").mockImplementation(async () => ({ id: "busy-search" }));
+  vi.spyOn(slskdClient, "createSearch").mockImplementation(async () => ({
+    id: "busy-search",
+    searchText: "test query",
+  }));
   const deleted = vi.spyOn(slskdClient, "deleteSearch").mockImplementation(async () => true);
   vi.spyOn(slskdClient, "getSearch").mockImplementation(async () => ({
     state: "Queued",

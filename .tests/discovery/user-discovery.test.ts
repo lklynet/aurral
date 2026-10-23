@@ -16,12 +16,12 @@ const [
   libraryStore,
 ] = await setupIsolatedBackend(
   "user-discovery",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/discovery/persistence.ts",
-  "backend/services/discovery/userDiscovery.ts",
-  "backend/services/discovery/index.ts",
-  "backend/services/libraryMediaStore.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/discovery/persistence.ts"),
+  () => import("../../backend/services/discovery/userDiscovery.ts"),
+  () => import("../../backend/services/discovery/index.ts"),
+  () => import("../../backend/services/libraryMediaStore.ts"),
 );
 
 beforeEach(() => {

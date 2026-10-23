@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { test } from "vite-plus/test";
+import { requireFixture } from "../playlists/fixtures.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -103,21 +104,25 @@ test("malformed artist metadata does not break startup or indexed reference look
         encoding: "utf8",
       },
     );
-    const evidence = JSON.parse(output);
+    const evidence: {
+      artistNames: string[];
+      foreignArtistNames: string[];
+      indexes: { name: string; sql: string }[];
+      providerPlan: { detail: string }[];
+      foreignPlan: { detail: string }[];
+    } = JSON.parse(output);
     assert.deepEqual(evidence.artistNames, ["Valid Artist"]);
     assert.deepEqual(evidence.foreignArtistNames, ["Valid Artist"]);
     const indexes = new Map(evidence.indexes.map(({ name, sql }) => [name, sql]));
-    assert.match(indexes.get("idx_library_artists_provider_id"), /json_valid\(metadata_json\)/);
+    const indexSql = (name: string) => requireFixture(indexes.get(name));
+    assert.match(indexSql("idx_library_artists_provider_id"), /json_valid\(metadata_json\)/);
     assert.match(
-      indexes.get("idx_library_artists_provider_id"),
+      indexSql("idx_library_artists_provider_id"),
       /json_extract\(metadata_json, '\$\.id'\)/,
     );
+    assert.match(indexSql("idx_library_artists_foreign_artist_id"), /json_valid\(metadata_json\)/);
     assert.match(
-      indexes.get("idx_library_artists_foreign_artist_id"),
-      /json_valid\(metadata_json\)/,
-    );
-    assert.match(
-      indexes.get("idx_library_artists_foreign_artist_id"),
+      indexSql("idx_library_artists_foreign_artist_id"),
       /json_extract\(metadata_json, '\$\.foreignArtistId'\)/,
     );
     assert.equal(

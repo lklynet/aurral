@@ -1,11 +1,17 @@
 import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
+import { playlistTrack } from "../playlists/fixtures.ts";
+import { createResponse, createRouteHarness } from "../library/routeHarness.ts";
+import type {
+  DiscoveryFeedbackAddResponse,
+  DiscoveryFeedbackListResponse,
+  DiscoveryFeedbackResponse,
+} from "../../backend/routes/discovery/handlers/feedback.ts";
 import {
   applyIsolatedBackendEnv,
   cleanupIsolatedState,
   createIsolatedStateDir,
-  importFromRepo,
   resetDatabase,
 } from "../helpers/backendTestHarness.ts";
 
@@ -13,10 +19,10 @@ const isolatedState = await createIsolatedStateDir("artist-blocklist");
 applyIsolatedBackendEnv(isolatedState);
 
 const [{ db }, discovery, flowTrackSourceModule, { registerFeedback }] = await Promise.all([
-  importFromRepo("backend/config/db-sqlite.ts"),
-  importFromRepo("backend/services/discovery/index.ts"),
-  importFromRepo("backend/services/flows/flowTrackSource.ts"),
-  importFromRepo("backend/routes/discovery/handlers/feedback.ts"),
+  import("../../backend/config/db-sqlite.ts"),
+  import("../../backend/services/discovery/index.ts"),
+  import("../../backend/services/flows/flowTrackSource.ts"),
+  import("../../backend/routes/discovery/handlers/feedback.ts"),
 ]);
 
 const { FlowTrackSource } = flowTrackSourceModule;
@@ -79,14 +85,18 @@ test("flows exclude only hard-blocked artists", async () => {
 
   const source = new FlowTrackSource();
 
+  const radarTrack = (track: { artistName: string; trackName: string; artistMbid?: string }) => ({
+    ...playlistTrack(track),
+    reason: "Release radar",
+  });
   source.getReleaseRadarTracks = async () => [
-    { artistName: "Blocked Artist", trackName: "Blocked Track" },
-    {
+    radarTrack({ artistName: "Blocked Artist", trackName: "Blocked Track" }),
+    radarTrack({
       artistName: "Renamed Artist",
       artistMbid: "11111111-1111-1111-1111-111111111111",
       trackName: "Blocked By Id",
-    },
-    { artistName: "Soft Dislike", trackName: "Still Eligible" },
+    }),
+    radarTrack({ artistName: "Soft Dislike", trackName: "Still Eligible" }),
   ];
   const plan = await source.buildFlowRunPlan({
     ownerUserId: 7,
@@ -101,54 +111,42 @@ test("flows exclude only hard-blocked artists", async () => {
 });
 
 const feedbackRoutes = () => {
-  const routes = new Map();
-  const register =
-    (method) =>
-    (path, ...handlers) =>
-      routes.set(`${method} ${path}`, handlers.at(-1));
-  registerFeedback({ get: register("GET"), post: register("POST"), delete: register("DELETE") });
-  return (key, req) => {
-    const res = {
-      statusCode: 200,
-      body: null,
-      status(code) {
-        this.statusCode = code;
-        return this;
-      },
-      json(value) {
-        this.body = value;
-        return this;
-      },
-    };
-    routes.get(key)({ user: { id: 7 }, params: {}, body: {}, ...req }, res);
+  const routes = createRouteHarness(registerFeedback);
+  return async <Body>(key: string, req: { body?: object; params?: object } = {}) => {
+    const res = createResponse<Body>();
+    await routes.get(key)({ user: { id: 7 }, params: {}, body: {}, ...req }, res);
     return res;
   };
 };
 
-test("undoing less like this restores the taste it replaced exactly", () => {
+test("undoing less like this restores the taste it replaced exactly", async () => {
   const call = feedbackRoutes();
-  call("POST /feedback", { body: { artistName: "Blocked Artist", action: "block_artist" } });
-  const more = call("POST /feedback", {
-    body: { artistName: "Taste Artist", action: "more_like_this", tagContext: ["shoegaze"] },
-  }).body.feedback;
-  const before = call("GET /feedback").body.feedback;
+  await call("POST /feedback", { body: { artistName: "Blocked Artist", action: "block_artist" } });
+  const more = (
+    await call<DiscoveryFeedbackAddResponse>("POST /feedback", {
+      body: { artistName: "Taste Artist", action: "more_like_this", tagContext: ["shoegaze"] },
+    })
+  ).body.feedback;
+  const before = (await call<DiscoveryFeedbackResponse>("GET /feedback")).body.feedback;
 
-  call("DELETE /feedback/:id", { params: { id: more.id } });
-  const less = call("POST /feedback", {
-    body: { artistName: "Taste Artist", action: "less_like_this" },
-  }).body.feedback;
+  await call("DELETE /feedback/:id", { params: { id: more.id } });
+  const less = (
+    await call<DiscoveryFeedbackAddResponse>("POST /feedback", {
+      body: { artistName: "Taste Artist", action: "less_like_this" },
+    })
+  ).body.feedback;
 
-  const rejected = call("POST /feedback/restore", { body: { removeIds: "all" } });
+  const rejected = await call("POST /feedback/restore", { body: { removeIds: "all" } });
   assert.equal(rejected.statusCode, 400);
   assert.deepEqual(
-    call("GET /feedback").body.feedback.map((entry) => entry.id),
+    (await call<DiscoveryFeedbackResponse>("GET /feedback")).body.feedback.map((entry) => entry.id),
     [less.id, before[1].id],
   );
 
-  const restored = call("POST /feedback/restore", {
+  const restored = await call<DiscoveryFeedbackListResponse>("POST /feedback/restore", {
     body: { removeIds: [less.id], entries: [more] },
   });
   assert.equal(restored.statusCode, 200);
   assert.deepEqual(restored.body.feedbackList, before);
-  assert.deepEqual(call("GET /feedback").body.feedback, before);
+  assert.deepEqual((await call<DiscoveryFeedbackResponse>("GET /feedback")).body.feedback, before);
 });

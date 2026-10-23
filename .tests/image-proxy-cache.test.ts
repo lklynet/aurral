@@ -1,3 +1,5 @@
+import { requireFixture } from "./playlists/fixtures.ts";
+import { listeningAddress } from "./helpers/backendTestHarness.ts";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import express from "express";
@@ -14,11 +16,16 @@ test(
     const state = await createIsolatedStateDir("cached-image-refresh");
     const previousDataDir = process.env.AURRAL_DATA_DIR;
     const originalFetch = global.fetch;
-    const refreshStarted = Promise.withResolvers();
-    const refreshGate = Promise.withResolvers();
-    let localStarted = Promise.withResolvers();
-    let server;
-    let refresh;
+    const refreshStarted = Promise.withResolvers<void>();
+    const refreshGate = Promise.withResolvers<void>();
+    let localStarted = Promise.withResolvers<void>();
+    let server:
+      | import("node:http").Server<
+          typeof import("node:http").IncomingMessage,
+          typeof import("node:http").ServerResponse
+        >
+      | undefined;
+    let refresh: Promise<void> | undefined;
     process.env.AURRAL_DATA_DIR = state.dataDir;
     try {
       const png = Buffer.from(
@@ -52,10 +59,15 @@ test(
         localStarted.resolve();
         pending.catch((error) => next(error));
       });
-      server = await new Promise((resolve) => {
+      server = await new Promise<
+        import("node:http").Server<
+          typeof import("node:http").IncomingMessage,
+          typeof import("node:http").ServerResponse
+        >
+      >((resolve) => {
         const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
       });
-      const base = `http://127.0.0.1:${server.address().port}`;
+      const base = `http://127.0.0.1:${listeningAddress(requireFixture(server)).port}`;
       const missing = await originalFetch(
         `${base}/api/image-proxy/${randomBytes(32).toString("hex")}.webp`,
       );
@@ -68,7 +80,7 @@ test(
       };
       refresh = assert.rejects(warmImageProxy(sourceUrl), /remote refresh unavailable/);
       await refreshStarted.promise;
-      localStarted = Promise.withResolvers();
+      localStarted = Promise.withResolvers<void>();
       const local = originalFetch(`${base}${cached.localUrl}`);
       await localStarted.promise;
       await new Promise(setImmediate);
@@ -79,7 +91,7 @@ test(
       assert.equal(response.headers.get("content-type"), "image/webp");
       assert.ok((await response.arrayBuffer()).byteLength > 0);
       assert.ok(
-        (await fs.readdir(path.join(state.dataDir, "image-proxy"))).some((name) =>
+        (await fs.readdir(path.join(state.dataDir, "image-proxy"))).some((name: string) =>
           name.endsWith(".webp"),
         ),
       );
@@ -87,7 +99,7 @@ test(
       refreshGate.resolve();
       await refresh;
       global.fetch = originalFetch;
-      if (server) await new Promise((resolve) => server.close(resolve));
+      if (server) await new Promise<void>((resolve) => server!.close(() => resolve()));
       if (previousDataDir === undefined) delete process.env.AURRAL_DATA_DIR;
       else process.env.AURRAL_DATA_DIR = previousDataDir;
       await fs.rm(state.baseDir, { recursive: true, force: true });
@@ -102,9 +114,9 @@ test(
     const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "aurral-image-burst-"));
     const previousDataDir = process.env.AURRAL_DATA_DIR;
     const originalFetch = global.fetch;
-    const gate = Promise.withResolvers();
-    const started = Promise.withResolvers();
-    let requests;
+    const gate = Promise.withResolvers<void>();
+    const started = Promise.withResolvers<void>();
+    let requests: Promise<PromiseSettledResult<unknown>[]> | undefined;
     process.env.AURRAL_DATA_DIR = dataDir;
     try {
       vi.resetModules();
@@ -113,7 +125,7 @@ test(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
         "base64",
       );
-      const calls = [];
+      const calls: string[] = [];
       let fail = true;
       global.fetch = async (url) => {
         calls.push(String(url));
@@ -135,7 +147,7 @@ test(
         results.map((result) => result.status),
         ["rejected", "fulfilled", "fulfilled", "fulfilled", "rejected"],
       );
-      assert.equal(calls.filter((url) => url.endsWith("/fail.png")).length, 1);
+      assert.equal(calls.filter((url: string) => url.endsWith("/fail.png")).length, 1);
       fail = false;
       const retried = await warmImageProxy(urls[0]);
       assert.equal(retried.meta.contentType, "image/webp");
@@ -177,7 +189,7 @@ test("image proxy caches one library-sized webp instead of full-resolution sourc
 
     const cached = await warmImageProxy("https://images.example/large-library.png");
     assert.equal(cached.meta.contentType, "image/webp");
-    assert.ok(cached.meta.size <= 150 * 1024);
+    assert.ok(requireFixture(cached.meta.size) <= 150 * 1024);
 
     const meta = await sharp(cached.imagePath).metadata();
     assert.equal(meta.format, "webp");
@@ -194,7 +206,12 @@ test("image proxy serves cached images from hidden worktree paths", async () => 
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), ".aurral-image-hidden-"));
   const previousDataDir = process.env.AURRAL_DATA_DIR;
   const originalFetch = global.fetch;
-  let server;
+  let server:
+    | import("node:http").Server<
+        typeof import("node:http").IncomingMessage,
+        typeof import("node:http").ServerResponse
+      >
+    | undefined;
   process.env.AURRAL_DATA_DIR = dataDir;
   try {
     const png = Buffer.from(
@@ -211,20 +228,28 @@ test("image proxy serves cached images from hidden worktree paths", async () => 
 
     const app = express();
     app.get("/api/image-proxy/:cacheKey", handleImageProxyRequest);
-    app.use((error, _req, res, _next) => {
+    const handleError: import("express").ErrorRequestHandler = (error: Error, _req, res, _next) => {
       res.status(500).json({ error: error.message });
-    });
-    server = await new Promise((resolve) => {
+    };
+    app.use(handleError);
+    server = await new Promise<
+      import("node:http").Server<
+        typeof import("node:http").IncomingMessage,
+        typeof import("node:http").ServerResponse
+      >
+    >((resolve) => {
       const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
     });
 
-    const response = await fetch(`http://127.0.0.1:${server.address().port}${cached.localUrl}`);
+    const response = await fetch(
+      `http://127.0.0.1:${listeningAddress(requireFixture(server)).port}${cached.localUrl}`,
+    );
     assert.equal(response.status, 200);
     assert.equal(response.headers.get("content-type"), "image/webp");
     assert.ok((await response.arrayBuffer()).byteLength > 0);
   } finally {
     global.fetch = originalFetch;
-    if (server) await new Promise((resolve) => server.close(resolve));
+    if (server) await new Promise<void>((resolve) => server!.close(() => resolve()));
     if (previousDataDir === undefined) delete process.env.AURRAL_DATA_DIR;
     else process.env.AURRAL_DATA_DIR = previousDataDir;
     await fs.rm(dataDir, { recursive: true, force: true });
@@ -265,7 +290,7 @@ test("image proxy cache prunes oldest entries over the size cap", async () => {
     const size = await getImageProxyCacheSizeBytes();
     assert.ok(size <= 200 * 1024, `cache size ${size} exceeded 200KiB cap`);
     const files = await fs.readdir(path.join(dataDir, "image-proxy"));
-    const images = files.filter((name) => name.endsWith(".webp"));
+    const images = files.filter((name: string) => name.endsWith(".webp"));
     assert.ok(images.length >= 1);
     assert.ok(images.length < 6);
   } finally {

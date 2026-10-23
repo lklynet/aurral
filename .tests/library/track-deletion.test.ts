@@ -70,6 +70,7 @@ test("deletes Aurral-owned track files without Lidarr", async () => {
     { artistName: "Artist", trackName: "Track" },
     "library",
   );
+  assert.ok(libraryJobId != null);
   downloadTracker.setDone(libraryJobId, filePath, "Album");
   const upgradeJobId = downloadTracker.addUpgradeJob(downloadTracker.getJob(libraryJobId));
   const differentTrackJobId = downloadTracker.addJob(
@@ -80,18 +81,32 @@ test("deletes Aurral-owned track files without Lidarr", async () => {
   vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => false);
 
   try {
-    assert.deepEqual(await libraryManager.deleteTrack(track.id), { success: true });
+    assert.deepEqual(await libraryManager.deleteTrack(String(track.id)), { success: true });
     await assert.rejects(() => access(filePath));
     assert.equal(
       db
-        .prepare("SELECT 1 FROM library_media_files WHERE source = ? AND path = ?")
+        .prepare<unknown[], { "1": unknown }>(
+          "SELECT 1 FROM library_media_files WHERE source = ? AND path = ?",
+        )
         .get("aurral", filePath),
       undefined,
     );
-    assert.equal(db.prepare("SELECT 1 FROM library_tracks WHERE id = ?").get(track.id), undefined);
-    assert.equal(db.prepare("SELECT 1 FROM library_albums WHERE id = ?").get(album.id), undefined);
     assert.equal(
-      db.prepare("SELECT 1 FROM library_artists WHERE id = ?").get(artist.id),
+      db
+        .prepare<unknown[], { "1": unknown }>("SELECT 1 FROM library_tracks WHERE id = ?")
+        .get(track.id),
+      undefined,
+    );
+    assert.equal(
+      db
+        .prepare<unknown[], { "1": unknown }>("SELECT 1 FROM library_albums WHERE id = ?")
+        .get(album.id),
+      undefined,
+    );
+    assert.equal(
+      db
+        .prepare<unknown[], { "1": unknown }>("SELECT 1 FROM library_artists WHERE id = ?")
+        .get(artist.id),
       undefined,
     );
     for (const [entityKind, entityId] of [
@@ -101,7 +116,9 @@ test("deletes Aurral-owned track files without Lidarr", async () => {
     ]) {
       assert.equal(
         db
-          .prepare("SELECT 1 FROM library_search_documents WHERE entity_kind = ? AND entity_id = ?")
+          .prepare<unknown[], { "1": unknown }>(
+            "SELECT 1 FROM library_search_documents WHERE entity_kind = ? AND entity_id = ?",
+          )
           .get(entityKind, entityId),
         undefined,
       );
@@ -168,11 +185,13 @@ test("deleting a library track removes it from playlists that referenced its dow
     },
     "library",
   );
+  assert.ok(deletedJobId != null);
   downloadTracker.setDone(deletedJobId, filePath, "Single");
   const keptJobId = downloadTracker.addJob(
     { artistName: "Artist", trackName: "Other Track" },
     "library",
   );
+  assert.ok(keptJobId != null);
   const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: `${identity} playlist`,
     tracks: [
@@ -194,14 +213,15 @@ test("deleting a library track removes it from playlists that referenced its dow
     .mockImplementation(() => null);
 
   try {
-    assert.deepEqual(await libraryManager.deleteTrack(track.id), { success: true });
-    assert.deepEqual(flowPlaylistConfig.getStaticPlaylist(playlist.id).tracks, keptTracks);
+    assert.deepEqual(await libraryManager.deleteTrack(String(track.id)), { success: true });
+    assert.deepEqual(flowPlaylistConfig.getStaticPlaylist(playlist.id)!.tracks, keptTracks);
     const status = getPlaylistStatusSnapshot().sharedPlaylists.find(
       (entry) => entry.id === playlist.id,
     );
+    assert.ok(status != null);
     assert.equal(status.trackCount, 2);
     assert.equal(
-      status.trackIdentities.some((entry) => entry.startsWith("artist\u0001track\u0001")),
+      status.trackIdentities.some((entry: string) => entry.startsWith("artist\u0001track\u0001")),
       false,
     );
     assert.deepEqual(
@@ -266,6 +286,7 @@ test("deleting a library track preserves a file still referenced by a playlist j
     },
     "library",
   );
+  assert.ok(libraryJobId != null);
   const playlistJobId = downloadTracker.addJob(
     {
       artistName: "Artist",
@@ -274,13 +295,14 @@ test("deleting a library track preserves a file still referenced by a playlist j
     },
     "shared-file-survivor",
   );
+  assert.ok(playlistJobId != null);
   downloadTracker.setDone(libraryJobId, filePath, "Album");
   downloadTracker.setDone(playlistJobId, filePath, "Album");
 
   vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => false);
 
   try {
-    assert.deepEqual(await libraryManager.deleteTrack(track.id), { success: true });
+    assert.deepEqual(await libraryManager.deleteTrack(String(track.id)), { success: true });
     assert.equal(await fsp.readFile(filePath, "utf8"), "shared audio");
     assert.equal(downloadTracker.getJob(libraryJobId), null);
     assert.equal(downloadTracker.getJob(playlistJobId)?.finalPath, filePath);
@@ -331,18 +353,20 @@ test("deletes a library file committed while track removal waits for its lock", 
     available: true,
   });
   const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Track" }, "library");
+  assert.ok(jobId != null);
   const job = downloadTracker.getJob(jobId);
+  assert.ok(job != null);
   const payload = {
     jobId,
     playlistId: "library",
     playlistGeneration: job.playlistGeneration,
   };
-  let signalCommitEntered;
-  let releaseCommit;
-  const commitEntered = new Promise((resolve) => {
+  let signalCommitEntered!: () => void;
+  let releaseCommit!: () => void;
+  const commitEntered = new Promise<void>((resolve) => {
     signalCommitEntered = resolve;
   });
-  const commitGate = new Promise((resolve) => {
+  const commitGate = new Promise<void>((resolve) => {
     releaseCommit = resolve;
   });
   const commit = withPipelineCommitLock(payload, async () => {
@@ -355,7 +379,7 @@ test("deletes a library file committed while track removal waits for its lock", 
   try {
     await commitEntered;
     vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => false);
-    deletion = libraryManager.deleteTrack(track.id);
+    deletion = libraryManager.deleteTrack(String(track.id));
     assert.equal(isDownloadJobCancelled(jobId), true);
     releaseCommit();
     await commit;
@@ -427,8 +451,8 @@ test("records successful Aurral deletions when another file fails", async () => 
   const originalUnlink = fsp.unlink;
   vi.spyOn(fsp, "unlink").mockImplementation(async (filePath) => {
     if (failDeletion && filePath === failedPath) {
-      const error = new Error("permission denied");
-      error.code = "EACCES";
+      const error = Object.assign(new Error("permission denied"), { code: "EACCES" });
+
       throw error;
     }
     return originalUnlink(filePath);
@@ -436,33 +460,49 @@ test("records successful Aurral deletions when another file fails", async () => 
   vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => false);
 
   try {
-    assert.deepEqual(await libraryManager.deleteTrack(track.id), {
+    assert.deepEqual(await libraryManager.deleteTrack(String(track.id)), {
       success: false,
       code: "failed",
       error: "permission denied",
     });
     assert.equal(
       db
-        .prepare("SELECT available FROM library_media_files WHERE source = ? AND path = ?")
+        .prepare<unknown[], { available: number }>(
+          "SELECT available FROM library_media_files WHERE source = ? AND path = ?",
+        )
         .get("aurral", deletedPath)?.available,
       0,
     );
     assert.equal(downloadTracker.getJob(libraryJobId), null);
     assert.equal(
       db
-        .prepare("SELECT available FROM library_media_files WHERE source = ? AND path = ?")
+        .prepare<unknown[], { available: number }>(
+          "SELECT available FROM library_media_files WHERE source = ? AND path = ?",
+        )
         .get("aurral", failedPath)?.available,
       1,
     );
     await assert.rejects(() => access(deletedPath));
     await access(failedPath);
     failDeletion = false;
-    assert.deepEqual(await libraryManager.deleteTrack(track.id), { success: true });
+    assert.deepEqual(await libraryManager.deleteTrack(String(track.id)), { success: true });
     await assert.rejects(() => access(failedPath));
-    assert.equal(db.prepare("SELECT 1 FROM library_tracks WHERE id = ?").get(track.id), undefined);
-    assert.equal(db.prepare("SELECT 1 FROM library_albums WHERE id = ?").get(album.id), undefined);
     assert.equal(
-      db.prepare("SELECT 1 FROM library_artists WHERE id = ?").get(artist.id),
+      db
+        .prepare<unknown[], { "1": unknown }>("SELECT 1 FROM library_tracks WHERE id = ?")
+        .get(track.id),
+      undefined,
+    );
+    assert.equal(
+      db
+        .prepare<unknown[], { "1": unknown }>("SELECT 1 FROM library_albums WHERE id = ?")
+        .get(album.id),
+      undefined,
+    );
+    assert.equal(
+      db
+        .prepare<unknown[], { "1": unknown }>("SELECT 1 FROM library_artists WHERE id = ?")
+        .get(artist.id),
       undefined,
     );
   } finally {
@@ -520,10 +560,8 @@ test("keeps a library job and track when provider cancellation fails, then retri
     path: filePath,
     available: true,
   });
-  const jobId = downloadTracker.addJob(
-    { artistName: "Artist", trackName: "Track", downloadSource: "slskd" },
-    "library",
-  );
+  const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Track" }, "library");
+  assert.ok(jobId != null);
   registerDownloadProviderWork({
     jobId,
     playlistId: "library",
@@ -540,7 +578,7 @@ test("keeps a library job and track when provider cancellation fails, then retri
   vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => false);
 
   try {
-    const failedDeletion = await libraryManager.deleteTrack(track.id);
+    const failedDeletion = await libraryManager.deleteTrack(String(track.id));
 
     assert.equal(failedDeletion.success, false);
     assert.equal(failedDeletion.code, "download_cancellation_failed");
@@ -549,7 +587,7 @@ test("keeps a library job and track when provider cancellation fails, then retri
     await access(filePath);
 
     providerStatus = 204;
-    assert.deepEqual(await libraryManager.deleteTrack(track.id), { success: true });
+    assert.deepEqual(await libraryManager.deleteTrack(String(track.id)), { success: true });
     assert.equal(downloadTracker.getJob(jobId), null);
     assert.equal(listDownloadProviderWork({ jobIds: [jobId] }).length, 0);
     await assert.rejects(() => access(filePath));
@@ -573,7 +611,7 @@ test("keeps a library job and track when provider cancellation fails, then retri
   }
 });
 
-test("deletes a scanned Lidarr track through the Lidarr album with the same MusicBrainz ID", async (t) => {
+test("deletes a scanned Lidarr track through the Lidarr album with the same MusicBrainz ID", async (t: import("vite-plus/test").TestContext) => {
   const identity = `lidarr-track-delete-${process.pid}-${Date.now()}`;
   const albumMbid = "d1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1";
   const trackMbid = "d2d2d2d2-d2d2-4d2d-8d2d-d2d2d2d2d2d2";
@@ -607,7 +645,7 @@ test("deletes a scanned Lidarr track through the Lidarr album with the same Musi
   });
   vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
   vi.spyOn(lidarrClient, "getAlbumByMbid").mockImplementation(async (mbid) =>
-    mbid === albumMbid ? { id: 70 } : null,
+    mbid === albumMbid ? { id: 70, foreignAlbumId: albumMbid } : undefined,
   );
   vi.spyOn(lidarrClient, "getTracksByAlbumId").mockImplementation(async (albumId) =>
     albumId === 70
@@ -616,14 +654,14 @@ test("deletes a scanned Lidarr track through the Lidarr album with the same Musi
   );
   const deleted = vi.spyOn(lidarrClient, "deleteTrackFile").mockImplementation(async () => {});
 
-  assert.deepEqual(await libraryManager.deleteTrack(track.id), { success: true });
+  assert.deepEqual(await libraryManager.deleteTrack(String(track.id)), { success: true });
   assert.deepEqual(
     deleted.mock.calls.map((call) => call[0]),
     [99],
   );
 });
 
-test("a scanned Lidarr track is not deleted when only a title matches more than one Lidarr track", async (t) => {
+test("a scanned Lidarr track is not deleted when only a title matches more than one Lidarr track", async (t: import("vite-plus/test").TestContext) => {
   const identity = `lidarr-title-delete-${process.pid}-${Date.now()}`;
   const albumMbid = "d3d3d3d3-d3d3-4d3d-8d3d-d3d3d3d3d3d3";
   const artist = upsertLibraryArtist({ identityKey: `${identity}:artist`, name: "Title Artist" });
@@ -652,14 +690,17 @@ test("a scanned Lidarr track is not deleted when only a title matches more than 
     db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
   });
   vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
-  vi.spyOn(lidarrClient, "getAlbumByMbid").mockImplementation(async () => ({ id: 71 }));
+  vi.spyOn(lidarrClient, "getAlbumByMbid").mockImplementation(async () => ({
+    id: 71,
+    foreignAlbumId: "album-mbid",
+  }));
   vi.spyOn(lidarrClient, "getTracksByAlbumId").mockImplementation(async () => [
     { id: 1, title: "Intro", trackFileId: 101, hasFile: true },
     { id: 2, title: "Intro", trackFileId: 102, hasFile: true },
   ]);
   const deleted = vi.spyOn(lidarrClient, "deleteTrackFile").mockImplementation(async () => {});
 
-  const result = await libraryManager.deleteTrack(track.id);
+  const result = await libraryManager.deleteTrack(String(track.id));
 
   assert.equal(result.success, false);
   assert.equal(deleted.mock.calls.length, 0);

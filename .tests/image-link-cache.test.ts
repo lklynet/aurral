@@ -117,10 +117,10 @@ const [
   { getCachedCoverCacheControl },
 ] = await setupIsolatedBackend(
   "image-link-cache",
-  "backend/db/helpers/index.ts",
-  "backend/services/imageService.ts",
-  "backend/services/releaseGroupCoverService.ts",
-  "backend/routes/artists/handlers/cover.ts",
+  () => import("../backend/db/helpers/index.ts"),
+  () => import("../backend/services/imageService.ts"),
+  () => import("../backend/services/releaseGroupCoverService.ts"),
+  () => import("../backend/routes/artists/handlers/cover.ts"),
 );
 
 afterAll(async () => {
@@ -132,7 +132,9 @@ afterAll(async () => {
 test("empty cached cover responses are not immutable", () => {
   assert.equal(getCachedCoverCacheControl([]), "no-store");
   assert.equal(
-    getCachedCoverCacheControl([{ image: "https://images.example/artist.jpg" }]),
+    getCachedCoverCacheControl([
+      { image: "https://images.example/artist.jpg", front: true, types: [] },
+    ]),
     "public, max-age=31536000, immutable",
   );
 });

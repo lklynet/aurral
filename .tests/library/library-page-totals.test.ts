@@ -5,9 +5,9 @@ import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTe
 
 const [state, { db }, store, { getLibraryPage }] = await setupIsolatedBackend(
   "library-page-totals",
-  "backend/config/db-sqlite.ts",
-  "backend/services/libraryMediaStore.ts",
-  "backend/services/libraryQueryService.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/services/libraryMediaStore.ts"),
+  () => import("../../backend/services/libraryQueryService.ts"),
 );
 afterAll(() => cleanupIsolatedState(state));
 
@@ -40,7 +40,7 @@ test("page totals stay exact after local writes, worker commits, and rollbacks",
   try {
     worker.prepare("UPDATE library_media_files SET available = 0 WHERE track_id = ?").run(track.id);
     assert.equal(read().total, 0);
-    assert.deepEqual(read().items, []);
+    assert.deepEqual([...read().items], []);
     assert.equal(getLibraryPage({ ...options, availableOnly: false }).total, 1);
     worker.prepare("UPDATE library_media_files SET available = 1 WHERE track_id = ?").run(track.id);
     assert.equal(read().total, 1);
@@ -63,7 +63,7 @@ test("broad search keeps stable ordering, page boundaries, and playable source f
     artistId: artist.id,
     title: "Broad Album",
   });
-  const tracks = [];
+  const tracks: { id: number; title: string; source: string; available: boolean }[] = [];
   db.transaction(() => {
     for (let index = 0; index < 1105; index += 1) {
       const title = `${index % 2 ? "match" : "Match"} ${String(Math.floor(index / 3)).padStart(4, "0")}`;

@@ -49,7 +49,13 @@ test("upgrading drops the shared ListenBrainz genre sections and keeps discovery
 
     const rows = Object.fromEntries(
       db
-        .prepare("SELECT key, value FROM discovery_cache")
+        .prepare<
+          unknown[],
+          {
+            key: import("../../backend/db/rows.ts").DiscoveryCacheRow["key"];
+            value: import("../../backend/db/rows.ts").DiscoveryCacheRow["value"];
+          }
+        >("SELECT key, value FROM discovery_cache")
         .all()
         .map((row) => [row.key, row.value]),
     );

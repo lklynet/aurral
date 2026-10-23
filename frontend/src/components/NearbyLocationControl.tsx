@@ -11,14 +11,14 @@ interface NearbyLocationControlProps {
   locationMode: "ip" | "zip";
   appliedZip: string;
   appliedCountry?: string;
-  location?: NearbyLocation;
+  location?: NearbyLocation | null;
   onSelectYourLocation: () => void;
   onStartCustomLocation: () => void;
   onApplyZip: (zip: string, country: string) => void;
   className?: string;
 }
 
-function getNearbyCityLabel(location: NearbyLocation | undefined) {
+function getNearbyCityLabel(location: NearbyLocation | null | undefined) {
   if (!location) return "Location";
   if (location.city) return location.city;
   const first = location.label?.split(",")?.[0]?.trim();

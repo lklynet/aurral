@@ -13,10 +13,10 @@ try {
   });
   process.send?.({ done: true });
 } catch (error) {
-  process.send?.({ error: error.message });
+  process.send?.({ error: error instanceof Error ? error.message : String(error) });
 } finally {
   mock.timers.reset();
   const { closeHonkerDb } = await import("../../backend/services/honkerDb.ts");
   closeHonkerDb();
-  process.disconnect();
+  process.disconnect?.();
 }

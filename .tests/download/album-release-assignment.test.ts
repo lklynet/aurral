@@ -5,9 +5,11 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import type { IAudioMetadata, ICommonTagsResult } from "music-metadata";
+import type { ReleaseManifest } from "../../backend/services/releaseManifest.ts";
 import { assignDownloadedAlbumFiles } from "../../backend/services/albumReleaseAssignment.ts";
 
-const audioFixture = async (filePath) => {
+const audioFixture = async (filePath: string) => {
   await writeFile(filePath, "");
   await truncate(filePath, 40000000);
 };
@@ -27,6 +29,8 @@ test("an unverified album must contain the pinned complete edition before import
       discNumber: 1,
       artistAliases: [],
       recordingMbidAliases: [],
+      recordingMbid: null,
+      pressingDurationsMs: [],
     }));
     const manifest = {
       releaseMbid: "expected-edition",
@@ -34,6 +38,7 @@ test("an unverified album must contain the pinned complete edition before import
       title: "Album",
       artistNames: ["The Band"],
       compilation: false,
+      secondaryTypes: [],
       tracks,
     };
     const jobs = [
@@ -52,39 +57,30 @@ test("an unverified album must contain the pinned complete edition before import
       paths.map((filePath, index) => [
         filePath,
         {
-          common: {
-            title: ["First", "Second", "Bonus"][index],
-            artist: "The Band",
-            album: "Album",
-            track: { no: index + 1 },
-            disc: { no: 1 },
-          },
-          format: {
-            duration: 200 + index,
-            lossless: true,
-            sampleRate: 44100,
-            bitsPerSample: 16,
-            container: "FLAC",
-          },
+          ...fileTags(["First", "Second", "Bonus"][index], index + 1, 200 + index),
         },
       ]),
     );
-    const assign = (filePaths, verified = false) =>
+    const assign = (filePaths: string[], verified: boolean = false) =>
       assignDownloadedAlbumFiles({
         jobs,
         filePaths,
         source: "usenet",
         manifest,
         verified,
-        parseAudio: async (filePath) => parsed.get(filePath),
+        parseAudio: async (filePath) => {
+          const tags = parsed.get(filePath);
+          assert.ok(tags);
+          return tags;
+        },
       });
     const bonus = await assign(paths);
-    assert.deepEqual(bonus.accepted, []);
+    assert.deepEqual([...bonus.accepted], []);
     assert.deepEqual(
       bonus.rejected.map(({ jobId }) => jobId),
       ["wanted-second"],
     );
-    assert.deepEqual((await assign([paths[1]])).accepted, []);
+    assert.deepEqual([...(await assign([paths[1]])).accepted], []);
     const complete = await assign(paths.slice(0, 2));
     assert.deepEqual(
       complete.accepted.map(({ jobId, filePath }) => [jobId, filePath]),
@@ -100,23 +96,54 @@ test("an unverified album must contain the pinned complete edition before import
   }
 });
 
-const fileTags = (title, no, duration, extra = {}) => ({
-  common: { title, artist: "The Band", album: "Album", track: { no }, ...extra },
-  format: { duration, lossless: true, sampleRate: 44100, bitsPerSample: 16, container: "FLAC" },
+const fileTags = (
+  title: string,
+  no: number,
+  duration: number,
+  extra: Partial<ICommonTagsResult> = {},
+): IAudioMetadata => ({
+  common: {
+    title,
+    artist: "The Band",
+    album: "Album",
+    track: { no, of: null },
+    disk: { no: null, of: null },
+    movementIndex: { no: null, of: null },
+    ...extra,
+  },
+  format: {
+    tagTypes: [],
+    trackInfo: [],
+    duration,
+    lossless: true,
+    sampleRate: 44100,
+    bitsPerSample: 16,
+    container: "FLAC",
+  },
+  native: {},
+  quality: { warnings: [] },
 });
 
-function pinned(releaseMbid, tracks) {
+function pinned(
+  releaseMbid: string,
+  tracks: (Pick<ReleaseManifest["tracks"][number], "title"> &
+    Partial<ReleaseManifest["tracks"][number]>)[],
+): ReleaseManifest {
   return {
     releaseMbid,
     releaseGroupMbid: "album-group",
     title: "Album",
     artistNames: ["The Band"],
     compilation: false,
+    secondaryTypes: [],
     tracks: tracks.map((track) => ({
       artists: ["The Band"],
       artistAliases: [],
-      recordingMbid: null,
+      durationMs: null,
+      trackNumber: null,
       recordingMbidAliases: [],
+      recordingMbid: null,
+      pressingDurationsMs: [],
       discNumber: 1,
       ...track,
     })),
@@ -143,7 +170,7 @@ test("album assignment fills only verified sibling jobs and never reuses a file"
         durationMs: 200000 + index * 1000,
       })),
     );
-    const jobs = ["First", "Second", "Third"].map((trackName, index) => ({
+    const jobs = ["First", "Second", "Third"].map((trackName: string, index) => ({
       id: trackName.toLowerCase(),
       trackName,
       artistName: "The Band",
@@ -151,14 +178,18 @@ test("album assignment fills only verified sibling jobs and never reuses a file"
       durationMs: 200000 + index * 1000,
       trackNumber: index + 1,
     }));
-    const assign = (verified) =>
+    const assign = (verified: boolean) =>
       assignDownloadedAlbumFiles({
         jobs,
         filePaths: [...paths, paths[0], join(root, "missing.flac")],
         source: "deemix",
         manifest,
         verified,
-        parseAudio: async (filePath) => parsed.get(filePath),
+        parseAudio: async (filePath) => {
+          const tags = parsed.get(filePath);
+          assert.ok(tags);
+          return tags;
+        },
       });
     const result = await assign(true);
     assert.deepEqual(
@@ -168,7 +199,7 @@ test("album assignment fills only verified sibling jobs and never reuses a file"
         ["second", paths[0]],
       ],
     );
-    assert.deepEqual((await assign(false)).accepted, []);
+    assert.deepEqual([...(await assign(false)).accepted], []);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -207,7 +238,7 @@ test("an album import refuses only the files too small to hold their length", as
       "edition",
       titles.map((title, index) => ({ title, trackNumber: index + 1, durationMs: 20000 })),
     );
-    const jobs = titles.map((trackName, index) => ({
+    const jobs = titles.map((trackName: string, index) => ({
       id: trackName.toLowerCase(),
       trackName,
       artistName: "The Band",
@@ -282,13 +313,17 @@ test("album assignment places files on the pinned edition, not the requested num
         albumTrackTitles: ["First", "Second", "Third"],
       },
     ];
-    const assign = (filePaths) =>
+    const assign = (filePaths: string[]) =>
       assignDownloadedAlbumFiles({
         jobs,
         filePaths,
         source: "usenet",
         manifest,
-        parseAudio: async (filePath) => parsed.get(filePath),
+        parseAudio: async (filePath) => {
+          const tags = parsed.get(filePath);
+          assert.ok(tags);
+          return tags;
+        },
       });
     const result = await assign(paths);
     assert.deepEqual(
@@ -324,7 +359,11 @@ test("album assignment places files on the pinned edition, not the requested num
           recordingMbid: "theme",
         })),
       ),
-      parseAudio: async (filePath) => parsed.get(filePath),
+      parseAudio: async (filePath) => {
+        const tags = parsed.get(filePath);
+        assert.ok(tags);
+        return tags;
+      },
     });
     assert.deepEqual(repeated.accepted.map(({ jobId, filePath }) => [jobId, filePath]).sort(), [
       ["theme-2", themes[0]],
@@ -338,7 +377,7 @@ test("album assignment places files on the pinned edition, not the requested num
 test("album assignment pairs each track of a two-disc download with its own disc", async () => {
   const root = await mkdtemp(join(tmpdir(), "aurral-album-discs-"));
   try {
-    const tracklist = [
+    const tracklist: [number, number, string][] = [
       [1, 1, "Bomb"],
       [1, 2, "Swim"],
       [2, 1, "Bomb"],
@@ -375,14 +414,18 @@ test("album assignment pairs each track of a two-disc download with its own disc
       trackNumber,
       discNumber,
     }));
-    const assign = async (filePaths) =>
+    const assign = async (filePaths: string[]) =>
       (
         await assignDownloadedAlbumFiles({
           jobs: jobs.toReversed(),
           filePaths: filePaths.toReversed(),
           source: "usenet",
           manifest,
-          parseAudio: async (filePath) => parsed.get(filePath),
+          parseAudio: async (filePath) => {
+            const tags = parsed.get(filePath);
+            assert.ok(tags);
+            return tags;
+          },
         })
       ).accepted
         .map(({ jobId, filePath, discNumber, trackNumber }) => [
@@ -453,9 +496,13 @@ test("album assignment pairs each track of a two-disc download with its own disc
     const placed = await assignDownloadedAlbumFiles({
       jobs: lp4Jobs,
       filePaths: named,
-      source: "slskd",
+      source: "soulseek",
       manifest: lp4,
-      parseAudio: async (filePath) => parsed.get(filePath),
+      parseAudio: async (filePath) => {
+        const tags = parsed.get(filePath);
+        assert.ok(tags);
+        return tags;
+      },
     });
     assert.deepEqual(
       placed.accepted.map(({ jobId, filePath, discNumber }) => [jobId, filePath, discNumber]),
@@ -477,7 +524,8 @@ test("album assignment accepts a file tagged with a recording ID MusicBrainz mer
     const first = "11111111-1111-4111-8111-111111111111";
     const second = "22222222-2222-4222-8222-222222222222";
     const mergedSecond = "33333333-3333-4333-8333-333333333333";
-    const tags = (title, no, mbid) => fileTags(title, no, 200, { musicbrainz_recordingid: mbid });
+    const tags = (title: string, no: number, mbid: string) =>
+      fileTags(title, no, 200, { musicbrainz_recordingid: mbid });
     const parsed = new Map([
       [paths[0], tags("First", 1, first)],
       [paths[1], tags("Second", 2, mergedSecond)],
@@ -517,7 +565,11 @@ test("album assignment accepts a file tagged with a recording ID MusicBrainz mer
       filePaths: paths,
       source: "soulseek",
       manifest,
-      parseAudio: async (filePath) => parsed.get(filePath),
+      parseAudio: async (filePath) => {
+        const tags = parsed.get(filePath);
+        assert.ok(tags);
+        return tags;
+      },
     });
     assert.deepEqual(
       result.accepted.map(({ jobId }) => jobId),

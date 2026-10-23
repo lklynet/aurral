@@ -1,19 +1,24 @@
 import v8 from "node:v8";
 
-process.send({ type: "ready" });
+process.send?.({ type: "ready" });
 
-process.on("message", (message) => {
-  if (message?.type === "report-heap-limit") {
-    process.send({ type: "heap-limit", bytes: v8.getHeapStatistics().heap_size_limit });
-  } else if (message?.type === "run-job") {
+type ParentMessage =
+  | { type: "report-heap-limit" }
+  | { type: "run-job"; queue: string; jobId: string; payload: unknown; defaultHeapLimit: number }
+  | { type: "shutdown" };
+
+process.on("message", (message: ParentMessage) => {
+  if (message.type === "report-heap-limit") {
+    process.send?.({ type: "heap-limit", bytes: v8.getHeapStatistics().heap_size_limit });
+  } else if (message.type === "run-job") {
     const { rss, heapUsed } = process.memoryUsage();
-    process.send({ type: "job-started", queue: message.queue, jobId: message.jobId, payload: message.payload });
-    process.send({ type: "heartbeat", workers: [], memory: { rss, heapUsed } }, () => {
+    process.send?.({ type: "job-started", queue: message.queue, jobId: message.jobId, payload: message.payload });
+    process.send?.({ type: "heartbeat", workers: [], memory: { rss, heapUsed } }, () => {
       if (v8.getHeapStatistics().heap_size_limit >= message.defaultHeapLimit) process.exit(1);
-      const kept = [];
+      const kept: number[][] = [];
       for (;;) kept.push(new Array(10000).fill(Math.random()));
     });
-  } else if (message?.type === "shutdown") {
+  } else if (message.type === "shutdown") {
     process.exit(0);
   }
 });

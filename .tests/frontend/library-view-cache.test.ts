@@ -23,11 +23,11 @@ test("clearing library pages preserves the mounted view during favorite updates"
   assert.equal(queryClient.getQueryData(pageKey), undefined);
 
   const favoriteIds = new Set(["album:7"]);
-  queryClient.setQueryData(viewKey, (current) => ({
-    ...(current || {}),
+  queryClient.setQueryData<typeof view>(viewKey, (current) => ({
+    ...(current || view),
     favoriteIds,
   }));
-  const updatedView = queryClient.getQueryData(viewKey);
+  const updatedView = queryClient.getQueryData<typeof view>(viewKey);
   assert.deepEqual(updatedView?.pageResults, view.pageResults);
   assert.strictEqual(updatedView?.favoriteIds, favoriteIds);
   queryClient.clear();

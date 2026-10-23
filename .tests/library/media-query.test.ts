@@ -1,3 +1,4 @@
+import { readArtist, readAlbum, readTrack, readFile } from "./fixtures.ts";
 import { test, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
@@ -39,16 +40,16 @@ const metadata = {
     artist: "Query Fixture",
     album: "Canonical Reads",
     title: "One Source, Two Files",
-    track: { no: 1 },
-    disk: { no: 1 },
-    musicbrainz_albumartistid: "11111111-1111-4111-8111-111111111111",
+    track: { no: 1, of: null },
+    disk: { no: 1, of: null },
+    musicbrainz_albumartistid: ["11111111-1111-4111-8111-111111111111"],
     musicbrainz_releasegroupid: "22222222-2222-4222-8222-222222222222",
     musicbrainz_recordingid: "33333333-3333-4333-8333-333333333333",
   },
   format: { duration: 123.4, codec: "FLAC" },
 };
 
-async function createAudioFile(root, relativePath) {
+async function createAudioFile(root: string, relativePath: string) {
   const filePath = path.join(root, relativePath);
   await mkdir(path.dirname(filePath), { recursive: true });
   await writeFile(filePath, "fixture");
@@ -102,12 +103,12 @@ test("getLibraryTrackPath keeps shared tracks scoped to the requested album", ()
   });
 
   try {
-    assert.equal(getLibraryTrackPath(firstAlbum.id, track.id), firstPath);
+    assert.equal(getLibraryTrackPath(String(firstAlbum.id), String(track.id)), firstPath);
     assert.equal(getLibraryTrackPath(secondAlbum.identity_key, track.mbid), secondPath);
-    assert.equal(getLibraryTrackPath(fallbackAlbum.id, track.id), null);
+    assert.equal(getLibraryTrackPath(String(fallbackAlbum.id), String(track.id)), null);
     upsertLibraryMediaFile({ trackId: track.id, source: "aurral", path: fallbackPath });
-    assert.equal(getLibraryTrackPath(fallbackAlbum.id, track.id), fallbackPath);
-    assert.equal(getLibraryTrackPath(firstAlbum.id, track.id), firstPath);
+    assert.equal(getLibraryTrackPath(String(fallbackAlbum.id), String(track.id)), fallbackPath);
+    assert.equal(getLibraryTrackPath(String(firstAlbum.id), String(track.id)), firstPath);
   } finally {
     db.prepare("DELETE FROM library_media_files WHERE track_id = ?").run(track.id);
     db.prepare("DELETE FROM library_album_tracks WHERE track_id = ?").run(track.id);
@@ -162,9 +163,9 @@ test("library references prefer the library ID over a provider ID collision", ()
   });
 
   try {
-    assert.equal(getLibraryTrackPath(targetAlbum.id, targetTrack.id), targetPath);
+    assert.equal(getLibraryTrackPath(String(targetAlbum.id), String(targetTrack.id)), targetPath);
     assert.deepEqual(
-      getLibraryTrack({ trackId: targetTrack.id }).tracks.map((track) => track.id),
+      getLibraryTrack({ trackId: String(targetTrack.id) }).tracks.map((track) => track.id),
       [targetTrack.id],
     );
     assert.deepEqual(
@@ -297,7 +298,7 @@ test("focused track, ownership, count, and sample queries stay bounded", () => {
 test("getLibrary merges sources and preserves normalized hierarchy", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-library-query-"));
   const source = `query-aurral-${process.pid}`;
-  let filePath;
+  let filePath: string | undefined;
   try {
     filePath = await createAudioFile(
       root,
@@ -342,14 +343,16 @@ test("getLibrary merges sources and preserves normalized hierarchy", async () =>
 
 test("getLibrary deduplicates a file shared by multiple album relationships", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-library-query-duplicate-"));
-  let filePath;
-  let duplicateAlbumId;
+  let filePath: string | undefined;
+  let duplicateAlbumId: number | undefined;
   try {
     filePath = await createAudioFile(root, "Artist/Album/01 Track.flac");
     await scanMusicRoot({ rootPath: root, source: "aurral", metadataReader: async () => metadata });
     const first = getLibrary({ source: "aurral" });
     const track = first.tracks.find((entry) => entry.files.some((file) => file.path === filePath));
+    assert.ok(track != null);
     const album = first.albums.find((entry) => entry.trackIds.includes(track.id));
+    assert.ok(album != null);
     const duplicateAlbum = upsertLibraryAlbum({
       identityKey: `duplicate-album:${process.pid}`,
       artistId: album.artistId,
@@ -362,6 +365,7 @@ test("getLibrary deduplicates a file shared by multiple album relationships", as
     const resultTrack = result.tracks.find((entry) =>
       entry.files.some((file) => file.path === filePath),
     );
+    assert.ok(resultTrack != null);
     assert.equal(resultTrack.files.length, 1);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -521,7 +525,7 @@ test("artist and album reference reads resolve through indexed entity lookups", 
     source: "lidarr",
     path: `/tmp/${key}.flac`,
   });
-  const prepared = [];
+  const prepared: string[] = [];
   const prepare = db.prepare.bind(db);
   const spy = vi.spyOn(db, "prepare").mockImplementation((sql) => {
     prepared.push(String(sql));
@@ -548,14 +552,14 @@ test("artist and album reference reads resolve through indexed entity lookups", 
     );
     spy.mockRestore();
 
-    const lookups = prepared.filter((sql) =>
+    const lookups = prepared.filter((sql: string) =>
       /^SELECT id FROM library_(artists|albums)/.test(sql.trim()),
     );
     assert.equal(lookups.length, 2);
     for (const sql of lookups) {
       const parameterCount = (sql.match(/\?/g) || []).length;
       const plan = db
-        .prepare(`EXPLAIN QUERY PLAN ${sql}`)
+        .prepare<unknown[], { detail: string }>(`EXPLAIN QUERY PLAN ${sql}`)
         .all(...Array.from({ length: parameterCount }, () => `${key}:missing`));
       assert.equal(
         plan.some(({ detail }) => /SCAN library_(artists|albums)/.test(detail)),
@@ -577,7 +581,7 @@ test("artist and album reference reads resolve through indexed entity lookups", 
     for (const sql of hydration) {
       const parameterCount = (sql.match(/\?/g) || []).length;
       const plan = db
-        .prepare(`EXPLAIN QUERY PLAN ${sql}`)
+        .prepare<unknown[], { detail: string }>(`EXPLAIN QUERY PLAN ${sql}`)
         .all(...Array.from({ length: parameterCount }, () => artist.id));
       assert.equal(
         plan.some(({ detail }) => /SCAN (album|album_track)/.test(detail)),
@@ -665,8 +669,8 @@ test("album-reference reads preserve identity keys and album-specific ownership"
       availableOnly: true,
       references: [missingAlbum.identity_key],
     });
-    assert.deepEqual(available.albums, []);
-    assert.deepEqual(available.tracks, []);
+    assert.deepEqual([...available.albums], []);
+    assert.deepEqual([...available.tracks], []);
   } finally {
     db.prepare("DELETE FROM library_media_files WHERE path IN (?, ?)").run(
       ownedPath,
@@ -685,19 +689,19 @@ test("album-reference reads preserve identity keys and album-specific ownership"
 
 test("album reads prefer an album-specific file over an earlier unscoped file", () => {
   const readModel = buildLibraryReadModel({
-    artists: [{ id: 1, name: "Artist", albumIds: [2], sources: ["aurral"] }],
-    albums: [{ id: 2, artistId: 1, title: "Album", trackIds: [3], sources: ["aurral"] }],
+    artists: [readArtist({ id: 1, name: "Artist", sources: ["aurral"] })],
+    albums: [readAlbum({ id: 2, artistId: 1, title: "Album", trackIds: [3], sources: ["aurral"] })],
     tracks: [
-      {
+      readTrack({
         id: 3,
         title: "Track",
-        albums: [{ albumId: 2, trackNumber: 1 }],
+        albums: [{ albumId: 2, discNumber: 1, trackNumber: 1 }],
         files: [
-          { albumId: null, path: "/music/00-unscoped.flac", available: true },
-          { albumId: 2, path: "/music/01-album.flac", available: true },
+          readFile({ albumId: null, path: "/music/00-unscoped.flac", available: true }),
+          readFile({ albumId: 2, path: "/music/01-album.flac", available: true }),
         ],
         sources: ["aurral"],
-      },
+      }),
     ],
   });
 
@@ -896,7 +900,7 @@ test("library album track pages include indexed tracks without media", () => {
       ["Owned Track", "Missing Track"],
     );
     assert.equal(page.items[0].files.length, 1);
-    assert.deepEqual(page.items[1].files, []);
+    assert.deepEqual([...page.items[1].files], []);
     assert.equal(page.albums[0].trackCount, 2);
     assert.equal(page.albums[0].availableTrackCount, 1);
 
@@ -939,13 +943,34 @@ test("library album track pages include indexed tracks without media", () => {
 
 test("library responses do not expose filesystem paths", () => {
   const response = toPublicLibrary({
-    artists: [{ metadata: { path: "/music/private", tags: { genre: "rock" } } }],
-    albums: [{ metadata: { rootFolderPath: "/music/private" } }],
+    artists: [
+      {
+        ...readArtist({
+          metadata: { path: "/music/private", tags: { genre: "rock" } } as NonNullable<
+            Parameters<typeof readArtist>[0]
+          >["metadata"],
+        }),
+        canonicalId: "1",
+        providerId: null,
+        managedBy: null,
+        monitorMode: null,
+        monitored: false,
+        albumIds: [],
+      },
+    ],
+    albums: [
+      readAlbum({
+        metadata: { rootFolderPath: "/music/private" } as NonNullable<
+          Parameters<typeof readAlbum>[0]
+        >["metadata"],
+      }),
+    ],
     tracks: [
       {
+        ...readTrack(),
         id: 1,
         metadata: { nested: { filePath: "/music/private.flac" } },
-        files: [{ id: 2, path: "/music/private.flac", source: "aurral" }],
+        files: [readFile({ id: 2, path: "/music/private.flac", source: "aurral" })],
       },
     ],
   });
@@ -953,7 +978,20 @@ test("library responses do not expose filesystem paths", () => {
   assert.deepEqual(response.artists[0].metadata, { tags: { genre: "rock" } });
   assert.deepEqual(response.albums[0].metadata, {});
   assert.deepEqual(response.tracks[0].metadata, { nested: {} });
-  assert.deepEqual(response.tracks[0].files, [{ id: 2, source: "aurral" }]);
+  assert.deepEqual(response.tracks[0].files, [
+    {
+      id: 2,
+      albumId: null,
+      source: "aurral",
+      format: null,
+      size: 0,
+      mtimeMs: null,
+      durationMs: null,
+      quality: null,
+      available: false,
+      createdAt: 0,
+    },
+  ]);
 });
 
 test("library album responses return public metadata artwork links", () => {
@@ -962,6 +1000,7 @@ test("library album responses return public metadata artwork links", () => {
     artists: [],
     albums: [
       {
+        ...readAlbum(),
         id: 1,
         metadata: {
           images: [{ url: "/MediaCover/Albums/1/cover.jpg" }, { remoteUrl }],

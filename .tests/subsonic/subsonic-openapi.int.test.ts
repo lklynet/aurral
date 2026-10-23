@@ -22,12 +22,12 @@ const [
   { downloadTracker },
 ] = await setupIsolatedBackend(
   "subsonic-openapi",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/middleware/passwordHash.ts",
-  "backend/services/libraryFileScanner.ts",
-  "backend/services/playlists/flowPlaylistConfig.ts",
-  "backend/services/downloadJobs/downloadTracker.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/middleware/passwordHash.ts"),
+  () => import("../../backend/services/libraryFileScanner.ts"),
+  () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
+  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
 );
 
 const spec = JSON.parse(
@@ -36,7 +36,7 @@ const spec = JSON.parse(
 const ajv = new Ajv({ strict: false, validateFormats: false, allErrors: true });
 const validators = new Map();
 
-function validatorFor(method) {
+function validatorFor(method: string) {
   if (!validators.has(method)) {
     const operation = spec.paths[`/rest/${method}`]?.get;
     assert.ok(operation, `spec has no GET /rest/${method}`);
@@ -50,10 +50,19 @@ function validatorFor(method) {
   return validators.get(method);
 }
 
-let aurral;
-let fixtureRoot;
+let aurral: {
+  child: import("node:child_process").ChildProcessByStdio<
+    null,
+    import("node:stream").Readable,
+    import("node:stream").Readable
+  >;
+  port: number;
+  logs: () => string;
+  stop(): Promise<void>;
+};
+let fixtureRoot: string;
 
-function subsonicUrl(method, params = {}) {
+function subsonicUrl(method: string, params: Record<string, string | string[]> = {}) {
   const query = new URLSearchParams({
     u: "alice",
     p: "password123",
@@ -67,13 +76,13 @@ function subsonicUrl(method, params = {}) {
   return `http://127.0.0.1:${aurral.port}/rest/${method}.view?${query}`;
 }
 
-async function call(method, params) {
+async function call(method: string, params?: Record<string, string | string[]>) {
   const response = await fetch(subsonicUrl(method, params));
   assert.equal(response.status, 200, `${method} HTTP status`);
   return JSON.parse(await response.text());
 }
 
-async function assertValid(method, params = {}) {
+async function assertValid(method: string, params = {}) {
   const body = await call(method, params);
   const validate = validatorFor(method);
   assert.ok(
@@ -91,6 +100,7 @@ beforeAll(async () => {
     onboardingComplete: true,
   });
   const alice = userOps.createUser("alice", hashPassword("password123"), "admin");
+  assert.ok(alice != null);
 
   fixtureRoot = await mkdtemp(path.join(isolatedState.baseDir, "media-"));
   const fixturePath = path.join(
@@ -110,9 +120,9 @@ beforeAll(async () => {
         artist: "Schema Artist",
         album: "Schema Album",
         title: "Schema Song",
-        track: { no: 1 },
+        track: { no: 1, of: null },
         genre: ["Rock"],
-        musicbrainz_albumartistid: "11111111-1111-4111-8111-111111111111",
+        musicbrainz_albumartistid: ["11111111-1111-4111-8111-111111111111"],
         musicbrainz_releasegroupid: "22222222-2222-4222-8222-222222222222",
         musicbrainz_recordingid: "33333333-3333-4333-8333-333333333333",
       },
@@ -142,6 +152,7 @@ beforeAll(async () => {
     },
     playlist.id,
   );
+  assert.ok(jobId != null);
   downloadTracker.setDone(jobId, fixturePath, "Schema Album");
 
   aurral = await startServerProcess({ extraEnv: { CORS_ORIGIN: "" } });

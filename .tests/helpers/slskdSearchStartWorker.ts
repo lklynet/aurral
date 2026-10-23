@@ -4,9 +4,10 @@ try {
   await client.createSearch("Worker search", { id: "worker-search" });
   process.send?.({ done: true });
 } catch (error) {
-  process.send?.({ error: error.message });
+  process.send?.({ error: error instanceof Error ? error.message : String(error) });
 } finally {
   const { closeHonkerDb } = await import("../../backend/services/honkerDb.ts");
   closeHonkerDb();
-  process.disconnect();
+  process.disconnect?.();
 }
+export {};

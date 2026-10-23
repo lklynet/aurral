@@ -1,3 +1,4 @@
+import { asAppError } from "../../lib/errors.ts";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -29,8 +30,8 @@ test("reports a missing token source with its path", async () => {
 
   try {
     await assert.rejects(readAurralTokens(missingPath), (error) => {
-      assert.match(error.message, /Unable to read Aurral token source/);
-      assert.match(error.message, /missing\.css/);
+      assert.match(asAppError(error)?.message ?? "", /Unable to read Aurral token source/);
+      assert.match(asAppError(error)?.message ?? "", /missing\.css/);
       return true;
     });
   } finally {
@@ -46,8 +47,8 @@ test("reports malformed CSS with its source path", async () => {
     await writeFile(malformedPath, ":root { --aurral-surface: #111;", "utf8");
 
     await assert.rejects(readAurralTokens(malformedPath), (error) => {
-      assert.match(error.message, /Unable to parse Aurral token source/);
-      assert.match(error.message, /malformed\.css/);
+      assert.match(asAppError(error)?.message ?? "", /Unable to parse Aurral token source/);
+      assert.match(asAppError(error)?.message ?? "", /malformed\.css/);
       return true;
     });
   } finally {

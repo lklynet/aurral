@@ -1,4 +1,5 @@
-import { test, beforeEach, afterAll, afterEach, vi } from "vite-plus/test";
+import { requireFixture } from "../playlists/fixtures.ts";
+import { test, beforeEach, afterAll, afterEach, vi, type MockInstance } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import {
@@ -21,16 +22,16 @@ const [
   { processSystemTask },
 ] = await setupIsolatedBackend(
   "import-list-sync",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/playlists/flowPlaylistConfig.ts",
-  "backend/services/spotify/spotifyConnectionStore.ts",
-  "backend/services/spotify/spotifyClient.ts",
-  "backend/services/logger.ts",
-  "backend/services/downloadJobs/downloadWorker.ts",
-  "backend/services/downloadJobs/downloadTracker.ts",
-  "backend/services/importLists/importListSync.ts",
-  "backend/services/systemTaskWorker.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
+  () => import("../../backend/services/spotify/spotifyConnectionStore.ts"),
+  () => import("../../backend/services/spotify/spotifyClient.ts"),
+  () => import("../../backend/services/logger.ts"),
+  () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
+  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
+  () => import("../../backend/services/importLists/importListSync.ts"),
+  () => import("../../backend/services/systemTaskWorker.ts"),
 );
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -39,12 +40,19 @@ const originalStart = downloadWorker.start;
 const lastSyncAt = Date.now() - 3 * DAY_MS;
 const oldTrack = { artistName: "Old Artist", trackName: "Old Song", albumName: "Old Album" };
 
-const databaseChanges = () => db.prepare("SELECT total_changes() AS changes").get().changes;
+const databaseChanges = () =>
+  requireFixture(db.prepare<[], { changes: number }>("SELECT total_changes() AS changes").get())
+    .changes;
 const runScheduledSync = () => processSystemTask({ kind: "import-list-sync" });
-const importLogs = (mock) =>
-  mock.mock.calls.filter((call) => call[0] === "playlist-import").map((call) => call[2]);
+const importLogs = (mock: MockInstance<typeof logger.warn>): { playlistId?: string }[] =>
+  mock.mock.calls.filter((call) => call[0] === "playlist-import").map((call) => call[2] ?? {});
 
-const createSyncedPlaylist = (name, ownerUserId, provider, externalId) =>
+const createSyncedPlaylist = (
+  name: string,
+  ownerUserId: number,
+  provider: string,
+  externalId: string,
+) =>
   flowPlaylistConfig.createStaticPlaylist({
     name,
     ownerUserId,
@@ -58,20 +66,20 @@ const createSyncedPlaylist = (name, ownerUserId, provider, externalId) =>
     },
   });
 
-const connectSpotify = (userId, accessToken) =>
+const connectSpotify = (userId: number, accessToken: string) =>
   spotifyConnectionStore.saveConnection(userId, {
     accessToken,
     refreshToken: `${accessToken}-refresh`,
     expiresAt: Date.now() + DAY_MS,
   });
 
-const jsonResponse = (body, status = 200) =>
+const jsonResponse = (body: unknown, status: number = 200) =>
   new Response(JSON.stringify(body), {
     status,
     headers: { "content-type": "application/json" },
   });
 
-const playlistPage = (externalId) => ({
+const playlistPage = (externalId: string | null) => ({
   items: [
     {
       item: {
@@ -89,13 +97,15 @@ const playlistPage = (externalId) => ({
 
 const SPOTIFY_HOSTS = new Set(["api.spotify.com", "spotify.lidarr.audio"]);
 
-const stubSpotify = (respond) => {
-  const requests = [];
+const stubSpotify = (
+  respond: (request: { url: string; token: string }) => Response | Promise<Response>,
+) => {
+  const requests: { url: string; token: string }[] = [];
   globalThis.fetch = async (url, init = {}) => {
     if (!SPOTIFY_HOSTS.has(new URL(String(url)).hostname)) return originalFetch(url, init);
     const request = {
       url: String(url),
-      token: String(init.headers?.Authorization || "").replace(/^Bearer /, ""),
+      token: (new Headers(init.headers).get("Authorization") ?? "").replace(/^Bearer /, ""),
     };
     requests.push(request);
     return respond(request);
@@ -103,7 +113,7 @@ const stubSpotify = (respond) => {
   return requests;
 };
 
-const playlistItemsId = (url) => url.match(/\/playlists\/([^/]+)\/items/)?.[1] || null;
+const playlistItemsId = (url: string) => url.match(/\/playlists\/([^/]+)\/items/)?.[1] || null;
 
 beforeEach(() => {
   resetDatabase(db);
@@ -151,7 +161,7 @@ test("disconnected providers pause synced playlists without touching them until 
   await runScheduledSync();
 
   assert.equal(databaseChanges(), before);
-  assert.deepEqual(requests, []);
+  assert.deepEqual([...requests], []);
   assert.deepEqual(importLogs(error), []);
   assert.deepEqual(importLogs(warn), [
     { provider: "Spotify", ownerUserId: 7, playlistCount: 2 },
@@ -159,7 +169,10 @@ test("disconnected providers pause synced playlists without touching them until 
   ]);
   for (const playlist of [...spotifyPlaylists, listenbrainzPlaylist]) {
     const stored = flowPlaylistConfig.getStaticPlaylist(playlist.id);
+    assert.ok(stored != null);
+    assert.ok(stored.importSource != null);
     assert.equal(stored.importSource.lastSyncAt, lastSyncAt);
+    assert.ok(stored.importSource != null);
     assert.equal(stored.importSource.lastSyncError, null);
     assert.deepEqual(
       stored.tracks.map((track) => track.trackName),
@@ -169,7 +182,7 @@ test("disconnected providers pause synced playlists without touching them until 
 
   await assert.rejects(
     syncStaticPlaylistImport({ playlistId: spotifyPlaylists[0].id, user: { id: 7 }, force: true }),
-    (rejection) =>
+    (rejection: { statusCode?: number; message: string }) =>
       rejection.statusCode === 401 && /Spotify is not connected/.test(rejection.message),
   );
 
@@ -188,15 +201,21 @@ test("disconnected providers pause synced playlists without touching them until 
   ]);
   for (const playlist of spotifyPlaylists) {
     const stored = flowPlaylistConfig.getStaticPlaylist(playlist.id);
+    assert.ok(stored != null);
+    assert.ok(stored.importSource != null);
+    assert.ok(stored.importSource.lastSyncAt != null);
     assert.ok(stored.importSource.lastSyncAt > lastSyncAt);
+    assert.ok(stored.importSource != null);
     assert.equal(stored.importSource.lastSyncError, null);
+    assert.ok(playlist.importSource != null);
     assert.deepEqual(
       stored.tracks.map((track) => track.trackName),
       [`Song from ${playlist.importSource.externalId}`],
     );
   }
   assert.equal(
-    flowPlaylistConfig.getStaticPlaylist(listenbrainzPlaylist.id).importSource.lastSyncAt,
+    requireFixture(flowPlaylistConfig.getStaticPlaylist(listenbrainzPlaylist.id)!.importSource)
+      .lastSyncAt,
     lastSyncAt,
   );
 });
@@ -229,11 +248,14 @@ test("a Spotify connection revoked mid-run pauses that owner's remaining playlis
   assert.deepEqual(importLogs(warn), [{ provider: "Spotify", ownerUserId: 7, playlistCount: 2 }]);
   for (const playlist of revoked.slice(1)) {
     assert.equal(
-      flowPlaylistConfig.getStaticPlaylist(playlist.id).importSource.lastSyncError,
+      requireFixture(flowPlaylistConfig.getStaticPlaylist(playlist.id)!.importSource).lastSyncError,
       null,
     );
   }
   const synced = flowPlaylistConfig.getStaticPlaylist(otherOwner.id);
+  assert.ok(synced != null);
+  assert.ok(synced.importSource != null);
+  assert.ok(synced.importSource.lastSyncAt != null);
   assert.ok(synced.importSource.lastSyncAt > lastSyncAt);
   assert.deepEqual(
     synced.tracks.map((track) => track.trackName),
@@ -250,7 +272,10 @@ test("a sync that keeps failing the same way does not rewrite the playlist each 
 
   await runScheduledSync();
   const stored = flowPlaylistConfig.getStaticPlaylist(playlist.id);
+  assert.ok(stored != null);
+  assert.ok(stored.importSource != null);
   assert.equal(stored.importSource.lastSyncError, "Spotify is unavailable");
+  assert.ok(stored.importSource != null);
   assert.equal(stored.importSource.lastSyncAt, lastSyncAt);
   const before = databaseChanges();
 
@@ -259,7 +284,7 @@ test("a sync that keeps failing the same way does not rewrite the playlist each 
   assert.equal(databaseChanges(), before);
   assert.equal(importLogs(error).length, 2);
   assert.equal(
-    flowPlaylistConfig.getStaticPlaylist(playlist.id).importSource.lastSyncError,
+    requireFixture(flowPlaylistConfig.getStaticPlaylist(playlist.id)!.importSource).lastSyncError,
     "Spotify is unavailable",
   );
 });

@@ -120,7 +120,7 @@ test("an offered artist, album, or release folder that names an unrequested vers
       "instrumental",
     ],
     [{ album: "Random.Access.Memories.Live.2013" }, "live"],
-  ];
+  ] satisfies [unknown, unknown][];
   for (const [offered, variant] of cases) {
     const check = checkVariantCompatibility(getLucky, { title: "Get Lucky", ...offered });
     assert.equal(check.compatible, false, JSON.stringify(offered));
@@ -129,8 +129,10 @@ test("an offered artist, album, or release folder that names an unrequested vers
 });
 
 test("names and share folders that contain version words stay compatible", () => {
-  const compatible = (request, candidate) =>
-    checkVariantCompatibility(request, candidate).compatible;
+  const compatible = (
+    request: Parameters<typeof checkVariantCompatibility>[0],
+    candidate: Parameters<typeof checkVariantCompatibility>[1],
+  ) => checkVariantCompatibility(request, candidate).compatible;
   for (const [request, candidate] of [
     [
       getLucky,
@@ -207,7 +209,7 @@ test("names and share folders that contain version words stay compatible", () =>
       { trackName: "Song", artistName: "Band", albumName: "Live - The Album" },
       { title: "Song", path: "Band/Band - Live - The Album (2001) [FLAC]/01 Song.flac" },
     ],
-  ])
+  ] satisfies [unknown, unknown][])
     assert.equal(compatible(request, candidate), true, JSON.stringify(candidate));
   for (const path of [
     "Live/Live - Live at the Paradiso/05 Selling the Drama.flac",
@@ -245,7 +247,10 @@ test("names and share folders that contain version words stay compatible", () =>
 });
 
 test("a version the request names in its track, album, or artist is allowed in the offered names", () => {
-  const check = (request, candidate) => checkVariantCompatibility(request, candidate);
+  const check = (
+    request: Parameters<typeof checkVariantCompatibility>[0],
+    candidate: Parameters<typeof checkVariantCompatibility>[1],
+  ) => checkVariantCompatibility(request, candidate);
   assert.equal(
     check(
       { trackName: "Apology (Acoustic)", artistName: "Band", albumName: "Album" },
@@ -408,8 +413,10 @@ test("re-recordings contradict; ordinary remasters do not", () => {
 
 test("an unrequested stereo or alternate mix contradicts unless a requested name names it, and mono only against stereo", () => {
   const heyJude = { trackName: "Hey Jude", artistName: "The Beatles", albumName: "1" };
-  const contradictions = (request, title) =>
-    checkVariantCompatibility(request, { title }).contradictions;
+  const contradictions = (
+    request: Parameters<typeof checkVariantCompatibility>[0],
+    title: string,
+  ) => checkVariantCompatibility(request, { title }).contradictions;
   assert.deepEqual(contradictions(heyJude, "Hey Jude (2015 Stereo Mix)"), ["alternate_mix"]);
   assert.deepEqual(contradictions(heyJude, "Hey Jude (Alternate Mix)"), ["alternate_mix"]);
   assert.deepEqual(contradictions(heyJude, "Hey Jude - Alternative Version"), ["alternate_mix"]);
@@ -452,7 +459,7 @@ test("an unrequested stereo or alternate mix contradicts unless a requested name
       },
       "Strawberry Fields Forever (Alternate Take)",
     ],
-  ]) {
+  ] satisfies [unknown, unknown][]) {
     assert.deepEqual(contradictions(request, title), [], title);
     assert.deepEqual(
       contradictions({ ...request, albumName: "Greatest Hits" }, title),

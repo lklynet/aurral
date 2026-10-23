@@ -1,3 +1,5 @@
+import { usenetCandidate } from "./fixtures.ts";
+import { createTrackedJob, recordSourceFailures } from "./fixtures.ts";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import {
@@ -16,27 +18,33 @@ const [
   { processUsenetPipelinePayload },
 ] = await setupIsolatedBackend(
   "transfer-timeouts",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/downloadJobs/downloadTracker.ts",
-  "backend/services/download/downloadClientSettings.ts",
-  "backend/services/downloadPipeline.ts",
-  "backend/services/usenetOrchestrator.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
+  () => import("../../backend/services/download/downloadClientSettings.ts"),
+  () => import("../../backend/services/downloadPipeline.ts"),
+  () => import("../../backend/services/usenetOrchestrator.ts"),
 );
 
-beforeEach(() => resetDatabase(db));
+beforeEach(() => {
+  failures.length = 0;
+  resetDatabase(db);
+});
 afterAll(() => cleanupIsolatedState(state));
+
+type UsenetPayload = Parameters<typeof processUsenetPipelinePayload>[0];
 
 const HOUR_MS = 60 * 60 * 1000;
 
 function addJob() {
-  return downloadTracker.addJob(
+  return createTrackedJob(
+    downloadTracker,
     { artistName: "The Band", trackName: "First", durationMs: 180000 },
     "timeouts",
   );
 }
 
-const failSource = { failOrTryNextSource: (_payload, _job, reason) => ({ failed: reason }) };
+const { reasons: failures, helpers: failSource } = recordSourceFailures();
 
 test("a stalled slskd transfer is cancelled and the next candidate is tried", async () => {
   dbOps.updateSettings({
@@ -71,6 +79,8 @@ test("a stalled slskd transfer is cancelled and the next candidate is tried", as
   };
 
   const waiting = await processPipelinePayload(polling);
+  assert.ok(waiting != null);
+  assert.ok(waiting != null);
   assert.equal(waiting.phase, "poll");
   const longAgo = Date.now() - HOUR_MS;
   const moving = await processPipelinePayload({
@@ -78,16 +88,18 @@ test("a stalled slskd transfer is cancelled and the next candidate is tried", as
     lastProgress: "older",
     lastProgressAt: longAgo,
   });
+  assert.ok(moving != null);
   assert.equal(moving.phase, "poll");
   assert.equal(removed.mock.calls.length, 0);
 
   const stalled = await processPipelinePayload({ ...waiting, lastProgressAt: longAgo });
+  assert.ok(stalled != null);
   assert.equal(removed.mock.calls.length, 1);
   assert.equal(stalled.phase, "download");
   assert.equal(stalled.candidateIndex, 1);
 
   queued.state = "Completed, TimedOut";
-  assert.equal((await processPipelinePayload(polling)).phase, "download");
+  assert.equal((await processPipelinePayload(polling))!.phase, "download");
 });
 
 test("a rejected slskd transfer moves to the next user instead of retrying the same one", async () => {
@@ -121,6 +133,7 @@ test("a rejected slskd transfer moves to the next user instead of retrying the s
   };
 
   const next = await processPipelinePayload(polling);
+  assert.ok(next != null);
   assert.equal(next.phase, "download");
   assert.equal(next.candidateIndex, 1);
 });
@@ -155,9 +168,11 @@ test("a file in an uploader's queue moves to the next candidate after 10 minutes
     ],
   };
   const waiting = await processPipelinePayload(polling);
+  assert.ok(waiting != null);
   const quarterHourAgo = Date.now() - 15 * 60 * 1000;
 
   const moved = await processPipelinePayload({ ...waiting, lastProgressAt: quarterHourAgo });
+  assert.ok(moved != null);
   assert.equal(moved.phase, "download");
   assert.equal(moved.candidateIndex, 1);
   assert.equal(removed.mock.calls.length, 1);
@@ -167,6 +182,7 @@ test("a file in an uploader's queue moves to the next candidate after 10 minutes
     candidateIndex: 1,
     lastProgressAt: quarterHourAgo,
   });
+  assert.ok(lastCandidate != null);
   assert.equal(lastCandidate.phase, "poll");
 });
 
@@ -186,6 +202,7 @@ test("a paused Usenet download keeps waiting while the client holds it", async (
     },
     failSource,
   );
+  assert.ok(next != null);
   assert.equal(next.phase, "poll");
   assert.equal(next.missingPolls, 0);
 });
@@ -202,12 +219,20 @@ test("a Usenet download that leaves the client moves to the next release", async
     downloadClient: "nzbget",
     nzbId: 7,
     candidateIndex: 0,
-    candidates: [{ raw: { release: { guid: "a" } } }, { raw: { release: { guid: "b" } } }],
+    candidates: [
+      usenetCandidate({ raw: { release: { guid: "a" } } }),
+      usenetCandidate({ raw: { release: { guid: "b" } } }),
+    ],
   };
   const waiting = await processUsenetPipelinePayload(payload, failSource);
+  assert.ok(waiting != null);
   assert.equal(waiting.phase, "poll");
   assert.equal(waiting.missingPolls, 1);
-  const next = await processUsenetPipelinePayload({ ...waiting, missingPolls: 60 }, failSource);
+  const next = await processUsenetPipelinePayload(
+    { ...waiting, missingPolls: 60 } as UsenetPayload,
+    failSource,
+  );
+  assert.ok(next != null);
   assert.equal(next.phase, "download");
   assert.equal(next.candidateIndex, 1);
   assert.equal(next.nzbId, null);
@@ -230,11 +255,12 @@ test("an NZBGet download that failed is removed from the client", async () => {
       downloadClient: "nzbget",
       nzbId: 7,
       candidateIndex: 0,
-      candidates: [{ raw: { release: { guid: "broken" } } }],
+      candidates: [usenetCandidate({ raw: { release: { guid: "broken" } } })],
     },
     failSource,
   );
-  assert.match(result.failed, /Usenet download failed/);
+  assert.equal(result, null);
+  assert.match(failures[0], /Usenet download failed/);
   assert.deepEqual(
     fromQueue.mock.calls.map((call) => call[0]),
     [7],
@@ -264,6 +290,7 @@ test("a Usenet download still post-processing in the client keeps waiting", asyn
     },
     failSource,
   );
+  assert.ok(next != null);
   assert.equal(next.phase, "poll");
   assert.equal(next.missingPolls, 0);
 });

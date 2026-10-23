@@ -5,7 +5,7 @@ const RECENT_RELEASE_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
 type TimeInput = string | number | Date | null | undefined;
 
 interface RecentReleaseArtist {
-  id?: string;
+  id?: string | number | null;
   canonicalId?: string;
 }
 

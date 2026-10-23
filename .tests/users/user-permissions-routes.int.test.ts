@@ -12,8 +12,8 @@ import {
 
 const [isolatedState, { db }, { userOps, dbOps }] = await setupIsolatedBackend(
   "user-permissions-routes",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
 );
 
 let server: Awaited<ReturnType<typeof startServerProcess>> | null = null;
@@ -45,7 +45,7 @@ async function apiFetch(token: string, path: string, options: RequestInit = {}) 
   return response.status;
 }
 
-const createUser = (username: string, role = "user") =>
+const createUser = (username: string, role: string = "user") =>
   userOps.createUser(username, bcrypt.hashSync("password123", 4), role);
 
 const flowAccessStatus = (token: string) => apiFetch(token, "/api/playlists/no-such-route");
@@ -69,6 +69,7 @@ beforeEach(() => {
 test("admins cannot store permission values other than true or false", async () => {
   createUser("admin", "admin");
   const member = createUser("member");
+  assert.ok(member != null);
   const adminToken = await login("admin");
 
   const patchStatus = await apiFetch(adminToken, `/api/users/${member.id}`, {
@@ -100,6 +101,7 @@ test("admins cannot store permission values other than true or false", async () 
 
 test("a permission already stored as a string does not grant access", async () => {
   const member = createUser("member");
+  assert.ok(member != null);
   db.prepare("UPDATE users SET permissions = ? WHERE id = ?").run(
     JSON.stringify({ accessFlow: "false" }),
     member.id,

@@ -1,3 +1,4 @@
+import { captureRouteHandlers, createResponse } from "../library/routeHarness.ts";
 import { test, beforeEach, afterAll, afterEach, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
@@ -9,14 +10,17 @@ import {
 } from "../helpers/backendTestHarness.ts";
 import { createFakeNavidrome } from "../helpers/fakeNavidrome.ts";
 import { callFromProcessesWhileHonkerLocked } from "../helpers/playlistManagerCallers.ts";
+import type { TestContext } from "vite-plus/test";
 
 vi.mock("../../backend/services/playlistArtwork.ts", async (importOriginal) => {
-  const artwork = await importOriginal();
-  let rendered;
+  const artwork =
+    await importOriginal<typeof import("../../backend/services/playlistArtwork.ts")>();
+  let rendered: ReturnType<typeof artwork.buildPlaylistArtworkWebpBuffer> | undefined;
   return {
     ...artwork,
-    buildPlaylistArtworkWebpBuffer: (options) =>
-      (rendered ??= artwork.buildPlaylistArtworkWebpBuffer(options)),
+    buildPlaylistArtworkWebpBuffer: (
+      options: Parameters<typeof artwork.buildPlaylistArtworkWebpBuffer>[0],
+    ) => (rendered ??= artwork.buildPlaylistArtworkWebpBuffer(options)),
   };
 });
 
@@ -38,18 +42,18 @@ const [
   { navidromePlaylistPointerStore },
 ] = await setupIsolatedBackend(
   "playlist-sync-job",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/honkerDb.ts",
-  "backend/services/playlists/playlistManager.ts",
-  "backend/services/systemTaskWorker.ts",
-  "backend/services/playlists/flowPlaylistConfig.ts",
-  "backend/services/downloadJobs/downloadTracker.ts",
-  "backend/routes/playlists/handlers/flows.ts",
-  "backend/services/jellyfin.ts",
-  "backend/services/playlists/playlistOperations.ts",
-  "backend/services/plex.ts",
-  "backend/services/navidrome/navidromePlaylistPointerStore.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/honkerDb.ts"),
+  () => import("../../backend/services/playlists/playlistManager.ts"),
+  () => import("../../backend/services/systemTaskWorker.ts"),
+  () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
+  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
+  () => import("../../backend/routes/playlists/handlers/flows.ts"),
+  () => import("../../backend/services/jellyfin.ts"),
+  () => import("../../backend/services/playlists/playlistOperations.ts"),
+  () => import("../../backend/services/plex.ts"),
+  () => import("../../backend/services/navidrome/navidromePlaylistPointerStore.ts"),
 );
 
 const downloadRoot = playlistManager.downloadRoot;
@@ -58,15 +62,10 @@ const navidromeSettings = { url: "http://navidrome.test", username: "test", pass
 const user = { id: 1, role: "admin" };
 const originalFetch = globalThis.fetch;
 
-const flowHandlers = new Map();
-registerFlows({
-  get() {},
-  post() {},
-  put(route, ...handlers) {
-    flowHandlers.set(route, handlers.at(-1));
-  },
-  delete() {},
-});
+const flowHandlers = captureRouteHandlers(registerFlows, "put");
+
+const requestUrl = (input: Parameters<typeof fetch>[0]) =>
+  typeof input === "string" || input instanceof URL ? input : input.url;
 
 beforeEach(() => {
   resetDatabase(db);
@@ -94,20 +93,28 @@ afterAll(async () => {
   await cleanupIsolatedState(state);
 });
 
-function useNavidrome(songs = []) {
-  const navidrome = createFakeNavidrome({
-    libraries: [{ id: 1, name: "Aurral Playlists", path: downloadRoot }],
-    songs,
-  });
-  navidrome.requests = [];
+type FakeNavidromeSongs = NonNullable<
+  NonNullable<Parameters<typeof createFakeNavidrome>[0]>["songs"]
+>;
+
+function useNavidrome(songs: FakeNavidromeSongs = []) {
+  const navidrome = Object.assign(
+    createFakeNavidrome({
+      libraries: [{ id: 1, name: "Aurral Playlists", path: downloadRoot }],
+      songs,
+    }),
+    { requests: [] as string[] },
+  );
   globalThis.fetch = (input, init) => {
-    navidrome.requests.push(new URL(input).pathname);
+    navidrome.requests.push(new URL(requestUrl(input)).pathname);
     return navidrome.fetch(input, init);
   };
   return navidrome;
 }
 
-function useJellyfin(t, url) {
+type JellyfinItem = { Id: string; Path: string; ProviderIds?: { MusicBrainzTrack: string } };
+
+function useJellyfin(t: TestContext, url: string) {
   dbOps.updateSettings({
     integrations: {
       navidrome: navidromeSettings,
@@ -115,9 +122,9 @@ function useJellyfin(t, url) {
     },
   });
   const jellyfin = {
-    items: [],
+    items: [] as JellyfinItem[],
     locations: [downloadRoot, lidarrRoot],
-    playlists: new Map(),
+    playlists: new Map<string, { name: string; itemIds: string[] }>(),
     available: true,
     failDeletes: 0,
     failureStatus: 503,
@@ -137,8 +144,9 @@ function useJellyfin(t, url) {
       assert.equal(`${method} ${endpoint} ${params?.includeItemTypes}`, "GET /Items Audio");
       jellyfin.reads += 1;
       if (!jellyfin.available) throw unavailable();
+      const startIndex = Number(params?.startIndex);
       return {
-        Items: jellyfin.items.slice(params.startIndex, params.startIndex + params.limit),
+        Items: jellyfin.items.slice(startIndex, startIndex + Number(params?.limit)),
         TotalRecordCount: jellyfin.items.length,
       };
     },
@@ -172,7 +180,15 @@ function useJellyfin(t, url) {
 let plexServers = 0;
 const plexEpoch = Math.floor(Date.now() / 1000);
 
-function usePlex(t, { mainLibrarySectionId = "" } = {}) {
+type SyncPayload = NonNullable<
+  Parameters<InstanceType<typeof PlaylistManager>["syncPlaylists"]>[0]
+>;
+type PlexTrack = { ratingKey: string; addedAt: number; file: string };
+
+function usePlex(
+  t: TestContext,
+  { mainLibrarySectionId = "" }: { mainLibrarySectionId?: string } = {},
+) {
   plexServers += 1;
   dbOps.updateSettings({
     integrations: {
@@ -181,12 +197,12 @@ function usePlex(t, { mainLibrarySectionId = "" } = {}) {
     },
   });
   const plex = {
-    sections: { 9: [], 5: [] },
+    sections: { 9: [], 5: [] } as Record<string, PlexTrack[]>,
     mainRoots: [lidarrRoot],
-    reads: [],
-    failReads: null,
-    playlists: new Map(),
-    deleteStatus: null,
+    reads: [] as string[],
+    failReads: null as ((sectionId: string, addedSince: number | null) => boolean) | null,
+    playlists: new Map<string | number, { title: string; ratingKeys: (string | number)[] }>(),
+    deleteStatus: null as number | null,
   };
   vi.spyOn(PlexClient.prototype, "ensureAurralLibrary").mockImplementation(async (libraryPath) => ({
     key: "9",
@@ -203,7 +219,8 @@ function usePlex(t, { mainLibrarySectionId = "" } = {}) {
       }
       const sectionId = endpoint.match(/^\/library\/sections\/(\w+)\/all$/)?.[1];
       assert.ok(sectionId, `unexpected Plex request ${endpoint}`);
-      const addedSince = params["addedAt>"] == null ? null : params["addedAt>"] - plexEpoch;
+      const addedAfter = params?.["addedAt>"];
+      const addedSince = addedAfter == null ? null : Number(addedAfter) - plexEpoch;
       plex.reads.push(
         addedSince == null ? `all of ${sectionId}` : `${sectionId} added since ${addedSince}`,
       );
@@ -213,12 +230,12 @@ function usePlex(t, { mainLibrarySectionId = "" } = {}) {
       const tracks = plex.sections[sectionId].filter(
         ({ addedAt }) => addedSince == null || addedAt >= addedSince,
       );
-      const start = params["X-Plex-Container-Start"];
+      const start = Number(params?.["X-Plex-Container-Start"]);
       return {
         MediaContainer: {
           totalSize: tracks.length,
           Metadata: tracks
-            .slice(start, start + params["X-Plex-Container-Size"])
+            .slice(start, start + Number(params?.["X-Plex-Container-Size"]))
             .map(({ ratingKey, addedAt, file }) => ({
               ratingKey,
               addedAt: plexEpoch + addedAt,
@@ -232,7 +249,7 @@ function usePlex(t, { mainLibrarySectionId = "" } = {}) {
   vi.spyOn(PlexClient.prototype, "syncPlaylist").mockImplementation(
     async ({ ratingKey, title, ratingKeys }) => {
       const key = ratingKey ?? `plex-${plex.playlists.size + 1}`;
-      plex.playlists.set(key, { title, ratingKeys: [...ratingKeys] });
+      plex.playlists.set(key, { title, ratingKeys: [...(ratingKeys ?? [])] });
       return { ratingKey: key };
     },
   );
@@ -246,14 +263,18 @@ function usePlex(t, { mainLibrarySectionId = "" } = {}) {
   return plex;
 }
 
-const plexTitles = (plex) => [...plex.playlists.values()].map(({ title }) => title).sort();
+type FakePlex = ReturnType<typeof usePlex>;
+type FakeJellyfin = ReturnType<typeof useJellyfin>;
 
-const plexRatingKeys = (plex) =>
+const plexTitles = (plex: FakePlex) =>
+  [...plex.playlists.values()].map(({ title }) => title).sort();
+
+const plexRatingKeys = (plex: FakePlex) =>
   Object.fromEntries(
     [...plex.playlists.values()].map(({ title, ratingKeys }) => [title, [...ratingKeys].sort()]),
   );
 
-const useOnly = (key) =>
+const useOnly = (key: string) =>
   dbOps.updateSettings({ integrations: { [key]: dbOps.getSettings().integrations[key] } });
 
 function useClock() {
@@ -261,20 +282,21 @@ function useClock() {
   let offsetMs = 0;
   vi.spyOn(Date, "now").mockImplementation(() => realNow.call(Date) + offsetMs);
   return {
-    advance: (ms) => {
+    advance: (ms: number) => {
       offsetMs += ms;
     },
   };
 }
 
-const jellyfinNames = (jellyfin) => [...jellyfin.playlists.values()].map(({ name }) => name).sort();
+const jellyfinNames = (jellyfin: FakeJellyfin) =>
+  [...jellyfin.playlists.values()].map(({ name }) => name).sort();
 
-const jellyfinItemsByName = (jellyfin) =>
+const jellyfinItemsByName = (jellyfin: FakeJellyfin) =>
   Object.fromEntries(
     [...jellyfin.playlists.values()].map(({ name, itemIds }) => [name, [...itemIds].sort()]),
   );
 
-const indexedSong = (title) => ({
+const indexedSong = (title: string) => ({
   id: title,
   libraryPath: downloadRoot,
   path: `Artist/Album/${title}.flac`,
@@ -282,7 +304,7 @@ const indexedSong = (title) => ({
   artist: "Artist",
 });
 
-async function addDownloadedTrack(playlistId, title, root = downloadRoot) {
+async function addDownloadedTrack(playlistId: string, title: string, root: string = downloadRoot) {
   const file = path.join(root, "Artist", "Album", `${title}.flac`);
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, title);
@@ -290,6 +312,7 @@ async function addDownloadedTrack(playlistId, title, root = downloadRoot) {
     { artistName: "Artist", trackName: title, albumName: "Album" },
     playlistId,
   );
+  assert.ok(jobId != null);
   downloadTracker.setDone(jobId, file, "Album");
   return file;
 }
@@ -298,11 +321,14 @@ function pendingSyncs() {
   const now = Math.floor(Date.now() / 1000);
   return honker
     .listHonkerJobs("playback")
-    .filter(({ payload }) => payload.kind === "playback-playlist-sync")
-    .map(({ id, run_at: runAt, payload }) => ({ id, delaySeconds: runAt - now, payload }));
+    .flatMap(({ id, run_at: runAt, payload }) =>
+      payload?.kind === "playback-playlist-sync"
+        ? [{ id, delaySeconds: runAt - now, payload: payload as SyncPayload }]
+        : [],
+    );
 }
 
-async function runNextSync(manager = playlistManager) {
+async function runNextSync(manager: InstanceType<typeof PlaylistManager> = playlistManager) {
   const [job] = pendingSyncs();
   honker.getPlaybackTaskQueue().cancel(job.id);
   manager.updateConfig();
@@ -312,13 +338,13 @@ async function runNextSync(manager = playlistManager) {
 
 async function runPendingScans() {
   for (const { id, payload } of honker.listHonkerJobs("playback")) {
-    if (payload.kind !== "playback-library-scan") continue;
+    if (payload?.kind !== "playback-library-scan") continue;
     honker.getPlaybackTaskQueue().cancel(id);
     await processSystemTask(payload);
   }
 }
 
-const followUp = (entityIds, destination, chain, attempt) => ({
+const followUp = (entityIds: string[], destination: string, chain: string, attempt: number) => ({
   kind: "playback-playlist-sync",
   entityIds,
   attempt,
@@ -326,7 +352,7 @@ const followUp = (entityIds, destination, chain, attempt) => ({
   chain,
 });
 
-const songIdsByName = (navidrome) =>
+const songIdsByName = (navidrome: ReturnType<typeof useNavidrome>) =>
   Object.fromEntries(navidrome.playlists.map(({ name, songIds }) => [name, [...songIds].sort()]));
 
 test("a burst of twenty completed downloads queues one sync and publishes each playlist once", async () => {
@@ -385,7 +411,10 @@ test(
 
     assert.deepEqual(jobIds, [pendingId, pendingId]);
     assert.deepEqual(
-      pendingSyncs().map(({ id, payload }) => ({ id, entityIds: [...payload.entityIds].sort() })),
+      pendingSyncs().map(({ id, payload }) => ({
+        id,
+        entityIds: [...(payload.entityIds ?? [])].sort(),
+      })),
       [{ id: pendingId, entityIds: ["first", "second", "third"] }],
     );
   },
@@ -405,18 +434,7 @@ for (const outage of ["slow", "failing"]) {
       mix: { discover: 100 },
     });
     flowPlaylistConfig.updateFlow(flow.id, { scheduleDays: [1] });
-    const response = {
-      statusCode: 200,
-      body: null,
-      status(code) {
-        this.statusCode = code;
-        return this;
-      },
-      json(body) {
-        this.body = body;
-        return this;
-      },
-    };
+    const response = createResponse<unknown>();
 
     await flowHandlers.get("/flows/:flowId")(
       { params: { flowId: flow.id }, body: { name: `After ${outage}` }, user },
@@ -424,7 +442,7 @@ for (const outage of ["slow", "failing"]) {
     );
 
     assert.equal(response.statusCode, 200, JSON.stringify(response.body));
-    assert.equal(flowPlaylistConfig.getFlow(flow.id).name, `After ${outage}`);
+    assert.equal(flowPlaylistConfig.getFlow(flow.id)!.name, `After ${outage}`);
     assert.deepEqual(
       pendingSyncs().map(({ payload }) => payload),
       [{ kind: "playback-playlist-sync", entityIds: [flow.id], attempt: 0 }],
@@ -509,18 +527,10 @@ test("disabling a flow removes its playlist from the media server through the sy
   const { playlistOperationQueue } =
     await import("../../backend/services/playlists/playlistOperationQueue.ts");
   vi.spyOn(playlistOperationQueue, "enqueuePayload").mockImplementation(async () => ({
-    operationId: "disable",
+    queued: true,
+    operationId: 1,
   }));
-  const response = {
-    statusCode: 200,
-    status(code) {
-      this.statusCode = code;
-      return this;
-    },
-    json() {
-      return this;
-    },
-  };
+  const response = createResponse<unknown>();
   await flowHandlers.get("/flows/:flowId/enabled")(
     { params: { flowId: flow.id }, body: { enabled: false }, user },
     response,
@@ -531,7 +541,7 @@ test("disabling a flow removes its playlist from the media server through the sy
   const fakeFetch = globalThis.fetch;
   let failDelete = true;
   globalThis.fetch = async (input, init) => {
-    if (new URL(input).pathname === "/rest/deletePlaylist" && failDelete) {
+    if (new URL(requestUrl(input)).pathname === "/rest/deletePlaylist" && failDelete) {
       failDelete = false;
       return new Response(
         JSON.stringify({
@@ -554,7 +564,7 @@ test("disabling a flow removes its playlist from the media server through the sy
   );
 
   await runNextSync();
-  assert.deepEqual(navidrome.playlists, []);
+  assert.deepEqual([...navidrome.playlists], []);
   assert.deepEqual(pendingSyncs(), []);
 });
 
@@ -770,7 +780,7 @@ test("a media server that cannot be reached does not hold back the others and ke
     [6, 600],
   ]) {
     const [next, ...rest] = pendingSyncs();
-    assert.deepEqual(rest, []);
+    assert.deepEqual([...rest], []);
     assert.deepEqual(next.payload, followUp([playlist.id], "jellyfin", "outage", attempt));
     assert.ok(
       Math.abs(next.delaySeconds - delaySeconds) <= 2,
@@ -799,6 +809,7 @@ test("a change made while a sync job waits on its own retry gets a job of its ow
   tx.execute("UPDATE _honker_live SET run_at = 0 WHERE id = ?", [tried.id]);
   tx.commit();
   const claimed = honker.getPlaybackTaskQueue().claimOne(honker.getWorkerId());
+  assert.ok(claimed != null);
   assert.equal(claimed.id, tried.id);
   claimed.retry(120, "database is locked");
 
@@ -830,17 +841,17 @@ test("deleting a playlist while a full sync is publishing leaves nothing behind 
   assert.deepEqual(songIdsByName(navidrome), { Doomed: ["Doomed Song"] });
   assert.deepEqual(jellyfinNames(jellyfin), ["Doomed"]);
 
-  let reachedKept;
-  let releaseKept;
-  const keptReached = new Promise((resolve) => {
+  let reachedKept!: () => void;
+  let releaseKept!: () => void;
+  const keptReached = new Promise<void>((resolve) => {
     reachedKept = resolve;
   });
-  const keptReleased = new Promise((resolve) => {
+  const keptReleased = new Promise<void>((resolve) => {
     releaseKept = resolve;
   });
   const fakeFetch = globalThis.fetch;
   globalThis.fetch = async (input, init) => {
-    const url = new URL(input);
+    const url = new URL(requestUrl(input));
     if (url.pathname === "/rest/createPlaylist" && url.searchParams.get("name") === "Kept") {
       reachedKept();
       await keptReleased;
@@ -877,7 +888,7 @@ test("a playlist removed from Aurral is deleted from every server by its stored 
   jellyfin.failDeletes = 1;
   playlistManager.requestPlaylistSync([playlist.id]);
   await runNextSync();
-  assert.deepEqual(navidrome.playlists, []);
+  assert.deepEqual([...navidrome.playlists], []);
   assert.deepEqual(jellyfinNames(jellyfin), ["Orphan"]);
   const [retry] = pendingSyncs();
   assert.deepEqual(retry.payload, followUp([playlist.id], "jellyfin", "outage", 1));
@@ -887,7 +898,7 @@ test("a playlist removed from Aurral is deleted from every server by its stored 
   assert.deepEqual(pendingSyncs(), []);
 });
 
-async function publishToEveryServer(t, name) {
+async function publishToEveryServer(t: TestContext, name: string) {
   const jellyfin = useJellyfin(t, `http://jellyfin-${name}.test`);
   const plex = usePlex(t);
   const navidrome = useNavidrome([indexedSong("Doomed Song"), indexedSong("Kept Song")]);
@@ -915,13 +926,21 @@ async function publishToEveryServer(t, name) {
   return { ...servers, doomed, kept };
 }
 
-const serverPlaylists = ({ navidrome, plex, jellyfin }) => ({
+const serverPlaylists = ({
+  navidrome,
+  plex,
+  jellyfin,
+}: {
+  navidrome: ReturnType<typeof useNavidrome>;
+  plex: FakePlex;
+  jellyfin: FakeJellyfin;
+}) => ({
   navidrome: navidrome.playlists.map(({ name }) => name).sort(),
   plex: plexTitles(plex),
   jellyfin: jellyfinNames(jellyfin),
 });
 
-async function drainSyncs(manager = playlistManager) {
+async function drainSyncs(manager: InstanceType<typeof PlaylistManager> = playlistManager) {
   for (let runs = 0; pendingSyncs().length; runs += 1) {
     assert.ok(runs < 20, `syncs still pending: ${JSON.stringify(pendingSyncs())}`);
     await runNextSync(manager);
@@ -955,7 +974,11 @@ test("a playlist deleted during a long outage is removed from the server once it
   await processPlaylistOperation({ kind: "shared-playlist-delete", playlistId: doomed.id });
   for (let runs = 0; ; runs += 1) {
     const jobs = pendingSyncs();
-    if (jobs.length === 1 && jobs[0].payload.entityIds === null && jobs[0].payload.attempt >= 5)
+    if (
+      jobs.length === 1 &&
+      jobs[0].payload.entityIds === null &&
+      (jobs[0].payload.attempt ?? 0) >= 5
+    )
       break;
     assert.ok(runs < 20, `follow-ups never merged: ${JSON.stringify(jobs)}`);
     await runNextSync(restarted);
@@ -983,11 +1006,11 @@ test("deleting a playlist Navidrome imported from its m3u removes the imported p
   playlistManager.requestPlaylistSync([playlist.id]);
   await runNextSync();
   const playlistFiles = async () =>
-    (await fs.readdir(playlistManager.navidromeDestination.libraryRoot)).filter((file) =>
+    (await fs.readdir(playlistManager.navidromeDestination.libraryRoot)).filter((file: string) =>
       file.endsWith(".m3u"),
     );
   assert.deepEqual(await playlistFiles(), ["Unindexed.m3u"]);
-  assert.deepEqual(navidrome.playlists, []);
+  assert.deepEqual([...navidrome.playlists], []);
   navidrome.playlists.push({
     id: "imported-unindexed",
     name: "Unindexed",
@@ -998,7 +1021,7 @@ test("deleting a playlist Navidrome imported from its m3u removes the imported p
   await processPlaylistOperation({ kind: "shared-playlist-delete", playlistId: playlist.id });
   await drainSyncs();
 
-  assert.deepEqual(navidrome.playlists, []);
+  assert.deepEqual([...navidrome.playlists], []);
   assert.deepEqual(await playlistFiles(), []);
   assert.deepEqual(navidromePlaylistPointerStore.getPointersForEntity(playlist.id), []);
 });
@@ -1019,13 +1042,13 @@ test("a sync of another playlist removes the m3u of a deleted playlist even afte
   });
   flowPlaylistConfig.deleteStaticPlaylist(deleted.id);
   const playlistFiles = async () =>
-    (await fs.readdir(playlistManager.navidromeDestination.libraryRoot)).filter((file) =>
+    (await fs.readdir(playlistManager.navidromeDestination.libraryRoot)).filter((file: string) =>
       file.endsWith(".m3u"),
     );
   assert.deepEqual(await playlistFiles(), ["Gone.m3u"]);
 
   playlistManager.requestPlaylistSync([other.id]);
-  const [job] = pendingSyncs().filter(({ payload }) => payload.entityIds.includes(other.id));
+  const [job] = pendingSyncs().filter(({ payload }) => payload.entityIds?.includes(other.id));
   honker.getPlaybackTaskQueue().cancel(job.id);
   await playlistManager.syncPlaylists(job.payload);
 
@@ -1077,8 +1100,8 @@ test("one sync reads the Jellyfin library once however many playlists are missin
   const clock = useClock();
   const jellyfin = useJellyfin(t, "http://jellyfin-reads.test");
   const navidrome = useNavidrome();
-  const playlists = [];
-  const missing = [];
+  const playlists: string[] = [];
+  const missing: { Id: string; Path: string }[] = [];
   for (let index = 0; index < 5; index += 1) {
     const playlist = flowPlaylistConfig.createStaticPlaylist({ name: `Partial ${index}` });
     const ready = await addDownloadedTrack(playlist.id, `Ready ${index}`);
@@ -1119,8 +1142,8 @@ test("a finished Library download sends nothing to the media servers", async (t)
   assert.deepEqual(pendingSyncs(), []);
   await processSystemTask({ kind: "playback-playlist-sync", entityIds: ["library"], attempt: 0 });
 
-  assert.deepEqual(navidrome.requests, []);
-  assert.deepEqual(plex.reads, []);
+  assert.deepEqual([...navidrome.requests], []);
+  assert.deepEqual([...plex.reads], []);
   assert.deepEqual(pendingSyncs(), []);
 });
 
@@ -1225,7 +1248,7 @@ test("a file downloaded again before Plex scans it stays off the playlist until 
 });
 
 for (const recoveredId of ["before", "after"]) {
-  test(`a moved Jellyfin track returns after scanning with item ID ${recoveredId}`, async (t) => {
+  test(`a moved Jellyfin track returns after scanning with item ID ${recoveredId}`, async (t: import("vite-plus/test").TestContext) => {
     const clock = useClock();
     const jellyfin = useJellyfin(t, `http://jellyfin-moved-${recoveredId}.test`);
     useOnly("jellyfin");
@@ -1239,6 +1262,7 @@ for (const recoveredId of ["before", "after"]) {
       { artistName: "Artist", trackName: "Song", albumName: "Album", trackMbid: "recording-1" },
       playlist.id,
     );
+    assert.ok(jobId != null);
     downloadTracker.setDone(jobId, before, "Album");
     const recording = { MusicBrainzTrack: "recording-1" };
     jellyfin.items = [{ Id: "before", Path: before, ProviderIds: recording }];
@@ -1440,8 +1464,8 @@ for (const server of ["plex", "jellyfin"]) {
     const jellyfin =
       server === "jellyfin" ? useJellyfin(t, "http://jellyfin-failing-read.test") : null;
     useOnly(server);
-    const ids = [];
-    const missingPaths = [];
+    const ids: string[] = [];
+    const missingPaths: string[] = [];
     for (let index = 0; index < 5; index += 1) {
       const playlist = flowPlaylistConfig.createStaticPlaylist({ name: `Failing ${index}` });
       ids.push(playlist.id);
@@ -1462,12 +1486,13 @@ for (const server of ["plex", "jellyfin"]) {
       plex.reads.length = 0;
       plex.failReads = (_sectionId, addedSince) => addedSince == null;
     } else {
+      assert.ok(jellyfin);
       jellyfin.available = false;
     }
     await runNextSync();
 
     if (plex) assert.deepEqual(plex.reads, ["9 added since 999700", "all of 9"]);
-    else assert.equal(jellyfin.reads, 2);
+    else assert.equal(jellyfin?.reads, 2);
     assert.deepEqual(
       pendingSyncs().map(({ payload }) => payload),
       [followUp(ids, server, "outage", 1)],
@@ -1505,7 +1530,7 @@ test("changing the Plex path mapping reads afresh and publishes the item the new
     { ratingKey: "archive-copy", addedAt: 1_000_000, file: "/archive/Artist/Album/Song.flac" },
     { ratingKey: "newer", addedAt: 2_000_000, file: "/music/Other/Album/Newer.flac" },
   ];
-  const mapPlexTo = (remote) =>
+  const mapPlexTo = (remote: string) =>
     dbOps.updateSettings({
       ...dbOps.getSettings(),
       pathMappings: [{ source: "plex", remote, local: lidarrRoot }],
@@ -1589,6 +1614,7 @@ test("Jellyfin retries a recording match outside its library paths when that rec
     { artistName: "Artist", trackName: "Recording", trackMbid: "recording-later" },
     playlist.id,
   );
+  assert.ok(job != null);
   downloadTracker.setDone(job, outside, "Album");
   jellyfin.items = [{ Id: "ready", Path: ready }];
   playlistManager.requestPlaylistSync([playlist.id]);

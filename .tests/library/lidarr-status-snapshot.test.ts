@@ -1,3 +1,5 @@
+import { requireFixture } from "../playlists/fixtures.ts";
+import { listeningAddress } from "../helpers/backendTestHarness.ts";
 import assert from "node:assert/strict";
 import http from "node:http";
 import { test, vi } from "vite-plus/test";
@@ -33,13 +35,13 @@ test("disabled status reads stay local", async () => {
 test("Lidarr status consumers share refreshes, idle, failure, and recovery state", async () => {
   let active = false;
   let fail = false;
-  let queueGate = null;
+  let queueGate: PromiseWithResolvers<void> | null = null;
   let albumCalls = 0;
   const calls = { queue: 0, history: 0, command: 0 };
   vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
   vi.spyOn(lidarrClient, "isCircuitOpen").mockImplementation(() => false);
   vi.spyOn(lidarrClient, "getQueue").mockImplementation(async (options) => {
-    assert.equal(options.forceRefresh, true);
+    assert.equal(options?.forceRefresh, true);
     calls.queue += 1;
     if (fail) throw new Error("provider unavailable");
     if (queueGate) await queueGate.promise;
@@ -94,7 +96,7 @@ test("Lidarr status consumers share refreshes, idle, failure, and recovery state
   const stale = await getLidarrStatusSnapshot();
   assert.equal(stale.stale, true);
   assert.equal(stale.statuses[10].status, "downloading");
-  assert.match(stale.error, /provider unavailable/);
+  assert.match(requireFixture(stale.error), /provider unavailable/);
   assert.equal((await getLidarrStatusSnapshot()).stale, true);
   assert.deepEqual(calls, { queue: 3, history: 3, command: 3 });
 
@@ -106,10 +108,10 @@ test("Lidarr status consumers share refreshes, idle, failure, and recovery state
   assert.equal(recovered.active, false);
   assert.deepEqual(calls, { queue: 4, history: 4, command: 4 });
 
-  queueGate = Promise.withResolvers();
+  queueGate = Promise.withResolvers<void>();
   invalidateAllDownloadStatusesCache();
   const pending = getLidarrStatusSnapshot({ refresh: true });
-  while (calls.queue < 5) await new Promise((resolve) => setImmediate(resolve));
+  while (calls.queue < 5) await new Promise<void>((resolve) => setImmediate(resolve));
   invalidateAllDownloadStatusesCache();
   queueGate.resolve();
   await pending;
@@ -120,7 +122,7 @@ test("Lidarr status consumers share refreshes, idle, failure, and recovery state
 
 test("invalidating a failed refresh allows immediate recovery", async () => {
   let fail = false;
-  let refreshGate = null;
+  let refreshGate: PromiseWithResolvers<void> | null = null;
   const calls = { queue: 0, history: 0, command: 0 };
   vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
   vi.spyOn(lidarrClient, "isCircuitOpen").mockImplementation(() => false);
@@ -148,11 +150,11 @@ test("invalidating a failed refresh allows immediate recovery", async () => {
   assert.deepEqual(calls, { queue: 1, history: 1, command: 1 });
 
   fail = true;
-  refreshGate = Promise.withResolvers();
+  refreshGate = Promise.withResolvers<void>();
   invalidateAllDownloadStatusesCache();
   const pending = getLidarrStatusSnapshot({ refresh: true });
   while (calls.queue < 2 || calls.history < 2 || calls.command < 2) {
-    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise<void>((resolve) => setImmediate(resolve));
   }
   invalidateAllDownloadStatusesCache();
   refreshGate.resolve();
@@ -167,26 +169,29 @@ test("invalidating a failed refresh allows immediate recovery", async () => {
   assert.deepEqual(calls, { queue: 3, history: 3, command: 3 });
 });
 
-test("forced Lidarr status reads bypass the client cache", async (t) => {
+test("forced Lidarr status reads bypass the client cache", async (t: import("vite-plus/test").TestContext) => {
   let calls = 0;
   const server = http.createServer((_request, response) => {
     calls += 1;
     response.writeHead(200, { "content-type": "application/json" });
     response.end(JSON.stringify([{ id: calls }]));
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   t.onTestFinished(async () => {
     server.closeAllConnections();
-    await new Promise((resolve) => server.close(resolve));
+    await new Promise<void>((resolve) => server.close(() => resolve()));
   });
 
   const client = new LidarrClient();
   client._holdConfig = true;
   client.config = {
-    url: `http://127.0.0.1:${server.address().port}`,
+    url: `http://127.0.0.1:${listeningAddress(server)!.port}`,
     apiKey: "test",
     timeoutMs: 2000,
     circuitDisabled: true,
+    rootFolderPath: "",
+    rootFolderPaths: [],
+    insecure: false,
   };
   t.onTestFinished(() => {
     client._httpAgent.destroy();
@@ -209,8 +214,8 @@ test("failed or stale history verifies albums with one bulk read", async () => {
     calls.bulk += 1;
     if (bulkFailure) throw new Error("provider unavailable");
     return [
-      { id: 101, statistics: { trackFileCount: 2 } },
-      { id: 102, statistics: { trackFileCount: 0 } },
+      { id: 101, foreignAlbumId: "album-101", statistics: { trackFileCount: 2 } },
+      { id: 102, foreignAlbumId: "album-102", statistics: { trackFileCount: 0 } },
     ];
   });
   vi.spyOn(lidarrClient, "getAlbum").mockImplementation(async () => {
@@ -221,7 +226,7 @@ test("failed or stale history verifies albums with one bulk read", async () => {
   const normal = await getDownloadStatusesForAlbumIds(["100"], {
     queue: [],
     history: {
-      records: [{ albumId: 100, eventType: "grabbed", date: new Date(now).toISOString() }],
+      records: [{ id: 100, albumId: 100, eventType: "grabbed", date: new Date(now).toISOString() }],
     },
     commands: [],
   });
@@ -233,11 +238,13 @@ test("failed or stale history verifies albums with one bulk read", async () => {
     history: {
       records: [
         {
+          id: 101,
           albumId: 101,
           eventType: "AlbumImportIncomplete",
           date: new Date(now).toISOString(),
         },
         {
+          id: 102,
           albumId: 102,
           eventType: "grabbed",
           date: new Date(now - 16 * 60 * 1000).toISOString(),
@@ -255,8 +262,13 @@ test("failed or stale history verifies albums with one bulk read", async () => {
     queue: [],
     history: {
       records: [
-        { albumId: 101, eventType: "DownloadFailed", date: new Date(now).toISOString() },
-        { albumId: 102, eventType: "AlbumImportIncomplete", date: new Date(now).toISOString() },
+        { id: 101, albumId: 101, eventType: "DownloadFailed", date: new Date(now).toISOString() },
+        {
+          id: 102,
+          albumId: 102,
+          eventType: "AlbumImportIncomplete",
+          date: new Date(now).toISOString(),
+        },
       ],
     },
     commands: [],
@@ -270,12 +282,13 @@ test("album status reads Lidarr event types rather than words in the history", a
   const now = Date.now();
   vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => true);
   vi.spyOn(lidarrClient, "getAllAlbums").mockImplementation(async () => [
-    { id: 201, statistics: { trackFileCount: 0 } },
+    { id: 201, foreignAlbumId: "album-201", statistics: { trackFileCount: 0 } },
   ]);
-  const at = (minutesAgo) => new Date(now - minutesAgo * 60 * 1000).toISOString();
+  const at = (minutesAgo: number) => new Date(now - minutesAgo * 60 * 1000).toISOString();
   const statuses = await getDownloadStatusesForAlbumIds(["200", "201", "202", "203", "204"], {
     queue: [
       {
+        id: 202,
         albumId: 202,
         trackedDownloadState: "importBlocked",
         trackedDownloadStatus: "warning",
@@ -283,6 +296,7 @@ test("album status reads Lidarr event types rather than words in the history", a
         sizeleft: 0,
       },
       {
+        id: 203,
         albumId: 203,
         trackedDownloadState: "downloading",
         trackedDownloadStatus: "warning",
@@ -292,16 +306,17 @@ test("album status reads Lidarr event types rather than words in the history", a
     ],
     history: {
       records: [
-        { albumId: 200, eventType: "downloadImported", date: at(30) },
-        { albumId: 200, eventType: "trackFileRenamed", date: at(1) },
+        { id: 200, albumId: 200, eventType: "downloadImported", date: at(30) },
+        { id: 200, albumId: 200, eventType: "trackFileRenamed", date: at(1) },
         {
+          id: 201,
           albumId: 201,
           eventType: "grabbed",
           sourceTitle: "Epic Fail - Album [FLAC]",
           data: { message: "failover indexer" },
           date: at(1),
         },
-        { albumId: 204, eventType: "trackFileRetagged", date: at(1) },
+        { id: 204, albumId: 204, eventType: "trackFileRetagged", date: at(1) },
       ],
     },
     commands: [],
@@ -310,6 +325,6 @@ test("album status reads Lidarr event types rather than words in the history", a
   assert.equal(statuses[201].status, "processing");
   assert.equal(statuses[202].status, "failed");
   assert.equal(statuses[203].status, "downloading");
-  assert.equal(statuses[203].progress, 50);
+  assert.equal("progress" in statuses[203] ? statuses[203].progress : undefined, 50);
   assert.equal(statuses[204], undefined);
 });

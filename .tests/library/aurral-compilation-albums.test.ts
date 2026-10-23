@@ -1,3 +1,5 @@
+import { requireFixture } from "../playlists/fixtures.ts";
+import { createRouteHarness, createResponse } from "./routeHarness.ts";
 import { test, beforeAll, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
@@ -27,46 +29,26 @@ const [
   { scanMusicRoot },
 ] = await setupIsolatedBackend(
   "aurral-compilation-albums",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/downloadJobs/downloadTracker.ts",
-  "backend/services/downloadJobs/downloadWorker.ts",
-  "backend/services/lidarrClient.ts",
-  "backend/services/libraryQueryService.ts",
-  "backend/services/providers/brainzmashProvider.ts",
-  "backend/routes/library/handlers/albums.ts",
-  "backend/services/trackMatching/index.ts",
-  "backend/services/downloadUtils.ts",
-  "backend/services/libraryFileScanner.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
+  () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
+  () => import("../../backend/services/lidarrClient.ts"),
+  () => import("../../backend/services/libraryQueryService.ts"),
+  () => import("../../backend/services/providers/brainzmashProvider.ts"),
+  () => import("../../backend/routes/library/handlers/albums.ts"),
+  () => import("../../backend/services/trackMatching/index.ts"),
+  () => import("../../backend/services/downloadUtils.ts"),
+  () => import("../../backend/services/libraryFileScanner.ts"),
 );
 
-const routes = new Map();
-const route =
-  (method) =>
-  (routePath, ...handlers) => {
-    routes.set(`${method} ${routePath}`, handlers.at(-1));
-  };
-registerAlbums({
-  get: route("GET"),
-  post: route("POST"),
-  put: route("PUT"),
-  delete: route("DELETE"),
-});
+const routes = createRouteHarness(registerAlbums);
 
-async function callRoute(key, body = {}) {
-  const response = { statusCode: 200, body: null };
+async function callRoute(key: string, body: Record<string, unknown> = {}) {
+  const response = createResponse<unknown>();
   await routes.get(key)(
     { params: {}, body, query: {}, user: { role: "admin", permissions: {} } },
-    {
-      status(code) {
-        response.statusCode = code;
-        return this;
-      },
-      json(value) {
-        response.body = value;
-        return this;
-      },
-    },
+    response,
   );
   return response;
 }
@@ -158,9 +140,11 @@ test("a compilation keeps Various Artists on the album and matches each track by
   });
   assert.equal(requested.statusCode, 201, JSON.stringify(requested.body));
 
-  const albumId = db
-    .prepare("SELECT id FROM library_albums WHERE release_group_mbid = ?")
-    .get(albumMbid).id;
+  const albumId = requireFixture(db)
+    .prepare<unknown[], { id: number }>(
+      "SELECT id FROM library_albums WHERE release_group_mbid = ?",
+    )!
+    .get(albumMbid)!.id;
   const library = getLibraryForAlbumIds({ ids: [albumId] });
   assert.deepEqual(library.tracks.map((track) => track.artistName).sort(), [
     "Blue Swede",
@@ -171,29 +155,31 @@ test("a compilation keeps Various Artists on the album and matches each track by
   assert.equal(jobs.length, 2);
   for (const job of jobs) assert.equal(job.artistName, "Various Artists");
   const hooked = jobs.find((job) => job.trackName === "Hooked on a Feeling");
+  assert.ok(hooked != null);
   assert.deepEqual(hooked.artistAliases, ["Blue Swede", "Björn Skifs & Blåblus"]);
 
-  const validate = (artist) =>
+  const validate = (artist: string) =>
     validateDownloadedTrackFile({
       request: buildResolvedJobTrack(hooked),
       filePath: "/staging/Hooked on a Feeling.flac",
       source: "soulseek",
       options: {
-        parseFile: async () => ({
-          common: {
-            title: "Hooked on a Feeling",
-            artist,
-            album: "Guardians of the Galaxy: Awesome Mix, Vol. 1",
-            track: { no: 1 },
-          },
-          format: {
-            duration: 173,
-            lossless: true,
-            sampleRate: 44100,
-            bitsPerSample: 16,
-            container: "FLAC",
-          },
-        }),
+        parseFile: async () =>
+          ({
+            common: {
+              title: "Hooked on a Feeling",
+              artist,
+              album: "Guardians of the Galaxy: Awesome Mix, Vol. 1",
+              track: { no: 1, of: null },
+            },
+            format: {
+              duration: 173,
+              lossless: true,
+              sampleRate: 44100,
+              bitsPerSample: 16,
+              container: "FLAC",
+            },
+          }) as Awaited<ReturnType<typeof parseFile>>,
       },
     });
   assert.equal((await validate("Blue Swede")).decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
@@ -224,9 +210,9 @@ test("a compilation keeps Various Artists on the album and matches each track by
   const { common } = await parseFile(filePath);
   assert.deepEqual([common.artist, common.albumartist], ["Blue Swede", "Various Artists"]);
   const hookedArtist = () =>
-    getLibraryForAlbumIds({ ids: [albumId] }).tracks.find(
+    requireFixture(getLibraryForAlbumIds({ ids: [albumId] })!).tracks.find(
       (track) => track.title === "Hooked on a Feeling",
-    ).artistName;
+    )!.artistName;
   await scanMusicRoot({ rootPath: root, source: "aurral" });
   assert.equal(hookedArtist(), "Blue Swede");
 

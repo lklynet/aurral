@@ -18,14 +18,38 @@ const [
   { enrichStaticPlaylistMbids, schedulePlaylistMbidEnrichmentForMissingPlaylists },
 ] = await setupIsolatedBackend(
   "playlist-mbid-enrichment",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/playlists/flowPlaylistConfig.ts",
-  "backend/services/downloadJobs/downloadTracker.ts",
-  "backend/services/playlists/playlistManager.ts",
-  "backend/services/honkerDb.ts",
-  "backend/services/playlistMbidEnrichmentService.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
+  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
+  () => import("../../backend/services/playlists/playlistManager.ts"),
+  () => import("../../backend/services/honkerDb.ts"),
+  () => import("../../backend/services/playlistMbidEnrichmentService.ts"),
 );
+
+type Resolver = NonNullable<
+  NonNullable<Parameters<typeof enrichStaticPlaylistMbids>[1]>["resolveTrackContext"]
+>;
+type ResolvedTrack = Awaited<ReturnType<Resolver>>;
+
+const resolved = (
+  track: Parameters<Resolver>[0],
+  overrides: Partial<ResolvedTrack> = {},
+): ResolvedTrack => ({
+  albumName: null,
+  artistMbid: null,
+  albumMbid: null,
+  trackMbid: null,
+  releaseMbid: null,
+  durationMs: null,
+  ...track,
+  artistName: track.artistName ?? "",
+  trackName: track.trackName ?? "",
+  recordingMbidAliases: track.recordingMbidAliases ?? [],
+  releaseYear: track.releaseYear == null ? null : String(track.releaseYear),
+  artistAliases: track.artistAliases ?? [],
+  ...overrides,
+});
 
 beforeEach(() => {
   downloadTracker.clearAll();
@@ -61,23 +85,25 @@ test("enrichStaticPlaylistMbids fills missing playlist and job MBIDs", async () 
   );
 
   const result = await enrichStaticPlaylistMbids(playlist.id, {
-    resolveTrackContext: (track) => ({
-      ...track,
-      albumName: "The Shape of Punk to Come",
-      artistMbid: "artist-refused",
-      albumMbid: "album-shape",
-      trackMbid: "track-new-noise",
-      releaseYear: "1998",
-      durationMs: 308000,
-      artistAliases: ["Refused SE"],
-      trackNumber: 1,
-      albumTrackCount: 12,
-      albumTrackTitles: ["Worms of the Senses", "New Noise"],
-    }),
+    resolveTrackContext: async (track) =>
+      resolved(track, {
+        albumName: "The Shape of Punk to Come",
+        artistMbid: "artist-refused",
+        albumMbid: "album-shape",
+        trackMbid: "track-new-noise",
+        releaseYear: "1998",
+        durationMs: 308000,
+        artistAliases: ["Refused SE"],
+        trackNumber: 1,
+        albumTrackCount: 12,
+        albumTrackTitles: ["Worms of the Senses", "New Noise"],
+      }),
   });
 
   const storedTrack = flowPlaylistConfig.getStaticPlaylist(playlist.id)?.tracks?.[0];
+  assert.ok(storedTrack != null);
   const storedJob = downloadTracker.getJob(jobId);
+  assert.ok(storedJob != null);
 
   assert.equal(result.changed, true);
   assert.equal(result.playlistTracksUpdated, 1);
@@ -102,18 +128,19 @@ test("enrichStaticPlaylistMbids rescans the library after updating a downloaded 
     { artistName: "Refused", trackName: "New Noise" },
     playlist.id,
   );
+  assert.ok(jobId != null);
   downloadTracker.setDone(jobId, "/library/Refused/New Noise.flac");
   const scheduleScanLibrary = vi
     .spyOn(playlistManager, "scheduleScanLibrary")
     .mockImplementation(() => 1);
 
   await enrichStaticPlaylistMbids(playlist.id, {
-    resolveTrackContext: (track) => ({
-      ...track,
-      artistMbid: "artist-refused",
-      albumMbid: "album-shape",
-      trackMbid: "track-new-noise",
-    }),
+    resolveTrackContext: async (track) =>
+      resolved(track, {
+        artistMbid: "artist-refused",
+        albumMbid: "album-shape",
+        trackMbid: "track-new-noise",
+      }),
   });
 
   assert.equal(scheduleScanLibrary.mock.calls.length, 1);
@@ -139,6 +166,7 @@ test("enrichStaticPlaylistMbids handles resolveTrackContext throwing by falling 
 
   assert.equal(result.changed, false);
   const storedTrack = flowPlaylistConfig.getStaticPlaylist(playlist.id)?.tracks?.[0];
+  assert.ok(storedTrack != null);
   assert.ok(!storedTrack.artistMbid);
 });
 
@@ -156,11 +184,11 @@ test("enrichStaticPlaylistMbids leaves already-enriched tracks unchanged", async
   });
 
   const result = await enrichStaticPlaylistMbids(playlist.id, {
-    resolveTrackContext: (track) => ({
-      ...track,
-      albumName: "Pablo Honey",
-      albumMbid: "pablo-honey-mbid",
-    }),
+    resolveTrackContext: async (track) =>
+      resolved(track, {
+        albumName: "Pablo Honey",
+        albumMbid: "pablo-honey-mbid",
+      }),
   });
 
   assert.equal(result.changed, true);
@@ -183,9 +211,9 @@ test("enrichStaticPlaylistMbids does not re-resolve complete tracks", async () =
   let resolverCalls = 0;
 
   const result = await enrichStaticPlaylistMbids(playlist.id, {
-    resolveTrackContext: (track) => {
+    resolveTrackContext: async (track) => {
       resolverCalls += 1;
-      return track;
+      return resolved(track);
     },
   });
 
@@ -209,10 +237,10 @@ test("enrichStaticPlaylistMbids can reconcile complete tracks once when explicit
 
   const result = await enrichStaticPlaylistMbids(playlist.id, {
     reconcileArtistMbids: true,
-    resolveTrackContext: (track) => ({
-      ...track,
-      artistMbid: "radiohead-mbid",
-    }),
+    resolveTrackContext: async (track) =>
+      resolved(track, {
+        artistMbid: "radiohead-mbid",
+      }),
   });
 
   assert.equal(result.changed, true);
@@ -246,7 +274,7 @@ test("startup artist reconciliation is scheduled only once", () => {
   });
 
   const queue = getPlaylistMbidEnrichmentQueue();
-  const getPlaylistId = (jobId) => {
+  const getPlaylistId = (jobId: number) => {
     const payload = queue.getJob(jobId)?.payload;
     const parsed = typeof payload === "string" ? JSON.parse(payload) : payload;
     return parsed?.playlistId;

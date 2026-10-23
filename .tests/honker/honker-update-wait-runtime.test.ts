@@ -16,7 +16,7 @@ test(
     const scheduler = db.scheduler();
     const controller = new AbortController();
 
-    const ticked = Promise.withResolvers();
+    const ticked = Promise.withResolvers<void>();
     let ticks = 0;
     scheduler.tick = () => {
       ticks += 1;
@@ -25,7 +25,7 @@ test(
     };
     scheduler.soonest = () => Date.now() / 1000 + 0.001;
     const running = scheduler.run("test-worker", controller.signal);
-    let final;
+    let final: number;
 
     try {
       await ticked.promise;

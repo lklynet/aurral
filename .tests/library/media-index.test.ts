@@ -1,3 +1,5 @@
+import { requireFixture } from "../playlists/fixtures.ts";
+import type * as Rows from "../../backend/db/rows.ts";
 import { test, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { access, mkdtemp, mkdir, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
@@ -37,19 +39,33 @@ import { createMockHttpServer } from "../helpers/backendTestHarness.ts";
 import { writeFlacFixture as makeTrack } from "../helpers/flacFixture.ts";
 
 vi.mock("../../backend/services/apiClients/rateLimiter.ts", async (importOriginal) => {
-  const { default: createRateLimiter } = await importOriginal();
-  return { default: (_minTime, options) => createRateLimiter(0, options) };
+  const { default: createRateLimiter } =
+    await importOriginal<typeof import("../../backend/services/apiClients/rateLimiter.ts")>();
+  return {
+    default: (_minTime: number, options: Parameters<typeof createRateLimiter>[1]) =>
+      createRateLimiter(0, options),
+  };
 });
 vi.mock("../../backend/services/metadataProviderBudget.ts", async (importOriginal) => ({
-  ...(await importOriginal()),
+  ...(await importOriginal<typeof import("../../backend/services/metadataProviderBudget.ts")>()),
   reserveMetadataProviderRequest: () => 0,
 }));
 
 const getLibrarySnapshot = () => ({
-  artists: db.prepare("SELECT * FROM library_artists ORDER BY name").all(),
-  albums: db.prepare("SELECT * FROM library_albums ORDER BY title").all(),
-  tracks: db.prepare("SELECT * FROM library_tracks ORDER BY title").all(),
-  files: db.prepare("SELECT * FROM library_media_files ORDER BY path").all(),
+  artists: db
+    .prepare<unknown[], Rows.LibraryArtistsRow>("SELECT * FROM library_artists ORDER BY name")
+    .all(),
+  albums: db
+    .prepare<unknown[], Rows.LibraryAlbumsRow>("SELECT * FROM library_albums ORDER BY title")
+    .all(),
+  tracks: db
+    .prepare<unknown[], Rows.LibraryTracksRow>("SELECT * FROM library_tracks ORDER BY title")
+    .all(),
+  files: db
+    .prepare<unknown[], Rows.LibraryMediaFilesRow>(
+      "SELECT * FROM library_media_files ORDER BY path",
+    )
+    .all(),
 });
 
 test("scan change tracking ignores unrelated database writes", async () => {
@@ -69,12 +85,12 @@ test("scan change tracking ignores unrelated database writes", async () => {
 
 test("overlapping scans keep change tracking isolated", async () => {
   const identityKey = `name:overlapping-scan-${process.pid}`;
-  let releaseFirst;
-  const holdFirst = new Promise((resolve) => {
+  let releaseFirst = () => {};
+  const holdFirst = new Promise<void>((resolve) => {
     releaseFirst = resolve;
   });
-  let markFirstChanged;
-  const firstChanged = new Promise((resolve) => {
+  let markFirstChanged = () => {};
+  const firstChanged = new Promise<void>((resolve) => {
     markFirstChanged = resolve;
   });
 
@@ -105,7 +121,7 @@ test("overlapping scans keep change tracking isolated", async () => {
 
 test("a failed scan-run insert does not leak scan state", async () => {
   const identityKey = `name:scan-insert-failure-${process.pid}`;
-  let artist;
+  let artist: import("../../backend/db/rows.ts").LibraryArtistsRow | undefined;
   try {
     artist = upsertLibraryArtist({ identityKey, name: "Before Failure", syncSearch: false });
     const album = upsertLibraryAlbum({
@@ -129,7 +145,7 @@ test("a failed scan-run insert does not leak scan state", async () => {
       available: true,
     });
     assert.equal(
-      getLibrary().artists.find((item) => item.id === artist.id)?.name,
+      getLibrary().artists.find((item) => item.id === requireValue(artist).id)?.name,
       "Before Failure",
     );
 
@@ -148,7 +164,10 @@ test("a failed scan-run insert does not leak scan state", async () => {
       return { filesSeen: 0, filesIndexed: 0, filesFailed: 0 };
     });
 
-    assert.equal(getLibrary().artists.find((item) => item.id === artist.id)?.name, "After Failure");
+    assert.equal(
+      getLibrary().artists.find((item) => item.id === requireValue(artist).id)?.name,
+      "After Failure",
+    );
   } finally {
     db.exec("DROP TRIGGER IF EXISTS fail_library_scan_insert");
     if (artist) db.prepare("DELETE FROM library_artists WHERE id = ?").run(artist.id);
@@ -160,17 +179,18 @@ test("a failed scan-run insert does not leak scan state", async () => {
 test("a local-only configured scan does not contact Lidarr", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-local-only-scan-"));
   let lidarrCalls = 0;
+  const lidarrClient = {
+    isConfigured: () => true,
+    request: async () => {
+      lidarrCalls += 1;
+      throw new Error("unexpected Lidarr request");
+    },
+  };
   try {
     const result = await scanConfiguredLibrary({
       musicRoot: root,
       includeLidarr: false,
-      lidarrClient: {
-        isConfigured: () => true,
-        request: async () => {
-          lidarrCalls += 1;
-          throw new Error("unexpected Lidarr request");
-        },
-      },
+      lidarrClient,
     });
     assert.equal(lidarrCalls, 0);
     assert.equal(result.lidarr.skipped, true);
@@ -190,8 +210,13 @@ test("root scans ignore empty root values instead of scanning the process direct
 
     assert.deepEqual(result, { filesSeen: 0, filesIndexed: 0, filesFailed: 0, changed: false });
     assert.equal(
-      db.prepare("SELECT COUNT(*) AS count FROM library_scan_runs WHERE source = ?").get(source)
-        .count,
+      requireValue(
+        db
+          .prepare<unknown[], { count: number }>(
+            "SELECT COUNT(*) AS count FROM library_scan_runs WHERE source = ?",
+          )
+          .get(source),
+      ).count,
       0,
     );
   } finally {
@@ -216,10 +241,6 @@ test("a configured scan does not contact Lidarr without discovered roots", async
       musicRoot: root,
       lidarrClient: {
         isConfigured: () => true,
-        isEnabled: () => true,
-        request: async () => {
-          throw new Error("unexpected Lidarr request");
-        },
       },
     });
 
@@ -248,12 +269,14 @@ test("configured Lidarr roots scan locally and reconcile only those roots", asyn
       artist: `Local Artist ${process.pid}`,
       album: `Local Album ${process.pid}`,
       title: `Local Track ${process.pid}`,
-      musicbrainz_albumartistid: `11111111-1111-4111-8111-${String(process.pid).padStart(12, "0")}`,
+      musicbrainz_albumartistid: [
+        `11111111-1111-4111-8111-${String(process.pid).padStart(12, "0")}`,
+      ],
       musicbrainz_releasegroupid: `22222222-2222-4222-8222-${String(process.pid).padStart(12, "0")}`,
       musicbrainz_recordingid: `33333333-3333-4333-8333-${String(process.pid).padStart(12, "0")}`,
     },
   };
-  let trackId;
+  let trackId: number | undefined;
   try {
     const result = await scanMusicRoots({
       rootPaths: roots,
@@ -266,7 +289,7 @@ test("configured Lidarr roots scan locally and reconcile only those roots", asyn
       (track) => track.title === scanMetadata.common.title,
     )?.id;
     upsertLibraryMediaFile({
-      trackId,
+      trackId: requireFixture(trackId),
       source: "lidarr",
       path: outsidePath,
       available: true,
@@ -289,13 +312,15 @@ test("configured Lidarr roots scan locally and reconcile only those roots", asyn
   } finally {
     const albumIds = trackId
       ? db
-          .prepare("SELECT album_id FROM library_album_tracks WHERE track_id = ?")
+          .prepare<unknown[], { album_id: Rows.LibraryAlbumTracksRow["album_id"] }>(
+            "SELECT album_id FROM library_album_tracks WHERE track_id = ?",
+          )
           .all(trackId)
           .map((row) => row.album_id)
       : [];
     const artistIds = albumIds.length
       ? db
-          .prepare(
+          .prepare<unknown[], { artist_id: Rows.LibraryAlbumsRow["artist_id"] }>(
             `SELECT artist_id FROM library_albums WHERE id IN (${albumIds.map(() => "?").join(",")})`,
           )
           .all(...albumIds)
@@ -326,9 +351,18 @@ test("configured Lidarr roots scan locally and reconcile only those roots", asyn
 const lidarrOn = { isConfigured: () => true };
 const lidarrOff = { isConfigured: () => false };
 
-const albumByTitle = (title) =>
+const totalChanges = () =>
+  requireValue(db.prepare<unknown[], number>("SELECT total_changes()").pluck().get());
+
+const albumByTitle = (title: string) =>
   db
-    .prepare(
+    .prepare<
+      unknown[],
+      Rows.LibraryAlbumsRow & {
+        managed_by: Rows.LibraryManagementRow["managed_by"];
+        monitor_mode: Rows.LibraryManagementRow["monitor_mode"];
+      }
+    >(
       `SELECT album.*, management.managed_by, management.monitor_mode
    FROM library_albums AS album
    LEFT JOIN library_management AS management
@@ -337,9 +371,9 @@ const albumByTitle = (title) =>
     )
     .get(title);
 
-const albumTrackTitles = (albumId) =>
+const albumTrackTitles = (albumId: number) =>
   db
-    .prepare(
+    .prepare<unknown[], Rows.LibraryTracksRow["title"]>(
       `SELECT track.title FROM library_album_tracks AS link
    JOIN library_tracks AS track ON track.id = link.track_id
    WHERE link.album_id = ? ORDER BY track.title`,
@@ -347,16 +381,18 @@ const albumTrackTitles = (albumId) =>
     .pluck()
     .all(albumId);
 
-const mediaSources = (filePath) =>
+const mediaSources = (filePath: string) =>
   db
-    .prepare("SELECT source FROM library_media_files WHERE path = ? ORDER BY source")
+    .prepare<unknown[], Rows.LibraryMediaFilesRow["source"]>(
+      "SELECT source FROM library_media_files WHERE path = ? ORDER BY source",
+    )
     .pluck()
     .all(filePath);
 
-const removeArtistsNamed = (pattern) =>
+const removeArtistsNamed = (pattern: string) =>
   db.prepare("DELETE FROM library_artists WHERE name LIKE ?").run(pattern);
 
-test("turning Lidarr off removes its music from the Library and keeps Aurral's", async (t) => {
+test("turning Lidarr off removes its music from the Library and keeps Aurral's", async (t: import("vite-plus/test").TestContext) => {
   const downloads = await mkdtemp(path.join(tmpdir(), "aurral-lidarr-off-downloads-"));
   const music = await mkdtemp(path.join(tmpdir(), "aurral-lidarr-off-music-"));
   const tag = `Off ${process.pid}`;
@@ -383,24 +419,24 @@ test("turning Lidarr off removes its music from the Library and keeps Aurral's",
     lidarrRoots: [music],
   });
 
-  assert.equal(albumByTitle(`${tag} Only`).managed_by, "lidarr");
-  assert.equal(albumByTitle(`${tag} Shared`).managed_by, "lidarr");
+  assert.equal(requireValue(albumByTitle(`${tag} Only`)).managed_by, "lidarr");
+  assert.equal(requireValue(albumByTitle(`${tag} Shared`)).managed_by, "lidarr");
   const requested = albumByTitle(`${tag} Requested`);
   db.prepare(
     "UPDATE library_management SET managed_by = 'aurral' WHERE entity_kind = 'album' AND entity_id = ?",
-  ).run(requested.id);
+  ).run(requireValue(requested).id);
   db.prepare(
     "UPDATE library_albums SET metadata_json = json_set(metadata_json, '$.trackListComplete', json('true')) WHERE id = ?",
-  ).run(requested.id);
+  ).run(requireValue(requested).id);
   await scanConfiguredLibrary({
     musicRoot: downloads,
     lidarrClient: lidarrOn,
     lidarrRoots: [music],
   });
-  assert.equal(albumByTitle(`${tag} Requested`).managed_by, "aurral");
+  assert.equal(requireValue(albumByTitle(`${tag} Requested`)).managed_by, "aurral");
   const wanted = upsertLibraryAlbum({
     identityKey: `${tag}:wanted`,
-    artistId: albumByTitle(`${tag} Only`).artist_id,
+    artistId: requireValue(albumByTitle(`${tag} Only`)).artist_id,
     title: `${tag} Wanted`,
     metadata: {
       librarySource: "lidarr",
@@ -426,7 +462,7 @@ test("turning Lidarr off removes its music from the Library and keeps Aurral's",
     lidarrClient: lidarrOn,
     lidarrRoots: [music],
   });
-  assert.equal(albumByTitle(`${tag} Wanted`).managed_by, "lidarr");
+  assert.equal(requireValue(albumByTitle(`${tag} Wanted`)).managed_by, "lidarr");
 
   const off = await scanConfiguredLibrary({
     musicRoot: downloads,
@@ -438,18 +474,28 @@ test("turning Lidarr off removes its music from the Library and keeps Aurral's",
   assert.equal(albumByTitle(`${tag} Only`), undefined);
   assert.equal(albumByTitle(`${tag} Wanted`), undefined);
   assert.equal(
-    db.prepare("SELECT COUNT(*) AS count FROM library_artists WHERE name = ?").get(`${tag} Lidarr`)
-      .count,
+    requireValue(
+      db
+        .prepare<unknown[], { count: number }>(
+          "SELECT COUNT(*) AS count FROM library_artists WHERE name = ?",
+        )
+        .get(`${tag} Lidarr`),
+    ).count,
     0,
   );
   const shared = albumByTitle(`${tag} Shared`);
-  assert.equal(shared.managed_by, "aurral");
-  assert.equal(shared.monitor_mode, null);
-  assert.deepEqual(albumTrackTitles(shared.id), ["Single"]);
-  assert.deepEqual(albumTrackTitles(requested.id), ["Have", "Want"]);
+  assert.equal(requireValue(shared).managed_by, "aurral");
+  assert.equal(requireValue(shared).monitor_mode, null);
+  assert.deepEqual(albumTrackTitles(requireValue(shared).id), ["Single"]);
+  assert.deepEqual(albumTrackTitles(requireValue(requested).id), ["Have", "Want"]);
   assert.equal(
-    db.prepare("SELECT COUNT(*) AS count FROM library_media_files WHERE source = 'lidarr'").get()
-      .count,
+    requireValue(
+      db
+        .prepare<unknown[], { count: number }>(
+          "SELECT COUNT(*) AS count FROM library_media_files WHERE source = 'lidarr'",
+        )
+        .get(),
+    ).count,
     0,
   );
   assert.deepEqual(mediaSources(sharedSingle), ["aurral"]);
@@ -476,18 +522,23 @@ test("turning Lidarr off removes its music from the Library and keeps Aurral's",
     lidarrClient: lidarrOn,
     lidarrRoots: [music],
   });
-  assert.equal(albumByTitle(`${tag} Only`).managed_by, "lidarr");
+  assert.equal(requireValue(albumByTitle(`${tag} Only`)).managed_by, "lidarr");
   assert.deepEqual(mediaSources(sharedLidarr), ["lidarr"]);
 });
 
-test("a scan of several roots drops songs whose files are gone from albums nobody asked for, including ones an older scan only marked missing", async (t) => {
+test("a scan of several roots drops songs whose files are gone from albums nobody asked for, including ones an older scan only marked missing", async (t: import("vite-plus/test").TestContext) => {
   const roots = await Promise.all([
     mkdtemp(path.join(tmpdir(), "aurral-roots-gone-one-")),
     mkdtemp(path.join(tmpdir(), "aurral-roots-gone-two-")),
   ]);
   const source = `test-roots-gone-${process.pid}`;
   const artist = `Roots Gone ${process.pid}`;
-  const tags = {};
+  const tags: Record<
+    string,
+    Awaited<
+      ReturnType<NonNullable<NonNullable<Parameters<typeof scanMusicRoot>[0]>["metadataReader"]>>
+    >
+  > = {};
   t.onTestFinished(async () => {
     for (const filePath of Object.keys(tags)) deleteIndexedFile(source, filePath);
     removeArtistsNamed(artist);
@@ -498,7 +549,7 @@ test("a scan of several roots drops songs whose files are gone from albums nobod
     [roots[0], "One", "Gone", 2],
     [roots[1], "Two", "Other", 1],
     [roots[1], "Two", "Marked", 2],
-  ]) {
+  ] as const) {
     tags[await createAudioFile(root, `${artist}/${album}/${track} ${title}.flac`)] = untagged(
       artist,
       album,
@@ -510,7 +561,7 @@ test("a scan of several roots drops songs whose files are gone from albums nobod
     scanMusicRoots({
       rootPaths: roots,
       source,
-      metadataReader: async (filePath) => tags[filePath],
+      metadataReader: async (filePath: string) => tags[filePath],
     });
   const [, gone, , marked] = Object.keys(tags);
   await scan();
@@ -532,7 +583,7 @@ test("a scan of several roots drops songs whose files are gone from albums nobod
   );
 });
 
-test("files in a folder Lidarr no longer has leave the Library", async (t) => {
+test("files in a folder Lidarr no longer has leave the Library", async (t: import("vite-plus/test").TestContext) => {
   const downloads = await mkdtemp(path.join(tmpdir(), "aurral-dropped-root-downloads-"));
   const kept = await mkdtemp(path.join(tmpdir(), "aurral-dropped-root-kept-"));
   const dropped = await mkdtemp(path.join(tmpdir(), "aurral-dropped-root-gone-"));
@@ -561,7 +612,7 @@ test("files in a folder Lidarr no longer has leave the Library", async (t) => {
   assert.deepEqual([mediaSources(stays), mediaSources(leaves)], [["lidarr"], []]);
 });
 
-test("a Lidarr root folder inside the Downloads Folder belongs to Lidarr while it is on", async (t) => {
+test("a Lidarr root folder inside the Downloads Folder belongs to Lidarr while it is on", async (t: import("vite-plus/test").TestContext) => {
   const downloads = await mkdtemp(path.join(tmpdir(), "aurral-nested-lidarr-"));
   const music = path.join(downloads, "music");
   const tag = `Nested ${process.pid}`;
@@ -577,7 +628,7 @@ test("a Lidarr root folder inside the Downloads Folder belongs to Lidarr while i
     lidarrRoots: [music],
   });
   assert.deepEqual(mediaSources(nested), ["lidarr"]);
-  assert.equal(albumByTitle(`${tag} Album`).managed_by, "lidarr");
+  assert.equal(requireValue(albumByTitle(`${tag} Album`)).managed_by, "lidarr");
 
   await scanConfiguredLibrary({
     musicRoot: downloads,
@@ -585,9 +636,9 @@ test("a Lidarr root folder inside the Downloads Folder belongs to Lidarr while i
     lidarrRoots: [music],
   });
   assert.deepEqual(mediaSources(nested), ["aurral"]);
-  assert.equal(albumByTitle(`${tag} Album`).managed_by, "aurral");
+  assert.equal(requireValue(albumByTitle(`${tag} Album`)).managed_by, "aurral");
   const album = albumByTitle(`${tag} Album`);
-  const tracks = albumTrackTitles(album.id);
+  const tracks = albumTrackTitles(requireValue(album).id);
 
   await scanConfiguredLibrary({
     musicRoot: downloads,
@@ -595,14 +646,14 @@ test("a Lidarr root folder inside the Downloads Folder belongs to Lidarr while i
     lidarrRoots: [music],
   });
   assert.deepEqual(
-    [albumByTitle(`${tag} Album`).id, albumTrackTitles(album.id)],
-    [album.id, tracks],
+    [requireValue(albumByTitle(`${tag} Album`)).id, albumTrackTitles(requireValue(album).id)],
+    [requireValue(album).id, tracks],
   );
-  assert.equal(albumByTitle(`${tag} Album`).managed_by, "lidarr");
+  assert.equal(requireValue(albumByTitle(`${tag} Album`)).managed_by, "lidarr");
   assert.ok(mediaSources(nested).includes("lidarr"));
 });
 
-test("each folder is scanned by its deepest manager when Lidarr and Aurral folders nest", async (t) => {
+test("each folder is scanned by its deepest manager when Lidarr and Aurral folders nest", async (t: import("vite-plus/test").TestContext) => {
   const music = await mkdtemp(path.join(tmpdir(), "aurral-deep-nesting-"));
   const downloads = path.join(music, "downloads");
   const innerLidarr = path.join(downloads, "lidarr");
@@ -629,7 +680,7 @@ test("each folder is scanned by its deepest manager when Lidarr and Aurral folde
   assert.deepEqual(mediaSources(inner), ["lidarr"]);
 });
 
-test("turning Lidarr off drops a Lidarr-only album link from a track Aurral keeps elsewhere", async (t) => {
+test("turning Lidarr off drops a Lidarr-only album link from a track Aurral keeps elsewhere", async (t: import("vite-plus/test").TestContext) => {
   const downloads = await mkdtemp(path.join(tmpdir(), "aurral-off-links-"));
   const tag = `Links ${process.pid}`;
   t.onTestFinished(async () => {
@@ -640,18 +691,25 @@ test("turning Lidarr off drops a Lidarr-only album link from a track Aurral keep
   await scanConfiguredLibrary({ musicRoot: downloads, lidarrClient: lidarrOn, lidarrRoots: [] });
   const album = albumByTitle(`${tag} Album`);
   const trackId = db
-    .prepare("SELECT track_id FROM library_media_files WHERE path = ?")
+    .prepare<unknown[], Rows.LibraryMediaFilesRow["track_id"]>(
+      "SELECT track_id FROM library_media_files WHERE path = ?",
+    )
     .pluck()
     .get(aurralFile);
   const compilation = upsertLibraryAlbum({
     identityKey: `${tag}:compilation`,
-    artistId: album.artist_id,
+    artistId: requireValue(album).artist_id,
     title: `${tag} Compilation`,
     syncSearch: false,
   });
-  linkLibraryAlbumTrack({ albumId: compilation.id, trackId, trackNumber: 7, syncSearch: false });
+  linkLibraryAlbumTrack({
+    albumId: compilation.id,
+    trackId: requireFixture(trackId),
+    trackNumber: 7,
+    syncSearch: false,
+  });
   upsertLibraryMediaFile({
-    trackId,
+    trackId: requireFixture(trackId),
     albumId: compilation.id,
     source: "lidarr",
     path: path.join(tmpdir(), `${tag}-compilation.flac`),
@@ -661,7 +719,7 @@ test("turning Lidarr off drops a Lidarr-only album link from a track Aurral keep
   await scanConfiguredLibrary({ musicRoot: downloads, lidarrClient: lidarrOff });
 
   assert.equal(albumByTitle(`${tag} Compilation`), undefined);
-  assert.deepEqual(albumTrackTitles(album.id), ["Shared"]);
+  assert.deepEqual(albumTrackTitles(requireValue(album).id), ["Shared"]);
   assert.deepEqual(mediaSources(aurralFile), ["aurral"]);
 });
 
@@ -673,7 +731,7 @@ const metadata = {
     title: "First Step",
     track: { no: 1, of: 4 },
     disk: { no: 1, of: 1 },
-    musicbrainz_albumartistid: "11111111-1111-4111-8111-111111111111",
+    musicbrainz_albumartistid: ["11111111-1111-4111-8111-111111111111"],
     musicbrainz_releasegroupid: "22222222-2222-4222-8222-222222222222",
     musicbrainz_recordingid: "33333333-3333-4333-8333-333333333333",
   },
@@ -685,7 +743,7 @@ const metadata = {
   },
 };
 
-const songAt = (filePath) => ({
+const songAt = (filePath: string) => ({
   ...metadata,
   common: {
     ...metadata.common,
@@ -694,16 +752,23 @@ const songAt = (filePath) => ({
   },
 });
 
-async function createAudioFile(root, relativePath) {
+async function createAudioFile(root: string, relativePath: string) {
   const filePath = path.join(root, relativePath);
   await mkdir(path.dirname(filePath), { recursive: true });
   await writeFile(filePath, "fixture");
   return filePath;
 }
 
-function deleteIndexedFile(source, filePath) {
+function deleteIndexedFile(source: string, filePath: string) {
   const links = db
-    .prepare(
+    .prepare<
+      unknown[],
+      {
+        trackId: Rows.LibraryMediaFilesRow["track_id"];
+        albumId: Rows.LibraryAlbumTracksRow["album_id"];
+        artistId: Rows.LibraryAlbumsRow["artist_id"];
+      }
+    >(
       `SELECT media.track_id AS trackId, album_track.album_id AS albumId, album.artist_id AS artistId
      FROM library_media_files AS media
      LEFT JOIN library_album_tracks AS album_track ON album_track.track_id = media.track_id
@@ -714,9 +779,13 @@ function deleteIndexedFile(source, filePath) {
   db.prepare("DELETE FROM library_media_files WHERE source = ? AND path = ?").run(source, filePath);
 
   for (const { trackId, albumId, artistId } of links) {
-    const remainingFiles = db
-      .prepare("SELECT COUNT(*) AS count FROM library_media_files WHERE track_id = ?")
-      .get(trackId).count;
+    const remainingFiles = requireValue(
+      db
+        .prepare<unknown[], { count: number }>(
+          "SELECT COUNT(*) AS count FROM library_media_files WHERE track_id = ?",
+        )
+        .get(trackId),
+    ).count;
     if (remainingFiles === 0) {
       db.prepare("DELETE FROM library_album_tracks WHERE track_id = ?").run(trackId);
       db.prepare("DELETE FROM library_tracks WHERE id = ?").run(trackId);
@@ -737,7 +806,7 @@ function deleteIndexedFile(source, filePath) {
 test("scanMusicRoot indexes tagged media and ignores Flow output", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-library-scan-"));
   const source = `test-aurral-${process.pid}`;
-  let filePath;
+  let filePath: string | undefined;
   try {
     filePath = await createAudioFile(root, "Aurral Fixture/Playback Roadmap/01 First Step.flac");
     await createAudioFile(root, "aurral-weekly-flow/flow/ignored.flac");
@@ -780,7 +849,7 @@ test("scanMusicRoot indexes tagged media and ignores Flow output", async () => {
 test("scanMusicRoot derives stable fallback records when tags are missing", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-library-fallback-"));
   const source = `test-fallback-${process.pid}`;
-  const filePaths = [];
+  const filePaths: string[] = [];
   try {
     const names = ["02 Fallback Track", "2-03 - Bomb", "01-99 Luftballons", "02-22 Acacia Avenue"];
     for (const name of names) {
@@ -793,7 +862,17 @@ test("scanMusicRoot derives stable fallback records when tags are missing", asyn
     });
     const indexed = filePaths.map((filePath) =>
       db
-        .prepare(
+        .prepare<
+          unknown[],
+          {
+            artistName: Rows.LibraryArtistsRow["name"];
+            albumTitle: Rows.LibraryAlbumsRow["title"];
+            trackTitle: Rows.LibraryTracksRow["title"];
+            disc: Rows.LibraryAlbumTracksRow["disc_number"];
+            track: Rows.LibraryAlbumTracksRow["track_number"];
+            available: Rows.LibraryMediaFilesRow["available"];
+          }
+        >(
           `SELECT artist.name AS artistName, album.title AS albumTitle,
         track.title AS trackTitle, album_track.disc_number AS disc, album_track.track_number AS track, media.available
        FROM library_media_files AS media
@@ -851,15 +930,22 @@ test("upsertLibraryArtist promotes a name fallback when its MBID becomes known",
       identityKey: buildFallbackIdentityKey("artist", name),
       name,
     });
-    const artists = db.prepare("SELECT id, mbid FROM library_artists WHERE name = ?").all(name);
+    const artists = db
+      .prepare<
+        unknown[],
+        { id: Rows.LibraryArtistsRow["id"]; mbid: Rows.LibraryArtistsRow["mbid"] }
+      >("SELECT id, mbid FROM library_artists WHERE name = ?")
+      .all(name);
     const linkedAlbum = db
-      .prepare("SELECT artist_id FROM library_albums WHERE id = ?")
+      .prepare<unknown[], { artist_id: Rows.LibraryAlbumsRow["artist_id"] }>(
+        "SELECT artist_id FROM library_albums WHERE id = ?",
+      )
       .get(album.id);
 
     assert.deepEqual(artists, [{ id: resolved.id, mbid }]);
     assert.equal(resolved.id, fallback.id);
     assert.equal(fallbackAgain.id, resolved.id);
-    assert.equal(linkedAlbum.artist_id, resolved.id);
+    assert.equal(requireValue(linkedAlbum).artist_id, resolved.id);
   } finally {
     db.prepare("DELETE FROM library_artists WHERE name = ?").run(name);
   }
@@ -900,18 +986,27 @@ test("upsertLibraryArtist repairs an existing fallback and MBID duplicate", () =
 
   try {
     const resolved = upsertLibraryArtist({ identityKey: `mbid:${mbid}`, mbid, name });
-    const artists = db.prepare("SELECT id, mbid FROM library_artists WHERE name = ?").all(name);
+    const artists = db
+      .prepare<
+        unknown[],
+        { id: Rows.LibraryArtistsRow["id"]; mbid: Rows.LibraryArtistsRow["mbid"] }
+      >("SELECT id, mbid FROM library_artists WHERE name = ?")
+      .all(name);
     const linkedAlbum = db
-      .prepare("SELECT artist_id FROM library_albums WHERE id = ?")
+      .prepare<unknown[], { artist_id: Rows.LibraryAlbumsRow["artist_id"] }>(
+        "SELECT artist_id FROM library_albums WHERE id = ?",
+      )
       .get(album.id);
     const star = db
-      .prepare("SELECT entity_key FROM subsonic_stars WHERE user_id = ? AND entity_kind = 'artist'")
+      .prepare<unknown[], { entity_key: Rows.SubsonicStarsRow["entity_key"] }>(
+        "SELECT entity_key FROM subsonic_stars WHERE user_id = ? AND entity_kind = 'artist'",
+      )
       .get(userId);
 
     assert.deepEqual(artists, [{ id: resolvedId, mbid }]);
     assert.equal(resolved.id, resolvedId);
-    assert.equal(linkedAlbum.artist_id, resolvedId);
-    assert.equal(star.entity_key, `mbid:${mbid}`);
+    assert.equal(requireValue(linkedAlbum).artist_id, resolvedId);
+    assert.equal(requireValue(star).entity_key, `mbid:${mbid}`);
   } finally {
     db.prepare("DELETE FROM users WHERE id = ?").run(userId);
     db.prepare("DELETE FROM library_artists WHERE name = ?").run(name);
@@ -949,9 +1044,13 @@ test("upsertLibraryArtist merges normalized name variants when the MBID row exis
     }
 
     assert.equal(
-      db
-        .prepare("SELECT COUNT(*) AS count FROM library_artists WHERE name LIKE ?")
-        .get(`%${suffix}`).count,
+      requireValue(
+        db
+          .prepare<unknown[], { count: number }>(
+            "SELECT COUNT(*) AS count FROM library_artists WHERE name LIKE ?",
+          )
+          .get(`%${suffix}`),
+      ).count,
       cases.length,
     );
   } finally {
@@ -976,7 +1075,7 @@ test("a configured scan resolves untagged artists only on one unambiguous MusicB
   };
   let offlineAvailable = false;
   const server = await createMockHttpServer((request, response) => {
-    const query = new URL(request.url, "http://mock").searchParams.get("query");
+    const query = new URL(requireValue(request.url), "http://mock").searchParams.get("query") ?? "";
     const results =
       {
         [names.renamed]: [{ id: mbids.renamed, artistname: `The Bravery${suffix}` }],
@@ -1017,9 +1116,16 @@ test("a configured scan resolves untagged artists only on one unambiguous MusicB
     mbid: mbids.merged,
     name: `The Pumpkins${suffix}`,
   });
-  const artistFor = (name) =>
+  const artistFor = (name: string) =>
     db
-      .prepare(
+      .prepare<
+        unknown[],
+        {
+          id: Rows.LibraryArtistsRow["id"];
+          mbid: Rows.LibraryArtistsRow["mbid"];
+          name: Rows.LibraryArtistsRow["name"];
+        }
+      >(
         `SELECT artist.id, artist.mbid, artist.name
      FROM library_albums AS album
      JOIN library_artists AS artist ON artist.id = album.artist_id
@@ -1034,25 +1140,33 @@ test("a configured scan resolves untagged artists only on one unambiguous MusicB
     await scanConfiguredLibrary({ musicRoot: root, includeLidarr: false });
 
     assert.deepEqual(
-      { mbid: artistFor(names.renamed).mbid, name: artistFor(names.renamed).name },
+      {
+        mbid: requireValue(artistFor(names.renamed)).mbid,
+        name: requireValue(artistFor(names.renamed)).name,
+      },
       { mbid: mbids.renamed, name: names.renamed },
     );
-    assert.equal(artistFor(names.merged).id, existing.id);
+    assert.equal(requireValue(artistFor(names.merged)).id, existing.id);
     assert.equal(
-      db.prepare("SELECT COUNT(*) AS count FROM library_artists WHERE name = ?").get(names.merged)
-        .count,
+      requireValue(
+        db
+          .prepare<unknown[], { count: number }>(
+            "SELECT COUNT(*) AS count FROM library_artists WHERE name = ?",
+          )
+          .get(names.merged),
+      ).count,
       0,
     );
-    assert.equal(artistFor(names.ambiguous).mbid, null);
+    assert.equal(requireValue(artistFor(names.ambiguous)).mbid, null);
 
     await createAudioFile(root, `${names.offline}/${names.offline} Album/01 Track.mp3`);
     await scanConfiguredLibrary({ musicRoot: root, includeLidarr: false });
-    assert.equal(artistFor(names.offline).mbid, null);
+    assert.equal(requireValue(artistFor(names.offline)).mbid, null);
 
     offlineAvailable = true;
     clearMetadataProviderCaches();
     await scanConfiguredLibrary({ musicRoot: root, includeLidarr: false });
-    assert.equal(artistFor(names.offline).mbid, mbids.offline);
+    assert.equal(requireValue(artistFor(names.offline)).mbid, mbids.offline);
   } finally {
     for (const filePath of getLibrarySnapshot().files.map((file) => file.path)) {
       if (filePath.startsWith(root)) deleteIndexedFile("aurral", filePath);
@@ -1068,12 +1182,35 @@ test("a configured scan resolves untagged artists only on one unambiguous MusicB
   }
 });
 
-const uuid = (group, index) => `${group}-0000-4000-8000-${String(index).padStart(12, "0")}`;
+const uuid = (group: string, index: number) =>
+  `${group}-0000-4000-8000-${String(index).padStart(12, "0")}`;
 
-async function withReleaseGroups(releaseGroups, run) {
-  const state = { up: true, requests: [] };
+type TestRelease = {
+  id: string;
+  titles: string[];
+  perDisc?: number;
+  recordings?: Record<string, string>;
+  merged?: Record<string, string[]>;
+};
+type TestReleaseGroup = {
+  title: string;
+  artist: string;
+  artistMbid: string;
+  recordings: Record<string, string>;
+  releases: TestRelease[];
+  credits?: { id: string; artistname: string }[];
+};
+
+async function withReleaseGroups(
+  releaseGroups: Record<string, TestReleaseGroup>,
+  run: (state: { up: boolean; requests: string[] }) => Promise<void>,
+) {
+  const state = { up: true, requests: [] as string[] };
   const server = await createMockHttpServer((request, response) => {
-    const id = new URL(request.url, "http://mock").pathname.split("/").at(-1);
+    const id = new URL(requireValue(requireValue(request).url), "http://mock").pathname
+      .split("/")
+      .at(-1);
+    assert.ok(id != null);
     state.requests.push(id);
     const group = releaseGroups[id];
     response.setHeader("content-type", "application/json");
@@ -1138,9 +1275,9 @@ async function withReleaseGroups(releaseGroups, run) {
   }
 }
 
-const albumListing = (title) =>
+const albumListing = (title: string) =>
   db
-    .prepare(
+    .prepare<unknown[], { title: Rows.LibraryTracksRow["title"]; have: number }>(
       `SELECT track.title,
      EXISTS (SELECT 1 FROM library_media_files AS media WHERE media.track_id = track.id
        AND media.available = 1 AND (media.album_id = link.album_id OR media.album_id IS NULL)) AS have
@@ -1153,12 +1290,12 @@ const albumListing = (title) =>
     .map(({ title: name, have }) => [name, have ? "have" : "missing"]);
 
 function listedAlbum(
-  artist,
-  artistMbid,
-  title,
-  index,
-  titles,
-  releases = [{ id: uuid("bbbbbbbb", index), titles }],
+  artist: string,
+  artistMbid: string,
+  title: string,
+  index: number,
+  titles: string[],
+  releases: TestRelease[] = [{ id: uuid("bbbbbbbb", index), titles }],
 ) {
   const recordings = Object.fromEntries(
     titles.map((name, position) => [name, uuid("cccccccc", index * 100 + position)]),
@@ -1167,7 +1304,7 @@ function listedAlbum(
   return {
     releaseGroup,
     group: { title, artist, artistMbid, recordings, releases },
-    file: (folder, name, release = releaseGroup) =>
+    file: (folder: string, name: string, release: string = releaseGroup) =>
       makeTrack(
         path.join(
           folder,
@@ -1284,7 +1421,7 @@ test("an album lists every track of the release its files are tagged with, inclu
   }
 });
 
-test("a release that lists a song twice lists it at both places, and a file numbered apart from the release is listed once", async (t) => {
+test("a release that lists a song twice lists it at both places, and a file numbered apart from the release is listed once", async (t: import("vite-plus/test").TestContext) => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-track-list-twice-"));
   const artist = `Twice List ${process.pid}`;
   const twice = listedAlbum(artist, uuid("dddddddd", 5), `Twice ${process.pid}`, 50, [
@@ -1340,7 +1477,7 @@ test("a release that lists a song twice lists it at both places, and a file numb
   );
 });
 
-test("a song an album keeps after its untagged file is gone is listed once, and stays when Lidarr is turned off", async (t) => {
+test("a song an album keeps after its untagged file is gone is listed once, and stays when Lidarr is turned off", async (t: import("vite-plus/test").TestContext) => {
   const downloads = await mkdtemp(path.join(tmpdir(), "aurral-track-list-kept-downloads-"));
   const music = await mkdtemp(path.join(tmpdir(), "aurral-track-list-kept-music-"));
   const artist = `Kept List ${process.pid}`;
@@ -1358,7 +1495,7 @@ test("a song an album keeps after its untagged file is gone is listed once, and 
     TITLE: "Two",
     TRACKNUMBER: 2,
   });
-  const scan = (lidarrClient = lidarrOn) =>
+  const scan = (lidarrClient: { isConfigured: () => boolean } = lidarrOn) =>
     scanConfiguredLibrary({ musicRoot: downloads, lidarrClient, lidarrRoots: [music] });
   await withReleaseGroups({ [album.releaseGroup]: album.group }, async (provider) => {
     provider.up = false;
@@ -1384,7 +1521,7 @@ test("a song an album keeps after its untagged file is gone is listed once, and 
   });
 });
 
-test("an album lists the edition its files come from, again when a file of another edition joins it or a file is retagged", async (t) => {
+test("an album lists the edition its files come from, again when a file of another edition joins it or a file is retagged", async (t: import("vite-plus/test").TestContext) => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-track-list-edition-"));
   const artist = `Edition List ${process.pid}`;
   const title = `Edition ${process.pid}`;
@@ -1454,11 +1591,11 @@ test("an album lists the edition its files come from, again when a file of anoth
   });
 });
 
-test("an album lists the release whose recordings its files are tagged with when another has the same titles", async (t) => {
+test("an album lists the release whose recordings its files are tagged with when another has the same titles", async (t: import("vite-plus/test").TestContext) => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-track-list-recording-"));
   const artist = `Recording List ${process.pid}`;
   const title = `Recording ${process.pid}`;
-  const remastered = {
+  const remastered: Record<string, string> = {
     One: uuid("c0c0c0c0", 1),
     Two: uuid("c0c0c0c0", 2),
     Bonus: uuid("c0c0c0c0", 3),
@@ -1503,7 +1640,7 @@ test("an album lists the release whose recordings its files are tagged with when
   });
 });
 
-test("remastered files numbered as one disc list each song of their edition once", async (t) => {
+test("remastered files numbered as one disc list each song of their edition once", async (t: import("vite-plus/test").TestContext) => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-track-list-remaster-"));
   const artist = `Remaster List ${process.pid}`;
   const title = `Remaster ${process.pid}`;
@@ -1517,7 +1654,7 @@ test("remastered files numbered as one disc list each song of their edition once
     removeArtistsNamed(artist);
     await rm(root, { recursive: true, force: true });
   });
-  const untagged = (name, number) =>
+  const untagged = (name: string, number: number) =>
     makeTrack(path.join(root, artist, title, `${String(number).padStart(2, "0")} ${name}.flac`), {
       ARTIST: artist,
       ALBUMARTIST: artist,
@@ -1545,7 +1682,10 @@ test("remastered files numbered as one disc list each song of their edition once
   await untagged("Dusk (Live, Remastered 2012)", 8);
   const filesOn = () =>
     db
-      .prepare(
+      .prepare<
+        unknown[],
+        { path: Rows.LibraryMediaFilesRow["path"]; track_id: Rows.LibraryMediaFilesRow["track_id"] }
+      >(
         "SELECT media.path, media.track_id FROM library_media_files AS media WHERE media.path LIKE ? ORDER BY media.path",
       )
       .all(`${root}%`);
@@ -1571,7 +1711,7 @@ test("remastered files numbered as one disc list each song of their edition once
   });
 });
 
-test("an untagged file at a listed song's place is that song when its title is spelled another way or names a guest or its mix, not when it is another version", async (t) => {
+test("an untagged file at a listed song's place is that song when its title is spelled another way or names a guest or its mix, not when it is another version", async (t: import("vite-plus/test").TestContext) => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-track-list-place-"));
   const artist = `Place List ${process.pid}`;
   const title = `Place ${process.pid}`;
@@ -1596,7 +1736,7 @@ test("an untagged file at a listed song's place is that song when its title is s
     removeArtistsNamed(artist);
     await rm(root, { recursive: true, force: true });
   });
-  const untagged = (name, number) =>
+  const untagged = (name: string, number: number) =>
     makeTrack(path.join(root, artist, title, `${String(number).padStart(2, "0")} ${name}.flac`), {
       ARTIST: artist,
       ALBUMARTIST: artist,
@@ -1647,7 +1787,7 @@ test("an untagged file at a listed song's place is that song when its title is s
   });
 });
 
-test("an untagged song numbered apart from the album's song with its title stays its own when that song has a file or another copy shares the title", async (t) => {
+test("an untagged song numbered apart from the album's song with its title stays its own when that song has a file or another copy shares the title", async (t: import("vite-plus/test").TestContext) => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-track-list-apart-"));
   const artist = `Apart List ${process.pid}`;
   const title = `Apart ${process.pid}`;
@@ -1663,7 +1803,7 @@ test("an untagged song numbered apart from the album's song with its title stays
     removeArtistsNamed(artist);
     await rm(root, { recursive: true, force: true });
   });
-  const untagged = (name, number) =>
+  const untagged = (name: string, number: number) =>
     makeTrack(path.join(root, artist, title, `${String(number).padStart(2, "0")} ${name}.flac`), {
       ARTIST: artist,
       ALBUMARTIST: artist,
@@ -1698,13 +1838,13 @@ test("an untagged song numbered apart from the album's song with its title stays
 });
 
 const taggedTrack = (
-  root,
-  artist,
-  title,
-  album,
-  name,
-  number,
-  recording,
+  root: string,
+  artist: string,
+  title: string,
+  album: ReturnType<typeof listedAlbum>,
+  name: string,
+  number: number,
+  recording: string,
   artistMbid = album.group.artistMbid,
 ) =>
   makeTrack(path.join(root, artist, title, `${String(number).padStart(2, "0")} ${name}.flac`), {
@@ -1719,7 +1859,7 @@ const taggedTrack = (
     MUSICBRAINZ_TRACKID: recording,
   });
 
-test("a file at a listed song's place is that song, keeping its own title when the album first lists, and taking the place of a song an earlier listing left there without a file", async (t) => {
+test("a file at a listed song's place is that song, keeping its own title when the album first lists, and taking the place of a song an earlier listing left there without a file", async (t: import("vite-plus/test").TestContext) => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-track-list-stale-"));
   const artist = `Stale List ${process.pid}`;
   const title = `Stale ${process.pid}`;
@@ -1755,7 +1895,7 @@ test("a file at a listed song's place is that song, keeping its own title when t
   });
 });
 
-test("a file is the listed song its recording is, before another whose title it shares at its place", async (t) => {
+test("a file is the listed song its recording is, before another whose title it shares at its place", async (t: import("vite-plus/test").TestContext) => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-track-list-recording-first-"));
   const artist = `Recording First List ${process.pid}`;
   const title = `Recording First ${process.pid}`;
@@ -1778,7 +1918,7 @@ test("a file is the listed song its recording is, before another whose title it 
   });
 });
 
-test("a file tagged with a recording MusicBrainz merged into a release's song is that song, and counts toward its release", async (t) => {
+test("a file tagged with a recording MusicBrainz merged into a release's song is that song, and counts toward its release", async (t: import("vite-plus/test").TestContext) => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-track-list-merged-"));
   const artist = `Merged List ${process.pid}`;
   const title = `Merged ${process.pid}`;
@@ -1824,7 +1964,7 @@ test("a file tagged with a recording MusicBrainz merged into a release's song is
   });
 });
 
-test("a tagged file numbered apart from its release is the release's song with its title, unless the release lists the title twice or another file has it", async (t) => {
+test("a tagged file numbered apart from its release is the release's song with its title, unless the release lists the title twice or another file has it", async (t: import("vite-plus/test").TestContext) => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-track-list-tagged-apart-"));
   const artist = `Tagged Apart List ${process.pid}`;
   const title = `Tagged Apart ${process.pid}`;
@@ -1859,7 +1999,7 @@ test("a tagged file numbered apart from its release is the release's song with i
   });
 });
 
-test("a second file of a song, tagged with a recording its album's release does not list, is that song's with an untagged third through a full rescan, unless it is another version or at another song's place", async (t) => {
+test("a second file of a song, tagged with a recording its album's release does not list, is that song's with an untagged third through a full rescan, unless it is another version or at another song's place", async (t: import("vite-plus/test").TestContext) => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-track-list-copies-"));
   const artist = `Copies List ${process.pid}`;
   const title = `Copies ${process.pid}`;
@@ -1869,11 +2009,11 @@ test("a second file of a song, tagged with a recording its album's release does 
     "Kids",
     "Song",
   ]);
-  const scan = (force = false) =>
+  const scan = (force: boolean = false) =>
     scanConfiguredLibrary({ musicRoot: root, includeLidarr: false, force });
-  const filesOf = (name) =>
+  const filesOf = (name: string) =>
     db
-      .prepare(
+      .prepare<unknown[], Rows.LibraryMediaFilesRow["path"]>(
         `SELECT media.path FROM library_media_files AS media JOIN library_tracks AS track ON track.id = media.track_id
      WHERE track.title = ? AND media.available = 1 ORDER BY media.path`,
       )
@@ -1920,12 +2060,12 @@ test("a second file of a song, tagged with a recording its album's release does 
   });
 });
 
-test("an album lists its release group only when the group holds one of its files, by recording and title when the group is another artist's", async (t) => {
+test("an album lists its release group only when the group holds one of its files, by recording and title when the group is another artist's", async (t: import("vite-plus/test").TestContext) => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-track-list-guessed-"));
   const artist = `Guessed List ${process.pid}`;
   const artistMbid = uuid("dddddddd", 14);
   const other = { artist: "Someone Else", artistMbid: uuid("dddddddd", 15) };
-  const album = (name, index, titles) =>
+  const album = (name: string, index: number, titles: string[]) =>
     listedAlbum(artist, artistMbid, `${name} ${process.pid}`, index, titles);
   const elsewhere = album("Elsewhere", 140, ["One", "Two"]);
   const merged = { One: [uuid("c6c6c6c6", 1)] };
@@ -2010,14 +2150,21 @@ test("an album lists its release group only when the group holds one of its file
   );
 });
 
-test("an album someone asked for keeps the release it lists after its files are gone", async (t) => {
+test("an album someone asked for keeps the release it lists after its files are gone", async (t: import("vite-plus/test").TestContext) => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-track-list-gone-"));
   const artist = `Gone List ${process.pid}`;
   const title = `Gone ${process.pid}`;
   const album = listedAlbum(artist, uuid("dddddddd", 18), title, 180, ["One", "Two"]);
   const listedRelease = () =>
     JSON.parse(
-      db.prepare("SELECT metadata_json FROM library_albums WHERE title = ?").pluck().get(title),
+      requireValue(
+        db
+          .prepare<unknown[], Rows.LibraryAlbumsRow["metadata_json"]>(
+            "SELECT metadata_json FROM library_albums WHERE title = ?",
+          )
+          .pluck()
+          .get(title),
+      ),
     ).trackList.release;
   t.onTestFinished(async () => {
     removeArtistsNamed(artist);
@@ -2026,7 +2173,12 @@ test("an album someone asked for keeps the release it lists after its files are 
   await withReleaseGroups({ [album.releaseGroup]: album.group }, async () => {
     const file = await album.file(root, "One");
     await scanConfiguredLibrary({ musicRoot: root, includeLidarr: false });
-    const albumId = db.prepare("SELECT id FROM library_albums WHERE title = ?").pluck().get(title);
+    const albumId = db
+      .prepare<unknown[], Rows.LibraryAlbumsRow["id"]>(
+        "SELECT id FROM library_albums WHERE title = ?",
+      )
+      .pluck()
+      .get(title);
     setLibraryManagement({
       entityKind: "album",
       entityId: albumId,
@@ -2083,7 +2235,7 @@ test("an album the metadata provider does not know keeps its songs and does not 
   }
 });
 
-test("an album lists the same songs, with the same ids, as Lidarr is turned off and on", async (t) => {
+test("an album lists the same songs, with the same ids, as Lidarr is turned off and on", async (t: import("vite-plus/test").TestContext) => {
   const downloads = await mkdtemp(path.join(tmpdir(), "aurral-track-list-downloads-"));
   const music = await mkdtemp(path.join(tmpdir(), "aurral-track-list-music-"));
   const artist = `Switch List ${process.pid}`;
@@ -2101,14 +2253,14 @@ test("an album lists the same songs, with the same ids, as Lidarr is turned off 
   await album.file(music, "One", release);
   await album.file(music, "Two", release);
   await lidarrOnly.file(music, "Kept", uuid("bbbbbbbb", 31));
-  const scan = (lidarrClient) =>
+  const scan = (lidarrClient: { isConfigured: () => boolean }) =>
     scanConfiguredLibrary({ musicRoot: downloads, lidarrClient, lidarrRoots: [music] });
   const listing = () => {
-    const { id } = albumByTitle(title);
+    const { id } = requireValue(albumByTitle(title));
     return {
       id,
       tracks: db
-        .prepare(
+        .prepare<unknown[], Rows.LibraryAlbumTracksRow["track_id"]>(
           "SELECT track_id FROM library_album_tracks WHERE album_id = ? ORDER BY track_number",
         )
         .pluck()
@@ -2152,7 +2304,7 @@ test("an album lists the same songs, with the same ids, as Lidarr is turned off 
 test("scanMusicRoot applies trusted job metadata when file tags omit identities", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-library-job-metadata-"));
   const source = `test-job-metadata-${process.pid}`;
-  let filePath;
+  let filePath: string | undefined;
   try {
     filePath = await createAudioFile(root, "Aurral Artist/Aurral Album/01 Track.flac");
     await scanMusicRoot({
@@ -2169,7 +2321,14 @@ test("scanMusicRoot applies trusted job metadata when file tags omit identities"
       }),
     });
     const indexed = db
-      .prepare(
+      .prepare<
+        unknown[],
+        {
+          artistMbid: Rows.LibraryArtistsRow["mbid"];
+          releaseGroupMbid: Rows.LibraryAlbumsRow["release_group_mbid"];
+          trackMbid: Rows.LibraryTracksRow["mbid"];
+        }
+      >(
         `SELECT artist.mbid AS artistMbid, album.release_group_mbid AS releaseGroupMbid,
         track.mbid AS trackMbid
        FROM library_media_files AS media
@@ -2192,9 +2351,17 @@ test("scanMusicRoot applies trusted job metadata when file tags omit identities"
   }
 });
 
-const fileRows = (source, filePath) =>
+const fileRows = (source: string, filePath: string) =>
   db
-    .prepare(
+    .prepare<
+      unknown[],
+      {
+        albumId: Rows.LibraryMediaFilesRow["album_id"];
+        trackId: Rows.LibraryMediaFilesRow["track_id"];
+        albumKey: Rows.LibraryAlbumsRow["identity_key"];
+        trackKey: Rows.LibraryTracksRow["identity_key"];
+      }
+    >(
       `SELECT media.album_id AS albumId, media.track_id AS trackId, album.identity_key AS albumKey, track.identity_key AS trackKey
    FROM library_media_files AS media
    JOIN library_albums AS album ON album.id = media.album_id
@@ -2203,9 +2370,17 @@ const fileRows = (source, filePath) =>
     )
     .get(source, filePath);
 
-const artistAlbums = (artistName) =>
+const artistAlbums = (artistName: string) =>
   db
-    .prepare(
+    .prepare<
+      unknown[],
+      {
+        id: Rows.LibraryAlbumsRow["id"];
+        title: Rows.LibraryAlbumsRow["title"];
+        identityKey: Rows.LibraryAlbumsRow["identity_key"];
+        tracks: number;
+      }
+    >(
       `SELECT album.id, album.title, album.identity_key AS identityKey,
      (SELECT COUNT(*) FROM library_album_tracks AS link WHERE link.album_id = album.id) AS tracks
    FROM library_albums AS album JOIN library_artists AS artist ON artist.id = album.artist_id
@@ -2213,7 +2388,7 @@ const artistAlbums = (artistName) =>
     )
     .all(artistName);
 
-const untagged = (artist, album, title, track = 1) => ({
+const untagged = (artist: string, album: string, title: string, track: number = 1) => ({
   common: {
     artist,
     albumartist: artist,
@@ -2225,7 +2400,7 @@ const untagged = (artist, album, title, track = 1) => ({
   format: { duration: 100 + track },
 });
 
-function starFor(userId, ...keys) {
+function starFor(userId: number, ...keys: [string, string][]) {
   db.prepare("INSERT OR IGNORE INTO users (id, username, password_hash) VALUES (?, ?, 'x')").run(
     userId,
     `fan-${userId}`,
@@ -2237,9 +2412,12 @@ function starFor(userId, ...keys) {
   }
 }
 
-const starredKeys = (userId) =>
+const starredKeys = (userId: number) =>
   db
-    .prepare(
+    .prepare<
+      unknown[],
+      { kind: Rows.SubsonicStarsRow["entity_kind"]; key: Rows.SubsonicStarsRow["entity_key"] }
+    >(
       "SELECT entity_kind AS kind, entity_key AS key FROM subsonic_stars WHERE user_id = ? ORDER BY entity_kind, entity_key",
     )
     .all(userId)
@@ -2260,10 +2438,14 @@ test("a file that gains MusicBrainz IDs keeps its album and track, with their fa
       metadataReader: async () => untagged(artist, "22 Grand Job", "22 Grand Job"),
     });
     const before = fileRows(source, filePath);
-    starFor(userId, ["album", before.albumKey], ["song", before.trackKey]);
+    starFor(
+      userId,
+      ["album", requireValue(before).albumKey],
+      ["song", requireValue(before).trackKey],
+    );
     db.prepare(
       "INSERT INTO play_album_stats (user_id, album_key, play_count, last_played_at) VALUES (?, ?, 3, 1)",
-    ).run(userId, before.albumKey);
+    ).run(userId, requireValue(before).albumKey);
 
     const tagged = untagged(artist, "22 Grand Job", "22 Grand Job");
     Object.assign(tagged.common, {
@@ -2282,17 +2464,22 @@ test("a file that gains MusicBrainz IDs keeps its album and track, with their fa
       artistAlbums(artist).map((album) => album.identityKey),
       [`release-group:${releaseGroup}`],
     );
-    assert.deepEqual([after.albumId, after.trackId], [before.albumId, before.trackId]);
-    assert.equal(after.trackKey, `recording:${recording}`);
+    assert.deepEqual(
+      [requireValue(after).albumId, requireValue(after).trackId],
+      [requireValue(before).albumId, requireValue(before).trackId],
+    );
+    assert.equal(requireValue(after).trackKey, `recording:${recording}`);
     assert.deepEqual(starredKeys(userId), [
-      ["album", after.albumKey],
-      ["song", after.trackKey],
+      ["album", requireValue(after).albumKey],
+      ["song", requireValue(after).trackKey],
     ]);
     assert.equal(
       db
-        .prepare("SELECT play_count FROM play_album_stats WHERE user_id = ? AND album_key = ?")
+        .prepare<unknown[], Rows.PlayAlbumStatsRow["play_count"]>(
+          "SELECT play_count FROM play_album_stats WHERE user_id = ? AND album_key = ?",
+        )
         .pluck()
-        .get(userId, after.albumKey),
+        .get(userId, requireValue(after).albumKey),
       3,
     );
   } finally {
@@ -2315,8 +2502,8 @@ test("MusicBrainz IDs tagged in capitals are the same IDs, other services' IDs a
     "e45cd7a6-64d1-4a2b-8c3d-4e5f6a7b8c9d",
     "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
   ];
-  const capitals = (id) =>
-    id.replace(/(^|-)([a-f])/g, (_, dash, letter) => dash + letter.toUpperCase());
+  const capitals = (id: string) =>
+    id.replace(/(^|-)([a-f])/g, (_, dash, letter: string) => dash + letter.toUpperCase());
   const deezer = "4246362661";
   const files = [
     {
@@ -2363,10 +2550,11 @@ test("MusicBrainz IDs tagged in capitals are the same IDs, other services' IDs a
         track: `recording:${recordings[3]}`,
       },
     },
-  ];
+  ].map((file) => ({ ...file, path: "" }));
   for (const file of files) file.path = await createAudioFile(root, `${artist}/${file.name}`);
-  const metadataReader = async (filePath) => {
+  const metadataReader = async (filePath: string) => {
     const file = files.find((entry) => entry.path === filePath);
+    assert.ok(file != null);
     const metadata = untagged(
       artist,
       path.basename(path.dirname(filePath)),
@@ -2422,6 +2610,7 @@ test("MusicBrainz IDs tagged in capitals are the same IDs, other services' IDs a
           scanId,
         });
       }
+      return {};
     });
     starFor(
       userId,
@@ -2435,32 +2624,39 @@ test("MusicBrainz IDs tagged in capitals are the same IDs, other services' IDs a
 
     const rows = files.map((file) => fileRows(source, file.path));
     assert.deepEqual(
-      rows.slice(0, 4).map((row) => row.albumKey),
+      rows.slice(0, 4).map((row) => requireValue(row).albumKey),
       [groups[0], groups[0], groups[0], groups[1]].map((id) => `release-group:${id}`),
     );
-    assert.match(rows[4].albumKey, /^name:/u);
+    assert.match(requireValue(rows[4]).albumKey, /^name:/u);
     assert.deepEqual(
-      [0, 1, 3, 4].map((index) => rows[index].trackKey),
+      [0, 1, 3, 4].map((index) => requireValue(rows[index]).trackKey),
       recordings.map((id) => `recording:${id}`),
     );
-    assert.match(rows[2].trackKey, /^name:/u);
+    assert.match(requireValue(rows[2]).trackKey, /^name:/u);
     assert.deepEqual(
-      db.prepare("SELECT identity_key FROM library_artists WHERE name = ?").pluck().all(artist),
+      db
+        .prepare<unknown[], Rows.LibraryArtistsRow["identity_key"]>(
+          "SELECT identity_key FROM library_artists WHERE name = ?",
+        )
+        .pluck()
+        .all(artist),
       [`mbid:${artistMbid}`],
     );
     assert.deepEqual(
       artistAlbums(artist).map((album) => album.identityKey),
-      [...groups.map((id) => `release-group:${id}`), rows[4].albumKey],
+      [...groups.map((id) => `release-group:${id}`), requireValue(rows[4]).albumKey],
     );
     assert.deepEqual(starredKeys(userId), [
       ["album", `release-group:${groups[0]}`],
       ["artist", `mbid:${artistMbid}`],
-      ["song", rows[2].trackKey],
+      ["song", requireValue(rows[2]).trackKey],
       ["song", `recording:${recordings[0]}`],
     ]);
     assert.equal(
       db
-        .prepare("SELECT COUNT(*) FROM library_tracks WHERE identity_key IN (?, ?)")
+        .prepare<unknown[], number>(
+          "SELECT COUNT(*) FROM library_tracks WHERE identity_key IN (?, ?)",
+        )
         .pluck()
         .get(`recording:${capitals(recordings[0])}`, `recording:${deezer}`),
       0,
@@ -2485,7 +2681,7 @@ test("a file retagged onto another album leaves no empty track or album behind",
       rootPath: root,
       source,
       force: true,
-      metadataReader: async (filePath) =>
+      metadataReader: async (filePath: string) =>
         untagged(
           artist,
           albumOf[filePath],
@@ -2513,7 +2709,7 @@ test("a file retagged onto another album leaves no empty track or album behind",
     );
     assert.equal(
       db
-        .prepare(
+        .prepare<unknown[], number>(
           `SELECT COUNT(*) FROM library_tracks AS track WHERE track.title IN ('One', 'Two')
          AND track.identity_key LIKE ? AND NOT EXISTS (SELECT 1 FROM library_media_files AS media WHERE media.track_id = track.id)`,
         )
@@ -2539,12 +2735,14 @@ test("a scan folds an album an earlier scan left without files into the album it
     await scanMusicRoot({ rootPath: root, source, metadataReader: reader });
     const left = fileRows(source, filePath);
     const artistId = db
-      .prepare("SELECT artist_id FROM library_albums WHERE id = ?")
+      .prepare<unknown[], Rows.LibraryAlbumsRow["artist_id"]>(
+        "SELECT artist_id FROM library_albums WHERE id = ?",
+      )
       .pluck()
-      .get(left.albumId);
+      .get(requireValue(left).albumId);
     const twinAlbum = upsertLibraryAlbum({
       identityKey: "release-group:0ef07919-a3b3-47fd-a8ce-7e9a54543c9c",
-      artistId,
+      artistId: requireFixture(artistId),
       title: "7 Devils",
       syncSearch: false,
     });
@@ -2563,10 +2761,10 @@ test("a scan folds an album an earlier scan left without files into the album it
     db.prepare(
       "UPDATE library_media_files SET album_id = ?, track_id = ? WHERE source = ? AND path = ?",
     ).run(twinAlbum.id, twinTrack.id, source, filePath);
-    const lonely = (title, key) => {
+    const lonely = (title: string, key: string) => {
       const album = upsertLibraryAlbum({
         identityKey: `name:album:${key}`,
-        artistId,
+        artistId: requireFixture(artistId),
         title,
         syncSearch: false,
       });
@@ -2586,7 +2784,12 @@ test("a scan folds an album an earlier scan left without files into the album it
     };
     lonely("Gone Elsewhere", `${artist} gone`);
     const kept = lonely("Still Starred", `${artist} starred`);
-    starFor(userId, ["album", left.albumKey], ["song", left.trackKey], ["song", kept.identity_key]);
+    starFor(
+      userId,
+      ["album", requireValue(left).albumKey],
+      ["song", requireValue(left).trackKey],
+      ["song", kept.identity_key],
+    );
 
     await scanMusicRoot({ rootPath: root, source, metadataReader: reader });
 
@@ -2612,7 +2815,14 @@ test("a scan folds an album an earlier scan left without files into the album it
   }
 });
 
-const tagged = (artist, album, title, track, releaseGroup, recording) => {
+const tagged = (
+  artist: string,
+  album: string,
+  title: string,
+  track: number,
+  releaseGroup: string,
+  recording: string,
+) => {
   const metadata = untagged(artist, album, title, track);
   Object.assign(metadata.common, {
     musicbrainz_releasegroupid: releaseGroup,
@@ -2621,9 +2831,11 @@ const tagged = (artist, album, title, track, releaseGroup, recording) => {
   return metadata;
 };
 
-const filesOnTrack = (trackId) =>
+const filesOnTrack = (trackId: number) =>
   db
-    .prepare("SELECT path FROM library_media_files WHERE track_id = ? ORDER BY path")
+    .prepare<unknown[], Rows.LibraryMediaFilesRow["path"]>(
+      "SELECT path FROM library_media_files WHERE track_id = ? ORDER BY path",
+    )
     .pluck()
     .all(trackId);
 
@@ -2633,15 +2845,20 @@ test("an album split between untagged and tagged files is one album that lists e
   const artist = `Split ${process.pid}`;
   const userId = 9900 + (process.pid % 90);
   const releaseGroup = "6c4a1b2e-3d4f-4a5b-8c6d-7e8f9a0b1c2d";
-  const tags = {};
-  const reader = async (filePath) => tags[filePath];
+  const tags: Record<
+    string,
+    Awaited<
+      ReturnType<NonNullable<NonNullable<Parameters<typeof scanMusicRoot>[0]>["metadataReader"]>>
+    >
+  > = {};
+  const reader = async (filePath: string) => tags[filePath];
   const copy = await createAudioFile(root, `${artist}/Mellon Collie/01 Tonight.flac`);
   const only = await createAudioFile(root, `${artist}/Mellon Collie/02 Zero.flac`);
   tags[copy] = untagged(artist, "Mellon Collie", "Tonight, Tonight", 1);
   tags[only] = untagged(artist, "Mellon Collie", "Zero", 2);
   try {
     await scanMusicRoot({ rootPath: root, source, metadataReader: reader });
-    starFor(userId, ["album", fileRows(source, only).albumKey]);
+    starFor(userId, ["album", requireValue(fileRows(source, only)).albumKey]);
     const original = await createAudioFile(
       root,
       `${artist}/Mellon Collie (Tagged)/01 Tonight.flac`,
@@ -2661,7 +2878,10 @@ test("an album split between untagged and tagged files is one album that lists e
         artistAlbums(artist).map(({ title, identityKey, tracks }) => [title, identityKey, tracks]),
         [["Mellon Collie", `release-group:${releaseGroup}`, 2]],
       );
-      assert.deepEqual(filesOnTrack(fileRows(source, original).trackId), [copy, original].sort());
+      assert.deepEqual(
+        filesOnTrack(requireValue(fileRows(source, original)).trackId),
+        [copy, original].sort(),
+      );
       assert.deepEqual(starredKeys(userId), [["album", `release-group:${releaseGroup}`]]);
     }
   } finally {
@@ -2675,7 +2895,12 @@ test("an untagged file joins the one of an artist's same-titled releases that li
   const root = await mkdtemp(path.join(tmpdir(), "aurral-library-same-title-"));
   const source = `test-same-title-${process.pid}`;
   const artist = `Same Title ${process.pid}`;
-  const tags = {};
+  const tags: Record<
+    string,
+    Awaited<
+      ReturnType<NonNullable<NonNullable<Parameters<typeof scanMusicRoot>[0]>["metadataReader"]>>
+    >
+  > = {};
   const blue = await createAudioFile(root, `${artist}/Blue/04 Buddy Holly.flac`);
   const green = await createAudioFile(root, `${artist}/Green/03 Hash Pipe.flac`);
   tags[blue] = tagged(
@@ -2694,7 +2919,7 @@ test("an untagged file joins the one of an artist's same-titled releases that li
     "3d4e5f6a-7b8c-4d9e-8f0a-1b2c3d4e5f6a",
     "4e5f6a7b-8c9d-4e0f-8a1b-2c3d4e5f6a7b",
   );
-  const reader = async (filePath) => tags[filePath];
+  const reader = async (filePath: string) => tags[filePath];
   try {
     await scanMusicRoot({ rootPath: root, source, metadataReader: reader });
     const copy = await createAudioFile(root, `${artist}/Weezer/04 Buddy Holly.mp3`);
@@ -2708,7 +2933,10 @@ test("an untagged file joins the one of an artist's same-titled releases that li
         ["Weezer", 1],
       ],
     );
-    assert.equal(fileRows(source, copy).trackId, fileRows(source, blue).trackId);
+    assert.equal(
+      requireValue(fileRows(source, copy)).trackId,
+      requireValue(fileRows(source, blue)).trackId,
+    );
   } finally {
     for (const filePath of Object.keys(tags)) deleteIndexedFile(source, filePath);
     await rm(root, { recursive: true, force: true });
@@ -2729,7 +2957,15 @@ test("a scan removes albums nobody can play or asked for, and keeps the ones Aur
     name: leftoverName,
     syncSearch: false,
   });
-  const album = (owner, title, metadata, management = null) => {
+  const album = (
+    owner: import("../../backend/db/rows.ts").LibraryArtistsRow,
+    title: string,
+    metadata: NonNullable<Parameters<typeof upsertLibraryAlbum>[0]>["metadata"],
+    management: Omit<
+      Parameters<typeof setLibraryManagement>[0],
+      "entityKind" | "entityId"
+    > | null = null,
+  ) => {
     const row = upsertLibraryAlbum({
       identityKey: `owners:${process.pid}:${title}`,
       artistId: owner.id,
@@ -2817,7 +3053,7 @@ test("a scan removes albums nobody can play or asked for, and keeps the ones Aur
     );
     assert.equal(
       db
-        .prepare(
+        .prepare<unknown[], Rows.LibraryManagementRow["managed_by"]>(
           "SELECT managed_by FROM library_management WHERE entity_kind = 'album' AND entity_id = ?",
         )
         .pluck()
@@ -2826,11 +3062,17 @@ test("a scan removes albums nobody can play or asked for, and keeps the ones Aur
     );
     assert.deepEqual(artistAlbums(leftoverName), []);
     assert.equal(
-      db.prepare("SELECT COUNT(*) FROM library_artists WHERE name = ?").pluck().get(leftoverName),
+      db
+        .prepare<unknown[], number>("SELECT COUNT(*) FROM library_artists WHERE name = ?")
+        .pluck()
+        .get(leftoverName),
       0,
     );
     assert.equal(
-      db.prepare("SELECT COUNT(*) FROM library_tracks WHERE id = ?").pluck().get(catalogueTrack.id),
+      db
+        .prepare<unknown[], number>("SELECT COUNT(*) FROM library_tracks WHERE id = ?")
+        .pluck()
+        .get(catalogueTrack.id),
       0,
     );
   } finally {
@@ -2846,7 +3088,12 @@ test("songs a catalogue album shares with other albums keep their identity and s
   const artist = `Shared Recording ${process.pid}`;
   const blueTitle = `Blue ${process.pid}`;
   const vaultTitle = `Vault ${process.pid}`;
-  const tags = {};
+  const tags: Record<
+    string,
+    Awaited<
+      ReturnType<NonNullable<NonNullable<Parameters<typeof scanMusicRoot>[0]>["metadataReader"]>>
+    >
+  > = {};
   const blue = await createAudioFile(root, `${artist}/Blue/04 Buddy Holly.flac`);
   const hit = await createAudioFile(root, `${artist}/Hits/01 Buddy Holly.flac`);
   const rarity = await createAudioFile(root, `${artist}/Hits/02 Susanne.flac`);
@@ -2875,8 +3122,8 @@ test("songs a catalogue album shares with other albums keep their identity and s
     hitsGroup,
     "6e7f8a9b-0c1d-4e2f-8a3b-4c5d6e7f8a9b",
   );
-  const reader = async (filePath) => tags[filePath];
-  const searchedTracks = (query) =>
+  const reader = async (filePath: string) => tags[filePath];
+  const searchedTracks = (query: string) =>
     getLibrarySearchPage({ query }).tracks.tracks.map((track) => Number(track.id));
   try {
     await scanMusicRoot({ rootPath: root, source, metadataReader: reader });
@@ -2884,30 +3131,33 @@ test("songs a catalogue album shares with other albums keep their identity and s
       Object.keys(tags).map((filePath) => [filePath, fileRows(source, filePath)]),
     );
     const artistId = db
-      .prepare("SELECT artist_id FROM library_albums WHERE id = ?")
+      .prepare<unknown[], Rows.LibraryAlbumsRow["artist_id"]>(
+        "SELECT artist_id FROM library_albums WHERE id = ?",
+      )
       .pluck()
-      .get(before[hit].albumId);
-    for (const [title, releaseGroup, filePath, trackNumber] of [
+      .get(requireValue(before[hit]).albumId);
+    const catalogued: [string, string, string, number][] = [
       [vaultTitle, "5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a", rarity, 1],
       [blueTitle, "4c5d6e7f-8a9b-4c0d-8e1f-2a3b4c5d6e7f", hit, 4],
-    ]) {
+    ];
+    for (const [title, releaseGroup, filePath, trackNumber] of catalogued) {
       const catalogue = upsertLibraryAlbum({
         identityKey: `release-group:${releaseGroup}`,
-        artistId,
+        artistId: requireFixture(artistId),
         title,
         metadata: { foreignAlbumId: releaseGroup, monitored: true },
       });
       linkLibraryAlbumTrack({
         albumId: catalogue.id,
-        trackId: before[filePath].trackId,
+        trackId: requireValue(before[filePath]).trackId,
         discNumber: 1,
         trackNumber,
       });
     }
-    assert.deepEqual(searchedTracks(vaultTitle), [before[rarity].trackId]);
+    assert.deepEqual(searchedTracks(vaultTitle), [requireValue(before[rarity]).trackId]);
     assert.deepEqual(
       searchedTracks(blueTitle).sort(),
-      [before[blue].trackId, before[hit].trackId].sort(),
+      [requireValue(before[blue]).trackId, requireValue(before[hit]).trackId].sort(),
     );
 
     await scanMusicRoot({ rootPath: root, source, metadataReader: reader });
@@ -2922,7 +3172,7 @@ test("songs a catalogue album shares with other albums keep their identity and s
     for (const filePath of Object.keys(tags))
       assert.deepEqual(fileRows(source, filePath), before[filePath]);
     assert.deepEqual(searchedTracks(vaultTitle), []);
-    assert.deepEqual(searchedTracks(blueTitle), [before[blue].trackId]);
+    assert.deepEqual(searchedTracks(blueTitle), [requireValue(before[blue]).trackId]);
   } finally {
     for (const filePath of Object.keys(tags)) deleteIndexedFile(source, filePath);
     await rm(root, { recursive: true, force: true });
@@ -2933,8 +3183,13 @@ test("a song whose file is gone leaves an album nobody asked for, and stays on o
   const root = await mkdtemp(path.join(tmpdir(), "aurral-library-missing-"));
   const source = `test-missing-${process.pid}`;
   const artist = `Missing ${process.pid}`;
-  const tags = {};
-  const file = async (album, title, track, extension = "flac") => {
+  const tags: Record<
+    string,
+    Awaited<
+      ReturnType<NonNullable<NonNullable<Parameters<typeof scanMusicRoot>[0]>["metadataReader"]>>
+    >
+  > = {};
+  const file = async (album: string, title: string, track: number, extension: string = "flac") => {
     const filePath = await createAudioFile(
       root,
       `${artist}/${album}/${track} ${title}.${extension}`,
@@ -2949,7 +3204,11 @@ test("a song whose file is gone leaves an album nobody asked for, and stays on o
   const coming = await file("Requested", "Coming", 2);
   const lonely = await file("Unplugged", "Lonely", 1);
   const scan = () =>
-    scanMusicRoot({ rootPath: root, source, metadataReader: async (filePath) => tags[filePath] });
+    scanMusicRoot({
+      rootPath: root,
+      source,
+      metadataReader: async (filePath: string) => tags[filePath],
+    });
   try {
     await scan();
     const catalogueTrack = upsertLibraryTrack({
@@ -2959,18 +3218,18 @@ test("a song whose file is gone leaves an album nobody asked for, and stays on o
       syncSearch: false,
     });
     linkLibraryAlbumTrack({
-      albumId: fileRows(source, headlight).albumId,
+      albumId: requireValue(requireValue(fileRows(source, headlight)).albumId),
       trackId: catalogueTrack.id,
       trackNumber: 3,
       syncSearch: false,
     });
     setLibraryManagement({
       entityKind: "album",
-      entityId: fileRows(source, coming).albumId,
+      entityId: requireValue(fileRows(source, coming)).albumId,
       managedBy: "aurral",
       monitorMode: "monitored",
     });
-    const comingTrack = fileRows(source, coming).trackId;
+    const comingTrack = requireValue(fileRows(source, coming)).trackId;
     for (const filePath of [lostCopy, marlenas, coming, lonely]) await rm(filePath);
 
     await scan();
@@ -2982,7 +3241,7 @@ test("a song whose file is gone leaves an album nobody asked for, and stays on o
         ["Requested", 2],
       ],
     );
-    assert.deepEqual(filesOnTrack(fileRows(source, headlight).trackId), [headlight]);
+    assert.deepEqual(filesOnTrack(requireValue(fileRows(source, headlight)).trackId), [headlight]);
     assert.deepEqual(filesOnTrack(comingTrack), []);
 
     await file("Horse", "Three Marlenas", 2);
@@ -3006,11 +3265,17 @@ test("a folder left empty, as by a disconnected drive, keeps its songs until the
   const root = await mkdtemp(path.join(tmpdir(), "aurral-library-unplugged-"));
   const source = `test-unplugged-${process.pid}`;
   const artist = `Unplugged ${process.pid}`;
-  const tags = {};
-  for (const [title, track] of [
+  const tags: Record<
+    string,
+    Awaited<
+      ReturnType<NonNullable<NonNullable<Parameters<typeof scanMusicRoot>[0]>["metadataReader"]>>
+    >
+  > = {};
+  const drive: [string, number][] = [
     ["Plugged", 1],
     ["In", 2],
-  ]) {
+  ];
+  for (const [title, track] of drive) {
     tags[await createAudioFile(root, `${artist}/Drive/${track} ${title}.flac`)] = untagged(
       artist,
       "Drive",
@@ -3019,11 +3284,17 @@ test("a folder left empty, as by a disconnected drive, keeps its songs until the
     );
   }
   const scan = () =>
-    scanMusicRoot({ rootPath: root, source, metadataReader: async (filePath) => tags[filePath] });
+    scanMusicRoot({
+      rootPath: root,
+      source,
+      metadataReader: async (filePath: string) => tags[filePath],
+    });
   const rows = () => Object.keys(tags).map((filePath) => fileRows(source, filePath));
   const available = () =>
     db
-      .prepare("SELECT available FROM library_media_files WHERE source = ? ORDER BY path")
+      .prepare<unknown[], Rows.LibraryMediaFilesRow["available"]>(
+        "SELECT available FROM library_media_files WHERE source = ? ORDER BY path",
+      )
       .pluck()
       .all(source);
   try {
@@ -3055,7 +3326,12 @@ test("an untagged track several albums list becomes each album's own tagged trac
   const source = `test-shared-untagged-${process.pid}`;
   const elsewhere = `test-shared-untagged-elsewhere-${process.pid}`;
   const artist = `Shared Untagged ${process.pid}`;
-  const tags = {};
+  const tags: Record<
+    string,
+    Awaited<
+      ReturnType<NonNullable<NonNullable<Parameters<typeof scanMusicRoot>[0]>["metadataReader"]>>
+    >
+  > = {};
   const first = await createAudioFile(root, `${artist}/First/01 Song.flac`);
   const second = await createAudioFile(root, `${artist}/Second/01 Song.flac`);
   tags[first] = tagged(
@@ -3075,18 +3351,24 @@ test("an untagged track several albums list becomes each album's own tagged trac
     "d4e5f6a7-b8c9-4d0e-8f2a-3b4c5d6e7f8a",
   );
   const scan = () =>
-    scanMusicRoot({ rootPath: root, source, metadataReader: async (filePath) => tags[filePath] });
-  const copies = [];
+    scanMusicRoot({
+      rootPath: root,
+      source,
+      metadataReader: async (filePath: string) => tags[filePath],
+    });
+  const copies: string[] = [];
   try {
     await scan();
     const rows = [fileRows(source, first), fileRows(source, second)];
     const artistId = db
-      .prepare("SELECT artist_id FROM library_albums WHERE id = ?")
+      .prepare<unknown[], Rows.LibraryAlbumsRow["artist_id"]>(
+        "SELECT artist_id FROM library_albums WHERE id = ?",
+      )
       .pluck()
-      .get(rows[0].albumId);
+      .get(requireValue(rows[0]).albumId);
     const leftover = upsertLibraryAlbum({
       identityKey: `name:album:shared untagged ${process.pid}`,
-      artistId,
+      artistId: requireFixture(artistId),
       title: "First",
       syncSearch: false,
     });
@@ -3095,9 +3377,9 @@ test("an untagged track several albums list becomes each album's own tagged trac
       title: "Song",
       syncSearch: false,
     });
-    for (const albumId of [leftover.id, ...rows.map((row) => row.albumId)]) {
+    for (const albumId of [leftover.id, ...rows.map((row) => requireValue(row).albumId)]) {
       linkLibraryAlbumTrack({
-        albumId,
+        albumId: requireFixture(albumId),
         trackId: shared.id,
         discNumber: 1,
         trackNumber: 1,
@@ -3105,10 +3387,10 @@ test("an untagged track several albums list becomes each album's own tagged trac
       });
     }
     for (const row of rows) {
-      const copy = path.join(root, "elsewhere", `${row.albumId}.mp3`);
+      const copy = path.join(root, "elsewhere", `${requireValue(row).albumId}.mp3`);
       upsertLibraryMediaFile({
         trackId: shared.id,
-        albumId: row.albumId,
+        albumId: requireValue(row).albumId,
         source: elsewhere,
         path: copy,
       });
@@ -3124,8 +3406,8 @@ test("an untagged track several albums list becomes each album's own tagged trac
         ["Second", 1],
       ],
     );
-    assert.deepEqual(filesOnTrack(rows[0].trackId), [first, copies[0]].sort());
-    assert.deepEqual(filesOnTrack(rows[1].trackId), [second, copies[1]].sort());
+    assert.deepEqual(filesOnTrack(requireValue(rows[0]).trackId), [first, copies[0]].sort());
+    assert.deepEqual(filesOnTrack(requireValue(rows[1]).trackId), [second, copies[1]].sort());
   } finally {
     for (const copy of copies) deleteIndexedFile(elsewhere, copy);
     for (const filePath of Object.keys(tags)) deleteIndexedFile(source, filePath);
@@ -3148,11 +3430,12 @@ test("a scan that removes an album moves the Library's last-modified time forwar
     syncSearch: false,
   });
   const before = getLibraryIndexLastModified();
+  assert.ok(before != null);
   try {
     await scanMusicRoot({ rootPath: root, source: `test-removal-time-${process.pid}` });
 
     assert.deepEqual(artistAlbums(artistName), []);
-    assert.ok(getLibraryIndexLastModified() > before);
+    assert.ok(requireValue(getLibraryIndexLastModified()) > before);
   } finally {
     removeArtistsNamed(artistName);
     await rm(root, { recursive: true, force: true });
@@ -3174,11 +3457,12 @@ test("a file gone from an album someone asked for moves the Library's last-modif
     await scan();
     setLibraryManagement({
       entityKind: "album",
-      entityId: fileRows(source, filePath).albumId,
+      entityId: requireValue(fileRows(source, filePath)).albumId,
       managedBy: "aurral",
       monitorMode: "monitored",
     });
     const before = getLibraryIndexLastModified();
+    assert.ok(before != null);
     await rm(filePath);
 
     await scan();
@@ -3187,7 +3471,7 @@ test("a file gone from an album someone asked for moves the Library's last-modif
       artistAlbums(artist).map(({ title, tracks }) => [title, tracks]),
       [["Requested", 1]],
     );
-    assert.ok(getLibraryIndexLastModified() > before);
+    assert.ok(requireValue(getLibraryIndexLastModified()) > before);
   } finally {
     removeArtistsNamed(artist);
     await rm(root, { recursive: true, force: true });
@@ -3217,12 +3501,14 @@ test("a file row naming an album its track is not on shows on the track's album 
     await scanMusicRoot({ rootPath: root, source, metadataReader: reader });
     const twin = fileRows(source, filePath);
     const artistId = db
-      .prepare("SELECT artist_id FROM library_albums WHERE id = ?")
+      .prepare<unknown[], Rows.LibraryAlbumsRow["artist_id"]>(
+        "SELECT artist_id FROM library_albums WHERE id = ?",
+      )
       .pluck()
-      .get(twin.albumId);
+      .get(requireValue(twin).albumId);
     const leftover = upsertLibraryAlbum({
       identityKey: `name:album:stray ${process.pid}`,
-      artistId,
+      artistId: requireFixture(artistId),
       title: "Pixies Rarities",
       syncSearch: false,
     });
@@ -3238,7 +3524,7 @@ test("a file row naming an album its track is not on shows on the track's album 
       syncSearch: false,
     });
     upsertLibraryMediaFile({
-      trackId: twin.trackId,
+      trackId: requireValue(twin).trackId,
       albumId: leftover.id,
       source: elsewhere,
       path: strayPath,
@@ -3250,8 +3536,8 @@ test("a file row naming an album its track is not on shows on the track's album 
       artistAlbums(artist).map(({ title, tracks }) => [title, tracks]),
       [["Death to the Pixies", 1]],
     );
-    assert.equal(fileRows(elsewhere, strayPath).albumId, twin.albumId);
-    assert.deepEqual(filesOnTrack(twin.trackId), [filePath, strayPath].sort());
+    assert.equal(requireValue(fileRows(elsewhere, strayPath)).albumId, requireValue(twin).albumId);
+    assert.deepEqual(filesOnTrack(requireValue(twin).trackId), [filePath, strayPath].sort());
   } finally {
     deleteIndexedFile(elsewhere, strayPath);
     deleteIndexedFile(source, filePath);
@@ -3262,7 +3548,7 @@ test("a file row naming an album its track is not on shows on the track's album 
 test("scanMusicRoot reads Aurral identity markers from portable comments", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-library-comment-metadata-"));
   const source = `test-comment-metadata-${process.pid}`;
-  let filePath;
+  let filePath: string | undefined;
   try {
     filePath = await createAudioFile(root, "Aurral Artist/Aurral Album/01 Track.flac");
     await scanMusicRoot({
@@ -3280,7 +3566,14 @@ test("scanMusicRoot reads Aurral identity markers from portable comments", async
       }),
     });
     const indexed = db
-      .prepare(
+      .prepare<
+        unknown[],
+        {
+          artistMbid: Rows.LibraryArtistsRow["mbid"];
+          releaseGroupMbid: Rows.LibraryAlbumsRow["release_group_mbid"];
+          trackMbid: Rows.LibraryTracksRow["mbid"];
+        }
+      >(
         `SELECT artist.mbid AS artistMbid, album.release_group_mbid AS releaseGroupMbid,
         track.mbid AS trackMbid
        FROM library_media_files AS media
@@ -3306,7 +3599,7 @@ test("scanMusicRoot reads Aurral identity markers from portable comments", async
 test("scanMusicRoot reads Aurral identity markers from grouping tags", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-library-grouping-metadata-"));
   const source = `test-grouping-metadata-${process.pid}`;
-  let filePath;
+  let filePath: string | undefined;
   try {
     filePath = await createAudioFile(root, "Aurral Artist/Aurral Album/01 Track.m4a");
     await scanMusicRoot({
@@ -3315,14 +3608,24 @@ test("scanMusicRoot reads Aurral identity markers from grouping tags", async () 
       metadataReader: async () => ({
         common: {
           grouping: 'AURRAL_IDS={"trackMbid":"33333333-3333-3333-3333-333333333333"}',
-          comment:
-            'AURRAL_IDS={"artistMbid":"11111111-1111-4111-1111-111111111111","albumMbid":"22222222-2222-2222-2222-222222222222"}',
+          comment: [
+            {
+              text: 'AURRAL_IDS={"artistMbid":"11111111-1111-4111-1111-111111111111","albumMbid":"22222222-2222-2222-2222-222222222222"}',
+            },
+          ],
         },
         format: {},
       }),
     });
     const indexed = db
-      .prepare(
+      .prepare<
+        unknown[],
+        {
+          artistMbid: Rows.LibraryArtistsRow["mbid"];
+          releaseGroupMbid: Rows.LibraryAlbumsRow["release_group_mbid"];
+          trackMbid: Rows.LibraryTracksRow["mbid"];
+        }
+      >(
         `SELECT artist.mbid AS artistMbid, album.release_group_mbid AS releaseGroupMbid,
         track.mbid AS trackMbid
        FROM library_media_files AS media
@@ -3348,7 +3651,7 @@ test("scanMusicRoot reads Aurral identity markers from grouping tags", async () 
 test("scanMusicRoot reads Aurral identity markers from native ID3 comments", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-library-native-comment-metadata-"));
   const source = `test-native-comment-metadata-${process.pid}`;
-  let filePath;
+  let filePath: string | undefined;
 
   try {
     filePath = await createAudioFile(root, "Aurral Artist/Aurral Album/01 Track.mp3");
@@ -3378,7 +3681,14 @@ test("scanMusicRoot reads Aurral identity markers from native ID3 comments", asy
     });
 
     const indexed = db
-      .prepare(
+      .prepare<
+        unknown[],
+        {
+          artistMbid: Rows.LibraryArtistsRow["mbid"];
+          releaseGroupMbid: Rows.LibraryAlbumsRow["release_group_mbid"];
+          trackMbid: Rows.LibraryTracksRow["mbid"];
+        }
+      >(
         `SELECT artist.mbid AS artistMbid, album.release_group_mbid AS releaseGroupMbid,
         track.mbid AS trackMbid
        FROM library_media_files AS media
@@ -3408,7 +3718,12 @@ test("a rescan leaves the songs of files it did not walk, in another folder or o
   ]);
   const source = `test-elsewhere-${process.pid}`;
   const artist = `Elsewhere ${process.pid}`;
-  const tags = {};
+  const tags: Record<
+    string,
+    Awaited<
+      ReturnType<NonNullable<NonNullable<Parameters<typeof scanMusicRoot>[0]>["metadataReader"]>>
+    >
+  > = {};
   try {
     for (const [root, album] of [
       [roots[0], "Scanned"],
@@ -3420,7 +3735,7 @@ test("a rescan leaves the songs of files it did not walk, in another folder or o
         "Song",
       );
     }
-    const reader = async (filePath) => tags[filePath];
+    const reader = async (filePath: string) => tags[filePath];
     const skipped = await createAudioFile(roots[0], `_fallback/${artist}/Skipped/01 Song.flac`);
     tags[skipped] = untagged(artist, "Skipped", "Song");
     for (const root of roots)
@@ -3478,7 +3793,7 @@ test("a partial rescan preserves the last known-good file availability", async (
 test("an unchanged local rescan skips metadata parsing", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-library-unchanged-"));
   const source = `test-unchanged-${process.pid}`;
-  let filePath;
+  let filePath: string | undefined;
   let metadataReads = 0;
   try {
     filePath = await createAudioFile(root, "Artist/Album/01 Track.flac");
@@ -3500,10 +3815,10 @@ test("an unchanged local rescan skips metadata parsing", async () => {
 test("a targeted local rescan refreshes a named file even when its size and timestamp are unchanged", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-library-targeted-"));
   const source = `test-targeted-${process.pid}`;
-  const filePaths = [];
-  const metadataReads = [];
+  const filePaths: string[] = [];
+  const metadataReads: string[] = [];
   let currentMetadata = metadata;
-  const metadataReader = async (filePath) => {
+  const metadataReader = async (filePath: string) => {
     metadataReads.push(filePath);
     return currentMetadata;
   };
@@ -3515,7 +3830,11 @@ test("a targeted local rescan refreshes a named file even when its size and time
     metadataReads.length = 0;
     currentMetadata = { ...metadata, common: { ...metadata.common, title: "Updated Step" } };
     const indexed = getLibrarySnapshot().files.find((file) => file.path === filePaths[0]);
-    await utimes(filePaths[0], indexed.mtime_ms / 1000, indexed.mtime_ms / 1000);
+    await utimes(
+      filePaths[0],
+      requireFixture(requireValue(indexed)!).mtime_ms! / 1000,
+      requireFixture(requireValue(indexed)!).mtime_ms! / 1000,
+    );
     db.prepare("UPDATE library_media_files SET mtime_ms = ? WHERE source = ? AND path = ?").run(
       (await stat(filePaths[0])).mtimeMs,
       source,
@@ -3530,7 +3849,9 @@ test("a targeted local rescan refreshes a named file even when its size and time
 
     assert.deepEqual(metadataReads, [filePaths[0]]);
     assert.equal(
-      getLibrarySnapshot().tracks.find((track) => track.id === indexed.track_id).title,
+      requireFixture(requireValue(getLibrarySnapshot())!).tracks.find(
+        (track) => track.id === requireValue(indexed).track_id,
+      )!.title,
       "Updated Step",
     );
   } finally {
@@ -3542,20 +3863,20 @@ test("a targeted local rescan refreshes a named file even when its size and time
 test("a targeted rescan forgets a deleted changed file", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-library-targeted-delete-"));
   const source = `test-targeted-delete-${process.pid}`;
-  let filePath;
+  let filePath: string | undefined;
   try {
     filePath = await createAudioFile(root, "Artist/Album/01 Track.flac");
     await scanMusicRoot({
       rootPath: root,
       source,
-      metadataReader: async (filePath) => songAt(filePath),
+      metadataReader: async (filePath: string) => songAt(filePath),
     });
     await rm(filePath);
     await scanMusicRoot({
       rootPath: root,
       source,
       changedPaths: [filePath],
-      metadataReader: async (filePath) => songAt(filePath),
+      metadataReader: async (filePath: string) => songAt(filePath),
     });
 
     assert.equal(
@@ -3592,7 +3913,7 @@ test("a targeted directory rescan forgets only removed descendants", async () =>
   const root = await mkdtemp(path.join(tmpdir(), "aurral-library-targeted-directory-"));
   const source = `test-targeted-directory-${process.pid}`;
   const removedDirectory = path.join(root, "Artist", "Removed Album");
-  const filePaths = [];
+  const filePaths: string[] = [];
   try {
     filePaths.push(await createAudioFile(root, "Artist/Removed Album/01 First.flac"));
     filePaths.push(await createAudioFile(root, "Artist/Removed Album/02 Second.flac"));
@@ -3600,7 +3921,7 @@ test("a targeted directory rescan forgets only removed descendants", async () =>
     await scanMusicRoot({
       rootPath: root,
       source,
-      metadataReader: async (filePath) => songAt(filePath),
+      metadataReader: async (filePath: string) => songAt(filePath),
     });
 
     await rm(removedDirectory, { recursive: true });
@@ -3608,7 +3929,7 @@ test("a targeted directory rescan forgets only removed descendants", async () =>
       rootPath: root,
       source,
       changedPaths: [removedDirectory],
-      metadataReader: async (filePath) => songAt(filePath),
+      metadataReader: async (filePath: string) => songAt(filePath),
     });
 
     const files = getLibrarySnapshot().files;
@@ -3630,7 +3951,7 @@ test("a targeted rescan ignores symbolic links", async () => {
     mkdtemp(path.join(tmpdir(), "aurral-library-symlink-outside-")),
   ]);
   const source = `test-symlink-${process.pid}`;
-  let linkPath;
+  let linkPath: string | undefined;
   try {
     const outsidePath = await createAudioFile(roots[1], "Artist/Album/01 Track.flac");
     linkPath = path.join(roots[0], "linked.flac");
@@ -3673,7 +3994,7 @@ test("a forced rescan of an unchanged Lidarr root does not rewrite library rows"
       artist: "Stable Artist",
       album: "Stable Album",
       title: "Stable Track",
-      musicbrainz_albumartistid: artistMbid,
+      musicbrainz_albumartistid: [artistMbid],
       musicbrainz_releasegroupid: albumMbid,
       musicbrainz_recordingid: trackMbid,
     },
@@ -3698,23 +4019,31 @@ test("a forced rescan of an unchanged Lidarr root does not rewrite library rows"
       "UPDATE library_media_files SET updated_at = 1 WHERE source = 'lidarr' AND path = ?",
     ).run(filePath);
 
-    const changesBefore = db.prepare("SELECT total_changes() AS count").get().count;
+    const changesBefore = totalChanges();
     const result = await scan();
-    const changesAfter = db.prepare("SELECT total_changes() AS count").get().count;
+    const changesAfter = totalChanges();
 
     assert.equal(result.changed, false);
     assert.equal(changesAfter - changesBefore, 2);
     assert.deepEqual(
       {
-        artist: db.prepare("SELECT updated_at FROM library_artists WHERE mbid = ?").get(artistMbid)
-          ?.updated_at,
+        artist: db
+          .prepare<unknown[], { updated_at: Rows.LibraryArtistsRow["updated_at"] }>(
+            "SELECT updated_at FROM library_artists WHERE mbid = ?",
+          )
+          .get(artistMbid)?.updated_at,
         album: db
-          .prepare("SELECT updated_at FROM library_albums WHERE release_group_mbid = ?")
+          .prepare<unknown[], { updated_at: Rows.LibraryAlbumsRow["updated_at"] }>(
+            "SELECT updated_at FROM library_albums WHERE release_group_mbid = ?",
+          )
           .get(albumMbid)?.updated_at,
-        track: db.prepare("SELECT updated_at FROM library_tracks WHERE mbid = ?").get(trackMbid)
-          ?.updated_at,
+        track: db
+          .prepare<unknown[], { updated_at: Rows.LibraryTracksRow["updated_at"] }>(
+            "SELECT updated_at FROM library_tracks WHERE mbid = ?",
+          )
+          .get(trackMbid)?.updated_at,
         media: db
-          .prepare(
+          .prepare<unknown[], { updated_at: Rows.LibraryMediaFilesRow["updated_at"] }>(
             "SELECT updated_at FROM library_media_files WHERE source = 'lidarr' AND path = ?",
           )
           .get(filePath)?.updated_at,
@@ -3724,7 +4053,11 @@ test("a forced rescan of an unchanged Lidarr root does not rewrite library rows"
 
     db.prepare("INSERT INTO settings (key, value) VALUES (?, ?)").run(genreStatsKey, "preserved");
     assert.equal(
-      db.prepare("SELECT value FROM settings WHERE key = ?").get(genreStatsKey)?.value,
+      db
+        .prepare<unknown[], { value: Rows.SettingsRow["value"] }>(
+          "SELECT value FROM settings WHERE key = ?",
+        )
+        .get(genreStatsKey)?.value,
       "preserved",
     );
   } finally {
@@ -3794,7 +4127,7 @@ test("an album Lidarr manages stays in library reads when its files are all gone
       album: "Fully Missing Album",
       title: "Missing Track",
       date: "2026-08-20",
-      musicbrainz_albumartistid: "13131313-1313-4131-8131-131313131313",
+      musicbrainz_albumartistid: ["13131313-1313-4131-8131-131313131313"],
       musicbrainz_releasegroupid: "14141414-1414-4141-8141-141414141414",
       musicbrainz_recordingid: "15151515-1515-4151-8151-151515151515",
     },
@@ -3873,7 +4206,7 @@ test("a Lidarr file joins only the album it is tagged with", async () => {
           artist: "Eve 6",
           album: "Eve 6",
           title: "Showerhead",
-          musicbrainz_albumartistid: artistMbid,
+          musicbrainz_albumartistid: [artistMbid],
           musicbrainz_releasegroupid: firstAlbumMbid,
           musicbrainz_recordingid: recordingMbid,
         },
@@ -3882,7 +4215,7 @@ test("a Lidarr file joins only the album it is tagged with", async () => {
     });
 
     const albumRows = db
-      .prepare(
+      .prepare<unknown[], { title: Rows.LibraryAlbumsRow["title"]; files: number }>(
         `SELECT album.title AS title, COUNT(DISTINCT media.id) AS files
        FROM library_albums AS album
        JOIN library_album_tracks AS album_track ON album_track.album_id = album.id
@@ -3918,7 +4251,9 @@ test("a Lidarr file joins only the album it is tagged with", async () => {
       aurralPath,
     );
     const albumRows = db
-      .prepare("SELECT id FROM library_albums WHERE identity_key IN (?, ?)")
+      .prepare<unknown[], { id: Rows.LibraryAlbumsRow["id"] }>(
+        "SELECT id FROM library_albums WHERE identity_key IN (?, ?)",
+      )
       .all(`release-group:${firstAlbumMbid}`, `release-group:${secondAlbumMbid}`);
     const albumIds = albumRows.map((row) => row.id);
     if (albumIds.length) {
@@ -3939,7 +4274,7 @@ test("a Lidarr file joins only the album it is tagged with", async () => {
 
 test("a Lidarr outage leaves the last indexed library available", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-lidarr-outage-"));
-  let filePath;
+  let filePath: string | undefined;
   try {
     filePath = await createAudioFile(root, "Outage Artist/Outage Album/01 Outage Track.flac");
     await scanConfiguredLibrary({
@@ -3952,10 +4287,6 @@ test("a Lidarr outage leaves the last indexed library available", async () => {
       musicRoot: path.join(root, "empty-aurral-root"),
       lidarrClient: {
         isConfigured: () => true,
-        isEnabled: () => true,
-        request: async () => {
-          throw new Error("Lidarr unavailable");
-        },
       },
       lidarrRoots: [root],
     });
@@ -3992,14 +4323,22 @@ test("album/track relation changes move the library timestamp", async () => {
     }),
   );
   const albumUpdatedAt = () =>
-    db.prepare("SELECT updated_at FROM library_albums WHERE id = ?").get(album.id)?.updated_at;
+    db
+      .prepare<unknown[], { updated_at: Rows.LibraryAlbumsRow["updated_at"] }>(
+        "SELECT updated_at FROM library_albums WHERE id = ?",
+      )
+      .get(album.id)?.updated_at;
   // Park the timestamp in the past so a bump is unambiguous at millisecond resolution.
   const parkTimestamp = () =>
     db.prepare("UPDATE library_albums SET updated_at = 1 WHERE id = ?").run(album.id);
   const relationCount = () =>
-    db
-      .prepare("SELECT COUNT(*) AS total FROM library_album_tracks WHERE album_id = ?")
-      .get(album.id).total;
+    requireValue(
+      db
+        .prepare<unknown[], { total: number }>(
+          "SELECT COUNT(*) AS total FROM library_album_tracks WHERE album_id = ?",
+        )
+        .get(album.id),
+    ).total;
 
   try {
     linkLibraryAlbumTrack({ albumId: album.id, trackId: tracks[0].id, syncSearch: false });
@@ -4014,8 +4353,11 @@ test("album/track relation changes move the library timestamp", async () => {
     parkTimestamp();
     linkLibraryAlbumTrack({ albumId: album.id, trackId: tracks[1].id, syncSearch: false });
     assert.equal(relationCount(), 2);
-    assert.ok(albumUpdatedAt() > 1, "linking a track must refresh the album timestamp");
-    assert.ok(getLibraryIndexLastModified() >= albumUpdatedAt());
+    assert.ok(
+      requireValue(albumUpdatedAt()) > 1,
+      "linking a track must refresh the album timestamp",
+    );
+    assert.ok(requireValue(getLibraryIndexLastModified()) >= requireValue(albumUpdatedAt()));
 
     upsertLibraryMediaFile({
       trackId: tracks[1].id,
@@ -4027,8 +4369,11 @@ test("album/track relation changes move the library timestamp", async () => {
     parkTimestamp();
     assert.equal(removeLibraryTrackIfNoAvailableMedia(tracks[1].id), true);
     assert.equal(relationCount(), 1);
-    assert.ok(albumUpdatedAt() > 1, "dropping a track must refresh the album timestamp");
-    assert.ok(getLibraryIndexLastModified() >= albumUpdatedAt());
+    assert.ok(
+      requireValue(albumUpdatedAt()) > 1,
+      "dropping a track must refresh the album timestamp",
+    );
+    assert.ok(requireValue(getLibraryIndexLastModified()) >= requireValue(albumUpdatedAt()));
   } finally {
     for (const track of tracks) {
       db.prepare("DELETE FROM library_media_files WHERE track_id = ?").run(track.id);
@@ -4040,3 +4385,8 @@ test("album/track relation changes move the library timestamp", async () => {
     invalidateLibraryQueryCache();
   }
 });
+
+function requireValue<T>(value: T | null | undefined): T {
+  assert.ok(value != null);
+  return value;
+}

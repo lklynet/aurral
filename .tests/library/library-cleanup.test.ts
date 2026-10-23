@@ -1,3 +1,4 @@
+import type * as Rows from "../../backend/db/rows.ts";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
@@ -42,20 +43,20 @@ const [
   { setMetadataProviderCooldown },
 ] = await setupIsolatedBackend(
   "library-cleanup",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/libraryFileScanner.ts",
-  "backend/services/libraryFiles/operations.ts",
-  "backend/services/libraryFiles/operationStore.ts",
-  "backend/services/downloadPaths.ts",
-  "backend/services/downloadJobs/downloadTracker.ts",
-  "backend/services/qualityProfileService.ts",
-  "backend/services/playlists/playlistManager.ts",
-  "backend/services/subsonicLibraryService.ts",
-  "backend/services/subsonicPlayQueueService.ts",
-  "backend/services/playback/playbackFileRetention.ts",
-  "backend/services/providers/brainzmashProvider.ts",
-  "backend/services/metadataProviderBudget.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/libraryFileScanner.ts"),
+  () => import("../../backend/services/libraryFiles/operations.ts"),
+  () => import("../../backend/services/libraryFiles/operationStore.ts"),
+  () => import("../../backend/services/downloadPaths.ts"),
+  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
+  () => import("../../backend/services/qualityProfileService.ts"),
+  () => import("../../backend/services/playlists/playlistManager.ts"),
+  () => import("../../backend/services/subsonicLibraryService.ts"),
+  () => import("../../backend/services/subsonicPlayQueueService.ts"),
+  () => import("../../backend/services/playback/playbackFileRetention.ts"),
+  () => import("../../backend/services/providers/brainzmashProvider.ts"),
+  () => import("../../backend/services/metadataProviderBudget.ts"),
 );
 // Unit tests are offline, so the default metadata provider refuses lookups up front
 // instead of making each one wait its turn in the provider's rate limit.
@@ -67,7 +68,12 @@ const releaseGroup = "3f3f3f3f-0000-4000-8000-000000000001";
 const recording = "3f3f3f3f-0000-4000-8000-0000000000a1";
 let tone = 300;
 
-async function makeTrack(filePath, tags = {}, codec = [], { seconds = 0.2 } = {}) {
+async function makeTrack(
+  filePath: string,
+  tags: Record<string, string> = {},
+  codec: string[] = [],
+  { seconds = 0.2 }: { seconds?: number } = {},
+) {
   await mkdir(path.dirname(filePath), { recursive: true });
   const args = [
     "-hide_banner",
@@ -86,22 +92,23 @@ async function makeTrack(filePath, tags = {}, codec = [], { seconds = 0.2 } = {}
   return filePath;
 }
 
-const exists = (filePath) =>
+const exists = (filePath: string) =>
   stat(filePath).then(
     () => true,
     () => false,
   );
 
-async function runUntilSettled(id) {
+async function runUntilSettled(id: number) {
   for (let slice = 0; slice < 100; slice += 1) {
     if ((await operations.runLibraryFileOperation(id)).done) return getLibraryFileOperation(id);
   }
   throw new Error("operation did not settle");
 }
 
-async function runUntilChecked(id) {
+async function runUntilChecked(id: number) {
   for (let slice = 0; slice < 100; slice += 1) {
-    if (getLibraryFileOperation(id).status !== "planning") return getLibraryFileOperation(id);
+    if (requireValue(getLibraryFileOperation(id)).status !== "planning")
+      return getLibraryFileOperation(id);
     await operations.runLibraryFileOperation(id);
   }
   throw new Error("operation did not finish checking files");
@@ -109,9 +116,12 @@ async function runUntilChecked(id) {
 
 async function cleanUp() {
   const operation = await operations.startCleanup();
+  assert.ok(operation != null);
   const checked = await runUntilChecked(operation.id);
+  assert.ok(checked != null);
   const preview = operations.describeLibraryFileOperationItems(checked, {});
   const finished = await runUntilSettled(operation.id);
+  assert.ok(finished != null);
   assert.equal(finished.status, "complete");
   return {
     id: operation.id,
@@ -120,8 +130,12 @@ async function cleanUp() {
   };
 }
 
-const mediaAt = (filePath) =>
-  db.prepare("SELECT * FROM library_media_files WHERE path = ?").get(filePath);
+const mediaAt = (filePath: string) =>
+  db
+    .prepare<unknown[], Rows.LibraryMediaFilesRow>(
+      "SELECT * FROM library_media_files WHERE path = ?",
+    )
+    .get(filePath);
 
 const originalSettings = dbOps.getSettings();
 
@@ -164,6 +178,7 @@ test("rename gives a file Aurral's name and keeps its Library row, jobs, and lyr
     { artistName: "Rename Artist", trackName: "Song" },
     "library",
   );
+  assert.ok(jobId != null);
   downloadTracker.setDone(jobId, oldPath, "Rename Album");
 
   const { preview, items } = await cleanUp();
@@ -180,8 +195,8 @@ test("rename gives a file Aurral's name and keeps its Library row, jobs, and lyr
     await readFile(path.join(root, "Rename Artist", "Rename Album", "03 - Song.lrc"), "utf8"),
     "[00:00.00]la",
   );
-  assert.equal(mediaAt(newPath)?.id, before.id);
-  assert.equal(downloadTracker.getJob(jobId).finalPath, newPath);
+  assert.equal(mediaAt(newPath)?.id, requireValue(before).id);
+  assert.equal(requireValue(downloadTracker.getJob(jobId)).finalPath, newPath);
 });
 
 test("a second-disc file takes the disc in its name once, and first-disc and undisced names stay", async () => {
@@ -203,17 +218,18 @@ test("a second-disc file takes the disc in its name once, and first-disc and und
     { artistName: "Bush", trackName: "Bomb", trackNumber: 3 },
     "library",
   );
+  assert.ok(jobId != null);
   downloadTracker.setDone(jobId, secondDisc, "Sixteen Stone");
 
   const { items } = await cleanUp();
 
   const renamed = path.join(albumDir, "2-03 - Bomb.flac");
-  const renames = (list) =>
+  const renames = (list: ReturnType<typeof operations.describeLibraryFileOperationItems>) =>
     list.filter((item) => item.target).map((item) => [item.status, item.target]);
   assert.deepEqual(renames(items), [["done", path.relative(root, renamed)]]);
   assert.equal(await exists(secondDisc), false);
-  assert.equal(mediaAt(renamed)?.id, before.id);
-  assert.equal(downloadTracker.getJob(jobId).finalPath, renamed);
+  assert.equal(mediaAt(renamed)?.id, requireValue(before).id);
+  assert.equal(requireValue(downloadTracker.getJob(jobId)).finalPath, renamed);
   for (const kept of [firstDisc, undisced]) assert.equal(mediaAt(kept)?.available, 1);
   assert.deepEqual(renames((await cleanUp()).items), []);
 });
@@ -230,13 +246,15 @@ test("a rename a restart interrupted still refreshes the playlists that use the 
     { artistName: "Resume Artist", trackName: "Song" },
     "static-mix",
   );
+  assert.ok(jobId != null);
   downloadTracker.setDone(jobId, oldPath, "Resume Album");
-  const refreshed = [];
+  const refreshed: unknown[] = [];
   vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation((playlistIds) => {
-    refreshed.push(...playlistIds);
+    refreshed.push(...(playlistIds ?? []));
   });
 
   const operation = await operations.startCleanup();
+  assert.ok(operation != null);
   await runUntilChecked(operation.id);
   const newPath = path.join(root, "Resume Artist", "Resume Album", "02 - Song.flac");
   await mkdir(path.dirname(newPath), { recursive: true });
@@ -244,6 +262,7 @@ test("a rename a restart interrupted still refreshes the playlists that use the 
   await rm(oldPath);
   downloadTracker.updateFinalPath(jobId, newPath);
   const finished = await runUntilSettled(operation.id);
+  assert.ok(finished != null);
 
   assert.equal(finished.status, "complete");
   assert.equal(operations.describeLibraryFileOperationItems(finished, {})[0].status, "done");
@@ -274,10 +293,11 @@ test("rename never takes a name another file has", async () => {
   assert.deepEqual(await readFile(occupant), occupantBytes);
 });
 
-const describe = (id) => operations.describeLibraryFileOperation(getLibraryFileOperation(id));
-const availablePaths = (title) =>
+const describe = (id: number) =>
+  operations.describeLibraryFileOperation(getLibraryFileOperation(id));
+const availablePaths = (title: string) =>
   db
-    .prepare(
+    .prepare<unknown[], Rows.LibraryMediaFilesRow["path"]>(
       `SELECT media.path FROM library_media_files AS media JOIN library_tracks AS track ON track.id = media.track_id
    WHERE track.title = ? AND media.available = 1 ORDER BY media.path`,
     )
@@ -292,30 +312,34 @@ test("a second copy of a track is a duplicate, removed only when asked, and play
   await copyFile(first, second);
   await writeFile(path.join(root, "loose b", "track.lrc"), "[00:00.00]la");
   await scanMusicRoot({ rootPath: root, source: "aurral" });
-  const track = db.prepare("SELECT * FROM library_tracks WHERE title = 'Song'").get();
+  const track = db
+    .prepare<unknown[], Rows.LibraryTracksRow>("SELECT * FROM library_tracks WHERE title = 'Song'")
+    .get();
   db.prepare("INSERT INTO users (id, username, password_hash) VALUES (7, 'fan', 'x')").run();
   db.prepare(
     "INSERT INTO subsonic_stars (user_id, entity_kind, entity_key, created_at) VALUES (7, 'song', ?, 1)",
-  ).run(track.identity_key);
+  ).run(requireValue(track).identity_key);
   const jobId = downloadTracker.addJob({ artistName: "Twice", trackName: "Song" }, "static-mix");
+  assert.ok(jobId != null);
   downloadTracker.setDone(jobId, second, "Album");
-  const refreshed = [];
+  const refreshed: unknown[] = [];
   vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation((playlistIds) => {
-    refreshed.push(...playlistIds);
+    refreshed.push(...(playlistIds ?? []));
   });
 
   const { id, items } = await cleanUp();
 
   const named = path.join(root, "Twice", "Album", "01 - Song.flac");
-  const itemFor = (filePath) => items.find((item) => path.resolve(root, item.source) === filePath);
-  assert.equal(itemFor(first).status, "done");
-  assert.equal(itemFor(second).status, "duplicate");
-  assert.equal(itemFor(second).target, path.relative(root, named));
-  assert.deepEqual(describe(id).sources, { removable: 1, removed: 0 });
+  const itemFor = (filePath: string) =>
+    items.find((item) => path.resolve(root, item.source) === filePath);
+  assert.equal(requireValue(itemFor(first)).status, "done");
+  assert.equal(requireValue(itemFor(second)).status, "duplicate");
+  assert.equal(requireValue(itemFor(second)).target, path.relative(root, named));
+  assert.deepEqual(requireValue(describe(id)).sources, { removable: 1, removed: 0 });
   assert.equal(await exists(second), true);
 
   await operations.removeDuplicateFiles(id);
-  assert.equal((await runUntilSettled(id)).status, "complete");
+  assert.equal(requireValue(await runUntilSettled(id)).status, "complete");
 
   assert.equal(await exists(second), false);
   assert.equal(await exists(path.join(root, "loose b")), false);
@@ -325,16 +349,26 @@ test("a second copy of a track is a duplicate, removed only when asked, and play
   );
   assert.deepEqual(availablePaths("Song"), [named]);
   assert.equal(
-    db.prepare("SELECT id FROM library_tracks WHERE title = 'Song'").pluck().get(),
-    track.id,
+    db
+      .prepare<unknown[], Rows.LibraryTracksRow["id"]>(
+        "SELECT id FROM library_tracks WHERE title = 'Song'",
+      )
+      .pluck()
+      .get(),
+    requireValue(track).id,
   );
   assert.equal(
-    db.prepare("SELECT entity_key FROM subsonic_stars WHERE user_id = 7").pluck().get(),
-    track.identity_key,
+    db
+      .prepare<unknown[], Rows.SubsonicStarsRow["entity_key"]>(
+        "SELECT entity_key FROM subsonic_stars WHERE user_id = 7",
+      )
+      .pluck()
+      .get(),
+    requireValue(track).identity_key,
   );
-  assert.equal(downloadTracker.getJob(jobId).finalPath, named);
+  assert.equal(requireValue(downloadTracker.getJob(jobId)).finalPath, named);
   assert.ok(refreshed.includes("static-mix"));
-  assert.deepEqual(describe(id).sources, { removable: 0, removed: 1 });
+  assert.deepEqual(requireValue(describe(id)).sources, { removable: 0, removed: 1 });
 });
 
 test("the better copy of a track keeps its name, and a copy of a different length or another track of one recording stays a conflict", async () => {
@@ -378,36 +412,45 @@ test("the better copy of a track keeps its name, and a copy of a different lengt
     track: "2",
   });
   await scanMusicRoot({ rootPath: root, source: "aurral" });
-  assert.equal(mediaAt(firstSilence).track_id, mediaAt(secondSilence).track_id);
+  assert.equal(
+    requireValue(mediaAt(firstSilence)).track_id,
+    requireValue(mediaAt(secondSilence)).track_id,
+  );
   const swapTrack = db
-    .prepare(
+    .prepare<unknown[], Rows.LibraryTracksRow["id"]>(
       "SELECT track.id FROM library_tracks AS track JOIN library_media_files AS media ON media.track_id = track.id WHERE media.path = ?",
     )
     .pluck()
     .get(worse);
 
   const { id, items } = await cleanUp();
-  const itemFor = (filePath) => items.find((item) => path.resolve(root, item.source) === filePath);
+  const itemFor = (filePath: string) =>
+    items.find((item) => path.resolve(root, item.source) === filePath);
 
-  assert.equal(itemFor(worse).status, "duplicate");
-  assert.equal(itemFor(worse).target, path.relative(root, better));
-  assert.equal(itemFor(middle).status, "duplicate");
-  assert.equal(itemFor(middle).target, path.relative(root, worse));
-  assert.equal(itemFor(long).status, "conflict");
-  assert.match(itemFor(long).reason, /Track lengths differ by 0:0[45]/);
-  assert.equal(itemFor(secondSilence).status, "conflict");
-  assert.match(itemFor(secondSilence).reason, /different track numbers, 2 and 1/);
+  assert.equal(requireValue(itemFor(worse)).status, "duplicate");
+  assert.equal(requireValue(itemFor(worse)).target, path.relative(root, better));
+  assert.equal(requireValue(itemFor(middle)).status, "duplicate");
+  assert.equal(requireValue(itemFor(middle)).target, path.relative(root, worse));
+  assert.equal(requireValue(itemFor(long)).status, "conflict");
+  assert.match(requireValue(requireValue(itemFor(long)).reason), /Track lengths differ by 0:0[45]/);
+  assert.equal(requireValue(itemFor(secondSilence)).status, "conflict");
+  assert.match(
+    requireValue(requireValue(itemFor(secondSilence)).reason),
+    /different track numbers, 2 and 1/,
+  );
 
-  assert.deepEqual(describe(id).sources, { removable: 2, removed: 0 });
+  assert.deepEqual(requireValue(describe(id)).sources, { removable: 2, removed: 0 });
   await operations.removeDuplicateFiles(id);
-  assert.equal((await runUntilSettled(id)).status, "complete");
+  assert.equal(requireValue(await runUntilSettled(id)).status, "complete");
 
   assert.deepEqual(await readFile(worse), betterBytes);
   assert.equal(await exists(better), false);
   assert.equal(await exists(middle), false);
   assert.equal(
     db
-      .prepare("SELECT track_id FROM library_media_files WHERE path = ? AND available = 1")
+      .prepare<unknown[], Rows.LibraryMediaFilesRow["track_id"]>(
+        "SELECT track_id FROM library_media_files WHERE path = ? AND available = 1",
+      )
       .pluck()
       .get(worse),
     swapTrack,
@@ -419,7 +462,7 @@ test("the better copy of a track keeps its name, and a copy of a different lengt
 });
 
 test("removing duplicates finishes a removal a restart interrupted, and a failed name transfer keeps playlists on the better copy", async () => {
-  const pair = async (artist) => {
+  const pair = async (artist: string) => {
     const tags = { artist, album: "Album", title: "Song", track: "1" };
     return {
       worse: await makeTrack(path.join(root, artist, "Album", "01 - Song.mp3"), tags, [
@@ -439,34 +482,36 @@ test("removing duplicates finishes a removal a restart interrupted, and a failed
   const gone = await pair("Gone");
   const stuck = await pair("Stuck");
   await scanMusicRoot({ rootPath: root, source: "aurral" });
-  const goneTrack = mediaAt(gone.worse).track_id;
+  const goneTrack = requireValue(mediaAt(gone.worse)).track_id;
   const goneBytes = await readFile(gone.better);
   const goneJob = downloadTracker.addJob({ artistName: "Gone", trackName: "Song" }, "gone-mix");
+  assert.ok(goneJob != null);
   downloadTracker.setDone(goneJob, gone.worse, "Album");
   const stuckJob = downloadTracker.addJob({ artistName: "Stuck", trackName: "Song" }, "stuck-mix");
+  assert.ok(stuckJob != null);
   downloadTracker.setDone(stuckJob, stuck.better, "Album");
-  const refreshed = [];
+  const refreshed: unknown[] = [];
   vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation((playlistIds) => {
-    refreshed.push(...playlistIds);
+    refreshed.push(...(playlistIds ?? []));
   });
 
   const { id } = await cleanUp();
-  assert.deepEqual(describe(id).sources, { removable: 2, removed: 0 });
+  assert.deepEqual(requireValue(describe(id)).sources, { removable: 2, removed: 0 });
   await rm(gone.worse);
   const realLink = fsPromises.link;
   vi.spyOn(fsPromises, "link").mockImplementation(async (from, to) => {
-    if (path.resolve(from) === stuck.better)
+    if (path.resolve(String(from)) === stuck.better)
       throw Object.assign(new Error("denied"), { code: "EACCES" });
     return realLink(from, to);
   });
   await operations.removeDuplicateFiles(id);
-  assert.equal((await runUntilSettled(id)).status, "complete");
+  assert.equal(requireValue(await runUntilSettled(id)).status, "complete");
 
   assert.deepEqual(await readFile(gone.worse), goneBytes);
   assert.equal(await exists(gone.better), false);
-  assert.equal(mediaAt(gone.worse).track_id, goneTrack);
+  assert.equal(requireValue(mediaAt(gone.worse)).track_id, goneTrack);
   assert.equal(mediaAt(gone.better), undefined);
-  assert.equal(downloadTracker.getJob(goneJob).finalPath, gone.worse);
+  assert.equal(requireValue(downloadTracker.getJob(goneJob)).finalPath, gone.worse);
 
   assert.equal(await exists(stuck.worse), false);
   assert.equal(await exists(stuck.better), true);
@@ -474,12 +519,12 @@ test("removing duplicates finishes a removal a restart interrupted, and a failed
     availablePaths("Song").filter((filePath) => filePath.includes("Stuck")),
     [stuck.better],
   );
-  assert.equal(downloadTracker.getJob(stuckJob).finalPath, stuck.better);
+  assert.equal(requireValue(downloadTracker.getJob(stuckJob)).finalPath, stuck.better);
   assert.ok(refreshed.includes("stuck-mix"));
 });
 
 test("a duplicate stays when a playlist still uses it or its name is behind a linked folder, and nothing deletes it later", async () => {
-  const pair = async (artist) => {
+  const pair = async (artist: string) => {
     const tags = { artist, album: "Album", title: "Song", track: "1" };
     return {
       worse: await makeTrack(path.join(root, artist, "Album", "01 - Song.mp3"), tags, [
@@ -500,7 +545,7 @@ test("a duplicate stays when a playlist still uses it or its name is behind a li
   const linked = await pair("Linked");
   await scanMusicRoot({ rootPath: root, source: "aurral" });
   const { id } = await cleanUp();
-  assert.deepEqual(describe(id).sources, { removable: 2, removed: 0 });
+  assert.deepEqual(requireValue(describe(id)).sources, { removable: 2, removed: 0 });
 
   const realFolder = path.join(root, "Linked", "Real");
   await rename(path.dirname(linked.worse), realFolder);
@@ -508,11 +553,19 @@ test("a duplicate stays when a playlist still uses it or its name is behind a li
   let referenced = [listed.worse];
   vi.spyOn(playlistManager.destinationRegistry, "run").mockImplementation(async (operation) =>
     operation === "getReferencedPaths"
-      ? [{ destination: "test", ok: true, paths: referenced }]
+      ? [
+          {
+            destination: "test",
+            key: "test",
+            operation: "getReferencedPaths",
+            ok: true,
+            paths: referenced,
+          },
+        ]
       : [],
   );
   await operations.removeDuplicateFiles(id);
-  assert.equal((await runUntilSettled(id)).status, "complete");
+  assert.equal(requireValue(await runUntilSettled(id)).status, "complete");
   referenced = [];
   await retryPlaybackRetainedFiles();
 
@@ -520,7 +573,7 @@ test("a duplicate stays when a playlist still uses it or its name is behind a li
   assert.equal(await exists(listed.better), true);
   assert.equal(await exists(path.join(realFolder, "01 - Song.mp3")), true);
   assert.equal(await exists(path.join(realFolder, "song.mp3")), true);
-  assert.deepEqual(describe(id).sources, { removable: 0, removed: 0 });
+  assert.deepEqual(requireValue(describe(id)).sources, { removable: 0, removed: 0 });
 });
 
 test("Clean up keeps a file's track number from its tags when the Library's album has no number for it", async () => {
@@ -583,7 +636,7 @@ test("Clean up leaves Lidarr's files alone when Lidarr shares the Downloads Fold
 
   const { items } = await cleanUp();
 
-  assert.deepEqual(items, []);
+  assert.deepEqual([...items], []);
   assert.deepEqual(await readFile(lidarrFile), bytes);
   assert.equal(await exists(path.join(root, "Shared Artist", "Shared Album")), false);
 });
@@ -629,13 +682,17 @@ test("automatic upgrades reach monitored Library tracks that Aurral did not down
   );
   await scanMusicRoot({ rootPath: root, source: "aurral" });
   db.prepare("UPDATE library_tracks SET monitored = 1 WHERE title = 'Low'").run();
-  const queued = [];
+  const queued: string[] = [];
   const originalEnqueue = downloadTracker.enqueueDownloadPipeline;
   downloadTracker.enqueueDownloadPipeline = (id) => queued.push(id) > 0;
   try {
     assert.equal(await qualityProfileService.runQualityUpgradeCheck({ force: true }), 1);
     const upgrade = downloadTracker.getJob(queued[0]);
-    assert.equal(downloadTracker.getJob(upgrade.upgradeForJobId).finalPath, monitored);
+    assert.ok(upgrade != null);
+    assert.equal(
+      requireValue(downloadTracker.getJob(upgrade.upgradeForJobId)).finalPath,
+      monitored,
+    );
     assert.equal(upgrade.albumTrackCount, 2);
     assert.deepEqual(upgrade.albumTrackTitles, ["Low", "Left"]);
     assert.equal(
@@ -658,19 +715,20 @@ test("an upgrade replaces a hardlinked file without touching its other link", as
   });
   const upgradedBytes = await readFile(upgraded);
   const jobId = downloadTracker.addJob({ artistName: "Linked", trackName: "Low" }, "library");
+  assert.ok(jobId != null);
   downloadTracker.setDone(jobId, libraryPath, "Album");
   const upgradeId = downloadTracker.addUpgradeJob(downloadTracker.getJob(jobId));
 
   await qualityProfileService.finalizeQualityUpgradeSuccess(
-    downloadTracker.getJob(upgradeId),
+    requireValue(downloadTracker.getJob(upgradeId)),
     upgraded,
-    { tier: "flac-hires" },
+    { tier: "flac-hires", format: "flac", bitrateKbps: null, sampleRate: null, bitDepth: null },
   );
 
   assert.deepEqual(await readFile(seed), seedBytes);
   assert.deepEqual(await readFile(libraryPath), upgradedBytes);
   assert.equal(await exists(upgraded), false);
-  assert.equal(downloadTracker.getJob(jobId).finalPath, libraryPath);
+  assert.equal(requireValue(downloadTracker.getJob(jobId)).finalPath, libraryPath);
 });
 
 test("an upgrade with MusicBrainz tags keeps the Library track, its favorites, its monitoring, and saved play queues", async () => {
@@ -687,14 +745,17 @@ test("an upgrade with MusicBrainz tags keeps the Library track, its favorites, i
     track: "2",
   });
   await scanMusicRoot({ rootPath: root, source: "aurral" });
-  const track = db.prepare("SELECT * FROM library_tracks WHERE title = 'Low'").get();
-  db.prepare("UPDATE library_tracks SET monitored = 1 WHERE id = ?").run(track.id);
+  const track = db
+    .prepare<unknown[], Rows.LibraryTracksRow>("SELECT * FROM library_tracks WHERE title = 'Low'")
+    .get();
+  db.prepare("UPDATE library_tracks SET monitored = 1 WHERE id = ?").run(requireValue(track).id);
   db.prepare("INSERT INTO users (id, username, password_hash) VALUES (8, 'listener', 'x')").run();
   db.prepare(
     "INSERT INTO subsonic_stars (user_id, entity_kind, entity_key, created_at) VALUES (8, 'song', ?, 1)",
-  ).run(track.identity_key);
-  const listener = { id: 8, username: "listener" };
+  ).run(requireValue(track).identity_key);
+  const listener = { id: 8, username: "listener", role: "user", permissions: {} };
   const queued = findUniqueLibrarySong("Tagless", "Low", listener);
+  assert.ok(queued != null);
   savePlayQueue(listener, {
     ids: [queued.id],
     current: queued.id,
@@ -711,26 +772,39 @@ test("an upgrade with MusicBrainz tags keeps the Library track, its favorites, i
   });
   await scanMusicRoot({ rootPath: root, source: "aurral", filePaths: [upgraded] });
   const jobId = downloadTracker.addJob({ artistName: "Tagless", trackName: "Low" }, "library");
+  assert.ok(jobId != null);
   downloadTracker.setDone(jobId, oldPath, "Album (Old Rip)");
   const upgradeId = downloadTracker.addUpgradeJob(downloadTracker.getJob(jobId));
 
   await qualityProfileService.finalizeQualityUpgradeSuccess(
-    downloadTracker.getJob(upgradeId),
+    requireValue(downloadTracker.getJob(upgradeId)),
     upgraded,
-    { tier: "flac-standard" },
+    { tier: "flac-standard", format: "flac", bitrateKbps: null, sampleRate: null, bitDepth: null },
   );
 
   assert.equal(await exists(oldPath), false);
-  const tracks = db.prepare("SELECT * FROM library_tracks WHERE title = 'Low'").all();
+  const tracks = db
+    .prepare<unknown[], Rows.LibraryTracksRow>("SELECT * FROM library_tracks WHERE title = 'Low'")
+    .all();
   assert.equal(tracks.length, 1);
   assert.equal(tracks[0].identity_key, `recording:${recording}`);
   assert.equal(tracks[0].monitored, 1);
   assert.equal(
-    db.prepare("SELECT entity_key FROM subsonic_stars WHERE user_id = 8").pluck().get(),
+    db
+      .prepare<unknown[], Rows.SubsonicStarsRow["entity_key"]>(
+        "SELECT entity_key FROM subsonic_stars WHERE user_id = 8",
+      )
+      .pluck()
+      .get(),
     tracks[0].identity_key,
   );
   assert.deepEqual(
-    db.prepare("SELECT path FROM library_media_files WHERE track_id = ?").pluck().all(tracks[0].id),
+    db
+      .prepare<unknown[], Rows.LibraryMediaFilesRow["path"]>(
+        "SELECT path FROM library_media_files WHERE track_id = ?",
+      )
+      .pluck()
+      .all(tracks[0].id),
     [upgraded],
   );
   const queue = getPlayQueue(listener);
@@ -740,10 +814,16 @@ test("an upgrade with MusicBrainz tags keeps the Library track, its favorites, i
   );
   assert.equal(queue.current, queue.entry[0].id);
   assert.equal(queue.position, 4200);
-  assert.deepEqual(db.prepare("SELECT title FROM library_albums").pluck().all(), ["Album"]);
   assert.deepEqual(
     db
-      .prepare(
+      .prepare<unknown[], Rows.LibraryAlbumsRow["title"]>("SELECT title FROM library_albums")
+      .pluck()
+      .all(),
+    ["Album"],
+  );
+  assert.deepEqual(
+    db
+      .prepare<unknown[], Rows.LibrarySearchDocumentsRow["album_name"]>(
         `SELECT document.album_name FROM library_search_documents AS document
      JOIN library_tracks AS track ON track.id = document.entity_id
      WHERE document.entity_kind = 'track' ORDER BY track.title`,
@@ -754,3 +834,8 @@ test("an upgrade with MusicBrainz tags keeps the Library track, its favorites, i
     [false, false],
   );
 });
+
+function requireValue<T>(value: T | null | undefined): T {
+  assert.ok(value != null);
+  return value;
+}

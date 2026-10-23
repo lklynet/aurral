@@ -1,3 +1,4 @@
+import { createTrackedJob } from "./fixtures.ts";
 import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
@@ -16,11 +17,11 @@ const [
   { downloadWorker, startWorkerIfPending },
 ] = await setupIsolatedBackend(
   "startup-retry",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/playlists/flowPlaylistConfig.ts",
-  "backend/services/downloadJobs/downloadTracker.ts",
-  "backend/services/downloadJobs/downloadWorker.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
+  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
+  () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
 );
 
 beforeEach(() => {
@@ -43,10 +44,12 @@ test("startup leaves failed tracks terminal", async () => {
     name: "Incomplete",
     tracks: [{ artistName: "Missing", trackName: "Leave Failed" }],
   });
-  const failedId = downloadTracker.addJob(
+  const failedId = createTrackedJob(
+    downloadTracker,
     { artistName: "Missing", trackName: "Leave Failed" },
     playlist.id,
   );
+  assert.ok(failedId != null);
   downloadTracker.setFailed(failedId, "not found");
 
   let starts = 0;
@@ -69,7 +72,8 @@ test("startup resumes pending work", async () => {
     name: "Pending work",
     tracks: [{ artistName: "Pending", trackName: "Resume Me" }],
   });
-  const pendingId = downloadTracker.addJob(
+  const pendingId = createTrackedJob(
+    downloadTracker,
     { artistName: "Pending", trackName: "Resume Me" },
     playlist.id,
   );
@@ -97,12 +101,15 @@ test("running out of work leaves downloads the pipeline owns running", async () 
       { artistName: "Artist", trackName: "Last Pending" },
     ],
   });
-  const inPipelineId = downloadTracker.addJob(
+  const inPipelineId = createTrackedJob(
+    downloadTracker,
     { artistName: "Artist", trackName: "In Pipeline" },
     playlist.id,
   );
+  assert.ok(inPipelineId != null);
   downloadTracker.setDownloading(inPipelineId);
-  const lastId = downloadTracker.addJob(
+  const lastId = createTrackedJob(
+    downloadTracker,
     { artistName: "Artist", trackName: "Last Pending" },
     playlist.id,
   );

@@ -17,14 +17,15 @@ const [
   { logger },
 ] = await setupIsolatedBackend(
   "jellyfin-playback-destination",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/jellyfin/jellyfinPlaylistPointerStore.ts",
-  "backend/services/playback/jellyfinPlaybackDestination.ts",
-  "backend/services/logger.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/jellyfin/jellyfinPlaylistPointerStore.ts"),
+  () => import("../../backend/services/playback/jellyfinPlaybackDestination.ts"),
+  () => import("../../backend/services/logger.ts"),
 );
 
 const downloadRoot = process.env.WEEKLY_FLOW_FOLDER;
+assert.ok(downloadRoot != null);
 const userId = "jellyfin-user";
 
 beforeEach(async () => {
@@ -38,10 +39,14 @@ afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-function makeClient(calls, { libraries } = {}) {
-  return {
-    url: "http://jellyfin.local",
-    userId,
+type PlaylistPayload = Parameters<JellyfinClient["createPlaylist"]>[0];
+type ClientCall =
+  | { operation: "create" | "update"; payload: PlaylistPayload; playlistId?: string }
+  | { operation: "delete"; playlistId: string; jellyfinUserId?: string | null }
+  | { operation: "request"; method: string; endpoint: string; data: unknown };
+
+function makeClient(calls: ClientCall[], { libraries }: { libraries?: unknown } = {}) {
+  return Object.assign(new JellyfinClient("http://jellyfin.local", "key", userId), {
     isConfigured: () => true,
     findUserByUsername: async (username) =>
       String(username || "")
@@ -64,14 +69,12 @@ function makeClient(calls, { libraries } = {}) {
     updatePlaylist: async (playlistId, payload) => {
       const { onManagedItemsChange, ...recorded } = payload;
       calls.push({ operation: "update", playlistId, payload: recorded });
-      await onManagedItemsChange(payload.itemIds);
+      await onManagedItemsChange?.(payload.itemIds);
       return { Id: playlistId, managedItemIds: payload.itemIds };
     },
-    deletePlaylist: async (playlistId) => {
+    deletePlaylist: async (playlistId: string, _jellyfinUserId?: string | null) => {
       calls.push({ operation: "delete", playlistId });
     },
-    getMusicLibraryLocations: JellyfinClient.prototype.getMusicLibraryLocations,
-    reportUpdatedFolders: JellyfinClient.prototype.reportUpdatedFolders,
     request: async (method, endpoint, { data } = {}) => {
       if (endpoint === "/Library/VirtualFolders") {
         if (libraries instanceof Error) throw libraries;
@@ -79,10 +82,16 @@ function makeClient(calls, { libraries } = {}) {
       }
       calls.push({ operation: "request", method, endpoint, data });
     },
-  };
+  } satisfies Partial<JellyfinClient>);
 }
 
-function snapshot(overrides = {}) {
+function snapshot(
+  overrides: {
+    displayName?: string;
+    tracks?: { path: string; title: string; artist: string; mbid?: string }[];
+    ownerUserId?: number | null;
+  } = {},
+) {
   return {
     entityId: "flow-jellyfin",
     ownerUserId: null,
@@ -101,7 +110,7 @@ function snapshot(overrides = {}) {
 }
 
 test("publishes, updates, scans, and deletes a managed playlist", async () => {
-  const calls = [];
+  const calls: ClientCall[] = [];
   const destination = new JellyfinPlaybackDestination(downloadRoot, {
     client: makeClient(calls, {
       libraries: [{ CollectionType: "music", Locations: ["/downloads"] }],
@@ -121,11 +130,11 @@ test("publishes, updates, scans, and deletes a managed playlist", async () => {
       },
     });
     assert.equal(
-      jellyfinPlaylistPointerStore.getPointer("flow-jellyfin", userId).playlistId,
+      jellyfinPlaylistPointerStore.getPointer("flow-jellyfin", userId)!.playlistId,
       "playlist-1",
     );
     assert.deepEqual(
-      jellyfinPlaylistPointerStore.getPointer("flow-jellyfin", userId).managedItemIds,
+      jellyfinPlaylistPointerStore.getPointer("flow-jellyfin", userId)!.managedItemIds,
       ["jellyfin-track-1", "jellyfin-track-2"],
     );
 
@@ -161,7 +170,7 @@ test("publishes, updates, scans, and deletes a managed playlist", async () => {
 });
 
 test("tells Jellyfin about changed folders in its music libraries and reports every music library when one is outside them", async () => {
-  const calls = [];
+  const calls: ClientCall[] = [];
   const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
   const musicLocations = ["D:\\Music\\FLAC", "\\\\nas\\music\\"];
   const destination = new JellyfinPlaybackDestination(downloadRoot, {
@@ -176,7 +185,15 @@ test("tells Jellyfin about changed folders in its music libraries and reports ev
   const originalMappings = process.env.PATH_MAPPINGS;
   process.env.PATH_MAPPINGS =
     "jellyfin|D:\\Music|/srv/music;jellyfin|\\\\nas\\music|/srv/share;jellyfin|/media|/srv/media";
-  const updated = () => calls.map(({ data }) => data.Updates.map(({ Path }) => Path));
+  const updated = () =>
+    calls.map((call) => {
+      assert.equal(call.operation, "request");
+      const data = call.data;
+      assert.ok(
+        data && typeof data === "object" && "Updates" in data && Array.isArray(data.Updates),
+      );
+      return data.Updates.map((update: { Path: string }) => update.Path);
+    });
   try {
     for (const libraries of [new Error("Jellyfin is restarting"), { error: "Unauthorized" }]) {
       const unreadable = new JellyfinPlaybackDestination(downloadRoot, {
@@ -184,9 +201,9 @@ test("tells Jellyfin about changed folders in its music libraries and reports ev
       });
       const result = await unreadable.requestScan({ folders: ["/srv/music/flac/Artist/Album"] });
       assert.equal(result.ok, false);
-      assert.equal(result.error.retryable, true);
+      assert.equal(result.error!.retryable, true);
     }
-    assert.deepEqual(calls, []);
+    assert.deepEqual([...calls], []);
     assert.deepEqual(
       await destination.requestScan({
         folders: ["/srv/music/flac/Artist/Album", "/srv/share/Artist"],
@@ -221,7 +238,10 @@ test("tells Jellyfin about changed folders in its music libraries and reports ev
       [musicLocations[0]],
     ]);
     assert.deepEqual(
-      warn.mock.calls.map(([category, , data]) => [category, data.folder]),
+      warn.mock.calls.map(([category, , data]) => [
+        category,
+        data && "folder" in data ? data.folder : undefined,
+      ]),
       [
         ["jellyfin", "/srv/media/Artist"],
         ["jellyfin", "/srv/elsewhere/Album"],
@@ -234,7 +254,7 @@ test("tells Jellyfin about changed folders in its music libraries and reports ev
   }
 });
 
-function makeSyncingClient(initialIds) {
+function makeSyncingClient(initialIds: string[]) {
   const client = new JellyfinClient("http://jellyfin.local", "key", userId);
   const state = { ids: [...initialIds], deleted: false };
   client.getAudioItems = makeClient([]).getAudioItems;
@@ -248,10 +268,14 @@ function makeSyncingClient(initialIds) {
   client.request = async (method, endpoint, { params } = {}) => {
     assert.equal(endpoint, "/Playlists/playlist-1/Items");
     if (method === "POST") {
+      assert.ok(params);
       assert.equal(params.userId, userId);
+      assert.ok(typeof params.ids === "string");
       state.ids.push(...params.ids.split(","));
     } else if (method === "DELETE") {
-      state.ids = state.ids.filter((id) => !params.entryIds.split(",").includes(`entry-${id}`));
+      assert.ok(typeof params?.entryIds === "string");
+      const entryIds = params.entryIds.split(",");
+      state.ids = state.ids.filter((id) => !entryIds.includes(`entry-${id}`));
     } else assert.fail(`Unexpected request: ${method}`);
   };
   client.deletePlaylist = async () => {
@@ -281,13 +305,13 @@ test("ownership survives destination recreation and an empty source preserves Je
   assert.deepEqual(state.ids, ["custom", "custom-after-sync"]);
   assert.equal(state.deleted, false);
   assert.deepEqual(
-    jellyfinPlaylistPointerStore.getPointer("flow-jellyfin", userId).managedItemIds,
+    [...jellyfinPlaylistPointerStore.getPointer("flow-jellyfin", userId)!.managedItemIds],
     [],
   );
   assert.equal((await destination.publishPlaylist(source)).ok, true);
   assert.deepEqual(state.ids, ["custom", "custom-after-sync", "jellyfin-track-2"]);
   assert.deepEqual(
-    jellyfinPlaylistPointerStore.getPointer("flow-jellyfin", userId).managedItemIds,
+    jellyfinPlaylistPointerStore.getPointer("flow-jellyfin", userId)!.managedItemIds,
     ["jellyfin-track-2"],
   );
 });
@@ -308,7 +332,7 @@ test("an old pointer without ownership preserves existing tracks during sync and
     }),
   );
   assert.deepEqual(
-    jellyfinPlaylistPointerStore.getPointer("flow-jellyfin", userId).managedItemIds,
+    [...jellyfinPlaylistPointerStore.getPointer("flow-jellyfin", userId)!.managedItemIds],
     [],
   );
   const destination = new JellyfinPlaybackDestination(downloadRoot, { client });
@@ -325,6 +349,7 @@ test("confirmed additions remain owned after a failed deletion and destination r
   const { client, state } = makeSyncingClient(["old-owned", "custom"]);
   jellyfinPlaylistPointerStore.setPointer("flow-jellyfin", userId, {
     playlistId: "playlist-1",
+    title: "Discover Weekly",
     serverUrl: client.url,
     jellyfinUserId: userId,
     managedItemIds: ["old-owned"],
@@ -343,7 +368,7 @@ test("confirmed additions remain owned after a failed deletion and destination r
   assert.equal((await destination.publishPlaylist(source)).ok, false);
   assert.deepEqual(state.ids, ["old-owned", "custom", "jellyfin-track-2"]);
   assert.deepEqual(
-    jellyfinPlaylistPointerStore.getPointer("flow-jellyfin", userId).managedItemIds,
+    jellyfinPlaylistPointerStore.getPointer("flow-jellyfin", userId)!.managedItemIds,
     ["old-owned", "jellyfin-track-2"],
   );
 
@@ -351,7 +376,7 @@ test("confirmed additions remain owned after a failed deletion and destination r
   assert.equal((await destination.publishPlaylist(source)).ok, true);
   assert.deepEqual(state.ids, ["custom", "jellyfin-track-2"]);
   assert.deepEqual(
-    jellyfinPlaylistPointerStore.getPointer("flow-jellyfin", userId).managedItemIds,
+    jellyfinPlaylistPointerStore.getPointer("flow-jellyfin", userId)!.managedItemIds,
     ["jellyfin-track-2"],
   );
 });
@@ -369,27 +394,31 @@ test("pointer ownership is isolated by owner and malformed history grants no del
     JSON.stringify(pointers),
   );
   const first = jellyfinPlaylistPointerStore.getPointer("entity", "first");
+  assert.ok(first != null);
   assert.deepEqual(first.managedItemIds, ["one", "one"]);
   first.managedItemIds.push("not-persisted");
-  assert.deepEqual(jellyfinPlaylistPointerStore.getPointer("entity", "first").managedItemIds, [
+  assert.deepEqual(jellyfinPlaylistPointerStore.getPointer("entity", "first")!.managedItemIds, [
     "one",
     "one",
   ]);
-  assert.deepEqual(jellyfinPlaylistPointerStore.getPointer("entity", "second").managedItemIds, [
+  assert.deepEqual(jellyfinPlaylistPointerStore.getPointer("entity", "second")!.managedItemIds, [
     "two",
   ]);
-  assert.deepEqual(jellyfinPlaylistPointerStore.getPointer("entity", "invalid").managedItemIds, []);
+  assert.deepEqual(
+    [...jellyfinPlaylistPointerStore.getPointer("entity", "invalid")!.managedItemIds],
+    [],
+  );
 });
 
 test("an empty source without a remote pointer does not create a playlist", async () => {
-  const calls = [];
+  const calls: ClientCall[] = [];
   const destination = new JellyfinPlaybackDestination(downloadRoot, { client: makeClient(calls) });
   assert.equal((await destination.publishPlaylist(snapshot({ tracks: [] }))).ok, true);
-  assert.deepEqual(calls, []);
+  assert.deepEqual([...calls], []);
 });
 
 test("preserves repeated resolved tracks in a playlist", async () => {
-  const calls = [];
+  const calls: ClientCall[] = [];
   const destination = new JellyfinPlaybackDestination(downloadRoot, {
     client: makeClient(calls),
   });
@@ -410,6 +439,7 @@ test("preserves repeated resolved tracks in a playlist", async () => {
       ).ok,
       true,
     );
+    assert.ok("payload" in calls[0]);
     assert.deepEqual(calls[0].payload.itemIds, ["jellyfin-track-1", "jellyfin-track-1"]);
   } finally {
     if (originalMappings == null) delete process.env.PATH_MAPPINGS;
@@ -418,8 +448,9 @@ test("preserves repeated resolved tracks in a playlist", async () => {
 });
 
 test("publishes and updates as the Jellyfin user matching the Aurral username", async () => {
-  const calls = [];
+  const calls: ClientCall[] = [];
   const owner = userOps.createUser("ambi", "hash", "user");
+  assert.ok(owner != null);
   const destination = new JellyfinPlaybackDestination(downloadRoot, {
     client: makeClient(calls),
   });
@@ -431,9 +462,10 @@ test("publishes and updates as the Jellyfin user matching the Aurral username", 
     const result = await destination.publishPlaylist(snapshot({ ownerUserId: owner.id }));
 
     assert.equal(result.ok, true);
+    assert.ok("payload" in calls[0]);
     assert.equal(calls[0].payload.userId, "jellyfin-ambi");
     assert.equal(
-      jellyfinPlaylistPointerStore.getPointer("flow-jellyfin", String(owner.id)).jellyfinUserId,
+      jellyfinPlaylistPointerStore.getPointer("flow-jellyfin", String(owner.id))!.jellyfinUserId,
       "jellyfin-ambi",
     );
     const updated = await destination.publishPlaylist(
@@ -441,6 +473,7 @@ test("publishes and updates as the Jellyfin user matching the Aurral username", 
     );
     assert.equal(updated.ok, true);
     assert.equal(calls[1].operation, "update");
+    assert.ok("payload" in calls[1]);
     assert.equal(calls[1].payload.userId, "jellyfin-ambi");
   } finally {
     if (originalMappings == null) delete process.env.PATH_MAPPINGS;
@@ -449,8 +482,9 @@ test("publishes and updates as the Jellyfin user matching the Aurral username", 
 });
 
 test("does not publish when no Jellyfin username matches", async () => {
-  const calls = [];
+  const calls: ClientCall[] = [];
   const owner = userOps.createUser("not-in-jellyfin", "hash", "user");
+  assert.ok(owner != null);
   const destination = new JellyfinPlaybackDestination(downloadRoot, {
     client: makeClient(calls),
   });
@@ -458,13 +492,14 @@ test("does not publish when no Jellyfin username matches", async () => {
   const result = await destination.publishPlaylist(snapshot({ ownerUserId: owner.id }));
 
   assert.equal(result.ok, false);
-  assert.equal(result.error.code, "JELLYFIN_USER_NOT_FOUND");
-  assert.deepEqual(calls, []);
+  assert.equal(result.error!.code, "JELLYFIN_USER_NOT_FOUND");
+  assert.deepEqual([...calls], []);
 });
 
 test("removes the legacy public playlist before publishing privately", async () => {
-  const calls = [];
+  const calls: ClientCall[] = [];
   const owner = userOps.createUser("ambi", "hash", "user");
+  assert.ok(owner != null);
   const destination = new JellyfinPlaybackDestination(downloadRoot, {
     client: makeClient(calls),
   });
@@ -495,8 +530,9 @@ test("removes the legacy public playlist before publishing privately", async () 
 });
 
 test("removes the legacy playlist during owner-scoped deletion", async () => {
-  const calls = [];
+  const calls: ClientCall[] = [];
   const owner = userOps.createUser("ambi", "hash", "user");
+  assert.ok(owner != null);
   const destination = new JellyfinPlaybackDestination(downloadRoot, {
     client: makeClient(calls),
   });
@@ -521,8 +557,9 @@ test("removes the legacy playlist during owner-scoped deletion", async () => {
 });
 
 test("does not reuse a playlist belonging to a different Jellyfin user", async () => {
-  const calls = [];
+  const calls: ClientCall[] = [];
   const owner = userOps.createUser("ambi", "hash", "user");
+  assert.ok(owner != null);
   const client = makeClient(calls);
 
   client.deletePlaylist = async (playlistId, jellyfinUserId) => {
@@ -553,13 +590,14 @@ test("does not reuse a playlist belonging to a different Jellyfin user", async (
       jellyfinUserId: "jellyfin-old-user",
     });
     assert.equal(calls[1].operation, "create");
+    assert.ok("payload" in calls[1]);
     assert.equal(calls[1].payload.userId, "jellyfin-ambi");
     assert.equal(
       calls.some((call) => call.operation === "update"),
       false,
     );
     assert.equal(
-      jellyfinPlaylistPointerStore.getPointer("flow-jellyfin", String(owner.id)).jellyfinUserId,
+      jellyfinPlaylistPointerStore.getPointer("flow-jellyfin", String(owner.id))!.jellyfinUserId,
       "jellyfin-ambi",
     );
   } finally {

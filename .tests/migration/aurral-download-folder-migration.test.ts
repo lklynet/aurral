@@ -1,3 +1,4 @@
+import { requireFixture } from "../playlists/fixtures.ts";
 import { test, beforeEach, afterAll, afterEach, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "fs/promises";
@@ -9,6 +10,11 @@ import {
   resetDatabase,
 } from "../helpers/backendTestHarness.ts";
 
+type MigrationState = {
+  status: string;
+  items: Record<string, { status: string; reason?: string }>;
+};
+
 const [
   isolatedState,
   { db },
@@ -18,14 +24,15 @@ const [
   { migrateAurralDownloadFolder },
 ] = await setupIsolatedBackend(
   "aurral-download-folder-migration",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/playlists/flowPlaylistConfig.ts",
-  "backend/services/downloadJobs/downloadTracker.ts",
-  "backend/services/aurralDownloadFolderMigration.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
+  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
+  () => import("../../backend/services/aurralDownloadFolderMigration.ts"),
 );
 
 const root = process.env.WEEKLY_FLOW_FOLDER;
+assert.ok(root != null);
 
 beforeEach(async () => {
   await fs.rm(root, { recursive: true, force: true });
@@ -84,17 +91,19 @@ test("migrates permanent tracks, isolates active flows, and removes unkept flow 
     { artistName: "Artist", albumName: "Album", trackName: "Track" },
     playlist.id,
   );
+  assert.ok(permanentJobId != null);
   const flowJobId = downloadTracker.addJob(
     { artistName: "Artist", albumName: "Album", trackName: "Flow Track" },
     flow.id,
   );
+  assert.ok(flowJobId != null);
   downloadTracker.setDone(permanentJobId, permanentSource, "Album", "/remote/Track.flac");
   downloadTracker.updateQuality(permanentJobId, {
     tier: "lossless",
     format: "FLAC",
     checkedAt: 123,
   });
-  const permanentCompletedAt = downloadTracker.getJob(permanentJobId).completedAt;
+  const permanentCompletedAt = downloadTracker.getJob(permanentJobId)!.completedAt;
   downloadTracker.setDone(flowJobId, flowSource);
 
   const result = await migrateAurralDownloadFolder({
@@ -108,11 +117,12 @@ test("migrates permanent tracks, isolates active flows, and removes unkept flow 
   assert.equal(result.flowMigrated, 1);
   assert.equal(result.removed, 1);
   const permanentJob = downloadTracker.getJob(permanentJobId);
+  assert.ok(permanentJob != null);
   assert.equal(permanentJob.finalPath, permanentDestination);
   assert.equal(permanentJob.externalPath, "/remote/Track.flac");
   assert.equal(permanentJob.completedAt, permanentCompletedAt);
   assert.equal(permanentJob.qualityTier, "lossless");
-  assert.equal(downloadTracker.getJob(flowJobId).finalPath, flowDestination);
+  assert.equal(downloadTracker.getJob(flowJobId)!.finalPath, flowDestination);
   await assert.doesNotReject(() => fs.access(permanentDestination));
   await assert.doesNotReject(() => fs.access(flowDestination));
   await assert.rejects(() => fs.access(permanentSource));
@@ -136,13 +146,14 @@ test("retains a permanent source when tracker updates are not persisted", async 
     { artistName: "Artist", albumName: "Album", trackName: "Track" },
     playlist.id,
   );
+  assert.ok(jobId != null);
   downloadTracker.setDone(jobId, source);
   vi.spyOn(downloadTracker, "updateFinalPath").mockImplementation(() => false);
 
   const result = await migrateAurralDownloadFolder({
     root,
     indexDestination: async () => {},
-    logger: { warn() {} },
+    logger: { warn() {}, error() {}, info() {} },
   });
   const destination = path.join(root, "Artist", "Album", "Track.flac");
 
@@ -150,7 +161,7 @@ test("retains a permanent source when tracker updates are not persisted", async 
   assert.equal(result.status, "needs-review");
   await assert.doesNotReject(() => fs.access(source));
   await assert.doesNotReject(() => fs.access(destination));
-  assert.equal(downloadTracker.getJob(jobId).finalPath, source);
+  assert.equal(downloadTracker.getJob(jobId)!.finalPath, source);
 });
 
 test("repairs stale tracker paths from a completed migration", async () => {
@@ -170,6 +181,7 @@ test("repairs stale tracker paths from a completed migration", async () => {
     { artistName: "Artist", albumName: "Album", trackName: "Track" },
     playlist.id,
   );
+  assert.ok(jobId != null);
   downloadTracker.setDone(jobId, source);
   dbOps.setJSONSetting("aurralDownloadFolderMigration", {
     version: 1,
@@ -187,13 +199,14 @@ test("repairs stale tracker paths from a completed migration", async () => {
   const result = await migrateAurralDownloadFolder({ root });
 
   assert.equal(result.status, "complete");
+  assert.ok("repaired" in result);
   assert.equal(result.repaired, 1);
-  assert.equal(downloadTracker.getJob(jobId).finalPath, destination);
+  assert.equal(downloadTracker.getJob(jobId)!.finalPath, destination);
 });
 
 test("indexes permanent migrations in one library scan", async () => {
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Batch indexing" });
-  const jobs = [];
+  const jobs: (string | null)[] = [];
   for (const trackName of ["Track One", "Track Two"]) {
     const source = path.join(
       root,
@@ -209,6 +222,7 @@ test("indexes permanent migrations in one library scan", async () => {
       { artistName: "Artist", albumName: "Album", trackName },
       playlist.id,
     );
+    assert.ok(jobId != null);
     downloadTracker.setDone(jobId, source);
     jobs.push(jobId);
   }
@@ -221,8 +235,19 @@ test("indexes permanent migrations in one library scan", async () => {
   });
 
   assert.equal(result.migrated, 2);
-  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM library_scan_runs").get().count, 1);
-  assert.ok(jobs.every((jobId) => downloadTracker.getJob(jobId).finalPath.startsWith(root)));
+  assert.equal(
+    requireFixture(
+      db
+        .prepare<unknown[], { count: number }>("SELECT COUNT(*) AS count FROM library_scan_runs")
+        .get(),
+    ).count,
+    1,
+  );
+  assert.ok(
+    jobs.every((jobId) =>
+      requireFixture(downloadTracker.getJob(jobId)!.finalPath).startsWith(root),
+    ),
+  );
 });
 
 test("retains a failed item and completes it safely on retry", async () => {
@@ -241,6 +266,7 @@ test("retains a failed item and completes it safely on retry", async () => {
     { artistName: "Artist", albumName: "Album", trackName: "Retry" },
     playlist.id,
   );
+  assert.ok(jobId != null);
   downloadTracker.setDone(jobId, source);
 
   let shouldFail = true;
@@ -261,7 +287,7 @@ test("retains a failed item and completes it safely on retry", async () => {
   const second = await migrateAurralDownloadFolder({ root, indexDestination });
   assert.equal(second.migrated, 1);
   assert.equal(
-    downloadTracker.getJob(jobId).finalPath,
+    downloadTracker.getJob(jobId)!.finalPath,
     path.join(root, "Artist", "Album", "Retry.flac"),
   );
   await assert.rejects(() => fs.access(source));
@@ -291,6 +317,7 @@ test("retains a same-size canonical destination with different content", async (
     { artistName: "Artist", albumName: "Album", trackName: "Track" },
     playlist.id,
   );
+  assert.ok(jobId != null);
   downloadTracker.setDone(jobId, source);
 
   const result = await migrateAurralDownloadFolder({
@@ -345,7 +372,9 @@ test("retains partial and ambiguous files instead of guessing", async () => {
 
   assert.equal(result.retained, 2);
   assert.equal(result.status, "needs-review");
-  const state = dbOps.getJSONSetting("aurralDownloadFolderMigration");
+  const state = requireFixture(
+    dbOps.getJSONSetting<MigrationState>("aurralDownloadFolderMigration"),
+  );
   assert.equal(state.items[partial].reason, "partial file");
   assert.equal(state.items[ambiguous].reason, "ambiguous media identity");
   await assert.doesNotReject(() => fs.access(partial));
@@ -355,7 +384,9 @@ test("retains partial and ambiguous files instead of guessing", async () => {
   await fs.rm(ambiguous);
   const rerun = await migrateAurralDownloadFolder({ root });
   assert.equal(rerun.status, "complete");
-  const resolved = dbOps.getJSONSetting("aurralDownloadFolderMigration");
+  const resolved = requireFixture(
+    dbOps.getJSONSetting<MigrationState>("aurralDownloadFolderMigration"),
+  );
   assert.equal(resolved.status, "complete");
   assert.equal(resolved.items[partial].status, "removed");
 });

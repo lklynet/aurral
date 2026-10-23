@@ -1,3 +1,5 @@
+import { requireFixture } from "../playlists/fixtures.ts";
+import { createRouteHarness, createResponse } from "./routeHarness.ts";
 import assert from "node:assert/strict";
 import { test, beforeAll, beforeEach, afterAll, vi } from "vite-plus/test";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -14,11 +16,11 @@ import {
 const [isolatedState, { db }, { dbOps }, libraryStore, provider, indexService] =
   await setupIsolatedBackend(
     "artist-mbid-override",
-    "backend/config/db-sqlite.ts",
-    "backend/db/helpers/index.ts",
-    "backend/services/libraryMediaStore.ts",
-    "backend/services/providers/brainzmashProvider.ts",
-    "backend/services/libraryIndexService.ts",
+    () => import("../../backend/config/db-sqlite.ts"),
+    () => import("../../backend/db/helpers/index.ts"),
+    () => import("../../backend/services/libraryMediaStore.ts"),
+    () => import("../../backend/services/providers/brainzmashProvider.ts"),
+    () => import("../../backend/services/libraryIndexService.ts"),
   );
 
 const { registerArtists } = await import("../../backend/routes/library/handlers/artists.ts");
@@ -33,8 +35,8 @@ const LINKED_MBID = "55555555-5555-4555-8555-555555555555";
 const LIDARR_MBID = "55555555-5555-4555-8555-555555555556";
 
 let providerAvailable = true;
-let server;
-let musicRoot;
+let server: { url: string; close: () => Promise<void> };
+let musicRoot: string;
 
 beforeAll(async () => {
   resetDatabase(db);
@@ -44,12 +46,13 @@ beforeAll(async () => {
       response.end();
       return;
     }
-    const url = new URL(request.url, "http://mock");
-    const artists = {
+    const url = new URL(request.url || "/", "http://mock");
+    const artists: Record<string, { id: string; artistname: string }> = {
       [KNOWN_MBID]: { id: KNOWN_MBID, artistname: "Known Artist" },
       [OTHER_MBID]: { id: OTHER_MBID, artistname: "Other Artist" },
     };
-    let body = null;
+    let body: { id: string; artistname: string } | { id: string; artistname: string }[] | null =
+      null;
     if (url.pathname.startsWith("/artist/")) body = artists[url.pathname.split("/")[2]] || null;
     if (url.pathname === "/search/artist") {
       body =
@@ -94,7 +97,13 @@ afterAll(async () => {
 let fixtureCount = 0;
 const lidarrConnected = { isConfigured: () => true };
 
-function createArtist(name, { mbid = null, metadata = null } = {}) {
+function createArtist(
+  name: string,
+  {
+    mbid = null,
+    metadata = null,
+  }: Pick<Parameters<typeof libraryStore.upsertLibraryArtist>[0], "mbid" | "metadata"> = {},
+) {
   fixtureCount += 1;
   const artist = libraryStore.upsertLibraryArtist({
     identityKey: mbid ? `mbid:${mbid}` : libraryStore.buildFallbackIdentityKey("artist", name),
@@ -123,34 +132,21 @@ function createArtist(name, { mbid = null, metadata = null } = {}) {
   return { artist, album };
 }
 
-function updateMbid(artistId, mbid) {
-  let handler;
-  registerArtists({
-    get() {},
-    post() {},
-    delete() {},
-    put(routePath, ...handlers) {
-      if (routePath === "/canonical/artists/:id/mbid") handler = handlers.at(-1);
-    },
-  });
-  const response = {
-    statusCode: 200,
-    body: null,
-    status(code) {
-      this.statusCode = code;
-      return this;
-    },
-    json(value) {
-      this.body = value;
-      return this;
-    },
-  };
-  return handler({ params: { id: String(artistId) }, body: { mbid } }, response).then(
-    () => response,
+async function updateMbid(artistId: number, mbid: string | null) {
+  const response = createResponse<{ musicbrainzName: string; id: number; merged: boolean }>();
+  await createRouteHarness(registerArtists).get("PUT /canonical/artists/:id/mbid")(
+    { params: { id: String(artistId) }, body: { mbid } },
+    response,
   );
+  return response;
 }
 
-const artistRow = (id) => db.prepare("SELECT * FROM library_artists WHERE id = ?").get(id);
+const artistRow = (id: number) =>
+  db
+    .prepare<unknown[], import("../../backend/db/rows.ts").LibraryArtistsRow>(
+      "SELECT * FROM library_artists WHERE id = ?",
+    )
+    .get(id)!;
 
 test("a user can link an unmatched artist to a MusicBrainz ID", async () => {
   const { artist } = createArtist("Unmatched Artist");
@@ -178,13 +174,16 @@ test("linking to an MBID already in the library merges the albums into that arti
   assert.equal(response.body.merged, true);
   assert.equal(artistRow(duplicate.artist.id), undefined);
   assert.equal(
-    db.prepare("SELECT artist_id FROM library_albums WHERE id = ?").get(duplicate.album.id)
-      .artist_id,
+    requireFixture(db)
+      .prepare<unknown[], { artist_id: number }>(
+        "SELECT artist_id FROM library_albums WHERE id = ?",
+      )!
+      .get(duplicate.album.id)!.artist_id,
     existing.artist.id,
   );
   assert.equal(
     db
-      .prepare(
+      .prepare<unknown[], { artist_id: number }>(
         "SELECT artist_id FROM library_release_calendar WHERE release_group_mbid = 'calendar-release'",
       )
       .get()?.artist_id,
@@ -203,7 +202,11 @@ test("removing an MBID never merges two artists that share a name", async () => 
   assert.equal(artistRow(tagged.artist.id).mbid, null);
   assert.ok(artistRow(unmatched.artist.id));
   assert.equal(
-    db.prepare("SELECT artist_id FROM library_albums WHERE id = ?").get(tagged.album.id).artist_id,
+    requireFixture(db)
+      .prepare<unknown[], { artist_id: number }>(
+        "SELECT artist_id FROM library_albums WHERE id = ?",
+      )!
+      .get(tagged.album.id)!.artist_id,
     tagged.artist.id,
   );
 });

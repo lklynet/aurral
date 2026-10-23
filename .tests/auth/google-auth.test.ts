@@ -1,3 +1,4 @@
+import { createAuthRequest, createAuthResponse } from "./authFixtures.ts";
 import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { createSign, generateKeyPairSync } from "node:crypto";
@@ -11,10 +12,10 @@ import {
 
 const [isolatedState, { db }, dbHelpers, sessionModule, googleModule] = await setupIsolatedBackend(
   "google-auth",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/config/session-helpers.ts",
-  "backend/services/googleAuth.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/config/session-helpers.ts"),
+  () => import("../../backend/services/googleAuth.ts"),
 );
 
 const { dbOps, userOps, userIdentityOps } = dbHelpers;
@@ -37,8 +38,12 @@ const googleKey = {
   alg: "RS256",
 };
 
-const createIdToken = (issuer, nonce, claimOverrides = {}) => {
-  const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
+const createIdToken = (
+  issuer: string,
+  nonce: string | null,
+  claimOverrides: Record<string, unknown> = {},
+) => {
+  const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
   const header = encode({ alg: "RS256", kid: googleKey.kid, typ: "JWT" });
   const payload = encode({
     iss: issuer,
@@ -55,7 +60,7 @@ const createIdToken = (issuer, nonce, claimOverrides = {}) => {
   return `${input}.${signature}`;
 };
 
-function enableGoogleConfig(issuer) {
+function enableGoogleConfig(issuer: string) {
   dbOps.updateSettings({
     integrations: {
       google: {
@@ -68,9 +73,12 @@ function enableGoogleConfig(issuer) {
   });
 }
 
-async function createPendingGoogleAuth(mode, claimOverrides = {}) {
-  let issuer;
-  let nonce;
+async function createPendingGoogleAuth(
+  mode: Parameters<typeof startGoogleAuth>[2],
+  claimOverrides = {},
+) {
+  let issuer: string;
+  let nonce: string | null;
   const discoveryServer = await createMockHttpServer((request, response) => {
     response.writeHead(200, { "content-type": "application/json" });
     if (request.url === "/jwks") {
@@ -100,37 +108,31 @@ async function createPendingGoogleAuth(mode, claimOverrides = {}) {
   setGoogleIssuerForTests(issuer);
   enableGoogleConfig(issuer);
 
-  const response = {
-    headers: {},
-    body: null,
-    redirect(_status, location) {
-      this.location = location;
-    },
-    setHeader(name, value) {
-      this.headers[name] = value;
-    },
-    json(value) {
-      this.body = value;
-    },
-  };
-  await startGoogleAuth({ headers: {} }, response, mode);
-  const redirect = new URL(response.location || response.body?.authUrl);
+  const response = createAuthResponse();
+  await startGoogleAuth(createAuthRequest({ headers: {} }), response, mode);
+  const redirect = new URL(response.location || response.body?.authUrl || "");
   const state = redirect.searchParams.get("state");
+  assert.ok(state);
   nonce = redirect.searchParams.get("nonce");
   const cookie = response.headers["Set-Cookie"].split(";", 1)[0];
   return { state, cookie, response, close: discoveryServer.close };
 }
 
-async function completeGoogleAuth(pending) {
-  const callback = await handleGoogleCallback({
-    query: { state: pending.state, code: "authorization-code" },
-    headers: { cookie: pending.cookie },
-    ip: "127.0.0.1",
-  });
-  return exchangeGoogleCallback(callback.code, {
-    headers: { cookie: pending.cookie, "user-agent": "test-agent" },
-    ip: "127.0.0.1",
-  });
+async function completeGoogleAuth(pending: Awaited<ReturnType<typeof createPendingGoogleAuth>>) {
+  const callback = await handleGoogleCallback(
+    createAuthRequest({
+      query: { state: pending.state, code: "authorization-code" },
+      headers: { cookie: pending.cookie },
+      ip: "127.0.0.1",
+    }),
+  );
+  return exchangeGoogleCallback(
+    callback.code,
+    createAuthRequest({
+      headers: { cookie: pending.cookie, "user-agent": "test-agent" },
+      ip: "127.0.0.1",
+    }),
+  );
 }
 
 beforeEach(() => {
@@ -193,23 +195,27 @@ test("logging in with an unrecognized Google identity is rejected and never prov
 test("linking attaches the identity to the authenticated user, and logging in afterward resolves it without touching role", async () => {
   completeOnboarding();
   const user = userOps.createUser("gordon", "unused-hash", "user");
+  assert.ok(user != null);
 
   const linkPending = await createPendingGoogleAuth({ mode: "link", linkUserId: user.id });
   try {
     const linkResult = await completeGoogleAuth(linkPending);
     assert.equal(linkResult.linked, true);
+    assert.ok(linkResult.user);
     assert.equal(linkResult.user.id, user.id);
   } finally {
     await linkPending.close();
   }
 
   const identity = userIdentityOps.findByProvider("google", "google", "google-subject");
+  assert.ok(identity != null);
   assert.equal(identity.userId, user.id);
 
   const loginPending = await createPendingGoogleAuth({ mode: "login" });
   try {
     const loginResult = await completeGoogleAuth(loginPending);
     assert.equal(loginResult.linked, false);
+    assert.ok(loginResult.user);
     assert.ok(loginResult.token);
     const sessionUser = getSessionByToken(loginResult.token)?.user;
     assert.equal(sessionUser?.id, user.id);
@@ -222,7 +228,9 @@ test("linking attaches the identity to the authenticated user, and logging in af
 test("linking a Google identity already claimed by another user is rejected with 409", async () => {
   completeOnboarding();
   const userA = userOps.createUser("user-a", "unused-hash", "user");
+  assert.ok(userA != null);
   const userB = userOps.createUser("user-b", "unused-hash", "user");
+  assert.ok(userB != null);
 
   const firstLink = await createPendingGoogleAuth({ mode: "link", linkUserId: userA.id });
   try {
@@ -235,11 +243,13 @@ test("linking a Google identity already claimed by another user is rejected with
   try {
     await assert.rejects(
       () =>
-        handleGoogleCallback({
-          query: { state: secondLink.state, code: "authorization-code" },
-          headers: { cookie: secondLink.cookie },
-          ip: "127.0.0.1",
-        }),
+        handleGoogleCallback(
+          createAuthRequest({
+            query: { state: secondLink.state, code: "authorization-code" },
+            headers: { cookie: secondLink.cookie },
+            ip: "127.0.0.1",
+          }),
+        ),
       { status: 409 },
     );
   } finally {
@@ -247,6 +257,7 @@ test("linking a Google identity already claimed by another user is rejected with
   }
 
   const identity = userIdentityOps.findByProvider("google", "google", "google-subject");
+  assert.ok(identity != null);
   assert.equal(
     identity.userId,
     userA.id,
@@ -257,6 +268,7 @@ test("linking a Google identity already claimed by another user is rejected with
 test("a suspended user cannot log in via a linked Google identity", async () => {
   completeOnboarding();
   const user = userOps.createUser("suspended-google-user", "unused-hash", "user");
+  assert.ok(user != null);
   userIdentityOps.link(user.id, {
     providerType: "google",
     providerKey: "google",
@@ -278,17 +290,20 @@ test("a suspended user cannot log in via a linked Google identity", async () => 
 test("a suspended user cannot complete a Google link", async () => {
   completeOnboarding();
   const user = userOps.createUser("suspended-linker", "unused-hash", "user");
+  assert.ok(user != null);
   userOps.updateUser(user.id, { status: "suspended" });
 
   const pending = await createPendingGoogleAuth({ mode: "link", linkUserId: user.id });
   try {
     await assert.rejects(
       () =>
-        handleGoogleCallback({
-          query: { state: pending.state, code: "authorization-code" },
-          headers: { cookie: pending.cookie },
-          ip: "127.0.0.1",
-        }),
+        handleGoogleCallback(
+          createAuthRequest({
+            query: { state: pending.state, code: "authorization-code" },
+            headers: { cookie: pending.cookie },
+            ip: "127.0.0.1",
+          }),
+        ),
       { status: 403, message: "This account has been suspended or disabled" },
     );
   } finally {
@@ -300,11 +315,12 @@ test("a suspended user cannot complete a Google link", async () => {
 test("Google exchange never leaks passwordHash, for linking or login", async () => {
   completeOnboarding();
   const user = userOps.createUser("gordon-sanitize", "unused-hash", "user");
+  assert.ok(user != null);
 
   const linkPending = await createPendingGoogleAuth({ mode: "link", linkUserId: user.id });
   try {
     const linkResult = await completeGoogleAuth(linkPending);
-    assert.equal(linkResult.user.passwordHash, undefined);
+    assert.equal(Object.hasOwn(linkResult.user ?? {}, "passwordHash"), false);
   } finally {
     await linkPending.close();
   }
@@ -312,14 +328,14 @@ test("Google exchange never leaks passwordHash, for linking or login", async () 
   const loginPending = await createPendingGoogleAuth({ mode: "login" });
   try {
     const loginResult = await completeGoogleAuth(loginPending);
-    assert.equal(loginResult.user.passwordHash, undefined);
+    assert.equal(Object.hasOwn(loginResult.user ?? {}, "passwordHash"), false);
   } finally {
     await loginPending.close();
   }
 });
 
 test("exchangeGoogleCallback rejects a code that was never issued", () => {
-  assert.throws(() => exchangeGoogleCallback("bogus-code", { headers: {} }), {
+  assert.throws(() => exchangeGoogleCallback("bogus-code", createAuthRequest({ headers: {} })), {
     status: 400,
     message: "Google login session expired",
   });

@@ -21,9 +21,9 @@ test("structured results select the recording and reject wrong variants and arti
     ],
   });
   const byId = new Map(evaluation.evaluations.map((entry) => [entry.candidate.provider.id, entry]));
-  assert.equal(byId.get("exact").decision, "accept");
-  assert.equal(byId.get("karaoke").decision, "reject");
-  assert.equal(byId.get("other").decision, "reject");
+  assert.equal(byId.get("exact")?.decision, "accept");
+  assert.equal(byId.get("karaoke")?.decision, "reject");
+  assert.equal(byId.get("other")?.decision, "reject");
 });
 
 test("the canonical request keeps recording and album identifiers separate", () => {

@@ -5,15 +5,15 @@ import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTe
 
 const [state, honker, { getDatabaseRevision }] = await setupIsolatedBackend(
   "on-demand-workers",
-  "backend/services/honkerDb.ts",
-  "backend/config/db-sqlite.ts",
+  () => import("../../backend/services/honkerDb.ts"),
+  () => import("../../backend/config/db-sqlite.ts"),
 );
 afterAll(() => cleanupIsolatedState(state));
 
 test(
   "a due schedule runs in background processes that exit once idle",
   { timeout: 30000 },
-  async (t) => {
+  async (t: import("vite-plus/test").TestContext) => {
     const scheduler = honker.getHonkerDb().scheduler();
     const previousIdleStop = process.env.AURRAL_WORKER_IDLE_STOP_MS;
     scheduler.add({
@@ -29,11 +29,11 @@ test(
     ]);
     tx.commit();
 
-    const started = Promise.withResolvers();
-    const finished = Promise.withResolvers();
-    const heartbeat = Promise.withResolvers();
-    const exited = Promise.withResolvers();
-    const exits = [];
+    const started = Promise.withResolvers<{ payload: string | null }>();
+    const finished = Promise.withResolvers<{ queue: string }>();
+    const heartbeat = Promise.withResolvers<{ memory: { rss: number; heapUsed: number } }>();
+    const exited = Promise.withResolvers<void>();
+    const exits: { group: string; code: number | null; retired: boolean }[] = [];
     process.env.NODE_ENV = "production";
     process.env.AURRAL_WORKER_IDLE_STOP_MS = "5000";
     const supervisor = createBackgroundProcessSupervisor({
@@ -62,7 +62,7 @@ test(
 
     supervisor.start();
     assert.deepEqual(supervisor.getGroups(), ["scheduler"]);
-    assert.match((await started.promise).payload, /"kind":"session-cleanup"/);
+    assert.match((await started.promise).payload ?? "", /"kind":"session-cleanup"/);
     assert.equal((await finished.promise).queue, "system-task-maintenance");
     const { memory } = await heartbeat.promise;
     assert.ok(memory.rss > 0 && memory.heapUsed > 0);
@@ -80,24 +80,32 @@ test(
   },
 );
 
-test("the download owner cancels one persisted job over IPC", { timeout: 30000 }, async (t) => {
-  const { downloadTracker } =
-    await import("../../backend/services/downloadJobs/downloadTracker.ts");
-  const jobId = downloadTracker.addJob(
-    { artistName: "Disposable IPC Artist", trackName: "Waiting song" },
-    "library",
-  );
-  downloadTracker.setPending(jobId, "Waiting for retry", { asRetryCycle: true });
-  const supervisor = createBackgroundProcessSupervisor({ groups: ["downloads"] });
-  process.env.NODE_ENV = "production";
-  t.onTestFinished(async () => {
-    await supervisor.stop();
-    process.env.NODE_ENV = "test";
-    downloadTracker.reconcileCommittedJobs();
-  });
-  supervisor.start();
-  const result = await supervisor.request("downloads", "cancelTrackDownload", [jobId]);
-  assert.equal(result.status, "cancelled");
-  assert.equal(result.cleanupFailed, false);
-  assert.equal(downloadTracker.getJob(jobId).status, "cancelled");
-});
+test(
+  "the download owner cancels one persisted job over IPC",
+  { timeout: 30000 },
+  async (t: import("vite-plus/test").TestContext) => {
+    const { downloadTracker } =
+      await import("../../backend/services/downloadJobs/downloadTracker.ts");
+    const jobId = downloadTracker.addJob(
+      { artistName: "Disposable IPC Artist", trackName: "Waiting song" },
+      "library",
+    );
+    assert.ok(jobId != null);
+    downloadTracker.setPending(jobId, "Waiting for retry", { asRetryCycle: true });
+    const supervisor = createBackgroundProcessSupervisor({ groups: ["downloads"] });
+    process.env.NODE_ENV = "production";
+    t.onTestFinished(async () => {
+      await supervisor.stop();
+      process.env.NODE_ENV = "test";
+      downloadTracker.reconcileCommittedJobs();
+    });
+    supervisor.start();
+    const result = await supervisor.request("downloads", "cancelTrackDownload", [jobId]);
+    assert.ok(
+      result && typeof result === "object" && "status" in result && "cleanupFailed" in result,
+    );
+    assert.equal(result.status, "cancelled");
+    assert.equal(result.cleanupFailed, false);
+    assert.equal(downloadTracker.getJob(jobId)!.status, "cancelled");
+  },
+);

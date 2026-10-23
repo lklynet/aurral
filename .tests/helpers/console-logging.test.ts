@@ -36,10 +36,13 @@ test("log diagnostics redact credentials, collapse lines, and cap length", () =>
   );
   assert.equal(safeLogDiagnostic("x".repeat(1000)).length, 501);
   assert.equal(safeLogDiagnostic("Connection refused"), "Connection refused");
-  const htmlError = new Error(
-    "<!DOCTYPE html><html><head><title>524: A timeout occurred</title></head><body>large page</body></html>",
+  const htmlError = Object.assign(
+    new Error(
+      "<!DOCTYPE html><html><head><title>524: A timeout occurred</title></head><body>large page</body></html>",
+    ),
+    { statusCode: 524 },
   );
-  htmlError.statusCode = 524;
+
   assert.equal(safeLogDiagnostic(htmlError), "Upstream HTML error (524): 524: A timeout occurred");
 });
 
@@ -57,7 +60,7 @@ test("HTML error titles are extracted without repeated scans of malformed input"
 });
 
 test("logger sink redacts nested provider diagnostics and credential fields", async () => {
-  const output = [];
+  const output: unknown[][] = [];
   const originalError = console.error;
   console.error = (...args) => output.push(args);
   try {
@@ -76,9 +79,10 @@ test("logger sink redacts nested provider diagnostics and credential fields", as
       rendered,
       /\/config\/private|user:pass|url-secret|bearer-secret|client-secret/,
     );
-    assert.equal(output[0][2].headers.authorization, "[redacted]");
-    assert.equal(output[0][2].headers.clientSecret, "[redacted]");
-    assert.equal(output[0][2].endpoint, "/album");
+    assert.partialDeepStrictEqual(output[0][2], {
+      headers: { authorization: "[redacted]", clientSecret: "[redacted]" },
+      endpoint: "/album",
+    });
     logger.error("workers", "Unsafe endpoint", { endpoint: "/album?token=endpoint-secret" });
     assert.doesNotMatch(JSON.stringify(output[1]), /endpoint-secret/);
   } finally {
@@ -87,7 +91,7 @@ test("logger sink redacts nested provider diagnostics and credential fields", as
 });
 
 test("simplified logger writes to console with level and category", async () => {
-  const output = [];
+  const output: unknown[][] = [];
   const original = {
     log: console.log,
     error: console.error,
@@ -104,7 +108,7 @@ test("simplified logger writes to console with level and category", async () => 
     logger.warn("test", "warn message");
     logger.error("test", "error message");
 
-    const rendered = (entry) => entry.slice(1).map(String).join(" ");
+    const rendered = (entry: unknown[]) => entry.slice(1).map(String).join(" ");
 
     assert.ok(
       output.some(
@@ -125,7 +129,7 @@ test("simplified logger writes to console with level and category", async () => 
 });
 
 test("regular logger hides routine info and debug output", async () => {
-  const output = [];
+  const output: unknown[][] = [];
   const original = {
     log: console.log,
     error: console.error,
@@ -145,7 +149,7 @@ test("regular logger hides routine info and debug output", async () => {
     logger.debug("test", "debug detail");
     logger.warn("test", "important warning");
 
-    const rendered = (entry) => entry.slice(1).map(String).join(" ");
+    const rendered = (entry: unknown[]) => entry.slice(1).map(String).join(" ");
 
     assert.doesNotMatch(output.map(rendered).join("\n"), /routine info|debug detail/);
     assert.match(output.map(rendered).join("\n"), /Playlist import job completed/);
@@ -181,7 +185,7 @@ test("regular server console suppresses raw routine output", () => {
 });
 
 test("an unhandled rejection with a null reason is logged without throwing", async () => {
-  const output = [];
+  const output: unknown[][] = [];
   const originalError = console.error;
   console.error = (...args) => output.push(args);
   try {

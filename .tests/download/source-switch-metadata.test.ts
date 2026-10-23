@@ -1,3 +1,4 @@
+import { createTrackedJob, trackedJob } from "./fixtures.ts";
 import { test, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import path from "node:path";
@@ -14,12 +15,12 @@ const [
   { holdForReview },
 ] = await setupIsolatedBackend(
   "source-switch-metadata",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/downloadJobs/downloadTracker.ts",
-  "backend/services/download/downloadClientSettings.ts",
-  "backend/services/downloadPipeline.ts",
-  "backend/services/pipelineHelpers.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
+  () => import("../../backend/services/download/downloadClientSettings.ts"),
+  () => import("../../backend/services/downloadPipeline.ts"),
+  () => import("../../backend/services/pipelineHelpers.ts"),
 );
 
 afterAll(() => cleanupIsolatedState(state));
@@ -41,12 +42,25 @@ const METADATA_KEYS = [
   "indexerName",
   "remoteUsername",
   "remoteFilename",
-];
+] as const;
 
-function storedMetadata(jobId) {
+function storedMetadata(jobId: string | null) {
   return {
     ...db
-      .prepare(`SELECT download_source AS downloadSource, download_client AS downloadClient,
+      .prepare<
+        unknown[],
+        {
+          downloadSource: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["download_source"];
+          downloadClient: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["download_client"];
+          downloadClientId: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["download_client_id"];
+          releaseGuid: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["release_guid"];
+          releaseTitle: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["release_title"];
+          indexerId: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["indexer_id"];
+          indexerName: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["indexer_name"];
+          remoteUsername: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["remote_username"];
+          remoteFilename: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["remote_filename"];
+        }
+      >(`SELECT download_source AS downloadSource, download_client AS downloadClient,
     download_client_id AS downloadClientId, release_guid AS releaseGuid, release_title AS releaseTitle,
     indexer_id AS indexerId, indexer_name AS indexerName, remote_username AS remoteUsername,
     remote_filename AS remoteFilename FROM playlist_download_jobs WHERE id = ?`)
@@ -54,14 +68,15 @@ function storedMetadata(jobId) {
   };
 }
 
-function useOnlySources(t, ...sources) {
-  for (const id of ["slskd", "deemix", "ytdlp", "nzbget", "sabnzbd"]) {
+function useOnlySources(t: import("vite-plus/test").TestContext, ...sources: string[]) {
+  for (const id of ["slskd", "deemix", "ytdlp", "nzbget", "sabnzbd"] as const) {
     vi.spyOn(getDownloadClient(id), "isConfigured").mockImplementation(() => sources.includes(id));
   }
 }
 
-function jobMetadata(jobId) {
+function jobMetadata(jobId: string | null) {
   const job = downloadTracker.getJob(jobId);
+  assert.ok(job != null);
   return Object.fromEntries(METADATA_KEYS.map((key) => [key, job[key] ?? null]));
 }
 
@@ -69,17 +84,22 @@ test("a job that moves from yt-dlp to slskd names only slskd's download", async 
   useOnlySources(t, "ytdlp", "slskd");
   vi.spyOn(getDownloadClient("ytdlp"), "downloadAudio").mockImplementation(async () => ({
     filePath: "",
+    stagingDir: "",
   }));
   const slskd = getDownloadClient("slskd");
   vi.spyOn(slskd, "enqueueBatch").mockImplementation(async ({ username }) => ({
     username,
+    transferId: "transfer-1",
+    response: {},
     transfers: [{ id: "transfer-1" }],
   }));
-  vi.spyOn(slskd, "getEvents").mockImplementation(async () => []);
-  const jobId = downloadTracker.addJob(
+  vi.spyOn(slskd, "getEvents").mockImplementation(async () => ({ events: [], totalCount: 0 }));
+  const jobId = createTrackedJob(
+    downloadTracker,
     { artistName: "The Cure", trackName: "Boys Don't Cry" },
     "library",
   );
+  assert.ok(jobId != null);
   downloadTracker.setDownloading(jobId);
 
   const finalize = await processPipelinePayload({
@@ -98,8 +118,13 @@ test("a job that moves from yt-dlp to slskd names only slskd's download", async 
       },
     ],
   });
-  assert.equal(downloadTracker.getJob(jobId).releaseTitle, "The Cure - Boys Don't Cry (Audio)");
+  assert.ok(finalize != null);
+  assert.equal(
+    trackedJob(downloadTracker, jobId).releaseTitle,
+    "The Cure - Boys Don't Cry (Audio)",
+  );
   const next = await processPipelinePayload(finalize);
+  assert.ok(next != null);
   assert.equal(next.source, "slskd");
 
   const polling = await processPipelinePayload({
@@ -110,6 +135,7 @@ test("a job that moves from yt-dlp to slskd names only slskd's download", async 
       { raw: { user: "peer", file: "Music\\The Cure\\Boys Don't Cry.flac", size: 30000000 } },
     ],
   });
+  assert.ok(polling != null);
   assert.equal(polling.phase, "poll");
 
   const expected = {
@@ -129,10 +155,12 @@ test("a job that moves from yt-dlp to slskd names only slskd's download", async 
 
 test("a Usenet file held while slskd is tried goes to review with its own release and indexer", async (t) => {
   useOnlySources(t, "nzbget", "slskd");
-  const jobId = downloadTracker.addJob(
+  const jobId = createTrackedJob(
+    downloadTracker,
     { artistName: "The Cure", trackName: "Fire in Cairo" },
     "library",
   );
+  assert.ok(jobId != null);
   let enqueuedFrom = null;
   vi.spyOn(getDownloadClient("slskd"), "enqueueBatch").mockImplementation(async () => {
     enqueuedFrom = jobMetadata(jobId);
@@ -154,7 +182,7 @@ test("a Usenet file held while slskd is tried goes to review with its own releas
   const sourcePath = path.join(state.baseDir, "held-usenet", "Fire in Cairo.flac");
   await mkdir(path.dirname(sourcePath), { recursive: true });
   await writeFile(sourcePath, "held");
-  const heldForReview = holdForReview(downloadTracker.getJob(jobId), {
+  const heldForReview = holdForReview(trackedJob(downloadTracker, jobId), {
     source: "usenet",
     sourcePath,
     reason: "Duration differs",
@@ -181,7 +209,7 @@ test("a Usenet file held while slskd is tried goes to review with its own releas
     remoteFilename: "Music\\The Cure\\Fire in Cairo.flac",
   });
   assert.equal(next, null);
-  assert.equal(downloadTracker.getJob(jobId).status, "blocked");
+  assert.equal(trackedJob(downloadTracker, jobId).status, "blocked");
   assert.deepEqual(storedMetadata(jobId), usenet);
   assert.deepEqual(jobMetadata(jobId), usenet);
 });

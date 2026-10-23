@@ -1,3 +1,4 @@
+import { asAppError } from "../../lib/errors.ts";
 import { test, beforeAll, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
@@ -6,7 +7,6 @@ import bcrypt from "bcrypt";
 import {
   setupIsolatedBackend,
   cleanupIsolatedState,
-  importFromRepo,
   resetDatabase,
   startServerProcess,
 } from "../helpers/backendTestHarness.ts";
@@ -19,15 +19,24 @@ const [
   { plexConnectionStore },
 ] = await setupIsolatedBackend(
   "identity-link-routes",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/config/session-helpers.ts",
-  "backend/services/plex/plexConnectionStore.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/config/session-helpers.ts"),
+  () => import("../../backend/services/plex/plexConnectionStore.ts"),
 );
 
-let server = null;
+let server: {
+  child: import("node:child_process").ChildProcessByStdio<
+    null,
+    import("node:stream").Readable,
+    import("node:stream").Readable
+  >;
+  port: number;
+  logs: () => string;
+  stop(): Promise<void>;
+};
 
-async function login(username, password) {
+async function login(username: string, password: string) {
   const response = await fetch(`http://127.0.0.1:${server.port}/api/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -38,11 +47,11 @@ async function login(username, password) {
   return payload.token;
 }
 
-async function apiFetch(token, path, options = {}) {
+async function apiFetch(token: string | null, path: string, options: RequestInit = {}) {
   const headers = {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(options.body ? { "Content-Type": "application/json" } : {}),
-    ...(options.headers || {}),
+    ...Object.fromEntries(new Headers(options.headers)),
   };
   const response = await fetch(`http://127.0.0.1:${server.port}${path}`, {
     ...options,
@@ -53,7 +62,7 @@ async function apiFetch(token, path, options = {}) {
   return { response, payload };
 }
 
-function ageSessionByToken(token, ageMs) {
+function ageSessionByToken(token: string, ageMs: number) {
   db.prepare("UPDATE sessions SET reauthenticated_at = ? WHERE token = ?").run(
     Date.now() - ageMs,
     token,
@@ -83,6 +92,7 @@ test("GET /me/identities requires authentication", async () => {
 
 test("GET /me/identities lists only the caller's own linked identities", async () => {
   const userA = userOps.createUser("identity-user-a", bcrypt.hashSync("password123", 4), "user");
+  assert.ok(userA != null);
   userOps.createUser("identity-user-b", bcrypt.hashSync("password123", 4), "user");
   userIdentityOps.link(userA.id, {
     providerType: "oidc",
@@ -139,6 +149,7 @@ test("reauth accepts the correct password and rejects an incorrect one", async (
 
 test("unlinking an identity requires a recent reauth and succeeds after confirming it", async () => {
   const user = userOps.createUser("stale-session-user", bcrypt.hashSync("password123", 4), "user");
+  assert.ok(user != null);
   const identity = userIdentityOps.link(user.id, {
     providerType: "oidc",
     providerKey: "https://issuer.example/",
@@ -171,6 +182,7 @@ test("unlinking an identity requires a recent reauth and succeeds after confirmi
 
 test("unlinking a nonexistent or another user's identity 404s", async () => {
   const userA = userOps.createUser("owner-user", bcrypt.hashSync("password123", 4), "user");
+  assert.ok(userA != null);
   userOps.createUser("other-user", bcrypt.hashSync("password123", 4), "user");
   const identity = userIdentityOps.link(userA.id, {
     providerType: "oidc",
@@ -194,12 +206,13 @@ test("a successful local login records that the account has a usable local passw
     null,
     false,
   );
-  assert.equal(userOps.getUserById(legacy.id).hasLocalPassword, false);
+  assert.ok(legacy != null);
+  assert.equal(userOps.getUserById(legacy.id)!.hasLocalPassword, false);
 
   await login("legacy-local-user", "password123");
 
   assert.equal(
-    userOps.getUserById(legacy.id).hasLocalPassword,
+    userOps.getUserById(legacy.id)!.hasLocalPassword,
     true,
     "logging in with a password proves one exists, which re-arms lockout and password-change checks",
   );
@@ -231,6 +244,7 @@ test("changing a password requires a recent auth, so a stale session cannot take
 test("lockout protection blocks removing the last usable auth method", async () => {
   const passwordHash = bcrypt.hashSync("unused-random-hash", 4);
   const oidcOnlyUser = userOps.createUser("oidc-only-user", passwordHash, "user", null, false);
+  assert.ok(oidcOnlyUser != null);
   const identity = userIdentityOps.link(oidcOnlyUser.id, {
     providerType: "oidc",
     providerKey: "https://issuer.example/",
@@ -248,6 +262,7 @@ test("lockout protection blocks removing the last usable auth method", async () 
 
 test("removing Plex from connected accounts also clears its saved connection", async () => {
   const user = userOps.createUser("generic-plex-unlink", bcrypt.hashSync("password123", 4));
+  assert.ok(user != null);
   const identity = userIdentityOps.link(user.id, {
     providerType: "plex",
     providerKey: "plex",
@@ -272,6 +287,7 @@ test("removing Plex from connected accounts also clears its saved connection", a
 
 test("replacing a provider identity removes the former Plex subject", () => {
   const user = userOps.createUser("plex-replacement", bcrypt.hashSync("password123", 4));
+  assert.ok(user != null);
   userIdentityOps.link(user.id, {
     providerType: "plex",
     providerKey: "plex",
@@ -292,9 +308,11 @@ test("replacing a provider identity removes the former Plex subject", () => {
 });
 
 test("a conflicting Plex identity rolls back the connection and identity replacement", async () => {
-  const { persistSelfPlexLink } = await importFromRepo("backend/routes/users/plexLinkHandlers.ts");
+  const { persistSelfPlexLink } = await import("../../backend/routes/users/plexLinkHandlers.ts");
   const owner = userOps.createUser("plex-conflict-owner", "unused", "user");
+  assert.ok(owner != null);
   const contender = userOps.createUser("plex-conflict-contender", "unused", "user");
+  assert.ok(contender != null);
   userIdentityOps.link(owner.id, {
     providerType: "plex",
     providerKey: "plex",
@@ -328,10 +346,11 @@ test("a conflicting Plex identity rolls back the connection and identity replace
           subject: "claimed-subject",
         },
       ),
-    (error) => String(error?.code || "").startsWith("SQLITE_CONSTRAINT"),
+    (error) => String(asAppError(error)?.code || "").startsWith("SQLITE_CONSTRAINT"),
   );
 
   const connection = plexConnectionStore.getConnection(contender.id);
+  assert.ok(connection != null);
   assert.equal(connection.token, "original-token");
   assert.equal(connection.clientId, "original-client");
   assert.equal(connection.plexAccountId, "original-subject");

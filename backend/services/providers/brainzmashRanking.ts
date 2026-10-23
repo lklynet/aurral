@@ -1,12 +1,14 @@
 import type { NormalizedRelease, NormalizedTrack } from "./brainzmashMappers.ts";
 
-type Track = NormalizedTrack & {
+type Track = Partial<NormalizedTrack> & {
   discNumber?: unknown;
   recordingMbid?: unknown;
   recordingMbidAliases?: string[];
 };
 
 type Release = NormalizedRelease & { releaseMbid?: unknown };
+
+type PressingRelease = Partial<Omit<Release, "tracks">> & { tracks?: Track[] };
 
 type ArtistCandidate = {
   name?: unknown;
@@ -377,8 +379,8 @@ function recordingIds(track: Track | null | undefined, aliases: Map<string, stri
 // but a remix or re-recording with the same titles does not. `aliases` maps
 // a recording ID to the IDs merged into it.
 export function pressingLengths(
-  releases: Release[],
-  release: Release,
+  releases: PressingRelease[],
+  release: PressingRelease,
   aliases: Map<string, string[]> = new Map(),
 ) {
   const own = lowerId(release?.id || release?.releaseMbid);
@@ -390,7 +392,7 @@ export function pressingLengths(
         entry !== release &&
         (!own || lowerId(entry?.id || entry?.releaseMbid) !== own) &&
         (!officialOnly || isOfficial(entry)) &&
-        entry?.tracks?.length === release.tracks.length &&
+        entry?.tracks?.length === release.tracks?.length &&
         runningOrder(entry) === order,
     )
     .map(tracksInOrder);

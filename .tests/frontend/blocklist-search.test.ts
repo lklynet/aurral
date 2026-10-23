@@ -8,7 +8,7 @@ test("blocklist suggestions include local artists when the catalog bucket is emp
     top: null,
     catalog: { artists: [] },
     library: {
-      artists: [{ id: "radiohead", name: "Radiohead", type: "artist" }],
+      artists: [{ id: "radiohead", name: "Radiohead" }],
     },
   });
 
@@ -18,15 +18,25 @@ test("blocklist suggestions include local artists when the catalog bucket is emp
 test("blocklist suggestions combine and deduplicate unified artist results", () => {
   const suggestions = buildBlocklistArtistSuggestions(
     {
-      top: { id: "radiohead", name: "Radiohead", type: "artist" },
+      top: {
+        id: "radiohead",
+        name: "Radiohead",
+        type: "artist",
+        source: "library",
+        key: "artist:radiohead",
+        sortName: "Radiohead",
+        inLibrary: true,
+        hasMbid: false,
+        score: 1,
+      },
       catalog: {
         artists: [
-          { id: "radiohead", name: "Radiohead", type: "artist" },
-          { id: "the-smile", name: "The Smile", type: "artist" },
+          { id: "radiohead", name: "Radiohead" },
+          { id: "the-smile", name: "The Smile" },
         ],
       },
       library: {
-        artists: [{ id: "atoms-for-peace", name: "Atoms for Peace", type: "artist" }],
+        artists: [{ id: "atoms-for-peace", name: "Atoms for Peace" }],
       },
     },
     2,

@@ -7,6 +7,7 @@ import {
   getUpcomingTracks,
   initialQueueState,
   normalizePlaylistQueueTrack,
+  normalizeQueueTrack,
   normalizePreviewTrack,
   queueReducer,
   shouldRestartTrack,
@@ -125,6 +126,7 @@ test("album artwork changes preserve track overrides restored from older queues"
       },
     ],
     currentIndex: 0,
+    playbackOrder: [0, 1],
   });
 
   const updated = queueReducer(restored, {
@@ -138,24 +140,21 @@ test("album artwork changes preserve track overrides restored from older queues"
   assert.equal(updated.queue[1].artwork, "/api/library/artwork/album/20?v=new");
 });
 
-const queueTracks = Array.from({ length: 8 }, (_, index) => ({
-  id: `t${index}`,
-  title: `Track ${index}`,
-  src: `/stream/t${index}`,
-}));
+const queueTracks = Array.from({ length: 8 }, (_, index) =>
+  normalizeQueueTrack({
+    id: `t${index}`,
+    title: `Track ${index}`,
+    src: `/stream/t${index}`,
+  }),
+);
 
-const startQueue = (options = {}) =>
-  queueReducer(initialQueueState, {
-    type: "PLAY_QUEUE",
-    tracks: queueTracks,
-    startTrackId: null,
-    shuffle: false,
-    source: null,
-    ...options,
-  });
+const startQueue = (
+  options: Partial<Extract<Parameters<typeof queueReducer>[1], { type: "PLAY_QUEUE" }>> = {},
+) => queueReducer(initialQueueState, { type: "PLAY_QUEUE", tracks: queueTracks, ...options });
 
-const currentId = (state) => state.queue[state.playbackOrder[state.currentIndex]].id;
-const remainingIds = (state) =>
+const currentId = (state: ReturnType<typeof queueReducer>) =>
+  state.queue[state.playbackOrder[state.currentIndex]].id;
+const remainingIds = (state: ReturnType<typeof queueReducer>) =>
   state.playbackOrder.slice(state.currentIndex).map((index) => state.queue[index].id);
 const allIds = queueTracks.map((track) => track.id);
 
@@ -225,7 +224,7 @@ test("previous restarts a track after three seconds and otherwise goes back one 
 });
 
 test("shuffle stays on for every queue played next and the order always matches it", () => {
-  const isInOrder = (state) =>
+  const isInOrder = (state: import("../../frontend/src/utils/audioQueue.ts").QueueState) =>
     state.playbackOrder.every((queueIndex, index) => queueIndex === index);
   const shuffleOn = queueReducer(startQueue(), { type: "SET_SHUFFLE", enabled: true });
   const orders = new Set();
@@ -274,11 +273,16 @@ test("shuffle stays on for every queue played next and the order always matches 
   );
 });
 
-const extra = (id) => ({ id, title: id, src: `/stream/${id}` });
-const upcomingIds = (state) => getUpcomingTracks(state).map(({ track }) => track.id);
-const entryOf = (state, id) => state.queue.find((track) => track.id === id).entryId;
-const insert = (state, ids, position) =>
-  queueReducer(state, { type: "INSERT_TRACKS", tracks: ids.map(extra), position });
+const extra = (id: string) => normalizeQueueTrack({ id, title: id, src: `/stream/${id}` });
+const upcomingIds = (state: import("../../frontend/src/utils/audioQueue.ts").QueueState) =>
+  getUpcomingTracks(state).map(({ track }) => track.id);
+const entryOf = (state: import("../../frontend/src/utils/audioQueue.ts").QueueState, id: string) =>
+  state.queue.find((track) => track.id === id)!.entryId;
+const insert = (
+  state: import("../../frontend/src/utils/audioQueue.ts").QueueState,
+  ids: string[],
+  position: "next" | "end",
+) => queueReducer(state, { type: "INSERT_TRACKS", tracks: ids.map(extra), position });
 
 test("play next goes right after the current track and add to queue goes last, without restarting it", () => {
   const playing = startQueue({ startTrackId: "t5" });
@@ -336,7 +340,7 @@ test("removing and reordering up next keeps the current track playing", () => {
   const shuffled = startQueue({ startTrackId: "t4", shuffle: true });
   const [first, ...rest] = getUpcomingTracks(shuffled).map(({ track }) => track.entryId);
   const moved = queueReducer(shuffled, { type: "REORDER_UPCOMING", entryIds: [...rest, first] });
-  assert.equal(getUpcomingTracks(moved).at(-1).track.entryId, first);
+  assert.equal(getUpcomingTracks(moved).at(-1)!.track.entryId, first);
   assert.deepEqual(upcomingIds(queueReducer(moved, { type: "SET_SHUFFLE", enabled: false })), [
     "t5",
     "t6",

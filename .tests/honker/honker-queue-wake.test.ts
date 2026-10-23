@@ -5,12 +5,15 @@ import { fileURLToPath } from "node:url";
 import { createBackgroundProcessSupervisor } from "../../backend/services/backgroundProcessSupervisor.ts";
 import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.ts";
 
-const [state, honker] = await setupIsolatedBackend("queue-wake", "backend/services/honkerDb.ts");
+const [state, honker] = await setupIsolatedBackend(
+  "queue-wake",
+  () => import("../../backend/services/honkerDb.ts"),
+);
 afterAll(() => cleanupIsolatedState(state));
 
 test("web enqueue persists registered and outbox jobs before notifying their owner", () => {
   process.env.NODE_ENV = "production";
-  const delivered = [];
+  const delivered: { queue: string; id: number | undefined }[] = [];
   try {
     honker.configureHonkerQueueWake((queue) => {
       const rows = honker.listHonkerJobs(queue);
@@ -49,12 +52,12 @@ test("web finds the owners of due work and due schedules without a wake", () => 
   const now = Math.floor(Date.now() / 1000);
   const database = honker.getHonkerDb();
   const scheduler = database.scheduler();
-  const execute = (sql, params) => {
+  const execute = (sql: string, params: (string | number)[]) => {
     const tx = database.transaction();
     tx.execute(sql, params);
     tx.commit();
   };
-  const hasWork = (group) => honker.listBackgroundGroupsWithWork().includes(group);
+  const hasWork = (group: string) => honker.listBackgroundGroupsWithWork().includes(group);
   const dueId = honker.getMaintenanceTaskQueue().enqueue({ kind: "session-cleanup" });
   const laterId = honker
     .getReleaseMetadataQueue()
@@ -92,9 +95,9 @@ test("web finds the owners of due work and due schedules without a wake", () => 
 test(
   "web wakeups drain a burst in a real isolated owner process",
   { timeout: 10000 },
-  async (t) => {
-    const ready = Promise.withResolvers();
-    const drained = Promise.withResolvers();
+  async (t: import("vite-plus/test").TestContext) => {
+    const ready = Promise.withResolvers<void>();
+    const drained = Promise.withResolvers<void>();
     const completed = new Set();
     const expected = new Set();
     const fixture = fileURLToPath(new URL("../fixtures/queue-wake-child.mts", import.meta.url));

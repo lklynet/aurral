@@ -3,12 +3,14 @@ import { startSystemTaskWorker } from "../../backend/services/systemTaskWorker.t
 import { startReleaseMetadataWorker } from "../../backend/services/releaseMetadataWorker.ts";
 const start = process.env.AURRAL_BACKGROUND_WORKER_GROUP === "release-metadata"
   ? startReleaseMetadataWorker : startSystemTaskWorker;
-process.on("message", async (message) => {
+type ParentMessage = { type: "queue-wake" | "sample" | "shutdown" };
+
+process.on("message", async (message: ParentMessage) => {
   if (message.type === "queue-wake") void start();
-  if (message.type === "sample") process.send({ type: "sample", rss: process.memoryUsage().rss, cpu: process.cpuUsage() });
+  if (message.type === "sample") process.send?.({ type: "sample", rss: process.memoryUsage().rss, cpu: process.cpuUsage() });
   if (message.type === "shutdown") {
     await shutdownHonkerInfrastructure();
     process.exit(0);
   }
 });
-process.send({ type: "ready" });
+process.send?.({ type: "ready" });

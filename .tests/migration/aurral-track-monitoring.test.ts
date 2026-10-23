@@ -39,7 +39,14 @@ test("upgrading moves album monitoring onto tracks and claims unowned Aurral dow
         "INSERT INTO library_artists (identity_key, name, created_at, updated_at) VALUES ('artist:upgrade', 'Upgrade Artist', ?, ?)",
       )
       .run(now, now).lastInsertRowid;
-    const addAlbum = (key, { managedBy = null, monitorMode = null, monitored = true } = {}) => {
+    const addAlbum = (
+      key: string,
+      {
+        managedBy = null,
+        monitorMode = null,
+        monitored = true,
+      }: { managedBy?: string | null; monitorMode?: string | null; monitored?: boolean } = {},
+    ) => {
       const albumId = db
         .prepare(
           `INSERT INTO library_albums (identity_key, artist_id, title, metadata_json, created_at, updated_at)
@@ -54,7 +61,11 @@ test("upgrading moves album monitoring onto tracks and claims unowned Aurral dow
       }
       return albumId;
     };
-    const addTrack = (key, albumIds, file = null) => {
+    const addTrack = (
+      key: string,
+      albumIds: (number | bigint)[],
+      file: { source: string; path: string } | null = null,
+    ) => {
       const trackId = db
         .prepare(
           "INSERT INTO library_tracks (identity_key, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
@@ -109,18 +120,33 @@ test("upgrading moves album monitoring onto tracks and claims unowned Aurral dow
 
     start();
 
-    const monitored = (trackId) =>
-      db.prepare("SELECT monitored FROM library_tracks WHERE id = ?").get(trackId).monitored;
-    const owner = (albumId) =>
+    const monitored = (trackId: number | bigint) =>
       db
-        .prepare(
+        .prepare<
+          unknown[],
+          { monitored: import("../../backend/db/rows.ts").LibraryTracksRow["monitored"] }
+        >("SELECT monitored FROM library_tracks WHERE id = ?")
+        .get(trackId)?.monitored;
+    const owner = (albumId: number | bigint) =>
+      db
+        .prepare<
+          unknown[],
+          {
+            managedBy: import("../../backend/db/rows.ts").LibraryManagementRow["managed_by"];
+            monitorMode: import("../../backend/db/rows.ts").LibraryManagementRow["monitor_mode"];
+          }
+        >(
           "SELECT managed_by AS managedBy, monitor_mode AS monitorMode FROM library_management WHERE entity_kind = 'album' AND entity_id = ?",
         )
         .get(albumId) || null;
-    const albumMonitored = (albumId) =>
+    const albumMonitored = (albumId: number | bigint) =>
       JSON.parse(
-        db.prepare("SELECT metadata_json FROM library_albums WHERE id = ?").get(albumId)
-          .metadata_json,
+        db
+          .prepare<
+            unknown[],
+            { metadata_json: import("../../backend/db/rows.ts").LibraryAlbumsRow["metadata_json"] }
+          >("SELECT metadata_json FROM library_albums WHERE id = ?")
+          .get(albumId)?.metadata_json ?? "{}",
       ).monitored;
 
     assert.deepEqual(

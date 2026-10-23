@@ -54,13 +54,21 @@ type YtdlpStepPayload = Parameters<typeof processYtdlpPipelinePayload>[0];
 type DeemixStepPayload = Parameters<typeof processDeemixPipelinePayload>[0];
 type SourceError = { source: string; message: string };
 
-export type PipelinePayload = TrackerPayload & {
-  exhaustedSources?: string[];
-  sourceErrors?: SourceError[];
-  releaseWaits?: number | null;
-  upgradeWaits?: number;
-  delaySeconds?: number;
+type AdapterPayload = SlskdStepPayload | UsenetStepPayload | YtdlpStepPayload | DeemixStepPayload;
+type AdapterState<Payload> = {
+  [Key in Exclude<Payload extends unknown ? keyof Payload : never, keyof TrackerPayload>]?:
+    | (Payload extends unknown ? (Key extends keyof Payload ? Payload[Key] : never) : never)
+    | null;
 };
+
+export type PipelinePayload = TrackerPayload &
+  AdapterState<AdapterPayload> & {
+    exhaustedSources?: string[];
+    sourceErrors?: SourceError[];
+    releaseWaits?: number | null;
+    upgradeWaits?: number;
+    delaySeconds?: number;
+  };
 
 type SourceFields = Partial<
   Pick<

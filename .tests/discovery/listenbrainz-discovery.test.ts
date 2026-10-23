@@ -1,3 +1,6 @@
+import { createResponse, createRouteHarness } from "../library/routeHarness.ts";
+import { testUser } from "../helpers/userFixtures.ts";
+import { listeningAddress } from "../helpers/backendTestHarness.ts";
 import { test, beforeAll, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import express from "express";
@@ -18,16 +21,16 @@ const [
   { FlowTrackSource },
 ] = await setupIsolatedBackend(
   "listenbrainz-discovery",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/discovery/index.ts",
-  "backend/services/discovery/userDiscovery.ts",
-  "backend/routes/search.ts",
-  "backend/routes/artists/handlers/similar.ts",
-  "backend/services/flows/flowTrackSource.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/discovery/index.ts"),
+  () => import("../../backend/services/discovery/userDiscovery.ts"),
+  () => import("../../backend/routes/search.ts"),
+  () => import("../../backend/routes/artists/handlers/similar.ts"),
+  () => import("../../backend/services/flows/flowTrackSource.ts"),
 );
 
-const mbid = (index) => `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`;
+const mbid = (index: number) => `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`;
 const LIKED = { name: "Liked Artist", mbid: mbid(1) };
 const LIBRARY = { name: "Library One", mbid: mbid(2) };
 const CLOSE_PICK = { name: "Close Pick", mbid: mbid(11) };
@@ -48,15 +51,16 @@ const similarBySeed = new Map([
 
 const originalFetch = globalThis.fetch;
 const originalLastfmApiKey = process.env.LASTFM_API_KEY;
-let requests = [];
-let alice;
+let requests: URL[] = [];
+let alice: NonNullable<ReturnType<typeof userOps.createUser>>;
 
-const json = (body, status = 200) =>
+const json = (body: unknown, status: number = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
-const respond = (url) => {
+const respond = (url: URL) => {
   if (url.hostname === "labs.api.listenbrainz.org" && url.pathname === "/similar-artists/json") {
     const seed = url.searchParams.get("artist_mbids");
+    assert.ok(seed != null);
     return json(
       (similarBySeed.get(seed) || []).map((artist) => ({
         artist_mbid: artist.mbid,
@@ -69,7 +73,7 @@ const respond = (url) => {
   if (url.hostname === "api.listenbrainz.org" && url.pathname === "/1/metadata/artist/") {
     return json(
       url.searchParams
-        .get("artist_mbids")
+        .get("artist_mbids")!
         .split(",")
         .map((artistMbid) => ({
           artist_mbid: artistMbid,
@@ -137,7 +141,9 @@ beforeAll(() => {
     `INSERT INTO library_artists (identity_key, mbid, name, created_at, updated_at)
      VALUES ('library-one', ?, ?, 1, 1)`,
   ).run(LIBRARY.mbid, LIBRARY.name);
-  alice = userOps.createUser("alice", "hash");
+  const created = userOps.createUser("alice", "hash");
+  assert.ok(created);
+  alice = created;
   discovery.addDiscoveryFeedback(alice.id, {
     artistId: LIKED.mbid,
     artistName: LIKED.name,
@@ -158,7 +164,10 @@ afterAll(async () => {
 });
 
 test("without a Last.fm key each user gets personal recommendations from ListenBrainz", async () => {
-  assert.equal((await discovery.updateUserDiscoveryCache(alice.id)).refreshed, true);
+  assert.deepEqual(await discovery.updateUserDiscoveryCache(alice.id), {
+    refreshed: true,
+    recommendationCount: 2,
+  });
 
   const { body } = await getUserDiscovery(alice.id, 0);
   assert.equal(body.provider, "listenbrainz");
@@ -173,7 +182,7 @@ test("without a Last.fm key each user gets personal recommendations from ListenB
   assert.equal(body.recommendations[0].seedCount, 2);
   assert.deepEqual([...body.topGenres].sort(), ["dream pop", "shoegaze"]);
   assert.equal(
-    body.recommendations.some((artist) => artist.tags.includes("seen live")),
+    body.recommendations.some((artist) => artist.tags?.includes("seen live")),
     false,
   );
   assert.equal(
@@ -183,28 +192,33 @@ test("without a Last.fm key each user gets personal recommendations from ListenB
   const likedTagLookups = requests.filter(
     (url) =>
       url.pathname === "/1/metadata/artist/" &&
-      url.searchParams.get("artist_mbids").split(",").includes(LIKED.mbid),
+      url.searchParams.get("artist_mbids")!.split(",").includes(LIKED.mbid),
   );
   assert.equal(likedTagLookups.length, 1);
 });
 
-const requestApi = async (mountPath, router, path) => {
+const requestApi = async (mountPath: string, router: express.Router, path: string) => {
   const app = express();
   app.use((req, _res, next) => {
-    req.user = { id: alice.id, role: "user" };
+    req.user = testUser(alice.id);
     next();
   });
   app.use(mountPath, router);
-  const server = await new Promise((resolve) => {
+  const server = await new Promise<
+    import("node:http").Server<
+      typeof import("node:http").IncomingMessage,
+      typeof import("node:http").ServerResponse
+    >
+  >((resolve) => {
     const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
   });
   try {
     const response = await originalFetch(
-      `http://127.0.0.1:${server.address().port}${mountPath}${path}`,
+      `http://127.0.0.1:${listeningAddress(server).port}${mountPath}${path}`,
     );
     return { status: response.status, body: await response.json() };
   } finally {
-    await new Promise((resolve) => server.close(resolve));
+    await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 };
 
@@ -217,22 +231,23 @@ test("without a Last.fm key tag search lists MusicBrainz's artists for the tag",
 
   assert.equal(status, 200);
   assert.deepEqual(
-    body.items.map((artist) => artist.name),
+    body.items.map((artist: { name: string }) => artist.name),
     ["Shoegaze Leader", "Shoegaze Second"],
   );
   assert.equal(body.hasMore, false);
   const search = requests.find((url) => url.hostname === "musicbrainz.org");
+  assert.ok(search != null);
   assert.equal(search.searchParams.get("query"), 'tag:"shoegaze"');
 });
 
 test("without a Last.fm key artist pages list ListenBrainz similar artists", async () => {
-  let handler;
-  registerSimilar({ get: (_path, ...handlers) => (handler = handlers.at(-1)) });
-  let body;
-  await handler(
+  const routes = createRouteHarness(registerSimilar);
+  const res = createResponse<{ artists: { name: string; match: number }[] }>();
+  await routes.get("GET /:mbid/similar")(
     { params: { mbid: LIKED.mbid }, query: { artistName: LIKED.name } },
-    { json: (value) => (body = value) },
+    res,
   );
+  const { body } = res;
 
   assert.deepEqual(
     body.artists.map((artist) => [artist.name, artist.match]),
@@ -252,7 +267,7 @@ test("without a Last.fm key a Mix flow picks the library artist's own Deezer top
 
   assert.deepEqual(
     plan.primaryTracks.map((track) => [
-      track.source,
+      "source" in track ? track.source : undefined,
       track.artistName,
       track.trackName,
       track.albumName,
@@ -287,6 +302,6 @@ test("switching sources never keeps the other source's trending artists when Lis
 
   const cache = dbOps.getDiscoveryCache();
   assert.equal(cache.provider, "listenbrainz");
-  assert.deepEqual(cache.globalTop, []);
+  assert.deepEqual([...cache.globalTop], []);
   assert.ok(requests.some((url) => url.pathname === "/1/stats/sitewide/artists"));
 });

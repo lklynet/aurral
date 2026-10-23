@@ -1,4 +1,6 @@
-import { test, beforeEach, afterAll, vi } from "vite-plus/test";
+import { requireFixture } from "../playlists/fixtures.ts";
+import { captureRouteHandlers } from "../library/routeHarness.ts";
+import { test, beforeEach, afterAll, vi, type MockInstance } from "vite-plus/test";
 import assert from "node:assert/strict";
 import {
   setupIsolatedBackend,
@@ -15,20 +17,14 @@ const [
   { registerLidarr },
 ] = await setupIsolatedBackend(
   "lidarr-test-session",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/lidarrClient.ts",
-  "backend/services/lidarrTestSession.ts",
-  "backend/routes/settings/handlers/lidarr.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/lidarrClient.ts"),
+  () => import("../../backend/services/lidarrTestSession.ts"),
+  () => import("../../backend/routes/settings/handlers/lidarr.ts"),
 );
 
-const routes = new Map();
-registerLidarr({
-  get(route, handler) {
-    routes.set(route, handler);
-  },
-  post() {},
-});
+const routes = captureRouteHandlers(registerLidarr, "get");
 
 beforeEach(() => {
   resetDatabase(db);
@@ -65,31 +61,33 @@ for (const query of [{}, { url: "http://test-lidarr:8686/", apiKey: " test-key "
     const savedSettings = dbOps.getSettings().integrations.lidarr;
     const savedCache = { data: [{ path: "/cached/saved/music" }], at: Date.now() };
     lidarrClient._rootFoldersCache = savedCache;
-    const request = vi
-      .spyOn(LidarrClient.prototype, "request")
-      .mockImplementation(async function (endpoint) {
-        assert.equal(endpoint, "/rootFolder");
-        assert.notEqual(this, lidarrClient);
-        assert.equal(this.config.url, query.url ? "http://test-lidarr:8686" : originalUrl);
-        assert.equal(this.config.apiKey, query.url ? "test-key" : originalKey);
-        assert.equal(this.config.rootFolderPath, null);
-        assert.deepEqual(this.getConfiguredRootFolderPaths(), []);
-        return [{ id: 1, path: "/test/music" }];
-      });
+    const request = vi.spyOn(LidarrClient.prototype, "request").mockImplementation(async function (
+      this: InstanceType<typeof LidarrClient>,
+      endpoint,
+    ) {
+      assert.equal(endpoint, "/rootFolder");
+      assert.notEqual(this, lidarrClient);
+      assert.equal(this.config.url, query.url ? "http://test-lidarr:8686" : originalUrl);
+      assert.equal(this.config.apiKey, query.url ? "test-key" : originalKey);
+      assert.equal(this.config.rootFolderPath, null);
+      assert.deepEqual(this.getConfiguredRootFolderPaths(), []);
+      return [{ id: 1, path: "/test/music" }];
+    });
     const response = {
       statusCode: 200,
-      body: null,
-      status(code) {
+      body: [] as { path: string }[],
+      status(code: number) {
         this.statusCode = code;
         return this;
       },
-      json(body) {
+      json(body: { path: string }[]) {
         this.body = body;
         return this;
       },
     };
     await routes.get("/lidarr/root-folders")({ query }, response);
     assert.equal(response.statusCode, 200);
+    assert.ok(response.body != null);
     assert.equal(response.body[0].path, "/test/music");
     assert.equal(request.mock.calls.length, 1);
     assert.equal(lidarrClient.config.url, originalUrl);
@@ -105,7 +103,7 @@ for (const fails of [false, true]) {
   test(`temporary root defaults and original configuration survive ${fails ? "failure" : "success"}`, async () => {
     const original = { ...lidarrClient.config };
     const originalApiPath = lidarrClient.apiPath;
-    const agentCleanup = [];
+    const agentCleanup: MockInstance<() => void>[] = [];
     const operation = withTemporaryLidarrClient(
       "http://temporary-lidarr:8686/",
       " temporary-key ",
@@ -115,7 +113,7 @@ for (const fails of [false, true]) {
           agentCleanup.push(vi.spyOn(agent, "destroy"));
         }
         assert.equal(client.config.rootFolderPath, null);
-        assert.deepEqual(client.config.rootFolderPaths, []);
+        assert.deepEqual([...client.config.rootFolderPaths], []);
         assert.deepEqual(client.getConfiguredRootFolderPaths(), []);
         assert.equal(client._holdConfig, true);
         assert.equal(client.apiPath, "/api/v1");
@@ -135,7 +133,9 @@ for (const fails of [false, true]) {
 test("normal root folder discovery still persists the saved server's paths", async () => {
   vi.spyOn(lidarrClient, "request").mockImplementation(async () => [{ path: "/saved/new-music" }]);
   await lidarrClient.getRootFolders({ forceRefresh: true });
-  assert.deepEqual(dbOps.getSettings().integrations.lidarr.rootFolderPaths, ["/saved/new-music"]);
+  assert.deepEqual(requireFixture(dbOps.getSettings()!.integrations.lidarr).rootFolderPaths, [
+    "/saved/new-music",
+  ]);
 });
 
 test("a failed temporary session does not persist roots discovered before the failure", async () => {
@@ -157,15 +157,17 @@ test("a failed temporary session does not persist roots discovered before the fa
 test("overlapping temporary lookups keep their credentials and cached roots separate", async () => {
   const savedConfig = { ...lidarrClient.config };
   const savedSettings = dbOps.getSettings().integrations.lidarr;
-  let releaseFirst;
-  const firstPaused = new Promise((resolve) => {
+  let releaseFirst!: () => void;
+  const firstPaused = new Promise<void>((resolve) => {
     releaseFirst = resolve;
   });
-  let markFirstStarted;
-  const firstStarted = new Promise((resolve) => {
+  let markFirstStarted!: () => void;
+  const firstStarted = new Promise<void>((resolve) => {
     markFirstStarted = resolve;
   });
-  vi.spyOn(LidarrClient.prototype, "request").mockImplementation(async function () {
+  vi.spyOn(LidarrClient.prototype, "request").mockImplementation(async function (
+    this: InstanceType<typeof LidarrClient>,
+  ) {
     if (this.config.apiKey === "first") {
       markFirstStarted();
       await firstPaused;

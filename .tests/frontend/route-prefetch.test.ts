@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
 import { test, vi } from "vite-plus/test";
 
-async function setup(t, respond) {
+async function setup(
+  t: import("vite-plus/test").TestContext,
+  respond: (url: URL) => { status?: number; body: unknown },
+) {
   vi.resetModules();
   const previousFetch = globalThis.fetch;
-  const requests = [];
+  const requests: string[] = [];
   globalThis.fetch = async (input) => {
-    const url = new URL(typeof input === "string" ? input : input.url, "http://aurral.test");
+    const url = new URL(input instanceof Request ? input.url : String(input), "http://aurral.test");
     requests.push(url.pathname + url.search);
     const { status = 200, body } = respond(url);
     return new Response(JSON.stringify(body), {
@@ -20,12 +23,13 @@ async function setup(t, respond) {
   t.onTestFinished(async () => {
     queryClient.clear();
     globalThis.fetch = previousFetch;
-    delete globalThis.document;
+    vi.unstubAllGlobals();
   });
   return { requests, prefetchRoute, queryClient, queryOptions };
 }
 
-const apiRequests = (requests, fragment) => requests.filter((path) => path.includes(fragment));
+const apiRequests = (requests: string[], fragment: string) =>
+  requests.filter((path) => path.includes(fragment));
 
 test("hovering a playlist link fetches it once and the page reuses the result", async (t) => {
   const playlist = { id: "42", name: "Prefetched", tracks: [] };
@@ -34,14 +38,14 @@ test("hovering a playlist link fetches it once and the page reuses the result", 
   }));
 
   await Promise.all([
-    prefetchRoute("/discover/playlists/deezer/42", { userId: "user-1" }),
-    prefetchRoute("/discover/playlists/deezer/42", { userId: "user-1" }),
+    prefetchRoute("/discover/playlists/deezer/42", { userId: 1 }),
+    prefetchRoute("/discover/playlists/deezer/42", { userId: 1 }),
   ]);
   assert.equal(apiRequests(requests, "/discover/editorial/42").length, 1);
 
-  await prefetchRoute("/discover/playlists/deezer/42", { userId: "user-1" });
+  await prefetchRoute("/discover/playlists/deezer/42", { userId: 1 });
   const pageData = await queryClient.fetchQuery(
-    queryOptions.editorialPlaylistQueryOptions("user-1", "42"),
+    queryOptions.editorialPlaylistQueryOptions(1, "42"),
   );
   assert.deepEqual(pageData, playlist);
   assert.equal(apiRequests(requests, "/discover/editorial/42").length, 1);
@@ -65,12 +69,12 @@ test("a failed prefetch is not retried on the next hover", async (t) => {
 
 test("no prefetch runs while the tab is hidden or for links outside the app", async (t) => {
   const { requests, prefetchRoute } = await setup(t, () => ({ body: {} }));
-  globalThis.document = { visibilityState: "hidden" };
-  await prefetchRoute("/discover/playlists/deezer/7", { userId: "user-1" });
-  delete globalThis.document;
+  vi.stubGlobal("document", { visibilityState: "hidden" });
+  await prefetchRoute("/discover/playlists/deezer/7", { userId: 1 });
+  vi.unstubAllGlobals();
   await prefetchRoute("https://example.com/discover/playlists/deezer/7");
   await prefetchRoute("//example.com/discover/playlists/deezer/7");
-  assert.deepEqual(requests, []);
+  assert.deepEqual([...requests], []);
 });
 
 test("a library album prefetch matches the page query whatever its list state", async (t) => {
@@ -96,7 +100,7 @@ test("a library album prefetch matches the page query whatever its list state", 
     direction: "desc",
   });
   const view = await queryClient.fetchQuery(pageOptions);
-  assert.equal(view.library.tracks.length, 1);
+  assert.equal(view.library?.tracks.length, 1);
   assert.equal(requests.length, prefetched);
 });
 

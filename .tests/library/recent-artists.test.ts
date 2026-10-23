@@ -1,3 +1,7 @@
+import { requireFixture } from "../playlists/fixtures.ts";
+import { createRouteHarness, createResponse } from "./routeHarness.ts";
+import type { getRecentlyAddedLibraryArtists } from "../../backend/services/libraryQueryService.ts";
+type RecentArtist = ReturnType<typeof getRecentlyAddedLibraryArtists>[number] & { added?: string };
 import assert from "node:assert/strict";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -19,43 +23,32 @@ const [
   { getLibraryPage },
 ] = await setupIsolatedBackend(
   "recent-artists",
-  "backend/config/db-sqlite.ts",
-  "backend/services/libraryMediaStore.ts",
-  "backend/services/libraryManagementStore.ts",
-  "backend/routes/library/handlers/misc.ts",
-  "backend/services/libraryFileScanner.ts",
-  "backend/services/lidarrClient.ts",
-  "backend/services/libraryQueryService.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/services/libraryMediaStore.ts"),
+  () => import("../../backend/services/libraryManagementStore.ts"),
+  () => import("../../backend/routes/library/handlers/misc.ts"),
+  () => import("../../backend/services/libraryFileScanner.ts"),
+  () => import("../../backend/services/lidarrClient.ts"),
+  () => import("../../backend/services/libraryQueryService.ts"),
 );
 
-const routes = new Map();
-registerMisc({
-  get(route, ...handlers) {
-    routes.set(route, handlers.at(-1));
-  },
-  post() {},
-});
+const routes = createRouteHarness(registerMisc);
 const mbid = "11111111-1111-4111-8111-111111111111";
 const images = [{ kind: "Poster", url: "https://example.test/aurral.jpg" }];
 
 async function getRecent() {
-  let body;
-  await routes.get("/recent")(
-    {},
-    {
-      set() {},
-      status(code) {
-        assert.fail(`Recent artists returned ${code}`);
-      },
-      json(value) {
-        body = value;
-      },
-    },
-  );
-  return body;
+  const response = createResponse<RecentArtist[]>();
+  await routes.get("GET /recent")({}, response);
+  assert.equal(response.statusCode, 200);
+  return response.body;
 }
 
-function addFile(artist, name, createdAt, { available = true } = {}) {
+function addFile(
+  artist: import("../../backend/db/rows.ts").LibraryArtistsRow,
+  name: string,
+  createdAt: string,
+  { available = true }: { available?: boolean } = {},
+) {
   const album = store.upsertLibraryAlbum({
     identityKey: `album:${artist.id}:${name}`,
     artistId: artist.id,
@@ -73,6 +66,7 @@ function addFile(artist, name, createdAt, { available = true } = {}) {
     available,
     path: `/music/${artist.id}/${name}.flac`,
   });
+  assert.ok(file != null);
   db.prepare("UPDATE library_media_files SET created_at = ? WHERE id = ?").run(
     Date.parse(createdAt),
     file.id,
@@ -201,12 +195,12 @@ test("library pages resolve artists without albums or MBIDs", () => {
   const artistId = String(artist.id);
   for (const kind of ["albums", "tracks"]) {
     const page = getLibraryPage({ kind, artistId, availableOnly: true });
-    assert.deepEqual(page.items, []);
+    assert.deepEqual([...page.items], []);
     assert.equal(page.artists[0]?.name, "No Albums");
     assert.equal(page.artists[0]?.mbid, null);
   }
   db.prepare("DELETE FROM library_artists WHERE id = ?").run(artistId);
-  assert.deepEqual(getLibraryPage({ kind: "albums", artistId }).artists, []);
+  assert.deepEqual([...getLibraryPage({ kind: "albums", artistId }).artists], []);
 });
 
 test("file scans retain artist identity, artwork and added date while updating file tags", async () => {
@@ -237,20 +231,27 @@ test("file scans retain artist identity, artwork and added date while updating f
           artist: "Aurral Artist",
           album: "Album",
           title,
-          musicbrainz_artistid: mbid,
+          musicbrainz_artistid: [mbid],
         },
       }),
     });
     assert.equal(scan.filesIndexed, 1);
-    const indexedAt = db.prepare("SELECT created_at FROM library_media_files").get().created_at;
+    const indexedAt = requireFixture(db)
+      .prepare<unknown[], { created_at: number }>("SELECT created_at FROM library_media_files")!
+      .get()!.created_at;
     const [recent] = await getRecent();
     assert.equal(recent.canonicalId, String(artist.id));
     assert.equal(recent.mbid, mbid);
     assert.equal(recent.added, new Date(indexedAt).toISOString());
     assert.deepEqual(recent.images, images);
     const stored = JSON.parse(
-      db.prepare("SELECT metadata_json FROM library_artists WHERE id = ?").get(artist.id)
-        .metadata_json,
+      requireFixture(
+        requireFixture(db)
+          .prepare<unknown[], { metadata_json: string | null }>(
+            "SELECT metadata_json FROM library_artists WHERE id = ?",
+          )!
+          .get(artist.id)!.metadata_json,
+      ),
     );
     assert.equal(stored.tags.title, title);
     assert.equal(stored.librarySource, "aurral");
@@ -261,5 +262,5 @@ test("file scans retain artist identity, artwork and added date while updating f
     name: "Aurral Artist",
     metadata: { images: [] },
   });
-  assert.deepEqual((await getRecent())[0].images, []);
+  assert.deepEqual([...(await getRecent())[0].images], []);
 });

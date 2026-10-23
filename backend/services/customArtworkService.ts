@@ -92,7 +92,7 @@ async function writeArtwork(
     await fs.promises.rename(temporary, destination);
   } catch (error) {
     const code = asAppError(error)?.code;
-    if (!code || !["EEXIST", "EPERM"].includes(code)) throw error;
+    if (!code || !["EEXIST", "EPERM"].includes(String(code))) throw error;
     await fs.promises.unlink(destination).catch(() => {});
     await fs.promises.rename(temporary, destination);
   } finally {

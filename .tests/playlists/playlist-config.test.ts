@@ -1,3 +1,4 @@
+import { requireFixture, captureRoutes, mockResponse } from "./fixtures.ts";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { once } from "node:events";
@@ -23,14 +24,14 @@ const [
   { playlistManager },
 ] = await setupIsolatedBackend(
   "playlist-config",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/playlists/flowPlaylistConfig.ts",
-  "backend/routes/playlists/handlers/utils.ts",
-  "backend/routes/playlists/handlers/flows.ts",
-  "backend/services/libraryScanWorker.ts",
-  "backend/services/downloadJobs/downloadTracker.ts",
-  "backend/services/playlists/playlistManager.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
+  () => import("../../backend/routes/playlists/handlers/utils.ts"),
+  () => import("../../backend/routes/playlists/handlers/flows.ts"),
+  () => import("../../backend/services/libraryScanWorker.ts"),
+  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
+  () => import("../../backend/services/playlists/playlistManager.ts"),
 );
 const {
   flowPlaylistConfig,
@@ -63,11 +64,13 @@ test("removing and readding a library membership renews its incarnation", () => 
   const first = playlist.tracks[0].membershipId;
   assert.ok(first);
   const renamed = flowPlaylistConfig.updateStaticPlaylist(playlist.id, { name: "Renamed" });
+  assert.ok(renamed != null);
   assert.equal(renamed.tracks[0].membershipId, first);
   flowPlaylistConfig.updateStaticPlaylist(playlist.id, { tracks: [] });
   const readded = flowPlaylistConfig.appendStaticPlaylistTracks(playlist.id, [
     { ...track, membershipId: first },
   ]);
+  assert.ok(readded != null);
   assert.notEqual(readded.tracks[0].membershipId, first);
 });
 
@@ -102,11 +105,17 @@ test("playlist changes wait for another process's write instead of failing as lo
   invalidateFlowPlaylistConfigCache();
   dbOps.invalidateSettingsCache();
   assert.deepEqual(
-    flowPlaylistConfig.getStaticPlaylist(playlist.id).tracks.map((track) => track.trackName),
+    requireFixture(flowPlaylistConfig.getStaticPlaylist(playlist.id)).tracks.map(
+      (track) => track.trackName,
+    ),
     ["Track"],
   );
   assert.equal(
-    db.prepare("SELECT value FROM settings WHERE key = 'otherProcess'").get()?.value,
+    db
+      .prepare<unknown[], { value: import("../../backend/db/rows.ts").SettingsRow["value"] }>(
+        "SELECT value FROM settings WHERE key = 'otherProcess'",
+      )
+      .get()?.value,
     "1",
   );
 });
@@ -190,34 +199,20 @@ test("normalizes invalid playlist owners to null", () => {
 
 test("rejects flow creation without a real user owner", async () => {
   const beforeFlowIds = flowPlaylistConfig.getFlows().map((flow) => flow.id);
-  let createHandler;
-  const router = {
-    post(path, ...handlers) {
-      if (path === "/flows") createHandler = handlers.at(-1);
-    },
-    put() {},
-    delete() {},
-    get() {},
-  };
+  const { router, handlers } = captureRoutes((method, path) => `${method}:${path}`);
   registerFlows(router);
+  const createHandler = requireFixture(handlers.get("post:/flows"));
 
-  const response = {
-    statusCode: 200,
-    body: null,
-    status(code) {
-      this.statusCode = code;
-      return this;
-    },
-    json(body) {
-      this.body = body;
-      return this;
-    },
-  };
+  const response = mockResponse<{
+    error: string;
+    flow: ReturnType<typeof flowPlaylistConfig.createFlow>;
+    playlist: ReturnType<typeof flowPlaylistConfig.createStaticPlaylist>;
+  }>();
 
   await createHandler({ body: {}, user: { id: -1, role: "admin" } }, response);
 
   assert.equal(response.statusCode, 400);
-  assert.equal(response.body.error, "Flow ownership requires a real user");
+  assert.equal(requireFixture(response).body.error, "Flow ownership requires a real user");
   assert.deepEqual(
     flowPlaylistConfig.getFlows().map((flow) => flow.id),
     beforeFlowIds,
@@ -250,28 +245,17 @@ test("keeps flow tracks out of the library until a flow opts in", async () => {
   });
   assert.equal(flow.showInLibrary, false);
 
-  let updateHandler;
-  registerFlows({
-    post() {},
-    put(path, ...handlers) {
-      if (path === "/flows/:flowId") updateHandler = handlers.at(-1);
-    },
-    delete() {},
-    get() {},
-  });
-  const send = async (body) => {
-    const response = {
-      statusCode: 200,
-      body: null,
-      status(code) {
-        this.statusCode = code;
-        return this;
-      },
-      json(value) {
-        this.body = value;
-        return this;
-      },
-    };
+  const { router, handlers } = captureRoutes((method, path) => `${method}:${path}`);
+  registerFlows(router);
+  const updateHandler = requireFixture(handlers.get("put:/flows/:flowId"));
+  const send = async (
+    body: { showInLibrary: string } | { showInLibrary: boolean } | { name: string },
+  ) => {
+    const response = mockResponse<{
+      error: string;
+      flow: ReturnType<typeof flowPlaylistConfig.createFlow>;
+      playlist: ReturnType<typeof flowPlaylistConfig.createStaticPlaylist>;
+    }>();
     await updateHandler(
       { params: { flowId: flow.id }, body, user: { id: 1, role: "admin" } },
       response,
@@ -282,30 +266,30 @@ test("keeps flow tracks out of the library until a flow opts in", async () => {
   clearScheduledLibraryScan();
   const rejected = await send({ showInLibrary: "true" });
   assert.equal(rejected.statusCode, 400);
-  assert.equal(flowPlaylistConfig.getFlow(flow.id).showInLibrary, false);
+  assert.equal(requireFixture(flowPlaylistConfig.getFlow(flow.id)).showInLibrary, false);
   assert.equal(getScheduledLibraryScanJobId(), null);
 
   const enabled = await send({ showInLibrary: true });
   assert.equal(enabled.statusCode, 200);
-  assert.equal(enabled.body.flow.showInLibrary, true);
-  assert.equal(flowPlaylistConfig.getFlow(flow.id).showInLibrary, true);
+  assert.equal(requireFixture(enabled).body.flow.showInLibrary, true);
+  assert.equal(requireFixture(flowPlaylistConfig.getFlow(flow.id)).showInLibrary, true);
   assert.notEqual(getScheduledLibraryScanJobId(), null);
 
   clearScheduledLibraryScan();
   const renamed = await send({ name: "Library Opt In Renamed" });
   assert.equal(renamed.statusCode, 200);
-  assert.equal(flowPlaylistConfig.getFlow(flow.id).showInLibrary, true);
+  assert.equal(requireFixture(flowPlaylistConfig.getFlow(flow.id)).showInLibrary, true);
   assert.equal(getScheduledLibraryScanJobId(), null);
 
   await send({ showInLibrary: false });
-  assert.equal(flowPlaylistConfig.getFlow(flow.id).showInLibrary, false);
+  assert.equal(requireFixture(flowPlaylistConfig.getFlow(flow.id)).showInLibrary, false);
   assert.notEqual(getScheduledLibraryScanJobId(), null);
   clearScheduledLibraryScan();
 });
 
 test("saving a flow as a playlist keeps each track's release and disc", async () => {
   vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
-  vi.spyOn(playlistManager, "scheduleScanLibrary").mockImplementation(async () => {});
+  vi.spyOn(playlistManager, "scheduleScanLibrary").mockImplementation(() => 1);
   const flow = flowPlaylistConfig.createFlow({
     name: "Weekly Keep",
     size: 20,
@@ -313,7 +297,7 @@ test("saving a flow as a playlist keeps each track's release and disc", async ()
     scheduleDays: [1],
   });
   const file = path.join(
-    process.env.WEEKLY_FLOW_FOLDER,
+    requireFixture(process.env.WEEKLY_FLOW_FOLDER),
     "aurral-weekly-flow",
     flow.id,
     "Keep.flac",
@@ -333,28 +317,16 @@ test("saving a flow as a playlist keeps each track's release and disc", async ()
     },
     flow.id,
   );
+  assert.ok(flowJobId != null);
   downloadTracker.setDone(flowJobId, file);
-  let saveHandler;
-  registerFlows({
-    post(routePath, ...handlers) {
-      if (routePath === "/flows/:flowId/static-playlist") saveHandler = handlers.at(-1);
-    },
-    put() {},
-    delete() {},
-    get() {},
-  });
-  const response = {
-    statusCode: 200,
-    body: null,
-    status(code) {
-      this.statusCode = code;
-      return this;
-    },
-    json(value) {
-      this.body = value;
-      return this;
-    },
-  };
+  const { router, handlers } = captureRoutes((method, path) => `${method}:${path}`);
+  registerFlows(router);
+  const saveHandler = requireFixture(handlers.get("post:/flows/:flowId/static-playlist"));
+  const response = mockResponse<{
+    error: string;
+    flow: ReturnType<typeof flowPlaylistConfig.createFlow>;
+    playlist: ReturnType<typeof flowPlaylistConfig.createStaticPlaylist>;
+  }>();
 
   await saveHandler(
     { params: { flowId: flow.id }, body: { name: "Kept Mix" }, user: { id: 1, role: "admin" } },
@@ -362,15 +334,22 @@ test("saving a flow as a playlist keeps each track's release and disc", async ()
   );
 
   assert.equal(response.statusCode, 200);
-  const playlistId = response.body.playlist.id;
-  const [track] = flowPlaylistConfig.getStaticPlaylist(playlistId).tracks;
+  const playlistId = requireFixture(response).body.playlist.id;
+  const [track] = requireFixture(flowPlaylistConfig.getStaticPlaylist(playlistId)).tracks;
   assert.deepEqual(
     [track.trackName, track.releaseMbid, track.discNumber, track.trackNumber],
     ["Keep", releaseMbid, 2, 4],
   );
   assert.deepEqual(
     db
-      .prepare(
+      .prepare<
+        unknown[],
+        {
+          release_mbid: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["release_mbid"];
+          track_number: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["track_number"];
+          disc_number: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["disc_number"];
+        }
+      >(
         "SELECT release_mbid, track_number, disc_number FROM playlist_download_jobs WHERE playlist_type = ?",
       )
       .all(playlistId),
@@ -535,10 +514,12 @@ test("defaults Spotify removed-track retention on and preserves an explicit opt-
     syncEnabled: true,
     syncIntervalHours: 24,
   });
+  assert.ok(source != null);
   const optedOut = normalizeImportSource({
     ...source,
     keepRemovedTracks: false,
   });
+  assert.ok(optedOut != null);
 
   assert.equal(source.keepRemovedTracks, true);
   assert.equal(optedOut.keepRemovedTracks, false);
@@ -614,6 +595,7 @@ test("preserves rich track metadata when static playlists are updated", () => {
       },
     ],
   });
+  assert.ok(updated != null);
 
   const { membershipId, ...metadata } = updated.tracks[0];
   assert.ok(membershipId);

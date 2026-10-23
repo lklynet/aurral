@@ -26,7 +26,7 @@ test("isAlbumCompleteInLibrary only treats on-disk albums as complete", () => {
 });
 
 test("album request results describe what happens without naming a manager", () => {
-  const queued = describeAlbumRequestResult({ status: "queued", jobIds: ["a"] }, "Dummy");
+  const queued = describeAlbumRequestResult({ status: "queued" }, "Dummy");
   assert.deepEqual(queued, { kind: "success", message: "Downloading Dummy" });
   const blocked = describeAlbumRequestResult({ status: "blocked" }, "Dummy");
   assert.equal(blocked.kind, "info");
@@ -53,6 +53,7 @@ test("an unmonitored Aurral album counts the release's tracks, so a downloaded s
     percentOfTracks: 100,
   };
   const counted = countReleaseTracks(single, 4);
+  assert.ok(counted != null);
 
   assert.deepEqual([counted.trackCount, counted.percentOfTracks], [4, 25]);
   for (const library of [
@@ -73,16 +74,19 @@ test("release display keeps albums with an incomplete track list incomplete", ()
     trackCount: 1,
     trackFileCount: 1,
   };
-  const display = resolveReleaseLibraryDisplay(countReleaseTracks(lookup, 12));
+  const display = resolveReleaseLibraryDisplay(countReleaseTracks(lookup, 12), undefined);
   assert.equal(display.isComplete, false);
   assert.equal(display.kind, "incomplete");
   assert.equal(display.label, "Incomplete");
   assert.equal(resolveReleaseLibraryDisplay(lookup, { status: "partial" }).kind, "incomplete");
-  const complete = resolveReleaseLibraryDisplay({
-    ...lookup,
-    trackListComplete: true,
-    percentOfTracks: 100,
-  });
+  const complete = resolveReleaseLibraryDisplay(
+    {
+      ...lookup,
+      trackListComplete: true,
+      percentOfTracks: 100,
+    },
+    undefined,
+  );
   assert.equal(complete.isComplete, true);
   assert.equal(complete.label, "In library");
 });

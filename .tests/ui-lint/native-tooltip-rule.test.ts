@@ -5,14 +5,13 @@ import { noNativeTooltipRules } from "../../frontend/lint-rules/native-tooltip-r
 
 const tester = new RuleTester({
   languageOptions: {
-    ecmaVersion: "latest",
     sourceType: "module",
     parserOptions: { ecmaFeatures: { jsx: true } },
   },
 });
 
 test("Aurral tooltips use the shared tooltip components", () => {
-  tester.run("aurral/no-native-tooltip", noNativeTooltipRules, {
+  tester.run("aurral/no-native-tooltip", noNativeTooltipRules as Parameters<typeof tester.run>[1], {
     valid: [
       { code: "<Tooltip content={fullName}><span>{fullName}</span></Tooltip>;" },
       { code: '<TooltipButton label="Close"><CloseIcon /></TooltipButton>;' },

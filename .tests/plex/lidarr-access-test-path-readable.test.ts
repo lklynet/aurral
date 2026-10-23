@@ -6,7 +6,7 @@ import os from "os";
 
 import { pathIsReadable } from "../../backend/services/lidarrLibraryAccessTest.ts";
 
-let tempDir;
+let tempDir: string;
 
 beforeAll(async () => {
   tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "aurral-path-readable-"));

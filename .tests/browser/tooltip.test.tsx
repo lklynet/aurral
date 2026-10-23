@@ -5,9 +5,9 @@ import "../../frontend/src/index.css";
 import Tooltip from "../../frontend/src/components/Tooltip.tsx";
 import TooltipButton from "../../frontend/src/components/TooltipButton.tsx";
 
-let root;
+let root: ReturnType<typeof createRoot> | undefined;
 
-function render(ui) {
+function render(ui: import("react").ReactNode) {
   const container = document.createElement("div");
   container.style.padding = "4rem";
   document.body.append(container);
@@ -20,7 +20,7 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
-const tooltip = (text) =>
+const tooltip = (text: string) =>
   page.getByRole("tooltip", { includeHidden: true }).filter({ hasText: text });
 
 test("keyboard focus shows the tooltip and moving focus away hides it", async () => {

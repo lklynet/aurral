@@ -1,29 +1,30 @@
 import assert from "node:assert/strict";
 import { test, vi } from "vite-plus/test";
 
-const jsonResponse = (value) =>
+const jsonResponse = (value: unknown) =>
   new Response(JSON.stringify(value), {
     status: 200,
     headers: { "content-type": "application/json" },
   });
 
-const openFavoritesHarness = async (t) => {
+const openFavoritesHarness = async (t: import("vite-plus/test").TestContext) => {
   vi.resetModules();
 
   const favorites = await import("../../frontend/src/utils/api/endpoints/library.ts");
   const { queryClient, queryKeys } = await import("../../frontend/src/queryClient.ts");
   const originalFetch = globalThis.fetch;
-  const requests = [];
+  const requests: { method: string; resolve: (value: Response | PromiseLike<Response>) => void }[] =
+    [];
   t.onTestFinished(() => {
     globalThis.fetch = originalFetch;
     queryClient.clear();
   });
   globalThis.fetch = async (_url, init = {}) =>
-    new Promise((resolve) => {
+    new Promise<Response>((resolve) => {
       requests.push({ method: init.method || "GET", resolve });
     });
-  const waitForRequests = async (count) => {
-    while (requests.length < count) await new Promise((resolve) => setImmediate(resolve));
+  const waitForRequests = async (count: number) => {
+    while (requests.length < count) await new Promise<void>((resolve) => setImmediate(resolve));
   };
 
   return { ...favorites, queryClient, queryKeys, requests, waitForRequests };
@@ -75,7 +76,7 @@ test("a favorites read waits when it completes before the mutation refresh", asy
     return value;
   });
   requests[0].resolve(jsonResponse({ version: "stale" }));
-  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise<void>((resolve) => setImmediate(resolve));
   assert.equal(readSettled, false);
 
   requests[1].resolve(jsonResponse({ changedIds: ["song:1"] }));
@@ -99,7 +100,7 @@ test("favorite writes serialize and the final refresh includes both mutations", 
   await waitForRequests(2);
 
   const secondMutation = updateLibraryFavorites(["song:2"], true);
-  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise<void>((resolve) => setImmediate(resolve));
   assert.equal(requests.length, 2);
 
   requests[1].resolve(jsonResponse({ version: "first" }));

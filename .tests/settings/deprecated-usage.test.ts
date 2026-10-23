@@ -1,3 +1,4 @@
+import { testWebSocketClient } from "../helpers/userFixtures.ts";
 import assert from "node:assert/strict";
 import { test, afterAll } from "vite-plus/test";
 
@@ -6,9 +7,9 @@ import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTe
 const [isolatedState, { dbOps }, { getDeprecatedUsage }, { websocketService }] =
   await setupIsolatedBackend(
     "deprecated-usage",
-    "backend/db/helpers/index.ts",
-    "backend/services/deprecatedUsage.ts",
-    "backend/services/websocketService.ts",
+    () => import("../../backend/db/helpers/index.ts"),
+    () => import("../../backend/services/deprecatedUsage.ts"),
+    () => import("../../backend/services/websocketService.ts"),
   );
 
 const kinds = () =>
@@ -16,7 +17,17 @@ const kinds = () =>
     .map((entry) => entry.kind)
     .sort();
 
-function withEnv(values, run) {
+function withEnv(
+  values:
+    | {
+        WEEKLY_FLOW_FOLDER: string;
+        PLAYLIST_FOLDER: undefined;
+        AUTH_PASSWORD: string;
+        AURRAL_DATA_DIR: string;
+      }
+    | { WEEKLY_FLOW_FOLDER: undefined; PLAYLIST_FOLDER: undefined; AUTH_PASSWORD: undefined },
+  run: () => void,
+) {
   const previous = Object.fromEntries(Object.keys(values).map((key) => [key, process.env[key]]));
   for (const [key, value] of Object.entries(values)) {
     if (value === undefined) delete process.env[key];
@@ -58,18 +69,15 @@ test("reports configuration that Aurral 3.0 no longer reads", () => {
 });
 
 test("records old WebSocket channels once per process", async () => {
-  const sent = [];
-  const client = {
-    subscriptions: new Set(),
-    ws: { readyState: 1, send: (data) => sent.push(data) },
-  };
+  const sent: string[] = [];
+  const client = testWebSocketClient(1, [], (data) => sent.push(data));
 
   withEnv(
     { WEEKLY_FLOW_FOLDER: undefined, PLAYLIST_FOLDER: undefined, AUTH_PASSWORD: undefined },
     () => {
       websocketService.handleMessage(
         client,
-        JSON.stringify({ type: "subscribe", channels: ["playlists"] }),
+        Buffer.from(JSON.stringify({ type: "subscribe", channels: ["playlists"] })),
       );
       assert.deepEqual(kinds(), []);
     },
@@ -77,14 +85,14 @@ test("records old WebSocket channels once per process", async () => {
 
   websocketService.handleMessage(
     client,
-    JSON.stringify({ type: "subscribe", channels: ["weekly-flow"] }),
+    Buffer.from(JSON.stringify({ type: "subscribe", channels: ["weekly-flow"] })),
   );
   const recorded = dbOps.getJSONSetting("deprecatedUsage");
-  assert.deepEqual(Object.keys(recorded).sort(), ["weekly-flow-channel"]);
+  assert.deepEqual(Object.keys(recorded ?? {}).sort(), ["weekly-flow-channel"]);
 
   websocketService.handleMessage(
     client,
-    JSON.stringify({ type: "subscribe", channels: ["weekly-flow"] }),
+    Buffer.from(JSON.stringify({ type: "subscribe", channels: ["weekly-flow"] })),
   );
   assert.deepEqual(dbOps.getJSONSetting("deprecatedUsage"), recorded);
   assert.equal(client.subscriptions.has("weekly-flow"), true);

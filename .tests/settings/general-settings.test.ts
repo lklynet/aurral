@@ -1,3 +1,5 @@
+import { requireFixture } from "../playlists/fixtures.ts";
+import { createRouteHarness, createResponse } from "../library/routeHarness.ts";
 import assert from "node:assert/strict";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import { join } from "node:path";
@@ -18,13 +20,13 @@ const [
   honker,
 ] = await setupIsolatedBackend(
   "general-settings",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/routes/settings/handlers/general.ts",
-  "backend/services/playlists/playlistManager.ts",
-  "backend/services/lidarrClient.ts",
-  "backend/services/libraryScanWorker.ts",
-  "backend/services/honkerDb.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/routes/settings/handlers/general.ts"),
+  () => import("../../backend/services/playlists/playlistManager.ts"),
+  () => import("../../backend/services/lidarrClient.ts"),
+  () => import("../../backend/services/libraryScanWorker.ts"),
+  () => import("../../backend/services/honkerDb.ts"),
 );
 
 beforeEach(() => {
@@ -50,14 +52,14 @@ function clearPendingPlaylistSyncs() {
   }
 }
 
-test("saving playback settings queues a playlist sync without waiting for the media server", async (t) => {
+test("saving playback settings queues a playlist sync without waiting for the media server", async (t: import("vite-plus/test").TestContext) => {
   clearPendingPlaylistSyncs();
   t.onTestFinished(clearPendingPlaylistSyncs);
   const { JellyfinClient } = await import("../../backend/services/jellyfin.ts");
   const jellyfinRequests = vi
     .spyOn(JellyfinClient.prototype, "request")
     .mockImplementation(() => new Promise(() => {}));
-  const scan = vi.spyOn(playlistManager, "scheduleScanLibrary").mockImplementation(() => {});
+  const scan = vi.spyOn(playlistManager, "scheduleScanLibrary").mockReturnValue(0);
   const { postSettings } = captureSettingsRoutes();
 
   const response = await postSettings({
@@ -65,8 +67,13 @@ test("saving playback settings queues a playlist sync without waiting for the me
   });
 
   assert.equal(response.statusCode, 200);
+  assert.ok(response.body != null);
+  assert.ok(response.body.integrations.jellyfin != null);
   assert.equal(response.body.integrations.jellyfin.url, "http://jellyfin.local");
-  assert.equal(dbOps.getSettings().integrations.jellyfin.url, "http://jellyfin.local");
+  assert.equal(
+    requireFixture(dbOps.getSettings()!.integrations.jellyfin).url,
+    "http://jellyfin.local",
+  );
   assert.equal(jellyfinRequests.mock.calls.length, 0);
   assert.deepEqual(pendingPlaylistSyncs(), [
     { kind: "playback-playlist-sync", entityIds: null, attempt: 0 },
@@ -79,7 +86,7 @@ test("saving playback settings queues a playlist sync without waiting for the me
 
 test("saving unrelated settings with unchanged playback configuration skips initialization and scans", async () => {
   clearPendingPlaylistSyncs();
-  const scan = vi.spyOn(playlistManager, "scheduleScanLibrary").mockImplementation(() => {});
+  const scan = vi.spyOn(playlistManager, "scheduleScanLibrary").mockReturnValue(0);
   dbOps.updateSettings({
     integrations: {
       jellyfin: { url: "http://jellyfin.local", apiKey: "key", userId: "user" },
@@ -96,7 +103,7 @@ test("saving unrelated settings with unchanged playback configuration skips init
     },
   });
   assert.equal(response.statusCode, 200);
-  assert.equal(dbOps.getSettings().integrations.deemix.url, "http://deemix.local");
+  assert.equal(requireFixture(dbOps.getSettings()!.integrations.deemix).url, "http://deemix.local");
 
   const partial = await postSettings({ integrations: { jellyfin: { userId: "user" } } });
   assert.equal(partial.statusCode, 200);
@@ -112,11 +119,15 @@ test("NZBGet leftover deletion defaults on and keeps an opt-out across partial s
     integrations: { nzbget: { enabled: true, url: "http://nzbget.local", priority: 5 } },
   });
   assert.equal(enabled.statusCode, 200);
+  assert.ok(enabled.body != null);
+  assert.ok(enabled.body.integrations.nzbget != null);
   assert.equal(enabled.body.integrations.nzbget.deleteLeftovers, true);
+  assert.ok(enabled.body != null);
+  assert.ok(enabled.body.integrations.nzbget != null);
   assert.equal(enabled.body.integrations.nzbget.priority, 5);
   await postSettings({ integrations: { nzbget: { deleteLeftovers: false } } });
   await postSettings({ integrations: { nzbget: { nzbPriority: 10 } } });
-  assert.equal(dbOps.getSettings().integrations.nzbget.deleteLeftovers, false);
+  assert.equal(requireFixture(dbOps.getSettings()!.integrations.nzbget).deleteLeftovers, false);
 });
 
 test("SABnzbd leftover deletion defaults on and keeps an opt-out across partial saves", async () => {
@@ -132,11 +143,15 @@ test("SABnzbd leftover deletion defaults on and keeps an opt-out across partial 
     },
   });
   assert.equal(enabled.statusCode, 200);
+  assert.ok(enabled.body != null);
+  assert.ok(enabled.body.integrations.sabnzbd != null);
   assert.equal(enabled.body.integrations.sabnzbd.deleteLeftovers, true);
+  assert.ok(enabled.body != null);
+  assert.ok(enabled.body.integrations.sabnzbd != null);
   assert.equal(enabled.body.integrations.sabnzbd.priority, 5);
   await postSettings({ integrations: { sabnzbd: { deleteLeftovers: false } } });
   await postSettings({ integrations: { sabnzbd: { addPaused: true } } });
-  assert.equal(dbOps.getSettings().integrations.sabnzbd.deleteLeftovers, false);
+  assert.equal(requireFixture(dbOps.getSettings()!.integrations.sabnzbd).deleteLeftovers, false);
 });
 
 test("the maximum review wait is validated and kept across partial saves", async () => {
@@ -153,16 +168,16 @@ test("the maximum review wait is validated and kept across partial saves", async
   assert.equal(dbOps.getSettings().reviewTimeoutHours, 48);
 });
 
-for (const key of ["jellyfin", "navidrome"]) {
-  test(`refreshes playback when ${key} settings change or are cleared`, async (t) => {
+for (const key of ["jellyfin", "navidrome"] as const) {
+  test(`refreshes playback when ${key} settings change or are cleared`, async (t: import("vite-plus/test").TestContext) => {
     clearPendingPlaylistSyncs();
     t.onTestFinished(clearPendingPlaylistSyncs);
-    const scan = vi.spyOn(playlistManager, "scheduleScanLibrary").mockImplementation(() => {});
+    const scan = vi.spyOn(playlistManager, "scheduleScanLibrary").mockReturnValue(0);
     const { postSettings } = captureSettingsRoutes();
     for (const url of [`http://${key}.local`, ""]) {
       const response = await postSettings({ integrations: { [key]: { url } } });
       assert.equal(response.statusCode, 200);
-      assert.equal(dbOps.getSettings().integrations[key].url, url);
+      assert.equal(requireFixture(dbOps.getSettings().integrations[key]).url, url);
     }
     assert.deepEqual(pendingPlaylistSyncs(), [
       { kind: "playback-playlist-sync", entityIds: null, attempt: 0 },
@@ -171,7 +186,7 @@ for (const key of ["jellyfin", "navidrome"]) {
   });
 }
 
-test("a failure to queue the Library scan or the playlist sync does not block the other or the save", async (t) => {
+test("a failure to queue the Library scan or the playlist sync does not block the other or the save", async (t: import("vite-plus/test").TestContext) => {
   clearPendingPlaylistSyncs();
   t.onTestFinished(clearPendingPlaylistSyncs);
   const { logger } = await import("../../backend/services/logger.ts");
@@ -192,7 +207,7 @@ test("a failure to queue the Library scan or the playlist sync does not block th
     { kind: "playback-playlist-sync", entityIds: null, attempt: 0 },
   ]);
 
-  scan.mockImplementation(() => {});
+  scan.mockImplementation(() => 0);
   vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => {
     throw new Error("Sync queue unavailable");
   });
@@ -217,43 +232,20 @@ test("a failure to queue the Library scan or the playlist sync does not block th
   );
 });
 
+type SettingsBody = NonNullable<ReturnType<typeof dbOps.getSettings>> & {
+  rootWarnings: { type: string }[];
+};
+
 function captureSettingsRoutes() {
-  const routes = {};
-  registerGeneral({
-    get(path, ...handlers) {
-      routes[`GET ${path}`] = handlers.at(-1);
-    },
-    post(path, ...handlers) {
-      routes[`POST ${path}`] = handlers.at(-1);
-    },
-  });
-  const makeResponse = () => {
-    let state = { statusCode: 200, body: null };
-    return {
-      get statusCode() {
-        return state.statusCode;
-      },
-      get body() {
-        return state.body;
-      },
-      status(code) {
-        state.statusCode = code;
-        return this;
-      },
-      json(body) {
-        state.body = body;
-        return this;
-      },
-    };
-  };
-  const postSettings = async (body) => {
-    const response = makeResponse();
-    await routes["POST /"]({ body, user: { id: 1 } }, response);
+  const routes = createRouteHarness(registerGeneral);
+  const postSettings = async (body: unknown) => {
+    const response = createResponse<SettingsBody>();
+    await routes.get("POST /")({ body, user: { id: 1 } }, response);
     return response;
   };
   const getSettings = async () => {
-    const response = makeResponse();
-    await routes["GET /"]({}, response);
+    const response = createResponse<SettingsBody>();
+    await routes.get("GET /")({}, response);
     return response;
   };
   return { postSettings, getSettings };
@@ -280,7 +272,7 @@ test("the missing-track search setting keeps fields a save leaves out and never 
   }
 });
 
-test("turning Lidarr off or on starts a Library scan, and other saves do not", async (t) => {
+test("turning Lidarr off or on starts a Library scan, and other saves do not", async (t: import("vite-plus/test").TestContext) => {
   const { postSettings } = captureSettingsRoutes();
   vi.spyOn(lidarrClient, "getRootFolders").mockImplementation(async () => []);
   dbOps.updateSettings({
@@ -330,6 +322,7 @@ test("saves overlapping roots with an equal overlap warning", async () => {
   });
 
   assert.equal(response.statusCode, 200);
+  assert.ok(response.body != null);
   const warnings = response.body.rootWarnings;
   assert.equal(warnings.length, 1);
   assert.equal(warnings[0].type, "equal");
@@ -356,10 +349,12 @@ test("does not warn about lidarr roots while lidarr is disabled", async () => {
     },
   });
   assert.equal(saved.statusCode, 200);
-  assert.deepEqual(saved.body.rootWarnings, []);
+  assert.ok(saved.body != null);
+  assert.deepEqual([...saved.body.rootWarnings], []);
 
   const current = await getSettings();
-  assert.deepEqual(current.body.rootWarnings, []);
+  assert.ok(current.body != null);
+  assert.deepEqual([...current.body.rootWarnings], []);
 });
 
 test("clears saved Lidarr roots when the connection identity changes", async () => {
@@ -387,8 +382,8 @@ test("clears saved Lidarr roots when the connection identity changes", async () 
 
   assert.equal(response.statusCode, 200);
   assert.equal(refresh.mock.calls.length, 1);
-  assert.deepEqual(dbOps.getSettings().integrations.lidarr.rootFolderPaths, []);
-  assert.equal(dbOps.getSettings().integrations.lidarr.rootFolderPath, null);
+  assert.deepEqual(requireFixture(dbOps.getSettings()!.integrations.lidarr).rootFolderPaths, []);
+  assert.equal(requireFixture(dbOps.getSettings()!.integrations.lidarr).rootFolderPath, null);
 });
 
 test("preserves saved Lidarr roots when discovery fails for the same connection", async () => {
@@ -415,8 +410,13 @@ test("preserves saved Lidarr roots when discovery fails for the same connection"
   });
 
   assert.equal(response.statusCode, 200);
-  assert.deepEqual(dbOps.getSettings().integrations.lidarr.rootFolderPaths, ["/old/music"]);
-  assert.equal(dbOps.getSettings().integrations.lidarr.rootFolderPath, "/new/default");
+  assert.deepEqual(requireFixture(dbOps.getSettings()!.integrations.lidarr).rootFolderPaths, [
+    "/old/music",
+  ]);
+  assert.equal(
+    requireFixture(dbOps.getSettings()!.integrations.lidarr).rootFolderPath,
+    "/new/default",
+  );
 });
 
 test("preserves saved Lidarr roots for equivalent normalized connection values", async () => {
@@ -443,8 +443,13 @@ test("preserves saved Lidarr roots for equivalent normalized connection values",
   });
 
   assert.equal(response.statusCode, 200);
-  assert.deepEqual(dbOps.getSettings().integrations.lidarr.rootFolderPaths, ["/old/music"]);
-  assert.equal(dbOps.getSettings().integrations.lidarr.rootFolderPath, "/old/music");
+  assert.deepEqual(requireFixture(dbOps.getSettings()!.integrations.lidarr).rootFolderPaths, [
+    "/old/music",
+  ]);
+  assert.equal(
+    requireFixture(dbOps.getSettings()!.integrations.lidarr).rootFolderPath,
+    "/old/music",
+  );
 });
 
 test("queues a news refresh only when news settings change", async () => {
@@ -464,6 +469,7 @@ test("queues a news refresh only when news settings change", async () => {
   await postSettings({ integrations: { news } });
   assert.equal(queuedNewsRefresh(), null);
 
+  assert.ok(news != null);
   await postSettings({
     integrations: { news: { ...news, groups: { ...news.groups, jazz: false } } },
   });
@@ -471,7 +477,7 @@ test("queues a news refresh only when news settings change", async () => {
   clearNewsRefresh();
 });
 
-test("the Downloads Folder cannot move into or around a read-only folder", async (t) => {
+test("the Downloads Folder cannot move into or around a read-only folder", async (t: import("vite-plus/test").TestContext) => {
   const { mkdtemp, mkdir, rm } = await import("node:fs/promises");
   const { tmpdir } = await import("node:os");
   const folder = await mkdtemp(join(tmpdir(), "aurral-settings-read-only-"));

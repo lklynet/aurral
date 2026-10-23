@@ -897,7 +897,7 @@ export function requeueJobsUsingRemovedFolders({
 
 export async function repairJobsUnderRemovedPlaylistDir(
   playlistType: string,
-  options: ReuseOptions = {},
+  options: RestoreOptions = {},
 ) {
   const downloadRoot = path.resolve(options.downloadRoot || resolveDownloadRoot());
   const safePlaylistType = String(playlistType || "").trim();
@@ -966,7 +966,7 @@ function parsePlaylistIdFromFinalPath(finalPath: string, downloadRoot: string) {
   return null;
 }
 
-export async function repairOrphanedPlaylistTrackPaths(options: ReuseOptions = {}) {
+export async function repairOrphanedPlaylistTrackPaths(options: RestoreOptions = {}) {
   const downloadRoot = path.resolve(options.downloadRoot || resolveDownloadRoot());
   const { flowPlaylistConfig } = await import("../playlists/flowPlaylistConfig.ts");
   const activeIds = new Set([
@@ -1005,7 +1005,7 @@ export async function repairOrphanedPlaylistTrackPaths(options: ReuseOptions = {
 const REUSE_REPAIR_BATCH_SIZE = 50;
 
 export async function repairReusableTrackLinks(
-  options: ReuseOptions & { batchSize?: number; cursor?: number } = {},
+  options: RestoreOptions & { batchSize?: number; cursor?: number } = {},
 ) {
   const mode = normalizeExistingFileMode(options.existingFileMode);
   if (mode === "download") {

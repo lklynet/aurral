@@ -1,3 +1,4 @@
+import { createRouteHarness, createResponse } from "./routeHarness.ts";
 import { test, beforeAll, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
@@ -21,41 +22,36 @@ const [
   { clearMetadataProviderCaches },
 ] = await setupIsolatedBackend(
   "artist-automation",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/libraryMediaStore.ts",
-  "backend/services/libraryManagementStore.ts",
-  "backend/services/lidarrClient.ts",
-  "backend/services/libraryManager.ts",
-  "backend/routes/library/handlers/artists.ts",
-  "backend/routes/library/handlers/albums.ts",
-  "backend/services/downloadJobs/downloadWorker.ts",
-  "backend/services/providers/brainzmashProvider.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/libraryMediaStore.ts"),
+  () => import("../../backend/services/libraryManagementStore.ts"),
+  () => import("../../backend/services/lidarrClient.ts"),
+  () => import("../../backend/services/libraryManager.ts"),
+  () => import("../../backend/routes/library/handlers/artists.ts"),
+  () => import("../../backend/routes/library/handlers/albums.ts"),
+  () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
+  () => import("../../backend/services/providers/brainzmashProvider.ts"),
 );
 
-const routes = new Map();
-const route =
-  (method) =>
-  (routePath, ...handlers) =>
-    routes.set(`${method} ${routePath}`, handlers.at(-1));
-for (const register of [registerArtists, registerAlbums]) {
-  register({ get: route("GET"), post: route("POST"), put: route("PUT"), delete: route("DELETE") });
-}
+const routes = createRouteHarness(registerArtists, registerAlbums);
 
-async function callRoute(key, { params = {}, query = {}, body = {} } = {}) {
-  const response = { statusCode: 200, body: null };
+async function callRoute<Body = RouteBody>(
+  key: string,
+  {
+    params = {},
+    query = {},
+    body = {},
+  }: {
+    body?: Record<string, string>;
+    params?: Record<string, string>;
+    query?: Record<string, string>;
+  } = {},
+) {
+  const response = createResponse<Body>();
   await routes.get(key)(
-    { params, query, body, user: { role: "admin" } },
-    {
-      status(code) {
-        response.statusCode = code;
-        return this;
-      },
-      json(value) {
-        response.body = value;
-        return this;
-      },
-    },
+    { params, body, query, user: { id: 1, username: "test", role: "admin", permissions: {} } },
+    response,
   );
   return response;
 }
@@ -63,12 +59,17 @@ async function callRoute(key, { params = {}, query = {}, body = {} } = {}) {
 const artistMbid = "c1111111-1111-4111-8111-111111111111";
 const aurralAlbumMbid = "c2222222-2222-4222-8222-222222222201";
 const otherAlbumMbid = "c2222222-2222-4222-8222-222222222202";
-const admin = { role: "admin" };
+const admin = { id: 1, username: "test", role: "admin", permissions: {} };
 
-const lidarr = { configured: true, artist: null, albums: [], calls: [] };
+const lidarr: {
+  configured: boolean;
+  artist: Awaited<ReturnType<typeof lidarrClient.getArtist>>;
+  albums: Awaited<ReturnType<typeof lidarrClient.monitorAlbum>>[];
+  calls: unknown[][];
+} = { configured: true, artist: null, albums: [], calls: [] };
 const originalClient = { ...lidarrClient };
 
-const lidarrAlbum = (id, foreignAlbumId, monitored) => ({
+const lidarrAlbum = (id: number, foreignAlbumId: string, monitored: boolean) => ({
   id,
   artistId: 41,
   title: `Album ${id}`,
@@ -104,9 +105,12 @@ beforeAll(() => {
   lidarrClient.getArtist = async () => lidarr.artist;
   lidarrClient.getMetadataProfiles = async () => [];
   lidarrClient.resolveArtistAddConfiguration = async () => ({
+    rootFolders: [],
+    qualityProfiles: [],
+    fallbacks: { rootFolderPath: null, qualityProfileId: 1 },
     resolved: { rootFolderPath: "/music", qualityProfileId: 1 },
   });
-  lidarrClient.addArtist = async (mbid, artistName, options) => {
+  lidarrClient.addArtist = async (mbid, artistName, options = {}) => {
     lidarr.calls.push(["add", options.monitorOption]);
     const followsNewAlbums = options.monitorOption === "all" || options.monitorOption === "future";
     lidarr.artist = {
@@ -120,23 +124,29 @@ beforeAll(() => {
   };
   lidarrClient.updateArtistMonitoring = async (_id, option) => {
     lidarr.calls.push(["monitor", option]);
+    assert.ok(lidarr.artist);
     lidarr.artist = {
       ...lidarr.artist,
       monitored: true,
       monitorNewItems: option === "all" || option === "future" ? "all" : "none",
     };
+    return lidarr.artist;
   };
-  lidarrClient.request = async (path) => {
-    if (path.startsWith("/album?artistId=")) return lidarr.albums;
+  lidarrClient.request = async <T>(path: string) => {
+    if (path.startsWith("/album?artistId=")) return lidarr.albums as T;
     throw new Error("Lidarr scans are not part of this test");
   };
   lidarrClient.deleteArtist = async (id) => {
     lidarr.calls.push(["delete", id]);
     lidarr.artist = null;
   };
-  lidarrClient.getAlbum = async (id) => lidarr.albums.find((album) => album.id === Number(id));
+  lidarrClient.getAlbum = async (id) =>
+    lidarr.albums.find((album) => album.id === Number(id)) ?? null;
   lidarrClient.monitorAlbum = async (id, monitored) => {
-    lidarr.albums.find((album) => album.id === Number(id)).monitored = monitored;
+    const album = lidarr.albums.find((album) => album.id === Number(id));
+    assert.ok(album);
+    album.monitored = monitored;
+    return album;
   };
 });
 
@@ -160,7 +170,7 @@ afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-function seedArtist(managedBy, monitorMode) {
+function seedArtist(managedBy: string, monitorMode: string) {
   const artist = libraryStore.upsertLibraryArtist({
     identityKey: libraryStore.buildIdentityKey("mbid", artistMbid),
     mbid: artistMbid,
@@ -175,7 +185,7 @@ function seedArtist(managedBy, monitorMode) {
   return artist;
 }
 
-function seedAurralAlbum(artistId) {
+function seedAurralAlbum(artistId: number) {
   const album = libraryStore.upsertLibraryAlbum({
     identityKey: `release-group:${aurralAlbumMbid}`,
     mbid: aurralAlbumMbid,
@@ -198,12 +208,19 @@ function seedAurralAlbum(artistId) {
   return { album, track };
 }
 
-const management = (entityKind, id) => {
+const management = (entityKind: string, id: number) => {
   const entry = managementStore.getLibraryManagementEntry(entityKind, id);
   return [entry?.managedBy, entry?.monitorMode];
 };
 
-const lidarrArtist = (overrides = {}) => ({
+const lidarrArtist = (
+  overrides: Partial<{
+    id: number;
+    foreignArtistId: string;
+    monitored: boolean;
+    monitorNewItems: string;
+  }> = {},
+) => ({
   id: 41,
   artistName: "Automation Artist",
   foreignArtistId: artistMbid,
@@ -232,7 +249,12 @@ test("with Lidarr connected, monitoring a Lidarr artist lets Lidarr take its Aur
   );
   assert.equal(management("album", album.id)[0], "lidarr");
   assert.equal(
-    db.prepare("SELECT monitored FROM library_tracks WHERE id = ?").get(track.id).monitored,
+    db
+      .prepare<
+        unknown[],
+        { monitored: import("../../backend/db/rows.ts").LibraryTracksRow["monitored"] }
+      >("SELECT monitored FROM library_tracks WHERE id = ?")
+      .get(track.id)!.monitored,
     0,
   );
 });
@@ -254,7 +276,12 @@ test("an album stays Aurral's when Lidarr fails to monitor it", async () => {
 
   assert.equal(management("album", album.id)[0], "aurral");
   assert.equal(
-    db.prepare("SELECT monitored FROM library_tracks WHERE id = ?").get(track.id).monitored,
+    db
+      .prepare<
+        unknown[],
+        { monitored: import("../../backend/db/rows.ts").LibraryTracksRow["monitored"] }
+      >("SELECT monitored FROM library_tracks WHERE id = ?")
+      .get(track.id)!.monitored,
     1,
   );
 });
@@ -287,7 +314,7 @@ test("with Lidarr connected, new artists go to Lidarr and Aurral keeps managing 
     user: admin,
   });
   const monitorAlbum = await libraryManager.setAurralAlbumMonitoring(album.id, { monitored: true });
-  const request = (albumMbid) =>
+  const request = (albumMbid: string) =>
     libraryManager
       .requestAlbumFromSearch({
         albumMbid,
@@ -310,7 +337,7 @@ test("with Lidarr connected, new artists go to Lidarr and Aurral keeps managing 
   assert.deepEqual(management("artist", artist.id), ["aurral", "none"]);
   assert.notEqual(monitorAlbum.statusCode, 409);
   assert.deepEqual(management("album", album.id), ["aurral", "monitored"]);
-  assert.deepEqual(lidarr.calls, []);
+  assert.deepEqual([...lidarr.calls], []);
 });
 
 test("without Lidarr, Aurral monitors the artist and Lidarr is never asked", async () => {
@@ -332,15 +359,21 @@ test("without Lidarr, Aurral monitors the artist and Lidarr is never asked", asy
   });
 
   assert.equal(result.error, undefined);
-  const artistId = db.prepare("SELECT id FROM library_artists WHERE mbid = ?").get(artistMbid).id;
+  const artistId = db
+    .prepare<unknown[], { id: import("../../backend/db/rows.ts").LibraryArtistsRow["id"] }>(
+      "SELECT id FROM library_artists WHERE mbid = ?",
+    )
+    .get(artistMbid)!.id;
   assert.deepEqual(management("artist", artistId), ["aurral", "future"]);
   assert.equal(untouched.error, undefined);
   assert.equal(lidarrAdd.statusCode, 409);
   assert.equal(
-    db.prepare("SELECT COUNT(*) AS n FROM library_artists WHERE mbid = ?").get(neverAdded).n,
+    db
+      .prepare<unknown[], { n: number }>("SELECT COUNT(*) AS n FROM library_artists WHERE mbid = ?")
+      .get(neverAdded)!.n,
     0,
   );
-  assert.deepEqual(lidarr.calls, []);
+  assert.deepEqual([...lidarr.calls], []);
 });
 
 test("an Aurral monitoring change that cannot load releases leaves the artist as it was", async () => {
@@ -366,11 +399,13 @@ test("the Lidarr option chosen in Aurral reads back until Lidarr changes", async
     managedBy: "lidarr",
     forceRefresh: true,
   });
+  assert.ok(chosen != null);
   lidarr.artist = { ...lidarr.artist, monitorNewItems: "none" };
   const changedInLidarr = await libraryManager.getArtist(artistMbid, {
     managedBy: "lidarr",
     forceRefresh: true,
   });
+  assert.ok(changedInLidarr != null);
 
   assert.deepEqual([chosen.managedBy, chosen.monitorOption], ["lidarr", "future"]);
   assert.equal(changedInLidarr.monitorOption, "none");
@@ -378,7 +413,7 @@ test("the Lidarr option chosen in Aurral reads back until Lidarr changes", async
 
 test("the Lidarr option reads back for an artist Lidarr knows by another provider's ID", async () => {
   const addArtist = lidarrClient.addArtist;
-  lidarrClient.addArtist = async (mbid, artistName, options) => {
+  lidarrClient.addArtist = async (mbid, artistName, options = {}) => {
     const added = await addArtist(mbid, artistName, options);
     lidarr.artist = { ...added, foreignArtistId: "1098@deezer" };
     return lidarr.artist;
@@ -402,13 +437,15 @@ test("adding an artist through monitoring needs permission to add artists", asyn
   const result = await libraryManager.setArtistMonitoring(artistMbid, {
     monitorOption: "all",
     artistName: "Automation Artist",
-    user: { role: "user", permissions: { changeMonitoring: true } },
+    user: { id: 1, username: "test", role: "user", permissions: { changeMonitoring: true } },
   });
 
   assert.equal(result.statusCode, 403);
-  assert.deepEqual(lidarr.calls, []);
+  assert.deepEqual([...lidarr.calls], []);
   assert.equal(
-    db.prepare("SELECT COUNT(*) AS n FROM library_artists WHERE mbid = ?").get(artistMbid).n,
+    db
+      .prepare<unknown[], { n: number }>("SELECT COUNT(*) AS n FROM library_artists WHERE mbid = ?")
+      .get(artistMbid)!.n,
     0,
   );
 });
@@ -479,8 +516,8 @@ test("the monitoring state reports only the manager in charge", async () => {
   assert.equal(aurral.monitored, true);
   assert.equal(aurral.useDefault, false);
   assert.equal(aurral.monitorOption, "future");
-  assert.equal(aurral.rules.catalog, "none");
-  assert.equal(aurral.rules.newReleases, true);
+  assert.equal(aurral.rules!.catalog, "none");
+  assert.equal(aurral.rules!.newReleases, true);
 });
 
 test("deleting an artist removes it from Lidarr and Aurral together", async () => {
@@ -535,14 +572,14 @@ test("removing from Lidarr while it is not connected is refused", async () => {
   });
 
   assert.equal(response.statusCode, 503);
-  assert.deepEqual(lidarr.calls, []);
+  assert.deepEqual([...lidarr.calls], []);
 });
 
 test("a Lidarr artist's albums add Aurral's albums by MBID, never by number", async () => {
   const aurralArtist = seedArtist("aurral", "none");
   seedAurralAlbum(aurralArtist.id);
   lidarr.albums = [{ ...lidarrAlbum(7, otherAlbumMbid, true), artistId: aurralArtist.id }];
-  const albumsOf = async (foreignArtistId) => {
+  const albumsOf = async (foreignArtistId: string) => {
     lidarr.artist = lidarrArtist({ id: aurralArtist.id, foreignArtistId });
     const response = await callRoute("GET /albums", {
       query: { artistId: String(aurralArtist.id), managedBy: "lidarr" },
@@ -563,7 +600,9 @@ test("without Lidarr, removing an artist keeps the record Lidarr left behind", a
   assert.equal(result.success, true);
   assert.deepEqual(management("artist", artist.id), ["lidarr", "none"]);
   assert.equal(
-    db.prepare("SELECT COUNT(*) AS n FROM library_artists WHERE id = ?").get(artist.id).n,
+    db
+      .prepare<unknown[], { n: number }>("SELECT COUNT(*) AS n FROM library_artists WHERE id = ?")
+      .get(artist.id)!.n,
     1,
   );
 });
@@ -588,10 +627,12 @@ test("Lidarr monitoring defaults leave Lidarr alone when given Aurral's own albu
   assert.equal(libraryAlbums[0].id, String(album.id));
 
   await libraryManager.applyArtistMonitoringDefaults(
-    { id: "41", monitored: true, monitorOption: "all", managedBy: "lidarr" },
+    { id: "41", monitored: true, monitorOption: "all" },
     libraryAlbums,
   );
 
   assert.equal(libraryAlbums.length, 1);
   assert.equal(lidarr.albums[0].monitored, false);
 });
+
+type RouteBody = { mbid: string }[];

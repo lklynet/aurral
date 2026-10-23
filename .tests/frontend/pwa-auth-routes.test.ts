@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { test } from "vite-plus/test";
 import { build } from "vite-plus";
 
-test("the service worker leaves navigations to the network", async (t) => {
+test("the service worker leaves navigations to the network", async (t: import("vite-plus/test").TestContext) => {
   const workDir = await mkdtemp(join(tmpdir(), "aurral-sw-"));
   t.onTestFinished(() => rm(workDir, { recursive: true, force: true }));
   const entry = join(workDir, "entry.js");

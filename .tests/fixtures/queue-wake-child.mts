@@ -10,16 +10,18 @@ const worker = createHonkerWorker({
   idlePollS: 10,
 });
 const poll = setInterval(() => worker.start(), 2000);
-process.on("message", async (message) => {
-  if (message?.type === "queue-wake") void worker.start();
-  if (message?.type === "park") {
+type ParentMessage = { type: "queue-wake" | "park" | "shutdown" };
+
+process.on("message", async (message: ParentMessage) => {
+  if (message.type === "queue-wake") void worker.start();
+  if (message.type === "park") {
     await worker.stop();
-    process.send({ type: "parked" });
+    process.send?.({ type: "parked" });
   }
-  if (message?.type === "shutdown") {
+  if (message.type === "shutdown") {
     clearInterval(poll);
     await shutdownHonkerInfrastructure();
     process.exit(0);
   }
 });
-process.send({ type: "ready" });
+process.send?.({ type: "ready" });

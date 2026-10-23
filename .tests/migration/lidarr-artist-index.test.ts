@@ -11,8 +11,8 @@ import { ensureUniqueLidarrArtistIdIndex } from "../../backend/config/lidarr-art
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const indexName = "idx_lidarr_artist_id_map_foreign_id";
 
-function boot(dbPath, dataDir) {
-  return new Promise((resolve, reject) => {
+function boot(dbPath: string, dataDir: string) {
+  return new Promise<void>((resolve, reject) => {
     const child = spawn(
       process.execPath,
       [
@@ -39,7 +39,7 @@ function boot(dbPath, dataDir) {
   });
 }
 
-function withDatabase(name, run) {
+function withDatabase(name: string, run: (dbPath: string, dataDir: string) => Promise<void>) {
   const dataDir = mkdtempSync(path.join(tmpdir(), `aurral-${name}-`));
   const dbPath = path.join(dataDir, "aurral.db");
   return Promise.resolve()
@@ -47,9 +47,9 @@ function withDatabase(name, run) {
     .finally(() => rmSync(dataDir, { recursive: true, force: true }));
 }
 
-function indexState(db) {
+function indexState(db: Database.Database) {
   return db
-    .prepare("PRAGMA index_list(lidarr_artist_id_map)")
+    .prepare<[], { name: string; unique: number }>("PRAGMA index_list(lidarr_artist_id_map)")
     .all()
     .find((index) => index.name === indexName);
 }
@@ -86,7 +86,13 @@ test("concurrent startup upgrades a nonunique index and preserves the winning ma
       assert.equal(indexState(db)?.unique, 1);
       assert.deepEqual(
         db
-          .prepare(
+          .prepare<
+            unknown[],
+            {
+              musicbrainz_id: import("../../backend/db/rows.ts").LidarrArtistIdMapRow["musicbrainz_id"];
+              lidarr_foreign_artist_id: import("../../backend/db/rows.ts").LidarrArtistIdMapRow["lidarr_foreign_artist_id"];
+            }
+          >(
             "SELECT musicbrainz_id, lidarr_foreign_artist_id FROM lidarr_artist_id_map ORDER BY lidarr_foreign_artist_id",
           )
           .all(),
@@ -145,7 +151,12 @@ test("failed unique index creation restores the legacy index and mappings", () =
       assert.equal(db.pragma("schema_version", { simple: true }), schemaVersion);
       assert.deepEqual(
         db
-          .prepare("SELECT musicbrainz_id FROM lidarr_artist_id_map ORDER BY musicbrainz_id")
+          .prepare<
+            unknown[],
+            {
+              musicbrainz_id: import("../../backend/db/rows.ts").LidarrArtistIdMapRow["musicbrainz_id"];
+            }
+          >("SELECT musicbrainz_id FROM lidarr_artist_id_map ORDER BY musicbrainz_id")
           .all()
           .map(({ musicbrainz_id }) => musicbrainz_id),
         ["first", "second"],

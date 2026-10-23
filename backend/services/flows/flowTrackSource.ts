@@ -17,7 +17,6 @@ import {
 } from "../libraryQueryService.ts";
 import BoundedMap from "../boundedMap.ts";
 import type { ArtistMatchFields } from "../discovery/artistKeys.ts";
-import type { getLibraryArtistProjection } from "../libraryQueryService.ts";
 import type { getListenHistoryProfile } from "../listeningHistory.ts";
 import type { NormalizedTrack } from "../providers/brainzmashMappers.ts";
 
@@ -38,8 +37,6 @@ type ArtistTopTrack = {
 type TagArtist = { name: string; mbid: string | null };
 
 type ChartTrack = Awaited<ReturnType<typeof musicData.getTrendingTracks>>[number];
-
-type LibraryArtistRow = ReturnType<typeof getLibraryArtistProjection>[number];
 
 type DeepDiveRange = { start: number; end: number };
 
@@ -96,7 +93,7 @@ export type FlowRunOptions = {
   excludeArtistKeys?: string[];
   excludeTrackKeys?: Set<string> | string[];
   libraryArtistKeys?: Set<string> | string[];
-  libraryArtists?: LibraryArtistRow[];
+  libraryArtists?: ArtistMatchFields[];
   listenHistoryProfile?: ReturnType<typeof getListenHistoryProfile> | null;
   includeGlobalTop?: boolean;
   basedOn?: ArtistMatchFields[];
@@ -2061,7 +2058,7 @@ export class FlowTrackSource {
     return tracks.slice(0, limit);
   }
 
-  async _getLibraryOwnership(_libraryManager: unknown, artistId: string) {
+  async _getLibraryOwnership(_libraryManager: unknown, artistId: ArtistMatchFields["id"]) {
     const key = String(artistId ?? "");
     if (!key) {
       return { ownedTitles: new Set<string>(), ownedAlbums: new Set<string>() };
@@ -2154,7 +2151,7 @@ export class FlowTrackSource {
   }
 
   async getMixTracks(limit: number, options: FlowRunOptions = {}) {
-    const artists: LibraryArtistRow[] = Array.isArray(options?.libraryArtists)
+    const artists: ArtistMatchFields[] = Array.isArray(options?.libraryArtists)
       ? options.libraryArtists
       : [...iterateLibraryArtistProjection({ pageSize: 100 })];
     if (artists.length === 0) {

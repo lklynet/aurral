@@ -8,8 +8,8 @@ const [
   { flowPlaylistConfig },
 ] = await setupIsolatedBackend(
   "lidarr-import-list-feed",
-  "backend/services/lidarrImportListFeed.ts",
-  "backend/services/playlists/flowPlaylistConfig.ts",
+  () => import("../../backend/services/lidarrImportListFeed.ts"),
+  () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
 );
 
 afterAll(() => cleanupIsolatedState(isolatedState));
@@ -42,7 +42,9 @@ test("buildLidarrImportListItems maps jobs to lidarr custom list rows", () => {
 
 test("verifyFlowLidarrFeedToken accepts only the flow's own token", () => {
   const flow = flowPlaylistConfig.createFlow({ name: "Feed Flow", size: 10, ownerUserId: 7 });
-  const { lidarrFeedToken } = flowPlaylistConfig.ensureLidarrFeedToken(flow.id);
+  const withToken = flowPlaylistConfig.ensureLidarrFeedToken(flow.id);
+  assert.ok(withToken?.lidarrFeedToken);
+  const { lidarrFeedToken } = withToken;
 
   assert.equal(verifyFlowLidarrFeedToken("missing-flow", lidarrFeedToken), null);
   assert.equal(verifyFlowLidarrFeedToken(flow.id, ""), null);

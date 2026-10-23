@@ -10,9 +10,9 @@ import {
 
 const [isolatedState, { db }, { userOps }, { lastfmStationClient }] = await setupIsolatedBackend(
   "lastfm-stations",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/importLists/lastfmStations.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/importLists/lastfmStations.ts"),
 );
 
 beforeEach(() => resetDatabase(db));
@@ -21,13 +21,15 @@ afterAll(() => cleanupIsolatedState(isolatedState));
 test("parseLastfmStation maps tracks, durations, and skipped entries", () => {
   const { tracks, stats } = parseLastfmStation({
     playlist: [
-      {
-        name: "Song A",
-        mbid: "lastfm-release-track-id",
-        duration: 185,
-        artists: [{ name: "Artist A" }],
-        primary_album: { name: "Album A" },
-      },
+      Object.assign(
+        {
+          name: "Song A",
+          duration: 185,
+          artists: [{ name: "Artist A" }],
+          primary_album: { name: "Album A" },
+        },
+        { mbid: "lastfm-release-track-id" },
+      ),
       {
         name: "Song A",
         duration: 185,
@@ -46,20 +48,16 @@ test("parseLastfmStation maps tracks, durations, and skipped entries", () => {
 });
 
 test("lastfmStationClient lists the three stations in a stable order", async () => {
-  const calls = [];
+  const calls: { url: string | URL | Request; options: RequestInit | undefined }[] = [];
   vi.spyOn(globalThis, "fetch").mockImplementation(async (url, options) => {
     calls.push({ url, options });
-    const station = new URL(url).pathname.split("/").pop();
-    return {
-      ok: true,
-      status: 200,
-      json: async () => ({
-        playlist: Array.from({ length: station === "recommended" ? 2 : 3 }, (_, index) => ({
-          name: `${station}-${index}`,
-          artists: [{ name: "Artist" }],
-        })),
-      }),
-    };
+    const station = new URL(String(url)).pathname.split("/").pop();
+    return Response.json({
+      playlist: Array.from({ length: station === "recommended" ? 2 : 3 }, (_, index) => ({
+        name: `${station}-${index}`,
+        artists: [{ name: "Artist" }],
+      })),
+    });
   });
 
   const result = await lastfmStationClient.listPlaylists(7, "user+name");
@@ -74,35 +72,32 @@ test("lastfmStationClient lists the three stations in a stable order", async () 
   );
   assert.equal(result.user, "user+name");
   assert.deepEqual(
-    calls.map(({ url }) => new URL(url).pathname),
+    calls.map(({ url }) => new URL(String(url)).pathname),
     [
       "/player/station/user/user%2Bname/library",
       "/player/station/user/user%2Bname/mix",
       "/player/station/user/user%2Bname/recommended",
     ],
   );
-  assert.equal(calls[0].options.headers.Accept, "application/json");
+  assert.equal(new Headers(calls[0].options?.headers).get("Accept"), "application/json");
 });
 
 test("lastfmStationClient reuses a Last.fm username from the profile", async () => {
   const user = userOps.createUser("profile-user", "hash");
+  assert.ok(user != null);
   userOps.updateUser(user.id, {
     listenHistoryProvider: "lastfm",
     listenHistoryUsername: "profile-lastfm",
   });
   let requestedUrl = "";
   vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
-    requestedUrl = url;
-    return {
-      ok: true,
-      status: 200,
-      json: async () => ({
-        playlist: [{ name: "Song", artists: [{ name: "Artist" }] }],
-      }),
-    };
+    requestedUrl = String(url);
+    return Response.json({
+      playlist: [{ name: "Song", artists: [{ name: "Artist" }] }],
+    });
   });
 
-  const result = await lastfmStationClient.getStationTracks(user.id, "library");
+  const result = await lastfmStationClient.getStationTracks(user.id, "library", null);
 
   assert.equal(result.tracks.length, 1);
   assert.equal(result.user, "profile-lastfm");

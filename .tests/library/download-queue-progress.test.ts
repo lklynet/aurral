@@ -1,3 +1,4 @@
+import { createRouteHarness, createResponse } from "./routeHarness.ts";
 import assert from "node:assert/strict";
 import { test, vi } from "vite-plus/test";
 
@@ -7,11 +8,7 @@ import {
 } from "../../backend/routes/library/handlers/downloads.ts";
 import { lidarrClient } from "../../backend/services/lidarrClient.ts";
 
-const routes = new Map();
-registerDownloads({
-  post: () => {},
-  get: (path, ...handlers) => routes.set(`GET ${path}`, handlers.at(-1)),
-});
+const routes = createRouteHarness(registerDownloads);
 
 test("a queue item without a remaining size reports no progress", async () => {
   vi.spyOn(lidarrClient, "isConfigured").mockReturnValue(true);
@@ -24,17 +21,10 @@ test("a queue item without a remaining size reports no progress", async () => {
   vi.spyOn(lidarrClient, "request").mockResolvedValue([]);
   invalidateAllDownloadStatusesCache();
 
-  let body;
-  await routes.get("GET /downloads")(
-    {},
-    {
-      json(value) {
-        body = value;
-      },
-    },
-  );
+  const response = createResponse<{ progress: number }[]>();
+  await routes.get("GET /downloads")({}, response);
   assert.deepEqual(
-    body.map((item) => item.progress),
+    response.body.map((item) => item.progress),
     [0, 75],
   );
 });

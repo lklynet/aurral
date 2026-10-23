@@ -1,3 +1,4 @@
+import { requireFixture } from "../playlists/fixtures.ts";
 import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "fs/promises";
@@ -7,7 +8,6 @@ import {
   setupIsolatedBackend,
   cleanupIsolatedState,
   createMockHttpServer,
-  importFromRepo,
   resetDatabase,
 } from "../helpers/backendTestHarness.ts";
 
@@ -17,20 +17,19 @@ const previousPathMappings = process.env.PATH_MAPPINGS;
 const [isolatedState, { db }, { dbOps }, { runStorageHealthCheck }, { resolveDownloadRoot }] =
   await setupIsolatedBackend(
     "storage-health",
-    "backend/config/db-sqlite.ts",
-    "backend/db/helpers/index.ts",
-    "backend/services/storageHealthService.ts",
-    "backend/services/downloadPaths.ts",
+    () => import("../../backend/config/db-sqlite.ts"),
+    () => import("../../backend/db/helpers/index.ts"),
+    () => import("../../backend/services/storageHealthService.ts"),
+    () => import("../../backend/services/downloadPaths.ts"),
   );
 
 beforeEach(async () => {
   await resetDatabase(db);
-  const { downloadTracker } = await importFromRepo(
-    "backend/services/downloadJobs/downloadTracker.ts",
-  );
+  const { downloadTracker } =
+    await import("../../backend/services/downloadJobs/downloadTracker.ts");
   downloadTracker.clearAll();
   const downloadFolder = process.env.DOWNLOAD_FOLDER;
-  await fs.mkdir(downloadFolder, { recursive: true });
+  await fs.mkdir(downloadFolder!, { recursive: true });
   process.env.FILE_BROWSE_ROOTS = downloadFolder;
   delete process.env.PATH_MAPPINGS;
   dbOps.updateSettings({
@@ -100,7 +99,7 @@ test("native playback passes when any available file is readable", async () => {
     upsertLibraryArtist,
     upsertLibraryMediaFile,
     upsertLibraryTrack,
-  } = await importFromRepo("backend/services/libraryMediaStore.ts");
+  } = await import("../../backend/services/libraryMediaStore.ts");
   const artist = upsertLibraryArtist({
     identityKey: "storage-health:artist",
     name: "Storage Artist",
@@ -117,12 +116,12 @@ test("native playback passes when any available file is readable", async () => {
     artistName: artist.name,
   });
   linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
-  const readablePath = path.join(process.env.DOWNLOAD_FOLDER, "1-readable.flac");
+  const readablePath = path.join(requireFixture(process.env.DOWNLOAD_FOLDER), "1-readable.flac");
   await fs.writeFile(readablePath, "audio");
   upsertLibraryMediaFile({
     trackId: track.id,
     source: "lidarr",
-    path: path.join(process.env.DOWNLOAD_FOLDER, "0-stale.flac"),
+    path: path.join(requireFixture(process.env.DOWNLOAD_FOLDER), "0-stale.flac"),
     available: true,
   });
   upsertLibraryMediaFile({
@@ -156,6 +155,7 @@ test("runStorageHealthCheck does not warn about preferred shared-root convention
 
 test("storage health warns when any Lidarr root overlaps the Aurral root", async () => {
   const downloadFolder = process.env.DOWNLOAD_FOLDER;
+  assert.ok(downloadFolder != null);
   const nestedLidarrRoot = path.join(downloadFolder, "lidarr");
   dbOps.updateSettings({
     ...dbOps.getSettings(),
@@ -169,10 +169,12 @@ test("storage health warns when any Lidarr root overlaps the Aurral root", async
 
   const result = await runStorageHealthCheck({ force: true });
   const downloads = result.sections.find((section) => section.id === "downloads");
+  assert.ok(downloads != null);
   const overlap = downloads?.steps.find((step) => step.id === "root-overlap");
+  assert.ok(overlap != null);
 
   assert.equal(overlap?.status, "warn");
-  assert.match(overlap.detail, new RegExp(nestedLidarrRoot.replaceAll("/", "\\/")));
+  assert.match(requireFixture(overlap.detail), new RegExp(nestedLidarrRoot.replaceAll("/", "\\/")));
   assert.equal(downloads.status, "warn");
 });
 
@@ -189,7 +191,7 @@ test("passing checks never include remediation text", async () => {
   );
 });
 
-test("NZBGet health verifies the real Aurral transfer instead of filesystem identity", async (t) => {
+test("NZBGet health verifies the real Aurral transfer instead of filesystem identity", async (t: import("vite-plus/test").TestContext) => {
   const completedPath = path.join(isolatedState.baseDir, "nzbget-complete");
   await fs.mkdir(completedPath, { recursive: true });
   const server = await createMockHttpServer((request, response) => {
@@ -235,7 +237,7 @@ test("NZBGet health verifies the real Aurral transfer instead of filesystem iden
   assert.deepEqual(await fs.readdir(completedPath), []);
 });
 
-test("download-client health fails when the reported path cannot perform a transfer", async (t) => {
+test("download-client health fails when the reported path cannot perform a transfer", async (t: import("vite-plus/test").TestContext) => {
   const completedPath = path.join(isolatedState.baseDir, "not-a-completed-directory");
   await fs.writeFile(completedPath, "readable but not transferable");
   const server = await createMockHttpServer((request, response) => {
@@ -268,7 +270,7 @@ test("download-client health fails when the reported path cannot perform a trans
   assert.match(transfer?.detail || "", /(ENOTDIR|not a directory)/i);
 });
 
-test("slskd missing-path remediation points to slskd rather than a nonexistent Aurral field", async (t) => {
+test("slskd missing-path remediation points to slskd rather than a nonexistent Aurral field", async (t: import("vite-plus/test").TestContext) => {
   const server = await createMockHttpServer((request, response) => {
     response.writeHead(200, { "content-type": "application/json" });
     if (request.url?.startsWith("/api/v0/application")) {
@@ -295,7 +297,7 @@ test("slskd missing-path remediation points to slskd rather than a nonexistent A
   assert.doesNotMatch(configured?.fix || "", /Settings .* Download Clients .* slskd/i);
 });
 
-test("unrelated Navidrome libraries do not fail local storage health", async (t) => {
+test("unrelated Navidrome libraries do not fail local storage health", async (t: import("vite-plus/test").TestContext) => {
   const playlistLibrary = "/music-aurral";
   const server = await createMockHttpServer((request, response) => {
     response.writeHead(200, { "content-type": "application/json" });
@@ -347,7 +349,7 @@ test("unrelated Navidrome libraries do not fail local storage health", async (t)
   );
 });
 
-test("Navidrome health does not compare reused Lidarr and Navidrome paths", async (t) => {
+test("Navidrome health does not compare reused Lidarr and Navidrome paths", async (t: import("vite-plus/test").TestContext) => {
   const playlistLibrary = path.join(resolveDownloadRoot(), "aurral-weekly-flow");
   await fs.mkdir(playlistLibrary, { recursive: true });
   const lidarrRoot = path.join(isolatedState.baseDir, "lidarr-music");
@@ -400,7 +402,7 @@ test("Navidrome health does not compare reused Lidarr and Navidrome paths", asyn
   );
 });
 
-test("configured Plex is included and validates its Aurral library path", async (t) => {
+test("configured Plex is included and validates its Aurral library path", async (t: import("vite-plus/test").TestContext) => {
   const expectedPath = resolveDownloadRoot();
   const server = await createMockHttpServer((request, response) => {
     response.writeHead(200, { "content-type": "application/json" });
@@ -432,7 +434,7 @@ test("configured Plex is included and validates its Aurral library path", async 
   assert.equal(plex?.steps.find((step) => step.id === "aurral-library")?.status, "pass");
 });
 
-test("POSIX library paths remain case-sensitive", async (t) => {
+test("POSIX library paths remain case-sensitive", async (t: import("vite-plus/test").TestContext) => {
   const expectedPath = resolveDownloadRoot();
   const wrongCasePath = expectedPath.toUpperCase();
   const server = await createMockHttpServer((request, response) => {

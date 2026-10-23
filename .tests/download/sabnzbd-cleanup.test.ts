@@ -18,16 +18,16 @@ const [
   { lidarrClient },
 ] = await setupIsolatedBackend(
   "sabnzbd-cleanup",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/sabnzbdClient.ts",
-  "backend/services/sabnzbdCleanup.ts",
-  "backend/services/pathMappings.ts",
-  "backend/services/lidarrClient.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/sabnzbdClient.ts"),
+  () => import("../../backend/services/sabnzbdCleanup.ts"),
+  () => import("../../backend/services/pathMappings.ts"),
+  () => import("../../backend/services/lidarrClient.ts"),
 );
 
 let sequence = 0;
-let root;
+let root: string;
 
 beforeEach(async () => {
   resetDatabase(db);
@@ -39,9 +39,11 @@ beforeEach(async () => {
 afterAll(() => cleanupIsolatedState(state));
 
 const folder = () => path.join(root, "aurral", "release");
-const remove = (historyItem = { storage: folder() }, directories = { destDir: root }) =>
-  removeSabnzbdDownloadFolder(historyItem, directories, "aurral");
-const exists = async (target) => Boolean(await fs.stat(target).catch(() => null));
+const remove = (
+  historyItem: { storage: string } = { storage: folder() },
+  directories: { destDir: string } = { destDir: root },
+) => removeSabnzbdDownloadFolder(historyItem, directories, "aurral");
+const exists = async (target: string) => Boolean(await fs.stat(target).catch(() => null));
 
 test("removes SABnzbd's completed folder and keeps sibling downloads", async () => {
   const sibling = path.join(root, "aurral", "other");
@@ -99,7 +101,13 @@ test("keeps history when cleanup is unsafe and honors the opt-out", async () => 
     if (mode === "history") return { history: { slots: [] } };
     return {};
   });
-  vi.spyOn(client, "getDownloadDirectories").mockImplementation(async () => ({ destDir: root }));
+  vi.spyOn(client, "getDownloadDirectories").mockImplementation(async () => ({
+    completedPath: "",
+    categoryDestDir: "",
+    destDir: root,
+    interDir: "",
+    mainDir: "",
+  }));
 
   await assert.rejects(
     client.deleteHistoryItem("job", {
@@ -127,7 +135,13 @@ test("keeps history when cleanup is unsafe and honors the opt-out", async () => 
 test("the last history item sharing a completed folder removes it", async () => {
   const client = new SabnzbdClient({ category: "aurral", deleteLeftovers: true });
   const history = ["first", "second"].map((nzo_id) => ({ nzo_id, storage: folder() }));
-  vi.spyOn(client, "getDownloadDirectories").mockImplementation(async () => ({ destDir: root }));
+  vi.spyOn(client, "getDownloadDirectories").mockImplementation(async () => ({
+    completedPath: "",
+    categoryDestDir: "",
+    destDir: root,
+    interDir: "",
+    mainDir: "",
+  }));
   vi.spyOn(client, "api").mockImplementation(async (mode, params = {}) => {
     if (mode === "queue") return { queue: { slots: [] } };
     if (mode === "history" && params.name === "delete") {

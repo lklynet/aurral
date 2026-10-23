@@ -11,7 +11,7 @@ export function useFakeClock() {
     let running = true;
     const ticking = (async () => {
       while (running) {
-        await new Promise((resolve) => setImmediate(resolve));
+        await new Promise<void>((resolve) => setImmediate(resolve));
         await vi.advanceTimersByTimeAsync(10);
       }
     })();

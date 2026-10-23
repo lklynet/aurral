@@ -5,7 +5,7 @@ import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTe
 const scenario = process.argv[2];
 process.env.AURRAL_BACKGROUND_WORKER_GROUP = scenario === "settings" ? "downloads" : "maintenance";
 if (scenario !== "fallback") process.env.AURRAL_WORKER_SUPERVISOR_POLL_MS = "120000";
-const [state, honker, runtime] = await setupIsolatedBackend("supervisor-probe", "backend/services/honkerDb.ts", "backend/services/appRuntime.ts");
+const [state, honker, runtime] = await setupIsolatedBackend("supervisor-probe", () => import("../../backend/services/honkerDb.ts"), () => import("../../backend/services/appRuntime.ts"));
 const queue = scenario === "settings" ? honker.getPipelineQueue() : honker.getMaintenanceTaskQueue();
 const now = Math.floor(Date.now() / 1000);
 const pump = async () => { for (let index = 0; index < 100; index++) await new Promise(setImmediate); };

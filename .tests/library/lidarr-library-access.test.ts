@@ -1,3 +1,4 @@
+import { LidarrClient } from "../../backend/services/lidarrClient.ts";
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "fs/promises";
@@ -6,15 +7,20 @@ import path from "path";
 
 import { runLidarrLibraryAccessTest } from "../../backend/services/lidarrLibraryAccessTest.ts";
 
-function createMockLidarrClient(overrides = {}) {
-  return {
+function createMockLidarrClient({
+  rootPath = "/music",
+  ...overrides
+}: { rootPath?: string; request?: (endpoint: string) => Promise<unknown> } & Partial<
+  Pick<LidarrClient, "getTracksByAlbumId" | "getTrackFilesByAlbumId">
+> = {}) {
+  return Object.assign(new LidarrClient(), {
     testConnection: async () => ({ connected: true, instanceName: "Lidarr", version: "2.0" }),
-    getRootFolders: async () => [{ path: overrides.rootPath }],
-    request: overrides.request || (async () => []),
-    getTracksByAlbumId: overrides.getTracksByAlbumId || (async () => []),
-    getTrackFilesByAlbumId: overrides.getTrackFilesByAlbumId || (async () => []),
+    getRootFolders: async () => [{ id: 1, path: rootPath }],
+    request: async () => [],
+    getTracksByAlbumId: async () => [],
+    getTrackFilesByAlbumId: async () => [],
     ...overrides,
-  };
+  });
 }
 
 test("runLidarrLibraryAccessTest fails when root folder is not readable", async () => {
@@ -119,7 +125,10 @@ test("runLidarrLibraryAccessTest shows translated root path when manual Lidarr m
   assert.match(mountStep?.detail || "", / -> /);
 });
 
-function createMultiArtistClient(rootPath, artists) {
+function createMultiArtistClient(
+  rootPath: string,
+  artists: { id: number; path: string; trackPath: string }[],
+) {
   return createMockLidarrClient({
     rootPath,
     request: async (endpoint) => {
@@ -137,12 +146,12 @@ function createMultiArtistClient(rootPath, artists) {
       return [];
     },
     getTracksByAlbumId: async (albumId) => [
-      { id: albumId, title: "Track", hasFile: true, trackFileId: albumId },
+      { id: Number(albumId), title: "Track", hasFile: true, trackFileId: Number(albumId) },
     ],
     getTrackFilesByAlbumId: async (albumId) => [
       {
-        id: albumId,
-        path: artists.find((artist) => artist.id === albumId).trackPath,
+        id: Number(albumId),
+        path: artists.find((artist) => artist.id === albumId)!.trackPath,
         size: 5,
       },
     ],

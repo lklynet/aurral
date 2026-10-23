@@ -12,13 +12,22 @@ import {
 
 const [isolatedState, { db }, { userOps, dbOps }] = await setupIsolatedBackend(
   "theme-routes",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
 );
 
-let server = null;
+let server: {
+  child: import("node:child_process").ChildProcessByStdio<
+    null,
+    import("node:stream").Readable,
+    import("node:stream").Readable
+  >;
+  port: number;
+  logs: () => string;
+  stop(): Promise<void>;
+};
 
-async function login(username) {
+async function login(username: string) {
   const response = await fetch(`http://127.0.0.1:${server.port}/api/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -29,7 +38,7 @@ async function login(username) {
   return payload.token;
 }
 
-async function apiFetch(token, path, options = {}) {
+async function apiFetch(token: string, path: string, options: RequestInit = {}) {
   const response = await fetch(`http://127.0.0.1:${server.port}${path}`, {
     ...options,
     headers: {
@@ -41,10 +50,18 @@ async function apiFetch(token, path, options = {}) {
   return { response, payload: text ? JSON.parse(text) : null };
 }
 
-const putTheme = (token, theme) =>
-  apiFetch(token, "/api/users/me/theme", { method: "PUT", body: JSON.stringify({ theme }) });
+const putTheme = (
+  token: string,
+  theme: {
+    themes: { id: string; name: string }[];
+    version: number;
+    themeId: string;
+    appearance: string;
+    matchArtwork: boolean;
+  },
+) => apiFetch(token, "/api/users/me/theme", { method: "PUT", body: JSON.stringify({ theme }) });
 
-const createUser = (username, role = "user") =>
+const createUser = (username: string, role: string = "user") =>
   userOps.createUser(username, bcrypt.hashSync("password123", 4), role);
 
 const duskDocument = {
@@ -131,6 +148,7 @@ test("an invalid theme is rejected and the saved theme is kept", async () => {
 test("deleting a user removes their saved theme", async () => {
   createUser("theme-admin", "admin");
   const removed = createUser("theme-removed");
+  assert.ok(removed != null);
   await putTheme(await login("theme-removed"), duskDocument);
   assert.ok(dbOps.getUserTheme(removed.id));
 

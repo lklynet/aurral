@@ -1,3 +1,5 @@
+import { requireFixture } from "../playlists/fixtures.ts";
+import { listeningAddress } from "../helpers/backendTestHarness.ts";
 import assert from "node:assert/strict";
 import { describe, test, beforeAll, afterAll, vi } from "vite-plus/test";
 import fs, { mkdir, symlink, writeFile, truncate } from "node:fs/promises";
@@ -18,14 +20,14 @@ const [
   { scanMusicRoot },
 ] = await setupIsolatedBackend(
   "album-artwork",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/config/session-helpers.ts",
-  "backend/middleware/auth.ts",
-  "backend/routes/library/index.ts",
-  "backend/routes/library/handlers/libraryIndex.ts",
-  "backend/services/libraryMediaStore.ts",
-  "backend/services/libraryFileScanner.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/config/session-helpers.ts"),
+  () => import("../../backend/middleware/auth.ts"),
+  () => import("../../backend/routes/library/index.ts"),
+  () => import("../../backend/routes/library/handlers/libraryIndex.ts"),
+  () => import("../../backend/services/libraryMediaStore.ts"),
+  () => import("../../backend/services/libraryFileScanner.ts"),
 );
 
 const root = path.join(isolatedState.baseDir, "music");
@@ -42,18 +44,42 @@ dbOps.updateSettings({ onboardingComplete: true });
 const app = express();
 app.use(authMiddleware);
 app.use("/api/library", libraryRouter);
-const server = await new Promise((resolve) => {
+const server = await new Promise<
+  import("node:http").Server<
+    typeof import("node:http").IncomingMessage,
+    typeof import("node:http").ServerResponse
+  >
+>((resolve) => {
   const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
 });
-const baseUrl = `http://127.0.0.1:${server.address().port}`;
-let session = null;
+const baseUrl = `http://127.0.0.1:${listeningAddress(server).port}`;
+let session: { token: string; expiresAt: number } | null = null;
 
 afterAll(async () => {
-  await new Promise((resolve) => server.close(resolve));
+  await new Promise<void>((resolve) => server.close(() => resolve()));
   await cleanupIsolatedState(isolatedState);
 });
 
-function audioWithPicture(picture) {
+type PublicLibraryAlbum = Parameters<typeof buildPublicLibrary>[0]["albums"][number];
+
+const libraryAlbum = (overrides: Partial<PublicLibraryAlbum> & { coverUrl?: string }) => ({
+  identityKey: "",
+  mbid: null,
+  releaseGroupMbid: null,
+  artistId: artist.id,
+  title: "",
+  albumArtist: null,
+  releaseDate: null,
+  createdAt: 0,
+  metadata: null,
+  trackIds: [],
+  sources: [],
+  available: true,
+  id: 0,
+  ...overrides,
+});
+
+function audioWithPicture(picture: Buffer | null) {
   const audio = Buffer.alloc(417 * 2);
   audio.set([0xff, 0xfb, 0x90, 0x64], 0);
   audio.set([0xff, 0xfb, 0x90, 0x64], 417);
@@ -78,7 +104,7 @@ function audioWithPicture(picture) {
   return Buffer.concat([header, frame, payload, audio]);
 }
 
-async function albumFixture(name, pictures) {
+async function albumFixture(name: string, pictures: (Buffer | null)[]) {
   const folder = path.join(root, name);
   await mkdir(folder);
   const album = libraryStore.upsertLibraryAlbum({
@@ -109,12 +135,18 @@ async function albumFixture(name, pictures) {
   return { ...album, folder };
 }
 
-async function addArtworkAndScan(filePath, contents = image) {
+async function addArtworkAndScan(filePath: string, contents = image) {
   await writeFile(filePath, contents);
   await scanMusicRoot({ rootPath: root, changedPaths: [filePath] });
 }
 
-async function requestCover(albumId, { token = session?.token, headers = {} } = {}) {
+async function requestCover(
+  albumId: string | number,
+  {
+    token = session?.token,
+    headers = {},
+  }: { token?: string | null; headers?: { authorization?: string } } = {},
+) {
   const query = token ? `?token=${encodeURIComponent(token)}` : "";
   const response = await fetch(`${baseUrl}/api/library/albums/${albumId}/cover${query}`, {
     headers,
@@ -132,16 +164,15 @@ test("only available unidentified albums gain a local cover URL and remote artwo
     artists: [],
     tracks: [],
     albums: [
-      { id: 12, available: true },
-      { id: 13, available: true, coverUrl: "/existing-cover.webp" },
-      { id: 14, available: false },
-      { id: 15, available: true, releaseGroupMbid: "release-group" },
-      { id: 16, available: true, mbid: "release" },
-      {
+      libraryAlbum({ id: 12 }),
+      libraryAlbum({ id: 13, coverUrl: "/existing-cover.webp" }),
+      libraryAlbum({ id: 14, available: false }),
+      libraryAlbum({ id: 15, releaseGroupMbid: "release-group" }),
+      libraryAlbum({ id: 16, mbid: "release" }),
+      libraryAlbum({
         id: 17,
-        available: true,
         metadata: { images: [{ remoteUrl: "https://example.invalid/cover.jpg" }] },
-      },
+      }),
     ],
   }).albums;
   assert.equal(albums[0].coverUrl, "/api/library/albums/12/cover");
@@ -153,16 +184,16 @@ test("only available unidentified albums gain a local cover URL and remote artwo
 });
 
 test("custom album artwork keeps the underlying embedded cover available as a fallback", () => {
-  const albumId = "custom-cover-fallback";
+  const albumId = 987654;
   db.prepare(`
     INSERT INTO custom_artwork (entity_kind, entity_id, content_type, source_url, updated_at)
     VALUES ('album', ?, 'image/webp', NULL, 1234)
-  `).run(albumId);
+  `).run(String(albumId));
 
   try {
     const [album] = buildPublicLibrary({
       artists: [],
-      albums: [{ id: albumId, available: true }],
+      albums: [libraryAlbum({ id: albumId })],
       tracks: [],
     }).albums;
 
@@ -171,7 +202,7 @@ test("custom album artwork keeps the underlying embedded cover available as a fa
     assert.equal(album.defaultCoverUrl, `/api/library/albums/${albumId}/cover`);
   } finally {
     db.prepare("DELETE FROM custom_artwork WHERE entity_kind = 'album' AND entity_id = ?").run(
-      albumId,
+      String(albumId),
     );
   }
 });
@@ -184,9 +215,9 @@ test("installs without sign-in serve covers to requests without a token", async 
 });
 
 describe("with sign-in required", () => {
-  let user;
+  let user: NonNullable<ReturnType<typeof userOps.createUser>>;
   beforeAll(() => {
-    user = userOps.createUser("artwork-test-user", "unused-hash", "user");
+    user = requireFixture(userOps.createUser("artwork-test-user", "unused-hash", "user"));
     session = createSession(user.id);
   });
 
@@ -198,7 +229,7 @@ describe("with sign-in required", () => {
     const metadata = await sharp(result.body).metadata();
     assert.equal(metadata.format, "webp");
     assert.equal(metadata.width, 16);
-    assert.match(result.cacheControl, /private/);
+    assert.match(requireFixture(result.cacheControl), /private/);
   });
 
   test("cover endpoint reads a differently cased sidecar and resizes it to fit 512 pixels", async () => {
@@ -215,16 +246,20 @@ describe("with sign-in required", () => {
   });
 
   test("cover endpoint accepts folder, front and album sidecars in any letter case", async () => {
-    for (const name of ["Folder.jpg", "FRONT.webp", "album.png"]) {
+    const sidecars = [
+      ["Folder.jpg", "jpeg"],
+      ["FRONT.webp", "webp"],
+      ["album.png", "png"],
+    ] as const;
+    for (const [name, format] of sidecars) {
       const album = await albumFixture(`sidecar-${name}`, [null]);
-      const format = path.extname(name).slice(1).toLowerCase().replace("jpg", "jpeg");
       await sharp(image).toFormat(format).toFile(path.join(album.folder, name));
       assert.equal((await requestCover(album.id)).status, 200, name);
     }
   });
 
   test("cover endpoint refuses unknown albums, external sidecars and anonymous or invalid tokens", async () => {
-    const bearer = { authorization: `Bearer ${session.token}` };
+    const bearer = { authorization: `Bearer ${requireFixture(session).token}` };
     assert.equal(
       (await requestCover("../etc/passwd", { token: null, headers: bearer })).status,
       404,
@@ -269,6 +304,7 @@ describe("with sign-in required", () => {
     );
     assert.equal((await requestCover(album.id, { token: expired.token })).status, 401);
     const disabled = userOps.createUser("disabled-artwork-user", "unused-hash", "user");
+    assert.ok(disabled != null);
     const disabledSession = createSession(disabled.id);
     userOps.updateUser(disabled.id, { status: "disabled" });
     assert.equal((await requestCover(album.id, { token: disabledSession.token })).status, 401);

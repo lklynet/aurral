@@ -1,21 +1,28 @@
+import { requireFixture } from "../playlists/fixtures.ts";
+import { listeningAddress } from "../helpers/backendTestHarness.ts";
+import { asAppError } from "../../lib/errors.ts";
 import { test, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import { dbOps } from "../../backend/db/helpers/index.ts";
 import { LidarrClient } from "../../backend/services/lidarrClient.ts";
 
-const flushPendingWork = () => new Promise((resolve) => setImmediate(resolve));
+const flushPendingWork = () => new Promise<void>((resolve) => setImmediate(resolve));
 
-const lidarrResponse = (status, body, headers = {}) =>
+const lidarrResponse = (status: number, body: unknown, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), {
     status,
     headers: { "content-type": "application/json", ...headers },
   });
 
-function createStubbedLidarrClient(t, { circuitDisabled = true } = {}) {
+function createStubbedLidarrClient(
+  t: import("vite-plus/test").TestContext,
+  { circuitDisabled = true }: { circuitDisabled?: boolean } = {},
+) {
   const client = new LidarrClient();
   client._holdConfig = true;
   client.config = {
+    ...client.config,
     url: "http://lidarr.invalid:8686",
     apiKey: "test",
     timeoutMs: 2000,
@@ -37,6 +44,7 @@ function skipRetryDelays() {
 test("isCircuitOpen returns stale GET cache instead of throwing", async () => {
   const client = new LidarrClient();
   client.config = {
+    ...client.config,
     url: "http://localhost:8686",
     apiKey: "test",
     circuitDisabled: false,
@@ -46,28 +54,30 @@ test("isCircuitOpen returns stale GET cache instead of throwing", async () => {
   client._artistListCache = { data: [{ id: 1, artistName: "Test" }], at: 0 };
 
   assert.equal(client.isCircuitOpen(), true);
-  const artists = await client.request("/artist", "GET", null, true);
+  const artists = await client.request<{ artistName: string }[]>("/artist", "GET", null, true);
   assert.equal(artists.length, 1);
   assert.equal(artists[0].artistName, "Test");
 });
 
-test("bulk track reads use Lidarr artist selectors", async (t) => {
-  const requests = [];
+test("bulk track reads use Lidarr artist selectors", async (t: import("vite-plus/test").TestContext) => {
+  const requests: (string | undefined)[] = [];
   const server = http.createServer((request, response) => {
     requests.push(request.url);
     response.writeHead(200, { "content-type": "application/json" });
     response.end(JSON.stringify([{ id: 1, albumId: 2 }]));
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   t.onTestFinished(async () => {
     server.closeAllConnections();
-    await new Promise((resolve) => server.close(resolve));
+    await new Promise<void>((resolve) => server.close(() => resolve()));
   });
 
-  const address = server.address();
+  const address = listeningAddress(server);
+  assert.ok(address != null);
   const client = new LidarrClient();
   client._holdConfig = true;
   client.config = {
+    ...client.config,
     url: `http://127.0.0.1:${address.port}`,
     apiKey: "test",
     timeoutMs: 2000,
@@ -88,23 +98,25 @@ test("bulk track reads use Lidarr artist selectors", async (t) => {
   client._httpsInsecureAgent.destroy();
 });
 
-test("bulk album reads use Lidarr artist selectors when requested", async (t) => {
-  const requests = [];
+test("bulk album reads use Lidarr artist selectors when requested", async (t: import("vite-plus/test").TestContext) => {
+  const requests: (string | undefined)[] = [];
   const server = http.createServer((request, response) => {
     requests.push(request.url);
     response.writeHead(200, { "content-type": "application/json" });
     response.end("[]");
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   t.onTestFinished(async () => {
     server.closeAllConnections();
-    await new Promise((resolve) => server.close(resolve));
+    await new Promise<void>((resolve) => server.close(() => resolve()));
   });
 
-  const address = server.address();
+  const address = listeningAddress(server);
+  assert.ok(address != null);
   const client = new LidarrClient();
   client._holdConfig = true;
   client.config = {
+    ...client.config,
     url: `http://127.0.0.1:${address.port}`,
     apiKey: "test",
     timeoutMs: 2000,
@@ -119,12 +131,12 @@ test("bulk album reads use Lidarr artist selectors when requested", async (t) =>
   client._httpsInsecureAgent.destroy();
 });
 
-test("no-response Lidarr errors identify the endpoint and timeout", async (t) => {
+test("no-response Lidarr errors identify the endpoint and timeout", async (t: import("vite-plus/test").TestContext) => {
   vi.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("fetch failed"));
   skipRetryDelays();
   const client = createStubbedLidarrClient(t);
   const originalConsoleError = console.error;
-  const errors = [];
+  const errors: unknown[][] = [];
   console.error = (...args) => errors.push(args);
   t.onTestFinished(() => {
     console.error = originalConsoleError;
@@ -142,21 +154,21 @@ test("no-response Lidarr errors identify the endpoint and timeout", async (t) =>
 test("bulk reads wait for active requests before failing", async () => {
   const client = new LidarrClient();
   const artistIds = Array.from({ length: 14 }, (_, index) => index + 1);
-  const started = [];
-  let releaseFailure;
-  let releasePending;
-  let resolveInitialRequests;
-  const failure = new Promise((resolve) => {
+  const started: number[] = [];
+  let releaseFailure!: () => void;
+  let releasePending!: () => void;
+  let resolveInitialRequests!: () => void;
+  const failure = new Promise<void>((resolve) => {
     releaseFailure = resolve;
   });
-  const pending = new Promise((resolve) => {
+  const pending = new Promise<void>((resolve) => {
     releasePending = resolve;
   });
-  const initialRequests = new Promise((resolve) => {
+  const initialRequests = new Promise<void>((resolve) => {
     resolveInitialRequests = resolve;
   });
 
-  client.request = async (endpoint) => {
+  vi.spyOn(client, "request").mockImplementation(async (endpoint) => {
     const artistId = Number(new URL(`http://localhost${endpoint}`).searchParams.get("artistId"));
     started.push(artistId);
     if (started.length === 12) resolveInitialRequests();
@@ -166,7 +178,7 @@ test("bulk reads wait for active requests before failing", async () => {
     }
     if (artistId <= 12) await pending;
     return [];
-  };
+  });
 
   const read = client.getAllTracks({ artistIds, throwOnError: true });
   await initialRequests;
@@ -186,24 +198,26 @@ test("bulk reads wait for active requests before failing", async () => {
   assert.deepEqual(started, artistIds.slice(0, 12));
 });
 
-test("bulk track-file reads use bounded repeated ID selectors", async (t) => {
-  const requests = [];
+test("bulk track-file reads use bounded repeated ID selectors", async (t: import("vite-plus/test").TestContext) => {
+  const requests: number[][] = [];
   const server = http.createServer((request, response) => {
-    const url = new URL(request.url, "http://127.0.0.1");
+    const url = new URL(request.url ?? "/", "http://127.0.0.1");
     requests.push(url.searchParams.getAll("trackFileIds").map(Number));
     response.writeHead(200, { "content-type": "application/json" });
     response.end("[]");
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   t.onTestFinished(async () => {
     server.closeAllConnections();
-    await new Promise((resolve) => server.close(resolve));
+    await new Promise<void>((resolve) => server.close(() => resolve()));
   });
 
-  const address = server.address();
+  const address = listeningAddress(server);
+  assert.ok(address != null);
   const client = new LidarrClient();
   client._holdConfig = true;
   client.config = {
+    ...client.config,
     url: `http://127.0.0.1:${address.port}`,
     apiKey: "test",
     timeoutMs: 2000,
@@ -228,7 +242,7 @@ test("bulk track-file reads use bounded repeated ID selectors", async (t) => {
   client._httpsInsecureAgent.destroy();
 });
 
-test("testConnection preserves Lidarr HTTP diagnostics", async (t) => {
+test("testConnection preserves Lidarr HTTP diagnostics", async (t: import("vite-plus/test").TestContext) => {
   let status = 401;
   vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
     lidarrResponse(status, { message: `failure-${status}` }, { "x-test-header": String(status) }),
@@ -239,39 +253,43 @@ test("testConnection preserves Lidarr HTTP diagnostics", async (t) => {
   let result = await client.testConnection(true);
   assert.equal(result.statusCode, 401);
   assert.match(result.details, /failure-401/);
+  assert.ok(result.responseHeaders != null);
   assert.equal(result.responseHeaders["x-test-header"], "401");
 
   status = 500;
   result = await client.testConnection(true);
   assert.equal(result.statusCode, 500);
   assert.match(result.details, /failure-500/);
+  assert.ok(result.responseHeaders != null);
   assert.equal(result.responseHeaders["x-test-header"], "500");
 });
 
-test("missing Lidarr resources are absent records, not endpoint failures", async (t) => {
-  const requests = [];
+test("missing Lidarr resources are absent records, not endpoint failures", async (t: import("vite-plus/test").TestContext) => {
+  const requests: (string | undefined)[][] = [];
   const server = http.createServer((request, response) => {
     requests.push([request.method, request.url]);
     response.writeHead(404, { "content-type": "application/json" });
     response.end(JSON.stringify({ message: "Artist with ID 2411485 does not exist" }));
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   t.onTestFinished(async () => {
     server.closeAllConnections();
-    await new Promise((resolve) => server.close(resolve));
+    await new Promise<void>((resolve) => server.close(() => resolve()));
   });
 
-  const address = server.address();
+  const address = listeningAddress(server);
+  assert.ok(address != null);
   const client = new LidarrClient();
   client._holdConfig = true;
   client.config = {
+    ...client.config,
     url: `http://127.0.0.1:${address.port}`,
     apiKey: "test",
     timeoutMs: 2000,
     circuitDisabled: true,
   };
   const originalConsoleError = console.error;
-  const errors = [];
+  const errors: unknown[][] = [];
   console.error = (...args) => errors.push(args);
   t.onTestFinished(() => {
     console.error = originalConsoleError;
@@ -291,11 +309,11 @@ test("missing Lidarr resources are absent records, not endpoint failures", async
     ["GET", "/api/v1/album/2411485"],
     ["GET", "/api/v1/album/2411485"],
   ]);
-  assert.deepEqual(errors, []);
+  assert.deepEqual([...errors], []);
 });
 
-test("getAlbumByMbid avoids unrelated broken albums in Lidarr", async (t) => {
-  const requests = [];
+test("getAlbumByMbid avoids unrelated broken albums in Lidarr", async (t: import("vite-plus/test").TestContext) => {
+  const requests: (string | undefined)[] = [];
   const server = http.createServer((request, response) => {
     requests.push(request.url);
     if (request.url === "/api/v1/album") {
@@ -311,16 +329,18 @@ test("getAlbumByMbid avoids unrelated broken albums in Lidarr", async (t) => {
     response.writeHead(404);
     response.end();
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   t.onTestFinished(async () => {
     server.closeAllConnections();
-    await new Promise((resolve) => server.close(resolve));
+    await new Promise<void>((resolve) => server.close(() => resolve()));
   });
 
-  const address = server.address();
+  const address = listeningAddress(server);
+  assert.ok(address != null);
   const client = new LidarrClient();
   client._holdConfig = true;
   client.config = {
+    ...client.config,
     url: `http://127.0.0.1:${address.port}`,
     apiKey: "test",
     timeoutMs: 2000,
@@ -336,7 +356,7 @@ test("getAlbumByMbid avoids unrelated broken albums in Lidarr", async (t) => {
   client._httpsInsecureAgent.destroy();
 });
 
-test("getAlbumByMbid selects the matching album from filtered results", async (t) => {
+test("getAlbumByMbid selects the matching album from filtered results", async (t: import("vite-plus/test").TestContext) => {
   const server = http.createServer((request, response) => {
     if (request.url !== "/api/v1/album?foreignAlbumId=target-album") {
       response.writeHead(404);
@@ -351,16 +371,18 @@ test("getAlbumByMbid selects the matching album from filtered results", async (t
       ]),
     );
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   t.onTestFinished(async () => {
     server.closeAllConnections();
-    await new Promise((resolve) => server.close(resolve));
+    await new Promise<void>((resolve) => server.close(() => resolve()));
   });
 
-  const address = server.address();
+  const address = listeningAddress(server);
+  assert.ok(address != null);
   const client = new LidarrClient();
   client._holdConfig = true;
   client.config = {
+    ...client.config,
     url: `http://127.0.0.1:${address.port}`,
     apiKey: "test",
     timeoutMs: 2000,
@@ -376,7 +398,7 @@ test("getAlbumByMbid selects the matching album from filtered results", async (t
   client._httpsInsecureAgent.destroy();
 });
 
-test("getAlbumByMbid accepts wrapped Lidarr album results", async (t) => {
+test("getAlbumByMbid accepts wrapped Lidarr album results", async (t: import("vite-plus/test").TestContext) => {
   const server = http.createServer((request, response) => {
     if (request.url !== "/api/v1/album?foreignAlbumId=wrapped-album") {
       response.writeHead(404);
@@ -396,16 +418,18 @@ test("getAlbumByMbid accepts wrapped Lidarr album results", async (t) => {
       }),
     );
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   t.onTestFinished(async () => {
     server.closeAllConnections();
-    await new Promise((resolve) => server.close(resolve));
+    await new Promise<void>((resolve) => server.close(() => resolve()));
   });
 
-  const address = server.address();
+  const address = listeningAddress(server);
+  assert.ok(address != null);
   const client = new LidarrClient();
   client._holdConfig = true;
   client.config = {
+    ...client.config,
     url: `http://127.0.0.1:${address.port}`,
     apiKey: "test",
     timeoutMs: 2000,
@@ -421,7 +445,7 @@ test("getAlbumByMbid accepts wrapped Lidarr album results", async (t) => {
   client._httpsInsecureAgent.destroy();
 });
 
-test("getAlbumsByMbidsSettled bounds concurrent lookups and preserves failures", async (t) => {
+test("getAlbumsByMbidsSettled bounds concurrent lookups and preserves failures", async (t: import("vite-plus/test").TestContext) => {
   const client = new LidarrClient();
   t.onTestFinished(() => {
     client._httpAgent.destroy();
@@ -431,14 +455,14 @@ test("getAlbumsByMbidsSettled bounds concurrent lookups and preserves failures",
 
   let active = 0;
   let maxActive = 0;
-  const lookupsMayFinish = Promise.withResolvers();
+  const lookupsMayFinish = Promise.withResolvers<void>();
   client.getAlbumByMbid = async (albumMbid) => {
     active += 1;
     maxActive = Math.max(maxActive, active);
     await lookupsMayFinish.promise;
     active -= 1;
     if (albumMbid === "album-7") throw new Error("lookup failed");
-    return { foreignAlbumId: albumMbid };
+    return { id: 1, foreignAlbumId: albumMbid };
   };
 
   const settled = client.getAlbumsByMbidsSettled(
@@ -449,15 +473,16 @@ test("getAlbumsByMbidsSettled bounds concurrent lookups and preserves failures",
   const results = await settled;
 
   assert.equal(maxActive, 6);
+  assert.ok(results[0].status === "fulfilled" && results[0].value);
   assert.equal(results[0].value.foreignAlbumId, "album-0");
   assert.equal(results[7].status, "rejected");
   assert.equal(results[7].reason.message, "lookup failed");
 });
 
-test("artist add resolves a non-numeric Lidarr response ID before follow-up calls", async (t) => {
+test("artist add resolves a non-numeric Lidarr response ID before follow-up calls", async (t: import("vite-plus/test").TestContext) => {
   const artistMbid = "f1693075-b637-49f8-8d0e-8cee8bec77cb";
-  const requests = [];
-  let updatePayload;
+  const requests: (string | undefined)[] = [];
+  let updatePayload: Record<string, unknown> = {};
   const server = http.createServer((request, response) => {
     requests.push(request.url);
     if (request.method === "POST" && request.url === "/api/v1/artist") {
@@ -530,22 +555,27 @@ test("artist add resolves a non-numeric Lidarr response ID before follow-up call
     response.writeHead(404);
     response.end();
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   t.onTestFinished(async () => {
     server.closeAllConnections();
-    await new Promise((resolve) => server.close(resolve));
+    await new Promise<void>((resolve) => server.close(() => resolve()));
   });
 
-  const address = server.address();
+  const address = listeningAddress(server);
+  assert.ok(address != null);
   const client = new LidarrClient();
   client._holdConfig = true;
   client.config = {
+    ...client.config,
     url: `http://127.0.0.1:${address.port}`,
     apiKey: "test",
     timeoutMs: 2000,
     circuitDisabled: true,
   };
   client.resolveArtistAddConfiguration = async () => ({
+    rootFolders: [],
+    qualityProfiles: [],
+    fallbacks: { rootFolderPath: "/music", qualityProfileId: 1 },
     resolved: {
       rootFolderPath: "/music",
       qualityProfileId: 1,
@@ -558,6 +588,7 @@ test("artist add resolves a non-numeric Lidarr response ID before follow-up call
 
   assert.equal(artist.id, 42);
   assert.equal(artist.monitored, true);
+  assert.ok(updatePayload != null);
   assert.equal(updatePayload.monitored, true);
   assert.equal(requests.includes(`/api/v1/artist/${artistMbid}`), false);
   assert.deepEqual(requests, [
@@ -572,10 +603,10 @@ test("artist add resolves a non-numeric Lidarr response ID before follow-up call
   client._httpsInsecureAgent.destroy();
 });
 
-test("artist add resolves a numeric metadata-provider response ID", async (t) => {
+test("artist add resolves a numeric metadata-provider response ID", async (t: import("vite-plus/test").TestContext) => {
   const artistMbid = "9c9f1380-2516-4fc9-a3e6-f9f61941d090";
-  const requests = [];
-  let providerPayload;
+  const requests: { endpoint: string; method: "PUT" | "GET" | "POST" | "DELETE" }[] = [];
+  let providerPayload: Record<string, unknown> = {};
   const client = new LidarrClient();
   t.onTestFinished(() => {
     dbOps.deleteLidarrArtistIdMap(artistMbid);
@@ -585,24 +616,31 @@ test("artist add resolves a numeric metadata-provider response ID", async (t) =>
   });
 
   client.resolveArtistAddConfiguration = async () => ({
+    rootFolders: [],
+    qualityProfiles: [],
+    fallbacks: { rootFolderPath: "/music", qualityProfileId: 1 },
     resolved: {
       rootFolderPath: "/music",
       qualityProfileId: 1,
     },
   });
   client.resolveCanonicalArtistIdentity = async () => ({
+    mbid: artistMbid,
+    aliases: [],
     name: "Muse",
     providerIds: ["705@deezer"],
   });
-  client.request = async (endpoint, method = "GET", payload) => {
+  vi.spyOn(client, "request").mockImplementation(async (endpoint, method = "GET", payload) => {
     requests.push({ endpoint, method });
     if (endpoint === "/artist" && method === "POST") {
+      assert.ok(payload && typeof payload === "object" && "foreignArtistId" in payload);
       if (payload.foreignArtistId === artistMbid) {
         throw new Error(
           `Lidarr API error: 500 - The input string '${artistMbid}' was not in a correct format.`,
         );
       }
-      providerPayload = payload;
+      assert.ok(payload && typeof payload === "object");
+      providerPayload = { ...payload };
       return {
         id: 2411485,
         foreignArtistId: "705@deezer",
@@ -626,16 +664,20 @@ test("artist add resolves a numeric metadata-provider response ID", async (t) =>
       ];
     }
     throw new Error(`Unexpected Lidarr request: ${method} ${endpoint}`);
-  };
+  });
 
   const artist = await client.addArtist(artistMbid, "Muse", {
     metadataProfileId: 1,
   });
 
   assert.equal(artist.id, 42);
+  assert.ok(providerPayload != null);
   assert.equal(providerPayload.foreignArtistId, "705@deezer");
   assert.equal(dbOps.getLidarrArtistIdMap(artistMbid), "705@deezer");
-  assert.equal((await client.getArtistByMbid(artistMbid, { forceRefresh: true })).id, 42);
+  assert.equal(
+    requireFixture(await client.getArtistByMbid(artistMbid, { forceRefresh: true })).id,
+    42,
+  );
   assert.deepEqual(requests, [
     { endpoint: "/artist", method: "POST" },
     { endpoint: `/artist/lookup?term=${encodeURIComponent("Muse")}`, method: "GET" },
@@ -645,7 +687,7 @@ test("artist add resolves a numeric metadata-provider response ID", async (t) =>
   ]);
 });
 
-test("artist add rejects a MusicBrainz ID and name mismatch", async (t) => {
+test("artist add rejects a MusicBrainz ID and name mismatch", async (t: import("vite-plus/test").TestContext) => {
   const artistMbid = "f1693075-b637-49f8-8d0e-8cee8bec77cb";
   const client = new LidarrClient();
   t.onTestFinished(() => {
@@ -656,17 +698,22 @@ test("artist add rejects a MusicBrainz ID and name mismatch", async (t) => {
   });
 
   client.resolveArtistAddConfiguration = async () => ({
+    rootFolders: [],
+    qualityProfiles: [],
+    fallbacks: { rootFolderPath: "/music", qualityProfileId: 1 },
     resolved: {
       rootFolderPath: "/music",
       qualityProfileId: 1,
     },
   });
   client.resolveCanonicalArtistIdentity = async () => ({
+    mbid: artistMbid,
+    aliases: [],
     name: "Radiohead",
     providerIds: ["399@deezer"],
   });
   let postCount = 0;
-  client.request = async (endpoint, method = "GET") => {
+  vi.spyOn(client, "request").mockImplementation(async (endpoint, method = "GET") => {
     if (endpoint === "/artist" && method === "POST") {
       postCount += 1;
       throw new Error(
@@ -674,7 +721,7 @@ test("artist add rejects a MusicBrainz ID and name mismatch", async (t) => {
       );
     }
     throw new Error(`Unexpected Lidarr request: ${method} ${endpoint}`);
-  };
+  });
 
   await assert.rejects(
     client.addArtist(artistMbid, "Muse", { metadataProfileId: 1 }),
@@ -684,7 +731,7 @@ test("artist add rejects a MusicBrainz ID and name mismatch", async (t) => {
   assert.equal(dbOps.getLidarrArtistIdMap(artistMbid), null);
 });
 
-test("artist add accepts a MusicBrainz alias when resolving a provider ID", async (t) => {
+test("artist add accepts a MusicBrainz alias when resolving a provider ID", async (t: import("vite-plus/test").TestContext) => {
   const artistMbid = "c5c3e287-d2a7-497f-a212-e2cfb7bcb90c";
   const providerArtistId = "181216727@deezer";
   const client = new LidarrClient();
@@ -696,18 +743,23 @@ test("artist add accepts a MusicBrainz alias when resolving a provider ID", asyn
   });
 
   client.resolveArtistAddConfiguration = async () => ({
+    rootFolders: [],
+    qualityProfiles: [],
+    fallbacks: { rootFolderPath: "/music", qualityProfileId: 1 },
     resolved: {
       rootFolderPath: "/music",
       qualityProfileId: 1,
     },
   });
   client.resolveCanonicalArtistIdentity = async () => ({
+    mbid: artistMbid,
     name: "FromSoftware",
     aliases: ["From Software"],
     providerIds: [providerArtistId],
   });
-  client.request = async (endpoint, method = "GET", payload) => {
+  vi.spyOn(client, "request").mockImplementation(async (endpoint, method = "GET", payload) => {
     if (endpoint === "/artist" && method === "POST") {
+      assert.ok(payload && typeof payload === "object" && "foreignArtistId" in payload);
       if (payload.foreignArtistId === artistMbid) {
         throw new Error(
           `Lidarr API error: 500 - The input string '${artistMbid}' was not in a correct format.`,
@@ -737,7 +789,7 @@ test("artist add accepts a MusicBrainz alias when resolving a provider ID", asyn
       return [{ foreignArtistId: providerArtistId, artistName: "FromSoftware" }];
     }
     throw new Error(`Unexpected Lidarr request: ${method} ${endpoint}`);
-  };
+  });
 
   const artist = await client.addArtist(artistMbid, "From Software", {
     metadataProfileId: 1,
@@ -747,7 +799,7 @@ test("artist add accepts a MusicBrainz alias when resolving a provider ID", asyn
   assert.equal(dbOps.getLidarrArtistIdMap(artistMbid), providerArtistId);
 });
 
-test("artist add succeeds when a provider mapping conflict follows a successful POST", async (t) => {
+test("artist add succeeds when a provider mapping conflict follows a successful POST", async (t: import("vite-plus/test").TestContext) => {
   const artistMbid = "mapping-conflict-add-mbid";
   const existingMbid = "mapping-conflict-existing-mbid";
   const providerId = "mapping-conflict-provider@deezer";
@@ -762,17 +814,23 @@ test("artist add succeeds when a provider mapping conflict follows a successful 
 
   dbOps.setLidarrArtistIdMap(existingMbid, providerId);
   client.resolveArtistAddConfiguration = async () => ({
+    rootFolders: [],
+    qualityProfiles: [],
+    fallbacks: { rootFolderPath: "/music", qualityProfileId: 1 },
     resolved: {
       rootFolderPath: "/music",
       qualityProfileId: 1,
     },
   });
   client.resolveCanonicalArtistIdentity = async () => ({
+    mbid: artistMbid,
+    aliases: [],
     name: "Muse",
     providerIds: [providerId],
   });
-  client.request = async (endpoint, method = "GET", payload) => {
+  vi.spyOn(client, "request").mockImplementation(async (endpoint, method = "GET", payload) => {
     if (endpoint === "/artist" && method === "POST") {
+      assert.ok(payload && typeof payload === "object" && "foreignArtistId" in payload);
       if (payload.foreignArtistId === artistMbid) {
         throw new Error(
           `Lidarr API error: 500 - The input string '${artistMbid}' was not in a correct format.`,
@@ -788,7 +846,7 @@ test("artist add succeeds when a provider mapping conflict follows a successful 
       return [{ id: 42, foreignArtistId: providerId, artistName: "Muse", monitored: true }];
     }
     throw new Error(`Unexpected Lidarr request: ${method} ${endpoint}`);
-  };
+  });
 
   const artist = await client.addArtist(artistMbid, "Muse", { metadataProfileId: 1 });
 
@@ -796,7 +854,7 @@ test("artist add succeeds when a provider mapping conflict follows a successful 
   assert.equal(dbOps.getLidarrArtistMbid(providerId), existingMbid);
 });
 
-test("Lidarr artist provider mappings reject reverse-ID conflicts", async (t) => {
+test("Lidarr artist provider mappings reject reverse-ID conflicts", async (t: import("vite-plus/test").TestContext) => {
   const firstMbid = "mapping-first-mbid";
   const secondMbid = "mapping-second-mbid";
   const providerId = "mapping-provider-id@deezer";
@@ -809,13 +867,13 @@ test("Lidarr artist provider mappings reject reverse-ID conflicts", async (t) =>
   assert.throws(
     () => dbOps.setLidarrArtistIdMap(secondMbid, providerId),
     (error) =>
-      error.code === "LIDARR_ARTIST_ID_CONFLICT" &&
-      /already mapped to another MusicBrainz artist/.test(error.message),
+      asAppError(error)?.code === "LIDARR_ARTIST_ID_CONFLICT" &&
+      /already mapped to another MusicBrainz artist/.test(asAppError(error)?.message ?? ""),
   );
   assert.equal(dbOps.getLidarrArtistMbid(providerId), firstMbid);
 });
 
-test("artist add fails when Lidarr cannot resolve a numeric ID", async (t) => {
+test("artist add fails when Lidarr cannot resolve a numeric ID", async (t: import("vite-plus/test").TestContext) => {
   const artistMbid = "f1693075-b637-49f8-8d0e-8cee8bec77cb";
   const client = new LidarrClient();
   t.onTestFinished(() => {
@@ -825,6 +883,9 @@ test("artist add fails when Lidarr cannot resolve a numeric ID", async (t) => {
   });
 
   client.resolveArtistAddConfiguration = async () => ({
+    rootFolders: [],
+    qualityProfiles: [],
+    fallbacks: { rootFolderPath: "/music", qualityProfileId: 1 },
     resolved: {
       rootFolderPath: "/music",
       qualityProfileId: 1,
@@ -833,24 +894,27 @@ test("artist add fails when Lidarr cannot resolve a numeric ID", async (t) => {
 
   let postCount = 0;
   let lookupCount = 0;
-  client.request = async (endpoint, method, _payload, _skipConfigUpdate, options) => {
-    if (endpoint === "/artist" && method === "POST") {
-      postCount += 1;
-      return {
-        id: artistMbid,
-        foreignArtistId: artistMbid,
-        artistName: "Lena Raine",
-      };
-    }
-    if (endpoint === "/artist" && method === "GET") {
-      lookupCount += 1;
-      if (lookupCount === 2) {
-        assert.equal(options.forceRefresh, true);
+  vi.spyOn(client, "request").mockImplementation(
+    async (endpoint, method, _payload, _skipConfigUpdate, options) => {
+      if (endpoint === "/artist" && method === "POST") {
+        postCount += 1;
+        return {
+          id: artistMbid,
+          foreignArtistId: artistMbid,
+          artistName: "Lena Raine",
+        };
       }
-      return [];
-    }
-    throw new Error(`Unexpected Lidarr request: ${method} ${endpoint}`);
-  };
+      if (endpoint === "/artist" && method === "GET") {
+        lookupCount += 1;
+        if (lookupCount === 2) {
+          assert.ok(options != null);
+          assert.equal(options.forceRefresh, true);
+        }
+        return [];
+      }
+      throw new Error(`Unexpected Lidarr request: ${method} ${endpoint}`);
+    },
+  );
 
   await assert.rejects(
     client.addArtist(artistMbid, "Lena Raine", {
@@ -864,7 +928,7 @@ test("artist add fails when Lidarr cannot resolve a numeric ID", async (t) => {
   assert.equal(lookupCount, 2);
 });
 
-test("artist add does not retry creation after monitoring fails", async (t) => {
+test("artist add does not retry creation after monitoring fails", async (t: import("vite-plus/test").TestContext) => {
   const client = new LidarrClient();
   t.onTestFinished(() => {
     client._httpAgent.destroy();
@@ -873,6 +937,9 @@ test("artist add does not retry creation after monitoring fails", async (t) => {
   });
 
   client.resolveArtistAddConfiguration = async () => ({
+    rootFolders: [],
+    qualityProfiles: [],
+    fallbacks: { rootFolderPath: "/music", qualityProfileId: 1 },
     resolved: {
       rootFolderPath: "/music",
       qualityProfileId: 1,
@@ -880,7 +947,7 @@ test("artist add does not retry creation after monitoring fails", async (t) => {
   });
 
   let postCount = 0;
-  client.request = async (endpoint, method = "GET") => {
+  vi.spyOn(client, "request").mockImplementation(async (endpoint, method = "GET") => {
     if (endpoint === "/artist" && method === "POST") {
       postCount += 1;
       return {
@@ -902,7 +969,7 @@ test("artist add does not retry creation after monitoring fails", async (t) => {
       throw new Error("monitoring failed");
     }
     throw new Error(`Unexpected Lidarr request: ${method} ${endpoint}`);
-  };
+  });
 
   await assert.rejects(
     client.addArtist("artist-mbid", "Lena Raine", {
@@ -915,9 +982,9 @@ test("artist add does not retry creation after monitoring fails", async (t) => {
   assert.equal(postCount, 1);
 });
 
-test("Lidarr cooldown permits only one half-open recovery request", async (t) => {
-  const firstRequest = Promise.withResolvers();
-  const releaseFirst = Promise.withResolvers();
+test("Lidarr cooldown permits only one half-open recovery request", async (t: import("vite-plus/test").TestContext) => {
+  const firstRequest = Promise.withResolvers<void>();
+  const releaseFirst = Promise.withResolvers<void>();
   let requestCount = 0;
   vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
     requestCount += 1;
@@ -948,7 +1015,7 @@ test("Lidarr cooldown permits only one half-open recovery request", async (t) =>
   assert.equal(client._circuitOpen, false);
 });
 
-test("a failed Lidarr recovery probe reopens the cooldown", async (t) => {
+test("a failed Lidarr recovery probe reopens the cooldown", async (t: import("vite-plus/test").TestContext) => {
   let requestCount = 0;
   vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
     requestCount += 1;

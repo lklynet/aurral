@@ -1,38 +1,32 @@
 import assert from "node:assert/strict";
 import { test, vi } from "vite-plus/test";
 
-const createStorage = (initial = {}) => {
+const createStorage = (initial: Record<string, string> = {}) => {
   const values = new Map(Object.entries(initial));
   return {
-    getItem: (key) => values.get(key) ?? null,
-    setItem: (key, value) => values.set(key, String(value)),
-    removeItem: (key) => values.delete(key),
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => values.set(key, String(value)),
+    removeItem: (key: string) => values.delete(key),
   };
 };
 
-const withApiClient = async (t) => {
-  const originalGlobals = {
-    fetch: globalThis.fetch,
-    localStorage: globalThis.localStorage,
-    sessionStorage: globalThis.sessionStorage,
-    window: globalThis.window,
-  };
+const withApiClient = async (t: import("vite-plus/test").TestContext) => {
   vi.resetModules();
 
   t.onTestFinished(async () => {
-    Object.assign(globalThis, originalGlobals);
+    vi.unstubAllGlobals();
   });
 };
 
 test("proxy-authenticated requests carry the issued Aurral session token", async (t) => {
   await withApiClient(t);
 
-  globalThis.sessionStorage = createStorage();
-  globalThis.localStorage = createStorage({ auth_token: "session-token" });
-  globalThis.window = { location: { origin: "https://aurral.example.com" } };
-  let sentAuthorization = null;
+  vi.stubGlobal("sessionStorage", createStorage());
+  vi.stubGlobal("localStorage", createStorage({ auth_token: "session-token" }));
+  vi.stubGlobal("window", { location: { origin: "https://aurral.example.com" } });
+  let sentAuthorization: string | null = null;
   globalThis.fetch = async (_url, init) => {
-    sentAuthorization = init.headers.Authorization ?? null;
+    sentAuthorization = new Headers(init?.headers).get("Authorization");
     return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
   };
 
@@ -42,16 +36,16 @@ test("proxy-authenticated requests carry the issued Aurral session token", async
   assert.equal(sentAuthorization, "Bearer session-token");
 });
 
-test("a proxy auth redirect drops the service worker and reloads through the proxy", async (t) => {
+test("a proxy auth redirect drops the service worker and reloads through the proxy", async (t: import("vite-plus/test").TestContext) => {
   await withApiClient(t);
 
-  const unregistered = [];
-  const deletedCaches = [];
+  const unregistered: number[] = [];
+  const deletedCaches: string[] = [];
   let reloads = 0;
-  const reloaded = Promise.withResolvers();
-  globalThis.sessionStorage = createStorage();
-  globalThis.localStorage = createStorage({ auth_token: "stale-token" });
-  globalThis.window = {
+  const reloaded = Promise.withResolvers<void>();
+  vi.stubGlobal("sessionStorage", createStorage());
+  vi.stubGlobal("localStorage", createStorage({ auth_token: "stale-token" }));
+  vi.stubGlobal("window", {
     location: {
       origin: "https://aurral.example.com",
       pathname: "/discover",
@@ -60,7 +54,7 @@ test("a proxy auth redirect drops the service worker and reloads through the pro
         reloaded.resolve();
       },
     },
-  };
+  });
   const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
   Object.defineProperty(globalThis, "navigator", {
     configurable: true,
@@ -70,17 +64,17 @@ test("a proxy auth redirect drops the service worker and reloads through the pro
       },
     },
   });
-  globalThis.caches = {
+  vi.stubGlobal("caches", {
     keys: async () => ["aurral-precache"],
-    delete: async (key) => deletedCaches.push(key),
-  };
-  globalThis.fetch = async () => ({
+    delete: async (key: string) => deletedCaches.push(key),
+  });
+  vi.stubGlobal("fetch", async () => ({
     type: "opaqueredirect",
     status: 0,
     ok: false,
     headers: new Headers(),
     text: async () => "",
-  });
+  }));
 
   const { default: api } = await import("../../frontend/src/utils/api/core.ts");
 
@@ -94,7 +88,7 @@ test("a proxy auth redirect drops the service worker and reloads through the pro
 
   t.onTestFinished(() => {
     if (originalNavigator) Object.defineProperty(globalThis, "navigator", originalNavigator);
-    delete globalThis.caches;
+    vi.unstubAllGlobals();
   });
 });
 
@@ -103,9 +97,9 @@ test("an unauthorized response drops the stored session without navigating away"
 
   const currentUrl = "https://aurral.example.com/discover";
   let reloads = 0;
-  globalThis.sessionStorage = createStorage({ auth_token: "stale-token" });
-  globalThis.localStorage = createStorage({ auth_token: "stale-token" });
-  globalThis.window = {
+  vi.stubGlobal("sessionStorage", createStorage({ auth_token: "stale-token" }));
+  vi.stubGlobal("localStorage", createStorage({ auth_token: "stale-token" }));
+  vi.stubGlobal("window", {
     location: {
       origin: "https://aurral.example.com",
       pathname: "/discover",
@@ -114,7 +108,7 @@ test("an unauthorized response drops the stored session without navigating away"
         reloads += 1;
       },
     },
-  };
+  });
   globalThis.fetch = async () =>
     new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,
@@ -127,7 +121,7 @@ test("an unauthorized response drops the stored session without navigating away"
   assert.equal(globalThis.localStorage.getItem("auth_token"), null);
   assert.equal(globalThis.sessionStorage.getItem("auth_token"), null);
   assert.equal(globalThis.window.location.href, currentUrl);
-  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise<void>((resolve) => setImmediate(resolve));
   assert.equal(reloads, 0);
 });
 
@@ -135,13 +129,10 @@ test("a proxy 401 with a nested error body reauthenticates through the proxy", a
   await withApiClient(t);
 
   let reloads = 0;
-  let resolveReload;
-  const reloadCompleted = new Promise((resolve) => {
-    resolveReload = resolve;
-  });
-  globalThis.sessionStorage = createStorage({ auth_token: "stale-token" });
-  globalThis.localStorage = createStorage({ auth_token: "stale-token" });
-  globalThis.window = {
+  const { promise: reloadCompleted, resolve: resolveReload } = Promise.withResolvers<void>();
+  vi.stubGlobal("sessionStorage", createStorage({ auth_token: "stale-token" }));
+  vi.stubGlobal("localStorage", createStorage({ auth_token: "stale-token" }));
+  vi.stubGlobal("window", {
     location: {
       origin: "https://aurral.example.com",
       pathname: "/discover",
@@ -150,7 +141,7 @@ test("a proxy 401 with a nested error body reauthenticates through the proxy", a
         resolveReload();
       },
     },
-  };
+  });
   globalThis.fetch = async () =>
     new Response(
       JSON.stringify({
@@ -175,9 +166,9 @@ test("a Spotify provider 401 does not drop the Aurral session", async (t) => {
   await withApiClient(t);
 
   let reloads = 0;
-  globalThis.sessionStorage = createStorage({ auth_token: "valid-token" });
-  globalThis.localStorage = createStorage({ auth_token: "valid-token" });
-  globalThis.window = {
+  vi.stubGlobal("sessionStorage", createStorage({ auth_token: "valid-token" }));
+  vi.stubGlobal("localStorage", createStorage({ auth_token: "valid-token" }));
+  vi.stubGlobal("window", {
     location: {
       origin: "https://aurral.example.com",
       pathname: "/discover",
@@ -185,7 +176,7 @@ test("a Spotify provider 401 does not drop the Aurral session", async (t) => {
         reloads += 1;
       },
     },
-  };
+  });
   globalThis.fetch = async () =>
     new Response(
       JSON.stringify({
@@ -211,10 +202,10 @@ test("a proxy 401 without an Aurral error body reloads through the proxy", async
   await withApiClient(t);
 
   let reloads = 0;
-  const reloaded = Promise.withResolvers();
-  globalThis.sessionStorage = createStorage();
-  globalThis.localStorage = createStorage({ auth_token: "stale-token" });
-  globalThis.window = {
+  const reloaded = Promise.withResolvers<void>();
+  vi.stubGlobal("sessionStorage", createStorage());
+  vi.stubGlobal("localStorage", createStorage({ auth_token: "stale-token" }));
+  vi.stubGlobal("window", {
     location: {
       origin: "https://aurral.example.com",
       pathname: "/discover",
@@ -223,7 +214,7 @@ test("a proxy 401 without an Aurral error body reloads through the proxy", async
         reloaded.resolve();
       },
     },
-  };
+  });
   globalThis.fetch = async () =>
     new Response("<html>Authentication required</html>", {
       status: 401,
@@ -240,9 +231,9 @@ test("a proxy 401 without an Aurral error body reloads through the proxy", async
 test("a failed login response keeps the stored session untouched", async (t) => {
   await withApiClient(t);
 
-  globalThis.sessionStorage = createStorage({ auth_token: "existing-token" });
-  globalThis.localStorage = createStorage({ auth_token: "existing-token" });
-  globalThis.window = { location: { origin: "https://aurral.example.com", pathname: "/" } };
+  vi.stubGlobal("sessionStorage", createStorage({ auth_token: "existing-token" }));
+  vi.stubGlobal("localStorage", createStorage({ auth_token: "existing-token" }));
+  vi.stubGlobal("window", { location: { origin: "https://aurral.example.com", pathname: "/" } });
   globalThis.fetch = async () =>
     new Response(JSON.stringify({ error: "Invalid username or password" }), {
       status: 401,

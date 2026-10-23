@@ -10,10 +10,10 @@ import {
 const [isolatedState, { db }, { dbOps, userOps }, { flowPlaylistConfig }, { PlaylistManager }] =
   await setupIsolatedBackend(
     "navidrome-owner-name-prefix",
-    "backend/config/db-sqlite.ts",
-    "backend/db/helpers/index.ts",
-    "backend/services/playlists/flowPlaylistConfig.ts",
-    "backend/services/playlists/playlistManager.ts",
+    () => import("../../backend/config/db-sqlite.ts"),
+    () => import("../../backend/db/helpers/index.ts"),
+    () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
+    () => import("../../backend/services/playlists/playlistManager.ts"),
   );
 
 beforeEach(() => {
@@ -31,36 +31,46 @@ afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-function makeManager({ prefixOwnerUsername } = {}) {
+function makeManager({ prefixOwnerUsername }: { prefixOwnerUsername?: boolean } = {}) {
   const manager = new PlaylistManager(process.env.WEEKLY_FLOW_FOLDER);
   if (prefixOwnerUsername !== undefined) {
     manager.navidromeDestination.updateConfig({ prefixOwnerUsername });
   }
-  const created = [];
-  manager.navidromeDestination.client = {
+  const created: string[] = [];
+  const client = {
     created,
     isConfigured: () => true,
-    async ensureAurralLibrary() {},
-    async getPlaylists() {
+    async ensureAurralLibrary() {
+      return null;
+    },
+    async getPlaylists(): Promise<{ id: string; name: string }[]> {
       return [];
     },
     async findSong() {
       return { id: "song-id" };
     },
-    async createPlaylist(name) {
+    async createPlaylist(name: string) {
       created.push(name);
       return { id: name, name };
     },
     async updatePlaylist() {},
-    async deletePlaylist() {},
-    async scanLibrary() {},
+    async deletePlaylist(_id: string) {
+      return { status: "ok" };
+    },
+    async scanLibrary() {
+      return null;
+    },
   };
-  return manager;
+  manager.navidromeDestination.client = client as unknown as NonNullable<
+    typeof manager.navidromeDestination.client
+  >;
+  return Object.assign(manager, { testClient: client });
 }
 
 test("the Navidrome adapter keeps an unowned flow name bare", () => {
   const manager = makeManager({ prefixOwnerUsername: true });
   const names = manager.navidromeDestination.getPlaylistNames({
+    entityId: "unowned-flow",
     displayName: "Weekend Vibes",
   });
   assert.equal(names.current, "Weekend Vibes");
@@ -69,8 +79,10 @@ test("the Navidrome adapter keeps an unowned flow name bare", () => {
 
 test("the Navidrome adapter prefixes an owned flow name when enabled", () => {
   const jody = userOps.createUser("jody", "hash", "user");
+  assert.ok(jody != null);
   const manager = makeManager({ prefixOwnerUsername: true });
   const names = manager.navidromeDestination.getPlaylistNames({
+    entityId: "owned-flow",
     ownerUserId: jody.id,
     displayName: "Weekend Vibes",
   });
@@ -80,6 +92,7 @@ test("the Navidrome adapter prefixes an owned flow name when enabled", () => {
 
 test("the Navidrome adapter prefixes an owned static playlist name when enabled", () => {
   const jody = userOps.createUser("jody", "hash", "user");
+  assert.ok(jody != null);
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "80s Anthems" });
   const manager = makeManager({ prefixOwnerUsername: true });
   const names = manager.navidromeDestination.getPlaylistNames({
@@ -94,10 +107,12 @@ test("the Navidrome adapter prefixes an owned static playlist name when enabled"
 
 test("the Navidrome adapter keeps owned flow names bare when the toggle is off", () => {
   const jody = userOps.createUser("jody", "hash", "user");
+  assert.ok(jody != null);
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "80s Anthems" });
   const manager = makeManager({ prefixOwnerUsername: false });
 
   const flow = manager.navidromeDestination.getPlaylistNames({
+    entityId: "owned-flow",
     ownerUserId: jody.id,
     displayName: "Weekend Vibes",
   });
@@ -124,30 +139,34 @@ test("the Navidrome adapter keeps owned flow names bare when the toggle is off",
 
 test("switching off the prefix deletes a leftover prefixed playlist with no pointer mapping", async () => {
   const jody = userOps.createUser("jody", "hash", "user");
+  assert.ok(jody != null);
   const flow = flowPlaylistConfig.createFlow({ name: "Weekend Vibes", ownerUserId: jody.id });
   flowPlaylistConfig.setEnabled(flow.id, true);
 
   const manager = makeManager({ prefixOwnerUsername: false });
 
   // Existing native playlist from before the toggle flip; no pointer recorded for it.
-  manager.navidromeDestination.client.getPlaylists = async () => [
+  manager.testClient.getPlaylists = async () => [
     { id: "existing-1", name: "jody - Weekend Vibes" },
   ];
-  const deleted = [];
-  manager.navidromeDestination.client.deletePlaylist = async (id) => {
+  const deleted: string[] = [];
+  manager.testClient.deletePlaylist = async (id: string) => {
     deleted.push(id);
+    return { status: "ok" };
   };
 
   await manager.syncPlaylists();
 
-  assert.deepEqual(manager.navidromeDestination.client.created, ["Weekend Vibes"]);
+  assert.deepEqual(manager.testClient.created, ["Weekend Vibes"]);
   assert.deepEqual(deleted, ["existing-1"]);
   flowPlaylistConfig.deleteFlow(flow.id);
 });
 
 test("two different owners can use the same native playlist name", async () => {
   const gordon = userOps.createUser("gordon", "hash", "admin");
+  assert.ok(gordon != null);
   const jody = userOps.createUser("jody", "hash", "user");
+  assert.ok(jody != null);
   const gordonFlow = flowPlaylistConfig.createFlow({
     name: "Weekend Vibes",
     ownerUserId: gordon.id,
@@ -159,8 +178,5 @@ test("two different owners can use the same native playlist name", async () => {
   const manager = makeManager({ prefixOwnerUsername: false });
   await manager.syncPlaylists();
 
-  assert.deepEqual(
-    manager.navidromeDestination.client.created.sort(),
-    ["Weekend Vibes", "Weekend Vibes"].sort(),
-  );
+  assert.deepEqual(manager.testClient.created.sort(), ["Weekend Vibes", "Weekend Vibes"].sort());
 });

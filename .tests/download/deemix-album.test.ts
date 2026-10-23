@@ -4,7 +4,7 @@ import { createServer } from "node:http";
 import { DeemixClient, readDeemixAlbumQueue } from "../../backend/services/deemixClient.ts";
 
 test("deemix album queue keeps completed file paths when one track fails", async () => {
-  const calls = [];
+  const calls: unknown[] = [];
   const server = createServer(async (request, response) => {
     response.setHeader("content-type", "application/json");
     if (request.url === "/api/connect") {
@@ -45,9 +45,10 @@ test("deemix album queue keeps completed file paths when one track fails", async
     response.statusCode = 404;
     response.end("{}");
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   try {
     const address = server.address();
+    assert.ok(address != null && typeof address !== "string");
     const client = new DeemixClient({
       enabled: true,
       url: `http://127.0.0.1:${address.port}`,
@@ -62,7 +63,7 @@ test("deemix album queue keeps completed file paths when one track fails", async
     assert.equal(result.failedCount, 1);
     assert.equal(result.finished, true);
   } finally {
-    await new Promise((resolve) => server.close(resolve));
+    await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });
 
@@ -73,9 +74,9 @@ test("deemix album files are unavailable until the queue item finishes", () => {
     failed: 1,
     files: [{ path: "/downloads/album/01.flac" }],
   };
-  assert.deepEqual(readDeemixAlbumQueue(item).filePaths, []);
+  assert.deepEqual([...readDeemixAlbumQueue(item).filePaths], []);
   const finished = readDeemixAlbumQueue({ ...item, status: "failed", files: [] });
   assert.equal(finished.finished, true);
-  assert.deepEqual(finished.filePaths, []);
+  assert.deepEqual([...finished.filePaths], []);
   assert.equal(finished.failedCount, 1);
 });

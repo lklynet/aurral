@@ -1,3 +1,4 @@
+import { createTrackedJob, trackedJob } from "./fixtures.ts";
 import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
@@ -9,8 +10,8 @@ import {
 
 const [isolatedState, { db }, trackerModule] = await setupIsolatedBackend(
   "job-ownership",
-  "backend/config/db-sqlite.ts",
-  "backend/services/downloadJobs/downloadTracker.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
 );
 
 const { DownloadTracker } = trackerModule;
@@ -27,25 +28,28 @@ afterAll(async () => {
 test("album jobs can be grouped and owned by lidarr explicitly", () => {
   const tracker = new DownloadTracker();
   const groupId = "request-group-1";
-  const lidarrJobId = tracker.addJob(
+  const lidarrJobId = createTrackedJob(
+    tracker,
     { artistName: "Artist", trackName: "One", managedBy: "lidarr", requestGroupId: groupId },
     "library",
   );
-  const aurralJobId = tracker.addJob(
+  const aurralJobId = createTrackedJob(
+    tracker,
     { artistName: "Artist", trackName: "Two", managedBy: "aurral", requestGroupId: groupId },
     "library",
   );
-  const forgedJobId = tracker.addJob(
+  const forgedJobId = createTrackedJob(
+    tracker,
     { artistName: "Artist", trackName: "Three", managedBy: "not-a-manager", requestGroupId: "   " },
     "library",
   );
 
-  assert.equal(tracker.getJob(lidarrJobId).managedBy, "lidarr");
-  assert.equal(tracker.getJob(lidarrJobId).requestGroupId, groupId);
-  assert.equal(tracker.getJob(aurralJobId).managedBy, "aurral");
-  assert.equal(tracker.getJob(aurralJobId).requestGroupId, groupId);
-  assert.equal(tracker.getJob(forgedJobId).managedBy, "aurral");
-  assert.equal(tracker.getJob(forgedJobId).requestGroupId, null);
+  assert.equal(trackedJob(tracker, lidarrJobId).managedBy, "lidarr");
+  assert.equal(trackedJob(tracker, lidarrJobId).requestGroupId, groupId);
+  assert.equal(trackedJob(tracker, aurralJobId).managedBy, "aurral");
+  assert.equal(trackedJob(tracker, aurralJobId).requestGroupId, groupId);
+  assert.equal(trackedJob(tracker, forgedJobId).managedBy, "aurral");
+  assert.equal(trackedJob(tracker, forgedJobId).requestGroupId, null);
 
   const group = tracker.getAll().filter((job) => job.requestGroupId === groupId);
   assert.equal(group.length, 2);
@@ -53,7 +57,8 @@ test("album jobs can be grouped and owned by lidarr explicitly", () => {
 
 test("job ownership survives a tracker reload", async () => {
   const tracker = new DownloadTracker();
-  const lidarrJobId = tracker.addJob(
+  const lidarrJobId = createTrackedJob(
+    tracker,
     {
       artistName: "Artist",
       trackName: "Reload",
@@ -64,6 +69,6 @@ test("job ownership survives a tracker reload", async () => {
   );
 
   const reloaded = new DownloadTracker();
-  assert.equal(reloaded.getJob(lidarrJobId).managedBy, "lidarr");
-  assert.equal(reloaded.getJob(lidarrJobId).requestGroupId, "group-reload");
+  assert.equal(trackedJob(reloaded, lidarrJobId).managedBy, "lidarr");
+  assert.equal(trackedJob(reloaded, lidarrJobId).requestGroupId, "group-reload");
 });

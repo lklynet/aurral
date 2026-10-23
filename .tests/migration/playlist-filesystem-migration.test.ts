@@ -7,10 +7,11 @@ import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTe
 
 const [isolatedState, { ensurePlaylistFilesystemLayout }] = await setupIsolatedBackend(
   "playlist-filesystem-migration",
-  "backend/services/playlistFilesystemMigration.ts",
+  () => import("../../backend/services/playlistFilesystemMigration.ts"),
 );
 
 const root = process.env.WEEKLY_FLOW_FOLDER;
+assert.ok(root != null);
 
 beforeEach(async () => {
   await fs.rm(root, { recursive: true, force: true });

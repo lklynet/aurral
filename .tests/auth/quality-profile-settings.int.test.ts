@@ -12,14 +12,23 @@ import {
 
 const [isolatedState, { db }, { dbOps, userOps }] = await setupIsolatedBackend(
   "quality-profile-settings-api",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
 );
 
-let aurral;
-let authToken;
+let aurral: {
+  child: import("node:child_process").ChildProcessByStdio<
+    null,
+    import("node:stream").Readable,
+    import("node:stream").Readable
+  >;
+  port: number;
+  logs: () => string;
+  stop(): Promise<void>;
+};
+let authToken: string;
 
-async function saveSettings(body) {
+async function saveSettings(body: { qualityProfile: { automaticUpgrades: boolean } }) {
   const response = await fetch(`http://127.0.0.1:${aurral.port}/api/settings`, {
     method: "POST",
     headers: {

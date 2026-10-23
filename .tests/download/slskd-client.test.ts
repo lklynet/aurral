@@ -16,10 +16,10 @@ const [
   { db },
 ] = await setupIsolatedBackend(
   "slskd-client",
-  "backend/services/slskdClient.ts",
-  "backend/services/slskdTransferHistory.ts",
-  "backend/db/helpers/index.ts",
-  "backend/config/db-sqlite.ts",
+  () => import("../../backend/services/slskdClient.ts"),
+  () => import("../../backend/services/slskdTransferHistory.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/config/db-sqlite.ts"),
 );
 
 beforeEach(() => {
@@ -32,7 +32,7 @@ afterAll(async () => {
 
 test("ambiguous creation failure cleans only its owned search and retains failed cleanup", async () => {
   const { SlskdClient } = await import("../../backend/services/slskdClient.ts");
-  const deleted = [];
+  const deleted: (string | undefined)[] = [];
   const owned = new Set();
   const mock = await createMockHttpServer((request, response) => {
     request.resume();
@@ -61,7 +61,7 @@ test("cancellation during creation stops a search accepted before its response",
   const { SlskdClient } = await import("../../backend/services/slskdClient.ts");
   const controller = new AbortController();
   const owned = new Set();
-  const deleted = [];
+  const deleted: (string | undefined)[] = [];
   const mock = await createMockHttpServer((request, response) => {
     request.resume();
     if (request.method === "POST") {
@@ -180,15 +180,15 @@ test("testConnection reports slskd as not connected while Soulseek is still logg
 test("testConnection does not let an older request replace the active cache", async () => {
   const originalSettings = dbOps.getSettings();
   let oldRequestCount = 0;
-  let resolveOldRequests;
-  let releaseOldRequests;
-  const oldRequestsReady = new Promise((resolve) => {
+  let resolveOldRequests!: () => void;
+  let releaseOldRequests!: () => void;
+  const oldRequestsReady = new Promise<void>((resolve) => {
     resolveOldRequests = resolve;
   });
-  const oldRequestsReleased = new Promise((resolve) => {
+  const oldRequestsReleased = new Promise<void>((resolve) => {
     releaseOldRequests = resolve;
   });
-  let oldResultPromise = null;
+  let oldResultPromise: ReturnType<typeof slskdClient.testConnection> | null = null;
   const mock = await createMockHttpServer(async (request, response) => {
     request.resume();
     const isOldRequest = request.headers["x-api-key"] === "old-key";
@@ -324,17 +324,17 @@ test("waitForSearch treats a polling failure during cancellation as a cancelled 
   const originalGetSearch = slskdClient.getSearch.bind(slskdClient);
   const originalDeleteSearch = slskdClient.deleteSearch.bind(slskdClient);
   let cancellationRequested = false;
-  let rejectSearchRequest;
-  let deletedId = null;
-  let notifySearchRequestStarted;
-  const searchRequestStarted = new Promise((resolve) => {
+  let rejectSearchRequest!: (error: Error) => void;
+  let deletedId: string | null = null;
+  let notifySearchRequestStarted!: () => void;
+  const searchRequestStarted = new Promise<void>((resolve) => {
     notifySearchRequestStarted = resolve;
   });
 
   try {
     slskdClient.getSearch = async () => {
       notifySearchRequestStarted();
-      return new Promise((resolve, reject) => {
+      return new Promise<Awaited<ReturnType<typeof slskdClient.getSearch>>>((resolve, reject) => {
         rejectSearchRequest = reject;
       });
     };
@@ -362,7 +362,7 @@ test("waitForSearch cancels before polling when cancellation is already requeste
   const originalGetSearch = slskdClient.getSearch.bind(slskdClient);
   const originalDeleteSearch = slskdClient.deleteSearch.bind(slskdClient);
   let getSearchCalls = 0;
-  let deletedId = null;
+  let deletedId: string | null = null;
 
   try {
     slskdClient.getSearch = async () => {
@@ -418,7 +418,7 @@ test("waitForSearch preserves polling errors while stopping its owned search", a
 
 test("createSearch sends slskd search timeout in milliseconds", async () => {
   const originalSettings = dbOps.getSettings();
-  let requestBody = null;
+  let requestBody: { id: string; searchTimeout: number } | undefined;
   const mock = await createMockHttpServer(async (request, response) => {
     let body = "";
     request.on("data", (chunk) => {
@@ -428,7 +428,7 @@ test("createSearch sends slskd search timeout in milliseconds", async () => {
       if (request.method === "POST" && request.url === "/api/v0/searches") {
         requestBody = JSON.parse(body);
         response.writeHead(201, { "content-type": "application/json" });
-        response.end(JSON.stringify({ id: requestBody.id }));
+        response.end(JSON.stringify({ id: requestBody?.id }));
         return;
       }
       response.writeHead(404);
@@ -452,6 +452,7 @@ test("createSearch sends slskd search timeout in milliseconds", async () => {
       id: "00000000-0000-4000-8000-000000000003",
       searchTimeoutMs: 120000,
     });
+    assert.ok(requestBody != null);
     assert.equal(requestBody.searchTimeout, 120000);
   } finally {
     dbOps.updateSettings(originalSettings);
@@ -506,7 +507,7 @@ test("enqueueBatch rejects slskd all-failed enqueue responses", async () => {
 test("enqueueBatch uses current slskd download endpoint", async () => {
   const originalSettings = dbOps.getSettings();
   const transferId = "00000000-0000-4000-8000-000000000002";
-  const calls = [];
+  const calls: { method: string | undefined; url: string | undefined; body: string }[] = [];
   const mock = await createMockHttpServer(async (request, response) => {
     let body = "";
     request.on("data", (chunk) => {
@@ -568,7 +569,7 @@ test("enqueueBatch uses current slskd download endpoint", async () => {
 
 test("cleanupAfterRun removes Aurral-owned searches and transfers", async () => {
   const originalSettings = dbOps.getSettings();
-  const calls = [];
+  const calls: { method: string | undefined; url: string | undefined }[] = [];
   const mock = await createMockHttpServer((request, response) => {
     calls.push({ method: request.method, url: request.url });
     if (request.method === "DELETE" && request.url === "/api/v0/searches/search-owned") {
@@ -618,6 +619,7 @@ test("cleanupAfterRun removes Aurral-owned searches and transfers", async () => 
       transferId: "transfer-owned",
     });
     const result = await slskdClient.cleanupAfterRun();
+    assert.ok("searchesRemoved" in result);
     assert.equal(result.searchesRemoved, 1);
     assert.equal(result.transfersRemoved, 1);
     assert.equal(result.downloadsRemoved, true);
@@ -673,7 +675,7 @@ test("waitForSearch stops its owned active search when collection is sufficient"
     state: "InProgress",
     responses: [{ username: "peer", files: [{ filename: "Artist/Album/First.flac" }] }],
   };
-  const deleted = [];
+  const deleted: string[] = [];
   vi.spyOn(slskdClient, "getSearch").mockImplementation(async () => snapshot);
   vi.spyOn(slskdClient, "deleteSearch").mockImplementation(async (id) => {
     deleted.push(id);
@@ -691,7 +693,7 @@ test("failed search deletion retains ownership and collected files", async () =>
     state: "InProgress",
     responses: [{ username: "peer", files: [{ filename: "First.flac" }] }],
   };
-  const settled = [];
+  const settled: string[] = [];
   vi.spyOn(slskdClient, "getSearch").mockImplementation(async () => snapshot);
   vi.spyOn(slskdClient, "deleteSearch").mockImplementation(async () => false);
   const result = await slskdClient.waitForSearch("failed-delete", 1000, {
@@ -699,12 +701,12 @@ test("failed search deletion retains ownership and collected files", async () =>
     onSearchSettled: (id) => settled.push(id),
   });
   assert.equal(slskdClient.flattenSearchResults(result).length, 1);
-  assert.deepEqual(settled, []);
+  assert.deepEqual([...settled], []);
 });
 
 test("searchQuery passes its operation deadline through creation and collection", async () => {
   vi.useFakeTimers({ toFake: ["Date"], now: 1000 });
-  let postedBody;
+  let postedBody: { id: string; searchTimeout: number } | undefined;
   let searchId;
   const server = await createMockHttpServer((req, res) => {
     if (req.method === "POST") {
@@ -714,7 +716,7 @@ test("searchQuery passes its operation deadline through creation and collection"
       });
       req.on("end", () => {
         postedBody = JSON.parse(body);
-        searchId = postedBody.id;
+        searchId = postedBody?.id;
         res.writeHead(201, { "Content-Type": "application/json" });
         res.end("{}");
       });
@@ -730,8 +732,8 @@ test("searchQuery passes its operation deadline through creation and collection"
   });
   const { SlskdClient } = await import("../../backend/services/slskdClient.ts");
   const client = new SlskdClient({ enabled: true, url: server.url });
-  const registered = [];
-  const settled = [];
+  const registered: string[] = [];
+  const settled: string[] = [];
   try {
     const result = await client.searchQuery("First", {
       timeoutMs: 120000,
@@ -739,7 +741,9 @@ test("searchQuery passes its operation deadline through creation and collection"
       onSearchSettled: (id) => settled.push(id),
     });
     assert.equal(result.length, 1);
+    assert.ok(postedBody != null);
     assert.equal(postedBody.searchTimeout, 120000);
+    assert.ok(searchId);
     assert.ok(registered.includes(searchId));
     assert.deepEqual(settled, [searchId]);
   } finally {
@@ -771,11 +775,11 @@ test("completed search cleanup failure retains ownership", async () => {
 test("cancellation interrupts an in-flight Soulseek HTTP request", { timeout: 3000 }, async () => {
   vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"], now: Date.now() });
   let cancelled = false;
-  let notifyPoll;
-  const pollStarted = new Promise((resolve) => {
+  let notifyPoll!: () => void;
+  const pollStarted = new Promise<void>((resolve) => {
     notifyPoll = resolve;
   });
-  const deleted = [];
+  const deleted: (string | undefined)[] = [];
   const server = await createMockHttpServer((req, res) => {
     if (req.method === "GET") notifyPoll();
     else {

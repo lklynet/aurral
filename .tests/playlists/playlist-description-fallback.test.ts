@@ -1,3 +1,4 @@
+import { requireFixture } from "./fixtures.ts";
 import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
@@ -9,9 +10,9 @@ import {
 
 const [isolatedState, { db }, { dbOps }, playlistConfigModule] = await setupIsolatedBackend(
   "playlist-description-fallback",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/playlists/flowPlaylistConfig.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
 );
 const { flowPlaylistConfig } = playlistConfigModule;
 const { getDiscoverPlaylistPreset } =
@@ -47,7 +48,10 @@ test("a flow adopted from a preset with no description of its own falls back to 
     size: 20,
     discoverPresetId: "focus-listening-history",
   });
-  assert.equal(flow.description, getDiscoverPlaylistPreset("focus-listening-history").description);
+  assert.equal(
+    flow.description,
+    requireFixture(getDiscoverPlaylistPreset("focus-listening-history")).description,
+  );
 });
 
 test("a flow whose discoverPresetId doesn't match any known preset falls back to null rather than throwing", () => {
@@ -65,5 +69,8 @@ test("static playlists get the same fallback treatment as flows", () => {
     sourceName: "Heavy Rotation",
     discoverPresetId: "discover-weekly",
   });
-  assert.equal(playlist.description, getDiscoverPlaylistPreset("discover-weekly").description);
+  assert.equal(
+    playlist.description,
+    requireFixture(getDiscoverPlaylistPreset("discover-weekly")).description,
+  );
 });

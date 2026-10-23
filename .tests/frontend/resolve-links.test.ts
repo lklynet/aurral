@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
 import { test, vi } from "vite-plus/test";
 
-async function setup(t, respond) {
+async function setup(
+  t: import("vite-plus/test").TestContext,
+  respond: (url: URL, init?: RequestInit) => { status?: number; body: unknown },
+) {
   vi.resetModules();
   const previousFetch = globalThis.fetch;
-  const requests = [];
+  const requests: URL[] = [];
   globalThis.fetch = async (input, init) => {
-    const url = new URL(typeof input === "string" ? input : input.url, "http://aurral.test");
+    const url = new URL(input instanceof Request ? input.url : String(input), "http://aurral.test");
     requests.push(url);
     const { status = 200, body } = respond(url, init);
     return new Response(JSON.stringify(body), {
@@ -21,7 +24,8 @@ async function setup(t, respond) {
     queryClient.clear();
     globalThis.fetch = previousFetch;
   });
-  const open = (path) => {
+  const open = (path: string | null) => {
+    assert.ok(path);
     const url = new URL(path, "http://aurral.test");
     const kind = url.pathname.replace(/^\/go\//, "");
     return queryClient.fetchQuery(links.resolveLinkQueryOptions(kind, url.search));
@@ -42,23 +46,26 @@ test("an album link opens the release it resolves to, keeping names intact", asy
   const target = await open(path);
 
   assert.equal(target.to, "/artist/artist-1/release/release-1");
+  assert.ok(target.state && "focusReleaseGroup" in target.state);
   assert.equal(target.state.focusReleaseGroup.title, "Back in Black?");
   const sent = requests.find((url) => url.pathname.endsWith("/discover/editorial/links"));
+  assert.ok(sent != null);
   assert.equal(sent.searchParams.get("artist"), "AC/DC & Friends");
   assert.equal(sent.searchParams.get("album"), "Back in Black?");
   assert.equal(sent.searchParams.get("albumId"), "42");
 });
 
 test("an album that isn't found opens its artist, and an unknown artist explains itself", async (t) => {
-  let artistMbid = "artist-2";
+  let artistMbid: string | null = "artist-2";
   const { links, open } = await setup(t, () => ({ body: { artistMbid, albumMbid: null } }));
 
   const fallback = await open(links.resolveAlbumPath({ artistName: "Someone", albumName: "Lost" }));
   assert.equal(fallback.to, "/artist/artist-2");
-  assert.match(fallback.notice, /Lost/);
+  assert.match(fallback.notice ?? "", /Lost/);
 
   artistMbid = null;
   await assert.rejects(open(links.resolveArtistPath({ name: "Nobody Known" })), (error) => {
+    assert.ok(error instanceof Error && "resolveNotFound" in error);
     assert.equal(error.resolveNotFound, true);
     assert.match(error.message, /Nobody Known/);
     return true;

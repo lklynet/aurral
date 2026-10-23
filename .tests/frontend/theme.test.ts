@@ -3,55 +3,56 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { runInNewContext } from "node:vm";
 
+type Theme = Parameters<typeof import("../../frontend/src/utils/theme.ts").getThemePalette>[0];
+type ThemeDocument = ReturnType<
+  typeof import("../../frontend/src/utils/theme.ts").getThemeDocument
+>;
 import { pickVividColor } from "../../frontend/src/utils/themeColor.ts";
 import { parseThemeText, serializeThemeFile } from "../../frontend/src/utils/themeImport.ts";
 
-const originals = {
-  document: globalThis.document,
-  localStorage: globalThis.localStorage,
-  matchMedia: globalThis.matchMedia,
-};
-
 afterEach(() => {
-  Object.assign(globalThis, originals);
+  vi.unstubAllGlobals();
 });
 
-function luminance(hex) {
-  const channel = (index) => {
+function luminance(hex: string) {
+  const channel = (index: number) => {
     const value = Number.parseInt(hex.slice(index, index + 2), 16) / 255;
     return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
   };
   return 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5);
 }
 
-function contrast(first, second) {
+function contrast(first: string, second: string) {
   const [a, b] = [luminance(first), luminance(second)].sort((x, y) => y - x);
   return (a + 0.05) / (b + 0.05);
 }
 
-function createBrowser({ storage = {}, prefersDark = false } = {}) {
+function createBrowser({
+  storage = {},
+  prefersDark = false,
+}: { storage?: Record<string, string>; prefersDark?: boolean } = {}) {
   const stored = new Map(Object.entries(storage));
-  const variables = new Map();
-  const dataset = {};
-  globalThis.localStorage = {
-    getItem: (key) => stored.get(key) ?? null,
-    setItem: (key, value) => stored.set(key, String(value)),
-    removeItem: (key) => stored.delete(key),
-  };
-  globalThis.matchMedia = (query) => ({
+  const variables = new Map<string, string>();
+  const dataset: Record<string, string> = {};
+  vi.stubGlobal("localStorage", {
+    getItem: (key: string) => stored.get(key) ?? null,
+    setItem: (key: string, value: string) => stored.set(key, String(value)),
+    removeItem: (key: string) => stored.delete(key),
+  });
+  vi.stubGlobal("matchMedia", (query: string) => ({
     matches: query.includes("dark") ? prefersDark : false,
     addEventListener() {},
-  });
-  globalThis.document = {
+  }));
+  vi.stubGlobal("document", {
     documentElement: {
       dataset,
       style: {
-        setProperty: (name, value) => variables.set(name, value),
-        removeProperty: (name) => variables.delete(name),
+        setProperty: (name: string, value: string) => variables.set(name, value),
+        removeProperty: (name: string) => variables.delete(name),
       },
     },
     querySelectorAll: () => [],
-  };
+  });
   return { stored, variables, dataset };
 }
 
@@ -60,7 +61,7 @@ const loadTheme = () => {
   return import("../../frontend/src/utils/theme.ts");
 };
 
-const lowContrastTheme = {
+const lowContrastTheme: Theme = {
   id: "custom-murky",
   name: "Murky",
   dark: {
@@ -71,7 +72,7 @@ const lowContrastTheme = {
     warning: "#4a4a20",
   },
 };
-const lightOnlyTheme = {
+const lightOnlyTheme: Theme = {
   id: "custom-sunny",
   name: "Sunny",
   light: { background: "#fffdf5", accent: "#ffe14d", success: "#a8f0a0" },
@@ -82,7 +83,7 @@ test("every theme is readable in light and dark, including low-contrast and one-
   const { BUILT_IN_THEMES, getThemePalette } = await loadTheme();
 
   for (const theme of [...BUILT_IN_THEMES, lowContrastTheme, lightOnlyTheme]) {
-    for (const mode of ["light", "dark"]) {
+    for (const mode of ["light", "dark"] as const) {
       const palette = getThemePalette(theme, mode);
       const label = `${theme.name} ${mode}`;
       assert.equal(
@@ -95,7 +96,7 @@ test("every theme is readable in light and dark, including low-contrast and one-
       assert.ok(contrast(palette.textSubtle, palette.surfacePopover) >= 3, `${label} subtle text`);
       assert.ok(contrast(palette.accent, palette.surface) >= 3, `${label} accent`);
       assert.ok(contrast(palette.accentContrast, palette.accent) >= 4.5, `${label} text on accent`);
-      for (const role of ["danger", "warning", "success", "info"]) {
+      for (const role of ["danger", "warning", "success", "info"] as const) {
         assert.ok(contrast(palette[role], palette.surfacePopover) >= 4.5, `${label} ${role}`);
       }
     }
@@ -161,7 +162,7 @@ test("theme choices from the previous version carry over", async () => {
   assert.equal(fresh.getThemeDocument().themeId, "aurral");
   assert.equal(fresh.getThemeDocument().appearance, "light");
 
-  const legacyTheme = (index) => ({
+  const legacyTheme = (index: number) => ({
     version: 1,
     id: index === 0 ? "nord" : `old-theme-${index}`,
     name: index === 0 ? "Nord" : `Old theme ${index}`,
@@ -178,8 +179,9 @@ test("theme choices from the previous version carry over", async () => {
   });
   const migrated = (await loadTheme()).getThemeDocument();
   const selected = migrated.themes.find((theme) => theme.id === migrated.themeId);
+  assert.ok(selected != null);
   assert.equal(selected.name, "Nord");
-  assert.equal(selected.dark.accent, "#ff00aa");
+  assert.equal(selected.dark?.accent, "#ff00aa");
   assert.notEqual(selected.id, "nord");
   assert.ok(
     crowded.stored.has("aurralThemes:v1"),
@@ -187,27 +189,34 @@ test("theme choices from the previous version carry over", async () => {
   );
 });
 
-function fakeAccount(initial = null) {
-  const account = { stored: initial, saves: [], loads: [] };
-  account.loadAccountTheme = () => {
-    const theme = account.stored;
-    return new Promise((resolve) => account.loads.push(() => resolve({ theme })));
+function fakeAccount(initial: ThemeDocument | null = null) {
+  const account = { stored: initial, saves: [] as ThemeDocument[], loads: [] as (() => void)[] };
+  return {
+    ...account,
+    get stored() {
+      return account.stored;
+    },
+    loadAccountTheme: () =>
+      new Promise<{ theme: ThemeDocument | null }>((resolve) => {
+        account.loads.push(() => resolve({ theme: account.stored }));
+      }),
+    saveAccountTheme: async (document: ThemeDocument) => {
+      account.saves.push(document);
+      account.stored = document;
+    },
+    answer: async () => {
+      while (!account.loads.length) await new Promise<void>((resolve) => setImmediate(resolve));
+      const answer = account.loads.shift();
+      assert.ok(answer);
+      answer();
+    },
   };
-  account.saveAccountTheme = async (document) => {
-    account.saves.push(document);
-    account.stored = document;
-  };
-  account.answer = async () => {
-    while (!account.loads.length) await new Promise((resolve) => setImmediate(resolve));
-    account.loads.shift()();
-  };
-  return account;
 }
 
 test("the account's saved theme wins and is never echoed back", async () => {
   createBrowser();
   const { getThemeDocument, selectTheme, startThemeAccountSync } = await loadTheme();
-  const accountDocument = {
+  const accountDocument: ThemeDocument = {
     version: 2,
     themeId: "gruvbox",
     appearance: "light",
@@ -224,7 +233,7 @@ test("the account's saved theme wins and is never echoed back", async () => {
 
   selectTheme("nord");
   await sync.refresh;
-  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise<void>((resolve) => setImmediate(resolve));
   assert.deepEqual(
     account.saves.map((document) => document.themeId),
     ["nord"],
@@ -240,7 +249,7 @@ test("a device's theme is uploaded only to the account that made it", async () =
   const ownerSync = theme.startThemeAccountSync({ userId: 3, ...owner });
   await owner.answer();
   await ownerSync.ready;
-  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise<void>((resolve) => setImmediate(resolve));
   assert.equal(owner.saves[0]?.themeId, "dracula");
   ownerSync.stop();
 
@@ -272,7 +281,7 @@ test("a refresh that started before a local change does not undo it", async () =
   await refreshing;
 
   assert.equal(theme.getThemeDocument().themeId, "nord");
-  assert.equal(account.stored.themeId, "nord");
+  assert.equal(account.stored?.themeId, "nord");
 });
 
 test("saves still queued at sign-out are not sent to the next account", async () => {
@@ -285,11 +294,8 @@ test("saves still queued at sign-out are not sent to the next account", async ()
     matchArtwork: false,
     themes: [],
   });
-  let releaseFirstSave;
-  const firstSave = new Promise((resolve) => {
-    releaseFirstSave = resolve;
-  });
-  const saveAccountTheme = async (document) => {
+  const { promise: firstSave, resolve: releaseFirstSave } = Promise.withResolvers<void>();
+  const saveAccountTheme = async (document: ThemeDocument) => {
     if (!account.saves.length) await firstSave;
     account.saves.push(document);
   };
@@ -302,11 +308,11 @@ test("saves still queued at sign-out are not sent to the next account", async ()
   await sync.ready;
 
   theme.selectTheme("nord");
-  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise<void>((resolve) => setImmediate(resolve));
   theme.selectTheme("solarized");
   sync.stop();
   releaseFirstSave();
-  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise<void>((resolve) => setImmediate(resolve));
 
   assert.deepEqual(
     account.saves.map((document) => document.themeId),
@@ -324,6 +330,7 @@ test("undo does not restore a theme past the limit", async () => {
     );
   }
   const removed = theme.removeCustomTheme(theme.getThemeDocument().themes[0].id);
+  assert.ok(removed != null);
   theme.saveCustomTheme(
     { name: "Replacement", dark: { background: "#101820", accent: "#f2aa4c" } },
     { select: false },
@@ -331,7 +338,7 @@ test("undo does not restore a theme past the limit", async () => {
 
   assert.throws(() => theme.restoreCustomTheme(removed), /up to/);
   assert.equal(theme.getThemeDocument().themes.length, theme.MAX_CUSTOM_THEMES);
-  assert.equal(theme.getThemeDocument().themes.at(-1).name, "Replacement");
+  assert.equal(theme.getThemeDocument().themes.at(-1)?.name, "Replacement");
 });
 
 test("a browser that cannot store themes reports it and keeps the old copy", async () => {
@@ -360,31 +367,30 @@ test("the startup script paints the saved theme before the app loads", async () 
   selectTheme("catppuccin");
   const source = await readFile(new URL("../../frontend/public/theme.js", import.meta.url), "utf8");
 
-  const runStartup = (prefersDark) => {
-    const variables = new Map();
-    const dataset = {};
+  const runStartup = (prefersDark: boolean) => {
+    const variables = new Map<string, string>();
+    const dataset: Record<string, string> = {};
     runInNewContext(source, {
-      localStorage: { getItem: (key) => stored.get(key) ?? null },
+      localStorage: { getItem: (key: string) => stored.get(key) ?? null },
       matchMedia: () => ({ matches: prefersDark }),
       document: {
         documentElement: {
           dataset,
-          style: { setProperty: (name, value) => variables.set(name, value) },
+          style: { setProperty: (name: string, value: string) => variables.set(name, value) },
         },
       },
     });
     return { variables, dataset };
   };
 
+  const catppuccin = findTheme("catppuccin");
+  assert.ok(catppuccin);
   const dark = runStartup(true);
   assert.equal(dark.dataset.theme, "dark");
-  assert.equal(
-    dark.variables.get("--aurral-surface"),
-    getThemePalette(findTheme("catppuccin"), "dark").surface,
-  );
+  assert.equal(dark.variables.get("--aurral-surface"), getThemePalette(catppuccin, "dark").surface);
   assert.equal(
     dark.variables.get("--aurral-text-muted"),
-    getThemePalette(findTheme("catppuccin"), "dark").textMuted,
+    getThemePalette(catppuccin, "dark").textMuted,
   );
 
   const light = runStartup(false);
@@ -456,6 +462,7 @@ test("removing a theme can be undone in place", async () => {
   );
 
   const removed = removeCustomTheme(second.id);
+  assert.ok(removed != null);
   assert.equal(getThemeDocument().themeId, "aurral");
   assert.deepEqual(
     getThemeDocument().themes.map((theme) => theme.name),
@@ -548,8 +555,8 @@ test("Aurral theme files round-trip and old theme files still import", () => {
 });
 
 test("album art matching picks the vivid color, not the average", () => {
-  const pixels = [];
-  const push = (count, rgb) => {
+  const pixels: number[] = [];
+  const push = (count: number, rgb: number[]) => {
     for (let index = 0; index < count; index += 1) pixels.push(...rgb, 255);
   };
   push(700, [128, 128, 128]);
@@ -557,6 +564,7 @@ test("album art matching picks the vivid color, not the average", () => {
   push(50, [220, 40, 40]);
 
   const color = pickVividColor(pixels);
+  assert.ok(color != null);
   const [r, g, b] = [1, 3, 5].map((index) => Number.parseInt(color.slice(index, index + 2), 16));
   assert.ok(b > r && b > g, `${color} is blue`);
 

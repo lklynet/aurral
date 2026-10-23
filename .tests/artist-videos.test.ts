@@ -1,41 +1,39 @@
+import { captureRouteHandlers, createResponse } from "./library/routeHarness.ts";
 import assert from "node:assert/strict";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import { cleanupIsolatedState, setupIsolatedBackend } from "./helpers/backendTestHarness.ts";
 
 const [state, { registerVideo }, { ytdlpClient }, { clearApiCaches }] = await setupIsolatedBackend(
   "artist-videos",
-  "backend/routes/artists/handlers/video.ts",
-  "backend/services/ytdlpClient.ts",
-  "backend/services/apiClients/clearCache.ts",
+  () => import("../backend/routes/artists/handlers/video.ts"),
+  () => import("../backend/services/ytdlpClient.ts"),
+  () => import("../backend/services/apiClients/clearCache.ts"),
 );
 const mbid = "58e235fc-f6ea-4614-9ed4-9855a5665ae1";
-const routes = new Map();
-registerVideo({ get: (path, ...handlers) => routes.set(path, handlers.at(-1)) });
+const routes = captureRouteHandlers(registerVideo, "get");
 
 async function findVideo(trackTitle = "I Wanna Get Better", artistName = "Bleachers") {
-  let body;
-  let status = 200;
+  const response =
+    createResponse<import("../backend/routes/artists/handlers/video.ts").ArtistVideoResponse>();
   await routes.get("/:mbid/video")(
     { params: { mbid }, query: { artistName, trackTitle } },
-    {
-      status(value) {
-        status = value;
-        return this;
-      },
-      json(value) {
-        body = value;
-        return this;
-      },
-    },
+    response,
   );
-  return { status, ...body };
+  return { status: response.statusCode, ...response.body };
 }
 
-const video = (id, title, channel = "bleachers", extra = {}) => ({
+const video = (
+  id: string,
+  title: string,
+  channel: string = "bleachers",
+  extra: { durationSec?: number; liveStatus?: string } = {},
+) => ({
   id,
   title,
   channel,
   durationSec: 293,
+  liveStatus: "not_live",
+  url: `https://www.youtube.com/watch?v=${id}`,
   ...extra,
 });
 
@@ -67,7 +65,7 @@ for (const [name, title, channel, extra] of [
     "bleachers",
     { liveStatus: "is_upcoming" },
   ],
-]) {
+] as const) {
   test(`artist videos skip ${name}`, async () => {
     vi.spyOn(ytdlpClient, "search").mockImplementation(async () => [
       video("wrong000001", title, channel, extra),
@@ -97,8 +95,8 @@ test("artist video matches are reused for later requests", async () => {
 });
 
 test("simultaneous artist video requests share the same search", async () => {
-  let release;
-  const pending = new Promise((resolve) => {
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => {
     release = resolve;
   });
   const search = vi.spyOn(ytdlpClient, "search").mockImplementation(async () => {

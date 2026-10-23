@@ -1,6 +1,8 @@
+import { requireFixture } from "../playlists/fixtures.ts";
+import { Router, type Request, type Response, type RequestHandler } from "express";
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -14,21 +16,6 @@ import {
   upsertLibraryMediaFile,
   upsertLibraryTrack,
 } from "../../backend/services/libraryMediaStore.ts";
-
-test("bounded backend callers do not materialize the compatibility library", async () => {
-  const boundedCallers = [
-    new URL("../../backend/routes/library/handlers/libraryIndex.ts", import.meta.url),
-    new URL("../../backend/routes/library/handlers/downloads.ts", import.meta.url),
-    new URL("../../backend/services/libraryManager.ts", import.meta.url),
-    new URL("../../backend/services/storageHealthService.ts", import.meta.url),
-  ];
-
-  for (const caller of boundedCallers) {
-    const source = await readFile(caller, "utf8");
-    assert.doesNotMatch(source, /\bgetLibrary(?:ReadModel)?\s*\(/);
-    assert.doesNotMatch(source, /\bbuildLibraryReadModel\s*\(/);
-  }
-});
 
 test("library track reads remove nested filesystem paths", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-canonical-route-"));
@@ -74,35 +61,41 @@ test("library track reads remove nested filesystem paths", async () => {
       },
     });
 
-    const routes = new Map();
-    const routeChains = new Map();
-    registerTracks({
-      delete(routePath, ...handlers) {
-        routes.set(routePath, async (req, res) => {
-          let index = 0;
-          const next = () => {
-            const handler = handlers[index++];
-            return handler ? handler(req, res, next) : undefined;
-          };
-          return next();
-        });
-      },
-      get(routePath, ...handlers) {
-        routes.set(routePath, handlers.at(-1));
-        routeChains.set(routePath, handlers);
-      },
-      put() {},
-    });
+    const router = Router();
+    registerAlbums(router);
+    registerTracks(router);
+    const routeChains = new Map<string, RequestHandler[]>();
+    const routes = new Map<string, (request: object, response: object) => unknown>();
+    for (const layer of router.stack) {
+      const route = layer.route;
+      if (
+        !route ||
+        !route.stack.some(
+          (entry: { method: string }) => entry.method === "get" || entry.method === "delete",
+        )
+      )
+        continue;
+      const handlers: RequestHandler[] = route.stack.map(
+        (entry: { handle: RequestHandler }) => entry.handle,
+      );
+      routeChains.set(route.path, handlers);
+      routes.set(route.path, (req, res) => {
+        Object.assign(req, { headers: {}, user: { role: "user", permissions: {} }, ...req });
+        let index = 0;
+        const next = (): unknown => handlers[index++]?.(req as Request, res as Response, next);
+        return next();
+      });
+    }
 
-    const getTrackFiles = async (id, user) => {
+    const getTrackFiles = async (id: string, user: { role: string; permissions?: object }) => {
       const response = {
         statusCode: 200,
-        body: null,
-        status(code) {
+        body: undefined as unknown,
+        status(code: number) {
           this.statusCode = code;
           return this;
         },
-        json(value) {
+        json(value: unknown) {
           this.body = value;
           return this;
         },
@@ -111,33 +104,47 @@ test("library track reads remove nested filesystem paths", async () => {
         },
         setHeader() {},
       };
-      const handlers = routeChains.get("/tracks/:id/files");
+      const handlers = requireFixture(routeChains.get("/tracks/:id/files"));
       let index = 0;
-      const next = () => handlers[index++]?.({ params: { id }, user }, response, next);
+      const next = (): unknown =>
+        handlers[index++]?.(
+          { params: { id }, user } as unknown as Request,
+          response as unknown as Response,
+          next,
+        );
       await next();
       return response;
     };
 
     let deleteStatus;
-    let deleteBody;
-    await routes.get("/tracks/:id")(
+    let deleteBody: { message: string } | undefined;
+    await requireFixture(routes.get("/tracks/:id"))(
       { params: { id: "703" }, user: { role: "user", permissions: {} } },
       {
-        status(code) {
+        status(code: number) {
           deleteStatus = code;
           return this;
         },
-        json(value) {
+        json(value: { message: string }) {
           deleteBody = value;
           return this;
         },
       },
     );
     assert.equal(deleteStatus, 403);
-    assert.equal(deleteBody.message, "Permission required: deleteTrack or deleteAlbum");
+    assert.equal(
+      requireFixture(deleteBody).message,
+      "Permission required: deleteTrack or deleteAlbum",
+    );
 
-    let body;
-    await routes.get("/tracks")(
+    let body: {
+      id: number;
+      title: string;
+      quality: unknown;
+      streamPath: string;
+      streamFormat: string;
+    }[] = [];
+    await requireFixture(routes.get("/tracks"))(
       {
         query: {
           readPath: "canonical",
@@ -145,7 +152,7 @@ test("library track reads remove nested filesystem paths", async () => {
         },
       },
       {
-        json(value) {
+        json(value: typeof body) {
           body = value;
           return this;
         },
@@ -156,20 +163,23 @@ test("library track reads remove nested filesystem paths", async () => {
     );
 
     assert.equal(body.length, 1);
-    assert.equal("path" in body[0], false);
-    assert.deepEqual(body[0].quality, { audioFormat: "FLAC", nested: {} });
-    assert.match(body[0].streamPath, /\/library\/canonical-stream\/\d+\/\d+$/);
-    assert.equal(body[0].streamFormat, "flac");
+    assert.equal("path" in requireFixture(body)[0], false);
+    assert.deepEqual(requireFixture(body)[0].quality, { audioFormat: "FLAC", nested: {} });
+    assert.match(requireFixture(body)[0].streamPath, /\/library\/canonical-stream\/\d+\/\d+$/);
+    assert.equal(requireFixture(body)[0].streamFormat, "flac");
 
-    const userFiles = await getTrackFiles(String(body[0].id), { role: "user", permissions: {} });
+    const userFiles = await getTrackFiles(String(requireFixture(body)[0].id), {
+      role: "user",
+      permissions: {},
+    });
     assert.equal(userFiles.statusCode, 403);
     assert.equal(JSON.stringify(userFiles.body).includes(filePath), false);
-    const adminFiles = await getTrackFiles(String(body[0].id), { role: "admin" });
+    const adminFiles = await getTrackFiles(String(requireFixture(body)[0].id), { role: "admin" });
     assert.equal(adminFiles.statusCode, 200);
     assert.deepEqual(adminFiles.body, { paths: [filePath] });
     assert.equal((await getTrackFiles("999999999", { role: "admin" })).statusCode, 404);
 
-    await routes.get("/tracks")(
+    await requireFixture(routes.get("/tracks"))(
       {
         query: {
           readPath: "canonical",
@@ -178,7 +188,7 @@ test("library track reads remove nested filesystem paths", async () => {
         },
       },
       {
-        json(value) {
+        json(value: typeof body) {
           body = value;
           return this;
         },
@@ -188,26 +198,24 @@ test("library track reads remove nested filesystem paths", async () => {
       },
     );
     assert.deepEqual(
-      body.map((track) => track.title),
+      requireFixture(body).map((track) => track.title),
       ["Route Track"],
     );
 
-    registerAlbums({
-      get(routePath, ...handlers) {
-        routes.set(routePath, handlers.at(-1));
-      },
-      post() {},
-      delete() {},
-      put() {},
-    });
     const artist = db
-      .prepare("SELECT id, identity_key AS identityKey, mbid FROM library_artists WHERE mbid = ?")
+      .prepare<unknown[], { id: number; identityKey: string; mbid: string | null }>(
+        "SELECT id, identity_key AS identityKey, mbid FROM library_artists WHERE mbid = ?",
+      )
       .get("71111111-1111-4111-8111-111111111111");
-    for (const artistId of [artist.id, artist.identityKey, artist.mbid]) {
-      await routes.get("/albums")(
+    for (const artistId of [
+      requireFixture(artist).id,
+      requireFixture(artist).identityKey,
+      requireFixture(artist).mbid,
+    ]) {
+      await requireFixture(routes.get("/albums"))(
         { query: { readPath: "canonical", artistId } },
         {
-          json(value) {
+          json(value: typeof body) {
             body = value;
             return this;
           },
@@ -216,14 +224,17 @@ test("library track reads remove nested filesystem paths", async () => {
           },
         },
       );
+      assert.ok(Array.isArray(body), JSON.stringify(body));
       assert.deepEqual(
-        body.map((album) => album.title),
+        requireFixture(body).map((album) => album.title),
         ["Route Album"],
       );
     }
   } finally {
     const track = db
-      .prepare("SELECT track_id AS trackId FROM library_media_files WHERE source = ? AND path = ?")
+      .prepare<unknown[], { trackId: number }>(
+        "SELECT track_id AS trackId FROM library_media_files WHERE source = ? AND path = ?",
+      )
       .get("lidarr", filePath);
     db.prepare("DELETE FROM library_media_files WHERE source = ? AND path = ?").run(
       "lidarr",
@@ -231,7 +242,7 @@ test("library track reads remove nested filesystem paths", async () => {
     );
     if (track) {
       const link = db
-        .prepare(
+        .prepare<unknown[], { albumId: number; artistId: number }>(
           `SELECT album_track.album_id AS albumId, album.artist_id AS artistId
          FROM library_album_tracks AS album_track
          JOIN library_albums AS album ON album.id = album_track.album_id

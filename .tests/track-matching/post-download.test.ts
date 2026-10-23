@@ -4,6 +4,7 @@
 // the metadata Aurral is about to write. Real-file cases use ffmpeg to
 // generate tagged audio; unit cases inject a parse function.
 
+import type { IAudioMetadata } from "music-metadata";
 import { test, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { execFileSync } from "child_process";
@@ -16,7 +17,17 @@ import {
   POST_DOWNLOAD_DECISIONS,
 } from "../../backend/services/trackMatching/index.ts";
 
-const btest = test;
+type ValidationInput = NonNullable<Parameters<typeof validateDownloadedTrackFile>[0]>;
+type Tags = Partial<
+  Omit<IAudioMetadata["common"], "track" | "disk" | "title" | "artist" | "album">
+> & {
+  title?: string | null;
+  artist?: string | null;
+  album?: string | null;
+  track?: number;
+  disc?: number;
+  mbid?: string;
+};
 
 const hasFfmpeg = (() => {
   try {
@@ -36,20 +47,28 @@ const GET_LUCKY = {
   durationMs: 248000,
 };
 
-function stubParsed(tags = {}, durationSec = 248, format = {}) {
+function stubParsed(
+  tags: Tags = {},
+  durationSec: number = 248,
+  format: Partial<IAudioMetadata["format"]> = {},
+): IAudioMetadata {
   return {
+    native: {},
+    quality: { warnings: [] },
     common: {
-      title: tags.title ?? null,
-      artist: tags.artist ?? null,
+      movementIndex: { no: null, of: null },
+      title: tags.title ?? undefined,
+      artist: tags.artist ?? undefined,
       artists: tags.artists,
-      album: tags.album ?? null,
+      album: tags.album ?? undefined,
       year: tags.year,
-      track: { no: tags.track },
-      disk: { no: tags.disc },
+      track: { no: tags.track ?? null, of: null },
+      disk: { no: tags.disc ?? null, of: null },
       musicbrainz_recordingid: tags.mbid,
-      format: tags.format,
     },
     format: {
+      trackInfo: [],
+      tagTypes: [],
       duration: durationSec,
       lossless: format.lossless ?? true,
       sampleRate: format.sampleRate ?? 44100,
@@ -61,7 +80,7 @@ function stubParsed(tags = {}, durationSec = 248, format = {}) {
   };
 }
 
-function stubParseFile(parsed) {
+function stubParseFile(parsed: IAudioMetadata) {
   return async () => parsed;
 }
 
@@ -75,7 +94,7 @@ test("original album and folder version evidence blocks an unrequested recording
       "/staging/Daft Punk/Random Access Memories (Karaoke)/08 Get Lucky.flac",
       "karaoke",
     ],
-  ]) {
+  ] satisfies [unknown, unknown, unknown][]) {
     const result = await validateDownloadedTrackFile({
       request: GET_LUCKY,
       filePath,
@@ -86,7 +105,7 @@ test("original album and folder version evidence blocks an unrequested recording
     });
     assert.equal(result.valid, false, `${album}/${filePath}`);
     assert.equal(result.blocked, false);
-    assert.ok(result.contradictions.includes(variant), JSON.stringify(result.contradictions));
+    assert.ok(result.contradictions?.includes(variant), JSON.stringify(result.contradictions));
   }
 });
 
@@ -99,7 +118,7 @@ test("an explicitly requested album version and a manual selection keep their id
   for (const [request, manualSelection] of [
     [{ ...GET_LUCKY, albumName: "Random Access Memories (Acoustic)" }, false],
     [GET_LUCKY, true],
-  ]) {
+  ] satisfies [unknown, unknown][]) {
     const result = await validateDownloadedTrackFile({
       request,
       filePath: "/staging/Daft Punk/Random Access Memories (Acoustic)/08 Get Lucky.flac",
@@ -116,7 +135,15 @@ test("release verification keeps the pinned duration even when the original tags
     filePath: "/staging/08 Get Lucky.flac",
     source: "soulseek",
     options: {
-      release: { title: "Random Access Memories" },
+      release: {
+        releaseMbid: "",
+        releaseGroupMbid: null,
+        title: "Random Access Memories",
+        artistNames: ["Daft Punk"],
+        compilation: false,
+        secondaryTypes: [],
+        tracks: [],
+      },
       parseFile: stubParseFile(
         stubParsed(
           { title: "Get Lucky", artist: "Daft Punk", album: "Random Access Memories" },
@@ -126,7 +153,7 @@ test("release verification keeps the pinned duration even when the original tags
     },
   });
   assert.equal(result.valid, false);
-  assert.ok(result.contradictions.includes("duration"));
+  assert.ok(result.contradictions?.includes("duration"));
 });
 
 test("original non-Latin tag contradictions block import even with matching filenames", async () => {
@@ -136,7 +163,7 @@ test("original non-Latin tag contradictions block import even with matching file
     ["時", "詩"],
     ["愛", "哀"],
     ["Мой любимый город", "Мои любимый город"],
-  ]) {
+  ] satisfies [unknown, unknown][]) {
     const outcome = await validateDownloadedTrackFile({
       request: { artistName: "X", trackName, durationMs: 200000 },
       filePath: `/staging/${trackName}.flac`,
@@ -177,7 +204,7 @@ test("downloaded version suffixes retain the original title and filename evidenc
     ["X", "がみ - Radio Edit", "か\u3099み - Radio Edit", "X - がみ - Radio Edit.flac"],
     ["Beyonce", "Halo", "Halo", "Beyoncé - Halo.flac"],
     ["Beyonce", "Halo", "Halo - Remastered 2011", "Beyoncé - Halo - Remastered 2011.flac"],
-  ]) {
+  ] satisfies [unknown, unknown, unknown, unknown][]) {
     const outcome = await validateDownloadedTrackFile({
       request: { artistName, trackName, durationMs: 200000 },
       filePath: `/staging/${filename}`,
@@ -203,13 +230,19 @@ test("release selection keeps distinct non-Latin siblings separate", async () =>
     },
     filePaths: [...parsed.keys()],
     source: "soulseek",
-    options: { parseFile: async (filePath) => parsed.get(filePath) },
+    options: {
+      parseFile: async (filePath) => {
+        const metadata = parsed.get(filePath);
+        assert.ok(metadata);
+        return metadata;
+      },
+    },
   });
   assert.equal(outcome.filePath, "/staging/02 की.flac");
-  assert.equal(outcome.validation.decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
+  assert.equal(outcome.validation?.decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
 });
 
-btest("strong original tags and matching duration verify", async () => {
+test("strong original tags and matching duration verify", async () => {
   const outcome = await validateDownloadedTrackFile({
     request: GET_LUCKY,
     filePath: "/staging/Get Lucky.flac",
@@ -228,9 +261,9 @@ btest("strong original tags and matching duration verify", async () => {
   assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
   assert.equal(outcome.valid, true);
   assert.equal(outcome.blocked, false);
-  assert.equal(outcome.parsedTags.title, "Get Lucky");
-  assert.ok(outcome.native.evidence.includes("artist"));
-  assert.ok(outcome.native.evidence.includes("duration"));
+  assert.equal(outcome.parsedTags?.title, "Get Lucky");
+  assert.ok(outcome.native?.evidence.includes("artist"));
+  assert.ok(outcome.native?.evidence.includes("duration"));
 });
 
 test("recording IDs differing only in case verify", async () => {
@@ -268,7 +301,7 @@ test("a downloaded file tagged as a different album sibling is conflicted", asyn
     },
   });
   assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
-  assert.ok(outcome.contradictions.includes("sibling-track-index"));
+  assert.ok(outcome.contradictions?.includes("sibling-track-index"));
 
   const secondDisc = await validateDownloadedTrackFile({
     request: { ...GET_LUCKY, trackNumber: 2, albumTrackTitles: ["Other Song", "Get Lucky"] },
@@ -307,7 +340,7 @@ test("a copy from a single or compilation verifies under its own track number", 
   for (const [album, track] of [
     ["Get Lucky", 1],
     ["Now That's What I Call Music! 85", 4],
-  ]) {
+  ] satisfies [unknown, unknown][]) {
     const outcome = await validateDownloadedTrackFile({
       request,
       filePath: "/staging/Get Lucky.flac",
@@ -367,7 +400,7 @@ test("karaoke tags are auto-rejected, never routed to review", async () => {
   assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
   assert.equal(outcome.valid, false);
   assert.equal(outcome.blocked, false);
-  assert.ok(outcome.contradictions.includes("karaoke"));
+  assert.ok(outcome.contradictions?.includes("karaoke"));
 });
 
 test("conflicting embedded recording MBID is a hard conflict", async () => {
@@ -386,7 +419,7 @@ test("conflicting embedded recording MBID is a hard conflict", async () => {
     },
   });
   assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
-  assert.ok(outcome.contradictions.includes("recording-mbid-conflict"));
+  assert.ok(outcome.contradictions?.includes("recording-mbid-conflict"));
 });
 
 test("trackMbid from a resolved download request is checked as recording identity", async () => {
@@ -405,10 +438,10 @@ test("trackMbid from a resolved download request is checked as recording identit
     },
   });
   assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
-  assert.ok(outcome.contradictions.includes("recording-mbid-conflict"));
+  assert.ok(outcome.contradictions?.includes("recording-mbid-conflict"));
 });
 
-btest("matching embedded recording MBID verifies even with odd tags", async () => {
+test("matching embedded recording MBID verifies even with odd tags", async () => {
   const outcome = await validateDownloadedTrackFile({
     request: { ...GET_LUCKY, recordingMbid: "1a12c321-71cf-4451-8be7-fd68837b1aeb" },
     filePath: "/staging/daft_punk_gl.mp3",
@@ -430,8 +463,8 @@ btest("matching embedded recording MBID verifies even with odd tags", async () =
   assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
 });
 
-btest("strong tags with a near duration go to review, a far one is another recording", async () => {
-  const validate = (durationSec) =>
+test("strong tags with a near duration go to review, a far one is another recording", async () => {
+  const validate = (durationSec: number) =>
     validateDownloadedTrackFile({
       request: GET_LUCKY,
       filePath: "/staging/Get Lucky.flac",
@@ -452,54 +485,55 @@ btest("strong tags with a near duration go to review, a far one is another recor
   const far = await validate(610);
   assert.equal(far.decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
   assert.equal(far.blocked, false);
-  assert.ok(far.contradictions.includes("duration"));
+  assert.ok(far.contradictions?.includes("duration"));
 });
 
-btest(
-  "an exact title and artist allow another edition's length, a partial title does not",
-  async () => {
-    const validate = (tags, durationSec, strict) =>
-      validateDownloadedTrackFile({
-        request: GET_LUCKY,
-        filePath: "/staging/Get Lucky.flac",
-        source: "deemix",
-        options: { parseFile: stubParseFile(stubParsed(tags, durationSec)), strict },
-      });
-    const strongTags = { title: "Get Lucky", artist: "Daft Punk", album: "Random Access Memories" };
-    const partialTitle = { title: "Get Luck", artist: "Daft Punk" };
-    const artistOnly = { artist: "Daft Punk", album: "Random Access Memories" };
+test("an exact title and artist allow another edition's length, a partial title does not", async () => {
+  const validate = (
+    tags: { title: string; artist: string } | { artist: string; album: string },
+    durationSec: number,
+    strict: boolean,
+  ) =>
+    validateDownloadedTrackFile({
+      request: GET_LUCKY,
+      filePath: "/staging/Get Lucky.flac",
+      source: "deemix",
+      options: { parseFile: stubParseFile(stubParsed(tags, durationSec)), strict },
+    });
+  const strongTags = { title: "Get Lucky", artist: "Daft Punk", album: "Random Access Memories" };
+  const partialTitle = { title: "Get Luck", artist: "Daft Punk" };
+  const artistOnly = { artist: "Daft Punk", album: "Random Access Memories" };
 
-    assert.equal(
-      (await validate(strongTags, 254.2, true)).decision,
-      POST_DOWNLOAD_DECISIONS.VERIFIED,
-    );
-    const otherRecording = await validate(strongTags, 258.5, true);
-    assert.equal(otherRecording.decision, POST_DOWNLOAD_DECISIONS.AMBIGUOUS);
-    assert.equal(otherRecording.reason, "downloaded file is 10.5s longer than the requested track");
+  assert.equal(
+    (await validate(strongTags, 254.2, true)).decision,
+    POST_DOWNLOAD_DECISIONS.VERIFIED,
+  );
+  const otherRecording = await validate(strongTags, 258.5, true);
+  assert.equal(otherRecording.decision, POST_DOWNLOAD_DECISIONS.AMBIGUOUS);
+  assert.equal(otherRecording.reason, "downloaded file is 10.5s longer than the requested track");
 
-    assert.equal(
-      (await validate(partialTitle, 249.5, true)).decision,
-      POST_DOWNLOAD_DECISIONS.VERIFIED,
-    );
-    const partialBeyondWindow = await validate(partialTitle, 250.5, true);
-    assert.equal(partialBeyondWindow.decision, POST_DOWNLOAD_DECISIONS.AMBIGUOUS);
-    assert.equal(
-      partialBeyondWindow.reason,
-      "downloaded file is 2.5s longer than the requested track",
-    );
+  assert.equal(
+    (await validate(partialTitle, 249.5, true)).decision,
+    POST_DOWNLOAD_DECISIONS.VERIFIED,
+  );
+  const partialBeyondWindow = await validate(partialTitle, 250.5, true);
+  assert.equal(partialBeyondWindow.decision, POST_DOWNLOAD_DECISIONS.AMBIGUOUS);
+  assert.equal(
+    partialBeyondWindow.reason,
+    "downloaded file is 2.5s longer than the requested track",
+  );
 
-    assert.equal(
-      (await validate(artistOnly, 249.5, false)).decision,
-      POST_DOWNLOAD_DECISIONS.VERIFIED,
-    );
-    const filenameTitle = await validate(artistOnly, 249.5, true);
-    assert.equal(filenameTitle.decision, POST_DOWNLOAD_DECISIONS.AMBIGUOUS);
-    assert.equal(filenameTitle.reason, "downloaded file is 1.5s longer than the requested track");
-  },
-);
+  assert.equal(
+    (await validate(artistOnly, 249.5, false)).decision,
+    POST_DOWNLOAD_DECISIONS.VERIFIED,
+  );
+  const filenameTitle = await validate(artistOnly, 249.5, true);
+  assert.equal(filenameTitle.decision, POST_DOWNLOAD_DECISIONS.AMBIGUOUS);
+  assert.equal(filenameTitle.reason, "downloaded file is 1.5s longer than the requested track");
+});
 
 test("a YouTube file gets another edition's length only as the artist's own audio upload", async () => {
-  const validate = (rawTitle, channel) =>
+  const validate = (rawTitle: string, channel: string) =>
     validateDownloadedTrackFile({
       request: GET_LUCKY,
       candidate: {
@@ -570,7 +604,10 @@ test("a YouTube title with extra uploader words goes to review instead of import
 });
 
 test("a YouTube file's artist comes from the video title when yt-dlp tagged the uploader", async () => {
-  const validate = (request, { videoTitle, channel, tags }) =>
+  const validate = (
+    request: { artistName: string; trackName: string; durationMs: number },
+    { videoTitle, channel, tags }: { videoTitle: string; channel: string; tags: Tags },
+  ) =>
     validateDownloadedTrackFile({
       request,
       candidate: {
@@ -598,7 +635,7 @@ test("a YouTube file's artist comes from the video title when yt-dlp tagged the 
       tags: { title: "YOASOBI「群青」(Gunjou) Lyrics", artist: "Lyric Fan" },
     },
   );
-  assert.equal(quoted.decision, POST_DOWNLOAD_DECISIONS.VERIFIED, quoted.reason);
+  assert.equal(quoted.decision, POST_DOWNLOAD_DECISIONS.VERIFIED, quoted.reason ?? "");
   const reversed = await validate(
     { artistName: "Nirvana", trackName: "Come as You Are", durationMs: 219000 },
     {
@@ -607,7 +644,7 @@ test("a YouTube file's artist comes from the video title when yt-dlp tagged the 
       tags: { title: "Nirvana", artist: "Come as You Are" },
     },
   );
-  assert.equal(reversed.decision, POST_DOWNLOAD_DECISIONS.VERIFIED, reversed.reason);
+  assert.equal(reversed.decision, POST_DOWNLOAD_DECISIONS.VERIFIED, reversed.reason ?? "");
   const relabeled = await validate(
     { artistName: "Nirvana", trackName: "Breed", durationMs: 184000 },
     {
@@ -631,7 +668,7 @@ test("a YouTube file's artist comes from the video title when yt-dlp tagged the 
 test("a recording ID tag only counts as a MusicBrainz ID, including one merged into the requested recording", async () => {
   const requested = "0cf9f95f-70e7-4f2e-8075-5d8ba38dd4a3";
   const merged = "b4f0642e-05c5-4bc4-bf0c-95e67bfb3e99";
-  const validate = (mbid, request = {}) =>
+  const validate = (mbid: string, request: ValidationInput["request"] = {}) =>
     validateDownloadedTrackFile({
       request: {
         artistName: "Nirvana",
@@ -658,7 +695,7 @@ test("a recording ID tag only counts as a MusicBrainz ID, including one merged i
 });
 
 test("a file name that puts the artist and album before the title is read by its title", async () => {
-  const validate = (fileName) =>
+  const validate = (fileName: string) =>
     validateDownloadedTrackFile({
       request: { artistName: "Nirvana", trackName: "Drain You", durationMs: 223733 },
       filePath: `/staging/${fileName}`,
@@ -678,7 +715,7 @@ test("a file name that puts the artist and album before the title is read by its
 });
 
 test("each artist in a multi-artist credit is artist evidence, with or without a leading The", async () => {
-  const validate = (artist, source) =>
+  const validate = (artist: string, source: string) =>
     validateDownloadedTrackFile({
       request: { artistName: "Kendrick Lamar", trackName: "Poetic Justice", durationMs: 300000 },
       candidate: {
@@ -722,7 +759,7 @@ test("each artist in a multi-artist credit is artist evidence, with or without a
 });
 
 test("review reasons name every missing piece of recording evidence", async () => {
-  const validate = (artist) =>
+  const validate = (artist: string) =>
     validateDownloadedTrackFile({
       request: GET_LUCKY,
       filePath: "/staging/abc123.mp3",
@@ -747,7 +784,7 @@ test("review reasons name every missing piece of recording evidence", async () =
   // A tribute act is another recording, not a partial artist match to review.
   const tribute = await validate("Daft Punk Tribute");
   assert.equal(tribute.decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
-  assert.ok(tribute.contradictions.includes("cover"), JSON.stringify(tribute.contradictions));
+  assert.ok(tribute.contradictions?.includes("cover"), JSON.stringify(tribute.contradictions));
 });
 
 test("weak identity tags are conflicted regardless of duration", async () => {
@@ -791,8 +828,6 @@ test("native validation verifies original tags without a Python runtime", async 
     source: "deemix",
     options: {
       parseFile: stubParseFile(stubParsed({ title: "Get Lucky", artist: "Daft Punk" })),
-      pythonPath: "/nonexistent/python-binary",
-      timeoutMs: 2000,
     },
   });
   assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
@@ -805,9 +840,15 @@ afterAll(() => {
 });
 
 function generateTaggedAudio(
-  fileName,
-  { title, artist, durationSec = 4, signal = "anullsrc=r=44100:cl=stereo" },
+  fileName: string,
+  {
+    title,
+    artist,
+    durationSec = 4,
+    signal = "anullsrc=r=44100:cl=stereo",
+  }: { title: string; artist: string; durationSec?: number; signal?: string },
 ) {
+  assert.ok(ffmpegFixtureDir);
   const filePath = join(ffmpegFixtureDir, fileName);
   execFileSync(
     "ffmpeg",
@@ -832,28 +873,24 @@ function generateTaggedAudio(
   return filePath;
 }
 
-btest(
-  "real tagged audio: correct recording verifies end to end",
-  { skip: hasFfmpeg ? false : "ffmpeg unavailable" },
-  async () => {
-    const filePath = generateTaggedAudio("good.mp3", {
-      title: "Get Lucky",
-      artist: "Daft Punk",
-    });
-    const outcome = await validateDownloadedTrackFile({
-      request: { ...GET_LUCKY, durationMs: 4000 },
-      filePath,
-      source: "deemix",
-    });
-    assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
-    assert.equal(outcome.actualDurationMs > 3000, true);
-    assert.deepEqual(outcome.parsedTags.artists, ["Daft Punk"]);
-  },
-);
+test("real tagged audio: correct recording verifies end to end", { skip: !hasFfmpeg }, async () => {
+  const filePath = generateTaggedAudio("good.mp3", {
+    title: "Get Lucky",
+    artist: "Daft Punk",
+  });
+  const outcome = await validateDownloadedTrackFile({
+    request: { ...GET_LUCKY, durationMs: 4000 },
+    filePath,
+    source: "deemix",
+  });
+  assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
+  assert.equal((outcome.actualDurationMs ?? 0) > 3000, true);
+  assert.deepEqual(outcome.parsedTags?.artists, ["Daft Punk"]);
+});
 
 test(
   "a silent FLAC too small for its length fails before identity, and real audio of that length verifies",
-  { skip: hasFfmpeg ? false : "ffmpeg unavailable" },
+  { skip: !hasFfmpeg },
   async () => {
     const request = {
       artistName: "The Used",
@@ -868,7 +905,7 @@ test(
       source: "soulseek",
     });
     assert.equal(silent.decision, POST_DOWNLOAD_DECISIONS.FAILED);
-    assert.match(silent.reason, /kbit\/s/);
+    assert.match(String(silent.reason), /kbit\/s/);
     const tone = await validateDownloadedTrackFile({
       request,
       filePath: generateTaggedAudio("tone.flac", { ...tags, signal: "sine=f=440" }),
@@ -886,13 +923,13 @@ test(
 
 test(
   "real audio without tags falls back to secondary evidence and stays conflicted",
-  { skip: hasFfmpeg ? false : "ffmpeg unavailable" },
+  { skip: !hasFfmpeg },
   async () => {
     const filePath = generateTaggedAudio("untagged.mp3", { title: "", artist: "" });
     for (const source of ["soulseek", "ytdlp"]) {
       const outcome = await validateDownloadedTrackFile({
         request: { ...GET_LUCKY, durationMs: 4000 },
-        candidate: { title: "Get Lucky", artists: ["Daft Punk"] },
+        candidate: { raw: { title: "Get Lucky", artists: ["Daft Punk"] } },
         filePath,
         source,
       });
@@ -901,9 +938,9 @@ test(
   },
 );
 
-btest(
+test(
   "release selection: the file assigned to the requested track is the verified one",
-  { skip: hasFfmpeg ? false : "ffmpeg unavailable" },
+  { skip: !hasFfmpeg },
   async () => {
     const files = [
       generateTaggedAudio("01 - Give Life Back to Music.mp3", {
@@ -926,30 +963,26 @@ btest(
       filePaths: files,
       source: "usenet",
     });
-    assert.match(selection.filePath, /03 - Get Lucky\.mp3$/);
-    assert.equal(selection.validation.decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
+    assert.match(String(selection.filePath), /03 - Get Lucky\.mp3$/);
+    assert.equal(selection.validation?.decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
   },
 );
 
-btest(
-  "release selection without a usable file reports no path",
-  { skip: hasFfmpeg ? false : "ffmpeg unavailable" },
-  async () => {
-    const filePath = generateTaggedAudio("wrong - Other Artist.mp3", {
-      title: "Something Else Completely",
-      artist: "Other Artist",
-    });
-    const selection = await selectVerifiedDownloadedFile({
-      request: { ...GET_LUCKY, durationMs: 4000 },
-      filePaths: [filePath],
-      source: "usenet",
-    });
-    // Conflicted files are never handed back as import candidates.
-    assert.equal(selection.filePath, null);
-    assert.equal(selection.validation.decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
-    assert.match(selection.validation.reason, /contradicts/i);
-  },
-);
+test("release selection without a usable file reports no path", { skip: !hasFfmpeg }, async () => {
+  const filePath = generateTaggedAudio("wrong - Other Artist.mp3", {
+    title: "Something Else Completely",
+    artist: "Other Artist",
+  });
+  const selection = await selectVerifiedDownloadedFile({
+    request: { ...GET_LUCKY, durationMs: 4000 },
+    filePaths: [filePath],
+    source: "usenet",
+  });
+  // Conflicted files are never handed back as import candidates.
+  assert.equal(selection.filePath, null);
+  assert.equal(selection.validation?.decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
+  assert.match(String(selection.validation?.reason), /contradicts/i);
+});
 
 test("release selection preserves identity diagnostics when no file is usable", async () => {
   const selection = await selectVerifiedDownloadedFile({
@@ -967,17 +1000,19 @@ test("release selection preserves identity diagnostics when no file is usable", 
     },
   });
   assert.equal(selection.filePath, null);
-  assert.equal(selection.validation.decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
-  assert.ok(selection.validation.contradictions.includes("recording-mbid-conflict"));
+  assert.equal(selection.validation?.decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
+  assert.ok(selection.validation);
+  assert.ok("contradictions" in selection.validation);
+  assert.ok(selection.validation.contradictions?.includes("recording-mbid-conflict"));
 });
 
 test(
   "release selection with an unreadable file set returns nothing usable",
-  { skip: hasFfmpeg ? false : "ffmpeg unavailable" },
+  { skip: !hasFfmpeg },
   async () => {
     const selection = await selectVerifiedDownloadedFile({
       request: { ...GET_LUCKY, durationMs: 4000 },
-      filePaths: [join(ffmpegFixtureDir, "missing-file.mp3")],
+      filePaths: [join(ffmpegFixtureDir ?? "", "missing-file.mp3")],
       source: "usenet",
     });
     assert.equal(selection.filePath, null);
@@ -1010,10 +1045,16 @@ test("a release without the requested song holds none of the artist's other song
     },
     filePaths: [...parsed.keys()],
     source: "usenet",
-    options: { parseFile: async (filePath) => parsed.get(filePath) },
+    options: {
+      parseFile: async (filePath) => {
+        const metadata = parsed.get(filePath);
+        assert.ok(metadata);
+        return metadata;
+      },
+    },
   });
   assert.equal(outcome.filePath, null);
-  assert.equal(outcome.validation.decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
+  assert.equal(outcome.validation?.decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
   assert.equal(outcome.validation.blocked, false);
 });
 
@@ -1032,5 +1073,5 @@ test("a bonus-track note on the requested title does not make the album copy ano
       ),
     },
   });
-  assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.VERIFIED, outcome.reason);
+  assert.equal(outcome.decision, POST_DOWNLOAD_DECISIONS.VERIFIED, outcome.reason ?? "");
 });

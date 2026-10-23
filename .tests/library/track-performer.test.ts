@@ -1,3 +1,4 @@
+import { requireFixture } from "../playlists/fixtures.ts";
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, rm, readFile } from "node:fs/promises";
@@ -20,7 +21,14 @@ import {
   upsertLibraryTrack,
 } from "../../backend/services/libraryMediaStore.ts";
 
-test("track performer stays distinct from the album owner without changing audio tags", async (t) => {
+type Common = NonNullable<
+  Awaited<
+    ReturnType<NonNullable<NonNullable<Parameters<typeof scanMusicRoot>[0]>["metadataReader"]>>
+  >["common"]
+>;
+type OwnershipInput = NonNullable<Parameters<typeof getLibraryTrackOwnershipBatch>[0]>[number];
+
+test("track performer stays distinct from the album owner without changing audio tags", async (t: import("vite-plus/test").TestContext) => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-performer-"));
   t.onTestFinished(() => rm(root, { recursive: true, force: true }));
   const file = path.join(root, "Owner", "Album", "01.mp3");
@@ -32,6 +40,7 @@ test("track performer stays distinct from the album owner without changing audio
 
   const library = getLibrary({ availableOnly: true });
   const track = library.tracks.find((entry) => entry.files.some((entry) => entry.path === file));
+  assert.ok(track != null);
   assert.equal(track.artistName, "Guest & Owner");
   assert.equal(
     library.albums.find((album) => album.trackIds.includes(track.id))?.albumArtist,
@@ -40,7 +49,7 @@ test("track performer stays distinct from the album owner without changing audio
   assert.equal(await readFile(file, "utf8"), "original audio");
 });
 
-test("scanned featured tracks are owned by both their performer and album owner", async (t) => {
+test("scanned featured tracks are owned by both their performer and album owner", async (t: import("vite-plus/test").TestContext) => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-featured-ownership-"));
   t.onTestFinished(() => rm(root, { recursive: true, force: true }));
   const file = path.join(root, "01.flac");
@@ -71,11 +80,12 @@ test("scanned featured tracks are owned by both their performer and album owner"
   const track = getLibrary({ availableOnly: true }).tracks.find((entry) =>
     entry.files.some((entry) => entry.path === file),
   );
+  assert.ok(track != null);
   assert.equal(track.artistName, "Ownership Owner feat. Guest");
   assert.equal(track.mbid, "22222222-2222-4222-8222-222222222222");
   assert.deepEqual(await readFile(file), original);
 
-  const references = [
+  const references: (OwnershipInput | null)[] = [
     { artistName: "Ownership Owner", trackName: "Featured Song" },
     { artistName: "Ownership Owner feat. Guest", trackName: "Featured Song" },
     { artistName: " ownership owner ", trackName: " featured song " },
@@ -96,23 +106,24 @@ test("scanned featured tracks are owned by both their performer and album owner"
     null,
     { artistName: "Ownership Owner", trackName: "Featured Song" },
   ];
+  const batch = references as OwnershipInput[];
   const expected = [true, true, true, false, false, true, false, false, false, false, true];
   assert.deepEqual(
     references.map((reference) => getLibraryTrackOwnership(reference || {})),
     expected,
   );
-  assert.deepEqual(getLibraryTrackOwnershipBatch(references), expected);
+  assert.deepEqual(getLibraryTrackOwnershipBatch(batch), expected);
   assert.deepEqual(
     references.map((reference) => getLibraryTrackOwnership({ ...reference, source: "aurral" })),
     expected,
   );
-  assert.deepEqual(getLibraryTrackOwnershipBatch(references, { source: "aurral" }), expected);
+  assert.deepEqual(getLibraryTrackOwnershipBatch(batch, { source: "aurral" }), expected);
   const unavailable = [false, false, false, false, false, false, false, false, false, false, false];
   assert.deepEqual(
     references.map((reference) => getLibraryTrackOwnership({ ...reference, source: "lidarr" })),
     unavailable,
   );
-  assert.deepEqual(getLibraryTrackOwnershipBatch(references, { source: "lidarr" }), unavailable);
+  assert.deepEqual(getLibraryTrackOwnershipBatch(batch, { source: "lidarr" }), unavailable);
 
   await rm(file);
   await scanMusicRoot({ rootPath: root, source: "aurral" });
@@ -120,21 +131,21 @@ test("scanned featured tracks are owned by both their performer and album owner"
     references.map((reference) => getLibraryTrackOwnership(reference || {})),
     unavailable,
   );
-  assert.deepEqual(getLibraryTrackOwnershipBatch(references), unavailable);
+  assert.deepEqual(getLibraryTrackOwnershipBatch(batch), unavailable);
 });
 
-test("rescanning updates a local title when its normalized identity stays the same", async (t) => {
+test("rescanning updates a local title when its normalized identity stays the same", async (t: import("vite-plus/test").TestContext) => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-title-rescan-"));
   t.onTestFinished(() => rm(root, { recursive: true, force: true }));
   const file = path.join(root, "Title Artist", "Title Album", "01.mp3");
   await mkdir(path.dirname(file), { recursive: true });
   await writeFile(file, "original audio");
-  const common = {
+  const common: Common = {
     albumartist: "Title Artist",
     artist: "Title Artist",
     album: "Title Album",
     title: "Pret",
-    track: { no: 1 },
+    track: { no: 1, of: null },
   };
   const scan = () =>
     scanMusicRoot({ rootPath: root, force: true, metadataReader: async () => ({ common }) });
@@ -144,29 +155,31 @@ test("rescanning updates a local title when its normalized identity stays the sa
     );
   await scan();
   const before = readTrack();
+  assert.ok(before != null);
   common.title = "Prêt";
 
   await scan();
 
   const after = readTrack();
+  assert.ok(after != null);
   assert.equal(after.id, before.id);
   assert.equal(after.identityKey, before.identityKey);
   assert.equal(after.title, "Prêt");
-  assert.equal(after.metadata.tags.title, "Prêt");
+  assert.partialDeepStrictEqual(after.metadata, { tags: { title: "Prêt" } });
 });
 
-test("reused canonical tracks refresh performer tags without replacing identity", async (t) => {
+test("reused canonical tracks refresh performer tags without replacing identity", async (t: import("vite-plus/test").TestContext) => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-canonical-performer-"));
   t.onTestFinished(() => rm(root, { recursive: true, force: true }));
   const file = path.join(root, "Canonical Owner", "Canonical Album", "01.mp3");
   await mkdir(path.dirname(file), { recursive: true });
   await writeFile(file, "original audio");
-  const common = {
+  const common: Common = {
     albumartist: "Canonical Owner",
     artist: "Original Guest",
     album: "Canonical Album",
     title: "Prêt",
-    track: { no: 1 },
+    track: { no: 1, of: null },
     musicbrainz_recordingid: "11111111-1111-4111-8111-111111111111",
   };
   const scan = () =>
@@ -177,6 +190,7 @@ test("reused canonical tracks refresh performer tags without replacing identity"
     );
   await scan();
   const before = readTrack();
+  assert.ok(before != null);
   upsertLibraryTrack({
     identityKey: before.identityKey,
     mbid: before.mbid,
@@ -191,24 +205,27 @@ test("reused canonical tracks refresh performer tags without replacing identity"
   await scan();
 
   const after = readTrack();
+  assert.ok(after != null);
   assert.equal(after.id, before.id);
   assert.equal(after.identityKey, before.identityKey);
   assert.equal(after.mbid, "11111111-1111-4111-8111-111111111111");
   assert.equal(after.title, "Prêt");
   assert.equal(after.artistName, "Corrected Guest");
-  assert.equal(after.metadata.tags.artist, "Corrected Guest");
-  assert.equal(after.metadata.tags.title, "Pret");
-  assert.equal(after.metadata.canonicalSource, "catalogue");
+  assert.partialDeepStrictEqual(after.metadata, {
+    tags: { artist: "Corrected Guest", title: "Pret" },
+    canonicalSource: "catalogue",
+  });
 
   delete common.artist;
   await scan();
 
   const withoutPerformerTag = readTrack();
+  assert.ok(withoutPerformerTag != null);
   assert.equal(withoutPerformerTag.id, before.id);
   assert.equal(withoutPerformerTag.artistName, "Corrected Guest");
 });
 
-test("a track whose files credit different performers keeps one credit whatever the scan order", async (t) => {
+test("a track whose files credit different performers keeps one credit whatever the scan order", async (t: import("vite-plus/test").TestContext) => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-performer-order-"));
   t.onTestFinished(() => rm(root, { recursive: true, force: true }));
   const files = ["a.mp3", "b.mp3"].map((name) =>
@@ -220,7 +237,7 @@ test("a track whose files credit different performers keeps one credit whatever 
     [files[0], "Order Owner feat. First"],
     [files[1], "Order Owner feat. Second"],
   ]);
-  const scan = (filePaths) =>
+  const scan = (filePaths: string[]) =>
     scanMusicRoot({
       rootPath: root,
       filePaths,
@@ -231,7 +248,7 @@ test("a track whose files credit different performers keeps one credit whatever 
           artist: credits.get(filePath),
           album: "Order Album",
           title: "Order Song",
-          track: { no: 1 },
+          track: { no: 1, of: null },
         },
       }),
     });
@@ -253,18 +270,18 @@ test("a track whose files credit different performers keeps one credit whatever 
   );
 });
 
-test("a recording keeps its performer when a rescan finds no artist tag", async (t) => {
+test("a recording keeps its performer when a rescan finds no artist tag", async (t: import("vite-plus/test").TestContext) => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-performer-mbid-"));
   t.onTestFinished(() => rm(root, { recursive: true, force: true }));
   const file = path.join(root, "Mbid Owner", "Mbid Album", "01.mp3");
   await mkdir(path.dirname(file), { recursive: true });
   await writeFile(file, "audio");
-  const common = {
+  const common: Common = {
     albumartist: "Mbid Owner",
     artist: "Mbid Owner feat. Guest",
     album: "Mbid Album",
     title: "Mbid Song",
-    track: { no: 1 },
+    track: { no: 1, of: null },
     musicbrainz_recordingid: "44444444-4444-4444-8444-444444444444",
   };
   const scan = () =>
@@ -278,13 +295,13 @@ test("a recording keeps its performer when a rescan finds no artist tag", async 
 
   await scan();
 
-  assert.equal(readTrack().artistName, "Mbid Owner feat. Guest");
+  assert.equal(readTrack()!.artistName, "Mbid Owner feat. Guest");
 });
 
-test("a tagged performer beats files without an artist tag whatever the scan order", async (t) => {
+test("a tagged performer beats files without an artist tag whatever the scan order", async (t: import("vite-plus/test").TestContext) => {
   const root = await mkdtemp(path.join(tmpdir(), "aurral-performer-untagged-"));
   t.onTestFinished(() => rm(root, { recursive: true, force: true }));
-  const credits = {
+  const credits: Record<string, string | undefined> = {
     "a.mp3": undefined,
     "b.flac": "Untagged Owner feat. Guest",
     "c.mp3": "Untagged Owner feat. Other",
@@ -299,7 +316,7 @@ test("a tagged performer beats files without an artist tag whatever the scan ord
     const files = order.map((name) => path.join(root, `Album ${index}`, name));
     await mkdir(path.dirname(files[0]), { recursive: true });
     for (const file of files) await writeFile(file, "audio");
-    const scan = (filePaths) =>
+    const scan = (filePaths: string[]) =>
       scanMusicRoot({
         rootPath: root,
         filePaths,
@@ -310,7 +327,7 @@ test("a tagged performer beats files without an artist tag whatever the scan ord
             artist: credits[path.basename(filePath)],
             album: `Album ${index}`,
             title: "Song",
-            track: { no: 1 },
+            track: { no: 1, of: null },
           },
         }),
       });
@@ -344,7 +361,7 @@ for (const scope of ["library", "album"]) {
     ].entries()) {
       const track = upsertLibraryTrack({
         identityKey: `sort:${scope}:track:${index}`,
-        title,
+        title: requireFixture(title),
         artistName,
       });
       linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: index + 1 });
@@ -357,7 +374,7 @@ for (const scope of ["library", "album"]) {
       });
     }
     const filter = scope === "album" ? { albumId: album.id } : { artistId: artist.id };
-    const titles = (direction) =>
+    const titles = (direction: string) =>
       [1, 2, 3].map(
         (page) =>
           getLibraryPage({

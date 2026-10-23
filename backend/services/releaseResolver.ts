@@ -8,12 +8,10 @@ import {
 } from "./providers/brainzmashProvider.ts";
 import { invalidateLibraryQueryCache } from "./libraryQueryService.ts";
 import type { NormalizedAlbum, NormalizedRelease } from "./providers/brainzmashMappers.ts";
+import type { DownloadTrackFields } from "./downloadUtils.ts";
 import { manifestIndexFor, releasesHolding, toReleaseManifest } from "./releaseManifest.ts";
 
-interface ResolverJob {
-  albumMbid?: string | null;
-  releaseMbid?: string | null;
-  trackName?: string | null;
+interface ResolverJob extends DownloadTrackFields {
   playlistId?: string | null;
   playlistType?: string | null;
 }

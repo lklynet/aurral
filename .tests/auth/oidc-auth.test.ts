@@ -1,3 +1,4 @@
+import { createAuthRequest, createAuthResponse } from "./authFixtures.ts";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { createSign, generateKeyPairSync } from "node:crypto";
@@ -12,11 +13,11 @@ import {
 const [isolatedState, { db }, dbHelpers, authModule, sessionModule, oidcModule] =
   await setupIsolatedBackend(
     "oidc-auth",
-    "backend/config/db-sqlite.ts",
-    "backend/db/helpers/index.ts",
-    "backend/middleware/auth.ts",
-    "backend/config/session-helpers.ts",
-    "backend/services/oidcAuth.ts",
+    () => import("../../backend/config/db-sqlite.ts"),
+    () => import("../../backend/db/helpers/index.ts"),
+    () => import("../../backend/middleware/auth.ts"),
+    () => import("../../backend/config/session-helpers.ts"),
+    () => import("../../backend/services/oidcAuth.ts"),
   );
 
 const { dbOps, userOps, userIdentityOps } = dbHelpers;
@@ -42,8 +43,12 @@ const oidcKey = {
   alg: "RS256",
 };
 
-const createIdToken = (issuer, nonce, claimOverrides = {}) => {
-  const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
+const createIdToken = (
+  issuer: string,
+  nonce: string | null,
+  claimOverrides: Record<string, unknown> = {},
+) => {
+  const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
   const header = encode({ alg: "RS256", kid: oidcKey.kid, typ: "JWT" });
   const payload = encode({
     iss: issuer,
@@ -78,7 +83,7 @@ function resetOidcEnv() {
   delete process.env.AUTH_PROXY_HEADER;
 }
 
-function enableOidcEnv(overrides = {}) {
+function enableOidcEnv(overrides: NodeJS.ProcessEnv = {}) {
   process.env.OIDC_ENABLED = "true";
   process.env.OIDC_ISSUER = "https://auth.example.com/application/o/aurral/";
   process.env.OIDC_CLIENT_ID = "aurral";
@@ -87,13 +92,21 @@ function enableOidcEnv(overrides = {}) {
   Object.assign(process.env, overrides);
 }
 
-async function createPendingOidcLogin(options = {}) {
-  let issuer;
-  let nonce;
+async function createPendingOidcLogin(
+  options: {
+    idTokenClaims?: Record<string, unknown>;
+    claimOverrides?: Record<string, unknown>;
+    userInfo?: Record<string, unknown>;
+    userInfoError?: boolean;
+    envOverrides?: NodeJS.ProcessEnv;
+  } = {},
+) {
+  let issuer: string;
+  let nonce: string | null;
   const idTokenClaims = options.idTokenClaims || options.claimOverrides || {};
   const userInfo = options.userInfo || null;
   const userInfoError = options.userInfoError === true;
-  const capturedTokenRequest = {};
+  const capturedTokenRequest: { authorizationHeader?: string | null; body?: string } = {};
   const discoveryServer = await createMockHttpServer((request, response) => {
     if (request.url === "/jwks") {
       response.writeHead(200, { "content-type": "application/json" });
@@ -141,18 +154,11 @@ async function createPendingOidcLogin(options = {}) {
     ...(options.envOverrides || {}),
   });
 
-  const response = {
-    headers: {},
-    redirect(_status, location) {
-      this.location = location;
-    },
-    setHeader(name, value) {
-      this.headers[name] = value;
-    },
-  };
-  await startOidcLogin({}, response);
-  const redirect = new URL(response.location);
+  const response = createAuthResponse();
+  await startOidcLogin(createAuthRequest({}), response);
+  const redirect = new URL(response.location || response.body?.authUrl || "");
   const state = redirect.searchParams.get("state");
+  assert.ok(state);
   nonce = redirect.searchParams.get("nonce");
   assert.ok(state, "OIDC login redirect must include state");
   const setCookie = response.headers["Set-Cookie"];
@@ -166,16 +172,21 @@ async function createPendingOidcLogin(options = {}) {
   };
 }
 
-async function completeOidcLogin(pending) {
-  const callback = await handleOidcCallback({
-    query: { state: pending.state, code: "authorization-code" },
-    headers: { cookie: pending.cookie },
-    ip: "127.0.0.1",
-  });
-  return exchangeOidcCallback(callback.code, {
-    headers: { cookie: pending.cookie, "user-agent": "test-agent" },
-    ip: "127.0.0.1",
-  });
+async function completeOidcLogin(pending: { state: string; cookie: string }) {
+  const callback = await handleOidcCallback(
+    createAuthRequest({
+      query: { state: pending.state, code: "authorization-code" },
+      headers: { cookie: pending.cookie },
+      ip: "127.0.0.1",
+    }),
+  );
+  return exchangeOidcCallback(
+    callback.code,
+    createAuthRequest({
+      headers: { cookie: pending.cookie, "user-agent": "test-agent" },
+      ip: "127.0.0.1",
+    }),
+  );
 }
 
 beforeEach(() => {
@@ -227,6 +238,7 @@ test("ensureExternalUser JIT-creates and re-syncs role", () => {
   assert.equal(userOps.getAllUsers().length, 1);
 
   const promoted = ensureExternalUser("oidc-user", "admin");
+  assert.ok(promoted != null);
   assert.equal(promoted.id, created.id);
   assert.equal(promoted.role, "admin");
   assert.equal(userOps.getUserByUsername("oidc-user")?.role, "admin");
@@ -260,31 +272,49 @@ test("OIDC callback issues a cookie-bound one-time session exchange", async () =
   const pending = await createPendingOidcLogin();
 
   try {
-    const callback = await handleOidcCallback({
-      query: { state: pending.state, code: "authorization-code" },
-      headers: { cookie: pending.cookie },
-      ip: "127.0.0.1",
-    });
+    const callback = await handleOidcCallback(
+      createAuthRequest({
+        query: { state: pending.state, code: "authorization-code" },
+        headers: { cookie: pending.cookie },
+        ip: "127.0.0.1",
+      }),
+    );
     assert.ok(callback.code);
-    assert.equal(db.prepare("SELECT COUNT(*) AS count FROM sessions").get().count, 0);
+    assert.equal(
+      db.prepare<[], { count: number }>("SELECT COUNT(*) AS count FROM sessions").get()?.count,
+      0,
+    );
 
     assert.throws(
       () =>
-        exchangeOidcCallback(callback.code, {
-          headers: { cookie: "aurral_oidc_transaction=wrong" },
-        }),
+        exchangeOidcCallback(
+          callback.code,
+          createAuthRequest({
+            headers: { cookie: "aurral_oidc_transaction=wrong" },
+          }),
+        ),
       { status: 400, message: "OIDC login session expired" },
     );
-    assert.equal(db.prepare("SELECT COUNT(*) AS count FROM sessions").get().count, 0);
+    assert.equal(
+      db.prepare<[], { count: number }>("SELECT COUNT(*) AS count FROM sessions").get()?.count,
+      0,
+    );
 
-    const session = exchangeOidcCallback(callback.code, {
-      headers: { cookie: pending.cookie, "user-agent": "test-agent" },
-      ip: "127.0.0.1",
-    });
+    const session = exchangeOidcCallback(
+      callback.code,
+      createAuthRequest({
+        headers: { cookie: pending.cookie, "user-agent": "test-agent" },
+        ip: "127.0.0.1",
+      }),
+    );
     assert.ok(session.token);
     assert.equal(getSessionByToken(session.token)?.user?.username, "callback-user");
     assert.throws(
-      () => exchangeOidcCallback(callback.code, { headers: { cookie: pending.cookie } }),
+      () =>
+        exchangeOidcCallback(
+          callback.code,
+          createAuthRequest({ headers: { cookie: pending.cookie } }),
+        ),
       { status: 400, message: "OIDC login session expired" },
     );
   } finally {
@@ -295,32 +325,50 @@ test("OIDC callback issues a cookie-bound one-time session exchange", async () =
 test("OIDC exchange never leaks passwordHash, for new or returning users", async () => {
   const first = await createPendingOidcLogin();
   try {
-    const callback = await handleOidcCallback({
-      query: { state: first.state, code: "authorization-code" },
-      headers: { cookie: first.cookie },
-      ip: "127.0.0.1",
-    });
-    const session = exchangeOidcCallback(callback.code, {
-      headers: { cookie: first.cookie, "user-agent": "test-agent" },
-      ip: "127.0.0.1",
-    });
-    assert.equal(session.user.passwordHash, undefined, "newly provisioned user must be sanitized");
+    const callback = await handleOidcCallback(
+      createAuthRequest({
+        query: { state: first.state, code: "authorization-code" },
+        headers: { cookie: first.cookie },
+        ip: "127.0.0.1",
+      }),
+    );
+    const session = exchangeOidcCallback(
+      callback.code,
+      createAuthRequest({
+        headers: { cookie: first.cookie, "user-agent": "test-agent" },
+        ip: "127.0.0.1",
+      }),
+    );
+    assert.equal(
+      Object.hasOwn(session.user ?? {}, "passwordHash"),
+      false,
+      "newly provisioned user must be sanitized",
+    );
   } finally {
     await first.close();
   }
 
   const second = await createPendingOidcLogin();
   try {
-    const callback = await handleOidcCallback({
-      query: { state: second.state, code: "authorization-code" },
-      headers: { cookie: second.cookie },
-      ip: "127.0.0.1",
-    });
-    const session = exchangeOidcCallback(callback.code, {
-      headers: { cookie: second.cookie, "user-agent": "test-agent" },
-      ip: "127.0.0.1",
-    });
-    assert.equal(session.user.passwordHash, undefined, "returning user must also be sanitized");
+    const callback = await handleOidcCallback(
+      createAuthRequest({
+        query: { state: second.state, code: "authorization-code" },
+        headers: { cookie: second.cookie },
+        ip: "127.0.0.1",
+      }),
+    );
+    const session = exchangeOidcCallback(
+      callback.code,
+      createAuthRequest({
+        headers: { cookie: second.cookie, "user-agent": "test-agent" },
+        ip: "127.0.0.1",
+      }),
+    );
+    assert.equal(
+      Object.hasOwn(session.user ?? {}, "passwordHash"),
+      false,
+      "returning user must also be sanitized",
+    );
   } finally {
     await second.close();
   }
@@ -339,12 +387,16 @@ test("OIDC callback combines UserInfo with ID-token claims", async () => {
   });
 
   try {
-    const callback = await handleOidcCallback({
-      query: { state: pending.state, code: "authorization-code" },
-      headers: { cookie: pending.cookie },
-      ip: "127.0.0.1",
-    });
+    const callback = await handleOidcCallback(
+      createAuthRequest({
+        query: { state: pending.state, code: "authorization-code" },
+        headers: { cookie: pending.cookie },
+        ip: "127.0.0.1",
+      }),
+    );
+    assert.ok(callback.user);
     assert.equal(callback.user.username, "userinfo-user");
+    assert.ok(callback.user);
     assert.equal(callback.user.role, "admin");
   } finally {
     await pending.close();
@@ -359,11 +411,14 @@ test("OIDC callback falls back to ID-token claims when UserInfo fails", async ()
   });
 
   try {
-    const callback = await handleOidcCallback({
-      query: { state: pending.state, code: "authorization-code" },
-      headers: { cookie: pending.cookie },
-      ip: "127.0.0.1",
-    });
+    const callback = await handleOidcCallback(
+      createAuthRequest({
+        query: { state: pending.state, code: "authorization-code" },
+        headers: { cookie: pending.cookie },
+        ip: "127.0.0.1",
+      }),
+    );
+    assert.ok(callback.user);
     assert.equal(callback.user.username, "id-token-user");
   } finally {
     await pending.close();
@@ -383,12 +438,16 @@ test("OIDC groups claim ignores UserInfo-only admin groups", async () => {
   });
 
   try {
-    const callback = await handleOidcCallback({
-      query: { state: pending.state, code: "authorization-code" },
-      headers: { cookie: pending.cookie },
-      ip: "127.0.0.1",
-    });
+    const callback = await handleOidcCallback(
+      createAuthRequest({
+        query: { state: pending.state, code: "authorization-code" },
+        headers: { cookie: pending.cookie },
+        ip: "127.0.0.1",
+      }),
+    );
+    assert.ok(callback.user);
     assert.equal(callback.user.username, "userinfo-user");
+    assert.ok(callback.user);
     assert.equal(callback.user.role, "user");
   } finally {
     await pending.close();
@@ -403,14 +462,19 @@ test("OIDC callback rejects an expired state without creating a session", async 
   try {
     await assert.rejects(
       () =>
-        handleOidcCallback({
-          query: { state: pending.state },
-          headers: { cookie: pending.cookie },
-          ip: "127.0.0.1",
-        }),
+        handleOidcCallback(
+          createAuthRequest({
+            query: { state: pending.state },
+            headers: { cookie: pending.cookie },
+            ip: "127.0.0.1",
+          }),
+        ),
       { status: 400, message: "OIDC login session expired" },
     );
-    assert.equal(db.prepare("SELECT COUNT(*) AS count FROM sessions").get().count, 0);
+    assert.equal(
+      db.prepare<[], { count: number }>("SELECT COUNT(*) AS count FROM sessions").get()?.count,
+      0,
+    );
   } finally {
     clock.mockRestore();
     await pending.close();
@@ -423,22 +487,27 @@ test("OIDC callback rejects a mismatched state without creating a session", asyn
   try {
     await assert.rejects(
       () =>
-        handleOidcCallback({
-          query: { state: `${pending.state}-mismatched` },
-          headers: { cookie: pending.cookie },
-          ip: "127.0.0.1",
-        }),
+        handleOidcCallback(
+          createAuthRequest({
+            query: { state: `${pending.state}-mismatched` },
+            headers: { cookie: pending.cookie },
+            ip: "127.0.0.1",
+          }),
+        ),
       { status: 400, message: "OIDC login session expired" },
     );
-    assert.equal(db.prepare("SELECT COUNT(*) AS count FROM sessions").get().count, 0);
+    assert.equal(
+      db.prepare<[], { count: number }>("SELECT COUNT(*) AS count FROM sessions").get()?.count,
+      0,
+    );
   } finally {
     await pending.close();
   }
 });
 
 test("OIDC login falls back to the UserInfo endpoint when the ID token omits profile claims", async () => {
-  let issuer;
-  let nonce;
+  let issuer: string;
+  let nonce: string | null;
   const discoveryServer = await createMockHttpServer((request, response) => {
     if (request.url === "/jwks") {
       response.writeHead(200, { "content-type": "application/json" });
@@ -481,29 +550,27 @@ test("OIDC login falls back to the UserInfo endpoint when the ID token omits pro
     issuer = `${discoveryServer.url}/`;
     enableOidcEnv({ OIDC_ISSUER: issuer, OIDC_REDIRECT_URI: `${issuer}callback` });
 
-    const response = {
-      headers: {},
-      redirect(_status, location) {
-        this.location = location;
-      },
-      setHeader(name, value) {
-        this.headers[name] = value;
-      },
-    };
-    await startOidcLogin({}, response);
-    const redirect = new URL(response.location);
+    const response = createAuthResponse();
+    await startOidcLogin(createAuthRequest({}), response);
+    const redirect = new URL(response.location || response.body?.authUrl || "");
     nonce = redirect.searchParams.get("nonce");
     const state = redirect.searchParams.get("state");
+    assert.ok(state);
     const cookie = response.headers["Set-Cookie"].split(";", 1)[0];
-    const callback = await handleOidcCallback({
-      query: { state, code: "authorization-code" },
-      headers: { cookie },
-      ip: "127.0.0.1",
-    });
-    const session = exchangeOidcCallback(callback.code, {
-      headers: { cookie, "user-agent": "test-agent" },
-      ip: "127.0.0.1",
-    });
+    const callback = await handleOidcCallback(
+      createAuthRequest({
+        query: { state, code: "authorization-code" },
+        headers: { cookie },
+        ip: "127.0.0.1",
+      }),
+    );
+    const session = exchangeOidcCallback(
+      callback.code,
+      createAuthRequest({
+        headers: { cookie, "user-agent": "test-agent" },
+        ip: "127.0.0.1",
+      }),
+    );
     const loggedInUser = getSessionByToken(session.token)?.user;
     assert.equal(
       loggedInUser?.username,
@@ -516,8 +583,8 @@ test("OIDC login falls back to the UserInfo endpoint when the ID token omits pro
 });
 
 test("OIDC login resolves returning users by issuer+subject, not by username claim", async () => {
-  let issuer;
-  let nonce;
+  let issuer: string;
+  let nonce: string | null;
   let claimOverrides = {};
   const discoveryServer = await createMockHttpServer((request, response) => {
     response.writeHead(200, { "content-type": "application/json" });
@@ -550,29 +617,27 @@ test("OIDC login resolves returning users by issuer+subject, not by username cla
     enableOidcEnv({ OIDC_ISSUER: issuer, OIDC_REDIRECT_URI: `${issuer}callback` });
 
     const login = async () => {
-      const response = {
-        headers: {},
-        redirect(_status, location) {
-          this.location = location;
-        },
-        setHeader(name, value) {
-          this.headers[name] = value;
-        },
-      };
-      await startOidcLogin({}, response);
-      const redirect = new URL(response.location);
+      const response = createAuthResponse();
+      await startOidcLogin(createAuthRequest({}), response);
+      const redirect = new URL(response.location || response.body?.authUrl || "");
       nonce = redirect.searchParams.get("nonce");
       const state = redirect.searchParams.get("state");
+      assert.ok(state);
       const cookie = response.headers["Set-Cookie"].split(";", 1)[0];
-      const callback = await handleOidcCallback({
-        query: { state, code: "authorization-code" },
-        headers: { cookie },
-        ip: "127.0.0.1",
-      });
-      const session = exchangeOidcCallback(callback.code, {
-        headers: { cookie, "user-agent": "test-agent" },
-        ip: "127.0.0.1",
-      });
+      const callback = await handleOidcCallback(
+        createAuthRequest({
+          query: { state, code: "authorization-code" },
+          headers: { cookie },
+          ip: "127.0.0.1",
+        }),
+      );
+      const session = exchangeOidcCallback(
+        callback.code,
+        createAuthRequest({
+          headers: { cookie, "user-agent": "test-agent" },
+          ip: "127.0.0.1",
+        }),
+      );
       return getSessionByToken(session.token)?.user;
     };
 
@@ -596,7 +661,7 @@ test("OIDC login resolves returning users by issuer+subject, not by username cla
 
 test("OIDC provisioning auto-suffixes a colliding username instead of linking to the existing account", async () => {
   const first = await createPendingOidcLogin({ claimOverrides: { sub: "subject-one" } });
-  let firstUserId;
+  let firstUserId: number | undefined;
   try {
     const session = await completeOidcLogin(first);
     firstUserId = getSessionByToken(session.token)?.user?.id;
@@ -625,6 +690,7 @@ test("OIDC provisioning auto-suffixes a colliding username instead of linking to
 test("OIDC login adopts a legacy account only once an admin has approved that specific account", async () => {
   completeOnboarding();
   const legacy = userOps.createUser("callback-user", "random-unknown-hash", "user", null, false);
+  assert.ok(legacy != null);
   userOps.updateUser(legacy.id, {
     needsIdentityMigration: true,
     allowIdentityAdoption: true,
@@ -649,6 +715,7 @@ test("OIDC login adopts a legacy account only once an admin has approved that sp
   assert.equal(identities.length, 1);
   assert.equal(identities[0].providerType, "oidc");
   const adopted = userOps.getUserById(legacy.id);
+  assert.ok(adopted != null);
   assert.equal(adopted.needsIdentityMigration, false);
   assert.equal(adopted.roleSource, "oidc");
   assert.equal(
@@ -667,6 +734,7 @@ test("OIDC login never adopts a legacy account the admin has not approved, even 
     null,
     false,
   );
+  assert.ok(legacyLocalAccount != null);
   userOps.updateUser(legacyLocalAccount.id, { needsIdentityMigration: true });
 
   const pending = await createPendingOidcLogin();
@@ -690,6 +758,7 @@ test("OIDC login never adopts a legacy account the admin has not approved, even 
 test("OIDC login does not adopt an approved legacy account that is already linked to another identity", async () => {
   completeOnboarding();
   const legacy = userOps.createUser("callback-user", "random-unknown-hash", "user", null, false);
+  assert.ok(legacy != null);
   userOps.updateUser(legacy.id, {
     needsIdentityMigration: true,
     allowIdentityAdoption: true,
@@ -714,6 +783,7 @@ test("OIDC login does not adopt an approved legacy account that is already linke
 test("OIDC login does not adopt the protected bootstrap admin", async () => {
   completeOnboarding();
   const legacy = userOps.createUser("callback-user", "random-unknown-hash", "admin", null, false);
+  assert.ok(legacy != null);
   userOps.updateUser(legacy.id, {
     needsIdentityMigration: true,
     allowIdentityAdoption: true,
@@ -731,8 +801,8 @@ test("OIDC login does not adopt the protected bootstrap admin", async () => {
 });
 
 test("OIDC login owns role changes, preserves local permissions, and protects recovery accounts", async () => {
-  let issuer;
-  let nonce;
+  let issuer: string;
+  let nonce: string | null;
   const discoveryServer = await createMockHttpServer((request, response) => {
     response.writeHead(200, { "content-type": "application/json" });
     if (request.url === "/jwks") {
@@ -764,29 +834,27 @@ test("OIDC login owns role changes, preserves local permissions, and protects re
     enableOidcEnv({ OIDC_ISSUER: issuer, OIDC_REDIRECT_URI: `${issuer}callback` });
 
     const login = async () => {
-      const response = {
-        headers: {},
-        redirect(_status, location) {
-          this.location = location;
-        },
-        setHeader(name, value) {
-          this.headers[name] = value;
-        },
-      };
-      await startOidcLogin({}, response);
-      const redirect = new URL(response.location);
+      const response = createAuthResponse();
+      await startOidcLogin(createAuthRequest({}), response);
+      const redirect = new URL(response.location || response.body?.authUrl || "");
       nonce = redirect.searchParams.get("nonce");
       const state = redirect.searchParams.get("state");
+      assert.ok(state);
       const cookie = response.headers["Set-Cookie"].split(";", 1)[0];
-      const callback = await handleOidcCallback({
-        query: { state, code: "authorization-code" },
-        headers: { cookie },
-        ip: "127.0.0.1",
-      });
-      const session = exchangeOidcCallback(callback.code, {
-        headers: { cookie, "user-agent": "test-agent" },
-        ip: "127.0.0.1",
-      });
+      const callback = await handleOidcCallback(
+        createAuthRequest({
+          query: { state, code: "authorization-code" },
+          headers: { cookie },
+          ip: "127.0.0.1",
+        }),
+      );
+      const session = exchangeOidcCallback(
+        callback.code,
+        createAuthRequest({
+          headers: { cookie, "user-agent": "test-agent" },
+          ip: "127.0.0.1",
+        }),
+      );
       return getSessionByToken(session.token)?.user;
     };
 
@@ -891,24 +959,16 @@ test("OIDC token exchange supports the none auth method with an empty client sec
 
 test("OIDC rejects an unrecognized token endpoint auth method instead of silently defaulting", async () => {
   enableOidcEnv({ OIDC_TOKEN_ENDPOINT_AUTH_METHOD: "client_secert_basic" });
-  const response = {
-    headers: {},
-    redirect() {},
-    setHeader() {},
-    status() {
-      return this;
-    },
-    json() {},
-  };
+  const response = createAuthResponse();
   await assert.rejects(
-    () => startOidcLogin({}, response),
+    () => startOidcLogin(createAuthRequest({}), response),
     /Unsupported OIDC_TOKEN_ENDPOINT_AUTH_METHOD/,
   );
 });
 
 async function createReusableOidcProvider() {
-  let issuer;
-  let nonce;
+  let issuer: string;
+  let nonce: string | null;
   const server = await createMockHttpServer((request, response) => {
     response.writeHead(200, { "content-type": "application/json" });
     if (request.url === "/jwks") {
@@ -936,45 +996,43 @@ async function createReusableOidcProvider() {
   });
   issuer = `${server.url}/`;
   enableOidcEnv({ OIDC_ISSUER: issuer, OIDC_REDIRECT_URI: `${issuer}callback` });
-  const signIn = async (startOptions) => {
-    const response = {
-      headers: {},
-      redirect(_status, location) {
-        this.location = location;
-      },
-      json(body) {
-        this.location = body.authUrl;
-      },
-      setHeader(name, value) {
-        this.headers[name] = value;
-      },
-    };
-    await startOidcLogin({}, response, startOptions);
-    const redirect = new URL(response.location);
+  const signIn = async (startOptions: Parameters<typeof startOidcLogin>[2] = {}) => {
+    const response = createAuthResponse();
+    await startOidcLogin(createAuthRequest({}), response, startOptions);
+    const redirect = new URL(response.location || response.body?.authUrl || "");
     nonce = redirect.searchParams.get("nonce");
+    const state = redirect.searchParams.get("state");
+    assert.ok(state);
     return completeOidcLogin({
-      state: redirect.searchParams.get("state"),
+      state,
       cookie: response.headers["Set-Cookie"].split(";", 1)[0],
     });
   };
   return { signIn, close: server.close };
 }
 
-const linkTo = (userId) => ({ mode: "link", linkUserId: userId, returnUrl: true });
+const linkTo = (userId: number): Parameters<typeof startOidcLogin>[2] => ({
+  mode: "link",
+  linkUserId: userId,
+  returnUrl: true,
+});
 
 test("linking attaches the SSO identity to the signed-in user, and later SSO sign-ins use that account", async () => {
   completeOnboarding();
   const user = userOps.createUser("alice", "hash", "user", null);
+  assert.ok(user != null);
   const provider = await createReusableOidcProvider();
   try {
     const linkResult = await provider.signIn(linkTo(user.id));
     assert.equal(linkResult.linked, true);
+    assert.ok(linkResult.user);
     assert.equal(linkResult.token, undefined);
     assert.equal(linkResult.user.id, user.id);
     assert.equal(userIdentityOps.countForUser(user.id), 1);
 
     const loginResult = await provider.signIn();
     assert.equal(loginResult.linked, false);
+    assert.ok(loginResult.user);
     assert.equal(loginResult.user.id, user.id);
     assert.equal(getSessionByToken(loginResult.token)?.userId, user.id);
     assert.equal(userOps.countUsers(), 1);
@@ -988,11 +1046,10 @@ test("linking an SSO identity that another user already has is rejected with 409
   const provider = await createReusableOidcProvider();
   try {
     const owner = (await provider.signIn()).user;
+    assert.ok(owner != null);
     const other = userOps.createUser("bob", "hash", "user", null);
-    await assert.rejects(
-      () => provider.signIn(linkTo(other.id)),
-      (error) => error.status === 409,
-    );
+    assert.ok(other != null);
+    await assert.rejects(() => provider.signIn(linkTo(other.id)), { status: 409 });
     assert.equal(userIdentityOps.countForUser(other.id), 0);
     assert.equal(userIdentityOps.countForUser(owner.id), 1);
   } finally {
@@ -1003,13 +1060,11 @@ test("linking an SSO identity that another user already has is rejected with 409
 test("a suspended user cannot complete an SSO link", async () => {
   completeOnboarding();
   const user = userOps.createUser("carol", "hash", "user", null);
+  assert.ok(user != null);
   userOps.updateUser(user.id, { status: "suspended" });
   const provider = await createReusableOidcProvider();
   try {
-    await assert.rejects(
-      () => provider.signIn(linkTo(user.id)),
-      (error) => error.status === 403,
-    );
+    await assert.rejects(() => provider.signIn(linkTo(user.id)), { status: 403 });
     assert.equal(userIdentityOps.countForUser(user.id), 0);
   } finally {
     await provider.close();

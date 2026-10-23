@@ -1,3 +1,4 @@
+import { listeningAddress } from "../helpers/backendTestHarness.ts";
 import assert from "node:assert/strict";
 import { test, beforeEach, afterAll } from "vite-plus/test";
 import express from "express";
@@ -10,21 +11,27 @@ import {
 const [isolatedState, { db }, { dbOps, userOps }, { createSession }, { default: healthRouter }] =
   await setupIsolatedBackend(
     "health-bootstrap",
-    "backend/config/db-sqlite.ts",
-    "backend/db/helpers/index.ts",
-    "backend/config/session-helpers.ts",
-    "backend/routes/health.ts",
+    () => import("../../backend/config/db-sqlite.ts"),
+    () => import("../../backend/db/helpers/index.ts"),
+    () => import("../../backend/config/session-helpers.ts"),
+    () => import("../../backend/routes/health.ts"),
   );
 
 const app = express();
 app.use("/api/health", healthRouter);
-const server = await new Promise((resolve) => {
+const server = await new Promise<
+  import("node:http").Server<
+    typeof import("node:http").IncomingMessage,
+    typeof import("node:http").ServerResponse
+  >
+>((resolve) => {
   const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
 });
-const baseUrl = `http://127.0.0.1:${server.address().port}`;
+const baseUrl = `http://127.0.0.1:${listeningAddress(server).port}`;
 
 async function bootstrapAsUser() {
   const user = userOps.createUser("owner", "test-password-hash", "admin");
+  assert.ok(user != null);
   const { token } = createSession(Number(user.id));
   const response = await fetch(`${baseUrl}/api/health/bootstrap`, {
     headers: { authorization: `Bearer ${token}` },
@@ -37,7 +44,7 @@ beforeEach(() => {
 });
 
 afterAll(async () => {
-  await new Promise((resolve) => server.close(resolve));
+  await new Promise<void>((resolve) => server.close(() => resolve()));
   db.close();
   await cleanupIsolatedState(isolatedState);
 });
@@ -81,7 +88,9 @@ test("bootstrap reports the same API contract before and after sign-in", async (
   assert.ok(signedOut.api.version > 0);
   assert.ok(Array.isArray(signedOut.api.features));
   assert.ok(
-    signedOut.api.features.every((feature) => typeof feature === "string" && feature.length > 0),
+    signedOut.api.features.every(
+      (feature: unknown) => typeof feature === "string" && feature.length > 0,
+    ),
   );
   assert.equal(new Set(signedOut.api.features).size, signedOut.api.features.length);
   assert.equal(signedOut.user, undefined);

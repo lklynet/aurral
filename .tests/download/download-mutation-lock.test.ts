@@ -1,3 +1,4 @@
+import { createTrackedJob } from "./fixtures.ts";
 import { test, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.ts";
@@ -12,24 +13,28 @@ const [
   cancellation,
 ] = await setupIsolatedBackend(
   "download-mutation-lock",
-  "backend/db/helpers/index.ts",
-  "backend/services/playlists/flowPlaylistConfig.ts",
-  "backend/services/downloadJobs/downloadTracker.ts",
-  "backend/services/downloadPipelineWorker.ts",
-  "backend/services/downloadJobs/mutationGuards.ts",
-  "backend/services/downloadJobs/downloadCancellation.ts",
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
+  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
+  () => import("../../backend/services/downloadPipelineWorker.ts"),
+  () => import("../../backend/services/downloadJobs/mutationGuards.ts"),
+  () => import("../../backend/services/downloadJobs/downloadCancellation.ts"),
 );
 afterAll(() => cleanupIsolatedState(state));
-const deferred = () => Promise.withResolvers();
+const deferred = () => Promise.withResolvers<void>();
 
 test("playlist mutation waits for the active provider stage before changing ownership", async () => {
   dbOps.updateSettings({ integrations: {}, flows: [], sharedPlaylists: [] });
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Owner" });
-  const jobId = downloadTracker.addJob({ artistName: "Artist", trackName: "Track" }, playlist.id);
+  const jobId = createTrackedJob(
+    downloadTracker,
+    { artistName: "Artist", trackName: "Track" },
+    playlist.id,
+  );
   const started = deferred();
   const release = deferred();
   const processing = processPipelineJob(
-    { jobId, playlistId: playlist.id, playlistGeneration: 0 },
+    { jobId, playlistId: playlist.id, playlistGeneration: 0, phase: "search" },
     {
       async processPipelinePayload() {
         started.resolve();
@@ -61,15 +66,17 @@ test(
   async () => {
     dbOps.updateSettings({ integrations: {}, flows: [], sharedPlaylists: [] });
     const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Import owner" });
-    const jobId = downloadTracker.addJob(
+    const jobId = createTrackedJob(
+      downloadTracker,
       { artistName: "Artist", trackName: "Import track" },
       playlist.id,
     );
     const started = deferred();
     const release = deferred();
-    let imported = null;
+    let imported: Awaited<ReturnType<typeof cancellation.withPipelineCommitLock<string>>> | null =
+      null;
     const processing = processPipelineJob(
-      { jobId, playlistId: playlist.id, playlistGeneration: 0 },
+      { jobId, playlistId: playlist.id, playlistGeneration: 0, phase: "search" },
       {
         async processPipelinePayload(payload) {
           started.resolve();
@@ -102,7 +109,7 @@ test("pipeline commit can reuse a live playlist lock", { timeout: 2000 }, async 
 test("an escaped async context cannot reuse a released lease", async () => {
   const escaped = deferred();
   const release = deferred();
-  let delayed;
+  let delayed!: Promise<string>;
   await guards.withPlaylistMutationLock("lease", async () => {
     delayed = escaped.promise.then(() => guards.withPlaylistMutationLock("lease", () => "late"));
   });
@@ -113,7 +120,7 @@ test("an escaped async context cannot reuse a released lease", async () => {
   });
   await entered.promise;
   let completed = false;
-  delayed.then(() => {
+  void delayed.then(() => {
     completed = true;
   });
   escaped.resolve();
@@ -130,14 +137,15 @@ test(
   async () => {
     dbOps.updateSettings({ integrations: {}, flows: [], sharedPlaylists: [] });
     const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Stage owner" });
-    const jobId = downloadTracker.addJob(
+    const jobId = createTrackedJob(
+      downloadTracker,
       { artistName: "Artist", trackName: "Stage track" },
       playlist.id,
     );
     let runs = 0;
     await assert.rejects(
       processPipelineJob(
-        { jobId, playlistId: playlist.id, playlistGeneration: 0 },
+        { jobId, playlistId: playlist.id, playlistGeneration: 0, phase: "search" },
         {
           async processPipelinePayload() {
             runs++;
@@ -147,7 +155,8 @@ test(
           async continuePipeline() {},
         },
       ),
-      (error) => error.code === "DOWNLOAD_LOCK_SET_CHANGED",
+      (error) =>
+        error instanceof Error && "code" in error && error.code === "DOWNLOAD_LOCK_SET_CHANGED",
     );
     assert.equal(runs, 1);
   },

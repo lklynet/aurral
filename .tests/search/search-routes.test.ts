@@ -1,7 +1,12 @@
+import { requireFixture } from "../playlists/fixtures.ts";
+import { listeningAddress } from "../helpers/backendTestHarness.ts";
 import assert from "node:assert/strict";
 import { test, beforeAll, beforeEach, afterAll, vi } from "vite-plus/test";
 import express from "express";
-import { buildTrackPlaylistPayload } from "../../frontend/src/utils/globalSearchUtils.ts";
+import {
+  buildTrackPlaylistPayload,
+  type SearchSuggestionTrack,
+} from "../../frontend/src/utils/globalSearchUtils.ts";
 import {
   cleanupIsolatedState,
   createMockHttpServer,
@@ -25,25 +30,37 @@ const [
   honker,
 ] = await setupIsolatedBackend(
   "search-routes",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/libraryMediaStore.ts",
-  "backend/routes/search.ts",
-  "backend/services/providers/brainzmashProvider.ts",
-  "backend/routes/playlists/handlers/staticPlaylists.ts",
-  "backend/services/playlists/flowPlaylistConfig.ts",
-  "backend/services/downloadJobs/downloadTracker.ts",
-  "backend/services/playlists/playlistManager.ts",
-  "backend/services/downloadJobs/downloadWorker.ts",
-  "backend/services/playlists/playlistOperations.ts",
-  "backend/services/honkerDb.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/libraryMediaStore.ts"),
+  () => import("../../backend/routes/search.ts"),
+  () => import("../../backend/services/providers/brainzmashProvider.ts"),
+  () => import("../../backend/routes/playlists/handlers/staticPlaylists.ts"),
+  () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
+  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
+  () => import("../../backend/services/playlists/playlistManager.ts"),
+  () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
+  () => import("../../backend/services/playlists/playlistOperations.ts"),
+  () => import("../../backend/services/honkerDb.ts"),
 );
 
-let app;
-let user;
-let metadataServer;
-let metadataRequests = [];
-let metadataHandler = null;
+let app: {
+  url: string;
+  server: import("node:http").Server<
+    typeof import("node:http").IncomingMessage,
+    typeof import("node:http").ServerResponse
+  >;
+};
+let user: NonNullable<ReturnType<typeof userOps.createUser>>;
+type SearchItem = Record<string, string>;
+let metadataServer: { url: string; close: () => Promise<void> };
+let metadataRequests: {
+  url: string | undefined;
+  response: import("node:http").ServerResponse<import("node:http").IncomingMessage> & {
+    req: import("node:http").IncomingMessage;
+  };
+}[] = [];
+let metadataHandler: import("node:http").RequestListener | null = null;
 
 beforeAll(async () => {
   resetDatabase(db);
@@ -64,7 +81,7 @@ beforeAll(async () => {
     },
   });
 
-  user = userOps.createUser("search-routes-user", "unused");
+  user = requireFixture(userOps.createUser("search-routes-user", "unused"));
   const playlistsRouter = express.Router();
   registerStaticPlaylists(playlistsRouter);
   const expressApp = express();
@@ -75,9 +92,9 @@ beforeAll(async () => {
   });
   expressApp.use("/api/search", searchRouter);
   expressApp.use("/api/playlists", playlistsRouter);
-  await new Promise((resolve) => {
+  await new Promise<void>((resolve) => {
     const server = expressApp.listen(0, "127.0.0.1", () => {
-      app = { url: `http://127.0.0.1:${server.address().port}`, server };
+      app = { url: `http://127.0.0.1:${listeningAddress(server)!.port}`, server };
       resolve();
     });
   });
@@ -90,7 +107,7 @@ beforeEach(() => {
 });
 
 afterAll(async () => {
-  await new Promise((resolve) => app.server.close(resolve));
+  await new Promise<void>((resolve) => app.server.close(() => resolve()));
   await metadataServer.close();
   await cleanupIsolatedState(isolatedState);
 });
@@ -127,7 +144,7 @@ test("library search answers from the local library without calling the metadata
 
   const response = await fetch(`${app.url}/api/search/library?q=harbor&limit=5`);
   assert.equal(response.status, 200);
-  const body = await response.json();
+  const body: Record<"artists" | "albums" | "tracks", SearchItem[]> = await response.json();
 
   assert.deepEqual(
     body.artists.map((item) => [item.name, item.canonicalId]),
@@ -148,7 +165,7 @@ test(
   "a disconnected unified search cancels metadata requests and does not cache empty results",
   { timeout: 4000 },
   async () => {
-    const bothRequestsArrived = new Promise((resolve) => {
+    const bothRequestsArrived = new Promise<void>((resolve) => {
       metadataHandler = () => {
         if (metadataRequests.length === 2) resolve();
       };
@@ -161,7 +178,7 @@ test(
     await bothRequestsArrived;
     const upstreamClosed = Promise.all(
       metadataRequests.map(
-        ({ response }) => new Promise((resolve) => response.on("close", resolve)),
+        ({ response }) => new Promise<void>((resolve) => response.on("close", resolve)),
       ),
     );
     client.abort();
@@ -170,7 +187,7 @@ test(
 
     metadataHandler = (request, response) => {
       response.setHeader("content-type", "application/json");
-      if (request.url.startsWith("/search/artist")) {
+      if (request.url?.startsWith("/search/artist")) {
         response.end(JSON.stringify([{ id: "lantern-artist-mbid", artistname: "Lantern" }]));
         return;
       }
@@ -178,7 +195,7 @@ test(
     };
     const retry = await fetch(`${app.url}/api/search/unified?q=lantern`);
     assert.equal(retry.status, 200);
-    const body = await retry.json();
+    const body: { catalog: { artists: SearchItem[] } } = await retry.json();
     assert.deepEqual(
       body.catalog.artists.map((artist) => artist.name),
       ["Lantern"],
@@ -188,7 +205,7 @@ test(
 
 test("adding library search results to a new static playlist keeps their MusicBrainz identity", async () => {
   vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
-  vi.spyOn(playlistManager, "scheduleScanLibrary").mockImplementation(async () => {});
+  vi.spyOn(playlistManager, "scheduleScanLibrary").mockImplementation(() => 0);
   vi.spyOn(downloadWorker, "start").mockImplementation(async () => false);
   const artist = libraryStore.upsertLibraryArtist({
     identityKey: "search-routes:beacon-artist",
@@ -213,9 +230,9 @@ test("adding library search results to a new static playlist keeps their MusicBr
     title: "Beacon Reprise",
     artistName: artist.name,
   });
-  for (const [track, durationMs] of [
-    [tagged, 214000],
-    [untagged, null],
+  for (const { track, durationMs } of [
+    { track: tagged, durationMs: 214000 },
+    { track: untagged, durationMs: null },
   ]) {
     libraryStore.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id });
     libraryStore.upsertLibraryMediaFile({
@@ -229,9 +246,9 @@ test("adding library search results to a new static playlist keeps their MusicBr
 
   const search = await fetch(`${app.url}/api/search/library?q=beacon&limit=5`);
   assert.equal(search.status, 200);
-  const { tracks: results } = await search.json();
+  const { tracks: results }: { tracks: SearchSuggestionTrack[] } = await search.json();
   const payloads = ["Beacon Light", "Beacon Reprise"].map((title) =>
-    buildTrackPlaylistPayload(results.find((result) => result.title === title)),
+    buildTrackPlaylistPayload(requireFixture(results.find((result) => result.title === title))),
   );
   const created = await fetch(`${app.url}/api/playlists/shared-playlists`, {
     method: "POST",
@@ -240,21 +257,33 @@ test("adding library search results to a new static playlist keeps their MusicBr
   });
   assert.equal(created.status, 200);
   const operation = honker.getPlaylistOperationQueue().claimOne("search-routes");
-  await playlistOperations.processPlaylistOperation(operation.payload);
+  assert.ok(operation != null);
+  const { payload } = operation;
+  assert.ok(typeof payload === "object" && payload !== null && !Array.isArray(payload));
+  await playlistOperations.processPlaylistOperation(payload);
   operation.ack();
 
   const playlist = flowPlaylistConfig
     .getStaticPlaylistsForUser(user)
     .find((entry) => entry.name === "Beacon Picks");
+  assert.ok(playlist != null);
   const jobs = downloadTracker.getByPlaylistType(playlist.id);
-  const identity = (track) => [
-    track.trackName,
-    track.trackMbid,
-    track.artistMbid,
-    track.albumMbid,
-    track.releaseYear,
-    track.durationMs,
-  ];
+  const identity = (track: {
+    trackName: string | null;
+    trackMbid?: string | null;
+    artistMbid?: string | null;
+    albumMbid?: string | null;
+    releaseYear?: string | null;
+    durationMs?: number | null;
+  }) =>
+    [
+      track.trackName,
+      track.trackMbid,
+      track.artistMbid,
+      track.albumMbid,
+      track.releaseYear,
+      track.durationMs,
+    ] as const;
   const expected = [
     [
       "Beacon Light",
@@ -273,7 +302,8 @@ test("adding library search results to a new static playlist keeps their MusicBr
       null,
     ],
   ];
-  const byName = (a, b) => a[0].localeCompare(b[0]);
+  const byName = (a: ReturnType<typeof identity>, b: ReturnType<typeof identity>) =>
+    String(a[0]).localeCompare(String(b[0]));
   assert.deepEqual(playlist.tracks.map(identity).sort(byName), expected);
   assert.deepEqual(jobs.map(identity).sort(byName), expected);
 });

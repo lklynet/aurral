@@ -5,7 +5,7 @@ import axios from "../../lib/axiosFetch.ts";
 import { buildShowsResponseCacheKey } from "../../backend/routes/discovery/handlers/shows.ts";
 import { getNearbyShows } from "../../backend/services/nearbyShowsService.ts";
 
-const withTicketmasterKey = (t) => {
+const withTicketmasterKey = (t: import("vite-plus/test").TestContext) => {
   const original = process.env.TICKETMASTER_API_KEY;
   process.env.TICKETMASTER_API_KEY = "test-ticketmaster-key";
   t.onTestFinished(() => {
@@ -14,7 +14,7 @@ const withTicketmasterKey = (t) => {
   });
 };
 
-const ticketmasterEvent = (id, date, performers) => ({
+const ticketmasterEvent = (id: string, date: string, performers: string[]) => ({
   id,
   name: `${performers.join(" + ")} live`,
   url: `https://www.ticketmaster.com/event/${id}`,
@@ -64,11 +64,14 @@ test("includes all artist inputs in the shows response cache key", () => {
   );
 });
 
-test("matches event performers to library and Discover artists by name", async (t) => {
+test("matches event performers to library and Discover artists by name", async (t: import("vite-plus/test").TestContext) => {
   withTicketmasterKey(t);
   vi.spyOn(axios, "get").mockImplementation(async (url) => {
     if (url.includes("zippopotam")) {
       return {
+        status: 200,
+        statusText: "OK",
+        headers: {},
         data: {
           places: [{ "place name": "Austin", latitude: "30.1", longitude: "-97.1" }],
         },
@@ -76,6 +79,9 @@ test("matches event performers to library and Discover artists by name", async (
     }
     if (url.includes("ticketmaster.com")) {
       return {
+        status: 200,
+        statusText: "OK",
+        headers: {},
         data: {
           _embedded: {
             events: [
@@ -122,15 +128,19 @@ test("matches event performers to library and Discover artists by name", async (
 });
 
 test("looks up the server location for private, invalid, or spoofed client addresses", async () => {
-  const lookups = [];
+  const lookups: string[] = [];
   vi.spyOn(axios, "get").mockImplementation(async (url) => {
     lookups.push(url);
-    return { data: { city: "Somewhere", latitude: 40.2, longitude: -74.2 } };
+    return {
+      status: 200,
+      statusText: "OK",
+      headers: {},
+      data: { city: "Somewhere", latitude: 40.2, longitude: -74.2 },
+    };
   });
 
-  await getNearbyShows({
-    req: { headers: { "x-forwarded-for": "203.0.113.9" }, ip: "192.168.1.20" },
-  });
+  const spoofedRequest = { headers: { "x-forwarded-for": "203.0.113.9" }, ip: "192.168.1.20" };
+  await getNearbyShows({ req: spoofedRequest });
   await getNearbyShows({ req: { ip: "10.0.0.5" } });
   await getNearbyShows({ req: { ip: "../../json" } });
   await getNearbyShows({ req: { ip: "fe90::1" } });
@@ -143,22 +153,26 @@ test("looks up the server location for private, invalid, or spoofed client addre
 test("marks an unresolved postal code instead of returning a normal empty location", async () => {
   vi.spyOn(axios, "get").mockImplementation(async (url) => {
     assert.equal(url, "https://nominatim.openstreetmap.org/search");
-    return { data: [] };
+    return { status: 200, statusText: "OK", headers: {}, data: [] };
   });
 
   const result = await getNearbyShows({ zipCode: "M5V" });
 
   assert.equal(result.location.resolved, false);
-  assert.deepEqual(result.shows, []);
+  assert.deepEqual([...result.shows], []);
 });
 
 test("uses an explicit country when resolving an ambiguous postal code", async () => {
-  let nominatimParams;
+  let nominatimParams: Record<string, string | number | boolean | null | undefined> | undefined;
   vi.spyOn(axios, "get").mockImplementation(async (url, options = {}) => {
-    if (url.includes("zippopotam")) return { data: { places: [] } };
+    if (url.includes("zippopotam"))
+      return { status: 200, statusText: "OK", headers: {}, data: { places: [] } };
     if (url === "https://nominatim.openstreetmap.org/search") {
       nominatimParams = options.params;
       return {
+        status: 200,
+        statusText: "OK",
+        headers: {},
         data: [
           {
             address: { city: "Paris", country_code: "fr" },
@@ -173,7 +187,9 @@ test("uses an explicit country when resolving an ambiguous postal code", async (
 
   const result = await getNearbyShows({ zipCode: "75001", countryCode: "FR" });
 
+  assert.ok(nominatimParams != null);
   assert.equal(nominatimParams.postalcode, "75001");
+  assert.ok(nominatimParams != null);
   assert.equal(nominatimParams.countrycodes, "fr");
   assert.equal(result.location.city, "Paris");
   assert.equal(result.location.countryCode, "FR");

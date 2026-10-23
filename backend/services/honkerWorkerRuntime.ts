@@ -45,7 +45,7 @@ export function isHonkerDatabaseClosedError(error: unknown) {
 
 export async function withJobHeartbeat(
   job: Job,
-  queue: Queue,
+  queue: Pick<Queue, "visibilityTimeoutS" | "name">,
   fn: () => unknown,
   extendSeconds: number | null = null,
 ) {

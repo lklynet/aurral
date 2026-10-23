@@ -14,12 +14,7 @@ import {
   POST_DOWNLOAD_DECISIONS,
 } from "../../backend/services/trackMatching/index.ts";
 
-const skip = false;
-const btest = (name, optionsOrFn, maybeFn) => {
-  const options = typeof optionsOrFn === "function" ? {} : optionsOrFn || {};
-  const fn = typeof optionsOrFn === "function" ? optionsOrFn : maybeFn;
-  return test(name, { ...options, skip: options.skip || skip }, fn);
-};
+type SearchInput = NonNullable<Parameters<typeof buildSourceCandidates>[0]>;
 
 const TRUTH = {
   artistName: "Daft Punk",
@@ -30,7 +25,12 @@ const TRUTH = {
   durationMs: 248000,
 };
 
-async function decisionFor(source, candidates, request = TRUTH, options = {}) {
+async function decisionFor(
+  source: string,
+  candidates: SearchInput["candidates"],
+  request: SearchInput["request"] = TRUTH,
+  options: SearchInput["options"] = {},
+) {
   const evaluation = await buildSourceCandidates({ source, candidates, request, options });
   const usable = usableEvaluationEntries(evaluation);
   return { evaluation, best: usable[0] || null, usable };
@@ -43,7 +43,7 @@ test("non-Latin title identity is enforced through every source's candidate entr
       ["かみ", "がみ"],
       ["時", "詩"],
       ["愛", "哀"],
-    ]) {
+    ] satisfies [unknown, unknown][]) {
       for (const offered of [trackName, different]) {
         const candidates =
           source === "soulseek" || source === "usenet"
@@ -68,107 +68,96 @@ test("non-Latin title identity is enforced through every source's candidate entr
   }
 });
 
-btest(
-  "the same wrong-artist truth is rejected through every provider shape",
-  { skip },
-  async () => {
-    // deemix: structured artist field
-    const deemix = await decisionFor("deemix", [
-      { id: "x", title: "Get Lucky", artist: "Karaoke Party Band", durationSec: 248 },
-    ]);
-    // ytdlp: artist only appears inside the video title/channel
-    const ytdlp = await decisionFor("ytdlp", [
-      {
-        id: "y",
-        title: "Karaoke Party Band - Get Lucky (Karaoke Version)",
-        channel: "Karaoke Party Band",
-        durationSec: 248,
-      },
-    ]);
-    // soulseek: artist only appears in the folder/file name
-    const soulseek = await decisionFor("soulseek", [
-      {
-        user: "u",
-        file: "Karaoke Party Band\\Get Lucky (Karaoke Version).mp3",
-        bitrate: 320,
-        length: 248,
-      },
-    ]);
-    assert.equal(deemix.best, null, "structured wrong artist must not be usable");
-    assert.equal(ytdlp.best, null, "karaoke-titled video must not be usable");
-    assert.equal(soulseek.best, null, "wrong-artist folder must not be usable");
-  },
-);
+test("the same wrong-artist truth is rejected through every provider shape", async () => {
+  // deemix: structured artist field
+  const deemix = await decisionFor("deemix", [
+    { id: "x", title: "Get Lucky", artist: "Karaoke Party Band", durationSec: 248 },
+  ]);
+  // ytdlp: artist only appears inside the video title/channel
+  const ytdlp = await decisionFor("ytdlp", [
+    {
+      id: "y",
+      title: "Karaoke Party Band - Get Lucky (Karaoke Version)",
+      channel: "Karaoke Party Band",
+      durationSec: 248,
+    },
+  ]);
+  // soulseek: artist only appears in the folder/file name
+  const soulseek = await decisionFor("soulseek", [
+    {
+      user: "u",
+      file: "Karaoke Party Band\\Get Lucky (Karaoke Version).mp3",
+      bitrate: 320,
+      length: 248,
+    },
+  ]);
+  assert.equal(deemix.best, null, "structured wrong artist must not be usable");
+  assert.equal(ytdlp.best, null, "karaoke-titled video must not be usable");
+  assert.equal(soulseek.best, null, "wrong-artist folder must not be usable");
+});
 
-btest(
-  "correct track expressed in provider-native shapes is accepted everywhere",
-  { skip },
-  async () => {
-    const deemix = await decisionFor("deemix", [
-      {
-        id: "d1",
-        title: "Get Lucky",
-        artist: "Daft Punk",
-        album: "Random Access Memories",
-        durationSec: 248,
-      },
-    ]);
-    const ytdlp = await decisionFor("ytdlp", [
-      {
-        id: "v1",
-        title: "Daft Punk - Get Lucky (Official Audio)",
-        channel: "Daft Punk",
-        durationSec: 249,
-      },
-    ]);
-    const soulseek = await decisionFor("soulseek", [
-      {
-        user: "peer",
-        file: "Daft Punk\\Random Access Memories (2013)\\08. Daft Punk - Get Lucky.flac",
-        bitrate: 921600,
-        length: 248.4,
-      },
-    ]);
+test("correct track expressed in provider-native shapes is accepted everywhere", async () => {
+  const deemix = await decisionFor("deemix", [
+    {
+      id: "d1",
+      title: "Get Lucky",
+      artist: "Daft Punk",
+      album: "Random Access Memories",
+      durationSec: 248,
+    },
+  ]);
+  const ytdlp = await decisionFor("ytdlp", [
+    {
+      id: "v1",
+      title: "Daft Punk - Get Lucky (Official Audio)",
+      channel: "Daft Punk",
+      durationSec: 249,
+    },
+  ]);
+  const soulseek = await decisionFor("soulseek", [
+    {
+      user: "peer",
+      file: "Daft Punk\\Random Access Memories (2013)\\08. Daft Punk - Get Lucky.flac",
+      bitrate: 921600,
+      length: 248.4,
+    },
+  ]);
 
-    assert.ok(deemix.best, "deemix must produce a usable candidate");
-    assert.ok(ytdlp.best, "ytdlp must produce a usable candidate");
-    assert.ok(soulseek.best, "soulseek must produce a usable candidate");
-    assert.equal(deemix.best.decision, "accept");
-    assert.ok(["accept", "verify"].includes(ytdlp.best.decision));
-    assert.ok(["accept", "verify"].includes(soulseek.best.decision));
-    assert.equal(deemix.best.distance, 0);
-    assert.ok(soulseek.best.distance < 0.1);
-  },
-);
+  assert.ok(deemix.best, "deemix must produce a usable candidate");
+  assert.ok(ytdlp.best, "ytdlp must produce a usable candidate");
+  assert.ok(soulseek.best, "soulseek must produce a usable candidate");
+  assert.equal(deemix.best.decision, "accept");
+  assert.ok(["accept", "verify"].includes(ytdlp.best.decision));
+  assert.ok(["accept", "verify"].includes(soulseek.best.decision));
+  assert.equal(deemix.best.distance, 0);
+  assert.ok(soulseek.best.distance < 0.1);
+});
 
-btest(
-  "live variant truth: live requests accept live files and reject studio everywhere",
-  { skip },
-  async () => {
-    const liveRequest = {
-      ...TRUTH,
-      trackName: "Get Lucky (Live)",
-      durationMs: 260000,
-    };
-    const deemix = await decisionFor(
-      "deemix",
-      [
-        { id: "live", title: "Get Lucky (Live)", artist: "Daft Punk", durationSec: 260 },
-        { id: "studio", title: "Get Lucky", artist: "Daft Punk", durationSec: 248 },
-      ],
-      liveRequest,
-    );
-    assert.equal(deemix.best.candidate.provider.id, "live");
-    assert.equal(deemix.best.decision, "accept");
-    const studioEvaluation = deemix.evaluation.evaluations.find(
-      (entry) => entry.candidate.provider?.id === "studio",
-    );
-    assert.equal(studioEvaluation.decision, "reject");
-    assert.ok(studioEvaluation.contradictions.includes("live"));
-  },
-);
+test("live variant truth: live requests accept live files and reject studio everywhere", async () => {
+  const liveRequest = {
+    ...TRUTH,
+    trackName: "Get Lucky (Live)",
+    durationMs: 260000,
+  };
+  const deemix = await decisionFor(
+    "deemix",
+    [
+      { id: "live", title: "Get Lucky (Live)", artist: "Daft Punk", durationSec: 260 },
+      { id: "studio", title: "Get Lucky", artist: "Daft Punk", durationSec: 248 },
+    ],
+    liveRequest,
+  );
+  assert.equal(deemix.best.candidate.provider.id, "live");
+  assert.equal(deemix.best.decision, "accept");
+  const studioEvaluation = deemix.evaluation.evaluations.find(
+    (entry) => entry.candidate.provider?.id === "studio",
+  );
+  assert.ok(studioEvaluation != null);
+  assert.equal(studioEvaluation.decision, "reject");
+  assert.ok(studioEvaluation.contradictions.includes("live"));
+});
 
-btest("radio edit vs album version is rejected unless requested", { skip }, async () => {
+test("radio edit vs album version is rejected unless requested", async () => {
   const studio = await decisionFor("deemix", [
     { id: "radio", title: "Get Lucky (Radio Edit)", artist: "Daft Punk", durationSec: 190 },
   ]);
@@ -182,26 +171,22 @@ btest("radio edit vs album version is rejected unless requested", { skip }, asyn
   assert.ok(requested.best, "the radio edit is correct when requested");
 });
 
-btest(
-  "remaster of the same recording stays acceptable (same-recording policy)",
-  { skip },
-  async () => {
-    const { best, evaluation } = await decisionFor("deemix", [
-      {
-        id: "remaster",
-        title: "Get Lucky (2013 Remaster)",
-        artist: "Daft Punk",
-        album: "Random Access Memories (10th Anniversary Edition)",
-        durationSec: 248,
-      },
-    ]);
-    assert.ok(best, "an ordinary remaster must remain usable");
-    assert.equal((best.contradictions ?? []).length, 0);
-    assert.equal((evaluation.evaluations[0].contradictions ?? []).length, 0);
-  },
-);
+test("remaster of the same recording stays acceptable (same-recording policy)", async () => {
+  const { best, evaluation } = await decisionFor("deemix", [
+    {
+      id: "remaster",
+      title: "Get Lucky (2013 Remaster)",
+      artist: "Daft Punk",
+      album: "Random Access Memories (10th Anniversary Edition)",
+      durationSec: 248,
+    },
+  ]);
+  assert.ok(best, "an ordinary remaster must remain usable");
+  assert.equal((best.contradictions ?? []).length, 0);
+  assert.equal((evaluation.evaluations[0].contradictions ?? []).length, 0);
+});
 
-btest("compilation appearance of the same recording stays acceptable", { skip }, async () => {
+test("compilation appearance of the same recording stays acceptable", async () => {
   const { best } = await decisionFor("soulseek", [
     {
       user: "compPeer",
@@ -213,61 +198,69 @@ btest("compilation appearance of the same recording stays acceptable", { skip },
   assert.ok(best, "a compilation appearance must remain usable");
 });
 
-btest(
-  "post-download: the same truth through actual file tags converges with pre-download verdicts",
-  { skip },
-  async () => {
-    const verified = await validateDownloadedTrackFile({
-      request: TRUTH,
-      filePath: "/staging/08 - Daft Punk - Get Lucky.flac",
-      source: "soulseek",
-      options: {
-        parseFile: async () => ({
-          common: {
-            title: "Get Lucky",
-            artist: "Daft Punk",
-            album: "Random Access Memories",
-            track: { no: 8 },
-            disc: { no: 1 },
-          },
-          format: {
-            duration: 248.2,
-            lossless: true,
-            sampleRate: 44100,
-            bitsPerSample: 16,
-            bitrate: 900000,
-          },
-        }),
-      },
-    });
-    assert.equal(verified.decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
+test("post-download: the same truth through actual file tags converges with pre-download verdicts", async () => {
+  const verified = await validateDownloadedTrackFile({
+    request: TRUTH,
+    filePath: "/staging/08 - Daft Punk - Get Lucky.flac",
+    source: "soulseek",
+    options: {
+      parseFile: async () => ({
+        native: {},
+        quality: { warnings: [] },
+        common: {
+          movementIndex: { no: null, of: null },
+          title: "Get Lucky",
+          artist: "Daft Punk",
+          album: "Random Access Memories",
+          track: { no: 8, of: null },
+          disk: { no: 1, of: null },
+        },
+        format: {
+          trackInfo: [],
+          tagTypes: [],
+          duration: 248.2,
+          lossless: true,
+          sampleRate: 44100,
+          bitsPerSample: 16,
+          bitrate: 900000,
+        },
+      }),
+    },
+  });
+  assert.equal(verified.decision, POST_DOWNLOAD_DECISIONS.VERIFIED);
 
-    const karaoke = await validateDownloadedTrackFile({
-      request: TRUTH,
-      filePath: "/staging/Get Lucky (Karaoke Version).mp3",
-      source: "ytdlp",
-      options: {
-        parseFile: async () => ({
-          common: {
-            title: "Get Lucky (Karaoke Version)",
-            artist: "Daft Punk",
-          },
-          format: {
-            duration: 248,
-            lossless: false,
-            sampleRate: 44100,
-            bitrate: 128000,
-            container: "MPEG",
-            codec: "MPEG 1 Layer 3",
-          },
-        }),
-      },
-    });
-    assert.equal(karaoke.decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
-  },
-);
+  const karaoke = await validateDownloadedTrackFile({
+    request: TRUTH,
+    filePath: "/staging/Get Lucky (Karaoke Version).mp3",
+    source: "ytdlp",
+    options: {
+      parseFile: async () => ({
+        native: {},
+        quality: { warnings: [] },
+        common: {
+          movementIndex: { no: null, of: null },
+          track: { no: null, of: null },
+          disk: { no: null, of: null },
+          title: "Get Lucky (Karaoke Version)",
+          artist: "Daft Punk",
+        },
+        format: {
+          trackInfo: [],
+          tagTypes: [],
+          duration: 248,
+          lossless: false,
+          sampleRate: 44100,
+          bitrate: 128000,
+          container: "MPEG",
+          codec: "MPEG 1 Layer 3",
+        },
+      }),
+    },
+  });
+  assert.equal(karaoke.decision, POST_DOWNLOAD_DECISIONS.CONFLICTED);
+});
 
-btest("featured-artist naming does not break cross-source identity", { skip }, async () => {
+test("featured-artist naming does not break cross-source identity", async () => {
   const deemix = await decisionFor("deemix", [
     {
       id: "feat",
@@ -289,7 +282,7 @@ btest("featured-artist naming does not break cross-source identity", { skip }, a
   assert.equal(ytdlp.best?.decision, "accept");
 });
 
-btest("diacritics and punctuation fold consistently across sources", { skip }, async () => {
+test("diacritics and punctuation fold consistently across sources", async () => {
   const request = {
     artistName: "Sigur Rós",
     trackName: "Hoppípolla",
@@ -320,7 +313,7 @@ btest("diacritics and punctuation fold consistently across sources", { skip }, a
 test("early eligibility rejects unrelated titles while keeping weaker valid titles", async () => {
   for (const source of ["deemix", "ytdlp", "soulseek"]) {
     const request = { artistName: "The Band", trackName: "First", durationMs: 180000 };
-    const raw = (title) =>
+    const raw = (title: string) =>
       source === "soulseek"
         ? { user: "peer", file: `The Band/Album/${title}.flac`, length: 180 }
         : { id: "candidate", title, artist: "The Band", channel: "The Band", durationSec: 180 };
@@ -396,7 +389,7 @@ test("YouTube results are read by artist and title, not by upload wording", asyn
         durationSec: 246,
       },
     ],
-  ]) {
+  ] satisfies [unknown, unknown][]) {
     const { best } = await decisionFor("ytdlp", [result], request);
     assert.equal(best?.candidate.provider.id, result.id, result.title);
   }

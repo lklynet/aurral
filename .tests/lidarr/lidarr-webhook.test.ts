@@ -1,3 +1,4 @@
+import { createRouteHarness } from "../library/routeHarness.ts";
 import assert from "node:assert/strict";
 import { test, beforeEach, afterAll } from "vite-plus/test";
 
@@ -9,23 +10,25 @@ import {
 
 const [isolatedState, { db }, history, webhook] = await setupIsolatedBackend(
   "lidarr-webhook",
-  "backend/config/db-sqlite.ts",
-  "backend/services/aurralHistoryService.ts",
-  "backend/routes/lidarrWebhook.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/services/aurralHistoryService.ts"),
+  () => import("../../backend/routes/lidarrWebhook.ts"),
 );
 
 const { upsertAurralHistory } = history;
-const { handleLidarrWebhook } = webhook;
+const handleLidarrWebhook = createRouteHarness((router) => {
+  router.post("/", webhook.handleLidarrWebhook);
+}).get("POST /");
 
 function createResponse() {
-  const result = { statusCode: 200, body: undefined, ended: false };
+  const result = { statusCode: 200, body: undefined as unknown, ended: false };
   return {
     result,
-    status(code) {
+    status(code: number) {
       result.statusCode = code;
       return this;
     },
-    json(body) {
+    json(body: unknown) {
       result.body = body;
       return this;
     },
@@ -82,9 +85,18 @@ test("Lidarr Download webhook marks the matching request available", () => {
 
   assert.deepEqual(response.result.body, { handled: true });
   const entry = db
-    .prepare("SELECT status_label, metadata FROM aurral_history WHERE id = ?")
+    .prepare<
+      unknown[],
+      {
+        status_label: import("../../backend/db/rows.ts").AurralHistoryRow["status_label"];
+        metadata: import("../../backend/db/rows.ts").AurralHistoryRow["metadata"];
+      }
+    >("SELECT status_label, metadata FROM aurral_history WHERE id = ?")
     .get("aurral-album_requested-42");
+  assert.ok(entry != null);
   assert.equal(entry.status_label, "Downloaded");
+  assert.ok(entry != null);
+  assert.ok(entry.metadata != null);
   assert.equal(JSON.parse(entry.metadata).username, "alice");
 });
 
@@ -106,8 +118,12 @@ test("Lidarr Download webhook ignores unrelated albums", () => {
 
   assert.deepEqual(response.result.body, { handled: false });
   const entry = db
-    .prepare("SELECT status_label FROM aurral_history WHERE id = ?")
+    .prepare<
+      unknown[],
+      { status_label: import("../../backend/db/rows.ts").AurralHistoryRow["status_label"] }
+    >("SELECT status_label FROM aurral_history WHERE id = ?")
     .get("aurral-album_requested-42");
+  assert.ok(entry != null);
   assert.equal(entry.status_label, "Searching");
 });
 
@@ -129,9 +145,18 @@ test("Lidarr Download webhook matches a request through its album metadata", () 
 
   assert.deepEqual(response.result.body, { handled: true });
   const entry = db
-    .prepare("SELECT status_label, metadata FROM aurral_history WHERE id = ?")
+    .prepare<
+      unknown[],
+      {
+        status_label: import("../../backend/db/rows.ts").AurralHistoryRow["status_label"];
+        metadata: import("../../backend/db/rows.ts").AurralHistoryRow["metadata"];
+      }
+    >("SELECT status_label, metadata FROM aurral_history WHERE id = ?")
     .get("aurral-album_requested-artist-mbid");
+  assert.ok(entry != null);
   assert.equal(entry.status_label, "Downloaded");
+  assert.ok(entry != null);
+  assert.ok(entry.metadata != null);
   const metadata = JSON.parse(entry.metadata);
   assert.equal(metadata.albumId, "42");
   assert.equal(metadata.albumName, "Blue Train");

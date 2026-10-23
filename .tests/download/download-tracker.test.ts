@@ -1,3 +1,6 @@
+import { createTrackedJob, trackedJob } from "./fixtures.ts";
+import type { HonkerPayload } from "../../backend/services/honkerDb.ts";
+import type { PipelinePayload } from "../../backend/services/downloadPipeline.ts";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -22,13 +25,13 @@ const [
   honkerDb,
 ] = await setupIsolatedBackend(
   "download-tracker",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/downloadJobs/downloadTracker.ts",
-  "backend/services/qualityProfileService.ts",
-  "backend/services/downloadJobs/downloadWorker.ts",
-  "backend/services/downloadPipelineWorker.ts",
-  "backend/services/honkerDb.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
+  () => import("../../backend/services/qualityProfileService.ts"),
+  () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
+  () => import("../../backend/services/downloadPipelineWorker.ts"),
+  () => import("../../backend/services/honkerDb.ts"),
 );
 
 const { DownloadTracker } = trackerModule;
@@ -36,7 +39,8 @@ const { DownloadWorker } = workerModule;
 
 // Queues a pipeline step without starting the pipeline worker, which these
 // tests drive themselves.
-const enqueuePipeline = (payload) => honkerDb.getPipelineQueue().enqueue(payload, {});
+const enqueuePipeline: typeof honkerDb.enqueuePipelineJob = (payload) =>
+  honkerDb.getPipelineQueue().enqueue(payload as HonkerPayload, {});
 
 beforeEach(async () => {
   await resetDatabase(db);
@@ -50,7 +54,7 @@ afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-const albumRelease = (albumMbid, titles) =>
+const albumRelease = (albumMbid: string, titles: string[]) =>
   releaseManifest({
     id: albumMbid,
     title: "Album",
@@ -84,7 +88,8 @@ test("one album pipeline reserves sibling jobs before queue handoff", async () =
       slskd: { enabled: true, url: "http://127.0.0.1:9" },
     },
   });
-  const queued = [];
+  const queued: import("../../backend/services/downloadJobs/downloadTracker.ts").PipelinePayload[] =
+    [];
   const tracker = new DownloadTracker({ enqueuePipeline: (payload) => queued.push(payload) });
   const tracks = ["First", "Second", "Third"].map((trackName, index) => ({
     artistName: "The Band",
@@ -94,7 +99,8 @@ test("one album pipeline reserves sibling jobs before queue handoff", async () =
     trackNumber: index + 1,
     requestGroupId: "album-request",
   }));
-  const jobIds = tracks.map((track) => tracker.addJob(track, "library"));
+  const jobIds = tracks.map((track) => createTrackedJob(tracker, track, "library"));
+  assert.ok(jobIds.every((value) => value != null));
   const release = await albumRelease("album-test", ["First", "Second", "Third"]);
 
   assert.equal(tracker.enqueueDownloadPipeline(jobIds[0], { release }), true);
@@ -102,7 +108,7 @@ test("one album pipeline reserves sibling jobs before queue handoff", async () =
   assert.equal(queued[0].albumGrab, true);
   assert.deepEqual(queued[0].albumGroupJobIds, jobIds);
   assert.deepEqual(
-    jobIds.slice(1).map((id) => tracker.getJob(id).status),
+    jobIds.slice(1).map((id) => trackedJob(tracker, id).status),
     ["downloading", "downloading"],
   );
   assert.equal(tracker.getNextPending(), null);
@@ -117,9 +123,11 @@ test("a single track in a playlist reserves a release attempt before track-only 
       slskd: { enabled: true, url: "http://127.0.0.1:9" },
     },
   });
-  const queued = [];
+  const queued: import("../../backend/services/downloadJobs/downloadTracker.ts").PipelinePayload[] =
+    [];
   const tracker = new DownloadTracker({ enqueuePipeline: (payload) => queued.push(payload) });
-  const id = tracker.addJob(
+  const id = createTrackedJob(
+    tracker,
     {
       artistName: "The Band",
       albumName: "Album",
@@ -130,12 +138,13 @@ test("a single track in a playlist reserves a release attempt before track-only 
     },
     "static",
   );
+  assert.ok(id != null);
   const release = await albumRelease("album-group", ["First", "Second"]);
   assert.equal(tracker.enqueueDownloadPipeline(id, { release }), true);
   assert.equal(queued.length, 1);
   assert.equal(queued[0].albumGrab, true);
   assert.deepEqual(queued[0].albumGroupJobIds, [id]);
-  assert.equal(tracker.getJob(id).albumGrabAttempted, true);
+  assert.equal(trackedJob(tracker, id).albumGrabAttempted, true);
   assert.equal(tracker.enqueueDownloadPipeline(id, { release }), false);
   assert.equal(queued.length, 1);
 });
@@ -149,7 +158,8 @@ test("an upgrade tries its pinned release alone, no attempt for its album takes 
       slskd: { enabled: true, url: "http://127.0.0.1:9" },
     },
   });
-  const queued = [];
+  const queued: import("../../backend/services/downloadJobs/downloadTracker.ts").PipelinePayload[] =
+    [];
   const tracker = new DownloadTracker({ enqueuePipeline: (payload) => queued.push(payload) });
   const album = {
     artistName: "The Band",
@@ -158,15 +168,26 @@ test("an upgrade tries its pinned release alone, no attempt for its album takes 
     releaseMbid: "upgrade-album-release",
     requestGroupId: "upgrade-request",
   };
-  const doneId = tracker.addJob({ ...album, trackName: "First", trackNumber: 1 }, "library");
+  const doneId = createTrackedJob(
+    tracker,
+    { ...album, trackName: "First", trackNumber: 1 },
+    "library",
+  );
+  assert.ok(doneId != null);
   tracker.setDone(doneId, "/library/The Band/Album/01 - First.mp3");
-  const upgradeId = tracker.addUpgradeJob(tracker.getJob(doneId));
-  const siblingId = tracker.addJob({ ...album, trackName: "Second", trackNumber: 2 }, "library");
+  const upgradeId = tracker.addUpgradeJob(trackedJob(tracker, doneId));
+  assert.ok(upgradeId != null);
+  const siblingId = createTrackedJob(
+    tracker,
+    { ...album, trackName: "Second", trackNumber: 2 },
+    "library",
+  );
+  assert.ok(siblingId != null);
   const release = await albumRelease("upgrade-album", ["First", "Second"]);
 
   assert.equal(tracker.enqueueDownloadPipeline(siblingId, { release }), true);
   assert.deepEqual(queued[0].albumGroupJobIds, [siblingId]);
-  assert.equal(tracker.getJob(upgradeId).status, "pending");
+  assert.equal(trackedJob(tracker, upgradeId).status, "pending");
 
   assert.equal(tracker.enqueueDownloadPipeline(upgradeId, { release }), true);
   assert.deepEqual(
@@ -200,7 +221,8 @@ test("a queued album grab exposes durable membership without replacing track act
   });
   const tracker = trackerModule.downloadTracker;
   const ids = ["First", "Second"].map((trackName, index) =>
-    tracker.addJob(
+    createTrackedJob(
+      tracker,
       {
         artistName: "The Band",
         albumName: "Album",
@@ -212,6 +234,7 @@ test("a queued album grab exposes durable membership without replacing track act
       "library",
     ),
   );
+  assert.ok(ids.every((value) => value != null));
   assert.equal(
     tracker.enqueueDownloadPipeline(ids[0], {
       release: await albumRelease("activity-album", ["First", "Second"]),
@@ -220,16 +243,16 @@ test("a queued album grab exposes durable membership without replacing track act
   );
   const { getAurralHistoryRequests, recordTrackJobSearching } =
     await import("../../backend/services/aurralHistoryService.ts");
-  recordTrackJobSearching(tracker.getJob(ids[0]));
-  const requests = (await getAurralHistoryRequests()).filter((item) => ids.includes(item.jobId));
+  recordTrackJobSearching(trackedJob(tracker, ids[0]));
+  const requests = (await getAurralHistoryRequests()).filter((item) => ids.includes(item.jobId!));
   assert.equal(requests.length, 2);
   assert.ok(requests.every((item) => item.kind === "track_download"));
   assert.ok(requests[0].albumGrab?.id);
-  assert.equal(requests[0].albumGrab.id, requests[1].albumGrab.id);
+  assert.equal(requests[0].albumGrab.id, requests[1].albumGrab!.id);
   assert.deepEqual(requests[0].albumGrab.memberJobIds, ids);
   assert.equal(requests[0].albumGrab.phase, "search");
   assert.equal(requests[0].albumGrab.source, null);
-  assert.ok(requests.every((item) => item.requestedAt === requests[0].albumGrab.requestedAt));
+  assert.ok(requests.every((item) => item.requestedAt === requests[0].albumGrab!.requestedAt)!);
 });
 
 test("failed queue handoff and attempted flags alone do not create album activity", async () => {
@@ -244,7 +267,8 @@ test("failed queue handoff and attempted flags alone do not create album activit
     },
   });
   const ids = ["First", "Second"].map((trackName) =>
-    tracker.addJob(
+    createTrackedJob(
+      tracker,
       {
         artistName: "The Band",
         albumName: "Album",
@@ -255,13 +279,14 @@ test("failed queue handoff and attempted flags alone do not create album activit
       "library",
     ),
   );
+  assert.ok(ids.every((value) => value != null));
   const release = await albumRelease("failed-activity-album", ["First", "Second"]);
   assert.throws(() => tracker.enqueueDownloadPipeline(ids[0], { release }), /handoff rejected/);
   trackerModule.downloadTracker._load();
   trackerModule.downloadTracker.setAlbumGrabAttempted(ids[0], true);
   const { getAurralHistoryRequests } =
     await import("../../backend/services/aurralHistoryService.ts");
-  const requests = (await getAurralHistoryRequests()).filter((item) => ids.includes(item.jobId));
+  const requests = (await getAurralHistoryRequests()).filter((item) => ids.includes(item.jobId!));
   assert.equal(requests.length, 2);
   assert.ok(requests.every((item) => !item.albumGrab));
 });
@@ -273,7 +298,8 @@ test("album track outcomes retain source, failures, and timestamps after retry a
   });
   const tracker = trackerModule.downloadTracker;
   const ids = ["First", "Second"].map((trackName, index) =>
-    tracker.addJob(
+    createTrackedJob(
+      tracker,
       {
         artistName: "The Band",
         albumName: "Album",
@@ -285,6 +311,7 @@ test("album track outcomes retain source, failures, and timestamps after retry a
       "library",
     ),
   );
+  assert.ok(ids.every((value) => value != null));
   tracker.enqueueDownloadPipeline(ids[0], {
     release: await albumRelease("outcome-album", ["First", "Second"]),
   });
@@ -296,18 +323,18 @@ test("album track outcomes retain source, failures, and timestamps after retry a
   tracker.setDone(ids[1], path.join(isolatedState.baseDir, "second.m4a"));
   const { getAurralHistoryRequests } =
     await import("../../backend/services/aurralHistoryService.ts");
-  const before = (await getAurralHistoryRequests()).filter((item) => ids.includes(item.jobId));
+  const before = (await getAurralHistoryRequests()).filter((item) => ids.includes(item.jobId!));
   assert.equal(before.length, 2);
   assert.ok(before.every((item) => item.status === "completed"));
   assert.ok(
-    before.every((item) => item.completedAt && item.requestedAt === item.albumGrab.requestedAt),
+    before.every((item) => item.completedAt && item.requestedAt === item.albumGrab!.requestedAt),
   );
   assert.deepEqual(before.map((item) => item.actualDownloadSource).sort(), ["slskd", "ytdlp"]);
   assert.ok(
-    before.find((item) => item.jobId === ids[1]).previousErrors.includes("Album file missing"),
+    before.find((item) => item.jobId === ids[1])!.previousErrors!.includes("Album file missing"),
   );
   tracker.clearCompleted();
-  const after = (await getAurralHistoryRequests()).filter((item) => ids.includes(item.jobId));
+  const after = (await getAurralHistoryRequests()).filter((item) => ids.includes(item.jobId!));
   assert.deepEqual(after, before);
 });
 
@@ -318,7 +345,8 @@ test("history limits keep an album together and pruning does not recreate remove
   });
   const tracker = trackerModule.downloadTracker;
   const ids = ["First", "Second", "Third"].map((trackName, index) =>
-    tracker.addJob(
+    createTrackedJob(
+      tracker,
       {
         artistName: "The Band",
         albumName: "Album",
@@ -330,6 +358,7 @@ test("history limits keep an album together and pruning does not recreate remove
       "library",
     ),
   );
+  assert.ok(ids.every((value) => value != null));
   tracker.enqueueDownloadPipeline(ids[0], {
     release: await albumRelease("limited-album", ["First", "Second", "Third"]),
   });
@@ -351,16 +380,17 @@ test("history limits keep an album together and pruning does not recreate remove
   tracker.setDone(ids[0], path.join(isolatedState.baseDir, "first.flac"));
   const { getAurralHistoryRequests } =
     await import("../../backend/services/aurralHistoryService.ts");
-  const limited = (await getAurralHistoryRequests()).filter((item) => ids.includes(item.jobId));
+  const limited = (await getAurralHistoryRequests()).filter((item) => ids.includes(item.jobId!));
   assert.equal(limited.length, 3);
   for (const id of ids.slice(1))
     tracker.setDone(id, path.join(isolatedState.baseDir, `${id}.flac`));
   tracker.clearCompleted();
   const grab = limited[0].albumGrab;
+  assert.ok(grab != null);
   db.prepare("DELETE FROM aurral_history WHERE id = ?").run(`aurral-track_download-${ids[1]}`);
-  const retained = (await getAurralHistoryRequests()).filter((item) => ids.includes(item.jobId));
+  const retained = (await getAurralHistoryRequests()).filter((item) => ids.includes(item.jobId!));
   assert.equal(retained.length, 2);
-  assert.deepEqual(retained[0].albumGrab.memberJobIds, grab.memberJobIds);
+  assert.deepEqual(retained[0].albumGrab!.memberJobIds, grab.memberJobIds);
   assert.equal(dbOps.getAurralHistoryById(`aurral-track_download-${ids[1]}`), null);
 });
 
@@ -387,7 +417,8 @@ test("album activity preserves canonical disc order and does not revive expired 
       artistName: "The Band",
     });
     linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, discNumber, trackNumber: 1 });
-    return tracker.addJob(
+    return createTrackedJob(
+      tracker,
       {
         artistName: "The Band",
         albumName: "Album",
@@ -400,6 +431,7 @@ test("album activity preserves canonical disc order and does not revive expired 
       "library",
     );
   });
+  assert.ok(ids.every((value) => value != null));
   tracker.enqueueDownloadPipeline(ids[0], {
     release: await releaseManifest({
       id: "discs",
@@ -420,9 +452,9 @@ test("album activity preserves canonical disc order and does not revive expired 
   });
   const { getAurralHistoryRequests } =
     await import("../../backend/services/aurralHistoryService.ts");
-  const active = (await getAurralHistoryRequests()).filter((item) => ids.includes(item.jobId));
+  const active = (await getAurralHistoryRequests()).filter((item) => ids.includes(item.jobId!));
   assert.deepEqual(
-    ids.map((id) => active.find((item) => item.jobId === id).discNumber),
+    ids.map((id) => active.find((item) => item.jobId === id)!.discNumber),
     [2, 1],
   );
   for (const id of ids) tracker.setDone(id, path.join(isolatedState.baseDir, `${id}.flac`));
@@ -431,7 +463,7 @@ test("album activity preserves canonical disc order and does not revive expired 
     1,
     `aurral-track_download-${ids[0]}`,
   );
-  const retained = (await getAurralHistoryRequests()).filter((item) => ids.includes(item.jobId));
+  const retained = (await getAurralHistoryRequests()).filter((item) => ids.includes(item.jobId!));
   assert.deepEqual(
     retained.map((item) => item.jobId),
     [ids[1]],
@@ -445,7 +477,8 @@ test("album activity excludes hidden member identities from an authorized respon
   });
   const tracker = trackerModule.downloadTracker;
   const ids = ["Public", "Private"].map((trackName) =>
-    tracker.addJob(
+    createTrackedJob(
+      tracker,
       {
         artistName: "Artist",
         albumName: "Album",
@@ -456,26 +489,28 @@ test("album activity excludes hidden member identities from an authorized respon
       "library",
     ),
   );
+  assert.ok(ids.every((value) => value != null));
   tracker.enqueueDownloadPipeline(ids[0], {
     release: await albumRelease("visible-album", ["Public", "Private"]),
   });
   const privateEntry = dbOps.getAurralHistoryById(`aurral-track_download-${ids[1]}`);
+  assert.ok(privateEntry != null);
   dbOps.insertAurralHistory({
     ...privateEntry,
     metadata: { ...privateEntry.metadata, ownerUserId: 99 },
   });
   const { getAurralHistoryRequests } =
     await import("../../backend/services/aurralHistoryService.ts");
-  const visible = (await getAurralHistoryRequests(null, { id: 42, role: "user" })).filter((item) =>
-    ids.includes(item.jobId),
-  );
+  const visible = (
+    await getAurralHistoryRequests(null, { id: 42, username: "listener", role: "user" })
+  ).filter((item) => ids.includes(item.jobId!));
   assert.equal(visible.length, 1);
-  assert.deepEqual(visible[0].albumGrab.memberJobIds, [ids[0]]);
-  const admin = (await getAurralHistoryRequests(null, { role: "admin" })).filter((item) =>
-    ids.includes(item.jobId),
-  );
+  assert.deepEqual(visible[0].albumGrab!.memberJobIds, [ids[0]]);
+  const admin = (
+    await getAurralHistoryRequests(null, { id: 1, username: "admin", role: "admin" })
+  ).filter((item) => ids.includes(item.jobId!));
   assert.equal(admin.length, 2);
-  assert.deepEqual(admin[0].albumGrab.memberJobIds, ids);
+  assert.deepEqual(admin[0].albumGrab!.memberJobIds, ids);
 });
 
 test("activity write failures do not interrupt or duplicate an album handoff", async () => {
@@ -483,10 +518,12 @@ test("activity write failures do not interrupt or duplicate an album handoff", a
     ...dbOps.getSettings(),
     integrations: { slskd: { enabled: true, url: "http://127.0.0.1:9" } },
   });
-  const queued = [];
+  const queued: import("../../backend/services/downloadJobs/downloadTracker.ts").PipelinePayload[] =
+    [];
   const tracker = new DownloadTracker({ enqueuePipeline: (payload) => queued.push(payload) });
   const ids = ["One", "Two"].map((trackName) =>
-    tracker.addJob(
+    createTrackedJob(
+      tracker,
       {
         artistName: "Artist",
         albumName: "Album",
@@ -497,6 +534,7 @@ test("activity write failures do not interrupt or duplicate an album handoff", a
       "library",
     ),
   );
+  assert.ok(ids.every((value) => value != null));
   const release = await albumRelease("write-failure-album", ["One", "Two"]);
   db.exec(
     "CREATE TRIGGER reject_album_activity BEFORE INSERT ON aurral_history WHEN NEW.kind = 'album_grab' BEGIN SELECT RAISE(ABORT, 'Activity unavailable'); END",
@@ -505,7 +543,7 @@ test("activity write failures do not interrupt or duplicate an album handoff", a
     assert.equal(tracker.enqueueDownloadPipeline(ids[0], { release }), true);
     assert.equal(queued.length, 1);
     assert.equal(queued[0].albumGrab, true);
-    assert.equal(tracker.getJob(ids[1]).status, "downloading");
+    assert.equal(trackedJob(tracker, ids[1]).status, "downloading");
   } finally {
     db.exec("DROP TRIGGER reject_album_activity");
   }
@@ -527,10 +565,12 @@ test("album grabs are skipped when only a per-track source is enabled", async ()
         ytdlp: { enabled: true },
       },
     });
-    const queued = [];
+    const queued: import("../../backend/services/downloadJobs/downloadTracker.ts").PipelinePayload[] =
+      [];
     const tracker = new DownloadTracker({ enqueuePipeline: (payload) => queued.push(payload) });
     const ids = ["First", "Second"].map((trackName, index) =>
-      tracker.addJob(
+      createTrackedJob(
+        tracker,
         {
           artistName: "The Band",
           albumName: "Album",
@@ -542,6 +582,7 @@ test("album grabs are skipped when only a per-track source is enabled", async ()
         "library",
       ),
     );
+    assert.ok(ids.every((value) => value != null));
 
     assert.equal(
       tracker.enqueueDownloadPipeline(ids[0], {
@@ -550,7 +591,7 @@ test("album grabs are skipped when only a per-track source is enabled", async ()
       true,
     );
     assert.equal(queued[0].albumGrab, undefined);
-    assert.equal(tracker.getJob(ids[1]).status, "pending");
+    assert.equal(trackedJob(tracker, ids[1]).status, "pending");
   } finally {
     process.env.PATH = previousPath;
   }
@@ -576,7 +617,8 @@ test("album siblings return to individual searches when the leader stops mid-gra
   });
   const tracker = trackerModule.downloadTracker;
   const ids = titles.map((trackName, index) =>
-    tracker.addJob(
+    createTrackedJob(
+      tracker,
       {
         artistName: "The Band",
         albumName: "Album",
@@ -588,6 +630,7 @@ test("album siblings return to individual searches when the leader stops mid-gra
       "library",
     ),
   );
+  assert.ok(ids.every((value) => value != null));
   assert.equal(
     tracker.enqueueDownloadPipeline(ids[0], {
       release: await albumRelease("stopped-album", titles),
@@ -595,17 +638,19 @@ test("album siblings return to individual searches when the leader stops mid-gra
     true,
   );
   const grab = honkerDb
-    .listHonkerJobs("slskd-pipeline")
-    .find((entry) => entry.payload?.jobId === ids[0]).payload;
+    .listHonkerJobs("slskd-pipeline")!
+    .find((entry) => entry.payload?.jobId === ids[0])!.payload;
+  assert.ok(grab != null);
   assert.equal(grab.albumGrab, true);
 
   tracker.setFailed(ids[0], "Stopped by the user");
-  await orchestratorWorker.processPipelineJob(grab);
+  await orchestratorWorker.processPipelineJob(grab as PipelinePayload);
 
   for (const id of ids.slice(1)) {
     const sibling = tracker.getJob(id);
+    assert.ok(sibling != null);
     assert.equal(sibling.status, "pending");
-    assert.match(sibling.error, /album download ended/);
+    assert.match(sibling.error!, /album download ended/);
   }
 });
 
@@ -618,10 +663,12 @@ test("partial album fallback persists per-track mode across restart", async () =
       slskd: { enabled: true, url: "http://127.0.0.1:9" },
     },
   });
-  const queued = [];
+  const queued: import("../../backend/services/downloadJobs/downloadTracker.ts").PipelinePayload[] =
+    [];
   const tracker = new DownloadTracker({ enqueuePipeline: (payload) => queued.push(payload) });
   const ids = ["First", "Second", "Third"].map((trackName, index) =>
-    tracker.addJob(
+    createTrackedJob(
+      tracker,
       {
         artistName: "The Band",
         albumName: "Album",
@@ -633,6 +680,7 @@ test("partial album fallback persists per-track mode across restart", async () =
       "library",
     ),
   );
+  assert.ok(ids.every((value) => value != null));
   const release = await albumRelease("partial-album", ["First", "Second", "Third"]);
   assert.equal(tracker.enqueueDownloadPipeline(ids[0], { release }), true);
   tracker.setPending(ids[1]);
@@ -642,7 +690,7 @@ test("partial album fallback persists per-track mode across restart", async () =
   assert.equal(restarted.enqueueDownloadPipeline(ids[1], { release }), true);
   assert.equal(queued.length, 2);
   assert.equal(queued[1].albumGrab, undefined);
-  assert.equal(restarted.getJob(ids[2]).status, "pending");
+  assert.equal(trackedJob(restarted, ids[2]).status, "pending");
 });
 
 test("restart reuses the queued album pipeline instead of submitting another grab", async () => {
@@ -656,7 +704,8 @@ test("restart reuses the queued album pipeline instead of submitting another gra
   });
   const tracker = new DownloadTracker({ enqueuePipeline });
   const ids = ["First", "Second", "Third"].map((trackName, index) =>
-    tracker.addJob(
+    createTrackedJob(
+      tracker,
       {
         artistName: "The Band",
         albumName: "Album",
@@ -668,6 +717,7 @@ test("restart reuses the queued album pipeline instead of submitting another gra
       "library",
     ),
   );
+  assert.ok(ids.every((value) => value != null));
   assert.equal(
     tracker.enqueueDownloadPipeline(ids[0], {
       release: await albumRelease("restart-album", ["First", "Second", "Third"]),
@@ -681,14 +731,17 @@ test("restart reuses the queued album pipeline instead of submitting another gra
   assert.equal(before.length, 1);
   assert.equal(tracker.enqueueDownloadPipeline(ids[1]), true);
   assert.equal(
-    listHonkerJobs("slskd-pipeline").filter((entry) =>
-      entry.payload?.albumGroupJobIds?.includes(ids[1]),
+    listHonkerJobs("slskd-pipeline").filter(
+      (entry) =>
+        Array.isArray(entry.payload?.albumGroupJobIds) &&
+        entry.payload.albumGroupJobIds.includes(ids[1]),
     ).length,
     1,
   );
   // The attempt gave this track back to search on its own.
   tracker.releaseFromAlbumGrab(ids[2]);
-  const single = tracker.addJob(
+  const single = createTrackedJob(
+    tracker,
     {
       artistName: "The Band",
       albumName: "Album",
@@ -698,6 +751,7 @@ test("restart reuses the queued album pipeline instead of submitting another gra
     },
     "static",
   );
+  assert.ok(single != null);
   assert.equal(
     tracker.enqueueDownloadPipeline(single, {
       release: await albumRelease("restart-single", ["Only"]),
@@ -712,19 +766,19 @@ test("restart reuses the queued album pipeline instead of submitting another gra
   assert.equal(restarted.enqueueDownloadPipeline(single), true);
   const after = listHonkerJobs("slskd-pipeline").filter((entry) => entry.payload?.jobId === ids[0]);
   assert.equal(after.length, 1);
-  assert.equal(restarted.getJob(ids[1]).status, "downloading");
-  assert.equal(restarted.getJob(ids[2]).status, "pending");
+  assert.equal(trackedJob(restarted, ids[1]).status, "downloading");
+  assert.equal(trackedJob(restarted, ids[2]).status, "pending");
   assert.deepEqual(
     listHonkerJobs("slskd-pipeline")
       .filter((entry) => entry.payload?.jobId === single)
-      .map((entry) => entry.payload.albumGroupJobIds),
+      .map((entry) => entry.payload!.albumGroupJobIds),
     [[single]],
   );
 });
 
 test("a web-side tracker reads job changes made by the flow owner", () => {
   const tracker = new DownloadTracker();
-  const id = tracker.addJob({ artistName: "Artist", trackName: "Song" }, "playlist");
+  const id = createTrackedJob(tracker, { artistName: "Artist", trackName: "Song" }, "playlist");
   const flowConnection = new Database(isolatedState.dbPath);
   try {
     flowConnection
@@ -750,7 +804,8 @@ test("a web-side tracker reads job changes made by the flow owner", () => {
 
 test("a web-side tracker does not reset an active flow download on import", () => {
   const tracker = new DownloadTracker();
-  const id = tracker.addJob({ artistName: "Artist", trackName: "Song" }, "playlist");
+  const id = createTrackedJob(tracker, { artistName: "Artist", trackName: "Song" }, "playlist");
+  assert.ok(id != null);
   tracker.setDownloading(id);
   const previousEnv = process.env.NODE_ENV;
   try {
@@ -764,12 +819,21 @@ test("a web-side tracker does not reset an active flow download on import", () =
 
 test("a web-side tracker preserves pending upgrades but excludes them from normal pending work", () => {
   const tracker = new DownloadTracker();
-  const sourceId = tracker.addJob({ artistName: "Artist", trackName: "Song" }, "playlist");
+  const sourceId = createTrackedJob(
+    tracker,
+    { artistName: "Artist", trackName: "Song" },
+    "playlist",
+  );
+  assert.ok(sourceId != null);
   tracker.setDone(sourceId, "/library/Song.mp3", "Album");
   tracker.updateQuality(sourceId, { tier: "mp3-128", format: "mp3" });
-  const upgradeId = tracker.addUpgradeJob(tracker.getJob(sourceId));
+  const upgradeId = tracker.addUpgradeJob(trackedJob(tracker, sourceId));
   assert.ok(upgradeId);
-  const pendingId = tracker.addJob({ artistName: "Artist", trackName: "Other" }, "playlist");
+  const pendingId = createTrackedJob(
+    tracker,
+    { artistName: "Artist", trackName: "Other" },
+    "playlist",
+  );
   const previousEnv = process.env.NODE_ENV;
   try {
     process.env.NODE_ENV = "production";
@@ -787,9 +851,14 @@ test("a web-side tracker preserves pending upgrades but excludes them from norma
 
 test("an upgrade waits in the worker's queue, also after the tracker reloads committed jobs", () => {
   const tracker = new DownloadTracker();
-  const sourceId = tracker.addJob({ artistName: "Artist", trackName: "Song" }, "library");
+  const sourceId = createTrackedJob(
+    tracker,
+    { artistName: "Artist", trackName: "Song" },
+    "library",
+  );
+  assert.ok(sourceId != null);
   tracker.setDone(sourceId, "/library/Song.mp3", "Album");
-  const upgradeId = tracker.addUpgradeJob(tracker.getJob(sourceId));
+  const upgradeId = tracker.addUpgradeJob(trackedJob(tracker, sourceId));
   assert.deepEqual(
     tracker.peekPending().map((job) => job.id),
     [upgradeId],
@@ -806,10 +875,15 @@ test("an upgrade waits in the worker's queue, also after the tracker reloads com
 test("worker does not select a job that is already active", () => {
   const tracker = trackerModule.downloadTracker;
   const worker = new DownloadWorker(isolatedState.baseDir);
-  const jobId = tracker.addJob({ artistName: "Artist", trackName: "Library Song" }, "library");
+  const jobId = createTrackedJob(
+    tracker,
+    { artistName: "Artist", trackName: "Library Song" },
+    "library",
+  );
+  assert.ok(jobId != null);
 
   assert.equal(worker._getNextReadyPendingJob()?.id, jobId);
-  worker.activeJobs.set(jobId, { promise: Promise.resolve() });
+  worker.activeJobs.set(jobId, { playlistType: "library", promise: Promise.resolve() });
   assert.equal(worker._getNextReadyPendingJob(), null);
 });
 
@@ -819,7 +893,8 @@ test("a started worker keeps its process busy only while downloads are pending",
   await worker.reuseRepairInFlight;
   try {
     assert.equal(worker.hasWork(), false);
-    trackerModule.downloadTracker.addJob(
+    createTrackedJob(
+      trackerModule.downloadTracker,
       { artistName: "Artist", trackName: "Pending Song" },
       "library",
     );
@@ -838,7 +913,8 @@ test("a worker starts no more searches than its concurrency allows", async () =>
   transaction.execute("DELETE FROM _honker_live WHERE queue = 'slskd-pipeline'");
   transaction.commit();
   honkerDb.enqueuePipelineJob({ phase: "search", source: "slskd", jobId: "already-searching" });
-  const jobId = trackerModule.downloadTracker.addJob(
+  const jobId = createTrackedJob(
+    trackerModule.downloadTracker,
     { artistName: "Artist", trackName: "Waiting Song" },
     "library",
   );
@@ -846,7 +922,7 @@ test("a worker starts no more searches than its concurrency allows", async () =>
   try {
     assert.equal(dispatched.mock.calls.length, 0);
     worker.updateWorkerSettings({ concurrency: 2 });
-    worker.processLoop();
+    worker.processLoop?.();
     assert.deepEqual(
       dispatched.mock.calls.map((call) => call[0].id),
       [jobId],
@@ -858,7 +934,8 @@ test("a worker starts no more searches than its concurrency allows", async () =>
 
 test("persists enriched album context for slskd matching", () => {
   const tracker = new DownloadTracker();
-  const jobId = tracker.addJob(
+  const jobId = createTrackedJob(
+    tracker,
     {
       artistName: "Artist",
       trackName: "Song",
@@ -866,6 +943,7 @@ test("persists enriched album context for slskd matching", () => {
     },
     "discover",
   );
+  assert.ok(jobId != null);
 
   tracker.updateMetadata(jobId, {
     trackNumber: 3,
@@ -876,18 +954,21 @@ test("persists enriched album context for slskd matching", () => {
 
   const reloaded = new DownloadTracker();
   const job = reloaded.getJob(jobId);
+  assert.ok(job != null);
 
   assert.equal(job.trackNumber, 3);
   assert.equal(job.albumTrackCount, 10);
   assert.deepEqual(job.albumTrackTitles, ["Intro", "Other Song", "Song"]);
   assert.equal(job.releaseMbid, "exact-release");
   const created = reloaded.getJob(
-    reloaded.addJob(
+    createTrackedJob(
+      reloaded,
       { artistName: "Artist", trackName: "Song", releaseMbid: "pinned-release" },
       "library",
     ),
   );
-  assert.equal(new DownloadTracker().getJob(created.id).releaseMbid, "pinned-release");
+  assert.ok(created != null);
+  assert.equal(new DownloadTracker().getJob(created.id)!.releaseMbid, "pinned-release");
 });
 
 test("a queued search carries the job's pinned release ID, and a changed album drops it", () => {
@@ -899,22 +980,25 @@ test("a queued search carries the job's pinned release ID, and a changed album d
       slskd: { enabled: true, url: "http://127.0.0.1:9" },
     },
   });
-  const queued = [];
+  const queued: import("../../backend/services/downloadJobs/downloadTracker.ts").PipelinePayload[] =
+    [];
   const tracker = new DownloadTracker({ enqueuePipeline: (payload) => queued.push(payload) });
-  const jobId = tracker.addJob(
+  const jobId = createTrackedJob(
+    tracker,
     { artistName: "Artist", trackName: "Song", albumMbid: "group", releaseMbid: "exact-release" },
     "static",
   );
+  assert.ok(jobId != null);
 
   assert.equal(tracker.enqueueDownloadPipeline(jobId, { release: null }), true);
-  assert.equal(queued[0].track.releaseMbid, "exact-release");
+  assert.equal(queued[0].track!.releaseMbid, "exact-release");
 
   tracker.setPending(jobId);
   tracker.clearSlskdDispatched(jobId);
   tracker.updateMetadata(jobId, { albumMbid: "other-group", releaseMbid: null });
   const restarted = new DownloadTracker({ enqueuePipeline: (payload) => queued.push(payload) });
   assert.equal(restarted.enqueueDownloadPipeline(jobId, { release: null }), true);
-  assert.equal(queued[1].track.releaseMbid, null);
+  assert.equal(queued[1].track!.releaseMbid, null);
 });
 
 test("returns complete playlist job lists unless a caller explicitly limits them", () => {
@@ -932,11 +1016,13 @@ test("returns complete playlist job lists unless a caller explicitly limits them
 
 test("drops orphaned upgrade jobs on restart and updates every shared file reference", () => {
   const tracker = new DownloadTracker();
-  const firstId = tracker.addJob(
+  const firstId = createTrackedJob(
+    tracker,
     { artistName: "Artist", trackName: "Song", albumName: "Album" },
     "flow-one",
   );
-  const secondId = tracker.addJob(
+  const secondId = createTrackedJob(
+    tracker,
     { artistName: "Artist", trackName: "Song", albumName: "Album" },
     "static-two",
   );
@@ -945,12 +1031,12 @@ test("drops orphaned upgrade jobs on restart and updates every shared file refer
     tracker.updateQuality(id, { tier: "mp3-128", format: "mp3", bitrateKbps: 128 });
   }
 
-  const upgradeId = tracker.addUpgradeJob(tracker.getJob(firstId));
+  const upgradeId = tracker.addUpgradeJob(trackedJob(tracker, firstId));
   assert.ok(upgradeId);
-  assert.equal(tracker.addUpgradeJob(tracker.getJob(secondId)), null);
+  assert.equal(tracker.addUpgradeJob(trackedJob(tracker, secondId)), null);
   const reloaded = new DownloadTracker();
   assert.equal(reloaded.getJob(upgradeId), null);
-  assert.ok(reloaded.addUpgradeJob(reloaded.getJob(secondId)));
+  assert.ok(reloaded.addUpgradeJob(trackedJob(reloaded, secondId)));
 
   const changed = reloaded.replaceFinalPath("/library/Song.mp3", "/library/Song.flac", {
     tier: "flac-standard",
@@ -972,14 +1058,19 @@ test("finalizes an upgrade when optional quality metadata is absent", async () =
   await writeFile(oldPath, "old");
   await writeFile(finalPath, "new");
 
-  const sourceId = tracker.addJob({ artistName: "Artist", trackName: "Song" }, "discover");
+  const sourceId = createTrackedJob(
+    tracker,
+    { artistName: "Artist", trackName: "Song" },
+    "discover",
+  );
+  assert.ok(sourceId != null);
   tracker.setDone(sourceId, oldPath, "Album");
   tracker.updateQuality(sourceId, { tier: "mp3-128", format: "mp3" });
-  const upgradeId = tracker.addUpgradeJob(tracker.getJob(sourceId));
+  const upgradeId = tracker.addUpgradeJob(trackedJob(tracker, sourceId));
 
   await assert.doesNotReject(
     qualityProfileService.finalizeQualityUpgradeSuccess(
-      tracker.getJob(upgradeId),
+      trackedJob(tracker, upgradeId),
       finalPath,
       undefined,
     ),
@@ -1003,15 +1094,18 @@ test("classifies reused Lidarr files without making them eligible for upgrades",
     ...dbOps.getSettings(),
     downloadFolderPath: path.join(isolatedState.baseDir, "managed"),
   });
-  const jobId = tracker.addJob({ artistName: "Artist", trackName: "Song" }, "discover");
+  const jobId = createTrackedJob(tracker, { artistName: "Artist", trackName: "Song" }, "discover");
+  assert.ok(jobId != null);
   tracker.setDone(jobId, lidarrPath, "Album", "/music/Artist/Album/Song.mp3");
 
   const result = await qualityProfileService.reclassifyQualityJobs();
   const job = tracker.getJob(jobId);
+  assert.ok(job != null);
   const decorated = qualityProfileService.decorateJobQuality(job);
 
   assert.equal(result.classified, 1);
   assert.equal(job.qualityTier, "mp3-128");
+  assert.ok("qualityLabel" in decorated && "qualityState" in decorated);
   assert.equal(decorated.qualityLabel, "MP3 128");
   assert.equal(decorated.qualityState, "external");
   assert.equal(await qualityProfileService.queueQualityUpgrade(job), "ineligible");

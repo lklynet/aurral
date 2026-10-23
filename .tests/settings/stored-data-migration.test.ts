@@ -12,19 +12,24 @@ const [
   { invalidateFlowPlaylistConfigCache },
 ] = await setupIsolatedBackend(
   "stored-data-migration",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/systemTaskWorker.ts",
-  "backend/middleware/auth.ts",
-  "backend/services/playlists/flowPlaylistConfig.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/systemTaskWorker.ts"),
+  () => import("../../backend/middleware/auth.ts"),
+  () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
 );
 
-const writeRaw = (key, value) =>
+const writeRaw = (key: string, value: unknown) =>
   db
     .prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)")
     .run(key, typeof value === "string" ? value : JSON.stringify(value));
-const readRaw = (key) => db.prepare("SELECT value FROM settings WHERE key = ?").get(key)?.value;
-const readJson = (key) => {
+const readRaw = (key: string) =>
+  db
+    .prepare<unknown[], { value: import("../../backend/db/rows.ts").SettingsRow["value"] }>(
+      "SELECT value FROM settings WHERE key = ?",
+    )
+    .get(key)?.value;
+const readJson = (key: string) => {
   const value = readRaw(key);
   return value == null ? undefined : JSON.parse(value);
 };
@@ -128,7 +133,11 @@ test("keeps current settings when an older key repeats them", async () => {
   await runMigration();
 
   assert.deepEqual(
-    readJson("flows").map((flow) => [flow.id, flow.name, flow.tags]),
+    readJson("flows").map((flow: { id: string; name: string; tags: string[] }) => [
+      flow.id,
+      flow.name,
+      flow.tags,
+    ]),
     [["current-flow", "Current", ["dub"]]],
   );
   assert.equal(readRaw("weeklyFlows"), undefined);

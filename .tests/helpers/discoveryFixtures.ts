@@ -1,8 +1,8 @@
 export function makeDiscoveryArtist(
-  index,
-  score,
-  prefix = "artist",
-  idPrefix = "00000000-0000-4000-8000",
+  index: number,
+  score: number,
+  prefix: string = "artist",
+  idPrefix: string = "00000000-0000-4000-8000",
 ) {
   const padded = String(index).padStart(12, "0");
   return {
@@ -21,10 +21,10 @@ export function makeDiscoveryArtist(
   };
 }
 
-export function createDiscoveryArtistBatcher(idPrefix) {
+export function createDiscoveryArtistBatcher(idPrefix?: string) {
   let nextOffset = 0;
   return {
-    makeBatch(count, baseScore, prefix = "artist") {
+    makeBatch(count: number, baseScore: number, prefix: string = "artist") {
       const start = nextOffset;
       nextOffset += count;
       return Array.from({ length: count }, (_, offset) =>

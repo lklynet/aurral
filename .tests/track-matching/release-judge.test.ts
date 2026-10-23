@@ -7,7 +7,25 @@ import { OTHER_VERSION_LABELS } from "./version-labels.ts";
 const RECORDING = "352f7829-a238-4b00-8cc1-2b0c2613c756";
 const OTHER_RECORDING = "e0996a37-c13d-44c3-8060-74939d43fa37";
 
-function release(titles, { title = "Album", artist = "The Band", discs = null, ...rest } = {}) {
+type Manifest = Parameters<typeof judgeRelease>[0] & {
+  releaseMbid: string;
+  releaseGroupMbid: string;
+  compilation: boolean;
+};
+type Listing = NonNullable<Parameters<typeof judgeRelease>[1]>;
+type ListingFile = NonNullable<Listing["files"]>[number];
+
+function release(
+  titles: string[],
+  {
+    title = "Album",
+    artist = "The Band",
+    discs = null,
+    ...rest
+  }: Partial<Omit<Manifest, "tracks">> & { artist?: string; discs?: number[][] | null } = {},
+): Omit<Manifest, "tracks"> & {
+  tracks: (Manifest["tracks"][number] & { durationMs: number; trackNumber: number })[];
+} {
   return {
     releaseMbid: "8f6bd1e4-fbe1-4f50-aa9b-94c450ec0f11",
     releaseGroupMbid: "1e0eee38-a9f6-49bf-84d0-45d0b2a5a4d1",
@@ -24,14 +42,19 @@ function release(titles, { title = "Album", artist = "The Band", discs = null, .
       discNumber: discs ? discs[index][0] : 1,
       recordingMbid: null,
       recordingMbidAliases: [],
+      pressingDurationsMs: [],
     })),
     ...rest,
   };
 }
 
-const pad = (number) => String(number).padStart(2, "0");
+const pad = (number: number | null) => String(number).padStart(2, "0");
 
-function fileFor(manifest, index, overrides = {}) {
+function fileFor(
+  manifest: Manifest,
+  index: number,
+  overrides: Partial<ListingFile> = {},
+): ListingFile {
   const track = manifest.tracks[index];
   return {
     title: track.title,
@@ -46,9 +69,9 @@ function fileFor(manifest, index, overrides = {}) {
 }
 
 function listing(
-  manifest,
-  files = manifest.tracks.map((_, index) => fileFor(manifest, index)),
-  labels = {},
+  manifest: Manifest,
+  files: ListingFile[] = manifest.tracks.map((_, index) => fileFor(manifest, index)),
+  labels: Omit<Listing, "files"> = {},
 ) {
   return { artistLabel: manifest.artistNames[0], albumLabel: manifest.title, files, ...labels };
 }
@@ -63,7 +86,7 @@ test("a complete listing pairs every track with its own file in any file order",
   assert.deepEqual(verdict.copiesForTrack, [[2], [1], [3], [0]]);
   assert.equal(releaseHolds(album, listing(album, files), 3), true);
 
-  const orders = (rest) =>
+  const orders = (rest: number[]): number[][] =>
     rest.length
       ? rest.flatMap((first) =>
           orders(rest.filter((index) => index !== first)).map((order) => [first, ...order]),
@@ -82,7 +105,7 @@ test("a complete listing pairs every track with its own file in any file order",
 test("repeated titles pair by place, then by the closest lengths", () => {
   const interludes = release(["Interlude", "Interlude"]);
   interludes.tracks[1].durationMs = interludes.tracks[0].durationMs;
-  const atPlaces = (...places) =>
+  const atPlaces = (...places: number[]) =>
     places.map((trackNumber) => fileFor(interludes, 0, { trackNumber }));
   assert.deepEqual(
     judgeRelease(interludes, listing(interludes, atPlaces(2, 1))).fileForTrack,
@@ -128,7 +151,7 @@ test("a distinct bonus song rejects the release for the whole album and for one 
     assert.equal(verdict.kind, "rejected", bonus.title);
     assert.equal(verdict.reason, "extra-tracks");
     assert.deepEqual(verdict.extras, [4]);
-    assert.deepEqual(verdict.missing, []);
+    assert.deepEqual([...verdict.missing], []);
     assert.equal(releaseHolds(album, offered, 0), false);
   }
 });
@@ -169,7 +192,7 @@ test("another encoding of every track is a copy, not an extra", () => {
 });
 
 test("a copy whose length misses the window beside its verified copy is not an extra song", () => {
-  const mp3 = (index, shift) =>
+  const mp3 = (index: number, shift: number) =>
     fileFor(album, index, {
       durationMs: album.tracks[index].durationMs + shift,
       path: `The Band/Album/${pad(index + 1)} ${album.tracks[index].title}.mp3`,
@@ -215,7 +238,7 @@ test("a second file is a copy only when it is the same song at a compatible plac
     ],
     ["copy at another place", fileFor(parts, 0, { trackNumber: 3 }), "extra-tracks"],
     ["similar title", fileFor(parts, 0, { title: "Part 3", trackNumber: null }), "extra-tracks"],
-  ]) {
+  ] satisfies [unknown, unknown, unknown][]) {
     const verdict = judgeRelease(parts, listing(parts, [...complete, extra]));
     assert.equal(verdict.kind, "rejected", name);
     assert.equal(verdict.reason, reason, name);
@@ -282,7 +305,7 @@ test("a multi-disc listing pairs each track with its own disc", () => {
     ],
   });
   twoDiscs.tracks[2].durationMs = twoDiscs.tracks[0].durationMs;
-  const discFile = (index, disc) => {
+  const discFile = (index: number, disc: number) => {
     const track = twoDiscs.tracks[index];
     const path = `The Band/Album/CD${disc}/${pad(track.trackNumber)} ${track.title}.flac`;
     return {
@@ -319,7 +342,7 @@ test("a file at a known wrong place does not fill the track", () => {
 });
 
 test("without a length a file needs its exact title at its place", () => {
-  const untimed = (overrides) =>
+  const untimed = (overrides: (index: number) => Partial<ListingFile>) =>
     album.tracks.map((_, index) =>
       fileFor(album, index, { durationMs: null, ...overrides(index) }),
     );
@@ -340,7 +363,7 @@ test("without a length a file needs its exact title at its place", () => {
 });
 
 test("a numbered file without a title fits only beside the release's artist with its length", () => {
-  const numbered = (shift = 0) =>
+  const numbered = (shift: number = 0) =>
     album.tracks.map((track, index) => ({
       ...parseListingTitle(`${pad(index + 1)}.flac`),
       artists: [],
@@ -380,7 +403,7 @@ test("a recording ID names its track, tells repeated recordings apart by place, 
 });
 
 test("a known length must agree within the selection window", () => {
-  const shifted = (gap) =>
+  const shifted = (gap: number) =>
     album.tracks.map((track, index) =>
       fileFor(album, index, { durationMs: track.durationMs + (index === 1 ? gap : 0) }),
     );
@@ -416,7 +439,7 @@ test("an unrequested version in a label, folder, or file rejects the release", (
     ["artist label", listing(album, undefined, { artistLabel: "The Band Karaoke" }), "karaoke"],
     ["release folder", listing(album, remixFolder), "remix"],
     ["file title", listing(album, instrumental), "instrumental"],
-  ]) {
+  ] satisfies [unknown, unknown, unknown][]) {
     const verdict = judgeRelease(album, offered);
     assert.equal(verdict.kind, "rejected", name);
     assert.ok(verdict.markers.includes(marker), `${name}: ${JSON.stringify(verdict.markers)}`);
@@ -443,7 +466,7 @@ test("a label naming another product, album, or live show rejects the release, a
     ["The Band - Live 2017", "unrequested-variant"],
     ["The Band - Live in Paris (2004)", "unrequested-variant"],
     ["Album (Covers Album)", "unrequested-variant"],
-  ]) {
+  ] satisfies [unknown, unknown][]) {
     const verdict = judgeRelease(album, listing(album, undefined, { albumLabel }));
     assert.equal(verdict.kind, "rejected", albumLabel);
     assert.equal(verdict.reason, reason, albumLabel);
@@ -511,7 +534,7 @@ test("a pinned edition with a live disc accepts a label naming that disc, but no
       [2, 2],
     ],
   });
-  const files = (folder, overrides = () => ({})) =>
+  const files = (folder: string, overrides: (index: number) => Partial<ListingFile> = () => ({})) =>
     deluxe.tracks.map((track, index) =>
       fileFor(deluxe, index, {
         discNumber: track.discNumber,
@@ -553,11 +576,11 @@ test("a pinned edition with a live disc accepts a label naming that disc, but no
 });
 
 test("a release's own versions excuse a label only where they make up half of a disc of a quarter of the release", () => {
-  const onDiscs = (manifest) =>
+  const onDiscs = (manifest: Manifest) =>
     manifest.tracks.map((track, index) =>
       fileFor(manifest, index, { discNumber: track.discNumber }),
     );
-  const judged = (manifest, albumLabel) =>
+  const judged = (manifest: Manifest, albumLabel: string) =>
     judgeRelease(manifest, listing(manifest, onDiscs(manifest), { albumLabel }));
   const bonus = release([
     "First Song",
@@ -566,7 +589,7 @@ test("a release's own versions excuse a label only where they make up half of a 
     "Second Song (Live at the Troubadour)",
   ]);
   const studio = Array.from({ length: 7 }, (_, index) => `Song ${index + 1}`);
-  const bonusDisc = (extra) =>
+  const bonusDisc = (extra: string[]) =>
     release([...studio, ...extra], {
       discs: [
         ...studio.map((_, index) => [1, index + 1]),
@@ -612,7 +635,7 @@ test("a release's own versions excuse a label only where they make up half of a 
 
 test("a title in another script fits like an untitled file at its place, and a near spelling in that script does not fit", () => {
   const yoasobi = release(["夜に駆ける", "群青"], { title: "THE BOOK", artist: "YOASOBI" });
-  const romanized = (overrides = () => ({})) =>
+  const romanized = (overrides: (index: number) => Partial<ListingFile> = () => ({})) =>
     yoasobi.tracks.map((track, index) =>
       fileFor(yoasobi, index, {
         title: ["Yoru ni Kakeru", "Gunjou"][index],
@@ -655,7 +678,7 @@ test("a title in another script fits like an untitled file at its place, and a n
     ["Song がみ", "Song かみ"],
     ["कि", "की"],
     ["First Song", "Different Song"],
-  ]) {
+  ] satisfies [unknown, unknown][]) {
     const single = release([expected]);
     assert.deepEqual(
       judgeRelease(single, listing(single, [fileFor(single, 0, { title: offered })])).missing,

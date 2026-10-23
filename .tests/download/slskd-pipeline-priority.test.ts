@@ -5,7 +5,7 @@ import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTe
 
 const [isolatedState, honkerDb] = await setupIsolatedBackend(
   "slskd-pipeline-priority",
-  "backend/services/honkerDb.ts",
+  () => import("../../backend/services/honkerDb.ts"),
 );
 
 const { getPipelineQueue, enqueuePipelineJob } = honkerDb;
@@ -22,13 +22,13 @@ test("slskd pipeline claims active transfer phases before searches and upgrades 
   enqueuePipelineJob({ phase: "download", jobId: "download" });
   enqueuePipelineJob({ phase: "finalize", jobId: "finalize" });
 
-  const claimed = [];
+  const claimed: string[] = [];
   for (
     let job = queue.claimOne("priority-test-worker");
     job;
     job = queue.claimOne("priority-test-worker")
   ) {
-    claimed.push(job.payload.jobId);
+    claimed.push((job.payload as { jobId: string }).jobId);
     job.ack();
   }
   assert.deepEqual(claimed, ["finalize", "download", "poll", "search", "upgrade"]);

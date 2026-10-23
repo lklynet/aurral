@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
+import { testWebSocketClient } from "../helpers/userFixtures.ts";
 
 test("discovery worker progress and completed data reach the API without shared memory", async () => {
   const { dbOps } = await import("../../backend/db/helpers/index.ts");
@@ -24,7 +25,7 @@ test("discovery worker progress and completed data reach the API without shared 
   await forwardWorkerBroadcast({
     type: "websocket-broadcast",
     channel: "discovery",
-    data: { isUpdating: false, phase: "completed", progress: 100 },
+    data: { type: "discovery_update", isUpdating: false, phase: "completed", progress: 100 },
   });
   assert.equal(getDiscoveryStatus(null).isUpdating, false);
   assert.equal(getDiscoveryStatus(null).lastUpdated, dbOps.getDiscoveryCache().lastUpdated);
@@ -39,13 +40,11 @@ test("a personal refresh in a worker shows as updating only for its user", async
   const { websocketService } = await import("../../backend/services/websocketService.ts");
   const { forwardWorkerBroadcast } = await import("../../backend/services/appRuntime.ts");
 
-  const sent = { alice: [], bob: [] };
-  const client = (id, inbox) => ({
-    user: { id },
-    subscriptions: new Set(["discovery"]),
-    ws: { readyState: 1, send: (message) => inbox.push(JSON.parse(message)) },
-  });
-  const clients = [client(7, sent.alice), client(8, sent.bob)];
+  const sent: { alice: unknown[]; bob: unknown[] } = { alice: [], bob: [] };
+  const clients = [
+    testWebSocketClient(7, ["discovery"], (message) => sent.alice.push(JSON.parse(message))),
+    testWebSocketClient(8, ["discovery"], (message) => sent.bob.push(JSON.parse(message))),
+  ];
   clients.forEach((entry) => websocketService.clients.add(entry));
   const { db } = await import("../../backend/config/db-sqlite.ts");
   dbOps.updateDiscoveryCache({ recommendations: [{ name: "Stale" }] }, "user:7");

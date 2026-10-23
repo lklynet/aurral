@@ -5,8 +5,8 @@ import { createDiscoveryArtistBatcher } from "../helpers/discoveryFixtures.ts";
 
 const [isolatedState, recommendationPipeline, discoveryIndex] = await setupIsolatedBackend(
   "discovery-recommendation-pool",
-  "backend/services/discovery/recommendationPipeline.ts",
-  "backend/services/discovery/index.ts",
+  () => import("../../backend/services/discovery/recommendationPipeline.ts"),
+  () => import("../../backend/services/discovery/index.ts"),
 );
 
 const { mergeRetainedRecommendationPool, serveRecommendations } = recommendationPipeline;
@@ -25,12 +25,20 @@ const POOL_LIMIT = getDiscoveryRecommendationPoolLimit();
 
 const artists = createDiscoveryArtistBatcher();
 
+type RecommendationPool = ReturnType<typeof mergeRetainedRecommendationPool>;
+
 function simulatePhase({
   existingRecommendations = [],
   candidateCount = PER_REFRESH * 2,
   baseScore = 200,
   prefix = "artist",
   runStartedAt = new Date().toISOString(),
+}: {
+  existingRecommendations?: RecommendationPool;
+  candidateCount?: number;
+  baseScore?: number;
+  prefix?: string;
+  runStartedAt?: string;
 } = {}) {
   const candidates = artists.makeBatch(candidateCount, baseScore, prefix);
   const freshRecommendations = rerankCachedRecommendations({
@@ -80,18 +88,18 @@ test("two-phase refresh grows pool from initial hydration through enrichment", (
     PER_REFRESH,
   );
   assert.equal(
-    phaseTwoPool.some((item) => item.name.startsWith("phase1-")),
+    phaseTwoPool.some((item) => item.name?.startsWith("phase1-")),
     true,
   );
   assert.equal(
-    phaseTwoPool.some((item) => item.name.startsWith("phase2-")),
+    phaseTwoPool.some((item) => item.name?.startsWith("phase2-")),
     true,
   );
 });
 
 test("repeated refreshes build the pool to the 500 cap", () => {
   artists.reset();
-  let pool = [];
+  let pool: RecommendationPool = [];
   for (let cycle = 0; cycle < 4; cycle += 1) {
     pool = simulatePhase({
       existingRecommendations: pool,
@@ -102,8 +110,8 @@ test("repeated refreshes build the pool to the 500 cap", () => {
     });
   }
 
-  const oldestRemaining = pool.filter((item) => item.name.startsWith("cycle-0-")).length;
-  const newestRemaining = pool.filter((item) => item.name.startsWith("cycle-3-")).length;
+  const oldestRemaining = pool.filter((item) => item.name?.startsWith("cycle-0-")).length;
+  const newestRemaining = pool.filter((item) => item.name?.startsWith("cycle-3-")).length;
 
   assert.equal(pool.length, POOL_LIMIT);
   assert.ok(oldestRemaining > 0);
@@ -130,9 +138,9 @@ test("rotation drops lowest retained artists when fresh batch arrives", () => {
   });
 
   assert.equal(rotated.length, POOL_LIMIT);
-  assert.equal(rotated.filter((item) => item.name.startsWith("fresh-")).length, PER_REFRESH);
+  assert.equal(rotated.filter((item) => item.name?.startsWith("fresh-")).length, PER_REFRESH);
   assert.equal(
-    rotated.filter((item) => item.name.startsWith("weak-")).length,
+    rotated.filter((item) => item.name?.startsWith("weak-")).length,
     POOL_LIMIT - PER_REFRESH,
   );
   assert.equal(
@@ -204,7 +212,7 @@ test("enrichment marks returning artists as fresh while preserving firstDiscover
   const enrichedCandidate = {
     ...returningArtist,
     scoreTotal: returningArtist.scoreTotal + 25,
-    scoreSimilarity: returningArtist.scoreSimilarity + 25,
+    scoreSimilarity: (returningArtist.scoreSimilarity ?? 0) + 25,
     matchedTags: ["indie", "shoegaze"],
   };
   const enrichmentFresh = rerankCachedRecommendations({

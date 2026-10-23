@@ -5,7 +5,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-async function renderOperation(t, operation) {
+type FileOperation = Parameters<
+  typeof import("../../frontend/src/components/LibraryFileOperation.tsx").default
+>[0]["operation"];
+
+async function renderOperation(operation: FileOperation) {
   vi.resetModules();
   const { default: LibraryFileOperation } =
     await import("../../frontend/src/components/LibraryFileOperation.tsx");
@@ -18,19 +22,20 @@ async function renderOperation(t, operation) {
   );
 }
 
-const finishedIngest = (overrides) => ({
-  id: 1,
-  kind: "ingest",
-  status: "complete",
-  options: { mode: "move" },
-  summary: {},
-  progress: { done: 6, total: 6, unit: "files" },
-  ...overrides,
-});
+const finishedIngest = (overrides: Partial<FileOperation>) =>
+  ({
+    id: 1,
+    kind: "ingest" as const,
+    status: "complete",
+    options: { mode: "move" as const },
+    summary: {},
+    progress: { done: 6, total: 6 },
+    updatedAt: 0,
+    ...overrides,
+  }) as FileOperation;
 
-test("an ingest stored before Needs review was removed lists its held files as skipped", async (t) => {
+test("an ingest stored before Needs review was removed lists its held files as skipped", async () => {
   const markup = await renderOperation(
-    t,
     finishedIngest({
       counts: { done: 2, duplicate: 1, conflict: 3 },
       sources: { removable: 0, removed: 0 },
@@ -45,16 +50,14 @@ test("an ingest stored before Needs review was removed lists its held files as s
   assert.match(markup, /aria-pressed="true"[^>]*>Skipped <span class="library-file-op__count">3</);
 });
 
-test("a finished Move ingest offers to remove only the source files it kept, and Copy offers nothing", async (t) => {
+test("a finished Move ingest offers to remove only the source files it kept, and Copy offers nothing", async () => {
   const move = await renderOperation(
-    t,
     finishedIngest({
       counts: { duplicate: 4 },
       sources: { removable: 3, removed: 0 },
     }),
   );
   const copy = await renderOperation(
-    t,
     finishedIngest({
       options: { mode: "copy" },
       counts: { duplicate: 4 },
@@ -67,9 +70,8 @@ test("a finished Move ingest offers to remove only the source files it kept, and
   assert.doesNotMatch(copy, /Remove/);
 });
 
-test("a finished clean up offers to remove the duplicate copies it found and lists them as duplicates", async (t) => {
+test("a finished clean up offers to remove the duplicate copies it found and lists them as duplicates", async () => {
   const markup = await renderOperation(
-    t,
     finishedIngest({
       kind: "cleanup",
       options: {},

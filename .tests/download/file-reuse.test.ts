@@ -1,3 +1,4 @@
+import { createTrackedJob, localDownloadWorker, trackedJob } from "./fixtures.ts";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "fs/promises";
@@ -6,7 +7,6 @@ import path from "path";
 import {
   setupIsolatedBackend,
   cleanupIsolatedState,
-  importFromRepo,
   resetDatabase,
 } from "../helpers/backendTestHarness.ts";
 
@@ -22,14 +22,14 @@ const [
   managementStore,
 ] = await setupIsolatedBackend(
   "file-reuse",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/downloadJobs/downloadTracker.ts",
-  "backend/services/downloadJobs/fileReuse.ts",
-  "backend/services/playlists/flowPlaylistConfig.ts",
-  "backend/services/playlists/playlistManager.ts",
-  "backend/services/libraryMediaStore.ts",
-  "backend/services/libraryManagementStore.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
+  () => import("../../backend/services/downloadJobs/fileReuse.ts"),
+  () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
+  () => import("../../backend/services/playlists/playlistManager.ts"),
+  () => import("../../backend/services/libraryMediaStore.ts"),
+  () => import("../../backend/services/libraryManagementStore.ts"),
 );
 
 const { downloadTracker } = trackerModule;
@@ -48,6 +48,7 @@ const {
 } = reuseModule;
 
 const downloadRoot = process.env.WEEKLY_FLOW_FOLDER;
+assert.ok(downloadRoot != null);
 
 beforeEach(async () => {
   await resetDatabase(db);
@@ -62,9 +63,7 @@ beforeEach(async () => {
 });
 
 afterAll(async () => {
-  const { downloadWorker } = await importFromRepo(
-    "backend/services/downloadJobs/downloadWorker.ts",
-  );
+  const { downloadWorker } = await import("../../backend/services/downloadJobs/downloadWorker.ts");
   await downloadWorker.stopAndDrain();
   await cleanupIsolatedState(isolatedState);
 });
@@ -98,7 +97,8 @@ test("reuseTrackForPlaylist references a completed Aurral track path", async () 
   );
   await fs.mkdir(path.dirname(sourcePath), { recursive: true });
   await fs.writeFile(sourcePath, "audio");
-  const sourceJobId = downloadTracker.addJob(track, "source-playlist");
+  const sourceJobId = createTrackedJob(downloadTracker, track, "source-playlist");
+  assert.ok(sourceJobId != null);
   downloadTracker.setDone(sourceJobId, sourcePath, track.albumName);
 
   const result = await reuseTrackForPlaylist(track, "target-playlist", {
@@ -139,7 +139,7 @@ test("reusing an existing track for a flow does not schedule a full library scan
     existingFileMode: "reuse",
     downloadRoot,
   });
-  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise<void>((resolve) => setImmediate(resolve));
 
   assert.equal(result.reused, true);
   assert.equal(scheduleScanLibrary.mock.calls.length, 0);
@@ -203,7 +203,7 @@ test("reuseTrackForPlaylist finds a local file named with its album position", a
   assert.equal((await reuseTrackForPlaylist(reprise, "library", options)).finalPath, reprisePath);
 
   const discDir = path.join(downloadRoot, "Numbered Artist", "Two Disc Album");
-  const onDisc = (discNumber) => ({
+  const onDisc = (discNumber: number | null) => ({
     artistName: "Numbered Artist",
     trackName: "Bomb",
     albumName: "Two Disc Album",
@@ -225,7 +225,7 @@ test("reuseTrackForPlaylist finds a local file named with its album position", a
     firstDiscPath,
   );
 
-  const unnumbered = (discNumber) => ({
+  const unnumbered = (discNumber: number | null) => ({
     artistName: "Numbered Artist",
     trackName: "Song",
     albumName: "Unnumbered Album",
@@ -266,7 +266,8 @@ test("library reuse does not cross album boundaries for the same track title", a
   );
   await fs.mkdir(path.dirname(sourcePath), { recursive: true });
   await fs.writeFile(sourcePath, "audio");
-  const sourceJobId = downloadTracker.addJob(sourceTrack, "source-playlist");
+  const sourceJobId = createTrackedJob(downloadTracker, sourceTrack, "source-playlist");
+  assert.ok(sourceJobId != null);
   downloadTracker.setDone(sourceJobId, sourcePath, sourceTrack.albumName);
 
   const result = await reuseTrackForPlaylist(
@@ -307,7 +308,8 @@ test("repairReusableTrackLinks does nothing when reuse is disabled", async () =>
   const playlistPath = path.join(downloadRoot, "aurral-weekly-flow", "flow-playlist", "Song.flac");
   await fs.mkdir(path.dirname(playlistPath), { recursive: true });
   await fs.writeFile(playlistPath, "audio");
-  const jobId = downloadTracker.addJob(track, "flow-playlist");
+  const jobId = createTrackedJob(downloadTracker, track, "flow-playlist");
+  assert.ok(jobId != null);
   downloadTracker.setDone(jobId, playlistPath, track.albumName);
 
   const result = await repairReusableTrackLinks({
@@ -328,10 +330,11 @@ test("restoreCompletedTrack requeues done jobs when the file and reuse source ar
     albumName: "White Pony",
   };
   const missingPath = path.join(downloadRoot, "aurral-weekly-flow", "flow-playlist", "Change.flac");
-  const jobId = downloadTracker.addJob(track, "flow-playlist");
+  const jobId = createTrackedJob(downloadTracker, track, "flow-playlist");
+  assert.ok(jobId != null);
   downloadTracker.setDone(jobId, missingPath, track.albumName);
 
-  const result = await restoreCompletedTrack(downloadTracker.getJob(jobId), {
+  const result = await restoreCompletedTrack(trackedJob(downloadTracker, jobId), {
     existingFileMode: "reuse",
     downloadRoot,
     resolveSource: async () => ({ source: null, reason: "No source" }),
@@ -357,7 +360,8 @@ test("repairJobsUnderRemovedPlaylistDir requeues other playlists that reused a d
     "Romanticize the Dive",
     "Victim of Luck.mp3",
   );
-  const jobId = downloadTracker.addJob(track, "active-playlist");
+  const jobId = createTrackedJob(downloadTracker, track, "active-playlist");
+  assert.ok(jobId != null);
   downloadTracker.setDone(jobId, reusedPath, track.albumName);
   const scheduleScanLibrary = vi
     .spyOn(playlistManager, "scheduleScanLibrary")
@@ -390,7 +394,8 @@ test("repairOrphanedPlaylistTrackPaths finds removed playlist ids from missing f
     "Romanticize the Dive",
     "Victim of Luck.mp3",
   );
-  const jobId = downloadTracker.addJob(track, "active-playlist");
+  const jobId = createTrackedJob(downloadTracker, track, "active-playlist");
+  assert.ok(jobId != null);
   downloadTracker.setDone(jobId, reusedPath, track.albumName);
 
   const result = await repairOrphanedPlaylistTrackPaths({
@@ -416,7 +421,8 @@ test("repairReusableTrackLinks requeues missing completed tracks and refreshes p
     "flow-playlist",
     "Glory Box.flac",
   );
-  const jobId = downloadTracker.addJob(track, "flow-playlist");
+  const jobId = createTrackedJob(downloadTracker, track, "flow-playlist");
+  assert.ok(jobId != null);
   downloadTracker.setDone(jobId, missingPath, track.albumName);
   const scheduleScanLibrary = vi
     .spyOn(playlistManager, "scheduleScanLibrary")
@@ -442,7 +448,8 @@ test("repairReusableTrackLinks scans after repairing a library track", async () 
   const sourcePath = path.join(isolatedState.baseDir, "library-source.flac");
   await fs.writeFile(sourcePath, "audio");
   const missingPath = path.join(downloadRoot, "Portishead", "Dummy", "Glory Box.flac");
-  const jobId = downloadTracker.addJob(track, "library");
+  const jobId = createTrackedJob(downloadTracker, track, "library");
+  assert.ok(jobId != null);
   downloadTracker.setDone(jobId, missingPath, track.albumName);
   const scheduleScanLibrary = vi
     .spyOn(playlistManager, "scheduleScanLibrary")
@@ -479,7 +486,8 @@ test("reuseTrackForPlaylist path-shares flow files until refresh relocates them"
   );
   await fs.mkdir(path.dirname(sourcePath), { recursive: true });
   await fs.writeFile(sourcePath, "audio");
-  const sourceJobId = downloadTracker.addJob(track, flow.id);
+  const sourceJobId = createTrackedJob(downloadTracker, track, flow.id);
+  assert.ok(sourceJobId != null);
   downloadTracker.setDone(sourceJobId, sourcePath, track.albumName);
 
   const result = await reuseTrackForPlaylist(track, "keepers", {
@@ -525,9 +533,11 @@ test("relocateSharedFilesBeforePlaylistRemoval moves shared files to a survivor 
   );
   await fs.mkdir(path.dirname(ownerPath), { recursive: true });
   await fs.writeFile(ownerPath, "audio");
-  const ownerJobId = downloadTracker.addJob(track, "owner-playlist");
+  const ownerJobId = createTrackedJob(downloadTracker, track, "owner-playlist");
+  assert.ok(ownerJobId != null);
   downloadTracker.setDone(ownerJobId, ownerPath, track.albumName);
-  const sharedJobId = downloadTracker.addJob(track, "survivor-playlist");
+  const sharedJobId = createTrackedJob(downloadTracker, track, "survivor-playlist");
+  assert.ok(sharedJobId != null);
   downloadTracker.setDone(sharedJobId, ownerPath, track.albumName);
 
   const result = await relocateSharedFilesBeforePlaylistRemoval("owner-playlist", {
@@ -564,9 +574,11 @@ test("removePlaylistFileIfUnshared relocates when another playlist still referen
   );
   await fs.mkdir(path.dirname(ownerPath), { recursive: true });
   await fs.writeFile(ownerPath, "audio");
-  const ownerJobId = downloadTracker.addJob(track, "owner-playlist");
+  const ownerJobId = createTrackedJob(downloadTracker, track, "owner-playlist");
+  assert.ok(ownerJobId != null);
   downloadTracker.setDone(ownerJobId, ownerPath, track.albumName);
-  const sharedJobId = downloadTracker.addJob(track, "other-playlist");
+  const sharedJobId = createTrackedJob(downloadTracker, track, "other-playlist");
+  assert.ok(sharedJobId != null);
   downloadTracker.setDone(sharedJobId, ownerPath, track.albumName);
 
   const result = await removePlaylistFileIfUnshared(ownerPath, "owner-playlist", {
@@ -597,7 +609,8 @@ test("removePlaylistFileIfUnshared preserves external files during shared cleanu
   const externalPath = path.join(downloadRoot, "external-xtal.flac");
   await fs.mkdir(path.dirname(externalPath), { recursive: true });
   await fs.writeFile(externalPath, "audio");
-  const jobId = downloadTracker.addJob(track, playlist.id);
+  const jobId = createTrackedJob(downloadTracker, track, playlist.id);
+  assert.ok(jobId != null);
   downloadTracker.setDone(jobId, externalPath, track.albumName, "/music/External Xtal.flac");
 
   const result = await removePlaylistFileIfUnshared(externalPath, playlist.id, {
@@ -610,11 +623,16 @@ test("removePlaylistFileIfUnshared preserves external files during shared cleanu
   await fs.access(externalPath);
 });
 
-async function seedHandoverAlbum({ handedOver = true } = {}) {
+async function seedHandoverAlbum({ handedOver = true }: { handedOver?: boolean } = {}) {
   const artistMbid = "f1111111-1111-4111-8111-111111111111";
   const albumMbid = "f2222222-2222-4222-8222-222222222222";
   const trackMbid = "f3333333-3333-4333-8333-333333333333";
-  const aurralPath = path.join(downloadRoot, "Handover Artist", "Handover Album", "01 Single.flac");
+  const aurralPath = path.join(
+    downloadRoot!,
+    "Handover Artist",
+    "Handover Album",
+    "01 Single.flac",
+  );
   const lidarrPath = path.join(
     isolatedState.dataDir,
     "lidarr",
@@ -665,7 +683,8 @@ async function seedHandoverAlbum({ handedOver = true } = {}) {
       path: filePath,
     });
   }
-  const jobId = downloadTracker.addJob(
+  const jobId = createTrackedJob(
+    downloadTracker,
     {
       artistName: "Handover Artist",
       trackName: "Single",
@@ -676,11 +695,12 @@ async function seedHandoverAlbum({ handedOver = true } = {}) {
     },
     "synced-playlist",
   );
+  assert.ok(jobId != null);
   downloadTracker.setDone(jobId, aurralPath, "Handover Album");
   return { jobId, aurralPath, lidarrPath };
 }
 
-const fileExists = (filePath) =>
+const fileExists = (filePath: string) =>
   fs.access(filePath).then(
     () => true,
     () => false,
@@ -697,7 +717,10 @@ test("a playlist track of an album handed to Lidarr moves onto Lidarr's file and
   });
 
   assert.deepEqual(result, { moved: 1, deleted: 1 });
-  assert.equal(path.resolve(downloadTracker.getJob(jobId).finalPath), path.resolve(lidarrPath));
+  assert.equal(
+    path.resolve(trackedJob(downloadTracker, jobId).finalPath!),
+    path.resolve(lidarrPath),
+  );
   assert.equal(await fileExists(aurralPath), false);
   assert.equal(await fs.readFile(lidarrPath, "utf8"), "lidarr");
 });
@@ -707,7 +730,10 @@ test("Aurral copies stay when the album was not handed over or playback still us
   const notHandedOver = await seedHandoverAlbum({ handedOver: false });
 
   await moveHandedOverTracksToLidarr({ downloadRoot, existingFileMode: "reuse" });
-  assert.equal(downloadTracker.getJob(notHandedOver.jobId).finalPath, notHandedOver.aurralPath);
+  assert.equal(
+    trackedJob(downloadTracker, notHandedOver.jobId).finalPath,
+    notHandedOver.aurralPath,
+  );
 
   await resetDatabase(db);
   downloadTracker.clearAll();
@@ -720,17 +746,17 @@ test("Aurral copies stay when the album was not handed over or playback still us
 
   assert.deepEqual(result, { moved: 1, deleted: 0 });
   assert.equal(
-    path.resolve(downloadTracker.getJob(inUse.jobId).finalPath),
+    path.resolve(trackedJob(downloadTracker, inUse.jobId).finalPath!),
     path.resolve(inUse.lidarrPath),
   );
   assert.equal(await fileExists(inUse.aurralPath), true);
 });
 
 test("turning Lidarr off requeues downloads that used a Lidarr file", async () => {
-  const { downloadWorker } = await importFromRepo(
-    "backend/services/downloadJobs/downloadWorker.ts",
-  );
-  const { lidarrClient } = await importFromRepo("backend/services/lidarrClient.ts");
+  const { downloadWorker: worker } =
+    await import("../../backend/services/downloadJobs/downloadWorker.ts");
+  const downloadWorker = localDownloadWorker(worker);
+  const { lidarrClient } = await import("../../backend/services/lidarrClient.ts");
   const musicRoot = path.join(isolatedState.baseDir, "music");
   dbOps.updateSettings({
     integrations: { lidarr: { enabled: false, apiKey: "key", rootFolderPath: musicRoot } },
@@ -738,8 +764,9 @@ test("turning Lidarr off requeues downloads that used a Lidarr file", async () =
   lidarrClient.updateConfig();
   vi.spyOn(downloadWorker, "start").mockImplementation(async () => {});
   vi.spyOn(downloadWorker, "wake").mockImplementation(() => {});
-  const doneJob = (trackName, finalPath, externalPath = null) => {
-    const id = downloadTracker.addJob({ artistName: "Artist", trackName }, "library");
+  const doneJob = (trackName: string, finalPath: string, externalPath: string | null = null) => {
+    const id = createTrackedJob(downloadTracker, { artistName: "Artist", trackName }, "library");
+    assert.ok(id != null);
     downloadTracker.setDone(id, finalPath, "Album", externalPath);
     return id;
   };
@@ -757,10 +784,10 @@ test("turning Lidarr off requeues downloads that used a Lidarr file", async () =
 
   assert.equal(await downloadWorker.releaseLidarrFiles(), 2);
 
-  assert.equal(downloadTracker.getJob(reused).status, "pending");
-  assert.equal(downloadTracker.getJob(repointed).status, "pending");
-  assert.equal(downloadTracker.getJob(own).status, "done");
-  assert.equal(downloadTracker.getJob(elsewhere).status, "done");
+  assert.equal(trackedJob(downloadTracker, reused).status, "pending");
+  assert.equal(trackedJob(downloadTracker, repointed).status, "pending");
+  assert.equal(trackedJob(downloadTracker, own).status, "done");
+  assert.equal(trackedJob(downloadTracker, elsewhere).status, "done");
 
   dbOps.updateSettings({
     integrations: { lidarr: { enabled: true, apiKey: "key", rootFolderPath: musicRoot } },
@@ -772,12 +799,12 @@ test("turning Lidarr off requeues downloads that used a Lidarr file", async () =
     "/remote/music/Artist/5.flac",
   );
   assert.equal(await downloadWorker.releaseLidarrFiles(), 0);
-  assert.equal(downloadTracker.getJob(kept).status, "done");
+  assert.equal(trackedJob(downloadTracker, kept).status, "done");
 });
 
-test("playlists reuse a Lidarr file only while Lidarr is on", async (t) => {
-  const { lidarrClient } = await importFromRepo("backend/services/lidarrClient.ts");
-  const setLidarr = (enabled) => {
+test("playlists reuse a Lidarr file only while Lidarr is on", async (t: import("vite-plus/test").TestContext) => {
+  const { lidarrClient } = await import("../../backend/services/lidarrClient.ts");
+  const setLidarr = (enabled: boolean) => {
     dbOps.updateSettings({ integrations: { lidarr: { enabled, apiKey: "key" } } });
     lidarrClient.updateConfig();
   };

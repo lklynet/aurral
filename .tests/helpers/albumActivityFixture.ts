@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import {
   setupIsolatedBackend,
   cleanupIsolatedState,
@@ -13,10 +14,10 @@ export async function createAlbumActivityFixture() {
     { hashPassword },
   ] = await setupIsolatedBackend(
     "album-activity-browser",
-    "backend/db/helpers/index.ts",
-    "backend/services/downloadJobs/downloadTracker.ts",
-    "backend/services/albumGrabActivity.ts",
-    "backend/middleware/passwordHash.ts",
+    () => import("../../backend/db/helpers/index.ts"),
+    () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
+    () => import("../../backend/services/albumGrabActivity.ts"),
+    () => import("../../backend/middleware/passwordHash.ts"),
   );
   const username = "album-activity-test";
   const password = "disposable-album-activity-password";
@@ -25,7 +26,7 @@ export async function createAlbumActivityFixture() {
     ...dbOps.getSettings(),
     onboardingComplete: true,
     integrations: {},
-    security: { localNetworkBypassEnabled: false },
+    security: { localNetworkBypass: { enabled: false } },
   });
   const titles = [
     "Everything_Now (continued)",
@@ -55,6 +56,7 @@ export async function createAlbumActivityFixture() {
       "library",
     ),
   );
+  assert.ok(ids.every((id) => id !== null));
   const payload = {
     albumGrab: true,
     jobId: ids[0],
@@ -62,10 +64,9 @@ export async function createAlbumActivityFixture() {
     phase: "poll",
     source: "slskd",
   };
-  recordAlbumGrabQueued(
-    payload,
-    ids.map((id) => downloadTracker.getJob(id)),
-  );
+  const jobs = ids.map((id) => downloadTracker.getJob(id));
+  assert.ok(jobs.every((job) => job !== null));
+  recordAlbumGrabQueued(payload, jobs);
   recordAlbumGrabPhase(payload);
   for (const id of ids) downloadTracker.setDownloading(id);
 
@@ -82,6 +83,7 @@ export async function createAlbumActivityFixture() {
       "library",
     ),
   );
+  assert.ok(blockedIds.every((id) => id !== null));
   const partialPayload = {
     albumGrab: true,
     jobId: blockedIds[0],
@@ -89,12 +91,13 @@ export async function createAlbumActivityFixture() {
     phase: "finalize",
     source: "deemix",
   };
-  recordAlbumGrabQueued(
-    partialPayload,
-    blockedIds.map((id) => downloadTracker.getJob(id)),
-  );
+  const blockedJobs = blockedIds.map((id) => downloadTracker.getJob(id));
+  assert.ok(blockedJobs.every((job) => job !== null));
+  recordAlbumGrabQueued(partialPayload, blockedJobs);
   downloadTracker.setDone(blockedIds[0], `${state.baseDir}/ready.flac`);
-  recordAlbumTrackState(downloadTracker.getJob(blockedIds[0]), "deemix");
+  const readyJob = downloadTracker.getJob(blockedIds[0]);
+  assert.ok(readyJob);
+  recordAlbumTrackState(readyJob, "deemix");
   downloadTracker.setBlocked(
     blockedIds[1],
     "Identity needs review",
@@ -127,7 +130,9 @@ export async function createAlbumActivityFixture() {
       for (const id of ids) {
         downloadTracker.updateDownloadMetadata(id, { downloadSource: "slskd" });
         downloadTracker.setDone(id, `${state.baseDir}/${id}.flac`);
-        recordAlbumTrackState(downloadTracker.getJob(id), "slskd");
+        const job = downloadTracker.getJob(id);
+        assert.ok(job);
+        recordAlbumTrackState(job, "slskd");
       }
       downloadTracker.clearCompleted();
       const port = server.port;

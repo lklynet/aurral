@@ -57,7 +57,7 @@ function createPreV4Db() {
 }
 
 const dbHelpers = {
-  parseJSON: (text) => {
+  parseJSON: (text: string | null | undefined) => {
     if (!text) return null;
     try {
       return JSON.parse(text);
@@ -65,7 +65,7 @@ const dbHelpers = {
       return null;
     }
   },
-  stringifyJSON: (obj) => (obj === undefined ? null : JSON.stringify(obj)),
+  stringifyJSON: (obj: unknown) => (obj === undefined ? null : JSON.stringify(obj)),
 };
 
 test("ownership migration adds manager table and job ownership columns", async () => {
@@ -78,14 +78,21 @@ test("ownership migration adds manager table and job ownership columns", async (
   assert.equal(result.schemaVersion, 4);
 
   const jobColumns = db
-    .prepare("PRAGMA table_info(playlist_download_jobs)")
+    .prepare<[], { name: string }>("PRAGMA table_info(playlist_download_jobs)")
     .all()
     .map((c) => c.name);
   assert.ok(jobColumns.includes("managed_by"));
   assert.ok(jobColumns.includes("request_group_id"));
 
   const jobs = db
-    .prepare("SELECT id, managed_by, request_group_id FROM playlist_download_jobs ORDER BY id")
+    .prepare<
+      unknown[],
+      {
+        id: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["id"];
+        managed_by: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["managed_by"];
+        request_group_id: import("../../backend/db/rows.ts").PlaylistDownloadJobsRow["request_group_id"];
+      }
+    >("SELECT id, managed_by, request_group_id FROM playlist_download_jobs ORDER BY id")
     .all();
   assert.deepEqual(jobs, [
     { id: "job-aurral", managed_by: "aurral", request_group_id: null },
@@ -93,9 +100,14 @@ test("ownership migration adds manager table and job ownership columns", async (
   ]);
 
   const managed = db
-    .prepare(
-      "SELECT entity_kind, managed_by, monitor_mode FROM library_management ORDER BY entity_id",
-    )
+    .prepare<
+      unknown[],
+      {
+        entity_kind: import("../../backend/db/rows.ts").LibraryManagementRow["entity_kind"];
+        managed_by: import("../../backend/db/rows.ts").LibraryManagementRow["managed_by"];
+        monitor_mode: import("../../backend/db/rows.ts").LibraryManagementRow["monitor_mode"];
+      }
+    >("SELECT entity_kind, managed_by, monitor_mode FROM library_management ORDER BY entity_id")
     .all();
   assert.deepEqual(managed, [
     { entity_kind: "artist", managed_by: "lidarr", monitor_mode: "all" },
@@ -124,13 +136,18 @@ test("ownership migration is idempotent and preserves explicit manager rows", as
   rerun.run();
 
   const monitor = db
-    .prepare(
-      "SELECT monitor_mode FROM library_management WHERE entity_kind = 'artist' AND entity_id = 1",
-    )
+    .prepare<
+      unknown[],
+      { monitor_mode: import("../../backend/db/rows.ts").LibraryManagementRow["monitor_mode"] }
+    >("SELECT monitor_mode FROM library_management WHERE entity_kind = 'artist' AND entity_id = 1")
     .get();
+  assert.ok(monitor != null);
   assert.equal(monitor.monitor_mode, "none");
 
-  const count = db.prepare("SELECT COUNT(*) AS count FROM library_management").get();
+  const count = db
+    .prepare<unknown[], { count: number }>("SELECT COUNT(*) AS count FROM library_management")
+    .get();
+  assert.ok(count != null);
   assert.equal(count.count, 3);
 
   db.close();
@@ -147,11 +164,16 @@ test("ownership migration runs on fresh databases without lidarr records", async
   assert.equal(result.schemaVersion, 4);
 
   const table = db
-    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'library_management'")
+    .prepare<unknown[], { name: unknown }>(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'library_management'",
+    )
     .get();
   assert.ok(table);
 
-  const managed = db.prepare("SELECT COUNT(*) AS count FROM library_management").get();
+  const managed = db
+    .prepare<unknown[], { count: number }>("SELECT COUNT(*) AS count FROM library_management")
+    .get();
+  assert.ok(managed != null);
   assert.equal(managed.count, 0);
 
   db.close();

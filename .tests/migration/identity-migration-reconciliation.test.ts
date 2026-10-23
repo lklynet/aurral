@@ -1,3 +1,4 @@
+import { requireFixture } from "../playlists/fixtures.ts";
 import { test, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import Database from "better-sqlite3";
@@ -58,18 +59,38 @@ test("identity upgrade protects the historical recovery admin, expires ambiguous
 
   const { db } = await bootDb();
   const migrated = db
-    .prepare("SELECT is_protected, has_local_password FROM users WHERE id = ?")
+    .prepare<
+      unknown[],
+      {
+        is_protected: import("../../backend/db/rows.ts").UsersRow["is_protected"];
+        has_local_password: import("../../backend/db/rows.ts").UsersRow["has_local_password"];
+      }
+    >("SELECT is_protected, has_local_password FROM users WHERE id = ?")
     .get(userId);
+  assert.ok(migrated != null);
   assert.equal(migrated.is_protected, 1);
+  assert.ok(migrated != null);
   assert.equal(migrated.has_local_password, 0);
-  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM sessions").get().count, 0);
+  assert.equal(
+    requireFixture(
+      db.prepare<unknown[], { count: number }>("SELECT COUNT(*) AS count FROM sessions").get(),
+    ).count,
+    0,
+  );
   assert.equal(db.pragma("foreign_keys", { simple: true }), 1);
 
   db.prepare(
     "INSERT INTO user_identities (user_id, provider_type, provider_key, subject, linked_at) VALUES (?, 'oidc', 'issuer', 'subject', ?)",
   ).run(userId, Date.now());
   db.prepare("DELETE FROM users WHERE id = ?").run(userId);
-  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM user_identities").get().count, 0);
+  assert.equal(
+    requireFixture(
+      db
+        .prepare<unknown[], { count: number }>("SELECT COUNT(*) AS count FROM user_identities")
+        .get(),
+    ).count,
+    0,
+  );
   db.close();
   await cleanupIsolatedState(paths);
 });
@@ -100,14 +121,22 @@ test("reboot clears needs_identity_migration for a user whose identity was alrea
 
   const { db: secondBootDb } = await bootDb();
   const row = secondBootDb
-    .prepare("SELECT needs_identity_migration, allow_identity_adoption FROM users WHERE id = ?")
+    .prepare<
+      unknown[],
+      {
+        needs_identity_migration: import("../../backend/db/rows.ts").UsersRow["needs_identity_migration"];
+        allow_identity_adoption: import("../../backend/db/rows.ts").UsersRow["allow_identity_adoption"];
+      }
+    >("SELECT needs_identity_migration, allow_identity_adoption FROM users WHERE id = ?")
     .get(userId);
 
+  assert.ok(row != null);
   assert.equal(
     row.needs_identity_migration,
     0,
     "an account that already has a linked identity must not stay flagged as needing SSO adoption",
   );
+  assert.ok(row != null);
   assert.equal(
     row.allow_identity_adoption,
     0,
@@ -134,9 +163,15 @@ test("reboot leaves needs_identity_migration set for a legacy account with no li
 
   const { db: secondBootDb } = await bootDb();
   const row = secondBootDb
-    .prepare("SELECT needs_identity_migration FROM users WHERE id = ?")
+    .prepare<
+      unknown[],
+      {
+        needs_identity_migration: import("../../backend/db/rows.ts").UsersRow["needs_identity_migration"];
+      }
+    >("SELECT needs_identity_migration FROM users WHERE id = ?")
     .get(userId);
 
+  assert.ok(row != null);
   assert.equal(
     row.needs_identity_migration,
     1,

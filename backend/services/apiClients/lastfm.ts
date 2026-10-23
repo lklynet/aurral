@@ -22,7 +22,7 @@ interface LastfmScrobbleEvent {
 interface LastfmErrorDetails {
   method: string;
   status: number | null;
-  code: string | null;
+  code: string | number | null;
   message: string;
   error: unknown;
 }

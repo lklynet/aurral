@@ -9,25 +9,37 @@ const [{ default: createHonkerWorker }, runtime] = await Promise.all([
 ]);
 
 test("Honker shutdown waits for in-flight worker work before closing infrastructure", async () => {
-  let releaseWork;
-  const workStarted = Promise.withResolvers();
-  const workReleased = new Promise((resolve) => {
+  let releaseWork!: () => void;
+  const workStarted = Promise.withResolvers<void>();
+  const workReleased = new Promise<void>((resolve) => {
     releaseWork = resolve;
   });
   let acknowledged = false;
 
   const job = {
     id: 1,
+    queue: "shutdown-test",
+    workerId: "test-worker",
+    claimExpiresAt: null,
     attempts: 0,
     payload: { kind: "shutdown-test" },
-    heartbeat() {},
+    heartbeat() {
+      return true;
+    },
     ack() {
       acknowledged = true;
+      return true;
     },
-    fail() {},
-    retry() {},
+    fail() {
+      return true;
+    },
+    retry() {
+      return true;
+    },
   };
   const queue = {
+    name: "shutdown-test",
+    getJob: () => ({ max_attempts: 1 }),
     maxAttempts: 1,
     visibilityTimeoutS: 30,
     async *claim() {
@@ -48,7 +60,9 @@ test("Honker shutdown waits for in-flight worker work before closing infrastruct
   await workStarted.promise;
 
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
-  onTestFinished(() => vi.useRealTimers());
+  onTestFinished(() => {
+    vi.useRealTimers();
+  });
   let shutdownSettled = false;
   const shutdown = runtime.shutdownHonkerInfrastructure({ timeoutMs: 2000 }).then(() => {
     shutdownSettled = true;

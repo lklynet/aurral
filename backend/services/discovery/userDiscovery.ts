@@ -16,7 +16,10 @@ import {
 import { getLibraryArtistKeys, matchesArtistKeys, type ArtistMatchFields } from "./artistKeys.ts";
 
 const FAILED_REFRESH_BACKOFF_MS = 15 * 60 * 1000;
-const servedRecommendationsByUser = new Map();
+const servedRecommendationsByUser = new Map<
+  string | number,
+  { key: string; recommendations: ReturnType<typeof serveRecommendations> }
+>();
 
 const getServedRecommendations = ({
   userId,

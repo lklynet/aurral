@@ -101,11 +101,17 @@ test("image proxy validates every hop and bounds untrusted image data", async ()
     assert.equal(cachedSvg.meta.contentType, "image/webp");
 
     global.fetch = originalFetch;
-    dns.lookup = (_hostname, _options, callback) =>
-      callback(null, [{ address: "127.0.0.1", family: 4 }]);
+    const rebindingLookup = (
+      _hostname: string,
+      _options: unknown,
+      callback: (error: null, addresses: dns.LookupAddress[]) => void,
+    ) => callback(null, [{ address: "127.0.0.1", family: 4 }]);
+    dns.lookup = Object.assign(rebindingLookup, {
+      __promisify__: originalLookup.__promisify__,
+    }) as typeof dns.lookup;
     await assert.rejects(
       warmImageProxy("https://dns-rebinding.invalid/image.png"),
-      (error) => error?.cause?.code === "EHOSTUNREACH",
+      (error: { cause?: { code?: string } }) => error?.cause?.code === "EHOSTUNREACH",
     );
   } finally {
     global.fetch = originalFetch;

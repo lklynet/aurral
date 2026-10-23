@@ -7,6 +7,7 @@ import {
   type DownloadJob,
   type HeldForReviewDraft,
   type JobFields,
+  type PipelinePayload as TrackerPayload,
 } from "./downloadJobs/downloadTracker.ts";
 import { prowlarrClient } from "./prowlarrClient.ts";
 import { getDownloadClient } from "./download/downloadClientSettings.ts";
@@ -107,10 +108,10 @@ type ValidationOptions = { manualSelection?: boolean; release?: ReleaseManifestO
 
 type UsenetRemoveOptions = { deleteFiles?: boolean; historyItem?: UsenetHistoryItem | null };
 
-interface UsenetPayload {
+interface UsenetPayload extends Omit<TrackerPayload, "candidates"> {
   jobId: string;
   phase: string;
-  source?: string;
+  source?: string | null;
   albumGrab?: boolean;
   releaseMbid?: string | null;
   track?: Parameters<typeof attemptTrackRequest>[2];
@@ -131,7 +132,8 @@ interface UsenetPayload {
   missingPolls?: number;
   unreadPolls?: number;
   history?: UsenetHistoryItem | null;
-  heldForReview?: HeldForReviewDraft;
+  heldForReview?: HeldForReviewDraft | null;
+  downloadedPath?: string | null;
 }
 
 type UsenetRemovePayload = Pick<
@@ -145,7 +147,7 @@ interface PipelineHelpers {
     job: UsenetJob,
     message: string,
     logDetails?: Record<string, number>,
-  ) => Promise<PipelinePayload | null>;
+  ) => PipelinePayload | null | Promise<PipelinePayload | null>;
 }
 
 interface PendingUpgrade {
@@ -935,7 +937,7 @@ async function handleUsenetFinalize(payload: UsenetPayload, helpers: PipelineHel
 export async function processUsenetPipelinePayload(
   payload: UsenetPayload,
   helpers: PipelineHelpers,
-) {
+): Promise<PipelinePayload | null> {
   logger.debug("slskd", "usenet pipeline phase", {
     phase: payload.phase,
     jobId: payload.jobId,

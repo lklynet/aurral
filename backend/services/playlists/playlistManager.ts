@@ -25,7 +25,6 @@ import { activeLidarrRoots } from "../libraryFolders.ts";
 import { lidarrClient } from "../lidarrClient.ts";
 import { getDownloadClient } from "../download/downloadClientSettings.ts";
 import {
-  assertPlaybackDestination,
   createPlaybackPlaylistIdentity,
   createPlaybackPlaylistSnapshot,
   createPlaybackScanRequest,
@@ -100,15 +99,9 @@ export class PlaylistManager {
     this.downloadRoot = resolveDownloadRoot(downloadRoot);
     this.playlistFilesRoot = path.join(this.downloadRoot, PLAYLIST_FILES_DIR);
     this.libraryRoot = path.join(this.playlistFilesRoot, "_playlists");
-    this.navidromeDestination = assertPlaybackDestination(
-      new NavidromePlaybackDestination(this.downloadRoot),
-    );
-    this.plexDestination = assertPlaybackDestination(
-      new PlexPlaybackDestination(this.downloadRoot),
-    );
-    this.jellyfinDestination = assertPlaybackDestination(
-      new JellyfinPlaybackDestination(this.downloadRoot),
-    );
+    this.navidromeDestination = new NavidromePlaybackDestination(this.downloadRoot);
+    this.plexDestination = new PlexPlaybackDestination(this.downloadRoot);
+    this.jellyfinDestination = new JellyfinPlaybackDestination(this.downloadRoot);
     this.destinationRegistry = new PlaybackDestinationRegistry([
       this.navidromeDestination,
       this.plexDestination,

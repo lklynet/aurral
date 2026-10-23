@@ -1,3 +1,4 @@
+import { requireFixture } from "./fixtures.ts";
 import { test, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
@@ -15,13 +16,13 @@ const [
   { downloadWorker },
 ] = await setupIsolatedBackend(
   "media-relocation",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/downloadJobs/downloadTracker.ts",
-  "backend/services/playlists/mediaRelocation.ts",
-  "backend/services/playlists/flowPlaylistConfig.ts",
-  "backend/services/playlists/trackRemoval.ts",
-  "backend/services/downloadJobs/downloadWorker.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
+  () => import("../../backend/services/playlists/mediaRelocation.ts"),
+  () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
+  () => import("../../backend/services/playlists/trackRemoval.ts"),
+  () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
 );
 afterAll(() => cleanupIsolatedState(state));
 
@@ -41,10 +42,12 @@ test("relocation retries a copied file after path persistence fails and preserve
     { artistName: "Artist", trackName: "Track", albumName: "Album" },
     "source",
   );
+  assert.ok(first != null);
   const second = downloadTracker.addJob(
     { artistName: "Artist", trackName: "Track", albumName: "Album" },
     "other",
   );
+  assert.ok(second != null);
   downloadTracker.setDone(first, oldPath);
   downloadTracker.setDone(second, oldPath);
   flowPlaylistConfig.createStaticPlaylist({
@@ -55,6 +58,7 @@ test("relocation retries a copied file after path persistence fails and preserve
     ],
   });
   const selection = removal.captureStaticPlaylistSelection(source, first);
+  assert.ok(selection != null);
   const remove = () =>
     removal.withStaticPlaylistRemovalMutation({ playlistId: source.id, jobIds: [first] }, () =>
       removal.removeStaticPlaylistSelectionsLocked({
@@ -68,16 +72,16 @@ test("relocation retries a copied file after path persistence fails and preserve
   try {
     await assert.rejects(remove(), /fixture path failure/);
     assert.equal(await fs.readFile(oldPath, "utf8"), "disposable audio");
-    assert.equal(downloadTracker.getJob(first).finalPath, oldPath);
+    assert.equal(requireFixture(downloadTracker.getJob(first)).finalPath, oldPath);
   } finally {
     db.exec("DROP TRIGGER reject_relocation");
   }
   await remove();
-  const result = { finalPath: downloadTracker.getJob(first).finalPath };
-  assert.equal(await fs.readFile(result.finalPath, "utf8"), "disposable audio");
-  assert.equal(downloadTracker.getJob(first).finalPath, result.finalPath);
-  assert.equal(downloadTracker.getJob(second).finalPath, result.finalPath);
-  assert.equal((await fs.readdir(path.dirname(result.finalPath))).length, 1);
+  const result = { finalPath: requireFixture(downloadTracker.getJob(first)).finalPath };
+  assert.equal(await fs.readFile(requireFixture(result.finalPath), "utf8"), "disposable audio");
+  assert.equal(requireFixture(downloadTracker.getJob(first)).finalPath, result.finalPath);
+  assert.equal(requireFixture(downloadTracker.getJob(second)).finalPath, result.finalPath);
+  assert.equal((await fs.readdir(path.dirname(requireFixture(result.finalPath)))).length, 1);
   assert.equal(await fs.readFile(oldPath, "utf8"), "disposable audio");
   await finalizeRetainedPlaylistRelocations("source", { downloadRoot: root });
   await assert.rejects(fs.access(oldPath));

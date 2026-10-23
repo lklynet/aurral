@@ -1,3 +1,4 @@
+import { captureRoutes, mockResponse, requireFixture } from "./fixtures.ts";
 import assert from "node:assert/strict";
 import { test, afterAll } from "vite-plus/test";
 
@@ -5,35 +6,19 @@ import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTe
 
 const [state, { registerJobs }] = await setupIsolatedBackend(
   "playlist-jobs-status-query",
-  "backend/routes/playlists/handlers/jobs.ts",
+  () => import("../../backend/routes/playlists/handlers/jobs.ts"),
 );
 
-const routes = new Map();
-registerJobs({
-  get: (path, ...handlers) => routes.set(`GET ${path}`, handlers.at(-1)),
-  post: () => {},
-  put: () => {},
-  patch: () => {},
-  delete: () => {},
-});
+const { handlers: routes, router } = captureRoutes(
+  (method: string, path) => `${method.toUpperCase()} ${path}`,
+);
+registerJobs(router);
 
 afterAll(() => cleanupIsolatedState(state));
 
-async function requestJobs(query) {
-  const response = { statusCode: 200, body: null };
-  await routes.get("GET /jobs")(
-    { query, user: null },
-    {
-      status(code) {
-        response.statusCode = code;
-        return this;
-      },
-      json(value) {
-        response.body = value;
-        return this;
-      },
-    },
-  );
+async function requestJobs(query: { status: string[] | { a: string } } | { status: string }) {
+  const response = mockResponse<unknown>();
+  await requireFixture(routes.get("GET /jobs"))({ query, user: null }, response);
   return response;
 }
 

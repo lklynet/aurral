@@ -19,7 +19,7 @@ interface ListenbrainzSubmitEvent {
 interface ListenbrainzErrorDetails {
   path: string;
   status: number | null;
-  code: string | null;
+  code: string | number | null;
   message: string;
   error: unknown;
 }

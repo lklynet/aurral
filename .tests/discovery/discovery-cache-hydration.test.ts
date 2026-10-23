@@ -9,8 +9,8 @@ import {
 
 const [isolatedState, { db }, { dbOps }] = await setupIsolatedBackend(
   "discovery-cache-hydration",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
 );
 
 afterAll(async () => {
@@ -32,9 +32,9 @@ test("getDiscoveryCache preserves lastUpdated after an empty completed refresh",
   const cache = getDiscoveryCache();
 
   assert.ok(cache.lastUpdated);
-  assert.deepEqual(cache.recommendations, []);
-  assert.deepEqual(cache.globalTop, []);
-  assert.deepEqual(cache.topGenres, []);
+  assert.deepEqual([...cache.recommendations], []);
+  assert.deepEqual([...cache.globalTop], []);
+  assert.deepEqual([...cache.topGenres], []);
 });
 
 test("getDiscoveryCache persists recommendation enrichment metadata", async () => {

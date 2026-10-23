@@ -1,3 +1,5 @@
+import { requireFixture } from "../playlists/fixtures.ts";
+import type * as Rows from "../../backend/db/rows.ts";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import path from "node:path";
@@ -11,11 +13,15 @@ import {
 import { callFromProcessesWhileHonkerLocked } from "../helpers/playlistManagerCallers.ts";
 
 vi.mock("../../backend/services/apiClients/rateLimiter.ts", async (importOriginal) => {
-  const { default: createRateLimiter } = await importOriginal();
-  return { default: (_minTime, options) => createRateLimiter(0, options) };
+  const { default: createRateLimiter } =
+    await importOriginal<typeof import("../../backend/services/apiClients/rateLimiter.ts")>();
+  return {
+    default: (_minTime: number, options: Parameters<typeof createRateLimiter>[1]) =>
+      createRateLimiter(0, options),
+  };
 });
 vi.mock("../../backend/services/metadataProviderBudget.ts", async (importOriginal) => ({
-  ...(await importOriginal()),
+  ...(await importOriginal<typeof import("../../backend/services/metadataProviderBudget.ts")>()),
   reserveMetadataProviderRequest: () => 0,
 }));
 
@@ -39,7 +45,7 @@ const [
   { downloadTracker },
   { flowPlaylistConfig },
   { processPlaylistOperation },
-  { downloadWorker },
+  { downloadWorker, DownloadWorker },
   { lidarrClient },
   libraryFileOperations,
   { libraryManager },
@@ -48,28 +54,28 @@ const [
   { default: axios },
 ] = await setupIsolatedBackend(
   "library-scan-playback",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/honkerDb.ts",
-  "backend/services/libraryScanWorker.ts",
-  "backend/services/playlists/playlistManager.ts",
-  "backend/services/systemTaskWorker.ts",
-  "backend/services/navidrome.ts",
-  "backend/services/plex.ts",
-  "backend/services/jellyfin.ts",
-  "backend/services/libraryQueryService.ts",
-  "backend/services/logger.ts",
-  "backend/services/playback/playbackFileRetention.ts",
-  "backend/services/downloadJobs/downloadTracker.ts",
-  "backend/services/playlists/flowPlaylistConfig.ts",
-  "backend/services/playlists/playlistOperations.ts",
-  "backend/services/downloadJobs/downloadWorker.ts",
-  "backend/services/lidarrClient.ts",
-  "backend/services/libraryFiles/operations.ts",
-  "backend/services/libraryManager.ts",
-  "backend/services/libraryFileWatcher.ts",
-  "backend/services/libraryWatchProcess.ts",
-  "lib/axiosFetch.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/honkerDb.ts"),
+  () => import("../../backend/services/libraryScanWorker.ts"),
+  () => import("../../backend/services/playlists/playlistManager.ts"),
+  () => import("../../backend/services/systemTaskWorker.ts"),
+  () => import("../../backend/services/navidrome.ts"),
+  () => import("../../backend/services/plex.ts"),
+  () => import("../../backend/services/jellyfin.ts"),
+  () => import("../../backend/services/libraryQueryService.ts"),
+  () => import("../../backend/services/logger.ts"),
+  () => import("../../backend/services/playback/playbackFileRetention.ts"),
+  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
+  () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
+  () => import("../../backend/services/playlists/playlistOperations.ts"),
+  () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
+  () => import("../../backend/services/lidarrClient.ts"),
+  () => import("../../backend/services/libraryFiles/operations.ts"),
+  () => import("../../backend/services/libraryManager.ts"),
+  () => import("../../backend/services/libraryFileWatcher.ts"),
+  () => import("../../backend/services/libraryWatchProcess.ts"),
+  () => import("../../lib/axiosFetch.ts"),
 );
 
 const downloadRoot = playlistManager.downloadRoot;
@@ -112,8 +118,16 @@ afterAll(async () => {
   await cleanupIsolatedState(state);
 });
 
+type MediaServerRequest = {
+  service: string;
+  endpoint: string;
+  method?: string;
+  data?: unknown;
+  params?: unknown;
+};
+
 function stubMediaServers(
-  t,
+  t: import("vite-plus/test").TestContext,
   {
     failed = null,
     navidromeLibraries = [
@@ -122,10 +136,15 @@ function stubMediaServers(
     ],
     jellyfinLocations = ["/jellyfin/aurral", "/jellyfin/lidarr"],
     navidromeScanning = () => false,
+  }: {
+    failed?: string | null;
+    navidromeLibraries?: { id: number; path: string }[];
+    jellyfinLocations?: string[];
+    navidromeScanning?: () => boolean;
   } = {},
 ) {
-  const requests = [];
-  const record = (service, request) => {
+  const requests: MediaServerRequest[] = [];
+  const record = (service: string, request: Omit<MediaServerRequest, "service">) => {
     requests.push({ service, ...request });
     if (failed === service) throw new Error(`${service} unavailable`);
     return {};
@@ -145,8 +164,8 @@ function stubMediaServers(
         ? { scanStatus: { scanning: navidromeScanning() } }
         : record("Navidrome", { endpoint, params }),
   );
-  vi.spyOn(NavidromeClient.prototype, "getLibraries").mockImplementation(
-    async () => navidromeLibraries,
+  vi.spyOn(NavidromeClient.prototype, "getLibraries").mockImplementation(async () =>
+    navidromeLibraries.map((library) => ({ ...library, name: library.path })),
   );
   vi.spyOn(PlexClient.prototype, "ensureAurralLibrary").mockImplementation(async () => ({
     key: "7",
@@ -155,13 +174,13 @@ function stubMediaServers(
   return requests;
 }
 
-const jellyfinUpdate = (...paths) => ({
+const jellyfinUpdate = (...paths: string[]) => ({
   service: "Jellyfin",
   method: "POST",
   endpoint: "/Library/Media/Updated",
   data: { Updates: paths.map((Path) => ({ Path, UpdateType: "Modified" })) },
 });
-const plexRefresh = (folder) => ({
+const plexRefresh = (folder: string) => ({
   service: "Plex",
   endpoint: "/library/sections/7/refresh",
   params: { path: folder },
@@ -171,37 +190,37 @@ const plexSectionRefresh = {
   endpoint: "/library/sections/7/refresh",
   params: undefined,
 };
-const navidromeScan = (...target) => ({
+const navidromeScan = (...target: string[]) => ({
   service: "Navidrome",
   endpoint: "startScan",
   params: { target },
 });
 const navidromeScanAll = { service: "Navidrome", endpoint: "startScan", params: {} };
-const byService = (requests) =>
+const byService = (requests: MediaServerRequest[]) =>
   [...requests].sort((left, right) => left.service.localeCompare(right.service));
 
 function pendingScans() {
   return honker.listHonkerJobs("playback").map(({ id, run_at: runAt, payload }) => ({
     id,
     runAt,
-    folders: payload.folders,
+    folders: requireValue(payload).folders,
   }));
 }
 
-function setRunAt(jobId, runAt) {
+function setRunAt(jobId: number, runAt: number) {
   const tx = honker.getHonkerDb().transaction();
   tx.execute("UPDATE _honker_live SET run_at = ? WHERE id = ?", [runAt, jobId]);
   tx.commit();
 }
 
-function riffChunk(id, body) {
+function riffChunk(id: string, body: Buffer<ArrayBuffer>) {
   const header = Buffer.alloc(8);
   header.write(id, 0, "latin1");
   header.writeUInt32LE(body.length, 4);
   return Buffer.concat([header, body, Buffer.alloc(body.length % 2)]);
 }
 
-async function makeTrack(filePath, title = "Song", artist = "Scan Artist") {
+async function makeTrack(filePath: string, title: string = "Song", artist: string = "Scan Artist") {
   const stereo16BitPcm = Buffer.alloc(16);
   stereo16BitPcm.writeUInt16LE(1, 0);
   stereo16BitPcm.writeUInt16LE(2, 2);
@@ -230,38 +249,46 @@ async function makeTrack(filePath, title = "Song", artist = "Scan Artist") {
   );
 }
 
-async function libraryScanRunner(t) {
-  vi.spyOn(axios, "get").mockImplementation(async () => ({ data: [] }));
+const axiosResponse = <T>(data: T) => ({ status: 200, statusText: "OK", headers: {}, data });
+
+async function libraryScanRunner(t: import("vite-plus/test").TestContext) {
+  vi.spyOn(axios, "get").mockResolvedValue(axiosResponse([]));
   const events = honker.getHonkerDb().updateEvents();
   t.onTestFinished(async () => {
     events.close();
     await scans.stopLibraryScanWorker();
   });
-  const finish = async (id) => {
-    scans.startLibraryScanWorker();
-    while (scans.getLibraryScanStatus(id)?.status !== "completed") {
-      assert.notEqual(scans.getLibraryScanStatus(id)?.status, "failed");
+  const finish = async (id: number | null) => {
+    void scans.startLibraryScanWorker();
+    while (scans.getLibraryScanStatus(requireValue(id))?.status !== "completed") {
+      assert.notEqual(scans.getLibraryScanStatus(requireValue(id))?.status, "failed");
       await events.next();
     }
   };
-  const runScan = (options) =>
+  const runScan = (options: Parameters<typeof scans.scheduleLibraryScan>[0]) =>
     finish(scans.scheduleLibraryScan({ includeLidarr: false, ...options }));
   runScan.scheduled = () => finish(scans.getScheduledLibraryScanJobId());
   return runScan;
 }
 
-function playlistReferences(t, paths) {
+function playlistReferences(t: import("vite-plus/test").TestContext, paths: string[]) {
   const { destinationRegistry } = playlistManager;
   const run = destinationRegistry.run.bind(destinationRegistry);
-  vi.spyOn(destinationRegistry, "run").mockImplementation((method, request) =>
+  vi.spyOn(destinationRegistry, "run").mockImplementation(async (method, request) =>
     method === "getReferencedPaths"
-      ? paths.map((file) => ({ destination: "Plex", ok: true, paths: [file] }))
+      ? paths.map((file) => ({
+          destination: "Plex",
+          key: "plex",
+          operation: method,
+          ok: true,
+          paths: [file],
+        }))
       : run(method, request),
   );
   return paths;
 }
 
-async function waitUntil(ready) {
+async function waitUntil(ready: () => boolean) {
   const events = honker.getHonkerDb().updateEvents();
   try {
     while (!ready()) await events.next();
@@ -272,7 +299,9 @@ async function waitUntil(ready) {
 
 const availablePaths = () =>
   db
-    .prepare("SELECT path FROM library_media_files WHERE available = 1 ORDER BY path")
+    .prepare<unknown[], { path: Rows.LibraryMediaFilesRow["path"] }>(
+      "SELECT path FROM library_media_files WHERE available = 1 ORDER BY path",
+    )
     .all()
     .map((row) => row.path);
 
@@ -313,6 +342,7 @@ test("media scan requests batch changed folders into one durable job that keeps 
   const [batched] = pendingScans();
   setRunAt(batched.id, 0);
   const active = honker.getPlaybackTaskQueue().claimOne(honker.getWorkerId());
+  assert.ok(active != null);
   assert.equal(active.id, batched.id);
   playlistManager.schedulePlaybackScan([path.join(album, "03.flac")]);
   playlistManager.schedulePlaybackScan([path.join(single, "02.flac")]);
@@ -335,7 +365,14 @@ test("media scan requests batch changed folders into one durable job that keeps 
   );
   const [retried] = pendingScans();
   setRunAt(retried.id, 0);
-  honker.getPlaybackTaskQueue().claimOne(honker.getWorkerId()).retry(60, "Plex unavailable");
+  requireValue(
+    requireValue(
+      requireFixture(honker)
+        .getPlaybackTaskQueue()!
+        .claimOne(honker.getWorkerId())!
+        .retry(60, "Plex unavailable"),
+    ),
+  );
   playlistManager.schedulePlaybackScan([path.join(album, "04.flac")]);
   assert.deepEqual(
     pendingScans().map(({ folders }) => folders),
@@ -374,7 +411,7 @@ test("a batch of more than 20 folders under one root becomes that root and leave
   );
   const lidarrAlbum = path.join(lidarrRoot, "Artist", "Album");
   await Promise.all([...albums, lidarrAlbum].map((album) => mkdir(album, { recursive: true })));
-  const tracks = (folders) =>
+  const tracks = (folders: string[]) =>
     folders.flatMap((album) =>
       Array.from({ length: 10 }, (_, index) => path.join(album, `${index}.flac`)),
     );
@@ -507,10 +544,15 @@ test("a folder a server cannot place in its libraries gets a broad scan instead 
     navidromeScanAll,
     plexRefresh("/plex/aurral/Artist/Album"),
   ]);
-  assert.deepEqual(warn.mock.calls.map(([category, , data]) => [category, data.folder]).sort(), [
-    ["jellyfin", musicRoot],
-    ["navidrome", musicRoot],
-  ]);
+  assert.deepEqual(
+    warn.mock.calls
+      .map(([category, , data]) => [category, (requireValue(data) as { folder: string }).folder])
+      .sort(),
+    [
+      ["jellyfin", musicRoot],
+      ["navidrome", musicRoot],
+    ],
+  );
 });
 
 test("folders that arrive while Navidrome is scanning reach Navidrome once it is free and the other servers once", async (t) => {
@@ -521,7 +563,7 @@ test("folders that arrive while Navidrome is scanning reach Navidrome once it is
   );
   await Promise.all([first, second, third].map((album) => mkdir(album, { recursive: true })));
   const pendingPayloads = () => honker.listHonkerJobs("playback").map(({ payload }) => payload);
-  const navidromeOnly = (...folders) => ({
+  const navidromeOnly = (...folders: string[]) => ({
     kind: "playback-library-scan",
     folders,
     destinations: ["navidrome"],
@@ -560,7 +602,7 @@ test(
   async (t) => {
     const requests = stubMediaServers(t);
     const runScan = await libraryScanRunner(t);
-    const settled = async (folders) => {
+    const settled = async (folders: string[][]) => {
       assert.deepEqual(
         pendingScans().map((scan) => scan.folders),
         folders,
@@ -602,7 +644,9 @@ test(
     );
     await makeTrack(flowFile, "Flow Song");
     downloadTracker.setDone(
-      downloadTracker.addJob({ artistName: "Scan Artist", trackName: "Flow Song" }, shown.id),
+      requireValue(
+        downloadTracker.addJob({ artistName: "Scan Artist", trackName: "Flow Song" }, shown.id),
+      ),
       flowFile,
       "Album",
     );
@@ -685,11 +729,11 @@ test(
 test(
   "a retained Library file deleted by a scan leaves the Library and reaches the servers, even when that scan fails",
   { timeout: 20000 },
-  async (t) => {
+  async (t: import("vite-plus/test").TestContext) => {
     const requests = stubMediaServers(t);
     const runScan = await libraryScanRunner(t);
     const referenced = playlistReferences(t, []);
-    const retain = async (filePath, title) => {
+    const retain = async (filePath: string, title: string) => {
       await makeTrack(filePath, title);
       await runScan({ changedPaths: [filePath] });
       for (const { id } of pendingScans()) honker.getPlaybackTaskQueue().cancel(id);
@@ -732,9 +776,10 @@ test(
     const failed = vi.spyOn(lidarrClient, "isConfigured").mockImplementationOnce(() => {
       throw new Error("Lidarr check failed");
     });
-    scans.startLibraryScanWorker();
+    void scans.startLibraryScanWorker();
     const job = () => scans.getLibraryScanStatus(jobId);
-    while (!(failed.mock.calls.length > 0 && job().status === "queued")) await events.next();
+    while (!(failed.mock.calls.length > 0 && requireValue(job()).status === "queued"))
+      await events.next();
     await assert.rejects(access(path.join(goneAlbum, "Gone.wav")), { code: "ENOENT" });
     assert.deepEqual(availableTitles(), ["Gone Song", "Song"]);
     assert.deepEqual(
@@ -742,7 +787,7 @@ test(
       [[goneAlbum, album]],
     );
     setRunAt(jobId, 0);
-    while (job().status !== "completed") await events.next();
+    while (requireValue(job()).status !== "completed") await events.next();
 
     assert.deepEqual(availableTitles(), ["Song"]);
     assert.deepEqual(
@@ -759,14 +804,11 @@ test(
     const requests = stubMediaServers(t);
     const runScan = await libraryScanRunner(t);
     playlistReferences(t, []);
-    for (const method of [
-      "blockPlaylist",
-      "waitForPlaylistIdle",
-      "unblockPlaylist",
-      "setRetryCyclePaused",
-    ]) {
-      vi.spyOn(downloadWorker, method).mockImplementation(async () => {});
-    }
+    assert.ok(downloadWorker instanceof DownloadWorker);
+    vi.spyOn(downloadWorker, "blockPlaylist").mockImplementation(() => true);
+    vi.spyOn(downloadWorker, "waitForPlaylistIdle").mockImplementation(async () => {});
+    vi.spyOn(downloadWorker, "unblockPlaylist").mockImplementation(() => true);
+    vi.spyOn(downloadWorker, "setRetryCyclePaused").mockImplementation(() => true);
     vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
     const flow = flowPlaylistConfig.createFlow({ name: "Hidden Flow", size: 10 });
     const original = path.join(downloadRoot, "_flows", flow.id, "Scan Artist", "Album", "Song.wav");
@@ -776,6 +818,7 @@ test(
         { artistName: "Scan Artist", trackName: "Song" },
         playlistType,
       );
+      assert.ok(jobId != null);
       downloadTracker.setDone(jobId, original, "Album");
       return jobId;
     });
@@ -784,10 +827,12 @@ test(
     await runScan.scheduled();
 
     const moved = path.join(downloadRoot, "Scan Artist", "Album", "Song.wav");
-    assert.equal(downloadTracker.getJob(jobIds[1]).finalPath, moved);
+    assert.equal(requireValue(downloadTracker.getJob(jobIds[1])).finalPath, moved);
     assert.deepEqual(
       db
-        .prepare("SELECT path FROM library_media_files WHERE available = 1")
+        .prepare<unknown[], { path: Rows.LibraryMediaFilesRow["path"] }>(
+          "SELECT path FROM library_media_files WHERE available = 1",
+        )
         .all()
         .map((row) => row.path),
       [moved],
@@ -810,11 +855,11 @@ test(
     await libraryScanRunner(t);
     const album = path.join(downloadRoot, "Held Artist", "Album");
     await makeTrack(path.join(album, "Song.wav"), "Song", "Held Artist");
-    let release;
-    const held = new Promise((resolve) => {
-      axios.get.mockImplementationOnce(() => {
+    let release!: (value: ReturnType<typeof axiosResponse<never[]>>) => void;
+    const held = new Promise<void>((resolve) => {
+      vi.mocked(axios.get).mockImplementationOnce(() => {
         resolve();
-        return new Promise((resume) => {
+        return new Promise<ReturnType<typeof axiosResponse<never[]>>>((resume) => {
           release = resume;
         });
       });
@@ -824,7 +869,7 @@ test(
       includeLidarr: false,
       changedPaths: [path.join(album, "Song.wav")],
     });
-    scans.startLibraryScanWorker();
+    void scans.startLibraryScanWorker();
     await held;
 
     const [requested] = pendingScans();
@@ -832,9 +877,9 @@ test(
       assert.deepEqual(availablePaths(), [path.join(album, "Song.wav")]);
       assert.deepEqual(pendingScans(), [{ ...requested, folders: [album] }]);
     } finally {
-      release({ data: [] });
+      release(axiosResponse([]));
     }
-    await waitUntil(() => scans.getLibraryScanStatus(jobId).status === "completed");
+    await waitUntil(() => requireValue(scans.getLibraryScanStatus(jobId)).status === "completed");
     assert.deepEqual(pendingScans(), [requested]);
   },
 );
@@ -853,6 +898,7 @@ test(
     cancelPendingScans();
 
     const operation = await libraryFileOperations.startCleanup();
+    assert.ok(operation != null);
     while (!(await libraryFileOperations.runLibraryFileOperation(operation.id)).done);
     await runScan.scheduled();
 
@@ -865,43 +911,50 @@ test(
   },
 );
 
-test("deleting a Library track tells servers its album folder", { timeout: 15000 }, async (t) => {
-  stubMediaServers(t);
-  const runScan = await libraryScanRunner(t);
-  const album = path.join(downloadRoot, "Scan Artist", "Album");
-  await makeTrack(path.join(album, "Kept.wav"), "Kept");
-  await makeTrack(path.join(album, "Removed.wav"), "Removed");
-  await runScan({ changedPaths: [path.join(album, "Kept.wav"), path.join(album, "Removed.wav")] });
-  cancelPendingScans();
-  let ready;
-  const watcher = createLibraryFileWatcher({
-    roots: [downloadRoot],
-    debounceMs: 0,
-    watchImpl: (...args) => {
-      const child = createIsolatedLibraryWatcher(...args);
-      ready = once(child, "ready");
-      return child;
-    },
-  });
-  t.onTestFinished(() => watcher.close());
-  await ready;
+test(
+  "deleting a Library track tells servers its album folder",
+  { timeout: 15000 },
+  async (t: import("vite-plus/test").TestContext) => {
+    stubMediaServers(t);
+    const runScan = await libraryScanRunner(t);
+    const album = path.join(downloadRoot, "Scan Artist", "Album");
+    await makeTrack(path.join(album, "Kept.wav"), "Kept");
+    await makeTrack(path.join(album, "Removed.wav"), "Removed");
+    await runScan({
+      changedPaths: [path.join(album, "Kept.wav"), path.join(album, "Removed.wav")],
+    });
+    cancelPendingScans();
+    let ready;
+    const watcher = createLibraryFileWatcher({
+      roots: [downloadRoot],
+      debounceMs: 0,
+      watchImpl: (...args) => {
+        const child = createIsolatedLibraryWatcher(...args);
+        ready = once(child, "ready");
+        return child;
+      },
+    });
+    t.onTestFinished(() => watcher.close());
+    await ready;
 
-  const removed = getLibrary({ availableOnly: true }).tracks.find(
-    (track) => track.title === "Removed",
-  );
-  assert.deepEqual(await libraryManager.deleteTrack(removed.id), { success: true });
-  await waitUntil(() => scans.getScheduledLibraryScanJobId() != null);
-  await runScan.scheduled();
+    const removed = getLibrary({ availableOnly: true }).tracks.find(
+      (track) => track.title === "Removed",
+    );
+    assert.ok(removed != null);
+    assert.deepEqual(await libraryManager.deleteTrack(String(removed.id)), { success: true });
+    await waitUntil(() => scans.getScheduledLibraryScanJobId() != null);
+    await runScan.scheduled();
 
-  assert.deepEqual(
-    getLibrary({ availableOnly: true }).tracks.map((track) => track.title),
-    ["Kept"],
-  );
-  assert.deepEqual(
-    pendingScans().map(({ folders }) => folders),
-    [[album]],
-  );
-});
+    assert.deepEqual(
+      getLibrary({ availableOnly: true }).tracks.map((track) => track.title),
+      ["Kept"],
+    );
+    assert.deepEqual(
+      pendingScans().map(({ folders }) => folders),
+      [[album]],
+    );
+  },
+);
 
 test(
   "a hidden flow download that joins a pending full Library scan still reaches the servers",
@@ -971,3 +1024,8 @@ test(
     ]);
   },
 );
+
+function requireValue<T>(value: T | null | undefined): T {
+  assert.ok(value != null);
+  return value;
+}

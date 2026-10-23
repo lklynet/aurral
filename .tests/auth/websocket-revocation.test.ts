@@ -4,18 +4,21 @@ import assert from "node:assert/strict";
 import { websocketService } from "../../backend/services/websocketService.ts";
 
 test("disconnectUser immediately revokes every websocket for a user", () => {
-  const closed = [];
-  const makeClient = (id, userId) => ({
+  type Client = Parameters<typeof websocketService.clients.add>[0];
+  const closed: { id: string; code?: number; reason?: string | Buffer }[] = [];
+  const makeClient = (id: string, userId: number): Client => ({
     id,
-    user: { id: userId },
+    user: { id: userId } as NonNullable<Client["user"]>,
+    authSource: "session",
+    connectedAt: Date.now(),
     subscriptions: new Set(["status", "weekly-flow"]),
     ws: {
       readyState: 1,
-      close(code, reason) {
-        this.readyState = 2;
+      close(code?: number, reason?: string | Buffer) {
+        Object.defineProperty(this, "readyState", { value: 2 });
         closed.push({ id, code, reason });
       },
-    },
+    } as Client["ws"],
   });
   const first = makeClient("first", 41);
   const second = makeClient("second", 41);

@@ -1,6 +1,5 @@
 import { asAppError } from "../../../lib/errors.ts";
 import {
-  assertPlaybackDestination,
   isRetryablePlaybackError,
   playbackOperationFailure,
   type PlaybackDestination,
@@ -15,15 +14,9 @@ export class PlaybackDestinationRegistry {
 
   constructor(destinations: PlaybackDestination[]) {
     this.destinations = destinations.map((destination) => {
-      assertPlaybackDestination(destination);
       for (const property of ["key", "name"] as const) {
         if (typeof destination[property] !== "string" || !destination[property].trim()) {
           throw new TypeError(`PlaybackDestination.${property} must be a non-empty string`);
-        }
-      }
-      for (const method of ["isConfigured", "updateConfig"] as const) {
-        if (typeof destination[method] !== "function") {
-          throw new TypeError(`PlaybackDestination.${method} must be a function`);
         }
       }
       return destination;

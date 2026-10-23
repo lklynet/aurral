@@ -1,9 +1,8 @@
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
-import { importFromRepo } from "../helpers/backendTestHarness.ts";
 
 test("tag inheritance requires three seed tags and skips directly hydrated candidates", async () => {
-  const { canInheritTagsFromSeeds } = await importFromRepo("backend/services/discovery/index.ts");
+  const { canInheritTagsFromSeeds } = await import("../../backend/services/discovery/index.ts");
 
   assert.equal(canInheritTagsFromSeeds({ tags: ["shoegaze", "indie"] }), false);
   assert.equal(canInheritTagsFromSeeds({ tags: ["shoegaze", "dream-pop", "indie"] }), true);
@@ -18,9 +17,8 @@ test("tag inheritance requires three seed tags and skips directly hydrated candi
 });
 
 test("tag inheritance: ranking scores are equivalent between inherited and direct tags with same tag data", async () => {
-  const { applyHydratedCandidateTags } = await importFromRepo(
-    "backend/services/discovery/recommendationPipeline.ts",
-  );
+  const { applyHydratedCandidateTags } =
+    await import("../../backend/services/discovery/recommendationPipeline.ts");
 
   const profileTagWeights = new Map([
     ["shoegaze", 5],
@@ -59,5 +57,7 @@ test("tag inheritance: ranking scores are equivalent between inherited and direc
 
   assert.equal(inherited.scoreTagAffinity, direct.scoreTagAffinity);
   assert.equal(inherited.scoreTotal, direct.scoreTotal);
+  assert.ok(inherited.matchedTags != null);
+  assert.ok(direct.matchedTags != null);
   assert.deepEqual(inherited.matchedTags.sort(), direct.matchedTags.sort());
 });

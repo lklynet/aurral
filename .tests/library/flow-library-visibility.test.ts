@@ -19,14 +19,14 @@ const [
   { getLibrary },
 ] = await setupIsolatedBackend(
   "flow-library-visibility",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/playlists/flowPlaylistConfig.ts",
-  "backend/services/libraryIndexService.ts",
-  "backend/services/libraryQueryService.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
+  () => import("../../backend/services/libraryIndexService.ts"),
+  () => import("../../backend/services/libraryQueryService.ts"),
 );
 
-let root;
+let root: string;
 
 beforeEach(async () => {
   resetDatabase(db);
@@ -60,7 +60,7 @@ function silentWav() {
   return Buffer.concat([header, Buffer.alloc(8)]);
 }
 
-async function writeTrack(relativePath) {
+async function writeTrack(relativePath: string) {
   const filePath = path.join(root, relativePath);
   await mkdir(path.dirname(filePath), { recursive: true });
   await writeFile(filePath, silentWav());
@@ -68,7 +68,7 @@ async function writeTrack(relativePath) {
 }
 
 let jobCounter = 0;
-function addDoneJob(playlistId, filePath, trackName) {
+function addDoneJob(playlistId: string, filePath: string, trackName: string) {
   jobCounter += 1;
   db.prepare(
     `INSERT INTO playlist_download_jobs
@@ -88,12 +88,12 @@ function addDoneJob(playlistId, filePath, trackName) {
   return `job-${jobCounter}`;
 }
 
-function createFlow(name, showInLibrary) {
+function createFlow(name: string, showInLibrary: boolean) {
   const flow = flowPlaylistConfig.createFlow({ name, size: 10 });
   return flowPlaylistConfig.updateFlow(flow.id, { showInLibrary });
 }
 
-const scan = (changedPaths = null) =>
+const scan = (changedPaths: string[] | null = null) =>
   scanConfiguredLibrary({ musicRoot: root, includeLidarr: false, changedPaths });
 
 const libraryTrackTitles = () =>
@@ -101,16 +101,17 @@ const libraryTrackTitles = () =>
     .tracks.map((track) => track.title)
     .sort();
 
-async function listFiles(dir) {
+async function listFiles(dir: string) {
   const entries = await readdir(dir, { withFileTypes: true, recursive: true });
   return entries
     .filter((entry) => entry.isFile())
-    .map((entry) => path.join(entry.parentPath ?? entry.path, entry.name))
+    .map((entry) => path.join(entry.parentPath, entry.name))
     .sort();
 }
 
 test("flow tracks join the library only while their flow opts in", async () => {
   const flow = createFlow("Visible Flow", false);
+  assert.ok(flow != null);
   const filePath = await writeTrack(`aurral-weekly-flow/${flow.id}/Flow Artist - Opt In.wav`);
   addDoneJob(flow.id, filePath, "Opt In");
   const filesBefore = await listFiles(root);
@@ -125,13 +126,14 @@ test("flow tracks join the library only while their flow opts in", async () => {
   flowPlaylistConfig.updateFlow(flow.id, { showInLibrary: false });
   await scan();
   assert.deepEqual(libraryTrackTitles(), []);
-  assert.deepEqual(getLibrary({ availableOnly: false }).tracks, []);
+  assert.deepEqual([...getLibrary({ availableOnly: false }).tracks], []);
 
   assert.deepEqual(await listFiles(root), filesBefore);
 });
 
 test("tracks that leave an included flow leave the library", async () => {
   const flow = createFlow("Rotating Flow", true);
+  assert.ok(flow != null);
   const kept = await writeTrack(`aurral-weekly-flow/${flow.id}/Flow Artist - Kept.wav`);
   const rotated = await writeTrack(`aurral-weekly-flow/${flow.id}/Flow Artist - Rotated.wav`);
   addDoneJob(flow.id, kept, "Kept");
@@ -152,12 +154,14 @@ test("tracks that leave an included flow leave the library", async () => {
 
   flowPlaylistConfig.deleteFlow(flow.id);
   await scan([path.dirname(kept)]);
-  assert.deepEqual(getLibrary({ availableOnly: false }).tracks, []);
+  assert.deepEqual([...getLibrary({ availableOnly: false }).tracks], []);
 });
 
 test("a file shared with an excluded flow stays while any included flow owns it", async () => {
   const included = createFlow("Included Flow", true);
+  assert.ok(included != null);
   const excluded = createFlow("Excluded Flow", false);
+  assert.ok(excluded != null);
   const shared = await writeTrack("aurral-weekly-flow/_flows/Flow Artist - Shared.wav");
   addDoneJob(included.id, shared, "Shared");
   addDoneJob(excluded.id, shared, "Shared");
@@ -168,6 +172,7 @@ test("a file shared with an excluded flow stays while any included flow owns it"
 
 test("a flow track already in the music library appears once", async () => {
   const flow = createFlow("Duplicate Flow", true);
+  assert.ok(flow != null);
   const owned = await writeTrack("Flow Artist/Flow Album/Flow Artist - Twice.wav");
   const flowCopy = await writeTrack(`aurral-weekly-flow/${flow.id}/Flow Artist - Twice.wav`);
   addDoneJob("library", owned, "Twice");
@@ -180,6 +185,7 @@ test("a flow track already in the music library appears once", async () => {
 
 test("a missing flow file leaves the library once its flow stops including it", async () => {
   const flow = createFlow("Missing File Flow", true);
+  assert.ok(flow != null);
   const filePath = await writeTrack(`aurral-weekly-flow/${flow.id}/Flow Artist - Gone.wav`);
   addDoneJob(flow.id, filePath, "Gone");
 
@@ -189,11 +195,12 @@ test("a missing flow file leaves the library once its flow stops including it", 
   flowPlaylistConfig.updateFlow(flow.id, { showInLibrary: false });
   await scan();
 
-  assert.deepEqual(getLibrary({ availableOnly: false }).tracks, []);
+  assert.deepEqual([...getLibrary({ availableOnly: false }).tracks], []);
 });
 
 test("flow tracks outside a new download root leave the library", async () => {
   const flow = createFlow("Moved Root Flow", true);
+  assert.ok(flow != null);
   const filePath = await writeTrack(`aurral-weekly-flow/${flow.id}/Flow Artist - Old Root.wav`);
   addDoneJob(flow.id, filePath, "Old Root");
   await scan();
@@ -202,7 +209,7 @@ test("flow tracks outside a new download root leave the library", async () => {
   const newRoot = await mkdtemp(path.join(tmpdir(), "aurral-flow-library-new-root-"));
   try {
     await scanConfiguredLibrary({ musicRoot: newRoot, includeLidarr: false });
-    assert.deepEqual(getLibrary({ availableOnly: false }).tracks, []);
+    assert.deepEqual([...getLibrary({ availableOnly: false }).tracks], []);
   } finally {
     await rm(newRoot, { recursive: true, force: true });
   }

@@ -8,7 +8,7 @@ test("concurrent consumers share one outbound operation", async () => {
   let calls = 0;
   const task = async () => {
     calls += 1;
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    await new Promise<void>((resolve) => setTimeout(resolve, 5));
     return "ok";
   };
 
@@ -29,8 +29,8 @@ test("one cancelled consumer does not abort work still needed by another", async
   const second = new AbortController();
   let underlyingAborted = false;
 
-  const task = (signal) =>
-    new Promise((resolve, reject) => {
+  const task = (signal: AbortSignal) =>
+    new Promise<string>((resolve, reject) => {
       const timer = setTimeout(() => resolve("done"), 15);
       signal.addEventListener(
         "abort",
@@ -58,8 +58,8 @@ test("the underlying operation aborts after every consumer leaves", async () => 
   const second = new AbortController();
   let underlyingAborted = false;
 
-  const task = (signal) =>
-    new Promise((resolve, reject) => {
+  const task = (signal: AbortSignal) =>
+    new Promise<void>((resolve, reject) => {
       signal.addEventListener(
         "abort",
         () => {
@@ -76,7 +76,7 @@ test("the underlying operation aborts after every consumer leaves", async () => 
   second.abort();
 
   await Promise.allSettled([left, right]);
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
   assert.equal(underlyingAborted, true);
   assert.equal(inflight.size, 0);
 });

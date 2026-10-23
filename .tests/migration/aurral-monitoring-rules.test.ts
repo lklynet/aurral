@@ -1,3 +1,4 @@
+import { requireFixture } from "../playlists/fixtures.ts";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { rm } from "node:fs/promises";
@@ -35,7 +36,7 @@ test("upgrading turns Aurral monitor modes into monitoring rules and leaves Lida
   try {
     const changedAt = 1_700_000_000_000;
     const startedAt = 1_650_000_000_000;
-    const addArtist = (key, managedBy, mode) => {
+    const addArtist = (key: string, managedBy: string, mode: string) => {
       const metadata = {
         monitored: true,
         monitor: mode,
@@ -67,17 +68,33 @@ test("upgrading turns Aurral monitor modes into monitoring rules and leaves Lida
     start();
     const migratedTo = Date.now();
 
-    const read = (artistId) => {
+    const read = (artistId: number | bigint) => {
       const row = db
-        .prepare(
+        .prepare<
+          unknown[],
+          {
+            monitor_mode: import("../../backend/db/rows.ts").LibraryManagementRow["monitor_mode"];
+            monitor_rules: import("../../backend/db/rows.ts").LibraryManagementRow["monitor_rules"];
+          }
+        >(
           "SELECT monitor_mode, monitor_rules FROM library_management WHERE entity_kind = 'artist' AND entity_id = ?",
         )
         .get(artistId);
       const metadata = JSON.parse(
-        db.prepare("SELECT metadata_json FROM library_artists WHERE id = ?").get(artistId)
-          .metadata_json,
+        requireFixture(
+          db
+            .prepare<
+              unknown[],
+              {
+                metadata_json: import("../../backend/db/rows.ts").LibraryArtistsRow["metadata_json"];
+              }
+            >("SELECT metadata_json FROM library_artists WHERE id = ?")
+            .get(artistId),
+        ).metadata_json!,
       );
+      assert.ok(row != null);
       const stored = JSON.parse(row.monitor_rules ?? "null");
+      assert.ok(row != null);
       return {
         mode: row.monitor_mode,
         monitored: metadata.monitored,
@@ -111,7 +128,9 @@ test("upgrading turns Aurral monitor modes into monitoring rules and leaves Lida
       catalog: "latest",
       newReleases: true,
     });
+    assert.ok(latestSince != null);
     assert.equal(latestSince[0], latestSince[1]);
+    assert.ok(latestSince != null);
     assert.ok(
       latestSince[0] >= migratedFrom && latestSince[0] <= migratedTo,
       String(latestSince[0]),

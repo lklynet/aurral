@@ -5,7 +5,7 @@ import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTe
 
 const [isolatedState, { db }] = await setupIsolatedBackend(
   "provider-id-index",
-  "backend/config/db-sqlite.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
 );
 
 afterAll(async () => {

@@ -44,7 +44,7 @@ test("buildDiscoverySeedList prefers listening-history weight when the same arti
 
 test("recommendation candidates aggregate across multiple seeds", () => {
   const accumulator = new Map();
-  const existingArtistKeys = new Set();
+  const existingArtistKeys = new Set<string>();
   const profileTagWeights = new Map([
     ["dream-pop", 3],
     ["shoegaze", 4],
@@ -123,14 +123,18 @@ test("mergeResolvedRecommendations collapses name and mbid variants of the same 
 
 test("mergeResolvedRecommendations does not expose provider IDs as artist routes", () => {
   const [recommendation] = mergeResolvedRecommendations([
-    { id: 2278254, navigateTo: 2278254, name: "Discovery Artist" },
+    { id: 2278254, navigateTo: 2278254, name: "Discovery Artist" } as unknown as NonNullable<
+      Parameters<typeof mergeResolvedRecommendations>[0]
+    >[number],
   ]);
 
   assert.equal(recommendation.id, null);
   assert.equal(recommendation.navigateTo, null);
 
   const [cachedRecommendation] = serveRecommendations([
-    { id: 2278254, navigateTo: 2278254, name: "Cached Discovery Artist" },
+    { id: 2278254, navigateTo: 2278254, name: "Cached Discovery Artist" } as unknown as NonNullable<
+      Parameters<typeof serveRecommendations>[0]
+    >[number],
   ]);
   assert.equal(cachedRecommendation.id, null);
   assert.equal(cachedRecommendation.navigateTo, null);
@@ -172,7 +176,6 @@ test("rerankRecommendations softens less-like feedback, hard-blocks exact artist
     discoveryMode: "balanced",
     feedback: [
       {
-        id: "less-safe",
         artistId: "55555555-5555-5555-5555-555555555555",
         action: "less_like_this",
       },
@@ -189,7 +192,6 @@ test("rerankRecommendations softens less-like feedback, hard-blocks exact artist
     discoveryMode: "balanced",
     feedback: [
       {
-        id: "block-safe",
         artistId: "55555555-5555-5555-5555-555555555555",
         action: "block_artist",
       },

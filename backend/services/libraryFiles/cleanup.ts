@@ -391,7 +391,7 @@ async function renameLibraryFile(from: string, to: string, context: CleanupApply
         throw Object.assign(new Error(TAKEN_NAME_REASON), { code: "EEXIST" });
       }
       keptOld = true;
-    } else if (LINK_FALLBACK.has(failure?.code)) {
+    } else if (LINK_FALLBACK.has(String(failure?.code))) {
       keptOld = !(await context.deletionGuard().canDelete(from));
       await placeFile(from, to, keptOld ? "copy" : "move");
       keptOld = false;

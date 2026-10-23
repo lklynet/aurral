@@ -2,17 +2,13 @@ import assert from "node:assert/strict";
 import { test, afterAll } from "vite-plus/test";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import {
-  cleanupIsolatedState,
-  importFromRepo,
-  setupIsolatedBackend,
-} from "../helpers/backendTestHarness.ts";
+import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTestHarness.ts";
 
 const [isolatedState, { db }, libraryStore, searchIndex] = await setupIsolatedBackend(
   "library-search-index-contract",
-  "backend/config/db-sqlite.ts",
-  "backend/services/libraryMediaStore.ts",
-  "backend/services/librarySearchIndex.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/services/libraryMediaStore.ts"),
+  () => import("../../backend/services/librarySearchIndex.ts"),
 );
 
 afterAll(async () => {
@@ -52,20 +48,22 @@ test("album and track search syncs report changed and unchanged documents", () =
 
   assert.equal(
     db
-      .prepare("SELECT COUNT(*) AS count FROM library_search_documents WHERE entity_id IN (?, ?)")
-      .get(album.id, track.id).count,
+      .prepare<unknown[], { count: number }>(
+        "SELECT COUNT(*) AS count FROM library_search_documents WHERE entity_id IN (?, ?)",
+      )
+      .get(album.id, track.id)!.count,
     2,
   );
 });
 
 test("targeted configured rescans update related searches and preserve failed or untouched files", async () => {
-  const { getLibraryPage } = await importFromRepo("backend/services/libraryQueryService.ts");
-  const { scanConfiguredLibrary } = await importFromRepo("backend/services/libraryIndexService.ts");
+  const { getLibraryPage } = await import("../../backend/services/libraryQueryService.ts");
+  const { scanConfiguredLibrary } = await import("../../backend/services/libraryIndexService.ts");
   const root = path.join(isolatedState.dataDir, "music");
   await mkdir(root, { recursive: true });
   const files = [path.join(root, "first.flac"), path.join(root, "second.flac")];
-  const writeAudio = async (index, album, title, genre) => {
-    const word = (value) => {
+  const writeAudio = async (index: number, album: string, title: string, genre: string) => {
+    const word = (value: number) => {
       const buffer = Buffer.alloc(4);
       buffer.writeUInt32LE(value);
       return buffer;
@@ -99,9 +97,9 @@ test("targeted configured rescans update related searches and preserve failed or
       Buffer.concat([Buffer.from("fLaC"), Buffer.from([0, 0, 0, 34]), streamInfo, header, comment]),
     );
   };
-  const scan = (changedPaths = null) =>
+  const scan = (changedPaths: string[] | null = null) =>
     scanConfiguredLibrary({ musicRoot: root, includeLidarr: false, changedPaths, force: true });
-  const read = (query, availableOnly = true) =>
+  const read = (query: string, availableOnly: boolean = true) =>
     getLibraryPage({ kind: "tracks", pageSize: 100, query, availableOnly });
   await writeAudio(0, "Original Album", "First Song", "Rock");
   await writeAudio(1, "Original Album", "Second Song", "Rock");
@@ -148,7 +146,7 @@ test("targeted configured rescans update related searches and preserve failed or
 });
 
 test("merging a fallback artist into its resolved artist updates moved album and track searches", async () => {
-  const { getLibraryPage } = await importFromRepo("backend/services/libraryQueryService.ts");
+  const { getLibraryPage } = await import("../../backend/services/libraryQueryService.ts");
   const fallbackKey = libraryStore.buildFallbackIdentityKey("artist", "Merge Searché");
   const fallback = libraryStore.upsertLibraryArtist({
     identityKey: fallbackKey,
@@ -163,7 +161,7 @@ test("merging a fallback artist into its resolved artist updates moved album and
       .run().lastInsertRowid,
   );
   searchIndex.syncLibrarySearchArtist(resolvedId);
-  const albumIds = [];
+  const albumIds: number[] = [];
   for (const index of [1, 2]) {
     const album = libraryStore.upsertLibraryAlbum({
       identityKey: `merge-search:album-${index}`,
@@ -190,7 +188,8 @@ test("merging a fallback artist into its resolved artist updates moved album and
     resolvedId,
   );
 
-  const search = (kind, query) => getLibraryPage({ kind, query, pageSize: 100 }).items;
+  const search = <Kind extends "albums" | "tracks" | "artists">(kind: Kind, query: string) =>
+    getLibraryPage({ kind, query, pageSize: 100 }).items;
   assert.deepEqual(
     search("albums", "Merge Searché")
       .map((album) => album.id)
@@ -204,7 +203,7 @@ test("merging a fallback artist into its resolved artist updates moved album and
   );
   assert.equal(
     db
-      .prepare(
+      .prepare<unknown[], { "1": unknown }>(
         "SELECT 1 FROM library_search_documents WHERE entity_kind = 'artist' AND entity_id = ?",
       )
       .get(fallback.id),

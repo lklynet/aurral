@@ -1,3 +1,4 @@
+import { requireFixture } from "../playlists/fixtures.ts";
 import { test, afterEach, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 
@@ -9,8 +10,18 @@ function makeClient() {
   return client;
 }
 
-function mockRequests(client, responses) {
-  const calls = [];
+function mockRequests(
+  client: PlexClient,
+  responses: Record<
+    string,
+    object | ((options: NonNullable<Parameters<PlexClient["request"]>[1]>) => object)
+  >,
+) {
+  const calls: {
+    path: string;
+    method: "PUT" | "GET" | "POST" | "DELETE";
+    params: { [x: string]: string | number | boolean | null | undefined } | undefined;
+  }[] = [];
   vi.spyOn(client, "request").mockImplementation(async (path, opts = {}) => {
     const method = opts.method || "GET";
     calls.push({ path, method, params: opts.params });
@@ -41,8 +52,9 @@ test("syncPlaylist creates fresh when no ratingKey is provided - no title search
   assert.deepEqual(result, { ratingKey: "500" });
   assert.equal(calls.length, 1, "only the create call - no lookup by title");
   assert.equal(calls[0].method, "POST");
-  assert.equal(calls[0].params.title, "Discover Weekly");
-  assert.match(calls[0].params.uri, /metadata\/1,2,3$/);
+  assert.equal(requireFixture(calls[0].params).title, "Discover Weekly");
+  assert.ok(requireFixture(calls[0].params).uri != null);
+  assert.match(String(calls[0].params?.uri), /metadata\/1,2,3$/);
 });
 
 test("syncPlaylist sets the summary as a follow-up call right after creating a brand new playlist", async () => {
@@ -75,8 +87,8 @@ test("syncPlaylist creates fresh when the stored ratingKey no longer exists in P
   const client = makeClient();
   const calls = mockRequests(client, {
     "GET /playlists/111/items": () => {
-      const error = new Error("Not found");
-      error.response = { status: 404 };
+      const error = Object.assign(new Error("Not found"), { response: { status: 404 } });
+
       throw error;
     },
     "POST /playlists": { MediaContainer: { Metadata: [{ ratingKey: "222" }] } },
@@ -95,8 +107,8 @@ test("syncPlaylist propagates a non-404 error from the item lookup instead of si
   const client = makeClient();
   mockRequests(client, {
     "GET /playlists/111/items": () => {
-      const error = new Error("Server exploded");
-      error.response = { status: 500 };
+      const error = Object.assign(new Error("Server exploded"), { response: { status: 500 } });
+
       throw error;
     },
   });
@@ -140,7 +152,8 @@ test("syncPlaylist diffs items in place - removes only what's gone, adds only wh
 
   const addCalls = calls.filter((c) => c.method === "PUT" && c.path === "/playlists/111/items");
   assert.equal(addCalls.length, 1, "additions are batched into a single call");
-  assert.match(addCalls[0].params.uri, /metadata\/4$/);
+  assert.ok(requireFixture(addCalls[0].params).uri != null);
+  assert.match(String(addCalls[0].params?.uri), /metadata\/4$/);
 
   const renameCalls = calls.filter((c) => c.method === "PUT" && c.path === "/playlists/111");
   assert.equal(renameCalls.length, 0, "title unchanged - no details PUT expected");
@@ -233,7 +246,7 @@ test("syncPlaylist deletes the whole playlist when the desired ratingKeys list i
 
 test("syncPlaylist keeps removing remaining stale items even if one removal fails", async () => {
   const client = makeClient();
-  const deletedIds = [];
+  const deletedIds: string[] = [];
   mockRequests(client, {
     "GET /playlists/111/items": {
       MediaContainer: {
@@ -264,18 +277,19 @@ test("syncPlaylist keeps removing remaining stale items even if one removal fail
 
 test("getTracks rejects a timeout while reading a page body instead of returning a partial library", async () => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], now: 0 });
-  let readingBody;
-  const bodyStarted = new Promise((resolve) => {
+  let readingBody!: () => void;
+  const bodyStarted = new Promise<void>((resolve) => {
     readingBody = resolve;
   });
   let pages = 0;
-  vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, { signal }) => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, { signal } = {}) => {
     pages += 1;
     if (pages === 1)
       return Response.json({ MediaContainer: { totalSize: 2, Metadata: [{ ratingKey: "1" }] } });
     const response = Response.json({});
     response.json = () =>
-      new Promise((_resolve, reject) => {
+      new Promise<void>((_resolve, reject) => {
+        assert.ok(signal != null);
         signal.addEventListener("abort", () => reject(signal.reason), { once: true });
         readingBody();
       });

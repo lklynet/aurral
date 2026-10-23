@@ -1,3 +1,4 @@
+import { FACTORY_MONITOR_RULES } from "../../backend/services/aurralMonitoring.ts";
 import { test } from "vite-plus/test";
 import assert from "node:assert/strict";
 
@@ -13,7 +14,7 @@ import {
 } from "../../frontend/src/utils/aurralMonitoring.ts";
 
 test("summary counts queued releases and top tracks", () => {
-  const monitored = { monitored: true, rules: { newReleases: true } };
+  const monitored = { monitored: true, rules: { ...FACTORY_MONITOR_RULES, newReleases: true } };
   assert.equal(
     summarizeAurralMonitoring(
       { releaseGroupIds: ["rg1"], topTracks: [], skipped: [], queued: true },
@@ -49,11 +50,17 @@ test("summary says what happens when nothing was queued", () => {
     "Monitoring turned off",
   );
   assert.equal(
-    summarizeAurralMonitoring(empty, { monitored: true, rules: { newReleases: true } }).headline,
+    summarizeAurralMonitoring(empty, {
+      monitored: true,
+      rules: { ...FACTORY_MONITOR_RULES, newReleases: true },
+    }).headline,
     "Watching for new releases",
   );
   assert.equal(
-    summarizeAurralMonitoring(empty, { monitored: true, rules: { newReleases: false } }).headline,
+    summarizeAurralMonitoring(empty, {
+      monitored: true,
+      rules: { ...FACTORY_MONITOR_RULES, newReleases: false },
+    }).headline,
     "Nothing new to download",
   );
   assert.equal(summarizeAurralMonitoring(undefined).headline, "Nothing new to download");
@@ -64,13 +71,13 @@ test("summary lists skipped releases by reason with counts and keeps unknown rea
     {
       releaseGroupIds: ["rg1"],
       skipped: [
-        { releaseGroupId: "rg2", reason: "complete" },
-        { releaseGroupId: "rg3", reason: "complete" },
-        { releaseGroupId: "rg4", reason: "covered" },
-        { releaseGroupId: "rg5", reason: "excluded" },
-        { releaseGroupId: "rg6", reason: "unmonitored" },
-        { releaseGroupId: "rg7", reason: "managed_by_lidarr" },
-        { releaseGroupId: "rg8", reason: "brand_new_reason" },
+        { reason: "complete" },
+        { reason: "complete" },
+        { reason: "covered" },
+        { reason: "excluded" },
+        { reason: "unmonitored" },
+        { reason: "managed_by_lidarr" },
+        { reason: "brand_new_reason" },
       ],
       topTracksError: "Top tracks are unavailable right now. Aurral tries again tomorrow.",
       queued: true,
@@ -217,7 +224,14 @@ test("the album download is offered for unmonitored Aurral albums with missing t
 test("unmonitoring asks first only while downloads are unfinished", () => {
   assert.equal(shouldConfirmUnmonitor("queued"), true);
   assert.equal(shouldConfirmUnmonitor("downloading"), true);
-  for (const status of ["complete", "partial", "missing", "failed", "cancelled", "blocked"]) {
+  for (const status of [
+    "complete",
+    "partial",
+    "missing",
+    "failed",
+    "cancelled",
+    "blocked",
+  ] as const) {
     assert.equal(shouldConfirmUnmonitor(status), false, String(status));
   }
 });

@@ -6,7 +6,11 @@ import {
   matchesReleaseGroupTab,
 } from "../../frontend/src/pages/ArtistDetails/releaseFilters.ts";
 
-const release = (primaryType, secondaryTypes = [], title = "Release") => ({
+const release = (
+  primaryType: string,
+  secondaryTypes: string[] = [],
+  title: string = "Release",
+) => ({
   title,
   "primary-type": primaryType,
   "secondary-types": secondaryTypes,

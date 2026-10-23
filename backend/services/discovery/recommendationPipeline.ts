@@ -79,6 +79,8 @@ export interface DiscoveryRecommendation extends ArtistIdentity {
   navigateTo?: string | null;
   type?: string;
   image?: string | null;
+  imageUrl?: string | null;
+  metaText?: string | null;
   tags?: string[];
   matchedTags?: string[];
   supportingSeeds?: Partial<SupportingSeed>[];

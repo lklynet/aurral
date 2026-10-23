@@ -12,13 +12,22 @@ import {
 
 const [isolatedState, { db }, { dbOps, userOps }] = await setupIsolatedBackend(
   "login-rate-limit",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
 );
 
-let aurral;
+let aurral: {
+  child: import("node:child_process").ChildProcessByStdio<
+    null,
+    import("node:stream").Readable,
+    import("node:stream").Readable
+  >;
+  port: number;
+  logs: () => string;
+  stop(): Promise<void>;
+};
 
-const login = (password) =>
+const login = (password: string) =>
   fetch(`http://127.0.0.1:${aurral.port}/api/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -42,7 +51,7 @@ test("successful sign-ins never lock out, but repeated failures do", async () =>
     assert.equal((await login("password123")).status, 200);
   }
 
-  const failures = [];
+  const failures: number[] = [];
   for (let attempt = 0; attempt < 11; attempt += 1) {
     failures.push((await login("wrong-password")).status);
   }

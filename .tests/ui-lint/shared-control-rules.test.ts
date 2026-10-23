@@ -4,7 +4,8 @@ import { RuleTester } from "vite-plus/lint/plugins-dev";
 
 import { sharedControlRules } from "../../frontend/lint-rules/shared-control-rules.js";
 
-const frontendFile = (file) => fileURLToPath(new URL(`../../frontend/${file}`, import.meta.url));
+const frontendFile = (file: string) =>
+  fileURLToPath(new URL(`../../frontend/${file}`, import.meta.url));
 
 const rowException = {
   id: "media-row-icon-action",
@@ -21,14 +22,13 @@ const arrException = {
 const controlOptions = [{ exceptions: [rowException, arrException] }];
 const tester = new RuleTester({
   languageOptions: {
-    ecmaVersion: "latest",
     sourceType: "module",
     parserOptions: { ecmaFeatures: { jsx: true } },
   },
 });
 
 test("shared control rules accept Aurral button patterns and named exceptions", () => {
-  tester.run("aurral/shared-controls", sharedControlRules, {
+  tester.run("aurral/shared-controls", sharedControlRules as Parameters<typeof tester.run>[1], {
     valid: [
       {
         code: '<button type="button" className="btn btn-primary">Save</button>;',
@@ -165,25 +165,29 @@ test("shared control rules accept Aurral button patterns and named exceptions", 
 });
 
 test("shared control rules treat dynamic text expressions as visible button content", () => {
-  tester.run("aurral/shared-controls-visible-expressions", sharedControlRules, {
-    valid: [
-      {
-        code: 'const view = <button className="btn btn-secondary">{artist.name}</button>;',
-        options: controlOptions,
-      },
-      {
-        code: 'const view = <button className="btn btn-secondary">{artist?.name}</button>;',
-        options: controlOptions,
-      },
-      {
-        code: 'function Button({ props }) { return <button className="btn btn-secondary">{props.children}</button>; }',
-        options: controlOptions,
-      },
-      {
-        code: 'const view = <button className="btn btn-secondary">{label`Open ${artist.name}`}</button>;',
-        options: controlOptions,
-      },
-    ],
-    invalid: [],
-  });
+  tester.run(
+    "aurral/shared-controls-visible-expressions",
+    sharedControlRules as Parameters<typeof tester.run>[1],
+    {
+      valid: [
+        {
+          code: 'const view = <button className="btn btn-secondary">{artist.name}</button>;',
+          options: controlOptions,
+        },
+        {
+          code: 'const view = <button className="btn btn-secondary">{artist?.name}</button>;',
+          options: controlOptions,
+        },
+        {
+          code: 'function Button({ props }) { return <button className="btn btn-secondary">{props.children}</button>; }',
+          options: controlOptions,
+        },
+        {
+          code: 'const view = <button className="btn btn-secondary">{label`Open ${artist.name}`}</button>;',
+          options: controlOptions,
+        },
+      ],
+      invalid: [],
+    },
+  );
 });

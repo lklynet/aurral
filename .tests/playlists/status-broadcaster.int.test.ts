@@ -1,3 +1,4 @@
+import { requireFixture } from "./fixtures.ts";
 import assert from "node:assert/strict";
 import { on, once } from "node:events";
 import { test, afterAll } from "vite-plus/test";
@@ -11,10 +12,19 @@ import {
 
 const [state, { dbOps, userOps }, { flowPlaylistConfig }] = await setupIsolatedBackend(
   "playlist-websocket",
-  "backend/db/helpers/index.ts",
-  "backend/services/playlists/flowPlaylistConfig.ts",
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
 );
-let server;
+let server: {
+  child: import("node:child_process").ChildProcessByStdio<
+    null,
+    import("node:stream").Readable,
+    import("node:stream").Readable
+  >;
+  port: number;
+  logs: () => string;
+  stop(): Promise<void>;
+};
 afterAll(async () => {
   await server?.stop();
   await cleanupIsolatedState(state);
@@ -23,7 +33,7 @@ afterAll(async () => {
 test(
   "playlist sockets deliver initial state, persisted changes, and a fresh state after resubscribing",
   { timeout: 15000 },
-  async (t) => {
+  async (t: import("vite-plus/test").TestContext) => {
     dbOps.updateSettings({
       integrations: {},
       onboardingComplete: true,
@@ -31,6 +41,7 @@ test(
       sharedPlaylists: [],
     });
     const user = userOps.createUser("test", bcrypt.hashSync("password", 4), "admin");
+    assert.ok(user != null);
     const playlist = flowPlaylistConfig.createStaticPlaylist({
       name: "Before",
       ownerUserId: user.id,
@@ -47,14 +58,23 @@ test(
       `ws://127.0.0.1:${server.port}/ws?token=${encodeURIComponent(token)}`,
     );
     const messages = on(socket, "message");
-    t.onTestFinished(() => {
+    t.onTestFinished(async () => {
       socket.terminate();
-      return messages.return();
+      await messages.return?.();
     });
-    const next = async (predicate) => {
+    type Message = {
+      type: string;
+      channel?: string;
+      status: Awaited<
+        ReturnType<
+          typeof import("../../backend/services/playlists/playlistStatusSnapshot.ts").getPlaylistStatusSnapshot
+        >
+      >;
+    };
+    const next = async (predicate: (message: Message) => boolean) => {
       for (;;) {
         const { value } = await messages.next();
-        const message = JSON.parse(value[0].toString());
+        const message: Message = JSON.parse(requireFixture(value)[0].toString());
         if (predicate(message)) return message;
       }
     };

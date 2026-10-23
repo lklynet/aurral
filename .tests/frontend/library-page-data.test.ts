@@ -1,3 +1,4 @@
+import { libraryAlbum, libraryTrack, libraryFile } from "./fixtures.ts";
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 import { idFor } from "../../backend/services/subsonicLibraryService.ts";
@@ -13,9 +14,9 @@ const {
 const { queryClient, queryKeys } = await import("../../frontend/src/queryClient.ts");
 
 test("album track hydration does not rewrite unchanged library state", () => {
-  const album = { id: 7, title: "Album", trackCount: 0, availableTrackCount: 0 };
-  const track = { id: 8, files: [{ available: true }] };
-  const current = { artists: [], albums: [album], tracks: [track] };
+  const album = libraryAlbum({ id: 7, trackCount: 0, availableTrackCount: 0 });
+  const track = libraryTrack({ id: 8, files: [libraryFile()] });
+  const current = { genres: [], artists: [], albums: [album], tracks: [track] };
   const page = { artists: [], albums: [album], tracks: [track] };
 
   const hydrated = mergeAlbumTrackPageIntoLibrary(current, page, album.id, [track]);
@@ -25,12 +26,12 @@ test("album track hydration does not rewrite unchanged library state", () => {
   assert.strictEqual(mergeAlbumTrackPageIntoLibrary(hydrated, page, album.id, [track]), hydrated);
 });
 
-test("invalidated album track caches fall back to the current library tracks", (t) => {
+test("invalidated album track caches fall back to the current library tracks", (t: import("vite-plus/test").TestContext) => {
   t.onTestFinished(() => queryClient.clear());
-  const album = { id: 7, trackIds: [8, 9] };
+  const album = libraryAlbum({ id: 7, trackIds: [8, 9] });
   const tracksById = new Map([
-    ["8", { id: 8 }],
-    ["9", { id: 9 }],
+    ["8", libraryTrack({ id: 8 })],
+    ["9", libraryTrack({ id: 9 })],
   ]);
   const queryKey = queryKeys.libraryAlbumTracks("7", null);
   queryClient.setQueryData(queryKey, { tracks: [{ id: 8 }, { id: 9 }] });
@@ -38,7 +39,7 @@ test("invalidated album track caches fall back to the current library tracks", (
   void queryClient.invalidateQueries({ queryKey, refetchType: "none" });
   tracksById.delete("9");
 
-  assert.deepEqual(getCachedAlbumTracks(album, tracksById), [{ id: 8 }]);
+  assert.deepEqual(getCachedAlbumTracks(album, tracksById), [tracksById.get("8")]);
 });
 
 test("library favorites include playlist-backed Subsonic songs", () => {
@@ -54,7 +55,7 @@ test("library favorites include playlist-backed Subsonic songs", () => {
     library: {
       artists: [],
       albums: [],
-      tracks: [{ id: 1, identityKey: "canonical-song", title: "Canonical Favorite" }],
+      tracks: [libraryTrack({ id: 1, identityKey: "canonical-song", title: "Canonical Favorite" })],
     },
     song: [{ id: "song:canonical-song", title: "Canonical Favorite" }, playlistSong],
   });
@@ -64,7 +65,7 @@ test("library favorites include playlist-backed Subsonic songs", () => {
     ["Canonical Favorite", "Playlist Favorite"],
   );
   assert.equal(favoriteId("song", library.tracks[1]), playlistSong.id);
-  assert.match(library.tracks[1].files[0].previewUrl, /\/playlists\/stream\/job-id/);
+  assert.match(library.tracks[1].files[0].previewUrl ?? "", /\/playlists\/stream\/job-id/);
 });
 
 test("favorite ids match the ids the favorites endpoint returns", () => {
@@ -72,7 +73,7 @@ test("favorite ids match the ids the favorites endpoint returns", () => {
     ["artist", { identityKey: "mbid:artist:4a3c2f0e-0000-4000-8000-000000000000" }],
     ["album", { identityKey: "name:album:sol:the album" }],
     ["song", { identityKey: "name:track:name album:1:1:sol" }],
-  ];
+  ] as const;
 
   for (const [kind, entity] of entities) {
     assert.equal(favoriteId(kind, entity), idFor(kind, entity.identityKey));
@@ -80,18 +81,22 @@ test("favorite ids match the ids the favorites endpoint returns", () => {
 });
 
 test("album cards tell an artist's same-titled releases apart", () => {
-  const blue = {
+  const blue = libraryAlbum({
     title: "Weezer",
     releaseDate: "1994-05-10",
     metadata: { tags: { releasetype: ["album"] } },
-  };
-  const green = { title: "Weezer", releaseDate: "2001-05-15", metadata: { albumType: "Album" } };
-  const single = {
+  });
+  const green = libraryAlbum({
+    title: "Weezer",
+    releaseDate: "2001-05-15",
+    metadata: { albumType: "Album" },
+  });
+  const single = libraryAlbum({
     title: "Island in the Sun",
     releaseDate: "2001",
     metadata: { tags: { releasetype: ["single"] } },
-  };
-  const ep = { title: "Weezer", metadata: { albumType: "EP" } };
+  });
+  const ep = libraryAlbum({ title: "Weezer", metadata: { albumType: "EP" } });
 
   assert.deepEqual(albumCardMeta(blue, { available: 10, total: 10 }), {
     details: "1994",
@@ -116,9 +121,9 @@ test("album cards tell an artist's same-titled releases apart", () => {
 });
 
 test("release types come from known labels, not built-in object keys", () => {
-  assert.equal(releaseTypeOf({ metadata: { albumType: "EP" } }), "EP");
-  assert.equal(releaseTypeOf({ metadata: { releaseType: " Single " } }), "Single");
-  assert.equal(releaseTypeOf({ metadata: { albumType: "constructor" } }), null);
-  assert.equal(releaseTypeOf({ metadata: { albumType: "toString" } }), null);
-  assert.equal(releaseTypeOf({ metadata: { albumType: "Album" } }), null);
+  assert.equal(releaseTypeOf(libraryAlbum({ metadata: { albumType: "EP" } })), "EP");
+  assert.equal(releaseTypeOf(libraryAlbum({ metadata: { releaseType: " Single " } })), "Single");
+  assert.equal(releaseTypeOf(libraryAlbum({ metadata: { albumType: "constructor" } })), null);
+  assert.equal(releaseTypeOf(libraryAlbum({ metadata: { albumType: "toString" } })), null);
+  assert.equal(releaseTypeOf(libraryAlbum({ metadata: { albumType: "Album" } })), null);
 });

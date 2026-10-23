@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { test, vi } from "vite-plus/test";
 
-const createStorage = (initial = {}) => {
+const createStorage = (initial: Record<string, string> = {}) => {
   const values = new Map(Object.entries(initial));
   return {
-    getItem: (key) => values.get(key) ?? null,
-    setItem: (key, value) => values.set(key, String(value)),
-    removeItem: (key) => values.delete(key),
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => values.set(key, String(value)),
+    removeItem: (key: string) => values.delete(key),
   };
 };
 
@@ -21,16 +21,13 @@ const browserWindow = () => ({
   },
 });
 
-test("a late close from an old WebSocket cannot orphan its replacement", async (t) => {
-  const originalGlobals = {
-    localStorage: globalThis.localStorage,
-    sessionStorage: globalThis.sessionStorage,
-    WebSocket: globalThis.WebSocket,
-    window: globalThis.window,
-  };
-  const sockets = [];
+test("a late close from an old WebSocket cannot orphan its replacement", async (t: import("vite-plus/test").TestContext) => {
+  const sockets: FakeWebSocket[] = [];
 
   class FakeWebSocket {
+    readyState = 0;
+    onclose?: (event: { code: number }) => void;
+    onopen?: () => void;
     static CONNECTING = 0;
     static OPEN = 1;
     static CLOSING = 2;
@@ -48,15 +45,15 @@ test("a late close from an old WebSocket cannot orphan its replacement", async (
     }
   }
 
-  globalThis.sessionStorage = createStorage();
-  globalThis.localStorage = createStorage();
-  globalThis.window = browserWindow();
-  globalThis.WebSocket = FakeWebSocket;
+  vi.stubGlobal("sessionStorage", createStorage());
+  vi.stubGlobal("localStorage", createStorage());
+  vi.stubGlobal("window", browserWindow());
+  vi.stubGlobal("WebSocket", FakeWebSocket);
 
   vi.resetModules();
 
   t.onTestFinished(async () => {
-    Object.assign(globalThis, originalGlobals);
+    vi.unstubAllGlobals();
   });
 
   const webSocketConnection = await import("../../frontend/src/utils/webSocketConnection.ts");
@@ -82,7 +79,7 @@ test("a late close from an old WebSocket cannot orphan its replacement", async (
   unsubscribeStatus();
 });
 
-test("a missed WebSocket heartbeat retires the dead socket for reconnection", async (t) => {
+test("a missed WebSocket heartbeat retires the dead socket for reconnection", async (t: import("vite-plus/test").TestContext) => {
   const originalGlobals = {
     clearTimeout: globalThis.clearTimeout,
     localStorage: globalThis.localStorage,
@@ -91,10 +88,13 @@ test("a missed WebSocket heartbeat retires the dead socket for reconnection", as
     WebSocket: globalThis.WebSocket,
     window: globalThis.window,
   };
-  const sockets = [];
-  let heartbeatExpired = null;
+  const sockets: DeadWebSocket[] = [];
+  const heartbeat = { expire: null as (() => void) | null };
 
   class DeadWebSocket {
+    readyState = 0;
+    closeCalls = 0;
+    onopen?: () => void;
     static CONNECTING = 0;
     static OPEN = 1;
     static CLOSING = 2;
@@ -113,15 +113,15 @@ test("a missed WebSocket heartbeat retires the dead socket for reconnection", as
     }
   }
 
-  globalThis.sessionStorage = createStorage();
-  globalThis.localStorage = createStorage();
-  globalThis.window = browserWindow();
-  globalThis.WebSocket = DeadWebSocket;
+  vi.stubGlobal("sessionStorage", createStorage());
+  vi.stubGlobal("localStorage", createStorage());
+  vi.stubGlobal("window", browserWindow());
+  vi.stubGlobal("WebSocket", DeadWebSocket);
 
   vi.resetModules();
 
   t.onTestFinished(async () => {
-    Object.assign(globalThis, originalGlobals);
+    vi.unstubAllGlobals();
   });
 
   const webSocketConnection = await import("../../frontend/src/utils/webSocketConnection.ts");
@@ -129,18 +129,22 @@ test("a missed WebSocket heartbeat retires the dead socket for reconnection", as
   const current = sockets[0];
   current.readyState = DeadWebSocket.OPEN;
 
-  globalThis.setTimeout = (callback, delay, ...args) => {
-    if (delay === 10000) {
-      heartbeatExpired = () => callback(...args);
-      return 12345;
-    }
-    return originalGlobals.setTimeout(callback, delay, ...args);
-  };
+  vi.stubGlobal(
+    "setTimeout",
+    (callback: (...args: unknown[]) => void, delay: number, ...args: unknown[]) => {
+      if (delay === 10000) {
+        heartbeat.expire = () => callback(...args);
+        return 12345;
+      }
+      return originalGlobals.setTimeout(callback, delay, ...args);
+    },
+  );
   current.onopen?.();
-  globalThis.setTimeout = originalGlobals.setTimeout;
+  vi.stubGlobal("setTimeout", originalGlobals.setTimeout);
 
-  assert.equal(typeof heartbeatExpired, "function");
-  heartbeatExpired();
+  assert.equal(typeof heartbeat.expire, "function");
+  assert.ok(heartbeat.expire);
+  heartbeat.expire();
   assert.equal(current.closeCalls, 1);
 
   unsubscribe();

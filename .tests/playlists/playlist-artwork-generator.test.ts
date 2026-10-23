@@ -7,10 +7,12 @@ import axios from "../../lib/axiosFetch.ts";
 
 import { writeGeneratedPlaylistArtwork } from "../../backend/services/playlistArtworkGenerator.ts";
 
-test("photo source failures preserve existing playlist artwork", async (t) => {
+test("photo source failures preserve existing playlist artwork", async (t: import("vite-plus/test").TestContext) => {
   vi.spyOn(axios, "get").mockImplementation(async () => {
-    const error = new Error("Request failed with status code 503");
-    error.response = { status: 503 };
+    const error = Object.assign(new Error("Request failed with status code 503"), {
+      response: { status: 503 },
+    });
+
     throw error;
   });
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "aurral-playlist-artwork-"));

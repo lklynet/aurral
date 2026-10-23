@@ -4,10 +4,17 @@ import { test, vi } from "vite-plus/test";
 const { getArtistVideos } = await import("../../frontend/src/utils/api/endpoints/artists.ts");
 const tracks = Array.from({ length: 8 }, (_, index) => ({ title: `Track ${index + 1}` }));
 
-function stubVideos(t, respond) {
-  const requested = [];
+function stubVideos(
+  t: import("vite-plus/test").TestContext,
+  respond: (
+    rank: number,
+    options?: RequestInit,
+  ) => Promise<{ id?: string | null; status?: number; body?: unknown }>,
+) {
+  const requested: string[] = [];
   vi.spyOn(globalThis, "fetch").mockImplementation(async (url, options) => {
     const title = new URL(String(url), "http://localhost").searchParams.get("trackTitle");
+    assert.ok(title != null);
     requested.push(title);
     const response = await respond(Number(title.split(" ")[1]), options);
     return new Response(
@@ -56,10 +63,7 @@ test("artist videos skip duplicate videos and fill the remaining slot from later
 });
 
 test("artist videos keep popular order when searches finish out of order", async (t) => {
-  let release;
-  const first = new Promise((resolve) => {
-    release = resolve;
-  });
+  const { promise: first, resolve: release } = Promise.withResolvers<void>();
   stubVideos(t, async (rank) => {
     if (rank === 1) await first;
     if (rank === 3) release();

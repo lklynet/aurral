@@ -5,6 +5,8 @@ import {
   applyCatalogSearchContext,
   buildSearchContextIndex,
   searchLocalFromData,
+  type ArtistSearchResult,
+  type TrackSearchResult,
 } from "../../backend/services/unifiedSearchService.ts";
 import {
   compareSearchResults,
@@ -12,6 +14,32 @@ import {
   getSearchRankScore,
   normalizeRelevanceScore,
 } from "../../backend/services/searchRanking.ts";
+
+const catalogArtist = (
+  fields: Pick<ArtistSearchResult, "id" | "name" | "score">,
+): ArtistSearchResult => ({
+  type: "artist",
+  source: "brainzmash",
+  key: `artist:${fields.id}`,
+  sortName: fields.name,
+  inLibrary: false,
+  hasMbid: true,
+  ...fields,
+});
+
+const catalogTrack = (
+  fields: Pick<TrackSearchResult, "id" | "title" | "artistName" | "albumTitle" | "score"> &
+    Partial<TrackSearchResult>,
+): TrackSearchResult => ({
+  type: "track",
+  source: "library",
+  key: `track:${fields.id}`,
+  albumMbid: null,
+  albumCanonicalId: null,
+  streamPath: null,
+  inLibrary: false,
+  ...fields,
+});
 
 test("searchLocalFromData returns library artist and track matches", () => {
   const result = searchLocalFromData(
@@ -169,17 +197,15 @@ test("catalog ranking uses library artists and playlist tracks as context", () =
   const catalog = applyCatalogSearchContext(
     {
       artists: [
-        {
-          type: "artist",
+        catalogArtist({
           id: "paranoid-android-artist",
           name: "Paranoid Android",
           score: 0.91,
-        },
+        }),
       ],
       albums: [],
       tracks: [
-        {
-          type: "track",
+        catalogTrack({
           id: "paranoid-android",
           title: "Paranoid Android",
           artistName: "Radiohead",
@@ -187,7 +213,7 @@ test("catalog ranking uses library artists and playlist tracks as context", () =
           albumTitle: "OK Computer",
           albumMbid: "ok-computer",
           score: 0.88,
-        },
+        }),
       ],
     },
     "paranoid android",
@@ -200,7 +226,7 @@ test("catalog ranking uses library artists and playlist tracks as context", () =
 
   assert.equal(catalog.tracks[0].inPlaylist, true);
   assert.equal(catalog.tracks[0].artistInLibrary, true);
-  assert.ok(catalog.tracks[0].contextBoost > 0);
+  assert.ok(catalog.tracks[0].contextBoost! > 0);
   assert.equal(catalog.artists[0].id, "paranoid-android-artist");
   assert.equal(catalog.artists[0].name, "Paranoid Android");
 });
@@ -222,14 +248,13 @@ test("catalog context marks full-mode library track matches", () => {
       artists: [],
       albums: [],
       tracks: [
-        {
-          type: "track",
+        catalogTrack({
           id: "no-surprises",
           title: "No Surprises",
           artistName: "Radiohead",
           albumTitle: "OK Computer",
-          score: 0.88,
-        },
+          score: 88,
+        }),
       ],
     },
     "no surprises",
@@ -258,24 +283,22 @@ test("applyCatalogSearchContext preserves artist bucket order", () => {
   const catalog = applyCatalogSearchContext(
     {
       artists: [
-        {
-          type: "artist",
+        catalogArtist({
           id: "the-used",
           name: "The Used",
           score: 0.94,
-        },
+        }),
       ],
       albums: [],
       tracks: [
-        {
-          type: "track",
+        catalogTrack({
           id: "the-band-the-used",
           title: "The Band the Used",
           artistName: "Say Anything",
           artistMbid: "say-anything",
           albumTitle: "The Noise Of Say Anything's Room Without...",
           score: 0.82,
-        },
+        }),
       ],
     },
     "the used",

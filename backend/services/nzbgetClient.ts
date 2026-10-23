@@ -115,6 +115,9 @@ interface NzbgetQueueItem {
 interface NzbgetHistoryItem extends NzbgetQueueItem {
   ID?: number;
   DestDir?: string;
+  FinalDir?: string | null;
+  Status?: string | null;
+  Category?: string | null;
 }
 
 interface NzbgetConnection {

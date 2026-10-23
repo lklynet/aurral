@@ -196,6 +196,6 @@ export async function removeUnusedPlaybackFiles(
     await fs.rmdir(directory);
   } catch (error) {
     const code = asAppError(error)?.code;
-    if (!code || !["ENOTEMPTY", "EEXIST", "ENOENT"].includes(code)) throw error;
+    if (!code || !["ENOTEMPTY", "EEXIST", "ENOENT"].includes(String(code))) throw error;
   }
 }

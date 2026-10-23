@@ -1,4 +1,4 @@
-import { test, beforeEach, afterAll } from "vite-plus/test";
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import {
@@ -9,9 +9,9 @@ import {
 
 const [isolatedState, { db }, { userOps }, sessionHelpers] = await setupIsolatedBackend(
   "sessions",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/config/session-helpers.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/config/session-helpers.ts"),
 );
 
 const bcryptModule = await import("bcrypt");
@@ -34,15 +34,22 @@ afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-test("creates and resolves sessions with user payload metadata", () => {
+test("creates and resolves sessions with user payload metadata", (t: import("vite-plus/test").TestContext) => {
+  vi.spyOn(Date, "now").mockReturnValue(new Date("2026-10-22T12:00:00Z").getTime());
+  vi.stubEnv("SESSION_EXPIRY_HOURS", "2");
+  t.onTestFinished(() => {
+    vi.unstubAllEnvs();
+  });
   const hash = bcrypt.hashSync("secret", 4);
   const user = userOps.createUser("alice", hash, "admin");
+  assert.ok(user != null);
 
   const session = createSession(user.id, "127.0.0.1", "node:test");
   const stored = getSessionByToken(session.token);
 
   assert.ok(session.token);
-  assert.equal(typeof session.expiresAt, "number");
+  assert.equal(session.expiresAt, Date.now() + 2 * 60 * 60 * 1000);
+  assert.equal(stored?.expiresAt, session.expiresAt);
   assert.equal(stored?.userId, user.id);
   assert.equal(stored?.user?.username, "alice");
   assert.equal(stored?.ipAddress, "127.0.0.1");
@@ -52,6 +59,7 @@ test("creates and resolves sessions with user payload metadata", () => {
 test("deletes expired sessions when looked up or cleaned", () => {
   const hash = bcrypt.hashSync("secret", 4);
   const user = userOps.createUser("bob", hash, "user");
+  assert.ok(user != null);
   const lookedUp = createSession(user.id);
   const cleaned = createSession(user.id);
   const live = createSession(user.id);
@@ -60,7 +68,7 @@ test("deletes expired sessions when looked up or cleaned", () => {
   expire.run(Date.now() - 1000, cleaned.token);
   const stored = () =>
     db
-      .prepare("SELECT token FROM sessions ORDER BY token")
+      .prepare<[], { token: string }>("SELECT token FROM sessions ORDER BY token")
       .all()
       .map((row) => row.token);
 
@@ -73,6 +81,7 @@ test("deletes expired sessions when looked up or cleaned", () => {
 test("can delete one session or all sessions for a user", () => {
   const hash = bcrypt.hashSync("secret", 4);
   const user = userOps.createUser("carol", hash, "user");
+  assert.ok(user != null);
   const first = createSession(user.id);
   const second = createSession(user.id);
 

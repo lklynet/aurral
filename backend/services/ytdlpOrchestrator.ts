@@ -70,7 +70,7 @@ type YtdlpHelpers = {
 };
 type YtdlpSearchOptions = NonNullable<Parameters<YtdlpClient["search"]>[1]>;
 
-export function isYtdlpLiveResult(result: YtdlpResult) {
+export function isYtdlpLiveResult(result: Pick<YtdlpResult, "liveStatus">) {
   return LIVE_STATUSES.has(
     String(result?.liveStatus || "")
       .trim()

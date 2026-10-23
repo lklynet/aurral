@@ -99,7 +99,7 @@ type SlskdPayload = {
   phase: string;
   track?: DownloadTrackFields;
   albumGrab?: boolean;
-  albumTransfers?: SlskdTransfer[] | null;
+  albumTransfers?: (SlskdTransfer | null)[] | null;
   searchQueries?: string[];
   searchQueryIndex?: number;
   searchIds?: string[];
@@ -236,7 +236,10 @@ function isDeniedSoulseekFile(
   return deniedSourceKeys?.has(`${user}\0${file}`) === true;
 }
 
-function selectAlbumFolders(aggregated: SoulseekSearchItem[], searchOptions: SlskdSearchOptions) {
+function selectAlbumFolders(
+  aggregated: SoulseekSearchItem[],
+  searchOptions: Partial<SlskdSearchOptions> & Pick<SlskdSearchOptions, "albumJobs">,
+) {
   return selectSoulseekAlbumFolder(
     aggregated.filter(
       (raw) =>
@@ -254,10 +257,13 @@ function selectAlbumFolders(aggregated: SoulseekSearchItem[], searchOptions: Sls
 export function hasSlskdSearchCandidates(
   aggregated: SoulseekSearchItem[],
   resolvedTrack: SearchTrackRequest,
-  searchOptions: SlskdSearchOptions | undefined,
+  searchOptions: Partial<SlskdSearchOptions> | undefined,
 ) {
   if (searchOptions?.albumJobs) {
-    return selectAlbumFolders(aggregated, searchOptions).decision === "selectable";
+    return (
+      selectAlbumFolders(aggregated, { ...searchOptions, albumJobs: searchOptions.albumJobs })
+        .decision === "selectable"
+    );
   }
   // Node-only pre-filter: no matcher process is spawned during searches.
   // Soulseek folder plausibility is source evidence, not a fuzzy identity

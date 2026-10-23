@@ -3,9 +3,9 @@ import { test, afterAll } from "vite-plus/test";
 import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.ts";
 const [paths, honker, { db }, { scheduleReleaseMetadataRefresh }] = await setupIsolatedBackend(
   "metadata-routing",
-  "backend/services/honkerDb.ts",
-  "backend/config/db-sqlite.ts",
-  "backend/services/releaseMetadataSync.ts",
+  () => import("../../backend/services/honkerDb.ts"),
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/services/releaseMetadataSync.ts"),
 );
 afterAll(() => cleanupIsolatedState(paths));
 db.prepare(`INSERT INTO library_artists (identity_key, mbid, name, created_at, updated_at)
@@ -29,6 +29,7 @@ test("metadata schedule migration preserves overdue and future fires and legacy 
   const legacy = honker.getSystemTaskQueue();
   const id = legacy.enqueue({ kind: "release-metadata-refresh" });
   const claim = legacy.claimOne("legacy-owner");
+  assert.ok(claim != null);
   for (const next of [Math.floor(Date.now() / 1000) - 1000, Math.floor(Date.now() / 1000) + 1800]) {
     db.prepare("UPDATE _honker_scheduler_tasks SET queue = ?, next_fire_at = ? WHERE name = ?").run(
       "system-task",
@@ -38,10 +39,11 @@ test("metadata schedule migration preserves overdue and future fires and legacy 
     honker.bootstrapHonkerSchedules();
     honker.bootstrapHonkerSchedules();
     const migrated = scheduler.list().find((row) => row.name === "release-metadata-refresh");
+    assert.ok(migrated != null);
     assert.equal(migrated.queue, "release-metadata-refresh");
     assert.equal(migrated.next_fire_at, next);
-    assert.equal(legacy.getJob(id).worker_id, "legacy-owner");
-    assert.equal(legacy.getJob(id).attempts, claim.attempts);
+    assert.equal(legacy.getJob(id)!.worker_id, "legacy-owner");
+    assert.equal(legacy.getJob(id)!.attempts, claim.attempts);
   }
   legacy.cancel(id);
 });
@@ -82,19 +84,23 @@ test("rollback moves only pending metadata and preserves its schedule and retrie
   );
   const runningId = queue.enqueue({ kind: "release-metadata-refresh" });
   const claim = queue.claimOne("still-running-owner");
+  assert.ok(claim != null);
   const before = queue.getJob(id);
+  assert.ok(before != null);
   const schedule = honker
     .getHonkerDb()
     .scheduler()
     .list()
     .find((row) => row.name === "release-metadata-refresh");
+  assert.ok(schedule != null);
   assert.equal(claim.id, runningId);
   try {
     assert.throws(() => honker.restoreReleaseMetadataQueueForRollback(), /Stop and drain/);
-    assert.equal(queue.getJob(id).id, id);
+    assert.equal(queue.getJob(id)!.id, id);
     claim.ack();
     assert.equal(honker.restoreReleaseMetadataQueueForRollback(), 1);
     const moved = honker.getSystemTaskQueue().getJob(id);
+    assert.ok(moved != null);
     assert.equal(moved.attempts, before.attempts);
     assert.equal(moved.run_at, before.run_at);
     assert.equal(moved.state, "pending");
@@ -103,10 +109,12 @@ test("rollback moves only pending metadata and preserves its schedule and retrie
       .scheduler()
       .list()
       .find((row) => row.name === "release-metadata-refresh");
+    assert.ok(restored != null);
     assert.equal(restored.queue, "system-task");
     assert.equal(restored.next_fire_at, schedule.next_fire_at);
     db.prepare("UPDATE _honker_live SET run_at = unixepoch() WHERE id = ?").run(id);
     const retry = honker.getSystemTaskQueue().claimOne("older-runtime");
+    assert.ok(retry != null);
     assert.equal(retry.id, id);
     retry.ack();
   } finally {
@@ -118,7 +126,7 @@ test("rollback moves only pending metadata and preserves its schedule and retrie
 test("startup moves pending and abandoned legacy metadata work to the metadata queue", () => {
   const legacy = honker.getSystemTaskQueue();
   const abandonedId = legacy.enqueue({ kind: "release-metadata-refresh" });
-  assert.equal(legacy.claimOne("crashed-owner").id, abandonedId);
+  assert.equal(legacy.claimOne("crashed-owner")!.id, abandonedId);
   db.prepare("UPDATE _honker_live SET claim_expires_at = unixepoch() - 1 WHERE id = ?").run(
     abandonedId,
   );
@@ -176,12 +184,14 @@ test("rollback recovers metadata work abandoned by a stopped worker", () => {
   const queue = honker.getReleaseMetadataQueue();
   const id = queue.enqueue({ kind: "release-metadata-refresh" });
   const claim = queue.claimOne("crashed-owner");
+  assert.ok(claim != null);
   db.prepare("UPDATE _honker_live SET claim_expires_at = unixepoch() - 1 WHERE id = ?").run(
     claim.id,
   );
   try {
     assert.equal(honker.restoreReleaseMetadataQueueForRollback(), 1);
     const restored = honker.getSystemTaskQueue().getJob(id);
+    assert.ok(restored != null);
     assert.equal(restored.state, "pending");
     assert.equal(restored.worker_id, null);
   } finally {

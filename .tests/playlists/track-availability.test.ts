@@ -1,3 +1,4 @@
+import { requireFixture, captureRoutes, mockResponse } from "./fixtures.ts";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import {
@@ -18,43 +19,27 @@ const [
   cancellationModule,
 ] = await setupIsolatedBackend(
   "track-availability",
-  "backend/config/db-sqlite.ts",
-  "backend/db/helpers/index.ts",
-  "backend/services/playlists/flowPlaylistConfig.ts",
-  "backend/routes/playlists/handlers/staticPlaylists.ts",
-  "backend/services/playlists/playlistStatusSnapshot.ts",
-  "backend/services/playlists/playlistOperationQueue.ts",
-  "backend/services/downloadJobs/downloadTracker.ts",
-  "backend/services/downloadJobs/downloadCancellation.ts",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
+  () => import("../../backend/routes/playlists/handlers/staticPlaylists.ts"),
+  () => import("../../backend/services/playlists/playlistStatusSnapshot.ts"),
+  () => import("../../backend/services/playlists/playlistOperationQueue.ts"),
+  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
+  () => import("../../backend/services/downloadJobs/downloadCancellation.ts"),
 );
 const { activatePlaylistDownloadGeneration, isDownloadJobCancelled, isPipelinePayloadActive } =
   cancellationModule;
 
-const handlers = new Map();
-registerStaticPlaylists({
-  get() {},
-  post() {},
-  delete(path, handler) {
-    handlers.set(path, handler);
-  },
-  put(path, handler) {
-    handlers.set(path, handler);
-  },
-});
-const updateAvailability = (id, enabled, user = { id: 1, role: "user" }) => {
-  const response = {
-    statusCode: 200,
-    body: null,
-    status(code) {
-      this.statusCode = code;
-      return this;
-    },
-    json(body) {
-      this.body = body;
-      return this;
-    },
-  };
-  handlers.get("/shared-playlists/:playlistId/track-availability")(
+const { handlers, router } = captureRoutes();
+registerStaticPlaylists(router);
+const updateAvailability = (
+  id: string,
+  enabled: string | number | boolean | null | undefined,
+  user: { id: number; role: string } = { id: 1, role: "user" },
+) => {
+  const response = mockResponse<{ showTrackAvailability: boolean; recordHistory: boolean }>();
+  requireFixture(handlers.get("/shared-playlists/:playlistId/track-availability"))(
     {
       params: { playlistId: id },
       body: { enabled },
@@ -64,20 +49,13 @@ const updateAvailability = (id, enabled, user = { id: 1, role: "user" }) => {
   );
   return response;
 };
-const updateRecordHistory = (id, enabled, user = { id: 1, role: "user" }) => {
-  const response = {
-    statusCode: 200,
-    body: null,
-    status(code) {
-      this.statusCode = code;
-      return this;
-    },
-    json(body) {
-      this.body = body;
-      return this;
-    },
-  };
-  handlers.get("/shared-playlists/:playlistId/record-history")(
+const updateRecordHistory = (
+  id: string,
+  enabled: string | number | boolean | null | undefined,
+  user: { id: number; role: string } = { id: 1, role: "user" },
+) => {
+  const response = mockResponse<{ showTrackAvailability: boolean; recordHistory: boolean }>();
+  requireFixture(handlers.get("/shared-playlists/:playlistId/record-history"))(
     {
       params: { playlistId: id },
       body: { enabled },
@@ -119,26 +97,48 @@ test("availability is opt-in, persists per playlist, and does not queue playback
   assert.equal(first.showTrackAvailability, false);
   assert.equal(second.showTrackAvailability, false);
   assert.equal(updateAvailability(first.id, true).statusCode, 200);
-  assert.equal(flowPlaylistConfig.getStaticPlaylist(first.id).showTrackAvailability, true);
-  assert.equal(flowPlaylistConfig.getStaticPlaylist(second.id).showTrackAvailability, false);
-  assert.deepEqual(flowPlaylistConfig.getStaticPlaylist(first.id).tracks, first.tracks);
   assert.equal(
-    dbOps.getSettings().sharedPlaylists.find((p) => p.id === first.id).showTrackAvailability,
+    requireFixture(flowPlaylistConfig.getStaticPlaylist(first.id)).showTrackAvailability,
     true,
   );
-  const { flowPlaylistConfig: reloaded } =
-    await import("../../backend/services/playlists/flowPlaylistConfig.ts?availability-saved");
-  assert.equal(reloaded.getStaticPlaylist(first.id).showTrackAvailability, true);
-  assert.equal(reloaded.getStaticPlaylist(second.id).showTrackAvailability, false);
-  flowPlaylistConfig.updateStaticPlaylist(first.id, { name: "Renamed" });
-  assert.equal(flowPlaylistConfig.getStaticPlaylist(first.id).showTrackAvailability, true);
-  const snapshot = getPlaylistStatusSnapshot({ user: { id: 1, role: "user" } });
-  assert.equal(snapshot.sharedPlaylists.find((p) => p.id === first.id).showTrackAvailability, true);
   assert.equal(
-    snapshot.sharedPlaylists.find((p) => p.id === second.id).showTrackAvailability,
+    requireFixture(flowPlaylistConfig.getStaticPlaylist(second.id)).showTrackAvailability,
     false,
   );
-  assert.equal(updateAvailability(first.id, false).body.showTrackAvailability, false);
+  assert.deepEqual(
+    requireFixture(flowPlaylistConfig.getStaticPlaylist(first.id)).tracks,
+    first.tracks,
+  );
+  assert.equal(
+    requireFixture(flowPlaylistConfig.getStaticPlaylists().find((p) => p.id === first.id))
+      .showTrackAvailability,
+    true,
+  );
+  vi.resetModules();
+  const { flowPlaylistConfig: reloaded } =
+    await import("../../backend/services/playlists/flowPlaylistConfig.ts");
+  assert.equal(requireFixture(reloaded.getStaticPlaylist(first.id)).showTrackAvailability, true);
+  assert.equal(requireFixture(reloaded.getStaticPlaylist(second.id)).showTrackAvailability, false);
+  flowPlaylistConfig.updateStaticPlaylist(first.id, { name: "Renamed" });
+  assert.equal(
+    requireFixture(flowPlaylistConfig.getStaticPlaylist(first.id)).showTrackAvailability,
+    true,
+  );
+  const snapshot = getPlaylistStatusSnapshot({
+    user: { id: 1, role: "user", username: "test", permissions: {} },
+  });
+  assert.equal(
+    requireFixture(snapshot.sharedPlaylists.find((p) => p.id === first.id)).showTrackAvailability,
+    true,
+  );
+  assert.equal(
+    requireFixture(snapshot.sharedPlaylists.find((p) => p.id === second.id)).showTrackAvailability,
+    false,
+  );
+  assert.equal(
+    requireFixture(updateAvailability(first.id, false)).body.showTrackAvailability,
+    false,
+  );
 });
 
 test("availability validates input and respects playlist ownership", () => {
@@ -148,7 +148,10 @@ test("availability validates input and respects playlist ownership", () => {
   }
   assert.equal(updateAvailability(playlist.id, true, { id: 2, role: "user" }).statusCode, 404);
   assert.equal(updateAvailability("missing", true).statusCode, 404);
-  assert.equal(flowPlaylistConfig.getStaticPlaylist(playlist.id).showTrackAvailability, false);
+  assert.equal(
+    requireFixture(flowPlaylistConfig.getStaticPlaylist(playlist.id)).showTrackAvailability,
+    false,
+  );
   assert.equal(updateAvailability(playlist.id, true, { id: 2, role: "admin" }).statusCode, 200);
 });
 
@@ -165,22 +168,32 @@ test("history is enabled by default, persists per playlist, and does not queue p
 
   assert.equal(first.recordHistory, true);
   assert.equal(second.recordHistory, false);
-  assert.equal(updateRecordHistory(first.id, false).body.recordHistory, false);
-  assert.equal(flowPlaylistConfig.getStaticPlaylist(first.id).recordHistory, false);
-  assert.equal(flowPlaylistConfig.getStaticPlaylist(second.id).recordHistory, false);
+  assert.equal(requireFixture(updateRecordHistory(first.id, false)).body.recordHistory, false);
+  assert.equal(requireFixture(flowPlaylistConfig.getStaticPlaylist(first.id)).recordHistory, false);
   assert.equal(
-    dbOps.getSettings().sharedPlaylists.find((p) => p.id === first.id).recordHistory,
+    requireFixture(flowPlaylistConfig.getStaticPlaylist(second.id)).recordHistory,
+    false,
+  );
+  assert.equal(
+    requireFixture(flowPlaylistConfig.getStaticPlaylists().find((p) => p.id === first.id))
+      .recordHistory,
     false,
   );
 
+  vi.resetModules();
   const { flowPlaylistConfig: reloaded } =
-    await import("../../backend/services/playlists/flowPlaylistConfig.ts?record-history-saved");
-  assert.equal(reloaded.getStaticPlaylist(first.id).recordHistory, false);
-  assert.equal(reloaded.getStaticPlaylist(second.id).recordHistory, false);
-  const snapshot = getPlaylistStatusSnapshot({ user: { id: 1, role: "user" } });
-  assert.equal(snapshot.sharedPlaylists.find((p) => p.id === first.id).recordHistory, false);
-  assert.equal(updateRecordHistory(first.id, true).body.recordHistory, true);
-  assert.equal(flowPlaylistConfig.getStaticPlaylist(first.id).recordHistory, true);
+    await import("../../backend/services/playlists/flowPlaylistConfig.ts");
+  assert.equal(requireFixture(reloaded.getStaticPlaylist(first.id)).recordHistory, false);
+  assert.equal(requireFixture(reloaded.getStaticPlaylist(second.id)).recordHistory, false);
+  const snapshot = getPlaylistStatusSnapshot({
+    user: { id: 1, role: "user", username: "test", permissions: {} },
+  });
+  assert.equal(
+    requireFixture(snapshot.sharedPlaylists.find((p) => p.id === first.id)).recordHistory,
+    false,
+  );
+  assert.equal(requireFixture(updateRecordHistory(first.id, true)).body.recordHistory, true);
+  assert.equal(requireFixture(flowPlaylistConfig.getStaticPlaylist(first.id)).recordHistory, true);
 });
 
 test("history preference validates input and respects playlist ownership", () => {
@@ -193,7 +206,10 @@ test("history preference validates input and respects playlist ownership", () =>
   }
   assert.equal(updateRecordHistory(playlist.id, false, { id: 2, role: "user" }).statusCode, 404);
   assert.equal(updateRecordHistory("missing", false).statusCode, 404);
-  assert.equal(flowPlaylistConfig.getStaticPlaylist(playlist.id).recordHistory, true);
+  assert.equal(
+    requireFixture(flowPlaylistConfig.getStaticPlaylist(playlist.id)).recordHistory,
+    true,
+  );
   assert.equal(updateRecordHistory(playlist.id, false, { id: 2, role: "admin" }).statusCode, 200);
 });
 
@@ -209,20 +225,9 @@ test("a failed playlist-delete enqueue restores the active download generation",
   vi.spyOn(playlistOperationQueue, "enqueuePayload").mockImplementation(async () => {
     throw new Error("queue unavailable");
   });
-  const response = {
-    statusCode: 200,
-    body: null,
-    status(code) {
-      this.statusCode = code;
-      return this;
-    },
-    json(body) {
-      this.body = body;
-      return this;
-    },
-  };
+  const response = mockResponse<{ showTrackAvailability: boolean; recordHistory: boolean }>();
 
-  await handlers.get("/shared-playlists/:playlistId")(
+  await requireFixture(handlers.get("/shared-playlists/:playlistId"))(
     {
       params: { playlistId: playlist.id },
       user,
@@ -242,16 +247,18 @@ test("existing playlists without the preference start disabled after loading", a
   dbOps.updateSettings({
     sharedPlaylists: [{ id: "legacy", name: "Existing", ownerUserId: 1, tracks: [] }],
   });
+  vi.resetModules();
   const { flowPlaylistConfig: reloaded } =
-    await import("../../backend/services/playlists/flowPlaylistConfig.ts?availability-reload");
-  assert.equal(reloaded.getStaticPlaylist("legacy").showTrackAvailability, false);
+    await import("../../backend/services/playlists/flowPlaylistConfig.ts");
+  assert.equal(requireFixture(reloaded.getStaticPlaylist("legacy")).showTrackAvailability, false);
 });
 
 test("existing playlists without history preference start enabled after loading", async () => {
   dbOps.updateSettings({
     sharedPlaylists: [{ id: "legacy-history", name: "Existing", ownerUserId: 1, tracks: [] }],
   });
+  vi.resetModules();
   const { flowPlaylistConfig: reloaded } =
-    await import("../../backend/services/playlists/flowPlaylistConfig.ts?history-reload");
-  assert.equal(reloaded.getStaticPlaylist("legacy-history").recordHistory, true);
+    await import("../../backend/services/playlists/flowPlaylistConfig.ts");
+  assert.equal(requireFixture(reloaded.getStaticPlaylist("legacy-history")).recordHistory, true);
 });

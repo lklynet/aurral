@@ -1,18 +1,14 @@
 import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
-import {
-  setupIsolatedBackend,
-  cleanupIsolatedState,
-  importFromRepo,
-} from "../helpers/backendTestHarness.ts";
+import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.ts";
 
 const [isolatedState, honkerDbModule, refreshScheduler, persistence, { getDiscoveryStatus }] =
   await setupIsolatedBackend(
     "discovery-refresh-scheduler",
-    "backend/services/honkerDb.ts",
-    "backend/services/discovery/refreshScheduler.ts",
-    "backend/services/discovery/persistence.ts",
-    "backend/services/discovery/userDiscovery.ts",
+    () => import("../../backend/services/honkerDb.ts"),
+    () => import("../../backend/services/discovery/refreshScheduler.ts"),
+    () => import("../../backend/services/discovery/persistence.ts"),
+    () => import("../../backend/services/discovery/userDiscovery.ts"),
   );
 
 const {
@@ -23,8 +19,8 @@ const {
   recoverDeadDiscoveryRefresh,
   scheduleNextDiscoveryRefresh,
 } = refreshScheduler;
-const { db } = await importFromRepo("backend/config/db-sqlite.ts");
-const { dbOps } = await importFromRepo("backend/db/helpers/index.ts");
+const { db } = await import("../../backend/config/db-sqlite.ts");
+const { dbOps } = await import("../../backend/db/helpers/index.ts");
 const originalLastfmApiKey = process.env.LASTFM_API_KEY;
 
 function seedLibraryArtist() {
@@ -38,7 +34,8 @@ function clearLibraryArtists() {
   db.prepare("DELETE FROM library_artists").run();
 }
 
-let heldGlobalRefreshLock = null;
+let heldGlobalRefreshLock: ReturnType<ReturnType<typeof honkerDbModule.getHonkerDb>["tryLock"]> =
+  null;
 
 function holdGlobalRefreshLock() {
   heldGlobalRefreshLock = honkerDbModule
@@ -87,7 +84,10 @@ function discoveryRefreshPayloads() {
 
 // Writes the shared database and leaves this process's memory empty, like a
 // worker process that started before another process refreshed discovery.
-function setDiscoveryCache({ lastUpdated = null, ...data } = {}) {
+function setDiscoveryCache({
+  lastUpdated = null,
+  ...data
+}: Parameters<typeof dbOps.updateDiscoveryCache>[0] = {}) {
   db.prepare("DELETE FROM discovery_cache WHERE key NOT LIKE 'user:%'").run();
   persistence.resetDiscoveryModuleCache();
   if (Object.keys(data).length === 0) return;
@@ -330,9 +330,8 @@ test("scheduleNextDiscoveryRefresh deduplicates existing future refresh", () => 
 
 test("pruneDuplicateScheduledDiscoveryRefreshes collapses stacked future refreshes", async () => {
   clearDiscoveryRefreshJobs();
-  const { pruneDuplicateScheduledDiscoveryRefreshes } = await importFromRepo(
-    "backend/services/discovery/refreshScheduler.ts",
-  );
+  const { pruneDuplicateScheduledDiscoveryRefreshes } =
+    await import("../../backend/services/discovery/refreshScheduler.ts");
   const queue = honkerDbModule.getDiscoveryRefreshQueue();
   const runAt = Math.floor(Date.now() / 1000) + 3600;
   for (let index = 0; index < 3; index += 1) {
