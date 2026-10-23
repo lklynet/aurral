@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "vite-plus/test";
+import { test, vi } from "vite-plus/test";
 
 import {
   getFormatLoadAttempts,
@@ -44,6 +44,19 @@ test("previews and playlist tracks keep their cover so the player and album-art 
     artworkUrl: "https://c/editorial.jpg",
   });
   assert.equal(editorialTrack.artwork, "https://c/editorial.jpg");
+});
+
+test("a server-relative preview plays from the configured API address", (t) => {
+  vi.stubEnv("VITE_API_URL", "https://music.example/aurral/api");
+  t.onTestFinished(() => {
+    vi.unstubAllEnvs();
+  });
+  const preview = normalizePreviewTrack(
+    { id: "7", title: "Song", preview_url: "/api/deezer/preview/7.mp3" },
+    "Artist",
+  );
+  assert.equal(preview.src, "https://music.example/aurral/api/deezer/preview/7.mp3");
+  assert.equal(preview.streamFormat, "mp3");
 });
 
 test("artwork changes update matching queue entries without restarting playback", () => {

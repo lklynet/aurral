@@ -1,3 +1,4 @@
+import { resolveApiPath } from "./api/core.ts";
 import type { LibraryTrack } from "./libraryPageData.ts";
 
 const FORMAT_BY_EXTENSION: Partial<Record<string, string[]>> = {
@@ -104,7 +105,8 @@ function usesTrackArtwork(track: QueueTrackInput) {
 
 export function normalizeQueueTrack(track: QueueTrackInput, overrides: QueueTrackInput = {}) {
   const id = String(track?.id ?? track?.trackId ?? track?.mbid ?? overrides.id ?? "");
-  const src = track?.src ?? track?.streamUrl ?? track?.preview_url ?? "";
+  const rawSrc = track?.src ?? track?.streamUrl ?? track?.preview_url ?? "";
+  const src = rawSrc.startsWith("/api/") ? resolveApiPath(rawSrc) : rawSrc;
   const artwork = track?.artwork ?? track?.artworkUrl ?? overrides.artwork ?? null;
   const artworkSource =
     track?.artworkSource ??

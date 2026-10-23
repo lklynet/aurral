@@ -42,3 +42,15 @@ test("a shared track's preview resolves to Deezer's current link when played", a
   assert.equal(played.status, 302);
   assert.equal(played.headers.get("location"), "https://cdnt-preview.dzcdn.net/7.mp3?hdnea=exp=1");
 });
+
+test("a Deezer outage on a shared preview is a 502, not a missing track", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url = new URL(String(input));
+    if (url.pathname === "/track/8") return Response.json({ error: { code: 4 } });
+    if (url.pathname === "/track/9") return Response.json({ error: { code: 800 } });
+    throw new Error(`unexpected request to ${url}`);
+  });
+
+  assert.equal((await previewLink({ params: { id: "8" } })).status, 502);
+  assert.equal((await previewLink({ params: { id: "9" } })).status, 404);
+});

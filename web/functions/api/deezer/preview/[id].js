@@ -20,6 +20,7 @@ export async function onRequestGet({ params }) {
   } catch {
     return reply(502);
   }
+  if (track?.error && track.error.code !== 800) return reply(502);
   const preview = typeof track?.preview === "string" ? track.preview : "";
   return preview.startsWith("https://") ? reply(302, { Location: preview }) : reply(404);
 }
