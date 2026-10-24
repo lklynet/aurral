@@ -10,7 +10,14 @@ export const validate = <
 ) =>
   sValidator(target, schema, (result, c) => {
     if (!result.success) {
-      const message = result.error.map((issue) => issue.message).join("; ");
+      const message = result.error
+        .map(({ message, path }) => {
+          const field = path
+            ?.map((segment) => String(typeof segment === "object" ? segment.key : segment))
+            .join(".");
+          return field ? `${field}: ${message}` : message;
+        })
+        .join("; ");
       return c.json({ error: "Invalid request", message }, 400);
     }
   });

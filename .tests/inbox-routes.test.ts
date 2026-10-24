@@ -77,7 +77,9 @@ test("inbox item updates accept loosely written actions and reject unknown ones"
 
   const unknown = await app.request(path, patchJson(JSON.stringify({ action: "archive" })));
   assert.equal(unknown.status, 400);
-  assert.equal((await unknown.json()).error, "Invalid request");
+  const rejection = await unknown.json();
+  assert.equal(rejection.error, "Invalid request");
+  assert.match(rejection.message, /^action: /);
 });
 
 test("malformed and oversized JSON bodies get client errors", async () => {

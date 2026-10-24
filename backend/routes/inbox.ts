@@ -1,5 +1,5 @@
-import { type } from "arktype";
 import { Hono } from "hono";
+import * as v from "valibot";
 import { dbOps } from "../db/helpers/index.ts";
 import { asAppError, type AppError } from "../../lib/errors.ts";
 import { hasPermission } from "../middleware/auth.ts";
@@ -64,14 +64,23 @@ async function addInboxItem(item: InboxItem, user: RequestUser) {
   throw error;
 }
 
-const listQuery = type({
-  "limit?": type("string.integer.parse").pipe((limit) => Math.min(50, Math.max(1, limit))),
+const listQuery = v.object({
+  limit: v.optional(
+    v.pipe(
+      v.string(),
+      v.digits(),
+      v.transform((limit) => Math.min(50, Math.max(1, Number(limit)))),
+    ),
+  ),
 });
-const refreshInput = type({ "zip?": "string | number" });
-const itemUpdate = type({
-  action: type("string")
-    .pipe((action) => action.trim().toLowerCase())
-    .to("'add' | 'read' | 'save' | 'unsave' | 'dismiss'"),
+const refreshInput = v.object({ zip: v.optional(v.union([v.string(), v.number()])) });
+const itemUpdate = v.object({
+  action: v.pipe(
+    v.string(),
+    v.trim(),
+    v.toLowerCase(),
+    v.picklist(["add", "read", "save", "unsave", "dismiss"]),
+  ),
 });
 
 export default new Hono<AppEnv>()

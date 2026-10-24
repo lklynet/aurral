@@ -23,7 +23,6 @@
     "@hono/standard-validator": "^0.4.0",
     "@rowanmanning/feed-parser": "^2.1.5",
     "@russellthehippo/honker-node": "^0.5.1",
-    "arktype": "^2.2.9",
     "bcrypt": "^6.0.0",
     "better-sqlite3": "^13.0.3",
     "cors": "^2.8.6",
@@ -41,6 +40,7 @@
     "p-queue": "^10.0.0",
     "sharp": "^0.35.5",
     "undici": "^8.12.2",
+    "valibot": "^1.5.0",
     "ws": "^8.22.0",
     "youtubei.js": "~18.1.0"
   },
