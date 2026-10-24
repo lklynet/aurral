@@ -3,7 +3,10 @@ import { bodyLimit } from "hono/body-limit";
 import { HTTPException } from "hono/http-exception";
 import type { AppEnv } from "../middleware/requestUser.ts";
 import { logger } from "../services/logger.ts";
+import artistStream from "./artists/handlers/stream.ts";
 import inbox from "./inbox.ts";
+import libraryStreams from "./library/streams.ts";
+import playlistStreams from "./playlists/handlers/stream.ts";
 
 export const JSON_BODY_LIMIT = process.env.JSON_BODY_LIMIT || "5mb";
 
@@ -27,7 +30,10 @@ export const api = new Hono<AppEnv>()
   .use((c, next) =>
     c.req.header("content-type")?.includes("json") ? jsonBodyLimit(c, next) : next(),
   )
-  .route("/", inbox);
+  .route("/", inbox)
+  .route("/", libraryStreams)
+  .route("/", playlistStreams)
+  .route("/", artistStream);
 
 api.onError((error, c) => {
   if (error instanceof HTTPException) return c.json({ error: error.message }, error.status);

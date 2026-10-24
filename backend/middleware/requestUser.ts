@@ -1,3 +1,5 @@
+import type { HttpBindings } from "@hono/node-server";
+
 export interface RequestUser {
   id: number;
   username: string;
@@ -17,6 +19,7 @@ declare global {
 }
 
 export type AppEnv = {
+  Bindings: HttpBindings;
   Variables: {
     user?: RequestUser;
     clientIp: string;

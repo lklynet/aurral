@@ -1,6 +1,5 @@
 import express from "express";
 import { requireAuth, requirePermission } from "../../middleware/requirePermission.ts";
-import { registerStream } from "./handlers/stream.ts";
 import { registerArtworkServe } from "./handlers/artworkServe.ts";
 import { registerArtworkManagement } from "./handlers/artworkManagement.ts";
 import { registerFlows } from "./handlers/flows.ts";
@@ -17,7 +16,6 @@ import {
 
 const router = express.Router();
 
-registerStream(router);
 registerArtworkServe(router);
 registerTrackArtworkServe(router);
 
