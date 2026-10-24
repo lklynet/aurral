@@ -27,12 +27,10 @@ export const api = new Hono<AppEnv>()
   .use((c, next) =>
     c.req.header("content-type")?.includes("json") ? jsonBodyLimit(c, next) : next(),
   )
-  .route("/inbox", inbox);
+  .route("/", inbox);
 
 api.onError((error, c) => {
   if (error instanceof HTTPException) return c.json({ error: error.message }, error.status);
   logger.error("system", "Request error:", error);
   return c.json({ error: "Internal server error" }, 500);
 });
-
-export type Api = typeof api;

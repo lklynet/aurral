@@ -1,5 +1,5 @@
 import { hc } from "hono/client";
-import type { Api } from "../../../../backend/routes/api.ts";
+import type inbox from "../../../../backend/routes/inbox.ts";
 import { getAppBasePath } from "../basePath.ts";
 import type { LibraryAvailability } from "../libraryDestination.ts";
 
@@ -184,7 +184,7 @@ export async function apiFetch(input: RequestInfo | URL, init: RequestInit = {})
   return ensureOk(res, input instanceof Request ? input.url : String(input));
 }
 
-export const client = hc<Api>(API_BASE_URL, { fetch: apiFetch });
+export const inboxClient = hc<typeof inbox>(API_BASE_URL, { fetch: apiFetch }).inbox;
 
 const api = {
   get: (url: string, config: RequestConfig = {}) => request({ ...config, method: "GET", url }),

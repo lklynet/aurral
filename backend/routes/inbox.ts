@@ -75,6 +75,7 @@ const itemUpdate = type({
 });
 
 export default new Hono<AppEnv>()
+  .basePath("/inbox")
   .use(requireAuth)
   .get("/", validate("query", listQuery), (c) => {
     try {

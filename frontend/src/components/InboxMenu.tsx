@@ -12,7 +12,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { parseResponse, type InferResponseType } from "hono/client";
-import { client } from "../utils/api/core.ts";
+import { inboxClient } from "../utils/api/core.ts";
 import { useAuth } from "../contexts/AuthContext.tsx";
 import { useToast } from "../contexts/ToastContext";
 import TooltipButton from "./TooltipButton";
@@ -22,7 +22,7 @@ import Tooltip from "./Tooltip";
 import RelativeTime from "./RelativeTime";
 import { getApiErrorMessage } from "../pages/onboardingUtils.tsx";
 
-type InboxListResponse = InferResponseType<typeof client.inbox.$get, 200>;
+type InboxListResponse = InferResponseType<typeof inboxClient.$get, 200>;
 type InboxListItem = NonNullable<InboxListResponse["items"][number]> & { id: string };
 
 const ITEM_ICONS: Partial<Record<string, LucideIcon>> = {
@@ -183,7 +183,7 @@ function InboxMenu() {
   const inboxQuery = useQuery({
     queryKey,
     queryFn: ({ signal }) =>
-      parseResponse(client.inbox.$get({ query: { limit: "50" } }, { init: { signal } })),
+      parseResponse(inboxClient.$get({ query: { limit: "50" } }, { init: { signal } })),
     enabled: inboxEnabled && userId != null,
     refetchInterval: 60 * 1000,
     staleTime: 30 * 1000,
@@ -197,7 +197,7 @@ function InboxMenu() {
   const itemMutation = useMutation({
     mutationFn: ({ id, action }: { id: string; action: string }) =>
       parseResponse(
-        client.inbox[":id"].$patch({ param: { id: encodeURIComponent(id) }, json: { action } }),
+        inboxClient[":id"].$patch({ param: { id: encodeURIComponent(id) }, json: { action } }),
       ),
     onMutate: async ({ id, action }: { id: string; action: string }) => {
       await queryClient.cancelQueries({ queryKey });
@@ -231,7 +231,7 @@ function InboxMenu() {
     onSettled: () => queryClient.invalidateQueries({ queryKey }),
   });
   const readAllMutation = useMutation({
-    mutationFn: () => parseResponse(client.inbox["read-all"].$post()),
+    mutationFn: () => parseResponse(inboxClient["read-all"].$post()),
     onSuccess: () => queryClient.invalidateQueries({ queryKey }),
   });
 
