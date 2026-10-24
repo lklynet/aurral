@@ -11,13 +11,8 @@ import {
   Check,
   type LucideIcon,
 } from "lucide-react";
-import {
-  getInbox,
-  markAllInboxItemsRead,
-  updateInboxItem,
-  type InboxListResponse,
-} from "../utils/api/endpoints/inbox.ts";
-import { readStoredNearbyLocation } from "../pages/discoverUtils.ts";
+import { parseResponse, type InferResponseType } from "hono/client";
+import { inboxClient } from "../utils/api/core.ts";
 import { useAuth } from "../contexts/AuthContext.tsx";
 import { useToast } from "../contexts/ToastContext";
 import TooltipButton from "./TooltipButton";
@@ -27,7 +22,8 @@ import Tooltip from "./Tooltip";
 import RelativeTime from "./RelativeTime";
 import { getApiErrorMessage } from "../pages/onboardingUtils.tsx";
 
-type InboxListItem = InboxListResponse["items"][number];
+type InboxListResponse = InferResponseType<typeof inboxClient.$get, 200>;
+type InboxListItem = NonNullable<InboxListResponse["items"][number]> & { id: string };
 
 const ITEM_ICONS: Partial<Record<string, LucideIcon>> = {
   release: Music2,
@@ -182,41 +178,45 @@ function InboxMenu() {
     return () => window.removeEventListener("aurral:settings-updated", handleSettingsUpdated);
   }, []);
 
-  const { mode, zip } = readStoredNearbyLocation();
-  const locationZip = mode === "zip" ? zip : "";
   const userId = Number.isInteger(Number(user?.id)) && Number(user!.id) > 0 ? user!.id : null;
-  const queryKey = queryKeys.inbox(userId, locationZip, 50);
+  const queryKey = queryKeys.inbox(userId);
   const inboxQuery = useQuery({
     queryKey,
-    queryFn: ({ signal }) => getInbox({ zip: locationZip, limit: 50, signal }),
+    queryFn: ({ signal }) =>
+      parseResponse(inboxClient.$get({ query: { limit: "50" } }, { init: { signal } })),
     enabled: inboxEnabled && userId != null,
     refetchInterval: 60 * 1000,
     staleTime: 30 * 1000,
   });
-  const items = Array.isArray(inboxQuery.data?.items) ? inboxQuery.data.items : [];
+  const items = (inboxQuery.data?.items ?? []).filter(
+    (item): item is InboxListItem => item !== null && item.id !== null,
+  );
   const unreadCount = Number(inboxQuery.data?.unreadCount || 0);
   const serverRefreshing = inboxQuery.data?.refreshing === true;
   const loadInbox = () => inboxQuery.refetch();
   const itemMutation = useMutation({
-    mutationFn: ({ id, action }: { id: string; action: string }) => updateInboxItem(id, action),
+    mutationFn: ({ id, action }: { id: string; action: string }) =>
+      parseResponse(
+        inboxClient[":id"].$patch({ param: { id: encodeURIComponent(id) }, json: { action } }),
+      ),
     onMutate: async ({ id, action }: { id: string; action: string }) => {
       await queryClient.cancelQueries({ queryKey });
       const previous = queryClient.getQueryData<InboxListResponse>(queryKey);
       queryClient.setQueryData<InboxListResponse>(queryKey, (current) => {
         if (!current) return current;
-        const item = current.items?.find((entry) => entry.id === id);
+        const item = current.items.find((entry) => entry?.id === id);
         if (!item) return current;
         if (action === "dismiss") {
           return {
             ...current,
-            items: current.items.filter((entry) => entry.id !== id),
+            items: current.items.filter((entry) => entry?.id !== id),
             unreadCount: Math.max(0, Number(current.unreadCount || 0) - (item.isRead ? 0 : 1)),
           };
         }
         return {
           ...current,
           items: current.items.map((entry) =>
-            entry.id === id ? { ...entry, isRead: true } : entry,
+            entry?.id === id ? { ...entry, isRead: true } : entry,
           ),
           unreadCount: Math.max(0, Number(current.unreadCount || 0) - (item.isRead ? 0 : 1)),
         };
@@ -231,7 +231,7 @@ function InboxMenu() {
     onSettled: () => queryClient.invalidateQueries({ queryKey }),
   });
   const readAllMutation = useMutation({
-    mutationFn: markAllInboxItemsRead,
+    mutationFn: () => parseResponse(inboxClient["read-all"].$post()),
     onSuccess: () => queryClient.invalidateQueries({ queryKey }),
   });
 

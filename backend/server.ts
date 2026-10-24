@@ -47,7 +47,6 @@ import imageProxyRouter from "./routes/imageProxy.ts";
 import deezerRouter from "./routes/deezer.ts";
 import lidarrFeedRouter from "./routes/lidarrFeed.ts";
 import lidarrWebhookRouter from "./routes/lidarrWebhook.ts";
-import inboxRouter from "./routes/inbox.ts";
 import newsRouter from "./routes/news.ts";
 import subsonicRouter from "./routes/subsonic.ts";
 import scrobblingRouter from "./routes/scrobbling.ts";
@@ -55,6 +54,8 @@ import playEventsRouter from "./routes/playEvents.ts";
 import shareLinksRouter from "./routes/shareLinks.ts";
 import { stopShareListener, syncShareListener } from "./services/shareLinks/shareListener.ts";
 import { asAppError, type AppError } from "../lib/errors.ts";
+import { JSON_BODY_LIMIT } from "./routes/api.ts";
+import { handToHono } from "./routes/shared/expressHandoff.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -68,7 +69,6 @@ process.on("unhandledRejection", logUnhandledRejection);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
-const JSON_BODY_LIMIT = process.env.JSON_BODY_LIMIT || "5mb";
 
 const allowedCorsOrigins = String(process.env.CORS_ORIGIN || "")
   .split(",")
@@ -156,7 +156,6 @@ app.use((req, res, next) => {
   }
   next();
 });
-app.use(express.json({ limit: JSON_BODY_LIMIT }));
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -177,6 +176,9 @@ app.use("/api/auth/oidc/login", authLimiter);
 app.use("/api/auth/oidc/exchange", authLimiter);
 app.use("/api/users/me/password", authLimiter);
 
+app.use("/api/inbox", handToHono);
+
+app.use(express.json({ limit: JSON_BODY_LIMIT }));
 app.use("/api/settings", settingsRouter);
 app.use("/api/onboarding", onboardingRouter);
 app.use("/api/users", usersRouter);
@@ -184,7 +186,6 @@ app.use("/api/search", searchRouter);
 app.use("/api/artists", artistsRouter);
 app.use("/api/library", libraryRouter);
 app.use("/api/discover", discoveryRouter);
-app.use("/api/inbox", inboxRouter);
 app.use("/api/news", newsRouter);
 app.use("/api/webhooks/lidarr", lidarrWebhookRouter);
 app.use("/api/requests", requestsRouter);

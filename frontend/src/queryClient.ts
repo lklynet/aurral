@@ -91,12 +91,7 @@ export const queryKeys = {
     "activity-requests",
     userId || null,
   ],
-  inbox: (userId: MaybeId, zip: MaybeText, limit: number): QueryKey => [
-    "inbox",
-    userId || null,
-    zip || "",
-    limit,
-  ],
+  inbox: (userId: MaybeId): QueryKey => ["inbox", userId || null],
   shareLinks: (userId: MaybeId): QueryKey => ["share-links", userId || null],
   listeningHistory: (userId: MaybeId): QueryKey => ["auth", "listening-history", userId || null],
   lidarrPreferences: (userId: MaybeId): QueryKey => ["auth", "lidarr-preferences", userId || null],

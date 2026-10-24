@@ -255,15 +255,15 @@ const toSessionUser = (session: ReturnType<typeof getSessionByToken>) => {
   };
 };
 
-const getBearerToken = (req: AuthRequest) => {
-  const authHeader = String(req.headers.authorization || "");
+const getBearerToken = (authorization: string | undefined) => {
+  const authHeader = String(authorization || "");
   if (!authHeader.startsWith("Bearer ")) return null;
   const token = authHeader.slice(7).trim();
   return token || null;
 };
 
-export function getUnauthorizedDetails(req: AuthRequest) {
-  if (getBearerToken(req)) {
+export function getUnauthorizedDetails(authorization: string | undefined) {
+  if (getBearerToken(authorization)) {
     return {
       code: "SESSION_INVALID",
       message: "Session expired or invalid",
@@ -285,7 +285,7 @@ export function sendUnauthorizedResponse(
   }
   return res.status(401).json({
     error: "Unauthorized",
-    ...getUnauthorizedDetails(req),
+    ...getUnauthorizedDetails(req.headers.authorization),
     ...overrides,
   });
 }
@@ -483,7 +483,7 @@ export function resolveProxyUser(req: ProxyRequest) {
 
 export function issueProxySession(req: AuthRequest) {
   if (!isAuthRequiredByConfig()) return null;
-  if (resolveSessionUserFromToken(getBearerToken(req))) return null;
+  if (resolveSessionUserFromToken(getBearerToken(req.headers.authorization))) return null;
   const proxyUser = resolveProxyUser(req);
   if (!proxyUser?.id || proxyUser.id < 0) return null;
   return createSession(proxyUser.id, req.ip || null, req.headers["user-agent"] || null);
@@ -584,7 +584,7 @@ export function resolveLocalNetworkBypassUser(req: ClientRequest) {
 }
 
 export function resolveRequestUser(req: AuthRequest) {
-  const sessionUser = resolveSessionUserFromToken(getBearerToken(req));
+  const sessionUser = resolveSessionUserFromToken(getBearerToken(req.headers.authorization));
   if (sessionUser) return sessionUser;
   const proxyUser = resolveProxyUser(req);
   if (proxyUser) return proxyUser;

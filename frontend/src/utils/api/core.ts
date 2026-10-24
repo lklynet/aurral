@@ -1,3 +1,5 @@
+import { hc } from "hono/client";
+import type inbox from "../../../../backend/routes/inbox.ts";
 import { getAppBasePath } from "../basePath.ts";
 import type { LibraryAvailability } from "../libraryDestination.ts";
 
@@ -9,6 +11,7 @@ const getDefaultApiBaseUrl = () => {
 };
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || getDefaultApiBaseUrl();
+const REQUEST_TIMEOUT_MS = 30000;
 
 export interface ApiErrorBody {
   message?: string;
@@ -81,6 +84,50 @@ const reauthenticateThroughProxy = () => {
   void dropServiceWorker().then(() => window.location.reload());
 };
 
+async function readBody(res: Response): Promise<unknown> {
+  if (!(res.headers.get("content-type") || "").includes("json")) return res.text();
+  try {
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+async function ensureOk(res: Response, url: string) {
+  const isAuthEndpoint = url.includes("/auth/login") || url.includes("/auth/logout");
+  if (res.type === "opaqueredirect") {
+    if (!isAuthEndpoint) reauthenticateThroughProxy();
+    throw new Error("Request was redirected to an authentication provider");
+  }
+  if (res.ok) return res;
+
+  const data = await readBody(res);
+  const error: ApiError = new Error(`Request failed with status code ${res.status}`);
+  const errorData: ApiErrorResponse["data"] =
+    typeof data === "string" || typeof data === "object" ? data : null;
+  error.response = {
+    status: res.status,
+    statusText: res.statusText,
+    headers: res.headers,
+    data: errorData,
+  };
+  if (res.status === 401 && !isAuthEndpoint) {
+    const body = typeof errorData === "object" && errorData ? errorData : undefined;
+    const isAurralAuthError =
+      body?.error === "Unauthorized" ||
+      body?.code === "AUTH_REQUIRED" ||
+      body?.code === "SESSION_INVALID";
+    if (isAurralAuthError) {
+      clearAuthStorage();
+    } else if (body?.error && typeof body.error === "object") {
+      reauthenticateThroughProxy();
+    } else if (!body?.error) {
+      reauthenticateThroughProxy();
+    }
+  }
+  throw error;
+}
+
 async function request(config: RequestConfig) {
   const method = String(config.method || "GET").toUpperCase();
   let url = appendParams(joinUrl(API_BASE_URL, config.url || ""), config.params);
@@ -92,7 +139,7 @@ async function request(config: RequestConfig) {
   } else {
     callerSignal?.addEventListener("abort", abortFromCaller, { once: true });
   }
-  const timeoutMs = Number(config.timeout ?? 30000);
+  const timeoutMs = Number(config.timeout ?? REQUEST_TIMEOUT_MS);
   const timer = timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : null;
   const isBinaryData = config.data instanceof Blob || config.data instanceof FormData;
   const headers: Record<string, string> = {
@@ -101,8 +148,6 @@ async function request(config: RequestConfig) {
   };
   const token = getRequestToken();
   if (token) headers.Authorization = `Bearer ${token}`;
-  const urlPath = String(config.url || "");
-  const isAuthEndpoint = urlPath.includes("/auth/login") || urlPath.includes("/auth/logout");
 
   try {
     const init: RequestInit = { method, headers, signal: controller.signal, redirect: "manual" };
@@ -116,57 +161,30 @@ async function request(config: RequestConfig) {
     if (config.keepalive && (typeof init.body !== "string" || init.body.length < 60_000)) {
       init.keepalive = true;
     }
-    const res = await fetch(url, init);
-
-    if (res.type === "opaqueredirect") {
-      if (!isAuthEndpoint) reauthenticateThroughProxy();
-      throw new Error("Request was redirected to an authentication provider");
-    }
-
-    const contentType = res.headers.get("content-type") || "";
-    let data: unknown;
-    if (contentType.includes("json")) {
-      try {
-        data = await res.json();
-      } catch {
-        data = null;
-      }
-    } else {
-      data = await res.text();
-    }
-    const response = { status: res.status, statusText: res.statusText, headers: res.headers, data };
-    if (!res.ok) {
-      const error: ApiError = new Error(`Request failed with status code ${res.status}`);
-      const errorData: ApiErrorResponse["data"] =
-        typeof data === "string" || typeof data === "object" ? data : null;
-      error.response = {
-        status: res.status,
-        statusText: res.statusText,
-        headers: res.headers,
-        data: errorData,
-      };
-      if (res.status === 401 && !isAuthEndpoint) {
-        const body = typeof errorData === "object" && errorData ? errorData : undefined;
-        const isAurralAuthError =
-          body?.error === "Unauthorized" ||
-          body?.code === "AUTH_REQUIRED" ||
-          body?.code === "SESSION_INVALID";
-        if (isAurralAuthError) {
-          clearAuthStorage();
-        } else if (body?.error && typeof body.error === "object") {
-          reauthenticateThroughProxy();
-        } else if (!body?.error) {
-          reauthenticateThroughProxy();
-        }
-      }
-      throw error;
-    }
-    return response;
+    const res = await ensureOk(await fetch(url, init), String(config.url || ""));
+    const data = await readBody(res);
+    return { status: res.status, statusText: res.statusText, headers: res.headers, data };
   } finally {
     if (timer) clearTimeout(timer);
     callerSignal?.removeEventListener("abort", abortFromCaller);
   }
 }
+
+export async function apiFetch(input: RequestInfo | URL, init: RequestInit = {}) {
+  const headers = new Headers(init.headers);
+  const token = getRequestToken();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+  const res = await fetch(input, {
+    ...init,
+    headers,
+    signal: init.signal ? AbortSignal.any([init.signal, timeout]) : timeout,
+    redirect: "manual",
+  });
+  return ensureOk(res, input instanceof Request ? input.url : String(input));
+}
+
+export const inboxClient = hc<typeof inbox>(API_BASE_URL, { fetch: apiFetch }).inbox;
 
 const api = {
   get: (url: string, config: RequestConfig = {}) => request({ ...config, method: "GET", url }),

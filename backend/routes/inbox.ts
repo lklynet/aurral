@@ -1,10 +1,13 @@
-import express, { type Request } from "express";
+import { Hono } from "hono";
+import * as v from "valibot";
 import { dbOps } from "../db/helpers/index.ts";
 import { asAppError, type AppError } from "../../lib/errors.ts";
 import { hasPermission } from "../middleware/auth.ts";
+import { requireAuth } from "../middleware/guards.ts";
+import { validate } from "../middleware/validate.ts";
 import type { InboxItem } from "../db/helpers/inbox.ts";
-import type { RequestUser } from "../middleware/requestUser.ts";
-import { requireAuth } from "../middleware/requirePermission.ts";
+import type { AppEnv, RequestUser } from "../middleware/requestUser.ts";
+import { errorStatus } from "./shared/errorStatus.ts";
 import { libraryManager } from "../services/libraryManager.ts";
 import {
   enqueueInboxRefreshForUser,
@@ -15,11 +18,8 @@ import {
   updateInboxItem,
 } from "../services/inboxService.ts";
 
-const router = express.Router();
-const lastManualRefresh = new Map();
+const lastManualRefresh = new Map<number, number>();
 const DISCOVERY_DISMISSAL_MS = 90 * 24 * 60 * 60 * 1000;
-
-const getUserId = (req: Request) => Number(req.user?.id);
 
 const metadataText = (metadata: InboxItem["metadata"], key: string) => {
   const value = metadata[key];
@@ -64,121 +64,134 @@ async function addInboxItem(item: InboxItem, user: RequestUser) {
   throw error;
 }
 
-router.get("/", requireAuth, async (req, res) => {
-  try {
-    const limit = Math.max(1, Math.min(50, Number.parseInt(String(req.query.limit), 10) || 50));
-    const result = await getInboxForUser(getUserId(req), {
-      limit,
-    });
-    res.set("Cache-Control", "private, no-cache, no-store, must-revalidate");
-    return res.json(result);
-  } catch (error) {
-    const failure = asAppError(error);
-    return res.status(500).json({ error: "Failed to load inbox", message: failure?.message });
-  }
+const listQuery = v.object({
+  limit: v.optional(
+    v.pipe(
+      v.string(),
+      v.digits(),
+      v.transform((limit) => Math.min(50, Math.max(1, Number(limit)))),
+    ),
+  ),
+});
+const refreshInput = v.object({ zip: v.optional(v.union([v.string(), v.number()])) });
+const itemUpdate = v.object({
+  action: v.pipe(
+    v.string(),
+    v.trim(),
+    v.toLowerCase(),
+    v.picklist(["add", "read", "save", "unsave", "dismiss"]),
+  ),
 });
 
-router.post("/refresh", requireAuth, async (req, res) => {
-  const userId = getUserId(req);
-  const now = Date.now();
-  const last = lastManualRefresh.get(userId) || 0;
-  const cooldown = getInboxRefreshCooldownMs() * 3;
-  const current = getInboxRefreshStatus(userId);
-  if (current.status === "queued" || current.status === "running") {
-    return res.status(202).json({
-      accepted: false,
-      queued: false,
-      jobId: current.jobId,
-      status: current.status,
-      refreshStatus: current,
-    });
-  }
-  if (now - last < cooldown) {
-    return res.status(429).json({
-      error: "Inbox refresh is rate limited",
-      retryAfterSeconds: Math.ceil((cooldown - (now - last)) / 1000),
-    });
-  }
-  try {
-    const refresh = await enqueueInboxRefreshForUser(userId, {
-      reason: "manual",
-      zipCode: String(req.body?.zip || req.query.zip || "").trim(),
-      ipAddress: req.ip || "",
-    });
-    lastManualRefresh.set(userId, now);
-    const result = getInboxForUser(userId, { limit: 50 });
-    return res.status(202).json({
-      ...result,
-      accepted: refresh.queued,
-      queued: refresh.queued,
-      jobId: refresh.jobId,
-      status: refresh.status,
-    });
-  } catch (error) {
-    const failure = asAppError(error);
-    return res.status(500).json({ error: "Failed to refresh inbox", message: failure?.message });
-  }
-});
+export default new Hono<AppEnv>()
+  .basePath("/inbox")
+  .use(requireAuth)
+  .get("/", validate("query", listQuery), (c) => {
+    try {
+      const result = getInboxForUser(c.var.user.id, c.req.valid("query"));
+      c.header("Cache-Control", "private, no-cache, no-store, must-revalidate");
+      return c.json(result, 200);
+    } catch (error) {
+      const failure = asAppError(error);
+      return c.json({ error: "Failed to load inbox", message: failure?.message }, 500);
+    }
+  })
+  .post("/refresh", validate("query", refreshInput), validate("json", refreshInput), async (c) => {
+    const userId = c.var.user.id;
+    const now = Date.now();
+    const last = lastManualRefresh.get(userId) || 0;
+    const cooldown = getInboxRefreshCooldownMs() * 3;
+    const current = getInboxRefreshStatus(userId);
+    if (current.status === "queued" || current.status === "running") {
+      return c.json(
+        {
+          accepted: false,
+          queued: false,
+          jobId: current.jobId,
+          status: current.status,
+          refreshStatus: current,
+        },
+        202,
+      );
+    }
+    if (now - last < cooldown) {
+      return c.json(
+        {
+          error: "Inbox refresh is rate limited",
+          retryAfterSeconds: Math.ceil((cooldown - (now - last)) / 1000),
+        },
+        429,
+      );
+    }
+    try {
+      const refresh = await enqueueInboxRefreshForUser(userId, {
+        reason: "manual",
+        zipCode: String(c.req.valid("json").zip || c.req.valid("query").zip || "").trim(),
+        ipAddress: c.var.clientIp,
+      });
+      lastManualRefresh.set(userId, now);
+      const result = getInboxForUser(userId, { limit: 50 });
+      return c.json(
+        {
+          ...result,
+          accepted: refresh.queued,
+          queued: refresh.queued,
+          jobId: refresh.jobId,
+          status: refresh.status,
+        },
+        202,
+      );
+    } catch (error) {
+      const failure = asAppError(error);
+      return c.json({ error: "Failed to refresh inbox", message: failure?.message }, 500);
+    }
+  })
+  .post("/read-all", (c) => c.json({ unreadCount: markAllInboxItemsRead(c.var.user.id) }, 200))
+  .patch("/:id", validate("json", itemUpdate), async (c) => {
+    const user = c.var.user;
+    const item = dbOps.getInboxItem(user.id, c.req.param("id"));
+    if (!item) return c.json({ error: "Inbox item not found" }, 404);
 
-router.post("/read-all", requireAuth, (req, res) => {
-  const unreadCount = markAllInboxItemsRead(getUserId(req));
-  res.json({ unreadCount });
-});
-
-router.patch("/:id", requireAuth, async (req, res) => {
-  const userId = getUserId(req);
-  const item = dbOps.getInboxItem(userId, req.params.id);
-  if (!item) return res.status(404).json({ error: "Inbox item not found" });
-
-  const action = String(req.body?.action || "")
-    .trim()
-    .toLowerCase();
-  try {
-    if (action === "add") {
-      if (item.isAdded) return res.json({ item });
-      const result = await addInboxItem(item, req.user!);
-      if (result?.error) {
-        return res.status(503).json({ error: result.error });
+    const { action } = c.req.valid("json");
+    try {
+      if (action === "add") {
+        if (item.isAdded) return c.json({ item }, 200);
+        const result = await addInboxItem(item, user);
+        if (result?.error) return c.json({ error: result.error }, 503);
+        return c.json(
+          { item: updateInboxItem(user.id, item.id, { isAdded: true, isRead: true }) },
+          200,
+        );
       }
-      const updated = updateInboxItem(userId, item.id, {
-        isAdded: true,
-        isRead: true,
-      });
-      return res.json({ item: updated });
+      if (action === "read") {
+        return c.json({ item: updateInboxItem(user.id, item.id, { isRead: true }) }, 200);
+      }
+      if (action === "save" || action === "unsave") {
+        return c.json(
+          {
+            item: updateInboxItem(user.id, item.id, {
+              isSaved: action === "save",
+              isRead: true,
+            }),
+          },
+          200,
+        );
+      }
+      return c.json(
+        {
+          item: updateInboxItem(user.id, item.id, {
+            isDismissed: true,
+            isRead: true,
+            dismissedUntil: item.kind === "discovery" ? Date.now() + DISCOVERY_DISMISSAL_MS : null,
+          }),
+        },
+        200,
+      );
+    } catch (error) {
+      const failure = asAppError(error);
+      return c.json(
+        { error: failure?.message || "Failed to update inbox item" },
+        errorStatus(failure),
+      );
     }
-    if (action === "read") {
-      return res.json({ item: updateInboxItem(userId, item.id, { isRead: true }) });
-    }
-    if (action === "save" || action === "unsave") {
-      return res.json({
-        item: updateInboxItem(userId, item.id, {
-          isSaved: action === "save",
-          isRead: true,
-        }),
-      });
-    }
-    if (action === "dismiss") {
-      return res.json({
-        item: updateInboxItem(userId, item.id, {
-          isDismissed: true,
-          isRead: true,
-          dismissedUntil: item.kind === "discovery" ? Date.now() + DISCOVERY_DISMISSAL_MS : null,
-        }),
-      });
-    }
-    return res.status(400).json({ error: "Unsupported inbox action" });
-  } catch (error) {
-    const failure = asAppError(error);
-    return res.status(failure?.statusCode || 500).json({
-      error: failure?.message || "Failed to update inbox item",
-    });
-  }
-});
-
-export type InboxResponse = ReturnType<typeof getInboxForUser>;
-
-export type InboxItemResponse = { item: ReturnType<typeof updateInboxItem> };
-
-export type InboxReadAllResponse = { unreadCount: number };
-
-export default router;
+  });

@@ -14,7 +14,7 @@
   "type": "module",
   "scripts": {
     "build": "pnpm --filter aurral-frontend run build",
-    "start": "node --env-file=backend/.env backend/server.ts",
+    "start": "node --max-semi-space-size=4 --env-file=backend/.env backend/server.ts",
     "check": "vp check && node frontend/scripts/lint-ui-css.mts && node scripts/db-types.mts --check && node scripts/typecheck.mts",
     "lint": "vp lint && node frontend/scripts/lint-ui-css.mts",
     "typecheck": "node scripts/typecheck.mts",
@@ -58,6 +58,7 @@
     "bcrypt": "^6.0.0",
     "better-sqlite3": "^13.0.3",
     "express": "^5.3.0",
+    "hono": "^4.13.13",
     "music-metadata": "^12.2.1",
     "node-taglib-sharp": "^6.0.3",
     "react": "^19.3.1",

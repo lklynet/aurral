@@ -13,12 +13,14 @@
   "type": "module",
   "main": "server.ts",
   "scripts": {
-    "start": "node --env-file=.env server.ts",
+    "start": "node --max-semi-space-size=4 --env-file=.env server.ts",
     "dev": "node --watch --env-file=.env server.ts",
     "test": "pnpm --workspace-root test",
     "auth:reset-admin-password": "node --env-file=.env scripts/resetAdminPassword.ts"
   },
   "dependencies": {
+    "@hono/node-server": "^2.1.5",
+    "@hono/standard-validator": "^0.4.0",
     "@rowanmanning/feed-parser": "^2.1.5",
     "@russellthehippo/honker-node": "^0.5.1",
     "bcrypt": "^6.0.0",
@@ -29,6 +31,7 @@
     "fast-xml-parser": "^5.11.2",
     "fastest-levenshtein": "^1.0.16",
     "helmet": "^8.3.0",
+    "hono": "^4.13.13",
     "html-entities": "^2.6.0",
     "music-metadata": "^12.2.1",
     "node-taglib-sharp": "^6.0.3",
@@ -37,6 +40,7 @@
     "p-queue": "^10.0.0",
     "sharp": "^0.35.5",
     "undici": "^8.12.2",
+    "valibot": "^1.5.0",
     "ws": "^8.22.0",
     "youtubei.js": "~18.1.0"
   },
