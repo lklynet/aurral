@@ -93,6 +93,8 @@ const DEFAULT_PERMISSIONS = {
   deleteTrack: false,
 };
 
+export type Permission = keyof typeof DEFAULT_PERMISSIONS | "accessSettings";
+
 function encryptSubsonicPassword(password: string | null | undefined) {
   const value = password == null ? "" : String(password);
   return value ? encryptWithKey(value, getSettingsEncryptionKey()) : null;

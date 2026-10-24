@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import http from "node:http";
 import express from "express";
-import { Hono } from "hono";
 import { afterAll, beforeAll, test } from "vite-plus/test";
-import type { AppEnv, RequestUser } from "../backend/middleware/requestUser.ts";
+import type { RequestUser } from "../backend/middleware/requestUser.ts";
+import { signedInAs } from "./helpers/honoApp.ts";
 import {
   cleanupIsolatedState,
   createMockHttpServer,
@@ -21,15 +21,6 @@ const [isolatedState, { db }, { dbOps, userOps }, { api }, { handToHono }] =
   );
 
 let user: RequestUser;
-
-const signedInAs = (current: RequestUser | undefined) =>
-  new Hono<AppEnv>()
-    .use(async (c, next) => {
-      c.set("user", current);
-      c.set("clientIp", "127.0.0.1");
-      await next();
-    })
-    .route("/", api);
 
 const patchJson = (body: string) => ({
   method: "PATCH",
@@ -49,7 +40,7 @@ afterAll(async () => {
 });
 
 test("inbox routes reject requests without a signed-in user", async () => {
-  const app = signedInAs(undefined);
+  const app = signedInAs(undefined).route("/", api);
 
   const anonymous = await app.request("/inbox");
   assert.equal(anonymous.status, 401);
@@ -69,7 +60,7 @@ test("inbox item updates accept loosely written actions and reject unknown ones"
   });
   assert.ok(item?.id);
   const path = `/inbox/${encodeURIComponent(item.id)}`;
-  const app = signedInAs(user);
+  const app = signedInAs(user).route("/", api);
 
   const saved = await app.request(path, patchJson(JSON.stringify({ action: " Save " })));
   assert.equal(saved.status, 200);
@@ -83,7 +74,7 @@ test("inbox item updates accept loosely written actions and reject unknown ones"
 });
 
 test("malformed and oversized JSON bodies get client errors", async () => {
-  const app = signedInAs(user);
+  const app = signedInAs(user).route("/", api);
 
   const malformed = await app.request("/inbox/missing", patchJson("{"));
   assert.equal(malformed.status, 400);

@@ -9,7 +9,7 @@ import {
 } from "../../../services/apiClients/index.ts";
 import { dbOps } from "../../../db/helpers/index.ts";
 import { requireStreamAuth } from "../../../middleware/guards.ts";
-import { noCache } from "../../../middleware/noCache.ts";
+import { noCache } from "../../../middleware/cacheHeaders.ts";
 import type { AppEnv } from "../../../middleware/requestUser.ts";
 import { validate } from "../../../middleware/validate.ts";
 import { logger } from "../../../services/logger.ts";

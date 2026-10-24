@@ -6,10 +6,9 @@ import {
   requireAdmin,
   requireRecentAuth,
   requireUserAccount,
-  isRecentlyAuthenticated,
 } from "../middleware/requirePermission.ts";
 import { normalizeUserThemeDocument, ThemeValidationError } from "../services/userTheme.ts";
-import { reconcileLocalNetworkBypassSetting } from "../middleware/auth.ts";
+import { isRecentlyAuthenticated, reconcileLocalNetworkBypassSetting } from "../middleware/auth.ts";
 import { requirePasswordStrength } from "../middleware/auth.ts";
 import { deleteSessionsByUserId } from "../config/session-helpers.ts";
 import { websocketService } from "../services/websocketService.ts";
@@ -321,7 +320,7 @@ router.patch("/:id", requireAuth, async (req, res) => {
     }
     const updates: UserUpdate = {};
     if (password) {
-      if (!isSelf && !isRecentlyAuthenticated(req)) {
+      if (!isSelf && !isRecentlyAuthenticated(req.headers.authorization)) {
         return res.status(401).json({
           error: "reauth_required",
           message: "Please confirm your credentials to continue",

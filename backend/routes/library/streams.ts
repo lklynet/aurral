@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { asAppError } from "../../../lib/errors.ts";
 import { dbOps } from "../../db/helpers/index.ts";
 import { requireStreamAuth } from "../../middleware/guards.ts";
-import { noCache } from "../../middleware/noCache.ts";
+import { noCache } from "../../middleware/cacheHeaders.ts";
 import type { AppEnv } from "../../middleware/requestUser.ts";
 import { sendAudioFile } from "../../services/audioFileStream.ts";
 import { libraryManager } from "../../services/libraryManager.ts";

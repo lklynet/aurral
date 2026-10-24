@@ -1,14 +1,10 @@
-import { hasPermission, sendUnauthorizedResponse, type AuthRequest } from "./auth.ts";
-import { getSessionByToken } from "../config/session-helpers.ts";
+import {
+  hasPermission,
+  isRecentlyAuthenticated,
+  sendUnauthorizedResponse,
+  type AuthRequest,
+} from "./auth.ts";
 import type { Response, NextFunction } from "express";
-
-const DEFAULT_REAUTH_MAX_AGE_MINUTES = 15;
-
-function getBearerToken(req: AuthRequest) {
-  const authHeader = String(req.headers?.authorization || "");
-  if (!authHeader.startsWith("Bearer ")) return null;
-  return authHeader.slice(7).trim();
-}
 
 export function requireAuth(req: AuthRequest, res: Response, next: NextFunction) {
   if (!req.user) {
@@ -35,24 +31,12 @@ export function requireAdmin(req: AuthRequest, res: Response, next: NextFunction
   next();
 }
 
-export function isRecentlyAuthenticated(
-  req: AuthRequest,
-  maxAgeMinutes = DEFAULT_REAUTH_MAX_AGE_MINUTES,
-) {
-  const token = getBearerToken(req);
-  if (!token) return false;
-  const session = getSessionByToken(token);
-  if (!session) return false;
-  const ageMs = Date.now() - session.reauthenticatedAt;
-  return ageMs <= maxAgeMinutes * 60 * 1000;
-}
-
-export function requireRecentAuth(maxAgeMinutes = DEFAULT_REAUTH_MAX_AGE_MINUTES) {
+export function requireRecentAuth(maxAgeMinutes?: number) {
   return (req: AuthRequest, res: Response, next: NextFunction) => {
     if (!req.user) {
       return sendUnauthorizedResponse(req, res);
     }
-    if (!isRecentlyAuthenticated(req, maxAgeMinutes)) {
+    if (!isRecentlyAuthenticated(req.headers.authorization, maxAgeMinutes)) {
       return res.status(401).json({
         error: "reauth_required",
         message: "Please confirm your credentials to continue",

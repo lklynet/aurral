@@ -1,8 +1,8 @@
 import type { Router } from "express";
 import { db } from "../../config/db-sqlite.ts";
 import { dbOps, userOps, userIdentityOps } from "../../db/helpers/index.ts";
+import { isRecentlyAuthenticated } from "../../middleware/auth.ts";
 import {
-  isRecentlyAuthenticated,
   requireAuth,
   requireAdmin,
   requireRecentAuth,
@@ -468,7 +468,7 @@ export function registerPlexLink(router: Router) {
       const target = userOps.getUserById(id);
       if (!target) return res.status(404).json({ error: "User not found" });
       const force = String(req.query?.force || "").toLowerCase() === "true";
-      if (force && !isRecentlyAuthenticated(req)) {
+      if (force && !isRecentlyAuthenticated(req.headers.authorization)) {
         return res.status(401).json({
           error: "reauth_required",
           message: "Please confirm your credentials to continue",

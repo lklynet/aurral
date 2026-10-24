@@ -1,5 +1,3 @@
-import { hc } from "hono/client";
-import type inbox from "../../../../backend/routes/inbox.ts";
 import { getAppBasePath } from "../basePath.ts";
 import type { LibraryAvailability } from "../libraryDestination.ts";
 
@@ -10,7 +8,7 @@ const getDefaultApiBaseUrl = () => {
   return `${basePath}/api`;
 };
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || getDefaultApiBaseUrl();
+export const API_BASE_URL = import.meta.env.VITE_API_URL || getDefaultApiBaseUrl();
 const REQUEST_TIMEOUT_MS = 30000;
 
 export interface ApiErrorBody {
@@ -183,8 +181,6 @@ export async function apiFetch(input: RequestInfo | URL, init: RequestInit = {})
   });
   return ensureOk(res, input instanceof Request ? input.url : String(input));
 }
-
-export const inboxClient = hc<typeof inbox>(API_BASE_URL, { fetch: apiFetch }).inbox;
 
 const api = {
   get: (url: string, config: RequestConfig = {}) => request({ ...config, method: "GET", url }),

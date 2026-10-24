@@ -176,7 +176,7 @@ app.use("/api/auth/oidc/login", authLimiter);
 app.use("/api/auth/oidc/exchange", authLimiter);
 app.use("/api/users/me/password", authLimiter);
 
-app.use("/api/inbox", handToHono);
+app.use(["/api/inbox"], handToHono);
 app.use(
   [
     "/api/library/canonical-stream",

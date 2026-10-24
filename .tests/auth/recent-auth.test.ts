@@ -20,7 +20,6 @@ const [
   { userOps, dbOps },
   { createSession },
   auth,
-  permissions,
   { hashPassword },
   { encryptWithKey },
   { default: subsonicRouter },
@@ -30,7 +29,6 @@ const [
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/config/session-helpers.ts"),
   () => import("../../backend/middleware/auth.ts"),
-  () => import("../../backend/middleware/requirePermission.ts"),
   () => import("../../backend/middleware/passwordHash.ts"),
   () => import("../../backend/config/encryption.ts"),
   () => import("../../backend/routes/subsonic.ts"),
@@ -79,15 +77,8 @@ test("recent authentication requires a valid bearer session", () => {
   assert.ok(user != null);
   const session = createSession(user.id);
 
-  assert.equal(permissions.isRecentlyAuthenticated(createAuthRequest({ headers: {} })), false);
-  assert.equal(
-    permissions.isRecentlyAuthenticated(
-      createAuthRequest({
-        headers: { authorization: `Bearer ${session.token}` },
-      }),
-    ),
-    true,
-  );
+  assert.equal(auth.isRecentlyAuthenticated(undefined), false);
+  assert.equal(auth.isRecentlyAuthenticated(`Bearer ${session.token}`), true);
 });
 
 test("stream requests need sign-in once an account exists, even without a stored single password", () => {

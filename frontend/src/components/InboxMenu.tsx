@@ -12,7 +12,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { parseResponse, type InferResponseType } from "hono/client";
-import { inboxClient } from "../utils/api/core.ts";
+import { inboxClient } from "../utils/api/clients/inbox.ts";
 import { useAuth } from "../contexts/AuthContext.tsx";
 import { useToast } from "../contexts/ToastContext";
 import TooltipButton from "./TooltipButton";

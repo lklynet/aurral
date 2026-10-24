@@ -262,6 +262,12 @@ const getBearerToken = (authorization: string | undefined) => {
   return token || null;
 };
 
+export function isRecentlyAuthenticated(authorization: string | undefined, maxAgeMinutes = 15) {
+  const session = getSessionByToken(getBearerToken(authorization));
+  if (!session) return false;
+  return Date.now() - session.reauthenticatedAt <= maxAgeMinutes * 60 * 1000;
+}
+
 export function getUnauthorizedDetails(authorization: string | undefined) {
   if (getBearerToken(authorization)) {
     return {

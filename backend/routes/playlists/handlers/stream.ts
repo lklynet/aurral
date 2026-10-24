@@ -4,7 +4,7 @@ import { downloadTracker } from "../../../services/downloadJobs/downloadTracker.
 import { downloadWorker } from "../../../services/downloadJobs/downloadWorker.ts";
 import { hasPermission } from "../../../middleware/auth.ts";
 import { requireStreamAuth } from "../../../middleware/guards.ts";
-import { noCache } from "../../../middleware/noCache.ts";
+import { noCache } from "../../../middleware/cacheHeaders.ts";
 import { resolveExistingTrackPath } from "../../../services/downloadPaths.ts";
 import { canAccessPlaylistType } from "./utils.ts";
 import { sendViaNode } from "../../shared/sendViaNode.ts";
