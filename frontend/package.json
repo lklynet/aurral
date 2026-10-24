@@ -14,6 +14,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@tanstack/react-query": "^5.104.3",
+    "hono": "^4.13.13",
     "howler": "^2.2.4",
     "lucide-react": "^1.57.0",
     "react": "^19.3.1",

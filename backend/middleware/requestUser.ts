@@ -15,3 +15,10 @@ declare global {
     }
   }
 }
+
+export type AppEnv = {
+  Variables: {
+    user?: RequestUser;
+    clientIp: string;
+  };
+};
