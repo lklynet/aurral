@@ -10,7 +10,7 @@ import {
   type PipelinePayload as TrackerPayload,
 } from "./downloadJobs/downloadTracker.ts";
 import { prowlarrClient } from "./prowlarrClient.ts";
-import { getDownloadClient } from "./download/downloadClientSettings.ts";
+import { getUsenetClient } from "./download/downloadClientSettings.ts";
 import { logger } from "./logger.ts";
 import {
   buildUsenetSearchQueries,
@@ -154,19 +154,6 @@ interface PendingUpgrade {
   nzbId: Promise<NzbId | null>;
   settle: (nzbId: NzbId | null) => void;
   job: UsenetJob;
-}
-
-function getUsenetClient(preferredKey: string | null = null) {
-  if (preferredKey === "sabnzbd" || preferredKey === "nzbget") {
-    return getDownloadClient(preferredKey);
-  }
-  const sabnzbd = getDownloadClient("sabnzbd");
-  if (sabnzbd.isConfigured()) return sabnzbd;
-  return getDownloadClient("nzbget");
-}
-
-function getUsenetClientKey(preferredKey: string | null = null) {
-  return getUsenetClient(preferredKey).key;
 }
 
 const isAutomaticUpgrade = (job: UsenetJob) =>
@@ -413,7 +400,7 @@ export async function collectDownloadedAudioFiles(
   historyItem: UsenetHistoryItem | null | undefined,
   preferredClient: string | null = null,
 ) {
-  const clientKey = getUsenetClientKey(preferredClient);
+  const clientKey = getUsenetClient(preferredClient).key;
   const roots = uniqueResolvedPaths(
     [
       historyItem?.FinalDir,
@@ -653,8 +640,9 @@ async function handleUsenetDownload(payload: UsenetPayload, helpers: PipelineHel
       console.warn(err);
     });
 
-  const client = getUsenetClient(payload.manualDownloadClient);
-  const clientKey = getUsenetClientKey(payload.manualDownloadClient);
+  const indexerClient = prowlarrClient.getIndexerDownloadClient(release.indexerId);
+  const client = getUsenetClient(indexerClient ?? payload.manualDownloadClient);
+  const clientKey = client.key;
   const releaseMetadata = {
     downloadSource: "usenet",
     downloadClient: clientKey,
@@ -707,6 +695,7 @@ async function handleUsenetDownload(payload: UsenetPayload, helpers: PipelineHel
   }
   let submission;
   try {
+    if (indexerClient && !client.isConfigured()) throw new Error(`${client.name} is not set up`);
     const nzb = await prowlarrClient.downloadNzb(release.downloadUrl, release);
     payload = withNzbGrab(payload);
     if (!isPipelinePayloadActive(payload)) return null;

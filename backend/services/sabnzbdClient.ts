@@ -65,6 +65,56 @@ export const sabnzbdSettings = Object.freeze({
   testConnection: true,
 });
 
+export const tidarrSettings = Object.freeze({
+  key: "tidarr",
+  label: "Tidarr",
+  subtitle: "Tidal",
+  enabledDefault: false,
+  testRequiresEnabled: true,
+  fields: Object.freeze([
+    Object.freeze({ key: "enabled", label: "Enable Tidarr", type: "toggle" }),
+    Object.freeze({
+      key: "url",
+      label: "Server URL",
+      type: "url",
+      required: true,
+      section: "Connection",
+      placeholder: "http://localhost:8484",
+    }),
+    Object.freeze({
+      key: "apiKey",
+      label: "API key",
+      type: "password",
+      required: true,
+      secret: true,
+      section: "Connection",
+    }),
+    Object.freeze({
+      key: "priority",
+      label: "Source priority",
+      type: "number",
+      min: 1,
+      max: 1000,
+      section: "Downloads",
+    }),
+  ]),
+  defaults: Object.freeze({
+    enabled: false,
+    url: "",
+    apiKey: "",
+    priority: 20,
+  }),
+  validation: Object.freeze({ required: ["url", "apiKey"], url: ["url"] }),
+  testConnection: true,
+});
+
+const SABNZBD_API_CLIENTS = {
+  sabnzbd: { name: "SABnzbd", apiPath: "/api" },
+  tidarr: { name: "Tidarr", apiPath: "/api/sabnzbd/api" },
+} as const;
+
+type SabnzbdApiClientKey = keyof typeof SABNZBD_API_CLIENTS;
+
 type SabnzbdConfig = {
   enabled?: boolean;
   url?: string | null;
@@ -81,8 +131,6 @@ type SabnzbdConnection = {
   connected: boolean;
   message: string;
   version?: string | null;
-  downloadPaused?: boolean;
-  downloadRate?: number;
   downloadPath?: string | null;
   directories?: Awaited<ReturnType<SabnzbdClient["getDownloadDirectories"]>>;
 };
@@ -90,11 +138,10 @@ type SabnzbdConnection = {
 type SabnzbdSlot = { nzo_id: string; storage?: string | null };
 type NzbId = string | number | null | undefined;
 
-let connectionCache: {
-  checkedAt: number;
-  result: SabnzbdConnection | null;
-  settingsKey: string | null;
-} = { checkedAt: 0, result: null, settingsKey: null };
+const connectionCache = new Map<
+  SabnzbdApiClientKey,
+  { checkedAt: number; result: SabnzbdConnection; settingsKey: string }
+>();
 let folderCleanup: Promise<unknown> = Promise.resolve();
 
 function normalizeStoragePath(value: unknown) {
@@ -105,8 +152,8 @@ function normalizeStoragePath(value: unknown) {
   return process.platform === "win32" ? normalized.toLowerCase() : normalized;
 }
 
-function getSettings(config: SabnzbdConfig | null = null) {
-  const sabnzbd = config || dbOps.getSettings()?.integrations?.sabnzbd || {};
+function getSettings(key: SabnzbdApiClientKey, config: SabnzbdConfig | null = null) {
+  const sabnzbd: SabnzbdConfig = config || dbOps.getSettings()?.integrations?.[key] || {};
   return {
     enabled: sabnzbd.enabled === true,
     url: normalizeBaseUrl(sabnzbd.url),
@@ -122,10 +169,10 @@ function getSettingsKey(settings: { url: string; apiKey: string }) {
   return JSON.stringify([settings.url, settings.apiKey]);
 }
 
-function buildUrl(url: string | null | undefined, apiKey: string) {
+function buildUrl(url: string | null | undefined, apiPath: string, apiKey: string) {
   const base = normalizeBaseUrl(url);
   if (!base) return "";
-  return `${base}/api?apikey=${encodeURIComponent(apiKey)}&output=json`;
+  return `${base}${apiPath}?apikey=${encodeURIComponent(apiKey)}&output=json`;
 }
 
 function buildNzbUpload(fileName: string, content: Buffer) {
@@ -177,13 +224,15 @@ function readCategoryDirectory(entries: unknown, category: unknown) {
 }
 
 export class SabnzbdClient {
-  declare key: string;
+  declare key: SabnzbdApiClientKey;
   declare name: string;
+  declare apiPath: string;
   declare _config: SabnzbdConfig | null;
 
-  constructor(config: SabnzbdConfig | null = null) {
-    this.key = "sabnzbd";
-    this.name = "SABnzbd";
+  constructor(config: SabnzbdConfig | null = null, key: SabnzbdApiClientKey = "sabnzbd") {
+    this.key = key;
+    this.name = SABNZBD_API_CLIENTS[key].name;
+    this.apiPath = SABNZBD_API_CLIENTS[key].apiPath;
     this._config = config;
   }
 
@@ -192,7 +241,12 @@ export class SabnzbdClient {
   }
 
   _getSettings() {
-    return getSettings(this._config);
+    return getSettings(this.key, this._config);
+  }
+
+  _apiUrl() {
+    const settings = this._getSettings();
+    return buildUrl(settings.url, this.apiPath, settings.apiKey);
   }
 
   isConfigured() {
@@ -202,13 +256,11 @@ export class SabnzbdClient {
 
   getStatus() {
     const settings = this._getSettings();
-    const cached =
-      connectionCache.settingsKey === getSettingsKey(settings) ? connectionCache.result : null;
+    const cached = connectionCache.get(this.key);
     return {
       enabled: settings.enabled,
       configured: this.isConfigured(),
-      connected: cached?.connected === true,
-      downloadPaused: cached?.downloadPaused === true,
+      connected: cached?.settingsKey === getSettingsKey(settings) && cached.result.connected,
     };
   }
 
@@ -217,8 +269,7 @@ export class SabnzbdClient {
     params: Record<string, string | number | null | undefined> = {},
     { file = null }: { file?: ReturnType<typeof buildNzbUpload> | null } = {},
   ) {
-    const settings = this._getSettings();
-    const base = buildUrl(settings.url, settings.apiKey);
+    const base = this._apiUrl();
     const query = Object.entries({ mode, ...params })
       .filter(([, v]) => v != null && v !== "")
       .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
@@ -230,7 +281,7 @@ export class SabnzbdClient {
         })
       : await axios.get(`${base}&${query}`, { timeout: 45000 });
     if (response.status !== 200) {
-      throw new Error(`SABnzbd ${mode} failed: HTTP ${response.status}`);
+      throw new Error(`${this.name} ${mode} failed: HTTP ${response.status}`);
     }
     return response.data;
   }
@@ -247,7 +298,7 @@ export class SabnzbdClient {
     addPaused?: boolean | null;
   }) {
     const settings = this._getSettings();
-    if (!content?.length) throw new Error("SABnzbd append requires an NZB file");
+    if (!content?.length) throw new Error(`${this.name} append requires an NZB file`);
     const nzbName = `${sanitizeNzbName(name)}.nzb`;
     const result = await this.api(
       "addfile",
@@ -260,7 +311,7 @@ export class SabnzbdClient {
       { file: buildNzbUpload(nzbName, content) },
     );
     if (!result?.nzo_ids || result.nzo_ids.length === 0) {
-      throw new Error("SABnzbd rejected the NZB");
+      throw new Error(`${this.name} rejected the NZB${result?.error ? `: ${result.error}` : ""}`);
     }
     return {
       nzbId: String(result.nzo_ids[0]),
@@ -306,6 +357,7 @@ export class SabnzbdClient {
           item,
           await this.getDownloadDirectories(),
           settings.category,
+          this,
         );
       }
       return removeHistory();
@@ -359,7 +411,7 @@ export class SabnzbdClient {
         ok: false,
         configured: false,
         connected: false,
-        message: "SABnzbd is disabled",
+        message: `${this.name} is disabled`,
       };
     }
     if (!settings.url || !settings.apiKey) {
@@ -367,53 +419,42 @@ export class SabnzbdClient {
         ok: false,
         configured: false,
         connected: false,
-        message: "SABnzbd URL and API key are required",
+        message: `${this.name} URL and API key are required`,
       };
     }
     const settingsKey = getSettingsKey(settings);
-    if (
-      !force &&
-      connectionCache.settingsKey === settingsKey &&
-      connectionCache.result &&
-      Date.now() - connectionCache.checkedAt < 30000
-    ) {
-      return connectionCache.result;
+    const cached = connectionCache.get(this.key);
+    if (!force && cached?.settingsKey === settingsKey && Date.now() - cached.checkedAt < 30000) {
+      return cached.result;
     }
+    let result: SabnzbdConnection;
     try {
-      const apiUrl = buildUrl(settings.url, settings.apiKey);
-      const [versionRes, statsRes, directories] = await Promise.all([
-        axios.get(`${apiUrl}&mode=version`, { timeout: 15000 }),
-        axios.get(`${apiUrl}&mode=server_stats`, { timeout: 15000 }),
+      const [versionRes, directories] = await Promise.all([
+        axios.get(`${this._apiUrl()}&mode=version`, { timeout: 15000 }),
         this.getDownloadDirectories(),
       ]);
       const version = versionRes.data?.version || null;
-      const paused = statsRes.data?.paused === true;
-      const rate = parseFloat(statsRes.data?.kbpersec || 0);
-      const result = {
+      result = {
         ok: true,
         configured: true,
         connected: true,
         version,
-        downloadPaused: paused,
-        downloadRate: rate,
         downloadPath: directories.destDir || null,
         directories,
-        message: `SABnzbd is connected${version ? ` (v${version})` : ""}`,
+        message: `${this.name} is connected${version ? ` (v${version})` : ""}`,
       };
-      connectionCache = { checkedAt: Date.now(), result, settingsKey };
-      return result;
     } catch (error) {
-      const failure = asAppError(error);
-      const result = {
+      result = {
         ok: false,
         configured: true,
         connected: false,
-        message: failure?.message || "Failed to reach SABnzbd",
+        message: asAppError(error)?.message || `Failed to reach ${this.name}`,
       };
-      connectionCache = { checkedAt: Date.now(), result, settingsKey };
-      return result;
     }
+    connectionCache.set(this.key, { checkedAt: Date.now(), result, settingsKey });
+    return result;
   }
 }
 
 export const sabnzbdClient = new SabnzbdClient();
+export const tidarrClient = new SabnzbdClient(null, "tidarr");

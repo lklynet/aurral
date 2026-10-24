@@ -20,6 +20,7 @@ import {
   getOverlapCheckedLidarrRoots,
 } from "../../../services/downloadFolderConfig.ts";
 import { normalizePathMappings } from "../../../services/pathMappings.ts";
+import { isUsenetClientKey } from "../../../services/usenetClientCommon.ts";
 import { readOnlyFolderOverlapping } from "../../../services/libraryFolders.ts";
 import { logger } from "../../../services/logger.ts";
 import { normalizeLidarrApiKey, normalizeLidarrUrl } from "../../../services/lidarrClient.ts";
@@ -267,7 +268,7 @@ export function registerGeneral(router: Router) {
             : {};
         nextProwlarr.indexers = Object.fromEntries(
           Object.entries(indexers)
-            .map(([id, entry]): [string, { enabled: boolean; priority: number }] | null => {
+            .map(([id, entry]): [string, ProwlarrIndexers[string]] | null => {
               const parsedId = Number.parseInt(id, 10);
               if (!Number.isFinite(parsedId)) return null;
               const priority = Number.parseInt(String(entry?.priority), 10);
@@ -276,6 +277,9 @@ export function registerGeneral(router: Router) {
                 {
                   enabled: entry?.enabled !== false,
                   priority: Number.isFinite(priority) ? Math.min(1000, Math.max(1, priority)) : 25,
+                  ...(isUsenetClientKey(entry?.downloadClient)
+                    ? { downloadClient: entry.downloadClient }
+                    : {}),
                 },
               ];
             })
@@ -372,6 +376,31 @@ export function registerGeneral(router: Router) {
         nextSabnzbd.addPaused = nextSabnzbd.addPaused === true;
         integrations.sabnzbd = nextSabnzbd;
       }
+      if (integrations?.tidarr) {
+        const nextTidarr = {
+          ...(currentSettings.integrations?.tidarr || {}),
+          ...integrations.tidarr,
+        };
+        const trimmedUrl = String(nextTidarr.url || "").trim();
+        if (trimmedUrl) {
+          const urlValidation = validateExternalUrl(trimmedUrl);
+          if (!urlValidation.valid) {
+            return res.status(400).json({
+              error: `Invalid Tidarr URL: ${urlValidation.error}`,
+            });
+          }
+          nextTidarr.url = urlValidation.url.replace(/\/+$/, "");
+        } else {
+          nextTidarr.url = "";
+        }
+        nextTidarr.apiKey = typeof nextTidarr.apiKey === "string" ? nextTidarr.apiKey.trim() : "";
+        nextTidarr.enabled = nextTidarr.enabled === true;
+        const priority = Number.parseInt(nextTidarr.priority, 10);
+        nextTidarr.priority = Number.isFinite(priority)
+          ? Math.min(1000, Math.max(1, priority))
+          : 20;
+        integrations.tidarr = nextTidarr;
+      }
       if (integrations?.deemix) {
         const nextDeemix = {
           ...(currentSettings.integrations?.deemix || {}),
@@ -454,6 +483,7 @@ export function registerGeneral(router: Router) {
         "prowlarr",
         "nzbget",
         "sabnzbd",
+        "tidarr",
         "ytdlp",
         "deemix",
         "lastfm",

@@ -180,7 +180,7 @@ function readConfigValue(configEntries: NzbgetConfigEntry[], name: string) {
 }
 
 export class NzbgetClient {
-  declare key: string;
+  declare key: "nzbget";
   declare name: string;
   declare _config: NzbgetConfig | null;
 

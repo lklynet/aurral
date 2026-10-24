@@ -105,7 +105,7 @@ const SETTINGS_SEARCH_METADATA: Partial<Record<string, SettingsSearchMetadata>> 
     },
   },
   indexers: {
-    sections: ["Connection", "Indexing", "Priority", "Details"],
+    sections: ["Connection", "Indexing", "Downloads", "Details"],
     services: {
       Prowlarr: "indexer manager search",
       Usenet: "audio indexers",
@@ -117,6 +117,7 @@ const SETTINGS_SEARCH_METADATA: Partial<Record<string, SettingsSearchMetadata>> 
       "Music categories": "audio category 3000",
       "Result limit": "maximum search results",
       "Enable in Aurral": "indexer enabled",
+      "Download client": "SABnzbd NZBGet Tidarr indexer grabs",
       Priority: "indexer order preference",
       Protocol: "usenet torrent",
       "Prowlarr status": "enabled disabled",
@@ -138,6 +139,7 @@ const SETTINGS_SEARCH_METADATA: Partial<Record<string, SettingsSearchMetadata>> 
       "yt-dlp": "YouTube web download client",
       NZBGet: "Usenet download client",
       SABnzbd: "Usenet download client",
+      Tidarr: "Tidal download client",
       deemix: "Deezer download client",
     },
     fields: {
@@ -154,6 +156,7 @@ const SETTINGS_SEARCH_METADATA: Partial<Record<string, SettingsSearchMetadata>> 
       "Enable yt-dlp": "YouTube web on off",
       "Enable NZBGet": "Usenet on off",
       "Enable SABnzbd": "Usenet on off",
+      "Enable Tidarr": "Tidal on off",
       "Enable deemix": "Deezer on off",
       Bitrate: "deemix FLAC MP3 quality",
       "Server URL": "client address host connection",

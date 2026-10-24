@@ -15,6 +15,7 @@ import {
   normalizeQualityProfile,
 } from "../../services/qualityProfileModel.ts";
 import type { SettingsRow } from "../rows.ts";
+import type { UsenetClientKey } from "../../services/usenetClientCommon.ts";
 import type { CacheOps } from "./cache.ts";
 import type { DiscoveryCacheOps } from "./discovery.ts";
 import type { ArtistOverrideOps } from "./overrides.ts";
@@ -55,6 +56,7 @@ type SlskdIntegration = IntegrationDefaults["slskd"] & { cleanupAfterRuns?: bool
 interface ProwlarrIndexerOverride {
   enabled: boolean;
   priority: number;
+  downloadClient?: UsenetClientKey;
 }
 
 type ProwlarrIntegration = Omit<IntegrationDefaults["prowlarr"], "indexers"> & {
@@ -64,6 +66,8 @@ type ProwlarrIntegration = Omit<IntegrationDefaults["prowlarr"], "indexers"> & {
 type NzbgetIntegration = IntegrationDefaults["nzbget"] & { deleteLeftovers?: boolean };
 
 type SabnzbdIntegration = IntegrationDefaults["sabnzbd"];
+
+type TidarrIntegration = IntegrationDefaults["tidarr"];
 
 type YtdlpIntegration = IntegrationDefaults["ytdlp"];
 
@@ -116,6 +120,7 @@ export interface StoredIntegrations {
   prowlarr?: Partial<ProwlarrIntegration>;
   nzbget?: Partial<NzbgetIntegration>;
   sabnzbd?: Partial<SabnzbdIntegration>;
+  tidarr?: Partial<TidarrIntegration>;
   ytdlp?: Partial<YtdlpIntegration>;
   deemix?: Partial<DeemixIntegration>;
   ticketmaster?: Partial<TicketmasterIntegration>;

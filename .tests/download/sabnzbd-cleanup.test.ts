@@ -42,7 +42,11 @@ const folder = () => path.join(root, "aurral", "release");
 const remove = (
   historyItem: { storage: string } = { storage: folder() },
   directories: { destDir: string } = { destDir: root },
-) => removeSabnzbdDownloadFolder(historyItem, directories, "aurral");
+) =>
+  removeSabnzbdDownloadFolder(historyItem, directories, "aurral", {
+    key: "sabnzbd",
+    name: "SABnzbd",
+  });
 const exists = async (target: string) => Boolean(await fs.stat(target).catch(() => null));
 
 test("removes SABnzbd's completed folder and keeps sibling downloads", async () => {
