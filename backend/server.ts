@@ -55,7 +55,7 @@ import shareLinksRouter from "./routes/shareLinks.ts";
 import { stopShareListener, syncShareListener } from "./services/shareLinks/shareListener.ts";
 import { asAppError, type AppError } from "../lib/errors.ts";
 import { JSON_BODY_LIMIT } from "./routes/api.ts";
-import { handToHono } from "./routes/shared/expressHandoff.ts";
+import { handToHono, resolveTokenUser } from "./routes/shared/expressHandoff.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -177,6 +177,19 @@ app.use("/api/auth/oidc/exchange", authLimiter);
 app.use("/api/users/me/password", authLimiter);
 
 app.use("/api/inbox", handToHono);
+app.use(
+  [
+    "/api/library/canonical-stream",
+    "/api/library/file-stream",
+    "/api/library/stream",
+    "/api/playlists/stream",
+    "/api/playlists/staging-stream",
+    "/api/artists/:mbid/stream",
+  ],
+  resolveTokenUser,
+  handToHono,
+);
+app.all(/^\/rest\/stream(?:\.view)?\/?$/i, handToHono);
 
 app.use(express.json({ limit: JSON_BODY_LIMIT }));
 app.use("/api/settings", settingsRouter);

@@ -1,4 +1,3 @@
-import { registerStream } from "./handlers/stream.ts";
 import { registerArtists } from "./handlers/artists.ts";
 import { registerAlbums } from "./handlers/albums.ts";
 import { registerTracks } from "./handlers/tracks.ts";
@@ -13,7 +12,6 @@ import mountRoutes from "../shared/mountRoutes.ts";
 export default mountRoutes([
   registerLibraryIndex,
   registerArtwork,
-  registerStream,
   registerArtists,
   registerMonitoring,
   registerAlbums,

@@ -1,10 +1,10 @@
+import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
-import type { Response } from "express";
+import send from "send";
+import { asAppError } from "../../lib/errors.ts";
 import { isOwnKey } from "../../lib/ownKey.ts";
 
-type SendFileError = Error & { status?: number; headers?: Record<string, string>; code?: string };
-
-const MISSING_FILE_CODES = new Set<string | undefined>([
+const MISSING_FILE_CODES = new Set<string | number | undefined>([
   "ENOENT",
   "ENOTDIR",
   "EISDIR",
@@ -12,6 +12,7 @@ const MISSING_FILE_CODES = new Set<string | undefined>([
 ]);
 
 const AUDIO_CONTENT_TYPES = {
+  aac: "audio/aac",
   aiff: "audio/x-aiff",
   flac: "audio/flac",
   m4a: "audio/mp4",
@@ -20,6 +21,8 @@ const AUDIO_CONTENT_TYPES = {
   ogg: "audio/ogg",
   oga: "audio/ogg",
   mp3: "audio/mpeg",
+  wav: "audio/wav",
+  webm: "audio/webm",
 };
 
 const knownContentType = (format: string) =>
@@ -30,26 +33,29 @@ export function audioContentType(format: string) {
   return knownContentType(normalized) || `audio/${normalized}`;
 }
 
-export function streamAudioFile(res: Response, filePath: string) {
-  const absolutePath = path.resolve(String(filePath));
+export function sendAudioFile(req: IncomingMessage, res: ServerResponse, filePath: string) {
+  const absolutePath = path.resolve(filePath);
   const contentType = knownContentType(path.extname(absolutePath).slice(1).toLowerCase());
-  return new Promise((resolve, reject) => {
-    res.sendFile(
-      path.basename(absolutePath),
-      {
-        root: path.dirname(absolutePath),
-        dotfiles: "allow",
-        ...(contentType ? { headers: { "Content-Type": contentType } } : {}),
-      },
-      (error: SendFileError | undefined) => {
-        if (!error || res.headersSent) return resolve(true);
-        if (error.status === 416) {
-          res.status(416).set(error.headers).end();
-          return resolve(true);
+  return new Promise<boolean>((resolve, reject) => {
+    res.once("close", () => resolve(true));
+    send(req, encodeURI(absolutePath), { dotfiles: "allow" })
+      .on("headers", () => {
+        if (contentType) res.setHeader("Content-Type", contentType);
+      })
+      .on("directory", () => resolve(false))
+      .on("error", (error: unknown) => {
+        const failure = asAppError(error);
+        if (res.headersSent) {
+          res.destroy();
+        } else if (failure?.status === 416) {
+          res.statusCode = 416;
+          res.end();
+        } else if (failure?.status === 404 || MISSING_FILE_CODES.has(failure?.code)) {
+          resolve(false);
+        } else {
+          reject(error);
         }
-        if (error.status === 404 || MISSING_FILE_CODES.has(error.code)) return resolve(false);
-        return reject(error);
-      },
-    );
+      })
+      .pipe(res);
   });
 }

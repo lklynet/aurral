@@ -1,5 +1,4 @@
-import { createRouteHarness } from "../library/routeHarness.ts";
-import { registerStream } from "../../backend/routes/artists/handlers/stream.ts";
+import artistStream from "../../backend/routes/artists/handlers/stream.ts";
 
 export const json = (body: unknown, status: number = 200) =>
   new Response(JSON.stringify(body), {
@@ -18,47 +17,34 @@ export function stubFetch(
   });
 }
 
+const parseEvent = (block: string) => {
+  const [event, data] = block.split("\n");
+  return { event: event.slice("event: ".length), data: JSON.parse(data.slice("data: ".length)) };
+};
+
 export function openArtistStream(mbid: string, query: Record<string, string> = {}) {
-  const routes = createRouteHarness(registerStream);
-  const writes: string[] = [];
+  const parsed: ReturnType<typeof parseEvent>[] = [];
   const listeners = new Set<() => void>();
-  let closeStream = () => {};
-  void routes.get("GET /:mbid/stream")(
-    {
-      params: { mbid },
-      query,
-      headers: {},
-      socket: { destroyed: false },
-      on(event: string, handler: () => void) {
-        if (event === "close") closeStream = handler;
+  const controller = new AbortController();
+  const read = async () => {
+    const response = await artistStream.request(
+      `/artists/${mbid}/stream?${new URLSearchParams(query)}`,
+      {
+        signal: controller.signal,
       },
-    },
-    {
-      setHeader() {},
-      status() {
-        return this;
-      },
-      json() {
-        return this;
-      },
-      write(value: string) {
-        writes.push(value);
+    );
+    let buffer = "";
+    for await (const text of response.body!.pipeThrough(new TextDecoderStream())) {
+      buffer += text;
+      for (let end = buffer.indexOf("\n\n"); end >= 0; end = buffer.indexOf("\n\n")) {
+        parsed.push(parseEvent(buffer.slice(0, end)));
+        buffer = buffer.slice(end + 2);
         for (const notify of listeners) notify();
-      },
-      flush() {},
-      end() {},
-    },
-  );
-  const events = () => {
-    const parsed = [];
-    for (let index = 0; index + 1 < writes.length; index += 2) {
-      parsed.push({
-        event: writes[index].slice("event: ".length).trim(),
-        data: JSON.parse(writes[index + 1].slice("data: ".length)),
-      });
+      }
     }
-    return parsed;
   };
+  read().catch(() => {});
+  const events = () => parsed;
   const waitFor = async (
     predicate: (event: ReturnType<typeof events>[number]) => boolean,
     { timeoutMs = 3000 } = {},
@@ -80,5 +66,5 @@ export function openArtistStream(mbid: string, query: Record<string, string> = {
       listeners.add(notify);
     });
   };
-  return { events, waitFor, close: () => closeStream() };
+  return { events, waitFor, close: () => controller.abort() };
 }

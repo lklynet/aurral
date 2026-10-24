@@ -1,4 +1,6 @@
-import type { Router } from "express";
+import { Hono } from "hono";
+import { streamSSE } from "hono/streaming";
+import * as v from "valibot";
 import { UUID_REGEX } from "../../../../lib/uuid.ts";
 import {
   musicbrainzGetArtistAppearsOnReleaseGroups,
@@ -6,9 +8,10 @@ import {
   musicbrainzGetArtistNameByMbid,
 } from "../../../services/apiClients/index.ts";
 import { dbOps } from "../../../db/helpers/index.ts";
-import { noCache } from "../../../middleware/cache.ts";
-import { verifyTokenAuth } from "../../../middleware/auth.ts";
-import { queryText, sendSSE } from "../utils.ts";
+import { requireStreamAuth } from "../../../middleware/guards.ts";
+import { noCache } from "../../../middleware/noCache.ts";
+import type { AppEnv } from "../../../middleware/requestUser.ts";
+import { validate } from "../../../middleware/validate.ts";
 import { logger } from "../../../services/logger.ts";
 import { getArtistImage } from "../../../services/imageService.ts";
 import { attachCachedCoverUrls } from "../../../services/releaseGroupCoverService.ts";
@@ -26,191 +29,166 @@ type AppearsOnReleaseGroups = Awaited<
   ReturnType<typeof musicbrainzGetArtistAppearsOnReleaseGroups>
 >;
 
-export function registerStream(router: Router) {
-  router.get<"/:mbid/stream">("/:mbid/stream", noCache, async (req, res) => {
-    try {
-      const { mbid } = req.params;
-      const streamArtistName = queryText(req.query.artistName);
-      const selectedReleaseTypes =
-        typeof req.query.releaseTypes === "string" && req.query.releaseTypes.trim()
-          ? req.query.releaseTypes
+const streamQuery = v.object({
+  artistName: v.optional(v.pipe(v.string(), v.trim())),
+  releaseTypes: v.optional(
+    v.pipe(
+      v.string(),
+      v.transform((types) =>
+        types.trim()
+          ? types
               .split(",")
               .map((value) => value.trim())
               .filter(Boolean)
-          : null;
-      const parsedAppearsOnLimit = Number.parseInt(String(req.query.appearsOnLimit), 10);
-      const appearsOnLimit =
-        Number.isFinite(parsedAppearsOnLimit) && parsedAppearsOnLimit > 0
-          ? parsedAppearsOnLimit
-          : null;
+          : null,
+      ),
+    ),
+  ),
+  appearsOnLimit: v.optional(
+    v.pipe(
+      v.string(),
+      v.transform((limit) => {
+        const parsed = Number.parseInt(limit, 10);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+      }),
+    ),
+  ),
+});
 
-      if (!UUID_REGEX.test(mbid)) {
-        return res.status(400).json({
+export default new Hono<AppEnv>()
+  .basePath("/artists")
+  .get("/:mbid/stream", noCache, requireStreamAuth, validate("query", streamQuery), (c) => {
+    const mbid = c.req.param("mbid");
+    if (!UUID_REGEX.test(mbid)) {
+      return c.json(
+        {
           error: "Invalid MBID format",
           message: `"${mbid}" is not a valid MusicBrainz ID. MBIDs must be UUIDs.`,
-        });
-      }
+        },
+        400,
+      );
+    }
+    const query = c.req.valid("query");
+    const streamArtistName = query.artistName ?? "";
+    const selectedReleaseTypes = query.releaseTypes ?? null;
+    const appearsOnLimit = query.appearsOnLimit ?? null;
+    const { signal } = c.req.raw;
+    const isClientConnected = () => !signal.aborted;
 
-      if (!verifyTokenAuth(req)) {
-        return res.status(401).json({
-          error: "Unauthorized",
-          message: "Authentication required",
-        });
-      }
-
-      res.setHeader("Content-Type", "text/event-stream");
-      res.setHeader("Cache-Control", "no-cache");
-      res.setHeader("Connection", "keep-alive");
-      res.setHeader("X-Accel-Buffering", "no");
-
-      let clientDisconnected = false;
-      const requestController = new AbortController();
-      req.on("close", () => {
-        clientDisconnected = true;
-        requestController.abort();
-      });
-
-      const isClientConnected = () => !clientDisconnected && !req.socket.destroyed;
-
-      sendSSE(res, "connected", { mbid });
-
-      const override = dbOps.getArtistOverride(mbid);
-      const resolvedMbid = override?.musicbrainzId || mbid;
-      const initialName = streamArtistName || "Unknown Artist";
-      const sendArtist = (payload: unknown) => {
-        if (!isClientConnected()) return;
-        sendSSE(res, "artist", payload);
+    c.header("X-Accel-Buffering", "no");
+    return streamSSE(c, async (stream) => {
+      const send = (event: string, data: unknown) =>
+        stream.writeSSE({ event, data: JSON.stringify(data) });
+      const sendArtist = async (payload: unknown) => {
+        if (isClientConnected()) await send("artist", payload);
       };
-
-      sendArtist({
-        ...buildArtistBase(initialName, resolvedMbid),
-        tags: [],
-        genres: [],
-      });
+      await send("connected", { mbid });
 
       try {
-        const tasks = [];
-        const metadataArtistPromise = getArtistByMbid(resolvedMbid, {
-          signal: requestController.signal,
-        }).catch(() => null);
+        const resolvedMbid = dbOps.getArtistOverride(mbid)?.musicbrainzId || mbid;
+        await sendArtist({
+          ...buildArtistBase(streamArtistName || "Unknown Artist", resolvedMbid),
+          tags: [],
+          genres: [],
+        });
+
+        const metadataArtistPromise = getArtistByMbid(resolvedMbid, { signal }).catch(() => null);
         const namePromise = (async () => {
           const metadataArtist = await metadataArtistPromise;
           if (metadataArtist?.name) return metadataArtist.name;
           if (streamArtistName) return streamArtistName;
-          const name =
-            (await musicbrainzGetArtistNameByMbid(resolvedMbid, {
-              signal: requestController.signal,
-            })) || "Unknown Artist";
-          return name;
+          return (
+            (await musicbrainzGetArtistNameByMbid(resolvedMbid, { signal })) || "Unknown Artist"
+          );
         })();
-        tasks.push(
-          Promise.all([metadataArtistPromise, namePromise]).then(async ([metadataArtist, name]) => {
+
+        const artistTask = Promise.all([metadataArtistPromise, namePromise]).then(
+          async ([metadataArtist, name]) => {
             if (!metadataArtist || !isClientConnected()) return;
             const tagPayload = await getArtistTagPayload(resolvedMbid, name, metadataArtist);
-            sendArtist({
+            await sendArtist({
               ...buildArtistBase(name, resolvedMbid, metadataArtist),
               tags: tagPayload.tags,
               genres: tagPayload.genres,
             });
-          }),
+          },
         );
 
         const libraryTask = (async () => {
           const lookup = await getArtistLibraryLookup(mbid);
-          if (isClientConnected()) sendSSE(res, "library", lookup);
+          if (isClientConnected()) await send("library", lookup);
         })();
-        tasks.push(libraryTask);
 
-        {
-          const includeTrackCounts = false;
-          const releaseGroupsPromise = musicbrainzGetArtistReleaseGroups(
-            resolvedMbid,
-            selectedReleaseTypes,
-            {
-              includeTrackCounts,
-              hydrateLimit: appearsOnLimit ? 6 : 0,
-              signal: requestController.signal,
-            },
-          )
-            .catch(() => [])
-            .then(withListenBrainzStats);
-          const discographyTask = Promise.all([
-            metadataArtistPromise,
-            namePromise,
-            releaseGroupsPromise,
-          ]).then(([metadataArtist, name, releaseGroups]) => {
+        const releaseGroupsPromise = musicbrainzGetArtistReleaseGroups(
+          resolvedMbid,
+          selectedReleaseTypes,
+          {
+            includeTrackCounts: false,
+            hydrateLimit: appearsOnLimit ? 6 : 0,
+            signal,
+          },
+        )
+          .catch(() => [])
+          .then(withListenBrainzStats);
+        const discographyTask = Promise.all([
+          metadataArtistPromise,
+          namePromise,
+          releaseGroupsPromise,
+        ]).then(async ([metadataArtist, name, releaseGroups]) => {
+          if (!isClientConnected()) return;
+          const releaseGroupsWithCovers = attachCachedCoverUrls(releaseGroups, 12);
+          await sendArtist({
+            ...buildArtistBase(name, resolvedMbid, metadataArtist),
+            "release-groups": releaseGroupsWithCovers,
+            "release-group-count": releaseGroupsWithCovers.length,
+            "release-count": releaseGroupsWithCovers.length,
+          });
+        });
+
+        const appearsOnTask = musicbrainzGetArtistAppearsOnReleaseGroups(resolvedMbid, {
+          limit: appearsOnLimit,
+          signal,
+        })
+          .catch((): AppearsOnReleaseGroups => [])
+          .then(async (appearsOnReleaseGroups) => {
             if (!isClientConnected()) return;
-            const releaseGroupsWithCovers = attachCachedCoverUrls(releaseGroups, 12);
-            sendArtist({
-              ...buildArtistBase(name, resolvedMbid, metadataArtist),
-              "release-groups": releaseGroupsWithCovers,
-              "release-group-count": releaseGroupsWithCovers.length,
-              "release-count": releaseGroupsWithCovers.length,
+            await sendArtist({
+              id: resolvedMbid,
+              "appears-on-release-groups": attachCachedCoverUrls(
+                appearsOnReleaseGroups,
+                appearsOnLimit || 6,
+              ),
             });
           });
-          tasks.push(discographyTask);
 
-          const appearsOnTask = musicbrainzGetArtistAppearsOnReleaseGroups(resolvedMbid, {
-            limit: appearsOnLimit,
-            signal: requestController.signal,
-          })
-            .catch((): AppearsOnReleaseGroups => [])
-            .then((appearsOnReleaseGroups) => {
-              if (!isClientConnected()) return;
-              sendArtist({
-                id: resolvedMbid,
-                "appears-on-release-groups": attachCachedCoverUrls(
-                  appearsOnReleaseGroups,
-                  appearsOnLimit || 6,
-                ),
-              });
-            });
-          tasks.push(appearsOnTask);
-        }
         const coverTask = (async () => {
           if (!isClientConnected()) return;
           try {
             const cachedImage = dbOps.getImage(mbid);
-            if (cachedImage && cachedImage.imageUrl && cachedImage.imageUrl !== "NOT_FOUND") {
-              const artistName = (await namePromise.catch(() => null)) || streamArtistName || null;
-              if (!isClientConnected()) return;
-              const cachedCover = await getArtistImage(mbid, {
-                artistName,
-              }).catch(() => null);
-              sendSSE(res, "cover", {
-                images: cachedCover?.images || [],
-              });
-              return;
-            }
-
             const artistName = (await namePromise.catch(() => null)) || streamArtistName || null;
             if (!isClientConnected()) return;
+            if (cachedImage && cachedImage.imageUrl && cachedImage.imageUrl !== "NOT_FOUND") {
+              const cachedCover = await getArtistImage(mbid, { artistName }).catch(() => null);
+              await send("cover", { images: cachedCover?.images || [] });
+              return;
+            }
             const negativeCacheIsFresh =
               cachedImage?.imageUrl === "NOT_FOUND" &&
               cachedImage.cacheAge &&
               Date.now() - cachedImage.cacheAge < 7 * 24 * 60 * 60 * 1000;
             if (negativeCacheIsFresh) {
-              sendSSE(res, "cover", { images: [] });
+              await send("cover", { images: [] });
               return;
             }
-            const shouldForceRefresh = cachedImage?.imageUrl === "NOT_FOUND";
             const cover = await getArtistImage(mbid, {
               artistName,
-              forceRefresh: shouldForceRefresh,
+              forceRefresh: cachedImage?.imageUrl === "NOT_FOUND",
             });
-            if (cover?.images?.length) {
-              sendSSE(res, "cover", {
-                images: cover.images,
-              });
-              return;
-            }
-
-            sendSSE(res, "cover", { images: [] });
-          } catch (e) {
-            sendSSE(res, "cover", { images: [] });
+            await send("cover", { images: cover?.images?.length ? cover.images : [] });
+          } catch {
+            await send("cover", { images: [] });
           }
         })();
-        tasks.push(coverTask);
 
         const similarTask = (async () => {
           if (!isClientConnected()) return;
@@ -218,46 +196,34 @@ export function registerStream(router: Router) {
             const artists = await getSimilarArtistCards(resolvedMbid, {
               artistName: streamArtistName,
               limit: 10,
-              signal: requestController.signal,
+              signal,
               resolveArtistName: async () =>
                 (await metadataArtistPromise.catch(() => null))?.name ||
                 (await namePromise.catch(() => null)),
             });
-            if (isClientConnected()) sendSSE(res, "similar", { artists });
+            if (isClientConnected()) await send("similar", { artists });
           } catch {
-            sendSSE(res, "similar", { artists: [] });
+            await send("similar", { artists: [] });
           }
         })();
-        tasks.push(similarTask);
 
-        Promise.allSettled(tasks)
-          .then(() => {
-            sendSSE(res, "complete", {});
-          })
-          .catch(() => {
-            sendSSE(res, "complete", {});
-          })
-          .finally(() => {
-            setTimeout(() => {
-              res.end();
-            }, 100);
-          });
+        await Promise.allSettled([
+          artistTask,
+          libraryTask,
+          discographyTask,
+          appearsOnTask,
+          coverTask,
+          similarTask,
+        ]);
+        await send("complete", {});
+        await stream.sleep(100);
       } catch (error) {
         const failure = asAppError(error);
         logger.error("stream", `Error for artist ${mbid}:`, { message: failure?.message });
-        sendSSE(res, "error", {
+        await send("error", {
           error: "Failed to fetch artist details",
           message: errorResponseText(failure, "error") || failure?.message,
         });
-        res.end();
       }
-    } catch (error) {
-      const failure = asAppError(error);
-      logger.error("stream", `Unexpected error:`, { message: failure?.message });
-      res.status(500).json({
-        error: "Failed to stream artist details",
-        message: failure?.message,
-      });
-    }
+    });
   });
-}

@@ -1,14 +1,16 @@
 import type { IncomingMessage } from "node:http";
-import { getRequestListener, type HttpBindings } from "@hono/node-server";
-import type { Request, Response } from "express";
+import { getRequestListener } from "@hono/node-server";
+import type { NextFunction, Request, Response } from "express";
 import { Hono } from "hono";
+import { verifyTokenAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../middleware/requestUser.ts";
 import { api } from "../api.ts";
+import { subsonicStream } from "../subsonic.ts";
 
 const handedOver = new WeakMap<IncomingMessage, AppEnv["Variables"]>();
 
 const listener = getRequestListener(
-  new Hono<AppEnv & { Bindings: HttpBindings }>()
+  new Hono<AppEnv>({ strict: false })
     .use(async (c, next) => {
       const variables = handedOver.get(c.env.incoming);
       c.set("user", variables?.user);
@@ -21,12 +23,19 @@ const listener = getRequestListener(
       }
       await next();
     })
-    .route("/", api).fetch,
+    .route("/api", api)
+    .route("/", subsonicStream)
+    .notFound((c) => c.json({ error: "Not found" }, 404)).fetch,
   { overrideGlobalObjects: false },
 );
 
 export function handToHono(req: Request, res: Response) {
   handedOver.set(req, { user: req.user, clientIp: req.ip || "" });
-  req.url = req.originalUrl.replace(/^\/api/, "");
+  req.url = req.originalUrl;
   return listener(req, res);
+}
+
+export function resolveTokenUser(req: Request, _res: Response, next: NextFunction) {
+  verifyTokenAuth(req);
+  next();
 }

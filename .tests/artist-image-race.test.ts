@@ -16,8 +16,7 @@ const [
   { getArtistImage },
   { registerDetails },
   { registerCover },
-  { registerStream },
-  { issueStreamToken },
+  { default: artistStream },
 ] = await setupIsolatedBackend(
   "artist-image-race",
   () => import("../backend/db/helpers/index.ts"),
@@ -25,7 +24,6 @@ const [
   () => import("../backend/routes/artists/handlers/details.ts"),
   () => import("../backend/routes/artists/handlers/cover.ts"),
   () => import("../backend/routes/artists/handlers/stream.ts"),
-  () => import("../backend/middleware/auth.ts"),
 );
 
 useFakeClock();
@@ -60,7 +58,6 @@ app.use((req, _res, next) => {
 });
 registerDetails(app);
 registerCover(app);
-registerStream(app);
 const server = await createMockHttpServer(app);
 
 afterAll(async () => {
@@ -379,11 +376,12 @@ test("an old stream not-found result cannot overwrite the current image", async 
       picture_big: null,
     };
   });
-  const token = issueStreamToken({ id: 1, username: "test", role: "admin", permissions: {} });
-  const oldStream = fetch(`${server.url}/${mbid}/stream?st=${token}`).then(async (response) => {
-    assert.equal(response.status, 200);
-    return response.text();
-  });
+  const oldStream = Promise.resolve(artistStream.request(`/artists/${mbid}/stream`)).then(
+    async (response) => {
+      assert.equal(response.status, 200);
+      return response.text();
+    },
+  );
   await oldGate.started;
   let latest:
     | Promise<{
