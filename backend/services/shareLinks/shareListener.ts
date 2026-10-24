@@ -5,7 +5,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { userOps } from "../../db/helpers/index.ts";
-import { streamAudioFile } from "../audioFileStream.ts";
+import { sendAudioFile } from "../audioFileStream.ts";
 import { logger } from "../logger.ts";
 import { streamSubsonicAudio } from "../subsonicTranscodeService.ts";
 import { playsInBrowsers, resolveShareTarget } from "./library.ts";
@@ -69,9 +69,9 @@ function zipEntries(link: LiveShareLink, target: ResolvedShareTarget) {
   });
 }
 
-async function sendDownload(res: Response, track: ResolvedShareTrack) {
+async function sendDownload(req: Request, res: Response, track: ResolvedShareTrack) {
   res.attachment(path.basename(track.file.path));
-  if (!(await streamAudioFile(res, track.file.path))) notFound(res);
+  if (!(await sendAudioFile(req, res, track.file.path))) notFound(res);
 }
 
 export function createShareApp() {
@@ -137,8 +137,8 @@ export function createShareApp() {
       const track = findTrack(share.target, req);
       if (!track) return notFound(res);
       const served = playsInBrowsers(track.file)
-        ? await streamAudioFile(res, track.file.path)
-        : await streamSubsonicAudio(res, track.file.path, { format: "mp3", maxBitRate: 320 });
+        ? await sendAudioFile(req, res, track.file.path)
+        : await streamSubsonicAudio(req, res, track.file.path, { format: "mp3", maxBitRate: 320 });
       if (!served) notFound(res);
     } catch (error) {
       next(error);
@@ -152,7 +152,7 @@ export function createShareApp() {
       if (!share.link.allowDownload) return notFound(res);
       const track = findTrack(share.target, req);
       if (!track) return notFound(res);
-      await sendDownload(res, track);
+      await sendDownload(req, res, track);
     } catch (error) {
       next(error);
     }
@@ -164,7 +164,7 @@ export function createShareApp() {
       if (!share) return;
       const { link, target } = share;
       if (!link.allowDownload) return notFound(res);
-      if (link.kind === "track") return await sendDownload(res, target.tracks[0]);
+      if (link.kind === "track") return await sendDownload(req, res, target.tracks[0]);
       const plan = await planZip(zipEntries(link, target));
       const zipName =
         link.kind === "artist" ? target.title : `${target.artistName} - ${target.title}`;

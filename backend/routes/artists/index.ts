@@ -1,5 +1,4 @@
 import { registerReleaseGroup } from "./handlers/releaseGroup.ts";
-import { registerStream } from "./handlers/stream.ts";
 import { registerPreview } from "./handlers/preview.ts";
 import { registerDetails } from "./handlers/details.ts";
 import { registerCover } from "./handlers/cover.ts";
@@ -10,7 +9,6 @@ import mountRoutes from "../shared/mountRoutes.ts";
 
 export default mountRoutes([
   registerReleaseGroup,
-  registerStream,
   registerPreview,
   registerDetails,
   registerCover,

@@ -1,9 +1,9 @@
 import { stat } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { parseFile } from "music-metadata";
-import type { Response } from "express";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import { asAppError } from "../../lib/errors.ts";
-import { streamAudioFile } from "./audioFileStream.ts";
+import { sendAudioFile } from "./audioFileStream.ts";
 
 const OUTPUT_FORMATS = {
   mp3: { codec: "libmp3lame", container: "mp3", contentType: "audio/mpeg", maxBitrate: 320 },
@@ -13,33 +13,27 @@ const OUTPUT_FORMATS = {
 
 type OutputFormat = keyof typeof OUTPUT_FORMATS;
 export type SubsonicStreamFormat = "" | "raw" | OutputFormat;
+type StreamOptions = { format: SubsonicStreamFormat; maxBitRate: number; timeOffset?: number };
 
-export async function streamSubsonicAudio(
-  res: Response,
-  filePath: string,
-  {
-    format,
-    maxBitRate,
-    timeOffset,
-  }: { format: SubsonicStreamFormat; maxBitRate: number; timeOffset?: number },
-) {
-  if (format === "raw" || (!format && !maxBitRate)) return streamAudioFile(res, filePath);
+const isMissing = (error: unknown) => {
+  const code = asAppError(error)?.code;
+  return code === "ENOENT" || code === "ENOTDIR";
+};
+
+async function planAudio(filePath: string, { format, maxBitRate, timeOffset }: StreamOptions) {
+  if (format === "raw" || (!format && !maxBitRate)) return "raw";
   if (!format) {
     try {
       const metadata = await parseFile(filePath, { skipCovers: true });
-      if (metadata.format.bitrate && maxBitRate * 1000 >= metadata.format.bitrate) {
-        return streamAudioFile(res, filePath);
-      }
+      if (metadata.format.bitrate && maxBitRate * 1000 >= metadata.format.bitrate) return "raw";
     } catch (error) {
-      const code = asAppError(error)?.code;
-      if (code === "ENOENT" || code === "ENOTDIR") return false;
+      if (isMissing(error)) return "missing";
     }
   }
   try {
-    if (!(await stat(filePath)).isFile()) return false;
+    if (!(await stat(filePath)).isFile()) return "missing";
   } catch (error) {
-    const code = asAppError(error)?.code;
-    if (code === "ENOENT" || code === "ENOTDIR") return false;
+    if (isMissing(error)) return "missing";
     throw error;
   }
   const output = OUTPUT_FORMATS[format || "mp3"];
@@ -60,35 +54,46 @@ export async function streamSubsonicAudio(
     output.container,
     "pipe:1",
   );
+  return { args, contentType: output.contentType };
+}
 
-  return new Promise((resolve) => {
-    const child = spawn("ffmpeg", args, { stdio: ["ignore", "pipe", "pipe"] });
-    let spawnError: NodeJS.ErrnoException | undefined;
-    const stop = () => {
-      child.stdout.destroy();
-      if (child.exitCode == null && child.signalCode == null) child.kill("SIGTERM");
-    };
-    res.once("close", stop);
-    child.stderr.resume();
-    child.on("error", (error) => {
-      spawnError = error;
-    });
-    res.set("Content-Type", output.contentType);
-    child.stdout.pipe(res, { end: false });
-    child.once("close", (code) => {
-      res.off("close", stop);
-      if (res.destroyed) return resolve(true);
-      if (code === 0 && res.headersSent) {
-        res.end();
-      } else if (res.headersSent) {
-        res.destroy();
-      } else {
-        res
-          .status(spawnError?.code === "ENOENT" ? 503 : 500)
-          .type("text/plain")
-          .send("Audio transcoding unavailable");
-      }
-      resolve(true);
-    });
+export async function streamSubsonicAudio(
+  req: IncomingMessage,
+  res: ServerResponse,
+  filePath: string,
+  options: StreamOptions,
+) {
+  const plan = await planAudio(filePath, options);
+  if (plan === "raw") return sendAudioFile(req, res, filePath);
+  if (plan === "missing") return false;
+  if (req.method === "HEAD") {
+    res.writeHead(200, { "Content-Type": plan.contentType }).end();
+    return true;
+  }
+  const child = spawn("ffmpeg", plan.args, { stdio: ["ignore", "pipe", "pipe"] });
+  let spawnError: NodeJS.ErrnoException | undefined;
+  child.on("error", (error) => {
+    spawnError = error;
   });
+  const stop = () => {
+    child.stdout.destroy();
+    if (child.exitCode == null && child.signalCode == null) child.kill("SIGTERM");
+  };
+  res.once("close", stop);
+  child.stderr.resume();
+  res.setHeader("Content-Type", plan.contentType);
+  child.stdout.pipe(res, { end: false });
+  const code = await new Promise<number | null>((resolve) => child.once("close", resolve));
+  res.off("close", stop);
+  if (res.destroyed) return true;
+  if (code === 0 && res.headersSent) {
+    res.end();
+  } else if (res.headersSent) {
+    res.destroy();
+  } else {
+    res.statusCode = spawnError?.code === "ENOENT" ? 503 : 500;
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.end("Audio transcoding unavailable");
+  }
+  return true;
 }

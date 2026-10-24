@@ -1,5 +1,5 @@
 import { createMiddleware } from "hono/factory";
-import { getUnauthorizedDetails } from "./auth.ts";
+import { getUnauthorizedDetails, isAuthRequiredByConfig } from "./auth.ts";
 import type { AppEnv, RequestUser } from "./requestUser.ts";
 
 export const requireAuth = createMiddleware<AppEnv & { Variables: { user: RequestUser } }>(
@@ -14,3 +14,10 @@ export const requireAuth = createMiddleware<AppEnv & { Variables: { user: Reques
     await next();
   },
 );
+
+export const requireStreamAuth = createMiddleware<AppEnv>(async (c, next) => {
+  if (!c.get("user") && isAuthRequiredByConfig()) {
+    return c.json({ error: "Unauthorized", message: "Authentication required" }, 401);
+  }
+  await next();
+});

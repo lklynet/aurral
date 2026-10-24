@@ -20,7 +20,7 @@ import assert from "node:assert/strict";
 import { test, vi } from "vite-plus/test";
 
 import { db } from "../../backend/config/db-sqlite.ts";
-import { registerStream as registerArtistStream } from "../../backend/routes/artists/handlers/stream.ts";
+import { openArtistStream } from "../helpers/artistStream.ts";
 import { registerMisc } from "../../backend/routes/library/handlers/misc.ts";
 import { libraryManager } from "../../backend/services/libraryManager.ts";
 import { lidarrClient } from "../../backend/services/lidarrClient.ts";
@@ -130,40 +130,10 @@ test("artist lookup follows fresh Lidarr artist and album membership while the l
     );
     assert.equal(body?.exists, false);
 
-    const streamRoutes = captureRouteHandlers(registerArtistStream, "get");
-
-    const writes: string[] = [];
-    const libraryEvent = Promise.withResolvers<{ exists: boolean }>();
-    let closeStream = () => {};
-    await streamRoutes.get("/:mbid/stream")(
-      {
-        params: { mbid },
-        query: { artistName: "Stale Artist" },
-        headers: {},
-        socket: { destroyed: false },
-        on(event: string, handler: () => void) {
-          if (event === "close") closeStream = handler;
-        },
-      },
-      {
-        setHeader() {},
-        status() {
-          return this;
-        },
-        json() {
-          return this;
-        },
-        write(value: string) {
-          writes.push(value);
-          if (writes.at(-2) === "event: library\n")
-            libraryEvent.resolve(JSON.parse(value.slice(6)));
-        },
-        flush() {},
-        end() {},
-      },
-    );
-    assert.equal((await libraryEvent.promise).exists, false);
-    closeStream();
+    const stream = openArtistStream(mbid, { artistName: "Stale Artist" });
+    const library = await stream.waitFor(({ event }) => event === "library");
+    stream.close();
+    assert.equal(library.data.exists, false);
   } finally {
     db.prepare("DELETE FROM library_album_tracks WHERE album_id = ?").run(album.id);
     db.prepare("DELETE FROM library_tracks WHERE id = ?").run(track.id);

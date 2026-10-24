@@ -2,7 +2,7 @@ import type { NextFunction, Request, Response, Router } from "express";
 import { libraryManager } from "../../../services/libraryManager.ts";
 import { cacheMiddleware } from "../../../middleware/cache.ts";
 import { noCache } from "../../../middleware/cache.ts";
-import { hasPermission, verifyTokenAuth } from "../../../middleware/auth.ts";
+import { hasPermission } from "../../../middleware/auth.ts";
 import {
   requireAdmin,
   requireAuth,
@@ -18,11 +18,9 @@ import { logger } from "../../../services/logger.ts";
 import {
   findLibraryTracksForAlbum,
   getLibraryReadModelForAlbumReferences,
-  resolveLibraryTrackPath,
 } from "../../../services/libraryReadModel.ts";
 import { getLibraryForTrackIds } from "../../../services/libraryQueryService.ts";
 import { stripFilesystemPaths } from "./libraryIndex.ts";
-import { streamAudioFile } from "../../../services/audioFileStream.ts";
 import { asAppError } from "../../../../lib/errors.ts";
 
 const canReadAudioFile = async (filePath: string | null | undefined) => {
@@ -337,59 +335,6 @@ export function registerTracks(router: Router) {
       });
     }
   });
-
-  router.get<"/canonical-stream/:albumId/:trackId">(
-    "/canonical-stream/:albumId/:trackId",
-    noCache,
-    async (req, res) => {
-      if (!verifyTokenAuth(req)) {
-        return res.status(401).json({ error: "Unauthorized" });
-      }
-
-      const filePath = resolveLibraryTrackPath(req.params.albumId, req.params.trackId);
-      if (!filePath) return res.status(404).json({ error: "Track file missing" });
-      try {
-        if (!(await streamAudioFile(res, filePath)) && !res.headersSent) {
-          return res.status(404).json({ error: "Track file missing" });
-        }
-      } catch (error) {
-        const failure = asAppError(error);
-        if (!res.headersSent) {
-          return res.status(500).json({ error: "Stream failed", message: failure?.message });
-        }
-      }
-      return undefined;
-    },
-  );
-
-  router.get<"/file-stream/:albumId/:trackId">(
-    "/file-stream/:albumId/:trackId",
-    noCache,
-    async (req, res) => {
-      if (!verifyTokenAuth(req)) {
-        return res.status(401).json({ error: "Unauthorized" });
-      }
-
-      try {
-        const tracks = await libraryManager.getTracks(req.params.albumId);
-        const track = tracks.find((item) => String(item.id) === String(req.params.trackId));
-        if (!track?.hasFile || !track.path) {
-          return res.status(404).json({ error: "Track file missing" });
-        }
-        if (!(await streamAudioFile(res, track.path))) {
-          if (!res.headersSent) return res.status(404).json({ error: "Track file missing" });
-        }
-      } catch (error) {
-        const failure = asAppError(error);
-        if (!res.headersSent) {
-          res.status(500).json({
-            error: "Stream failed",
-            message: failure?.message,
-          });
-        }
-      }
-    },
-  );
 }
 
 export type DeleteLibraryTrackResponse = { success: true; message: string };
