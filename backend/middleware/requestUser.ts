@@ -23,5 +23,7 @@ export type AppEnv = {
   Variables: {
     user?: RequestUser;
     clientIp: string;
+    clientIps: string[];
+    protocol: string;
   };
 };

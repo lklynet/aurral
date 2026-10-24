@@ -15,6 +15,8 @@ const listener = getRequestListener(
       const variables = handedOver.get(c.env.incoming);
       c.set("user", variables?.user);
       c.set("clientIp", variables?.clientIp ?? "");
+      c.set("clientIps", variables?.clientIps ?? []);
+      c.set("protocol", variables?.protocol ?? "http");
       if (c.env.incoming.headers["transfer-encoding"]) {
         // bodyLimit rebuilds chunked requests with new Request(), which rejects node-server's lightweight request.
         const { url, method, headers, body, signal } = c.req.raw;
@@ -30,7 +32,12 @@ const listener = getRequestListener(
 );
 
 export function handToHono(req: Request, res: Response) {
-  handedOver.set(req, { user: req.user, clientIp: req.ip || "" });
+  handedOver.set(req, {
+    user: req.user,
+    clientIp: req.ip || "",
+    clientIps: [req.socket.remoteAddress, ...req.ips].filter((ip) => ip !== undefined),
+    protocol: req.protocol,
+  });
   req.url = req.originalUrl;
   return listener(req, res);
 }

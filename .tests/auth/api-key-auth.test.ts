@@ -1,4 +1,5 @@
 import { createAuthRequest } from "./authFixtures.ts";
+import type { Request } from "express";
 import { test, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
@@ -13,7 +14,7 @@ const { getApiKey, resolveRequestUser } = authModule;
 
 const remoteAddress = "203.0.113.9";
 
-function apiKeyRequest(query: Parameters<typeof resolveRequestUser>[0]["query"]) {
+function apiKeyRequest(query: Request["query"]) {
   return createAuthRequest({
     headers: {},
     query,

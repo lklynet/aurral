@@ -8,8 +8,10 @@ import type { Request, Response, NextFunction } from "express";
 import type { RequestUser } from "./requestUser.ts";
 import type { UserPermissions, UserRecord } from "../db/helpers/users.ts";
 
+type RequestHeaders = Record<string, string | string[] | undefined>;
+
 type ClientRequest = {
-  headers?: Request["headers"];
+  headers?: RequestHeaders;
   socket?: { remoteAddress?: string };
   connection?: { remoteAddress?: string };
   ip?: string;
@@ -21,7 +23,9 @@ export type AuthRequest = Pick<
   "headers" | "query" | "path" | "method" | "ip" | "ips" | "socket" | "connection" | "user"
 >;
 
-type ProxyRequest = Pick<AuthRequest, "headers"> & ClientRequest;
+type ProxyRequest = ClientRequest & { headers: RequestHeaders };
+
+export type CredentialRequest = ProxyRequest & { query?: { api_key?: unknown } };
 
 type ResolvableUser = Pick<
   UserRecord,
@@ -301,8 +305,8 @@ export const resolveSessionUserFromToken = (token: unknown) => {
   return toSessionUser(getSessionByToken(token));
 };
 
-function resolveApiKeyUser(req: AuthRequest) {
-  const headerKey = ((req.headers["x-api-key"] as string | undefined) || "").trim();
+function resolveApiKeyUser(req: CredentialRequest) {
+  const headerKey = (getHeaderValue(req, "x-api-key") || "").trim();
   const queryKey = typeof req.query?.api_key === "string" ? req.query.api_key.trim() : "";
   const incoming = headerKey || queryKey;
   if (!incoming) return null;
@@ -487,12 +491,14 @@ export function resolveProxyUser(req: ProxyRequest) {
   return user?.status === "active" ? user : null;
 }
 
-export function issueProxySession(req: AuthRequest) {
+export function issueProxySession(req: CredentialRequest) {
   if (!isAuthRequiredByConfig()) return null;
-  if (resolveSessionUserFromToken(getBearerToken(req.headers.authorization))) return null;
+  if (resolveSessionUserFromToken(getBearerToken(getHeaderValue(req, "authorization")))) {
+    return null;
+  }
   const proxyUser = resolveProxyUser(req);
   if (!proxyUser?.id || proxyUser.id < 0) return null;
-  return createSession(proxyUser.id, req.ip || null, req.headers["user-agent"] || null);
+  return createSession(proxyUser.id, req.ip || null, getHeaderValue(req, "user-agent") || null);
 }
 
 export function migrateLegacyAdmin() {
@@ -589,14 +595,14 @@ export function resolveLocalNetworkBypassUser(req: ClientRequest) {
   return user?.status === "active" ? toResolvedUser(user) : null;
 }
 
-export function resolveRequestUser(req: AuthRequest) {
-  const sessionUser = resolveSessionUserFromToken(getBearerToken(req.headers.authorization));
+export function resolveRequestUser(req: CredentialRequest) {
+  const authHeader = getHeaderValue(req, "authorization");
+  const sessionUser = resolveSessionUserFromToken(getBearerToken(authHeader));
   if (sessionUser) return sessionUser;
   const proxyUser = resolveProxyUser(req);
   if (proxyUser) return proxyUser;
   const apiKeyUser = resolveApiKeyUser(req);
   if (apiKeyUser) return apiKeyUser;
-  const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith("Basic ")) {
     try {
       const token = authHeader.substring(6);
