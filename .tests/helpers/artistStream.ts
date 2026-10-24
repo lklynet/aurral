@@ -27,9 +27,12 @@ export function openArtistStream(mbid: string, query: Record<string, string> = {
   const listeners = new Set<() => void>();
   const controller = new AbortController();
   const read = async () => {
-    const response = await artistStream.request(`/${mbid}/stream?${new URLSearchParams(query)}`, {
-      signal: controller.signal,
-    });
+    const response = await artistStream.request(
+      `/artists/${mbid}/stream?${new URLSearchParams(query)}`,
+      {
+        signal: controller.signal,
+      },
+    );
     let buffer = "";
     for await (const text of response.body!.pipeThrough(new TextDecoderStream())) {
       buffer += text;

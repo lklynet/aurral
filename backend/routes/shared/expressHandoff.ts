@@ -24,7 +24,7 @@ const listener = getRequestListener(
       await next();
     })
     .route("/api", api)
-    .route("/rest", subsonicStream)
+    .route("/", subsonicStream)
     .notFound((c) => c.json({ error: "Not found" }, 404)).fetch,
   { overrideGlobalObjects: false },
 );

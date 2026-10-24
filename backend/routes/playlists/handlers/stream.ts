@@ -23,6 +23,7 @@ const canAccessJob = (user: RequestUser | undefined, job: DownloadJob) =>
     );
 
 export default new Hono<AppEnv>()
+  .basePath("/playlists")
   .use(noCache, requireStreamAuth)
   .use(async (c, next) => {
     const user = c.get("user");
