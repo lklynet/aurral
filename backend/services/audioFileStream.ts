@@ -1,15 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
-import send from "send";
-import { asAppError } from "../../lib/errors.ts";
 import { isOwnKey } from "../../lib/ownKey.ts";
-
-const MISSING_FILE_CODES = new Set<string | number | undefined>([
-  "ENOENT",
-  "ENOTDIR",
-  "EISDIR",
-  "ENAMETOOLONG",
-]);
+import { sendFile } from "./fileResponses.ts";
 
 const AUDIO_CONTENT_TYPES = {
   aac: "audio/aac",
@@ -33,29 +25,7 @@ export function audioContentType(format: string) {
   return knownContentType(normalized) || `audio/${normalized}`;
 }
 
-export function sendAudioFile(req: IncomingMessage, res: ServerResponse, filePath: string) {
-  const absolutePath = path.resolve(filePath);
-  const contentType = knownContentType(path.extname(absolutePath).slice(1).toLowerCase());
-  return new Promise<boolean>((resolve, reject) => {
-    res.once("close", () => resolve(true));
-    send(req, encodeURI(absolutePath), { dotfiles: "allow" })
-      .on("headers", () => {
-        if (contentType) res.setHeader("Content-Type", contentType);
-      })
-      .on("directory", () => resolve(false))
-      .on("error", (error: unknown) => {
-        const failure = asAppError(error);
-        if (res.headersSent) {
-          res.destroy();
-        } else if (failure?.status === 416) {
-          res.statusCode = 416;
-          res.end();
-        } else if (failure?.status === 404 || MISSING_FILE_CODES.has(failure?.code)) {
-          resolve(false);
-        } else {
-          reject(error);
-        }
-      })
-      .pipe(res);
+export const sendAudioFile = (req: IncomingMessage, res: ServerResponse, filePath: string) =>
+  sendFile(req, res, filePath, {
+    contentType: knownContentType(path.extname(filePath).slice(1).toLowerCase()),
   });
-}
