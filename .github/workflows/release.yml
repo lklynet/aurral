@@ -129,6 +129,7 @@ jobs:
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
+          no-cache-filters: runtime
           provenance: mode=max
           sbom: true
           labels: ${{ steps.meta.outputs.labels }}
@@ -203,6 +204,13 @@ jobs:
           fi
           docker buildx imagetools create "${tag_args[@]}" "${sources[@]}"
           docker buildx imagetools inspect "$(jq -r '.tags[0]' <<< "${METADATA_JSON}")"
+
+  scan-image:
+    needs: publish-image
+    permissions:
+      contents: read
+      security-events: write
+    uses: ./.github/workflows/container-image-scan.yml
 
   create-tag:
     needs: [compute-release, check-release-readiness, publish-image]
