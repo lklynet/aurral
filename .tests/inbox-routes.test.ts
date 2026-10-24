@@ -1,19 +1,24 @@
 import assert from "node:assert/strict";
+import http from "node:http";
+import express from "express";
 import { Hono } from "hono";
 import { afterAll, beforeAll, test } from "vite-plus/test";
 import type { AppEnv, RequestUser } from "../backend/middleware/requestUser.ts";
 import {
   cleanupIsolatedState,
+  createMockHttpServer,
   resetDatabase,
   setupIsolatedBackend,
 } from "./helpers/backendTestHarness.ts";
 
-const [isolatedState, { db }, { dbOps, userOps }, { api }] = await setupIsolatedBackend(
-  "inbox-routes",
-  () => import("../backend/config/db-sqlite.ts"),
-  () => import("../backend/db/helpers/index.ts"),
-  () => import("../backend/routes/api.ts"),
-);
+const [isolatedState, { db }, { dbOps, userOps }, { api }, { handToHono }] =
+  await setupIsolatedBackend(
+    "inbox-routes",
+    () => import("../backend/config/db-sqlite.ts"),
+    () => import("../backend/db/helpers/index.ts"),
+    () => import("../backend/routes/api.ts"),
+    () => import("../backend/routes/shared/expressHandoff.ts"),
+  );
 
 let user: RequestUser;
 
@@ -86,4 +91,45 @@ test("malformed and oversized JSON bodies get client errors", async () => {
     patchJson(JSON.stringify({ action: "x".repeat(3 * 1024 ** 2) })),
   );
   assert.equal(oversized.status, 413);
+});
+
+test("a chunked JSON body reaches Inbox through the Express handoff", async () => {
+  const item = dbOps.upsertInboxItem({
+    userId: user.id,
+    kind: "news",
+    sourceKey: "https://example.com/story/2",
+    title: "Chunked",
+  });
+  assert.ok(item?.id);
+  const path = `/api/inbox/${encodeURIComponent(item.id)}`;
+  const server = await createMockHttpServer(
+    express()
+      .use((req, _res, next) => {
+        req.user = user;
+        next();
+      })
+      .use("/api/inbox", handToHono),
+  );
+  try {
+    const status = await new Promise<number | undefined>((resolve, reject) => {
+      const request = http.request(
+        `${server.url}${path}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", "Transfer-Encoding": "chunked" },
+        },
+        (res) => {
+          res.resume();
+          res.on("end", () => resolve(res.statusCode));
+        },
+      );
+      request.on("error", reject);
+      request.write('{"action":');
+      request.end('"read"}');
+    });
+    assert.equal(status, 200);
+    assert.equal(dbOps.getInboxItem(user.id, item.id)?.isRead, true);
+  } finally {
+    await server.close();
+  }
 });

@@ -13,6 +13,12 @@ const listener = getRequestListener(
       const variables = handedOver.get(c.env.incoming);
       c.set("user", variables?.user);
       c.set("clientIp", variables?.clientIp ?? "");
+      if (c.env.incoming.headers["transfer-encoding"]) {
+        // bodyLimit rebuilds chunked requests with new Request(), which rejects node-server's lightweight request.
+        const { url, method, headers, body, signal } = c.req.raw;
+        const init = { method, headers, body, signal, duplex: "half" };
+        c.req.raw = new Request(url, init);
+      }
       await next();
     })
     .route("/", api).fetch,
