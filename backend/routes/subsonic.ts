@@ -1,8 +1,8 @@
 import path from "path";
-import { type } from "arktype";
 import express, { type Request, type Response } from "express";
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
+import * as v from "valibot";
 
 import { APP_NAME, APP_VERSION } from "../config/constants.ts";
 import { hasPermission, resolveSubsonicTokenUser, resolveUser } from "../middleware/auth.ts";
@@ -730,25 +730,31 @@ async function handleSubsonicRequest(req: Request, res: Response) {
 router.all("/:method", handleSubsonicRequest);
 router.use((_req, res) => sendError(res, "xml", 0, "Unsupported request"));
 
-const streamFormat = type("string")
-  .pipe((value) => value.toLowerCase())
-  .to("'' | 'raw' | 'mp3' | 'opus' | 'aac'");
-const streamBitRate = type(/^\d*$/)
-  .pipe(Number)
-  .narrow((kbps) => Number.isSafeInteger(kbps) && (kbps === 0 || kbps >= 8));
-const streamOffset = type("string")
-  .pipe(Number)
-  .narrow((seconds) => Number.isFinite(seconds) && seconds >= 0);
+const streamFormat = v.pipe(
+  v.string(),
+  v.toLowerCase(),
+  v.picklist(["", "raw", "mp3", "opus", "aac"]),
+);
+const streamBitRate = v.pipe(
+  v.string(),
+  v.regex(/^\d*$/),
+  v.transform(Number),
+  v.check((kbps) => Number.isSafeInteger(kbps) && (kbps === 0 || kbps >= 8)),
+);
+const streamOffset = v.pipe(
+  v.string(),
+  v.transform(Number),
+  v.check((seconds) => Number.isFinite(seconds) && seconds >= 0),
+);
 
 const formParameters = (c: Context<AppEnv>) =>
   c.req.header("content-type")?.includes("application/x-www-form-urlencoded")
     ? c.req.parseBody({ all: true })
     : {};
 
-export const subsonicStream = new Hono<AppEnv>().all(
-  "/:method",
-  bodyLimit({ maxSize: 100 * 1024 }),
-  async (c) => {
+export const subsonicStream = new Hono<AppEnv>()
+  .basePath("/rest")
+  .all("/:method", bodyLimit({ maxSize: 100 * 1024 }), async (c) => {
     const params: SubsonicParams = { ...(await formParameters(c)), ...c.req.queries() };
     const reply = ({ contentType, body }: ReturnType<typeof renderResponse>) =>
       c.body(body, 200, { "Content-Type": contentType });
@@ -761,27 +767,26 @@ export const subsonicStream = new Hono<AppEnv>().all(
     const filePath = resolveStreamPath(getParameter(params, "id"), user);
     if (!filePath) return missing();
 
-    const outputFormat = streamFormat(getParameter(params, "format"));
-    if (outputFormat instanceof type.errors) {
+    const outputFormat = v.safeParse(streamFormat, getParameter(params, "format"));
+    if (!outputFormat.success) {
       return reply(failedResponse(format, 0, "Unsupported audio format"));
     }
-    const maxBitRate = streamBitRate(getParameter(params, "maxBitRate"));
-    if (maxBitRate instanceof type.errors) {
+    const maxBitRate = v.safeParse(streamBitRate, getParameter(params, "maxBitRate"));
+    if (!maxBitRate.success) {
       return reply(failedResponse(format, 0, "maxBitRate must be zero or at least 8 kbps"));
     }
-    const timeOffset = streamOffset(getParameter(params, "timeOffset"));
-    if (timeOffset instanceof type.errors) {
+    const timeOffset = v.safeParse(streamOffset, getParameter(params, "timeOffset"));
+    if (!timeOffset.success) {
       return reply(failedResponse(format, 0, "timeOffset must be a nonnegative number of seconds"));
     }
 
     const sent = await sendViaNode(c, streamSubsonicAudio, filePath, {
-      format: outputFormat,
-      maxBitRate,
-      timeOffset,
+      format: outputFormat.output,
+      maxBitRate: maxBitRate.output,
+      timeOffset: timeOffset.output,
     });
     return sent || missing();
-  },
-);
+  });
 
 export { groupArtists, renderXmlElement };
 export default router;

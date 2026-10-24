@@ -376,7 +376,7 @@ test("an old stream not-found result cannot overwrite the current image", async 
       picture_big: null,
     };
   });
-  const oldStream = Promise.resolve(artistStream.request(`/${mbid}/stream`)).then(
+  const oldStream = Promise.resolve(artistStream.request(`/artists/${mbid}/stream`)).then(
     async (response) => {
       assert.equal(response.status, 200);
       return response.text();

@@ -13,6 +13,7 @@ import { sendViaNode } from "../shared/sendViaNode.ts";
 const trackFileMissing = { error: "Track file missing" };
 
 export default new Hono<AppEnv>()
+  .basePath("/library")
   .use(noCache, requireStreamAuth)
   .get("/canonical-stream/:albumId/:trackId", async (c) => {
     const filePath = resolveLibraryTrackPath(c.req.param("albumId"), c.req.param("trackId"));
