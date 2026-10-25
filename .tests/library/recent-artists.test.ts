@@ -231,6 +231,29 @@ test("recent artists collapse duplicate canonical artist rows", async () => {
   assert.equal(recent[0].added, "2026-10-01T12:00:00.000Z");
 });
 
+test("recent artists keep unidentified artists with the same name separate", async () => {
+  const first = store.upsertLibraryArtist({
+    identityKey: "source-one:same-name",
+    name: "Same Name",
+  });
+  const second = store.upsertLibraryArtist({
+    identityKey: "source-two:same-name",
+    name: "Same Name",
+  });
+  addFile(first, "First Album", "2026-10-01T12:00:00Z");
+  addFile(second, "Second Album", "2026-10-02T12:00:00Z");
+  setArtistAddedAt(first, "2026-10-01T12:00:00Z");
+  setArtistAddedAt(second, "2026-10-02T12:00:00Z");
+
+  const recent = await getRecent();
+
+  assert.equal(recent.length, 2);
+  assert.deepEqual(
+    recent.map((artist) => artist.canonicalId),
+    [String(second.id), String(first.id)],
+  );
+});
+
 test("library pages resolve artists without albums or MBIDs", () => {
   const artist = store.upsertLibraryArtist({ identityKey: "name:no-albums", name: "No Albums" });
   const artistId = String(artist.id);

@@ -817,6 +817,7 @@ export function getRecentlyAddedLibraryArtists({
          artist.id,
          artist.created_at,
          artist.mbid,
+         artist.identity_key,
          CASE
            WHEN NULLIF(trim(artist.mbid), '') IS NOT NULL
              THEN 'id:' || lower(trim(artist.mbid))
@@ -828,7 +829,7 @@ export function getRecentlyAddedLibraryArtists({
              THEN 'provider:'
                || lower(COALESCE(NULLIF(trim(CAST(json_extract(artist.metadata_json, '$.librarySource') AS TEXT)), ''), 'unknown'))
                || ':' || lower(trim(CAST(json_extract(artist.metadata_json, '$.id') AS TEXT)))
-           ELSE 'name:' || lower(trim(artist.name))
+           ELSE 'identity:' || lower(trim(artist.identity_key))
          END AS canonical_key
        FROM library_artists AS artist
      ), first_added AS MATERIALIZED (
