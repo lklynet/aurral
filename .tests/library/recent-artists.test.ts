@@ -219,7 +219,7 @@ test("recent artists collapse duplicate canonical artist rows", async () => {
     mbid: canonicalMbid,
     name: "Duplicate Artist",
   });
-  addFile(original, "Original Album", "2026-10-01T12:00:00Z");
+  addFile(original, "Original Album", "2026-10-01T12:00:00Z", { available: false });
   addFile(duplicate, "Duplicate Album", "2026-10-20T12:00:00Z");
   setArtistAddedAt(original, "2026-10-01T12:00:00Z");
   setArtistAddedAt(duplicate, "2026-10-20T12:00:00Z");

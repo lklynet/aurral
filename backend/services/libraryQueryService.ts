@@ -812,7 +812,7 @@ export function getRecentlyAddedLibraryArtists({
 }: { availableOnly?: LibraryAvailability; limit?: number } = {}) {
   const rows = db
     .prepare<[number], { id: number; added_at: number }>(
-      `WITH candidates AS MATERIALIZED (
+      `WITH identified AS MATERIALIZED (
        SELECT
          artist.id,
          artist.created_at,
@@ -831,6 +831,19 @@ export function getRecentlyAddedLibraryArtists({
            ELSE 'name:' || lower(trim(artist.name))
          END AS canonical_key
        FROM library_artists AS artist
+     ), first_added AS MATERIALIZED (
+       SELECT canonical_key, MIN(created_at) AS added_at
+       FROM identified
+       GROUP BY canonical_key
+     ), candidates AS MATERIALIZED (
+       SELECT
+         artist.id,
+         artist.created_at,
+         artist.mbid,
+         artist.canonical_key,
+         first_added.added_at
+       FROM identified AS artist
+       JOIN first_added ON first_added.canonical_key = artist.canonical_key
        WHERE EXISTS (
          SELECT 1
          FROM library_albums AS album
@@ -843,7 +856,7 @@ export function getRecentlyAddedLibraryArtists({
      ), ranked AS (
        SELECT
          id,
-         MIN(created_at) OVER (PARTITION BY canonical_key) AS added_at,
+         added_at,
          ROW_NUMBER() OVER (
            PARTITION BY canonical_key
            ORDER BY CASE WHEN mbid IS NULL THEN 1 ELSE 0 END, created_at, id
