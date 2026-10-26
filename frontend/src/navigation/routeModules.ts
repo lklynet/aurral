@@ -30,4 +30,5 @@ export const routeModules = {
   editorialPlaylist: trackLoad(() => import("../pages/EditorialPlaylistDetailPage")),
   news: trackLoad(() => import("../pages/NewsPage")),
   resolveLink: trackLoad(() => import("../pages/ResolveLinkPage")),
+  shareImport: trackLoad(() => import("../pages/ShareImportPage")),
 };

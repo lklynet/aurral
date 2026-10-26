@@ -329,6 +329,18 @@ export function ArtistDetailsDownloadTargets({
                         artistMbid: artist?.id,
                         title,
                         artistName: displayArtistName,
+                        tracks: tracks.map((track) => ({
+                          title: track.title,
+                          artistName: displayArtistName,
+                          albumTitle: title,
+                          artistMbid: artist?.id,
+                          albumMbid: releaseGroupId,
+                          trackMbid: track.mbid,
+                          releaseMbid: track.releaseMbid,
+                          durationMs: track.length,
+                          trackNumber: track.trackNumber,
+                          discNumber: track.discNumber,
+                        })),
                       },
                       title,
                     )

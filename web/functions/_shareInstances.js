@@ -46,3 +46,18 @@ export async function saveInstance(db, { id, secretHash, tunnelUrl }) {
     .run();
   return result.meta.changes > 0;
 }
+
+export async function authorizeShareInstance(db, id, secret) {
+  if (!db || !INSTANCE_ID_PATTERN.test(id) || !/^[A-Za-z0-9_-]{43}$/.test(secret)) return false;
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(secret));
+  const secretHash = Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+  const instance = await getInstance(db, id);
+  if (!instance) return saveInstance(db, { id, secretHash, tunnelUrl: null });
+  let difference = instance.secret_hash.length ^ secretHash.length;
+  for (let index = 0; index < secretHash.length; index += 1) {
+    difference |= instance.secret_hash.charCodeAt(index) ^ secretHash.charCodeAt(index);
+  }
+  return difference === 0;
+}

@@ -1,43 +1,53 @@
 ---
 title: Sharing
-description: Send an artist, album, or track to friends, and let them play it from your Library without exposing your server.
+description: Share tracks, albums, artists, and playlists, with optional playback and file imports between Aurrals.
 ---
 
-You can share an artist, album, or track with anyone, even if your Aurral is only on your home network.
+Share a track, album, artist, or playlist with anyone, including people who do not run Aurral. Open its share action from the Library, Discover, a playlist's menu, or the player.
 
-- **Artist:** open the artist page, select the more actions button, then **Share artist**.
-- **Album:** open the album page and select the share button.
-- **Track:** while a track plays, select the share button in the player.
+New shares use a short link with a 16-character code. Existing long links continue to work.
 
-On a phone, or a browser with a share menu, Aurral opens that menu so you can pick an app. Otherwise it copies the link. If the browser blocks copying, which can happen when you open Aurral over plain `http://`, select **Open link** and copy the address from the new tab.
+## Choose what to share
 
-## What your friend sees
+By default, a share includes names and the available track list. The link opens on aurral.org with artwork, streaming-service links, and previews where Deezer has a matching track. Your Aurral does not need to stay online for these details to work.
 
-The link opens a page on aurral.org with the cover art, the title, and links to Spotify, Apple Music, YouTube Music, TIDAL, and Deezer. A track can also have a 30-second preview from Deezer. Messaging apps show the art and title in the link preview.
+Turn on **Share my files** to let people play the available music from your Library. Aurral opens a temporary Cloudflare tunnel for those files, keeping your server's address hidden. Your server must stay running for full playback.
 
-If your friend runs Aurral too, they can select **Open in my Aurral** to go to the same artist or album on their own server and add it there. Their browser remembers their Aurral address, and it is never sent to aurral.org.
+Sharing files or playlists requires signing in to an account. Sign in to manage links in your Profile too. Without an account, links share details only and cannot be stopped from the app.
 
-## Let them listen to your copy
+**Allow downloads** also lets people download original files or copy them into their own Aurral. A playlist can include tracks whose files you do not have. Its full track list is still shared, and available files are identified separately.
 
-In **Library**, open the menu on an artist, album, or track and select **Share artist**, **Share album**, or **Share track**. Sharing a track that is playing from your Library works the same way. This opens a share window. Select **Share link** there to send the regular link, or turn on **Play from my Aurral** to let anyone with the link play the full music from your Library.
+Set when file access expires, then select **Create link** and **Share link**. On a phone or a browser with a share menu, Aurral opens that menu. Otherwise it copies the link.
 
-- **Allow downloads** adds a download button for each track, and **Download all** for an album or artist. Downloads are the original files, so a whole artist can be large.
-- **Expires** sets when the link stops working: in 1 day, 7 days, or 30 days, or never.
+Shares hold a snapshot of the selected music. Changes to a playlist or new releases added to an artist do not add music to an existing share. Create another link to share those additions. A share can include up to 2,000 tracks. Files from flows are never shared.
 
-Select **Create link**, then **Share link** to send it.
+## Import into your Aurral
 
-An artist link includes every album of that artist in your Library, including albums you add later. Music in flows is never shared.
+Select **Import into my Aurral** on the share page and enter your Aurral address. Your browser remembers the address for next time. The address is never sent to aurral.org.
 
-Your music travels from your server to your friend through a temporary Cloudflare tunnel that Aurral opens while at least one link is live. Your friend's browser connects to Cloudflare, so your home address stays hidden. Nothing else on your server is reachable through the tunnel. The Docker image includes the `cloudflared` program this needs. If you run Aurral another way, install `cloudflared` yourself. A link can take a minute to start working after Aurral starts.
+You can also select **Import share** in your Library, or **Import Aurral share** in the Playlists menu, and paste a link.
 
-Your server has to be running for the link to play. If it is off, or the link has expired or been stopped, the page says the music isn't available to listen to right now and still shows the other links.
+Review the item on your own Aurral before importing:
 
-Cloudflare offers these tunnels for free without an uptime guarantee, so treat listen links as a convenience.
+- **Details only** saves the names and track list without starting downloads or enabling monitoring. An artist import saves the artist. A playlist import keeps its order and repeated entries.
+- **Include shared files** copies available files when the sender permits downloads. Aurral reuses music already in your Library. Tracks without a shared file remain as details only.
 
-### Stop sharing
+File transfers appear in Activity. If a transfer fails, retry it when the sender's share is online. A failed transfer does not start a search or switch to another download service. Copying shared files does not require Lidarr or a download integration. Each imported file can be up to 2 GiB.
 
-Your links are listed in **Profile → Shared links**, with when each expires and whether it allows downloads. Select **Share link** to send one again, or **Stop sharing** to end it right away. When no links are left, Aurral closes the tunnel.
+Imported playlists are independent copies. They do not sync with the sender. If a playlist's name is already taken, Aurral adds a number to the imported name.
 
-## What a link contains
+## File access and stopping a share
 
-A share link holds the item's name, its artist and album names, and its MusicBrainz IDs. A listen link also holds a random code that identifies your Aurral to aurral.org and a random code for that link. It contains nothing else about you or your server: no address, username, file path, or library contents. Anyone with the link can read those names, and anyone with a listen link can play it until it expires, so treat it like any message you send.
+When file access expires or the sender goes offline, the share keeps its details and available previews. People can still import the details.
+
+Your links are listed in **Profile → Shared links**. **Stop sharing** removes the hosted details and ends access to your files. It does not remove details or files someone has already imported or downloaded.
+
+The Docker image includes `cloudflared`, which file sharing needs. If you run Aurral another way, install it on your server. Aurral opens one tunnel while file shares are active and closes it when none remain. Cloudflare offers quick tunnels without an uptime guarantee, so playback can be temporarily unavailable.
+
+## What is shared
+
+Aurral stores the shared names, MusicBrainz IDs, and track list on aurral.org. It does not upload your audio there. Playback and downloads travel through your server's temporary tunnel.
+
+Links contain random codes identifying the share. They contain no server address, username, credentials, or local file paths. Anyone with the link can read its details and use the file access you allow, so treat it like any message you send.
+
+Older share links continue to work. Older artist listen links include albums added later, following their original behavior.

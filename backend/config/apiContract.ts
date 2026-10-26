@@ -8,5 +8,6 @@ export const API_CONTRACT = {
     "trackDownloads",
     "linkSearch",
     "downloadCancel",
+    "shareImports",
   ],
 };

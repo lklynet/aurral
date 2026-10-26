@@ -582,7 +582,7 @@ export const dedupePlaylistTracks = (tracks: PlaylistTrackInput[] | null | undef
   for (const track of Array.isArray(tracks) ? tracks : []) {
     const normalizedTrack = normalizePlaylistTrack(track);
     if (!normalizedTrack) continue;
-    const identity = buildPlaylistTrackIdentity(normalizedTrack);
+    const identity = `${buildPlaylistTrackIdentity(normalizedTrack)}\u0001${normalizedTrack.membershipId || ""}`;
     if (seen.has(identity)) continue;
     seen.add(identity);
     uniqueTracks.push(normalizedTrack);

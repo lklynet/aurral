@@ -7,6 +7,7 @@ import { clearAuthStorage, setStoredAuth } from "../utils/api/core.ts";
 import { getApiErrorBody, getApiErrorText } from "./onboardingUtils";
 import { startPlexLoginPin, completePlexLogin } from "../utils/api/endpoints/auth.ts";
 import { DotLoader } from "../components/DotLoader";
+import { rememberShareImport } from "../utils/shareLink.ts";
 
 const buildApiUrl = (path: string) => {
   const basePath = getAppBasePath();
@@ -53,10 +54,12 @@ const Login = () => {
   const handleOidcLogin = () => {
     if (startingSso) return;
     setStartingSso(true);
+    rememberShareImport();
     window.location.assign(buildApiUrl("/api/auth/oidc/login"));
   };
 
   const handleGoogleLogin = () => {
+    rememberShareImport();
     window.location.assign(buildApiUrl("/api/auth/google/login"));
   };
 

@@ -43,6 +43,7 @@ import type { Flow, StaticPlaylist } from "./playlistStats.ts";
 import type { PlaylistTrackRow } from "./playlistPageUtils.ts";
 import type { FetchLibraryFavoritesResponse } from "../../../../backend/routes/library/handlers/libraryIndex.ts";
 import { getApiErrorMessage } from "../onboardingUtils.tsx";
+import { useShareAction } from "../../hooks/useShareAction.ts";
 
 type FavoriteSongs = {
   song?: Pick<FetchLibraryFavoritesResponse["song"][number], "id">[];
@@ -86,6 +87,7 @@ export function PlaylistTracks({
   recordHistory = true,
 }: PlaylistTracksProps) {
   const isFlow = kind === "flow";
+  const share = useShareAction();
   const bulkActions = usePlaylistBulkActions();
   const { hasPermission } = useAuth();
   const { updateQueueArtwork } = useAudioQueue();
@@ -471,6 +473,20 @@ export function PlaylistTracks({
         onAddTrackToPlaylist={saveTrackToPlaylist}
         onMoveTrackToPlaylist={isFlow ? undefined : (track, target) => moveTracks([track], target)}
         onAddTrackToLibrary={handleAddTrackToLibrary}
+        onShareTrack={(track) =>
+          share(
+            {
+              kind: "track",
+              title: track.trackName,
+              artistName: track.artistName,
+              albumTitle: track.albumName,
+              artistMbid: track.artistMbid,
+              albumMbid: track.albumMbid,
+              trackMbid: track.trackMbid,
+            },
+            track.trackName,
+          )
+        }
         onViewTrackInfo={(track) =>
           setTrackInfo({
             kind: "track",

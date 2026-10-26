@@ -54,3 +54,43 @@ test("a Deezer outage on a shared preview is a 502, not a missing track", async 
   assert.equal((await previewLink({ params: { id: "8" } })).status, 502);
   assert.equal((await previewLink({ params: { id: "9" } })).status, 404);
 });
+
+for (const kind of ["artist", "album"] as const) {
+  test(`a shared ${kind} offers catalog previews without a tunnel or local files`, async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = new URL(String(input));
+      if (url.pathname === `/search/${kind}`)
+        return Response.json({
+          data: [
+            kind === "artist"
+              ? { id: 7, name: "Artist" }
+              : { id: 7, title: "Album", artist: { name: "Artist" } },
+          ],
+        });
+      if (url.pathname === "/artist/7/top" || url.pathname === "/album/7/tracks")
+        return Response.json({
+          data: [
+            {
+              id: 42,
+              title: "Song <test>",
+              artist: { name: "Artist" },
+              preview: "https://preview.example.com/42.mp3",
+            },
+          ],
+        });
+      throw new Error(`unexpected request to ${url}`);
+    });
+    const payload = kind === "artist" ? "AQEAQXJ0aXN0" : "AQIAQWxidW0AQXJ0aXN0";
+    assert.ok(payload);
+    const response = await sharePage({
+      request: new Request(`https://aurral.org/s/${payload}`),
+      params: { path: [payload] },
+      env: {},
+    });
+    assert.equal(response.status, 200);
+    const html = await response.text();
+    assert.ok(html.includes('data-src="/api/deezer/preview/42"'));
+    assert.ok(html.includes("Song &lt;test&gt;"));
+    assert.ok(!html.includes("/stream"));
+  });
+}

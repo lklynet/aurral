@@ -497,6 +497,12 @@ export interface SettingsRow {
   value: string;
 }
 
+export interface ShareDownloadsRow {
+  job_id: string | null;
+  share_url: string;
+  track_path: string;
+}
+
 export interface ShareLinksRow {
   id: number;
   token: string;
@@ -510,6 +516,8 @@ export interface ShareLinksRow {
   allow_download: number;
   expires_at: number | null;
   created_at: number;
+  manifest: string | null;
+  share_files: number;
 }
 
 export interface SlskdTransferHistoryRow {

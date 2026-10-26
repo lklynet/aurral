@@ -4,6 +4,7 @@ import {
   SHARE_TOKEN_PATTERN,
   TUNNEL_URL_PATTERN,
 } from "../_shareInstances.js";
+import { getHostedShare, loadSharedFiles } from "../_shareManifests.js";
 
 const PAYLOAD_VERSION = 1;
 const MAX_NAME_BYTES = 160;
@@ -18,7 +19,12 @@ const KINDS = {
     names: ["title", "artistName", "albumTitle"],
   },
 };
-const OG_TYPES = { artist: "website", album: "music.album", track: "music.song" };
+const OG_TYPES = {
+  artist: "website",
+  album: "music.album",
+  track: "music.song",
+  playlist: "music.playlist",
+};
 const DEEZER_TIMEOUT_MS = 2500;
 const PAGE_CACHE_SECONDS = 3600;
 const LISTEN_TIMEOUT_MS = 5000;
@@ -41,7 +47,7 @@ function readMbid(bytes) {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-function decodeSharePayload(segment) {
+export function decodeSharePayload(segment) {
   const bytes = fromBase64Url(segment);
   if (!bytes || bytes.length < 3 || bytes[0] !== PAYLOAD_VERSION) return null;
   const shape = KINDS[bytes[1]];
@@ -145,8 +151,9 @@ const httpsUrl = (value) => {
   }
 };
 
-async function findOnDeezer(item) {
+export async function findOnDeezer(item) {
   const search = DEEZER_SEARCHES[item.kind];
+  if (!search) return {};
   const url = `https://api.deezer.com/search/${search.path}?limit=10&q=${encodeURIComponent(search.query(item))}`;
   try {
     const response = await fetch(url, {
@@ -171,6 +178,10 @@ async function findOnDeezer(item) {
       link: httpsUrl(match.link),
       art: httpsUrl(match.art),
       artMatches: match.artMatches,
+      catalogId:
+        item.kind !== "track" && bestScore === 2 && /^\d{1,20}$/.test(String(best.id))
+          ? String(best.id)
+          : null,
       preview: /^\d{1,20}$/.test(match.previewId) ? `/api/deezer/preview/${match.previewId}` : null,
     };
   } catch {
@@ -188,6 +199,35 @@ function parseListen(segment) {
     return null;
   }
   return { instanceId, token };
+}
+
+async function findCatalogPreviews(item, deezer) {
+  if (!deezer.catalogId || (item.kind !== "artist" && item.kind !== "album")) return [];
+  try {
+    const path =
+      item.kind === "artist"
+        ? `artist/${deezer.catalogId}/top`
+        : `album/${deezer.catalogId}/tracks`;
+    const response = await fetch(`https://api.deezer.com/${path}?limit=25`, {
+      signal: AbortSignal.timeout(DEEZER_TIMEOUT_MS),
+      cf: { cacheTtl: PAGE_CACHE_SECONDS, cacheEverything: true },
+    });
+    if (!response.ok) return [];
+    const body = await response.json();
+    return (Array.isArray(body?.data) ? body.data : [])
+      .slice(0, 25)
+      .filter(
+        (track) =>
+          track?.preview && /^\d{1,20}$/.test(String(track.id)) && typeof track.title === "string",
+      )
+      .map((track) => ({
+        title: track.title,
+        artistName: typeof track.artist?.name === "string" ? track.artist.name : item.artistName,
+        preview: `/api/deezer/preview/${track.id}`,
+      }));
+  } catch {
+    return [];
+  }
 }
 
 const text = (value) => (typeof value === "string" ? value : "");
@@ -296,15 +336,9 @@ function listenLinks(item, deezerLink) {
   ];
 }
 
-function aurralPath(item) {
-  if (item.kind === "artist" && item.artistMbid) return `/artist/${item.artistMbid}`;
-  if (item.kind !== "artist" && item.artistMbid && item.albumMbid) {
-    return `/artist/${item.artistMbid}/release/${item.albumMbid}`;
-  }
-  return `/search?q=${encodeURIComponent(searchQuery(item))}`;
-}
-
 function describe(item) {
+  if (item.kind === "playlist")
+    return { heading: item.title, kicker: "Playlist", byline: `${item.tracks.length} tracks` };
   if (item.kind === "artist") {
     return { heading: item.artistName, kicker: "Artist", byline: "" };
   }
@@ -322,9 +356,9 @@ const STYLES = `
 :root {
   color-scheme: dark;
   --font-sans: ui-sans-serif, system-ui, -apple-system, blinkmacsystemfont, "Segoe UI", sans-serif;
-  --chrome: #050505;
+  --chrome: #000000;
   --surface: #111111;
-  --text: #f5f5f5;
+  --text: #ffffff;
   --text-muted: rgb(255 255 255 / 58%);
   --text-subtle: rgb(255 255 255 / 46%);
   --border: rgb(255 255 255 / 8%);
@@ -353,7 +387,11 @@ a { color: inherit; text-decoration: none; }
 .brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 600; font-size: 17px; }
 .brand img { height: 20px; width: auto; }
 main { flex: 1; display: flex; justify-content: center; padding: 16px 24px 48px; }
-.share { width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 24px; }
+.share { width: 100%; max-width: 560px; display: flex; flex-direction: column; gap: 20px; }
+.share-head { display: flex; gap: 16px; align-items: center; }
+.share-head .art { width: 80px; flex-shrink: 0; font-size: 36px; }
+.share-actions { display: flex; gap: 8px; }
+.share-actions .button { width: auto; }
 .art {
   aspect-ratio: 1;
   width: 100%;
@@ -531,9 +569,23 @@ const SCRIPT = `
       audio.src = tracks[index].dataset.src;
       audio.play().catch(() => {});
     };
+    const start = player.querySelector("[data-play-all]");
+    if (start) start.addEventListener("click", () => {
+      const first = tracks.findIndex((track) => !track.dataset.preview);
+      if (first >= 0) select(first);
+    });
+    const status = player.querySelector("[data-play-status]");
+    audio.addEventListener("error", () => {
+      if (status) status.textContent = tracks[current]?.dataset.preview
+        ? "No preview is available for this track. Try a streaming service."
+        : "The shared file is unavailable. Try again when the share is online.";
+    });
+    audio.addEventListener("playing", () => { if (status) status.textContent = ""; });
     tracks.forEach((track, index) => track.addEventListener("click", () => select(index)));
     audio.addEventListener("ended", () => {
-      if (current + 1 < tracks.length) select(current + 1);
+      if (tracks[current]?.dataset.preview) return;
+      const next = tracks.findIndex((track, index) => index > current && !track.dataset.preview);
+      if (next >= 0) select(next);
     });
   }
 })();
@@ -609,7 +661,29 @@ function notFoundPage(url, nonce) {
   });
 }
 
-function sharePage(item, deezer, url, nonce, listen) {
+function manifestPlayer(item, listen, segment) {
+  const rows = item.tracks
+    .map((track, index) => {
+      const file = listen?.tracks.find((entry) => entry.path === track.path);
+      const src = file
+        ? `${file.url}/stream`
+        : `/api/shares/preview?share=${encodeURIComponent(segment)}&track=${index}`;
+      return `<li class="track-row"><button type="button" class="track" data-src="${escapeHtml(src)}" ${file ? "" : 'data-preview="true"'} aria-current="false">
+      <span class="track-number">${index + 1}</span><span class="track-text"><span class="track-title">${escapeHtml(track.title)}</span>
+      <span class="track-album">${escapeHtml(track.artistName)}</span></span><span class="track-duration">${file ? "Full track" : "Preview"}</span></button>
+      ${file && listen.allowDownload ? `<a class="track-download" href="${escapeHtml(`${file.url}/download`)}" download aria-label="Download ${escapeHtml(track.title)}">Download</a>` : ""}</li>`;
+    })
+    .join("");
+  const count = listen?.tracks.length || 0;
+  return `<section class="player" data-player aria-label="Shared tracks"><div class="share-actions">
+    ${count ? `<button type="button" class="button primary" data-play-all>${LISTEN_HEADINGS[item.kind] || "Listen"}</button>` : ""}
+    ${listen?.allowDownload ? `<a class="button" href="${escapeHtml(`${listen.base}/download`)}" download>${count === 1 ? "Download" : "Download all"}</a>` : ""}
+    </div><audio controls preload="none" aria-label="Shared music player"></audio><ol class="tracks">${rows}</ol>
+    <p class="note" data-play-status role="status"></p>
+    </section>`;
+}
+
+function sharePage(item, deezer, url, nonce, listen, segment, catalogPreviews) {
   const { heading, kicker, byline } = describe(item);
   const coverArt =
     item.kind !== "artist" && item.albumMbid
@@ -619,11 +693,13 @@ function sharePage(item, deezer, url, nonce, listen) {
   const initial = heading.trim().charAt(0).toUpperCase() || "♪";
   const title = byline ? `${heading} by ${byline}` : heading;
   const description =
-    item.kind === "artist"
-      ? `Listen to ${item.artistName}.`
-      : item.kind === "album"
-        ? `Listen to the album ${item.title} by ${item.artistName}.`
-        : `Listen to ${item.title} by ${item.artistName}.`;
+    item.kind === "playlist"
+      ? `Listen to the playlist ${item.title}.`
+      : item.kind === "artist"
+        ? `Listen to ${item.artistName}.`
+        : item.kind === "album"
+          ? `Listen to the album ${item.title} by ${item.artistName}.`
+          : `Listen to ${item.title} by ${item.artistName}.`;
   const art = image
     ? `<img src="${escapeHtml(image)}" alt="${escapeHtml(item.kind === "artist" ? heading : `${heading} cover`)}" data-fallback="${escapeHtml(initial)}" />`
     : `<span aria-hidden="true">${escapeHtml(initial)}</span>`;
@@ -631,14 +707,19 @@ function sharePage(item, deezer, url, nonce, listen) {
     listen === null
       ? `<p class="unavailable" role="status">This isn&#39;t available to listen to right now.</p>`
       : "";
-  const preview = listen
-    ? listenSection(listen)
-    : deezer.preview
-      ? `<div>
+  const catalogPlayer = catalogPreviews.length
+    ? `<section class="player" data-player aria-label="30-second previews"><p class="section-title">30-second previews</p><audio controls preload="none" aria-label="Preview player"></audio><ol class="tracks">${catalogPreviews.map((track, index) => `<li class="track-row"><button type="button" class="track" data-src="${escapeHtml(track.preview)}" data-preview="true" aria-current="false"><span class="track-number">${index + 1}</span><span class="track-text"><span class="track-title">${escapeHtml(track.title)}</span><span class="track-album">${escapeHtml(track.artistName)}</span></span><span class="track-duration">Preview</span></button></li>`).join("")}</ol><p class="note" data-play-status role="status"></p></section>`
+    : "";
+  const preview = item.tracks?.length
+    ? manifestPlayer(item, listen, segment)
+    : listen
+      ? listenSection(listen)
+      : deezer.preview
+        ? `<div>
         <p class="preview-label" id="preview-label">30-second preview</p>
         <audio controls preload="none" src="${escapeHtml(deezer.preview)}" aria-labelledby="preview-label"></audio>
       </div>`
-      : "";
+        : catalogPlayer;
   const links = listenLinks(item, deezer.link)
     .map(
       ([name, href]) =>
@@ -654,19 +735,19 @@ function sharePage(item, deezer, url, nonce, listen) {
     url,
     nonce,
     body: `<article class="share">
-      <div class="art${item.kind === "artist" ? " art--round" : ""}">${art}</div>
+      <div class="share-head"><div class="art${item.kind === "artist" ? " art--round" : ""}">${art}</div>
       <div class="meta">
         <p class="kicker">${escapeHtml(kicker)}</p>
         <h1>${escapeHtml(heading)}</h1>
         ${byline ? `<p class="byline">${escapeHtml(byline)}</p>` : ""}
-      </div>
+      </div></div>
       ${unavailable}
       ${preview}
       <section aria-labelledby="listen-title">
         <p class="section-title" id="listen-title">Listen on</p>
         <ul class="listen">${links}</ul>
       </section>
-      <section class="aurral" aria-labelledby="aurral-title" data-aurral data-path="${escapeHtml(aurralPath(item))}">
+      <section class="aurral" aria-labelledby="aurral-title" data-aurral data-path="${escapeHtml(`/share/import?url=${encodeURIComponent(url)}`)}">
         <p class="section-title" id="aurral-title">Have Aurral?</p>
         <a class="button primary" data-open hidden>Open in my Aurral</a>
         <button type="button" class="text-button" data-change hidden>Change Aurral address</button>
@@ -690,7 +771,9 @@ export async function onRequest({ request, params, env }) {
   if (!segments.length) return Response.redirect(new URL("/", request.url).toString(), 302);
   const nonce = crypto.randomUUID().replace(/-/g, "");
   const [payload, listenSegment] = segments.length === 1 ? segments[0].split("~") : [];
-  const item = payload ? decodeSharePayload(payload) : null;
+  const hosted =
+    segments.length === 1 && !listenSegment ? await getHostedShare(env?.SHARE_DB, payload) : null;
+  const item = hosted?.manifest || (payload ? decodeSharePayload(payload) : null);
   const listenRequest = listenSegment === undefined ? undefined : parseListen(listenSegment);
   if (!item) {
     return new Response(notFoundPage(request.url, nonce), {
@@ -700,16 +783,27 @@ export async function onRequest({ request, params, env }) {
   }
   const [deezer, listen] = await Promise.all([
     findOnDeezer(item),
-    listenRequest === undefined
-      ? undefined
-      : listenRequest && loadListen(env?.SHARE_DB, listenRequest),
+    hosted
+      ? hosted.shareFiles
+        ? loadSharedFiles(env?.SHARE_DB, hosted.instanceId, hosted.token)
+        : undefined
+      : listenRequest === undefined
+        ? undefined
+        : listenRequest && loadListen(env?.SHARE_DB, listenRequest),
   ]);
-  return new Response(sharePage(item, deezer, request.url, nonce, listen), {
-    headers: {
-      "Content-Type": "text/html; charset=utf-8",
-      "Cache-Control":
-        listen === undefined ? `public, max-age=${PAGE_CACHE_SECONDS}` : "private, no-store",
-      ...securityHeaders(nonce),
+  const catalogPreviews =
+    !item.tracks?.length && !listen ? await findCatalogPreviews(item, deezer) : [];
+  return new Response(
+    sharePage(item, deezer, request.url, nonce, listen, segments[0], catalogPreviews),
+    {
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control":
+          !hosted && listen === undefined
+            ? `public, max-age=${PAGE_CACHE_SECONDS}`
+            : "private, no-store",
+        ...securityHeaders(nonce),
+      },
     },
-  });
+  );
 }

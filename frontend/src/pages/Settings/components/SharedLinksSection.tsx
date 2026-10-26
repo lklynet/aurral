@@ -18,6 +18,7 @@ const KIND_LABELS: Partial<Record<string, string>> = {
   artist: "Artist",
   album: "Album",
   track: "Track",
+  playlist: "Playlist",
 };
 const TUNNEL_NOTES: Partial<Record<ShareLinksResponse["tunnel"], string>> = {
   starting: "Connecting your links to aurral.org…",
@@ -64,7 +65,11 @@ export function SharedLinksSection({
     enabled: user?.id != null,
     refetchInterval: (query) => {
       const data = query.state.data;
-      return data?.links?.length && data.tunnel !== "online" ? 5000 : false;
+      return data?.links?.some(
+        (link) => link.shareFiles && (!link.expiresAt || link.expiresAt > Date.now()),
+      ) && data.tunnel !== "online"
+        ? 5000
+        : false;
     },
   });
   const stop = useMutation({
@@ -99,7 +104,11 @@ export function SharedLinksSection({
 
   const items = links.data?.links || [];
   const tunnel = links.data?.tunnel;
-  const tunnelNote = items.length && tunnel ? TUNNEL_NOTES[tunnel] : null;
+  const tunnelNote =
+    items.some((link) => link.shareFiles && (!link.expiresAt || link.expiresAt > Date.now())) &&
+    tunnel
+      ? TUNNEL_NOTES[tunnel]
+      : null;
 
   return (
     <div className={`settings-page__section${className ? ` ${className}` : ""}`}>
@@ -121,7 +130,7 @@ export function SharedLinksSection({
         </p>
       ) : items.length === 0 ? (
         <p className="settings-page__muted-copy">
-          No shared links. Enable Play from my Aurral when sharing music.
+          No shared links. Enable Share my files when sharing music.
         </p>
       ) : (
         <>

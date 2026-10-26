@@ -60,6 +60,7 @@ const DiscoverPlaylistsPage = lazy(routeModules.discoverPlaylists);
 const EditorialPlaylistDetailPage = lazy(routeModules.editorialPlaylist);
 const NewsPage = lazy(routeModules.news);
 const ResolveLinkPage = lazy(routeModules.resolveLink);
+const ShareImportPage = lazy(routeModules.shareImport);
 
 const PageLoader = () => <SkeletonPageTitle label="Loading page" />;
 
@@ -346,6 +347,7 @@ const appRoutes = createRoutesFromElements(
       <Route path="/profile" element={<ProfilePage />} />
       <Route path="/blocklist" element={<BlocklistPage />} />
       <Route path="/go/:kind" element={<ResolveLinkPage />} />
+      <Route path="/share/import" element={<ShareImportPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Route>
   </Route>,

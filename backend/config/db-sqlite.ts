@@ -144,6 +144,13 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_share_links_user
     ON share_links(user_id, created_at);
 
+  CREATE TABLE IF NOT EXISTS share_downloads (
+    job_id TEXT PRIMARY KEY,
+    share_url TEXT NOT NULL,
+    track_path TEXT NOT NULL,
+    FOREIGN KEY (job_id) REFERENCES playlist_download_jobs(id) ON DELETE CASCADE
+  );
+
   CREATE TABLE IF NOT EXISTS subsonic_play_queues (
     user_id INTEGER PRIMARY KEY,
     song_ids TEXT NOT NULL,
@@ -637,6 +644,14 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_honker_task_runs_queue_started ON honker_task_runs(queue, started_at DESC);
   CREATE INDEX IF NOT EXISTS idx_honker_task_runs_job ON honker_task_runs(job_id, queue);
 `);
+
+const shareLinkColumns = db.prepare<[], { name: string }>("PRAGMA table_info(share_links)").all();
+if (!shareLinkColumns.some((column) => column.name === "manifest")) {
+  db.exec("ALTER TABLE share_links ADD COLUMN manifest TEXT");
+}
+if (!shareLinkColumns.some((column) => column.name === "share_files")) {
+  db.exec("ALTER TABLE share_links ADD COLUMN share_files INTEGER NOT NULL DEFAULT 1");
+}
 
 tryAddColumn("ALTER TABLE play_events ADD COLUMN album_key TEXT");
 

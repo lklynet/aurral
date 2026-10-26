@@ -5,6 +5,9 @@ import type {
   ShareLinkRequest,
   ShareLinksResponse,
   ShareTargetInput,
+  ShareImportPreviewResponse,
+  ShareImportQueuedResponse,
+  PlainShareLinkCreatedResponse,
 } from "../../../../../backend/routes/shareLinks.ts";
 
 export const getShareLinks = ({
@@ -20,5 +23,16 @@ export const getShareAvailability = (
 export const createShareLink = (data: ShareLinkRequest): Promise<ShareLinkCreatedResponse> =>
   postData("/share-links", data);
 
+export const createPlainShareLink = (manifest: unknown): Promise<PlainShareLinkCreatedResponse> =>
+  postData("/share-links/plain", { manifest });
+
 export const deleteShareLink = (id: number): Promise<void> =>
   deleteData(`/share-links/${encodeURIComponent(id)}`);
+
+export const previewShareImport = (url: string): Promise<ShareImportPreviewResponse> =>
+  postData("/share-links/import/preview", { url });
+
+export const importShareLink = (
+  url: string,
+  includeFiles: boolean,
+): Promise<ShareImportQueuedResponse> => postData("/share-links/import", { url, includeFiles });

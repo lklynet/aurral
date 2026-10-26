@@ -161,6 +161,7 @@ export function summarizeAurralAlbum({
     done: 0,
     cancel_requested: 0,
     cancelled: 0,
+    saved: 0,
     blocked: 0,
     failed: 0,
   };

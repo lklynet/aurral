@@ -3555,6 +3555,11 @@ function LibraryPage() {
             </h1>
           </div>
           <div className="native-library-header-actions">
+            {canAddTracks ? (
+              <RouteLink className="btn btn-secondary btn-sm" to="/share/import">
+                Import share
+              </RouteLink>
+            ) : null}
             {selectedGenre && (
               <RouteLink
                 className="btn btn-surface btn-sm"

@@ -8,6 +8,7 @@ const SOURCE_LABELS = {
   usenet: "Usenet",
   deemix: "deemix",
   ytdlp: "yt-dlp",
+  share: "Aurral share",
 };
 
 function normalizePriority(value: unknown, fallback: number) {

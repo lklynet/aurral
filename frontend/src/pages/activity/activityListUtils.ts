@@ -10,6 +10,7 @@ const SOURCE_NAMES: Partial<Record<string, string>> = {
   usenet: "Usenet",
   deemix: "deemix",
   ytdlp: "yt-dlp",
+  share: "Aurral share",
 };
 
 const ALBUM_PHASE_LABELS: Partial<Record<string, string>> = {

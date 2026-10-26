@@ -12,6 +12,7 @@ import {
   Plus,
   Trash2,
   Pencil,
+  Share,
 } from "../../../components/icons";
 import { DotLoader, DownloadingIcon } from "../../../components/DotLoader";
 import { SkeletonStatus, SkeletonTrackList } from "../../../components/Skeletons";
@@ -83,6 +84,8 @@ function getTrackStatusMeta(status: string | null | undefined) {
       };
     case "failed":
       return { label: "Failed", className: "flow-page__track-status-dot--failed" };
+    case "saved":
+      return { label: "Details only", className: "flow-page__track-status-dot--pending" };
     case "blocked":
       return { label: "Review", className: "flow-page__track-status-dot--blocked" };
     case "pending":
@@ -180,6 +183,7 @@ interface PlaylistTrackKebabMenuProps<T extends PlaylistPanelTrack> {
   onDelete: ((track: T) => void) | undefined;
   playlistMenuProps?: PlaylistTrackMenuProps<T> | null;
   queueItems?: LibraryMenuItem[];
+  onShare?: (track: T) => void;
 }
 
 function PlaylistTrackKebabMenu<T extends PlaylistPanelTrack>({
@@ -202,6 +206,7 @@ function PlaylistTrackKebabMenu<T extends PlaylistPanelTrack>({
   onDelete,
   playlistMenuProps = null,
   queueItems = [],
+  onShare,
 }: PlaylistTrackKebabMenuProps<T>) {
   const [openSubmenu, setOpenSubmenu] = useState<string | null>(null);
   const trackLabel = track?.trackName || "track";
@@ -209,6 +214,9 @@ function PlaylistTrackKebabMenu<T extends PlaylistPanelTrack>({
   const { isTrackDownloading } = useActiveDownloads();
   const downloading = canAddToLibrary && isTrackDownloading(track);
   const actionItems = [
+    onShare
+      ? { id: "share", label: "Share track", icon: Share, onSelect: () => onShare(track) }
+      : null,
     onPlay
       ? {
           id: "play",
@@ -417,6 +425,7 @@ export interface PlaylistTracksPanelProps<T extends PlaylistPanelTrack> {
   onMoveTrackToPlaylist?: (track: T, target: PlaylistTrackTarget) => void | Promise<void>;
   onAddTrackToLibrary?: (track: T) => unknown;
   onViewTrackInfo?: (track: T) => void;
+  onShareTrack?: (track: T) => void;
   onEditTrackArtwork?: (track: T) => void;
   libraryTrackSavingKey?: string;
   getTrackFavoriteId?: (track: T) => string;
@@ -464,6 +473,7 @@ export function PlaylistTracksPanel<T extends PlaylistPanelTrack>({
   onMoveTrackToPlaylist,
   onAddTrackToLibrary,
   onViewTrackInfo,
+  onShareTrack,
   onEditTrackArtwork,
   libraryTrackSavingKey = "",
   getTrackFavoriteId,
@@ -694,6 +704,7 @@ export function PlaylistTracksPanel<T extends PlaylistPanelTrack>({
           isPlaying={isCurrent && isRunning}
           onPlay={showPlaybackControls ? handlePlayTrack : null}
           onViewInfo={onViewTrackInfo}
+          onShare={onShareTrack}
           onEditArtwork={onEditTrackArtwork}
           onAddToLibrary={onAddTrackToLibrary}
           isAddingToLibrary={libraryTrackSavingKey === String(track.id)}

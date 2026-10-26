@@ -13,6 +13,7 @@ import { isAnyDownloadSourceConfigured } from "./downloadSourceService.ts";
 import { logger, safeLogDiagnostic } from "./logger.ts";
 import { recordAlbumGrabQueued, recordAlbumGrabPhase } from "./albumGrabActivity.ts";
 import { downloadTracker } from "./downloadJobs/downloadTracker.ts";
+import { hasShareDownloads } from "./shareLinks/downloadStore.ts";
 import { withDownloadPayloadMutation } from "./downloadJobs/mutationGuards.ts";
 
 interface PipelineDependencies {
@@ -66,9 +67,9 @@ const {
   getQueue: getPipelineQueue,
   idlePollS: 2,
   retryDelayS: 30,
-  shouldRestart: () => isAnyDownloadSourceConfigured(),
+  shouldRestart: () => isAnyDownloadSourceConfigured() || hasShareDownloads(),
   onStart() {
-    if (!isAnyDownloadSourceConfigured()) return false;
+    if (!isAnyDownloadSourceConfigured() && !hasShareDownloads()) return false;
     console.log("[pipeline] worker starting");
     enqueuePendingJobsWithoutBatch();
     return true;

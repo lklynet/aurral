@@ -613,6 +613,18 @@ function ReleasePage() {
                     artistMbid,
                     title: releaseTitle,
                     artistName,
+                    tracks: tracks.map((track) => ({
+                      title: track.title,
+                      artistName,
+                      albumTitle: releaseTitle,
+                      artistMbid,
+                      albumMbid: releaseMbid,
+                      trackMbid: track.mbid,
+                      releaseMbid: track.releaseMbid,
+                      durationMs: track.length,
+                      trackNumber: track.trackNumber,
+                      discNumber: track.discNumber,
+                    })),
                   },
                   releaseTitle,
                 )

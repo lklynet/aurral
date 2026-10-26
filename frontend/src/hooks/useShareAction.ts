@@ -1,33 +1,7 @@
-import { useCallback } from "react";
 import { useShareContext } from "../contexts/ShareContext";
-import { useToast } from "../contexts/ToastContext";
-import { buildShareUrl, shareLink } from "../utils/shareLink";
-
-type ShareItem = Parameters<typeof buildShareUrl>[0];
 
 export function useShareAction() {
-  const { showSuccess, showError } = useToast();
-
-  return useCallback(
-    async (item: ShareItem, label: string) => {
-      const url = buildShareUrl(item);
-      if (!url) {
-        showError(`${label} is missing the name needed to share it.`);
-        return;
-      }
-      try {
-        const outcome = await shareLink(url, label);
-        if (outcome === "copied") showSuccess("Link copied");
-      } catch {
-        showError({
-          message: "Could not copy the link. Open it to copy the address.",
-          action: { label: "Open link", onClick: () => window.open(url, "_blank", "noopener") },
-          duration: 8000,
-        });
-      }
-    },
-    [showError, showSuccess],
-  );
+  return useShareContext().openShare;
 }
 
 export function useLibraryShareAction() {

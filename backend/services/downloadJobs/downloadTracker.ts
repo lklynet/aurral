@@ -20,6 +20,7 @@ import { buildAurralTrackDestination } from "../downloadPaths.ts";
 import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.ts";
 import { isPlaylistOwnerActive } from "./playlistOwnerStatus.ts";
 import { logger } from "../logger.ts";
+import { getShareDownload } from "../shareLinks/downloadStore.ts";
 import { recordAlbumGrabQueued, recordAlbumTrackState } from "../albumGrabActivity.ts";
 import { mapRequest, type ReleaseManifest } from "../releaseManifest.ts";
 import {
@@ -841,6 +842,15 @@ export class DownloadTracker {
   // resolved to none. A track that can search by release is never queued
   // without it, so no caller skips the one place that chooses a release.
   enqueueDownloadPipeline(jobId: string, { release }: { release?: TrackerRelease | null } = {}) {
+    if (getShareDownload(jobId)) {
+      const job = this.jobs.get(jobId);
+      if (!job || job.status !== "pending" || this.isSlskdDispatched(jobId)) return false;
+      const payload = { ...buildPipelinePayload(job), source: "share", manualSelection: true };
+      if (!isPipelinePayloadActive(payload)) return false;
+      this.enqueuePipeline(payload);
+      this.markSlskdDispatched(jobId);
+      return true;
+    }
     if (!isAnyDownloadSourceConfigured()) return false;
     const job = this.jobs.get(jobId);
     if (!job) return false;
@@ -1034,6 +1044,7 @@ export class DownloadTracker {
       failed: 0,
       cancel_requested: 0,
       cancelled: 0,
+      saved: 0,
     };
   }
 
@@ -1047,6 +1058,7 @@ export class DownloadTracker {
       failed: Number(stats?.failed || 0),
       cancel_requested: Number(stats?.cancel_requested || 0),
       cancelled: Number(stats?.cancelled || 0),
+      saved: Number(stats?.saved || 0),
     };
   }
 
@@ -1788,6 +1800,18 @@ export class DownloadTracker {
     }
     this._update(job);
     this._applyStatusDelta(job.playlistType, previousStatus, job.status);
+    return true;
+  }
+
+  setSaved(id: string) {
+    const job = this.jobs.get(id);
+    if (!job || job.status !== "pending") return false;
+    this.pendingSet.delete(id);
+    this.pendingRetrySet.delete(id);
+    this._removeFromPendingQueues(id);
+    job.status = "saved";
+    this._update(job);
+    this._applyStatusDelta(job.playlistType, "pending", "saved");
     return true;
   }
 

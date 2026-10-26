@@ -4,23 +4,22 @@ import { useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tan
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { queryKeys } from "../queryClient";
-import { createShareLink, getShareAvailability } from "../utils/api/endpoints/shareLinks";
+import {
+  createPlainShareLink,
+  createShareLink,
+  getShareAvailability,
+} from "../utils/api/endpoints/shareLinks";
 import { getApiErrorText } from "../pages/onboardingUtils";
 import type {
   ShareAvailabilityResponse,
   ShareLinkResponse,
 } from "../../../backend/routes/shareLinks.ts";
-import {
-  buildSharePayload,
-  buildShareUrl,
-  shareLink,
-  type ShareItem,
-  type ShareKind,
-} from "../utils/shareLink";
+import { shareLink, type ShareItem, type ShareKind } from "../utils/shareLink";
 import { formatDateTime } from "../utils/dateTime.ts";
 import { DotLoader } from "./DotLoader";
 import PillToggle from "./PillToggle";
 import { ModalShell } from "./PlaylistModals";
+import { parseShareManifest } from "../../../lib/shareManifest.ts";
 
 const EXPIRY_OPTIONS = [
   { value: "1d", label: "In 1 day" },
@@ -29,7 +28,7 @@ const EXPIRY_OPTIONS = [
   { value: "never", label: "Never" },
 ];
 
-const KIND_LABELS = { artist: "artist", album: "album", track: "track" };
+const KIND_LABELS = { artist: "artist", album: "album", track: "track", playlist: "playlist" };
 
 type ShareRequest = { item: ShareItem; label?: string };
 
@@ -46,6 +45,10 @@ function libraryRefs(item: ShareItem | undefined) {
       "libraryTrackId",
       "libraryAlbumId",
       "libraryArtistId",
+      "playlistId",
+      "title",
+      "artistName",
+      "albumTitle",
     ]
       .map((field) => [field, item?.[field] == null ? "" : String(item[field]).trim()])
       .filter(([, value]) => value),
@@ -110,35 +113,56 @@ export function ShareModal({
   const label = request?.label || "";
   const kind = item?.kind || "track";
   const { user } = useAuth();
+  const hasAccount = user?.id != null && Number(user.id) > 0;
   const { showSuccess, showError } = useToast();
   const queryClient = useQueryClient();
   const [listen, setListen] = useState(false);
   const [allowDownload, setAllowDownload] = useState(false);
   const [expiresIn, setExpiresIn] = useState("7d");
-  const [created, setCreated] = useState<ShareLinkResponse | null>(null);
+  const [created, setCreated] = useState<Pick<
+    ShareLinkResponse,
+    "url" | "shareFiles" | "expiresAt"
+  > | null>(null);
   const ids = { listen: useId(), download: useId(), expires: useId() };
   const refs = libraryRefs(item);
+  const manifest = item
+    ? parseShareManifest({
+        ...item,
+        title: item.title || item.name || item.artistName,
+        tracks:
+          item.kind === "track"
+            ? [{ ...item, albumTitle: item.albumTitle || item.albumName }]
+            : Array.isArray(item.tracks)
+              ? item.tracks
+              : [],
+      })
+    : null;
 
   const availability = useQuery({
     queryKey: ["share-links", "availability", refs],
     queryFn: ({ signal }) => getShareAvailability(refs, { signal }),
-    enabled: open,
+    enabled: open && hasAccount,
     staleTime: 0,
   });
   const canListen =
-    (availability.data?.trackCount || 0) > 0 && availability.data?.tunnelAvailable !== false;
+    hasAccount &&
+    (availability.data?.trackCount || 0) > 0 &&
+    availability.data?.tunnelAvailable !== false;
 
   const create = useMutation({
-    mutationFn: () =>
-      createShareLink({
+    mutationFn: async () => {
+      if (!hasAccount) return createPlainShareLink(manifest);
+      return createShareLink({
         ...refs,
-        payload: buildSharePayload(item),
-        allowDownload,
+        manifest,
+        shareFiles: listen && canListen,
+        allowDownload: listen && canListen && allowDownload,
         expiresIn,
-      }),
+      });
+    },
     onSuccess: (data) => {
       setCreated(data.link);
-      queryClient.invalidateQueries({ queryKey: queryKeys.shareLinks(user?.id) });
+      if (hasAccount) queryClient.invalidateQueries({ queryKey: queryKeys.shareLinks(user?.id) });
     },
   });
 
@@ -166,7 +190,6 @@ export function ShareModal({
     }
   };
 
-  const plainUrl = item ? buildShareUrl(item) : null;
   const busy = create.isPending;
 
   const footer = created ? (
@@ -177,7 +200,9 @@ export function ShareModal({
       <button
         type="button"
         className="btn btn-primary btn-sm"
-        onClick={() => sendLink(created.url, "Listen link copied")}
+        onClick={() =>
+          sendLink(created.url, created.shareFiles ? "Listen link copied" : "Link copied")
+        }
       >
         Share link
       </button>
@@ -187,25 +212,22 @@ export function ShareModal({
       <button type="button" className="btn btn-secondary btn-sm" onClick={onClose} disabled={busy}>
         Cancel
       </button>
-      {listen ? (
-        <button
-          type="button"
-          className="btn btn-primary btn-sm"
-          onClick={() => create.mutate()}
-          disabled={busy || !canListen}
-        >
-          {busy ? <DotLoader size="sm" label="Creating link" /> : "Create link"}
-        </button>
-      ) : (
-        <button
-          type="button"
-          className="btn btn-primary btn-sm"
-          onClick={() => sendLink(plainUrl!, "Link copied")}
-          disabled={!plainUrl}
-        >
-          Share link
-        </button>
-      )}
+      <button
+        type="button"
+        className="btn btn-primary btn-sm"
+        onClick={() => create.mutate()}
+        disabled={
+          busy || !manifest || (!hasAccount && kind === "playlist") || (listen && !canListen)
+        }
+      >
+        {busy ? (
+          <DotLoader size="sm" label="Creating link" />
+        ) : listen ? (
+          "Create link"
+        ) : (
+          "Share link"
+        )}
+      </button>
     </>
   );
 
@@ -234,32 +256,36 @@ export function ShareModal({
             {created.expiresAt
               ? `Expires ${formatDateTime(new Date(created.expiresAt))}.`
               : "No expiry."}{" "}
-            Stop sharing in Profile → Shared links.
+            {hasAccount ? "Stop sharing in Profile → Shared links." : null}
           </p>
         </div>
       ) : (
         <div className="playlist-modal__fields">
-          {!plainUrl ? (
+          {!manifest ? (
             <p className="artist-error-text" role="alert">
               This {KIND_LABELS[kind]} is missing the name needed to share it.
             </p>
           ) : null}
           <div className="share-modal__option">
             <label className="share-modal__label" htmlFor={ids.listen}>
-              Play from my Aurral
+              Share my files
             </label>
             <PillToggle
               id={ids.listen}
               checked={listen && canListen}
               disabled={!canListen || busy}
               onChange={(event) => setListen(event.target.checked)}
-              aria-label="Play from my Aurral"
+              aria-label="Share my files"
             />
-            <ListenHint
-              kind={kind}
-              availability={availability}
-              onRetry={() => availability.refetch()}
-            />
+            {hasAccount ? (
+              <ListenHint
+                kind={kind}
+                availability={availability}
+                onRetry={() => availability.refetch()}
+              />
+            ) : (
+              <p className="settings-page__hint">Sign in to share files or playlists.</p>
+            )}
           </div>
           {listen && canListen ? (
             <>

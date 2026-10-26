@@ -1,0 +1,54 @@
+.share-import {
+  max-width: 42rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--aurral-space-section);
+}
+.share-import__url,
+.share-import__review {
+  display: flex;
+  flex-direction: column;
+  gap: var(--aurral-space-stack);
+}
+.share-import__url > button {
+  align-self: flex-start;
+}
+.share-import__choice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--aurral-space-stack);
+  padding-block: var(--aurral-space-stack);
+  border-bottom: 1px solid var(--aurral-border);
+}
+.share-import__choice > span,
+.share-import__tracks li > span:first-child {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.share-import__choice span > span {
+  color: var(--aurral-text-muted);
+  font-size: 0.875rem;
+}
+.share-import__tracks {
+  list-style-position: inside;
+  margin: 0;
+  padding: 0;
+  max-height: 24rem;
+  overflow: auto;
+}
+.share-import__tracks li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--aurral-space-stack);
+  padding-block: var(--aurral-space-stack);
+  border-bottom: 1px solid var(--aurral-border);
+}
+.share-import__tracks li > span:last-child {
+  flex-shrink: 0;
+}
+.share-import__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--aurral-space-stack);
+}

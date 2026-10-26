@@ -3,8 +3,10 @@ import {
   getLibraryForArtistReferences,
   getLibraryForArtists,
   getLibraryTrack,
+  getLibraryForTrackMatches,
 } from "../libraryQueryService.ts";
 import { selectCanonicalFile } from "../canonicalFileSelector.ts";
+import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.ts";
 
 const BROWSER_FORMATS = new Set(["mp3", "flac", "ogg", "oga", "opus", "wav", "aac", "webm"]);
 
@@ -31,6 +33,14 @@ const isPositiveId = (value: string | null) =>
   /^\d+$/.test(String(value ?? "")) && Number(value) > 0;
 
 function loadLibrary({ kind, targetRef, albumRef }: ShareTarget) {
+  if (kind === "playlist") {
+    const playlist = flowPlaylistConfig.getStaticPlaylist(targetRef);
+    return getLibraryForTrackMatches({
+      availableOnly: true,
+      mbids: playlist?.tracks.map((track) => track.trackMbid) || [],
+      titles: playlist?.tracks.map((track) => track.trackName) || [],
+    });
+  }
   if (kind === "track") {
     return getLibraryTrack({
       trackId: targetRef,
@@ -53,6 +63,9 @@ const compareText = (left: string | null | undefined, right: string | null | und
   String(left || "").localeCompare(String(right || ""), undefined, { sensitivity: "base" });
 
 export function resolveShareTarget(target: ShareTarget) {
+  const playlist =
+    target.kind === "playlist" ? flowPlaylistConfig.getStaticPlaylist(target.targetRef) : null;
+  if (target.kind === "playlist" && !playlist) return null;
   const library = loadLibrary(target);
   const artists = new Map(library.artists.map((artist) => [artist.id, artist]));
   const tracksById = new Map(library.tracks.map((track) => [track.id, track]));
@@ -60,8 +73,7 @@ export function resolveShareTarget(target: ShareTarget) {
     (left, right) =>
       compareText(left.releaseDate, right.releaseDate) || compareText(left.title, right.title),
   );
-  const tracks = [];
-  for (const album of albums) {
+  const tracks = albums.flatMap((album) => {
     const artist = artists.get(album.artistId);
     const albumTracks = album.trackIds
       .map((trackId) => {
@@ -78,6 +90,10 @@ export function resolveShareTarget(target: ShareTarget) {
           title: track.title,
           artistName: track.artistName || artist?.name || "",
           albumTitle: album.title,
+          artistMbid: artist?.mbid || null,
+          albumMbid: album.releaseGroupMbid || album.mbid || null,
+          releaseMbid: album.mbid !== album.releaseGroupMbid ? album.mbid : null,
+          trackMbid: track.mbid || null,
           albumArtistName: artist?.name || album.albumArtist || "",
           discNumber: Number(position?.discNumber) || 1,
           trackNumber: Number(position?.trackNumber) || 0,
@@ -89,7 +105,21 @@ export function resolveShareTarget(target: ShareTarget) {
       .sort(
         (left, right) => left.discNumber - right.discNumber || left.trackNumber - right.trackNumber,
       );
-    tracks.push(...albumTracks);
+    return albumTracks;
+  });
+  if (playlist) {
+    const ordered = playlist.tracks
+      .map((entry) =>
+        tracks.find((track) =>
+          entry.trackMbid
+            ? entry.trackMbid === track.trackMbid
+            : compareText(entry.trackName, track.title) === 0 &&
+              compareText(entry.artistName, track.artistName) === 0 &&
+              (!entry.albumName || compareText(entry.albumName, track.albumTitle) === 0),
+        ),
+      )
+      .filter((track) => track !== undefined);
+    return { title: playlist.name, artistName: "", albumTitle: null, tracks: ordered };
   }
   const shared = target.kind === "track" ? tracks.slice(0, 1) : tracks;
   const first = shared[0];

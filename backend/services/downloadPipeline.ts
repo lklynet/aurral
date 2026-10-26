@@ -40,6 +40,7 @@ import { blockPipelineJobForReview, SEARCH_RESET } from "./pipelineHelpers.ts";
 import { isPipelinePayloadActive } from "./downloadJobs/downloadCancellation.ts";
 import { deferForInactiveOwner } from "./downloadJobs/playlistOwnerStatus.ts";
 import { discardHeldFile } from "./downloadJobs/reviewFiles.ts";
+import { processShareDownload } from "./shareLinks/download.ts";
 
 // Runs one step of a download job: it picks the next enabled source in
 // priority order and hands the step to that source's adapter. Every source
@@ -495,6 +496,7 @@ async function processSourcePayload(payload: PipelinePayload): Promise<PipelineP
   const currentJob = downloadTracker.getJob(payload.jobId);
   const inactiveOwner = deferForInactiveOwner(payload, currentJob);
   if (inactiveOwner) return inactiveOwner;
+  if (payload.source === "share") return processShareDownload(payload);
   if (!isAnyDownloadSourceConfigured()) {
     const job = downloadTracker.getJob(payload.jobId);
     if (job) {

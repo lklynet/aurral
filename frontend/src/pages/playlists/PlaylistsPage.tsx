@@ -212,6 +212,12 @@ export default function PlaylistsPage() {
                   icon: Upload,
                   onSelect: () => setImportOpen(true),
                 },
+                {
+                  id: "import-share",
+                  label: "Import Aurral share",
+                  icon: Upload,
+                  onSelect: () => navigate("/share/import"),
+                },
               ]}
             />
           </div>

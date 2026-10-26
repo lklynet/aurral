@@ -152,7 +152,7 @@ export function ArtistDetailsActionBar({
                     type="button"
                     onClick={() => {
                       setShowMoreMenu(false);
-                      void share({ kind: "artist", artistMbid: mbid, artistName }, artistName);
+                      share({ kind: "artist", artistMbid: mbid, artistName }, artistName);
                     }}
                     disabled={!artistName}
                     className="artist-menu-item"

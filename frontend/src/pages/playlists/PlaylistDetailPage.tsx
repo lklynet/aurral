@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
-import { Clock, Download, Pencil, RefreshCw, Trash2 } from "../../components/icons";
+import { Clock, Download, Pencil, RefreshCw, Share, Trash2 } from "../../components/icons";
+import { useShareAction } from "../../hooks/useShareAction.ts";
 import { DotLoader } from "../../components/DotLoader";
 import {
   SkeletonCollectionHeader,
@@ -126,6 +127,7 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
   const { user } = useAuth();
   const { showSuccess, showError } = useToast();
   const { artworkUrlFor } = usePlaylistArtwork();
+  const share = useShareAction();
   const showTrackAvailability = playlist.showTrackAvailability === true;
   const {
     tracks: savedTracks,
@@ -349,6 +351,16 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
               label={playlist.name}
               contextMenu={false}
               items={[
+                {
+                  id: "share",
+                  label: "Share playlist",
+                  icon: Share,
+                  onSelect: () =>
+                    share(
+                      { kind: "playlist", playlistId: playlist.id, title: playlist.name },
+                      playlist.name,
+                    ),
+                },
                 {
                   id: "edit",
                   label: "Edit details",

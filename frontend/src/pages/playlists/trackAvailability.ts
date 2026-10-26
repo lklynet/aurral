@@ -5,7 +5,8 @@ export type PlaylistTrackStatus =
   | "cancelled"
   | "done"
   | "failed"
-  | "blocked";
+  | "blocked"
+  | "saved";
 
 export interface PlaylistTrack {
   id: string;
@@ -26,11 +27,12 @@ export function getTrackAvailability(track: PlaylistTrack) {
   if (track.status === "pending") return { status: "pending", label: "Queued" };
   if (track.status === "downloading") return { status: "downloading", label: "Downloading" };
   if (track.status === "blocked") return { status: "blocked", label: "Needs review" };
+  if (track.status === "saved") return { status: "pending", label: "Details only" };
   return { status: "failed", label: "Missing" };
 }
 
 export function getTrackSearchAction(track: PlaylistTrack, showTrackAvailability = false) {
-  if (track.status === "failed") return "research";
+  if (track.status === "failed" || track.status === "saved") return "research";
   if (track.status !== "done") return null;
   if (showTrackAvailability) return track.streamUrl ? null : "research";
   return track.qualityOwned === true && track.qualityState !== "preferred" ? "upgrade" : null;
