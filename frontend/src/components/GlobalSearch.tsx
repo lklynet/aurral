@@ -48,7 +48,7 @@ import { useActiveDownloads } from "../hooks/useActiveDownloads";
 import { useDebouncedTask } from "../hooks/useDebouncedTask";
 import { useStaticPlaylists } from "../hooks/useStaticPlaylists";
 import { useNavigate, useLocation } from "react-router";
-import { Clock, Search } from "lucide-react";
+import { Clock, Search } from "./icons";
 import { DotLoader } from "./DotLoader";
 import AddActionButton from "./AddActionButton";
 import SearchLibraryCheck from "./SearchLibraryCheck";

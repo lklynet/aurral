@@ -6,7 +6,7 @@ import {
 } from "../../../utils/api/endpoints/settings.ts";
 import { getAppBasePath } from "../../../utils/basePath.ts";
 
-import { Plus, Trash2, GripVertical } from "lucide-react";
+import { Plus, Trash2, GripVertical } from "../../../components/icons";
 import { SettingsInput, SettingsTextarea } from "./SettingsField";
 import { IntegrationCard, SettingsIntegrationModal } from "./SettingsIntegrationCards";
 import {

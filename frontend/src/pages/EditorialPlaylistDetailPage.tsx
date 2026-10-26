@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import type { AriaRole, ReactNode } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
-import { Check, ListMusic, Plus } from "lucide-react";
+import { Check, ListMusic, Plus } from "../components/icons";
 import { addEditorialPlaylistToLibrary } from "../utils/api/endpoints/discovery.ts";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";

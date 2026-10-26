@@ -3,7 +3,7 @@ import { getArtistCover } from "../utils/api/endpoints/artists.ts";
 import { normalizeMediaUrl, withImageCacheBust } from "../utils/normalizeMediaUrl";
 import { useArtistPreviewPlayback } from "../hooks/useArtistPreviewPlayback";
 
-import { Music, Play } from "lucide-react";
+import { Music, Play } from "./icons";
 import { DotLoader } from "./DotLoader";
 import Tooltip from "./Tooltip";
 import ArtworkImage from "./ArtworkImage";

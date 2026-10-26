@@ -12,8 +12,8 @@ import {
   Settings,
   Sparkles,
   Ticket,
-  type LucideIcon,
-} from "lucide-react";
+  type IconComponent,
+} from "./icons";
 import { useAuth } from "../contexts/AuthContext";
 import { useDownloadWorkerActivity } from "../pages/playlists/useDownloadWorkerActivity";
 import { DEFAULT_SETTINGS_TAB, SETTINGS_NAV_TABS } from "../pages/Settings/settingsTabsConfig";
@@ -46,7 +46,7 @@ type SidebarNavItem = {
   path: string;
   basePath?: string;
   label: string;
-  icon: LucideIcon;
+  icon: IconComponent;
   section?: string;
   permission?: string;
   subnav?: SidebarNavView[];

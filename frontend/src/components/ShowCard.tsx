@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { Clock, MapPin, Music } from "lucide-react";
+import { Clock, MapPin, Music } from "./icons";
 import { formatDate, formatTime } from "../utils/dateTime.ts";
 import Tooltip from "./Tooltip";
 

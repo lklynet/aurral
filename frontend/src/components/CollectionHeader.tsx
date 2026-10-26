@@ -1,4 +1,4 @@
-import { Pause, Play, Shuffle } from "lucide-react";
+import { Pause, Play, Shuffle } from "./icons";
 import type { ReactNode } from "react";
 import { useArtworkWash } from "../utils/imageColors";
 import TooltipButton from "./TooltipButton";

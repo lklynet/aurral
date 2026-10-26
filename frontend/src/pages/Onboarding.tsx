@@ -21,7 +21,7 @@ import {
   STEPS,
 } from "./onboardingUtils.tsx";
 
-import { ChevronRight, ChevronLeft } from "lucide-react";
+import { ChevronRight, ChevronLeft } from "../components/icons";
 function Onboarding() {
   useDocumentTitle("Setup");
   const [step, setStep] = useState(0);

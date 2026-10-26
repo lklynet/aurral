@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { browseFilesystem, ensureFilesystemPath } from "../utils/api/endpoints/auth.ts";
 
 import { createPortal } from "react-dom";
-import { ArrowUp, Folder, X } from "lucide-react";
+import { ArrowUp, Folder, X } from "./icons";
 import { getApiErrorText } from "../pages/onboardingUtils.tsx";
 import { asApiError } from "../utils/api/core.ts";
 import { useModalDialog } from "../hooks/useModalDialog.ts";

@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Circle, CircleDot, Square, SquareCheck } from "lucide-react";
+import { Circle, CircleDot, Square, SquareCheck } from "../../components/icons";
 import { getPlaylistArtworkUrl } from "../../utils/api/endpoints/playlists.ts";
 import { queryClient, queryKeys } from "../../queryClient.ts";
 import { playlistJobsQueryOptions } from "../../queryOptions.ts";

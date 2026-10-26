@@ -24,7 +24,7 @@ import {
   User,
   Ban,
   ChevronLeft,
-} from "lucide-react";
+} from "./icons";
 import Sidebar from "./Sidebar";
 import GlobalSearch from "./GlobalSearch";
 import GlobalPlayerBar from "./GlobalPlayerBar";

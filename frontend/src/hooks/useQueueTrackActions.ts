@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { ListEnd, ListStart } from "lucide-react";
+import { ListEnd, ListStart } from "../components/icons";
 import { useAudioQueue } from "../contexts/audioQueueContext";
 import { useToast } from "../contexts/ToastContext";
 import type { PlaybackSource } from "./useAlbumTrackListToolbar";

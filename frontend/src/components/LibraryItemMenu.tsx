@@ -13,7 +13,7 @@ import {
   type ComponentType,
   type ReactNode,
 } from "react";
-import { Check, ChevronRight, MoreVertical } from "lucide-react";
+import { Check, ChevronRight, MoreVertical } from "./icons";
 import type { To } from "react-router";
 import TooltipButton from "./TooltipButton";
 import { DotLoader } from "./DotLoader";

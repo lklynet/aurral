@@ -9,7 +9,7 @@ import type {
 } from "../../../../../backend/services/lidarrSettingsService.ts";
 
 import { Link } from "react-router";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw } from "../../../components/icons";
 import PillToggle from "../../../components/PillToggle";
 import { DotLoader } from "../../../components/DotLoader";
 import { SettingsInput, SettingsSelect } from "./SettingsField";

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, Check, Copy, RotateCcw } from "lucide-react";
+import { AlertCircle, Check, Copy, RotateCcw } from "../../../components/icons";
 import { DotLoader } from "../../../components/DotLoader";
 import { getApiKey, rotateApiKey } from "../../../utils/api/endpoints/auth";
 import { SettingsSystemSection } from "./SettingsStorageSection";

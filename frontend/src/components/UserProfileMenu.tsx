@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router";
-import { User, Heart, LogOut, ExternalLink } from "lucide-react";
+import { User, Heart, LogOut, ExternalLink } from "./icons";
 import { useAuth } from "../contexts/AuthContext";
 import TooltipButton from "./TooltipButton";
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check } from "lucide-react";
+import { Check } from "../components/icons";
 import { ModalShell } from "../components/PlaylistModals";
 import { DotLoader } from "../components/DotLoader";
 import { updateLibraryArtistMbid } from "../utils/api/endpoints/library.ts";

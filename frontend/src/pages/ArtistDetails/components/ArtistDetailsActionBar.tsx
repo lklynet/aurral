@@ -9,7 +9,7 @@ import {
   Share,
   ThumbsDown,
   ThumbsUp,
-} from "lucide-react";
+} from "../../../components/icons";
 import { DotLoader } from "../../../components/DotLoader";
 import { getDiscoveryFeedbackLabel } from "../../../utils/discoveryFeedback";
 import TooltipButton from "../../../components/TooltipButton";

@@ -16,7 +16,7 @@ import { useDebouncedTask } from "../../../hooks/useDebouncedTask";
 import type { FlowMix } from "../playlistStats.ts";
 import type { FlowDraft, normalizeMixPercent } from "../flowPageUtils.ts";
 
-import { Search } from "lucide-react";
+import { Search } from "../../../components/icons";
 import { DotLoader } from "../../../components/DotLoader";
 
 type NormalizeMix = typeof normalizeMixPercent;

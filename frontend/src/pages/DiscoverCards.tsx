@@ -2,7 +2,7 @@ import ArtworkImage from "../components/ArtworkImage";
 import { memo, useState, useEffect, type ReactNode } from "react";
 import { getReleaseGroupCover, getArtistCover } from "../utils/api/endpoints/artists.ts";
 
-import { Music } from "lucide-react";
+import { Music } from "../components/icons";
 import ArtistImage from "../components/ArtistImage";
 import AddActionButton from "../components/AddActionButton";
 import { useActiveDownloads } from "../hooks/useActiveDownloads";

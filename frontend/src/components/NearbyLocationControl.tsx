@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { ChevronDown, Locate } from "lucide-react";
+import { ChevronDown, Locate } from "./icons";
 
 interface NearbyLocation {
   city?: string | null;

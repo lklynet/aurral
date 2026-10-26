@@ -1,5 +1,5 @@
 import { useId } from "react";
-import { X } from "lucide-react";
+import { X } from "../../components/icons";
 import TooltipButton from "../../components/TooltipButton";
 import { useModalDialog } from "../../hooks/useModalDialog.ts";
 import { formatDateTime } from "../../utils/dateTime.ts";

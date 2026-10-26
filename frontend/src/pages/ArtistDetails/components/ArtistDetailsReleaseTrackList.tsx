@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { MoreVertical, Plus } from "lucide-react";
+import { MoreVertical, Plus } from "../../../components/icons";
 import { DotLoader, DownloadingIcon } from "../../../components/DotLoader";
 import SearchLibraryCheck from "../../../components/SearchLibraryCheck";
 import { TrackList, type TrackListRow } from "../../../components/TrackList";

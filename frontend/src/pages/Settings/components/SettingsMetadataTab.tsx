@@ -1,5 +1,5 @@
 import type { ChangeEvent, FormEvent } from "react";
-import { CheckCircle } from "lucide-react";
+import { CheckCircle } from "../../../components/icons";
 import { DEFAULT_METADATA_BASE_URL, type SettingsState } from "../utils";
 import { SettingsInput } from "./SettingsField";
 

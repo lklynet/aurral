@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Download, Search } from "lucide-react";
+import { Download, Search } from "../../components/icons";
 import { ModalShell } from "../../components/PlaylistModals.tsx";
 import { DotLoader } from "../../components/DotLoader.tsx";
 import {

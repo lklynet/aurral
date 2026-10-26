@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight } from "./icons";
 import { DotLoader } from "./DotLoader";
 import { getApiErrorText } from "../pages/onboardingUtils.tsx";
 import { asApiError } from "../utils/api/core.ts";

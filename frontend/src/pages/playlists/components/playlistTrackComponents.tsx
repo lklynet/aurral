@@ -1,5 +1,5 @@
 import { useEffect, useRef, useMemo, useState, useCallback, type MouseEvent } from "react";
-import type { LucideIcon } from "lucide-react";
+import type { IconComponent } from "../../../components/icons";
 import {
   Download,
   Info,
@@ -12,7 +12,7 @@ import {
   Plus,
   Trash2,
   Pencil,
-} from "lucide-react";
+} from "../../../components/icons";
 import { DotLoader, DownloadingIcon } from "../../../components/DotLoader";
 import { SkeletonStatus, SkeletonTrackList } from "../../../components/Skeletons";
 import { useActiveDownloads } from "../../../hooks/useActiveDownloads";
@@ -98,7 +98,7 @@ function formatTrackDuration(durationMs: number | null | undefined) {
 }
 
 interface BulkPlaylistActionProps<T extends PlaylistPanelTrack> {
-  icon: LucideIcon;
+  icon: IconComponent;
   label: string;
   track: T | undefined;
   playlists: StaticPlaylist[];

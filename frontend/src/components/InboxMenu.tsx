@@ -9,8 +9,8 @@ import {
   SlidersHorizontal,
   Sparkles,
   Check,
-  type LucideIcon,
-} from "lucide-react";
+  type IconComponent,
+} from "./icons";
 import {
   getInbox,
   markAllInboxItemsRead,
@@ -29,7 +29,7 @@ import { getApiErrorMessage } from "../pages/onboardingUtils.tsx";
 
 type InboxListItem = InboxListResponse["items"][number];
 
-const ITEM_ICONS: Partial<Record<string, LucideIcon>> = {
+const ITEM_ICONS: Partial<Record<string, IconComponent>> = {
   release: Music2,
   show: CalendarDays,
   news: Newspaper,

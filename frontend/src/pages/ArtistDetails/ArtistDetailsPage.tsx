@@ -32,7 +32,7 @@ import { useStaticPlaylists } from "../../hooks/useStaticPlaylists";
 
 import { useParams, useLocation } from "react-router";
 import { useDiscoverNavigation } from "../../hooks/useDiscoverNavigation";
-import { Music, X } from "lucide-react";
+import { Music, X } from "../../components/icons";
 import { DotLoader } from "../../components/DotLoader";
 import { normalizeMediaUrl } from "../../utils/normalizeMediaUrl";
 import { useToast } from "../../contexts/ToastContext";

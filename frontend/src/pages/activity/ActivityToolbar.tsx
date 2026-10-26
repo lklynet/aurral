@@ -1,4 +1,4 @@
-import { RefreshCw, Search, X } from "lucide-react";
+import { RefreshCw, Search, X } from "../../components/icons";
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import TooltipButton from "../../components/TooltipButton";

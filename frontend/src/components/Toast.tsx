@@ -7,7 +7,7 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
-import { AlertCircle, CheckCircle, Info, TriangleAlert, X } from "lucide-react";
+import { AlertCircle, CheckCircle, Info, TriangleAlert, X } from "./icons";
 import { DotLoader } from "./DotLoader";
 
 const TOAST_ICONS = {

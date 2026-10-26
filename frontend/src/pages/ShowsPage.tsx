@@ -1,7 +1,7 @@
 import { Navigate, useParams } from "react-router";
 import RouteLink from "../components/RouteLink";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
-import { Music, MapPin, AlertCircle } from "lucide-react";
+import { Music, MapPin, AlertCircle } from "../components/icons";
 import { SkeletonShowCard, SkeletonStatus } from "../components/Skeletons";
 import NearbyLocationControl from "../components/NearbyLocationControl";
 import ShowCard from "../components/ShowCard";

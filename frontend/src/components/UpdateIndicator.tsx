@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Download, ExternalLink } from "lucide-react";
+import { Download, ExternalLink } from "./icons";
 import {
   extractReleaseNoteItems,
   normalizeReleaseVersion,
