@@ -63,7 +63,7 @@ const { enqueuePipelineJob, listHonkerJobs } = honkerModule;
 const { markPlaylistDownloadWorkCancelled } = cancellationServiceModule;
 const { dbOps } = dbHelpersModule;
 const { resolveYtdlpStagingRoot } = downloadFolderConfigModule;
-const { sabnzbdClient } = sabnzbdModule;
+const { sabnzbdClient, tidarrClient } = sabnzbdModule;
 const { nzbgetClient } = nzbgetModule;
 
 beforeEach(async () => {
@@ -748,6 +748,35 @@ test("NZBGet cancellation deletes the tracked queue and history items", async ()
     ["editqueue", ["GroupFinalDelete", "", [42]]],
     ["editqueue", ["HistoryFinalDelete", "", [42]]],
   ]);
+});
+
+test("Tidarr cancellation deletes the tracked download", async () => {
+  const playlistId = "tidarr-cancelled-playlist";
+  const jobId = createTrackedJob(
+    downloadTracker,
+    { artistName: "Artist", trackName: "Queued Song" },
+    playlistId,
+  );
+  assert.ok(jobId != null);
+  downloadTracker.updateDownloadMetadata(jobId, {
+    downloadClient: "tidarr",
+    downloadClientId: "tidarr_nzo_77777",
+  });
+  const deleted: string[] = [];
+  vi.spyOn(tidarrClient, "isConfigured").mockImplementation(() => true);
+  vi.spyOn(tidarrClient, "deleteQueueItem").mockImplementation(async (id) => {
+    deleted.push(String(id));
+    return true;
+  });
+  vi.spyOn(tidarrClient, "deleteHistoryItem").mockImplementation(async () => false);
+  vi.spyOn(tidarrClient, "getHistoryItem").mockImplementation(async () => null);
+
+  await cancellationServiceModule.cancelPlaylistDownloadWork(
+    playlistId,
+    downloadTracker.getByPlaylistId(playlistId),
+  );
+
+  assert.deepEqual(deleted, ["tidarr_nzo_77777"]);
 });
 
 test("playlist cancellation keeps provider work retryable when providers are unconfigured", async () => {

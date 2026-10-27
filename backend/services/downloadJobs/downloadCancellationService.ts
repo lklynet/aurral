@@ -2,6 +2,7 @@ import * as v from "valibot";
 import { getDownloadClient } from "../download/downloadClientSettings.ts";
 import { deemixQueueIds } from "../deemixClient.ts";
 import { mapWithConcurrency } from "../discovery/helpers.ts";
+import type { UsenetClientKey } from "../usenetClientCommon.ts";
 import { getHonkerQueueByName, listHonkerJobs } from "../honkerDb.ts";
 import type { WeeklyFlowDownloadProviderWorkRow } from "../../db/rows.ts";
 import { logger } from "../logger.ts";
@@ -272,7 +273,7 @@ async function cancelDeemixWork(payloads: CancellationPayload[], jobs: Cancellat
 }
 
 async function cancelUsenetWork(
-  clientKey: "nzbget" | "sabnzbd",
+  clientKey: UsenetClientKey,
   label: string,
   payloads: CancellationPayload[],
   jobs: CancellationJob[],
@@ -365,6 +366,7 @@ async function cancelProviderWork(
     cancelDeemixWork(payloads, jobs),
     cancelUsenetWork("sabnzbd", "SABnzbd", payloads, jobs),
     cancelUsenetWork("nzbget", "NZBGet", payloads, jobs),
+    cancelUsenetWork("tidarr", "Tidarr", payloads, jobs),
     cancelYtdlpWork(payloads, jobs),
   ]);
   const failures = results
@@ -373,12 +375,13 @@ async function cancelProviderWork(
   if (failures.length > 0) {
     throw new AggregateError(failures, "Could not cancel download provider work");
   }
-  const [slskd, deemix, sabnzbd, nzbget, ytdlp] = results;
+  const [slskd, deemix, sabnzbd, nzbget, tidarr, ytdlp] = results;
   return {
     slskd: fulfilledValue(slskd),
     deemix: fulfilledValue(deemix),
     sabnzbd: fulfilledValue(sabnzbd),
     nzbget: fulfilledValue(nzbget),
+    tidarr: fulfilledValue(tidarr),
     ytdlp: fulfilledValue(ytdlp),
   };
 }
