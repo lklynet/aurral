@@ -63,7 +63,7 @@ const [
 setMetadataProviderCooldown(getMetadataBaseUrl(), 403, Number.MAX_SAFE_INTEGER);
 
 const { downloadTracker, DownloadTracker } = trackerModule;
-const { default: playlistsRouter } = await import("../../backend/routes/playlists/index.ts");
+const { handToHono } = await import("../../backend/routes/shared/expressHandoff.ts");
 const { default: requestsRouter } = await import("../../backend/routes/requests.ts");
 const history = await import("../../backend/services/aurralHistoryService.ts");
 const testUser = (
@@ -78,12 +78,12 @@ const testUser = (
 });
 let requestUser = testUser(1, "admin");
 const app = express();
-app.use(express.json());
 app.use((req, _res, next) => {
   req.user = requestUser;
   next();
 });
-app.use("/api/playlists", playlistsRouter);
+app.use("/api/playlists", handToHono);
+app.use(express.json());
 app.use("/api/requests", requestsRouter);
 const server = await new Promise<import("node:http").Server>((resolve) => {
   const listener = app.listen(0, "127.0.0.1", () => resolve(listener));

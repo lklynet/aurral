@@ -2,11 +2,10 @@ import { Hono } from "hono";
 import { sendAudioFile } from "../../../services/audioFileStream.ts";
 import { downloadTracker } from "../../../services/downloadJobs/downloadTracker.ts";
 import { downloadWorker } from "../../../services/downloadJobs/downloadWorker.ts";
-import { hasPermission } from "../../../middleware/auth.ts";
 import { requireStreamAuth } from "../../../middleware/guards.ts";
 import { noCache } from "../../../middleware/cacheHeaders.ts";
 import { resolveExistingTrackPath } from "../../../services/downloadPaths.ts";
-import { canAccessPlaylistType } from "./utils.ts";
+import { canAccessPlaylistType, requireFlowAccessIfSignedIn } from "./utils.ts";
 import { sendViaNode } from "../../shared/sendViaNode.ts";
 import { flowPlaylistConfig } from "../../../services/playlists/flowPlaylistConfig.ts";
 import type { DownloadJob } from "../../../services/downloadJobs/downloadTracker.ts";
@@ -24,15 +23,7 @@ const canAccessJob = (user: RequestUser | undefined, job: DownloadJob) =>
 
 export default new Hono<AppEnv>()
   .basePath("/playlists")
-  .use(noCache, requireStreamAuth)
-  .use(async (c, next) => {
-    const user = c.get("user");
-    if (user && !hasPermission(user, "accessFlow")) {
-      return c.json({ error: "Forbidden", message: "Permission required: accessFlow" }, 403);
-    }
-    await next();
-  })
-  .get("/stream/:jobId", async (c) => {
+  .get("/stream/:jobId", noCache, requireStreamAuth, requireFlowAccessIfSignedIn, async (c) => {
     const job = downloadTracker.getJob(c.req.param("jobId"));
     if (!job || !canAccessJob(c.get("user"), job)) {
       return c.json({ error: "Track not found" }, 404);
@@ -44,11 +35,17 @@ export default new Hono<AppEnv>()
     const sent = resolved && (await sendViaNode(c, sendAudioFile, resolved.path));
     return sent || c.json({ error: "Track file missing" }, 404);
   })
-  .get("/staging-stream/:jobId", async (c) => {
-    const job = downloadTracker.getJob(c.req.param("jobId"));
-    if (!job || job.status !== "blocked" || !job.stagingPath) {
-      return c.json({ error: "Staging file not found" }, 404);
-    }
-    const sent = await sendViaNode(c, sendAudioFile, job.stagingPath);
-    return sent || c.json({ error: "Staging file no longer exists" }, 404);
-  });
+  .get(
+    "/staging-stream/:jobId",
+    noCache,
+    requireStreamAuth,
+    requireFlowAccessIfSignedIn,
+    async (c) => {
+      const job = downloadTracker.getJob(c.req.param("jobId"));
+      if (!job || job.status !== "blocked" || !job.stagingPath) {
+        return c.json({ error: "Staging file not found" }, 404);
+      }
+      const sent = await sendViaNode(c, sendAudioFile, job.stagingPath);
+      return sent || c.json({ error: "Staging file no longer exists" }, 404);
+    },
+  );

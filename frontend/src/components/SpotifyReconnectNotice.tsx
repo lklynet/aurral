@@ -2,7 +2,8 @@ import { useEffect } from "react";
 import { useNavigate } from "react-router";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
-import { getSpotifyImportStatus } from "../utils/api/endpoints/playlists.ts";
+import { parseResponse } from "hono/client";
+import { playlistImportsClient } from "../utils/api/clients/playlistImports.ts";
 
 const NOTICE_KEY_PREFIX = "aurral-spotify-reconnect-notice:";
 
@@ -16,7 +17,7 @@ export default function SpotifyReconnectNotice() {
   useEffect(() => {
     if (!canImport || sessionStorage.getItem(noticeKey)) return undefined;
     let cancelled = false;
-    getSpotifyImportStatus()
+    parseResponse(playlistImportsClient.import.spotify.status.$get())
       .then((status) => {
         if (cancelled || !status?.reconnectRequired) return;
         sessionStorage.setItem(noticeKey, "1");

@@ -1,4 +1,6 @@
-import { captureRoutes, mockResponse, playlistTrack, requireFixture } from "./fixtures.ts";
+import { playlistTrack, requireFixture } from "./fixtures.ts";
+import { signedInAs } from "../helpers/honoApp.ts";
+import { testUser } from "../helpers/userFixtures.ts";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "fs/promises";
@@ -28,6 +30,7 @@ const [
   listenbrainzPlaylistsModule,
   lastfmStationsModule,
   youtubeMusicPlaylistsModule,
+  { api },
 ] = await setupIsolatedBackend(
   "playlist-import-order",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -46,6 +49,7 @@ const [
   () => import("../../backend/services/importLists/listenbrainzPlaylists.ts"),
   () => import("../../backend/services/importLists/lastfmStations.ts"),
   () => import("../../backend/services/importLists/youtubeMusicPlaylists.ts"),
+  () => import("../../backend/routes/api.ts"),
 );
 
 const { downloadTracker } = trackerModule;
@@ -73,6 +77,22 @@ const { syncStaticPlaylistImport } = importSyncModule;
 const { enqueueImportedPlaylist } = importPlaylistModule;
 const { playlistOperationQueue } = operationQueueModule;
 const { logger } = loggerModule;
+
+const requestAs = async (userId: number, path: string, body?: object) => {
+  const response = await signedInAs(testUser(userId, { permissions: { accessFlow: true } }))
+    .route("/", api)
+    .request(
+      `/playlists${path}`,
+      body
+        ? {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          }
+        : {},
+    );
+  return { status: response.status, body: await response.json() };
+};
 
 const downloadRoot = process.env.WEEKLY_FLOW_FOLDER;
 assert.ok(downloadRoot != null);
@@ -314,15 +334,6 @@ test("background import logs a permanent failure with its reason", async () => {
 });
 
 test("external import routes log fetch failures with the provider reason", async () => {
-  const [spotifyRoutes, listenbrainzRoutes, lastfmRoutes] = await Promise.all([
-    import("../../backend/routes/playlists/handlers/spotifyImport.ts"),
-    import("../../backend/routes/playlists/handlers/listenbrainzImport.ts"),
-    import("../../backend/routes/playlists/handlers/lastfmImport.ts"),
-  ]);
-  const { router, handlers } = captureRoutes();
-  spotifyRoutes.registerSpotifyImport(router);
-  listenbrainzRoutes.registerListenBrainzImport(router);
-  lastfmRoutes.registerLastfmImport(router);
   const failures = vi.spyOn(logger, "error").mockImplementation(() => {});
   const providers = [
     {
@@ -349,15 +360,12 @@ test("external import routes log fetch failures with the provider reason", async
 
   for (const { route, reason, fail } of providers) {
     fail(reason);
-    const response = mockResponse();
-    await requireFixture(handlers.get(route))(
-      {
-        user: { id: 7 },
-        body: { playlistId: "external-playlist", name: "Test Mix", username: "listener" },
-      },
-      response,
-    );
-    assert.equal(response.statusCode, 500);
+    const response = await requestAs(7, route, {
+      playlistId: "external-playlist",
+      name: "Test Mix",
+      username: "listener",
+    });
+    assert.equal(response.status, 500);
     const logged = failures.mock.calls.at(-1);
     assert.partialDeepStrictEqual(logged?.[2], {
       playlistName: "Test Mix",
@@ -368,10 +376,6 @@ test("external import routes log fetch failures with the provider reason", async
 });
 
 test("YouTube Music preview and import trust the refetched source title", async () => {
-  const { registerYoutubeMusicImport } =
-    await import("../../backend/routes/playlists/handlers/youtubeMusicImport.ts");
-  const { router, handlers } = captureRoutes();
-  registerYoutubeMusicImport(router);
   const sourceTracks = [
     playlistTrack({ artistName: "Artist A", trackName: "Track A", albumName: "Album A" }),
     playlistTrack({ artistName: "Artist B", trackName: "Track B" }),
@@ -391,15 +395,10 @@ test("YouTube Music preview and import trust the refetched source title", async 
       queued: true,
       operationId: 71,
     }));
-  const previewResponse = mockResponse();
-  await requireFixture(handlers.get("/import/youtube-music/preview"))(
-    {
-      user: { id: 7 },
-      body: { url: "https://music.youtube.com/playlist?list=PLabcdefghij_123" },
-    },
-    previewResponse,
-  );
-  assert.equal(previewResponse.statusCode, 200);
+  const previewResponse = await requestAs(7, "/import/youtube-music/preview", {
+    url: "https://music.youtube.com/playlist?list=PLabcdefghij_123",
+  });
+  assert.equal(previewResponse.status, 200);
   assert.deepEqual(previewResponse.body, {
     playlist: { id: "PLabcdefghij_123", name: "Refetched source title" },
     trackCount: 2,
@@ -407,22 +406,15 @@ test("YouTube Music preview and import trust the refetched source title", async 
     previewTracks: sourceTracks,
   });
 
-  const importResponse = mockResponse();
-  await requireFixture(handlers.get("/import/youtube-music"))(
-    {
-      user: { id: 7 },
-      body: {
-        playlistId: "PLabcdefghij_123",
-        name: "My imported mix",
-        externalName: "Spoofed client title",
-        syncEnabled: true,
-        syncIntervalHours: 12,
-        keepRemovedTracks: false,
-      },
-    },
-    importResponse,
-  );
-  assert.equal(importResponse.statusCode, 200);
+  const importResponse = await requestAs(7, "/import/youtube-music", {
+    playlistId: "PLabcdefghij_123",
+    name: "My imported mix",
+    externalName: "Spoofed client title",
+    syncEnabled: true,
+    syncIntervalHours: 12,
+    keepRemovedTracks: false,
+  });
+  assert.equal(importResponse.status, 200);
   assert.equal(getPlaylist.mock.calls.length, 2);
   assert.equal(enqueue.mock.calls.length, 1);
   const queued = enqueue.mock.calls[0]?.[0];
@@ -438,19 +430,12 @@ test("YouTube Music preview and import trust the refetched source title", async 
   });
   assert.equal(JSON.stringify(queued).includes("Spoofed client title"), false);
 
-  const invalidIntervalResponse = mockResponse();
-  await requireFixture(handlers.get("/import/youtube-music"))(
-    {
-      user: { id: 7 },
-      body: {
-        playlistId: "PLabcdefghij_123",
-        name: "Invalid schedule",
-        syncIntervalHours: "not-a-number",
-      },
-    },
-    invalidIntervalResponse,
-  );
-  assert.equal(invalidIntervalResponse.statusCode, 400);
+  const invalidIntervalResponse = await requestAs(7, "/import/youtube-music", {
+    playlistId: "PLabcdefghij_123",
+    name: "Invalid schedule",
+    syncIntervalHours: "not-a-number",
+  });
+  assert.equal(invalidIntervalResponse.status, 400);
   assert.deepEqual(invalidIntervalResponse.body, {
     error: "syncIntervalHours must be zero or greater",
   });
@@ -459,10 +444,6 @@ test("YouTube Music preview and import trust the refetched source title", async 
 });
 
 test("YouTube Music route maps provider failures without logging submitted references", async () => {
-  const { registerYoutubeMusicImport } =
-    await import("../../backend/routes/playlists/handlers/youtubeMusicImport.ts");
-  const { router, handlers } = captureRoutes();
-  registerYoutubeMusicImport(router);
   const error = Object.assign(new Error("YouTube Music took too long to respond"), {
     code: "YOUTUBE_PLAYLIST_TIMEOUT",
     statusCode: 504,
@@ -472,17 +453,11 @@ test("YouTube Music route maps provider failures without logging submitted refer
   });
   const warnings = vi.spyOn(logger, "warn").mockImplementation(() => {});
   const failures = vi.spyOn(logger, "error").mockImplementation(() => {});
-  const response = mockResponse();
+  const response = await requestAs(7, "/import/youtube-music/preview", {
+    url: "https://music.youtube.com/playlist?list=PLsecretUnlisted_123",
+  });
 
-  await requireFixture(handlers.get("/import/youtube-music/preview"))(
-    {
-      user: { id: 7 },
-      body: { url: "https://music.youtube.com/playlist?list=PLsecretUnlisted_123" },
-    },
-    response,
-  );
-
-  assert.equal(response.statusCode, 504);
+  assert.equal(response.status, 504);
   assert.deepEqual(response.body, {
     error: "Failed to preview YouTube Music playlist",
     message: "YouTube Music took too long to respond",
@@ -1574,16 +1549,10 @@ test("Spotify cleanup serializes retention updates with file removal", async () 
 });
 
 test("Spotify status asks the owner to reconnect only when synced imports lost their connection", async () => {
-  const spotifyRoutes = await import("../../backend/routes/playlists/handlers/spotifyImport.ts");
   const { spotifyConnectionStore } =
     await import("../../backend/services/spotify/spotifyConnectionStore.ts");
-  const { router, handlers } = captureRoutes();
-  spotifyRoutes.registerSpotifyImport(router);
-  const statusFor = (userId: number) => {
-    const response = mockResponse<{ connected: boolean; reconnectRequired: boolean }>();
-    requireFixture(handlers.get("/import/spotify/status"))({ user: { id: userId } }, response);
-    return response.body;
-  };
+  const statusFor = async (userId: number) =>
+    (await requestAs(userId, "/import/spotify/status")).body;
   const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Synced Spotify Mix",
     ownerUserId: 41,
@@ -1596,11 +1565,12 @@ test("Spotify status asks the owner to reconnect only when synced imports lost t
     },
   });
   try {
-    assert.equal(statusFor(41).reconnectRequired, true);
-    assert.equal(statusFor(42).reconnectRequired, false);
+    assert.equal((await statusFor(41)).reconnectRequired, true);
+    assert.equal((await statusFor(42)).reconnectRequired, false);
 
     spotifyConnectionStore.saveConnection(41, { accessToken: "access", refreshToken: "refresh" });
-    assert.deepEqual([statusFor(41).connected, statusFor(41).reconnectRequired], [true, false]);
+    const reconnected = await statusFor(41);
+    assert.deepEqual([reconnected.connected, reconnected.reconnectRequired], [true, false]);
   } finally {
     spotifyConnectionStore.clearConnection(41);
     flowPlaylistConfig.deleteStaticPlaylist(playlist.id);

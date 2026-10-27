@@ -1,4 +1,6 @@
-import { requireFixture, captureRoutes, mockResponse } from "./fixtures.ts";
+import { requireFixture } from "./fixtures.ts";
+import type { RequestUser } from "../../backend/middleware/requestUser.ts";
+import { signedInAs } from "../helpers/honoApp.ts";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
@@ -21,7 +23,7 @@ const [
   operations,
   store,
   honker,
-  routes,
+  { api },
 ] = await setupIsolatedBackend(
   "bulk-playlist-actions",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -32,7 +34,7 @@ const [
   () => import("../../backend/services/playlists/playlistOperations.ts"),
   () => import("../../backend/services/playlists/bulkOperationStore.ts"),
   () => import("../../backend/services/honkerDb.ts"),
-  () => import("../../backend/routes/playlists/handlers/staticPlaylists.ts"),
+  () => import("../../backend/routes/api.ts"),
 );
 beforeEach(() => {
   resetDatabase(db);
@@ -50,7 +52,7 @@ beforeEach(() => {
 afterAll(() => cleanupIsolatedState(state));
 
 function fixture(_t: import("vite-plus/test").TestContext, count: number = 3) {
-  const user = userOps.createUser("bulk-user", "unused");
+  const user = userOps.createUser("bulk-user", "unused", "user", { accessFlow: true });
   assert.ok(user != null);
   const tracks = Array.from({ length: count }, (_, index) => ({
     artistName: "Artist",
@@ -201,52 +203,33 @@ test("failed destination persistence keeps source membership and owner", async (
   }
 });
 
-const { handlers, router } = captureRoutes((method, path) => `${method}:${path}`);
-routes.registerStaticPlaylists(router);
-function response() {
-  return mockResponse<
-    NonNullable<ReturnType<typeof store.getBulkOperation>> & {
-      queued: boolean;
-      acceptedJobIds: string[];
-      rejected: { jobId: string }[];
-    }
-  >();
-}
+const send = (user: RequestUser, method: string, path: string, body?: object) =>
+  signedInAs(user)
+    .route("/", api)
+    .request(
+      `/playlists${path}`,
+      body
+        ? { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
+        : { method },
+    );
 
 test("batch acceptance validates, deduplicates and scopes its durable result to its requester", async (t) => {
   const f = fixture(t, 1);
-  const endpoint = requireFixture(
-    handlers.get("post:/shared-playlists/:playlistId/track-removals"),
-  );
-  const malformed = response();
-  await endpoint(
-    { params: { playlistId: f.source.id }, user: f.user, body: { jobIds: [] } },
-    malformed,
-  );
-  assert.equal(malformed.statusCode, 400);
-  const accepted = response();
-  await endpoint(
-    {
-      params: { playlistId: f.source.id },
-      user: f.user,
-      body: { jobIds: [f.jobs[0].id, f.jobs[0].id, "missing"] },
-    },
-    accepted,
-  );
-  assert.equal(accepted.body.queued, true);
-  assert.deepEqual(accepted.body.acceptedJobIds, [f.jobs[0].id]);
-  assert.equal(accepted.body.rejected[0].jobId, "missing");
+  const removals = `/shared-playlists/${f.source.id}/track-removals`;
+  const malformed = await send(f.user, "POST", removals, { jobIds: [] });
+  assert.equal(malformed.status, 400);
+  const accepted = await (
+    await send(f.user, "POST", removals, { jobIds: [f.jobs[0].id, f.jobs[0].id, "missing"] })
+  ).json();
+  assert.equal(accepted.queued, true);
+  assert.deepEqual(accepted.acceptedJobIds, [f.jobs[0].id]);
+  assert.equal(accepted.rejected[0].jobId, "missing");
   assert.equal(honker.getHonkerQueueDepth("weekly-flow-operation"), 1);
-  const read = requireFixture(
-    handlers.get("get:/shared-playlists/:playlistId/operations/:operationId"),
-  );
-  const params = { playlistId: f.source.id, operationId: String(accepted.body.operationId) };
-  const own = response();
-  read({ params, user: f.user }, own);
-  assert.equal(own.body.state, "queued");
-  const other = response();
-  read({ params, user: { ...f.user, id: f.user.id + 1, role: "admin" } }, other);
-  assert.equal(other.statusCode, 404);
+  const operation = `/shared-playlists/${f.source.id}/operations/${accepted.operationId}`;
+  const own = await (await send(f.user, "GET", operation)).json();
+  assert.equal(own.state, "queued");
+  const other = await send({ ...f.user, id: f.user.id + 1, role: "admin" }, "GET", operation);
+  assert.equal(other.status, 404);
 });
 
 test("synchronization failure preserves applied outcomes and retries only unfinished synchronization", async (t) => {

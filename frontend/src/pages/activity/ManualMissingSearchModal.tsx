@@ -3,13 +3,14 @@ import { useQuery } from "@tanstack/react-query";
 import { Download, Search } from "../../components/icons";
 import { ModalShell } from "../../components/PlaylistModals.tsx";
 import { DotLoader } from "../../components/DotLoader.tsx";
-import {
-  downloadManualMissingSearchResult,
-  getManualMissingSearchSources,
-  searchMissingTrackManually,
-} from "../../utils/api/endpoints/playlists.ts";
+import { parseResponse, type InferResponseType } from "hono/client";
+import { playlistJobsClient } from "../../utils/api/clients/playlistJobs.ts";
+import { apiFetchWithTimeout } from "../../utils/api/core.ts";
 import { queryKeys } from "../../queryClient.ts";
 import { getApiErrorMessage } from "../onboardingUtils.tsx";
+
+const manualSearch = playlistJobsClient.jobs[":jobId"]["manual-search"];
+const searchFetch = apiFetchWithTimeout(150_000);
 
 export type ManualSearchJob = { id: string; trackName?: string | null; artistName?: string | null };
 
@@ -29,15 +30,24 @@ export default function ManualMissingSearchModal({
   const [selectedSourceId, setSelectedSourceId] = useState("");
   const [searching, setSearching] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [search, setSearch] = useState<Awaited<
-    ReturnType<typeof searchMissingTrackManually>
-  > | null>(null);
+  const [search, setSearch] = useState<InferResponseType<typeof manualSearch.$post, 200> | null>(
+    null,
+  );
   const [selectedId, setSelectedId] = useState("");
   const [actionError, setActionError] = useState("");
   const searchRequestRef = useRef(0);
   const sourcesQuery = useQuery({
     queryKey: queryKeys.manualMissingSearchSources(job?.id, mode, playlistId),
-    queryFn: ({ signal }) => getManualMissingSearchSources(job!.id, { mode, playlistId, signal }),
+    queryFn: ({ signal }) =>
+      parseResponse(
+        manualSearch.sources.$get(
+          {
+            param: { jobId: encodeURIComponent(job!.id) },
+            query: { mode, ...(playlistId ? { playlistId } : {}) },
+          },
+          { init: { signal } },
+        ),
+      ),
     enabled: Boolean(job?.id),
     select: (data) => (Array.isArray(data?.sources) ? data.sources : []),
   });
@@ -75,7 +85,15 @@ export default function ManualMissingSearchModal({
     setSelectedId("");
     setActionError("");
     try {
-      const result = await searchMissingTrackManually(jobId, sourceId, { mode, playlistId });
+      const result = await parseResponse(
+        manualSearch.$post(
+          {
+            param: { jobId: encodeURIComponent(jobId) },
+            json: { sourceId, mode, ...(playlistId ? { playlistId } : {}) },
+          },
+          { fetch: searchFetch },
+        ),
+      );
       if (searchRequestRef.current === requestId) setSearch(result);
     } catch (requestError) {
       if (searchRequestRef.current === requestId) {
@@ -93,7 +111,12 @@ export default function ManualMissingSearchModal({
     setSubmitting(true);
     setActionError("");
     try {
-      await downloadManualMissingSearchResult(job.id, search.sessionId, selectedResult.id);
+      await parseResponse(
+        manualSearch.select.$post({
+          param: { jobId: encodeURIComponent(job.id) },
+          json: { sessionId: search.sessionId, resultId: selectedResult.id },
+        }),
+      );
       onQueued?.(job);
       onClose?.();
     } catch (requestError) {

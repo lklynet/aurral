@@ -101,7 +101,8 @@ import {
   type AurralMonitoringResult,
   type CustomArtworkResult,
 } from "../utils/api/endpoints/library.ts";
-import { addStaticPlaylistTracks, createStaticPlaylist } from "../utils/api/endpoints/playlists.ts";
+import { parseResponse } from "hono/client";
+import { staticPlaylistsClient } from "../utils/api/clients/staticPlaylists.ts";
 import { asApiError, buildAuthenticatedApiUrl } from "../utils/api/core.ts";
 import {
   type LibraryAlbum,
@@ -975,11 +976,18 @@ function LibraryPage() {
       try {
         if (target?.mode === "new") {
           const name = String(target?.name || "").trim() || defaultName;
-          await createStaticPlaylist({ name, tracks: payloads });
+          await parseResponse(
+            staticPlaylistsClient["shared-playlists"].$post({ json: { name, tracks: payloads } }),
+          );
           showSuccess(`${label} saved to ${name}`);
         } else {
           const playlist = staticPlaylists.find((candidate) => candidate.id === target?.playlistId);
-          await addStaticPlaylistTracks(target?.playlistId, { tracks: payloads });
+          await parseResponse(
+            staticPlaylistsClient["shared-playlists"][":playlistId"].tracks.$post({
+              param: { playlistId: encodeURIComponent(target?.playlistId) },
+              json: { tracks: payloads },
+            }),
+          );
           showSuccess(`${label} added to ${playlist?.name || "playlist"}`);
         }
         const nextPlaylists = await loadStaticPlaylists();

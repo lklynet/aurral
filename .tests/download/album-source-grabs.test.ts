@@ -1,5 +1,6 @@
 import { usenetCandidate } from "./fixtures.ts";
-import { listeningAddress } from "../helpers/backendTestHarness.ts";
+import { signedInAs } from "../helpers/honoApp.ts";
+import { testUser } from "../helpers/userFixtures.ts";
 import type { HonkerPayload } from "../../backend/services/honkerDb.ts";
 import type { PipelinePayload } from "../../backend/services/downloadPipeline.ts";
 import { createTrackedJob, trackedJob, usenetIndexer, usenetRelease } from "./fixtures.ts";
@@ -10,7 +11,6 @@ import { promisify } from "node:util";
 import { basename, dirname, join } from "node:path";
 import { cp, mkdir, readdir, rm, stat } from "node:fs/promises";
 import { parseFile } from "music-metadata";
-import express from "express";
 import { setupIsolatedBackend, cleanupIsolatedState } from "../helpers/backendTestHarness.ts";
 import { brainzmashGroup, serveGroups } from "../helpers/releaseFixture.ts";
 
@@ -38,7 +38,7 @@ const [
   },
   { queueQualityUpgrade, runQualityUpgradeCheck },
   { resolveDownloadRoot },
-  { registerJobs },
+  { api },
   { flowPlaylistConfig },
   { getHonkerDb, getPipelineQueue, listHonkerJobs },
   { stopDownloadPipelineWorker },
@@ -65,7 +65,7 @@ const [
   () => import("../../backend/services/downloadJobs/downloadCancellation.ts"),
   () => import("../../backend/services/qualityProfileService.ts"),
   () => import("../../backend/services/downloadPaths.ts"),
-  () => import("../../backend/routes/playlists/handlers/jobs.ts"),
+  () => import("../../backend/routes/api.ts"),
   () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
   () => import("../../backend/services/honkerDb.ts"),
   () => import("../../backend/services/downloadPipelineWorker.ts"),
@@ -1341,32 +1341,10 @@ test("an upgrade whose user is disabled while the upgrade check runs is not held
   );
 });
 
-async function postUpgrades(
-  t: import("vite-plus/test").TestContext,
-  path: string = "/quality-upgrades",
-) {
-  const app = express();
-  app.use((req, _res, next) => {
-    req.user = { id: 1, username: "test", role: "admin", permissions: {} };
-    next();
-  });
-  const router = express.Router();
-  registerJobs(router);
-  app.use(router);
-  const server = await new Promise<
-    import("node:http").Server<
-      typeof import("node:http").IncomingMessage,
-      typeof import("node:http").ServerResponse
-    >
-  >((resolve) => {
-    const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
-  });
-  t.onTestFinished(() => {
-    server.close();
-  });
-  const response = await fetch(`http://127.0.0.1:${listeningAddress(server).port}${path}`, {
-    method: "POST",
-  });
+async function postUpgrades(path: string = "/quality-upgrades") {
+  const response = await signedInAs(testUser(1, { username: "test", role: "admin" }))
+    .route("/", api)
+    .request(`/playlists${path}`, { method: "POST" });
   return response.json();
 }
 
@@ -1379,7 +1357,7 @@ test("Search all starts the upgrades of one release's tracks from different requ
   const { append } = mockNzbget(t, upgrades.folder);
 
   const runWorker = await holdDownloadWorker();
-  assert.equal((await postUpgrades(t)).queued, 2);
+  assert.equal((await postUpgrades()).queued, 2);
   await runWorker();
   assert.equal(upgrades.queued.length, 1);
   const [attempt] = upgrades.queued;
@@ -1512,11 +1490,11 @@ test("an upgrade asked for while Search all's upgrades wait for the worker start
   const gate = await gateUpgradeSearches(t, groups);
   const backlog: (string | null)[] = [];
   for (const group of groups.slice(0, 3)) backlog.push(await gate.addSource(group));
-  assert.equal((await postUpgrades(t)).queued, 3);
+  assert.equal((await postUpgrades()).queued, 3);
   await downloadWorker.waitForIdle();
   const askedFor = await gate.addSource("asked-for");
 
-  assert.equal((await postUpgrades(t, `/quality-upgrades/library/${askedFor}`)).queued, 1);
+  assert.equal((await postUpgrades(`/quality-upgrades/library/${askedFor}`)).queued, 1);
   await downloadWorker.waitForIdle();
   assert.deepEqual(gate.searching(), [backlog[0]]);
 

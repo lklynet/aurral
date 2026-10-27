@@ -18,33 +18,24 @@ import {
 import { normalizeFlowMixForValidation } from "../../../services/flows/flowValidation.ts";
 import { logger } from "../../../services/logger.ts";
 import { isDownloadJobCancelled } from "../../../services/downloadJobs/downloadCancellation.ts";
-import type { fetchImportedPlaylistTracks } from "../../../services/importLists/importPlaylist.ts";
+import { hasPermission } from "../../../middleware/auth.ts";
+import { requirePermission } from "../../../middleware/guards.ts";
+import { createMiddleware } from "hono/factory";
+import * as v from "valibot";
+import type { Context } from "hono";
 import type { StoredFlow } from "../../../services/playlists/flowPlaylistConfig.ts";
 import type { DownloadJob } from "../../../services/downloadJobs/downloadTracker.ts";
-import type { RequestUser } from "../../../middleware/requestUser.ts";
-import type { Request, Response } from "express";
+import type { AppEnv, RequestUser } from "../../../middleware/requestUser.ts";
 
-export type ImportedPlaylistPreviewResponse = {
-  trackCount: number;
-  skipped: number;
-  previewTracks: Awaited<ReturnType<typeof fetchImportedPlaylistTracks>>["tracks"];
-};
+export const requireFlowAccess = requirePermission("accessFlow");
 
-export type PlaylistImportQueuedResponse = {
-  success: true;
-  playlist: null;
-  tracksQueued: number;
-  tracksReused: number;
-  queued: boolean;
-};
-
-export type ResearchTrackResponse = {
-  success: true;
-  jobId: string;
-  playlistId: string;
-  queued: true;
-  operationId: string;
-};
+export const requireFlowAccessIfSignedIn = createMiddleware<AppEnv>(async (c, next) => {
+  const user = c.get("user");
+  if (user && !hasPermission(user, "accessFlow")) {
+    return c.json({ error: "Forbidden", message: "Permission required: accessFlow" }, 403);
+  }
+  await next();
+});
 
 export const EXISTING_FILE_MODE_OPTIONS = ["download", "reuse"];
 export const DEFAULT_LIMIT = DEFAULT_SIZE;
@@ -259,39 +250,53 @@ export const queueFlowSideEffect = (kind: string, labelPrefix: string, flowId: s
     });
 };
 
-export const enqueueResearchTrack = async (
-  req: Request,
-  res: Response,
+export function canAccessJobThroughPlaylist(
+  user: RequestUser | undefined,
+  job: DownloadJob,
+  playlistId: unknown,
+) {
+  const safePlaylistId = String(playlistId || "").trim();
+  if (!safePlaylistId) return filterJobsForUser(user, [job]).length > 0;
+  if (!canAccessJobType(user, safePlaylistId)) return false;
+  if (job.playlistType === safePlaylistId || job.playlistId === safePlaylistId) return true;
+  const staticPlaylist = flowPlaylistConfig.getStaticPlaylist(safePlaylistId);
+  return (
+    staticPlaylist?.tracks?.some(
+      (track) => String(track?.canonicalJobId || "") === String(job.id || ""),
+    ) === true
+  );
+}
+
+export const enqueueResearchTrack = async <E extends AppEnv>(
+  c: Context<E>,
+  user: RequestUser,
   playlistId: string,
   jobId: string,
   labelPrefix: string,
 ) => {
-  if (!canAccessJobType(req.user, playlistId)) {
-    return res.status(404).json({ error: "Playlist not found" });
+  if (!canAccessJobType(user, playlistId)) {
+    return c.json({ error: "Playlist not found" }, 404);
   }
 
   const job = downloadTracker.getJob(jobId);
   if (!job || job.playlistType !== playlistId) {
-    return res.status(404).json({ error: "Track not found" });
+    return c.json({ error: "Track not found" }, 404);
   }
 
   if (job.status === "pending" || job.status === "downloading") {
-    return res.status(409).json({
-      error: "Track is already being processed",
-    });
+    return c.json({ error: "Track is already being processed" }, 409);
   }
   if (job.status === "cancel_requested") {
-    return res.status(409).json({ error: "Track cancellation is still in progress" });
+    return c.json({ error: "Track cancellation is still in progress" }, 409);
   }
   if (job.requestGroupId && isDownloadJobCancelled(job.id)) {
-    return res
-      .status(409)
-      .json({ error: "Cancelled album tracks cannot be searched again. Request the album again." });
+    return c.json(
+      { error: "Cancelled album tracks cannot be searched again. Request the album again." },
+      409,
+    );
   }
   if (downloadTracker.findActiveUpgradeJob(job)) {
-    return res.status(409).json({
-      error: "A search for this track is already running",
-    });
+    return c.json({ error: "A search for this track is already running" }, 409);
   }
 
   const result = await playlistOperationQueue.enqueuePayload({
@@ -301,11 +306,15 @@ export const enqueueResearchTrack = async (
     jobId,
   });
 
-  return res.json({
-    success: true,
-    jobId,
-    playlistId,
-    queued: true,
-    operationId: result.operationId,
-  });
+  return c.json(
+    { success: true, jobId, playlistId, queued: true, operationId: result.operationId },
+    200,
+  );
+};
+
+export const importSettings = {
+  name: v.string(),
+  syncIntervalHours: v.nullish(v.union([v.number(), v.string()])),
+  syncEnabled: v.nullish(v.boolean()),
+  keepRemovedTracks: v.nullish(v.boolean()),
 };

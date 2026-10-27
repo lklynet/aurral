@@ -1,7 +1,8 @@
-import type { getPlaylistStatusSnapshot } from "../../../../backend/services/playlists/playlistStatusSnapshot.ts";
+import type { InferResponseType } from "hono/client";
+import type { playlistJobsClient } from "../../utils/api/clients/playlistJobs.ts";
 import { formatDateTime } from "../../utils/dateTime.ts";
 
-type PlaylistStatusSnapshot = ReturnType<typeof getPlaylistStatusSnapshot>;
+type PlaylistStatusSnapshot = InferResponseType<typeof playlistJobsClient.status.$get, 200>;
 
 export interface FlowMix {
   discover: number;
@@ -197,7 +198,9 @@ export const hasDownloadWorkerActivity = (status: PlaylistStatus | null | undefi
   return stats.pending > 0 || stats.downloading > 0;
 };
 
-export const hasReviewActivity = (status: PlaylistStatus | null | undefined) => {
+export const hasReviewActivity = (
+  status: Pick<PlaylistStatus, "reviewCount"> | null | undefined,
+) => {
   if (!status) return false;
   return statCount(status.reviewCount) > 0;
 };

@@ -1,3 +1,5 @@
+import { Hono } from "hono";
+import * as v from "valibot";
 import {
   enqueueImportedPlaylist,
   fetchImportedPlaylistTracks,
@@ -5,125 +7,166 @@ import {
 import { lastfmStationClient } from "../../../services/importLists/lastfmStations.ts";
 import { logger, safeLogDiagnostic } from "../../../services/logger.ts";
 import { asAppError } from "../../../../lib/errors.ts";
-import type { Router } from "express";
+import { validate } from "../../../middleware/validate.ts";
+import { isErrorStatus } from "../../shared/errorStatus.ts";
+import { importSettings, requireFlowAccess } from "./utils.ts";
+import type { AppEnv } from "../../../middleware/requestUser.ts";
 
 const getErrorStatus = (error: unknown) => {
   const failure = asAppError(error);
-  return failure?.statusCode || failure?.response?.status || 500;
+  const status = failure?.statusCode || failure?.response?.status;
+  return isErrorStatus(status) ? status : 500;
 };
 
-const getPlaylistImport = (
-  body: { playlistId?: unknown; username?: unknown } | null | undefined,
-) => ({
+const stationReference = {
+  playlistId: v.nullish(v.string()),
+  username: v.nullish(v.string()),
+};
+
+const getPlaylistImport = ({
+  playlistId,
+  username,
+}: {
+  playlistId?: string | null;
+  username?: string | null;
+}) => ({
   provider: "lastfm-station",
-  externalId: String(body?.playlistId || "").trim(),
-  externalUsername: String(body?.username || "").trim(),
+  externalId: String(playlistId || "").trim(),
+  externalUsername: String(username || "").trim(),
 });
 
-export function registerLastfmImport(router: Router) {
-  router.get("/import/lastfm/playlists", async (req, res) => {
-    try {
-      const requestedUsername = Array.isArray(req.query?.username)
-        ? req.query.username[0]
-        : req.query?.username;
-      res.json(await lastfmStationClient.listPlaylists(req.user!.id, requestedUsername));
-    } catch (error) {
-      logger.warn("playlist-import", "Last.fm station listing failed", {
-        reason: safeLogDiagnostic(error),
-      });
-      res.status(getErrorStatus(error)).json({
-        error: "Failed to fetch Last.fm stations",
-        message: asAppError(error)?.message || "Unknown error",
-      });
-    }
-  });
-
-  router.post("/import/lastfm/preview", async (req, res) => {
-    try {
-      const playlistImport = getPlaylistImport(req.body);
-      const { tracks, stats } = await fetchImportedPlaylistTracks({
-        userId: req.user!.id,
-        ...playlistImport,
-      });
-      res.json({
-        trackCount: tracks.length,
-        skipped: stats.incomplete + stats.duplicate,
-        previewTracks: tracks.slice(0, 3),
-      });
-    } catch (error) {
-      logger.warn("playlist-import", "Last.fm station preview failed", {
-        reason: safeLogDiagnostic(error),
-      });
-      res.status(getErrorStatus(error)).json({
-        error: "Failed to preview Last.fm station",
-        message: asAppError(error)?.message || "Unknown error",
-      });
-    }
-  });
-
-  router.post("/import/lastfm", async (req, res) => {
-    let stage = "fetch";
-    try {
-      const playlistImport = getPlaylistImport(req.body);
-      const name = String(req.body?.name || "").trim();
-      const externalName = String(req.body?.externalName || "").trim();
-      const syncIntervalHours = Number(req.body?.syncIntervalHours ?? 24);
-      const keepRemovedTracks = req.body?.keepRemovedTracks !== false;
-      const syncEnabled = req.body?.syncEnabled === false ? false : syncIntervalHours > 0;
-      if (!playlistImport.externalId) {
-        return res.status(400).json({ error: "playlistId is required" });
-      }
-      if (!name) return res.status(400).json({ error: "name is required" });
-      const { tracks, stats, user } = await fetchImportedPlaylistTracks({
-        userId: req.user!.id,
-        ...playlistImport,
-      });
-      stage = "enqueue";
-      const result = await enqueueImportedPlaylist({
-        ownerUserId: req.user!.id,
-        name,
-        sourceName: "Last.fm",
-        ...playlistImport,
-        externalUsername: playlistImport.externalUsername || user || "",
-        externalName,
-        tracks,
-        sourceStats: stats,
-        syncEnabled,
-        syncIntervalHours,
-        keepRemovedTracks,
-      });
-      res.json({
-        success: true,
-        playlist: null,
-        tracksQueued: Number(result?.tracksQueued || 0),
-        tracksReused: 0,
-        queued: result?.queued === true,
-      });
-    } catch (error) {
-      const failure = asAppError(error);
-      if (failure?.code === "STATIC_PLAYLIST_NAME_CONFLICT") {
-        logger.debug("playlist-import", "Last.fm station import name already exists", {
-          playlistName: String(req.body?.name || "").trim() || null,
-        });
-        return res.status(409).json({
-          error: "Playlist name already exists",
-          message: failure?.message,
-        });
-      }
-      const status = getErrorStatus(error);
-      logger[status >= 500 ? "error" : "warn"](
-        "playlist-import",
-        "Last.fm station import request failed",
-        {
-          playlistName: String(req.body?.name || "").trim() || null,
-          stage,
+export default new Hono<AppEnv>()
+  .get(
+    "/import/lastfm/playlists",
+    requireFlowAccess,
+    validate(
+      "query",
+      v.object({ username: v.optional(v.union([v.string(), v.array(v.string())])) }),
+    ),
+    async (c) => {
+      try {
+        const { username } = c.req.valid("query");
+        const requestedUsername = Array.isArray(username) ? username[0] : username;
+        return c.json(
+          await lastfmStationClient.listPlaylists(c.var.user.id, requestedUsername),
+          200,
+        );
+      } catch (error) {
+        logger.warn("playlist-import", "Last.fm station listing failed", {
           reason: safeLogDiagnostic(error),
-        },
-      );
-      res.status(status).json({
-        error: "Failed to import Last.fm station",
-        message: failure?.message || "Unknown error",
-      });
-    }
-  });
-}
+        });
+        return c.json(
+          {
+            error: "Failed to fetch Last.fm stations",
+            message: asAppError(error)?.message || "Unknown error",
+          },
+          getErrorStatus(error),
+        );
+      }
+    },
+  )
+  .post(
+    "/import/lastfm/preview",
+    requireFlowAccess,
+    validate("json", v.object(stationReference)),
+    async (c) => {
+      try {
+        const { tracks, stats } = await fetchImportedPlaylistTracks({
+          userId: c.var.user.id,
+          ...getPlaylistImport(c.req.valid("json")),
+        });
+        return c.json(
+          {
+            trackCount: tracks.length,
+            skipped: stats.incomplete + stats.duplicate,
+            previewTracks: tracks.slice(0, 3),
+          },
+          200,
+        );
+      } catch (error) {
+        logger.warn("playlist-import", "Last.fm station preview failed", {
+          reason: safeLogDiagnostic(error),
+        });
+        return c.json(
+          {
+            error: "Failed to preview Last.fm station",
+            message: asAppError(error)?.message || "Unknown error",
+          },
+          getErrorStatus(error),
+        );
+      }
+    },
+  )
+  .post(
+    "/import/lastfm",
+    requireFlowAccess,
+    validate(
+      "json",
+      v.object({ ...stationReference, ...importSettings, externalName: v.nullish(v.string()) }),
+    ),
+    async (c) => {
+      let stage = "fetch";
+      const body = c.req.valid("json");
+      const name = body.name.trim();
+      try {
+        const playlistImport = getPlaylistImport(body);
+        const externalName = String(body.externalName || "").trim();
+        const syncIntervalHours = Number(body.syncIntervalHours ?? 24);
+        const keepRemovedTracks = body.keepRemovedTracks !== false;
+        const syncEnabled = body.syncEnabled === false ? false : syncIntervalHours > 0;
+        if (!playlistImport.externalId) {
+          return c.json({ error: "playlistId is required" }, 400);
+        }
+        if (!name) return c.json({ error: "name is required" }, 400);
+        const { tracks, stats, user } = await fetchImportedPlaylistTracks({
+          userId: c.var.user.id,
+          ...playlistImport,
+        });
+        stage = "enqueue";
+        const result = await enqueueImportedPlaylist({
+          ownerUserId: c.var.user.id,
+          name,
+          sourceName: "Last.fm",
+          ...playlistImport,
+          externalUsername: playlistImport.externalUsername || user || "",
+          externalName,
+          tracks,
+          sourceStats: stats,
+          syncEnabled,
+          syncIntervalHours,
+          keepRemovedTracks,
+        });
+        return c.json(
+          {
+            success: true,
+            playlist: null,
+            tracksQueued: Number(result?.tracksQueued || 0),
+            tracksReused: 0,
+            queued: result?.queued === true,
+          },
+          200,
+        );
+      } catch (error) {
+        const failure = asAppError(error);
+        if (failure?.code === "STATIC_PLAYLIST_NAME_CONFLICT") {
+          logger.debug("playlist-import", "Last.fm station import name already exists", {
+            playlistName: name || null,
+          });
+          return c.json({ error: "Playlist name already exists", message: failure.message }, 409);
+        }
+        const status = getErrorStatus(error);
+        logger[status >= 500 ? "error" : "warn"](
+          "playlist-import",
+          "Last.fm station import request failed",
+          { playlistName: name || null, stage, reason: safeLogDiagnostic(error) },
+        );
+        return c.json(
+          {
+            error: "Failed to import Last.fm station",
+            message: failure?.message || "Unknown error",
+          },
+          status,
+        );
+      }
+    },
+  );

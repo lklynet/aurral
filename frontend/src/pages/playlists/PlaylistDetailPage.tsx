@@ -18,13 +18,8 @@ import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
 import { useDocumentTitle } from "../../hooks/useDocumentTitle";
 import { queryClient, queryKeys } from "../../queryClient.ts";
-import {
-  deleteStaticPlaylist,
-  setPlaylistRecordHistory,
-  setPlaylistTrackAvailability,
-  syncStaticPlaylistImport,
-  updateStaticPlaylist,
-} from "../../utils/api/endpoints/playlists.ts";
+import { parseResponse, type InferRequestType } from "hono/client";
+import { staticPlaylistsClient } from "../../utils/api/clients/staticPlaylists.ts";
 import { getApiErrorMessage } from "../onboardingUtils.tsx";
 import { ConfirmModal } from "../../components/ConfirmModal.tsx";
 import { PlaylistArtworkThumb } from "./components/PlaylistArtworkThumb.tsx";
@@ -47,7 +42,7 @@ import { countAvailableTracks } from "./trackAvailability.ts";
 import { usePlaylistStatus } from "./usePlaylistStatus";
 import { useHiddenPlaylistTracks } from "./usePlaylistBulkActions.ts";
 import type { PlaylistStats, PlaylistStatus, StaticPlaylist } from "./playlistStats.ts";
-import { asApiError } from "../../utils/api/core.ts";
+import { apiFetchWithTimeout, asApiError } from "../../utils/api/core.ts";
 import { getApiErrorText } from "../onboardingUtils.tsx";
 
 interface PlaylistDetailProps {
@@ -56,6 +51,9 @@ interface PlaylistDetailProps {
   staticPlaylists: StaticPlaylist[];
   fetchStatus: () => Promise<unknown>;
 }
+
+const sharedPlaylist = staticPlaylistsClient["shared-playlists"][":playlistId"];
+const syncFetch = apiFetchWithTimeout(5 * 60 * 1000);
 
 function updateCachedPlaylist(playlistId: string, changes: Partial<StaticPlaylist>) {
   queryClient.setQueryData<PlaylistStatus>(queryKeys.playlistStatus, (current) =>
@@ -178,11 +176,16 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
     );
   }
 
+  const updatePlaylist = (json: InferRequestType<typeof sharedPlaylist.$put>["json"]) =>
+    parseResponse(
+      sharedPlaylist.$put({ param: { playlistId: encodeURIComponent(playlist.id) }, json }),
+    );
+
   const handleRename = async (name: string) => {
     setRenaming(true);
     setRenameError("");
     try {
-      await updateStaticPlaylist(playlist.id, { name: String(name ?? "").trim() });
+      await updatePlaylist({ name: String(name ?? "").trim() });
       showSuccess("Playlist renamed");
       await fetchStatus();
       setEditOpen(false);
@@ -199,7 +202,9 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
   const handleDelete = async () => {
     setDeleting(true);
     try {
-      const result = await deleteStaticPlaylist(playlist.id);
+      const result = await parseResponse(
+        sharedPlaylist.$delete({ param: { playlistId: encodeURIComponent(playlist.id) } }),
+      );
       showSuccess(
         result?.queued ? `Removal of ${playlist.name} queued` : `Deleted ${playlist.name}`,
       );
@@ -218,11 +223,16 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
     if (syncing) return;
     setSyncing(true);
     try {
-      const result = await syncStaticPlaylistImport(playlist.id);
-      if (result?.skipped) {
+      const result = await parseResponse(
+        sharedPlaylist.sync.$post(
+          { param: { playlistId: encodeURIComponent(playlist.id) } },
+          { fetch: syncFetch },
+        ),
+      );
+      if (!("tracksQueued" in result)) {
         showSuccess("Playlist is already up to date");
       } else {
-        const queued = Number(result?.tracksQueued || 0);
+        const queued = result.tracksQueued;
         showSuccess(
           queued > 0
             ? `Synced ${queued} new track${queued === 1 ? "" : "s"} from ${providerLabel}`
@@ -263,7 +273,7 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
   const updateSyncInterval = (hours: number) =>
     saveSetting(
       async () => {
-        await updateStaticPlaylist(playlist.id, {
+        await updatePlaylist({
           importSource: { syncIntervalHours: hours, syncEnabled: hours > 0 },
         });
         await fetchStatus();
@@ -275,7 +285,7 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
   const updateKeepRemoved = (keepRemovedTracks: boolean) =>
     saveSetting(
       async () => {
-        await updateStaticPlaylist(playlist.id, { importSource: { keepRemovedTracks } });
+        await updatePlaylist({ importSource: { keepRemovedTracks } });
         await fetchStatus();
       },
       keepRemovedTracks
@@ -287,7 +297,12 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
   const updateRecordHistory = (enabled: boolean) =>
     saveSetting(
       async () => {
-        const result = await setPlaylistRecordHistory(playlist.id, enabled);
+        const result = await parseResponse(
+          sharedPlaylist["record-history"].$put({
+            param: { playlistId: encodeURIComponent(playlist.id) },
+            json: { enabled },
+          }),
+        );
         updateCachedPlaylist(playlist.id, { recordHistory: result.recordHistory });
         await fetchStatus();
       },
@@ -298,7 +313,12 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
   const updateTrackAvailability = (enabled: boolean) =>
     saveSetting(
       async () => {
-        const result = await setPlaylistTrackAvailability(playlist.id, enabled);
+        const result = await parseResponse(
+          sharedPlaylist["track-availability"].$put({
+            param: { playlistId: encodeURIComponent(playlist.id) },
+            json: { enabled },
+          }),
+        );
         await queryClient.cancelQueries({ queryKey: queryKeys.playlistStatus });
         updateCachedPlaylist(playlist.id, { showTrackAvailability: result.showTrackAvailability });
         if (enabled) await refresh();

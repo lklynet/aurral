@@ -1,5 +1,5 @@
 import { queryClient, queryKeys } from "../queryClient.ts";
-import { getPlaylistTrackStreamUrl } from "./api/endpoints/playlists.ts";
+import { getPlaylistTrackStreamUrl } from "./api/playlistUrls.ts";
 import type {
   LibraryAlbum as BackendLibraryAlbum,
   LibraryArtist as BackendLibraryArtist,

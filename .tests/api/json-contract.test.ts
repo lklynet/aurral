@@ -23,7 +23,6 @@ const [
   { default: searchRouter },
   { default: artistRouter },
   { default: libraryRouter },
-  { default: playlistRouter },
   { default: requestsRouter },
   libraryStore,
   { setLibraryManagement },
@@ -42,7 +41,6 @@ const [
   () => import("../../backend/routes/search.ts"),
   () => import("../../backend/routes/artists/index.ts"),
   () => import("../../backend/routes/library/index.ts"),
-  () => import("../../backend/routes/playlists/index.ts"),
   () => import("../../backend/routes/requests.ts"),
   () => import("../../backend/services/libraryMediaStore.ts"),
   () => import("../../backend/services/libraryManagementStore.ts"),
@@ -212,14 +210,13 @@ beforeAll(async () => {
   });
   const app = express();
   app.use(authMiddleware);
-  app.use(["/api/auth", "/api/health"], handToHono);
+  app.use(["/api/auth", "/api/health", "/api/playlists"], handToHono);
   app.use(express.json());
   for (const [route, router] of [
     ["discover", discoveryRouter],
     ["search", searchRouter],
     ["artists", artistRouter],
     ["library", libraryRouter],
-    ["playlists", playlistRouter],
     ["requests", requestsRouter],
   ] as const)
     app.use(`/api/${route}`, router);

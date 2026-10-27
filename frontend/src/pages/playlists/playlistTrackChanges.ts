@@ -2,13 +2,8 @@ import { queryClient, queryKeys } from "../../queryClient.ts";
 import type { useToast } from "../../contexts/ToastContext";
 import { asApiError } from "../../utils/api/core.ts";
 import { getApiErrorText } from "../onboardingUtils.tsx";
-import {
-  getStaticPlaylistOperation,
-  moveStaticPlaylistTracks,
-  type StaticPlaylistOperationStatus,
-  removeStaticPlaylistTracks,
-} from "../../utils/api/endpoints/playlists.ts";
-import type { BulkPlaylistOperationResponse } from "../../../../backend/routes/playlists/handlers/staticPlaylists.ts";
+import { parseResponse, type InferResponseType } from "hono/client";
+import { staticPlaylistsClient } from "../../utils/api/clients/staticPlaylists.ts";
 import type { PlaylistStatus } from "./playlistStats.ts";
 import type { PlaylistTrack } from "./trackAvailability.ts";
 
@@ -27,7 +22,13 @@ interface TrackChange {
   toastId?: string;
 }
 
-type SubmitResponse = BulkPlaylistOperationResponse;
+const sharedPlaylist = staticPlaylistsClient["shared-playlists"][":playlistId"];
+
+type SubmitResponse = InferResponseType<(typeof sharedPlaylist)["track-moves"]["$post"], 200>;
+type OperationStatus = InferResponseType<
+  (typeof sharedPlaylist)["operations"][":operationId"]["$get"],
+  200
+>;
 
 type MoveTarget = { mode: "new"; name?: string | null } | { mode?: "existing"; playlistId: string };
 
@@ -94,7 +95,7 @@ export function createPlaylistTrackChanges(toast: ReturnType<typeof useToast>) {
     if (error) toast.showError(error, 8000);
   };
 
-  const report = (change: TrackChange, result: StaticPlaylistOperationStatus | undefined) => {
+  const report = (change: TrackChange, result: OperationStatus | undefined) => {
     const outcomes = Array.isArray(result?.outcomes) ? result.outcomes : [];
     const failed = outcomes.filter((outcome) => outcome.status === "failed");
     const moved = outcomes.filter((outcome) => outcome.status === "moved").length;
@@ -120,15 +121,20 @@ export function createPlaylistTrackChanges(toast: ReturnType<typeof useToast>) {
     );
   };
 
-  const follow = async (change: TrackChange, operationId: string) => {
+  const follow = async (change: TrackChange, operationId: number) => {
     let errors = 0;
     for (let attempt = 0; ; attempt += 1) {
       if (attempt > 0) await wait(Math.min(1000 * 2 ** (attempt - 1), MAX_POLL_DELAY_MS));
       let result;
       try {
-        result = await getStaticPlaylistOperation(change.sourceId, operationId, {
-          bypassCache: true,
-        });
+        result = await parseResponse(
+          sharedPlaylist.operations[":operationId"].$get({
+            param: {
+              playlistId: encodeURIComponent(change.sourceId),
+              operationId: encodeURIComponent(operationId),
+            },
+          }),
+        );
         errors = 0;
       } catch (error) {
         if (asApiError(error)?.response?.status === 404 || ++errors >= MAX_POLL_ERRORS) {
@@ -170,8 +176,14 @@ export function createPlaylistTrackChanges(toast: ReturnType<typeof useToast>) {
     const change = find(key);
     if (!change || change.phase !== "undo") return;
     update(key, { phase: "saving" });
+    const json = { jobIds: change.jobIds };
     void submit(change, () =>
-      removeStaticPlaylistTracks(change.sourceId, change.jobIds, { keepalive: true }),
+      parseResponse(
+        sharedPlaylist["track-removals"].$post(
+          { param: { playlistId: encodeURIComponent(change.sourceId) }, json },
+          { init: { keepalive: JSON.stringify(json).length < 60_000 } },
+        ),
+      ),
     );
   };
 
@@ -247,10 +259,14 @@ export function createPlaylistTrackChanges(toast: ReturnType<typeof useToast>) {
       };
       publish([...changes, change]);
       void submit(change, () =>
-        moveStaticPlaylistTracks(
-          source.id,
-          jobIds,
-          creating ? { name: targetName } : { playlistId: target.playlistId },
+        parseResponse(
+          sharedPlaylist["track-moves"].$post({
+            param: { playlistId: encodeURIComponent(source.id) },
+            json: {
+              jobIds,
+              target: creating ? { name: targetName } : { playlistId: target.playlistId },
+            },
+          }),
         ),
       );
     },

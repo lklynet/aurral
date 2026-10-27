@@ -9,7 +9,8 @@ import { CreatePlaylistModal } from "../../components/PlaylistModals";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
 import { useDocumentTitle } from "../../hooks/useDocumentTitle";
-import { createStaticPlaylist } from "../../utils/api/endpoints/playlists.ts";
+import { parseResponse } from "hono/client";
+import { staticPlaylistsClient } from "../../utils/api/clients/staticPlaylists.ts";
 import { PlaylistArtworkThumb } from "./components/PlaylistArtworkThumb.tsx";
 import { getStaticPlaylistTrackCount, type StaticPlaylist } from "./playlistStats";
 import { normalizeNameKey, reserveUniqueName } from "./flowPageUtils";
@@ -72,7 +73,9 @@ export default function PlaylistsPage() {
     setCreating(true);
     setCreateError("");
     try {
-      const response = await createStaticPlaylist({ name });
+      const response = await parseResponse(
+        staticPlaylistsClient["shared-playlists"].$post({ json: { name } }),
+      );
       showSuccess(`Created ${name}`);
       setCreateOpen(false);
       await fetchStatus();

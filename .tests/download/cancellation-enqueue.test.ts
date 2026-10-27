@@ -1,4 +1,3 @@
-import type { Router } from "express";
 import { createTrackedJob, trackedJob } from "./fixtures.ts";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
@@ -7,14 +6,15 @@ import {
   cleanupIsolatedState,
   resetDatabase,
 } from "../helpers/backendTestHarness.ts";
+import { signedInAs } from "../helpers/honoApp.ts";
+import { testUser } from "../helpers/userFixtures.ts";
 
 const [
   isolatedState,
   { db },
   { dbOps },
   { flowPlaylistConfig },
-  { registerFlows },
-  { registerStaticPlaylists },
+  { api },
   { playlistOperationQueue },
   { downloadTracker },
   { playlistManager },
@@ -25,8 +25,7 @@ const [
   () => import("../../backend/config/db-sqlite.ts"),
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
-  () => import("../../backend/routes/playlists/handlers/flows.ts"),
-  () => import("../../backend/routes/playlists/handlers/staticPlaylists.ts"),
+  () => import("../../backend/routes/api.ts"),
   () => import("../../backend/services/playlists/playlistOperationQueue.ts"),
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
   () => import("../../backend/services/playlists/playlistManager.ts"),
@@ -41,52 +40,15 @@ const {
   isPipelinePayloadActive,
 } = cancellation;
 
-type Handler = (
-  request: {
-    params: Record<string, string>;
-    body?: Record<string, unknown>;
-    user: { id: number; role: string };
-  },
-  response: ReturnType<typeof createResponse>,
-) => Promise<unknown>;
-const flowHandlers = new Map<string, Handler>();
-const flowUpdateHandlers = new Map<string, Handler>();
-registerFlows({
-  get() {},
-  post() {},
-  put(path: string, ...handlers: Handler[]) {
-    flowHandlers.set(path, handlers.at(-1)!);
-    flowUpdateHandlers.set(path, handlers.at(-1)!);
-  },
-  delete(path: string, ...handlers: Handler[]) {
-    flowHandlers.set(path, handlers.at(-1)!);
-  },
-} as unknown as Router);
-
-const staticPlaylistHandlers = new Map<string, Handler>();
-registerStaticPlaylists({
-  get() {},
-  post() {},
-  put(path: string, ...handlers: Handler[]) {
-    staticPlaylistHandlers.set(path, handlers.at(-1)!);
-  },
-  delete(path: string, ...handlers: Handler[]) {
-    staticPlaylistHandlers.set(path, handlers.at(-1)!);
-  },
-} as unknown as Router);
-
-const createResponse = () => ({
-  statusCode: 200,
-  body: null as { queued?: boolean; operationId?: number; error?: string } | null,
-  status(code: number) {
-    this.statusCode = code;
-    return this;
-  },
-  json(body: { queued?: boolean; operationId?: number; error?: string }) {
-    this.body = body;
-    return this;
-  },
-});
+const user = testUser(1, { permissions: { accessFlow: true } });
+const app = signedInAs(user).route("/", api);
+const send = async (method: string, path: string, body?: Record<string, unknown>) =>
+  app.request(
+    `/playlists${path}`,
+    body
+      ? { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
+      : { method },
+  );
 
 const createFlow = ({
   enabled = false,
@@ -117,7 +79,6 @@ afterAll(async () => {
 });
 
 test("a failed flow-delete enqueue restores active download work", async () => {
-  const user = { id: 1, role: "user" };
   const flow = createFlow({ name: "Delete queue rollback" });
   const tokenScope = `flow:${flow.id}:mutation`;
   const tokenKey = `weeklyFlowOperationTokens:${encodeURIComponent(tokenScope)}`;
@@ -131,11 +92,9 @@ test("a failed flow-delete enqueue restores active download work", async () => {
   vi.spyOn(playlistOperationQueue, "enqueuePayload").mockImplementation(async () => {
     throw new Error("queue unavailable");
   });
-  const response = createResponse();
+  const response = await send("DELETE", `/flows/${flow.id}`);
 
-  await flowHandlers.get("/flows/:flowId")!({ params: { flowId: flow.id }, user }, response);
-
-  assert.equal(response.statusCode, 500);
+  assert.equal(response.status, 500);
   assert.ok(flowPlaylistConfig.getFlow(flow.id));
   assert.equal(isDownloadJobCancelled(jobId), false);
   assert.equal(
@@ -146,7 +105,6 @@ test("a failed flow-delete enqueue restores active download work", async () => {
 });
 
 test("a failed flow-disable enqueue restores enabled state and active downloads", async () => {
-  const user = { id: 1, role: "user" };
   const flow = createFlow({ name: "Disable queue rollback", enabled: true });
   const tokenScope = `flow:${flow.id}:mutation`;
   const tokenKey = `weeklyFlowOperationTokens:${encodeURIComponent(tokenScope)}`;
@@ -163,18 +121,9 @@ test("a failed flow-disable enqueue restores enabled state and active downloads"
   vi.spyOn(playlistOperationQueue, "enqueuePayload").mockImplementation(async () => {
     throw new Error("queue unavailable");
   });
-  const response = createResponse();
+  const response = await send("PUT", `/flows/${flow.id}/enabled`, { enabled: false });
 
-  await flowHandlers.get("/flows/:flowId/enabled")!(
-    {
-      params: { flowId: flow.id },
-      body: { enabled: false },
-      user,
-    },
-    response,
-  );
-
-  assert.equal(response.statusCode, 500);
+  assert.equal(response.status, 500);
   assert.equal(flowPlaylistConfig.getFlow(flow.id)!.enabled, true);
   assert.equal(isDownloadJobCancelled(jobId), false);
   assert.equal(
@@ -186,7 +135,6 @@ test("a failed flow-disable enqueue restores enabled state and active downloads"
 });
 
 test("a failed flow disable does not undo a later disable", async () => {
-  const user = { id: 1, role: "user" };
   const flow = createFlow({ name: "Overlapping flow disables", enabled: true });
   const generation = activatePlaylistDownloadGeneration(flow.id);
   const jobId = createTrackedJob(
@@ -214,26 +162,16 @@ test("a failed flow disable does not undo a later disable", async () => {
     }
     return { queued: true, operationId: 101 };
   });
-  const disable = (response: ReturnType<typeof createResponse>) =>
-    flowHandlers.get("/flows/:flowId/enabled")!(
-      {
-        params: { flowId: flow.id },
-        body: { enabled: false },
-        user,
-      },
-      response,
-    );
-  const firstResponse = createResponse();
-  const secondResponse = createResponse();
+  const disable = () => send("PUT", `/flows/${flow.id}/enabled`, { enabled: false });
 
-  const first = disable(firstResponse);
+  const first = disable();
   await firstEnqueueStarted;
-  await disable(secondResponse);
+  const secondResponse = await disable();
   failFirstEnqueue(new Error("queue unavailable"));
-  await first;
+  const firstResponse = await first;
 
-  assert.equal(firstResponse.statusCode, 500);
-  assert.equal(secondResponse.statusCode, 200);
+  assert.equal(firstResponse.status, 500);
+  assert.equal(secondResponse.status, 200);
   assert.equal(flowPlaylistConfig.getFlow(flow.id)!.enabled, false);
   assert.equal(isDownloadJobCancelled(jobId), true);
   assert.equal(
@@ -243,7 +181,6 @@ test("a failed flow disable does not undo a later disable", async () => {
 });
 
 test("a successful flow disable reports the accepted cleanup operation", async () => {
-  const user = { id: 1, role: "user" };
   const flow = createFlow({ name: "Queued flow disable", enabled: true });
   const generation = activatePlaylistDownloadGeneration(flow.id);
   const jobId = createTrackedJob(
@@ -257,22 +194,12 @@ test("a successful flow disable reports the accepted cleanup operation", async (
     queuedPayload = payload;
     return { queued: true, operationId: 102 };
   });
-  const response = createResponse();
+  const response = await send("PUT", `/flows/${flow.id}/enabled`, { enabled: false });
 
-  await flowHandlers.get("/flows/:flowId/enabled")!(
-    {
-      params: { flowId: flow.id },
-      body: { enabled: false },
-      user,
-    },
-    response,
-  );
-
-  assert.equal(response.statusCode, 200);
-  assert.ok(response.body != null);
-  assert.equal(response.body.queued, true);
-  assert.ok(response.body != null);
-  assert.equal(response.body.operationId, 102);
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.queued, true);
+  assert.equal(body.operationId, 102);
   assert.ok(queuedPayload != null);
   assert.equal(queuedPayload.kind, "disable-flow-cleanup");
   assert.equal(flowPlaylistConfig.getFlow(flow.id)!.enabled, false);
@@ -284,7 +211,6 @@ test("a successful flow disable reports the accepted cleanup operation", async (
 });
 
 test("flow settings updates wait for in-progress playlist mutations", async () => {
-  const user = { id: 1, role: "user" };
   dbOps.updateSettings({
     ...dbOps.getSettings(),
     integrations: { lastfm: { apiKey: "test" } },
@@ -307,33 +233,27 @@ test("flow settings updates wait for in-progress playlist mutations", async () =
     },
     { clearPending: false },
   );
-  let update: Promise<unknown> | undefined;
-  const response = createResponse();
+  let update: Promise<Response> | undefined;
+  let answered = false;
 
   try {
     await mutationEntered;
     vi.spyOn(playlistManager, "requestPlaylistSync").mockImplementation(() => null);
-    update = flowUpdateHandlers.get("/flows/:flowId")!(
-      {
-        params: { flowId: flow.id },
-        body: { name: "Updated while serialized" },
-        user,
-      },
-      response,
-    );
+    update = send("PUT", `/flows/${flow.id}`, { name: "Updated while serialized" }).finally(() => {
+      answered = true;
+    });
     await new Promise<void>((resolve) => setImmediate(resolve));
-    assert.equal(response.body, null);
+    assert.equal(answered, false);
   } finally {
     releaseMutation();
     await Promise.allSettled([mutation, update].filter(Boolean));
   }
 
-  assert.equal(response.statusCode, 200);
+  assert.equal((await update)?.status, 200);
   assert.equal(flowPlaylistConfig.getFlow(flow.id)!.name, "Updated while serialized");
 });
 
 test("a failed shared-track delete enqueue clears only its new job-cancellation marker", async () => {
-  const user = { id: 1, role: "user" };
   const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Track queue rollback",
     ownerUserId: user.id,
@@ -348,17 +268,9 @@ test("a failed shared-track delete enqueue clears only its new job-cancellation 
   vi.spyOn(playlistOperationQueue, "enqueuePayload").mockImplementation(async () => {
     throw new Error("queue unavailable");
   });
-  const response = createResponse();
+  const response = await send("DELETE", `/shared-playlists/${playlist.id}/tracks/${jobId}`);
 
-  await staticPlaylistHandlers.get("/shared-playlists/:playlistId/tracks/:jobId")!(
-    {
-      params: { playlistId: playlist.id, jobId },
-      user,
-    },
-    response,
-  );
-
-  assert.equal(response.statusCode, 500);
+  assert.equal(response.status, 500);
   assert.ok(trackedJob(downloadTracker, jobId));
   assert.equal(isDownloadJobCancelled(jobId), false);
   assert.equal(
@@ -368,7 +280,6 @@ test("a failed shared-track delete enqueue clears only its new job-cancellation 
 });
 
 test("a failed static playlist delete does not reactivate previously cancelled work", async () => {
-  const user = { id: 1, role: "user" };
   const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Already cancelled playlist",
     ownerUserId: user.id,
@@ -383,17 +294,9 @@ test("a failed static playlist delete does not reactivate previously cancelled w
   vi.spyOn(playlistOperationQueue, "enqueuePayload").mockImplementation(async () => {
     throw new Error("queue unavailable");
   });
-  const response = createResponse();
+  const response = await send("DELETE", `/shared-playlists/${playlist.id}`);
 
-  await staticPlaylistHandlers.get("/shared-playlists/:playlistId")!(
-    {
-      params: { playlistId: playlist.id },
-      user,
-    },
-    response,
-  );
-
-  assert.equal(response.statusCode, 500);
+  assert.equal(response.status, 500);
   assert.ok(flowPlaylistConfig.getStaticPlaylist(playlist.id));
   assert.equal(isDownloadJobCancelled(jobId), false);
   assert.equal(
@@ -403,7 +306,6 @@ test("a failed static playlist delete does not reactivate previously cancelled w
 });
 
 test("a failed track-delete enqueue preserves an existing job-cancellation marker", async () => {
-  const user = { id: 1, role: "user" };
   const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Already cancelled track",
     ownerUserId: user.id,
@@ -418,16 +320,8 @@ test("a failed track-delete enqueue preserves an existing job-cancellation marke
   vi.spyOn(playlistOperationQueue, "enqueuePayload").mockImplementation(async () => {
     throw new Error("queue unavailable");
   });
-  const response = createResponse();
+  const response = await send("DELETE", `/shared-playlists/${playlist.id}/tracks/${jobId}`);
 
-  await staticPlaylistHandlers.get("/shared-playlists/:playlistId/tracks/:jobId")!(
-    {
-      params: { playlistId: playlist.id, jobId },
-      user,
-    },
-    response,
-  );
-
-  assert.equal(response.statusCode, 500);
+  assert.equal(response.status, 500);
   assert.equal(isDownloadJobCancelled(jobId), true);
 });

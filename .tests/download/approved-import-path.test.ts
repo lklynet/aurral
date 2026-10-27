@@ -27,7 +27,7 @@ const [
   { playlistManager },
   { downloadWorker },
   { queueQualityUpgrade },
-  { registerJobs },
+  { handToHono },
   { processPlaylistOperation },
   libraryStore,
   downloadUtils,
@@ -47,7 +47,7 @@ const [
   () => import("../../backend/services/playlists/playlistManager.ts"),
   () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
   () => import("../../backend/services/qualityProfileService.ts"),
-  () => import("../../backend/routes/playlists/handlers/jobs.ts"),
+  () => import("../../backend/routes/shared/expressHandoff.ts"),
   () => import("../../backend/services/playlists/playlistOperations.ts"),
   () => import("../../backend/services/libraryMediaStore.ts"),
   () => import("../../backend/services/downloadUtils.ts"),
@@ -79,7 +79,6 @@ const {
 } = cancellationModule;
 
 const app = express();
-app.use(express.json());
 type ListedJob = {
   id: string;
   artistName: string;
@@ -97,9 +96,7 @@ app.use((req, _res, next) => {
   req.user = requestUser;
   next();
 });
-const router = express.Router();
-registerJobs(router);
-app.use(router);
+app.use("/api/playlists", handToHono);
 const server = await new Promise<
   import("node:http").Server<
     typeof import("node:http").IncomingMessage,
@@ -108,7 +105,7 @@ const server = await new Promise<
 >((resolve) => {
   const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
 });
-const baseUrl = `http://127.0.0.1:${listeningAddress(server).port}`;
+const baseUrl = `http://127.0.0.1:${listeningAddress(server).port}/api/playlists`;
 
 playlistManager.navidromeDestination.client = Object.assign(
   new NavidromeClient("http://navidrome.test", "user", "password"),
@@ -863,7 +860,12 @@ test("search all stays within the requesting user's playlist access", async () =
 
   const originalStart = downloadWorker.start;
   downloadWorker.start = async () => {};
-  requestUser = { id: owner.id, username: "owner", role: "user", permissions: {} };
+  requestUser = {
+    id: owner.id,
+    username: "owner",
+    role: "user",
+    permissions: { accessFlow: true },
+  };
   try {
     const missingResponse = await fetch(`${baseUrl}/research-missing`, { method: "POST" });
     const missingPayload = await missingResponse.json();
@@ -937,7 +939,7 @@ test("wanted covers every library job regardless of playlist access", async () =
 
   const originalStart = downloadWorker.start;
   downloadWorker.start = async () => {};
-  requestUser = { id: 9, username: "listener", role: "user", permissions: {} };
+  requestUser = { id: 9, username: "listener", role: "user", permissions: { accessFlow: true } };
   try {
     const jobsPayload: ListedJob[] = await (await fetch(`${baseUrl}/jobs`)).json();
     const listed = new Map(jobsPayload.map((job) => [job.id, job]));

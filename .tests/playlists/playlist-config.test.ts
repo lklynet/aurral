@@ -1,4 +1,6 @@
-import { requireFixture, captureRoutes, mockResponse } from "./fixtures.ts";
+import { requireFixture } from "./fixtures.ts";
+import { signedInAs } from "../helpers/honoApp.ts";
+import { testUser } from "../helpers/userFixtures.ts";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { once } from "node:events";
@@ -18,7 +20,7 @@ const [
   { dbOps },
   playlistConfigModule,
   flowHandlerUtils,
-  flowHandlersModule,
+  { api },
   libraryScanWorker,
   { downloadTracker },
   { playlistManager },
@@ -28,7 +30,7 @@ const [
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
   () => import("../../backend/routes/playlists/handlers/utils.ts"),
-  () => import("../../backend/routes/playlists/handlers/flows.ts"),
+  () => import("../../backend/routes/api.ts"),
   () => import("../../backend/services/libraryScanWorker.ts"),
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
   () => import("../../backend/services/playlists/playlistManager.ts"),
@@ -40,7 +42,14 @@ const {
   invalidateFlowPlaylistConfigCache,
 } = playlistConfigModule;
 const { validateFlowPayload } = flowHandlerUtils;
-const { registerFlows } = flowHandlersModule;
+const sendAs = (user: ReturnType<typeof testUser>, method: string, path: string, body: object) =>
+  signedInAs(user)
+    .route("/", api)
+    .request(`/playlists${path}`, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
 const { clearScheduledLibraryScan, getScheduledLibraryScanJobId } = libraryScanWorker;
 
 beforeEach(() => {
@@ -199,20 +208,10 @@ test("normalizes invalid playlist owners to null", () => {
 
 test("rejects flow creation without a real user owner", async () => {
   const beforeFlowIds = flowPlaylistConfig.getFlows().map((flow) => flow.id);
-  const { router, handlers } = captureRoutes((method, path) => `${method}:${path}`);
-  registerFlows(router);
-  const createHandler = requireFixture(handlers.get("post:/flows"));
+  const response = await sendAs(testUser(-1, { role: "admin" }), "POST", "/flows", {});
 
-  const response = mockResponse<{
-    error: string;
-    flow: ReturnType<typeof flowPlaylistConfig.createFlow>;
-    playlist: ReturnType<typeof flowPlaylistConfig.createStaticPlaylist>;
-  }>();
-
-  await createHandler({ body: {}, user: { id: -1, role: "admin" } }, response);
-
-  assert.equal(response.statusCode, 400);
-  assert.equal(requireFixture(response).body.error, "Flow ownership requires a real user");
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).error, "Flow ownership requires a real user");
   assert.deepEqual(
     flowPlaylistConfig.getFlows().map((flow) => flow.id),
     beforeFlowIds,
@@ -245,39 +244,28 @@ test("keeps flow tracks out of the library until a flow opts in", async () => {
   });
   assert.equal(flow.showInLibrary, false);
 
-  const { router, handlers } = captureRoutes((method, path) => `${method}:${path}`);
-  registerFlows(router);
-  const updateHandler = requireFixture(handlers.get("put:/flows/:flowId"));
   const send = async (
     body: { showInLibrary: string } | { showInLibrary: boolean } | { name: string },
   ) => {
-    const response = mockResponse<{
-      error: string;
-      flow: ReturnType<typeof flowPlaylistConfig.createFlow>;
-      playlist: ReturnType<typeof flowPlaylistConfig.createStaticPlaylist>;
-    }>();
-    await updateHandler(
-      { params: { flowId: flow.id }, body, user: { id: 1, role: "admin" } },
-      response,
-    );
-    return response;
+    const response = await sendAs(testUser(1, { role: "admin" }), "PUT", `/flows/${flow.id}`, body);
+    return { status: response.status, body: await response.json() };
   };
 
   clearScheduledLibraryScan();
   const rejected = await send({ showInLibrary: "true" });
-  assert.equal(rejected.statusCode, 400);
+  assert.equal(rejected.status, 400);
   assert.equal(requireFixture(flowPlaylistConfig.getFlow(flow.id)).showInLibrary, false);
   assert.equal(getScheduledLibraryScanJobId(), null);
 
   const enabled = await send({ showInLibrary: true });
-  assert.equal(enabled.statusCode, 200);
-  assert.equal(requireFixture(enabled).body.flow.showInLibrary, true);
+  assert.equal(enabled.status, 200);
+  assert.equal(enabled.body.flow.showInLibrary, true);
   assert.equal(requireFixture(flowPlaylistConfig.getFlow(flow.id)).showInLibrary, true);
   assert.notEqual(getScheduledLibraryScanJobId(), null);
 
   clearScheduledLibraryScan();
   const renamed = await send({ name: "Library Opt In Renamed" });
-  assert.equal(renamed.statusCode, 200);
+  assert.equal(renamed.status, 200);
   assert.equal(requireFixture(flowPlaylistConfig.getFlow(flow.id)).showInLibrary, true);
   assert.equal(getScheduledLibraryScanJobId(), null);
 
@@ -319,22 +307,15 @@ test("saving a flow as a playlist keeps each track's release and disc", async ()
   );
   assert.ok(flowJobId != null);
   downloadTracker.setDone(flowJobId, file);
-  const { router, handlers } = captureRoutes((method, path) => `${method}:${path}`);
-  registerFlows(router);
-  const saveHandler = requireFixture(handlers.get("post:/flows/:flowId/static-playlist"));
-  const response = mockResponse<{
-    error: string;
-    flow: ReturnType<typeof flowPlaylistConfig.createFlow>;
-    playlist: ReturnType<typeof flowPlaylistConfig.createStaticPlaylist>;
-  }>();
-
-  await saveHandler(
-    { params: { flowId: flow.id }, body: { name: "Kept Mix" }, user: { id: 1, role: "admin" } },
-    response,
+  const response = await sendAs(
+    testUser(1, { role: "admin" }),
+    "POST",
+    `/flows/${flow.id}/static-playlist`,
+    { name: "Kept Mix" },
   );
 
-  assert.equal(response.statusCode, 200);
-  const playlistId = requireFixture(response).body.playlist.id;
+  assert.equal(response.status, 200);
+  const playlistId = (await response.json()).playlist.id;
   const [track] = requireFixture(flowPlaylistConfig.getStaticPlaylist(playlistId)).tracks;
   assert.deepEqual(
     [track.trackName, track.releaseMbid, track.discNumber, track.trackNumber],

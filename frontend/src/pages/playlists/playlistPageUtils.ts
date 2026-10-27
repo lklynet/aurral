@@ -1,10 +1,9 @@
 import { useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Circle, CircleDot, Square, SquareCheck } from "../../components/icons";
-import { getPlaylistArtworkUrl } from "../../utils/api/endpoints/playlists.ts";
+import { getPlaylistArtworkUrl } from "../../utils/api/playlistUrls.ts";
 import { queryClient, queryKeys } from "../../queryClient.ts";
 import { playlistJobsQueryOptions } from "../../queryOptions.ts";
-import type { PlaylistJob } from "../../utils/api/endpoints/playlists.ts";
 import {
   buildStaticTracklistPayload,
   downloadTracklistFile,
@@ -138,7 +137,7 @@ export function usePlaylistTracks(
 
 export function exportPlaylistTracklist(
   entry: Pick<StaticPlaylist, "name">,
-  jobs: PlaylistJob[],
+  jobs: PlaylistTrackRow[],
   { sourceFlowId = null }: { sourceFlowId?: string | null } = {},
 ) {
   const tracks = (Array.isArray(jobs) ? jobs : [])

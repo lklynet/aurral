@@ -9,7 +9,8 @@ import { LibraryItemMenu } from "../../components/LibraryItemMenu";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
 import { useDocumentTitle } from "../../hooks/useDocumentTitle";
-import { createFlow, getFlowTemplates } from "../../utils/api/endpoints/playlists.ts";
+import { parseResponse, type InferResponseType } from "hono/client";
+import { flowsClient } from "../../utils/api/clients/flows.ts";
 import { queryKeys } from "../../queryClient.ts";
 import { PlaylistArtworkThumb } from "./components/PlaylistArtworkThumb.tsx";
 import { FlowEnabledSwitch } from "./FlowEnabledSwitch.tsx";
@@ -23,12 +24,14 @@ import {
 } from "./playlistPageUtils";
 import { usePlaylistStatus } from "./usePlaylistStatus";
 import { flowPath } from "../../navigation/playlistPaths";
-import type { GetFlowTemplatesResponse } from "../../../../backend/routes/playlists/handlers/flows.ts";
 import type { Flow } from "./playlistStats.ts";
 import { asApiError } from "../../utils/api/core.ts";
 import { getApiErrorText } from "../onboardingUtils.tsx";
 
-type FlowTemplate = GetFlowTemplatesResponse["templates"][number];
+type FlowTemplate = InferResponseType<
+  (typeof flowsClient)["flow-templates"]["$get"],
+  200
+>["templates"][number];
 
 export default function FlowsPage() {
   useDocumentTitle("Flows");
@@ -42,7 +45,8 @@ export default function FlowsPage() {
 
   const templatesQuery = useQuery({
     queryKey: queryKeys.flowTemplates(user?.id),
-    queryFn: ({ signal }) => getFlowTemplates({ signal }),
+    queryFn: ({ signal }) =>
+      parseResponse(flowsClient["flow-templates"].$get(undefined, { init: { signal } })),
     staleTime: 5 * 60 * 1000,
   });
   const templates = (templatesQuery.data?.templates || []).filter((template) => template.available);
@@ -59,7 +63,7 @@ export default function FlowsPage() {
               name: getNextFlowName(flows, NEW_FLOW_TEMPLATE.name),
             }),
           );
-      const response = await createFlow(payload);
+      const response = await parseResponse(flowsClient.flows.$post({ json: payload }));
       showSuccess(`Created ${response?.flow?.name || payload.name}`);
       await fetchStatus();
       if (response?.flow?.id) {

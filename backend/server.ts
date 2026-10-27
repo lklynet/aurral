@@ -29,7 +29,6 @@ import libraryRouter from "./routes/library/index.ts";
 import discoveryRouter from "./routes/discovery/index.ts";
 import requestsRouter from "./routes/requests.ts";
 import { noteDeprecatedUsage, warnAboutConfigDeprecations } from "./services/deprecatedUsage.ts";
-import playlistsRouter from "./routes/playlists/index.ts";
 import { bootstrapHonkerSchedules } from "./services/honkerDb.ts";
 import { initializeAppRuntime } from "./services/appRuntime.ts";
 import {
@@ -180,6 +179,11 @@ app.use(
   resolveTokenUser,
   handToHono,
 );
+app.get(
+  ["/api/playlists/artwork/:playlistId", "/api/playlists/track-artwork/:jobId"],
+  resolveTokenUser,
+  handToHono,
+);
 app.all(/^\/rest\/stream(?:\.view)?\/?$/i, handToHono);
 app.use(
   [
@@ -192,6 +196,7 @@ app.use(
     "/api/health",
     "/api/scrobbling",
     "/api/filesystem",
+    "/api/playlists",
   ],
   handToHono,
 );
@@ -205,7 +210,6 @@ app.use("/api/news", newsRouter);
 app.use("/api/webhooks/lidarr", lidarrWebhookRouter);
 app.use("/api/requests", requestsRouter);
 app.use("/api/feeds", lidarrFeedRouter);
-app.use("/api/playlists", playlistsRouter);
 app.use("/api/weekly-flow", (req, res) => {
   noteDeprecatedUsage("weekly-flow-api");
   const parsed = new URL(req.url, "http://localhost");

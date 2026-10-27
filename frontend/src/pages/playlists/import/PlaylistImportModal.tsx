@@ -4,35 +4,17 @@ import { FileJson, Music2, Upload } from "../../../components/icons";
 import { Link } from "react-router";
 import { ModalShell } from "../../../components/PlaylistModals";
 import { DotLoader } from "../../../components/DotLoader";
-import {
-  completeSpotifyOAuth,
-  disconnectSpotify,
-  getListenBrainzPlaylists,
-  getLastfmPlaylists,
-  getSpotifyImportStatus,
-  getSpotifyPlaylists,
-  importStaticPlaylist,
-  importListenBrainzPlaylist,
-  importLastfmPlaylist,
-  importSpotifyPlaylist,
-  importYoutubeMusicPlaylist,
-  previewListenBrainzPlaylist,
-  previewLastfmPlaylist,
-  previewSpotifyPlaylist,
-  previewYoutubeMusicPlaylist,
-  startSpotifyOAuth,
-} from "../../../utils/api/endpoints/playlists.ts";
-import { parseResponse } from "hono/client";
+import { parseResponse, type InferResponseType } from "hono/client";
+import { playlistImportsClient } from "../../../utils/api/clients/playlistImports.ts";
+import { staticPlaylistsClient } from "../../../utils/api/clients/staticPlaylists.ts";
 import { scrobblingClient } from "../../../utils/api/clients/scrobbling.ts";
 import { usersClient } from "../../../utils/api/clients/users.ts";
 import { getAppBasePath, normalizeBasePathWithTrailingSlash } from "../../../utils/basePath";
 import { useAuth } from "../../../contexts/AuthContext";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
 import { parseTracklistImportFile, reserveUniqueName, normalizeNameKey } from "../flowPageUtils";
-import { asApiError, type ApiError } from "../../../utils/api/core.ts";
+import { apiFetchWithTimeout, asApiError, type ApiError } from "../../../utils/api/core.ts";
 import { getApiErrorBody, getApiErrorMessage } from "../../onboardingUtils.tsx";
-import type { ImportedPlaylistPreviewResponse } from "../../../../../backend/routes/playlists/handlers/utils.ts";
-import type { PreviewYoutubeMusicPlaylistResponse } from "../../../../../backend/routes/playlists/handlers/youtubeMusicImport.ts";
 
 declare global {
   interface Window {
@@ -47,7 +29,17 @@ type ImportPlaylist = {
   trackCount?: number;
   sourceType?: string | null;
 };
-type ImportPreviewTrack = ImportedPlaylistPreviewResponse["previewTracks"][number];
+const importApi = playlistImportsClient.import;
+const youtubeFetch = apiFetchWithTimeout(5 * 60 * 1000);
+
+type ImportPreviewTrack = InferResponseType<
+  typeof importApi.spotify.preview.$post,
+  200
+>["previewTracks"][number];
+type YoutubePreview = InferResponseType<
+  (typeof importApi)["youtube-music"]["preview"]["$post"],
+  200
+>;
 type ImportedFlow = ReturnType<typeof parseTracklistImportFile>[number] & { importName: string };
 type JsonReview = { fileName: string; flows: ImportedFlow[] };
 type SpotifyTokens = {
@@ -298,7 +290,7 @@ function isSpotifyAuthRequired(error: ApiError | null | undefined) {
   return getApiErrorBody(error)?.code === SPOTIFY_AUTH_REQUIRED_CODE;
 }
 
-function validYoutubePreview(payload: PreviewYoutubeMusicPlaylistResponse) {
+function validYoutubePreview(payload: YoutubePreview) {
   const playlist = payload?.playlist;
   if (!playlist?.id || !playlist?.name)
     throw new Error("YouTube Music returned an invalid playlist");
@@ -314,12 +306,16 @@ async function importTracklists(flows: ImportedFlow[], reservedNameKeys: Iterabl
     const baseName = desiredName || String(payload?.name || "").trim();
     const finalName = reserveUniqueName(reservedNames, baseName);
     try {
-      await importStaticPlaylist({
-        name: finalName,
-        sourceName: payload?.sourceName || null,
-        sourceFlowId: payload?.sourceFlowId || null,
-        tracks: payload?.tracks || [],
-      });
+      await parseResponse(
+        staticPlaylistsClient["shared-playlists"].import.$post({
+          json: {
+            name: finalName,
+            sourceName: payload?.sourceName || null,
+            sourceFlowId: payload?.sourceFlowId || null,
+            tracks: payload?.tracks || [],
+          },
+        }),
+      );
       importedCount += 1;
     } catch (error) {
       failed.push({
@@ -381,7 +377,10 @@ export function PlaylistImportModal({
   );
 
   const youtubePreview = useMutation({
-    mutationFn: (url: string) => previewYoutubeMusicPlaylist(url).then(validYoutubePreview),
+    mutationFn: (url: string) =>
+      parseResponse(
+        importApi["youtube-music"].preview.$post({ json: { url } }, { fetch: youtubeFetch }),
+      ).then(validYoutubePreview),
   });
   const resetYoutubePreview = youtubePreview.reset;
 
@@ -415,14 +414,14 @@ export function PlaylistImportModal({
 
   const spotifyStatusQuery = useQuery({
     queryKey: queryKeys.spotifyImportStatus,
-    queryFn: () => getSpotifyImportStatus(),
+    queryFn: () => parseResponse(importApi.spotify.status.$get()),
     enabled: open,
     staleTime: 0,
   });
   const spotifyConnected = Boolean(spotifyStatusQuery.data?.connected);
   const spotifyPlaylistsQuery = useQuery({
     queryKey: queryKeys.playlistImportList("spotify"),
-    queryFn: () => getSpotifyPlaylists(),
+    queryFn: () => parseResponse(importApi.spotify.playlists.$get()),
     enabled: open && source === "spotify" && spotifyConnected,
   });
   const spotifyStatus = {
@@ -439,7 +438,7 @@ export function PlaylistImportModal({
   const listenBrainzAccount = scrobbleStatusQuery.data?.listenbrainz;
   const listenBrainzPlaylistsQuery = useQuery({
     queryKey: queryKeys.playlistImportList("listenbrainz"),
-    queryFn: () => getListenBrainzPlaylists(),
+    queryFn: () => parseResponse(importApi.listenbrainz.playlists.$get()),
     enabled: open && source === "listenbrainz" && Boolean(listenBrainzAccount?.connected),
   });
   const listenBrainzStatus = {
@@ -461,7 +460,12 @@ export function PlaylistImportModal({
   const lastfmUsernameInput = lastfmUsernameDraft ?? profileLastfmUsername;
   const lastfmPlaylistsQuery = useQuery({
     queryKey: queryKeys.playlistImportList("lastfm", lastfmUsernameRequest),
-    queryFn: () => getLastfmPlaylists(lastfmUsernameRequest),
+    queryFn: () =>
+      parseResponse(
+        importApi.lastfm.playlists.$get({
+          query: lastfmUsernameRequest ? { username: lastfmUsernameRequest } : {},
+        }),
+      ),
     enabled: open && source === "lastfm" && Boolean(lastfmUsernameRequest),
   });
   const lastfmUsername = lastfmPlaylistsQuery.isSuccess ? lastfmUsernameRequest : "";
@@ -474,11 +478,22 @@ export function PlaylistImportModal({
       username: source === "lastfm" ? lastfmUsername : null,
     }),
     queryFn: () =>
-      source === "spotify"
-        ? previewSpotifyPlaylist(pickedPlaylist!.id)
-        : source === "listenbrainz"
-          ? previewListenBrainzPlaylist(pickedPlaylist!.id, pickedPlaylist!.sourceType)
-          : previewLastfmPlaylist(pickedPlaylist!.id, lastfmUsername),
+      parseResponse(
+        source === "spotify"
+          ? importApi.spotify.preview.$post({ json: { playlistId: pickedPlaylist!.id } })
+          : source === "listenbrainz"
+            ? importApi.listenbrainz.preview.$post({
+                json: {
+                  playlistId: pickedPlaylist!.id,
+                  ...(pickedPlaylist!.sourceType
+                    ? { playlistType: pickedPlaylist!.sourceType }
+                    : {}),
+                },
+              })
+            : importApi.lastfm.preview.$post({
+                json: { playlistId: pickedPlaylist!.id, username: lastfmUsername },
+              }),
+      ),
     enabled:
       open && ["spotify", "listenbrainz", "lastfm"].includes(source) && Boolean(pickedPlaylist?.id),
   });
@@ -505,9 +520,11 @@ export function PlaylistImportModal({
 
   const connectSpotify = useMutation({
     mutationFn: async () => {
-      const { oauthUrl } = await startSpotifyOAuth(getOAuthCallbackUrl());
+      const { oauthUrl } = await parseResponse(
+        importApi.spotify.oauth.start.$post({ json: { callbackUrl: getOAuthCallbackUrl() } }),
+      );
       const tokens = await openSpotifyOAuthPopup(oauthUrl);
-      return completeSpotifyOAuth(tokens);
+      return parseResponse(importApi.spotify.oauth.complete.$post({ json: tokens }));
     },
     onSuccess: (status) => {
       queryClient.removeQueries({ queryKey: queryKeys.playlistImportPrefix("spotify") });
@@ -524,7 +541,7 @@ export function PlaylistImportModal({
   });
 
   const disconnectSpotifyAccount = useMutation({
-    mutationFn: () => disconnectSpotify(),
+    mutationFn: () => parseResponse(importApi.spotify.$delete()),
     onSuccess: () => {
       queryClient.removeQueries({ queryKey: queryKeys.playlistImportPrefix("spotify") });
       queryClient.setQueryData(queryKeys.spotifyImportStatus, {
@@ -539,7 +556,7 @@ export function PlaylistImportModal({
   });
 
   const externalImport = useMutation({
-    mutationFn: (runImport: () => ReturnType<typeof importSpotifyPlaylist>) => runImport(),
+    mutationFn: (runImport: () => Promise<unknown>) => runImport(),
   });
   const jsonImport = useMutation({
     mutationFn: (flows: ImportedFlow[]) => importTracklists(flows, reservedNameKeys),
@@ -683,17 +700,25 @@ export function PlaylistImportModal({
     };
     const externalName = selectedPlaylist.name;
     const runImport = () =>
-      isListenBrainz
-        ? importListenBrainzPlaylist({
-            ...payload,
-            externalName,
-            ...(selectedPlaylist.sourceType ? { playlistType: selectedPlaylist.sourceType } : {}),
-          })
-        : isLastfm
-          ? importLastfmPlaylist({ ...payload, externalName, username: lastfmUsername })
-          : isYoutube
-            ? importYoutubeMusicPlaylist(payload)
-            : importSpotifyPlaylist({ ...payload, externalName });
+      parseResponse(
+        isListenBrainz
+          ? importApi.listenbrainz.$post({
+              json: {
+                ...payload,
+                externalName,
+                ...(selectedPlaylist.sourceType
+                  ? { playlistType: selectedPlaylist.sourceType }
+                  : {}),
+              },
+            })
+          : isLastfm
+            ? importApi.lastfm.$post({
+                json: { ...payload, externalName, username: lastfmUsername },
+              })
+            : isYoutube
+              ? importApi["youtube-music"].$post({ json: payload }, { fetch: youtubeFetch })
+              : importApi.spotify.$post({ json: { ...payload, externalName } }),
+      );
     externalImport.mutate(runImport, {
       onSuccess: () => {
         showSuccess?.(`Queued import of ${finalName} from ${providerLabel}`);

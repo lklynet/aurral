@@ -1,4 +1,5 @@
-import { captureRouteHandlers, createResponse } from "../library/routeHarness.ts";
+import { signedInAs } from "../helpers/honoApp.ts";
+import { testUser } from "../helpers/userFixtures.ts";
 import { test, beforeEach, afterAll, afterEach, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
@@ -35,7 +36,7 @@ const [
   { processSystemTask },
   { flowPlaylistConfig, invalidateFlowPlaylistConfigCache },
   { downloadTracker },
-  { registerFlows },
+  { api },
   { JellyfinClient },
   { processPlaylistOperation },
   { PlexClient },
@@ -49,7 +50,7 @@ const [
   () => import("../../backend/services/systemTaskWorker.ts"),
   () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
-  () => import("../../backend/routes/playlists/handlers/flows.ts"),
+  () => import("../../backend/routes/api.ts"),
   () => import("../../backend/services/jellyfin.ts"),
   () => import("../../backend/services/playlists/playlistOperations.ts"),
   () => import("../../backend/services/plex.ts"),
@@ -59,10 +60,17 @@ const [
 const downloadRoot = playlistManager.downloadRoot;
 const lidarrRoot = path.join(path.dirname(downloadRoot), "lidarr");
 const navidromeSettings = { url: "http://navidrome.test", username: "test", password: "password" };
-const user = { id: 1, role: "admin" };
+const user = testUser(1, { role: "admin" });
 const originalFetch = globalThis.fetch;
 
-const flowHandlers = captureRouteHandlers(registerFlows, "put");
+const putFlow = (path: string, body: object) =>
+  signedInAs(user)
+    .route("/", api)
+    .request(`/playlists/flows/${path}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
 
 const requestUrl = (input: Parameters<typeof fetch>[0]) =>
   typeof input === "string" || input instanceof URL ? input : input.url;
@@ -434,14 +442,9 @@ for (const outage of ["slow", "failing"]) {
       mix: { discover: 100 },
     });
     flowPlaylistConfig.updateFlow(flow.id, { scheduleDays: [1] });
-    const response = createResponse<unknown>();
+    const response = await putFlow(flow.id, { name: `After ${outage}` });
 
-    await flowHandlers.get("/flows/:flowId")(
-      { params: { flowId: flow.id }, body: { name: `After ${outage}` }, user },
-      response,
-    );
-
-    assert.equal(response.statusCode, 200, JSON.stringify(response.body));
+    assert.equal(response.status, 200, await response.clone().text());
     assert.equal(flowPlaylistConfig.getFlow(flow.id)!.name, `After ${outage}`);
     assert.deepEqual(
       pendingSyncs().map(({ payload }) => payload),
@@ -530,12 +533,8 @@ test("disabling a flow removes its playlist from the media server through the sy
     queued: true,
     operationId: 1,
   }));
-  const response = createResponse<unknown>();
-  await flowHandlers.get("/flows/:flowId/enabled")(
-    { params: { flowId: flow.id }, body: { enabled: false }, user },
-    response,
-  );
-  assert.equal(response.statusCode, 200);
+  const response = await putFlow(`${flow.id}/enabled`, { enabled: false });
+  assert.equal(response.status, 200);
   assert.deepEqual(songIdsByName(navidrome), { "Leaving Soon": ["Flow Song"] });
 
   const fakeFetch = globalThis.fetch;

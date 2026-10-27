@@ -3,7 +3,7 @@ import ArtworkImage from "./ArtworkImage";
 import { Music } from "./icons";
 import ArtistImage from "./ArtistImage";
 import { getSearchResultKey, getSearchResultLink } from "../utils/searchNavigation";
-import { getPlaylistArtworkUrl } from "../utils/api/endpoints/playlists.ts";
+import { getPlaylistArtworkUrl } from "../utils/api/playlistUrls.ts";
 import { getArtistRecordId } from "../utils/artistTaste";
 import RouteLink from "./RouteLink";
 import Tooltip from "./Tooltip";

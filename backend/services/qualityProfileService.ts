@@ -84,8 +84,7 @@ export function isAurralOwnedPath(filePath: string | null | undefined) {
   return isPathInsideRoot(path.resolve(filePath), path.resolve(resolveDownloadRoot()));
 }
 
-export function decorateJobQuality<T extends QualityJob>(job: T, profile = getQualityProfile()) {
-  if (!job || job.upgradeForJobId) return job;
+function getJobQuality(job: QualityJob, profile: QualityProfile) {
   const quality = {
     tier: job.qualityTier || null,
     format: job.qualityFormat || null,
@@ -95,12 +94,15 @@ export function decorateJobQuality<T extends QualityJob>(job: T, profile = getQu
   };
   const owned = isAurralOwnedPath(job.finalPath);
   return {
-    ...job,
     qualityOwned: owned,
     qualityState:
       job.status === "done" ? (owned ? getQualityState(quality, profile) : "external") : null,
     qualityLabel: getQualityTier(quality.tier)?.label || "Unknown",
   };
+}
+
+export function decorateJobQuality<T extends QualityJob>(job: T, profile = getQualityProfile()) {
+  return { ...job, ...(job.upgradeForJobId ? {} : getJobQuality(job, profile)) };
 }
 
 export function validateParsedQuality(

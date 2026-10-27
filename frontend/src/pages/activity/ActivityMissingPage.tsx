@@ -18,14 +18,11 @@ import { useToast } from "../../contexts/ToastContext";
 import { formatDateTime } from "../../utils/dateTime.ts";
 import { useSearchParams } from "react-router";
 import { PageSectionMobileNav } from "../../components/PageSectionMobileNav";
-import {
-  getDownloadJobs,
-  reSearchFlowTrack,
-  reSearchAllMissingTracks,
-  reSearchStaticPlaylistTrack,
-  searchTrackUpgrade,
-  searchAllUpgrades,
-} from "../../utils/api/endpoints/playlists.ts";
+import { parseResponse } from "hono/client";
+import { flowsClient } from "../../utils/api/clients/flows.ts";
+import { playlistJobsClient } from "../../utils/api/clients/playlistJobs.ts";
+import { staticPlaylistsClient } from "../../utils/api/clients/staticPlaylists.ts";
+import { withAuthenticatedTrackArtwork } from "../../utils/api/playlistUrls.ts";
 import { queryClient, queryKeys } from "../../queryClient.ts";
 import { usePlaylistStatusQuery } from "../playlists/usePlaylistStatusQuery.ts";
 import { buildWantedPath, WANTED_VIEWS } from "../../navigation/activityNavConfig";
@@ -224,7 +221,10 @@ export default function ActivityMissingPage() {
   const jobsQueryKey = queryKeys.playlistJobs();
   const jobsQuery = useQuery<unknown, ApiError>({
     queryKey: jobsQueryKey,
-    queryFn: ({ signal }) => getDownloadJobs({ signal }),
+    queryFn: ({ signal }) =>
+      parseResponse(playlistJobsClient.jobs.$get({ query: {} }, { init: { signal } })).then(
+        (jobs) => jobs.map(withAuthenticatedTrackArtwork),
+      ),
     staleTime: 15_000,
   });
   const statusQuery = usePlaylistStatusQuery();
@@ -319,9 +319,17 @@ export default function ActivityMissingPage() {
     try {
       if (isMissing) {
         const playlist = playlistInfo.get(String(job.playlistType));
-        const reSearch =
-          playlist?.kind === "playlist" ? reSearchStaticPlaylistTrack : reSearchFlowTrack;
-        await reSearch(job.playlistType, job.id);
+        const playlistId = encodeURIComponent(job.playlistType);
+        const jobId = encodeURIComponent(job.id);
+        await parseResponse(
+          playlist?.kind === "playlist"
+            ? staticPlaylistsClient["shared-playlists"][":playlistId"].tracks[
+                ":jobId"
+              ].research.$post({ param: { playlistId, jobId } })
+            : flowsClient.flows[":flowId"].tracks[":jobId"].research.$post({
+                param: { flowId: playlistId, jobId },
+              }),
+        );
         queryClient.setQueryData(jobsQueryKey, (current) =>
           (Array.isArray(current) ? current : []).filter((entry) => getMissingJobKey(entry) !== id),
         );
@@ -332,7 +340,14 @@ export default function ActivityMissingPage() {
         });
         showSuccess(`Re-searching ${job.trackName || "track"}`);
       } else {
-        await searchTrackUpgrade(job.playlistType, job.id);
+        await parseResponse(
+          playlistJobsClient["quality-upgrades"][":playlistId"][":jobId"].$post({
+            param: {
+              playlistId: encodeURIComponent(job.playlistType),
+              jobId: encodeURIComponent(job.id),
+            },
+          }),
+        );
         setActionStates((current) => ({ ...current, [id]: "queued" }));
         showSuccess(`Upgrade search queued for ${job.trackName || "track"}`);
       }
@@ -361,9 +376,8 @@ export default function ActivityMissingPage() {
       ]),
     );
     try {
-      const result = showingCutoff ? await searchAllUpgrades() : await reSearchAllMissingTracks();
       if (showingCutoff) {
-        const queued = Number(result?.queued || 0);
+        const { queued } = await parseResponse(playlistJobsClient["quality-upgrades"].$post());
         setActionStates((current) => ({
           ...current,
           ...Object.fromEntries(actionableJobs.map((job) => [getMissingJobKey(job), "queued"])),
@@ -374,7 +388,7 @@ export default function ActivityMissingPage() {
             : "No new upgrade searches were queued",
         );
       } else {
-        const requeued = Number(result?.requeued || 0);
+        const { requeued } = await parseResponse(playlistJobsClient["research-missing"].$post());
         setActionStates((current) => {
           const next = { ...current };
           for (const job of actionableJobs) delete next[getMissingJobKey(job)];

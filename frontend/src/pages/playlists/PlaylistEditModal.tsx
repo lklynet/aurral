@@ -1,11 +1,8 @@
 import { useState } from "react";
 import { RenamePlaylistModal } from "../../components/PlaylistModals";
 import { useToast } from "../../contexts/ToastContext";
-import {
-  deletePlaylistArtwork,
-  generatePlaylistArtwork,
-  uploadPlaylistArtwork,
-} from "../../utils/api/endpoints/playlists.ts";
+import { parseResponse } from "hono/client";
+import { playlistArtworkClient } from "../../utils/api/clients/playlistArtwork.ts";
 import { usePlaylistArtwork } from "./playlistPageUtils";
 import { asApiError } from "../../utils/api/core.ts";
 import { getApiErrorText } from "../onboardingUtils.tsx";
@@ -34,15 +31,18 @@ export function PlaylistEditModal({
   const [coverBusy, setCoverBusy] = useState(false);
   const [coverError, setCoverError] = useState("");
 
+  const artwork = playlistArtworkClient.artwork[":playlistId"];
+  const param = { playlistId: encodeURIComponent(entry.id) };
+
   const runCoverAction = async (
-    action: (playlistId: string) => Promise<unknown>,
+    action: () => Promise<unknown>,
     successMessage: string,
     fallbackMessage: string,
   ) => {
     setCoverBusy(true);
     setCoverError("");
     try {
-      await action(entry.id);
+      await action();
       bumpArtwork(entry.id);
       showSuccess(successMessage);
     } catch (err) {
@@ -75,16 +75,33 @@ export function PlaylistEditModal({
       onUpload={(file) =>
         file &&
         runCoverAction(
-          (id) => uploadPlaylistArtwork(id, file),
+          () =>
+            parseResponse(
+              artwork.$put(
+                { param },
+                {
+                  headers: { "Content-Type": file.type || "application/octet-stream" },
+                  init: { body: file },
+                },
+              ),
+            ),
           "Cover updated",
           "Failed to upload cover",
         )
       }
       onRemoveCover={() =>
-        runCoverAction(deletePlaylistArtwork, "Cover removed", "Failed to remove cover")
+        runCoverAction(
+          () => parseResponse(artwork.$delete({ param })),
+          "Cover removed",
+          "Failed to remove cover",
+        )
       }
       onGenerateCover={() =>
-        runCoverAction(generatePlaylistArtwork, "Cover generated", "Failed to generate cover")
+        runCoverAction(
+          () => parseResponse(artwork.generate.$post({ param })),
+          "Cover generated",
+          "Failed to generate cover",
+        )
       }
     />
   );

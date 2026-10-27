@@ -1,36 +1,25 @@
-import { captureRoutes, mockResponse, requireFixture } from "./fixtures.ts";
 import assert from "node:assert/strict";
 import { test, afterAll } from "vite-plus/test";
-
+import { signedInAs } from "../helpers/honoApp.ts";
+import { testUser } from "../helpers/userFixtures.ts";
 import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTestHarness.ts";
 
-const [state, { registerJobs }] = await setupIsolatedBackend(
+const [state, { api }] = await setupIsolatedBackend(
   "playlist-jobs-status-query",
-  () => import("../../backend/routes/playlists/handlers/jobs.ts"),
+  () => import("../../backend/routes/api.ts"),
 );
 
-const { handlers: routes, router } = captureRoutes(
-  (method: string, path) => `${method.toUpperCase()} ${path}`,
-);
-registerJobs(router);
+const app = signedInAs(testUser(1, { role: "admin" })).route("/", api);
 
 afterAll(() => cleanupIsolatedState(state));
 
-async function requestJobs(query: { status: string[] | { a: string } } | { status: string }) {
-  const response = mockResponse<unknown>();
-  await requireFixture(routes.get("GET /jobs"))({ query, user: null }, response);
-  return response;
-}
-
-test("a repeated or nested status filter is rejected", async () => {
-  for (const status of [["done", "failed"], { a: "b" }]) {
-    const response = await requestJobs({ status });
-    assert.equal(response.statusCode, 400);
-  }
+test("a repeated status filter is rejected", async () => {
+  const response = await app.request("/playlists/jobs?status=done&status=failed");
+  assert.equal(response.status, 400);
 });
 
 test("a single status filter lists jobs", async () => {
-  const response = await requestJobs({ status: "done" });
-  assert.equal(response.statusCode, 200);
-  assert.deepEqual(response.body, []);
+  const response = await app.request("/playlists/jobs?status=done");
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), []);
 });

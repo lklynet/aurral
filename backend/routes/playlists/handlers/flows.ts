@@ -1,4 +1,6 @@
 import fsp from "fs/promises";
+import { Hono } from "hono";
+import * as v from "valibot";
 import { downloadTracker } from "../../../services/downloadJobs/downloadTracker.ts";
 import { playlistManager } from "../../../services/playlists/playlistManager.ts";
 import {
@@ -21,6 +23,7 @@ import {
   getAccessibleFlow,
   queueFlowSideEffect,
   enqueueResearchTrack,
+  requireFlowAccess,
 } from "./utils.ts";
 import {
   markPlaylistDownloadWorkCancelled,
@@ -28,269 +31,185 @@ import {
 } from "../../../services/downloadJobs/downloadCancellationService.ts";
 import { buildFlowFromTemplate, listFlowTemplates } from "../../../services/flows/flowTemplates.ts";
 import { asAppError } from "../../../../lib/errors.ts";
-import type { Router } from "express";
+import { validate } from "../../../middleware/validate.ts";
+import { errorStatus } from "../../shared/errorStatus.ts";
+import type { AppEnv } from "../../../middleware/requestUser.ts";
 import type { DownloadJob } from "../../../services/downloadJobs/downloadTracker.ts";
-import type { FlowUpdates } from "../../../services/playlists/flowPlaylistConfig.ts";
 
 const RETIRED_FLOW_MESSAGE = "This flow's source was retired, so it no longer updates";
 
-export type CreateFlowResponse = {
-  success: true;
-  flow: ReturnType<typeof flowPlaylistConfig.createFlow>;
+const count = v.union([v.number(), v.string()]);
+const flowFields = {
+  mix: v.nullish(
+    v.object({
+      discover: v.nullish(count),
+      mix: v.nullish(count),
+      trending: v.nullish(count),
+      focus: v.nullish(count),
+    }),
+  ),
+  size: v.nullish(count),
+  deepDive: v.nullish(v.boolean()),
+  recordHistory: v.optional(v.boolean()),
+  yearFrom: v.nullish(count),
+  yearTo: v.nullish(count),
+  tags: v.nullish(v.array(v.string())),
+  relatedArtists: v.nullish(v.array(v.string())),
+  scheduleDays: v.nullish(v.array(count)),
+  scheduleTime: v.nullish(v.string()),
 };
+const flowCreate = v.object({
+  ...flowFields,
+  name: v.nullish(v.string(), ""),
+  templateId: v.nullish(v.string()),
+});
+const flowUpdate = v.object({
+  ...flowFields,
+  name: v.optional(v.string()),
+  showInLibrary: v.optional(v.boolean()),
+});
 
-export type GetFlowTemplatesResponse = {
-  templates: Awaited<ReturnType<typeof listFlowTemplates>>;
-};
+export default new Hono<AppEnv>()
+  .basePath("/playlists")
+  .post(
+    "/start/:flowId",
+    requireFlowAccess,
+    validate("json", v.object({ limit: v.nullish(count) })),
+    async (c) => {
+      try {
+        const flowId = c.req.param("flowId");
+        const { limit } = c.req.valid("json");
+        const flow = getAccessibleFlow(c.var.user, flowId);
+        if (!flow) {
+          return c.json({ error: "Flow not found" }, 404);
+        }
+        if (isRetiredFlow(flow)) {
+          return c.json({ error: RETIRED_FLOW_MESSAGE, message: RETIRED_FLOW_MESSAGE }, 409);
+        }
 
-export type UpdateFlowResponse = {
-  success: true;
-  flow: NonNullable<ReturnType<typeof flowPlaylistConfig.updateFlow>>;
-};
-
-export type DeleteFlowResponse = {
-  success: true;
-  flowId: string;
-  queued: true;
-  operationId: string;
-};
-
-export type ConvertFlowToStaticPlaylistResponse = {
-  success: true;
-  playlist: ReturnType<typeof flowPlaylistConfig.createStaticPlaylist>;
-  trackCount: number;
-};
-
-export type SetFlowEnabledResponse =
-  | {
-      success: true;
-      flowId: string;
-      enabled: true;
-      tracksQueued: number;
-      message: string;
-    }
-  | {
-      success: true;
-      flowId: string;
-      enabled: false;
-      queued: true;
-      operationId: string;
-    };
-
-export type GetFlowLidarrImportListUrlResponse = { token: string; itemCount: number };
-
-export type StartFlowResponse = {
-  success: true;
-  flowId: string;
-  queued: true;
-  operationId: string;
-  tracksQueued: number;
-  jobIds: string[];
-  reserveTracks: number;
-};
-
-export function registerFlows(router: Router) {
-  router.post<"/start/:flowId">("/start/:flowId", async (req, res) => {
-    try {
-      const { flowId } = req.params;
-      const { limit } = req.body;
-      const flow = getAccessibleFlow(req.user, flowId);
-      if (!flow) {
-        return res.status(404).json({ error: "Flow not found" });
-      }
-      if (isRetiredFlow(flow)) {
-        return res.status(409).json({ error: RETIRED_FLOW_MESSAGE, message: RETIRED_FLOW_MESSAGE });
-      }
-
-      const { token, tokenScope } = markFlowMutationToken(flowId);
-      const result = await playlistOperationQueue.enqueuePayload({
-        kind: "manual-start-flow",
-        label: `manual-start:${flowId}`,
-        flowId,
-        tokenScope,
-        token,
-        size:
-          Number.isFinite(Number(limit)) && Number(limit) > 0
-            ? Number(limit)
-            : flow.size || DEFAULT_LIMIT,
-      });
-
-      return res.json({
-        success: true,
-        flowId,
-        queued: true,
-        operationId: result.operationId,
-        tracksQueued: 0,
-        jobIds: [],
-        reserveTracks: 0,
-      });
-    } catch (error) {
-      res.status(500).json({
-        error: "Failed to start flow",
-        message: asAppError(error)?.message,
-      });
-    }
-  });
-
-  router.get("/flow-templates", async (req, res) => {
-    try {
-      res.json({ templates: await listFlowTemplates(req.user!) });
-    } catch (error) {
-      res
-        .status(500)
-        .json({ error: "Failed to load flow templates", message: asAppError(error)?.message });
-    }
-  });
-
-  router.post("/flows", async (req, res) => {
-    try {
-      const ownerUserId = Number(req.user?.id);
-      if (!Number.isSafeInteger(ownerUserId) || ownerUserId <= 0) {
-        return res.status(400).json({
-          error: "Flow ownership requires a real user",
-          message: "Authenticate as a user account before creating a flow.",
+        const { token, tokenScope } = markFlowMutationToken(flowId);
+        const result = await playlistOperationQueue.enqueuePayload({
+          kind: "manual-start-flow",
+          label: `manual-start:${flowId}`,
+          flowId,
+          tokenScope,
+          token,
+          size:
+            Number.isFinite(Number(limit)) && Number(limit) > 0
+              ? Number(limit)
+              : flow.size || DEFAULT_LIMIT,
         });
+
+        return c.json(
+          {
+            success: true,
+            flowId,
+            queued: true,
+            operationId: result.operationId,
+            tracksQueued: 0,
+            jobIds: [],
+            reserveTracks: 0,
+          },
+          200,
+        );
+      } catch (error) {
+        return c.json({ error: "Failed to start flow", message: asAppError(error)?.message }, 500);
       }
-      const body = req.body || {};
-      let payload = body;
-      if (body.templateId) {
+    },
+  )
+  .get("/flow-templates", requireFlowAccess, async (c) => {
+    try {
+      return c.json({ templates: await listFlowTemplates(c.var.user) }, 200);
+    } catch (error) {
+      return c.json(
+        { error: "Failed to load flow templates", message: asAppError(error)?.message },
+        500,
+      );
+    }
+  })
+  .post("/flows", requireFlowAccess, validate("json", flowCreate), async (c) => {
+    try {
+      const user = c.var.user;
+      const ownerUserId = Number(user.id);
+      if (!Number.isSafeInteger(ownerUserId) || ownerUserId <= 0) {
+        return c.json(
+          {
+            error: "Flow ownership requires a real user",
+            message: "Authenticate as a user account before creating a flow.",
+          },
+          400,
+        );
+      }
+      const { templateId, ...fields } = c.req.valid("json");
+      let template = null;
+      if (templateId) {
         try {
-          payload = await buildFlowFromTemplate(req.user!, body.templateId);
+          template = await buildFlowFromTemplate(user, templateId);
         } catch (error) {
           const failure = asAppError(error);
           if (!failure?.statusCode) throw error;
-          return res
-            .status(failure?.statusCode)
-            .json({ error: failure?.message, message: failure?.message });
+          return c.json({ error: failure.message, message: failure.message }, errorStatus(failure));
         }
-        if (String(body.name || "").trim()) payload.name = String(body.name).trim();
+        if (fields.name.trim()) template.name = fields.name.trim();
       }
-      const {
-        name,
-        mix,
-        size,
-        deepDive,
-        recordHistory,
-        yearFrom,
-        yearTo,
-        tags,
-        relatedArtists,
-        scheduleDays,
-        scheduleTime,
-      } = payload;
+      const payload = template ?? fields;
       const validationError = validateFlowPayload(payload);
       if (validationError) {
-        return res.status(400).json({ error: validationError, message: validationError });
+        return c.json({ error: validationError, message: validationError }, 400);
       }
-      const flow = flowPlaylistConfig.createFlow({
-        name,
-        mix,
-        size,
-        deepDive,
-        recordHistory,
-        yearFrom,
-        yearTo,
-        tags,
-        relatedArtists,
-        scheduleDays,
-        scheduleTime,
-        ownerUserId,
-        discoverPresetId: body.templateId ? payload.discoverPresetId : null,
-        description: body.templateId ? payload.description : null,
-      });
+      const flow = flowPlaylistConfig.createFlow({ ...payload, ownerUserId });
       await playlistManager.ensurePlaylistArtwork(flow.id);
       playlistManager.requestPlaylistSync([flow.id]);
-      res.json({ success: true, flow });
+      return c.json({ success: true, flow }, 200);
     } catch (error) {
       const failure = asAppError(error);
       if (failure?.code === "FLOW_NAME_CONFLICT") {
-        return res.status(400).json({
-          error: "Flow name already exists",
-          message: failure?.message,
-        });
+        return c.json({ error: "Flow name already exists", message: failure.message }, 400);
       }
-      res.status(500).json({
-        error: "Failed to create flow",
-        message: failure?.message,
-      });
+      return c.json({ error: "Failed to create flow", message: failure?.message }, 500);
     }
-  });
-
-  router.put<"/flows/:flowId">("/flows/:flowId", async (req, res) => {
+  })
+  .put("/flows/:flowId", requireFlowAccess, validate("json", flowUpdate), async (c) => {
     try {
-      const { flowId } = req.params;
-      const existingFlow = getAccessibleFlow(req.user, flowId);
+      const flowId = c.req.param("flowId");
+      const existingFlow = getAccessibleFlow(c.var.user, flowId);
       if (!existingFlow) {
-        return res.status(404).json({ error: "Flow not found" });
+        return c.json({ error: "Flow not found" }, 404);
       }
-      const {
-        name,
-        mix,
-        size,
-        deepDive,
-        recordHistory,
-        showInLibrary,
-        tags,
-        relatedArtists,
-        scheduleDays,
-        scheduleTime,
-      } = req.body || {};
-      const validationError = validateFlowPayload({
-        ...existingFlow,
-        ...req.body,
-      });
+      const body = c.req.valid("json");
+      const validationError = validateFlowPayload({ ...existingFlow, ...body });
       if (validationError) {
-        return res.status(400).json({ error: validationError, message: validationError });
+        return c.json({ error: validationError, message: validationError }, 400);
       }
-      const updates: FlowUpdates = {
-        name,
-        mix,
-        size,
-        deepDive,
-        recordHistory,
-        showInLibrary,
-        tags,
-        relatedArtists,
-        scheduleDays,
-        scheduleTime,
-      };
-      if (Object.prototype.hasOwnProperty.call(req.body || {}, "yearFrom")) {
-        updates.yearFrom = req.body.yearFrom;
-      }
-      if (Object.prototype.hasOwnProperty.call(req.body || {}, "yearTo")) {
-        updates.yearTo = req.body.yearTo;
-      }
+      const { yearFrom: _yearFrom, yearTo: _yearTo, ...updates } = body;
       const updated = await withPlaylistMutationLock(flowId, () =>
-        flowPlaylistConfig.updateFlow(flowId, updates),
+        flowPlaylistConfig.updateFlow(flowId, {
+          ...updates,
+          ...(Object.hasOwn(body, "yearFrom") ? { yearFrom: body.yearFrom } : {}),
+          ...(Object.hasOwn(body, "yearTo") ? { yearTo: body.yearTo } : {}),
+        }),
       );
       if (!updated) {
-        return res.status(404).json({ error: "Flow not found" });
+        return c.json({ error: "Flow not found" }, 404);
       }
-      if (typeof showInLibrary === "boolean") {
+      if (typeof body.showInLibrary === "boolean") {
         playlistManager.scheduleScanLibrary();
       }
       playlistManager.requestPlaylistSync([flowId]);
-      res.json({ success: true, flow: updated });
+      return c.json({ success: true, flow: updated }, 200);
     } catch (error) {
       const failure = asAppError(error);
       if (failure?.code === "FLOW_NAME_CONFLICT") {
-        return res.status(400).json({
-          error: "Flow name already exists",
-          message: failure?.message,
-        });
+        return c.json({ error: "Flow name already exists", message: failure.message }, 400);
       }
-      res.status(500).json({
-        error: "Failed to update flow",
-        message: failure?.message,
-      });
+      return c.json({ error: "Failed to update flow", message: failure?.message }, 500);
     }
-  });
-
-  router.delete<"/flows/:flowId">("/flows/:flowId", async (req, res) => {
+  })
+  .delete("/flows/:flowId", requireFlowAccess, async (c) => {
     try {
-      const { flowId } = req.params;
-      if (!getAccessibleFlow(req.user, flowId)) {
-        return res.status(404).json({ error: "Flow not found" });
+      const flowId = c.req.param("flowId");
+      if (!getAccessibleFlow(c.var.user, flowId)) {
+        return c.json({ error: "Flow not found" }, 404);
       }
       const jobs = downloadTracker.getByPlaylistId(flowId);
       const cancellation = markPlaylistDownloadWorkCancelled(flowId, jobs);
@@ -309,54 +228,43 @@ export function registerFlows(router: Router) {
         restoreFlowMutationToken(mutation);
         throw error;
       }
-      return res.json({
-        success: true,
-        flowId,
-        queued: true,
-        operationId: deleted.operationId,
-      });
+      return c.json({ success: true, flowId, queued: true, operationId: deleted.operationId }, 200);
     } catch (error) {
-      res.status(500).json({
-        error: "Failed to delete flow",
-        message: asAppError(error)?.message,
-      });
+      return c.json({ error: "Failed to delete flow", message: asAppError(error)?.message }, 500);
     }
-  });
-
-  router.put<"/flows/:flowId/enabled">("/flows/:flowId/enabled", async (req, res) => {
-    try {
-      const { flowId } = req.params;
-      const { enabled } = req.body;
-
-      if (typeof enabled !== "boolean") {
-        return res.status(400).json({ error: "enabled must be a boolean" });
-      }
-
-      const flow = getAccessibleFlow(req.user, flowId);
-      if (!flow) {
-        return res.status(404).json({ error: "Flow not found" });
-      }
-
-      if (enabled) {
-        if (isRetiredFlow(flow)) {
-          return res
-            .status(409)
-            .json({ error: RETIRED_FLOW_MESSAGE, message: RETIRED_FLOW_MESSAGE });
+  })
+  .put(
+    "/flows/:flowId/enabled",
+    requireFlowAccess,
+    validate("json", v.object({ enabled: v.boolean() })),
+    async (c) => {
+      try {
+        const flowId = c.req.param("flowId");
+        const { enabled } = c.req.valid("json");
+        const flow = getAccessibleFlow(c.var.user, flowId);
+        if (!flow) {
+          return c.json({ error: "Flow not found" }, 404);
         }
-        flowPlaylistConfig.setEnabled(flowId, true);
-        flowPlaylistConfig.scheduleNextRun(flowId);
-        playlistManager.requestPlaylistSync([flowId]);
 
-        res.json({
-          success: true,
-          flowId,
-          enabled: true,
-          tracksQueued: 0,
-          message: "Flow enabled. Queuing tracks…",
-        });
-
-        queueFlowSideEffect("enable-flow-refresh", "enable", flowId);
-      } else {
+        if (enabled) {
+          if (isRetiredFlow(flow)) {
+            return c.json({ error: RETIRED_FLOW_MESSAGE, message: RETIRED_FLOW_MESSAGE }, 409);
+          }
+          flowPlaylistConfig.setEnabled(flowId, true);
+          flowPlaylistConfig.scheduleNextRun(flowId);
+          playlistManager.requestPlaylistSync([flowId]);
+          queueFlowSideEffect("enable-flow-refresh", "enable", flowId);
+          return c.json(
+            {
+              success: true,
+              flowId,
+              enabled: true,
+              tracksQueued: 0,
+              message: "Flow enabled. Queuing tracks…",
+            },
+            200,
+          );
+        }
         const wasEnabled = flow.enabled === true;
         const jobs = downloadTracker.getByPlaylistId(flowId);
         const cancellation = markPlaylistDownloadWorkCancelled(flowId, jobs);
@@ -381,47 +289,44 @@ export function registerFlows(router: Router) {
           throw error;
         }
         playlistManager.requestPlaylistSync([flowId]);
-
-        res.json({
-          success: true,
-          flowId,
-          enabled: false,
-          queued: true,
-          operationId: queued.operationId,
-        });
+        return c.json(
+          { success: true, flowId, enabled: false, queued: true, operationId: queued.operationId },
+          200,
+        );
+      } catch (error) {
+        return c.json({ error: "Failed to update flow", message: asAppError(error)?.message }, 500);
       }
-    } catch (error) {
-      res.status(500).json({
-        error: "Failed to update flow",
-        message: asAppError(error)?.message,
-      });
-    }
-  });
-
-  router.post<"/flows/:flowId/static-playlist">(
+    },
+  )
+  .post(
     "/flows/:flowId/static-playlist",
-    async (req, res) => {
+    requireFlowAccess,
+    validate("json", v.object({ name: v.nullish(v.string()) })),
+    async (c) => {
       let playlist = null;
       try {
-        const { flowId } = req.params;
-        const flow = getAccessibleFlow(req.user, flowId);
+        const flowId = c.req.param("flowId");
+        const flow = getAccessibleFlow(c.var.user, flowId);
         if (!flow) {
-          return res.status(404).json({ error: "Flow not found" });
+          return c.json({ error: "Flow not found" }, 404);
         }
 
-        const requestedName = String(req.body?.name || "").trim();
+        const requestedName = String(c.req.valid("json").name || "").trim();
         const flowJobs = downloadTracker.getByPlaylistType(flowId);
         const completedJobs = flowJobs.filter(
           (job) => job?.status === "done" && typeof job?.finalPath === "string",
         );
         if (completedJobs.length === 0) {
-          return res.status(400).json({
-            error: "No completed tracks available",
-            message: "Download at least one flow track before saving a playlist.",
-          });
+          return c.json(
+            {
+              error: "No completed tracks available",
+              message: "Download at least one flow track before saving a playlist.",
+            },
+            400,
+          );
         }
 
-        const uniqueCompletedJobsByIdentity = new Map();
+        const uniqueCompletedJobsByIdentity = new Map<string, DownloadJob>();
         for (const job of completedJobs) {
           const identity = buildPlaylistTrackIdentity(job);
           if (uniqueCompletedJobsByIdentity.has(identity)) continue;
@@ -450,7 +355,7 @@ export function registerFlows(router: Router) {
           sourceFlowId: flowId,
           recordHistory: flow.recordHistory !== false,
           tracks,
-          ownerUserId: flow.ownerUserId ?? req.user!.id,
+          ownerUserId: flow.ownerUserId ?? c.var.user.id,
         });
 
         for (const job of uniqueCompletedJobs) {
@@ -474,11 +379,7 @@ export function registerFlows(router: Router) {
           priority: 5,
         });
 
-        res.json({
-          success: true,
-          playlist,
-          trackCount: uniqueCompletedJobs.length,
-        });
+        return c.json({ success: true, playlist, trackCount: uniqueCompletedJobs.length }, 200);
       } catch (error) {
         const failure = asAppError(error);
         if (playlist?.id) {
@@ -488,50 +389,46 @@ export function registerFlows(router: Router) {
           } catch {}
         }
         if (failure?.code === "STATIC_PLAYLIST_NAME_CONFLICT") {
-          return res.status(400).json({
-            error: "Playlist name already exists",
-            message: failure?.message,
-          });
+          return c.json({ error: "Playlist name already exists", message: failure.message }, 400);
         }
-        res.status(500).json({
-          error: "Failed to create static playlist",
-          message: failure?.message,
-        });
+        return c.json(
+          { error: "Failed to create static playlist", message: failure?.message },
+          500,
+        );
       }
     },
-  );
-
-  router.post<"/flows/:flowId/tracks/:jobId/research">(
-    "/flows/:flowId/tracks/:jobId/research",
-    async (req, res) => {
-      try {
-        const { flowId, jobId } = req.params;
-        return await enqueueResearchTrack(req, res, flowId, jobId, "flow");
-      } catch (error) {
-        res.status(500).json({
-          error: "Failed to re-search flow track",
-          message: asAppError(error)?.message,
-        });
-      }
-    },
-  );
-
-  router.get<"/flows/:flowId/lidarr-import-list">(
-    "/flows/:flowId/lidarr-import-list",
-    (req, res) => {
-      const { flowId } = req.params;
-      const flow = getAccessibleFlow(req.user, flowId);
-      if (!flow) {
-        return res.status(404).json({ error: "Flow not found" });
-      }
-      const ensured = flowPlaylistConfig.ensureLidarrFeedToken(flowId);
-      if (!ensured?.lidarrFeedToken) {
-        return res.status(404).json({ error: "Flow not found" });
-      }
-      res.json({
+  )
+  .post("/flows/:flowId/tracks/:jobId/research", requireFlowAccess, async (c) => {
+    try {
+      return await enqueueResearchTrack(
+        c,
+        c.var.user,
+        c.req.param("flowId"),
+        c.req.param("jobId"),
+        "flow",
+      );
+    } catch (error) {
+      return c.json(
+        { error: "Failed to re-search flow track", message: asAppError(error)?.message },
+        500,
+      );
+    }
+  })
+  .get("/flows/:flowId/lidarr-import-list", requireFlowAccess, (c) => {
+    const flowId = c.req.param("flowId");
+    const flow = getAccessibleFlow(c.var.user, flowId);
+    if (!flow) {
+      return c.json({ error: "Flow not found" }, 404);
+    }
+    const ensured = flowPlaylistConfig.ensureLidarrFeedToken(flowId);
+    if (!ensured?.lidarrFeedToken) {
+      return c.json({ error: "Flow not found" }, 404);
+    }
+    return c.json(
+      {
         token: ensured.lidarrFeedToken,
         itemCount: buildLidarrImportListItems(downloadTracker.getByPlaylistType(flowId)).length,
-      });
-    },
-  );
-}
+      },
+      200,
+    );
+  });

@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import {
-  addStaticPlaylistTracks,
-  createStaticPlaylist,
-} from "../../utils/api/endpoints/playlists.ts";
+import { parseResponse } from "hono/client";
+import { staticPlaylistsClient } from "../../utils/api/clients/staticPlaylists.ts";
 import {
   getDownloadStatus,
   downloadTrackToLibrary,
@@ -377,18 +375,27 @@ function ReleasePage() {
           const name =
             String(target?.name || "").trim() ||
             reserveUniquePlaylistName(staticPlaylists, `${trackPayload.artistName} Picks`);
-          await createStaticPlaylist({
-            name,
-            tracks: [trackPayload],
-          });
+          await parseResponse(
+            staticPlaylistsClient["shared-playlists"].$post({
+              json: {
+                name,
+                tracks: [trackPayload],
+              },
+            }),
+          );
           showSuccess(`Track saved to ${name}`);
         } else {
           const targetPlaylist = staticPlaylists.find(
             (playlist) => playlist.id === target?.playlistId,
           );
-          await addStaticPlaylistTracks(target.playlistId, {
-            tracks: [trackPayload],
-          });
+          await parseResponse(
+            staticPlaylistsClient["shared-playlists"][":playlistId"].tracks.$post({
+              param: { playlistId: encodeURIComponent(target.playlistId) },
+              json: {
+                tracks: [trackPayload],
+              },
+            }),
+          );
           showSuccess(`Track added to ${targetPlaylist?.name || "playlist"}`);
         }
         const nextPlaylists = await loadStaticPlaylists();

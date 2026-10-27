@@ -12,7 +12,8 @@ import {
   requestAlbumFromSearch,
   settleLibraryOwnerConflict,
 } from "../utils/api/endpoints/library.ts";
-import { addStaticPlaylistTracks, createStaticPlaylist } from "../utils/api/endpoints/playlists.ts";
+import { parseResponse } from "hono/client";
+import { staticPlaylistsClient } from "../utils/api/clients/staticPlaylists.ts";
 import { getTagSuggestions } from "../utils/api/endpoints/discovery.ts";
 import { searchLibrary, searchUnified } from "../utils/api/endpoints/search.ts";
 import {
@@ -496,18 +497,27 @@ function GlobalSearch({ settingsMode = false }) {
       try {
         if (target?.mode === "new") {
           const name = String(target?.name || "").trim() || "Playlist";
-          await createStaticPlaylist({
-            name,
-            tracks: [payload],
-          });
+          await parseResponse(
+            staticPlaylistsClient["shared-playlists"].$post({
+              json: {
+                name,
+                tracks: [payload],
+              },
+            }),
+          );
           showSuccess(`Track saved to ${name}`);
         } else {
           const targetPlaylist = staticPlaylists.find(
             (playlist) => playlist.id === target?.playlistId,
           );
-          await addStaticPlaylistTracks(target.playlistId, {
-            tracks: [payload],
-          });
+          await parseResponse(
+            staticPlaylistsClient["shared-playlists"][":playlistId"].tracks.$post({
+              param: { playlistId: encodeURIComponent(target.playlistId) },
+              json: {
+                tracks: [payload],
+              },
+            }),
+          );
           showSuccess(`Track added to ${targetPlaylist?.name || "playlist"}`);
         }
 

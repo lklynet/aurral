@@ -48,7 +48,7 @@ async function apiFetch(token: string, path: string, options: RequestInit = {}) 
 const createUser = (username: string, role: string = "user") =>
   userOps.createUser(username, bcrypt.hashSync("password123", 4), role);
 
-const flowAccessStatus = (token: string) => apiFetch(token, "/api/playlists/no-such-route");
+const flowAccessStatus = (token: string) => apiFetch(token, "/api/playlists/status");
 
 beforeAll(async () => {
   resetDatabase(db);

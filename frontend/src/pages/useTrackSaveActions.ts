@@ -3,7 +3,8 @@ import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { useStaticPlaylists } from "../hooks/useStaticPlaylists";
 import { downloadTrackToLibrary } from "../utils/api/endpoints/library.ts";
-import { addStaticPlaylistTracks, createStaticPlaylist } from "../utils/api/endpoints/playlists.ts";
+import { parseResponse } from "hono/client";
+import { staticPlaylistsClient } from "../utils/api/clients/staticPlaylists.ts";
 import { reserveUniquePlaylistName } from "./ArtistDetails/utils";
 import { normalizePlaylistTrackEntry } from "./playlists/flowPageUtils";
 import { getApiErrorMessage } from "./onboardingUtils";
@@ -49,10 +50,19 @@ export function useTrackSaveActions() {
         if (target?.mode === "new") {
           const requested =
             String(target?.name || "").trim() || getDefaultPlaylistName(payloads[0]);
-          await createStaticPlaylist({ name: requested, tracks: payloads });
+          await parseResponse(
+            staticPlaylistsClient["shared-playlists"].$post({
+              json: { name: requested, tracks: payloads },
+            }),
+          );
           name = requested;
         } else {
-          await addStaticPlaylistTracks(target.playlistId, { tracks: payloads });
+          await parseResponse(
+            staticPlaylistsClient["shared-playlists"][":playlistId"].tracks.$post({
+              param: { playlistId: encodeURIComponent(target.playlistId) },
+              json: { tracks: payloads },
+            }),
+          );
           name =
             staticPlaylists.find((entry) => entry.id === target.playlistId)?.name || "playlist";
         }

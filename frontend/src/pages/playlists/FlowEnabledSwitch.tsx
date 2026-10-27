@@ -1,7 +1,8 @@
 import { useState } from "react";
 import PillToggle from "../../components/PillToggle";
 import { useToast } from "../../contexts/ToastContext";
-import { setFlowEnabled } from "../../utils/api/endpoints/playlists.ts";
+import { parseResponse } from "hono/client";
+import { flowsClient } from "../../utils/api/clients/flows.ts";
 import { ConfirmModal } from "../../components/ConfirmModal.tsx";
 import type { Flow } from "./playlistStats.ts";
 import { asApiError } from "../../utils/api/core.ts";
@@ -16,7 +17,12 @@ export function FlowEnabledSwitch({ flow, onChanged }: { flow: Flow; onChanged?:
   const applyEnabled = async (nextEnabled: boolean) => {
     setPendingEnabled(nextEnabled);
     try {
-      await setFlowEnabled(flow.id, nextEnabled);
+      await parseResponse(
+        flowsClient.flows[":flowId"].enabled.$put({
+          param: { flowId: encodeURIComponent(flow.id) },
+          json: { enabled: nextEnabled },
+        }),
+      );
       showSuccess(nextEnabled ? `${flow.name} turned on` : `${flow.name} turned off`);
       await onChanged?.();
     } catch (err) {

@@ -1,3 +1,5 @@
+import { Hono } from "hono";
+import * as v from "valibot";
 import {
   cleanupBulkOperations,
   getBulkOperation,
@@ -8,13 +10,21 @@ import {
 } from "../../../services/playlists/trackRemoval.ts";
 import { randomUUID } from "crypto";
 import { downloadTracker } from "../../../services/downloadJobs/downloadTracker.ts";
+import { downloadWorker } from "../../../services/downloadJobs/downloadWorker.ts";
 import {
   dedupePlaylistTracks,
   flowPlaylistConfig,
+  normalizeImportSource,
 } from "../../../services/playlists/flowPlaylistConfig.ts";
 import { playlistOperationQueue } from "../../../services/playlists/playlistOperationQueue.ts";
-import { enqueueResearchTrack, getAccessibleStaticPlaylist } from "./utils.ts";
-import { normalizeImportSource } from "../../../services/playlists/flowPlaylistConfig.ts";
+import { syncStaticPlaylistImport } from "../../../services/importLists/importListSync.ts";
+import { wakeDownloadWorker } from "../../../services/downloadJobs/mutationGuards.ts";
+import {
+  enqueueResearchTrack,
+  getAccessibleStaticPlaylist,
+  pauseStaticPlaylistRetryCycle,
+  requireFlowAccess,
+} from "./utils.ts";
 import {
   markDownloadWorkCancelledForJobs,
   markPlaylistDownloadWorkCancelled,
@@ -25,32 +35,96 @@ import {
   restoreDownloadJobCancellations,
 } from "../../../services/downloadJobs/downloadCancellation.ts";
 import { asAppError } from "../../../../lib/errors.ts";
-import type { Request, Response, Router } from "express";
+import { validate } from "../../../middleware/validate.ts";
+import { errorStatus } from "../../shared/errorStatus.ts";
+import type { Context } from "hono";
+import type { AppEnv, RequestUser } from "../../../middleware/requestUser.ts";
 
-async function createOrImportStaticPlaylist(
-  req: Request,
-  res: Response,
+const text = v.nullish(v.union([v.string(), v.number()]));
+const playlistTrack = v.object({
+  artistName: text,
+  artist: text,
+  artist_name: text,
+  "Artist Name(s)": text,
+  trackName: text,
+  title: text,
+  name: text,
+  track: text,
+  "Track Name": text,
+  albumName: text,
+  album: text,
+  "Album Name": text,
+  artistMbid: text,
+  artistId: text,
+  albumMbid: text,
+  releaseGroupMbid: text,
+  albumId: text,
+  trackMbid: text,
+  recordingMbid: text,
+  recordingId: text,
+  mbid: text,
+  releaseMbid: text,
+  releaseYear: text,
+  year: text,
+  durationMs: text,
+  trackNumber: text,
+  discNumber: text,
+  artistAliases: v.nullish(v.array(text)),
+  reason: text,
+  canonicalJobId: text,
+  libraryJobId: text,
+  membershipId: text,
+});
+const playlistTracks = v.nullish(v.array(playlistTrack));
+
+const playlistInput = v.object({
+  name: v.nullish(v.string()),
+  sourceName: v.nullish(v.string(), null),
+  sourceFlowId: v.nullish(v.string(), null),
+  tracks: playlistTracks,
+});
+const enabledInput = v.object({ enabled: v.boolean() });
+const bulkInput = v.object({ jobIds: v.array(v.string()) });
+const moveInput = v.object({
+  jobIds: v.array(v.string()),
+  target: v.nullish(v.object({ playlistId: v.optional(v.string()), name: v.optional(v.string()) })),
+});
+const playlistUpdate = v.object({
+  name: v.nullish(v.string()),
+  tracks: playlistTracks,
+  importSource: v.nullish(
+    v.object({
+      provider: v.optional(v.string()),
+      externalId: v.nullish(v.string()),
+      externalUsername: v.nullish(v.string()),
+      externalName: v.nullish(v.string()),
+      syncEnabled: v.optional(v.boolean()),
+      syncIntervalHours: v.nullish(v.union([v.number(), v.string()])),
+      keepRemovedTracks: v.optional(v.boolean()),
+    }),
+  ),
+});
+
+async function createOrImportStaticPlaylist<E extends AppEnv>(
+  c: Context<E>,
+  user: RequestUser,
+  { name, sourceName, sourceFlowId, tracks }: v.InferOutput<typeof playlistInput>,
   { requireTracks, label }: { requireTracks: boolean; label: string },
 ) {
-  const { name, sourceName = null, sourceFlowId = null, tracks } = req.body || {};
   const safeName = String(name || "").trim();
   const normalizedTracks = Array.isArray(tracks) ? dedupePlaylistTracks(tracks) : [];
-  const rawTracksProvided = Array.isArray(tracks);
 
   if (!safeName) {
-    return res.status(400).json({ error: "name is required" });
+    return c.json({ error: "name is required" }, 400);
   }
   if (requireTracks && normalizedTracks.length === 0) {
-    return res.status(400).json({
-      error: "tracks are required",
-      message: "Import file must include at least one track",
-    });
+    return c.json(
+      { error: "tracks are required", message: "Import file must include at least one track" },
+      400,
+    );
   }
-  if (rawTracksProvided && tracks.length > 0 && normalizedTracks.length === 0) {
-    return res.status(400).json({
-      error: "tracks are invalid",
-      message: "Add at least one valid track",
-    });
+  if (tracks?.length && normalizedTracks.length === 0) {
+    return c.json({ error: "tracks are invalid", message: "Add at least one valid track" }, 400);
   }
 
   const playlistId = randomUUID();
@@ -62,45 +136,47 @@ async function createOrImportStaticPlaylist(
     sourceName,
     sourceFlowId,
     tracks: normalizedTracks,
-    ownerUserId: req.user!.id,
+    ownerUserId: user.id,
   });
 
-  return res.json({
-    success: true,
-    playlistId,
-    queued: true,
-    operationId: result.operationId,
-  });
+  return c.json({ success: true, playlistId, queued: true, operationId: result.operationId }, 200);
 }
 
-async function enqueueBulkAction(
-  req: Request<{ playlistId: string }>,
-  res: Response,
+const nameConflict = <E extends AppEnv>(c: Context<E>, error: unknown, fallback: string) => {
+  const failure = asAppError(error);
+  if (failure?.code === "STATIC_PLAYLIST_NAME_CONFLICT") {
+    return c.json({ error: "Playlist name already exists", message: failure.message }, 400);
+  }
+  return c.json({ error: fallback, message: failure?.message }, 500);
+};
+
+async function enqueueBulkAction<E extends AppEnv>(
+  c: Context<E>,
+  user: RequestUser,
+  playlistId: string,
   action: "remove" | "move",
+  { jobIds, target: requestedTarget }: v.InferOutput<typeof moveInput>,
 ) {
-  const source = getAccessibleStaticPlaylist(req.user, req.params.playlistId);
-  if (!source) return res.status(404).json({ error: "Playlist not found" });
-  const { jobIds, target: requestedTarget } = req.body || {};
-  if (
-    !Array.isArray(jobIds) ||
-    !jobIds.length ||
-    jobIds.some((id) => typeof id !== "string" || !id.trim())
-  ) {
-    return res.status(400).json({ error: "jobIds must contain at least one track ID" });
+  const source = getAccessibleStaticPlaylist(user, playlistId);
+  if (!source) return c.json({ error: "Playlist not found" }, 404);
+  if (!jobIds.length || jobIds.some((id) => !id.trim())) {
+    return c.json({ error: "jobIds must contain at least one track ID" }, 400);
   }
   const ids = [...new Set(jobIds.map((id) => id.trim()))];
   let target = null;
   if (action === "move") {
-    const playlistId =
-      typeof requestedTarget?.playlistId === "string" ? requestedTarget.playlistId.trim() : "";
-    const name = typeof requestedTarget?.name === "string" ? requestedTarget.name.trim() : "";
-    if (Boolean(playlistId) === Boolean(name))
-      return res.status(400).json({ error: "Specify a destination playlist ID or name" });
-    if (playlistId === source.id)
-      return res.status(400).json({ error: "Choose a different destination playlist" });
-    if (playlistId && !getAccessibleStaticPlaylist(req.user, playlistId))
-      return res.status(404).json({ error: "Destination playlist not found" });
-    target = playlistId ? { playlistId } : { playlistId: randomUUID(), name, create: true };
+    const targetId = requestedTarget?.playlistId?.trim() ?? "";
+    const name = requestedTarget?.name?.trim() ?? "";
+    if (Boolean(targetId) === Boolean(name)) {
+      return c.json({ error: "Specify a destination playlist ID or name" }, 400);
+    }
+    if (targetId === source.id) {
+      return c.json({ error: "Choose a different destination playlist" }, 400);
+    }
+    if (targetId && !getAccessibleStaticPlaylist(user, targetId)) {
+      return c.json({ error: "Destination playlist not found" }, 404);
+    }
+    target = targetId ? { playlistId: targetId } : { playlistId: randomUUID(), name, create: true };
   }
   const selections = [];
   const rejected = [];
@@ -109,160 +185,140 @@ async function enqueueBulkAction(
     if (selection) selections.push(selection);
     else rejected.push({ jobId, message: "Track not found in this playlist" });
   }
-  if (!selections.length) return res.json({ queued: false, acceptedJobIds: [], rejected });
+  if (!selections.length) return c.json({ queued: false, acceptedJobIds: [], rejected }, 200);
   const result = await playlistOperationQueue.enqueueBulkPayload({
-    ownerUserId: req.user!.id,
+    ownerUserId: user.id,
     sourcePlaylistId: source.id,
     action,
     target,
     selections,
   });
-  return res.json({
-    ...result,
-    acceptedJobIds: selections.map((selection) => selection.jobId),
-    rejected,
-  });
+  return c.json(
+    { ...result, acceptedJobIds: selections.map((selection) => selection.jobId), rejected },
+    200,
+  );
 }
 
-export type StaticPlaylistQueuedResponse = {
-  success: true;
-  playlistId: string;
-  queued: true;
-  operationId: string;
-};
+const bulkActionFailed = <E extends AppEnv>(c: Context<E>, error: unknown) =>
+  c.json({ error: "Failed to queue playlist action", message: asAppError(error)?.message }, 500);
 
-export type DeleteStaticPlaylistTrackResponse = {
-  success: true;
-  playlistId: string;
-  removedJobId: string;
-  queued: true;
-  operationId: string;
-};
-
-export type SetPlaylistTrackAvailabilityResponse = {
-  success: true;
-  showTrackAvailability: boolean;
-};
-
-export type SetPlaylistRecordHistoryResponse = {
-  success: true;
-  recordHistory: boolean;
-};
-
-export type BulkPlaylistOperationResponse = {
-  acceptedJobIds: string[];
-  rejected: { jobId: string; message: string }[];
-} & ({ queued: true; operationId: string } | { queued: false; operationId?: undefined });
-
-export function registerStaticPlaylists(router: Router) {
-  for (const [path, action] of [
-    ["track-removals", "remove"],
-    ["track-moves", "move"],
-  ] as const) {
-    router.post(`/shared-playlists/:playlistId/${path}`, async (req, res) => {
+export default new Hono<AppEnv>()
+  .basePath("/playlists")
+  .post(
+    "/shared-playlists/:playlistId/track-removals",
+    requireFlowAccess,
+    validate("json", bulkInput),
+    async (c) => {
       try {
-        return await enqueueBulkAction(req, res, action);
+        return await enqueueBulkAction(
+          c,
+          c.var.user,
+          c.req.param("playlistId"),
+          "remove",
+          c.req.valid("json"),
+        );
       } catch (error) {
-        return res
-          .status(500)
-          .json({ error: "Failed to queue playlist action", message: asAppError(error)?.message });
+        return bulkActionFailed(c, error);
       }
-    });
-  }
-  router.get<"/shared-playlists/:playlistId/operations/:operationId">(
-    "/shared-playlists/:playlistId/operations/:operationId",
-    (req, res) => {
+    },
+  )
+  .post(
+    "/shared-playlists/:playlistId/track-moves",
+    requireFlowAccess,
+    validate("json", moveInput),
+    async (c) => {
       try {
-        cleanupBulkOperations();
-        const record = getBulkOperation(req.params.operationId);
-        if (
-          !record ||
-          record.ownerUserId !== req.user!.id ||
-          record.sourcePlaylistId !== req.params.playlistId ||
-          !getAccessibleStaticPlaylist(req.user, req.params.playlistId)
-        ) {
-          return res.status(404).json({ error: "Playlist operation not found" });
-        }
-        return res.json({
+        return await enqueueBulkAction(
+          c,
+          c.var.user,
+          c.req.param("playlistId"),
+          "move",
+          c.req.valid("json"),
+        );
+      } catch (error) {
+        return bulkActionFailed(c, error);
+      }
+    },
+  )
+  .get("/shared-playlists/:playlistId/operations/:operationId", requireFlowAccess, (c) => {
+    try {
+      const playlistId = c.req.param("playlistId");
+      cleanupBulkOperations();
+      const record = getBulkOperation(c.req.param("operationId"));
+      if (
+        !record ||
+        record.ownerUserId !== c.var.user.id ||
+        record.sourcePlaylistId !== playlistId ||
+        !getAccessibleStaticPlaylist(c.var.user, playlistId)
+      ) {
+        return c.json({ error: "Playlist operation not found" }, 404);
+      }
+      return c.json(
+        {
           operationId: record.operationId,
           state: record.state,
           action: record.action,
           outcomes: record.outcomes,
           targetPlaylistId: record.target?.playlistId || null,
           message: record.message || null,
-        });
-      } catch (error) {
-        return res.status(500).json({
-          error: "Failed to read playlist operation",
-          message: asAppError(error)?.message,
-        });
-      }
-    },
-  );
-  router.post("/shared-playlists", async (req, res) => {
+        },
+        200,
+      );
+    } catch (error) {
+      return c.json(
+        { error: "Failed to read playlist operation", message: asAppError(error)?.message },
+        500,
+      );
+    }
+  })
+  .post("/shared-playlists", requireFlowAccess, validate("json", playlistInput), async (c) => {
     try {
-      return await createOrImportStaticPlaylist(req, res, {
+      return await createOrImportStaticPlaylist(c, c.var.user, c.req.valid("json"), {
         requireTracks: false,
         label: "shared-playlist:create",
       });
     } catch (error) {
-      const failure = asAppError(error);
-      if (failure?.code === "STATIC_PLAYLIST_NAME_CONFLICT") {
-        return res.status(400).json({
-          error: "Playlist name already exists",
-          message: failure?.message,
-        });
-      }
-      res.status(500).json({
-        error: "Failed to create playlist",
-        message: failure?.message,
-      });
+      return nameConflict(c, error, "Failed to create playlist");
     }
-  });
-
-  router.post("/shared-playlists/import", async (req, res) => {
-    try {
-      return await createOrImportStaticPlaylist(req, res, {
-        requireTracks: true,
-        label: "shared-playlist:import",
-      });
-    } catch (error) {
-      const failure = asAppError(error);
-      if (failure?.code === "STATIC_PLAYLIST_NAME_CONFLICT") {
-        return res.status(400).json({
-          error: "Playlist name already exists",
-          message: failure?.message,
-        });
-      }
-      res.status(500).json({
-        error: "Failed to import playlist",
-        message: failure?.message,
-      });
-    }
-  });
-
-  router.post<"/shared-playlists/:playlistId/tracks">(
-    "/shared-playlists/:playlistId/tracks",
-    async (req, res) => {
+  })
+  .post(
+    "/shared-playlists/import",
+    requireFlowAccess,
+    validate("json", playlistInput),
+    async (c) => {
       try {
-        const { playlistId } = req.params;
-        const playlist = getAccessibleStaticPlaylist(req.user, playlistId);
-        if (!playlist) {
-          return res.status(404).json({ error: "Playlist not found" });
+        return await createOrImportStaticPlaylist(c, c.var.user, c.req.valid("json"), {
+          requireTracks: true,
+          label: "shared-playlist:import",
+        });
+      } catch (error) {
+        return nameConflict(c, error, "Failed to import playlist");
+      }
+    },
+  )
+  .post(
+    "/shared-playlists/:playlistId/tracks",
+    requireFlowAccess,
+    validate("json", v.object({ tracks: playlistTracks })),
+    async (c) => {
+      try {
+        const playlistId = c.req.param("playlistId");
+        if (!getAccessibleStaticPlaylist(c.var.user, playlistId)) {
+          return c.json({ error: "Playlist not found" }, 404);
         }
-        const rawTracks = req.body?.tracks;
-        const normalizedTracks = Array.isArray(rawTracks) ? dedupePlaylistTracks(rawTracks) : [];
-        if (Array.isArray(rawTracks) && rawTracks.length > 0 && normalizedTracks.length === 0) {
-          return res.status(400).json({
-            error: "tracks are invalid",
-            message: "Add at least one valid track",
-          });
+        const { tracks } = c.req.valid("json");
+        const normalizedTracks = Array.isArray(tracks) ? dedupePlaylistTracks(tracks) : [];
+        if (tracks?.length && normalizedTracks.length === 0) {
+          return c.json(
+            { error: "tracks are invalid", message: "Add at least one valid track" },
+            400,
+          );
         }
         if (normalizedTracks.length === 0) {
-          return res.status(400).json({
-            error: "tracks are required",
-            message: "Add at least one valid track",
-          });
+          return c.json(
+            { error: "tracks are required", message: "Add at least one valid track" },
+            400,
+          );
         }
 
         const result = await playlistOperationQueue.enqueuePayload({
@@ -272,252 +328,266 @@ export function registerStaticPlaylists(router: Router) {
           tracks: normalizedTracks,
         });
 
-        return res.json({
-          success: true,
+        return c.json(
+          { success: true, playlistId, queued: true, operationId: result.operationId },
+          200,
+        );
+      } catch (error) {
+        return c.json(
+          { error: "Failed to add playlist tracks", message: asAppError(error)?.message },
+          500,
+        );
+      }
+    },
+  )
+  .put(
+    "/shared-playlists/:playlistId/track-availability",
+    requireFlowAccess,
+    validate("json", enabledInput),
+    (c) => {
+      const playlistId = c.req.param("playlistId");
+      if (!getAccessibleStaticPlaylist(c.var.user, playlistId)) {
+        return c.json({ error: "Playlist not found" }, 404);
+      }
+      const playlist = flowPlaylistConfig.updateStaticPlaylist(playlistId, {
+        showTrackAvailability: c.req.valid("json").enabled,
+      });
+      return c.json({ success: true, showTrackAvailability: playlist!.showTrackAvailability }, 200);
+    },
+  )
+  .put(
+    "/shared-playlists/:playlistId/record-history",
+    requireFlowAccess,
+    validate("json", enabledInput),
+    (c) => {
+      const playlistId = c.req.param("playlistId");
+      if (!getAccessibleStaticPlaylist(c.var.user, playlistId)) {
+        return c.json({ error: "Playlist not found" }, 404);
+      }
+      const playlist = flowPlaylistConfig.updateStaticPlaylist(playlistId, {
+        recordHistory: c.req.valid("json").enabled,
+      });
+      return c.json({ success: true, recordHistory: playlist!.recordHistory }, 200);
+    },
+  )
+  .put(
+    "/shared-playlists/:playlistId",
+    requireFlowAccess,
+    validate("json", playlistUpdate),
+    async (c) => {
+      try {
+        const playlistId = c.req.param("playlistId");
+        const body = c.req.valid("json");
+        const hasNameUpdate = Object.hasOwn(body, "name");
+        const hasTracksUpdate = Object.hasOwn(body, "tracks");
+        const hasImportSourceUpdate = Object.hasOwn(body, "importSource");
+        if (!hasNameUpdate && !hasTracksUpdate && !hasImportSourceUpdate) {
+          return c.json({ error: "At least one playlist field is required" }, 400);
+        }
+        const currentPlaylist = getAccessibleStaticPlaylist(c.var.user, playlistId);
+        if (!currentPlaylist) {
+          return c.json({ error: "Playlist not found" }, 404);
+        }
+        const safeName = hasNameUpdate
+          ? String(body.name || "").trim()
+          : String(currentPlaylist.name || "").trim();
+        if (!safeName) {
+          return c.json({ error: "name is required" }, 400);
+        }
+        const normalizedTracks = hasTracksUpdate
+          ? dedupePlaylistTracks(body.tracks)
+          : currentPlaylist.tracks;
+        if (hasTracksUpdate && body.tracks?.length && normalizedTracks.length === 0) {
+          return c.json(
+            {
+              error: "tracks are invalid",
+              message: "Playlist update must include at least one valid track",
+            },
+            400,
+          );
+        }
+        let importSource = null;
+        if (hasImportSourceUpdate) {
+          if (!currentPlaylist.importSource) {
+            return c.json({ error: "Playlist has no import source" }, 400);
+          }
+          importSource = normalizeImportSource({
+            ...currentPlaylist.importSource,
+            ...body.importSource,
+          });
+          if (!importSource) {
+            return c.json({ error: "importSource is invalid" }, 400);
+          }
+        }
+
+        const result = await playlistOperationQueue.enqueuePayload({
+          kind: "shared-playlist-update",
+          label: `shared-playlist:${playlistId}:update`,
           playlistId,
-          queued: true,
-          operationId: result.operationId,
+          name: safeName,
+          tracks: normalizedTracks,
+          hasNameUpdate,
+          hasTracksUpdate,
+          hasImportSourceUpdate,
+          importSource,
+        });
+        return c.json(
+          { success: true, playlistId, queued: true, operationId: result.operationId },
+          200,
+        );
+      } catch (error) {
+        return nameConflict(c, error, "Failed to update playlist");
+      }
+    },
+  )
+  .delete("/shared-playlists/:playlistId/tracks/:jobId", requireFlowAccess, async (c) => {
+    try {
+      const playlistId = c.req.param("playlistId");
+      const jobId = c.req.param("jobId");
+      const playlist = getAccessibleStaticPlaylist(c.var.user, playlistId);
+      if (!playlist) {
+        return c.json({ error: "Playlist not found" }, 404);
+      }
+      const job = downloadTracker.getJob(jobId);
+      const playlistReferencesJob = playlist.tracks?.some(
+        (track) => String(track?.canonicalJobId || "") === String(jobId || ""),
+      );
+      if (!job || (job.playlistType !== playlistId && !playlistReferencesJob)) {
+        return c.json({ error: "Track not found" }, 404);
+      }
+      const shouldCancelJob =
+        !playlistReferencesJob && getSharedDownloadReferences(job.id, playlistId).length === 0;
+      const wasJobCancelled = isDownloadJobCancelled(job.id);
+      if (shouldCancelJob) {
+        markDownloadWorkCancelledForJobs([job]);
+      }
+      let result;
+      try {
+        result = await playlistOperationQueue.enqueuePayload({
+          kind: "shared-playlist-delete-track",
+          label: `shared-playlist:${playlistId}:track:${jobId}:delete`,
+          playlistId,
+          jobId,
         });
       } catch (error) {
-        res.status(500).json({
-          error: "Failed to add playlist tracks",
-          message: asAppError(error)?.message,
-        });
-      }
-    },
-  );
-
-  router.put<"/shared-playlists/:playlistId/track-availability">(
-    "/shared-playlists/:playlistId/track-availability",
-    (req, res) => {
-      const { playlistId } = req.params;
-      if (!getAccessibleStaticPlaylist(req.user, playlistId)) {
-        return res.status(404).json({ error: "Playlist not found" });
-      }
-      if (typeof req.body?.enabled !== "boolean") {
-        return res.status(400).json({ error: "enabled must be a boolean" });
-      }
-      const playlist = flowPlaylistConfig.updateStaticPlaylist(playlistId, {
-        showTrackAvailability: req.body.enabled,
-      });
-      return res.json({ success: true, showTrackAvailability: playlist!.showTrackAvailability });
-    },
-  );
-
-  router.put<"/shared-playlists/:playlistId/record-history">(
-    "/shared-playlists/:playlistId/record-history",
-    (req, res) => {
-      const { playlistId } = req.params;
-      if (!getAccessibleStaticPlaylist(req.user, playlistId)) {
-        return res.status(404).json({ error: "Playlist not found" });
-      }
-      if (typeof req.body?.enabled !== "boolean") {
-        return res.status(400).json({ error: "enabled must be a boolean" });
-      }
-      const playlist = flowPlaylistConfig.updateStaticPlaylist(playlistId, {
-        recordHistory: req.body.enabled,
-      });
-      return res.json({ success: true, recordHistory: playlist!.recordHistory });
-    },
-  );
-
-  router.put<"/shared-playlists/:playlistId">("/shared-playlists/:playlistId", async (req, res) => {
-    try {
-      const { playlistId } = req.params;
-      const { name, tracks } = req.body || {};
-      const body = req.body || {};
-      const hasNameUpdate = Object.hasOwn(body, "name");
-      const hasTracksUpdate = Object.hasOwn(body, "tracks");
-      const hasImportSourceUpdate = Object.hasOwn(body, "importSource");
-      if (!hasNameUpdate && !hasTracksUpdate && !hasImportSourceUpdate) {
-        return res.status(400).json({
-          error: "At least one playlist field is required",
-        });
-      }
-      const currentPlaylist = getAccessibleStaticPlaylist(req.user, playlistId);
-      if (!currentPlaylist) {
-        return res.status(404).json({ error: "Playlist not found" });
-      }
-      const safeName = hasNameUpdate
-        ? String(name || "").trim()
-        : String(currentPlaylist.name || "").trim();
-      if (!safeName) {
-        return res.status(400).json({ error: "name is required" });
-      }
-      const normalizedTracks = hasTracksUpdate
-        ? Array.isArray(tracks)
-          ? dedupePlaylistTracks(tracks)
-          : []
-        : currentPlaylist.tracks;
-      if (
-        hasTracksUpdate &&
-        Array.isArray(tracks) &&
-        tracks.length > 0 &&
-        normalizedTracks.length === 0
-      ) {
-        return res.status(400).json({
-          error: "tracks are invalid",
-          message: "Playlist update must include at least one valid track",
-        });
-      }
-      let importSource = null;
-      if (hasImportSourceUpdate) {
-        if (!currentPlaylist.importSource) {
-          return res.status(400).json({
-            error: "Playlist has no import source",
-          });
+        if (shouldCancelJob && !wasJobCancelled) {
+          restoreDownloadJobCancellations([job.id]);
         }
-        importSource = normalizeImportSource({
-          ...currentPlaylist.importSource,
-          ...(req.body?.importSource || {}),
-        });
-        if (!importSource) {
-          return res.status(400).json({
-            error: "importSource is invalid",
-          });
-        }
+        throw error;
       }
 
-      const result = await playlistOperationQueue.enqueuePayload({
-        kind: "shared-playlist-update",
-        label: `shared-playlist:${playlistId}:update`,
-        playlistId,
-        name: safeName,
-        tracks: normalizedTracks,
-        hasNameUpdate,
-        hasTracksUpdate,
-        hasImportSourceUpdate,
-        importSource,
-      });
-      return res.json({
-        success: true,
-        playlistId,
-        queued: true,
-        operationId: result.operationId,
-      });
-    } catch (error) {
-      const failure = asAppError(error);
-      if (failure?.code === "STATIC_PLAYLIST_NAME_CONFLICT") {
-        return res.status(400).json({
-          error: "Playlist name already exists",
-          message: failure?.message,
-        });
-      }
-      res.status(500).json({
-        error: "Failed to update playlist",
-        message: failure?.message,
-      });
-    }
-  });
-
-  router.delete<"/shared-playlists/:playlistId/tracks/:jobId">(
-    "/shared-playlists/:playlistId/tracks/:jobId",
-    async (req, res) => {
-      try {
-        const { playlistId, jobId } = req.params;
-        const playlist = getAccessibleStaticPlaylist(req.user, playlistId);
-        if (!playlist) {
-          return res.status(404).json({ error: "Playlist not found" });
-        }
-        const job = downloadTracker.getJob(jobId);
-        const playlistReferencesJob = playlist.tracks?.some(
-          (track) => String(track?.canonicalJobId || "") === String(jobId || ""),
-        );
-        if (!job || (job.playlistType !== playlistId && !playlistReferencesJob)) {
-          return res.status(404).json({ error: "Track not found" });
-        }
-        const shouldCancelJob =
-          !playlistReferencesJob && getSharedDownloadReferences(job.id, playlistId).length === 0;
-        const wasJobCancelled = isDownloadJobCancelled(job.id);
-        if (shouldCancelJob) {
-          markDownloadWorkCancelledForJobs([job]);
-        }
-        let result;
-        try {
-          result = await playlistOperationQueue.enqueuePayload({
-            kind: "shared-playlist-delete-track",
-            label: `shared-playlist:${playlistId}:track:${jobId}:delete`,
-            playlistId,
-            jobId,
-          });
-        } catch (error) {
-          if (shouldCancelJob && !wasJobCancelled) {
-            restoreDownloadJobCancellations([job.id]);
-          }
-          throw error;
-        }
-
-        return res.json({
+      return c.json(
+        {
           success: true,
           playlistId,
           removedJobId: jobId,
           queued: true,
           operationId: result.operationId,
-        });
-      } catch (error) {
-        res.status(500).json({
-          error: "Failed to remove playlist track",
-          message: asAppError(error)?.message,
-        });
+        },
+        200,
+      );
+    } catch (error) {
+      return c.json(
+        { error: "Failed to remove playlist track", message: asAppError(error)?.message },
+        500,
+      );
+    }
+  })
+  .post("/shared-playlists/:playlistId/tracks/:jobId/research", requireFlowAccess, async (c) => {
+    try {
+      return await enqueueResearchTrack(
+        c,
+        c.var.user,
+        c.req.param("playlistId"),
+        c.req.param("jobId"),
+        "shared-playlist",
+      );
+    } catch (error) {
+      return c.json(
+        { error: "Failed to re-search playlist track", message: asAppError(error)?.message },
+        500,
+      );
+    }
+  })
+  .delete("/shared-playlists/:playlistId", requireFlowAccess, async (c) => {
+    try {
+      const playlistId = c.req.param("playlistId");
+      if (!getAccessibleStaticPlaylist(c.var.user, playlistId)) {
+        return c.json({ error: "Playlist not found" }, 404);
       }
-    },
-  );
+      const ownedJobs = downloadTracker.getByPlaylistId(playlistId);
+      const retainsDownloads = ownedJobs.some(
+        (job) => getSharedDownloadReferences(job.id, playlistId).length > 0,
+      );
+      const cancellation = retainsDownloads
+        ? null
+        : markPlaylistDownloadWorkCancelled(playlistId, ownedJobs);
 
-  router.post<"/shared-playlists/:playlistId/tracks/:jobId/research">(
-    "/shared-playlists/:playlistId/tracks/:jobId/research",
-    async (req, res) => {
+      let deleted;
       try {
-        const { playlistId, jobId } = req.params;
-        return await enqueueResearchTrack(req, res, playlistId, jobId, "shared-playlist");
-      } catch (error) {
-        res.status(500).json({
-          error: "Failed to re-search playlist track",
-          message: asAppError(error)?.message,
-        });
-      }
-    },
-  );
-
-  router.delete<"/shared-playlists/:playlistId">(
-    "/shared-playlists/:playlistId",
-    async (req, res) => {
-      try {
-        const { playlistId } = req.params;
-        const exists = getAccessibleStaticPlaylist(req.user, playlistId);
-        if (!exists) {
-          return res.status(404).json({ error: "Playlist not found" });
-        }
-        const ownedJobs = downloadTracker.getByPlaylistId(playlistId);
-        const retainsDownloads = ownedJobs.some(
-          (job) => getSharedDownloadReferences(job.id, playlistId).length > 0,
-        );
-        const cancellation = retainsDownloads
-          ? null
-          : markPlaylistDownloadWorkCancelled(playlistId, ownedJobs);
-
-        let deleted;
-        try {
-          deleted = await playlistOperationQueue.enqueuePayload({
-            kind: "shared-playlist-delete",
-            label: `shared-playlist:${playlistId}:delete`,
-            playlistId,
-          });
-        } catch (error) {
-          if (cancellation) restoreMarkedPlaylistDownloadWork(playlistId, cancellation);
-          throw error;
-        }
-        return res.json({
-          success: true,
+        deleted = await playlistOperationQueue.enqueuePayload({
+          kind: "shared-playlist-delete",
+          label: `shared-playlist:${playlistId}:delete`,
           playlistId,
-          queued: true,
-          operationId: deleted.operationId,
         });
       } catch (error) {
-        res.status(500).json({
-          error: "Failed to delete playlist",
-          message: asAppError(error)?.message,
-        });
+        if (cancellation) restoreMarkedPlaylistDownloadWork(playlistId, cancellation);
+        throw error;
+      }
+      return c.json(
+        { success: true, playlistId, queued: true, operationId: deleted.operationId },
+        200,
+      );
+    } catch (error) {
+      return c.json(
+        { error: "Failed to delete playlist", message: asAppError(error)?.message },
+        500,
+      );
+    }
+  })
+  .post("/shared-playlists/:playlistId/sync", requireFlowAccess, async (c) => {
+    try {
+      const playlist = getAccessibleStaticPlaylist(c.var.user, c.req.param("playlistId"));
+      if (!playlist) {
+        return c.json({ error: "Playlist not found" }, 404);
+      }
+      const result = await syncStaticPlaylistImport({
+        playlistId: playlist.id,
+        user: c.var.user,
+        force: true,
+      });
+      return c.json({ success: true, ...result }, 200);
+    } catch (error) {
+      const failure = asAppError(error);
+      return c.json(
+        { error: "Failed to sync playlist", message: failure?.message || "Unknown error" },
+        errorStatus(failure),
+      );
+    }
+  })
+  .put(
+    "/playlists/:playlistId/retry-cycle",
+    requireFlowAccess,
+    validate("json", v.object({ paused: v.boolean() })),
+    async (c) => {
+      try {
+        const playlistId = c.req.param("playlistId");
+        const { paused } = c.req.valid("json");
+        if (!getAccessibleStaticPlaylist(c.var.user, playlistId)) {
+          return c.json({ error: "Static playlist not found" }, 404);
+        }
+        if (paused) {
+          await pauseStaticPlaylistRetryCycle(playlistId);
+        } else {
+          await downloadWorker.setRetryCyclePaused(playlistId, false);
+          await wakeDownloadWorker();
+        }
+        return c.json({ success: true, playlistId, paused }, 200);
+      } catch (error) {
+        return c.json(
+          { error: "Failed to update retry cycle", message: asAppError(error)?.message },
+          500,
+        );
       }
     },
   );
-}
