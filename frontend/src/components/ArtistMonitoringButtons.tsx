@@ -1,6 +1,6 @@
 import { useRef, useState, type ReactNode } from "react";
 import { skipToken, useQuery } from "@tanstack/react-query";
-import { Eye, MoreVertical, Plus, SlidersHorizontal } from "lucide-react";
+import { Eye, MoreVertical, Plus, SlidersHorizontal } from "./icons";
 import AddActionButton from "./AddActionButton";
 import { ArtistMonitoringRulesDialog } from "./ArtistMonitoringRulesDialog";
 import { DotLoader } from "./DotLoader";

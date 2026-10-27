@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown } from "../../../components/icons";
 import { formatDateTime } from "../../../utils/dateTime.ts";
 import { DotLoader } from "../../../components/DotLoader";
 import type { useStorageHealth } from "../../../hooks/useStorageHealth.ts";

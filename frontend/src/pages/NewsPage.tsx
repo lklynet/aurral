@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Newspaper } from "lucide-react";
+import { Newspaper } from "../components/icons";
 import RouteLink from "../components/RouteLink";
 import { useAuth } from "../contexts/AuthContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";

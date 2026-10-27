@@ -1,4 +1,4 @@
-import { Download } from "lucide-react";
+import { Download } from "../components/icons";
 import type { useLibraryDestination } from "../hooks/useLibraryDestination";
 
 const ACTIVE_ALBUM_STATUSES = new Set([

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { testDownloadClientConnection } from "../../../utils/api/endpoints/settings.ts";
 
-import { Plus, RefreshCw, Trash2, Wrench } from "lucide-react";
+import { Plus, RefreshCw, Trash2, Wrench } from "../../../components/icons";
 import { DotLoader } from "../../../components/DotLoader";
 import DownloadFolderField from "../../../components/DownloadFolderField";
 import { IntegrationCard, SettingsIntegrationModal } from "./SettingsIntegrationCards";

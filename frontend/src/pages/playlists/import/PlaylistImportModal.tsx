@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { FileJson, Music2, Upload } from "lucide-react";
+import { FileJson, Music2, Upload } from "../../../components/icons";
 import { Link } from "react-router";
 import { ModalShell } from "../../../components/PlaylistModals";
 import { DotLoader } from "../../../components/DotLoader";

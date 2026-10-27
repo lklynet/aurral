@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw } from "../../../components/icons";
 import { DotLoader } from "../../../components/DotLoader";
 import { StorageHealthDashboard, StorageHealthSummary } from "./StorageHealthDashboard";
 import { refreshStorageHealth, useStorageHealth } from "../../../hooks/useStorageHealth";

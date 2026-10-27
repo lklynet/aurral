@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import ArtworkImage from "./ArtworkImage";
-import { Music } from "lucide-react";
+import { Music } from "./icons";
 import ArtistImage from "./ArtistImage";
 import { getSearchResultKey, getSearchResultLink } from "../utils/searchNavigation";
 import { getPlaylistArtworkUrl } from "../utils/api/endpoints/playlists.ts";

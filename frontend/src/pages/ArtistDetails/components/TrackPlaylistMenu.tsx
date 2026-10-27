@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronRight, Plus, Trash2 } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import { ChevronRight, Plus, Trash2 } from "../../../components/icons";
+import type { IconComponent } from "../../../components/icons";
 import AddActionButton from "../../../components/AddActionButton";
 import { useActiveDownloads } from "../../../hooks/useActiveDownloads";
 import { DotLoader } from "../../../components/DotLoader";
@@ -49,7 +49,7 @@ export type PlaylistRemoval = { playlistId: string; jobId: PlaylistTrackEntry["i
 export type QueueMenuItem = {
   id: string;
   label: string;
-  icon: LucideIcon;
+  icon: IconComponent;
   disabled: boolean;
   onSelect: () => void;
 };
@@ -240,7 +240,7 @@ export function TrackPlaylistPickerContent({
 
 type TrackPlaylistSubmenuProps = TrackPlaylistPickerProps & {
   label: ReactNode;
-  icon?: LucideIcon;
+  icon?: IconComponent;
   onClose?: () => void;
   toggleOnClick?: boolean;
   isOpen?: boolean;
@@ -397,7 +397,7 @@ type TrackPlaylistMenuProps = TrackPlaylistPickerProps & {
   disabled?: boolean;
   triggerLabel?: string;
   triggerVariant?: "expand" | "kebab" | "compact" | "hidden";
-  icon?: LucideIcon;
+  icon?: IconComponent;
   onAddToLibrary?: ((track: PlaylistTrackIdentity | null) => unknown) | null;
   librarySaving?: boolean;
   queueItems?: QueueMenuItem[];

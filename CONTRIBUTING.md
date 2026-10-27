@@ -74,7 +74,6 @@ Aurral uses [Vite+](https://viteplus.dev) for formatting, linting, tests, and fr
 pnpm run check             # formatting, lint, UI style, and type checks
 pnpm test                  # unit tests
 pnpm run test:integration  # integration tests
-pnpm run test:browser      # component tests in headless Chromium
 pnpm run build             # frontend build
 ```
 
@@ -85,19 +84,3 @@ The code is moving to strict type checking. `typecheck-baseline.json` lists how 
 `backend/db/rows.ts` holds one row type per SQLite table, generated from the schema. Run `pnpm run db:types` after a schema change, and type queries with them, for example `db.prepare<[number], UsersRow>("SELECT * FROM users WHERE id = ?")`.
 
 Run `pnpm run format` to format the whole repository. After `pnpm install`, the pre-commit hook formats and lints the files you stage. It adds its fixes to the commit and stops the commit when a lint error remains.
-
-## Run browser smoke tests
-
-Start the candidate application before running the browser suite. Set `AURRAL_BASE_URL` to its URL, and set `AURRAL_TEST_USERNAME` and `AURRAL_TEST_PASSWORD` to a disposable test account.
-
-```sh
-AURRAL_BASE_URL=http://127.0.0.1:3017 AURRAL_TEST_USERNAME=... AURRAL_TEST_PASSWORD=... pnpm run test:e2e
-```
-
-The command installs Chromium before running Playwright. Non-loopback URLs must use HTTPS.
-
-Playwright also reads `backend/.env` when it exists, so `AURRAL_TEST_USERNAME`, `AURRAL_TEST_PASSWORD`, and `AURRAL_BASE_URL` can live there instead. Without `AURRAL_BASE_URL`, the suite targets `pnpm run dev` on `AURRAL_DEV_WEB_PORT`, or port 3017 when that is unset. `pnpm run dev` reads `AURRAL_DEV_API_PORT` and `AURRAL_DEV_WEB_PORT` from `backend/.env` and defaults to 3001 and 3009.
-
-`activity-album-grabs.spec.ts` starts its own server from the built frontend, so run `pnpm run build` first.
-
-CI runs only the specs that fake every API response, against the production build and without credentials. A spec belongs in that CI step only when it needs no live service or sign-in.

@@ -1,6 +1,16 @@
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { Check, Download, FileUp, Monitor, Moon, Pencil, Plus, Sun, Trash2 } from "lucide-react";
+import {
+  Check,
+  Download,
+  FileUp,
+  Monitor,
+  Moon,
+  Pencil,
+  Plus,
+  Sun,
+  Trash2,
+} from "../../../components/icons";
 import PillToggle from "../../../components/PillToggle";
 import TooltipButton from "../../../components/TooltipButton.tsx";
 import { ModalShell } from "../../../components/PlaylistModals.tsx";

@@ -77,7 +77,7 @@ import {
   Music,
   Search,
   SlidersHorizontal,
-} from "lucide-react";
+} from "../components/icons";
 import TooltipButton from "../components/TooltipButton";
 import Tooltip from "../components/Tooltip";
 

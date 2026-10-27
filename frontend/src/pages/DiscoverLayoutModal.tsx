@@ -17,7 +17,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { restrictToParentElement, restrictToVerticalAxis } from "@dnd-kit/modifiers";
-import { GripVertical, X } from "lucide-react";
+import { GripVertical, X } from "../components/icons";
 import type { DragEndEvent } from "@dnd-kit/core";
 import { DotLoader } from "../components/DotLoader";
 import { useModalDialog } from "../hooks/useModalDialog.ts";

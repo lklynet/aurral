@@ -40,7 +40,7 @@ import { getApiErrorText } from "./onboardingUtils.tsx";
 
 import { Navigate, useLocation, useParams } from "react-router";
 import RouteLink from "../components/RouteLink";
-import { AlertCircle, Music } from "lucide-react";
+import { AlertCircle, Music } from "../components/icons";
 import { SkeletonActivityList, SkeletonStatus } from "../components/Skeletons";
 import { queryClient, queryKeys } from "../queryClient.ts";
 import type { ActivityRequest } from "./activity/activityListUtils.ts";

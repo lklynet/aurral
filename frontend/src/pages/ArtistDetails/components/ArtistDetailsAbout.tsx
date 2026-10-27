@@ -1,5 +1,5 @@
 import { Fragment, useMemo } from "react";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink } from "../../../components/icons";
 import { getArtistHeroImage, getArtistType, type ArtistCoverImage } from "../utils";
 import type { ArtistDetailsResponse } from "../../../../../backend/routes/artists/handlers/details.ts";
 import type { AppSettingsResponse } from "../../../utils/api/endpoints/settings.ts";

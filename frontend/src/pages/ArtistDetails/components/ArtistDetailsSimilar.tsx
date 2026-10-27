@@ -8,7 +8,7 @@ import { getArtistRecordId, type ArtistFeedbackAction } from "../../../utils/art
 import type { SimilarArtistsResponse } from "../../../../../backend/routes/artists/handlers/similar.ts";
 import type { LookupArtistsInLibraryBatchResponse } from "../../../../../backend/routes/library/handlers/misc.ts";
 
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "../../../components/icons";
 import { DotLoader } from "../../../components/DotLoader";
 import SearchLibraryCheck from "../../../components/SearchLibraryCheck";
 import ArtistImage from "../../../components/ArtistImage";

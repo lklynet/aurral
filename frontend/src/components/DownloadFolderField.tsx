@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { browseFilesystem } from "../utils/api/endpoints/auth.ts";
 import DownloadFolderPickerModal from "./DownloadFolderPickerModal";
 
-import { Folder } from "lucide-react";
+import { Folder } from "./icons";
 import Tooltip from "./Tooltip";
 
 interface DownloadFolderFieldProps {

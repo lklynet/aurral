@@ -20,7 +20,7 @@ import {
 import { getConfiguredStatus } from "../utils/integrationStatus";
 import { queryKeys } from "../../../queryClient.ts";
 
-import { AlertTriangle, CheckCircle, Folder, RefreshCw } from "lucide-react";
+import { AlertTriangle, CheckCircle, Folder, RefreshCw } from "../../../components/icons";
 import { DotLoader } from "../../../components/DotLoader";
 import PillToggle from "../../../components/PillToggle";
 import DownloadFolderPickerModal from "../../../components/DownloadFolderPickerModal";

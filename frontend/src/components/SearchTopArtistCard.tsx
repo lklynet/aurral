@@ -1,4 +1,4 @@
-import { ChevronRight, ListMusic, Music } from "lucide-react";
+import { ChevronRight, ListMusic, Music } from "./icons";
 import type { SearchImageMap, SearchItem } from "./SearchMixedResultList";
 import ArtistImage from "./ArtistImage";
 import SearchLibraryCheck from "./SearchLibraryCheck";

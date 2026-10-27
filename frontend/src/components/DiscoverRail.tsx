@@ -6,7 +6,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "./icons";
 import RouteLink from "./RouteLink";
 import TooltipButton from "./TooltipButton";
 

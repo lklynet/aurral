@@ -73,6 +73,16 @@ function addFile(
   );
 }
 
+function setArtistAddedAt(
+  artist: import("../../backend/db/rows.ts").LibraryArtistsRow,
+  addedAt: string,
+) {
+  db.prepare("UPDATE library_artists SET created_at = ? WHERE id = ?").run(
+    Date.parse(addedAt),
+    artist.id,
+  );
+}
+
 beforeEach(() => {
   resetDatabase(db);
   management.invalidateLibraryManagementCache();
@@ -104,6 +114,8 @@ test("recent artists combines both owners with artwork and library identities wh
   });
   addFile(aurral, "Aurral Album", "2026-10-02T12:00:00Z");
   addFile(lidarr, "Lidarr Album", "2026-10-01T12:00:00Z");
+  setArtistAddedAt(aurral, "2026-10-02T12:00:00Z");
+  setArtistAddedAt(lidarr, "2026-10-01T12:00:00Z");
   management.setLibraryManagement({
     entityKind: "artist",
     entityId: aurral.id,
@@ -129,7 +141,7 @@ test("recent artists combines both owners with artwork and library identities wh
   assert.deepEqual(recent[1].images, lidarrImages);
 });
 
-test("recent artists follow the newest library file instead of the Lidarr added date", async () => {
+test("recent artists follow the artist addition instead of newer tracks or provider dates", async () => {
   const oldLidarr = store.upsertLibraryArtist({
     identityKey: "name:old-lidarr",
     name: "Old Lidarr Artist",
@@ -158,28 +170,33 @@ test("recent artists follow the newest library file instead of the Lidarr added 
   addFile(recentLidarr, "Only Album", "2026-09-15T12:00:00Z");
   addFile(oldLidarr, "New Album", "2026-10-07T12:00:00Z");
   addFile(missing, "Gone", "2026-10-08T12:00:00Z", { available: false });
+  setArtistAddedAt(oldLidarr, "2026-09-01T12:00:00Z");
+  setArtistAddedAt(recentLidarr, "2026-09-15T12:00:00Z");
+  setArtistAddedAt(withoutFiles, "2026-10-06T12:00:00Z");
+  setArtistAddedAt(missing, "2026-10-08T12:00:00Z");
 
   for (const connected of [false, true]) {
     vi.spyOn(lidarrClient, "isConfigured").mockImplementation(() => connected);
     const recent = await getRecent();
     assert.deepEqual(
       recent.map((artist) => artist.artistName),
-      ["Old Lidarr Artist", "Recent Lidarr Artist"],
+      ["Recent Lidarr Artist", "Old Lidarr Artist"],
     );
     assert.deepEqual(
       recent.map((artist) => artist.added),
-      ["2026-10-07T12:00:00.000Z", "2026-09-15T12:00:00.000Z"],
+      ["2026-09-15T12:00:00.000Z", "2026-09-01T12:00:00.000Z"],
     );
   }
 });
 
-test("recent artists returns the twenty with the newest files, including artists without MBIDs", async () => {
+test("recent artists returns the twenty newest artists, including artists without MBIDs", async () => {
   for (let index = 1; index <= 25; index++) {
     const artist = store.upsertLibraryArtist({
       identityKey: `name:artist-${index}`,
       name: `Artist ${String(26 - index).padStart(2, "0")}`,
     });
     addFile(artist, "Album", `2026-09-${String(index).padStart(2, "0")}T12:00:00Z`);
+    setArtistAddedAt(artist, `2026-09-${String(index).padStart(2, "0")}T12:00:00Z`);
   }
   const recent = await getRecent();
   assert.equal(recent.length, 20);
@@ -188,6 +205,53 @@ test("recent artists returns the twenty with the newest files, including artists
     Array.from({ length: 20 }, (_, index) => `Artist ${String(index + 1).padStart(2, "0")}`),
   );
   assert.ok(recent.every((artist) => artist.mbid === null && artist.canonicalId));
+});
+
+test("recent artists collapse duplicate canonical artist rows", async () => {
+  const canonicalMbid = "22222222-2222-4222-8222-222222222222";
+  const original = store.upsertLibraryArtist({
+    identityKey: `mbid:${canonicalMbid}`,
+    mbid: canonicalMbid,
+    name: "Duplicate Artist",
+  });
+  const duplicate = store.upsertLibraryArtist({
+    identityKey: `legacy:${canonicalMbid}`,
+    mbid: canonicalMbid,
+    name: "Duplicate Artist",
+  });
+  addFile(original, "Original Album", "2026-10-01T12:00:00Z", { available: false });
+  addFile(duplicate, "Duplicate Album", "2026-10-20T12:00:00Z");
+  setArtistAddedAt(original, "2026-10-01T12:00:00Z");
+  setArtistAddedAt(duplicate, "2026-10-20T12:00:00Z");
+
+  const recent = await getRecent();
+
+  assert.equal(recent.length, 1);
+  assert.equal(recent[0].mbid, canonicalMbid);
+  assert.equal(recent[0].added, "2026-10-01T12:00:00.000Z");
+});
+
+test("recent artists keep unidentified artists with the same name separate", async () => {
+  const first = store.upsertLibraryArtist({
+    identityKey: "source-one:same-name",
+    name: "Same Name",
+  });
+  const second = store.upsertLibraryArtist({
+    identityKey: "source-two:same-name",
+    name: "Same Name",
+  });
+  addFile(first, "First Album", "2026-10-01T12:00:00Z");
+  addFile(second, "Second Album", "2026-10-02T12:00:00Z");
+  setArtistAddedAt(first, "2026-10-01T12:00:00Z");
+  setArtistAddedAt(second, "2026-10-02T12:00:00Z");
+
+  const recent = await getRecent();
+
+  assert.equal(recent.length, 2);
+  assert.deepEqual(
+    recent.map((artist) => artist.canonicalId),
+    [String(second.id), String(first.id)],
+  );
 });
 
 test("library pages resolve artists without albums or MBIDs", () => {
@@ -216,6 +280,7 @@ test("file scans retain artist identity, artwork and added date while updating f
     entityId: artist.id,
     managedBy: "aurral",
   });
+  setArtistAddedAt(artist, added);
   const rootPath = path.join(state.baseDir, "music");
   const filePath = path.join(rootPath, "Aurral Artist", "Album", "Track.flac");
   await mkdir(path.dirname(filePath), { recursive: true });
@@ -236,13 +301,10 @@ test("file scans retain artist identity, artwork and added date while updating f
       }),
     });
     assert.equal(scan.filesIndexed, 1);
-    const indexedAt = requireFixture(db)
-      .prepare<unknown[], { created_at: number }>("SELECT created_at FROM library_media_files")!
-      .get()!.created_at;
     const [recent] = await getRecent();
     assert.equal(recent.canonicalId, String(artist.id));
     assert.equal(recent.mbid, mbid);
-    assert.equal(recent.added, new Date(indexedAt).toISOString());
+    assert.equal(recent.added, new Date(added).toISOString());
     assert.deepEqual(recent.images, images);
     const stored = JSON.parse(
       requireFixture(

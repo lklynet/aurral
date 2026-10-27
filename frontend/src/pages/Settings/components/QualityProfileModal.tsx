@@ -17,7 +17,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { restrictToParentElement, restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import type { ChangeEvent } from "react";
-import { GripVertical } from "lucide-react";
+import { GripVertical } from "../../../components/icons";
 import { SettingsInput } from "./SettingsField";
 import { SettingsIntegrationModal } from "./SettingsIntegrationCards";
 import {

@@ -1,6 +1,6 @@
 import { useId } from "react";
 import type { ReactNode } from "react";
-import { Pencil, X } from "lucide-react";
+import { Pencil, X } from "../../../components/icons";
 import { useModalDialog } from "../../../hooks/useModalDialog.ts";
 
 type IntegrationStatus = { label: string; className: string };

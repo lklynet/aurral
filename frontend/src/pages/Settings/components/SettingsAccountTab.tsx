@@ -8,7 +8,7 @@ import { SharedLinksSection } from "./SharedLinksSection";
 import { ThemeSettings } from "./ThemeSettings";
 
 import { Link } from "react-router";
-import { RotateCcw } from "lucide-react";
+import { RotateCcw } from "../../../components/icons";
 import { DotLoader } from "../../../components/DotLoader";
 import type { useAccountSettings } from "../hooks/useAccountSettings";
 import type { useToast } from "../../../contexts/ToastContext";

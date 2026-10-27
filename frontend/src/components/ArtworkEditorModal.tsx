@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type ChangeEvent } from "react";
-import { ImagePlus, Link as LinkIcon, Upload, X } from "lucide-react";
+import { ImagePlus, Link as LinkIcon, Upload, X } from "./icons";
 import { useModalDialog } from "../hooks/useModalDialog.ts";
 import ArtworkImage from "./ArtworkImage.tsx";
 import Tooltip from "./Tooltip.tsx";

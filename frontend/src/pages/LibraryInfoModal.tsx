@@ -1,6 +1,6 @@
 import { useId } from "react";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
-import { X } from "lucide-react";
+import { X } from "../components/icons";
 import TooltipButton from "../components/TooltipButton";
 import { useAuth } from "../contexts/AuthContext";
 import { useModalDialog } from "../hooks/useModalDialog.ts";

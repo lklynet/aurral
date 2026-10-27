@@ -1,6 +1,6 @@
 import ArtworkImage from "../../../components/ArtworkImage";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, Music } from "lucide-react";
+import { ArrowRight, Music } from "../../../components/icons";
 import { ReleaseMetric } from "./ReleaseMetric";
 import { DotLoader } from "../../../components/DotLoader";
 import ReleaseStatusCheck from "./ReleaseStatusCheck";

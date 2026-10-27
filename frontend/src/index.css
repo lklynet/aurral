@@ -1471,10 +1471,6 @@ textarea {
   color: var(--aurral-text);
 }
 
-.app-mobile-nav__item.is-active svg {
-  stroke-width: 2.4;
-}
-
 .app-mobile-menu__item:active,
 .app-mobile-nav__item:active {
   scale: 0.96;

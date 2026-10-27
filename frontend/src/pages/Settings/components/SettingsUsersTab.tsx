@@ -5,7 +5,7 @@ import { SettingsInput, SettingsSelect } from "./SettingsField";
 import { SettingsArrFieldSet, SettingsArrFormGroup } from "./arr/SettingsArrLayout";
 
 import { createPortal } from "react-dom";
-import { Lock, Trash2, UserPlus, X } from "lucide-react";
+import { Lock, Trash2, UserPlus, X } from "../../../components/icons";
 import { GRANULAR_PERMISSIONS, granularPerms } from "../constants";
 import { useModalDialog } from "../../../hooks/useModalDialog.ts";
 import { AdminPlexLinkField } from "./AdminPlexLinkField";

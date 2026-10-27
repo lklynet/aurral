@@ -8,7 +8,7 @@ import {
   ExternalLink,
   Trash2,
   RefreshCw,
-} from "lucide-react";
+} from "../../../components/icons";
 import { DotLoader } from "../../../components/DotLoader";
 import { getLibraryAlbumLink } from "../../../utils/searchNavigation";
 import { getReleaseMetric, isVisibleLibraryAlbum, type ReleaseGroup } from "../utils";

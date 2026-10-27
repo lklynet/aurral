@@ -20,7 +20,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
-import { GripVertical, Music, X } from "lucide-react";
+import { GripVertical, Music, X } from "./icons";
 import { useAudioQueue, type AudioQueueValue } from "../contexts/audioQueueContext";
 import { useToast } from "../contexts/ToastContext";
 import TooltipButton from "./TooltipButton";

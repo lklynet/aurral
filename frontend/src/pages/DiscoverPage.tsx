@@ -5,7 +5,7 @@ import {
 } from "../utils/api/endpoints/library.ts";
 import { getMyDiscoverLayout, updateMyDiscoverLayout } from "../utils/api/endpoints/auth.ts";
 
-import { Sparkles, LayoutTemplate } from "lucide-react";
+import { Sparkles, LayoutTemplate } from "../components/icons";
 import { DotLoader } from "../components/DotLoader";
 import {
   SkeletonDiscoverCard,

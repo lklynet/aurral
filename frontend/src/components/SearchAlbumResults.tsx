@@ -1,6 +1,6 @@
 import ArtworkImage from "./ArtworkImage";
 import { useState } from "react";
-import { Music } from "lucide-react";
+import { Music } from "./icons";
 import SearchLibraryCheck from "./SearchLibraryCheck";
 import AddActionButton, { type LibraryDestination } from "./AddActionButton";
 import { useActiveDownloads } from "../hooks/useActiveDownloads";

@@ -1,4 +1,4 @@
-import { Play } from "lucide-react";
+import { Play } from "./icons";
 import type { ElementType, ReactNode, Ref } from "react";
 import { CollectionHeader } from "./CollectionHeader";
 
