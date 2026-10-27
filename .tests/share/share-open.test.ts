@@ -78,6 +78,33 @@ test("name-only shares open the matching local artist, album and track", () => {
   }
 });
 
+test("a missing performer uses the album artist without overriding an explicit credit", () => {
+  for (const { title, artistName } of [
+    { title: "No credit", artistName: null },
+    { title: "Guest credit", artistName: "Guest" },
+  ]) {
+    const local = media.upsertLibraryTrack({
+      identityKey: `track:${title}`,
+      title,
+      artistName,
+    });
+    media.linkLibraryAlbumTrack({ albumId: album.id, trackId: local.id });
+    const manifest = parseShareManifest({
+      kind: "track",
+      title,
+      artistName: "Tycho",
+      albumTitle: "Dive",
+    });
+    assert.ok(manifest);
+    assert.equal(
+      shareDestination(manifest),
+      artistName
+        ? "/search?q=Guest%20credit%20Tycho"
+        : `/library/album/${album.id}?track=${local.id}`,
+    );
+  }
+});
+
 test("unowned items open discovery or search without creating Library entries", () => {
   const unknownArtist = "44444444-4444-4444-8444-444444444444";
   const inputs = [

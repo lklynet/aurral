@@ -58,7 +58,10 @@ export function shareDestination(manifest: ShareManifest) {
                 id: track.id,
                 albumId: album.id,
                 title: track.title,
-                artistName: track.artistName || "",
+                artistName:
+                  track.artistName ||
+                  library.artists.find((artist) => artist.id === album.artistId)?.name ||
+                  "",
                 trackMbid: track.mbid,
                 albumMbid: album.releaseGroupMbid,
                 releaseMbid: album.mbid !== album.releaseGroupMbid ? album.mbid : null,
