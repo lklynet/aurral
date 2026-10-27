@@ -1,4 +1,5 @@
-import { createAuthRequest, createAuthResponse } from "./authFixtures.ts";
+import { createAuthRequest } from "./authFixtures.ts";
+import { signedInAs } from "../helpers/honoApp.ts";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { createSign, generateKeyPairSync } from "node:crypto";
@@ -10,7 +11,7 @@ import {
   resetDatabase,
 } from "../helpers/backendTestHarness.ts";
 
-const [isolatedState, { db }, dbHelpers, authModule, sessionModule, oidcModule] =
+const [isolatedState, { db }, dbHelpers, authModule, sessionModule, oidcModule, { api }] =
   await setupIsolatedBackend(
     "oidc-auth",
     () => import("../../backend/config/db-sqlite.ts"),
@@ -18,6 +19,7 @@ const [isolatedState, { db }, dbHelpers, authModule, sessionModule, oidcModule] 
     () => import("../../backend/middleware/auth.ts"),
     () => import("../../backend/config/session-helpers.ts"),
     () => import("../../backend/services/oidcAuth.ts"),
+    () => import("../../backend/routes/api.ts"),
   );
 
 const { dbOps, userOps, userIdentityOps } = dbHelpers;
@@ -34,6 +36,20 @@ const {
 } = oidcModule;
 
 const completeOnboarding = () => dbOps.updateSettings({ onboardingComplete: true });
+
+const exchangeRequest = ({
+  headers = {},
+  ip = null,
+}: {
+  headers?: { cookie?: string; "user-agent"?: string };
+  ip?: string | null;
+}) => ({ cookie: headers.cookie, ip, userAgent: headers["user-agent"] ?? null });
+
+async function startLogin(options?: Parameters<typeof startOidcLogin>[0]) {
+  const login = await startOidcLogin(options);
+  assert.ok(login, "OIDC must be enabled");
+  return { redirect: new URL(login.authUrl), cookie: login.cookie.split(";", 1)[0] };
+}
 
 const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
 const oidcKey = {
@@ -154,19 +170,16 @@ async function createPendingOidcLogin(
     ...(options.envOverrides || {}),
   });
 
-  const response = createAuthResponse();
-  await startOidcLogin(createAuthRequest({}), response);
-  const redirect = new URL(response.location || response.body?.authUrl || "");
+  const { redirect, cookie } = await startLogin();
   const state = redirect.searchParams.get("state");
   assert.ok(state);
   nonce = redirect.searchParams.get("nonce");
   assert.ok(state, "OIDC login redirect must include state");
-  const setCookie = response.headers["Set-Cookie"];
-  assert.ok(setCookie, "OIDC login must set a transaction cookie");
+  assert.ok(cookie, "OIDC login must set a transaction cookie");
   return {
     state,
     nonce,
-    cookie: setCookie.split(";", 1)[0],
+    cookie,
     close: discoveryServer.close,
     capturedTokenRequest,
   };
@@ -182,7 +195,7 @@ async function completeOidcLogin(pending: { state: string; cookie: string }) {
   );
   return exchangeOidcCallback(
     callback.code,
-    createAuthRequest({
+    exchangeRequest({
       headers: { cookie: pending.cookie, "user-agent": "test-agent" },
       ip: "127.0.0.1",
     }),
@@ -289,7 +302,7 @@ test("OIDC callback issues a cookie-bound one-time session exchange", async () =
       () =>
         exchangeOidcCallback(
           callback.code,
-          createAuthRequest({
+          exchangeRequest({
             headers: { cookie: "aurral_oidc_transaction=wrong" },
           }),
         ),
@@ -302,7 +315,7 @@ test("OIDC callback issues a cookie-bound one-time session exchange", async () =
 
     const session = exchangeOidcCallback(
       callback.code,
-      createAuthRequest({
+      exchangeRequest({
         headers: { cookie: pending.cookie, "user-agent": "test-agent" },
         ip: "127.0.0.1",
       }),
@@ -313,9 +326,49 @@ test("OIDC callback issues a cookie-bound one-time session exchange", async () =
       () =>
         exchangeOidcCallback(
           callback.code,
-          createAuthRequest({ headers: { cookie: pending.cookie } }),
+          exchangeRequest({ headers: { cookie: pending.cookie } }),
         ),
       { status: 400, message: "OIDC login session expired" },
+    );
+  } finally {
+    await pending.close();
+  }
+});
+
+test("OIDC routes keep the transaction cookie Secure over HTTPS and clear it after the exchange", async () => {
+  const pending = await createPendingOidcLogin();
+  const app = signedInAs(undefined)
+    .use(async (c, next) => {
+      c.set("protocol", "https");
+      await next();
+    })
+    .route("/", api);
+
+  try {
+    const start = await app.request("/auth/oidc/login");
+    assert.equal(start.status, 302);
+    assert.match(String(start.headers.get("location")), /\/authorize\?/);
+    assert.match(
+      String(start.headers.get("set-cookie")),
+      /^aurral_oidc_transaction=[^;]+; Path=\/; HttpOnly; SameSite=Lax; Secure$/,
+    );
+
+    const callback = await handleOidcCallback(
+      createAuthRequest({
+        query: { state: pending.state, code: "authorization-code" },
+        headers: { cookie: pending.cookie },
+      }),
+    );
+    const exchange = await app.request("/auth/oidc/exchange", {
+      method: "POST",
+      headers: { cookie: pending.cookie, "content-type": "application/json" },
+      body: JSON.stringify({ code: callback.code }),
+    });
+    assert.equal(exchange.status, 200);
+    assert.ok((await exchange.json()).token);
+    assert.equal(
+      exchange.headers.get("set-cookie"),
+      "aurral_oidc_transaction=; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=0",
     );
   } finally {
     await pending.close();
@@ -334,7 +387,7 @@ test("OIDC exchange never leaks passwordHash, for new or returning users", async
     );
     const session = exchangeOidcCallback(
       callback.code,
-      createAuthRequest({
+      exchangeRequest({
         headers: { cookie: first.cookie, "user-agent": "test-agent" },
         ip: "127.0.0.1",
       }),
@@ -359,7 +412,7 @@ test("OIDC exchange never leaks passwordHash, for new or returning users", async
     );
     const session = exchangeOidcCallback(
       callback.code,
-      createAuthRequest({
+      exchangeRequest({
         headers: { cookie: second.cookie, "user-agent": "test-agent" },
         ip: "127.0.0.1",
       }),
@@ -550,13 +603,10 @@ test("OIDC login falls back to the UserInfo endpoint when the ID token omits pro
     issuer = `${discoveryServer.url}/`;
     enableOidcEnv({ OIDC_ISSUER: issuer, OIDC_REDIRECT_URI: `${issuer}callback` });
 
-    const response = createAuthResponse();
-    await startOidcLogin(createAuthRequest({}), response);
-    const redirect = new URL(response.location || response.body?.authUrl || "");
+    const { redirect, cookie } = await startLogin();
     nonce = redirect.searchParams.get("nonce");
     const state = redirect.searchParams.get("state");
     assert.ok(state);
-    const cookie = response.headers["Set-Cookie"].split(";", 1)[0];
     const callback = await handleOidcCallback(
       createAuthRequest({
         query: { state, code: "authorization-code" },
@@ -566,7 +616,7 @@ test("OIDC login falls back to the UserInfo endpoint when the ID token omits pro
     );
     const session = exchangeOidcCallback(
       callback.code,
-      createAuthRequest({
+      exchangeRequest({
         headers: { cookie, "user-agent": "test-agent" },
         ip: "127.0.0.1",
       }),
@@ -617,13 +667,10 @@ test("OIDC login resolves returning users by issuer+subject, not by username cla
     enableOidcEnv({ OIDC_ISSUER: issuer, OIDC_REDIRECT_URI: `${issuer}callback` });
 
     const login = async () => {
-      const response = createAuthResponse();
-      await startOidcLogin(createAuthRequest({}), response);
-      const redirect = new URL(response.location || response.body?.authUrl || "");
+      const { redirect, cookie } = await startLogin();
       nonce = redirect.searchParams.get("nonce");
       const state = redirect.searchParams.get("state");
       assert.ok(state);
-      const cookie = response.headers["Set-Cookie"].split(";", 1)[0];
       const callback = await handleOidcCallback(
         createAuthRequest({
           query: { state, code: "authorization-code" },
@@ -633,7 +680,7 @@ test("OIDC login resolves returning users by issuer+subject, not by username cla
       );
       const session = exchangeOidcCallback(
         callback.code,
-        createAuthRequest({
+        exchangeRequest({
           headers: { cookie, "user-agent": "test-agent" },
           ip: "127.0.0.1",
         }),
@@ -834,13 +881,10 @@ test("OIDC login owns role changes, preserves local permissions, and protects re
     enableOidcEnv({ OIDC_ISSUER: issuer, OIDC_REDIRECT_URI: `${issuer}callback` });
 
     const login = async () => {
-      const response = createAuthResponse();
-      await startOidcLogin(createAuthRequest({}), response);
-      const redirect = new URL(response.location || response.body?.authUrl || "");
+      const { redirect, cookie } = await startLogin();
       nonce = redirect.searchParams.get("nonce");
       const state = redirect.searchParams.get("state");
       assert.ok(state);
-      const cookie = response.headers["Set-Cookie"].split(";", 1)[0];
       const callback = await handleOidcCallback(
         createAuthRequest({
           query: { state, code: "authorization-code" },
@@ -850,7 +894,7 @@ test("OIDC login owns role changes, preserves local permissions, and protects re
       );
       const session = exchangeOidcCallback(
         callback.code,
-        createAuthRequest({
+        exchangeRequest({
           headers: { cookie, "user-agent": "test-agent" },
           ip: "127.0.0.1",
         }),
@@ -959,11 +1003,7 @@ test("OIDC token exchange supports the none auth method with an empty client sec
 
 test("OIDC rejects an unrecognized token endpoint auth method instead of silently defaulting", async () => {
   enableOidcEnv({ OIDC_TOKEN_ENDPOINT_AUTH_METHOD: "client_secert_basic" });
-  const response = createAuthResponse();
-  await assert.rejects(
-    () => startOidcLogin(createAuthRequest({}), response),
-    /Unsupported OIDC_TOKEN_ENDPOINT_AUTH_METHOD/,
-  );
+  await assert.rejects(() => startOidcLogin(), /Unsupported OIDC_TOKEN_ENDPOINT_AUTH_METHOD/);
 });
 
 async function createReusableOidcProvider() {
@@ -996,25 +1036,19 @@ async function createReusableOidcProvider() {
   });
   issuer = `${server.url}/`;
   enableOidcEnv({ OIDC_ISSUER: issuer, OIDC_REDIRECT_URI: `${issuer}callback` });
-  const signIn = async (startOptions: Parameters<typeof startOidcLogin>[2] = {}) => {
-    const response = createAuthResponse();
-    await startOidcLogin(createAuthRequest({}), response, startOptions);
-    const redirect = new URL(response.location || response.body?.authUrl || "");
+  const signIn = async (startOptions: Parameters<typeof startOidcLogin>[0] = {}) => {
+    const { redirect, cookie } = await startLogin(startOptions);
     nonce = redirect.searchParams.get("nonce");
     const state = redirect.searchParams.get("state");
     assert.ok(state);
-    return completeOidcLogin({
-      state,
-      cookie: response.headers["Set-Cookie"].split(";", 1)[0],
-    });
+    return completeOidcLogin({ state, cookie });
   };
   return { signIn, close: server.close };
 }
 
-const linkTo = (userId: number): Parameters<typeof startOidcLogin>[2] => ({
+const linkTo = (userId: number): Parameters<typeof startOidcLogin>[0] => ({
   mode: "link",
   linkUserId: userId,
-  returnUrl: true,
 });
 
 test("linking attaches the SSO identity to the signed-in user, and later SSO sign-ins use that account", async () => {

@@ -3,7 +3,7 @@ import { parseResponse } from "hono/client";
 import { lidarrCredentialParams } from "../../../utils/api/core.ts";
 import { settingsClient } from "../../../utils/api/clients/settings.ts";
 import type { AppSettings } from "../../../../../backend/db/helpers/settings.ts";
-import type { BootstrapPayload } from "../../../../../backend/routes/health.ts";
+import type { BootstrapPayload } from "../../../utils/appHealth.ts";
 import type {
   fetchQualityProfiles,
   fetchRootFolders,

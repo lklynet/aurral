@@ -16,7 +16,7 @@ const [
   { dbOps, userOps },
   { hashPassword },
   { authMiddleware },
-  { default: authRouter },
+  { handToHono },
   { default: searchRouter },
   provider,
 ] = await setupIsolatedBackend(
@@ -25,7 +25,7 @@ const [
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/middleware/passwordHash.ts"),
   () => import("../../backend/middleware/auth.ts"),
-  () => import("../../backend/routes/auth.ts"),
+  () => import("../../backend/routes/shared/expressHandoff.ts"),
   () => import("../../backend/routes/search.ts"),
   () => import("../../backend/services/providers/brainzmashProvider.ts"),
 );
@@ -107,9 +107,9 @@ beforeAll(async () => {
     response.end(JSON.stringify(body));
   });
   const app = express();
-  app.use(express.json());
   app.use(authMiddleware);
-  app.use("/api/auth", authRouter);
+  app.use("/api/auth", handToHono);
+  app.use(express.json());
   app.use("/api/search", searchRouter);
   server = await new Promise<
     import("node:http").Server<

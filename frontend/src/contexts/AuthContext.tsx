@@ -8,18 +8,18 @@ import {
   useState,
 } from "react";
 import { asApiError, clearAuthStorage, getStoredAuth, setStoredAuth } from "../utils/api/core.ts";
+import { parseResponse } from "hono/client";
+import { authClient } from "../utils/api/clients/auth.ts";
 import {
   getBootstrapStatus,
-  getMe,
   invalidateBootstrapCache,
-  loginApi,
-  logoutApi,
-} from "../utils/api/endpoints/auth.ts";
+  type BootstrapPayload,
+} from "../utils/appHealth.ts";
+import { logIn, logOut } from "../utils/session.ts";
 import { clearLibraryFavoritesCache } from "../utils/api/endpoints/library.ts";
 import { setDateTimeFormat } from "../utils/dateTime.ts";
 import { queryClient } from "../queryClient.ts";
 import type { ReactNode } from "react";
-import type { BootstrapPayload } from "../../../backend/routes/health.ts";
 
 type AuthUser = {
   id?: number;
@@ -104,7 +104,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const { token } = getStoredAuth();
       if (token) {
         try {
-          const me = await getMe();
+          const me = await parseResponse(authClient.me.$get());
           setUser(me.user || null);
           setIsAuthenticated(!!me.user);
         } catch {
@@ -138,7 +138,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (!normalizedUsername || !password) return { ok: false };
 
     try {
-      const result = await loginApi(normalizedUsername, password);
+      const result = await logIn(normalizedUsername, password);
       if (!result?.token) return { ok: false };
       authResolvedRef.current = true;
       clearLibraryFavoritesCache();
@@ -160,7 +160,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const logout = useCallback(async () => {
     const externalLogoutUrl = bootstrap?.oidcLogoutUrl || bootstrap?.proxyLogoutUrl;
     if (externalLogoutUrl) {
-      void logoutApi().catch(() => {});
+      void logOut().catch(() => {});
       clearAuthStorage();
       clearLibraryFavoritesCache();
       queryClient.clear();
@@ -170,7 +170,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
 
     try {
-      await logoutApi();
+      await logOut();
     } catch {}
     clearAuthStorage();
     clearLibraryFavoritesCache();

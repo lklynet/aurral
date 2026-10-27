@@ -1,39 +1,28 @@
-import { listeningAddress } from "../helpers/backendTestHarness.ts";
 import assert from "node:assert/strict";
 import { test, beforeEach, afterAll } from "vite-plus/test";
-import express from "express";
+import { signedInAs } from "../helpers/honoApp.ts";
 import {
   cleanupIsolatedState,
   resetDatabase,
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.ts";
 
-const [isolatedState, { db }, { dbOps, userOps }, { createSession }, { default: healthRouter }] =
+const [isolatedState, { db }, { dbOps, userOps }, { createSession }, { api }] =
   await setupIsolatedBackend(
     "health-bootstrap",
     () => import("../../backend/config/db-sqlite.ts"),
     () => import("../../backend/db/helpers/index.ts"),
     () => import("../../backend/config/session-helpers.ts"),
-    () => import("../../backend/routes/health.ts"),
+    () => import("../../backend/routes/api.ts"),
   );
 
-const app = express();
-app.use("/api/health", healthRouter);
-const server = await new Promise<
-  import("node:http").Server<
-    typeof import("node:http").IncomingMessage,
-    typeof import("node:http").ServerResponse
-  >
->((resolve) => {
-  const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
-});
-const baseUrl = `http://127.0.0.1:${listeningAddress(server).port}`;
+const app = signedInAs(undefined).route("/", api);
 
 async function bootstrapAsUser() {
   const user = userOps.createUser("owner", "test-password-hash", "admin");
   assert.ok(user != null);
   const { token } = createSession(Number(user.id));
-  const response = await fetch(`${baseUrl}/api/health/bootstrap`, {
+  const response = await app.request("/health/bootstrap", {
     headers: { authorization: `Bearer ${token}` },
   });
   return response.json();
@@ -44,7 +33,6 @@ beforeEach(() => {
 });
 
 afterAll(async () => {
-  await new Promise<void>((resolve) => server.close(() => resolve()));
   db.close();
   await cleanupIsolatedState(isolatedState);
 });
@@ -71,7 +59,7 @@ test("disabling Lidarr keeps the library root folder configured", async () => {
 });
 
 test("unauthenticated health exposes the native matcher policy version", async () => {
-  const response = await fetch(`${baseUrl}/api/health`);
+  const response = await app.request("/health");
   const payload = await response.json();
 
   assert.equal(response.status, 200);
@@ -81,7 +69,7 @@ test("unauthenticated health exposes the native matcher policy version", async (
 
 test("bootstrap reports the same API contract before and after sign-in", async () => {
   dbOps.updateSettings({ onboardingComplete: true, integrations: {} });
-  const response = await fetch(`${baseUrl}/api/health/bootstrap`);
+  const response = await app.request("/health/bootstrap");
   assert.equal(response.status, 200);
   const signedOut = await response.json();
   assert.ok(Number.isSafeInteger(signedOut.api?.version));

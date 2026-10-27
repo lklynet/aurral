@@ -18,8 +18,7 @@ const [
   { dbOps, userOps },
   { hashPassword },
   { authMiddleware },
-  { default: authRouter },
-  { default: healthRouter },
+  { handToHono },
   { default: discoveryRouter },
   { default: searchRouter },
   { default: artistRouter },
@@ -38,8 +37,7 @@ const [
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/middleware/passwordHash.ts"),
   () => import("../../backend/middleware/auth.ts"),
-  () => import("../../backend/routes/auth.ts"),
-  () => import("../../backend/routes/health.ts"),
+  () => import("../../backend/routes/shared/expressHandoff.ts"),
   () => import("../../backend/routes/discovery/index.ts"),
   () => import("../../backend/routes/search.ts"),
   () => import("../../backend/routes/artists/index.ts"),
@@ -213,11 +211,10 @@ beforeAll(async () => {
     monitorMode: "all",
   });
   const app = express();
-  app.use(express.json());
   app.use(authMiddleware);
+  app.use(["/api/auth", "/api/health"], handToHono);
+  app.use(express.json());
   for (const [route, router] of [
-    ["auth", authRouter],
-    ["health", healthRouter],
     ["discover", discoveryRouter],
     ["search", searchRouter],
     ["artists", artistRouter],

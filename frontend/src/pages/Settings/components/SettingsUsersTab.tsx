@@ -1,4 +1,6 @@
-import { loginApi } from "../../../utils/api/endpoints/auth.ts";
+import type { InferResponseType } from "hono/client";
+import { logIn } from "../../../utils/session.ts";
+import type { usersClient } from "../../../utils/api/clients/users.ts";
 import { setStoredAuth } from "../../../utils/api/core.ts";
 import PillToggle from "../../../components/PillToggle";
 import { SettingsInput, SettingsSelect } from "./SettingsField";
@@ -16,11 +18,10 @@ import { DotLoader } from "../../../components/DotLoader";
 import type { useSettingsData } from "../hooks/useSettingsData";
 import { readApiError } from "../utils/apiError.ts";
 import type { useSettingsUsers } from "../hooks/useSettingsUsers";
-import type { UserListResponse } from "../../../../../backend/routes/users.ts";
 
 type UsersHook = ReturnType<typeof useSettingsUsers>;
 type SettingsData = ReturnType<typeof useSettingsData>;
-type SettingsUser = UserListResponse[number];
+type SettingsUser = InferResponseType<typeof usersClient.$get, 200>[number];
 type SettingsHealth = NonNullable<SettingsData["health"]>;
 type SettingsUsersTabProps = UsersHook &
   Pick<SettingsData, "settings" | "updateSettings" | "handleSaveSettings" | "health"> & {
@@ -243,7 +244,7 @@ export function SettingsUsersTab({
               setChangingPassword(true);
               const applyPasswordChange = async () => {
                 await changeMyPassword(changePwCurrent, changePwNew);
-                const result = await loginApi(authUser?.username, changePwNew);
+                const result = await logIn(authUser?.username, changePwNew);
                 if (result?.token) {
                   setStoredAuth({ token: result.token });
                 }
@@ -739,7 +740,7 @@ export function SettingsUsersTab({
                                 currentPassword: editCurrentPassword,
                                 password: editPassword,
                               });
-                              const result = await loginApi(authUser?.username, editPassword);
+                              const result = await logIn(authUser?.username, editPassword);
                               if (result?.token) {
                                 setStoredAuth({ token: result.token });
                               }

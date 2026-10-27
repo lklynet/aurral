@@ -1,4 +1,5 @@
-import express, { type Request, type Response } from "express";
+import { Hono } from "hono";
+import * as v from "valibot";
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { db } from "../config/db-sqlite.ts";
 import {
@@ -8,11 +9,9 @@ import {
   listenbrainzValidateToken,
 } from "../services/apiClients/index.ts";
 import { userOps } from "../db/helpers/index.ts";
-import {
-  requireAuth,
-  requirePermission,
-  requireUserAccount,
-} from "../middleware/requirePermission.ts";
+import { requireAuth, requirePermission, requireUserAccount } from "../middleware/guards.ts";
+import { validate } from "../middleware/validate.ts";
+import type { AppEnv } from "../middleware/requestUser.ts";
 import { validateExternalUrl } from "../middleware/urlValidator.ts";
 import { getKoitoListenBrainzBaseUrl, normalizeKoitoBaseUrl } from "../services/koitoClient.ts";
 import {
@@ -22,7 +21,6 @@ import {
 import { logger } from "../services/logger.ts";
 import { asAppError } from "../../lib/errors.ts";
 
-const router = express.Router();
 const LASTFM_LINK_COOKIE = "aurral_lastfm_link";
 const LASTFM_LINK_TTL_MS = 10 * 60 * 1000;
 const providerErrorStatus = (error: unknown) => {
@@ -113,9 +111,8 @@ const readCookie = (header: string | undefined, name: string) => {
   }
 };
 
-const setLinkCookie = (
-  res: Response,
-  req: Request,
+const linkCookie = (
+  secure: boolean,
   value: string,
   maxAge = Math.floor(LASTFM_LINK_TTL_MS / 1000),
 ) => {
@@ -125,11 +122,8 @@ const setLinkCookie = (
     "HttpOnly",
     "SameSite=Lax",
   ];
-  if (req.protocol === "https") attributes.push("Secure");
-  res.append(
-    "Set-Cookie",
-    `${LASTFM_LINK_COOKIE}=${encodeURIComponent(value)}; ${attributes.join("; ")}`,
-  );
+  if (secure) attributes.push("Secure");
+  return `${LASTFM_LINK_COOKIE}=${encodeURIComponent(value)}; ${attributes.join("; ")}`;
 };
 
 const normalizeLinkToken = (value: unknown) => {
@@ -137,7 +131,7 @@ const normalizeLinkToken = (value: unknown) => {
   return token.includes(".") ? token : decode(token);
 };
 
-export const callbackUrl = (req: Request, token: string) => {
+const callbackUrl = (request: { protocol: string; host: string | undefined }, token: string) => {
   const configuredOrigin = String(process.env.AURRAL_PUBLIC_URL || "").trim();
   if (configuredOrigin) {
     try {
@@ -147,222 +141,206 @@ export const callbackUrl = (req: Request, token: string) => {
       }
     } catch {}
   }
-  const protocol = String(req.protocol || "http").trim();
-  const host = String(req.get("host") || "").trim();
+  const protocol = String(request.protocol || "http").trim();
+  const host = String(request.host || "").trim();
   return `${protocol}://${host}/api/scrobbling/lastfm/link/callback?uid=${encodeURIComponent(token)}`;
 };
 
-router.get("/status", requireAuth, (req, res) => {
-  const status = scrobbleConnectionStore.getPublicStatus(req.user!.id);
-  status.lastfm.configured = Boolean(getLastfmApiKey() && getLastfmApiSecret());
-  res.json(status);
-});
+const callbackQuery = v.object({ uid: v.optional(v.string()), token: v.optional(v.string()) });
+const tokenBody = v.object({ token: v.optional(v.string()) });
+const koitoBody = v.object({ url: v.optional(v.string()), token: v.optional(v.string()) });
 
-router.get("/lastfm/link", requireAuth, requireUserAccount, (req, res) => {
-  const configured = Boolean(getLastfmApiKey() && getLastfmApiSecret());
-  if (!configured) {
-    return res.status(400).json({ error: "Last.fm API key and secret are required first." });
-  }
-  const { token, browserNonce } = createLinkState(req.user!.id);
-  setLinkCookie(res, req, browserNonce);
-  res.json({
-    configured: true,
-    connected: scrobbleConnectionStore.getConnection(req.user!.id, "lastfm") != null,
-    authorizeUrl: `https://www.last.fm/api/auth/?api_key=${encodeURIComponent(getLastfmApiKey()!)}&cb=${encodeURIComponent(callbackUrl(req, token))}`,
-  });
-});
+export default new Hono<AppEnv>()
+  .basePath("/scrobbling")
+  .get("/status", requireAuth, (c) => {
+    const status = scrobbleConnectionStore.getPublicStatus(c.var.user.id);
+    status.lastfm.configured = Boolean(getLastfmApiKey() && getLastfmApiSecret());
+    return c.json(status, 200);
+  })
+  .get("/lastfm/link", requireAuth, requireUserAccount, (c) => {
+    const apiKey = getLastfmApiKey();
+    if (!apiKey || !getLastfmApiSecret()) {
+      return c.json({ error: "Last.fm API key and secret are required first." }, 400);
+    }
+    const { token, browserNonce } = createLinkState(c.var.user.id);
+    c.header("Set-Cookie", linkCookie(c.var.protocol === "https", browserNonce));
+    const callback = callbackUrl({ protocol: c.var.protocol, host: c.req.header("host") }, token);
+    return c.json(
+      {
+        configured: true as const,
+        connected: scrobbleConnectionStore.getConnection(c.var.user.id, "lastfm") != null,
+        authorizeUrl: `https://www.last.fm/api/auth/?api_key=${encodeURIComponent(apiKey)}&cb=${encodeURIComponent(callback)}`,
+      },
+      200,
+    );
+  })
+  .get("/lastfm/link/callback", validate("query", callbackQuery), async (c) => {
+    c.header("Cache-Control", "no-store");
+    c.header("Set-Cookie", linkCookie(c.var.protocol === "https", "", 0));
+    const query = c.req.valid("query");
+    const stateToken = normalizeLinkToken(query.uid);
+    const token = (query.token || "").trim();
+    if (!stateToken || !token) {
+      return c.html("Invalid Last.fm link state", 400);
+    }
 
-router.get("/lastfm/link/callback", async (req, res) => {
-  res.setHeader("Cache-Control", "no-store");
-  const clearCookie = () => setLinkCookie(res, req, "", 0);
-  const stateToken = normalizeLinkToken(req.query.uid);
-  const token = String(req.query.token || "").trim();
-  if (!stateToken || !token) {
-    clearCookie();
-    return res.status(400).send("Invalid Last.fm link state");
-  }
-
-  let userId;
-  try {
-    userId = verifyLinkToken(stateToken);
-  } catch (error) {
-    const failure = asAppError(error);
-    logger.error("scrobbling", "Last.fm link state verification failed", {
-      message: failure?.message || String(error),
-    });
-    clearCookie();
-    return res.status(500).send("Last.fm connection failed");
-  }
-  if (
-    userId == null ||
-    !consumeLinkState(stateToken, userId, readCookie(req.headers.cookie, LASTFM_LINK_COOKIE))
-  ) {
-    clearCookie();
-    return res.status(400).send("Invalid Last.fm link state");
-  }
-
-  let session;
-  try {
-    session = await lastfmGetSession(token);
-  } catch (error) {
-    const failure = asAppError(error);
-    logger.error("scrobbling", "Last.fm session exchange failed", {
-      message: failure?.message || String(error),
-      status: failure?.response?.status || null,
-    });
-    clearCookie();
-    const status = providerErrorStatus(error);
-    return res
-      .status(status)
-      .send(status === 400 ? "Last.fm authorization failed" : "Last.fm is unavailable");
-  }
-  const key = session?.session?.key;
-  if (!key) {
-    clearCookie();
-    return res.status(400).send("Last.fm did not return a session");
-  }
-  try {
-    scrobbleConnectionStore.saveConnection(userId, "lastfm", {
-      token: key,
-      displayName: session.session.name,
-    });
-  } catch (error) {
-    const failure = asAppError(error);
-    logger.error("scrobbling", "Last.fm connection could not be saved", {
-      message: failure?.message || String(error),
-    });
-    clearCookie();
-    return res.status(500).send("Last.fm connection could not be saved");
-  }
-  clearCookie();
-  return res.type("html").send("<p>Last.fm connected. You can close this window.</p>");
-});
-
-router.delete("/lastfm/link", requireAuth, (req, res) => {
-  scrobbleConnectionStore.deleteConnection(req.user!.id, "lastfm");
-  res.status(204).end();
-});
-
-router.get("/listenbrainz/link", requireAuth, (req, res) => {
-  const connection = scrobbleConnectionStore.getConnection(req.user!.id, "listenbrainz");
-  res.json({ connected: Boolean(connection), displayName: connection?.displayName || null });
-});
-
-router.put("/listenbrainz/link", requireAuth, requireUserAccount, async (req, res) => {
-  const token = String(req.body?.token || "").trim();
-  if (!token) return res.status(400).json({ error: "Token is required" });
-  let validation;
-  try {
-    validation = await listenbrainzValidateToken(token);
-  } catch (error) {
-    const failure = asAppError(error);
-    logger.warn("scrobbling", "ListenBrainz token validation failed", {
-      message: failure?.message || String(error),
-      status: failure?.response?.status || null,
-    });
-    return res.status(providerErrorStatus(error)).json({
-      error: providerErrorStatus(error) === 400 ? "Invalid token" : "ListenBrainz is unavailable",
-    });
-  }
-  if (!validation?.valid) return res.status(400).json({ error: "Invalid token" });
-  try {
-    const connection = scrobbleConnectionStore.saveConnection(req.user!.id, "listenbrainz", {
-      token,
-      displayName: validation.user_name,
-    });
-    return res.json({ connected: true, displayName: connection!.displayName });
-  } catch (error) {
-    const failure = asAppError(error);
-    logger.error("scrobbling", "ListenBrainz connection could not be saved", {
-      message: failure?.message || String(error),
-    });
-    return res.status(500).json({ error: "ListenBrainz connection could not be saved" });
-  }
-});
-
-router.delete("/listenbrainz/link", requireAuth, (req, res) => {
-  scrobbleConnectionStore.deleteConnection(req.user!.id, "listenbrainz");
-  res.status(204).end();
-});
-
-router.put(
-  "/koito/link",
-  requirePermission("accessSettings"),
-  requireUserAccount,
-  async (req, res) => {
-    const rawUrl = String(
-      req.body?.url || userOps.getUserById(req.user!.id)?.listenHistoryUrl || "",
-    ).trim();
-    const validation = validateExternalUrl(rawUrl);
-    const token = String(req.body?.token || "").trim();
-    if (!validation.valid || !token)
-      return res.status(400).json({ error: validation.error || "Token is required" });
-    const baseUrl = normalizeKoitoBaseUrl(validation.url);
+    let userId;
     try {
-      const tokenValidation = await listenbrainzValidateToken(
-        token,
-        getKoitoListenBrainzBaseUrl(baseUrl),
-      );
-      if (!tokenValidation?.valid) return res.status(400).json({ error: "Invalid Koito API key" });
+      userId = verifyLinkToken(stateToken);
     } catch (error) {
       const failure = asAppError(error);
-      logger.warn("scrobbling", "Koito token validation failed", {
+      logger.error("scrobbling", "Last.fm link state verification failed", {
+        message: failure?.message || String(error),
+      });
+      return c.html("Last.fm connection failed", 500);
+    }
+    if (
+      userId == null ||
+      !consumeLinkState(stateToken, userId, readCookie(c.req.header("cookie"), LASTFM_LINK_COOKIE))
+    ) {
+      return c.html("Invalid Last.fm link state", 400);
+    }
+
+    let session;
+    try {
+      session = await lastfmGetSession(token);
+    } catch (error) {
+      const failure = asAppError(error);
+      logger.error("scrobbling", "Last.fm session exchange failed", {
         message: failure?.message || String(error),
         status: failure?.response?.status || null,
       });
       const status = providerErrorStatus(error);
-      return res
-        .status(status)
-        .json({ error: status === 400 ? "Invalid Koito API key" : "Koito is unavailable" });
+      return c.html(
+        status === 400 ? "Last.fm authorization failed" : "Last.fm is unavailable",
+        status,
+      );
+    }
+    const key = session?.session?.key;
+    if (!key) {
+      return c.html("Last.fm did not return a session", 400);
     }
     try {
-      const connection = scrobbleConnectionStore.saveConnection(req.user!.id, "koito", {
-        token,
-        baseUrl,
-        displayName: new URL(baseUrl).host,
+      scrobbleConnectionStore.saveConnection(userId, "lastfm", {
+        token: key,
+        displayName: session.session.name,
       });
-      return res.json({ connected: true, displayName: connection!.displayName });
     } catch (error) {
       const failure = asAppError(error);
-      logger.error("scrobbling", "Koito connection could not be saved", {
+      logger.error("scrobbling", "Last.fm connection could not be saved", {
         message: failure?.message || String(error),
       });
-      return res.status(500).json({ error: "Koito connection could not be saved" });
+      return c.html("Last.fm connection could not be saved", 500);
     }
-  },
-);
-
-router.delete("/koito/link", requireAuth, (req, res) => {
-  scrobbleConnectionStore.deleteConnection(req.user!.id, "koito");
-  res.status(204).end();
-});
-
-type ScrobbleProviderStatus = {
-  connected: boolean;
-  displayName: string | null;
-  connectedAt: number | null;
-};
-
-export type ScrobbleStatusResponse = {
-  lastfm: ScrobbleProviderStatus & { configured: boolean };
-  listenbrainz: ScrobbleProviderStatus;
-  koito: ScrobbleProviderStatus;
-};
-
-export type LastfmLinkResponse = {
-  configured: true;
-  connected: boolean;
-  authorizeUrl: string;
-};
-
-export type ListenBrainzLinkResponse = {
-  connected: boolean;
-  displayName: string | null;
-};
-
-export type KoitoLinkResponse = {
-  connected: true;
-  displayName: string;
-};
-
-export default router;
+    return c.html("<p>Last.fm connected. You can close this window.</p>", 200);
+  })
+  .delete("/lastfm/link", requireAuth, (c) => {
+    scrobbleConnectionStore.deleteConnection(c.var.user.id, "lastfm");
+    return c.body(null, 204);
+  })
+  .get("/listenbrainz/link", requireAuth, (c) => {
+    const connection = scrobbleConnectionStore.getConnection(c.var.user.id, "listenbrainz");
+    return c.json(
+      { connected: Boolean(connection), displayName: connection?.displayName || null },
+      200,
+    );
+  })
+  .put(
+    "/listenbrainz/link",
+    requireAuth,
+    requireUserAccount,
+    validate("json", tokenBody),
+    async (c) => {
+      const token = (c.req.valid("json").token || "").trim();
+      if (!token) return c.json({ error: "Token is required" }, 400);
+      let validation;
+      try {
+        validation = await listenbrainzValidateToken(token);
+      } catch (error) {
+        const failure = asAppError(error);
+        logger.warn("scrobbling", "ListenBrainz token validation failed", {
+          message: failure?.message || String(error),
+          status: failure?.response?.status || null,
+        });
+        const status = providerErrorStatus(error);
+        return c.json(
+          { error: status === 400 ? "Invalid token" : "ListenBrainz is unavailable" },
+          status,
+        );
+      }
+      if (!validation?.valid) return c.json({ error: "Invalid token" }, 400);
+      try {
+        const connection = scrobbleConnectionStore.saveConnection(c.var.user.id, "listenbrainz", {
+          token,
+          displayName: validation.user_name,
+        });
+        return c.json({ connected: true as const, displayName: connection!.displayName }, 200);
+      } catch (error) {
+        const failure = asAppError(error);
+        logger.error("scrobbling", "ListenBrainz connection could not be saved", {
+          message: failure?.message || String(error),
+        });
+        return c.json({ error: "ListenBrainz connection could not be saved" }, 500);
+      }
+    },
+  )
+  .delete("/listenbrainz/link", requireAuth, (c) => {
+    scrobbleConnectionStore.deleteConnection(c.var.user.id, "listenbrainz");
+    return c.body(null, 204);
+  })
+  .put(
+    "/koito/link",
+    requirePermission("accessSettings"),
+    requireUserAccount,
+    validate("json", koitoBody),
+    async (c) => {
+      const body = c.req.valid("json");
+      const rawUrl = (
+        body.url ||
+        userOps.getUserById(c.var.user.id)?.listenHistoryUrl ||
+        ""
+      ).trim();
+      const validation = validateExternalUrl(rawUrl);
+      const token = (body.token || "").trim();
+      if (!validation.valid || !token) {
+        return c.json({ error: validation.error || "Token is required" }, 400);
+      }
+      const baseUrl = normalizeKoitoBaseUrl(validation.url);
+      try {
+        const tokenValidation = await listenbrainzValidateToken(
+          token,
+          getKoitoListenBrainzBaseUrl(baseUrl),
+        );
+        if (!tokenValidation?.valid) return c.json({ error: "Invalid Koito API key" }, 400);
+      } catch (error) {
+        const failure = asAppError(error);
+        logger.warn("scrobbling", "Koito token validation failed", {
+          message: failure?.message || String(error),
+          status: failure?.response?.status || null,
+        });
+        const status = providerErrorStatus(error);
+        return c.json(
+          { error: status === 400 ? "Invalid Koito API key" : "Koito is unavailable" },
+          status,
+        );
+      }
+      try {
+        const connection = scrobbleConnectionStore.saveConnection(c.var.user.id, "koito", {
+          token,
+          baseUrl,
+          displayName: new URL(baseUrl).host,
+        });
+        return c.json({ connected: true as const, displayName: connection!.displayName }, 200);
+      } catch (error) {
+        const failure = asAppError(error);
+        logger.error("scrobbling", "Koito connection could not be saved", {
+          message: failure?.message || String(error),
+        });
+        return c.json({ error: "Koito connection could not be saved" }, 500);
+      }
+    },
+  )
+  .delete("/koito/link", requireAuth, (c) => {
+    scrobbleConnectionStore.deleteConnection(c.var.user.id, "koito");
+    return c.body(null, 204);
+  });

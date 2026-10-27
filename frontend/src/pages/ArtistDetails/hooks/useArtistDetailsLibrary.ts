@@ -25,7 +25,8 @@ import {
 import { describeArtistAdd } from "../../../utils/artistMonitoring.ts";
 import { describeAlbumRequestResult } from "../../../utils/albumAddAction.ts";
 import { buildAurralAlbumRetryPayload } from "../../../utils/aurralAlbumStatus.ts";
-import { getMyLidarrPreferences } from "../../../utils/api/endpoints/auth.ts";
+import { parseResponse, type InferResponseType } from "hono/client";
+import { usersClient } from "../../../utils/api/clients/users.ts";
 import {
   deduplicateAlbums,
   getApiErrorMessage,
@@ -63,7 +64,10 @@ type AlbumSearchResult =
   | RequestAlbumFromSearchResponse
   | (AurralMonitoringResult & { status?: undefined; albumStatus?: undefined })
   | null;
-type LidarrPreferences = Awaited<ReturnType<typeof getMyLidarrPreferences>>;
+type LidarrPreferences = InferResponseType<
+  (typeof usersClient.me)["lidarr-preferences"]["$get"],
+  200
+>;
 type ArtistAddLidarrOptions = NonNullable<
   Parameters<typeof buildArtistAddPayload>[0]["lidarrOptions"]
 >;
@@ -185,7 +189,8 @@ export function useArtistDetailsLibrary({
   });
   const lidarrPreferencesQuery = useQuery({
     queryKey: queryKeys.lidarrPreferences("current"),
-    queryFn: ({ signal }) => getMyLidarrPreferences({ signal }),
+    queryFn: ({ signal }) =>
+      parseResponse(usersClient.me["lidarr-preferences"].$get({}, { init: { signal } })),
     enabled: false,
     staleTime: 30_000,
   });

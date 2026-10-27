@@ -1,69 +1,72 @@
-import express from "express";
-import type { Request } from "express";
+import { Hono, type Context } from "hono";
+import * as v from "valibot";
 import { dbOps } from "../db/helpers/index.ts";
-import { noCache } from "../middleware/cache.ts";
+import { noCache } from "../middleware/cacheHeaders.ts";
 import { resolveRequestUser } from "../middleware/auth.ts";
+import { validate } from "../middleware/validate.ts";
+import type { AppEnv } from "../middleware/requestUser.ts";
 import { ensureDownloadFolderPath, listBrowseDirectory } from "../services/downloadFolderConfig.ts";
+import { requestCredentials } from "./shared/requestCredentials.ts";
 import { asAppError } from "../../lib/errors.ts";
 
-const router = express.Router();
-
-function canBrowseFilesystem(req: Request) {
-  const settings = dbOps.getSettings();
-  if (!settings.onboardingComplete) {
+function canBrowseFilesystem<E extends AppEnv>(c: Context<E>) {
+  if (!dbOps.getSettings().onboardingComplete) {
     return true;
   }
-  const user = resolveRequestUser(req);
-  return user?.role === "admin";
+  return resolveRequestUser(requestCredentials(c))?.role === "admin";
 }
 
-router.get("/browse", noCache, (req, res) => {
-  try {
-    if (!canBrowseFilesystem(req)) {
-      return res.status(403).json({
-        error: "Forbidden",
-        message: "Admin access is required to browse storage paths.",
-      });
-    }
-    const result = listBrowseDirectory(req.query.path);
-    return res.json(result);
-  } catch (error) {
-    const failure = asAppError(error);
-    return res.status(400).json({
-      error: "browse_failed",
-      message: failure?.message || "Failed to browse storage path.",
-    });
-  }
-});
+const pathInput = v.object({ path: v.optional(v.string()) });
 
-router.post("/ensure", noCache, (req, res) => {
-  try {
-    if (!canBrowseFilesystem(req)) {
-      return res.status(403).json({
-        error: "Forbidden",
-        message: "Admin access is required to browse storage paths.",
-      });
+export default new Hono<AppEnv>()
+  .basePath("/filesystem")
+  .get("/browse", noCache, validate("query", pathInput), (c) => {
+    try {
+      if (!canBrowseFilesystem(c)) {
+        return c.json(
+          { error: "Forbidden", message: "Admin access is required to browse storage paths." },
+          403,
+        );
+      }
+      return c.json(listBrowseDirectory(c.req.valid("query").path), 200);
+    } catch (error) {
+      const failure = asAppError(error);
+      return c.json(
+        {
+          error: "browse_failed",
+          message: failure?.message || "Failed to browse storage path.",
+        },
+        400,
+      );
     }
-    const ensured = ensureDownloadFolderPath(req.body?.path);
-    if (!ensured.valid) {
-      return res.status(400).json({
-        error: "ensure_failed",
-        message: ensured.error || "Failed to prepare folder path.",
-      });
+  })
+  .post("/ensure", noCache, validate("json", pathInput), (c) => {
+    try {
+      if (!canBrowseFilesystem(c)) {
+        return c.json(
+          { error: "Forbidden", message: "Admin access is required to browse storage paths." },
+          403,
+        );
+      }
+      const ensured = ensureDownloadFolderPath(c.req.valid("json").path);
+      if (!ensured.valid) {
+        return c.json(
+          { error: "ensure_failed", message: ensured.error || "Failed to prepare folder path." },
+          400,
+        );
+      }
+      return c.json(
+        { ...listBrowseDirectory(ensured.path), path: ensured.path, created: !!ensured.created },
+        200,
+      );
+    } catch (error) {
+      const failure = asAppError(error);
+      return c.json(
+        {
+          error: "ensure_failed",
+          message: failure?.message || "Failed to prepare folder path.",
+        },
+        400,
+      );
     }
-    const result = listBrowseDirectory(ensured.path);
-    return res.json({
-      ...result,
-      path: ensured.path,
-      created: !!ensured.created,
-    });
-  } catch (error) {
-    const failure = asAppError(error);
-    return res.status(400).json({
-      error: "ensure_failed",
-      message: failure?.message || "Failed to prepare folder path.",
-    });
-  }
-});
-
-export default router;
+  });

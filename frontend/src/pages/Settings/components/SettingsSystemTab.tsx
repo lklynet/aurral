@@ -2,14 +2,15 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, Check, Copy, RotateCcw } from "../../../components/icons";
 import { DotLoader } from "../../../components/DotLoader";
-import { getApiKey, rotateApiKey } from "../../../utils/api/endpoints/auth";
+import { parseResponse } from "hono/client";
+import { authClient } from "../../../utils/api/clients/auth.ts";
 import { SettingsSystemSection } from "./SettingsStorageSection";
 import { SettingsSelect } from "./SettingsField";
 import PillToggle from "../../../components/PillToggle";
 import { setDateTimeFormat } from "../../../utils/dateTime.ts";
 import Tooltip from "../../../components/Tooltip";
 import { queryKeys } from "../../../queryClient.ts";
-import type { HealthResponse } from "../../../../../backend/routes/health.ts";
+import type { HealthResponse } from "../../../utils/appHealth.ts";
 import type { SettingsState } from "../utils";
 import type { useToast } from "../../../contexts/ToastContext";
 
@@ -31,7 +32,8 @@ export function SettingsSystemTab({
   const queryClient = useQueryClient();
   const apiKeyQuery = useQuery({
     queryKey: queryKeys.apiKey,
-    queryFn: async ({ signal }) => (await getApiKey({ signal }))?.apiKey || null,
+    queryFn: async ({ signal }) =>
+      (await parseResponse(authClient["api-key"].$get({}, { init: { signal } }))).apiKey || null,
   });
   const apiKey = apiKeyQuery.data ?? null;
   const loading = apiKeyQuery.isPending;
@@ -56,8 +58,8 @@ export function SettingsSystemTab({
   const handleRotate = async () => {
     setRotating(true);
     try {
-      const res = await rotateApiKey();
-      queryClient.setQueryData(queryKeys.apiKey, res?.apiKey || null);
+      const res = await parseResponse(authClient["api-key"].rotate.$post());
+      queryClient.setQueryData(queryKeys.apiKey, res.apiKey || null);
       showSuccess("API key rotated");
     } catch {
       showError("Failed to rotate API key");

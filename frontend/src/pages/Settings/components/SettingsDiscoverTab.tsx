@@ -7,7 +7,7 @@ import { SettingsInput, SettingsSelect } from "./SettingsField";
 import { SettingsArrFieldSet, SettingsArrFormGroup } from "./arr/SettingsArrLayout";
 import { formatDateTime } from "../../../utils/dateTime.ts";
 import { useDiscoveryStatus } from "../../../hooks/useDiscoveryStatus";
-import type { HealthResponse } from "../../../../../backend/routes/health.ts";
+import type { HealthResponse } from "../../../utils/appHealth.ts";
 import type { SettingsState } from "../utils";
 
 const AUTO_REFRESH_OPTIONS = [

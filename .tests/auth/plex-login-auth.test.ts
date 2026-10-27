@@ -1,6 +1,6 @@
-import { createAuthRequest, createAuthResponse } from "./authFixtures.ts";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
+import { signedInAs } from "../helpers/honoApp.ts";
 
 import {
   setupIsolatedBackend,
@@ -8,17 +8,32 @@ import {
   resetDatabase,
 } from "../helpers/backendTestHarness.ts";
 
-const [isolatedState, { db }, { dbOps, userOps, userIdentityOps }, plexModule, plexLogin] =
+const [isolatedState, { db }, { dbOps, userOps, userIdentityOps }, plexModule, { api }] =
   await setupIsolatedBackend(
     "plex-login-auth",
     () => import("../../backend/config/db-sqlite.ts"),
     () => import("../../backend/db/helpers/index.ts"),
     () => import("../../backend/services/plex.ts"),
-    () => import("../../backend/services/plexLoginAuth.ts"),
+    () => import("../../backend/routes/api.ts"),
   );
 
 const { PlexClient } = plexModule;
-const { completePlexLogin, startPlexLogin } = plexLogin;
+const app = signedInAs(undefined).route("/", api);
+
+async function startPlexLogin() {
+  const response = await app.request("/auth/plex/login/pin", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{}",
+  });
+  assert.equal(response.status, 200);
+  return String(response.headers.get("set-cookie")).split(";", 1)[0];
+}
+
+async function completePlexLogin(headers: Record<string, string>) {
+  const response = await app.request("/auth/plex/login/complete", { method: "POST", headers });
+  return { response, body: await response.json() };
+}
 
 beforeEach(() => {
   resetDatabase(db);
@@ -62,26 +77,16 @@ test("transient Plex validation failures retain the login transaction for retry"
     return { id: "retry-subject", username: "plex-retry-user" };
   });
 
-  const startResponse = createAuthResponse();
-  await startPlexLogin(createAuthRequest({ body: {}, headers: {}, secure: false }), startResponse);
-  const cookie = String(startResponse.headers["Set-Cookie"]).split(";", 1)[0];
+  const cookie = await startPlexLogin();
 
-  const firstResponse = createAuthResponse();
-  await completePlexLogin(
-    createAuthRequest({ headers: { cookie }, ip: "127.0.0.1" }),
-    firstResponse,
-  );
-  assert.equal(firstResponse.statusCode, 503);
-  assert.equal(firstResponse.body?.retryable, true);
-  assert.equal(firstResponse.headers["Set-Cookie"], undefined);
+  const first = await completePlexLogin({ cookie });
+  assert.equal(first.response.status, 503);
+  assert.equal(first.body?.retryable, true);
+  assert.equal(first.response.headers.get("set-cookie"), null);
 
-  const retryResponse = createAuthResponse();
-  await completePlexLogin(
-    createAuthRequest({ headers: { cookie, "user-agent": "test-agent" }, ip: "127.0.0.1" }),
-    retryResponse,
-  );
-  assert.equal(retryResponse.statusCode, 200);
-  assert.ok(retryResponse.body?.token);
+  const retry = await completePlexLogin({ cookie, "user-agent": "test-agent" });
+  assert.equal(retry.response.status, 200);
+  assert.ok(retry.body?.token);
   assert.equal(validations, 2);
 });
 
@@ -97,17 +102,13 @@ test("definitive Plex validation failures consume the login transaction", async 
   vi.spyOn(PlexClient, "checkPin").mockImplementation(async () => "invalid-token");
   vi.spyOn(PlexClient, "validateToken").mockImplementation(async () => null);
 
-  const startResponse = createAuthResponse();
-  await startPlexLogin(createAuthRequest({ body: {}, headers: {}, secure: false }), startResponse);
-  const cookie = String(startResponse.headers["Set-Cookie"]).split(";", 1)[0];
+  const cookie = await startPlexLogin();
 
-  const invalidResponse = createAuthResponse();
-  await completePlexLogin(createAuthRequest({ headers: { cookie } }), invalidResponse);
-  assert.equal(invalidResponse.statusCode, 400);
-  assert.match(String(invalidResponse.headers["Set-Cookie"]), /Max-Age=0/);
+  const invalid = await completePlexLogin({ cookie });
+  assert.equal(invalid.response.status, 400);
+  assert.match(String(invalid.response.headers.get("set-cookie")), /Max-Age=0/);
 
-  const retryResponse = createAuthResponse();
-  await completePlexLogin(createAuthRequest({ headers: { cookie } }), retryResponse);
-  assert.equal(retryResponse.statusCode, 400);
-  assert.equal(retryResponse.body?.error, "Plex login session expired");
+  const retry = await completePlexLogin({ cookie });
+  assert.equal(retry.response.status, 400);
+  assert.equal(retry.body?.error, "Plex login session expired");
 });

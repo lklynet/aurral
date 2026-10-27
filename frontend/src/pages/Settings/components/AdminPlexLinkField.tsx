@@ -3,21 +3,28 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { SettingsSelect } from "./SettingsField";
 import { DotLoader } from "../../../components/DotLoader";
-import {
-  getPlexHomeUsersForAdmin,
-  linkManagedPlexUser,
-  adminUnlinkPlex,
-} from "../../../utils/api/endpoints/auth.ts";
+import { parseResponse, type InferResponseType } from "hono/client";
+import { userPlexLinkClient } from "../../../utils/api/clients/userPlexLink.ts";
+import type { usersClient } from "../../../utils/api/clients/users.ts";
 import { isReauthRequiredError, promptReauth } from "../../../utils/reauth.ts";
 import { queryKeys } from "../../../queryClient.ts";
 import { readApiError } from "../utils/apiError.ts";
 import type { userOps } from "../../../../../backend/db/helpers/users.ts";
-import type { UserListResponse } from "../../../../../backend/routes/users.ts";
 import type { useToast } from "../../../contexts/ToastContext";
 
 type Toast = ReturnType<typeof useToast>["showSuccess"];
 type SettingsUser = ReturnType<typeof userOps.getAllUsers>[number] &
-  Partial<Pick<UserListResponse[number], "plexLink" | "plexGlobalAccount">>;
+  Partial<
+    Pick<InferResponseType<typeof usersClient.$get, 200>[number], "plexLink" | "plexGlobalAccount">
+  >;
+
+const unlinkPlex = (userId: number, force = false) =>
+  parseResponse(
+    userPlexLinkClient[":id"]["plex-link"].$delete({
+      param: { id: String(userId) },
+      query: force ? { force: "true" } : {},
+    }),
+  );
 
 export function AdminPlexLinkField({
   user,
@@ -36,7 +43,9 @@ export function AdminPlexLinkField({
     queryKey: queryKeys.plexHomeUsers,
     queryFn: async ({ signal }) => {
       try {
-        const { users } = await getPlexHomeUsersForAdmin({ signal });
+        const { users } = await parseResponse(
+          userPlexLinkClient["plex-link"]["home-users"].$get({}, { init: { signal } }),
+        );
         return users || [];
       } catch (err) {
         if (!signal.aborted) {
@@ -71,10 +80,16 @@ export function AdminPlexLinkField({
     const picked = homeUsers?.find((u) => String(u.id) === selectedPlexUserId);
     setLinking(true);
     try {
-      await linkManagedPlexUser(user.id, picked?.id ?? selectedPlexUserId, {
-        plexUsername: picked?.title || picked?.username || null,
-        plexUuid: picked?.uuid || null,
-      });
+      await parseResponse(
+        userPlexLinkClient[":id"]["plex-link"].managed.$post({
+          param: { id: String(user.id) },
+          json: {
+            plexUserId: picked?.id ?? selectedPlexUserId,
+            plexUsername: picked?.title || picked?.username || null,
+            plexUuid: picked?.uuid || null,
+          },
+        }),
+      );
       showSuccess?.(
         `Linked ${user.username} to Plex user "${picked?.title || selectedPlexUserId}".`,
       );
@@ -93,7 +108,7 @@ export function AdminPlexLinkField({
   const handleUnlink = async () => {
     setUnlinking(true);
     try {
-      await adminUnlinkPlex(user.id);
+      await unlinkPlex(user.id);
       showSuccess?.(`Unlinked ${user.username}'s Plex account.`);
       await onChanged?.();
     } catch (err) {
@@ -109,7 +124,7 @@ export function AdminPlexLinkField({
           `Unlink Plex for ${user.username}? They will be unable to sign in until an admin sets a password or links another account.`,
         );
         if (!confirmed) return;
-        const forceUnlink = () => adminUnlinkPlex(user.id, { force: true });
+        const forceUnlink = () => unlinkPlex(user.id, true);
         try {
           await forceUnlink();
         } catch (forceError) {

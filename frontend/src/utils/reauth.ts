@@ -1,6 +1,7 @@
 import { getApiErrorBody } from "../pages/onboardingUtils.tsx";
 import { asApiError } from "./api/core.ts";
-import { reauthApi } from "./api/endpoints/auth.ts";
+import { parseResponse } from "hono/client";
+import { authClient } from "./api/clients/auth.ts";
 
 export const isReauthRequiredError = (err: unknown) =>
   asApiError(err)?.response?.status === 401 && getApiErrorBody(err)?.error === "reauth_required";
@@ -9,7 +10,7 @@ export async function promptReauth() {
   const password = window.prompt("Enter your password to continue:");
   if (!password) return false;
   try {
-    await reauthApi(password);
+    await parseResponse(authClient.reauth.$post({ json: { currentPassword: password } }));
     return true;
   } catch (err) {
     const body = getApiErrorBody(err);

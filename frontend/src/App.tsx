@@ -10,7 +10,9 @@ import {
 import { RouterProvider } from "react-router/dom";
 import { useState, useEffect, Suspense, lazy, useRef, type ReactNode } from "react";
 import Layout from "./components/Layout";
-import { checkHealthLive, getBootstrapStatus } from "./utils/api/endpoints/auth.ts";
+import { parseResponse } from "hono/client";
+import { healthClient } from "./utils/api/clients/health.ts";
+import { getBootstrapStatus, type BootstrapPayload } from "./utils/appHealth.ts";
 import { getAppBasePath } from "./utils/basePath.ts";
 import { DISCOVERY_MANUAL_REFRESH_KEY } from "./utils/discoverRecentNavigation.ts";
 import { ToastProvider, useToast } from "./contexts/ToastContext";
@@ -31,7 +33,6 @@ import { useDiscoveryStatus } from "./hooks/useDiscoveryStatus";
 import { buildActivityPath, DEFAULT_ACTIVITY_VIEW } from "./navigation/activityNavConfig";
 import { routeModules } from "./navigation/routeModules.ts";
 import { getBootstrapPollIntervalMs } from "./utils/requestScheduling.ts";
-import type { BootstrapPayload } from "../../backend/routes/health.ts";
 
 function ActivityRootRedirect() {
   return <Navigate to={buildActivityPath(DEFAULT_ACTIVITY_VIEW)} replace />;
@@ -159,7 +160,9 @@ function AppContent() {
         applyBootstrapHealth(await getBootstrapStatus());
       } catch {
         try {
-          await checkHealthLive();
+          await parseResponse(
+            healthClient.live.$get({}, { init: { signal: AbortSignal.timeout(5000) } }),
+          );
           setIsHealthy(true);
           setHealthIssue("degraded");
           setAppVersion(null);

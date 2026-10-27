@@ -29,7 +29,7 @@ import { AudioQueueContext } from "./audioQueueContext";
 import { useAuth } from "./AuthContext";
 import { getRequestToken } from "../utils/api/core";
 import { QUEUE_STORAGE_KEY, parseStoredQueue, serializeQueue } from "../utils/queueStorage";
-import { recordPlayEvent } from "../utils/api/endpoints/auth";
+import { recordPlayEvent } from "../utils/api/endpoints/playEvents.ts";
 import { getReleaseGroupCoversBatch } from "../utils/api/endpoints/artists";
 import { createAudioEngine } from "../utils/audioEngine";
 import {

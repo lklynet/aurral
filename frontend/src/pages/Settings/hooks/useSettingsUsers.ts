@@ -1,13 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import {
-  getUsers,
-  createUser,
-  updateUser,
-  deleteUser,
-  changeMyPassword,
-  type UserUpdate,
-} from "../../../utils/api/endpoints/auth.ts";
+import { parseResponse, type InferRequestType } from "hono/client";
+import { usersClient } from "../../../utils/api/clients/users.ts";
 import { GRANULAR_PERMISSIONS } from "../constants";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
 import type { useAuth } from "../../../contexts/AuthContext.tsx";
@@ -17,6 +11,7 @@ import type { userOps } from "../../../../../backend/db/helpers/users.ts";
 type AuthUser = NonNullable<NonNullable<ReturnType<typeof useAuth>>["user"]>;
 type SettingsUser = ReturnType<typeof userOps.getAllUsers>[number];
 type Toast = ReturnType<typeof useToast>["showSuccess"];
+type UserUpdate = InferRequestType<(typeof usersClient)[":id"]["$patch"]>["json"];
 
 export function useSettingsUsers(
   authUser: AuthUser | null,
@@ -26,7 +21,7 @@ export function useSettingsUsers(
 ) {
   const usersQuery = useQuery({
     queryKey: queryKeys.users,
-    queryFn: getUsers,
+    queryFn: () => parseResponse(usersClient.$get()),
     enabled: activeTab === "users" && authUser?.role === "admin",
     staleTime: 30_000,
   });
@@ -42,15 +37,17 @@ export function useSettingsUsers(
       password: string;
       role: string;
       permissions: Record<string, boolean>;
-    }) => createUser(username, password, role, permissions),
+    }) => parseResponse(usersClient.$post({ json: { username, password, role, permissions } })),
     onSuccess: invalidateUsers,
   });
   const updateUserMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: UserUpdate }) => updateUser(id, data),
+    mutationFn: ({ id, data }: { id: number; data: UserUpdate }) =>
+      parseResponse(usersClient[":id"].$patch({ param: { id: String(id) }, json: data })),
     onSuccess: invalidateUsers,
   });
   const deleteUserMutation = useMutation({
-    mutationFn: deleteUser,
+    mutationFn: (id: number) =>
+      parseResponse(usersClient[":id"].$delete({ param: { id: String(id) } })),
     onSuccess: invalidateUsers,
   });
   const changePasswordMutation = useMutation({
@@ -60,7 +57,7 @@ export function useSettingsUsers(
     }: {
       currentPassword: string;
       newPassword: string;
-    }) => changeMyPassword(currentPassword, newPassword),
+    }) => parseResponse(usersClient.me.password.$post({ json: { currentPassword, newPassword } })),
   });
   const [newUserUsername, setNewUserUsername] = useState("");
   const [newUserPassword, setNewUserPassword] = useState("");

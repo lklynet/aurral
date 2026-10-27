@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { browseFilesystem, ensureFilesystemPath } from "../utils/api/endpoints/auth.ts";
+import { parseResponse } from "hono/client";
+import { filesystemClient } from "../utils/api/clients/filesystem.ts";
 
 import { createPortal } from "react-dom";
 import { ArrowUp, Folder, X } from "./icons";
@@ -65,7 +66,9 @@ export default function DownloadFolderPickerModal({
       setLoading(true);
       setError("");
       try {
-        const result = await browseFilesystem(pathValue || undefined);
+        const result = await parseResponse(
+          filesystemClient.browse.$get({ query: pathValue ? { path: pathValue } : {} }),
+        );
         if (requestId !== requestIdRef.current) {
           return false;
         }
@@ -96,7 +99,9 @@ export default function DownloadFolderPickerModal({
       setLoading(true);
       setError("");
       try {
-        const result = await ensureFilesystemPath(pathValue);
+        const result = await parseResponse(
+          filesystemClient.ensure.$post({ json: { path: pathValue } }),
+        );
         if (requestId !== requestIdRef.current) {
           return null;
         }

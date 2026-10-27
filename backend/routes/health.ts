@@ -1,4 +1,4 @@
-import express, { type Request } from "express";
+import { Hono } from "hono";
 import type { RequestUser } from "../middleware/requestUser.ts";
 import type { AppSettings } from "../db/helpers/settings.ts";
 import fs from "fs/promises";
@@ -34,15 +34,17 @@ import { dbOps } from "../db/helpers/index.ts";
 import { db } from "../config/db-sqlite.ts";
 import { resolveAurralDataDir } from "../config/data-dir.ts";
 import { websocketService } from "../services/websocketService.ts";
-import { noCache } from "../middleware/cache.ts";
-import { requireAuth } from "../middleware/requirePermission.ts";
+import { noCache } from "../middleware/cacheHeaders.ts";
+import { requireAuth } from "../middleware/guards.ts";
+import type { CredentialRequest } from "../middleware/auth.ts";
+import type { AppEnv } from "../middleware/requestUser.ts";
+import { requestCredentials } from "./shared/requestCredentials.ts";
 import { getImageProxyCacheSizeBytes } from "../services/imageProxyService.ts";
 import { getDownloadSourceStatus } from "../services/downloadSourceService.ts";
 import { getMatcherStatus } from "../services/trackMatching/index.ts";
 import { getMusicDataSourceName } from "../services/musicDataSource/index.ts";
 import { asAppError } from "../../lib/errors.ts";
 
-const router = express.Router();
 const STARTED_AT = Date.now();
 
 function formatRuntimeMode() {
@@ -239,7 +241,7 @@ async function buildSystemPayload(settings: AppSettings) {
   };
 }
 
-export type HealthResponse = BootstrapPayload & {
+type HealthResponse = BootstrapPayload & {
   library?: { artistCount: number; lastScan: null };
   discovery?: ReturnType<typeof getDiscoveryStatus> & {
     provider: string;
@@ -257,7 +259,7 @@ export type HealthResponse = BootstrapPayload & {
   system?: Awaited<ReturnType<typeof buildSystemPayload>>;
 };
 
-export type BootstrapPayload = {
+type BootstrapPayload = {
   status: string;
   timestamp: string;
   appVersion: string;
@@ -330,7 +332,7 @@ function serializeBootstrapMatcherStatus(
   };
 }
 
-function buildBootstrapPayload(req: Request) {
+function buildBootstrapPayload(req: CredentialRequest) {
   lidarrClient.updateConfig();
   const settings = dbOps.getSettings();
   const onboardingDone = settings.onboardingComplete;
@@ -401,83 +403,68 @@ function buildBootstrapPayload(req: Request) {
   return payload;
 }
 
-router.get("/live", noCache, (_req, res) => {
-  res.json({ status: "ok" });
-});
-
-router.get("/bootstrap", noCache, (req, res) => {
-  try {
-    res.json(buildBootstrapPayload(req));
-  } catch (error) {
-    const failure = asAppError(error);
-    logger.error("health", "Bootstrap check error:", { message: failure?.message });
-    res.status(500).json({
-      error: "Internal server error",
-    });
-  }
-});
-
-router.post("/stream-token", noCache, (req, res) => {
-  const user = resolveRequestUser(req);
-  if (!user) {
-    return res.status(401).json({ error: "Unauthorized", message: "Authentication required" });
-  }
-  const token = issueStreamToken(user);
-  return res.json({ token, expiresIn: 120 });
-});
-
-router.get("/", noCache, async (req, res) => {
-  try {
-    const settings = dbOps.getSettings();
-    const currentUser = resolveRequestUser(req);
-    const payload: HealthResponse = buildBootstrapPayload(req);
-    if (currentUser) {
-      const discoveryCache = getDiscoveryCache();
-      const wsStats = websocketService.getStats();
-      const artistCount = getCachedArtistCount();
-      payload.library = {
-        artistCount: typeof artistCount === "number" ? artistCount : 0,
-        lastScan: null,
-      };
-      const artworkLinkCount = dbOps.countImages();
-      const nativeImageCacheSizeBytes = await getImageProxyCacheSizeBytes();
-      payload.discovery = {
-        provider: getMusicDataSourceName(),
-        ...getDiscoveryStatus(currentUser.id),
-        recommendationsCount: discoveryCache?.recommendations?.length || 0,
-        globalTopCount: discoveryCache?.globalTop?.length || 0,
-        artworkLinkCount,
-        nativeImageCacheSizeBytes,
-        cachedImagesCount: artworkLinkCount,
-        cachedImagesSizeBytes: nativeImageCacheSizeBytes,
-      };
-      payload.websocket = {
-        clients: wsStats.totalClients,
-        channels: wsStats.channels,
-      };
-      payload.system = await buildSystemPayload(settings);
+export default new Hono<AppEnv>()
+  .basePath("/health")
+  .get("/live", noCache, (c) => c.json({ status: "ok" }, 200))
+  .get("/bootstrap", noCache, (c) => {
+    try {
+      return c.json(buildBootstrapPayload(requestCredentials(c)), 200);
+    } catch (error) {
+      const failure = asAppError(error);
+      logger.error("health", "Bootstrap check error:", { message: failure?.message });
+      return c.json({ error: "Internal server error" }, 500);
     }
-    res.json(payload);
-  } catch (error) {
-    const failure = asAppError(error);
-    logger.error("health", "Health check error:", { message: failure?.message });
-    res.status(500).json({
-      error: "Internal server error",
-    });
-  }
-});
-
-router.get("/ws", requireAuth, noCache, (req, res) => {
-  try {
-    const stats = websocketService.getStats();
-    res.json(stats);
-  } catch (error) {
-    res.status(500).json({
-      error: "Failed to get WebSocket stats",
-    });
-  }
-});
-
-export type HealthLiveResponse = { status: "ok" };
-
-export default router;
+  })
+  .post("/stream-token", noCache, (c) => {
+    const user = resolveRequestUser(requestCredentials(c));
+    if (!user) {
+      return c.json({ error: "Unauthorized", message: "Authentication required" }, 401);
+    }
+    return c.json({ token: issueStreamToken(user), expiresIn: 120 }, 200);
+  })
+  .get("/", noCache, async (c) => {
+    try {
+      const settings = dbOps.getSettings();
+      const credentials = requestCredentials(c);
+      const currentUser = resolveRequestUser(credentials);
+      const payload: HealthResponse = buildBootstrapPayload(credentials);
+      if (currentUser) {
+        const discoveryCache = getDiscoveryCache();
+        const wsStats = websocketService.getStats();
+        const artistCount = getCachedArtistCount();
+        payload.library = {
+          artistCount: typeof artistCount === "number" ? artistCount : 0,
+          lastScan: null,
+        };
+        const artworkLinkCount = dbOps.countImages();
+        const nativeImageCacheSizeBytes = await getImageProxyCacheSizeBytes();
+        payload.discovery = {
+          provider: getMusicDataSourceName(),
+          ...getDiscoveryStatus(currentUser.id),
+          recommendationsCount: discoveryCache?.recommendations?.length || 0,
+          globalTopCount: discoveryCache?.globalTop?.length || 0,
+          artworkLinkCount,
+          nativeImageCacheSizeBytes,
+          cachedImagesCount: artworkLinkCount,
+          cachedImagesSizeBytes: nativeImageCacheSizeBytes,
+        };
+        payload.websocket = {
+          clients: wsStats.totalClients,
+          channels: wsStats.channels,
+        };
+        payload.system = await buildSystemPayload(settings);
+      }
+      return c.json(payload, 200);
+    } catch (error) {
+      const failure = asAppError(error);
+      logger.error("health", "Health check error:", { message: failure?.message });
+      return c.json({ error: "Internal server error" }, 500);
+    }
+  })
+  .get("/ws", requireAuth, noCache, (c) => {
+    try {
+      return c.json(websocketService.getStats(), 200);
+    } catch {
+      return c.json({ error: "Failed to get WebSocket stats" }, 500);
+    }
+  });

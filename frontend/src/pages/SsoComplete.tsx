@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { useAuth } from "../contexts/AuthContext";
 import { setStoredAuth } from "../utils/api/core.ts";
-import { exchangeOidcCode, exchangeGoogleCode } from "../utils/api/endpoints/auth.ts";
+import { parseResponse } from "hono/client";
+import { authClient } from "../utils/api/clients/auth.ts";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { DotLoader } from "../components/DotLoader";
 
@@ -47,9 +48,12 @@ const SsoComplete = () => {
       return undefined;
     }
 
-    const exchange = provider === "google" ? exchangeGoogleCode : exchangeOidcCode;
+    const exchange =
+      provider === "google"
+        ? parseResponse(authClient.google.exchange.$post({ json: { code } }))
+        : parseResponse(authClient.oidc.exchange.$post({ json: { code } }));
 
-    exchange(code)
+    exchange
       .then((result) => {
         if (result?.linked) {
           if (!cancelled) {
@@ -57,7 +61,7 @@ const SsoComplete = () => {
           }
           return null;
         }
-        if (!result?.token) throw new Error("Missing SSO session token");
+        if (!("token" in result) || !result.token) throw new Error("Missing SSO session token");
         setStoredAuth({ token: result.token });
         return refreshAuth();
       })

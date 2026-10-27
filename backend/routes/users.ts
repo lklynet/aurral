@@ -1,15 +1,21 @@
-import express, { type Request, type Response } from "express";
-import { userOps, dbOps } from "../db/helpers/index.ts";
+import { Hono } from "hono";
+import * as v from "valibot";
+import { userOps, dbOps, userIdentityOps } from "../db/helpers/index.ts";
 import { hashPassword, verifyPassword } from "../middleware/passwordHash.ts";
 import {
   requireAuth,
   requireAdmin,
   requireRecentAuth,
   requireUserAccount,
-} from "../middleware/requirePermission.ts";
+} from "../middleware/guards.ts";
+import { validate } from "../middleware/validate.ts";
+import type { AppEnv } from "../middleware/requestUser.ts";
 import { normalizeUserThemeDocument, ThemeValidationError } from "../services/userTheme.ts";
-import { isRecentlyAuthenticated, reconcileLocalNetworkBypassSetting } from "../middleware/auth.ts";
-import { requirePasswordStrength } from "../middleware/auth.ts";
+import {
+  isRecentlyAuthenticated,
+  reconcileLocalNetworkBypassSetting,
+  requirePasswordStrength,
+} from "../middleware/auth.ts";
 import { deleteSessionsByUserId } from "../config/session-helpers.ts";
 import { websocketService } from "../services/websocketService.ts";
 import {
@@ -26,11 +32,12 @@ import {
 } from "../services/listeningHistory.ts";
 import { validateExternalUrl } from "../middleware/urlValidator.ts";
 import { normalizeKoitoBaseUrl } from "../services/koitoClient.ts";
-import { registerPlexLink, resolveGlobalPlexAccount } from "./users/plexLinkHandlers.ts";
-import { registerIdentityLink } from "./users/identityLinkHandlers.ts";
+import { disconnectUserPlex, resolveGlobalPlexAccount } from "./users/plexLinkHandlers.ts";
 import { plexConnectionStore } from "../services/plex/plexConnectionStore.ts";
-import type { lidarrClient } from "../services/lidarrClient.ts";
 import { asAppError, type AppError } from "../../lib/errors.ts";
+import { isErrorStatus } from "./shared/errorStatus.ts";
+
+type UserRecord = NonNullable<ReturnType<typeof userOps.getUserById>>;
 
 type ListenHistoryBody = {
   lastfmUsername?: unknown;
@@ -106,8 +113,6 @@ const buildListenHistoryUpdates = (body: ListenHistoryBody, existing: UserRecord
   };
 };
 
-const router = express.Router();
-
 const reconcileLocalBypassAfterUserMutation = () => {
   const result = reconcileLocalNetworkBypassSetting();
   if (result.changed) {
@@ -172,552 +177,597 @@ const refreshDiscoveryForListenHistoryChange = (
   requestUserDiscoveryRefresh(userId, { reason: "listening_history" });
 };
 
-router.get("/", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const users = userOps.getAllUsers();
-    const globalPlexAccount = await resolveGlobalPlexAccount();
-    res.json(
-      users.map((user) => ({
-        ...user,
-        plexLink: plexConnectionStore.getPublicStatus(user.id),
-        plexGlobalAccount: globalPlexAccount,
-      })),
-    );
-  } catch (e) {
-    const failure = asAppError(e);
-    res.status(500).json({ error: "Failed to list users", message: failure?.message });
-  }
-});
-
-const isValidPermissions = (permissions: unknown) =>
+const isValidPermissions = (permissions: unknown): permissions is Record<string, boolean> =>
   typeof permissions === "object" &&
   permissions !== null &&
   !Array.isArray(permissions) &&
   Object.values(permissions).every((value) => typeof value === "boolean");
 
 const INVALID_PERMISSIONS_ERROR = "Permissions must be true or false";
+const VALID_STATUSES = ["active", "suspended", "disabled"];
 
-router.post("/", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { username, password, role = "user", permissions } = req.body;
-    const un = String(username || "").trim();
-    if (!un || !password) {
-      return res.status(400).json({ error: "Username and password required" });
-    }
-    if (permissions && !isValidPermissions(permissions)) {
-      return res.status(400).json({ error: INVALID_PERMISSIONS_ERROR });
-    }
-    if (userOps.getUserByUsername(un)) {
-      return res.status(409).json({ error: "Username already exists" });
-    }
-    const passwordValidation = requirePasswordStrength(password);
-    if (!passwordValidation.valid) {
-      return res.status(400).json({ error: passwordValidation.error });
-    }
-    const hash = hashPassword(password);
-    const perms = permissions ? { ...userOps.getDefaultPermissions(), ...permissions } : null;
-    const created = userOps.createUser(un, hash, role, perms, true, false, password);
-    if (!created) {
-      return res.status(500).json({ error: "Failed to create user" });
-    }
-    reconcileLocalBypassAfterUserMutation();
-    res.status(201).json({
-      id: created.id,
-      username: created.username,
-      role: created.role,
-      permissions: created.permissions,
-      lidarrRootFolderPath: created.lidarrRootFolderPath,
-      lidarrQualityProfileId: created.lidarrQualityProfileId,
-    });
-  } catch (e) {
-    const failure = asAppError(e);
-    res.status(500).json({ error: "Failed to create user", message: failure?.message });
-  }
+const createUserBody = v.object({
+  username: v.optional(v.string()),
+  password: v.optional(v.string()),
+  role: v.optional(v.string()),
+  permissions: v.optional(v.unknown()),
+});
+const nullableText = v.optional(v.nullable(v.string()));
+const updateUserBody = v.object({
+  password: v.optional(v.string()),
+  currentPassword: v.optional(v.string()),
+  permissions: v.optional(v.unknown()),
+  role: v.optional(v.string()),
+  status: v.optional(v.string()),
+  allowIdentityAdoption: v.optional(v.boolean()),
+  listenHistoryProvider: nullableText,
+  listenHistoryUsername: nullableText,
+  listenHistoryUrl: nullableText,
+  lastfmUsername: nullableText,
+});
+const themeBody = v.object({ theme: v.optional(v.unknown()) });
+const discoverLayoutBody = v.object({ layout: v.optional(v.unknown()) });
+const lidarrPreferencesBody = v.object({
+  rootFolderPath: nullableText,
+  qualityProfileId: v.optional(v.nullable(v.union([v.number(), v.string()]))),
+});
+const passwordBody = v.object({
+  currentPassword: v.optional(v.string()),
+  newPassword: v.optional(v.string()),
 });
 
-router.patch("/:id", requireAuth, async (req, res) => {
-  try {
-    const id = parseInt(req.params.id, 10);
-    const isAdmin = req.user!.role === "admin";
-    const isSelf = req.user!.id === id;
-    if (!isAdmin && !isSelf) {
-      return res.status(403).json({ error: "Forbidden" });
-    }
-    const existing = userOps.getUserById(id);
-    if (!existing) {
-      return res.status(404).json({ error: "User not found" });
-    }
-    const { password, permissions, role, status, allowIdentityAdoption } = req.body;
-    const VALID_STATUSES = ["active", "suspended", "disabled"];
-    if (status !== undefined && !VALID_STATUSES.includes(status)) {
-      return res.status(400).json({ error: "Invalid status" });
-    }
-    if (permissions != null && !isValidPermissions(permissions)) {
-      return res.status(400).json({ error: INVALID_PERMISSIONS_ERROR });
-    }
-    const existingProfile = getListenHistoryProfile(existing);
-    let listenHistoryUpdates = null;
+export default new Hono<AppEnv>()
+  .basePath("/users")
+  .get("/", requireAuth, requireAdmin, async (c) => {
     try {
-      listenHistoryUpdates = buildListenHistoryUpdates(req.body, existing);
-    } catch (error) {
-      const failure = asAppError(error);
-      return res.status(failure?.statusCode || 400).json({
-        error: failure?.message || "Invalid listening history settings",
-      });
+      const users = userOps.getAllUsers();
+      const globalPlexAccount = await resolveGlobalPlexAccount();
+      return c.json(
+        users.map((user) => ({
+          ...user,
+          plexLink: plexConnectionStore.getPublicStatus(user.id),
+          plexGlobalAccount: globalPlexAccount,
+        })),
+        200,
+      );
+    } catch (e) {
+      const failure = asAppError(e);
+      return c.json({ error: "Failed to list users", message: failure?.message }, 500);
     }
-    const requestedProfile = getListenHistoryProfile({
-      ...existing,
-      ...(listenHistoryUpdates || {}),
-    });
-    refreshDiscoveryForListenHistoryChange(id, existingProfile, requestedProfile);
-    if (isSelf && !isAdmin) {
-      if (
-        permissions !== undefined ||
-        role !== undefined ||
-        status !== undefined ||
-        allowIdentityAdoption !== undefined
-      ) {
-        return res.status(403).json({ error: "Forbidden" });
+  })
+  .post("/", requireAuth, requireAdmin, validate("json", createUserBody), (c) => {
+    try {
+      const { username, password, role = "user", permissions } = c.req.valid("json");
+      const un = (username || "").trim();
+      if (!un || !password) {
+        return c.json({ error: "Username and password required" }, 400);
+      }
+      if (permissions && !isValidPermissions(permissions)) {
+        return c.json({ error: INVALID_PERMISSIONS_ERROR }, 400);
+      }
+      if (userOps.getUserByUsername(un)) {
+        return c.json({ error: "Username already exists" }, 409);
+      }
+      const passwordValidation = requirePasswordStrength(password);
+      if (!passwordValidation.valid) {
+        return c.json({ error: passwordValidation.error }, 400);
+      }
+      const hash = hashPassword(password);
+      const perms = isValidPermissions(permissions)
+        ? { ...userOps.getDefaultPermissions(), ...permissions }
+        : null;
+      const created = userOps.createUser(un, hash, role, perms, true, false, password);
+      if (!created) {
+        return c.json({ error: "Failed to create user" }, 500);
+      }
+      reconcileLocalBypassAfterUserMutation();
+      return c.json(
+        {
+          id: created.id,
+          username: created.username,
+          role: created.role,
+          permissions: created.permissions,
+          lidarrRootFolderPath: created.lidarrRootFolderPath,
+          lidarrQualityProfileId: created.lidarrQualityProfileId,
+        },
+        201,
+      );
+    } catch (e) {
+      const failure = asAppError(e);
+      return c.json({ error: "Failed to create user", message: failure?.message }, 500);
+    }
+  })
+  .patch("/:id", requireAuth, validate("json", updateUserBody), (c) => {
+    try {
+      const id = parseInt(c.req.param("id"), 10);
+      const isAdmin = c.var.user.role === "admin";
+      const isSelf = c.var.user.id === id;
+      if (!isAdmin && !isSelf) {
+        return c.json({ error: "Forbidden" }, 403);
+      }
+      const existing = userOps.getUserById(id);
+      if (!existing) {
+        return c.json({ error: "User not found" }, 404);
+      }
+      const body = c.req.valid("json");
+      const { password, permissions, role, status, allowIdentityAdoption } = body;
+      if (status !== undefined && !VALID_STATUSES.includes(status)) {
+        return c.json({ error: "Invalid status" }, 400);
+      }
+      if (permissions != null && !isValidPermissions(permissions)) {
+        return c.json({ error: INVALID_PERMISSIONS_ERROR }, 400);
+      }
+      const existingProfile = getListenHistoryProfile(existing);
+      let listenHistoryUpdates = null;
+      try {
+        listenHistoryUpdates = buildListenHistoryUpdates(body, existing);
+      } catch (error) {
+        const failure = asAppError(error);
+        return c.json(
+          { error: failure?.message || "Invalid listening history settings" },
+          isErrorStatus(failure?.statusCode) ? failure.statusCode : 400,
+        );
+      }
+      const requestedProfile = getListenHistoryProfile({
+        ...existing,
+        ...(listenHistoryUpdates || {}),
+      });
+      refreshDiscoveryForListenHistoryChange(id, existingProfile, requestedProfile);
+      if (isSelf && !isAdmin) {
+        if (
+          permissions !== undefined ||
+          role !== undefined ||
+          status !== undefined ||
+          allowIdentityAdoption !== undefined
+        ) {
+          return c.json({ error: "Forbidden" }, 403);
+        }
+        const updates: UserUpdate = {};
+        if (listenHistoryUpdates) {
+          Object.assign(updates, listenHistoryUpdates);
+        }
+        if (password) {
+          const { currentPassword } = body;
+          if (!currentPassword) {
+            return c.json({ error: "currentPassword required to change password" }, 400);
+          }
+          if (!verifyPassword(currentPassword, existing.passwordHash)) {
+            return c.json({ error: "Current password is incorrect" }, 400);
+          }
+          const passwordValidation = requirePasswordStrength(password);
+          if (!passwordValidation.valid) {
+            return c.json({ error: passwordValidation.error }, 400);
+          }
+          updates.passwordHash = hashPassword(password);
+          updates.hasLocalPassword = true;
+          updates.subsonicPassword = password;
+        }
+        if (Object.keys(updates).length === 0) {
+          return c.json(
+            {
+              id,
+              username: existing.username,
+              role: existing.role,
+              listenHistoryProvider: existing.listenHistoryProvider,
+              listenHistoryUsername: existing.listenHistoryUsername,
+              listenHistoryUrl: existing.listenHistoryUrl,
+              lastfmUsername: existing.lastfmUsername,
+              lidarrRootFolderPath: existing.lidarrRootFolderPath,
+              lidarrQualityProfileId: existing.lidarrQualityProfileId,
+            },
+            200,
+          );
+        }
+        const updated = userOps.updateUser(id, updates);
+        if (updates.passwordHash) {
+          deleteSessionsByUserId(id);
+        }
+        return c.json(updated, 200);
       }
       const updates: UserUpdate = {};
-      if (listenHistoryUpdates) {
-        Object.assign(updates, listenHistoryUpdates);
-      }
       if (password) {
-        const { currentPassword } = req.body;
-        if (!currentPassword) {
-          return res.status(400).json({ error: "currentPassword required to change password" });
-        }
-        if (!verifyPassword(currentPassword, existing.passwordHash)) {
-          return res.status(400).json({ error: "Current password is incorrect" });
+        if (!isSelf && !isRecentlyAuthenticated(c.req.header("authorization"))) {
+          return c.json(
+            { error: "reauth_required", message: "Please confirm your credentials to continue" },
+            401,
+          );
         }
         const passwordValidation = requirePasswordStrength(password);
         if (!passwordValidation.valid) {
-          return res.status(400).json({ error: passwordValidation.error });
+          return c.json({ error: passwordValidation.error }, 400);
         }
         updates.passwordHash = hashPassword(password);
         updates.hasLocalPassword = true;
         updates.subsonicPassword = password;
       }
+      if (permissions !== undefined) {
+        updates.permissions = isValidPermissions(permissions) ? permissions : {};
+      }
+      if (role !== undefined) {
+        updates.role = role;
+        updates.roleSource = "local";
+      }
+      if (status !== undefined) {
+        if (existing.isProtected && status !== "active") {
+          return c.json(
+            { error: "You cannot suspend or disable a protected recovery account" },
+            400,
+          );
+        }
+        updates.status = status;
+      }
+      if (allowIdentityAdoption !== undefined) {
+        if (allowIdentityAdoption && !existing.needsIdentityMigration) {
+          return c.json(
+            { error: "Only accounts that predate identity linking can be approved for adoption" },
+            400,
+          );
+        }
+        if (allowIdentityAdoption && existing.isProtected) {
+          return c.json(
+            { error: "The protected recovery account cannot be approved for adoption" },
+            400,
+          );
+        }
+        updates.allowIdentityAdoption = allowIdentityAdoption;
+      }
+      if (listenHistoryUpdates) {
+        Object.assign(updates, listenHistoryUpdates);
+      }
       if (Object.keys(updates).length === 0) {
-        return res.json({
-          id,
-          username: existing.username,
-          role: existing.role,
-          listenHistoryProvider: existing.listenHistoryProvider,
-          listenHistoryUsername: existing.listenHistoryUsername,
-          listenHistoryUrl: existing.listenHistoryUrl,
-          lastfmUsername: existing.lastfmUsername,
-          lidarrRootFolderPath: existing.lidarrRootFolderPath,
-          lidarrQualityProfileId: existing.lidarrQualityProfileId,
-        });
+        return c.json(
+          {
+            id: existing.id,
+            username: existing.username,
+            role: existing.role,
+            permissions: existing.permissions,
+            listenHistoryProvider: existing.listenHistoryProvider,
+            listenHistoryUsername: existing.listenHistoryUsername,
+            listenHistoryUrl: existing.listenHistoryUrl,
+            lastfmUsername: existing.lastfmUsername,
+            lidarrRootFolderPath: existing.lidarrRootFolderPath,
+            lidarrQualityProfileId: existing.lidarrQualityProfileId,
+          },
+          200,
+        );
       }
       const updated = userOps.updateUser(id, updates);
-      if (updates.passwordHash) {
+      if (updates.status && updates.status !== "active") {
         deleteSessionsByUserId(id);
+        websocketService.disconnectUser(id);
       }
-      return res.json(updated);
+      reconcileLocalBypassAfterUserMutation();
+      return c.json(updated, 200);
+    } catch (e) {
+      const failure = asAppError(e);
+      return c.json({ error: "Failed to update user", message: failure?.message }, 500);
     }
-    const updates: UserUpdate = {};
-    if (password) {
-      if (!isSelf && !isRecentlyAuthenticated(req.headers.authorization)) {
-        return res.status(401).json({
-          error: "reauth_required",
-          message: "Please confirm your credentials to continue",
-        });
-      }
-      const passwordValidation = requirePasswordStrength(password);
-      if (!passwordValidation.valid) {
-        return res.status(400).json({ error: passwordValidation.error });
-      }
-      updates.passwordHash = hashPassword(password);
-      updates.hasLocalPassword = true;
-      updates.subsonicPassword = password;
-    }
-    if (permissions !== undefined) updates.permissions = permissions;
-    if (role !== undefined) {
-      updates.role = role;
-      updates.roleSource = "local";
-    }
-    if (status !== undefined) {
-      if (existing.isProtected && status !== "active") {
-        return res.status(400).json({
-          error: "You cannot suspend or disable a protected recovery account",
-        });
-      }
-      updates.status = status;
-    }
-    if (allowIdentityAdoption !== undefined) {
-      if (allowIdentityAdoption && !existing.needsIdentityMigration) {
-        return res.status(400).json({
-          error: "Only accounts that predate identity linking can be approved for adoption",
-        });
-      }
-      if (allowIdentityAdoption && existing.isProtected) {
-        return res.status(400).json({
-          error: "The protected recovery account cannot be approved for adoption",
-        });
-      }
-      updates.allowIdentityAdoption = !!allowIdentityAdoption;
-    }
-    if (listenHistoryUpdates) {
-      Object.assign(updates, listenHistoryUpdates);
-    }
-    if (Object.keys(updates).length === 0) {
-      return res.json({
-        id: existing.id,
-        username: existing.username,
-        role: existing.role,
-        permissions: existing.permissions,
-        listenHistoryProvider: existing.listenHistoryProvider,
-        listenHistoryUsername: existing.listenHistoryUsername,
-        listenHistoryUrl: existing.listenHistoryUrl,
-        lastfmUsername: existing.lastfmUsername,
-        lidarrRootFolderPath: existing.lidarrRootFolderPath,
-        lidarrQualityProfileId: existing.lidarrQualityProfileId,
-      });
-    }
-    const updated = userOps.updateUser(id, updates);
-    if (updates.status && updates.status !== "active") {
-      deleteSessionsByUserId(id);
-      websocketService.disconnectUser(id);
-    }
-    reconcileLocalBypassAfterUserMutation();
-    res.json(updated);
-  } catch (e) {
-    const failure = asAppError(e);
-    res.status(500).json({ error: "Failed to update user", message: failure?.message });
-  }
-});
-
-const sendListenHistorySettings = (req: Request, res: Response) => {
-  try {
-    const user = userOps.getUserById(req.user!.id);
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
-    res.json(resolveListenHistorySettings(user));
-  } catch (e) {
-    const failure = asAppError(e);
-    res.status(500).json({
-      error: "Failed to get listening history settings",
-      message: failure?.message,
-    });
-  }
-};
-
-router.get("/me/listening-history", requireAuth, sendListenHistorySettings);
-
-router.get("/me/lidarr-preferences", requireAuth, async (req, res) => {
-  try {
-    const user = userOps.getUserById(req.user!.id);
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
-    const { lidarrClient } = await import("../services/lidarrClient.ts");
-    const summary = await lidarrClient.getArtistAddPreferenceSummary(user);
-    res.json(summary);
-  } catch (e) {
-    const failure = asAppError(e);
-    res.status(500).json({
-      error: "Failed to get Lidarr preferences",
-      message: failure?.message,
-    });
-  }
-});
-
-router.get("/me/theme", requireAuth, requireUserAccount, (req, res) => {
-  try {
-    const stored = dbOps.getUserTheme(req.user!.id);
-    let theme = null;
+  })
+  .get("/me/listening-history", requireAuth, (c) => {
     try {
-      theme = stored ? normalizeUserThemeDocument(stored) : null;
-    } catch {
-      theme = null;
-    }
-    res.json({ theme });
-  } catch (e) {
-    const failure = asAppError(e);
-    res.status(500).json({ error: "Failed to get theme", message: failure?.message });
-  }
-});
-
-router.put("/me/theme", requireAuth, requireUserAccount, (req, res) => {
-  try {
-    const theme = normalizeUserThemeDocument(req.body?.theme);
-    dbOps.setUserTheme(req.user!.id, theme);
-    res.json({ theme });
-  } catch (e) {
-    const failure = asAppError(e);
-    if (e instanceof ThemeValidationError) {
-      return res
-        .status(400)
-        .json({ error: "Invalid theme", message: failure?.message, field: "theme" });
-    }
-    res.status(500).json({ error: "Failed to save theme", message: failure?.message });
-  }
-});
-
-router.get("/me/discover-layout", requireAuth, (req, res) => {
-  try {
-    const user = userOps.getUserById(req.user!.id);
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
-    const storedLayout = dbOps.getUserDiscoverLayout(req.user!.id);
-    res.json({
-      layout: normalizeDiscoverLayout(storedLayout),
-    });
-  } catch (e) {
-    const failure = asAppError(e);
-    res.status(500).json({
-      error: "Failed to get discover layout",
-      message: failure?.message,
-    });
-  }
-});
-
-router.patch("/me/discover-layout", requireAuth, (req, res) => {
-  try {
-    const user = userOps.getUserById(req.user!.id);
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
-    const normalized = normalizeDiscoverLayout(req.body?.layout);
-    if (!normalized) {
-      return res.status(400).json({
-        error: "Invalid discover layout",
-        message: "layout must be an array of discover section entries",
-        field: "layout",
-      });
-    }
-    dbOps.setUserDiscoverLayout(req.user!.id, normalized);
-    res.json({
-      layout: normalizeDiscoverLayout(dbOps.getUserDiscoverLayout(req.user!.id)),
-    });
-  } catch (e) {
-    const failure = asAppError(e);
-    res.status(500).json({
-      error: "Failed to save discover layout",
-      message: failure?.message,
-    });
-  }
-});
-
-router.patch("/me/lidarr-preferences", requireAuth, async (req, res) => {
-  try {
-    const user = userOps.getUserById(req.user!.id);
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
-
-    const hasRootFolderPath = Object.hasOwn(req.body, "rootFolderPath");
-    const hasQualityProfileId = Object.hasOwn(req.body, "qualityProfileId");
-
-    const nextRootFolderPath = hasRootFolderPath
-      ? req.body.rootFolderPath === null
-        ? null
-        : normalizeRootFolderPath(req.body.rootFolderPath)
-      : user.lidarrRootFolderPath;
-    const nextQualityProfileId = hasQualityProfileId
-      ? req.body.qualityProfileId === null
-        ? null
-        : normalizeQualityProfileId(req.body.qualityProfileId)
-      : user.lidarrQualityProfileId;
-
-    if (hasRootFolderPath && req.body.rootFolderPath !== null && !nextRootFolderPath) {
-      return res.status(400).json({
-        error: "Invalid Lidarr preferences",
-        message: "rootFolderPath must be a non-empty string or null",
-        field: "rootFolderPath",
-      });
-    }
-
-    if (
-      hasQualityProfileId &&
-      req.body.qualityProfileId !== null &&
-      nextQualityProfileId === null
-    ) {
-      return res.status(400).json({
-        error: "Invalid Lidarr preferences",
-        message: "qualityProfileId must be a numeric id or null",
-        field: "qualityProfileId",
-      });
-    }
-
-    const { lidarrClient } = await import("../services/lidarrClient.ts");
-    if (!lidarrClient.isConfigured()) {
-      if (nextRootFolderPath !== null || nextQualityProfileId !== null) {
-        return res.status(503).json({
-          error: "Lidarr is not configured",
-          message: "Configure Lidarr before saving library defaults.",
-        });
+      const user = userOps.getUserById(c.var.user.id);
+      if (!user) {
+        return c.json({ error: "User not found" }, 404);
       }
-      const updated = userOps.updateUser(req.user!.id, {
-        lidarrRootFolderPath: null,
-        lidarrQualityProfileId: null,
+      return c.json(resolveListenHistorySettings(user), 200);
+    } catch (e) {
+      const failure = asAppError(e);
+      return c.json(
+        { error: "Failed to get listening history settings", message: failure?.message },
+        500,
+      );
+    }
+  })
+  .get("/me/lidarr-preferences", requireAuth, async (c) => {
+    try {
+      const user = userOps.getUserById(c.var.user.id);
+      if (!user) {
+        return c.json({ error: "User not found" }, 404);
+      }
+      const { lidarrClient } = await import("../services/lidarrClient.ts");
+      return c.json(await lidarrClient.getArtistAddPreferenceSummary(user), 200);
+    } catch (e) {
+      const failure = asAppError(e);
+      return c.json({ error: "Failed to get Lidarr preferences", message: failure?.message }, 500);
+    }
+  })
+  .get("/me/theme", requireAuth, requireUserAccount, (c) => {
+    try {
+      const stored = dbOps.getUserTheme(c.var.user.id);
+      let theme = null;
+      try {
+        theme = stored ? normalizeUserThemeDocument(stored) : null;
+      } catch {
+        theme = null;
+      }
+      return c.json({ theme }, 200);
+    } catch (e) {
+      const failure = asAppError(e);
+      return c.json({ error: "Failed to get theme", message: failure?.message }, 500);
+    }
+  })
+  .put("/me/theme", requireAuth, requireUserAccount, validate("json", themeBody), (c) => {
+    try {
+      const theme = normalizeUserThemeDocument(c.req.valid("json").theme);
+      dbOps.setUserTheme(c.var.user.id, theme);
+      return c.json({ theme }, 200);
+    } catch (e) {
+      const failure = asAppError(e);
+      if (e instanceof ThemeValidationError) {
+        return c.json({ error: "Invalid theme", message: failure?.message, field: "theme" }, 400);
+      }
+      return c.json({ error: "Failed to save theme", message: failure?.message }, 500);
+    }
+  })
+  .get("/me/discover-layout", requireAuth, (c) => {
+    try {
+      const user = userOps.getUserById(c.var.user.id);
+      if (!user) {
+        return c.json({ error: "User not found" }, 404);
+      }
+      const storedLayout = dbOps.getUserDiscoverLayout(c.var.user.id);
+      return c.json({ layout: normalizeDiscoverLayout(storedLayout) }, 200);
+    } catch (e) {
+      const failure = asAppError(e);
+      return c.json({ error: "Failed to get discover layout", message: failure?.message }, 500);
+    }
+  })
+  .patch("/me/discover-layout", requireAuth, validate("json", discoverLayoutBody), (c) => {
+    try {
+      const user = userOps.getUserById(c.var.user.id);
+      if (!user) {
+        return c.json({ error: "User not found" }, 404);
+      }
+      const normalized = normalizeDiscoverLayout(c.req.valid("json").layout);
+      if (!normalized) {
+        return c.json(
+          {
+            error: "Invalid discover layout",
+            message: "layout must be an array of discover section entries",
+            field: "layout",
+          },
+          400,
+        );
+      }
+      dbOps.setUserDiscoverLayout(c.var.user.id, normalized);
+      return c.json(
+        { layout: normalizeDiscoverLayout(dbOps.getUserDiscoverLayout(c.var.user.id)) },
+        200,
+      );
+    } catch (e) {
+      const failure = asAppError(e);
+      return c.json({ error: "Failed to save discover layout", message: failure?.message }, 500);
+    }
+  })
+  .patch(
+    "/me/lidarr-preferences",
+    requireAuth,
+    validate("json", lidarrPreferencesBody),
+    async (c) => {
+      try {
+        const user = userOps.getUserById(c.var.user.id);
+        if (!user) {
+          return c.json({ error: "User not found" }, 404);
+        }
+
+        const body = c.req.valid("json");
+        const hasRootFolderPath = body.rootFolderPath !== undefined;
+        const hasQualityProfileId = body.qualityProfileId !== undefined;
+
+        const nextRootFolderPath = hasRootFolderPath
+          ? body.rootFolderPath === null
+            ? null
+            : normalizeRootFolderPath(body.rootFolderPath)
+          : user.lidarrRootFolderPath;
+        const nextQualityProfileId = hasQualityProfileId
+          ? body.qualityProfileId === null
+            ? null
+            : normalizeQualityProfileId(body.qualityProfileId)
+          : user.lidarrQualityProfileId;
+
+        if (hasRootFolderPath && body.rootFolderPath !== null && !nextRootFolderPath) {
+          return c.json(
+            {
+              error: "Invalid Lidarr preferences",
+              message: "rootFolderPath must be a non-empty string or null",
+              field: "rootFolderPath",
+            },
+            400,
+          );
+        }
+
+        if (
+          hasQualityProfileId &&
+          body.qualityProfileId !== null &&
+          nextQualityProfileId === null
+        ) {
+          return c.json(
+            {
+              error: "Invalid Lidarr preferences",
+              message: "qualityProfileId must be a numeric id or null",
+              field: "qualityProfileId",
+            },
+            400,
+          );
+        }
+
+        const { lidarrClient } = await import("../services/lidarrClient.ts");
+        if (!lidarrClient.isConfigured()) {
+          if (nextRootFolderPath !== null || nextQualityProfileId !== null) {
+            return c.json(
+              {
+                error: "Lidarr is not configured",
+                message: "Configure Lidarr before saving library defaults.",
+              },
+              503,
+            );
+          }
+          const updated = userOps.updateUser(c.var.user.id, {
+            lidarrRootFolderPath: null,
+            lidarrQualityProfileId: null,
+          });
+          return c.json(
+            {
+              configured: false as const,
+              rootFolders: [],
+              qualityProfiles: [],
+              savedDefaults: {
+                rootFolderPath: updated?.lidarrRootFolderPath || null,
+                qualityProfileId: updated?.lidarrQualityProfileId ?? null,
+              },
+              fallbacks: {
+                rootFolderPath: null,
+                qualityProfileId: null,
+              },
+            },
+            200,
+          );
+        }
+
+        const summary = await lidarrClient.getArtistAddPreferenceSummary(user);
+        if (
+          nextRootFolderPath !== null &&
+          !summary.rootFolders.some((folder) => folder.path === nextRootFolderPath)
+        ) {
+          return c.json(
+            {
+              error: "Invalid Lidarr preferences",
+              message: `Unknown Lidarr root folder: ${nextRootFolderPath}`,
+              field: "rootFolderPath",
+            },
+            400,
+          );
+        }
+        if (
+          nextQualityProfileId !== null &&
+          !summary.qualityProfiles.some((profile) => profile.id === nextQualityProfileId)
+        ) {
+          return c.json(
+            {
+              error: "Invalid Lidarr preferences",
+              message: `Unknown Lidarr quality profile: ${nextQualityProfileId}`,
+              field: "qualityProfileId",
+            },
+            400,
+          );
+        }
+
+        const updated = userOps.updateUser(c.var.user.id, {
+          lidarrRootFolderPath: nextRootFolderPath,
+          lidarrQualityProfileId: nextQualityProfileId,
+        });
+        if (!updated) {
+          return c.json({ error: "Failed to save Lidarr preferences" }, 500);
+        }
+
+        return c.json(await lidarrClient.getArtistAddPreferenceSummary(updated), 200);
+      } catch (e) {
+        const failure = asAppError(e);
+        return c.json(
+          { error: "Failed to save Lidarr preferences", message: failure?.message },
+          500,
+        );
+      }
+    },
+  )
+  .post("/me/password", requireAuth, requireRecentAuth(), validate("json", passwordBody), (c) => {
+    try {
+      const { currentPassword, newPassword } = c.req.valid("json");
+      if (!newPassword) {
+        return c.json({ error: "New password required" }, 400);
+      }
+      const passwordValidation = requirePasswordStrength(newPassword);
+      if (!passwordValidation.valid) {
+        return c.json({ error: passwordValidation.error }, 400);
+      }
+      const u = userOps.getUserById(c.var.user.id);
+      if (!u) {
+        return c.json({ error: "Current password is incorrect" }, 400);
+      }
+      if (u.hasLocalPassword && !verifyPassword(currentPassword || "", u.passwordHash)) {
+        return c.json({ error: "Current password is incorrect" }, 400);
+      }
+      userOps.updateUser(c.var.user.id, {
+        passwordHash: hashPassword(newPassword),
+        hasLocalPassword: true,
+        subsonicPassword: newPassword,
       });
-      return res.json({
-        configured: false,
-        rootFolders: [],
-        qualityProfiles: [],
-        savedDefaults: {
-          rootFolderPath: updated?.lidarrRootFolderPath || null,
-          qualityProfileId: updated?.lidarrQualityProfileId ?? null,
+      deleteSessionsByUserId(c.var.user.id);
+      return c.json({ success: true }, 200);
+    } catch (e) {
+      const failure = asAppError(e);
+      return c.json({ error: "Failed to change password", message: failure?.message }, 500);
+    }
+  })
+  .delete("/:id", requireAuth, requireAdmin, (c) => {
+    try {
+      const id = parseInt(c.req.param("id"), 10);
+      if (c.var.user.id === id) {
+        return c.json({ error: "Cannot delete your own account" }, 400);
+      }
+      const existing = userOps.getUserById(id);
+      if (!existing) {
+        return c.json({ error: "User not found" }, 404);
+      }
+      deleteSessionsByUserId(id);
+      userOps.deleteUser(id);
+      dbOps.deleteUserTheme(id);
+      dbOps.deleteDiscoveryCacheByPrefix(`${getUserDiscoveryNamespace(id)}:`);
+      reconcileLocalBypassAfterUserMutation();
+      return c.json({ success: true }, 200);
+    } catch (e) {
+      const failure = asAppError(e);
+      return c.json({ error: "Failed to delete user", message: failure?.message }, 500);
+    }
+  })
+  .get("/me/identities", requireAuth, (c) => {
+    const user = userOps.getUserById(c.var.user.id);
+    if (!user) {
+      return c.json({ error: "User not found" }, 404);
+    }
+    return c.json(
+      {
+        hasLocalPassword: user.hasLocalPassword,
+        identities: userIdentityOps.getForUser(c.var.user.id).map((identity) => ({
+          id: identity.id,
+          providerType: identity.providerType,
+          providerKey: identity.providerKey,
+          displayName: identity.displayName,
+          linkedAt: identity.linkedAt,
+        })),
+      },
+      200,
+    );
+  })
+  .delete("/me/identities/:id", requireAuth, requireRecentAuth(), async (c) => {
+    const identityId = parseInt(c.req.param("id"), 10);
+    const identity = userIdentityOps.getById(identityId);
+    if (!identity || identity.userId !== c.var.user.id) {
+      return c.json({ error: "Identity not found" }, 404);
+    }
+
+    const user = userOps.getUserById(c.var.user.id);
+    const remaining = userIdentityOps.countForUser(c.var.user.id) - 1;
+    if (remaining <= 0 && !user?.hasLocalPassword) {
+      return c.json(
+        {
+          error: "last_auth_method",
+          message:
+            "This is your only way to sign in. Set a local password or link another account before removing it.",
         },
-        fallbacks: {
-          rootFolderPath: null,
-          qualityProfileId: null,
-        },
+        400,
+      );
+    }
+
+    if (identity.providerType === "plex") {
+      const result = await disconnectUserPlex(c.var.user.id, {
+        context: "from connected accounts",
       });
+      if (!result.disconnected) {
+        return c.json({ error: result.error, message: result.message }, 400);
+      }
+    } else {
+      userIdentityOps.unlink(identityId);
     }
-
-    const summary = await lidarrClient.getArtistAddPreferenceSummary(user);
-    if (
-      nextRootFolderPath !== null &&
-      !summary.rootFolders.some((folder) => folder.path === nextRootFolderPath)
-    ) {
-      return res.status(400).json({
-        error: "Invalid Lidarr preferences",
-        message: `Unknown Lidarr root folder: ${nextRootFolderPath}`,
-        field: "rootFolderPath",
-      });
-    }
-    if (
-      nextQualityProfileId !== null &&
-      !summary.qualityProfiles.some((profile) => profile.id === nextQualityProfileId)
-    ) {
-      return res.status(400).json({
-        error: "Invalid Lidarr preferences",
-        message: `Unknown Lidarr quality profile: ${nextQualityProfileId}`,
-        field: "qualityProfileId",
-      });
-    }
-
-    const updated = userOps.updateUser(req.user!.id, {
-      lidarrRootFolderPath: nextRootFolderPath,
-      lidarrQualityProfileId: nextQualityProfileId,
-    });
-    if (!updated) {
-      return res.status(500).json({
-        error: "Failed to save Lidarr preferences",
-      });
-    }
-
-    const refreshedSummary = await lidarrClient.getArtistAddPreferenceSummary(updated);
-    res.json(refreshedSummary);
-  } catch (e) {
-    const failure = asAppError(e);
-    res.status(500).json({
-      error: "Failed to save Lidarr preferences",
-      message: failure?.message,
-    });
-  }
-});
-
-router.post("/me/password", requireAuth, requireRecentAuth(), async (req, res) => {
-  try {
-    const { currentPassword, newPassword } = req.body;
-    if (!newPassword) {
-      return res.status(400).json({ error: "New password required" });
-    }
-    const passwordValidation = requirePasswordStrength(newPassword);
-    if (!passwordValidation.valid) {
-      return res.status(400).json({ error: passwordValidation.error });
-    }
-    const u = userOps.getUserById(req.user!.id);
-    if (!u) {
-      return res.status(400).json({ error: "Current password is incorrect" });
-    }
-    if (u.hasLocalPassword && !verifyPassword(currentPassword || "", u.passwordHash)) {
-      return res.status(400).json({ error: "Current password is incorrect" });
-    }
-    const hash = hashPassword(newPassword);
-    userOps.updateUser(req.user!.id, {
-      passwordHash: hash,
-      hasLocalPassword: true,
-      subsonicPassword: newPassword,
-    });
-    deleteSessionsByUserId(req.user!.id);
-    res.json({ success: true });
-  } catch (e) {
-    const failure = asAppError(e);
-    res.status(500).json({ error: "Failed to change password", message: failure?.message });
-  }
-});
-
-router.delete("/:id", requireAuth, requireAdmin, (req, res) => {
-  try {
-    const id = parseInt(req.params.id, 10);
-    if (req.user!.id === id) {
-      return res.status(400).json({ error: "Cannot delete your own account" });
-    }
-    const existing = userOps.getUserById(id);
-    if (!existing) {
-      return res.status(404).json({ error: "User not found" });
-    }
-    deleteSessionsByUserId(id);
-    userOps.deleteUser(id);
-    dbOps.deleteUserTheme(id);
-    dbOps.deleteDiscoveryCacheByPrefix(`${getUserDiscoveryNamespace(id)}:`);
-    reconcileLocalBypassAfterUserMutation();
-    res.json({ success: true });
-  } catch (e) {
-    const failure = asAppError(e);
-    res.status(500).json({ error: "Failed to delete user", message: failure?.message });
-  }
-});
-
-registerPlexLink(router);
-registerIdentityLink(router);
-
-type UserRecord = NonNullable<ReturnType<typeof userOps.getUserById>>;
-
-export type DiscoverLayoutItem = { id: string; enabled: boolean };
-
-export type UserListResponse = (ReturnType<typeof userOps.getAllUsers>[number] & {
-  plexLink: ReturnType<typeof plexConnectionStore.getPublicStatus>;
-  plexGlobalAccount: Awaited<ReturnType<typeof resolveGlobalPlexAccount>>;
-})[];
-
-export type CreateUserResponse = Pick<
-  NonNullable<ReturnType<typeof userOps.createUser>>,
-  "id" | "username" | "role" | "permissions" | "lidarrRootFolderPath" | "lidarrQualityProfileId"
->;
-
-export type UpdateUserResponse =
-  | ReturnType<typeof userOps.updateUser>
-  | (Pick<
-      UserRecord,
-      | "id"
-      | "username"
-      | "role"
-      | "listenHistoryProvider"
-      | "listenHistoryUsername"
-      | "listenHistoryUrl"
-      | "lastfmUsername"
-      | "lidarrRootFolderPath"
-      | "lidarrQualityProfileId"
-    > & { permissions?: UserRecord["permissions"] });
-
-export type UserThemeResponse = { theme: ReturnType<typeof normalizeUserThemeDocument> | null };
-
-export type SavedUserThemeResponse = { theme: ReturnType<typeof normalizeUserThemeDocument> };
-
-export type DiscoverLayoutResponse = { layout: DiscoverLayoutItem[] | null };
-
-export type SavedDiscoverLayoutResponse = { layout: DiscoverLayoutItem[] };
-
-export type LidarrPreferencesResponse = Awaited<
-  ReturnType<typeof lidarrClient.getArtistAddPreferenceSummary>
->;
-
-export type UnconfiguredLidarrPreferencesResponse = {
-  configured: false;
-  rootFolders: [];
-  qualityProfiles: [];
-  savedDefaults: { rootFolderPath: string | null; qualityProfileId: number | null };
-  fallbacks: { rootFolderPath: null; qualityProfileId: null };
-};
-
-export default router;
+    return c.json({ success: true }, 200);
+  });

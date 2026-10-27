@@ -23,15 +23,11 @@ import {
 } from "./routes/library/handlers/downloads.ts";
 import { startPlaylistStatusBroadcasts } from "./services/playlists/playlistStatusBroadcaster.ts";
 
-import onboardingRouter from "./routes/onboarding.ts";
-import usersRouter from "./routes/users.ts";
 import artistsRouter from "./routes/artists/index.ts";
 import searchRouter from "./routes/search.ts";
 import libraryRouter from "./routes/library/index.ts";
 import discoveryRouter from "./routes/discovery/index.ts";
 import requestsRouter from "./routes/requests.ts";
-import healthRouter from "./routes/health.ts";
-import filesystemRouter from "./routes/filesystem.ts";
 import { noteDeprecatedUsage, warnAboutConfigDeprecations } from "./services/deprecatedUsage.ts";
 import playlistsRouter from "./routes/playlists/index.ts";
 import { bootstrapHonkerSchedules } from "./services/honkerDb.ts";
@@ -40,14 +36,12 @@ import {
   registerHonkerShutdownHandler,
   shutdownHonkerInfrastructure,
 } from "./services/honkerWorkerRuntime.ts";
-import authRouter from "./routes/auth.ts";
 import imageProxyRouter from "./routes/imageProxy.ts";
 import deezerRouter from "./routes/deezer.ts";
 import lidarrFeedRouter from "./routes/lidarrFeed.ts";
 import lidarrWebhookRouter from "./routes/lidarrWebhook.ts";
 import newsRouter from "./routes/news.ts";
 import subsonicRouter from "./routes/subsonic.ts";
-import scrobblingRouter from "./routes/scrobbling.ts";
 import playEventsRouter from "./routes/playEvents.ts";
 import shareLinksRouter from "./routes/shareLinks.ts";
 import { stopShareListener, syncShareListener } from "./services/shareLinks/shareListener.ts";
@@ -187,11 +181,22 @@ app.use(
   handToHono,
 );
 app.all(/^\/rest\/stream(?:\.view)?\/?$/i, handToHono);
-app.use(["/api/inbox", "/api/settings", "/api/updates"], handToHono);
+app.use(
+  [
+    "/api/inbox",
+    "/api/settings",
+    "/api/updates",
+    "/api/auth",
+    "/api/users",
+    "/api/onboarding",
+    "/api/health",
+    "/api/scrobbling",
+    "/api/filesystem",
+  ],
+  handToHono,
+);
 
 app.use(express.json({ limit: JSON_BODY_LIMIT }));
-app.use("/api/onboarding", onboardingRouter);
-app.use("/api/users", usersRouter);
 app.use("/api/search", searchRouter);
 app.use("/api/artists", artistsRouter);
 app.use("/api/library", libraryRouter);
@@ -199,8 +204,6 @@ app.use("/api/discover", discoveryRouter);
 app.use("/api/news", newsRouter);
 app.use("/api/webhooks/lidarr", lidarrWebhookRouter);
 app.use("/api/requests", requestsRouter);
-app.use("/api/health", healthRouter);
-app.use("/api/filesystem", filesystemRouter);
 app.use("/api/feeds", lidarrFeedRouter);
 app.use("/api/playlists", playlistsRouter);
 app.use("/api/weekly-flow", (req, res) => {
@@ -208,8 +211,6 @@ app.use("/api/weekly-flow", (req, res) => {
   const parsed = new URL(req.url, "http://localhost");
   res.redirect(308, `/api/playlists${parsed.pathname}${parsed.search}`);
 });
-app.use("/api/auth", authRouter);
-app.use("/api/scrobbling", scrobblingRouter);
 app.use("/api/play-events", playEventsRouter);
 app.use("/api/share-links", shareLinksRouter);
 app.use("/api/image-proxy", imageProxyRouter);

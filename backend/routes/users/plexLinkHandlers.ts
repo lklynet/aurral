@@ -1,16 +1,14 @@
-import type { Router } from "express";
+import { Hono } from "hono";
+import * as v from "valibot";
 import { db } from "../../config/db-sqlite.ts";
 import { dbOps, userOps, userIdentityOps } from "../../db/helpers/index.ts";
 import { isRecentlyAuthenticated } from "../../middleware/auth.ts";
-import {
-  requireAuth,
-  requireAdmin,
-  requireRecentAuth,
-} from "../../middleware/requirePermission.ts";
+import { requireAuth, requireAdmin, requireRecentAuth } from "../../middleware/guards.ts";
+import { validate } from "../../middleware/validate.ts";
+import type { AppEnv } from "../../middleware/requestUser.ts";
 import { plexConnectionStore } from "../../services/plex/plexConnectionStore.ts";
 import { playlistManager } from "../../services/playlists/playlistManager.ts";
 import { logger } from "../../services/logger.ts";
-import type { PlexClient, PlexHomeUser } from "../../services/plex.ts";
 import { asAppError } from "../../../lib/errors.ts";
 
 type PlexConnection = NonNullable<ReturnType<typeof plexConnectionStore.getConnection>>;
@@ -25,39 +23,6 @@ type PlexServerTokenOptions = {
 function getGlobalPlexConfig() {
   return dbOps.getSettings()?.integrations?.plex || {};
 }
-
-export type PlexConnectedResponse = {
-  connected: true;
-  linkType: string;
-  plexUsername: string | null;
-  connectedAt: number;
-};
-
-export type PlexLinkStatusResponse = ReturnType<typeof plexConnectionStore.getPublicStatus> & {
-  globalAccount: Awaited<ReturnType<typeof resolveGlobalPlexAccount>>;
-  isGlobalAccountOwner: boolean;
-};
-
-export type PlexPinResponse = {
-  pinId: Awaited<ReturnType<typeof PlexClient.generatePin>>["id"];
-  code: string;
-  clientId: string;
-  authUrl: string;
-};
-
-export type PlexCompleteResponse =
-  | {
-      pending: true;
-      connected?: undefined;
-      linkType?: undefined;
-      plexUsername?: undefined;
-      connectedAt?: undefined;
-    }
-  | (PlexConnectedResponse & { pending?: undefined });
-
-export type PlexHomeUsersResponse = {
-  users: (PlexHomeUser & { alreadyLinked: boolean })[];
-};
 
 export function isPlexLoginEnabled() {
   const plex = getGlobalPlexConfig();
@@ -190,68 +155,85 @@ export async function resolveGlobalPlexAccount() {
   }
 }
 
-export function registerPlexLink(router: Router) {
-  router.get("/me/plex-link/status", requireAuth, async (req, res) => {
+const pinBody = v.object({ forwardUrl: v.nullish(v.string()) });
+const completeBody = v.object({
+  pinId: v.optional(v.union([v.string(), v.number()])),
+  code: v.optional(v.string()),
+  clientId: v.optional(v.string()),
+});
+const managedBody = v.object({
+  plexUserId: v.nullish(v.union([v.string(), v.number()])),
+  plexUsername: v.nullish(v.string()),
+  plexUuid: v.nullish(v.string()),
+  pin: v.nullish(v.string()),
+});
+const unlinkQuery = v.object({ force: v.optional(v.string()) });
+
+export default new Hono<AppEnv>()
+  .basePath("/users")
+  .get("/me/plex-link/status", requireAuth, async (c) => {
     try {
-      const status = plexConnectionStore.getPublicStatus(req.user!.id);
+      const status = plexConnectionStore.getPublicStatus(c.var.user.id);
       const globalAccount = await resolveGlobalPlexAccount();
       const isGlobalAccountOwner =
-        req.user!.role === "admin" &&
+        c.var.user.role === "admin" &&
         (globalAccount.configuredByUserId == null ||
-          Number(globalAccount.configuredByUserId) === Number(req.user!.id));
-      res.json({ ...status, globalAccount, isGlobalAccountOwner });
+          Number(globalAccount.configuredByUserId) === Number(c.var.user.id));
+      return c.json({ ...status, globalAccount, isGlobalAccountOwner }, 200);
     } catch (e) {
       const failure = asAppError(e);
-      res.status(500).json({ error: "Failed to get Plex link status", message: failure?.message });
+      return c.json({ error: "Failed to get Plex link status", message: failure?.message }, 500);
     }
-  });
-
-  router.post("/me/plex-link/oauth/pin", requireAuth, async (req, res) => {
+  })
+  .post("/me/plex-link/oauth/pin", requireAuth, validate("json", pinBody), async (c) => {
     try {
       const { PlexClient } = await import("../../services/plex.ts");
       const clientId = PlexClient.generateClientId();
       const { id, code } = await PlexClient.generatePin(clientId);
-      const forwardUrl = req.body?.forwardUrl;
-      res.json({
-        pinId: id,
-        code,
-        clientId,
-        authUrl: PlexClient.buildAuthUrl(clientId, code, forwardUrl),
-      });
+      return c.json(
+        {
+          pinId: id,
+          code,
+          clientId,
+          authUrl: PlexClient.buildAuthUrl(clientId, code, c.req.valid("json").forwardUrl),
+        },
+        200,
+      );
     } catch (error) {
       const failure = asAppError(error);
       logger.error("users", "Plex self-link PIN generation failed:", failure?.message);
-      res.status(500).json({
-        error: "Failed to start Plex authentication",
-        message: failure?.message,
-      });
+      return c.json(
+        { error: "Failed to start Plex authentication", message: failure?.message },
+        500,
+      );
     }
-  });
-
-  router.post(
+  })
+  .post(
     "/me/plex-link/oauth/complete",
     requireAuth,
     requireRecentAuth(),
-    async (req, res) => {
+    validate("json", completeBody),
+    async (c) => {
       try {
         const { PlexClient } = await import("../../services/plex.ts");
-        const { pinId, code, clientId } = req.body || {};
+        const { pinId, code, clientId } = c.req.valid("json");
         if (!pinId || !code || !clientId) {
-          return res.status(400).json({ error: "pinId, code and clientId are required" });
+          return c.json({ error: "pinId, code and clientId are required" }, 400);
         }
         const token = await PlexClient.checkPin(pinId, code, clientId);
-        if (!token) return res.json({ pending: true });
+        if (!token) return c.json({ pending: true as const }, 200);
 
         const identity = await PlexClient.validateToken(token, clientId);
         if (!identity) {
-          return res.status(400).json({ error: "Could not verify the Plex account" });
+          return c.json({ error: "Could not verify the Plex account" }, 400);
         }
 
         const globalPlex = getGlobalPlexConfig();
         if (!globalPlex.machineIdentifier) {
-          return res.status(400).json({
-            error: "Connect and test Plex in Settings before linking your own account",
-          });
+          return c.json(
+            { error: "Connect and test Plex in Settings before linking your own account" },
+            400,
+          );
         }
         const tokenResult = await resolveServerAccessToken(
           token,
@@ -263,26 +245,27 @@ export function registerPlexLink(router: Router) {
           },
         );
         if (tokenResult.error) {
-          return res.status(400).json({ error: tokenResult.error });
+          return c.json({ error: tokenResult.error }, 400);
         }
         const serverToken = tokenResult.serverToken;
 
         const subject = identity.id != null ? String(identity.id) : null;
         if (!subject) {
-          return res.status(400).json({ error: "Plex did not return a stable account identifier" });
+          return c.json({ error: "Plex did not return a stable account identifier" }, 400);
         }
         const existingIdentity = userIdentityOps.findByProvider("plex", "plex", subject);
-        if (existingIdentity && existingIdentity.userId !== req.user!.id) {
-          return res.status(409).json({
-            error: "This Plex account is already linked to another Aurral account",
-          });
+        if (existingIdentity && existingIdentity.userId !== c.var.user.id) {
+          return c.json(
+            { error: "This Plex account is already linked to another Aurral account" },
+            409,
+          );
         }
 
-        const previousConnection = plexConnectionStore.getConnection(req.user!.id);
+        const previousConnection = plexConnectionStore.getConnection(c.var.user.id);
         let saved;
         try {
           saved = persistSelfPlexLink(
-            req.user!.id,
+            c.var.user.id,
             {
               linkType: "self",
               token: serverToken,
@@ -301,65 +284,70 @@ export function registerPlexLink(router: Router) {
         } catch (error) {
           const failure = asAppError(error);
           if (String(failure?.code || "").startsWith("SQLITE_CONSTRAINT")) {
-            return res.status(409).json({
-              error: "This Plex account is already linked to another Aurral account",
-            });
+            return c.json(
+              { error: "This Plex account is already linked to another Aurral account" },
+              409,
+            );
           }
           throw error;
         }
 
         await cleanupPlexPlaylistsIfIdentityChanged(
-          req.user!.id,
+          c.var.user.id,
           previousConnection,
           "self",
           identity.id,
         );
 
-        res.json({
-          connected: true,
-          linkType: saved.linkType,
-          plexUsername: saved.plexUsername,
-          connectedAt: saved.connectedAt,
-        });
+        return c.json(
+          {
+            connected: true as const,
+            linkType: saved.linkType,
+            plexUsername: saved.plexUsername,
+            connectedAt: saved.connectedAt,
+          },
+          200,
+        );
       } catch (error) {
         const failure = asAppError(error);
         logger.error("users", "Plex self-link completion failed:", failure?.message);
-        res.status(500).json({
-          error: "Failed to complete Plex connection",
-          message: failure?.message,
-        });
+        return c.json(
+          { error: "Failed to complete Plex connection", message: failure?.message },
+          500,
+        );
       }
     },
-  );
-
-  router.delete("/me/plex-link", requireAuth, requireRecentAuth(), async (req, res) => {
+  )
+  .delete("/me/plex-link", requireAuth, requireRecentAuth(), async (c) => {
     try {
-      const result = await disconnectUserPlex(req.user!.id);
+      const result = await disconnectUserPlex(c.var.user.id);
       if (!result.disconnected) {
-        return res.status(400).json({ error: result.error, message: result.message });
+        return c.json({ error: result.error, message: result.message }, 400);
       }
-      res.json({ connected: false });
+      return c.json({ connected: false }, 200);
     } catch (e) {
       const failure = asAppError(e);
-      res.status(500).json({ error: "Failed to disconnect Plex", message: failure?.message });
+      return c.json({ error: "Failed to disconnect Plex", message: failure?.message }, 500);
     }
-  });
-
-  router.get("/plex-link/home-users", requireAuth, requireAdmin, async (req, res) => {
+  })
+  .get("/plex-link/home-users", requireAuth, requireAdmin, async (c) => {
     try {
       const { PlexClient } = await import("../../services/plex.ts");
       const globalPlex = getGlobalPlexConfig();
       if (!globalPlex.token || !globalPlex.clientId) {
-        return res.status(400).json({ error: "Connect the global Plex account first" });
+        return c.json({ error: "Connect the global Plex account first" }, 400);
       }
       const homeUsers = await PlexClient.getHomeUsers(globalPlex.token, globalPlex.clientId);
       const linkedIds = plexConnectionStore.getAllLinkedPlexAccountIds();
-      res.json({
-        users: homeUsers.map((u) => ({
-          ...u,
-          alreadyLinked: linkedIds.has(String(u.id)),
-        })),
-      });
+      return c.json(
+        {
+          users: homeUsers.map((u) => ({
+            ...u,
+            alreadyLinked: linkedIds.has(String(u.id)),
+          })),
+        },
+        200,
+      );
     } catch (error) {
       const failure = asAppError(error);
       const status = failure?.response?.status;
@@ -368,137 +356,155 @@ export function registerPlexLink(router: Router) {
         "Listing Plex Home users failed:",
         status ? `${status} ${JSON.stringify(failure?.response?.data)}` : failure?.message,
       );
-      res.status(status === 401 ? 401 : 500).json({
-        error: "Failed to list Plex Home users",
-        message:
-          status === 401
-            ? "Plex rejected the admin token (401). Reconnect Plex in Settings."
-            : failure?.message,
-      });
-    }
-  });
-
-  router.post("/:id/plex-link/managed", requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const id = parseInt(req.params.id, 10);
-      const target = userOps.getUserById(id);
-      if (!target) return res.status(404).json({ error: "User not found" });
-
-      const { plexUserId, plexUsername, plexUuid, pin } = req.body || {};
-      if (plexUserId == null) {
-        return res.status(400).json({ error: "plexUserId is required" });
-      }
-
-      const globalPlex = getGlobalPlexConfig();
-      if (!globalPlex.token || !globalPlex.clientId) {
-        return res.status(400).json({ error: "Connect the global Plex account first" });
-      }
-
-      const { PlexClient } = await import("../../services/plex.ts");
-      const existingManaged = plexConnectionStore.getConnection(id);
-      const targetClientId =
-        existingManaged?.linkType === "managed" &&
-        existingManaged.clientId &&
-        existingManaged.clientId !== globalPlex.clientId
-          ? existingManaged.clientId
-          : PlexClient.generateClientId();
-      const token = await PlexClient.switchHomeUser(
-        plexUserId,
-        globalPlex.token,
-        globalPlex.clientId,
-        targetClientId,
-        pin || undefined,
-      );
-      if (!token) {
-        return res.status(502).json({ error: "Plex did not return a token for that user" });
-      }
-
-      const tokenResult = await resolveServerAccessToken(
-        token,
-        targetClientId,
-        globalPlex.machineIdentifier,
+      return c.json(
         {
-          mismatchErrorMessage:
-            "This Plex Home user does not have access to the configured Plex server",
-          tolerateLookupFailure: true,
-          warnContext: `managed user ${plexUserId}`,
+          error: "Failed to list Plex Home users",
+          message:
+            status === 401
+              ? "Plex rejected the admin token (401). Reconnect Plex in Settings."
+              : failure?.message,
         },
+        status === 401 ? 401 : 500,
       );
-      if (tokenResult.error) {
-        return res.status(400).json({ error: tokenResult.error });
-      }
-      const serverToken = tokenResult.serverToken;
-
-      const previousConnection = plexConnectionStore.getConnection(id);
-
-      const saved = plexConnectionStore.saveConnection(id, {
-        linkType: "managed",
-        token: serverToken,
-        clientId: targetClientId,
-        plexAccountId: plexUserId,
-        plexUuid: plexUuid || null,
-        plexUsername: plexUsername || null,
-        linkedByAdminId: req.user!.id,
-      });
-      await cleanupPlexPlaylistsIfIdentityChanged(id, previousConnection, "managed", plexUserId);
-      res.json({
-        connected: true,
-        linkType: saved.linkType,
-        plexUsername: saved.plexUsername,
-        connectedAt: saved.connectedAt,
-      });
-    } catch (error) {
-      const failure = asAppError(error);
-      const status = failure?.response?.status;
-      logger.error(
-        "users",
-        "Managed Plex user link failed:",
-        status ? `${status} ${JSON.stringify(failure?.response?.data)}` : failure?.message,
-      );
-      res.status(status === 401 ? 401 : 500).json({
-        error: "Failed to link managed Plex user",
-        message: failure?.message,
-      });
     }
-  });
+  })
+  .post(
+    "/:id/plex-link/managed",
+    requireAuth,
+    requireAdmin,
+    validate("json", managedBody),
+    async (c) => {
+      try {
+        const id = parseInt(c.req.param("id"), 10);
+        const target = userOps.getUserById(id);
+        if (!target) return c.json({ error: "User not found" }, 404);
 
-  router.delete("/:id/plex-link", requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const id = parseInt(req.params.id, 10);
-      const target = userOps.getUserById(id);
-      if (!target) return res.status(404).json({ error: "User not found" });
-      const force = String(req.query?.force || "").toLowerCase() === "true";
-      if (force && !isRecentlyAuthenticated(req.headers.authorization)) {
-        return res.status(401).json({
-          error: "reauth_required",
-          message: "Please confirm your credentials to continue",
-        });
-      }
-      const result = await disconnectUserPlex(id, { force, context: "on admin unlink" });
-      if (!result.disconnected) {
-        return res.status(409).json({
-          error: result.error,
-          message: result.message,
-          requiresForce: true,
-          username: target.username,
-        });
-      }
-      if (result.forced) {
-        logger.warn(
-          "security-audit",
-          "Administrator forcibly removed a user's final sign-in method",
+        const { plexUserId, plexUsername, plexUuid, pin } = c.req.valid("json");
+        if (plexUserId == null) {
+          return c.json({ error: "plexUserId is required" }, 400);
+        }
+
+        const globalPlex = getGlobalPlexConfig();
+        if (!globalPlex.token || !globalPlex.clientId) {
+          return c.json({ error: "Connect the global Plex account first" }, 400);
+        }
+
+        const { PlexClient } = await import("../../services/plex.ts");
+        const existingManaged = plexConnectionStore.getConnection(id);
+        const targetClientId =
+          existingManaged?.linkType === "managed" &&
+          existingManaged.clientId &&
+          existingManaged.clientId !== globalPlex.clientId
+            ? existingManaged.clientId
+            : PlexClient.generateClientId();
+        const token = await PlexClient.switchHomeUser(
+          plexUserId,
+          globalPlex.token,
+          globalPlex.clientId,
+          targetClientId,
+          pin || undefined,
+        );
+        if (!token) {
+          return c.json({ error: "Plex did not return a token for that user" }, 502);
+        }
+
+        const tokenResult = await resolveServerAccessToken(
+          token,
+          targetClientId,
+          globalPlex.machineIdentifier,
           {
-            administratorUserId: req.user!.id,
-            targetUserId: id,
-            targetUsername: target.username,
-            provider: "plex",
+            mismatchErrorMessage:
+              "This Plex Home user does not have access to the configured Plex server",
+            tolerateLookupFailure: true,
+            warnContext: `managed user ${plexUserId}`,
           },
         );
+        if (tokenResult.error) {
+          return c.json({ error: tokenResult.error }, 400);
+        }
+        const serverToken = tokenResult.serverToken;
+
+        const previousConnection = plexConnectionStore.getConnection(id);
+
+        const saved = plexConnectionStore.saveConnection(id, {
+          linkType: "managed",
+          token: serverToken,
+          clientId: targetClientId,
+          plexAccountId: plexUserId,
+          plexUuid: plexUuid || null,
+          plexUsername: plexUsername || null,
+          linkedByAdminId: c.var.user.id,
+        });
+        await cleanupPlexPlaylistsIfIdentityChanged(id, previousConnection, "managed", plexUserId);
+        return c.json(
+          {
+            connected: true as const,
+            linkType: saved.linkType,
+            plexUsername: saved.plexUsername,
+            connectedAt: saved.connectedAt,
+          },
+          200,
+        );
+      } catch (error) {
+        const failure = asAppError(error);
+        const status = failure?.response?.status;
+        logger.error(
+          "users",
+          "Managed Plex user link failed:",
+          status ? `${status} ${JSON.stringify(failure?.response?.data)}` : failure?.message,
+        );
+        return c.json(
+          { error: "Failed to link managed Plex user", message: failure?.message },
+          status === 401 ? 401 : 500,
+        );
       }
-      res.json({ connected: false, forced: result.forced });
-    } catch (e) {
-      const failure = asAppError(e);
-      res.status(500).json({ error: "Failed to unlink Plex", message: failure?.message });
-    }
-  });
-}
+    },
+  )
+  .delete(
+    "/:id/plex-link",
+    requireAuth,
+    requireAdmin,
+    validate("query", unlinkQuery),
+    async (c) => {
+      try {
+        const id = parseInt(c.req.param("id"), 10);
+        const target = userOps.getUserById(id);
+        if (!target) return c.json({ error: "User not found" }, 404);
+        const force = (c.req.valid("query").force || "").toLowerCase() === "true";
+        if (force && !isRecentlyAuthenticated(c.req.header("authorization"))) {
+          return c.json(
+            { error: "reauth_required", message: "Please confirm your credentials to continue" },
+            401,
+          );
+        }
+        const result = await disconnectUserPlex(id, { force, context: "on admin unlink" });
+        if (!result.disconnected) {
+          return c.json(
+            {
+              error: result.error,
+              message: result.message,
+              requiresForce: true,
+              username: target.username,
+            },
+            409,
+          );
+        }
+        if (result.forced) {
+          logger.warn(
+            "security-audit",
+            "Administrator forcibly removed a user's final sign-in method",
+            {
+              administratorUserId: c.var.user.id,
+              targetUserId: id,
+              targetUsername: target.username,
+              provider: "plex",
+            },
+          );
+        }
+        return c.json({ connected: false, forced: result.forced }, 200);
+      } catch (e) {
+        const failure = asAppError(e);
+        return c.json({ error: "Failed to unlink Plex", message: failure?.message }, 500);
+      }
+    },
+  );

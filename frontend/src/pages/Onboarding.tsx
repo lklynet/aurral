@@ -1,11 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import {
-  completeOnboarding,
-  getLidarrMetadataProfilesOnboarding,
-  getLidarrProfilesOnboarding,
-  testLidarrOnboarding,
-} from "../utils/api/endpoints/auth.ts";
+import { parseResponse } from "hono/client";
+import { onboardingClient } from "../utils/api/clients/onboarding.ts";
+import { invalidateBootstrapCache } from "../utils/appHealth.ts";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
@@ -138,10 +135,11 @@ function Onboarding() {
     setTestingLidarr(true);
     setError("");
     try {
-      await testLidarrOnboarding(testUrl, testApiKey);
+      const json = { url: testUrl, apiKey: testApiKey };
+      await parseResponse(onboardingClient.lidarr.test.$post({ json }));
       const [profiles, metadataProfiles] = await Promise.all([
-        getLidarrProfilesOnboarding(testUrl, testApiKey),
-        getLidarrMetadataProfilesOnboarding(testUrl, testApiKey),
+        parseResponse(onboardingClient.lidarr.profiles.$post({ json })),
+        parseResponse(onboardingClient.lidarr["metadata-profiles"].$post({ json })),
       ]);
       if (testVersion !== lidarrTestVersionRef.current) return;
       setLidarrQualityProfileId(profiles?.[0]?.id ?? null);
@@ -165,22 +163,25 @@ function Onboarding() {
     setSubmitting(true);
     setError("");
     try {
-      await completeOnboarding(
-        buildOnboardingPayload({
-          authUser,
-          authPassword,
-          localNetworkBypass,
-          downloadFolderPath,
-          lidarr: skipLidarr
-            ? null
-            : {
-                url: lidarrUrl,
-                apiKey: lidarrApiKey,
-                qualityProfileId: lidarrQualityProfileId,
-                metadataProfileId: lidarrMetadataProfileId,
-              },
+      await parseResponse(
+        onboardingClient.complete.$post({
+          json: buildOnboardingPayload({
+            authUser,
+            authPassword,
+            localNetworkBypass,
+            downloadFolderPath,
+            lidarr: skipLidarr
+              ? null
+              : {
+                  url: lidarrUrl,
+                  apiKey: lidarrApiKey,
+                  qualityProfileId: lidarrQualityProfileId,
+                  metadataProfileId: lidarrMetadataProfileId,
+                },
+          }),
         }),
       );
+      invalidateBootstrapCache();
       await refreshAuth();
       showSuccess("Setup complete. Sign in.");
     } catch (e) {

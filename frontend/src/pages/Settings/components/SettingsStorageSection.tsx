@@ -6,7 +6,7 @@ import { StorageHealthDashboard, StorageHealthSummary } from "./StorageHealthDas
 import { refreshStorageHealth, useStorageHealth } from "../../../hooks/useStorageHealth";
 import { SettingsArrFieldSet } from "./arr/SettingsArrLayout";
 import { runStorageHealthAction } from "../utils/runStorageHealthAction";
-import type { HealthResponse } from "../../../../../backend/routes/health.ts";
+import type { HealthResponse } from "../../../utils/appHealth.ts";
 import type { SettingsState } from "../utils";
 import { readApiError } from "../utils/apiError.ts";
 import type { useToast } from "../../../contexts/ToastContext";
@@ -61,20 +61,22 @@ function DiskSpaceTable({ entries = [] }: { entries?: DiskSpaceEntry[] }) {
         </thead>
         <tbody>
           {entries.map((entry) => {
-            const usedPercent = Number(entry.usedPercent || 0);
+            const usage = "usedPercent" in entry && entry.available ? entry : null;
+            const statTarget = "statTarget" in entry ? entry.statTarget : null;
+            const usedPercent = Number(usage?.usedPercent || 0);
             return (
               <tr key={`${entry.role || "disk"}-${entry.location}`}>
                 <td>
                   <code className="arr-table__path">{entry.location}</code>
-                  {entry.statTarget && entry.statTarget !== entry.location ? (
-                    <span className="arr-table__subtle">Stats from {entry.statTarget}</span>
+                  {statTarget && statTarget !== entry.location ? (
+                    <span className="arr-table__subtle">Stats from {statTarget}</span>
                   ) : null}
                 </td>
                 <td>{entry.role || "—"}</td>
-                <td>{entry.available ? formatBytes(entry.freeBytes) : "—"}</td>
-                <td>{entry.available ? formatBytes(entry.totalBytes) : "—"}</td>
+                <td>{usage ? formatBytes(usage.freeBytes) : "—"}</td>
+                <td>{usage ? formatBytes(usage.totalBytes) : "—"}</td>
                 <td>
-                  {entry.available ? (
+                  {usage ? (
                     <div className="arr-disk-meter">
                       <div className="arr-disk-meter__bar" aria-hidden>
                         <span
@@ -85,7 +87,9 @@ function DiskSpaceTable({ entries = [] }: { entries?: DiskSpaceEntry[] }) {
                       <span className="arr-disk-meter__label">{usedPercent}%</span>
                     </div>
                   ) : (
-                    <span className="arr-table__subtle">{entry.error || "Unavailable"}</span>
+                    <span className="arr-table__subtle">
+                      {("error" in entry && entry.error) || "Unavailable"}
+                    </span>
                   )}
                 </td>
               </tr>

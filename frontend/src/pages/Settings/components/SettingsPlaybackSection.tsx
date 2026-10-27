@@ -3,13 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { parseResponse, type InferResponseType } from "hono/client";
 import { playbackSettingsClient } from "../../../utils/api/clients/playbackSettings.ts";
-import {
-  getLastfmScrobbleLink,
-  getScrobbleStatus,
-  linkKoito,
-  linkListenBrainz,
-  unlinkScrobbleProvider,
-} from "../../../utils/api/endpoints/auth.ts";
+import { scrobblingClient } from "../../../utils/api/clients/scrobbling.ts";
 import { getConfiguredStatus } from "../utils/integrationStatus";
 import { queryKeys } from "../../../queryClient.ts";
 
@@ -88,7 +82,7 @@ export function SettingsPlaybackSection({
   const queryClient = useQueryClient();
   const { data: scrobbleStatus = null } = useQuery({
     queryKey: queryKeys.scrobbleStatus,
-    queryFn: ({ signal }) => getScrobbleStatus({ signal }),
+    queryFn: ({ signal }) => parseResponse(scrobblingClient.status.$get({}, { init: { signal } })),
   });
   const [listenBrainzToken, setListenBrainzToken] = useState("");
   const [koitoToken, setKoitoToken] = useState("");
@@ -431,7 +425,7 @@ export function SettingsPlaybackSection({
     try {
       if (lastfmPollRef.current) window.clearInterval(lastfmPollRef.current);
       lastfmPollRef.current = null;
-      const result = await getLastfmScrobbleLink();
+      const result = await parseResponse(scrobblingClient.lastfm.link.$get());
       if (!result.authorizeUrl) {
         showError("Could not start Last.fm linking.");
         return;
@@ -461,7 +455,9 @@ export function SettingsPlaybackSection({
 
   const handleListenBrainzLink = async () => {
     try {
-      await linkListenBrainz(listenBrainzToken);
+      await parseResponse(
+        scrobblingClient.listenbrainz.link.$put({ json: { token: listenBrainzToken } }),
+      );
       setListenBrainzToken("");
       refreshScrobbleStatus();
       showSuccess("ListenBrainz connected.");
@@ -473,7 +469,9 @@ export function SettingsPlaybackSection({
 
   const handleKoitoLink = async () => {
     try {
-      await linkKoito(koitoToken, koitoUrl);
+      await parseResponse(
+        scrobblingClient.koito.link.$put({ json: { token: koitoToken, url: koitoUrl } }),
+      );
       setKoitoToken("");
       refreshScrobbleStatus();
       showSuccess("Koito connected.");
@@ -485,7 +483,7 @@ export function SettingsPlaybackSection({
 
   const handleUnlink = async (provider: ScrobbleProvider) => {
     try {
-      await unlinkScrobbleProvider(provider);
+      await scrobblingClient[provider].link.$delete();
       setActiveModal(null);
       refreshScrobbleStatus();
       showSuccess(

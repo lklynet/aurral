@@ -3,7 +3,7 @@ import { useMutation, useQueries, useQuery } from "@tanstack/react-query";
 import api from "../../../utils/api/core.ts";
 import type { useToast } from "../../../contexts/ToastContext";
 import type { useSettingsTabs } from "./useSettingsTabs";
-import { checkHealth, fetchHealth } from "../../../utils/api/endpoints/auth.ts";
+import { fetchHealth, refetchHealth } from "../../../utils/appHealth.ts";
 import { parseResponse } from "hono/client";
 import { lidarrCredentialParams } from "../../../utils/api/core.ts";
 import { settingsClient } from "../../../utils/api/clients/settings.ts";
@@ -335,7 +335,7 @@ export function useSettingsData(
   });
   const healthQuery = useQuery({
     queryKey: queryKeys.appHealth,
-    queryFn: ({ signal }) => fetchHealth({ signal }),
+    queryFn: ({ signal }) => fetchHealth(signal),
     staleTime: 30_000,
   });
   const health = healthQuery.data ?? null;
@@ -387,7 +387,7 @@ export function useSettingsData(
 
   const refreshHealth = useCallback(async () => {
     try {
-      return await checkHealth({ force: true });
+      return await refetchHealth();
     } catch {
       return null;
     }

@@ -3,7 +3,8 @@ import {
   lookupArtistsInLibraryBatch,
   readLibraryLookupCache,
 } from "../utils/api/endpoints/library.ts";
-import { getMyDiscoverLayout, updateMyDiscoverLayout } from "../utils/api/endpoints/auth.ts";
+import { parseResponse } from "hono/client";
+import { usersClient } from "../utils/api/clients/users.ts";
 
 import { Sparkles, LayoutTemplate } from "../components/icons";
 import { DotLoader } from "../components/DotLoader";
@@ -112,8 +113,9 @@ function DiscoverPage() {
     normalizeLayout: normalizeDiscoverLayout,
     readStoredLayout: readStoredDiscoverLayout,
     writeStoredLayout: writeStoredDiscoverLayout,
-    loadServerLayout: getMyDiscoverLayout,
-    saveServerLayout: updateMyDiscoverLayout,
+    loadServerLayout: () => parseResponse(usersClient.me["discover-layout"].$get()),
+    saveServerLayout: (layout) =>
+      parseResponse(usersClient.me["discover-layout"].$patch({ json: { layout } })),
     showSuccess,
     showError,
   });

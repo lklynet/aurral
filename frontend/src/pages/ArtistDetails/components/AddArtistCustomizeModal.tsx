@@ -3,7 +3,13 @@ import { DotLoader } from "../../../components/DotLoader";
 import { useModalDialog } from "../../../hooks/useModalDialog.ts";
 import AddActionButton from "../../../components/AddActionButton";
 import { MONITOR_OPTIONS } from "../../../utils/aurralMonitoring";
-import type { LidarrPreferencesResponse } from "../../../../../backend/routes/users.ts";
+import type { InferResponseType } from "hono/client";
+import type { usersClient } from "../../../utils/api/clients/users.ts";
+
+type LidarrPreferencesResponse = InferResponseType<
+  (typeof usersClient.me)["lidarr-preferences"]["$get"],
+  200
+>;
 
 export function AddArtistCustomizeModal({
   show,

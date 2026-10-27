@@ -1,8 +1,4 @@
 import crypto from "crypto";
-import type { Request, Response } from "express";
-import { createSession } from "../config/session-helpers.ts";
-import { userOps, userIdentityOps } from "../db/helpers/index.ts";
-import { isPlexLoginEnabled } from "../routes/users/plexLinkHandlers.ts";
 
 const STATE_TTL_MS = 10 * 60 * 1000;
 const TRANSACTION_COOKIE = "aurral_plex_login_transaction";
@@ -21,8 +17,8 @@ function prunePendingLogins(now = Date.now()) {
   }
 }
 
-function getTransactionCookie(req: Request) {
-  const cookies = String(req.headers?.cookie || "").split(";");
+export function readPlexLoginTransaction(cookieHeader: string | undefined) {
+  const cookies = String(cookieHeader || "").split(";");
   for (const cookie of cookies) {
     const [name, ...parts] = cookie.trim().split("=");
     if (name !== TRANSACTION_COOKIE) continue;
@@ -35,8 +31,7 @@ function getTransactionCookie(req: Request) {
   return "";
 }
 
-function setTransactionCookie(req: Request, res: Response, value: string, maxAge: number) {
-  const secure = req.secure || req.protocol === "https";
+function transactionCookie(value: string, secure: boolean, maxAge: number) {
   const attributes = [
     `${TRANSACTION_COOKIE}=${encodeURIComponent(value)}`,
     "Path=/",
@@ -44,15 +39,13 @@ function setTransactionCookie(req: Request, res: Response, value: string, maxAge
     "SameSite=Lax",
   ];
   if (secure) attributes.push("Secure");
-  if (maxAge != null) attributes.push(`Max-Age=${maxAge}`);
-  res.append("Set-Cookie", attributes.join("; "));
+  attributes.push(`Max-Age=${maxAge}`);
+  return attributes.join("; ");
 }
 
-function clearTransactionCookie(req: Request, res: Response) {
-  setTransactionCookie(req, res, "", 0);
-}
+export const clearedPlexLoginCookie = (secure: boolean) => transactionCookie("", secure, 0);
 
-function isSafeForwardUrl(forwardUrl: unknown) {
+export function isSafeForwardUrl(forwardUrl: unknown) {
   const value = String(forwardUrl || "");
   if (!value.startsWith("/")) return false;
   if (value.startsWith("//")) return false;
@@ -65,17 +58,7 @@ function isSafeForwardUrl(forwardUrl: unknown) {
   }
 }
 
-export async function startPlexLogin(req: Request, res: Response) {
-  if (!isPlexLoginEnabled()) {
-    res.status(404).json({ error: "Plex login is not enabled" });
-    return;
-  }
-  const forwardUrl = req.body?.forwardUrl;
-  if (forwardUrl != null && !isSafeForwardUrl(forwardUrl)) {
-    res.status(400).json({ error: "Invalid forward URL" });
-    return;
-  }
-
+export async function startPlexLogin(forwardUrl: string | null | undefined, secure: boolean) {
   const { PlexClient } = await import("./plex.ts");
   const clientId = PlexClient.generateClientId();
   const { id: pinId, code } = await PlexClient.generatePin(clientId);
@@ -89,81 +72,18 @@ export async function startPlexLogin(req: Request, res: Response) {
     expiresAt: Date.now() + STATE_TTL_MS,
   });
 
-  setTransactionCookie(req, res, transactionId, Math.floor(STATE_TTL_MS / 1000));
-  res.json({ authUrl: PlexClient.buildAuthUrl(clientId, code, forwardUrl) });
+  return {
+    authUrl: PlexClient.buildAuthUrl(clientId, code, forwardUrl),
+    cookie: transactionCookie(transactionId, secure, Math.floor(STATE_TTL_MS / 1000)),
+  };
 }
 
-export async function completePlexLogin(req: Request, res: Response) {
-  if (!isPlexLoginEnabled()) {
-    res.status(404).json({ error: "Plex login is not enabled" });
-    return;
-  }
-
-  const transactionId = getTransactionCookie(req);
+export function getPendingPlexLogin(transactionId: string) {
   prunePendingLogins();
   const pending = transactionId ? pendingLogins.get(transactionId) : null;
-  if (!pending || pending.expiresAt <= Date.now()) {
-    res.status(400).json({ error: "Plex login session expired" });
-    return;
-  }
+  return pending && pending.expiresAt > Date.now() ? pending : null;
+}
 
-  const { PlexClient } = await import("./plex.ts");
-  const token = await PlexClient.checkPin(pending.pinId, pending.code, pending.clientId);
-  if (!token) {
-    res.json({ pending: true });
-    return;
-  }
-
-  let identity;
-  try {
-    identity = await PlexClient.validateToken(token, pending.clientId, {
-      throwOnTransient: true,
-    });
-  } catch {
-    res.status(503).json({
-      error: "Plex account validation is temporarily unavailable",
-      retryable: true,
-    });
-    return;
-  }
-  const subject = identity?.id != null ? String(identity.id) : null;
-  if (!subject) {
-    pendingLogins.delete(transactionId);
-    clearTransactionCookie(req, res);
-    res.status(400).json({ error: "Could not verify the Plex account" });
-    return;
-  }
-
+export function endPlexLogin(transactionId: string) {
   pendingLogins.delete(transactionId);
-  clearTransactionCookie(req, res);
-
-  const linked = userIdentityOps.findByProvider("plex", "plex", subject);
-  if (!linked) {
-    res.status(403).json({
-      error: "not_linked",
-      message: "Plex account not linked. Sign in another way and link Plex in Profile.",
-    });
-    return;
-  }
-  const user = userOps.getUserById(linked.userId);
-  if (!user) {
-    res.status(500).json({ error: "Linked Plex identity has no matching user" });
-    return;
-  }
-  if (user.status !== "active") {
-    res.status(403).json({ error: "This account has been suspended or disabled" });
-    return;
-  }
-
-  const session = createSession(user.id, req.ip || null, req.headers["user-agent"] || null);
-  res.json({
-    token: session.token,
-    expiresAt: session.expiresAt,
-    user: {
-      id: user.id,
-      username: user.username,
-      role: user.role,
-      permissions: user.permissions,
-    },
-  });
 }

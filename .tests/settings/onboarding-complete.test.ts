@@ -1,9 +1,8 @@
-import { listeningAddress } from "../helpers/backendTestHarness.ts";
 import assert from "node:assert/strict";
 import { test, beforeEach, afterAll } from "vite-plus/test";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import express from "express";
+import { signedInAs } from "../helpers/honoApp.ts";
 import {
   cleanupIsolatedState,
   createMockHttpServer,
@@ -11,13 +10,12 @@ import {
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.ts";
 
-const [isolatedState, { db }, { dbOps, userOps }, { default: onboardingRouter }] =
-  await setupIsolatedBackend(
-    "onboarding-complete",
-    () => import("../../backend/config/db-sqlite.ts"),
-    () => import("../../backend/db/helpers/index.ts"),
-    () => import("../../backend/routes/onboarding.ts"),
-  );
+const [isolatedState, { db }, { dbOps, userOps }, { api }] = await setupIsolatedBackend(
+  "onboarding-complete",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/routes/api.ts"),
+);
 
 const lidarrRequests: (string | undefined)[] = [];
 const lidarr = await createMockHttpServer((req, res) => {
@@ -34,23 +32,12 @@ const lidarr = await createMockHttpServer((req, res) => {
   res.end("[]");
 });
 
-const app = express();
-app.use(express.json());
-app.use("/api/onboarding", onboardingRouter);
-const server = await new Promise<
-  import("node:http").Server<
-    typeof import("node:http").IncomingMessage,
-    typeof import("node:http").ServerResponse
-  >
->((resolve) => {
-  const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
-});
-const baseUrl = `http://127.0.0.1:${listeningAddress(server).port}`;
+const app = signedInAs(undefined).route("/", api);
 
 const admin = { authUser: "owner", authPassword: "Correct-Horse-42!" };
 
 async function complete(body: unknown) {
-  const response = await fetch(`${baseUrl}/api/onboarding/complete`, {
+  const response = await app.request("/onboarding/complete", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
@@ -65,7 +52,6 @@ beforeEach(() => {
 });
 
 afterAll(async () => {
-  await new Promise<void>((resolve) => server.close(() => resolve()));
   await lidarr.close();
   db.close();
   await cleanupIsolatedState(isolatedState);

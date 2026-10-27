@@ -1,11 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import {
-  getMyListeningHistory,
-  getMyLidarrPreferences,
-  updateMyListeningHistory,
-  updateMyLidarrPreferences,
-} from "../../../utils/api/endpoints/auth.ts";
+import { parseResponse, type InferRequestType } from "hono/client";
+import { usersClient } from "../../../utils/api/clients/users.ts";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
 import type { useAuth } from "../../../contexts/AuthContext";
 import type { lidarrClient } from "../../../../../backend/services/lidarrClient.ts";
@@ -21,6 +17,9 @@ type AccountDraft = {
   rootFolderPath: string;
   qualityProfileId: string;
 };
+type LidarrPreferencesUpdate = InferRequestType<
+  (typeof usersClient.me)["lidarr-preferences"]["$patch"]
+>["json"];
 type ListenHistoryPayload = {
   listenHistoryProvider: string;
   listenHistoryUsername: string | null;
@@ -81,23 +80,32 @@ export function useAccountSettings(authUser: AuthUser, showError: (message: stri
   const lidarrQueryKey = queryKeys.lidarrPreferences(authUser?.id);
   const historyQuery = useQuery({
     queryKey: historyQueryKey,
-    queryFn: ({ signal }) => getMyListeningHistory({ signal }),
+    queryFn: ({ signal }) =>
+      parseResponse(usersClient.me["listening-history"].$get({}, { init: { signal } })),
     enabled: authUser?.id != null,
     staleTime: 30_000,
   });
   const lidarrQuery = useQuery({
     queryKey: lidarrQueryKey,
-    queryFn: ({ signal }) => getMyLidarrPreferences({ signal }),
+    queryFn: ({ signal }) =>
+      parseResponse(usersClient.me["lidarr-preferences"].$get({}, { init: { signal } })),
     enabled: authUser?.id != null,
     staleTime: 30_000,
   });
   const loading = historyQuery.isPending || lidarrQuery.isPending;
   const { mutateAsync: saveHistory } = useMutation({
-    mutationFn: (payload: ListenHistoryPayload) => updateMyListeningHistory(authUser!.id, payload),
+    mutationFn: (json: ListenHistoryPayload) =>
+      parseResponse(
+        usersClient[":id"].$patch({
+          param: { id: String(authUser?.id) },
+          json,
+        }),
+      ),
     onSuccess: (data) => queryClient.setQueryData(historyQueryKey, data),
   });
   const { mutateAsync: saveLidarr } = useMutation({
-    mutationFn: updateMyLidarrPreferences,
+    mutationFn: (json: LidarrPreferencesUpdate) =>
+      parseResponse(usersClient.me["lidarr-preferences"].$patch({ json })),
     onSuccess: (data) => queryClient.setQueryData(lidarrQueryKey, data),
   });
 

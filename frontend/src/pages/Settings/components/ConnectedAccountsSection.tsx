@@ -1,19 +1,18 @@
 import { useEffect, useState } from "react";
-import type { UserIdentitiesResponse } from "../../../../../backend/routes/users/identityLinkHandlers.ts";
-import {
-  getMyIdentities,
-  startGoogleLink,
-  startOidcLink,
-  unlinkMyIdentity,
-} from "../../../utils/api/endpoints/auth.ts";
+import { parseResponse, type InferResponseType } from "hono/client";
+import { authClient } from "../../../utils/api/clients/auth.ts";
+import { usersClient } from "../../../utils/api/clients/users.ts";
 import { isReauthRequiredError, promptReauth } from "../../../utils/reauth.ts";
 import { useAuth } from "../../../contexts/AuthContext";
 import type { useToast } from "../../../contexts/ToastContext";
 import { readApiError } from "../utils/apiError.ts";
 
 type Toast = ReturnType<typeof useToast>["showSuccess"];
-type Identity = UserIdentitiesResponse["identities"][number];
-type StartLink = typeof startGoogleLink;
+type Identity = InferResponseType<typeof usersClient.me.identities.$get, 200>["identities"][number];
+type StartLink = () => Promise<{ authUrl: string }>;
+
+const unlinkIdentity = (id: number) =>
+  parseResponse(usersClient.me.identities[":id"].$delete({ param: { id: String(id) } }));
 
 const PROVIDER_LABELS: Partial<Record<string, string>> = {
   oidc: "Single sign-on",
@@ -31,7 +30,7 @@ export function ConnectedAccountsSection({
   className?: string;
 }) {
   const { bootstrap } = useAuth();
-  const [identities, setIdentities] = useState<UserIdentitiesResponse["identities"]>([]);
+  const [identities, setIdentities] = useState<Identity[]>([]);
   const [hasLocalPassword, setHasLocalPassword] = useState(true);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -39,7 +38,7 @@ export function ConnectedAccountsSection({
 
   const load = () => {
     setLoading(true);
-    return getMyIdentities()
+    return parseResponse(usersClient.me.identities.$get())
       .then((data) => {
         setIdentities(data?.identities || []);
         setHasLocalPassword(data?.hasLocalPassword !== false);
@@ -56,7 +55,7 @@ export function ConnectedAccountsSection({
   const handleUnlink = async (identity: Identity) => {
     setUnlinkingId(identity.id);
     try {
-      await unlinkMyIdentity(identity.id);
+      await unlinkIdentity(identity.id);
       showSuccess?.(
         `Disconnected ${PROVIDER_LABELS[identity.providerType] || identity.providerType}.`,
       );
@@ -66,7 +65,7 @@ export function ConnectedAccountsSection({
         const shouldRetry = await promptReauth();
         if (shouldRetry) {
           try {
-            await unlinkMyIdentity(identity.id);
+            await unlinkIdentity(identity.id);
             showSuccess?.(
               `Disconnected ${PROVIDER_LABELS[identity.providerType] || identity.providerType}.`,
             );
@@ -146,7 +145,12 @@ export function ConnectedAccountsSection({
           <button
             type="button"
             className="btn btn-secondary"
-            onClick={() => connectProvider(startOidcLink, "single sign-on")}
+            onClick={() =>
+              connectProvider(
+                () => parseResponse(authClient.oidc.link.start.$post()),
+                "single sign-on",
+              )
+            }
           >
             Connect single sign-on
           </button>
@@ -159,7 +163,9 @@ export function ConnectedAccountsSection({
         <button
           type="button"
           className="btn btn-secondary"
-          onClick={() => connectProvider(startGoogleLink, "Google")}
+          onClick={() =>
+            connectProvider(() => parseResponse(authClient.google.link.start.$post()), "Google")
+          }
         >
           Connect Google
         </button>

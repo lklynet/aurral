@@ -15,7 +15,7 @@ const [
   { dbOps, userOps },
   { hashPassword },
   { authMiddleware },
-  { default: authRouter },
+  { handToHono },
   { default: imageProxyRouter },
 ] = await setupIsolatedBackend(
   "image-cache",
@@ -23,7 +23,7 @@ const [
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/middleware/passwordHash.ts"),
   () => import("../../backend/middleware/auth.ts"),
-  () => import("../../backend/routes/auth.ts"),
+  () => import("../../backend/routes/shared/expressHandoff.ts"),
   () => import("../../backend/routes/imageProxy.ts"),
 );
 
@@ -69,9 +69,9 @@ function cacheImage(src: string, { authenticated = true }: { authenticated?: boo
 
 beforeAll(async () => {
   const app = express();
-  app.use(express.json());
   app.use(authMiddleware);
-  app.use("/api/auth", authRouter);
+  app.use("/api/auth", handToHono);
+  app.use(express.json());
   app.use("/api/image-proxy", imageProxyRouter);
   server = await new Promise<
     import("node:http").Server<

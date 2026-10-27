@@ -1,4 +1,3 @@
-import type { Request, Response } from "express";
 import * as v from "valibot";
 import { validateExternalUrl } from "../../middleware/urlValidator.ts";
 import { NavidromeClient } from "../../services/navidrome.ts";
@@ -29,14 +28,4 @@ export async function navidromeConnectionError(
   } catch (error) {
     return { error: "Connection failed", message: asAppError(error)?.message };
   }
-}
-
-export async function testNavidromeConnection(req: Request, res: Response) {
-  const failure = await navidromeConnectionError({
-    url: String(req.body?.url || ""),
-    username: String(req.body?.username || ""),
-    password: req.body?.password ?? "",
-  });
-  if (failure) return res.status(400).json(failure);
-  return res.json({ success: true, message: "Connection successful" });
 }

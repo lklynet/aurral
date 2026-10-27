@@ -3,7 +3,8 @@ import { useAuth } from "../contexts/AuthContext";
 import { useAudioQueue } from "../contexts/audioQueueContext.ts";
 import { useToast } from "../contexts/ToastContext";
 import { useThemeDocument } from "../hooks/useThemeDocument.ts";
-import { getMyTheme, saveMyTheme } from "../utils/api/endpoints/auth.ts";
+import { parseResponse } from "hono/client";
+import { usersClient } from "../utils/api/clients/users.ts";
 import { extractArtworkAccent } from "../utils/imageColors.ts";
 import { setArtworkColor, startThemeAccountSync } from "../utils/theme.ts";
 
@@ -22,8 +23,8 @@ export default function ThemeSync() {
     if (!userId) return undefined;
     const sync = startThemeAccountSync({
       userId,
-      loadAccountTheme: getMyTheme,
-      saveAccountTheme: saveMyTheme,
+      loadAccountTheme: () => parseResponse(usersClient.me.theme.$get()),
+      saveAccountTheme: (theme) => parseResponse(usersClient.me.theme.$put({ json: { theme } })),
       onSaveError: () =>
         showError("Theme applies on this device but could not sync to your account."),
     });

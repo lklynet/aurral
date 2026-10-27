@@ -1,275 +1,325 @@
-import express, { type Request } from "express";
-import { userOps } from "../db/helpers/index.ts";
+import { Hono, type Context } from "hono";
+import * as v from "valibot";
+import { userOps, userIdentityOps } from "../db/helpers/index.ts";
 import {
   createSession,
   deleteSession,
   getSessionByToken,
   touchReauth,
 } from "../config/session-helpers.ts";
-import { requireAdmin, requireAuth, requireRecentAuth } from "../middleware/requirePermission.ts";
+import { requireAdmin, requireAuth, requireRecentAuth } from "../middleware/guards.ts";
 import { getApiKey, rotateApiKey } from "../middleware/auth.ts";
 import { hashPassword, verifyPassword, needsRehash } from "../middleware/passwordHash.ts";
+import { validate } from "../middleware/validate.ts";
+import type { AppEnv } from "../middleware/requestUser.ts";
 import {
-  clearOidcTransactionCookie,
+  clearedOidcTransactionCookie,
   exchangeOidcCallback,
   startOidcLogin,
 } from "../services/oidcAuth.ts";
 import {
-  clearGoogleTransactionCookie,
+  clearedGoogleTransactionCookie,
   exchangeGoogleCallback,
   startGoogleAuth,
 } from "../services/googleAuth.ts";
-import { startPlexLogin, completePlexLogin } from "../services/plexLoginAuth.ts";
+import {
+  clearedPlexLoginCookie,
+  endPlexLogin,
+  getPendingPlexLogin,
+  isSafeForwardUrl,
+  readPlexLoginTransaction,
+  startPlexLogin,
+} from "../services/plexLoginAuth.ts";
 import { logger } from "../services/logger.ts";
-import type { RequestUser } from "../middleware/requestUser.ts";
-import { asAppError } from "../../lib/errors.ts";
+import { isPlexLoginEnabled } from "./users/plexLinkHandlers.ts";
+import { isErrorStatus } from "./shared/errorStatus.ts";
+import { asAppError, type AppError } from "../../lib/errors.ts";
 
-const router = express.Router();
-
-const getBearerToken = (req: Request) => {
-  const authHeader = String(req.headers.authorization || "");
-  if (!authHeader.startsWith("Bearer ")) return null;
-  return authHeader.slice(7).trim();
+const bearerToken = <E extends AppEnv>(c: Context<E>) => {
+  const header = c.req.header("authorization") || "";
+  return header.startsWith("Bearer ") ? header.slice(7).trim() : null;
 };
 
-router.post("/login", async (req, res) => {
-  try {
-    const username = String(req.body?.username || "")
-      .trim()
-      .toLowerCase();
-    const password = String(req.body?.password || "");
-    if (!username || !password) {
-      return res.status(400).json({ error: "Username and password are required" });
+const isSecure = <E extends AppEnv>(c: Context<E>) => c.var.protocol === "https";
+
+const exchangeRequest = <E extends AppEnv>(c: Context<E>) => ({
+  cookie: c.req.header("cookie"),
+  ip: c.var.clientIp || null,
+  userAgent: c.req.header("user-agent") || null,
+});
+
+const exchangeStatus = (failure: AppError | undefined) =>
+  isErrorStatus(failure?.status) ? failure.status : 500;
+
+const loginBody = v.object({
+  username: v.optional(v.string()),
+  password: v.optional(v.string()),
+});
+const reauthBody = v.object({ currentPassword: v.optional(v.string()) });
+const exchangeBody = v.object({ code: v.optional(v.string()) });
+const plexPinBody = v.object({ forwardUrl: v.nullish(v.string()) });
+
+export default new Hono<AppEnv>()
+  .basePath("/auth")
+  .post("/login", validate("json", loginBody), (c) => {
+    try {
+      const body = c.req.valid("json");
+      const username = (body.username || "").trim().toLowerCase();
+      const password = body.password || "";
+      if (!username || !password) {
+        return c.json({ error: "Username and password are required" }, 400);
+      }
+      const user = userOps.getUserByUsername(username);
+      if (!user || !verifyPassword(password, user.passwordHash)) {
+        return c.json({ error: "Invalid username or password" }, 401);
+      }
+      if (user.status !== "active") {
+        return c.json({ error: "This account has been suspended or disabled" }, 403);
+      }
+      const updates: Parameters<typeof userOps.updateUser>[1] = { subsonicPassword: password };
+      if (needsRehash(user.passwordHash)) {
+        updates.passwordHash = hashPassword(password);
+      }
+      if (!user.hasLocalPassword) {
+        updates.hasLocalPassword = true;
+      }
+      userOps.updateUser(user.id, updates);
+      const session = createSession(
+        user.id,
+        c.var.clientIp || null,
+        c.req.header("user-agent") || null,
+      );
+      return c.json(
+        {
+          token: session.token,
+          expiresAt: session.expiresAt,
+          user: {
+            id: user.id,
+            username: user.username,
+            role: user.role,
+            permissions: user.permissions,
+          },
+        },
+        200,
+      );
+    } catch {
+      return c.json({ error: "Login failed" }, 500);
     }
-    const user = userOps.getUserByUsername(username);
-    if (!user || !verifyPassword(password, user.passwordHash)) {
-      return res.status(401).json({ error: "Invalid username or password" });
+  })
+  .post("/logout", requireAuth, (c) => {
+    const token = bearerToken(c);
+    if (token) {
+      deleteSession(token);
     }
-    if (user.status !== "active") {
-      return res.status(403).json({ error: "This account has been suspended or disabled" });
+    return c.json({ success: true }, 200);
+  })
+  .get("/me", requireAuth, (c) => {
+    const token = bearerToken(c);
+    const session = token ? getSessionByToken(token) : null;
+    if (!session?.user) {
+      return c.json({ user: c.var.user, expiresAt: null }, 200);
     }
-    const updates: Parameters<typeof userOps.updateUser>[1] = { subsonicPassword: password };
-    if (needsRehash(user.passwordHash)) {
-      updates.passwordHash = hashPassword(password);
+    return c.json({ user: session.user, expiresAt: session.expiresAt }, 200);
+  })
+  .post("/reauth", requireAuth, validate("json", reauthBody), (c) => {
+    const token = bearerToken(c);
+    if (!token) {
+      return c.json({ error: "Reauthentication requires an active session" }, 400);
+    }
+    const user = userOps.getUserById(c.var.user.id);
+    if (!user) {
+      return c.json({ error: "Current password is incorrect" }, 400);
     }
     if (!user.hasLocalPassword) {
-      updates.hasLocalPassword = true;
+      return c.json(
+        {
+          error: "no_local_password",
+          message:
+            "This account has no local password. Sign out and back in to refresh your session.",
+        },
+        400,
+      );
     }
-    userOps.updateUser(user.id, updates);
-    const session = createSession(user.id, req.ip || null, req.headers["user-agent"] || null);
-    res.json({
-      token: session.token,
-      expiresAt: session.expiresAt,
-      user: {
-        id: user.id,
-        username: user.username,
-        role: user.role,
-        permissions: user.permissions,
-      },
-    });
-  } catch (error) {
-    res.status(500).json({ error: "Login failed" });
-  }
-});
+    if (!verifyPassword(c.req.valid("json").currentPassword || "", user.passwordHash)) {
+      return c.json({ error: "Current password is incorrect" }, 400);
+    }
+    touchReauth(token);
+    return c.json({ success: true }, 200);
+  })
+  .get("/api-key", requireAuth, requireAdmin, (c) => c.json({ apiKey: getApiKey() }, 200))
+  .post("/api-key/rotate", requireAuth, requireAdmin, (c) =>
+    c.json({ apiKey: rotateApiKey() }, 200),
+  )
+  .get("/oidc/login", async (c) => {
+    try {
+      const login = await startOidcLogin({ secure: isSecure(c) });
+      if (!login) return c.json({ error: "OIDC is not enabled" }, 404);
+      c.header("Set-Cookie", login.cookie);
+      return c.redirect(login.authUrl, 302);
+    } catch (error) {
+      logger.error("auth", "OIDC login start failed:", { message: asAppError(error)?.message });
+      return c.json({ error: "OIDC login failed" }, 500);
+    }
+  })
+  .post("/oidc/link/start", requireAuth, requireRecentAuth(), async (c) => {
+    try {
+      const login = await startOidcLogin({
+        mode: "link",
+        linkUserId: c.var.user.id,
+        secure: isSecure(c),
+      });
+      if (!login) return c.json({ error: "OIDC is not enabled" }, 404);
+      c.header("Set-Cookie", login.cookie);
+      return c.json({ authUrl: login.authUrl }, 200);
+    } catch (error) {
+      logger.error("auth", "OIDC link start failed:", { message: asAppError(error)?.message });
+      return c.json({ error: "Single sign-on link failed" }, 500);
+    }
+  })
+  .post("/oidc/exchange", validate("json", exchangeBody), (c) => {
+    try {
+      const result = exchangeOidcCallback(c.req.valid("json").code, exchangeRequest(c));
+      c.header("Set-Cookie", clearedOidcTransactionCookie(isSecure(c)));
+      return c.json(result, 200);
+    } catch (error) {
+      const failure = asAppError(error);
+      return c.json({ error: failure?.message || "OIDC exchange failed" }, exchangeStatus(failure));
+    }
+  })
+  .get("/google/login", async (c) => {
+    try {
+      const login = await startGoogleAuth({ mode: "login", secure: isSecure(c) });
+      if (!login) return c.json({ error: "Google login is not enabled" }, 404);
+      c.header("Set-Cookie", login.cookie);
+      return c.redirect(login.authUrl, 302);
+    } catch (error) {
+      logger.error("auth", "Google login start failed:", { message: asAppError(error)?.message });
+      return c.json({ error: "Google login failed" }, 500);
+    }
+  })
+  .get("/google/link", requireAuth, requireRecentAuth(), async (c) => {
+    try {
+      const login = await startGoogleAuth({
+        mode: "link",
+        linkUserId: c.var.user.id,
+        secure: isSecure(c),
+      });
+      if (!login) return c.json({ error: "Google login is not enabled" }, 404);
+      c.header("Set-Cookie", login.cookie);
+      return c.redirect(login.authUrl, 302);
+    } catch (error) {
+      logger.error("auth", "Google link start failed:", { message: asAppError(error)?.message });
+      return c.json({ error: "Google link failed" }, 500);
+    }
+  })
+  .post("/google/link/start", requireAuth, requireRecentAuth(), async (c) => {
+    try {
+      const login = await startGoogleAuth({
+        mode: "link",
+        linkUserId: c.var.user.id,
+        secure: isSecure(c),
+      });
+      if (!login) return c.json({ error: "Google login is not enabled" }, 404);
+      c.header("Set-Cookie", login.cookie);
+      return c.json({ authUrl: login.authUrl }, 200);
+    } catch (error) {
+      logger.error("auth", "Google link start failed:", { message: asAppError(error)?.message });
+      return c.json({ error: "Google link failed" }, 500);
+    }
+  })
+  .post("/google/exchange", validate("json", exchangeBody), (c) => {
+    try {
+      const result = exchangeGoogleCallback(c.req.valid("json").code, exchangeRequest(c));
+      c.header("Set-Cookie", clearedGoogleTransactionCookie(isSecure(c)));
+      return c.json(result, 200);
+    } catch (error) {
+      const failure = asAppError(error);
+      return c.json(
+        { error: failure?.message || "Google exchange failed" },
+        exchangeStatus(failure),
+      );
+    }
+  })
+  .post("/plex/login/pin", validate("json", plexPinBody), async (c) => {
+    try {
+      if (!isPlexLoginEnabled()) return c.json({ error: "Plex login is not enabled" }, 404);
+      const { forwardUrl } = c.req.valid("json");
+      if (forwardUrl != null && !isSafeForwardUrl(forwardUrl)) {
+        return c.json({ error: "Invalid forward URL" }, 400);
+      }
+      const login = await startPlexLogin(forwardUrl, isSecure(c));
+      c.header("Set-Cookie", login.cookie);
+      return c.json({ authUrl: login.authUrl }, 200);
+    } catch (error) {
+      const failure = asAppError(error);
+      logger.error("auth", "Plex login PIN generation failed:", failure?.message);
+      return c.json({ error: "Failed to start Plex login", message: failure?.message }, 500);
+    }
+  })
+  .post("/plex/login/complete", async (c) => {
+    try {
+      if (!isPlexLoginEnabled()) return c.json({ error: "Plex login is not enabled" }, 404);
+      const transactionId = readPlexLoginTransaction(c.req.header("cookie"));
+      const pending = getPendingPlexLogin(transactionId);
+      if (!pending) return c.json({ error: "Plex login session expired" }, 400);
 
-router.post("/logout", requireAuth, (req, res) => {
-  const token = getBearerToken(req);
-  if (token) {
-    deleteSession(token);
-  }
-  res.json({ success: true });
-});
+      const { PlexClient } = await import("../services/plex.ts");
+      const token = await PlexClient.checkPin(pending.pinId, pending.code, pending.clientId);
+      if (!token) return c.json({ pending: true }, 200);
 
-router.get("/me", requireAuth, (req, res) => {
-  const token = getBearerToken(req);
-  if (!token) {
-    return res.json({
-      user: req.user,
-      expiresAt: null,
-    });
-  }
-  const session = getSessionByToken(token);
-  if (!session?.user) {
-    return res.json({
-      user: req.user,
-      expiresAt: null,
-    });
-  }
-  res.json({
-    user: session.user,
-    expiresAt: session.expiresAt,
+      let identity;
+      try {
+        identity = await PlexClient.validateToken(token, pending.clientId, {
+          throwOnTransient: true,
+        });
+      } catch {
+        return c.json(
+          { error: "Plex account validation is temporarily unavailable", retryable: true },
+          503,
+        );
+      }
+      endPlexLogin(transactionId);
+      c.header("Set-Cookie", clearedPlexLoginCookie(isSecure(c)));
+      const subject = identity?.id != null ? String(identity.id) : null;
+      if (!subject) return c.json({ error: "Could not verify the Plex account" }, 400);
+
+      const linked = userIdentityOps.findByProvider("plex", "plex", subject);
+      if (!linked) {
+        return c.json(
+          {
+            error: "not_linked",
+            message: "Plex account not linked. Sign in another way and link Plex in Profile.",
+          },
+          403,
+        );
+      }
+      const user = userOps.getUserById(linked.userId);
+      if (!user) return c.json({ error: "Linked Plex identity has no matching user" }, 500);
+      if (user.status !== "active") {
+        return c.json({ error: "This account has been suspended or disabled" }, 403);
+      }
+
+      const session = createSession(
+        user.id,
+        c.var.clientIp || null,
+        c.req.header("user-agent") || null,
+      );
+      return c.json(
+        {
+          token: session.token,
+          expiresAt: session.expiresAt,
+          user: {
+            id: user.id,
+            username: user.username,
+            role: user.role,
+            permissions: user.permissions,
+          },
+        },
+        200,
+      );
+    } catch (error) {
+      const failure = asAppError(error);
+      logger.error("auth", "Plex login completion failed:", failure?.message);
+      return c.json({ error: "Plex login failed", message: failure?.message }, 500);
+    }
   });
-});
-
-router.post("/reauth", requireAuth, (req, res) => {
-  const token = getBearerToken(req);
-  if (!token) {
-    return res.status(400).json({ error: "Reauthentication requires an active session" });
-  }
-  const user = userOps.getUserById(req.user!.id);
-  if (!user) {
-    return res.status(400).json({ error: "Current password is incorrect" });
-  }
-  if (!user.hasLocalPassword) {
-    return res.status(400).json({
-      error: "no_local_password",
-      message: "This account has no local password. Sign out and back in to refresh your session.",
-    });
-  }
-  const { currentPassword } = req.body || {};
-  if (!verifyPassword(currentPassword || "", user.passwordHash)) {
-    return res.status(400).json({ error: "Current password is incorrect" });
-  }
-  touchReauth(token);
-  res.json({ success: true });
-});
-
-router.get("/api-key", requireAuth, requireAdmin, (req, res) => {
-  res.json({ apiKey: getApiKey() });
-});
-
-router.post("/api-key/rotate", requireAuth, requireAdmin, (req, res) => {
-  const newKey = rotateApiKey();
-  res.json({ apiKey: newKey });
-});
-
-router.get("/oidc/login", async (req, res) => {
-  try {
-    await startOidcLogin(req, res);
-  } catch (error) {
-    const failure = asAppError(error);
-    logger.error("auth", "OIDC login start failed:", { message: failure?.message });
-    if (!res.headersSent) {
-      res.status(500).json({ error: "OIDC login failed" });
-    }
-  }
-});
-
-router.post("/oidc/link/start", requireAuth, requireRecentAuth(), async (req, res) => {
-  try {
-    await startOidcLogin(req, res, { mode: "link", linkUserId: req.user!.id, returnUrl: true });
-  } catch (error) {
-    const failure = asAppError(error);
-    logger.error("auth", "OIDC link start failed:", { message: failure?.message });
-    if (!res.headersSent) {
-      res.status(500).json({ error: "Single sign-on link failed" });
-    }
-  }
-});
-
-router.post("/oidc/exchange", (req, res) => {
-  try {
-    const result = exchangeOidcCallback(req.body?.code, req);
-    clearOidcTransactionCookie(req, res);
-    res.json(result);
-  } catch (error) {
-    const failure = asAppError(error);
-    res.status(failure?.status || 500).json({ error: failure?.message || "OIDC exchange failed" });
-  }
-});
-
-router.get("/google/login", async (req, res) => {
-  try {
-    await startGoogleAuth(req, res, { mode: "login" });
-  } catch (error) {
-    const failure = asAppError(error);
-    logger.error("auth", "Google login start failed:", { message: failure?.message });
-    if (!res.headersSent) {
-      res.status(500).json({ error: "Google login failed" });
-    }
-  }
-});
-
-router.get("/google/link", requireAuth, requireRecentAuth(), async (req, res) => {
-  try {
-    await startGoogleAuth(req, res, { mode: "link", linkUserId: req.user!.id });
-  } catch (error) {
-    const failure = asAppError(error);
-    logger.error("auth", "Google link start failed:", { message: failure?.message });
-    if (!res.headersSent) {
-      res.status(500).json({ error: "Google link failed" });
-    }
-  }
-});
-
-router.post("/google/link/start", requireAuth, requireRecentAuth(), async (req, res) => {
-  try {
-    await startGoogleAuth(req, res, {
-      mode: "link",
-      linkUserId: req.user!.id,
-      returnUrl: true,
-    });
-  } catch (error) {
-    const failure = asAppError(error);
-    logger.error("auth", "Google link start failed:", { message: failure?.message });
-    if (!res.headersSent) {
-      res.status(500).json({ error: "Google link failed" });
-    }
-  }
-});
-
-router.post("/google/exchange", (req, res) => {
-  try {
-    const result = exchangeGoogleCallback(req.body?.code, req);
-    clearGoogleTransactionCookie(req, res);
-    res.json(result);
-  } catch (error) {
-    const failure = asAppError(error);
-    res
-      .status(failure?.status || 500)
-      .json({ error: failure?.message || "Google exchange failed" });
-  }
-});
-
-router.post("/plex/login/pin", async (req, res) => {
-  try {
-    await startPlexLogin(req, res);
-  } catch (error) {
-    const failure = asAppError(error);
-    logger.error("auth", "Plex login PIN generation failed:", failure?.message);
-    if (!res.headersSent) {
-      res.status(500).json({ error: "Failed to start Plex login", message: failure?.message });
-    }
-  }
-});
-
-router.post("/plex/login/complete", async (req, res) => {
-  try {
-    await completePlexLogin(req, res);
-  } catch (error) {
-    const failure = asAppError(error);
-    logger.error("auth", "Plex login completion failed:", failure?.message);
-    if (!res.headersSent) {
-      res.status(500).json({ error: "Plex login failed", message: failure?.message });
-    }
-  }
-});
-
-type SessionUser = Pick<RequestUser, "id" | "username" | "role" | "permissions">;
-
-export type LoginResponse = {
-  token: string;
-  expiresAt: number;
-  user: SessionUser;
-};
-
-export type CurrentUserResponse = {
-  user: SessionUser;
-  expiresAt: number | null;
-};
-
-export type SuccessResponse = { success: true };
-
-export type ApiKeyResponse = { apiKey: string };
-
-export type AuthUrlResponse = { authUrl: string };
-
-export type OidcExchangeResponse = ReturnType<typeof exchangeOidcCallback>;
-
-export type GoogleExchangeResponse = ReturnType<typeof exchangeGoogleCallback>;
-
-export type PlexLoginCompleteResponse =
-  | (LoginResponse & { pending?: undefined })
-  | { pending: true; token?: undefined; expiresAt?: undefined; user?: undefined };
-
-export default router;

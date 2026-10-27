@@ -22,7 +22,9 @@ import {
   previewYoutubeMusicPlaylist,
   startSpotifyOAuth,
 } from "../../../utils/api/endpoints/playlists.ts";
-import { getMyListeningHistory, getScrobbleStatus } from "../../../utils/api/endpoints/auth.ts";
+import { parseResponse } from "hono/client";
+import { scrobblingClient } from "../../../utils/api/clients/scrobbling.ts";
+import { usersClient } from "../../../utils/api/clients/users.ts";
 import { getAppBasePath, normalizeBasePathWithTrailingSlash } from "../../../utils/basePath";
 import { useAuth } from "../../../contexts/AuthContext";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
@@ -430,7 +432,7 @@ export function PlaylistImportModal({
 
   const scrobbleStatusQuery = useQuery({
     queryKey: queryKeys.scrobbleStatus,
-    queryFn: () => getScrobbleStatus(),
+    queryFn: () => parseResponse(scrobblingClient.status.$get()),
     enabled: open && source === "listenbrainz",
     staleTime: 0,
   });
@@ -447,7 +449,8 @@ export function PlaylistImportModal({
 
   const lastfmProfileQuery = useQuery({
     queryKey: queryKeys.listeningHistory(user?.id),
-    queryFn: ({ signal }) => getMyListeningHistory({ signal }),
+    queryFn: ({ signal }) =>
+      parseResponse(usersClient.me["listening-history"].$get({}, { init: { signal } })),
     enabled: open && source === "lastfm" && lastfmRequestedUsername === null,
   });
   const profileLastfmUsername =

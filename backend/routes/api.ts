@@ -4,13 +4,20 @@ import { HTTPException } from "hono/http-exception";
 import type { AppEnv } from "../middleware/requestUser.ts";
 import { logger } from "../services/logger.ts";
 import artistStream from "./artists/handlers/stream.ts";
+import auth from "./auth.ts";
+import filesystem from "./filesystem.ts";
+import health from "./health.ts";
 import inbox from "./inbox.ts";
 import libraryStreams from "./library/streams.ts";
+import onboarding from "./onboarding.ts";
 import playlistStreams from "./playlists/handlers/stream.ts";
+import scrobbling from "./scrobbling.ts";
 import settings from "./settings/index.ts";
 import settingsDownloadClients from "./settings/downloadClients.ts";
 import settingsPlayback from "./settings/playback.ts";
 import updates from "./updates.ts";
+import users from "./users.ts";
+import userPlexLink from "./users/plexLinkHandlers.ts";
 
 export const JSON_BODY_LIMIT = process.env.JSON_BODY_LIMIT || "5mb";
 
@@ -41,7 +48,14 @@ export const api = new Hono<AppEnv>()
   .route("/", settings)
   .route("/", settingsPlayback)
   .route("/", settingsDownloadClients)
-  .route("/", updates);
+  .route("/", updates)
+  .route("/", auth)
+  .route("/", users)
+  .route("/", userPlexLink)
+  .route("/", onboarding)
+  .route("/", health)
+  .route("/", scrobbling)
+  .route("/", filesystem);
 
 api.onError((error, c) => {
   if (error instanceof HTTPException) return c.json({ error: error.message }, error.status);

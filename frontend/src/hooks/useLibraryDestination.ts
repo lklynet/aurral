@@ -1,13 +1,13 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { fetchHealth } from "../utils/api/endpoints/auth.ts";
+import { fetchHealth } from "../utils/appHealth.ts";
 import { queryKeys } from "../queryClient.ts";
 import { resolveLibraryDestination } from "../utils/libraryDestination.ts";
 
 export function useLibraryDestination() {
   const healthQuery = useQuery({
     queryKey: queryKeys.appHealth,
-    queryFn: ({ signal }) => fetchHealth({ signal }),
+    queryFn: ({ signal }) => fetchHealth(signal),
     staleTime: 30_000,
   });
   const lidarrConfigured = healthQuery.data?.lidarrConfigured;

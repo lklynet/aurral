@@ -1,19 +1,18 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  getMyPlexLinkStatus,
-  startMyPlexLinkPin,
-  completeMyPlexLink,
-  disconnectMyPlex,
-} from "../../../utils/api/endpoints/auth.ts";
+import { parseResponse, type InferResponseType } from "hono/client";
+import { userPlexLinkClient } from "../../../utils/api/clients/userPlexLink.ts";
 import { isReauthRequiredError, promptReauth } from "../../../utils/reauth.ts";
 import { readApiError } from "../utils/apiError.ts";
 import { useAuth } from "../../../contexts/AuthContext";
 import { queryKeys } from "../../../queryClient.ts";
-import type { PlexLinkStatusResponse } from "../../../../../backend/routes/users/plexLinkHandlers.ts";
 import type { useToast } from "../../../contexts/ToastContext";
 
 type Toast = ReturnType<typeof useToast>["showSuccess"];
+type PlexLinkStatusResponse = InferResponseType<
+  (typeof userPlexLinkClient.me)["plex-link"]["status"]["$get"],
+  200
+>;
 type PlexLinkStatus = Omit<PlexLinkStatusResponse, "globalAccount"> & {
   globalAccount: PlexLinkStatusResponse["globalAccount"] | null;
 };
@@ -42,7 +41,8 @@ export function PlexSelfLinkSection({
   const statusQueryKey = queryKeys.myPlexLinkStatus(user?.id);
   const statusQuery = useQuery({
     queryKey: statusQueryKey,
-    queryFn: ({ signal }) => getMyPlexLinkStatus({ signal }),
+    queryFn: ({ signal }) =>
+      parseResponse(userPlexLinkClient.me["plex-link"].status.$get({}, { init: { signal } })),
   });
   const status = statusQuery.data ?? EMPTY_STATUS;
   const updateStatus = (update: (prev: PlexLinkStatus) => PlexLinkStatus) =>
@@ -61,7 +61,9 @@ export function PlexSelfLinkSection({
     }
     setConnecting(true);
     try {
-      const { pinId, code, clientId, authUrl } = await startMyPlexLinkPin();
+      const { pinId, code, clientId, authUrl } = await parseResponse(
+        userPlexLinkClient.me["plex-link"].oauth.pin.$post({ json: {} }),
+      );
       const popup = window.open(authUrl, "plex-self-link", "width=600,height=700");
       const deadline = Date.now() + 3 * 60 * 1000;
       let linked = null;
@@ -69,8 +71,12 @@ export function PlexSelfLinkSection({
       while (Date.now() < deadline) {
         await new Promise((r) => setTimeout(r, 2000));
         try {
-          const res = await completeMyPlexLink(pinId, code, clientId);
-          if (res.pending) continue;
+          const res = await parseResponse(
+            userPlexLinkClient.me["plex-link"].oauth.complete.$post({
+              json: { pinId, code, clientId },
+            }),
+          );
+          if ("pending" in res) continue;
           linked = res;
           break;
         } catch (pollErr) {
@@ -112,7 +118,7 @@ export function PlexSelfLinkSection({
   const handleDisconnect = async () => {
     setDisconnecting(true);
     try {
-      await disconnectMyPlex();
+      await parseResponse(userPlexLinkClient.me["plex-link"].$delete());
       updateStatus((prev) => ({
         ...EMPTY_STATUS,
         globalAccount: prev.globalAccount,
@@ -124,7 +130,7 @@ export function PlexSelfLinkSection({
         const shouldRetry = await promptReauth();
         if (shouldRetry) {
           try {
-            await disconnectMyPlex();
+            await parseResponse(userPlexLinkClient.me["plex-link"].$delete());
             updateStatus((prev) => ({
               ...EMPTY_STATUS,
               globalAccount: prev.globalAccount,

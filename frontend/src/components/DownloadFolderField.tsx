@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { browseFilesystem } from "../utils/api/endpoints/auth.ts";
+import { parseResponse } from "hono/client";
+import { filesystemClient } from "../utils/api/clients/filesystem.ts";
 import DownloadFolderPickerModal from "./DownloadFolderPickerModal";
 
 import { Folder } from "./icons";
@@ -43,7 +44,7 @@ export default function DownloadFolderField({
   useEffect(() => {
     if (!suggestFolder || prefilled || String(value || "").trim() || disabled) return;
     let cancelled = false;
-    browseFilesystem()
+    parseResponse(filesystemClient.browse.$get({ query: {} }))
       .then((result) => {
         if (cancelled) return;
         const suggested = String(result.suggestedDownloadFolder || "").trim();
