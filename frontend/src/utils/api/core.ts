@@ -168,11 +168,15 @@ async function request(config: RequestConfig) {
   }
 }
 
-export async function apiFetch(input: RequestInfo | URL, init: RequestInit = {}) {
+export async function apiFetch(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+  timeoutMs = REQUEST_TIMEOUT_MS,
+) {
   const headers = new Headers(init.headers);
   const token = getRequestToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
-  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+  const timeout = AbortSignal.timeout(timeoutMs);
   const res = await fetch(input, {
     ...init,
     headers,
@@ -181,6 +185,10 @@ export async function apiFetch(input: RequestInfo | URL, init: RequestInit = {})
   });
   return ensureOk(res, input instanceof Request ? input.url : String(input));
 }
+
+export const apiFetchWithTimeout =
+  (timeoutMs: number) => (input: RequestInfo | URL, init?: RequestInit) =>
+    apiFetch(input, init, timeoutMs);
 
 const api = {
   get: (url: string, config: RequestConfig = {}) => request({ ...config, method: "GET", url }),
