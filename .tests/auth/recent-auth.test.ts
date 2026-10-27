@@ -1,12 +1,11 @@
 import { createAuthRequest } from "./authFixtures.ts";
-import { test, beforeAll, beforeEach, afterAll, vi } from "vite-plus/test";
+import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { syncBuiltinESMExports } from "node:module";
 import os from "node:os";
 
 import bcrypt from "bcrypt";
-import express from "express";
 
 import {
   setupIsolatedBackend,
@@ -22,7 +21,7 @@ const [
   auth,
   { hashPassword },
   { encryptWithKey },
-  { default: subsonicRouter },
+  { default: subsonic },
 ] = await setupIsolatedBackend(
   "recent-auth",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -34,28 +33,14 @@ const [
   () => import("../../backend/routes/subsonic.ts"),
 );
 
-let subsonicServer: import("node:http").Server;
-
-beforeAll(async () => {
-  const app = express();
-  app.use("/rest", express.urlencoded({ extended: false }), subsonicRouter);
-  subsonicServer = await new Promise<import("node:http").Server>((resolve) => {
-    const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
-  });
-});
 beforeEach(() => resetDatabase(db));
-afterAll(async () => {
-  await new Promise<void>((resolve) => subsonicServer.close(() => resolve()));
-  await cleanupIsolatedState(isolatedState);
-});
+afterAll(() => cleanupIsolatedState(isolatedState));
 
 async function subsonicPing(
   params: { u: string; t: string; s: string } | { u: string; p: string },
 ) {
   const query = new URLSearchParams({ v: "1.16.1", c: "auth-test", f: "json", ...params });
-  const response = await fetch(
-    `http://127.0.0.1:${(subsonicServer.address() as import("node:net").AddressInfo).port}/rest/ping.view?${query}`,
-  );
+  const response = await subsonic.request(`/rest/ping.view?${query}`);
   return (await response.json())["subsonic-response"];
 }
 

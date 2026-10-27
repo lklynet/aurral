@@ -5,7 +5,7 @@ import { Hono } from "hono";
 import { verifyTokenAuth } from "../../middleware/auth.ts";
 import type { AppEnv } from "../../middleware/requestUser.ts";
 import { api } from "../api.ts";
-import { subsonicStream } from "../subsonic.ts";
+import subsonic from "../subsonic.ts";
 
 const handedOver = new WeakMap<IncomingMessage, AppEnv["Variables"]>();
 
@@ -36,7 +36,7 @@ const listener = getRequestListener(
       await next();
     })
     .route("/api", api)
-    .route("/", subsonicStream)
+    .route("/", subsonic)
     .notFound((c) => c.json({ error: "Not found" }, 404)).fetch,
   { overrideGlobalObjects: false },
 );

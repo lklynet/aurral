@@ -1,10 +1,13 @@
-import { asAppError } from "../../../lib/errors.ts";
-import express from "express";
-import type { NextFunction, Request, Response } from "express";
-import { createServer, type Server } from "node:http";
+import { getRequestListener } from "@hono/node-server";
+import { create as contentDisposition } from "content-disposition";
+import { Hono, type Context } from "hono";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
+import { asAppError } from "../../../lib/errors.ts";
 import { userOps } from "../../db/helpers/index.ts";
+import type { AppEnv } from "../../middleware/requestUser.ts";
+import { sendViaNode } from "../../routes/shared/sendViaNode.ts";
 import { sendAudioFile } from "../audioFileStream.ts";
 import { logger } from "../logger.ts";
 import { streamSubsonicAudio } from "../subsonicTranscodeService.ts";
@@ -20,31 +23,22 @@ const MAX_TIMER_MS = 6 * 60 * 60 * 1000;
 type LiveShareLink = NonNullable<ReturnType<typeof getLiveShareLink>>;
 type ResolvedShareTarget = NonNullable<ReturnType<typeof resolveShareTarget>>;
 type ResolvedShareTrack = ResolvedShareTarget["tracks"][number];
+type ZipPlan = Awaited<ReturnType<typeof planZip>>;
 
-const notFound = (res: Response) =>
-  res.status(404).json({ error: "not_found", message: "This link has expired or was stopped." });
+const notFound = (c: Context<AppEnv>) =>
+  c.json({ error: "not_found", message: "This link has expired or was stopped." }, 404);
 
-function loadShare(req: Request<{ token?: string }>, res: Response) {
-  const link = getLiveShareLink(req.params.token);
+function loadShare(token: string) {
+  const link = getLiveShareLink(token);
   const owner = link ? userOps.getUserById(link.userId) : null;
-  const target = owner?.status === "active" ? resolveShareTarget(link!) : null;
-  if (!target) {
-    notFound(res);
-    return null;
-  }
-  return { link, target } as {
-    link: LiveShareLink;
-    target: typeof target;
-  };
+  const target = link && owner?.status === "active" ? resolveShareTarget(link) : null;
+  return link && target ? { link, target } : null;
 }
 
-function findTrack(target: ResolvedShareTarget, req: Request) {
-  const albumId = Number(req.params.albumId);
-  const trackId = Number(req.params.trackId);
-  return (
-    target.tracks.find((track) => track.albumId === albumId && track.trackId === trackId) || null
-  );
-}
+const findTrack = (target: ResolvedShareTarget, albumId: string, trackId: string) =>
+  target.tracks.find(
+    (track) => track.albumId === Number(albumId) && track.trackId === Number(trackId),
+  ) || null;
 
 const safeSegment = (value: string | null | undefined) =>
   String(value || "")
@@ -69,129 +63,111 @@ function zipEntries(link: LiveShareLink, target: ResolvedShareTarget) {
   });
 }
 
-async function sendDownload(req: Request, res: Response, track: ResolvedShareTrack) {
-  res.attachment(path.basename(track.file.path));
-  if (!(await sendAudioFile(req, res, track.file.path))) notFound(res);
+async function sendZip(req: IncomingMessage, res: ServerResponse, plan: ZipPlan) {
+  res.setHeader("Content-Length", String(plan.totalSize));
+  if (req.method === "HEAD") {
+    res.end();
+    return true;
+  }
+  const body = zipStream(plan);
+  body.on("error", (error) => {
+    logger.warn("share", "Share download stopped:", { message: error.message });
+    res.destroy(error);
+  });
+  res.on("close", () => body.destroy());
+  body.pipe(res);
+  return true;
+}
+
+async function sendDownload(c: Context<AppEnv>, track: ResolvedShareTrack) {
+  c.header("Content-Disposition", contentDisposition(path.basename(track.file.path)));
+  return (await sendViaNode(c, sendAudioFile, track.file.path)) || notFound(c);
 }
 
 export function createShareApp() {
-  const app = express();
-  app.disable("x-powered-by");
-  app.set("trust proxy", false);
-
-  app.use((req, res, next) => {
-    res.set({
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Expose-Headers": "Content-Length, Content-Range, Content-Disposition",
-      "Cache-Control": "no-store",
-      "Cross-Origin-Resource-Policy": "cross-origin",
-      "Referrer-Policy": "no-referrer",
-      "X-Content-Type-Options": "nosniff",
-    });
-    if (req.method === "OPTIONS") {
-      res.set({
-        "Access-Control-Allow-Methods": "GET, HEAD",
-        "Access-Control-Allow-Headers": "Range",
-      });
-      return res.status(204).end();
-    }
-    if (req.method !== "GET" && req.method !== "HEAD") {
-      return res.status(405).set("Allow", "GET, HEAD").json({ error: "method_not_allowed" });
-    }
-    return next();
-  });
-
-  app.get("/share/.well-known/aurral", (req, res) => {
-    res.json({ instanceId: getShareInstance().id });
-  });
-
-  app.get("/share/:token", (req, res) => {
-    const share = loadShare(req, res);
-    if (!share) return;
-    const { link, target } = share;
-    res.json({
-      kind: link.kind,
-      title: target.title,
-      artistName: target.artistName,
-      albumTitle: target.albumTitle,
-      allowDownload: link.allowDownload,
-      expiresAt: link.expiresAt,
-      tracks: target.tracks.map((track) => ({
-        path: `tracks/${track.albumId}/${track.trackId}`,
-        title: track.title,
-        artistName: track.artistName,
-        albumTitle: track.albumTitle,
-        discNumber: track.discNumber,
-        trackNumber: track.trackNumber,
-        durationMs: track.durationMs,
-        format: track.file.format,
-        size: track.file.size,
-      })),
-    });
-  });
-
-  app.get("/share/:token/tracks/:albumId/:trackId/stream", async (req, res, next) => {
-    try {
-      const share = loadShare(req, res);
-      if (!share) return;
-      const track = findTrack(share.target, req);
-      if (!track) return notFound(res);
-      const served = playsInBrowsers(track.file)
-        ? await sendAudioFile(req, res, track.file.path)
-        : await streamSubsonicAudio(req, res, track.file.path, { format: "mp3", maxBitRate: 320 });
-      if (!served) notFound(res);
-    } catch (error) {
-      next(error);
-    }
-  });
-
-  app.get("/share/:token/tracks/:albumId/:trackId/download", async (req, res, next) => {
-    try {
-      const share = loadShare(req, res);
-      if (!share) return;
-      if (!share.link.allowDownload) return notFound(res);
-      const track = findTrack(share.target, req);
-      if (!track) return notFound(res);
-      await sendDownload(req, res, track);
-    } catch (error) {
-      next(error);
-    }
-  });
-
-  app.get("/share/:token/download", async (req, res, next) => {
-    try {
-      const share = loadShare(req, res);
-      if (!share) return;
+  return new Hono<AppEnv>({ strict: false })
+    .use(async (c, next) => {
+      c.header("Access-Control-Allow-Origin", "*");
+      c.header(
+        "Access-Control-Expose-Headers",
+        "Content-Length, Content-Range, Content-Disposition",
+      );
+      c.header("Cache-Control", "no-store");
+      c.header("Cross-Origin-Resource-Policy", "cross-origin");
+      c.header("Referrer-Policy", "no-referrer");
+      c.header("X-Content-Type-Options", "nosniff");
+      if (c.req.method === "OPTIONS") {
+        c.header("Access-Control-Allow-Methods", "GET, HEAD");
+        c.header("Access-Control-Allow-Headers", "Range");
+        return c.body(null, 204);
+      }
+      if (c.req.method !== "GET" && c.req.method !== "HEAD") {
+        c.header("Allow", "GET, HEAD");
+        return c.json({ error: "method_not_allowed" }, 405);
+      }
+      await next();
+    })
+    .get("/share/.well-known/aurral", (c) => c.json({ instanceId: getShareInstance().id }))
+    .get("/share/:token", (c) => {
+      const share = loadShare(c.req.param("token"));
+      if (!share) return notFound(c);
       const { link, target } = share;
-      if (!link.allowDownload) return notFound(res);
-      if (link.kind === "track") return await sendDownload(req, res, target.tracks[0]);
+      return c.json({
+        kind: link.kind,
+        title: target.title,
+        artistName: target.artistName,
+        albumTitle: target.albumTitle,
+        allowDownload: link.allowDownload,
+        expiresAt: link.expiresAt,
+        tracks: target.tracks.map((track) => ({
+          path: `tracks/${track.albumId}/${track.trackId}`,
+          title: track.title,
+          artistName: track.artistName,
+          albumTitle: track.albumTitle,
+          discNumber: track.discNumber,
+          trackNumber: track.trackNumber,
+          durationMs: track.durationMs,
+          format: track.file.format,
+          size: track.file.size,
+        })),
+      });
+    })
+    .get("/share/:token/tracks/:albumId/:trackId/stream", async (c) => {
+      const share = loadShare(c.req.param("token"));
+      const track =
+        share && findTrack(share.target, c.req.param("albumId"), c.req.param("trackId"));
+      if (!track) return notFound(c);
+      const served = playsInBrowsers(track.file)
+        ? await sendViaNode(c, sendAudioFile, track.file.path)
+        : await sendViaNode(c, streamSubsonicAudio, track.file.path, {
+            format: "mp3",
+            maxBitRate: 320,
+          });
+      return served || notFound(c);
+    })
+    .get("/share/:token/tracks/:albumId/:trackId/download", async (c) => {
+      const share = loadShare(c.req.param("token"));
+      if (!share?.link.allowDownload) return notFound(c);
+      const track = findTrack(share.target, c.req.param("albumId"), c.req.param("trackId"));
+      return track ? sendDownload(c, track) : notFound(c);
+    })
+    .get("/share/:token/download", async (c) => {
+      const share = loadShare(c.req.param("token"));
+      if (!share?.link.allowDownload) return notFound(c);
+      const { link, target } = share;
+      if (link.kind === "track") return sendDownload(c, target.tracks[0]);
       const plan = await planZip(zipEntries(link, target));
       const zipName =
         link.kind === "artist" ? target.title : `${target.artistName} - ${target.title}`;
-      res.attachment(`${safeSegment(zipName)}.zip`);
-      res.set("Content-Length", String(plan.totalSize));
-      if (req.method === "HEAD") return res.end();
-      const body = zipStream(plan);
-      body.on("error", (error) => {
-        logger.warn("share", "Share download stopped:", { message: error.message });
-        res.destroy(error);
-      });
-      res.on("close", () => body.destroy());
-      body.pipe(res);
-    } catch (error) {
-      next(error);
-    }
-  });
-
-  app.use((req, res) => notFound(res));
-
-  app.use((error: unknown, req: Request, res: Response, next: NextFunction) => {
-    logger.error("share", "Share request failed:", { message: asAppError(error)?.message });
-    if (res.headersSent) return next(error);
-    return res.status(500).json({ error: "internal_error" });
-  });
-
-  return app;
+      c.header("Content-Type", "application/zip");
+      c.header("Content-Disposition", contentDisposition(`${safeSegment(zipName)}.zip`));
+      return (await sendViaNode(c, sendZip, plan)) || notFound(c);
+    })
+    .notFound(notFound)
+    .onError((error, c) => {
+      logger.error("share", "Share request failed:", { message: asAppError(error)?.message });
+      return c.json({ error: "internal_error" }, 500);
+    });
 }
 
 let server: Server | null = null;
@@ -200,7 +176,9 @@ let syncing = Promise.resolve();
 
 function listen() {
   return new Promise<Server>((resolve, reject) => {
-    const next = createServer(createShareApp());
+    const next = createServer(
+      getRequestListener(createShareApp().fetch, { overrideGlobalObjects: false }),
+    );
     next.once("error", reject);
     next.listen(0, "127.0.0.1", () => {
       next.off("error", reject);

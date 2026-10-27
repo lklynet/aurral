@@ -30,10 +30,8 @@ import {
   registerHonkerShutdownHandler,
   shutdownHonkerInfrastructure,
 } from "./services/honkerWorkerRuntime.ts";
-import subsonicRouter from "./routes/subsonic.ts";
 import { stopShareListener, syncShareListener } from "./services/shareLinks/shareListener.ts";
-import { asAppError, type AppError } from "../lib/errors.ts";
-import { JSON_BODY_LIMIT } from "./routes/api.ts";
+import { asAppError } from "../lib/errors.ts";
 import { handToHono, resolveTokenUser } from "./routes/shared/expressHandoff.ts";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -177,7 +175,7 @@ app.get(
   resolveTokenUser,
   handToHono,
 );
-app.all(/^\/rest\/stream(?:\.view)?\/?$/i, handToHono);
+app.use("/rest", handToHono);
 app.use(
   [
     "/api/inbox",
@@ -206,13 +204,11 @@ app.use(
   handToHono,
 );
 
-app.use(express.json({ limit: JSON_BODY_LIMIT }));
 app.use("/api/weekly-flow", (req, res) => {
   noteDeprecatedUsage("weekly-flow-api");
   const parsed = new URL(req.url, "http://localhost");
   res.redirect(308, `/api/playlists${parsed.pathname}${parsed.search}`);
 });
-app.use("/rest", express.urlencoded({ extended: false }), subsonicRouter);
 
 app.get("/sso/callback", async (req, res) => {
   try {
@@ -281,13 +277,6 @@ app.use((err: unknown, req: Request, res: Response, next: NextFunction) => {
   logger.error("system", "Express error:", err || "(no error object)");
   res.locals.failureLogged = true;
   if (res.headersSent) return next(err);
-  const failure: (AppError & { type?: string }) | undefined = asAppError(err);
-  if (failure?.type === "entity.too.large" || failure?.status === 413) {
-    return res.status(413).json({
-      error: "Payload too large",
-      message: `Request body exceeds limit (${JSON_BODY_LIMIT})`,
-    });
-  }
   return res.status(500).json({ error: "Internal server error" });
 });
 
