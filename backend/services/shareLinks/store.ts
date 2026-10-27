@@ -164,6 +164,12 @@ export function deleteShareLink(userId: number, id: string) {
   );
 }
 
+export function revokeShareFiles(userId: number, id: string) {
+  db.prepare<[number, number]>(
+    "UPDATE share_links SET share_files = 0, allow_download = 0 WHERE id = ? AND user_id = ?",
+  ).run(Number(id), userId);
+}
+
 export function getShareLinkSchedule() {
   deleteExpiredShareLinks();
   const row = db

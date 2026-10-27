@@ -2203,7 +2203,7 @@ function LibraryPage() {
         {
           kind: target.kind,
           libraryAlbumId: entity.id,
-          albumMbid: entity.releaseGroupMbid || entity.mbid,
+          albumMbid: entity.releaseGroupMbid,
           artistMbid: artist?.mbid,
           title: entity.title,
           artistName: artist?.name || entity.albumArtist || album?.albumArtist,
@@ -2219,7 +2219,7 @@ function LibraryPage() {
         libraryTrackId: entity.id,
         libraryAlbumId: album?.id,
         trackMbid: entity.mbid,
-        albumMbid: album?.releaseGroupMbid || album?.mbid,
+        albumMbid: album?.releaseGroupMbid,
         artistMbid: trackArtistMbid(entity, artist),
         title: entity.title,
         artistName: entity.artistName || artist?.name || album?.albumArtist,

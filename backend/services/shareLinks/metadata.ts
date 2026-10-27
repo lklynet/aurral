@@ -1,4 +1,8 @@
-import { parseShareManifest, parseShareTrack } from "../../../lib/shareManifest.ts";
+import {
+  findSharedTrack,
+  parseShareManifest,
+  parseShareTrack,
+} from "../../../lib/shareManifest.ts";
 import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.ts";
 import { resolveShareTarget } from "./library.ts";
 import {
@@ -15,13 +19,14 @@ export function resolveShareManifest(
     const playlist = flowPlaylistConfig.getStaticPlaylist(target.targetRef);
     if (!playlist) return null;
     const tracks = playlist.tracks.map((track) => {
-      const file = resolved?.tracks.find((entry) =>
-        track.trackMbid
-          ? track.trackMbid === entry.trackMbid
-          : track.trackName.toLowerCase() === entry.title.toLowerCase() &&
-            track.artistName.toLowerCase() === entry.artistName.toLowerCase() &&
-            (!track.albumName || track.albumName.toLowerCase() === entry.albumTitle.toLowerCase()),
-      );
+      const file = findSharedTrack(resolved?.tracks || [], {
+        title: track.trackName,
+        artistName: track.artistName,
+        trackMbid: track.trackMbid || null,
+        albumMbid: track.albumMbid || null,
+        releaseMbid: track.releaseMbid || null,
+        albumTitle: track.albumName || null,
+      });
       return {
         title: track.trackName,
         artistName: track.artistName,
@@ -35,7 +40,6 @@ export function resolveShareManifest(
         discNumber: track.discNumber,
         ...(file
           ? {
-              ...file,
               path: `tracks/${file.albumId}/${file.trackId}`,
               size: file.file.size,
               format: file.file.format,
@@ -78,6 +82,7 @@ export function resolveShareManifest(
                 albumArtistName: artist?.name,
                 artistMbid: artist?.mbid,
                 albumMbid: album.releaseGroupMbid,
+                releaseMbid: album.mbid !== album.releaseGroupMbid ? album.mbid : null,
                 trackMbid: track.mbid,
                 trackNumber: position?.trackNumber,
                 discNumber: position?.discNumber,
@@ -91,15 +96,20 @@ export function resolveShareManifest(
     : libraryTracks.length
       ? libraryTracks
       : files;
-  const tracks = metadata.map(
-    (track) =>
-      files.find((file) =>
-        track.trackMbid
-          ? file.trackMbid === track.trackMbid
-          : track.title === file.title &&
-            track.artistName === file.artistName &&
-            track.albumTitle === file.albumTitle,
-      ) || { ...track, path: null, size: null, format: null },
-  );
-  return parseShareManifest({ ...supplied, ...resolved, tracks });
+  const tracks = metadata.map((track) => {
+    const file = findSharedTrack(files, track);
+    return {
+      ...track,
+      path: file?.path || null,
+      size: file?.size || null,
+      format: file?.format || null,
+    };
+  });
+  const albumMbid =
+    target.kind === "album" && library?.albums.length
+      ? library.albums[0].releaseGroupMbid
+      : target.kind === "track" && files.length
+        ? files[0].albumMbid
+        : supplied.albumMbid;
+  return parseShareManifest({ ...supplied, ...resolved, albumMbid, tracks });
 }

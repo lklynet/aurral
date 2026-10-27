@@ -22,6 +22,7 @@ import { finalizePipelineJobSuccess } from "../pipelineHelpers.ts";
 import type { PipelinePayload } from "../downloadPipeline.ts";
 import { getShareDownload } from "./downloadStore.ts";
 import { loadRemoteShare } from "./remote.ts";
+import { UnsupportedTagFormatError } from "../audioTags.ts";
 
 const FORMATS = new Set([
   "flac",
@@ -86,7 +87,11 @@ export async function processShareDownload(payload: PipelinePayload) {
     if (!metadata.format.codec || !metadata.format.duration)
       throw new Error("The shared file is not a readable audio file.");
     const result = await withPipelineCommitLock(payload, async () => {
-      await writeAudioMetadata(stagingPath, job);
+      try {
+        await writeAudioMetadata(stagingPath, job);
+      } catch (error) {
+        if (!(error instanceof UnsupportedTagFormatError)) throw error;
+      }
       const finalDirectory = joinUnderRoot(resolveDownloadRoot(), payload.destination || "");
       const finalPath = await commitDownloadedFile(
         stagingPath,

@@ -7,6 +7,7 @@ import {
 } from "../libraryQueryService.ts";
 import { selectCanonicalFile } from "../canonicalFileSelector.ts";
 import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.ts";
+import { findSharedTrack } from "../../../lib/shareManifest.ts";
 
 const BROWSER_FORMATS = new Set(["mp3", "flac", "ogg", "oga", "opus", "wav", "aac", "webm"]);
 
@@ -91,7 +92,7 @@ export function resolveShareTarget(target: ShareTarget) {
           artistName: track.artistName || artist?.name || "",
           albumTitle: album.title,
           artistMbid: artist?.mbid || null,
-          albumMbid: album.releaseGroupMbid || album.mbid || null,
+          albumMbid: album.releaseGroupMbid || null,
           releaseMbid: album.mbid !== album.releaseGroupMbid ? album.mbid : null,
           trackMbid: track.mbid || null,
           albumArtistName: artist?.name || album.albumArtist || "",
@@ -110,13 +111,14 @@ export function resolveShareTarget(target: ShareTarget) {
   if (playlist) {
     const ordered = playlist.tracks
       .map((entry) =>
-        tracks.find((track) =>
-          entry.trackMbid
-            ? entry.trackMbid === track.trackMbid
-            : compareText(entry.trackName, track.title) === 0 &&
-              compareText(entry.artistName, track.artistName) === 0 &&
-              (!entry.albumName || compareText(entry.albumName, track.albumTitle) === 0),
-        ),
+        findSharedTrack(tracks, {
+          title: entry.trackName,
+          artistName: entry.artistName,
+          trackMbid: entry.trackMbid || null,
+          albumMbid: entry.albumMbid || null,
+          releaseMbid: entry.releaseMbid || null,
+          albumTitle: entry.albumName || null,
+        }),
       )
       .filter((track) => track !== undefined);
     return { title: playlist.name, artistName: "", albumTitle: null, tracks: ordered };

@@ -589,6 +589,161 @@ test("metadata-only shares publish without starting a tunnel", async () => {
   assert.equal(lookupRequests.at(-1)?.method, "DELETE");
 });
 
+test("stopping a share revokes local files even when hosted removal fails, and can be retried", async () => {
+  const created = await callApi("POST", "", {
+    body: {
+      kind: "album",
+      libraryAlbumId: String(firstAlbum.album.id),
+      manifest: { kind: "album", title: firstAlbum.album.title, artistName: artist.name },
+      shareFiles: true,
+      allowDownload: true,
+      expiresIn: "7d",
+    },
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const { getLiveShareLink, getShareLinkSchedule } =
+    await import("../../backend/services/shareLinks/store.ts");
+  const token = tokenOf(created.body.link);
+  assert.ok(getLiveShareLink(token));
+  lookupStatus = 503;
+  assert.equal((await callApi("DELETE", `/${created.body.link.id}`)).status, 503);
+  assert.equal(getLiveShareLink(token), null);
+  assert.equal(getShareLinkSchedule().count, 0);
+  const remaining = (await callApi("GET", "")).body.links;
+  assert.equal(remaining.length, 1);
+  assert.equal(remaining[0].shareFiles, false);
+  assert.equal(remaining[0].allowDownload, false);
+  lookupStatus = 204;
+  assert.equal((await callApi("DELETE", `/${created.body.link.id}`)).status, 204);
+  assert.equal((await callApi("GET", "")).body.links.length, 0);
+});
+
+test("a release-only album never publishes its release ID as a release-group ID", async () => {
+  const releaseMbid = "78888888-8888-4888-8888-888888888888";
+  const album = media.upsertLibraryAlbum({
+    identityKey: `album:${releaseMbid}`,
+    artistId: artist.id,
+    title: "Release only",
+    mbid: releaseMbid,
+  });
+  const track = media.upsertLibraryTrack({
+    identityKey: "track:release-only",
+    title: "Release song",
+    artistName: artist.name,
+  });
+  media.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: 1 });
+  const file = await seedFile("release-only/song.flac", 4096);
+  media.upsertLibraryMediaFile({
+    trackId: track.id,
+    albumId: album.id,
+    source: "aurral",
+    path: file.filePath,
+    format: "flac",
+  });
+  const { resolveShareManifest } = await import("../../backend/services/shareLinks/metadata.ts");
+  const snapshot = resolveShareManifest(
+    { kind: "album", targetRef: String(album.id), albumRef: null },
+    { kind: "album", title: album.title, artistName: artist.name, albumMbid: releaseMbid },
+  );
+  assert.ok(snapshot);
+  assert.equal(snapshot.albumMbid, null);
+  assert.equal(snapshot.tracks[0].albumMbid, null);
+  assert.equal(snapshot.tracks[0].releaseMbid, releaseMbid);
+});
+
+test("shared recordings keep the requested album, metadata and file", async () => {
+  const mbid = "79999999-9999-4999-8999-999999999999";
+  const track = media.upsertLibraryTrack({
+    identityKey: `recording:${mbid}`,
+    mbid,
+    title: "Repeat",
+    artistName: artist.name,
+  });
+  for (const [album, number] of [
+    [firstAlbum.album, 4],
+    [secondAlbum.album, 7],
+  ] as const) {
+    media.linkLibraryAlbumTrack({ albumId: album.id, trackId: track.id, trackNumber: number });
+    const file = await seedFile(`${album.title}/repeat.flac`, 4096);
+    media.upsertLibraryMediaFile({
+      trackId: track.id,
+      albumId: album.id,
+      source: "aurral",
+      path: file.filePath,
+      format: "flac",
+    });
+  }
+  const { flowPlaylistConfig } =
+    await import("../../backend/services/playlists/flowPlaylistConfig.ts");
+  const { resolveShareManifest } = await import("../../backend/services/shareLinks/metadata.ts");
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
+    name: "Album context",
+    ownerUserId: owner.id,
+    tracks: [
+      {
+        trackName: "Repeat",
+        artistName: artist.name,
+        trackMbid: mbid,
+        albumMbid: SECOND_ALBUM_MBID,
+        albumName: secondAlbum.album.title,
+        trackNumber: 9,
+      },
+    ],
+  });
+  const snapshot = resolveShareManifest(
+    { kind: "playlist", targetRef: playlist.id, albumRef: null },
+    { kind: "playlist", title: playlist.name },
+  );
+  assert.ok(snapshot);
+  assert.equal(snapshot.tracks[0].albumTitle, secondAlbum.album.title);
+  assert.equal(snapshot.tracks[0].trackNumber, 9);
+  assert.equal(snapshot.tracks[0].path, `tracks/${secondAlbum.album.id}/${track.id}`);
+  const artistShare = resolveShareManifest(
+    { kind: "artist", targetRef: String(artist.id), albumRef: null },
+    { kind: "artist", title: artist.name, artistName: artist.name },
+  );
+  assert.ok(artistShare);
+  assert.deepEqual(
+    artistShare.tracks
+      .filter((entry) => entry.trackMbid === mbid)
+      .map((entry) => [entry.albumTitle, entry.trackNumber, entry.path]),
+    [
+      [firstAlbum.album.title, 4, `tracks/${firstAlbum.album.id}/${track.id}`],
+      [secondAlbum.album.title, 7, `tracks/${secondAlbum.album.id}/${track.id}`],
+    ],
+  );
+  for (const trackMbid of [null, mbid]) {
+    const created = await callApi("POST", "", {
+      body: {
+        kind: "track",
+        title: "Repeat",
+        artistName: artist.name,
+        trackMbid,
+        albumTitle: secondAlbum.album.title,
+        manifest: {
+          kind: "track",
+          title: "Repeat",
+          artistName: artist.name,
+          tracks: [
+            { title: "Repeat", artistName: artist.name, albumTitle: secondAlbum.album.title },
+          ],
+        },
+        shareFiles: true,
+        expiresIn: "7d",
+      },
+    });
+    assert.equal(created.status, 201, JSON.stringify(created.body));
+    const row = db
+      .prepare<[number], { manifest: string }>("SELECT manifest FROM share_links WHERE id = ?")
+      .get(created.body.link.id);
+    assert.ok(row);
+    assert.equal(
+      JSON.parse(row.manifest).tracks[0].path,
+      `tracks/${secondAlbum.album.id}/${track.id}`,
+    );
+  }
+});
+
 test("local access without an account creates short metadata links without granting file access", async () => {
   const localUser = { ...owner, id: 0 };
   const created = await callApi("POST", "/plain", {

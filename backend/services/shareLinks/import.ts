@@ -1,7 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { db } from "../../config/db-sqlite.ts";
 import type { LibraryTracksRow } from "../../db/rows.ts";
-import { parseShareManifest, type SharedTrack } from "../../../lib/shareManifest.ts";
+import {
+  findSharedTrack,
+  parseShareManifest,
+  type SharedTrack,
+} from "../../../lib/shareManifest.ts";
 import type { HonkerPayload } from "../honkerDb.ts";
 import { getLibraryForTrackMatches } from "../libraryQueryService.ts";
 import { selectCanonicalFile } from "../canonicalFileSelector.ts";
@@ -174,17 +178,14 @@ export async function importShare(payload: HonkerPayload) {
       }
       const input = toImportTrack(track);
       if (manifest.kind !== "playlist" && (!includeFiles || localFiles[index])) return input;
-      if (manifest.kind !== "playlist" && findQueuedLibraryTrackJob(input)) return input;
+      const file = track.path
+        ? remote?.files?.tracks.find((entry) => entry.path === track.path)
+        : findSharedTrack(remote?.files?.tracks || [], track);
+      if (manifest.kind !== "playlist" && (!file?.path || findQueuedLibraryTrackJob(input)))
+        return input;
       const jobId = downloadTracker.addJob(input, ownerId);
       if (!jobId) throw new Error("The shared track is incomplete.");
       const local = localFiles[index];
-      const file = remote?.files?.tracks.find((entry) =>
-        track.path
-          ? entry.path === track.path
-          : track.trackMbid
-            ? entry.trackMbid === track.trackMbid
-            : entry.title === track.title && entry.artistName === track.artistName,
-      );
       if (local)
         downloadTracker.setDone(jobId, local.path, track.albumTitle, null, {
           reusedLibraryFile: true,

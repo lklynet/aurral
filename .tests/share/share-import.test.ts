@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { afterAll, beforeEach, test, vi } from "vite-plus/test";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTestHarness.ts";
 import { parseShareManifest } from "../../lib/shareManifest.ts";
 
@@ -98,19 +99,25 @@ function remoteShare({
   downloads = true,
   online = true,
   audio,
-}: { downloads?: boolean; online?: boolean; audio?: Buffer } = {}) {
+  shareManifest = manifest,
+}: {
+  downloads?: boolean;
+  online?: boolean;
+  audio?: Buffer;
+  shareManifest?: typeof manifest;
+} = {}) {
   const requests: string[] = [];
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = String(input);
     requests.push(url);
     if (url.startsWith("https://shares.example.com/api/shares/resolve?"))
       return Response.json({
-        manifest,
+        manifest: shareManifest,
         files: online
           ? {
               base: BASE,
               allowDownload: downloads,
-              tracks: manifest!.tracks
+              tracks: shareManifest!.tracks
                 .filter((track) => track.path)
                 .map((track) => ({
                   ...track,
@@ -272,33 +279,108 @@ function waveFile() {
   return bytes;
 }
 
-test("a permitted shared file reaches the managed Library without a download integration", async () => {
-  const audio = waveFile();
-  remoteShare({ audio });
-  const musicDir = path.join(paths.baseDir, "managed-music");
-  await mkdir(musicDir, { recursive: true });
-  const settings = dbOps.getSettings();
-  dbOps.updateSettings({ ...settings, downloadFolderPath: musicDir });
+for (const format of ["wav", "m4a"]) {
+  test(`a permitted shared ${format} reaches the managed Library without a download integration`, async () => {
+    let audio = waveFile();
+    if (format === "m4a") {
+      const file = path.join(paths.baseDir, "fragmented.m4a");
+      const result = spawnSync(
+        "ffmpeg",
+        [
+          "-hide_banner",
+          "-loglevel",
+          "error",
+          "-nostdin",
+          "-y",
+          "-f",
+          "lavfi",
+          "-i",
+          "anullsrc",
+          "-t",
+          "0.2",
+          "-c:a",
+          "aac",
+          "-movflags",
+          "frag_keyframe+empty_moov",
+          file,
+        ],
+        { encoding: "utf8" },
+      );
+      assert.equal(result.status, 0, result.stderr);
+      audio = await readFile(file);
+    }
+    const downloadManifest = {
+      ...manifest!,
+      tracks: manifest!.tracks.map((track) => ({
+        ...track,
+        title: track.title === "Shared" ? `Shared ${format}` : track.title,
+        format,
+      })),
+    };
+    remoteShare({ audio, shareManifest: downloadManifest });
+    const musicDir = path.join(paths.baseDir, "managed-music");
+    await mkdir(musicDir, { recursive: true });
+    const settings = dbOps.getSettings();
+    dbOps.updateSettings({ ...settings, downloadFolderPath: musicDir });
+    await importer.importShare({
+      ownerUserId: owner.id,
+      playlistId: `download-file-${format}`,
+      url: SHARE_URL,
+      manifest: downloadManifest,
+      includeFiles: true,
+    });
+    const job = downloadTracker
+      .getByPlaylistType(`download-file-${format}`)
+      .find((entry) => entry.trackName === `Shared ${format}`);
+    assert.ok(job);
+    const entry = honker
+      .listHonkerJobs("slskd-pipeline")
+      .find((queued) => queued.payload?.jobId === job.id);
+    assert.ok(entry?.payload);
+    await processPipelineJob({
+      ...entry.payload,
+      jobId: job.id,
+      phase: String(entry.payload.phase),
+    });
+    const completed = downloadTracker.getJob(job.id);
+    assert.equal(completed?.status, "done", completed?.error || "Shared file should finish");
+    assert.ok(completed?.finalPath);
+    assert.ok(completed.finalPath.startsWith(musicDir + path.sep));
+    assert.ok((await readFile(completed.finalPath)).length >= audio.length);
+    assert.equal(completed.downloadSource, "share");
+    if (format === "m4a") assert.deepEqual(await readFile(completed.finalPath), audio);
+  });
+}
+
+test("an unavailable album entry can be imported later when its shared file is available", async () => {
+  const album = parseShareManifest({
+    kind: "album",
+    title: "Remote album",
+    artistName: "Remote",
+    tracks: manifest!.tracks.slice(1, 3),
+  });
+  assert.ok(album);
+  remoteShare({ shareManifest: album });
   await importer.importShare({
     ownerUserId: owner.id,
-    playlistId: "download-file",
     url: SHARE_URL,
-    manifest,
+    manifest: album,
     includeFiles: true,
   });
-  const job = downloadTracker
-    .getByPlaylistType("download-file")
-    .find((entry) => entry.trackName === "Shared");
-  assert.ok(job);
-  const entry = honker
-    .listHonkerJobs("slskd-pipeline")
-    .find((queued) => queued.payload?.jobId === job.id);
-  assert.ok(entry?.payload);
-  await processPipelineJob({ ...entry.payload, jobId: job.id, phase: String(entry.payload.phase) });
-  const completed = downloadTracker.getJob(job.id);
-  assert.equal(completed?.status, "done", completed?.error || "Shared file should finish");
-  assert.ok(completed?.finalPath);
-  assert.ok(completed.finalPath.startsWith(musicDir + path.sep));
-  assert.ok((await readFile(completed.finalPath)).length >= audio.length);
-  assert.equal(completed.downloadSource, "share");
+  assert.equal(downloadTracker.getAll().length, 1);
+  assert.equal(downloadTracker.getAll()[0].trackName, "Shared");
+  const later = {
+    ...album,
+    tracks: album.tracks.map((track) => ({ ...track, path: "tracks/2/2", format: "wav" })),
+  };
+  remoteShare({ shareManifest: later });
+  await importer.importShare({
+    ownerUserId: owner.id,
+    url: SHARE_URL,
+    manifest: later,
+    includeFiles: true,
+  });
+  const jobs = downloadTracker.getAll();
+  assert.equal(jobs.length, 2);
+  assert.equal(jobs.find((job) => job.trackName === "Unavailable")?.status, "pending");
 });

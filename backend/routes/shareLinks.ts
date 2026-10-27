@@ -13,11 +13,12 @@ import { playlistOperationQueue } from "../services/playlists/playlistOperationQ
 import type { RequestUser } from "../middleware/requestUser.ts";
 import { resolveShareTarget } from "../services/shareLinks/library.ts";
 import { getLibraryForTrackMatches } from "../services/libraryQueryService.ts";
-import { MAX_SHARE_BYTES } from "../../lib/shareManifest.ts";
+import { findSharedTrack, MAX_SHARE_BYTES } from "../../lib/shareManifest.ts";
 import { syncShareListener } from "../services/shareLinks/shareListener.ts";
 import { getShareTunnelState, hasCloudflared } from "../services/shareLinks/tunnel.ts";
 import {
   createShareLink,
+  revokeShareFiles,
   deleteShareLink,
   listShareLinks,
   shareLinkUrl,
@@ -58,21 +59,42 @@ function targetFromInput(input: ShareTargetBody | undefined, allowMetadata = fal
     if (
       allowMetadata &&
       !input?.libraryTrackId &&
-      !input?.trackMbid &&
-      input?.title &&
-      input.artistName
+      (input?.trackMbid || (input?.title && input.artistName))
     ) {
       const library = getLibraryForTrackMatches({
         titles: [text(input.title)],
+        mbids: [text(input.trackMbid)],
         availableOnly: true,
       });
       const match = library.tracks.find(
         (track) =>
-          track.title.toLowerCase() === text(input.title).toLowerCase() &&
-          track.artistName?.toLowerCase() === text(input.artistName).toLowerCase(),
+          (input.trackMbid
+            ? track.mbid === text(input.trackMbid)
+            : track.title.toLowerCase() === text(input.title).toLowerCase() &&
+              track.artistName?.toLowerCase() === text(input.artistName).toLowerCase()) &&
+          ((!input.albumMbid && !input.albumTitle) ||
+            track.albums.some((entry) =>
+              library.albums.some(
+                (album) =>
+                  album.id === entry.albumId &&
+                  (input.albumMbid
+                    ? album.releaseGroupMbid === text(input.albumMbid)
+                    : album.title.toLowerCase() === text(input.albumTitle).toLowerCase()),
+              ),
+            )),
       );
-      if (match)
-        return { kind, targetRef: String(match.id), albumRef: text(input.libraryAlbumId) || null };
+      if (match) {
+        const album = library.albums.find(
+          (album) =>
+            match.albums.some((entry) => entry.albumId === album.id) &&
+            (input.albumMbid
+              ? album.releaseGroupMbid === text(input.albumMbid)
+              : input.albumTitle
+                ? album.title.toLowerCase() === text(input.albumTitle).toLowerCase()
+                : true),
+        );
+        return { kind, targetRef: String(match.id), albumRef: album ? String(album.id) : null };
+      }
     }
     const targetRef =
       text(input!.libraryTrackId) || text(input!.trackMbid) || (allowMetadata ? "metadata" : "");
@@ -136,13 +158,9 @@ async function previewImport(url: unknown) {
   const share = await loadRemoteShare(url);
   const localFiles = findShareLocalFiles(share.manifest.tracks);
   const tracks = share.manifest.tracks.map((track, index) => {
-    const file = share.files?.tracks.find((entry) =>
-      track.path
-        ? track.path === entry.path
-        : track.trackMbid
-          ? track.trackMbid === entry.trackMbid
-          : track.title === entry.title && track.artistName === entry.artistName,
-    );
+    const file = track.path
+      ? share.files?.tracks.find((entry) => track.path === entry.path)
+      : findSharedTrack(share.files?.tracks || [], track);
     return { ...track, available: Boolean(file), inLibrary: Boolean(localFiles[index]) };
   });
   return {
@@ -330,20 +348,23 @@ router.delete("/:id", async (req, res) => {
   const link = listShareLinks(Number(req.user!.id)).find(
     (entry) => String(entry.id) === req.params.id,
   );
+  if (!link)
+    return res.status(404).json({ error: "not_found", message: "This link was already stopped." });
+  revokeShareFiles(Number(req.user!.id), req.params.id);
+  await syncShareListener();
   if (link?.manifest) {
     try {
       await publishShareManifest(link.token, null);
     } catch {
       return res.status(503).json({
         error: "sharing_unavailable",
-        message: "Could not stop the share on aurral.org. Try again.",
+        message: "Files stopped. Could not remove the link from aurral.org. Try again.",
       });
     }
   }
   if (!deleteShareLink(Number(req.user!.id), req.params.id)) {
     return res.status(404).json({ error: "not_found", message: "This link was already stopped." });
   }
-  await syncShareListener();
   res.status(204).end();
 });
 

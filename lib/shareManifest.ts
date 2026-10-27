@@ -71,3 +71,27 @@ export function parseShareManifest(value: unknown) {
 
 export type ShareManifest = NonNullable<ReturnType<typeof parseShareManifest>>;
 export type SharedTrack = ShareManifest["tracks"][number];
+
+type ShareTrackIdentity = Pick<
+  SharedTrack,
+  "title" | "artistName" | "trackMbid" | "albumMbid" | "releaseMbid" | "albumTitle"
+>;
+
+export function findSharedTrack<T extends ShareTrackIdentity>(
+  tracks: T[],
+  requested: ShareTrackIdentity,
+) {
+  return tracks.find((track) => {
+    const sameTrack = requested.trackMbid
+      ? requested.trackMbid === track.trackMbid
+      : requested.title.toLowerCase() === track.title.toLowerCase() &&
+        requested.artistName.toLowerCase() === track.artistName.toLowerCase();
+    const sameAlbum = requested.releaseMbid
+      ? requested.releaseMbid === track.releaseMbid
+      : requested.albumMbid
+        ? requested.albumMbid === track.albumMbid
+        : !requested.albumTitle ||
+          requested.albumTitle.toLowerCase() === track.albumTitle?.toLowerCase();
+    return sameTrack && sameAlbum;
+  });
+}
