@@ -53,7 +53,7 @@ import Tooltip from "../../components/Tooltip";
 import TooltipButton from "../../components/TooltipButton";
 import { useShareAction } from "../../hooks/useShareAction";
 import CrossViewLink from "../../components/CrossViewLink";
-import type { ReleaseGroupTrack } from "../../../../backend/routes/artists/handlers/releaseGroup.ts";
+import type { ReleaseGroupTrack } from "../../utils/api/endpoints/artists.ts";
 import type { ReleaseFocusState } from "../../utils/searchNavigation.ts";
 import type { DownloadStatuses } from "./hooks/useArtistDetailsLibrary.ts";
 import type { PlaylistSelection } from "./components/TrackPlaylistMenu";
@@ -163,7 +163,7 @@ function ReleasePage() {
   );
   const tracksQuery = useQuery({
     queryKey: queryKeys.releaseGroupTracks(releaseMbid, trackContext),
-    queryFn: ({ signal }) => getReleaseGroupTracks(releaseMbid, { ...trackContext, signal }),
+    queryFn: ({ signal }) => getReleaseGroupTracks(releaseMbid ?? "", { ...trackContext, signal }),
     enabled: Boolean(releaseMbid),
     staleTime: 5 * 60 * 1000,
   });

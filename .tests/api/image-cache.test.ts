@@ -9,23 +9,15 @@ import {
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.ts";
 
-const [
-  state,
-  { db },
-  { dbOps, userOps },
-  { hashPassword },
-  { authMiddleware },
-  { handToHono },
-  { default: imageProxyRouter },
-] = await setupIsolatedBackend(
-  "image-cache",
-  () => import("../../backend/config/db-sqlite.ts"),
-  () => import("../../backend/db/helpers/index.ts"),
-  () => import("../../backend/middleware/passwordHash.ts"),
-  () => import("../../backend/middleware/auth.ts"),
-  () => import("../../backend/routes/shared/expressHandoff.ts"),
-  () => import("../../backend/routes/imageProxy.ts"),
-);
+const [state, { db }, { dbOps, userOps }, { hashPassword }, { authMiddleware }, { handToHono }] =
+  await setupIsolatedBackend(
+    "image-cache",
+    () => import("../../backend/config/db-sqlite.ts"),
+    () => import("../../backend/db/helpers/index.ts"),
+    () => import("../../backend/middleware/passwordHash.ts"),
+    () => import("../../backend/middleware/auth.ts"),
+    () => import("../../backend/routes/shared/expressHandoff.ts"),
+  );
 
 const realFetch = globalThis.fetch;
 const cover = await sharp({
@@ -70,9 +62,7 @@ function cacheImage(src: string, { authenticated = true }: { authenticated?: boo
 beforeAll(async () => {
   const app = express();
   app.use(authMiddleware);
-  app.use("/api/auth", handToHono);
-  app.use(express.json());
-  app.use("/api/image-proxy", imageProxyRouter);
+  app.use(["/api/auth", "/api/image-proxy"], handToHono);
   server = await new Promise<
     import("node:http").Server<
       typeof import("node:http").IncomingMessage,

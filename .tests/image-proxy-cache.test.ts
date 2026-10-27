@@ -51,14 +51,17 @@ test(
       );
       await fs.unlink(cached.imagePath);
       vi.resetModules();
-      const { warmImageProxy, handleImageProxyRequest } =
-        await import("../backend/services/imageProxyService.ts");
+      const { warmImageProxy } = await import("../backend/services/imageProxyService.ts");
+      const { handToHono } = await import("../backend/routes/shared/expressHandoff.ts");
       const app = express();
-      app.get("/api/image-proxy/:cacheKey", (req, res, next) => {
-        const pending = handleImageProxyRequest(req, res);
-        localStarted.resolve();
-        pending.catch((error) => next(error));
-      });
+      app.get(
+        "/api/image-proxy/:cacheKey",
+        (_req, _res, next) => {
+          localStarted.resolve();
+          next();
+        },
+        handToHono,
+      );
       server = await new Promise<
         import("node:http").Server<
           typeof import("node:http").IncomingMessage,
@@ -221,17 +224,12 @@ test("image proxy serves cached images from hidden worktree paths", async () => 
     global.fetch = async () => new Response(png, { headers: { "content-type": "image/png" } });
 
     vi.resetModules();
-    const { handleImageProxyRequest, warmImageProxy } =
-      await import("../backend/services/imageProxyService.ts");
+    const { warmImageProxy } = await import("../backend/services/imageProxyService.ts");
+    const { handToHono } = await import("../backend/routes/shared/expressHandoff.ts");
     const cached = await warmImageProxy("https://images.example/hidden-path.png");
     global.fetch = originalFetch;
 
-    const app = express();
-    app.get("/api/image-proxy/:cacheKey", handleImageProxyRequest);
-    const handleError: import("express").ErrorRequestHandler = (error: Error, _req, res, _next) => {
-      res.status(500).json({ error: error.message });
-    };
-    app.use(handleError);
+    const app = express().get("/api/image-proxy/:cacheKey", handToHono);
     server = await new Promise<
       import("node:http").Server<
         typeof import("node:http").IncomingMessage,

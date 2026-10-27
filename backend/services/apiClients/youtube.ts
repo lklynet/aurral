@@ -4,7 +4,7 @@ import { compareRecording, MATCH_POLICY } from "../trackMatching/nativeMatcher.t
 import { parseYoutubeTitle, readYoutubeUpload } from "../trackMatching/youtubeEvidence.ts";
 
 export const youtubeVideoCache = createCache(24 * 3600);
-const inflight = new Map();
+const inflight = new Map<string, ReturnType<typeof findVideo>>();
 const liveStatuses = new Set(["is_live", "was_live", "post_live", "is_upcoming"]);
 
 type YoutubeSearchResult = Awaited<ReturnType<typeof ytdlpClient.search>>[number];
@@ -64,9 +64,10 @@ export async function youtubeFindTopSongVideo(
   const title = String(trackTitle || "").trim();
   if (!artist || !title) return null;
   const key = `${artist.toLowerCase()}\0${title.toLowerCase()}`;
-  const cached = youtubeVideoCache.get(key);
+  const cached: Awaited<ReturnType<typeof findVideo>> | undefined = youtubeVideoCache.get(key);
   if (cached !== undefined) return cached;
-  if (inflight.has(key)) return inflight.get(key);
+  const existing = inflight.get(key);
+  if (existing) return existing;
   const lookup = findVideo(artist, title)
     .then((video) => {
       youtubeVideoCache.set(key, video, video ? 24 * 3600 : 300);

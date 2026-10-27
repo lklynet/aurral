@@ -1,21 +1,22 @@
-import { getData } from "../core.ts";
+import { parseResponse } from "hono/client";
+import { apiFetch, apiFetchWithin } from "../core.ts";
+import { searchClient } from "../clients/search.ts";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
-import type {
-  searchUnified as searchUnifiedRoute,
-  searchLibrary as searchLibraryRoute,
-} from "../../../../../backend/services/unifiedSearchService.ts";
-import type {
-  searchAlbums,
-  searchArtists,
-  searchTags,
-} from "../../../../../backend/services/searchService.ts";
 
-type UnifiedSearchResponse = Awaited<ReturnType<typeof searchUnifiedRoute>>;
-type LibrarySearchResponse = ReturnType<typeof searchLibraryRoute>;
-type CatalogSearchResponse =
-  | Awaited<ReturnType<typeof searchArtists>>
-  | Awaited<ReturnType<typeof searchAlbums>>
-  | Awaited<ReturnType<typeof searchTags>>;
+const suggestFetch = apiFetchWithin(12_000);
+
+const fetchUnified = (
+  query: string,
+  mode: "suggest" | "full",
+  limit: number | undefined,
+  signal: AbortSignal | undefined,
+) =>
+  parseResponse(
+    searchClient.unified.$get(
+      { query: { q: query, mode, limit: limit == null ? undefined : String(limit) } },
+      { fetch: mode === "full" ? apiFetch : suggestFetch, init: { signal } },
+    ),
+  );
 
 export const searchUnified = async (
   query: string,
@@ -24,27 +25,11 @@ export const searchUnified = async (
     limit,
     signal,
   }: { mode?: "suggest" | "full"; limit?: number; signal?: AbortSignal } = {},
-): Promise<UnifiedSearchResponse> => {
-  const params: Record<string, string | number> = { q: query, mode };
-  if (limit != null) {
-    params.limit = limit;
-  }
-  const timeoutMs = mode === "full" ? 30000 : 12000;
-  if (signal) {
-    return getData<UnifiedSearchResponse>("/search/unified", {
-      params,
-      timeout: timeoutMs,
-      signal,
-    });
-  }
+) => {
+  if (signal) return fetchUnified(query, mode, limit, signal);
   return queryClient.fetchQuery({
     queryKey: queryKeys.searchUnified(query, mode, limit),
-    queryFn: ({ signal: querySignal }) =>
-      getData<UnifiedSearchResponse>("/search/unified", {
-        params,
-        timeout: timeoutMs,
-        signal: querySignal,
-      }),
+    queryFn: ({ signal: querySignal }) => fetchUnified(query, mode, limit, querySignal),
     staleTime: mode === "full" ? 30_000 : 5_000,
   });
 };
@@ -65,35 +50,39 @@ export const searchCatalog = async (
     sort?: string;
     signal?: AbortSignal;
   } = {},
-): Promise<CatalogSearchResponse> => {
-  const params: Record<string, string | number> = { q: query, scope, limit, offset };
-  if (scope === "album") {
-    if (Array.isArray(releaseTypes) && releaseTypes.length) {
-      params.releaseTypes = releaseTypes.join(",");
-    }
-    if (sort) {
-      params.sort = sort;
-    }
-  }
-  const queryOptions = { limit, offset, releaseTypes, sort };
-  if (signal) {
-    return getData<CatalogSearchResponse>("/search", { params, signal });
-  }
+) => {
+  const albumScope = scope === "album";
+  const fetchCatalog = (requestSignal: AbortSignal | undefined) =>
+    parseResponse(
+      searchClient.$get(
+        {
+          query: {
+            q: query,
+            scope,
+            limit: String(limit),
+            offset: String(offset),
+            releaseTypes: albumScope && releaseTypes.length ? releaseTypes.join(",") : undefined,
+            sort: albumScope ? sort || undefined : undefined,
+          },
+        },
+        { init: { signal: requestSignal } },
+      ),
+    );
+  if (signal) return fetchCatalog(signal);
   return queryClient.fetchQuery({
-    queryKey: queryKeys.searchCatalog(query, scope, queryOptions),
-    queryFn: ({ signal: querySignal }) =>
-      getData<CatalogSearchResponse>("/search", { params, signal: querySignal }),
+    queryKey: queryKeys.searchCatalog(query, scope, { limit, offset, releaseTypes, sort }),
+    queryFn: ({ signal: querySignal }) => fetchCatalog(querySignal),
     staleTime: 30_000,
   });
 };
 
-export const searchLibrary = async (
+export const searchLibrary = (
   query: string,
   { limit, signal }: { limit?: number; signal?: AbortSignal } = {},
-): Promise<LibrarySearchResponse> => {
-  const params: Record<string, string | number> = { q: query };
-  if (limit != null) {
-    params.limit = limit;
-  }
-  return getData<LibrarySearchResponse>("/search/library", { params, signal });
-};
+) =>
+  parseResponse(
+    searchClient.library.$get(
+      { query: { q: query, limit: limit == null ? undefined : String(limit) } },
+      { init: { signal } },
+    ),
+  );

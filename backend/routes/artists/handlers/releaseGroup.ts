@@ -1,7 +1,10 @@
-import type { Request, Router } from "express";
+import { Hono } from "hono";
+import * as v from "valibot";
 import { UUID_REGEX } from "../../../../lib/uuid.ts";
 import { dbOps } from "../../../db/helpers/index.ts";
-import { cacheMiddleware, noCache } from "../../../middleware/cache.ts";
+import { cacheFor, noCache } from "../../../middleware/cacheHeaders.ts";
+import type { AppEnv } from "../../../middleware/requestUser.ts";
+import { validate } from "../../../middleware/validate.ts";
 import {
   fetchReleaseGroupCoverUrl,
   resolveReleaseGroupCoversBatch,
@@ -19,75 +22,61 @@ import {
 import { logger } from "../../../services/logger.ts";
 import { chooseLibraryRelease } from "../../../services/releaseResolver.ts";
 import { asAppError } from "../../../../lib/errors.ts";
-
-type MbidRequest = Request<{ mbid: string }>;
+import { queryText } from "../utils.ts";
 
 type ReleaseGroupAlbum = Awaited<ReturnType<typeof getAlbumByMbid>>;
+type ReleaseGroupCovers = Awaited<ReturnType<typeof resolveReleaseGroupCoversBatch>>;
 
-export type ReleaseGroupRatingsResponse = {
-  ratings: Record<
-    string,
-    { rating: ReleaseGroupAlbum["rating"]; firstReleaseDate: ReleaseGroupAlbum["releaseDate"] }
-  >;
-};
+const ratingsBody = v.object({ ids: v.optional(v.array(v.string()), []) });
 
-export type ReleaseGroupDetailsResponse = ReturnType<typeof toLegacyReleaseGroupSummary> & {
-  genres: string[];
-  overview: string;
-  coverUrl: string | null;
-};
+const coversBody = v.object({
+  items: v.optional(
+    v.array(
+      v.object({
+        mbid: v.optional(v.string()),
+        id: v.optional(v.string()),
+        artistName: v.optional(v.string()),
+        albumTitle: v.optional(v.string()),
+      }),
+    ),
+    [],
+  ),
+});
 
-export type ReleaseGroupCoverEntry = {
-  image: string | null;
-  notFound: boolean;
-  transientError?: boolean;
-};
+const coverQuery = v.object({
+  refresh: v.optional(v.string()),
+  artistName: queryText,
+  albumTitle: queryText,
+});
 
-export type ReleaseGroupCoversResponse = { covers: Record<string, ReleaseGroupCoverEntry> };
+const tracksQuery = v.object({
+  artistMbid: queryText,
+  artistName: queryText,
+  albumTitle: queryText,
+  releaseType: queryText,
+  releaseDate: queryText,
+  deezerAlbumId: queryText,
+});
 
-export type ReleaseGroupCoverImage = { image: string; front: boolean; types: string[] };
-
-export type ReleaseGroupCoverResponse = {
-  images: ReleaseGroupCoverImage[];
-  notFound: boolean;
-  transientError: boolean;
-};
-
-export type ReleaseGroupTrack = {
-  id: string;
-  mbid: string;
-  title: string;
-  trackName: string;
-  trackNumber: number;
-  discNumber: number;
-  position: number;
-  releaseMbid: string | null;
-  length: number | null;
-  preview_url: string | null;
-  previewProvider: string | null;
-  previewTrackId: string | null;
-};
-
-export function registerReleaseGroup(router: Router) {
-  router.post("/release-groups/ratings", async (req, res) => {
-    const ids = [...new Set(Array.isArray(req.body?.ids) ? req.body.ids : [])]
-      .map((id) => String(id || "").trim())
+export default new Hono<AppEnv>()
+  .basePath("/artists")
+  .post("/release-groups/ratings", validate("json", ratingsBody), async (c) => {
+    const ids = [...new Set(c.req.valid("json").ids)]
+      .map((id) => id.trim())
       .filter((id) => UUID_REGEX.test(id))
       .slice(0, 24);
-    if (!ids.length) return res.json({ ratings: {} });
+    const ratings: Record<
+      string,
+      { rating: ReleaseGroupAlbum["rating"]; firstReleaseDate: ReleaseGroupAlbum["releaseDate"] }
+    > = {};
+    if (!ids.length) return c.json({ ratings }, 200);
 
-    const controller = new AbortController();
-    res.on("close", () => {
-      if (!res.writableEnded) controller.abort();
-    });
-    const ratings: ReleaseGroupRatingsResponse["ratings"] = {};
+    const { signal } = c.req.raw;
     try {
       for (let index = 0; index < ids.length; index += 6) {
-        controller.signal.throwIfAborted?.();
+        signal.throwIfAborted();
         const batch = ids.slice(index, index + 6);
-        const results = await Promise.allSettled(
-          batch.map((id) => getAlbumByMbid(id, { signal: controller.signal })),
-        );
+        const results = await Promise.allSettled(batch.map((id) => getAlbumByMbid(id, { signal })));
         batch.forEach((id, batchIndex) => {
           const result = results[batchIndex];
           if (result.status !== "fulfilled") return;
@@ -97,147 +86,114 @@ export function registerReleaseGroup(router: Router) {
           };
         });
       }
-      if (controller.signal.aborted) return;
-      return res.json({ ratings });
+      return c.json({ ratings }, 200);
     } catch (error) {
-      const failure = asAppError(error);
-      if (controller.signal.aborted || failure?.name === "AbortError") return;
-      return res.status(502).json({
-        error: "Failed to load release ratings",
-        message: failure?.message,
-      });
+      return c.json(
+        { error: "Failed to load release ratings", message: asAppError(error)?.message },
+        502,
+      );
     }
-  });
-
-  router.post("/release-groups/covers", async (req, res) => {
+  })
+  .post("/release-groups/covers", validate("json", coversBody), async (c) => {
+    const { items } = c.req.valid("json");
+    const noCovers: ReleaseGroupCovers = {};
+    if (!items.length) return c.json({ covers: noCovers }, 200);
     try {
-      const items = Array.isArray(req.body?.items) ? req.body.items : [];
-      if (!items.length) {
-        return res.json({ covers: {} });
-      }
       const covers = await resolveReleaseGroupCoversBatch(items);
       const hasTransientError = Object.values(covers).some((entry) => entry?.transientError);
-      if (hasTransientError) {
-        res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
-      } else {
-        res.set("Cache-Control", "public, max-age=31536000, immutable");
-      }
-      return res.json({ covers });
+      c.header(
+        "Cache-Control",
+        hasTransientError
+          ? "public, max-age=60, stale-while-revalidate=300"
+          : "public, max-age=31536000, immutable",
+      );
+      return c.json({ covers }, 200);
     } catch (error) {
-      const failure = asAppError(error);
       logger.error("releaseGroup", "Error in release-groups covers batch route:", {
-        message: failure?.message,
+        message: asAppError(error)?.message,
       });
-      res.set("Cache-Control", "public, max-age=60");
-      return res.json({ covers: {} });
+      c.header("Cache-Control", "public, max-age=60");
+      return c.json({ covers: noCovers }, 200);
     }
-  });
-
-  router.get("/release-group/:mbid", cacheMiddleware(3600), async (req: MbidRequest, res) => {
+  })
+  .get("/release-group/:mbid", cacheFor(3600), async (c) => {
+    const mbid = c.req.param("mbid");
     try {
-      const { mbid } = req.params;
       if (!UUID_REGEX.test(mbid)) {
-        return res.status(400).json({ error: "Invalid MBID format" });
+        return c.json({ error: "Invalid MBID format" }, 400);
       }
 
       const album = await getAlbumByMbid(mbid);
       const primaryArtist = Array.isArray(album?.artists) ? album.artists[0] : null;
-      const summary = toLegacyReleaseGroupSummary(album, primaryArtist);
-      const coverImage =
-        Array.isArray(album?.images) && album.images[0]?.url ? album.images[0].url : null;
-
-      res.json({
-        ...summary,
-        genres: Array.isArray(album?.genres) ? album.genres : [],
-        overview: album?.overview || "",
-        coverUrl: coverImage,
-      });
+      return c.json(
+        {
+          ...toLegacyReleaseGroupSummary(album, primaryArtist),
+          genres: Array.isArray(album?.genres) ? album.genres : [],
+          overview: album?.overview || "",
+          coverUrl:
+            Array.isArray(album?.images) && album.images[0]?.url ? album.images[0].url : null,
+        },
+        200,
+      );
     } catch (error) {
       const failure = asAppError(error);
-      logger.error("releaseGroup", `Error in release-group details route for ${req.params.mbid}:`, {
+      logger.error("releaseGroup", `Error in release-group details route for ${mbid}:`, {
         message: failure?.message,
       });
-      res.status(404).json({
-        error: "Release not found",
-        message: failure?.message,
-      });
+      return c.json({ error: "Release not found", message: failure?.message }, 404);
     }
-  });
-
-  router.get("/release-group/:mbid/cover", async (req: MbidRequest, res) => {
-    const bypassCache = req.query.refresh === "true";
+  })
+  .get("/release-group/:mbid/cover", validate("query", coverQuery), async (c) => {
+    const mbid = c.req.param("mbid");
+    const query = c.req.valid("query");
+    const bypassCache = query.refresh === "true";
     try {
-      const { mbid } = req.params;
-      const artistName =
-        typeof req.query.artistName === "string" && req.query.artistName.trim()
-          ? req.query.artistName.trim()
-          : "";
-      const albumTitleFromQuery =
-        typeof req.query.albumTitle === "string" && req.query.albumTitle.trim()
-          ? req.query.albumTitle.trim()
-          : "";
       if (!UUID_REGEX.test(mbid)) {
-        return res.status(400).json({ error: "Invalid MBID format", images: [] });
+        return c.json({ error: "Invalid MBID format", images: [] }, 400);
       }
       const cover = await fetchReleaseGroupCoverUrl(mbid, {
-        artistName,
-        albumTitle: albumTitleFromQuery,
+        artistName: query.artistName,
+        albumTitle: query.albumTitle,
         bypassCache,
       });
       if (cover?.imageUrl) {
-        res.set("Cache-Control", bypassCache ? "no-store" : "public, max-age=31536000, immutable");
-        return res.json({
-          images: [
-            {
-              image: cover.imageUrl,
-              front: true,
-              types: cover.types || ["Front"],
-            },
-          ],
-          notFound: false,
-          transientError: false,
-        });
+        c.header("Cache-Control", bypassCache ? "no-store" : "public, max-age=31536000, immutable");
+        return c.json(
+          {
+            images: [{ image: cover.imageUrl, front: true, types: cover.types || ["Front"] }],
+            notFound: false,
+            transientError: false,
+          },
+          200,
+        );
       }
       if (cover?.notFound) {
-        res.set("Cache-Control", bypassCache ? "no-store" : "public, max-age=3600");
-        return res.json({ images: [], notFound: true, transientError: false });
+        c.header("Cache-Control", bypassCache ? "no-store" : "public, max-age=3600");
+        return c.json({ images: [], notFound: true, transientError: false }, 200);
       }
-      res.set(
+      c.header(
         "Cache-Control",
         bypassCache ? "no-store" : "public, max-age=60, stale-while-revalidate=300",
       );
-      res.json({ images: [], notFound: false, transientError: true });
+      return c.json({ images: [], notFound: false, transientError: true }, 200);
     } catch (error) {
-      const failure = asAppError(error);
-      logger.error("releaseGroup", `Error in release-group cover route for ${req.params.mbid}:`, {
-        message: failure?.message,
+      logger.error("releaseGroup", `Error in release-group cover route for ${mbid}:`, {
+        message: asAppError(error)?.message,
       });
-      res.set("Cache-Control", bypassCache ? "no-store" : "public, max-age=60");
-      res.json({ images: [], notFound: false, transientError: true });
+      c.header("Cache-Control", bypassCache ? "no-store" : "public, max-age=60");
+      return c.json({ images: [], notFound: false, transientError: true }, 200);
     }
-  });
-
-  router.get("/release-group/:mbid/tracks", noCache, async (req: MbidRequest, res) => {
+  })
+  .get("/release-group/:mbid/tracks", noCache, validate("query", tracksQuery), async (c) => {
     try {
-      const { mbid } = req.params;
+      const mbid = c.req.param("mbid");
       if (!UUID_REGEX.test(mbid)) {
-        return res.status(400).json({ error: "Invalid MBID format" });
+        return c.json({ error: "Invalid MBID format" }, 400);
       }
 
-      const artistMbid =
-        typeof req.query.artistMbid === "string" && UUID_REGEX.test(req.query.artistMbid)
-          ? req.query.artistMbid
-          : "";
-      const artistName =
-        typeof req.query.artistName === "string" ? req.query.artistName.trim() : "";
-      const albumTitle =
-        typeof req.query.albumTitle === "string" ? req.query.albumTitle.trim() : "";
-      const releaseType =
-        typeof req.query.releaseType === "string" ? req.query.releaseType.trim() : "";
-      const releaseDate =
-        typeof req.query.releaseDate === "string" ? req.query.releaseDate.trim() : "";
-      const deezerAlbumId =
-        typeof req.query.deezerAlbumId === "string" ? req.query.deezerAlbumId.trim() : "";
+      const query = c.req.valid("query");
+      const artistMbid = UUID_REGEX.test(query.artistMbid) ? query.artistMbid : "";
+      const { artistName, albumTitle, releaseType, releaseDate, deezerAlbumId } = query;
 
       const tracks = await getAlbumTracksByAlbumMbid(mbid, { chooseRelease: chooseLibraryRelease });
       let deezerArtistId = "";
@@ -264,7 +220,7 @@ export function registerReleaseGroup(router: Router) {
         cacheKey: `release-group:${mbid}:${deezerAlbumId || deezerArtistId || artistName}`,
       });
 
-      res.json(
+      return c.json(
         enrichedTracks.map((track) => ({
           id: track.recordingId || track.id,
           mbid: track.recordingId || track.id,
@@ -279,16 +235,13 @@ export function registerReleaseGroup(router: Router) {
           previewProvider: track.previewProvider || null,
           previewTrackId: track.previewTrackId || null,
         })),
+        200,
       );
     } catch (error) {
       const failure = asAppError(error);
       logger.error("releaseGroup", "Error fetching release group tracks:", {
         message: failure?.message,
       });
-      res.status(500).json({
-        error: "Failed to fetch tracks",
-        message: failure?.message,
-      });
+      return c.json({ error: "Failed to fetch tracks", message: failure?.message }, 500);
     }
   });
-}

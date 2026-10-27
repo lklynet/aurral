@@ -1,9 +1,7 @@
-import { createResponse, createRouteHarness } from "../library/routeHarness.ts";
 import { testUser } from "../helpers/userFixtures.ts";
-import { listeningAddress } from "../helpers/backendTestHarness.ts";
+import { signedInAs } from "../helpers/honoApp.ts";
 import { test, beforeAll, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
-import express from "express";
 import {
   cleanupIsolatedState,
   resetDatabase,
@@ -16,8 +14,8 @@ const [
   { dbOps, userOps },
   discovery,
   { getUserDiscovery },
-  { default: searchRouter },
-  { registerSimilar },
+  { default: search },
+  { default: similar },
   { FlowTrackSource },
 ] = await setupIsolatedBackend(
   "listenbrainz-discovery",
@@ -197,37 +195,15 @@ test("without a Last.fm key each user gets personal recommendations from ListenB
   assert.equal(likedTagLookups.length, 1);
 });
 
-const requestApi = async (mountPath: string, router: express.Router, path: string) => {
-  const app = express();
-  app.use((req, _res, next) => {
-    req.user = testUser(alice.id);
-    next();
-  });
-  app.use(mountPath, router);
-  const server = await new Promise<
-    import("node:http").Server<
-      typeof import("node:http").IncomingMessage,
-      typeof import("node:http").ServerResponse
-    >
-  >((resolve) => {
-    const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
-  });
-  try {
-    const response = await originalFetch(
-      `http://127.0.0.1:${listeningAddress(server).port}${mountPath}${path}`,
-    );
-    return { status: response.status, body: await response.json() };
-  } finally {
-    await new Promise<void>((resolve) => server.close(() => resolve()));
-  }
+const requestSearch = async (query: string) => {
+  const response = await signedInAs(testUser(alice.id))
+    .route("/", search)
+    .request(`/search${query}`);
+  return { status: response.status, body: await response.json() };
 };
 
 test("without a Last.fm key tag search lists MusicBrainz's artists for the tag", async () => {
-  const { status, body } = await requestApi(
-    "/api/search",
-    searchRouter,
-    "?scope=tag&q=%23shoegaze",
-  );
+  const { status, body } = await requestSearch("?scope=tag&q=%23shoegaze");
 
   assert.equal(status, 200);
   assert.deepEqual(
@@ -241,13 +217,10 @@ test("without a Last.fm key tag search lists MusicBrainz's artists for the tag",
 });
 
 test("without a Last.fm key artist pages list ListenBrainz similar artists", async () => {
-  const routes = createRouteHarness(registerSimilar);
-  const res = createResponse<{ artists: { name: string; match: number }[] }>();
-  await routes.get("GET /:mbid/similar")(
-    { params: { mbid: LIKED.mbid }, query: { artistName: LIKED.name } },
-    res,
+  const response = await similar.request(
+    `/artists/${LIKED.mbid}/similar?${new URLSearchParams({ artistName: LIKED.name })}`,
   );
-  const { body } = res;
+  const body: { artists: { name: string; match: number }[] } = await response.json();
 
   assert.deepEqual(
     body.artists.map((artist) => [artist.name, artist.match]),

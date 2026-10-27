@@ -1,71 +1,72 @@
-import type { Request, Router } from "express";
+import { Hono } from "hono";
+import * as v from "valibot";
 import { UUID_REGEX } from "../../../../lib/uuid.ts";
 import {
   getMusicbrainzAppearsOnScanState,
   musicbrainzGetArtistAppearsOnReleaseGroups,
 } from "../../../services/apiClients/index.ts";
+import type { AppEnv } from "../../../middleware/requestUser.ts";
+import { validate } from "../../../middleware/validate.ts";
 import { asAppError } from "../../../../lib/errors.ts";
 
-type MbidRequest = Request<{ mbid: string }>;
+const clamped = (min: number, max: number, fallback: number) =>
+  v.optional(
+    v.pipe(
+      v.number(),
+      v.transform((value) => Math.min(max, Math.max(min, Math.trunc(value) || fallback))),
+    ),
+    fallback,
+  );
 
-export type ArtistAppearsOnResponse = {
-  items: Awaited<ReturnType<typeof musicbrainzGetArtistAppearsOnReleaseGroups>>;
-  offset: number;
-  hasMore: boolean;
-};
+const appearsOnBody = v.object({
+  limit: clamped(1, 24, 24),
+  offset: clamped(0, 250, 0),
+  excludeIds: v.optional(v.array(v.string()), []),
+});
 
-export function registerAppearsOn(router: Router) {
-  router.post("/:mbid/appears-on", async (req: MbidRequest, res) => {
-    const { mbid } = req.params;
+export default new Hono<AppEnv>()
+  .basePath("/artists")
+  .post("/:mbid/appears-on", validate("json", appearsOnBody), async (c) => {
+    const mbid = c.req.param("mbid");
     if (!UUID_REGEX.test(mbid)) {
-      return res.status(400).json({ error: "Invalid MBID format" });
+      return c.json({ error: "Invalid MBID format" }, 400);
     }
 
-    const limit = Math.min(24, Math.max(1, Number.parseInt(req.body?.limit, 10) || 24));
-    const offset = Math.min(250, Math.max(0, Number.parseInt(req.body?.offset, 10) || 0));
-    const excludeIds = new Set(
-      (Array.isArray(req.body?.excludeIds) ? req.body.excludeIds : [])
-        .map((id: unknown) => String(id || "").trim())
-        .filter((id: string) => UUID_REGEX.test(id)),
-    );
-    const controller = new AbortController();
-    res.on("close", () => {
-      if (!res.writableEnded) controller.abort();
-    });
+    const { limit, offset, excludeIds } = c.req.valid("json");
+    const excluded = new Set(excludeIds.map((id) => id.trim()).filter((id) => UUID_REGEX.test(id)));
+    const { signal } = c.req.raw;
 
     try {
       let availableItems = await musicbrainzGetArtistAppearsOnReleaseGroups(mbid, {
         limit: 250,
         offset: 0,
-        signal: controller.signal,
+        signal,
         scanPageBudget: 0,
       });
-      let unseenItems = availableItems.filter((item) => !excludeIds.has(item.id));
-      const cachedScanState = getMusicbrainzAppearsOnScanState(mbid);
-      if (unseenItems.length < limit && !cachedScanState.complete) {
+      let unseenItems = availableItems.filter((item) => !excluded.has(item.id));
+      if (unseenItems.length < limit && !getMusicbrainzAppearsOnScanState(mbid).complete) {
         availableItems = await musicbrainzGetArtistAppearsOnReleaseGroups(mbid, {
           limit: 250,
           offset: 0,
-          signal: controller.signal,
+          signal,
           scanPageBudget: 1,
         });
-        unseenItems = availableItems.filter((item) => !excludeIds.has(item.id));
+        unseenItems = availableItems.filter((item) => !excluded.has(item.id));
       }
       const items = unseenItems.slice(0, limit);
-      if (controller.signal.aborted) return;
-      const scanState = getMusicbrainzAppearsOnScanState(mbid);
-      return res.json({
-        items,
-        offset,
-        hasMore: unseenItems.length > items.length || !scanState.complete,
-      });
+      return c.json(
+        {
+          items,
+          offset,
+          hasMore:
+            unseenItems.length > items.length || !getMusicbrainzAppearsOnScanState(mbid).complete,
+        },
+        200,
+      );
     } catch (error) {
-      const failure = asAppError(error);
-      if (controller.signal.aborted || failure?.name === "AbortError") return;
-      return res.status(502).json({
-        error: "Failed to load artist appearances",
-        message: failure?.message,
-      });
+      return c.json(
+        { error: "Failed to load artist appearances", message: asAppError(error)?.message },
+        502,
+      );
     }
   });
-}

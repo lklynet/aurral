@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import type { ArtistDetailsResponse } from "../../../../../backend/routes/artists/handlers/details.ts";
-import type { SimilarArtistsResponse } from "../../../../../backend/routes/artists/handlers/similar.ts";
+import type { ArtistDetailsResponse } from "../../../utils/api/endpoints/artists.ts";
+import type { SimilarArtistsResponse } from "../../../utils/api/endpoints/artists.ts";
 import { getApiErrorMessage, type ArtistCoverImage } from "../utils";
 import {
   getArtistDetails,

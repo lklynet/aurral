@@ -17,7 +17,6 @@ const [
   { hashPassword },
   { authMiddleware },
   { handToHono },
-  { default: searchRouter },
   provider,
 ] = await setupIsolatedBackend(
   "link-search",
@@ -26,7 +25,6 @@ const [
   () => import("../../backend/middleware/passwordHash.ts"),
   () => import("../../backend/middleware/auth.ts"),
   () => import("../../backend/routes/shared/expressHandoff.ts"),
-  () => import("../../backend/routes/search.ts"),
   () => import("../../backend/services/providers/brainzmashProvider.ts"),
 );
 
@@ -108,9 +106,7 @@ beforeAll(async () => {
   });
   const app = express();
   app.use(authMiddleware);
-  app.use("/api/auth", handToHono);
-  app.use(express.json());
-  app.use("/api/search", searchRouter);
+  app.use(["/api/auth", "/api/search"], handToHono);
   server = await new Promise<
     import("node:http").Server<
       typeof import("node:http").IncomingMessage,

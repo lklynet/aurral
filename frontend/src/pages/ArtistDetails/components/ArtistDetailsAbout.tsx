@@ -1,7 +1,7 @@
 import { Fragment, useMemo } from "react";
 import { ExternalLink } from "../../../components/icons";
 import { getArtistHeroImage, getArtistType, type ArtistCoverImage } from "../utils";
-import type { ArtistDetailsResponse } from "../../../../../backend/routes/artists/handlers/details.ts";
+import type { ArtistDetailsResponse } from "../../../utils/api/endpoints/artists.ts";
 import type { AppSettingsResponse } from "../../../utils/api/clients/settings.ts";
 import type { LibraryArtistRecord } from "../hooks/useArtistDetailsStream.ts";
 import lidarrLogo from "../../../../images/logos/lidarr-color.svg";

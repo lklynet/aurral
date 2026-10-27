@@ -40,10 +40,9 @@ import { matchesReleaseGroupSearch, matchesReleaseGroupTab } from "./releaseFilt
 import type { ReleaseGroup, ReleaseListViewMode } from "./utils";
 import { getAlbumAddAction } from "../../utils/albumAddAction";
 import { useLibraryDestination } from "../../hooks/useLibraryDestination";
-import {
-  getArtistAppearsOnPage,
-  getReleaseGroupRatingsBatch,
-} from "../../utils/api/endpoints/artists.ts";
+import { parseResponse } from "hono/client";
+import { getReleaseGroupRatingsBatch } from "../../utils/api/endpoints/artists.ts";
+import { artistsClient } from "../../utils/api/clients/artists.ts";
 import { queryKeys } from "../../queryClient.ts";
 import TooltipButton from "../../components/TooltipButton";
 import Tooltip from "../../components/Tooltip";
@@ -217,12 +216,19 @@ function ArtistReleaseListPage({ mode = "releases" }) {
     enabled: false,
     initialPageParam: initialAppearsOnOffset,
     queryFn: ({ pageParam, signal }) =>
-      getArtistAppearsOnPage(mbid, {
-        offset: pageParam,
-        limit: RELEASE_PAGE_SIZE,
-        excludeIds: releaseGroups.map((item) => item.id).filter(Boolean),
-        signal,
-      }),
+      parseResponse(
+        artistsClient[":mbid"]["appears-on"].$post(
+          {
+            param: { mbid: encodeURIComponent(mbid ?? "") },
+            json: {
+              offset: pageParam,
+              limit: RELEASE_PAGE_SIZE,
+              excludeIds: releaseGroups.map((item) => item.id).filter(Boolean),
+            },
+          },
+          { init: { signal } },
+        ),
+      ),
     getNextPageParam: (lastPage, pages) => {
       if (!lastPage?.hasMore || !lastPage?.items?.length) return undefined;
       return (

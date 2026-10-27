@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { getArtistHeroImage, type ArtistCoverImage } from "../utils";
-import type { ArtistDetailsResponse } from "../../../../../backend/routes/artists/handlers/details.ts";
+import type { ArtistDetailsResponse } from "../../../utils/api/endpoints/artists.ts";
 import { withImageCacheBust } from "../../../utils/normalizeMediaUrl";
 import Tooltip from "../../../components/Tooltip";
 import RouteLink from "../../../components/RouteLink";

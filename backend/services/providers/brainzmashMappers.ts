@@ -341,10 +341,10 @@ export function toNormalizedArtistAlbum(raw: RawArtistAlbum | null | undefined) 
 export function toLegacyReleaseGroupSummary(
   album: Pick<NormalizedAlbum, "id" | "title" | "type" | "secondaryTypes" | "rating"> &
     Partial<Pick<NormalizedAlbum, "releaseDate" | "releases" | "artistId">> & {
-      artistName?: unknown;
+      artistName?: string | null;
       firstReleaseDate?: string | null;
     },
-  artist: { id?: unknown; name?: unknown } | null = null,
+  artist: { id?: string | null; name?: string | null } | null = null,
   { score = 0 }: { score?: number } = {},
 ) {
   const artistName = artist?.name || album?.artistName || "";
@@ -361,7 +361,7 @@ export function toLegacyReleaseGroupSummary(
       ? [
           {
             name: artistName,
-            artist: artistId ? { id: artistId, name: artistName } : { name: artistName },
+            artist: { ...(artistId ? { id: artistId } : {}), name: artistName },
           },
         ]
       : [],

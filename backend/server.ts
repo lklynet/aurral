@@ -23,8 +23,6 @@ import {
 } from "./routes/library/handlers/downloads.ts";
 import { startPlaylistStatusBroadcasts } from "./services/playlists/playlistStatusBroadcaster.ts";
 
-import artistsRouter from "./routes/artists/index.ts";
-import searchRouter from "./routes/search.ts";
 import { noteDeprecatedUsage, warnAboutConfigDeprecations } from "./services/deprecatedUsage.ts";
 import { bootstrapHonkerSchedules } from "./services/honkerDb.ts";
 import { initializeAppRuntime } from "./services/appRuntime.ts";
@@ -32,8 +30,6 @@ import {
   registerHonkerShutdownHandler,
   shutdownHonkerInfrastructure,
 } from "./services/honkerWorkerRuntime.ts";
-import imageProxyRouter from "./routes/imageProxy.ts";
-import deezerRouter from "./routes/deezer.ts";
 import subsonicRouter from "./routes/subsonic.ts";
 import { stopShareListener, syncShareListener } from "./services/shareLinks/shareListener.ts";
 import { asAppError, type AppError } from "../lib/errors.ts";
@@ -202,20 +198,20 @@ app.use(
     "/api/share-links",
     "/api/webhooks/lidarr",
     "/api/feeds",
+    "/api/artists",
+    "/api/search",
+    "/api/image-proxy",
+    "/api/deezer",
   ],
   handToHono,
 );
 
 app.use(express.json({ limit: JSON_BODY_LIMIT }));
-app.use("/api/search", searchRouter);
-app.use("/api/artists", artistsRouter);
 app.use("/api/weekly-flow", (req, res) => {
   noteDeprecatedUsage("weekly-flow-api");
   const parsed = new URL(req.url, "http://localhost");
   res.redirect(308, `/api/playlists${parsed.pathname}${parsed.search}`);
 });
-app.use("/api/image-proxy", imageProxyRouter);
-app.use("/api/deezer", deezerRouter);
 app.use("/rest", express.urlencoded({ extended: false }), subsonicRouter);
 
 app.get("/sso/callback", async (req, res) => {

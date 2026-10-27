@@ -1,4 +1,4 @@
-import { captureRoutes, mockResponse, requireFixture } from "./playlists/fixtures.ts";
+import { requireFixture } from "./playlists/fixtures.ts";
 import assert from "node:assert/strict";
 import { test, afterAll, vi } from "vite-plus/test";
 import {
@@ -67,7 +67,7 @@ const [
   { getArtistByMbid },
   { musicbrainzGetArtistIdentityByMbid },
   { getArtistTagPayload },
-  { registerPreview },
+  { default: preview },
   { getArtistImage },
   { fetchReleaseGroupCoverUrl },
 ] = await setupIsolatedBackend(
@@ -195,16 +195,11 @@ test("artist genres come from BrainzMash and Last.fm only fills artists without 
 
 test("artist previews use the BrainzMash Deezer link instead of a name search", async () => {
   const requests = recordExternalRequests();
-  const { router, handlers } = captureRoutes();
-  registerPreview(router);
-  const response = mockResponse<{ tracks: { title: string }[] }>();
-  await requireFixture(handlers.get("/:mbid/preview"))(
-    { params: { mbid: linkedArtistMbid }, query: { artistName: "Queen" } },
-    response,
-  );
+  const response = await preview.request(`/artists/${linkedArtistMbid}/preview?artistName=Queen`);
+  const { tracks }: { tracks: { title: string }[] } = await response.json();
 
   assert.deepEqual(
-    response.body.tracks.map((track) => track.title),
+    tracks.map((track) => track.title),
     ["Mustapha"],
   );
   assert.deepEqual(requests, ["https://api.deezer.com/artist/412/top"]);

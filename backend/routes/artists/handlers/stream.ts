@@ -24,6 +24,7 @@ import {
   withListenBrainzStats,
 } from "../shared/transform.ts";
 import { asAppError, errorResponseText } from "../../../../lib/errors.ts";
+import { appearsOnLimitQuery, invalidMbid, releaseTypesQuery } from "../utils.ts";
 
 type AppearsOnReleaseGroups = Awaited<
   ReturnType<typeof musicbrainzGetArtistAppearsOnReleaseGroups>
@@ -31,28 +32,8 @@ type AppearsOnReleaseGroups = Awaited<
 
 const streamQuery = v.object({
   artistName: v.optional(v.pipe(v.string(), v.trim())),
-  releaseTypes: v.optional(
-    v.pipe(
-      v.string(),
-      v.transform((types) =>
-        types.trim()
-          ? types
-              .split(",")
-              .map((value) => value.trim())
-              .filter(Boolean)
-          : null,
-      ),
-    ),
-  ),
-  appearsOnLimit: v.optional(
-    v.pipe(
-      v.string(),
-      v.transform((limit) => {
-        const parsed = Number.parseInt(limit, 10);
-        return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-      }),
-    ),
-  ),
+  releaseTypes: releaseTypesQuery,
+  appearsOnLimit: appearsOnLimitQuery,
 });
 
 export default new Hono<AppEnv>()
@@ -60,13 +41,7 @@ export default new Hono<AppEnv>()
   .get("/:mbid/stream", noCache, requireStreamAuth, validate("query", streamQuery), (c) => {
     const mbid = c.req.param("mbid");
     if (!UUID_REGEX.test(mbid)) {
-      return c.json(
-        {
-          error: "Invalid MBID format",
-          message: `"${mbid}" is not a valid MusicBrainz ID. MBIDs must be UUIDs.`,
-        },
-        400,
-      );
+      return c.json(invalidMbid(mbid), 400);
     }
     const query = c.req.valid("query");
     const streamArtistName = query.artistName ?? "";

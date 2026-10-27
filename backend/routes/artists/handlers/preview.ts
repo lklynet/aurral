@@ -1,52 +1,43 @@
-import type { Request, Router } from "express";
+import { Hono } from "hono";
+import * as v from "valibot";
 import {
   deezerGetArtistTopTracks,
   deezerGetArtistTopTracksById,
 } from "../../../services/apiClients/index.ts";
 import { dbOps } from "../../../db/helpers/index.ts";
 import { UUID_REGEX } from "../../../../lib/uuid.ts";
-import { cacheMiddleware } from "../../../middleware/cache.ts";
+import { cacheFor } from "../../../middleware/cacheHeaders.ts";
+import type { AppEnv } from "../../../middleware/requestUser.ts";
+import { validate } from "../../../middleware/validate.ts";
 import { getArtistByMbid } from "../../../services/providers/brainzmashProvider.ts";
 import { getLinkedDeezerArtistId } from "../../../services/providers/brainzmashMappers.ts";
-import { queryText } from "../utils.ts";
+import { invalidMbid, queryText } from "../utils.ts";
 
-type MbidRequest = Request<{ mbid: string }>;
+export default new Hono<AppEnv>()
+  .basePath("/artists")
+  .get(
+    "/:mbid/preview",
+    cacheFor(60),
+    validate("query", v.object({ artistName: queryText })),
+    async (c) => {
+      const mbid = c.req.param("mbid");
+      if (!UUID_REGEX.test(mbid)) return c.json(invalidMbid(mbid), 400);
 
-export function registerPreview(router: Router) {
-  router.get("/:mbid/preview", cacheMiddleware(60), async (req: MbidRequest, res) => {
-    const { mbid } = req.params;
+      const override = dbOps.getArtistOverride(mbid);
+      let deezerArtistId = override?.deezerArtistId || null;
+      if (!deezerArtistId) {
+        const metadataArtist = await getArtistByMbid(override?.musicbrainzId || mbid).catch(
+          () => null,
+        );
+        deezerArtistId = getLinkedDeezerArtistId(metadataArtist?.links);
+      }
 
-    if (!UUID_REGEX.test(mbid)) {
-      return res.status(400).json({
-        error: "Invalid MBID format",
-        message: `"${mbid}" is not a valid MusicBrainz ID. MBIDs must be UUIDs.`,
-      });
-    }
-
-    const artistNameParam = queryText(req.query.artistName);
-    const override = dbOps.getArtistOverride(mbid);
-    let deezerArtistId = override?.deezerArtistId || null;
-    if (!deezerArtistId) {
-      const metadataArtist = await getArtistByMbid(override?.musicbrainzId || mbid).catch(
-        () => null,
-      );
-      deezerArtistId = getLinkedDeezerArtistId(metadataArtist?.links);
-    }
-
-    if (deezerArtistId) {
-      const tracks = await deezerGetArtistTopTracksById(deezerArtistId);
-      return res.json({ tracks });
-    }
-    const artistName = artistNameParam || null;
-    if (!artistName) {
-      return res.json({ tracks: [] });
-    }
-    const normalized =
-      artistName
-        .trim()
-        .replace(/\([^()]*\)$/, "")
-        .trim() || artistName;
-    const tracks = await deezerGetArtistTopTracks(normalized);
-    res.json({ tracks });
-  });
-}
+      if (deezerArtistId) {
+        return c.json({ tracks: await deezerGetArtistTopTracksById(deezerArtistId) }, 200);
+      }
+      const { artistName } = c.req.valid("query");
+      if (!artistName) return c.json({ tracks: [] }, 200);
+      const normalized = artistName.replace(/\([^()]*\)$/, "").trim() || artistName;
+      return c.json({ tracks: await deezerGetArtistTopTracks(normalized) }, 200);
+    },
+  );

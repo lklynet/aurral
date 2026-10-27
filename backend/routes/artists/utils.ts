@@ -1,23 +1,41 @@
-import type { Response } from "express";
-import { logger } from "../../services/logger.ts";
-import { asAppError } from "../../../lib/errors.ts";
+import * as v from "valibot";
 
-export const sendSSE = (res: Response & { flush?: () => void }, event: string, data: unknown) => {
-  try {
-    res.write(`event: ${event}\n`);
-    res.write(`data: ${JSON.stringify(data)}\n\n`);
-    if (res.flush && typeof res.flush === "function") {
-      res.flush();
-    }
-  } catch (err) {
-    const failure = asAppError(err);
-    logger.error("sse", `Error sending event ${event}:`, { message: failure?.message });
-  }
-};
+export const invalidMbid = (mbid: string) => ({
+  error: "Invalid MBID format",
+  message: `"${mbid}" is not a valid MusicBrainz ID. MBIDs must be UUIDs.`,
+});
 
-export const queryText = (value: unknown) => (typeof value === "string" ? value.trim() : "");
+export const queryText = v.optional(
+  v.pipe(
+    v.union([v.string(), v.array(v.string())]),
+    v.transform((value) => (typeof value === "string" ? value.trim() : "")),
+  ),
+  "",
+);
 
-export const pendingArtistRequests = new Map();
+export const releaseTypesQuery = v.optional(
+  v.pipe(
+    v.string(),
+    v.transform((types) =>
+      types.trim()
+        ? types
+            .split(",")
+            .map((value) => value.trim())
+            .filter(Boolean)
+        : null,
+    ),
+  ),
+);
+
+export const appearsOnLimitQuery = v.optional(
+  v.pipe(
+    v.string(),
+    v.transform((limit) => {
+      const parsed = Number.parseInt(limit, 10);
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+    }),
+  ),
+);
 
 export const buildArtistRequestKey = ({
   mbid,

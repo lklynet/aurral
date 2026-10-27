@@ -1,19 +1,20 @@
-import express from "express";
+import { Hono } from "hono";
+import type { AppEnv } from "../middleware/requestUser.ts";
 import { getDeezerPreviewLink } from "../services/apiClients/index.ts";
 
-const router = express.Router();
+const previewNotFound = { error: "Preview not found" };
 
-router.get("/preview/:trackId.mp3", async (req, res) => {
-  const { trackId } = req.params;
-  if (!/^\d{1,20}$/.test(trackId)) return res.status(404).json({ error: "Preview not found" });
-  try {
-    const link = await getDeezerPreviewLink(trackId);
-    if (!link) return res.status(404).json({ error: "Preview not found" });
-    res.set("Cache-Control", "no-store");
-    return res.redirect(302, link);
-  } catch {
-    return res.status(502).json({ error: "Deezer is unavailable" });
-  }
-});
-
-export default router;
+export default new Hono<AppEnv>()
+  .basePath("/deezer")
+  .get("/preview/:file{[^/]+\\.mp3}", async (c) => {
+    const trackId = c.req.param("file").slice(0, -".mp3".length);
+    if (!/^\d{1,20}$/.test(trackId)) return c.json(previewNotFound, 404);
+    try {
+      const link = await getDeezerPreviewLink(trackId);
+      if (!link) return c.json(previewNotFound, 404);
+      c.header("Cache-Control", "no-store");
+      return c.redirect(link, 302);
+    } catch {
+      return c.json({ error: "Deezer is unavailable" }, 502);
+    }
+  });

@@ -72,29 +72,17 @@ test("normal cover requests wait for active artist and release-group refreshes",
   const previousFetch = globalThis.fetch;
   const requestCounts = new Map();
   const releaseRefreshes = new Map();
-  const response = (key: string, image: string) =>
-    new Response(
-      JSON.stringify(
-        key === "artist"
-          ? { images: [{ image, front: true }] }
-          : { imageUrl: image, notFound: false, transientError: false },
-      ),
-      {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      },
-    );
+  const response = (image: string) =>
+    Response.json({ images: [{ image, front: true }], notFound: false, transientError: false });
   globalThis.fetch = async (url) => {
     const key = String(url).includes("/release-group/") ? "release-group" : "artist";
     const requestCount = (requestCounts.get(key) || 0) + 1;
     requestCounts.set(key, requestCount);
     if (requestCount === 1) {
-      return response(key, `https://images.example/${key}-stale.jpg`);
+      return response(`https://images.example/${key}-stale.jpg`);
     }
     return new Promise<Response>((resolve) => {
-      releaseRefreshes.set(key, () =>
-        resolve(response(key, `https://images.example/${key}-fresh.jpg`)),
-      );
+      releaseRefreshes.set(key, () => resolve(response(`https://images.example/${key}-fresh.jpg`)));
     });
   };
   t.onTestFinished(async () => {
@@ -107,27 +95,18 @@ test("normal cover requests wait for active artist and release-group refreshes",
     {
       key: "artist",
       getCover: (refresh: boolean = false) => getArtistCover("artist-priority", "Artist", refresh),
-      getImage: (
-        result:
-          | import("../../backend/routes/artists/handlers/cover.ts").ArtistCoverResponse
-          | import("../../backend/routes/artists/handlers/releaseGroup.ts").ReleaseGroupCoverResponse,
-      ) => result.images[0].image,
     },
     {
       key: "release-group",
       getCover: (refresh = false) =>
         getReleaseGroupCover("release-priority", { bypassCache: refresh }),
-      getImage: (
-        result:
-          | import("../../backend/routes/artists/handlers/cover.ts").ArtistCoverResponse
-          | import("../../backend/routes/artists/handlers/releaseGroup.ts").ReleaseGroupCoverResponse,
-      ) => ("imageUrl" in result ? result.imageUrl : result.images[0].image),
     },
   ];
 
-  for (const { key, getCover, getImage } of cases) {
+  const imageOf = (result: { images: { image: string | null }[] }) => result.images[0].image;
+  for (const { key, getCover } of cases) {
     const stale = await getCover();
-    assert.equal(getImage(stale), `https://images.example/${key}-stale.jpg`);
+    assert.equal(imageOf(stale), `https://images.example/${key}-stale.jpg`);
 
     const refresh = getCover(true);
     while (!releaseRefreshes.has(key)) {
@@ -137,8 +116,8 @@ test("normal cover requests wait for active artist and release-group refreshes",
     releaseRefreshes.get(key)();
 
     const [refreshed, normalResult] = await Promise.all([refresh, normal]);
-    assert.equal(getImage(refreshed), `https://images.example/${key}-fresh.jpg`);
-    assert.equal(getImage(normalResult), `https://images.example/${key}-fresh.jpg`);
+    assert.equal(imageOf(refreshed), `https://images.example/${key}-fresh.jpg`);
+    assert.equal(imageOf(normalResult), `https://images.example/${key}-fresh.jpg`);
     assert.equal(requestCounts.get(key), 2);
   }
 });

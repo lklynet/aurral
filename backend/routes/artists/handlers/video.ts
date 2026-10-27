@@ -1,37 +1,26 @@
-import type { Request, Router } from "express";
+import { Hono } from "hono";
+import * as v from "valibot";
 import { youtubeFindTopSongVideo } from "../../../services/apiClients/index.ts";
 import { UUID_REGEX } from "../../../../lib/uuid.ts";
-import { noCache } from "../../../middleware/cache.ts";
+import { noCache } from "../../../middleware/cacheHeaders.ts";
+import type { AppEnv } from "../../../middleware/requestUser.ts";
+import { validate } from "../../../middleware/validate.ts";
+import { invalidMbid, queryText } from "../utils.ts";
 
-type MbidRequest = Request<{ mbid: string }>;
+const videoQuery = v.object({ artistName: queryText, trackTitle: queryText });
 
-export type ArtistVideoResponse = {
-  video: { videoId: string; embedUrl: string } | null;
-};
+export default new Hono<AppEnv>()
+  .basePath("/artists")
+  .get("/:mbid/video", noCache, validate("query", videoQuery), async (c) => {
+    const mbid = c.req.param("mbid");
+    if (!UUID_REGEX.test(mbid)) return c.json(invalidMbid(mbid), 400);
 
-export function registerVideo(router: Router) {
-  router.get("/:mbid/video", noCache, async (req: MbidRequest, res) => {
-    const { mbid } = req.params;
-
-    if (!UUID_REGEX.test(mbid)) {
-      return res.status(400).json({
-        error: "Invalid MBID format",
-        message: `"${mbid}" is not a valid MusicBrainz ID. MBIDs must be UUIDs.`,
-      });
-    }
-
-    const artistName = String(req.query.artistName || "").trim();
-    const trackTitle = String(req.query.trackTitle || "").trim();
-
-    if (!artistName || !trackTitle) {
-      return res.json({ video: null });
-    }
+    const { artistName, trackTitle } = c.req.valid("query");
+    if (!artistName || !trackTitle) return c.json({ video: null }, 200);
 
     try {
-      const video = await youtubeFindTopSongVideo(artistName, trackTitle);
-      return res.json({ video });
+      return c.json({ video: await youtubeFindTopSongVideo(artistName, trackTitle) }, 200);
     } catch {
-      return res.status(503).json({ error: "Video search is unavailable. Try again." });
+      return c.json({ error: "Video search is unavailable. Try again." }, 503);
     }
   });
-}

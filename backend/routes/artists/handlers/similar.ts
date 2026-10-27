@@ -1,36 +1,37 @@
-import type { Request, Router } from "express";
+import { Hono } from "hono";
+import * as v from "valibot";
 import { musicbrainzGetArtistNameByMbid } from "../../../services/apiClients/index.ts";
 import { dbOps } from "../../../db/helpers/index.ts";
 import { getSimilarArtistCards } from "../shared/transform.ts";
 import { UUID_REGEX } from "../../../../lib/uuid.ts";
-import { cacheMiddleware } from "../../../middleware/cache.ts";
+import { cacheFor } from "../../../middleware/cacheHeaders.ts";
+import type { AppEnv } from "../../../middleware/requestUser.ts";
+import { validate } from "../../../middleware/validate.ts";
+import { invalidMbid, queryText } from "../utils.ts";
 
-type MbidRequest = Request<{ mbid: string }>;
+const similarQuery = v.object({
+  limit: v.optional(
+    v.pipe(
+      v.string(),
+      v.transform((limit) => Math.min(Math.max(Number.parseInt(limit, 10) || 7, 1), 20)),
+    ),
+    "10",
+  ),
+  artistName: queryText,
+});
 
-export type SimilarArtistsResponse = {
-  artists: Awaited<ReturnType<typeof getSimilarArtistCards>>;
-};
+export default new Hono<AppEnv>()
+  .basePath("/artists")
+  .get("/:mbid/similar", cacheFor(300), validate("query", similarQuery), async (c) => {
+    const mbid = c.req.param("mbid");
+    if (!UUID_REGEX.test(mbid)) return c.json(invalidMbid(mbid), 400);
 
-export function registerSimilar(router: Router) {
-  router.get("/:mbid/similar", cacheMiddleware(300), async (req: MbidRequest, res) => {
-    const { mbid } = req.params;
-
-    if (!UUID_REGEX.test(mbid)) {
-      return res.status(400).json({
-        error: "Invalid MBID format",
-        message: `"${mbid}" is not a valid MusicBrainz ID. MBIDs must be UUIDs.`,
-      });
-    }
-
-    const { limit = 10 } = req.query;
-    const limitInt = Math.min(Math.max(parseInt(String(limit), 10) || 7, 1), 20);
-    const override = dbOps.getArtistOverride(mbid);
-    const resolvedMbid = override?.musicbrainzId || mbid;
+    const { limit, artistName } = c.req.valid("query");
+    const resolvedMbid = dbOps.getArtistOverride(mbid)?.musicbrainzId || mbid;
     const artists = await getSimilarArtistCards(resolvedMbid, {
-      artistName: String(req.query.artistName || "").trim(),
-      limit: limitInt,
+      artistName,
+      limit,
       resolveArtistName: () => musicbrainzGetArtistNameByMbid(resolvedMbid),
     });
-    res.json({ artists });
+    return c.json({ artists }, 200);
   });
-}

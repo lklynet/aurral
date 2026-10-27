@@ -4,7 +4,7 @@ import { shouldTriggerAlbumSearch } from "../../utils/albumAddAction.ts";
 import { formatDate } from "../../utils/dateTime.ts";
 import { formatCompactNumber } from "../../utils/numberFormat.ts";
 import { asApiError } from "../../utils/api/core.ts";
-import type { ArtistDetailsResponse } from "../../../../backend/routes/artists/handlers/details.ts";
+import type { ArtistDetailsResponse } from "../../utils/api/endpoints/artists.ts";
 import type {
   LegacyReleaseGroupSummary,
   toNormalizedAlbum,
@@ -43,7 +43,7 @@ export interface PlayableTrack {
 }
 
 export interface ArtistCoverImage {
-  image: string;
+  image: string | null;
   front?: boolean;
   types?: string[];
   coverType?: string;

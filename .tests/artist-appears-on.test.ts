@@ -1,9 +1,7 @@
-import { requireFixture } from "./playlists/fixtures.ts";
-import { captureRouteHandlers, createResponse } from "./library/routeHarness.ts";
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 
-import { registerAppearsOn } from "../backend/routes/artists/handlers/appearsOn.ts";
+import appearsOn from "../backend/routes/artists/handlers/appearsOn.ts";
 import { json, openArtistStream, stubFetch } from "./helpers/artistStream.ts";
 import { useFakeClock } from "./helpers/fakeClock.ts";
 
@@ -48,16 +46,12 @@ const isTrackArtistBrowse = (url: URL, mbid: string) =>
   url.searchParams.get("track_artist") === mbid;
 
 async function postAppearsOn(mbid: string, body: { limit?: number } = {}) {
-  const routes = captureRouteHandlers(registerAppearsOn, "post");
-
-  const response = Object.assign(
-    createResponse<
-      import("../backend/routes/artists/handlers/appearsOn.ts").ArtistAppearsOnResponse
-    >(),
-    { writableEnded: false, on() {} },
-  );
-  await routes.get("/:mbid/appears-on")({ params: { mbid }, body }, response);
-  return { statusCode: response.statusCode, body: response.body };
+  const response = await appearsOn.request(`/artists/${mbid}/appears-on`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return { status: response.status, body: await response.json() };
 }
 
 test("appears-on lists other artists' releases once each, newest first, and never the artist's own", async (t) => {
@@ -103,13 +97,13 @@ test("appears-on lists other artists' releases once each, newest first, and neve
 
   const response = await postAppearsOn(mbid, { limit: 24 });
 
-  assert.equal(response.statusCode, 200);
+  assert.equal(response.status, 200);
   assert.deepEqual(
-    requireFixture(response.body).items.map((item: { id: string }) => item.id),
+    response.body.items.map((item: { id: string }) => item.id),
     ["rg-feature", "rg-comp"],
   );
-  assert.equal(requireFixture(response.body).items[1]["artist-credit"][0].name, "Various Artists");
-  assert.equal(requireFixture(response.body).hasMore, false);
+  assert.equal(response.body.items[1]["artist-credit"][0].name, "Various Artists");
+  assert.equal(response.body.hasMore, false);
 });
 
 test("artist stream sends appearances without waiting for the discography", async (t: import("vite-plus/test").TestContext) => {
@@ -182,13 +176,13 @@ test("a failed MusicBrainz lookup reports an error and the next request retries"
   });
 
   const failed = await postAppearsOn(mbid, { limit: 24 });
-  assert.equal(failed.statusCode, 502);
+  assert.equal(failed.status, 502);
 
   musicbrainzUp = true;
   const retried = await postAppearsOn(mbid, { limit: 24 });
-  assert.equal(retried.statusCode, 200);
+  assert.equal(retried.status, 200);
   assert.deepEqual(
-    requireFixture(retried.body).items.map((item: { id: string }) => item.id),
+    retried.body.items.map((item: { id: string }) => item.id),
     ["rg-retry-feature"],
   );
 });

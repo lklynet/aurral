@@ -1,5 +1,4 @@
 import { requireFixture } from "../playlists/fixtures.ts";
-import { createRouteHarness, createResponse } from "./routeHarness.ts";
 import { signedInAs } from "../helpers/honoApp.ts";
 import { testUser } from "../helpers/userFixtures.ts";
 import { test, beforeAll, beforeEach, afterAll } from "vite-plus/test";
@@ -18,7 +17,6 @@ const [
   { downloadTracker },
   { downloadWorker },
   { resolveReleaseManifest },
-  { registerReleaseGroup },
   { api },
   { flowTrackSource },
   libraryStore,
@@ -30,7 +28,6 @@ const [
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
   () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
   () => import("../../backend/services/releaseResolver.ts"),
-  () => import("../../backend/routes/artists/handlers/releaseGroup.ts"),
   () => import("../../backend/routes/api.ts"),
   () => import("../../backend/services/flows/flowTrackSource.ts"),
   () => import("../../backend/services/libraryMediaStore.ts"),
@@ -38,18 +35,14 @@ const [
   () => import("../../backend/db/helpers/index.ts"),
 );
 
-const releaseGroupRoutes = createRouteHarness(registerReleaseGroup);
 const app = signedInAs(testUser(1, { role: "admin" })).route("/", api);
 
 type ListedTrack = { title: string; releaseMbid: string; discNumber: number; trackNumber: number };
 
 async function listReleaseGroupTracks(mbid: string) {
-  const response = createResponse<ListedTrack[]>();
-  await releaseGroupRoutes.get("GET /release-group/:mbid/tracks")(
-    { params: { mbid }, body: {}, query: {}, user: { role: "admin", permissions: {} } },
-    response,
-  );
-  return response;
+  const response = await app.request(`/artists/release-group/${mbid}/tracks`);
+  const body: ListedTrack[] = await response.json();
+  return { body };
 }
 
 async function listLibraryTracks(releaseGroupMbid: string) {

@@ -9,7 +9,7 @@ import { useAudioQueue } from "../../../contexts/audioQueueContext";
 import { useActiveDownloads } from "../../../hooks/useActiveDownloads";
 import { normalizePreviewTrack } from "../../../utils/audioQueue";
 import { useQueueTrackActions } from "../../../hooks/useQueueTrackActions";
-import type { ReleaseGroupTrack } from "../../../../../backend/routes/artists/handlers/releaseGroup.ts";
+import type { ReleaseGroupTrack } from "../../../utils/api/endpoints/artists.ts";
 import type { useStaticPlaylists } from "../../../hooks/useStaticPlaylists";
 import type { PlaybackSource } from "../../../hooks/useAlbumTrackListToolbar";
 import type { ReleaseGroup } from "../utils";

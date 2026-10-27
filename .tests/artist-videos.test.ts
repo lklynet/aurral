@@ -1,25 +1,21 @@
-import { captureRouteHandlers, createResponse } from "./library/routeHarness.ts";
 import assert from "node:assert/strict";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import { cleanupIsolatedState, setupIsolatedBackend } from "./helpers/backendTestHarness.ts";
 
-const [state, { registerVideo }, { ytdlpClient }, { clearApiCaches }] = await setupIsolatedBackend(
-  "artist-videos",
-  () => import("../backend/routes/artists/handlers/video.ts"),
-  () => import("../backend/services/ytdlpClient.ts"),
-  () => import("../backend/services/apiClients/clearCache.ts"),
-);
+const [state, { default: artistVideo }, { ytdlpClient }, { clearApiCaches }] =
+  await setupIsolatedBackend(
+    "artist-videos",
+    () => import("../backend/routes/artists/handlers/video.ts"),
+    () => import("../backend/services/ytdlpClient.ts"),
+    () => import("../backend/services/apiClients/clearCache.ts"),
+  );
 const mbid = "58e235fc-f6ea-4614-9ed4-9855a5665ae1";
-const routes = captureRouteHandlers(registerVideo, "get");
 
 async function findVideo(trackTitle = "I Wanna Get Better", artistName = "Bleachers") {
-  const response =
-    createResponse<import("../backend/routes/artists/handlers/video.ts").ArtistVideoResponse>();
-  await routes.get("/:mbid/video")(
-    { params: { mbid }, query: { artistName, trackTitle } },
-    response,
+  const response = await artistVideo.request(
+    `/artists/${mbid}/video?${new URLSearchParams({ artistName, trackTitle })}`,
   );
-  return { status: response.statusCode, ...response.body };
+  return { status: response.status, ...(await response.json()) };
 }
 
 const video = (

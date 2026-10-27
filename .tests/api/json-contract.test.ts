@@ -19,8 +19,6 @@ const [
   { hashPassword },
   { authMiddleware },
   { handToHono },
-  { default: searchRouter },
-  { default: artistRouter },
   libraryStore,
   { setLibraryManagement },
   { reloadDiscoveryPersistedCache },
@@ -34,8 +32,6 @@ const [
   () => import("../../backend/middleware/passwordHash.ts"),
   () => import("../../backend/middleware/auth.ts"),
   () => import("../../backend/routes/shared/expressHandoff.ts"),
-  () => import("../../backend/routes/search.ts"),
-  () => import("../../backend/routes/artists/index.ts"),
   () => import("../../backend/services/libraryMediaStore.ts"),
   () => import("../../backend/services/libraryManagementStore.ts"),
   () => import("../../backend/services/discovery/persistence.ts"),
@@ -212,15 +208,11 @@ beforeAll(async () => {
       "/api/requests",
       "/api/playlists",
       "/api/discover",
+      "/api/search",
+      "/api/artists",
     ],
     handToHono,
   );
-  app.use(express.json());
-  for (const [route, router] of [
-    ["search", searchRouter],
-    ["artists", artistRouter],
-  ] as const)
-    app.use(`/api/${route}`, router);
   server = await new Promise<
     import("node:http").Server<
       typeof import("node:http").IncomingMessage,

@@ -315,11 +315,9 @@ export const resolveReleaseGroupCoversBatch = async (
       return true;
     })
     .slice(0, 24);
-  if (!normalized.length) {
-    return {};
-  }
-
   const covers: Record<string, ReleaseGroupCoverBatchEntry> = {};
+  if (!normalized.length) return covers;
+
   const cachedEntries = dbOps.getImages(normalized.map((item) => `${RG_CACHE_PREFIX}${item.mbid}`));
   const missing = [];
 

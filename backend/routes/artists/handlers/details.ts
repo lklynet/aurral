@@ -1,4 +1,5 @@
-import type { Request, Router } from "express";
+import { Hono } from "hono";
+import * as v from "valibot";
 import { UUID_REGEX } from "../../../../lib/uuid.ts";
 import { logger } from "../../../services/logger.ts";
 import {
@@ -7,9 +8,17 @@ import {
   musicbrainzGetArtistNameByMbid,
 } from "../../../services/apiClients/index.ts";
 import { dbOps } from "../../../db/helpers/index.ts";
-import { cacheMiddleware } from "../../../middleware/cache.ts";
-import { requireAuth } from "../../../middleware/requirePermission.ts";
-import { buildArtistRequestKey, pendingArtistRequests, queryText } from "../utils.ts";
+import { cacheFor } from "../../../middleware/cacheHeaders.ts";
+import { requireAuth } from "../../../middleware/guards.ts";
+import type { AppEnv } from "../../../middleware/requestUser.ts";
+import { validate } from "../../../middleware/validate.ts";
+import {
+  appearsOnLimitQuery,
+  buildArtistRequestKey,
+  invalidMbid,
+  queryText,
+  releaseTypesQuery,
+} from "../utils.ts";
 import { getArtistByMbid } from "../../../services/providers/brainzmashProvider.ts";
 import { invalidateArtistImage } from "../../../services/imageService.ts";
 import {
@@ -19,8 +28,7 @@ import {
 } from "../shared/transform.ts";
 import { getLibraryArtistProjection } from "../../../services/libraryQueryService.ts";
 import { asAppError, errorResponseText } from "../../../../lib/errors.ts";
-
-type MbidRequest = Request<{ mbid: string }>;
+import { isErrorStatus } from "../../shared/errorStatus.ts";
 
 export function getLibraryLidarrArtist(reference: string) {
   const artist = getLibraryArtistProjection({ reference })[0] || null;
@@ -33,143 +41,137 @@ export function getLibraryLidarrArtist(reference: string) {
   };
 }
 
-type ArtistDetailsCore = ReturnType<typeof buildArtistBase> &
-  Awaited<ReturnType<typeof getArtistTagPayload>> & {
-    "release-groups": Awaited<ReturnType<typeof withListenBrainzStats>>;
-    "appears-on-release-groups": Awaited<
-      ReturnType<typeof musicbrainzGetArtistAppearsOnReleaseGroups>
-    >;
-    "release-group-count": number;
-    "release-count": number;
+async function loadArtistDetails(
+  mbid: string,
+  {
+    artistName,
+    coreOnly,
+    selectedReleaseTypes,
+    appearsOnLimit,
+  }: {
+    artistName: string;
+    coreOnly: boolean;
+    selectedReleaseTypes: string[] | null;
+    appearsOnLimit: number | null;
+  },
+) {
+  const metadataArtist = coreOnly ? null : await getArtistByMbid(mbid).catch(() => null);
+  const name =
+    artistName ||
+    metadataArtist?.name ||
+    (await musicbrainzGetArtistNameByMbid(mbid)) ||
+    "Unknown Artist";
+  const tagPayload = coreOnly
+    ? { tags: [], genres: [] }
+    : await getArtistTagPayload(mbid, name, metadataArtist);
+  const [releaseGroups, appearsOnReleaseGroups] = await Promise.all([
+    musicbrainzGetArtistReleaseGroups(mbid, selectedReleaseTypes, {
+      includeTrackCounts: !appearsOnLimit,
+    }).then(withListenBrainzStats),
+    coreOnly
+      ? []
+      : musicbrainzGetArtistAppearsOnReleaseGroups(mbid, { limit: appearsOnLimit }).catch(() => []),
+  ]);
+  return {
+    ...buildArtistBase(name, mbid, metadataArtist),
+    tags: tagPayload.tags,
+    genres: tagPayload.genres,
+    "release-groups": releaseGroups,
+    "appears-on-release-groups": appearsOnReleaseGroups,
+    "release-group-count": releaseGroups.length,
+    "release-count": releaseGroups.length,
   };
+}
 
-type ArtistDetailsFallback = {
-  id: string;
-  name: string;
-  "sort-name": string;
-  disambiguation: string;
-  "type-id": null;
-  type: null;
-  country: null;
-  "life-span": { begin: null; end: null; ended: boolean };
-  tags: never[];
-  genres: never[];
-  links: never[];
-  "release-groups": never[];
-  "appears-on-release-groups": never[];
-  relations: never[];
-  rating?: undefined;
-  bio?: undefined;
-  "release-group-count": number;
-  "release-count": number;
-};
+const pendingArtistRequests = new Map<string, ReturnType<typeof loadArtistDetails>>();
 
-export type ArtistDetailsResponse =
-  | (ArtistDetailsCore & {
-      _lidarrData: Pick<
-        NonNullable<ReturnType<typeof getLibraryLidarrArtist>>,
-        "id" | "monitored" | "statistics"
-      >;
-    })
-  | ArtistDetailsCore
-  | ArtistDetailsFallback;
+const detailsQuery = v.object({
+  artistName: queryText,
+  mode: v.pipe(queryText, v.toLowerCase()),
+  releaseTypes: releaseTypesQuery,
+  appearsOnLimit: appearsOnLimitQuery,
+});
 
-export function registerDetails(router: Router) {
-  const parseSelectedReleaseTypes = (value: unknown) =>
-    typeof value === "string" && value.trim()
-      ? value
-          .split(",")
-          .map((entry) => entry.trim())
-          .filter(Boolean)
-      : null;
+const overridesBody = v.object({
+  musicbrainzId: v.nullish(v.pipe(v.string(), v.trim())),
+  deezerArtistId: v.nullish(
+    v.pipe(
+      v.union([v.string(), v.number()]),
+      v.transform((id) => String(id).trim()),
+    ),
+  ),
+});
 
-  const parseAppearsOnLimit = (value: unknown) => {
-    const parsed = Number.parseInt(String(value), 10);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-  };
-
-  router.get("/", async (req, res) => {
-    res.status(404).json({
-      error: "Not found",
-      message: "Use /api/artists/:mbid to get artist details, or /api/search/artists to search",
-    });
-  });
-
-  router.get("/:mbid/overrides", requireAuth, async (req: MbidRequest, res) => {
-    const { mbid } = req.params;
-    if (!UUID_REGEX.test(mbid)) {
-      return res.status(400).json({
-        error: "Invalid MBID format",
-        message: `"${mbid}" is not a valid MusicBrainz ID. MBIDs must be UUIDs.`,
-      });
-    }
+export default new Hono<AppEnv>()
+  .basePath("/artists")
+  .get("/", (c) =>
+    c.json(
+      {
+        error: "Not found",
+        message: "Use /api/artists/:mbid to get artist details, or /api/search/artists to search",
+      },
+      404,
+    ),
+  )
+  .get("/:mbid/overrides", requireAuth, (c) => {
+    const mbid = c.req.param("mbid");
+    if (!UUID_REGEX.test(mbid)) return c.json(invalidMbid(mbid), 400);
     const override = dbOps.getArtistOverride(mbid);
-    return res.json({
-      mbid,
-      musicbrainzId: override?.musicbrainzId || null,
-      deezerArtistId: override?.deezerArtistId || null,
-    });
-  });
+    return c.json(
+      {
+        mbid,
+        musicbrainzId: override?.musicbrainzId || null,
+        deezerArtistId: override?.deezerArtistId || null,
+      },
+      200,
+    );
+  })
+  .put("/:mbid/overrides", requireAuth, validate("json", overridesBody), (c) => {
+    const mbid = c.req.param("mbid");
+    if (!UUID_REGEX.test(mbid)) return c.json(invalidMbid(mbid), 400);
 
-  router.put("/:mbid/overrides", requireAuth, async (req: MbidRequest, res) => {
-    const { mbid } = req.params;
-    if (!UUID_REGEX.test(mbid)) {
-      return res.status(400).json({
-        error: "Invalid MBID format",
-        message: `"${mbid}" is not a valid MusicBrainz ID. MBIDs must be UUIDs.`,
-      });
-    }
-
-    const rawMusicbrainzId =
-      req.body?.musicbrainzId != null ? String(req.body.musicbrainzId).trim() : "";
-    const rawDeezerArtistId =
-      req.body?.deezerArtistId != null ? String(req.body.deezerArtistId).trim() : "";
-
-    const musicbrainzId = rawMusicbrainzId || null;
-    const deezerArtistId = rawDeezerArtistId || null;
+    const body = c.req.valid("json");
+    const musicbrainzId = body.musicbrainzId || null;
+    const deezerArtistId = body.deezerArtistId || null;
 
     if (musicbrainzId && !UUID_REGEX.test(musicbrainzId)) {
-      return res.status(400).json({
-        error: "Invalid MusicBrainz ID format",
-        message: `"${musicbrainzId}" is not a valid MusicBrainz ID. MBIDs must be UUIDs.`,
-      });
+      return c.json(
+        {
+          error: "Invalid MusicBrainz ID format",
+          message: `"${musicbrainzId}" is not a valid MusicBrainz ID. MBIDs must be UUIDs.`,
+        },
+        400,
+      );
     }
 
     if (deezerArtistId && !/^\d+$/.test(deezerArtistId)) {
-      return res.status(400).json({
-        error: "Invalid Deezer artist ID",
-        message: `"${deezerArtistId}" must be a numeric Deezer artist ID.`,
-      });
+      return c.json(
+        {
+          error: "Invalid Deezer artist ID",
+          message: `"${deezerArtistId}" must be a numeric Deezer artist ID.`,
+        },
+        400,
+      );
     }
 
     if (!musicbrainzId && !deezerArtistId) {
       dbOps.deleteArtistOverride(mbid);
       invalidateArtistImage(mbid);
-      return res.json({
-        mbid,
-        musicbrainzId: null,
-        deezerArtistId: null,
-      });
+      return c.json({ mbid, musicbrainzId: null, deezerArtistId: null }, 200);
     }
 
-    const saved = dbOps.setArtistOverride(mbid, {
-      musicbrainzId,
-      deezerArtistId,
-    });
+    const saved = dbOps.setArtistOverride(mbid, { musicbrainzId, deezerArtistId });
     invalidateArtistImage(mbid);
-    return res.json(saved);
-  });
-
-  router.get("/:mbid", cacheMiddleware(300), async (req: MbidRequest, res) => {
+    return c.json(saved, 200);
+  })
+  .get("/:mbid", cacheFor(300), validate("query", detailsQuery), async (c) => {
     try {
-      const { mbid } = req.params;
-      const responseMode =
-        typeof req.query.mode === "string" && req.query.mode.trim()
-          ? req.query.mode.trim().toLowerCase()
-          : "full";
+      const mbid = c.req.param("mbid");
+      const query = c.req.valid("query");
+      const responseMode = query.mode || "full";
       const coreOnly = responseMode === "core";
-      const selectedReleaseTypes = parseSelectedReleaseTypes(req.query.releaseTypes);
-      const appearsOnLimit = parseAppearsOnLimit(req.query.appearsOnLimit);
+      const selectedReleaseTypes = query.releaseTypes ?? null;
+      const appearsOnLimit = query.appearsOnLimit ?? null;
       const requestKey = buildArtistRequestKey({
         mbid,
         mode: responseMode,
@@ -179,30 +181,29 @@ export function registerDetails(router: Router) {
 
       if (!UUID_REGEX.test(mbid)) {
         logger.warn("api", "Invalid MBID format", { mbid });
-        return res.status(400).json({
-          error: "Invalid MBID format",
-          message: `"${mbid}" is not a valid MusicBrainz ID. MBIDs must be UUIDs.`,
-        });
+        return c.json(invalidMbid(mbid), 400);
       }
 
-      if (pendingArtistRequests.has(requestKey)) {
+      const pending = pendingArtistRequests.get(requestKey);
+      if (pending) {
         logger.info("api", "Request already in progress, waiting", { requestKey });
         try {
-          const data = await pendingArtistRequests.get(requestKey);
-          res.setHeader("Content-Type", "application/json");
-          return res.json(data);
+          return c.json(await pending, 200);
         } catch (error) {
           const failure = asAppError(error);
-          return res.status(failure?.response?.status || 500).json({
-            error: "Failed to fetch artist details",
-            message: errorResponseText(failure, "error") || failure?.message,
-          });
+          const status = failure?.response?.status;
+          return c.json(
+            {
+              error: "Failed to fetch artist details",
+              message: errorResponseText(failure, "error") || failure?.message,
+            },
+            isErrorStatus(status) ? status : 500,
+          );
         }
       }
 
       logger.info("api", "Fetching artist details", { mbid });
 
-      let data = null;
       const override = dbOps.getArtistOverride(mbid);
       const resolvedMbid = override?.musicbrainzId || mbid;
 
@@ -211,63 +212,9 @@ export function registerDetails(router: Router) {
         (resolvedMbid === mbid ? null : getLibraryLidarrArtist(mbid));
 
       if (lidarrArtist) {
-        const artistMbid = override?.musicbrainzId || mbid;
-        const metadataArtist = coreOnly
-          ? null
-          : await getArtistByMbid(artistMbid).catch(() => null);
-        const [releaseGroups, appearsOnReleaseGroups] = await Promise.all([
-          musicbrainzGetArtistReleaseGroups(artistMbid, selectedReleaseTypes, {
-            includeTrackCounts: !appearsOnLimit,
-          }).then(withListenBrainzStats),
-          coreOnly
-            ? []
-            : musicbrainzGetArtistAppearsOnReleaseGroups(artistMbid, {
-                limit: appearsOnLimit,
-              }).catch(() => []),
-        ]);
-        const tagPayload = coreOnly
-          ? { tags: [], genres: [] }
-          : await getArtistTagPayload(
-              artistMbid,
-              metadataArtist?.name || lidarrArtist.artistName,
-              metadataArtist,
-            );
-        const payload = {
-          ...buildArtistBase(
-            metadataArtist?.name || lidarrArtist.artistName,
-            artistMbid,
-            metadataArtist,
-          ),
-          tags: tagPayload.tags,
-          genres: tagPayload.genres,
-          "release-groups": releaseGroups,
-          "appears-on-release-groups": appearsOnReleaseGroups,
-          "release-group-count": releaseGroups.length,
-          "release-count": releaseGroups.length,
-          _lidarrData: {
-            id: lidarrArtist.id,
-            monitored: lidarrArtist.monitored,
-            statistics: lidarrArtist.statistics,
-          },
-        };
-
-        res.setHeader("Content-Type", "application/json");
-        res.json(payload);
-        return;
-      }
-
-      const fetchPromise = (async () => {
         const metadataArtist = coreOnly
           ? null
           : await getArtistByMbid(resolvedMbid).catch(() => null);
-        const name =
-          queryText(req.query.artistName) ||
-          metadataArtist?.name ||
-          (await musicbrainzGetArtistNameByMbid(resolvedMbid)) ||
-          "Unknown Artist";
-        const tagPayload = coreOnly
-          ? { tags: [], genres: [] }
-          : await getArtistTagPayload(resolvedMbid, name, metadataArtist);
         const [releaseGroups, appearsOnReleaseGroups] = await Promise.all([
           musicbrainzGetArtistReleaseGroups(resolvedMbid, selectedReleaseTypes, {
             includeTrackCounts: !appearsOnLimit,
@@ -278,45 +225,58 @@ export function registerDetails(router: Router) {
                 limit: appearsOnLimit,
               }).catch(() => []),
         ]);
-        return {
-          ...buildArtistBase(name, resolvedMbid, metadataArtist),
-          tags: tagPayload.tags,
-          genres: tagPayload.genres,
-          "release-groups": releaseGroups,
-          "appears-on-release-groups": appearsOnReleaseGroups,
-          "release-group-count": releaseGroups.length,
-          "release-count": releaseGroups.length,
-        };
-      })();
+        const tagPayload = coreOnly
+          ? { tags: [], genres: [] }
+          : await getArtistTagPayload(
+              resolvedMbid,
+              metadataArtist?.name || lidarrArtist.artistName,
+              metadataArtist,
+            );
+        return c.json(
+          {
+            ...buildArtistBase(
+              metadataArtist?.name || lidarrArtist.artistName,
+              resolvedMbid,
+              metadataArtist,
+            ),
+            tags: tagPayload.tags,
+            genres: tagPayload.genres,
+            "release-groups": releaseGroups,
+            "appears-on-release-groups": appearsOnReleaseGroups,
+            "release-group-count": releaseGroups.length,
+            "release-count": releaseGroups.length,
+            _lidarrData: {
+              id: lidarrArtist.id,
+              monitored: lidarrArtist.monitored,
+              statistics: lidarrArtist.statistics,
+            },
+          },
+          200,
+        );
+      }
 
+      const fetchPromise = loadArtistDetails(resolvedMbid, {
+        artistName: query.artistName,
+        coreOnly,
+        selectedReleaseTypes,
+        appearsOnLimit,
+      });
       pendingArtistRequests.set(requestKey, fetchPromise);
 
       try {
-        data = await fetchPromise;
-        res.setHeader("Content-Type", "application/json");
-        res.json(data);
-      } catch (error) {
-        const artistNameParam = queryText(req.query.artistName);
-        const fallback = {
-          id: resolvedMbid,
-          name: artistNameParam || "Unknown Artist",
-          "sort-name": artistNameParam || "Unknown Artist",
-          disambiguation: "",
-          "type-id": null,
-          type: null,
-          country: null,
-          "life-span": { begin: null, end: null, ended: false },
-          tags: [],
-          genres: [],
-          links: [],
-          "release-groups": [],
-          "appears-on-release-groups": [],
-          relations: [],
-          "release-group-count": 0,
-          "release-count": 0,
-        };
-        res.setHeader("Content-Type", "application/json");
-        res.json(fallback);
+        return c.json(await fetchPromise, 200);
+      } catch {
+        return c.json(
+          {
+            ...buildArtistBase(query.artistName || "Unknown Artist", resolvedMbid),
+            tags: [],
+            "release-groups": [],
+            "appears-on-release-groups": [],
+            "release-group-count": 0,
+            "release-count": 0,
+          },
+          200,
+        );
       } finally {
         pendingArtistRequests.delete(requestKey);
       }
@@ -324,10 +284,6 @@ export function registerDetails(router: Router) {
       const failure = asAppError(error);
       logger.error("api", "Unexpected error in artist details route", { error: failure?.message });
       logger.error("api", "Error stack", { stack: failure?.stack });
-      res.status(500).json({
-        error: "Failed to fetch artist details",
-        message: failure?.message,
-      });
+      return c.json({ error: "Failed to fetch artist details", message: failure?.message }, 500);
     }
   });
-}

@@ -6,7 +6,7 @@ import {
 } from "../../../utils/api/endpoints/library.ts";
 import { getArtistFeedbackFlags } from "../../../utils/discoveryFeedback";
 import { getArtistRecordId, type ArtistFeedbackAction } from "../../../utils/artistTaste";
-import type { SimilarArtistsResponse } from "../../../../../backend/routes/artists/handlers/similar.ts";
+import type { SimilarArtistsResponse } from "../../../utils/api/endpoints/artists.ts";
 
 import { ChevronLeft, ChevronRight } from "../../../components/icons";
 import { DotLoader } from "../../../components/DotLoader";

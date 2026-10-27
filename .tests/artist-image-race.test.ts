@@ -1,12 +1,9 @@
 import { requireFixture } from "./playlists/fixtures.ts";
 import assert from "node:assert/strict";
 import { test, afterAll } from "vite-plus/test";
-import express from "express";
-import {
-  cleanupIsolatedState,
-  createMockHttpServer,
-  setupIsolatedBackend,
-} from "./helpers/backendTestHarness.ts";
+import { cleanupIsolatedState, setupIsolatedBackend } from "./helpers/backendTestHarness.ts";
+import { signedInAs } from "./helpers/honoApp.ts";
+import { testUser } from "./helpers/userFixtures.ts";
 import { useFakeClock } from "./helpers/fakeClock.ts";
 import type { CachedArtistImage } from "../backend/db/helpers/cache.ts";
 
@@ -14,8 +11,8 @@ const [
   state,
   { dbOps },
   { getArtistImage },
-  { registerDetails },
-  { registerCover },
+  { default: details },
+  { default: artistCover },
   { default: artistStream },
 ] = await setupIsolatedBackend(
   "artist-image-race",
@@ -32,9 +29,8 @@ const originalFetch = globalThis.fetch;
 const previousMetadataUrl = process.env.BRAINZMASH_BASE_URL;
 process.env.BRAINZMASH_BASE_URL = "http://metadata.invalid";
 const fixtures = new Map();
-globalThis.fetch = async (input, init) => {
+globalThis.fetch = async (input) => {
   const url = new URL(String(input));
-  if (url.hostname === "127.0.0.1") return originalFetch(input, init);
   const fixture = fixtures.get(`${url.hostname}${url.pathname}`);
   if (fixture) return Response.json(await fixture(url));
   if (url.hostname === "metadata.invalid" && url.pathname === "/search/artist") {
@@ -50,18 +46,11 @@ globalThis.fetch = async (input, init) => {
   throw new Error(`Unexpected provider request: ${url}`);
 };
 
-const app = express();
-app.use(express.json());
-app.use((req, _res, next) => {
-  req.user = { id: 1, username: "test", role: "admin", permissions: {} };
-  next();
-});
-registerDetails(app);
-registerCover(app);
-const server = await createMockHttpServer(app);
+const app = signedInAs(testUser(1, { role: "admin" }))
+  .route("/", details)
+  .route("/", artistCover);
 
 afterAll(async () => {
-  await server.close();
   globalThis.fetch = originalFetch;
   if (previousMetadataUrl === undefined) delete process.env.BRAINZMASH_BASE_URL;
   else process.env.BRAINZMASH_BASE_URL = previousMetadataUrl;
@@ -117,7 +106,7 @@ function artist(
 }
 
 async function putOverride(mbid: string, body: { musicbrainzId?: string }) {
-  const response = await fetch(`${server.url}/${mbid}/overrides`, {
+  const response = await app.request(`/artists/${mbid}/overrides`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
@@ -127,7 +116,7 @@ async function putOverride(mbid: string, body: { musicbrainzId?: string }) {
 }
 
 async function cover(mbid: string) {
-  const response = await fetch(`${server.url}/${mbid}/cover`);
+  const response = await app.request(`/artists/${mbid}/cover`);
   assert.equal(response.status, 200);
   return response.json();
 }

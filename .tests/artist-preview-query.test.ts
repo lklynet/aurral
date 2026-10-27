@@ -1,16 +1,14 @@
-import { captureRouteHandlers, createResponse } from "./library/routeHarness.ts";
 import assert from "node:assert/strict";
 import { test, afterAll, vi } from "vite-plus/test";
 import { cleanupIsolatedState, setupIsolatedBackend } from "./helpers/backendTestHarness.ts";
 
-const [state, { registerPreview }, { dbOps }, { default: axios }] = await setupIsolatedBackend(
+const [state, { default: preview }, { dbOps }, { default: axios }] = await setupIsolatedBackend(
   "artist-preview-query",
   () => import("../backend/routes/artists/handlers/preview.ts"),
   () => import("../backend/db/helpers/index.ts"),
   () => import("../lib/axiosFetch.ts"),
 );
 const mbid = "58e235fc-f6ea-4614-9ed4-9855a5665ae1";
-const routes = captureRouteHandlers(registerPreview, "get");
 
 afterAll(() => cleanupIsolatedState(state));
 
@@ -22,12 +20,10 @@ test("a repeated artistName query is ignored instead of crashing the preview rou
     headers: {},
     data: { data: [{ id: 7, title: "Song", preview: "https://cdn.test/song.mp3", duration: 30 }] },
   });
-  const response = createResponse<{ tracks: unknown[] }>();
-  await routes.get("/:mbid/preview")(
-    { params: { mbid }, query: { artistName: ["Queen", "Bowie"] } },
-    response,
+  const response = await preview.request(
+    `/artists/${mbid}/preview?artistName=Queen&artistName=Bowie`,
   );
-  assert.equal(response.body.tracks.length, 1);
+  assert.equal((await response.json()).tracks.length, 1);
 });
 
 const unlinkedMbid = "5b11f4ce-a62d-471e-81fc-a69a8278c7da";
@@ -45,10 +41,7 @@ function searchedDeezerArtists() {
 }
 
 const previewByName = (artistName: string) =>
-  routes.get("/:mbid/preview")(
-    { params: { mbid: unlinkedMbid }, query: { artistName } },
-    createResponse(),
-  );
+  preview.request(`/artists/${unlinkedMbid}/preview?${new URLSearchParams({ artistName })}`);
 
 test("the preview route searches Deezer for the name without its disambiguation", async () => {
   const searched = searchedDeezerArtists();

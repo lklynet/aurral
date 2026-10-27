@@ -30,7 +30,7 @@ import { normalizePreviewTrack } from "../../../utils/audioQueue";
 import { useQueueTrackActions } from "../../../hooks/useQueueTrackActions";
 import { queryKeys } from "../../../queryClient.ts";
 import { releaseGroupDetailsQueryOptions } from "../../../queryOptions.ts";
-import type { ReleaseGroupTrack } from "../../../../../backend/routes/artists/handlers/releaseGroup.ts";
+import type { ReleaseGroupTrack } from "../../../utils/api/endpoints/artists.ts";
 import type { ArtistDetailsLibrary } from "../hooks/useArtistDetailsLibrary.ts";
 import type { ArtistDetails } from "../hooks/useArtistDetailsStream.ts";
 import type { useLibraryDestination } from "../../../hooks/useLibraryDestination.ts";

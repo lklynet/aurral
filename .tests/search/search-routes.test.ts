@@ -19,7 +19,6 @@ const [
   { db },
   { dbOps, userOps },
   libraryStore,
-  { default: searchRouter },
   provider,
   { handToHono },
   { flowPlaylistConfig },
@@ -33,7 +32,6 @@ const [
   () => import("../../backend/config/db-sqlite.ts"),
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/services/libraryMediaStore.ts"),
-  () => import("../../backend/routes/search.ts"),
   () => import("../../backend/services/providers/brainzmashProvider.ts"),
   () => import("../../backend/routes/shared/expressHandoff.ts"),
   () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
@@ -89,9 +87,7 @@ beforeAll(async () => {
     req.user = user;
     next();
   });
-  expressApp.use("/api/playlists", handToHono);
-  expressApp.use(express.json());
-  expressApp.use("/api/search", searchRouter);
+  expressApp.use(["/api/playlists", "/api/search"], handToHono);
   await new Promise<void>((resolve) => {
     const server = expressApp.listen(0, "127.0.0.1", () => {
       app = { url: `http://127.0.0.1:${listeningAddress(server)!.port}`, server };

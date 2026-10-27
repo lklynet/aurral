@@ -1,11 +1,10 @@
 import { useCallback, useId, useMemo, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
-import type { ReleaseGroupTrack } from "../../../../backend/routes/artists/handlers/releaseGroup.ts";
+import type { ReleaseGroupTrack } from "../../utils/api/endpoints/artists.ts";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   getArtistCover,
   getArtistDetails,
-  fetchArtistOverrides,
   getArtistPreview,
   getSimilarArtistsForArtist,
   updateArtistOverrides,
@@ -15,6 +14,7 @@ import {
   lookupArtistInLibrary,
 } from "../../utils/api/endpoints/library.ts";
 import { parseResponse } from "hono/client";
+import { artistsClient } from "../../utils/api/clients/artists.ts";
 import { staticPlaylistsClient } from "../../utils/api/clients/staticPlaylists.ts";
 import {
   buildStaticPlaylistTrackPayload,
@@ -103,7 +103,13 @@ function ArtistDetailsPage() {
 
   const artistOverridesQuery = useQuery({
     queryKey: queryKeys.artistOverrides(mbid),
-    queryFn: ({ signal }) => fetchArtistOverrides(mbid, { signal }),
+    queryFn: ({ signal }) =>
+      parseResponse(
+        artistsClient[":mbid"].overrides.$get(
+          { param: { mbid: encodeURIComponent(mbid ?? "") } },
+          { init: { signal } },
+        ),
+      ),
     enabled: false,
     staleTime: 30_000,
   });

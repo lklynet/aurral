@@ -11,7 +11,6 @@ import { resolveAurralDataDir } from "../config/data-dir.ts";
 import { asAppError } from "../../lib/errors.ts";
 import { isOwnKey } from "../../lib/ownKey.ts";
 import { isPrivateAddress, isPrivateHostname } from "../../lib/publicUrl.ts";
-import type { Request, Response as ExpressResponse } from "express";
 
 type CachedImageMeta = {
   sourceUrl: string | null;
@@ -737,12 +736,9 @@ export const buildStableImageProxyUrl = (sourceUrl: string | null | undefined): 
   return remote;
 };
 
-export const handleImageProxyRequest = async (req: Request, res: ExpressResponse) => {
-  const rawKey = String(req.params.cacheKey || "").trim();
-  const match = rawKey.match(/^([a-f0-9]{64})(?:\.([a-z0-9]+))?$/i);
-  if (!match) {
-    return res.status(404).json({ error: "Image not found" });
-  }
+export const findCachedImage = async (rawKey: string) => {
+  const match = rawKey.trim().match(/^([a-f0-9]{64})(?:\.([a-z0-9]+))?$/i);
+  if (!match) return null;
 
   const cacheKey = match[1].toLowerCase();
   await awaitCacheIndexReady();
@@ -756,38 +752,14 @@ export const handleImageProxyRequest = async (req: Request, res: ExpressResponse
       } catch {}
     }
   }
-  if (!cached?.imagePath || !fs.existsSync(cached.imagePath)) {
-    return res.status(404).json({ error: "Image not found" });
-  }
+  if (!cached?.imagePath || !fs.existsSync(cached.imagePath)) return null;
   try {
     cached = await normalizeCachedEntryIfNeeded(cached);
   } catch {
-    return res.status(404).json({ error: "Image not found" });
+    return null;
   }
-
-  res.set("Content-Type", cached.meta.contentType || "image/jpeg");
-  res.set("Cache-Control", "public, max-age=31536000, immutable");
   touchCacheEntry(cached.imagePath);
-  return res.sendFile(path.basename(cached.imagePath), {
-    root: IMAGE_PROXY_DIR,
-    dotfiles: "allow",
-  });
-};
-
-export type ImageCacheResponse = { url: string };
-
-export const handleImageCacheRequest = async (req: Request, res: ExpressResponse) => {
-  const sourceUrl = typeof req.body?.src === "string" ? req.body.src.trim() : "";
-  if (!/^https?:\/\//i.test(sourceUrl)) {
-    return res.status(400).json({ error: "An http or https image URL is required" });
-  }
-  try {
-    const cached = await warmImageProxy(sourceUrl);
-    if (!cached?.localUrl) return res.status(404).json({ error: "Image not found" });
-    return res.json({ url: cached.localUrl });
-  } catch {
-    return res.status(404).json({ error: "Image not found" });
-  }
+  return cached;
 };
 
 migrateObsoleteImageCache();

@@ -1,18 +1,18 @@
-import { registerReleaseGroup } from "./handlers/releaseGroup.ts";
-import { registerPreview } from "./handlers/preview.ts";
-import { registerDetails } from "./handlers/details.ts";
-import { registerCover } from "./handlers/cover.ts";
-import { registerSimilar } from "./handlers/similar.ts";
-import { registerVideo } from "./handlers/video.ts";
-import { registerAppearsOn } from "./handlers/appearsOn.ts";
-import mountRoutes from "../shared/mountRoutes.ts";
+import { Hono } from "hono";
+import type { AppEnv } from "../../middleware/requestUser.ts";
+import appearsOn from "./handlers/appearsOn.ts";
+import cover from "./handlers/cover.ts";
+import details from "./handlers/details.ts";
+import preview from "./handlers/preview.ts";
+import releaseGroup from "./handlers/releaseGroup.ts";
+import similar from "./handlers/similar.ts";
+import video from "./handlers/video.ts";
 
-export default mountRoutes([
-  registerReleaseGroup,
-  registerPreview,
-  registerDetails,
-  registerCover,
-  registerSimilar,
-  registerVideo,
-  registerAppearsOn,
-]);
+export default new Hono<AppEnv>()
+  .route("/", releaseGroup)
+  .route("/", preview)
+  .route("/", details)
+  .route("/", cover)
+  .route("/", similar)
+  .route("/", video)
+  .route("/", appearsOn);

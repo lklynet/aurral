@@ -42,7 +42,7 @@ export function useArtistPreviewPlayback({
   const isArtistPreviewActive = isArtistPreviewSource && (isPlaying || isLoading);
 
   const playArtistPreview = useCallback(async () => {
-    if (!canPlayArtistPreview || isLoadingPreview) return false;
+    if (!mbid || !canPlayArtistPreview || isLoadingPreview) return false;
     if (isArtistPreviewSource) {
       togglePlayPause();
       return true;

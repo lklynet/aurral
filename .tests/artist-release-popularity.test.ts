@@ -1,9 +1,8 @@
 import { requireFixture } from "./playlists/fixtures.ts";
-import { captureRouteHandlers } from "./library/routeHarness.ts";
 import assert from "node:assert/strict";
 import { test } from "vite-plus/test";
 
-import { registerDetails } from "../backend/routes/artists/handlers/details.ts";
+import details from "../backend/routes/artists/handlers/details.ts";
 import { listenbrainzGetReleaseGroupListens } from "../backend/services/apiClients/listenbrainz.ts";
 import { json, openArtistStream, stubFetch } from "./helpers/artistStream.ts";
 import { useFakeClock } from "./helpers/fakeClock.ts";
@@ -93,23 +92,8 @@ const discographyOf = async (
 };
 
 async function getArtistDetails(mbid: string) {
-  const routes = captureRouteHandlers(registerDetails, "get");
-
-  let body;
-  await routes.get("/:mbid")(
-    { params: { mbid }, query: { mode: "full", appearsOnLimit: "6" } },
-    {
-      setHeader() {},
-      status() {
-        return this;
-      },
-      json(value: { "release-groups": Parameters<typeof summarize>[0] }) {
-        body = value;
-        return this;
-      },
-    },
-  );
-  return body;
+  const response = await details.request(`/artists/${mbid}?mode=full&appearsOnLimit=6`);
+  return response.json();
 }
 
 const stubPlaid = (

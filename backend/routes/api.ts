@@ -3,11 +3,14 @@ import { bodyLimit } from "hono/body-limit";
 import { HTTPException } from "hono/http-exception";
 import type { AppEnv } from "../middleware/requestUser.ts";
 import { logger } from "../services/logger.ts";
+import artists from "./artists/index.ts";
 import artistStream from "./artists/handlers/stream.ts";
 import auth from "./auth.ts";
+import deezer from "./deezer.ts";
 import discovery from "./discovery/index.ts";
 import filesystem from "./filesystem.ts";
 import health from "./health.ts";
+import imageProxy from "./imageProxy.ts";
 import inbox from "./inbox.ts";
 import library from "./library/index.ts";
 import libraryStreams from "./library/streams.ts";
@@ -25,6 +28,7 @@ import playlistStreams from "./playlists/handlers/stream.ts";
 import playlistWorker from "./playlists/handlers/worker.ts";
 import requests from "./requests.ts";
 import scrobbling from "./scrobbling.ts";
+import search from "./search.ts";
 import settings from "./settings/index.ts";
 import shareLinks from "./shareLinks.ts";
 import settingsDownloadClients from "./settings/downloadClients.ts";
@@ -67,6 +71,10 @@ export const api = new Hono<AppEnv>()
   .route("/", playlistJobs)
   .route("/", playlistWorker)
   .route("/", artistStream)
+  .route("/", artists)
+  .route("/", search)
+  .route("/", imageProxy)
+  .route("/", deezer)
   .route("/", settings)
   .route("/", settingsPlayback)
   .route("/", settingsDownloadClients)

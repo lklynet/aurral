@@ -14,7 +14,7 @@ import {
   getReleaseYear,
   type ReleaseGroup,
 } from "../utils";
-import type { ArtistDetailsResponse } from "../../../../../backend/routes/artists/handlers/details.ts";
+import type { ArtistDetailsResponse } from "../../../utils/api/endpoints/artists.ts";
 import type { useArtistDetailsLibrary } from "../hooks/useArtistDetailsLibrary";
 import { getAlbumAddAction } from "../../../utils/albumAddAction";
 import { useResponsiveReleaseLimit } from "../hooks/useResponsiveReleaseLimit";

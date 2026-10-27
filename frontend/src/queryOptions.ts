@@ -1,7 +1,7 @@
 import { queryOptions } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
 import { queryKeys } from "./queryClient.ts";
-import { getReleaseGroupDetails } from "./utils/api/endpoints/artists.ts";
+import { artistsClient } from "./utils/api/clients/artists.ts";
 import { discoveryClient } from "./utils/api/clients/discovery.ts";
 import { playlistJobsClient } from "./utils/api/clients/playlistJobs.ts";
 import {
@@ -36,7 +36,13 @@ export const editorialPlaylistQueryOptions = (userId: MaybeId, playlistId: strin
 export const releaseGroupDetailsQueryOptions = (releaseMbid: MaybeText) =>
   queryOptions({
     queryKey: queryKeys.releaseGroupDetails(releaseMbid),
-    queryFn: ({ signal }) => getReleaseGroupDetails(releaseMbid, { signal }),
+    queryFn: ({ signal }) =>
+      parseResponse(
+        artistsClient["release-group"][":mbid"].$get(
+          { param: { mbid: encodeURIComponent(releaseMbid ?? "") } },
+          { init: { signal } },
+        ),
+      ),
     enabled: Boolean(releaseMbid),
     staleTime: 5 * 60 * 1000,
   });

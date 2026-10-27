@@ -13,7 +13,7 @@ const [
   { db },
   { dbOps },
   { authMiddleware },
-  { default: deezerRouter },
+  { handToHono },
   { deezerGetArtistTopTracksById, deezerGetAlbumTracks },
   { default: axios },
 ] = await setupIsolatedBackend(
@@ -21,7 +21,7 @@ const [
   () => import("../../backend/config/db-sqlite.ts"),
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/middleware/auth.ts"),
-  () => import("../../backend/routes/deezer.ts"),
+  () => import("../../backend/routes/shared/expressHandoff.ts"),
   () => import("../../backend/services/apiClients/index.ts"),
   () => import("../../lib/axiosFetch.ts"),
 );
@@ -48,7 +48,7 @@ const requestPreview = (path: string) => fetch(`${baseUrl}${path}`, { redirect: 
 beforeAll(async () => {
   const app = express();
   app.use(authMiddleware);
-  app.use("/api/deezer", deezerRouter);
+  app.use("/api/deezer", handToHono);
   server = await new Promise((resolve) => {
     const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
   });

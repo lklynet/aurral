@@ -1,12 +1,9 @@
 import { testUser } from "../helpers/userFixtures.ts";
 import { signedInAs } from "../helpers/honoApp.ts";
-import type { Router } from "express";
 import type { DiscoveryRecommendation } from "../../backend/services/discovery/recommendationPipeline.ts";
 import type { ArtistMatchFields } from "../../backend/services/discovery/artistKeys.ts";
-import { listeningAddress } from "../helpers/backendTestHarness.ts";
 import { test, beforeAll, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
-import express from "express";
 import {
   cleanupIsolatedState,
   resetDatabase,
@@ -22,7 +19,6 @@ const [
   playEvents,
   { sampleLibraryArtistsForDiscovery },
   { api },
-  { default: searchRouter },
   { FlowTrackSource },
 ] = await setupIsolatedBackend(
   "personal-recommendations",
@@ -33,7 +29,6 @@ const [
   () => import("../../backend/services/playEventService.ts"),
   () => import("../../backend/services/libraryQueryService.ts"),
   () => import("../../backend/routes/api.ts"),
-  () => import("../../backend/routes/search.ts"),
   () => import("../../backend/services/flows/flowTrackSource.ts"),
 );
 
@@ -207,63 +202,31 @@ test("new feedback softens and hides served picks before the next refresh", asyn
   discovery.removeDiscoveryFeedback(alice.id, lessLike.id);
 });
 
-const requestApi = async (
-  userId: number,
-  mountPath: string,
-  router: Router,
-  path: string,
-  init: RequestInit = {},
-) => {
-  const app = express();
-  app.use(express.json());
-  app.use((req, _res, next) => {
-    req.user = testUser(userId);
-    next();
-  });
-  app.use(mountPath, router);
-  const server = await new Promise<
-    import("node:http").Server<
-      typeof import("node:http").IncomingMessage,
-      typeof import("node:http").ServerResponse
-    >
-  >((resolve) => {
-    const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
-  });
-  try {
-    const response = await originalFetch(
-      `http://127.0.0.1:${listeningAddress(server).port}${mountPath}${path}`,
-      { ...init, headers: { "content-type": "application/json" } },
-    );
-    return {
-      status: response.status,
-      cacheControl: response.headers.get("cache-control") || "",
-      body: (await response.json()) as {
-        recommendations: DiscoveryRecommendation[];
-        items: ArtistMatchFields[];
-        hasMore: boolean;
-        isUpdating: boolean;
-        updatePhase: string | null;
-        lastUpdated: string | null;
-        error?: string;
-        globalTop: DiscoveryRecommendation[];
-      },
-    };
-  } finally {
-    await new Promise<void>((resolve) => server.close(() => resolve()));
-  }
+type ApiBody = {
+  recommendations: DiscoveryRecommendation[];
+  items: ArtistMatchFields[];
+  hasMore: boolean;
+  isUpdating: boolean;
+  updatePhase: string | null;
+  lastUpdated: string | null;
+  error?: string;
+  globalTop: DiscoveryRecommendation[];
 };
 
-const requestDiscoveryApi = async (userId: number, path: string, init: RequestInit = {}) => {
+const requestApi = async (userId: number, path: string, init: RequestInit = {}) => {
   const response = await signedInAs(testUser(userId))
     .route("/", api)
-    .request(`/discover${path}`, { ...init, headers: { "content-type": "application/json" } });
-  const body: Awaited<ReturnType<typeof requestApi>>["body"] = await response.json();
+    .request(path, { ...init, headers: { "content-type": "application/json" } });
+  const body: ApiBody = await response.json();
   return {
     status: response.status,
     cacheControl: response.headers.get("cache-control") || "",
     body,
   };
 };
+
+const requestDiscoveryApi = (userId: number, path: string, init: RequestInit = {}) =>
+  requestApi(userId, `/discover${path}`, init);
 
 test("tag search and flow plans read the user's own pool", async () => {
   const tagged = await requestDiscoveryApi(alice.id, "/by-tag?tag=shoegaze");
@@ -306,12 +269,7 @@ test("flows without an owner read the first admin's pool", async () => {
 });
 
 test("tag search lists the tag's artists in Last.fm order without the user's recommendations", async () => {
-  const { status, body } = await requestApi(
-    alice.id,
-    "/api/search",
-    searchRouter,
-    "?scope=tag&q=%23shoegaze",
-  );
+  const { status, body } = await requestApi(alice.id, "/search?scope=tag&q=%23shoegaze");
   assert.equal(status, 200);
   assert.deepEqual(
     body.items.map((artist) => artist.name),
