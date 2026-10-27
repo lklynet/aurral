@@ -1,23 +1,21 @@
 import { listeningAddress } from "../helpers/backendTestHarness.ts";
 import assert from "node:assert/strict";
 import { test, beforeAll, beforeEach, afterAll, vi } from "vite-plus/test";
-import express from "express";
 import sharp from "sharp";
 import {
   cleanupIsolatedState,
   resetDatabase,
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.ts";
+import { listen } from "../helpers/honoApp.ts";
 
-const [state, { db }, { dbOps, userOps }, { hashPassword }, { authMiddleware }, { handToHono }] =
-  await setupIsolatedBackend(
-    "image-cache",
-    () => import("../../backend/config/db-sqlite.ts"),
-    () => import("../../backend/db/helpers/index.ts"),
-    () => import("../../backend/middleware/passwordHash.ts"),
-    () => import("../../backend/middleware/auth.ts"),
-    () => import("../../backend/routes/shared/expressHandoff.ts"),
-  );
+const [state, { db }, { dbOps, userOps }, { hashPassword }, { app }] = await setupIsolatedBackend(
+  "image-cache",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/middleware/passwordHash.ts"),
+  () => import("../../backend/app.ts"),
+);
 
 const realFetch = globalThis.fetch;
 const cover = await sharp({
@@ -25,10 +23,7 @@ const cover = await sharp({
 })
   .png()
   .toBuffer();
-let server: import("node:http").Server<
-  typeof import("node:http").IncomingMessage,
-  typeof import("node:http").ServerResponse
->;
+let server: import("node:http").Server;
 let baseUrl: string;
 let token: string;
 
@@ -60,17 +55,7 @@ function cacheImage(src: string, { authenticated = true }: { authenticated?: boo
 }
 
 beforeAll(async () => {
-  const app = express();
-  app.use(authMiddleware);
-  app.use(["/api/auth", "/api/image-proxy"], handToHono);
-  server = await new Promise<
-    import("node:http").Server<
-      typeof import("node:http").IncomingMessage,
-      typeof import("node:http").ServerResponse
-    >
-  >((resolve) => {
-    const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
-  });
+  server = await listen(app);
   baseUrl = `http://127.0.0.1:${listeningAddress(server).port}`;
 });
 

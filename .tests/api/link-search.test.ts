@@ -1,7 +1,6 @@
 import { listeningAddress } from "../helpers/backendTestHarness.ts";
 import assert from "node:assert/strict";
 import { test, beforeAll, beforeEach, afterAll, vi } from "vite-plus/test";
-import express from "express";
 import { readFile } from "node:fs/promises";
 import {
   cleanupIsolatedState,
@@ -9,24 +8,17 @@ import {
   resetDatabase,
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.ts";
+import { listen } from "../helpers/honoApp.ts";
 
-const [
-  state,
-  { db },
-  { dbOps, userOps },
-  { hashPassword },
-  { authMiddleware },
-  { handToHono },
-  provider,
-] = await setupIsolatedBackend(
-  "link-search",
-  () => import("../../backend/config/db-sqlite.ts"),
-  () => import("../../backend/db/helpers/index.ts"),
-  () => import("../../backend/middleware/passwordHash.ts"),
-  () => import("../../backend/middleware/auth.ts"),
-  () => import("../../backend/routes/shared/expressHandoff.ts"),
-  () => import("../../backend/services/providers/brainzmashProvider.ts"),
-);
+const [state, { db }, { dbOps, userOps }, { hashPassword }, { app }, provider] =
+  await setupIsolatedBackend(
+    "link-search",
+    () => import("../../backend/config/db-sqlite.ts"),
+    () => import("../../backend/db/helpers/index.ts"),
+    () => import("../../backend/middleware/passwordHash.ts"),
+    () => import("../../backend/app.ts"),
+    () => import("../../backend/services/providers/brainzmashProvider.ts"),
+  );
 
 const fixture = (name: string) =>
   readFile(new URL(`../fixtures/streaming-links/${name}`, import.meta.url), "utf8");
@@ -57,10 +49,7 @@ const albumSearchResult = (
 const realFetch = globalThis.fetch;
 let metadataServer: { url: string; close: () => Promise<void> };
 let metadataRoutes: Record<string, unknown> = {};
-let server: import("node:http").Server<
-  typeof import("node:http").IncomingMessage,
-  typeof import("node:http").ServerResponse
->;
+let server: import("node:http").Server;
 let baseUrl: string;
 let token: string;
 
@@ -104,17 +93,7 @@ beforeAll(async () => {
       return response.writeHead(404).end(JSON.stringify({ error: "Not found" }));
     response.end(JSON.stringify(body));
   });
-  const app = express();
-  app.use(authMiddleware);
-  app.use(["/api/auth", "/api/search"], handToHono);
-  server = await new Promise<
-    import("node:http").Server<
-      typeof import("node:http").IncomingMessage,
-      typeof import("node:http").ServerResponse
-    >
-  >((resolve) => {
-    const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
-  });
+  server = await listen(app);
   baseUrl = `http://127.0.0.1:${listeningAddress(server).port}`;
 });
 

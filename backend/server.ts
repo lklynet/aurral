@@ -1,20 +1,12 @@
-import cors from "cors";
-import express from "express";
-import type { NextFunction, Request, Response } from "express";
-import rateLimit from "express-rate-limit";
-import helmet from "helmet";
-import path from "path";
-import fs from "fs";
-import { createServer } from "http";
-import { fileURLToPath } from "url";
 import dns from "node:dns";
+import { createServer } from "node:http";
+import { getRequestListener } from "@hono/node-server";
 
 dns.setDefaultResultOrder("ipv4first");
 
-import { authMiddleware, isProxyAuthEnabled } from "./middleware/auth.ts";
-import { createRequestFailureLogger } from "./middleware/requestFailureLogger.ts";
-import { handleOidcCallback, isOidcEnabled } from "./services/oidcAuth.ts";
-import { handleGoogleCallback } from "./services/googleAuth.ts";
+import { app } from "./app.ts";
+import { isProxyAuthEnabled } from "./middleware/auth.ts";
+import { isOidcEnabled } from "./services/oidcAuth.ts";
 import { logger, logUnhandledRejection } from "./services/logger.ts";
 import { websocketService, type WebSocketChannelPayload } from "./services/websocketService.ts";
 import {
@@ -23,7 +15,7 @@ import {
 } from "./routes/library/handlers/downloads.ts";
 import { startPlaylistStatusBroadcasts } from "./services/playlists/playlistStatusBroadcaster.ts";
 
-import { noteDeprecatedUsage, warnAboutConfigDeprecations } from "./services/deprecatedUsage.ts";
+import { warnAboutConfigDeprecations } from "./services/deprecatedUsage.ts";
 import { bootstrapHonkerSchedules } from "./services/honkerDb.ts";
 import { initializeAppRuntime } from "./services/appRuntime.ts";
 import {
@@ -32,10 +24,6 @@ import {
 } from "./services/honkerWorkerRuntime.ts";
 import { stopShareListener, syncShareListener } from "./services/shareLinks/shareListener.ts";
 import { asAppError } from "../lib/errors.ts";
-import { handToHono, resolveTokenUser } from "./routes/shared/expressHandoff.ts";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 process.on("uncaughtException", (error) => {
   logger.error("system", "Uncaught Exception:", error);
@@ -44,42 +32,7 @@ process.on("uncaughtException", (error) => {
 
 process.on("unhandledRejection", logUnhandledRejection);
 
-const app = express();
 const PORT = process.env.PORT || 3001;
-
-const allowedCorsOrigins = String(process.env.CORS_ORIGIN || "")
-  .split(",")
-  .map((v) => v.trim())
-  .filter(Boolean);
-
-const isSubsonicRequest = (req: Request) => req.path === "/rest" || req.path.startsWith("/rest/");
-const isImageProxyRequest = (req: Request) =>
-  (req.method === "GET" || req.method === "HEAD") && req.path.startsWith("/api/image-proxy/");
-
-const corsDefaults = {
-  methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
-  allowedHeaders: "Content-Type, Authorization",
-};
-const publicCors = cors(corsDefaults);
-const apiCors = cors({ ...corsDefaults, origin: allowedCorsOrigins });
-
-function corsMiddleware(req: Request, res: Response, next: NextFunction) {
-  if (isSubsonicRequest(req) || isImageProxyRequest(req)) return publicCors(req, res, next);
-  if (allowedCorsOrigins.length > 0) return apiCors(req, res, next);
-  return next();
-}
-
-const trustProxyValue =
-  process.env.TRUST_PROXY === undefined
-    ? 1
-    : process.env.TRUST_PROXY === "true"
-      ? true
-      : process.env.TRUST_PROXY === "false"
-        ? false
-        : Number.isNaN(Number(process.env.TRUST_PROXY))
-          ? process.env.TRUST_PROXY
-          : Number(process.env.TRUST_PROXY);
-app.set("trust proxy", trustProxyValue);
 
 if (isProxyAuthEnabled() && !process.env.AUTH_PROXY_TRUSTED_IPS) {
   logger.warn(
@@ -97,190 +50,7 @@ if (process.env.OIDC_ENABLED === "true" && !isOidcEnabled()) {
   );
 }
 
-const connectSrcDirectives = ["'self'", "ws:", "wss:", "https://api.github.com"];
-if (process.env.AUTH_PROXY_DOMAIN) {
-  connectSrcDirectives.push(process.env.AUTH_PROXY_DOMAIN);
-}
-if (process.env.OIDC_DOMAIN) {
-  connectSrcDirectives.push(process.env.OIDC_DOMAIN);
-}
-
-app.use(corsMiddleware);
-app.use(createRequestFailureLogger());
-app.use(
-  helmet({
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        scriptSrc: ["'self'"],
-        styleSrc: ["'self'", "'unsafe-inline'"],
-        fontSrc: ["'self'", "data:"],
-        imgSrc: ["'self'", "data:", "https:"],
-        connectSrc: connectSrcDirectives,
-        mediaSrc: ["'self'", "data:", "https:"],
-        frameSrc: ["'self'", "https://www.youtube-nocookie.com", "https://www.youtube.com"],
-        frameAncestors: null,
-        upgradeInsecureRequests: null,
-      },
-    },
-    frameguard: { action: "sameorigin" },
-    crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
-  }),
-);
-app.use((req, res, next) => {
-  if (isSubsonicRequest(req) || isImageProxyRequest(req)) {
-    res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
-  }
-  next();
-});
-
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 5000,
-});
-
-app.use(limiter);
-
-app.use(authMiddleware);
-
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  skipSuccessfulRequests: true,
-});
-app.use("/api/auth/login", authLimiter);
-app.use("/api/auth/oidc/login", authLimiter);
-app.use("/api/auth/oidc/exchange", authLimiter);
-app.use("/api/users/me/password", authLimiter);
-
-app.use(
-  [
-    "/api/library/canonical-stream",
-    "/api/library/file-stream",
-    "/api/library/stream",
-    "/api/playlists/stream",
-    "/api/playlists/staging-stream",
-    "/api/artists/:mbid/stream",
-  ],
-  resolveTokenUser,
-  handToHono,
-);
-app.get(
-  [
-    "/api/library/albums/:albumId/cover",
-    "/api/library/artwork/:kind/:id",
-    "/api/playlists/artwork/:playlistId",
-    "/api/playlists/track-artwork/:jobId",
-  ],
-  resolveTokenUser,
-  handToHono,
-);
-app.use("/rest", handToHono);
-app.use(
-  [
-    "/api/inbox",
-    "/api/library",
-    "/api/requests",
-    "/api/settings",
-    "/api/updates",
-    "/api/auth",
-    "/api/users",
-    "/api/onboarding",
-    "/api/health",
-    "/api/scrobbling",
-    "/api/filesystem",
-    "/api/playlists",
-    "/api/discover",
-    "/api/news",
-    "/api/play-events",
-    "/api/share-links",
-    "/api/webhooks/lidarr",
-    "/api/feeds",
-    "/api/artists",
-    "/api/search",
-    "/api/image-proxy",
-    "/api/deezer",
-  ],
-  handToHono,
-);
-
-app.use("/api/weekly-flow", (req, res) => {
-  noteDeprecatedUsage("weekly-flow-api");
-  const parsed = new URL(req.url, "http://localhost");
-  res.redirect(308, `/api/playlists${parsed.pathname}${parsed.search}`);
-});
-
-app.get("/sso/callback", async (req, res) => {
-  try {
-    const result = await handleOidcCallback(req);
-    const code = encodeURIComponent(result.code);
-    res.redirect(302, `/sso/complete#code=${code}`);
-  } catch (error) {
-    const failure = asAppError(error);
-    logger.error("auth", "OIDC callback failed:", { message: failure?.message });
-    const message = encodeURIComponent(failure?.message || "OIDC login failed");
-    res.redirect(302, `/sso/complete#error=${message}`);
-  }
-});
-
-app.get("/sso/google/callback", async (req, res) => {
-  try {
-    const result = await handleGoogleCallback(req);
-    const code = encodeURIComponent(result.code);
-    res.redirect(302, `/sso/complete#code=${code}&provider=google`);
-  } catch (error) {
-    const failure = asAppError(error);
-    logger.error("auth", "Google callback failed:", { message: failure?.message });
-    const message = encodeURIComponent(failure?.message || "Google login failed");
-    res.redirect(302, `/sso/complete#error=${message}&provider=google`);
-  }
-});
-
-const frontendDist = path.join(__dirname, "..", "frontend", "dist");
-const frontendFallbackRoute = /.*/;
-
-if (fs.existsSync(frontendDist)) {
-  const oauthHtmlPath = path.join(frontendDist, "oauth.html");
-  const oauthCallbackPath = path.join(frontendDist, "spotify-oauth-callback.js");
-  app.get("/oauth.html", (req, res, next) => {
-    if (!fs.existsSync(oauthHtmlPath)) return next();
-    res.setHeader("Cache-Control", "no-store");
-    return res.sendFile(oauthHtmlPath);
-  });
-  app.get("/spotify-oauth-callback.js", (req, res, next) => {
-    if (!fs.existsSync(oauthCallbackPath)) return next();
-    res.setHeader("Cache-Control", "no-store");
-    return res.sendFile(oauthCallbackPath);
-  });
-  app.use(
-    "/assets",
-    express.static(path.join(frontendDist, "assets"), { maxAge: "1y", immutable: true }),
-  );
-  app.use(express.static(frontendDist));
-
-  app.get(frontendFallbackRoute, (req, res) => {
-    if (req.path.startsWith("/api")) {
-      return res.status(404).json({ error: "Not found" });
-    }
-    res.sendFile("index.html", { root: frontendDist });
-  });
-} else {
-  app.get(frontendFallbackRoute, (req, res) => {
-    if (req.path.startsWith("/api")) {
-      return res.status(404).json({ error: "Not found" });
-    }
-    res.status(503).send("Frontend not built. Run 'pnpm run build' first.");
-  });
-}
-
-app.use((err: unknown, req: Request, res: Response, next: NextFunction) => {
-  logger.error("system", "Express error:", err || "(no error object)");
-  res.locals.failureLogged = true;
-  if (res.headersSent) return next(err);
-  return res.status(500).json({ error: "Internal server error" });
-});
-
-const httpServer = createServer(app);
+const httpServer = createServer(getRequestListener(app.fetch, { overrideGlobalObjects: false }));
 websocketService.initialize(httpServer);
 
 const DOWNLOAD_STATUS_INTERVAL_MS = 10000;

@@ -1,46 +1,22 @@
 import assert from "node:assert/strict";
-import { ServerResponse } from "node:http";
-import type { Response } from "express";
-import { createAuthRequest } from "../auth/authFixtures.ts";
-import type { logger } from "../../backend/services/logger.ts";
+import { Hono } from "hono";
 import { test } from "vite-plus/test";
+import type { AppEnv } from "../../backend/middleware/requestUser.ts";
+import type { logger } from "../../backend/services/logger.ts";
 
 import { createRequestFailureLogger } from "../../backend/middleware/requestFailureLogger.ts";
 
-function sendRequest({
-  status,
-  body,
-  route = "/sync",
-  alreadyLogged = false,
-}: {
-  status: number;
-  body: unknown;
-  route?: string;
-  alreadyLogged?: boolean;
-}) {
+async function sendRequest({ status, body }: { status: number; body: unknown }) {
   const events: Parameters<typeof logger.error>[] = [];
-  const req = createAuthRequest({
-    method: "POST",
-    baseUrl: "/api/playlists",
-    route: { path: route },
-    path: "/api/playlists/sync",
-    originalUrl: "/api/playlists/sync?token=secret",
-  });
-  const res = Object.assign(new ServerResponse(req), {
-    locals: { failureLogged: alreadyLogged },
-    json(_value: unknown) {
-      return this;
-    },
-  }) as unknown as Response;
-  res.statusCode = status;
-  createRequestFailureLogger({ error: (...args) => events.push(args) })(req, res, () => {});
-  res.json(body);
-  res.emit("finish");
+  const app = new Hono<AppEnv>()
+    .use(createRequestFailureLogger({ error: (...args) => events.push(args) }))
+    .post("/api/playlists/sync", () => Response.json(body, { status }));
+  await app.request("/api/playlists/sync?token=secret", { method: "POST" });
   return events;
 }
 
-test("failed API responses log method, endpoint, status and response reason without query secrets", () => {
-  const events = sendRequest({
+test("failed API responses log method, endpoint, status and response reason without query secrets", async () => {
+  const events = await sendRequest({
     status: 500,
     body: { error: "Import failed", message: "Spotify request timed out" },
   });
@@ -58,8 +34,8 @@ test("failed API responses log method, endpoint, status and response reason with
   ]);
 });
 
-test("failed API response reasons redact credentials and file paths before logging", () => {
-  const events = sendRequest({
+test("failed API response reasons redact credentials and file paths before logging", async () => {
+  const events = await sendRequest({
     status: 502,
     body: {
       message:
@@ -78,10 +54,6 @@ test("failed API response reasons redact credentials and file paths before loggi
   assert.ok(reason.length <= 300);
 });
 
-test("routine client errors and errors already logged by Express are not duplicated", () => {
-  assert.deepEqual(sendRequest({ status: 404, body: { error: "Not found" } }), []);
-  assert.deepEqual(
-    sendRequest({ status: 500, body: { error: "Failure" }, alreadyLogged: true }),
-    [],
-  );
+test("routine client errors are not logged", async () => {
+  assert.deepEqual(await sendRequest({ status: 404, body: { error: "Not found" } }), []);
 });

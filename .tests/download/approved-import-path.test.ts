@@ -5,7 +5,7 @@ import { test, beforeEach, afterAll, afterEach, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "fs/promises";
 import path from "path";
-import express from "express";
+import { listen, signedInAs } from "../helpers/honoApp.ts";
 import { NavidromeClient } from "../../backend/services/navidrome.ts";
 import { createPlaybackPlaylistSnapshot } from "../../backend/services/playback/playbackDestination.ts";
 import type { RequestUser } from "../../backend/middleware/requestUser.ts";
@@ -27,7 +27,7 @@ const [
   { playlistManager },
   { downloadWorker },
   { queueQualityUpgrade },
-  { handToHono },
+  { api },
   { processPlaylistOperation },
   libraryStore,
   downloadUtils,
@@ -47,7 +47,7 @@ const [
   () => import("../../backend/services/playlists/playlistManager.ts"),
   () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
   () => import("../../backend/services/qualityProfileService.ts"),
-  () => import("../../backend/routes/shared/expressHandoff.ts"),
+  () => import("../../backend/routes/api.ts"),
   () => import("../../backend/services/playlists/playlistOperations.ts"),
   () => import("../../backend/services/libraryMediaStore.ts"),
   () => import("../../backend/services/downloadUtils.ts"),
@@ -78,7 +78,6 @@ const {
   registerDownloadProviderWork,
 } = cancellationModule;
 
-const app = express();
 type ListedJob = {
   id: string;
   artistName: string;
@@ -92,19 +91,7 @@ type ListedJob = {
 
 const admin: RequestUser = { id: 1, username: "admin", role: "admin", permissions: {} };
 let requestUser = admin;
-app.use((req, _res, next) => {
-  req.user = requestUser;
-  next();
-});
-app.use("/api/playlists", handToHono);
-const server = await new Promise<
-  import("node:http").Server<
-    typeof import("node:http").IncomingMessage,
-    typeof import("node:http").ServerResponse
-  >
->((resolve) => {
-  const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
-});
+const server = await listen(signedInAs(() => requestUser).route("/api", api));
 const baseUrl = `http://127.0.0.1:${listeningAddress(server).port}/api/playlists`;
 
 playlistManager.navidromeDestination.client = Object.assign(

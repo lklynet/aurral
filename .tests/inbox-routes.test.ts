@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import http from "node:http";
-import express from "express";
+import { getRequestListener } from "@hono/node-server";
 import { afterAll, beforeAll, test } from "vite-plus/test";
 import type { RequestUser } from "../backend/middleware/requestUser.ts";
 import { signedInAs } from "./helpers/honoApp.ts";
@@ -11,14 +11,13 @@ import {
   setupIsolatedBackend,
 } from "./helpers/backendTestHarness.ts";
 
-const [isolatedState, { db }, { dbOps, userOps }, { api }, { handToHono }] =
-  await setupIsolatedBackend(
-    "inbox-routes",
-    () => import("../backend/config/db-sqlite.ts"),
-    () => import("../backend/db/helpers/index.ts"),
-    () => import("../backend/routes/api.ts"),
-    () => import("../backend/routes/shared/expressHandoff.ts"),
-  );
+const [isolatedState, { db }, { dbOps, userOps }, { api }, { app }] = await setupIsolatedBackend(
+  "inbox-routes",
+  () => import("../backend/config/db-sqlite.ts"),
+  () => import("../backend/db/helpers/index.ts"),
+  () => import("../backend/routes/api.ts"),
+  () => import("../backend/app.ts"),
+);
 
 let user: RequestUser;
 
@@ -86,7 +85,7 @@ test("malformed and oversized JSON bodies get client errors", async () => {
   assert.equal(oversized.status, 413);
 });
 
-test("a chunked JSON body reaches Inbox through the Express handoff", async () => {
+test("a chunked JSON body reaches Inbox", async () => {
   const item = dbOps.upsertInboxItem({
     userId: user.id,
     kind: "news",
@@ -96,12 +95,7 @@ test("a chunked JSON body reaches Inbox through the Express handoff", async () =
   assert.ok(item?.id);
   const path = `/api/inbox/${encodeURIComponent(item.id)}`;
   const server = await createMockHttpServer(
-    express()
-      .use((req, _res, next) => {
-        req.user = user;
-        next();
-      })
-      .use("/api/inbox", handToHono),
+    getRequestListener(signedInAs(user).route("/", app).fetch),
   );
   try {
     const status = await new Promise<number | undefined>((resolve, reject) => {
@@ -127,14 +121,9 @@ test("a chunked JSON body reaches Inbox through the Express handoff", async () =
   }
 });
 
-test("an empty JSON body reaches Inbox through the Express handoff as {}", async () => {
+test("an empty JSON body reaches Inbox as {}", async () => {
   const server = await createMockHttpServer(
-    express()
-      .use((req, _res, next) => {
-        req.user = user;
-        next();
-      })
-      .use("/api/inbox", handToHono),
+    getRequestListener(signedInAs(user).route("/", app).fetch),
   );
   try {
     const response = await fetch(`${server.url}/api/inbox/missing`, {

@@ -1,4 +1,3 @@
-import { createAuthRequest } from "./authFixtures.ts";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
@@ -67,22 +66,19 @@ test("recent authentication requires a valid bearer session", () => {
 });
 
 test("stream requests need sign-in once an account exists, even without a stored single password", () => {
-  const anonymous = createAuthRequest({
-    headers: {},
-    query: {},
-    ip: "203.0.113.9",
-  });
-  assert.equal(auth.verifyTokenAuth(createAuthRequest({ ...anonymous })), true);
+  const anonymous = { headers: {}, ip: "203.0.113.9" };
+  assert.equal(auth.isAuthRequiredByConfig(), false);
 
   dbOps.updateSettings({ onboardingComplete: true });
   const user = userOps.createUser("stream-owner", bcrypt.hashSync("password123", 4), "admin");
   assert.ok(user != null);
-  assert.equal(auth.verifyTokenAuth(createAuthRequest({ ...anonymous })), false);
+  assert.equal(auth.isAuthRequiredByConfig(), true);
+  assert.equal(auth.resolveTokenUser(anonymous), null);
 
   const session = createSession(user.id);
   assert.equal(
-    auth.verifyTokenAuth(createAuthRequest({ ...anonymous, query: { token: session.token } })),
-    true,
+    auth.resolveTokenUser({ ...anonymous, query: { token: session.token } })?.id,
+    user.id,
   );
 });
 
@@ -238,10 +234,7 @@ test("Basic authentication cannot restore legacy admin access for an inactive da
   userOps.updateUser(user.id, { status: "suspended" });
   const basic = Buffer.from(`configured-admin:${password}`).toString("base64");
 
-  assert.equal(
-    auth.resolveRequestUser(createAuthRequest({ headers: { authorization: `Basic ${basic}` } })),
-    null,
-  );
+  assert.equal(auth.resolveRequestUser({ headers: { authorization: `Basic ${basic}` } }), null);
 });
 
 test("trusted-local bypass rejects an inactive sole administrator", () => {

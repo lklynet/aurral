@@ -17,12 +17,22 @@ export function sendFile(
   { contentType, dotfiles = "allow" }: { contentType?: string; dotfiles?: "allow" | "deny" } = {},
 ) {
   const absolutePath = path.resolve(filePath);
+  return sendFrom(req, res, path.dirname(absolutePath), encodeURI(path.basename(absolutePath)), {
+    contentType,
+    dotfiles,
+  });
+}
+
+export function sendFrom(
+  req: IncomingMessage,
+  res: ServerResponse,
+  root: string,
+  pathname: string,
+  { contentType, ...options }: send.SendOptions & { contentType?: string } = {},
+) {
   return new Promise<boolean>((resolve, reject) => {
     res.once("close", () => resolve(true));
-    send(req, encodeURI(path.basename(absolutePath)), {
-      root: path.dirname(absolutePath),
-      dotfiles,
-    })
+    send(req, pathname, { ...options, root })
       .on("headers", () => {
         if (contentType) res.setHeader("Content-Type", contentType);
       })
@@ -34,7 +44,11 @@ export function sendFile(
         } else if (failure?.status === 416) {
           res.statusCode = 416;
           res.end();
-        } else if (failure?.status === 404 || MISSING_FILE_CODES.has(failure?.code)) {
+        } else if (
+          failure?.status === 403 ||
+          failure?.status === 404 ||
+          MISSING_FILE_CODES.has(failure?.code)
+        ) {
           resolve(false);
         } else {
           reject(error);

@@ -2,7 +2,7 @@ import { requireFixture } from "../playlists/fixtures.ts";
 import { listeningAddress } from "../helpers/backendTestHarness.ts";
 import assert from "node:assert/strict";
 import { test, beforeAll, beforeEach, afterAll, vi } from "vite-plus/test";
-import express from "express";
+import { listen, signedInAs } from "../helpers/honoApp.ts";
 import {
   buildTrackPlaylistPayload,
   type SearchSuggestionTrack,
@@ -20,7 +20,7 @@ const [
   { dbOps, userOps },
   libraryStore,
   provider,
-  { handToHono },
+  { api },
   { flowPlaylistConfig },
   { downloadTracker },
   { playlistManager },
@@ -33,7 +33,7 @@ const [
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/services/libraryMediaStore.ts"),
   () => import("../../backend/services/providers/brainzmashProvider.ts"),
-  () => import("../../backend/routes/shared/expressHandoff.ts"),
+  () => import("../../backend/routes/api.ts"),
   () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
   () => import("../../backend/services/playlists/playlistManager.ts"),
@@ -82,18 +82,8 @@ beforeAll(async () => {
   user = requireFixture(
     userOps.createUser("search-routes-user", "unused", "user", { accessFlow: true }),
   );
-  const expressApp = express();
-  expressApp.use((req, _res, next) => {
-    req.user = user;
-    next();
-  });
-  expressApp.use(["/api/playlists", "/api/search"], handToHono);
-  await new Promise<void>((resolve) => {
-    const server = expressApp.listen(0, "127.0.0.1", () => {
-      app = { url: `http://127.0.0.1:${listeningAddress(server)!.port}`, server };
-      resolve();
-    });
-  });
+  const server = await listen(signedInAs(() => user).route("/api", api));
+  app = { url: `http://127.0.0.1:${listeningAddress(server).port}`, server };
 });
 
 beforeEach(() => {

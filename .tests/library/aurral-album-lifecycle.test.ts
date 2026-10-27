@@ -2,7 +2,6 @@ import { test, beforeEach, afterAll, vi, type TestContext } from "vite-plus/test
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
-import express from "express";
 import type { LibraryMediaFilesRow, LibraryTracksRow } from "../../backend/db/rows.ts";
 import type { RequestUser } from "../../backend/middleware/requestUser.ts";
 import { execFile } from "node:child_process";
@@ -13,7 +12,7 @@ import {
   cleanupIsolatedState,
   createMockHttpServer,
 } from "../helpers/backendTestHarness.ts";
-import { signedInAs } from "../helpers/honoApp.ts";
+import { listen, signedInAs } from "../helpers/honoApp.ts";
 
 const [
   isolatedState,
@@ -63,7 +62,6 @@ const [
 setMetadataProviderCooldown(getMetadataBaseUrl(), 403, Number.MAX_SAFE_INTEGER);
 
 const { downloadTracker, DownloadTracker } = trackerModule;
-const { handToHono } = await import("../../backend/routes/shared/expressHandoff.ts");
 const history = await import("../../backend/services/aurralHistoryService.ts");
 const testUser = (
   id: number,
@@ -76,16 +74,7 @@ const testUser = (
   permissions,
 });
 let requestUser = testUser(1, "admin");
-const app = express();
-app.use((req, _res, next) => {
-  req.user = requestUser;
-  next();
-});
-app.use("/api/playlists", handToHono);
-app.use("/api/requests", handToHono);
-const server = await new Promise<import("node:http").Server>((resolve) => {
-  const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
-});
+const server = await listen(signedInAs(() => requestUser).route("/api", api));
 const address = server.address();
 assert.ok(address && typeof address !== "string");
 const baseUrl = `http://127.0.0.1:${address.port}`;

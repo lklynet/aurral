@@ -1,6 +1,5 @@
 import * as client from "openid-client";
 import type { IDToken, UserInfoResponse } from "openid-client";
-import type { Request } from "express";
 import { db } from "../config/db-sqlite.ts";
 import { createSession } from "../config/session-helpers.ts";
 import { createSystemProvisionedUser, toResolvedUser } from "../middleware/auth.ts";
@@ -338,18 +337,11 @@ function resolveOidcSessionUser(config: { issuer: string }, claims: OidcClaims) 
   return toResolvedUser(provisionUser());
 }
 
-function buildCallbackUrl(req: Request) {
+function buildCallbackUrl(query: Record<string, string>) {
   const redirectUri = getRequiredConfig()?.redirectUri;
   if (!redirectUri) throw new Error("OIDC_REDIRECT_URI is required");
   const url = new URL(redirectUri);
-  for (const [key, value] of Object.entries(req.query || {})) {
-    if (value == null) continue;
-    if (Array.isArray(value)) {
-      if (value[0] != null) url.searchParams.set(key, String(value[0]));
-      continue;
-    }
-    url.searchParams.set(key, String(value));
-  }
+  for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value);
   return url;
 }
 
@@ -434,13 +426,16 @@ function linkOidcIdentity(
   return toResolvedUser(userOps.getUserById(linkUser.id));
 }
 
-export async function handleOidcCallback(req: Request) {
+export async function handleOidcCallback(
+  query: Record<string, string>,
+  cookie: string | undefined,
+) {
   if (!isOidcEnabled()) {
     throw Object.assign(new Error("OIDC is not enabled"), { status: 404 });
   }
 
-  const state = String(req.query?.state || "");
-  const transactionId = getTransactionCookie(req.headers.cookie);
+  const state = query.state || "";
+  const transactionId = getTransactionCookie(cookie);
   prunePendingLogins();
   const pending = pendingLogins.get(state);
   pendingLogins.delete(state);
@@ -449,7 +444,7 @@ export async function handleOidcCallback(req: Request) {
   }
 
   const { config, oidc } = await getDiscoveryConfig();
-  const tokens = await client.authorizationCodeGrant(oidc, buildCallbackUrl(req), {
+  const tokens = await client.authorizationCodeGrant(oidc, buildCallbackUrl(query), {
     pkceCodeVerifier: pending.codeVerifier,
     expectedState: state,
     expectedNonce: pending.nonce,

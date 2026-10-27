@@ -10,14 +10,6 @@ export interface RequestUser {
   roleSource?: string;
 }
 
-declare global {
-  namespace Express {
-    interface Request {
-      user?: RequestUser;
-    }
-  }
-}
-
 export type AppEnv = {
   Bindings: HttpBindings;
   Variables: {

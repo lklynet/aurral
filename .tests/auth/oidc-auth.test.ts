@@ -1,4 +1,3 @@
-import { createAuthRequest } from "./authFixtures.ts";
 import { signedInAs } from "../helpers/honoApp.ts";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
@@ -187,11 +186,8 @@ async function createPendingOidcLogin(
 
 async function completeOidcLogin(pending: { state: string; cookie: string }) {
   const callback = await handleOidcCallback(
-    createAuthRequest({
-      query: { state: pending.state, code: "authorization-code" },
-      headers: { cookie: pending.cookie },
-      ip: "127.0.0.1",
-    }),
+    { state: pending.state, code: "authorization-code" },
+    pending.cookie,
   );
   return exchangeOidcCallback(
     callback.code,
@@ -286,11 +282,8 @@ test("OIDC callback issues a cookie-bound one-time session exchange", async () =
 
   try {
     const callback = await handleOidcCallback(
-      createAuthRequest({
-        query: { state: pending.state, code: "authorization-code" },
-        headers: { cookie: pending.cookie },
-        ip: "127.0.0.1",
-      }),
+      { state: pending.state, code: "authorization-code" },
+      pending.cookie,
     );
     assert.ok(callback.code);
     assert.equal(
@@ -354,10 +347,8 @@ test("OIDC routes keep the transaction cookie Secure over HTTPS and clear it aft
     );
 
     const callback = await handleOidcCallback(
-      createAuthRequest({
-        query: { state: pending.state, code: "authorization-code" },
-        headers: { cookie: pending.cookie },
-      }),
+      { state: pending.state, code: "authorization-code" },
+      pending.cookie,
     );
     const exchange = await app.request("/auth/oidc/exchange", {
       method: "POST",
@@ -379,11 +370,8 @@ test("OIDC exchange never leaks passwordHash, for new or returning users", async
   const first = await createPendingOidcLogin();
   try {
     const callback = await handleOidcCallback(
-      createAuthRequest({
-        query: { state: first.state, code: "authorization-code" },
-        headers: { cookie: first.cookie },
-        ip: "127.0.0.1",
-      }),
+      { state: first.state, code: "authorization-code" },
+      first.cookie,
     );
     const session = exchangeOidcCallback(
       callback.code,
@@ -404,11 +392,8 @@ test("OIDC exchange never leaks passwordHash, for new or returning users", async
   const second = await createPendingOidcLogin();
   try {
     const callback = await handleOidcCallback(
-      createAuthRequest({
-        query: { state: second.state, code: "authorization-code" },
-        headers: { cookie: second.cookie },
-        ip: "127.0.0.1",
-      }),
+      { state: second.state, code: "authorization-code" },
+      second.cookie,
     );
     const session = exchangeOidcCallback(
       callback.code,
@@ -441,11 +426,8 @@ test("OIDC callback combines UserInfo with ID-token claims", async () => {
 
   try {
     const callback = await handleOidcCallback(
-      createAuthRequest({
-        query: { state: pending.state, code: "authorization-code" },
-        headers: { cookie: pending.cookie },
-        ip: "127.0.0.1",
-      }),
+      { state: pending.state, code: "authorization-code" },
+      pending.cookie,
     );
     assert.ok(callback.user);
     assert.equal(callback.user.username, "userinfo-user");
@@ -465,11 +447,8 @@ test("OIDC callback falls back to ID-token claims when UserInfo fails", async ()
 
   try {
     const callback = await handleOidcCallback(
-      createAuthRequest({
-        query: { state: pending.state, code: "authorization-code" },
-        headers: { cookie: pending.cookie },
-        ip: "127.0.0.1",
-      }),
+      { state: pending.state, code: "authorization-code" },
+      pending.cookie,
     );
     assert.ok(callback.user);
     assert.equal(callback.user.username, "id-token-user");
@@ -492,11 +471,8 @@ test("OIDC groups claim ignores UserInfo-only admin groups", async () => {
 
   try {
     const callback = await handleOidcCallback(
-      createAuthRequest({
-        query: { state: pending.state, code: "authorization-code" },
-        headers: { cookie: pending.cookie },
-        ip: "127.0.0.1",
-      }),
+      { state: pending.state, code: "authorization-code" },
+      pending.cookie,
     );
     assert.ok(callback.user);
     assert.equal(callback.user.username, "userinfo-user");
@@ -513,17 +489,10 @@ test("OIDC callback rejects an expired state without creating a session", async 
   const clock = vi.spyOn(Date, "now").mockImplementation(() => now + 11 * 60 * 1000);
 
   try {
-    await assert.rejects(
-      () =>
-        handleOidcCallback(
-          createAuthRequest({
-            query: { state: pending.state },
-            headers: { cookie: pending.cookie },
-            ip: "127.0.0.1",
-          }),
-        ),
-      { status: 400, message: "OIDC login session expired" },
-    );
+    await assert.rejects(() => handleOidcCallback({ state: pending.state }, pending.cookie), {
+      status: 400,
+      message: "OIDC login session expired",
+    });
     assert.equal(
       db.prepare<[], { count: number }>("SELECT COUNT(*) AS count FROM sessions").get()?.count,
       0,
@@ -539,14 +508,7 @@ test("OIDC callback rejects a mismatched state without creating a session", asyn
 
   try {
     await assert.rejects(
-      () =>
-        handleOidcCallback(
-          createAuthRequest({
-            query: { state: `${pending.state}-mismatched` },
-            headers: { cookie: pending.cookie },
-            ip: "127.0.0.1",
-          }),
-        ),
+      () => handleOidcCallback({ state: `${pending.state}-mismatched` }, pending.cookie),
       { status: 400, message: "OIDC login session expired" },
     );
     assert.equal(
@@ -607,13 +569,7 @@ test("OIDC login falls back to the UserInfo endpoint when the ID token omits pro
     nonce = redirect.searchParams.get("nonce");
     const state = redirect.searchParams.get("state");
     assert.ok(state);
-    const callback = await handleOidcCallback(
-      createAuthRequest({
-        query: { state, code: "authorization-code" },
-        headers: { cookie },
-        ip: "127.0.0.1",
-      }),
-    );
+    const callback = await handleOidcCallback({ state, code: "authorization-code" }, cookie);
     const session = exchangeOidcCallback(
       callback.code,
       exchangeRequest({
@@ -671,13 +627,7 @@ test("OIDC login resolves returning users by issuer+subject, not by username cla
       nonce = redirect.searchParams.get("nonce");
       const state = redirect.searchParams.get("state");
       assert.ok(state);
-      const callback = await handleOidcCallback(
-        createAuthRequest({
-          query: { state, code: "authorization-code" },
-          headers: { cookie },
-          ip: "127.0.0.1",
-        }),
-      );
+      const callback = await handleOidcCallback({ state, code: "authorization-code" }, cookie);
       const session = exchangeOidcCallback(
         callback.code,
         exchangeRequest({
@@ -885,13 +835,7 @@ test("OIDC login owns role changes, preserves local permissions, and protects re
       nonce = redirect.searchParams.get("nonce");
       const state = redirect.searchParams.get("state");
       assert.ok(state);
-      const callback = await handleOidcCallback(
-        createAuthRequest({
-          query: { state, code: "authorization-code" },
-          headers: { cookie },
-          ip: "127.0.0.1",
-        }),
-      );
+      const callback = await handleOidcCallback({ state, code: "authorization-code" }, cookie);
       const session = exchangeOidcCallback(
         callback.code,
         exchangeRequest({

@@ -1,4 +1,3 @@
-import { createAuthRequest } from "./authFixtures.ts";
 import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
@@ -26,11 +25,7 @@ function proxyRequest(
   headers: Parameters<typeof resolveProxyUser>[0]["headers"] = {},
   remoteAddress: string = "127.0.0.1",
 ) {
-  return createAuthRequest({
-    headers,
-    ip: remoteAddress,
-    ips: [remoteAddress],
-  });
+  return { headers, ip: remoteAddress, ips: [remoteAddress] };
 }
 
 function resetProxyEnv() {

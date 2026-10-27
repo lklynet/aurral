@@ -1,6 +1,5 @@
 import * as client from "openid-client";
 import type { IDToken, UserInfoResponse } from "openid-client";
-import type { Request } from "express";
 import { createSession } from "../config/session-helpers.ts";
 import { toResolvedUser } from "../middleware/auth.ts";
 import type { ExchangeRequest } from "./oidcAuth.ts";
@@ -115,16 +114,9 @@ async function getDiscoveryConfig(config: { clientId: string; clientSecret: stri
   return discoveryConfig;
 }
 
-function buildCallbackUrl(req: Request, redirectUri: string) {
+function buildCallbackUrl(query: Record<string, string>, redirectUri: string) {
   const url = new URL(redirectUri);
-  for (const [key, value] of Object.entries(req.query || {})) {
-    if (value == null) continue;
-    if (Array.isArray(value)) {
-      if (value[0] != null) url.searchParams.set(key, String(value[0]));
-      continue;
-    }
-    url.searchParams.set(key, String(value));
-  }
+  for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value);
   return url;
 }
 
@@ -166,14 +158,17 @@ export async function startGoogleAuth(mode: {
   return { authUrl: redirectTo.href, cookie: transactionCookie(transactionId, !!mode.secure) };
 }
 
-export async function handleGoogleCallback(req: Request) {
+export async function handleGoogleCallback(
+  query: Record<string, string>,
+  cookie: string | undefined,
+) {
   const config = getGoogleConfig();
   if (!config) {
     throw Object.assign(new Error("Google login is not enabled"), { status: 404 });
   }
 
-  const state = String(req.query?.state || "");
-  const transactionId = getTransactionCookie(req.headers.cookie);
+  const state = query.state || "";
+  const transactionId = getTransactionCookie(cookie);
   prunePendingLogins();
   const pending = pendingLogins.get(state);
   pendingLogins.delete(state);
@@ -184,7 +179,7 @@ export async function handleGoogleCallback(req: Request) {
   const oidc = await getDiscoveryConfig(config);
   const tokens = await client.authorizationCodeGrant(
     oidc,
-    buildCallbackUrl(req, config.redirectUri),
+    buildCallbackUrl(query, config.redirectUri),
     {
       pkceCodeVerifier: pending.codeVerifier,
       expectedState: state,

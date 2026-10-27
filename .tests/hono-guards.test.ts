@@ -21,7 +21,7 @@ afterAll(() => cleanupIsolatedState(isolatedState));
 
 const ok = (c: { text: (body: string) => Response }) => c.text("ok");
 
-test("permission and admin guards answer like the Express guards", async () => {
+test("permission and admin guards turn away users without access", async () => {
   const user = testUser(7, { permissions: { addAlbum: true } });
   const admin = testUser(1, { role: "admin" });
   const route = (current: typeof user | undefined) =>

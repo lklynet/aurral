@@ -2,7 +2,7 @@ import { test, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
-import express from "express";
+import { getRequestListener } from "@hono/node-server";
 
 import {
   applyIsolatedBackendEnv,
@@ -23,15 +23,13 @@ dbOps.updateSettings({ downloadFolderPath: path.join(isolatedState.dataDir, "dow
 const [
   { flowPlaylistConfig },
   { playlistManager },
-  { handToHono, resolveTokenUser },
-  { authMiddleware },
+  { app },
   { playlistOperationQueue },
   { processPlaylistOperation },
 ] = await Promise.all([
   import("../../backend/services/playlists/flowPlaylistConfig.ts"),
   import("../../backend/services/playlists/playlistManager.ts"),
-  import("../../backend/routes/shared/expressHandoff.ts"),
-  import("../../backend/middleware/auth.ts"),
+  import("../../backend/app.ts"),
   import("../../backend/services/playlists/playlistOperationQueue.ts"),
   import("../../backend/services/playlists/playlistOperations.ts"),
 ]);
@@ -55,9 +53,7 @@ test("serves playlist artwork from a hidden data directory", async () => {
   assert.ok(artwork != null);
   assert.ok(artwork.safePath.split(path.sep).some((segment: string) => segment.startsWith(".")));
 
-  const server = await createMockHttpServer(
-    express().get("/api/playlists/artwork/:playlistId", resolveTokenUser, handToHono),
-  );
+  const server = await createMockHttpServer(getRequestListener(app.fetch));
   try {
     const response = await fetch(`${server.url}/api/playlists/artwork/${playlist.id}`, {
       headers: {
@@ -90,12 +86,7 @@ test("a new flow or static playlist has its cover as soon as it is created, with
     queuedOperations.push(payload);
     return { queued: true, operationId: queuedOperations.length };
   });
-  const server = await createMockHttpServer(
-    express()
-      .use(authMiddleware)
-      .get("/api/playlists/artwork/:playlistId", resolveTokenUser, handToHono)
-      .use("/api/playlists", handToHono),
-  );
+  const server = await createMockHttpServer(getRequestListener(app.fetch));
   const request = async (route: string, body?: Record<string, unknown>) => {
     const response = await fetch(`${server.url}/api/playlists${route}`, {
       method: body ? "POST" : "GET",

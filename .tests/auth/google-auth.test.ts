@@ -1,4 +1,3 @@
-import { createAuthRequest } from "./authFixtures.ts";
 import { signedInAs } from "../helpers/honoApp.ts";
 import { testUser } from "../helpers/userFixtures.ts";
 import { test, beforeEach, afterAll } from "vite-plus/test";
@@ -141,11 +140,8 @@ async function createPendingGoogleAuth(
 
 async function completeGoogleAuth(pending: Awaited<ReturnType<typeof createPendingGoogleAuth>>) {
   const callback = await handleGoogleCallback(
-    createAuthRequest({
-      query: { state: pending.state, code: "authorization-code" },
-      headers: { cookie: pending.cookie },
-      ip: "127.0.0.1",
-    }),
+    { state: pending.state, code: "authorization-code" },
+    pending.cookie,
   );
   return exchangeGoogleCallback(
     callback.code,
@@ -271,11 +267,8 @@ test("linking a Google identity already claimed by another user is rejected with
     await assert.rejects(
       () =>
         handleGoogleCallback(
-          createAuthRequest({
-            query: { state: secondLink.state, code: "authorization-code" },
-            headers: { cookie: secondLink.cookie },
-            ip: "127.0.0.1",
-          }),
+          { state: secondLink.state, code: "authorization-code" },
+          secondLink.cookie,
         ),
       { status: 409 },
     );
@@ -324,13 +317,7 @@ test("a suspended user cannot complete a Google link", async () => {
   try {
     await assert.rejects(
       () =>
-        handleGoogleCallback(
-          createAuthRequest({
-            query: { state: pending.state, code: "authorization-code" },
-            headers: { cookie: pending.cookie },
-            ip: "127.0.0.1",
-          }),
-        ),
+        handleGoogleCallback({ state: pending.state, code: "authorization-code" }, pending.cookie),
       { status: 403, message: "This account has been suspended or disabled" },
     );
   } finally {

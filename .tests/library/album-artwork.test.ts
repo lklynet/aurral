@@ -4,17 +4,16 @@ import assert from "node:assert/strict";
 import { describe, test, beforeAll, afterAll, vi } from "vite-plus/test";
 import fs, { mkdir, symlink, writeFile, truncate } from "node:fs/promises";
 import path from "node:path";
-import express from "express";
 import sharp from "sharp";
 import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTestHarness.ts";
+import { listen } from "../helpers/honoApp.ts";
 
 const [
   isolatedState,
   { db },
   { dbOps, userOps },
   { createSession },
-  { authMiddleware },
-  { handToHono, resolveTokenUser },
+  { app },
   { buildPublicLibrary },
   libraryStore,
   { scanMusicRoot },
@@ -23,8 +22,7 @@ const [
   () => import("../../backend/config/db-sqlite.ts"),
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/config/session-helpers.ts"),
-  () => import("../../backend/middleware/auth.ts"),
-  () => import("../../backend/routes/shared/expressHandoff.ts"),
+  () => import("../../backend/app.ts"),
   () => import("../../backend/routes/library/handlers/libraryIndex.ts"),
   () => import("../../backend/services/libraryMediaStore.ts"),
   () => import("../../backend/services/libraryFileScanner.ts"),
@@ -41,18 +39,7 @@ const artist = libraryStore.upsertLibraryArtist({
 });
 dbOps.updateSettings({ onboardingComplete: true });
 
-const app = express();
-app.use(authMiddleware);
-app.get("/api/library/albums/:albumId/cover", resolveTokenUser, handToHono);
-app.use("/api/library", handToHono);
-const server = await new Promise<
-  import("node:http").Server<
-    typeof import("node:http").IncomingMessage,
-    typeof import("node:http").ServerResponse
-  >
->((resolve) => {
-  const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
-});
+const server = await listen(app);
 const baseUrl = `http://127.0.0.1:${listeningAddress(server).port}`;
 let session: { token: string; expiresAt: number } | null = null;
 

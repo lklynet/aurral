@@ -2,7 +2,7 @@ import { test, beforeAll, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
-import express from "express";
+import { listen, signedInAs } from "../helpers/honoApp.ts";
 
 import {
   cleanupIsolatedState,
@@ -18,7 +18,7 @@ const [
   managementStore,
   { downloadTracker },
   { downloadWorker },
-  { handToHono },
+  { api },
   { getMetadataBaseUrl },
   { setMetadataProviderCooldown },
 ] = await setupIsolatedBackend(
@@ -29,7 +29,7 @@ const [
   () => import("../../backend/services/libraryManagementStore.ts"),
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
   () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
-  () => import("../../backend/routes/shared/expressHandoff.ts"),
+  () => import("../../backend/routes/api.ts"),
   () => import("../../backend/services/providers/brainzmashProvider.ts"),
   () => import("../../backend/services/metadataProviderBudget.ts"),
 );
@@ -37,16 +37,9 @@ const [
 // instead of making each one wait its turn in the provider's rate limit.
 setMetadataProviderCooldown(getMetadataBaseUrl(), 403, Number.MAX_SAFE_INTEGER);
 
-const app = express();
-app.use((req, _res, next) => {
-  req.user = { id: 1, username: "test", role: "admin", permissions: {} };
-  next();
-});
-app.use("/api/playlists", handToHono);
-app.use("/api/library", handToHono);
-const server = await new Promise<import("node:http").Server>((resolve) => {
-  const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
-});
+const server = await listen(
+  signedInAs({ id: 1, username: "test", role: "admin", permissions: {} }).route("/api", api),
+);
 const address = server.address();
 assert.ok(address && typeof address !== "string");
 const baseUrl = `http://127.0.0.1:${address.port}`;

@@ -1,27 +1,25 @@
 import assert from "node:assert/strict";
 import { test, beforeAll, beforeEach, afterEach, afterAll, vi } from "vite-plus/test";
-import express from "express";
 import {
   cleanupIsolatedState,
   listeningAddress,
   resetDatabase,
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.ts";
+import { listen } from "../helpers/honoApp.ts";
 
 const [
   state,
   { db },
   { dbOps },
-  { authMiddleware },
-  { handToHono },
+  { app },
   { deezerGetArtistTopTracksById, deezerGetAlbumTracks },
   { default: axios },
 ] = await setupIsolatedBackend(
   "deezer-preview",
   () => import("../../backend/config/db-sqlite.ts"),
   () => import("../../backend/db/helpers/index.ts"),
-  () => import("../../backend/middleware/auth.ts"),
-  () => import("../../backend/routes/shared/expressHandoff.ts"),
+  () => import("../../backend/app.ts"),
   () => import("../../backend/services/apiClients/index.ts"),
   () => import("../../lib/axiosFetch.ts"),
 );
@@ -46,12 +44,7 @@ function stubDeezer(routes: Record<string, () => unknown>) {
 const requestPreview = (path: string) => fetch(`${baseUrl}${path}`, { redirect: "manual" });
 
 beforeAll(async () => {
-  const app = express();
-  app.use(authMiddleware);
-  app.use("/api/deezer", handToHono);
-  server = await new Promise((resolve) => {
-    const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
-  });
+  server = await listen(app);
   baseUrl = `http://127.0.0.1:${listeningAddress(server).port}`;
 });
 

@@ -1,5 +1,6 @@
-import type { NextFunction, Request, Response } from "express";
+import { createMiddleware } from "hono/factory";
 import { logger, safeLogDiagnostic } from "../services/logger.ts";
+import type { AppEnv } from "./requestUser.ts";
 
 const MAX_LOG_VALUE_LENGTH = 300;
 
@@ -7,32 +8,33 @@ function logValue(value: unknown) {
   return typeof value === "string" ? safeLogDiagnostic(value).slice(0, MAX_LOG_VALUE_LENGTH) : null;
 }
 
-export function createRequestFailureLogger(log: Pick<typeof logger, "error"> = logger) {
-  return (req: Request, res: Response, next: NextFunction) => {
-    let responseReason: string | null = null;
-    const sendJson = res.json;
-    res.json = function (body: unknown) {
-      if (res.statusCode >= 500 && body && typeof body === "object") {
-        responseReason =
-          logValue((body as Record<string, unknown>).message) ||
-          logValue((body as Record<string, unknown>).error);
-      }
-      return sendJson.call(this, body);
-    };
+async function responseReason(response: Response) {
+  if (!response.headers.get("content-type")?.includes("json")) return null;
+  const body: unknown = await response
+    .clone()
+    .json()
+    .catch(() => null);
+  if (!body || typeof body !== "object") return null;
+  return (
+    ("message" in body && logValue(body.message)) ||
+    ("error" in body && logValue(body.error)) ||
+    null
+  );
+}
 
-    res.once("finish", () => {
-      if (res.statusCode < 500 || res.locals?.failureLogged) return;
-      const route = req.route?.path;
-      const endpoint = typeof route === "string" ? `${req.baseUrl || ""}${route}` : req.path;
-      if (!endpoint?.startsWith("/api/") && endpoint !== "/rest" && !endpoint?.startsWith("/rest/"))
-        return;
-      log.error("http", "Request failed", {
-        method: req.method,
-        endpoint: logValue(endpoint),
-        status: res.statusCode,
-        ...(responseReason ? { reason: responseReason } : {}),
-      });
+export function createRequestFailureLogger(log: Pick<typeof logger, "error"> = logger) {
+  return createMiddleware<AppEnv>(async (c, next) => {
+    await next();
+    const { status } = c.res;
+    const { path } = c.req;
+    if (status < 500) return;
+    if (!path.startsWith("/api/") && path !== "/rest" && !path.startsWith("/rest/")) return;
+    const reason = await responseReason(c.res);
+    log.error("http", "Request failed", {
+      method: c.req.method,
+      endpoint: logValue(path),
+      status,
+      ...(reason ? { reason } : {}),
     });
-    next();
-  };
+  });
 }

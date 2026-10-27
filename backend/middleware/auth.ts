@@ -4,7 +4,6 @@ import os from "os";
 import { dbOps, userOps } from "../db/helpers/index.ts";
 import { createSession, getSessionByToken } from "../config/session-helpers.ts";
 import { hashPassword, verifyPassword, needsRehash } from "./passwordHash.ts";
-import type { Request, Response, NextFunction } from "express";
 import type { RequestUser } from "./requestUser.ts";
 import type { UserPermissions, UserRecord } from "../db/helpers/users.ts";
 
@@ -18,14 +17,11 @@ type ClientRequest = {
   ips?: string[];
 };
 
-export type AuthRequest = Pick<
-  Request,
-  "headers" | "query" | "path" | "method" | "ip" | "ips" | "socket" | "connection" | "user"
->;
-
 type ProxyRequest = ClientRequest & { headers: RequestHeaders };
 
-export type CredentialRequest = ProxyRequest & { query?: { api_key?: unknown } };
+export type CredentialRequest = ProxyRequest & {
+  query?: { api_key?: string; token?: string; st?: string };
+};
 
 type ResolvableUser = Pick<
   UserRecord,
@@ -285,21 +281,6 @@ export function getUnauthorizedDetails(authorization: string | undefined) {
   };
 }
 
-export function sendUnauthorizedResponse(
-  req: AuthRequest,
-  res: Response,
-  { challenge = false, ...overrides }: { challenge?: boolean } = {},
-) {
-  if (challenge) {
-    res.setHeader("WWW-Authenticate", 'Basic realm="Aurral"');
-  }
-  return res.status(401).json({
-    error: "Unauthorized",
-    ...getUnauthorizedDetails(req.headers.authorization),
-    ...overrides,
-  });
-}
-
 export const resolveSessionUserFromToken = (token: unknown) => {
   if (!token) return null;
   return toSessionUser(getSessionByToken(token));
@@ -307,7 +288,7 @@ export const resolveSessionUserFromToken = (token: unknown) => {
 
 function resolveApiKeyUser(req: CredentialRequest) {
   const headerKey = (getHeaderValue(req, "x-api-key") || "").trim();
-  const queryKey = typeof req.query?.api_key === "string" ? req.query.api_key.trim() : "";
+  const queryKey = req.query?.api_key?.trim() || "";
   const incoming = headerKey || queryKey;
   if (!incoming) return null;
   try {
@@ -658,124 +639,20 @@ function consumeStreamToken(rawToken: unknown) {
   return payload.user || null;
 }
 
-export const authMiddleware = (req: AuthRequest, res: Response, next: NextFunction) => {
-  if (!req.path.startsWith("/api")) return next();
-  if (
-    req.path === "/api/health" ||
-    req.path === "/api/health/live" ||
-    req.path === "/api/health/bootstrap" ||
-    req.path === "/api/filesystem/browse" ||
-    req.path === "/api/filesystem/ensure" ||
-    ((req.method === "GET" || req.method === "HEAD") && req.path.startsWith("/api/image-proxy/")) ||
-    ((req.method === "GET" || req.method === "HEAD") &&
-      req.path.startsWith("/api/deezer/preview/")) ||
-    (req.method === "GET" && /^\/api\/feeds\/lidarr\/flows\/[^/]+\.json$/i.test(req.path))
-  ) {
-    return next();
-  }
-  if (
-    /^\/api\/library\/stream\/[^/]+$/.test(req.path) ||
-    /^\/api\/library\/canonical-stream\/[^/]+\/[^/]+$/i.test(req.path) ||
-    /^\/api\/library\/file-stream\/[^/]+\/[^/]+$/i.test(req.path) ||
-    (req.method === "GET" && /^\/api\/library\/albums\/[1-9]\d*\/cover$/i.test(req.path)) ||
-    (req.method === "GET" && /^\/api\/library\/artwork\/(?:album|track)\/[^/]+$/i.test(req.path)) ||
-    /^\/api\/artists\/[a-f0-9-]{36}\/stream$/i.test(req.path) ||
-    /^\/api\/weekly-flow\/stream\/[^/]+$/i.test(req.path) ||
-    /^\/api\/playlists\/stream\/[^/]+$/i.test(req.path) ||
-    /^\/api\/playlists\/staging-stream\/[^/]+$/i.test(req.path) ||
-    (req.method === "GET" && /^\/api\/weekly-flow\/artwork\/[^/]+$/i.test(req.path)) ||
-    (req.method === "GET" && /^\/api\/playlists\/artwork\/[^/]+$/i.test(req.path)) ||
-    (req.method === "GET" && /^\/api\/playlists\/track-artwork\/[^/]+$/i.test(req.path)) ||
-    (req.method === "GET" && /^\/api\/discover\/artwork\/[^/]+$/i.test(req.path))
-  ) {
-    return next();
-  }
-  if (
-    req.path === "/api/auth/login" ||
-    req.path === "/api/auth/oidc/login" ||
-    req.path === "/api/auth/oidc/exchange" ||
-    req.path === "/api/auth/google/login" ||
-    req.path === "/api/auth/google/exchange" ||
-    req.path === "/api/auth/plex/login/pin" ||
-    req.path === "/api/auth/plex/login/complete" ||
-    (req.method === "GET" && req.path === "/api/scrobbling/lastfm/link/callback")
-  ) {
-    return next();
-  }
-
-  const settings = dbOps.getSettings();
-  const onboardingDone = settings.onboardingComplete;
-
-  if (req.path.startsWith("/api/onboarding") && !onboardingDone) return next();
-
-  const authRequired = isAuthRequiredByConfig();
-
-  if (!authRequired) return next();
-
-  const user = resolveRequestUser(req);
-  if (user) {
-    req.user = user;
-    return next();
-  }
-
-  return sendUnauthorizedResponse(req, res);
-};
-
-function getCredentialsFromRequest(req: AuthRequest):
-  | {
-      type: "session";
-      user: NonNullable<ReturnType<typeof resolveSessionUserFromToken>>;
-    }
-  | { type: "basic"; username: string; password: string }
-  | null {
-  const sessionUser = resolveSessionUserFromToken(req.query.token);
-  if (sessionUser) {
-    return { type: "session", user: sessionUser };
-  }
-  const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith("Basic ")) {
-    try {
-      const token = authHeader.substring(6);
-      const decoded = Buffer.from(token, "base64").toString("utf8");
-      const colon = decoded.indexOf(":");
-      const username = colon >= 0 ? decoded.slice(0, colon) : decoded;
-      const password = colon >= 0 ? decoded.slice(colon + 1) : "";
-      return { type: "basic", username, password };
-    } catch (e) {
-      return null;
-    }
-  }
-  return null;
+function resolveBasicUser(authorization: string | undefined) {
+  if (!authorization?.startsWith("Basic ")) return null;
+  const decoded = Buffer.from(authorization.slice(6), "base64").toString("utf8");
+  const colon = decoded.indexOf(":");
+  const username = colon >= 0 ? decoded.slice(0, colon) : decoded;
+  const password = colon >= 0 ? decoded.slice(colon + 1) : "";
+  return resolveUser(username, password) || legacyAuth(username, password);
 }
 
-export const verifyTokenAuth = (req: AuthRequest) => {
-  const user = resolveRequestUser(req);
-  if (user) {
-    req.user = user;
-    return true;
-  }
-  const creds = getCredentialsFromRequest(req);
-  if (creds) {
-    if (creds.type === "session" && creds.user) {
-      req.user = creds.user;
-      return true;
-    }
-    if (creds.type === "basic") {
-      let u = resolveUser(creds.username, creds.password);
-      if (!u) u = legacyAuth(creds.username, creds.password);
-      if (u) {
-        req.user = u;
-        return true;
-      }
-    }
-  }
-  const streamTokenUser = consumeStreamToken(req.query.st);
-  if (streamTokenUser) {
-    req.user = streamTokenUser;
-    return true;
-  }
-  return !isAuthRequiredByConfig();
-};
+export const resolveTokenUser = (req: CredentialRequest) =>
+  resolveRequestUser(req) ||
+  resolveSessionUserFromToken(req.query?.token) ||
+  resolveBasicUser(getHeaderValue(req, "authorization")) ||
+  consumeStreamToken(req.query?.st);
 
 export function hasPermission(
   user: Pick<RequestUser, "role" | "permissions"> | null | undefined,

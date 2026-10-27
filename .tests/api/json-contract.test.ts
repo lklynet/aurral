@@ -2,7 +2,6 @@ import { requireFixture } from "../playlists/fixtures.ts";
 import { listeningAddress } from "../helpers/backendTestHarness.ts";
 import assert from "node:assert/strict";
 import { test, beforeAll, afterAll } from "vite-plus/test";
-import express from "express";
 import { mkdir, writeFile, stat } from "node:fs/promises";
 import path from "node:path";
 import {
@@ -11,14 +10,14 @@ import {
   resetDatabase,
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.ts";
+import { listen } from "../helpers/honoApp.ts";
 
 const [
   state,
   { db },
   { dbOps, userOps },
   { hashPassword },
-  { authMiddleware },
-  { handToHono },
+  { app },
   libraryStore,
   { setLibraryManagement },
   { reloadDiscoveryPersistedCache },
@@ -30,8 +29,7 @@ const [
   () => import("../../backend/config/db-sqlite.ts"),
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/middleware/passwordHash.ts"),
-  () => import("../../backend/middleware/auth.ts"),
-  () => import("../../backend/routes/shared/expressHandoff.ts"),
+  () => import("../../backend/app.ts"),
   () => import("../../backend/services/libraryMediaStore.ts"),
   () => import("../../backend/services/libraryManagementStore.ts"),
   () => import("../../backend/services/discovery/persistence.ts"),
@@ -61,10 +59,7 @@ const albumData = {
   releases: [],
 };
 let metadataServer: { url: string; close: () => Promise<void> };
-let server: import("node:http").Server<
-  typeof import("node:http").IncomingMessage,
-  typeof import("node:http").ServerResponse
->;
+let server: import("node:http").Server;
 let baseUrl: string;
 let token: string;
 let user;
@@ -198,29 +193,7 @@ beforeAll(async () => {
     managedBy: "aurral",
     monitorMode: "all",
   });
-  const app = express();
-  app.use(authMiddleware);
-  app.use(
-    [
-      "/api/auth",
-      "/api/health",
-      "/api/library",
-      "/api/requests",
-      "/api/playlists",
-      "/api/discover",
-      "/api/search",
-      "/api/artists",
-    ],
-    handToHono,
-  );
-  server = await new Promise<
-    import("node:http").Server<
-      typeof import("node:http").IncomingMessage,
-      typeof import("node:http").ServerResponse
-    >
-  >((resolve) => {
-    const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
-  });
+  server = await listen(app);
   baseUrl = `http://127.0.0.1:${listeningAddress(server).port}`;
   const login = await call("/api/auth/login", {
     method: "POST",

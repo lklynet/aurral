@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type ErrorHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { HTTPException } from "hono/http-exception";
 import type { AppEnv } from "../middleware/requestUser.ts";
@@ -37,7 +37,7 @@ import updates from "./updates.ts";
 import users from "./users.ts";
 import userPlexLink from "./users/plexLinkHandlers.ts";
 
-export const JSON_BODY_LIMIT = process.env.JSON_BODY_LIMIT || "5mb";
+const JSON_BODY_LIMIT = process.env.JSON_BODY_LIMIT || "5mb";
 
 function byteSize(value: string) {
   const match = /^(\d+(?:\.\d+)?)\s*([kmg]?b)?$/i.exec(value.trim());
@@ -93,8 +93,10 @@ export const api = new Hono<AppEnv>()
   .route("/", lidarrWebhook)
   .route("/", lidarrFeed);
 
-api.onError((error, c) => {
+export const handleError: ErrorHandler<AppEnv> = (error, c) => {
   if (error instanceof HTTPException) return c.json({ error: error.message }, error.status);
   logger.error("system", "Request error:", error);
   return c.json({ error: "Internal server error" }, 500);
-});
+};
+
+api.onError(handleError);
