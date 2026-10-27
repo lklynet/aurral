@@ -1,0 +1,578 @@
+TAP version 13
+# Subtest: account settings save results only apply to the active account
+ok 1 - account settings save results only apply to the active account
+  ---
+  duration_ms: 447.4445
+  type: 'test'
+  ...
+# Subtest: missing activity includes failed Aurral jobs but not upgrades
+ok 2 - missing activity includes failed Aurral jobs but not upgrades
+  ---
+  duration_ms: 0.5023
+  type: 'test'
+  ...
+# Subtest: cutoff activity includes owned files below the preferred quality
+ok 3 - cutoff activity includes owned files below the preferred quality
+  ---
+  duration_ms: 0.489
+  type: 'test'
+  ...
+# Subtest: missing activity sorts newest operations first
+ok 4 - missing activity sorts newest operations first
+  ---
+  duration_ms: 6.5339
+  type: 'test'
+  ...
+# Subtest: normalizeActivityView falls back to queue
+ok 5 - normalizeActivityView falls back to queue
+  ---
+  duration_ms: 1.1401
+  type: 'test'
+  ...
+# Subtest: buildActivityPath normalizes invalid views
+ok 6 - buildActivityPath normalizes invalid views
+  ---
+  duration_ms: 0.0981
+  type: 'test'
+  ...
+# Subtest: wanted links share one page route
+ok 7 - wanted links share one page route
+  ---
+  duration_ms: 0.094
+  type: 'test'
+  ...
+# Subtest: blocked items with inQueue appear in the combined queue
+ok 8 - blocked items with inQueue appear in the combined queue
+  ---
+  duration_ms: 0.1187
+  type: 'test'
+  ...
+# Subtest: processing items appear in queue not history
+ok 9 - processing items appear in queue not history
+  ---
+  duration_ms: 0.0867
+  type: 'test'
+  ...
+# Subtest: missing is a separate operation view
+ok 10 - missing is a separate operation view
+  ---
+  duration_ms: 0.0786
+  type: 'test'
+  ...
+# Subtest: completed items appear in history
+ok 11 - completed items appear in history
+  ---
+  duration_ms: 0.0679
+  type: 'test'
+  ...
+# Subtest: failed items with canReSearch appear in history
+ok 12 - failed items with canReSearch appear in history
+  ---
+  duration_ms: 0.0645
+  type: 'test'
+  ...
+# Subtest: formatReviewReasonSummary turns blocked reason into a readable line
+ok 13 - formatReviewReasonSummary turns blocked reason into a readable line
+  ---
+  duration_ms: 1.0174
+  type: 'test'
+  ...
+# Subtest: shouldTriggerAlbumSearch follows monitored state
+ok 14 - shouldTriggerAlbumSearch follows monitored state
+  ---
+  duration_ms: 0.5428
+  type: 'test'
+  ...
+# Subtest: getAlbumAddButtonLabel matches trigger semantics
+ok 15 - getAlbumAddButtonLabel matches trigger semantics
+  ---
+  duration_ms: 0.5293
+  type: 'test'
+  ...
+# Subtest: isAlbumCompleteInLibrary only treats on-disk albums as complete
+ok 16 - isAlbumCompleteInLibrary only treats on-disk albums as complete
+  ---
+  duration_ms: 0.1057
+  type: 'test'
+  ...
+# WebSocket server error: Port 24678 is already in use
+# Subtest: artist REST details coalesce identical requests through Query
+ok 17 - artist REST details coalesce identical requests through Query
+  ---
+  duration_ms: 444.5252
+  type: 'test'
+  ...
+# 17:05:19 [vite] (client) Re-optimizing dependencies because vite config has changed
+# Subtest: artist cover refreshes do not reuse or get overwritten by normal requests
+ok 18 - artist cover refreshes do not reuse or get overwritten by normal requests
+  ---
+  duration_ms: 257.3412
+  type: 'test'
+  ...
+# WebSocket server error: Port 24678 is already in use
+# Subtest: normal cover requests wait for active artist and release-group refreshes
+ok 19 - normal cover requests wait for active artist and release-group refreshes
+  ---
+  duration_ms: 220.8068
+  type: 'test'
+  ...
+# Subtest: the live toggle applies across the regular release tabs
+ok 20 - the live toggle applies across the regular release tabs
+  ---
+  duration_ms: 0.9761
+  type: 'test'
+  ...
+# Subtest: release search matches titles without case or surrounding whitespace
+ok 21 - release search matches titles without case or surrounding whitespace
+  ---
+  duration_ms: 0.647
+  type: 'test'
+  ...
+# Subtest: flow playback can opt out of listening history
+ok 22 - flow playback can opt out of listening history
+  ---
+  duration_ms: 1.1114
+  type: 'test'
+  ...
+# WebSocket server error: Port 24678 is already in use
+# 17:05:19 [vite] (client) Re-optimizing dependencies because vite config has changed
+# Subtest: a resolved auth session survives a temporary bootstrap failure
+ok 23 - a resolved auth session survives a temporary bootstrap failure
+  ---
+  duration_ms: 490.3048
+  type: 'test'
+  ...
+# Subtest: normalizeBasePath returns / for root and empty
+ok 24 - normalizeBasePath returns / for root and empty
+  ---
+  duration_ms: 0.9086
+  type: 'test'
+  ...
+# Subtest: normalizeBasePath strips trailing slash and adds leading slash
+ok 25 - normalizeBasePath strips trailing slash and adds leading slash
+  ---
+  duration_ms: 0.0959
+  type: 'test'
+  ...
+# Subtest: normalizeBasePathWithTrailingSlash
+ok 26 - normalizeBasePathWithTrailingSlash
+  ---
+  duration_ms: 0.0971
+  type: 'test'
+  ...
+# Subtest: stripBasePath
+ok 27 - stripBasePath
+  ---
+  duration_ms: 0.0967
+  type: 'test'
+  ...
+# Subtest: blocklist suggestions include local artists when the catalog bucket is empty
+ok 28 - blocklist suggestions include local artists when the catalog bucket is empty
+  ---
+  duration_ms: 1.4423
+  type: 'test'
+  ...
+# Subtest: blocklist suggestions combine and deduplicate unified artist results
+ok 29 - blocklist suggestions combine and deduplicate unified artist results
+  ---
+  duration_ms: 0.1199
+  type: 'test'
+  ...
+# Subtest: Blocklist appears after Activity in the sidebar
+ok 30 - Blocklist appears after Activity in the sidebar
+  ---
+  duration_ms: 2.7856
+  type: 'test'
+  ...
+# Subtest: formats dates in the selected international order
+ok 31 - formats dates in the selected international order
+  ---
+  duration_ms: 1.148
+  type: 'test'
+  ...
+# Subtest: persists the application date and time format
+ok 32 - persists the application date and time format
+  ---
+  duration_ms: 1.1356
+  type: 'test'
+  ...
+# Subtest: discover cache timestamps follow fallback data and reject future values
+ok 33 - discover cache timestamps follow fallback data and reject future values
+  ---
+  duration_ms: 1.5225
+  type: 'test'
+  ...
+# WebSocket server error: Port 24678 is already in use
+# Subtest: external artwork gradients do not request images in CORS mode
+ok 34 - external artwork gradients do not request images in CORS mode
+  ---
+  duration_ms: 240.4713
+  type: 'test'
+  ...
+# Subtest: album track hydration does not rewrite unchanged library state
+ok 35 - album track hydration does not rewrite unchanged library state
+  ---
+  duration_ms: 842.2266
+  type: 'test'
+  ...
+# 17:05:20 [vite] (client) Re-optimizing dependencies because vite config has changed
+# Subtest: invalidated album track caches fall back to the current library tracks
+ok 36 - invalidated album track caches fall back to the current library tracks
+  ---
+  duration_ms: 426.8843
+  type: 'test'
+  ...
+# WebSocket server error: Port 24678 is already in use
+# 17:05:21 [vite] (client) Re-optimizing dependencies because vite config has changed
+# Subtest: library covers prefer the release-group MBID
+ok 37 - library covers prefer the release-group MBID
+  ---
+  duration_ms: 408.0874
+  type: 'test'
+  ...
+# WebSocket server error: Port 24678 is already in use
+# 17:05:20 [vite] (client) Re-optimizing dependencies because vite config has changed
+# Subtest: an older favorites read cannot overwrite a newer mutation cache
+ok 38 - an older favorites read cannot overwrite a newer mutation cache
+  ---
+  duration_ms: 453.0927
+  type: 'test'
+  ...
+# WebSocket server error: Port 24678 is already in use
+# 17:05:20 [vite] (client) Re-optimizing dependencies because vite config has changed
+# Subtest: a favorites read waits when it completes before the mutation refresh
+ok 39 - a favorites read waits when it completes before the mutation refresh
+  ---
+  duration_ms: 260.2203
+  type: 'test'
+  ...
+# WebSocket server error: Port 24678 is already in use
+# Subtest: favorite writes serialize and the final refresh includes both mutations
+ok 40 - favorite writes serialize and the final refresh includes both mutations
+  ---
+  duration_ms: 244.2556
+  type: 'test'
+  ...
+# WebSocket server error: Port 24678 is already in use
+# 17:05:21 [vite] (client) Re-optimizing dependencies because vite config has changed
+# Subtest: a failed favorite refresh does not block the next queued mutation
+ok 41 - a failed favorite refresh does not block the next queued mutation
+  ---
+  duration_ms: 233.0981
+  type: 'test'
+  ...
+# WebSocket server error: Port 24678 is already in use
+# 17:05:20 [vite] (client) Re-optimizing dependencies because vite config has changed
+# Subtest: library favorites include playlist-backed Subsonic songs
+ok 42 - library favorites include playlist-backed Subsonic songs
+  ---
+  duration_ms: 859.2393
+  type: 'test'
+  ...
+# WebSocket server error: Port 24678 is already in use
+# 17:05:20 [vite] (client) Re-optimizing dependencies because vite config has changed
+# Subtest: canonical cache invalidation does not abort an active request
+ok 43 - canonical cache invalidation does not abort an active request
+  ---
+  duration_ms: 444.453
+  type: 'test'
+  ...
+# WebSocket server error: Port 24678 is already in use
+# 17:05:21 [vite] (client) Re-optimizing dependencies because vite config has changed
+# Subtest: library requests forward caller cancellation
+ok 44 - library requests forward caller cancellation
+  ---
+  duration_ms: 249.4168
+  type: 'test'
+  ...
+# 17:05:21 [vite] (client) Re-optimizing dependencies because vite config has changed
+# Subtest: artist batch lookup stays within the API batch limit
+ok 45 - artist batch lookup stays within the API batch limit
+  ---
+  duration_ms: 254.1073
+  type: 'test'
+  ...
+# Subtest: artist adds publish an immediate shared library lookup
+ok 46 - artist adds publish an immediate shared library lookup
+  ---
+  duration_ms: 255.9322
+  type: 'test'
+  ...
+# WebSocket server error: Port 24678 is already in use
+# Subtest: library refresh starts a new lookup after cancelling an active request
+ok 47 - library refresh starts a new lookup after cancelling an active request
+  ---
+  duration_ms: 192.5695
+  type: 'test'
+  ...
+# Subtest: finds an imported artist when canonical metadata has no MBID
+ok 48 - finds an imported artist when canonical metadata has no MBID
+  ---
+  duration_ms: 0.528
+  type: 'test'
+  ...
+# Subtest: finds an imported album by title and artist when canonical metadata has no MBID
+ok 49 - finds an imported album by title and artist when canonical metadata has no MBID
+  ---
+  duration_ms: 0.608
+  type: 'test'
+  ...
+# WebSocket server error: Port 24678 is already in use
+# Subtest: clearing canonical pages preserves the mounted view during favorite updates
+ok 50 - clearing canonical pages preserves the mounted view during favorite updates
+  ---
+  duration_ms: 415.8966
+  type: 'test'
+  ...
+# Subtest: resolvePlexConnectionUrl prefers direct local HTTP over plex.direct URIs
+ok 51 - resolvePlexConnectionUrl prefers direct local HTTP over plex.direct URIs
+  ---
+  duration_ms: 0.9217
+  type: 'test'
+  ...
+# Subtest: resolvePlexConnectionUrl handles a local address that already includes its port
+ok 52 - resolvePlexConnectionUrl handles a local address that already includes its port
+  ---
+  duration_ms: 0.6324
+  type: 'test'
+  ...
+# Subtest: pickBestPlexConnection falls back to the first usable remote URI
+ok 53 - pickBestPlexConnection falls back to the first usable remote URI
+  ---
+  duration_ms: 0.8461
+  type: 'test'
+  ...
+# 17:05:21 [vite] (client) Re-optimizing dependencies because vite config has changed
+# Subtest: proxy-authenticated requests carry the issued Aurral session token
+ok 54 - proxy-authenticated requests carry the issued Aurral session token
+  ---
+  duration_ms: 349.0232
+  type: 'test'
+  ...
+# Subtest: a proxy auth redirect drops the service worker and reloads through the proxy
+ok 55 - a proxy auth redirect drops the service worker and reloads through the proxy
+  ---
+  duration_ms: 242.0156
+  type: 'test'
+  ...
+# Subtest: an unauthorized response drops the stored session without navigating away
+ok 56 - an unauthorized response drops the stored session without navigating away
+  ---
+  duration_ms: 173.8515
+  type: 'test'
+  ...
+# Subtest: a proxy 401 with a nested error body reauthenticates through the proxy
+ok 57 - a proxy 401 with a nested error body reauthenticates through the proxy
+  ---
+  duration_ms: 145.8022
+  type: 'test'
+  ...
+# Subtest: a Spotify provider 401 does not drop the Aurral session
+ok 58 - a Spotify provider 401 does not drop the Aurral session
+  ---
+  duration_ms: 146.4305
+  type: 'test'
+  ...
+# Subtest: a proxy 401 without an Aurral error body reloads through the proxy
+ok 59 - a proxy 401 without an Aurral error body reloads through the proxy
+  ---
+  duration_ms: 139.9554
+  type: 'test'
+  ...
+# WebSocket server error: Port 24678 is already in use
+# Subtest: a failed login response keeps the stored session untouched
+ok 60 - a failed login response keeps the stored session untouched
+  ---
+  duration_ms: 136.4989
+  type: 'test'
+  ...
+# Subtest: the service worker leaves navigations to the network
+ok 61 - the service worker leaves navigations to the network
+  ---
+  duration_ms: 2328.4345
+  type: 'test'
+  ...
+# Subtest: connected sockets suppress provider-backed fallback polling
+ok 62 - connected sockets suppress provider-backed fallback polling
+  ---
+  duration_ms: 1.4725
+  type: 'test'
+  ...
+# Subtest: socket fallback polling stays idle when there is no work or the page is hidden
+ok 63 - socket fallback polling stays idle when there is no work or the page is hidden
+  ---
+  duration_ms: 0.144
+  type: 'test'
+  ...
+# Subtest: activity uses a slower reconciliation interval while its sockets are connected
+ok 64 - activity uses a slower reconciliation interval while its sockets are connected
+  ---
+  duration_ms: 0.1506
+  type: 'test'
+  ...
+# Subtest: discovery health polling is only a disconnected socket fallback
+ok 65 - discovery health polling is only a disconnected socket fallback
+  ---
+  duration_ms: 0.1237
+  type: 'test'
+  ...
+# Subtest: bootstrap polling slows down while the heartbeat socket is healthy
+ok 66 - bootstrap polling slows down while the heartbeat socket is healthy
+  ---
+  duration_ms: 0.2189
+  type: 'test'
+  ...
+# Subtest: settings search covers visible settings labels
+ok 67 - settings search covers visible settings labels
+  ---
+  duration_ms: 15.4397
+  type: 'test'
+  ...
+# Subtest: settings search includes the hidden metadata route
+ok 68 - settings search includes the hidden metadata route
+  ---
+  duration_ms: 0.269
+  type: 'test'
+  ...
+# Subtest: custom settings layouts expose their fields to search
+ok 69 - custom settings layouts expose their fields to search
+  ---
+  duration_ms: 0.4042
+  type: 'test'
+  ...
+# Subtest: settings search handles punctuation and non-adjacent terms
+ok 70 - settings search handles punctuation and non-adjacent terms
+  ---
+  duration_ms: 0.2516
+  type: 'test'
+  ...
+# Subtest: storage health does not run against old settings when saving changes fails
+ok 71 - storage health does not run against old settings when saving changes fails
+  ---
+  duration_ms: 1.3485
+  type: 'test'
+  ...
+# Subtest: storage health runs after settings save successfully
+ok 72 - storage health runs after settings save successfully
+  ---
+  duration_ms: 2.2643
+  type: 'test'
+  ...
+# Subtest: terminal.sexy catalogs normalize and discard unsafe paths
+ok 73 - terminal.sexy catalogs normalize and discard unsafe paths
+  ---
+  duration_ms: 1.9358
+  type: 'test'
+  ...
+# Subtest: terminal.sexy light and dark paths share one theme card
+ok 74 - terminal.sexy light and dark paths share one theme card
+  ---
+  duration_ms: 0.4746
+  type: 'test'
+  ...
+# Subtest: terminal.sexy featured themes choose five stable schemes
+ok 75 - terminal.sexy featured themes choose five stable schemes
+  ---
+  duration_ms: 0.5098
+  type: 'test'
+  ...
+# Subtest: terminal.sexy schemes can be searched and imported with variants
+ok 76 - terminal.sexy schemes can be searched and imported with variants
+  ---
+  duration_ms: 24.2945
+  type: 'test'
+  ...
+# Subtest: paired terminal.sexy sources keep their declared light and dark modes
+ok 77 - paired terminal.sexy sources keep their declared light and dark modes
+  ---
+  duration_ms: 1.1969
+  type: 'test'
+  ...
+# Subtest: terminal.sexy catalog failures do not poison later retries
+ok 78 - terminal.sexy catalog failures do not poison later retries
+  ---
+  duration_ms: 0.8254
+  type: 'test'
+  ...
+# Subtest: terminal.sexy catalog rejects malformed and oversized responses
+ok 79 - terminal.sexy catalog rejects malformed and oversized responses
+  ---
+  duration_ms: 2.1997
+  type: 'test'
+  ...
+# Subtest: terminal.sexy catalog requests abort when they exceed the timeout
+ok 80 - terminal.sexy catalog requests abort when they exceed the timeout
+  ---
+  duration_ms: 0.3909
+  type: 'test'
+  ...
+# Subtest: main Themes cards do not expose modal-only scheme actions
+ok 81 - main Themes cards do not expose modal-only scheme actions
+  ---
+  duration_ms: 3.2299
+  type: 'test'
+  ...
+# Subtest: Aurral keeps its neutral light and dark palettes
+ok 82 - Aurral keeps its neutral light and dark palettes
+  ---
+  duration_ms: 1.0729
+  type: 'test'
+  ...
+# Subtest: theme preferences persist explicit themes and clear the system override
+ok 83 - theme preferences persist explicit themes and clear the system override
+  ---
+  duration_ms: 0.459
+  type: 'test'
+  ...
+# Subtest: temporary theme previews change the page without changing saved selection
+ok 84 - temporary theme previews change the page without changing saved selection
+  ---
+  duration_ms: 0.5911
+  type: 'test'
+  ...
+# Subtest: terminal.sexy ANSI colors become a complete Aurral palette
+ok 85 - terminal.sexy ANSI colors become a complete Aurral palette
+  ---
+  duration_ms: 1.2067
+  type: 'test'
+  ...
+# Subtest: custom themes persist and restore their selected mode
+ok 86 - custom themes persist and restore their selected mode
+  ---
+  duration_ms: 0.8123
+  type: 'test'
+  ...
+# Subtest: theme bootstrap restores a saved custom palette before app startup
+ok 87 - theme bootstrap restores a saved custom palette before app startup
+  ---
+  duration_ms: 6.6875
+  type: 'test'
+  ...
+# Subtest: availability counts playable completed tracks, including tracks reused from another playlist
+ok 88 - availability counts playable completed tracks, including tracks reused from another playlist
+  ---
+  duration_ms: 1.1709
+  type: 'test'
+  ...
+# WebSocket server error: Port 24678 is already in use
+# Subtest: a late close from an old WebSocket cannot orphan its replacement
+ok 89 - a late close from an old WebSocket cannot orphan its replacement
+  ---
+  duration_ms: 263.5305
+  type: 'test'
+  ...
+# Subtest: a missed WebSocket heartbeat retires the dead socket for reconnection
+ok 90 - a missed WebSocket heartbeat retires the dead socket for reconnection
+  ---
+  duration_ms: 171.7175
+  type: 'test'
+  ...
+1..90
+# tests 90
+# suites 0
+# pass 90
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 5211.621

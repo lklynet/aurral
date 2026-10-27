@@ -152,12 +152,12 @@ test("stale album metadata is served while one refresh runs in the background", 
     now += 7 * 24 * 60 * 60 * 1000 + 1_000;
     const staleReads = Promise.all([getAlbumByMbid("album-1"), getAlbumByMbid("album-1")]);
     await refreshRequested;
-    const joinedRefresh = getAlbumByMbid("album-1", { forceRefresh: true });
-    releaseRefresh();
     const [stale, staleAgain] = await staleReads;
     assert.equal(stale.title, "Album v1");
     assert.equal(staleAgain.title, "Album v1");
 
+    const joinedRefresh = getAlbumByMbid("album-1", { forceRefresh: true });
+    releaseRefresh();
     assert.equal((await joinedRefresh).title, "Album v2");
     const refreshed = await getAlbumByMbid("album-1");
     assert.equal(requests, 2);

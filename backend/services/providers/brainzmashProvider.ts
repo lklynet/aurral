@@ -309,7 +309,7 @@ async function readCachedMetadata(cacheKey: string, { persistent = false } = {})
       if (!current) return null;
       entry = current;
     } else {
-      entry = persisted;
+      entry = current || persisted;
       if (!current) metadataHotCache.set(cacheKey, persisted);
     }
   }

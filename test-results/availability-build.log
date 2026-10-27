@@ -1,0 +1,102 @@
+vite v8.3.0 building client environment for production...
+transforming...
+✓ 2190 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/manifest.webmanifest                              0.38 kB
+dist/index.html                                        2.85 kB │ gzip:   0.88 kB
+dist/assets/PillToggle-DNaC39NG.css                    1.84 kB │ gzip:   0.60 kB
+dist/assets/ProfilePage-DLj1pE8Z.css                  11.38 kB │ gzip:   2.04 kB
+dist/assets/settingsArr-BEA7mqBi.css                  51.34 kB │ gzip:   7.53 kB
+dist/assets/index-Ds02Acg9.css                       272.58 kB │ gzip:  39.59 kB
+dist/assets/useQuery-kECZSK1q.js                       0.10 kB │ gzip:   0.11 kB
+dist/assets/chevron-down-DypIkTC9.js                   0.16 kB │ gzip:   0.16 kB
+dist/assets/chevron-left-ClyCIOiW.js                   0.17 kB │ gzip:   0.17 kB
+dist/assets/chevron-right-CYW3niHf.js                  0.17 kB │ gzip:   0.16 kB
+dist/assets/plus-BbpQrSAK.js                           0.19 kB │ gzip:   0.17 kB
+dist/assets/x-Cjn7UP7v.js                              0.19 kB │ gzip:   0.17 kB
+dist/assets/arrow-up-BjO2O_LH.js                       0.20 kB │ gzip:   0.18 kB
+dist/assets/arrow-down-4cRl1I5Z.js                     0.20 kB │ gzip:   0.18 kB
+dist/assets/arrow-right-BKgkIkvp.js                    0.20 kB │ gzip:   0.18 kB
+dist/assets/useDocumentTitle-fk5WMQgs.js               0.21 kB │ gzip:   0.19 kB
+dist/assets/corner-up-left-BRYcdQPU.js                 0.22 kB │ gzip:   0.19 kB
+dist/assets/rotate-ccw-_2KqQe1O.js                     0.24 kB │ gzip:   0.21 kB
+dist/assets/circle-check-BOSpvBt1.js                   0.25 kB │ gzip:   0.21 kB
+dist/assets/ellipsis-vertical-BJZgtwMI.js              0.30 kB │ gzip:   0.21 kB
+dist/assets/circle-alert-DFTK0ArR.js                   0.31 kB │ gzip:   0.22 kB
+dist/assets/pencil-CQ3I6DDT.js                         0.31 kB │ gzip:   0.25 kB
+dist/assets/list-music-CphSonMK.js                     0.32 kB │ gzip:   0.23 kB
+dist/assets/list-D9PnPjlI.js                           0.34 kB │ gzip:   0.22 kB
+dist/assets/PillToggle-DnazFx8M.js                     0.35 kB │ gzip:   0.27 kB
+dist/assets/refresh-cw-CpcPyuFr.js                     0.36 kB │ gzip:   0.25 kB
+dist/assets/grid-3x3-5QWCdfjH.js                       0.36 kB │ gzip:   0.25 kB
+dist/assets/layout-grid-fP91I30x.js                    0.38 kB │ gzip:   0.22 kB
+dist/assets/useDiscoverNavigation-DrbophGx.js          0.39 kB │ gzip:   0.29 kB
+dist/assets/normalizeMediaUrl-CdaOa630.js              0.45 kB │ gzip:   0.31 kB
+dist/assets/discoverRecentNavigation-BakHz55O.js       0.48 kB │ gzip:   0.28 kB
+dist/assets/PageSectionMobileNav-lXcVmScF.js           0.60 kB │ gzip:   0.38 kB
+dist/assets/SettingsField-D2Jf0t6M.js                  0.64 kB │ gzip:   0.28 kB
+dist/assets/albumAddAction-ClWS4aBv.js                 0.64 kB │ gzip:   0.37 kB
+dist/assets/artistTaste-8Lf1j_vU.js                    0.74 kB │ gzip:   0.39 kB
+dist/assets/onboardingUtils-CHuWJ1wT.js                0.79 kB │ gzip:   0.36 kB
+dist/assets/imageColors-DFeG8O5N.js                    0.83 kB │ gzip:   0.55 kB
+dist/assets/useNearbyShows-BYMsfkYj.js                 1.11 kB │ gzip:   0.65 kB
+dist/assets/useInfiniteQuery-DHrlKHeH.js               1.15 kB │ gzip:   0.49 kB
+dist/assets/TooltipButton-BG897n6i.js                  1.63 kB │ gzip:   0.85 kB
+dist/assets/useAlbumTrackListToolbar-Ck3TUB_5.js       1.91 kB │ gzip:   0.85 kB
+dist/assets/SsoComplete-DyI9xke_.js                    2.05 kB │ gzip:   0.86 kB
+dist/assets/useWebSocket-DVmIhtCp.js                   2.42 kB │ gzip:   1.21 kB
+dist/assets/Login-CuiuB4km.js                          2.45 kB │ gzip:   0.95 kB
+dist/assets/auth-D1yGqXn3.js                           2.46 kB │ gzip:   1.02 kB
+dist/assets/components-Bz-U4D5j.js                     3.01 kB │ gzip:   1.48 kB
+dist/assets/NewsPage-DUwHeB84.js                       3.03 kB │ gzip:   1.16 kB
+dist/assets/createLucideIcon-BwYkGjNL.js               3.09 kB │ gzip:   1.49 kB
+dist/assets/playlists-BH1jX-jC.js                      3.20 kB │ gzip:   1.09 kB
+dist/assets/useArtistTasteFeedback-Do5nWrji.js         3.43 kB │ gzip:   1.43 kB
+dist/assets/useLibraryNews-BZE6QGm4.js                 3.56 kB │ gzip:   1.59 kB
+dist/assets/DeleteAlbumModal-DQkJna2X.js               3.57 kB │ gzip:   1.11 kB
+dist/assets/react-dom-DWg6DD_X.js                      3.86 kB │ gzip:   1.40 kB
+dist/assets/settingsArr-B5ldWYEj.js                    3.92 kB │ gzip:   1.49 kB
+dist/assets/artists-DJVuImuo.js                        4.02 kB │ gzip:   1.62 kB
+dist/assets/BlocklistPage-DjlLOQKY.js                  4.17 kB │ gzip:   1.54 kB
+dist/assets/ShowsPage-D3ONW91a.js                      4.42 kB │ gzip:   1.44 kB
+dist/assets/ToastContext-BhrVsiNI.js                   4.43 kB │ gzip:   1.86 kB
+dist/assets/ArtistImage-DtvKJM90.js                    4.97 kB │ gzip:   2.09 kB
+dist/assets/DiscoverPlaylistContextMenu-CGY_7gHB.js    5.31 kB │ gzip:   1.91 kB
+dist/assets/utils-jVXcVhzs.js                          5.63 kB │ gzip:   2.55 kB
+dist/assets/workbox-window.prod.es5-Bd17z0YL.js        5.65 kB │ gzip:   2.20 kB
+dist/assets/LibraryItemMenu-2i1Lnjv5.js                5.71 kB │ gzip:   2.12 kB
+dist/assets/DiscoverPlaylistsPage-DSqXLllR.js          6.47 kB │ gzip:   1.91 kB
+dist/assets/ArtistContextMenu-DEg18MGm.js              7.61 kB │ gzip:   2.28 kB
+dist/assets/Onboarding-ifjlTDtt.js                     7.77 kB │ gzip:   2.67 kB
+dist/assets/DiscoverPlaylistDetailPage-C7_IqVqS.js     7.82 kB │ gzip:   2.67 kB
+dist/assets/ShowCard-aQFeQiC6.js                       7.86 kB │ gzip:   2.62 kB
+dist/assets/useBaseQuery-DoIeiFIb.js                   8.33 kB │ gzip:   3.10 kB
+dist/assets/useDiscoverData-iZF737hu.js                9.60 kB │ gzip:   3.02 kB
+dist/assets/ArtistReleaseListPage-BewyZo1Z.js         13.10 kB │ gzip:   4.25 kB
+dist/assets/ReleasePage-B8_9tAG2.js                   13.76 kB │ gzip:   5.19 kB
+dist/assets/PlaylistImportModal-BtunqHnJ.js           18.12 kB │ gzip:   5.37 kB
+dist/assets/flowFormComponents-DEPOlZFF.js            18.32 kB │ gzip:   5.82 kB
+dist/assets/flowTrackComponents-DGyIFn2l.js           19.28 kB │ gzip:   5.55 kB
+dist/assets/hooks-DgfYSYHi.js                         20.63 kB │ gzip:   7.96 kB
+dist/assets/useArtistSearchFocus-CzhIewXZ.js          23.46 kB │ gzip:   7.93 kB
+dist/assets/ActivityPage-zbHpyHhX.js                  27.11 kB │ gzip:   8.67 kB
+dist/assets/ProfilePage-cWARlj8h.js                   32.69 kB │ gzip:   9.66 kB
+dist/assets/DiscoverPage-DWirMvUu.js                  38.25 kB │ gzip:  10.52 kB
+dist/assets/SearchResultsPage-Cv1atu25.js             39.71 kB │ gzip:  11.01 kB
+dist/assets/DotLoader-DP9gy26y.js                     42.84 kB │ gzip:  13.89 kB
+dist/assets/modifiers.esm-derv64Od.js                 46.15 kB │ gzip:  15.34 kB
+dist/assets/LibraryPage-CmQjtjgH.js                   58.10 kB │ gzip:  15.80 kB
+dist/assets/ArtistDetailsPage--q074JVB.js             58.96 kB │ gzip:  15.92 kB
+dist/assets/FlowPage-BQqklvw3.js                      68.29 kB │ gzip:  19.25 kB
+dist/assets/SettingsPage-CyEdAta6.js                 154.37 kB │ gzip:  38.61 kB
+dist/assets/index-BlJzWTLl.js                        426.82 kB │ gzip: 130.64 kB
+
+✓ built in 293ms
+
+PWA v1.3.0
+mode      generateSW
+precache  99 entries (1581.62 KiB)
+files generated
+  dist/sw.js
+  dist/workbox-0bb07689.js
