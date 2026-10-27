@@ -6,14 +6,20 @@ import { flowPlaylistConfig, type FlowConfig, type StaticPlaylist } from "./flow
 import { downloadTracker } from "../downloadJobs/downloadTracker.ts";
 import { writePlaylistArtworkWebpFromBuffer } from "../playlistArtwork.ts";
 import {
-  getArtworkExtensionForStyle,
-  getPlaylistArtworkStyle,
-  isGeneratedPlaylistArtworkFallback,
+  playlistArtistSignature,
+  readPlaylistImageBuffer,
   writeGeneratedPlaylistArtwork,
 } from "../playlistArtworkGenerator.ts";
+import {
+  getPlaylistArtworkState,
+  setPlaylistArtworkState,
+  type PlaylistArtworkStyle,
+  type PlaylistArtworkState,
+} from "../playlistArtworkState.ts";
 import { AURRAL_FLOWS_DIR, PLAYLIST_FILES_DIR, resolveDownloadRoot } from "../downloadPaths.ts";
 import { scheduleLibraryScan } from "../libraryScanWorker.ts";
 import {
+  withHonkerLock,
   enqueueSystemTaskJob,
   getSystemTaskQueueName,
   listHonkerJobs,
@@ -93,7 +99,6 @@ export class PlaylistManager {
   declare plexDestination: PlexPlaybackDestination;
   declare jellyfinDestination: JellyfinPlaybackDestination;
   declare destinationRegistry: PlaybackDestinationRegistry;
-  declare _verifiedArtworkFiles: Set<string>;
 
   constructor(downloadRoot = resolveDownloadRoot()) {
     this.downloadRoot = resolveDownloadRoot(downloadRoot);
@@ -107,7 +112,6 @@ export class PlaylistManager {
       this.plexDestination,
       this.jellyfinDestination,
     ]);
-    this._verifiedArtworkFiles = new Set();
     this.updateConfig();
   }
 
@@ -206,6 +210,7 @@ export class PlaylistManager {
           ]),
         ];
     if (entityIds && !ids.length) return;
+    for (const id of ids) await this._relocateArtwork(id);
     const setupFailures = (
       await this.destinationRegistry.runOn(
         scope.map((destination) => destination.key),
@@ -298,50 +303,103 @@ export class PlaylistManager {
     return scheduleLibraryScan({ force, includeLidarr: false });
   }
 
-  async _ensureFlowArtwork(playlistType: string, playlistName: string, artworkKind: string) {
-    await fs.mkdir(this.libraryRoot, { recursive: true });
-    const baseName = this._getPlaylistBaseName(playlistName);
-    const style = getPlaylistArtworkStyle();
-    const artworkExtension = getArtworkExtensionForStyle(style);
-    const artworkPath = path.join(this.libraryRoot, `${baseName}${artworkExtension}`);
-    const safeRoot = path.resolve(this.libraryRoot);
-    const suppressed = await this._isArtworkGenerationSuppressed(safeRoot, baseName);
-    if (suppressed) return;
-    const artworkContext = this.getArtworkContextForPlaylistId(playlistType);
-    const existing = await this.resolveArtworkFile(playlistType);
-    let shouldGenerate = !existing;
-    const existingStat = existing ? await fs.stat(existing.safePath).catch(() => null) : null;
-    const existingIdentity = existingStat
-      ? `${existing!.safePath}:${existingStat.size}:${existingStat.mtimeMs}`
-      : existing?.safePath;
-    if (style === "photo" && existing && !this._verifiedArtworkFiles.has(existingIdentity!)) {
-      shouldGenerate = await isGeneratedPlaylistArtworkFallback(existing.safePath, {
-        title: artworkContext?.title || playlistName,
-        kind: artworkContext?.kind || artworkKind,
-      });
-      if (!shouldGenerate) this._verifiedArtworkFiles.add(existingIdentity!);
-    }
-    if (shouldGenerate) {
+  _rememberArtwork(playlistId: string, state: PlaylistArtworkState) {
+    setPlaylistArtworkState(playlistId, {
+      ...state,
+      baseName: this._resolveArtworkBase(playlistId)?.baseName || null,
+    });
+  }
+
+  async _relocateArtwork(playlistId: string) {
+    const previous = getPlaylistArtworkState(playlistId);
+    const resolved = this._resolveArtworkBase(playlistId);
+    if (
+      !resolved ||
+      !previous?.baseName ||
+      previous.baseName === resolved.baseName ||
+      (previous.mode !== "original" && previous.mode !== "upload")
+    )
+      return;
+    await withHonkerLock(`playlist-artwork:${playlistId}`, async () => {
+      const state = getPlaylistArtworkState(playlistId);
+      if (
+        !state?.baseName ||
+        state.baseName === resolved.baseName ||
+        (state.mode !== "original" && state.mode !== "upload")
+      )
+        return;
+      const oldPath = path.resolve(resolved.safeRoot, `${state.baseName}.webp`);
+      if (path.dirname(oldPath) !== resolved.safeRoot) throw new Error("Invalid artwork path");
       try {
-        await writeGeneratedPlaylistArtwork({
-          outputPath: artworkPath,
-          title: artworkContext?.title || playlistName,
-          kind: artworkContext?.kind || artworkKind,
-        });
+        await fs.rename(oldPath, path.join(resolved.safeRoot, `${resolved.baseName}.webp`));
       } catch (error) {
-        console.warn(`[PlaylistManager] Artwork generation failed: ${asAppError(error)?.message}`);
-        if (!existing) {
-          await writeGeneratedPlaylistArtwork({
-            outputPath: artworkPath,
-            title: artworkContext?.title || playlistName,
-            kind: artworkContext?.kind || artworkKind,
-            style: "aurral",
-          }).catch((fallbackError) =>
-            console.warn(`[PlaylistManager] Fallback artwork failed: ${fallbackError.message}`),
+        if (asAppError(error)?.code !== "ENOENT") throw error;
+      }
+      this._rememberArtwork(playlistId, state);
+    });
+  }
+
+  _artworkArtists(playlistId: string) {
+    return [
+      ...(flowPlaylistConfig.getStaticPlaylist(playlistId)?.tracks || []),
+      ...downloadTracker.getByPlaylistId(playlistId),
+    ];
+  }
+
+  async _ensureFlowArtwork(playlistId: string, playlistName: string, artworkKind: string) {
+    return withHonkerLock(`playlist-artwork:${playlistId}`, async () => {
+      await fs.mkdir(this.libraryRoot, { recursive: true });
+      const baseName = this._getPlaylistBaseName(playlistName);
+      if (await this._isArtworkGenerationSuppressed(path.resolve(this.libraryRoot), baseName))
+        return;
+      const existing = await this.resolveArtworkFile(playlistId);
+      const state = getPlaylistArtworkState(playlistId);
+      const flowRunAt = flowPlaylistConfig.getFlow(playlistId)?.lastRunAt ?? null;
+      const refreshFlow = state?.mode === "artist" && flowRunAt !== (state.flowRunAt ?? null);
+      if (state?.mode === "removed") return;
+      if (existing && (!state || state.mode === "upload" || state.mode === "simple")) return;
+      const sourceUrl = flowPlaylistConfig.getStaticPlaylist(playlistId)?.importSource?.artworkUrl;
+      if (sourceUrl && (!state || state.mode === "original")) {
+        if (existing && state?.sourceUrl === sourceUrl) return;
+        try {
+          await this._saveOriginalArtwork(playlistId, sourceUrl);
+          return;
+        } catch (error) {
+          console.warn(
+            `[PlaylistManager] Original artwork unavailable: ${asAppError(error)?.message}`,
           );
+          if (existing) return;
         }
       }
-    }
+      if (existing && !refreshFlow && !state?.fallbackSignature) return;
+      const artists = this._artworkArtists(playlistId);
+      if (
+        existing &&
+        !refreshFlow &&
+        (!state?.fallbackSignature || state.fallbackSignature === playlistArtistSignature(artists))
+      )
+        return;
+      const context = this.getArtworkContextForPlaylistId(playlistId);
+      try {
+        const generated = await writeGeneratedPlaylistArtwork({
+          outputPath: path.join(this.libraryRoot, `${baseName}.webp`),
+          title: context?.title || playlistName,
+          artists,
+          previous: state,
+          style: state?.mode === "simple" ? "simple" : "artist",
+        });
+        this._rememberArtwork(
+          playlistId,
+          sourceUrl && (!state || state.mode === "original")
+            ? { ...generated.state, mode: "original", flowRunAt }
+            : { ...generated.state, flowRunAt },
+        );
+      } catch (error) {
+        console.warn(
+          `[PlaylistManager] ${artworkKind} artwork generation failed: ${asAppError(error)?.message}`,
+        );
+      }
+    });
   }
 
   async ensurePlaylistArtwork(entityId: string) {
@@ -548,11 +606,6 @@ export class PlaylistManager {
     });
   }
 
-  getArtworkKindForPlaylistId(playlistId: string) {
-    if (flowPlaylistConfig.getFlow(playlistId)) return "Flow";
-    return "Playlist";
-  }
-
   getArtworkContextForPlaylistId(playlistId: string) {
     const flow = flowPlaylistConfig.getFlow(playlistId);
     if (flow) return { kind: "Flow", title: flow.name };
@@ -614,75 +667,107 @@ export class PlaylistManager {
     return null;
   }
 
-  async saveArtworkUpload(playlistId: string, buffer: Buffer) {
+  async _saveArtworkBuffer(playlistId: string, buffer: Buffer) {
     const resolved = this._resolveArtworkBase(playlistId);
-    if (!resolved) {
-      throw new Error("Playlist not found");
-    }
+    if (!resolved) throw new Error("Playlist not found");
     await fs.mkdir(resolved.safeRoot, { recursive: true });
     const webpPath = path.join(resolved.safeRoot, `${resolved.baseName}.webp`);
-    if (path.dirname(webpPath) !== resolved.safeRoot) {
-      throw new Error("Invalid artwork path");
-    }
     await writePlaylistArtworkWebpFromBuffer(buffer, webpPath);
-    const legacyPng = path.join(resolved.safeRoot, `${resolved.baseName}.png`);
-    try {
-      await fs.unlink(legacyPng);
-    } catch {}
+    for (const extension of [".jpg", ".png"]) {
+      await fs
+        .unlink(path.join(resolved.safeRoot, `${resolved.baseName}${extension}`))
+        .catch(() => {});
+    }
     await this._setArtworkGenerationSuppressed(resolved.safeRoot, resolved.baseName, false);
-    await this._syncNavidromeArtwork(playlistId);
     return webpPath;
   }
 
-  async removeArtwork(playlistId: string) {
-    const resolved = this._resolveArtworkBase(playlistId);
-    if (!resolved) {
-      throw new Error("Playlist not found");
-    }
-    let removed = false;
-    for (const extension of ARTWORK_FILE_EXTENSIONS) {
-      const safePath = path.join(resolved.safeRoot, `${resolved.baseName}${extension}`);
-      if (path.dirname(safePath) !== resolved.safeRoot) continue;
-      try {
-        await fs.unlink(safePath);
-        removed = true;
-      } catch {}
-    }
-    await this._setArtworkGenerationSuppressed(resolved.safeRoot, resolved.baseName, true);
-    await this._syncNavidromeArtwork(playlistId, true);
-    return removed;
+  async _saveOriginalArtwork(playlistId: string, sourceUrl: string) {
+    const buffer = await readPlaylistImageBuffer(sourceUrl);
+    const outputPath = await this._saveArtworkBuffer(playlistId, buffer);
+    this._rememberArtwork(playlistId, {
+      mode: "original",
+      sourceUrl,
+      artistKey: null,
+      template: null,
+      fallbackSignature: null,
+    });
+    return outputPath;
   }
 
-  async generateArtwork(playlistId: string) {
-    const resolved = this._resolveArtworkBase(playlistId);
-    if (!resolved) {
-      throw new Error("Playlist not found");
-    }
-    await fs.mkdir(resolved.safeRoot, { recursive: true });
-    const style = getPlaylistArtworkStyle();
-    const artworkExtension = getArtworkExtensionForStyle(style);
-    const artworkPath = path.join(resolved.safeRoot, `${resolved.baseName}${artworkExtension}`);
-    if (path.dirname(artworkPath) !== resolved.safeRoot) {
-      throw new Error("Invalid artwork path");
-    }
-    const artworkContext = this.getArtworkContextForPlaylistId(playlistId);
-    const title = artworkContext?.title || resolved.playlistName;
-    const kind = artworkContext?.kind || this.getArtworkKindForPlaylistId(playlistId);
-    let outputPath;
-    try {
-      outputPath = await writeGeneratedPlaylistArtwork({ outputPath: artworkPath, title, kind });
-    } catch (error) {
-      if (style !== "photo") throw error;
-      outputPath = await writeGeneratedPlaylistArtwork({
-        outputPath: artworkPath,
-        title,
-        kind,
-        style: "aurral",
+  async restoreOriginalArtwork(playlistId: string) {
+    return withHonkerLock(`playlist-artwork:${playlistId}`, async () => {
+      const sourceUrl = flowPlaylistConfig.getStaticPlaylist(playlistId)?.importSource?.artworkUrl;
+      if (!sourceUrl)
+        throw new Error("No original cover is available. Sync the playlist and try again.");
+      const outputPath = await this._saveOriginalArtwork(playlistId, sourceUrl);
+      await this._syncNavidromeArtwork(playlistId);
+      return outputPath;
+    });
+  }
+
+  async saveArtworkUpload(playlistId: string, buffer: Buffer) {
+    return withHonkerLock(`playlist-artwork:${playlistId}`, async () => {
+      const outputPath = await this._saveArtworkBuffer(playlistId, buffer);
+      this._rememberArtwork(playlistId, {
+        mode: "upload",
+        sourceUrl: null,
+        artistKey: null,
+        template: null,
+        fallbackSignature: null,
       });
-    }
-    await this._setArtworkGenerationSuppressed(resolved.safeRoot, resolved.baseName, false);
-    await this._syncNavidromeArtwork(playlistId);
-    return outputPath;
+      await this._syncNavidromeArtwork(playlistId);
+      return outputPath;
+    });
+  }
+
+  async removeArtwork(playlistId: string) {
+    return withHonkerLock(`playlist-artwork:${playlistId}`, async () => {
+      const resolved = this._resolveArtworkBase(playlistId);
+      if (!resolved) {
+        throw new Error("Playlist not found");
+      }
+      let removed = false;
+      for (const extension of ARTWORK_FILE_EXTENSIONS) {
+        const safePath = path.join(resolved.safeRoot, `${resolved.baseName}${extension}`);
+        if (path.dirname(safePath) !== resolved.safeRoot) continue;
+        try {
+          await fs.unlink(safePath);
+          removed = true;
+        } catch {}
+      }
+      await this._setArtworkGenerationSuppressed(resolved.safeRoot, resolved.baseName, true);
+      await this._syncNavidromeArtwork(playlistId, true);
+      this._rememberArtwork(playlistId, {
+        mode: "removed",
+        sourceUrl: null,
+        artistKey: null,
+        template: null,
+        fallbackSignature: null,
+      });
+      return removed;
+    });
+  }
+
+  async generateArtwork(playlistId: string, style: PlaylistArtworkStyle = "artist") {
+    return withHonkerLock(`playlist-artwork:${playlistId}`, async () => {
+      const resolved = this._resolveArtworkBase(playlistId);
+      const context = this.getArtworkContextForPlaylistId(playlistId);
+      if (!resolved || !context) throw new Error("Playlist not found");
+      await fs.mkdir(resolved.safeRoot, { recursive: true });
+      const flowRunAt = flowPlaylistConfig.getFlow(playlistId)?.lastRunAt ?? null;
+      const generated = await writeGeneratedPlaylistArtwork({
+        outputPath: path.join(resolved.safeRoot, `${resolved.baseName}.webp`),
+        title: context.title,
+        artists: this._artworkArtists(playlistId),
+        style,
+        previous: getPlaylistArtworkState(playlistId),
+      });
+      this._rememberArtwork(playlistId, { ...generated.state, flowRunAt });
+      await this._setArtworkGenerationSuppressed(resolved.safeRoot, resolved.baseName, false);
+      await this._syncNavidromeArtwork(playlistId);
+      return generated.outputPath;
+    });
   }
 }
 

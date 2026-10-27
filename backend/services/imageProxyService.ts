@@ -552,7 +552,7 @@ const readBoundedResponse = async (response: Response | UndiciResponse) => {
   return Buffer.concat(chunks, totalBytes);
 };
 
-const fetchRemoteImage = async (sourceUrl: string) => {
+export const fetchRemoteImage = async (sourceUrl: string) => {
   let currentUrl = parseSafeRemoteUrl(sourceUrl);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);

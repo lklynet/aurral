@@ -22,7 +22,7 @@ export const normalizeMetadataBaseUrl = (baseUrl: string | undefined) => {
 export const normalizeSettings = (savedSettings: SavedSettings) => {
   const lidarr: NonNullable<StoredIntegrations["lidarr"]> =
     savedSettings.integrations?.lidarr || {};
-  const lastfm: NonNullable<StoredIntegrations["lastfm"]> & { discoverFlowArtworkStyle?: string } =
+  const lastfm: NonNullable<StoredIntegrations["lastfm"]> =
     savedSettings.integrations?.lastfm || {};
   const legacyMusicbrainz: NonNullable<StoredIntegrations["musicbrainz"]> =
     savedSettings.integrations?.musicbrainz || {};
@@ -40,15 +40,9 @@ export const normalizeSettings = (savedSettings: SavedSettings) => {
   const normalizedRecommendationsPerRefresh = Number.isFinite(parsedRecommendationsPerRefresh)
     ? Math.min(500, Math.max(50, parsedRecommendationsPerRefresh))
     : 200;
-  const playlistArtwork: Partial<AppSettings["playlistArtwork"]> =
-    savedSettings.playlistArtwork || {};
   const qualityProfile: Partial<QualityProfile> | undefined = savedSettings.qualityProfile;
   const missingTrackSearch: Partial<AppSettings["missingTrackSearch"]> | undefined =
     savedSettings.missingTrackSearch;
-  const playlistArtworkStyle: "aurral" | "photo" =
-    playlistArtwork.style === "aurral" || lastfm.discoverFlowArtworkStyle === "aurral"
-      ? "aurral"
-      : "photo";
   return {
     ...savedSettings,
     dateTimeFormat: normalizeDateTimeFormat(savedSettings.dateTimeFormat),
@@ -60,10 +54,6 @@ export const normalizeSettings = (savedSettings: SavedSettings) => {
       ? savedSettings.reviewTimeoutHours
       : 0,
     pathMappings: Array.isArray(savedSettings.pathMappings) ? savedSettings.pathMappings : [],
-    playlistArtwork: {
-      ...playlistArtwork,
-      style: playlistArtworkStyle,
-    },
     inbox: {
       enabled: savedSettings.inbox?.enabled !== false,
       releases: savedSettings.inbox?.releases !== false,

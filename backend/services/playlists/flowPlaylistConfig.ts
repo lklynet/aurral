@@ -2,6 +2,7 @@ import { randomBytes, randomUUID } from "crypto";
 import { dbOps } from "../../db/helpers/index.ts";
 import { downloadTracker } from "../downloadJobs/downloadTracker.ts";
 import { getDiscoverPlaylistPreset } from "../../config/discoverPlaylistPresets.ts";
+import { deletePlaylistArtworkState } from "../playlistArtworkState.ts";
 import { UUID_REGEX } from "../../../lib/uuid.ts";
 import type { RequestUser } from "../../middleware/requestUser.ts";
 
@@ -70,6 +71,7 @@ export interface FlowUpdates {
 }
 
 export interface StoredImportSource {
+  artworkUrl?: unknown;
   provider?: unknown;
   externalId?: unknown;
   externalUsername?: unknown;
@@ -662,6 +664,10 @@ export function normalizeImportSource(value: StoredImportSource | null | undefin
       ? { externalUsername: String(value.externalUsername || "").trim() || null }
       : {}),
     externalName: String(value.externalName || "").trim() || null,
+    artworkUrl:
+      typeof value.artworkUrl === "string" && /^https?:\/\//i.test(value.artworkUrl)
+        ? value.artworkUrl
+        : null,
     syncEnabled: hasSync,
     syncIntervalHours: hasSync ? Math.min(Math.max(Math.round(syncIntervalHours), 1), 168) : 0,
     keepRemovedTracks: value.keepRemovedTracks !== false,
@@ -1058,6 +1064,7 @@ export const flowPlaylistConfig = {
     const next = flows.filter((flow) => flow.id !== flowId);
     if (next.length === flows.length) return false;
     setFlows(next);
+    deletePlaylistArtworkState(flowId);
     return true;
   },
 
@@ -1079,8 +1086,10 @@ export const flowPlaylistConfig = {
     const index = flows.findIndex((flow) => flow.id === flowId);
     if (index === -1) return null;
     const flow = { ...flows[index] };
-    flow.lastRunAt =
-      lastRunAt != null && Number.isFinite(Number(lastRunAt)) ? Number(lastRunAt) : Date.now();
+    flow.lastRunAt = Math.max(
+      lastRunAt != null && Number.isFinite(Number(lastRunAt)) ? Number(lastRunAt) : Date.now(),
+      (flow.lastRunAt ?? 0) + 1,
+    );
     flows[index] = flow;
     setFlows(flows);
     return flow;
@@ -1262,6 +1271,7 @@ export const flowPlaylistConfig = {
     const next = playlists.filter((playlist) => playlist.id !== playlistId);
     if (next.length === playlists.length) return false;
     setStaticPlaylists(next);
+    deletePlaylistArtworkState(playlistId);
     return true;
   },
 };

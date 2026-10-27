@@ -500,6 +500,7 @@ async function adoptFlowSeed({ flowId, tracks = [] }: HonkerPayload = {}) {
     return flowSeedingWorker().seedFlowRunWithTracks(safeFlowId, latestFlow, normalizedTracks);
   });
   if (result?.skipped || result?.missing) return result;
+  playlistManager.requestPlaylistSync([safeFlowId]);
   await wakeDownloadWorker();
   recordFlowTracksGenerated({
     flowId: safeFlowId,

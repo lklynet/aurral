@@ -1,3 +1,4 @@
+import { usePlaylistArtwork } from "../../hooks/usePlaylistArtwork.ts";
 import { useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { Clock, Download, Pencil, RefreshCw, Share, Trash2 } from "../../components/icons";
@@ -41,7 +42,6 @@ import {
   getImportedProviderLabel,
   choiceMenuItem,
   optionMenuItem,
-  usePlaylistArtwork,
   usePlaylistTracks,
 } from "./playlistPageUtils";
 import { countAvailableTracks } from "./trackAvailability.ts";

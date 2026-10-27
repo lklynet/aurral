@@ -270,3 +270,24 @@ test("stale refresh failures cannot clear a newly connected account", async () =
   assert.equal(spotifyConnectionStore.getPublicStatus(7).connected, true);
   assert.equal(requestCount, 2);
 });
+
+test("Spotify playlist artwork uses the largest available source image", async () => {
+  spotifyConnectionStore.saveConnection(7, {
+    accessToken: "valid-access-token",
+    refreshToken: "valid-refresh-token",
+    expiresAt: Date.now() + 3_600_000,
+  });
+  globalThis.fetch = async () =>
+    jsonResponse(200, {
+      images: [
+        { url: "https://images.example.test/small.jpg", width: 100 },
+        { url: "https://images.example.test/original.jpg", width: 1000 },
+      ],
+    });
+  assert.equal(
+    await spotifyClient.getPlaylistArtworkUrl(7, "playlist"),
+    "https://images.example.test/original.jpg",
+  );
+  globalThis.fetch = async () => jsonResponse(200, { images: [] });
+  assert.equal(await spotifyClient.getPlaylistArtworkUrl(7, "playlist"), null);
+});

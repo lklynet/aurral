@@ -202,7 +202,6 @@ const SETTINGS_SEARCH_METADATA: Partial<Record<string, SettingsSearchMetadata>> 
       "Playback servers",
       "Scrobbling",
       "Navidrome playlist paths",
-      "Cover art",
       "Connection",
       "Account",
       "Login",

@@ -3,7 +3,7 @@ import ArtworkImage from "./ArtworkImage";
 import { Music } from "./icons";
 import ArtistImage from "./ArtistImage";
 import { getSearchResultKey, getSearchResultLink } from "../utils/searchNavigation";
-import { getPlaylistArtworkUrl } from "../utils/api/endpoints/playlists.ts";
+import { usePlaylistArtwork } from "../hooks/usePlaylistArtwork.ts";
 import { getArtistRecordId } from "../utils/artistTaste";
 import RouteLink from "./RouteLink";
 import Tooltip from "./Tooltip";
@@ -21,11 +21,14 @@ interface SearchMixedResultListProps {
   renderAction?: ((item: SearchItem) => ReactNode) | null;
 }
 
-function getSearchPlaylistArtworkUrl(playlist: SearchItem) {
+function getSearchPlaylistArtworkUrl(
+  playlist: SearchItem,
+  artworkUrlFor: ReturnType<typeof usePlaylistArtwork>["artworkUrlFor"],
+) {
   if (!playlist) return null;
   if (playlist.coverUrl) return playlist.coverUrl;
   const playlistId = String(playlist.id || "").trim();
-  return playlistId ? getPlaylistArtworkUrl(playlistId) : null;
+  return playlistId ? artworkUrlFor(playlistId) : null;
 }
 
 function getTypeLabel(item: SearchItem) {
@@ -64,7 +67,9 @@ function ResultThumbnail({
   item,
   artistImages,
   albumCovers,
+  artworkUrlFor,
 }: {
+  artworkUrlFor: ReturnType<typeof usePlaylistArtwork>["artworkUrlFor"];
   item: SearchItem;
   artistImages: SearchImageMap;
   albumCovers: SearchImageMap;
@@ -90,7 +95,7 @@ function ResultThumbnail({
 
   const coverSrc =
     item.type === "playlist"
-      ? getSearchPlaylistArtworkUrl(item)
+      ? getSearchPlaylistArtworkUrl(item, artworkUrlFor)
       : item.type === "album"
         ? albumCovers[String(item.id)] || item.coverUrl
         : item.type === "track"
@@ -126,6 +131,7 @@ function SearchMixedResultList({
   albumCovers = {},
   renderAction = null,
 }: SearchMixedResultListProps) {
+  const { artworkUrlFor } = usePlaylistArtwork();
   if (!items.length) return null;
 
   return (
@@ -157,6 +163,7 @@ function SearchMixedResultList({
                   item={item}
                   artistImages={artistImages}
                   albumCovers={albumCovers}
+                  artworkUrlFor={artworkUrlFor}
                 />
                 {link ? (
                   <RouteLink

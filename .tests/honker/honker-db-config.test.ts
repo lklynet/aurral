@@ -136,7 +136,6 @@ test("playlists publish from the startup task, not when a process loads the play
     integrations: {
       navidrome: { url: "http://navidrome.invalid", username: "test", password: "password" },
     },
-    playlistArtwork: { style: "aurral" },
     flows: [],
     sharedPlaylists: [],
   });

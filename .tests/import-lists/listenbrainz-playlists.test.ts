@@ -159,3 +159,23 @@ test("lists owned and created-for ListenBrainz playlists without duplicates", as
   assert.equal(calls.filter(({ url }) => url.includes("/1/playlist/")).length, 3);
   assert.equal(calls[0].options!.headers!.Authorization, "Token test-token");
 });
+
+test("ListenBrainz playlist imports retain JSPF cover artwork", async () => {
+  scrobbleConnectionStore.saveConnection(7, "listenbrainz", {
+    token: "test-token",
+    displayName: "playlist-user",
+  });
+  vi.spyOn(axios, "get").mockResolvedValue({
+    status: 200,
+    statusText: "OK",
+    headers: {},
+    data: {
+      playlist: { title: "Playlist", image: "https://images.example.test/playlist.jpg", track: [] },
+    },
+  });
+  const playlist = await listenbrainzPlaylistClient.getPlaylistTracks(
+    7,
+    "00000000-0000-4000-8000-000000000001",
+  );
+  assert.equal(playlist.artworkUrl, "https://images.example.test/playlist.jpg");
+});

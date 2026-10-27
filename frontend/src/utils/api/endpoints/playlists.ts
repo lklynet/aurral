@@ -61,7 +61,10 @@ import type {
   ResearchTrackResponse,
 } from "../../../../../backend/routes/playlists/handlers/utils.ts";
 import type { DeletePlaylistTrackArtworkResponse } from "../../../../../backend/routes/playlists/handlers/trackArtwork.ts";
-import type { PlaylistArtworkOkResponse } from "../../../../../backend/routes/playlists/handlers/artworkManagement.ts";
+import type {
+  PlaylistArtworkOkResponse,
+  PlaylistArtworkGenerateRequest,
+} from "../../../../../backend/routes/playlists/handlers/artworkManagement.ts";
 import type { getPlaylistStatusSnapshot } from "../../../../../backend/services/playlists/playlistStatusSnapshot.ts";
 import type { PlaylistTrackStatus } from "../../../pages/playlists/trackAvailability.ts";
 
@@ -72,6 +75,8 @@ type FlowCreatePayload = FlowFormPayload | { templateId: string; name?: string }
 type FlowUpdatePayload = Partial<FlowFormPayload> & { showInLibrary?: boolean };
 
 type PlaylistTrackPayload = Partial<NonNullable<ReturnType<typeof normalizePlaylistTrackEntry>>>;
+
+export type PlaylistArtworkStyle = NonNullable<PlaylistArtworkGenerateRequest["style"]>;
 
 type StaticPlaylistPayload = {
   name: string;
@@ -165,8 +170,14 @@ export const uploadPlaylistArtwork = (
 export const deletePlaylistArtwork = (playlistId: string): Promise<PlaylistArtworkOkResponse> =>
   deleteData(`/playlists/artwork/${encodeURIComponent(playlistId)}`);
 
-export const generatePlaylistArtwork = (playlistId: string): Promise<PlaylistArtworkOkResponse> =>
-  postData(`/playlists/artwork/${encodeURIComponent(playlistId)}/generate`);
+export const generatePlaylistArtwork = (
+  playlistId: string,
+  style: PlaylistArtworkStyle = "artist",
+): Promise<PlaylistArtworkOkResponse> =>
+  postData(`/playlists/artwork/${encodeURIComponent(playlistId)}/generate`, { style });
+
+export const restorePlaylistArtwork = (playlistId: string): Promise<PlaylistArtworkOkResponse> =>
+  postData(`/playlists/artwork/${encodeURIComponent(playlistId)}/restore`);
 
 export const getPlaylistStatus = ({
   signal,

@@ -23,6 +23,7 @@ interface ListenBrainzPlaylistExtension {
 }
 
 interface ListenBrainzPlaylist {
+  image?: string;
   identifier?: string;
   title?: string;
   date?: string;
@@ -245,6 +246,10 @@ export const listenbrainzPlaylistClient = {
       {},
       { token: connection.token, baseUrl: LISTENBRAINZ_API },
     );
-    return parseListenBrainzPlaylist(payload);
+    const artworkUrl = unwrapPlaylist(payload)?.image;
+    return {
+      ...parseListenBrainzPlaylist(payload),
+      ...(typeof artworkUrl === "string" && /^https?:\/\//i.test(artworkUrl) ? { artworkUrl } : {}),
+    };
   },
 };

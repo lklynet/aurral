@@ -35,14 +35,6 @@ export const DISCOVER_PLAYLIST_PRESETS = [
   },
 ];
 
-export const FIXED_DISCOVER_PLAYLIST_ARTWORK_COLORS = {
-  "discover-weekly": "#e6194B",
-  "trending-mix": "#3cb44b",
-  "library-blend": "#ffe119",
-  "focus-listening-history": "#4363d8",
-  "release-radar": "#f58231",
-};
-
 export const RELEASE_RADAR_PRESET = {
   id: "release-radar",
   name: "Release Radar",

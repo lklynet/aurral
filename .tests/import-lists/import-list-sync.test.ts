@@ -123,7 +123,6 @@ beforeEach(() => {
     flows: [],
     sharedPlaylists: [],
     playlistWorker: { existingFileMode: "reuse", concurrency: 1 },
-    playlistArtwork: { style: "aurral" },
   });
   invalidateFlowPlaylistConfigCache();
   downloadTracker.clearAll();
@@ -191,10 +190,13 @@ test("disconnected providers pause synced playlists without touching them until 
   error.mockClear();
   await runScheduledSync();
 
-  assert.deepEqual(requests.map(({ url }) => playlistItemsId(url)).sort(), [
-    "spotify-2024",
-    "spotify-2025",
-  ]);
+  assert.deepEqual(
+    requests
+      .map(({ url }) => playlistItemsId(url))
+      .filter(Boolean)
+      .sort(),
+    ["spotify-2024", "spotify-2025"],
+  );
   assert.deepEqual(importLogs(error), []);
   assert.deepEqual(importLogs(warn), [
     { provider: "ListenBrainz", ownerUserId: 7, playlistCount: 1 },

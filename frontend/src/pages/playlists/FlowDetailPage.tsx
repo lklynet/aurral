@@ -1,3 +1,4 @@
+import { usePlaylistArtwork } from "../../hooks/usePlaylistArtwork.ts";
 import { lazy, Suspense, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import {
@@ -62,7 +63,6 @@ import {
   exportPlaylistTracklist,
   getFlowActivityMessage,
   optionMenuItem,
-  usePlaylistArtwork,
   usePlaylistTracks,
 } from "./playlistPageUtils";
 import { usePlaylistStatus } from "./usePlaylistStatus";

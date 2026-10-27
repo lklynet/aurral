@@ -80,6 +80,7 @@ export function registerYoutubeMusicImport(router: Router) {
         externalName: playlist.name,
         tracks: playlist.tracks,
         sourceStats: playlist.stats,
+        artworkUrl: playlist.artworkUrl,
         syncEnabled,
         syncIntervalHours,
         keepRemovedTracks,

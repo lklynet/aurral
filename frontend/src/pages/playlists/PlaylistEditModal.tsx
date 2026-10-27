@@ -1,3 +1,4 @@
+import { usePlaylistArtwork } from "../../hooks/usePlaylistArtwork.ts";
 import { useState } from "react";
 import { RenamePlaylistModal } from "../../components/PlaylistModals";
 import { useToast } from "../../contexts/ToastContext";
@@ -5,13 +6,14 @@ import {
   deletePlaylistArtwork,
   generatePlaylistArtwork,
   uploadPlaylistArtwork,
+  restorePlaylistArtwork,
+  type PlaylistArtworkStyle,
 } from "../../utils/api/endpoints/playlists.ts";
-import { usePlaylistArtwork } from "./playlistPageUtils";
 import { asApiError } from "../../utils/api/core.ts";
 import { getApiErrorText } from "../onboardingUtils.tsx";
 
 type PlaylistEditModalProps = {
-  entry: { id: string; name: string };
+  entry: { id: string; name: string; importSource?: { artworkUrl?: string | null } | null };
   title: string;
   open: boolean;
   saving: boolean;
@@ -31,20 +33,23 @@ export function PlaylistEditModal({
 }: PlaylistEditModalProps) {
   const { showSuccess, showError } = useToast();
   const { artworkUrlFor, bumpArtwork } = usePlaylistArtwork();
+  const [coverStyle, setCoverStyle] = useState<PlaylistArtworkStyle>("artist");
   const [coverBusy, setCoverBusy] = useState(false);
   const [coverError, setCoverError] = useState("");
 
   const runCoverAction = async (
-    action: (playlistId: string) => Promise<unknown>,
+    action: (playlistId: string) => Promise<{ fallback?: boolean }>,
     successMessage: string,
     fallbackMessage: string,
   ) => {
     setCoverBusy(true);
     setCoverError("");
     try {
-      await action(entry.id);
+      const result = await action(entry.id);
       bumpArtwork(entry.id);
-      showSuccess(successMessage);
+      showSuccess(
+        result.fallback ? "No artist photo available. Created a simple cover." : successMessage,
+      );
     } catch (err) {
       const message =
         getApiErrorText(err, "message") || asApiError(err)?.message || fallbackMessage;
@@ -64,6 +69,18 @@ export function PlaylistEditModal({
       artworkUrl={artworkUrlFor(entry.id)}
       saving={saving}
       coverBusy={coverBusy}
+      coverStyle={coverStyle}
+      onCoverStyleChange={setCoverStyle}
+      onRestoreCover={
+        entry.importSource?.artworkUrl
+          ? () =>
+              runCoverAction(
+                restorePlaylistArtwork,
+                "Original cover restored",
+                "Failed to restore original cover",
+              )
+          : undefined
+      }
       error={error}
       coverError={coverError}
       onClose={() => {
@@ -84,7 +101,11 @@ export function PlaylistEditModal({
         runCoverAction(deletePlaylistArtwork, "Cover removed", "Failed to remove cover")
       }
       onGenerateCover={() =>
-        runCoverAction(generatePlaylistArtwork, "Cover generated", "Failed to generate cover")
+        runCoverAction(
+          (id) => generatePlaylistArtwork(id, coverStyle),
+          "Cover generated",
+          "Failed to generate cover",
+        )
       }
     />
   );

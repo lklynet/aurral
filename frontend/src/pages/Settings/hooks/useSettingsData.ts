@@ -210,9 +210,6 @@ const defaultSettings = {
       notifyRequestAvailable: false,
     },
   },
-  playlistArtwork: {
-    style: "photo" as const,
-  },
   inbox: {
     enabled: true,
     releases: true,

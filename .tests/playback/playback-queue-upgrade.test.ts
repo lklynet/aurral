@@ -46,7 +46,6 @@ test("media server jobs an older version left in the system task queue, includin
       navidrome: { url: "http://navidrome.test", username: "test", password: "password" },
     },
     onboardingComplete: true,
-    playlistArtwork: { style: "aurral" },
   });
   const navidrome = createFakeNavidrome({
     libraries: [{ id: 1, name: "Aurral Playlists", path: downloadRoot }],

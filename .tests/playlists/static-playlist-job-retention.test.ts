@@ -11,18 +11,6 @@ import {
   resetDatabase,
 } from "../helpers/backendTestHarness.ts";
 
-vi.mock("../../backend/services/playlistArtwork.ts", async (importOriginal) => {
-  const artwork =
-    await importOriginal<typeof import("../../backend/services/playlistArtwork.ts")>();
-  let rendered: ReturnType<typeof artwork.buildPlaylistArtworkWebpBuffer> | undefined;
-  return {
-    ...artwork,
-    buildPlaylistArtworkWebpBuffer: (
-      options: Parameters<typeof artwork.buildPlaylistArtworkWebpBuffer>[0],
-    ) => (rendered ??= artwork.buildPlaylistArtworkWebpBuffer(options)),
-  };
-});
-
 const [
   state,
   { db },

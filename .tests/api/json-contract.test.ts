@@ -157,7 +157,6 @@ beforeAll(async () => {
       metadata: { baseUrl: metadataServer.url, enableNarrowFallbacks: false },
     },
     security: { localNetworkBypass: { enabled: false } },
-    playlistArtwork: { style: "aurral" },
   });
   user = userOps.createUser("test", hashPassword("password"), "admin");
   dbOps.updateDiscoveryCache({
@@ -265,6 +264,7 @@ test("sign-in, bootstrap, and identity preserve their public response fields", a
   for (const feature of [
     "discover",
     "flows",
+    "playlistCoverTemplates",
     "activity",
     "review",
     "trackDownloads",

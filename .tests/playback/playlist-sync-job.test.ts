@@ -12,18 +12,6 @@ import { createFakeNavidrome } from "../helpers/fakeNavidrome.ts";
 import { callFromProcessesWhileHonkerLocked } from "../helpers/playlistManagerCallers.ts";
 import type { TestContext } from "vite-plus/test";
 
-vi.mock("../../backend/services/playlistArtwork.ts", async (importOriginal) => {
-  const artwork =
-    await importOriginal<typeof import("../../backend/services/playlistArtwork.ts")>();
-  let rendered: ReturnType<typeof artwork.buildPlaylistArtworkWebpBuffer> | undefined;
-  return {
-    ...artwork,
-    buildPlaylistArtworkWebpBuffer: (
-      options: Parameters<typeof artwork.buildPlaylistArtworkWebpBuffer>[0],
-    ) => (rendered ??= artwork.buildPlaylistArtworkWebpBuffer(options)),
-  };
-});
-
 const previousGroup = process.env.AURRAL_BACKGROUND_WORKER_GROUP;
 process.env.AURRAL_BACKGROUND_WORKER_GROUP = "library";
 const [
@@ -77,7 +65,6 @@ beforeEach(() => {
   dbOps.updateSettings({
     integrations: { navidrome: navidromeSettings, lastfm: { apiKey: "test" } },
     onboardingComplete: true,
-    playlistArtwork: { style: "aurral" },
     flows: [],
     sharedPlaylists: [],
   });

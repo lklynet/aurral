@@ -105,6 +105,7 @@ async function syncStaticPlaylistImportHere({
       tracks,
       stats,
       excluded = [],
+      artworkUrl,
     } = await fetchImportedPlaylistTracks({
       provider: playlist.importSource.provider,
       userId: ownerUserId,
@@ -113,6 +114,7 @@ async function syncStaticPlaylistImportHere({
       forceRefresh: true,
     });
     const syncImportSource = {
+      ...(artworkUrl ? { artworkUrl } : {}),
       lastSyncAt: Date.now(),
       lastSyncError: null,
       lastSyncTrackCount: tracks.length,

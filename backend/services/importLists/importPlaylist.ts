@@ -23,6 +23,7 @@ type ImportStats = {
 type ImportExcluded = ReturnType<typeof parseSpotifyPlaylistItems>["excluded"];
 
 export type ImportedPlaylistTracks = {
+  artworkUrl?: string | null;
   tracks: PlaylistTrack[];
   stats: ImportStats;
   excluded?: ImportExcluded;
@@ -45,7 +46,10 @@ export async function fetchImportedPlaylistTracks({
   if (provider === "spotify-playlist") {
     const items = await spotifyClient.listPlaylistTracks(userId, externalId, { forceRefresh });
     const parsed = parseSpotifyPlaylistItems(items);
-    return parsed;
+    const artworkUrl = await spotifyClient
+      .getPlaylistArtworkUrl(userId, externalId)
+      .catch(() => null);
+    return { ...parsed, artworkUrl };
   }
   if (provider === "listenbrainz-playlist") {
     return listenbrainzPlaylistClient.getPlaylistTracks(userId, externalId);
@@ -57,14 +61,17 @@ export async function fetchImportedPlaylistTracks({
     return lastfmStationClient.getStationTracks(userId, externalId, externalUsername);
   }
   if (provider === "youtube-music-playlist") {
-    const { tracks, stats, excluded } = await youtubeMusicPlaylistClient.getPlaylist(externalId, {
-      forceRefresh,
-    });
-    return { tracks, stats, excluded };
+    const { tracks, stats, excluded, artworkUrl } = await youtubeMusicPlaylistClient.getPlaylist(
+      externalId,
+      {
+        forceRefresh,
+      },
+    );
+    return { tracks, stats, excluded, artworkUrl };
   }
   if (provider === "deezer-playlist") {
-    const { tracks, stats, excluded } = await getDeezerPlaylist(externalId);
-    return { tracks, stats, excluded };
+    const { tracks, stats, excluded, artworkUrl } = await getDeezerPlaylist(externalId);
+    return { tracks, stats, excluded, artworkUrl };
   }
   const error: CodedError = new Error(
     `Unsupported playlist import provider: ${provider || "unknown"}`,
@@ -78,6 +85,7 @@ export async function enqueueImportedPlaylist({
   name,
   sourceName,
   description = null,
+  artworkUrl = null,
   provider,
   externalId,
   externalUsername,
@@ -92,6 +100,7 @@ export async function enqueueImportedPlaylist({
   name: string;
   sourceName: string;
   description?: string | null;
+  artworkUrl?: string | null;
   provider: string;
   externalId: string;
   externalUsername?: string | null;
@@ -108,6 +117,7 @@ export async function enqueueImportedPlaylist({
     externalId,
     externalUsername,
     externalName: externalName || name,
+    artworkUrl,
     syncEnabled,
     syncIntervalHours: syncEnabled ? syncIntervalHours : 0,
     keepRemovedTracks,

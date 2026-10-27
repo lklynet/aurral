@@ -1,7 +1,11 @@
 type ClientOptions = NonNullable<ConstructorParameters<typeof YoutubeMusicPlaylistClient>[0]>;
 type SessionFactory = NonNullable<ClientOptions["createInnertube"]>;
 type PlaylistPage = {
-  header?: { title: ReturnType<typeof text> };
+  header?: {
+    title: ReturnType<typeof text>;
+    thumbnails?: { url: string; width: number }[];
+    thumbnail?: { contents: { url: string; width: number }[] };
+  };
   contents: unknown[];
   getContinuation?: () => Promise<PlaylistPage>;
 };
@@ -135,7 +139,15 @@ test("client follows continuations, normalizes songs and videos, and reuses one 
     ],
   };
   const first = {
-    header: { title: text("Public playlist") },
+    header: {
+      title: text("Public playlist"),
+      thumbnail: {
+        contents: [
+          { url: "https://images.example.test/small.jpg", width: 120 },
+          { url: "https://images.example.test/large.jpg", width: 1000 },
+        ],
+      },
+    },
     contents: [
       song({
         id: "song-1",
@@ -158,6 +170,7 @@ test("client follows continuations, normalizes songs and videos, and reuses one 
   assert.equal(getCreateCalls(), 1);
   assert.equal(result.id, "PLabcdefghij_123");
   assert.equal(result.name, "Public playlist");
+  assert.equal(result.artworkUrl, "https://images.example.test/large.jpg");
   assert.deepEqual(
     result.tracks.map(({ artistName, trackName, albumName, durationMs }) => ({
       artistName,
@@ -568,3 +581,19 @@ test(
     assert.equal(recovered.name, "Recovered playlist");
   },
 );
+
+test("legacy YouTube playlist headers retain their thumbnail", async () => {
+  const { client } = makeClient([
+    {
+      header: {
+        title: text("Legacy playlist"),
+        thumbnails: [{ url: "https://images.example.test/original.jpg", width: 800 }],
+      },
+      contents: [],
+    },
+  ]);
+  assert.equal(
+    (await client.getPlaylist("PLabcdefghij_123")).artworkUrl,
+    "https://images.example.test/original.jpg",
+  );
+});

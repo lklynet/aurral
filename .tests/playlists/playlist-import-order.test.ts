@@ -214,7 +214,6 @@ beforeEach(async () => {
     flows: [],
     sharedPlaylists: [],
     playlistWorker: { existingFileMode: "reuse", concurrency: 1 },
-    playlistArtwork: { style: "aurral" },
   });
   invalidateFlowPlaylistConfigCache();
   downloadTracker.clearAll();
@@ -380,6 +379,7 @@ test("YouTube Music preview and import trust the refetched source title", async 
     .spyOn(youtubeMusicPlaylistClient, "getPlaylist")
     .mockImplementation(async () => ({
       id: "PLabcdefghij_123",
+      artworkUrl: "https://images.example.test/playlist.jpg",
       name: "Refetched source title",
       tracks: sourceTracks,
       stats: { sourceItems: 3, unavailable: 1, podcast: 0, incomplete: 0, duplicate: 0 },
@@ -432,6 +432,7 @@ test("YouTube Music preview and import trust the refetched source title", async 
       provider: "youtube-music-playlist",
       externalId: "PLabcdefghij_123",
       externalName: "Refetched source title",
+      artworkUrl: "https://images.example.test/playlist.jpg",
       syncIntervalHours: 12,
       keepRemovedTracks: false,
     },
@@ -1195,6 +1196,7 @@ test("YouTube Music sync uses the shared import path without logging its externa
     .spyOn(youtubeMusicPlaylistClient, "getPlaylist")
     .mockImplementation(async () => ({
       id: "PLsecretUnlisted_123",
+      artworkUrl: null,
       name: "Source title",
       tracks: [
         playlistTrack({ artistName: "New Artist", trackName: "New Song", durationMs: 180_000 }),

@@ -11,6 +11,7 @@ export interface FlowMix {
 }
 
 export interface Flow {
+  artworkRevision?: number;
   id: string;
   name: string;
   enabled: boolean;
@@ -36,6 +37,7 @@ export interface Flow {
 export type PlaylistStats = PlaylistStatusSnapshot["stats"];
 
 export interface StaticPlaylist {
+  artworkRevision?: number;
   id: string;
   name: string;
   ownerUserId: number | null;
@@ -45,12 +47,7 @@ export interface StaticPlaylist {
   trackCount: number;
   recordHistory: boolean;
   showTrackAvailability: boolean;
-  importSource: {
-    provider: string;
-    syncEnabled: boolean;
-    syncIntervalHours: number;
-    keepRemovedTracks: boolean;
-  } | null;
+  importSource: PlaylistStatusSnapshot["sharedPlaylists"][number]["importSource"];
   trackEntries: { id: string; identity: string }[];
   trackIdentities: string[];
 }

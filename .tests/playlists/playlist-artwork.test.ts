@@ -1,11 +1,8 @@
-import { requireFixture } from "./fixtures.ts";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import fs from "node:fs/promises";
 import sharp from "sharp";
-import axios from "../../lib/axiosFetch.ts";
-import { buildPlaylistArtworkWebpBuffer } from "../../backend/services/playlistArtwork.ts";
 
 import {
   setupIsolatedBackend,
@@ -19,20 +16,28 @@ const [
   { dbOps },
   { flowPlaylistConfig, invalidateFlowPlaylistConfigCache },
   { PlaylistManager },
+  artworkState,
+  imageSource,
+  imageProxy,
+  { downloadTracker },
 ] = await setupIsolatedBackend(
   "playlist-artwork",
   () => import("../../backend/config/db-sqlite.ts"),
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
   () => import("../../backend/services/playlists/playlistManager.ts"),
+  () => import("../../backend/services/playlistArtworkState.ts"),
+  () => import("../../backend/services/releaseGroupCoverService.ts"),
+  () => import("../../backend/services/imageProxyService.ts"),
+  () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
 );
 
 beforeEach(() => {
+  vi.spyOn(imageSource, "fetchDeezerArtistImageUrl").mockResolvedValue(null);
   resetDatabase(db);
   invalidateFlowPlaylistConfigCache();
   dbOps.updateSettings({
     integrations: {},
-    playlistArtwork: { style: "aurral" },
     onboardingComplete: true,
     flows: [],
     sharedPlaylists: [],
@@ -114,84 +119,93 @@ test("writes WebP artwork for flows and playlists without M3U files", async () =
   assert.equal(playlistMeta.format, "webp");
 });
 
-test("serves temporary artwork and replaces it when the photo source recovers", async () => {
-  dbOps.updateSettings({ playlistArtwork: { style: "photo" } });
+test("imports original covers, refreshes them on sync, and preserves user replacements", async () => {
   const source = await sharp({
-    create: {
-      width: 32,
-      height: 32,
-      channels: 3,
-      background: "#284466",
-    },
+    create: { width: 48, height: 48, channels: 3, background: "#284466" },
   })
-    .jpeg()
+    .png()
     .toBuffer();
-  let sourceAvailable = false;
-  vi.spyOn(axios, "get").mockImplementation(
-    requireFixture(async () => {
-      if (!sourceAvailable) throw new Error("Request failed with status code 503");
-      return { status: 200, statusText: "OK", headers: {}, data: source };
-    }),
-  );
+  const remote = vi.spyOn(imageProxy, "fetchRemoteImage").mockResolvedValue({
+    buffer: source,
+    contentType: "image/png",
+    metadata: await sharp(source).metadata(),
+  });
   const playlist = flowPlaylistConfig.createStaticPlaylist({
-    name: "Offline Photos",
-    tracks: [{ artistName: "A", trackName: "One" }],
+    name: "Imported",
+    importSource: {
+      provider: "deezer-playlist",
+      externalId: "123",
+      artworkUrl: "https://images.example.test/one.png",
+    },
   });
   const manager = makeManager();
-
   await manager.syncPlaylists();
-
-  assert.equal((await manager.resolveArtworkFile(playlist.id))?.extension, ".webp");
-
-  sourceAvailable = true;
+  assert.equal(artworkState.getPlaylistArtworkState(playlist.id)?.mode, "original");
+  assert.equal(remote.mock.calls.length, 1);
   await manager.syncPlaylists();
-
-  assert.equal((await manager.resolveArtworkFile(playlist.id))?.extension, ".jpg");
+  assert.equal(remote.mock.calls.length, 1);
+  flowPlaylistConfig.updateStaticPlaylist(playlist.id, {
+    importSource: { ...playlist.importSource, artworkUrl: "https://images.example.test/two.png" },
+  });
+  await manager.syncPlaylists();
+  assert.equal(remote.mock.calls.length, 2);
+  assert.equal(
+    artworkState.getPlaylistArtworkState(playlist.id)?.sourceUrl,
+    "https://images.example.test/two.png",
+  );
+  await manager.generateArtwork(playlist.id, "simple");
+  const artwork = (await manager.resolveArtworkFile(playlist.id))!;
+  const generated = await fs.readFile(artwork.safePath);
+  await manager.syncPlaylists();
+  assert.deepEqual(await fs.readFile(artwork.safePath), generated);
+  assert.equal(remote.mock.calls.length, 2);
+  await manager.restoreOriginalArtwork(playlist.id);
+  assert.equal(remote.mock.calls.length, 3);
+  assert.equal(artworkState.getPlaylistArtworkState(playlist.id)?.mode, "original");
+  await manager.saveArtworkUpload(playlist.id, source);
+  const uploaded = await fs.readFile(artwork.safePath);
+  await manager.syncPlaylists();
+  assert.deepEqual(await fs.readFile(artwork.safePath), uploaded);
+  assert.equal(remote.mock.calls.length, 3);
 });
 
-test("replaces the old generated JPEG fallback with photo artwork", async () => {
-  dbOps.updateSettings({ playlistArtwork: { style: "photo" } });
+test("an unavailable source preserves the current original cover and restore can be retried", async () => {
   const source = await sharp({
-    create: {
-      width: 32,
-      height: 32,
-      channels: 3,
-      background: "#284466",
-    },
+    create: { width: 48, height: 48, channels: 3, background: "#284466" },
   })
-    .jpeg()
+    .png()
     .toBuffer();
-  vi.spyOn(axios, "get").mockImplementation(async () => ({
-    status: 200,
-    statusText: "OK",
-    headers: {},
-    data: source,
-  }));
+  const remote = vi.spyOn(imageProxy, "fetchRemoteImage").mockResolvedValue({
+    buffer: source,
+    contentType: "image/png",
+    metadata: await sharp(source).metadata(),
+  });
   const playlist = flowPlaylistConfig.createStaticPlaylist({
-    name: "Legacy Fallback",
-    tracks: [{ artistName: "A", trackName: "One" }],
+    name: "Source unavailable",
+    importSource: {
+      provider: "youtube-music-playlist",
+      externalId: "PLabcdefghij_123",
+      artworkUrl: "https://images.example.test/cover.png",
+    },
   });
   const manager = makeManager();
-  await fs.mkdir(manager.libraryRoot, { recursive: true });
-  const baseName = manager._sanitize(manager.getPlaylistName(playlist.id));
-  const artworkPath = path.join(manager.libraryRoot, `${baseName}.jpg`);
-  const fallback = await buildPlaylistArtworkWebpBuffer({
-    playlistName: playlist.name,
-    kind: "Playlist",
-  });
-  await fs.writeFile(
-    artworkPath,
-    await sharp(fallback).jpeg({ quality: 90, mozjpeg: true }).toBuffer(),
-  );
-
   await manager.syncPlaylists();
-
-  const metadata = await sharp(artworkPath).metadata();
-  assert.equal(metadata.width, 1200);
-  assert.equal(metadata.height, 1200);
+  const artwork = (await manager.resolveArtworkFile(playlist.id))!;
+  const before = await fs.readFile(artwork.safePath);
+  remote.mockRejectedValue(new Error("offline"));
+  flowPlaylistConfig.updateStaticPlaylist(playlist.id, {
+    importSource: {
+      ...playlist.importSource,
+      artworkUrl: "https://images.example.test/changed.png",
+    },
+  });
+  await manager.syncPlaylists();
+  assert.deepEqual(await fs.readFile(artwork.safePath), before);
+  await assert.rejects(manager.restoreOriginalArtwork(playlist.id), /offline/);
+  assert.deepEqual(await fs.readFile(artwork.safePath), before);
 });
 
-test("does not replace uploaded artwork in photo mode", async () => {
+test("does not replace uploaded artwork when legacy global style changes", async () => {
   const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Custom Cover",
     tracks: [{ artistName: "A", trackName: "One" }],
@@ -211,15 +225,11 @@ test("does not replace uploaded artwork in photo mode", async () => {
   const artworkPath = (await manager.resolveArtworkFile(playlist.id))!.safePath;
   const before = await fs.readFile(artworkPath);
   dbOps.updateSettings({ playlistArtwork: { style: "photo" } });
-  let photoRequests = 0;
-  vi.spyOn(axios, "get").mockImplementation(async () => {
-    photoRequests += 1;
-    throw new Error("Unexpected photo request");
-  });
+  const photoRequests = vi.mocked(imageSource.fetchDeezerArtistImageUrl);
 
   await manager.syncPlaylists();
 
-  assert.equal(photoRequests, 0);
+  assert.equal(photoRequests.mock.calls.length, 0);
   assert.deepEqual(await fs.readFile(artworkPath), before);
 });
 
@@ -315,11 +325,7 @@ test("does not regenerate artwork after explicit remove until generate", async (
   await assert.doesNotReject(() => fs.access(flowWebp));
 });
 
-test("generates fallback artwork when the photo source is down", async () => {
-  dbOps.updateSettings({ playlistArtwork: { style: "photo" } });
-  vi.spyOn(axios, "get").mockImplementation(async () => {
-    throw new Error("Request failed with status code 503");
-  });
+test("generates a simple fallback when a playlist has no artists", async () => {
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Offline Generate" });
   const manager = makeManager();
 
@@ -345,4 +351,153 @@ test("syncs artwork changes to the existing Navidrome playlist", async () => {
 
   await manager.removeArtwork(playlist.id);
   assert.deepEqual(manager.__artworkUploads.at(-1), { id: "Artwork API", deleted: true });
+});
+
+test("renaming an imported playlist preserves its uploaded cover", async () => {
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
+    name: "Before rename",
+    importSource: {
+      provider: "deezer-playlist",
+      externalId: "123",
+      artworkUrl: "https://images.example.test/original.jpg",
+    },
+  });
+  const source = await sharp({
+    create: { width: 48, height: 48, channels: 3, background: "#a23871" },
+  })
+    .png()
+    .toBuffer();
+  const manager = makeManager();
+  await manager.saveArtworkUpload(playlist.id, source);
+  const oldFile = (await manager.resolveArtworkFile(playlist.id))!;
+  const before = await fs.readFile(oldFile.safePath);
+  flowPlaylistConfig.updateStaticPlaylist(playlist.id, { name: "After rename" });
+  await manager.syncPlaylists();
+  const newFile = (await manager.resolveArtworkFile(playlist.id))!;
+  assert.notEqual(newFile.safePath, oldFile.safePath);
+  assert.deepEqual(await fs.readFile(newFile.safePath), before);
+  await assert.rejects(fs.access(oldFile.safePath));
+  assert.equal(artworkState.getPlaylistArtworkState(playlist.id)?.mode, "upload");
+});
+
+test("an empty flow gains an artist cover after its tracklist is generated", async () => {
+  const flow = flowPlaylistConfig.createFlow({ name: "New flow", enabled: false });
+  const manager = makeManager();
+  await manager.ensurePlaylistArtwork(flow.id);
+  assert.ok(artworkState.getPlaylistArtworkState(flow.id)?.fallbackSignature);
+  const source = await sharp({
+    create: { width: 48, height: 48, channels: 3, background: "#284466" },
+  })
+    .png()
+    .toBuffer();
+  vi.mocked(imageSource.fetchDeezerArtistImageUrl).mockResolvedValue(
+    "https://images.example.test/artist.jpg",
+  );
+  vi.spyOn(imageProxy, "fetchRemoteImage").mockResolvedValue({
+    buffer: source,
+    contentType: "image/png",
+    metadata: await sharp(source).metadata(),
+  });
+  downloadTracker.addJob({ artistName: "Flow artist", trackName: "Track" }, flow.id);
+  await manager.ensurePlaylistArtwork(flow.id);
+  assert.equal(artworkState.getPlaylistArtworkState(flow.id)?.artistKey, "flow artist");
+  assert.equal(artworkState.getPlaylistArtworkState(flow.id)?.fallbackSignature, null);
+});
+
+async function useArtistPhotos() {
+  const source = await sharp({
+    create: { width: 48, height: 48, channels: 3, background: "#284466" },
+  })
+    .png()
+    .toBuffer();
+  vi.mocked(imageSource.fetchDeezerArtistImageUrl).mockImplementation(
+    async ({ artistName } = {}) => `https://images.example.test/${artistName}.jpg`,
+  );
+  return vi.spyOn(imageProxy, "fetchRemoteImage").mockResolvedValue({
+    buffer: source,
+    contentType: "image/png",
+    metadata: await sharp(source).metadata(),
+  });
+}
+
+test("each flow run refreshes its generated cover once, even with the same artists", async () => {
+  const source = await useArtistPhotos();
+  const flow = flowPlaylistConfig.createFlow({ name: "Rotating flow", enabled: false });
+  const manager = makeManager();
+  const tracks = [
+    { artistName: "First", trackName: "One" },
+    { artistName: "Second", trackName: "Two" },
+  ];
+  downloadTracker.addJobs(tracks, flow.id);
+  flowPlaylistConfig.markLastRunAt(flow.id, 1000);
+  await manager.ensurePlaylistArtwork(flow.id);
+  const before = artworkState.getPlaylistArtworkState(flow.id)!;
+  downloadTracker.clearByPlaylistId(flow.id);
+  downloadTracker.addJobs(tracks, flow.id);
+  flowPlaylistConfig.markLastRunAt(flow.id, 1000);
+  await manager.ensurePlaylistArtwork(flow.id);
+  const refreshed = artworkState.getPlaylistArtworkState(flow.id)!;
+  assert.notEqual(refreshed.artistKey, before.artistKey);
+  assert.notEqual(refreshed.template, before.template);
+  assert.equal(refreshed.flowRunAt, 1001);
+  assert.ok(refreshed.revision! > before.revision!);
+  const requests = source.mock.calls.length;
+  await manager.ensurePlaylistArtwork(flow.id);
+  assert.deepEqual(artworkState.getPlaylistArtworkState(flow.id), refreshed);
+  assert.equal(source.mock.calls.length, requests);
+  downloadTracker.clearByPlaylistId(flow.id);
+  downloadTracker.addJob({ artistName: "New artist", trackName: "New track" }, flow.id);
+  flowPlaylistConfig.markLastRunAt(flow.id, 3000);
+  await manager.ensurePlaylistArtwork(flow.id);
+  assert.equal(artworkState.getPlaylistArtworkState(flow.id)?.artistKey, "new artist");
+});
+
+for (const choice of ["simple", "upload", "removed"] as const) {
+  test(`flow refresh preserves an explicit ${choice} cover choice`, async () => {
+    const source = await useArtistPhotos();
+    const flow = flowPlaylistConfig.createFlow({ name: `Preserve ${choice}`, enabled: false });
+    downloadTracker.addJob({ artistName: "First", trackName: "One" }, flow.id);
+    flowPlaylistConfig.markLastRunAt(flow.id, 1000);
+    const manager = makeManager();
+    await manager.ensurePlaylistArtwork(flow.id);
+    if (choice === "simple") await manager.generateArtwork(flow.id, "simple");
+    else if (choice === "removed") await manager.removeArtwork(flow.id);
+    else
+      await manager.saveArtworkUpload(
+        flow.id,
+        await sharp({ create: { width: 48, height: 48, channels: 3, background: "#ff0000" } })
+          .png()
+          .toBuffer(),
+      );
+    const state = artworkState.getPlaylistArtworkState(flow.id);
+    const cover = await manager.resolveArtworkFile(flow.id);
+    const bytes = cover ? await fs.readFile(cover.safePath) : null;
+    const requests = source.mock.calls.length;
+    downloadTracker.clearByPlaylistId(flow.id);
+    downloadTracker.addJob({ artistName: "Second", trackName: "Two" }, flow.id);
+    flowPlaylistConfig.markLastRunAt(flow.id, 2000);
+    await manager.ensurePlaylistArtwork(flow.id);
+    assert.deepEqual(artworkState.getPlaylistArtworkState(flow.id), state);
+    const currentCover = await manager.resolveArtworkFile(flow.id);
+    assert.deepEqual(currentCover ? await fs.readFile(currentCover.safePath) : null, bytes);
+    assert.equal(source.mock.calls.length, requests);
+  });
+}
+
+test("a failed tracklist commit does not advance the flow run time", async () => {
+  const { downloadWorker, DownloadWorker } =
+    await import("../../backend/services/downloadJobs/downloadWorker.ts");
+  assert.ok(downloadWorker instanceof DownloadWorker);
+  const flow = flowPlaylistConfig.createFlow({ name: "Failed commit", enabled: false });
+  flowPlaylistConfig.markLastRunAt(flow.id, 1000);
+  vi.spyOn(downloadTracker, "addJobs").mockImplementation(() => {
+    throw new Error("write failed");
+  });
+  await assert.rejects(
+    downloadWorker.seedFlowRunWithTracks(flow.id, flow, [
+      { artistName: "Artist", trackName: "Track" },
+    ]),
+    /write failed/,
+  );
+  assert.equal(flowPlaylistConfig.getFlow(flow.id)?.lastRunAt, 1000);
 });

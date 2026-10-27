@@ -192,7 +192,7 @@ export function registerSpotifyImport(router: Router) {
       if (!name) {
         return res.status(400).json({ error: "name is required" });
       }
-      const { tracks, stats } = await fetchImportedPlaylistTracks({
+      const { tracks, stats, artworkUrl } = await fetchImportedPlaylistTracks({
         provider: "spotify-playlist",
         userId: req.user!.id,
         externalId: playlistId,
@@ -207,6 +207,7 @@ export function registerSpotifyImport(router: Router) {
         externalName,
         tracks,
         sourceStats: stats,
+        artworkUrl,
         syncEnabled,
         syncIntervalHours,
         keepRemovedTracks,

@@ -78,7 +78,7 @@ export function registerListenBrainzImport(router: Router) {
         return res.status(400).json({ error: "playlistId is required" });
       }
       if (!name) return res.status(400).json({ error: "name is required" });
-      const { tracks, stats } = await fetchImportedPlaylistTracks({
+      const { tracks, stats, artworkUrl } = await fetchImportedPlaylistTracks({
         userId: req.user!.id,
         ...playlistImport,
       });
@@ -91,6 +91,7 @@ export function registerListenBrainzImport(router: Router) {
         externalName,
         tracks,
         sourceStats: stats,
+        artworkUrl,
         syncEnabled,
         syncIntervalHours,
         keepRemovedTracks,

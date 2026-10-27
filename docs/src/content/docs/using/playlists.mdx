@@ -23,6 +23,12 @@ A static playlist comes from Spotify, YouTube Music, Last.fm, ListenBrainz, a JS
 
 Flow and static playlist names must be unique across both kinds.
 
+## Cover art
+
+Imported playlists keep their original artwork when the source provides it. Other playlists use an artist photo from their tracklist. Generating again picks another artist when a different photo is available. Generated flow covers refresh with each new tracklist; uploads and Simple covers stay as you chose them.
+
+Open a playlist's edit dialog to generate an **Artist** or **Simple** cover, or upload your own. Simple covers use a solid color and the playlist title. Sync keeps your replacement until you choose **Restore original cover**. If no artist photo is available, Aurral creates a simple cover.
+
 ## Stop plays from affecting recommendations
 
 Open the menu of a flow or static playlist and turn off **Scrobble tracks**. Aurral then does not record plays from that playlist in your listening history, your recommendations, or your scrobbling services. Each playlist has its own setting. Plays recorded before the change stay.

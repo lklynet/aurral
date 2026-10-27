@@ -1,123 +1,113 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomInt } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { dbOps } from "../db/helpers/index.ts";
-import { buildPlaylistArtworkWebpBuffer } from "./playlistArtwork.ts";
-import getSharp from "./sharpConfig.ts";
-import { fetchImageBuffer, renderStylizedPhotoArtwork } from "./discovery/stylizedArtwork.ts";
-export const PLAYLIST_ARTWORK_STYLES = ["aurral", "photo"];
+import { getArtistImage } from "./imageService.ts";
+import { fetchDeezerArtistImageUrl } from "./releaseGroupCoverService.ts";
+import { buildStableImageProxyUrl, fetchRemoteImage, warmImageProxy } from "./imageProxyService.ts";
+import { PLAYLIST_COVER_TEMPLATES, renderPlaylistCover } from "./playlistCoverTemplates.ts";
+import { writePlaylistArtworkBuffer } from "./playlistArtwork.ts";
+import type { PlaylistArtworkState, PlaylistArtworkStyle } from "./playlistArtworkState.ts";
 
-export function getPlaylistArtworkStyle() {
-  const settings = dbOps.getSettings() || {};
-  const style = String(settings?.playlistArtwork?.style || "photo")
-    .trim()
-    .toLowerCase();
-  return PLAYLIST_ARTWORK_STYLES.includes(style) ? style : "photo";
-}
-
-export function getArtworkExtensionForStyle(style = getPlaylistArtworkStyle()) {
-  return style === "photo" ? ".jpg" : ".webp";
-}
+export type PlaylistArtworkArtist = { artistName: string; artistMbid?: string | null };
 
 export function getArtworkContentTypeForExtension(extension: string) {
-  const normalized = String(extension || "").toLowerCase();
+  const normalized = extension.toLowerCase();
   if (normalized === ".webp") return "image/webp";
   if (normalized === ".jpg" || normalized === ".jpeg") return "image/jpeg";
   return "image/png";
 }
 
-export async function resolvePlaylistSourceImageUrl() {
-  return `https://picsum.photos/800/800?random=${randomUUID()}`;
+export async function readPlaylistImageBuffer(url: string) {
+  const source = buildStableImageProxyUrl(url) || url;
+  if (/^https?:\/\//i.test(source)) return (await fetchRemoteImage(source)).buffer;
+  const entry = await warmImageProxy(source);
+  return fs.readFile(entry.imagePath);
 }
 
-export async function isGeneratedPlaylistArtworkFallback(
-  filePath: string,
-  { title, kind }: { title: string; kind: string },
-) {
-  try {
-    const sharp = await getSharp();
-    const metadata = await sharp(filePath).metadata();
-    if (metadata.width !== 1000 || metadata.height !== 1000) return false;
-    const existing = await fs.readFile(filePath);
-    const fallback = await buildPlaylistArtworkWebpBuffer({ playlistName: title, kind });
-    if (path.extname(filePath).toLowerCase() === ".webp") {
-      return existing.equals(fallback);
-    }
-    const jpeg = await sharp(fallback).jpeg({ quality: 90, mozjpeg: true }).toBuffer();
-    return existing.equals(jpeg);
-  } catch {
-    return false;
+export function playlistArtistSignature(artists: PlaylistArtworkArtist[]) {
+  return createHash("sha256")
+    .update(
+      JSON.stringify(
+        [
+          ...new Set(
+            artists.map(
+              (artist) => `${artist.artistName.trim().toLowerCase()}:${artist.artistMbid || ""}`,
+            ),
+          ),
+        ].sort(),
+      ),
+    )
+    .digest("hex");
+}
+
+async function pickArtistImage(artists: PlaylistArtworkArtist[], previousKey?: string | null) {
+  const unique = new Map<string, PlaylistArtworkArtist>();
+  for (const artist of artists) {
+    const key = artist.artistName.trim().toLowerCase();
+    if (key && (!unique.has(key) || !unique.get(key)?.artistMbid)) unique.set(key, artist);
   }
-}
-
-async function buildGeneratedPlaylistArtworkBuffer({
-  title,
-  kind = "Playlist",
-  style = null,
-  paletteSeed = null,
-}: {
-  title: string;
-  kind?: string;
-  style?: string | null;
-  paletteSeed?: string | null;
-}) {
-  const resolvedStyle = style || getPlaylistArtworkStyle();
-  const displayTitle = String(title || "").trim() || "Untitled";
-
-  if (resolvedStyle === "aurral") {
-    return buildPlaylistArtworkWebpBuffer({
-      playlistName: displayTitle,
-      kind,
-    });
+  const candidates = [...unique.entries()].filter(([key]) => key !== previousKey);
+  for (let i = candidates.length - 1; i > 0; i--) {
+    const j = randomInt(i + 1);
+    [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
   }
-
-  const sourceImageUrl = await resolvePlaylistSourceImageUrl();
-  const sourceBuffer = await fetchImageBuffer(sourceImageUrl);
-  return renderStylizedPhotoArtwork({
-    imageBuffer: sourceBuffer,
-    title: displayTitle,
-    paletteSeed,
-  });
+  const selected = candidates.slice(0, 6);
+  const previous = previousKey ? unique.get(previousKey) : null;
+  if (previous && previousKey) selected.push([previousKey, previous]);
+  for (const [artistKey, artist] of selected) {
+    try {
+      let url: string | null = null;
+      if (artist.artistMbid) {
+        const image = await getArtistImage(artist.artistMbid, { artistName: artist.artistName });
+        url =
+          image.images.find(
+            (entry) => !entry.types?.some((type) => /front|album|cover/i.test(type)),
+          )?.image || null;
+      }
+      url ||= await fetchDeezerArtistImageUrl({ artistName: artist.artistName });
+      if (url) return { artistKey, buffer: await readPlaylistImageBuffer(url) };
+    } catch {}
+  }
+  return null;
 }
-
-const resolveArtworkOutputPath = (outputPath: string, style: string) => {
-  const extension = getArtworkExtensionForStyle(style);
-  const directory = path.dirname(outputPath);
-  const baseName = path.basename(outputPath, path.extname(outputPath));
-  return path.join(directory, `${baseName}${extension}`);
-};
 
 export async function writeGeneratedPlaylistArtwork({
   outputPath,
   title,
-  kind = "Playlist",
-  style = null,
-  paletteSeed = null,
+  artists = [],
+  style = "artist",
+  previous = null,
 }: {
   outputPath: string;
   title: string;
-  kind?: string;
-  style?: string | null;
-  paletteSeed?: string | null;
+  artists?: PlaylistArtworkArtist[];
+  style?: PlaylistArtworkStyle;
+  previous?: PlaylistArtworkState | null;
 }) {
-  const resolvedStyle = style || getPlaylistArtworkStyle();
-  const targetPath = resolveArtworkOutputPath(outputPath, resolvedStyle);
-  const directory = path.dirname(targetPath);
-  const baseName = path.basename(targetPath, path.extname(targetPath));
-  const keepExtension = path.extname(targetPath);
-
-  const buffer = await buildGeneratedPlaylistArtworkBuffer({
-    title,
-    kind,
-    style: resolvedStyle,
-    paletteSeed,
-  });
-
-  for (const extension of [".jpg", ".webp", ".png"]) {
-    if (extension === keepExtension) continue;
-    await fs.unlink(path.join(directory, `${baseName}${extension}`)).catch(() => {});
-  }
-
-  await fs.writeFile(targetPath, buffer);
-  return targetPath;
+  const image = style === "artist" ? await pickArtistImage(artists, previous?.artistKey) : null;
+  const index = previous?.template ? PLAYLIST_COVER_TEMPLATES.indexOf(previous.template) : -1;
+  const template =
+    PLAYLIST_COVER_TEMPLATES[
+      index < 0
+        ? randomInt(PLAYLIST_COVER_TEMPLATES.length)
+        : (index + 1) % PLAYLIST_COVER_TEMPLATES.length
+    ];
+  const buffer = await renderPlaylistCover({ title, imageBuffer: image?.buffer, template });
+  const target = path.join(
+    path.dirname(outputPath),
+    `${path.basename(outputPath, path.extname(outputPath))}.webp`,
+  );
+  await writePlaylistArtworkBuffer(buffer, target);
+  for (const extension of [".jpg", ".png"])
+    await fs.unlink(target.slice(0, -5) + extension).catch(() => {});
+  return {
+    outputPath: target,
+    state: {
+      mode: style,
+      artistKey: image?.artistKey || null,
+      template: image ? template : previous?.template || null,
+      sourceUrl: null,
+      fallbackSignature: style === "artist" && !image ? playlistArtistSignature(artists) : null,
+    } satisfies PlaylistArtworkState,
+  };
 }

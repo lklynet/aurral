@@ -1,6 +1,10 @@
 import express from "express";
 import { playlistManager } from "../../../services/playlists/playlistManager.ts";
 import { canAccessPlaylistType } from "./utils.ts";
+import {
+  getPlaylistArtworkState,
+  type PlaylistArtworkStyle,
+} from "../../../services/playlistArtworkState.ts";
 import { asAppError } from "../../../../lib/errors.ts";
 import type { Router } from "express";
 
@@ -12,7 +16,8 @@ const artworkUploadParser = express.raw({
   },
 });
 
-export type PlaylistArtworkOkResponse = { ok: true };
+export type PlaylistArtworkOkResponse = { ok: true; fallback?: boolean };
+export type PlaylistArtworkGenerateRequest = { style?: PlaylistArtworkStyle };
 
 export function registerArtworkManagement(router: Router) {
   router.put<"/artwork/:playlistId">(
@@ -57,6 +62,21 @@ export function registerArtworkManagement(router: Router) {
     }
   });
 
+  router.post<"/artwork/:playlistId/restore">("/artwork/:playlistId/restore", async (req, res) => {
+    const { playlistId } = req.params;
+    if (!canAccessPlaylistType(req.user, playlistId))
+      return res.status(404).json({ error: "Playlist not found" });
+    try {
+      await playlistManager.restoreOriginalArtwork(playlistId);
+      return res.json({ ok: true });
+    } catch (error) {
+      return res.status(400).json({
+        error: "Bad Request",
+        message: asAppError(error)?.message || "Failed to restore original cover",
+      });
+    }
+  });
+
   router.post<"/artwork/:playlistId/generate">(
     "/artwork/:playlistId/generate",
     async (req, res) => {
@@ -65,8 +85,14 @@ export function registerArtworkManagement(router: Router) {
         return res.status(404).json({ error: "Playlist not found" });
       }
       try {
-        await playlistManager.generateArtwork(playlistId);
-        return res.json({ ok: true });
+        const style: unknown = req.body?.style ?? "artist";
+        if (style !== "artist" && style !== "simple")
+          return res.status(400).json({ error: "Choose artist or simple cover art" });
+        await playlistManager.generateArtwork(playlistId, style);
+        return res.json({
+          ok: true,
+          fallback: getPlaylistArtworkState(playlistId)?.fallbackSignature != null,
+        });
       } catch (error) {
         return res.status(400).json({
           error: "Bad Request",

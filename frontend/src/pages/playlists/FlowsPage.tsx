@@ -1,3 +1,4 @@
+import { usePlaylistArtwork } from "../../hooks/usePlaylistArtwork.ts";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import RouteLink from "../../components/RouteLink";
@@ -19,7 +20,6 @@ import {
   describeFlowSchedule,
   formatFlowTrackLabel,
   getFlowActivityMessage,
-  usePlaylistArtwork,
 } from "./playlistPageUtils";
 import { usePlaylistStatus } from "./usePlaylistStatus";
 import { flowPath } from "../../navigation/playlistPaths";

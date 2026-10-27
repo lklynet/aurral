@@ -7,6 +7,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
+import type { PlaylistArtworkStyle } from "../utils/api/endpoints/playlists.ts";
 import { Check, MoreVertical, Plus, Sparkles, Trash2, Upload, X } from "./icons";
 import { useModalDialog } from "../hooks/useModalDialog.ts";
 import { DotLoader } from "./DotLoader";
@@ -193,6 +194,9 @@ interface RenamePlaylistModalProps {
   onUpload?: (file: File) => void | Promise<void>;
   onRemoveCover?: () => void | Promise<void>;
   onGenerateCover?: () => void | Promise<void>;
+  coverStyle?: PlaylistArtworkStyle;
+  onCoverStyleChange?: (style: PlaylistArtworkStyle) => void;
+  onRestoreCover?: () => void | Promise<void>;
 }
 
 export function RenamePlaylistModal({
@@ -210,6 +214,9 @@ export function RenamePlaylistModal({
   onUpload,
   onRemoveCover,
   onGenerateCover,
+  coverStyle = "artist",
+  onCoverStyleChange,
+  onRestoreCover,
 }: RenamePlaylistModalProps) {
   const [name, setName] = useState(defaultName);
   const [localError, setLocalError] = useState("");
@@ -251,6 +258,10 @@ export function RenamePlaylistModal({
 
   useEffect(() => {
     setImageFailed(false);
+    setPreviewUrl((previous) => {
+      if (previous?.startsWith("blob:")) URL.revokeObjectURL(previous);
+      return null;
+    });
   }, [artworkUrl]);
 
   useEffect(
@@ -422,6 +433,17 @@ export function RenamePlaylistModal({
                         Generate
                       </span>
                     </button>
+                    {onRestoreCover ? (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="artist-menu-item"
+                        disabled={busy}
+                        onClick={() => onRestoreCover()}
+                      >
+                        Restore original cover
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       role="menuitem"
@@ -461,6 +483,30 @@ export function RenamePlaylistModal({
                 autoFocus
               />
             </div>
+            {onCoverStyleChange ? (
+              <div className="artist-segmented" role="group" aria-label="Generated cover">
+                {(["artist", "simple"] as const).map((style) => (
+                  <button
+                    key={style}
+                    type="button"
+                    className={`artist-segmented-button${coverStyle === style ? " is-active" : ""}`}
+                    aria-pressed={coverStyle === style}
+                    disabled={busy}
+                    onClick={() => onCoverStyleChange(style)}
+                  >
+                    {style === "artist" ? "Artist" : "Simple"}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={busy}
+                  onClick={() => onGenerateCover?.()}
+                >
+                  Generate again
+                </button>
+              </div>
+            ) : null}
             {combinedError ? <p className="artist-error-text">{combinedError}</p> : null}
           </div>
           <div className="playlist-modal__edit-actions">

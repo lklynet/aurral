@@ -151,6 +151,7 @@ async function addToLibrary(user: RequestUser, id: string): Promise<EditorialLib
     externalName: playlist.name,
     tracks: playlist.tracks,
     sourceStats: playlist.stats,
+    artworkUrl: playlist.artworkUrl,
     syncEnabled: true,
     syncIntervalHours: SYNC_INTERVAL_HOURS,
     keepRemovedTracks: true,

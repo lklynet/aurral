@@ -19,6 +19,7 @@ const [
   { flowPlaylistConfig, invalidateFlowPlaylistConfigCache },
   { downloadTracker },
   { startPlaylistStatusBroadcasts },
+  { setPlaylistArtworkState, getPlaylistArtworkState },
 ] = await setupIsolatedBackend(
   "status-broadcaster",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -26,6 +27,7 @@ const [
   () => import("../../backend/services/playlists/flowPlaylistConfig.ts"),
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
   () => import("../../backend/services/playlists/playlistStatusBroadcaster.ts"),
+  () => import("../../backend/services/playlistArtworkState.ts"),
 );
 
 type StatusMessage = {
@@ -245,4 +247,30 @@ test("each user's countdown advances while the globally earliest countdown stays
     requireFixture(requireFixture(laterUser).messages.at(-1)).status.hint.message,
     "Next update in 1 minute",
   );
+});
+
+test("saved cover changes reach connected clients through playlist status", (t) => {
+  const flow = flowPlaylistConfig.createFlow({ name: "Rotating cover", ownerUserId: 1 });
+  const socket = new SocketTransport();
+  const client = socket.connect("first", { id: 1, role: "user" });
+  start(t, socket);
+  const cover = {
+    mode: "artist",
+    artistKey: "artist",
+    template: "a1",
+    sourceUrl: null,
+    fallbackSignature: null,
+  } as const;
+  setPlaylistArtworkState(flow.id, cover);
+  vi.advanceTimersByTime(4000);
+  const firstRevision = client.messages
+    .at(-1)
+    ?.status.flows.find((entry) => entry.id === flow.id)?.artworkRevision;
+  assert.equal(firstRevision, getPlaylistArtworkState(flow.id)?.revision);
+  setPlaylistArtworkState(flow.id, { ...cover, template: "a2" });
+  vi.advanceTimersByTime(4000);
+  const nextRevision = client.messages
+    .at(-1)
+    ?.status.flows.find((entry) => entry.id === flow.id)?.artworkRevision;
+  assert.ok(firstRevision && nextRevision && nextRevision > firstRevision);
 });

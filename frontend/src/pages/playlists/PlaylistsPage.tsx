@@ -1,3 +1,4 @@
+import { usePlaylistArtwork } from "../../hooks/usePlaylistArtwork.ts";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import RouteLink from "../../components/RouteLink";
@@ -17,7 +18,6 @@ import {
   formatTrackTotal,
   getImportedProviderLabel,
   getImportedProviderLogo,
-  usePlaylistArtwork,
 } from "./playlistPageUtils";
 import { usePlaylistStatus } from "./usePlaylistStatus";
 import { useHiddenPlaylistTracks } from "./usePlaylistBulkActions.ts";

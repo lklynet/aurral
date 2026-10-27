@@ -85,7 +85,6 @@ test("serves playlist artwork from a hidden data directory", async () => {
 test("a new flow or static playlist has its cover as soon as it is created, with no media server connected", async () => {
   dbOps.updateSettings({
     integrations: {},
-    playlistArtwork: { style: "aurral" },
     onboardingComplete: true,
   });
   userOps.createUser("curator", hashPassword("curator-password"), "admin");
@@ -126,6 +125,21 @@ test("a new flow or static playlist has its cover as soon as it is created, with
     const flowCover = await request(`/artwork/${flow.id}`);
     assert.equal(flowCover.status, 200);
     assert.equal(flowCover.type, "image/webp");
+    const initialStatus = await (await request("/status")).body.json();
+    const initialRevision = initialStatus.flows.find(
+      (entry: { id: string }) => entry.id === flow.id,
+    )?.artworkRevision;
+    const generated = await request(`/artwork/${flow.id}/generate`, { style: "simple" });
+    assert.equal(generated.status, 200);
+    assert.equal((await generated.body.json()).fallback, false);
+    const updatedStatus = await (await request("/status")).body.json();
+    const updatedRevision = updatedStatus.flows.find(
+      (entry: { id: string }) => entry.id === flow.id,
+    )?.artworkRevision;
+    assert.equal(typeof initialRevision, "number");
+    assert.ok(updatedRevision > initialRevision);
+    assert.equal((await request(`/artwork/${flow.id}/generate`, { style: "photo" })).status, 400);
+    assert.equal((await request(`/artwork/${flow.id}/restore`, {})).status, 400);
 
     const playlistResponse = await request("/shared-playlists", { name: "Fresh Playlist" });
     assert.equal(playlistResponse.status, 200);

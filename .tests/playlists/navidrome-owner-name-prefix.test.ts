@@ -23,7 +23,6 @@ beforeEach(() => {
     onboardingComplete: true,
     flows: [],
     sharedPlaylists: [],
-    playlistArtwork: { style: "aurral" },
   });
 });
 

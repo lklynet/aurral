@@ -105,9 +105,32 @@ const readField = (source: unknown, key: string): unknown =>
       : undefined
     : undefined;
 
+const getPlaylistArtworkUrl = (playlist: YoutubeMusicPlaylist) => {
+  const header = playlist.header;
+  const headers = [header, readField(header, "header"), readField(playlist, "metadata")];
+  const thumbnails = headers.flatMap((entry) => {
+    const value =
+      readField(entry, "thumbnails") ?? readField(readField(entry, "thumbnail"), "contents");
+    return Array.isArray(value) ? value : [];
+  });
+  return (
+    thumbnails
+      .map((thumbnail) => ({
+        url: readField(thumbnail, "url"),
+        width: Number(readField(thumbnail, "width")) || 0,
+      }))
+      .filter(
+        (thumbnail): thumbnail is { url: string; width: number } =>
+          typeof thumbnail.url === "string" && /^https?:\/\//i.test(thumbnail.url),
+      )
+      .sort((left, right) => right.width - left.width)[0]?.url || null
+  );
+};
+
 const getPlaylistName = (playlist: YoutubeMusicPlaylist | undefined) => {
   const candidates = [
     readField(playlist?.header, "title"),
+    readField(readField(playlist?.header, "header"), "title"),
     readField(readField(playlist, "metadata"), "title"),
     readField(playlist, "title"),
   ];
@@ -375,6 +398,7 @@ export class YoutubeMusicPlaylistClient {
       { signal },
     );
     const name = getPlaylistName(page);
+    const artworkUrl = getPlaylistArtworkUrl(page);
     if (!name || !Array.isArray(page?.contents)) {
       throw providerError("The YouTube Music playlist is unavailable", {
         code: "YOUTUBE_PLAYLIST_UNAVAILABLE",
@@ -426,7 +450,7 @@ export class YoutubeMusicPlaylistClient {
       );
     }
 
-    return { id, name, ...normalizeRows(rows) };
+    return { id, name, artworkUrl, ...normalizeRows(rows) };
   }
 }
 

@@ -42,7 +42,6 @@ beforeEach(() => {
     integrations: {},
     flows: [],
     sharedPlaylists: [],
-    playlistArtwork: { style: "aurral" },
   });
   honker.getPlaylistOperationQueue();
   db.prepare("DELETE FROM _honker_live").run();

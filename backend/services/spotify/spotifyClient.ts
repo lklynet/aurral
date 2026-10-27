@@ -41,6 +41,7 @@ interface SpotifyPlaylistItem {
 }
 
 interface SpotifyPlaylistSummary {
+  images?: { url?: string; width?: number | null; height?: number | null }[];
   id?: string;
   name?: string;
   items?: { total?: number };
@@ -328,6 +329,19 @@ export const spotifyClient = {
         .filter((playlist) => playlist.id && playlist.name)
         .sort((a, b) => a.name.localeCompare(b.name)),
     };
+  },
+
+  async getPlaylistArtworkUrl(userId: number | undefined, playlistId: string) {
+    const playlist: SpotifyPlaylistSummary = await spotifyRequest(
+      userId,
+      `/playlists/${encodeURIComponent(playlistId)}`,
+      { searchParams: { fields: "images" } },
+    );
+    return (
+      [...(playlist.images || [])]
+        .sort((left, right) => (right.width || 0) - (left.width || 0))
+        .find((image) => image.url)?.url || null
+    );
   },
 
   async listPlaylistTracks(

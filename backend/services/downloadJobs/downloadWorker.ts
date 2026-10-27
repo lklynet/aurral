@@ -390,8 +390,8 @@ export class DownloadWorker {
       null,
       new Set(flowTrackSource._buildFeedbackExcludeKeys(flow?.ownerUserId)),
     );
-    flowPlaylistConfig.markLastRunAt(key);
     const jobIds = downloadTracker.addJobs(primaryTracks, key);
+    flowPlaylistConfig.markLastRunAt(key);
     return {
       tracksQueued: primaryTracks.length,
       jobIds,
@@ -421,8 +421,8 @@ export class DownloadWorker {
     }
     const plan = options?.plan || (await this.prepareFlowRunPlan(flow, options));
     const primaryTracks = Array.isArray(plan?.primaryTracks) ? plan.primaryTracks : [];
-    flowPlaylistConfig.markLastRunAt(key);
     const jobIds = downloadTracker.addJobs(primaryTracks, key);
+    flowPlaylistConfig.markLastRunAt(key);
     return {
       tracksQueued: primaryTracks.length,
       jobIds,

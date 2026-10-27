@@ -1,7 +1,6 @@
 import { useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Circle, CircleDot, Square, SquareCheck } from "../../components/icons";
-import { getPlaylistArtworkUrl } from "../../utils/api/endpoints/playlists.ts";
 import { queryClient, queryKeys } from "../../queryClient.ts";
 import { playlistJobsQueryOptions } from "../../queryOptions.ts";
 import type { PlaylistJob } from "../../utils/api/endpoints/playlists.ts";
@@ -170,28 +169,4 @@ export function exportPlaylistTracklist(
       tracks,
     }),
   );
-}
-
-export function usePlaylistArtwork() {
-  const { data: revisions } = useQuery<Record<string, number | undefined>>({
-    queryKey: queryKeys.playlistArtworkRevisions,
-    queryFn: () => ({}),
-    initialData: {},
-    staleTime: Infinity,
-    gcTime: Infinity,
-  });
-  const artworkUrlFor = useCallback(
-    (playlistId: string) => getPlaylistArtworkUrl(playlistId, revisions[playlistId]),
-    [revisions],
-  );
-  const bumpArtwork = useCallback((playlistId: string) => {
-    queryClient.setQueryData(
-      queryKeys.playlistArtworkRevisions,
-      (current: Record<string, number | undefined> = {}) => ({
-        ...current,
-        [playlistId]: (current[playlistId] || 0) + 1,
-      }),
-    );
-  }, []);
-  return { artworkUrlFor, bumpArtwork };
 }
