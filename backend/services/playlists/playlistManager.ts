@@ -9,7 +9,10 @@ import { writePlaylistArtworkWebpFromBuffer } from "../playlistArtwork.ts";
 import {
   playlistArtistSignature,
   readPlaylistImageBuffer,
+  renderPickedPlaylistCover,
+  shufflePlaylistCover,
   writeGeneratedPlaylistArtwork,
+  type PlaylistCoverPick,
 } from "../playlistArtworkGenerator.ts";
 import {
   getPlaylistArtworkState,
@@ -311,32 +314,55 @@ export class PlaylistManager {
     });
   }
 
-  async _relocateArtwork(playlistId: string) {
-    const previous = getPlaylistArtworkState(playlistId);
+  _artworkNeedsRelocation(playlistId: string, state: PlaylistArtworkState | null) {
     const resolved = this._resolveArtworkBase(playlistId);
-    if (
-      !resolved ||
-      !previous?.baseName ||
-      previous.baseName === resolved.baseName ||
-      (previous.mode !== "original" && previous.mode !== "upload")
-    )
-      return;
+    if (!resolved || !state?.baseName) return null;
+    const moved = state.baseName !== resolved.baseName;
+    if (state.mode === "original" || state.mode === "upload") return moved ? resolved : null;
+    if (state.mode !== "artist" && state.mode !== "simple") return null;
+    const title = this.getArtworkContextForPlaylistId(playlistId)?.title;
+    return moved || (state.title != null && state.title !== title) ? resolved : null;
+  }
+
+  async _relocateArtwork(playlistId: string) {
+    if (!this._artworkNeedsRelocation(playlistId, getPlaylistArtworkState(playlistId))) return;
     await withHonkerLock(`playlist-artwork:${playlistId}`, async () => {
       const state = getPlaylistArtworkState(playlistId);
-      if (
-        !state?.baseName ||
-        state.baseName === resolved.baseName ||
-        (state.mode !== "original" && state.mode !== "upload")
-      )
-        return;
+      const resolved = this._artworkNeedsRelocation(playlistId, state);
+      if (!state?.baseName || !resolved) return;
       const oldPath = path.resolve(resolved.safeRoot, `${state.baseName}.webp`);
+      const newPath = path.join(resolved.safeRoot, `${resolved.baseName}.webp`);
       if (path.dirname(oldPath) !== resolved.safeRoot) throw new Error("Invalid artwork path");
+      if (state.mode === "artist" || state.mode === "simple") {
+        const title = this.getArtworkContextForPlaylistId(playlistId)?.title;
+        const moved = oldPath !== newPath;
+        if (!title || !state.template) return;
+        if (
+          moved &&
+          (await fs.access(newPath).then(
+            () => true,
+            () => false,
+          ))
+        )
+          return;
+        try {
+          const generated = await writeGeneratedPlaylistArtwork({
+            outputPath: newPath,
+            title,
+            artists: this._artworkArtists(playlistId),
+            pick: { style: state.mode, artistKey: state.artistKey, template: state.template },
+          });
+          if (moved) await fs.unlink(oldPath).catch(() => {});
+          this._rememberArtwork(playlistId, { ...generated.state, flowRunAt: state.flowRunAt });
+        } catch (error) {
+          console.warn(
+            `[PlaylistManager] Cover redraw after rename failed: ${asAppError(error)?.message}`,
+          );
+        }
+        return;
+      }
       try {
-        await fs.copyFile(
-          oldPath,
-          path.join(resolved.safeRoot, `${resolved.baseName}.webp`),
-          fsConstants.COPYFILE_EXCL,
-        );
+        await fs.copyFile(oldPath, newPath, fsConstants.COPYFILE_EXCL);
         await fs.unlink(oldPath);
       } catch (error) {
         const code = asAppError(error)?.code;
@@ -759,7 +785,38 @@ export class PlaylistManager {
     });
   }
 
-  async generateArtwork(playlistId: string, style: PlaylistArtworkStyle = "artist") {
+  getArtworkPick(playlistId: string): PlaylistCoverPick | null {
+    const state = getPlaylistArtworkState(playlistId);
+    if (state?.mode !== "artist" && state?.mode !== "simple") return null;
+    return state.template
+      ? { style: state.mode, artistKey: state.artistKey, template: state.template }
+      : null;
+  }
+
+  async shuffleArtwork(
+    playlistId: string,
+    style: PlaylistArtworkStyle,
+    previous: PlaylistCoverPick | null,
+  ) {
+    if (!this.getArtworkContextForPlaylistId(playlistId)) throw new Error("Playlist not found");
+    const { pick } = await shufflePlaylistCover({
+      artists: this._artworkArtists(playlistId),
+      style,
+      previous: previous ?? getPlaylistArtworkState(playlistId),
+    });
+    return pick;
+  }
+
+  async previewArtwork(playlistId: string, title: string, pick: PlaylistCoverPick) {
+    if (!this.getArtworkContextForPlaylistId(playlistId)) throw new Error("Playlist not found");
+    return renderPickedPlaylistCover({ title, artists: this._artworkArtists(playlistId), pick });
+  }
+
+  async generateArtwork(
+    playlistId: string,
+    style: PlaylistArtworkStyle = "artist",
+    pick: PlaylistCoverPick | null = null,
+  ) {
     return withHonkerLock(`playlist-artwork:${playlistId}`, async () => {
       const resolved = this._resolveArtworkBase(playlistId);
       const context = this.getArtworkContextForPlaylistId(playlistId);
@@ -771,6 +828,7 @@ export class PlaylistManager {
         title: context.title,
         artists: this._artworkArtists(playlistId),
         style,
+        pick,
         previous: getPlaylistArtworkState(playlistId),
       });
       this._rememberArtwork(playlistId, { ...generated.state, flowRunAt });

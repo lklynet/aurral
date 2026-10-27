@@ -8,6 +8,7 @@ export type PlaylistArtworkState = {
   flowRunAt?: number | null;
   revision?: number;
   mode: PlaylistArtworkStyle | "original" | "upload" | "removed";
+  title?: string | null;
   artistKey: string | null;
   template: PlaylistCoverTemplate | null;
   sourceUrl: string | null;
@@ -48,6 +49,7 @@ export function getPlaylistArtworkState(playlistId: string): PlaylistArtworkStat
       mode,
       revision: typeof revision === "number" && Number.isFinite(revision) ? revision : 0,
       baseName: field("baseName"),
+      title: field("title"),
       flowRunAt: typeof flowRunAt === "number" && Number.isFinite(flowRunAt) ? flowRunAt : null,
       artistKey: field("artistKey"),
       template: PLAYLIST_COVER_TEMPLATES.find((template) => template === field("template")) || null,

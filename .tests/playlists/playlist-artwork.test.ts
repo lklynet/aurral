@@ -307,6 +307,45 @@ test("generates a simple fallback when a playlist has no artists", async () => {
   await assert.doesNotReject(() => fs.access(outputPath));
 });
 
+test("shuffling and previewing a cover leave the saved cover alone", async () => {
+  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Draft cover" });
+  const manager = makeManager();
+  await manager.generateArtwork(playlist.id, "simple");
+  const saved = (await manager.resolveArtworkFile(playlist.id))!;
+  const before = await fs.readFile(saved.safePath);
+  const savedPick = manager.getArtworkPick(playlist.id)!;
+
+  const pick = await manager.shuffleArtwork(playlist.id, "simple", savedPick);
+  const preview = await manager.previewArtwork(playlist.id, "Renamed draft", pick);
+
+  assert.notEqual(pick.template, savedPick.template);
+  assert.equal((await sharp(preview).metadata()).format, "webp");
+  assert.deepEqual(await fs.readFile(saved.safePath), before);
+  assert.deepEqual(manager.getArtworkPick(playlist.id), savedPick);
+});
+
+test("renaming redraws a generated cover with its new title and the same design", async () => {
+  const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Before" });
+  const manager = makeManager();
+  await manager.generateArtwork(playlist.id, "simple");
+  const pick = manager.getArtworkPick(playlist.id);
+  const oldFile = (await manager.resolveArtworkFile(playlist.id))!;
+  const before = await fs.readFile(oldFile.safePath);
+
+  flowPlaylistConfig.updateStaticPlaylist(playlist.id, { name: "After" });
+  await manager.syncPlaylists();
+
+  const newFile = (await manager.resolveArtworkFile(playlist.id))!;
+  assert.notDeepEqual(await fs.readFile(newFile.safePath), before);
+  assert.deepEqual(
+    await fs.readFile(newFile.safePath),
+    await manager.previewArtwork(playlist.id, "After", pick!),
+  );
+  assert.deepEqual(manager.getArtworkPick(playlist.id), pick);
+  assert.equal(artworkState.getPlaylistArtworkState(playlist.id)?.title, "After");
+  if (newFile.safePath !== oldFile.safePath) await assert.rejects(fs.access(oldFile.safePath));
+});
+
 test("syncs artwork changes to the existing Navidrome playlist", async () => {
   const playlist = flowPlaylistConfig.createStaticPlaylist({ name: "Artwork API" });
   const manager = makeManager();

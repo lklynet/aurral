@@ -64,6 +64,8 @@ import type { DeletePlaylistTrackArtworkResponse } from "../../../../../backend/
 import type {
   PlaylistArtworkOkResponse,
   PlaylistArtworkGenerateRequest,
+  PlaylistArtworkPickResponse,
+  PlaylistArtworkShuffleRequest,
 } from "../../../../../backend/routes/playlists/handlers/artworkManagement.ts";
 import type { getPlaylistStatusSnapshot } from "../../../../../backend/services/playlists/playlistStatusSnapshot.ts";
 import type { PlaylistTrackStatus } from "../../../pages/playlists/trackAvailability.ts";
@@ -77,6 +79,7 @@ type FlowUpdatePayload = Partial<FlowFormPayload> & { showInLibrary?: boolean };
 type PlaylistTrackPayload = Partial<NonNullable<ReturnType<typeof normalizePlaylistTrackEntry>>>;
 
 export type PlaylistArtworkStyle = NonNullable<PlaylistArtworkGenerateRequest["style"]>;
+export type PlaylistCoverPick = NonNullable<PlaylistArtworkPickResponse["pick"]>;
 
 type StaticPlaylistPayload = {
   name: string;
@@ -173,8 +176,31 @@ export const deletePlaylistArtwork = (playlistId: string): Promise<PlaylistArtwo
 export const generatePlaylistArtwork = (
   playlistId: string,
   style: PlaylistArtworkStyle = "artist",
+  pick?: PlaylistCoverPick,
 ): Promise<PlaylistArtworkOkResponse> =>
-  postData(`/playlists/artwork/${encodeURIComponent(playlistId)}/generate`, { style });
+  postData(`/playlists/artwork/${encodeURIComponent(playlistId)}/generate`, {
+    style,
+    pick,
+  } satisfies PlaylistArtworkGenerateRequest);
+
+export const getPlaylistArtworkPick = (playlistId: string): Promise<PlaylistArtworkPickResponse> =>
+  getData(`/playlists/artwork/${encodeURIComponent(playlistId)}/pick`);
+
+export const shufflePlaylistArtwork = (
+  playlistId: string,
+  body: PlaylistArtworkShuffleRequest,
+): Promise<PlaylistArtworkPickResponse> =>
+  postData(`/playlists/artwork/${encodeURIComponent(playlistId)}/shuffle`, body);
+
+export const getPlaylistArtworkPreviewUrl = (
+  playlistId: string,
+  title: string,
+  pick: PlaylistCoverPick,
+) =>
+  buildAuthenticatedApiUrl(`/playlists/artwork/${encodeURIComponent(playlistId)}/preview`, {
+    title,
+    ...pick,
+  });
 
 export const restorePlaylistArtwork = (playlistId: string): Promise<PlaylistArtworkOkResponse> =>
   postData(`/playlists/artwork/${encodeURIComponent(playlistId)}/restore`);

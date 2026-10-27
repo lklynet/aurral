@@ -156,8 +156,6 @@ function FlowDetail({ flow }: { flow: Flow }) {
     },
   });
   const [editOpen, setEditOpen] = useState(false);
-  const [renaming, setRenaming] = useState(false);
-  const [renameError, setRenameError] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [running, setRunning] = useState(false);
@@ -216,22 +214,9 @@ function FlowDetail({ flow }: { flow: Flow }) {
   };
 
   const handleRename = async (name: string) => {
-    setRenaming(true);
-    setRenameError("");
-    try {
-      const nextName = String(name ?? "").trim();
-      await updateFlow(flow.id, { name: nextName });
-      setDraft((current) => ({ ...current, name: nextName }));
-      showSuccess("Flow renamed");
-      await fetchStatus();
-      setEditOpen(false);
-    } catch (err) {
-      const message = getApiErrorMessage(err, "Failed to rename flow");
-      setRenameError(message);
-      showError(message);
-    } finally {
-      setRenaming(false);
-    }
+    await updateFlow(flow.id, { name });
+    setDraft((current) => ({ ...current, name }));
+    await fetchStatus();
   };
 
   const handleDelete = async () => {
@@ -538,18 +523,14 @@ function FlowDetail({ flow }: { flow: Flow }) {
         </div>
       </div>
 
-      <PlaylistEditModal
-        entry={flow}
-        title="Edit flow"
-        open={editOpen}
-        saving={renaming}
-        error={renameError}
-        onClose={() => {
-          setRenameError("");
-          setEditOpen(false);
-        }}
-        onRename={handleRename}
-      />
+      {editOpen ? (
+        <PlaylistEditModal
+          entry={flow}
+          title="Edit flow"
+          onClose={() => setEditOpen(false)}
+          onRename={handleRename}
+        />
+      ) : null}
       <ConfirmModal
         open={confirmDelete}
         title={`Delete ${flow.name}?`}

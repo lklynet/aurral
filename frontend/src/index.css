@@ -14560,134 +14560,45 @@ button.native-library-genre-row:focus-visible {
   gap: 0.75rem;
 }
 
-.playlist-modal__edit-layout {
+.playlist-modal--edit {
+  max-width: 24rem;
+}
+
+.playlist-edit {
   display: grid;
-  grid-template-columns: 13rem minmax(0, 1fr);
-  gap: 1.25rem;
-  align-items: stretch;
-}
-
-.playlist-modal__edit-cover {
-  width: 13rem;
-}
-
-.playlist-modal__edit-panel {
-  position: relative;
-  z-index: var(--aurral-z-raised);
-  display: flex;
-  min-width: 0;
-  min-height: 13rem;
-  flex-direction: column;
-  justify-content: space-between;
   gap: 0.75rem;
 }
 
-.playlist-modal__edit-panel-main {
+.playlist-edit__cover {
   display: grid;
-  gap: 0.5rem;
-}
-
-.playlist-modal__edit-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 0.5rem;
-}
-
-.playlist-modal__cover-menu-backdrop {
-  position: absolute;
-  inset: 0;
-  z-index: var(--aurral-z-raised);
-}
-
-.playlist-modal__cover-wrap {
-  position: relative;
-  width: 100%;
-}
-
-.playlist-modal__cover-picker {
-  position: relative;
-  display: block;
-  width: 100%;
+  width: min(100%, 15rem);
   aspect-ratio: 1;
+  justify-self: center;
+  place-items: center;
   overflow: hidden;
-  padding: 0;
-  border: none;
   border-radius: var(--aurral-radius);
   background: var(--aurral-surface-popover);
-  cursor: pointer;
+  color: var(--aurral-text-muted);
+  font-size: 2.5rem;
+  font-weight: 700;
+  transition: opacity var(--aurral-duration-base) var(--aurral-ease-standard);
 }
 
-.playlist-modal__cover-picker:disabled {
-  cursor: not-allowed;
-  opacity: 0.72;
+.playlist-edit__cover.is-busy {
+  opacity: 0.6;
 }
 
-.playlist-modal__cover-picker img {
+.playlist-edit__cover img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.playlist-modal__cover-picker-overlay {
-  position: absolute;
-  inset: 0;
+.playlist-edit__tools {
   display: flex;
-  align-items: center;
+  flex-wrap: wrap;
   justify-content: center;
-  padding: 0.75rem;
-  background: color-mix(in srgb, var(--aurral-overlay-base) 52%, transparent);
-  color: var(--aurral-overlay-foreground);
-  font-size: 0.875rem;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  opacity: 0;
-  transition: opacity var(--aurral-duration-base) var(--aurral-ease-standard);
-  pointer-events: none;
-}
-
-.playlist-modal__cover-picker:focus-visible .playlist-modal__cover-picker-overlay {
-  opacity: 1;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .playlist-modal__cover-picker:hover .playlist-modal__cover-picker-overlay {
-    opacity: 1;
-  }
-}
-
-.playlist-modal__cover-fallback {
-  display: flex;
-  width: 100%;
-  height: 100%;
-  align-items: center;
-  justify-content: center;
-  background: var(--aurral-surface-popover);
-  color: var(--aurral-text-muted);
-  font-size: 2.5rem;
-  font-weight: 700;
-}
-
-.playlist-modal__cover-menu {
-  position: absolute;
-  top: 0.4rem;
-  right: 0.4rem;
-  z-index: calc(var(--aurral-z-raised) + 1);
-}
-
-.playlist-modal__cover-menu-trigger {
-  background: var(--aurral-text-subtle);
-}
-
-.playlist-modal__cover-wrap.is-menu-open .playlist-modal__cover-menu-trigger {
-  background: var(--aurral-surface-selected);
-  color: var(--aurral-text);
-}
-
-.playlist-modal__cover-dropdown {
-  top: calc(100% + 0.35rem);
-  right: 0;
-  min-width: 11rem;
+  gap: 0.125rem;
 }
 
 .global-player {

@@ -151,8 +151,6 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
   };
   const playback = usePlaylistTrackPlayback({ tracks, playbackSource });
   const [editOpen, setEditOpen] = useState(false);
-  const [renaming, setRenaming] = useState(false);
-  const [renameError, setRenameError] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -181,21 +179,8 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
   }
 
   const handleRename = async (name: string) => {
-    setRenaming(true);
-    setRenameError("");
-    try {
-      await updateStaticPlaylist(playlist.id, { name: String(name ?? "").trim() });
-      showSuccess("Playlist renamed");
-      await fetchStatus();
-      setEditOpen(false);
-    } catch (err) {
-      const message =
-        getApiErrorText(err, "message") || asApiError(err)?.message || "Failed to rename playlist";
-      setRenameError(message);
-      showError(message);
-    } finally {
-      setRenaming(false);
-    }
+    await updateStaticPlaylist(playlist.id, { name });
+    await fetchStatus();
   };
 
   const handleDelete = async () => {
@@ -439,18 +424,14 @@ function PlaylistDetail({ playlist, stats, staticPlaylists, fetchStatus }: Playl
         recordHistory={playlist.recordHistory !== false}
       />
 
-      <PlaylistEditModal
-        entry={playlist}
-        title="Edit playlist"
-        open={editOpen}
-        saving={renaming}
-        error={renameError}
-        onClose={() => {
-          setRenameError("");
-          setEditOpen(false);
-        }}
-        onRename={handleRename}
-      />
+      {editOpen ? (
+        <PlaylistEditModal
+          entry={playlist}
+          title="Edit playlist"
+          onClose={() => setEditOpen(false)}
+          onRename={handleRename}
+        />
+      ) : null}
       <ConfirmModal
         open={confirmDelete}
         title={`Delete ${playlist.name}?`}
