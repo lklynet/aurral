@@ -168,6 +168,7 @@ async function buildResolution(
   jobs: DownloadJob[],
   resolveTrackContext: typeof resolveTrackSearchContext,
   reconcileArtistMbids = false,
+  groupState: { unavailable: boolean } | null = null,
 ) {
   const shouldResolve =
     isMissingMbid(track) ||
@@ -180,9 +181,16 @@ async function buildResolution(
   const originalTrack = normalizePlaylistTrack(track);
   if (!originalTrack) return null;
 
-  const resolvedTrack = await Promise.resolve()
-    .then(() => resolveTrackContext(originalTrack))
-    .catch(() => originalTrack);
+  let resolvedTrack;
+  try {
+    resolvedTrack = await Promise.resolve().then(() => resolveTrackContext(originalTrack));
+  } catch {
+    if (groupState) groupState.unavailable = true;
+    return null;
+  }
+  if (resolvedTrack.metadataUnreachable === true && groupState) {
+    groupState.unavailable = true;
+  }
 
   const enrichedTrack = applyPlaylistTrackPatch(originalTrack, resolvedTrack);
   const jobMetadata = {
@@ -203,6 +211,21 @@ async function buildResolution(
     resolvedTrack: enrichedTrack,
     jobMetadata,
   };
+}
+
+function resolutionGroupKey(track: PlaylistTrack, index: number) {
+  const albumMbid = String(track?.albumMbid || "")
+    .trim()
+    .toLowerCase();
+  if (albumMbid) return `mbid:${albumMbid}`;
+  const albumName = String(track?.albumName || "")
+    .trim()
+    .toLowerCase();
+  if (!albumName) return `track:${index}`;
+  const artist = String(track?.artistMbid || track?.artistName || "")
+    .trim()
+    .toLowerCase();
+  return `album:${artist}:${albumName}`;
 }
 
 export function schedulePlaylistMbidEnrichment(
@@ -294,9 +317,35 @@ export async function enrichStaticPlaylistMbids(
 
   const resolver =
     typeof resolveTrackContext === "function" ? resolveTrackContext : resolveTrackSearchContext;
-  const rawResolutions = await mapWithConcurrency(snapshotTracks, 4, (track: PlaylistTrack) =>
-    buildResolution(track, snapshotJobs, resolver, reconcileArtistMbids === true),
+  const groupedTracks = new Map<string, PlaylistTrack[]>();
+  snapshotTracks.forEach((track, index) => {
+    const key = resolutionGroupKey(track, index);
+    const group = groupedTracks.get(key) || [];
+    group.push(track);
+    groupedTracks.set(key, group);
+  });
+  const groupedResolutions = await mapWithConcurrency(
+    [...groupedTracks.values()],
+    4,
+    async (tracks) => {
+      const groupState = { unavailable: false };
+      const results = [];
+      for (const track of tracks) {
+        if (groupState.unavailable) break;
+        results.push(
+          await buildResolution(
+            track,
+            snapshotJobs,
+            resolver,
+            reconcileArtistMbids === true,
+            groupState,
+          ),
+        );
+      }
+      return results;
+    },
   );
+  const rawResolutions = groupedResolutions.flat();
   const resolutions = rawResolutions.filter((resolution) => resolution !== null);
   for (const resolution of resolutions) {
     if (!isMissingMbid(resolution.resolvedTrack)) {

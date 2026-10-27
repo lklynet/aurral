@@ -170,6 +170,29 @@ test("enrichStaticPlaylistMbids handles resolveTrackContext throwing by falling 
   assert.ok(!storedTrack.artistMbid);
 });
 
+test("enrichStaticPlaylistMbids stops retrying the same unavailable album within one sweep", async () => {
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
+    name: "Unavailable album",
+    tracks: ["First", "Second", "Third"].map((trackName) => ({
+      artistName: "Tool",
+      albumName: "Undertow",
+      albumMbid: "undertow-mbid",
+      trackName,
+    })),
+  });
+  let resolverCalls = 0;
+
+  const result = await enrichStaticPlaylistMbids(playlist.id, {
+    resolveTrackContext: () => {
+      resolverCalls += 1;
+      throw new Error("metadata unavailable");
+    },
+  });
+
+  assert.equal(resolverCalls, 1);
+  assert.equal(result.changed, false);
+});
+
 test("enrichStaticPlaylistMbids leaves already-enriched tracks unchanged", async () => {
   const playlist = flowPlaylistConfig.createStaticPlaylist({
     name: "Enriched",

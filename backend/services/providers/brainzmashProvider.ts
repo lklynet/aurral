@@ -33,7 +33,12 @@ import { runSharedInflight } from "../sharedInflight.ts";
 import { logger, safeLogDiagnostic } from "../logger.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import {
+  acquireMetadataRequest,
+  clearMetadataRequestStates,
+  completeMetadataRequest,
+  failMetadataRequest,
   getMetadataProviderBudget,
+  getMetadataRequestState,
   reserveMetadataProviderRequest,
   setMetadataProviderCooldown,
 } from "../metadataProviderBudget.ts";
@@ -98,7 +103,6 @@ const METADATA_ENTITY_STALE_TTL_SECONDS = 30 * 24 * 60 * 60;
 const METADATA_SEARCH_CACHE_TTL_SECONDS = 24 * 60 * 60;
 const METADATA_NOT_FOUND_CACHE_TTL_SECONDS = 24 * 60 * 60;
 const METADATA_RATE_LIMIT_FALLBACK_COOLDOWN_MS = 5_000;
-const METADATA_RATE_LIMIT_MAX_COOLDOWN_MS = 60_000;
 const METADATA_FORBIDDEN_COOLDOWN_MS = 5 * 60_000;
 const METADATA_CACHE_MAX_ENTRIES = 20_000;
 const METADATA_HOT_CACHE_TTL_SECONDS = 60;
@@ -107,6 +111,8 @@ const METADATA_STORE_CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
 const MIN_ALBUM_SEARCH_WINDOW = 25;
 const METADATA_REQUEST_MIN_INTERVAL_MS = 100;
 const METADATA_REQUEST_TIMEOUT_MS = 8000;
+const METADATA_REQUEST_LEASE_MS = 2 * 60_000;
+const METADATA_REQUEST_LEASE_POLL_MS = 250;
 const METADATA_MAX_QUEUED_REQUESTS =
   Math.floor(METADATA_REQUEST_TIMEOUT_MS / METADATA_REQUEST_MIN_INTERVAL_MS) - 1;
 const metadataHotCache = createCache(
@@ -129,6 +135,7 @@ export function clearMetadataProviderCaches() {
   dbOps.clearMetadataResponses();
   metadataNotFoundCache.flushAll();
   providerInflightRequests.clear();
+  clearMetadataRequestStates();
 }
 
 const healthState: {
@@ -211,10 +218,21 @@ function createMetadataCircuitError(code: string, status: number, remainingMs: n
   return error;
 }
 
+function createMetadataCooldownError(remainingMs: number) {
+  const error: MetadataError = new Error(
+    "Metadata resource is cooling down after a failed request",
+  );
+  error.code = "ERR_METADATA_COOLDOWN";
+  error.retryAfterMs = Math.max(0, Math.ceil(remainingMs));
+  return error;
+}
+
 function isMetadataCircuitError(error: unknown) {
   const failure = asAppError(error);
   return (
-    failure?.code === "ERR_METADATA_FORBIDDEN" || failure?.code === "ERR_METADATA_RATE_LIMITED"
+    failure?.code === "ERR_METADATA_FORBIDDEN" ||
+    failure?.code === "ERR_METADATA_RATE_LIMITED" ||
+    failure?.code === "ERR_METADATA_COOLDOWN"
   );
 }
 
@@ -223,17 +241,11 @@ function getRetryAfterMs(error: unknown) {
   const retryAfter = headers?.["retry-after"] ?? headers?.["Retry-After"];
   const seconds = Number(retryAfter);
   if (Number.isFinite(seconds) && seconds >= 0) {
-    return Math.min(
-      METADATA_RATE_LIMIT_MAX_COOLDOWN_MS,
-      Math.max(METADATA_RATE_LIMIT_FALLBACK_COOLDOWN_MS, seconds * 1000),
-    );
+    return Math.max(METADATA_RATE_LIMIT_FALLBACK_COOLDOWN_MS, seconds * 1000);
   }
   const retryAt = Date.parse(String(retryAfter || ""));
   if (Number.isFinite(retryAt)) {
-    return Math.min(
-      METADATA_RATE_LIMIT_MAX_COOLDOWN_MS,
-      Math.max(METADATA_RATE_LIMIT_FALLBACK_COOLDOWN_MS, retryAt - Date.now()),
-    );
+    return Math.max(METADATA_RATE_LIMIT_FALLBACK_COOLDOWN_MS, retryAt - Date.now());
   }
   return METADATA_RATE_LIMIT_FALLBACK_COOLDOWN_MS;
 }
@@ -287,10 +299,10 @@ function getMetadataCachePolicy(path: string) {
   };
 }
 
-function readCachedMetadata(cacheKey: string) {
-  let entry = metadataHotCache.get(cacheKey);
+async function readCachedMetadata(cacheKey: string, { persistent = false } = {}) {
+  let entry = persistent ? null : metadataHotCache.get(cacheKey);
   if (!entry) {
-    entry = dbOps.getMetadataResponse(cacheKey);
+    entry = await dbOps.getMetadataResponseAsync(cacheKey);
     if (!entry) return null;
     metadataHotCache.set(cacheKey, entry);
   }
@@ -299,7 +311,7 @@ function readCachedMetadata(cacheKey: string) {
   return { value: entry.value, stale: entry.freshUntil < now };
 }
 
-function storeMetadata(
+async function storeMetadata(
   cacheKey: string,
   value: unknown,
   { freshTtlSeconds, staleTtlSeconds }: ReturnType<typeof getMetadataCachePolicy>,
@@ -309,7 +321,7 @@ function storeMetadata(
   const entry = { value, freshUntil, staleUntil: freshUntil + staleTtlSeconds * 1000 };
   metadataHotCache.set(cacheKey, entry);
   try {
-    dbOps.setMetadataResponse(cacheKey, entry);
+    await dbOps.setMetadataResponseAsync(cacheKey, entry);
     if (now >= nextMetadataStoreCleanupAt) {
       nextMetadataStoreCleanupAt = now + METADATA_STORE_CLEANUP_INTERVAL_MS;
       dbOps.cleanMetadataResponses(METADATA_CACHE_MAX_ENTRIES);
@@ -317,6 +329,24 @@ function storeMetadata(
   } catch (error) {
     logger.warn("metadata", "Could not store metadata response", {
       reason: safeLogDiagnostic(error),
+    });
+  }
+}
+
+async function waitForMetadataRequestOwner(cacheKey: string, signal: AbortSignal) {
+  while (true) {
+    signal.throwIfAborted();
+    const state = getMetadataRequestState(cacheKey);
+    const now = Date.now();
+    if (state?.retryAfter && state.retryAfter > now) {
+      throw createMetadataCooldownError(state.retryAfter - now);
+    }
+    if (!state?.leased || state.leaseUntil <= now) {
+      const cached = await readCachedMetadata(cacheKey, { persistent: true });
+      return cached ? ({ found: true, value: cached.value } as const) : ({ found: false } as const);
+    }
+    await delay(Math.min(METADATA_REQUEST_LEASE_POLL_MS, state.leaseUntil - now), undefined, {
+      signal,
     });
   }
 }
@@ -330,12 +360,16 @@ function refreshMetadata<T>(
   cacheKey: string,
   path: string,
   params: MetadataParams,
-  { signal }: MetadataRequestOptions = {},
+  { signal, fallbackValue }: MetadataRequestOptions & { fallbackValue?: T } = {},
 ): Promise<T> {
   const baseUrl = getMetadataBaseUrl();
   const cachePolicy = getMetadataCachePolicy(path);
   const circuitError = getMetadataCircuitError(baseUrl);
-  if (circuitError) return Promise.reject(circuitError);
+  if (circuitError) {
+    return fallbackValue !== undefined
+      ? Promise.resolve(fallbackValue)
+      : Promise.reject(circuitError);
+  }
   healthState.activeBaseUrl = baseUrl;
   healthState.lastCheckedAt = nowIso();
 
@@ -343,9 +377,39 @@ function refreshMetadata<T>(
     providerInflightRequests,
     cacheKey,
     async (sharedSignal: AbortSignal) => {
-      for (let attempt = 0; attempt <= METADATA_MAX_RETRIES; attempt += 1) {
-        if (sharedSignal.aborted)
+      const ownsPersistentRequest = isEntityMetadataPath(path);
+      let leaseToken: string | null = null;
+      if (ownsPersistentRequest) {
+        while (!leaseToken) {
+          const claim = acquireMetadataRequest(cacheKey, METADATA_REQUEST_LEASE_MS);
+          if (claim.acquired) {
+            leaseToken = claim.token;
+            break;
+          }
+          if (claim.retryAfter > Date.now()) {
+            if (fallbackValue !== undefined) return fallbackValue;
+            throw createMetadataCooldownError(claim.retryAfter - Date.now());
+          }
+          const shared = await waitForMetadataRequestOwner(cacheKey, sharedSignal).catch(
+            (error) => {
+              if (
+                fallbackValue !== undefined &&
+                asAppError(error)?.code === "ERR_METADATA_COOLDOWN"
+              ) {
+                return { found: true as const, value: fallbackValue };
+              }
+              throw error;
+            },
+          );
+          if (shared.found) return shared.value;
+        }
+      }
+      const maxRetries = ownsPersistentRequest ? 0 : METADATA_MAX_RETRIES;
+      for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+        if (sharedSignal.aborted) {
+          if (leaseToken) completeMetadataRequest(cacheKey, leaseToken);
           throw sharedSignal.reason || new Error("The operation was aborted");
+        }
         try {
           const response = await providerRequestLimiter.schedule(
             async (remainingMs) => {
@@ -393,13 +457,17 @@ function refreshMetadata<T>(
             },
             { signal: sharedSignal, timeoutMs: METADATA_REQUEST_TIMEOUT_MS },
           );
-          storeMetadata(cacheKey, response.data, cachePolicy);
+          await storeMetadata(cacheKey, response.data, cachePolicy);
+          if (leaseToken) completeMetadataRequest(cacheKey, leaseToken);
           metadataNotFoundCache.delete(cacheKey);
           healthState.lastSuccessAt = healthState.lastCheckedAt;
           healthState.lastFailureReason = "";
           return response.data;
         } catch (error) {
-          if (sharedSignal.aborted) throw sharedSignal.reason || error;
+          if (sharedSignal.aborted) {
+            if (leaseToken) completeMetadataRequest(cacheKey, leaseToken);
+            throw sharedSignal.reason || error;
+          }
           const failure = asAppError(error);
           const status = failure?.response?.status;
           healthState.lastFailureAt = healthState.lastCheckedAt;
@@ -411,13 +479,21 @@ function refreshMetadata<T>(
             if (!isMetadataCircuitError(error)) {
               openMetadataCircuit(baseUrl, status, error);
             }
+            if (leaseToken) completeMetadataRequest(cacheKey, leaseToken);
+            if (fallbackValue !== undefined) return fallbackValue;
             throw error;
           }
           if (status === 404 && isEntityMetadataPath(path)) {
             forgetMetadata(cacheKey);
             metadataNotFoundCache.set(cacheKey, true);
+            if (leaseToken) completeMetadataRequest(cacheKey, leaseToken);
           }
-          if (attempt === METADATA_MAX_RETRIES || !isRetryable(error)) throw error;
+          if (attempt === maxRetries || !isRetryable(error)) {
+            if (leaseToken && isRetryable(error)) failMetadataRequest(cacheKey, leaseToken);
+            else if (leaseToken) completeMetadataRequest(cacheKey, leaseToken);
+            if (fallbackValue !== undefined && isRetryable(error)) return fallbackValue;
+            throw error;
+          }
           await new Promise<void>((resolve, reject) => {
             const onAbort = () => {
               clearTimeout(timer);
@@ -448,14 +524,19 @@ async function request<T>(
   if (!forceRefresh && metadataNotFoundCache.get(cacheKey)) {
     throw createMetadataNotFoundError();
   }
-  const cached = forceRefresh ? null : readCachedMetadata(cacheKey);
-  if (cached) {
+  const cached = await readCachedMetadata(cacheKey);
+  if (cached && !forceRefresh) {
     if (cached.stale) {
-      void refreshMetadata<T>(cacheKey, path, params).catch(() => {});
+      void refreshMetadata<T>(cacheKey, path, params, { fallbackValue: cached.value as T }).catch(
+        () => {},
+      );
     }
-    return cached.value;
+    return cached.value as T;
   }
-  return refreshMetadata<T>(cacheKey, path, params, { signal });
+  return refreshMetadata<T>(cacheKey, path, params, {
+    signal,
+    ...(cached ? { fallbackValue: cached.value as T } : {}),
+  });
 }
 
 function applyReleaseTypeFilter<T extends { type: string; secondaryTypes?: string[] }>(

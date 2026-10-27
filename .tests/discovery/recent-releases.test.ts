@@ -10,6 +10,7 @@ import {
   refreshReleaseMetadata,
   scheduleReleaseMetadataRefresh,
 } from "../../backend/services/releaseMetadataSync.ts";
+import { clearMetadataProviderCaches } from "../../backend/services/providers/brainzmashProvider.ts";
 import {
   markUnseenReleaseCalendarEntries,
   upsertReleaseCalendarEntry,
@@ -56,12 +57,18 @@ function addCalendarRelease(artistId: number, title: string, releaseDate: string
   return releaseGroupMbid;
 }
 
-const catalogueRelease = (id: string, title: string, type: string = "Album") => ({
+const catalogueRelease = (
+  id: string,
+  title: string,
+  type: string = "Album",
+  firstReleaseDate: string | null = null,
+) => ({
   Id: id,
   Title: title,
   Type: type,
   SecondaryTypes: [],
   ReleaseStatuses: ["Official"],
+  ...(firstReleaseDate ? { FirstReleaseDate: firstReleaseDate } : {}),
 });
 
 function stubBrainzMash(
@@ -78,6 +85,7 @@ function stubBrainzMash(
         Type: string;
         SecondaryTypes: never[];
         ReleaseStatuses: string[];
+        FirstReleaseDate?: string;
       }[];
     };
     albumDates?: { [x: string]: string };
@@ -191,7 +199,7 @@ test("recent missing releases can be scoped to library artists", async () => {
   }
 });
 
-test("BrainzMash refresh dates releases from album lookups and only rechecks dates that can move", async (t: import("vite-plus/test").TestContext) => {
+test("BrainzMash refresh caches full album lookups and only fetches newly discovered releases", async (t: import("vite-plus/test").TestContext) => {
   const artist = createCalendarArtist("BrainzMash Refresh Artist");
   const recentMbid = randomUUID();
   const oldMbid = randomUUID();
@@ -242,9 +250,9 @@ test("BrainzMash refresh dates releases from album lookups and only rechecks dat
     albumDates[newMbid] = "2026-09-28";
     catalogues[artist.mbid].push(catalogueRelease(newMbid, "New Release"));
     await refresh("2026-09-29T12:00:00Z");
-    assert.deepEqual(albumRequests.sort(), [recentMbid, upcomingMbid, newMbid].sort());
+    assert.deepEqual(albumRequests, [newMbid]);
     assert.deepEqual(await visible("2026-09-29T12:00:00Z"), {
-      "Upcoming Release": "2026-11-06",
+      "Upcoming Release": "2026-10-20",
       "New Release": "2026-09-28",
       "Recent Release": "2026-09-10",
     });
@@ -255,6 +263,33 @@ test("BrainzMash refresh dates releases from album lookups and only rechecks dat
     const result = await refresh("2026-09-30T12:00:00Z");
     assert.equal(result.releasesStale, 1);
     assert.equal((await visible("2026-09-30T12:00:00Z"))["Recent Release"], undefined);
+  } finally {
+    removeCalendarArtist(artist.id);
+  }
+});
+
+test("BrainzMash refresh uses catalogue dates without downloading full albums", async (t: import("vite-plus/test").TestContext) => {
+  const artist = createCalendarArtist("Catalogue Date Artist");
+  const releaseMbid = randomUUID();
+  const catalogues = {
+    [artist.mbid]: [catalogueRelease(releaseMbid, "Dated Release", "Album", "2026-09-20")],
+  };
+  const { albumRequests } = stubBrainzMash(t, {
+    catalogues,
+    albumDates: { [releaseMbid]: "2026-09-20" },
+  });
+
+  try {
+    await refreshReleaseMetadata({
+      artists: [artist],
+      now: Date.parse("2026-09-27T12:00:00Z"),
+    });
+    assert.deepEqual(albumRequests, []);
+    const releases = await getRecentMissingReleases(100, {
+      artists: [{ canonicalId: String(artist.id) }],
+      now: "2026-09-27T12:00:00Z",
+    });
+    assert.equal(releases[0]?.releaseDate, "2026-09-20");
   } finally {
     removeCalendarArtist(artist.id);
   }
@@ -368,6 +403,7 @@ test("a failed album lookup keeps the last known release date", async (t: import
   try {
     await refreshReleaseMetadata({ artists: [artist], now: Date.parse("2026-09-27T12:00:00Z") });
     delete albumDates[releaseMbid];
+    clearMetadataProviderCaches();
     const result = await refreshReleaseMetadata({
       artists: [artist],
       now: Date.parse("2026-09-29T12:00:00Z"),

@@ -17,7 +17,12 @@ const [
   { dbOps },
   apiClients,
   brainzmashProvider,
-  { getMetadataProviderBudget },
+  {
+    acquireMetadataRequest,
+    clearMetadataRequestStates,
+    failMetadataRequest,
+    getMetadataProviderBudget,
+  },
   { db },
 ] = await setupIsolatedBackend(
   "metadata-providers",
@@ -62,6 +67,40 @@ test("default settings and unset backend config use BrainzMash metadata", () => 
   });
 
   assert.equal(getMusicbrainzApiBaseUrl(), DEFAULT_METADATA_BASE_URL);
+});
+
+test("entity request failures back off for one hour, six hours, then one day", () => {
+  const key = "backoff:test";
+  const hour = 60 * 60 * 1000;
+  let now = 1_000_000;
+  clearMetadataRequestStates();
+
+  const first = acquireMetadataRequest(key, 120_000, now);
+  assert.equal(first.acquired, true);
+  assert.equal(failMetadataRequest(key, first.acquired ? first.token : "", now), now + hour);
+
+  now += hour;
+  const second = acquireMetadataRequest(key, 120_000, now);
+  assert.equal(second.acquired, true);
+  assert.equal(failMetadataRequest(key, second.acquired ? second.token : "", now), now + 6 * hour);
+
+  now += 6 * hour;
+  const third = acquireMetadataRequest(key, 120_000, now);
+  assert.equal(third.acquired, true);
+  assert.equal(failMetadataRequest(key, third.acquired ? third.token : "", now), now + 24 * hour);
+  clearMetadataRequestStates();
+});
+
+test("an abandoned entity request enters cooldown when its lease expires", () => {
+  const key = "abandoned:test";
+  const now = 2_000_000;
+  clearMetadataRequestStates();
+  assert.equal(acquireMetadataRequest(key, 1_000, now).acquired, true);
+
+  const recovered = acquireMetadataRequest(key, 1_000, now + 1_001);
+  assert.equal(recovered.acquired, false);
+  assert.equal(recovered.retryAfter, now + 1_001 + 60 * 60 * 1000);
+  clearMetadataRequestStates();
 });
 
 test("stale album metadata is served while one refresh runs in the background", async () => {
@@ -348,14 +387,97 @@ test("missing entity metadata is negatively cached for repeated lookups", async 
   }
 });
 
-test("a metadata 429 opens a shared cooldown for subsequent requests", async () => {
+test("transient entity failures use a persistent cooldown instead of redownloading", async () => {
+  const previousSettings = dbOps.getSettings();
+  let requests = 0;
+  const server = await createMockHttpServer((_request, response) => {
+    requests += 1;
+    response.statusCode = 503;
+    response.end("temporarily unavailable");
+  });
+
+  try {
+    dbOps.updateSettings({
+      ...previousSettings,
+      integrations: {
+        ...(previousSettings.integrations || {}),
+        metadata: {
+          ...(previousSettings.integrations?.metadata || {}),
+          provider: "brainzmash",
+          baseUrl: server.url,
+          enableNarrowFallbacks: false,
+        },
+      },
+    });
+    clearMetadataProviderCaches();
+
+    await assert.rejects(() => getAlbumByMbid("large-album"));
+    await assert.rejects(
+      () => getAlbumByMbid("large-album"),
+      (error) => asAppError(error)?.code === "ERR_METADATA_COOLDOWN",
+    );
+    assert.equal(requests, 1);
+  } finally {
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(previousSettings);
+    await server.close();
+  }
+});
+
+test("forced refreshes serve stale album metadata when the provider fails", async () => {
+  const previousSettings = dbOps.getSettings();
+  let requests = 0;
+  const server = await createMockHttpServer((_request, response) => {
+    requests += 1;
+    if (requests === 1) {
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify({ id: "stale-album", title: "Last Good Album" }));
+      return;
+    }
+    response.statusCode = 504;
+    response.end("timed out");
+  });
+
+  try {
+    dbOps.updateSettings({
+      ...previousSettings,
+      integrations: {
+        ...(previousSettings.integrations || {}),
+        metadata: {
+          ...(previousSettings.integrations?.metadata || {}),
+          provider: "brainzmash",
+          baseUrl: server.url,
+          enableNarrowFallbacks: false,
+        },
+      },
+    });
+    clearMetadataProviderCaches();
+
+    assert.equal((await getAlbumByMbid("stale-album")).title, "Last Good Album");
+    assert.equal(
+      (await getAlbumByMbid("stale-album", { forceRefresh: true })).title,
+      "Last Good Album",
+    );
+    assert.equal(
+      (await getAlbumByMbid("stale-album", { forceRefresh: true })).title,
+      "Last Good Album",
+    );
+    assert.equal(requests, 2);
+  } finally {
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(previousSettings);
+    await server.close();
+  }
+});
+
+test("a metadata 429 opens a shared cooldown for the full retry-after period", async () => {
   const previousSettings = dbOps.getSettings();
   let requests = 0;
   const server = await createMockHttpServer((_request, response) => {
     requests += 1;
     if (requests === 1) {
       response.statusCode = 429;
-      response.setHeader("retry-after", "60");
+      response.setHeader("retry-after", "3600");
       response.end("rate limited");
       return;
     }
@@ -387,6 +509,10 @@ test("a metadata 429 opens a shared cooldown for subsequent requests", async () 
       (error) => asAppError(error)?.code === "ERR_METADATA_RATE_LIMITED",
     );
     assert.equal(requests, 1);
+    assert.ok(
+      Number(getMetadataProviderBudget(server.url).rate_limited_until) - Date.now() >=
+        59 * 60 * 1000,
+    );
     const providerUrl = new URL(
       "../backend/services/providers/brainzmashProvider.ts",
       import.meta.url,
@@ -622,6 +748,63 @@ test("independent provider processes share request admission", async () => {
       arrivals.at(-1)! - startAtPerf >= 450,
       "independent processes admitted a request burst",
     );
+  } finally {
+    await Promise.all(
+      children.map(
+        (child) =>
+          new Promise<void>((resolve) => {
+            child.once("exit", resolve);
+            child.send({ type: "shutdown" });
+          }),
+      ),
+    );
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(previous);
+    await server.close();
+  }
+});
+
+test("independent provider processes share one active entity request", async () => {
+  const previous = dbOps.getSettings();
+  let requests = 0;
+  const server = await createMockHttpServer((_request, response) => {
+    requests += 1;
+    response.setHeader("content-type", "application/json");
+    setTimeout(() => response.end(JSON.stringify({ id: "shared-artist", name: "Artist" })), 500);
+  });
+  let children: ChildProcess[] = [];
+  try {
+    dbOps.updateSettings({
+      ...previous,
+      integrations: {
+        ...previous.integrations,
+        metadata: {
+          ...previous.integrations?.metadata,
+          baseUrl: server.url,
+          enableNarrowFallbacks: false,
+        },
+      },
+    });
+    clearMetadataProviderCaches();
+    children = Array.from({ length: 2 }, () =>
+      fork(fileURLToPath(new URL("./fixtures/metadata-provider-child.mts", import.meta.url)), [], {
+        env: { ...process.env },
+        execArgv: OFFLINE_CHILD_ARGS,
+        stdio: ["ignore", "ignore", "ignore", "ipc"],
+      }),
+    );
+    await Promise.all(
+      children.map((child) => new Promise<void>((resolve) => child.once("message", resolve))),
+    );
+    const results = children.map(
+      (child) =>
+        new Promise<{ ok: boolean }>((resolve) => {
+          child.once("message", resolve);
+          child.send({ type: "request", mbid: "shared-artist" });
+        }),
+    );
+    assert.ok((await Promise.all(results)).every((result) => result.ok));
+    assert.equal(requests, 1);
   } finally {
     await Promise.all(
       children.map(

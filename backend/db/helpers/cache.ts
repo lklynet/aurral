@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
-import { gunzipSync, gzipSync } from "node:zlib";
+import { gunzip, gzip } from "node:zlib";
+import { promisify } from "node:util";
 import { db } from "../../config/db-sqlite.ts";
 import type {
   DeezerMbidCacheRow,
@@ -27,6 +28,9 @@ interface MetadataResponseEntry {
   staleUntil: number;
 }
 
+const gzipAsync = promisify(gzip);
+const gunzipAsync = promisify(gunzip);
+
 export interface CacheOps {
   getImage: (mbid: string) => CachedImage | null;
   getImages: (mbids: string[]) => Record<string, Omit<CachedImage, "mbid">>;
@@ -45,8 +49,8 @@ export interface CacheOps {
     mbid?: string | null,
   ) => { artistNameKey: string; mbid: string | null; updatedAt: number } | null;
   cleanOldMusicbrainzArtistMbidCache: (maxAgeDays?: number) => Database.RunResult;
-  getMetadataResponse: (cacheKey: string) => MetadataResponseEntry | null;
-  setMetadataResponse: (cacheKey: string, entry: MetadataResponseEntry) => void;
+  getMetadataResponseAsync: (cacheKey: string) => Promise<MetadataResponseEntry | null>;
+  setMetadataResponseAsync: (cacheKey: string, entry: MetadataResponseEntry) => Promise<void>;
   deleteMetadataResponse: (cacheKey: string) => Database.RunResult;
   clearMetadataResponses: () => Database.RunResult;
   cleanMetadataResponses: (maxEntries: number) => number;
@@ -230,7 +234,7 @@ export default function register(dbOps: CacheOps) {
     return cleanOldMusicbrainzArtistMbidCacheStmt.run(cutoff);
   };
 
-  dbOps.getMetadataResponse = function (cacheKey) {
+  dbOps.getMetadataResponseAsync = async function (cacheKey) {
     const row = getMetadataResponseStmt.get(cacheKey);
     if (!row) return null;
     if (row.stale_until < Date.now()) {
@@ -239,7 +243,7 @@ export default function register(dbOps: CacheOps) {
     }
     try {
       return {
-        value: JSON.parse(gunzipSync(row.response).toString("utf8")),
+        value: JSON.parse((await gunzipAsync(row.response)).toString("utf8")),
         freshUntil: row.fresh_until,
         staleUntil: row.stale_until,
       };
@@ -249,8 +253,9 @@ export default function register(dbOps: CacheOps) {
     }
   };
 
-  dbOps.setMetadataResponse = function (cacheKey, { value, freshUntil, staleUntil }) {
-    setMetadataResponseStmt.run(cacheKey, gzipSync(JSON.stringify(value)), freshUntil, staleUntil);
+  dbOps.setMetadataResponseAsync = async function (cacheKey, { value, freshUntil, staleUntil }) {
+    const compressed = await gzipAsync(JSON.stringify(value));
+    setMetadataResponseStmt.run(cacheKey, compressed, freshUntil, staleUntil);
   };
 
   dbOps.deleteMetadataResponse = function (cacheKey) {
