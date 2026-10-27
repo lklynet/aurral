@@ -36,7 +36,7 @@ import {
   Sparkles,
   Trash2,
   X,
-} from "lucide-react";
+} from "../components/icons";
 
 import ArtistImage from "../components/ArtistImage";
 import { useAurralAlbumMonitoring } from "../components/AurralAlbumMonitoring";

@@ -1,6 +1,6 @@
 import ArtworkImage from "./ArtworkImage";
 import { useEffect, useState } from "react";
-import { Ban, Newspaper } from "lucide-react";
+import { Ban, Newspaper } from "./icons";
 import { getArtistCover } from "../utils/api/endpoints/artists.ts";
 import TooltipButton from "./TooltipButton";
 import RelativeTime from "./RelativeTime";

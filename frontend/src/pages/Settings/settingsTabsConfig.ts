@@ -13,7 +13,7 @@ import {
   DatabaseSearch,
   Server,
   Users,
-} from "lucide-react";
+} from "../../components/icons";
 
 export const SETTINGS_TABS = [
   { id: "system", label: "System", icon: Monitor },

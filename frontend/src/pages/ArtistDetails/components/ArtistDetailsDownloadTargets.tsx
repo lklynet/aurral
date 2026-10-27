@@ -2,7 +2,7 @@ import ArtworkImage from "../../../components/ArtworkImage";
 import { getAlbumAddAction } from "../../../utils/albumAddAction";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Share } from "lucide-react";
+import { Share } from "../../../components/icons";
 import { DotLoader } from "../../../components/DotLoader";
 import AddActionButton from "../../../components/AddActionButton";
 import {

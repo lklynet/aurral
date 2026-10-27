@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { parseResponse } from "hono/client";
 import { downloadClientSettingsClient } from "../../../utils/api/clients/downloadClientSettings.ts";
 
-import { Plus, RefreshCw, Trash2, Wrench } from "lucide-react";
+import { Plus, RefreshCw, Trash2, Wrench } from "../../../components/icons";
 import { DotLoader } from "../../../components/DotLoader";
 import DownloadFolderField from "../../../components/DownloadFolderField";
 import { IntegrationCard, SettingsIntegrationModal } from "./SettingsIntegrationCards";

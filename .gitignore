@@ -11,9 +11,6 @@ dist/
 
 # Test output
 coverage/
-test-results/
-playwright-report/
-playwright/.auth/
 .vitest/
 
 # Private maintainer instructions

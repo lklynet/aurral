@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { FolderInput, FolderPlus, FolderSync, Trash2 } from "lucide-react";
+import { FolderInput, FolderPlus, FolderSync, Trash2 } from "../../../components/icons";
 import { ConfirmModal } from "../../../components/ConfirmModal";
 import DownloadFolderField from "../../../components/DownloadFolderField";
 import { DotLoader } from "../../../components/DotLoader";

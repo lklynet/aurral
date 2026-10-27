@@ -1,4 +1,4 @@
-import { Pause, Play } from "lucide-react";
+import { Pause, Play } from "../../../components/icons";
 import { DotLoader } from "../../../components/DotLoader";
 import type { MouseEvent } from "react";
 import {

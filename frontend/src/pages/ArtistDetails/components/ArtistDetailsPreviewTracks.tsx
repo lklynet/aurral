@@ -6,7 +6,7 @@ import { useQueueTrackActions } from "../../../hooks/useQueueTrackActions";
 import { normalizePreviewTrack } from "../../../utils/audioQueue";
 import type { ArtistPreviewTrack } from "../hooks/usePreviewPlayer";
 import type { useStaticPlaylists } from "../../../hooks/useStaticPlaylists";
-import { Pause, Play } from "lucide-react";
+import { Pause, Play } from "../../../components/icons";
 import { DotLoader } from "../../../components/DotLoader";
 import TooltipButton from "../../../components/TooltipButton";
 export function ArtistDetailsPreviewTracks({

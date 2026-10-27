@@ -14,7 +14,7 @@ import {
   List,
   Music,
   Search,
-} from "lucide-react";
+} from "../../components/icons";
 import { ReleaseMetric } from "./components/ReleaseMetric";
 import AddActionButton from "../../components/AddActionButton";
 import { useActiveDownloads } from "../../hooks/useActiveDownloads";

@@ -13,7 +13,7 @@ import { queryClient, queryKeys } from "../../../queryClient.ts";
 import { SettingsArrFieldSet } from "./arr/SettingsArrLayout";
 import { readApiError } from "../utils/apiError.ts";
 
-import { AlertCircle, Check, Clock, XCircle, type LucideIcon } from "lucide-react";
+import { AlertCircle, Check, Clock, XCircle, type IconComponent } from "../../../components/icons";
 import { DotLoader } from "../../../components/DotLoader";
 import Tooltip from "../../../components/Tooltip";
 import { formatRelativeTime } from "../../../utils/dateTime.ts";
@@ -22,7 +22,7 @@ const POLL_INTERVAL_MS = 5000;
 type StatusMeta = {
   label: string;
   tone: string;
-  icon?: LucideIcon;
+  icon?: IconComponent;
   spinning?: boolean;
   title: string | null;
 };

@@ -1,5 +1,5 @@
 import { Link } from "react-router";
-import { Library, Sparkles } from "lucide-react";
+import { Library, Sparkles } from "./icons";
 import Tooltip from "./Tooltip";
 
 const VIEWS = {

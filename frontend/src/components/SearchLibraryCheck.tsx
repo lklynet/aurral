@@ -1,5 +1,5 @@
 import type { ComponentProps } from "react";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2 } from "./icons";
 const SIZE_CLASS = {
   sm: "library-check--sm",
   md: "library-check",
@@ -8,7 +8,7 @@ const SIZE_CLASS = {
   overlay: "library-check--overlay",
 };
 
-type SearchLibraryCheckProps = ComponentProps<typeof CheckCircle2> & {
+type SearchLibraryCheckProps = Omit<ComponentProps<typeof CheckCircle2>, "size"> & {
   action?: boolean;
   size?: keyof typeof SIZE_CLASS;
   className?: string;

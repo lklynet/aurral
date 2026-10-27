@@ -11,7 +11,7 @@ import {
   XCircle,
   ChevronDown,
   ChevronRight,
-} from "lucide-react";
+} from "../../components/icons";
 import TooltipButton from "../../components/TooltipButton";
 import { DotLoader } from "../../components/DotLoader";
 import {

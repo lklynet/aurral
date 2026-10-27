@@ -6,7 +6,7 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
-import { MoreVertical, Plus, RefreshCw, type LucideIcon } from "lucide-react";
+import { MoreVertical, Plus, RefreshCw, type IconComponent } from "./icons";
 import Tooltip from "./Tooltip";
 import TooltipButton from "./TooltipButton";
 import SearchLibraryCheck from "./SearchLibraryCheck";
@@ -23,7 +23,7 @@ export type AddActionButtonProps = ComponentPropsWithoutRef<"button"> & {
   onAdd?: (managedBy: LibraryDestination["primary"], event: MouseEvent<HTMLButtonElement>) => void;
   items?: LibraryMenuItem[] | null;
   ownerConflict?: { message: string } | null;
-  icon?: LucideIcon;
+  icon?: IconComponent;
   isLoading?: boolean;
   busy?: boolean;
   loadingLabel?: string | null;

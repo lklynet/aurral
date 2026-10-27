@@ -22,8 +22,6 @@
     "format": "vp fmt",
     "test": "vp test run --project unit",
     "test:integration": "vp test run --project integration",
-    "test:browser": "playwright install chromium && vp test run --project browser",
-    "test:e2e": "playwright install chromium && playwright test",
     "perf:library": "node scripts/benchmark-library.mts",
     "dev": "node scripts/dev.mts",
     "wait-and-dev:frontend": "while ! curl -s http://localhost:3001/api/health; do sleep 1; done && pnpm --filter aurral-frontend run dev",
@@ -41,7 +39,6 @@
     "undici": "^8.12.2"
   },
   "devDependencies": {
-    "@playwright/test": "^1.64.1",
     "@russellthehippo/honker-node": "^0.5.1",
     "@tanstack/react-query": "^5.104.3",
     "@types/bcrypt": "^6.0.0",
@@ -54,7 +51,6 @@
     "@types/react-dom": "^19.3.0",
     "@types/send": "^1.2.1",
     "@types/ws": "^8.18.2",
-    "@vitest/browser-playwright": "5.0.5",
     "ajv": "^8.20.0",
     "bcrypt": "^6.0.0",
     "better-sqlite3": "^13.0.3",

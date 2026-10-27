@@ -7,7 +7,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
-import { Check, MoreVertical, Plus, Sparkles, Trash2, Upload, X } from "lucide-react";
+import { Check, MoreVertical, Plus, Sparkles, Trash2, Upload, X } from "./icons";
 import { useModalDialog } from "../hooks/useModalDialog.ts";
 import { DotLoader } from "./DotLoader";
 import TooltipButton from "./TooltipButton";

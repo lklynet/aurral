@@ -1,6 +1,6 @@
 import ArtworkImage from "../components/ArtworkImage";
 import { useState } from "react";
-import { ListMusic } from "lucide-react";
+import { ListMusic } from "../components/icons";
 import { DiscoverRail } from "../components/DiscoverRail";
 import RouteLink from "../components/RouteLink";
 import Tooltip from "../components/Tooltip";

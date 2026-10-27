@@ -812,20 +812,61 @@ export function getRecentlyAddedLibraryArtists({
 }: { availableOnly?: LibraryAvailability; limit?: number } = {}) {
   const rows = db
     .prepare<[number], { id: number; added_at: number }>(
-      `SELECT id, added_at
-     FROM (
-       SELECT artist.id, (
-         SELECT MAX(media.created_at)
+      `WITH identified AS MATERIALIZED (
+       SELECT
+         artist.id,
+         artist.created_at,
+         artist.mbid,
+         artist.identity_key,
+         CASE
+           WHEN NULLIF(trim(artist.mbid), '') IS NOT NULL
+             THEN 'id:' || lower(trim(artist.mbid))
+           WHEN json_valid(artist.metadata_json)
+             AND NULLIF(trim(CAST(json_extract(artist.metadata_json, '$.foreignArtistId') AS TEXT)), '') IS NOT NULL
+             THEN 'id:' || lower(trim(CAST(json_extract(artist.metadata_json, '$.foreignArtistId') AS TEXT)))
+           WHEN json_valid(artist.metadata_json)
+             AND NULLIF(trim(CAST(json_extract(artist.metadata_json, '$.id') AS TEXT)), '') IS NOT NULL
+             THEN 'provider:'
+               || lower(COALESCE(NULLIF(trim(CAST(json_extract(artist.metadata_json, '$.librarySource') AS TEXT)), ''), 'unknown'))
+               || ':' || lower(trim(CAST(json_extract(artist.metadata_json, '$.id') AS TEXT)))
+           ELSE 'identity:' || lower(trim(artist.identity_key))
+         END AS canonical_key
+       FROM library_artists AS artist
+     ), first_added AS MATERIALIZED (
+       SELECT canonical_key, MIN(created_at) AS added_at
+       FROM identified
+       GROUP BY canonical_key
+     ), candidates AS MATERIALIZED (
+       SELECT
+         artist.id,
+         artist.created_at,
+         artist.mbid,
+         artist.canonical_key,
+         first_added.added_at
+       FROM identified AS artist
+       JOIN first_added ON first_added.canonical_key = artist.canonical_key
+       WHERE EXISTS (
+         SELECT 1
          FROM library_albums AS album
          JOIN library_album_tracks AS album_track ON album_track.album_id = album.id
          JOIN library_media_files AS media INDEXED BY idx_library_media_files_track_album_source_available_created
            ON media.track_id = album_track.track_id
          WHERE album.artist_id = artist.id
            AND ${albumMediaCondition("media", "album_track")}${recentMediaFilter(null, availableOnly, "media")}
-       ) AS added_at
-       FROM library_artists AS artist
+       )
+     ), ranked AS (
+       SELECT
+         id,
+         added_at,
+         ROW_NUMBER() OVER (
+           PARTITION BY canonical_key
+           ORDER BY CASE WHEN mbid IS NULL THEN 1 ELSE 0 END, created_at, id
+         ) AS duplicate_rank
+       FROM candidates
      )
-     WHERE added_at IS NOT NULL
+     SELECT id, added_at
+     FROM ranked
+     WHERE duplicate_rank = 1
      ORDER BY added_at DESC, id DESC
      LIMIT ?`,
     )

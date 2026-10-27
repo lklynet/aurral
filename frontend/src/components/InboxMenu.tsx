@@ -9,8 +9,8 @@ import {
   SlidersHorizontal,
   Sparkles,
   Check,
-  type LucideIcon,
-} from "lucide-react";
+  type IconComponent,
+} from "./icons";
 import { parseResponse, type InferResponseType } from "hono/client";
 import { inboxClient } from "../utils/api/clients/inbox.ts";
 import { useAuth } from "../contexts/AuthContext.tsx";
@@ -25,7 +25,7 @@ import { getApiErrorMessage } from "../pages/onboardingUtils.tsx";
 type InboxListResponse = InferResponseType<typeof inboxClient.$get, 200>;
 type InboxListItem = NonNullable<InboxListResponse["items"][number]> & { id: string };
 
-const ITEM_ICONS: Partial<Record<string, LucideIcon>> = {
+const ITEM_ICONS: Partial<Record<string, IconComponent>> = {
   release: Music2,
   show: CalendarDays,
   news: Newspaper,

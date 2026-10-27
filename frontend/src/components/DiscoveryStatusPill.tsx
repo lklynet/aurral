@@ -1,4 +1,4 @@
-import { AlertTriangle, Clock } from "lucide-react";
+import { AlertTriangle, Clock } from "./icons";
 import { DotLoader } from "./DotLoader";
 import RelativeTime from "./RelativeTime";
 

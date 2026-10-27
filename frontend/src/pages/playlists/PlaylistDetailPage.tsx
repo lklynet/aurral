@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
-import { Clock, Download, Pencil, RefreshCw, Trash2 } from "lucide-react";
+import { Clock, Download, Pencil, RefreshCw, Trash2 } from "../../components/icons";
 import { DotLoader } from "../../components/DotLoader";
 import {
   SkeletonCollectionHeader,

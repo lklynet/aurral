@@ -1,4 +1,4 @@
-import { Headphones, Star } from "lucide-react";
+import { Headphones, Star } from "../../../components/icons";
 import type { ReleaseMetricValue } from "../utils";
 
 export function ReleaseMetric({ metric }: { metric: ReleaseMetricValue }) {

@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import RouteLink from "../../components/RouteLink";
-import { ListMusic, MoreVertical, Plus, Upload } from "lucide-react";
+import { ListMusic, MoreVertical, Plus, Upload } from "../../components/icons";
 import { SkeletonLibraryGrid, SkeletonStatus } from "../../components/Skeletons";
 import Tooltip from "../../components/Tooltip";
 import { LibraryItemMenu } from "../../components/LibraryItemMenu";

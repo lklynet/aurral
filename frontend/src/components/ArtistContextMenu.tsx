@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Ban, Library, MoreVertical, ThumbsDown, ThumbsUp, type LucideIcon } from "lucide-react";
+import { Ban, Library, MoreVertical, ThumbsDown, ThumbsUp, type IconComponent } from "./icons";
 import { getDiscoveryFeedbackLabel } from "../utils/discoveryFeedback";
 import { LibraryItemMenu } from "./LibraryItemMenu";
 import TooltipButton from "./TooltipButton";
@@ -10,7 +10,7 @@ import { DotLoader } from "./DotLoader";
 type FeedbackAction = "more_like_this" | "less_like_this" | "block_artist";
 type ArtistMenuArtist = { name?: string | null; artistName?: string | null };
 type LibraryLink = { to: string; state?: unknown };
-type FeedbackItemDef = { id: FeedbackAction; icon: LucideIcon; danger?: boolean };
+type FeedbackItemDef = { id: FeedbackAction; icon: IconComponent; danger?: boolean };
 
 interface ArtistContextMenuProps {
   artist?: ArtistMenuArtist | null;

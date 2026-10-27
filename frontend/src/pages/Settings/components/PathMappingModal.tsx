@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { Folder, X } from "lucide-react";
+import { Folder, X } from "../../../components/icons";
 import DownloadFolderPickerModal from "../../../components/DownloadFolderPickerModal";
 import { SettingsInput, SettingsSelect } from "./SettingsField";
 import { SettingsArrFormGroup } from "./arr/SettingsArrLayout";

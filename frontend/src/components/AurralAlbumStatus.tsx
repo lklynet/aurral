@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
-import { RotateCcw, X } from "lucide-react";
+import { RotateCcw, X } from "./icons";
 
 import { DotLoader } from "./DotLoader";
 import type { AurralAlbumRef } from "./AurralAlbumMonitoring";

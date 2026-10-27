@@ -20,7 +20,7 @@ import { queryClient } from "./queryClient";
 import { DiscoverRecentProvider } from "./contexts/DiscoverRecentProvider";
 import { AudioQueueProvider } from "./contexts/AudioQueueProvider";
 import { ShareProvider } from "./contexts/ShareContext";
-import { AlertTriangle, XCircle } from "lucide-react";
+import { AlertTriangle, XCircle } from "./components/icons";
 import ReloadPrompt from "./components/ReloadPrompt";
 import ThemeSync from "./components/ThemeSync";
 import UpdateIndicator from "./components/UpdateIndicator";

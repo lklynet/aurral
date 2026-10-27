@@ -7,7 +7,7 @@ import {
   type ComponentProps,
   type ReactNode,
 } from "react";
-import { ArrowDown, ArrowUp, Heart, Pause, Play } from "lucide-react";
+import { ArrowDown, ArrowUp, Heart, Pause, Play } from "./icons";
 import type { To } from "react-router";
 import { LibraryItemMenu } from "./LibraryItemMenu";
 import Tooltip from "./Tooltip";

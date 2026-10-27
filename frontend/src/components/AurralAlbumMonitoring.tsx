@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff } from "./icons";
 
 import { useToast } from "../contexts/ToastContext";
 import { getApiErrorMessage } from "../pages/onboardingUtils.tsx";

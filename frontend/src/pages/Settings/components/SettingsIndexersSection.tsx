@@ -8,7 +8,7 @@ import type { AppSettings } from "../../../../../backend/db/helpers/settings.ts"
 import type { SettingsState } from "../utils";
 import { readApiError } from "../utils/apiError.ts";
 
-import { RefreshCw } from "lucide-react";
+import { RefreshCw } from "../../../components/icons";
 import { DotLoader } from "../../../components/DotLoader";
 import { SettingsInput } from "./SettingsField";
 import { IntegrationCard, SettingsIntegrationModal } from "./SettingsIntegrationCards";

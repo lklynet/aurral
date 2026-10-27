@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router";
 import RouteLink from "../../components/RouteLink";
 import { useQuery } from "@tanstack/react-query";
-import { AudioWaveform, ChevronDown, Sparkles } from "lucide-react";
+import { AudioWaveform, ChevronDown, Sparkles } from "../../components/icons";
 import { DotLoader } from "../../components/DotLoader";
 import { SkeletonShape, SkeletonStatus, SkeletonText } from "../../components/Skeletons";
 import { LibraryItemMenu } from "../../components/LibraryItemMenu";

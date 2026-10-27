@@ -24,7 +24,7 @@ import {
   Volume2,
   VolumeX,
   X,
-} from "lucide-react";
+} from "./icons";
 import { useAudioQueue } from "../contexts/audioQueueContext";
 import TooltipButton from "./TooltipButton";
 import { PlayerQueuePanel, UpNextQueue } from "./PlayerQueue";
