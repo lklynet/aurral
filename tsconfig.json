@@ -23,7 +23,6 @@
     "frontend/scripts",
     "frontend/vite.config.ts",
     ".tests/**/*",
-    "tests",
     "scripts",
     "*.config.ts"
   ],

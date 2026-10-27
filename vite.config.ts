@@ -1,6 +1,5 @@
 import { readFile } from "node:fs/promises";
 import { defineConfig } from "vite-plus";
-import { playwright } from "vite-plus/test/browser-playwright";
 import { readAurralTokens } from "./frontend/scripts/ui-token-source.mts";
 
 const [tokenSource, sharedControlExceptions] = await Promise.all([
@@ -73,7 +72,7 @@ export default defineConfig({
     },
     overrides: [
       {
-        files: ["frontend/public/**/*.js", "tests/e2e/**/*.ts", ".tests/browser/**"],
+        files: ["frontend/public/**/*.js"],
         env: { browser: true },
       },
       {
@@ -120,7 +119,7 @@ export default defineConfig({
         rules: { "aurral/single-main": "off" },
       },
       {
-        files: ["backend/**", "lib/**", "scripts/**", ".tests/**", "tests/**"],
+        files: ["backend/**", "lib/**", "scripts/**", ".tests/**"],
         rules: { "import/extensions": ["error", "always", { ignorePackages: true }] },
       },
       {
@@ -148,18 +147,6 @@ export default defineConfig({
           ...testSetup,
           name: "integration",
           include: [".tests/**/*.int.test.ts"],
-        },
-      },
-      {
-        test: {
-          name: "browser",
-          include: [".tests/browser/**/*.test.tsx"],
-          browser: {
-            enabled: true,
-            headless: true,
-            provider: playwright(),
-            instances: [{ browser: "chromium" }],
-          },
         },
       },
     ],

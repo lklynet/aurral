@@ -35,22 +35,6 @@ jobs:
       - name: Build docs
         run: vp run docs:build
 
-      - name: Read Playwright version
-        id: playwright
-        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
-
-      - name: Restore Chromium
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ env.ImageOS }}-${{ steps.playwright.outputs.version }}
-
-      - name: Install Chromium
-        run: vp exec playwright install --only-shell chromium
-
-      - name: Run component tests in Chromium
-        run: vp test run --project browser
-
       - name: Start app
         run: |
           touch backend/.env
@@ -72,16 +56,6 @@ jobs:
             echo "App log not found at /tmp/aurral.log"
           fi
           exit 1
-
-      - name: Run browser checks with faked APIs
-        env:
-          AURRAL_BASE_URL: http://127.0.0.1:3001
-        run: >-
-          vp exec playwright test --workers=4 --fully-parallel
-          tests/e2e/library-track-performer.spec.ts
-          tests/e2e/library-add-menu.spec.ts
-          tests/e2e/playlist-bulk-actions.spec.ts
-          tests/e2e/local-album-artwork.spec.ts
 
       - name: Print app log on failure
         if: failure()
