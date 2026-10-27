@@ -123,6 +123,7 @@ if (player) {
     for (const entry of tracks) {
       entry.setAttribute("aria-current", String(entry === track));
       entry.setAttribute("aria-pressed", "false");
+      entry.setAttribute("aria-label", `Play ${entry.dataset.title}`);
     }
     const row = track.closest("li");
     if (row) row.hidden = false;
