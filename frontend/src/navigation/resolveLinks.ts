@@ -1,8 +1,9 @@
 import { queryOptions } from "@tanstack/react-query";
+import { parseResponse } from "hono/client";
 
 type MaybeId = string | number | null | undefined;
 type MaybeText = string | null | undefined;
-import { resolveEditorialTrackLinks } from "../utils/api/endpoints/discovery.ts";
+import { discoveryClient } from "../utils/api/clients/discovery.ts";
 import {
   getLibraryPage,
   lookupAlbumsInLibraryBatch,
@@ -85,13 +86,17 @@ async function resolveCatalog(
 ) {
   const artistName = text(kind === "artist" ? params.get("name") : params.get("artist"));
   const albumName = kind === "album" ? text(params.get("name")) : "";
-  const { artistMbid, albumMbid } = await resolveEditorialTrackLinks(
-    {
-      artistName,
-      albumName: albumName || null,
-      deezerAlbumId: kind === "album" ? text(params.get("deezer")) || null : null,
-    },
-    { signal },
+  const { artistMbid, albumMbid } = await parseResponse(
+    discoveryClient.editorial.links.$get(
+      {
+        query: {
+          artist: artistName || undefined,
+          album: albumName || undefined,
+          albumId: (kind === "album" && text(params.get("deezer"))) || undefined,
+        },
+      },
+      { init: { signal } },
+    ),
   );
   if (!artistMbid) throw notFound(`Couldn't find ${artistName} in MusicBrainz`);
   if (kind === "album" && albumMbid) {

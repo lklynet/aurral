@@ -3,7 +3,8 @@ import type { AriaRole, ReactNode } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Check, ListMusic, Plus } from "../components/icons";
-import { addEditorialPlaylistToLibrary } from "../utils/api/endpoints/discovery.ts";
+import { parseResponse } from "hono/client";
+import { discoveryClient } from "../utils/api/clients/discovery.ts";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
@@ -115,7 +116,11 @@ export default function EditorialPlaylistDetailPage() {
   const handleAdd = async () => {
     setAdding(true);
     try {
-      const result = await addEditorialPlaylistToLibrary(playlistId);
+      const result = await parseResponse(
+        discoveryClient.editorial[":playlistId"].library.$post({
+          param: { playlistId: encodeURIComponent(playlistId) },
+        }),
+      );
       queryClient.setQueryData(queryKey, (current) =>
         current ? { ...current, libraryPlaylistId: result.playlistId } : current,
       );

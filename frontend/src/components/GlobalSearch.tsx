@@ -14,7 +14,7 @@ import {
 } from "../utils/api/endpoints/library.ts";
 import { parseResponse } from "hono/client";
 import { staticPlaylistsClient } from "../utils/api/clients/staticPlaylists.ts";
-import { getTagSuggestions } from "../utils/api/endpoints/discovery.ts";
+import { discoveryClient } from "../utils/api/clients/discovery.ts";
 import { searchLibrary, searchUnified } from "../utils/api/endpoints/search.ts";
 import {
   buildUnifiedSuggestionSections,
@@ -235,7 +235,11 @@ function GlobalSearch({ settingsMode = false }) {
       scheduleSuggest(async (isCurrent) => {
         setLoadingSuggestions(true);
         try {
-          const data = await getTagSuggestions(tagPart, TAG_SUGGESTIONS_LIMIT);
+          const data = await parseResponse(
+            discoveryClient.tags.$get({
+              query: { q: tagPart.trim() || undefined, limit: String(TAG_SUGGESTIONS_LIMIT) },
+            }),
+          );
           if (!isCurrent()) return;
           const raw = data.tags || [];
           const seen = new Set();

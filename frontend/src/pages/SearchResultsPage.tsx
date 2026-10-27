@@ -13,7 +13,8 @@ import {
 } from "../utils/api/endpoints/library.ts";
 import { parseResponse } from "hono/client";
 import { staticPlaylistsClient } from "../utils/api/clients/staticPlaylists.ts";
-import { getDiscovery } from "../utils/api/endpoints/discovery.ts";
+import { discoveryClient } from "../utils/api/clients/discovery.ts";
+import type { DiscoverResponse } from "./discoverUtils";
 import { DotLoader } from "../components/DotLoader";
 import { SkeletonSearchResults, SkeletonStatus } from "../components/Skeletons";
 import { getArtistCover, getReleaseGroupCover } from "../utils/api/endpoints/artists.ts";
@@ -82,7 +83,7 @@ import {
 import TooltipButton from "../components/TooltipButton";
 import Tooltip from "../components/Tooltip";
 
-type DiscoverPage = Awaited<ReturnType<typeof getDiscovery>>;
+type DiscoverPage = DiscoverResponse;
 type UnifiedSearchResponse = Awaited<ReturnType<typeof searchUnified>>;
 type CatalogSearchPage = Awaited<ReturnType<typeof searchCatalog>>;
 type SearchPage = DiscoverPage | UnifiedSearchResponse | CatalogSearchPage;
@@ -336,11 +337,17 @@ function SearchResultsPage() {
     initialPageParam: 0,
     queryFn: ({ pageParam, signal }): Promise<SearchPage> => {
       if (normalizedType === "recommended" || normalizedType === "trending") {
-        return getDiscovery({
-          offset: pageParam,
-          limit: pagedRecommendations ? PAGE_SIZE : undefined,
-          signal,
-        });
+        return parseResponse(
+          discoveryClient.$get(
+            {
+              query: {
+                offset: String(pageParam),
+                limit: pagedRecommendations ? String(PAGE_SIZE) : undefined,
+              },
+            },
+            { init: { signal } },
+          ),
+        );
       }
       if (isUnifiedSearch) {
         return searchUnified(trimmedQuery, {

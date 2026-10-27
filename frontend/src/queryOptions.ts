@@ -1,8 +1,8 @@
 import { queryOptions } from "@tanstack/react-query";
 import { parseResponse } from "hono/client";
 import { queryKeys } from "./queryClient.ts";
-import { getEditorialPlaylist, getEditorialShelf } from "./utils/api/endpoints/discovery.ts";
 import { getReleaseGroupDetails } from "./utils/api/endpoints/artists.ts";
+import { discoveryClient } from "./utils/api/clients/discovery.ts";
 import { playlistJobsClient } from "./utils/api/clients/playlistJobs.ts";
 import {
   getPlaylistTrackStreamUrl,
@@ -15,14 +15,21 @@ type MaybeText = string | null | undefined;
 export const editorialShelfQueryOptions = (userId: MaybeId) =>
   queryOptions({
     queryKey: queryKeys.editorialShelf(userId),
-    queryFn: ({ signal }) => getEditorialShelf({ signal }),
+    queryFn: ({ signal }) =>
+      parseResponse(discoveryClient.editorial.$get(undefined, { init: { signal } })),
     staleTime: 60 * 60 * 1000,
   });
 
 export const editorialPlaylistQueryOptions = (userId: MaybeId, playlistId: string) =>
   queryOptions({
     queryKey: queryKeys.editorialPlaylist(userId, playlistId),
-    queryFn: ({ signal }) => getEditorialPlaylist(playlistId, { signal }),
+    queryFn: ({ signal }) =>
+      parseResponse(
+        discoveryClient.editorial[":playlistId"].$get(
+          { param: { playlistId: encodeURIComponent(playlistId) } },
+          { init: { signal } },
+        ),
+      ),
     staleTime: 5 * 60 * 1000,
   });
 

@@ -2,12 +2,10 @@ import { test, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
 import { playlistTrack } from "../playlists/fixtures.ts";
-import { createResponse, createRouteHarness } from "../library/routeHarness.ts";
-import type {
-  DiscoveryFeedbackAddResponse,
-  DiscoveryFeedbackListResponse,
-  DiscoveryFeedbackResponse,
-} from "../../backend/routes/discovery/handlers/feedback.ts";
+import type { hc, InferResponseType } from "hono/client";
+import type discoveryApp from "../../backend/routes/discovery/index.ts";
+import { signedInAs } from "../helpers/honoApp.ts";
+import { testUser } from "../helpers/userFixtures.ts";
 import {
   applyIsolatedBackendEnv,
   cleanupIsolatedState,
@@ -18,12 +16,17 @@ import {
 const isolatedState = await createIsolatedStateDir("artist-blocklist");
 applyIsolatedBackendEnv(isolatedState);
 
-const [{ db }, discovery, flowTrackSourceModule, { registerFeedback }] = await Promise.all([
+const [{ db }, discovery, flowTrackSourceModule, { api }] = await Promise.all([
   import("../../backend/config/db-sqlite.ts"),
   import("../../backend/services/discovery/index.ts"),
   import("../../backend/services/flows/flowTrackSource.ts"),
-  import("../../backend/routes/discovery/handlers/feedback.ts"),
+  import("../../backend/routes/api.ts"),
 ]);
+
+type FeedbackRoutes = ReturnType<typeof hc<typeof discoveryApp>>["discover"]["feedback"];
+type FeedbackList = InferResponseType<FeedbackRoutes["$get"], 200>;
+type FeedbackAdded = InferResponseType<FeedbackRoutes["$post"], 200>;
+type FeedbackRestored = InferResponseType<FeedbackRoutes["restore"]["$post"], 200>;
 
 const { FlowTrackSource } = flowTrackSourceModule;
 
@@ -110,43 +113,47 @@ test("flows exclude only hard-blocked artists", async () => {
   );
 });
 
-const feedbackRoutes = () => {
-  const routes = createRouteHarness(registerFeedback);
-  return async <Body>(key: string, req: { body?: object; params?: object } = {}) => {
-    const res = createResponse<Body>();
-    await routes.get(key)({ user: { id: 7 }, params: {}, body: {}, ...req }, res);
-    return res;
-  };
+const app = signedInAs(testUser(7)).route("/", api);
+
+const send = (method: string, path: string, body?: object) =>
+  app.request(`/discover/feedback${path}`, {
+    method,
+    headers: { "content-type": "application/json" },
+    body: body && JSON.stringify(body),
+  });
+
+const listFeedback = async () => {
+  const list: FeedbackList = await (await send("GET", "")).json();
+  return list.feedback;
+};
+
+const addFeedback = async (body: object) => {
+  const added: FeedbackAdded = await (await send("POST", "", body)).json();
+  return added.feedback;
 };
 
 test("undoing less like this restores the taste it replaced exactly", async () => {
-  const call = feedbackRoutes();
-  await call("POST /feedback", { body: { artistName: "Blocked Artist", action: "block_artist" } });
-  const more = (
-    await call<DiscoveryFeedbackAddResponse>("POST /feedback", {
-      body: { artistName: "Taste Artist", action: "more_like_this", tagContext: ["shoegaze"] },
-    })
-  ).body.feedback;
-  const before = (await call<DiscoveryFeedbackResponse>("GET /feedback")).body.feedback;
+  await addFeedback({ artistName: "Blocked Artist", action: "block_artist" });
+  const more = await addFeedback({
+    artistName: "Taste Artist",
+    action: "more_like_this",
+    tagContext: ["shoegaze"],
+  });
+  const before = await listFeedback();
 
-  await call("DELETE /feedback/:id", { params: { id: more.id } });
-  const less = (
-    await call<DiscoveryFeedbackAddResponse>("POST /feedback", {
-      body: { artistName: "Taste Artist", action: "less_like_this" },
-    })
-  ).body.feedback;
+  await send("DELETE", `/${encodeURIComponent(more.id)}`);
+  const less = await addFeedback({ artistName: "Taste Artist", action: "less_like_this" });
 
-  const rejected = await call("POST /feedback/restore", { body: { removeIds: "all" } });
-  assert.equal(rejected.statusCode, 400);
+  const rejected = await send("POST", "/restore", { removeIds: "all" });
+  assert.equal(rejected.status, 400);
   assert.deepEqual(
-    (await call<DiscoveryFeedbackResponse>("GET /feedback")).body.feedback.map((entry) => entry.id),
+    (await listFeedback()).map((entry) => entry.id),
     [less.id, before[1].id],
   );
 
-  const restored = await call<DiscoveryFeedbackListResponse>("POST /feedback/restore", {
-    body: { removeIds: [less.id], entries: [more] },
-  });
-  assert.equal(restored.statusCode, 200);
-  assert.deepEqual(restored.body.feedbackList, before);
-  assert.deepEqual((await call<DiscoveryFeedbackResponse>("GET /feedback")).body.feedback, before);
+  const restored = await send("POST", "/restore", { removeIds: [less.id], entries: [more] });
+  assert.equal(restored.status, 200);
+  const { feedbackList }: FeedbackRestored = await restored.json();
+  assert.deepEqual(feedbackList, before);
+  assert.deepEqual(await listFeedback(), before);
 });

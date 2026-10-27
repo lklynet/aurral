@@ -1,34 +1,47 @@
-import express from "express";
-import { requireAdmin, requireAuth } from "../middleware/requirePermission.ts";
+import { Hono } from "hono";
+import * as v from "valibot";
+import { requireAdmin, requireAuth } from "../middleware/guards.ts";
+import type { AppEnv } from "../middleware/requestUser.ts";
+import { validate } from "../middleware/validate.ts";
 import { disableNewsFeed, getNewsForUser } from "../services/newsService.ts";
+import { errorStatus } from "./shared/errorStatus.ts";
 import { asAppError } from "../../lib/errors.ts";
 
-const router = express.Router();
-
-router.post("/feeds/disable", requireAuth, requireAdmin, (req, res) => {
-  const sourceUrl = String(req.body?.sourceUrl || "").trim();
-  if (!sourceUrl) {
-    return res.status(400).json({ error: "sourceUrl is required" });
-  }
-  return res.json(disableNewsFeed(sourceUrl));
+const newsQuery = v.object({
+  mode: v.optional(v.string()),
+  limit: v.optional(v.string()),
+  offset: v.optional(v.string()),
 });
 
-router.get("/", requireAuth, async (req, res) => {
-  try {
-    const result = await getNewsForUser({
-      userId: req.user!.id,
-      mode: req.query.mode === "top" ? "top" : "matched",
-      limit: req.query.limit,
-      offset: req.query.offset,
-    });
-    res.set("Cache-Control", "private, no-cache, no-store, must-revalidate");
-    return res.json(result);
-  } catch (error) {
-    const failure = asAppError(error);
-    return res
-      .status(failure?.statusCode || 500)
-      .json({ error: "Failed to load artist news", message: failure?.message });
-  }
-});
-
-export default router;
+export default new Hono<AppEnv>()
+  .basePath("/news")
+  .post(
+    "/feeds/disable",
+    requireAuth,
+    requireAdmin,
+    validate("json", v.object({ sourceUrl: v.nullish(v.string()) })),
+    (c) => {
+      const sourceUrl = c.req.valid("json").sourceUrl?.trim();
+      if (!sourceUrl) return c.json({ error: "sourceUrl is required" }, 400);
+      return c.json(disableNewsFeed(sourceUrl), 200);
+    },
+  )
+  .get("/", requireAuth, validate("query", newsQuery), async (c) => {
+    const { mode, limit, offset } = c.req.valid("query");
+    try {
+      const result = await getNewsForUser({
+        userId: c.var.user.id,
+        mode: mode === "top" ? "top" : "matched",
+        limit,
+        offset,
+      });
+      c.header("Cache-Control", "private, no-cache, no-store, must-revalidate");
+      return c.json(result, 200);
+    } catch (error) {
+      const failure = asAppError(error);
+      return c.json(
+        { error: "Failed to load artist news", message: failure?.message },
+        errorStatus(failure),
+      );
+    }
+  });

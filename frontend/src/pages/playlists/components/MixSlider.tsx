@@ -8,7 +8,8 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
-import { getTagSuggestions } from "../../../utils/api/endpoints/discovery.ts";
+import { parseResponse } from "hono/client";
+import { discoveryClient } from "../../../utils/api/clients/discovery.ts";
 import { searchUnified } from "../../../utils/api/endpoints/search.ts";
 import { TAG_COLORS } from "../../discoverUtils";
 import { getTagColor } from "../../ArtistDetails/utils";
@@ -437,9 +438,13 @@ function dedupeFocusSuggestions(
 }
 
 export async function fetchFlowTagSuggestions(query: string, existingEntries: string[] = []) {
-  const data = await getTagSuggestions(query, FLOW_FOCUS_SUGGESTION_LIMIT);
+  const data = await parseResponse(
+    discoveryClient.tags.$get({
+      query: { q: query.trim() || undefined, limit: String(FLOW_FOCUS_SUGGESTION_LIMIT) },
+    }),
+  );
   return dedupeFocusSuggestions(
-    (Array.isArray(data?.tags) ? data.tags : []).map((tag: string) => ({
+    data.tags.map((tag) => ({
       label: tag,
       meta: "Tag",
     })),

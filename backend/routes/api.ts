@@ -5,12 +5,17 @@ import type { AppEnv } from "../middleware/requestUser.ts";
 import { logger } from "../services/logger.ts";
 import artistStream from "./artists/handlers/stream.ts";
 import auth from "./auth.ts";
+import discovery from "./discovery/index.ts";
 import filesystem from "./filesystem.ts";
 import health from "./health.ts";
 import inbox from "./inbox.ts";
 import library from "./library/index.ts";
 import libraryStreams from "./library/streams.ts";
+import lidarrFeed from "./lidarrFeed.ts";
+import lidarrWebhook from "./lidarrWebhook.ts";
+import news from "./news.ts";
 import onboarding from "./onboarding.ts";
+import playEvents from "./playEvents.ts";
 import playlistArtwork from "./playlists/handlers/artwork.ts";
 import flows from "./playlists/handlers/flows.ts";
 import playlistImports from "./playlists/handlers/imports.ts";
@@ -21,6 +26,7 @@ import playlistWorker from "./playlists/handlers/worker.ts";
 import requests from "./requests.ts";
 import scrobbling from "./scrobbling.ts";
 import settings from "./settings/index.ts";
+import shareLinks from "./shareLinks.ts";
 import settingsDownloadClients from "./settings/downloadClients.ts";
 import settingsPlayback from "./settings/playback.ts";
 import updates from "./updates.ts";
@@ -71,7 +77,13 @@ export const api = new Hono<AppEnv>()
   .route("/", onboarding)
   .route("/", health)
   .route("/", scrobbling)
-  .route("/", filesystem);
+  .route("/", filesystem)
+  .route("/", discovery)
+  .route("/", news)
+  .route("/", playEvents)
+  .route("/", shareLinks)
+  .route("/", lidarrWebhook)
+  .route("/", lidarrFeed);
 
 api.onError((error, c) => {
   if (error instanceof HTTPException) return c.json({ error: error.message }, error.status);

@@ -25,7 +25,6 @@ import { startPlaylistStatusBroadcasts } from "./services/playlists/playlistStat
 
 import artistsRouter from "./routes/artists/index.ts";
 import searchRouter from "./routes/search.ts";
-import discoveryRouter from "./routes/discovery/index.ts";
 import { noteDeprecatedUsage, warnAboutConfigDeprecations } from "./services/deprecatedUsage.ts";
 import { bootstrapHonkerSchedules } from "./services/honkerDb.ts";
 import { initializeAppRuntime } from "./services/appRuntime.ts";
@@ -35,12 +34,7 @@ import {
 } from "./services/honkerWorkerRuntime.ts";
 import imageProxyRouter from "./routes/imageProxy.ts";
 import deezerRouter from "./routes/deezer.ts";
-import lidarrFeedRouter from "./routes/lidarrFeed.ts";
-import lidarrWebhookRouter from "./routes/lidarrWebhook.ts";
-import newsRouter from "./routes/news.ts";
 import subsonicRouter from "./routes/subsonic.ts";
-import playEventsRouter from "./routes/playEvents.ts";
-import shareLinksRouter from "./routes/shareLinks.ts";
 import { stopShareListener, syncShareListener } from "./services/shareLinks/shareListener.ts";
 import { asAppError, type AppError } from "../lib/errors.ts";
 import { JSON_BODY_LIMIT } from "./routes/api.ts";
@@ -202,6 +196,12 @@ app.use(
     "/api/scrobbling",
     "/api/filesystem",
     "/api/playlists",
+    "/api/discover",
+    "/api/news",
+    "/api/play-events",
+    "/api/share-links",
+    "/api/webhooks/lidarr",
+    "/api/feeds",
   ],
   handToHono,
 );
@@ -209,17 +209,11 @@ app.use(
 app.use(express.json({ limit: JSON_BODY_LIMIT }));
 app.use("/api/search", searchRouter);
 app.use("/api/artists", artistsRouter);
-app.use("/api/discover", discoveryRouter);
-app.use("/api/news", newsRouter);
-app.use("/api/webhooks/lidarr", lidarrWebhookRouter);
-app.use("/api/feeds", lidarrFeedRouter);
 app.use("/api/weekly-flow", (req, res) => {
   noteDeprecatedUsage("weekly-flow-api");
   const parsed = new URL(req.url, "http://localhost");
   res.redirect(308, `/api/playlists${parsed.pathname}${parsed.search}`);
 });
-app.use("/api/play-events", playEventsRouter);
-app.use("/api/share-links", shareLinksRouter);
 app.use("/api/image-proxy", imageProxyRouter);
 app.use("/api/deezer", deezerRouter);
 app.use("/rest", express.urlencoded({ extended: false }), subsonicRouter);

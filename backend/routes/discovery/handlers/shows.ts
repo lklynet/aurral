@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
-import type { Router } from "express";
-import { requireAuth } from "../../../middleware/requirePermission.ts";
+import { Hono } from "hono";
+import * as v from "valibot";
+import { requireAuth } from "../../../middleware/guards.ts";
+import type { AppEnv } from "../../../middleware/requestUser.ts";
+import { validate } from "../../../middleware/validate.ts";
 import { dbOps } from "../../../db/helpers/index.ts";
 import { getTicketmasterApiKey } from "../../../services/apiClients/index.ts";
 import { getLibraryArtistNames } from "../../../services/libraryQueryService.ts";
@@ -41,38 +44,29 @@ export const buildShowsResponseCacheKey = ({
     fingerprintArtists(trendingArtists),
   ]);
 
-type NearbyShowsResult = Awaited<ReturnType<typeof getNearbyShows>>;
+const locationQuery = v.object({ zip: v.optional(v.string()), country: v.optional(v.string()) });
 
-export type NearbyShowsResponse =
-  | { configured: false; location: null; shows: never[] }
-  | {
-      configured: true;
-      location: NearbyShowsResult["location"];
-      shows: NearbyShowsResult["shows"];
-    };
-
-export function registerShows(router: Router) {
-  router.get("/nearby-shows", requireAuth, async (req, res) => {
+export default new Hono<AppEnv>().get(
+  "/nearby-shows",
+  requireAuth,
+  validate("query", locationQuery),
+  async (c) => {
     try {
       const apiKey = getTicketmasterApiKey();
       if (!apiKey) {
-        res.set("Cache-Control", "no-cache, no-store, must-revalidate");
-        return res.json({
-          configured: false,
-          location: null,
-          shows: [],
-        });
+        c.header("Cache-Control", "no-cache, no-store, must-revalidate");
+        return c.json({ configured: false, location: null, shows: [] }, 200);
       }
 
-      const zipCode = String(req.query.zip || "").trim();
-      const countryCode = String(req.query.country || "").trim();
+      const query = c.req.valid("query");
+      const userId = c.var.user.id;
       const settings = dbOps.getSettings();
       const configuredRadius = Number(settings.integrations?.ticketmaster?.searchRadiusMiles);
       const localDiscoveryPreferences = getLocalDiscoveryPreferences();
       const radiusMiles = Number.isFinite(configuredRadius)
         ? Math.max(5, Math.min(250, Math.floor(configuredRadius)))
         : undefined;
-      const { body: discovery } = await getUserDiscovery(req.user!.id, 24);
+      const { body: discovery } = getUserDiscovery(userId, 24);
       const recommendedArtists = localDiscoveryPreferences.includeRecommendations
         ? discovery.recommendations
         : [];
@@ -81,32 +75,28 @@ export function registerShows(router: Router) {
         : [];
       const libraryArtists = getLibraryArtistNames();
       const nearbyShows = await getNearbyShows({
-        req,
-        zipCode,
-        countryCode,
+        req: { ip: c.var.clientIp },
+        zipCode: query.zip?.trim() ?? "",
+        countryCode: query.country?.trim() ?? "",
         libraryArtists,
         recommendedArtists,
         trendingArtists,
         radiusMiles,
         responseCacheKey: buildShowsResponseCacheKey({
-          userId: req.user!.id,
+          userId,
           libraryArtists,
           recommendedArtists,
           trendingArtists,
         }),
       });
 
-      res.set("Cache-Control", "no-cache, no-store, must-revalidate");
-      return res.json({
-        configured: true,
-        ...nearbyShows,
-      });
+      c.header("Cache-Control", "no-cache, no-store, must-revalidate");
+      return c.json({ configured: true, ...nearbyShows }, 200);
     } catch (error) {
-      const failure = asAppError(error);
-      return res.status(500).json({
-        error: "Failed to load nearby shows",
-        message: failure?.message,
-      });
+      return c.json(
+        { error: "Failed to load nearby shows", message: asAppError(error)?.message },
+        500,
+      );
     }
-  });
-}
+  },
+);

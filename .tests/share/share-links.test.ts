@@ -1,5 +1,5 @@
 import { requireFixture } from "../playlists/fixtures.ts";
-import { listeningAddress } from "../helpers/backendTestHarness.ts";
+import { signedInAs } from "../helpers/honoApp.ts";
 import assert from "node:assert/strict";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import crypto from "node:crypto";
@@ -7,7 +7,6 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises
 import { tmpdir } from "node:os";
 import path from "node:path";
 import zlib from "node:zlib";
-import express from "express";
 import {
   cleanupIsolatedState,
   createMockHttpServer,
@@ -85,12 +84,12 @@ const isRunning = (pid: number) => {
   }
 };
 
-const [paths, { db }, { userOps }, listener, routes, media] = await setupIsolatedBackend(
+const [paths, { db }, { userOps }, listener, { api }, media] = await setupIsolatedBackend(
   "share-links",
   () => import("../../backend/config/db-sqlite.ts"),
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/services/shareLinks/shareListener.ts"),
-  () => import("../../backend/routes/shareLinks.ts"),
+  () => import("../../backend/routes/api.ts"),
   () => import("../../backend/services/libraryMediaStore.ts"),
 );
 
@@ -210,27 +209,8 @@ await seedAlbum({
   tracks: [{ title: "Basement Take", number: 1, file: "01 Basement Take.flac" }],
 });
 
-const api = express();
-api.use(express.json());
-api.use((req, res, next) => {
-  const userId = Number(req.get("x-test-user"));
-  req.user = userOps.getUserById(userId) || undefined;
-  next();
-});
-api.use("/api/share-links", routes.default);
-const apiServer = await new Promise<
-  import("node:http").Server<
-    typeof import("node:http").IncomingMessage,
-    typeof import("node:http").ServerResponse
-  >
->((resolve) => {
-  const server = api.listen(0, "127.0.0.1", () => resolve(server));
-});
-const apiUrl = `http://127.0.0.1:${listeningAddress(apiServer).port}/api/share-links`;
-
 afterAll(async () => {
   await listener.stopShareListener();
-  await new Promise<void>((resolve) => apiServer.close(() => resolve()));
   await lookup.close();
   await cleanupIsolatedState(paths);
   await rm(fakeBin, { recursive: true, force: true });
@@ -250,11 +230,13 @@ async function callApi(
   { user = owner, body }: { user?: typeof owner; body?: unknown } = {},
 ) {
   assert.ok(user != null);
-  const response = await fetch(`${apiUrl}${url}`, {
-    method,
-    headers: { "content-type": "application/json", "x-test-user": String(user.id) },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const response = await signedInAs(userOps.getUserById(user.id) || undefined)
+    .route("/", api)
+    .request(`/share-links${url}`, {
+      method,
+      headers: { "content-type": "application/json" },
+      body: body ? JSON.stringify(body) : undefined,
+    });
   const text = await response.text();
   return { status: response.status, body: text ? JSON.parse(text) : null };
 }

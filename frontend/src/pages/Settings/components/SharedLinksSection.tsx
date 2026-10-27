@@ -1,18 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../../../contexts/AuthContext";
 import { queryKeys } from "../../../queryClient";
-import { deleteShareLink, getShareLinks } from "../../../utils/api/endpoints/shareLinks";
+import { parseResponse, type InferResponseType } from "hono/client";
+import { shareLinksClient } from "../../../utils/api/clients/shareLinks.ts";
 import { formatDate, formatRelativeTime } from "../../../utils/dateTime";
 import { shareLink } from "../../../utils/shareLink";
 import { DotLoader } from "../../../components/DotLoader";
-import type {
-  ShareLinkResponse,
-  ShareLinksResponse,
-} from "../../../../../backend/routes/shareLinks.ts";
 import type { useToast } from "../../../contexts/ToastContext";
 import { readApiError } from "../utils/apiError.ts";
 
 type Toast = ReturnType<typeof useToast>["showSuccess"];
+type ShareLinksResponse = InferResponseType<typeof shareLinksClient.$get, 200>;
+type ShareLinkResponse = ShareLinksResponse["links"][number];
 
 const KIND_LABELS: Partial<Record<string, string>> = {
   artist: "Artist",
@@ -60,7 +59,7 @@ export function SharedLinksSection({
   const queryKey = queryKeys.shareLinks(user?.id);
   const links = useQuery({
     queryKey,
-    queryFn: ({ signal }) => getShareLinks({ signal }),
+    queryFn: ({ signal }) => parseResponse(shareLinksClient.$get(undefined, { init: { signal } })),
     enabled: user?.id != null,
     refetchInterval: (query) => {
       const data = query.state.data;
@@ -68,7 +67,10 @@ export function SharedLinksSection({
     },
   });
   const stop = useMutation({
-    mutationFn: (link: ShareLinkResponse) => deleteShareLink(link.id),
+    mutationFn: (link: ShareLinkResponse) =>
+      parseResponse(
+        shareLinksClient[":id"].$delete({ param: { id: encodeURIComponent(link.id) } }),
+      ),
     onSuccess: (_, link) => {
       queryClient.setQueryData<ShareLinksResponse>(
         queryKey,

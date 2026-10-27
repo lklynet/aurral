@@ -1,8 +1,12 @@
 import { useCallback } from "react";
 import { useInfiniteQuery, useMutation } from "@tanstack/react-query";
-import { disableNewsFeed, getLibraryNews } from "../utils/api/endpoints/news.ts";
+import { parseResponse } from "hono/client";
+import { newsClient } from "../utils/api/clients/news.ts";
 import { queryClient, queryKeys } from "../queryClient.ts";
 import { asApiError } from "../utils/api/core.ts";
+
+const disableNewsFeed = (sourceUrl: string) =>
+  parseResponse(newsClient.feeds.disable.$post({ json: { sourceUrl } }));
 
 export function useLibraryNews({
   enabled = false,
@@ -18,7 +22,13 @@ export function useLibraryNews({
   const queryKey = queryKeys.news(userId, mode, limit);
   const query = useInfiniteQuery({
     queryKey,
-    queryFn: ({ pageParam, signal }) => getLibraryNews(limit, mode, pageParam, { signal }),
+    queryFn: ({ pageParam, signal }) =>
+      parseResponse(
+        newsClient.$get(
+          { query: { limit: String(limit), mode, offset: String(pageParam) } },
+          { init: { signal } },
+        ),
+      ),
     initialPageParam: 0,
     getNextPageParam: (lastPage, pages) => {
       if (!lastPage?.hasMore) return undefined;

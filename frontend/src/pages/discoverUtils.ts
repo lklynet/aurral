@@ -1,5 +1,9 @@
-import type { DiscoverResponse } from "../../../backend/routes/discovery/handlers/main.ts";
+import type { InferResponseType } from "hono/client";
 import type { LibraryArtistImage } from "../../../backend/services/libraryQueryService.ts";
+import type { discoveryClient } from "../utils/api/clients/discovery.ts";
+
+export type DiscoverResponse = InferResponseType<typeof discoveryClient.$get, 200>;
+export type DiscoverArtist = DiscoverResponse["recommendations"][number];
 
 export type DiscoverUserId = number | string | null | undefined;
 

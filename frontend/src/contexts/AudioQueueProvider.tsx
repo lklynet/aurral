@@ -29,7 +29,8 @@ import { AudioQueueContext } from "./audioQueueContext";
 import { useAuth } from "./AuthContext";
 import { getRequestToken } from "../utils/api/core";
 import { QUEUE_STORAGE_KEY, parseStoredQueue, serializeQueue } from "../utils/queueStorage";
-import { recordPlayEvent } from "../utils/api/endpoints/playEvents.ts";
+import { parseResponse } from "hono/client";
+import { playEventsClient } from "../utils/api/clients/playEvents.ts";
 import { getReleaseGroupCoversBatch } from "../utils/api/endpoints/artists";
 import { createAudioEngine } from "../utils/audioEngine";
 import {
@@ -182,18 +183,22 @@ export function AudioQueueProvider({ children }: { children: ReactNode }) {
 
   const recordPlay = useCallback((track: QueueEntry) => {
     if (!track.recordHistory) return;
-    recordPlayEvent({
-      trackId: track.id,
-      title: track.title,
-      artist: track.artist,
-      album: track.album,
-      artistMbid: track.artistMbid,
-      albumMbid: track.albumMbid,
-      trackMbid: track.trackMbid,
-      durationMs: track.durationMs,
-      playedAt: Date.now(),
-      source: "native-player",
-    }).catch(() => {});
+    parseResponse(
+      playEventsClient.$post({
+        json: {
+          trackId: track.id,
+          title: track.title,
+          artist: track.artist,
+          album: track.album,
+          artistMbid: track.artistMbid,
+          albumMbid: track.albumMbid,
+          trackMbid: track.trackMbid,
+          durationMs: track.durationMs,
+          playedAt: Date.now(),
+          source: "native-player",
+        },
+      }),
+    ).catch(() => {});
   }, []);
 
   const loadTrack = useCallback(

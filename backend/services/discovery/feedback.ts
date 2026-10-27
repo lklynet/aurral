@@ -97,8 +97,8 @@ export type DiscoveryFeedbackInput = {
   artistId?: string | number | null;
   artistName?: string | null;
   sourceContext?: string | null;
-  tagContext?: string[];
-  seedContext?: string[];
+  tagContext?: string[] | null;
+  seedContext?: string[] | null;
 };
 
 export const addDiscoveryFeedback = (

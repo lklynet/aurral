@@ -1,4 +1,5 @@
 import { testUser } from "../helpers/userFixtures.ts";
+import { signedInAs } from "../helpers/honoApp.ts";
 import type { Router } from "express";
 import type { DiscoveryRecommendation } from "../../backend/services/discovery/recommendationPipeline.ts";
 import type { ArtistMatchFields } from "../../backend/services/discovery/artistKeys.ts";
@@ -20,7 +21,7 @@ const [
   { getDiscoveryStatus, getUserDiscovery },
   playEvents,
   { sampleLibraryArtistsForDiscovery },
-  { default: discoveryRouter },
+  { api },
   { default: searchRouter },
   { FlowTrackSource },
 ] = await setupIsolatedBackend(
@@ -31,7 +32,7 @@ const [
   () => import("../../backend/services/discovery/userDiscovery.ts"),
   () => import("../../backend/services/playEventService.ts"),
   () => import("../../backend/services/libraryQueryService.ts"),
-  () => import("../../backend/routes/discovery/index.ts"),
+  () => import("../../backend/routes/api.ts"),
   () => import("../../backend/routes/search.ts"),
   () => import("../../backend/services/flows/flowTrackSource.ts"),
 );
@@ -252,8 +253,17 @@ const requestApi = async (
   }
 };
 
-const requestDiscoveryApi = (userId: number, path: string, init: RequestInit = {}) =>
-  requestApi(userId, "/api/discover", discoveryRouter, path, init);
+const requestDiscoveryApi = async (userId: number, path: string, init: RequestInit = {}) => {
+  const response = await signedInAs(testUser(userId))
+    .route("/", api)
+    .request(`/discover${path}`, { ...init, headers: { "content-type": "application/json" } });
+  const body: Awaited<ReturnType<typeof requestApi>>["body"] = await response.json();
+  return {
+    status: response.status,
+    cacheControl: response.headers.get("cache-control") || "",
+    body,
+  };
+};
 
 test("tag search and flow plans read the user's own pool", async () => {
   const tagged = await requestDiscoveryApi(alice.id, "/by-tag?tag=shoegaze");

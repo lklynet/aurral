@@ -10,7 +10,7 @@ import {
 } from "../utils/api/endpoints/library.ts";
 import { buildAlbumRequestPayload } from "../utils/libraryDestination";
 import { useLibraryDestination } from "../hooks/useLibraryDestination";
-import { getDiscovery } from "../utils/api/endpoints/discovery.ts";
+import { discoveryClient } from "../utils/api/clients/discovery.ts";
 import { useArtistTasteFeedback } from "../hooks/useArtistTasteFeedback";
 import { artistsShareDiscoveryIdentity } from "../utils/discoveryFeedback";
 import type { ArtistFeedbackSource } from "../utils/artistTaste.ts";
@@ -26,6 +26,7 @@ import {
   getStoredRecentlyAddedAt,
   getStoredRecentReleasesAt,
   getLibraryArtistImage,
+  type DiscoverArtist,
 } from "./discoverUtils";
 
 import { useWebSocketChannel } from "../hooks/useWebSocket";
@@ -35,7 +36,6 @@ import { useDiscoveryStatus } from "../hooks/useDiscoveryStatus";
 import { useToast } from "../contexts/ToastContext";
 import { useAuth } from "../contexts/AuthContext";
 import { queryClient, queryKeys } from "../queryClient.ts";
-import type { DiscoverArtist } from "../../../backend/routes/discovery/handlers/main.ts";
 
 type RecentlyAdded = InferResponseType<typeof libraryMiscClient.recent.$get, 200>;
 type RecentReleases = InferResponseType<(typeof libraryMiscClient)["recent-releases"]["$get"], 200>;
@@ -75,7 +75,10 @@ export function useDiscoverData() {
   );
   const discoveryQuery = useQuery({
     queryKey: discoveryQueryKey,
-    queryFn: async ({ signal }) => normalizeDiscoveryData(await getDiscovery({ signal })),
+    queryFn: async ({ signal }) =>
+      normalizeDiscoveryData(
+        await parseResponse(discoveryClient.$get({ query: {} }, { init: { signal } })),
+      ),
     initialData: discoveryInitial,
     initialDataUpdatedAt: 0,
     staleTime: 30_000,

@@ -1,5 +1,8 @@
-import type { Router } from "express";
-import { requireAuth } from "../../../middleware/requirePermission.ts";
+import { Hono } from "hono";
+import * as v from "valibot";
+import { requireAuth } from "../../../middleware/guards.ts";
+import type { AppEnv } from "../../../middleware/requestUser.ts";
+import { validate } from "../../../middleware/validate.ts";
 import {
   getDiscoveryFeedback,
   addDiscoveryFeedback,
@@ -9,71 +12,72 @@ import {
 } from "../../../services/discovery/index.ts";
 import { asAppError } from "../../../../lib/errors.ts";
 
-type DiscoveryFeedbackList = ReturnType<typeof getDiscoveryFeedback>;
+const text = v.nullish(v.string());
+const textList = v.nullish(v.array(v.string()));
+const timestamp = v.nullish(v.union([v.string(), v.number()]));
 
-export type DiscoveryFeedbackResponse = { feedback: DiscoveryFeedbackList };
+const feedbackInput = v.object({
+  id: text,
+  action: text,
+  artistId: v.nullish(v.union([v.string(), v.number()])),
+  artistName: text,
+  sourceContext: text,
+  tagContext: textList,
+  seedContext: textList,
+});
 
-export type DiscoveryFeedbackListResponse = { success: true; feedbackList: DiscoveryFeedbackList };
+const restoreInput = v.object({
+  removeIds: v.optional(v.array(v.string()), []),
+  entries: v.optional(
+    v.array(v.object({ ...feedbackInput.entries, createdAt: timestamp, expiresAt: timestamp })),
+    [],
+  ),
+});
 
-export type DiscoveryFeedbackAddResponse = DiscoveryFeedbackListResponse & {
-  feedback: ReturnType<typeof addDiscoveryFeedback>;
-};
-
-export function registerFeedback(router: Router) {
-  router.get("/feedback", requireAuth, (req, res) => {
-    res.json({
-      feedback: getDiscoveryFeedback(req.user!.id),
-    });
-  });
-
-  router.post("/feedback", requireAuth, (req, res) => {
+export default new Hono<AppEnv>()
+  .get("/feedback", requireAuth, (c) =>
+    c.json({ feedback: getDiscoveryFeedback(c.var.user.id) }, 200),
+  )
+  .post("/feedback", requireAuth, validate("json", feedbackInput), (c) => {
+    const userId = c.var.user.id;
     try {
-      const feedback = addDiscoveryFeedback(req.user!.id, req.body || {});
-      res.json({
-        success: true,
-        feedback,
-        feedbackList: getDiscoveryFeedback(req.user!.id),
-      });
+      const feedback = addDiscoveryFeedback(userId, c.req.valid("json"));
+      return c.json({ success: true, feedback, feedbackList: getDiscoveryFeedback(userId) }, 200);
     } catch (error) {
-      const failure = asAppError(error);
-      res.status(400).json({
-        error: "Failed to save discovery feedback",
-        message: failure?.message,
-      });
+      return c.json(
+        { error: "Failed to save discovery feedback", message: asAppError(error)?.message },
+        400,
+      );
     }
-  });
-
-  router.delete("/feedback/:id", requireAuth, (req, res) => {
-    const feedbackList = removeDiscoveryFeedback(req.user!.id, req.params.id);
-    res.json({
-      success: true,
-      feedbackList,
-    });
-  });
-
-  router.post("/feedback/restore", requireAuth, (req, res) => {
-    const { removeIds = [], entries = [] } = req.body || {};
-    if (
-      !Array.isArray(removeIds) ||
-      !Array.isArray(entries) ||
-      removeIds.length + entries.length === 0
-    ) {
-      return res.status(400).json({
-        error: "Failed to restore discovery feedback",
-        message: "removeIds or entries is required",
-      });
+  })
+  .delete("/feedback/:id", requireAuth, (c) =>
+    c.json(
+      {
+        success: true,
+        feedbackList: removeDiscoveryFeedback(c.var.user.id, c.req.param("id")),
+      },
+      200,
+    ),
+  )
+  .post("/feedback/restore", requireAuth, validate("json", restoreInput), (c) => {
+    const { removeIds, entries } = c.req.valid("json");
+    if (removeIds.length + entries.length === 0) {
+      return c.json(
+        {
+          error: "Failed to restore discovery feedback",
+          message: "removeIds or entries is required",
+        },
+        400,
+      );
     }
-    res.json({
-      success: true,
-      feedbackList: restoreDiscoveryFeedback(req.user!.id, { removeIds, entries }),
-    });
-  });
-
-  router.post("/feedback/reset", requireAuth, (req, res) => {
-    const feedbackList = resetDiscoveryFeedback(req.user!.id);
-    res.json({
-      success: true,
-      feedbackList,
-    });
-  });
-}
+    return c.json(
+      {
+        success: true,
+        feedbackList: restoreDiscoveryFeedback(c.var.user.id, { removeIds, entries }),
+      },
+      200,
+    );
+  })
+  .post("/feedback/reset", requireAuth, (c) =>
+    c.json({ success: true, feedbackList: resetDiscoveryFeedback(c.var.user.id) }, 200),
+  );

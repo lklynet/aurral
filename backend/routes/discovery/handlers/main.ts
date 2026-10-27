@@ -1,5 +1,8 @@
-import type { Router } from "express";
-import { requireAuth } from "../../../middleware/requirePermission.ts";
+import { Hono } from "hono";
+import * as v from "valibot";
+import { requireAuth } from "../../../middleware/guards.ts";
+import type { AppEnv } from "../../../middleware/requestUser.ts";
+import { validate } from "../../../middleware/validate.ts";
 import type { DiscoveryRecommendation } from "../../../services/discovery/recommendationPipeline.ts";
 import { getDiscoveryStatus, getUserDiscovery } from "../../../services/discovery/userDiscovery.ts";
 
@@ -25,35 +28,30 @@ const toDiscoveryArtist = (artist: DiscoveryRecommendation) => ({
   playcount: artist.playcount || 0,
 });
 
-export type DiscoverArtist = ReturnType<typeof toDiscoveryArtist>;
+const pageQuery = v.object({ limit: v.optional(v.string()), offset: v.optional(v.string()) });
 
-export type DiscoverResponse = Omit<
-  Awaited<ReturnType<typeof getUserDiscovery>>["body"],
-  "recommendations" | "globalTop"
-> & {
-  recommendations: DiscoverArtist[];
-  globalTop: DiscoverArtist[];
-};
+export default new Hono<AppEnv>()
+  .get("/status", requireAuth, (c) => {
+    c.header("Cache-Control", "no-store");
+    return c.json(getDiscoveryStatus(c.var.user.id), 200);
+  })
+  .get("/", requireAuth, validate("query", pageQuery), (c) => {
+    const { limit, offset } = c.req.valid("query");
+    const { body } = limit?.trim()
+      ? getUserDiscovery(
+          c.var.user.id,
+          Math.max(1, Math.min(200, parseInt(limit, 10) || 0)),
+          Math.max(0, parseInt(offset ?? "", 10) || 0),
+        )
+      : getUserDiscovery(c.var.user.id, 0, 0);
 
-export function registerMain(router: Router) {
-  router.get("/status", requireAuth, (req, res) => {
-    res.set("Cache-Control", "no-store");
-    res.json(getDiscoveryStatus(req.user!.id));
+    c.header("Cache-Control", "private, no-cache");
+    return c.json(
+      {
+        ...body,
+        recommendations: body.recommendations.map(toDiscoveryArtist),
+        globalTop: body.globalTop.map(toDiscoveryArtist),
+      },
+      200,
+    );
   });
-
-  router.get("/", requireAuth, async (req, res) => {
-    const hasExplicitLimit = typeof req.query.limit === "string" && req.query.limit.trim() !== "";
-    const limit = hasExplicitLimit
-      ? Math.max(1, Math.min(200, parseInt(String(req.query.limit), 10) || 0))
-      : 0;
-    const offset = hasExplicitLimit ? Math.max(0, parseInt(String(req.query.offset), 10) || 0) : 0;
-    const { body } = await getUserDiscovery(req.user!.id, limit, offset);
-
-    res.set("Cache-Control", "private, no-cache");
-    res.json({
-      ...body,
-      recommendations: body.recommendations.map(toDiscoveryArtist),
-      globalTop: body.globalTop.map(toDiscoveryArtist),
-    });
-  });
-}

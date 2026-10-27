@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { resetDiscoveryFeedback } from "../../../utils/api/endpoints/discovery.ts";
+import { parseResponse } from "hono/client";
+import { discoveryClient } from "../../../utils/api/clients/discovery.ts";
 import { SettingsInput, SettingsSelect } from "./SettingsField";
 import PillToggle from "../../../components/PillToggle";
 import { PlexSelfLinkSection } from "./PlexSelfLinkSection";
@@ -73,7 +74,7 @@ export function SettingsAccountTab({
     if (!confirmed) return;
     setResettingTastes(true);
     try {
-      await resetDiscoveryFeedback();
+      await parseResponse(discoveryClient.feedback.reset.$post());
       showSuccess?.("Discovery tastes reset");
     } catch (error) {
       showError?.(readApiError(error).message || "Failed to reset discovery tastes");

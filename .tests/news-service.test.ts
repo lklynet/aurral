@@ -1,8 +1,8 @@
 import { requireFixture } from "./playlists/fixtures.ts";
-import { listeningAddress } from "./helpers/backendTestHarness.ts";
+import { signedInAs } from "./helpers/honoApp.ts";
+import { testUser } from "./helpers/userFixtures.ts";
 import assert from "node:assert/strict";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
-import express from "express";
 import axios from "../lib/axiosFetch.ts";
 import {
   cleanupIsolatedState,
@@ -17,7 +17,7 @@ const [
   rssNews,
   newsService,
   config,
-  { default: newsRouter },
+  { api },
   inboxService,
 ] = await setupIsolatedBackend(
   "rss-news-service",
@@ -26,7 +26,7 @@ const [
   () => import("../backend/services/rssNews.ts"),
   () => import("../backend/services/newsService.ts"),
   () => import("../backend/services/apiClients/config.ts"),
-  () => import("../backend/routes/news.ts"),
+  () => import("../backend/routes/api.ts"),
   () => import("../backend/services/inboxService.ts"),
 );
 
@@ -326,38 +326,19 @@ test("only admins can disable a feed, and its stories leave the news list", asyn
     [UNTAGGED_FEED]: rss([story("Untagged feed story")]),
   });
   await newsService.refreshNewsFeeds();
-  let currentUser: import("../backend/middleware/requestUser.ts").RequestUser | undefined;
-  const app = express();
-  app.use(express.json());
-  app.use((req, _res, next) => {
-    req.user = currentUser;
-    next();
-  });
-  app.use("/api/news", newsRouter);
-  const server = await new Promise<
-    import("node:http").Server<
-      typeof import("node:http").IncomingMessage,
-      typeof import("node:http").ServerResponse
-    >
-  >((resolve) => {
-    const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
-  });
-  t.onTestFinished(() => {
-    server.close();
-  });
-  const disable = () =>
-    fetch(`http://127.0.0.1:${listeningAddress(server).port}/api/news/feeds/disable`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ sourceUrl: UNTAGGED_FEED }),
-    });
+  const disable = (user: ReturnType<typeof testUser>) =>
+    signedInAs(user)
+      .route("/", api)
+      .request("/news/feeds/disable", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ sourceUrl: UNTAGGED_FEED }),
+      });
 
-  currentUser = { id: 2, username: "test", role: "user", permissions: {} };
-  assert.equal((await disable()).status, 403);
+  assert.equal((await disable(testUser(2))).status, 403);
   assert.equal((await getTitles({ mode: "top" })).length, 2);
 
-  currentUser = { id: 1, username: "test", role: "admin", permissions: {} };
-  assert.equal((await disable()).status, 200);
+  assert.equal((await disable(testUser(1, { role: "admin" }))).status, 200);
   assert.deepEqual(await getTitles({ mode: "top" }), ["Tagged feed story"]);
 });
 

@@ -14,7 +14,7 @@ import { formatDate, formatRelativeTime } from "../utils/dateTime.ts";
 import Tooltip from "../components/Tooltip";
 import RecommendationMeta from "../components/RecommendationMeta";
 import RouteLink from "../components/RouteLink";
-import type { DiscoverArtist } from "../../../backend/routes/discovery/handlers/main.ts";
+import type { DiscoverArtist } from "./discoverUtils";
 import type { useLibraryDestination } from "../hooks/useLibraryDestination.ts";
 import type { RecentRelease, useDiscoverData } from "./useDiscoverData.ts";
 

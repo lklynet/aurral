@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useCallback, type FormEvent } from "react";
 import { useMutation, useQueries, useQuery } from "@tanstack/react-query";
-import api from "../../../utils/api/core.ts";
 import type { useToast } from "../../../contexts/ToastContext";
 import type { useSettingsTabs } from "./useSettingsTabs";
 import { fetchHealth, refetchHealth } from "../../../utils/appHealth.ts";
@@ -10,7 +9,7 @@ import { settingsClient } from "../../../utils/api/clients/settings.ts";
 import { playbackSettingsClient } from "../../../utils/api/clients/playbackSettings.ts";
 import { downloadClientSettingsClient } from "../../../utils/api/clients/downloadClientSettings.ts";
 import { refetchDiscoveryStatus } from "../../../hooks/useDiscoveryStatus";
-import { refreshDiscovery } from "../../../utils/api/endpoints/discovery.ts";
+import { discoveryClient } from "../../../utils/api/clients/discovery.ts";
 import { DISCOVERY_MANUAL_REFRESH_KEY } from "../../../utils/discoverRecentNavigation.ts";
 import { allReleaseTypes } from "../constants";
 import {
@@ -580,7 +579,7 @@ export function useSettingsData(
   );
 
   const discoveryRefreshMutation = useMutation({
-    mutationFn: () => refreshDiscovery(),
+    mutationFn: () => parseResponse(discoveryClient.refresh.$post()),
     onSuccess: () => {
       localStorage.setItem(DISCOVERY_MANUAL_REFRESH_KEY, "1");
     },
@@ -599,7 +598,7 @@ export function useSettingsData(
   }, [requestDiscoveryRefresh, requestingDiscoveryRefresh]);
 
   const clearCacheMutation = useMutation({
-    mutationFn: () => api.post("/discover/clear"),
+    mutationFn: () => parseResponse(discoveryClient.clear.$post()),
     onSuccess: async () => {
       showSuccess("Artwork cache cleared.");
       await refreshHealth();

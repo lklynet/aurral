@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getDiscoveryStatus } from "../utils/api/endpoints/discovery.ts";
+import { parseResponse } from "hono/client";
+import { discoveryClient } from "../utils/api/clients/discovery.ts";
 import { useAuth } from "../contexts/AuthContext";
 import { queryClient, queryKeys } from "../queryClient.ts";
 import { useWebSocketChannel } from "./useWebSocket";
@@ -18,7 +19,8 @@ export function useDiscoveryStatus({ enabled = true } = {}) {
   const userId = user?.id;
   const query = useQuery({
     queryKey: queryKeys.discoveryStatus(userId),
-    queryFn: ({ signal }) => getDiscoveryStatus({ signal }),
+    queryFn: ({ signal }) =>
+      parseResponse(discoveryClient.status.$get(undefined, { init: { signal } })),
     enabled,
     staleTime: 0,
     refetchOnWindowFocus: true,

@@ -1,11 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import {
-  addDiscoveryFeedback,
-  getDiscoveryFeedback,
-  removeDiscoveryFeedback,
-  restoreDiscoveryFeedback,
-} from "../utils/api/endpoints/discovery.ts";
+import { parseResponse } from "hono/client";
+import { discoveryClient } from "../utils/api/clients/discovery.ts";
 import {
   applyArtistDiscoveryFeedback,
   buildArtistFeedbackLookup,
@@ -42,6 +38,14 @@ type SubmitFeedbackOptions = {
 };
 
 const EMPTY_FEEDBACK: DiscoveryFeedbackEntry[] = [];
+
+const getDiscoveryFeedback = () => parseResponse(discoveryClient.feedback.$get());
+
+const addDiscoveryFeedback = (json: DiscoveryFeedbackEntry) =>
+  parseResponse(discoveryClient.feedback.$post({ json }));
+
+const removeDiscoveryFeedback = (id: string) =>
+  parseResponse(discoveryClient.feedback[":id"].$delete({ param: { id: encodeURIComponent(id) } }));
 
 const UNDOABLE_MESSAGES: Partial<Record<ArtistFeedbackAction, (name: string) => string>> = {
   less_like_this: (name) => `Showing less like ${name}`,
@@ -126,12 +130,16 @@ export function useArtistTasteFeedback() {
       );
       onRevert?.();
       try {
-        const response = await restoreDiscoveryFeedback({
-          removeIds: change.added
-            .map((entry) => entry.id)
-            .filter((id): id is string => Boolean(id)),
-          entries: change.removed,
-        });
+        const response = await parseResponse(
+          discoveryClient.feedback.restore.$post({
+            json: {
+              removeIds: change.added
+                .map((entry) => entry.id)
+                .filter((id): id is string => Boolean(id)),
+              entries: change.removed,
+            },
+          }),
+        );
         queryClient.setQueryData(queryKey, normalizeDiscoveryFeedbackList(response?.feedbackList));
       } catch (err) {
         queryClient.setQueryData(queryKey, before);

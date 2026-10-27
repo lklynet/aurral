@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getNearbyShows } from "../utils/api/endpoints/discovery.ts";
+import { parseResponse } from "hono/client";
+import { discoveryClient } from "../utils/api/clients/discovery.ts";
 import { queryKeys } from "../queryClient.ts";
 import { asApiError } from "../utils/api/core.ts";
 import { readStoredNearbyLocation, writeStoredNearbyLocation } from "../pages/discoverUtils";
@@ -31,7 +32,13 @@ export function useNearbyShows({ enabled = true }: { enabled?: boolean } = {}) {
   const active = enabled && (locationMode !== "zip" || Boolean(zip));
   const query = useQuery({
     queryKey: queryKeys.nearbyShows(zip, country),
-    queryFn: ({ signal }) => getNearbyShows({ zip, country, signal }),
+    queryFn: ({ signal }) =>
+      parseResponse(
+        discoveryClient["nearby-shows"].$get(
+          { query: { zip: zip || undefined, country: country || undefined } },
+          { init: { signal } },
+        ),
+      ),
     enabled: active,
     staleTime: 5 * 60 * 1000,
   });
