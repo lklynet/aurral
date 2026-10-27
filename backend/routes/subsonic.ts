@@ -715,7 +715,12 @@ async function handleSubsonicRequest(req: Request, res: Response) {
     }
     const playlistArtwork = await resolvePlaylistArtwork(getParameter(req, "id"), user);
     if (playlistArtwork) {
-      res.set("Cache-Control", "private, max-age=86400");
+      res.set(
+        "Cache-Control",
+        playlistArtwork.versioned
+          ? "private, max-age=31536000, immutable"
+          : "private, max-age=86400",
+      );
       return res.sendFile(path.basename(playlistArtwork.safePath), {
         root: path.dirname(playlistArtwork.safePath),
         dotfiles: "allow",

@@ -30,6 +30,7 @@ const [
   { playlistManager },
   { getArtistImage, invalidateArtistImage },
   { removeCustomArtwork, saveCustomArtworkUpload },
+  { setPlaylistArtworkState },
 ] = await setupIsolatedBackend(
   "subsonic-canonical",
   () => import("../../backend/config/db-sqlite.ts"),
@@ -45,6 +46,7 @@ const [
   () => import("../../backend/services/playlists/playlistManager.ts"),
   () => import("../../backend/services/imageService.ts"),
   () => import("../../backend/services/customArtworkService.ts"),
+  () => import("../../backend/services/playlistArtworkState.ts"),
 );
 
 let aurral: {
@@ -1213,6 +1215,33 @@ test("searches library records and exposes flow entries as playlist items", asyn
   const artwork = await request("getCoverArt", { id: flow.coverArt });
   assert.equal(artwork.response.status, 200);
   assert.equal(artwork.body, "flow-artwork");
+});
+
+test("gives a playlist a new cover id when its cover changes", async () => {
+  const findFlow = async () => {
+    const flow = responseJson(await request("getPlaylists")).playlists.playlist.find(
+      (entry) => entry.name === "Canonical Flow",
+    );
+    assert.ok(flow);
+    return flow;
+  };
+  const before = await findFlow();
+  setPlaylistArtworkState(decodeURIComponent(before.id.slice("flow:".length)), {
+    mode: "upload",
+    artistKey: null,
+    template: null,
+    sourceUrl: null,
+    fallbackSignature: null,
+  });
+  const after = await findFlow();
+  assert.notEqual(after.coverArt, before.coverArt);
+  assert.ok(Date.parse(after.changed) > Date.parse(before.changed));
+  const detail = responseJson(await request("getPlaylist", { id: after.id })).playlist;
+  assert.equal(detail.coverArt, after.coverArt);
+  const artwork = await request("getCoverArt", { id: after.coverArt });
+  assert.equal(artwork.body, "flow-artwork");
+  assert.match(artwork.response.headers.get("cache-control") || "", /immutable/);
+  assert.equal((await request("getCoverArt", { id: before.coverArt })).body, "flow-artwork");
 });
 
 test("accepts empty library searches from OpenSubsonic clients", async () => {

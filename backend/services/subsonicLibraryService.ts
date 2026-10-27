@@ -37,6 +37,7 @@ import {
   tracksShareMembership,
 } from "./playlists/flowPlaylistConfig.ts";
 import { playlistManager } from "./playlists/playlistManager.ts";
+import { getPlaylistArtworkRevisions, getPlaylistArtworkState } from "./playlistArtworkState.ts";
 import { downloadWorker } from "./downloadJobs/downloadWorker.ts";
 import { hasPermission } from "../middleware/auth.ts";
 import { recordTrackJobQueued } from "./aurralHistoryService.ts";
@@ -92,6 +93,7 @@ type ParsedKind =
   | "shared-song"
   | "art-album"
   | "art-track"
+  | "art-playlist"
   | "art-playlist-track";
 type ParsedId = { [K in ParsedKind]: { kind: K; key: string } }[ParsedKind];
 type StarredResult = { album: SubsonicAlbum[]; artist: SubsonicArtist[]; song: SubsonicSong[] };
@@ -188,7 +190,7 @@ type SubsonicPlaylist = {
 
 const parseId = (value: unknown): ParsedId | null => {
   const match =
-    /^(artist|album|song|flow|flow-song|shared|shared-song|art-album|art-track|art-playlist-track):(.+)$/.exec(
+    /^(artist|album|song|flow|flow-song|shared|shared-song|art-album|art-track|art-playlist|art-playlist-track):(.+)$/.exec(
       String(value || ""),
     );
   if (!match) return null;
@@ -627,7 +629,10 @@ const visiblePlaylistJobs = (
   { includePending = false }: { includePending?: boolean } = {},
 ) => playlistJobs(flow).filter((job) => includePending || isPlayableJob(job));
 
-const playlistCoverArt = (kind: string, playlistId: string) => idFor(kind, playlistId);
+const playlistCoverArt = (kind: string, playlistId: string, revision: number | undefined) =>
+  revision
+    ? customArtworkId("playlist", playlistId, revision, { playlistKind: kind })
+    : idFor(kind, playlistId);
 const getArtworkChangedStmt = db.prepare<[], { changed_at: number | null }>(
   "SELECT MAX(updated_at) AS changed_at FROM custom_artwork WHERE entity_kind IN ('album', 'track')",
 );
@@ -1664,6 +1669,7 @@ export function getTopSongs(
 
 export function getSubsonicPlaylists(user: SubsonicUser) {
   const artworkRevision = getCustomArtworkRevision("playlist-track");
+  const coverRevisions = getPlaylistArtworkRevisions();
   const flows = visibleFlows(user).map((flow) => {
     const jobs = visiblePlaylistJobs(flow);
     const artworkChangedAt = latestArtworkChange(
@@ -1676,13 +1682,18 @@ export function getSubsonicPlaylists(user: SubsonicUser) {
       id: idFor("flow", flow.id),
       name: flow.name,
       owner: userOps.getUserById(flow.ownerUserId)?.username || "",
-      coverArt: playlistCoverArt("flow", flow.id),
+      coverArt: playlistCoverArt("flow", flow.id, coverRevisions.get(flow.id)),
       songCount: jobs.length,
       duration: jobs.reduce((total, job) => total + seconds(job.durationMs), 0),
       public: false,
       created: new Date(flow.createdAt || Date.now()).toISOString(),
       changed: new Date(
-        Math.max(epochMs(flow.lastRunAt || flow.createdAt), artworkChangedAt, artworkRevision),
+        Math.max(
+          epochMs(flow.lastRunAt || flow.createdAt),
+          artworkChangedAt,
+          artworkRevision,
+          coverRevisions.get(flow.id) || 0,
+        ),
       ).toISOString(),
     };
     if (flow.description) playlist.comment = flow.description;
@@ -1700,7 +1711,7 @@ export function getSubsonicPlaylists(user: SubsonicUser) {
       id: idFor("shared", playlist.id),
       name: playlist.name,
       owner: userOps.getUserById(playlist.ownerUserId)?.username || "",
-      coverArt: playlistCoverArt("shared", playlist.id),
+      coverArt: playlistCoverArt("shared", playlist.id, coverRevisions.get(playlist.id)),
       songCount: jobs.length,
       duration: jobs.reduce((total, job) => total + seconds(job.durationMs), 0),
       public: false,
@@ -1710,6 +1721,7 @@ export function getSubsonicPlaylists(user: SubsonicUser) {
           epochMs(playlist.importedAt || playlist.createdAt),
           artworkChangedAt,
           artworkRevision,
+          coverRevisions.get(playlist.id) || 0,
         ),
       ).toISOString(),
     };
@@ -1732,12 +1744,13 @@ export function getSubsonicPlaylist(value: string, user: SubsonicUser) {
     jobs.map((job) => job.id),
   );
   const artworkChangedAt = latestArtworkChange(customArtwork);
+  const coverRevision = getPlaylistArtworkState(playlist.id)?.revision;
   return {
     id: idFor(kind, playlist.id),
     name: playlist.name,
     ...(playlist.description ? { comment: playlist.description } : {}),
     owner: userOps.getUserById(playlist.ownerUserId)?.username || "",
-    coverArt: playlistCoverArt(kind, playlist.id),
+    coverArt: playlistCoverArt(kind, playlist.id, coverRevision),
     songCount: jobs.length,
     duration: jobs.reduce((total, job) => total + seconds(job.durationMs), 0),
     public: false,
@@ -1753,6 +1766,7 @@ export function getSubsonicPlaylist(value: string, user: SubsonicUser) {
         ),
         artworkChangedAt,
         getCustomArtworkRevision("playlist-track"),
+        coverRevision || 0,
       ),
     ).toISOString(),
     entry: jobs.map((job, index) =>
@@ -1920,9 +1934,13 @@ export async function resolveArtworkUrl(value: string) {
 
 export async function resolvePlaylistArtwork(value: string, user: SubsonicUser) {
   const parsed = parseId(value);
-  if (!parsed || !["flow", "shared"].includes(parsed.kind)) return null;
-  const playlist = playlistFromId(user, value);
-  return playlist ? playlistManager.resolveArtworkFile(playlist.id) : null;
+  const target = parsed?.kind === "art-playlist" ? customArtworkTarget(parsed) : null;
+  const playlist = target
+    ? playlistFromId(user, idFor(String(target.playlistKind), target.id))
+    : playlistFromId(user, value);
+  if (!playlist) return null;
+  const artwork = await playlistManager.resolveArtworkFile(playlist.id);
+  return artwork && { ...artwork, versioned: Boolean(target) };
 }
 
 export { idFor, parseId };
