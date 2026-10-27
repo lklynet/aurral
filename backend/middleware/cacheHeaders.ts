@@ -11,7 +11,7 @@ export const cacheFor = (maxAgeSeconds: number) =>
   createMiddleware(async (c, next) => {
     if (c.req.method === "GET") {
       c.header("Cache-Control", `public, max-age=${maxAgeSeconds}`);
-      c.header("Vary", "Accept");
+      c.header("Vary", "Accept", { append: true });
       if (maxAgeSeconds > 0) {
         c.header("Expires", new Date(Date.now() + maxAgeSeconds * 1000).toUTCString());
       }

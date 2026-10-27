@@ -1,5 +1,4 @@
 import type { Context } from "hono";
-import { cors } from "hono/cors";
 import { createMiddleware } from "hono/factory";
 import type { AppEnv } from "./requestUser.ts";
 
@@ -12,21 +11,22 @@ const isPublic = (c: Context<AppEnv>) => {
   );
 };
 
-const corsOptions = {
-  allowMethods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE"],
-  allowHeaders: ["Content-Type", "Authorization"],
-};
-const publicCors = cors(corsOptions);
 const allowedOrigins = (process.env.CORS_ORIGIN || "")
   .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
-const apiCors = allowedOrigins.length > 0 ? cors({ ...corsOptions, origin: allowedOrigins }) : null;
 
 export const corsHeaders = createMiddleware<AppEnv>(async (c, next) => {
-  if (isPublic(c)) return publicCors(c, next);
-  if (apiCors) return apiCors(c, next);
-  await next();
+  const publicRoute = isPublic(c);
+  if (!publicRoute && allowedOrigins.length === 0) return next();
+  const origin = c.req.header("origin") ?? "";
+  const allowOrigin = publicRoute ? "*" : allowedOrigins.includes(origin) ? origin : null;
+  if (allowOrigin) c.res.headers.set("Access-Control-Allow-Origin", allowOrigin);
+  if (!publicRoute) c.res.headers.append("Vary", "Origin");
+  if (c.req.method !== "OPTIONS") return next();
+  c.res.headers.set("Access-Control-Allow-Methods", "GET,HEAD,PUT,PATCH,POST,DELETE");
+  c.res.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  return c.body(null, 204);
 });
 
 const connectSources = [
