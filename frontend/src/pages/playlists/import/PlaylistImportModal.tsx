@@ -324,7 +324,6 @@ interface PlaylistImportModalProps {
   showError?: (message: string) => void;
   showSuccess?: (message: string) => void;
   existingPlaylistNames?: string[];
-  initialSource?: ImportSource;
   initialShareUrl?: string;
 }
 
@@ -335,11 +334,10 @@ export function PlaylistImportModal({
   showError,
   showSuccess,
   existingPlaylistNames = [],
-  initialSource = "spotify",
   initialShareUrl = "",
 }: PlaylistImportModalProps) {
   const { user } = useAuth();
-  const [source, setSource] = useState<ImportSource>(initialShareUrl ? "aurral" : initialSource);
+  const [source, setSource] = useState<ImportSource>(initialShareUrl ? "aurral" : "spotify");
   const [shareUrl, setShareUrl] = useState(initialShareUrl);
   const [requestedShareUrl, setRequestedShareUrl] = useState(initialShareUrl);
   const [shareSync, setShareSync] = useState(true);
@@ -750,7 +748,7 @@ export function PlaylistImportModal({
           : source === "youtube"
             ? "Use a public YouTube or YouTube Music playlist URL."
             : source === "aurral"
-              ? "Use a playlist link from aurral.org."
+              ? "Paste a share link or code from aurral.org."
               : undefined
       }
       onClose={onClose}
@@ -907,13 +905,13 @@ export function PlaylistImportModal({
                     className="playlist-import__field-label"
                     htmlFor="playlist-import-share-url"
                   >
-                    Share link
+                    Share link or code
                   </label>
                   <input
                     id="playlist-import-share-url"
-                    type="url"
+                    type="text"
                     className="input"
-                    placeholder="https://aurral.org/s/…"
+                    placeholder="https://aurral.org/s/… or code"
                     value={shareUrl}
                     onChange={(event) => setShareUrl(event.target.value)}
                     onKeyDown={(event) => {

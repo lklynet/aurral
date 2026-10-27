@@ -24,10 +24,7 @@ import { useHiddenPlaylistTracks } from "./usePlaylistBulkActions.ts";
 import { playlistPath } from "../../navigation/playlistPaths";
 import { getApiErrorMessage } from "../onboardingUtils.tsx";
 
-type ImportRequest = Pick<
-  ComponentProps<typeof PlaylistImportModal>,
-  "initialSource" | "initialShareUrl"
->;
+type ImportRequest = Pick<ComponentProps<typeof PlaylistImportModal>, "initialShareUrl">;
 
 const PlaylistImportModal = lazy(() =>
   import("./import/PlaylistImportModal.tsx").then((m) => ({ default: m.PlaylistImportModal })),
@@ -217,12 +214,6 @@ export default function PlaylistsPage() {
                   label: "Import playlist",
                   icon: Upload,
                   onSelect: () => setImportRequest({}),
-                },
-                {
-                  id: "import-share",
-                  label: "Import Aurral share",
-                  icon: Upload,
-                  onSelect: () => setImportRequest({ initialSource: "aurral" }),
                 },
               ]}
             />

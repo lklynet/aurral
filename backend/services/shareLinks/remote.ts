@@ -6,15 +6,16 @@ import {
 import { SHARE_ORIGIN } from "./store.ts";
 
 export function normalizeShareUrl(value: unknown) {
-  if (typeof value !== "string") throw new Error("Enter an Aurral share link.");
-  const url = new URL(value);
+  if (typeof value !== "string") throw new Error("Enter an Aurral share link or code.");
+  const input = value.trim();
+  const url = URL.canParse(input) ? new URL(input) : new URL(`/s/${input}`, SHARE_ORIGIN);
   if (
     url.origin !== new URL(SHARE_ORIGIN).origin ||
     url.username ||
     url.password ||
     !/^\/s\/[A-Za-z0-9_.~-]{4,800}$/.test(url.pathname)
   )
-    throw new Error("Enter an Aurral share link from aurral.org.");
+    throw new Error("Enter an Aurral share link or code from aurral.org.");
   return `${SHARE_ORIGIN}${url.pathname}`;
 }
 

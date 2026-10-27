@@ -91,13 +91,14 @@ const isRunning = (pid: number) => {
   }
 };
 
-const [paths, { db }, { userOps }, listener, routes, media] = await setupIsolatedBackend(
+const [paths, { db }, { userOps }, listener, routes, media, remote] = await setupIsolatedBackend(
   "share-links",
   () => import("../../backend/config/db-sqlite.ts"),
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/services/shareLinks/shareListener.ts"),
   () => import("../../backend/routes/shareLinks.ts"),
   () => import("../../backend/services/libraryMediaStore.ts"),
+  () => import("../../backend/services/shareLinks/remote.ts"),
 );
 
 const ARTIST_MBID = "71111111-1111-4111-8111-111111111111";
@@ -249,6 +250,14 @@ beforeEach(async () => {
   lookupRequests.length = 0;
   lookupStatus = 204;
   resolvedManifest = null;
+});
+
+test("a pasted share code resolves to the same link as its URL", () => {
+  const link = `${process.env.AURRAL_SHARE_ORIGIN}/s/sAbc123_def-456`;
+  assert.equal(remote.normalizeShareUrl(" sAbc123_def-456 "), link);
+  assert.equal(remote.normalizeShareUrl(link), link);
+  assert.throws(() => remote.normalizeShareUrl("https://example.com/s/sAbc123_def-456"));
+  assert.throws(() => remote.normalizeShareUrl("../sAbc123"));
 });
 
 test("opening a share is available without import permissions or an account and queues no downloads", async () => {
