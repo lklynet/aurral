@@ -49,6 +49,11 @@ const claimRequest = db.prepare<[string, string, number, number]>(`
 const clearRequestState = db.prepare<[string]>(
   "DELETE FROM metadata_request_state WHERE cache_key = ?",
 );
+const releaseRequest = db.prepare<[number, string, string]>(`
+  UPDATE metadata_request_state
+  SET lease_token = NULL, lease_until = 0, updated_at = ?
+  WHERE cache_key = ? AND lease_token = ?
+`);
 const clearAllRequestStates = db.prepare("DELETE FROM metadata_request_state");
 const cleanOldRequestStates = db.prepare<[number, number]>(`
   DELETE FROM metadata_request_state
@@ -109,6 +114,10 @@ export function completeMetadataRequest(cacheKey: string, token: string) {
   return db
     .prepare("DELETE FROM metadata_request_state WHERE cache_key = ? AND lease_token = ?")
     .run(cacheKey, token).changes;
+}
+
+export function releaseMetadataRequest(cacheKey: string, token: string, now = Date.now()) {
+  return releaseRequest.run(now, cacheKey, token).changes;
 }
 
 const failRequest = db.transaction((cacheKey: string, token: string, now: number) => {

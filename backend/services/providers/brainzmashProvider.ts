@@ -39,6 +39,7 @@ import {
   failMetadataRequest,
   getMetadataProviderBudget,
   getMetadataRequestState,
+  releaseMetadataRequest,
   reserveMetadataProviderRequest,
   setMetadataProviderCooldown,
 } from "../metadataProviderBudget.ts";
@@ -406,8 +407,9 @@ function refreshMetadata<T>(
       }
       const maxRetries = ownsPersistentRequest ? 0 : METADATA_MAX_RETRIES;
       for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+        let providerRequestStarted = false;
         if (sharedSignal.aborted) {
-          if (leaseToken) completeMetadataRequest(cacheKey, leaseToken);
+          if (leaseToken) releaseMetadataRequest(cacheKey, leaseToken);
           throw sharedSignal.reason || new Error("The operation was aborted");
         }
         try {
@@ -444,6 +446,7 @@ function refreshMetadata<T>(
                 error.code = "ETIMEDOUT";
                 throw error;
               }
+              providerRequestStarted = true;
               return axios.get(`${baseUrl}${path}`, {
                 params,
                 timeout: Number.isFinite(requestTimeoutMs)
@@ -465,7 +468,7 @@ function refreshMetadata<T>(
           return response.data;
         } catch (error) {
           if (sharedSignal.aborted) {
-            if (leaseToken) completeMetadataRequest(cacheKey, leaseToken);
+            if (leaseToken) releaseMetadataRequest(cacheKey, leaseToken);
             throw sharedSignal.reason || error;
           }
           const failure = asAppError(error);
@@ -489,8 +492,11 @@ function refreshMetadata<T>(
             if (leaseToken) completeMetadataRequest(cacheKey, leaseToken);
           }
           if (attempt === maxRetries || !isRetryable(error)) {
-            if (leaseToken && isRetryable(error)) failMetadataRequest(cacheKey, leaseToken);
-            else if (leaseToken) completeMetadataRequest(cacheKey, leaseToken);
+            if (leaseToken && isRetryable(error) && providerRequestStarted) {
+              failMetadataRequest(cacheKey, leaseToken);
+            } else if (leaseToken && providerRequestStarted) {
+              completeMetadataRequest(cacheKey, leaseToken);
+            } else if (leaseToken) releaseMetadataRequest(cacheKey, leaseToken);
             if (fallbackValue !== undefined && isRetryable(error)) return fallbackValue;
             throw error;
           }

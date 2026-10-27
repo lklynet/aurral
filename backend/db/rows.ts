@@ -358,6 +358,15 @@ export interface MetadataProviderBudgetRow {
   rate_limited_until: number;
 }
 
+export interface MetadataRequestStateRow {
+  cache_key: string | null;
+  failure_count: number;
+  retry_after: number;
+  lease_token: string | null;
+  lease_until: number;
+  updated_at: number;
+}
+
 export interface MetadataResponseCacheRow {
   cache_key: string | null;
   response: Buffer;

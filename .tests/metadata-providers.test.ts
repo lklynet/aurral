@@ -424,6 +424,65 @@ test("transient entity failures use a persistent cooldown instead of redownloadi
   }
 });
 
+test("local request admission timeouts do not put entity metadata into cooldown", async () => {
+  const previousSettings = dbOps.getSettings();
+  let requests = 0;
+  const server = await createMockHttpServer((_request, response) => {
+    requests += 1;
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({ id: "admission-artist", name: "Admission Artist" }));
+  });
+
+  try {
+    dbOps.updateSettings({
+      ...previousSettings,
+      integrations: {
+        ...(previousSettings.integrations || {}),
+        metadata: {
+          ...(previousSettings.integrations?.metadata || {}),
+          provider: "brainzmash",
+          baseUrl: server.url,
+          enableNarrowFallbacks: false,
+        },
+      },
+    });
+    clearMetadataProviderCaches();
+    db.prepare(
+      `INSERT INTO metadata_provider_budget(base_url, next_request_at)
+       VALUES (?, ?)
+       ON CONFLICT(base_url) DO UPDATE SET next_request_at = excluded.next_request_at`,
+    ).run(server.url, Date.now() + 60_000);
+
+    await assert.rejects(
+      () => getArtistByMbid("admission-artist"),
+      (error) => asAppError(error)?.code === "ETIMEDOUT",
+    );
+    assert.equal(requests, 0);
+    assert.deepEqual(
+      db
+        .prepare<
+          [string],
+          { failure_count: number; retry_after: number; lease_token: string | null }
+        >(
+          `SELECT failure_count, retry_after, lease_token
+           FROM metadata_request_state WHERE cache_key LIKE ?`,
+        )
+        .get("%admission-artist%"),
+      { failure_count: 0, retry_after: 0, lease_token: null },
+    );
+
+    db.prepare("UPDATE metadata_provider_budget SET next_request_at = 0 WHERE base_url = ?").run(
+      server.url,
+    );
+    assert.equal((await getArtistByMbid("admission-artist")).name, "Admission Artist");
+    assert.equal(requests, 1);
+  } finally {
+    clearMetadataProviderCaches();
+    dbOps.updateSettings(previousSettings);
+    await server.close();
+  }
+});
+
 test("forced refreshes serve stale album metadata when the provider fails", async () => {
   const previousSettings = dbOps.getSettings();
   let requests = 0;

@@ -218,7 +218,9 @@ async function completeLibraryTrackLists() {
     try {
       metadata = await getAlbumByMbid(album.releaseGroupMbid);
     } catch (error) {
-      if (asAppError(error)?.response?.status !== 404) {
+      const failure = asAppError(error);
+      if (failure?.code === "ERR_METADATA_COOLDOWN") return;
+      if (failure?.response?.status !== 404) {
         unavailable ??= error;
         return;
       }
