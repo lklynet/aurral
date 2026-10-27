@@ -1,5 +1,6 @@
 import path from "path";
 import fs from "fs/promises";
+import { constants as fsConstants } from "fs";
 import { dbOps } from "../../db/helpers/index.ts";
 import { asAppError } from "../../../lib/errors.ts";
 import { flowPlaylistConfig, type FlowConfig, type StaticPlaylist } from "./flowPlaylistConfig.ts";
@@ -331,9 +332,16 @@ export class PlaylistManager {
       const oldPath = path.resolve(resolved.safeRoot, `${state.baseName}.webp`);
       if (path.dirname(oldPath) !== resolved.safeRoot) throw new Error("Invalid artwork path");
       try {
-        await fs.rename(oldPath, path.join(resolved.safeRoot, `${resolved.baseName}.webp`));
+        await fs.copyFile(
+          oldPath,
+          path.join(resolved.safeRoot, `${resolved.baseName}.webp`),
+          fsConstants.COPYFILE_EXCL,
+        );
+        await fs.unlink(oldPath);
       } catch (error) {
-        if (asAppError(error)?.code !== "ENOENT") throw error;
+        const code = asAppError(error)?.code;
+        if (code === "EEXIST") return;
+        if (code !== "ENOENT") throw error;
       }
       this._rememberArtwork(playlistId, state);
     });

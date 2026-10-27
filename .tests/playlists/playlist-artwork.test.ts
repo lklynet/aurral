@@ -386,6 +386,25 @@ test("renaming an imported playlist preserves its uploaded cover", async () => {
   assert.equal(artworkState.getPlaylistArtworkState(playlist.id)?.mode, "upload");
 });
 
+test("renaming onto another playlist's file name keeps that playlist's cover", async () => {
+  const cover = (background: string) =>
+    sharp({ create: { width: 48, height: 48, channels: 3, background } })
+      .png()
+      .toBuffer();
+  const manager = makeManager();
+  const existing = flowPlaylistConfig.createStaticPlaylist({ name: "Mix_2026" });
+  await manager.saveArtworkUpload(existing.id, await cover("#a23871"));
+  const existingFile = (await manager.resolveArtworkFile(existing.id))!;
+  const before = await fs.readFile(existingFile.safePath);
+  const renamed = flowPlaylistConfig.createStaticPlaylist({ name: "Mix one" });
+  await manager.saveArtworkUpload(renamed.id, await cover("#284466"));
+  flowPlaylistConfig.updateStaticPlaylist(renamed.id, { name: "Mix:2026" });
+
+  await manager.syncPlaylists();
+
+  assert.deepEqual(await fs.readFile(existingFile.safePath), before);
+});
+
 test("an empty flow gains an artist cover after its tracklist is generated", async () => {
   const flow = flowPlaylistConfig.createFlow({ name: "New flow", enabled: false });
   const manager = makeManager();
