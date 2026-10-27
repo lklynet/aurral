@@ -1,11 +1,12 @@
 import { describeAlbumRequestResult } from "../utils/albumAddAction";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { parseResponse, type InferResponseType } from "hono/client";
+import { libraryMiscClient } from "../utils/api/clients/libraryMisc.ts";
 import {
-  getRecentlyAdded,
-  getRecentReleases,
   requestAlbumFromSearch,
   settleLibraryOwnerConflict,
+  type ArtistsInLibrary,
 } from "../utils/api/endpoints/library.ts";
 import { buildAlbumRequestPayload } from "../utils/libraryDestination";
 import { useLibraryDestination } from "../hooks/useLibraryDestination";
@@ -35,11 +36,9 @@ import { useToast } from "../contexts/ToastContext";
 import { useAuth } from "../contexts/AuthContext";
 import { queryClient, queryKeys } from "../queryClient.ts";
 import type { DiscoverArtist } from "../../../backend/routes/discovery/handlers/main.ts";
-import type {
-  GetRecentlyAddedResponse,
-  GetRecentReleasesResponse,
-  LookupArtistsInLibraryBatchResponse,
-} from "../../../backend/routes/library/handlers/misc.ts";
+
+type RecentlyAdded = InferResponseType<typeof libraryMiscClient.recent.$get, 200>;
+type RecentReleases = InferResponseType<(typeof libraryMiscClient)["recent-releases"]["$get"], 200>;
 
 export type DiscoverData = Omit<
   NonNullable<ReturnType<typeof normalizeDiscoveryData>>,
@@ -51,7 +50,7 @@ export type DiscoverData = Omit<
   topTags: string[];
 };
 
-export type RecentRelease = GetRecentReleasesResponse[number];
+export type RecentRelease = RecentReleases[number];
 
 export function useDiscoverData() {
   const { user: authUser, hasPermission, bootstrap } = useAuth();
@@ -98,26 +97,28 @@ export function useDiscoverData() {
   );
   const recentlyAddedQuery = useQuery({
     queryKey: queryKeys.recentlyAdded(authUser?.id),
-    queryFn: ({ signal }) => getRecentlyAdded({ signal }),
+    queryFn: ({ signal }) =>
+      parseResponse(libraryMiscClient.recent.$get(undefined, { init: { signal } })),
     initialData: recentlyAddedInitial,
     initialDataUpdatedAt: recentlyAddedInitial ? getStoredRecentlyAddedAt(authUser?.id) : undefined,
     staleTime: 5 * 60 * 1000,
   });
   const recentReleasesQuery = useQuery({
     queryKey: queryKeys.recentReleases(authUser?.id),
-    queryFn: ({ signal }) => getRecentReleases({ signal }),
+    queryFn: ({ signal }) =>
+      parseResponse(libraryMiscClient["recent-releases"].$get(undefined, { init: { signal } })),
     initialData: recentReleasesInitial,
     initialDataUpdatedAt: recentReleasesInitial
       ? getStoredRecentReleasesAt(authUser?.id)
       : undefined,
     staleTime: 5 * 60 * 1000,
   });
-  const recentlyAdded: GetRecentlyAddedResponse = recentlyAddedQuery.data || [];
+  const recentlyAdded: RecentlyAdded = recentlyAddedQuery.data || [];
   const recentReleases: RecentRelease[] = recentReleasesQuery.data || [];
   const [pendingRecentReleaseIds, setPendingRecentReleaseIds] = useState<Record<string, boolean>>(
     {},
   );
-  const [libraryLookup, setLibraryLookup] = useState<LookupArtistsInLibraryBatchResponse>({});
+  const [libraryLookup, setLibraryLookup] = useState<ArtistsInLibrary>({});
   const { lookup: artistFeedbackLookup, submitFeedback } = useArtistTasteFeedback();
   const { status: discoveryStatus } = useDiscoveryStatus();
   const previousDiscoveryStatusRef = useRef<typeof discoveryStatus>(null);

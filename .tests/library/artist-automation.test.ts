@@ -1,4 +1,4 @@
-import { createRouteHarness, createResponse } from "./routeHarness.ts";
+import { signedInAs } from "../helpers/honoApp.ts";
 import { test, beforeAll, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
@@ -16,8 +16,7 @@ const [
   managementStore,
   { lidarrClient },
   { libraryManager },
-  { registerArtists },
-  { registerAlbums },
+  { api },
   { downloadWorker },
   { clearMetadataProviderCaches },
 ] = await setupIsolatedBackend(
@@ -28,32 +27,33 @@ const [
   () => import("../../backend/services/libraryManagementStore.ts"),
   () => import("../../backend/services/lidarrClient.ts"),
   () => import("../../backend/services/libraryManager.ts"),
-  () => import("../../backend/routes/library/handlers/artists.ts"),
-  () => import("../../backend/routes/library/handlers/albums.ts"),
+  () => import("../../backend/routes/api.ts"),
   () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
   () => import("../../backend/services/providers/brainzmashProvider.ts"),
 );
 
-const routes = createRouteHarness(registerArtists, registerAlbums);
-
 async function callRoute<Body = RouteBody>(
-  key: string,
+  method: string,
+  path: string,
   {
-    params = {},
     query = {},
-    body = {},
+    body,
   }: {
     body?: Record<string, string>;
-    params?: Record<string, string>;
     query?: Record<string, string>;
   } = {},
 ) {
-  const response = createResponse<Body>();
-  await routes.get(key)(
-    { params, body, query, user: { id: 1, username: "test", role: "admin", permissions: {} } },
-    response,
-  );
-  return response;
+  const response = await signedInAs(admin)
+    .route("/", api)
+    .request(`/library${path}?${new URLSearchParams(query)}`, {
+      method,
+      ...(body && {
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    });
+  const payload: Body = await response.json();
+  return { statusCode: response.status, body: payload };
 }
 
 const artistMbid = "c1111111-1111-4111-8111-111111111111";
@@ -296,7 +296,7 @@ test("with Lidarr connected, new artists go to Lidarr and Aurral keeps managing 
     monitorMode: "unmonitored",
   });
 
-  const add = await callRoute("POST /artists", {
+  const add = await callRoute("POST", "/artists", {
     body: {
       foreignArtistId: artistMbid,
       artistName: "Automation Artist",
@@ -354,7 +354,7 @@ test("without Lidarr, Aurral monitors the artist and Lidarr is never asked", asy
     artistName: "Never Added",
     user: admin,
   });
-  const lidarrAdd = await callRoute("POST /artists", {
+  const lidarrAdd = await callRoute("POST", "/artists", {
     body: { foreignArtistId: neverAdded, artistName: "Never Added", managedBy: "lidarr" },
   });
 
@@ -525,7 +525,7 @@ test("deleting an artist removes it from Lidarr and Aurral together", async () =
   const { album } = seedAurralAlbum(artist.id);
   lidarr.artist = lidarrArtist();
 
-  const response = await callRoute("DELETE /artists/:mbid", { params: { mbid: artistMbid } });
+  const response = await callRoute("DELETE", `/artists/${artistMbid}`);
 
   assert.equal(response.statusCode, 200);
   assert.deepEqual(lidarr.calls, [["delete", 41]]);
@@ -537,8 +537,7 @@ test("naming a manager removes only that side", async () => {
   const { album } = seedAurralAlbum(artist.id);
   lidarr.artist = lidarrArtist();
 
-  const fromLidarr = await callRoute("DELETE /artists/:mbid", {
-    params: { mbid: artistMbid },
+  const fromLidarr = await callRoute("DELETE", `/artists/${artistMbid}`, {
     query: { manager: "lidarr" },
   });
 
@@ -554,7 +553,7 @@ test("deleting an artist touches nothing when Lidarr cannot be reached", async (
     throw new Error("connect ECONNREFUSED");
   };
   try {
-    const response = await callRoute("DELETE /artists/:mbid", { params: { mbid: artistMbid } });
+    const response = await callRoute("DELETE", `/artists/${artistMbid}`);
     assert.equal(response.statusCode, 503);
   } finally {
     lidarrClient.getArtistByMbid = getArtistByMbid;
@@ -566,8 +565,7 @@ test("removing from Lidarr while it is not connected is refused", async () => {
   lidarr.configured = false;
   seedArtist("lidarr", "none");
 
-  const response = await callRoute("DELETE /artists/:mbid", {
-    params: { mbid: artistMbid },
+  const response = await callRoute("DELETE", `/artists/${artistMbid}`, {
     query: { manager: "lidarr" },
   });
 
@@ -581,7 +579,7 @@ test("a Lidarr artist's albums add Aurral's albums by MBID, never by number", as
   lidarr.albums = [{ ...lidarrAlbum(7, otherAlbumMbid, true), artistId: aurralArtist.id }];
   const albumsOf = async (foreignArtistId: string) => {
     lidarr.artist = lidarrArtist({ id: aurralArtist.id, foreignArtistId });
-    const response = await callRoute("GET /albums", {
+    const response = await callRoute("GET", "/albums", {
       query: { artistId: String(aurralArtist.id), managedBy: "lidarr" },
     });
     return response.body.map((album) => album.mbid);

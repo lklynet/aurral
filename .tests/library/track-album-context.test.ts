@@ -1,5 +1,7 @@
 import { requireFixture } from "../playlists/fixtures.ts";
 import { createRouteHarness, createResponse } from "./routeHarness.ts";
+import { signedInAs } from "../helpers/honoApp.ts";
+import { testUser } from "../helpers/userFixtures.ts";
 import { test, beforeAll, beforeEach, afterAll } from "vite-plus/test";
 import assert from "node:assert/strict";
 
@@ -17,8 +19,7 @@ const [
   { downloadWorker },
   { resolveReleaseManifest },
   { registerReleaseGroup },
-  { registerDownloads },
-  { registerTracks },
+  { api },
   { flowTrackSource },
   libraryStore,
   managementStore,
@@ -30,37 +31,33 @@ const [
   () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
   () => import("../../backend/services/releaseResolver.ts"),
   () => import("../../backend/routes/artists/handlers/releaseGroup.ts"),
-  () => import("../../backend/routes/library/handlers/downloads.ts"),
-  () => import("../../backend/routes/library/handlers/tracks.ts"),
+  () => import("../../backend/routes/api.ts"),
   () => import("../../backend/services/flows/flowTrackSource.ts"),
   () => import("../../backend/services/libraryMediaStore.ts"),
   () => import("../../backend/services/libraryManagementStore.ts"),
   () => import("../../backend/db/helpers/index.ts"),
 );
 
-const routes = createRouteHarness(registerReleaseGroup, registerDownloads, registerTracks);
+const releaseGroupRoutes = createRouteHarness(registerReleaseGroup);
+const app = signedInAs(testUser(1, { role: "admin" })).route("/", api);
 
 type ListedTrack = { title: string; releaseMbid: string; discNumber: number; trackNumber: number };
-type RouteInput = {
-  body?: Record<string, unknown>;
-  params?: Record<string, string>;
-  query?: Record<string, string>;
-};
-function callRoute(
-  key: `GET ${string}`,
-  input?: RouteInput,
-): Promise<ReturnType<typeof createResponse<ListedTrack[]>>>;
-function callRoute(
-  key: string,
-  input?: RouteInput,
-): Promise<ReturnType<typeof createResponse<{ jobId: string }>>>;
-async function callRoute(key: string, { params = {}, body = {}, query = {} }: RouteInput = {}) {
-  const response = createResponse<ListedTrack[] | { jobId: string }>();
-  await routes.get(key)(
-    { params, body, query, user: { role: "admin", permissions: {} } },
+
+async function listReleaseGroupTracks(mbid: string) {
+  const response = createResponse<ListedTrack[]>();
+  await releaseGroupRoutes.get("GET /release-group/:mbid/tracks")(
+    { params: { mbid }, body: {}, query: {}, user: { role: "admin", permissions: {} } },
     response,
   );
   return response;
+}
+
+async function listLibraryTracks(releaseGroupMbid: string) {
+  const response = await app.request(
+    `/library/tracks?${new URLSearchParams({ releaseGroupMbid })}`,
+  );
+  const body: ListedTrack[] = await response.json();
+  return { body };
 }
 
 const GROUP = "a1a1a1a1-0000-4000-8000-000000000001";
@@ -104,16 +101,26 @@ afterAll(async () => {
   await cleanupIsolatedState(isolatedState);
 });
 
-const requestTrack = (body: {
+const requestTrack = async (body: {
   trackName: string;
   trackMbid: string;
   releaseMbid?: string;
   discNumber?: number;
   trackNumber?: number;
-}) =>
-  callRoute("POST /downloads/track", {
-    body: { artistName: "Context Artist", albumName: "Two Sides", albumMbid: GROUP, ...body },
+}) => {
+  const response = await app.request("/library/downloads/track", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      artistName: "Context Artist",
+      albumName: "Two Sides",
+      albumMbid: GROUP,
+      ...body,
+    }),
   });
+  const job: { jobId: string } = await response.json();
+  return { status: response.status, body: job };
+};
 
 const storedJob = (jobId: string) =>
   db
@@ -126,7 +133,7 @@ const storedJob = (jobId: string) =>
 test("a release page lists the release and disc a plain request for its track searches", async (t) => {
   await serveGroups(t, [group]);
 
-  const listed = await callRoute("GET /release-group/:mbid/tracks", { params: { mbid: GROUP } });
+  const listed = await listReleaseGroupTracks(GROUP);
 
   assert.deepEqual(
     listed.body.map((track) => [
@@ -202,8 +209,8 @@ test("an album page and its Library page list the edition its Library album asks
     metadata: { edition: "expanded", requestedRelease: DELUXE },
   });
 
-  const listed = await callRoute("GET /release-group/:mbid/tracks", { params: { mbid: GROUP } });
-  const libraryListed = await callRoute("GET /tracks", { query: { releaseGroupMbid: GROUP } });
+  const listed = await listReleaseGroupTracks(GROUP);
+  const libraryListed = await listLibraryTracks(GROUP);
 
   const deluxe = [
     ["Intro", DELUXE, 1, 1],
@@ -253,7 +260,7 @@ test("a track added from an album page joins that Library album when another Lib
     releaseMbid: STANDARD,
   });
 
-  assert.equal(added.statusCode, 202, JSON.stringify(added.body));
+  assert.equal(added.status, 202, JSON.stringify(added.body));
   assert.equal(downloadTracker.getJob(added.body.jobId)!.albumMbid, GROUP);
 });
 
@@ -268,7 +275,7 @@ test("a track added with its release is queued and searched on that release and 
     trackNumber: 1,
   });
 
-  assert.equal(added.statusCode, 202);
+  assert.equal(added.status, 202);
   assert.deepEqual(storedJob(added.body.jobId), {
     release_mbid: DELUXE,
     track_number: 1,
@@ -296,13 +303,13 @@ test("a release the album does not list, or that is not an ID, still queues the 
     releaseMbid: "deluxe",
   });
 
-  assert.equal(foreign.statusCode, 202);
+  assert.equal(foreign.status, 202);
   assert.equal(
     (await resolveReleaseManifest(requireFixture(downloadTracker.getJob(foreign.body.jobId))))!
       .releaseMbid,
     STANDARD,
   );
-  assert.equal(malformed.statusCode, 202);
+  assert.equal(malformed.status, 202);
   assert.equal(storedJob(malformed.body.jobId)!.release_mbid, null);
 });
 

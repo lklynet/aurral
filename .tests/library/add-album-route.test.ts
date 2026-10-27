@@ -1,16 +1,17 @@
-import { createRouteHarness, createResponse } from "./routeHarness.ts";
 import assert from "node:assert/strict";
 import { test, afterAll, vi } from "vite-plus/test";
 
 import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTestHarness.ts";
+import { signedInAs } from "../helpers/honoApp.ts";
+import { testUser } from "../helpers/userFixtures.ts";
 
-const [state, { registerAlbums }, { libraryManager }] = await setupIsolatedBackend(
+const [state, { api }, { libraryManager }] = await setupIsolatedBackend(
   "add-album-route",
-  () => import("../../backend/routes/library/handlers/albums.ts"),
+  () => import("../../backend/routes/api.ts"),
   () => import("../../backend/services/libraryManager.ts"),
 );
 
-const routes = createRouteHarness(registerAlbums);
+const app = signedInAs(testUser(1, { role: "admin" })).route("/", api);
 
 afterAll(() => cleanupIsolatedState(state));
 
@@ -24,19 +25,16 @@ test("adding an album answers 201 once the album is in the library", async () =>
     foreignAlbumId: "72222222-2222-4222-8222-222222222222",
     statistics: { trackCount: 0, sizeOnDisk: 0, percentOfTracks: 0 },
   } as Awaited<ReturnType<typeof libraryManager.addAlbum>>);
-  const response = createResponse<{ queued: boolean }>();
-  await routes.get("POST /albums")(
-    {
-      body: {
-        artistId: "7",
-        releaseGroupMbid: "72222222-2222-4222-8222-222222222222",
-        albumName: "Route Album",
-        managedBy: "aurral",
-      },
-      user: { id: 1, role: "admin", permissions: {} },
-    },
-    response,
-  );
-  assert.equal(response.statusCode, 201);
-  assert.equal(response.body.queued, false);
+  const response = await app.request("/library/albums", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      artistId: "7",
+      releaseGroupMbid: "72222222-2222-4222-8222-222222222222",
+      albumName: "Route Album",
+      managedBy: "aurral",
+    }),
+  });
+  assert.equal(response.status, 201);
+  assert.equal((await response.json()).queued, false);
 });

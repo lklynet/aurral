@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { parseResponse } from "hono/client";
 import { Link } from "react-router";
 import { RotateCcw, X } from "./icons";
 
@@ -8,11 +9,8 @@ import type { AurralAlbumRef } from "./AurralAlbumMonitoring";
 import { useToast } from "../contexts/ToastContext";
 import { getApiErrorMessage } from "../pages/onboardingUtils.tsx";
 import { queryKeys } from "../queryClient.ts";
-import {
-  cancelAurralAlbum,
-  getAurralAlbumStatus,
-  requestAlbumFromSearch,
-} from "../utils/api/endpoints/library.ts";
+import { cancelAurralAlbum, requestAlbumFromSearch } from "../utils/api/endpoints/library.ts";
+import { libraryAlbumsClient } from "../utils/api/clients/libraryAlbums.ts";
 import {
   buildAurralAlbumRetryPayload,
   describeAurralAlbumStatus,
@@ -51,7 +49,13 @@ export function AurralAlbumStatus({
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const statusQuery = useQuery({
     queryKey: queryKeys.aurralAlbumStatus(album.id),
-    queryFn: ({ signal }) => getAurralAlbumStatus(album.id, { signal }),
+    queryFn: ({ signal }) =>
+      parseResponse(
+        libraryAlbumsClient.albums.aurral[":canonicalId"].status.$get(
+          { param: { canonicalId: encodeURIComponent(album.id) } },
+          { init: { signal } },
+        ),
+      ),
     staleTime: 0,
     refetchInterval: (query) =>
       shouldPollAlbumStatus(query.state.data?.status) ? POLL_INTERVAL_MS : false,

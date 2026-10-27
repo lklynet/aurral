@@ -1,8 +1,11 @@
-import type { Router } from "express";
+import { Hono } from "hono";
+import * as v from "valibot";
 import { libraryManager } from "../../../services/libraryManager.ts";
 import { dbOps } from "../../../db/helpers/index.ts";
-import { noCache } from "../../../middleware/cache.ts";
-import { requireAuth, requirePermission } from "../../../middleware/requirePermission.ts";
+import { noCache } from "../../../middleware/cacheHeaders.ts";
+import { requireAuth, requirePermission } from "../../../middleware/guards.ts";
+import type { AppEnv } from "../../../middleware/requestUser.ts";
+import { validate } from "../../../middleware/validate.ts";
 import {
   albumHasTrackFiles,
   classifyLidarrDownloadEvent,
@@ -27,6 +30,7 @@ import {
   isAnyDownloadSourceConfigured,
 } from "../../../services/downloadSourceService.ts";
 import { asAppError } from "../../../../lib/errors.ts";
+import { isErrorStatus, isFailure } from "../../shared/errorStatus.ts";
 
 type LidarrProviderSnapshot = {
   queue: LidarrQueueItem[] | LidarrPage<LidarrQueueItem>;
@@ -362,180 +366,141 @@ export const getActiveLibraryDownloads = async () => {
   return { albums: [...albums], artists: [...artists], tracks };
 };
 
-export function registerDownloads(router: Router) {
-  router.post<"/downloads/tracks/:trackId/research">(
+const id = v.union([v.string(), v.number()]);
+const text = v.optional(v.nullable(v.string()));
+const count = v.optional(v.nullable(v.number()));
+
+const researchInput = v.object({ albumId: v.optional(v.nullable(id)) });
+
+const trackInput = v.object({
+  artistName: text,
+  trackName: text,
+  albumName: text,
+  artistMbid: text,
+  albumMbid: text,
+  releaseMbid: text,
+  trackMbid: text,
+  releaseYear: v.optional(v.nullable(id)),
+  durationMs: count,
+  trackNumber: count,
+  discNumber: count,
+  albumTrackCount: count,
+  albumTrackTitles: v.optional(v.nullable(v.array(v.string()))),
+  canonicalTrackId: v.optional(v.nullable(id)),
+});
+
+const albumInput = v.object({ albumId: v.optional(id) });
+
+const statusQuery = v.object({
+  albumIds: v.optional(v.union([v.string(), v.array(v.string())])),
+});
+
+export default new Hono<AppEnv>()
+  .basePath("/library")
+  .post(
     "/downloads/tracks/:trackId/research",
     requireAuth,
     requirePermission("addAlbum"),
-    async (req, res) => {
-      const trackId = Number(req.params.trackId);
-      const albumId = req.body?.albumId;
+    validate("json", researchInput),
+    async (c) => {
+      const trackId = Number(c.req.param("trackId"));
+      const { albumId } = c.req.valid("json");
       const sourceJob = resolveAurralOwnedTrackJob({ trackId, albumId });
       if (!sourceJob) {
-        return res.status(404).json({
-          error: "Track is not an available Aurral-managed library track",
-        });
+        return c.json({ error: "Track is not an available Aurral-managed library track" }, 404);
       }
       if (!isAnyDownloadSourceConfigured()) {
         const message = getDownloadSourceNotConfiguredMessage();
-        return res.status(400).json({ error: message, message });
+        return c.json({ error: message, message }, 400);
       }
       if (downloadTracker.findActiveUpgradeJob(sourceJob)) {
-        return res.status(409).json({ error: "A search for this track is already running" });
+        return c.json({ error: "A search for this track is already running" }, 409);
       }
-
       try {
         const result = await playlistOperationQueue.enqueuePayload({
           kind: "library-track-research",
           label: `library-track-research:${trackId}:${albumId || "all"}`,
           trackId,
-          albumId,
+          albumId: albumId ?? null,
         });
-        return res.status(202).json({
-          success: true,
-          queued: true,
-          operationId: result.operationId,
-        });
+        return c.json({ success: true, queued: true, operationId: result.operationId }, 202);
       } catch (error) {
         const failure = asAppError(error);
         logger.error("library", "Failed to queue track replacement search", failure?.message);
-        return res.status(500).json({
-          error: "Failed to queue track replacement search",
-          message: failure?.message,
-        });
+        return c.json(
+          { error: "Failed to queue track replacement search", message: failure?.message },
+          500,
+        );
       }
     },
-  );
-
-  router.post("/downloads/track", requireAuth, requirePermission("addAlbum"), async (req, res) => {
-    const body = req.body || {};
-    const releaseMbid = String(body.releaseMbid || "").trim();
-    const track = {
-      artistName: String(body.artistName || "").trim(),
-      trackName: String(body.trackName || "").trim(),
-      albumName: String(body.albumName || "").trim() || null,
-      artistMbid: String(body.artistMbid || "").trim() || null,
-      albumMbid: String(body.albumMbid || "").trim() || null,
-      releaseMbid: UUID_REGEX.test(releaseMbid) ? releaseMbid : null,
-      trackMbid: String(body.trackMbid || "").trim() || null,
-      releaseYear: String(body.releaseYear || "").trim() || null,
-      durationMs: body.durationMs,
-      trackNumber: body.trackNumber,
-      discNumber: body.discNumber,
-      albumTrackCount: body.albumTrackCount,
-      albumTrackTitles: body.albumTrackTitles,
-    };
-    if (!track.artistName || !track.trackName) {
-      return res.status(400).json({ error: "artistName and trackName are required" });
-    }
-
-    try {
-      const result = await requestLibraryTrack(track, {
-        canonicalTrackId: body.canonicalTrackId,
-        user: req.user,
-      });
-      if (result.error) return res.status(result.statusCode || 400).json({ error: result.error });
-      if (result.alreadyOwned) return res.json({ success: true, ...result });
-      if (!result.reused) await invalidateActivityRequestsCache();
-      return res.status(202).json({ success: true, ...result });
-    } catch (error) {
-      const failure = asAppError(error);
-      logger.error("library", "Failed to queue track acquisition", failure?.message);
-      return res.status(500).json({
-        error: "Failed to queue track acquisition",
-        message: failure?.message,
-      });
-    }
-  });
-
-  router.post("/downloads/album", requireAuth, requirePermission("addAlbum"), async (req, res) => {
-    try {
-      const { albumId } = req.body;
-
-      if (!albumId) {
-        return res.status(400).json({ error: "albumId is required" });
-      }
-
-      const { lidarrClient } = await import("../../../services/lidarrClient.ts");
-      if (!lidarrClient || !lidarrClient.isConfigured()) {
-        return res.status(400).json({ error: "Lidarr is not configured" });
-      }
-
-      const album = await libraryManager.getAlbumById(albumId, { managedBy: "lidarr" });
-      if (!album) {
-        return res.status(404).json({ error: "Album not found" });
-      }
-
-      const artist = album.artistId
-        ? await libraryManager.getArtistById(album.artistId, { managedBy: "lidarr" })
-        : null;
-      if (artist) {
-        await libraryManager.ensureArtistMonitored(artist);
-      }
-      if (!album.monitored) {
-        await libraryManager.updateAlbum(albumId, { monitored: true });
-      }
-
-      const settings = dbOps.getSettings();
-      const searchOnAdd = settings.integrations?.lidarr?.searchOnAdd ?? false;
-
-      if (searchOnAdd) {
-        await lidarrClient.request("/command", "POST", {
-          name: "AlbumSearch",
-          albumIds: [parseInt(albumId, 10)],
-        });
-        if (artist?.id) {
-          await libraryManager.ensureRequestedAlbumMonitoring(artist.id, albumId);
-          libraryManager.scheduleRequestedAlbumMonitoringRepair(artist.id, albumId);
-        }
-      }
-      invalidateAllDownloadStatusesCache();
-
-      const { recordAlbumRequested } = await import("../../../services/aurralHistoryService.ts");
-      recordAlbumRequested({
-        albumId,
-        albumName: album.albumName,
-        artistName: artist?.artistName || album.artistName,
-        artistMbid: artist?.mbid || artist?.foreignArtistId,
-        searching: searchOnAdd,
-        user: req.user,
-      });
-
-      res.json({
-        success: true,
-        message: searchOnAdd ? "Album search triggered" : "Album added to library",
-      });
-    } catch (error) {
-      const failure = asAppError(error);
-      logger.error("library", "Error initiating album download:", failure?.message);
-      res.status(500).json({
-        error: "Failed to initiate album download",
-        message: failure?.message,
-      });
-    }
-  });
-
-  router.post(
-    "/downloads/album/search",
+  )
+  .post(
+    "/downloads/track",
     requireAuth,
     requirePermission("addAlbum"),
-    async (req, res) => {
+    validate("json", trackInput),
+    async (c) => {
+      const body = c.req.valid("json");
+      const releaseMbid = String(body.releaseMbid || "").trim();
+      const track = {
+        artistName: String(body.artistName || "").trim(),
+        trackName: String(body.trackName || "").trim(),
+        albumName: String(body.albumName || "").trim() || null,
+        artistMbid: String(body.artistMbid || "").trim() || null,
+        albumMbid: String(body.albumMbid || "").trim() || null,
+        releaseMbid: UUID_REGEX.test(releaseMbid) ? releaseMbid : null,
+        trackMbid: String(body.trackMbid || "").trim() || null,
+        releaseYear: String(body.releaseYear || "").trim() || null,
+        durationMs: body.durationMs,
+        trackNumber: body.trackNumber,
+        discNumber: body.discNumber,
+        albumTrackCount: body.albumTrackCount,
+        albumTrackTitles: body.albumTrackTitles,
+      };
+      if (!track.artistName || !track.trackName) {
+        return c.json({ error: "artistName and trackName are required" }, 400);
+      }
       try {
-        const { albumId } = req.body;
-
-        if (!albumId) {
-          return res.status(400).json({ error: "albumId is required" });
+        const result = await requestLibraryTrack(track, {
+          canonicalTrackId: body.canonicalTrackId,
+          user: c.var.user,
+        });
+        if (isFailure(result)) {
+          return c.json(
+            { error: result.error },
+            isErrorStatus(result.statusCode) ? result.statusCode : 400,
+          );
         }
+        if (result.alreadyOwned) return c.json({ success: true, ...result }, 200);
+        if (!result.reused) await invalidateActivityRequestsCache();
+        return c.json({ success: true, ...result }, 202);
+      } catch (error) {
+        const failure = asAppError(error);
+        logger.error("library", "Failed to queue track acquisition", failure?.message);
+        return c.json(
+          { error: "Failed to queue track acquisition", message: failure?.message },
+          500,
+        );
+      }
+    },
+  )
+  .post(
+    "/downloads/album",
+    requireAuth,
+    requirePermission("addAlbum"),
+    validate("json", albumInput),
+    async (c) => {
+      try {
+        const { albumId } = c.req.valid("json");
+        if (!albumId) return c.json({ error: "albumId is required" }, 400);
 
         const { lidarrClient } = await import("../../../services/lidarrClient.ts");
         if (!lidarrClient || !lidarrClient.isConfigured()) {
-          return res.status(400).json({ error: "Lidarr is not configured" });
+          return c.json({ error: "Lidarr is not configured" }, 400);
         }
 
         const album = await libraryManager.getAlbumById(albumId, { managedBy: "lidarr" });
-        if (!album) {
-          return res.status(404).json({ error: "Album not found" });
-        }
+        if (!album) return c.json({ error: "Album not found" }, 404);
 
         const artist = album.artistId
           ? await libraryManager.getArtistById(album.artistId, { managedBy: "lidarr" })
@@ -543,14 +508,83 @@ export function registerDownloads(router: Router) {
         if (artist) {
           await libraryManager.ensureArtistMonitored(artist);
         }
+        if (!album.monitored) {
+          await libraryManager.updateAlbum(albumId, { monitored: true });
+        }
 
+        const settings = dbOps.getSettings();
+        const searchOnAdd = settings.integrations?.lidarr?.searchOnAdd ?? false;
+
+        if (searchOnAdd) {
+          await lidarrClient.request("/command", "POST", {
+            name: "AlbumSearch",
+            albumIds: [Number.parseInt(String(albumId), 10)],
+          });
+          if (artist?.id) {
+            await libraryManager.ensureRequestedAlbumMonitoring(artist.id, albumId);
+            libraryManager.scheduleRequestedAlbumMonitoringRepair(artist.id, albumId);
+          }
+        }
+        invalidateAllDownloadStatusesCache();
+
+        const { recordAlbumRequested } = await import("../../../services/aurralHistoryService.ts");
+        recordAlbumRequested({
+          albumId,
+          albumName: album.albumName,
+          artistName: artist?.artistName || album.artistName,
+          artistMbid: artist?.mbid || artist?.foreignArtistId,
+          searching: searchOnAdd,
+          user: c.var.user,
+        });
+
+        return c.json(
+          {
+            success: true,
+            message: searchOnAdd ? "Album search triggered" : "Album added to library",
+          },
+          200,
+        );
+      } catch (error) {
+        const failure = asAppError(error);
+        logger.error("library", "Error initiating album download:", failure?.message);
+        return c.json(
+          { error: "Failed to initiate album download", message: failure?.message },
+          500,
+        );
+      }
+    },
+  )
+  .post(
+    "/downloads/album/search",
+    requireAuth,
+    requirePermission("addAlbum"),
+    validate("json", albumInput),
+    async (c) => {
+      const { albumId } = c.req.valid("json");
+      try {
+        if (!albumId) return c.json({ error: "albumId is required" }, 400);
+
+        const { lidarrClient } = await import("../../../services/lidarrClient.ts");
+        if (!lidarrClient || !lidarrClient.isConfigured()) {
+          return c.json({ error: "Lidarr is not configured" }, 400);
+        }
+
+        const album = await libraryManager.getAlbumById(albumId, { managedBy: "lidarr" });
+        if (!album) return c.json({ error: "Album not found" }, 404);
+
+        const artist = album.artistId
+          ? await libraryManager.getArtistById(album.artistId, { managedBy: "lidarr" })
+          : null;
+        if (artist) {
+          await libraryManager.ensureArtistMonitored(artist);
+        }
         if (!album.monitored) {
           await libraryManager.updateAlbum(albumId, { monitored: true });
         }
 
         await lidarrClient.request("/command", "POST", {
           name: "AlbumSearch",
-          albumIds: [parseInt(albumId, 10)],
+          albumIds: [Number.parseInt(String(albumId), 10)],
         });
         if (album.artistId) {
           await libraryManager.ensureRequestedAlbumMonitoring(album.artistId, albumId);
@@ -565,35 +599,26 @@ export function registerDownloads(router: Router) {
           albumName: album.albumName,
           artistName: artist?.artistName || album.artistName,
           artistMbid: artist?.mbid || artist?.foreignArtistId,
-          user: req.user,
+          user: c.var.user,
         });
 
-        res.json({
-          success: true,
-          message: "Album search triggered",
-        });
+        return c.json({ success: true, message: "Album search triggered" }, 200);
       } catch (error) {
         const failure = asAppError(error);
-        logger.error("downloads", `Failed to trigger album search ${req.body?.albumId}:`, {
+        logger.error("downloads", `Failed to trigger album search ${albumId}:`, {
           message: failure?.message,
         });
-        res.status(500).json({
-          error: "Failed to trigger album search",
-          message: failure?.message,
-        });
+        return c.json({ error: "Failed to trigger album search", message: failure?.message }, 500);
       }
     },
-  );
-
-  router.get("/downloads", async (req, res) => {
+  )
+  .get("/downloads", async (c) => {
     try {
       const { lidarrClient } = await import("../../../services/lidarrClient.ts");
-      if (!lidarrClient.isConfigured()) {
-        return res.json([]);
-      }
+      if (!lidarrClient.isConfigured()) return c.json([], 200);
       const queue = (await getLidarrStatusSnapshot()).provider.queue;
       const queueItems = Array.isArray(queue) ? queue : queue.records || [];
-      res.json(
+      return c.json(
         queueItems.map((item) => ({
           id: item.id,
           type: "album",
@@ -607,29 +632,31 @@ export function registerDownloads(router: Router) {
               : 0,
           source: "lidarr",
         })),
+        200,
       );
     } catch (error) {
-      const failure = asAppError(error);
-      res.status(500).json({
-        error: "Failed to fetch downloads",
-        message: failure?.message,
-      });
+      return c.json(
+        { error: "Failed to fetch downloads", message: asAppError(error)?.message },
+        500,
+      );
     }
-  });
-
-  router.get("/downloads/status", noCache, async (req, res) => {
+  })
+  .get("/downloads/status", noCache, validate("query", statusQuery), async (c) => {
     try {
-      const { albumIds } = req.query;
-      if (!albumIds || (typeof albumIds !== "string" && !Array.isArray(albumIds))) {
-        return res.status(400).json({ error: "albumIds query parameter is required" });
-      }
-      const albumIdArray = Array.isArray(albumIds)
-        ? albumIds.filter((id): id is string => typeof id === "string")
-        : albumIds.split(",");
+      const { albumIds } = c.req.valid("query");
+      if (!albumIds) return c.json({ error: "albumIds query parameter is required" }, 400);
+      const albumIdArray = Array.isArray(albumIds) ? albumIds : albumIds.split(",");
       const aurralPrefix = "aurral:";
-      const aurralIds = albumIdArray.filter((id) => String(id).startsWith(aurralPrefix));
-      const statuses: GetDownloadStatusResponse = await getDownloadStatusesForAlbumIds(
-        albumIdArray.filter((id) => !String(id).startsWith(aurralPrefix)),
+      const aurralIds = albumIdArray.filter((id) => id.startsWith(aurralPrefix));
+      const statuses: Record<
+        string,
+        | AlbumDownloadStatus
+        | Extract<
+            ReturnType<typeof libraryManager.getAurralAlbumStatuses>[number],
+            { error?: undefined }
+          >
+      > = await getDownloadStatusesForAlbumIds(
+        albumIdArray.filter((id) => !id.startsWith(aurralPrefix)),
       );
       const aurralStatuses = libraryManager.getAurralAlbumStatuses(
         aurralIds.map((key) => key.slice(aurralPrefix.length)),
@@ -638,60 +665,31 @@ export function registerDownloads(router: Router) {
         const status = aurralStatuses[index];
         if (status?.error === undefined) statuses[key] = status;
       });
-      res.json(statuses);
+      return c.json(statuses, 200);
     } catch (error) {
-      const failure = asAppError(error);
-      res.status(500).json({
-        error: "Failed to fetch download status",
-        message: failure?.message,
-      });
+      return c.json(
+        { error: "Failed to fetch download status", message: asAppError(error)?.message },
+        500,
+      );
     }
-  });
-
-  router.get("/downloads/active", noCache, async (_req, res) => {
+  })
+  .get("/downloads/active", noCache, async (c) => {
     try {
-      res.json(await getActiveLibraryDownloads());
+      return c.json(await getActiveLibraryDownloads(), 200);
     } catch (error) {
-      const failure = asAppError(error);
-      res.status(500).json({
-        error: "Failed to fetch active downloads",
-        message: failure?.message,
-      });
+      return c.json(
+        { error: "Failed to fetch active downloads", message: asAppError(error)?.message },
+        500,
+      );
     }
-  });
-
-  router.get("/downloads/status/all", noCache, async (req, res) => {
+  })
+  .get("/downloads/status/all", noCache, async (c) => {
     try {
-      const statuses = await getAllDownloadStatuses();
-      res.json(statuses);
+      return c.json(await getAllDownloadStatuses(), 200);
     } catch (error) {
-      const failure = asAppError(error);
-      res.status(500).json({
-        error: "Failed to fetch download status",
-        message: failure?.message,
-      });
+      return c.json(
+        { error: "Failed to fetch download status", message: asAppError(error)?.message },
+        500,
+      );
     }
   });
-}
-
-export type ResearchLibraryTrackResponse = {
-  success: true;
-  queued: true;
-  operationId: Awaited<ReturnType<typeof playlistOperationQueue.enqueuePayload>>["operationId"];
-};
-
-export type DownloadTrackToLibraryResponse = { success: true } & Awaited<
-  ReturnType<typeof requestLibraryTrack>
->;
-
-export type DownloadAlbumResponse = { success: true; message: string };
-
-export type TriggerAlbumSearchResponse = { success: true; message: string };
-
-export type GetActiveDownloadsResponse = Awaited<ReturnType<typeof getActiveLibraryDownloads>>;
-
-export type GetDownloadStatusResponse = Record<
-  string,
-  | AlbumDownloadStatus
-  | Extract<ReturnType<typeof libraryManager.getAurralAlbumStatuses>[number], { error?: undefined }>
->;

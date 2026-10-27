@@ -8,3 +8,7 @@ export const isErrorStatus = (
 
 export const errorStatus = (error: AppError | undefined) =>
   isErrorStatus(error?.statusCode) ? error.statusCode : 500;
+
+export const isFailure = <T extends { error?: unknown } | null | undefined>(
+  result: T,
+): result is Extract<T, { error: string | undefined }> => Boolean(result?.error);

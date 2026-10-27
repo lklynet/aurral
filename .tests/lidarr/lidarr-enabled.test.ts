@@ -1,4 +1,3 @@
-import { captureRouteHandlers } from "../library/routeHarness.ts";
 import { test, beforeAll, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 
@@ -7,6 +6,7 @@ import {
   cleanupIsolatedState,
   resetDatabase,
 } from "../helpers/backendTestHarness.ts";
+import { signedInAs } from "../helpers/honoApp.ts";
 
 const [isolatedState, { db }, { dbOps }] = await setupIsolatedBackend(
   "lidarr-enabled",
@@ -15,7 +15,7 @@ const [isolatedState, { db }, { dbOps }] = await setupIsolatedBackend(
 );
 
 const { lidarrClient } = await import("../../backend/services/lidarrClient.ts");
-const { registerMisc } = await import("../../backend/routes/library/handlers/misc.ts");
+const { api } = await import("../../backend/routes/api.ts");
 const { resolveLidarrTestCredentials, withTemporaryLidarrClient } =
   await import("../../backend/services/lidarrTestSession.ts");
 
@@ -77,20 +77,9 @@ test("root folder reads retain saved paths while lidarr is disabled", async () =
   const request = vi.spyOn(lidarrClient, "request").mockImplementation(async () => {
     throw new Error("disabled root-folder reads must stay local");
   });
-  const routes = captureRouteHandlers(registerMisc, "get");
+  const response = await signedInAs(undefined).route("/", api).request("/library/rootfolder");
 
-  let body: unknown;
-  await routes.get("/rootfolder")(
-    {},
-    {
-      json(value: unknown) {
-        body = value;
-        return this;
-      },
-    },
-  );
-
-  assert.deepEqual(body, [{ path: rootPath }]);
+  assert.deepEqual(await response.json(), [{ path: rootPath }]);
   assert.equal(request.mock.calls.length, 0);
 });
 

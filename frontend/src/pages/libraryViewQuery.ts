@@ -1,5 +1,10 @@
 import { queryOptions } from "@tanstack/react-query";
-import { fetchLibraryPage, getLibraryFavorites } from "../utils/api/endpoints/library.ts";
+import {
+  fetchLibraryPage,
+  getLibraryFavorites,
+  type LibraryFavoritesResponse,
+  type LibraryPageResponse,
+} from "../utils/api/endpoints/library.ts";
 import {
   EMPTY_LIBRARY,
   favoriteId,
@@ -16,10 +21,6 @@ import {
 } from "../navigation/libraryNavConfig";
 import { libraryPreviewData, libraryPreviewFavorites } from "./libraryPreviewData";
 import { queryKeys } from "../queryClient.ts";
-import type {
-  FetchLibraryFavoritesResponse,
-  FetchLibraryPageResponse,
-} from "../../../backend/routes/library/handlers/libraryIndex.ts";
 
 export const LIBRARY_PAGE_SIZE = 100;
 export const LIBRARY_DEFAULT_SORT = "name";
@@ -74,7 +75,7 @@ const favoriteIdsFromPages = (pages: LibraryPage[]) =>
     ),
   );
 
-const favoriteIdsFromFavorites = (favorites: FetchLibraryFavoritesResponse) =>
+const favoriteIdsFromFavorites = (favorites: LibraryFavoritesResponse) =>
   new Set(
     (["artist", "album", "song"] as const).flatMap((kind) =>
       (Array.isArray(favorites?.[kind]) ? favorites[kind] : []).map((entry) => entry.id),
@@ -164,7 +165,7 @@ const fetchLibraryPages = async (
 export type LibraryViewLibrary = ReturnType<typeof normalizeLibraryPages>;
 
 export type LibraryViewData = {
-  nextData?: FetchLibraryPageResponse | FetchLibraryPageResponse[] | FetchLibraryFavoritesResponse;
+  nextData?: LibraryPageResponse | LibraryPageResponse[] | LibraryFavoritesResponse;
   pageResults?: (LibraryPage & { total?: number })[];
   isPreview?: boolean;
   library?: LibraryViewLibrary;

@@ -13,7 +13,7 @@ import { getAppBasePath, normalizeBasePathWithTrailingSlash } from "../../../uti
 import { useAuth } from "../../../contexts/AuthContext";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
 import { parseTracklistImportFile, reserveUniqueName, normalizeNameKey } from "../flowPageUtils";
-import { apiFetchWithTimeout, asApiError, type ApiError } from "../../../utils/api/core.ts";
+import { apiFetchWithin, asApiError, type ApiError } from "../../../utils/api/core.ts";
 import { getApiErrorBody, getApiErrorMessage } from "../../onboardingUtils.tsx";
 
 declare global {
@@ -30,7 +30,7 @@ type ImportPlaylist = {
   sourceType?: string | null;
 };
 const importApi = playlistImportsClient.import;
-const youtubeFetch = apiFetchWithTimeout(5 * 60 * 1000);
+const youtubeFetch = apiFetchWithin(5 * 60 * 1000);
 
 type ImportPreviewTrack = InferResponseType<
   typeof importApi.spotify.preview.$post,

@@ -1,8 +1,8 @@
 import { usePlaylistBulkActions } from "./usePlaylistBulkActions.ts";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate } from "react-router";
 import { parseResponse } from "hono/client";
+import { useNavigate } from "react-router";
 import { flowsClient } from "../../utils/api/clients/flows.ts";
 import { playlistArtworkClient } from "../../utils/api/clients/playlistArtwork.ts";
 import { playlistJobsClient } from "../../utils/api/clients/playlistJobs.ts";
@@ -11,10 +11,11 @@ import { getPlaylistTrackArtworkUrl } from "../../utils/api/playlistUrls.ts";
 import { getReleaseGroupCoversBatch } from "../../utils/api/endpoints/artists.ts";
 import {
   downloadTrackToLibrary,
-  fetchLibraryFavorites,
   updateLibraryFavorites,
   type CustomArtworkResult,
+  type LibraryFavoritesResponse,
 } from "../../utils/api/endpoints/library.ts";
+import { libraryClient } from "../../utils/api/clients/library.ts";
 import {
   resolveLibraryAlbumPath,
   resolveLibraryArtistPath,
@@ -36,14 +37,13 @@ import { getTrackSearchAction } from "./trackAvailability.ts";
 import { normalizeNameKey, normalizePlaylistTrackEntry, reserveUniqueName } from "./flowPageUtils";
 import type { Flow, StaticPlaylist } from "./playlistStats.ts";
 import type { PlaylistTrackRow } from "./playlistPageUtils.ts";
-import type { FetchLibraryFavoritesResponse } from "../../../../backend/routes/library/handlers/libraryIndex.ts";
 import { getApiErrorMessage } from "../onboardingUtils.tsx";
 
 const sharedPlaylists = staticPlaylistsClient["shared-playlists"];
 const trackArtwork = playlistArtworkClient["track-artwork"][":jobId"];
 
 type FavoriteSongs = {
-  song?: Pick<FetchLibraryFavoritesResponse["song"][number], "id">[];
+  song?: Pick<LibraryFavoritesResponse["song"][number], "id">[];
 };
 
 type ArtworkEditorState = {
@@ -111,7 +111,8 @@ export function PlaylistTracks({
 
   const favoriteQuery = useQuery({
     queryKey: queryKeys.libraryFavorites,
-    queryFn: ({ signal }) => fetchLibraryFavorites({ signal }),
+    queryFn: ({ signal }) =>
+      parseResponse(libraryClient.favorites.$get(undefined, { init: { signal } })),
     staleTime: 30_000,
   });
   const favoriteTrackIds = useMemo(

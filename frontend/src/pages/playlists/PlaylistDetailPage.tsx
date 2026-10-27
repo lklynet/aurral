@@ -42,7 +42,7 @@ import { countAvailableTracks } from "./trackAvailability.ts";
 import { usePlaylistStatus } from "./usePlaylistStatus";
 import { useHiddenPlaylistTracks } from "./usePlaylistBulkActions.ts";
 import type { PlaylistStats, PlaylistStatus, StaticPlaylist } from "./playlistStats.ts";
-import { apiFetchWithTimeout, asApiError } from "../../utils/api/core.ts";
+import { apiFetchWithin, asApiError } from "../../utils/api/core.ts";
 import { getApiErrorText } from "../onboardingUtils.tsx";
 
 interface PlaylistDetailProps {
@@ -53,7 +53,7 @@ interface PlaylistDetailProps {
 }
 
 const sharedPlaylist = staticPlaylistsClient["shared-playlists"][":playlistId"];
-const syncFetch = apiFetchWithTimeout(5 * 60 * 1000);
+const syncFetch = apiFetchWithin(5 * 60 * 1000);
 
 function updateCachedPlaylist(playlistId: string, changes: Partial<StaticPlaylist>) {
   queryClient.setQueryData<PlaylistStatus>(queryKeys.playlistStatus, (current) =>

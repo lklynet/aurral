@@ -1,7 +1,9 @@
-import express from "express";
+import { Hono } from "hono";
+import * as v from "valibot";
 import { UUID_REGEX } from "../../lib/uuid.ts";
-import { noCache } from "../middleware/cache.ts";
-import { requireAuth, requirePermission } from "../middleware/requirePermission.ts";
+import { noCache } from "../middleware/cacheHeaders.ts";
+import { requireAuth, requirePermission } from "../middleware/guards.ts";
+import { validate } from "../middleware/validate.ts";
 import {
   getLidarrStatusSnapshot,
   invalidateAllDownloadStatusesCache,
@@ -9,11 +11,10 @@ import {
 import type { LidarrRequestItem } from "../services/lidarrRequestBuilder.ts";
 import { buildLidarrRequests } from "../services/lidarrRequestBuilder.ts";
 import type { LidarrClient, LidarrPage, LidarrQueueItem } from "../services/lidarrClient.ts";
-import type { RequestUser } from "../middleware/requestUser.ts";
+import type { AppEnv, RequestUser } from "../middleware/requestUser.ts";
 import { getAurralHistoryRequests } from "../services/aurralHistoryService.ts";
 import { downloadTracker } from "../services/downloadJobs/downloadTracker.ts";
 
-const router = express.Router();
 const dismissedAlbumIds = new Map();
 const DISMISSED_ALBUM_TTL_MS = 24 * 60 * 60 * 1000;
 const REQUESTS_CACHE_MS = 15000;
@@ -138,53 +139,49 @@ const removeMatchingQueueItems = async (
   }
 };
 
-router.get("/", requireAuth, noCache, async (req, res) => {
-  try {
-    pruneDismissedAlbumIds();
-    const { lidarrClient } = await import("../services/lidarrClient.ts");
-    const forceRefresh = req.query.refresh === "1" || req.query.refresh === "true";
-    const userId = getRequestsUserId(req.user);
-    const cached = requestsCache.get(userId);
+const listQuery = v.object({ refresh: v.optional(v.string()) });
 
-    if (
-      !forceRefresh &&
-      cached &&
-      Date.now() - cached.at < REQUESTS_CACHE_MS &&
-      cached.jobsRevision === downloadTracker.getRevision()
-    ) {
-      return res.json(filterDismissedRequests(cached.response));
+export default new Hono<AppEnv>()
+  .basePath("/requests")
+  .get("/", requireAuth, noCache, validate("query", listQuery), async (c) => {
+    const user = c.var.user;
+    try {
+      pruneDismissedAlbumIds();
+      const { lidarrClient } = await import("../services/lidarrClient.ts");
+      const { refresh } = c.req.valid("query");
+      const forceRefresh = refresh === "1" || refresh === "true";
+      const cached = requestsCache.get(getRequestsUserId(user));
+
+      if (
+        !forceRefresh &&
+        cached &&
+        Date.now() - cached.at < REQUESTS_CACHE_MS &&
+        cached.jobsRevision === downloadTracker.getRevision()
+      ) {
+        return c.json(filterDismissedRequests(cached.response), 200);
+      }
+
+      const requests: RequestsResponse = await refreshRequestsCache(lidarrClient, {
+        refresh: forceRefresh,
+        user,
+      });
+      return c.json(requests, 200);
+    } catch {
+      const cached = requestsCache.get(getRequestsUserId(user));
+      if (cached?.response) return c.json(filterDismissedRequests(cached.response), 200);
+      return c.json({ error: "Failed to fetch requests" }, 500);
     }
-
-    const requests = await refreshRequestsCache(lidarrClient, {
-      refresh: forceRefresh,
-      user: req.user,
-    });
-    res.json(requests);
-  } catch (error) {
-    const cached = requestsCache.get(getRequestsUserId(req.user));
-    if (cached?.response) {
-      return res.json(filterDismissedRequests(cached.response));
-    }
-    res.status(500).json({ error: "Failed to fetch requests" });
-  }
-});
-
-router.delete(
-  "/album/:albumId",
-  requireAuth,
-  requirePermission("deleteAlbum"),
-  async (req, res) => {
-    const { albumId } = req.params;
-    if (!albumId) return res.status(400).json({ error: "albumId is required" });
-
-    dismissedAlbumIds.set(String(albumId), Date.now());
+  })
+  .delete("/album/:albumId", requireAuth, requirePermission("deleteAlbum"), async (c) => {
+    const albumId = c.req.param("albumId");
+    dismissedAlbumIds.set(albumId, Date.now());
     pruneDismissedAlbumIds();
     removeAlbumFromRequestsCache(albumId);
 
     try {
       const { lidarrClient } = await import("../services/lidarrClient.ts");
       if (lidarrClient?.isConfigured()) {
-        const targetAlbumId = parseInt(albumId, 10);
+        const targetAlbumId = Number.parseInt(albumId, 10);
         await removeMatchingQueueItems(
           lidarrClient,
           (item) =>
@@ -193,43 +190,33 @@ router.delete(
         );
       }
       invalidateAllDownloadStatusesCache();
-      res.json({ success: true });
+      return c.json({ success: true }, 200);
     } catch {
-      res.status(500).json({ error: "Failed to remove request" });
+      return c.json({ error: "Failed to remove request" }, 500);
     }
-  },
-);
+  })
+  .delete("/:mbid", requireAuth, requirePermission("deleteArtist"), async (c) => {
+    const mbid = c.req.param("mbid");
+    if (!UUID_REGEX.test(mbid)) return c.json({ error: "Invalid MBID format" }, 400);
 
-router.delete("/:mbid", requireAuth, requirePermission("deleteArtist"), async (req, res) => {
-  const { mbid } = req.params;
-  if (!UUID_REGEX.test(mbid)) {
-    return res.status(400).json({ error: "Invalid MBID format" });
-  }
+    try {
+      const { lidarrClient } = await import("../services/lidarrClient.ts");
+      if (!lidarrClient?.isConfigured()) return c.json({ success: true }, 200);
 
-  try {
-    const { lidarrClient } = await import("../services/lidarrClient.ts");
-    if (!lidarrClient?.isConfigured()) {
-      return res.json({ success: true });
+      const artist = await lidarrClient.getArtistByMbid(mbid).catch(() => null);
+      if (!artist?.id) return c.json({ success: true }, 200);
+
+      await removeMatchingQueueItems(
+        lidarrClient,
+        (item) => (item?.artist?.id ?? item?.album?.artistId) === artist.id,
+      );
+      invalidateAllDownloadStatusesCache();
+      return c.json({ success: true }, 200);
+    } catch {
+      return c.json({ error: "Failed to remove request" }, 500);
     }
-
-    const artist = await lidarrClient.getArtistByMbid(mbid).catch(() => null);
-    if (!artist?.id) {
-      return res.json({ success: true });
-    }
-
-    await removeMatchingQueueItems(
-      lidarrClient,
-      (item) => (item?.artist?.id ?? item?.album?.artistId) === artist.id,
-    );
-    invalidateAllDownloadStatusesCache();
-    res.json({ success: true });
-  } catch {
-    res.status(500).json({ error: "Failed to remove request" });
-  }
-});
+  });
 
 export const invalidateRequestsCache = () => {
   requestsCache.clear();
 };
-
-export default router;

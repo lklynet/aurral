@@ -1,19 +1,20 @@
-import { createRouteHarness, createResponse } from "./routeHarness.ts";
 import assert from "node:assert/strict";
 import { test, afterAll, vi } from "vite-plus/test";
 
 import { cleanupIsolatedState, setupIsolatedBackend } from "../helpers/backendTestHarness.ts";
+import { signedInAs } from "../helpers/honoApp.ts";
+import { testUser } from "../helpers/userFixtures.ts";
 
-const [state, { registerDownloads }, { libraryManager }, { lidarrClient }, { dbOps }] =
+const [state, { api }, { libraryManager }, { lidarrClient }, { dbOps }] =
   await setupIsolatedBackend(
     "download-album-route",
-    () => import("../../backend/routes/library/handlers/downloads.ts"),
+    () => import("../../backend/routes/api.ts"),
     () => import("../../backend/services/libraryManager.ts"),
     () => import("../../backend/services/lidarrClient.ts"),
     () => import("../../backend/db/helpers/index.ts"),
   );
 
-const routes = createRouteHarness(registerDownloads);
+const app = signedInAs(testUser(1, { role: "admin" })).route("/", api);
 
 afterAll(() => cleanupIsolatedState(state));
 
@@ -32,12 +33,12 @@ test("searching for an album whose artist Lidarr no longer has still succeeds", 
     monitored: true,
   } as Awaited<ReturnType<typeof libraryManager.getAlbumById>>);
   vi.spyOn(libraryManager, "getArtistById").mockResolvedValue(null);
-  const response = createResponse<{ success: boolean }>();
-  await routes.get("POST /downloads/album")(
-    { body: { albumId: "11" }, user: { id: 1, role: "admin", permissions: {} } },
-    response,
-  );
+  const response = await app.request("/library/downloads/album", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ albumId: "11" }),
+  });
   assert.equal(request.mock.calls.length, 1);
-  assert.equal(response.statusCode, 200);
-  assert.equal(response.body.success, true);
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).success, true);
 });

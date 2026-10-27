@@ -1,5 +1,5 @@
 import { requireFixture } from "../playlists/fixtures.ts";
-import { createRouteHarness, createResponse } from "./routeHarness.ts";
+import { signedInAs } from "../helpers/honoApp.ts";
 import { test, beforeAll, beforeEach, afterAll, vi } from "vite-plus/test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
@@ -28,9 +28,7 @@ const [
   { db },
   { dbOps },
   { default: axios },
-  { registerArtists },
-  { registerAlbums },
-  { registerMonitoring },
+  { api },
   libraryStore,
   managementStore,
   monitoringStore,
@@ -47,9 +45,7 @@ const [
   () => import("../../backend/config/db-sqlite.ts"),
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../lib/axiosFetch.ts"),
-  () => import("../../backend/routes/library/handlers/artists.ts"),
-  () => import("../../backend/routes/library/handlers/albums.ts"),
-  () => import("../../backend/routes/library/handlers/monitoring.ts"),
+  () => import("../../backend/routes/api.ts"),
   () => import("../../backend/services/libraryMediaStore.ts"),
   () => import("../../backend/services/libraryManagementStore.ts"),
   () => import("../../backend/services/aurralMonitoringStore.ts"),
@@ -242,13 +238,13 @@ const metadataServer = await createMockHttpServer(async (request, response) => {
   response.end(JSON.stringify({ error: "not found" }));
 });
 
-const routes = createRouteHarness(registerArtists, registerAlbums, registerMonitoring);
+const app = signedInAs({ id: 1, username: "test", role: "admin", permissions: {} }).route("/", api);
 
 async function callRoute<Body = RouteBody>(
   key: string,
   {
     params = {},
-    body = {},
+    body,
     query = {},
   }: {
     body?: Record<string, unknown>;
@@ -256,12 +252,17 @@ async function callRoute<Body = RouteBody>(
     query?: Record<string, string>;
   } = {},
 ) {
-  const response = createResponse<Body>();
-  await routes.get(key)(
-    { params, body, query, user: { id: 1, username: "test", role: "admin", permissions: {} } },
-    response,
+  const [method, route] = key.split(" ");
+  const pathname = route.replace(/:(\w+)/g, (_, name: string) => encodeURIComponent(params[name]));
+  const search = new URLSearchParams(query).toString();
+  const response = await app.request(
+    `/library${pathname}${search && `?${search}`}`,
+    body
+      ? { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
+      : { method },
   );
-  return response;
+  const responseBody: Body = await response.json();
+  return { statusCode: response.status, body: responseBody };
 }
 
 function systemTasks(kind: string) {

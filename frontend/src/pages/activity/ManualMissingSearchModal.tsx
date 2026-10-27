@@ -5,12 +5,12 @@ import { ModalShell } from "../../components/PlaylistModals.tsx";
 import { DotLoader } from "../../components/DotLoader.tsx";
 import { parseResponse, type InferResponseType } from "hono/client";
 import { playlistJobsClient } from "../../utils/api/clients/playlistJobs.ts";
-import { apiFetchWithTimeout } from "../../utils/api/core.ts";
+import { apiFetchWithin } from "../../utils/api/core.ts";
 import { queryKeys } from "../../queryClient.ts";
 import { getApiErrorMessage } from "../onboardingUtils.tsx";
 
 const manualSearch = playlistJobsClient.jobs[":jobId"]["manual-search"];
-const searchFetch = apiFetchWithTimeout(150_000);
+const searchFetch = apiFetchWithin(150_000);
 
 export type ManualSearchJob = { id: string; trackName?: string | null; artistName?: string | null };
 

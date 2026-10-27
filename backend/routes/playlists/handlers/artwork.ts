@@ -14,7 +14,7 @@ import { hasPermission, isAuthRequiredByConfig } from "../../../middleware/auth.
 import { requireStreamAuth } from "../../../middleware/guards.ts";
 import { validate } from "../../../middleware/validate.ts";
 import { asAppError } from "../../../../lib/errors.ts";
-import { sendFile } from "../../shared/sendFile.ts";
+import { sendFile } from "../../../services/fileResponses.ts";
 import { sendViaNode } from "../../shared/sendViaNode.ts";
 import {
   canAccessJobThroughPlaylist,

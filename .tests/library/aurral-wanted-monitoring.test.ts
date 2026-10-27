@@ -19,7 +19,6 @@ const [
   { downloadTracker },
   { downloadWorker },
   { handToHono },
-  { registerTracks },
   { getMetadataBaseUrl },
   { setMetadataProviderCooldown },
 ] = await setupIsolatedBackend(
@@ -31,7 +30,6 @@ const [
   () => import("../../backend/services/downloadJobs/downloadTracker.ts"),
   () => import("../../backend/services/downloadJobs/downloadWorker.ts"),
   () => import("../../backend/routes/shared/expressHandoff.ts"),
-  () => import("../../backend/routes/library/handlers/tracks.ts"),
   () => import("../../backend/services/providers/brainzmashProvider.ts"),
   () => import("../../backend/services/metadataProviderBudget.ts"),
 );
@@ -45,10 +43,7 @@ app.use((req, _res, next) => {
   next();
 });
 app.use("/api/playlists", handToHono);
-app.use(express.json());
-const router = express.Router();
-registerTracks(router);
-app.use(router);
+app.use("/api/library", handToHono);
 const server = await new Promise<import("node:http").Server>((resolve) => {
   const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
 });
@@ -153,11 +148,14 @@ const keepFile = (jobId: string | null) => {
       "SELECT id FROM library_tracks WHERE mbid = ?",
     )
     .get(getJob(jobId).trackMbid)!;
-  return request<{ keepFile: boolean; cancelledJobIds: string[] }>(`/tracks/aurral/${id}`, {
-    method: "PUT",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ keepFile: true }),
-  });
+  return request<{ keepFile: boolean; cancelledJobIds: string[] }>(
+    `/api/library/tracks/aurral/${id}`,
+    {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ keepFile: true }),
+    },
+  );
 };
 
 const upgradeJobsOf = (jobId: string | null) =>

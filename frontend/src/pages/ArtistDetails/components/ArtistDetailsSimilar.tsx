@@ -2,11 +2,11 @@ import { useCallback, useEffect, useMemo, useState, type RefObject } from "react
 import {
   lookupArtistsInLibraryBatch,
   readLibraryLookupCache,
+  type ArtistsInLibrary,
 } from "../../../utils/api/endpoints/library.ts";
 import { getArtistFeedbackFlags } from "../../../utils/discoveryFeedback";
 import { getArtistRecordId, type ArtistFeedbackAction } from "../../../utils/artistTaste";
 import type { SimilarArtistsResponse } from "../../../../../backend/routes/artists/handlers/similar.ts";
-import type { LookupArtistsInLibraryBatchResponse } from "../../../../../backend/routes/library/handlers/misc.ts";
 
 import { ChevronLeft, ChevronRight } from "../../../components/icons";
 import { DotLoader } from "../../../components/DotLoader";
@@ -35,7 +35,7 @@ export function ArtistDetailsSimilar({
   ) => unknown;
   artistFeedbackLookup: Map<string, Set<string>> | null | undefined;
 }) {
-  const [libraryLookup, setLibraryLookup] = useState<LookupArtistsInLibraryBatchResponse>({});
+  const [libraryLookup, setLibraryLookup] = useState<ArtistsInLibrary>({});
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
   const artistIds = useMemo(

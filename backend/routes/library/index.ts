@@ -1,22 +1,22 @@
-import { registerArtists } from "./handlers/artists.ts";
-import { registerAlbums } from "./handlers/albums.ts";
-import { registerTracks } from "./handlers/tracks.ts";
-import { registerDownloads } from "./handlers/downloads.ts";
-import { registerMisc } from "./handlers/misc.ts";
-import { registerLibraryIndex } from "./handlers/libraryIndex.ts";
-import { registerFiles } from "./handlers/files.ts";
-import { registerMonitoring } from "./handlers/monitoring.ts";
-import { registerArtwork } from "./handlers/artwork.ts";
-import mountRoutes from "../shared/mountRoutes.ts";
+import { Hono } from "hono";
+import type { AppEnv } from "../../middleware/requestUser.ts";
+import albums from "./handlers/albums.ts";
+import artists from "./handlers/artists.ts";
+import artwork from "./handlers/artwork.ts";
+import downloads from "./handlers/downloads.ts";
+import files from "./handlers/files.ts";
+import libraryIndex from "./handlers/libraryIndex.ts";
+import misc from "./handlers/misc.ts";
+import monitoring from "./handlers/monitoring.ts";
+import tracks from "./handlers/tracks.ts";
 
-export default mountRoutes([
-  registerLibraryIndex,
-  registerArtwork,
-  registerArtists,
-  registerMonitoring,
-  registerAlbums,
-  registerTracks,
-  registerDownloads,
-  registerMisc,
-  registerFiles,
-]);
+export default new Hono<AppEnv>()
+  .route("/", libraryIndex)
+  .route("/", artwork)
+  .route("/", artists)
+  .route("/", monitoring)
+  .route("/", albums)
+  .route("/", tracks)
+  .route("/", downloads)
+  .route("/", misc)
+  .route("/", files);

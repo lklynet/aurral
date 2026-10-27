@@ -9,10 +9,10 @@ import {
   lookupAlbumsInLibraryBatch,
   requestAlbumFromSearch,
   settleLibraryOwnerConflict,
+  type ArtistsInLibrary,
 } from "../utils/api/endpoints/library.ts";
 import { parseResponse } from "hono/client";
 import { staticPlaylistsClient } from "../utils/api/clients/staticPlaylists.ts";
-import type { LookupArtistsInLibraryBatchResponse } from "../../../backend/routes/library/handlers/misc.ts";
 import { getDiscovery } from "../utils/api/endpoints/discovery.ts";
 import { DotLoader } from "../components/DotLoader";
 import { SkeletonSearchResults, SkeletonStatus } from "../components/Skeletons";
@@ -130,9 +130,7 @@ const getDefaultRecommendedSort = (pageType: string | null) =>
     ? { key: "match", direction: "desc" }
     : { key: "name", direction: "asc" };
 const EMPTY_SEARCH_PAGES: SearchPage[] = [];
-const combineLibraryLookup = (
-  queries: { data?: LookupArtistsInLibraryBatchResponse }[],
-): LookupArtistsInLibraryBatchResponse =>
+const combineLibraryLookup = (queries: { data?: ArtistsInLibrary }[]): ArtistsInLibrary =>
   Object.assign({}, ...queries.map((query) => query.data || {}));
 const LIBRARY_RESULT_LIMIT = 6;
 
