@@ -1,15 +1,12 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
-import {
-  getProwlarrIndexers,
-  testProwlarrConnection,
-} from "../../../utils/api/endpoints/settings.ts";
+import { parseResponse, type InferResponseType } from "hono/client";
+import { downloadClientSettingsClient } from "../../../utils/api/clients/downloadClientSettings.ts";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
 import type { AppSettings } from "../../../../../backend/db/helpers/settings.ts";
 import type { SettingsState } from "../utils";
 import { readApiError } from "../utils/apiError.ts";
-import type { prowlarrClient } from "../../../../../backend/services/prowlarrClient.ts";
 
 import { RefreshCw } from "lucide-react";
 import { DotLoader } from "../../../components/DotLoader";
@@ -25,7 +22,10 @@ import { getIndexerStatus, getProviderStatus } from "../utils/integrationStatus"
 
 type ProwlarrDraft = NonNullable<AppSettings["integrations"]["prowlarr"]>;
 type ProwlarrIndexerOverride = NonNullable<ProwlarrDraft["indexers"]>[string];
-type ProwlarrIndexer = Awaited<ReturnType<typeof prowlarrClient.listUsenetIndexers>>[number];
+type ProwlarrIndexer = InferResponseType<
+  typeof downloadClientSettingsClient.prowlarr.indexers.$get,
+  200
+>["indexers"][number];
 type TestStatus = { tone: "success" | "error"; message: string };
 
 type SettingsIndexersSectionProps = {
@@ -64,7 +64,8 @@ export function SettingsIndexersSection({
   const prowlarrEnabled = prowlarr.enabled === true;
   const indexersQuery = useQuery({
     queryKey: queryKeys.prowlarrIndexers,
-    queryFn: ({ signal }) => getProwlarrIndexers({ signal }),
+    queryFn: ({ signal }) =>
+      parseResponse(downloadClientSettingsClient.prowlarr.indexers.$get({}, { init: { signal } })),
     enabled: health?.prowlarrConfigured === true,
     staleTime: 60_000,
   });
@@ -148,7 +149,7 @@ export function SettingsIndexersSection({
     setTestingProwlarr(true);
     try {
       await handleSaveSettings();
-      const result = await testProwlarrConnection();
+      const result = await parseResponse(downloadClientSettingsClient.prowlarr.test.$post());
       queryClient.setQueryData(queryKeys.prowlarrIndexers, {
         indexers: Array.isArray(result.indexers) ? result.indexers : [],
       });

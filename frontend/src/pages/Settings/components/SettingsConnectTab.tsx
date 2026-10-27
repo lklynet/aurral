@@ -1,9 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import type { FormEvent } from "react";
-import {
-  testGotifyConnection,
-  testWebhookConnection,
-} from "../../../utils/api/endpoints/settings.ts";
+import { parseResponse } from "hono/client";
+import { downloadClientSettingsClient } from "../../../utils/api/clients/downloadClientSettings.ts";
 import { getAppBasePath } from "../../../utils/basePath.ts";
 
 import { Plus, Trash2, GripVertical } from "lucide-react";
@@ -172,7 +170,7 @@ export function SettingsConnectTab({
     }
     setTestingGotify(true);
     try {
-      await testGotifyConnection(url, token);
+      await parseResponse(downloadClientSettingsClient.gotify.test.$post({ json: { url, token } }));
       setTestStatus({ tone: "success", message: "Test notification sent." });
       showSuccess("Test notification sent.");
     } catch (err) {
@@ -219,10 +217,9 @@ export function SettingsConnectTab({
     setTestingWebhookIndex(index);
     const testRevision = webhookRevisionRef.current;
     try {
-      await testWebhookConnection({
-        ...webhook,
-        url,
-      });
+      await parseResponse(
+        downloadClientSettingsClient.webhook.test.$post({ json: { ...webhook, url } }),
+      );
       if (webhookRevisionRef.current !== testRevision) return;
       setWebhookTestStatus({
         index,

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { testDownloadClientConnection } from "../../../utils/api/endpoints/settings.ts";
+import { parseResponse } from "hono/client";
+import { downloadClientSettingsClient } from "../../../utils/api/clients/downloadClientSettings.ts";
 
 import { Plus, RefreshCw, Trash2, Wrench } from "lucide-react";
 import { DotLoader } from "../../../components/DotLoader";
@@ -222,9 +223,17 @@ export function SettingsDownloadClientsSection({
     try {
       const saved = await handleSaveSettings();
       if (saved === false) return;
-      const result = await testDownloadClientConnection(definition.key, config);
+      const result = await parseResponse(
+        downloadClientSettingsClient["download-clients"][":key"].test.$post({
+          param: { key: encodeURIComponent(definition.key) },
+          json: config,
+        }),
+      );
       if (result.success || result.ok) {
-        if (result.warning || result.soulseekConnected === false) {
+        if (
+          result.warning ||
+          ("soulseekConnected" in result && result.soulseekConnected === false)
+        ) {
           const warning =
             result.message || `${definition.label} is reachable, but its service is not connected`;
           setTestStatus({ tone: "warning", message: warning });

@@ -6,7 +6,8 @@ import {
   selectNightlyUpdate,
 } from "../../../lib/release-version";
 import TooltipButton from "./TooltipButton";
-import { getData } from "../utils/api/core";
+import { parseResponse } from "hono/client";
+import { updatesClient } from "../utils/api/clients/updates.ts";
 
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const NIGHTLY_CHECK_INTERVAL_MS = 2 * 60 * 60 * 1000;
@@ -22,11 +23,6 @@ interface UpdateInfo {
 interface CachedUpdate {
   sourceVersion: string;
   update: UpdateInfo | null;
-}
-
-interface NightlyPublished {
-  version: string;
-  sha: string;
 }
 
 interface GithubCompare {
@@ -108,7 +104,7 @@ const UpdateIndicator = ({ currentVersion, visible = true }: UpdateIndicatorProp
     setUpdateInfo(cached?.sourceVersion === resolvedVersion ? cached.update : null);
 
     const resolveNightlyUpdate = async () => {
-      const published = await getData<NightlyPublished | null>("/updates/nightly");
+      const published = await parseResponse(updatesClient.nightly.$get());
       const update = selectNightlyUpdate(resolvedVersion, published?.sha);
       if (!update) return null;
 

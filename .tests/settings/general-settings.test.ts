@@ -1,5 +1,6 @@
 import { requireFixture } from "../playlists/fixtures.ts";
-import { createRouteHarness, createResponse } from "../library/routeHarness.ts";
+import { signedInAs } from "../helpers/honoApp.ts";
+import { testUser } from "../helpers/userFixtures.ts";
 import assert from "node:assert/strict";
 import { test, beforeEach, afterAll, vi } from "vite-plus/test";
 import { join } from "node:path";
@@ -13,7 +14,7 @@ const [
   isolatedState,
   { db },
   { dbOps },
-  { registerGeneral },
+  { api },
   { playlistManager },
   { lidarrClient },
   libraryScans,
@@ -22,7 +23,7 @@ const [
   "general-settings",
   () => import("../../backend/config/db-sqlite.ts"),
   () => import("../../backend/db/helpers/index.ts"),
-  () => import("../../backend/routes/settings/handlers/general.ts"),
+  () => import("../../backend/routes/api.ts"),
   () => import("../../backend/services/playlists/playlistManager.ts"),
   () => import("../../backend/services/lidarrClient.ts"),
   () => import("../../backend/services/libraryScanWorker.ts"),
@@ -237,17 +238,19 @@ type SettingsBody = NonNullable<ReturnType<typeof dbOps.getSettings>> & {
 };
 
 function captureSettingsRoutes() {
-  const routes = createRouteHarness(registerGeneral);
-  const postSettings = async (body: unknown) => {
-    const response = createResponse<SettingsBody>();
-    await routes.get("POST /")({ body, user: { id: 1 } }, response);
-    return response;
+  const app = signedInAs(testUser(1, { role: "admin" })).route("/", api);
+  const send = async (init?: RequestInit) => {
+    const response = await app.request("/settings", init);
+    const body: SettingsBody = await response.json();
+    return { statusCode: response.status, body };
   };
-  const getSettings = async () => {
-    const response = createResponse<SettingsBody>();
-    await routes.get("GET /")({}, response);
-    return response;
-  };
+  const postSettings = (body: unknown) =>
+    send({
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  const getSettings = () => send();
   return { postSettings, getSettings };
 }
 
@@ -496,4 +499,25 @@ test("the Downloads Folder cannot move into or around a read-only folder", async
   }
   dbOps.invalidateSettingsCache();
   assert.equal(dbOps.getSettings().downloadFolderPath, before);
+});
+
+test("saving Plex settings keeps the saved token and client unless the request changes them", async () => {
+  const { postSettings } = captureSettingsRoutes();
+  dbOps.updateSettings({
+    integrations: { plex: { token: "saved-token", clientId: "saved-client", url: "http://old" } },
+  });
+
+  await postSettings({ integrations: { plex: { url: "http://new" } } });
+  assert.deepEqual(dbOps.getSettings().integrations.plex, {
+    token: "saved-token",
+    clientId: "saved-client",
+    url: "http://new",
+  });
+
+  await postSettings({ integrations: { plex: { token: "", url: "" } } });
+  assert.deepEqual(dbOps.getSettings().integrations.plex, {
+    token: "",
+    clientId: "saved-client",
+    url: "",
+  });
 });

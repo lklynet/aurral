@@ -1,5 +1,7 @@
 import { useState } from "react";
-import { testLidarrConnection } from "../../../utils/api/endpoints/settings.ts";
+import { parseResponse } from "hono/client";
+import { lidarrCredentialParams } from "../../../utils/api/core.ts";
+import { settingsClient } from "../../../utils/api/clients/settings.ts";
 import type { AppSettings } from "../../../../../backend/db/helpers/settings.ts";
 import type { BootstrapPayload } from "../../../../../backend/routes/health.ts";
 import type {
@@ -108,7 +110,9 @@ export function LidarrSettingsSection({
     setLidarrTestStatus(null);
     const startTime = performance.now();
     try {
-      const result = await testLidarrConnection(url, apiKey);
+      const result = await parseResponse(
+        settingsClient.lidarr.test.$get({ query: lidarrCredentialParams(url, apiKey) }),
+      );
       setLidarrTestLatencyMs(Math.round(performance.now() - startTime));
       if (result.success) {
         setLidarrTestStatus({ tone: "success", message: "Connected." });

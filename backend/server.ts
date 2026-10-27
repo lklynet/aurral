@@ -23,7 +23,6 @@ import {
 } from "./routes/library/handlers/downloads.ts";
 import { startPlaylistStatusBroadcasts } from "./services/playlists/playlistStatusBroadcaster.ts";
 
-import settingsRouter from "./routes/settings/index.ts";
 import onboardingRouter from "./routes/onboarding.ts";
 import usersRouter from "./routes/users.ts";
 import artistsRouter from "./routes/artists/index.ts";
@@ -33,7 +32,6 @@ import discoveryRouter from "./routes/discovery/index.ts";
 import requestsRouter from "./routes/requests.ts";
 import healthRouter from "./routes/health.ts";
 import filesystemRouter from "./routes/filesystem.ts";
-import updatesRouter from "./routes/updates.ts";
 import { noteDeprecatedUsage, warnAboutConfigDeprecations } from "./services/deprecatedUsage.ts";
 import playlistsRouter from "./routes/playlists/index.ts";
 import { bootstrapHonkerSchedules } from "./services/honkerDb.ts";
@@ -189,10 +187,9 @@ app.use(
   handToHono,
 );
 app.all(/^\/rest\/stream(?:\.view)?\/?$/i, handToHono);
-app.use(["/api/inbox"], handToHono);
+app.use(["/api/inbox", "/api/settings", "/api/updates"], handToHono);
 
 app.use(express.json({ limit: JSON_BODY_LIMIT }));
-app.use("/api/settings", settingsRouter);
 app.use("/api/onboarding", onboardingRouter);
 app.use("/api/users", usersRouter);
 app.use("/api/search", searchRouter);
@@ -203,7 +200,6 @@ app.use("/api/news", newsRouter);
 app.use("/api/webhooks/lidarr", lidarrWebhookRouter);
 app.use("/api/requests", requestsRouter);
 app.use("/api/health", healthRouter);
-app.use("/api/updates", updatesRouter);
 app.use("/api/filesystem", filesystemRouter);
 app.use("/api/feeds", lidarrFeedRouter);
 app.use("/api/playlists", playlistsRouter);

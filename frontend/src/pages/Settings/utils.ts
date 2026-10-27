@@ -5,12 +5,15 @@ import type {
   QualityProfile,
   StoredIntegrations,
 } from "../../../../backend/db/helpers/settings.ts";
-import type { AppSettingsResponse } from "../../utils/api/endpoints/settings.ts";
+import type { InferResponseType } from "hono/client";
+import type { settingsClient } from "../../utils/api/clients/settings.ts";
 
 export const LEGACY_METADATA_BASE_URL = "https://brainzmash.kell.ly";
 export const DEFAULT_METADATA_BASE_URL = "https://lidarrapi.brainzmash.cc";
 
-export type SavedSettings = Partial<AppSettingsResponse>;
+export type SavedSettings =
+  | Partial<InferResponseType<typeof settingsClient.$get, 200>>
+  | Partial<InferResponseType<typeof settingsClient.$post, 200>>;
 
 export const normalizeMetadataBaseUrl = (baseUrl: string | undefined) => {
   const trimmed = String(baseUrl || "")

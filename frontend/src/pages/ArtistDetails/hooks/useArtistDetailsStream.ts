@@ -16,7 +16,8 @@ import {
   getLibraryArtist,
   readLibraryLookupCache,
 } from "../../../utils/api/endpoints/library.ts";
-import { getAppSettings, type AppSettingsResponse } from "../../../utils/api/endpoints/settings.ts";
+import { parseResponse } from "hono/client";
+import { settingsClient, type AppSettingsResponse } from "../../../utils/api/clients/settings.ts";
 import { getStoredAuth } from "../../../utils/api/core.ts";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
 import { useWebSocketChannel } from "../../../hooks/useWebSocket.ts";
@@ -253,7 +254,12 @@ export function useArtistDetailsStream(
     setExistsInLibrary(nextSeededExistsInLibrary === true);
     setLoadingLibrary(nextSeededExistsInLibrary === undefined);
 
-    getAppSettings()
+    queryClient
+      .fetchQuery({
+        queryKey: queryKeys.appSettings,
+        queryFn: ({ signal }) => parseResponse(settingsClient.$get({}, { init: { signal } })),
+        staleTime: 30_000,
+      })
       .then((settings) => {
         if (isCurrentRequest()) {
           setAppSettings(settings);

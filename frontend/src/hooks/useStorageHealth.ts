@@ -1,19 +1,16 @@
 import { useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getStorageHealth, runStorageHealthCheck } from "../utils/api/endpoints/settings.ts";
+import { parseResponse, type InferResponseType } from "hono/client";
+import { settingsClient } from "../utils/api/clients/settings.ts";
 import { queryClient, queryKeys } from "../queryClient.ts";
-import type { getStorageHealthSnapshot } from "../../../backend/services/storageHealthService.ts";
 
-type StoredStorageHealth = NonNullable<ReturnType<typeof getStorageHealthSnapshot>>;
+type StorageHealthResult = InferResponseType<
+  (typeof settingsClient)["storage-health"]["$get"],
+  200
+>;
 
-type StorageHealthResult = { success: boolean } & (
-  | StoredStorageHealth
-  | (Pick<StoredStorageHealth, "partial" | "sections"> & {
-      ok: null;
-      checkedAt: null;
-      unavailable: true;
-    })
-);
+const getStorageHealth = ({ signal }: { signal: AbortSignal }) =>
+  parseResponse(settingsClient["storage-health"].$get({}, { init: { signal } }));
 
 const toSnapshot = (result: StorageHealthResult | null | undefined, dataUpdatedAt = 0) => ({
   ok: result?.ok !== false,
@@ -53,7 +50,9 @@ export function refreshStorageHealth({ force = false }: { force?: boolean } = {}
   return queryClient.fetchQuery({
     queryKey: queryKeys.storageHealth,
     queryFn: ({ signal }) =>
-      force ? runStorageHealthCheck({ signal }) : getStorageHealth({ signal }),
+      force
+        ? parseResponse(settingsClient["storage-health"].check.$post({}, { init: { signal } }))
+        : getStorageHealth({ signal }),
     staleTime: force ? 0 : 120_000,
   });
 }

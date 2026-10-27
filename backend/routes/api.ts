@@ -7,6 +7,10 @@ import artistStream from "./artists/handlers/stream.ts";
 import inbox from "./inbox.ts";
 import libraryStreams from "./library/streams.ts";
 import playlistStreams from "./playlists/handlers/stream.ts";
+import settings from "./settings/index.ts";
+import settingsDownloadClients from "./settings/downloadClients.ts";
+import settingsPlayback from "./settings/playback.ts";
+import updates from "./updates.ts";
 
 export const JSON_BODY_LIMIT = process.env.JSON_BODY_LIMIT || "5mb";
 
@@ -33,7 +37,11 @@ export const api = new Hono<AppEnv>()
   .route("/", inbox)
   .route("/", libraryStreams)
   .route("/", playlistStreams)
-  .route("/", artistStream);
+  .route("/", artistStream)
+  .route("/", settings)
+  .route("/", settingsPlayback)
+  .route("/", settingsDownloadClients)
+  .route("/", updates);
 
 api.onError((error, c) => {
   if (error instanceof HTTPException) return c.json({ error: error.message }, error.status);

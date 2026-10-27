@@ -1,15 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
-import {
-  startPlexAuth,
-  checkPlexAuth,
-  getPlexResources,
-  getPlexLibraries,
-  checkPlexLibraryAccess,
-  testPlaybackConnection,
-  syncPlexNow,
-} from "../../../utils/api/endpoints/settings.ts";
+import { parseResponse, type InferResponseType } from "hono/client";
+import { playbackSettingsClient } from "../../../utils/api/clients/playbackSettings.ts";
 import {
   getLastfmScrobbleLink,
   getScrobbleStatus,
@@ -46,7 +39,10 @@ type Integrations = SettingsData["settings"]["integrations"];
 type PlexSettings = Integrations["plex"];
 type NavidromeSettings = Integrations["navidrome"];
 type JellyfinSettings = Integrations["jellyfin"];
-type PlexServer = Awaited<ReturnType<typeof getPlexResources>>["servers"][number];
+type PlexServer = InferResponseType<
+  typeof playbackSettingsClient.plex.resources.$post,
+  200
+>["servers"][number];
 type ScrobbleProvider = "lastfm" | "listenbrainz" | "koito";
 type ActiveModal = ScrobbleProvider | "navidrome" | "plex" | "jellyfin" | null;
 type TestStatus = { tone: "success" | "error"; message: string };
@@ -78,7 +74,7 @@ export function SettingsPlaybackSection({
   const [syncingPlex, setSyncingPlex] = useState(false);
   const [plexServers, setPlexServers] = useState<PlexServer[]>([]);
   const [plexLibraries, setPlexLibraries] = useState<
-    Awaited<ReturnType<typeof getPlexLibraries>>["libraries"]
+    InferResponseType<typeof playbackSettingsClient.plex.libraries.$get, 200>["libraries"]
   >([]);
   const [libraryAccessCheck, setLibraryAccessCheck] = useState<{
     checking: boolean;
@@ -176,7 +172,9 @@ export function SettingsPlaybackSection({
   };
 
   const loadPlexServers = async (token: string) => {
-    const { servers } = await getPlexResources(token);
+    const { servers } = await parseResponse(
+      playbackSettingsClient.plex.resources.$post({ json: { token } }),
+    );
     const list = Array.isArray(servers) ? servers : [];
     setPlexServers(list);
     return list;
@@ -188,7 +186,7 @@ export function SettingsPlaybackSection({
       return;
     }
     let cancelled = false;
-    getPlexResources(plexToken)
+    parseResponse(playbackSettingsClient.plex.resources.$post({ json: { token: plexToken } }))
       .then(({ servers }) => {
         if (!cancelled) setPlexServers(Array.isArray(servers) ? servers : []);
       })
@@ -204,7 +202,7 @@ export function SettingsPlaybackSection({
       return;
     }
     let cancelled = false;
-    getPlexLibraries()
+    parseResponse(playbackSettingsClient.plex.libraries.$get())
       .then(({ libraries }) => {
         if (!cancelled) setPlexLibraries(Array.isArray(libraries) ? libraries : []);
       })
@@ -222,7 +220,11 @@ export function SettingsPlaybackSection({
     }
     let cancelled = false;
     setLibraryAccessCheck({ checking: true });
-    checkPlexLibraryAccess(sectionId)
+    parseResponse(
+      playbackSettingsClient.plex.libraries[":sectionId"]["access-check"].$get({
+        param: { sectionId: encodeURIComponent(sectionId) },
+      }),
+    )
       .then((result) => {
         if (!cancelled) setLibraryAccessCheck({ checking: false, ...result });
       })
@@ -237,7 +239,9 @@ export function SettingsPlaybackSection({
   const handleConnectPlex = async () => {
     setPlexConnecting(true);
     try {
-      const { pinId, code, authUrl, clientId } = await startPlexAuth();
+      const { pinId, code, authUrl, clientId } = await parseResponse(
+        playbackSettingsClient.plex.auth.pin.$post({ json: {} }),
+      );
       const popup = window.open(authUrl, "plex-auth", "width=600,height=700");
       const deadline = Date.now() + 3 * 60 * 1000;
       let token = null;
@@ -245,8 +249,10 @@ export function SettingsPlaybackSection({
       while (Date.now() < deadline) {
         await new Promise((r) => setTimeout(r, 2000));
         try {
-          const res = await checkPlexAuth(pinId, code);
-          if (res.token) {
+          const res = await parseResponse(
+            playbackSettingsClient.plex.auth.check.$post({ json: { pinId, code } }),
+          );
+          if ("token" in res && res.token) {
             token = res.token;
             plexUsername = res.plexUsername || null;
             break;
@@ -320,7 +326,12 @@ export function SettingsPlaybackSection({
     }
     setTestingPlex(true);
     try {
-      await testPlaybackConnection("plex", plex);
+      await parseResponse(
+        playbackSettingsClient.playback[":key"].test.$post({
+          param: { key: "plex" },
+          json: plex,
+        }),
+      );
       showSuccess("Connected to Plex.");
       setTestStatus({ tone: "success", message: "Connected." });
     } catch (err) {
@@ -348,7 +359,12 @@ export function SettingsPlaybackSection({
       if (handleSaveSettings) {
         await handleSaveSettings();
       }
-      await testPlaybackConnection("navidrome", navidrome);
+      await parseResponse(
+        playbackSettingsClient.playback[":key"].test.$post({
+          param: { key: "navidrome" },
+          json: navidrome,
+        }),
+      );
       setTestStatus({ tone: "success", message: "Connected." });
       showSuccess("Navidrome connection OK");
     } catch (err) {
@@ -386,7 +402,12 @@ export function SettingsPlaybackSection({
           return;
         }
       }
-      await testPlaybackConnection("jellyfin", jellyfin);
+      await parseResponse(
+        playbackSettingsClient.playback[":key"].test.$post({
+          param: { key: "jellyfin" },
+          json: jellyfin,
+        }),
+      );
       setTestStatus({ tone: "success", message: "Connected." });
       showSuccess("Jellyfin connection OK");
     } catch (err) {
@@ -495,15 +516,15 @@ export function SettingsPlaybackSection({
     }
     setSyncingPlex(true);
     try {
-      const result = await syncPlexNow();
-      const built = (result.playlists || []).length;
-      if (result.scanInProgress) {
+      const result = await parseResponse(playbackSettingsClient.plex.sync.$post());
+      const synced = "playlists" in result ? result : null;
+      if (synced?.scanInProgress) {
         showInfo(
           "Library ready. Plex is scanning. Playlists fill automatically as tracks are indexed.",
         );
       } else {
         showSuccess(
-          `Synced to Plex: ${built} playlist(s) from ${result.indexedTracks} indexed track(s).`,
+          `Synced to Plex: ${synced?.playlists.length ?? 0} playlist(s) from ${synced?.indexedTracks ?? 0} indexed track(s).`,
         );
       }
     } catch (err) {

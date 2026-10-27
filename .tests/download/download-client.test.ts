@@ -1,5 +1,6 @@
-import { captureRouteHandlers, createResponse } from "../library/routeHarness.ts";
 import { listeningAddress } from "../helpers/backendTestHarness.ts";
+import { signedInAs } from "../helpers/honoApp.ts";
+import { testUser } from "../helpers/userFixtures.ts";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { test } from "vite-plus/test";
@@ -11,7 +12,6 @@ import {
   buildQueueUuid,
   describeBitrateSupport,
 } from "../../backend/services/deemixClient.ts";
-import { registerDownloadClients } from "../../backend/routes/settings/handlers/downloadClients.ts";
 import { QUALITY_TIERS } from "../../backend/services/qualityProfileModel.ts";
 
 function client(key: string, configured: boolean) {
@@ -146,20 +146,17 @@ test("slskd omits the X-API-KEY header when no API key is set", async () => {
 });
 
 test("download client test routes validate transient URLs", async () => {
-  const routes = captureRouteHandlers(registerDownloadClients, "post");
-  const handler = routes.get("/download-clients/:key/test");
-  const response = createResponse<{ error: string; message: string }>();
+  const { api } = await import("../../backend/routes/api.ts");
+  const app = signedInAs(testUser(1, { role: "admin" })).route("/", api);
 
-  await handler(
-    {
-      params: { key: "nzbget" },
-      body: { url: "http://169.254.169.254" },
-    },
-    response,
-  );
+  const response = await app.request("/settings/download-clients/nzbget/test", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url: "http://169.254.169.254" }),
+  });
 
-  assert.equal(response.statusCode, 400);
-  assert.deepEqual(response.body, {
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), {
     error: "Connection failed",
     message: "Server URL: Target host is blocked",
   });

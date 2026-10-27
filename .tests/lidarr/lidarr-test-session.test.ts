@@ -1,5 +1,6 @@
 import { requireFixture } from "../playlists/fixtures.ts";
-import { captureRouteHandlers } from "../library/routeHarness.ts";
+import { signedInAs } from "../helpers/honoApp.ts";
+import { testUser } from "../helpers/userFixtures.ts";
 import { test, beforeEach, afterAll, vi, type MockInstance } from "vite-plus/test";
 import assert from "node:assert/strict";
 import {
@@ -14,17 +15,17 @@ const [
   { dbOps },
   { lidarrClient, LidarrClient },
   { withTemporaryLidarrClient },
-  { registerLidarr },
+  { api },
 ] = await setupIsolatedBackend(
   "lidarr-test-session",
   () => import("../../backend/config/db-sqlite.ts"),
   () => import("../../backend/db/helpers/index.ts"),
   () => import("../../backend/services/lidarrClient.ts"),
   () => import("../../backend/services/lidarrTestSession.ts"),
-  () => import("../../backend/routes/settings/handlers/lidarr.ts"),
+  () => import("../../backend/routes/api.ts"),
 );
 
-const routes = captureRouteHandlers(registerLidarr, "get");
+const app = signedInAs(testUser(1, { role: "admin" })).route("/", api);
 
 beforeEach(() => {
   resetDatabase(db);
@@ -73,22 +74,11 @@ for (const query of [{}, { url: "http://test-lidarr:8686/", apiKey: " test-key "
       assert.deepEqual(this.getConfiguredRootFolderPaths(), []);
       return [{ id: 1, path: "/test/music" }];
     });
-    const response = {
-      statusCode: 200,
-      body: [] as { path: string }[],
-      status(code: number) {
-        this.statusCode = code;
-        return this;
-      },
-      json(body: { path: string }[]) {
-        this.body = body;
-        return this;
-      },
-    };
-    await routes.get("/lidarr/root-folders")({ query }, response);
-    assert.equal(response.statusCode, 200);
-    assert.ok(response.body != null);
-    assert.equal(response.body[0].path, "/test/music");
+    const search = query.url ? `?${new URLSearchParams(query)}` : "";
+    const response = await app.request(`/settings/lidarr/root-folders${search}`);
+    assert.equal(response.status, 200);
+    const body: { path: string }[] = await response.json();
+    assert.equal(body[0].path, "/test/music");
     assert.equal(request.mock.calls.length, 1);
     assert.equal(lidarrClient.config.url, originalUrl);
     assert.equal(lidarrClient.config.apiKey, originalKey);

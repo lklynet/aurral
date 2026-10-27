@@ -2,7 +2,8 @@ import type { FormEvent } from "react";
 import { SettingsSelect } from "./SettingsField";
 import { SettingsArrFieldSet, SettingsArrFormGroup } from "./arr/SettingsArrLayout";
 import { SettingsPlaybackSection } from "./SettingsPlaybackSection";
-import type { fetchPlaybackSettings } from "../../../utils/api/endpoints/settings.ts";
+import type { InferResponseType } from "hono/client";
+import type { playbackSettingsClient } from "../../../utils/api/clients/playbackSettings.ts";
 import type { useToast } from "../../../contexts/ToastContext";
 import type { SettingsState } from "../utils";
 
@@ -24,7 +25,9 @@ export function SettingsPlaybackTab({
   showInfo,
 }: {
   settings: SettingsState;
-  playbackSettings: Awaited<ReturnType<typeof fetchPlaybackSettings>>["destinations"] | null;
+  playbackSettings:
+    | InferResponseType<typeof playbackSettingsClient.playback.$get, 200>["destinations"]
+    | null;
   updateSettings: (settings: SettingsState) => void;
   hasUnsavedChanges: boolean;
   saving: boolean;

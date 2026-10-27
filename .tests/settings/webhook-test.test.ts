@@ -1,4 +1,3 @@
-import { captureRouteHandlers } from "../library/routeHarness.ts";
 type CapturedRequest = {
   method?: string;
   url?: string;
@@ -6,6 +5,8 @@ type CapturedRequest = {
   body: unknown;
 };
 import { listeningAddress } from "../helpers/backendTestHarness.ts";
+import { signedInAs } from "../helpers/honoApp.ts";
+import { testUser } from "../helpers/userFixtures.ts";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { test, beforeEach, afterAll } from "vite-plus/test";
@@ -16,34 +17,25 @@ import {
   setupIsolatedBackend,
 } from "../helpers/backendTestHarness.ts";
 
-const [isolatedState, { db }, { dbOps }, notifications, { registerDownloadClients }] =
-  await setupIsolatedBackend(
-    "webhook-test",
-    () => import("../../backend/config/db-sqlite.ts"),
-    () => import("../../backend/db/helpers/index.ts"),
-    () => import("../../backend/services/notificationService.ts"),
-    () => import("../../backend/routes/settings/handlers/downloadClients.ts"),
-  );
+const [isolatedState, { db }, { dbOps }, notifications, { api }] = await setupIsolatedBackend(
+  "webhook-test",
+  () => import("../../backend/config/db-sqlite.ts"),
+  () => import("../../backend/db/helpers/index.ts"),
+  () => import("../../backend/services/notificationService.ts"),
+  () => import("../../backend/routes/api.ts"),
+);
 
 const { sendWebhookTest } = notifications;
 
-function getWebhookTestRoute() {
-  return { handler: captureRouteHandlers(registerDownloadClients, "post").get("/webhook/test") };
-}
+const app = signedInAs(testUser(1, { role: "admin" })).route("/", api);
 
-function makeResponse() {
-  return {
-    statusCode: 200,
-    payload: undefined as unknown,
-    status(code: number) {
-      this.statusCode = code;
-      return this;
-    },
-    json(payload: unknown) {
-      this.payload = payload;
-      return this;
-    },
-  };
+async function testWebhook(body: unknown) {
+  const response = await app.request("/settings/webhook/test", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return { statusCode: response.status, payload: await response.json() };
 }
 
 async function withReceiver(
@@ -94,7 +86,6 @@ afterAll(async () => {
 });
 
 test("webhook test route sends GET directly with disabled event toggles and does not save config", async () => {
-  const route = getWebhookTestRoute();
   const savedWebhook = {
     url: "http://saved.example/hook",
     body: "saved body",
@@ -108,18 +99,12 @@ test("webhook test route sends GET directly with disabled event toggles and does
   });
 
   await withReceiver(200, async ({ url, requests }) => {
-    const response = makeResponse();
-    await route.handler(
-      {
-        body: {
-          url,
-          body: "",
-          headers: [{ key: "X-Test-Webhook", value: "get" }],
-          webhookEvents: { notifyRequestMade: false },
-        },
-      },
-      response,
-    );
+    const response = await testWebhook({
+      url,
+      body: "",
+      headers: [{ key: "X-Test-Webhook", value: "get" }],
+      webhookEvents: { notifyRequestMade: false },
+    });
 
     assert.equal(response.statusCode, 200);
     assert.deepEqual(response.payload, { success: true, message: "Test webhook sent" });
@@ -170,7 +155,6 @@ test("direct webhook test sends POST headers and fixed placeholder values withou
 });
 
 test("webhook test route rejects missing, invalid, and blocked URLs", async () => {
-  const route = getWebhookTestRoute();
   const cases = [
     [{}, "URL is required"],
     [{ url: "not a URL" }, "Invalid URL format"],
@@ -179,18 +163,15 @@ test("webhook test route rejects missing, invalid, and blocked URLs", async () =
   ];
 
   for (const [body, error] of cases) {
-    const response = makeResponse();
-    await route.handler({ body }, response);
+    const response = await testWebhook(body);
     assert.equal(response.statusCode, 400);
     assert.deepEqual(response.payload, { error });
   }
 });
 
 test("webhook test route returns receiver failures as useful JSON", async () => {
-  const route = getWebhookTestRoute();
   await withReceiver(503, async ({ url }) => {
-    const response = makeResponse();
-    await route.handler({ body: { url, body: "", headers: [] } }, response);
+    const response = await testWebhook({ url, body: "", headers: [] });
 
     assert.equal(response.statusCode, 503);
     assert.deepEqual(response.payload, {

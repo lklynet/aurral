@@ -1,17 +1,14 @@
 import { useCallback, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { parseResponse } from "hono/client";
 import type {
-  clearStaleHonkerJobs,
   HonkerTaskStatus,
   TaskQueueRow,
   TaskScheduledRow,
   TaskWorkerRow,
 } from "../../../../../backend/services/honkerTaskStatus.ts";
 import type { ApiError } from "../../../utils/api/core.ts";
-import {
-  getSettingsTasks,
-  clearSettingsStaleTasks,
-} from "../../../utils/api/endpoints/settings.ts";
+import { settingsClient } from "../../../utils/api/clients/settings.ts";
 import { queryClient, queryKeys } from "../../../queryClient.ts";
 import { SettingsArrFieldSet } from "./arr/SettingsArrLayout";
 import { readApiError } from "../utils/apiError.ts";
@@ -21,10 +18,6 @@ import { DotLoader } from "../../../components/DotLoader";
 import Tooltip from "../../../components/Tooltip";
 import { formatRelativeTime } from "../../../utils/dateTime.ts";
 const POLL_INTERVAL_MS = 5000;
-
-type ClearStaleResult = Awaited<ReturnType<typeof clearStaleHonkerJobs>> & {
-  tasks: HonkerTaskStatus;
-};
 
 type StatusMeta = {
   label: string;
@@ -474,7 +467,7 @@ export function SettingsTasksTab({
   const [showAllWorkers, setShowAllWorkers] = useState(false);
   const tasksQuery = useQuery<HonkerTaskStatus, ApiError>({
     queryKey: queryKeys.settingsTasks,
-    queryFn: ({ signal }) => getSettingsTasks({ signal }),
+    queryFn: ({ signal }) => parseResponse(settingsClient.tasks.$get({}, { init: { signal } })),
     staleTime: 0,
     refetchInterval: POLL_INTERVAL_MS,
     refetchIntervalInBackground: false,
@@ -483,8 +476,8 @@ export function SettingsTasksTab({
   const loading = tasksQuery.isPending;
   const tasksFailure = readApiError(tasksQuery.error);
   const loadError = tasksFailure.message || tasksFailure.error || tasksFailure.text || null;
-  const clearMutation = useMutation<ClearStaleResult>({
-    mutationFn: clearSettingsStaleTasks,
+  const clearMutation = useMutation({
+    mutationFn: () => parseResponse(settingsClient.tasks["clear-stale"].$post()),
     onSuccess: (result) => queryClient.setQueryData(queryKeys.settingsTasks, result.tasks || null),
   });
 
