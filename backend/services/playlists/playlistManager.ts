@@ -351,6 +351,7 @@ export class PlaylistManager {
             title,
             artists: this._artworkArtists(playlistId),
             pick: { style: state.mode, artistKey: state.artistKey, template: state.template },
+            keepPhoto: true,
           });
           if (moved) await fs.unlink(oldPath).catch(() => {});
           this._rememberArtwork(playlistId, { ...generated.state, flowRunAt: state.flowRunAt });

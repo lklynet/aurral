@@ -125,6 +125,7 @@ export function PlaylistEditModal({ entry, title, onClose, onRename }: PlaylistE
   };
 
   const save = async () => {
+    if (busy) return;
     const nextName = name.trim();
     if (!nextName) return setError("Name is required");
     const renamed = nextName !== entry.name;

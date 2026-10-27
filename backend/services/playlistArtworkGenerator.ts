@@ -159,6 +159,7 @@ export async function writeGeneratedPlaylistArtwork({
   style = "artist",
   previous = null,
   pick = null,
+  keepPhoto = false,
 }: {
   outputPath: string;
   title: string;
@@ -166,10 +167,13 @@ export async function writeGeneratedPlaylistArtwork({
   style?: PlaylistArtworkStyle;
   previous?: PlaylistArtworkState | null;
   pick?: PlaylistCoverPick | null;
+  keepPhoto?: boolean;
 }) {
   const chosen = pick
     ? { pick, imageBuffer: await loadPickedImage(artists, pick) }
     : await shufflePlaylistCover({ artists, style, previous });
+  if (keepPhoto && chosen.pick.style === "artist" && chosen.pick.artistKey && !chosen.imageBuffer)
+    throw new Error("Artist photo unavailable");
   const buffer = await renderPlaylistCover({
     title,
     imageBuffer: chosen.imageBuffer,

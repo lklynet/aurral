@@ -119,3 +119,19 @@ test("every template renders a distinct cover with a long Unicode title", async 
   }
   assert.equal(outputs.size, PLAYLIST_COVER_TEMPLATES.length);
 });
+
+test("a pinned redraw keeps the existing cover when its artist photo is unavailable", async () => {
+  await fs.writeFile(outputPath, "existing cover");
+  vi.mocked(imageSource.fetchDeezerArtistImageUrl).mockRejectedValue(new Error("offline"));
+  await assert.rejects(
+    generator.writeGeneratedPlaylistArtwork({
+      outputPath,
+      title: "Renamed",
+      artists: [{ artistName: "Artist" }],
+      pick: { style: "artist", artistKey: "artist", template: "a1" },
+      keepPhoto: true,
+    }),
+    /photo unavailable/,
+  );
+  assert.equal(await fs.readFile(outputPath, "utf8"), "existing cover");
+});
