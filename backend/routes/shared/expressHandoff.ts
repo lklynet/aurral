@@ -17,11 +17,21 @@ const listener = getRequestListener(
       c.set("clientIp", variables?.clientIp ?? "");
       c.set("clientIps", variables?.clientIps ?? []);
       c.set("protocol", variables?.protocol ?? "http");
-      if (c.env.incoming.headers["transfer-encoding"]) {
+      const incoming = c.env.incoming.headers;
+      if (incoming["transfer-encoding"]) {
         // bodyLimit rebuilds chunked requests with new Request(), which rejects node-server's lightweight request.
         const { url, method, headers, body, signal } = c.req.raw;
         const init = { method, headers, body, signal, duplex: "half" };
         c.req.raw = new Request(url, init);
+      } else if (
+        !Number(incoming["content-length"]) &&
+        incoming["content-type"]?.includes("json") &&
+        c.req.method !== "GET" &&
+        c.req.method !== "HEAD"
+      ) {
+        // Express read an empty JSON body as {}, and clients still send JSON content types with no body.
+        const { url, method, headers, signal } = c.req.raw;
+        c.req.raw = new Request(url, { method, headers, signal, body: "{}" });
       }
       await next();
     })

@@ -126,3 +126,26 @@ test("a chunked JSON body reaches Inbox through the Express handoff", async () =
     await server.close();
   }
 });
+
+test("an empty JSON body reaches Inbox through the Express handoff as {}", async () => {
+  const server = await createMockHttpServer(
+    express()
+      .use((req, _res, next) => {
+        req.user = user;
+        next();
+      })
+      .use("/api/inbox", handToHono),
+  );
+  try {
+    const response = await fetch(`${server.url}/api/inbox/missing`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+    });
+    assert.equal(response.status, 400);
+    const rejection = await response.json();
+    assert.equal(rejection.error, "Invalid request");
+    assert.match(rejection.message, /^action: /);
+  } finally {
+    await server.close();
+  }
+});
