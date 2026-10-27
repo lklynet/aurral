@@ -715,7 +715,7 @@ export function PlaylistImportModal({
         url: sharedPlaylist.url,
         name,
         sync: shareSync,
-        includeFiles: !shareSync && shareFiles,
+        includeFiles: !shareSync && shareFiles && sharedPlaylist.canDownload,
       },
       {
         onSuccess: () => {

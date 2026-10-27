@@ -1015,6 +1015,23 @@ test("playlist shares republish changes daily without exposing files for added t
     404,
   );
 
+  const opening = firstAlbum.tracks.find((track) => track.title === "Opening Song")!;
+  db.prepare("UPDATE library_media_files SET available = 0 WHERE track_id = ?").run(
+    opening.trackId,
+  );
+  flowPlaylistConfig.updateStaticPlaylist(playlist.id, { name: "Offline drive" });
+  lookupRequests.length = 0;
+  await refreshPlaylistShares();
+  db.prepare("UPDATE library_media_files SET available = 1 WHERE track_id = ?").run(
+    opening.trackId,
+  );
+  const offline = lookupRequests.find((entry) => entry.method === "PUT")?.body;
+  assert.ok(offline && "manifest" in offline);
+  assert.equal(
+    parseShareManifest(offline.manifest)?.tracks[0].path,
+    `tracks/${opening.albumId}/${opening.trackId}`,
+  );
+
   lookupRequests.length = 0;
   flowPlaylistConfig.deleteStaticPlaylist(playlist.id);
   await refreshPlaylistShares();

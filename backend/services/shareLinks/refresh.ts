@@ -1,6 +1,10 @@
 import { db } from "../../config/db-sqlite.ts";
 import type { ShareLinksRow } from "../../db/rows.ts";
-import { MAX_SHARE_BYTES, parseShareManifest } from "../../../lib/shareManifest.ts";
+import {
+  findSharedTrack,
+  MAX_SHARE_BYTES,
+  parseShareManifest,
+} from "../../../lib/shareManifest.ts";
 import { asAppError } from "../../../lib/errors.ts";
 import { logger } from "../logger.ts";
 import { resolveShareManifest } from "./metadata.ts";
@@ -17,8 +21,10 @@ export async function refreshPlaylistShares(now = Date.now()) {
   for (const row of rows) {
     const previous = parseShareManifest(JSON.parse(row.manifest!));
     const filesLive = row.share_files === 1 && (row.expires_at == null || row.expires_at > now);
-    const shared = new Set(filesLive ? previous?.tracks.map((track) => track.path) : []);
-    shared.delete(null);
+    const sharedTracks = filesLive
+      ? (previous?.tracks.filter((track) => track.path !== null) ?? [])
+      : [];
+    const shared = new Set(sharedTracks.map((track) => track.path));
     try {
       if (!flowPlaylistConfig.getStaticPlaylist(row.target_ref)) {
         await publishShareManifest(row.token, null);
@@ -33,9 +39,16 @@ export async function refreshPlaylistShares(now = Date.now()) {
         logger.warn("share", "Shared playlist is too large to update", { title: row.title });
         continue;
       }
-      manifest.tracks = manifest.tracks.map((track) =>
-        shared.has(track.path) ? track : { ...track, path: null, size: null, format: null },
-      );
+      manifest.tracks = manifest.tracks.map((track) => {
+        if (shared.has(track.path)) return track;
+        const file = findSharedTrack(sharedTracks, track);
+        return {
+          ...track,
+          path: file?.path ?? null,
+          size: file?.size ?? null,
+          format: file?.format ?? null,
+        };
+      });
       const next = JSON.stringify(manifest);
       if (next === row.manifest) continue;
       if (Buffer.byteLength(next) > MAX_SHARE_BYTES - 1024) {
@@ -43,9 +56,15 @@ export async function refreshPlaylistShares(now = Date.now()) {
         continue;
       }
       await publishShareManifest(row.token, manifest, filesLive);
-      db.prepare<[string, string, number]>(
-        "UPDATE share_links SET manifest = ?, title = ? WHERE id = ?",
-      ).run(next, manifest.title, row.id);
+      const saved = db
+        .prepare<[string, string, number]>(
+          "UPDATE share_links SET manifest = ?, title = ? WHERE id = ?",
+        )
+        .run(next, manifest.title, row.id).changes;
+      if (!saved) {
+        await publishShareManifest(row.token, null);
+        continue;
+      }
       published += 1;
     } catch (error) {
       logger.warn("share", "Could not update a shared playlist", {
