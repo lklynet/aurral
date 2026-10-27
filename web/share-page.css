@@ -166,9 +166,9 @@ h1 {
   font-weight: 750;
 }
 .button svg,
-.download-all svg {
-  width: 16px;
-  height: 16px;
+.action svg {
+  width: 15px;
+  height: 15px;
   flex-shrink: 0;
 }
 .pause-icon,
@@ -178,13 +178,20 @@ h1 {
 [aria-pressed="true"] .pause-icon {
   display: block;
 }
-.download-all {
+.action {
   min-height: 44px;
   display: inline-flex;
   align-items: center;
   gap: 7px;
+  padding: 0;
+  border: 0;
+  background: none;
   color: var(--text-muted);
   font-size: 12px;
+}
+.action:first-child {
+  color: var(--text);
+  font-weight: 650;
 }
 audio {
   width: 100%;
@@ -193,8 +200,48 @@ audio {
 .js audio {
   display: none;
 }
-.transport {
-  margin: -6px 0 23px;
+.has-now {
+  padding-bottom: 96px;
+}
+.now {
+  position: fixed;
+  left: 50%;
+  bottom: 0;
+  z-index: 1;
+  width: 100%;
+  max-width: 420px;
+  transform: translateX(-50%);
+  padding: 10px 20px max(10px, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+.now-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.now-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 650;
+}
+.now-button {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+}
+.now-button svg {
+  width: 16px;
+  height: 16px;
 }
 .seek {
   width: 100%;
@@ -205,12 +252,16 @@ audio {
   cursor: pointer;
 }
 .seek::-webkit-slider-runnable-track {
-  background: var(--border);
+  background:
+    linear-gradient(var(--text) 0 0) 0 / var(--progress, 0%) 100% no-repeat,
+    var(--border);
   height: 3px;
   border-radius: 2px;
 }
 .seek::-moz-range-track {
-  background: var(--border);
+  background:
+    linear-gradient(var(--text) 0 0) 0 / var(--progress, 0%) 100% no-repeat,
+    var(--border);
   height: 3px;
   border-radius: 2px;
 }
@@ -241,7 +292,7 @@ audio {
 .times {
   display: flex;
   justify-content: space-between;
-  margin-top: -3px;
+  margin-top: -6px;
   color: var(--text-subtle);
   font-size: 10px;
   font-variant-numeric: tabular-nums;
@@ -278,12 +329,25 @@ audio {
   font: inherit;
   text-align: left;
 }
-.track-number {
-  width: 18px;
+.track-play {
+  width: 30px;
+  height: 30px;
   flex-shrink: 0;
-  color: var(--text-subtle);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+}
+.track-play svg {
+  width: 11px;
+  height: 11px;
+}
+.track[aria-current="true"] .track-play {
+  border-color: var(--text);
+}
+.track[aria-pressed="true"] .track-play {
+  background: var(--text);
+  color: var(--chrome);
 }
 .track-text {
   display: flex;
@@ -306,10 +370,6 @@ audio {
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
-}
-.track[aria-current="true"] .track-title {
-  text-decoration: underline;
-  text-underline-offset: 4px;
 }
 .track-download {
   padding: 12px 0 12px 5px;
@@ -354,9 +414,8 @@ audio {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
   gap: 4px 15px;
 }
 .listen a {
@@ -512,7 +571,7 @@ footer {
   }
   .track:hover .track-title,
   .listen a:hover,
-  .download-all:hover {
+  .action:hover {
     text-decoration: underline;
     text-underline-offset: 4px;
   }

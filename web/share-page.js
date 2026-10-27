@@ -98,77 +98,112 @@ const player = document.querySelector("[data-player]");
 if (player) {
   const audio = player.querySelector("audio");
   const tracks = Array.from(player.querySelectorAll("[data-src]"));
-  const start = player.querySelector("[data-play-all]");
-  const label = start.querySelector("[data-play-label]");
-  const seek = player.querySelector("[data-seek]");
-  const elapsed = player.querySelector("[data-elapsed]");
-  const duration = player.querySelector("[data-duration]");
+  const playAll = player.querySelector("[data-play-all]");
+  const shuffle = player.querySelector("[data-shuffle]");
+  const now = player.querySelector("[data-now]");
+  const title = now.querySelector("[data-now-title]");
+  const toggle = now.querySelector("[data-toggle]");
+  const previous = now.querySelector("[data-previous]");
+  const next = now.querySelector("[data-next]");
+  const seek = now.querySelector("[data-seek]");
+  const elapsed = now.querySelector("[data-elapsed]");
+  const duration = now.querySelector("[data-duration]");
   const status = player.querySelector("[data-play-status]");
-  let current = Math.max(
-    0,
-    tracks.findIndex((track) => !track.dataset.preview),
-  );
-  let selected = false;
+  const playable = tracks.some((track) => !track.dataset.preview)
+    ? tracks.filter((track) => !track.dataset.preview)
+    : tracks;
+  let order = playable;
+  let current = null;
   const time = (seconds) =>
     Number.isFinite(seconds)
       ? `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`
       : "0:00";
-  const select = (index) => {
-    selected = true;
-    current = index;
-    tracks.forEach((track, position) =>
-      track.setAttribute("aria-current", String(position === index)),
-    );
-    const row = tracks[index].closest("li");
+  const select = (track) => {
+    current = track;
+    for (const entry of tracks) {
+      entry.setAttribute("aria-current", String(entry === track));
+      entry.setAttribute("aria-pressed", "false");
+    }
+    const row = track.closest("li");
     if (row) row.hidden = false;
+    title.textContent = track.dataset.title;
     seek.disabled = true;
     seek.value = "0";
+    seek.style.setProperty("--progress", "0%");
     elapsed.textContent = "0:00";
-    duration.textContent = tracks[index].dataset.preview ? "0:30" : "0:00";
+    duration.textContent = track.dataset.preview ? "0:30" : "0:00";
     status.hidden = true;
-    audio.src = tracks[index].dataset.src;
+    now.hidden = false;
+    document.body.classList.add("has-now");
+    audio.src = track.dataset.src;
     audio.play().catch(() => {});
   };
+  const step = (offset) => {
+    if (!current) return;
+    const list = order.includes(current) ? order : tracks;
+    const target = list[list.indexOf(current) + offset];
+    if (target) select(target);
+  };
   const sync = () => {
-    start.setAttribute("aria-pressed", String(!audio.paused));
-    label.textContent = audio.paused ? start.dataset.label : "Pause";
+    const playing = !audio.paused;
+    toggle.setAttribute("aria-pressed", String(playing));
+    toggle.setAttribute("aria-label", playing ? "Pause" : "Play");
+    if (current) {
+      current.setAttribute("aria-pressed", String(playing));
+      current.setAttribute("aria-label", `${playing ? "Pause" : "Play"} ${current.dataset.title}`);
+    }
     elapsed.textContent = time(audio.currentTime);
     if (Number.isFinite(audio.duration) && audio.duration > 0) {
       seek.disabled = false;
       seek.value = String((audio.currentTime / audio.duration) * 100);
+      seek.style.setProperty("--progress", `${seek.value}%`);
       duration.textContent = time(audio.duration);
     }
   };
-  start.addEventListener("click", () => {
-    if (!audio.paused) audio.pause();
-    else if (selected) audio.play().catch(() => {});
-    else select(current);
+  const resume = () => {
+    if (audio.paused) audio.play().catch(() => {});
+    else audio.pause();
+  };
+  playAll.addEventListener("click", () => {
+    order = playable;
+    select(order[0]);
   });
-  tracks.forEach((track, index) =>
+  shuffle?.addEventListener("click", () => {
+    order = [...playable];
+    for (let index = order.length - 1; index > 0; index -= 1) {
+      const swap = Math.floor(Math.random() * (index + 1));
+      [order[index], order[swap]] = [order[swap], order[index]];
+    }
+    select(order[0]);
+  });
+  for (const track of tracks)
     track.addEventListener("click", () => {
-      if (index === current && selected) {
-        if (audio.paused) audio.play().catch(() => {});
-        else audio.pause();
-      } else select(index);
-    }),
-  );
+      if (track === current) resume();
+      else select(track);
+    });
+  toggle.addEventListener("click", resume);
+  previous?.addEventListener("click", () => {
+    if (audio.currentTime > 3) audio.currentTime = 0;
+    else step(-1);
+  });
+  next?.addEventListener("click", () => step(1));
   for (const event of ["playing", "pause", "timeupdate", "loadedmetadata", "ended"])
     audio.addEventListener(event, sync);
   audio.addEventListener("playing", () => {
     status.hidden = true;
   });
   audio.addEventListener("error", () => {
-    status.textContent = tracks[current]?.dataset.preview
+    if (!current) return;
+    status.textContent = current.dataset.preview
       ? "No preview is available for this track. Try a streaming service."
       : "The shared file is unavailable. Try again when the share is online.";
     status.hidden = false;
   });
   audio.addEventListener("ended", () => {
-    if (tracks[current]?.dataset.preview) return;
-    const next = tracks.findIndex((track, index) => index > current && !track.dataset.preview);
-    if (next >= 0) select(next);
+    if (order.includes(current)) step(1);
   });
   seek.addEventListener("input", () => {
+    seek.style.setProperty("--progress", `${seek.value}%`);
     if (Number.isFinite(audio.duration))
       audio.currentTime = (Number(seek.value) / 100) * audio.duration;
   });
@@ -182,13 +217,13 @@ if (player) {
     more.addEventListener("click", () => {
       const expanded = more.getAttribute("aria-expanded") !== "true";
       rows.forEach((row) => {
-        row.hidden = !expanded;
+        row.hidden = !expanded && !row.contains(current);
       });
       more.setAttribute("aria-expanded", String(expanded));
       more.textContent = expanded ? "Show fewer" : more.dataset.label;
     });
   }
-  start.hidden = false;
-  player.querySelector("[data-transport]").hidden = false;
+  playAll.hidden = false;
+  if (shuffle) shuffle.hidden = playable.length < 2;
   document.documentElement.classList.add("js");
 }

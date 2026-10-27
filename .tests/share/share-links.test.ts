@@ -817,6 +817,51 @@ test("local access without an account creates short metadata links without grant
   assert.deepEqual(await launches(), []);
 });
 
+test("playlist shares play the library file an entry downloaded to", async () => {
+  const albumMbid = "7a111111-1111-4111-8111-111111111111";
+  const seeded = await seedAlbum({
+    artist,
+    mbid: albumMbid,
+    title: "Mellon Collie",
+    tracks: [
+      { title: "1979", number: 1, file: "1979.flac" },
+      { title: "Bullet", number: 2, file: "bullet.flac" },
+    ],
+  });
+  const { flowPlaylistConfig } =
+    await import("../../backend/services/playlists/flowPlaylistConfig.ts");
+  const { downloadTracker } =
+    await import("../../backend/services/downloadJobs/downloadTracker.ts");
+  const { resolveShareManifest } = await import("../../backend/services/shareLinks/metadata.ts");
+  const remaster = {
+    trackName: "1979 - Remastered 2012",
+    artistName: artist.name,
+    albumName: "Mellon Collie (Deluxe Edition)",
+  };
+  const playlist = flowPlaylistConfig.createStaticPlaylist({
+    name: "Remasters",
+    ownerUserId: owner.id,
+    tracks: [remaster, { trackName: "Bullet", artistName: artist.name }],
+  });
+  const jobId = downloadTracker.addJob(remaster, playlist.id);
+  assert.ok(jobId);
+  downloadTracker.setDone(
+    jobId,
+    path.join(paths.baseDir, "music", artist.name, "Mellon Collie", "1979.flac"),
+  );
+  const snapshot = resolveShareManifest(
+    { kind: "playlist", targetRef: playlist.id, albumRef: null },
+    { kind: "playlist", title: playlist.name },
+  );
+  assert.deepEqual(
+    snapshot?.tracks.map((track) => [track.title, track.path]),
+    seeded.tracks.map((track, index) => [
+      playlist.tracks[index].trackName,
+      `tracks/${track.albumId}/${track.trackId}`,
+    ]),
+  );
+});
+
 test("playlist shares keep missing entries and never expose tracks added after creation", async () => {
   const { flowPlaylistConfig } =
     await import("../../backend/services/playlists/flowPlaylistConfig.ts");

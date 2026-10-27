@@ -33,7 +33,7 @@ import type {
 import {
   flowPlaylistConfig,
   normalizePlaylistTrack,
-  pairJobsWithPlaylistTracks,
+  playlistJobEntries,
   tracksShareMembership,
 } from "./playlists/flowPlaylistConfig.ts";
 import { playlistManager } from "./playlists/playlistManager.ts";
@@ -590,18 +590,6 @@ function toPlaylistSong(
   };
   if (job.qualityBitrateKbps && job.qualityBitrateKbps > 0) song.bitRate = job.qualityBitrateKbps;
   return song;
-}
-
-function playlistJobEntries(playlist: PlaylistOwner | null | undefined) {
-  if (!playlist) return [];
-  const referencedJobs = (playlist.tracks || [])
-    .map((track) => (track?.canonicalJobId ? downloadTracker.getJob(track.canonicalJobId) : null))
-    .filter((job): job is NonNullable<typeof job> => Boolean(job));
-  const jobs = [...referencedJobs, ...downloadTracker.getByPlaylistType(playlist.id)];
-  const uniqueJobs = jobs.filter(
-    (job, index, values) => values.findIndex((candidate) => candidate.id === job.id) === index,
-  );
-  return pairJobsWithPlaylistTracks(uniqueJobs, playlist.tracks);
 }
 
 const playlistJobs = (playlist: PlaylistOwner | null | undefined) =>

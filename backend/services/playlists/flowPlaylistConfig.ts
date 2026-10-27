@@ -573,6 +573,22 @@ export const pairJobsWithPlaylistTracks = <T extends PlaylistJob>(
   ];
 };
 
+export function playlistJobEntries(
+  playlist: { id: string; tracks?: PlaylistTrackInput[] } | null | undefined,
+) {
+  if (!playlist) return [];
+  const referencedJobs = (playlist.tracks || [])
+    .map((track) =>
+      track?.canonicalJobId ? downloadTracker.getJob(String(track.canonicalJobId)) : null,
+    )
+    .filter((job) => job !== null);
+  const jobs = [...referencedJobs, ...downloadTracker.getByPlaylistType(playlist.id)];
+  const uniqueJobs = jobs.filter(
+    (job, index, values) => values.findIndex((candidate) => candidate.id === job.id) === index,
+  );
+  return pairJobsWithPlaylistTracks(uniqueJobs, playlist.tracks);
+}
+
 export const orderJobsByPlaylistTracks = <T extends PlaylistJob>(
   jobs: T[] | null | undefined,
   tracks: PlaylistTrackInput[] | null | undefined,

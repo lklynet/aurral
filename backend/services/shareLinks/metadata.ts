@@ -4,7 +4,7 @@ import {
   parseShareTrack,
 } from "../../../lib/shareManifest.ts";
 import { flowPlaylistConfig } from "../playlists/flowPlaylistConfig.ts";
-import { resolveShareTarget } from "./library.ts";
+import { resolvePlaylistShareTracks, resolveShareTarget } from "./library.ts";
 import {
   getLibraryForAlbumReferences,
   getLibraryForArtistReferences,
@@ -14,19 +14,12 @@ export function resolveShareManifest(
   target: Parameters<typeof resolveShareTarget>[0],
   input: unknown,
 ) {
-  const resolved = resolveShareTarget(target);
   if (target.kind === "playlist") {
     const playlist = flowPlaylistConfig.getStaticPlaylist(target.targetRef);
     if (!playlist) return null;
-    const tracks = playlist.tracks.map((track) => {
-      const file = findSharedTrack(resolved?.tracks || [], {
-        title: track.trackName,
-        artistName: track.artistName,
-        trackMbid: track.trackMbid || null,
-        albumMbid: track.albumMbid || null,
-        releaseMbid: track.releaseMbid || null,
-        albumTitle: track.albumName || null,
-      });
+    const files = resolvePlaylistShareTracks(playlist);
+    const tracks = playlist.tracks.map((track, index) => {
+      const file = files[index];
       return {
         title: track.trackName,
         artistName: track.artistName,
@@ -51,6 +44,7 @@ export function resolveShareManifest(
   }
   const supplied = parseShareManifest(input);
   if (!supplied) return null;
+  const resolved = resolveShareTarget(target);
   const files = (resolved?.tracks || [])
     .map((track) =>
       parseShareTrack({

@@ -1560,27 +1560,44 @@ export function getLibraryForTrackMatches({
   availableOnly = false,
   mbids = [],
   titles = [],
-}: LibraryScope & { mbids?: unknown[]; titles?: unknown[] } = {}) {
+  paths = [],
+}: LibraryScope & { mbids?: unknown[]; titles?: unknown[]; paths?: unknown[] } = {}) {
   const mbidValues = normalizeLookupValues(mbids);
   const titleValues = normalizeLookupValues(titles);
-  if (!mbidValues.length && !titleValues.length) return { artists: [], albums: [], tracks: [] };
+  const pathValues = normalizeLookupValues(paths);
+  const placeholders = (values: unknown[]) => values.map(() => "?").join(",");
+  const sources = [...SOURCES];
+  const trackIds = chunked(pathValues).flatMap((chunk) =>
+    db
+      .prepare<unknown[], Pick<LibraryMediaFilesRow, "track_id">>(
+        `SELECT DISTINCT track_id FROM library_media_files
+         WHERE source IN (${placeholders(sources)}) AND path IN (${placeholders(chunk)})`,
+      )
+      .all(...sources, ...chunk)
+      .map((row) => row.track_id),
+  );
   const clauses = [
+    ...chunked(trackIds).map((chunk) => ({
+      sql: `track.id IN (${placeholders(chunk)})`,
+      chunk: chunk.map(String),
+    })),
     ...chunked(mbidValues).map((chunk) => ({
-      sql: `track.mbid IN (${chunk.map(() => "?").join(",")})`,
+      sql: `track.mbid IN (${placeholders(chunk)})`,
       chunk,
     })),
     ...chunked(titleValues).map((chunk) => ({
-      sql: `track.title COLLATE NOCASE IN (${chunk.map(() => "?").join(",")})`,
+      sql: `track.title COLLATE NOCASE IN (${placeholders(chunk)})`,
       chunk,
     })),
   ];
+  if (!clauses.length) return { artists: [], albums: [], tracks: [] };
   const addMissingById = <T extends { id: number }>(target: Map<number, T>, entities: T[]) => {
     for (const entity of entities) {
       if (!target.has(entity.id)) target.set(entity.id, entity);
     }
   };
   // Any-size input resolves in ceil(n / chunk) statements; a track matched by more than one
-  // clause is only kept once.
+  // clause is only kept once, and an album matched across statements keeps every matched track.
   const merged = {
     artists: new Map<number, LibraryRowArtist>(),
     albums: new Map<number, LibraryAlbum>(),
@@ -1595,8 +1612,12 @@ export function getLibraryForTrackMatches({
       parameters: group.flatMap((clause) => clause.chunk),
     });
     addMissingById(merged.artists, library.artists);
-    addMissingById(merged.albums, library.albums);
     addMissingById(merged.tracks, library.tracks);
+    for (const album of library.albums) {
+      const existing = merged.albums.get(album.id);
+      if (existing) existing.trackIds = [...new Set([...existing.trackIds, ...album.trackIds])];
+      else merged.albums.set(album.id, album);
+    }
   }
   return {
     artists: [...merged.artists.values()],

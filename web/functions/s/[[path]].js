@@ -280,16 +280,21 @@ const OPEN_ICON =
 const DETAILS_ICON =
   '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M5 3h10v14H5zM8 7h4M8 10h4M8 13h2"/></svg>';
 
+const PLAY_ICON = `<svg class="play-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4.5v15l12-7.5z"/></svg>`;
+const PAUSE_ICON = `<svg class="pause-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 4h4v16H6zm8 0h4v16h-4z"/></svg>`;
+const SHUFFLE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>`;
+
 function playerSection(tracks, { kind, download = null } = {}) {
   if (!tracks.length) return "";
   const first = tracks.find((track) => !track.preview) || tracks[0];
   const previewsOnly = tracks.every((track) => track.preview);
-  const label = previewsOnly ? "Play previews" : "Play";
+  const single = tracks.length === 1;
+  const label = previewsOnly ? "Play previews" : single ? "Play" : "Play all";
   const rows = tracks
     .map(
       (track, index) => `<li class="track-row" ${index >= 5 ? "data-extra-track" : ""}>
-    <button type="button" class="track" data-src="${escapeHtml(track.src)}" ${track.preview ? 'data-preview="true"' : ""} aria-current="false">
-      <span class="track-number">${index + 1}</span><span class="track-text"><span class="track-title">${escapeHtml(track.title)}</span>
+    <button type="button" class="track" data-src="${escapeHtml(track.src)}" data-title="${escapeHtml(track.title)}" ${track.preview ? 'data-preview="true"' : ""} aria-current="false" aria-pressed="false" aria-label="Play ${escapeHtml(track.title)}">
+      <span class="track-play">${PLAY_ICON}${PAUSE_ICON}</span><span class="track-text"><span class="track-title">${escapeHtml(track.title)}</span>
       <span class="track-album">${escapeHtml(kind === "artist" ? track.albumTitle || track.artistName : track.artistName)}</span></span>
       <span class="track-duration">${track.preview ? "Preview" : escapeHtml(formatDuration(track.durationMs))}</span>
     </button>${track.download ? `<a class="track-download" href="${escapeHtml(track.download)}" download aria-label="Download ${escapeHtml(track.title)}">${DOWNLOAD_ICON}</a>` : ""}
@@ -297,18 +302,23 @@ function playerSection(tracks, { kind, download = null } = {}) {
     )
     .join("");
   return `<section class="player" data-player aria-label="${previewsOnly ? "30-second previews" : "Shared tracks"}">
-    <div class="share-actions"><button type="button" class="button primary" data-play-all data-label="${label}" aria-pressed="false" hidden>
-      <svg class="play-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4.5v15l12-7.5z"/></svg>
-      <svg class="pause-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 4h4v16H6zm8 0h4v16h-4z"/></svg>
-      <span data-play-label>${label}</span></button>
-      ${download ? `<a class="download-all" href="${escapeHtml(download)}" download>${DOWNLOAD_ICON}${kind === "track" ? "Download" : "Download all"}</a>` : ""}
+    <div class="share-actions"><button type="button" class="action" data-play-all hidden>${PLAY_ICON}${label}</button>
+      ${single ? "" : `<button type="button" class="action" data-shuffle hidden>${SHUFFLE_ICON}Shuffle</button>`}
+      ${download ? `<a class="action" href="${escapeHtml(download)}" download>${DOWNLOAD_ICON}${kind === "track" ? "Download" : "Download all"}</a>` : ""}
     </div>
     <audio controls preload="none" src="${escapeHtml(first.src)}" aria-label="Shared music player"></audio>
-    <div class="transport" data-transport hidden><input class="seek" data-seek type="range" min="0" max="100" step="0.1" value="0" disabled aria-label="Seek" />
-      <div class="times"><span data-elapsed>0:00</span><span data-duration>${previewsOnly ? "0:30" : escapeHtml(formatDuration(first.durationMs)) || "0:00"}</span></div></div>
-    <ol class="tracks ${kind === "track" && tracks.length === 1 ? "tracks--single" : ""}">${rows}</ol>
+    <ol class="tracks ${kind === "track" && single ? "tracks--single" : ""}">${rows}</ol>
     ${tracks.length > 5 ? `<button type="button" class="text-button" data-show-tracks data-label="View all ${tracks.length} tracks" aria-expanded="false" hidden>View all ${tracks.length} tracks</button>` : ""}
     <p class="note" data-play-status role="status" hidden></p>
+    <div class="now" data-now hidden>
+      <div class="now-row"><span class="now-title" data-now-title></span>
+        ${single ? "" : `<button type="button" class="now-button" data-previous aria-label="Previous"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 5h2v14H6zm3 7 10-7v14z"/></svg></button>`}
+        <button type="button" class="now-button" data-toggle aria-pressed="false" aria-label="Play">${PLAY_ICON}${PAUSE_ICON}</button>
+        ${single ? "" : `<button type="button" class="now-button" data-next aria-label="Next"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16 5h2v14h-2zM5 5l10 7-10 7z"/></svg></button>`}
+      </div>
+      <input class="seek" data-seek type="range" min="0" max="100" step="0.1" value="0" disabled aria-label="Seek" />
+      <div class="times"><span data-elapsed>0:00</span><span data-duration>0:00</span></div>
+    </div>
   </section>`;
 }
 
