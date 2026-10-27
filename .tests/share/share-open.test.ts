@@ -111,3 +111,33 @@ test("unowned items open discovery or search without creating Library entries", 
     assert.equal(shareDestination(manifest), to);
   }
 });
+
+test("conflicting MusicBrainz IDs never resolve by artist or album name", () => {
+  const differentArtist = "44444444-4444-4444-8444-444444444444";
+  const differentAlbum = "55555555-5555-4555-8555-555555555555";
+  const cases = [
+    [
+      { kind: "artist", title: "Tycho", artistName: "Tycho", artistMbid: differentArtist },
+      `/artist/${differentArtist}`,
+    ],
+    [
+      { kind: "album", title: "Dive", artistName: "Tycho", artistMbid, albumMbid: differentAlbum },
+      `/artist/${artistMbid}/release/${differentAlbum}`,
+    ],
+    [
+      {
+        kind: "album",
+        title: "Compilation",
+        artistName: "Tycho",
+        artistMbid,
+        albumMbid: differentAlbum,
+      },
+      `/library/album/${compilation.id}`,
+    ],
+  ] as const;
+  for (const [input, expected] of cases) {
+    const manifest = parseShareManifest(input);
+    assert.ok(manifest);
+    assert.equal(shareDestination(manifest), expected);
+  }
+});

@@ -463,9 +463,14 @@ function manifestPlayer(item, listen, segment) {
 
 function sharePage(item, deezer, url, nonce, listen, segment, catalogPreviews) {
   const { heading, kicker, byline } = describe(item);
+  const covers =
+    item.kind === "playlist"
+      ? [...new Set(item.tracks.map((track) => track.albumMbid).filter(Boolean))].slice(0, 4)
+      : [];
+  const artMbid = item.albumMbid || covers[0];
   const coverArt =
-    item.kind !== "artist" && item.albumMbid
-      ? `https://coverartarchive.org/release-group/${item.albumMbid}/front-500`
+    item.kind !== "artist" && artMbid
+      ? `https://coverartarchive.org/release-group/${artMbid}/front-500`
       : null;
   const image = (deezer.artMatches && deezer.art) || coverArt || deezer.art;
   const initial = heading.trim().charAt(0).toUpperCase() || "♪";
@@ -478,10 +483,6 @@ function sharePage(item, deezer, url, nonce, listen, segment, catalogPreviews) {
         : item.kind === "album"
           ? `Listen to the album ${item.title} by ${item.artistName}.`
           : `Listen to ${item.title} by ${item.artistName}.`;
-  const covers =
-    item.kind === "playlist"
-      ? [...new Set(item.tracks.map((track) => track.albumMbid).filter(Boolean))].slice(0, 4)
-      : [];
   const collage = covers.length > 1;
   const art = collage
     ? Array.from(

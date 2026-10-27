@@ -243,12 +243,12 @@ export function TrackList({
   selection?: TrackSelection | null;
   highlightKey?: string | number | null;
 }) {
-  const rowRefs = useRef<Record<string, HTMLDivElement>>({});
+  const rowRefs = useRef(new Map<string, HTMLDivElement>());
   const isCollection = variant === "collection";
 
   useEffect(() => {
     if (!highlightKey) return undefined;
-    const row = rowRefs.current[String(highlightKey)];
+    const row = rowRefs.current.get(String(highlightKey));
     if (!row) return undefined;
     row.classList.add("is-search-focused");
     row.scrollIntoView({ block: "nearest", behavior: "smooth" });
@@ -291,7 +291,8 @@ export function TrackList({
             <div
               key={row.key}
               ref={(node) => {
-                if (node) rowRefs.current[String(row.key)] = node;
+                if (node) rowRefs.current.set(String(row.key), node);
+                else rowRefs.current.delete(String(row.key));
               }}
               className={
                 "native-library-track" +
