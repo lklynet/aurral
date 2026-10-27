@@ -33,6 +33,7 @@ import { useDiscoveryStatus } from "./hooks/useDiscoveryStatus";
 import { buildActivityPath, DEFAULT_ACTIVITY_VIEW } from "./navigation/activityNavConfig";
 import { routeModules } from "./navigation/routeModules.ts";
 import { getBootstrapPollIntervalMs } from "./utils/requestScheduling.ts";
+import { useLanternPreview } from "./hooks/useLanternPreview.ts";
 
 function ActivityRootRedirect() {
   return <Navigate to={buildActivityPath(DEFAULT_ACTIVITY_VIEW)} replace />;
@@ -47,6 +48,8 @@ const ShowsPage = lazy(routeModules.shows);
 const LibraryPage = lazy(routeModules.library);
 const SettingsPage = lazy(routeModules.settings);
 const ProfilePage = lazy(routeModules.profile);
+const WrappedPage = lazy(routeModules.wrapped);
+const WrappedAnnouncement = lazy(() => import("./components/WrappedAnnouncement.tsx"));
 const BlocklistPage = lazy(routeModules.blocklist);
 const ArtistDetailsPage = lazy(routeModules.artist);
 const ArtistReleaseListPage = lazy(routeModules.artistReleases);
@@ -207,6 +210,7 @@ function AppContent() {
 }
 
 function ProtectedLayout() {
+  useLanternPreview();
   const { appVersion, healthIssue, isHealthy, rootFolderConfigured } =
     useOutletContext<AppOutletContext>();
   const { user, bootstrap } = useAuth();
@@ -224,6 +228,11 @@ function ProtectedLayout() {
             }
           >
             <SpotifyReconnectNotice />
+            {bootstrap?.api.features.includes("wrapped") && (
+              <Suspense fallback={null}>
+                <WrappedAnnouncement />
+              </Suspense>
+            )}
             {healthIssue === "lidarr" && isHealthy && (
               <div className="app-status-banner app-status-banner--warning">
                 <AlertTriangle className="app-status-banner__icon app-status-banner__icon--warning" />
@@ -354,6 +363,7 @@ const appRoutes = createRoutesFromElements(
         }
       />
       <Route path="/profile" element={<ProfilePage />} />
+      <Route path="/wrapped" element={<WrappedPage />} />
       <Route path="/blocklist" element={<BlocklistPage />} />
       <Route path="/go/:kind" element={<ResolveLinkPage />} />
       <Route path="/share/import" element={<ShareImportPage />} />

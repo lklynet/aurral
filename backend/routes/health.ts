@@ -10,8 +10,9 @@ import {
   getTicketmasterApiKey,
   getMetadataProviderHealthSnapshot,
 } from "../services/apiClients/index.ts";
-import { API_CONTRACT } from "../config/apiContract.ts";
+import { API_CONTRACT, isWrappedEnabled } from "../config/apiContract.ts";
 import { APP_VERSION } from "../config/constants.ts";
+import { getWrappedPreview } from "../services/wrapped/preview.ts";
 import {
   resolveRequestUser,
   isAuthRequiredByConfig,
@@ -263,6 +264,7 @@ type BootstrapPayload = {
   status: string;
   timestamp: string;
   appVersion: string;
+  wrappedPreview?: NonNullable<ReturnType<typeof getWrappedPreview>>;
   api: typeof API_CONTRACT;
   matcher: {
     available: boolean;
@@ -339,6 +341,8 @@ function buildBootstrapPayload(req: CredentialRequest) {
   const authRequired = isAuthRequiredByConfig();
   const currentUser = resolveRequestUser(req);
   const lidarrConfigured = lidarrClient.isConfigured();
+  const wrappedPreview =
+    currentUser && currentUser.id > 0 ? getWrappedPreview(currentUser.id) : null;
 
   const oidcInfo = getOidcBootstrapInfo();
   const payload: BootstrapPayload = {
@@ -354,8 +358,15 @@ function buildBootstrapPayload(req: CredentialRequest) {
     dateTimeFormat: settings.dateTimeFormat,
     timestamp: new Date().toISOString(),
     appVersion: APP_VERSION,
-    api: API_CONTRACT,
+    api: {
+      ...API_CONTRACT,
+      features:
+        (isWrappedEnabled() || wrappedPreview) && currentUser && currentUser.id > 0
+          ? [...API_CONTRACT.features, "wrapped"]
+          : API_CONTRACT.features,
+    },
     matcher: serializeBootstrapMatcherStatus(getMatcherStatus(), Boolean(currentUser)),
+    ...(wrappedPreview ? { wrappedPreview } : {}),
   };
 
   if (currentUser) {

@@ -64,6 +64,25 @@ export async function processSystemTask(
 ) {
   const kind = String(payload?.kind || "").trim();
   switch (kind) {
+    case "wrapped-build": {
+      const { processWrappedReport } = await import("./wrapped/reports.ts");
+      if (
+        typeof payload?.userId !== "number" ||
+        typeof payload.year !== "number" ||
+        typeof payload.timeZone !== "string" ||
+        typeof payload.cutoff !== "number" ||
+        typeof payload.requestId !== "string"
+      )
+        throw new Error("Invalid recap job");
+      await processWrappedReport(
+        payload.userId,
+        payload.year,
+        payload.timeZone,
+        payload.cutoff,
+        payload.requestId,
+      );
+      return;
+    }
     case "weekly-flow-refresh": {
       const { runScheduledFlowRefresh } = await import("./flows/flowScheduler.ts");
       await runScheduledFlowRefresh();
@@ -84,9 +103,14 @@ export async function processSystemTask(
       await runMissingTrackSearch();
       return;
     }
-    case "session-cleanup":
+    case "session-cleanup": {
       cleanExpiredSessions();
+      const { rolloverWrappedReports, cleanupWrappedReports } =
+        await import("./wrapped/reports.ts");
+      rolloverWrappedReports();
+      cleanupWrappedReports();
       return;
+    }
     case "weekly-flow-reuse-repair": {
       const { downloadWorker } = await import("./downloadJobs/downloadWorker.ts");
       downloadWorker.scheduleReuseLinkRepair(false);

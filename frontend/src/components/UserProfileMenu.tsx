@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Link } from "react-router";
+import { Link, useLocation } from "react-router";
 import { User, Heart, LogOut, ExternalLink } from "./icons";
 import { useAuth } from "../contexts/AuthContext";
 import TooltipButton from "./TooltipButton";
@@ -13,10 +13,11 @@ function GitHubIcon({ className = "" }) {
 }
 
 function UserProfileMenu() {
+  const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const { authRequired, canLogOut, logout } = useAuth();
+  const { authRequired, canLogOut, logout, bootstrap } = useAuth();
 
   useEffect(() => {
     if (!menuOpen) return undefined;
@@ -62,6 +63,19 @@ function UserProfileMenu() {
       {menuOpen && (
         <div className="app-profile-menu__dropdown" role="menu">
           <ul className="app-profile-menu__list">
+            {bootstrap?.api.features.includes("wrapped") && (
+              <li role="none">
+                <Link
+                  to="/wrapped"
+                  state={{ wrappedFrom: `${location.pathname}${location.search}${location.hash}` }}
+                  role="menuitem"
+                  className="app-profile-menu__item"
+                  onClick={closeMenu}
+                >
+                  <span>Your Wrapped</span>
+                </Link>
+              </li>
+            )}
             <li role="none">
               <Link
                 to="/profile"

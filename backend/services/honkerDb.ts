@@ -64,7 +64,7 @@ export function configureHonkerQueueWake(handler: ((name: string) => void) | nul
   queueWakeHandler = typeof handler === "function" ? handler : null;
 }
 
-function wakeQueueOwner(name: string) {
+export function wakeQueueOwner(name: string) {
   try {
     if (process.env.AURRAL_BACKGROUND_WORKER_GROUP && process.connected) {
       process.send!({ type: "queue-wake", queue: name });
@@ -448,7 +448,8 @@ export function getSystemTaskQueueName(kind: string) {
     kind === "session-cleanup" ||
     kind === "news-refresh" ||
     kind === "trending-charts-refresh" ||
-    kind === "weekly-flow-refresh"
+    kind === "weekly-flow-refresh" ||
+    kind === "wrapped-build"
   )
     return "system-task-maintenance";
   return "system-task";
