@@ -363,8 +363,14 @@ audio {
   min-height: 36px;
   display: inline-flex;
   align-items: center;
+  gap: 6px;
   color: var(--text-muted);
   font-size: 11px;
+}
+.listen svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
 }
 footer {
   padding: 30px 20px;
